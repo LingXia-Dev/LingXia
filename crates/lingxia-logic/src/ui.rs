@@ -8,6 +8,7 @@ mod pull_to_refresh;
 mod router;
 mod tabbar;
 mod toast;
+mod shell;
 mod tray;
 
 pub(crate) use action_sheet::present_action_sheet;
@@ -22,6 +23,7 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     router::init(ctx)?;
     pull_to_refresh::init(ctx)?;
     capsule::init(ctx)?;
+    shell::init(ctx)?;
     tray::init(ctx)?;
     Ok(())
 }

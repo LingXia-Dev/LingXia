@@ -156,6 +156,13 @@ pub trait AppRuntime:
         Ok(())
     }
 
+    /// Replace the shell activator entries (the sidebar's host entry strip)
+    /// with the runtime writer's full list, as JSON. Desktop shell only;
+    /// silent no-op elsewhere so portable home code needs no platform guard.
+    fn set_activator_items(&self, _items_json: &str) -> Result<(), PlatformError> {
+        Ok(())
+    }
+
     /// Set the tray title (text beside the icon, macOS). Desktop only; no-op elsewhere.
     fn set_tray_title(&self, _text: &str) -> Result<(), PlatformError> {
         Ok(())

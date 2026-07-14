@@ -1428,5 +1428,38 @@ true
         type LxEnv = "globalThis.LxEnv";
         type TrayApi = "globalThis.TrayApi";
 
+        /// Shell chrome writer API (home lxapp only): the activator is the
+        /// shell's single persistent-entry mechanism.
+        type ShellApi = r###"{
+    activator: ActivatorApi;
+}"###;
+
+        /// One shell activator entry. A surface item references content by key
+        /// (`lxapp` appId or `native` capability) — icon/label derive from the
+        /// content and click toggles its panel. An action item carries its own
+        /// `id`, presentation, and click `handler`.
+        type ShellActivatorItem = r###"{
+    lxapp: string;
+    native?: never;
+    id?: never;
+    handler?: never;
+    icon?: string;
+    name?: string;
+} | {
+    native: string;
+    lxapp?: never;
+    id?: never;
+    handler?: never;
+    icon?: string;
+    name?: string;
+} | {
+    id: string;
+    lxapp?: never;
+    native?: never;
+    icon: string;
+    name: string;
+    handler: () => void;
+}"###;
+
     }
 }

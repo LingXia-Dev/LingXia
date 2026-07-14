@@ -29,6 +29,9 @@ class SidebarItemView: NSView {
     private var trackingArea: NSTrackingArea?
     private(set) var isHovered = false
     var isSelected = false { didSet { updateAppearance() } }
+    /// Accent bar at the row's leading edge while selected (Windows-style),
+    /// colored from the tabbar's selectedColor.
+    private let accentBar = NSView()
     /// Selected-state tint from the lxapp's tabbar style (`selectedColor`);
     /// nil falls back to the system accent (spec: style follows the tabbar
     /// config, the shell injects no accent of its own).
@@ -57,8 +60,19 @@ class SidebarItemView: NSView {
         // Selection/hover background — inset to align with the connector line
         selectionBackground.translatesAutoresizingMaskIntoConstraints = false
         selectionBackground.wantsLayer = true
-        selectionBackground.layer?.cornerRadius = Layout.cornerRadius
+        selectionBackground.layer?.cornerRadius = 7
         addSubview(selectionBackground)
+        accentBar.translatesAutoresizingMaskIntoConstraints = false
+        accentBar.wantsLayer = true
+        accentBar.layer?.cornerRadius = 1.5
+        accentBar.isHidden = true
+        addSubview(accentBar)
+        NSLayoutConstraint.activate([
+            accentBar.trailingAnchor.constraint(equalTo: selectionBackground.leadingAnchor, constant: -2),
+            accentBar.centerYAnchor.constraint(equalTo: centerYAnchor),
+            accentBar.widthAnchor.constraint(equalToConstant: 3),
+            accentBar.heightAnchor.constraint(equalToConstant: 18),
+        ])
 
         // Icon
         iconView.translatesAutoresizingMaskIntoConstraints = false
@@ -102,9 +116,9 @@ class SidebarItemView: NSView {
 
             // Selection background: inset from item leading to align with connector line
             selectionBackground.leadingAnchor.constraint(equalTo: leadingAnchor, constant: Layout.selectionLeadingInset),
-            selectionBackground.trailingAnchor.constraint(equalTo: trailingAnchor),
-            selectionBackground.topAnchor.constraint(equalTo: topAnchor),
-            selectionBackground.bottomAnchor.constraint(equalTo: bottomAnchor),
+            selectionBackground.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
+            selectionBackground.topAnchor.constraint(equalTo: topAnchor, constant: 2),
+            selectionBackground.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -2),
 
             iconView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: Layout.leadingPadding),
             iconView.centerYAnchor.constraint(equalTo: centerYAnchor),
@@ -194,15 +208,34 @@ class SidebarItemView: NSView {
 
     private func updateAppearance() {
         let accent = selectedTint ?? NSColor.controlAccentColor
+        accentBar.isHidden = !isSelected
+        accentBar.layer?.backgroundColor = accent.cgColor
         if isSelected {
-            selectionBackground.layer?.backgroundColor = accent.withAlphaComponent(0.15).cgColor
-            titleLabel.textColor = accent
+            // Windows-baseline selected card: a light floating card on the
+            // dark base, accent icon + accent bar, near-neutral title.
+            // Fixed light card regardless of theme — the sidebar base is
+            // always dark, matching the Windows implementation.
+            selectionBackground.layer?.backgroundColor =
+                NSColor.white.withAlphaComponent(0.95).cgColor
+            selectionBackground.shadow = {
+                let shadow = NSShadow()
+                shadow.shadowBlurRadius = 6
+                shadow.shadowOffset = NSSize(width: 0, height: -1)
+                shadow.shadowColor = NSColor.black.withAlphaComponent(0.35)
+                return shadow
+            }()
+            titleLabel.font = NSFont.systemFont(ofSize: 13, weight: .medium)
+            titleLabel.textColor = NSColor(calibratedWhite: 0.15, alpha: 1)
             iconView.contentTintColor = accent
         } else if isHovered {
+            selectionBackground.shadow = nil
+            titleLabel.font = NSFont.systemFont(ofSize: 13, weight: .regular)
             selectionBackground.layer?.backgroundColor = NSColor.labelColor.withAlphaComponent(0.06).cgColor
             titleLabel.textColor = NSColor.labelColor
             iconView.contentTintColor = NSColor.secondaryLabelColor
         } else {
+            selectionBackground.shadow = nil
+            titleLabel.font = NSFont.systemFont(ofSize: 13, weight: .regular)
             selectionBackground.layer?.backgroundColor = NSColor.clear.cgColor
             titleLabel.textColor = NSColor.labelColor
             iconView.contentTintColor = NSColor.secondaryLabelColor

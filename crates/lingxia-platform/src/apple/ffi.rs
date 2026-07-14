@@ -144,6 +144,9 @@ mod bridge {
         #[swift_bridge(swift_name = "LxApp.setTrayIcon")]
         fn set_tray_icon(icon: &str) -> bool;
 
+        #[swift_bridge(swift_name = "LxApp.setActivatorItems")]
+        fn set_activator_items(items_json: &str) -> bool;
+
         #[swift_bridge(swift_name = "LxApp.setTrayTitle")]
         fn set_tray_title(text: &str) -> bool;
 
@@ -410,7 +413,8 @@ pub use bridge::{
     autostart_set_enabled, cancel_preview_media, close_lxapp, close_surface, exit_app,
     hide_surface, hide_toast, navigate, open_document_external, open_lxapp, open_url,
     present_layout, present_surface, preview_media, review_document, set_app_badge,
-    set_managed_surface_visible, set_tray_badge, set_tray_click_intercept, set_tray_icon,
+    set_activator_items, set_managed_surface_visible, set_tray_badge, set_tray_click_intercept,
+    set_tray_icon,
     set_tray_menu, set_tray_title, set_tray_visible, share, show_action_sheet, show_modal,
     show_surface, show_toast, toggle_managed_surface, update_navbar_ui, update_orientation_ui,
     update_tabbar_ui, update_tabbar_ui_async,

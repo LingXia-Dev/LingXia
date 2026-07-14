@@ -319,7 +319,85 @@ final class LxAppMacAppUIRuntime: NSObject {
         closeSurface(id: rootSurface.id)
     }
 
+    /// Runtime-writer activator entries (lx.shell.activator.set): the shell's
+    /// single entry mechanism. Replaces the yaml-declared sidebar entries when
+    /// non-empty; the declared tray entry is unaffected.
+    private struct RuntimeActivatorItem: Decodable {
+        let kind: String       // "lxapp" | "native" | "action"
+        let key: String        // appId / capability / action id
+        let name: String?
+        let icon: String?
+    }
+    private var runtimeActivatorItems: [RuntimeActivatorItem] = []
+
+    func setRuntimeActivatorItems(_ json: String) {
+        guard let data = json.data(using: .utf8),
+              let items = try? JSONDecoder().decode([RuntimeActivatorItem].self, from: data)
+        else {
+            LXLog.error("setActivatorItems: bad payload", category: "MacAppUI")
+            return
+        }
+        runtimeActivatorItems = items
+        refreshChromeActivators()
+    }
+
+    /// Sidebar entries from the runtime writer, when it has spoken.
+    private func runtimeSidebarActionItems() -> [LxAppUIActionItem]? {
+        guard !runtimeActivatorItems.isEmpty else { return nil }
+        return runtimeActivatorItems.map { item in
+            let title = item.name ?? displayName(forRuntimeItem: item)
+            return LxAppUIActionItem(
+                id: "runtime:\(item.kind):\(item.key)",
+                label: title,
+                iconURL: runtimeItemIconURL(item)
+            )
+        }
+    }
+
+    private func displayName(forRuntimeItem item: RuntimeActivatorItem) -> String {
+        if item.kind == "lxapp" {
+            let info = getLxAppInfo(item.key)
+            let name = info.app_name.toString()
+            if !name.isEmpty { return name }
+        }
+        return item.key
+    }
+
+    private func runtimeItemIconURL(_ item: RuntimeActivatorItem) -> URL? {
+        if let icon = item.icon, !icon.isEmpty {
+            return LxAppAppUIBundleLoader.resolveRelativeResource(icon, baseURL: uiConfigURL)
+        }
+        if item.kind == "lxapp" {
+            let path = getLxAppInfo(item.key).icon.toString()
+            if !path.isEmpty { return URL(fileURLWithPath: path) }
+        }
+        return nil
+    }
+
+    private func performRuntimeActivator(kind: String, key: String) {
+        switch kind {
+        case "lxapp", "native":
+            // Declared surfaces toggle; an undeclared lxapp opens as an aside
+            // through the privileged runtime path.
+            if surfaceById[key] != nil {
+                toggleSurface(id: key)
+            } else {
+                _ = shellActivatorOpenLxapp(key)
+            }
+        default:
+            // Action item: hand the click to the home Logic's handler.
+            _ = shellActivatorClicked(key)
+        }
+    }
+
     private func performActivator(id: String) {
+        if id.hasPrefix("runtime:") {
+            let parts = id.split(separator: ":", maxSplits: 2).map(String.init)
+            if parts.count == 3 {
+                performRuntimeActivator(kind: parts[1], key: parts[2])
+            }
+            return
+        }
         guard let activator = uiConfig.activators.first(where: { $0.id == id }) else { return }
 
         switch activator.action.kind {
@@ -804,7 +882,7 @@ final class LxAppMacAppUIRuntime: NSObject {
             }
             .map(makeChromeActionItem)
 
-        shell.updateSidebarHostActions(sidebarItems)
+        shell.updateSidebarHostActions(runtimeSidebarActionItems() ?? sidebarItems)
         shell.setManagedNavigationToolbarVisible(true)
         shell.updateToolbarHostActions(toolbarItems)
         shell.updateTitlebarHostActions(titlebarItems)

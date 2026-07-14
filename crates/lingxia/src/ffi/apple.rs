@@ -238,6 +238,15 @@ mod bridge {
         #[swift_bridge(swift_name = "focusSurface")]
         fn focus_surface(appid: &str, surface_id: &str) -> bool;
 
+        // Runtime activator click return paths: an action item's click hands
+        // off to the home Logic's registered handler; an undeclared lxapp
+        // surface item opens as an aside panel (ensure + panel open).
+        #[swift_bridge(swift_name = "shellActivatorClicked")]
+        fn shell_activator_clicked(item_id: &str) -> bool;
+
+        #[swift_bridge(swift_name = "shellActivatorOpenLxapp")]
+        fn shell_activator_open_lxapp(app_id: &str) -> bool;
+
         #[swift_bridge(swift_name = "registerHostAside")]
         fn register_host_aside(appid: &str, surface_id: &str, edge: &str) -> bool;
 
@@ -911,6 +920,47 @@ pub fn set_active_main(appid: &str) -> bool {
         } else {
             false
         }
+    })
+}
+
+pub fn shell_activator_clicked(item_id: &str) -> bool {
+    ffi_catch_unwind!("shell_activator_clicked", false, || {
+        let Some(home) = lingxia_app_context::home_app_id() else {
+            return false;
+        };
+        let event = format!("lx.shell.activator:{item_id}");
+        lxapp::publish_app_event(&home, &event, None);
+        true
+    })
+}
+
+pub fn shell_activator_open_lxapp(app_id: &str) -> bool {
+    ffi_catch_unwind!("shell_activator_open_lxapp", false, || {
+        let app_id = app_id.trim().to_string();
+        if app_id.is_empty() {
+            return false;
+        }
+        // Ensure (installs from the configured cloud when missing) before the
+        // panel presents — same order as the privileged openSurface path.
+        std::mem::drop(rong_rt::RongExecutor::global().spawn(async move {
+            if let Err(err) =
+                lxapp::prepare_lxapp_open(&app_id, lxapp::ReleaseType::Release).await
+            {
+                log::error!("activator open failed for {app_id}: {err}");
+                return;
+            }
+            let options = lxapp::LxAppStartupOptions {
+                open_mode: lingxia_platform::traits::app_runtime::LxAppOpenMode::Panel,
+                panel_id: app_id.clone(),
+                ..Default::default()
+            };
+            if let Err(err) = lxapp::open_lxapp(&app_id, options) {
+                log::error!("activator open failed for {app_id}: {err}");
+                return;
+            }
+            lxapp::schedule_lxapp_update_check(&app_id, lxapp::ReleaseType::Release);
+        }));
+        true
     })
 }
 

@@ -282,6 +282,19 @@ extension LxApp {
         }
     }
 
+    nonisolated static func setActivatorItems(items_json: RustStr) -> Bool {
+        let json = items_json.toString()
+        return executeOnMain {
+            #if os(macOS)
+            guard let runtime = LxAppMacAppUIRuntime.active else { return false }
+            runtime.setRuntimeActivatorItems(json)
+            return true
+            #else
+            return true
+            #endif
+        }
+    }
+
     nonisolated static func setTrayIcon(icon: RustStr) -> Bool {
         let value = icon.toString()
         return executeOnMain {

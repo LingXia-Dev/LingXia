@@ -1216,6 +1216,43 @@ export type ShareTitleOptions = {
     title?: string;
 };
 
+/**
+ * One shell activator entry. A surface item references content by key
+ * (`lxapp` appId or `native` capability) — icon/label derive from the
+ * content and click toggles its panel. An action item carries its own
+ * `id`, presentation, and click `handler`.
+ */
+export type ShellActivatorItem = {
+    lxapp: string;
+    native?: never;
+    id?: never;
+    handler?: never;
+    icon?: string;
+    name?: string;
+} | {
+    native: string;
+    lxapp?: never;
+    id?: never;
+    handler?: never;
+    icon?: string;
+    name?: string;
+} | {
+    id: string;
+    lxapp?: never;
+    native?: never;
+    icon: string;
+    name: string;
+    handler: () => void;
+};
+
+/**
+ * Shell chrome writer API (home lxapp only): the activator is the
+ * shell's single persistent-entry mechanism.
+ */
+export type ShellApi = {
+    activator: ActivatorApi;
+};
+
 export type ShowActionSheetOptions = {
     itemList: string[];
     itemColor?: string;
@@ -1760,6 +1797,21 @@ export declare class JSVideoContext {
 }
 
 declare global {
+  interface ActivatorApi {
+    /**
+     * `lx.shell.activator.set(items)` — idempotent full-list declaration. The
+     * shell diffs against the previous state; repeat calls converge.
+     */
+    set(items: ShellActivatorItem[]): void;
+    /**
+     * `lx.shell.activator.update(key, patch)` — patch one item's icon / name
+     * without re-sending the list. `key` is a content key value or an action id.
+     */
+    update(key: string, patch: { icon?: string; name?: string }): void;
+  }
+}
+
+declare global {
   interface HostAppApi {
     /**
      * `lx.app.screenshot(options?)` — capture the host app's window as a PNG.
@@ -1954,6 +2006,7 @@ declare global {
     showToast(options: ShowToastOptions): Promise<void>;
     /** Hide toast function */
     hideToast(): Promise<void>;
+    readonly shell: ShellApi;
     readonly tray: TrayApi;
     getUpdateManager(): UpdateManager;
   }

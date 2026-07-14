@@ -181,6 +181,13 @@ impl AppRuntime for Platform {
         }
     }
 
+    fn set_activator_items(&self, items_json: &str) -> Result<(), PlatformError> {
+        // A shell-less host (runner phone shape) answers false; that is a
+        // cosmetic absence, not an error.
+        let _ = ffi::set_activator_items(items_json);
+        Ok(())
+    }
+
     fn set_tray_title(&self, text: &str) -> Result<(), PlatformError> {
         if ffi::set_tray_title(text) {
             Ok(())
