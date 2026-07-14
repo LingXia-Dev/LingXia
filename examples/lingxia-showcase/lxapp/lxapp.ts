@@ -29,6 +29,7 @@ App({
     // Idempotent full-list set: any call timing converges to this state.
     lx.shell.activator.set([
       { lxapp: "lingxia-chat" },
+      { lxapp: "lingxia-chat-beta" },
       { native: "terminal" },
       {
         id: "ping",
