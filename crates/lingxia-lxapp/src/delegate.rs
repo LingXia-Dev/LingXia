@@ -186,6 +186,7 @@ impl LxAppDelegate for LxApp {
         }
 
         self.set_status(LxAppSessionStatus::Closed);
+        self.clear_open_region();
         self.clear_transient_files();
 
         // Update last active time. Recover from poisoned mutex instead of panicking.

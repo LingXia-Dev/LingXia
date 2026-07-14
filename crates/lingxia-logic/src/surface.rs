@@ -277,6 +277,13 @@ fn require_home_caller(lxapp: &LxApp, key: &str) -> JSResult<()> {
 async fn open_lxapp_spec(ctx: JSContext, spec: &JSObject) -> JSResult<JSObject> {
     let app_id = read_required_string(spec, "lxapp")?;
     let app_id = app_id.trim().to_string();
+    if app_id.is_empty() {
+        return Err(surface_error(
+            rong::error::E_INVALID_ARG,
+            "invalid_surface_spec",
+            "lxapp must be a non-empty appId",
+        ));
+    }
     let edge = read_validated_edge(spec)?;
     let lxapp = LxApp::from_ctx(&ctx)?;
     require_home_caller(&lxapp, "lxapp")?;
@@ -293,32 +300,6 @@ async fn open_lxapp_spec(ctx: JSContext, spec: &JSObject) -> JSResult<JSObject> 
         ));
     }
 
-    // One lxapp, one region: already open in the OTHER region is a conflict —
-    // the caller must close() first; the shell never silently copies or moves
-    // an instance between main and aside.
-    let wants_main = matches!(as_role, Some("main"));
-    match lxapp::open_region(&app_id) {
-        Some(lxapp::LxAppOpenRegion::Main) if !wants_main => {
-            return Err(surface_error(
-                "E_SURFACE_CONFLICT",
-                "surface_conflict",
-                format!(
-                    "lxapp '{app_id}' is already open as a main; close it before opening as an aside"
-                ),
-            ));
-        }
-        Some(lxapp::LxAppOpenRegion::Aside) if wants_main => {
-            return Err(surface_error(
-                "E_SURFACE_CONFLICT",
-                "surface_conflict",
-                format!(
-                    "lxapp '{app_id}' is already open as an aside; close it before opening as a main"
-                ),
-            ));
-        }
-        _ => {}
-    }
-
     // Ensure the bundle exists before any presentation — this is what pulls
     // the lxapp from the cloud when it is not bundled/installed.
     lxapp::prepare_lxapp_open(&app_id, lxapp::ReleaseType::Release)
@@ -327,44 +308,172 @@ async fn open_lxapp_spec(ctx: JSContext, spec: &JSObject) -> JSResult<JSObject> 
             surface_error(rong::error::E_NOT_FOUND, "lxapp_not_found", err.to_string())
         })?;
 
-    match as_role {
-        // Declared surfaces (any role) toggle via the shell; an undeclared
-        // aside docks as a panel keyed by its appId.
-        None | Some("aside") | Some("float") => {
-            if lxapp
-                .set_shell_surface_visible(&app_id, true, edge.as_deref())
-                .is_ok()
-            {
-                lxapp::schedule_lxapp_update_check(&app_id, lxapp::ReleaseType::Release);
-                return declared_surface_handle(&ctx, lxapp, app_id);
+    let declared_aside = declared_lxapp_aside(&app_id);
+    let (region, shell_surface_id) = match as_role {
+        // No override: preserve a live app's current region; otherwise let a
+        // declaration supply its role, falling back to main when undeclared.
+        None => match lxapp::open_region(&app_id) {
+            Some(region) => {
+                let surface_id = if region == lxapp::LxAppOpenRegion::Aside {
+                    declared_aside
+                        .as_ref()
+                        .map(|aside| aside.surface_id.as_str())
+                        .unwrap_or(&app_id)
+                } else {
+                    &app_id
+                };
+                show_lxapp_region(&lxapp, &app_id, surface_id, region, edge.as_deref())?;
+                (region, surface_id.to_string())
             }
-            if matches!(as_role, Some("float")) {
-                return Err(surface_error(
-                    rong::error::E_NOT_SUPPORTED,
-                    "float_undeclared",
-                    "as: 'float' requires the lxapp to be declared in lingxia.yaml surfaces",
-                ));
+            None => {
+                if let Some(aside) = declared_aside.as_ref() {
+                    open_lxapp_region(
+                        &app_id,
+                        lxapp::LxAppOpenRegion::Aside,
+                        &aside.surface_id,
+                        &aside.path,
+                    )?;
+                    lxapp.register_host_aside(
+                        &aside.surface_id,
+                        edge.as_deref().unwrap_or(&aside.edge),
+                    );
+                    (lxapp::LxAppOpenRegion::Aside, aside.surface_id.clone())
+                } else {
+                    open_lxapp_region(&app_id, lxapp::LxAppOpenRegion::Main, &app_id, "")?;
+                    (lxapp::LxAppOpenRegion::Main, app_id.clone())
+                }
             }
-            let options = lxapp::LxAppStartupOptions {
-                open_mode: lingxia_platform::traits::app_runtime::LxAppOpenMode::Panel,
-                panel_id: app_id.clone(),
-                ..Default::default()
-            };
-            lxapp::open_lxapp(&app_id, options).map_err(|err| {
-                surface_error(rong::error::E_NOT_FOUND, "lxapp_not_found", err.to_string())
-            })?;
-            lxapp::schedule_lxapp_update_check(&app_id, lxapp::ReleaseType::Release);
-            declared_surface_handle(&ctx, lxapp, app_id)
-        }
+        },
         Some("main") => {
-            let options = lxapp::LxAppStartupOptions::default();
-            lxapp::open_lxapp(&app_id, options).map_err(|err| {
-                surface_error(rong::error::E_NOT_FOUND, "lxapp_not_found", err.to_string())
+            open_lxapp_region(&app_id, lxapp::LxAppOpenRegion::Main, &app_id, "")?;
+            (lxapp::LxAppOpenRegion::Main, app_id.clone())
+        }
+        Some("aside") => {
+            let surface_id = declared_aside
+                .as_ref()
+                .map(|aside| aside.surface_id.as_str())
+                .unwrap_or(&app_id);
+            let path = declared_aside
+                .as_ref()
+                .map(|aside| aside.path.as_str())
+                .unwrap_or("");
+            let default_edge = declared_aside
+                .as_ref()
+                .map(|aside| aside.edge.as_str())
+                .unwrap_or("right");
+            open_lxapp_region(&app_id, lxapp::LxAppOpenRegion::Aside, surface_id, path)?;
+            // Runtime lxapps have no declaration for the host's managed-
+            // surface lookup. Register the child directly in the shared graph;
+            // declared hosts may already have done so and replacement is
+            // intentionally idempotent.
+            lxapp.register_host_aside(surface_id, edge.as_deref().unwrap_or(default_edge));
+            (lxapp::LxAppOpenRegion::Aside, surface_id.to_string())
+        }
+        Some("float") => {
+            lxapp
+                .set_shell_surface_visible(&app_id, true, edge.as_deref())
+                .map_err(|_| {
+                    surface_error(
+                        rong::error::E_NOT_SUPPORTED,
+                        "float_undeclared",
+                        "as: 'float' requires a declared float surface",
+                    )
+                })?;
+            let region = lxapp::open_region(&app_id).ok_or_else(|| {
+                surface_error(
+                    rong::error::E_INTERNAL,
+                    "shell_surface_failed",
+                    format!("float lxapp '{app_id}' opened without a runtime region"),
+                )
             })?;
-            lxapp::schedule_lxapp_update_check(&app_id, lxapp::ReleaseType::Release);
-            declared_surface_handle(&ctx, lxapp, app_id)
+            (region, app_id.clone())
         }
         Some(_) => unreachable!("validated above"),
+    };
+    lxapp::schedule_lxapp_update_check(&app_id, lxapp::ReleaseType::Release);
+    lxapp_surface_handle(&ctx, lxapp, app_id, shell_surface_id, region)
+}
+
+struct DeclaredLxappAside {
+    surface_id: String,
+    path: String,
+    edge: String,
+}
+
+fn declared_lxapp_aside(app_id: &str) -> Option<DeclaredLxappAside> {
+    let item = lingxia_app_context::app_config()?
+        .panels
+        .as_ref()?
+        .items
+        .iter()
+        .find(|item| item.content.kind.is_lxapp() && item.content.app_id == app_id)?;
+    let edge = match item.position {
+        lingxia_app_context::PanelPosition::Left => "left",
+        lingxia_app_context::PanelPosition::Right => "right",
+        lingxia_app_context::PanelPosition::Top => "top",
+        lingxia_app_context::PanelPosition::Bottom => "bottom",
+    };
+    Some(DeclaredLxappAside {
+        surface_id: item.id.clone(),
+        path: item.content.path.clone().unwrap_or_default(),
+        edge: edge.to_string(),
+    })
+}
+
+fn open_lxapp_region(
+    app_id: &str,
+    region: lxapp::LxAppOpenRegion,
+    shell_surface_id: &str,
+    path: &str,
+) -> JSResult<()> {
+    let options = match region {
+        lxapp::LxAppOpenRegion::Main => lxapp::LxAppStartupOptions::new(path),
+        lxapp::LxAppOpenRegion::Aside => lxapp::LxAppStartupOptions {
+            path: path.to_string(),
+            open_mode: lingxia_platform::traits::app_runtime::LxAppOpenMode::Panel,
+            panel_id: shell_surface_id.to_string(),
+            ..Default::default()
+        },
+    };
+    lxapp::open_lxapp(app_id, options)
+        .map(|_| ())
+        .map_err(lxapp_open_error)
+}
+
+fn show_lxapp_region(
+    shell: &LxApp,
+    app_id: &str,
+    shell_surface_id: &str,
+    region: lxapp::LxAppOpenRegion,
+    edge: Option<&str>,
+) -> JSResult<()> {
+    match region {
+        lxapp::LxAppOpenRegion::Main => open_lxapp_region(app_id, region, app_id, ""),
+        lxapp::LxAppOpenRegion::Aside => {
+            if shell
+                .set_shell_surface_visible(shell_surface_id, true, edge)
+                .is_ok()
+            {
+                Ok(())
+            } else {
+                open_lxapp_region(app_id, region, shell_surface_id, "")?;
+                shell.register_host_aside(shell_surface_id, edge.unwrap_or("right"));
+                Ok(())
+            }
+        }
+    }
+}
+
+fn lxapp_open_error(err: LxAppError) -> rong::RongJSError {
+    match err {
+        LxAppError::SurfaceConflict(message) => {
+            surface_error("E_SURFACE_CONFLICT", "surface_conflict", message)
+        }
+        other => surface_error(
+            rong::error::E_NOT_FOUND,
+            "lxapp_not_found",
+            other.to_string(),
+        ),
     }
 }
 
@@ -378,7 +487,7 @@ fn open_native_spec(ctx: &JSContext, spec: &JSObject) -> JSResult<JSObject> {
     lxapp
         .set_shell_surface_visible(name.trim(), true, edge.as_deref())
         .map_err(|err| surface_error(rong::error::E_NOT_FOUND, "native_not_found", err))?;
-    declared_surface_handle(ctx, lxapp, name.trim().to_string())
+    managed_surface_handle(ctx, lxapp, name.trim().to_string())
 }
 
 fn read_validated_edge(spec: &JSObject) -> JSResult<Option<String>> {
@@ -535,10 +644,131 @@ fn open_external(ctx: JSContext, url: String) -> JSResult<()> {
         .map_err(|err| surface_error(rong::error::E_INTERNAL, "open_url_failed", err))
 }
 
-/// Build a minimal handle bound to a surface id (host-declared or already-open).
-/// `show`/`hide` drive the lxapp surface visibility APIs and `close` hides the
-/// surface; messaging/lifecycle events are not wired for these ids.
-fn declared_surface_handle(ctx: &JSContext, lxapp: Arc<LxApp>, id: String) -> JSResult<JSObject> {
+/// Handle for a live lxapp presentation. Hide preserves the claimed region;
+/// close tears the runtime down and releases it so a later open may choose a
+/// different role.
+fn lxapp_surface_handle(
+    ctx: &JSContext,
+    shell: Arc<LxApp>,
+    app_id: String,
+    shell_surface_id: String,
+    region: lxapp::LxAppOpenRegion,
+) -> JSResult<JSObject> {
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    let handle = JSObject::new(ctx);
+    handle.set("id", app_id.clone())?;
+    let closed = Arc::new(AtomicBool::new(false));
+
+    let show_shell = shell.clone();
+    let show_id = app_id.clone();
+    let show_surface_id = shell_surface_id.clone();
+    let show_closed = closed.clone();
+    handle.set(
+        "show",
+        JSFunc::new(ctx, move || {
+            ensure_surface_handle_open(&show_closed, &show_id)?;
+            show_lxapp_region(&show_shell, &show_id, &show_surface_id, region, None)
+        })?,
+    )?;
+
+    let hide_shell = shell.clone();
+    let hide_id = app_id.clone();
+    let hide_surface_id = shell_surface_id.clone();
+    let hide_closed = closed.clone();
+    handle.set(
+        "hide",
+        JSFunc::new(ctx, move || {
+            ensure_surface_handle_open(&hide_closed, &hide_id)?;
+            match region {
+                lxapp::LxAppOpenRegion::Main => Err(surface_error(
+                    rong::error::E_NOT_SUPPORTED,
+                    "main_hide_unsupported",
+                    "a main surface cannot be hidden; select another main or close it",
+                )),
+                lxapp::LxAppOpenRegion::Aside => {
+                    hide_lxapp_aside(&hide_shell, &hide_id, &hide_surface_id)
+                }
+            }
+        })?,
+    )?;
+
+    let close_shell = shell;
+    let close_id = app_id;
+    let close_surface_id = shell_surface_id;
+    let close_closed = closed;
+    handle.set(
+        "close",
+        JSFunc::new(ctx, move || {
+            if close_closed.load(Ordering::Acquire) {
+                return Ok(());
+            }
+            if lxapp::open_region(&close_id).is_none() {
+                close_closed.store(true, Ordering::Release);
+                return Ok(());
+            }
+            if region == lxapp::LxAppOpenRegion::Aside {
+                hide_lxapp_aside(&close_shell, &close_id, &close_surface_id)?;
+            }
+            lxapp::close_lxapp(&close_id).map_err(|err| {
+                surface_error(
+                    rong::error::E_INTERNAL,
+                    "surface_close_failed",
+                    err.to_string(),
+                )
+            })?;
+            close_closed.store(true, Ordering::Release);
+            Ok(())
+        })?,
+    )?;
+
+    Ok(handle)
+}
+
+fn ensure_surface_handle_open(
+    closed: &std::sync::atomic::AtomicBool,
+    app_id: &str,
+) -> JSResult<()> {
+    if closed.load(std::sync::atomic::Ordering::Acquire) || lxapp::open_region(app_id).is_none() {
+        return Err(surface_error(
+            "E_SURFACE_CLOSED",
+            "surface_closed",
+            "surface handle is closed",
+        ));
+    }
+    Ok(())
+}
+
+fn hide_lxapp_aside(shell: &LxApp, app_id: &str, shell_surface_id: &str) -> JSResult<()> {
+    if shell
+        .set_shell_surface_visible(shell_surface_id, false, None)
+        .is_ok()
+    {
+        return Ok(());
+    }
+    let app = lxapp::try_get(app_id).ok_or_else(|| {
+        surface_error(
+            rong::error::E_NOT_FOUND,
+            "lxapp_not_found",
+            format!("lxapp is not active: {app_id}"),
+        )
+    })?;
+    app.runtime
+        .hide_lxapp(app_id.to_string(), app.session_id())
+        .map_err(|err| {
+            surface_error(
+                rong::error::E_INTERNAL,
+                "shell_surface_failed",
+                err.to_string(),
+            )
+        })?;
+    shell.unregister_host_aside(shell_surface_id);
+    Ok(())
+}
+
+/// Minimal handle for a host-managed native surface. Messaging/lifecycle
+/// events are not wired for these ids.
+fn managed_surface_handle(ctx: &JSContext, lxapp: Arc<LxApp>, id: String) -> JSResult<JSObject> {
     let handle = JSObject::new(ctx);
     handle.set("id", id.clone())?;
 

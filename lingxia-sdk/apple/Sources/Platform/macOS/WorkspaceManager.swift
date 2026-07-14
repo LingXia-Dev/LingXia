@@ -393,8 +393,8 @@ class WorkspaceManager: NSObject {
     }
 
     /// Bind an aside slot's header tabs onto the panel currently presenting
-    /// that slot. `tabs` follow open order; one child collapses the
-    /// strip so the panel's own header stands in.
+    /// that slot. `tabs` follow open order and remain visible for one child,
+    /// because the strip owns the slot's close affordance.
     func setSlotTabs(
         panelId: String,
         tabs: [AsideSlotTab],

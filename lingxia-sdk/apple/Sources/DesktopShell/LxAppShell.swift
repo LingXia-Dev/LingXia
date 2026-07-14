@@ -1274,6 +1274,13 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         closeSession(appId: appId, notifyRuntime: true)
     }
 
+    /// Close an lxapp child from its aside-slot header. This is a real close,
+    /// not a panel hide: native acknowledges the session to Rust so the app's
+    /// one-region claim is released and a later open may choose another role.
+    func closeAsideLxApp(appId: String) {
+        closeSession(appId: appId, notifyRuntime: true)
+    }
+
     /// Runtime-driven close on production macOS (active shell, no controller to emit
     /// `.didClose`). Routes through the shared close path.
     func handleRuntimeClose(appId: String, sessionId: UInt64) {

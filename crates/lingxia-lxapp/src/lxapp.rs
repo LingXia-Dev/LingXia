@@ -264,9 +264,16 @@ impl LxApps {
             release_type,
         )?);
 
-        // Insert into collection and return
-        self.lxapps.insert(appid, new_lxapp.clone());
-        Ok(new_lxapp)
+        // Publish with the map entry API. Two concurrent cold opens must both
+        // receive the same LxApp instance; otherwise each instance could claim
+        // a different shell region and defeat the one-app/one-region invariant.
+        match self.lxapps.entry(appid) {
+            dashmap::mapref::entry::Entry::Occupied(entry) => Ok(entry.get().clone()),
+            dashmap::mapref::entry::Entry::Vacant(entry) => {
+                entry.insert(new_lxapp.clone());
+                Ok(new_lxapp)
+            }
+        }
     }
 
     /// Completely destroy an LxApp (shutdown + removal from manager and stack).
@@ -457,6 +464,11 @@ pub(crate) struct LxAppState {
     /// Startup options for the app
     pub(crate) startup_options: LxAppStartupOptions,
 
+    /// Shell region currently owned by this live lxapp presentation. This is
+    /// claimed atomically before platform presentation starts and released only
+    /// by a real close; hide/show keeps the claim.
+    open_region: Option<LxAppOpenRegion>,
+
     /// Dynamic page surfaces created by lx.openSurface.
     pub(crate) surfaces: Mutex<SurfaceRecords>,
 
@@ -476,6 +488,7 @@ impl LxAppState {
             network_security: NetworkSecurity::new(),
             tabbar: None,
             startup_options: LxAppStartupOptions::default(),
+            open_region: None,
             surfaces: Mutex::new(SurfaceRecords::new()),
             orientation_override: None,
         }
@@ -522,6 +535,10 @@ pub struct LxApp {
 
     // Mutable state - protected by mutex for fine-grained locking
     pub(crate) state: Mutex<LxAppState>,
+
+    /// Serializes presentation opens so a failed cold open cannot release a
+    /// same-region claim that a concurrent reopen has already made live.
+    presentation_open_lock: Mutex<()>,
 
     page_creation_lock: Mutex<()>,
 
@@ -1024,6 +1041,7 @@ impl LxApp {
         let _ = self.clear_page_stack();
         // Terminate AppService (receiver handles its own state)
         let _ = self.executor.terminate_app_svc(self.clone_arc());
+        self.clear_open_region();
         Ok(())
     }
 
@@ -1066,6 +1084,7 @@ impl LxApp {
             restart_closing_session: AtomicU64::new(0),
             session,
             state: Mutex::new(LxAppState::new()),
+            presentation_open_lock: Mutex::new(()),
             page_creation_lock: Mutex::new(()),
             page_scripts: Mutex::new(Vec::new()),
         }
@@ -1874,6 +1893,25 @@ impl LxApp {
     }
 
     pub(crate) fn open(&self, options: LxAppStartupOptions) -> Result<(), LxAppError> {
+        let _open_guard = self
+            .presentation_open_lock
+            .lock()
+            .unwrap_or_else(|err| err.into_inner());
+        let requested_region = LxAppOpenRegion::from(options.open_mode);
+        let claimed = self.claim_open_region(requested_region)?;
+        let result = self.open_claimed(options);
+        if result.is_err() && claimed {
+            // A platform can fail after it has attached the controller (for
+            // example while finalizing a Windows page instance). Roll back the
+            // cold presentation before releasing the region claim; otherwise
+            // another role could open while the first View is still visible.
+            let _ = self.runtime.hide_lxapp(self.appid.clone(), self.session.id);
+            self.release_open_region(requested_region);
+        }
+        result
+    }
+
+    fn open_claimed(&self, options: LxAppStartupOptions) -> Result<(), LxAppError> {
         if self.logic_enabled() && !crate::js_appservice_supported() {
             return Err(LxAppError::UnsupportedOperation(
                 "this host app was built without JS AppService runtime".to_string(),
@@ -1957,6 +1995,46 @@ impl LxApp {
             }
         }
         Ok(())
+    }
+
+    /// Claim the app's one live shell region. Returning `true` means this call
+    /// created the claim and therefore owns rollback if platform open fails.
+    fn claim_open_region(&self, requested: LxAppOpenRegion) -> Result<bool, LxAppError> {
+        let mut state = self.state.lock().unwrap_or_else(|err| err.into_inner());
+        match state.open_region {
+            None => {
+                state.open_region = Some(requested);
+                Ok(true)
+            }
+            Some(current) if current == requested => Ok(false),
+            Some(current) => Err(LxAppError::SurfaceConflict(format!(
+                "lxapp '{}' is already open as {}; close it before opening as {}",
+                self.appid,
+                current.as_str(),
+                requested.as_str()
+            ))),
+        }
+    }
+
+    fn release_open_region(&self, expected: LxAppOpenRegion) {
+        let mut state = self.state.lock().unwrap_or_else(|err| err.into_inner());
+        if state.open_region == Some(expected) {
+            state.open_region = None;
+        }
+    }
+
+    pub(crate) fn clear_open_region(&self) {
+        self.state
+            .lock()
+            .unwrap_or_else(|err| err.into_inner())
+            .open_region = None;
+    }
+
+    fn current_open_region(&self) -> Option<LxAppOpenRegion> {
+        self.state
+            .lock()
+            .unwrap_or_else(|err| err.into_inner())
+            .open_region
     }
 
     /// Navigates to another LxApp (forward navigation).
@@ -2158,15 +2236,27 @@ pub enum LxAppOpenRegion {
     Aside,
 }
 
-/// `None` = not running. The recorded startup open mode is the "how was it
-/// opened" source of truth: panel opens never enter the main navigation
-/// stack, and a capsule-closed main keeps its session while leaving the
-/// stack — so the mode, not stack membership, decides the region.
+impl LxAppOpenRegion {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Main => "main",
+            Self::Aside => "aside",
+        }
+    }
+}
+
+impl From<lingxia_platform::traits::app_runtime::LxAppOpenMode> for LxAppOpenRegion {
+    fn from(mode: lingxia_platform::traits::app_runtime::LxAppOpenMode) -> Self {
+        match mode {
+            lingxia_platform::traits::app_runtime::LxAppOpenMode::Panel => Self::Aside,
+            lingxia_platform::traits::app_runtime::LxAppOpenMode::Normal => Self::Main,
+        }
+    }
+}
+
+/// `None` means the app owns no live shell presentation. Region ownership is
+/// independent from visibility: hide/show keeps the claim; close releases it.
 pub fn open_region(appid: &str) -> Option<LxAppOpenRegion> {
     let app = runtime_registry::try_get(appid)?;
-    let mode = app.state.lock().ok()?.startup_options.open_mode;
-    Some(match mode {
-        lingxia_platform::traits::app_runtime::LxAppOpenMode::Panel => LxAppOpenRegion::Aside,
-        lingxia_platform::traits::app_runtime::LxAppOpenMode::Normal => LxAppOpenRegion::Main,
-    })
+    app.current_open_region()
 }

@@ -60,6 +60,14 @@ final class LxAppMacAppUIRuntime: NSObject {
     /// Runtime edge overrides from `lx.openSurface({surface, edge})`; the
     /// declared `lingxia.yaml` edge applies when absent.
     private var managedEdgeOverrides: [String: LxAppUIConfig.Edge] = [:]
+    private struct RuntimeLxAppPanel {
+        let appId: String
+        let path: String
+    }
+    /// Undeclared or role-overridden lxapps opened as asides. They participate
+    /// in the same managed visibility API as declared panels, but remain live
+    /// while hidden until the Rust handle explicitly closes the lxapp.
+    private var runtimeLxAppPanels: [String: RuntimeLxAppPanel] = [:]
     private lazy var trayController = LxAppMacTrayController(
         appConfig: appConfig,
         uiConfigURL: uiConfigURL
@@ -191,6 +199,13 @@ final class LxAppMacAppUIRuntime: NSObject {
         return active.performAppActivation()
     }
 
+    /// Native aside-slot close affordance. Unlike managed hide, this destroys
+    /// the lxapp session and releases its one-region claim.
+    static func handleAsideSlotClose(surfaceId: String) -> Bool {
+        guard let active else { return false }
+        return active.closeAsideSlotChild(surfaceId: surfaceId)
+    }
+
     // MARK: - Tray runtime updates (lx.tray.*)
 
     func setTrayBadge(_ text: String?) { trayController.setBadge(text) }
@@ -206,7 +221,7 @@ final class LxAppMacAppUIRuntime: NSObject {
         sessionId: UInt64,
         panelId: String
     ) -> Bool {
-        guard let surface = surfaceById[panelId] else {
+        guard let surface = surfaceById[panelId], surface.role == .aside else {
             // An UNDECLARED lxapp opened with panel presentation (privileged
             // openSurface / activator): dock it as a runtime aside keyed by
             // its appId. Returning false here would fall through to the main
@@ -214,6 +229,7 @@ final class LxAppMacAppUIRuntime: NSObject {
             guard let primaryAppId = rootSurface.content.appId else { return false }
             shell.storeSession(sessionId, for: appId)
             shell.registerPanelWithContent(id: panelId, position: .right, appId: appId, path: path)
+            runtimeLxAppPanels[panelId] = RuntimeLxAppPanel(appId: appId, path: path)
             _ = registerHostAside(primaryAppId, panelId, managedEdgeOverrides[panelId]?.rawValue ?? "right")
             openedSurfaceIDs.insert(panelId)
             visibleSurfaceIDs.insert(panelId)
@@ -344,6 +360,7 @@ final class LxAppMacAppUIRuntime: NSObject {
         let color: String?     // title color, #RRGGBB
     }
     private var runtimeActivatorItems: [RuntimeActivatorItem] = []
+    private var runtimeActivatorWriterDeclared = false
 
     /// Restore the persisted SURFACE items (Rust-owned store) before the home
     /// logic boots, so the activator renders at launch instead of after
@@ -357,6 +374,7 @@ final class LxAppMacAppUIRuntime: NSObject {
                 [RuntimeActivatorItem].self, from: Data(json.utf8))
         else { return }
         runtimeActivatorItems = items.filter { $0.kind != "action" }
+        runtimeActivatorWriterDeclared = !runtimeActivatorItems.isEmpty
     }
 
     func setRuntimeActivatorItems(_ json: String) {
@@ -367,12 +385,13 @@ final class LxAppMacAppUIRuntime: NSObject {
             return
         }
         runtimeActivatorItems = items
+        runtimeActivatorWriterDeclared = true
         refreshChromeActivators()
     }
 
     /// Sidebar entries from the runtime writer, when it has spoken.
     private func runtimeSidebarActionItems() -> [LxAppUIActionItem]? {
-        guard !runtimeActivatorItems.isEmpty else { return nil }
+        guard runtimeActivatorWriterDeclared else { return nil }
         return runtimeActivatorItems.map { item in
             let title = item.name ?? displayName(forRuntimeItem: item)
             return LxAppUIActionItem(
@@ -465,6 +484,14 @@ final class LxAppMacAppUIRuntime: NSObject {
     /// not a declared surface, so the caller can report the failure.
     @discardableResult
     func toggleManagedSurface(id: String) -> Bool {
+        if runtimeLxAppPanels[id] != nil {
+            if visibleSurfaceIDs.contains(id) {
+                _ = closeManagedSurface(id: id)
+            } else {
+                _ = openManagedSurface(id: id)
+            }
+            return true
+        }
         guard surfaceById[id] != nil else { return false }
         toggleSurface(id: id)
         return true
@@ -475,6 +502,22 @@ final class LxAppMacAppUIRuntime: NSObject {
     /// re-entering the open path. Returns `false` for an unknown surface `id`.
     @discardableResult
     func openManagedSurface(id: String, edge: String? = nil) -> Bool {
+        if runtimeLxAppPanels[id] != nil {
+            if let edge, let parsed = LxAppUIConfig.Edge(rawValue: edge) {
+                managedEdgeOverrides[id] = parsed
+            }
+            guard let primaryAppId = rootSurface.content.appId else { return false }
+            shell.show()
+            _ = registerHostAside(
+                primaryAppId,
+                id,
+                managedEdgeOverrides[id]?.rawValue ?? "right"
+            )
+            openedSurfaceIDs.insert(id)
+            visibleSurfaceIDs.insert(id)
+            refreshChromeActivators()
+            return true
+        }
         guard let surface = surfaceById[id] else { return false }
         let previous = managedEdgeOverrides[id] ?? surface.edge
         if let edge, let parsed = LxAppUIConfig.Edge(rawValue: edge) {
@@ -496,10 +539,35 @@ final class LxAppMacAppUIRuntime: NSObject {
     /// for an unknown surface `id`.
     @discardableResult
     func closeManagedSurface(id: String) -> Bool {
+        if runtimeLxAppPanels[id] != nil {
+            if visibleSurfaceIDs.contains(id) {
+                if let primaryAppId = rootSurface.content.appId {
+                    _ = unregisterHostAside(primaryAppId, id)
+                }
+                shell.hidePanel(id: id)
+                visibleSurfaceIDs.remove(id)
+                refreshChromeActivators()
+            }
+            return true
+        }
         guard surfaceById[id] != nil else { return false }
         if visibleSurfaceIDs.contains(id) {
             closeSurface(id: id)
         }
+        return true
+    }
+
+    private func closeAsideSlotChild(surfaceId: String) -> Bool {
+        let appId = surfaceById[surfaceId]?.content.appId
+            ?? runtimeLxAppPanels[surfaceId]?.appId
+            ?? surfaceId
+        guard !appId.isEmpty else { return false }
+        _ = closeManagedSurface(id: surfaceId)
+        runtimeLxAppPanels.removeValue(forKey: surfaceId)
+        openedSurfaceIDs.remove(surfaceId)
+        visibleSurfaceIDs.remove(surfaceId)
+        shell.closeAsideLxApp(appId: appId)
+        refreshChromeActivators()
         return true
     }
 
