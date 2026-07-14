@@ -469,11 +469,21 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         // open, dropping the sizeClass and so capping further asides: opening a
         // second aside would evict the first. Content that needs its own pane
         // width reads the webview's actual width (CSS), not sizeClass.
+        // Declare this a desktop shell once per app so the core floors the
+        // size class at Medium: a narrow desktop window squeezes (sidebar →
+        // rail via auto-hide) rather than projecting to the mobile compact
+        // layout, which would undock asides and hide the sidebar.
+        if !desktopShellDeclaredAppIds.contains(appId) {
+            desktopShellDeclaredAppIds.insert(appId)
+            _ = setSurfaceDesktopShell(appId)
+        }
         let sidebar = sidebarWidthConstraint?.constant ?? Layout.sidebarWidth
         let workspaceWidth = max(0, windowWidth - sidebar)
         guard workspaceWidth > 0 else { return }
         _ = setSurfaceWidth(appId, Double(workspaceWidth))
     }
+    /// Apps already told the core they run under a desktop shell (idempotent).
+    private var desktopShellDeclaredAppIds = Set<String>()
 
     // MARK: - Sidebar Interface Setup
 

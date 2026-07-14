@@ -230,6 +230,11 @@ mod bridge {
         #[swift_bridge(swift_name = "setSurfaceWidth")]
         fn set_surface_width(appid: &str, width: f64) -> bool;
 
+        // Desktop shells call this once to floor the size class at Medium so a
+        // narrow window squeezes instead of projecting to mobile compact.
+        #[swift_bridge(swift_name = "setSurfaceDesktopShell")]
+        fn set_surface_desktop_shell(appid: &str) -> bool;
+
         #[swift_bridge(swift_name = "surfaceDerivedLayout")]
         fn surface_derived_layout(appid: &str) -> String;
 
@@ -935,6 +940,16 @@ pub fn set_surface_width(appid: &str, width: f64) -> bool {
     ffi_catch_unwind!("set_surface_width", false, || {
         lxapp::try_get(appid)
             .map(|lxapp| lxapp.set_surface_width(width))
+            .unwrap_or(false)
+    })
+}
+
+pub fn set_surface_desktop_shell(appid: &str) -> bool {
+    ffi_catch_unwind!("set_surface_desktop_shell", false, || {
+        lxapp::try_get(appid)
+            .map(|lxapp| {
+                lxapp.set_surface_min_size_class(lxapp::lingxia_surface::SizeClass::Medium)
+            })
             .unwrap_or(false)
     })
 }

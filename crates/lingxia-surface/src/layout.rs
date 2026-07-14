@@ -6,8 +6,9 @@ use serde::{Deserialize, Serialize};
 use crate::model::SurfaceId;
 
 /// Available-width band. Aligned to Material breakpoints and computed from the
-/// *container* width, not the physical screen.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+/// *container* width, not the physical screen. `Ord` follows the declared
+/// order (Compact < Medium < Expanded) so a window can floor its class.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum SizeClass {
     Compact,

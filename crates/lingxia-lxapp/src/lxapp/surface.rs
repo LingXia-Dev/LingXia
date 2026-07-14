@@ -220,6 +220,17 @@ impl WindowSurfaceController {
     fn presentation_plan(&self) -> lingxia_surface::LayoutPresentationPlan {
         self.manager.lock().unwrap().presentation_plan()
     }
+
+    /// Floor this window's size class (a desktop shell sets `Medium` so a
+    /// narrow window never mobile-projects). Commits when the class moves.
+    fn set_min_size_class(&self, min: lingxia_surface::SizeClass) -> bool {
+        let changed = self.manager.lock().unwrap().set_min_size_class(min);
+        if changed {
+            self.commit();
+            notify_surface_context_observer(&self.window_id);
+        }
+        changed
+    }
 }
 
 pub fn register_surface_close_observer(observer: fn(&str, &str) -> bool) {
@@ -853,6 +864,14 @@ impl LxApp {
         // — not just the core state. The controller commits internally only when
         // the sizeClass flips.
         window_controller(PRIMARY_WINDOW, &self.runtime).set_width(width, self.root_main_node())
+    }
+
+    /// Declare this window's minimum size class. A desktop shell passes
+    /// `Medium` so a narrow window squeezes (sidebar → rail) instead of
+    /// projecting to the mobile compact layout; mobile leaves the default.
+    /// Returns `true` when the class moved.
+    pub fn set_surface_min_size_class(&self, min: lingxia_surface::SizeClass) -> bool {
+        window_controller(PRIMARY_WINDOW, &self.runtime).set_min_size_class(min)
     }
 
     /// The app's root primary, represented as a `main` surface (id = appid).

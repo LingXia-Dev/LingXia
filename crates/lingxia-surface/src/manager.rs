@@ -19,6 +19,10 @@ pub struct SurfaceManager {
     width: f64,
     hysteresis: f64,
     size_class: SizeClass,
+    /// Floor for the resolved size class. Desktop shells set this to `Medium`
+    /// so a narrow desktop window squeezes (sidebar → rail) instead of
+    /// projecting to the mobile compact layout; mobile leaves it `Compact`.
+    min_size_class: SizeClass,
 }
 
 impl SurfaceManager {
@@ -33,7 +37,8 @@ impl SurfaceManager {
             policy,
             width,
             hysteresis: DEFAULT_HYSTERESIS,
-            size_class: SizeClass::from_width(width),
+            size_class: SizeClass::from_width(width).max(SizeClass::Compact),
+            min_size_class: SizeClass::Compact,
         }
     }
 
@@ -48,10 +53,23 @@ impl SurfaceManager {
     }
 
     /// Update the container width. Returns `true` if the `SizeClass` changed
-    /// (after hysteresis) — i.e. when the skin must re-derive its layout.
+    /// (after hysteresis and the min-class floor) — i.e. when the skin must
+    /// re-derive its layout.
     pub fn set_width(&mut self, width: f64) -> bool {
         self.width = width;
-        let next = SizeClass::resolve(Some(self.size_class), width, self.hysteresis);
+        let next = SizeClass::resolve(Some(self.size_class), width, self.hysteresis)
+            .max(self.min_size_class);
+        let changed = next != self.size_class;
+        self.size_class = next;
+        changed
+    }
+
+    /// Floor the resolved size class (desktop shells set `Medium` so a narrow
+    /// window never projects to the mobile compact layout). Re-resolves the
+    /// current width against the new floor; returns `true` if the class moved.
+    pub fn set_min_size_class(&mut self, min: SizeClass) -> bool {
+        self.min_size_class = min;
+        let next = SizeClass::resolve(Some(self.size_class), self.width, self.hysteresis).max(min);
         let changed = next != self.size_class;
         self.size_class = next;
         changed
@@ -83,9 +101,12 @@ impl SurfaceManager {
     }
 
     /// Build the stable, skin-bindable [`LayoutPresentationPlan`] at the current
-    /// size — the renderable contract platforms reconcile against.
+    /// size — the renderable contract platforms reconcile against. Slot
+    /// admission respects both the size-class ceiling and the physical fit at
+    /// the current width (§3.3).
     pub fn presentation_plan(&self) -> LayoutPresentationPlan {
-        self.graph.presentation_plan(self.size_class)
+        self.graph
+            .presentation_plan(self.size_class, self.width, &self.policy)
     }
 }
 
@@ -132,6 +153,24 @@ mod tests {
         assert_eq!(d.switcher_form, SwitcherForm::None);
         assert_eq!(d.bottom_owner, crate::BottomOwner::App);
         assert!(m.graph().is_valid());
+    }
+
+    #[test]
+    fn desktop_min_class_floor_never_projects_to_compact() {
+        // A desktop shell floors at Medium: a narrow window that would
+        // otherwise resolve Compact stays Medium (squeeze, not mobile-project).
+        let mut m = SurfaceManager::new(1200.0);
+        m.set_min_size_class(SizeClass::Medium);
+        // min-window workspace (720 - 180 sidebar = 540) → Compact by width,
+        // floored to Medium.
+        m.set_width(540.0);
+        assert_eq!(m.size_class(), SizeClass::Medium);
+        // Widening past the medium/expanded boundary still reaches Expanded.
+        m.set_width(1000.0);
+        assert_eq!(m.size_class(), SizeClass::Expanded);
+        // Mobile (no floor) still reaches Compact.
+        let mut phone = SurfaceManager::new(390.0);
+        assert_eq!(phone.size_class(), SizeClass::Compact);
     }
 
     #[test]
