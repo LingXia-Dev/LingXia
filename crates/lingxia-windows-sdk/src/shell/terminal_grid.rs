@@ -1020,13 +1020,21 @@ mod tests {
     }
 }
 
-/// Terminal mono font: Cascadia Mono (Win11), falling back to Consolas.
+/// Terminal mono font: prefer modern terminal faces, then Windows' built-ins.
 /// Faces are verified via `GetTextFaceW` (the GDI font mapper silently
-/// substitutes missing faces); when neither resolves, the empty face name
+/// substitutes missing faces); when none resolves, the empty face name
 /// lets the mapper pick any fixed-pitch font via the pitch/family hint.
 fn create_terminal_font(hdc: HDC, height: i32, bold: bool, italic: bool, underline: bool) -> HFONT {
     let weight = if bold { 700 } else { 400 };
-    for face in ["Cascadia Mono", "Consolas", ""] {
+    for face in [
+        "Cascadia Mono",
+        "Cascadia Code",
+        "JetBrains Mono",
+        "Sarasa Mono SC",
+        "Consolas",
+        "Courier New",
+        "",
+    ] {
         let face_wide: Vec<u16> = face.encode_utf16().chain(std::iter::once(0)).collect();
         unsafe {
             let font = CreateFontW(
