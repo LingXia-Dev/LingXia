@@ -206,7 +206,18 @@ final class LxAppMacAppUIRuntime: NSObject {
         panelId: String
     ) -> Bool {
         guard let surface = surfaceById[panelId] else {
-            return false
+            // An UNDECLARED lxapp opened with panel presentation (privileged
+            // openSurface / activator): dock it as a runtime aside keyed by
+            // its appId. Returning false here would fall through to the main
+            // tab path — an aside must never enter the sidebar.
+            guard let primaryAppId = rootSurface.content.appId else { return false }
+            shell.storeSession(sessionId, for: appId)
+            shell.registerPanelWithContent(id: panelId, position: .right, appId: appId, path: path)
+            _ = registerHostAside(primaryAppId, panelId, managedEdgeOverrides[panelId]?.rawValue ?? "right")
+            openedSurfaceIDs.insert(panelId)
+            visibleSurfaceIDs.insert(panelId)
+            refreshChromeActivators()
+            return true
         }
 
         if isIndependentPanelSurface(surface),
