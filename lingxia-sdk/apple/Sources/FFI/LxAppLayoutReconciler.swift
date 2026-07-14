@@ -42,32 +42,6 @@ import AppKit
 enum LxAppLayoutReconciler {
     private static let log = OSLog(subsystem: "LingXia", category: "LayoutReconciler")
 
-    /// The aside ids the latest plan wants docked. Pending deferred shows
-    /// (see `showPanelWhenContentReady`) re-check this so a panel the core
-    /// dropped while its content was still loading never pops in late.
-    private static var lastDesiredAsideIds = Set<String>()
-
-    /// Show a docked aside only once its content view is attached, so the slot
-    /// never pops in as an empty dark card before the webview exists. Content
-    /// paths attach into the hidden panel independently; on timeout (slow
-    /// install/download) show the empty panel anyway as honest progress.
-    private static func showPanelWhenContentReady(
-        shell: LxAppShell, id: String, attempt: Int, animated: Bool = true
-    ) {
-        let workspace = shell.workspaceManager
-        guard lastDesiredAsideIds.contains(id),
-              workspace.isPanelRegistered(id: id),
-              !workspace.isPanelVisible(id: id) else { return }
-        let hasContent = workspace.panelContainer(id: id)?.subviews.isEmpty == false
-        if hasContent || attempt >= 40 {
-            shell.showPanel(id: id, animated: animated)
-            return
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            showPanelWhenContentReady(shell: shell, id: id, attempt: attempt + 1, animated: animated)
-        }
-    }
-
     /// The stable, fully-typed render contract the shared core emits (the same
     /// `LayoutPresentationPlan` JSON returned by `surfaceDerivedLayout`). The
     /// reconciler acts on `asides` for now, but decodes the complete contract so
@@ -178,7 +152,6 @@ enum LxAppLayoutReconciler {
             }
         }
         let desiredIds = Set(desired.keys)
-        lastDesiredAsideIds = desiredIds
 
         // Ids taking part in an INTRA-SLOT tab switch: some sibling of the
         // slot's active child is currently on screen, so the region itself
@@ -228,8 +201,11 @@ enum LxAppLayoutReconciler {
                 workspace.repositionPanel(id: id, to: edge)
             }
             if !workspace.isPanelVisible(id: id) {
-                showPanelWhenContentReady(
-                    shell: shell, id: id, attempt: 0, animated: !instantIds.contains(id))
+                // Show immediately: the panel is the click's feedback. Its
+                // container spins a loading indicator on light paper until
+                // the content view lands, so a cold lxapp boot reads as
+                // progress, not as a dead click or a dark flash.
+                shell.showPanel(id: id, animated: !instantIds.contains(id))
             }
         }
 

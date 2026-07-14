@@ -131,6 +131,8 @@ private class PanelSlot {
     /// zero-height while the slot has at most one child.
     let slotTabStrip = AsideSlotTabStripView()
     private var slotStripHeight: NSLayoutConstraint?
+    /// Centered spinner shown until the first content view attaches.
+    private let loadingIndicator = NSProgressIndicator()
 
     var isVisible: Bool = false
     var currentSize: CGFloat
@@ -160,6 +162,16 @@ private class PanelSlot {
         containerView.layer?.backgroundColor = NSColor.white.cgColor
         containerView.translatesAutoresizingMaskIntoConstraints = false
 
+        // Loading feedback for a cold first open: the panel docks on click,
+        // and this spinner owns the paper until the content view lands
+        // (the content attach clears the container's subviews).
+        loadingIndicator.style = .spinning
+        loadingIndicator.controlSize = .small
+        loadingIndicator.isDisplayedWhenStopped = false
+        loadingIndicator.translatesAutoresizingMaskIntoConstraints = false
+        loadingIndicator.startAnimation(nil)
+        containerView.addSubview(loadingIndicator)
+
         resizeHandle = PanelResizeHandle(position: config.position)
         resizeHandle.translatesAutoresizingMaskIntoConstraints = false
 
@@ -183,6 +195,8 @@ private class PanelSlot {
             containerView.leadingAnchor.constraint(equalTo: blurView.leadingAnchor),
             containerView.trailingAnchor.constraint(equalTo: blurView.trailingAnchor),
             containerView.bottomAnchor.constraint(equalTo: blurView.bottomAnchor),
+            loadingIndicator.centerXAnchor.constraint(equalTo: containerView.centerXAnchor),
+            loadingIndicator.centerYAnchor.constraint(equalTo: containerView.centerYAnchor),
         ])
     }
 
@@ -281,12 +295,27 @@ class WorkspaceManager: NSObject {
     /// below native navigation chrome inside the main card.
     private weak var toolbarRef: NSView?
 
+    /// Cold-boot feedback for the main card: spins on the paper until the
+    /// first webview attaches on top of it.
+    private let mainLoadingIndicator = NSProgressIndicator()
+
     override init() {
         super.init()
         workspaceView.wantsLayer = true
         contentContainer.wantsLayer = true
         contentContainer.translatesAutoresizingMaskIntoConstraints = false
         workspaceView.addSubview(contentContainer)
+
+        mainLoadingIndicator.style = .spinning
+        mainLoadingIndicator.controlSize = .small
+        mainLoadingIndicator.isDisplayedWhenStopped = false
+        mainLoadingIndicator.translatesAutoresizingMaskIntoConstraints = false
+        mainLoadingIndicator.startAnimation(nil)
+        contentContainer.addSubview(mainLoadingIndicator)
+        NSLayoutConstraint.activate([
+            mainLoadingIndicator.centerXAnchor.constraint(equalTo: contentContainer.centerXAnchor),
+            mainLoadingIndicator.centerYAnchor.constraint(equalTo: contentContainer.centerYAnchor),
+        ])
     }
 
     /// Must be called once by WindowController after the sidebar is placed.
