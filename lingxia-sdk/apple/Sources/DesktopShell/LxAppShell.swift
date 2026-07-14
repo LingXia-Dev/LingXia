@@ -1924,18 +1924,18 @@ extension LxAppShell {
         attachPanelWebViewWhenReady(panelId: id, appId: appId, path: path, attempt: 0)
     }
 
-    func hidePanel(id: String) {
+    func hidePanel(id: String, animated: Bool = true, updateCardEdges: Bool = true) {
         lxShellStdoutLog("hidePanel start id=\(id) windowFrame=\(lxShellFormatRect(window?.frame ?? .zero))")
         preserveWindowFrameDuringPanelLayout(reason: "hidePanel:\(id)") {
-            workspaceManager.hidePanel(id: id)
+            workspaceManager.hidePanel(id: id, animated: animated, updateCardEdges: updateCardEdges)
         }
         lxShellStdoutLog("hidePanel end id=\(id) windowFrame=\(lxShellFormatRect(window?.frame ?? .zero))")
     }
 
-    func showPanel(id: String) {
+    func showPanel(id: String, animated: Bool = true) {
         lxShellStdoutLog("showPanel start id=\(id) windowFrame=\(lxShellFormatRect(window?.frame ?? .zero))")
         preserveWindowFrameDuringPanelLayout(reason: "showPanel:\(id)") {
-            workspaceManager.showPanel(id: id)
+            workspaceManager.showPanel(id: id, animated: animated)
         }
         lxShellStdoutLog("showPanel end id=\(id) windowFrame=\(lxShellFormatRect(window?.frame ?? .zero))")
     }

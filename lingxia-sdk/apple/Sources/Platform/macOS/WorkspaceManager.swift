@@ -380,7 +380,7 @@ class WorkspaceManager: NSObject {
     }
 
     /// Show a panel, animating it in and shrinking the WebView card.
-    func showPanel(id: String) {
+    func showPanel(id: String, animated: Bool = true) {
         guard let slot = panels[id] else {
             lxWorkspaceStdoutLog("showPanel missing id=\(id)")
             return
@@ -426,10 +426,13 @@ class WorkspaceManager: NSObject {
         if slot.isFullscreen {
             bringPanelToFront(slot)
         }
-        slot.shadowWrapper.layer?.transform = CATransform3DMakeTranslation(offset.x, offset.y, 0)
+        // Slide in only for a NEW dock; an intra-slot tab switch is instant.
+        if animated {
+            slot.shadowWrapper.layer?.transform = CATransform3DMakeTranslation(offset.x, offset.y, 0)
+        }
 
         NSAnimationContext.runAnimationGroup { ctx in
-            ctx.duration = Self.animationDuration
+            ctx.duration = animated ? Self.animationDuration : 0
             ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
             ctx.allowsImplicitAnimation = true
             slot.shadowWrapper.layer?.transform = CATransform3DIdentity
@@ -451,7 +454,9 @@ class WorkspaceManager: NSObject {
     }
 
     /// Hide a panel, animating it out and restoring the WebView card's space.
-    func hidePanel(id: String) {
+    /// `updateCardEdges: false` when a sibling takes the space in the same
+    /// pass (intra-slot tab switch) — the card must not expand and re-shrink.
+    func hidePanel(id: String, animated: Bool = true, updateCardEdges: Bool = true) {
         guard let slot = panels[id], slot.isVisible else {
             lxWorkspaceStdoutLog("hidePanel ignored id=\(id)")
             return
@@ -459,7 +464,10 @@ class WorkspaceManager: NSObject {
         lxWorkspaceStdoutLog(
             "hidePanel start id=\(id) position=\(slot.config.position.rawValue) wrapperFrame=\(lxWorkspaceFormatRect(slot.shadowWrapper.frame))"
         )
-        hidePanelInternal(id: id, duration: Self.animationDuration, updateCardEdges: true)
+        hidePanelInternal(
+            id: id,
+            duration: animated ? Self.animationDuration : 0,
+            updateCardEdges: updateCardEdges)
         os_log("Panel hidden: %@", log: Self.log, type: .info, id)
     }
 

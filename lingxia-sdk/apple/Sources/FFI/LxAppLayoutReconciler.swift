@@ -51,18 +51,20 @@ enum LxAppLayoutReconciler {
     /// never pops in as an empty dark card before the webview exists. Content
     /// paths attach into the hidden panel independently; on timeout (slow
     /// install/download) show the empty panel anyway as honest progress.
-    private static func showPanelWhenContentReady(shell: LxAppShell, id: String, attempt: Int) {
+    private static func showPanelWhenContentReady(
+        shell: LxAppShell, id: String, attempt: Int, animated: Bool = true
+    ) {
         let workspace = shell.workspaceManager
         guard lastDesiredAsideIds.contains(id),
               workspace.isPanelRegistered(id: id),
               !workspace.isPanelVisible(id: id) else { return }
         let hasContent = workspace.panelContainer(id: id)?.subviews.isEmpty == false
         if hasContent || attempt >= 40 {
-            shell.showPanel(id: id)
+            shell.showPanel(id: id, animated: animated)
             return
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            showPanelWhenContentReady(shell: shell, id: id, attempt: attempt + 1)
+            showPanelWhenContentReady(shell: shell, id: id, attempt: attempt + 1, animated: animated)
         }
     }
 
@@ -178,13 +180,30 @@ enum LxAppLayoutReconciler {
         let desiredIds = Set(desired.keys)
         lastDesiredAsideIds = desiredIds
 
+        // Ids taking part in an INTRA-SLOT tab switch: some sibling of the
+        // slot's active child is currently on screen, so the region itself
+        // stays put — hide/show must be instant, not a slide (the slide is the
+        // "a new aside docks" affordance, wrong for switching tabs in place).
+        let visibleNow = workspace.visiblePanelIds()
+        var instantIds = Set<String>()
+        for slot in slots where slot.visible && slot.kind != "browser" {
+            guard let active = slot.activeChild ?? slot.children.last else { continue }
+            if slot.children.contains(where: { $0 != active && visibleNow.contains($0) }) {
+                instantIds.formUnion(slot.children)
+            }
+        }
+
         // Undock asides the core removed. The placed-aside set is derived from
         // the view-registry itself: a visible registered panel is, by
         // construction, one the reconciler placed (every registered panel is an
         // aside, and the reconciler is the sole code that shows asides). Hide
         // any such panel that the core no longer wants.
-        for id in workspace.visiblePanelIds().subtracting(desiredIds) {
-            shell.hidePanel(id: id)
+        for id in visibleNow.subtracting(desiredIds) {
+            let intraSlotSwitch = instantIds.contains(id)
+            // On a switch the sibling re-occupies the region in this same
+            // pass: skip the card-edge update so the main area's webview is
+            // not resized out and back (a visible flash).
+            shell.hidePanel(id: id, animated: !intraSlotSwitch, updateCardEdges: !intraSlotSwitch)
         }
 
         // Place each desired aside at the tree's edge and show it. Content paths
@@ -209,7 +228,8 @@ enum LxAppLayoutReconciler {
                 workspace.repositionPanel(id: id, to: edge)
             }
             if !workspace.isPanelVisible(id: id) {
-                showPanelWhenContentReady(shell: shell, id: id, attempt: 0)
+                showPanelWhenContentReady(
+                    shell: shell, id: id, attempt: 0, animated: !instantIds.contains(id))
             }
         }
 
