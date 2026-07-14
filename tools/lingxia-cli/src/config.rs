@@ -453,8 +453,7 @@ fn surfaces_to_ui(
             resolved
                 .iter()
                 .find(|(content, surface)| {
-                    surface.role == SurfaceRole::Main
-                        && matches!(content, SurfaceContent::Lxapp(_))
+                    surface.role == SurfaceRole::Main && matches!(content, SurfaceContent::Lxapp(_))
                 })
                 .map(|(content, _)| *content)
         })
@@ -3416,7 +3415,10 @@ surfaces:
         let err = surfaces_to_ui(&surfaces, true, false)
             .unwrap_err()
             .to_string();
-        assert!(err.contains("duplicate declaration for 'terminal'"), "{err}");
+        assert!(
+            err.contains("duplicate declaration for 'terminal'"),
+            "{err}"
+        );
     }
 
     #[test]
