@@ -197,24 +197,31 @@ impl WindowSurfaceController {
         focused
     }
 
-    /// Report the container width so the core resolves the right `sizeClass`
-    /// (with hysteresis), seeding the root `main` if absent. Commits (and
-    /// returns `true`) only when the `sizeClass` flipped.
+    /// Report the container width so the core resolves size class and physical
+    /// aside admission, seeding the root main if absent. Commits whenever the
+    /// render plan changes; returns whether the adaptive size class flipped.
     fn set_width(&self, width: f64, root_main: lingxia_surface::Surface) -> bool {
-        let changed = {
+        let (class_changed, plan_changed) = {
             let mut manager = self.manager.lock().unwrap();
+            let before = manager.presentation_plan();
+            let mut seeded = false;
             if manager.graph().mains().is_empty() {
                 manager.open(root_main);
+                seeded = true;
             }
-            manager.set_width(width)
+            let class_changed = manager.set_width(width);
+            let after = manager.presentation_plan();
+            (class_changed, seeded || before != after)
         };
-        if changed {
+        if plan_changed {
             self.commit();
+        }
+        if class_changed {
             // The sizeClass flip changed this window's derived adaptive context;
             // notify so `lx.onSurfaceContext` subscribers see the new context.
             notify_surface_context_observer(&self.window_id);
         }
-        changed
+        class_changed
     }
 
     fn presentation_plan(&self) -> lingxia_surface::LayoutPresentationPlan {

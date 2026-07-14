@@ -327,6 +327,89 @@ mod tests {
     }
 
     #[test]
+    fn slot_admission_uses_policy_and_true_focus_recency() {
+        let mut graph = SurfaceGraph::new();
+        graph.insert(main_s("home"));
+        graph.insert(aside_s("chat", Edge::Right));
+        graph.insert(web_aside_s("browser", "https://example.com", Edge::Right));
+
+        // Browser was opened last, so it initially owns Medium's one slot.
+        let medium = graph.aside_slots(SizeClass::Medium);
+        assert_eq!(
+            medium
+                .iter()
+                .find(|slot| slot.visible)
+                .map(|slot| slot.kind),
+            Some(SlotKind::Browser)
+        );
+
+        // Focusing an older slot makes it MRU without changing tab/open order.
+        assert!(graph.set_focus("chat"));
+        let medium = graph.aside_slots(SizeClass::Medium);
+        assert_eq!(
+            medium
+                .iter()
+                .find(|slot| slot.visible)
+                .map(|slot| slot.kind),
+            Some(SlotKind::Lxapp)
+        );
+
+        let policy = Policy {
+            max_asides_expanded: 1,
+            ..Policy::default()
+        };
+        let expanded = graph.aside_slots_admitted(SizeClass::Expanded, 1200.0, &policy);
+        assert_eq!(expanded.iter().filter(|slot| slot.visible).count(), 1);
+        assert_eq!(
+            expanded
+                .iter()
+                .find(|slot| slot.visible)
+                .map(|slot| slot.kind),
+            Some(SlotKind::Lxapp)
+        );
+    }
+
+    #[test]
+    fn physical_admission_keeps_the_most_recent_horizontal_slot() {
+        let mut graph = SurfaceGraph::new();
+        graph.insert(main_s("home"));
+        graph.insert(aside_s("chat", Edge::Right));
+        graph.insert(web_aside_s("browser", "https://example.com", Edge::Right));
+        graph.insert(terminal_aside_s("terminal", Edge::Right));
+
+        // 700 fits main + one horizontal slot. The newest slot wins, even
+        // though returned slots stay in stable first-open order.
+        let admitted = graph.aside_slots_admitted(SizeClass::Expanded, 700.0, &Policy::default());
+        let visible: Vec<_> = admitted
+            .iter()
+            .filter(|slot| slot.visible)
+            .map(|slot| slot.kind)
+            .collect();
+        assert_eq!(visible, vec![SlotKind::Native]);
+    }
+
+    #[test]
+    fn physical_admission_falls_back_to_an_older_fitting_slot() {
+        let mut graph = SurfaceGraph::new();
+        graph.insert(main_s("home"));
+        let mut terminal = terminal_aside_s("terminal", Edge::Top);
+        terminal.placement.edge = Some(Edge::Top);
+        graph.insert(terminal);
+        graph.insert(aside_s("chat", Edge::Right));
+
+        // Medium admits one slot. The MRU right slot cannot fit beside main,
+        // so the older top overlay must be considered instead of leaving the
+        // entire aside area empty.
+        let admitted = graph.aside_slots_admitted(SizeClass::Medium, 500.0, &Policy::default());
+        let visible: Vec<_> = admitted
+            .iter()
+            .filter(|slot| slot.visible)
+            .map(|slot| slot.kind)
+            .collect();
+        assert_eq!(visible, vec![SlotKind::Native]);
+    }
+
+    #[test]
     fn web_asides_coexist_as_tabs() {
         let mut g = SurfaceGraph::new();
         g.insert(main_s("home"));

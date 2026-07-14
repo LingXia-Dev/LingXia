@@ -169,8 +169,46 @@ mod tests {
         m.set_width(1000.0);
         assert_eq!(m.size_class(), SizeClass::Expanded);
         // Mobile (no floor) still reaches Compact.
-        let mut phone = SurfaceManager::new(390.0);
+        let phone = SurfaceManager::new(390.0);
         assert_eq!(phone.size_class(), SizeClass::Compact);
+    }
+
+    #[test]
+    fn width_changes_recompute_physical_admission_within_a_size_class() {
+        let mut manager = SurfaceManager::new(1200.0);
+        manager.open(main_s("home"));
+        manager.open(aside_s("lxapp", Edge::Right));
+        let mut browser = Surface::entry("browser", Role::Aside, "browser");
+        browser.content = crate::model::SurfaceContent::Web {
+            url: "https://example.com".to_string(),
+        };
+        browser.placement.edge = Some(Edge::Right);
+        manager.open(browser);
+        let mut native = Surface::entry("terminal", Role::Aside, "terminal");
+        native.placement.edge = Some(Edge::Right);
+        manager.open(native);
+        assert_eq!(
+            manager
+                .presentation_plan()
+                .aside_slots
+                .iter()
+                .filter(|slot| slot.visible)
+                .count(),
+            3
+        );
+
+        // Both widths are Expanded, but only two horizontal slots fit at 900.
+        assert!(!manager.set_width(900.0));
+        assert_eq!(manager.size_class(), SizeClass::Expanded);
+        assert_eq!(
+            manager
+                .presentation_plan()
+                .aside_slots
+                .iter()
+                .filter(|slot| slot.visible)
+                .count(),
+            2
+        );
     }
 
     #[test]

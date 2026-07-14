@@ -7,7 +7,7 @@ use crate::layout::{
     Axis, BottomOwner, DerivedLayout, LayoutPresentationPlan, LayoutTree, PlanAside, SizeClass,
     SplitForm, SwitcherForm,
 };
-use crate::model::{Role, Surface, SurfaceId};
+use crate::model::{Role, SlotKind, Surface, SurfaceId};
 
 /// One window's graph. Surfaces are kept in insertion order so that
 /// "adjacent main" succession and "oldest aside" replacement are deterministic.
@@ -22,6 +22,10 @@ pub struct SurfaceGraph {
     /// Focus snapshots pushed when a modal float opens, popped on its close.
     #[serde(default, skip)]
     modal_focus_stack: Vec<Option<SurfaceId>>,
+    /// Aside slot kinds in least- to most-recently-used order. Kept separate
+    /// from `surfaces` so focus/reopen affects admission without reordering tabs.
+    #[serde(default)]
+    aside_slot_mru: Vec<SlotKind>,
 }
 
 impl SurfaceGraph {
@@ -66,6 +70,11 @@ impl SurfaceGraph {
     /// Insert (or replace by id) a surface, then re-converge invariants.
     pub fn insert(&mut self, surface: Surface) {
         let modal = surface.is_modal_float();
+        let previous_slot = self
+            .get(&surface.id)
+            .filter(|existing| existing.role == Role::Aside)
+            .map(|existing| existing.content.slot_kind());
+        let next_slot = (surface.role == Role::Aside).then(|| surface.content.slot_kind());
         if modal {
             self.modal_focus_stack.push(self.focused_surface_id.clone());
         }
@@ -74,7 +83,33 @@ impl SurfaceGraph {
         } else {
             self.surfaces.push(surface);
         }
+        if let Some(previous) = previous_slot
+            && Some(previous) != next_slot
+            && !self
+                .asides()
+                .iter()
+                .any(|aside| aside.content.slot_kind() == previous)
+        {
+            self.aside_slot_mru.retain(|kind| *kind != previous);
+        }
+        if let Some(kind) = next_slot {
+            self.touch_aside_slot(kind);
+        }
         self.converge_after_insert();
+    }
+
+    fn touch_aside_slot(&mut self, kind: SlotKind) {
+        self.aside_slot_mru.retain(|entry| *entry != kind);
+        self.aside_slot_mru.push(kind);
+    }
+
+    fn prune_aside_slot_mru(&mut self) {
+        let live: std::collections::HashSet<SlotKind> = self
+            .asides()
+            .iter()
+            .map(|aside| aside.content.slot_kind())
+            .collect();
+        self.aside_slot_mru.retain(|kind| live.contains(kind));
     }
 
     fn converge_after_insert(&mut self) {
@@ -136,6 +171,7 @@ impl SurfaceGraph {
         {
             self.focused_surface_id = self.focus_fallback();
         }
+        self.prune_aside_slot_mru();
         removed_ids
     }
 
@@ -161,8 +197,15 @@ impl SurfaceGraph {
 
     /// Focus any surface (any role).
     pub fn set_focus(&mut self, id: &str) -> bool {
+        let aside_kind = self
+            .get(id)
+            .filter(|surface| surface.role == Role::Aside)
+            .map(|surface| surface.content.slot_kind());
         if self.get(id).is_some() {
             self.focused_surface_id = Some(id.to_string());
+            if let Some(kind) = aside_kind {
+                self.touch_aside_slot(kind);
+            }
             true
         } else {
             false
@@ -185,32 +228,36 @@ impl SurfaceGraph {
         width: f64,
         policy: &crate::arbitrate::Policy,
     ) -> Vec<crate::layout::PlanAsideSlot> {
-        let mut slots = self.aside_slots_recency(size_class);
+        let max_visible = policy.max_asides(size_class);
+        let mut slots = self.aside_slots_recency(usize::MAX);
+        for slot in &mut slots {
+            slot.visible = false;
+        }
         // §3.3 physical admission: reserve the main's minimum, then admit
-        // left/right slots greedily (most-recent first — same order the count
-        // pass used) while each keeps its minimum width. Top/bottom slots
-        // overlay the main's width and never consume the horizontal budget.
-        let max_visible = admission_ceiling(size_class);
-        let candidates: Vec<usize> = slots
-            .iter()
-            .enumerate()
-            .filter(|(_, s)| s.visible)
-            .map(|(i, _)| i)
-            .take(max_visible)
-            .collect();
+        // slots greedily in MRU order until the count ceiling is full.
+        // Left/right slots must keep their minimum width; top/bottom slots
+        // overlay the main's width and do not consume horizontal budget. A
+        // candidate that does not fit must not prevent an older fitting slot
+        // from being considered.
+        let candidates = self.slot_indices_by_recency(&slots);
         let mut horizontal_used = policy.main_min_width;
-        for i in &candidates {
+        let mut admitted = 0;
+        for i in candidates {
+            if admitted == max_visible {
+                break;
+            }
             let horizontal = !matches!(
-                slots[*i].edge,
+                slots[i].edge,
                 Some(crate::model::Edge::Top) | Some(crate::model::Edge::Bottom)
             );
-            if horizontal {
-                if horizontal_used + policy.aside_min_width <= width {
-                    horizontal_used += policy.aside_min_width;
-                } else {
-                    slots[*i].visible = false;
-                }
+            if horizontal && horizontal_used + policy.aside_min_width > width {
+                continue;
             }
+            if horizontal {
+                horizontal_used += policy.aside_min_width;
+            }
+            slots[i].visible = true;
+            admitted += 1;
         }
         slots
     }
@@ -218,18 +265,18 @@ impl SurfaceGraph {
     /// Size-class-only admission (count ceiling, no physical width). Retained
     /// for callers/tests that don't have a container width.
     pub fn aside_slots(&self, size_class: SizeClass) -> Vec<crate::layout::PlanAsideSlot> {
-        self.aside_slots_recency(size_class)
+        self.aside_slots_recency(crate::arbitrate::Policy::default().max_asides(size_class))
     }
 
     /// Shared slot grouping + count-based (recency) admission. Both public
     /// entry points build on this; `aside_slots_admitted` then layers the
     /// physical width check on top.
-    fn aside_slots_recency(&self, size_class: SizeClass) -> Vec<crate::layout::PlanAsideSlot> {
+    fn aside_slots_recency(&self, max_visible: usize) -> Vec<crate::layout::PlanAsideSlot> {
         let asides = self.asides();
         let mut slots: Vec<crate::layout::PlanAsideSlot> = Vec::new();
         // `asides()` preserves insertion order, so child pushes keep tab
         // order == open order and slot order == first-open order.
-        for (index, surface) in asides.iter().enumerate() {
+        for surface in &asides {
             let kind = surface.content.slot_kind();
             let slot = match slots.iter_mut().find(|slot| slot.kind == kind) {
                 Some(slot) => slot,
@@ -249,7 +296,6 @@ impl SurfaceGraph {
             if surface.placement.edge.is_some() {
                 slot.edge = surface.placement.edge;
             }
-            let _ = index;
         }
         for slot in &mut slots {
             // Active child: the focused surface when it lives in this slot,
@@ -261,25 +307,35 @@ impl SurfaceGraph {
                 .cloned()
                 .or_else(|| slot.children.last().cloned());
         }
-        // Admission: most-recently-used slots first. Recency = the highest
-        // insertion position among a slot's children.
-        let max_visible = admission_ceiling(size_class);
-        let mut recency: Vec<(usize, usize)> = slots
-            .iter()
-            .enumerate()
-            .map(|(slot_index, slot)| {
-                let newest = asides
-                    .iter()
-                    .rposition(|s| slot.children.contains(&s.id))
-                    .unwrap_or(0);
-                (slot_index, newest)
-            })
-            .collect();
-        recency.sort_by_key(|(_, newest)| std::cmp::Reverse(*newest));
-        for (slot_index, _) in recency.into_iter().take(max_visible) {
+        for slot_index in self
+            .slot_indices_by_recency(&slots)
+            .into_iter()
+            .take(max_visible)
+        {
             slots[slot_index].visible = true;
         }
         slots
+    }
+
+    /// Slot indices from most to least recently used. Current graphs always
+    /// have `aside_slot_mru`; the child insertion fallback keeps older
+    /// serialized graphs deterministic on first load.
+    fn slot_indices_by_recency(&self, slots: &[crate::layout::PlanAsideSlot]) -> Vec<usize> {
+        let asides = self.asides();
+        let mut indices: Vec<usize> = (0..slots.len()).collect();
+        indices.sort_by_key(|index| {
+            let slot = &slots[*index];
+            let explicit = self
+                .aside_slot_mru
+                .iter()
+                .position(|kind| *kind == slot.kind);
+            let fallback = asides
+                .iter()
+                .rposition(|surface| slot.children.contains(&surface.id))
+                .unwrap_or(0);
+            std::cmp::Reverse((explicit.is_some(), explicit.unwrap_or(fallback), fallback))
+        });
+        indices
     }
 
     /// Check the invariants. Returns the list of violations (empty = ok).
@@ -460,16 +516,6 @@ impl SurfaceGraph {
             weights: vec![1.0 / n as f64; n],
             children,
         })
-    }
-}
-
-/// Count ceiling for visible aside slots by size class (expanded 3 / medium 1
-/// / compact 0). Physical width narrows this further; see `aside_slots_admitted`.
-fn admission_ceiling(size_class: SizeClass) -> usize {
-    match size_class {
-        SizeClass::Expanded => 3,
-        SizeClass::Medium => 1,
-        SizeClass::Compact => 0,
     }
 }
 
