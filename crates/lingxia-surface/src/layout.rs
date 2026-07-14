@@ -193,6 +193,27 @@ pub struct PlanAside {
     pub preferred_size: Option<f64>,
 }
 
+/// One aside slot in the [`LayoutPresentationPlan`]: the aside area holds at
+/// most one region per content kind (lxapp / browser / native); the region's
+/// contents are its tabs, in open order. Skins render ONE docked panel per
+/// slot, with a header tab strip when `children` has more than one entry.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlanAsideSlot {
+    pub kind: crate::model::SlotKind,
+    /// Edge the slot docks to (the most recently placed child's edge wins).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub edge: Option<crate::model::Edge>,
+    /// Tab order = open order; never reordered.
+    pub children: Vec<SurfaceId>,
+    /// The child the slot currently shows.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub active_child: Option<SurfaceId>,
+    /// Admitted visible at this size class. Hidden slots stay alive and
+    /// reappear when the container widens — they are never evicted.
+    pub visible: bool,
+}
+
 /// One float in the [`LayoutPresentationPlan`]: the surface id plus the
 /// render-relevant `FloatSpec` semantics (anchor, dismiss, modal). Floats are
 /// popups above the layout and are never in the tree, so the skin reads this
@@ -232,6 +253,11 @@ pub struct LayoutPresentationPlan {
     /// Asides currently in the layout. `split_form` decides whether they dock
     /// beside the main or present full-screen on compact.
     pub asides: Vec<PlanAside>,
+    /// Asides grouped into per-kind slots (lxapp / browser / native) with tab
+    /// order and admission visibility. Supersedes per-aside handling; `asides`
+    /// stays for skins that have not migrated yet.
+    #[serde(default)]
+    pub aside_slots: Vec<PlanAsideSlot>,
     /// Floats currently open: popups above the layout (never in the tree),
     /// each carrying its render-relevant `FloatSpec` semantics.
     pub floats: Vec<PlanFloat>,

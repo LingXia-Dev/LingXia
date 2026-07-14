@@ -18,9 +18,10 @@ pub use layout::{
     PlanAside, PlanFloat, SizeClass, SplitForm, SwitcherForm,
 };
 pub use manager::SurfaceManager;
+pub use layout::PlanAsideSlot;
 pub use model::{
-    Edge, FloatAnchor, FloatDismiss, FloatSpec, Placement, Role, Surface, SurfaceContent,
-    SurfaceId, SurfaceOwner, SurfaceState,
+    Edge, FloatAnchor, FloatDismiss, FloatSpec, Placement, Role, SlotKind, Surface,
+    SurfaceContent, SurfaceId, SurfaceOwner, SurfaceState,
 };
 
 #[cfg(test)]
@@ -40,6 +41,11 @@ mod tests {
         s.content = SurfaceContent::Web {
             url: url.to_string(),
         };
+        s
+    }
+    fn terminal_aside_s(id: &str, edge: Edge) -> Surface {
+        let mut s = Surface::entry(id, Role::Aside, "terminal");
+        s.placement.edge = Some(edge);
         s
     }
 
@@ -222,22 +228,58 @@ mod tests {
     // ---- arbitration (§3.4) ----
 
     #[test]
-    fn aside_over_limit_replaces_oldest() {
+    fn same_kind_asides_join_their_slot() {
         let mut g = SurfaceGraph::new();
         g.insert(main_s("home"));
         g.insert(aside_s("a1", Edge::Right));
-        g.insert(aside_s("a2", Edge::Right));
-        // expanded max=2 → a third aside replaces the oldest same-edge one.
+        // A second lxapp aside joins the ONE lxapp slot as another tab —
+        // nothing is evicted, tab order = open order, newest tab is active.
         let (next, decision) = arbitrate(
             &g,
-            aside_s("a3", Edge::Right),
+            aside_s("a2", Edge::Right),
             &Policy::default(),
             SizeClass::Expanded,
         );
-        assert_eq!(decision, Decision::ReplacedExisting);
-        assert!(next.get("a1").is_none());
-        assert!(next.get("a3").is_some());
-        assert_eq!(next.asides().len(), 2);
+        assert_eq!(decision, Decision::MergedIntoTabs);
+        assert!(next.get("a1").is_some());
+        assert!(next.get("a2").is_some());
+        let slots = next.aside_slots(SizeClass::Expanded);
+        assert_eq!(slots.len(), 1);
+        assert_eq!(slots[0].kind, SlotKind::Lxapp);
+        assert_eq!(slots[0].children, vec!["a1".to_string(), "a2".to_string()]);
+        assert_eq!(slots[0].active_child.as_deref(), Some("a2"));
+        assert!(slots[0].visible);
+        assert!(next.is_valid());
+    }
+
+    #[test]
+    fn slots_hide_beyond_admission_never_evict() {
+        let mut next = SurfaceGraph::new();
+        next.insert(main_s("home"));
+        for request in [
+            aside_s("chat", Edge::Right),
+            terminal_aside_s("terminal", Edge::Bottom),
+            web_aside_s("b1", "https://a.example", Edge::Right),
+        ] {
+            let (n, d) = arbitrate(&next, request, &Policy::default(), SizeClass::Expanded);
+            assert_eq!(d, Decision::Accepted);
+            next = n;
+        }
+        // Three kinds → three slots, all admitted on expanded.
+        let expanded = next.aside_slots(SizeClass::Expanded);
+        assert_eq!(expanded.len(), 3);
+        assert!(expanded.iter().all(|slot| slot.visible));
+        // Medium admits only the most recently used slot; the others stay
+        // alive hidden — the graph itself never shrinks.
+        let medium = next.aside_slots(SizeClass::Medium);
+        assert_eq!(medium.iter().filter(|slot| slot.visible).count(), 1);
+        assert!(
+            medium
+                .iter()
+                .find(|slot| slot.visible)
+                .is_some_and(|slot| slot.kind == SlotKind::Browser)
+        );
+        assert_eq!(next.asides().len(), 3);
         assert!(next.is_valid());
     }
 
@@ -255,7 +297,7 @@ mod tests {
             &Policy::default(),
             SizeClass::Expanded,
         );
-        assert_eq!(decision, Decision::Accepted);
+        assert_eq!(decision, Decision::MergedIntoTabs);
         assert!(next.get("browser-1").is_some());
         assert!(next.get("browser-2").is_some());
         assert_eq!(
@@ -316,7 +358,13 @@ mod tests {
                 &Policy::default(),
                 SizeClass::Expanded,
             );
-            assert_eq!(d, Decision::Accepted);
+            // The first web aside claims the browser slot; the rest join it.
+            let expected = if i == 0 {
+                Decision::Accepted
+            } else {
+                Decision::MergedIntoTabs
+            };
+            assert_eq!(d, expected);
             next = n;
         }
         assert!(next.get("chat").is_some(), "declared aside must survive");

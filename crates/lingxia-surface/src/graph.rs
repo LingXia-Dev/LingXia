@@ -169,6 +169,73 @@ impl SurfaceGraph {
         }
     }
 
+    /// Group the asides into per-kind slots (lxapp / browser / native), in
+    /// first-open order, with tab order = open order. Admission marks the
+    /// most recently used slots visible — expanded shows up to 3, medium 1,
+    /// compact 0 (compact presents asides full-screen via `split_form`
+    /// instead). Hidden slots stay alive and are never evicted.
+    pub fn aside_slots(&self, size_class: SizeClass) -> Vec<crate::layout::PlanAsideSlot> {
+        let asides = self.asides();
+        let mut slots: Vec<crate::layout::PlanAsideSlot> = Vec::new();
+        // `asides()` preserves insertion order, so child pushes keep tab
+        // order == open order and slot order == first-open order.
+        for (index, surface) in asides.iter().enumerate() {
+            let kind = surface.content.slot_kind();
+            let slot = match slots.iter_mut().find(|slot| slot.kind == kind) {
+                Some(slot) => slot,
+                None => {
+                    slots.push(crate::layout::PlanAsideSlot {
+                        kind,
+                        edge: None,
+                        children: Vec::new(),
+                        active_child: None,
+                        visible: false,
+                    });
+                    slots.last_mut().expect("just pushed")
+                }
+            };
+            slot.children.push(surface.id.clone());
+            // The most recently placed child's explicit edge wins.
+            if surface.placement.edge.is_some() {
+                slot.edge = surface.placement.edge;
+            }
+            let _ = index;
+        }
+        for slot in &mut slots {
+            // Active child: the focused surface when it lives in this slot,
+            // else the newest child.
+            slot.active_child = self
+                .focused_surface_id
+                .as_ref()
+                .filter(|id| slot.children.contains(id))
+                .cloned()
+                .or_else(|| slot.children.last().cloned());
+        }
+        // Admission: most-recently-used slots first. Recency = the highest
+        // insertion position among a slot's children.
+        let max_visible = match size_class {
+            SizeClass::Expanded => 3,
+            SizeClass::Medium => 1,
+            SizeClass::Compact => 0,
+        };
+        let mut recency: Vec<(usize, usize)> = slots
+            .iter()
+            .enumerate()
+            .map(|(slot_index, slot)| {
+                let newest = asides
+                    .iter()
+                    .rposition(|s| slot.children.contains(&s.id))
+                    .unwrap_or(0);
+                (slot_index, newest)
+            })
+            .collect();
+        recency.sort_by_key(|(_, newest)| std::cmp::Reverse(*newest));
+        for (slot_index, _) in recency.into_iter().take(max_visible) {
+            slots[slot_index].visible = true;
+        }
+        slots
+    }
+
     /// Check the invariants. Returns the list of violations (empty = ok).
     pub fn check_invariants(&self) -> Vec<String> {
         let mut v = Vec::new();
@@ -243,7 +310,7 @@ impl SurfaceGraph {
     pub fn presentation_plan(&self, size_class: SizeClass) -> LayoutPresentationPlan {
         let derived = self.derive_layout(size_class);
 
-        let asides = self
+        let asides: Vec<PlanAside> = self
             .asides()
             .iter()
             .map(|s| PlanAside {
@@ -252,6 +319,7 @@ impl SurfaceGraph {
                 preferred_size: s.placement.preferred_size,
             })
             .collect();
+        let aside_slots = self.aside_slots(size_class);
 
         LayoutPresentationPlan {
             size_class: derived.size_class,
@@ -267,6 +335,7 @@ impl SurfaceGraph {
                 .clone()
                 .or_else(|| self.main_ids().first().cloned()),
             asides,
+            aside_slots,
             // Floats are popups above the layout and are valid at every size
             // class (no compact gating), so they always appear in the plan. Each
             // carries the float's render-relevant `FloatSpec`; a float surface
