@@ -21,12 +21,13 @@ use lingxia_browser_shell::{
 use lingxia_platform::traits::app_runtime::{
     AppRuntime, LxAppOpenMode, OpenUrlRequest, OpenUrlTarget,
 };
+use lingxia_surface::{Edge, LayoutPresentationPlan, SlotKind};
 use lingxia_webview::WebTag;
 use lingxia_windows_contract::{
     WindowsAsidePanelEvent, WindowsChromeCommand, WindowsPanelPosition, WindowsWindowLayout,
-    active_host_window_webtag_key, dispatch_windows_aside_panel_event, hide_host_panel,
-    is_panel_visible, restore_presented_group_main, set_webview_chrome_event_handler,
-    set_webview_window_layout,
+    active_host_window_webtag_key, aside_panel_tabs, dispatch_windows_aside_panel_event,
+    hide_host_panel, is_panel_visible, restore_presented_group_main,
+    set_webview_chrome_event_handler, set_webview_window_layout,
 };
 // Presenting a browser tab over the main card is browser-only.
 #[cfg(feature = "browser-runtime")]
@@ -57,6 +58,9 @@ static PENDING_PANEL_OPENS: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
 /// and refreshed on every chrome event); browser tab-change notifications
 /// re-sync this app's layout.
 static SHELL_OWNER_APPID: OnceLock<Mutex<Option<String>>> = OnceLock::new();
+/// `None` means the runtime writer has not declared a list yet, so generated
+/// YAML activators remain the fallback. `Some([])` intentionally clears them.
+static RUNTIME_ACTIVATOR_ITEMS: OnceLock<Mutex<Option<Vec<serde_json::Value>>>> = OnceLock::new();
 
 /// Browser tab currently presented over the main content card, if any.
 static PRESENTED_BROWSER_TAB: OnceLock<Mutex<Option<String>>> = OnceLock::new();
@@ -323,6 +327,7 @@ pub(crate) fn update_surface_width(logical_width: f64) {
         return;
     }
     if let Some(appid) = shell_owner_appid() {
+        lingxia::windows::set_surface_desktop_shell(&appid);
         lingxia::windows::set_surface_width(&appid, logical_width);
     }
 }
@@ -501,6 +506,9 @@ pub(super) fn install() {
         set_managed_surface_visible,
     ));
     lingxia_platform::set_windows_managed_surface_toggle_handler(Arc::new(toggle_managed_surface));
+    lingxia_platform::set_windows_activator_items_handler(Arc::new(set_runtime_activator_items));
+    lingxia_platform::set_windows_layout_plan_handler(Arc::new(apply_windows_layout_plan));
+    lingxia_platform::set_windows_managed_aside_event_handler(Arc::new(handle_managed_aside_event));
 
     // Deliver lx.surface closes (user window-close or programmatic) back to the
     // logic layer, mirroring the apple/android/harmony FFI bridges: drop the
@@ -1387,7 +1395,44 @@ fn url_host(url: &str) -> Option<String> {
     }
 }
 
+fn set_runtime_activator_items(payload: &str) -> bool {
+    let Ok(serde_json::Value::Array(items)) = serde_json::from_str(payload) else {
+        return false;
+    };
+    if items.iter().any(|item| {
+        let kind = item.get("kind").and_then(serde_json::Value::as_str);
+        let key = item
+            .get("key")
+            .and_then(serde_json::Value::as_str)
+            .map(str::trim)
+            .unwrap_or_default();
+        !matches!(kind, Some("lxapp" | "native" | "action")) || key.is_empty()
+    }) {
+        return false;
+    }
+    let state = RUNTIME_ACTIVATOR_ITEMS.get_or_init(|| Mutex::new(None));
+    if let Ok(mut state) = state.lock() {
+        *state = Some(items);
+    } else {
+        return false;
+    }
+    if let Some(owner_appid) = shell_owner_appid() {
+        sync_shell_layout(&owner_appid);
+    }
+    true
+}
+
+fn runtime_activator_items() -> Option<Vec<serde_json::Value>> {
+    RUNTIME_ACTIVATOR_ITEMS
+        .get()
+        .and_then(|state| state.lock().ok())
+        .and_then(|state| state.clone())
+}
+
 fn build_panel_activators(app: &LxApp) -> Vec<WindowsShellPanelActivatorLayout> {
+    if let Some(items) = runtime_activator_items() {
+        return build_runtime_activators(app, items);
+    }
     let asset_dir = app.runtime.asset_dir();
     lingxia_app_context::app_config()
         .and_then(|config| config.panels.as_ref().cloned())
@@ -1415,6 +1460,7 @@ fn build_panel_activators(app: &LxApp) -> Vec<WindowsShellPanelActivatorLayout> 
                     WindowsShellPanelActivatorLayout {
                         id: item.id.clone(),
                         label: item.label,
+                        label_color: None,
                         icon_path,
                         position: panel_position(item.position),
                         active: is_panel_visible(&item.id),
@@ -1423,6 +1469,261 @@ fn build_panel_activators(app: &LxApp) -> Vec<WindowsShellPanelActivatorLayout> 
                 .collect()
         })
         .unwrap_or_default()
+}
+
+fn build_runtime_activators(
+    app: &LxApp,
+    items: Vec<serde_json::Value>,
+) -> Vec<WindowsShellPanelActivatorLayout> {
+    let asset_dir = app.runtime.asset_dir();
+    items
+        .into_iter()
+        .filter_map(|item| {
+            let kind = item.get("kind")?.as_str()?;
+            let key = item.get("key")?.as_str()?.trim();
+            if key.is_empty() {
+                return None;
+            }
+            let label = item
+                .get("name")
+                .and_then(serde_json::Value::as_str)
+                .map(str::trim)
+                .filter(|name| !name.is_empty())
+                .unwrap_or(key)
+                .to_string();
+            let explicit_icon = item
+                .get("icon")
+                .and_then(serde_json::Value::as_str)
+                .map(str::trim)
+                .filter(|icon| !icon.is_empty());
+            let icon_path = explicit_icon
+                .and_then(|icon| {
+                    resolve_asset_path(asset_dir, icon)
+                        .map(|path| path.to_string_lossy().to_string())
+                        .or_else(|| Some(icon.to_string()))
+                })
+                .or_else(|| {
+                    (kind == "lxapp")
+                        .then(|| lxapp::try_get(key).map(|app| app.get_lxapp_info().icon))
+                        .flatten()
+                })
+                .unwrap_or_default();
+            let position = runtime_activator_position(kind, key);
+            let label_color = item
+                .get("color")
+                .and_then(serde_json::Value::as_str)
+                .map(|color| parse_css_color(color, super::style::shell_palette().text_muted));
+            Some(WindowsShellPanelActivatorLayout {
+                id: format!("runtime:{kind}:{key}"),
+                label,
+                label_color,
+                icon_path,
+                position,
+                active: runtime_activator_active(kind, key),
+            })
+        })
+        .collect()
+}
+
+fn runtime_activator_position(kind: &str, key: &str) -> WindowsPanelPosition {
+    if matches!(kind, "lxapp" | "native")
+        && let Some(target) = panel_target_for_id(key).or_else(|| {
+            (kind == "lxapp")
+                .then(|| {
+                    panel_item_for_lxapp(key).map(|(_, path, position)| PanelTarget::LxApp {
+                        appid: key.to_string(),
+                        path,
+                        position,
+                    })
+                })
+                .flatten()
+        })
+    {
+        return match target {
+            PanelTarget::LxApp { position, .. } => panel_position(position),
+            PanelTarget::Terminal(request) => panel_position(request.position),
+        };
+    }
+    WindowsPanelPosition::Right
+}
+
+fn runtime_activator_active(kind: &str, key: &str) -> bool {
+    if kind == "action" {
+        return false;
+    }
+    let surface_id = if kind == "lxapp" {
+        panel_item_for_lxapp(key)
+            .map(|(id, _, _)| id)
+            .unwrap_or_else(|| key.to_string())
+    } else {
+        key.to_string()
+    };
+    shell_surface_is_active(&surface_id)
+}
+
+fn shell_surface_is_active(surface_id: &str) -> bool {
+    let Some(owner_appid) = shell_owner_appid() else {
+        return false;
+    };
+    lxapp::try_get(&owner_appid)
+        .and_then(|owner| owner.surface_derived_layout())
+        .is_some_and(|plan| {
+            plan.aside_slots.iter().any(|slot| {
+                slot.visible
+                    && slot.active_child.as_deref() == Some(surface_id)
+                    && slot.children.iter().any(|child| child == surface_id)
+            })
+        })
+}
+
+fn shell_surface_in_graph(surface_id: &str) -> bool {
+    let Some(owner_appid) = shell_owner_appid() else {
+        return false;
+    };
+    lxapp::try_get(&owner_appid)
+        .and_then(|owner| owner.surface_derived_layout())
+        .is_some_and(|plan| plan.asides.iter().any(|aside| aside.id == surface_id))
+}
+
+/// Native host panels are not owned by the platform WebView presenter, so the
+/// SDK consumes the same slot plan and applies only the native slot here.
+/// Lxapp and browser slots are reconciled by `lingxia-platform` where their
+/// WebViews live.
+fn apply_windows_layout_plan(plan: &LayoutPresentationPlan) {
+    let native_slot = plan
+        .aside_slots
+        .iter()
+        .find(|slot| slot.kind == SlotKind::Native);
+    let active = native_slot.filter(|slot| slot.visible).and_then(|slot| {
+        slot.active_child
+            .as_deref()
+            .or_else(|| slot.children.last().map(String::as_str))
+    });
+    let edge = native_slot.and_then(|slot| slot.edge);
+
+    let native_panels = lingxia_app_context::app_config()
+        .and_then(|config| config.panels.as_ref().cloned())
+        .map(|panels| {
+            panels
+                .items
+                .into_iter()
+                .filter_map(|item| {
+                    (!item.content.kind.is_lxapp()).then_some(TerminalPanelRequest {
+                        panel_id: item.id,
+                        label: item.label,
+                        position: item.position,
+                    })
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+
+    for mut request in native_panels {
+        if Some(request.panel_id.as_str()) == active {
+            if let Some(edge) = edge {
+                request.position = panel_position_from_edge(edge);
+            }
+            present_terminal_from_layout(request);
+        } else if is_panel_visible(&request.panel_id)
+            && let Err(err) = hide_host_panel(&request.panel_id)
+        {
+            log::warn!(
+                "failed to hide non-admitted native aside {}: {err}",
+                request.panel_id
+            );
+        }
+    }
+}
+
+fn present_terminal_from_layout(request: TerminalPanelRequest) {
+    let position = panel_position(request.position);
+    let title = if request.label.trim().is_empty() {
+        "Terminal"
+    } else {
+        request.label.trim()
+    };
+    match super::terminal_panel::show_existing_windows_terminal_panel(
+        &request.panel_id,
+        title,
+        position,
+    ) {
+        Ok(true) => return,
+        Ok(false) => {}
+        Err(err) => {
+            log::warn!(
+                "failed to restore Windows native aside {}: {err}",
+                request.panel_id
+            );
+            return;
+        }
+    }
+    if let Err(err) =
+        super::terminal_panel::open_windows_terminal_panel(&request.panel_id, title, position)
+    {
+        log::warn!(
+            "failed to show Windows native aside {}: {err}",
+            request.panel_id
+        );
+    }
+}
+
+fn panel_position_from_edge(edge: Edge) -> lingxia_app_context::PanelPosition {
+    match edge {
+        Edge::Left => lingxia_app_context::PanelPosition::Left,
+        Edge::Right => lingxia_app_context::PanelPosition::Right,
+        Edge::Top => lingxia_app_context::PanelPosition::Top,
+        Edge::Bottom => lingxia_app_context::PanelPosition::Bottom,
+    }
+}
+
+fn handle_managed_aside_event(event: WindowsAsidePanelEvent) {
+    match event {
+        WindowsAsidePanelEvent::TabClick { surface_id, .. } => {
+            if let Some(owner_appid) = shell_owner_appid()
+                && let Some(owner) = lxapp::try_get(&owner_appid)
+            {
+                owner.focus_shell_surface(&surface_id);
+            }
+        }
+        WindowsAsidePanelEvent::TabClose { surface_id, .. } => {
+            close_managed_aside_child(&surface_id);
+        }
+        WindowsAsidePanelEvent::CloseAll { panel_id } => {
+            for tab in aside_panel_tabs(&panel_id) {
+                close_managed_aside_child(&tab.surface_id);
+            }
+        }
+        WindowsAsidePanelEvent::NavBack { .. }
+        | WindowsAsidePanelEvent::NavForward { .. }
+        | WindowsAsidePanelEvent::NavReload { .. } => {}
+    }
+}
+
+fn close_managed_aside_child(surface_id: &str) {
+    let Some(owner_appid) = shell_owner_appid() else {
+        return;
+    };
+    if let Some(owner) = lxapp::try_get(&owner_appid) {
+        owner.unregister_host_aside(surface_id);
+    }
+    match panel_target_for_id(surface_id) {
+        Some(PanelTarget::LxApp { appid, .. }) => {
+            if let Err(err) = lxapp::close_lxapp(&appid) {
+                log::warn!("failed to close Windows lxapp aside {appid}: {err}");
+            }
+        }
+        Some(PanelTarget::Terminal(_)) => {
+            if let Err(err) = hide_host_panel(surface_id) {
+                log::warn!("failed to close Windows native aside {surface_id}: {err}");
+            }
+        }
+        None => {
+            // Runtime (undeclared) lxapp asides use appId as their surface id.
+            if let Err(err) = lxapp::close_lxapp(surface_id) {
+                log::warn!("failed to close Windows runtime aside {surface_id}: {err}");
+            }
+        }
+    }
 }
 
 fn dispatch_aside_panel_event(event: WindowsAsidePanelEvent) {
@@ -1488,6 +1789,10 @@ fn handle_chrome_event(appid: &str, event: WindowsChromeCommand) {
             let Some(panel_id) = payload_string(&event, "panel_id") else {
                 return;
             };
+            if let Some((kind, key)) = parse_runtime_activator_id(&panel_id) {
+                handle_runtime_activator(appid, kind, key);
+                return;
+            }
             // The activator handlers sync the shell layout in every branch.
             handle_panel_activator(appid, panel_id);
             return;
@@ -1592,33 +1897,57 @@ fn handle_chrome_event(appid: &str, event: WindowsChromeCommand) {
         // Aside browser panel (grouped web asides): routed to the surface
         // layer, which owns the tab group.
         chrome_command::ASIDE_PANEL_TAB_CLICK => {
+            let Some(panel_id) = payload_string(&event, "panel_id") else {
+                return;
+            };
             let Some(surface_id) = payload_string(&event, "surface_id") else {
                 return;
             };
-            dispatch_aside_panel_event(WindowsAsidePanelEvent::TabClick { surface_id });
+            dispatch_aside_panel_event(WindowsAsidePanelEvent::TabClick {
+                panel_id,
+                surface_id,
+            });
             return;
         }
         chrome_command::ASIDE_PANEL_TAB_CLOSE => {
+            let Some(panel_id) = payload_string(&event, "panel_id") else {
+                return;
+            };
             let Some(surface_id) = payload_string(&event, "surface_id") else {
                 return;
             };
-            dispatch_aside_panel_event(WindowsAsidePanelEvent::TabClose { surface_id });
+            dispatch_aside_panel_event(WindowsAsidePanelEvent::TabClose {
+                panel_id,
+                surface_id,
+            });
             return;
         }
         chrome_command::ASIDE_PANEL_CLOSE_ALL => {
-            dispatch_aside_panel_event(WindowsAsidePanelEvent::CloseAll);
+            let Some(panel_id) = payload_string(&event, "panel_id") else {
+                return;
+            };
+            dispatch_aside_panel_event(WindowsAsidePanelEvent::CloseAll { panel_id });
             return;
         }
         chrome_command::ASIDE_PANEL_NAV_BACK => {
-            dispatch_aside_panel_event(WindowsAsidePanelEvent::NavBack);
+            let Some(panel_id) = payload_string(&event, "panel_id") else {
+                return;
+            };
+            dispatch_aside_panel_event(WindowsAsidePanelEvent::NavBack { panel_id });
             return;
         }
         chrome_command::ASIDE_PANEL_NAV_FORWARD => {
-            dispatch_aside_panel_event(WindowsAsidePanelEvent::NavForward);
+            let Some(panel_id) = payload_string(&event, "panel_id") else {
+                return;
+            };
+            dispatch_aside_panel_event(WindowsAsidePanelEvent::NavForward { panel_id });
             return;
         }
         chrome_command::ASIDE_PANEL_NAV_RELOAD => {
-            dispatch_aside_panel_event(WindowsAsidePanelEvent::NavReload);
+            let Some(panel_id) = payload_string(&event, "panel_id") else {
+                return;
+            };
+            dispatch_aside_panel_event(WindowsAsidePanelEvent::NavReload { panel_id });
             return;
         }
         // Native-panel header events (terminal dock): pure terminal policy,
@@ -2113,28 +2442,25 @@ fn handle_lxapp_auxiliary_close(owner_appid: &str, target_appid: &str) {
     sync_shell_layout(owner_appid);
 }
 
-fn open_lxapp_panel_now(target_appid: &str, path: &str, panel_id: &str) {
-    if let Some(panel) = lxapp::try_get(target_appid) {
-        let path = panel
-            .peek_current_page()
-            .unwrap_or_else(|| non_empty(Some(path)).unwrap_or_else(|| panel.initial_route()));
-        if let Err(err) = panel.runtime.show_lxapp(
-            target_appid.to_string(),
-            path,
-            panel.session_id(),
-            LxAppOpenMode::Panel,
-            panel_id.to_string(),
-        ) {
-            log::error!("failed to show sidebar lxapp panel {target_appid}: {err}");
-        }
-    } else if let Err(err) = lxapp::open_lxapp(
+fn open_lxapp_panel_now(
+    target_appid: &str,
+    path: &str,
+    panel_id: &str,
+) -> Result<(), lxapp::LxAppError> {
+    let path = lxapp::try_get(target_appid)
+        .map(|panel| {
+            panel
+                .peek_current_page()
+                .unwrap_or_else(|| non_empty(Some(path)).unwrap_or_else(|| panel.initial_route()))
+        })
+        .unwrap_or_else(|| path.to_string());
+    lxapp::open_lxapp(
         target_appid,
-        LxAppStartupOptions::new(path)
+        LxAppStartupOptions::new(&path)
             .set_open_mode(LxAppOpenMode::Panel)
             .set_panel_id(panel_id.to_string()),
-    ) {
-        log::error!("failed to open sidebar lxapp panel {target_appid}: {err}");
-    }
+    )
+    .map(|_| ())
 }
 
 fn show_lxapp_auxiliary_context_menu(
@@ -2956,14 +3282,21 @@ fn set_managed_surface_visible(panel_id: &str, visible: bool, edge: &str) -> boo
         return false;
     };
     if !visible {
-        if is_panel_visible(panel_id) {
+        if shell_surface_in_graph(panel_id) {
             hide_panel_target(&owner_appid, panel_id, target);
         } else {
             sync_shell_layout(&owner_appid);
         }
         return true;
     }
-    if is_panel_visible(panel_id) && position_override.is_none() {
+    if shell_surface_is_active(panel_id) && position_override.is_none() {
+        sync_shell_layout(&owner_appid);
+        return true;
+    }
+    if shell_surface_in_graph(panel_id) && position_override.is_none() {
+        if let Some(owner) = lxapp::try_get(&owner_appid) {
+            owner.focus_shell_surface(panel_id);
+        }
         sync_shell_layout(&owner_appid);
         return true;
     }
@@ -3023,14 +3356,100 @@ pub(crate) fn handle_menu_bar_surface_action(surface_id: &str, action_kind: &str
     opened
 }
 
+fn parse_runtime_activator_id(id: &str) -> Option<(&str, &str)> {
+    let rest = id.strip_prefix("runtime:")?;
+    let (kind, key) = rest.split_once(':')?;
+    (!kind.is_empty() && !key.is_empty()).then_some((kind, key))
+}
+
+fn handle_runtime_activator(owner_appid: &str, kind: &str, key: &str) {
+    match kind {
+        "action" => {
+            let event = format!("lx.shell.activator:{key}");
+            lxapp::publish_app_event(owner_appid, &event, None);
+        }
+        "native" => {
+            if !toggle_managed_surface(key) {
+                log::warn!("runtime native activator was not found: {key}");
+            }
+        }
+        "lxapp" => handle_runtime_lxapp_activator(owner_appid, key),
+        _ => log::warn!("unknown runtime activator kind: {kind}"),
+    }
+    sync_shell_layout(owner_appid);
+}
+
+fn handle_runtime_lxapp_activator(owner_appid: &str, appid: &str) {
+    if let Some((panel_id, _, _)) = panel_item_for_lxapp(appid) {
+        handle_panel_activator(owner_appid, panel_id);
+        return;
+    }
+    match lxapp::open_region(appid) {
+        Some(lxapp::LxAppOpenRegion::Main) => {
+            if let Err(err) = lxapp::open_lxapp(appid, LxAppStartupOptions::default()) {
+                log::warn!("failed to focus main lxapp {appid}: {err}");
+            }
+        }
+        Some(lxapp::LxAppOpenRegion::Aside) if shell_surface_is_active(appid) => {
+            if let Some(panel) = lxapp::try_get(appid) {
+                if let Err(err) = panel
+                    .runtime
+                    .hide_lxapp(appid.to_string(), panel.session_id())
+                {
+                    log::warn!("failed to hide runtime lxapp aside {appid}: {err}");
+                }
+            }
+            unregister_managed_aside(owner_appid, appid);
+        }
+        Some(lxapp::LxAppOpenRegion::Aside) => {
+            if shell_surface_in_graph(appid) {
+                if let Some(owner) = lxapp::try_get(owner_appid) {
+                    owner.focus_shell_surface(appid);
+                }
+            } else if let Err(err) = open_lxapp_panel_now(appid, "", appid) {
+                log::warn!("failed to show runtime lxapp aside {appid}: {err}");
+            } else {
+                register_managed_aside(
+                    owner_appid,
+                    appid,
+                    lingxia_app_context::PanelPosition::Right,
+                );
+            }
+        }
+        None => {
+            let owner_appid = owner_appid.to_string();
+            let appid = appid.to_string();
+            std::mem::drop(lingxia::task::spawn(async move {
+                if let Err(err) = open_panel_lxapp(&appid, &appid, "").await {
+                    log::warn!("failed to open runtime lxapp aside {appid}: {err}");
+                    return;
+                }
+                register_managed_aside(
+                    &owner_appid,
+                    &appid,
+                    lingxia_app_context::PanelPosition::Right,
+                );
+                sync_shell_layout(&owner_appid);
+            }));
+        }
+    }
+}
+
 fn handle_panel_activator(appid: &str, panel_id: String) {
     let Some(target) = panel_target_for_id(&panel_id) else {
         log::error!("Windows panel activator was not found: {panel_id}");
         return;
     };
 
-    if is_panel_visible(&panel_id) {
+    if shell_surface_is_active(&panel_id) {
         hide_panel_target(appid, &panel_id, target);
+        return;
+    }
+    if shell_surface_in_graph(&panel_id) {
+        if let Some(owner) = lxapp::try_get(appid) {
+            owner.focus_shell_surface(&panel_id);
+        }
+        sync_shell_layout(appid);
         return;
     }
 
@@ -3113,7 +3532,12 @@ fn show_lxapp_panel(
     }
 
     if lxapp::try_get(panel_appid).is_some() {
-        open_lxapp_panel_now(panel_appid, path, panel_id);
+        if let Err(err) = open_lxapp_panel_now(panel_appid, path, panel_id) {
+            log::error!("failed to show Windows panel lxapp {panel_appid}: {err}");
+            crate::window_host::set_panel_position_override(panel_id, None);
+            unregister_managed_aside(owner_appid, panel_id);
+            return;
+        }
         sync_shell_layout(owner_appid);
         sync_shell_layout(panel_appid);
         return;

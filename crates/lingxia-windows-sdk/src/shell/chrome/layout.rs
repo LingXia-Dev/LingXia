@@ -111,6 +111,7 @@ pub struct WindowsShellAddressBarLayout {
 pub struct WindowsShellPanelActivatorLayout {
     pub id: String,
     pub label: String,
+    pub label_color: Option<u32>,
     pub icon_path: String,
     pub position: WindowsPanelPosition,
     pub active: bool,

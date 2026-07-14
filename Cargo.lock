@@ -3634,6 +3634,7 @@ dependencies = [
  "lingxia-lxapp",
  "lingxia-messaging",
  "lingxia-platform",
+ "lingxia-surface",
  "lingxia-terminal",
  "lingxia-webview",
  "lingxia-windows-contract",

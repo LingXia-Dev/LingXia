@@ -69,6 +69,15 @@ pub fn set_surface_width(appid: &str, width: f64) -> bool {
         .unwrap_or(false)
 }
 
+/// Keep the desktop shell out of the mobile Compact projection. A narrow
+/// Windows window collapses the sidebar to its rail and admits at most one
+/// aside slot, matching the macOS desktop floor.
+pub fn set_surface_desktop_shell(appid: &str) -> bool {
+    lxapp::try_get(appid)
+        .map(|app| app.set_surface_min_size_class(lxapp::lingxia_surface::SizeClass::Medium))
+        .unwrap_or(false)
+}
+
 fn current_page_webview(appid: &str) -> Result<std::sync::Arc<lingxia_webview::WebView>, String> {
     let app = lxapp::try_get(appid).ok_or_else(|| format!("lxapp is not active: {appid}"))?;
     let page = app.current_page().map_err(|err| err.to_string())?;

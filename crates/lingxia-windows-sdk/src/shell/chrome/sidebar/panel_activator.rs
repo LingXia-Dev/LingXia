@@ -93,11 +93,15 @@ pub(in crate::shell::chrome) fn draw_panel_activators(
         let text = activator
             .map(|item| panel_activator_label(&item.label))
             .unwrap_or_else(|| panel_activator_label(&panel_id));
-        let text_color = if active {
-            shell_palette().accent
-        } else {
-            shell_palette().text_muted
-        };
+        let text_color = activator
+            .and_then(|item| item.label_color)
+            .unwrap_or_else(|| {
+                if active {
+                    shell_palette().accent
+                } else {
+                    shell_palette().text_muted
+                }
+            });
 
         if !active {
             draw_hover_wash(hdc, rect, 6, cursor);

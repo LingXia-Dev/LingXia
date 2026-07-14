@@ -19,10 +19,28 @@ const DEFAULT_APP_IDENTIFIER: &str = "app.lingxia.windows";
 type WindowsAppExitHandler = Arc<dyn Fn() + Send + Sync>;
 static WINDOWS_APP_EXIT_HANDLER: Mutex<Option<WindowsAppExitHandler>> = Mutex::new(None);
 
+pub type WindowsActivatorItemsHandler = Arc<dyn Fn(&str) -> bool + Send + Sync>;
+static WINDOWS_ACTIVATOR_ITEMS_HANDLER: Mutex<Option<WindowsActivatorItemsHandler>> =
+    Mutex::new(None);
+
 pub fn set_windows_app_exit_handler(handler: WindowsAppExitHandler) {
     if let Ok(mut slot) = WINDOWS_APP_EXIT_HANDLER.lock() {
         *slot = Some(handler);
     }
+}
+
+pub fn set_windows_activator_items_handler(handler: WindowsActivatorItemsHandler) {
+    if let Ok(mut slot) = WINDOWS_ACTIVATOR_ITEMS_HANDLER.lock() {
+        *slot = Some(handler);
+    }
+}
+
+fn invoke_windows_activator_items_handler(items_json: &str) -> bool {
+    WINDOWS_ACTIVATOR_ITEMS_HANDLER
+        .lock()
+        .ok()
+        .and_then(|slot| slot.clone())
+        .is_none_or(|handler| handler(items_json))
 }
 
 pub(crate) fn request_windows_app_exit() {
@@ -402,6 +420,16 @@ impl AppRuntime for Platform {
     fn set_tray_menu(&self, items_json: &str) -> Result<(), PlatformError> {
         invoke_windows_tray_menu_handler(items_json);
         Ok(())
+    }
+
+    fn set_activator_items(&self, items_json: &str) -> Result<(), PlatformError> {
+        if invoke_windows_activator_items_handler(items_json) {
+            Ok(())
+        } else {
+            Err(PlatformError::InvalidParameter(
+                "invalid Windows activator items payload".to_string(),
+            ))
+        }
     }
 
     fn set_tray_click_intercept(&self, intercept: bool) -> Result<(), PlatformError> {

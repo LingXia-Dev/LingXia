@@ -57,17 +57,19 @@ pub(super) fn browser_panel_hit_test(
     None
 }
 
-/// The aside browser panel's API-only chrome: nav cluster, tab strip, and
-/// the close-all button. No address bar and no new-tab affordance (tabs are
-/// opened only through `lx.openSurface`).
+/// Aside-slot chrome hit testing. Browser slots add navigation; every slot
+/// shares the tab strip and close-all affordance, with no address or new-tab
+/// controls in the strip itself.
 pub(super) fn aside_panel_header_hit(
     panel: &WindowsChromePanel,
     tabs: &[WindowsAsidePanelTab],
     point: (i32, i32),
 ) -> WindowsChromeHit {
-    for (command, rect) in aside_panel_nav_button_rects(panel) {
-        if rect_contains(&rect, point) {
-            return chrome_command(command, json!({ "panel_id": panel.panel_id.clone() }));
+    if panel.panel_id == lingxia_windows_contract::ASIDE_BROWSER_PANEL_ID {
+        for (command, rect) in aside_panel_nav_button_rects(panel) {
+            if rect_contains(&rect, point) {
+                return chrome_command(command, json!({ "panel_id": panel.panel_id.clone() }));
+            }
         }
     }
     if rect_contains(&browser_panel_close_rect(panel), point) {
@@ -82,13 +84,19 @@ pub(super) fn aside_panel_header_hit(
         {
             return chrome_command(
                 command_id::ASIDE_PANEL_TAB_CLOSE,
-                json!({ "surface_id": tab.surface_id.clone() }),
+                json!({
+                    "panel_id": panel.panel_id.clone(),
+                    "surface_id": tab.surface_id.clone()
+                }),
             );
         }
         if rect_contains(&rect, point) {
             return chrome_command(
                 command_id::ASIDE_PANEL_TAB_CLICK,
-                json!({ "surface_id": tab.surface_id.clone() }),
+                json!({
+                    "panel_id": panel.panel_id.clone(),
+                    "surface_id": tab.surface_id.clone()
+                }),
             );
         }
     }
@@ -177,8 +185,11 @@ pub(super) fn aside_panel_tab_rects(panel: &WindowsChromePanel, count: usize) ->
         return Vec::new();
     }
     let header = browser_panel_header_rect(panel);
-    let nav_right = aside_panel_nav_button_rects(panel)[2].1.right;
-    let left_edge = nav_right + BROWSER_PANEL_HEADER_PADDING;
+    let left_edge = if panel.panel_id == lingxia_windows_contract::ASIDE_BROWSER_PANEL_ID {
+        aside_panel_nav_button_rects(panel)[2].1.right + BROWSER_PANEL_HEADER_PADDING
+    } else {
+        header.left + BROWSER_PANEL_HEADER_PADDING
+    };
     let right_edge = browser_panel_close_rect(panel).left - BROWSER_PANEL_HEADER_PADDING;
     let count_i32 = count as i32;
     let avail = (right_edge - left_edge - (count_i32 - 1) * ASIDE_PANEL_TAB_GAP).max(0);
@@ -363,9 +374,9 @@ pub(super) fn browser_panel_title(panel: &WindowsChromePanel) -> String {
     }
 }
 
-/// The aside browser panel's API-only chrome row: back/forward/reload, the
-/// title tab strip, and close-all. No address bar and no "+" - tabs come
-/// only from `lx.openSurface`.
+/// Shared aside-slot chrome row: title tabs and close-all. The browser slot
+/// additionally gets back/forward/reload; lxapp slots start the strip at the
+/// leading edge. No slot carries a "+" affordance.
 pub(super) fn draw_aside_panel_header(
     hdc: HDC,
     panel: &WindowsChromePanel,
@@ -390,22 +401,24 @@ pub(super) fn draw_aside_panel_header(
         pal.window_background,
     );
 
-    let (can_back, can_forward) = crate::shell::runtime::aside_panel_nav_state();
-    for (command, rect) in aside_panel_nav_button_rects(panel) {
-        let (icon, enabled) = match command {
-            command_id::ASIDE_PANEL_NAV_BACK => (WindowsDesignIcon::Back, can_back),
-            command_id::ASIDE_PANEL_NAV_FORWARD => (WindowsDesignIcon::Forward, can_forward),
-            _ => (WindowsDesignIcon::BrowserRefresh, true),
-        };
-        // Hover lights only actionable buttons; a disabled direction stays
-        // flat and dim.
-        let color = if enabled {
-            draw_hover_wash(hdc, rect, 5, cursor);
-            pal.frame_button_icon
-        } else {
-            pal.text_muted
-        };
-        draw_design_icon_button(hdc, rect, icon, color, 16);
+    if panel.panel_id == lingxia_windows_contract::ASIDE_BROWSER_PANEL_ID {
+        let (can_back, can_forward) = crate::shell::runtime::aside_panel_nav_state();
+        for (command, rect) in aside_panel_nav_button_rects(panel) {
+            let (icon, enabled) = match command {
+                command_id::ASIDE_PANEL_NAV_BACK => (WindowsDesignIcon::Back, can_back),
+                command_id::ASIDE_PANEL_NAV_FORWARD => (WindowsDesignIcon::Forward, can_forward),
+                _ => (WindowsDesignIcon::BrowserRefresh, true),
+            };
+            // Hover lights only actionable buttons; a disabled direction stays
+            // flat and dim.
+            let color = if enabled {
+                draw_hover_wash(hdc, rect, 5, cursor);
+                pal.frame_button_icon
+            } else {
+                pal.text_muted
+            };
+            draw_design_icon_button(hdc, rect, icon, color, 16);
+        }
     }
 
     let rects = aside_panel_tab_rects(panel, tabs.len());
