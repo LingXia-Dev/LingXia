@@ -6,9 +6,9 @@ mod modal;
 mod navbar;
 mod pull_to_refresh;
 mod router;
+mod shell;
 mod tabbar;
 mod toast;
-mod shell;
 mod tray;
 
 pub(crate) use action_sheet::present_action_sheet;

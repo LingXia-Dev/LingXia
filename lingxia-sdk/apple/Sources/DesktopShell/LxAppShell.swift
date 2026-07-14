@@ -199,6 +199,13 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     private let topAccessoryContainer = NSView()
     private var topAccessoryHeightConstraint: NSLayoutConstraint?
     private var lastExpandedSidebarWidth: CGFloat = Layout.sidebarWidth
+    /// Blocks sidebar persistence until the saved state is applied, so the
+    /// default-state refreshes during setup can't clobber the stored values.
+    private var sidebarStateRestored = false
+    /// The user's last chosen sidebar mode. The auto-hide reconciliation
+    /// re-enables chrome through this, so a restored rail/hidden state isn't
+    /// forced back to expanded when content arrives.
+    private var userSidebarMode: LxAppShellPersistence.SidebarMode?
     private let sidebarRevealButton = NSButton()
     private var currentViewController: macOSLxAppViewController?
     private var viewControllers: [String: macOSLxAppViewController] = [:]
@@ -373,6 +380,9 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         window.minSize = CGSize(width: 720, height: 480)
         window.configureForTabStyle()
         window.center()
+        // After center() so first launch centers; a saved frame overrides it
+        // (AppKit clamps the restored frame to the current screens).
+        window.setFrameAutosaveName(LxAppShellPersistence.windowFrameName)
         window.isReleasedWhenClosed = false
         return window
     }
@@ -437,6 +447,13 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         syncSidebarHeaderButtonAlignment()
         workspaceManager.relayoutPanels()
         reportSurfaceWidth()
+        // AppKit's autosave only fires for user-driven changes; save explicitly
+        // so programmatic resizes (automation, AX) persist too.
+        window?.saveFrame(usingName: LxAppShellPersistence.windowFrameName)
+    }
+
+    public func windowDidMove(_ notification: Notification) {
+        window?.saveFrame(usingName: LxAppShellPersistence.windowFrameName)
     }
 
     /// Report the content width to the Adaptive Surface Layout core so it
@@ -661,7 +678,51 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         ])
 
         syncSidebarHeaderButtonAlignment()
+        restoreSidebarState()
         refreshSidebarVisibilityUI()
+    }
+
+    /// Apply the persisted sidebar width/mode before the first visibility
+    /// refresh. Runs once; unlocks persistSidebarState.
+    private func restoreSidebarState() {
+        defer { sidebarStateRestored = true }
+        guard sidebarChromeEnabled, let sidebarView else { return }
+
+        if let width = LxAppShellPersistence.sidebarWidth {
+            lastExpandedSidebarWidth = min(
+                max(width, SidebarView.Layout.expandedWidth), SidebarView.Layout.maxWidth)
+        }
+        userSidebarMode = LxAppShellPersistence.sidebarMode
+        let targetWidth: CGFloat
+        switch userSidebarMode {
+        case .rail:
+            sidebarView.setCompactMode(true)
+            targetWidth = sidebarView.compactWidth
+        case .hidden:
+            targetWidth = 0
+        case .expanded, nil:
+            targetWidth = lastExpandedSidebarWidth
+        }
+        sidebarWidthConstraint?.constant = targetWidth
+        contentLeadingConstraint?.constant = contentLeading(forSidebarWidth: targetWidth)
+    }
+
+    /// Store the settled sidebar mode + expanded width. Called from every
+    /// visibility refresh; cheap (UserDefaults), no-op until restore ran.
+    private func persistSidebarState() {
+        guard sidebarStateRestored, sidebarChromeEnabled, let sidebarView else { return }
+        let width = sidebarWidthConstraint?.constant ?? 0
+        let mode: LxAppShellPersistence.SidebarMode
+        if width < Layout.sidebarHiddenThreshold {
+            mode = .hidden
+        } else if sidebarView.isCompact {
+            mode = .rail
+        } else {
+            mode = .expanded
+        }
+        userSidebarMode = mode
+        LxAppShellPersistence.sidebarMode = mode
+        LxAppShellPersistence.sidebarWidth = lastExpandedSidebarWidth
     }
 
     private func setupNotificationObservers() {
@@ -833,7 +894,10 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
 
         let isVisible = constraint.constant >= Layout.sidebarHiddenThreshold
         if isVisible == visible {
-            if visible, sidebarView?.isCompact == true {
+            // Expanding an already-visible rail is a user reveal gesture only;
+            // configuration passes (applySidebarMode at startup) must leave a
+            // user-chosen rail alone.
+            if visible, sidebarView?.isCompact == true, userSidebarMode != .rail {
                 sidebarView?.setCompactMode(false)
                 updateSidebarWidth(lastExpandedSidebarWidth, animated: animated)
             } else {
@@ -925,6 +989,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         syncSidebarHeaderButtonAlignment()
         window?.contentView?.layoutSubtreeIfNeeded()
         workspaceManager.relayoutPanels()
+        persistSidebarState()
     }
 
     // MARK: - Tab Lifecycle
@@ -1602,10 +1667,24 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         }
         if enabled {
             if constraint.constant < Layout.sidebarHiddenThreshold {
-                sidebarView?.setCompactMode(false)
-                constraint.constant = lastExpandedSidebarWidth
-                contentLeadingConstraint?.constant = contentLeading(forSidebarWidth: lastExpandedSidebarWidth)
-                browserCoordinator.syncToolbarLeading(collapsed: false, animated: false)
+                // Re-enable INTO the user's chosen mode — auto-hide churn at
+                // startup must not force a restored rail/hidden sidebar to
+                // expanded.
+                let targetWidth: CGFloat
+                switch userSidebarMode {
+                case .rail:
+                    sidebarView?.setCompactMode(true)
+                    targetWidth = sidebarView?.compactWidth ?? lastExpandedSidebarWidth
+                case .hidden:
+                    targetWidth = 0
+                case .expanded, nil:
+                    sidebarView?.setCompactMode(false)
+                    targetWidth = lastExpandedSidebarWidth
+                }
+                constraint.constant = targetWidth
+                contentLeadingConstraint?.constant = contentLeading(forSidebarWidth: targetWidth)
+                browserCoordinator.syncToolbarLeading(
+                    collapsed: targetWidth < Layout.sidebarHiddenThreshold, animated: false)
             }
         } else {
             sidebarView?.setCompactMode(false)

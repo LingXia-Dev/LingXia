@@ -605,6 +605,7 @@ class SidebarView: NSView, NSPopoverDelegate {
         hideButton.layer?.cornerRadius = 6
         hideButton.layer?.backgroundColor = NSColor.clear.cgColor
         hideButton.toolTip = "Collapse sidebar"
+        hideButton.setAccessibilityLabel("Collapse sidebar")
         hideButton.target = self
         hideButton.action = #selector(hideButtonClicked)
         headerView.addSubview(hideButton)
@@ -621,6 +622,7 @@ class SidebarView: NSView, NSPopoverDelegate {
         railExpandButton.layer?.cornerRadius = 8
         railExpandButton.layer?.backgroundColor = NSColor.clear.cgColor
         railExpandButton.toolTip = "Expand sidebar"
+        railExpandButton.setAccessibilityLabel("Expand sidebar")
         railExpandButton.contentTintColor = NSColor.secondaryLabelColor
         railExpandButton.image = LxIcon.image(
             named: "icon_sidebar_expand",

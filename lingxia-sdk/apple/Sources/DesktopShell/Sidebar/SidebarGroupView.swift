@@ -164,6 +164,8 @@ class SidebarGroupView: NSView {
     /// visibility CHANGE so unrelated refreshes (badge, style) don't undo a
     /// manual chevron toggle.
     private var lastAppliedTabBarVisible: Bool?
+    /// One-shot guard for applying the persisted user collapse state.
+    private var didRestoreCollapsedState = false
     /// True when this group's lxapp is the active main — set by SidebarView.
     /// Clicking the active group's header toggles collapse; a non-active group's
     /// header switches to it instead.
@@ -432,10 +434,21 @@ class SidebarGroupView: NSView {
         rebuildItems(items: items)
 
         // lx.hideTabBar/showTabBar map to collapsing/expanding this group.
+        // API-driven, so not persisted — the app re-establishes it on launch.
         if lastAppliedTabBarVisible != tabBar.is_visible {
             lastAppliedTabBarVisible = tabBar.is_visible
             if isExpanded != tabBar.is_visible && !itemViews.isEmpty {
-                toggleExpanded()
+                toggleExpanded(persist: false)
+            }
+        }
+
+        // One-time restore of the user's saved collapse state (after the API
+        // sync above, so a launch-time hideTabBar wins over the stored value).
+        if !didRestoreCollapsedState, !itemViews.isEmpty {
+            didRestoreCollapsedState = true
+            if let collapsed = LxAppShellPersistence.groupCollapsed(appId: appId),
+               collapsed == isExpanded {
+                toggleExpanded(persist: false)
             }
         }
     }
@@ -493,8 +506,13 @@ class SidebarGroupView: NSView {
         }
     }
 
-    private func toggleExpanded() {
+    /// `persist: true` only for user-driven toggles (chevron/header click);
+    /// API sync and state restore pass false so only user intent is stored.
+    private func toggleExpanded(persist: Bool = true) {
         isExpanded.toggle()
+        if persist {
+            LxAppShellPersistence.setGroupCollapsed(!isExpanded, appId: appId)
+        }
         // Re-evaluate the collapsed aggregate against the current items.
         let hasNotifications = itemViews.contains { $0.hasNotification }
         aggregateDot.isHidden = isExpanded || !hasNotifications

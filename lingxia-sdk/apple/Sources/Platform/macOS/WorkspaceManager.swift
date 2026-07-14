@@ -331,6 +331,11 @@ class WorkspaceManager: NSObject {
 
         let slot = PanelSlot(config: config, cornerRadius: Self.cornerRadius)
         slot.applyShadow(for: config.position)
+        // Asides restore geometry only (never content): a user-resized size
+        // survives restarts, clamped against the current layout.
+        if let saved = LxAppShellPersistence.asideSize(panelId: config.id) {
+            slot.currentSize = clampedPanelSize(saved, for: config.position, excluding: config.id)
+        }
         panels[config.id] = slot
         lxWorkspaceStdoutLog(
             "registerPanel new id=\(config.id) position=\(config.position.rawValue) defaultSize=\(String(format: "%.1f", config.defaultSize)) currentSize=\(String(format: "%.1f", slot.currentSize))"
@@ -624,6 +629,7 @@ class WorkspaceManager: NSObject {
         )
         slot.currentSize = clamped
         slot.sizeConstraint?.constant = clamped
+        LxAppShellPersistence.setAsideSize(clamped, panelId: id)
         relayoutSideChain(slot.config.position)
         onCardEdgesChanged?(cardTrailingInset(), cardBottomInset(), cardTopInset(), cardLeadingInset())
         overlayParent?.layoutSubtreeIfNeeded()

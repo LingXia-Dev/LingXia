@@ -247,7 +247,9 @@ async fn open_surface_spec(ctx: JSContext, spec: JSValue) -> JSResult<JSValue> {
     match keys {
         [true, ..] => open_page_spec(ctx, &obj).await.map(JSObject::into_js_value),
         [_, true, ..] => open_url_spec(ctx, &obj).await,
-        [_, _, true, _] => open_lxapp_spec(ctx, &obj).await.map(JSObject::into_js_value),
+        [_, _, true, _] => open_lxapp_spec(ctx, &obj)
+            .await
+            .map(JSObject::into_js_value),
         _ => open_native_spec(&ctx, &obj).map(JSObject::into_js_value),
     }
 }
