@@ -1,7 +1,7 @@
 //! Shared `libghostty-vt` FFI bindings + render-state snapshot.
 //!
 //! Rewritten to match the **actual** upstream API at GHOSTTY_REV
-//! `ca7516bea60190ee2e9a4f9182b61d318d107c6e` — `include/ghostty/vt/*.h`.
+//! `55a3e33ab26a23d75b274b23c7f76d837db00578` — `include/ghostty/vt/*.h`.
 //! Key lifecycle:
 //!
 //! 1. `terminal = ghostty_terminal_new(NULL_alloc, opts)`
@@ -1223,6 +1223,7 @@ impl VtScreen {
 
         // Cursor read from the render state keys (not the terminal, to
         // stay consistent with the render snapshot).
+        let mut cursor_in_viewport: bool = false;
         let mut visible: bool = false;
         let mut col_u16: u16 = 0;
         let mut row_u16: u16 = 0;
@@ -1230,6 +1231,11 @@ impl VtScreen {
         // SAFETY: out params sized per upstream render.h; the visual
         // style is a C enum (int) converted after the call.
         unsafe {
+            let _ = ghostty_render_state_get(
+                inner.render_state,
+                GhosttyRenderStateData::CursorViewportHasValue,
+                &mut cursor_in_viewport as *mut _ as *mut c_void,
+            );
             let _ = ghostty_render_state_get(
                 inner.render_state,
                 GhosttyRenderStateData::CursorViewportX,
@@ -1255,7 +1261,7 @@ impl VtScreen {
         let cursor = Cursor {
             col: col_u16,
             row: row_u16,
-            visible,
+            visible: cursor_in_viewport && visible,
             style: GhosttyRenderStateCursorVisualStyle::from_raw(cursor_style_raw),
         };
         let previous_cursor = inner.last_cursor;
@@ -1808,11 +1814,16 @@ mod tests {
         assert!(!bottom.contains("one"), "bottom snapshot: {bottom:?}");
 
         assert!(screen.scroll_viewport_delta(-2));
-        let scrolled = snapshot_text(&screen.snapshot());
+        let snapshot = screen.snapshot();
+        let scrolled = snapshot_text(&snapshot);
         assert!(scrolled.contains("one"), "scrolled snapshot: {scrolled:?}");
         assert!(
             !scrolled.contains("five"),
             "scrolled snapshot: {scrolled:?}"
+        );
+        assert!(
+            !snapshot.cursor.visible,
+            "history must not show the live cursor"
         );
     }
 }
