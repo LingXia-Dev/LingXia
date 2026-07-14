@@ -164,6 +164,17 @@ pub(crate) fn bookmark_favicon_path(url: &str) -> String {
     }
 }
 
+#[cfg_attr(not(any(target_os = "ios", target_os = "macos")), allow(dead_code))]
+pub(crate) fn store_favicon(url: &str, bytes: &[u8]) -> bool {
+    #[cfg(feature = "browser-shell")]
+    return lingxia_browser_shell::store_bookmark_favicon(url, bytes);
+    #[cfg(not(feature = "browser-shell"))]
+    {
+        let _ = (url, bytes);
+        false
+    }
+}
+
 /// FFI-flattened toggle: `false` means either "now unbookmarked" or "store
 /// unavailable" — callers cannot distinguish the two.
 #[cfg_attr(not(any(target_os = "ios", target_os = "macos")), allow(dead_code))]

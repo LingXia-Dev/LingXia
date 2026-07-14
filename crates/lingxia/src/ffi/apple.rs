@@ -349,6 +349,11 @@ mod bridge {
         #[swift_bridge(swift_name = "browserBookmarkFaviconPath")]
         fn browser_bookmark_favicon_path(url: &str) -> String;
 
+        // Store favicon bytes the webview resolved (declared icon link) into
+        // the shared cache so pins/tabs/docked browser all show it.
+        #[swift_bridge(swift_name = "browserFaviconStore")]
+        fn browser_favicon_store(url: &str, bytes: &[u8]) -> bool;
+
         // One sidebar management command as JSON ({"op": "rename" | "move" |
         // "createGroupAndMove" | "renameGroup" | "deleteGroup" | "setPinned",
         // ...}).
@@ -879,6 +884,12 @@ pub fn browser_bookmarks_snapshot_json() -> String {
 pub fn browser_bookmark_favicon_path(url: &str) -> String {
     ffi_catch_unwind!("browser_bookmark_favicon_path", String::new(), || {
         crate::browser::bookmark_favicon_path(url)
+    })
+}
+
+pub fn browser_favicon_store(url: &str, bytes: &[u8]) -> bool {
+    ffi_catch_unwind!("browser_favicon_store", false, || {
+        crate::browser::store_favicon(url, bytes)
     })
 }
 

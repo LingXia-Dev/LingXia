@@ -416,6 +416,22 @@ pub fn favicon_path(url: &str) -> Option<String> {
         .map(|path| path.to_string_lossy().into_owned())
 }
 
+/// Store favicon bytes the platform webview already resolved (page-declared
+/// icon link) into the shared cross-platform cache — the ONE favicon store
+/// pins, sidebar tab rows, and the docked browser all read — and wake native
+/// chrome so pin tiles pick it up.
+pub fn store_favicon(url: &str, bytes: &[u8]) -> bool {
+    let Some(runtime) = lxapp::get_platform() else {
+        return false;
+    };
+    let stored =
+        lingxia_service::favicon::store_for_url(&runtime.app_cache_dir(), url, bytes).is_some();
+    if stored && let Some(listener) = change_listener().get() {
+        listener();
+    }
+    stored
+}
+
 /// Pin `url` to the sidebar grid ("Pin to Sidebar" on a tab). Bookmarks the
 /// page first when needed, keeping the pinned ⊆ bookmarked invariant without
 /// forcing a two-step flow on the user.

@@ -298,6 +298,7 @@ final class DockedBrowser: NSObject {
             Task { @MainActor in
                 guard let self, let tab, !self.torn else { return }
                 tab.url = webView.url?.absoluteString ?? tab.url
+                self.refreshFavicon(tab: tab, webView: webView)
             }
         }
         tab.titleObs = webView.observe(\.title, options: [.initial, .new]) { [weak self, weak tab] webView, _ in
@@ -319,6 +320,20 @@ final class DockedBrowser: NSObject {
                 guard let self, let tab, !self.torn, tab.surfaceId == self.activeSurfaceId else { return }
                 self.updateBackForward(canGoBack: webView.canGoBack, canGoForward: webView.canGoForward)
             }
+        }
+    }
+
+    /// Resolve and apply the tab's favicon (page-declared link first,
+    /// /favicon.ico fallback); the globe placeholder stays until one lands.
+    private func refreshFavicon(tab: Tab, webView: WKWebView) {
+        let requestURL = webView.url
+        Task { @MainActor [weak self, weak tab] in
+            guard let image = await FaviconLoader.resolve(webView: webView) else { return }
+            guard let self, let tab, !self.torn,
+                  tab.webView?.url == requestURL else { return }
+            image.size = NSSize(width: Layout.tabIconSize, height: Layout.tabIconSize)
+            tab.iconView.image = image
+            tab.iconView.contentTintColor = nil
         }
     }
 

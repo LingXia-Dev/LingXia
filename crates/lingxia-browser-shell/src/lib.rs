@@ -29,7 +29,8 @@ pub use bookmarks::{
     normalize_url_for_match as normalize_bookmark_url, pin_url as pin_bookmark_url,
     pin_url_with_favicon as pin_bookmark_url_with_favicon, remove_by_url as remove_bookmark_by_url,
     set_change_listener as set_bookmarks_change_listener, snapshot as bookmarks_snapshot,
-    snapshot_json as bookmarks_snapshot_json, toggle_bookmark,
+    snapshot_json as bookmarks_snapshot_json, store_favicon as store_bookmark_favicon,
+    toggle_bookmark,
 };
 pub use facade::{
     APP_ID, classify_navigation, classify_navigation_json, close, download, open, open_for_app,
