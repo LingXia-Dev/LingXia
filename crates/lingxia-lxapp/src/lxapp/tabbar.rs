@@ -263,17 +263,21 @@ impl TabBar {
 }
 
 // Default functions for serde
+// Undeclared style stays EMPTY so each platform skin applies its own
+// default (mobile: gray/#1677FF/white/#F0F0F0 at the FFI parse sites;
+// desktop: the neutral dark sidebar theme). Baking mobile defaults in
+// here made every app "explicitly" light-styled on the dark sidebar.
 fn default_selected_color() -> String {
-    "#1677FF".to_string()
+    String::new()
 }
 fn default_unselected_color() -> String {
-    "#666666".to_string()
+    String::new()
 }
 fn default_background_color() -> String {
-    "#ffffff".to_string()
+    String::new()
 }
 fn default_border_color() -> String {
-    "#F0F0F0".to_string()
+    String::new()
 }
 fn default_dimension() -> i32 {
     64

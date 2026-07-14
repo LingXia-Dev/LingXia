@@ -61,6 +61,12 @@ mod bridge {
         /// what desktop skins map to group collapse.
         pub is_api_hidden: bool,
         pub selected_index: i32,
+        /// Which style fields the app DECLARED (bit0 color, bit1
+        /// selectedColor, bit2 backgroundColor, bit3 borderStyle). The color
+        /// fields above always carry effective values (mobile defaults);
+        /// desktop skins use this mask to keep undeclared styles on the
+        /// neutral theme instead of inheriting light mobile defaults.
+        pub styled_mask: u32,
     }
 
     // TabBar item for Swift
@@ -1394,6 +1400,10 @@ pub fn get_tab_bar(appid: &str) -> Option<self::bridge::TabBar> {
             is_visible: tabbar.is_visible,
             is_api_hidden: tabbar.api_hidden,
             selected_index: tabbar.selected_index,
+            styled_mask: (!tabbar.color.is_empty() as u32)
+                | ((!tabbar.selectedColor.is_empty() as u32) << 1)
+                | ((!tabbar.backgroundColor.is_empty() as u32) << 2)
+                | ((!tabbar.borderStyle.is_empty() as u32) << 3),
         })
     })
 }

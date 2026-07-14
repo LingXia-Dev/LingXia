@@ -176,6 +176,11 @@ class SidebarGroupView: NSView {
     /// Attribution-line base from the tabbar's borderStyle: "white" reads as
     /// a light hairline, "black" (default) as the darker separator.
     private var attributionBaseColor: NSColor = .separatorColor
+    /// Unselected item title tint from the tabbar's `color`; nil = neutral.
+    private var itemTint: NSColor?
+    /// Expanded items-area wash from the tabbar's `backgroundColor`;
+    /// nil = transparent (the sidebar base shows through).
+    private var itemsAreaColor: NSColor?
     /// Thin vertical line binding the expanded items to their group header
     /// (Windows-baseline attribution line, tabbar-tinted).
     private let attributionLine = NSView()
@@ -231,7 +236,9 @@ class SidebarGroupView: NSView {
         appNameLabel.textColor = .labelColor
         chevronIndicator.contentTintColor = .secondaryLabelColor
         closeButton.contentTintColor = NSColor.secondaryLabelColor.withAlphaComponent(0.9)
-        itemsBackground.layer?.backgroundColor = NSColor.clear.cgColor
+        // tabbar backgroundColor maps to the expanded items area (the group's
+        // own strip surface); unset stays transparent on the sidebar base.
+        itemsBackground.layer?.backgroundColor = (itemsAreaColor ?? NSColor.clear).cgColor
     }
 
     private func setupViews() {
@@ -241,7 +248,10 @@ class SidebarGroupView: NSView {
         itemsBackground.translatesAutoresizingMaskIntoConstraints = false
         itemsBackground.wantsLayer = true
         itemsBackground.layer?.cornerRadius = Layout.headerCornerRadius
-        itemsBackground.layer?.maskedCorners = [.layerMinXMaxYCorner, .layerMaxXMaxYCorner]
+        // Bottom corners (non-flipped: minY = bottom) — the expanded group
+        // reads as ONE card: header rounds the top, this rounds the bottom,
+        // and the seam between them stays square.
+        itemsBackground.layer?.maskedCorners = [.layerMinXMinYCorner, .layerMaxXMinYCorner]
         addSubview(itemsBackground)
 
         // Header (colored pill, custom hitTest)
@@ -421,11 +431,15 @@ class SidebarGroupView: NSView {
             return
         }
 
-        // Style follows the lxapp's tabbar config; 0 (unset) keeps neutral.
-        tabBarTint = tabBar.selected_color != 0
-            ? PlatformColor(argb: tabBar.selected_color)
-            : nil
-        attributionBaseColor = tabBar.border_style != 0
+        // Style follows the lxapp's tabbar config — but only fields the app
+        // DECLARED (styled_mask). The color values always carry effective
+        // mobile defaults, and those are designed for a light bar: inheriting
+        // them here would paint every unstyled app light-on-dark.
+        let mask = tabBar.styled_mask
+        itemTint = mask & 0b0001 != 0 ? PlatformColor(argb: tabBar.color) : nil
+        tabBarTint = mask & 0b0010 != 0 ? PlatformColor(argb: tabBar.selected_color) : nil
+        itemsAreaColor = mask & 0b0100 != 0 ? PlatformColor(argb: tabBar.background_color) : nil
+        attributionBaseColor = mask & 0b1000 != 0
             ? PlatformColor(argb: tabBar.border_style)
             : NSColor.separatorColor
         applyColors()
@@ -466,6 +480,7 @@ class SidebarGroupView: NSView {
             let itemView = SidebarItemView(appId: appId, itemIndex: index)
             itemView.translatesAutoresizingMaskIntoConstraints = false
             itemView.selectedTint = tabBarTint
+            itemView.unselectedTint = itemTint
             itemView.configure(item: item)
             itemView.onClick = { [weak self] idx in
                 guard let self else { return }
@@ -554,7 +569,7 @@ class SidebarGroupView: NSView {
 
         // Round only top corners when expanded (bottom blends into items bg), all corners when collapsed
         if isExpanded {
-            headerView.layer?.maskedCorners = [.layerMinXMinYCorner, .layerMaxXMinYCorner]
+            headerView.layer?.maskedCorners = [.layerMinXMaxYCorner, .layerMaxXMaxYCorner]
         } else {
             headerView.layer?.maskedCorners = [.layerMinXMinYCorner, .layerMaxXMinYCorner, .layerMinXMaxYCorner, .layerMaxXMaxYCorner]
         }

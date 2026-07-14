@@ -43,6 +43,13 @@ class SidebarItemView: NSView {
     /// nil falls back to the system accent (spec: style follows the tabbar
     /// config, the shell injects no accent of its own).
     var selectedTint: NSColor? { didSet { updateAppearance() } }
+    /// Unselected title tint from the tabbar's `color`; nil keeps the neutral
+    /// label color.
+    var unselectedTint: NSColor? { didSet { updateAppearance() } }
+    /// Icon pair from the item config; selection swaps between them exactly
+    /// like the mobile tabbar (colors style TEXT, icons come as a pair).
+    private var normalIconPath = ""
+    private var selectedIconPath = ""
 
     let itemIndex: Int
     let appId: String
@@ -183,9 +190,10 @@ class SidebarItemView: NSView {
     func configure(item: TabBarItem) {
         titleLabel.stringValue = item.cachedText
 
-        // Load icon
-        let iconPath = item.cachedIconPath
-        loadIcon(path: iconPath)
+        // Icon pair: selection swaps normal/selected images (mobile parity).
+        normalIconPath = item.cachedIconPath
+        selectedIconPath = item.cachedSelectedIconPath
+        loadIcon(path: isSelected && !selectedIconPath.isEmpty ? selectedIconPath : normalIconPath)
 
         // Badge / red dot from Rust state
         if let rustItem = getTabBarItem(appId, Int32(itemIndex)) {
@@ -245,11 +253,13 @@ class SidebarItemView: NSView {
         let accent = selectedTint ?? NSColor.controlAccentColor
         accentBar.isHidden = !isSelected
         accentBar.layer?.backgroundColor = accent.cgColor
+        // Selection swaps the icon pair, mirroring the mobile tabbar.
+        loadIcon(path: isSelected && !selectedIconPath.isEmpty ? selectedIconPath : normalIconPath)
         if isSelected {
             // Windows-baseline selected card: a light floating card on the
-            // dark base, accent icon + accent bar, near-neutral title.
-            // Fixed light card regardless of theme — the sidebar base is
-            // always dark, matching the Windows implementation.
+            // dark base, accent icon + accent bar. The title takes the
+            // tabbar's selectedColor (mobile parity); a near-neutral dark
+            // stands in when the app declares none.
             selectionBackground.layer?.backgroundColor =
                 NSColor.white.withAlphaComponent(0.95).cgColor
             selectionBackground.shadow = {
@@ -260,19 +270,19 @@ class SidebarItemView: NSView {
                 return shadow
             }()
             titleLabel.font = NSFont.systemFont(ofSize: 13, weight: .medium)
-            titleLabel.textColor = NSColor(calibratedWhite: 0.15, alpha: 1)
+            titleLabel.textColor = selectedTint ?? NSColor(calibratedWhite: 0.15, alpha: 1)
             iconView.contentTintColor = accent
         } else if isHovered {
             selectionBackground.shadow = nil
             titleLabel.font = NSFont.systemFont(ofSize: 13, weight: .regular)
             selectionBackground.layer?.backgroundColor = NSColor.labelColor.withAlphaComponent(0.06).cgColor
-            titleLabel.textColor = NSColor.labelColor
+            titleLabel.textColor = unselectedTint ?? NSColor.labelColor
             iconView.contentTintColor = NSColor.secondaryLabelColor
         } else {
             selectionBackground.shadow = nil
             titleLabel.font = NSFont.systemFont(ofSize: 13, weight: .regular)
             selectionBackground.layer?.backgroundColor = NSColor.clear.cgColor
-            titleLabel.textColor = NSColor.labelColor
+            titleLabel.textColor = unselectedTint ?? NSColor.labelColor
             iconView.contentTintColor = NSColor.secondaryLabelColor
         }
     }
