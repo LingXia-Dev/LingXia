@@ -208,6 +208,7 @@ mod bridge {
             height_ratio: f64,
             position: i32,
             role: i32,
+            ephemeral_web_data: bool,
         ) -> bool;
 
         // Adaptive Surface Layout (Phase 3): the shared core drives aside

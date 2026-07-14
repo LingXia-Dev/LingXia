@@ -316,6 +316,14 @@ pub(crate) struct SurfaceRecord {
 
 impl LxApp {
     pub fn open_surface(&self, request: PageSurfaceRequest) -> Result<PageSurface, LxAppError> {
+        self.open_surface_with_web_data(request, false)
+    }
+
+    fn open_surface_with_web_data(
+        &self,
+        request: PageSurfaceRequest,
+        ephemeral_web_data: bool,
+    ) -> Result<PageSurface, LxAppError> {
         if !self.is_opened() {
             return Err(LxAppError::UnsupportedOperation(
                 "lxapp is closed; surface suppressed".to_string(),
@@ -425,6 +433,7 @@ impl LxApp {
             height_ratio: finite_or_nan(request.height_ratio),
             position: present_position,
             role: present_role,
+            ephemeral_web_data,
         });
         if let Err(err) = present_result {
             self.forget_surface(&id);
@@ -543,6 +552,8 @@ impl LxApp {
             height_ratio: finite_or_nan(request.height_ratio),
             position: SurfacePosition::Center,
             role: SurfaceRole::Main,
+            // Window surfaces host this lxapp's own pages, never external web.
+            ephemeral_web_data: false,
         });
         if let Err(err) = present_result {
             // Remove only our bookkeeping; there is no graph node to close.
@@ -609,7 +620,11 @@ impl LxApp {
         }
         let channel = lingxia_webview::url_callback::open_channel(callback_url)
             .map_err(|err| LxAppError::InvalidParameter(err.to_string()))?;
-        let surface = self.open_surface(request)?;
+        // Handoff flows persist through their callback payload (tokens), never
+        // through WebView cookies, so every handoff surface gets an ephemeral
+        // web session: logout is real, and a new login can pick a different
+        // account instead of silently reusing a prior SSO cookie.
+        let surface = self.open_surface_with_web_data(request, true)?;
         Ok(UrlCallbackSurface {
             appid: self.appid.clone(),
             surface,

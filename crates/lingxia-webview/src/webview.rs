@@ -211,6 +211,22 @@ pub(crate) enum SecurityProfile {
     BrowserRelaxed,
 }
 
+/// Website-data lifetime for a WebView.
+///
+/// This is independent of the security profile: a browser-profile WebView can
+/// use an ephemeral data store without giving up browser navigation features.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WebViewDataMode {
+    /// Keep the platform behavior associated with the selected security
+    /// profile. Browser-profile WebViews use the shared persistent store.
+    #[default]
+    ProfileDefault,
+    /// Isolate cookies and site storage from persistent/shared browser data
+    /// and discard them when the WebView is destroyed.
+    Ephemeral,
+}
+
 pub(crate) type FileChooserFuture =
     Pin<Box<dyn Future<Output = FileChooserResponse> + Send + 'static>>;
 pub(crate) type FileChooserHandler =
@@ -219,6 +235,7 @@ pub(crate) type FileChooserHandler =
 /// Internal WebView creation options.
 pub(crate) struct WebViewCreateOptions {
     pub(crate) profile: SecurityProfile,
+    pub(crate) data_mode: WebViewDataMode,
     pub(crate) scheme_handlers: HashMap<String, AsyncSchemeHandler>,
     pub(crate) navigation_handler: Option<NavigationHandler>,
     pub(crate) new_window_handler: Option<NewWindowHandler>,
@@ -231,6 +248,7 @@ impl std::fmt::Debug for WebViewCreateOptions {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("WebViewCreateOptions")
             .field("profile", &self.profile)
+            .field("data_mode", &self.data_mode)
             .field(
                 "scheme_handlers",
                 &self.scheme_handlers.keys().collect::<Vec<_>>(),
@@ -369,6 +387,9 @@ impl ProxyApplyReport {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub(crate) struct EffectiveWebViewCreateOptions {
     pub(crate) profile: SecurityProfile,
+    /// Website-data lifetime, independent of the security profile.
+    #[serde(default)]
+    pub(crate) data_mode: WebViewDataMode,
     /// Scheme names registered via `on_scheme` (serializable).
     #[serde(default)]
     pub(crate) registered_schemes: Vec<String>,
@@ -394,6 +415,7 @@ impl WebViewCreateOptions {
     fn strict() -> Self {
         Self {
             profile: SecurityProfile::StrictDefault,
+            data_mode: WebViewDataMode::ProfileDefault,
             scheme_handlers: HashMap::new(),
             navigation_handler: None,
             new_window_handler: None,
@@ -406,6 +428,7 @@ impl WebViewCreateOptions {
     fn browser() -> Self {
         Self {
             profile: SecurityProfile::BrowserRelaxed,
+            data_mode: WebViewDataMode::ProfileDefault,
             scheme_handlers: HashMap::new(),
             navigation_handler: None,
             new_window_handler: None,
@@ -493,6 +516,11 @@ impl WebViewCreateOptions {
         self
     }
 
+    fn data_mode(mut self, data_mode: WebViewDataMode) -> Self {
+        self.data_mode = data_mode;
+        self
+    }
+
     pub(crate) fn normalize(
         self,
     ) -> Result<(EffectiveWebViewCreateOptions, PendingCallbacks), WebViewError> {
@@ -511,6 +539,7 @@ impl WebViewCreateOptions {
         registered_schemes.dedup();
         let effective = EffectiveWebViewCreateOptions {
             profile: self.profile,
+            data_mode: self.data_mode,
             registered_schemes,
             has_navigation_handler: self.navigation_handler.is_some(),
             has_new_window_handler: self.new_window_handler.is_some(),
@@ -577,6 +606,12 @@ impl StrictWebViewBuilder {
     /// This is the only supported way to configure delegate callbacks.
     pub fn delegate(mut self, delegate: Arc<dyn WebViewDelegate>) -> Self {
         self.options = self.options.delegate(delegate);
+        self
+    }
+
+    /// Select the website-data lifetime independently of the security profile.
+    pub fn data_mode(mut self, data_mode: WebViewDataMode) -> Self {
+        self.options = self.options.data_mode(data_mode);
         self
     }
 
@@ -668,6 +703,12 @@ impl BrowserWebViewBuilder {
         F: Fn(DownloadRequest) + Send + Sync + 'static,
     {
         self.options = self.options.on_download(handler);
+        self
+    }
+
+    /// Select the website-data lifetime independently of the security profile.
+    pub fn data_mode(mut self, data_mode: WebViewDataMode) -> Self {
+        self.options = self.options.data_mode(data_mode);
         self
     }
 
@@ -2086,9 +2127,10 @@ fn request_create_webview(
     };
 
     log::info!(
-        "Creating WebView for key={} profile={:?} schemes={:?}",
+        "Creating WebView for key={} profile={:?} data_mode={:?} schemes={:?}",
         webtag.key(),
         effective_options.profile,
+        effective_options.data_mode,
         effective_options.registered_schemes,
     );
 

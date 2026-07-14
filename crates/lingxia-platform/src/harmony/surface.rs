@@ -40,6 +40,7 @@ impl SurfacePresenter for Platform {
             double_arg(request.height_ratio),
             (request.position as i32).to_string(),
             (request.role as i32).to_string(),
+            request.ephemeral_web_data.to_string(),
         ];
         let arg_refs = args.iter().map(String::as_str).collect::<Vec<_>>();
 

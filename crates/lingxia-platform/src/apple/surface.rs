@@ -57,6 +57,7 @@ impl SurfacePresenter for Platform {
                 SurfacePosition::Top => 4,
             },
             request.role as i32,
+            request.ephemeral_web_data,
         ) {
             Ok(())
         } else {

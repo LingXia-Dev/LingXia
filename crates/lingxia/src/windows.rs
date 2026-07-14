@@ -6,7 +6,7 @@ use std::sync::{Arc, LazyLock, Mutex};
 use lingxia_platform::traits::app_runtime::AppRuntime;
 use lingxia_platform::traits::ui::SurfaceContent;
 pub use lingxia_platform::{Platform, PlatformError, set_windows_app_exit_handler};
-use lingxia_webview::{WebTag, WebViewController};
+use lingxia_webview::{WebTag, WebViewController, WebViewDataMode};
 
 static WINDOWS_APP_VISIBLE_WEBTAGS: LazyLock<Mutex<HashMap<String, HashSet<String>>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
@@ -91,19 +91,29 @@ fn install_url_surface_bridge() {
         if request.content != SurfaceContent::Url {
             return None;
         }
-        // With the browser engine compiled in, a URL surface is a standalone
-        // managed browser tab (downloads, new-window policy: window.open from
-        // a docked aside opens a sibling aside tab) - macOS DockedBrowser
-        // parity. Without it (plain builds), a browser-profile WebView2
-        // renders the URL directly.
+        // The data mode is orthogonal to browser behavior, so ephemeral (auth
+        // handoff) and ordinary URL surfaces share the same tab delegate and
+        // error UI.
+        let data_mode = if request.ephemeral_web_data {
+            WebViewDataMode::Ephemeral
+        } else {
+            WebViewDataMode::ProfileDefault
+        };
+        // With the browser engine compiled in, a URL surface is a
+        // standalone managed browser tab (downloads, new-window policy:
+        // window.open from a docked aside opens a sibling aside tab) - macOS
+        // DockedBrowser parity. Without it (plain builds), a browser-profile
+        // WebView2 renders the URL directly.
         #[cfg(feature = "browser-runtime")]
-        if let Some(resolved) = resolve_url_surface_as_browser_tab(request) {
+        if let Some(resolved) = resolve_url_surface_as_browser_tab(request, data_mode) {
             return Some(resolved);
         }
         // `teardown_surface` destroys this webview by its webtag, so no cleanup hook.
         let webtag = WebTag::new(&request.app_id, &request.path, Some(request.session_id));
         let url = request.path.clone();
-        let session = lingxia_webview::WebViewBuilder::browser(webtag).create();
+        let session = lingxia_webview::WebViewBuilder::browser(webtag)
+            .data_mode(data_mode)
+            .create();
         std::mem::drop(crate::task::spawn(async move {
             match session.wait_ready().await {
                 Ok(webview) => {
@@ -126,12 +136,14 @@ fn install_url_surface_bridge() {
 #[cfg(feature = "browser-runtime")]
 fn resolve_url_surface_as_browser_tab(
     request: &lingxia_platform::traits::ui::SurfaceRequest,
+    data_mode: WebViewDataMode,
 ) -> Option<lingxia_platform::WindowsUrlSurfaceWebTag> {
     let tab_id = crate::browser::open_standalone_for_app(
         &request.app_id,
         request.session_id,
         &request.path,
         None,
+        data_mode,
     )
     .inspect_err(|err| log::warn!("URL surface browser tab failed for {}: {err}", request.path))
     .ok()?;

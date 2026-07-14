@@ -95,6 +95,10 @@ pub struct SurfaceRequest {
     pub position: SurfacePosition,
     /// Arbitrated role; the platform uses it to decide dock vs popup vs window.
     pub role: SurfaceRole,
+    /// `Url` content only: isolate the WebView's cookies/site storage from
+    /// shared persistent data and discard them when the surface closes (auth
+    /// handoffs). `Page` content ignores it.
+    pub ephemeral_web_data: bool,
 }
 
 pub trait SurfacePresenter: Send + Sync + 'static {

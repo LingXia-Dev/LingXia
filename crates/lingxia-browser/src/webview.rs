@@ -26,7 +26,7 @@ use lingxia_webview::runtime::{
 };
 use lingxia_webview::{
     LogLevel, NavigationEvent, NavigationPolicy, NavigationProgress, NewWindowPolicy, WebTag,
-    WebView, WebViewBuilder, WebViewController, WebViewDelegate, WebViewSession,
+    WebView, WebViewBuilder, WebViewController, WebViewDataMode, WebViewDelegate, WebViewSession,
     WebViewStateChange,
 };
 use lxapp::LxAppError;
@@ -249,6 +249,7 @@ pub(crate) fn browser_create_webview(
     session_id: u64,
     tab_id: &str,
     create_token: u64,
+    data_mode: WebViewDataMode,
 ) -> Result<(), LxAppError> {
     let webtag = browser_webtag(path, session_id);
     let browser_owner = ensure_browser_lxapp()?;
@@ -278,6 +279,7 @@ pub(crate) fn browser_create_webview(
     let owner_for_download = browser_owner.clone();
     let owner_for_file_chooser = browser_owner.clone();
     let session = WebViewBuilder::browser(webtag)
+        .data_mode(data_mode)
         .delegate(Arc::new(BrowserTabDelegate {
             tab_id: tab_id_owned.clone(),
             page_path: tab_path_owned.clone(),

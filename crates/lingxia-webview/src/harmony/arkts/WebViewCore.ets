@@ -38,6 +38,7 @@ const TAG = 'LingXia.WebView';
 
 export interface EffectiveWebViewCreateOptions {
   profile: string;
+  dataMode: string;
   hasDownloadHandler: boolean;
   hasFileChooserHandler: boolean;
 }
@@ -68,15 +69,19 @@ export interface WebViewHostHooks {
 
 interface RawOptionsToken {
   profile?: string;
+  data_mode?: string;
   has_download_handler?: boolean;
   has_file_chooser_handler?: boolean;
 }
 
 const PROFILE_STRICT_DEFAULT = 'strict_default';
 const PROFILE_BROWSER_RELAXED = 'browser_relaxed';
+const DATA_MODE_PROFILE_DEFAULT = 'profile_default';
+const DATA_MODE_EPHEMERAL = 'ephemeral';
 
 const STRICT_DEFAULT_OPTIONS: EffectiveWebViewCreateOptions = {
   profile: PROFILE_STRICT_DEFAULT,
+  dataMode: DATA_MODE_PROFILE_DEFAULT,
   hasDownloadHandler: false,
   hasFileChooserHandler: false
 };
@@ -130,6 +135,7 @@ function bindDefaultHostHooksIfNeeded(): void {
 function strictDefaultOptions(): EffectiveWebViewCreateOptions {
   return {
     profile: STRICT_DEFAULT_OPTIONS.profile,
+    dataMode: STRICT_DEFAULT_OPTIONS.dataMode,
     hasDownloadHandler: STRICT_DEFAULT_OPTIONS.hasDownloadHandler,
     hasFileChooserHandler: STRICT_DEFAULT_OPTIONS.hasFileChooserHandler
   };
@@ -177,6 +183,15 @@ function normalizeDecodedOptions(raw: Object): EffectiveWebViewCreateOptions {
     }
   }
 
+  if (typeof data.data_mode === 'string') {
+    const dataMode = data.data_mode.toLowerCase();
+    if (dataMode === DATA_MODE_PROFILE_DEFAULT || dataMode === DATA_MODE_EPHEMERAL) {
+      normalized.dataMode = dataMode;
+    } else {
+      hilog.warn(DOMAIN, TAG, `Invalid data mode=${dataMode}, fallback to profile_default`);
+    }
+  }
+
   normalized.hasDownloadHandler = data.has_download_handler === true;
   normalized.hasFileChooserHandler = data.has_file_chooser_handler === true;
 
@@ -200,6 +215,7 @@ function decodeOptionsToken(optionsToken?: string): EffectiveWebViewCreateOption
 
 function optionsEqual(a: EffectiveWebViewCreateOptions, b: EffectiveWebViewCreateOptions): boolean {
   return a.profile === b.profile
+    && a.dataMode === b.dataMode
     && a.hasDownloadHandler === b.hasDownloadHandler
     && a.hasFileChooserHandler === b.hasFileChooserHandler;
 }
@@ -756,6 +772,10 @@ export function getWebViewCreateOptions(webtag: string): EffectiveWebViewCreateO
 
 export function isBrowserRelaxedProfile(webtag: string): boolean {
   return getWebViewCreateOptions(webtag).profile === PROFILE_BROWSER_RELAXED;
+}
+
+export function isEphemeralDataMode(webtag: string): boolean {
+  return getWebViewCreateOptions(webtag).dataMode === DATA_MODE_EPHEMERAL;
 }
 
 export function handleWebViewLoadError(

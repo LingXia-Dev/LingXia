@@ -51,7 +51,6 @@ internal enum class SurfacePosition(val value: Int) {
 
 internal object LxAppSurface {
     private const val TAG = "LingXia.Surface"
-    private const val AUTH_CALLBACK_SURFACE_ID_PREFIX = "cloud-auth-"
     private const val CONTENT_PAGE = 0
     private const val CONTENT_URL = 1
     private const val KIND_WINDOW = 0
@@ -95,7 +94,8 @@ internal object LxAppSurface {
         val widthRatio: Double,
         val heightRatio: Double,
         val position: SurfacePosition,
-        val role: Int
+        val role: Int,
+        val ephemeralWebData: Boolean
     )
 
     private enum class PendingVisibility {
@@ -121,7 +121,8 @@ internal object LxAppSurface {
         widthRatio: Double,
         heightRatio: Double,
         position: Int,
-        role: Int
+        role: Int,
+        ephemeralWebData: Boolean
     ): Boolean {
         if (id.isBlank() || appId.isBlank() || sessionId <= 0L) return false
         if (kind != KIND_POPUP && kind != KIND_WINDOW) return false
@@ -147,12 +148,13 @@ internal object LxAppSurface {
             widthRatio = widthRatio,
             heightRatio = heightRatio,
             position = SurfacePosition.fromInt(position),
-            role = role
+            role = role,
+            ephemeralWebData = ephemeralWebData
         )
         pendingRequests[request.id] = request
         activity.runOnUiThread {
             if (request.content == CONTENT_URL) {
-                mount(activity, request, createExternalWebView(activity, request.id, request.path))
+                mount(activity, request, createExternalWebView(activity, request.path, request.ephemeralWebData))
             } else {
                 mountWhenReady(activity, request, 0)
             }
@@ -598,8 +600,8 @@ internal object LxAppSurface {
     @Suppress("DEPRECATION")
     private fun createExternalWebView(
         activity: Activity,
-        id: String,
-        url: String
+        url: String,
+        ephemeralWebData: Boolean
     ): android.webkit.WebView {
         val webView = android.webkit.WebView(activity).apply {
             settings.javaScriptEnabled = true
@@ -646,15 +648,15 @@ internal object LxAppSurface {
             }
             webChromeClient = WebChromeClient()
         }
-        if (id.startsWith(AUTH_CALLBACK_SURFACE_ID_PREFIX)) {
-            // Auth handoff surfaces (lingxia-cloud-client open_url_callback_surface)
-            // start with a clean IdP session so logout is real and lx.auth.add()
-            // can switch accounts. Android's CookieManager is process-global AND
-            // removeAllCookies is asynchronous, so the load must wait for the
-            // removal callback — calling loadUrl immediately would race it and
-            // still send the stale SSO cookie on the first IdP request. Auth
-            // sheets are modal and rare, so clearing the global jar is acceptable
-            // (other surfaces simply re-auth).
+        if (ephemeralWebData) {
+            // An ephemeral surface (auth handoffs) starts with a clean IdP
+            // session so logout is real and lx.auth.add() can switch accounts.
+            // Android's CookieManager is process-global AND removeAllCookies is
+            // asynchronous, so the load must wait for the removal callback —
+            // calling loadUrl immediately would race it and still send the
+            // stale SSO cookie on the first IdP request. Ephemeral sheets are
+            // modal and rare, so clearing the global jar is acceptable (other
+            // surfaces simply re-auth).
             val cookieManager = CookieManager.getInstance()
             cookieManager.removeAllCookies {
                 cookieManager.flush()

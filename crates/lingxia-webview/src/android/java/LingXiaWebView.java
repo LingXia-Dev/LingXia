@@ -19,11 +19,14 @@ import android.webkit.CookieManager;
 import android.webkit.DownloadListener;
 import android.webkit.ValueCallback;
 import android.webkit.WebSettings;
+import android.webkit.WebStorage;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import java.io.ByteArrayOutputStream;
 import androidx.webkit.ProxyConfig;
 import androidx.webkit.ProxyController;
+import androidx.webkit.ProfileStore;
+import androidx.webkit.WebViewCompat;
 import androidx.webkit.WebViewFeature;
 import java.util.Locale;
 import java.util.Map;
@@ -53,6 +56,8 @@ public class LingXiaWebView extends WebView {
     private static final int NEW_WINDOW_POLICY_LOAD_IN_SELF = 1;
     private static final AtomicLong sProxyRequestRevision = new AtomicLong(0L);
     private static final AtomicLong sFileChooserRequestSeq = new AtomicLong(0L);
+    private static final AtomicLong sEphemeralProfileSeq = new AtomicLong(0L);
+    private static final String EPHEMERAL_PROFILE_PREFIX = "lingxia_ephemeral_";
 
     // MessagePort bridge instance (API 23+ only), accessed via cached reflection
     private Object messagePortBridge;
@@ -65,6 +70,8 @@ public class LingXiaWebView extends WebView {
     private long sessionId;
     private boolean pageLoaded = false;
     private CreateOptions createOptions = CreateOptions.strictDefault();
+    private String ephemeralProfileName;
+    private boolean usesGlobalEphemeralFallback;
     private static volatile boolean sHttpProxyEnabled = false;
     private final ConcurrentHashMap<Long, ValueCallback<android.net.Uri[]>> pendingFileChoosers =
             new ConcurrentHashMap<>();
@@ -105,6 +112,7 @@ public class LingXiaWebView extends WebView {
 
     public static class CreateOptions {
         public String profile;
+        public String dataMode;
         public boolean domStorageEnabled;
         public boolean databaseEnabled;
         public boolean hasNewWindowHandler;
@@ -114,6 +122,7 @@ public class LingXiaWebView extends WebView {
         static CreateOptions strictDefault() {
             CreateOptions options = new CreateOptions();
             options.profile = "strict_default";
+            options.dataMode = "profile_default";
             options.domStorageEnabled = false;
             options.databaseEnabled = false;
             options.hasNewWindowHandler = false;
@@ -125,6 +134,7 @@ public class LingXiaWebView extends WebView {
         static CreateOptions browserRelaxed() {
             CreateOptions options = new CreateOptions();
             options.profile = "browser_relaxed";
+            options.dataMode = "profile_default";
             options.domStorageEnabled = true;
             options.databaseEnabled = true;
             options.hasNewWindowHandler = false;
@@ -158,6 +168,12 @@ public class LingXiaWebView extends WebView {
                     profile = "strict_default";
                 }
                 CreateOptions options = fromProfile(profile);
+                String dataMode = obj.optString("data_mode", "profile_default");
+                if (!"profile_default".equals(dataMode) && !"ephemeral".equals(dataMode)) {
+                    Log.w(TAG, "Invalid data mode in options token: " + dataMode + ", fallback to profile_default");
+                    dataMode = "profile_default";
+                }
+                options.dataMode = dataMode;
                 options.hasNewWindowHandler = obj.optBoolean("has_new_window_handler", false);
                 options.hasDownloadHandler = obj.optBoolean("has_download_handler", false);
                 options.hasFileChooserHandler = obj.optBoolean("has_file_chooser_handler", false);
@@ -221,11 +237,12 @@ public class LingXiaWebView extends WebView {
                         webView = new LingXiaWebView(sApplicationContext);
                     }
 
-                    webView.applyCreateOptionsToken(optionsToken);
-                    webView.initializeWebView(appId, path, sessionId);
-
-                    // Notify Rust that WebView is ready
-                    notifyWebViewReady(appId, path, sessionId, webView);
+                    final LingXiaWebView createdWebView = webView;
+                    createdWebView.applyCreateOptionsToken(optionsToken);
+                    createdWebView.prepareDataMode(() -> {
+                        createdWebView.initializeWebView(appId, path, sessionId);
+                        notifyWebViewReady(appId, path, sessionId, createdWebView);
+                    });
                 } catch (Throwable e) {
                     Log.e(TAG, "Failed to create WebView: " + e.getMessage(), e);
                 }
@@ -413,12 +430,60 @@ public class LingXiaWebView extends WebView {
         Log.i(
             TAG,
             "Apply create options: profile=" + this.createOptions.profile
+                + ", dataMode=" + this.createOptions.dataMode
                 + ", domStorage=" + this.createOptions.domStorageEnabled
                 + ", database=" + this.createOptions.databaseEnabled
                 + ", hasNewWindowHandler=" + this.createOptions.hasNewWindowHandler
                 + ", hasDownloadHandler=" + this.createOptions.hasDownloadHandler
                 + ", hasFileChooserHandler=" + this.createOptions.hasFileChooserHandler
         );
+    }
+
+    private void prepareDataMode(Runnable continuation) {
+        if (!"ephemeral".equals(this.createOptions.dataMode)) {
+            continuation.run();
+            return;
+        }
+        if (!WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)) {
+            // Old engines have only a process-global cookie/storage store.
+            // Clear it before publishing the WebView so the first navigation
+            // cannot race stale SSO cookies; clear again on teardown below.
+            this.usesGlobalEphemeralFallback = true;
+            CookieManager cookieManager = CookieManager.getInstance();
+            cookieManager.removeAllCookies(value -> {
+                cookieManager.flush();
+                WebStorage.getInstance().deleteAllData();
+                post(continuation);
+            });
+            return;
+        }
+
+        String profileName = EPHEMERAL_PROFILE_PREFIX
+                + android.os.Process.myPid()
+                + "_"
+                + sEphemeralProfileSeq.incrementAndGet();
+        ProfileStore.getInstance().getOrCreateProfile(profileName);
+        WebViewCompat.setProfile(this, profileName);
+        this.ephemeralProfileName = profileName;
+        continuation.run();
+    }
+
+    private static void deleteEphemeralProfile(String profileName, int attemptsRemaining) {
+        try {
+            if (ProfileStore.getInstance().deleteProfile(profileName)) {
+                return;
+            }
+        } catch (Throwable error) {
+            Log.w(TAG, "Failed to delete ephemeral WebView profile " + profileName, error);
+        }
+        if (attemptsRemaining > 0) {
+            new Handler(Looper.getMainLooper()).postDelayed(
+                    () -> deleteEphemeralProfile(profileName, attemptsRemaining - 1),
+                    100L
+            );
+        } else {
+            Log.w(TAG, "Ephemeral WebView profile remains in use: " + profileName);
+        }
     }
 
     private void initializeWebViewInternal() {
@@ -1104,6 +1169,17 @@ public class LingXiaWebView extends WebView {
                     }
                     pendingFileChoosers.clear();
                     LingXiaWebView.super.destroy();
+                    String profileName = ephemeralProfileName;
+                    ephemeralProfileName = null;
+                    if (profileName != null) {
+                        deleteEphemeralProfile(profileName, 5);
+                    }
+                    if (usesGlobalEphemeralFallback) {
+                        usesGlobalEphemeralFallback = false;
+                        CookieManager cookieManager = CookieManager.getInstance();
+                        cookieManager.removeAllCookies(value -> cookieManager.flush());
+                        WebStorage.getInstance().deleteAllData();
+                    }
                     Log.d(TAG, "WebView destroyed successfully");
                 } catch (Exception e) {
                     Log.e(TAG, "Critical error during WebView destruction", e);

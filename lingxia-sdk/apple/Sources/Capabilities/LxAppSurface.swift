@@ -213,7 +213,8 @@ enum LxAppSurface {
         widthRatio: Double,
         heightRatio: Double,
         position: Int32,
-        role: Int32
+        role: Int32,
+        ephemeralWebData: Bool
     ) -> Bool {
         if let existing = entries[id] {
             if existing.dockedPosition != nil {
@@ -386,7 +387,7 @@ enum LxAppSurface {
             }
             pageInstanceId = ""
             hostView = nil
-            let configuration = webSurfaceConfiguration(id: id)
+            let configuration = webSurfaceConfiguration(ephemeral: ephemeralWebData)
             let wkWebView = WKWebView(frame: contentHost.bounds, configuration: configuration)
             let delegate = WebNavigationDelegate(initialURL: url, allowsCrossOrigin: true)
             wkWebView.navigationDelegate = delegate
@@ -1435,7 +1436,8 @@ enum LxAppSurface {
         widthRatio: Double,
         heightRatio: Double,
         position: Int32,
-        role: Int32
+        role: Int32,
+        ephemeralWebData: Bool
     ) -> Bool {
         // A phone has no side-by-side room, so the core promotes an aside to a
         // main and presents it as a window (kind Window); an aside that survives
@@ -1546,7 +1548,7 @@ enum LxAppSurface {
             hostView = nil
             let wkWebView = WKWebView(
                 frame: controller.contentView.bounds,
-                configuration: webSurfaceConfiguration(id: id))
+                configuration: webSurfaceConfiguration(ephemeral: ephemeralWebData))
             let delegate = WebNavigationDelegate(initialURL: url, allowsCrossOrigin: true)
             wkWebView.navigationDelegate = delegate
             wkWebView.translatesAutoresizingMaskIntoConstraints = false
@@ -1769,7 +1771,8 @@ enum LxAppSurface {
         widthRatio: Double,
         heightRatio: Double,
         position: Int32,
-        role: Int32
+        role: Int32,
+        ephemeralWebData: Bool
     ) -> Bool {
         _ = id
         _ = appId
@@ -1784,6 +1787,7 @@ enum LxAppSurface {
         _ = heightRatio
         _ = position
         _ = role
+        _ = ephemeralWebData
         return false
     }
 
@@ -1816,18 +1820,13 @@ enum LxAppSurface {
 import WebKit
 
 extension LxAppSurface {
-    /// Auth handoff surfaces (opened by lingxia-cloud-client's
-    /// `open_url_callback_surface`) use this id prefix. Their WebView gets an
-    /// ephemeral (in-memory) data store so each interactive login starts with a
-    /// clean IdP session — logout is real and `lx.auth.add()` can pick a
-    /// different account instead of silently reusing the last SSO cookie.
-    /// Tokens (not cookies) are lingxia's persistence; a clean sheet costs
-    /// nothing there.
-    static let authCallbackSurfaceIdPrefix = "cloud-auth-"
-
-    static func webSurfaceConfiguration(id: String) -> WKWebViewConfiguration {
+    /// An ephemeral surface (the runtime requests it for auth handoffs) gets an
+    /// in-memory data store so each interactive login starts with a clean IdP
+    /// session — logout is real and `lx.auth.add()` can pick a different
+    /// account instead of silently reusing the last SSO cookie.
+    static func webSurfaceConfiguration(ephemeral: Bool) -> WKWebViewConfiguration {
         let configuration = WKWebViewConfiguration()
-        if id.hasPrefix(authCallbackSurfaceIdPrefix) {
+        if ephemeral {
             configuration.websiteDataStore = .nonPersistent()
         }
         return configuration

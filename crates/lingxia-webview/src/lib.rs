@@ -116,8 +116,8 @@ pub use traits::{
 };
 pub use webview::{
     BrowserWebViewBuilder, ProxyActivation, ProxyApplyReport, ProxyApplyStatus, ProxyConfig,
-    StrictWebViewBuilder, WebTag, WebView, WebViewBuilder, WebViewCreateStage, WebViewEvent,
-    WebViewEventSubscription, WebViewSession,
+    StrictWebViewBuilder, WebTag, WebView, WebViewBuilder, WebViewCreateStage, WebViewDataMode,
+    WebViewEvent, WebViewEventSubscription, WebViewSession,
 };
 
 /// Global website-data operations for privacy surfaces: usage counts,

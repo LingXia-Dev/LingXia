@@ -184,6 +184,18 @@ struct LingXiaFloatSurfacePage {
     if (!this.layout) {
       LxLog.e(TAG, `float page has no layout key=${this.lxFloatKey}`);
     }
+    if (this.layout?.content === FLOAT_CONTENT_URL && this.layout.ephemeralWebData) {
+      // `incognitoMode` only stops on-disk persistence; the incognito
+      // cookie/storage lives in a shared in-memory store, so a prior session
+      // (e.g. an IdP SSO cookie) would carry into this surface. Wipe that
+      // store before the Web builds and issues its first request.
+      try {
+        webview.WebCookieManager.clearAllCookiesSync(true);
+        webview.WebStorage.deleteAllData(true);
+      } catch (clearErr) {
+        LxLog.e(TAG, `failed to clear incognito web data: ${clearErr}`);
+      }
+    }
     addWebViewUiCallback(this.webViewUiCallback);
     this.tryAttachPage();
   }
@@ -236,7 +248,7 @@ struct LingXiaFloatSurfacePage {
         }
         Column() {
           if (this.layout!.content === FLOAT_CONTENT_URL) {
-            Web({ src: this.layout!.path, controller: this.urlController })
+            Web({ src: this.layout!.path, controller: this.urlController, incognitoMode: this.layout!.ephemeralWebData })
               .domStorageAccess(true)
               .javaScriptAccess(true)
               .fileAccess(false)

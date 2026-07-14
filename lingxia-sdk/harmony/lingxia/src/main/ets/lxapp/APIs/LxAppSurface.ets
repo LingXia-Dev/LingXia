@@ -10,10 +10,6 @@ import { disposePageInstance, notifyPageInstanceHidden, notifyPageInstanceMounte
 import { FloatWindowManager } from './LxAppFloatWindow';
 
 const DOMAIN = 0x0000;
-// Auth handoff surfaces (lingxia-cloud-client open_url_callback_surface) use
-// this id prefix; their Web runs incognito so each interactive login starts
-// with a clean IdP session (real logout; lx.auth.add() can switch accounts).
-const AUTH_CALLBACK_SURFACE_ID_PREFIX = 'cloud-auth-';
 const TAG = 'LingXia.Surface';
 const CONTENT_PAGE = 0;
 const CONTENT_URL = 1;
@@ -73,6 +69,9 @@ export interface SurfaceLayoutConfig {
   bottomInset: number;
   fullWidth: boolean;
   fullHeight: boolean;
+  // URL surfaces only: run the Web incognito with a wiped cookie/storage
+  // store so each session (auth handoff) starts clean.
+  ephemeralWebData: boolean;
 }
 
 interface SurfacePlanAside {
@@ -117,7 +116,8 @@ export class LxAppSurface {
 	    widthRatioValue: string,
 	    heightRatioValue: string,
 	    positionValue: string,
-	    roleValue: string
+	    roleValue: string,
+	    ephemeralWebDataValue: string
 	  ): boolean {
 	    const content = parseInt(contentValue, 10);
 	    const kind = parseInt(kindValue, 10);
@@ -170,7 +170,8 @@ export class LxAppSurface {
       position,
       bottomInset: dimensions.bottomInset,
       fullWidth: dimensions.fullWidth,
-	      fullHeight: dimensions.fullHeight
+	      fullHeight: dimensions.fullHeight,
+	      ephemeralWebData: ephemeralWebDataValue === 'true'
 	    };
 
     const key = LxAppSurface.surfaceKey(id, appId);
@@ -742,6 +743,7 @@ function surfaceRenderState(layout: SurfaceLayoutConfig, isVisible: boolean, pag
     bottomInset: layout.bottomInset,
     fullWidth: layout.fullWidth,
     fullHeight: layout.fullHeight,
+    ephemeralWebData: layout.ephemeralWebData,
     isVisible,
     pageWebTag
   };
@@ -909,7 +911,7 @@ export struct SurfaceManager {
         }
         Column() {
           if (surface.content === CONTENT_URL) {
-            Web({ src: '', controller: this.getWebController(surface), incognitoMode: surface.id.startsWith(AUTH_CALLBACK_SURFACE_ID_PREFIX) })
+            Web({ src: '', controller: this.getWebController(surface), incognitoMode: surface.ephemeralWebData })
               .domStorageAccess(true)
               .javaScriptAccess(true)
               .fileAccess(false)
@@ -943,10 +945,10 @@ export struct SurfaceManager {
               .onAppear(() => {
                 const url = surface.path;
                 const controller = this.getWebController(surface);
-                const isAuth = surface.id.startsWith(AUTH_CALLBACK_SURFACE_ID_PREFIX);
+                const isEphemeral = surface.ephemeralWebData;
                 setTimeout(() => {
                   try {
-                    if (isAuth) {
+                    if (isEphemeral) {
                       // `incognitoMode` only stops on-disk persistence; the
                       // incognito cookie/storage lives in a shared in-memory
                       // store, so a prior IdP SSO session would carry into the

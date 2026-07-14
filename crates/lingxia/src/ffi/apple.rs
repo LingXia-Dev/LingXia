@@ -707,7 +707,13 @@ pub fn url_callback_dispatch(url: &str) -> bool {
 
 pub fn open_standalone_browser_tab(appid: &str, session_id: u64, url: &str) -> Option<String> {
     ffi_catch_unwind!("open_standalone_browser_tab", None, || {
-        match crate::browser::open_standalone_for_app(appid, session_id, url, None) {
+        match crate::browser::open_standalone_for_app(
+            appid,
+            session_id,
+            url,
+            None,
+            lingxia_webview::WebViewDataMode::ProfileDefault,
+        ) {
             Ok(tab_id) => Some(tab_id),
             Err(e) => {
                 log::error!("open_standalone_browser_tab failed: {}", e);
