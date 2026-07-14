@@ -13,15 +13,15 @@ mod model;
 
 pub use arbitrate::{Decision, Policy, arbitrate};
 pub use graph::SurfaceGraph;
+pub use layout::PlanAsideSlot;
 pub use layout::{
     Axis, BottomOwner, DEFAULT_HYSTERESIS, DerivedLayout, LayoutPresentationPlan, LayoutTree,
     PlanAside, PlanFloat, SizeClass, SplitForm, SwitcherForm,
 };
 pub use manager::SurfaceManager;
-pub use layout::PlanAsideSlot;
 pub use model::{
-    Edge, FloatAnchor, FloatDismiss, FloatSpec, Placement, Role, SlotKind, Surface,
-    SurfaceContent, SurfaceId, SurfaceOwner, SurfaceState,
+    Edge, FloatAnchor, FloatDismiss, FloatSpec, Placement, Role, SlotKind, Surface, SurfaceContent,
+    SurfaceId, SurfaceOwner, SurfaceState,
 };
 
 #[cfg(test)]
@@ -161,7 +161,11 @@ mod tests {
         g.insert(main_s("home"));
         g.insert(aside_s("assistant", Edge::Right));
 
-        let plan = g.presentation_plan(SizeClass::Compact);
+        let plan = g.presentation_plan(
+            SizeClass::Compact,
+            390.0,
+            &crate::arbitrate::Policy::default(),
+        );
         assert_eq!(plan.split_form, SplitForm::FullScreen);
         assert!(plan.asides.iter().any(|aside| aside.id == "assistant"));
         assert!(
@@ -281,6 +285,45 @@ mod tests {
         );
         assert_eq!(next.asides().len(), 3);
         assert!(next.is_valid());
+    }
+
+    #[test]
+    fn physical_admission_caps_below_the_count_ceiling() {
+        // Two right-docked lxapp/browser slots + one bottom terminal slot.
+        let mut next = SurfaceGraph::new();
+        next.insert(main_s("home"));
+        for request in [
+            aside_s("chat", Edge::Right),
+            web_aside_s("b1", "https://a.example", Edge::Right),
+            terminal_aside_s("terminal", Edge::Bottom),
+        ] {
+            let (n, _) = arbitrate(&next, request, &Policy::default(), SizeClass::Expanded);
+            next = n;
+        }
+        let policy = Policy::default(); // main_min 360, aside_min 240
+
+        // Wide expanded (1200): main 360 + 2×240 = 840 ≤ 1200 → both right
+        // slots fit; the bottom terminal never consumes horizontal budget.
+        let wide = next.aside_slots_admitted(SizeClass::Expanded, 1200.0, &policy);
+        assert_eq!(wide.iter().filter(|s| s.visible).count(), 3);
+
+        // Narrow expanded (850): count ceiling says 3, but 360 + 240 = 600 ≤
+        // 850 fits ONE right slot; the second right slot (600 + 240 = 840 —
+        // wait, 840 ≤ 850) — pick 700 to force exactly one.
+        let narrow = next.aside_slots_admitted(SizeClass::Expanded, 700.0, &policy);
+        let visible_right = narrow
+            .iter()
+            .filter(|s| s.visible && !matches!(s.edge, Some(Edge::Bottom)))
+            .count();
+        assert_eq!(visible_right, 1, "only one right slot fits at 700pt");
+        // The bottom terminal stays visible regardless of horizontal budget.
+        assert!(
+            narrow
+                .iter()
+                .any(|s| s.visible && matches!(s.edge, Some(Edge::Bottom)))
+        );
+        // Nothing was evicted — the graph still holds all three asides.
+        assert_eq!(next.asides().len(), 3);
     }
 
     #[test]
@@ -413,9 +456,13 @@ mod tests {
         assert_eq!(next.role_of("assistant"), Some(Role::Main));
         assert_eq!(next.active_main_id.as_deref(), Some("assistant"));
         assert_eq!(
-            next.presentation_plan(SizeClass::Compact)
-                .active_main_id
-                .as_deref(),
+            next.presentation_plan(
+                SizeClass::Compact,
+                390.0,
+                &crate::arbitrate::Policy::default()
+            )
+            .active_main_id
+            .as_deref(),
             Some("assistant")
         );
         assert!(next.is_valid());

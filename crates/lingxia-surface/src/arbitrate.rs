@@ -33,6 +33,12 @@ pub struct Policy {
     pub max_asides_expanded: usize,
     pub max_asides_medium: usize,
     pub max_asides_compact: usize,
+    /// Physical admission tokens (§3.3): a slot is admitted only when the main
+    /// keeps `main_min_width` and each admitted left/right slot keeps
+    /// `aside_min_width` within the container. Size class is the *ceiling*, not
+    /// a guarantee — a technically-expanded but narrow window admits fewer.
+    pub main_min_width: f64,
+    pub aside_min_width: f64,
 }
 
 impl Default for Policy {
@@ -42,6 +48,8 @@ impl Default for Policy {
             max_asides_expanded: 3,
             max_asides_medium: 1,
             max_asides_compact: 0,
+            main_min_width: 360.0,
+            aside_min_width: 240.0,
         }
     }
 }
@@ -101,10 +109,11 @@ pub fn arbitrate(
             // Web asides dedupe by URL — reopening a URL focuses the existing
             // tab instead of adding a duplicate.
             if let Some(url) = web_url(&request)
-                && let Some(existing) = existing_web_aside_with_url(&next, &request.id, url) {
-                    next.set_focus(&existing);
-                    return (next, Decision::MergedIntoTabs);
-                }
+                && let Some(existing) = existing_web_aside_with_url(&next, &request.id, url)
+            {
+                next.set_focus(&existing);
+                return (next, Decision::MergedIntoTabs);
+            }
             // Reopening an existing aside id (an lxapp's appId, the terminal)
             // focuses its tab.
             if next
@@ -118,8 +127,11 @@ pub fn arbitrate(
             }
 
             let slot = request.content.slot_kind();
-            let open_kinds: std::collections::HashSet<crate::model::SlotKind> =
-                next.asides().iter().map(|s| s.content.slot_kind()).collect();
+            let open_kinds: std::collections::HashSet<crate::model::SlotKind> = next
+                .asides()
+                .iter()
+                .map(|s| s.content.slot_kind())
+                .collect();
             let joins_open_slot = open_kinds.contains(&slot);
             let id = request.id.clone();
             next.insert(request);
@@ -159,4 +171,3 @@ fn existing_web_aside_with_url(
         .find(|s| s.id != exclude_id && s.role == Role::Aside && web_url(s) == Some(url))
         .map(|s| s.id.clone())
 }
-

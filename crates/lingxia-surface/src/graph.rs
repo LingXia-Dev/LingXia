@@ -171,10 +171,60 @@ impl SurfaceGraph {
 
     /// Group the asides into per-kind slots (lxapp / browser / native), in
     /// first-open order, with tab order = open order. Admission marks the
-    /// most recently used slots visible — expanded shows up to 3, medium 1,
-    /// compact 0 (compact presents asides full-screen via `split_form`
-    /// instead). Hidden slots stay alive and are never evicted.
+    /// most recently used slots visible — the size class caps the count
+    /// (expanded 3 / medium 1 / compact 0), and physical width caps it
+    /// further so the main keeps its minimum. Hidden slots stay alive and
+    /// are never evicted; widening the container brings them back.
+    ///
+    /// `width` is the container's workspace width (window minus sidebar) and
+    /// `policy` carries the min-size tokens. See [`Self::aside_slots`] for the
+    /// size-class-only convenience used by tests.
+    pub fn aside_slots_admitted(
+        &self,
+        size_class: SizeClass,
+        width: f64,
+        policy: &crate::arbitrate::Policy,
+    ) -> Vec<crate::layout::PlanAsideSlot> {
+        let mut slots = self.aside_slots_recency(size_class);
+        // §3.3 physical admission: reserve the main's minimum, then admit
+        // left/right slots greedily (most-recent first — same order the count
+        // pass used) while each keeps its minimum width. Top/bottom slots
+        // overlay the main's width and never consume the horizontal budget.
+        let max_visible = admission_ceiling(size_class);
+        let candidates: Vec<usize> = slots
+            .iter()
+            .enumerate()
+            .filter(|(_, s)| s.visible)
+            .map(|(i, _)| i)
+            .take(max_visible)
+            .collect();
+        let mut horizontal_used = policy.main_min_width;
+        for i in &candidates {
+            let horizontal = !matches!(
+                slots[*i].edge,
+                Some(crate::model::Edge::Top) | Some(crate::model::Edge::Bottom)
+            );
+            if horizontal {
+                if horizontal_used + policy.aside_min_width <= width {
+                    horizontal_used += policy.aside_min_width;
+                } else {
+                    slots[*i].visible = false;
+                }
+            }
+        }
+        slots
+    }
+
+    /// Size-class-only admission (count ceiling, no physical width). Retained
+    /// for callers/tests that don't have a container width.
     pub fn aside_slots(&self, size_class: SizeClass) -> Vec<crate::layout::PlanAsideSlot> {
+        self.aside_slots_recency(size_class)
+    }
+
+    /// Shared slot grouping + count-based (recency) admission. Both public
+    /// entry points build on this; `aside_slots_admitted` then layers the
+    /// physical width check on top.
+    fn aside_slots_recency(&self, size_class: SizeClass) -> Vec<crate::layout::PlanAsideSlot> {
         let asides = self.asides();
         let mut slots: Vec<crate::layout::PlanAsideSlot> = Vec::new();
         // `asides()` preserves insertion order, so child pushes keep tab
@@ -213,11 +263,7 @@ impl SurfaceGraph {
         }
         // Admission: most-recently-used slots first. Recency = the highest
         // insertion position among a slot's children.
-        let max_visible = match size_class {
-            SizeClass::Expanded => 3,
-            SizeClass::Medium => 1,
-            SizeClass::Compact => 0,
-        };
+        let max_visible = admission_ceiling(size_class);
         let mut recency: Vec<(usize, usize)> = slots
             .iter()
             .enumerate()
@@ -306,8 +352,15 @@ impl SurfaceGraph {
 
     /// Flatten the graph + derivation into the stable, skin-bindable
     /// [`LayoutPresentationPlan`]: the primary mains, asides (with edge +
-    /// preferred size), floats, and the full tree.
-    pub fn presentation_plan(&self, size_class: SizeClass) -> LayoutPresentationPlan {
+    /// preferred size), floats, and the full tree. `width` is the container
+    /// workspace width and `policy` the admission tokens, so slot visibility
+    /// respects both the size-class ceiling and the physical fit (§3.3).
+    pub fn presentation_plan(
+        &self,
+        size_class: SizeClass,
+        width: f64,
+        policy: &crate::arbitrate::Policy,
+    ) -> LayoutPresentationPlan {
         let derived = self.derive_layout(size_class);
 
         let asides: Vec<PlanAside> = self
@@ -319,7 +372,7 @@ impl SurfaceGraph {
                 preferred_size: s.placement.preferred_size,
             })
             .collect();
-        let aside_slots = self.aside_slots(size_class);
+        let aside_slots = self.aside_slots_admitted(size_class, width, policy);
 
         LayoutPresentationPlan {
             size_class: derived.size_class,
@@ -407,6 +460,16 @@ impl SurfaceGraph {
             weights: vec![1.0 / n as f64; n],
             children,
         })
+    }
+}
+
+/// Count ceiling for visible aside slots by size class (expanded 3 / medium 1
+/// / compact 0). Physical width narrows this further; see `aside_slots_admitted`.
+fn admission_ceiling(size_class: SizeClass) -> usize {
+    match size_class {
+        SizeClass::Expanded => 3,
+        SizeClass::Medium => 1,
+        SizeClass::Compact => 0,
     }
 }
 
