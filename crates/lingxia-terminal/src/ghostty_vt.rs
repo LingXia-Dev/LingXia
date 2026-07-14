@@ -1785,3 +1785,34 @@ impl Drop for VtScreen {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn snapshot_text(snapshot: &ScreenSnapshot) -> String {
+        snapshot
+            .cells
+            .iter()
+            .map(|cell| cell.text.as_str())
+            .collect::<String>()
+    }
+
+    #[test]
+    fn scroll_viewport_reveals_scrollback() {
+        let screen = VtScreen::new(12, 3, None).expect("create VT screen");
+        screen.feed(b"one\r\ntwo\r\nthree\r\nfour\r\nfive");
+
+        let bottom = snapshot_text(&screen.snapshot());
+        assert!(bottom.contains("five"), "bottom snapshot: {bottom:?}");
+        assert!(!bottom.contains("one"), "bottom snapshot: {bottom:?}");
+
+        assert!(screen.scroll_viewport_delta(-2));
+        let scrolled = snapshot_text(&screen.snapshot());
+        assert!(scrolled.contains("one"), "scrolled snapshot: {scrolled:?}");
+        assert!(
+            !scrolled.contains("five"),
+            "scrolled snapshot: {scrolled:?}"
+        );
+    }
+}

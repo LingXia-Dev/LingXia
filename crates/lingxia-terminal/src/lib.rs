@@ -224,6 +224,29 @@ pub fn terminal_resize(_id: u64, _cols: u16, _rows: u16) -> bool {
     false
 }
 
+/// Scroll the visible terminal viewport by rows.
+///
+/// Negative values move into older scrollback; positive values move toward
+/// the live bottom of the buffer.
+#[cfg(lingxia_ghostty_vt_available)]
+pub fn terminal_scroll(id: u64, delta_rows: i32) -> bool {
+    if delta_rows == 0 {
+        return false;
+    }
+    let Some(session) = session(id) else {
+        return false;
+    };
+    let Ok(mut session) = session.lock() else {
+        return false;
+    };
+    session.scroll(delta_rows)
+}
+
+#[cfg(not(lingxia_ghostty_vt_available))]
+pub fn terminal_scroll(_id: u64, _delta_rows: i32) -> bool {
+    false
+}
+
 #[cfg(lingxia_ghostty_vt_available)]
 pub fn terminal_close(id: u64) {
     if let Ok(mut sessions) = SESSIONS.lock() {
@@ -561,6 +584,14 @@ impl TerminalSession {
             .map_err(|err| err.to_string())?;
         self.vt.resize(cols, rows, 1, 1)?;
         Ok(())
+    }
+
+    fn scroll(&mut self, delta_rows: i32) -> bool {
+        let bytes = self.drain_bytes();
+        if !bytes.is_empty() {
+            self.vt.feed(&bytes);
+        }
+        self.vt.scroll_viewport_delta(delta_rows as isize)
     }
 
     fn drain_bytes(&mut self) -> Vec<u8> {
@@ -1105,6 +1136,12 @@ mod tests {
         assert_eq!(encode_key_event(keydown_event(0x41)), None, "plain VK_A");
         assert_eq!(encode_key_event(keydown_event(0x10)), None, "VK_SHIFT");
         assert_eq!(encode_key_event(TerminalKeyEvent::default()), None);
+    }
+
+    #[test]
+    fn rejects_scroll_for_missing_session_or_zero_delta() {
+        assert!(!terminal_scroll(0, -3));
+        assert!(!terminal_scroll(u64::MAX, 0));
     }
 
     #[test]

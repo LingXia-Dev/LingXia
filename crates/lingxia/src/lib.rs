@@ -81,7 +81,8 @@ pub mod terminal {
     pub use lingxia_terminal::{
         BackendStatus, TerminalBackend, TerminalCell, TerminalSnapshot, ghostty_available,
         ghostty_status, ghostty_status_json, terminal_close, terminal_create, terminal_exited,
-        terminal_read, terminal_resize, terminal_snapshot, terminal_snapshot_data, terminal_write,
+        terminal_read, terminal_resize, terminal_scroll, terminal_snapshot, terminal_snapshot_data,
+        terminal_write,
     };
 }
 /// Host app update helpers and update event types.
