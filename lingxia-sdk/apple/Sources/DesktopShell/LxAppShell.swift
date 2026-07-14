@@ -2034,6 +2034,10 @@ extension LxAppShell {
         }
 
         if let webView = WebViewManager.resolveWebView(appId: appId, path: path, sessionId: sessionId) {
+            // One lxapp, one region — a re-open with a DIFFERENT page replaces
+            // the older content: clear previous subviews (stale webview or the
+            // loading spinner) so they don't stack up behind the new page.
+            container.subviews.filter { $0 !== webView }.forEach { $0.removeFromSuperview() }
             WebViewManager.attachWebViewToContainer(webView, container: container)
             return
         }

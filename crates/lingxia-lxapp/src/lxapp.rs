@@ -41,6 +41,7 @@ mod runtime_ops;
 mod runtime_registry;
 mod scheme;
 mod security;
+pub mod shell_pins;
 mod surface;
 pub use security::LxAppSecurityPrivilege;
 pub mod tabbar;
@@ -2146,4 +2147,26 @@ impl Drop for LxApp {
         // instance with the same appid after restart.
         info!("Dropping LxApp").with_appid(self.appid.clone());
     }
+}
+
+/// The shell region an OPEN lxapp currently occupies. One lxapp lives in
+/// exactly one region (main or aside); the shell never silently copies or
+/// moves an instance between them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LxAppOpenRegion {
+    Main,
+    Aside,
+}
+
+/// `None` = not running. The recorded startup open mode is the "how was it
+/// opened" source of truth: panel opens never enter the main navigation
+/// stack, and a capsule-closed main keeps its session while leaving the
+/// stack — so the mode, not stack membership, decides the region.
+pub fn open_region(appid: &str) -> Option<LxAppOpenRegion> {
+    let app = runtime_registry::try_get(appid)?;
+    let mode = app.state.lock().ok()?.startup_options.open_mode;
+    Some(match mode {
+        lingxia_platform::traits::app_runtime::LxAppOpenMode::Panel => LxAppOpenRegion::Aside,
+        lingxia_platform::traits::app_runtime::LxAppOpenMode::Normal => LxAppOpenRegion::Main,
+    })
 }

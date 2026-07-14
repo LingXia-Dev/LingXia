@@ -167,6 +167,20 @@ async fn navigate_to_lxapp(ctx: JSContext, options: NavigateToOptions) -> JSResu
         return Ok(());
     }
 
+    // One lxapp, one region: navigating (main) to an lxapp that is currently
+    // docked as an aside must not silently move it — the caller closes the
+    // aside first.
+    if lxapp::open_region(&options.appid) == Some(lxapp::LxAppOpenRegion::Aside) {
+        return Err(rong::HostError::new(
+            "E_SURFACE_CONFLICT",
+            format!(
+                "lxapp '{}' is already open as an aside; close it before navigating to it as a main",
+                options.appid
+            ),
+        )
+        .into());
+    }
+
     do_navigate_to_lxapp(lxapp, options).await?;
     Ok(())
 }

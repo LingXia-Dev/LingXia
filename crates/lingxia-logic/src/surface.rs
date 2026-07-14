@@ -293,6 +293,32 @@ async fn open_lxapp_spec(ctx: JSContext, spec: &JSObject) -> JSResult<JSObject> 
         ));
     }
 
+    // One lxapp, one region: already open in the OTHER region is a conflict —
+    // the caller must close() first; the shell never silently copies or moves
+    // an instance between main and aside.
+    let wants_main = matches!(as_role, Some("main"));
+    match lxapp::open_region(&app_id) {
+        Some(lxapp::LxAppOpenRegion::Main) if !wants_main => {
+            return Err(surface_error(
+                "E_SURFACE_CONFLICT",
+                "surface_conflict",
+                format!(
+                    "lxapp '{app_id}' is already open as a main; close it before opening as an aside"
+                ),
+            ));
+        }
+        Some(lxapp::LxAppOpenRegion::Aside) if wants_main => {
+            return Err(surface_error(
+                "E_SURFACE_CONFLICT",
+                "surface_conflict",
+                format!(
+                    "lxapp '{app_id}' is already open as an aside; close it before opening as a main"
+                ),
+            ));
+        }
+        _ => {}
+    }
+
     // Ensure the bundle exists before any presentation — this is what pulls
     // the lxapp from the cloud when it is not bundled/installed.
     lxapp::prepare_lxapp_open(&app_id, lxapp::ReleaseType::Release)
