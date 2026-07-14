@@ -256,6 +256,17 @@ mod bridge {
         #[swift_bridge(swift_name = "shellActivatorOpenLxapp")]
         fn shell_activator_open_lxapp(app_id: &str) -> bool;
 
+        // Open (or focus) an lxapp as a MAIN — the pinned-lxapp tile's click.
+        #[swift_bridge(swift_name = "shellOpenLxappMain")]
+        fn shell_open_lxapp_main(app_id: &str) -> bool;
+
+        // Pinned lxapps (sidebar pin grid), user list + order, Rust-owned.
+        #[swift_bridge(swift_name = "shellPinnedLxapps")]
+        fn shell_pinned_lxapps() -> String;
+
+        #[swift_bridge(swift_name = "shellSetLxappPinned")]
+        fn shell_set_lxapp_pinned(app_id: &str, pinned: bool) -> bool;
+
         #[swift_bridge(swift_name = "registerHostAside")]
         fn register_host_aside(appid: &str, surface_id: &str, edge: &str) -> bool;
 
@@ -960,6 +971,11 @@ pub fn shell_activator_open_lxapp(app_id: &str) -> bool {
         if app_id.is_empty() {
             return false;
         }
+        // One lxapp, one region: refuse to dock a main-open app as an aside.
+        if lxapp::open_region(&app_id) == Some(lxapp::LxAppOpenRegion::Main) {
+            log::warn!("activator open refused: {app_id} is open as a main");
+            return false;
+        }
         // Ensure (installs from the configured cloud when missing) before the
         // panel presents — same order as the privileged openSurface path.
         std::mem::drop(rong_rt::RongExecutor::global().spawn(async move {
@@ -980,6 +996,45 @@ pub fn shell_activator_open_lxapp(app_id: &str) -> bool {
             lxapp::schedule_lxapp_update_check(&app_id, lxapp::ReleaseType::Release);
         }));
         true
+    })
+}
+
+pub fn shell_open_lxapp_main(app_id: &str) -> bool {
+    ffi_catch_unwind!("shell_open_lxapp_main", false, || {
+        let app_id = app_id.trim().to_string();
+        if app_id.is_empty() {
+            return false;
+        }
+        // One lxapp, one region: refuse to pull an aside into the main.
+        if lxapp::open_region(&app_id) == Some(lxapp::LxAppOpenRegion::Aside) {
+            log::warn!("pin open refused: {app_id} is open as an aside");
+            return false;
+        }
+        std::mem::drop(rong_rt::RongExecutor::global().spawn(async move {
+            if let Err(err) = lxapp::prepare_lxapp_open(&app_id, lxapp::ReleaseType::Release).await
+            {
+                log::error!("pin open failed for {app_id}: {err}");
+                return;
+            }
+            if let Err(err) = lxapp::open_lxapp(&app_id, lxapp::LxAppStartupOptions::default()) {
+                log::error!("pin open failed for {app_id}: {err}");
+                return;
+            }
+            lxapp::schedule_lxapp_update_check(&app_id, lxapp::ReleaseType::Release);
+        }));
+        true
+    })
+}
+
+pub fn shell_pinned_lxapps() -> String {
+    ffi_catch_unwind!("shell_pinned_lxapps", String::new(), || {
+        serde_json::to_string(&lxapp::shell_pins::pinned_lxapps()).unwrap_or_default()
+    })
+}
+
+pub fn shell_set_lxapp_pinned(app_id: &str, pinned: bool) -> bool {
+    ffi_catch_unwind!("shell_set_lxapp_pinned", false, || {
+        lxapp::shell_pins::set_lxapp_pinned(app_id.trim(), pinned)
     })
 }
 

@@ -455,11 +455,14 @@ class SidebarView: NSView, NSPopoverDelegate {
     // normal tab list; they never replace or hide an open tab.
     private var bookmarksSnapshot = SidebarBookmarksSnapshot.empty
     private var pinTileViews: [String: SidebarPinTileView] = [:]
+    /// Pinned lxapp ids (Rust-owned store) and their grid tiles.
+    private var pinnedLxappIds: [String] = []
+    private var lxappPinTiles: [String: LxappPinTileView] = [:]
     private var pinTileTopConstraints: [String: NSLayoutConstraint] = [:]
     private var pinTileLeadingConstraints: [String: NSLayoutConstraint] = [:]
 
     var hasPinnedWebsites: Bool {
-        !bookmarksSnapshot.pinnedEntries.isEmpty
+        !bookmarksSnapshot.pinnedEntries.isEmpty || !pinnedLxappIds.isEmpty
     }
 
     private func openTabId(for entry: SidebarBookmarksSnapshot.Entry) -> String? {
@@ -1452,6 +1455,9 @@ class SidebarView: NSView, NSPopoverDelegate {
                 groupView.onLayoutChanged = { [weak self] in
                     self?.relayoutAfterGroupToggle()
                 }
+                groupView.onPinChanged = { [weak self] in
+                    self?.reloadShellPins()
+                }
                 groupViews[appId] = groupView
             }
 
@@ -1651,13 +1657,43 @@ class SidebarView: NSView, NSPopoverDelegate {
     /// and whenever the store changes (star toggle, tile action, manager
     /// page edit — routed through `LxApp.browserBookmarksChanged`).
     func reloadBookmarks() {
-        guard (LxAppCore.capabilities & LxAppCore.capBrowser) != 0 else { return }
+        // lxapp pins render in the same grid; load them regardless of the
+        // browser capability (the guard below only covers web pins).
+        let json = shellPinnedLxapps().toString()
+        pinnedLxappIds = (try? JSONDecoder().decode([String].self, from: Data(json.utf8))) ?? []
+        guard (LxAppCore.capabilities & LxAppCore.capBrowser) != 0 else {
+            render()
+            return
+        }
         bookmarksSnapshot = SidebarBookmarksSnapshot.loadFromHost()
+        render()
+    }
+
+    /// Re-read the Rust-owned lxapp pin store and re-render the grid.
+    func reloadShellPins() {
+        let json = shellPinnedLxapps().toString()
+        let ids = (try? JSONDecoder().decode([String].self, from: Data(json.utf8))) ?? []
+        guard ids != pinnedLxappIds else { return }
+        pinnedLxappIds = ids
         render()
     }
 
     /// Diff pin tiles against the snapshot's pinned subset.
     private func renderPinTiles() {
+        // lxapp tiles first (they lead the grid), then web pins.
+        let lxappIds = Set(pinnedLxappIds)
+        for (id, view) in lxappPinTiles where !lxappIds.contains(id) {
+            pinTileTopConstraints.removeValue(forKey: "lxapp:" + id)?.isActive = false
+            pinTileLeadingConstraints.removeValue(forKey: "lxapp:" + id)?.isActive = false
+            view.removeFromSuperview()
+            lxappPinTiles.removeValue(forKey: id)
+        }
+        for id in pinnedLxappIds where lxappPinTiles[id] == nil {
+            let tile = LxappPinTileView(appId: id)
+            tile.onUnpin = { [weak self] in self?.reloadShellPins() }
+            lxappPinTiles[id] = tile
+        }
+
         let pinned = bookmarksSnapshot.pinnedEntries
         let pinnedIds = Set(pinned.map { $0.id })
         for (id, view) in pinTileViews where !pinnedIds.contains(id) {
@@ -1713,33 +1749,37 @@ class SidebarView: NSView, NSPopoverDelegate {
     /// Lay out the pin grid at the very top of the list.
     private func layoutPinGrid(in docView: NSView, yOffset startY: CGFloat) -> CGFloat {
         let pinned = bookmarksSnapshot.pinnedEntries
-        guard !pinned.isEmpty else { return startY }
+        // One grid, lxapp pins leading: (constraint key, tile view) pairs.
+        let cells: [(String, NSView)] =
+            pinnedLxappIds.compactMap { id in lxappPinTiles[id].map { ("lxapp:" + id, $0) } }
+            + pinned.compactMap { entry in pinTileViews[entry.id].map { (entry.id, $0) } }
+        guard !cells.isEmpty else { return startY }
         let inset: CGFloat = SidebarGroupView.Layout.groupInset + 4
         let size = SidebarPinTileView.Layout.size
         let gap = SidebarPinTileView.Layout.gap
         let columns = SidebarPinTileView.Layout.columns
         var yOffset = startY
 
-        for (index, entry) in pinned.enumerated() {
-            guard let tile = pinTileViews[entry.id] else { continue }
+        for (index, cell) in cells.enumerated() {
+            let (key, tile) = cell
             let column = index % columns
             let row = index / columns
             let x = inset + CGFloat(column) * (size + gap)
             let y = startY + CGFloat(row) * (size + gap)
             ensureSubview(tile, in: docView) {}
-            if let tc = pinTileTopConstraints[entry.id] {
+            if let tc = pinTileTopConstraints[key] {
                 tc.constant = y
             } else {
                 let tc = tile.topAnchor.constraint(equalTo: docView.topAnchor, constant: y)
                 tc.isActive = true
-                pinTileTopConstraints[entry.id] = tc
+                pinTileTopConstraints[key] = tc
             }
-            if let lc = pinTileLeadingConstraints[entry.id] {
+            if let lc = pinTileLeadingConstraints[key] {
                 lc.constant = x
             } else {
                 let lc = tile.leadingAnchor.constraint(equalTo: docView.leadingAnchor, constant: x)
                 lc.isActive = true
-                pinTileLeadingConstraints[entry.id] = lc
+                pinTileLeadingConstraints[key] = lc
             }
             yOffset = y + size
         }

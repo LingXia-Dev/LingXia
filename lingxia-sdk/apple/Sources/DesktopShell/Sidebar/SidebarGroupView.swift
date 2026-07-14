@@ -170,6 +170,9 @@ class SidebarGroupView: NSView {
     /// Clicking the active group's header toggles collapse; a non-active group's
     /// header switches to it instead.
     var isActiveGroup = false { didSet { updateActiveAppearance() } }
+    /// Fired after a pin/unpin from the context menu so the sidebar
+    /// re-renders its pin grid (the store itself lives in Rust).
+    var onPinChanged: (() -> Void)?
     /// Selected-state tint from this lxapp's tabbar style (`selectedColor`);
     /// nil = system neutral. Feeds the items' selected state.
     private var tabBarTint: NSColor?
@@ -662,6 +665,16 @@ class SidebarGroupView: NSView {
         menu.addItem(headerItem)
         menu.addItem(NSMenuItem.separator())
 
+        // Pin to the sidebar grid (Rust-owned user list, mirrors web pins).
+        let pinned = shellPinnedLxapps().toString().contains("\"\(appId)\"")
+        let pinItem = NSMenuItem(
+            title: L10n.string(pinned ? "lx_browser_unpin" : "lx_browser_pin_to_sidebar"),
+            action: #selector(contextMenuTogglePin),
+            keyEquivalent: ""
+        )
+        pinItem.target = self
+        menu.addItem(pinItem)
+
         // Restart
         let restartItem = NSMenuItem(
             title: L10n.string("lx_capsule_restart"),
@@ -698,6 +711,12 @@ class SidebarGroupView: NSView {
     private func showContextMenu(with event: NSEvent) {
         let menu = buildContextMenu()
         NSMenu.popUpContextMenu(menu, with: event, for: headerView)
+    }
+
+    @objc private func contextMenuTogglePin() {
+        let pinned = shellPinnedLxapps().toString().contains("\"\(appId)\"")
+        _ = shellSetLxappPinned(appId, !pinned)
+        onPinChanged?()
     }
 
     @objc private func contextMenuRestart() {
