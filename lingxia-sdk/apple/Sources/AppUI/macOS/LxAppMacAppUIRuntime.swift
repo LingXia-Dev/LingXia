@@ -151,6 +151,7 @@ final class LxAppMacAppUIRuntime: NSObject {
         }
         trayController.installMenuBarActivators(menuBarActivators)
         installAppActivationActivators()
+        restorePersistedActivatorItems()
         refreshChromeActivators()
         if uiConfig.launch.openOnLaunch ?? true {
             try openSurface(id: uiConfig.launch.initialSurface)
@@ -335,7 +336,7 @@ final class LxAppMacAppUIRuntime: NSObject {
     /// Runtime-writer activator entries (lx.shell.activator.set): the shell's
     /// single entry mechanism. Replaces the yaml-declared sidebar entries when
     /// non-empty; the declared tray entry is unaffected.
-    private struct RuntimeActivatorItem: Decodable {
+    private struct RuntimeActivatorItem: Codable {
         let kind: String       // "lxapp" | "native" | "action"
         let key: String        // appId / capability / action id
         let name: String?
@@ -343,6 +344,19 @@ final class LxAppMacAppUIRuntime: NSObject {
         let color: String?     // title color, #RRGGBB
     }
     private var runtimeActivatorItems: [RuntimeActivatorItem] = []
+
+    /// Restore the persisted SURFACE items before the home logic boots, so the
+    /// activator renders at launch instead of after App.onLaunch's set().
+    /// Action items are skipped — their handlers live in the writer and only
+    /// exist once it re-declares them; the writer's set() replaces this list.
+    private func restorePersistedActivatorItems() {
+        guard runtimeActivatorItems.isEmpty,
+              let json = LxAppShellPersistence.activatorItemsJSON,
+              let data = json.data(using: .utf8),
+              let items = try? JSONDecoder().decode([RuntimeActivatorItem].self, from: data)
+        else { return }
+        runtimeActivatorItems = items.filter { $0.kind != "action" }
+    }
 
     func setRuntimeActivatorItems(_ json: String) {
         guard let data = json.data(using: .utf8),
@@ -352,6 +366,13 @@ final class LxAppMacAppUIRuntime: NSObject {
             return
         }
         runtimeActivatorItems = items
+        // Persist for next launch's early restore (surface items only; the
+        // writer rebuilds action items when its logic boots).
+        let surfaceItems = items.filter { $0.kind != "action" }
+        if let data = try? JSONEncoder().encode(surfaceItems),
+           let json = String(data: data, encoding: .utf8) {
+            LxAppShellPersistence.activatorItemsJSON = json
+        }
         refreshChromeActivators()
     }
 
