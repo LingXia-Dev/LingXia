@@ -980,7 +980,7 @@ pub fn shell_activator_clicked(item_id: &str) -> bool {
             return false;
         };
         let event = format!("lx.shell.activator:{item_id}");
-        lxapp::publish_app_event(&home, &event, None);
+        lxapp::publish_app_event(home, &event, None);
         true
     })
 }

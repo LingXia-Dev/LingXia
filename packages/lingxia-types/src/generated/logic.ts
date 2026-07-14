@@ -1229,6 +1229,7 @@ export type ShellActivatorItem = {
     handler?: never;
     icon?: string;
     name?: string;
+    color?: string;
 } | {
     native: string;
     lxapp?: never;
@@ -1236,12 +1237,14 @@ export type ShellActivatorItem = {
     handler?: never;
     icon?: string;
     name?: string;
+    color?: string;
 } | {
     id: string;
     lxapp?: never;
     native?: never;
     icon: string;
     name: string;
+    color?: string;
     handler: () => void;
 };
 
@@ -1804,10 +1807,10 @@ declare global {
      */
     set(items: ShellActivatorItem[]): void;
     /**
-     * `lx.shell.activator.update(key, patch)` — patch one item's icon / name
+     * `lx.shell.activator.update(key, patch)` — patch one item's icon / name / color
      * without re-sending the list. `key` is a content key value or an action id.
      */
-    update(key: string, patch: { icon?: string; name?: string }): void;
+    update(key: string, patch: { icon?: string; name?: string; color?: string }): void;
   }
 }
 
@@ -1986,6 +1989,7 @@ declare global {
     switchTab(options: SwitchTabOptions): Promise<void>;
     /** Relaunch to a new page (clear page stack) */
     reLaunch(options: ReLaunchOptions): Promise<void>;
+    readonly shell: ShellApi;
     /** Show TabBar red dot */
     showTabBarRedDot(options: TabBarRedDotOptions): boolean;
     /** Hide TabBar red dot */
@@ -2006,7 +2010,6 @@ declare global {
     showToast(options: ShowToastOptions): Promise<void>;
     /** Hide toast function */
     hideToast(): Promise<void>;
-    readonly shell: ShellApi;
     readonly tray: TrayApi;
     getUpdateManager(): UpdateManager;
   }

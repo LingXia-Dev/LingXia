@@ -1445,6 +1445,7 @@ true
     handler?: never;
     icon?: string;
     name?: string;
+    color?: string;
 } | {
     native: string;
     lxapp?: never;
@@ -1452,12 +1453,14 @@ true
     handler?: never;
     icon?: string;
     name?: string;
+    color?: string;
 } | {
     id: string;
     lxapp?: never;
     native?: never;
     icon: string;
     name: string;
+    color?: string;
     handler: () => void;
 }"###;
 

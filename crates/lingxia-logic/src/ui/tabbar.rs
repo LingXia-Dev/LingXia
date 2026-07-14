@@ -53,7 +53,6 @@ struct SetTabBarItemOptions {
     selected_icon_path: Option<String>,
 }
 
-/// Check if TabBar is currently visible
 /// Show TabBar red dot
 fn show_tabbar_red_dot(ctx: JSContext, options: ShowTabBarRedDotOptions) -> JSResult<bool> {
     let lxapp = LxApp::from_ctx(&ctx)?;
