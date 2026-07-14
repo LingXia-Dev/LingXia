@@ -776,11 +776,23 @@ internal object LxAppSurface {
                 ?.getInsets(WindowInsetsCompat.Type.navigationBars())
                 ?.bottom
             ?: 0
-        return if (request.position == SurfacePosition.BOTTOM) {
-            (contentInset - rootView.paddingBottom).coerceAtLeast(0)
-        } else {
-            0
+        if (request.position != SurfacePosition.BOTTOM) {
+            return 0
         }
+        val navInset = (contentInset - rootView.paddingBottom).coerceAtLeast(0)
+        // The activity does not resize for the IME, so a full-height WebView
+        // renders beneath the keyboard and the page never sees a
+        // visualViewport change. Lift the sheet bottom above the IME so the
+        // web content relayouts into the visible area.
+        if (request.content == CONTENT_URL) {
+            val insets = ViewCompat.getRootWindowInsets(rootView)
+            if (insets?.isVisible(WindowInsetsCompat.Type.ime()) == true) {
+                val imeInset = insets.getInsets(WindowInsetsCompat.Type.ime()).bottom -
+                    rootView.paddingBottom
+                return maxOf(navInset, imeInset.coerceAtLeast(0))
+            }
+        }
+        return navInset
     }
 
     private fun resolveSize(activity: Activity, absoluteDp: Double, ratio: Double, basePx: Int, defaultRatio: Double): Int {
