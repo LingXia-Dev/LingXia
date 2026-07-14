@@ -145,6 +145,9 @@ export const I18N_KEYS = [
   "update_downloading",
   "video_quality",
   "video_speed",
+  "webview_load_error_message",
+  "webview_load_error_title",
+  "webview_retry",
 ] as const;
 
 export type I18nKey = (typeof I18N_KEYS)[number];

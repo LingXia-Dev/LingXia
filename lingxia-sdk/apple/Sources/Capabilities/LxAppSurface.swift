@@ -198,6 +198,14 @@ enum LxAppSurface {
             }
             decisionHandler(.allow)
         }
+
+        func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+            LxAppSurface.loadWebSurfaceError(in: webView, url: initialURL, error: error)
+        }
+
+        func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+            LxAppSurface.loadWebSurfaceError(in: webView, url: initialURL, error: error)
+        }
     }
 
     static func present(
@@ -1299,6 +1307,14 @@ enum LxAppSurface {
             }
             decisionHandler(.allow)
         }
+
+        func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+            LxAppSurface.loadWebSurfaceError(in: webView, url: initialURL, error: error)
+        }
+
+        func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+            LxAppSurface.loadWebSurfaceError(in: webView, url: initialURL, error: error)
+        }
     }
 
     private final class PopupViewController: UIViewController, UIGestureRecognizerDelegate {
@@ -1830,6 +1846,18 @@ extension LxAppSurface {
             configuration.websiteDataStore = .nonPersistent()
         }
         return configuration
+    }
+
+    static func loadWebSurfaceError(in webView: WKWebView, url: URL, error: Error) {
+        let nsError = error as NSError
+        if nsError.domain == NSURLErrorDomain && nsError.code == NSURLErrorCancelled { return }
+        if nsError.domain == "WebKitErrorDomain" && nsError.code == 102 { return }
+        let failingURL = (nsError.userInfo[NSURLErrorFailingURLErrorKey] as? URL) ?? url
+        let html = webviewLoadErrorDocument(failingURL.absoluteString).toString()
+        // The failing URL as base keeps the document's URL/history on the
+        // failed site (matching Android/Harmony) and lets the retry button
+        // re-navigate without a policy carve-out for about:/data:.
+        webView.loadHTMLString(html, baseURL: failingURL)
     }
 }
 #endif

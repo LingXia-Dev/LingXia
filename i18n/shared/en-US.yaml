@@ -13,6 +13,12 @@ common:
   exit: "Exit"
   version: "Version"
 
+# WebView load errors shared by browser tabs and URL/auth surfaces
+webview:
+  load_error_title: "Couldn't load this page"
+  load_error_message: "Check your connection and try again."
+  retry: "Retry"
+
 # Capsule Menu
 capsule:
   clean_cache: "Clean cache & Restart"

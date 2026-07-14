@@ -254,6 +254,11 @@ pub fn url_callback_dispatch(url: String) -> bool {
 }
 
 #[napi]
+pub fn webview_load_error_document(url: String) -> String {
+    crate::webview_error::load_error_document(&url)
+}
+
+#[napi]
 pub fn open_browser_tab(appid: String, session_id: i64, url: String) -> Option<String> {
     if session_id <= 0 {
         return None;

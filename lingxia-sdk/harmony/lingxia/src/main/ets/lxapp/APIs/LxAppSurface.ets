@@ -6,7 +6,7 @@ import { display, window } from '@kit.ArkUI';
 import { webview } from '@kit.ArkWeb';
 import { LingXiaWebView } from '../LingXiaWebView';
 import { addWebViewUiCallback, removeWebViewUiCallback, WebViewInfo, WebViewManager, toWebTag } from '../WebViewBridge';
-import { disposePageInstance, notifyPageInstanceHidden, notifyPageInstanceMounted, notifyPageInstanceVisible, onSurfaceClosed, urlCallbackDispatch } from 'liblingxia.so';
+import { disposePageInstance, notifyPageInstanceHidden, notifyPageInstanceMounted, notifyPageInstanceVisible, onSurfaceClosed, urlCallbackDispatch, webviewLoadErrorDocument } from 'liblingxia.so';
 import { FloatWindowManager } from './LxAppFloatWindow';
 
 const DOMAIN = 0x0000;
@@ -940,6 +940,23 @@ export struct SurfaceManager {
                 Lingxia.launchWithUrl(targetUrl);
                 return true;
               })
+              .onErrorReceive((event) => {
+                if (!event || !event.request || !event.error || !event.request.isMainFrame()) {
+                  return;
+                }
+                // Cancellation is control flow (superseded load, intercepted
+                // handoff), never an application-visible load error. It is
+                // reported as exactly ERR_ABORTED — substring matching would
+                // also swallow real failures like ERR_CONNECTION_ABORTED.
+                const info = (event.error.getErrorInfo() ?? '').toLowerCase();
+                if (info === 'err_aborted' || info === 'net::err_aborted') {
+                  return;
+                }
+                this.loadWebSurfaceError(
+                  this.getWebController(surface),
+                  event.request.getRequestUrl() ?? surface.path
+                );
+              })
               .width('100%')
               .height('100%')
               .onAppear(() => {
@@ -1124,6 +1141,15 @@ export struct SurfaceManager {
       this.webControllers.set(key, controller);
     }
     return controller;
+  }
+
+  private loadWebSurfaceError(controller: webview.WebviewController, failingUrl: string): void {
+    try {
+      const html: string = webviewLoadErrorDocument(failingUrl);
+      controller.loadData(html, 'text/html', 'UTF-8', failingUrl, failingUrl);
+    } catch (error) {
+      LxLog.e(TAG, `failed to render surface load error: ${error}`);
+    }
   }
 
   private getPageController(surface: SurfaceRenderState): webview.WebviewController {

@@ -1,29 +1,26 @@
-//! Localized strings for native platform UI (file/media dialog titles).
+//! Localized strings for platform-owned UI.
 //!
 //! `lingxia-platform` sits *below* the i18n string table (which lives in
 //! `lingxia-logic`, and `lingxia-logic` depends on this crate), so it cannot
 //! call the table directly. Instead the logic layer installs a translator
-//! hook here at startup ([`set_dialog_translator`]); the platform code looks
-//! strings up by key via [`dialog_title`], falling back to the bundled
-//! English literal when no translator is installed.
+//! hook here once at startup; platform scenes look strings up by stable key,
+//! falling back to their bundled English literal before runtime initialization.
 
 use std::sync::OnceLock;
 
-type DialogTranslator = Box<dyn Fn(&str) -> Option<String> + Send + Sync>;
+type Localizer = Box<dyn Fn(&str) -> Option<String> + Send + Sync>;
 
-static DIALOG_TRANSLATOR: OnceLock<DialogTranslator> = OnceLock::new();
+static LOCALIZER: OnceLock<Localizer> = OnceLock::new();
 
-/// Installs the locale-aware translator used for native dialog titles. Called
-/// once by the logic layer (which owns the i18n table) at startup; later calls
-/// are ignored.
-pub fn set_dialog_translator(translator: impl Fn(&str) -> Option<String> + Send + Sync + 'static) {
-    let _ = DIALOG_TRANSLATOR.set(Box::new(translator));
+/// Installs the locale-aware lookup owned by the logic layer. Later calls are
+/// ignored; scenes never supply localized strings per invocation.
+pub fn set_localizer(localizer: impl Fn(&str) -> Option<String> + Send + Sync + 'static) {
+    let _ = LOCALIZER.set(Box::new(localizer));
 }
 
-/// Localized title for `key` (e.g. `"file_chooser.select_folder"`), falling
-/// back to `fallback` when no translator is installed or the key is unknown.
-pub fn dialog_title(key: &str, fallback: &str) -> String {
-    DIALOG_TRANSLATOR
+/// Resolves `key`, falling back when runtime localization is unavailable.
+pub fn text(key: &str, fallback: &str) -> String {
+    LOCALIZER
         .get()
         .and_then(|translate| translate(key))
         .filter(|value| !value.trim().is_empty())

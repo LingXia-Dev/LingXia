@@ -443,7 +443,7 @@ impl WebViewController for WebViewInner {
     }
 
     fn load_data(&self, request: LoadDataRequest<'_>) -> StdResult<()> {
-        self.dispatch_command(|resp| UiCommand::LoadHtml {
+        self.dispatch_command_same_thread_safe(|resp| UiCommand::LoadHtml {
             html: request.data.to_string(),
             base_url: request.base_url.to_string(),
             history_url: request.history_url.map(str::to_string),

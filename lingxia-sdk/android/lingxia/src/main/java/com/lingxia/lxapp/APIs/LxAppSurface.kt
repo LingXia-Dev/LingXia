@@ -11,6 +11,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.webkit.WebChromeClient
 import android.webkit.CookieManager
+import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebStorage
 import android.webkit.WebViewClient
@@ -632,6 +633,31 @@ internal object LxAppSurface {
                     return true
                 }
 
+                override fun onReceivedError(
+                    view: android.webkit.WebView?,
+                    request: WebResourceRequest?,
+                    error: WebResourceError?
+                ) {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && request?.isForMainFrame == true) {
+                        if (isNavigationCancellation(error?.description?.toString())) return
+                        val failingUrl = request.url?.toString() ?: url
+                        view?.let { loadWebSurfaceError(it, failingUrl) }
+                    }
+                }
+
+                @Deprecated("Deprecated in Android")
+                override fun onReceivedError(
+                    view: android.webkit.WebView?,
+                    errorCode: Int,
+                    description: String?,
+                    failingUrl: String?
+                ) {
+                    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+                        if (isNavigationCancellation(description)) return
+                        view?.let { loadWebSurfaceError(it, failingUrl ?: url) }
+                    }
+                }
+
                 override fun shouldOverrideUrlLoading(
                     view: android.webkit.WebView?,
                     request: WebResourceRequest?
@@ -667,6 +693,22 @@ internal object LxAppSurface {
             webView.loadUrl(url)
         }
         return webView
+    }
+
+    // Cancellation is control flow (superseded load, intercepted handoff),
+    // never an application-visible load error. Chromium reports it as exactly
+    // net::ERR_ABORTED — substring matching would also swallow real failures
+    // like net::ERR_CONNECTION_ABORTED.
+    private fun isNavigationCancellation(description: String?): Boolean {
+        return description?.lowercase() == "net::err_aborted"
+    }
+
+    private fun loadWebSurfaceError(
+        webView: android.webkit.WebView,
+        failingUrl: String
+    ) {
+        val html = NativeApi.webviewLoadErrorDocument(failingUrl)
+        webView.loadDataWithBaseURL(failingUrl, html, "text/html", "UTF-8", failingUrl)
     }
 
     private fun layoutParams(

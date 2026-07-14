@@ -20,7 +20,7 @@ import { webview } from '@kit.ArkWeb';
 import { Lingxia } from '../../app/Lingxia';
 import { LingXiaWebView } from '../LingXiaWebView';
 import { addWebViewUiCallback, removeWebViewUiCallback, WebViewInfo, WebViewManager, toWebTag } from '../WebViewBridge';
-import { notifyPageInstanceMounted, notifyPageInstanceVisible, urlCallbackDispatch } from 'liblingxia.so';
+import { notifyPageInstanceMounted, notifyPageInstanceVisible, urlCallbackDispatch, webviewLoadErrorDocument } from 'liblingxia.so';
 import { isHttpUrl, isSameOrigin } from './LxAppSurface';
 import type { SurfaceLayoutConfig } from './LxAppSurface';
 
@@ -253,6 +253,26 @@ struct LingXiaFloatSurfacePage {
               .javaScriptAccess(true)
               .fileAccess(false)
               .mixedMode(MixedMode.None)
+              .onErrorReceive((event) => {
+                if (!event || !event.request || !event.error || !event.request.isMainFrame()) {
+                  return;
+                }
+                // Cancellation is control flow (superseded load, intercepted
+                // handoff), never an application-visible load error. It is
+                // reported as exactly ERR_ABORTED — substring matching would
+                // also swallow real failures like ERR_CONNECTION_ABORTED.
+                const info = (event.error.getErrorInfo() ?? '').toLowerCase();
+                if (info === 'err_aborted' || info === 'net::err_aborted') {
+                  return;
+                }
+                const failingUrl = event.request.getRequestUrl() ?? this.layout!.path;
+                try {
+                  const html: string = webviewLoadErrorDocument(failingUrl);
+                  this.urlController.loadData(html, 'text/html', 'UTF-8', failingUrl, failingUrl);
+                } catch (error) {
+                  LxLog.e(TAG, `failed to render float load error: ${error}`);
+                }
+              })
               .onLoadIntercept((event) => {
                 if (!event || !event.data) {
                   return false;

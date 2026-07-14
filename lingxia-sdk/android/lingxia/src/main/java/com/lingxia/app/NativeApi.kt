@@ -193,6 +193,12 @@ internal object NativeApi {
     external fun urlCallbackDispatch(url: String): Boolean
 
     /**
+     * Render the shared WebView load-error document for a failed URL.
+     */
+    @JvmStatic
+    external fun webviewLoadErrorDocument(url: String): String
+
+    /**
      * Open a managed internal browser tab and return tabId.
      * Returns null when owner/session is invalid or creation fails.
      */
