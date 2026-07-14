@@ -125,14 +125,13 @@ private class SidebarGroupHeaderView: NSView {
 class SidebarGroupView: NSView {
 
     struct Layout {
-        static let headerHeight: CGFloat = 26
+        static let headerHeight: CGFloat = 36
         static let headerCornerRadius: CGFloat = 6
         static let groupInset: CGFloat = 8
         static let headerHPadding: CGFloat = 8
         static let chevronSize: CGFloat = 10
         static let closeButtonSize: CGFloat = 16
-        static let connectorLineWidth: CGFloat = 1.5
-        static let itemTopPadding: CGFloat = 4
+        static let itemTopPadding: CGFloat = 2
     }
 
     let appId: String
@@ -154,7 +153,6 @@ class SidebarGroupView: NSView {
     private let chevronIndicator = NSButton()
     private let closeButton = NSButton()
     private let itemsContainer = NSView()
-    private let connectorLine = NSView()
     private var itemViews: [SidebarItemView] = []
 
     private var isExpanded = true
@@ -163,7 +161,6 @@ class SidebarGroupView: NSView {
     /// header switches to it instead.
     var isActiveGroup = false
     private var itemsHeightConstraint: NSLayoutConstraint?
-    private var connectorHeightConstraint: NSLayoutConstraint?
     private var headerTrackingArea: NSTrackingArea?
     private var closeButtonTrackingArea: NSTrackingArea?
     private var isHeaderHovered = false
@@ -195,13 +192,15 @@ class SidebarGroupView: NSView {
         applyColors()
     }
 
+    /// Identity cues only — app icon tile, name, chevron. No accent pill,
+    /// no tinted items area, no connector line: decoration would break the
+    /// sidebar's uniform rhythm (spec §4.3).
     private func applyColors() {
-        headerView.layer?.backgroundColor = palette.headerBg.cgColor
-        appNameLabel.textColor = palette.headerText
-        chevronIndicator.contentTintColor = palette.headerText
-        closeButton.contentTintColor = palette.headerText.withAlphaComponent(0.7)
-        itemsBackground.layer?.backgroundColor = palette.itemsTint.cgColor
-        connectorLine.layer?.backgroundColor = palette.connector.cgColor
+        headerView.layer?.backgroundColor = NSColor.clear.cgColor
+        appNameLabel.textColor = .labelColor
+        chevronIndicator.contentTintColor = .secondaryLabelColor
+        closeButton.contentTintColor = NSColor.secondaryLabelColor.withAlphaComponent(0.9)
+        itemsBackground.layer?.backgroundColor = NSColor.clear.cgColor
     }
 
     private func setupViews() {
@@ -280,12 +279,6 @@ class SidebarGroupView: NSView {
         headerView.addSubview(closeButton)
         headerView.closeButton = closeButton
 
-        // Vertical connector line
-        connectorLine.translatesAutoresizingMaskIntoConstraints = false
-        connectorLine.wantsLayer = true
-        connectorLine.isHidden = true
-        addSubview(connectorLine)
-
         // Items container (must clip so collapsed items are hidden)
         itemsContainer.translatesAutoresizingMaskIntoConstraints = false
         itemsContainer.wantsLayer = true
@@ -295,8 +288,6 @@ class SidebarGroupView: NSView {
         let itemsHeight = itemsContainer.heightAnchor.constraint(equalToConstant: 0)
         itemsHeightConstraint = itemsHeight
 
-        let connectorHeight = connectorLine.heightAnchor.constraint(equalToConstant: 0)
-        connectorHeightConstraint = connectorHeight
 
         NSLayoutConstraint.activate([
             // Header: top, inset left/right
@@ -333,12 +324,6 @@ class SidebarGroupView: NSView {
             itemsBackground.leadingAnchor.constraint(equalTo: leadingAnchor, constant: Layout.groupInset),
             itemsBackground.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -Layout.groupInset),
             itemsBackground.bottomAnchor.constraint(equalTo: bottomAnchor),
-
-            // Connector line: left edge of items area, below header
-            connectorLine.leadingAnchor.constraint(equalTo: leadingAnchor, constant: Layout.groupInset + 14),
-            connectorLine.widthAnchor.constraint(equalToConstant: Layout.connectorLineWidth),
-            connectorLine.topAnchor.constraint(equalTo: headerView.bottomAnchor, constant: 2),
-            connectorHeight,
 
             // Items container: below header
             itemsContainer.topAnchor.constraint(equalTo: headerView.bottomAnchor),
@@ -411,10 +396,8 @@ class SidebarGroupView: NSView {
         // The chevron is a collapse/expand affordance — only meaningful when the
         // group actually has items. No tabBar items → no chevron.
         chevronIndicator.isHidden = items.isEmpty
-        connectorLine.isHidden = items.count <= 1
         if isExpanded {
             itemsHeightConstraint?.constant = totalHeight
-            connectorHeightConstraint?.constant = max(0, totalHeight - Layout.itemTopPadding - 6)
         }
     }
 
@@ -436,7 +419,6 @@ class SidebarGroupView: NSView {
         isExpanded.toggle()
 
         let totalHeight = CGFloat(itemViews.count) * (SidebarItemView.Layout.height + 2) + Layout.itemTopPadding
-        let connectorTarget = isExpanded ? max(0, totalHeight - Layout.itemTopPadding - 6) : 0
 
         // Show container before expand animation; hide after collapse animation
         if isExpanded {
@@ -448,7 +430,6 @@ class SidebarGroupView: NSView {
             context.duration = 0.2
             context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
             itemsHeightConstraint?.animator().constant = isExpanded ? totalHeight : 0
-            connectorHeightConstraint?.animator().constant = connectorTarget
         }, completionHandler: { [weak self] in
             Task { @MainActor [weak self] in
                 guard let self else { return }
@@ -473,7 +454,6 @@ class SidebarGroupView: NSView {
             headerView.layer?.maskedCorners = [.layerMinXMinYCorner, .layerMaxXMinYCorner, .layerMinXMaxYCorner, .layerMaxXMaxYCorner]
         }
 
-        connectorLine.isHidden = !isExpanded || itemViews.count <= 1
     }
 
     @objc private func chevronClicked() {

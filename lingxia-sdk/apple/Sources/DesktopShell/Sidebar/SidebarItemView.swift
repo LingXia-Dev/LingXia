@@ -8,7 +8,7 @@ import CLingXiaRustAPI
 class SidebarItemView: NSView {
 
     struct Layout {
-        static let height: CGFloat = 28
+        static let height: CGFloat = 32
         static let iconSize: CGFloat = 16
         static let leadingPadding: CGFloat = 32
         static let trailingPadding: CGFloat = 8

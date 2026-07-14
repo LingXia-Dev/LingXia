@@ -1455,7 +1455,7 @@ class SidebarView: NSView, NSPopoverDelegate {
             }
 
             groupView.layoutSubtreeIfNeeded()
-            yOffset += groupView.fittingSize.height + 8
+            yOffset += groupView.fittingSize.height + 4
         }
         return yOffset
     }
@@ -1616,7 +1616,7 @@ class SidebarView: NSView, NSPopoverDelegate {
             guard let groupView = groupViews[group.appId] else { continue }
             groupTopConstraints[group.appId]?.constant = yOffset
             groupView.layoutSubtreeIfNeeded()
-            yOffset += groupView.fittingSize.height + 8
+            yOffset += groupView.fittingSize.height + 4
         }
 
         // Re-layout browser section below groups
