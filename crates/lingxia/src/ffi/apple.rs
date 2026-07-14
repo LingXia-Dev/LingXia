@@ -57,6 +57,9 @@ mod bridge {
         pub dimension: i32,
         pub items_count: i32,
         pub is_visible: bool,
+        /// Hidden by an explicit lx.hideTabBar() (not navigation-derived) —
+        /// what desktop skins map to group collapse.
+        pub is_api_hidden: bool,
         pub selected_index: i32,
     }
 
@@ -943,8 +946,7 @@ pub fn shell_activator_open_lxapp(app_id: &str) -> bool {
         // Ensure (installs from the configured cloud when missing) before the
         // panel presents — same order as the privileged openSurface path.
         std::mem::drop(rong_rt::RongExecutor::global().spawn(async move {
-            if let Err(err) =
-                lxapp::prepare_lxapp_open(&app_id, lxapp::ReleaseType::Release).await
+            if let Err(err) = lxapp::prepare_lxapp_open(&app_id, lxapp::ReleaseType::Release).await
             {
                 log::error!("activator open failed for {app_id}: {err}");
                 return;
@@ -1390,6 +1392,7 @@ pub fn get_tab_bar(appid: &str) -> Option<self::bridge::TabBar> {
             dimension: tabbar.dimension,
             items_count: tabbar.list.len() as i32,
             is_visible: tabbar.is_visible,
+            is_api_hidden: tabbar.api_hidden,
             selected_index: tabbar.selected_index,
         })
     })

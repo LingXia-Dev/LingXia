@@ -45,6 +45,12 @@ pub struct TabBar {
     // Runtime state (not from JSON)
     #[serde(skip)]
     pub is_visible: bool,
+    /// Hidden by an explicit lx.hideTabBar() call — as opposed to the
+    /// navigation-derived `is_visible`, which mobile flips on every non-tab
+    /// page. Desktop skins collapse/expand on THIS, so drilling into a
+    /// detail page never collapses the sidebar group.
+    #[serde(skip)]
+    pub api_hidden: bool,
     #[serde(skip)]
     pub selected_index: i32,
 }
@@ -86,6 +92,7 @@ impl TabBar {
 
         // Initialize runtime state
         result.is_visible = true;
+        result.api_hidden = false;
         result.selected_index = 0; // Default to first tab
 
         for item in &mut result.list {
@@ -121,6 +128,11 @@ impl TabBar {
     /// Set TabBar visibility
     pub fn set_visible(&mut self, visible: bool) {
         self.is_visible = visible;
+    }
+
+    /// Record an explicit lx.hideTabBar/showTabBar intent (see `api_hidden`).
+    pub fn set_api_hidden(&mut self, hidden: bool) {
+        self.api_hidden = hidden;
     }
 
     /// Set badge for a specific tab

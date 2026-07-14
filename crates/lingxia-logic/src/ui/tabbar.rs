@@ -154,6 +154,7 @@ async fn show_tabbar(ctx: JSContext) -> JSResult<bool> {
     let updated = lxapp
         .with_tabbar_mut(|tabbar| {
             tabbar.set_visible(true);
+            tabbar.set_api_hidden(false);
             true
         })
         .unwrap_or(false);
@@ -184,6 +185,7 @@ async fn hide_tabbar(ctx: JSContext) -> JSResult<bool> {
     let updated = lxapp
         .with_tabbar_mut(|tabbar| {
             tabbar.set_visible(false);
+            tabbar.set_api_hidden(true);
             true
         })
         .unwrap_or(false);

@@ -433,11 +433,15 @@ class SidebarGroupView: NSView {
         let items = tabBar.getItems(appId: appId)
         rebuildItems(items: items)
 
-        // lx.hideTabBar/showTabBar map to collapsing/expanding this group.
-        // API-driven, so not persisted — the app re-establishes it on launch.
-        if lastAppliedTabBarVisible != tabBar.is_visible {
-            lastAppliedTabBarVisible = tabBar.is_visible
-            if isExpanded != tabBar.is_visible && !itemViews.isEmpty {
+        // Only an EXPLICIT lx.hideTabBar/showTabBar collapses/expands this
+        // group. `is_visible` also flips on every navigation to a non-tab page
+        // (mobile auto-hide) — on desktop the sidebar stays put for that; the
+        // item selection clearing already covers it. Not persisted — the app
+        // re-establishes API state on launch.
+        let apiVisible = !tabBar.is_api_hidden
+        if lastAppliedTabBarVisible != apiVisible {
+            lastAppliedTabBarVisible = apiVisible
+            if isExpanded != apiVisible && !itemViews.isEmpty {
                 toggleExpanded(persist: false)
             }
         }
