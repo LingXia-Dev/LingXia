@@ -918,6 +918,12 @@ fn copy_panel_screen_to_clipboard(panel_id: &str) {
     super::clipboard::set_clipboard_text(&text);
 }
 
+#[cfg(all(feature = "terminal-runtime", feature = "shell-chrome"))]
+fn clear_panel_selection(panel_id: &str, session_id: u64) {
+    super::terminal_grid::clear_selection(session_id);
+    invalidate_panel(panel_id);
+}
+
 /// Pastes the clipboard text into the panel's focused session (the context
 /// menu's Paste). CRLF/LF normalize to CR, and the text is wrapped in
 /// bracketed-paste escapes when the session requests it.
@@ -939,13 +945,15 @@ pub(super) fn paste_clipboard_into_panel(panel_id: &str) {
         };
         let text = text.replace("\r\n", "\r").replace('\n', "\r");
         let bracketed = lingxia_terminal::terminal_snapshot_data(session_id)
-            .is_some_and(|snapshot| snapshot.bracketed_paste);
+            .is_some_and(|snapshot| snapshot.bracketed_paste && snapshot.alternate_screen);
         let payload = if bracketed {
             format!("\x1b[200~{text}\x1b[201~")
         } else {
             text
         };
-        let _ = lingxia_terminal::terminal_write(session_id, &payload);
+        if lingxia_terminal::terminal_write(session_id, &payload) {
+            clear_panel_selection(panel_id, session_id);
+        }
     }
     #[cfg(not(all(feature = "terminal-runtime", feature = "shell-chrome")))]
     let _ = panel_id;
@@ -1033,6 +1041,21 @@ fn open_windows_terminal_session_panel(
                 copy_panel_screen_to_clipboard(&input_panel_key);
                 return true;
             }
+            // TranslateMessage posts WM_CHAR before WM_KEYDOWN is dispatched,
+            // so consuming Ctrl+Shift+C/V above does not suppress the trailing
+            // control character. Swallow it or copy would also send ETX and
+            // paste would also send SYN to the foreground process.
+            #[cfg(feature = "shell-chrome")]
+            if event.ctrl
+                && event.shift
+                && event.vk == 0
+                && matches!(
+                    event.character,
+                    Some('\u{3}' | '\u{16}' | 'C' | 'V' | 'c' | 'v')
+                )
+            {
+                return true;
+            }
             if is_panel_read_only(&input_panel_key) {
                 return false;
             }
@@ -1053,7 +1076,10 @@ fn open_windows_terminal_session_panel(
             });
             match encoded {
                 Some(input) => {
-                    let _ = lingxia_terminal::terminal_write(session_id, &input);
+                    if lingxia_terminal::terminal_write(session_id, &input) {
+                        #[cfg(feature = "shell-chrome")]
+                        clear_panel_selection(&input_panel_key, session_id);
+                    }
                     true
                 }
                 None => false,

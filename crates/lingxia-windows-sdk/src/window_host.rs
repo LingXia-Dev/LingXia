@@ -4582,6 +4582,23 @@ fn handle_chrome_mouse_wheel(hwnd: HWND, wparam: WPARAM, lparam: LPARAM) -> bool
     true
 }
 
+#[cfg(feature = "shell-chrome")]
+fn finish_terminal_selection_drag(hwnd: HWND, point: Option<(i32, i32)>) -> bool {
+    let panel_id = TERMINAL_SELECTION_DRAGS
+        .get_or_init(|| Mutex::new(HashMap::new()))
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .remove(&hwnd_handle(hwnd));
+    let Some(panel_id) = panel_id else {
+        return false;
+    };
+    if let Some(point) = point {
+        crate::shell::update_terminal_selection(&panel_id, point.0, point.1);
+    }
+    crate::shell::end_terminal_selection(&panel_id);
+    true
+}
+
 fn handle_chrome_left_down(hwnd: HWND, point: (i32, i32)) -> bool {
     if let Some(vertical) = begin_attached_panel_resize_drag(hwnd, point) {
         unsafe {
@@ -4656,14 +4673,7 @@ fn handle_chrome_left_down(hwnd: HWND, point: (i32, i32)) -> bool {
 
 fn handle_chrome_left_up(hwnd: HWND, point: (i32, i32)) -> bool {
     #[cfg(feature = "shell-chrome")]
-    if let Some(panel_id) = TERMINAL_SELECTION_DRAGS
-        .get_or_init(|| Mutex::new(HashMap::new()))
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-        .remove(&hwnd_handle(hwnd))
-    {
-        crate::shell::update_terminal_selection(&panel_id, point.0, point.1);
-        crate::shell::end_terminal_selection(&panel_id);
+    if finish_terminal_selection_drag(hwnd, Some(point)) {
         unsafe {
             let _ = ReleaseCapture();
         }
@@ -6080,6 +6090,11 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                 }
                 unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
             }
+            WindowsAndMessaging::WM_CAPTURECHANGED | WindowsAndMessaging::WM_CANCELMODE => {
+                #[cfg(feature = "shell-chrome")]
+                let _ = finish_terminal_selection_drag(hwnd, None);
+                unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
+            }
             WindowsAndMessaging::WM_LBUTTONDBLCLK => {
                 if windows_chrome_renderer().is_some()
                     && !is_native_framed_window(hwnd)
@@ -6113,11 +6128,7 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                 #[cfg(feature = "shell-chrome")]
                 destroy_sidebar_tabbar_popup(hwnd);
                 #[cfg(feature = "shell-chrome")]
-                if let Some(drags) = TERMINAL_SELECTION_DRAGS.get()
-                    && let Ok(mut drags) = drags.lock()
-                {
-                    drags.remove(&hwnd_handle(hwnd));
-                }
+                let _ = finish_terminal_selection_drag(hwnd, None);
                 release_chrome_back_buffer(hwnd);
                 let webtag_key = window_webtag_key(hwnd);
                 if let Some(key) = webtag_key.as_deref() {
