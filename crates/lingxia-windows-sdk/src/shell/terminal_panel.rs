@@ -281,6 +281,9 @@ impl WindowsTerminalPanel {
 static WINDOWS_TERMINAL_PANELS: OnceLock<Mutex<HashMap<String, WindowsTerminalPanel>>> =
     OnceLock::new();
 
+#[cfg(all(feature = "terminal-runtime", feature = "shell-chrome"))]
+static TERMINAL_WHEEL_REMAINDERS: OnceLock<Mutex<HashMap<u64, i32>>> = OnceLock::new();
+
 #[cfg(feature = "terminal-runtime")]
 fn windows_terminal_panels() -> std::sync::MutexGuard<'static, HashMap<String, WindowsTerminalPanel>>
 {
@@ -551,37 +554,46 @@ pub(crate) fn scroll_pane_at(
     panel_id: &str,
     client_x: i32,
     client_y: i32,
-    delta_rows: i32,
+    wheel_delta: i32,
 ) -> bool {
     #[cfg(all(feature = "terminal-runtime", feature = "shell-chrome"))]
     {
-        if delta_rows == 0 {
+        if wheel_delta == 0 {
             return false;
         }
-        let Some(body) = super::terminal_grid::panel_body_rect(panel_id) else {
+        let Some((session_id, col, row)) =
+            super::terminal_grid::session_cell_at(panel_id, client_x, client_y)
+        else {
             return false;
         };
-        let session_id = {
-            let panels = windows_terminal_panels();
-            let Some(tab) = panels.get(panel_id).and_then(|panel| panel.active_tab()) else {
-                return false;
-            };
-            let mut frames = Vec::new();
-            layout_node(&tab.root, body, &mut frames);
-            frames
-                .into_iter()
-                .find(|(_, rect)| {
-                    client_x >= rect.left
-                        && client_x < rect.right
-                        && client_y >= rect.top
-                        && client_y < rect.bottom
-                })
-                .map(|(session_id, _)| session_id)
+
+        const WHEEL_DELTA: i32 = 120;
+        const ROWS_PER_NOTCH: i32 = 3;
+        let delta_rows = {
+            let remainders = TERMINAL_WHEEL_REMAINDERS.get_or_init(|| Mutex::new(HashMap::new()));
+            let mut remainders = remainders
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            let remainder = remainders.entry(session_id).or_default();
+            *remainder += wheel_delta.saturating_mul(ROWS_PER_NOTCH);
+            let rows = *remainder / WHEEL_DELTA;
+            *remainder %= WHEEL_DELTA;
+            if *remainder == 0 {
+                remainders.remove(&session_id);
+            }
+            rows
         };
-        let Some(session_id) = session_id else {
-            return false;
-        };
-        if !lingxia_terminal::terminal_scroll(session_id, delta_rows) {
+        if delta_rows == 0 {
+            return true;
+        }
+        let allow_application_input = !is_panel_read_only(panel_id);
+        if !lingxia_terminal::terminal_scroll(
+            session_id,
+            -delta_rows,
+            col,
+            row,
+            allow_application_input,
+        ) {
             return false;
         }
         super::terminal_grid::clear_selection(session_id);
@@ -593,7 +605,7 @@ pub(crate) fn scroll_pane_at(
     }
     #[cfg(not(all(feature = "terminal-runtime", feature = "shell-chrome")))]
     {
-        let _ = (panel_id, client_x, client_y, delta_rows);
+        let _ = (panel_id, client_x, client_y, wheel_delta);
         false
     }
 }
@@ -1247,6 +1259,13 @@ fn close_pane_session(panel_id: &str, session_id: u64) -> bool {
     lingxia_terminal::terminal_close(session_id);
     #[cfg(feature = "shell-chrome")]
     super::terminal_grid::clear_session(session_id);
+    #[cfg(feature = "shell-chrome")]
+    if let Some(remainders) = TERMINAL_WHEEL_REMAINDERS.get() {
+        remainders
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .remove(&session_id);
+    }
 
     let outcome = {
         let mut panels = windows_terminal_panels();
@@ -1344,6 +1363,13 @@ fn shutdown_windows_terminal_panel_state(panel_id: &str) {
             for session_id in tab.sessions() {
                 #[cfg(feature = "shell-chrome")]
                 super::terminal_grid::clear_session(session_id);
+                #[cfg(feature = "shell-chrome")]
+                if let Some(remainders) = TERMINAL_WHEEL_REMAINDERS.get() {
+                    remainders
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner)
+                        .remove(&session_id);
+                }
                 lingxia_terminal::terminal_close(session_id);
             }
         }

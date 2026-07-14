@@ -85,8 +85,6 @@ static TRANSPARENT_TABBAR_OVERLAYS: OnceLock<Mutex<HashMap<isize, TransparentTab
 #[cfg(feature = "shell-chrome")]
 static SIDEBAR_TABBAR_POPUPS: OnceLock<Mutex<HashMap<isize, SidebarTabbarPopup>>> = OnceLock::new();
 #[cfg(feature = "shell-chrome")]
-static TERMINAL_WHEEL_REMAINDERS: OnceLock<Mutex<HashMap<isize, i32>>> = OnceLock::new();
-#[cfg(feature = "shell-chrome")]
 static TERMINAL_SELECTION_DRAGS: OnceLock<Mutex<HashMap<isize, String>>> = OnceLock::new();
 #[cfg(feature = "components")]
 static NAV_SNAPSHOT_SLIDES: OnceLock<Mutex<HashMap<isize, NavSnapshotSlide>>> = OnceLock::new();
@@ -4576,26 +4574,11 @@ fn handle_chrome_mouse_wheel(hwnd: HWND, wparam: WPARAM, lparam: LPARAM) -> bool
         return false;
     }
 
-    const WHEEL_DELTA: i32 = 120;
-    const ROWS_PER_NOTCH: i32 = 3;
     let wheel_delta = ((wparam.0 >> 16) & 0xffff) as u16 as i16 as i32;
     if wheel_delta == 0 {
         return true;
     }
-    let delta_rows = {
-        let remainders = TERMINAL_WHEEL_REMAINDERS.get_or_init(|| Mutex::new(HashMap::new()));
-        let Ok(mut remainders) = remainders.lock() else {
-            return true;
-        };
-        let remainder = remainders.entry(hwnd_handle(hwnd)).or_default();
-        *remainder += wheel_delta.saturating_mul(ROWS_PER_NOTCH);
-        let rows = *remainder / WHEEL_DELTA;
-        *remainder %= WHEEL_DELTA;
-        rows
-    };
-    if delta_rows != 0 {
-        let _ = crate::shell::scroll_pane_at(&id, client_point.0, client_point.1, -delta_rows);
-    }
+    let _ = crate::shell::scroll_pane_at(&id, client_point.0, client_point.1, wheel_delta);
     true
 }
 
@@ -6129,12 +6112,6 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                 destroy_transparent_tabbar_overlay(hwnd);
                 #[cfg(feature = "shell-chrome")]
                 destroy_sidebar_tabbar_popup(hwnd);
-                #[cfg(feature = "shell-chrome")]
-                if let Some(remainders) = TERMINAL_WHEEL_REMAINDERS.get()
-                    && let Ok(mut remainders) = remainders.lock()
-                {
-                    remainders.remove(&hwnd_handle(hwnd));
-                }
                 #[cfg(feature = "shell-chrome")]
                 if let Some(drags) = TERMINAL_SELECTION_DRAGS.get()
                     && let Ok(mut drags) = drags.lock()

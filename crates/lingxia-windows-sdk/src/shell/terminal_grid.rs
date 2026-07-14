@@ -259,6 +259,17 @@ fn selection_point(
     ))
 }
 
+/// Session and zero-based grid cell under a host-client point.
+#[cfg(feature = "shell-chrome")]
+pub(super) fn session_cell_at(
+    panel_id: &str,
+    client_x: i32,
+    client_y: i32,
+) -> Option<(u64, u16, u16)> {
+    selection_point(panel_id, None, client_x, client_y)
+        .map(|(session_id, point)| (session_id, point.col, point.row))
+}
+
 /// Starts a cell selection in the pane under the pointer.
 #[cfg(feature = "shell-chrome")]
 pub(crate) fn begin_selection_at(panel_id: &str, client_x: i32, client_y: i32) -> bool {

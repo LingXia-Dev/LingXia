@@ -433,7 +433,13 @@ mod bridge {
         fn terminal_session_resize(id: u64, cols: u16, rows: u16) -> bool;
 
         #[swift_bridge(swift_name = "terminalSessionScroll")]
-        fn terminal_session_scroll(id: u64, delta_rows: i32) -> bool;
+        fn terminal_session_scroll(
+            id: u64,
+            delta_rows: i32,
+            col: u16,
+            row: u16,
+            allow_application_input: bool,
+        ) -> bool;
 
         #[swift_bridge(swift_name = "terminalSessionClose")]
         fn terminal_session_close(id: u64);
@@ -1535,15 +1541,21 @@ pub fn terminal_session_resize(id: u64, cols: u16, rows: u16) -> bool {
     }
 }
 
-pub fn terminal_session_scroll(id: u64, delta_rows: i32) -> bool {
+pub fn terminal_session_scroll(
+    id: u64,
+    delta_rows: i32,
+    col: u16,
+    row: u16,
+    allow_application_input: bool,
+) -> bool {
     #[cfg(feature = "terminal-runtime")]
     {
-        return crate::terminal::terminal_scroll(id, delta_rows);
+        return crate::terminal::terminal_scroll(id, delta_rows, col, row, allow_application_input);
     }
 
     #[cfg(not(feature = "terminal-runtime"))]
     {
-        let _ = (id, delta_rows);
+        let _ = (id, delta_rows, col, row, allow_application_input);
         false
     }
 }

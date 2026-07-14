@@ -224,12 +224,21 @@ pub fn terminal_resize(_id: u64, _cols: u16, _rows: u16) -> bool {
     false
 }
 
-/// Scroll the visible terminal viewport by rows.
+/// Handle vertical scroll input at a viewport cell.
 ///
-/// Negative values move into older scrollback; positive values move toward
-/// the live bottom of the buffer.
+/// Negative values move up and positive values move down. Applications that
+/// requested mouse reporting receive wheel events at `(col, row)`; alternate
+/// screens with mode 1007 receive cursor keys. Otherwise this moves the native
+/// scrollback viewport. Read-only hosts set `allow_application_input` to false
+/// so scrolling never writes to the PTY.
 #[cfg(lingxia_ghostty_vt_available)]
-pub fn terminal_scroll(id: u64, delta_rows: i32) -> bool {
+pub fn terminal_scroll(
+    id: u64,
+    delta_rows: i32,
+    col: u16,
+    row: u16,
+    allow_application_input: bool,
+) -> bool {
     if delta_rows == 0 {
         return false;
     }
@@ -239,11 +248,17 @@ pub fn terminal_scroll(id: u64, delta_rows: i32) -> bool {
     let Ok(mut session) = session.lock() else {
         return false;
     };
-    session.scroll(delta_rows)
+    session.scroll(delta_rows, col, row, allow_application_input)
 }
 
 #[cfg(not(lingxia_ghostty_vt_available))]
-pub fn terminal_scroll(_id: u64, _delta_rows: i32) -> bool {
+pub fn terminal_scroll(
+    _id: u64,
+    _delta_rows: i32,
+    _col: u16,
+    _row: u16,
+    _allow_application_input: bool,
+) -> bool {
     false
 }
 
@@ -586,12 +601,55 @@ impl TerminalSession {
         Ok(())
     }
 
-    fn scroll(&mut self, delta_rows: i32) -> bool {
+    fn scroll(
+        &mut self,
+        delta_rows: i32,
+        col: u16,
+        row: u16,
+        allow_application_input: bool,
+    ) -> bool {
         let bytes = self.drain_bytes();
         if !bytes.is_empty() {
             self.vt.feed(&bytes);
         }
+
+        let mouse_tracking = allow_application_input && self.vt.mouse_tracking_active();
+        if allow_application_input
+            && self.vt.is_alternate_screen()
+            && !mouse_tracking
+            && self.vt.is_alt_scroll()
+        {
+            let sequence = match (delta_rows < 0, self.vt.is_decckm()) {
+                (true, true) => b"\x1bOA".as_slice(),
+                (true, false) => b"\x1b[A".as_slice(),
+                (false, true) => b"\x1bOB".as_slice(),
+                (false, false) => b"\x1b[B".as_slice(),
+            };
+            return self
+                .write_repeated(sequence, delta_rows.unsigned_abs())
+                .is_ok();
+        }
+
+        if mouse_tracking {
+            let sequence = encode_mouse_wheel(self.vt.is_sgr_mouse(), delta_rows < 0, col, row);
+            return self
+                .write_repeated(&sequence, delta_rows.unsigned_abs())
+                .is_ok();
+        }
         self.vt.scroll_viewport_delta(delta_rows as isize)
+    }
+
+    fn write_repeated(&mut self, bytes: &[u8], count: u32) -> std::io::Result<()> {
+        const MAX_SCROLL_STEPS: u32 = 4096;
+
+        let mut writer = self
+            .writer
+            .lock()
+            .map_err(|_| std::io::Error::other("terminal writer lock poisoned"))?;
+        for _ in 0..count.min(MAX_SCROLL_STEPS) {
+            writer.write_all(bytes)?;
+        }
+        writer.flush()
     }
 
     fn drain_bytes(&mut self) -> Vec<u8> {
@@ -693,6 +751,29 @@ impl TerminalSession {
             None
         }
     }
+}
+
+/// Encode one vertical wheel step at a zero-based viewport cell.
+///
+/// Modern applications use SGR mouse reporting. The legacy X10 form is kept
+/// for programs that request mouse tracking without enabling SGR coordinates.
+#[cfg(lingxia_ghostty_vt_available)]
+fn encode_mouse_wheel(sgr: bool, up: bool, col: u16, row: u16) -> Vec<u8> {
+    let button = if up { 64_u8 } else { 65_u8 };
+    if sgr {
+        return format!(
+            "\x1b[<{button};{};{}M",
+            u32::from(col) + 1,
+            u32::from(row) + 1
+        )
+        .into_bytes();
+    }
+
+    // Classic X10 coordinates are encoded as one byte with a 32 bias.
+    // Clamp to its representable 223-column/row range.
+    let x = col.saturating_add(1).min(223) as u8;
+    let y = row.saturating_add(1).min(223) as u8;
+    vec![0x1b, b'[', b'M', button + 32, x + 32, y + 32]
 }
 
 #[cfg(lingxia_ghostty_vt_available)]
@@ -1140,8 +1221,21 @@ mod tests {
 
     #[test]
     fn rejects_scroll_for_missing_session_or_zero_delta() {
-        assert!(!terminal_scroll(0, -3));
-        assert!(!terminal_scroll(u64::MAX, 0));
+        assert!(!terminal_scroll(0, -3, 0, 0, true));
+        assert!(!terminal_scroll(u64::MAX, 0, 0, 0, true));
+    }
+
+    #[test]
+    #[cfg(lingxia_ghostty_vt_available)]
+    fn encodes_sgr_and_legacy_mouse_wheel() {
+        assert_eq!(
+            encode_mouse_wheel(true, true, 4, 2).as_slice(),
+            b"\x1b[<64;5;3M"
+        );
+        assert_eq!(
+            encode_mouse_wheel(false, false, 4, 2),
+            vec![0x1b, b'[', b'M', 97, 37, 35]
+        );
     }
 
     #[test]

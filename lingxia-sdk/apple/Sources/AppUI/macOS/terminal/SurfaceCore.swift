@@ -124,8 +124,13 @@ final class LingXiaTerminalPaneView: NSView {
         terminalView.onResize = { [weak self] cols, rows in
             self?.session.resize(cols: cols, rows: rows)
         }
-        terminalView.onScroll = { [weak self] rows in
-            self?.session.scroll(rows: rows)
+        terminalView.onScroll = { [weak self] rows, col, row, allowApplicationInput in
+            self?.session.scroll(
+                rows: rows,
+                col: col,
+                row: row,
+                allowApplicationInput: allowApplicationInput
+            )
         }
         terminalView.onResetRequested = { [weak self] in
             self?.session.restart()
@@ -287,7 +292,7 @@ private final class LingXiaTerminalCanvasView: NSView {
     var onSplitRequested: ((LingXiaTerminalSplitDirection) -> Void)?
     var onZoomRequested: (() -> Void)?
     var onResize: ((UInt16, UInt16) -> Void)?
-    var onScroll: ((Int) -> Void)?
+    var onScroll: ((Int, UInt16, UInt16, Bool) -> Void)?
     var onResetRequested: (() -> Void)?
     var onTitleEditRequested: (() -> Void)?
     var zoomed = false
@@ -394,7 +399,11 @@ private final class LingXiaTerminalCanvasView: NSView {
         let wholeRows = Int(scrollRowRemainder.rounded(.towardZero))
         guard wholeRows != 0 else { return }
         scrollRowRemainder -= CGFloat(wholeRows)
-        onScroll?(-wholeRows)
+        selectionAnchor = nil
+        selectionFocus = nil
+        needsDisplay = true
+        let point = gridPoint(for: convert(event.locationInWindow, from: nil))
+        onScroll?(-wholeRows, UInt16(point.col), UInt16(point.row), !readOnly)
     }
 
     func showContextMenu(fromWindowEvent event: NSEvent) {
@@ -953,13 +962,13 @@ private final class LingXiaPTYTerminalSession: @unchecked Sendable {
         }
     }
 
-    func scroll(rows: Int) {
+    func scroll(rows: Int, col: UInt16, row: UInt16, allowApplicationInput: Bool) {
         guard rows != 0 else { return }
         ioQueue.async { [weak self] in
             guard let self, self.sessionID != 0 else { return }
             let delta = Int32(clamping: rows)
-            let ok = terminalSessionScroll(self.sessionID, delta)
-            lxTerminalLogAsync("pty.scroll session=\(self.sessionID) rows=\(delta) ok=\(ok)")
+            let ok = terminalSessionScroll(self.sessionID, delta, col, row, allowApplicationInput)
+            lxTerminalLogAsync("pty.scroll session=\(self.sessionID) rows=\(delta) cell=\(col),\(row) ok=\(ok)")
         }
     }
 
