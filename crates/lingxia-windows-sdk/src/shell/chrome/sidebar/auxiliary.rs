@@ -44,7 +44,6 @@ pub(in crate::shell::chrome) fn sidebar_pinned_grid_height(
 /// per auxiliary item (rows that would collide with the footer are dropped),
 /// and the add row.
 pub(in crate::shell::chrome) struct SidebarAuxiliaryRects {
-    pub(super) separator: RECT,
     /// Row rects aligned index-for-index with `tabbar.auxiliary_items`
     /// (possibly truncated when rows run out of vertical space).
     pub(in crate::shell::chrome) items: Vec<RECT>,
@@ -62,20 +61,18 @@ pub(in crate::shell::chrome) fn sidebar_auxiliary_rects(
     // A collapsed items group hides its rows; the auxiliary section moves up
     // directly under the group header.
     let pinned_height = sidebar_pinned_grid_height(rect, tabbar);
-    let items_height = if tabbar.items_collapsed {
+    let items_height = if tabbar.items_collapsed || tabbar.items.is_empty() {
         0
     } else {
-        tabbar.items.len() as i32 * (SIDEBAR_ITEM_HEIGHT + SIDEBAR_ITEM_GAP)
+        SIDEBAR_PARENT_CHILD_GAP
+            + tabbar.items.len() as i32 * SIDEBAR_CHILD_ITEM_HEIGHT
+            + (tabbar.items.len() as i32 - 1) * SIDEBAR_CHILD_ITEM_GAP
     };
-    let items_bottom = rect.top + SIDEBAR_HEADER_HEIGHT + pinned_height + items_height;
-    let mut top = items_bottom + SIDEBAR_BROWSER_SECTION_GAP;
-    let separator = normalize_rect(RECT {
-        left: rect.left + SIDEBAR_ITEM_INSET,
-        top,
-        right: rect.right - SIDEBAR_ITEM_INSET,
-        bottom: top + 1,
-    });
-    top += 1 + SIDEBAR_BROWSER_SECTION_GAP;
+    let items_bottom =
+        rect.top + SHELL_TOP_BAR_HEIGHT + pinned_height + SIDEBAR_ITEM_HEIGHT + items_height;
+    // A web/lxapp type transition is just another top-level transition: no
+    // separator band, exactly the shared 4px gap.
+    let mut top = items_bottom + SIDEBAR_ITEM_GAP;
 
     let row = |top: &mut i32| -> Option<RECT> {
         let bottom = *top + SIDEBAR_ITEM_HEIGHT;
@@ -115,11 +112,7 @@ pub(in crate::shell::chrome) fn sidebar_auxiliary_rects(
                 bottom: top + PINNED_SHORTCUT_SIZE,
             });
             if pinned_rect.bottom > footer_top {
-                return Some(SidebarAuxiliaryRects {
-                    separator,
-                    items,
-                    add: None,
-                });
+                return Some(SidebarAuxiliaryRects { items, add: None });
             }
             items.push(pinned_rect);
         }
@@ -136,11 +129,7 @@ pub(in crate::shell::chrome) fn sidebar_auxiliary_rects(
         None
     };
 
-    Some(SidebarAuxiliaryRects {
-        separator,
-        items,
-        add,
-    })
+    Some(SidebarAuxiliaryRects { items, add })
 }
 
 pub(in crate::shell::chrome) fn sidebar_auxiliary_hit_test(
@@ -195,12 +184,6 @@ pub(in crate::shell::chrome) fn draw_sidebar_auxiliary_section(
     let Some(auxiliary) = sidebar_auxiliary_rects(rect, tabbar) else {
         return;
     };
-
-    let has_regular_rows =
-        tabbar.auxiliary_items.iter().any(|item| !item.pinned) || tabbar.show_auxiliary_add;
-    if has_regular_rows {
-        fill_rect(hdc, auxiliary.separator, shell_palette().divider);
-    }
 
     for (item, item_rect) in tabbar.auxiliary_items.iter().zip(&auxiliary.items) {
         let item_rect = *item_rect;

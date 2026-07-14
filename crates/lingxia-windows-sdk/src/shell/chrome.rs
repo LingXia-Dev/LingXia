@@ -107,18 +107,19 @@ pub(super) fn sidebar_column_width(tabbar: &WindowsShellTabBarLayout) -> i32 {
     }
 }
 
-pub(super) const SIDEBAR_HEADER_HEIGHT: i32 = 66;
-
-pub(super) const SIDEBAR_ITEM_HEIGHT: i32 = 34;
-
+/// Top-level lxapp/web rows share one vertical rhythm.
+pub(super) const SIDEBAR_ITEM_HEIGHT: i32 = 36;
 pub(super) const SIDEBAR_ITEM_GAP: i32 = 4;
+
+/// Expanded lxapp tabbar children are deliberately tighter so they read as a
+/// group without sacrificing a 30px hit target.
+pub(super) const SIDEBAR_CHILD_ITEM_HEIGHT: i32 = 30;
+pub(super) const SIDEBAR_CHILD_ITEM_GAP: i32 = 1;
+pub(super) const SIDEBAR_PARENT_CHILD_GAP: i32 = 2;
 
 pub(super) const SIDEBAR_ITEM_INSET: i32 = 10;
 
 pub(super) const SIDEBAR_FOOTER_HEIGHT: i32 = 40;
-
-/// Vertical padding above and below the browser-section separator line.
-pub(super) const SIDEBAR_BROWSER_SECTION_GAP: i32 = 8;
 
 /// Width of the close-glyph hit area at the trailing edge of a browser row.
 pub(super) const SIDEBAR_BROWSER_CLOSE_SIZE: i32 = 22;

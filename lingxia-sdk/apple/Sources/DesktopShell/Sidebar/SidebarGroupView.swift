@@ -498,14 +498,17 @@ class SidebarGroupView: NSView {
             ])
 
             itemViews.append(itemView)
-            yOffset += SidebarItemView.Layout.height + 1
+            yOffset += SidebarItemView.Layout.height
+            if index + 1 < items.count {
+                yOffset += 1
+            }
         }
 
         let totalHeight = yOffset
         // The chevron is a collapse/expand affordance — only meaningful when the
         // group actually has items. No tabBar items → no chevron.
         chevronIndicator.isHidden = items.isEmpty
-        attributionLine.isHidden = items.count <= 1
+        attributionLine.isHidden = items.isEmpty
         let hasNotifications = items.contains { !$0.badge.toString().isEmpty || $0.has_red_dot }
         aggregateDot.isHidden = isExpanded || !hasNotifications
         if isExpanded {
@@ -539,7 +542,10 @@ class SidebarGroupView: NSView {
         let hasNotifications = itemViews.contains { $0.hasNotification }
         aggregateDot.isHidden = isExpanded || !hasNotifications
 
-        let totalHeight = CGFloat(itemViews.count) * (SidebarItemView.Layout.height + 1) + Layout.itemTopPadding
+        let itemGaps = CGFloat(max(0, itemViews.count - 1))
+        let totalHeight = Layout.itemTopPadding
+            + CGFloat(itemViews.count) * SidebarItemView.Layout.height
+            + itemGaps
 
         // Show container before expand animation; hide after collapse animation
         if isExpanded {

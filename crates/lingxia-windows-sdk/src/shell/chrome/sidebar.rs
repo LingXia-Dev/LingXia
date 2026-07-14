@@ -119,7 +119,7 @@ pub(super) fn draw_sidebar_tab_bar(
         tabbar.app_name.to_ascii_uppercase()
     };
     let group_top = sidebar_group_top(rect, tabbar);
-    let group_bottom = rect.top + SIDEBAR_HEADER_HEIGHT + sidebar_pinned_grid_height(rect, tabbar);
+    let group_bottom = sidebar_group_bottom(rect, tabbar);
     let chevron_rect = sidebar_group_chevron_rect(rect, tabbar);
     // The lxapp's own icon (via the app-info API) leads the group header.
     let icon_top = group_top + (group_bottom - group_top - SIDEBAR_ICON_SIZE).max(0) / 2;
@@ -394,9 +394,16 @@ fn sidebar_group_top(rect: RECT, tabbar: &WindowsShellTabBarLayout) -> i32 {
     rect.top + SHELL_TOP_BAR_HEIGHT + sidebar_pinned_grid_height(rect, tabbar)
 }
 
+pub(in crate::shell::chrome) fn sidebar_group_bottom(
+    rect: RECT,
+    tabbar: &WindowsShellTabBarLayout,
+) -> i32 {
+    sidebar_group_top(rect, tabbar) + SIDEBAR_ITEM_HEIGHT
+}
+
 pub(super) fn sidebar_group_chevron_rect(rect: RECT, tabbar: &WindowsShellTabBarLayout) -> RECT {
     let group_top = sidebar_group_top(rect, tabbar);
-    let group_bottom = rect.top + SIDEBAR_HEADER_HEIGHT + sidebar_pinned_grid_height(rect, tabbar);
+    let group_bottom = sidebar_group_bottom(rect, tabbar);
     let top = group_top + (group_bottom - group_top - SIDEBAR_CHEVRON_SIZE).max(0) / 2;
     normalize_rect(RECT {
         left: rect.right - SIDEBAR_ITEM_INSET - SIDEBAR_CHEVRON_SIZE,
@@ -502,13 +509,15 @@ pub(super) fn sidebar_item_rect(
     index: usize,
 ) -> RECT {
     let top = rect.top
-        + SIDEBAR_HEADER_HEIGHT
+        + SHELL_TOP_BAR_HEIGHT
         + sidebar_pinned_grid_height(rect, tabbar)
-        + index as i32 * (SIDEBAR_ITEM_HEIGHT + SIDEBAR_ITEM_GAP);
+        + SIDEBAR_ITEM_HEIGHT
+        + SIDEBAR_PARENT_CHILD_GAP
+        + index as i32 * (SIDEBAR_CHILD_ITEM_HEIGHT + SIDEBAR_CHILD_ITEM_GAP);
     normalize_rect(RECT {
         left: rect.left + SIDEBAR_ITEM_INSET,
         top,
         right: rect.right - SIDEBAR_ITEM_INSET,
-        bottom: top + SIDEBAR_ITEM_HEIGHT,
+        bottom: top + SIDEBAR_CHILD_ITEM_HEIGHT,
     })
 }
