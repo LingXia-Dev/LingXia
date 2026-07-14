@@ -124,6 +124,9 @@ final class LingXiaTerminalPaneView: NSView {
         terminalView.onResize = { [weak self] cols, rows in
             self?.session.resize(cols: cols, rows: rows)
         }
+        terminalView.onScroll = { [weak self] rows in
+            self?.session.scroll(rows: rows)
+        }
         terminalView.onResetRequested = { [weak self] in
             self?.session.restart()
         }
@@ -284,6 +287,7 @@ private final class LingXiaTerminalCanvasView: NSView {
     var onSplitRequested: ((LingXiaTerminalSplitDirection) -> Void)?
     var onZoomRequested: (() -> Void)?
     var onResize: ((UInt16, UInt16) -> Void)?
+    var onScroll: ((Int) -> Void)?
     var onResetRequested: (() -> Void)?
     var onTitleEditRequested: (() -> Void)?
     var zoomed = false
@@ -312,6 +316,7 @@ private final class LingXiaTerminalCanvasView: NSView {
     private var lastSentSize: (cols: UInt16, rows: UInt16)?
     private var selectionAnchor: LingXiaTerminalGridPoint?
     private var selectionFocus: LingXiaTerminalGridPoint?
+    private var scrollRowRemainder: CGFloat = 0
     private var readOnly = false
 
     override init(frame frameRect: NSRect) {
@@ -379,6 +384,17 @@ private final class LingXiaTerminalCanvasView: NSView {
         _ = window?.makeFirstResponder(self)
         onActivated?()
         NSMenu.popUpContextMenu(splitMenu(), with: event, for: self)
+    }
+
+    override func scrollWheel(with event: NSEvent) {
+        let rows = event.hasPreciseScrollingDeltas
+            ? event.scrollingDeltaY / max(charSize.height, 1)
+            : event.scrollingDeltaY * 3
+        scrollRowRemainder += rows
+        let wholeRows = Int(scrollRowRemainder.rounded(.towardZero))
+        guard wholeRows != 0 else { return }
+        scrollRowRemainder -= CGFloat(wholeRows)
+        onScroll?(-wholeRows)
     }
 
     func showContextMenu(fromWindowEvent event: NSEvent) {
@@ -934,6 +950,16 @@ private final class LingXiaPTYTerminalSession: @unchecked Sendable {
             guard let self, self.sessionID != 0 else { return }
             let ok = terminalSessionResize(self.sessionID, cols, rows)
             lxTerminalLogAsync("pty.resize session=\(self.sessionID) cols=\(cols) rows=\(rows) ok=\(ok)")
+        }
+    }
+
+    func scroll(rows: Int) {
+        guard rows != 0 else { return }
+        ioQueue.async { [weak self] in
+            guard let self, self.sessionID != 0 else { return }
+            let delta = Int32(clamping: rows)
+            let ok = terminalSessionScroll(self.sessionID, delta)
+            lxTerminalLogAsync("pty.scroll session=\(self.sessionID) rows=\(delta) ok=\(ok)")
         }
     }
 
