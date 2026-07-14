@@ -1380,7 +1380,7 @@ enum LxAppSurface {
             }
 
             contentView.frame = contentFrame
-            contentView.backgroundColor = .white
+            contentView.backgroundColor = .systemBackground
             contentView.layer.cornerRadius = fillsScreen ? 0 : LxAppSurface.transientCornerRadius
             contentView.layer.masksToBounds = true
             contentView.isUserInteractionEnabled = true
@@ -1568,6 +1568,17 @@ enum LxAppSurface {
             let delegate = WebNavigationDelegate(initialURL: url, allowsCrossOrigin: true)
             wkWebView.navigationDelegate = delegate
             wkWebView.translatesAutoresizingMaskIntoConstraints = false
+            // The page paints the whole sheet, matching Android: no automatic
+            // bottom safe-area inset (which leaves an underscroll band in the
+            // home-indicator zone), and no opaque system background behind the
+            // document that would flash white around/under it.
+            wkWebView.scrollView.contentInsetAdjustmentBehavior = .never
+            wkWebView.isOpaque = false
+            wkWebView.backgroundColor = .clear
+            wkWebView.scrollView.backgroundColor = .clear
+            if #available(iOS 15.0, *) {
+                wkWebView.underPageBackgroundColor = .clear
+            }
             controller.contentView.addSubview(wkWebView)
             pinToEdges(wkWebView, in: controller.contentView)
             wkWebView.load(URLRequest(url: url))
