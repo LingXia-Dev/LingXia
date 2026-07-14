@@ -1110,6 +1110,12 @@ impl PageInstance {
             lxapp.with_tabbar_mut(|t| {
                 t.set_selected_index(index);
             });
+        } else if !is_tabbar_page {
+            // Navigating to a non-tab page: no tabbar item may stay
+            // highlighted (the lxapp tab itself still is).
+            lxapp.with_tabbar_mut(|t| {
+                t.clear_selected_index();
+            });
         }
         lxapp.push_to_page_stack(&path)?;
 

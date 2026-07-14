@@ -29,6 +29,10 @@ class SidebarItemView: NSView {
     private var trackingArea: NSTrackingArea?
     private(set) var isHovered = false
     var isSelected = false { didSet { updateAppearance() } }
+    /// Selected-state tint from the lxapp's tabbar style (`selectedColor`);
+    /// nil falls back to the system accent (spec: style follows the tabbar
+    /// config, the shell injects no accent of its own).
+    var selectedTint: NSColor? { didSet { updateAppearance() } }
 
     let itemIndex: Int
     let appId: String
@@ -189,10 +193,11 @@ class SidebarItemView: NSView {
     }
 
     private func updateAppearance() {
+        let accent = selectedTint ?? NSColor.controlAccentColor
         if isSelected {
-            selectionBackground.layer?.backgroundColor = NSColor.controlAccentColor.withAlphaComponent(0.15).cgColor
-            titleLabel.textColor = NSColor.controlAccentColor
-            iconView.contentTintColor = NSColor.controlAccentColor
+            selectionBackground.layer?.backgroundColor = accent.withAlphaComponent(0.15).cgColor
+            titleLabel.textColor = accent
+            iconView.contentTintColor = accent
         } else if isHovered {
             selectionBackground.layer?.backgroundColor = NSColor.labelColor.withAlphaComponent(0.06).cgColor
             titleLabel.textColor = NSColor.labelColor

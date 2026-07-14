@@ -223,6 +223,14 @@ impl TabBar {
         self
     }
 
+    /// Clear the selection: the current page is not a tabbar page, so no item
+    /// may highlight (the sidebar's lxapp tab still does). `selected_index`
+    /// becomes -1 until the next tab switch.
+    pub fn clear_selected_index(&mut self) -> &mut Self {
+        self.selected_index = -1;
+        self
+    }
+
     /// Find tab index by page path
     pub fn find_index_by_path(&self, path: &str) -> Option<i32> {
         self.list

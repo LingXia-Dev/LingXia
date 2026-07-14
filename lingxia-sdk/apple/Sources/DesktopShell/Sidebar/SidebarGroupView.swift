@@ -159,7 +159,14 @@ class SidebarGroupView: NSView {
     /// True when this group's lxapp is the active main — set by SidebarView.
     /// Clicking the active group's header toggles collapse; a non-active group's
     /// header switches to it instead.
-    var isActiveGroup = false
+    var isActiveGroup = false { didSet { updateActiveAppearance() } }
+    /// Selected-state tint from this lxapp's tabbar style (`selectedColor`);
+    /// nil = system neutral. Feeds the items and the attribution line.
+    private var tabBarTint: NSColor?
+    /// Thin vertical line binding the expanded items to their group header
+    /// (spec §4.3 — Windows-baseline attribution line, tabbar-tinted).
+    private let attributionLine = NSView()
+    private var attributionHeightConstraint: NSLayoutConstraint?
     private var itemsHeightConstraint: NSLayoutConstraint?
     private var headerTrackingArea: NSTrackingArea?
     private var closeButtonTrackingArea: NSTrackingArea?
@@ -195,8 +202,19 @@ class SidebarGroupView: NSView {
     /// Identity cues only — app icon tile, name, chevron. No accent pill,
     /// no tinted items area, no connector line: decoration would break the
     /// sidebar's uniform rhythm (spec §4.3).
+    /// The lxapp tab (group header) highlights while its app owns the main —
+    /// regardless of page or tabbar item — so a collapsed group still shows
+    /// where you are. Distinct from the item accent (two independent levels).
+    private func updateActiveAppearance() {
+        headerView.layer?.backgroundColor = isActiveGroup
+            ? NSColor.labelColor.withAlphaComponent(0.09).cgColor
+            : NSColor.clear.cgColor
+    }
+
     private func applyColors() {
-        headerView.layer?.backgroundColor = NSColor.clear.cgColor
+        updateActiveAppearance()
+        attributionLine.layer?.backgroundColor =
+            (tabBarTint ?? NSColor.separatorColor).withAlphaComponent(0.45).cgColor
         appNameLabel.textColor = .labelColor
         chevronIndicator.contentTintColor = .secondaryLabelColor
         closeButton.contentTintColor = NSColor.secondaryLabelColor.withAlphaComponent(0.9)
@@ -279,6 +297,12 @@ class SidebarGroupView: NSView {
         headerView.addSubview(closeButton)
         headerView.closeButton = closeButton
 
+        // Attribution line binding items to their header
+        attributionLine.translatesAutoresizingMaskIntoConstraints = false
+        attributionLine.wantsLayer = true
+        attributionLine.isHidden = true
+        addSubview(attributionLine)
+
         // Items container (must clip so collapsed items are hidden)
         itemsContainer.translatesAutoresizingMaskIntoConstraints = false
         itemsContainer.wantsLayer = true
@@ -287,6 +311,8 @@ class SidebarGroupView: NSView {
 
         let itemsHeight = itemsContainer.heightAnchor.constraint(equalToConstant: 0)
         itemsHeightConstraint = itemsHeight
+        let attributionHeight = attributionLine.heightAnchor.constraint(equalToConstant: 0)
+        attributionHeightConstraint = attributionHeight
 
 
         NSLayoutConstraint.activate([
@@ -324,6 +350,12 @@ class SidebarGroupView: NSView {
             itemsBackground.leadingAnchor.constraint(equalTo: leadingAnchor, constant: Layout.groupInset),
             itemsBackground.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -Layout.groupInset),
             itemsBackground.bottomAnchor.constraint(equalTo: bottomAnchor),
+
+            // Attribution line: left edge of the items area
+            attributionLine.leadingAnchor.constraint(equalTo: leadingAnchor, constant: Layout.groupInset + 12),
+            attributionLine.widthAnchor.constraint(equalToConstant: 1),
+            attributionLine.topAnchor.constraint(equalTo: headerView.bottomAnchor, constant: Layout.itemTopPadding),
+            attributionHeight,
 
             // Items container: below header
             itemsContainer.topAnchor.constraint(equalTo: headerView.bottomAnchor),
@@ -363,6 +395,12 @@ class SidebarGroupView: NSView {
             return
         }
 
+        // Style follows the lxapp's tabbar config; 0 (unset) keeps neutral.
+        tabBarTint = tabBar.selected_color != 0
+            ? PlatformColor(argb: tabBar.selected_color)
+            : nil
+        applyColors()
+
         let items = tabBar.getItems(appId: appId)
         rebuildItems(items: items)
     }
@@ -375,6 +413,7 @@ class SidebarGroupView: NSView {
         for (index, item) in items.enumerated() {
             let itemView = SidebarItemView(appId: appId, itemIndex: index)
             itemView.translatesAutoresizingMaskIntoConstraints = false
+            itemView.selectedTint = tabBarTint
             itemView.configure(item: item)
             itemView.onClick = { [weak self] idx in
                 guard let self else { return }
@@ -396,8 +435,10 @@ class SidebarGroupView: NSView {
         // The chevron is a collapse/expand affordance — only meaningful when the
         // group actually has items. No tabBar items → no chevron.
         chevronIndicator.isHidden = items.isEmpty
+        attributionLine.isHidden = items.count <= 1
         if isExpanded {
             itemsHeightConstraint?.constant = totalHeight
+            attributionHeightConstraint?.constant = max(0, totalHeight - Layout.itemTopPadding * 2)
         }
     }
 
@@ -430,6 +471,8 @@ class SidebarGroupView: NSView {
             context.duration = 0.2
             context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
             itemsHeightConstraint?.animator().constant = isExpanded ? totalHeight : 0
+            attributionHeightConstraint?.animator().constant =
+                isExpanded ? max(0, totalHeight - Layout.itemTopPadding * 2) : 0
         }, completionHandler: { [weak self] in
             Task { @MainActor [weak self] in
                 guard let self else { return }

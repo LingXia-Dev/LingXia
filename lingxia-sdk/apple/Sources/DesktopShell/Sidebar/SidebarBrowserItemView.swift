@@ -1,13 +1,13 @@
 #if os(macOS)
 import AppKit
 
-/// A sidebar entry for a browser tab (28pt high, matching SidebarItemView height).
+/// A sidebar entry for a browser tab (36pt top-level row, spec §4.2).
 /// Displays globe icon + page title + close button (selected tab only).
 @MainActor
 class SidebarBrowserItemView: NSView {
 
     struct Layout {
-        static let height: CGFloat = 28
+        static let height: CGFloat = 36
         static let iconSize: CGFloat = 16
         // Matches SidebarGroupView.Layout.headerHPadding so an lxapp group's
         // icon and a browser tab's icon line up in the same column (both sit

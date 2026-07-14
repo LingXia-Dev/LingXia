@@ -1563,7 +1563,7 @@ class SidebarView: NSView, NSPopoverDelegate {
                 tc.isActive = true
                 browserItemTopConstraints[tabId] = tc
             }
-            yOffset += SidebarBrowserItemView.Layout.height + 2
+            yOffset += SidebarBrowserItemView.Layout.height + 4
         }
 
         // "+" button — only shown when the browser capability is available
