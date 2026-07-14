@@ -399,6 +399,9 @@ final class LxAppMacAppUIRuntime: NSObject {
         return item.key
     }
 
+    /// Icon resolution order: writer's explicit icon > the content's own
+    /// metadata (lxapp icon, a declared native surface's icon) > none (the
+    /// row falls back to the default mark).
     private func runtimeItemIconURL(_ item: RuntimeActivatorItem) -> URL? {
         if let icon = item.icon, !icon.isEmpty {
             return LxAppAppUIBundleLoader.resolveRelativeResource(icon, baseURL: uiConfigURL)
@@ -406,6 +409,12 @@ final class LxAppMacAppUIRuntime: NSObject {
         if item.kind == "lxapp" {
             let path = getLxAppInfo(item.key).icon.toString()
             if !path.isEmpty { return URL(fileURLWithPath: path) }
+        }
+        if item.kind == "native",
+           let icon = uiConfig.activators.first(where: { $0.action.surface == item.key })?.icon,
+           !icon.isEmpty {
+            // A declared native surface carries its icon on its yaml activator.
+            return LxAppAppUIBundleLoader.resolveRelativeResource(icon, baseURL: uiConfigURL)
         }
         return nil
     }

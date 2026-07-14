@@ -289,12 +289,17 @@ class SidebarView: NSView, NSPopoverDelegate {
         static let resizeHandleWidth: CGFloat = 5
         /// Bottom dock height — tall enough for one row of icon buttons plus breathing room.
         static let footerHeight: CGFloat = 48
-        /// Square icon button size in the dock.
-        static let footerButtonSize: CGFloat = 28
+        /// Activator row height — matches the tabbar item rhythm above.
+        static let footerButtonSize: CGFloat = 30
         /// Rendered glyph size inside footer icon buttons.
         static let footerIconSize: CGFloat = 16
-        /// Horizontal/vertical padding inside the dock.
+        /// Vertical padding inside the dock.
         static let footerInset: CGFloat = 6
+        /// Activator rows span the same outer extents as the tabbar item
+        /// rows (group inset), so their hover rect and icon axis line up.
+        static let footerLeading: CGFloat = 8
+        /// Rows shown before the activator area caps and scrolls internally.
+        static let footerMaxRows: CGFloat = 5
     }
 
     private let headerView = NSView()
@@ -308,6 +313,8 @@ class SidebarView: NSView, NSPopoverDelegate {
     private var footerHeightConstraint: NSLayoutConstraint?
     /// Horizontal stack that holds trailing product/action buttons.
     private let panelStack = NSStackView()
+    /// Caps the activator area: rows beyond footerMaxRows scroll in here.
+    private let panelScroll = NSScrollView()
     /// The expanded-state collapse toggle. Lives in the header, next to the
     /// sidebar actions; clicking it collapses the sidebar to the icon rail.
     private let hideButton = NSButton()
@@ -315,7 +322,7 @@ class SidebarView: NSView, NSPopoverDelegate {
     /// The rail-state expand toggle — the first icon in the collapsed rail,
     /// above the lxapp icons; clicking it restores the expanded sidebar.
     private let railExpandButton = NSButton()
-    private var panelButtons: [NSButton] = []
+    private var panelButtons: [ActivatorRowView] = []
     /// The panel items currently materialized as footer buttons. Lets
     /// renderPanelItems() skip a rebuild when render() runs for an unrelated
     /// change — so `updatePanelIcon`'s resolved icons aren't wiped out.
@@ -585,12 +592,30 @@ class SidebarView: NSView, NSPopoverDelegate {
 
         panelStack.translatesAutoresizingMaskIntoConstraints = false
         // Activator entries stack as full-width rows: icon on the left, title on
-        // the right. Icon-only presentation lives in the collapsed rail.
+        // the right. Icon-only presentation lives in the collapsed rail. The
+        // stack lives in a scroll view: past footerMaxRows the area caps and
+        // scrolls internally instead of squeezing the tab list above.
         panelStack.orientation = .vertical
         panelStack.spacing = 2
         panelStack.alignment = .width
         panelStack.distribution = .fill
-        footerView.addSubview(panelStack)
+        panelScroll.translatesAutoresizingMaskIntoConstraints = false
+        panelScroll.drawsBackground = false
+        panelScroll.hasVerticalScroller = true
+        panelScroll.autohidesScrollers = true
+        panelScroll.verticalScrollElasticity = .none
+        let panelDoc = FlippedClipView()
+        panelDoc.translatesAutoresizingMaskIntoConstraints = false
+        panelDoc.addSubview(panelStack)
+        panelScroll.documentView = panelDoc
+        NSLayoutConstraint.activate([
+            panelStack.topAnchor.constraint(equalTo: panelDoc.topAnchor),
+            panelStack.leadingAnchor.constraint(equalTo: panelDoc.leadingAnchor),
+            panelStack.trailingAnchor.constraint(equalTo: panelDoc.trailingAnchor),
+            panelStack.bottomAnchor.constraint(equalTo: panelDoc.bottomAnchor),
+            panelDoc.widthAnchor.constraint(equalTo: panelScroll.widthAnchor),
+        ])
+        footerView.addSubview(panelScroll)
 
         hideButton.translatesAutoresizingMaskIntoConstraints = false
         hideButton.title = ""
@@ -689,9 +714,10 @@ class SidebarView: NSView, NSPopoverDelegate {
             hideButton.widthAnchor.constraint(equalToConstant: Layout.actionButtonSize),
             hideButton.heightAnchor.constraint(equalToConstant: Layout.actionButtonSize),
 
-            panelStack.leadingAnchor.constraint(equalTo: footerView.leadingAnchor, constant: Layout.footerInset),
-            panelStack.trailingAnchor.constraint(equalTo: footerView.trailingAnchor, constant: -Layout.footerInset),
-            panelStack.topAnchor.constraint(equalTo: footerView.topAnchor, constant: Layout.footerInset + 1),
+            panelScroll.leadingAnchor.constraint(equalTo: footerView.leadingAnchor, constant: Layout.footerLeading),
+            panelScroll.trailingAnchor.constraint(equalTo: footerView.trailingAnchor, constant: -Layout.footerInset),
+            panelScroll.topAnchor.constraint(equalTo: footerView.topAnchor, constant: Layout.footerInset + 1),
+            panelScroll.bottomAnchor.constraint(equalTo: footerView.bottomAnchor, constant: -Layout.footerInset),
 
             // Resize handle: right edge, full height
             resizeHandle.topAnchor.constraint(equalTo: topAnchor),
@@ -1165,7 +1191,7 @@ class SidebarView: NSView, NSPopoverDelegate {
         // The header collapse toggle shows only in the expanded layout; the rail
         // carries its own expand toggle anchored at the bottom when compact.
         hideButton.isHidden = hidden || appUIOnlyMode || compact
-        panelStack.isHidden = compact
+        panelScroll.isHidden = compact
         // The footer only carries panel icons now; collapse it when empty so an
         // expanded sidebar with no panel actions has no dangling bottom bar.
         footerView.isHidden = hidden || compact || model.panelItems.isEmpty
@@ -1242,8 +1268,9 @@ class SidebarView: NSView, NSPopoverDelegate {
         }
         panelButtons.removeAll()
 
-        // Footer height tracks the row count; collapse to zero when empty.
-        let rows = CGFloat(items.count)
+        // Footer height tracks the row count, capped at footerMaxRows — past
+        // that the stack scrolls inside the fixed-height area.
+        let rows = min(CGFloat(items.count), Layout.footerMaxRows)
         footerHeightConstraint?.constant = items.isEmpty
             ? 0
             : Layout.footerInset * 2 + 1 + rows * Layout.footerButtonSize + (rows - 1) * panelStack.spacing
@@ -1251,45 +1278,19 @@ class SidebarView: NSView, NSPopoverDelegate {
         guard !items.isEmpty else { return }
 
         for item in items {
-            let btn = NSButton()
-            btn.translatesAutoresizingMaskIntoConstraints = false
-            btn.isBordered = false
-            btn.bezelStyle = .regularSquare
-            // Full-width row: icon on the left, title on the right (icon-only
-            // lives in the collapsed rail); the title takes the writer's color.
-            btn.imagePosition = .imageLeading
-            btn.imageScaling = .scaleProportionallyDown
-            btn.wantsLayer = true
-            btn.layer?.cornerRadius = 6
-            btn.layer?.backgroundColor = NSColor.clear.cgColor
-            btn.toolTip = item.label
-            btn.attributedTitle = NSAttributedString(
-                string: " " + item.label,
-                attributes: [
-                    .font: NSFont.systemFont(ofSize: 12, weight: .regular),
-                    .foregroundColor: item.labelColor ?? NSColor.secondaryLabelColor,
-                ]
+            // A custom row, not an NSButton: a borderless button centers its
+            // image+title block, so left alignment is impossible with it.
+            let row = ActivatorRowView(
+                label: item.label,
+                iconURL: item.iconURL,
+                labelColor: item.labelColor
             )
-            btn.alignment = .left
-            if let iconURL = item.iconURL,
-               let image = NSImage(contentsOf: iconURL) {
-                image.size = NSSize(width: Layout.footerIconSize, height: Layout.footerIconSize)
-                image.isTemplate = true
-                btn.image = image
-                btn.contentTintColor = NSColor.secondaryLabelColor
-            } else {
-                let fallback = NSImage(systemSymbolName: "square.grid.2x2", accessibilityDescription: item.label)
-                fallback?.size = NSSize(width: Layout.footerIconSize, height: Layout.footerIconSize)
-                btn.image = fallback
-                btn.contentTintColor = NSColor.secondaryLabelColor
+            row.onClick = { [weak self] in
+                self?.onPanelItemToggled?(item.id)
             }
-            btn.target = self
-            btn.action = #selector(panelButtonClicked(_:))
-            // Store panel id in the button's identifier
-            btn.identifier = NSUserInterfaceItemIdentifier(item.id)
-            btn.heightAnchor.constraint(equalToConstant: Layout.footerButtonSize).isActive = true
-            panelStack.addArrangedSubview(btn)
-            panelButtons.append(btn)
+            row.heightAnchor.constraint(equalToConstant: Layout.footerButtonSize).isActive = true
+            panelStack.addArrangedSubview(row)
+            panelButtons.append(row)
         }
     }
 
@@ -1322,18 +1323,13 @@ class SidebarView: NSView, NSPopoverDelegate {
         updateReadyCallout = nil
     }
 
-    /// Update a panel button's icon from a file:// URL (resolved via resolveLxUri after lxapp installs).
+    /// Update a panel row's icon from a file:// URL (resolved via resolveLxUri after lxapp installs).
     func updatePanelIcon(panelId: String, iconFileUrl: String) {
-        guard let btn = panelButtons.first(where: { $0.identifier?.rawValue == panelId }),
+        guard let index = renderedPanelItems.firstIndex(where: { $0.id == panelId }),
+              index < panelButtons.count,
               let url = URL(string: iconFileUrl),
               let image = NSImage(contentsOf: url) else { return }
-        btn.image = image
-        btn.contentTintColor = nil
-    }
-
-    @objc private func panelButtonClicked(_ sender: NSButton) {
-        guard let panelId = sender.identifier?.rawValue else { return }
-        onPanelItemToggled?(panelId)
+        panelButtons[index].setIcon(image)
     }
 
     // MARK: - Public API (thin model mutators)
@@ -1856,6 +1852,111 @@ class SidebarView: NSView, NSPopoverDelegate {
 private class FlippedView: NSView {
     override var isFlipped: Bool { true }
     override var mouseDownCanMoveWindow: Bool { false }
+}
+
+/// Top-aligned scroll document host (NSClipView content is bottom-anchored
+/// in non-flipped coordinates).
+@MainActor
+private final class FlippedClipView: NSView {
+    override var isFlipped: Bool { true }
+}
+
+/// One activator entry: a left-aligned icon + title row sharing the tabbar
+/// items' rhythm (30pt, hover wash). A custom view because a borderless
+/// NSButton centers its image+title block and cannot left-align it.
+@MainActor
+final class ActivatorRowView: NSView {
+    var onClick: (() -> Void)?
+
+    private let iconView = NSImageView()
+    private let titleLabel: NSTextField
+    private var isHovered = false { didSet { updateBackground() } }
+    private var tracking: NSTrackingArea?
+
+    private let washView = NSView()
+
+    init(label: String, iconURL: URL?, labelColor: NSColor?) {
+        titleLabel = NSTextField(labelWithString: label)
+        super.init(frame: .zero)
+        translatesAutoresizingMaskIntoConstraints = false
+        toolTip = label
+        setAccessibilityElement(true)
+        setAccessibilityRole(.button)
+        setAccessibilityLabel(label)
+
+        // Activator entries are TOP-LEVEL rows: hover rect and icon axis copy
+        // the web-tab rows (full-row wash, radius 6, icon inset 8), not the
+        // nested tabbar items' deeper card.
+        washView.translatesAutoresizingMaskIntoConstraints = false
+        washView.wantsLayer = true
+        washView.layer?.cornerRadius = 6
+        addSubview(washView)
+
+        let icon = iconURL.flatMap { NSImage(contentsOf: $0) }
+            ?? Bundle.lingxiaResources.url(
+                forResource: "lxapp_default", withExtension: "png", subdirectory: "icons")
+                .flatMap { NSImage(contentsOf: $0) }
+        icon?.size = NSSize(width: 16, height: 16)
+        iconView.image = icon
+        iconView.imageScaling = .scaleProportionallyDown
+        iconView.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(iconView)
+
+        titleLabel.font = NSFont.systemFont(ofSize: 13, weight: .regular)
+        titleLabel.textColor = labelColor ?? NSColor.labelColor
+        titleLabel.lineBreakMode = .byTruncatingTail
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(titleLabel)
+
+        NSLayoutConstraint.activate([
+            washView.leadingAnchor.constraint(equalTo: leadingAnchor),
+            washView.trailingAnchor.constraint(equalTo: trailingAnchor),
+            washView.topAnchor.constraint(equalTo: topAnchor),
+            washView.bottomAnchor.constraint(equalTo: bottomAnchor),
+            iconView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
+            iconView.centerYAnchor.constraint(equalTo: centerYAnchor),
+            iconView.widthAnchor.constraint(equalToConstant: 16),
+            iconView.heightAnchor.constraint(equalToConstant: 16),
+            titleLabel.leadingAnchor.constraint(equalTo: iconView.trailingAnchor, constant: 8),
+            titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: washView.trailingAnchor, constant: -8),
+            titleLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
+        ])
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+
+    func setIcon(_ image: NSImage) {
+        image.size = NSSize(width: 16, height: 16)
+        iconView.image = image
+    }
+
+    private func updateBackground() {
+        washView.layer?.backgroundColor = isHovered
+            ? NSColor.labelColor.withAlphaComponent(0.06).cgColor
+            : NSColor.clear.cgColor
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let tracking { removeTrackingArea(tracking) }
+        let area = NSTrackingArea(
+            rect: bounds,
+            options: [.mouseEnteredAndExited, .activeInActiveApp, .inVisibleRect],
+            owner: self,
+            userInfo: nil
+        )
+        addTrackingArea(area)
+        tracking = area
+    }
+
+    override func mouseEntered(with event: NSEvent) { isHovered = true }
+    override func mouseExited(with event: NSEvent) { isHovered = false }
+    override func mouseDown(with event: NSEvent) { onClick?() }
+    override var mouseDownCanMoveWindow: Bool { false }
+    override func accessibilityPerformPress() -> Bool {
+        onClick?()
+        return true
+    }
 }
 
 #endif
