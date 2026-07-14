@@ -54,11 +54,19 @@ fn action_event(id: &str) -> String {
 fn parse_item(ctx: &JSContext, item: &JSObject) -> JSResult<Value> {
     let name = item.get::<_, String>("name").ok().filter(|s| !s.is_empty());
     let icon = item.get::<_, String>("icon").ok().filter(|s| !s.is_empty());
+    let color = item
+        .get::<_, String>("color")
+        .ok()
+        .filter(|s| !s.is_empty());
     if let Ok(app_id) = item.get::<_, String>("lxapp") {
-        return Ok(json!({ "kind": "lxapp", "key": app_id, "name": name, "icon": icon }));
+        return Ok(
+            json!({ "kind": "lxapp", "key": app_id, "name": name, "icon": icon, "color": color }),
+        );
     }
     if let Ok(capability) = item.get::<_, String>("native") {
-        return Ok(json!({ "kind": "native", "key": capability, "name": name, "icon": icon }));
+        return Ok(
+            json!({ "kind": "native", "key": capability, "name": name, "icon": icon, "color": color }),
+        );
     }
     let id = item.get::<_, String>("id").map_err(|_| {
         rong::HostError::new(
@@ -74,7 +82,7 @@ fn parse_item(ctx: &JSContext, item: &JSObject) -> JSResult<Value> {
     }
     // Action items need explicit presentation: they reference no content that
     // could supply metadata.
-    Ok(json!({ "kind": "action", "key": id, "name": name, "icon": icon }))
+    Ok(json!({ "kind": "action", "key": id, "name": name, "icon": icon, "color": color }))
 }
 
 /// `lx.shell.activator.set(items)` — idempotent full-list declaration. The

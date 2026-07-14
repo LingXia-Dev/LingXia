@@ -27,6 +27,8 @@ struct LxAppUIActionItem: Sendable {
     let id: String
     let label: String
     let iconURL: URL?
+    /// Writer-configured title color (#RRGGBB), nil = default.
+    var labelColorHex: String?
 }
 
 @MainActor
@@ -327,6 +329,7 @@ final class LxAppMacAppUIRuntime: NSObject {
         let key: String        // appId / capability / action id
         let name: String?
         let icon: String?
+        let color: String?     // title color, #RRGGBB
     }
     private var runtimeActivatorItems: [RuntimeActivatorItem] = []
 
@@ -349,7 +352,8 @@ final class LxAppMacAppUIRuntime: NSObject {
             return LxAppUIActionItem(
                 id: "runtime:\(item.kind):\(item.key)",
                 label: title,
-                iconURL: runtimeItemIconURL(item)
+                iconURL: runtimeItemIconURL(item),
+                labelColorHex: item.color
             )
         }
     }

@@ -34,6 +34,7 @@ App({
         id: "ping",
         icon: "icons/tray.svg",
         name: "Ping",
+        color: "#FF6B00",
         handler: () => {
           lx.showToast({ title: "activator clicked", icon: "success" });
         },

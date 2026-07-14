@@ -1357,7 +1357,25 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
 
     func updateSidebarHostActions(_ items: [LxAppUIActionItem]) {
         lastSidebarHostActions = items
-        let sidebarItems = items.map { PanelIconItem(id: $0.id, iconURL: $0.iconURL, label: $0.label) }
+        let sidebarItems = items.map { item in
+            PanelIconItem(
+                labelColor: item.labelColorHex.flatMap { hex in
+                    let cleaned = hex.hasPrefix("#") ? String(hex.dropFirst()) : hex
+                    guard cleaned.count == 6, let rgb = UInt32(cleaned, radix: 16) else {
+                        return nil
+                    }
+                    return NSColor(
+                        red: CGFloat((rgb >> 16) & 0xFF) / 255,
+                        green: CGFloat((rgb >> 8) & 0xFF) / 255,
+                        blue: CGFloat(rgb & 0xFF) / 255,
+                        alpha: 1
+                    )
+                },
+                id: item.id,
+                iconURL: item.iconURL,
+                label: item.label
+            )
+        }
         sidebarView?.updatePanelItems(sidebarItems)
         reconcileSidebarAutoHide()
     }

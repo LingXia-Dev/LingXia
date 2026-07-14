@@ -203,6 +203,8 @@ private final class SidebarRailTabPopoverViewController: NSViewController {
 /// Minimal display info for a panel icon in the sidebar footer.
 /// SidebarView only needs these — routing details (appId, path) are in Panel.swift.
 struct PanelIconItem {
+    /// Optional title color (writer-configurable); nil = secondary label.
+    var labelColor: NSColor?
     let id: String
     let iconURL: URL?
     let label: String
@@ -302,6 +304,8 @@ class SidebarView: NSView, NSPopoverDelegate {
     private let resizeHandle = SidebarResizeHandle()
     private let footerView = NSView()
     private let footerSeparator = NSView()
+    /// Footer height tracks the activator row count (see renderPanelItems).
+    private var footerHeightConstraint: NSLayoutConstraint?
     /// Horizontal stack that holds trailing product/action buttons.
     private let panelStack = NSStackView()
     /// The expanded-state collapse toggle. Lives in the header, next to the
@@ -580,9 +584,11 @@ class SidebarView: NSView, NSPopoverDelegate {
         footerView.addSubview(footerSeparator)
 
         panelStack.translatesAutoresizingMaskIntoConstraints = false
-        panelStack.orientation = .horizontal
-        panelStack.spacing = 4
-        panelStack.alignment = .centerY
+        // Activator entries stack as full-width rows: icon on the left, title on
+        // the right. Icon-only presentation lives in the collapsed rail.
+        panelStack.orientation = .vertical
+        panelStack.spacing = 2
+        panelStack.alignment = .width
         panelStack.distribution = .fill
         footerView.addSubview(panelStack)
 
@@ -672,7 +678,6 @@ class SidebarView: NSView, NSPopoverDelegate {
             footerView.leadingAnchor.constraint(equalTo: leadingAnchor),
             footerView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -Layout.resizeHandleWidth),
             footerView.bottomAnchor.constraint(equalTo: bottomAnchor),
-            footerView.heightAnchor.constraint(equalToConstant: Layout.footerHeight),
 
             footerSeparator.topAnchor.constraint(equalTo: footerView.topAnchor),
             footerSeparator.leadingAnchor.constraint(equalTo: footerView.leadingAnchor),
@@ -683,8 +688,8 @@ class SidebarView: NSView, NSPopoverDelegate {
             hideButton.heightAnchor.constraint(equalToConstant: Layout.actionButtonSize),
 
             panelStack.leadingAnchor.constraint(equalTo: footerView.leadingAnchor, constant: Layout.footerInset),
-            panelStack.trailingAnchor.constraint(lessThanOrEqualTo: footerView.trailingAnchor, constant: -Layout.footerInset),
-            panelStack.centerYAnchor.constraint(equalTo: footerView.centerYAnchor),
+            panelStack.trailingAnchor.constraint(equalTo: footerView.trailingAnchor, constant: -Layout.footerInset),
+            panelStack.topAnchor.constraint(equalTo: footerView.topAnchor, constant: Layout.footerInset + 1),
 
             // Resize handle: right edge, full height
             resizeHandle.topAnchor.constraint(equalTo: topAnchor),
@@ -692,6 +697,10 @@ class SidebarView: NSView, NSPopoverDelegate {
             resizeHandle.bottomAnchor.constraint(equalTo: bottomAnchor),
             resizeHandle.widthAnchor.constraint(equalToConstant: Layout.resizeHandleWidth),
         ])
+
+        let footerHeight = footerView.heightAnchor.constraint(equalToConstant: Layout.footerHeight)
+        footerHeight.isActive = true
+        footerHeightConstraint = footerHeight
 
         // Button center constraints — stored so we can align them to the effective traffic-light center.
         let centerY = buttonCenterYFromTop
@@ -1231,6 +1240,12 @@ class SidebarView: NSView, NSPopoverDelegate {
         }
         panelButtons.removeAll()
 
+        // Footer height tracks the row count; collapse to zero when empty.
+        let rows = CGFloat(items.count)
+        footerHeightConstraint?.constant = items.isEmpty
+            ? 0
+            : Layout.footerInset * 2 + 1 + rows * Layout.footerButtonSize + (rows - 1) * panelStack.spacing
+
         guard !items.isEmpty else { return }
 
         for item in items {
@@ -1238,12 +1253,22 @@ class SidebarView: NSView, NSPopoverDelegate {
             btn.translatesAutoresizingMaskIntoConstraints = false
             btn.isBordered = false
             btn.bezelStyle = .regularSquare
-            btn.imagePosition = .imageOnly
+            // Full-width row: icon on the left, title on the right (icon-only
+            // lives in the collapsed rail); the title takes the writer's color.
+            btn.imagePosition = .imageLeading
             btn.imageScaling = .scaleProportionallyDown
             btn.wantsLayer = true
             btn.layer?.cornerRadius = 6
             btn.layer?.backgroundColor = NSColor.clear.cgColor
             btn.toolTip = item.label
+            btn.attributedTitle = NSAttributedString(
+                string: " " + item.label,
+                attributes: [
+                    .font: NSFont.systemFont(ofSize: 12, weight: .regular),
+                    .foregroundColor: item.labelColor ?? NSColor.secondaryLabelColor,
+                ]
+            )
+            btn.alignment = .left
             if let iconURL = item.iconURL,
                let image = NSImage(contentsOf: iconURL) {
                 image.size = NSSize(width: Layout.footerIconSize, height: Layout.footerIconSize)
@@ -1260,10 +1285,7 @@ class SidebarView: NSView, NSPopoverDelegate {
             btn.action = #selector(panelButtonClicked(_:))
             // Store panel id in the button's identifier
             btn.identifier = NSUserInterfaceItemIdentifier(item.id)
-            NSLayoutConstraint.activate([
-                btn.widthAnchor.constraint(equalToConstant: Layout.footerButtonSize),
-                btn.heightAnchor.constraint(equalToConstant: Layout.footerButtonSize),
-            ])
+            btn.heightAnchor.constraint(equalToConstant: Layout.footerButtonSize).isActive = true
             panelStack.addArrangedSubview(btn)
             panelButtons.append(btn)
         }
