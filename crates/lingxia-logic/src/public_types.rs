@@ -571,8 +571,13 @@ rong::js_api! {
         ///
         type NetworkType = r###"'none' | 'unknown' | 'wifi' | '2g' | '3g' | '4g' | '5g' | 'ethernet'"###;
 
-        type OpenDeclaredSurfaceSpec = r###"{
-    surface: string;
+        /// Open another lxapp by appId (home lxapp only). A declared surface
+        /// toggles its shell presentation; an undeclared lxapp opens as a main
+        /// tab, or docks as an aside panel with `as: 'aside'`.
+        type OpenLxappSurfaceSpec = r###"{
+    lxapp: string;
+    /** Defaults to the lingxia.yaml role, else 'main'. */
+    as?: 'main' | 'aside' | 'float';
     /**
      * Docking edge override for this open. Without it the surface keeps its
      * current placement (initially the `lingxia.yaml` edge); with it the panel
@@ -581,6 +586,21 @@ rong::js_api! {
     edge?: SurfaceEdge;
     page?: never;
     url?: never;
+    native?: never;
+    position?: never;
+    size?: never;
+    query?: never;
+}"###;
+
+        /// Open a host-registered native capability (home lxapp only), e.g.
+        /// the built-in terminal declared in `lingxia.yaml` surfaces.
+        type OpenNativeSurfaceSpec = r###"{
+    native: string;
+    /** Docking edge override for this open. */
+    edge?: SurfaceEdge;
+    page?: never;
+    url?: never;
+    lxapp?: never;
     as?: never;
     position?: never;
     size?: never;
@@ -675,7 +695,7 @@ rong::js_api! {
     url?: never;
 }"###;
 
-        type OpenSurfaceSpec = r###"OpenPageSurfaceSpec | OpenDeclaredSurfaceSpec | OpenUrlTabSpec | OpenUrlAsideSpec"###;
+        type OpenSurfaceSpec = r###"OpenPageSurfaceSpec | OpenLxappSurfaceSpec | OpenNativeSurfaceSpec | OpenUrlTabSpec | OpenUrlAsideSpec"###;
 
         /// Open `url` in the multi-tab browser aside. `url` must be `https://` or
         /// `file://` (external content only). Repeated calls add/focus tabs (deduped by

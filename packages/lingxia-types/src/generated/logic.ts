@@ -146,7 +146,7 @@ declare global {
      * `as: "window"` is desktop-only.
      */
     openSurface(spec: OpenUrlTabSpec): Promise<null>;
-    openSurface(spec: OpenDeclaredSurfaceSpec): Promise<SurfaceHandle>;
+    openSurface(spec: OpenLxappSurfaceSpec | OpenNativeSurfaceSpec): Promise<SurfaceHandle>;
     openSurface(spec: OpenPageSurfaceSpec | OpenUrlAsideSpec): Promise<Surface>;
     openSurface(spec: OpenSurfaceSpec): Promise<Surface | SurfaceHandle | null>;
 
@@ -716,22 +716,6 @@ export type NetworkInfo = {
 /** Network status APIs. */
 export type NetworkType = 'none' | 'unknown' | 'wifi' | '2g' | '3g' | '4g' | '5g' | 'ethernet';
 
-export type OpenDeclaredSurfaceSpec = {
-    surface: string;
-    /**
-     * Docking edge override for this open. Without it the surface keeps its
-     * current placement (initially the `lingxia.yaml` edge); with it the panel
-     * opens there — or moves there if already visible.
-     */
-    edge?: SurfaceEdge;
-    page?: never;
-    url?: never;
-    as?: never;
-    position?: never;
-    size?: never;
-    query?: never;
-};
-
 /** File system APIs. */
 export type OpenFileOptions = {
     /** Local file path or runtime-managed temp path. */
@@ -746,6 +730,46 @@ export type OpenFileOptions = {
     mode?: 'auto' | 'review' | 'external';
     /** Hint for whether the native review UI should expose its action menu when supported. */
     showMenu?: boolean;
+};
+
+/**
+ * Open another lxapp by appId (home lxapp only). A declared surface
+ * toggles its shell presentation; an undeclared lxapp opens as a main
+ * tab, or docks as an aside panel with `as: 'aside'`.
+ */
+export type OpenLxappSurfaceSpec = {
+    lxapp: string;
+    /** Defaults to the lingxia.yaml role, else 'main'. */
+    as?: 'main' | 'aside' | 'float';
+    /**
+     * Docking edge override for this open. Without it the surface keeps its
+     * current placement (initially the `lingxia.yaml` edge); with it the panel
+     * opens there — or moves there if already visible.
+     */
+    edge?: SurfaceEdge;
+    page?: never;
+    url?: never;
+    native?: never;
+    position?: never;
+    size?: never;
+    query?: never;
+};
+
+/**
+ * Open a host-registered native capability (home lxapp only), e.g.
+ * the built-in terminal declared in `lingxia.yaml` surfaces.
+ */
+export type OpenNativeSurfaceSpec = {
+    native: string;
+    /** Docking edge override for this open. */
+    edge?: SurfaceEdge;
+    page?: never;
+    url?: never;
+    lxapp?: never;
+    as?: never;
+    position?: never;
+    size?: never;
+    query?: never;
 };
 
 /**
@@ -816,7 +840,7 @@ export type OpenPageSurfaceSpec = {
     url?: never;
 };
 
-export type OpenSurfaceSpec = OpenPageSurfaceSpec | OpenDeclaredSurfaceSpec | OpenUrlTabSpec | OpenUrlAsideSpec;
+export type OpenSurfaceSpec = OpenPageSurfaceSpec | OpenLxappSurfaceSpec | OpenNativeSurfaceSpec | OpenUrlTabSpec | OpenUrlAsideSpec;
 
 /**
  * Open `url` in the multi-tab browser aside. `url` must be `https://` or

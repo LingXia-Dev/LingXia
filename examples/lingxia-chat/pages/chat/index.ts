@@ -211,7 +211,7 @@ Page({
   // Desktop-only (the View gates the affordance): dock the host-declared
   // terminal on the requested edge.
   async onOpenTerminal(params: { edge: 'left' | 'right' | 'top' | 'bottom' }) {
-    await lx.openSurface({ surface: 'terminal', edge: params?.edge ?? 'bottom' });
+    await lx.openSurface({ native: 'terminal', edge: params?.edge ?? 'bottom' });
   },
 
   // Open a new in-app browser tab (self browser with an editable address bar).

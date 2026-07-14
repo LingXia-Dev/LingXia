@@ -231,19 +231,140 @@ async fn open_surface_spec(ctx: JSContext, spec: JSValue) -> JSResult<JSValue> {
             "lx.openSurface expects a spec object",
         ));
     };
-    let has_page = get_property(&obj, "page").is_some();
-    let has_surface = get_property(&obj, "surface").is_some();
-    let has_url = get_property(&obj, "url").is_some();
-    match (has_page, has_surface, has_url) {
-        (true, false, false) => open_page_spec(ctx, &obj).await.map(JSObject::into_js_value),
-        (false, true, false) => open_declared_surface_spec(&ctx, &obj).map(JSObject::into_js_value),
-        (false, false, true) => open_url_spec(ctx, &obj).await,
-        _ => Err(surface_error(
+    let keys = [
+        get_property(&obj, "page").is_some(),
+        get_property(&obj, "url").is_some(),
+        get_property(&obj, "lxapp").is_some(),
+        get_property(&obj, "native").is_some(),
+    ];
+    if keys.iter().filter(|set| **set).count() != 1 {
+        return Err(surface_error(
             rong::error::E_INVALID_ARG,
             "invalid_surface_spec",
-            "spec must contain exactly one of page, surface, or url",
-        )),
+            "spec must contain exactly one content key: lxapp, page, url, or native",
+        ));
     }
+    match keys {
+        [true, ..] => open_page_spec(ctx, &obj).await.map(JSObject::into_js_value),
+        [_, true, ..] => open_url_spec(ctx, &obj).await,
+        [_, _, true, _] => open_lxapp_spec(ctx, &obj).await.map(JSObject::into_js_value),
+        _ => open_native_spec(&ctx, &obj).map(JSObject::into_js_value),
+    }
+}
+
+/// Reject callers other than the home lxapp for the privileged content keys
+/// (`lxapp` / `native`) — the same single-writer model as `lx.shell`. Gates on
+/// the configured home appId (like `ensure_home_lxapp`), not the instance
+/// flag, which a dev-mode reinstall can recreate without.
+fn require_home_caller(lxapp: &LxApp, key: &str) -> JSResult<()> {
+    if lingxia_app_context::home_app_id().is_some_and(|home| lxapp.appid == home) {
+        return Ok(());
+    }
+    Err(surface_error(
+        rong::error::E_PERMISSION_DENIED,
+        "denied",
+        format!("openSurface({{ {key} }}) is restricted to the home lxapp"),
+    ))
+}
+
+/// `{ lxapp, as?, edge? }` branch of `lx.openSurface`. Opens another lxapp by
+/// appId — the bundle is ensured first (installed from the configured cloud
+/// when missing); declared surfaces then toggle their shell presentation, and
+/// an undeclared lxapp opens as a main tab, or docks as an aside panel with
+/// `as: 'aside'`.
+async fn open_lxapp_spec(ctx: JSContext, spec: &JSObject) -> JSResult<JSObject> {
+    let app_id = read_required_string(spec, "lxapp")?;
+    let app_id = app_id.trim().to_string();
+    let edge = read_validated_edge(spec)?;
+    let lxapp = LxApp::from_ctx(&ctx)?;
+    require_home_caller(&lxapp, "lxapp")?;
+
+    let as_role = read_optional_string(spec, "as")?;
+    let as_role = as_role.as_deref().map(str::trim);
+    if let Some(other) = as_role
+        && !matches!(other, "main" | "aside" | "float")
+    {
+        return Err(surface_error(
+            rong::error::E_INVALID_ARG,
+            "invalid_surface_spec",
+            format!("an lxapp surface supports as: 'main' | 'aside' | 'float'; got {other}"),
+        ));
+    }
+
+    // Ensure the bundle exists before any presentation — this is what pulls
+    // the lxapp from the cloud when it is not bundled/installed.
+    lxapp::prepare_lxapp_open(&app_id, lxapp::ReleaseType::Release)
+        .await
+        .map_err(|err| {
+            surface_error(rong::error::E_NOT_FOUND, "lxapp_not_found", err.to_string())
+        })?;
+
+    match as_role {
+        // Declared surfaces (any role) toggle via the shell; an undeclared
+        // aside docks as a panel keyed by its appId.
+        None | Some("aside") | Some("float") => {
+            if lxapp
+                .set_shell_surface_visible(&app_id, true, edge.as_deref())
+                .is_ok()
+            {
+                lxapp::schedule_lxapp_update_check(&app_id, lxapp::ReleaseType::Release);
+                return declared_surface_handle(&ctx, lxapp, app_id);
+            }
+            if matches!(as_role, Some("float")) {
+                return Err(surface_error(
+                    rong::error::E_NOT_SUPPORTED,
+                    "float_undeclared",
+                    "as: 'float' requires the lxapp to be declared in lingxia.yaml surfaces",
+                ));
+            }
+            let options = lxapp::LxAppStartupOptions {
+                open_mode: lingxia_platform::traits::app_runtime::LxAppOpenMode::Panel,
+                panel_id: app_id.clone(),
+                ..Default::default()
+            };
+            lxapp::open_lxapp(&app_id, options).map_err(|err| {
+                surface_error(rong::error::E_NOT_FOUND, "lxapp_not_found", err.to_string())
+            })?;
+            lxapp::schedule_lxapp_update_check(&app_id, lxapp::ReleaseType::Release);
+            declared_surface_handle(&ctx, lxapp, app_id)
+        }
+        Some("main") => {
+            let options = lxapp::LxAppStartupOptions::default();
+            lxapp::open_lxapp(&app_id, options).map_err(|err| {
+                surface_error(rong::error::E_NOT_FOUND, "lxapp_not_found", err.to_string())
+            })?;
+            lxapp::schedule_lxapp_update_check(&app_id, lxapp::ReleaseType::Release);
+            declared_surface_handle(&ctx, lxapp, app_id)
+        }
+        Some(_) => unreachable!("validated above"),
+    }
+}
+
+/// `{ native, edge? }` branch of `lx.openSurface`. Shows a host-registered
+/// native capability (declared in lingxia.yaml surfaces, e.g. the terminal).
+fn open_native_spec(ctx: &JSContext, spec: &JSObject) -> JSResult<JSObject> {
+    let name = read_required_string(spec, "native")?;
+    let edge = read_validated_edge(spec)?;
+    let lxapp = LxApp::from_ctx(ctx)?;
+    require_home_caller(&lxapp, "native")?;
+    lxapp
+        .set_shell_surface_visible(name.trim(), true, edge.as_deref())
+        .map_err(|err| surface_error(rong::error::E_NOT_FOUND, "native_not_found", err))?;
+    declared_surface_handle(ctx, lxapp, name.trim().to_string())
+}
+
+fn read_validated_edge(spec: &JSObject) -> JSResult<Option<String>> {
+    let edge = read_optional_string(spec, "edge")?;
+    if let Some(edge) = edge.as_deref()
+        && !matches!(edge.trim(), "left" | "right" | "top" | "bottom")
+    {
+        return Err(surface_error(
+            rong::error::E_INVALID_ARG,
+            "invalid_surface_spec",
+            format!("edge must be left, right, top, or bottom; got {edge}"),
+        ));
+    }
+    Ok(edge.map(|edge| edge.trim().to_string()))
 }
 
 /// `{ page, as, edge?, position?, size?, query? }` branch of `lx.openSurface`.
@@ -317,30 +438,6 @@ async fn open_page_spec(ctx: JSContext, spec: &JSObject) -> JSResult<JSObject> {
         opts.set("query", query)?;
     }
     open_surface(ctx, options).await
-}
-
-/// `{ surface, edge? }` branch of `lx.openSurface`. Shows a
-/// host-declared top-level surface by its `ui` id and returns a handle whose
-/// `show`/`hide`/`close` drive the host shell's visibility. The host shell
-/// positions declared surfaces from `lingxia.yaml`; `edge` overrides the
-/// declared edge for this open (the panel moves if already visible).
-fn open_declared_surface_spec(ctx: &JSContext, spec: &JSObject) -> JSResult<JSObject> {
-    let id = read_required_string(spec, "surface")?;
-    let edge = read_optional_string(spec, "edge")?;
-    if let Some(edge) = edge.as_deref()
-        && !matches!(edge.trim(), "left" | "right" | "top" | "bottom")
-    {
-        return Err(surface_error(
-            rong::error::E_INVALID_ARG,
-            "invalid_surface_spec",
-            format!("edge must be left, right, top, or bottom; got {edge}"),
-        ));
-    }
-    let lxapp = LxApp::from_ctx(ctx)?;
-    lxapp
-        .set_shell_surface_visible(id.trim(), true, edge.as_deref().map(str::trim))
-        .map_err(|err| surface_error(rong::error::E_INTERNAL, "shell_surface_failed", err))?;
-    declared_surface_handle(ctx, lxapp, id.trim().to_string())
 }
 
 /// `{ url, as?, edge? }` branch of `lx.openSurface`. Without `as`, the url opens

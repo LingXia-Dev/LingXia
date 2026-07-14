@@ -3,6 +3,11 @@ name = "lingxia-showcase-windows"
 version = "0.1.0"
 edition = "2024"
 
+# Its own workspace root: the repo workspace excludes this package, and the
+# explicit empty table keeps cargo from walking further up (e.g. out of a
+# nested git worktree into the enclosing checkout's workspace).
+[workspace]
+
 [[bin]]
 name = "LingXiaDemo"
 path = "src/main.rs"
