@@ -155,6 +155,9 @@ private class PanelSlot {
 
         containerView = NSView()
         containerView.wantsLayer = true
+        // Fixed light paper while content loads (matches the main card): the
+        // blur material alone reads near-black in dark mode.
+        containerView.layer?.backgroundColor = NSColor.white.cgColor
         containerView.translatesAutoresizingMaskIntoConstraints = false
 
         resizeHandle = PanelResizeHandle(position: config.position)

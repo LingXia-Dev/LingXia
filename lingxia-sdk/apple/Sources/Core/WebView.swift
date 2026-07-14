@@ -250,7 +250,10 @@ final class WebViewManager {
         webView.scrollView.showsVerticalScrollIndicator = true
         webView.scrollView.showsHorizontalScrollIndicator = true
         #else
-        let backgroundColor = transparent ? PlatformColor.clear : PlatformColor.controlBackgroundColor
+        // Fixed white pre-paint (not controlBackgroundColor): pages are
+        // light-first, and the semantic color turns near-black in dark mode,
+        // flashing dark before the page's first contentful paint.
+        let backgroundColor = transparent ? PlatformColor.clear : PlatformColor.white
         webView.layer?.backgroundColor = backgroundColor.cgColor
         webView.setValue(transparent, forKey: "drawsTransparentBackground")
         #endif

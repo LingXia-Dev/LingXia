@@ -547,7 +547,10 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         let right = NSView()
         right.translatesAutoresizingMaskIntoConstraints = false
         right.wantsLayer = true
-        right.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
+        // Fixed light paper, not a semantic color: pages are light-first, and
+        // the card is the pre-first-paint placeholder — a semantic background
+        // goes near-black in dark mode and reads as a black flash at launch.
+        right.layer?.backgroundColor = NSColor.white.cgColor
         right.layer?.cornerRadius = Layout.contentPanelCornerRadius
         right.layer?.masksToBounds = true
         shadowWrapper.addSubview(right)
