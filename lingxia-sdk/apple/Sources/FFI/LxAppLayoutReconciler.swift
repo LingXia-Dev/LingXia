@@ -221,10 +221,16 @@ enum LxAppLayoutReconciler {
             guard let active = slot.activeChild ?? slot.children.last,
                   workspace.isPanelRegistered(id: active) else { continue }
             // An lxapp aside's surface id IS its app id — resolve the
-            // human-facing app name for the tab; fall back to the raw id.
+            // human-facing app name + icon for the tab; fall back to the raw id.
             let tabs = slot.children.map { child -> AsideSlotTab in
-                let name = getLxAppInfo(child).app_name.toString()
-                return AsideSlotTab(id: child, title: name.isEmpty ? child : name)
+                let info = getLxAppInfo(child)
+                let name = info.app_name.toString()
+                let icon = info.icon.toString()
+                return AsideSlotTab(
+                    id: child,
+                    title: name.isEmpty ? child : name,
+                    iconPath: icon.isEmpty ? nil : icon
+                )
             }
             let focusAppId = shell.attachedMainAppId ?? active
             workspace.setSlotTabs(
