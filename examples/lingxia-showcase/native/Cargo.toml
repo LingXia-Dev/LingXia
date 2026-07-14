@@ -4,6 +4,11 @@ version = "0.1.0"
 edition = "2024"
 description = "Native library for LingXia example App (builds to .so/.a)"
 
+# Its own workspace root: the repo workspace excludes this package, and the
+# explicit empty table keeps cargo from walking further up (e.g. out of a
+# nested git worktree into the enclosing checkout's workspace).
+[workspace]
+
 [lib]
 name = "lingxia"
 # cdylib for Android/Harmony (.so), staticlib for iOS/macOS (.a), rlib for Windows host deps.
