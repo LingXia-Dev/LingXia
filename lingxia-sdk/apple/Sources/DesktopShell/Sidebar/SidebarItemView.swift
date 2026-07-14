@@ -8,15 +8,15 @@ import CLingXiaRustAPI
 class SidebarItemView: NSView {
 
     struct Layout {
-        static let height: CGFloat = 32
+        static let height: CGFloat = 30
         static let iconSize: CGFloat = 16
-        static let leadingPadding: CGFloat = 32
+        static let leadingPadding: CGFloat = 30
         static let trailingPadding: CGFloat = 8
         static let iconTitleSpacing: CGFloat = 8
         static let cornerRadius: CGFloat = 6
         /// Inset from item leading edge so the selection background
         /// aligns with the connector line (SidebarGroupView.Layout.groupInset + 14 - groupInset = 14).
-        static let selectionLeadingInset: CGFloat = 14
+        static let selectionLeadingInset: CGFloat = 22
     }
 
     private let selectionBackground = NSView()
@@ -29,6 +29,13 @@ class SidebarItemView: NSView {
     private var trackingArea: NSTrackingArea?
     private(set) var isHovered = false
     var isSelected = false { didSet { updateAppearance() } }
+    /// Whether this item currently shows a badge or red dot — feeds the
+    /// group header's collapsed aggregate.
+    private(set) var hasNotification = false
+    /// Collapses the hidden badge capsule to zero width so it stops
+    /// reserving title space on rows without a badge.
+    private var badgeCollapsed: NSLayoutConstraint?
+    private var badgeTextPins: [NSLayoutConstraint] = []
     /// Accent bar at the row's leading edge while selected (Windows-style),
     /// colored from the tabbar's selectedColor.
     private let accentBar = NSView()
@@ -68,7 +75,10 @@ class SidebarItemView: NSView {
         accentBar.isHidden = true
         addSubview(accentBar)
         NSLayoutConstraint.activate([
-            accentBar.trailingAnchor.constraint(equalTo: selectionBackground.leadingAnchor, constant: -2),
+            // Same axis as the group's attribution line (groupInset + 12,
+            // and this row is inset by groupInset already): the bar is the
+            // line's thickened, colored segment at the selected row.
+            accentBar.centerXAnchor.constraint(equalTo: leadingAnchor, constant: 12.5),
             accentBar.centerYAnchor.constraint(equalTo: centerYAnchor),
             accentBar.widthAnchor.constraint(equalToConstant: 3),
             accentBar.heightAnchor.constraint(equalToConstant: 18),
@@ -91,13 +101,13 @@ class SidebarItemView: NSView {
         badgeBackground.translatesAutoresizingMaskIntoConstraints = false
         badgeBackground.wantsLayer = true
         badgeBackground.layer?.backgroundColor = NSColor.systemRed.cgColor
-        badgeBackground.layer?.cornerRadius = 8
+        badgeBackground.layer?.cornerRadius = 7.5
         badgeBackground.isHidden = true
         addSubview(badgeBackground)
 
         // Badge label
         badgeLabel.translatesAutoresizingMaskIntoConstraints = false
-        badgeLabel.font = NSFont.systemFont(ofSize: 9, weight: .medium)
+        badgeLabel.font = NSFont.systemFont(ofSize: 9.5, weight: .semibold)
         badgeLabel.textColor = NSColor.white
         badgeLabel.alignment = .center
         badgeLabel.isHidden = true
@@ -127,17 +137,17 @@ class SidebarItemView: NSView {
 
             titleLabel.leadingAnchor.constraint(equalTo: iconView.trailingAnchor, constant: Layout.iconTitleSpacing),
             titleLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
-            titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -Layout.trailingPadding),
+            titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: badgeBackground.leadingAnchor, constant: -6),
 
-            badgeBackground.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -Layout.trailingPadding),
+            // Inside the selection card's edge so a selected row keeps the
+            // badge fully on the card, with clear air to the sidebar edge.
+            badgeBackground.trailingAnchor.constraint(equalTo: selectionBackground.trailingAnchor, constant: -10),
             badgeBackground.centerYAnchor.constraint(equalTo: centerYAnchor),
-            badgeBackground.heightAnchor.constraint(equalToConstant: 16),
-            badgeBackground.widthAnchor.constraint(greaterThanOrEqualToConstant: 16),
+            badgeBackground.heightAnchor.constraint(equalToConstant: 15),
 
             badgeLabel.centerXAnchor.constraint(equalTo: badgeBackground.centerXAnchor),
             badgeLabel.centerYAnchor.constraint(equalTo: badgeBackground.centerYAnchor),
-            badgeLabel.leadingAnchor.constraint(greaterThanOrEqualTo: badgeBackground.leadingAnchor, constant: 4),
-            badgeLabel.trailingAnchor.constraint(lessThanOrEqualTo: badgeBackground.trailingAnchor, constant: -4),
+
 
             redDotView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -Layout.trailingPadding),
             redDotView.centerYAnchor.constraint(equalTo: centerYAnchor),
@@ -149,6 +159,27 @@ class SidebarItemView: NSView {
     }
 
     /// Configure with TabBarItem data from Rust
+    private func setBadgeVisible(_ visible: Bool) {
+        if badgeCollapsed == nil {
+            // Equalities pin the capsule's width to its text (inequalities
+            // leave it under-determined and the engine stretches it); the
+            // zero-width alternative collapses hidden capsules entirely.
+            badgeTextPins = [
+                badgeLabel.leadingAnchor.constraint(equalTo: badgeBackground.leadingAnchor, constant: 5),
+                badgeLabel.trailingAnchor.constraint(equalTo: badgeBackground.trailingAnchor, constant: -5),
+                badgeBackground.widthAnchor.constraint(greaterThanOrEqualToConstant: 15),
+            ]
+            badgeCollapsed = badgeBackground.widthAnchor.constraint(equalToConstant: 0)
+        }
+        if visible {
+            badgeCollapsed?.isActive = false
+            NSLayoutConstraint.activate(badgeTextPins)
+        } else {
+            NSLayoutConstraint.deactivate(badgeTextPins)
+            badgeCollapsed?.isActive = true
+        }
+    }
+
     func configure(item: TabBarItem) {
         titleLabel.stringValue = item.cachedText
 
@@ -159,18 +190,22 @@ class SidebarItemView: NSView {
         // Badge / red dot from Rust state
         if let rustItem = getTabBarItem(appId, Int32(itemIndex)) {
             let badgeText = rustItem.badge.toString()
+            hasNotification = !badgeText.isEmpty || rustItem.has_red_dot
             if !badgeText.isEmpty {
                 badgeLabel.stringValue = badgeText
                 badgeLabel.isHidden = false
                 badgeBackground.isHidden = false
+                setBadgeVisible(true)
                 redDotView.isHidden = true
             } else if rustItem.has_red_dot {
                 badgeLabel.isHidden = true
                 badgeBackground.isHidden = true
+                setBadgeVisible(false)
                 redDotView.isHidden = false
             } else {
                 badgeLabel.isHidden = true
                 badgeBackground.isHidden = true
+                setBadgeVisible(false)
                 redDotView.isHidden = true
             }
         }

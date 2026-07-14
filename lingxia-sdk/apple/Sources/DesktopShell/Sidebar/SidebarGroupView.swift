@@ -151,6 +151,10 @@ class SidebarGroupView: NSView {
         return NSImage(contentsOf: url)
     }()
     private let chevronIndicator = NSButton()
+    /// Collapsed-state aggregate: a dot on the header while any tabbar item
+    /// carries a badge or red dot (spec §4.3 — notifications never vanish
+    /// with the collapse).
+    private let aggregateDot = NSView()
     private let closeButton = NSButton()
     private let itemsContainer = NSView()
     private var itemViews: [SidebarItemView] = []
@@ -161,8 +165,11 @@ class SidebarGroupView: NSView {
     /// header switches to it instead.
     var isActiveGroup = false { didSet { updateActiveAppearance() } }
     /// Selected-state tint from this lxapp's tabbar style (`selectedColor`);
-    /// nil = system neutral. Feeds the items and the attribution line.
+    /// nil = system neutral. Feeds the items' selected state.
     private var tabBarTint: NSColor?
+    /// Attribution-line base from the tabbar's borderStyle: "white" reads as
+    /// a light hairline, "black" (default) as the darker separator.
+    private var attributionBaseColor: NSColor = .separatorColor
     /// Thin vertical line binding the expanded items to their group header
     /// (spec §4.3 — Windows-baseline attribution line, tabbar-tinted).
     private let attributionLine = NSView()
@@ -213,8 +220,8 @@ class SidebarGroupView: NSView {
 
     private func applyColors() {
         updateActiveAppearance()
-        attributionLine.layer?.backgroundColor =
-            (tabBarTint ?? NSColor.separatorColor).withAlphaComponent(0.45).cgColor
+        attributionLine.layer?.backgroundColor = attributionBaseColor
+            .withAlphaComponent(0.5).cgColor
         appNameLabel.textColor = .labelColor
         chevronIndicator.contentTintColor = .secondaryLabelColor
         closeButton.contentTintColor = NSColor.secondaryLabelColor.withAlphaComponent(0.9)
@@ -282,6 +289,19 @@ class SidebarGroupView: NSView {
         chevronIndicator.isHidden = true
         headerView.addSubview(chevronIndicator)
         headerView.chevronButton = chevronIndicator
+
+        aggregateDot.translatesAutoresizingMaskIntoConstraints = false
+        aggregateDot.wantsLayer = true
+        aggregateDot.layer?.cornerRadius = 3
+        aggregateDot.layer?.backgroundColor = NSColor.systemRed.cgColor
+        aggregateDot.isHidden = true
+        headerView.addSubview(aggregateDot)
+        NSLayoutConstraint.activate([
+            aggregateDot.trailingAnchor.constraint(equalTo: chevronIndicator.leadingAnchor, constant: -6),
+            aggregateDot.topAnchor.constraint(equalTo: headerView.topAnchor, constant: 9),
+            aggregateDot.widthAnchor.constraint(equalToConstant: 6),
+            aggregateDot.heightAnchor.constraint(equalToConstant: 6),
+        ])
 
         // Close button (hidden by default, shown on hover)
         closeButton.translatesAutoresizingMaskIntoConstraints = false
@@ -399,6 +419,9 @@ class SidebarGroupView: NSView {
         tabBarTint = tabBar.selected_color != 0
             ? PlatformColor(argb: tabBar.selected_color)
             : nil
+        attributionBaseColor = tabBar.border_style != 0
+            ? PlatformColor(argb: tabBar.border_style)
+            : NSColor.separatorColor
         applyColors()
 
         let items = tabBar.getItems(appId: appId)
@@ -428,7 +451,7 @@ class SidebarGroupView: NSView {
             ])
 
             itemViews.append(itemView)
-            yOffset += SidebarItemView.Layout.height + 2
+            yOffset += SidebarItemView.Layout.height + 1
         }
 
         let totalHeight = yOffset
@@ -436,6 +459,8 @@ class SidebarGroupView: NSView {
         // group actually has items. No tabBar items → no chevron.
         chevronIndicator.isHidden = items.isEmpty
         attributionLine.isHidden = items.count <= 1
+        let hasNotifications = items.contains { !$0.badge.toString().isEmpty || $0.has_red_dot }
+        aggregateDot.isHidden = isExpanded || !hasNotifications
         if isExpanded {
             itemsHeightConstraint?.constant = totalHeight
             attributionHeightConstraint?.constant = max(0, totalHeight - Layout.itemTopPadding * 2)
@@ -458,8 +483,11 @@ class SidebarGroupView: NSView {
 
     private func toggleExpanded() {
         isExpanded.toggle()
+        // Re-evaluate the collapsed aggregate against the current items.
+        let hasNotifications = itemViews.contains { $0.hasNotification }
+        aggregateDot.isHidden = isExpanded || !hasNotifications
 
-        let totalHeight = CGFloat(itemViews.count) * (SidebarItemView.Layout.height + 2) + Layout.itemTopPadding
+        let totalHeight = CGFloat(itemViews.count) * (SidebarItemView.Layout.height + 1) + Layout.itemTopPadding
 
         // Show container before expand animation; hide after collapse animation
         if isExpanded {
