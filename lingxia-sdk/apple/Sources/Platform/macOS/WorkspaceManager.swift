@@ -127,7 +127,7 @@ private class PanelSlot {
     /// vertical extent, out to the window edge) while fullscreen.
     var sideFullscreenConstraints: [NSLayoutConstraint] = []
 
-    /// Aside-slot header tab strip (§4.6). Mounted above `containerView`;
+    /// Aside-slot header tab strip. Mounted above `containerView`;
     /// zero-height while the slot has at most one child.
     let slotTabStrip = AsideSlotTabStripView()
     private var slotStripHeight: NSLayoutConstraint?
@@ -183,11 +183,12 @@ private class PanelSlot {
         ])
     }
 
-    /// Show the slot strip for multi-child slots; a single child degenerates
-    /// to the panel's own header (§4.6), so the strip collapses to 0.
+    /// Show the slot strip whenever the slot has content — a single child still
+    /// shows its tab (the strip is the slot's management surface: switch AND
+    /// close live here, and the region doesn't reflow when a sibling arrives).
     func setSlotTabs(_ tabs: [AsideSlotTab], activeId: String?) {
         slotTabStrip.update(tabs: tabs, activeId: activeId)
-        let wantsStrip = tabs.count > 1
+        let wantsStrip = !tabs.isEmpty
         slotTabStrip.isHidden = !wantsStrip
         slotStripHeight?.constant = wantsStrip ? AsideSlotTabStripView.stripHeight : 0
     }
@@ -355,7 +356,7 @@ class WorkspaceManager: NSObject {
     }
 
     /// Bind an aside slot's header tabs onto the panel currently presenting
-    /// that slot (§4.6). `tabs` follow open order; one child collapses the
+    /// that slot. `tabs` follow open order; one child collapses the
     /// strip so the panel's own header stands in.
     func setSlotTabs(
         panelId: String,

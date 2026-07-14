@@ -42,6 +42,30 @@ import AppKit
 enum LxAppLayoutReconciler {
     private static let log = OSLog(subsystem: "LingXia", category: "LayoutReconciler")
 
+    /// The aside ids the latest plan wants docked. Pending deferred shows
+    /// (see `showPanelWhenContentReady`) re-check this so a panel the core
+    /// dropped while its content was still loading never pops in late.
+    private static var lastDesiredAsideIds = Set<String>()
+
+    /// Show a docked aside only once its content view is attached, so the slot
+    /// never pops in as an empty dark card before the webview exists. Content
+    /// paths attach into the hidden panel independently; on timeout (slow
+    /// install/download) show the empty panel anyway as honest progress.
+    private static func showPanelWhenContentReady(shell: LxAppShell, id: String, attempt: Int) {
+        let workspace = shell.workspaceManager
+        guard lastDesiredAsideIds.contains(id),
+              workspace.isPanelRegistered(id: id),
+              !workspace.isPanelVisible(id: id) else { return }
+        let hasContent = workspace.panelContainer(id: id)?.subviews.isEmpty == false
+        if hasContent || attempt >= 40 {
+            shell.showPanel(id: id)
+            return
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            showPanelWhenContentReady(shell: shell, id: id, attempt: attempt + 1)
+        }
+    }
+
     /// The stable, fully-typed render contract the shared core emits (the same
     /// `LayoutPresentationPlan` JSON returned by `surfaceDerivedLayout`). The
     /// reconciler acts on `asides` for now, but decodes the complete contract so
@@ -125,7 +149,7 @@ enum LxAppLayoutReconciler {
         // in their desired set; macOS only docks them when the split form says
         // there is a side-by-side container.
         //
-        // With slots (§4.6) the aside area holds ONE region per content kind:
+        // With slots the aside area holds ONE region per content kind:
         // only each visible slot's active child docks; sibling children stay
         // registered-but-hidden and switch via the slot's header tab strip.
         var desired: [String: PanelPosition] = [:]
@@ -152,6 +176,7 @@ enum LxAppLayoutReconciler {
             }
         }
         let desiredIds = Set(desired.keys)
+        lastDesiredAsideIds = desiredIds
 
         // Undock asides the core removed. The placed-aside set is derived from
         // the view-registry itself: a visible registered panel is, by
@@ -184,7 +209,7 @@ enum LxAppLayoutReconciler {
                 workspace.repositionPanel(id: id, to: edge)
             }
             if !workspace.isPanelVisible(id: id) {
-                shell.showPanel(id: id)
+                showPanelWhenContentReady(shell: shell, id: id, attempt: 0)
             }
         }
 
@@ -195,7 +220,12 @@ enum LxAppLayoutReconciler {
         for slot in slots where slot.visible && slot.kind == "lxapp" {
             guard let active = slot.activeChild ?? slot.children.last,
                   workspace.isPanelRegistered(id: active) else { continue }
-            let tabs = slot.children.map { AsideSlotTab(id: $0, title: $0) }
+            // An lxapp aside's surface id IS its app id — resolve the
+            // human-facing app name for the tab; fall back to the raw id.
+            let tabs = slot.children.map { child -> AsideSlotTab in
+                let name = getLxAppInfo(child).app_name.toString()
+                return AsideSlotTab(id: child, title: name.isEmpty ? child : name)
+            }
             let focusAppId = shell.attachedMainAppId ?? active
             workspace.setSlotTabs(
                 panelId: active,

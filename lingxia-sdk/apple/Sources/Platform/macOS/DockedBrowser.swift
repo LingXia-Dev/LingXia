@@ -240,9 +240,6 @@ final class DockedBrowser: NSObject {
     private let backButton = NSButton()
     private let forwardButton = NSButton()
     private let refreshButton = NSButton()
-    /// Page menu for the active tab — with no address bar, this menu is the
-    /// aside's only URL affordance (header shows title+URL, Copy Link, star).
-    private let menuButton = NSButton()
     private let closeAsideButton = NSButton()
     private let tabStrip = NSStackView()
     private let separator = NSView()
@@ -507,17 +504,6 @@ final class DockedBrowser: NSObject {
         toolbar.addSubview(forwardButton)
         toolbar.addSubview(refreshButton)
 
-        menuButton.translatesAutoresizingMaskIntoConstraints = false
-        menuButton.isBordered = false
-        menuButton.imagePosition = .imageOnly
-        menuButton.image = LxIcon.image(
-            named: "icon_page_menu", size: CGSize(width: Layout.iconSize, height: Layout.iconSize))
-        menuButton.contentTintColor = NSColor.secondaryLabelColor
-        menuButton.toolTip = L10n.string("lx_browser_page_menu")
-        menuButton.target = self
-        menuButton.action = #selector(menuClicked)
-        toolbar.addSubview(menuButton)
-
         closeAsideButton.translatesAutoresizingMaskIntoConstraints = false
         closeAsideButton.isBordered = false
         closeAsideButton.imagePosition = .imageOnly
@@ -576,15 +562,10 @@ final class DockedBrowser: NSObject {
             closeAsideButton.widthAnchor.constraint(equalToConstant: Layout.closeSize),
             closeAsideButton.heightAnchor.constraint(equalToConstant: Layout.closeSize),
 
-            menuButton.trailingAnchor.constraint(equalTo: closeAsideButton.leadingAnchor, constant: -4),
-            menuButton.centerYAnchor.constraint(equalTo: toolbar.centerYAnchor),
-            menuButton.widthAnchor.constraint(equalToConstant: Layout.closeSize),
-            menuButton.heightAnchor.constraint(equalToConstant: Layout.closeSize),
-
             // Tabs live in the SAME bar as back/forward/refresh (one row),
-            // leading-packed; the strip may grow up to the page-menu button.
+            // leading-packed; the strip may grow up to the close button.
             tabStrip.leadingAnchor.constraint(equalTo: refreshButton.trailingAnchor, constant: Layout.edge),
-            tabStrip.trailingAnchor.constraint(lessThanOrEqualTo: menuButton.leadingAnchor, constant: -Layout.edge),
+            tabStrip.trailingAnchor.constraint(lessThanOrEqualTo: closeAsideButton.leadingAnchor, constant: -Layout.edge),
             tabStrip.bottomAnchor.constraint(equalTo: toolbar.bottomAnchor),
             tabStrip.heightAnchor.constraint(equalToConstant: Layout.tabHeight),
 
@@ -740,16 +721,6 @@ final class DockedBrowser: NSObject {
             onOpenBookmarks: nil,
             onOpenHistory: nil,
             onClearSiteData: nil
-        )
-    }
-
-    @objc private func menuClicked() {
-        guard let tab = activeTab() else { return }
-        let menu = BrowserPageMenu.menu(for: pageMenuContext(for: tab))
-        menu.popUp(
-            positioning: nil,
-            at: NSPoint(x: menuButton.bounds.minX, y: menuButton.bounds.maxY + 6),
-            in: menuButton
         )
     }
 

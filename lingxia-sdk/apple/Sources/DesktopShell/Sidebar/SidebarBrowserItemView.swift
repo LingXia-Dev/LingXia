@@ -1,7 +1,7 @@
 #if os(macOS)
 import AppKit
 
-/// A sidebar entry for a browser tab (36pt top-level row, spec §4.2).
+/// A sidebar entry for a browser tab (36pt top-level row).
 /// Displays globe icon + page title + close button (selected tab only).
 @MainActor
 class SidebarBrowserItemView: NSView {

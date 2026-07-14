@@ -9,8 +9,9 @@ struct AsideSlotTab: Equatable {
 
 /// Header tab strip for an aside slot (the lxapp slot's counterpart to the
 /// browser slot's title tabs): children in open order, active highlight, a
-/// close glyph per tab. With a single child the slot shows no strip — the
-/// panel's own header/title is enough — so the owner hides this view.
+/// close glyph per tab. Always shown while the slot has content — even one
+/// child keeps its tab, since the strip is the slot's management surface
+/// (switch and close both live here).
 @MainActor
 final class AsideSlotTabStripView: NSView {
     static let stripHeight: CGFloat = 34
