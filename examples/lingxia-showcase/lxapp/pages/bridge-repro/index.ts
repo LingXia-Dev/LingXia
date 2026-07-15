@@ -7,11 +7,38 @@ export interface Tick {
   ts: number;
 }
 
+export interface BootstrapData {
+  bootstrapMarker: string;
+  logicLoadedAt: number;
+}
+
+export interface BootstrapProbe {
+  nonce: number;
+  viewSentAt: number;
+  logicReceivedAt: number;
+  bootstrapMarker: string;
+}
+
 const TICK_INTERVAL_MS = 50;
 const TICK_LIMIT = 200000;
+const LOGIC_LOADED_AT = Date.now();
 
 Page({
-  data: {},
+  data: {
+    bootstrapMarker: 'initial logic snapshot received',
+    logicLoadedAt: LOGIC_LOADED_AT,
+  } satisfies BootstrapData,
+
+  // Called immediately when the View mounts. On Apple this request is queued
+  // until helloAck + ready have arrived, so it exposes a stalled bootstrap.
+  onBootstrapProbe(params: { nonce: number; viewSentAt: number }): BootstrapProbe {
+    return {
+      nonce: params?.nonce ?? 0,
+      viewSentAt: params?.viewSentAt ?? 0,
+      logicReceivedAt: Date.now(),
+      bootstrapMarker: this.data.bootstrapMarker,
+    };
+  },
 
   async *onTicks(): AsyncGenerator<Tick, void> {
     for (let seq = 1; seq <= TICK_LIMIT; seq++) {
