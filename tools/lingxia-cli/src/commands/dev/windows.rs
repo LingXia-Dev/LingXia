@@ -91,6 +91,9 @@ fn launch_and_wait_windows_app(
     staged_icon: Option<&Path>,
     stop_requested: Arc<AtomicBool>,
 ) -> Result<()> {
+    #[cfg(not(target_os = "windows"))]
+    let _ = project_root;
+
     #[cfg(target_os = "windows")]
     if runner::windows_interactive::is_ssh_session() {
         let mut environment = vec![(RUNNER_DEV_WS_URL_ENV.to_string(), ws_url.to_string())];
