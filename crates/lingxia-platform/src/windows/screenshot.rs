@@ -68,6 +68,9 @@ fn list_app_windows() -> Result<Vec<WindowInfo>, PlatformError> {
         } else {
             0
         };
+        if !is_automation_window(&title, width, height) {
+            return BOOL(1);
+        }
 
         state.windows.push(WindowInfo {
             id: (hwnd.0 as usize).to_string(),
@@ -103,6 +106,14 @@ fn list_app_windows() -> Result<Vec<WindowInfo>, PlatformError> {
             .then_with(|| a.id.cmp(&b.id))
     });
     Ok(state.windows)
+}
+
+fn is_automation_window(title: &str, width: u32, height: u32) -> bool {
+    width > 0
+        && height > 0
+        && title != "Default IME"
+        && title != "MSCTFIME UI"
+        && !title.starts_with("GDI+ Window (")
 }
 
 pub(super) fn resolve_screenshot_window(
@@ -700,4 +711,17 @@ fn window_title(hwnd: windows::Win32::Foundation::HWND) -> String {
         return String::new();
     }
     String::from_utf16_lossy(&buffer[..copied as usize])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_automation_window;
+
+    #[test]
+    fn filters_non_content_helper_windows() {
+        assert!(!is_automation_window("Default IME", 120, 40));
+        assert!(!is_automation_window("GDI+ Window (LingXiaDemo.exe)", 1, 1));
+        assert!(!is_automation_window("LingXia", 1010, 0));
+        assert!(is_automation_window("LingXia", 1010, 754));
+    }
 }
