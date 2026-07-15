@@ -107,6 +107,9 @@ pub mod handlers {
     }
 
     pub mod app {
+        /// Report host-window automation capabilities and coordinate units.
+        pub const DOCTOR: &str = "app.doctor";
+
         /// Capture a PNG of the host app's window. Accepts an optional
         /// `window_id` (returned by [`WINDOWS`]) so multi-window desktop
         /// apps can pick a specific surface; mobile platforms ignore it
@@ -143,6 +146,7 @@ pub mod handlers {
         pub const CURRENT: &str = "lxapp.page.current";
         pub const LIST: &str = "lxapp.page.list";
         pub const INFO: &str = "lxapp.page.info";
+        pub const WAIT: &str = "lxapp.page.wait";
         pub const EVAL: &str = "lxapp.page.eval";
         pub const QUERY: &str = "lxapp.page.query";
         pub const CLICK: &str = "lxapp.page.click";
