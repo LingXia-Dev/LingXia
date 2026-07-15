@@ -324,28 +324,28 @@ fn execute_screenshot(
 }
 
 fn execute_mouse(info: &SessionInfo, command: MouseCommand) -> Result<()> {
-    let (target, action) = match command {
+    let (target, actions): (MouseTargetOptions, Vec<Value>) = match command {
         MouseCommand::Move(options) => (
             options.target,
-            json!({ "kind": "move", "x": options.x, "y": options.y }),
+            vec![json!({ "kind": "move", "x": options.x, "y": options.y })],
         ),
         MouseCommand::Down(options) => (
             options.target,
-            json!({
+            vec![json!({
                 "kind": "down",
                 "x": options.x,
                 "y": options.y,
                 "button": options.button.as_protocol_str(),
-            }),
+            })],
         ),
         MouseCommand::Up(options) => (
             options.target,
-            json!({
+            vec![json!({
                 "kind": "up",
                 "x": options.x,
                 "y": options.y,
                 "button": options.button.as_protocol_str(),
-            }),
+            })],
         ),
         MouseCommand::Click(options) => {
             if options.click_count == 0 {
@@ -353,41 +353,47 @@ fn execute_mouse(info: &SessionInfo, command: MouseCommand) -> Result<()> {
             }
             (
                 options.target,
-                json!({
-                    "kind": "click",
-                    "x": options.x,
-                    "y": options.y,
-                    "button": options.button.as_protocol_str(),
-                    "click_count": options.click_count,
-                }),
+                vec![
+                    json!({ "kind": "move", "x": options.x, "y": options.y }),
+                    json!({
+                        "kind": "click",
+                        "x": options.x,
+                        "y": options.y,
+                        "button": options.button.as_protocol_str(),
+                        "click_count": options.click_count,
+                    }),
+                ],
             )
         }
         MouseCommand::Drag(options) => (
             options.target,
-            json!({
+            vec![json!({
                 "kind": "drag",
                 "from_x": options.from_x,
                 "from_y": options.from_y,
                 "to_x": options.to_x,
                 "to_y": options.to_y,
                 "button": options.button.as_protocol_str(),
-            }),
+            })],
         ),
         MouseCommand::Scroll(options) => (
             options.target,
-            json!({
+            vec![json!({
                 "kind": "scroll",
                 "x": options.x,
                 "y": options.y,
                 "dx": options.dx,
                 "dy": options.dy,
-            }),
+            })],
         ),
     };
 
-    let payload = action_payload(target.window, action);
-    let data = client::execute_command(&info.ws_url, handlers::app::MOUSE, Some(payload))?
-        .unwrap_or(Value::Null);
+    let mut data = Value::Null;
+    for action in actions {
+        let payload = action_payload(target.window.clone(), action);
+        data = client::execute_command(&info.ws_url, handlers::app::MOUSE, Some(payload))?
+            .unwrap_or(Value::Null);
+    }
 
     if target.json {
         println!("{}", serde_json::to_string_pretty(&data)?);
