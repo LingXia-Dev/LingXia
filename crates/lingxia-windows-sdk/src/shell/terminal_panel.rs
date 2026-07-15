@@ -596,6 +596,7 @@ pub(crate) fn scroll_pane_at(
         ) {
             return false;
         }
+        super::terminal_grid::reveal_scrollbar(session_id);
         super::terminal_grid::clear_selection(session_id);
         if let Some(snapshot) = lingxia_terminal::terminal_snapshot_data(session_id) {
             store_session_snapshot(panel_id, session_id, snapshot);
@@ -1165,6 +1166,10 @@ fn run_terminal_panel_poll_loop(panel_key: &str, stop: &AtomicBool) {
         let switched = last_active_set != active_sessions;
         let mut any_change = switched;
         for &session_id in &active_sessions {
+            #[cfg(feature = "shell-chrome")]
+            if super::terminal_grid::expire_scrollbar(session_id) {
+                any_change = true;
+            }
             let Some(snapshot) = lingxia_terminal::terminal_snapshot_data(session_id) else {
                 if close_pane_session(panel_key, session_id) {
                     panel_closed = true;

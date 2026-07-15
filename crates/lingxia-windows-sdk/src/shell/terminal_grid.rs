@@ -16,6 +16,7 @@
 use std::collections::HashMap;
 use std::ffi::c_void;
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
+use std::time::{Duration, Instant};
 
 use lingxia_terminal::{TerminalCell, TerminalSnapshot};
 use windows::Win32::Foundation::{HWND, RECT};
@@ -66,6 +67,14 @@ const SELECTION_ACCENT: u32 = 0x4b9cff;
 
 const SELECTION_ACCENT_PERCENT: u32 = 46;
 
+/// Keep the overlay visible briefly after the latest wheel gesture.
+const SCROLLBAR_VISIBLE_FOR: Duration = Duration::from_millis(900);
+
+const SCROLLBAR_WIDTH: i32 = 3;
+const SCROLLBAR_MARGIN: i32 = 2;
+const SCROLLBAR_MIN_THUMB: i32 = 12;
+const SCROLLBAR_MAX_THUMB: i32 = 40;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct GridPoint {
     row: u16,
@@ -109,6 +118,7 @@ struct SessionGridState {
     snapshot: Option<TerminalSnapshot>,
     geometry: Option<GridGeometry>,
     selection: Option<GridSelection>,
+    scrollbar_visible_until: Option<Instant>,
 }
 
 /// Host window and header tab-title rects recorded at the last paint of a
@@ -157,6 +167,33 @@ fn panel_grids() -> MutexGuard<'static, HashMap<String, PanelGridState>> {
 /// it on the next repaint of the host window.
 pub fn set_session_snapshot(session_id: u64, snapshot: TerminalSnapshot) {
     session_grids().entry(session_id).or_default().snapshot = Some(snapshot);
+}
+
+/// Reveals the lightweight scrollbar for one pane after a scroll gesture.
+#[cfg(feature = "shell-chrome")]
+pub(crate) fn reveal_scrollbar(session_id: u64) {
+    session_grids()
+        .entry(session_id)
+        .or_default()
+        .scrollbar_visible_until = Some(Instant::now() + SCROLLBAR_VISIBLE_FOR);
+}
+
+/// Clears an expired transient scrollbar and reports whether a repaint is
+/// needed to remove its thumb.
+#[cfg(feature = "shell-chrome")]
+pub(crate) fn expire_scrollbar(session_id: u64) -> bool {
+    let mut grids = session_grids();
+    let Some(state) = grids.get_mut(&session_id) else {
+        return false;
+    };
+    if state
+        .scrollbar_visible_until
+        .is_some_and(|deadline| Instant::now() >= deadline)
+    {
+        state.scrollbar_visible_until = None;
+        return true;
+    }
+    false
 }
 
 /// Drops all stored state for one pane session (snapshot and geometry).
@@ -604,6 +641,9 @@ fn draw_pane_grid_clipped(
         return false;
     };
     let selection = state.selection;
+    let scrollbar_visible = state
+        .scrollbar_visible_until
+        .is_some_and(|deadline| Instant::now() < deadline);
 
     let background = snapshot
         .default_background
@@ -695,7 +735,65 @@ fn draw_pane_grid_clipped(
             fonts,
         );
     }
+    if scrollbar_visible {
+        draw_scrollbar(hdc, snapshot, grid_rect, background, foreground);
+    }
     true
+}
+
+fn draw_scrollbar(
+    hdc: HDC,
+    snapshot: &TerminalSnapshot,
+    grid_rect: RECT,
+    background: u32,
+    foreground: u32,
+) {
+    let Some(scrollbar) = snapshot.scrollbar else {
+        return;
+    };
+    let track = RECT {
+        left: grid_rect.right - SCROLLBAR_MARGIN - SCROLLBAR_WIDTH,
+        top: grid_rect.top + SCROLLBAR_MARGIN,
+        right: grid_rect.right - SCROLLBAR_MARGIN,
+        bottom: grid_rect.bottom - SCROLLBAR_MARGIN,
+    };
+    let Some(thumb) = scrollbar_thumb_rect(track, scrollbar.total, scrollbar.offset, scrollbar.len)
+    else {
+        return;
+    };
+    fill_rect(hdc, thumb, blend_rgb(foreground, background, 38));
+}
+
+fn scrollbar_thumb_rect(track: RECT, total: u64, offset: u64, visible_len: u64) -> Option<RECT> {
+    let track_height = rect_height(&track);
+    if total == 0 || visible_len == 0 || total <= visible_len || track_height <= 0 {
+        return None;
+    }
+    let visible_len = visible_len.min(total);
+    let thumb_height = ((u128::from(track_height as u32) * u128::from(visible_len))
+        / u128::from(total))
+    .try_into()
+    .unwrap_or(track_height);
+    let thumb_height = thumb_height.clamp(
+        SCROLLBAR_MIN_THUMB.min(track_height),
+        SCROLLBAR_MAX_THUMB.min(track_height),
+    );
+    let available = track_height - thumb_height;
+    let max_offset = total - visible_len;
+    let offset = offset.min(max_offset);
+    let top_offset = if available == 0 {
+        0
+    } else {
+        ((u128::from(available as u32) * u128::from(offset) + u128::from(max_offset / 2))
+            / u128::from(max_offset))
+        .try_into()
+        .unwrap_or(available)
+    };
+    Some(RECT {
+        top: track.top + top_offset,
+        bottom: track.top + top_offset + thumb_height,
+        ..track
+    })
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1041,6 +1139,7 @@ mod tests {
             application_cursor: false,
             bracketed_paste: false,
             alternate_screen: false,
+            scrollbar: None,
             process_title: None,
             title: None,
             generation: 0,
@@ -1120,6 +1219,35 @@ mod tests {
                 bottom: 100,
             })
         );
+    }
+
+    #[test]
+    fn scrollbar_thumb_stays_short_and_tracks_viewport_offset() {
+        let track = RECT {
+            left: 97,
+            top: 2,
+            right: 100,
+            bottom: 102,
+        };
+        assert_eq!(
+            scrollbar_thumb_rect(track, 100, 40, 20),
+            Some(RECT {
+                left: 97,
+                top: 42,
+                right: 100,
+                bottom: 62,
+            })
+        );
+        assert_eq!(
+            scrollbar_thumb_rect(track, 40, 10, 20),
+            Some(RECT {
+                left: 97,
+                top: 32,
+                right: 100,
+                bottom: 72,
+            })
+        );
+        assert_eq!(scrollbar_thumb_rect(track, 20, 0, 20), None);
     }
 }
 

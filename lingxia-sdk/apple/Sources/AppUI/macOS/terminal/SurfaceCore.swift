@@ -17,6 +17,7 @@ private struct LingXiaTerminalSnapshot: Decodable {
     let applicationCursor: Bool
     let bracketedPaste: Bool
     let alternateScreen: Bool
+    let scrollbar: LingXiaTerminalScrollbar?
     let processTitle: String?
     let title: String?
     let generation: UInt64
@@ -36,11 +37,18 @@ private struct LingXiaTerminalSnapshot: Decodable {
         case applicationCursor = "application_cursor"
         case bracketedPaste = "bracketed_paste"
         case alternateScreen = "alternate_screen"
+        case scrollbar
         case processTitle = "process_title"
         case title
         case generation
         case exited
     }
+}
+
+private struct LingXiaTerminalScrollbar: Decodable {
+    let total: UInt64
+    let offset: UInt64
+    let len: UInt64
 }
 
 private struct LingXiaTerminalCell: Decodable {
@@ -317,6 +325,9 @@ private final class LingXiaTerminalCanvasView: NSView {
     private var applicationCursor = false
     private var bracketedPaste = false
     private var alternateScreen = false
+    private var scrollbar: LingXiaTerminalScrollbar?
+    private var scrollbarVisible = false
+    private var scrollbarVisibilityToken: UInt64 = 0
     private var charSize = NSSize(width: 7.2, height: 15)
     private var lastSentSize: (cols: UInt16, rows: UInt16)?
     private var selectionAnchor: LingXiaTerminalGridPoint?
@@ -399,6 +410,7 @@ private final class LingXiaTerminalCanvasView: NSView {
         let wholeRows = Int(scrollRowRemainder.rounded(.towardZero))
         guard wholeRows != 0 else { return }
         scrollRowRemainder -= CGFloat(wholeRows)
+        revealScrollbar()
         selectionAnchor = nil
         selectionFocus = nil
         needsDisplay = true
@@ -570,6 +582,7 @@ private final class LingXiaTerminalCanvasView: NSView {
             let y = pixelFloor(bounds.height - insetTop - CGFloat(cursorRow + 1) * charSize.height)
             drawCursor(at: NSPoint(x: x, y: y))
         }
+        drawScrollbar()
     }
 
     func append(_ output: String) {
@@ -597,6 +610,7 @@ private final class LingXiaTerminalCanvasView: NSView {
         applicationCursor = snapshot.applicationCursor
         bracketedPaste = snapshot.bracketedPaste
         alternateScreen = snapshot.alternateScreen
+        scrollbar = snapshot.scrollbar
         needsDisplay = true
     }
 
@@ -715,6 +729,55 @@ private final class LingXiaTerminalCanvasView: NSView {
                 height: charSize.height
             ).fill()
         }
+    }
+
+    private func revealScrollbar() {
+        scrollbarVisibilityToken &+= 1
+        let token = scrollbarVisibilityToken
+        scrollbarVisible = true
+        needsDisplay = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(900)) { [weak self] in
+            guard let self, self.scrollbarVisibilityToken == token else { return }
+            self.scrollbarVisible = false
+            self.needsDisplay = true
+        }
+    }
+
+    private func drawScrollbar() {
+        guard scrollbarVisible,
+              let scrollbar,
+              scrollbar.total > scrollbar.len,
+              scrollbar.len > 0 else {
+            return
+        }
+        let margin: CGFloat = 2
+        let width: CGFloat = 3
+        let trackHeight = bounds.height - margin * 2
+        guard trackHeight > 0 else { return }
+
+        let visibleRows = min(scrollbar.len, scrollbar.total)
+        let thumbHeight = min(
+            trackHeight,
+            max(
+                12,
+                min(40, trackHeight * CGFloat(visibleRows) / CGFloat(scrollbar.total))
+            )
+        )
+        let maxOffset = scrollbar.total - visibleRows
+        let offset = min(scrollbar.offset, maxOffset)
+        let available = trackHeight - thumbHeight
+        let topOffset = maxOffset == 0
+            ? 0
+            : available * CGFloat(offset) / CGFloat(maxOffset)
+        let y = bounds.height - margin - topOffset - thumbHeight
+
+        defaultForeground.withAlphaComponent(0.38).setFill()
+        pixelAlignedRect(
+            x: bounds.width - margin - width,
+            y: y,
+            width: width,
+            height: thumbHeight
+        ).fill()
     }
 
     private func selectedText() -> String? {

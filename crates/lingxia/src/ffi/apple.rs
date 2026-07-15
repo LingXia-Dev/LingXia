@@ -1511,7 +1511,7 @@ pub fn terminal_session_snapshot(id: u64) -> String {
     #[cfg(not(feature = "terminal-runtime"))]
     {
         let _ = id;
-        r#"{"cols":0,"rows":0,"lines":[],"cells":[],"cursor_row":0,"cursor_col":0,"cursor_visible":false,"application_cursor":false,"bracketed_paste":false,"alternate_screen":false,"title":null,"generation":0,"exited":true}"#.to_string()
+        r#"{"cols":0,"rows":0,"lines":[],"cells":[],"cursor_row":0,"cursor_col":0,"cursor_visible":false,"application_cursor":false,"bracketed_paste":false,"alternate_screen":false,"scrollbar":null,"title":null,"generation":0,"exited":true}"#.to_string()
     }
 }
 

@@ -437,6 +437,7 @@ pub struct TerminalSnapshot {
     pub application_cursor: bool,
     pub bracketed_paste: bool,
     pub alternate_screen: bool,
+    pub scrollbar: Option<TerminalScrollbar>,
     pub process_title: Option<String>,
     pub title: Option<String>,
     /// Screen-content generation only; bumps when VT output lands.
@@ -444,6 +445,14 @@ pub struct TerminalSnapshot {
     /// Bumps when the computed process title changes.
     pub title_generation: u64,
     pub exited: bool,
+}
+
+/// Ghostty viewport position in the complete scrollable row space.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
+pub struct TerminalScrollbar {
+    pub total: u64,
+    pub offset: u64,
+    pub len: u64,
 }
 
 #[derive(Serialize)]
@@ -665,6 +674,11 @@ impl TerminalSession {
 
     fn snapshot(&mut self) -> TerminalSnapshot {
         let screen = self.vt.snapshot();
+        let scrollbar = self.vt.scrollbar().map(|state| TerminalScrollbar {
+            total: state.total,
+            offset: state.offset,
+            len: state.len,
+        });
         let raw_title = screen
             .title
             .as_deref()
@@ -731,6 +745,7 @@ impl TerminalSession {
             application_cursor: self.vt.is_decckm(),
             bracketed_paste: self.vt.is_bracketed_paste(),
             alternate_screen: self.vt.is_alternate_screen(),
+            scrollbar,
             process_title: Some(process_title),
             title: raw_title,
             generation: screen.generation,
@@ -802,6 +817,7 @@ impl TerminalSnapshot {
             application_cursor: false,
             bracketed_paste: false,
             alternate_screen: false,
+            scrollbar: None,
             process_title: None,
             title: None,
             generation: 0,
