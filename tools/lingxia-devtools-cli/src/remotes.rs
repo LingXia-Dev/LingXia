@@ -114,3 +114,63 @@ pub fn detach(name: &str) -> Result<()> {
     println!("Detached remote session {name:?}.");
     Ok(())
 }
+
+pub fn detach_unreachable() -> Result<()> {
+    let remotes = list_remotes()?;
+    let (reachable, unreachable) = partition_unreachable(remotes, |remote| {
+        let info = crate::project::remote_session_info(remote);
+        crate::project::remote_is_reachable(&info)
+    });
+    if unreachable.is_empty() {
+        println!("No unreachable remote sessions to detach.");
+        return Ok(());
+    }
+
+    save_remotes(&reachable)?;
+    let names = unreachable
+        .iter()
+        .map(|remote| format!("{:?}", remote.name))
+        .collect::<Vec<_>>()
+        .join(", ");
+    println!(
+        "Detached {} unreachable remote session{}: {names}.",
+        unreachable.len(),
+        if unreachable.len() == 1 { "" } else { "s" }
+    );
+    Ok(())
+}
+
+fn partition_unreachable(
+    remotes: Vec<RemoteSession>,
+    mut is_reachable: impl FnMut(&RemoteSession) -> bool,
+) -> (Vec<RemoteSession>, Vec<RemoteSession>) {
+    remotes.into_iter().partition(|remote| is_reachable(remote))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn remote(name: &str) -> RemoteSession {
+        RemoteSession {
+            name: name.to_string(),
+            ws_url: format!("ws://{name}:39000/?token=test"),
+        }
+    }
+
+    #[test]
+    fn unreachable_partition_preserves_reachable_order() {
+        let remotes = vec![remote("win"), remote("offline"), remote("lab")];
+        let (reachable, unreachable) =
+            partition_unreachable(remotes, |remote| remote.name != "offline");
+
+        assert_eq!(
+            reachable
+                .iter()
+                .map(|remote| remote.name.as_str())
+                .collect::<Vec<_>>(),
+            ["win", "lab"]
+        );
+        assert_eq!(unreachable[0].name, "offline");
+    }
+}
