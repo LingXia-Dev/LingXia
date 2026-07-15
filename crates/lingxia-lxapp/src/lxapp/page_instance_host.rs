@@ -846,6 +846,7 @@ impl LxApp {
                 let instance_id = page.instance_id_string();
                 let record = records.get(&instance_id);
                 let state = page.automation_state();
+                let current = current_id.as_deref() == Some(instance_id.as_str());
                 PageInstanceRuntimeInfo {
                     instance_id: instance_id.clone(),
                     name: record
@@ -859,11 +860,15 @@ impl LxApp {
                     presentation: record
                         .map(|record| record.surface)
                         .unwrap_or(PresentationKind::Window),
-                    lifecycle: record
-                        .map(|record| record.lifecycle.as_str().to_string())
-                        .unwrap_or_else(|| "created".to_string()),
+                    lifecycle: effective_page_instance_lifecycle(
+                        record.map(|record| record.lifecycle),
+                        current,
+                        state.lifecycle,
+                        state.webview_attached,
+                    )
+                    .to_string(),
                     stack_index: stack_instances.get(&instance_id).copied(),
-                    current: current_id.as_deref() == Some(instance_id.as_str()),
+                    current,
                     state,
                 }
             })
@@ -938,6 +943,32 @@ impl LxApp {
     }
 }
 
+fn effective_page_instance_lifecycle(
+    recorded: Option<PageInstanceLifecycleState>,
+    current: bool,
+    page_lifecycle: &str,
+    webview_attached: bool,
+) -> &'static str {
+    if current {
+        return PageInstanceLifecycleState::Visible.as_str();
+    }
+    if recorded == Some(PageInstanceLifecycleState::Hidden) || page_lifecycle == "onHide" {
+        return PageInstanceLifecycleState::Hidden.as_str();
+    }
+    match recorded {
+        Some(PageInstanceLifecycleState::Mounted) => PageInstanceLifecycleState::Mounted.as_str(),
+        Some(PageInstanceLifecycleState::Visible) => PageInstanceLifecycleState::Visible.as_str(),
+        Some(PageInstanceLifecycleState::Disposed) => PageInstanceLifecycleState::Disposed.as_str(),
+        Some(PageInstanceLifecycleState::Created) | None if webview_attached => {
+            PageInstanceLifecycleState::Mounted.as_str()
+        }
+        Some(PageInstanceLifecycleState::Created) | None => {
+            PageInstanceLifecycleState::Created.as_str()
+        }
+        Some(PageInstanceLifecycleState::Hidden) => unreachable!("handled above"),
+    }
+}
+
 fn normalize_page_path(path: &str) -> &str {
     path.trim_start_matches('/')
 }
@@ -984,4 +1015,30 @@ fn plugin_page_map_contains(
         let value = normalize_page_path(value);
         key == requested || value == requested || key == resolved || value == resolved
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{PageInstanceLifecycleState, effective_page_instance_lifecycle};
+
+    #[test]
+    fn automation_lifecycle_does_not_report_ready_pages_as_created() {
+        assert_eq!(
+            effective_page_instance_lifecycle(
+                Some(PageInstanceLifecycleState::Created),
+                true,
+                "onReady",
+                true,
+            ),
+            "visible"
+        );
+        assert_eq!(
+            effective_page_instance_lifecycle(None, false, "onHide", true),
+            "hidden"
+        );
+        assert_eq!(
+            effective_page_instance_lifecycle(None, false, "onReady", true),
+            "mounted"
+        );
+    }
 }
