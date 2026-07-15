@@ -83,103 +83,6 @@ pub fn list_all_sessions() -> Result<Vec<SessionInfo>> {
     Ok(sessions)
 }
 
-/// Local broker sessions plus attached remote sessions (`lxdev attach`),
-/// remotes last. This is the selection universe for `--session`.
-pub fn list_selectable_sessions() -> Result<Vec<SessionInfo>> {
-    let mut sessions = list_all_sessions()?;
-    for remote in crate::remotes::list_remotes()? {
-        sessions.push(remote_session_info(&remote));
-    }
-    Ok(sessions)
-}
-
-/// Live identity of an attached remote, fetched from its dev server so the
-/// entry lists with the same fields as a local session. Unreachable remotes
-/// keep placeholder identity (`session_id == "-"`) under their attach name.
-pub fn remote_session_info(remote: &crate::remotes::RemoteSession) -> SessionInfo {
-    let mut info = SessionInfo {
-        session_id: "-".to_string(),
-        project_root: String::new(),
-        target: remote.name.clone(),
-        pid: 0,
-        started_at: 0,
-        ws_url: remote.ws_url.clone(),
-        log_file: String::new(),
-        remote_name: Some(remote.name.clone()),
-    };
-    if let Some(data) = fetch_session_info(&remote.ws_url, Duration::from_secs(2)) {
-        if let Some(id) = data.get("session_id").and_then(serde_json::Value::as_str) {
-            info.session_id = id.to_string();
-        }
-        if let Some(target) = data.get("target").and_then(serde_json::Value::as_str) {
-            info.target = target.to_string();
-        }
-        if let Some(root) = data.get("project_root").and_then(serde_json::Value::as_str) {
-            info.project_root = root.to_string();
-        }
-        info.started_at = data
-            .get("started_at")
-            .and_then(serde_json::Value::as_u64)
-            .unwrap_or_default();
-        info.pid = data
-            .get("pid")
-            .and_then(serde_json::Value::as_u64)
-            .unwrap_or_default() as u32;
-    }
-    info
-}
-
-/// Whether an attached remote entry answered `session.info` when listed.
-pub fn remote_is_reachable(info: &SessionInfo) -> bool {
-    info.remote_name.is_none() || info.session_id != "-"
-}
-
-fn fetch_session_info(ws_url: &str, timeout: Duration) -> Option<serde_json::Value> {
-    let mut websocket = connect_devtools_ws(ws_url, timeout)?;
-    send_wire_message(
-        &mut websocket,
-        &DevtoolsWireMessage::Hello {
-            role: DevtoolsPeerRole::Client,
-            token: lingxia_devtool_protocol::token_from_ws_url(ws_url),
-        },
-    )
-    .ok()?;
-    let command_id = format!(
-        "info-{}",
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|duration| duration.as_nanos())
-            .unwrap_or_default()
-    );
-    send_wire_message(
-        &mut websocket,
-        &DevtoolsWireMessage::Command {
-            command_id: command_id.clone(),
-            handler: handlers::session::INFO.to_string(),
-            args: None,
-        },
-    )
-    .ok()?;
-    loop {
-        let Ok(message) = websocket.read() else {
-            return None;
-        };
-        let Message::Text(text) = message else {
-            continue;
-        };
-        match serde_json::from_str(&text) {
-            Ok(DevtoolsWireMessage::Result {
-                command_id: result_id,
-                ok,
-                data,
-                ..
-            }) if result_id == command_id => return if ok { data } else { None },
-            Ok(_) => continue,
-            Err(_) => return None,
-        }
-    }
-}
-
 /// Resolve which session a `lxdev` subcommand should target.
 ///
 /// The common case is one live session and no selector: use it. With several
@@ -187,41 +90,21 @@ fn fetch_session_info(ws_url: &str, timeout: Duration) -> Option<serde_json::Val
 /// or target name; anything ambiguous or unmatched is an error, never a
 /// guess.
 pub fn resolve_session(selector: &SessionSelector) -> Result<SessionInfo> {
-    let all = list_selectable_sessions()?;
+    let all = list_all_sessions()?;
     if all.is_empty() {
-        bail!(
-            "No live dev session found. Run `lingxia dev` first, or attach a \
-             remote one with `lxdev attach <ws-url>`."
-        );
+        bail!("No live dev session found. Run `lingxia dev` first.");
     }
 
     let Some(needle) = selector.query.as_deref() else {
         if all.len() == 1 {
             return Ok(all.into_iter().next().unwrap());
         }
-        // Attached remotes persist across the other machine's restarts, so an
-        // unreachable one must not block auto-selection — it stays selectable
-        // by name, but only live sessions count as candidates here.
-        let mut live: Vec<SessionInfo> = all
-            .iter()
-            .filter(|s| remote_is_reachable(s))
-            .cloned()
-            .collect();
-        if live.len() == 1 {
-            return Ok(live.remove(0));
-        }
-        bail!(pick_message(if live.is_empty() { &all } else { &live }));
+        bail!(pick_message(&all));
     };
 
     let candidates: Vec<SessionInfo> = all
         .iter()
-        .filter(|s| {
-            s.target.eq_ignore_ascii_case(needle)
-                || s.session_id.starts_with(needle)
-                || s.remote_name
-                    .as_deref()
-                    .is_some_and(|name| name.eq_ignore_ascii_case(needle))
-        })
+        .filter(|s| s.target.eq_ignore_ascii_case(needle) || s.session_id.starts_with(needle))
         .cloned()
         .collect();
 
@@ -243,10 +126,7 @@ fn pick_message(sessions: &[SessionInfo]) -> String {
     let mut msg =
         String::from("Multiple LingXia dev sessions are live. Pick one with --session:\n\n");
     for s in sessions {
-        let location = match s.remote_name.as_deref() {
-            Some(name) => format!("(remote {name}) {}", s.ws_url),
-            None => abbreviate_home(&s.project_root),
-        };
+        let location = abbreviate_home(&s.project_root);
         msg.push_str(&format!(
             "  {}  {:<8} {}\n",
             s.session_id, s.target, location
@@ -401,7 +281,6 @@ mod tests {
             started_at,
             ws_url: "ws://127.0.0.1:1".to_string(),
             log_file: "/p/.lingxia/logs/x.jsonl".to_string(),
-            remote_name: None,
         }
     }
 

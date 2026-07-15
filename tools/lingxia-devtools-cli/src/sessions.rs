@@ -6,7 +6,7 @@ use lingxia_devtool_protocol::handlers;
 use serde_json::{Value, json};
 
 pub fn execute_list(json_output: bool) -> Result<()> {
-    let sessions = project::list_selectable_sessions()?;
+    let sessions = project::list_all_sessions()?;
 
     if json_output {
         let array: Vec<Value> = sessions
@@ -21,8 +21,6 @@ pub fn execute_list(json_output: bool) -> Result<()> {
                     "started_at": s.started_at,
                     "ws_url": s.ws_url,
                     "log_file": s.log_file,
-                    "remote": s.remote_name.is_some(),
-                    "remote_name": s.remote_name,
                     "state": state.as_str(),
                     "runtime_connected": state == project::SessionState::Ready,
                     "stale": state == project::SessionState::Stale,
@@ -34,7 +32,7 @@ pub fn execute_list(json_output: bool) -> Result<()> {
     }
 
     if sessions.is_empty() {
-        println!("No live dev sessions. Run `lingxia dev`, or `lxdev attach <ws-url>`.");
+        println!("No live dev sessions. Run `lingxia dev`.");
         return Ok(());
     }
 
@@ -62,16 +60,6 @@ pub fn execute_list(json_output: bool) -> Result<()> {
     );
     for info in sessions.iter() {
         let state = project::session_state(info);
-        // Remote rows carry the same identity as local ones (fetched live via
-        // session.info); the attach name tags the project column and the
-        // non-loopback ws URL is what marks them as remote.
-        let location = match info.remote_name.as_deref() {
-            Some(name) if !project::remote_is_reachable(info) => {
-                format!("[{name}] unreachable")
-            }
-            Some(name) => format!("[{name}] {}", info.project_root),
-            None => info.project_root.clone(),
-        };
         println!(
             "{:<id_width$}  {:<target_width$}  {:<8}  {:<19}  {:<ws_width$}  {}",
             info.session_id,
@@ -83,7 +71,7 @@ pub fn execute_list(json_output: bool) -> Result<()> {
                 format_started(info.started_at)
             },
             info.ws_url,
-            location,
+            info.project_root,
         );
     }
     Ok(())

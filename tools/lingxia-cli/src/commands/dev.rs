@@ -75,10 +75,6 @@ pub struct DevExecuteOptions {
     /// Runner simulator device (macOS lxapp runner only), e.g. `desktop-1440`.
     pub runner_device: Option<String>,
     pub background: bool,
-    /// Bind the dev websocket on all interfaces with a session token, so
-    /// `lxdev attach <printed url>` can pair this session with another
-    /// machine on the LAN. Desktop platforms only.
-    pub lan: bool,
     pub action: Option<DevSessionAction>,
 }
 
@@ -104,41 +100,16 @@ struct DevContext {
     reinstall: bool,
     resolved_env: crate::config::ResolvedEnv,
     extra_native_features: Vec<String>,
-    lan: bool,
 }
 
-/// Host + session token for the dev websocket bind, derived from `--lan`.
-/// Loopback (the default) needs no token; a LAN bind always gets one.
-struct DevBind {
-    host: &'static str,
-    auth_token: Option<String>,
-}
-
-impl DevContext {
-    fn ws_bind(&self) -> Result<DevBind> {
-        if self.lan {
-            Ok(DevBind {
-                host: "0.0.0.0",
-                auth_token: Some(persistent_lan_token()?),
-            })
-        } else {
-            Ok(DevBind {
-                host: "127.0.0.1",
-                auth_token: None,
-            })
-        }
-    }
-}
-
-/// Per-user LAN session token, generated once and reused across `lingxia dev
-/// --lan` restarts so the printed attach URL stays stable and a remote `lxdev
-/// attach` only ever has to happen once per machine.
-fn persistent_lan_token() -> Result<String> {
+/// Per-user token authenticating a physical iOS device's connection to the
+/// host-side dev server.
+fn persistent_device_token() -> Result<String> {
     let dir = dirs::home_dir()
-        .ok_or_else(|| anyhow!("Cannot determine home directory for the LAN token"))?
+        .ok_or_else(|| anyhow!("Cannot determine home directory for the device token"))?
         .join(".lingxia");
     std::fs::create_dir_all(&dir).context("Failed to create ~/.lingxia")?;
-    let path = dir.join("dev-lan-token");
+    let path = dir.join("dev-device-token");
     if let Ok(existing) = std::fs::read_to_string(&path) {
         let existing = existing.trim();
         if !existing.is_empty() {
@@ -146,41 +117,13 @@ fn persistent_lan_token() -> Result<String> {
         }
     }
     let token = uuid::Uuid::new_v4().simple().to_string();
-    std::fs::write(&path, &token).context("Failed to persist the LAN token")?;
+    std::fs::write(&path, &token).context("Failed to persist the device token")?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
         let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));
     }
     Ok(token)
-}
-
-impl DevBind {
-    /// The ws URL peers should be handed: token appended when present.
-    fn peer_ws_url(&self, base_ws_url: &str) -> String {
-        match &self.auth_token {
-            Some(token) => lingxia_devtool_protocol::ws_url_with_token(base_ws_url, token),
-            None => base_ws_url.to_string(),
-        }
-    }
-
-    /// Print the remote attach line for `--lan` sessions.
-    fn print_lan_attach(&self, port: u16) {
-        let Some(token) = &self.auth_token else {
-            return;
-        };
-        match lan_ws_url(port) {
-            Ok(lan_url) => {
-                let attach = lingxia_devtool_protocol::ws_url_with_token(&lan_url, token);
-                println!("  {} {}", "•".cyan(), lan_attach_hint(&attach));
-            }
-            Err(err) => eprintln!("Warning: could not determine LAN address: {err:#}"),
-        }
-    }
-}
-
-fn lan_attach_hint(attach_url: &str) -> String {
-    format!("LAN control enabled — pair from another machine: lxdev attach \"{attach_url}\"")
 }
 
 fn prepare_dev_host_assets(
@@ -312,7 +255,7 @@ pub fn execute(options: DevExecuteOptions) -> Result<()> {
     }
 
     if options.background && env::var_os(BACKGROUND_CHILD_ENV).is_none() {
-        return spawn_background_dev(&project_root, options.lan);
+        return spawn_background_dev(&project_root);
     }
 
     if runner::is_standalone_lxapp_project(&project_root) {
@@ -437,7 +380,6 @@ pub fn execute(options: DevExecuteOptions) -> Result<()> {
         reinstall: options.reinstall,
         resolved_env,
         extra_native_features,
-        lan: options.lan,
     };
 
     let result = match platform_type {
@@ -463,7 +405,7 @@ fn execute_session_action(project_root: &Path, action: DevSessionAction) -> Resu
     }
 }
 
-fn spawn_background_dev(project_root: &Path, lan: bool) -> Result<()> {
+fn spawn_background_dev(project_root: &Path) -> Result<()> {
     let log_dir = log_store::dev_dir(project_root).join("background");
     fs::create_dir_all(&log_dir)
         .with_context(|| format!("Failed to create {}", log_dir.display()))?;
@@ -508,12 +450,6 @@ fn spawn_background_dev(project_root: &Path, lan: bool) -> Result<()> {
             println!("  id: {}", session.session_id);
             println!("  target: {}", session.target);
             println!("  ws: {}", session.ws_url);
-            if lan {
-                match background_lan_attach_url(&session.ws_url) {
-                    Ok(attach) => println!("  {} {}", "•".cyan(), lan_attach_hint(&attach)),
-                    Err(err) => eprintln!("Warning: could not render LAN attach URL: {err:#}"),
-                }
-            }
             println!("  session log: {}", session.log_file);
             println!("Use `lxdev logs -f` to follow logs.");
             println!("Use `lingxia dev stop {}` to stop it.", session.session_id);
@@ -640,23 +576,6 @@ fn print_session_status(project_root: &Path, json_output: bool) -> Result<()> {
     println!();
     println!("Use `lxdev logs -f` to follow session logs.");
     Ok(())
-}
-
-fn background_lan_attach_url(loopback_url: &str) -> Result<String> {
-    let authority = loopback_url
-        .strip_prefix("ws://")
-        .and_then(|rest| rest.split('/').next())
-        .ok_or_else(|| anyhow!("Invalid dev websocket URL: {loopback_url}"))?;
-    let port = authority
-        .rsplit_once(':')
-        .and_then(|(_, port)| port.parse::<u16>().ok())
-        .ok_or_else(|| anyhow!("Dev websocket URL has no valid port: {loopback_url}"))?;
-    let token = lingxia_devtool_protocol::token_from_ws_url(loopback_url)
-        .ok_or_else(|| anyhow!("LAN dev websocket URL has no token"))?;
-    Ok(lingxia_devtool_protocol::ws_url_with_token(
-        &lan_ws_url(port)?,
-        &token,
-    ))
 }
 
 fn stop_session(project_root: &Path, selector: Option<String>, force: bool) -> Result<()> {
@@ -961,20 +880,8 @@ fn parse_lxapp_framework(value: &str) -> Result<ProjectFramework> {
 
 #[cfg(test)]
 mod tests {
-    use super::{lan_attach_hint, process_executable_matches};
+    use super::process_executable_matches;
     use std::path::Path;
-
-    #[test]
-    fn lan_hint_promotes_persistent_remote_pairing() {
-        let hint = lan_attach_hint("ws://192.168.1.20:39142/?token=abc");
-
-        assert_eq!(
-            hint,
-            "LAN control enabled — pair from another machine: lxdev attach \
-             \"ws://192.168.1.20:39142/?token=abc\""
-        );
-        assert!(!hint.contains("--ws"));
-    }
 
     #[test]
     fn process_match_requires_exact_executable_path() {

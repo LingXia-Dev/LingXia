@@ -27,9 +27,9 @@ pub struct DevServerHandle {
 }
 
 impl DevServerHandle {
-    /// Connectable ws URL for same-machine peers. A `0.0.0.0` LAN bind is
-    /// not a destination address — render it as loopback; remote peers use
-    /// the printed LAN attach URL instead.
+    /// Connectable ws URL for same-machine peers. A physical-device server
+    /// may bind `0.0.0.0`, which is not a destination address, so render it as
+    /// loopback for local `lxdev`.
     pub fn ws_url(&self) -> String {
         if self.ws_addr.ip().is_unspecified() {
             format!("ws://127.0.0.1:{}", self.ws_addr.port())
@@ -98,33 +98,15 @@ struct DevServerState {
     /// When set (non-loopback bind), every peer must present this token in
     /// its `Hello` and HTTP requests must carry it as `?token=`.
     auth_token: Option<String>,
-    /// Session log file, served to remote `lxdev logs` via `session.logs`.
-    log_file: PathBuf,
-    /// Identity served to remote `lxdev` via `session.info`, so attached
-    /// sessions list with the same fields as local ones.
-    session_id: String,
-    target: String,
-    started_at: u64,
     /// A runtime peer failed token auth since the last successful runtime
-    /// connection — almost always a host/Runner binary that predates session
-    /// tokens. Folded into the "runtime is not connected" client error so
+    /// connection — almost always a physical-device host binary that predates
+    /// session tokens. Folded into the "runtime is not connected" client error so
     /// the operator sees the cause on their side of the wire.
     runtime_rejected: AtomicBool,
 }
 
 impl DevServerState {
-    fn new(
-        project_root: PathBuf,
-        stop_flag: Arc<AtomicBool>,
-        auth_token: Option<String>,
-        log_file: PathBuf,
-        session_id: String,
-        target: String,
-    ) -> Self {
-        let started_at = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|duration| duration.as_millis() as u64)
-            .unwrap_or_default();
+    fn new(project_root: PathBuf, stop_flag: Arc<AtomicBool>, auth_token: Option<String>) -> Self {
         Self {
             project_root,
             stop_flag,
@@ -133,22 +115,8 @@ impl DevServerState {
             pending_results: Mutex::new(std::collections::HashMap::new()),
             command_lock: Mutex::new(()),
             auth_token,
-            log_file,
-            session_id,
-            target,
-            started_at,
             runtime_rejected: AtomicBool::new(false),
         }
-    }
-
-    fn session_info_json(&self) -> serde_json::Value {
-        serde_json::json!({
-            "session_id": self.session_id,
-            "target": self.target,
-            "project_root": self.project_root.to_string_lossy(),
-            "started_at": self.started_at,
-            "pid": std::process::id(),
-        })
     }
 
     fn authorizes(&self, presented: Option<&str>) -> bool {
@@ -235,7 +203,7 @@ impl DevServerState {
 pub fn start_server_on_with_stop(
     project_root: &Path,
     bind_addr: &str,
-    platform: &str,
+    _platform: &str,
     stop_flag: Arc<AtomicBool>,
     auth_token: Option<String>,
 ) -> Result<DevServerHandle> {
@@ -252,9 +220,6 @@ pub fn start_server_on_with_stop(
         project_root.to_path_buf(),
         stop_flag.clone(),
         auth_token,
-        session.log_file.clone(),
-        session.session_id.clone(),
-        platform.to_string(),
     ));
     let thread_stop_flag = stop_flag.clone();
     let server_thread =
@@ -369,7 +334,7 @@ fn handle_connection(
             state.runtime_rejected.store(true, Ordering::Release);
             return Err(anyhow!(
                 "Rejected a runtime peer with a missing or wrong session token — the running \
-                 host/Runner likely predates LAN session tokens; rebuild it from this revision \
+                 device host likely predates session tokens; rebuild it from this revision \
                  (or reinstall the Runner)"
             ));
         }
@@ -387,9 +352,9 @@ fn handle_connection(
 }
 
 /// Capture the token from the HTTP upgrade target as well as accepting it in
-/// `Hello`. Runners built before the hello-token field still receive and dial
-/// the tokened URL, so authenticating the handshake keeps those cached builds
-/// compatible without allowing tokenless LAN peers.
+/// `Hello`. Device hosts built before the hello-token field still receive and
+/// dial the tokened URL, so authenticating the handshake keeps cached builds
+/// compatible without allowing tokenless device peers.
 #[allow(clippy::result_large_err)] // Tungstenite fixes this type in its callback contract.
 fn accept_websocket(stream: TcpStream) -> Result<(WebSocket<TcpStream>, Option<String>)> {
     let mut handshake_token = None;
@@ -444,57 +409,6 @@ fn handle_http_connection(mut stream: TcpStream, state: &DevServerState) -> Resu
             write_http_error(&mut stream, status, &message)
         }
     }
-}
-
-/// Serve one chunk of the session log file for remote `lxdev logs`.
-/// Reads from `offset` (replaying from 0 after truncation/rotation), caps at
-/// `max_bytes`, and returns only complete lines so the client never parses a
-/// half-written JSONL record.
-fn read_log_chunk(log_file: &Path, args: Option<&serde_json::Value>) -> Result<serde_json::Value> {
-    const DEFAULT_MAX_BYTES: u64 = 256 * 1024;
-    const MAX_MAX_BYTES: u64 = 1024 * 1024;
-
-    let requested_offset = args
-        .and_then(|value| value.get("offset"))
-        .and_then(serde_json::Value::as_u64)
-        .unwrap_or(0);
-    let max_bytes = args
-        .and_then(|value| value.get("max_bytes"))
-        .and_then(serde_json::Value::as_u64)
-        .unwrap_or(DEFAULT_MAX_BYTES)
-        .min(MAX_MAX_BYTES);
-
-    let mut file =
-        File::open(log_file).with_context(|| format!("Failed to open {}", log_file.display()))?;
-    let len = file.metadata().context("Failed to stat log file")?.len();
-    let offset = if requested_offset > len {
-        0
-    } else {
-        requested_offset
-    };
-
-    let want = max_bytes.min(len.saturating_sub(offset)) as usize;
-    let mut buf = vec![0u8; want];
-    if want > 0 {
-        use std::io::Seek;
-        file.seek(std::io::SeekFrom::Start(offset))
-            .context("Failed to seek log file")?;
-        file.read_exact(&mut buf)
-            .context("Failed to read log file")?;
-    }
-    // Trim to the last complete line; a trailing half-line waits for the next
-    // poll.
-    let complete = match buf.iter().rposition(|byte| *byte == b'\n') {
-        Some(pos) => pos + 1,
-        None => 0,
-    };
-    buf.truncate(complete);
-    let chunk = String::from_utf8_lossy(&buf).into_owned();
-    Ok(serde_json::json!({
-        "chunk": chunk,
-        "next_offset": offset + complete as u64,
-        "len": len,
-    }))
 }
 
 fn read_http_request_head(stream: &mut TcpStream) -> Result<String> {
@@ -760,40 +674,6 @@ fn handle_client_connection(
         return Ok(());
     }
 
-    if handler.as_str() == lingxia_devtool_protocol::handlers::session::INFO {
-        send_wire_message(
-            &mut websocket,
-            &DevtoolsWireMessage::Result {
-                command_id,
-                ok: true,
-                data: Some(state.session_info_json()),
-                error: None,
-            },
-        )?;
-        let _ = websocket.close(None);
-        return Ok(());
-    }
-
-    if handler.as_str() == lingxia_devtool_protocol::handlers::session::LOGS {
-        let payload = match read_log_chunk(&state.log_file, args.as_ref()) {
-            Ok(data) => DevtoolsWireMessage::Result {
-                command_id,
-                ok: true,
-                data: Some(data),
-                error: None,
-            },
-            Err(err) => DevtoolsWireMessage::Result {
-                command_id,
-                ok: false,
-                data: None,
-                error: Some(format!("{err:#}")),
-            },
-        };
-        send_wire_message(&mut websocket, &payload)?;
-        let _ = websocket.close(None);
-        return Ok(());
-    }
-
     if handler.as_str() == lingxia_devtool_protocol::handlers::session::SHUTDOWN {
         send_wire_message(
             &mut websocket,
@@ -812,7 +692,7 @@ fn handle_client_connection(
     let Some(runtime_sender) = state.runtime_sender() else {
         let error = if state.runtime_rejected.load(Ordering::Acquire) {
             "devtool runtime is not connected: a runtime peer was rejected for a missing or \
-             wrong session token — the host/Runner likely predates LAN session tokens; rebuild \
+             wrong session token — the device host likely predates session tokens; rebuild \
              it from this revision (or reinstall the Runner)"
                 .to_string()
         } else {
@@ -1014,9 +894,6 @@ mod tests {
             PathBuf::from("project"),
             Arc::new(AtomicBool::new(false)),
             Some("secret".to_string()),
-            PathBuf::from("session.jsonl"),
-            "session".to_string(),
-            "lxapp".to_string(),
         )
     }
 

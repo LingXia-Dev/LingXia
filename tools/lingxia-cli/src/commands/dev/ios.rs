@@ -8,7 +8,7 @@ pub(super) fn execute_ios(ctx: DevContext) -> Result<()> {
     // The iOS device reaches the host over Wi-Fi, so this bind was always
     // 0.0.0.0 — it now carries the persistent session token so the open bind
     // is no longer unauthenticated.
-    let auth_token = persistent_lan_token()?;
+    let auth_token = persistent_device_token()?;
     let server = server::start_server_fixed_with_stop(
         &ctx.project_root,
         "0.0.0.0",

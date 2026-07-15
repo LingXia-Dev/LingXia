@@ -1,5 +1,5 @@
 use anyhow::Result;
-use clap::{ArgGroup, Args, Parser, Subcommand};
+use clap::{Args, Parser, Subcommand};
 use std::path::Path;
 
 mod app;
@@ -10,7 +10,6 @@ mod logs;
 mod lxapp;
 mod lxapp_build;
 mod project;
-mod remotes;
 mod screenshot;
 mod sessions;
 
@@ -22,17 +21,10 @@ use project::SessionSelector;
 #[command(version)]
 struct Cli {
     /// Select the dev session by id prefix or target name (android, ios,
-    /// macos, harmony, windows, lxapp) or an attached remote name. Optional
-    /// when only one session is live. Falls back to the LXDEV_SESSION env var.
+    /// macos, harmony, windows, lxapp). Optional when only one session is
+    /// live. Falls back to the LXDEV_SESSION env var.
     #[arg(long, global = true)]
     session: Option<String>,
-
-    /// Target a dev websocket URL directly (one-off remote control), e.g.
-    /// "ws://192.168.1.20:39142/?token=…" printed by `lingxia dev --lan`.
-    /// For a persistent pairing use `lxdev attach` instead. Falls back to
-    /// the LXDEV_WS env var.
-    #[arg(long, global = true)]
-    ws: Option<String>,
 
     #[command(subcommand)]
     command: Commands,
@@ -53,33 +45,6 @@ enum Commands {
     Desktop(desktop::DesktopOptions),
     /// Automate the host app surface in the current dev session
     App(app::AppOptions),
-    /// Attach a remote dev session by its ws URL (from `lingxia dev --lan`)
-    Attach {
-        /// The attach URL printed by `lingxia dev --lan`, including ?token=
-        ws_url: String,
-        /// Name for the remote session (defaults to the URL host)
-        #[arg(long)]
-        name: Option<String>,
-    },
-    /// Detach one attached remote, or every currently unreachable remote
-    Detach(DetachOptions),
-}
-
-#[derive(Args)]
-#[command(group(
-    ArgGroup::new("detach_target")
-        .required(true)
-        .multiple(false)
-        .args(["name", "unreachable"])
-))]
-struct DetachOptions {
-    /// The attached remote session name
-    #[arg(value_name = "NAME")]
-    name: Option<String>,
-
-    /// Detach all attached remote sessions that are currently unreachable
-    #[arg(long)]
-    unreachable: bool,
 }
 
 #[derive(Args, Clone)]
@@ -169,13 +134,7 @@ fn run() -> Result<()> {
     let selector = SessionSelector {
         query: cli.session.or_else(|| std::env::var("LXDEV_SESSION").ok()),
     };
-    let direct_ws = cli.ws.or_else(|| std::env::var("LXDEV_WS").ok());
-    let resolve = |selector: &SessionSelector| -> Result<project::SessionInfo> {
-        match &direct_ws {
-            Some(ws_url) => Ok(remotes::direct_session_info(ws_url)),
-            None => project::resolve_session(selector),
-        }
-    };
+    let resolve = project::resolve_session;
 
     match cli.command {
         Commands::Browser(options) => {
@@ -192,13 +151,7 @@ fn run() -> Result<()> {
         }
         Commands::Logs(options) => {
             let info = resolve(&selector)?;
-            if info.log_file.is_empty() {
-                // Remote session: the log file lives on the host machine —
-                // stream it through the dev server instead.
-                logs::execute_remote(&info.ws_url, options)
-            } else {
-                logs::execute(Path::new(&info.log_file), options)
-            }
+            logs::execute(Path::new(&info.log_file), options)
         }
         Commands::Session(cmd) => match cmd.command {
             Some(SessionAction::List { json }) => sessions::execute_list(json),
@@ -216,41 +169,16 @@ fn run() -> Result<()> {
             let info = resolve(&selector)?;
             app::execute(&info, options)
         }
-        Commands::Attach { ws_url, name } => remotes::attach(&ws_url, name),
-        Commands::Detach(options) => {
-            if options.unreachable {
-                remotes::detach_unreachable()
-            } else {
-                remotes::detach(
-                    options
-                        .name
-                        .as_deref()
-                        .expect("clap requires a detach target"),
-                )
-            }
-        }
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use clap::CommandFactory;
-
     #[test]
-    fn detach_usage_offers_name_or_unreachable() {
-        let command = Cli::command();
-        let mut detach = command
-            .find_subcommand("detach")
-            .expect("detach subcommand")
-            .clone();
-        let usage = detach.render_usage().to_string();
-
-        assert!(usage.contains("--unreachable"));
-        assert!(usage.contains("NAME"));
-        assert!(Cli::try_parse_from(["lxdev", "detach", "win"]).is_ok());
-        assert!(Cli::try_parse_from(["lxdev", "detach", "--unreachable"]).is_ok());
-        assert!(Cli::try_parse_from(["lxdev", "detach"]).is_err());
-        assert!(Cli::try_parse_from(["lxdev", "detach", "win", "--unreachable"]).is_err());
+    fn remote_control_options_are_not_exposed() {
+        assert!(Cli::try_parse_from(["lxdev", "attach", "ws://host:39000"]).is_err());
+        assert!(Cli::try_parse_from(["lxdev", "detach", "host"]).is_err());
+        assert!(Cli::try_parse_from(["lxdev", "--ws", "ws://host:39000", "session"]).is_err());
     }
 }
