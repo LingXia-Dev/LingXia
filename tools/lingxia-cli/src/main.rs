@@ -363,7 +363,10 @@ enum Commands {
     /// Activate a process window from the signed-in Windows desktop session.
     #[cfg(target_os = "windows")]
     #[command(hide = true, name = "dev-focus-window")]
-    DevFocusWindow { pid: u32 },
+    DevFocusWindow {
+        executable: String,
+        excluded_pids: String,
+    },
 
     /// Check development environment setup
     Doctor {
@@ -734,8 +737,11 @@ fn main() -> Result<()> {
             lingxia_devtool_protocol::broker::run_broker()?;
         }
         #[cfg(target_os = "windows")]
-        Commands::DevFocusWindow { pid } => {
-            commands::dev::focus_windows_process(pid)?;
+        Commands::DevFocusWindow {
+            executable,
+            excluded_pids,
+        } => {
+            commands::dev::focus_windows_launch(std::path::Path::new(&executable), &excluded_pids)?;
         }
         Commands::Doctor { platform } => {
             commands::doctor::execute(platform)?;
@@ -881,11 +887,22 @@ mod cli_tests {
 
     #[cfg(target_os = "windows")]
     #[test]
-    fn internal_focus_command_accepts_process_id() {
-        let cli = Cli::try_parse_from(["lingxia", "dev-focus-window", "1234"]).unwrap();
-        let Commands::DevFocusWindow { pid } = cli.command else {
+    fn internal_focus_command_accepts_launch_identity() {
+        let cli = Cli::try_parse_from([
+            "lingxia",
+            "dev-focus-window",
+            r"C:\Apps\Demo.exe",
+            "123,456",
+        ])
+        .unwrap();
+        let Commands::DevFocusWindow {
+            executable,
+            excluded_pids,
+        } = cli.command
+        else {
             panic!("expected dev-focus-window command");
         };
-        assert_eq!(pid, 1234);
+        assert_eq!(executable, r"C:\Apps\Demo.exe");
+        assert_eq!(excluded_pids, "123,456");
     }
 }

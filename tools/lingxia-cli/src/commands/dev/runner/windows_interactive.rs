@@ -1,14 +1,18 @@
 use super::{process_executable_matches, quote_windows_arg};
 use anyhow::{Context, Result, anyhow};
+use std::collections::HashSet;
 use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 use std::time::{Duration, Instant};
 use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System, UpdateKind};
-use windows::Win32::Foundation::{HANDLE, HWND, LPARAM, RECT, TRUE};
+use windows::Win32::Foundation::{
+    CloseHandle, HANDLE, HWND, LPARAM, RECT, TRUE, WAIT_OBJECT_0, WAIT_TIMEOUT,
+};
 use windows::Win32::System::Threading::{
-    AttachThreadInput, GetCurrentThreadId, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
-    PROCESS_SYNCHRONIZE, PROCESS_TERMINATE,
+    AttachThreadInput, GetCurrentThreadId, GetExitCodeProcess, OpenProcess,
+    PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SYNCHRONIZE, PROCESS_TERMINATE, TerminateProcess,
+    WaitForSingleObject,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     AllowSetForegroundWindow, BringWindowToTop, EnumWindows, GWL_EXSTYLE, GetForegroundWindow,
@@ -22,7 +26,7 @@ const RUNNER_MARKER_ENV: &str = "LINGXIA_RUNNER";
 const INTERACTIVE_START_TIMEOUT: Duration = Duration::from_secs(15);
 const FOCUS_WINDOW_TIMEOUT: Duration = Duration::from_secs(15);
 
-pub(super) fn is_ssh_session() -> bool {
+pub(in crate::commands::dev) fn is_ssh_session() -> bool {
     ssh_environment_present(
         std::env::var_os("SSH_CONNECTION").as_deref(),
         std::env::var_os("SSH_CLIENT").as_deref(),
@@ -40,11 +44,23 @@ pub(super) fn focus_windows_process(pid: u32) -> Result<()> {
         }
         if Instant::now() >= deadline {
             return Err(anyhow!(
-                "Could not activate a visible window for Windows Runner process {pid}"
+                "Could not activate a visible window for Windows process {pid}"
             ));
         }
         std::thread::sleep(Duration::from_millis(100));
     }
+}
+
+pub(super) fn focus_windows_launch(exe_path: &Path, excluded_pids: &str) -> Result<()> {
+    let excluded = parse_excluded_pids(excluded_pids)?;
+    let pid =
+        wait_for_launched_pid(exe_path, &excluded, INTERACTIVE_START_TIMEOUT).ok_or_else(|| {
+            anyhow!(
+                "Could not find newly launched Windows process {}",
+                exe_path.display()
+            )
+        })?;
+    focus_windows_process(pid)
 }
 
 struct ProcessWindowSearch {
@@ -176,13 +192,59 @@ fn ssh_environment_present(
         .any(|value| !value.is_empty())
 }
 
-pub(super) struct InteractiveRunnerLaunch {
-    pub(super) handle: HANDLE,
-    pub(super) cleanup: InteractiveRunnerCleanup,
+pub(in crate::commands::dev) struct InteractiveLaunch {
+    handle: HANDLE,
+    _cleanup: Option<InteractiveCleanup>,
+    output_log: Option<PathBuf>,
 }
 
-pub(super) struct InteractiveRunnerCleanup {
+struct InteractiveCleanup {
     _bootstrap: BootstrapCleanup,
+}
+
+impl InteractiveLaunch {
+    pub(in crate::commands::dev) fn from_handle(handle: HANDLE) -> Self {
+        Self {
+            handle,
+            _cleanup: None,
+            output_log: None,
+        }
+    }
+
+    pub(in crate::commands::dev) fn exit_code(&self) -> Result<Option<u32>> {
+        let wait = unsafe { WaitForSingleObject(self.handle, 0) };
+        if wait == WAIT_TIMEOUT {
+            return Ok(None);
+        }
+        if wait != WAIT_OBJECT_0 {
+            return Err(anyhow!(
+                "Failed to wait for interactive Windows process: {wait:?}"
+            ));
+        }
+
+        let mut code = 0u32;
+        unsafe { GetExitCodeProcess(self.handle, &mut code) }
+            .context("Failed to read interactive Windows process exit code")?;
+        Ok(Some(code))
+    }
+
+    pub(in crate::commands::dev) fn terminate(&mut self, label: &str) -> Result<()> {
+        unsafe { TerminateProcess(self.handle, 1) }
+            .with_context(|| format!("Failed to terminate {label}"))?;
+        Ok(())
+    }
+
+    pub(in crate::commands::dev) fn output_log(&self) -> Option<&Path> {
+        self.output_log.as_deref()
+    }
+}
+
+impl Drop for InteractiveLaunch {
+    fn drop(&mut self) {
+        unsafe {
+            let _ = CloseHandle(self.handle);
+        }
+    }
 }
 
 pub(super) fn launch_runner(
@@ -190,35 +252,69 @@ pub(super) fn launch_runner(
     working_dir: &Path,
     launch_args: &[String],
     state_dir: &Path,
-) -> Result<InteractiveRunnerLaunch> {
+) -> Result<InteractiveLaunch> {
+    launch_interactive(
+        exe_path,
+        working_dir,
+        launch_args,
+        &[(RUNNER_MARKER_ENV.to_string(), "1".to_string())],
+        state_dir,
+        "Runner",
+    )
+}
+
+pub(in crate::commands::dev) fn launch_app(
+    exe_path: &Path,
+    working_dir: &Path,
+    environment: &[(String, String)],
+    state_dir: &Path,
+) -> Result<InteractiveLaunch> {
+    launch_interactive(exe_path, working_dir, &[], environment, state_dir, "App")
+}
+
+fn launch_interactive(
+    exe_path: &Path,
+    working_dir: &Path,
+    launch_args: &[String],
+    environment: &[(String, String)],
+    state_dir: &Path,
+    label: &str,
+) -> Result<InteractiveLaunch> {
     std::fs::create_dir_all(state_dir)
         .with_context(|| format!("Failed to create {}", state_dir.display()))?;
 
     let launch_id = uuid::Uuid::new_v4().simple().to_string();
-    let task_name = format!(r"\LingXia-Runner-{launch_id}");
+    let task_name = format!(r"\LingXia-{label}-{launch_id}");
     let script_path = state_dir.join(format!("launch-{launch_id}.vbs"));
     let task_xml_path = state_dir.join(format!("launch-{launch_id}.xml"));
+    let output_log = state_dir.join("interactive.log");
     let mut cleanup = BootstrapCleanup::new(task_name.clone(), task_xml_path, script_path);
-    let mut args = launch_args.to_vec();
-    args.push("--launch-id".to_string());
-    args.push(launch_id.clone());
+    let excluded_pids = process_ids_for_exe(exe_path);
+    let excluded_pids_arg = format_excluded_pids(&excluded_pids);
 
     let cli_exe_path = std::env::current_exe().context("Failed to resolve the LingXia CLI path")?;
     std::fs::write(
         cleanup.launch_script_path(),
-        render_launch_script(exe_path, &args, &cli_exe_path),
+        render_launch_script(
+            exe_path,
+            launch_args,
+            &excluded_pids_arg,
+            &cli_exe_path,
+            environment,
+            &output_log,
+        ),
     )
     .with_context(|| format!("Failed to write {}", cleanup.launch_script_path().display()))?;
 
     let user_sid = current_user_sid()?;
     // WScript is a GUI-subsystem host, so the interactive bootstrap does not
-    // flash a console window before Runner appears.
+    // flash a console window before the app appears.
     let wscript_path = windows_wscript_path();
     let wscript_args = format!(
         "//B //Nologo {}",
         quote_windows_arg(&cleanup.launch_script_path().display().to_string())
     );
-    let task_xml = render_task_xml(&user_sid, &wscript_path, &wscript_args, working_dir);
+    let task_xml = render_task_xml(&user_sid, &wscript_path, &wscript_args, working_dir, label);
     write_utf16_xml(cleanup.task_xml_path(), &task_xml)?;
 
     execute_schtasks(
@@ -230,7 +326,7 @@ pub(super) fn launch_runner(
             cleanup.task_xml_path().as_os_str().to_os_string(),
             OsString::from("/F"),
         ],
-        "register interactive Runner task",
+        &format!("register interactive {label} task"),
     )?;
     cleanup.registered = true;
     cleanup.remove_task_xml();
@@ -241,13 +337,14 @@ pub(super) fn launch_runner(
             OsString::from("/TN"),
             OsString::from(&task_name),
         ],
-        "start interactive Runner task",
+        &format!("start interactive {label} task"),
     )?;
 
-    let Some(pid) = wait_for_runner_pid(exe_path, &launch_id, INTERACTIVE_START_TIMEOUT) else {
+    let Some(pid) = wait_for_launched_pid(exe_path, &excluded_pids, INTERACTIVE_START_TIMEOUT)
+    else {
         let diagnostic = task_diagnostic(&task_name);
         return Err(anyhow!(
-            "Windows Runner did not start in the interactive desktop within {} seconds.\n\
+            "Windows {label} did not start in the interactive desktop within {} seconds.\n\
              The SSH account ({user_sid}) must also have an active local or RDP desktop sign-in.\
              {diagnostic}",
             INTERACTIVE_START_TIMEOUT.as_secs()
@@ -261,16 +358,17 @@ pub(super) fn launch_runner(
             pid,
         )
     }
-    .with_context(|| format!("Failed to open interactive Windows Runner process {pid}"))?;
+    .with_context(|| format!("Failed to open interactive Windows {label} process {pid}"))?;
     unsafe {
         let _ = AllowSetForegroundWindow(pid);
     }
 
-    Ok(InteractiveRunnerLaunch {
+    Ok(InteractiveLaunch {
         handle,
-        cleanup: InteractiveRunnerCleanup {
+        _cleanup: Some(InteractiveCleanup {
             _bootstrap: cleanup,
-        },
+        }),
+        output_log: Some(output_log),
     })
 }
 
@@ -310,35 +408,53 @@ fn parse_user_sid(output: &str) -> Option<String> {
         .map(ToOwned::to_owned)
 }
 
-fn render_launch_script(exe_path: &Path, launch_args: &[String], cli_exe_path: &Path) -> String {
+fn render_launch_script(
+    exe_path: &Path,
+    launch_args: &[String],
+    excluded_pids: &str,
+    cli_exe_path: &Path,
+    environment: &[(String, String)],
+    output_log: &Path,
+) -> String {
     let command = std::iter::once(exe_path.display().to_string())
         .chain(launch_args.iter().cloned())
         .map(|arg| quote_windows_arg(&arg))
         .collect::<Vec<_>>()
         .join(" ");
+    let redirected_command = format!(
+        "cmd.exe /D /S /C \"{command} > {} 2>&1\"",
+        quote_windows_arg(&output_log.display().to_string())
+    );
+    let environment_assignments = environment
+        .iter()
+        .map(|(key, value)| {
+            format!(
+                "environment({}) = {}\r\n",
+                vbscript_literal(key),
+                vbscript_literal(value)
+            )
+        })
+        .collect::<String>();
     let focus_command = format!(
-        "{} dev-focus-window ",
-        quote_windows_arg(&cli_exe_path.display().to_string())
+        "{} dev-focus-window {} {}",
+        quote_windows_arg(&cli_exe_path.display().to_string()),
+        quote_windows_arg(&exe_path.display().to_string()),
+        quote_windows_arg(excluded_pids)
     );
     format!(
         "Option Explicit\r\n\
-         Dim shell, environment, runner, focusExitCode, exitCode, fileSystem\r\n\
+         Dim shell, environment, focusExitCode, fileSystem\r\n\
          Set shell = CreateObject(\"WScript.Shell\")\r\n\
          Set environment = shell.Environment(\"PROCESS\")\r\n\
-         environment(\"{RUNNER_MARKER_ENV}\") = \"1\"\r\n\
-         Set runner = shell.Exec({})\r\n\
-         focusExitCode = shell.Run({} & CStr(runner.ProcessID), 0, True)\r\n\
-         If focusExitCode <> 0 Then shell.AppActivate(runner.ProcessID)\r\n\
-         Do While runner.Status = 0\r\n\
-             WScript.Sleep 250\r\n\
-         Loop\r\n\
-         exitCode = runner.ExitCode\r\n\
+         {environment_assignments}\
+         shell.Run {}, 1, False\r\n\
+         focusExitCode = shell.Run({}, 0, True)\r\n\
          Set fileSystem = CreateObject(\"Scripting.FileSystemObject\")\r\n\
          On Error Resume Next\r\n\
          fileSystem.DeleteFile WScript.ScriptFullName, True\r\n\
          On Error GoTo 0\r\n\
-         WScript.Quit exitCode\r\n",
-        vbscript_literal(&command),
+         WScript.Quit focusExitCode\r\n",
+        vbscript_literal(&redirected_command),
         vbscript_literal(&focus_command)
     )
 }
@@ -347,13 +463,19 @@ fn vbscript_literal(value: &str) -> String {
     format!("\"{}\"", value.replace('"', "\"\""))
 }
 
-fn render_task_xml(user_sid: &str, command: &Path, arguments: &str, working_dir: &Path) -> String {
+fn render_task_xml(
+    user_sid: &str,
+    command: &Path,
+    arguments: &str,
+    working_dir: &Path,
+    label: &str,
+) -> String {
     format!(
         r#"<?xml version="1.0" encoding="UTF-16"?>
 <Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
   <RegistrationInfo>
     <Author>{}</Author>
-    <Description>Launch LingXia Runner in the signed-in Windows desktop.</Description>
+    <Description>Launch LingXia {} in the signed-in Windows desktop.</Description>
   </RegistrationInfo>
   <Principals>
     <Principal id="Author">
@@ -384,6 +506,7 @@ fn render_task_xml(user_sid: &str, command: &Path, arguments: &str, working_dir:
 </Task>
 "#,
         xml_escape(user_sid),
+        xml_escape(label),
         xml_escape(user_sid),
         xml_escape(&command.display().to_string()),
         xml_escape(arguments),
@@ -432,10 +555,14 @@ fn command_output(output: &Output) -> String {
         .join("\n")
 }
 
-fn wait_for_runner_pid(exe_path: &Path, launch_id: &str, timeout: Duration) -> Option<u32> {
+fn wait_for_launched_pid(
+    exe_path: &Path,
+    excluded_pids: &HashSet<u32>,
+    timeout: Duration,
+) -> Option<u32> {
     let deadline = Instant::now() + timeout;
     loop {
-        if let Some(pid) = find_runner_pid(exe_path, launch_id) {
+        if let Some(pid) = find_launched_pid(exe_path, excluded_pids) {
             return Some(pid);
         }
         if Instant::now() >= deadline {
@@ -445,24 +572,63 @@ fn wait_for_runner_pid(exe_path: &Path, launch_id: &str, timeout: Duration) -> O
     }
 }
 
-fn find_runner_pid(exe_path: &Path, launch_id: &str) -> Option<u32> {
+fn find_launched_pid(exe_path: &Path, excluded_pids: &HashSet<u32>) -> Option<u32> {
     let mut system = System::new();
     system.refresh_processes_specifics(
         ProcessesToUpdate::All,
         true,
-        ProcessRefreshKind::nothing()
-            .with_exe(UpdateKind::Always)
-            .with_cmd(UpdateKind::Always),
+        ProcessRefreshKind::nothing().with_exe(UpdateKind::Always),
     );
-    system.processes().values().find_map(|process| {
-        let process_exe = process.exe()?;
-        (process_executable_matches(process_exe, exe_path)
-            && process
-                .cmd()
-                .iter()
-                .any(|arg| arg.to_string_lossy() == launch_id))
-        .then(|| process.pid().as_u32())
-    })
+    system
+        .processes()
+        .values()
+        .filter(|process| {
+            let pid = process.pid().as_u32();
+            !excluded_pids.contains(&pid)
+                && process
+                    .exe()
+                    .is_some_and(|process_exe| process_executable_matches(process_exe, exe_path))
+        })
+        .max_by_key(|process| process.start_time())
+        .map(|process| process.pid().as_u32())
+}
+
+fn process_ids_for_exe(exe_path: &Path) -> HashSet<u32> {
+    let mut system = System::new();
+    system.refresh_processes_specifics(
+        ProcessesToUpdate::All,
+        true,
+        ProcessRefreshKind::nothing().with_exe(UpdateKind::Always),
+    );
+    system
+        .processes()
+        .values()
+        .filter(|process| {
+            process
+                .exe()
+                .is_some_and(|process_exe| process_executable_matches(process_exe, exe_path))
+        })
+        .map(|process| process.pid().as_u32())
+        .collect()
+}
+
+fn format_excluded_pids(pids: &HashSet<u32>) -> String {
+    let mut pids = pids.iter().copied().collect::<Vec<_>>();
+    pids.sort_unstable();
+    pids.into_iter()
+        .map(|pid| pid.to_string())
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
+fn parse_excluded_pids(raw: &str) -> Result<HashSet<u32>> {
+    raw.split(',')
+        .filter(|part| !part.is_empty())
+        .map(|part| {
+            part.parse::<u32>()
+                .with_context(|| format!("Invalid excluded process id: {part}"))
+        })
+        .collect()
 }
 
 fn task_diagnostic(task_name: &str) -> String {
@@ -474,7 +640,7 @@ fn task_diagnostic(task_name: &str) -> String {
         OsString::from("/FO"),
         OsString::from("LIST"),
     ];
-    match execute_schtasks(&args, "query interactive Runner task") {
+    match execute_schtasks(&args, "query interactive launch task") {
         Ok(output) => {
             let detail = command_output(&output);
             if detail.is_empty() {
@@ -513,7 +679,7 @@ impl BootstrapCleanup {
     fn launch_script_path(&self) -> &Path {
         self.launch_script_path
             .as_deref()
-            .expect("launch script exists until Runner exits")
+            .expect("launch script exists until the process exits")
     }
 
     fn remove_task_xml(&mut self) {
@@ -532,7 +698,7 @@ impl BootstrapCleanup {
             OsString::from(&self.task_name),
             OsString::from("/F"),
         ];
-        if execute_schtasks(&args, "delete interactive Runner task").is_ok() {
+        if execute_schtasks(&args, "delete interactive launch task").is_ok() {
             self.registered = false;
         }
     }
@@ -576,14 +742,22 @@ mod tests {
         let script = render_launch_script(
             Path::new(r"C:\Program Files\LingXia\runner.exe"),
             &["--dev-ws-url".to_string(), "ws://h/?token=a&b".to_string()],
+            "123,456",
             Path::new(r"C:\Program Files\LingXia\lingxia.exe"),
+            &[(RUNNER_MARKER_ENV.to_string(), "1".to_string())],
+            Path::new(r"D:\state\interactive.log"),
         );
 
         assert!(script.contains("environment(\"LINGXIA_RUNNER\") = \"1\""));
         assert!(script.contains(r#"""C:\Program Files\LingXia\runner.exe"""#));
         assert!(script.contains("ws://h/?token=a&b"));
-        assert!(script.contains("Set runner = shell.Exec("));
+        assert!(script.contains("shell.Run"));
+        assert!(!script.contains("shell.Exec"));
+        assert!(!script.contains("--launch-id"));
+        assert!(script.contains("cmd.exe /D /S /C"));
+        assert!(script.contains(r"D:\state\interactive.log"));
         assert!(script.contains("dev-focus-window"));
+        assert!(script.contains("123,456"));
         assert!(script.contains(", 0, True)"));
         assert!(script.contains("fileSystem.DeleteFile WScript.ScriptFullName"));
     }
@@ -595,9 +769,11 @@ mod tests {
             Path::new(r"C:\Windows\wscript.exe"),
             "//B \"D:\\A&B\\launch.vbs\"",
             Path::new(r"D:\A&B"),
+            "Runner",
         );
 
         assert!(xml.contains("<LogonType>InteractiveToken</LogonType>"));
+        assert!(xml.contains("Launch LingXia Runner"));
         assert!(xml.contains("D:\\A&amp;B"));
         assert!(xml.contains("&quot;D:\\A&amp;B\\launch.vbs&quot;"));
     }
@@ -609,8 +785,45 @@ mod tests {
             Path::new(r"C:\Windows\wscript.exe"),
             "//B launch.vbs",
             Path::new(r"D:\apps"),
+            "App",
         );
 
         assert!(xml.starts_with(r#"<?xml version="1.0" encoding="UTF-16"?>"#));
+        assert!(xml.contains("Launch LingXia App"));
+    }
+
+    #[test]
+    fn launch_script_applies_host_app_environment() {
+        let script = render_launch_script(
+            Path::new(r"D:\Demo\demo.exe"),
+            &[],
+            "42",
+            Path::new(r"C:\Tools\lingxia.exe"),
+            &[
+                (
+                    "LINGXIA_DEV_WS_URL".to_string(),
+                    "ws://127.0.0.1:39000".to_string(),
+                ),
+                (
+                    "LINGXIA_APP_ICON_PATH".to_string(),
+                    r"D:\Demo\icon.png".to_string(),
+                ),
+            ],
+            Path::new(r"D:\state\interactive.log"),
+        );
+
+        assert!(script.contains("environment(\"LINGXIA_DEV_WS_URL\") = \"ws://127.0.0.1:39000\""));
+        assert!(script.contains(r#"environment("LINGXIA_APP_ICON_PATH") = "D:\Demo\icon.png""#));
+        assert!(!script.contains("LINGXIA_RUNNER"));
+    }
+
+    #[test]
+    fn excluded_process_ids_round_trip_stably() {
+        let pids = HashSet::from([456, 123]);
+        let encoded = format_excluded_pids(&pids);
+
+        assert_eq!(encoded, "123,456");
+        assert_eq!(parse_excluded_pids(&encoded).unwrap(), pids);
+        assert!(parse_excluded_pids("12,invalid").is_err());
     }
 }

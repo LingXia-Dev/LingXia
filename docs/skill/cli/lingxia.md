@@ -105,14 +105,13 @@ The dev websocket stays loopback-only. On a remote development machine, run
 both `lingxia dev` and `lxdev` there through SSH or the machine's existing
 CI/device-lab agent.
 
-When `lingxia dev` runs in an SSH session on Windows, the CLI bootstraps the
-Runner through a temporary interactive-token task so its window opens in the
-foreground on the Windows desktop. The same Windows account must already be
-signed in locally or through RDP; otherwise startup fails with an actionable
-error. From the SSH
-client machine, use `--background`: the SSH command returns only after Runner is
-connected. Subsequent `lxdev` commands should also run on that machine through
-SSH.
+When `lingxia dev` runs in an SSH session on Windows, the CLI bootstraps either
+the native host app or the Runner through a temporary interactive-token task so
+its window opens in the signed-in Windows desktop. The same Windows account must
+already be signed in locally or through RDP; otherwise startup fails with an
+actionable error. From the SSH client machine, use `--background`: the SSH
+command returns only after the runtime is connected. Subsequent `lxdev` commands
+should also run on that machine through SSH.
 
 See `lingxia dev --help` for the flags.
 
