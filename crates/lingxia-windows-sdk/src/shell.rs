@@ -105,7 +105,8 @@ pub fn windows_shell_background_color() -> u32 {
     style::shell_palette().window_background
 }
 pub(crate) use terminal_panel::{
-    begin_divider_drag, divider_orientation_at, end_divider_drag, update_divider_drag,
+    begin_divider_drag, begin_terminal_selection, divider_orientation_at, end_divider_drag,
+    end_terminal_selection, scroll_pane_at, update_divider_drag, update_terminal_selection,
 };
 
 /// Registers the Windows SDK default shell.

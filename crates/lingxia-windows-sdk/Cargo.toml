@@ -123,6 +123,7 @@ windows = { git = "https://github.com/microsoft/windows-rs.git", rev = "cf58d5cf
     "Win32_System_Threading",
     "Win32_System_Variant",
     "Win32_UI_Controls",
+    "Win32_UI_Input_Ime",
     "Win32_UI_Input_KeyboardAndMouse",
     "Win32_UI_Shell",
     "Win32_UI_Shell_PropertiesSystem",

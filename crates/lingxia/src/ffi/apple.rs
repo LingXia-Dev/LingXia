@@ -432,6 +432,15 @@ mod bridge {
         #[swift_bridge(swift_name = "terminalSessionResize")]
         fn terminal_session_resize(id: u64, cols: u16, rows: u16) -> bool;
 
+        #[swift_bridge(swift_name = "terminalSessionScroll")]
+        fn terminal_session_scroll(
+            id: u64,
+            delta_rows: i32,
+            col: u16,
+            row: u16,
+            allow_application_input: bool,
+        ) -> bool;
+
         #[swift_bridge(swift_name = "terminalSessionClose")]
         fn terminal_session_close(id: u64);
     }
@@ -1502,7 +1511,7 @@ pub fn terminal_session_snapshot(id: u64) -> String {
     #[cfg(not(feature = "terminal-runtime"))]
     {
         let _ = id;
-        r#"{"cols":0,"rows":0,"lines":[],"cells":[],"cursor_row":0,"cursor_col":0,"cursor_visible":false,"application_cursor":false,"bracketed_paste":false,"alternate_screen":false,"title":null,"generation":0,"exited":true}"#.to_string()
+        r#"{"cols":0,"rows":0,"lines":[],"cells":[],"cursor_row":0,"cursor_col":0,"cursor_visible":false,"application_cursor":false,"bracketed_paste":false,"alternate_screen":false,"scrollbar":null,"title":null,"generation":0,"exited":true}"#.to_string()
     }
 }
 
@@ -1528,6 +1537,25 @@ pub fn terminal_session_resize(id: u64, cols: u16, rows: u16) -> bool {
     #[cfg(not(feature = "terminal-runtime"))]
     {
         let _ = (id, cols, rows);
+        false
+    }
+}
+
+pub fn terminal_session_scroll(
+    id: u64,
+    delta_rows: i32,
+    col: u16,
+    row: u16,
+    allow_application_input: bool,
+) -> bool {
+    #[cfg(feature = "terminal-runtime")]
+    {
+        return crate::terminal::terminal_scroll(id, delta_rows, col, row, allow_application_input);
+    }
+
+    #[cfg(not(feature = "terminal-runtime"))]
+    {
+        let _ = (id, delta_rows, col, row, allow_application_input);
         false
     }
 }

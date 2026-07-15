@@ -43,6 +43,11 @@ use windows::Win32::System::Threading::{AttachThreadInput, GetCurrentThreadId};
 // Only the shell-chrome transparent-tabbar overlay cleanup needs the PID.
 #[cfg(feature = "shell-chrome")]
 use windows::Win32::System::Threading::GetCurrentProcessId;
+#[cfg(all(feature = "shell-chrome", feature = "terminal-runtime"))]
+use windows::Win32::UI::Input::Ime::{
+    CANDIDATEFORM, CFS_EXCLUDE, CFS_POINT, COMPOSITIONFORM, ImmGetContext, ImmReleaseContext,
+    ImmSetCandidateWindow, ImmSetCompositionWindow,
+};
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     GetKeyState, ReleaseCapture, SetCapture, SetFocus, TME_LEAVE, TRACKMOUSEEVENT, TrackMouseEvent,
     VK_CONTROL, VK_MENU, VK_SHIFT,
@@ -84,6 +89,8 @@ static TRANSPARENT_TABBAR_OVERLAYS: OnceLock<Mutex<HashMap<isize, TransparentTab
     OnceLock::new();
 #[cfg(feature = "shell-chrome")]
 static SIDEBAR_TABBAR_POPUPS: OnceLock<Mutex<HashMap<isize, SidebarTabbarPopup>>> = OnceLock::new();
+#[cfg(feature = "shell-chrome")]
+static TERMINAL_SELECTION_DRAGS: OnceLock<Mutex<HashMap<isize, String>>> = OnceLock::new();
 #[cfg(feature = "components")]
 static NAV_SNAPSHOT_SLIDES: OnceLock<Mutex<HashMap<isize, NavSnapshotSlide>>> = OnceLock::new();
 const WM_LINGXIA_RUN_CALLBACK: u32 = WindowsAndMessaging::WM_APP + 0x158;
@@ -4468,6 +4475,16 @@ fn handle_chrome_mouse_move(hwnd: HWND, point: (i32, i32), from_host: bool) -> b
         (Some(renderer), Some(state)) => renderer.hit_test(state, point),
         _ => None,
     };
+    #[cfg(feature = "shell-chrome")]
+    if let Some(panel_id) = TERMINAL_SELECTION_DRAGS
+        .get_or_init(|| Mutex::new(HashMap::new()))
+        .lock()
+        .ok()
+        .and_then(|drags| drags.get(&hwnd_handle(hwnd)).cloned())
+    {
+        crate::shell::update_terminal_selection(&panel_id, point.0, point.1);
+        return true;
+    }
     if update_attached_panel_resize_drag(hwnd, point) {
         if let Some(vertical) = attached_panel_resize_drag_vertical() {
             set_divider_cursor(vertical);
@@ -4547,6 +4564,46 @@ fn handle_chrome_mouse_move(hwnd: HWND, point: (i32, i32), from_host: bool) -> b
     )
 }
 
+#[cfg(feature = "shell-chrome")]
+fn handle_chrome_mouse_wheel(hwnd: HWND, wparam: WPARAM, lparam: LPARAM) -> bool {
+    let mut point = lparam_screen_point(lparam);
+    if unsafe { !ScreenToClient(hwnd, &mut point).as_bool() } {
+        return false;
+    }
+    let client_point = (point.x, point.y);
+    let Some(WindowsChromeHit::Focusable { id, .. }) = chrome_hit_for_window(hwnd, client_point)
+    else {
+        return false;
+    };
+    if id != "terminal" {
+        return false;
+    }
+
+    let wheel_delta = ((wparam.0 >> 16) & 0xffff) as u16 as i16 as i32;
+    if wheel_delta == 0 {
+        return true;
+    }
+    let _ = crate::shell::scroll_pane_at(&id, client_point.0, client_point.1, wheel_delta);
+    true
+}
+
+#[cfg(feature = "shell-chrome")]
+fn finish_terminal_selection_drag(hwnd: HWND, point: Option<(i32, i32)>) -> bool {
+    let panel_id = TERMINAL_SELECTION_DRAGS
+        .get_or_init(|| Mutex::new(HashMap::new()))
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .remove(&hwnd_handle(hwnd));
+    let Some(panel_id) = panel_id else {
+        return false;
+    };
+    if let Some(point) = point {
+        crate::shell::update_terminal_selection(&panel_id, point.0, point.1);
+    }
+    crate::shell::end_terminal_selection(&panel_id);
+    true
+}
+
 fn handle_chrome_left_down(hwnd: HWND, point: (i32, i32)) -> bool {
     if let Some(vertical) = begin_attached_panel_resize_drag(hwnd, point) {
         unsafe {
@@ -4593,6 +4650,17 @@ fn handle_chrome_left_down(hwnd: HWND, point: (i32, i32)) -> bool {
                 set_divider_cursor(vertical);
                 return true;
             }
+            #[cfg(feature = "shell-chrome")]
+            if id == "terminal" && crate::shell::begin_terminal_selection(&id, point.0, point.1) {
+                TERMINAL_SELECTION_DRAGS
+                    .get_or_init(|| Mutex::new(HashMap::new()))
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .insert(hwnd_handle(hwnd), id.clone());
+                unsafe {
+                    let _ = SetCapture(hwnd);
+                }
+            }
             focus_host_panel(&id);
             focus_host_window(hwnd);
             if let (Some(command), Some(webtag_key)) =
@@ -4609,6 +4677,13 @@ fn handle_chrome_left_down(hwnd: HWND, point: (i32, i32)) -> bool {
 }
 
 fn handle_chrome_left_up(hwnd: HWND, point: (i32, i32)) -> bool {
+    #[cfg(feature = "shell-chrome")]
+    if finish_terminal_selection_drag(hwnd, Some(point)) {
+        unsafe {
+            let _ = ReleaseCapture();
+        }
+        return true;
+    }
     if attached_panel_resize_drag_vertical().is_some() {
         update_attached_panel_resize_drag(hwnd, point);
         end_attached_panel_resize_drag();
@@ -5960,6 +6035,8 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
             WindowsAndMessaging::WM_PAINT => {
                 if windows_chrome_renderer().is_some() && !is_native_framed_window(hwnd) {
                     paint_window_chrome(hwnd);
+                    #[cfg(all(feature = "shell-chrome", feature = "terminal-runtime"))]
+                    let _ = sync_terminal_ime_position(hwnd);
                     return LRESULT(0);
                 }
                 unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
@@ -5979,6 +6056,16 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                 if windows_chrome_renderer().is_some()
                     && !is_native_framed_window(hwnd)
                     && handle_chrome_mouse_move(hwnd, lparam_client_point(lparam), true)
+                {
+                    return LRESULT(0);
+                }
+                unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
+            }
+            WindowsAndMessaging::WM_MOUSEWHEEL => {
+                #[cfg(feature = "shell-chrome")]
+                if windows_chrome_renderer().is_some()
+                    && !is_native_framed_window(hwnd)
+                    && handle_chrome_mouse_wheel(hwnd, wparam, lparam)
                 {
                     return LRESULT(0);
                 }
@@ -6008,6 +6095,11 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                 {
                     return LRESULT(0);
                 }
+                unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
+            }
+            WindowsAndMessaging::WM_CAPTURECHANGED | WindowsAndMessaging::WM_CANCELMODE => {
+                #[cfg(feature = "shell-chrome")]
+                let _ = finish_terminal_selection_drag(hwnd, None);
                 unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
             }
             WindowsAndMessaging::WM_LBUTTONDBLCLK => {
@@ -6042,6 +6134,8 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                 destroy_transparent_tabbar_overlay(hwnd);
                 #[cfg(feature = "shell-chrome")]
                 destroy_sidebar_tabbar_popup(hwnd);
+                #[cfg(feature = "shell-chrome")]
+                let _ = finish_terminal_selection_drag(hwnd, None);
                 release_chrome_back_buffer(hwnd);
                 let webtag_key = window_webtag_key(hwnd);
                 if let Some(key) = webtag_key.as_deref() {
@@ -6070,6 +6164,12 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                         WindowsAndMessaging::PostQuitMessage(0);
                     }
                 }
+                unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
+            }
+            WindowsAndMessaging::WM_IME_STARTCOMPOSITION
+            | WindowsAndMessaging::WM_IME_COMPOSITION => {
+                #[cfg(all(feature = "shell-chrome", feature = "terminal-runtime"))]
+                let _ = sync_terminal_ime_position(hwnd);
                 unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
             }
             WindowsAndMessaging::WM_CHAR => {
@@ -6277,6 +6377,46 @@ fn handle_host_panel_key_message(msg: u32, wparam: WPARAM) -> bool {
 
 fn key_is_down(vk: i32) -> bool {
     unsafe { GetKeyState(vk) < 0 }
+}
+
+/// Positions Windows IME UI at the focused terminal's painted cursor. The
+/// terminal is a custom-drawn host panel, so Windows has no native edit caret
+/// from which it could infer these coordinates.
+#[cfg(all(feature = "shell-chrome", feature = "terminal-runtime"))]
+fn sync_terminal_ime_position(hwnd: HWND) -> bool {
+    let Some(panel_id) = focused_input_host_panel().filter(|panel_id| panel_id == "terminal")
+    else {
+        return false;
+    };
+    let Some(cursor) = crate::shell::terminal_grid::focused_cursor_rect(&panel_id) else {
+        return false;
+    };
+
+    unsafe {
+        let context = ImmGetContext(hwnd);
+        if context.is_invalid() {
+            return false;
+        }
+        let point = POINT {
+            x: cursor.left,
+            y: cursor.top,
+        };
+        let composition = COMPOSITIONFORM {
+            dwStyle: CFS_POINT,
+            ptCurrentPos: point,
+            rcArea: cursor,
+        };
+        let candidate = CANDIDATEFORM {
+            dwIndex: 0,
+            dwStyle: CFS_EXCLUDE,
+            ptCurrentPos: point,
+            rcArea: cursor,
+        };
+        let composition_set = ImmSetCompositionWindow(context, &composition).as_bool();
+        let candidate_set = ImmSetCandidateWindow(context, &candidate).as_bool();
+        let _ = ImmReleaseContext(hwnd, context);
+        composition_set || candidate_set
+    }
 }
 
 fn focused_input_host_panel() -> Option<String> {

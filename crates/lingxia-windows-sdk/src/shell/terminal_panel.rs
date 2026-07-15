@@ -281,6 +281,9 @@ impl WindowsTerminalPanel {
 static WINDOWS_TERMINAL_PANELS: OnceLock<Mutex<HashMap<String, WindowsTerminalPanel>>> =
     OnceLock::new();
 
+#[cfg(all(feature = "terminal-runtime", feature = "shell-chrome"))]
+static TERMINAL_WHEEL_REMAINDERS: OnceLock<Mutex<HashMap<u64, i32>>> = OnceLock::new();
+
 #[cfg(feature = "terminal-runtime")]
 fn windows_terminal_panels() -> std::sync::MutexGuard<'static, HashMap<String, WindowsTerminalPanel>>
 {
@@ -505,13 +508,13 @@ pub(super) fn close_focused_pane(panel_id: &str) {
 pub(super) fn focus_pane_at(panel_id: &str, client_x: i32, client_y: i32) {
     #[cfg(all(feature = "terminal-runtime", feature = "shell-chrome"))]
     {
+        let body = super::terminal_grid::panel_body_rect(panel_id);
+        let Some(body) = body else {
+            return;
+        };
         let changed = {
             let mut panels = windows_terminal_panels();
             let Some(panel) = panels.get_mut(panel_id) else {
-                return;
-            };
-            let body = super::terminal_grid::panel_body_rect(panel_id);
-            let Some(body) = body else {
                 return;
             };
             let Some(tab) = panel.active_tab_mut() else {
@@ -539,6 +542,121 @@ pub(super) fn focus_pane_at(panel_id: &str, client_x: i32, client_y: i32) {
     }
     #[cfg(not(all(feature = "terminal-runtime", feature = "shell-chrome")))]
     let _ = (panel_id, client_x, client_y);
+}
+
+/// Scrolls the pane under a host-client point. Wheel gestures follow the
+/// pointer instead of whichever split pane owns keyboard focus.
+#[cfg_attr(
+    not(all(feature = "terminal-runtime", feature = "shell-chrome")),
+    allow(dead_code)
+)]
+pub(crate) fn scroll_pane_at(
+    panel_id: &str,
+    client_x: i32,
+    client_y: i32,
+    wheel_delta: i32,
+) -> bool {
+    #[cfg(all(feature = "terminal-runtime", feature = "shell-chrome"))]
+    {
+        if wheel_delta == 0 {
+            return false;
+        }
+        let Some((session_id, col, row)) =
+            super::terminal_grid::session_cell_at(panel_id, client_x, client_y)
+        else {
+            return false;
+        };
+
+        const WHEEL_DELTA: i32 = 120;
+        const ROWS_PER_NOTCH: i32 = 3;
+        let delta_rows = {
+            let remainders = TERMINAL_WHEEL_REMAINDERS.get_or_init(|| Mutex::new(HashMap::new()));
+            let mut remainders = remainders
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            let remainder = remainders.entry(session_id).or_default();
+            *remainder += wheel_delta.saturating_mul(ROWS_PER_NOTCH);
+            let rows = *remainder / WHEEL_DELTA;
+            *remainder %= WHEEL_DELTA;
+            if *remainder == 0 {
+                remainders.remove(&session_id);
+            }
+            rows
+        };
+        if delta_rows == 0 {
+            return true;
+        }
+        let allow_application_input = !is_panel_read_only(panel_id);
+        if !lingxia_terminal::terminal_scroll(
+            session_id,
+            -delta_rows,
+            col,
+            row,
+            allow_application_input,
+        ) {
+            return false;
+        }
+        super::terminal_grid::reveal_scrollbar(session_id);
+        super::terminal_grid::clear_selection(session_id);
+        if let Some(snapshot) = lingxia_terminal::terminal_snapshot_data(session_id) {
+            store_session_snapshot(panel_id, session_id, snapshot);
+        }
+        invalidate_panel(panel_id);
+        true
+    }
+    #[cfg(not(all(feature = "terminal-runtime", feature = "shell-chrome")))]
+    {
+        let _ = (panel_id, client_x, client_y, wheel_delta);
+        false
+    }
+}
+
+pub(crate) fn begin_terminal_selection(panel_id: &str, client_x: i32, client_y: i32) -> bool {
+    #[cfg(all(feature = "terminal-runtime", feature = "shell-chrome"))]
+    {
+        let started = super::terminal_grid::begin_selection_at(panel_id, client_x, client_y);
+        if started {
+            invalidate_panel(panel_id);
+        }
+        started
+    }
+    #[cfg(not(all(feature = "terminal-runtime", feature = "shell-chrome")))]
+    {
+        let _ = (panel_id, client_x, client_y);
+        false
+    }
+}
+
+pub(crate) fn update_terminal_selection(panel_id: &str, client_x: i32, client_y: i32) -> bool {
+    #[cfg(all(feature = "terminal-runtime", feature = "shell-chrome"))]
+    {
+        let updated = super::terminal_grid::update_selection_at(panel_id, client_x, client_y);
+        if updated {
+            invalidate_panel(panel_id);
+        }
+        updated
+    }
+    #[cfg(not(all(feature = "terminal-runtime", feature = "shell-chrome")))]
+    {
+        let _ = (panel_id, client_x, client_y);
+        false
+    }
+}
+
+pub(crate) fn end_terminal_selection(panel_id: &str) -> bool {
+    #[cfg(all(feature = "terminal-runtime", feature = "shell-chrome"))]
+    {
+        let ended = super::terminal_grid::end_selection(panel_id);
+        if ended {
+            invalidate_panel(panel_id);
+        }
+        ended
+    }
+    #[cfg(not(all(feature = "terminal-runtime", feature = "shell-chrome")))]
+    {
+        let _ = panel_id;
+        false
+    }
 }
 
 /// Toggles the panel between its dock height and the full content area.
@@ -789,24 +907,22 @@ fn reset_focused_pane(panel_id: &str) {
     }
 }
 
-/// Copies the active session's visible screen text to the clipboard
-/// No cell-level selection support yet; Copy takes the whole screen.
+/// Copies the focused pane's selected cells to the clipboard.
 #[cfg(all(feature = "terminal-runtime", feature = "shell-chrome"))]
 fn copy_panel_screen_to_clipboard(panel_id: &str) {
     let Some(session_id) = active_session_id(panel_id) else {
         return;
     };
-    let Some(snapshot) = lingxia_terminal::terminal_snapshot_data(session_id) else {
+    let Some(text) = super::terminal_grid::selected_text(session_id) else {
         return;
     };
-    let mut lines: Vec<&str> = snapshot.lines.iter().map(|line| line.trim_end()).collect();
-    while lines.last().is_some_and(|line| line.is_empty()) {
-        lines.pop();
-    }
-    let text = lines.join("\r\n");
-    if !text.is_empty() {
-        super::clipboard::set_clipboard_text(&text);
-    }
+    super::clipboard::set_clipboard_text(&text);
+}
+
+#[cfg(all(feature = "terminal-runtime", feature = "shell-chrome"))]
+fn clear_panel_selection(panel_id: &str, session_id: u64) {
+    super::terminal_grid::clear_selection(session_id);
+    invalidate_panel(panel_id);
 }
 
 /// Pastes the clipboard text into the panel's focused session (the context
@@ -819,6 +935,9 @@ fn copy_panel_screen_to_clipboard(panel_id: &str) {
 pub(super) fn paste_clipboard_into_panel(panel_id: &str) {
     #[cfg(all(feature = "terminal-runtime", feature = "shell-chrome"))]
     {
+        if is_panel_read_only(panel_id) {
+            return;
+        }
         let Some(session_id) = active_session_id(panel_id) else {
             return;
         };
@@ -827,13 +946,15 @@ pub(super) fn paste_clipboard_into_panel(panel_id: &str) {
         };
         let text = text.replace("\r\n", "\r").replace('\n', "\r");
         let bracketed = lingxia_terminal::terminal_snapshot_data(session_id)
-            .is_some_and(|snapshot| snapshot.bracketed_paste);
+            .is_some_and(|snapshot| snapshot.bracketed_paste && snapshot.alternate_screen);
         let payload = if bracketed {
             format!("\x1b[200~{text}\x1b[201~")
         } else {
             text
         };
-        let _ = lingxia_terminal::terminal_write(session_id, &payload);
+        if lingxia_terminal::terminal_write(session_id, &payload) {
+            clear_panel_selection(panel_id, session_id);
+        }
     }
     #[cfg(not(all(feature = "terminal-runtime", feature = "shell-chrome")))]
     let _ = panel_id;
@@ -916,8 +1037,33 @@ fn open_windows_terminal_session_panel(
     lingxia_windows_contract::set_host_panel_input_handler(
         panel_id,
         Arc::new(move |event: WindowsHostPanelKeyEvent| {
+            #[cfg(feature = "shell-chrome")]
+            if event.ctrl && event.shift && event.vk == 0x43 {
+                copy_panel_screen_to_clipboard(&input_panel_key);
+                return true;
+            }
+            // TranslateMessage posts WM_CHAR before WM_KEYDOWN is dispatched,
+            // so consuming Ctrl+Shift+C/V above does not suppress the trailing
+            // control character. Swallow it or copy would also send ETX and
+            // paste would also send SYN to the foreground process.
+            #[cfg(feature = "shell-chrome")]
+            if event.ctrl
+                && event.shift
+                && event.vk == 0
+                && matches!(
+                    event.character,
+                    Some('\u{3}' | '\u{16}' | 'C' | 'V' | 'c' | 'v')
+                )
+            {
+                return true;
+            }
             if is_panel_read_only(&input_panel_key) {
                 return false;
+            }
+            #[cfg(feature = "shell-chrome")]
+            if event.ctrl && event.shift && event.vk == 0x56 {
+                paste_clipboard_into_panel(&input_panel_key);
+                return true;
             }
             let Some(session_id) = active_session_id(&input_panel_key) else {
                 return false;
@@ -931,7 +1077,10 @@ fn open_windows_terminal_session_panel(
             });
             match encoded {
                 Some(input) => {
-                    let _ = lingxia_terminal::terminal_write(session_id, &input);
+                    if lingxia_terminal::terminal_write(session_id, &input) {
+                        #[cfg(feature = "shell-chrome")]
+                        clear_panel_selection(&input_panel_key, session_id);
+                    }
                     true
                 }
                 None => false,
@@ -1017,6 +1166,10 @@ fn run_terminal_panel_poll_loop(panel_key: &str, stop: &AtomicBool) {
         let switched = last_active_set != active_sessions;
         let mut any_change = switched;
         for &session_id in &active_sessions {
+            #[cfg(feature = "shell-chrome")]
+            if super::terminal_grid::expire_scrollbar(session_id) {
+                any_change = true;
+            }
             let Some(snapshot) = lingxia_terminal::terminal_snapshot_data(session_id) else {
                 if close_pane_session(panel_key, session_id) {
                     panel_closed = true;
@@ -1083,14 +1236,8 @@ fn run_terminal_panel_poll_loop(panel_key: &str, stop: &AtomicBool) {
 /// overrides it or the session is not the focused pane).
 #[cfg(feature = "terminal-runtime")]
 fn update_focused_auto_title(panel_id: &str, session_id: u64, snapshot: &TerminalSnapshot) {
-    let auto_title = snapshot
-        .title
-        .as_deref()
-        .or(snapshot.process_title.as_deref())
-        .map(str::trim)
-        .filter(|title| !title.is_empty())
-        .unwrap_or("terminal")
-        .to_string();
+    let auto_title =
+        stable_tab_title(snapshot.process_title.as_deref(), snapshot.title.as_deref()).to_string();
     let changed = {
         let mut panels = windows_terminal_panels();
         let Some(tab) = panels
@@ -1107,6 +1254,21 @@ fn update_focused_auto_title(panel_id: &str, session_id: u64, snapshot: &Termina
     if changed {
         publish_tab_strip(panel_id);
     }
+}
+
+/// Prefer the stable process identity over OSC titles: TUI apps may animate
+/// their OSC title, which would otherwise repaint the tab on every frame.
+#[cfg(feature = "terminal-runtime")]
+fn stable_tab_title<'a>(
+    process_title: Option<&'a str>,
+    terminal_title: Option<&'a str>,
+) -> &'a str {
+    [process_title, terminal_title]
+        .into_iter()
+        .flatten()
+        .map(str::trim)
+        .find(|title| !title.is_empty())
+        .unwrap_or("terminal")
 }
 
 /// Session id that input/copy/paste route to: the active tab's focused pane.
@@ -1137,6 +1299,13 @@ fn close_pane_session(panel_id: &str, session_id: u64) -> bool {
     lingxia_terminal::terminal_close(session_id);
     #[cfg(feature = "shell-chrome")]
     super::terminal_grid::clear_session(session_id);
+    #[cfg(feature = "shell-chrome")]
+    if let Some(remainders) = TERMINAL_WHEEL_REMAINDERS.get() {
+        remainders
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .remove(&session_id);
+    }
 
     let outcome = {
         let mut panels = windows_terminal_panels();
@@ -1234,6 +1403,13 @@ fn shutdown_windows_terminal_panel_state(panel_id: &str) {
             for session_id in tab.sessions() {
                 #[cfg(feature = "shell-chrome")]
                 super::terminal_grid::clear_session(session_id);
+                #[cfg(feature = "shell-chrome")]
+                if let Some(remainders) = TERMINAL_WHEEL_REMAINDERS.get() {
+                    remainders
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner)
+                        .remove(&session_id);
+                }
                 lingxia_terminal::terminal_close(session_id);
             }
         }
@@ -1585,5 +1761,23 @@ fn windows_terminal_snapshot_body(snapshot: &TerminalSnapshot) -> String {
         title.to_string()
     } else {
         lines.join("\n")
+    }
+}
+
+#[cfg(all(test, feature = "terminal-runtime"))]
+mod tests {
+    use super::stable_tab_title;
+
+    #[test]
+    fn stable_process_title_ignores_animated_terminal_title() {
+        assert_eq!(stable_tab_title(Some("codex"), Some("⠋ Working")), "codex");
+        assert_eq!(stable_tab_title(Some("codex"), Some("⠙ Working")), "codex");
+    }
+
+    #[test]
+    fn terminal_title_is_only_a_non_empty_fallback() {
+        assert_eq!(stable_tab_title(None, Some("vim")), "vim");
+        assert_eq!(stable_tab_title(Some("  "), Some("vim")), "vim");
+        assert_eq!(stable_tab_title(Some("  "), Some("  ")), "terminal");
     }
 }

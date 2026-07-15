@@ -224,6 +224,44 @@ pub fn terminal_resize(_id: u64, _cols: u16, _rows: u16) -> bool {
     false
 }
 
+/// Handle vertical scroll input at a viewport cell.
+///
+/// Negative values move up and positive values move down. Applications that
+/// requested mouse reporting receive wheel events at `(col, row)`; alternate
+/// screens with mode 1007 receive cursor keys. Otherwise this moves the native
+/// scrollback viewport. Read-only hosts set `allow_application_input` to false
+/// so scrolling never writes to the PTY.
+#[cfg(lingxia_ghostty_vt_available)]
+pub fn terminal_scroll(
+    id: u64,
+    delta_rows: i32,
+    col: u16,
+    row: u16,
+    allow_application_input: bool,
+) -> bool {
+    if delta_rows == 0 {
+        return false;
+    }
+    let Some(session) = session(id) else {
+        return false;
+    };
+    let Ok(mut session) = session.lock() else {
+        return false;
+    };
+    session.scroll(delta_rows, col, row, allow_application_input)
+}
+
+#[cfg(not(lingxia_ghostty_vt_available))]
+pub fn terminal_scroll(
+    _id: u64,
+    _delta_rows: i32,
+    _col: u16,
+    _row: u16,
+    _allow_application_input: bool,
+) -> bool {
+    false
+}
+
 #[cfg(lingxia_ghostty_vt_available)]
 pub fn terminal_close(id: u64) {
     if let Ok(mut sessions) = SESSIONS.lock() {
@@ -399,6 +437,7 @@ pub struct TerminalSnapshot {
     pub application_cursor: bool,
     pub bracketed_paste: bool,
     pub alternate_screen: bool,
+    pub scrollbar: Option<TerminalScrollbar>,
     pub process_title: Option<String>,
     pub title: Option<String>,
     /// Screen-content generation only; bumps when VT output lands.
@@ -406,6 +445,14 @@ pub struct TerminalSnapshot {
     /// Bumps when the computed process title changes.
     pub title_generation: u64,
     pub exited: bool,
+}
+
+/// Ghostty viewport position in the complete scrollable row space.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
+pub struct TerminalScrollbar {
+    pub total: u64,
+    pub offset: u64,
+    pub len: u64,
 }
 
 #[derive(Serialize)]
@@ -563,6 +610,57 @@ impl TerminalSession {
         Ok(())
     }
 
+    fn scroll(
+        &mut self,
+        delta_rows: i32,
+        col: u16,
+        row: u16,
+        allow_application_input: bool,
+    ) -> bool {
+        let bytes = self.drain_bytes();
+        if !bytes.is_empty() {
+            self.vt.feed(&bytes);
+        }
+
+        let mouse_tracking = allow_application_input && self.vt.mouse_tracking_active();
+        if allow_application_input
+            && self.vt.is_alternate_screen()
+            && !mouse_tracking
+            && self.vt.is_alt_scroll()
+        {
+            let sequence = match (delta_rows < 0, self.vt.is_decckm()) {
+                (true, true) => b"\x1bOA".as_slice(),
+                (true, false) => b"\x1b[A".as_slice(),
+                (false, true) => b"\x1bOB".as_slice(),
+                (false, false) => b"\x1b[B".as_slice(),
+            };
+            return self
+                .write_repeated(sequence, delta_rows.unsigned_abs())
+                .is_ok();
+        }
+
+        if mouse_tracking {
+            let sequence = encode_mouse_wheel(self.vt.is_sgr_mouse(), delta_rows < 0, col, row);
+            return self
+                .write_repeated(&sequence, delta_rows.unsigned_abs())
+                .is_ok();
+        }
+        self.vt.scroll_viewport_delta(delta_rows as isize)
+    }
+
+    fn write_repeated(&mut self, bytes: &[u8], count: u32) -> std::io::Result<()> {
+        const MAX_SCROLL_STEPS: u32 = 4096;
+
+        let mut writer = self
+            .writer
+            .lock()
+            .map_err(|_| std::io::Error::other("terminal writer lock poisoned"))?;
+        for _ in 0..count.min(MAX_SCROLL_STEPS) {
+            writer.write_all(bytes)?;
+        }
+        writer.flush()
+    }
+
     fn drain_bytes(&mut self) -> Vec<u8> {
         let mut bytes = Vec::new();
         while let Ok(chunk) = self.output.try_recv() {
@@ -576,6 +674,11 @@ impl TerminalSession {
 
     fn snapshot(&mut self) -> TerminalSnapshot {
         let screen = self.vt.snapshot();
+        let scrollbar = self.vt.scrollbar().map(|state| TerminalScrollbar {
+            total: state.total,
+            offset: state.offset,
+            len: state.len,
+        });
         let raw_title = screen
             .title
             .as_deref()
@@ -642,6 +745,7 @@ impl TerminalSession {
             application_cursor: self.vt.is_decckm(),
             bracketed_paste: self.vt.is_bracketed_paste(),
             alternate_screen: self.vt.is_alternate_screen(),
+            scrollbar,
             process_title: Some(process_title),
             title: raw_title,
             generation: screen.generation,
@@ -662,6 +766,29 @@ impl TerminalSession {
             None
         }
     }
+}
+
+/// Encode one vertical wheel step at a zero-based viewport cell.
+///
+/// Modern applications use SGR mouse reporting. The legacy X10 form is kept
+/// for programs that request mouse tracking without enabling SGR coordinates.
+#[cfg(lingxia_ghostty_vt_available)]
+fn encode_mouse_wheel(sgr: bool, up: bool, col: u16, row: u16) -> Vec<u8> {
+    let button = if up { 64_u8 } else { 65_u8 };
+    if sgr {
+        return format!(
+            "\x1b[<{button};{};{}M",
+            u32::from(col) + 1,
+            u32::from(row) + 1
+        )
+        .into_bytes();
+    }
+
+    // Classic X10 coordinates are encoded as one byte with a 32 bias.
+    // Clamp to its representable 223-column/row range.
+    let x = col.saturating_add(1).min(223) as u8;
+    let y = row.saturating_add(1).min(223) as u8;
+    vec![0x1b, b'[', b'M', button + 32, x + 32, y + 32]
 }
 
 #[cfg(lingxia_ghostty_vt_available)]
@@ -690,6 +817,7 @@ impl TerminalSnapshot {
             application_cursor: false,
             bracketed_paste: false,
             alternate_screen: false,
+            scrollbar: None,
             process_title: None,
             title: None,
             generation: 0,
@@ -896,11 +1024,19 @@ fn process_cwd(_pid: u32) -> Option<std::path::PathBuf> {
     None
 }
 
+#[cfg(all(lingxia_ghostty_vt_available, target_os = "macos"))]
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ProcessGroupMember {
+    pid: u32,
+    parent_pid: u32,
+    name: String,
+}
+
 #[cfg(all(
     lingxia_ghostty_vt_available,
     any(target_os = "macos", target_os = "ios")
 ))]
-fn process_name(pid: u32) -> Option<String> {
+fn apple_process_name(pid: u32) -> Option<String> {
     let mut buffer = [0_i8; 256];
     let rc = unsafe {
         libc::proc_name(
@@ -918,6 +1054,83 @@ fn process_name(pid: u32) -> Option<String> {
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(ToOwned::to_owned)
+}
+
+#[cfg(all(lingxia_ghostty_vt_available, target_os = "macos"))]
+fn process_name(process_group_id: u32) -> Option<String> {
+    macos_process_group_members(process_group_id)
+        .and_then(|members| deepest_process_name(&members))
+        .or_else(|| apple_process_name(process_group_id))
+}
+
+#[cfg(all(lingxia_ghostty_vt_available, target_os = "macos"))]
+fn macos_process_group_members(process_group_id: u32) -> Option<Vec<ProcessGroupMember>> {
+    let process_group_id = libc::pid_t::try_from(process_group_id).ok()?;
+    let estimated_count =
+        unsafe { libc::proc_listpgrppids(process_group_id, std::ptr::null_mut(), 0) };
+    if estimated_count <= 0 {
+        return None;
+    }
+
+    let mut pids = vec![0 as libc::pid_t; estimated_count as usize + 16];
+    let buffer_size = libc::c_int::try_from(std::mem::size_of_val(pids.as_slice())).ok()?;
+    let count =
+        unsafe { libc::proc_listpgrppids(process_group_id, pids.as_mut_ptr().cast(), buffer_size) };
+    if count <= 0 {
+        return None;
+    }
+
+    let mut members = Vec::with_capacity(count as usize);
+    for pid in pids.into_iter().take(count as usize).filter(|pid| *pid > 0) {
+        let mut info = unsafe { std::mem::zeroed::<libc::proc_bsdinfo>() };
+        let info_size = std::mem::size_of::<libc::proc_bsdinfo>();
+        let read = unsafe {
+            libc::proc_pidinfo(
+                pid,
+                libc::PROC_PIDTBSDINFO,
+                0,
+                (&mut info as *mut libc::proc_bsdinfo).cast(),
+                info_size as libc::c_int,
+            )
+        };
+        if read < info_size as libc::c_int {
+            continue;
+        }
+        if let Some(name) = apple_process_name(info.pbi_pid) {
+            members.push(ProcessGroupMember {
+                pid: info.pbi_pid,
+                parent_pid: info.pbi_ppid,
+                name,
+            });
+        }
+    }
+    (!members.is_empty()).then_some(members)
+}
+
+#[cfg(all(lingxia_ghostty_vt_available, target_os = "macos"))]
+fn deepest_process_name(members: &[ProcessGroupMember]) -> Option<String> {
+    fn depth(member: &ProcessGroupMember, members: &[ProcessGroupMember]) -> usize {
+        let mut depth = 0;
+        let mut parent_pid = member.parent_pid;
+        for _ in 0..members.len() {
+            let Some(parent) = members.iter().find(|candidate| candidate.pid == parent_pid) else {
+                break;
+            };
+            depth += 1;
+            parent_pid = parent.parent_pid;
+        }
+        depth
+    }
+
+    members
+        .iter()
+        .max_by_key(|member| (depth(member, members), member.pid))
+        .map(|member| member.name.clone())
+}
+
+#[cfg(all(lingxia_ghostty_vt_available, target_os = "ios"))]
+fn process_name(pid: u32) -> Option<String> {
+    apple_process_name(pid)
 }
 
 #[cfg(all(lingxia_ghostty_vt_available, target_os = "linux"))]
@@ -1105,6 +1318,43 @@ mod tests {
         assert_eq!(encode_key_event(keydown_event(0x41)), None, "plain VK_A");
         assert_eq!(encode_key_event(keydown_event(0x10)), None, "VK_SHIFT");
         assert_eq!(encode_key_event(TerminalKeyEvent::default()), None);
+    }
+
+    #[test]
+    fn rejects_scroll_for_missing_session_or_zero_delta() {
+        assert!(!terminal_scroll(0, -3, 0, 0, true));
+        assert!(!terminal_scroll(u64::MAX, 0, 0, 0, true));
+    }
+
+    #[test]
+    #[cfg(all(lingxia_ghostty_vt_available, target_os = "macos"))]
+    fn names_the_deepest_process_group_member() {
+        let members = vec![
+            ProcessGroupMember {
+                pid: 10,
+                parent_pid: 1,
+                name: "runtime".to_string(),
+            },
+            ProcessGroupMember {
+                pid: 11,
+                parent_pid: 10,
+                name: "cli-tool".to_string(),
+            },
+        ];
+        assert_eq!(deepest_process_name(&members).as_deref(), Some("cli-tool"));
+    }
+
+    #[test]
+    #[cfg(lingxia_ghostty_vt_available)]
+    fn encodes_sgr_and_legacy_mouse_wheel() {
+        assert_eq!(
+            encode_mouse_wheel(true, true, 4, 2).as_slice(),
+            b"\x1b[<64;5;3M"
+        );
+        assert_eq!(
+            encode_mouse_wheel(false, false, 4, 2),
+            vec![0x1b, b'[', b'M', 97, 37, 35]
+        );
     }
 
     #[test]

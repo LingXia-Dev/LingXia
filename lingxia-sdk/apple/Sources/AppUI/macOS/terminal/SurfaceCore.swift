@@ -17,6 +17,7 @@ private struct LingXiaTerminalSnapshot: Decodable {
     let applicationCursor: Bool
     let bracketedPaste: Bool
     let alternateScreen: Bool
+    let scrollbar: LingXiaTerminalScrollbar?
     let processTitle: String?
     let title: String?
     let generation: UInt64
@@ -36,11 +37,18 @@ private struct LingXiaTerminalSnapshot: Decodable {
         case applicationCursor = "application_cursor"
         case bracketedPaste = "bracketed_paste"
         case alternateScreen = "alternate_screen"
+        case scrollbar
         case processTitle = "process_title"
         case title
         case generation
         case exited
     }
+}
+
+private struct LingXiaTerminalScrollbar: Decodable {
+    let total: UInt64
+    let offset: UInt64
+    let len: UInt64
 }
 
 private struct LingXiaTerminalCell: Decodable {
@@ -123,6 +131,14 @@ final class LingXiaTerminalPaneView: NSView {
         }
         terminalView.onResize = { [weak self] cols, rows in
             self?.session.resize(cols: cols, rows: rows)
+        }
+        terminalView.onScroll = { [weak self] rows, col, row, allowApplicationInput in
+            self?.session.scroll(
+                rows: rows,
+                col: col,
+                row: row,
+                allowApplicationInput: allowApplicationInput
+            )
         }
         terminalView.onResetRequested = { [weak self] in
             self?.session.restart()
@@ -278,12 +294,13 @@ final class LingXiaTerminalPaneView: NSView {
 }
 
 @MainActor
-private final class LingXiaTerminalCanvasView: NSView {
+private final class LingXiaTerminalCanvasView: NSView, @MainActor NSTextInputClient {
     var onInput: ((String) -> Void)?
     var onActivated: (() -> Void)?
     var onSplitRequested: ((LingXiaTerminalSplitDirection) -> Void)?
     var onZoomRequested: (() -> Void)?
     var onResize: ((UInt16, UInt16) -> Void)?
+    var onScroll: ((Int, UInt16, UInt16, Bool) -> Void)?
     var onResetRequested: (() -> Void)?
     var onTitleEditRequested: (() -> Void)?
     var zoomed = false
@@ -308,11 +325,18 @@ private final class LingXiaTerminalCanvasView: NSView {
     private var applicationCursor = false
     private var bracketedPaste = false
     private var alternateScreen = false
+    private var scrollbar: LingXiaTerminalScrollbar?
+    private var scrollbarVisible = false
+    private var scrollbarVisibilityToken: UInt64 = 0
     private var charSize = NSSize(width: 7.2, height: 15)
     private var lastSentSize: (cols: UInt16, rows: UInt16)?
     private var selectionAnchor: LingXiaTerminalGridPoint?
     private var selectionFocus: LingXiaTerminalGridPoint?
+    private var scrollRowRemainder: CGFloat = 0
     private var readOnly = false
+    private var markedText = NSMutableAttributedString()
+    private var markedTextSelection = NSRange(location: 0, length: 0)
+    private var keyTextAccumulator: [String]?
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -381,6 +405,22 @@ private final class LingXiaTerminalCanvasView: NSView {
         NSMenu.popUpContextMenu(splitMenu(), with: event, for: self)
     }
 
+    override func scrollWheel(with event: NSEvent) {
+        let rows = event.hasPreciseScrollingDeltas
+            ? event.scrollingDeltaY / max(charSize.height, 1)
+            : event.scrollingDeltaY * 3
+        scrollRowRemainder += rows
+        let wholeRows = Int(scrollRowRemainder.rounded(.towardZero))
+        guard wholeRows != 0 else { return }
+        scrollRowRemainder -= CGFloat(wholeRows)
+        revealScrollbar()
+        selectionAnchor = nil
+        selectionFocus = nil
+        needsDisplay = true
+        let point = gridPoint(for: convert(event.locationInWindow, from: nil))
+        onScroll?(-wholeRows, UInt16(point.col), UInt16(point.row), !readOnly)
+    }
+
     func showContextMenu(fromWindowEvent event: NSEvent) {
         lxTerminalLog("canvas.showContextMenuFromWorkspace")
         _ = window?.makeFirstResponder(self)
@@ -395,24 +435,62 @@ private final class LingXiaTerminalCanvasView: NSView {
 
     @discardableResult
     func consumeKeyDown(_ event: NSEvent, source: String) -> Bool {
-        if event.modifierFlags.contains(.command) {
-            switch Int(event.keyCode) {
-            case 8:
-                lxTerminalLog("\(source).keyDown commandCopy")
-                copy(nil)
-                return true
-            case 9:
-                lxTerminalLog("\(source).keyDown commandPaste")
-                paste(nil)
-                return true
-            default:
-                break
-            }
-        }
+        if consumeEditingShortcut(event, source: source) { return true }
         guard !readOnly else {
             lxTerminalLog("\(source).keyDown ignoredReadOnly keyCode=\(event.keyCode)")
             return true
         }
+        return sendMappedKeyDown(event, source: source)
+    }
+
+    override func keyDown(with event: NSEvent) {
+        if consumeEditingShortcut(event, source: "canvas") { return }
+        guard !readOnly else {
+            lxTerminalLog("canvas.keyDown ignoredReadOnly keyCode=\(event.keyCode)")
+            return
+        }
+
+        let markedTextBefore = hasMarkedText()
+        keyTextAccumulator = []
+        interpretKeyEvents([event])
+        let committedText = keyTextAccumulator ?? []
+        keyTextAccumulator = nil
+        let composing = markedTextBefore || hasMarkedText()
+
+        if !committedText.isEmpty {
+            for text in committedText where !shouldSuppressComposingControlInput(text, composing: composing) {
+                guard !text.isEmpty else { continue }
+                lxTerminalLog("canvas.ime commit chars=\(text.count) bytes=\(text.utf8.count)")
+                onInput?(text)
+            }
+            return
+        }
+
+        // While an input method owns the event, cursor movement, deletion, and
+        // candidate selection must not leak through to the PTY.
+        if composing { return }
+        if !sendMappedKeyDown(event, source: "canvas") {
+            super.keyDown(with: event)
+        }
+    }
+
+    private func consumeEditingShortcut(_ event: NSEvent, source: String) -> Bool {
+        guard event.modifierFlags.contains(.command) else { return false }
+        switch Int(event.keyCode) {
+        case 8:
+            lxTerminalLog("\(source).keyDown commandCopy")
+            copy(nil)
+            return true
+        case 9:
+            lxTerminalLog("\(source).keyDown commandPaste")
+            paste(nil)
+            return true
+        default:
+            return false
+        }
+    }
+
+    private func sendMappedKeyDown(_ event: NSEvent, source: String) -> Bool {
         guard let input = LingXiaTerminalKeyMapper.input(for: event, applicationCursor: applicationCursor) else {
             lxTerminalLog("\(source).keyDown pass keyCode=\(event.keyCode)")
             return false
@@ -420,12 +498,6 @@ private final class LingXiaTerminalCanvasView: NSView {
         lxTerminalLog("\(source).keyDown input keyCode=\(event.keyCode) bytes=\(input.utf8.count) appCursor=\(applicationCursor)")
         onInput?(input)
         return true
-    }
-
-    override func keyDown(with event: NSEvent) {
-        if !consumeKeyDown(event, source: "canvas") {
-            super.keyDown(with: event)
-        }
     }
 
     @objc func paste(_ sender: Any?) {
@@ -451,6 +523,106 @@ private final class LingXiaTerminalCanvasView: NSView {
         pasteboard.clearContents()
         pasteboard.setString(text, forType: .string)
         lxTerminalLog("canvas.copy chars=\(text.count)")
+    }
+
+    func hasMarkedText() -> Bool {
+        markedText.length > 0
+    }
+
+    func markedRange() -> NSRange {
+        guard hasMarkedText() else { return NSRange(location: NSNotFound, length: 0) }
+        return NSRange(location: 0, length: markedText.length)
+    }
+
+    func selectedRange() -> NSRange {
+        hasMarkedText() ? markedTextSelection : NSRange(location: 0, length: 0)
+    }
+
+    func setMarkedText(_ string: Any, selectedRange: NSRange, replacementRange: NSRange) {
+        switch string {
+        case let value as NSAttributedString:
+            markedText = NSMutableAttributedString(attributedString: value)
+        case let value as String:
+            markedText = NSMutableAttributedString(string: value)
+        default:
+            markedText = NSMutableAttributedString()
+        }
+        markedTextSelection = normalizedMarkedTextSelection(selectedRange)
+        lxTerminalLog(
+            "canvas.ime marked chars=\(markedText.string.count) selected=\(markedTextSelection.location):\(markedTextSelection.length)"
+        )
+        inputContext?.invalidateCharacterCoordinates()
+        needsDisplay = true
+    }
+
+    func unmarkText() {
+        guard hasMarkedText() else { return }
+        markedText = NSMutableAttributedString()
+        markedTextSelection = NSRange(location: 0, length: 0)
+        lxTerminalLog("canvas.ime unmark")
+        inputContext?.invalidateCharacterCoordinates()
+        needsDisplay = true
+    }
+
+    func validAttributesForMarkedText() -> [NSAttributedString.Key] {
+        [.underlineStyle, .markedClauseSegment]
+    }
+
+    func attributedSubstring(
+        forProposedRange range: NSRange,
+        actualRange: NSRangePointer?
+    ) -> NSAttributedString? {
+        guard hasMarkedText(),
+              range.location != NSNotFound,
+              range.location <= markedText.length,
+              NSMaxRange(range) <= markedText.length else {
+            actualRange?.pointee = NSRange(location: NSNotFound, length: 0)
+            return nil
+        }
+        actualRange?.pointee = range
+        return markedText.attributedSubstring(from: range)
+    }
+
+    func characterIndex(for point: NSPoint) -> Int {
+        0
+    }
+
+    func firstRect(
+        forCharacterRange range: NSRange,
+        actualRange: NSRangePointer?
+    ) -> NSRect {
+        actualRange?.pointee = hasMarkedText() ? markedRange() : selectedRange()
+        let x = pixelFloor(CGFloat(cursorCol) * charSize.width + markedTextCaretOffset())
+        let y = pixelFloor(bounds.height - CGFloat(cursorRow + 1) * charSize.height)
+        let localRect = NSRect(x: x, y: y, width: 0, height: charSize.height)
+        let windowRect = convert(localRect, to: nil)
+        return window?.convertToScreen(windowRect) ?? windowRect
+    }
+
+    func insertText(_ string: Any, replacementRange: NSRange) {
+        let text: String
+        switch string {
+        case let value as NSAttributedString:
+            text = value.string
+        case let value as String:
+            text = value
+        default:
+            return
+        }
+
+        unmarkText()
+        if var accumulator = keyTextAccumulator {
+            accumulator.append(text)
+            keyTextAccumulator = accumulator
+        } else if !readOnly, !text.isEmpty {
+            lxTerminalLog("canvas.ime insert chars=\(text.count) bytes=\(text.utf8.count)")
+            onInput?(text)
+        }
+    }
+
+    override func doCommand(by selector: Selector) {
+        // keyDown maps terminal commands after interpretKeyEvents returns. This
+        // callback intentionally absorbs AppKit's command to avoid an NSBeep.
     }
 
     override func draw(_ dirtyRect: NSRect) {
@@ -481,7 +653,9 @@ private final class LingXiaTerminalCanvasView: NSView {
         }
 
         for cell in orderedCells {
-            let bg = terminalColor(cell.inverse ? cell.fg : cell.bg, fallback: nil)
+            let bg = cell.inverse
+                ? terminalColor(cell.fg, fallback: defaultForeground)
+                : terminalColor(cell.bg, fallback: nil)
             let x = pixelFloor(insetX + CGFloat(cell.col) * charSize.width)
             let y = pixelFloor(bounds.height - insetTop - CGFloat(cell.row + 1) * charSize.height)
             if let bg {
@@ -500,8 +674,11 @@ private final class LingXiaTerminalCanvasView: NSView {
 
         func flushRun() {
             guard !runText.isEmpty, let style = runStyle else { return }
-            let fg = terminalColor(style.inverse ? style.bg : style.fg, fallback: nil)
-                ?? defaultForeground.withAlphaComponent(style.dim ? 0.58 : 1)
+            let defaultColor = style.inverse ? defaultBackground : defaultForeground
+            let fg = terminalColor(
+                style.inverse ? style.bg : style.fg,
+                fallback: defaultColor
+            )?.withAlphaComponent(style.dim ? 0.58 : 1) ?? defaultColor
             let attrs = textAttributes(bold: style.bold, italic: style.italic, underline: style.underline, foreground: fg)
             let x = pixelFloor(insetX + CGFloat(runStartCol) * charSize.width)
             let y = pixelFloor(bounds.height - insetTop - CGFloat(runRow + 1) * charSize.height)
@@ -522,6 +699,22 @@ private final class LingXiaTerminalCanvasView: NSView {
                     inverse: cell.inverse
                 )
                 let cellCol = Int(cell.col)
+                if !style.italic,
+                   !style.underline,
+                   isSupportedBoxDrawing(cell.text) {
+                    flushRun()
+                    _ = drawBoxDrawing(
+                       cell.text,
+                       col: cellCol,
+                       row: Int(cell.row),
+                       color: terminalColor(
+                           style.inverse ? style.bg : style.fg,
+                           fallback: style.inverse ? defaultBackground : defaultForeground
+                       )?.withAlphaComponent(style.dim ? 0.58 : 1) ?? defaultForeground,
+                       bold: style.bold
+                    )
+                    continue
+                }
                 if runStyle != style || runRow != Int(cell.row) || runNextCol != cellCol {
                     flushRun()
                     runStyle = style
@@ -535,11 +728,13 @@ private final class LingXiaTerminalCanvasView: NSView {
         }
         flushRun()
 
-        if window?.firstResponder === self, cursorVisible {
+        drawMarkedText()
+        if window?.firstResponder === self, cursorVisible, !hasMarkedText() {
             let x = pixelFloor(insetX + CGFloat(cursorCol) * charSize.width)
             let y = pixelFloor(bounds.height - insetTop - CGFloat(cursorRow + 1) * charSize.height)
             drawCursor(at: NSPoint(x: x, y: y))
         }
+        drawScrollbar()
     }
 
     func append(_ output: String) {
@@ -567,6 +762,10 @@ private final class LingXiaTerminalCanvasView: NSView {
         applicationCursor = snapshot.applicationCursor
         bracketedPaste = snapshot.bracketedPaste
         alternateScreen = snapshot.alternateScreen
+        scrollbar = snapshot.scrollbar
+        if hasMarkedText() {
+            inputContext?.invalidateCharacterCoordinates()
+        }
         needsDisplay = true
     }
 
@@ -648,6 +847,55 @@ private final class LingXiaTerminalCanvasView: NSView {
         return text
     }
 
+    private func normalizedMarkedTextSelection(_ range: NSRange) -> NSRange {
+        guard range.location != NSNotFound else {
+            return NSRange(location: markedText.length, length: 0)
+        }
+        let location = min(max(0, range.location), markedText.length)
+        let length = min(max(0, range.length), markedText.length - location)
+        return NSRange(location: location, length: length)
+    }
+
+    private func shouldSuppressComposingControlInput(_ text: String, composing: Bool) -> Bool {
+        guard composing else { return false }
+        let scalars = text.unicodeScalars
+        guard let scalar = scalars.first,
+              scalars.index(after: scalars.startIndex) == scalars.endIndex else {
+            return false
+        }
+        return scalar.value < 0x20
+    }
+
+    private func markedTextCaretOffset() -> CGFloat {
+        guard hasMarkedText() else { return 0 }
+        let text = markedText.string as NSString
+        let location = min(markedTextSelection.location, text.length)
+        let prefix = text.substring(to: location) as NSString
+        return prefix.size(withAttributes: [.font: font]).width
+    }
+
+    private func drawMarkedText() {
+        guard hasMarkedText() else { return }
+        let rendered = NSMutableAttributedString(attributedString: markedText)
+        var attributes = textAttributes(
+            bold: false,
+            italic: false,
+            underline: true,
+            foreground: defaultForeground
+        )
+        attributes[.backgroundColor] = defaultBackground
+        rendered.addAttributes(
+            attributes,
+            range: NSRange(location: 0, length: rendered.length)
+        )
+        let x = pixelFloor(CGFloat(cursorCol) * charSize.width)
+        let y = pixelFloor(bounds.height - CGFloat(cursorRow + 1) * charSize.height)
+        drawTerminalAttributedText(
+            rendered,
+            at: NSPoint(x: x, y: y + terminalBaselineOffset())
+        )
+    }
+
     private func gridPoint(for point: NSPoint) -> LingXiaTerminalGridPoint {
         let row = Int((bounds.height - point.y) / max(1, charSize.height))
         let col = Int(point.x / max(1, charSize.width))
@@ -687,6 +935,55 @@ private final class LingXiaTerminalCanvasView: NSView {
         }
     }
 
+    private func revealScrollbar() {
+        scrollbarVisibilityToken &+= 1
+        let token = scrollbarVisibilityToken
+        scrollbarVisible = true
+        needsDisplay = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(900)) { [weak self] in
+            guard let self, self.scrollbarVisibilityToken == token else { return }
+            self.scrollbarVisible = false
+            self.needsDisplay = true
+        }
+    }
+
+    private func drawScrollbar() {
+        guard scrollbarVisible,
+              let scrollbar,
+              scrollbar.total > scrollbar.len,
+              scrollbar.len > 0 else {
+            return
+        }
+        let margin: CGFloat = 2
+        let width: CGFloat = 3
+        let trackHeight = bounds.height - margin * 2
+        guard trackHeight > 0 else { return }
+
+        let visibleRows = min(scrollbar.len, scrollbar.total)
+        let thumbHeight = min(
+            trackHeight,
+            max(
+                12,
+                min(40, trackHeight * CGFloat(visibleRows) / CGFloat(scrollbar.total))
+            )
+        )
+        let maxOffset = scrollbar.total - visibleRows
+        let offset = min(scrollbar.offset, maxOffset)
+        let available = trackHeight - thumbHeight
+        let topOffset = maxOffset == 0
+            ? 0
+            : available * CGFloat(offset) / CGFloat(maxOffset)
+        let y = bounds.height - margin - topOffset - thumbHeight
+
+        defaultForeground.withAlphaComponent(0.38).setFill()
+        pixelAlignedRect(
+            x: bounds.width - margin - width,
+            y: y,
+            width: width,
+            height: thumbHeight
+        ).fill()
+    }
+
     private func selectedText() -> String? {
         guard let selection = normalizedSelection() else { return nil }
         var selectedLines: [String] = []
@@ -717,7 +1014,9 @@ private final class LingXiaTerminalCanvasView: NSView {
         let sample = "W" as NSString
         let measured = sample.size(withAttributes: [.font: font])
         charSize = NSSize(
-            width: max(1, pixelCeil(measured.width)),
+            // CoreText keeps the font's fractional advance when drawing a run.
+            // Rounding the grid width accumulates visible drift on long boxes.
+            width: max(1, measured.width),
             height: max(1, pixelCeil(font.ascender - font.descender + max(2, font.leading)))
         )
         let horizontalInset: CGFloat = 0
@@ -806,6 +1105,179 @@ private final class LingXiaTerminalCanvasView: NSView {
         let line = CTLineCreateWithAttributedString(NSAttributedString(string: text, attributes: attributes))
         CTLineDraw(line, context)
         context.restoreGState()
+    }
+
+    private func drawTerminalAttributedText(
+        _ text: NSAttributedString,
+        at point: NSPoint
+    ) {
+        guard let context = NSGraphicsContext.current?.cgContext else {
+            text.draw(at: point)
+            return
+        }
+        context.saveGState()
+        context.textMatrix = .identity
+        context.textPosition = CGPoint(x: pixelFloor(point.x), y: pixelFloor(point.y))
+        CTLineDraw(CTLineCreateWithAttributedString(text), context)
+        context.restoreGState()
+    }
+
+    private func isSupportedBoxDrawing(_ text: String) -> Bool {
+        guard text.unicodeScalars.count == 1,
+              let value = text.unicodeScalars.first?.value else {
+            return false
+        }
+        switch value {
+        case 0x2500, 0x2502, 0x250C, 0x2510, 0x2514, 0x2518,
+             0x251C, 0x2524, 0x252C, 0x2534, 0x253C,
+             0x256D, 0x256E, 0x256F, 0x2570:
+            return true
+        default:
+            return false
+        }
+    }
+
+    private func drawBoxDrawing(
+        _ text: String,
+        col: Int,
+        row: Int,
+        color: NSColor,
+        bold: Bool
+    ) -> Bool {
+        guard text.unicodeScalars.count == 1,
+              let scalar = text.unicodeScalars.first else {
+            return false
+        }
+
+        let connections: (left: Bool, right: Bool, up: Bool, down: Bool)
+        let rounded: UInt32?
+        switch scalar.value {
+        case 0x2500: connections = (true, true, false, false); rounded = nil // ─
+        case 0x2502: connections = (false, false, true, true); rounded = nil // │
+        case 0x250C: connections = (false, true, false, true); rounded = nil // ┌
+        case 0x2510: connections = (true, false, false, true); rounded = nil // ┐
+        case 0x2514: connections = (false, true, true, false); rounded = nil // └
+        case 0x2518: connections = (true, false, true, false); rounded = nil // ┘
+        case 0x251C: connections = (false, true, true, true); rounded = nil // ├
+        case 0x2524: connections = (true, false, true, true); rounded = nil // ┤
+        case 0x252C: connections = (true, true, false, true); rounded = nil // ┬
+        case 0x2534: connections = (true, true, true, false); rounded = nil // ┴
+        case 0x253C: connections = (true, true, true, true); rounded = nil // ┼
+        case 0x256D: connections = (false, true, false, true); rounded = scalar.value // ╭
+        case 0x256E: connections = (true, false, false, true); rounded = scalar.value // ╮
+        case 0x256F: connections = (true, false, true, false); rounded = scalar.value // ╯
+        case 0x2570: connections = (false, true, true, false); rounded = scalar.value // ╰
+        default: return false
+        }
+
+        let left = pixelFloor(CGFloat(col) * charSize.width)
+        let right = pixelFloor(CGFloat(col + 1) * charSize.width)
+        let bottom = pixelFloor(bounds.height - CGFloat(row + 1) * charSize.height)
+        let top = pixelFloor(bounds.height - CGFloat(row) * charSize.height)
+        let centerX = pixelFloor((left + right) / 2)
+        let centerY = pixelFloor((bottom + top) / 2)
+        let path = NSBezierPath()
+        path.lineWidth = bold ? 1.5 : 1
+        path.lineCapStyle = .butt
+        path.lineJoinStyle = .miter
+
+        if let rounded {
+            appendRoundedCorner(
+                rounded,
+                to: path,
+                left: left,
+                right: right,
+                bottom: bottom,
+                top: top,
+                centerX: centerX,
+                centerY: centerY
+            )
+            color.setStroke()
+            path.stroke()
+            return true
+        }
+
+        if connections.left {
+            path.move(to: NSPoint(x: left, y: centerY))
+            path.line(to: NSPoint(x: centerX, y: centerY))
+        }
+        if connections.right {
+            path.move(to: NSPoint(x: centerX, y: centerY))
+            path.line(to: NSPoint(x: right, y: centerY))
+        }
+        if connections.up {
+            path.move(to: NSPoint(x: centerX, y: centerY))
+            path.line(to: NSPoint(x: centerX, y: top))
+        }
+        if connections.down {
+            path.move(to: NSPoint(x: centerX, y: bottom))
+            path.line(to: NSPoint(x: centerX, y: centerY))
+        }
+
+        color.setStroke()
+        path.stroke()
+        return true
+    }
+
+    private func appendRoundedCorner(
+        _ scalar: UInt32,
+        to path: NSBezierPath,
+        left: CGFloat,
+        right: CGFloat,
+        bottom: CGFloat,
+        top: CGFloat,
+        centerX: CGFloat,
+        centerY: CGFloat
+    ) {
+        let radius = min(2, (right - left) / 2, (top - bottom) / 2)
+        switch scalar {
+        case 0x256D: // ╭
+            path.move(to: NSPoint(x: right, y: centerY))
+            path.line(to: NSPoint(x: centerX + radius, y: centerY))
+            path.appendArc(
+                withCenter: NSPoint(x: centerX + radius, y: centerY - radius),
+                radius: radius,
+                startAngle: 90,
+                endAngle: 180,
+                clockwise: false
+            )
+            path.line(to: NSPoint(x: centerX, y: bottom))
+        case 0x256E: // ╮
+            path.move(to: NSPoint(x: left, y: centerY))
+            path.line(to: NSPoint(x: centerX - radius, y: centerY))
+            path.appendArc(
+                withCenter: NSPoint(x: centerX - radius, y: centerY - radius),
+                radius: radius,
+                startAngle: 90,
+                endAngle: 0,
+                clockwise: true
+            )
+            path.line(to: NSPoint(x: centerX, y: bottom))
+        case 0x256F: // ╯
+            path.move(to: NSPoint(x: left, y: centerY))
+            path.line(to: NSPoint(x: centerX - radius, y: centerY))
+            path.appendArc(
+                withCenter: NSPoint(x: centerX - radius, y: centerY + radius),
+                radius: radius,
+                startAngle: -90,
+                endAngle: 0,
+                clockwise: false
+            )
+            path.line(to: NSPoint(x: centerX, y: top))
+        case 0x2570: // ╰
+            path.move(to: NSPoint(x: right, y: centerY))
+            path.line(to: NSPoint(x: centerX + radius, y: centerY))
+            path.appendArc(
+                withCenter: NSPoint(x: centerX + radius, y: centerY + radius),
+                radius: radius,
+                startAngle: -90,
+                endAngle: -180,
+                clockwise: true
+            )
+            path.line(to: NSPoint(x: centerX, y: top))
+        default:
+            break
+        }
     }
 
     private func drawCursor(at origin: NSPoint) {
@@ -934,6 +1406,16 @@ private final class LingXiaPTYTerminalSession: @unchecked Sendable {
             guard let self, self.sessionID != 0 else { return }
             let ok = terminalSessionResize(self.sessionID, cols, rows)
             lxTerminalLogAsync("pty.resize session=\(self.sessionID) cols=\(cols) rows=\(rows) ok=\(ok)")
+        }
+    }
+
+    func scroll(rows: Int, col: UInt16, row: UInt16, allowApplicationInput: Bool) {
+        guard rows != 0 else { return }
+        ioQueue.async { [weak self] in
+            guard let self, self.sessionID != 0 else { return }
+            let delta = Int32(clamping: rows)
+            let ok = terminalSessionScroll(self.sessionID, delta, col, row, allowApplicationInput)
+            lxTerminalLogAsync("pty.scroll session=\(self.sessionID) rows=\(delta) cell=\(col),\(row) ok=\(ok)")
         }
     }
 

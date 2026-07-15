@@ -1,7 +1,7 @@
 //! Shared `libghostty-vt` FFI bindings + render-state snapshot.
 //!
 //! Rewritten to match the **actual** upstream API at GHOSTTY_REV
-//! `ca7516bea60190ee2e9a4f9182b61d318d107c6e` — `include/ghostty/vt/*.h`.
+//! `55a3e33ab26a23d75b274b23c7f76d837db00578` — `include/ghostty/vt/*.h`.
 //! Key lifecycle:
 //!
 //! 1. `terminal = ghostty_terminal_new(NULL_alloc, opts)`
@@ -17,6 +17,8 @@
 //!       - `row_get(iter, CELLS, &cells)` to bind cells iterator to the current row
 //!       - while `row_cells_next(cells)` is true:
 //!           - `row_cells_get(cells, RAW|STYLE|BG|FG, &out)`
+//!       - `row_set(iter, DIRTY, false)` after consuming the row
+//!   - `render_state_set(state, DIRTY, false)` after consuming the frame
 //!
 //! All `_next` functions return `bool`. The `_get` family uses an enum
 //! key and writes to a typed `void*` out; key→type contract is per
@@ -32,7 +34,7 @@ use std::os::raw::{c_int, c_void};
 use std::sync::Arc;
 use std::sync::OnceLock;
 use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU32, AtomicU64, Ordering};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use parking_lot::Mutex;
 
@@ -187,6 +189,13 @@ pub enum GhosttyRenderStateData {
     CursorViewportWideTail = 17,
 }
 
+/// `GHOSTTY_RENDER_STATE_OPTION_*` keys for `ghostty_render_state_set`.
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub enum GhosttyRenderStateOption {
+    Dirty = 0,
+}
+
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GhosttyRenderStateDirty {
@@ -242,6 +251,14 @@ pub enum GhosttyRenderStateRowData {
     Dirty = 1,
     Raw = 2,
     Cells = 3,
+}
+
+/// `GHOSTTY_RENDER_STATE_ROW_OPTION_*` keys for
+/// `ghostty_render_state_row_set`.
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub enum GhosttyRenderStateRowOption {
+    Dirty = 0,
 }
 
 /// `GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_*` keys.
@@ -333,6 +350,14 @@ pub const MODE_BRACKETED_PASTE: GhosttyMode = ghostty_mode(2004, false);
 /// `ESC [ [ABCD]` (cursor mode). Interactive readers like readline
 /// and vim set this to distinguish their keymap lookup.
 pub const MODE_DECCKM: GhosttyMode = ghostty_mode(1, false);
+/// DEC private mode 2026 — synchronized output. Renderers hold the last
+/// complete frame while this is set so terminal applications can redraw
+/// atomically without exposing intermediate cursor positions.
+pub const MODE_SYNC_OUTPUT: GhosttyMode = ghostty_mode(2026, false);
+
+/// Match Ghostty's own guard against applications that enter synchronized
+/// output and never leave it.
+const SYNC_OUTPUT_RESET_AFTER: Duration = Duration::from_secs(1);
 
 const GHOSTTY_DA_CONFORMANCE_LEVEL_2: u16 = 62;
 const GHOSTTY_DA_FEATURE_SELECTIVE_ERASE: u16 = 6;
@@ -541,6 +566,11 @@ unsafe extern "C" {
         mode: GhosttyMode,
         out_value: *mut bool,
     ) -> GhosttyResult;
+    pub fn ghostty_terminal_mode_set(
+        terminal: GhosttyTerminal,
+        mode: GhosttyMode,
+        value: bool,
+    ) -> GhosttyResult;
 
     // Render state (`render.h`)
     pub fn ghostty_render_state_new(
@@ -557,6 +587,11 @@ unsafe extern "C" {
         key: GhosttyRenderStateData,
         out: *mut c_void,
     ) -> GhosttyResult;
+    pub fn ghostty_render_state_set(
+        state: GhosttyRenderState,
+        option: GhosttyRenderStateOption,
+        value: *const c_void,
+    ) -> GhosttyResult;
 
     pub fn ghostty_render_state_row_iterator_new(
         allocator: *const GhosttyAllocator,
@@ -570,6 +605,11 @@ unsafe extern "C" {
         iter: GhosttyRowIterator,
         key: GhosttyRenderStateRowData,
         out: *mut c_void,
+    ) -> GhosttyResult;
+    pub fn ghostty_render_state_row_set(
+        iter: GhosttyRowIterator,
+        option: GhosttyRenderStateRowOption,
+        value: *const c_void,
     ) -> GhosttyResult;
 
     pub fn ghostty_render_state_row_cells_new(
@@ -754,6 +794,11 @@ struct VtInner {
     scratch_rows: u16,
     scratch: Vec<Cell>,
     last_cursor: Cursor,
+    last_default_fg: u32,
+    last_default_bg: u32,
+    last_title: Option<String>,
+    published_generation: u64,
+    synchronized_output_since: Option<Instant>,
 }
 
 unsafe impl Send for VtInner {}
@@ -941,6 +986,11 @@ impl VtScreen {
                 scratch_rows: rows,
                 scratch: Vec::with_capacity(cols as usize * rows as usize),
                 last_cursor: Cursor::default(),
+                last_default_fg: 0xffffffff,
+                last_default_bg: 0x282c34ff,
+                last_title: None,
+                published_generation: 0,
+                synchronized_output_since: None,
             }),
         })
     }
@@ -1038,11 +1088,37 @@ impl VtScreen {
             };
         }
 
+        if synchronized_output_active(&inner) {
+            let started = inner
+                .synchronized_output_since
+                .get_or_insert_with(Instant::now);
+            if started.elapsed() < SYNC_OUTPUT_RESET_AFTER {
+                return ScreenSnapshot {
+                    cols: inner.scratch_cols,
+                    rows: inner.scratch_rows,
+                    cells: inner.scratch.clone(),
+                    dirty_rows: Vec::new(),
+                    cursor: inner.last_cursor,
+                    default_fg: inner.last_default_fg,
+                    default_bg: inner.last_default_bg,
+                    title: inner.last_title.clone(),
+                    generation: inner.published_generation,
+                };
+            }
+
+            // A malformed application must not freeze the visible frame
+            // forever. Ghostty's full terminal resets this mode after the
+            // same one-second deadline in its IO thread.
+            let _ = unsafe { ghostty_terminal_mode_set(inner.terminal, MODE_SYNC_OUTPUT, false) };
+        }
+        inner.synchronized_output_since = None;
+
         // SAFETY: state + terminal valid for the lifetime of `inner`.
         let rc = unsafe { ghostty_render_state_update(inner.render_state, inner.terminal) };
         if rc != 0 {
             eprintln!("ghostty_render_state_update rc={rc}");
         }
+        let render_state_update_ok = rc == 0;
 
         // Palette defaults. Cells with no explicit SGR color report
         // FG_COLOR / BG_COLOR as (0,0,0) — the renderer is expected to
@@ -1136,24 +1212,29 @@ impl VtScreen {
         }
 
         let mut row_idx: u16 = 0;
+        let mut frame_complete = render_state_update_ok;
         // SAFETY: row_iter valid; `_next` returns bool.
         while unsafe { ghostty_render_state_row_iterator_next(inner.row_iter) } {
             if row_idx >= rows {
                 break;
             }
 
-            let mut dirty_raw: c_int = GhosttyRenderStateDirty::False as c_int;
-            // SAFETY: DIRTY out param is a C enum (int).
-            unsafe {
-                let _ = ghostty_render_state_row_get(
+            let mut dirty = false;
+            // SAFETY: row DIRTY writes a C `_Bool`.
+            let dirty_rc = unsafe {
+                ghostty_render_state_row_get(
                     inner.row_iter,
                     GhosttyRenderStateRowData::Dirty,
-                    &mut dirty_raw as *mut _ as *mut c_void,
-                );
+                    &mut dirty as *mut _ as *mut c_void,
+                )
+            };
+            if dirty_rc != 0 {
+                frame_complete = false;
+                eprintln!("row_get(DIRTY) rc={dirty_rc} at row {row_idx}");
+                row_idx += 1;
+                continue;
             }
-            let dirty = GhosttyRenderStateDirty::from_raw(dirty_raw);
-
-            if !full_redraw && dirty == GhosttyRenderStateDirty::False {
+            if !full_redraw && !dirty {
                 row_idx += 1;
                 continue;
             }
@@ -1169,6 +1250,7 @@ impl VtScreen {
                 )
             };
             if rc != 0 {
+                frame_complete = false;
                 eprintln!("row_get(CELLS) rc={rc} at row {row_idx}");
                 row_idx += 1;
                 continue;
@@ -1198,10 +1280,24 @@ impl VtScreen {
                 dirty_rows.push(row_idx);
             }
 
+            let clean = false;
+            let rc = unsafe {
+                ghostty_render_state_row_set(
+                    inner.row_iter,
+                    GhosttyRenderStateRowOption::Dirty,
+                    &clean as *const _ as *const c_void,
+                )
+            };
+            if rc != 0 {
+                frame_complete = false;
+                eprintln!("row_set(DIRTY) rc={rc} at row {row_idx}");
+            }
+
             row_idx += 1;
         }
 
         if full_redraw && row_idx < rows {
+            frame_complete = false;
             eprintln!(
                 "vt snapshot full redraw ended early: iter_rows={row_idx} expected_rows={rows} cols={cols}"
             );
@@ -1219,10 +1315,25 @@ impl VtScreen {
             }
         }
 
+        if frame_complete {
+            let clean = GhosttyRenderStateDirty::False as c_int;
+            let rc = unsafe {
+                ghostty_render_state_set(
+                    inner.render_state,
+                    GhosttyRenderStateOption::Dirty,
+                    &clean as *const _ as *const c_void,
+                )
+            };
+            if rc != 0 {
+                eprintln!("render_state_set(DIRTY) rc={rc}");
+            }
+        }
+
         inner.force_full_snapshot = false;
 
         // Cursor read from the render state keys (not the terminal, to
         // stay consistent with the render snapshot).
+        let mut cursor_in_viewport: bool = false;
         let mut visible: bool = false;
         let mut col_u16: u16 = 0;
         let mut row_u16: u16 = 0;
@@ -1230,6 +1341,11 @@ impl VtScreen {
         // SAFETY: out params sized per upstream render.h; the visual
         // style is a C enum (int) converted after the call.
         unsafe {
+            let _ = ghostty_render_state_get(
+                inner.render_state,
+                GhosttyRenderStateData::CursorViewportHasValue,
+                &mut cursor_in_viewport as *mut _ as *mut c_void,
+            );
             let _ = ghostty_render_state_get(
                 inner.render_state,
                 GhosttyRenderStateData::CursorViewportX,
@@ -1255,7 +1371,7 @@ impl VtScreen {
         let cursor = Cursor {
             col: col_u16,
             row: row_u16,
-            visible,
+            visible: cursor_in_viewport && visible,
             style: GhosttyRenderStateCursorVisualStyle::from_raw(cursor_style_raw),
         };
         let previous_cursor = inner.last_cursor;
@@ -1286,6 +1402,10 @@ impl VtScreen {
             title,
             generation: inner.generation,
         };
+        inner.last_default_fg = snapshot.default_fg;
+        inner.last_default_bg = snapshot.default_bg;
+        inner.last_title.clone_from(&snapshot.title);
+        inner.published_generation = snapshot.generation;
 
         if let Some(started) = snapshot_started {
             let total_ms = started.elapsed().as_secs_f64() * 1000.0;
@@ -1442,6 +1562,15 @@ impl VtScreen {
         let rc = unsafe { ghostty_terminal_mode_get(inner.terminal, mode, &mut on) };
         rc == 0 && on
     }
+}
+
+fn synchronized_output_active(inner: &VtInner) -> bool {
+    if inner.terminal.is_null() {
+        return false;
+    }
+    let mut active = false;
+    let rc = unsafe { ghostty_terminal_mode_get(inner.terminal, MODE_SYNC_OUTPUT, &mut active) };
+    rc == 0 && active
 }
 
 unsafe extern "C" fn vt_write_pty_callback(
@@ -1782,6 +1911,122 @@ impl Drop for VtScreen {
         if !inner.terminal.is_null() {
             unsafe { ghostty_terminal_free(inner.terminal) };
             inner.terminal = std::ptr::null_mut();
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn snapshot_text(snapshot: &ScreenSnapshot) -> String {
+        snapshot
+            .cells
+            .iter()
+            .map(|cell| cell.text.as_str())
+            .collect::<String>()
+    }
+
+    #[test]
+    fn scroll_viewport_reveals_scrollback() {
+        let screen = VtScreen::new(12, 3, None).expect("create VT screen");
+        screen.feed(b"one\r\ntwo\r\nthree\r\nfour\r\nfive");
+
+        let bottom = snapshot_text(&screen.snapshot());
+        assert!(bottom.contains("five"), "bottom snapshot: {bottom:?}");
+        assert!(!bottom.contains("one"), "bottom snapshot: {bottom:?}");
+
+        assert!(screen.scroll_viewport_delta(-2));
+        let snapshot = screen.snapshot();
+        let scrolled = snapshot_text(&snapshot);
+        assert!(scrolled.contains("one"), "scrolled snapshot: {scrolled:?}");
+        assert!(
+            !scrolled.contains("five"),
+            "scrolled snapshot: {scrolled:?}"
+        );
+        assert!(
+            !snapshot.cursor.visible,
+            "history must not show the live cursor"
+        );
+    }
+
+    #[test]
+    fn synchronized_output_holds_the_last_complete_frame() {
+        let screen = VtScreen::new(16, 2, None).expect("create VT screen");
+        screen.feed(b"before");
+        let before = screen.snapshot();
+
+        screen.feed(b"\x1b[?2026h\r\x1b[2Kpartial");
+        assert!(screen.mode_active(MODE_SYNC_OUTPUT));
+        let during = screen.snapshot();
+        assert_eq!(during.generation, before.generation);
+        assert_eq!(snapshot_text(&during), snapshot_text(&before));
+
+        screen.feed(b"\r\x1b[2Kafter\x1b[?2026l");
+        let after = screen.snapshot();
+        assert!(!screen.mode_active(MODE_SYNC_OUTPUT));
+        assert!(after.generation > before.generation);
+        assert!(snapshot_text(&after).contains("after"));
+        assert!(!snapshot_text(&after).contains("partial"));
+    }
+
+    #[test]
+    fn synchronized_output_times_out() {
+        let screen = VtScreen::new(16, 2, None).expect("create VT screen");
+        screen.feed(b"before");
+        let _ = screen.snapshot();
+        screen.feed(b"\x1b[?2026h\r\x1b[2Kpartial");
+        {
+            let mut inner = screen.inner.lock();
+            inner.synchronized_output_since =
+                Some(Instant::now() - SYNC_OUTPUT_RESET_AFTER - Duration::from_millis(1));
+        }
+
+        let snapshot = screen.snapshot();
+        assert!(!screen.mode_active(MODE_SYNC_OUTPUT));
+        assert!(snapshot_text(&snapshot).contains("partial"));
+    }
+
+    #[test]
+    fn snapshot_clears_consumed_render_dirtiness() {
+        let screen = VtScreen::new(16, 2, None).expect("create VT screen");
+        screen.feed(b"rendered");
+        let _ = screen.snapshot();
+
+        let mut inner = screen.inner.lock();
+        let mut dirty_raw = GhosttyRenderStateDirty::Full as c_int;
+        let rc = unsafe {
+            ghostty_render_state_get(
+                inner.render_state,
+                GhosttyRenderStateData::Dirty,
+                &mut dirty_raw as *mut _ as *mut c_void,
+            )
+        };
+        assert_eq!(rc, 0);
+        assert_eq!(
+            GhosttyRenderStateDirty::from_raw(dirty_raw),
+            GhosttyRenderStateDirty::False
+        );
+
+        let rc = unsafe {
+            ghostty_render_state_get(
+                inner.render_state,
+                GhosttyRenderStateData::RowIterator,
+                &mut inner.row_iter as *mut _ as *mut c_void,
+            )
+        };
+        assert_eq!(rc, 0);
+        while unsafe { ghostty_render_state_row_iterator_next(inner.row_iter) } {
+            let mut dirty = true;
+            let rc = unsafe {
+                ghostty_render_state_row_get(
+                    inner.row_iter,
+                    GhosttyRenderStateRowData::Dirty,
+                    &mut dirty as *mut _ as *mut c_void,
+                )
+            };
+            assert_eq!(rc, 0);
+            assert!(!dirty);
         }
     }
 }
