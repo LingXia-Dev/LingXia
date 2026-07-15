@@ -421,13 +421,24 @@ pub fn lxapp_dev_page_list(appid: Option<&str>) -> Result<Vec<LxAppDevPageInfo>,
     let app = resolve_dev_lxapp(appid.unwrap_or("current"))?;
     let runtime = app.runtime_info();
     let surfaces = app.runtime_surface_info();
-    let mut pages = app
+    let pages = app
         .page_instance_runtime_info()
         .into_iter()
         .map(|page| dev_page_runtime_info(&runtime.appid, &runtime.page_entries, &surfaces, page))
         .collect::<Vec<_>>();
+    Ok(complete_dev_page_list(
+        &runtime.appid,
+        &runtime.page_entries,
+        pages,
+    ))
+}
 
-    for entry in &runtime.page_entries {
+fn complete_dev_page_list(
+    appid: &str,
+    entries: &[lxapp::LxAppRuntimePageInfo],
+    mut pages: Vec<LxAppDevPageInfo>,
+) -> Vec<LxAppDevPageInfo> {
+    for entry in entries {
         if pages
             .iter()
             .any(|page| dev_page_paths_match(&page.path, &entry.path))
@@ -435,7 +446,7 @@ pub fn lxapp_dev_page_list(appid: Option<&str>) -> Result<Vec<LxAppDevPageInfo>,
             continue;
         }
         pages.push(LxAppDevPageInfo {
-            appid: runtime.appid.clone(),
+            appid: appid.to_string(),
             declared: true,
             opened: false,
             instance_id: String::new(),
@@ -458,7 +469,7 @@ pub fn lxapp_dev_page_list(appid: Option<&str>) -> Result<Vec<LxAppDevPageInfo>,
             input_supported: lxapp_dev_page_input_supported(),
         });
     }
-    Ok(pages)
+    pages
 }
 
 /// Lists every live dynamic surface owned by the selected lxapp, including
@@ -687,8 +698,8 @@ pub async fn list_app_windows()
 
 /// Dispatch mouse input to the host app's window.
 ///
-/// Coordinates are logical points in the target window content area, with
-/// origin at the top-left corner.
+/// Coordinates use platform window-content units: client pixels on Windows
+/// and points on macOS, with origin at the top-left corner.
 pub async fn perform_app_mouse(
     request: lingxia_platform::traits::mouse::AppMouseRequest,
 ) -> Result<lingxia_platform::traits::mouse::AppMouseResult, String> {
@@ -1173,6 +1184,29 @@ fn dev_page_info(
     let bridge_ready = state.bridge_ready;
     let render_state = state.render_state.to_string();
     let path = page.path();
+    let instance_id = page.instance_id_string();
+    let stack_index = info
+        .page_stack
+        .iter()
+        .enumerate()
+        .find_map(|(index, path)| {
+            app.get_page(path)
+                .is_some_and(|candidate| candidate.instance_id_string() == instance_id)
+                .then_some(index)
+        });
+    let current = app
+        .current_page()
+        .ok()
+        .is_some_and(|candidate| candidate.instance_id_string() == instance_id);
+    let lifecycle = if current {
+        "visible"
+    } else if state.lifecycle == "onHide" {
+        "hidden"
+    } else if webview_attached {
+        "mounted"
+    } else {
+        "created"
+    };
     let declared = info
         .page_entries
         .iter()
@@ -1181,16 +1215,16 @@ fn dev_page_info(
         appid: info.appid,
         declared,
         opened: true,
-        instance_id: page.instance_id_string(),
+        instance_id,
         name: name.unwrap_or("").to_string(),
         path,
         query: state.query,
-        current: false,
-        in_stack: false,
-        stack_index: None,
+        current,
+        in_stack: stack_index.is_some(),
+        stack_index,
         owner: serde_json::json!({ "kind": "host" }),
         presentation: Some("window".to_string()),
-        lifecycle: Some("created".to_string()),
+        lifecycle: Some(lifecycle.to_string()),
         surface_ids: Vec::new(),
         ready,
         webview_attached,
@@ -1501,5 +1535,43 @@ mod tests {
             "pages/home"
         ));
         assert!(!dev_page_paths_match("pages/home", "pages/profile"));
+    }
+
+    #[test]
+    fn page_inventory_keeps_every_live_instance_and_manifest_route() {
+        let entries = vec![
+            lxapp::LxAppRuntimePageInfo {
+                name: "home".to_string(),
+                path: "pages/home".to_string(),
+            },
+            lxapp::LxAppRuntimePageInfo {
+                name: "settings".to_string(),
+                path: "pages/settings".to_string(),
+            },
+        ];
+        let mut template = complete_dev_page_list("demo", &entries[..1], Vec::new()).remove(0);
+        template.opened = true;
+        template.ready = true;
+        template.instance_id = "instance-1".to_string();
+        let mut second = template.clone();
+        second.instance_id = "instance-2".to_string();
+
+        let pages = complete_dev_page_list("demo", &entries, vec![template, second]);
+
+        assert_eq!(pages.len(), 3);
+        assert_eq!(pages.iter().filter(|page| page.opened).count(), 2);
+        assert_eq!(
+            pages
+                .iter()
+                .filter(|page| page.path == "pages/home")
+                .count(),
+            2
+        );
+        let settings = pages
+            .iter()
+            .find(|page| page.path == "pages/settings")
+            .unwrap();
+        assert!(settings.declared);
+        assert!(!settings.opened);
     }
 }

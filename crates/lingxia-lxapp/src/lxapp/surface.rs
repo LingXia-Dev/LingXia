@@ -331,18 +331,20 @@ pub(crate) struct SurfaceRecord {
     pub target: String,
     pub kind: SurfaceKind,
     pub role: SurfaceRole,
+    pub url_callback: bool,
     pub ephemeral_web_data: bool,
 }
 
 impl LxApp {
     pub fn open_surface(&self, request: PageSurfaceRequest) -> Result<PageSurface, LxAppError> {
-        self.open_surface_with_web_data(request, false)
+        self.open_surface_with_web_data(request, false, false)
     }
 
     fn open_surface_with_web_data(
         &self,
         request: PageSurfaceRequest,
         ephemeral_web_data: bool,
+        url_callback: bool,
     ) -> Result<PageSurface, LxAppError> {
         if !self.is_opened() {
             return Err(LxAppError::UnsupportedOperation(
@@ -439,6 +441,7 @@ impl LxApp {
                     target: path.clone(),
                     kind: present_kind,
                     role: present_role,
+                    url_callback,
                     ephemeral_web_data,
                 },
             );
@@ -561,6 +564,7 @@ impl LxApp {
                     target: path.clone(),
                     kind: SurfaceKind::Window,
                     role: SurfaceRole::Main,
+                    url_callback: false,
                     ephemeral_web_data: false,
                 },
             );
@@ -654,7 +658,7 @@ impl LxApp {
         // through WebView cookies, so every handoff surface gets an ephemeral
         // web session: logout is real, and a new login can pick a different
         // account instead of silently reusing a prior SSO cookie.
-        let surface = self.open_surface_with_web_data(request, true)?;
+        let surface = self.open_surface_with_web_data(request, true, true)?;
         Ok(UrlCallbackSurface {
             appid: self.appid.clone(),
             surface,
@@ -686,18 +690,7 @@ impl LxApp {
                     .map(|surfaces| {
                         surfaces
                             .iter()
-                            .map(|(id, record)| LxAppRuntimeSurfaceInfo {
-                                appid: self.appid.clone(),
-                                id: id.clone(),
-                                content: surface_content_str(record.content),
-                                target: record.target.clone(),
-                                owner_page_instance_id: record.owner_page_instance_id.clone(),
-                                content_page_instance_id: record.content_page_instance_id.clone(),
-                                kind: surface_kind_str(record.kind),
-                                role: surface_role_str(record.role),
-                                url_callback: record.ephemeral_web_data,
-                                ephemeral_web_data: record.ephemeral_web_data,
-                            })
+                            .map(|(id, record)| runtime_surface_info(&self.appid, id, record))
                             .collect::<Vec<_>>()
                     })
                     .unwrap_or_default()
@@ -1047,6 +1040,21 @@ fn surface_role_str(role: SurfaceRole) -> &'static str {
     }
 }
 
+fn runtime_surface_info(appid: &str, id: &str, record: &SurfaceRecord) -> LxAppRuntimeSurfaceInfo {
+    LxAppRuntimeSurfaceInfo {
+        appid: appid.to_string(),
+        id: id.to_string(),
+        content: surface_content_str(record.content),
+        target: record.target.clone(),
+        owner_page_instance_id: record.owner_page_instance_id.clone(),
+        content_page_instance_id: record.content_page_instance_id.clone(),
+        kind: surface_kind_str(record.kind),
+        role: surface_role_str(record.role),
+        url_callback: record.url_callback,
+        ephemeral_web_data: record.ephemeral_web_data,
+    }
+}
+
 fn close_reason_str(reason: CloseReason) -> &'static str {
     match reason {
         CloseReason::User => "user",
@@ -1055,5 +1063,36 @@ fn close_reason_str(reason: CloseReason) -> &'static str {
         CloseReason::AppClosed => "app_closed",
         CloseReason::Reclaimed => "reclaimed",
         CloseReason::Unknown => "unknown",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn url_record(url_callback: bool, ephemeral_web_data: bool) -> SurfaceRecord {
+        SurfaceRecord {
+            owner_page_instance_id: Some("owner".to_string()),
+            content_page_instance_id: None,
+            content: SurfaceContent::Url,
+            target: "https://example.com/login".to_string(),
+            kind: SurfaceKind::Overlay,
+            role: SurfaceRole::Aside,
+            url_callback,
+            ephemeral_web_data,
+        }
+    }
+
+    #[test]
+    fn automation_surface_inventory_distinguishes_url_callbacks() {
+        let regular = runtime_surface_info("demo", "web", &url_record(false, false));
+        assert_eq!(regular.content, "url");
+        assert!(!regular.url_callback);
+        assert!(!regular.ephemeral_web_data);
+
+        let callback = runtime_surface_info("demo", "login", &url_record(true, true));
+        assert_eq!(callback.target, "https://example.com/login");
+        assert!(callback.url_callback);
+        assert!(callback.ephemeral_web_data);
     }
 }
