@@ -463,6 +463,10 @@ fn chrome_hover_rect(
     if rect_contains(&chevron, point) {
         return Some(chevron);
     }
+    let group = sidebar_group_rect(tabbar_rect, tabbar);
+    if rect_contains(&group, point) {
+        return Some(group);
+    }
     for (_, rect) in sidebar_header_action_rects(tabbar_rect, tabbar) {
         if rect_contains(&rect, point) {
             return Some(rect);
@@ -583,6 +587,9 @@ fn tabbar_requires_full_repaint(
         || old_tabbar.dimension != new_tabbar.dimension
         || old_tabbar.app_name != new_tabbar.app_name
         || old_tabbar.group_id != new_tabbar.group_id
+        || old_tabbar.group_active != new_tabbar.group_active
+        || old_tabbar.group_closable != new_tabbar.group_closable
+        || old_tabbar.group_order_index != new_tabbar.group_order_index
         || old_tabbar.color != new_tabbar.color
         || old_tabbar.background_color != new_tabbar.background_color
         || old_tabbar.background_transparent != new_tabbar.background_transparent
@@ -916,7 +923,7 @@ pub(crate) fn collapsed_sidebar_tabbar_popup(
         return None;
     }
     let tabbar_rect = compute_chrome_rects(client, layout).tab_bar?;
-    let anchor = sidebar_rail_item_rect(tabbar_rect, 0);
+    let anchor = sidebar_rail_item_rect(tabbar_rect, sidebar_group_rail_index(tabbar));
     if !rect_contains(&anchor, point) {
         return None;
     }
@@ -985,6 +992,7 @@ fn collapsed_sidebar_popup_tabbar(
     popup_tabbar.dimension = width;
     popup_tabbar.header_actions.clear();
     popup_tabbar.auxiliary_items.clear();
+    popup_tabbar.group_order_index = 0;
     popup_tabbar.show_auxiliary_add = false;
     popup_tabbar
 }
@@ -1509,15 +1517,26 @@ pub(super) fn chrome_hit_test(
             if rect_contains(&sidebar_rail_expand_rect(tabbar_rect), point) {
                 return Some(chrome_command(command_id::SIDEBAR_TOGGLE, json!({})));
             }
-            if rect_contains(&sidebar_rail_item_rect(tabbar_rect, 0), point) {
-                let index = tabbar.selected_index.max(0) as usize;
-                return Some(chrome_command(
-                    command_id::TAB_BAR_CLICK,
-                    json!({ "index": index }),
+            if rect_contains(
+                &sidebar_rail_item_rect(tabbar_rect, sidebar_group_rail_index(tabbar)),
+                point,
+            ) {
+                let payload = json!({ "tab_id": format!("lxapp:{}", tabbar.group_id) });
+                return Some(chrome_command_with_context(
+                    command_id::BROWSER_TAB_CLICK,
+                    payload.clone(),
+                    command_id::SIDEBAR_AUXILIARY_CONTEXT_MENU,
+                    payload,
                 ));
             }
             for (index, item) in tabbar.auxiliary_items.iter().enumerate() {
-                if rect_contains(&sidebar_rail_item_rect(tabbar_rect, 1 + index), point) {
+                if rect_contains(
+                    &sidebar_rail_item_rect(
+                        tabbar_rect,
+                        sidebar_auxiliary_rail_index(tabbar, index),
+                    ),
+                    point,
+                ) {
                     let payload = json!({ "tab_id": item.id.clone() });
                     return Some(chrome_command_with_context(
                         command_id::BROWSER_TAB_CLICK,
@@ -1535,10 +1554,27 @@ pub(super) fn chrome_hit_test(
             return Some(WindowsChromeHit::Chrome);
         }
         if sidebar {
+            if tabbar.group_closable
+                && rect_contains(&sidebar_group_close_rect(tabbar_rect, tabbar), point)
+            {
+                return Some(chrome_command(
+                    command_id::BROWSER_TAB_CLOSE,
+                    json!({ "tab_id": format!("lxapp:{}", tabbar.group_id) }),
+                ));
+            }
             if rect_contains(&sidebar_group_chevron_rect(tabbar_rect, tabbar), point) {
                 return Some(chrome_command(
                     command_id::SIDEBAR_GROUP_TOGGLE,
                     json!({ "group": tabbar.group_id.clone() }),
+                ));
+            }
+            if rect_contains(&sidebar_group_rect(tabbar_rect, tabbar), point) {
+                let payload = json!({ "tab_id": format!("lxapp:{}", tabbar.group_id) });
+                return Some(chrome_command_with_context(
+                    command_id::BROWSER_TAB_CLICK,
+                    payload.clone(),
+                    command_id::SIDEBAR_AUXILIARY_CONTEXT_MENU,
+                    payload,
                 ));
             }
             for (action_id, action_rect) in sidebar_header_action_rects(tabbar_rect, tabbar) {

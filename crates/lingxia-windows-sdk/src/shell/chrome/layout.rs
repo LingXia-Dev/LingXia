@@ -39,7 +39,7 @@ pub struct WindowsShellAuxiliaryItemLayout {
     pub id: String,
     pub title: String,
     pub active: bool,
-    /// Compact pinned-site shortcut rendered in the sidebar icon grid.
+    /// Compact pinned lxapp/web shortcut rendered in the sidebar icon grid.
     pub pinned: bool,
     /// Whether the row exposes the trailing close affordance. Pinned bookmark
     /// shortcuts are independent from open tabs and therefore are not closed.
@@ -67,6 +67,14 @@ pub struct WindowsShellTabBarLayout {
     /// bundled LingXia mark.
     pub app_icon_path: String,
     pub group_id: String,
+    /// The lxapp group is the selected main. Browser selection is independent,
+    /// so presenting a web tab clears this highlight without collapsing it.
+    pub group_active: bool,
+    /// Home owns the host and cannot be closed from its group header.
+    pub group_closable: bool,
+    /// Position of the expanded lxapp group among the unpinned top-level
+    /// lxapp/web rows. This keeps the active group in the shared tab order.
+    pub group_order_index: usize,
     pub color: u32,
     pub selected_color: u32,
     pub background_color: u32,

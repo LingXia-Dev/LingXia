@@ -5,7 +5,7 @@ use super::*;
 const PINNED_SHORTCUT_SIZE: i32 = 34;
 const PINNED_SHORTCUT_ICON_SIZE: i32 = 20;
 
-fn pinned_count(tabbar: &WindowsShellTabBarLayout) -> usize {
+pub(in crate::shell::chrome) fn sidebar_pinned_count(tabbar: &WindowsShellTabBarLayout) -> usize {
     tabbar
         .auxiliary_items
         .iter()
@@ -17,7 +17,7 @@ pub(in crate::shell::chrome) fn sidebar_pinned_grid_height(
     rect: RECT,
     tabbar: &WindowsShellTabBarLayout,
 ) -> i32 {
-    let count = pinned_count(tabbar);
+    let count = sidebar_pinned_count(tabbar);
     if count == 0 {
         return 0;
     }
@@ -68,35 +68,28 @@ pub(in crate::shell::chrome) fn sidebar_auxiliary_rects(
             + tabbar.items.len() as i32 * SIDEBAR_CHILD_ITEM_HEIGHT
             + (tabbar.items.len() as i32 - 1) * SIDEBAR_CHILD_ITEM_GAP
     };
-    let items_bottom =
-        rect.top + SHELL_TOP_BAR_HEIGHT + pinned_height + SIDEBAR_ITEM_HEIGHT + items_height;
-    // A web/lxapp type transition is just another top-level transition: no
-    // separator band, exactly the shared 4px gap.
-    let mut top = items_bottom + SIDEBAR_ITEM_GAP;
-
-    let row = |top: &mut i32| -> Option<RECT> {
-        let bottom = *top + SIDEBAR_ITEM_HEIGHT;
+    let top_level_start = rect.top + SHELL_TOP_BAR_HEIGHT + pinned_height;
+    let row = |top: i32| -> Option<RECT> {
+        let bottom = top + SIDEBAR_ITEM_HEIGHT;
         if bottom > footer_top {
             return None;
         }
-        let rect = normalize_rect(RECT {
+        Some(normalize_rect(RECT {
             left: rect.left + SIDEBAR_ITEM_INSET,
-            top: *top,
+            top,
             right: rect.right - SIDEBAR_ITEM_INSET,
             bottom,
-        });
-        *top = bottom + SIDEBAR_ITEM_GAP;
-        Some(rect)
+        }))
     };
 
     let mut items = Vec::with_capacity(tabbar.auxiliary_items.len());
-    let pinned_count = pinned_count(tabbar);
+    let pinned_count = sidebar_pinned_count(tabbar);
     if pinned_count > 0 {
         let grid_left = rect.left + SIDEBAR_ITEM_INSET;
         let grid_width = (rect.right - SIDEBAR_ITEM_INSET - grid_left).max(PINNED_SHORTCUT_SIZE);
         let columns = ((grid_width + SIDEBAR_ITEM_GAP) / (PINNED_SHORTCUT_SIZE + SIDEBAR_ITEM_GAP))
             .max(1) as usize;
-        // Pinned websites are global shortcuts, not children of the current
+        // Pins are global shortcuts, not children of the current
         // lxapp group. They sit immediately below the caption controls and
         // above the lxapp header/navigation, matching macOS.
         let grid_top = rect.top + SHELL_TOP_BAR_HEIGHT;
@@ -117,14 +110,32 @@ pub(in crate::shell::chrome) fn sidebar_auxiliary_rects(
             items.push(pinned_rect);
         }
     }
-    for _ in tabbar.auxiliary_items.iter().skip(pinned_count) {
-        match row(&mut top) {
+    let unpinned_count = tabbar.auxiliary_items.len().saturating_sub(pinned_count);
+    let group_index = tabbar.group_order_index.min(unpinned_count);
+    let top_level_stride = SIDEBAR_ITEM_HEIGHT + SIDEBAR_ITEM_GAP;
+    let group_top = top_level_start + group_index as i32 * top_level_stride;
+    for index in 0..unpinned_count {
+        let top = if index < group_index {
+            top_level_start + index as i32 * top_level_stride
+        } else {
+            group_top
+                + SIDEBAR_ITEM_HEIGHT
+                + items_height
+                + SIDEBAR_ITEM_GAP
+                + (index - group_index) as i32 * top_level_stride
+        };
+        match row(top) {
             Some(rect) => items.push(rect),
             None => break,
         }
     }
     let add = if tabbar.show_auxiliary_add {
-        row(&mut top)
+        let top = group_top
+            + SIDEBAR_ITEM_HEIGHT
+            + items_height
+            + SIDEBAR_ITEM_GAP
+            + unpinned_count.saturating_sub(group_index) as i32 * top_level_stride;
+        row(top)
     } else {
         None
     };
@@ -228,13 +239,17 @@ pub(in crate::shell::chrome) fn draw_sidebar_auxiliary_section(
                         PINNED_SHORTCUT_ICON_SIZE as u32,
                     ));
             if !drawn {
-                draw_design_icon_button(
-                    hdc,
-                    item_rect,
-                    WindowsDesignIcon::Globe,
-                    shell_palette().text_muted,
-                    PINNED_SHORTCUT_ICON_SIZE,
-                );
+                if item.id.starts_with("lxapp:") {
+                    draw_default_app_icon(hdc, icon_rect);
+                } else {
+                    draw_design_icon_button(
+                        hdc,
+                        item_rect,
+                        WindowsDesignIcon::Globe,
+                        shell_palette().text_muted,
+                        PINNED_SHORTCUT_ICON_SIZE,
+                    );
+                }
             }
             continue;
         }

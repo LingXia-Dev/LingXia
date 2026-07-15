@@ -1983,6 +1983,7 @@ impl LxApp {
                 startup_options.open_mode,
                 lingxia_platform::traits::app_runtime::LxAppOpenMode::Panel
             ) {
+                self.set_active_main();
                 self.sync_host_ui();
             }
         }
