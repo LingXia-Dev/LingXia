@@ -48,10 +48,9 @@ pub(crate) fn sync_dev_home_bundle(runtime: Arc<lingxia_platform::Platform>) -> 
         return Ok(());
     }
 
-    let manifest_url = format!(
-        "{}/lxapp/{}/manifest.json",
-        base_url.trim_end_matches('/'),
-        encode_path_component(app_id)
+    let manifest_url = dev_bundle_url(
+        base_url,
+        &format!("lxapp/{}/manifest.json", encode_path_component(app_id)),
     );
     let manifest_bytes = http_get(&manifest_url)?;
     let manifest: DevManifest = serde_json::from_slice(&manifest_bytes)
@@ -110,11 +109,13 @@ pub(crate) fn sync_dev_home_bundle(runtime: Arc<lingxia_platform::Platform>) -> 
             continue;
         }
 
-        let url = format!(
-            "{}/lxapp/{}/files/{}",
-            base_url.trim_end_matches('/'),
-            encode_path_component(app_id),
-            encode_path_component(&file.path)
+        let url = dev_bundle_url(
+            base_url,
+            &format!(
+                "lxapp/{}/files/{}",
+                encode_path_component(app_id),
+                encode_path_component(&file.path)
+            ),
         );
         let bytes = http_get(&url)?;
         if bytes.len() as u64 != file.size {
@@ -347,6 +348,23 @@ fn encode_path_component(value: &str) -> String {
     out
 }
 
+fn dev_bundle_url(base_url: &str, relative_path: &str) -> String {
+    let (base, query) = base_url
+        .split_once('?')
+        .map(|(base, query)| (base, Some(query)))
+        .unwrap_or((base_url, None));
+    let mut url = format!(
+        "{}/{}",
+        base.trim_end_matches('/'),
+        relative_path.trim_start_matches('/')
+    );
+    if let Some(query) = query.filter(|query| !query.is_empty()) {
+        url.push('?');
+        url.push_str(query);
+    }
+    url
+}
+
 fn sanitize_component(value: &str) -> String {
     value
         .chars()
@@ -355,4 +373,26 @@ fn sanitize_component(value: &str) -> String {
             _ => '_',
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ParsedHttpUrl, dev_bundle_url};
+
+    #[test]
+    fn dev_bundle_paths_keep_auth_query_at_the_end() {
+        let url = dev_bundle_url(
+            "http://192.168.1.20:39142/__lingxia/dev?token=abc",
+            "lxapp/demo/manifest.json",
+        );
+
+        assert_eq!(
+            url,
+            "http://192.168.1.20:39142/__lingxia/dev/lxapp/demo/manifest.json?token=abc"
+        );
+        assert_eq!(
+            ParsedHttpUrl::parse(&url).unwrap().path,
+            "/__lingxia/dev/lxapp/demo/manifest.json?token=abc"
+        );
+    }
 }

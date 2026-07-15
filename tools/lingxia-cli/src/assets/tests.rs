@@ -130,13 +130,17 @@ fn generated_app_json_includes_dev_ws_url_when_configured() {
     let app_json = build_app_json_from_config(
         &config,
         None,
-        Some("ws://127.0.0.1:12345"),
+        Some("ws://192.168.1.20:12345/?token=abc"),
         &test_resolved_env(),
     )
     .unwrap();
     let value: serde_json::Value = serde_json::from_str(&app_json).unwrap();
 
-    assert_eq!(value["devWsUrl"], "ws://127.0.0.1:12345");
+    assert_eq!(value["devWsUrl"], "ws://192.168.1.20:12345/?token=abc");
+    assert_eq!(
+        value["devBundleBaseUrl"],
+        "http://192.168.1.20:12345/__lingxia/dev?token=abc"
+    );
 }
 
 #[test]

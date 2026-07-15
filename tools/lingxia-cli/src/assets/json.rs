@@ -112,7 +112,20 @@ fn dev_bundle_base_url(dev_ws_url: &str) -> Option<String> {
     } else {
         "http"
     };
-    Some(format!("{scheme}://{rest}/__lingxia/dev"))
+    let (authority_and_path, query) = rest
+        .split_once('?')
+        .map(|(base, query)| (base, Some(query)))
+        .unwrap_or((rest, None));
+    let authority = authority_and_path
+        .split('/')
+        .next()
+        .filter(|authority| !authority.is_empty())?;
+    let mut url = format!("{scheme}://{authority}/__lingxia/dev");
+    if let Some(query) = query.filter(|query| !query.is_empty()) {
+        url.push('?');
+        url.push_str(query);
+    }
+    Some(url)
 }
 
 pub(super) fn build_ui_json_from_config(
@@ -155,4 +168,21 @@ pub(super) fn build_windows_ui_json_from_config(
         rewrite_windows_app_ui_icon_paths(&mut rewritten, &by_source)?;
     }
     Ok(Some(serde_json::to_string_pretty(&rewritten)?))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::dev_bundle_base_url;
+
+    #[test]
+    fn dev_bundle_base_url_preserves_auth_after_the_http_path() {
+        assert_eq!(
+            dev_bundle_base_url("ws://127.0.0.1:39000").as_deref(),
+            Some("http://127.0.0.1:39000/__lingxia/dev")
+        );
+        assert_eq!(
+            dev_bundle_base_url("ws://192.168.1.20:39000/?token=abc").as_deref(),
+            Some("http://192.168.1.20:39000/__lingxia/dev?token=abc")
+        );
+    }
 }
