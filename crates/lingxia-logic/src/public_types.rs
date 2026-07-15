@@ -1176,14 +1176,16 @@ true
  */
  | 'reclaimed' | 'unknown'"###;
 
-        /// The window's adaptive context, delivered to `lx.onSurfaceContext()` so an
-        /// lxapp can self-adapt (e.g. switch column count by `sizeClass`).
+        /// The current surface viewport context, delivered to `lx.onSurfaceContext()`
+        /// so an lxapp can self-adapt (e.g. switch column count by `sizeClass`).
         ///
         type SurfaceContext = r###"{
     /** compact (<600) / medium (600–840) / expanded (>840), with hysteresis. */
     sizeClass: 'compact' | 'medium' | 'expanded';
-    /** In compact, the bottom region belongs to the app content. */
-    bottomOwner: 'app';
+    /** Actual surface viewport width in logical pixels. */
+    width: number;
+    /** Actual surface viewport height in logical pixels. */
+    height: number;
 }"###;
 
         /// Edge an aside docks to; the Host decides the realized form by screen size.
@@ -1192,8 +1194,17 @@ true
         /// Where a float popup anchors (default `center`).
         type SurfaceFloatPosition = r###"'center' | 'top' | 'bottom' | 'left' | 'right'"###;
 
+        type SurfaceRole = r###"'main' | 'aside' | 'float'"###;
+
+        type SurfacePresentation = r###"'main' | 'dock' | 'overlay' | 'popover' | 'sheet' | 'window'"###;
+
         type SurfaceHandle = r###"{
     readonly id: string;
+    /** Standalone windows have no role in the primary shell graph. */
+    readonly role?: SurfaceRole;
+    readonly presentation: SurfacePresentation;
+    readonly visible: boolean;
+    readonly alive: boolean;
     /**
      * Show a host-managed surface. Dynamic page/url surfaces return a Promise;
      * host-declared surfaces may complete synchronously.
@@ -1204,9 +1215,12 @@ true
      */
     hide(): void | Promise<void>;
     /**
-     * Close or hide the surface depending on how it is managed by the host.
+     * Destroy the live surface. Repeated close calls are idempotent.
      */
     close(): void | Promise<void>;
+    onShow(handler: (event: SurfaceVisibilityEvent) => void): () => void;
+    onHide(handler: (event: SurfaceVisibilityEvent) => void): () => void;
+    onClose(handler: (event: SurfaceClosedEvent) => void): () => void;
 }"###;
 
         /// Detail payload for `onShow` / `onHide` events. `source` identifies which

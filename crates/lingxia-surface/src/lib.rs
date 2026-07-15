@@ -11,7 +11,7 @@ mod layout;
 mod manager;
 mod model;
 
-pub use arbitrate::{Decision, Policy, arbitrate};
+pub use arbitrate::{Decision, OpenOutcome, Policy, arbitrate, normalize_initial_url};
 pub use graph::SurfaceGraph;
 pub use layout::PlanAsideSlot;
 pub use layout::{
@@ -424,6 +424,7 @@ mod tests {
             SizeClass::Expanded,
         );
         assert_eq!(decision, Decision::MergedIntoTabs);
+        assert_eq!(decision.resolved_surface_id, "browser-2");
         assert!(next.get("browser-1").is_some());
         assert!(next.get("browser-2").is_some());
         assert_eq!(
@@ -434,6 +435,51 @@ mod tests {
             2
         );
         assert!(next.is_valid());
+    }
+
+    #[test]
+    fn hiding_active_aside_selects_recent_visible_sibling() {
+        let mut graph = SurfaceGraph::new();
+        graph.insert(main_s("home"));
+        graph.insert(aside_s("first", Edge::Right));
+        graph.insert(aside_s("second", Edge::Right));
+        graph.set_focus("first");
+        graph.set_focus("second");
+
+        assert!(graph.hide("second"));
+        assert_eq!(graph.focused_surface_id.as_deref(), Some("first"));
+        assert_eq!(
+            graph.get("second").map(|surface| surface.state),
+            Some(SurfaceState::Hidden)
+        );
+        let slots = graph.aside_slots(SizeClass::Expanded);
+        assert_eq!(slots[0].active_child.as_deref(), Some("first"));
+
+        assert!(graph.show("second"));
+        assert_eq!(graph.focused_surface_id.as_deref(), Some("second"));
+        assert_eq!(
+            graph.get("second").map(|surface| surface.state),
+            Some(SurfaceState::Mounted)
+        );
+    }
+
+    #[test]
+    fn closing_active_aside_selects_recent_visible_sibling() {
+        let mut graph = SurfaceGraph::new();
+        graph.insert(main_s("home"));
+        graph.insert(web_aside_s("first", "https://one.example", Edge::Right));
+        graph.insert(web_aside_s("second", "https://two.example", Edge::Right));
+        graph.set_focus("first");
+        graph.set_focus("second");
+
+        assert_eq!(graph.remove("second"), vec!["second"]);
+        assert_eq!(graph.focused_surface_id.as_deref(), Some("first"));
+        assert_eq!(
+            graph.aside_slots(SizeClass::Expanded)[0]
+                .active_child
+                .as_deref(),
+            Some("first")
+        );
     }
 
     #[test]
@@ -450,6 +496,8 @@ mod tests {
             SizeClass::Expanded,
         );
         assert_eq!(decision, Decision::MergedIntoTabs);
+        assert_eq!(decision.resolved_surface_id, "browser-1");
+        assert_eq!(decision.resolved_role, Role::Aside);
         assert!(next.get("browser-1").is_some());
         assert!(next.get("browser-2").is_none());
         assert_eq!(
@@ -460,6 +508,39 @@ mod tests {
             1
         );
         assert!(next.is_valid());
+    }
+
+    #[test]
+    fn web_aside_url_key_normalizes_origin_and_empty_path_only() {
+        assert_eq!(
+            normalize_initial_url("HTTPS://Example.COM:443"),
+            "https://example.com/"
+        );
+        assert_eq!(
+            normalize_initial_url("https://example.com/?q=One#Top"),
+            "https://example.com/?q=One#Top"
+        );
+        assert_ne!(
+            normalize_initial_url("https://example.com/?q=One#Top"),
+            normalize_initial_url("https://example.com/?q=one#Top")
+        );
+
+        let mut graph = SurfaceGraph::new();
+        graph.insert(main_s("home"));
+        let (graph, _) = arbitrate(
+            &graph,
+            web_aside_s("browser-1", "HTTPS://Example.COM:443", Edge::Right),
+            &Policy::default(),
+            SizeClass::Expanded,
+        );
+        let (graph, outcome) = arbitrate(
+            &graph,
+            web_aside_s("browser-2", "https://example.com/", Edge::Right),
+            &Policy::default(),
+            SizeClass::Expanded,
+        );
+        assert_eq!(outcome.resolved_surface_id, "browser-1");
+        assert!(graph.get("browser-2").is_none());
     }
 
     #[test]
@@ -535,9 +616,9 @@ mod tests {
             SizeClass::Compact,
         );
         assert_eq!(decision, Decision::FullScreenFallback);
-        // promoted to a main, no longer an aside.
-        assert_eq!(next.role_of("assistant"), Some(Role::Main));
-        assert_eq!(next.active_main_id.as_deref(), Some("assistant"));
+        assert!(decision.overlay);
+        assert_eq!(next.role_of("assistant"), Some(Role::Aside));
+        assert_eq!(next.active_main_id.as_deref(), Some("home"));
         assert_eq!(
             next.presentation_plan(
                 SizeClass::Compact,
@@ -546,7 +627,7 @@ mod tests {
             )
             .active_main_id
             .as_deref(),
-            Some("assistant")
+            Some("home")
         );
         assert!(next.is_valid());
     }

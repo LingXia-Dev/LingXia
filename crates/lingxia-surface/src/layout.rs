@@ -6,8 +6,8 @@ use serde::{Deserialize, Serialize};
 use crate::model::SurfaceId;
 
 /// Available-width band. Aligned to Material breakpoints and computed from the
-/// *container* width, not the physical screen. `Ord` follows the declared
-/// order (Compact < Medium < Expanded) so a window can floor its class.
+/// full client-area width, not the physical screen. `Ord` follows the declared
+/// order (Compact < Medium < Expanded).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum SizeClass {
@@ -213,6 +213,11 @@ pub struct PlanAsideSlot {
     /// Admitted visible at this size class. Hidden slots stay alive and
     /// reappear when the container widens — they are never evicted.
     pub visible: bool,
+    /// Temporarily covers the main instead of consuming dock space. This is
+    /// the compact projection and the fallback for an explicitly opened aside
+    /// that physical admission cannot fit.
+    #[serde(default)]
+    pub overlay: bool,
 }
 
 /// One float in the [`LayoutPresentationPlan`]: the surface id plus the

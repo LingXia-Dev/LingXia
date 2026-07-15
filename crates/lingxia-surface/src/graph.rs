@@ -7,7 +7,7 @@ use crate::layout::{
     Axis, BottomOwner, DerivedLayout, LayoutPresentationPlan, LayoutTree, PlanAside, SizeClass,
     SplitForm, SwitcherForm,
 };
-use crate::model::{Role, SlotKind, Surface, SurfaceId};
+use crate::model::{Role, SlotKind, Surface, SurfaceId, SurfaceState};
 
 /// One window's graph. Surfaces are kept in insertion order so that
 /// "adjacent main" succession and "oldest aside" replacement are deterministic.
@@ -26,6 +26,11 @@ pub struct SurfaceGraph {
     /// from `surfaces` so focus/reopen affects admission without reordering tabs.
     #[serde(default)]
     aside_slot_mru: Vec<SlotKind>,
+    /// Aside children in least- to most-recently-used order. This is separate
+    /// from insertion order so hiding an active child can reveal the most
+    /// recently used sibling without reordering the slot's tabs.
+    #[serde(default)]
+    aside_child_mru: Vec<SurfaceId>,
 }
 
 impl SurfaceGraph {
@@ -69,6 +74,7 @@ impl SurfaceGraph {
 
     /// Insert (or replace by id) a surface, then re-converge invariants.
     pub fn insert(&mut self, surface: Surface) {
+        let surface_id = surface.id.clone();
         let modal = surface.is_modal_float();
         let previous_slot = self
             .get(&surface.id)
@@ -94,8 +100,14 @@ impl SurfaceGraph {
         }
         if let Some(kind) = next_slot {
             self.touch_aside_slot(kind);
+            self.touch_aside_child(&surface_id);
         }
         self.converge_after_insert();
+    }
+
+    fn touch_aside_child(&mut self, id: &str) {
+        self.aside_child_mru.retain(|entry| entry != id);
+        self.aside_child_mru.push(id.to_string());
     }
 
     fn touch_aside_slot(&mut self, kind: SlotKind) {
@@ -110,6 +122,12 @@ impl SurfaceGraph {
             .map(|aside| aside.content.slot_kind())
             .collect();
         self.aside_slot_mru.retain(|kind| live.contains(kind));
+        let live_children: std::collections::HashSet<SurfaceId> = self
+            .asides()
+            .into_iter()
+            .map(|surface| surface.id.clone())
+            .collect();
+        self.aside_child_mru.retain(|id| live_children.contains(id));
     }
 
     fn converge_after_insert(&mut self) {
@@ -137,6 +155,7 @@ impl SurfaceGraph {
             return Vec::new();
         };
         let removed = self.surfaces.remove(pos);
+        let removed_aside_kind = (removed.role == Role::Aside).then(|| removed.content.slot_kind());
         let mut removed_ids = vec![removed.id.clone()];
 
         // Succession for active main.
@@ -169,7 +188,18 @@ impl SurfaceGraph {
             .as_deref()
             .is_none_or(|f| self.get(f).is_none())
         {
-            self.focused_surface_id = self.focus_fallback();
+            self.focused_surface_id = removed_aside_kind
+                .and_then(|kind| {
+                    self.aside_child_mru.iter().rev().find_map(|candidate| {
+                        self.get(candidate).and_then(|surface| {
+                            (surface.state == SurfaceState::Mounted
+                                && surface.role == Role::Aside
+                                && surface.content.slot_kind() == kind)
+                                .then(|| surface.id.clone())
+                        })
+                    })
+                })
+                .or_else(|| self.focus_fallback());
         }
         self.prune_aside_slot_mru();
         removed_ids
@@ -202,14 +232,65 @@ impl SurfaceGraph {
             .filter(|surface| surface.role == Role::Aside)
             .map(|surface| surface.content.slot_kind());
         if self.get(id).is_some() {
+            if let Some(surface) = self.surfaces.iter_mut().find(|surface| surface.id == id) {
+                surface.state = SurfaceState::Mounted;
+            }
             self.focused_surface_id = Some(id.to_string());
             if let Some(kind) = aside_kind {
                 self.touch_aside_slot(kind);
+                self.touch_aside_child(id);
             }
             true
         } else {
             false
         }
+    }
+
+    /// Show a live surface without changing its identity. Main selection is
+    /// handled separately; aside/float visibility is represented in the graph.
+    pub fn show(&mut self, id: &str) -> bool {
+        let Some(role) = self.role_of(id) else {
+            return false;
+        };
+        if let Some(surface) = self.surfaces.iter_mut().find(|surface| surface.id == id) {
+            surface.state = SurfaceState::Mounted;
+        }
+        match role {
+            Role::Main => self.set_active_main(id),
+            Role::Aside | Role::Float => self.set_focus(id),
+        }
+    }
+
+    /// Hide a live aside/float while retaining it. Hiding the active child of
+    /// an aside slot selects that slot's most-recent visible sibling; when no
+    /// sibling remains the slot disappears and focus returns to the main.
+    pub fn hide(&mut self, id: &str) -> bool {
+        let Some(surface) = self.get(id) else {
+            return false;
+        };
+        if surface.role == Role::Main {
+            return false;
+        }
+        let role = surface.role;
+        let slot_kind = (role == Role::Aside).then(|| surface.content.slot_kind());
+        if let Some(surface) = self.surfaces.iter_mut().find(|surface| surface.id == id) {
+            surface.state = SurfaceState::Hidden;
+        }
+        if self.focused_surface_id.as_deref() == Some(id) {
+            let sibling = slot_kind.and_then(|kind| {
+                self.aside_child_mru.iter().rev().find_map(|candidate| {
+                    self.get(candidate).and_then(|surface| {
+                        (surface.id != id
+                            && surface.role == Role::Aside
+                            && surface.state == SurfaceState::Mounted
+                            && surface.content.slot_kind() == kind)
+                            .then(|| surface.id.clone())
+                    })
+                })
+            });
+            self.focused_surface_id = sibling.or_else(|| self.active_main_id.clone());
+        }
+        true
     }
 
     /// Group the asides into per-kind slots (lxapp / browser / native), in
@@ -245,6 +326,14 @@ impl SurfaceGraph {
         for i in candidates {
             if admitted == max_visible {
                 break;
+            }
+            if slots[i].active_child.is_none() {
+                continue;
+            }
+            if size_class == SizeClass::Compact {
+                slots[i].visible = true;
+                admitted += 1;
+                continue;
             }
             let horizontal = !matches!(
                 slots[i].edge,
@@ -287,6 +376,7 @@ impl SurfaceGraph {
                         children: Vec::new(),
                         active_child: None,
                         visible: false,
+                        overlay: false,
                     });
                     slots.last_mut().expect("just pushed")
                 }
@@ -303,9 +393,22 @@ impl SurfaceGraph {
             slot.active_child = self
                 .focused_surface_id
                 .as_ref()
-                .filter(|id| slot.children.contains(id))
+                .filter(|id| {
+                    slot.children.contains(id)
+                        && self
+                            .get(id)
+                            .is_some_and(|surface| surface.state == SurfaceState::Mounted)
+                })
                 .cloned()
-                .or_else(|| slot.children.last().cloned());
+                .or_else(|| {
+                    self.aside_child_mru.iter().rev().find_map(|id| {
+                        (slot.children.contains(id)
+                            && self
+                                .get(id)
+                                .is_some_and(|surface| surface.state == SurfaceState::Mounted))
+                        .then(|| id.clone())
+                    })
+                });
         }
         for slot_index in self
             .slot_indices_by_recency(&slots)
@@ -422,6 +525,7 @@ impl SurfaceGraph {
         let asides: Vec<PlanAside> = self
             .asides()
             .iter()
+            .filter(|s| s.state == SurfaceState::Mounted)
             .map(|s| PlanAside {
                 id: s.id.clone(),
                 edge: s.placement.edge,
@@ -452,6 +556,7 @@ impl SurfaceGraph {
             floats: self
                 .floats()
                 .iter()
+                .filter(|s| s.state == SurfaceState::Mounted)
                 .map(|s| {
                     let spec = s.float.clone().unwrap_or_default();
                     crate::layout::PlanFloat {
@@ -474,7 +579,12 @@ impl SurfaceGraph {
         if main_ids.is_empty() {
             return None;
         }
-        let aside_ids: Vec<SurfaceId> = self.asides().iter().map(|s| s.id.clone()).collect();
+        let aside_ids: Vec<SurfaceId> = self
+            .asides()
+            .iter()
+            .filter(|surface| surface.state == SurfaceState::Mounted)
+            .map(|s| s.id.clone())
+            .collect();
         let active = self
             .active_main_id
             .clone()

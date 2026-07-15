@@ -6,7 +6,7 @@
 //! skin renders. All layout decisions stay in the shared core; the platform
 //! only maps legacy primitives in and binds the output.
 
-use crate::arbitrate::{Decision, Policy, arbitrate};
+use crate::arbitrate::{OpenOutcome, Policy, arbitrate};
 use crate::graph::SurfaceGraph;
 use crate::layout::{DEFAULT_HYSTERESIS, DerivedLayout, LayoutPresentationPlan, SizeClass};
 use crate::model::{Surface, SurfaceId};
@@ -19,10 +19,9 @@ pub struct SurfaceManager {
     width: f64,
     hysteresis: f64,
     size_class: SizeClass,
-    /// Floor for the resolved size class. Desktop shells set this to `Medium`
-    /// so a narrow desktop window squeezes (sidebar → rail) instead of
-    /// projecting to the mobile compact layout; mobile leaves it `Compact`.
-    min_size_class: SizeClass,
+    /// Most recently explicitly shown aside that could not be admitted as a
+    /// dock. It remains live and is projected over the main until hidden.
+    overlay_fallback_surface_id: Option<SurfaceId>,
 }
 
 impl SurfaceManager {
@@ -37,8 +36,8 @@ impl SurfaceManager {
             policy,
             width,
             hysteresis: DEFAULT_HYSTERESIS,
-            size_class: SizeClass::from_width(width).max(SizeClass::Compact),
-            min_size_class: SizeClass::Compact,
+            size_class: SizeClass::from_width(width),
+            overlay_fallback_surface_id: None,
         }
     }
 
@@ -52,24 +51,20 @@ impl SurfaceManager {
         self.width
     }
 
-    /// Update the container width. Returns `true` if the `SizeClass` changed
-    /// (after hysteresis and the min-class floor) — i.e. when the skin must
-    /// re-derive its layout.
-    pub fn set_width(&mut self, width: f64) -> bool {
-        self.width = width;
-        let next = SizeClass::resolve(Some(self.size_class), width, self.hysteresis)
-            .max(self.min_size_class);
-        let changed = next != self.size_class;
-        self.size_class = next;
-        changed
+    fn workspace_width(&self) -> f64 {
+        let sidebar_width = match self.size_class {
+            SizeClass::Compact => 0.0,
+            SizeClass::Medium => self.policy.sidebar_medium_width,
+            SizeClass::Expanded => self.policy.sidebar_expanded_width,
+        };
+        (self.width - sidebar_width).max(0.0)
     }
 
-    /// Floor the resolved size class (desktop shells set `Medium` so a narrow
-    /// window never projects to the mobile compact layout). Re-resolves the
-    /// current width against the new floor; returns `true` if the class moved.
-    pub fn set_min_size_class(&mut self, min: SizeClass) -> bool {
-        self.min_size_class = min;
-        let next = SizeClass::resolve(Some(self.size_class), self.width, self.hysteresis).max(min);
+    /// Update the container width. Returns `true` if the `SizeClass` changed
+    /// after hysteresis, i.e. when the skin must re-derive its layout.
+    pub fn set_width(&mut self, width: f64) -> bool {
+        self.width = width;
+        let next = SizeClass::resolve(Some(self.size_class), width, self.hysteresis);
         let changed = next != self.size_class;
         self.size_class = next;
         changed
@@ -77,15 +72,40 @@ impl SurfaceManager {
 
     /// Open (or replace by id) a surface through the arbiter at the current size.
     /// Always leaves the graph valid; returns the structured decision.
-    pub fn open(&mut self, request: Surface) -> Decision {
-        let (next, decision) = arbitrate(&self.graph, request, &self.policy, self.size_class);
+    pub fn open(&mut self, request: Surface) -> OpenOutcome {
+        let (next, mut outcome) = arbitrate(&self.graph, request, &self.policy, self.size_class);
         self.graph = next;
-        decision
+        if outcome.resolved_role == crate::model::Role::Aside {
+            let admitted = self
+                .graph
+                .aside_slots_admitted(self.size_class, self.workspace_width(), &self.policy)
+                .into_iter()
+                .find(|slot| slot.children.contains(&outcome.resolved_surface_id))
+                .is_some_and(|slot| slot.visible);
+            outcome.overlay |= self.size_class == SizeClass::Compact || !admitted;
+            if outcome.overlay {
+                self.overlay_fallback_surface_id = Some(outcome.resolved_surface_id.clone());
+            }
+        }
+        outcome
     }
 
     /// Close a surface; returns the ids actually removed (target + cascades).
     pub fn close(&mut self, id: &str) -> Vec<SurfaceId> {
-        self.graph.remove(id)
+        let removed = self.graph.remove(id);
+        if self
+            .overlay_fallback_surface_id
+            .as_ref()
+            .is_some_and(|fallback| removed.contains(fallback))
+        {
+            self.overlay_fallback_surface_id = self
+                .graph
+                .focused_surface_id
+                .as_deref()
+                .filter(|focused| self.graph.role_of(focused) == Some(crate::model::Role::Aside))
+                .map(str::to_string);
+        }
+        removed
     }
 
     pub fn set_active_main(&mut self, id: &str) -> bool {
@@ -93,6 +113,35 @@ impl SurfaceManager {
     }
     pub fn set_focus(&mut self, id: &str) -> bool {
         self.graph.set_focus(id)
+    }
+
+    pub fn show(&mut self, id: &str) -> bool {
+        let shown = self.graph.show(id);
+        if shown && self.graph.role_of(id) == Some(crate::model::Role::Aside) {
+            let admitted = self
+                .graph
+                .aside_slots_admitted(self.size_class, self.workspace_width(), &self.policy)
+                .into_iter()
+                .find(|slot| slot.children.iter().any(|child| child == id))
+                .is_some_and(|slot| slot.visible);
+            if self.size_class == SizeClass::Compact || !admitted {
+                self.overlay_fallback_surface_id = Some(id.to_string());
+            }
+        }
+        shown
+    }
+
+    pub fn hide(&mut self, id: &str) -> bool {
+        let hidden = self.graph.hide(id);
+        if hidden && self.overlay_fallback_surface_id.as_deref() == Some(id) {
+            self.overlay_fallback_surface_id = self
+                .graph
+                .focused_surface_id
+                .as_deref()
+                .filter(|focused| self.graph.role_of(focused) == Some(crate::model::Role::Aside))
+                .map(str::to_string);
+        }
+        hidden
     }
 
     /// Derive the platform-agnostic layout output at the current size.
@@ -105,14 +154,33 @@ impl SurfaceManager {
     /// admission respects both the size-class ceiling and the physical fit at
     /// the current width (§3.3).
     pub fn presentation_plan(&self) -> LayoutPresentationPlan {
-        self.graph
-            .presentation_plan(self.size_class, self.width, &self.policy)
+        let mut plan =
+            self.graph
+                .presentation_plan(self.size_class, self.workspace_width(), &self.policy);
+        if self.size_class == SizeClass::Compact {
+            for slot in plan.aside_slots.iter_mut().filter(|slot| slot.visible) {
+                slot.overlay = true;
+            }
+        }
+        if let Some(id) = self.overlay_fallback_surface_id.as_deref()
+            && let Some(slot) = plan
+                .aside_slots
+                .iter_mut()
+                .find(|slot| slot.children.iter().any(|child| child == id))
+            && (self.size_class == SizeClass::Compact || !slot.visible)
+        {
+            slot.visible = true;
+            slot.active_child = Some(id.to_string());
+            slot.overlay = true;
+        }
+        plan
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Decision;
     use crate::layout::{SplitForm, SwitcherForm};
     use crate::model::{Edge, Role, Surface};
 
@@ -140,11 +208,12 @@ mod tests {
     }
 
     #[test]
-    fn aside_on_compact_promotes_without_host_switcher() {
+    fn aside_on_compact_overlays_without_host_switcher() {
         let mut m = SurfaceManager::new(390.0); // phone width
         assert_eq!(m.size_class(), SizeClass::Compact);
         m.open(main_s("home"));
-        // arbitration promotes the aside to a main on compact.
+        // Arbitration preserves the aside role and marks it as a full-screen
+        // overlay; compact still has no sidebar switcher.
         assert_eq!(
             m.open(aside_s("assistant", Edge::Right)),
             Decision::FullScreenFallback
@@ -152,30 +221,15 @@ mod tests {
         let d = m.derive();
         assert_eq!(d.switcher_form, SwitcherForm::None);
         assert_eq!(d.bottom_owner, crate::BottomOwner::App);
+        let slot = &m.presentation_plan().aside_slots[0];
+        assert!(slot.visible);
+        assert!(slot.overlay);
         assert!(m.graph().is_valid());
     }
 
     #[test]
-    fn desktop_min_class_floor_never_projects_to_compact() {
-        // A desktop shell floors at Medium: a narrow window that would
-        // otherwise resolve Compact stays Medium (squeeze, not mobile-project).
-        let mut m = SurfaceManager::new(1200.0);
-        m.set_min_size_class(SizeClass::Medium);
-        // min-window workspace (720 - 180 sidebar = 540) → Compact by width,
-        // floored to Medium.
-        m.set_width(540.0);
-        assert_eq!(m.size_class(), SizeClass::Medium);
-        // Widening past the medium/expanded boundary still reaches Expanded.
-        m.set_width(1000.0);
-        assert_eq!(m.size_class(), SizeClass::Expanded);
-        // Mobile (no floor) still reaches Compact.
-        let phone = SurfaceManager::new(390.0);
-        assert_eq!(phone.size_class(), SizeClass::Compact);
-    }
-
-    #[test]
     fn width_changes_recompute_physical_admission_within_a_size_class() {
-        let mut manager = SurfaceManager::new(1200.0);
+        let mut manager = SurfaceManager::new(1400.0);
         manager.open(main_s("home"));
         manager.open(aside_s("lxapp", Edge::Right));
         let mut browser = Surface::entry("browser", Role::Aside, "browser");
@@ -197,7 +251,8 @@ mod tests {
             3
         );
 
-        // Both widths are Expanded, but only two horizontal slots fit at 900.
+        // Both widths are Expanded. After the full sidebar is allocated, only
+        // one horizontal slot fits at a 900-wide client area.
         assert!(!manager.set_width(900.0));
         assert_eq!(manager.size_class(), SizeClass::Expanded);
         assert_eq!(
@@ -207,8 +262,24 @@ mod tests {
                 .iter()
                 .filter(|slot| slot.visible)
                 .count(),
-            2
+            1
         );
+    }
+
+    #[test]
+    fn explicitly_opened_non_fitting_aside_overlays_until_it_can_dock() {
+        let mut manager = SurfaceManager::new(500.0);
+        manager.open(main_s("home"));
+        let outcome = manager.open(aside_s("assistant", Edge::Right));
+        assert!(outcome.overlay);
+        let slot = &manager.presentation_plan().aside_slots[0];
+        assert!(slot.visible);
+        assert!(slot.overlay);
+
+        manager.set_width(700.0);
+        let slot = &manager.presentation_plan().aside_slots[0];
+        assert!(slot.visible);
+        assert!(!slot.overlay);
     }
 
     #[test]
@@ -238,6 +309,9 @@ mod tests {
         let d = m.derive();
         assert_eq!(d.split_form, SplitForm::FullScreen);
         assert_eq!(d.switcher_form, SwitcherForm::None);
+        let slot = &m.presentation_plan().aside_slots[0];
+        assert!(slot.visible);
+        assert!(slot.overlay);
         // role unchanged → widening back restores the split (reversible).
         assert_eq!(m.graph().role_of("assistant"), Some(Role::Aside));
         m.set_width(1200.0);

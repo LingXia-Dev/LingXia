@@ -1376,14 +1376,16 @@ export type SurfaceClosedEvent = {
 };
 
 /**
- * The window's adaptive context, delivered to `lx.onSurfaceContext()` so an
- * lxapp can self-adapt (e.g. switch column count by `sizeClass`).
+ * The current surface viewport context, delivered to `lx.onSurfaceContext()`
+ * so an lxapp can self-adapt (e.g. switch column count by `sizeClass`).
  */
 export type SurfaceContext = {
     /** compact (<600) / medium (600–840) / expanded (>840), with hysteresis. */
     sizeClass: 'compact' | 'medium' | 'expanded';
-    /** In compact, the bottom region belongs to the app content. */
-    bottomOwner: 'app';
+    /** Actual surface viewport width in logical pixels. */
+    width: number;
+    /** Actual surface viewport height in logical pixels. */
+    height: number;
 };
 
 /** Edge an aside docks to; the Host decides the realized form by screen size. */
@@ -1394,6 +1396,11 @@ export type SurfaceFloatPosition = 'center' | 'top' | 'bottom' | 'left' | 'right
 
 export type SurfaceHandle = {
     readonly id: string;
+    /** Standalone windows have no role in the primary shell graph. */
+    readonly role?: SurfaceRole;
+    readonly presentation: SurfacePresentation;
+    readonly visible: boolean;
+    readonly alive: boolean;
     /**
      * Show a host-managed surface. Dynamic page/url surfaces return a Promise;
      * host-declared surfaces may complete synchronously.
@@ -1404,10 +1411,17 @@ export type SurfaceHandle = {
      */
     hide(): void | Promise<void>;
     /**
-     * Close or hide the surface depending on how it is managed by the host.
+     * Destroy the live surface. Repeated close calls are idempotent.
      */
     close(): void | Promise<void>;
+    onShow(handler: (event: SurfaceVisibilityEvent) => void): () => void;
+    onHide(handler: (event: SurfaceVisibilityEvent) => void): () => void;
+    onClose(handler: (event: SurfaceClosedEvent) => void): () => void;
 };
+
+export type SurfacePresentation = 'main' | 'dock' | 'overlay' | 'popover' | 'sheet' | 'window';
+
+export type SurfaceRole = 'main' | 'aside' | 'float';
 
 /**
  * Detail payload for `onShow` / `onHide` events. `source` identifies which
@@ -1947,8 +1961,8 @@ declare global {
     openExternal(url: string): void;
     /**
      * `lx.onSurfaceContext(handler)` — register a JS callback (scoped to this
-     * lxapp's JS context) invoked with `{ sizeClass, bottomOwner }` whenever the
-     * window's adaptive context flips. Returns an unsubscribe fn.
+     * lxapp's JS context), invoke it immediately, then again whenever that
+     * presentation's actual viewport changes. Returns an unsubscribe fn.
      */
     onSurfaceContext(handler: (context: SurfaceContext) => void): () => void;
     getSystemSetting(): SystemSettingInfo;

@@ -1470,6 +1470,14 @@ impl LxApp {
                 continue;
             }
             if path_ref.starts_with(root) {
+                if let Some(target) = resolved_target.as_ref()
+                    && let Ok(canonical_root) = std::fs::canonicalize(root)
+                {
+                    if target.starts_with(&canonical_root) {
+                        return Ok(target.to_path_buf());
+                    }
+                    continue;
+                }
                 return Ok(path_ref.to_path_buf());
             }
             if let (Some(target), Ok(canonical_root)) =
@@ -1477,22 +1485,6 @@ impl LxApp {
                 && target.starts_with(&canonical_root)
             {
                 return Ok(target.to_path_buf());
-            }
-        }
-
-        // Also check if it's under the parents of userdata/usercache to support the
-        // full path directory structure if needed (though usually not recommended for JS)
-        for root in [&self.user_data_dir, &self.user_cache_dir] {
-            if let Some(parent) = root.parent() {
-                if path_ref.starts_with(parent) {
-                    return Ok(path_ref.to_path_buf());
-                }
-                if let (Some(target), Ok(canonical_parent)) =
-                    (resolved_target.as_ref(), std::fs::canonicalize(parent))
-                    && target.starts_with(&canonical_parent)
-                {
-                    return Ok(target.to_path_buf());
-                }
             }
         }
 
