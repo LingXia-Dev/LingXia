@@ -43,6 +43,11 @@ use windows::Win32::System::Threading::{AttachThreadInput, GetCurrentThreadId};
 // Only the shell-chrome transparent-tabbar overlay cleanup needs the PID.
 #[cfg(feature = "shell-chrome")]
 use windows::Win32::System::Threading::GetCurrentProcessId;
+#[cfg(all(feature = "shell-chrome", feature = "terminal-runtime"))]
+use windows::Win32::UI::Input::Ime::{
+    CANDIDATEFORM, CFS_EXCLUDE, CFS_POINT, COMPOSITIONFORM, ImmGetContext, ImmReleaseContext,
+    ImmSetCandidateWindow, ImmSetCompositionWindow,
+};
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     GetKeyState, ReleaseCapture, SetCapture, SetFocus, TME_LEAVE, TRACKMOUSEEVENT, TrackMouseEvent,
     VK_CONTROL, VK_MENU, VK_SHIFT,
@@ -6030,6 +6035,8 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
             WindowsAndMessaging::WM_PAINT => {
                 if windows_chrome_renderer().is_some() && !is_native_framed_window(hwnd) {
                     paint_window_chrome(hwnd);
+                    #[cfg(all(feature = "shell-chrome", feature = "terminal-runtime"))]
+                    let _ = sync_terminal_ime_position(hwnd);
                     return LRESULT(0);
                 }
                 unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
@@ -6157,6 +6164,12 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                         WindowsAndMessaging::PostQuitMessage(0);
                     }
                 }
+                unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
+            }
+            WindowsAndMessaging::WM_IME_STARTCOMPOSITION
+            | WindowsAndMessaging::WM_IME_COMPOSITION => {
+                #[cfg(all(feature = "shell-chrome", feature = "terminal-runtime"))]
+                let _ = sync_terminal_ime_position(hwnd);
                 unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
             }
             WindowsAndMessaging::WM_CHAR => {
@@ -6364,6 +6377,46 @@ fn handle_host_panel_key_message(msg: u32, wparam: WPARAM) -> bool {
 
 fn key_is_down(vk: i32) -> bool {
     unsafe { GetKeyState(vk) < 0 }
+}
+
+/// Positions Windows IME UI at the focused terminal's painted cursor. The
+/// terminal is a custom-drawn host panel, so Windows has no native edit caret
+/// from which it could infer these coordinates.
+#[cfg(all(feature = "shell-chrome", feature = "terminal-runtime"))]
+fn sync_terminal_ime_position(hwnd: HWND) -> bool {
+    let Some(panel_id) = focused_input_host_panel().filter(|panel_id| panel_id == "terminal")
+    else {
+        return false;
+    };
+    let Some(cursor) = crate::shell::terminal_grid::focused_cursor_rect(&panel_id) else {
+        return false;
+    };
+
+    unsafe {
+        let context = ImmGetContext(hwnd);
+        if context.is_invalid() {
+            return false;
+        }
+        let point = POINT {
+            x: cursor.left,
+            y: cursor.top,
+        };
+        let composition = COMPOSITIONFORM {
+            dwStyle: CFS_POINT,
+            ptCurrentPos: point,
+            rcArea: cursor,
+        };
+        let candidate = CANDIDATEFORM {
+            dwIndex: 0,
+            dwStyle: CFS_EXCLUDE,
+            ptCurrentPos: point,
+            rcArea: cursor,
+        };
+        let composition_set = ImmSetCompositionWindow(context, &composition).as_bool();
+        let candidate_set = ImmSetCandidateWindow(context, &candidate).as_bool();
+        let _ = ImmReleaseContext(hwnd, context);
+        composition_set || candidate_set
+    }
 }
 
 fn focused_input_host_panel() -> Option<String> {

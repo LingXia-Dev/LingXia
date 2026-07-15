@@ -218,6 +218,55 @@ pub(super) fn panel_body_rect(panel_id: &str) -> Option<RECT> {
     panel_grids().get(panel_id)?.body
 }
 
+/// Focused terminal cursor cell in host-window client coordinates. Windows
+/// IME uses this to keep composition and candidate UI attached to the prompt.
+#[cfg(feature = "shell-chrome")]
+pub(crate) fn focused_cursor_rect(panel_id: &str) -> Option<RECT> {
+    let body = panel_grids().get(panel_id)?.body?;
+    let frame = super::terminal_panel::active_pane_frames(panel_id, body)
+        .into_iter()
+        .find(|frame| frame.focused)?;
+    let grids = session_grids();
+    let state = grids.get(&frame.session_id)?;
+    let snapshot = state.snapshot.as_ref()?;
+    let geometry = state.geometry?;
+    cursor_rect_for_grid(
+        inset_rect(frame.rect, GRID_PADDING, GRID_PADDING),
+        snapshot.cursor_col,
+        snapshot.cursor_row,
+        snapshot.cols,
+        snapshot.rows,
+        geometry.cell_width,
+        geometry.line_height,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn cursor_rect_for_grid(
+    grid: RECT,
+    cursor_col: u16,
+    cursor_row: u16,
+    cols: u16,
+    rows: u16,
+    cell_width: i32,
+    line_height: i32,
+) -> Option<RECT> {
+    if cols == 0 || rows == 0 || cell_width <= 0 || line_height <= 0 {
+        return None;
+    }
+    let col = i32::from(cursor_col.min(cols - 1));
+    let row = i32::from(cursor_row.min(rows - 1));
+    let left = grid.left + col * cell_width;
+    let top = grid.top + row * line_height;
+    Some(RECT {
+        left,
+        top,
+        right: (left + cell_width).min(grid.right),
+        bottom: (top + line_height).min(grid.bottom),
+    })
+    .filter(|rect| rect.right > rect.left && rect.bottom > rect.top)
+}
+
 #[cfg(feature = "shell-chrome")]
 fn selection_point(
     panel_id: &str,
@@ -1044,6 +1093,32 @@ mod tests {
         assert_eq!(
             cell_style(&inverse, 0x112233, 0xaabbcc, false).color,
             0x112233
+        );
+    }
+
+    #[test]
+    fn terminal_cursor_rect_tracks_the_grid_cell() {
+        assert_eq!(
+            cursor_rect_for_grid(
+                RECT {
+                    left: 8,
+                    top: 20,
+                    right: 808,
+                    bottom: 420,
+                },
+                7,
+                3,
+                80,
+                20,
+                10,
+                20,
+            ),
+            Some(RECT {
+                left: 78,
+                top: 80,
+                right: 88,
+                bottom: 100,
+            })
         );
     }
 }
