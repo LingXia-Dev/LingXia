@@ -51,8 +51,7 @@ enum Commands {
     Session(SessionCmd),
     /// Automate the local desktop OS (no dev session required)
     Desktop(desktop::DesktopOptions),
-    /// Removed: session commands moved under `lxdev lxapp`
-    #[command(hide = true)]
+    /// Automate the host app surface in the current dev session
     App(app::AppOptions),
     /// Attach a remote dev session by its ws URL (from `lingxia dev --lan`)
     Attach {
@@ -156,8 +155,10 @@ fn main() -> Result<()> {
         },
         // Local OS automation: no dev session; the handler owns process exit.
         Commands::Desktop(options) => desktop::execute(options),
-        // Removed namespace: emit a migration hint without needing a session.
-        Commands::App(options) => app::migrate(options),
+        Commands::App(options) => {
+            let info = resolve(&selector)?;
+            app::execute(&info, options)
+        }
         Commands::Attach { ws_url, name } => remotes::attach(&ws_url, name),
         Commands::Detach(options) => {
             if options.unreachable {

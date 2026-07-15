@@ -37,7 +37,7 @@ The URL is stable across the remote's dev restarts, so one attach lasts. Attache
 
 ## Capabilities
 
-**`lxapp`** — the lxapps in the session. Every command targets the **current** lxapp by default (`--app` to pick another); page commands likewise default to the **current page** (`--page` to pick):
+**`lxapp`** — the lxapps and runtime pages in the session. Every command targets the **current** lxapp by default (`--app` to pick another); page commands likewise default to the **current page** (`--page` accepts a configured page name or the stable `instance_id` returned by `page current|list|info`):
 - `list` / `current` / `info` / `pages` — what's running, and the configured pages
 - `open` / `close` / `restart` / `uninstall` — lifecycle (`restart` relaunches the runtime without rebuilding)
 - `reload` — rebuild the lxapp front-end bundle through the running session, then reload the running lxapp so the new bundle is live (covers Web, Logic, and `lxapp.json` changes); `--build-only` skips the runtime reload
@@ -47,11 +47,17 @@ The URL is stable across the remote's dev restarts, so one attach lasts. Attache
 - `page query|click|type|fill|press` — element-level automation in the page WebView (works cross-platform: native input on desktop/attached, JS synthesis on iOS/Android/Harmony/AppUI-detached)
 - `page scroll` (by `--dx`/`--dy`) / `page scroll-to --css` — scroll the page DOM (nearest scroll container) or bring an element into view
 - `page back` — pop the page stack
-- `page pointer move|down|up|click|drag|scroll` — raw input at window coordinates (vs DOM-level `page click`/`type`; useful when you need real hit-testing or to reach native surfaces)
-- `page key text|press` — keyboard input to the session's focused control
 - `page screenshot` — PNG of one page's WebView
-- `windows` — enumerate the session's top-level windows; the id feeds `--window` on `screenshot` / `page pointer` / `page key`. Mobile is a single window; on desktop each window is separate (macOS AppUI surfaces — DockedBrowser, floats — are their own windows), so `--window` only disambiguates there
-- `screenshot` — the session's **full app surface**: native controls, overlays, composited WebViews (vs `page screenshot`, which is one page's WebView)
+
+`lxapp` deliberately has no window selector: a page is the core automation target, independent of how the host embeds it.
+
+**`app`** — the selected dev session's host surface. Use this only when the target is the host window rather than an lxapp page:
+- `windows` — enumerate top-level host windows; the id feeds `--window` on the other `app` commands
+- `screenshot` — capture the full host surface, including native controls, overlays, and composited WebViews
+- `mouse move|down|up|click|drag|scroll` — raw input in logical window content coordinates
+- `key type|press` — keyboard input to the host window's focused control
+
+Mobile reports one host window. Desktop hosts may report several (for example macOS AppUI surfaces); omit `--window` to use the focused/main window.
 
 **`browser`** — the host app's browser tabs (arbitrary web content, Playwright-like):
 - `open` / `tabs` / `current` / `activate` / `close` / `reload` / `back` / `forward`
@@ -86,8 +92,9 @@ background input is not implemented by the current backend. Without a target,
 input goes to the foreground app. Window screenshots remain
 occlusion-independent, but separate native popups may require their own capture.
 
-Prefer `browser` or `lxapp page` for WebView content and use `desktop` for native
-chrome. Owner-drawn Win32 controls may not expose accessibility nodes.
+Prefer `browser` or `lxapp page` for WebView content, `app` for the selected
+session's native host surface, and `desktop` for arbitrary local OS chrome.
+Owner-drawn Win32 controls may not expose accessibility nodes.
 
 ## Output contract
 
