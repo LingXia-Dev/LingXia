@@ -51,6 +51,13 @@ use sidebar::*;
 pub use top_bar::begin_address_edit;
 use top_bar::*;
 
+pub(in crate::shell) fn panel_activator_footer_height(
+    width: i32,
+    activators: &[WindowsShellPanelActivatorLayout],
+) -> i32 {
+    panel_activator_footer_height_for_width(width, activators)
+}
+
 /// More (horizontal ellipsis): the app-menu button at the leading edge.
 /// Drawn as a subtle monochrome glyph so it sits cohesively in the same
 /// caption row as the toggle and sidebar header actions (Arc-style) rather
@@ -91,7 +98,7 @@ pub(super) const SIDEBAR_CHEVRON_SIZE: i32 = 18;
 pub(super) const SIDEBAR_HEADER_ACTION_SIZE: i32 = 22;
 pub(super) const SIDEBAR_HEADER_ACTION_GAP: i32 = 4;
 
-pub(super) const SHELL_SIDEBAR_WIDTH: i32 = 180;
+pub(super) const SHELL_SIDEBAR_WIDTH: i32 = 220;
 
 /// Width of the icon-only rail (the macOS first-collapse state).
 pub(super) const SHELL_SIDEBAR_RAIL_WIDTH: i32 = 44;
@@ -119,8 +126,6 @@ pub(super) const SIDEBAR_PARENT_CHILD_GAP: i32 = 2;
 
 pub(super) const SIDEBAR_ITEM_INSET: i32 = 10;
 
-pub(super) const SIDEBAR_FOOTER_HEIGHT: i32 = 40;
-
 /// Width of the close-glyph hit area at the trailing edge of a browser row.
 pub(super) const SIDEBAR_BROWSER_CLOSE_SIZE: i32 = 22;
 
@@ -145,13 +150,15 @@ pub(super) const SIDEBAR_FAVICON_SIZE: i32 = 16;
 /// Gap between a browser row's favicon and its title text.
 pub(super) const SIDEBAR_FAVICON_TEXT_GAP: i32 = 6;
 
-pub(super) const PANEL_ACTIVATOR_SIZE: i32 = 28;
+pub(super) const PANEL_ACTIVATOR_SIZE: i32 = 30;
 
 pub(super) const PANEL_ACTIVATOR_ICON_SIZE: i32 = 16;
 
 pub(super) const PANEL_ACTIVATOR_GAP: i32 = 4;
 
 pub(super) const PANEL_ACTIVATOR_MARGIN: i32 = 6;
+
+pub(super) const PANEL_ACTIVATOR_MAX_ROWS: usize = 5;
 
 pub(super) const BROWSER_PANEL_HEADER_PADDING: i32 = 8;
 pub(super) const BROWSER_PANEL_BUTTON_SIZE: i32 = 28;
@@ -597,7 +604,9 @@ fn tabbar_requires_full_repaint(
         || old_tabbar.items != new_tabbar.items
         || old_tabbar.collapsed != new_tabbar.collapsed
         || old_tabbar.icon_rail != new_tabbar.icon_rail
+        || old_tabbar.items_api_hidden != new_tabbar.items_api_hidden
         || old_tabbar.items_collapsed != new_tabbar.items_collapsed
+        || old_tabbar.activator_footer_height != new_tabbar.activator_footer_height
         || old_tabbar.show_auxiliary_add != new_tabbar.show_auxiliary_add
         || old_tabbar.header_actions != new_tabbar.header_actions
         || !same_auxiliary_row_slots(old_tabbar, new_tabbar)
@@ -758,7 +767,8 @@ pub(super) fn compute_chrome_rects(client: RECT, layout: &WindowsShellWindowLayo
                 && (!tabbar.items.is_empty()
                     || !tabbar.auxiliary_items.is_empty()
                     || tabbar.show_auxiliary_add
-                    || !tabbar.header_actions.is_empty())
+                    || !tabbar.header_actions.is_empty()
+                    || tabbar.activator_footer_height > 0)
         })
         .map(|tabbar| match tabbar.position {
             WindowsShellTabBarPosition::Left => {
@@ -1562,7 +1572,10 @@ pub(super) fn chrome_hit_test(
                     json!({ "tab_id": format!("lxapp:{}", tabbar.group_id) }),
                 ));
             }
-            if rect_contains(&sidebar_group_chevron_rect(tabbar_rect, tabbar), point) {
+            if !tabbar.items_api_hidden
+                && !tabbar.items.is_empty()
+                && rect_contains(&sidebar_group_chevron_rect(tabbar_rect, tabbar), point)
+            {
                 return Some(chrome_command(
                     command_id::SIDEBAR_GROUP_TOGGLE,
                     json!({ "group": tabbar.group_id.clone() }),

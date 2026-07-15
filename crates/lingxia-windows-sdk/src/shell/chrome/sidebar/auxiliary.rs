@@ -28,7 +28,8 @@ pub(in crate::shell::chrome) fn sidebar_pinned_grid_height(
     // `sidebar_auxiliary_rects` drops rows that would cross the footer;
     // reserve height only for rows that actually render, or the sections
     // below would shift as if the dropped rows existed.
-    let available = (rect.bottom - SIDEBAR_FOOTER_HEIGHT) - (rect.top + SHELL_TOP_BAR_HEIGHT);
+    let available =
+        (rect.bottom - tabbar.activator_footer_height) - (rect.top + SHELL_TOP_BAR_HEIGHT);
     let fitting_rows = if available < PINNED_SHORTCUT_SIZE {
         0
     } else {
@@ -57,7 +58,7 @@ pub(in crate::shell::chrome) fn sidebar_auxiliary_rects(
     if tabbar.auxiliary_items.is_empty() && !tabbar.show_auxiliary_add {
         return None;
     }
-    let footer_top = rect.bottom - SIDEBAR_FOOTER_HEIGHT;
+    let footer_top = rect.bottom - tabbar.activator_footer_height;
     // A collapsed items group hides its rows; the auxiliary section moves up
     // directly under the group header.
     let pinned_height = sidebar_pinned_grid_height(rect, tabbar);

@@ -35,7 +35,7 @@ use lingxia_windows_contract::present_webview_in_active_group;
 use lxapp::{LxApp, LxAppDelegate, LxAppStartupOptions, LxAppUiEventType, ReleaseType};
 
 const DEFAULT_NAV_BAR_HEIGHT: i32 = 38;
-const MIN_SIDEBAR_WIDTH: i32 = 180;
+const MIN_SIDEBAR_WIDTH: i32 = 220;
 /// Bottom tab bar height (icons + labels). The strip sits just above the
 /// content area's bottom, which is already inset for the home-indicator safe
 /// area, so no extra height is reserved here.
@@ -818,10 +818,9 @@ fn build_window_layout(app: &LxApp, path: &str) -> WindowsShellWindowLayout {
     // A presented browser tab covers the phone tab bar, matching the macOS
     // runner's full-screen browser surface; side tab bars (sidebar) stay.
     let tab_bar_app = tab_bar_owner_for_layout(app, owner_app.as_deref());
-    let tab_bar =
-        build_tab_bar_layout(tab_bar_app, !panel_activators.is_empty()).filter(|tabbar| {
-            address_bar.is_none() || !matches!(tabbar.position, WindowsShellTabBarPosition::Bottom)
-        });
+    let tab_bar = build_tab_bar_layout(tab_bar_app, &panel_activators).filter(|tabbar| {
+        address_bar.is_none() || !matches!(tabbar.position, WindowsShellTabBarPosition::Bottom)
+    });
     WindowsShellWindowLayout {
         navigation_bar,
         address_bar,
@@ -1034,7 +1033,7 @@ fn normalize_tab_path(path: &str) -> &str {
 
 fn build_tab_bar_layout(
     app: &LxApp,
-    has_panel_activators: bool,
+    panel_activators: &[WindowsShellPanelActivatorLayout],
 ) -> Option<WindowsShellTabBarLayout> {
     if lxapp::open_region(&app.appid) == Some(lxapp::LxAppOpenRegion::Aside) {
         return None;
@@ -1094,7 +1093,7 @@ fn build_tab_bar_layout(
     let show_auxiliary_add = browser_runtime_enabled() && !device_framed;
     let header_actions = build_sidebar_header_actions();
     let sidebar_has_content =
-        !items.is_empty() || !auxiliary_items.is_empty() || has_panel_activators;
+        !items.is_empty() || !auxiliary_items.is_empty() || !panel_activators.is_empty();
     if !sidebar_has_content {
         return None;
     }
@@ -1145,13 +1144,24 @@ fn build_tab_bar_layout(
         .map(|tabbar| tabbar.backgroundColor.as_str())
         .unwrap_or("#ffffff");
     let tabbar_background_transparent = is_transparent_css_color(tabbar_background);
+    let desktop_sidebar = matches!(
+        position,
+        WindowsShellTabBarPosition::Left | WindowsShellTabBarPosition::Right
+    );
+    let items_api_hidden =
+        desktop_sidebar && tabbar.as_ref().is_some_and(|tabbar| tabbar.api_hidden);
     Some(WindowsShellTabBarLayout {
-        // Hidden ⇒ `compute_chrome_rects` reserves no strip, so the WebView
-        // reclaims the space and nothing draws.
-        visible: tabbar
-            .as_ref()
-            .map(|tabbar| tabbar.is_visible)
-            .unwrap_or(true),
+        // Mobile navigation may flip `is_visible` on detail pages. Desktop
+        // sidebar chrome is stable; only an explicit API hide affects its
+        // child rows, never the sidebar or the parent lxapp tab itself.
+        visible: if desktop_sidebar {
+            true
+        } else {
+            tabbar
+                .as_ref()
+                .map(|tabbar| tabbar.is_visible)
+                .unwrap_or(true)
+        },
         position,
         dimension,
         app_name: runtime_info.app_name,
@@ -1162,7 +1172,13 @@ fn build_tab_bar_layout(
         group_order_index,
         collapsed: ui_state.collapsed,
         icon_rail: ui_state.icon_rail,
-        items_collapsed: ui_state.items_collapsed,
+        items_api_hidden,
+        items_collapsed: items_api_hidden || ui_state.items_collapsed,
+        activator_footer_height: if desktop_sidebar {
+            super::chrome::panel_activator_footer_height(dimension, panel_activators)
+        } else {
+            0
+        },
         color: parse_css_color(
             tabbar
                 .as_ref()
@@ -1597,6 +1613,7 @@ fn build_panel_activators(app: &LxApp) -> Vec<WindowsShellPanelActivatorLayout> 
                         label: item.label,
                         label_color: None,
                         icon_path,
+                        weight: 1_000,
                         position: panel_position(item.position),
                         active: is_panel_visible(&item.id),
                     }
@@ -1648,11 +1665,18 @@ fn build_runtime_activators(
                 .get("color")
                 .and_then(serde_json::Value::as_str)
                 .map(|color| parse_css_color(color, super::style::shell_palette().text_muted));
+            let weight = item
+                .get("weight")
+                .and_then(serde_json::Value::as_f64)
+                .filter(|weight| weight.is_finite() && *weight > 0.0)
+                .map(|weight| (weight * 1_000.0).round().clamp(1.0, 1_000_000.0) as u32)
+                .unwrap_or(1_000);
             Some(WindowsShellPanelActivatorLayout {
                 id: format!("runtime:{kind}:{key}"),
                 label,
                 label_color,
                 icon_path,
+                weight,
                 position,
                 active: runtime_activator_active(kind, key),
             })

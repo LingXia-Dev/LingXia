@@ -1441,7 +1441,8 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
                 },
                 id: item.id,
                 iconURL: item.iconURL,
-                label: item.label
+                label: item.label,
+                weight: item.weight
             )
         }
         sidebarView?.updatePanelItems(sidebarItems)

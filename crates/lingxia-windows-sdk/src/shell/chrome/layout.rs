@@ -87,7 +87,14 @@ pub struct WindowsShellTabBarLayout {
     /// Sidebar collapsed to an icon-only rail (the macOS first-collapse
     /// state). Ignored when `collapsed` is set.
     pub icon_rail: bool,
+    /// The lxapp explicitly hid its tabbar. Desktop keeps the group and the
+    /// surrounding sidebar visible, but removes the child rows and disables
+    /// the chevron until `showTabBar()` clears this state.
+    pub items_api_hidden: bool,
     pub items_collapsed: bool,
+    /// Height reserved at the sidebar bottom for adaptive activator rows.
+    /// Zero when no activators are declared.
+    pub activator_footer_height: i32,
     pub auxiliary_items: Vec<WindowsShellAuxiliaryItemLayout>,
     pub show_auxiliary_add: bool,
     pub header_actions: Vec<WindowsShellHeaderActionLayout>,
@@ -121,6 +128,8 @@ pub struct WindowsShellPanelActivatorLayout {
     pub label: String,
     pub label_color: Option<u32>,
     pub icon_path: String,
+    /// Flex weight within the adaptive visual row, normalized to thousandths.
+    pub weight: u32,
     pub position: WindowsPanelPosition,
     pub active: bool,
 }

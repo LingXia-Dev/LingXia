@@ -102,6 +102,26 @@ fn optional_item_string(item: &JSObject, field: &str) -> JSResult<Option<String>
     Ok(Some(value.to_string()))
 }
 
+fn optional_item_weight(item: &JSObject) -> JSResult<Option<f64>> {
+    if !has_item_property(item, "weight") {
+        return Ok(None);
+    }
+    let weight = item.get::<_, f64>("weight").map_err(|_| {
+        rong::HostError::new(
+            rong::error::E_INVALID_ARG,
+            "activator item weight must be a number",
+        )
+    })?;
+    if !weight.is_finite() || weight <= 0.0 {
+        return Err(rong::HostError::new(
+            rong::error::E_INVALID_ARG,
+            "activator item weight must be finite and greater than zero",
+        )
+        .into());
+    }
+    Ok(Some(weight))
+}
+
 /// Validate and serialize one incoming item without mutating handler state.
 /// Surface items carry exactly one content key (`lxapp` / `native`); action
 /// items carry `id` + `handler`.
@@ -124,6 +144,7 @@ fn parse_item(item: &JSObject) -> JSResult<ParsedActivatorItem> {
     let name = optional_item_string(item, "name")?;
     let icon = optional_item_string(item, "icon")?;
     let color = optional_item_string(item, "color")?;
+    let weight = optional_item_weight(item)?;
     if let Some(app_id) = app_id {
         if has_item_property(item, "handler") {
             return Err(rong::HostError::new(
@@ -133,7 +154,7 @@ fn parse_item(item: &JSObject) -> JSResult<ParsedActivatorItem> {
             .into());
         }
         return Ok(ParsedActivatorItem {
-            value: json!({ "kind": "lxapp", "key": app_id, "name": name, "icon": icon, "color": color }),
+            value: json!({ "kind": "lxapp", "key": app_id, "name": name, "icon": icon, "color": color, "weight": weight }),
             action_handler: None,
         });
     }
@@ -146,7 +167,7 @@ fn parse_item(item: &JSObject) -> JSResult<ParsedActivatorItem> {
             .into());
         }
         return Ok(ParsedActivatorItem {
-            value: json!({ "kind": "native", "key": capability, "name": name, "icon": icon, "color": color }),
+            value: json!({ "kind": "native", "key": capability, "name": name, "icon": icon, "color": color, "weight": weight }),
             action_handler: None,
         });
     }
@@ -171,7 +192,7 @@ fn parse_item(item: &JSObject) -> JSResult<ParsedActivatorItem> {
         )
     })?;
     Ok(ParsedActivatorItem {
-        value: json!({ "kind": "action", "key": id, "name": name, "icon": icon, "color": color }),
+        value: json!({ "kind": "action", "key": id, "name": name, "icon": icon, "color": color, "weight": weight }),
         action_handler: Some((id, handler)),
     })
 }

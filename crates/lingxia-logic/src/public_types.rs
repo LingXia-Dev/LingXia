@@ -1460,6 +1460,7 @@ true
     icon?: string;
     name?: string;
     color?: string;
+    weight?: number;
 } | {
     native: string;
     lxapp?: never;
@@ -1468,6 +1469,7 @@ true
     icon?: string;
     name?: string;
     color?: string;
+    weight?: number;
 } | {
     id: string;
     lxapp?: never;
@@ -1475,6 +1477,7 @@ true
     icon: string;
     name: string;
     color?: string;
+    weight?: number;
     handler: () => void;
 }"###;
 

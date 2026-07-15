@@ -208,6 +208,7 @@ struct PanelIconItem {
     let id: String
     let iconURL: URL?
     let label: String
+    let weight: CGFloat
 }
 
 // MARK: - SidebarModel
@@ -254,6 +255,7 @@ private struct SidebarModel {
 extension PanelIconItem: Equatable {
     static func == (lhs: PanelIconItem, rhs: PanelIconItem) -> Bool {
         lhs.id == rhs.id && lhs.iconURL == rhs.iconURL && lhs.label == rhs.label
+            && lhs.labelColor == rhs.labelColor && lhs.weight == rhs.weight
     }
 }
 
@@ -311,8 +313,8 @@ class SidebarView: NSView, NSPopoverDelegate {
     private let footerSeparator = NSView()
     /// Footer height tracks the activator row count (see renderPanelItems).
     private var footerHeightConstraint: NSLayoutConstraint?
-    /// Horizontal stack that holds trailing product/action buttons.
-    private let panelStack = NSStackView()
+    /// Adaptive flow that keeps short activators on the same visual row.
+    private let panelFlow = ActivatorFlowView()
     /// Caps the activator area: rows beyond footerMaxRows scroll in here.
     private let panelScroll = NSScrollView()
     /// The expanded-state collapse toggle. Lives in the header, next to the
@@ -489,6 +491,11 @@ class SidebarView: NSView, NSPopoverDelegate {
     // Prevent window drag when SidebarView itself receives events
     override public var mouseDownCanMoveWindow: Bool { false }
 
+    override func layout() {
+        super.layout()
+        updateActivatorFooterHeight()
+    }
+
     // MARK: - Setup
 
     private func setupViews() {
@@ -593,15 +600,10 @@ class SidebarView: NSView, NSPopoverDelegate {
         footerSeparator.layer?.backgroundColor = NSColor.labelColor.withAlphaComponent(0.12).cgColor
         footerView.addSubview(footerSeparator)
 
-        panelStack.translatesAutoresizingMaskIntoConstraints = false
-        // Activator entries stack as full-width rows: icon on the left, title on
-        // the right. Icon-only presentation lives in the collapsed rail. The
-        // stack lives in a scroll view: past footerMaxRows the area caps and
-        // scrolls internally instead of squeezing the tab list above.
-        panelStack.orientation = .vertical
-        panelStack.spacing = 2
-        panelStack.alignment = .width
-        panelStack.distribution = .fill
+        panelFlow.translatesAutoresizingMaskIntoConstraints = false
+        // Short icon+title cells share a visual row; cells wrap as a whole only
+        // when the next minimum width no longer fits. The document remains
+        // taller than the capped footer so overflow scrolls internally.
         panelScroll.translatesAutoresizingMaskIntoConstraints = false
         panelScroll.drawsBackground = false
         panelScroll.hasVerticalScroller = true
@@ -609,13 +611,13 @@ class SidebarView: NSView, NSPopoverDelegate {
         panelScroll.verticalScrollElasticity = .none
         let panelDoc = FlippedClipView()
         panelDoc.translatesAutoresizingMaskIntoConstraints = false
-        panelDoc.addSubview(panelStack)
+        panelDoc.addSubview(panelFlow)
         panelScroll.documentView = panelDoc
         NSLayoutConstraint.activate([
-            panelStack.topAnchor.constraint(equalTo: panelDoc.topAnchor),
-            panelStack.leadingAnchor.constraint(equalTo: panelDoc.leadingAnchor),
-            panelStack.trailingAnchor.constraint(equalTo: panelDoc.trailingAnchor),
-            panelStack.bottomAnchor.constraint(equalTo: panelDoc.bottomAnchor),
+            panelFlow.topAnchor.constraint(equalTo: panelDoc.topAnchor),
+            panelFlow.leadingAnchor.constraint(equalTo: panelDoc.leadingAnchor),
+            panelFlow.trailingAnchor.constraint(equalTo: panelDoc.trailingAnchor),
+            panelFlow.bottomAnchor.constraint(equalTo: panelDoc.bottomAnchor),
             panelDoc.widthAnchor.constraint(equalTo: panelScroll.widthAnchor),
         ])
         footerView.addSubview(panelScroll)
@@ -904,6 +906,22 @@ class SidebarView: NSView, NSPopoverDelegate {
             railStack.addArrangedSubview(addRailButton)
         }
 
+        // In the icon rail, an activator keeps only its icon; its single-line
+        // title moves to the tooltip and the click target stays identical.
+        for item in model.panelItems {
+            let image = item.iconURL.flatMap { NSImage(contentsOf: $0) } ?? Self.defaultAppIcon
+            let key = "activator:\(item.id)"
+            let button = makeRailButton(
+                key: key,
+                tooltip: item.label,
+                image: image,
+                isTemplate: false
+            )
+            button.action = #selector(railActivatorClicked(_:))
+            railStack.addArrangedSubview(button)
+            railButtons[key] = button
+        }
+
         // The expand toggle is not part of this stack — it's pinned to the rail's
         // bottom in setup() so it always anchors the bottom regardless of how many
         // activators are present.
@@ -959,6 +977,12 @@ class SidebarView: NSView, NSPopoverDelegate {
         closeRailTabPopover()
         guard let key = sender.identifier?.rawValue, key.hasPrefix("web:") else { return }
         onBrowserTabSelected?(String(key.dropFirst(4)))
+    }
+
+    @objc private func railActivatorClicked(_ sender: NSButton) {
+        closeRailTabPopover()
+        guard let key = sender.identifier?.rawValue, key.hasPrefix("activator:") else { return }
+        onPanelItemToggled?(String(key.dropFirst("activator:".count)))
     }
 
     private func browserContextMenu(for id: String) -> NSMenu? {
@@ -1252,6 +1276,7 @@ class SidebarView: NSView, NSPopoverDelegate {
     func updatePanelItems(_ items: [PanelIconItem]) {
         model.panelItems = items
         renderPanelItems()
+        if isCompact { rebuildRail() }
         updateVisibilityState()
     }
 
@@ -1265,24 +1290,16 @@ class SidebarView: NSView, NSPopoverDelegate {
         renderedPanelItems = items
 
         // Remove existing panel buttons.
-        panelButtons.forEach {
-            panelStack.removeArrangedSubview($0)
-            $0.removeFromSuperview()
-        }
+        panelFlow.setEntries([])
         panelButtons.removeAll()
 
-        // Footer height tracks the row count, capped at footerMaxRows — past
-        // that the stack scrolls inside the fixed-height area.
-        let rows = min(CGFloat(items.count), Layout.footerMaxRows)
-        footerHeightConstraint?.constant = items.isEmpty
-            ? 0
-            : Layout.footerInset * 2 + 1 + rows * Layout.footerButtonSize + (rows - 1) * panelStack.spacing
+        guard !items.isEmpty else {
+            footerHeightConstraint?.constant = 0
+            return
+        }
 
-        guard !items.isEmpty else { return }
-
+        var entries: [(ActivatorRowView, CGFloat)] = []
         for item in items {
-            // A custom row, not an NSButton: a borderless button centers its
-            // image+title block, so left alignment is impossible with it.
             let row = ActivatorRowView(
                 label: item.label,
                 iconURL: item.iconURL,
@@ -1291,9 +1308,30 @@ class SidebarView: NSView, NSPopoverDelegate {
             row.onClick = { [weak self] in
                 self?.onPanelItemToggled?(item.id)
             }
-            row.heightAnchor.constraint(equalToConstant: Layout.footerButtonSize).isActive = true
-            panelStack.addArrangedSubview(row)
+            entries.append((row, item.weight))
             panelButtons.append(row)
+        }
+        panelFlow.setEntries(entries)
+        updateActivatorFooterHeight()
+    }
+
+    private func updateActivatorFooterHeight() {
+        guard !model.panelItems.isEmpty else {
+            footerHeightConstraint?.constant = 0
+            return
+        }
+        let width = max(
+            1,
+            panelScroll.contentView.bounds.width > 1
+                ? panelScroll.contentView.bounds.width
+                : bounds.width - Layout.footerLeading - Layout.footerInset - Layout.resizeHandleWidth
+        )
+        let rows = min(CGFloat(panelFlow.visualRowCount(for: width)), Layout.footerMaxRows)
+        let height = Layout.footerInset * 2 + 1
+            + rows * Layout.footerButtonSize
+            + max(0, rows - 1) * ActivatorFlowView.gap
+        if footerHeightConstraint?.constant != height {
+            footerHeightConstraint?.constant = height
         }
     }
 
@@ -1901,6 +1939,108 @@ private final class FlippedClipView: NSView {
     override var isFlipped: Bool { true }
 }
 
+/// Wraps whole icon+title cells while keeping each title single-line. Width
+/// left after intrinsic cell sizing is distributed by the writer's flex weight.
+@MainActor
+private final class ActivatorFlowView: NSView {
+    static let gap: CGFloat = 4
+    private static let rowHeight: CGFloat = 30
+    private static let minimumCellWidth: CGFloat = 72
+
+    private var entries: [(view: ActivatorRowView, weight: CGFloat)] = []
+    private var lastLayoutWidth: CGFloat = 0
+
+    override var isFlipped: Bool { true }
+
+    func setEntries(_ entries: [(ActivatorRowView, CGFloat)]) {
+        self.entries.forEach { $0.view.removeFromSuperview() }
+        self.entries = entries.map { entry in
+            let weight = entry.1.isFinite && entry.1 > 0 ? entry.1 : 1
+            entry.0.translatesAutoresizingMaskIntoConstraints = true
+            addSubview(entry.0)
+            return (entry.0, weight)
+        }
+        invalidateIntrinsicContentSize()
+        needsLayout = true
+    }
+
+    func visualRowCount(for width: CGFloat) -> Int {
+        rowRanges(for: width).count
+    }
+
+    override var intrinsicContentSize: NSSize {
+        let width = bounds.width > 1 ? bounds.width : max(lastLayoutWidth, 200)
+        let rows = visualRowCount(for: width)
+        let height = CGFloat(rows) * Self.rowHeight
+            + CGFloat(max(0, rows - 1)) * Self.gap
+        return NSSize(width: NSView.noIntrinsicMetric, height: height)
+    }
+
+    override func layout() {
+        super.layout()
+        let width = max(1, bounds.width)
+        if abs(width - lastLayoutWidth) > 0.5 {
+            lastLayoutWidth = width
+            invalidateIntrinsicContentSize()
+        }
+        var y: CGFloat = 0
+        for range in rowRanges(for: width) {
+            let row = Array(entries[range])
+            let preferred = row.map {
+                min(width, max(Self.minimumCellWidth, $0.view.preferredCellWidth))
+            }
+            let gaps = CGFloat(max(0, row.count - 1)) * Self.gap
+            let extra = max(0, width - preferred.reduce(0, +) - gaps)
+            let totalWeight = max(1, row.reduce(CGFloat(0)) { $0 + $1.weight })
+            var x: CGFloat = 0
+            var allocatedExtra: CGFloat = 0
+            for index in row.indices {
+                let isLast = index == row.count - 1
+                let share: CGFloat
+                if isLast {
+                    share = extra - allocatedExtra
+                } else {
+                    share = (extra * row[index].weight / totalWeight).rounded(.down)
+                    allocatedExtra += share
+                }
+                let cellWidth = isLast ? width - x : preferred[index] + share
+                row[index].view.frame = NSRect(
+                    x: x,
+                    y: y,
+                    width: max(1, cellWidth),
+                    height: Self.rowHeight
+                )
+                x += cellWidth + Self.gap
+            }
+            y += Self.rowHeight + Self.gap
+        }
+    }
+
+    private func rowRanges(for width: CGFloat) -> [Range<Int>] {
+        guard !entries.isEmpty else { return [] }
+        let available = max(1, width)
+        var rows: [Range<Int>] = []
+        var start = 0
+        var used: CGFloat = 0
+        for index in entries.indices {
+            let preferred = min(
+                available,
+                max(Self.minimumCellWidth, entries[index].view.preferredCellWidth)
+            )
+            let next = index == start ? preferred : used + Self.gap + preferred
+            if index > start && next > available {
+                rows.append(start..<index)
+                start = index
+                used = preferred
+            } else {
+                used = next
+            }
+        }
+        rows.append(start..<entries.count)
+        return rows
+    }
+}
+
 /// One activator entry: a left-aligned icon + title row sharing the tabbar
 /// items' rhythm (30pt, hover wash). A custom view because a borderless
 /// NSButton centers its image+title block and cannot left-align it.
@@ -1914,6 +2054,10 @@ final class ActivatorRowView: NSView {
     private var tracking: NSTrackingArea?
 
     private let washView = NSView()
+
+    var preferredCellWidth: CGFloat {
+        8 + 16 + 8 + titleLabel.intrinsicContentSize.width + 8
+    }
 
     init(label: String, iconURL: URL?, labelColor: NSColor?) {
         titleLabel = NSTextField(labelWithString: label)

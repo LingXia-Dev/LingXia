@@ -29,6 +29,8 @@ struct LxAppUIActionItem: Sendable {
     let iconURL: URL?
     /// Writer-configured title color (#RRGGBB), nil = default.
     var labelColorHex: String?
+    /// Flex weight within one adaptive activator row.
+    var weight: CGFloat = 1
 }
 
 @MainActor
@@ -358,6 +360,7 @@ final class LxAppMacAppUIRuntime: NSObject {
         let name: String?
         let icon: String?
         let color: String?     // title color, #RRGGBB
+        let weight: Double?
     }
     private var runtimeActivatorItems: [RuntimeActivatorItem] = []
     private var runtimeActivatorWriterDeclared = false
@@ -398,7 +401,8 @@ final class LxAppMacAppUIRuntime: NSObject {
                 id: "runtime:\(item.kind):\(item.key)",
                 label: title,
                 iconURL: runtimeItemIconURL(item),
-                labelColorHex: item.color
+                labelColorHex: item.color,
+                weight: CGFloat(item.weight ?? 1)
             )
         }
     }

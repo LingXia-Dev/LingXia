@@ -153,13 +153,16 @@ pub(super) fn draw_sidebar_tab_bar(
         icon_rect,
         SIDEBAR_ICON_SIZE as u32,
     );
+    let show_chevron = !tabbar.items_api_hidden && !tabbar.items.is_empty();
     let header_rect = RECT {
         left: icon_rect.right + 8,
         top: group_top,
         right: if tabbar.group_closable {
             close_rect.left - 4
-        } else {
+        } else if show_chevron {
             chevron_rect.left - 4
+        } else {
+            rect.right - SIDEBAR_ITEM_INSET
         },
         bottom: group_bottom,
     };
@@ -170,18 +173,20 @@ pub(super) fn draw_sidebar_tab_bar(
         shell_palette().sidebar_header_text,
         DT_LEFT,
     );
-    let chevron = if tabbar.items_collapsed {
-        GLYPH_CHEVRON_RIGHT
-    } else {
-        GLYPH_CHEVRON_DOWN
-    };
-    draw_hover_wash(hdc, chevron_rect, 4, cursor);
-    draw_frame_button_glyph(
-        hdc,
-        chevron,
-        chevron_rect,
-        shell_palette().sidebar_header_text,
-    );
+    if show_chevron {
+        let chevron = if tabbar.items_collapsed {
+            GLYPH_CHEVRON_RIGHT
+        } else {
+            GLYPH_CHEVRON_DOWN
+        };
+        draw_hover_wash(hdc, chevron_rect, 4, cursor);
+        draw_frame_button_glyph(
+            hdc,
+            chevron,
+            chevron_rect,
+            shell_palette().sidebar_header_text,
+        );
+    }
     if tabbar.group_closable && rect_contains(&group_rect, cursor.unwrap_or((-1, -1))) {
         draw_hover_wash(hdc, close_rect, 4, cursor);
         draw_text(
@@ -199,17 +204,19 @@ pub(super) fn draw_sidebar_tab_bar(
 
     draw_sidebar_auxiliary_section(hdc, rect, tabbar, cursor);
 
-    let footer_top = rect.bottom - SIDEBAR_FOOTER_HEIGHT;
-    draw_top_border(
-        hdc,
-        RECT {
-            left: rect.left + SIDEBAR_ITEM_INSET,
-            top: footer_top,
-            right: rect.right - SIDEBAR_ITEM_INSET,
-            bottom: rect.bottom,
-        },
-        shell_palette().divider,
-    );
+    if tabbar.activator_footer_height > 0 {
+        let footer_top = rect.bottom - tabbar.activator_footer_height;
+        draw_top_border(
+            hdc,
+            RECT {
+                left: rect.left + SIDEBAR_ITEM_INSET,
+                top: footer_top,
+                right: rect.right - SIDEBAR_ITEM_INSET,
+                bottom: rect.bottom,
+            },
+            shell_palette().divider,
+        );
+    }
     for (action_id, action_rect) in sidebar_header_action_rects(rect, tabbar) {
         let Some(action) = tabbar
             .header_actions
