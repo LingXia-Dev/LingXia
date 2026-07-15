@@ -1,11 +1,11 @@
 use super::*;
 
 #[cfg(target_os = "windows")]
-mod windows_interactive;
+pub(super) mod windows_interactive;
 
 #[cfg(target_os = "windows")]
-pub(super) fn focus_ssh_runner_window(pid: u32) -> Result<()> {
-    windows_interactive::focus_windows_process(pid)
+pub(super) fn focus_windows_launch(executable: &Path, excluded_pids: &str) -> Result<()> {
+    windows_interactive::focus_windows_launch(executable, excluded_pids)
 }
 
 const RUNNER_APP_NAME: &str = "LingXia Runner.app";
@@ -560,10 +560,7 @@ fn launch_windows_runner_for_lxapp(
             "{} Bootstrapped Runner in the interactive Windows desktop",
             "[runner]".cyan()
         );
-        RunnerProcess::WindowsShell(WindowsShellRunnerProcess {
-            handle: launch.handle,
-            _interactive_cleanup: Some(launch.cleanup),
-        })
+        RunnerProcess::WindowsShell(WindowsShellRunnerProcess { launch })
     } else {
         shell_execute_windows_runner(&exe_path, lxapp_path, &launch_args)?
     };
@@ -776,48 +773,20 @@ impl RunnerProcess {
 
 #[cfg(target_os = "windows")]
 struct WindowsShellRunnerProcess {
-    handle: ::windows::Win32::Foundation::HANDLE,
-    _interactive_cleanup: Option<windows_interactive::InteractiveRunnerCleanup>,
+    launch: windows_interactive::InteractiveLaunch,
 }
 
 #[cfg(target_os = "windows")]
 impl WindowsShellRunnerProcess {
     fn try_wait(&self) -> Result<Option<RunnerExitStatus>> {
-        use ::windows::Win32::Foundation::{WAIT_OBJECT_0, WAIT_TIMEOUT};
-        use ::windows::Win32::System::Threading::{GetExitCodeProcess, WaitForSingleObject};
-
-        let wait = unsafe { WaitForSingleObject(self.handle, 0) };
-        if wait == WAIT_TIMEOUT {
-            return Ok(None);
-        }
-        if wait != WAIT_OBJECT_0 {
-            return Err(anyhow!("Failed to wait for LingXia Runner: {wait:?}"));
-        }
-
-        let mut code = 0u32;
-        unsafe { GetExitCodeProcess(self.handle, &mut code) }
-            .context("Failed to read LingXia Runner exit code")?;
-        Ok(Some(RunnerExitStatus {
+        Ok(self.launch.exit_code()?.map(|code| RunnerExitStatus {
             success: code == 0,
             code: Some(code as i32),
         }))
     }
 
     fn terminate(&mut self) -> Result<()> {
-        use ::windows::Win32::System::Threading::TerminateProcess;
-
-        unsafe { TerminateProcess(self.handle, 1) }
-            .context("Failed to terminate LingXia Runner")?;
-        Ok(())
-    }
-}
-
-#[cfg(target_os = "windows")]
-impl Drop for WindowsShellRunnerProcess {
-    fn drop(&mut self) {
-        unsafe {
-            let _ = ::windows::Win32::Foundation::CloseHandle(self.handle);
-        }
+        self.launch.terminate("LingXia Runner")
     }
 }
 
@@ -886,8 +855,7 @@ fn shell_execute_windows_runner(
     }
 
     Ok(RunnerProcess::WindowsShell(WindowsShellRunnerProcess {
-        handle: info.hProcess,
-        _interactive_cleanup: None,
+        launch: windows_interactive::InteractiveLaunch::from_handle(info.hProcess),
     }))
 }
 

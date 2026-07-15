@@ -394,8 +394,8 @@ pub fn execute(options: DevExecuteOptions) -> Result<()> {
 }
 
 #[cfg(target_os = "windows")]
-pub fn focus_windows_process(pid: u32) -> Result<()> {
-    runner::focus_ssh_runner_window(pid)
+pub fn focus_windows_launch(executable: &Path, excluded_pids: &str) -> Result<()> {
+    runner::focus_windows_launch(executable, excluded_pids)
 }
 
 fn execute_session_action(project_root: &Path, action: DevSessionAction) -> Result<()> {

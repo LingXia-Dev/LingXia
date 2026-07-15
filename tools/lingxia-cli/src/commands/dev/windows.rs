@@ -71,23 +71,90 @@ pub(super) fn execute_windows(ctx: DevContext) -> Result<()> {
         let _session_registration =
             log_store::register_session(&ctx.project_root, &session, platform_name, &ws_url);
 
-        let mut command = Command::new(&exe_path);
-        command.env(RUNNER_DEV_WS_URL_ENV, &ws_url);
-        if let Some(icon) = &staged_icon {
-            command.env(WINDOWS_APP_ICON_PATH_ENV, icon);
-        }
-        let mut child = command
-            .stdin(Stdio::null())
-            .stdout(Stdio::inherit())
-            .stderr(Stdio::inherit())
-            .spawn()
-            .with_context(|| format!("Failed to run {}", exe_path.display()))?;
-
-        print_dev_banner("Windows", "Ctrl+C or close app", &[]);
-
-        wait_for_child_or_interrupt(&mut child, stop_requested, "Windows app")?;
+        launch_and_wait_windows_app(
+            &exe_path,
+            &ctx.project_root,
+            &ws_url,
+            staged_icon.as_deref(),
+            stop_requested,
+        )?;
         Ok(())
     })();
 
     stop_dev_server(server, run_result)
+}
+
+fn launch_and_wait_windows_app(
+    exe_path: &Path,
+    project_root: &Path,
+    ws_url: &str,
+    staged_icon: Option<&Path>,
+    stop_requested: Arc<AtomicBool>,
+) -> Result<()> {
+    #[cfg(target_os = "windows")]
+    if runner::windows_interactive::is_ssh_session() {
+        let mut environment = vec![(RUNNER_DEV_WS_URL_ENV.to_string(), ws_url.to_string())];
+        if let Some(icon) = staged_icon {
+            environment.push((
+                WINDOWS_APP_ICON_PATH_ENV.to_string(),
+                icon.display().to_string(),
+            ));
+        }
+        let mut launch = runner::windows_interactive::launch_app(
+            exe_path,
+            project_root,
+            &environment,
+            &log_store::dev_dir(project_root).join("app"),
+        )?;
+        println!("Bootstrapped app in the interactive Windows desktop");
+        print_dev_banner("Windows", "Ctrl+C or close app", &[]);
+        return wait_for_interactive_app_or_interrupt(&mut launch, stop_requested);
+    }
+
+    let mut command = Command::new(exe_path);
+    command.env(RUNNER_DEV_WS_URL_ENV, ws_url);
+    if let Some(icon) = staged_icon {
+        command.env(WINDOWS_APP_ICON_PATH_ENV, icon);
+    }
+    let mut child = command
+        .stdin(Stdio::null())
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit())
+        .spawn()
+        .with_context(|| format!("Failed to run {}", exe_path.display()))?;
+
+    print_dev_banner("Windows", "Ctrl+C or close app", &[]);
+    wait_for_child_or_interrupt(&mut child, stop_requested, "Windows app")
+}
+
+#[cfg(target_os = "windows")]
+fn wait_for_interactive_app_or_interrupt(
+    launch: &mut runner::windows_interactive::InteractiveLaunch,
+    stop_requested: Arc<AtomicBool>,
+) -> Result<()> {
+    loop {
+        if stop_requested.load(Ordering::Acquire) {
+            launch.terminate("Windows app")?;
+            println!();
+            println!("{}", "Dev workflow stopped.".yellow().bold());
+            return Ok(());
+        }
+
+        if let Some(code) = launch.exit_code()? {
+            println!();
+            println!("{}", "Windows app exited.".yellow().bold());
+            if code != 0 {
+                let log = launch
+                    .output_log()
+                    .map(|path| format!("; output: {}", path.display()))
+                    .unwrap_or_default();
+                return Err(anyhow!(
+                    "Windows app exited with non-zero status {code}{log}"
+                ));
+            }
+            return Ok(());
+        }
+
+        thread::sleep(Duration::from_millis(150));
+    }
 }
