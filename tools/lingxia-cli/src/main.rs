@@ -124,11 +124,6 @@ struct DevOptions {
     #[arg(long)]
     background: bool,
 
-    /// Expose the dev websocket on the LAN with a session token, so `lxdev`
-    /// on another machine can control this session (desktop platforms).
-    #[arg(long)]
-    lan: bool,
-
     #[command(subcommand)]
     action: Option<DevAction>,
 }
@@ -727,7 +722,6 @@ fn main() -> Result<()> {
                 provider_path: dev_options.build_options.provider_path,
                 runner_device: dev_options.runner,
                 background: dev_options.background,
-                lan: dev_options.lan,
                 action: dev_options.action.map(|action| match action {
                     DevAction::Status { json } => commands::dev::DevSessionAction::Status { json },
                     DevAction::Stop { session, force } => {
@@ -860,6 +854,20 @@ mod cli_tests {
             panic!("expected dev command");
         };
         assert_eq!(dev_options.runner.as_deref(), Some("desktop-1440"));
+    }
+
+    #[test]
+    fn dev_background_bootstrap_remains_available() {
+        let cli = Cli::try_parse_from(["lingxia", "dev", "--background"]).unwrap();
+        let Commands::Dev { dev_options } = cli.command else {
+            panic!("expected dev command");
+        };
+        assert!(dev_options.background);
+    }
+
+    #[test]
+    fn dev_lan_remote_control_is_removed() {
+        assert!(Cli::try_parse_from(["lingxia", "dev", "--lan"]).is_err());
     }
 
     #[test]

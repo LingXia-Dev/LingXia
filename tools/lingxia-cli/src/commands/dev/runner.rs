@@ -151,31 +151,14 @@ pub(super) fn execute_lxapp_dev(project_root: PathBuf, options: DevExecuteOption
     println!();
 
     let stop_requested = Arc::new(AtomicBool::new(false));
-    let (bind_host, auth_token) = if options.lan {
-        ("0.0.0.0", Some(super::persistent_lan_token()?))
-    } else {
-        ("127.0.0.1", None)
-    };
     let server = server::start_server_fixed_with_stop(
         &project_root,
-        bind_host,
+        "127.0.0.1",
         platform_name,
         stop_requested.clone(),
-        auth_token.clone(),
+        None,
     )?;
-    let ws_url = match &auth_token {
-        Some(token) => lingxia_devtool_protocol::ws_url_with_token(&server.ws_url(), token),
-        None => server.ws_url(),
-    };
-    if let Some(token) = &auth_token {
-        match super::lan_ws_url(server.port()) {
-            Ok(lan_url) => {
-                let attach = lingxia_devtool_protocol::ws_url_with_token(&lan_url, token);
-                println!("  {} {}", "•".cyan(), super::lan_attach_hint(&attach));
-            }
-            Err(err) => eprintln!("Warning: could not determine LAN address: {err:#}"),
-        }
-    }
+    let ws_url = server.ws_url();
     let session = server.session().clone();
 
     let build_args = lxapp_runner_build_args(

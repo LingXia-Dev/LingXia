@@ -101,15 +101,9 @@ takes the session down when it exits. Either way the session publishes metadata
 and logs for `lxdev`. `lingxia dev status` reports `starting`, `ready`, or `stale`
 and exposes the same state plus `runtime_connected` with `--json`.
 
-`--lan` (desktop platforms and the Runner) exposes the dev websocket on all
-interfaces behind a session token and prints a tokened attach URL for
-[`lxdev attach`](./lxdev.md) on another machine. The URL is stable across
-restarts (token persists in `~/.lingxia/dev-lan-token`; delete it to rotate).
-Without `--lan` the websocket stays loopback-only. The OS firewall prompts
-once per executable path for the inbound listener; over ssh no prompt can
-appear, so pre-authorize once from an elevated shell:
-`New-NetFirewallRule -DisplayName "LingXia Dev" -Direction Inbound -Program
-"<lingxia.exe path>" -Action Allow -Profile Private`.
+The dev websocket stays loopback-only. On a remote development machine, run
+both `lingxia dev` and `lxdev` there through SSH or the machine's existing
+CI/device-lab agent.
 
 When `lingxia dev` runs in an SSH session on Windows, the CLI bootstraps the
 Runner through a temporary interactive-token task so its window opens in the
@@ -117,7 +111,8 @@ foreground on the Windows desktop. The same Windows account must already be
 signed in locally or through RDP; otherwise startup fails with an actionable
 error. From the SSH
 client machine, use `--background`: the SSH command returns only after Runner is
-connected and prints the LAN URL to persist with `lxdev attach`.
+connected. Subsequent `lxdev` commands should also run on that machine through
+SSH.
 
 See `lingxia dev --help` for the flags.
 

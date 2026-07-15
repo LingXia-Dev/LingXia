@@ -35,17 +35,6 @@ pub mod handlers {
         /// Request the owning `lingxia dev` process to stop this session.
         /// Handled by the dev server, not forwarded to the runtime.
         pub const SHUTDOWN: &str = "session.shutdown";
-        /// Read a chunk of the session log file from a byte offset. Handled
-        /// by the dev server (the log file lives on its machine), so remote
-        /// `lxdev logs` works over the LAN.
-        /// Args: `{offset?: u64, max_bytes?: u64}` → data:
-        /// `{chunk: String (complete JSONL lines), next_offset: u64, len: u64}`.
-        pub const LOGS: &str = "session.logs";
-        /// Describe this session. Handled by the dev server, so a remote
-        /// `lxdev` can render attached sessions with the same identity a
-        /// local listing shows. Data: `{session_id, target, project_root,
-        /// started_at, pid}`.
-        pub const INFO: &str = "session.info";
     }
 
     pub mod browser {

@@ -142,7 +142,6 @@ pub fn register_session(
         started_at: now_timestamp_ms(),
         ws_url: ws_url.to_string(),
         log_file: session.log_file.display().to_string(),
-        remote_name: None,
     };
     lingxia_devtool_protocol::broker::register_session(info, spawn_broker)
 }

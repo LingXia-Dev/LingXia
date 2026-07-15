@@ -23,17 +23,10 @@ lxdev --session ios ...          # target name, when unique
 
 Crashed sessions disappear from the broker automatically — there is nothing to prune. Re-running `lingxia dev` for the same target in a project stops the previous session and takes over; different targets run side by side.
 
-### Remote sessions (LAN)
-
-A session started with `lingxia dev --lan` on **another machine** prints a tokened attach URL. Pair once, then use it like any local session:
-
-```bash
-lxdev attach "ws://192.168.1.20:39142/?token=…" --name win   # once per machine
-lxdev --session win browser tabs                             # thereafter
-lxdev detach win                                             # explicit removal
-```
-
-The URL is stable across the remote's dev restarts, so one attach lasts. Attached sessions list with their real identity (id/target/project fetched live) tagged `[name]`; unreachable ones show `unreachable`, never block auto-selection, and never unpair themselves. All command families work remotely, including `logs` (`-f` polls through the dev server). `--ws "<url>"` / `LXDEV_WS` targets a URL one-off without pairing.
+`lxdev` intentionally controls sessions registered by `lingxia dev` for the
+same user on the same machine. For a remote development machine, run both
+commands there through SSH or the machine's CI/device-lab agent; the dev
+websocket is not a remote machine-management API.
 
 ## Capabilities
 
@@ -56,7 +49,7 @@ The URL is stable across the remote's dev restarts, so one attach lasts. Attache
 - `doctor` — report screenshot/input support, coordinate units, and keyboard-modifier reliability
 - `windows` — enumerate top-level host windows; the id feeds `--window` on the other `app` commands
 - `screenshot` — capture the full host surface, including native controls, overlays, and composited WebViews
-- `mouse move|down|up|click|drag|scroll` — raw input in logical window content coordinates
+- `mouse move|down|up|click|drag|scroll` — raw input in platform window-content units
 - `key type|press` — keyboard input to the host window's focused control
 
 Mobile reports one host window. Desktop hosts may report several (for example macOS AppUI surfaces); omit `--window` to use the focused/main window. App screenshot JSON always returns the resolved `window_id`, content dimensions, and pixel scale. Mouse coordinates use content pixels on Windows and content points on macOS, so Retina screenshot positions must be divided by the reported scale before feeding them back to `app mouse`.
