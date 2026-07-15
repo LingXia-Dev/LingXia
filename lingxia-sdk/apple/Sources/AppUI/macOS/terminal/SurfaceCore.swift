@@ -506,7 +506,9 @@ private final class LingXiaTerminalCanvasView: NSView {
         }
 
         for cell in orderedCells {
-            let bg = terminalColor(cell.inverse ? cell.fg : cell.bg, fallback: nil)
+            let bg = cell.inverse
+                ? terminalColor(cell.fg, fallback: defaultForeground)
+                : terminalColor(cell.bg, fallback: nil)
             let x = pixelFloor(insetX + CGFloat(cell.col) * charSize.width)
             let y = pixelFloor(bounds.height - insetTop - CGFloat(cell.row + 1) * charSize.height)
             if let bg {
@@ -525,8 +527,11 @@ private final class LingXiaTerminalCanvasView: NSView {
 
         func flushRun() {
             guard !runText.isEmpty, let style = runStyle else { return }
-            let fg = terminalColor(style.inverse ? style.bg : style.fg, fallback: nil)
-                ?? defaultForeground.withAlphaComponent(style.dim ? 0.58 : 1)
+            let defaultColor = style.inverse ? defaultBackground : defaultForeground
+            let fg = terminalColor(
+                style.inverse ? style.bg : style.fg,
+                fallback: defaultColor
+            )?.withAlphaComponent(style.dim ? 0.58 : 1) ?? defaultColor
             let attrs = textAttributes(bold: style.bold, italic: style.italic, underline: style.underline, foreground: fg)
             let x = pixelFloor(insetX + CGFloat(runStartCol) * charSize.width)
             let y = pixelFloor(bounds.height - insetTop - CGFloat(runRow + 1) * charSize.height)

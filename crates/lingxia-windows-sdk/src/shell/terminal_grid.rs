@@ -581,14 +581,10 @@ fn draw_pane_grid_clipped(
     // All cell backgrounds first: a later cell's background must not cover
     // the right half of a wide glyph drawn by the previous cell.
     for cell in &snapshot.cells {
-        let token = if cell.inverse {
-            cell.fg.as_deref()
-        } else {
-            cell.bg.as_deref()
-        };
-        let Some(mut cell_background) = token.and_then(parse_hex_color) else {
+        if !cell.inverse && cell.bg.is_none() {
             continue;
-        };
+        }
+        let (_, mut cell_background) = resolved_cell_colors(cell, background, foreground);
         if dim {
             cell_background = dim_unfocused(cell_background, background);
         }
@@ -693,15 +689,28 @@ struct RunStyle {
     underline: bool,
 }
 
-fn cell_style(cell: &TerminalCell, background: u32, foreground: u32, dim: bool) -> RunStyle {
-    let token = if cell.inverse {
-        cell.bg.as_deref()
+fn resolved_cell_colors(cell: &TerminalCell, background: u32, foreground: u32) -> (u32, u32) {
+    let normal_foreground = cell
+        .fg
+        .as_deref()
+        .and_then(parse_hex_color)
+        .unwrap_or(foreground);
+    let normal_background = cell
+        .bg
+        .as_deref()
+        .and_then(parse_hex_color)
+        .unwrap_or(background);
+    if cell.inverse {
+        (normal_background, normal_foreground)
     } else {
-        cell.fg.as_deref()
-    };
-    let mut color = token.and_then(parse_hex_color).unwrap_or(foreground);
+        (normal_foreground, normal_background)
+    }
+}
+
+fn cell_style(cell: &TerminalCell, background: u32, foreground: u32, dim: bool) -> RunStyle {
+    let (mut color, cell_background) = resolved_cell_colors(cell, background, foreground);
     if cell.dim {
-        color = blend_rgb(color, background, GRID_DIM_FOREGROUND_PERCENT);
+        color = blend_rgb(color, cell_background, GRID_DIM_FOREGROUND_PERCENT);
     }
     // Unfocused split pane: fade the text toward the surface background.
     if dim {
@@ -873,17 +882,20 @@ fn draw_cursor(
         // Block cursor: inverse video: a foreground-filled cell with the
         // covered glyph redrawn in the background color.
         _ => {
-            fill_rect(hdc, cell_rect, foreground);
             let covered = snapshot
                 .cells
                 .iter()
                 .find(|cell| cell.row == snapshot.cursor_row && cell.col == snapshot.cursor_col);
+            let (cursor_background, cursor_foreground) = covered
+                .map(|cell| resolved_cell_colors(cell, background, foreground))
+                .unwrap_or((foreground, background));
+            fill_rect(hdc, cell_rect, cursor_background);
             if let Some(cell) = covered.filter(|cell| !cell.text.is_empty())
                 && fonts.select(hdc, cell.bold, cell.italic, cell.underline)
             {
                 let text: Vec<u16> = cell.text.encode_utf16().collect();
                 unsafe {
-                    let _ = SetTextColor(hdc, rgb_to_colorref(background));
+                    let _ = SetTextColor(hdc, rgb_to_colorref(cursor_foreground));
                     let _ = ExtTextOutW(
                         hdc,
                         left,
@@ -1017,6 +1029,22 @@ mod tests {
             },
         );
         assert_eq!(text.as_deref(), Some("ab  c\r\nde"));
+    }
+
+    #[test]
+    fn inverse_default_colors_are_swapped() {
+        let mut inverse = cell(0, 0, "x");
+        inverse.inverse = true;
+        inverse.fg = Some("#ddeeff".to_string());
+
+        assert_eq!(
+            resolved_cell_colors(&inverse, 0x112233, 0xaabbcc),
+            (0x112233, 0xddeeff)
+        );
+        assert_eq!(
+            cell_style(&inverse, 0x112233, 0xaabbcc, false).color,
+            0x112233
+        );
     }
 }
 
