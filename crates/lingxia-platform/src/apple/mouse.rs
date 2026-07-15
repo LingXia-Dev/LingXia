@@ -349,9 +349,9 @@ fn content_point_to_window_point(
     }
 }
 
-/// Rebase the event onto the target window via the private
-/// `_eventRelativeToWindow:` (falling back to the original event when it
-/// returns nil), then deliver it through `NSWindow.sendEvent:`.
+/// Rebase screen-originated events when AppKit exposes its compatibility
+/// selector, then deliver through the target window. Mouse/key events created
+/// with a window number fall back to their original coordinates.
 #[cfg(target_os = "macos")]
 pub(super) unsafe fn send_event_to_window(
     window: *mut objc2::runtime::AnyObject,
@@ -361,12 +361,20 @@ pub(super) unsafe fn send_event_to_window(
     use objc2_app_kit::NSEvent;
 
     let event_ptr = event as *const NSEvent as *mut objc2::runtime::AnyObject;
-    let relative_event: *mut objc2::runtime::AnyObject =
-        msg_send![event_ptr, _eventRelativeToWindow: window];
-    let event_ptr = if relative_event.is_null() {
-        event_ptr
+    let responds: bool = msg_send![
+        event_ptr,
+        respondsToSelector: objc2::sel!(_eventRelativeToWindow:)
+    ];
+    let event_ptr = if responds {
+        let relative: *mut objc2::runtime::AnyObject =
+            msg_send![event_ptr, _eventRelativeToWindow: window];
+        if relative.is_null() {
+            event_ptr
+        } else {
+            relative
+        }
     } else {
-        relative_event
+        event_ptr
     };
     let _: () = msg_send![window, sendEvent: event_ptr];
 }
@@ -433,13 +441,6 @@ fn queue_mouse(
     let event = make_mouse_event(window, content_view, x, y, phase)?;
     unsafe {
         let event_ptr = event.as_ref() as *const NSEvent as *mut objc2::runtime::AnyObject;
-        let relative_event: *mut objc2::runtime::AnyObject =
-            msg_send![event_ptr, _eventRelativeToWindow: window];
-        let event_ptr = if relative_event.is_null() {
-            event_ptr
-        } else {
-            relative_event
-        };
         let app: *mut objc2::runtime::AnyObject =
             msg_send![objc2::class!(NSApplication), sharedApplication];
         let _: () = msg_send![app, postEvent: event_ptr, atStart: false];

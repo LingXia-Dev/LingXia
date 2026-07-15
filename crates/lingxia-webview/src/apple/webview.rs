@@ -3474,33 +3474,8 @@ impl WebViewInner {
             } else {
                 bounds.size.height - y
             };
-            let direct_location = NSPoint::new(x, local_y);
-            let location = view.convertPoint_toView(direct_location, None);
+            let location = view.convertPoint_toView(NSPoint::new(x, local_y), None);
             let window_number = window.windowNumber();
-            let direct_down = NSEvent::mouseEventWithType_location_modifierFlags_timestamp_windowNumber_context_eventNumber_clickCount_pressure(
-                NSEventType::LeftMouseDown,
-                direct_location,
-                NSEventModifierFlags::empty(),
-                0.0,
-                window_number,
-                None,
-                0,
-                1,
-                1.0,
-            )
-            .ok_or_else(|| WebViewInputError::Platform("Failed to create direct mouse down event".to_string()))?;
-            let direct_up = NSEvent::mouseEventWithType_location_modifierFlags_timestamp_windowNumber_context_eventNumber_clickCount_pressure(
-                NSEventType::LeftMouseUp,
-                direct_location,
-                NSEventModifierFlags::empty(),
-                0.0,
-                window_number,
-                None,
-                0,
-                1,
-                1.0,
-            )
-            .ok_or_else(|| WebViewInputError::Platform("Failed to create direct mouse up event".to_string()))?;
             let down = NSEvent::mouseEventWithType_location_modifierFlags_timestamp_windowNumber_context_eventNumber_clickCount_pressure(
                 NSEventType::LeftMouseDown,
                 location,
@@ -3526,41 +3501,16 @@ impl WebViewInner {
             )
             .ok_or_else(|| WebViewInputError::Platform("Failed to create mouse up event".to_string()))?;
 
-            let webview = webview_ptr as *mut AnyObject;
-            let window_ptr = (&*window) as *const _ as *mut AnyObject;
-            let mut direct_down_ptr: *mut AnyObject = msg_send![
-                direct_down.as_ref() as *const NSEvent as *mut AnyObject,
-                _eventRelativeToWindow: window_ptr
-            ];
-            if direct_down_ptr.is_null() {
-                direct_down_ptr = direct_down.as_ref() as *const NSEvent as *mut AnyObject;
+            let app: *mut AnyObject = msg_send![class!(NSApplication), sharedApplication];
+            if app.is_null() {
+                return Err(WebViewInputError::Platform(
+                    "NSApplication.sharedApplication is null".to_string(),
+                ));
             }
-            let mut direct_up_ptr: *mut AnyObject = msg_send![
-                direct_up.as_ref() as *const NSEvent as *mut AnyObject,
-                _eventRelativeToWindow: window_ptr
-            ];
-            if direct_up_ptr.is_null() {
-                direct_up_ptr = direct_up.as_ref() as *const NSEvent as *mut AnyObject;
-            }
-            let _: () = msg_send![webview, mouseDown: direct_down_ptr];
-            let _: () = msg_send![webview, mouseUp: direct_up_ptr];
-
-            let mut down_ptr: *mut AnyObject = msg_send![
-                down.as_ref() as *const NSEvent as *mut AnyObject,
-                _eventRelativeToWindow: window_ptr
-            ];
-            if down_ptr.is_null() {
-                down_ptr = down.as_ref() as *const NSEvent as *mut AnyObject;
-            }
-            let mut up_ptr: *mut AnyObject = msg_send![
-                up.as_ref() as *const NSEvent as *mut AnyObject,
-                _eventRelativeToWindow: window_ptr
-            ];
-            if up_ptr.is_null() {
-                up_ptr = up.as_ref() as *const NSEvent as *mut AnyObject;
-            }
-            let _: () = msg_send![&*window, sendEvent: down_ptr];
-            let _: () = msg_send![&*window, sendEvent: up_ptr];
+            let down_ptr = down.as_ref() as *const NSEvent as *mut AnyObject;
+            let up_ptr = up.as_ref() as *const NSEvent as *mut AnyObject;
+            let _: () = msg_send![app, postEvent: down_ptr, atStart: false];
+            let _: () = msg_send![app, postEvent: up_ptr, atStart: false];
         }
         Ok(())
     }
@@ -3614,13 +3564,21 @@ impl WebViewInner {
             })?;
             let ns_event_ptr = ns_event.as_ref() as *const NSEvent as *mut AnyObject;
             let window_ptr = (&*window) as *const _ as *mut AnyObject;
-            let relative_event: *mut AnyObject =
-                msg_send![ns_event_ptr, _eventRelativeToWindow: window_ptr];
-            if relative_event.is_null() {
-                return Err(WebViewInputError::Platform(
-                    "Failed to attach scroll event to window".to_string(),
-                ));
-            }
+            let responds: bool = msg_send![
+                ns_event_ptr,
+                respondsToSelector: objc2::sel!(_eventRelativeToWindow:)
+            ];
+            let relative_event: *mut AnyObject = if responds {
+                let relative: *mut AnyObject =
+                    msg_send![ns_event_ptr, _eventRelativeToWindow: window_ptr];
+                if relative.is_null() {
+                    ns_event_ptr
+                } else {
+                    relative
+                }
+            } else {
+                ns_event_ptr
+            };
             let webview = webview_ptr as *mut AnyObject;
             let _: () = msg_send![webview, scrollWheel: relative_event];
         }

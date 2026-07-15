@@ -14,6 +14,8 @@ use crate::{ClickOptions, PressOptions, ScrollOptions, TypeOptions, WebViewInput
 use serde::Deserialize;
 use std::time::Duration;
 
+const LEFT_CLICK_SEQUENCE: [(&str, u8); 2] = [("mousePressed", 1), ("mouseReleased", 0)];
+
 #[derive(Debug, Deserialize)]
 struct InputHelperElementResult {
     ok: bool,
@@ -171,7 +173,7 @@ impl WebViewInner {
     }
 
     fn dispatch_click_at(&self, x: f64, y: f64) -> std::result::Result<(), WebViewInputError> {
-        for kind in ["mousePressed", "mouseReleased"] {
+        for (kind, buttons) in LEFT_CLICK_SEQUENCE {
             self.cdp(
                 "Input.dispatchMouseEvent",
                 serde_json::json!({
@@ -179,7 +181,7 @@ impl WebViewInner {
                     "x": x,
                     "y": y,
                     "button": "left",
-                    "buttons": 1,
+                    "buttons": buttons,
                     "clickCount": 1,
                 }),
             )?;
@@ -285,5 +287,16 @@ impl WebViewInner {
     ) -> std::result::Result<(), WebViewInputError> {
         let _ = self.ensure_element_visible(selector, None).await?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::LEFT_CLICK_SEQUENCE;
+
+    #[test]
+    fn click_release_clears_button_mask() {
+        assert_eq!(LEFT_CLICK_SEQUENCE[0], ("mousePressed", 1));
+        assert_eq!(LEFT_CLICK_SEQUENCE[1], ("mouseReleased", 0));
     }
 }
