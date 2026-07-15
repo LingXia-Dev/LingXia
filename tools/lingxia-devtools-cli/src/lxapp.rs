@@ -360,7 +360,7 @@ pub enum PageCommand {
     Type {
         #[arg(long = "css")]
         selector: String,
-        #[arg(long)]
+        #[arg(long, allow_hyphen_values = true)]
         text: String,
         /// Type into the nth matching element
         #[arg(long)]
@@ -379,7 +379,7 @@ pub enum PageCommand {
     Fill {
         #[arg(long = "css")]
         selector: String,
-        #[arg(long)]
+        #[arg(long, allow_hyphen_values = true)]
         text: String,
         /// Fill the nth matching element
         #[arg(long)]
@@ -1267,6 +1267,21 @@ mod tests {
         assert!(selector.is_none());
         assert!(state.is_none());
         assert_eq!(timeout_ms, 5000);
+    }
+
+    #[test]
+    fn page_type_accepts_leading_hyphen_text() {
+        let cli = parse_lxapp_cli(args(&[
+            "page", "type", "--css", "input", "--text", "-typed",
+        ]))
+        .unwrap();
+        let LxAppCommand::Page(options) = cli.command else {
+            panic!("expected page command");
+        };
+        assert!(matches!(
+            options.command,
+            PageCommand::Type { text, .. } if text == "-typed"
+        ));
     }
 
     #[test]
