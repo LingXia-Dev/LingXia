@@ -1230,6 +1230,7 @@ export type ShellActivatorItem = {
     icon?: string;
     name?: string;
     color?: string;
+    weight?: number;
 } | {
     native: string;
     lxapp?: never;
@@ -1238,6 +1239,7 @@ export type ShellActivatorItem = {
     icon?: string;
     name?: string;
     color?: string;
+    weight?: number;
 } | {
     id: string;
     lxapp?: never;
@@ -1245,6 +1247,7 @@ export type ShellActivatorItem = {
     icon: string;
     name: string;
     color?: string;
+    weight?: number;
     handler: () => void;
 };
 
