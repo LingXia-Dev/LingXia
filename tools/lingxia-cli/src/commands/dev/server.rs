@@ -10,8 +10,9 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
+use tungstenite::handshake::server::{Request, Response};
 use tungstenite::protocol::Message;
-use tungstenite::{Error as WsError, WebSocket, accept};
+use tungstenite::{Error as WsError, WebSocket, accept_hdr};
 
 const DEFAULT_COMMAND_TIMEOUT: Duration = Duration::from_secs(120);
 const COMMAND_TIMEOUT_BUFFER: Duration = Duration::from_secs(5);
@@ -155,6 +156,14 @@ impl DevServerState {
             None => true,
             Some(expected) => presented == Some(expected.as_str()),
         }
+    }
+
+    fn authorizes_websocket(
+        &self,
+        hello_token: Option<&str>,
+        handshake_token: Option<&str>,
+    ) -> bool {
+        self.authorizes(hello_token) || self.authorizes(handshake_token)
     }
 
     fn claim_runtime_sender(&self, sender: Sender<DevtoolsWireMessage>) -> (u64, bool) {
@@ -349,12 +358,12 @@ fn handle_connection(
     if !is_websocket_request(&stream)? {
         return handle_http_connection(stream, state);
     }
-    let mut websocket = accept(stream).context("Failed to accept websocket")?;
+    let (mut websocket, handshake_token) = accept_websocket(stream)?;
     let hello = read_wire_message(&mut websocket)?;
     let DevtoolsWireMessage::Hello { role, token } = hello else {
         return Err(anyhow!("First websocket message must be hello"));
     };
-    if !state.authorizes(token.as_deref()) {
+    if !state.authorizes_websocket(token.as_deref(), handshake_token.as_deref()) {
         let _ = websocket.close(None);
         if role == DevtoolsPeerRole::Devtool {
             state.runtime_rejected.store(true, Ordering::Release);
@@ -375,6 +384,21 @@ fn handle_connection(
         }
         DevtoolsPeerRole::Client => handle_client_connection(websocket, state),
     }
+}
+
+/// Capture the token from the HTTP upgrade target as well as accepting it in
+/// `Hello`. Runners built before the hello-token field still receive and dial
+/// the tokened URL, so authenticating the handshake keeps those cached builds
+/// compatible without allowing tokenless LAN peers.
+#[allow(clippy::result_large_err)] // Tungstenite fixes this type in its callback contract.
+fn accept_websocket(stream: TcpStream) -> Result<(WebSocket<TcpStream>, Option<String>)> {
+    let mut handshake_token = None;
+    let websocket = accept_hdr(stream, |request: &Request, response: Response| {
+        handshake_token = lingxia_devtool_protocol::token_from_ws_url(&request.uri().to_string());
+        Ok(response)
+    })
+    .map_err(|err| anyhow!("Failed to accept websocket: {err}"))?;
+    Ok((websocket, handshake_token))
 }
 
 fn is_websocket_request(stream: &TcpStream) -> Result<bool> {
@@ -977,7 +1001,64 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::dev_port;
+    use super::{DevServerState, accept_websocket, dev_port, read_wire_message, send_wire_message};
+    use lingxia_devtool_protocol::{DevtoolsPeerRole, DevtoolsWireMessage};
+    use std::net::TcpListener;
+    use std::path::PathBuf;
+    use std::sync::Arc;
+    use std::sync::atomic::AtomicBool;
+    use std::thread;
+
+    fn authenticated_state() -> DevServerState {
+        DevServerState::new(
+            PathBuf::from("project"),
+            Arc::new(AtomicBool::new(false)),
+            Some("secret".to_string()),
+            PathBuf::from("session.jsonl"),
+            "session".to_string(),
+            "lxapp".to_string(),
+        )
+    }
+
+    #[test]
+    fn websocket_auth_accepts_handshake_token_for_legacy_runner() {
+        let state = authenticated_state();
+
+        assert!(state.authorizes_websocket(None, Some("secret")));
+        assert!(state.authorizes_websocket(Some("secret"), None));
+        assert!(!state.authorizes_websocket(None, None));
+        assert!(!state.authorizes_websocket(Some("wrong"), Some("wrong")));
+    }
+
+    #[test]
+    fn websocket_upgrade_captures_token_for_legacy_runner_hello() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = thread::spawn(move || {
+            let (stream, _) = listener.accept().unwrap();
+            let (mut websocket, handshake_token) = accept_websocket(stream).unwrap();
+            let hello = read_wire_message(&mut websocket).unwrap();
+            let DevtoolsWireMessage::Hello { role, token } = hello else {
+                panic!("expected hello");
+            };
+            assert_eq!(role, DevtoolsPeerRole::Devtool);
+            assert_eq!(token, None);
+            authenticated_state().authorizes_websocket(token.as_deref(), handshake_token.as_deref())
+        });
+
+        let url = format!("ws://{addr}/?token=secret");
+        let (mut websocket, _) = tungstenite::connect(&url).unwrap();
+        send_wire_message(
+            &mut websocket,
+            &DevtoolsWireMessage::Hello {
+                role: DevtoolsPeerRole::Devtool,
+                token: None,
+            },
+        )
+        .unwrap();
+
+        assert!(server.join().unwrap());
+    }
 
     #[test]
     fn dev_port_is_stable_and_in_range() {

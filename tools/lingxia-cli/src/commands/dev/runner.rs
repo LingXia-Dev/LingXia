@@ -161,11 +161,10 @@ pub(super) fn execute_lxapp_dev(project_root: PathBuf, options: DevExecuteOption
     };
     if let Some(token) = &auth_token {
         match super::lan_ws_url(server.port()) {
-            Ok(lan_url) => println!(
-                "  {} LAN control enabled — from another machine: lxdev --ws \"{}\" …",
-                "•".cyan(),
-                lingxia_devtool_protocol::ws_url_with_token(&lan_url, token)
-            ),
+            Ok(lan_url) => {
+                let attach = lingxia_devtool_protocol::ws_url_with_token(&lan_url, token);
+                println!("  {} {}", "•".cyan(), super::lan_attach_hint(&attach));
+            }
             Err(err) => eprintln!("Warning: could not determine LAN address: {err:#}"),
         }
     }
