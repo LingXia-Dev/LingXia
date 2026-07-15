@@ -294,7 +294,7 @@ final class LingXiaTerminalPaneView: NSView {
 }
 
 @MainActor
-private final class LingXiaTerminalCanvasView: NSView {
+private final class LingXiaTerminalCanvasView: NSView, @MainActor NSTextInputClient {
     var onInput: ((String) -> Void)?
     var onActivated: (() -> Void)?
     var onSplitRequested: ((LingXiaTerminalSplitDirection) -> Void)?
@@ -334,6 +334,9 @@ private final class LingXiaTerminalCanvasView: NSView {
     private var selectionFocus: LingXiaTerminalGridPoint?
     private var scrollRowRemainder: CGFloat = 0
     private var readOnly = false
+    private var markedText = NSMutableAttributedString()
+    private var markedTextSelection = NSRange(location: 0, length: 0)
+    private var keyTextAccumulator: [String]?
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -432,24 +435,62 @@ private final class LingXiaTerminalCanvasView: NSView {
 
     @discardableResult
     func consumeKeyDown(_ event: NSEvent, source: String) -> Bool {
-        if event.modifierFlags.contains(.command) {
-            switch Int(event.keyCode) {
-            case 8:
-                lxTerminalLog("\(source).keyDown commandCopy")
-                copy(nil)
-                return true
-            case 9:
-                lxTerminalLog("\(source).keyDown commandPaste")
-                paste(nil)
-                return true
-            default:
-                break
-            }
-        }
+        if consumeEditingShortcut(event, source: source) { return true }
         guard !readOnly else {
             lxTerminalLog("\(source).keyDown ignoredReadOnly keyCode=\(event.keyCode)")
             return true
         }
+        return sendMappedKeyDown(event, source: source)
+    }
+
+    override func keyDown(with event: NSEvent) {
+        if consumeEditingShortcut(event, source: "canvas") { return }
+        guard !readOnly else {
+            lxTerminalLog("canvas.keyDown ignoredReadOnly keyCode=\(event.keyCode)")
+            return
+        }
+
+        let markedTextBefore = hasMarkedText()
+        keyTextAccumulator = []
+        interpretKeyEvents([event])
+        let committedText = keyTextAccumulator ?? []
+        keyTextAccumulator = nil
+        let composing = markedTextBefore || hasMarkedText()
+
+        if !committedText.isEmpty {
+            for text in committedText where !shouldSuppressComposingControlInput(text, composing: composing) {
+                guard !text.isEmpty else { continue }
+                lxTerminalLog("canvas.ime commit chars=\(text.count) bytes=\(text.utf8.count)")
+                onInput?(text)
+            }
+            return
+        }
+
+        // While an input method owns the event, cursor movement, deletion, and
+        // candidate selection must not leak through to the PTY.
+        if composing { return }
+        if !sendMappedKeyDown(event, source: "canvas") {
+            super.keyDown(with: event)
+        }
+    }
+
+    private func consumeEditingShortcut(_ event: NSEvent, source: String) -> Bool {
+        guard event.modifierFlags.contains(.command) else { return false }
+        switch Int(event.keyCode) {
+        case 8:
+            lxTerminalLog("\(source).keyDown commandCopy")
+            copy(nil)
+            return true
+        case 9:
+            lxTerminalLog("\(source).keyDown commandPaste")
+            paste(nil)
+            return true
+        default:
+            return false
+        }
+    }
+
+    private func sendMappedKeyDown(_ event: NSEvent, source: String) -> Bool {
         guard let input = LingXiaTerminalKeyMapper.input(for: event, applicationCursor: applicationCursor) else {
             lxTerminalLog("\(source).keyDown pass keyCode=\(event.keyCode)")
             return false
@@ -457,12 +498,6 @@ private final class LingXiaTerminalCanvasView: NSView {
         lxTerminalLog("\(source).keyDown input keyCode=\(event.keyCode) bytes=\(input.utf8.count) appCursor=\(applicationCursor)")
         onInput?(input)
         return true
-    }
-
-    override func keyDown(with event: NSEvent) {
-        if !consumeKeyDown(event, source: "canvas") {
-            super.keyDown(with: event)
-        }
     }
 
     @objc func paste(_ sender: Any?) {
@@ -488,6 +523,106 @@ private final class LingXiaTerminalCanvasView: NSView {
         pasteboard.clearContents()
         pasteboard.setString(text, forType: .string)
         lxTerminalLog("canvas.copy chars=\(text.count)")
+    }
+
+    func hasMarkedText() -> Bool {
+        markedText.length > 0
+    }
+
+    func markedRange() -> NSRange {
+        guard hasMarkedText() else { return NSRange(location: NSNotFound, length: 0) }
+        return NSRange(location: 0, length: markedText.length)
+    }
+
+    func selectedRange() -> NSRange {
+        hasMarkedText() ? markedTextSelection : NSRange(location: 0, length: 0)
+    }
+
+    func setMarkedText(_ string: Any, selectedRange: NSRange, replacementRange: NSRange) {
+        switch string {
+        case let value as NSAttributedString:
+            markedText = NSMutableAttributedString(attributedString: value)
+        case let value as String:
+            markedText = NSMutableAttributedString(string: value)
+        default:
+            markedText = NSMutableAttributedString()
+        }
+        markedTextSelection = normalizedMarkedTextSelection(selectedRange)
+        lxTerminalLog(
+            "canvas.ime marked chars=\(markedText.string.count) selected=\(markedTextSelection.location):\(markedTextSelection.length)"
+        )
+        inputContext?.invalidateCharacterCoordinates()
+        needsDisplay = true
+    }
+
+    func unmarkText() {
+        guard hasMarkedText() else { return }
+        markedText = NSMutableAttributedString()
+        markedTextSelection = NSRange(location: 0, length: 0)
+        lxTerminalLog("canvas.ime unmark")
+        inputContext?.invalidateCharacterCoordinates()
+        needsDisplay = true
+    }
+
+    func validAttributesForMarkedText() -> [NSAttributedString.Key] {
+        [.underlineStyle, .markedClauseSegment]
+    }
+
+    func attributedSubstring(
+        forProposedRange range: NSRange,
+        actualRange: NSRangePointer?
+    ) -> NSAttributedString? {
+        guard hasMarkedText(),
+              range.location != NSNotFound,
+              range.location <= markedText.length,
+              NSMaxRange(range) <= markedText.length else {
+            actualRange?.pointee = NSRange(location: NSNotFound, length: 0)
+            return nil
+        }
+        actualRange?.pointee = range
+        return markedText.attributedSubstring(from: range)
+    }
+
+    func characterIndex(for point: NSPoint) -> Int {
+        0
+    }
+
+    func firstRect(
+        forCharacterRange range: NSRange,
+        actualRange: NSRangePointer?
+    ) -> NSRect {
+        actualRange?.pointee = hasMarkedText() ? markedRange() : selectedRange()
+        let x = pixelFloor(CGFloat(cursorCol) * charSize.width + markedTextCaretOffset())
+        let y = pixelFloor(bounds.height - CGFloat(cursorRow + 1) * charSize.height)
+        let localRect = NSRect(x: x, y: y, width: 0, height: charSize.height)
+        let windowRect = convert(localRect, to: nil)
+        return window?.convertToScreen(windowRect) ?? windowRect
+    }
+
+    func insertText(_ string: Any, replacementRange: NSRange) {
+        let text: String
+        switch string {
+        case let value as NSAttributedString:
+            text = value.string
+        case let value as String:
+            text = value
+        default:
+            return
+        }
+
+        unmarkText()
+        if var accumulator = keyTextAccumulator {
+            accumulator.append(text)
+            keyTextAccumulator = accumulator
+        } else if !readOnly, !text.isEmpty {
+            lxTerminalLog("canvas.ime insert chars=\(text.count) bytes=\(text.utf8.count)")
+            onInput?(text)
+        }
+    }
+
+    override func doCommand(by selector: Selector) {
+        // keyDown maps terminal commands after interpretKeyEvents returns. This
+        // callback intentionally absorbs AppKit's command to avoid an NSBeep.
     }
 
     override func draw(_ dirtyRect: NSRect) {
@@ -593,7 +728,8 @@ private final class LingXiaTerminalCanvasView: NSView {
         }
         flushRun()
 
-        if window?.firstResponder === self, cursorVisible {
+        drawMarkedText()
+        if window?.firstResponder === self, cursorVisible, !hasMarkedText() {
             let x = pixelFloor(insetX + CGFloat(cursorCol) * charSize.width)
             let y = pixelFloor(bounds.height - insetTop - CGFloat(cursorRow + 1) * charSize.height)
             drawCursor(at: NSPoint(x: x, y: y))
@@ -627,6 +763,9 @@ private final class LingXiaTerminalCanvasView: NSView {
         bracketedPaste = snapshot.bracketedPaste
         alternateScreen = snapshot.alternateScreen
         scrollbar = snapshot.scrollbar
+        if hasMarkedText() {
+            inputContext?.invalidateCharacterCoordinates()
+        }
         needsDisplay = true
     }
 
@@ -706,6 +845,55 @@ private final class LingXiaTerminalCanvasView: NSView {
             return "\u{1B}[200~\(text)\u{1B}[201~"
         }
         return text
+    }
+
+    private func normalizedMarkedTextSelection(_ range: NSRange) -> NSRange {
+        guard range.location != NSNotFound else {
+            return NSRange(location: markedText.length, length: 0)
+        }
+        let location = min(max(0, range.location), markedText.length)
+        let length = min(max(0, range.length), markedText.length - location)
+        return NSRange(location: location, length: length)
+    }
+
+    private func shouldSuppressComposingControlInput(_ text: String, composing: Bool) -> Bool {
+        guard composing else { return false }
+        let scalars = text.unicodeScalars
+        guard let scalar = scalars.first,
+              scalars.index(after: scalars.startIndex) == scalars.endIndex else {
+            return false
+        }
+        return scalar.value < 0x20
+    }
+
+    private func markedTextCaretOffset() -> CGFloat {
+        guard hasMarkedText() else { return 0 }
+        let text = markedText.string as NSString
+        let location = min(markedTextSelection.location, text.length)
+        let prefix = text.substring(to: location) as NSString
+        return prefix.size(withAttributes: [.font: font]).width
+    }
+
+    private func drawMarkedText() {
+        guard hasMarkedText() else { return }
+        let rendered = NSMutableAttributedString(attributedString: markedText)
+        var attributes = textAttributes(
+            bold: false,
+            italic: false,
+            underline: true,
+            foreground: defaultForeground
+        )
+        attributes[.backgroundColor] = defaultBackground
+        rendered.addAttributes(
+            attributes,
+            range: NSRange(location: 0, length: rendered.length)
+        )
+        let x = pixelFloor(CGFloat(cursorCol) * charSize.width)
+        let y = pixelFloor(bounds.height - CGFloat(cursorRow + 1) * charSize.height)
+        drawTerminalAttributedText(
+            rendered,
+            at: NSPoint(x: x, y: y + terminalBaselineOffset())
+        )
     }
 
     private func gridPoint(for point: NSPoint) -> LingXiaTerminalGridPoint {
@@ -916,6 +1104,21 @@ private final class LingXiaTerminalCanvasView: NSView {
         context.textPosition = CGPoint(x: pixelFloor(point.x), y: pixelFloor(point.y))
         let line = CTLineCreateWithAttributedString(NSAttributedString(string: text, attributes: attributes))
         CTLineDraw(line, context)
+        context.restoreGState()
+    }
+
+    private func drawTerminalAttributedText(
+        _ text: NSAttributedString,
+        at point: NSPoint
+    ) {
+        guard let context = NSGraphicsContext.current?.cgContext else {
+            text.draw(at: point)
+            return
+        }
+        context.saveGState()
+        context.textMatrix = .identity
+        context.textPosition = CGPoint(x: pixelFloor(point.x), y: pixelFloor(point.y))
+        CTLineDraw(CTLineCreateWithAttributedString(text), context)
         context.restoreGState()
     }
 
