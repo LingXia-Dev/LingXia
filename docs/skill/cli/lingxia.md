@@ -112,9 +112,10 @@ appear, so pre-authorize once from an elevated shell:
 "<lingxia.exe path>" -Action Allow -Profile Private`.
 
 When `lingxia dev` runs in an SSH session on Windows, the CLI bootstraps the
-Runner through a temporary interactive-token task so its window appears on the
-Windows desktop. The same Windows account must already be signed in locally or
-through RDP; otherwise startup fails with an actionable error. From the SSH
+Runner through a temporary interactive-token task so its window opens in the
+foreground on the Windows desktop. The same Windows account must already be
+signed in locally or through RDP; otherwise startup fails with an actionable
+error. From the SSH
 client machine, use `--background`: the SSH command returns only after Runner is
 connected and prints the LAN URL to persist with `lxdev attach`.
 
