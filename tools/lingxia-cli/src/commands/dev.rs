@@ -451,6 +451,11 @@ pub fn execute(options: DevExecuteOptions) -> Result<()> {
     result
 }
 
+#[cfg(target_os = "windows")]
+pub fn focus_windows_process(pid: u32) -> Result<()> {
+    runner::focus_ssh_runner_window(pid)
+}
+
 fn execute_session_action(project_root: &Path, action: DevSessionAction) -> Result<()> {
     match action {
         DevSessionAction::Status { json } => print_session_status(project_root, json),

@@ -3,6 +3,11 @@ use super::*;
 #[cfg(target_os = "windows")]
 mod windows_interactive;
 
+#[cfg(target_os = "windows")]
+pub(super) fn focus_ssh_runner_window(pid: u32) -> Result<()> {
+    windows_interactive::focus_windows_process(pid)
+}
+
 const RUNNER_APP_NAME: &str = "LingXia Runner.app";
 const RUNNER_EXECUTABLE_NAME: &str = "LingXiaRunner";
 const RUNNER_LXAPP_PATH_ENV: &str = "LINGXIA_LXAPP_PATH";
