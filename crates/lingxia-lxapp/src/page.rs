@@ -124,6 +124,19 @@ pub struct PageState {
     pub(crate) query: serde_json::Value,
 }
 
+/// Automation-facing readiness snapshot for a page instance.
+#[derive(Clone, Debug, Serialize)]
+pub struct PageAutomationState {
+    pub webview_attached: bool,
+    pub webview_ready: bool,
+    pub webview_error: Option<String>,
+    pub bridge_ready: bool,
+    pub render_state: &'static str,
+    pub lifecycle: &'static str,
+    pub ready: bool,
+    pub query: Value,
+}
+
 #[derive(Copy, Clone, PartialEq, Debug)]
 enum PageRenderStatus {
     Unstarted,
@@ -803,6 +816,48 @@ impl PageInstance {
             webview_guard.clone()
         } else {
             None
+        }
+    }
+
+    /// Return a non-blocking readiness snapshot suitable for devtools.
+    pub fn automation_state(&self) -> PageAutomationState {
+        let webview_attached = self.webview().is_some();
+        let webview_result = self
+            .inner
+            .webview_ready_rx
+            .lock()
+            .ok()
+            .and_then(|rx| rx.borrow().clone());
+        let (webview_ready, webview_error) = match webview_result {
+            Some(Ok(())) => (true, None),
+            Some(Err(error)) => (false, Some(error)),
+            None => (false, None),
+        };
+        let state = self.inner.state.lock().ok();
+        let bridge_ready = state.as_ref().is_some_and(|state| state.bridge_ready);
+        let render_state = match state.as_ref().map(|state| state.render_status) {
+            Some(PageRenderStatus::Started) => "loading",
+            Some(PageRenderStatus::Finished) => "finished",
+            _ => "unstarted",
+        };
+        let lifecycle = state
+            .as_ref()
+            .map(|state| state.event.as_str())
+            .unwrap_or("unknown");
+        let ready = state.as_ref().is_some_and(|state| state.on_ready_fired);
+        let query = state
+            .as_ref()
+            .map(|state| state.query.clone())
+            .unwrap_or(Value::Null);
+        PageAutomationState {
+            webview_attached,
+            webview_ready,
+            webview_error,
+            bridge_ready,
+            render_state,
+            lifecycle,
+            ready,
+            query,
         }
     }
 

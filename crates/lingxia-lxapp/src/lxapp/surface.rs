@@ -262,6 +262,21 @@ pub struct PageSurface {
     pub kind: SurfaceKind,
 }
 
+/// Automation-facing metadata for a live lxapp-owned surface.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct LxAppRuntimeSurfaceInfo {
+    pub appid: String,
+    pub id: String,
+    pub content: &'static str,
+    pub target: String,
+    pub owner_page_instance_id: Option<String>,
+    pub content_page_instance_id: Option<String>,
+    pub kind: &'static str,
+    pub role: &'static str,
+    pub url_callback: bool,
+    pub ephemeral_web_data: bool,
+}
+
 /// A presented URL surface paired with a URL-callback interception channel:
 /// the web content loads in the surface, and the navigation to the callback
 /// URL is cancelled and delivered here instead. Dropping the handle closes the
@@ -312,6 +327,11 @@ pub(crate) struct SurfaceRecord {
     /// reclaim after long hide) so the owner's `Surface` handle reliably
     /// receives an onClose event.
     pub content_page_instance_id: Option<String>,
+    pub content: SurfaceContent,
+    pub target: String,
+    pub kind: SurfaceKind,
+    pub role: SurfaceRole,
+    pub ephemeral_web_data: bool,
 }
 
 impl LxApp {
@@ -398,13 +418,6 @@ impl LxApp {
         // the platform never leaks the victim's window/pane.
         let mut evicted: Vec<String> = Vec::new();
         if let Ok(state) = self.state.lock() {
-            state.surfaces.lock().unwrap().insert(
-                id.clone(),
-                SurfaceRecord {
-                    owner_page_instance_id: owner_pid.clone(),
-                    content_page_instance_id,
-                },
-            );
             // Mirror into the Adaptive Surface Layout core (authoritative model).
             let node = self.build_surface_node(
                 &id,
@@ -417,6 +430,18 @@ impl LxApp {
             );
             (present_kind, present_position, present_role, evicted) =
                 controller.open_node(node, request.position);
+            state.surfaces.lock().unwrap().insert(
+                id.clone(),
+                SurfaceRecord {
+                    owner_page_instance_id: owner_pid.clone(),
+                    content_page_instance_id,
+                    content,
+                    target: path.clone(),
+                    kind: present_kind,
+                    role: present_role,
+                    ephemeral_web_data,
+                },
+            );
         }
 
         let present_result = self.runtime.present_surface(PlatformSurfaceRequest {
@@ -532,6 +557,11 @@ impl LxApp {
                 SurfaceRecord {
                     owner_page_instance_id: owner_pid,
                     content_page_instance_id,
+                    content,
+                    target: path.clone(),
+                    kind: SurfaceKind::Window,
+                    role: SurfaceRole::Main,
+                    ephemeral_web_data: false,
                 },
             );
         }
@@ -641,6 +671,40 @@ impl LxApp {
             .ok()
             .map(|state| state.surfaces.lock().unwrap().contains_key(id))
             .unwrap_or(false)
+    }
+
+    /// Snapshot all live dynamic surfaces owned by this lxapp.
+    pub fn runtime_surface_info(&self) -> Vec<LxAppRuntimeSurfaceInfo> {
+        let mut surfaces = self
+            .state
+            .lock()
+            .ok()
+            .map(|state| {
+                state
+                    .surfaces
+                    .lock()
+                    .map(|surfaces| {
+                        surfaces
+                            .iter()
+                            .map(|(id, record)| LxAppRuntimeSurfaceInfo {
+                                appid: self.appid.clone(),
+                                id: id.clone(),
+                                content: surface_content_str(record.content),
+                                target: record.target.clone(),
+                                owner_page_instance_id: record.owner_page_instance_id.clone(),
+                                content_page_instance_id: record.content_page_instance_id.clone(),
+                                kind: surface_kind_str(record.kind),
+                                role: surface_role_str(record.role),
+                                url_callback: record.ephemeral_web_data,
+                                ephemeral_web_data: record.ephemeral_web_data,
+                            })
+                            .collect::<Vec<_>>()
+                    })
+                    .unwrap_or_default()
+            })
+            .unwrap_or_default();
+        surfaces.sort_by(|left, right| left.id.cmp(&right.id));
+        surfaces
     }
 
     pub fn show_surface(&self, id: &str) -> Result<(), LxAppError> {
@@ -958,6 +1022,28 @@ fn finite_or_nan(value: Option<f64>) -> f64 {
     match value {
         Some(value) if value.is_finite() => value,
         _ => f64::NAN,
+    }
+}
+
+fn surface_content_str(content: SurfaceContent) -> &'static str {
+    match content {
+        SurfaceContent::Page => "page",
+        SurfaceContent::Url => "url",
+    }
+}
+
+fn surface_kind_str(kind: SurfaceKind) -> &'static str {
+    match kind {
+        SurfaceKind::Window => "window",
+        SurfaceKind::Overlay => "overlay",
+    }
+}
+
+fn surface_role_str(role: SurfaceRole) -> &'static str {
+    match role {
+        SurfaceRole::Main => "main",
+        SurfaceRole::Aside => "aside",
+        SurfaceRole::Float => "float",
     }
 }
 

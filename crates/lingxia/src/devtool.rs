@@ -311,20 +311,102 @@ fn register_bundle_source_override() {
 pub struct LxAppDevPageInfo {
     /// App id that owns the page.
     pub appid: String,
+    /// Whether this route is declared in lxapp.json.
+    pub declared: bool,
+    /// Whether a live runtime instance currently exists.
+    pub opened: bool,
     /// Stable id for this runtime page instance.
     pub instance_id: String,
     /// Declarative page name from the runtime manifest, when available.
     pub name: String,
     /// Runtime page path.
     pub path: String,
+    /// Current page query data.
+    pub query: serde_json::Value,
     /// Whether this page is the current foreground page.
     pub current: bool,
     /// Whether this page still exists in the navigation stack.
     pub in_stack: bool,
-    /// Whether the page currently has an attached WebView.
+    /// Position in the navigation stack, oldest first.
+    pub stack_index: Option<usize>,
+    /// Runtime owner (`host`, `scene`, or an owning page instance).
+    pub owner: serde_json::Value,
+    /// Presentation kind for this page instance.
+    pub presentation: Option<String>,
+    /// Runtime page-instance lifecycle.
+    pub lifecycle: Option<String>,
+    /// Dynamic surfaces currently hosting this page instance.
+    pub surface_ids: Vec<String>,
+    /// Whether the lxapp page lifecycle has fired `OnReady`.
     pub ready: bool,
+    /// Whether the page currently has an attached WebView.
+    pub webview_attached: bool,
+    pub webview_ready: bool,
+    pub webview_error: Option<String>,
+    pub bridge_ready: bool,
+    pub render_state: String,
     /// Whether page element input actions are supported on this platform.
     pub input_supported: bool,
+}
+
+/// Page or DOM condition accepted by [`lxapp_dev_page_wait`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LxAppDevPageWaitState {
+    Ready,
+    Attached,
+    Detached,
+    Visible,
+    Hidden,
+    Enabled,
+    Editable,
+}
+
+impl LxAppDevPageWaitState {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Ready => "ready",
+            Self::Attached => "attached",
+            Self::Detached => "detached",
+            Self::Visible => "visible",
+            Self::Hidden => "hidden",
+            Self::Enabled => "enabled",
+            Self::Editable => "editable",
+        }
+    }
+
+    fn matches(self, element: &serde_json::Value) -> bool {
+        let exists = element
+            .get("exists")
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false);
+        match self {
+            Self::Ready => false,
+            Self::Attached => exists,
+            Self::Detached => !exists,
+            Self::Visible => exists && json_bool(element, "visible"),
+            Self::Hidden => exists && !json_bool(element, "visible"),
+            Self::Enabled => exists && json_bool(element, "enabled"),
+            Self::Editable => exists && json_bool(element, "editable"),
+        }
+    }
+}
+
+fn json_bool(value: &serde_json::Value, key: &str) -> bool {
+    value
+        .get(key)
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(false)
+}
+
+/// Result of a successful page wait.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct LxAppDevPageWaitResult {
+    pub state: LxAppDevPageWaitState,
+    pub selector: Option<String>,
+    pub page: LxAppDevPageInfo,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub element: Option<serde_json::Value>,
 }
 
 /// Returns information about the current page for the selected app.
@@ -337,33 +419,54 @@ pub fn lxapp_dev_page_current(appid: Option<&str>) -> Result<LxAppDevPageInfo, S
 /// Lists known pages for the selected app and marks current/stack state.
 pub fn lxapp_dev_page_list(appid: Option<&str>) -> Result<Vec<LxAppDevPageInfo>, String> {
     let app = resolve_dev_lxapp(appid.unwrap_or("current"))?;
-    let info = app.runtime_info();
-    Ok(info
-        .page_entries
-        .iter()
-        .map(|entry| {
-            let active = app.require_page(&entry.path).ok();
-            LxAppDevPageInfo {
-                appid: info.appid.clone(),
-                instance_id: active
-                    .as_ref()
-                    .map(|page| page.instance_id_string())
-                    .unwrap_or_default(),
-                name: entry.name.clone(),
-                path: entry.path.clone(),
-                current: info
-                    .current_page
-                    .as_deref()
-                    .is_some_and(|current_page| dev_page_paths_match(current_page, &entry.path)),
-                in_stack: info
-                    .page_stack
-                    .iter()
-                    .any(|stack_page| dev_page_paths_match(stack_page, &entry.path)),
-                ready: active.as_ref().is_some_and(|page| page.webview().is_some()),
-                input_supported: lxapp_dev_page_input_supported(),
-            }
-        })
-        .collect())
+    let runtime = app.runtime_info();
+    let surfaces = app.runtime_surface_info();
+    let mut pages = app
+        .page_instance_runtime_info()
+        .into_iter()
+        .map(|page| dev_page_runtime_info(&runtime.appid, &runtime.page_entries, &surfaces, page))
+        .collect::<Vec<_>>();
+
+    for entry in &runtime.page_entries {
+        if pages
+            .iter()
+            .any(|page| dev_page_paths_match(&page.path, &entry.path))
+        {
+            continue;
+        }
+        pages.push(LxAppDevPageInfo {
+            appid: runtime.appid.clone(),
+            declared: true,
+            opened: false,
+            instance_id: String::new(),
+            name: entry.name.clone(),
+            path: entry.path.clone(),
+            query: serde_json::Value::Null,
+            current: false,
+            in_stack: false,
+            stack_index: None,
+            owner: serde_json::Value::Null,
+            presentation: None,
+            lifecycle: None,
+            surface_ids: Vec::new(),
+            ready: false,
+            webview_attached: false,
+            webview_ready: false,
+            webview_error: None,
+            bridge_ready: false,
+            render_state: "unopened".to_string(),
+            input_supported: lxapp_dev_page_input_supported(),
+        });
+    }
+    Ok(pages)
+}
+
+/// Lists every live dynamic surface owned by the selected lxapp, including
+/// URL-callback surfaces that do not host a PageInstance.
+pub fn lxapp_dev_surface_list(
+    appid: Option<&str>,
+) -> Result<Vec<lxapp::LxAppRuntimeSurfaceInfo>, String> {
+    Ok(resolve_dev_lxapp(appid.unwrap_or("current"))?.runtime_surface_info())
 }
 
 /// Returns information for a specific page, or the current page if omitted.
@@ -374,6 +477,150 @@ pub fn lxapp_dev_page_info(
     let app = resolve_dev_lxapp(appid.unwrap_or("current"))?;
     let (page, name) = resolve_dev_page(&app, page_name)?;
     Ok(dev_page_info(&app, &page, name.as_deref()))
+}
+
+/// Waits for an lxapp page to finish its runtime lifecycle, or for a DOM
+/// element in that stable page instance to reach the requested state.
+pub async fn lxapp_dev_page_wait(
+    appid: Option<&str>,
+    page_name: Option<&str>,
+    selector: Option<&str>,
+    index: Option<usize>,
+    state: LxAppDevPageWaitState,
+    timeout: std::time::Duration,
+) -> Result<LxAppDevPageWaitResult, String> {
+    let app = resolve_dev_lxapp(appid.unwrap_or("current"))?;
+    let (page, name) = resolve_dev_page(&app, page_name)?;
+    let selector = selector.map(str::trim).filter(|value| !value.is_empty());
+
+    if state == LxAppDevPageWaitState::Ready && selector.is_some() {
+        return Err("--css cannot be combined with --state ready".to_string());
+    }
+    if state != LxAppDevPageWaitState::Ready && selector.is_none() {
+        return Err(format!("--css is required for --state {}", state.as_str()));
+    }
+
+    let query_script = selector
+        .map(|selector| build_dev_page_query_script(selector, index, false, Some(4096)))
+        .transpose()?;
+    let deadline = tokio::time::Instant::now()
+        .checked_add(timeout)
+        .ok_or_else(|| "page wait timeout is too large".to_string())?;
+    let instance_id = page.instance_id_string();
+    let mut last_element = None;
+    let mut last_error = None;
+
+    loop {
+        if app.get_page_by_instance_id_str(&instance_id).is_none() {
+            return Err(format!(
+                "page instance {instance_id} was disposed before wait completed"
+            ));
+        }
+        let automation = page.automation_state();
+        if let Some(error) = automation.webview_error {
+            return Err(format!(
+                "page WebView failed before wait completed: {error}"
+            ));
+        }
+        if state == LxAppDevPageWaitState::Ready && automation.ready {
+            return Ok(LxAppDevPageWaitResult {
+                state,
+                selector: None,
+                page: dev_page_info(&app, &page, name.as_deref()),
+                element: None,
+            });
+        }
+
+        if let (Some(script), Some(webview)) = (query_script.as_deref(), page.webview()) {
+            match webview.evaluate_javascript(script).await {
+                Ok(element) => {
+                    last_error = None;
+                    if state.matches(&element) {
+                        return Ok(LxAppDevPageWaitResult {
+                            state,
+                            selector: selector.map(str::to_string),
+                            page: dev_page_info(&app, &page, name.as_deref()),
+                            element: Some(element),
+                        });
+                    }
+                    last_element = Some(element);
+                }
+                Err(error) => {
+                    let error = error.to_string();
+                    if error.to_ascii_lowercase().contains("invalid selector") {
+                        return Err(error);
+                    }
+                    last_error = Some(error);
+                }
+            }
+        }
+
+        let now = tokio::time::Instant::now();
+        if now >= deadline {
+            let target = selector
+                .map(|selector| format!(" selector {selector:?}"))
+                .unwrap_or_default();
+            let detail = last_error
+                .map(|error| format!("; last evaluation error: {error}"))
+                .or_else(|| last_element.map(|element| format!("; last element state: {element}")))
+                .unwrap_or_default();
+            return Err(format!(
+                "timed out after {}ms waiting for page {instance_id}{target} to become {}{detail}",
+                timeout.as_millis(),
+                state.as_str(),
+            ));
+        }
+        tokio::time::sleep(std::cmp::min(
+            std::time::Duration::from_millis(50),
+            deadline.saturating_duration_since(now),
+        ))
+        .await;
+    }
+}
+
+/// Restarts an lxapp and waits for its replacement runtime session and entry
+/// page to finish the lxapp lifecycle.
+pub async fn lxapp_dev_restart(
+    appid: &str,
+    timeout: std::time::Duration,
+) -> Result<LxAppDevPageInfo, String> {
+    let appid = resolve_dev_appid(appid)?;
+    let app = resolve_dev_lxapp(&appid)?;
+    let previous_session = app.runtime_info().session_id;
+    lxapp::restart_lxapp(&appid).map_err(|err| err.to_string())?;
+    let deadline = tokio::time::Instant::now()
+        .checked_add(timeout)
+        .ok_or_else(|| "restart timeout is too large".to_string())?;
+
+    loop {
+        if let Some(app) = lxapp::try_get(&appid) {
+            let runtime = app.runtime_info();
+            if runtime.session_id != previous_session
+                && runtime.status == "opened"
+                && let Ok((page, name)) = resolve_dev_page(&app, None)
+            {
+                let state = page.automation_state();
+                if let Some(error) = state.webview_error {
+                    return Err(format!("restarted page WebView failed: {error}"));
+                }
+                if state.ready {
+                    return Ok(dev_page_info(&app, &page, name.as_deref()));
+                }
+            }
+        }
+        let now = tokio::time::Instant::now();
+        if now >= deadline {
+            return Err(format!(
+                "timed out after {}ms waiting for lxapp {appid} to restart",
+                timeout.as_millis()
+            ));
+        }
+        tokio::time::sleep(std::cmp::min(
+            std::time::Duration::from_millis(50),
+            deadline.saturating_duration_since(now),
+        ))
+        .await;
+    }
 }
 
 /// Evaluates JavaScript in the target page WebView and returns the raw JSON result.
@@ -401,13 +648,28 @@ pub async fn lxapp_dev_page_eval(
 /// Passing `None` lets the platform pick (focused/main on desktop; the sole
 /// window on mobile).
 pub async fn take_app_screenshot(window_id: Option<&str>) -> Result<Vec<u8>, String> {
+    take_app_screenshot_with_info(window_id)
+        .await
+        .map(|(_, bytes)| bytes)
+}
+
+/// Captures a host window and returns the concrete window selected alongside
+/// the PNG, so screenshot coordinates can be fed back into app input safely.
+pub async fn take_app_screenshot_with_info(
+    window_id: Option<&str>,
+) -> Result<(lingxia_platform::traits::screenshot::WindowInfo, Vec<u8>), String> {
     use lingxia_platform::traits::screenshot::AppScreenshot;
     let platform =
         lxapp::get_platform().ok_or_else(|| "platform is not initialized".to_string())?;
-    platform
-        .take_app_screenshot(window_id)
+    let window = platform
+        .resolve_app_window(window_id)
         .await
-        .map_err(|err| err.to_string())
+        .map_err(|err| err.to_string())?;
+    let bytes = platform
+        .take_app_screenshot(Some(&window.id))
+        .await
+        .map_err(|err| err.to_string())?;
+    Ok((window, bytes))
 }
 
 /// Enumerate the host app's top-level windows. Mobile platforms return a
@@ -458,13 +720,27 @@ pub async fn lxapp_dev_page_screenshot(
     appid: Option<&str>,
     page_name: Option<&str>,
 ) -> Result<Vec<u8>, String> {
+    lxapp_dev_page_screenshot_with_info(appid, page_name)
+        .await
+        .map(|(_, bytes)| bytes)
+}
+
+/// Captures a page screenshot and reports metadata for the exact page instance
+/// that supplied the bytes.
+pub async fn lxapp_dev_page_screenshot_with_info(
+    appid: Option<&str>,
+    page_name: Option<&str>,
+) -> Result<(LxAppDevPageInfo, Vec<u8>), String> {
     let app = resolve_dev_lxapp(appid.unwrap_or("current"))?;
-    let (page, _) = resolve_dev_page(&app, page_name)?;
-    page.webview()
+    let (page, name) = resolve_dev_page(&app, page_name)?;
+    let info = dev_page_info(&app, &page, name.as_deref());
+    let bytes = page
+        .webview()
         .ok_or_else(|| "page WebView is not ready".to_string())?
         .take_screenshot()
         .await
-        .map_err(|err| err.to_string())
+        .map_err(|err| err.to_string())?;
+    Ok((info, bytes))
 }
 
 /// Queries DOM nodes in the target page and returns a JSON description payload.
@@ -673,10 +949,7 @@ pub async fn lxapp_dev_nav_back(
         .map_err(|err| err.to_string())?;
 
     let (page, name) = resolve_dev_page(&app, None)?;
-    page.wait_webview_ready()
-        .await
-        .map_err(|err| err.to_string())?;
-    Ok(dev_page_info(&app, &page, name.as_deref()))
+    wait_dev_page_runtime_ready(&app, &page, name.as_deref()).await
 }
 
 async fn lxapp_dev_nav_with_kind(
@@ -706,13 +979,47 @@ async fn lxapp_dev_nav_with_kind(
         .navigate_to(target_page, kind.navigation_type())
         .map_err(|err| err.to_string())?;
 
-    target_page
-        .wait_webview_ready()
-        .await
-        .map_err(|err| err.to_string())?;
-
     let (page, name) = resolve_dev_page(&app, None)?;
-    Ok(dev_page_info(&app, &page, name.as_deref()))
+    debug_assert_eq!(page.instance_id_string(), target_page.instance_id_string());
+    wait_dev_page_runtime_ready(&app, &page, name.as_deref()).await
+}
+
+async fn wait_dev_page_runtime_ready(
+    app: &std::sync::Arc<lxapp::LxApp>,
+    page: &lxapp::PageInstance,
+    name: Option<&str>,
+) -> Result<LxAppDevPageInfo, String> {
+    let timeout = std::time::Duration::from_secs(15);
+    let deadline = tokio::time::Instant::now() + timeout;
+    let instance_id = page.instance_id_string();
+    loop {
+        let state = page.automation_state();
+        if let Some(error) = state.webview_error {
+            return Err(format!(
+                "page WebView failed before runtime became ready: {error}"
+            ));
+        }
+        if state.ready {
+            return Ok(dev_page_info(app, page, name));
+        }
+        if app.get_page_by_instance_id_str(&instance_id).is_none() {
+            return Err(format!(
+                "page instance {instance_id} was disposed before runtime became ready"
+            ));
+        }
+        let now = tokio::time::Instant::now();
+        if now >= deadline {
+            return Err(format!(
+                "timed out after {}ms waiting for page {instance_id} to become ready",
+                timeout.as_millis()
+            ));
+        }
+        tokio::time::sleep(std::cmp::min(
+            std::time::Duration::from_millis(50),
+            deadline.saturating_duration_since(now),
+        ))
+        .await;
+    }
 }
 
 fn resolve_dev_page_target(
@@ -845,22 +1152,125 @@ fn dev_page_info(
     name: Option<&str>,
 ) -> LxAppDevPageInfo {
     let info = app.runtime_info();
+    if let Some(runtime_page) = app
+        .page_instance_runtime_info()
+        .into_iter()
+        .find(|runtime_page| runtime_page.instance_id == page.instance_id_string())
+    {
+        return dev_page_runtime_info(
+            &info.appid,
+            &info.page_entries,
+            &app.runtime_surface_info(),
+            runtime_page,
+        );
+    }
+
+    let state = page.automation_state();
+    let ready = state.ready;
+    let webview_attached = state.webview_attached;
+    let webview_ready = state.webview_ready;
+    let webview_error = state.webview_error.clone();
+    let bridge_ready = state.bridge_ready;
+    let render_state = state.render_state.to_string();
     let path = page.path();
+    let declared = info
+        .page_entries
+        .iter()
+        .any(|entry| dev_page_paths_match(&entry.path, &path));
     LxAppDevPageInfo {
         appid: info.appid,
+        declared,
+        opened: true,
         instance_id: page.instance_id_string(),
         name: name.unwrap_or("").to_string(),
-        path: path.clone(),
-        current: info
-            .current_page
-            .as_deref()
-            .is_some_and(|current_page| dev_page_paths_match(current_page, &path)),
-        in_stack: info
-            .page_stack
-            .iter()
-            .any(|stack_page| dev_page_paths_match(stack_page, &path)),
-        ready: page.webview().is_some(),
+        path,
+        query: state.query,
+        current: false,
+        in_stack: false,
+        stack_index: None,
+        owner: serde_json::json!({ "kind": "host" }),
+        presentation: Some("window".to_string()),
+        lifecycle: Some("created".to_string()),
+        surface_ids: Vec::new(),
+        ready,
+        webview_attached,
+        webview_ready,
+        webview_error,
+        bridge_ready,
+        render_state,
         input_supported: lxapp_dev_page_input_supported(),
+    }
+}
+
+fn dev_page_runtime_info(
+    appid: &str,
+    entries: &[lxapp::LxAppRuntimePageInfo],
+    surfaces: &[lxapp::LxAppRuntimeSurfaceInfo],
+    page: lxapp::PageInstanceRuntimeInfo,
+) -> LxAppDevPageInfo {
+    let lxapp::PageInstanceRuntimeInfo {
+        instance_id,
+        name,
+        path,
+        query,
+        owner,
+        presentation,
+        lifecycle,
+        stack_index,
+        current,
+        state,
+    } = page;
+    let declared_entry = entries
+        .iter()
+        .find(|entry| dev_page_paths_match(&entry.path, &path));
+    let surface_ids = surfaces
+        .iter()
+        .filter(|surface| surface.content_page_instance_id.as_deref() == Some(instance_id.as_str()))
+        .map(|surface| surface.id.clone())
+        .collect();
+    let owner = dev_page_owner(&owner);
+    let presentation = match presentation {
+        lxapp::PresentationKind::Window => "window",
+        lxapp::PresentationKind::Panel => "panel",
+        lxapp::PresentationKind::Overlay => "overlay",
+    };
+    LxAppDevPageInfo {
+        appid: appid.to_string(),
+        declared: declared_entry.is_some(),
+        opened: true,
+        instance_id,
+        name: name
+            .or_else(|| declared_entry.map(|entry| entry.name.clone()))
+            .unwrap_or_default(),
+        path,
+        query,
+        current,
+        in_stack: stack_index.is_some(),
+        stack_index,
+        owner,
+        presentation: Some(presentation.to_string()),
+        lifecycle: Some(lifecycle),
+        surface_ids,
+        ready: state.ready,
+        webview_attached: state.webview_attached,
+        webview_ready: state.webview_ready,
+        webview_error: state.webview_error,
+        bridge_ready: state.bridge_ready,
+        render_state: state.render_state.to_string(),
+        input_supported: lxapp_dev_page_input_supported(),
+    }
+}
+
+fn dev_page_owner(owner: &lxapp::PageOwner) -> serde_json::Value {
+    match owner {
+        lxapp::PageOwner::Host => serde_json::json!({ "kind": "host" }),
+        lxapp::PageOwner::Scene(scene) => {
+            serde_json::json!({ "kind": "scene", "scene_id": scene.0 })
+        }
+        lxapp::PageOwner::Page(page) => serde_json::json!({
+            "kind": "page",
+            "page_instance_id": page.as_str(),
+        }),
     }
 }
 
@@ -1065,5 +1475,31 @@ mod tests {
             resolve_runnable_lxapp_path(tmp.path()),
             tmp.path().to_path_buf()
         );
+    }
+
+    #[test]
+    fn page_wait_states_match_query_payloads() {
+        let visible = serde_json::json!({
+            "exists": true,
+            "visible": true,
+            "enabled": true,
+            "editable": false,
+        });
+        assert!(LxAppDevPageWaitState::Attached.matches(&visible));
+        assert!(LxAppDevPageWaitState::Visible.matches(&visible));
+        assert!(LxAppDevPageWaitState::Enabled.matches(&visible));
+        assert!(!LxAppDevPageWaitState::Editable.matches(&visible));
+        assert!(LxAppDevPageWaitState::Detached.matches(&serde_json::json!({
+            "exists": false
+        })));
+    }
+
+    #[test]
+    fn page_paths_ignore_query_fragment_and_leading_slash() {
+        assert!(dev_page_paths_match(
+            "/pages/home?tab=one#content",
+            "pages/home"
+        ));
+        assert!(!dev_page_paths_match("pages/home", "pages/profile"));
     }
 }
