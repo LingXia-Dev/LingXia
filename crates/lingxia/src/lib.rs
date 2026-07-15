@@ -88,6 +88,12 @@ pub mod terminal {
 pub mod update;
 /// Process-local URL callback channels for native handoff flows.
 pub mod url_callback;
+#[cfg(any(
+    target_os = "android",
+    target_os = "ios",
+    target_os = "macos",
+    target_env = "ohos"
+))]
 mod webview_error;
 /// Wi-Fi control, scanning, and state subscriptions.
 pub mod wifi;
