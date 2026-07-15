@@ -28,3 +28,14 @@ menu:
   cut: "Cut"
   paste: "Paste"
   select_all: "Select All"
+
+# macOS top menu bar, for host apps that build NSMenu by hand instead of
+# relying on Cocoa's automatic menu bar. `%@` is the app's product name.
+app:
+  about: "About %@"
+  quit: "Quit %@"
+  edit: "Edit"
+  window: "Window"
+  minimize: "Minimize"
+  zoom: "Zoom"
+  bring_all_to_front: "Bring All to Front"
