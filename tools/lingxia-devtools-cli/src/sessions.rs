@@ -12,6 +12,7 @@ pub fn execute_list(json_output: bool) -> Result<()> {
         let array: Vec<Value> = sessions
             .iter()
             .map(|s| {
+                let state = project::session_state(s);
                 json!({
                     "session_id": s.session_id,
                     "pid": s.pid,
@@ -22,11 +23,9 @@ pub fn execute_list(json_output: bool) -> Result<()> {
                     "log_file": s.log_file,
                     "remote": s.remote_name.is_some(),
                     "remote_name": s.remote_name,
-                    "stale": if s.remote_name.is_some() {
-                        !project::remote_is_reachable(s)
-                    } else {
-                        project::is_stale(s)
-                    },
+                    "state": state.as_str(),
+                    "runtime_connected": state == project::SessionState::Ready,
+                    "stale": state == project::SessionState::Stale,
                 })
             })
             .collect();
@@ -58,10 +57,11 @@ pub fn execute_list(json_output: bool) -> Result<()> {
         .max()
         .unwrap_or(2);
     println!(
-        "{:<id_width$}  {:<target_width$}  {:<19}  {:<ws_width$}  PROJECT",
-        "ID", "TARGET", "STARTED", "WS"
+        "{:<id_width$}  {:<target_width$}  {:<8}  {:<19}  {:<ws_width$}  PROJECT",
+        "ID", "TARGET", "STATE", "STARTED", "WS"
     );
     for info in sessions.iter() {
+        let state = project::session_state(info);
         // Remote rows carry the same identity as local ones (fetched live via
         // session.info); the attach name tags the project column and the
         // non-loopback ws URL is what marks them as remote.
@@ -73,9 +73,10 @@ pub fn execute_list(json_output: bool) -> Result<()> {
             None => info.project_root.clone(),
         };
         println!(
-            "{:<id_width$}  {:<target_width$}  {:<19}  {:<ws_width$}  {}",
+            "{:<id_width$}  {:<target_width$}  {:<8}  {:<19}  {:<ws_width$}  {}",
             info.session_id,
             info.target,
+            state.as_str(),
             if info.started_at == 0 {
                 "-".to_string()
             } else {

@@ -92,9 +92,13 @@ pub fn attach(ws_url: &str, name: Option<String>) -> Result<()> {
     remotes.retain(|remote| remote.name != name);
     remotes.push(candidate);
     save_remotes(&remotes)?;
+    let state = crate::project::session_state(&info);
     println!(
-        "Attached {name:?}: {} session {} ({}). Use it with: lxdev --session {name} …",
-        info.target, info.session_id, info.project_root
+        "Attached {name:?}: {} session {} ({}, state={}). Use it with: lxdev --session {name} …",
+        info.target,
+        info.session_id,
+        info.project_root,
+        state.as_str()
     );
     Ok(())
 }

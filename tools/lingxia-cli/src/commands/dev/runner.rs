@@ -1,5 +1,8 @@
 use super::*;
 
+#[cfg(target_os = "windows")]
+mod windows_interactive;
+
 const RUNNER_APP_NAME: &str = "LingXia Runner.app";
 const RUNNER_EXECUTABLE_NAME: &str = "LingXiaRunner";
 const RUNNER_LXAPP_PATH_ENV: &str = "LINGXIA_LXAPP_PATH";
@@ -547,9 +550,7 @@ fn launch_windows_runner_for_lxapp(
         );
     }
 
-    #[cfg(target_os = "windows")]
-    let child = shell_execute_windows_runner(
-        &exe_path,
+    let launch_args = windows_runner_launch_args(
         lxapp_path,
         &assets_dir,
         ws_url,
@@ -559,25 +560,31 @@ fn launch_windows_runner_for_lxapp(
         &resource_lxapp_paths,
     )?;
 
+    #[cfg(target_os = "windows")]
+    let child = if windows_interactive::is_ssh_session() {
+        let launch = windows_interactive::launch_runner(
+            &exe_path,
+            lxapp_path,
+            &launch_args,
+            &log_store::dev_dir(lxapp_path).join("runner"),
+        )?;
+        println!(
+            "{} Bootstrapped Runner in the interactive Windows desktop",
+            "[runner]".cyan()
+        );
+        RunnerProcess::WindowsShell(WindowsShellRunnerProcess {
+            handle: launch.handle,
+            _interactive_cleanup: Some(launch.cleanup),
+        })
+    } else {
+        shell_execute_windows_runner(&exe_path, lxapp_path, &launch_args)?
+    };
+
     #[cfg(not(target_os = "windows"))]
     let child = {
         let mut command = Command::new(&exe_path);
         command.env(RUNNER_MARKER_ENV, "1");
-        command.arg("--lxapp-path").arg(lxapp_path);
-        command.arg("--dev-ws-url").arg(ws_url);
-        command.arg("--runner-env").arg(runner_env.as_str());
-        command.arg("--asset-dir").arg(&assets_dir);
-        if let Some(mock_dir) = &mock_dir {
-            command.arg("--lingxiao-mock-dir").arg(mock_dir);
-        }
-        if let Some(device) = runner_device.map(str::trim).filter(|s| !s.is_empty()) {
-            command.arg("--runner-device").arg(device);
-        }
-        if !resource_lxapp_paths.is_empty() {
-            command
-                .arg("--resource-lxapp-paths")
-                .arg(serde_json::to_string(&resource_lxapp_paths)?);
-        }
+        command.args(&launch_args);
         command.stdin(Stdio::null());
         command.stdout(Stdio::inherit());
         command.stderr(Stdio::inherit());
@@ -592,6 +599,40 @@ fn launch_windows_runner_for_lxapp(
 
     println!("{} Launched {}", "[runner]".cyan(), exe_path.display());
     Ok(child)
+}
+
+fn windows_runner_launch_args(
+    lxapp_path: &Path,
+    assets_dir: &Path,
+    ws_url: &str,
+    mock_dir: Option<&Path>,
+    runner_device: Option<&str>,
+    runner_env: crate::config::EnvVersion,
+    resource_lxapp_paths: &[WindowsRunnerResourceLxAppPath],
+) -> Result<Vec<String>> {
+    let mut args = vec![
+        "--lxapp-path".to_string(),
+        lxapp_path.display().to_string(),
+        "--dev-ws-url".to_string(),
+        ws_url.to_string(),
+        "--runner-env".to_string(),
+        runner_env.as_str().to_string(),
+        "--asset-dir".to_string(),
+        assets_dir.display().to_string(),
+    ];
+    if let Some(mock_dir) = mock_dir {
+        args.push("--lingxiao-mock-dir".to_string());
+        args.push(mock_dir.display().to_string());
+    }
+    if let Some(device) = runner_device.map(str::trim).filter(|s| !s.is_empty()) {
+        args.push("--runner-device".to_string());
+        args.push(device.to_string());
+    }
+    if !resource_lxapp_paths.is_empty() {
+        args.push("--resource-lxapp-paths".to_string());
+        args.push(serde_json::to_string(resource_lxapp_paths)?);
+    }
+    Ok(args)
 }
 
 fn windows_runner_resource_lxapp_paths(
@@ -748,6 +789,7 @@ impl RunnerProcess {
 #[cfg(target_os = "windows")]
 struct WindowsShellRunnerProcess {
     handle: ::windows::Win32::Foundation::HANDLE,
+    _interactive_cleanup: Option<windows_interactive::InteractiveRunnerCleanup>,
 }
 
 #[cfg(target_os = "windows")]
@@ -795,12 +837,7 @@ impl Drop for WindowsShellRunnerProcess {
 fn shell_execute_windows_runner(
     exe_path: &Path,
     lxapp_path: &Path,
-    assets_dir: &Path,
-    ws_url: &str,
-    mock_dir: Option<&Path>,
-    runner_device: Option<&str>,
-    runner_env: crate::config::EnvVersion,
-    resource_lxapp_paths: &[WindowsRunnerResourceLxAppPath],
+    launch_args: &[String],
 ) -> Result<RunnerProcess> {
     use ::windows::Win32::Foundation::HANDLE;
     use ::windows::Win32::System::Threading::GetProcessId;
@@ -816,31 +853,9 @@ fn shell_execute_windows_runner(
     // single write of a var no other thread reads, done just before launch.
     unsafe { std::env::set_var(RUNNER_MARKER_ENV, "1") };
 
-    let mut params = vec![
-        "--lxapp-path".to_string(),
-        lxapp_path.display().to_string(),
-        "--dev-ws-url".to_string(),
-        ws_url.to_string(),
-        "--runner-env".to_string(),
-        runner_env.as_str().to_string(),
-        "--asset-dir".to_string(),
-        assets_dir.display().to_string(),
-    ];
-    if let Some(mock_dir) = mock_dir {
-        params.push("--lingxiao-mock-dir".to_string());
-        params.push(mock_dir.display().to_string());
-    }
-    if let Some(device) = runner_device.map(str::trim).filter(|s| !s.is_empty()) {
-        params.push("--runner-device".to_string());
-        params.push(device.to_string());
-    }
-    if !resource_lxapp_paths.is_empty() {
-        params.push("--resource-lxapp-paths".to_string());
-        params.push(serde_json::to_string(resource_lxapp_paths)?);
-    }
-    let params = params
-        .into_iter()
-        .map(|arg| quote_windows_arg(&arg))
+    let params = launch_args
+        .iter()
+        .map(|arg| quote_windows_arg(arg))
         .collect::<Vec<_>>()
         .join(" ");
 
@@ -884,6 +899,7 @@ fn shell_execute_windows_runner(
 
     Ok(RunnerProcess::WindowsShell(WindowsShellRunnerProcess {
         handle: info.hProcess,
+        _interactive_cleanup: None,
     }))
 }
 
@@ -1145,7 +1161,8 @@ fn installed_runner_version(app_path: &Path) -> Result<Option<String>> {
 mod tests {
     use super::{
         WindowsRunnerLxAppIdentity, is_standalone_lxapp_project, lxapp_runner_build_args,
-        prepare_windows_runner_assets, render_runner_devices, windows_runner_ui_json,
+        prepare_windows_runner_assets, render_runner_devices, windows_runner_launch_args,
+        windows_runner_ui_json,
     };
     use crate::config::HOST_CONFIG_FILE;
     use std::fs;
@@ -1238,5 +1255,38 @@ mod tests {
             serde_json::from_slice(&fs::read(assets.join("app.json")).unwrap()).unwrap();
 
         assert_eq!(app_json["envVersion"], "preview");
+    }
+
+    #[test]
+    fn windows_runner_launch_args_preserve_all_runtime_inputs() {
+        let resources = vec![super::WindowsRunnerResourceLxAppPath {
+            app_id: "com.example.extra".to_string(),
+            path: r"D:\apps\extra".to_string(),
+        }];
+
+        let args = windows_runner_launch_args(
+            std::path::Path::new(r"D:\apps\home"),
+            std::path::Path::new(r"D:\apps\assets"),
+            "ws://127.0.0.1:39000/?token=abc",
+            Some(std::path::Path::new(r"D:\apps\mock")),
+            Some("desktop-1440"),
+            crate::config::EnvVersion::Developer,
+            &resources,
+        )
+        .unwrap();
+
+        assert!(
+            args.windows(2)
+                .any(|pair| pair == ["--lxapp-path", r"D:\apps\home"])
+        );
+        assert!(
+            args.windows(2)
+                .any(|pair| { pair == ["--dev-ws-url", "ws://127.0.0.1:39000/?token=abc"] })
+        );
+        assert!(
+            args.windows(2)
+                .any(|pair| pair == ["--runner-device", "desktop-1440"])
+        );
+        assert!(args.iter().any(|arg| arg.contains("com.example.extra")));
     }
 }

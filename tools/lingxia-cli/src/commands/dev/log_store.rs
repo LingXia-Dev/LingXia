@@ -27,6 +27,23 @@ pub struct DevLogSession {
     pub log_file: PathBuf,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DevSessionState {
+    Ready,
+    Starting,
+    Stale,
+}
+
+impl DevSessionState {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Ready => "ready",
+            Self::Starting => "starting",
+            Self::Stale => "stale",
+        }
+    }
+}
+
 pub fn dev_dir(project_root: &Path) -> PathBuf {
     project_root.join(DEV_DIR_NAME)
 }
@@ -143,10 +160,24 @@ pub fn list_sessions(project_root: &Path) -> Result<Vec<SessionInfo>> {
     Ok(sessions)
 }
 
-/// Registration with the broker is the liveness signal; the WS probe is a
-/// second opinion for display and for spotting a wedged-but-alive session.
-pub fn is_stale(info: &SessionInfo) -> bool {
-    !devtools_ws_reachable(&info.ws_url, WS_PROBE_TIMEOUT)
+pub fn session_state(info: &SessionInfo) -> DevSessionState {
+    session_state_from_echo(devtools_ws_echo(&info.ws_url, WS_PROBE_TIMEOUT))
+}
+
+fn session_state_from_echo(echo: Option<(bool, Option<serde_json::Value>)>) -> DevSessionState {
+    let Some((true, data)) = echo else {
+        return DevSessionState::Stale;
+    };
+    if data
+        .as_ref()
+        .and_then(|value| value.get("runtimeConnected"))
+        .and_then(serde_json::Value::as_bool)
+        == Some(true)
+    {
+        DevSessionState::Ready
+    } else {
+        DevSessionState::Starting
+    }
 }
 
 /// Live sessions for a given target in this project. Used by `lingxia dev` to
@@ -246,13 +277,6 @@ pub fn request_shutdown(info: &SessionInfo) -> Result<()> {
             Ok(_) => continue,
             Err(err) => return Err(err).context("Failed to parse dev websocket shutdown response"),
         }
-    }
-}
-
-fn devtools_ws_reachable(ws_url: &str, timeout: Duration) -> bool {
-    match devtools_ws_echo(ws_url, timeout) {
-        Some((ok, _)) => ok,
-        None => false,
     }
 }
 
@@ -410,5 +434,28 @@ mod tests {
 
         assert!(!old_log.exists());
         assert!(new_log.exists());
+    }
+
+    #[test]
+    fn session_state_distinguishes_server_from_runtime_readiness() {
+        assert_eq!(session_state_from_echo(None), DevSessionState::Stale);
+        assert_eq!(
+            session_state_from_echo(Some((
+                true,
+                Some(serde_json::json!({
+                    "runtimeConnected": false
+                }))
+            ))),
+            DevSessionState::Starting
+        );
+        assert_eq!(
+            session_state_from_echo(Some((
+                true,
+                Some(serde_json::json!({
+                    "runtimeConnected": true
+                }))
+            ))),
+            DevSessionState::Ready
+        );
     }
 }

@@ -17,6 +17,23 @@ pub struct SessionSelector {
     pub query: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SessionState {
+    Ready,
+    Starting,
+    Stale,
+}
+
+impl SessionState {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Ready => "ready",
+            Self::Starting => "starting",
+            Self::Stale => "stale",
+        }
+    }
+}
+
 /// Spawn the per-user broker so sessions orphaned by a broker crash can
 /// re-register and become visible again. `lxdev` never starts `lingxia dev`
 /// itself — only the broker. Missing `lingxia` binary is fine: with no broker
@@ -249,13 +266,13 @@ fn abbreviate_home(path: &str) -> String {
     }
 }
 
-pub fn is_stale(info: &SessionInfo) -> bool {
-    !devtools_ws_reachable(&info.ws_url, WS_PROBE_TIMEOUT)
+pub fn session_state(info: &SessionInfo) -> SessionState {
+    devtools_session_state(&info.ws_url, WS_PROBE_TIMEOUT)
 }
 
-fn devtools_ws_reachable(ws_url: &str, timeout: Duration) -> bool {
+fn devtools_session_state(ws_url: &str, timeout: Duration) -> SessionState {
     let Some(mut websocket) = connect_devtools_ws(ws_url, timeout) else {
-        return false;
+        return SessionState::Stale;
     };
 
     if send_wire_message(
@@ -267,7 +284,7 @@ fn devtools_ws_reachable(ws_url: &str, timeout: Duration) -> bool {
     )
     .is_err()
     {
-        return false;
+        return SessionState::Stale;
     }
 
     let command_id = format!(
@@ -287,12 +304,12 @@ fn devtools_ws_reachable(ws_url: &str, timeout: Duration) -> bool {
     )
     .is_err()
     {
-        return false;
+        return SessionState::Stale;
     }
 
     loop {
         let Ok(message) = websocket.read() else {
-            return false;
+            return SessionState::Stale;
         };
         let Message::Text(text) = message else {
             continue;
@@ -301,11 +318,28 @@ fn devtools_ws_reachable(ws_url: &str, timeout: Duration) -> bool {
             Ok(DevtoolsWireMessage::Result {
                 command_id: result_id,
                 ok,
+                data,
                 ..
-            }) if result_id == command_id => return ok,
+            }) if result_id == command_id => return session_state_from_echo_result(ok, data),
             Ok(_) => continue,
-            Err(_) => return false,
+            Err(_) => return SessionState::Stale,
         }
+    }
+}
+
+fn session_state_from_echo_result(ok: bool, data: Option<serde_json::Value>) -> SessionState {
+    if !ok {
+        return SessionState::Stale;
+    }
+    if data
+        .as_ref()
+        .and_then(|value| value.get("runtimeConnected"))
+        .and_then(serde_json::Value::as_bool)
+        == Some(true)
+    {
+        SessionState::Ready
+    } else {
+        SessionState::Starting
     }
 }
 
@@ -376,5 +410,27 @@ mod tests {
         let msg = pick_message(&[session("a1b2c3", "macos", 1), session("d4e5f6", "lxapp", 2)]);
         assert!(msg.contains("a1b2c3  macos"));
         assert!(msg.contains("d4e5f6  lxapp"));
+    }
+
+    #[test]
+    fn session_state_distinguishes_server_from_runtime_readiness() {
+        assert_eq!(
+            session_state_from_echo_result(false, None),
+            SessionState::Stale
+        );
+        assert_eq!(
+            session_state_from_echo_result(
+                true,
+                Some(serde_json::json!({ "runtimeConnected": false }))
+            ),
+            SessionState::Starting
+        );
+        assert_eq!(
+            session_state_from_echo_result(
+                true,
+                Some(serde_json::json!({ "runtimeConnected": true }))
+            ),
+            SessionState::Ready
+        );
     }
 }

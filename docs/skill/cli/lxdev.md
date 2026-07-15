@@ -6,6 +6,12 @@ This file says **what `lxdev` can do**. For flags and defaults, `lxdev <family> 
 
 ## Session selection
 
+`lingxia dev --background` treats the runtime websocket connection as the
+readiness boundary, not merely dev-server registration. Once it returns, the
+next runtime-backed `lxdev` command will not race Runner/app startup. Both
+`lingxia dev status` and `lxdev session list` report `starting`, `ready`, or
+`stale`.
+
 **Start a session for automation with `lingxia dev --background`.** `lxdev` needs a *live* session, and a session lives only as long as its owning `lingxia dev` process — a foreground `lingxia dev` blocks the terminal, and if an agent backgrounds it and later loses that process, the session dies with it. `--background` builds, launches, and returns once the session is ready; check it with `lingxia dev status`, stop it with `lingxia dev stop`. Then drive it with `lxdev`.
 
 Each `lingxia dev` session registers with a per-user local broker and stays registered for exactly as long as its process lives; `lxdev` queries the broker, so it works from **any directory** — the session may be one you started or one already running. One live session → used automatically. Several → it **refuses to guess** and prints the candidates; pick one with the global selector (before the subcommand) or the `LXDEV_SESSION` env var:
