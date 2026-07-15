@@ -115,8 +115,8 @@ fn handle_lxapp_page_command_impl(
             let info =
                 lingxia::dev::lxapp_dev_page_info(args.appid.as_deref(), args.page.as_deref())?;
             run_async(lingxia::dev::lxapp_dev_page_click(
-                args.appid.as_deref(),
-                args.page.as_deref(),
+                Some(&info.appid),
+                Some(&info.instance_id),
                 &args.selector,
                 args.index,
             ))?;
@@ -127,8 +127,8 @@ fn handle_lxapp_page_command_impl(
             let info =
                 lingxia::dev::lxapp_dev_page_info(args.appid.as_deref(), args.page.as_deref())?;
             run_async(lingxia::dev::lxapp_dev_page_type(
-                args.appid.as_deref(),
-                args.page.as_deref(),
+                Some(&info.appid),
+                Some(&info.instance_id),
                 &args.selector,
                 args.index,
                 &args.text,
@@ -140,8 +140,8 @@ fn handle_lxapp_page_command_impl(
             let info =
                 lingxia::dev::lxapp_dev_page_info(args.appid.as_deref(), args.page.as_deref())?;
             run_async(lingxia::dev::lxapp_dev_page_fill(
-                args.appid.as_deref(),
-                args.page.as_deref(),
+                Some(&info.appid),
+                Some(&info.instance_id),
                 &args.selector,
                 args.index,
                 &args.text,
@@ -153,8 +153,8 @@ fn handle_lxapp_page_command_impl(
             let info =
                 lingxia::dev::lxapp_dev_page_info(args.appid.as_deref(), args.page.as_deref())?;
             run_async(lingxia::dev::lxapp_dev_page_press(
-                args.appid.as_deref(),
-                args.page.as_deref(),
+                Some(&info.appid),
+                Some(&info.instance_id),
                 &args.key,
             ))?;
             Ok(Some(page_action_response("press", info)))
@@ -164,8 +164,8 @@ fn handle_lxapp_page_command_impl(
             let info =
                 lingxia::dev::lxapp_dev_page_info(args.appid.as_deref(), args.page.as_deref())?;
             run_async(lingxia::dev::lxapp_dev_page_scroll(
-                args.appid.as_deref(),
-                args.page.as_deref(),
+                Some(&info.appid),
+                Some(&info.instance_id),
                 args.dx,
                 args.dy,
             ))?;
@@ -176,8 +176,8 @@ fn handle_lxapp_page_command_impl(
             let info =
                 lingxia::dev::lxapp_dev_page_info(args.appid.as_deref(), args.page.as_deref())?;
             run_async(lingxia::dev::lxapp_dev_page_scroll_to(
-                args.appid.as_deref(),
-                args.page.as_deref(),
+                Some(&info.appid),
+                Some(&info.instance_id),
                 &args.selector,
             ))?;
             Ok(Some(page_action_response("scroll_to", info)))
