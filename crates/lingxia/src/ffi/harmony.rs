@@ -329,6 +329,13 @@ pub fn set_surface_width(appid: String, width: f64) -> bool {
 }
 
 #[napi]
+pub fn set_surface_viewport(appid: String, width: f64, height: f64) -> bool {
+    lxapp::try_get(&appid)
+        .map(|lxapp| lxapp.set_surface_viewport(width, height))
+        .unwrap_or(false)
+}
+
+#[napi]
 pub fn surface_derived_layout(appid: String) -> String {
     lxapp::try_get(&appid)
         .and_then(|lxapp| lxapp.surface_derived_layout())

@@ -22,7 +22,7 @@ import { NavigationBar, NavigationBarState, NAVBAR_TOTAL_HEIGHT } from './Naviga
 import { NavigationButton, CapsuleButton } from './LxAppDrawables';
 import { TabBar } from './TabBar';
 import { TabBarPosition, TabBarItem, UiEventType } from 'liblingxia.so';
-import liblingxia, { TabBarState, getNavigationBarState, isPullDownRefreshEnabled, onPageShow, onLxappEvent, setSurfaceWidth } from 'liblingxia.so';
+import liblingxia, { TabBarState, getNavigationBarState, isPullDownRefreshEnabled, onPageShow, onLxappEvent, setSurfaceViewport, setSurfaceWidth } from 'liblingxia.so';
 import { NAVIGATION_ACTION_BACK, NAVIGATION_ACTION_HOME, CAPSULE_ACTION_CLOSE } from '../app/NativeBridge';
 import { AnimationType } from './LxAppNavigation';
 import { LxNativeVideoPlayer } from './APIs/media/player/LxNativeVideoPlayer';
@@ -114,6 +114,8 @@ export struct LxAppContainer {
 	  private keyboardMonitorActive: boolean = false;
 	  private keyboardWindow: window.Window | null = null;
   private lastReportedSurfaceWidthVp: number = 0;
+  private lastReportedSurfaceHeightVp: number = 0;
+  private lastReportedShellWidthVp: number = 0;
 
   /**
    * Trigger onPageShow if WebView hasn't triggered it yet
@@ -656,7 +658,7 @@ export struct LxAppContainer {
 	    .width('100%')
 	    .height('100%')
     .onAreaChange((_, newValue) => {
-      this.reportSurfaceWidth(Number(newValue.width) || 0);
+      this.reportShellWidth(Number(newValue.width) || 0);
     })
 	    .expandSafeArea(this.shouldExpandSafeAreaForContainer() || this.fullscreenComponentId.length > 0 ? [SafeAreaType.SYSTEM] : [], this.shouldExpandSafeAreaForContainer() || this.fullscreenComponentId.length > 0 ? [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM] : [])
 	  }
@@ -948,6 +950,12 @@ export struct LxAppContainer {
     .width('100%')
     .height('100%')
     .padding(this.getContainerPadding())
+    .onAreaChange((_, newValue) => {
+      this.reportSurfaceViewport(
+        Number(newValue.width) || 0,
+        Number(newValue.height) || 0
+      );
+    })
     .hitTestBehavior(HitTestMode.Transparent)
     .zIndex(this.shouldRenderOverlayMask() ? 10004 : 0)
     .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
@@ -1484,17 +1492,36 @@ export struct LxAppContainer {
 	    return this.isIsolatedPageInstanceWebView(webTag);
 	  }
 
-  private reportSurfaceWidth(widthVp: number): void {
+  private reportSurfaceViewport(widthVp: number, heightVp: number): void {
+    if (!Number.isFinite(widthVp) || !Number.isFinite(heightVp) || widthVp <= 0 || heightVp <= 0) {
+      return;
+    }
+    const roundedWidth = Math.round(widthVp);
+    const roundedHeight = Math.round(heightVp);
+    if (Math.abs(roundedWidth - this.lastReportedSurfaceWidthVp) < 1 &&
+      Math.abs(roundedHeight - this.lastReportedSurfaceHeightVp) < 1) {
+      return;
+    }
+    this.lastReportedSurfaceWidthVp = roundedWidth;
+    this.lastReportedSurfaceHeightVp = roundedHeight;
+    try {
+      setSurfaceViewport(this.appId, roundedWidth, roundedHeight);
+    } catch (error) {
+      hilog.warn(DOMAIN, TAG, `setSurfaceViewport failed appId=${this.appId}: ${error}`);
+    }
+  }
+
+  private reportShellWidth(widthVp: number): void {
     if (!Number.isFinite(widthVp) || widthVp <= 0) {
       return;
     }
-    const rounded = Math.round(widthVp);
-    if (Math.abs(rounded - this.lastReportedSurfaceWidthVp) < 1) {
+    const roundedWidth = Math.round(widthVp);
+    if (Math.abs(roundedWidth - this.lastReportedShellWidthVp) < 1) {
       return;
     }
-    this.lastReportedSurfaceWidthVp = rounded;
+    this.lastReportedShellWidthVp = roundedWidth;
     try {
-      setSurfaceWidth(this.appId, rounded);
+      setSurfaceWidth(this.appId, roundedWidth);
     } catch (error) {
       hilog.warn(DOMAIN, TAG, `setSurfaceWidth failed appId=${this.appId}: ${error}`);
     }

@@ -119,8 +119,10 @@ final class LxAppViewController: UIViewController, ObservableObject {
     private func reportSurfaceWidth() {
         guard let appId = LxAppCore.currentAppId, !appId.isEmpty else { return }
         let width = view.bounds.width
-        guard width > 0 else { return }
+        let height = view.bounds.height
+        guard width > 0, height > 0 else { return }
         _ = setSurfaceWidth(appId, Double(width))
+        _ = setSurfaceViewport(appId, Double(width), Double(height))
     }
 
     public override var supportedInterfaceOrientations: UIInterfaceOrientationMask {
