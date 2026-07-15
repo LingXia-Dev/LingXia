@@ -1954,7 +1954,7 @@ declare global {
      * window). Pages cannot be docked as an `aside` — an aside shows external
      * content only.
      * - `{ surface, edge?, query? }` shows a host-declared surface by its `ui` id.
-     * - `{ url }` opens an http(s)/lingxia url in the in-app chromed browser.
+     * - `{ url }` opens an authorized HTTPS/file URL in the in-app chromed browser.
      */
     openSurface(spec: never): Promise<never>;
     /** `lx.openExternal(url)` — hand the url off to the OS default browser. */
