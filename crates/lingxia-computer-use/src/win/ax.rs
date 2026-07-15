@@ -347,10 +347,14 @@ pub fn scroll_into_view(window_id: &str, q: &AxQuery) -> Result<Ack> {
 /// Poll the tree until a node matching `q` reaches the requested state, or time
 /// out (exit 5). States: exists (default) / gone / enabled / focused.
 pub fn wait(window_id: &str, q: &AxQuery, state: &str, timeout_ms: u64) -> Result<Ack> {
+    if !matches!(state, "exists" | "gone" | "enabled" | "focused") {
+        return Err(Error::Usage(format!(
+            "unknown ax wait state '{state}'; expected exists, gone, enabled, or focused"
+        )));
+    }
     let deadline = std::time::Instant::now() + std::time::Duration::from_millis(timeout_ms);
     loop {
-        let nodes: Vec<AxNode> = flat(window_id)
-            .unwrap_or_default()
+        let nodes: Vec<AxNode> = flat(window_id)?
             .into_iter()
             .map(|(n, _)| n)
             .filter(|n| q.matches(n))
@@ -359,7 +363,8 @@ pub fn wait(window_id: &str, q: &AxQuery, state: &str, timeout_ms: u64) -> Resul
             "gone" => nodes.is_empty(),
             "enabled" => nodes.iter().any(|n| n.enabled),
             "focused" => nodes.iter().any(|n| n.focused),
-            _ => !nodes.is_empty(), // "exists"
+            "exists" => !nodes.is_empty(),
+            _ => unreachable!("state was validated above"),
         };
         if satisfied {
             return Ok(Ack::new(format!("ax.wait:{state}")));

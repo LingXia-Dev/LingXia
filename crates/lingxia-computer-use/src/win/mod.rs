@@ -255,10 +255,10 @@ pub fn wait_window(query: &WindowQuery, visible: Option<bool>, timeout_ms: u64) 
     }
     let deadline = std::time::Instant::now() + std::time::Duration::from_millis(timeout_ms);
     loop {
-        if let Ok(found) = windows(query)
-            && let Some(w) = found
-                .into_iter()
-                .find(|w| visible.is_none_or(|v| w.visible == v))
+        let found = windows(query)?;
+        if let Some(w) = found
+            .into_iter()
+            .find(|w| visible.is_none_or(|v| w.visible == v))
         {
             return Ok(w);
         }

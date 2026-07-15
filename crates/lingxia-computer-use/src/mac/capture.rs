@@ -189,11 +189,10 @@ pub fn wait_pixel(x: i32, y: i32, hex: &str, tolerance: u8, timeout_ms: u64) -> 
     let want = parse_hex(hex)?;
     let deadline = std::time::Instant::now() + std::time::Duration::from_millis(timeout_ms);
     loop {
-        if let Ok(p) = pixel(x, y) {
-            let close = |a: u8, b: u8| a.abs_diff(b) <= tolerance;
-            if close(p.r, want.0) && close(p.g, want.1) && close(p.b, want.2) {
-                return Ok(p);
-            }
+        let p = pixel(x, y)?;
+        let close = |a: u8, b: u8| a.abs_diff(b) <= tolerance;
+        if close(p.r, want.0) && close(p.g, want.1) && close(p.b, want.2) {
+            return Ok(p);
         }
         if std::time::Instant::now() >= deadline {
             return Err(Error::Timeout(format!("timed out waiting for pixel {hex}")));
