@@ -1024,11 +1024,19 @@ fn process_cwd(_pid: u32) -> Option<std::path::PathBuf> {
     None
 }
 
+#[cfg(all(lingxia_ghostty_vt_available, target_os = "macos"))]
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ProcessGroupMember {
+    pid: u32,
+    parent_pid: u32,
+    name: String,
+}
+
 #[cfg(all(
     lingxia_ghostty_vt_available,
     any(target_os = "macos", target_os = "ios")
 ))]
-fn process_name(pid: u32) -> Option<String> {
+fn apple_process_name(pid: u32) -> Option<String> {
     let mut buffer = [0_i8; 256];
     let rc = unsafe {
         libc::proc_name(
@@ -1046,6 +1054,83 @@ fn process_name(pid: u32) -> Option<String> {
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(ToOwned::to_owned)
+}
+
+#[cfg(all(lingxia_ghostty_vt_available, target_os = "macos"))]
+fn process_name(process_group_id: u32) -> Option<String> {
+    macos_process_group_members(process_group_id)
+        .and_then(|members| deepest_process_name(&members))
+        .or_else(|| apple_process_name(process_group_id))
+}
+
+#[cfg(all(lingxia_ghostty_vt_available, target_os = "macos"))]
+fn macos_process_group_members(process_group_id: u32) -> Option<Vec<ProcessGroupMember>> {
+    let process_group_id = libc::pid_t::try_from(process_group_id).ok()?;
+    let estimated_count =
+        unsafe { libc::proc_listpgrppids(process_group_id, std::ptr::null_mut(), 0) };
+    if estimated_count <= 0 {
+        return None;
+    }
+
+    let mut pids = vec![0 as libc::pid_t; estimated_count as usize + 16];
+    let buffer_size = libc::c_int::try_from(std::mem::size_of_val(pids.as_slice())).ok()?;
+    let count =
+        unsafe { libc::proc_listpgrppids(process_group_id, pids.as_mut_ptr().cast(), buffer_size) };
+    if count <= 0 {
+        return None;
+    }
+
+    let mut members = Vec::with_capacity(count as usize);
+    for pid in pids.into_iter().take(count as usize).filter(|pid| *pid > 0) {
+        let mut info = unsafe { std::mem::zeroed::<libc::proc_bsdinfo>() };
+        let info_size = std::mem::size_of::<libc::proc_bsdinfo>();
+        let read = unsafe {
+            libc::proc_pidinfo(
+                pid,
+                libc::PROC_PIDTBSDINFO,
+                0,
+                (&mut info as *mut libc::proc_bsdinfo).cast(),
+                info_size as libc::c_int,
+            )
+        };
+        if read < info_size as libc::c_int {
+            continue;
+        }
+        if let Some(name) = apple_process_name(info.pbi_pid) {
+            members.push(ProcessGroupMember {
+                pid: info.pbi_pid,
+                parent_pid: info.pbi_ppid,
+                name,
+            });
+        }
+    }
+    (!members.is_empty()).then_some(members)
+}
+
+#[cfg(all(lingxia_ghostty_vt_available, target_os = "macos"))]
+fn deepest_process_name(members: &[ProcessGroupMember]) -> Option<String> {
+    fn depth(member: &ProcessGroupMember, members: &[ProcessGroupMember]) -> usize {
+        let mut depth = 0;
+        let mut parent_pid = member.parent_pid;
+        for _ in 0..members.len() {
+            let Some(parent) = members.iter().find(|candidate| candidate.pid == parent_pid) else {
+                break;
+            };
+            depth += 1;
+            parent_pid = parent.parent_pid;
+        }
+        depth
+    }
+
+    members
+        .iter()
+        .max_by_key(|member| (depth(member, members), member.pid))
+        .map(|member| member.name.clone())
+}
+
+#[cfg(all(lingxia_ghostty_vt_available, target_os = "ios"))]
+fn process_name(pid: u32) -> Option<String> {
+    apple_process_name(pid)
 }
 
 #[cfg(all(lingxia_ghostty_vt_available, target_os = "linux"))]
@@ -1239,6 +1324,24 @@ mod tests {
     fn rejects_scroll_for_missing_session_or_zero_delta() {
         assert!(!terminal_scroll(0, -3, 0, 0, true));
         assert!(!terminal_scroll(u64::MAX, 0, 0, 0, true));
+    }
+
+    #[test]
+    #[cfg(all(lingxia_ghostty_vt_available, target_os = "macos"))]
+    fn names_the_deepest_process_group_member() {
+        let members = vec![
+            ProcessGroupMember {
+                pid: 10,
+                parent_pid: 1,
+                name: "runtime".to_string(),
+            },
+            ProcessGroupMember {
+                pid: 11,
+                parent_pid: 10,
+                name: "cli-tool".to_string(),
+            },
+        ];
+        assert_eq!(deepest_process_name(&members).as_deref(), Some("cli-tool"));
     }
 
     #[test]
