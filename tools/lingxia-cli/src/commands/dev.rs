@@ -105,10 +105,8 @@ struct DevContext {
 /// Per-user token authenticating a physical iOS device's connection to the
 /// host-side dev server.
 fn persistent_device_token() -> Result<String> {
-    let dir = dirs::home_dir()
-        .ok_or_else(|| anyhow!("Cannot determine home directory for the device token"))?
-        .join(".lingxia");
-    std::fs::create_dir_all(&dir).context("Failed to create ~/.lingxia")?;
+    let dir = crate::platform::apple::auth::apple_credentials_dir()?;
+    std::fs::create_dir_all(&dir).with_context(|| format!("Failed to create {}", dir.display()))?;
     let path = dir.join("dev-device-token");
     if let Ok(existing) = std::fs::read_to_string(&path) {
         let existing = existing.trim();
@@ -117,7 +115,8 @@ fn persistent_device_token() -> Result<String> {
         }
     }
     let token = uuid::Uuid::new_v4().simple().to_string();
-    std::fs::write(&path, &token).context("Failed to persist the device token")?;
+    std::fs::write(&path, &token)
+        .with_context(|| format!("Failed to persist device token at {}", path.display()))?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
