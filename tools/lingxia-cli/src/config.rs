@@ -329,7 +329,7 @@ pub enum SurfaceTrayAction {
 /// - `native: terminal` + `role: aside` -> the built-in terminal surface,
 ///   edge defaulting to `bottom`. `capabilities.terminal` only enables the
 ///   runtime; it does not add UI by itself.
-/// - `url` -> content `{ kind: web, url }` (requires the `browser:` config).
+/// - `url` -> content `{ kind: web, url }` (requires the browser capability).
 /// - `tray` -> a `menuBarItem` activator (closest existing kind).
 ///
 /// There is no `sidebar:` entry field: persistent entries are declared at
@@ -360,6 +360,9 @@ fn surfaces_to_ui(
     // only make sense on a given role.
     for (content, surface) in &resolved {
         let name = content.name();
+        if let SurfaceContent::Url(url) = *content {
+            validate_declared_surface_url(url)?;
+        }
         match (*content, surface.role) {
             (SurfaceContent::Lxapp(_), _) => {}
             (SurfaceContent::Page(_), SurfaceRole::Float) => {
@@ -376,7 +379,7 @@ fn surfaces_to_ui(
             (SurfaceContent::Url(_), SurfaceRole::Main | SurfaceRole::Aside) => {
                 if !browser_enabled {
                     return Err(anyhow!(
-                        "surface '{name}': a url surface requires the browser capability (top-level browser:)"
+                        "surface '{name}': a url surface requires the browser capability"
                     ));
                 }
             }
@@ -609,6 +612,22 @@ fn surfaces_to_ui(
         "surfaces": out_surfaces,
         "activators": out_activators
     }))
+}
+
+fn validate_declared_surface_url(url: &str) -> Result<()> {
+    let (scheme, rest) = url
+        .split_once(':')
+        .ok_or_else(|| anyhow!("surface '{url}': url must be absolute"))?;
+    let scheme = scheme.to_ascii_lowercase();
+    if !matches!(scheme.as_str(), "https" | "file") {
+        return Err(anyhow!(
+            "surface '{url}': url scheme must be https or a host-authorized file"
+        ));
+    }
+    if !rest.starts_with("//") {
+        return Err(anyhow!("surface '{url}': url must use {scheme}:// syntax"));
+    }
+    Ok(())
 }
 
 fn surface_content_json(content: SurfaceContent<'_>) -> Value {
@@ -1359,7 +1378,7 @@ impl LingXiaConfig {
             .as_ref()
             .map(|capabilities| capabilities.terminal)
             .unwrap_or(false);
-        let browser_enabled = self.browser.is_some();
+        let browser_enabled = self.browser_enabled();
         self.generated_ui = Some(surfaces_to_ui(surfaces, terminal_enabled, browser_enabled)?);
         Ok(())
     }
@@ -3199,6 +3218,53 @@ surfaces:
             .unwrap_err()
             .to_string();
         assert!(err.contains("browser capability"), "{err}");
+    }
+
+    #[test]
+    fn capability_only_browser_accepts_url_surface() {
+        let yaml = r#"
+app:
+  projectName: demo
+  productName: Demo
+  productVersion: 0.1.0
+  platforms: [windows]
+  homeAppId: home
+capabilities:
+  browser: true
+surfaces:
+  - lxapp: home
+    role: main
+    launch: true
+  - url: https://example.com
+    role: aside
+"#;
+
+        let config = load_config_yaml(yaml).unwrap();
+        assert!(config.generated_ui.is_some());
+        assert!(config.browser.is_none());
+    }
+
+    #[test]
+    fn surfaces_reject_plain_http_url() {
+        let yaml = r#"
+app:
+  projectName: demo
+  productName: Demo
+  productVersion: 0.1.0
+  platforms: [windows]
+  homeAppId: home
+capabilities:
+  browser: true
+surfaces:
+  - lxapp: home
+    role: main
+    launch: true
+  - url: http://example.com
+    role: aside
+"#;
+
+        let err = load_config_yaml(yaml).unwrap_err().to_string();
+        assert!(err.contains("url scheme must be https"), "{err}");
     }
 
     #[test]
