@@ -564,6 +564,22 @@ private final class LingXiaTerminalCanvasView: NSView {
                     inverse: cell.inverse
                 )
                 let cellCol = Int(cell.col)
+                if !style.italic,
+                   !style.underline,
+                   isSupportedBoxDrawing(cell.text) {
+                    flushRun()
+                    _ = drawBoxDrawing(
+                       cell.text,
+                       col: cellCol,
+                       row: Int(cell.row),
+                       color: terminalColor(
+                           style.inverse ? style.bg : style.fg,
+                           fallback: style.inverse ? defaultBackground : defaultForeground
+                       )?.withAlphaComponent(style.dim ? 0.58 : 1) ?? defaultForeground,
+                       bold: style.bold
+                    )
+                    continue
+                }
                 if runStyle != style || runRow != Int(cell.row) || runNextCol != cellCol {
                     flushRun()
                     runStyle = style
@@ -810,7 +826,9 @@ private final class LingXiaTerminalCanvasView: NSView {
         let sample = "W" as NSString
         let measured = sample.size(withAttributes: [.font: font])
         charSize = NSSize(
-            width: max(1, pixelCeil(measured.width)),
+            // CoreText keeps the font's fractional advance when drawing a run.
+            // Rounding the grid width accumulates visible drift on long boxes.
+            width: max(1, measured.width),
             height: max(1, pixelCeil(font.ascender - font.descender + max(2, font.leading)))
         )
         let horizontalInset: CGFloat = 0
@@ -899,6 +917,164 @@ private final class LingXiaTerminalCanvasView: NSView {
         let line = CTLineCreateWithAttributedString(NSAttributedString(string: text, attributes: attributes))
         CTLineDraw(line, context)
         context.restoreGState()
+    }
+
+    private func isSupportedBoxDrawing(_ text: String) -> Bool {
+        guard text.unicodeScalars.count == 1,
+              let value = text.unicodeScalars.first?.value else {
+            return false
+        }
+        switch value {
+        case 0x2500, 0x2502, 0x250C, 0x2510, 0x2514, 0x2518,
+             0x251C, 0x2524, 0x252C, 0x2534, 0x253C,
+             0x256D, 0x256E, 0x256F, 0x2570:
+            return true
+        default:
+            return false
+        }
+    }
+
+    private func drawBoxDrawing(
+        _ text: String,
+        col: Int,
+        row: Int,
+        color: NSColor,
+        bold: Bool
+    ) -> Bool {
+        guard text.unicodeScalars.count == 1,
+              let scalar = text.unicodeScalars.first else {
+            return false
+        }
+
+        let connections: (left: Bool, right: Bool, up: Bool, down: Bool)
+        let rounded: UInt32?
+        switch scalar.value {
+        case 0x2500: connections = (true, true, false, false); rounded = nil // ─
+        case 0x2502: connections = (false, false, true, true); rounded = nil // │
+        case 0x250C: connections = (false, true, false, true); rounded = nil // ┌
+        case 0x2510: connections = (true, false, false, true); rounded = nil // ┐
+        case 0x2514: connections = (false, true, true, false); rounded = nil // └
+        case 0x2518: connections = (true, false, true, false); rounded = nil // ┘
+        case 0x251C: connections = (false, true, true, true); rounded = nil // ├
+        case 0x2524: connections = (true, false, true, true); rounded = nil // ┤
+        case 0x252C: connections = (true, true, false, true); rounded = nil // ┬
+        case 0x2534: connections = (true, true, true, false); rounded = nil // ┴
+        case 0x253C: connections = (true, true, true, true); rounded = nil // ┼
+        case 0x256D: connections = (false, true, false, true); rounded = scalar.value // ╭
+        case 0x256E: connections = (true, false, false, true); rounded = scalar.value // ╮
+        case 0x256F: connections = (true, false, true, false); rounded = scalar.value // ╯
+        case 0x2570: connections = (false, true, true, false); rounded = scalar.value // ╰
+        default: return false
+        }
+
+        let left = pixelFloor(CGFloat(col) * charSize.width)
+        let right = pixelFloor(CGFloat(col + 1) * charSize.width)
+        let bottom = pixelFloor(bounds.height - CGFloat(row + 1) * charSize.height)
+        let top = pixelFloor(bounds.height - CGFloat(row) * charSize.height)
+        let centerX = pixelFloor((left + right) / 2)
+        let centerY = pixelFloor((bottom + top) / 2)
+        let path = NSBezierPath()
+        path.lineWidth = bold ? 1.5 : 1
+        path.lineCapStyle = .butt
+        path.lineJoinStyle = .miter
+
+        if let rounded {
+            appendRoundedCorner(
+                rounded,
+                to: path,
+                left: left,
+                right: right,
+                bottom: bottom,
+                top: top,
+                centerX: centerX,
+                centerY: centerY
+            )
+            color.setStroke()
+            path.stroke()
+            return true
+        }
+
+        if connections.left {
+            path.move(to: NSPoint(x: left, y: centerY))
+            path.line(to: NSPoint(x: centerX, y: centerY))
+        }
+        if connections.right {
+            path.move(to: NSPoint(x: centerX, y: centerY))
+            path.line(to: NSPoint(x: right, y: centerY))
+        }
+        if connections.up {
+            path.move(to: NSPoint(x: centerX, y: centerY))
+            path.line(to: NSPoint(x: centerX, y: top))
+        }
+        if connections.down {
+            path.move(to: NSPoint(x: centerX, y: bottom))
+            path.line(to: NSPoint(x: centerX, y: centerY))
+        }
+
+        color.setStroke()
+        path.stroke()
+        return true
+    }
+
+    private func appendRoundedCorner(
+        _ scalar: UInt32,
+        to path: NSBezierPath,
+        left: CGFloat,
+        right: CGFloat,
+        bottom: CGFloat,
+        top: CGFloat,
+        centerX: CGFloat,
+        centerY: CGFloat
+    ) {
+        let radius = min(2, (right - left) / 2, (top - bottom) / 2)
+        switch scalar {
+        case 0x256D: // ╭
+            path.move(to: NSPoint(x: right, y: centerY))
+            path.line(to: NSPoint(x: centerX + radius, y: centerY))
+            path.appendArc(
+                withCenter: NSPoint(x: centerX + radius, y: centerY - radius),
+                radius: radius,
+                startAngle: 90,
+                endAngle: 180,
+                clockwise: false
+            )
+            path.line(to: NSPoint(x: centerX, y: bottom))
+        case 0x256E: // ╮
+            path.move(to: NSPoint(x: left, y: centerY))
+            path.line(to: NSPoint(x: centerX - radius, y: centerY))
+            path.appendArc(
+                withCenter: NSPoint(x: centerX - radius, y: centerY - radius),
+                radius: radius,
+                startAngle: 90,
+                endAngle: 0,
+                clockwise: true
+            )
+            path.line(to: NSPoint(x: centerX, y: bottom))
+        case 0x256F: // ╯
+            path.move(to: NSPoint(x: left, y: centerY))
+            path.line(to: NSPoint(x: centerX - radius, y: centerY))
+            path.appendArc(
+                withCenter: NSPoint(x: centerX - radius, y: centerY + radius),
+                radius: radius,
+                startAngle: -90,
+                endAngle: 0,
+                clockwise: false
+            )
+            path.line(to: NSPoint(x: centerX, y: top))
+        case 0x2570: // ╰
+            path.move(to: NSPoint(x: right, y: centerY))
+            path.line(to: NSPoint(x: centerX + radius, y: centerY))
+            path.appendArc(
+                withCenter: NSPoint(x: centerX + radius, y: centerY + radius),
+                radius: radius,
+                startAngle: -90,
+                endAngle: -180,
+                clockwise: true
+            )
+            path.line(to: NSPoint(x: centerX, y: top))
+        default:
+            break
+        }
     }
 
     private func drawCursor(at origin: NSPoint) {
