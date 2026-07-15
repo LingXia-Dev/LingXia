@@ -14,6 +14,12 @@ pub struct AppOptions {
 
 #[derive(Subcommand, Clone)]
 pub enum AppCommand {
+    /// Report host-window automation capabilities
+    Doctor {
+        /// Print JSON output
+        #[arg(long)]
+        json: bool,
+    },
     /// Capture a PNG screenshot of the host app's window
     Screenshot {
         /// Specific window id (from `lxdev app windows`); defaults to the
@@ -233,6 +239,7 @@ impl MouseButtonArg {
 
 pub fn execute(info: &SessionInfo, options: AppOptions) -> Result<()> {
     match options.command {
+        AppCommand::Doctor { json } => execute_doctor(info, json),
         AppCommand::Screenshot {
             window,
             output,
@@ -248,6 +255,47 @@ pub fn execute(info: &SessionInfo, options: AppOptions) -> Result<()> {
             execute_key(info, command)
         }
     }
+}
+
+fn execute_doctor(info: &SessionInfo, json_output: bool) -> Result<()> {
+    let mut data = client::execute_command(&info.ws_url, handlers::app::DOCTOR, None)?
+        .unwrap_or_else(|| json!({}));
+    if let Value::Object(map) = &mut data {
+        map.insert("session_id".to_string(), json!(info.session_id));
+    }
+    if json_output {
+        println!("{}", serde_json::to_string_pretty(&data)?);
+        return Ok(());
+    }
+
+    let capabilities = data.get("capabilities").and_then(Value::as_object);
+    let supported = |name: &str| {
+        capabilities
+            .and_then(|caps| caps.get(name))
+            .and_then(|cap| cap.get("supported"))
+            .and_then(Value::as_bool)
+            .unwrap_or(false)
+    };
+    println!("session      {}", info.session_id);
+    println!(
+        "platform     {}",
+        data.get("platform").and_then(Value::as_str).unwrap_or("-")
+    );
+    println!(
+        "coordinates  {}",
+        data.pointer("/coordinate_spaces/window")
+            .and_then(Value::as_str)
+            .unwrap_or("-")
+    );
+    for name in ["windows", "screenshot", "mouse", "keyboard"] {
+        println!("{name:<12} {}", if supported(name) { "yes" } else { "no" });
+    }
+    let modifiers = data
+        .pointer("/capabilities/keyboard_modifiers/reliability")
+        .and_then(Value::as_str)
+        .unwrap_or("unsupported");
+    println!("modifiers    {modifiers}");
+    Ok(())
 }
 
 fn require_desktop_input(info: &SessionInfo, what: &str) -> Result<()> {
@@ -450,6 +498,11 @@ fn execute_key(info: &SessionInfo, command: KeyCommand) -> Result<()> {
         .and_then(Value::as_str)
         .unwrap_or("unknown");
     println!("Sent app key {action} to window {window_id}");
+    if data.get("modifier_reliability").and_then(Value::as_str) == Some("best_effort") {
+        eprintln!(
+            "Warning: Windows app modifier chords are best-effort; verify the resulting state."
+        );
+    }
     Ok(())
 }
 
@@ -492,6 +545,12 @@ mod tests {
                 json: false,
             } if window == "42" && output == "capture.png"
         ));
+    }
+
+    #[test]
+    fn parses_app_doctor_json() {
+        let cli = TestCli::try_parse_from(["test", "doctor", "--json"]).unwrap();
+        assert!(matches!(cli.app.command, AppCommand::Doctor { json: true }));
     }
 
     #[test]

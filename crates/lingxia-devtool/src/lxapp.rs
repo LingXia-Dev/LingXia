@@ -125,8 +125,8 @@ fn handle_lxapp_command_impl(handler: &str, args: Option<Value>) -> Result<Optio
                     json!({
                         "name": page.name,
                         "path": page.path,
-                        "current": info.current_page.as_deref() == Some(page.path.as_str()),
-                        "in_stack": info.page_stack.iter().any(|stack_page| stack_page == &page.path),
+                        "current": info.current_page.as_deref().is_some_and(|current| page_paths_match(current, &page.path)),
+                        "in_stack": info.page_stack.iter().any(|stack_page| page_paths_match(stack_page, &page.path)),
                     })
                 })
                 .collect::<Vec<_>>();
@@ -160,31 +160,63 @@ fn handle_lxapp_command_impl(handler: &str, args: Option<Value>) -> Result<Optio
                     .set_release_type(release_type),
             )
             .map_err(|err| err.to_string())?;
+            let page = run_async(lingxia::dev::lxapp_dev_page_wait(
+                Some(&app.appid),
+                None,
+                None,
+                None,
+                lingxia::dev::LxAppDevPageWaitState::Ready,
+                Duration::from_secs(15),
+            ))?
+            .page;
             Ok(Some(json!({
                 "appid": app.appid,
-                "path": app.initial_route(),
+                "path": page.path,
+                "page": page,
             })))
         }
         handlers::lxapp::CLOSE => {
             let args: AppArgs = parse_args(handler, args)?;
             let appid = resolve_appid(&args.appid)?;
             lxapp::close_lxapp(&appid).map_err(|err| err.to_string())?;
-            Ok(None)
+            Ok(Some(
+                json!({ "ok": true, "action": "close", "appid": appid }),
+            ))
         }
         handlers::lxapp::RESTART => {
             let args: AppArgs = parse_args(handler, args)?;
             let appid = resolve_appid(&args.appid)?;
-            lxapp::restart_lxapp(&appid).map_err(|err| err.to_string())?;
-            Ok(None)
+            let page = run_async(lingxia::dev::lxapp_dev_restart(
+                &appid,
+                Duration::from_secs(15),
+            ))?;
+            Ok(Some(json!({
+                "ok": true,
+                "action": "restart",
+                "appid": appid,
+                "page": page,
+            })))
         }
         handlers::lxapp::UNINSTALL => {
             let args: AppArgs = parse_args(handler, args)?;
             let appid = resolve_appid(&args.appid)?;
             lxapp::uninstall_lxapp(&appid).map_err(|err| err.to_string())?;
-            Ok(None)
+            Ok(Some(
+                json!({ "ok": true, "action": "uninstall", "appid": appid }),
+            ))
         }
         _ => Err(format!("unknown lxapp handler: {}", handler)),
     }
+}
+
+fn page_paths_match(left: &str, right: &str) -> bool {
+    fn key(path: &str) -> &str {
+        path.split(['?', '#'])
+            .next()
+            .unwrap_or(path)
+            .trim_start_matches('/')
+    }
+    key(left) == key(right)
 }
 
 fn lxapp_runtime_info_value(app: &Arc<lxapp::LxApp>) -> Result<Value, String> {
@@ -288,4 +320,16 @@ struct OpenArgs {
     path: Option<String>,
     #[serde(default)]
     release_type: Option<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::page_paths_match;
+
+    #[test]
+    fn configured_page_status_ignores_query_and_leading_slash() {
+        assert!(page_paths_match("/pages/home?tab=1", "pages/home"));
+        assert!(page_paths_match("pages/home#section", "/pages/home"));
+        assert!(!page_paths_match("pages/home", "pages/profile"));
+    }
 }

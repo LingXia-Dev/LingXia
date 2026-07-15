@@ -15,7 +15,7 @@ where
 }
 
 /// Read `(width, height)` from a PNG's IHDR chunk without a full decode.
-fn png_dimensions(bytes: &[u8]) -> Option<(u32, u32)> {
+pub(crate) fn png_dimensions(bytes: &[u8]) -> Option<(u32, u32)> {
     // 8-byte signature, then the IHDR chunk: 4-byte length, "IHDR" tag,
     // width (u32 BE), height (u32 BE).
     const SIG: &[u8] = b"\x89PNG\r\n\x1a\n";

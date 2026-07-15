@@ -107,8 +107,65 @@ enum SessionAction {
     },
 }
 
-fn main() -> Result<()> {
-    let cli = Cli::parse();
+fn main() {
+    let args = std::env::args_os().collect::<Vec<_>>();
+    let json_errors = args.iter().any(|arg| arg == "--json" || arg == "--pretty");
+    let pretty_errors = args.iter().any(|arg| arg == "--pretty");
+
+    if let Err(err) = run() {
+        if let Some(clap_err) = err.downcast_ref::<clap::Error>() {
+            if matches!(
+                clap_err.kind(),
+                clap::error::ErrorKind::DisplayHelp | clap::error::ErrorKind::DisplayVersion
+            ) {
+                let _ = clap_err.print();
+                std::process::exit(0);
+            }
+            if !json_errors {
+                let _ = clap_err.print();
+                std::process::exit(2);
+            }
+        }
+
+        let exit_code = if err.downcast_ref::<clap::Error>().is_some() {
+            2
+        } else {
+            1
+        };
+        if json_errors {
+            let code = if exit_code == 2 {
+                "invalid_arguments"
+            } else {
+                "command_failed"
+            };
+            let causes = err
+                .chain()
+                .skip(1)
+                .map(ToString::to_string)
+                .collect::<Vec<_>>();
+            let envelope = serde_json::json!({
+                "error": {
+                    "code": code,
+                    "message": err.to_string(),
+                    "causes": causes,
+                    "exit_code": exit_code,
+                }
+            });
+            let encoded = if pretty_errors {
+                serde_json::to_string_pretty(&envelope)
+            } else {
+                serde_json::to_string(&envelope)
+            };
+            eprintln!("{}", encoded.unwrap_or_else(|_| envelope.to_string()));
+        } else {
+            eprintln!("Error: {err:#}");
+        }
+        std::process::exit(exit_code);
+    }
+}
+
+fn run() -> Result<()> {
+    let cli = Cli::try_parse()?;
     let selector = SessionSelector {
         query: cli.session.or_else(|| std::env::var("LXDEV_SESSION").ok()),
     };

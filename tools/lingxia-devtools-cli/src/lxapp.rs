@@ -3,7 +3,7 @@ use crate::lxapp_build;
 use crate::project::SessionInfo;
 use crate::screenshot;
 use anyhow::{Context, Result};
-use clap::{Args, Parser, Subcommand};
+use clap::{Args, Parser, Subcommand, ValueEnum};
 use lingxia_devtool_protocol::handlers;
 use serde_json::{Value, json};
 use std::path::Path;
@@ -215,6 +215,31 @@ pub struct NavBackOptions {
     json: bool,
 }
 
+#[derive(Clone, Copy, ValueEnum)]
+pub enum PageWaitState {
+    Ready,
+    Attached,
+    Detached,
+    Visible,
+    Hidden,
+    Enabled,
+    Editable,
+}
+
+impl PageWaitState {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Ready => "ready",
+            Self::Attached => "attached",
+            Self::Detached => "detached",
+            Self::Visible => "visible",
+            Self::Hidden => "hidden",
+            Self::Enabled => "enabled",
+            Self::Editable => "editable",
+        }
+    }
+}
+
 #[derive(Subcommand, Clone)]
 pub enum PageCommand {
     /// Print the current page
@@ -243,6 +268,30 @@ pub enum PageCommand {
         /// LxApp context; defaults to current
         #[arg(long, default_value = "current")]
         app: String,
+        /// Print pretty JSON
+        #[arg(long)]
+        pretty: bool,
+    },
+    /// Wait for page readiness or a DOM element state
+    Wait {
+        /// CSS selector; omit to wait for the lxapp page runtime to be ready
+        #[arg(long = "css")]
+        selector: Option<String>,
+        /// DOM state; defaults to ready without --css and attached with --css
+        #[arg(long, value_enum)]
+        state: Option<PageWaitState>,
+        /// Wait for the nth matching element
+        #[arg(long)]
+        index: Option<usize>,
+        /// Page name or runtime instance id; defaults to current page
+        #[arg(long)]
+        page: Option<String>,
+        /// LxApp context; defaults to current
+        #[arg(long, default_value = "current")]
+        app: String,
+        /// Timeout in milliseconds
+        #[arg(long, default_value_t = 5000)]
+        timeout_ms: u64,
         /// Print pretty JSON
         #[arg(long)]
         pretty: bool,
@@ -760,6 +809,30 @@ fn execute_page(ws_url: &str, options: PageOptions) -> Result<()> {
             .unwrap_or(Value::Null);
             print_json(&data, pretty)?;
         }
+        PageCommand::Wait {
+            selector,
+            state,
+            index,
+            page,
+            app,
+            timeout_ms,
+            pretty,
+        } => {
+            let data = client::execute_command(
+                ws_url,
+                handlers::lxapp_page::WAIT,
+                Some(json!({
+                    "appid": app,
+                    "page": page,
+                    "selector": selector,
+                    "state": state.map(PageWaitState::as_str),
+                    "index": index,
+                    "timeout_ms": timeout_ms,
+                })),
+            )?
+            .unwrap_or(Value::Null);
+            print_json(&data, pretty)?;
+        }
         PageCommand::Eval {
             script,
             page,
@@ -1135,6 +1208,65 @@ mod tests {
         assert_eq!(options.app, "demo");
         assert_eq!(options.query, vec!["tab=account"]);
         assert!(options.json);
+    }
+
+    #[test]
+    fn parses_page_wait_for_visible_element() {
+        let cli = parse_lxapp_cli(args(&[
+            "page",
+            "wait",
+            "--css",
+            "#ready",
+            "--state",
+            "visible",
+            "--index",
+            "2",
+            "--page",
+            "home",
+            "--timeout-ms",
+            "9000",
+        ]))
+        .unwrap();
+
+        let LxAppCommand::Page(options) = cli.command else {
+            panic!("expected page command");
+        };
+        let PageCommand::Wait {
+            selector,
+            state,
+            index,
+            page,
+            timeout_ms,
+            ..
+        } = options.command
+        else {
+            panic!("expected page wait command");
+        };
+        assert_eq!(selector.as_deref(), Some("#ready"));
+        assert!(matches!(state, Some(PageWaitState::Visible)));
+        assert_eq!(index, Some(2));
+        assert_eq!(page.as_deref(), Some("home"));
+        assert_eq!(timeout_ms, 9000);
+    }
+
+    #[test]
+    fn page_wait_defaults_are_resolved_by_runtime() {
+        let cli = parse_lxapp_cli(args(&["page", "wait"])).unwrap();
+        let LxAppCommand::Page(options) = cli.command else {
+            panic!("expected page command");
+        };
+        let PageCommand::Wait {
+            selector,
+            state,
+            timeout_ms,
+            ..
+        } = options.command
+        else {
+            panic!("expected page wait command");
+        };
+        assert!(selector.is_none());
+        assert!(state.is_none());
+        assert_eq!(timeout_ms, 5000);
     }
 
     #[test]
