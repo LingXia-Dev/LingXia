@@ -2959,7 +2959,12 @@ fn sync_webtag_content_bounds_to_rect(hwnd: HWND, webtag_key: &str, rect: RECT) 
         log::debug!("Failed to set Windows WebView parent for {webtag_key}: {err}");
     }
     let controller_bounds = rect;
-    if webtag_content_bounds_changed(webtag_key, host_bounds)
+    let bounds_changed = webtag_content_bounds_changed(webtag_key, host_bounds);
+    if bounds_changed {
+        #[cfg(feature = "runtime")]
+        report_surface_viewport(hwnd, &webtag, width, height);
+    }
+    if bounds_changed
         && let Err(err) = handler.set_content_bounds(
             controller_bounds.left,
             controller_bounds.top,
@@ -2970,6 +2975,20 @@ fn sync_webtag_content_bounds_to_rect(hwnd: HWND, webtag_key: &str, rect: RECT) 
         log::debug!("Failed to sync Windows WebView content bounds: {err}");
     }
     let _ = handler.notify_parent_position_changed();
+}
+
+#[cfg(feature = "runtime")]
+fn report_surface_viewport(hwnd: HWND, webtag: &WebTag, width: i32, height: i32) {
+    if width <= 0 || height <= 0 {
+        return;
+    }
+    let appid = webtag.extract_appid();
+    if appid.is_empty() {
+        return;
+    }
+    let dpi = unsafe { windows::Win32::UI::HiDpi::GetDpiForWindow(hwnd) };
+    let scale = if dpi == 0 { 1.0 } else { dpi as f64 / 96.0 };
+    lingxia::windows::set_surface_viewport(&appid, width as f64 / scale, height as f64 / scale);
 }
 
 fn attached_has_maximized_native_panel(attached: &WindowsChromeAttachedLayout) -> bool {

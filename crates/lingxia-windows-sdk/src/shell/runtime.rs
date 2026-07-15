@@ -318,7 +318,7 @@ fn shell_owner_appid() -> Option<String> {
 
 /// Push the host window's logical (DIP) content width into the shell-owner
 /// app's adaptive surface graph so the size class - and therefore the aside
-/// cap (Compact 0 / Medium 1 / Expanded 2) - tracks the real window. Without
+/// projection (Compact overlay / Medium 1 / Expanded 3) - tracks the real window. Without
 /// this the graph stays at its seed width (permanently Medium), so a second
 /// aside evicts the first even on a wide window. Called from the host's
 /// `WM_SIZE`.
@@ -327,7 +327,6 @@ pub(crate) fn update_surface_width(logical_width: f64) {
         return;
     }
     if let Some(appid) = shell_owner_appid() {
-        lingxia::windows::set_surface_desktop_shell(&appid);
         lingxia::windows::set_surface_width(&appid, logical_width);
     }
 }
@@ -1600,6 +1599,7 @@ fn apply_windows_layout_plan(plan: &LayoutPresentationPlan) {
             .or_else(|| slot.children.last().map(String::as_str))
     });
     let edge = native_slot.and_then(|slot| slot.edge);
+    let overlay = native_slot.is_some_and(|slot| slot.visible && slot.overlay);
 
     let native_panels = lingxia_app_context::app_config()
         .and_then(|config| config.panels.as_ref().cloned())
@@ -1623,7 +1623,7 @@ fn apply_windows_layout_plan(plan: &LayoutPresentationPlan) {
             if let Some(edge) = edge {
                 request.position = panel_position_from_edge(edge);
             }
-            present_terminal_from_layout(request);
+            present_terminal_from_layout(request, overlay);
         } else if is_panel_visible(&request.panel_id)
             && let Err(err) = hide_host_panel(&request.panel_id)
         {
@@ -1635,7 +1635,7 @@ fn apply_windows_layout_plan(plan: &LayoutPresentationPlan) {
     }
 }
 
-fn present_terminal_from_layout(request: TerminalPanelRequest) {
+fn present_terminal_from_layout(request: TerminalPanelRequest, overlay: bool) {
     let position = panel_position(request.position);
     let title = if request.label.trim().is_empty() {
         "Terminal"
@@ -1647,7 +1647,10 @@ fn present_terminal_from_layout(request: TerminalPanelRequest) {
         title,
         position,
     ) {
-        Ok(true) => return,
+        Ok(true) => {
+            super::terminal_panel::set_terminal_panel_maximized(&request.panel_id, overlay);
+            return;
+        }
         Ok(false) => {}
         Err(err) => {
             log::warn!(
@@ -1664,6 +1667,8 @@ fn present_terminal_from_layout(request: TerminalPanelRequest) {
             "failed to show Windows native aside {}: {err}",
             request.panel_id
         );
+    } else {
+        super::terminal_panel::set_terminal_panel_maximized(&request.panel_id, overlay);
     }
 }
 
@@ -3391,13 +3396,12 @@ fn handle_runtime_lxapp_activator(owner_appid: &str, appid: &str) {
             }
         }
         Some(lxapp::LxAppOpenRegion::Aside) if shell_surface_is_active(appid) => {
-            if let Some(panel) = lxapp::try_get(appid) {
-                if let Err(err) = panel
+            if let Some(panel) = lxapp::try_get(appid)
+                && let Err(err) = panel
                     .runtime
                     .hide_lxapp(appid.to_string(), panel.session_id())
-                {
-                    log::warn!("failed to hide runtime lxapp aside {appid}: {err}");
-                }
+            {
+                log::warn!("failed to hide runtime lxapp aside {appid}: {err}");
             }
             unregister_managed_aside(owner_appid, appid);
         }

@@ -462,28 +462,11 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     private func reportSurfaceWidth() {
         guard let appId = currentViewController?.appId,
               let windowWidth = window?.contentView?.frame.width, windowWidth > 0 else { return }
-        // The sizeClass that drives arbitration (how many asides fit, split vs
-        // fallback) must reflect the stable WORKSPACE — the window minus the
-        // fixed sidebar chrome — NOT the residual main-pane width. Subtracting
-        // docked aside panels here would shrink the reported width as asides
-        // open, dropping the sizeClass and so capping further asides: opening a
-        // second aside would evict the first. Content that needs its own pane
-        // width reads the webview's actual width (CSS), not sizeClass.
-        // Declare this a desktop shell once per app so the core floors the
-        // size class at Medium: a narrow desktop window squeezes (sidebar →
-        // rail via auto-hide) rather than projecting to the mobile compact
-        // layout, which would undock asides and hide the sidebar.
-        if !desktopShellDeclaredAppIds.contains(appId) {
-            desktopShellDeclaredAppIds.insert(appId)
-            _ = setSurfaceDesktopShell(appId)
-        }
-        let sidebar = sidebarWidthConstraint?.constant ?? Layout.sidebarWidth
-        let workspaceWidth = max(0, windowWidth - sidebar)
-        guard workspaceWidth > 0 else { return }
-        _ = setSurfaceWidth(appId, Double(workspaceWidth))
+        // Shell size class is defined from the complete client area. Sidebar
+        // and aside subtraction belongs to individual surface viewport
+        // contexts, not to shell admission breakpoints.
+        _ = setSurfaceWidth(appId, Double(windowWidth))
     }
-    /// Apps already told the core they run under a desktop shell (idempotent).
-    private var desktopShellDeclaredAppIds = Set<String>()
 
     // MARK: - Sidebar Interface Setup
 

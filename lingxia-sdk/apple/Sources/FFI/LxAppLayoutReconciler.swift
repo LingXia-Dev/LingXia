@@ -71,6 +71,7 @@ enum LxAppLayoutReconciler {
         let children: [String]
         let activeChild: String?
         let visible: Bool
+        let overlay: Bool
     }
 
     private struct PlanFloat: Decodable {
@@ -129,26 +130,34 @@ enum LxAppLayoutReconciler {
         // only each visible slot's active child docks; sibling children stay
         // registered-but-hidden and switch via the slot's header tab strip.
         var desired: [String: PanelPosition] = [:]
+        var overlayIds = Set<String>()
         let slots = plan.asideSlots ?? []
-        if plan.splitForm != "fullScreen" {
-            if slots.isEmpty {
+        if slots.isEmpty {
+            if plan.splitForm != "fullScreen" {
                 for aside in plan.asides {
                     desired[aside.id] = panelPosition(for: aside.edge)
                 }
-            } else {
-                for slot in slots where slot.visible {
-                    if slot.kind == "browser" {
-                        // Browser-slot children live inside the ONE docked
-                        // browser (its own title tabs), not the panel registry
-                        // — keep the legacy per-child desired set for it.
-                        for child in slot.children {
-                            desired[child] = panelPosition(for: slot.edge)
-                        }
-                        continue
+            }
+        } else {
+            for slot in slots where slot.visible {
+                let projectedOverlay = slot.overlay || plan.splitForm == "fullScreen"
+                if slot.kind == "browser" {
+                    // Browser-slot children live inside the ONE docked browser
+                    // (its own title tabs), not the panel registry. Keep every
+                    // child desired because only the anchor owns the panel;
+                    // the browser coordinator selects the active tab itself.
+                    for child in slot.children {
+                        desired[child] = panelPosition(for: slot.edge)
                     }
-                    guard let active = slot.activeChild ?? slot.children.last else { continue }
-                    desired[active] = panelPosition(for: slot.edge)
+                    if projectedOverlay,
+                       let anchor = shell.browserCoordinator.activeDockedBrowser?.anchorSurfaceId {
+                        overlayIds.insert(anchor)
+                    }
+                    continue
                 }
+                guard let active = slot.activeChild ?? slot.children.last else { continue }
+                desired[active] = panelPosition(for: slot.edge)
+                if projectedOverlay { overlayIds.insert(active) }
             }
         }
         let desiredIds = Set(desired.keys)
@@ -177,6 +186,7 @@ enum LxAppLayoutReconciler {
             // pass: skip the card-edge update so the main area's webview is
             // not resized out and back (a visible flash).
             shell.hidePanel(id: id, animated: !intraSlotSwitch, updateCardEdges: !intraSlotSwitch)
+            workspace.setPanelFullscreen(id: id, enabled: false)
         }
 
         // Place each desired aside at the tree's edge and show it. Content paths
@@ -187,6 +197,7 @@ enum LxAppLayoutReconciler {
 
             let atCorrectEdge = workspace.panelPosition(id: id) == edge
             let visible = workspace.isPanelVisible(id: id)
+            workspace.setPanelFullscreen(id: id, enabled: overlayIds.contains(id))
 
             // Idempotent fast path: already shown at the right edge — leave it
             // exactly as is (no hide/show/re-place → no flicker, no empty paint).
