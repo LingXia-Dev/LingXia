@@ -345,7 +345,7 @@ async function runAppleDownstream(): Promise<void> {
     const tail = buffered.trim();
     if (tail) {
       try {
-        handleIncomingMessage(JSON.parse(tail));
+        handleAppleDownstreamFrame(JSON.parse(tail));
       } catch (e) {
         warn("Apple downstream trailing parse error:", e, tail);
       }
@@ -360,15 +360,19 @@ async function runAppleDownstream(): Promise<void> {
   }
 }
 
-function scheduleAppleDownstreamReconnect(reason: string): void {
+function scheduleAppleDownstreamReconnect(reason: string, immediate = false): void {
   if (!useAppleDownstreamTransport()) return;
   clearAppleReconnectTimer();
-  const delay = appleReconnectDelayMs;
-  appleReconnectDelayMs = Math.min(
-    appleReconnectDelayMs * 2,
-    APPLE_RECONNECT_MAX_MS,
-  );
-  const message = `Apple downstream disconnected, retrying in ${delay}ms: ${reason}`;
+  const delay = immediate ? 0 : appleReconnectDelayMs;
+  if (!immediate) {
+    appleReconnectDelayMs = Math.min(
+      appleReconnectDelayMs * 2,
+      APPLE_RECONNECT_MAX_MS,
+    );
+  }
+  const message = immediate
+    ? `Apple downstream completed, reconnecting immediately: ${reason}`
+    : `Apple downstream disconnected, retrying in ${delay}ms: ${reason}`;
   if (delay <= APPLE_RECONNECT_BASE_MS) {
     log(message);
   } else {
@@ -384,7 +388,11 @@ function ensureAppleDownstream(): void {
   if (!useAppleDownstreamTransport()) return;
   if (appleDownstreamTask) return;
   clearAppleReconnectTimer();
+  let completedCleanly = false;
   appleDownstreamTask = runAppleDownstream()
+    .then(() => {
+      completedCleanly = true;
+    })
     .catch((e) => {
       if (appleDownstreamAbortController?.signal.aborted) return;
       warn("Apple downstream failed:", e);
@@ -398,7 +406,12 @@ function ensureAppleDownstream(): void {
       // last seq and the host replays the gap, so the handshake and in-flight
       // streams stay intact. Only a host-sent reset (handled on the frame path)
       // or a real abort tears things down.
-      if (!aborted) scheduleAppleDownstreamReconnect("stream closed");
+      if (!aborted) {
+        // Native intentionally completes bootstrap/replay responses to flush
+        // WebKit. Reconnect without the failure backoff so a live stream can
+        // catch up and settle onto a long-lived downstream.
+        scheduleAppleDownstreamReconnect("stream closed", completedCleanly);
+      }
     });
 }
 
@@ -999,7 +1012,13 @@ function isTransportReady(): boolean {
 }
 
 function canSendAppMessages(): boolean {
-  return isTransportReady() && handshakeDone;
+  if (!handshakeDone) return false;
+  // Apple upstream posts through WKScriptMessageHandler independently of the
+  // downstream fetch. During a replay reconnect, native retains responses by
+  // sequence, so treating that short gap as an unsendable session can strand
+  // requests in the outbox with no second `ready` event to flush them.
+  if (useAppleDownstreamTransport()) return true;
+  return isTransportReady();
 }
 
 function rejectPendingRequest(reqId: string, err: LxBridgeError): void {
