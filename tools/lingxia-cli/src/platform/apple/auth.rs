@@ -18,7 +18,7 @@ const CREDENTIALS_FILE: &str = "credentials.json";
 const DEVELOPER_ID_FILE: &str = "developer-id.json";
 
 /// Resolve the `~/.lingxia/apple` directory used for all Apple credentials.
-fn apple_credentials_dir() -> Result<PathBuf> {
+pub(crate) fn apple_credentials_dir() -> Result<PathBuf> {
     let home = dirs::home_dir().context("Could not determine home directory")?;
     Ok(home.join(CREDENTIALS_DIR).join(APPLE_CREDENTIALS_SUBDIR))
 }
