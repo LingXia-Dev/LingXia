@@ -198,7 +198,7 @@ pub enum BrowserCommand {
         tab: String,
         #[arg(long = "css")]
         selector: String,
-        #[arg(long)]
+        #[arg(long, allow_hyphen_values = true)]
         text: String,
         /// Print JSON output
         #[arg(long)]
@@ -210,7 +210,7 @@ pub enum BrowserCommand {
         tab: String,
         #[arg(long = "css")]
         selector: String,
-        #[arg(long)]
+        #[arg(long, allow_hyphen_values = true)]
         text: String,
         /// Print JSON output
         #[arg(long)]

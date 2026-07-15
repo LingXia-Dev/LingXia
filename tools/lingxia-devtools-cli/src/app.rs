@@ -63,6 +63,7 @@ pub enum KeyCommand {
 #[derive(Args, Clone)]
 pub struct KeyTypeOptions {
     /// Text to type
+    #[arg(allow_hyphen_values = true)]
     text: String,
     #[command(flatten)]
     target: KeyTargetOptions,
@@ -570,6 +571,17 @@ mod tests {
                     ..
                 }),
             } if window == "42"
+        ));
+    }
+
+    #[test]
+    fn app_key_type_accepts_leading_hyphen_text() {
+        let cli = TestCli::try_parse_from(["test", "key", "type", "-typed"]).unwrap();
+        assert!(matches!(
+            cli.app.command,
+            AppCommand::Key {
+                command: KeyCommand::Type(KeyTypeOptions { text, .. })
+            } if text == "-typed"
         ));
     }
 }

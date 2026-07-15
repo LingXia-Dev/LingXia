@@ -410,7 +410,7 @@ pub enum ClipboardAction {
     },
     /// Set the clipboard text
     Set {
-        #[arg(long)]
+        #[arg(long, allow_hyphen_values = true)]
         text: String,
         #[arg(long)]
         json: bool,
@@ -542,7 +542,7 @@ impl PointerAction {
 pub enum KeyAction {
     /// Type literal text (may bypass IME; prefer clipboard paste for CJK)
     Type {
-        #[arg(long)]
+        #[arg(long, allow_hyphen_values = true)]
         text: String,
         #[arg(long)]
         json: bool,
