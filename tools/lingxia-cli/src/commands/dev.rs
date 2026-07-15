@@ -312,7 +312,7 @@ pub fn execute(options: DevExecuteOptions) -> Result<()> {
     }
 
     if options.background && env::var_os(BACKGROUND_CHILD_ENV).is_none() {
-        return spawn_background_dev(&project_root);
+        return spawn_background_dev(&project_root, options.lan);
     }
 
     if runner::is_standalone_lxapp_project(&project_root) {
@@ -458,7 +458,7 @@ fn execute_session_action(project_root: &Path, action: DevSessionAction) -> Resu
     }
 }
 
-fn spawn_background_dev(project_root: &Path) -> Result<()> {
+fn spawn_background_dev(project_root: &Path, lan: bool) -> Result<()> {
     let log_dir = log_store::dev_dir(project_root).join("background");
     fs::create_dir_all(&log_dir)
         .with_context(|| format!("Failed to create {}", log_dir.display()))?;
@@ -503,6 +503,12 @@ fn spawn_background_dev(project_root: &Path) -> Result<()> {
             println!("  id: {}", session.session_id);
             println!("  target: {}", session.target);
             println!("  ws: {}", session.ws_url);
+            if lan {
+                match background_lan_attach_url(&session.ws_url) {
+                    Ok(attach) => println!("  {} {}", "•".cyan(), lan_attach_hint(&attach)),
+                    Err(err) => eprintln!("Warning: could not render LAN attach URL: {err:#}"),
+                }
+            }
             println!("  session log: {}", session.log_file);
             println!("Use `lxdev logs -f` to follow logs.");
             println!("Use `lingxia dev stop {}` to stop it.", session.session_id);
@@ -565,7 +571,9 @@ fn wait_for_background_session(
         }
 
         for session in log_store::list_sessions(project_root)? {
-            if session.started_at >= started_at && !log_store::is_stale(&session) {
+            if session.started_at >= started_at
+                && log_store::session_state(&session) == log_store::DevSessionState::Ready
+            {
                 return Ok(Some(session));
             }
         }
@@ -584,6 +592,7 @@ fn print_session_status(project_root: &Path, json_output: bool) -> Result<()> {
         let values: Vec<serde_json::Value> = sessions
             .iter()
             .map(|session| {
+                let state = log_store::session_state(session);
                 serde_json::json!({
                     "session_id": session.session_id,
                     "pid": session.pid,
@@ -591,7 +600,9 @@ fn print_session_status(project_root: &Path, json_output: bool) -> Result<()> {
                     "started_at": session.started_at,
                     "ws_url": session.ws_url,
                     "log_file": session.log_file,
-                    "stale": log_store::is_stale(session),
+                    "state": state.as_str(),
+                    "runtime_connected": state == log_store::DevSessionState::Ready,
+                    "stale": state == log_store::DevSessionState::Stale,
                 })
             })
             .collect();
@@ -605,17 +616,13 @@ fn print_session_status(project_root: &Path, json_output: bool) -> Result<()> {
     }
 
     println!(
-        "{:<8}  {:<5}  {:<8}  {:<19}  {:<22}  PID",
+        "{:<8}  {:<8}  {:<8}  {:<19}  {:<22}  PID",
         "ID", "STATE", "TARGET", "STARTED", "WS"
     );
     for session in &sessions {
-        let state = if log_store::is_stale(session) {
-            "stale"
-        } else {
-            "live"
-        };
+        let state = log_store::session_state(session).as_str();
         println!(
-            "{:<8}  {:<5}  {:<8}  {:<19}  {:<22}  {}",
+            "{:<8}  {:<8}  {:<8}  {:<19}  {:<22}  {}",
             session.session_id,
             state,
             session.target,
@@ -628,6 +635,23 @@ fn print_session_status(project_root: &Path, json_output: bool) -> Result<()> {
     println!();
     println!("Use `lxdev logs -f` to follow session logs.");
     Ok(())
+}
+
+fn background_lan_attach_url(loopback_url: &str) -> Result<String> {
+    let authority = loopback_url
+        .strip_prefix("ws://")
+        .and_then(|rest| rest.split('/').next())
+        .ok_or_else(|| anyhow!("Invalid dev websocket URL: {loopback_url}"))?;
+    let port = authority
+        .rsplit_once(':')
+        .and_then(|(_, port)| port.parse::<u16>().ok())
+        .ok_or_else(|| anyhow!("Dev websocket URL has no valid port: {loopback_url}"))?;
+    let token = lingxia_devtool_protocol::token_from_ws_url(loopback_url)
+        .ok_or_else(|| anyhow!("LAN dev websocket URL has no token"))?;
+    Ok(lingxia_devtool_protocol::ws_url_with_token(
+        &lan_ws_url(port)?,
+        &token,
+    ))
 }
 
 fn stop_session(project_root: &Path, selector: Option<String>, force: bool) -> Result<()> {
