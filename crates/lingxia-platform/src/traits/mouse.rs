@@ -14,9 +14,10 @@ pub enum AppMouseButton {
 
 /// App-window mouse action.
 ///
-/// Coordinates are logical points in the target window content area, with
-/// origin at the top-left corner of the same visual content captured by
-/// `AppScreenshot::take_app_screenshot`.
+/// Coordinates use the target platform's window-content unit, with origin at
+/// the top-left of the same visual content captured by
+/// `AppScreenshot::take_app_screenshot`: client pixels on Windows and points
+/// on macOS.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum AppMouseAction {

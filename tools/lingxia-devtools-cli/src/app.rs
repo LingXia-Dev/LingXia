@@ -139,10 +139,10 @@ pub struct MouseTargetOptions {
 
 #[derive(Args, Clone)]
 pub struct MousePointOptions {
-    /// X coordinate in logical window content points
+    /// X coordinate in platform window-content units
     #[arg(long)]
     x: f64,
-    /// Y coordinate in logical window content points
+    /// Y coordinate in platform window-content units
     #[arg(long)]
     y: f64,
     #[command(flatten)]
@@ -151,10 +151,10 @@ pub struct MousePointOptions {
 
 #[derive(Args, Clone)]
 pub struct MouseButtonPointOptions {
-    /// X coordinate in logical window content points
+    /// X coordinate in platform window-content units
     #[arg(long)]
     x: f64,
-    /// Y coordinate in logical window content points
+    /// Y coordinate in platform window-content units
     #[arg(long)]
     y: f64,
     /// Mouse button
@@ -166,10 +166,10 @@ pub struct MouseButtonPointOptions {
 
 #[derive(Args, Clone)]
 pub struct MouseClickOptions {
-    /// X coordinate in logical window content points
+    /// X coordinate in platform window-content units
     #[arg(long)]
     x: f64,
-    /// Y coordinate in logical window content points
+    /// Y coordinate in platform window-content units
     #[arg(long)]
     y: f64,
     /// Mouse button
@@ -184,16 +184,16 @@ pub struct MouseClickOptions {
 
 #[derive(Args, Clone)]
 pub struct MouseDragOptions {
-    /// Starting X coordinate in logical window content points
+    /// Starting X coordinate in platform window-content units
     #[arg(long)]
     from_x: f64,
-    /// Starting Y coordinate in logical window content points
+    /// Starting Y coordinate in platform window-content units
     #[arg(long)]
     from_y: f64,
-    /// Ending X coordinate in logical window content points
+    /// Ending X coordinate in platform window-content units
     #[arg(long)]
     to_x: f64,
-    /// Ending Y coordinate in logical window content points
+    /// Ending Y coordinate in platform window-content units
     #[arg(long)]
     to_y: f64,
     /// Mouse button
@@ -205,16 +205,16 @@ pub struct MouseDragOptions {
 
 #[derive(Args, Clone)]
 pub struct MouseScrollOptions {
-    /// X coordinate in logical window content points
+    /// X coordinate in platform window-content units
     #[arg(long)]
     x: f64,
-    /// Y coordinate in logical window content points
+    /// Y coordinate in platform window-content units
     #[arg(long)]
     y: f64,
-    /// Horizontal scroll delta in logical points
+    /// Horizontal scroll delta in platform window-content units
     #[arg(long, default_value_t = 0.0, allow_hyphen_values = true)]
     dx: f64,
-    /// Vertical scroll delta in logical points
+    /// Vertical scroll delta in platform window-content units
     #[arg(long, default_value_t = 0.0, allow_hyphen_values = true)]
     dy: f64,
     #[command(flatten)]
@@ -265,7 +265,7 @@ fn execute_doctor(info: &SessionInfo, json_output: bool) -> Result<()> {
         map.insert("session_id".to_string(), json!(info.session_id));
     }
     if json_output {
-        println!("{}", serde_json::to_string_pretty(&data)?);
+        println!("{}", encode_machine_json(&data)?);
         return Ok(());
     }
 
@@ -314,12 +314,12 @@ fn execute_windows(info: &SessionInfo, json: bool) -> Result<()> {
         .unwrap_or(Value::Array(Vec::new()));
 
     if json {
-        println!("{}", serde_json::to_string_pretty(&data)?);
+        println!("{}", encode_machine_json(&data)?);
         return Ok(());
     }
 
     let Some(array) = data.as_array() else {
-        println!("{}", serde_json::to_string_pretty(&data)?);
+        println!("{}", encode_machine_json(&data)?);
         return Ok(());
     };
     if array.is_empty() {
@@ -445,19 +445,9 @@ fn execute_mouse(info: &SessionInfo, command: MouseCommand) -> Result<()> {
     }
 
     if target.json {
-        println!("{}", serde_json::to_string_pretty(&data)?);
+        println!("{}", encode_machine_json(&data)?);
         return Ok(());
     }
-
-    let action = data
-        .get("action")
-        .and_then(Value::as_str)
-        .unwrap_or("mouse");
-    let window_id = data
-        .get("window_id")
-        .and_then(Value::as_str)
-        .unwrap_or("unknown");
-    println!("Sent app mouse {action} to window {window_id}");
     Ok(())
 }
 
@@ -489,16 +479,9 @@ fn execute_key(info: &SessionInfo, command: KeyCommand) -> Result<()> {
         .unwrap_or(Value::Null);
 
     if target.json {
-        println!("{}", serde_json::to_string_pretty(&data)?);
+        println!("{}", encode_machine_json(&data)?);
         return Ok(());
     }
-
-    let action = data.get("action").and_then(Value::as_str).unwrap_or("key");
-    let window_id = data
-        .get("window_id")
-        .and_then(Value::as_str)
-        .unwrap_or("unknown");
-    println!("Sent app key {action} to window {window_id}");
     if data.get("modifier_reliability").and_then(Value::as_str) == Some("best_effort") {
         eprintln!(
             "Warning: Windows app modifier chords are best-effort; verify the resulting state."
@@ -514,6 +497,10 @@ fn action_payload(window: Option<String>, action: Value) -> Value {
     }
     payload.insert("action".to_string(), action);
     Value::Object(payload)
+}
+
+fn encode_machine_json(value: &Value) -> Result<String> {
+    serde_json::to_string(value).map_err(Into::into)
 }
 
 #[cfg(test)]
@@ -583,5 +570,13 @@ mod tests {
                 command: KeyCommand::Type(KeyTypeOptions { text, .. })
             } if text == "-typed"
         ));
+    }
+
+    #[test]
+    fn machine_json_is_compact() {
+        assert_eq!(
+            encode_machine_json(&json!({ "ok": true, "action": "click" })).unwrap(),
+            r#"{"ok":true,"action":"click"}"#
+        );
     }
 }
