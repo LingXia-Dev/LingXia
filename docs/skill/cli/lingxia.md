@@ -89,6 +89,11 @@ Harmony get reverse port forwarding so the device reaches the local dev server;
 iOS embeds a LAN dev websocket URL, so the iOS device must be able to reach the
 host Mac over the local network.
 
+`dev` chooses native targets from what it launches: Android uses the selected
+device's reported ABI and macOS uses the host architecture. Explicit
+`--android-abis` / `--macos-arch` overrides belong to `build` and `package`,
+where cross-architecture artifacts are intentional.
+
 Re-running `lingxia dev` for the same platform **takes over**: it stops the
 project's existing same-platform session automatically and starts fresh.
 Different platforms don't conflict — `-p android` and `-p ios` run side by

@@ -131,18 +131,6 @@ pub(super) fn execute_lxapp_dev(project_root: PathBuf, options: DevExecuteOption
         ));
     }
 
-    if !options.abis.is_empty() {
-        return Err(anyhow!(
-            "`--abis` is not supported for lxapp dev.\nRun `lingxia dev` directly inside the lxapp project."
-        ));
-    }
-
-    if options.macos_arch.is_some() {
-        return Err(anyhow!(
-            "`--macos-arch` is not supported for lxapp dev.\nRunner always launches locally on the current machine."
-        ));
-    }
-
     let platform_name = "lxapp";
     precheck_platform_session(&project_root, platform_name)?;
 

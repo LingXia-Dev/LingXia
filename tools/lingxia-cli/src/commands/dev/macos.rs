@@ -1,27 +1,11 @@
 use super::*;
 
-pub(super) fn execute_macos(ctx: DevContext, macos_arch: Option<String>) -> Result<()> {
+pub(super) fn execute_macos(ctx: DevContext) -> Result<()> {
     let platform_name = platform_session_name(PlatformType::MacOs);
     precheck_platform_session(&ctx.project_root, platform_name)?;
     use std::process::Command;
 
     let platform = platform::macos::MacosPlatform::new();
-    let host_arch = if cfg!(target_arch = "aarch64") {
-        "arm64"
-    } else {
-        "x86_64"
-    };
-    if let Some(ref requested_arch) = macos_arch
-        && requested_arch != host_arch
-    {
-        return Err(anyhow!(
-            "`lingxia dev --platform macos` launches the app locally and requires host arch `{}`.\n\
-Use `lingxia build --platform macos --macos-arch {}` for cross-arch builds.",
-            host_arch,
-            requested_arch
-        ));
-    }
-
     let stop_requested = Arc::new(AtomicBool::new(false));
     let server = server::start_server_fixed_with_stop(
         &ctx.project_root,
@@ -49,7 +33,7 @@ Use `lingxia build --platform macos --macos-arch {}` for cross-arch builds.",
             package: false,
             dmg: false,
             android_aab: false,
-            macos_arch,
+            macos_arch: None,
             framework: ctx.framework,
             native_features: dev_native_features(&ctx.config, "macos", &ctx.extra_native_features),
             native_default_features: ctx.config.native_default_features_enabled(),

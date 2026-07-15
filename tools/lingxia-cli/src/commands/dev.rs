@@ -61,8 +61,6 @@ fn dev_native_features(
 pub struct DevExecuteOptions {
     pub release: bool,
     pub build_native: bool,
-    pub abis: Vec<String>,
-    pub macos_arch: Option<String>,
     pub framework: Option<String>,
     pub progress: Option<String>,
     pub device: Option<String>,
@@ -382,9 +380,9 @@ pub fn execute(options: DevExecuteOptions) -> Result<()> {
     };
 
     let result = match platform_type {
-        PlatformType::Android => android::execute_android(ctx, options.abis),
+        PlatformType::Android => android::execute_android(ctx),
         PlatformType::Ios => ios::execute_ios(ctx),
-        PlatformType::MacOs => macos::execute_macos(ctx, options.macos_arch),
+        PlatformType::MacOs => macos::execute_macos(ctx),
         PlatformType::Harmony => harmony::execute_harmony(ctx),
         PlatformType::Windows => windows::execute_windows(ctx),
     };

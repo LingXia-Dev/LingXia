@@ -361,7 +361,7 @@ gradle.settingsEvaluated {{ settings ->
         // Translate Rust targets back to Android ABI names so we can pass them
         // to Gradle. The init script below uses this to constrain the merged
         // APK's `lib/<abi>/` set, including .so contributed by transitive AARs
-        // (mlkit, camera, etc.) — which `--abis` alone cannot control.
+        // (mlkit, camera, etc.) — which native target selection alone cannot control.
         let abis: Vec<&str> = config
             .targets
             .iter()
@@ -1105,6 +1105,29 @@ fn resolve_adb_device_id(device_id: Option<&str>) -> Result<String> {
             "Multiple Android devices connected. Use --device to specify a target device"
         )),
     }
+}
+
+pub(crate) fn resolve_dev_device_target(device_id: Option<&str>) -> Result<(String, String)> {
+    let device_id = resolve_adb_device_id(device_id)?;
+    let abilist = run_adb_checked(
+        Some(&device_id),
+        &["shell", "getprop", "ro.product.cpu.abilist"],
+        "adb shell getprop ro.product.cpu.abilist",
+    )?;
+    let abilist = if abilist.trim().is_empty() {
+        run_adb_checked(
+            Some(&device_id),
+            &["shell", "getprop", "ro.product.cpu.abi"],
+            "adb shell getprop ro.product.cpu.abi",
+        )?
+    } else {
+        abilist
+    };
+    let target = crate::platform::android_abis::resolve_android_target_from_device_abis(&abilist)
+        .with_context(|| {
+        format!("Cannot select a native target for Android device {device_id}")
+    })?;
+    Ok((device_id, target))
 }
 
 fn status_spinner(message: &str) -> ProgressBar {
