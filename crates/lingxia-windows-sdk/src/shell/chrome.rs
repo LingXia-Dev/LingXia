@@ -922,8 +922,8 @@ pub(crate) fn collapsed_sidebar_tabbar_popup_size(tabbar: &WindowsShellTabBarLay
     (
         SIDEBAR_TABBAR_POPUP_WIDTH,
         SIDEBAR_TABBAR_POPUP_PADDING * 2
-            + rows * SIDEBAR_ITEM_HEIGHT
-            + (rows - 1).max(0) * SIDEBAR_ITEM_GAP,
+            + rows * SIDEBAR_CHILD_ITEM_HEIGHT
+            + (rows - 1).max(0) * SIDEBAR_CHILD_ITEM_GAP,
     )
 }
 
@@ -1000,7 +1000,12 @@ pub(crate) fn paint_collapsed_sidebar_tabbar_popup(
 fn collapsed_sidebar_tabbar_popup_item_bounds(bounds: RECT) -> RECT {
     normalize_rect(RECT {
         left: bounds.left,
-        top: bounds.top + SIDEBAR_TABBAR_POPUP_PADDING - SIDEBAR_HEADER_HEIGHT,
+        // `sidebar_item_rect` adds the normal shell/header/group offsets.
+        // Cancel them so the popup's first child starts at its own padding.
+        top: bounds.top + SIDEBAR_TABBAR_POPUP_PADDING
+            - SHELL_TOP_BAR_HEIGHT
+            - SIDEBAR_ITEM_HEIGHT
+            - SIDEBAR_PARENT_CHILD_GAP,
         right: bounds.right,
         bottom: bounds.bottom,
     })
