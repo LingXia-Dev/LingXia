@@ -184,6 +184,11 @@ declare module 'liblingxia.so' {
   export function urlCallbackDispatch(url: string): boolean;
 
   /**
+   * Render the shared WebView load-error document for a failed URL.
+   */
+  export function webviewLoadErrorDocument(url: string): string;
+
+  /**
    * Open or navigate a managed internal browser tab and return tabId.
    */
   export function openBrowserTab(appid: string, sessionId: number, url: string): string | null;

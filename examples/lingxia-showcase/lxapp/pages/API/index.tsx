@@ -4,7 +4,7 @@ import '../../tailwind.css';
 
 export default function APIPage() {
   // Use LingXia hook to get data and functions
-  const { actions } = useLxPage();
+  const { data, actions } = useLxPage();
   // The bridge-repro page exercises the Apple downstream transport (iOS/macOS).
   const { isApple } = usePlatform();
   const {
@@ -61,7 +61,8 @@ export default function APIPage() {
           </div>
         </div>
 
-        {/* Cloud - Dropdown */}
+        {/* Cloud - Dropdown (only when the host ships the cloud provider) */}
+        {data.cloudAvailable && (
         <div className="bg-white rounded-lg shadow-sm">
           <div
             className="px-4 py-4 flex items-center justify-between cursor-pointer hover:bg-gray-50"
@@ -124,6 +125,7 @@ export default function APIPage() {
             </div>
           )}
         </div>
+        )}
 
         {/* Bridge - Dropdown */}
         <div className="bg-white rounded-lg shadow-sm">

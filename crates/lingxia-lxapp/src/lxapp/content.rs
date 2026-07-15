@@ -189,30 +189,17 @@ impl LxApp {
     }
 }
 
-fn build_content_security_policy(trusted_domains: &[String]) -> String {
-    let mut img_sources = vec![
-        "'self'".to_string(),
-        "lx:".to_string(),
-        "lingxia:".to_string(),
-        "data:".to_string(),
-        "blob:".to_string(),
-    ];
-
-    if trusted_domains.iter().any(|domain| domain == "*") {
-        img_sources.push("https:".to_string());
-    } else {
-        img_sources.extend(trusted_domains.iter().map(|domain| {
-            if let Some(suffix) = domain.strip_prefix("*.") {
-                format!("https://*.{suffix}")
-            } else {
-                format!("https://{domain}")
-            }
-        }));
-    }
-
+fn build_content_security_policy(_trusted_domains: &[String]) -> String {
     [
         "default-src 'self' lx: lingxia:".to_string(),
-        format!("img-src {}", img_sources.join(" ")),
+        // Images are passive, non-executing content: restricting their
+        // origins buys little (worst case a tracking pixel) but breaks any
+        // runtime-provided asset — e.g. tenant logos / user avatars from
+        // `lx.auth` identities live on arbitrary CDNs an app cannot
+        // predeclare in trustedDomains. All https images are therefore
+        // allowed; network *requests* (fetch) remain gated by
+        // security.network.trustedDomains in the Logic runtime.
+        "img-src 'self' lx: lingxia: data: blob: https:".to_string(),
         build_connect_src_policy(),
         "script-src 'self' lx: lingxia: 'unsafe-inline'".to_string(),
         "style-src 'self' lx: lingxia: 'unsafe-inline'".to_string(),
@@ -378,15 +365,16 @@ mod tests {
     use super::{build_content_security_policy, strip_content_security_policy_meta};
 
     #[test]
-    fn csp_only_allows_trusted_https_images() {
+    fn csp_allows_all_https_images() {
         let csp = build_content_security_policy(&[
             "cdn.example.com".to_string(),
             "*.img.example.com".to_string(),
         ]);
 
-        assert!(csp.contains(
-            "img-src 'self' lx: lingxia: data: blob: https://cdn.example.com https://*.img.example.com"
-        ));
+        // Images are passive content: https: is always allowed regardless of
+        // trustedDomains (which continue to gate fetch in the Logic runtime).
+        assert!(csp.contains("img-src 'self' lx: lingxia: data: blob: https:"));
+        assert!(!csp.contains("https://cdn.example.com"));
         #[cfg(any(target_os = "ios", target_os = "macos"))]
         assert!(csp.contains("connect-src lx-apple:"));
         #[cfg(not(any(target_os = "ios", target_os = "macos")))]
@@ -402,6 +390,12 @@ mod tests {
 
         assert!(csp.contains("img-src 'self' lx: lingxia: data: blob: https:"));
         assert!(!csp.contains("https://*"));
+    }
+
+    #[test]
+    fn csp_without_trusted_domains_still_allows_https_images() {
+        let csp = build_content_security_policy(&[]);
+        assert!(csp.contains("img-src 'self' lx: lingxia: data: blob: https:"));
     }
 
     #[test]

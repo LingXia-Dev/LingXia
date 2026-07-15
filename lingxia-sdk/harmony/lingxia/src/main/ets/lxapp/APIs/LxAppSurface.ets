@@ -1,11 +1,12 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { LxLog } from '../../app/LxLog';
+import { Lingxia } from '../../app/Lingxia';
 import { common } from '@kit.AbilityKit';
 import { display, window } from '@kit.ArkUI';
 import { webview } from '@kit.ArkWeb';
 import { LingXiaWebView } from '../LingXiaWebView';
 import { addWebViewUiCallback, removeWebViewUiCallback, WebViewInfo, WebViewManager, toWebTag } from '../WebViewBridge';
-import { disposePageInstance, notifyPageInstanceHidden, notifyPageInstanceMounted, notifyPageInstanceVisible, onSurfaceClosed, urlCallbackDispatch } from 'liblingxia.so';
+import { disposePageInstance, notifyPageInstanceHidden, notifyPageInstanceMounted, notifyPageInstanceVisible, onSurfaceClosed, urlCallbackDispatch, webviewLoadErrorDocument } from 'liblingxia.so';
 import { FloatWindowManager } from './LxAppFloatWindow';
 
 const DOMAIN = 0x0000;
@@ -68,6 +69,9 @@ export interface SurfaceLayoutConfig {
   bottomInset: number;
   fullWidth: boolean;
   fullHeight: boolean;
+  // URL surfaces only: run the Web incognito with a wiped cookie/storage
+  // store so each session (auth handoff) starts clean.
+  ephemeralWebData: boolean;
 }
 
 interface SurfacePlanAside {
@@ -112,7 +116,8 @@ export class LxAppSurface {
 	    widthRatioValue: string,
 	    heightRatioValue: string,
 	    positionValue: string,
-	    roleValue: string
+	    roleValue: string,
+	    ephemeralWebDataValue: string
 	  ): boolean {
 	    const content = parseInt(contentValue, 10);
 	    const kind = parseInt(kindValue, 10);
@@ -165,7 +170,8 @@ export class LxAppSurface {
       position,
       bottomInset: dimensions.bottomInset,
       fullWidth: dimensions.fullWidth,
-	      fullHeight: dimensions.fullHeight
+	      fullHeight: dimensions.fullHeight,
+	      ephemeralWebData: ephemeralWebDataValue === 'true'
 	    };
 
     const key = LxAppSurface.surfaceKey(id, appId);
@@ -587,7 +593,7 @@ function normalizeReason(reason: string): string {
   return 'unknown';
 }
 
-function isHttpUrl(value: string): boolean {
+export function isHttpUrl(value: string): boolean {
   const normalized = value.trim().toLowerCase();
   return normalized.startsWith('https://') || normalized.startsWith('http://');
 }
@@ -737,6 +743,7 @@ function surfaceRenderState(layout: SurfaceLayoutConfig, isVisible: boolean, pag
     bottomInset: layout.bottomInset,
     fullWidth: layout.fullWidth,
     fullHeight: layout.fullHeight,
+    ephemeralWebData: layout.ephemeralWebData,
     isVisible,
     pageWebTag
   };
@@ -904,7 +911,7 @@ export struct SurfaceManager {
         }
         Column() {
           if (surface.content === CONTENT_URL) {
-            Web({ src: '', controller: this.getWebController(surface) })
+            Web({ src: '', controller: this.getWebController(surface), incognitoMode: surface.ephemeralWebData })
               .domStorageAccess(true)
               .javaScriptAccess(true)
               .fileAccess(false)
@@ -919,22 +926,59 @@ export struct SurfaceManager {
                 }
                 // A registered URL-callback sentinel (e.g. an auth handoff) is
                 // consumed by the waiting Rust channel; cancel the load.
+                // URL surfaces host multi-origin journeys (an auth page may
+                // hop through an external IdP and back), so cross-origin
+                // http(s) navigation is allowed. Non-http(s) schemes are app
+                // deep links (dingtalk://, feishu://, ...) that IdP pages use
+                // to launch their native app; hand those to the system.
                 if (urlCallbackDispatch(targetUrl)) {
                   return true;
                 }
-                if (isSameOrigin(surface.path, targetUrl)) {
+                if (isHttpUrl(targetUrl)) {
                   return false;
                 }
-                hilog.warn(DOMAIN, TAG, `blocked surface navigation: ${targetUrl}`);
+                Lingxia.launchWithUrl(targetUrl);
                 return true;
+              })
+              .onErrorReceive((event) => {
+                if (!event || !event.request || !event.error || !event.request.isMainFrame()) {
+                  return;
+                }
+                // Cancellation is control flow (superseded load, intercepted
+                // handoff), never an application-visible load error. It is
+                // reported as exactly ERR_ABORTED — substring matching would
+                // also swallow real failures like ERR_CONNECTION_ABORTED.
+                const info = (event.error.getErrorInfo() ?? '').toLowerCase();
+                if (info === 'err_aborted' || info === 'net::err_aborted') {
+                  return;
+                }
+                this.loadWebSurfaceError(
+                  this.getWebController(surface),
+                  event.request.getRequestUrl() ?? surface.path
+                );
               })
               .width('100%')
               .height('100%')
               .onAppear(() => {
                 const url = surface.path;
                 const controller = this.getWebController(surface);
+                const isEphemeral = surface.ephemeralWebData;
                 setTimeout(() => {
                   try {
+                    if (isEphemeral) {
+                      // `incognitoMode` only stops on-disk persistence; the
+                      // incognito cookie/storage lives in a shared in-memory
+                      // store, so a prior IdP SSO session would carry into the
+                      // next lx.auth.add() and re-recognize the last account.
+                      // Wipe that store (synchronously, before loadUrl issues
+                      // the first request) so every login starts clean.
+                      try {
+                        webview.WebCookieManager.clearAllCookiesSync(true);
+                        webview.WebStorage.deleteAllData(true);
+                      } catch (clearErr) {
+                        LxLog.e(TAG, `failed to clear incognito web data: ${clearErr}`);
+                      }
+                    }
                     hilog.info(DOMAIN, TAG, `load surface url=${url}`);
                     controller.loadUrl(url);
                   } catch (error) {
@@ -1097,6 +1141,15 @@ export struct SurfaceManager {
       this.webControllers.set(key, controller);
     }
     return controller;
+  }
+
+  private loadWebSurfaceError(controller: webview.WebviewController, failingUrl: string): void {
+    try {
+      const html: string = webviewLoadErrorDocument(failingUrl);
+      controller.loadData(html, 'text/html', 'UTF-8', failingUrl, failingUrl);
+    } catch (error) {
+      LxLog.e(TAG, `failed to render surface load error: ${error}`);
+    }
   }
 
   private getPageController(surface: SurfaceRenderState): webview.WebviewController {

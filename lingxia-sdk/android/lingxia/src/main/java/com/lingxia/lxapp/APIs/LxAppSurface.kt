@@ -10,7 +10,10 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.WebChromeClient
+import android.webkit.CookieManager
+import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
+import android.webkit.WebStorage
 import android.webkit.WebViewClient
 import android.widget.FrameLayout
 import android.util.Log
@@ -92,7 +95,8 @@ internal object LxAppSurface {
         val widthRatio: Double,
         val heightRatio: Double,
         val position: SurfacePosition,
-        val role: Int
+        val role: Int,
+        val ephemeralWebData: Boolean
     )
 
     private enum class PendingVisibility {
@@ -118,7 +122,8 @@ internal object LxAppSurface {
         widthRatio: Double,
         heightRatio: Double,
         position: Int,
-        role: Int
+        role: Int,
+        ephemeralWebData: Boolean
     ): Boolean {
         if (id.isBlank() || appId.isBlank() || sessionId <= 0L) return false
         if (kind != KIND_POPUP && kind != KIND_WINDOW) return false
@@ -144,12 +149,13 @@ internal object LxAppSurface {
             widthRatio = widthRatio,
             heightRatio = heightRatio,
             position = SurfacePosition.fromInt(position),
-            role = role
+            role = role,
+            ephemeralWebData = ephemeralWebData
         )
         pendingRequests[request.id] = request
         activity.runOnUiThread {
             if (request.content == CONTENT_URL) {
-                mount(activity, request, createExternalWebView(activity, request.path))
+                mount(activity, request, createExternalWebView(activity, request.path, request.ephemeralWebData))
             } else {
                 mountWhenReady(activity, request, 0)
             }
@@ -593,8 +599,12 @@ internal object LxAppSurface {
     }
 
     @Suppress("DEPRECATION")
-    private fun createExternalWebView(activity: Activity, url: String): android.webkit.WebView {
-        return android.webkit.WebView(activity).apply {
+    private fun createExternalWebView(
+        activity: Activity,
+        url: String,
+        ephemeralWebData: Boolean
+    ): android.webkit.WebView {
+        val webView = android.webkit.WebView(activity).apply {
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
             settings.databaseEnabled = true
@@ -603,9 +613,49 @@ internal object LxAppSurface {
             webViewClient = object : WebViewClient() {
                 // A registered URL-callback sentinel (e.g. an auth handoff) is
                 // consumed by the waiting Rust channel; cancel the load.
+                // URL surfaces host multi-origin journeys (an auth page may
+                // hop through an external IdP and back), so cross-origin
+                // http(s) navigation is allowed. Non-http(s) schemes are app
+                // deep links (dingtalk://, feishu://, ...) that IdP pages use
+                // to launch their native app for authorization — hand those
+                // to the OS instead of loading them in the sheet.
                 private fun handles(next: Uri): Boolean {
                     if (NativeApi.urlCallbackDispatch(next.toString())) return true
-                    return !isSameOrigin(Uri.parse(url), next)
+                    val scheme = next.scheme?.lowercase()
+                    if (scheme == "http" || scheme == "https") return false
+                    try {
+                        activity.startActivity(
+                            android.content.Intent(android.content.Intent.ACTION_VIEW, next)
+                        )
+                    } catch (e: Exception) {
+                        Log.w(TAG, "no handler for deep link ${'$'}next: ${'$'}e")
+                    }
+                    return true
+                }
+
+                override fun onReceivedError(
+                    view: android.webkit.WebView?,
+                    request: WebResourceRequest?,
+                    error: WebResourceError?
+                ) {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && request?.isForMainFrame == true) {
+                        if (isNavigationCancellation(error?.description?.toString())) return
+                        val failingUrl = request.url?.toString() ?: url
+                        view?.let { loadWebSurfaceError(it, failingUrl) }
+                    }
+                }
+
+                @Deprecated("Deprecated in Android")
+                override fun onReceivedError(
+                    view: android.webkit.WebView?,
+                    errorCode: Int,
+                    description: String?,
+                    failingUrl: String?
+                ) {
+                    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+                        if (isNavigationCancellation(description)) return
+                        view?.let { loadWebSurfaceError(it, failingUrl ?: url) }
+                    }
                 }
 
                 override fun shouldOverrideUrlLoading(
@@ -623,25 +673,42 @@ internal object LxAppSurface {
                 }
             }
             webChromeClient = WebChromeClient()
-            loadUrl(url)
         }
+        if (ephemeralWebData) {
+            // An ephemeral surface (auth handoffs) starts with a clean IdP
+            // session so logout is real and lx.auth.add() can switch accounts.
+            // Android's CookieManager is process-global AND removeAllCookies is
+            // asynchronous, so the load must wait for the removal callback —
+            // calling loadUrl immediately would race it and still send the
+            // stale SSO cookie on the first IdP request. Ephemeral sheets are
+            // modal and rare, so clearing the global jar is acceptable (other
+            // surfaces simply re-auth).
+            val cookieManager = CookieManager.getInstance()
+            cookieManager.removeAllCookies {
+                cookieManager.flush()
+                WebStorage.getInstance().deleteAllData()
+                webView.post { webView.loadUrl(url) }
+            }
+        } else {
+            webView.loadUrl(url)
+        }
+        return webView
     }
 
-    private fun isSameOrigin(initial: Uri, next: Uri): Boolean {
-        val initialScheme = initial.scheme?.lowercase()
-        val nextScheme = next.scheme?.lowercase()
-        if (initialScheme != nextScheme) return false
-        if (!initial.host.equals(next.host, ignoreCase = true)) return false
-        return effectivePort(initial) == effectivePort(next)
+    // Cancellation is control flow (superseded load, intercepted handoff),
+    // never an application-visible load error. Chromium reports it as exactly
+    // net::ERR_ABORTED — substring matching would also swallow real failures
+    // like net::ERR_CONNECTION_ABORTED.
+    private fun isNavigationCancellation(description: String?): Boolean {
+        return description?.lowercase() == "net::err_aborted"
     }
 
-    private fun effectivePort(uri: Uri): Int {
-        if (uri.port > 0) return uri.port
-        return when (uri.scheme?.lowercase()) {
-            "http" -> 80
-            "https" -> 443
-            else -> -1
-        }
+    private fun loadWebSurfaceError(
+        webView: android.webkit.WebView,
+        failingUrl: String
+    ) {
+        val html = NativeApi.webviewLoadErrorDocument(failingUrl)
+        webView.loadDataWithBaseURL(failingUrl, html, "text/html", "UTF-8", failingUrl)
     }
 
     private fun layoutParams(
@@ -709,11 +776,23 @@ internal object LxAppSurface {
                 ?.getInsets(WindowInsetsCompat.Type.navigationBars())
                 ?.bottom
             ?: 0
-        return if (request.position == SurfacePosition.BOTTOM) {
-            (contentInset - rootView.paddingBottom).coerceAtLeast(0)
-        } else {
-            0
+        if (request.position != SurfacePosition.BOTTOM) {
+            return 0
         }
+        val navInset = (contentInset - rootView.paddingBottom).coerceAtLeast(0)
+        // The activity does not resize for the IME, so a full-height WebView
+        // renders beneath the keyboard and the page never sees a
+        // visualViewport change. Lift the sheet bottom above the IME so the
+        // web content relayouts into the visible area.
+        if (request.content == CONTENT_URL) {
+            val insets = ViewCompat.getRootWindowInsets(rootView)
+            if (insets?.isVisible(WindowInsetsCompat.Type.ime()) == true) {
+                val imeInset = insets.getInsets(WindowInsetsCompat.Type.ime()).bottom -
+                    rootView.paddingBottom
+                return maxOf(navInset, imeInset.coerceAtLeast(0))
+            }
+        }
+        return navInset
     }
 
     private fun resolveSize(activity: Activity, absoluteDp: Double, ratio: Double, basePx: Int, defaultRatio: Double): Int {

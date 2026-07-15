@@ -126,7 +126,7 @@ pub(crate) struct UiState {
     pub(crate) native_view: WindowsWebViewNativeView,
     pub(crate) webtag_key: String,
     pub(crate) memory_pages: Arc<Mutex<HashMap<String, Vec<u8>>>>,
-    pub(crate) transient_user_data_dir: Option<PathBuf>,
+    pub(crate) ephemeral_user_data_dir: Option<PathBuf>,
     /// Captured network entries (shared with the CDP event handlers).
     pub(crate) network_log: Arc<Mutex<network::NetworkLog>>,
     /// Active CDP `Network` event subscriptions (receiver + token), non-empty
@@ -443,7 +443,7 @@ impl WebViewController for WebViewInner {
     }
 
     fn load_data(&self, request: LoadDataRequest<'_>) -> StdResult<()> {
-        self.dispatch_command(|resp| UiCommand::LoadHtml {
+        self.dispatch_command_same_thread_safe(|resp| UiCommand::LoadHtml {
             html: request.data.to_string(),
             base_url: request.base_url.to_string(),
             history_url: request.history_url.map(str::to_string),
@@ -685,8 +685,24 @@ type WebViewControllerSetup = (
     ICoreWebView2Controller,
     ICoreWebView2,
     Arc<Mutex<HashMap<String, Vec<u8>>>>,
-    Option<PathBuf>,
+    EphemeralProfileGuard,
 );
+
+struct EphemeralProfileGuard(Option<PathBuf>);
+
+impl EphemeralProfileGuard {
+    fn take(&mut self) -> Option<PathBuf> {
+        self.0.take()
+    }
+}
+
+impl Drop for EphemeralProfileGuard {
+    fn drop(&mut self) {
+        if let Some(dir) = self.0.take() {
+            schedule_ephemeral_profile_cleanup(dir);
+        }
+    }
+}
 
 pub(crate) fn run_ui_thread_inner(
     webtag: WebTag,
@@ -702,7 +718,8 @@ pub(crate) fn run_ui_thread_inner(
     // After the window exists, every failure must report the real error to the
     // creator and destroy the window (which also frees the WindowUserData box).
     let setup = (|| -> StdResult<WebViewControllerSetup> {
-        let (env, transient_user_data_dir) = create_environment(&webtag, &effective_options)?;
+        let (env, ephemeral_user_data_dir) = create_environment(&webtag, &effective_options)?;
+        let ephemeral_profile = EphemeralProfileGuard(ephemeral_user_data_dir);
         let controller = create_controller(&env, hwnd)?;
         let webview = unsafe {
             controller
@@ -733,10 +750,10 @@ pub(crate) fn run_ui_thread_inner(
             &effective_options.registered_schemes,
             memory_pages.clone(),
         )?;
-        Ok((controller, webview, memory_pages, transient_user_data_dir))
+        Ok((controller, webview, memory_pages, ephemeral_profile))
     })();
 
-    let (controller, webview, memory_pages, transient_user_data_dir) = match setup {
+    let (controller, webview, memory_pages, mut ephemeral_profile) = match setup {
         Ok(parts) => parts,
         Err(err) => {
             let _ = startup_tx.send(Err(err.clone()));
@@ -785,7 +802,7 @@ pub(crate) fn run_ui_thread_inner(
         native_view,
         webtag_key,
         memory_pages,
-        transient_user_data_dir,
+        ephemeral_user_data_dir: ephemeral_profile.take(),
         network_log: Arc::new(Mutex::new(network::NetworkLog::default())),
         network_receivers: Vec::new(),
         _console_receivers: console_receivers,
@@ -1107,11 +1124,26 @@ pub(crate) fn cleanup_state(state: &mut UiState) {
         let _ = state.controller.Close();
     }
     destroy_webview_parent(&state.webtag_key, state.native_view);
-    if let Some(dir) = state.transient_user_data_dir.take()
-        && let Err(err) = std::fs::remove_dir_all(&dir)
-    {
-        log::debug!("failed to remove strict WebView2 profile {dir:?}: {err}");
+    if let Some(dir) = state.ephemeral_user_data_dir.take() {
+        schedule_ephemeral_profile_cleanup(dir);
     }
+}
+
+fn schedule_ephemeral_profile_cleanup(dir: PathBuf) {
+    let _ = std::thread::Builder::new()
+        .name("lingxia-webview-profile-cleanup".to_string())
+        .spawn(move || {
+            // WebView2 releases files asynchronously after Controller.Close.
+            // Retry off the UI thread so an ephemeral profile is not left on
+            // disk merely because the first removal raced COM teardown.
+            for attempt in 0..20 {
+                if !dir.exists() || std::fs::remove_dir_all(&dir).is_ok() {
+                    return;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(50 + attempt * 25));
+            }
+            log::warn!("failed to remove ephemeral WebView2 profile {dir:?}");
+        });
 }
 
 pub(crate) fn set_controller_visible(state: &UiState, visible: bool) -> StdResult<()> {

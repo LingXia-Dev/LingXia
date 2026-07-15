@@ -1285,18 +1285,22 @@ fn require_desktop_input(info: &SessionInfo, what: &str) -> Result<()> {
 }
 
 fn execute_page_pointer(ws_url: &str, options: PagePointerOptions) -> Result<()> {
-    let (target, action) = match options.command {
+    // WebKit hit-testing needs a cursor move before a press. Keep the press
+    // itself atomic: native controls can run a nested tracking loop during
+    // mouseDown, so waiting for a separate Down response before sending Up
+    // deadlocks them and also loses the platform click count.
+    let (target, actions): (PointerTarget, Vec<Value>) = match options.command {
         PagePointerCommand::Move(o) => (
             o.target,
-            json!({ "kind": "move", "x": o.at.x, "y": o.at.y }),
+            vec![json!({ "kind": "move", "x": o.at.x, "y": o.at.y })],
         ),
         PagePointerCommand::Down(o) => (
             o.target,
-            json!({ "kind": "down", "x": o.at.x, "y": o.at.y, "button": o.button.as_str() }),
+            vec![json!({ "kind": "down", "x": o.at.x, "y": o.at.y, "button": o.button.as_str() })],
         ),
         PagePointerCommand::Up(o) => (
             o.target,
-            json!({ "kind": "up", "x": o.at.x, "y": o.at.y, "button": o.button.as_str() }),
+            vec![json!({ "kind": "up", "x": o.at.x, "y": o.at.y, "button": o.button.as_str() })],
         ),
         PagePointerCommand::Click(o) => {
             if o.count == 0 {
@@ -1304,39 +1308,46 @@ fn execute_page_pointer(ws_url: &str, options: PagePointerOptions) -> Result<()>
             }
             (
                 o.target,
-                json!({
-                    "kind": "click",
-                    "x": o.at.x,
-                    "y": o.at.y,
-                    "button": o.button.as_str(),
-                    "click_count": o.count,
-                }),
+                vec![
+                    json!({ "kind": "move", "x": o.at.x, "y": o.at.y }),
+                    json!({
+                        "kind": "click",
+                        "x": o.at.x,
+                        "y": o.at.y,
+                        "button": o.button.as_str(),
+                        "click_count": o.count,
+                    }),
+                ],
             )
         }
         PagePointerCommand::Drag(o) => (
             o.target,
-            json!({
+            vec![json!({
                 "kind": "drag",
                 "from_x": o.from.x,
                 "from_y": o.from.y,
                 "to_x": o.to.x,
                 "to_y": o.to.y,
                 "button": o.button.as_str(),
-            }),
+            })],
         ),
         PagePointerCommand::Scroll(o) => (
             o.target,
-            json!({ "kind": "scroll", "x": o.at.x, "y": o.at.y, "dx": o.dx, "dy": o.dy }),
+            vec![json!({ "kind": "scroll", "x": o.at.x, "y": o.at.y, "dx": o.dx, "dy": o.dy })],
         ),
     };
 
-    let mut payload = serde_json::Map::new();
-    if let Some(window) = target.window {
-        payload.insert("window_id".to_string(), Value::String(window));
+    let mut last = Value::Null;
+    for action in actions {
+        let mut payload = serde_json::Map::new();
+        if let Some(window) = target.window.clone() {
+            payload.insert("window_id".to_string(), Value::String(window));
+        }
+        payload.insert("action".to_string(), action);
+        last = client::execute_command(ws_url, handlers::app::MOUSE, Some(Value::Object(payload)))?
+            .unwrap_or(Value::Null);
     }
-    payload.insert("action".to_string(), action);
-    let data = client::execute_command(ws_url, handlers::app::MOUSE, Some(Value::Object(payload)))?
-        .unwrap_or(Value::Null);
+    let data = last;
 
     if target.json {
         println!("{}", serde_json::to_string_pretty(&data)?);

@@ -62,7 +62,7 @@ impl SurfacePresenter for Platform {
                 .call_static_method(
                     surface_class,
                     jni_str!("present"),
-                    jni_sig!("(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;JLjava/lang/String;IIDDDDII)Z"),
+                    jni_sig!("(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;JLjava/lang/String;IIDDDDIIZ)Z"),
                     &[
                         JValue::Object(&JObject::from(id)),
                         JValue::Object(&JObject::from(app_id)),
@@ -77,6 +77,7 @@ impl SurfacePresenter for Platform {
                         JValue::Double(request.height_ratio),
                         JValue::Int(request.position as i32),
                         JValue::Int(request.role as i32),
+                        JValue::Bool(request.ephemeral_web_data.into()),
                     ],
                 )?
                 .z()?;

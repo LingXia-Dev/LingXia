@@ -9,6 +9,7 @@ import {
   WebTagParts,
   WebViewManager as CoreWebViewManager,
   extractWebTag,
+  isEphemeralDataMode as coreIsEphemeralDataMode,
   isBrowserRelaxedProfile as coreIsBrowserRelaxedProfile,
   toWebTag
 } from './WebViewCore';
@@ -152,6 +153,10 @@ export function getWebViewInfo(webtag: string): WebViewInfo | null {
 
 export function isBrowserRelaxed(webtag: string): boolean {
   return coreIsBrowserRelaxedProfile(webtag);
+}
+
+export function isEphemeralDataMode(webtag: string): boolean {
+  return coreIsEphemeralDataMode(webtag);
 }
 
 export function handleWebViewNavigationPolicy(webtag: string, url: string): boolean {

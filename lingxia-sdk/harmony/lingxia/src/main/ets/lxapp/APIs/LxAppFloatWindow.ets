@@ -20,8 +20,8 @@ import { webview } from '@kit.ArkWeb';
 import { Lingxia } from '../../app/Lingxia';
 import { LingXiaWebView } from '../LingXiaWebView';
 import { addWebViewUiCallback, removeWebViewUiCallback, WebViewInfo, WebViewManager, toWebTag } from '../WebViewBridge';
-import { notifyPageInstanceMounted, notifyPageInstanceVisible, urlCallbackDispatch } from 'liblingxia.so';
-import { isSameOrigin } from './LxAppSurface';
+import { notifyPageInstanceMounted, notifyPageInstanceVisible, urlCallbackDispatch, webviewLoadErrorDocument } from 'liblingxia.so';
+import { isHttpUrl, isSameOrigin } from './LxAppSurface';
 import type { SurfaceLayoutConfig } from './LxAppSurface';
 
 const DOMAIN = 0x0000;
@@ -184,6 +184,18 @@ struct LingXiaFloatSurfacePage {
     if (!this.layout) {
       LxLog.e(TAG, `float page has no layout key=${this.lxFloatKey}`);
     }
+    if (this.layout?.content === FLOAT_CONTENT_URL && this.layout.ephemeralWebData) {
+      // `incognitoMode` only stops on-disk persistence; the incognito
+      // cookie/storage lives in a shared in-memory store, so a prior session
+      // (e.g. an IdP SSO cookie) would carry into this surface. Wipe that
+      // store before the Web builds and issues its first request.
+      try {
+        webview.WebCookieManager.clearAllCookiesSync(true);
+        webview.WebStorage.deleteAllData(true);
+      } catch (clearErr) {
+        LxLog.e(TAG, `failed to clear incognito web data: ${clearErr}`);
+      }
+    }
     addWebViewUiCallback(this.webViewUiCallback);
     this.tryAttachPage();
   }
@@ -236,11 +248,31 @@ struct LingXiaFloatSurfacePage {
         }
         Column() {
           if (this.layout!.content === FLOAT_CONTENT_URL) {
-            Web({ src: this.layout!.path, controller: this.urlController })
+            Web({ src: this.layout!.path, controller: this.urlController, incognitoMode: this.layout!.ephemeralWebData })
               .domStorageAccess(true)
               .javaScriptAccess(true)
               .fileAccess(false)
               .mixedMode(MixedMode.None)
+              .onErrorReceive((event) => {
+                if (!event || !event.request || !event.error || !event.request.isMainFrame()) {
+                  return;
+                }
+                // Cancellation is control flow (superseded load, intercepted
+                // handoff), never an application-visible load error. It is
+                // reported as exactly ERR_ABORTED — substring matching would
+                // also swallow real failures like ERR_CONNECTION_ABORTED.
+                const info = (event.error.getErrorInfo() ?? '').toLowerCase();
+                if (info === 'err_aborted' || info === 'net::err_aborted') {
+                  return;
+                }
+                const failingUrl = event.request.getRequestUrl() ?? this.layout!.path;
+                try {
+                  const html: string = webviewLoadErrorDocument(failingUrl);
+                  this.urlController.loadData(html, 'text/html', 'UTF-8', failingUrl, failingUrl);
+                } catch (error) {
+                  LxLog.e(TAG, `failed to render float load error: ${error}`);
+                }
+              })
               .onLoadIntercept((event) => {
                 if (!event || !event.data) {
                   return false;
@@ -251,13 +283,15 @@ struct LingXiaFloatSurfacePage {
                 }
                 // A registered URL-callback sentinel (e.g. an auth handoff) is
                 // consumed by the waiting Rust channel; cancel the load.
+                // Cross-origin http(s) is allowed (multi-origin auth journey);
+                // non-http(s) deep links are handed to the system.
                 if (urlCallbackDispatch(targetUrl)) {
                   return true;
                 }
-                if (isSameOrigin(this.layout!.path, targetUrl)) {
+                if (isHttpUrl(targetUrl)) {
                   return false;
                 }
-                hilog.warn(DOMAIN, TAG, `blocked float surface navigation: ${targetUrl}`);
+                Lingxia.launchWithUrl(targetUrl);
                 return true;
               })
               .width('100%')

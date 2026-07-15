@@ -56,15 +56,13 @@ pub fn register_logic_runtime() {
     ::lxapp::register_surface_close_observer(notify_surface_closed);
     ::lxapp::register_surface_context_observer(surface::notify_surface_context_changed);
     register_logic_extension(Box::new(LxLogicRuntime));
-    register_platform_dialog_i18n();
+    register_platform_i18n();
 }
 
-/// Installs the locale-aware translator the platform layer uses for native
-/// dialog titles (file/media choosers). `lingxia-platform` can't reach the
-/// i18n table directly (it sits below it), so the logic layer maps its keys
-/// to [`I18nKey`] here.
-fn register_platform_dialog_i18n() {
-    lingxia_platform::i18n::set_dialog_translator(|key| {
+/// Installs one locale-aware lookup for platform-owned UI. Individual scenes
+/// pass stable keys, not localized strings or presentation payloads.
+fn register_platform_i18n() {
+    lingxia_platform::i18n::set_localizer(|key| {
         let i18n_key = match key {
             "common.about" => I18nKey::CommonAbout,
             "common.exit" => I18nKey::CommonExit,
@@ -74,6 +72,9 @@ fn register_platform_dialog_i18n() {
             "file_chooser.choose_images" => I18nKey::FileChooserChooseImages,
             "file_chooser.choose_videos" => I18nKey::FileChooserChooseVideos,
             "file_chooser.choose_media" => I18nKey::FileChooserChooseMedia,
+            "webview.load_error_title" => I18nKey::WebviewLoadErrorTitle,
+            "webview.load_error_message" => I18nKey::WebviewLoadErrorMessage,
+            "webview.retry" => I18nKey::WebviewRetry,
             _ => return None,
         };
         Some(i18n::t(i18n_key))

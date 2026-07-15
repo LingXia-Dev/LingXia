@@ -8,12 +8,19 @@ type TenantLike = {
   logoUrl?: string;
 };
 
+type UserLike = {
+  id?: string;
+  name?: string;
+  avatar?: string;
+};
+
 type CloudPageType = 'auth' | 'mqtt' | 'functions';
 
 type PageData = {
   type?: CloudPageType;
   status?: string;
   tenant?: TenantLike | null;
+  user?: UserLike | null;
   tenants?: TenantLike[];
 
   mqttStatus?: string;
@@ -91,6 +98,7 @@ function authStatusColor(status: string): string {
 function CloudAuthView({
   status,
   tenant,
+  user,
   tenants,
   loginInteractive,
   addTenant,
@@ -99,6 +107,7 @@ function CloudAuthView({
 }: {
   status: string;
   tenant: TenantLike | null;
+  user: UserLike | null;
   tenants: TenantLike[];
   loginInteractive: () => void | Promise<void>;
   addTenant: () => void | Promise<void>;
@@ -185,6 +194,26 @@ function CloudAuthView({
                 {getTenantShortName(tenant) ? (
                   <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">
                     {getTenantShortName(tenant)}
+                  </span>
+                ) : null}
+              </div>
+            </div>
+            <div className="flex justify-between items-center py-3 border-b border-gray-200 gap-4">
+              <span className="text-sm text-gray-600">Active User</span>
+              <div className="flex items-center gap-3 px-3 py-2 bg-emerald-50 rounded-lg">
+                {user?.avatar ? (
+                  <img
+                    src={user.avatar}
+                    alt={user.name || ''}
+                    className="w-8 h-8 rounded-full border border-white shadow-sm bg-white object-cover"
+                  />
+                ) : null}
+                <span className="text-sm font-semibold text-gray-800 text-right">
+                  {user?.name || 'Not signed in'}
+                </span>
+                {user?.id ? (
+                  <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">
+                    {user.id}
                   </span>
                 ) : null}
               </div>
@@ -503,6 +532,7 @@ export default function CloudPage() {
     type = 'auth',
     status = 'Idle',
     tenant = null,
+    user = null,
     tenants = [],
     mqttStatus = 'Idle',
     mqttRuntimeState = 'idle',
@@ -548,6 +578,7 @@ export default function CloudPage() {
           <CloudAuthView
             status={status}
             tenant={tenant}
+            user={user}
             tenants={tenants}
             loginInteractive={loginInteractive}
             addTenant={addTenant}

@@ -60,7 +60,8 @@ use objc2_core_graphics::CGEvent;
 
 use crate::webview::{
     EffectiveWebViewCreateOptions, ProxyActivation, ProxyApplyReport, ProxyConfig, SecurityProfile,
-    WebTag, WebViewCreateSender, WebViewCreateStage, configured_proxy_for_new_webviews,
+    WebTag, WebViewCreateSender, WebViewCreateStage, WebViewDataMode,
+    configured_proxy_for_new_webviews,
 };
 
 const EVAL_TIMEOUT: Duration = Duration::from_secs(10);
@@ -1934,7 +1935,8 @@ impl WebViewInner {
             // Access preferences to set security settings
             let prefs = config.preferences();
             let allow_new_windows = effective_options.profile == SecurityProfile::BrowserRelaxed;
-            let is_strict = effective_options.profile == SecurityProfile::StrictDefault;
+            let uses_ephemeral_data = effective_options.profile == SecurityProfile::StrictDefault
+                || effective_options.data_mode == WebViewDataMode::Ephemeral;
             let allow_js_windows = allow_new_windows || effective_options.has_new_window_handler;
             prefs.setJavaScriptCanOpenWindowsAutomatically(allow_js_windows);
 
@@ -1966,7 +1968,7 @@ impl WebViewInner {
             // Profile policy on Apple data store:
             // - StrictDefault: non-persistent (ephemeral DOM storage, cleared on destroy)
             // - BrowserRelaxed: default (persistent localStorage / database)
-            if is_strict {
+            if uses_ephemeral_data {
                 let non_persistent_store = WKWebsiteDataStore::nonPersistentDataStore(mtm);
                 config.setWebsiteDataStore(&non_persistent_store);
             } else if let Some(proxy) = configured_proxy_for_new_webviews() {
@@ -2107,6 +2109,8 @@ impl WebViewInner {
             // Immediately hide the webview. It will be made visible by Swift once it's sized and positioned.
             let _: () = msg_send![webview, setHidden: true];
 
+            let is_strict = effective_options.profile != SecurityProfile::BrowserRelaxed;
+
             // Create navigation delegate
             let navigation_delegate = LingXiaNavigationDelegate::new(
                 appid.to_string(),
@@ -2139,8 +2143,7 @@ impl WebViewInner {
             };
 
             // Set up message handler for bridge communication
-            let inject_platform_baseline =
-                effective_options.profile != SecurityProfile::BrowserRelaxed;
+            let inject_platform_baseline = is_strict;
             let message_handler = Self::setup_message_handler(
                 webview,
                 appid,

@@ -235,6 +235,26 @@
                   </span>
                 </div>
               </div>
+              <div class="flex justify-between items-center py-3 border-b border-gray-200 gap-4">
+                <span class="text-sm text-gray-600">Active User</span>
+                <div class="flex items-center gap-3 px-3 py-2 bg-emerald-50 rounded-lg">
+                  <img
+                    v-if="user && user.avatar"
+                    :src="user.avatar"
+                    :alt="user.name"
+                    class="w-8 h-8 rounded-full border border-white shadow-sm bg-white object-cover"
+                  />
+                  <span class="text-sm font-semibold text-gray-800 text-right">
+                    {{ user && user.name ? user.name : 'Not signed in' }}
+                  </span>
+                  <span
+                    v-if="user && user.id"
+                    class="text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700"
+                  >
+                    {{ user.id }}
+                  </span>
+                </div>
+              </div>
 
 
             </div>
@@ -316,12 +336,19 @@ type TenantLike = {
   logoUrl?: string;
 };
 
+type UserLike = {
+  id?: string;
+  name?: string;
+  avatar?: string;
+};
+
 type CloudPageType = 'auth' | 'mqtt' | 'functions';
 
 type PageData = {
   type?: CloudPageType;
   status?: string;
   tenant?: TenantLike | null;
+  user?: UserLike | null;
   tenants?: TenantLike[];
   mqttStatus?: string;
   mqttRuntimeState?: string;
@@ -362,6 +389,7 @@ const {
 const type = computed(() => data.type || 'auth');
 const status = computed(() => data.status || 'Idle');
 const tenant = computed(() => data.tenant || null);
+const user = computed(() => data.user || null);
 const tenants = computed(() => data.tenants || []);
 const mqttStatus = computed(() => data.mqttStatus || 'Idle');
 const mqttRuntimeState = computed(() => data.mqttRuntimeState || 'idle');

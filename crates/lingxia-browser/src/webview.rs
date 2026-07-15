@@ -25,9 +25,9 @@ use lingxia_webview::runtime::{
     destroy_webview as destroy_managed_webview, find_webview as find_managed_webview,
 };
 use lingxia_webview::{
-    LogLevel, NavigationEvent, NavigationPolicy, NavigationProgress, NewWindowPolicy, WebTag,
-    WebView, WebViewBuilder, WebViewController, WebViewDelegate, WebViewSession,
-    WebViewStateChange,
+    LoadDataRequest, LoadError, LoadErrorPage, LogLevel, NavigationEvent, NavigationPolicy,
+    NavigationProgress, NewWindowPolicy, WebTag, WebView, WebViewBuilder, WebViewController,
+    WebViewDataMode, WebViewDelegate, WebViewSession, WebViewStateChange, render_load_error_page,
 };
 use lxapp::LxAppError;
 use serde_json::Value;
@@ -48,8 +48,27 @@ struct BrowserTabDelegate {
     tab_id: String,
     page_path: String,
     session_id: u64,
+    navigation: std::sync::Mutex<BrowserTabNavigationState>,
+}
+
+#[derive(Default)]
+struct BrowserTabNavigationState {
     /// Canonical attempt-correlation fold over typed navigation events.
-    progress: std::sync::Mutex<NavigationProgress>,
+    progress: NavigationProgress,
+    /// True from a document load failure until the next real navigation
+    /// starts. While set, Location/Title changes are suppressed so the tab
+    /// keeps showing the failing URL, and the error document's own lifecycle
+    /// never records a visit or drives the internal page.
+    showing_error_page: bool,
+}
+
+const BROWSER_LOAD_ERROR_URL: &str = "lingxia://browser/load-error";
+
+/// Platforms may normalize the document URL they report (trailing slash,
+/// scheme case), so error-document detection compares loosely.
+fn is_error_document_url(url: &str) -> bool {
+    url.trim_end_matches('/')
+        .eq_ignore_ascii_case(BROWSER_LOAD_ERROR_URL)
 }
 
 impl BrowserTabDelegate {
@@ -78,14 +97,60 @@ impl BrowserTabDelegate {
             }
         }
     }
+
+    fn show_load_error(&self, error: &LoadError) {
+        crate::internal_pages::detach_internal_tab_page(&self.page_path);
+        let failing_url = error.failing_url.as_deref().unwrap_or_default();
+        let title =
+            lingxia_platform::i18n::text("webview.load_error_title", "Couldn't load this page");
+        let _ = crate::tabs::browser_update_tab_info(
+            &self.tab_id,
+            (!failing_url.is_empty()).then_some(failing_url),
+            Some(&title),
+        );
+
+        let Ok(webview) = browser_find_webview(&self.page_path, self.session_id) else {
+            return;
+        };
+        let message = lingxia_platform::i18n::text(
+            "webview.load_error_message",
+            "Check your connection and try again.",
+        );
+        let retry = lingxia_platform::i18n::text("webview.retry", "Retry");
+        let html = render_load_error_page(LoadErrorPage {
+            title: &title,
+            message: &message,
+            retry_label: &retry,
+            retry_url: failing_url,
+        });
+        if let Err(err) = webview.load_data(
+            LoadDataRequest::new(&html, BROWSER_LOAD_ERROR_URL)
+                .with_history_url(BROWSER_LOAD_ERROR_URL),
+        ) {
+            if let Ok(mut navigation) = self.navigation.lock() {
+                navigation.showing_error_page = false;
+            }
+            lxapp::warn!(
+                "[InternalBrowser] Failed to render load error for tab {}: {}",
+                self.tab_id,
+                err
+            );
+        }
+    }
 }
 
 impl WebViewDelegate for BrowserTabDelegate {
     fn on_navigation_event(&self, event: NavigationEvent) {
-        let mut progress = self.progress.lock().unwrap_or_else(|e| e.into_inner());
-        progress.apply(&event);
+        let mut navigation = self.navigation.lock().unwrap_or_else(|e| e.into_inner());
+        navigation.progress.apply(&event);
         match &event {
-            NavigationEvent::Started { .. } => {
+            NavigationEvent::Started { requested_url, .. } => {
+                if is_error_document_url(requested_url) {
+                    navigation.showing_error_page = true;
+                    return;
+                }
+                navigation.showing_error_page = false;
+                drop(navigation);
                 if !self.document_is_internal() {
                     return;
                 }
@@ -101,8 +166,11 @@ impl WebViewDelegate for BrowserTabDelegate {
                 }
             }
             NavigationEvent::Succeeded { id, final_url } => {
-                let is_current = progress.is_current(*id);
-                drop(progress);
+                if is_error_document_url(final_url) {
+                    return;
+                }
+                let is_current = navigation.progress.is_current(*id);
+                drop(navigation);
                 // Browser-owned document scripts (context menu, …) run in
                 // every successfully loaded document — internal and external.
                 self.inject_document_scripts();
@@ -129,13 +197,42 @@ impl WebViewDelegate for BrowserTabDelegate {
                     }
                 }
             }
-            // Failure and cancellation never record a visit, drive page
-            // lifecycle, or surface error UI from here.
-            NavigationEvent::Failed { .. } | NavigationEvent::Cancelled { .. } => {}
+            NavigationEvent::Failed { id, error } => {
+                let failing_url = error.failing_url.as_deref().unwrap_or_default();
+                if is_error_document_url(failing_url) || navigation.showing_error_page {
+                    // The error document itself failed to load (matched by URL,
+                    // or by arriving while it was pending on a platform that
+                    // reports no failing URL); give up rather than looping, and
+                    // stop suppressing state updates.
+                    navigation.showing_error_page = false;
+                    return;
+                }
+                if !navigation.progress.is_current(*id) {
+                    return;
+                }
+                navigation.showing_error_page = true;
+                drop(navigation);
+                self.show_load_error(error);
+            }
+            // Cancellation is control flow (superseded load, intercepted
+            // handoff); it never surfaces error UI or touches tab state.
+            NavigationEvent::Cancelled { .. } => {}
         }
     }
 
     fn on_webview_state_change(&self, change: WebViewStateChange) {
+        if self
+            .navigation
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .showing_error_page
+            && matches!(
+                &change,
+                WebViewStateChange::Location { .. } | WebViewStateChange::Title { .. }
+            )
+        {
+            return;
+        }
         match change {
             WebViewStateChange::Location { url } => {
                 // Live tab URL for address displays; never a persisted visit.
@@ -249,6 +346,7 @@ pub(crate) fn browser_create_webview(
     session_id: u64,
     tab_id: &str,
     create_token: u64,
+    data_mode: WebViewDataMode,
 ) -> Result<(), LxAppError> {
     let webtag = browser_webtag(path, session_id);
     let browser_owner = ensure_browser_lxapp()?;
@@ -278,11 +376,12 @@ pub(crate) fn browser_create_webview(
     let owner_for_download = browser_owner.clone();
     let owner_for_file_chooser = browser_owner.clone();
     let session = WebViewBuilder::browser(webtag)
+        .data_mode(data_mode)
         .delegate(Arc::new(BrowserTabDelegate {
             tab_id: tab_id_owned.clone(),
             page_path: tab_path_owned.clone(),
             session_id,
-            progress: std::sync::Mutex::new(NavigationProgress::default()),
+            navigation: std::sync::Mutex::new(BrowserTabNavigationState::default()),
         }))
         .on_scheme("lx", move |req| {
             let tab_id = tab_id_for_lx.clone();

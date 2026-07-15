@@ -1224,12 +1224,15 @@ fn generate_android(base_res_dir: &Path, i18n_map: &I18nMap) -> Result<()> {
             let res_name = format!("lx_{}", key);
             let target_val = val.get_for_android();
 
+            // aapt string escaping: apostrophes and quotes take a backslash;
+            // XML entities cover the markup characters.
             let escaped_val = target_val
-                .replace("'", "'\'")
-                .replace("\"", "\\\"")
-                .replace("&", "&amp;")
-                .replace("<", "&lt;")
-                .replace(">", "&gt;");
+                .replace('\\', "\\\\")
+                .replace('\'', "\\'")
+                .replace('"', "\\\"")
+                .replace('&', "&amp;")
+                .replace('<', "&lt;")
+                .replace('>', "&gt;");
 
             content.push_str(&format!(
                 "    <string name=\"{}\">{}</string>\n",

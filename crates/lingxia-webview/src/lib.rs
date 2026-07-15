@@ -79,6 +79,7 @@ pub enum LogLevel {
     Error,
 }
 
+mod error_page;
 /// Typed delegate events: correlated navigation lifecycle, observable state
 /// snapshots, and the canonical derived-state folds.
 pub mod events;
@@ -102,6 +103,7 @@ mod windows;
 
 // Public exports
 // WebViewError and LogLevel are defined above
+pub use error_page::{LoadErrorPage, render_load_error_page};
 pub use events::{
     NavigationCancellationReason, NavigationEvent, NavigationId, NavigationProgress,
     ObservedWebViewState, WebViewEventObserver, WebViewObservedEvent, WebViewStateChange,
@@ -116,8 +118,8 @@ pub use traits::{
 };
 pub use webview::{
     BrowserWebViewBuilder, ProxyActivation, ProxyApplyReport, ProxyApplyStatus, ProxyConfig,
-    StrictWebViewBuilder, WebTag, WebView, WebViewBuilder, WebViewCreateStage, WebViewEvent,
-    WebViewEventSubscription, WebViewSession,
+    StrictWebViewBuilder, WebTag, WebView, WebViewBuilder, WebViewCreateStage, WebViewDataMode,
+    WebViewEvent, WebViewEventSubscription, WebViewSession,
 };
 
 /// Global website-data operations for privacy surfaces: usage counts,

@@ -79,13 +79,13 @@ fn pick_media_files(request: &ChooseMediaRequest) -> Result<String, PlatformErro
     let dialog = rfd::FileDialog::new();
     let dialog = match request.mode {
         ChooseMediaMode::Images => dialog
-            .set_title(crate::i18n::dialog_title(
+            .set_title(crate::i18n::text(
                 "file_chooser.choose_images",
                 "Choose Images",
             ))
             .add_filter("Images", &IMAGE_EXTENSIONS),
         ChooseMediaMode::Videos => dialog
-            .set_title(crate::i18n::dialog_title(
+            .set_title(crate::i18n::text(
                 "file_chooser.choose_videos",
                 "Choose Videos",
             ))
@@ -95,7 +95,7 @@ fn pick_media_files(request: &ChooseMediaRequest) -> Result<String, PlatformErro
             all.extend_from_slice(&IMAGE_EXTENSIONS);
             all.extend_from_slice(&VIDEO_EXTENSIONS);
             dialog
-                .set_title(crate::i18n::dialog_title(
+                .set_title(crate::i18n::text(
                     "file_chooser.choose_media",
                     "Choose Media",
                 ))

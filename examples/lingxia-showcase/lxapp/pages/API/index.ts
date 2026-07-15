@@ -1,8 +1,17 @@
 const app = getApp();
 
 Page({
+  data: {
+    // lx.cloud / lx.auth exist only when the host ships the cloud
+    // provider; hide the Cloud section entirely otherwise.
+    cloudAvailable: false,
+  },
+
   onLoad: function(options) {
     console.log("Options in onLoad: ", options);
+    this.setData({
+      cloudAvailable: typeof lx.cloud !== "undefined" || typeof lx.auth !== "undefined",
+    });
   },
 
   onShow: function(options) {

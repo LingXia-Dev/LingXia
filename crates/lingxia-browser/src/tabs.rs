@@ -7,6 +7,7 @@ use crate::types::{BrowserAutomationError, BrowserTabInfo};
 use crate::webview::{
     browser_create_webview, browser_destroy_webview, browser_find_webview, browser_load_url,
 };
+use lingxia_webview::WebViewDataMode;
 use lxapp::{LxApp, LxAppError};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -52,6 +53,8 @@ pub(crate) struct BrowserTabState {
     /// (Chrome-style discard); the entry/metadata is kept and the WebView is
     /// recreated from `current_url` on reactivation.
     pub(crate) discarded: bool,
+    /// Website-data lifetime preserved when a discarded WebView is recreated.
+    pub(crate) data_mode: WebViewDataMode,
     /// When true this tab is a standalone browser with no tab strip (e.g. a
     /// docked aside browser). New-window requests (`target=_blank`,
     /// `window.open`) load in the same WebView instead of spawning a new
@@ -675,6 +678,7 @@ fn open_internal_browser_tab_with_scope(
     scope: BrowserTabScope<'_>,
     standalone: bool,
     aside: bool,
+    data_mode: WebViewDataMode,
 ) -> Result<String, LxAppError> {
     let browser = ensure_browser_lxapp()?;
     let browser_session_id = browser.session_id();
@@ -733,6 +737,7 @@ fn open_internal_browser_tab_with_scope(
                     can_go_back: false,
                     can_go_forward: false,
                     discarded: false,
+                    data_mode,
                     standalone,
                     aside,
                     owner_appid,
@@ -744,7 +749,7 @@ fn open_internal_browser_tab_with_scope(
 
     if is_new_tab {
         let token = create_token.expect("create_token must exist for new tab");
-        if let Err(e) = browser_create_webview(&path, session_id, &tab_id, token) {
+        if let Err(e) = browser_create_webview(&path, session_id, &tab_id, token, data_mode) {
             lock_state().tabs.remove(&tab_id);
             return Err(e);
         }
@@ -785,7 +790,8 @@ fn open_internal_browser_tab_with_scope(
                     }
                 };
                 if let Some(token) = retry_token
-                    && let Err(e) = browser_create_webview(&path, session_id, &tab_id, token)
+                    && let Err(e) =
+                        browser_create_webview(&path, session_id, &tab_id, token, data_mode)
                 {
                     lock_state().tabs.remove(&tab_id);
                     return Err(e);
@@ -807,7 +813,14 @@ pub(crate) fn open_internal_browser_tab(
     url: &str,
     tab_id: Option<&str>,
 ) -> Result<String, LxAppError> {
-    open_internal_browser_tab_with_scope(url, tab_id, BrowserTabScope::Global, false, false)
+    open_internal_browser_tab_with_scope(
+        url,
+        tab_id,
+        BrowserTabScope::Global,
+        false,
+        false,
+        WebViewDataMode::ProfileDefault,
+    )
 }
 
 pub(crate) fn open_internal_browser_tab_for_owner(
@@ -817,6 +830,7 @@ pub(crate) fn open_internal_browser_tab_for_owner(
     tab_id: Option<&str>,
     standalone: bool,
     aside: bool,
+    data_mode: WebViewDataMode,
 ) -> Result<String, LxAppError> {
     let _owner = resolve_owner_lxapp(owner_appid, owner_session_id)?;
     open_internal_browser_tab_with_scope(
@@ -828,6 +842,7 @@ pub(crate) fn open_internal_browser_tab_for_owner(
         },
         standalone,
         aside,
+        data_mode,
     )
 }
 
@@ -1034,15 +1049,16 @@ pub(crate) fn reactivate_browser_tab(tab_id: &str) -> Result<(), LxAppError> {
             tab.discarded = false;
             tab.create_in_flight = true;
             // `pending_url` already holds the saved `current_url` from discard.
-            Some((tab.session_id, token))
+            Some((tab.session_id, token, tab.data_mode))
         } else {
             None
         }
     };
 
-    if let Some((session_id, token)) = recreate {
+    if let Some((session_id, token, data_mode)) = recreate {
         let path = browser_tab_path_for_runtime_id(&normalized);
-        if let Err(error) = browser_create_webview(&path, session_id, &normalized, token) {
+        if let Err(error) = browser_create_webview(&path, session_id, &normalized, token, data_mode)
+        {
             if let Some(tab) = lock_state().tabs.get_mut(&normalized) {
                 tab.discarded = true;
                 tab.create_in_flight = false;
@@ -1111,6 +1127,7 @@ mod tests {
                 can_go_back: false,
                 can_go_forward: false,
                 discarded: false,
+                data_mode: WebViewDataMode::ProfileDefault,
                 standalone: false,
                 aside: false,
                 owner_appid: None,

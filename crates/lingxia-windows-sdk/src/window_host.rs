@@ -5820,7 +5820,7 @@ fn show_lingxia_system_about_message_box(hwnd: HWND, title: &str, body: &str) {
 
 #[cfg(feature = "runtime")]
 fn localized_system_menu_label(key: &str, fallback: &str) -> String {
-    lingxia_platform::i18n::dialog_title(key, fallback)
+    lingxia_platform::i18n::text(key, fallback)
 }
 
 fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNativeView> {

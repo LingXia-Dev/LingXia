@@ -147,6 +147,9 @@ pub enum I18nKey {
     UpdateDownloading,
     VideoQuality,
     VideoSpeed,
+    WebviewLoadErrorMessage,
+    WebviewLoadErrorTitle,
+    WebviewRetry,
 }
 
 #[rustfmt::skip]
@@ -304,6 +307,9 @@ accessible videos",
             (I18nKey::UpdateDownloading, "en") => "Downloading Update",
             (I18nKey::VideoQuality, "en") => "Quality",
             (I18nKey::VideoSpeed, "en") => "Speed",
+            (I18nKey::WebviewLoadErrorMessage, "en") => "Check your connection and try again.",
+            (I18nKey::WebviewLoadErrorTitle, "en") => "Couldn't load this page",
+            (I18nKey::WebviewRetry, "en") => "Retry",
             (I18nKey::AlbumAddMoreMedia, "zh") => "添加更多
 可访问内容",
             (I18nKey::AlbumAddMorePhotos, "zh") => "添加更多
@@ -454,6 +460,9 @@ accessible videos",
             (I18nKey::UpdateDownloading, "zh") => "正在下载更新",
             (I18nKey::VideoQuality, "zh") => "画质",
             (I18nKey::VideoSpeed, "zh") => "倍速",
+            (I18nKey::WebviewLoadErrorMessage, "zh") => "请检查网络连接后重试。",
+            (I18nKey::WebviewLoadErrorTitle, "zh") => "无法打开此页面",
+            (I18nKey::WebviewRetry, "zh") => "重试",
             _ => self.get("en"),
         }
     }

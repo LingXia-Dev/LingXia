@@ -253,6 +253,9 @@ mod bridge {
         #[swift_bridge(swift_name = "urlCallbackDispatch")]
         fn url_callback_dispatch(url: &str) -> bool;
 
+        #[swift_bridge(swift_name = "webviewLoadErrorDocument")]
+        fn webview_load_error_document(url: &str) -> String;
+
         #[swift_bridge(swift_name = "openBrowserTabWithId")]
         fn open_browser_tab_with_id(
             appid: &str,
@@ -705,9 +708,19 @@ pub fn url_callback_dispatch(url: &str) -> bool {
     })
 }
 
+pub fn webview_load_error_document(url: &str) -> String {
+    crate::webview_error::load_error_document(url)
+}
+
 pub fn open_standalone_browser_tab(appid: &str, session_id: u64, url: &str) -> Option<String> {
     ffi_catch_unwind!("open_standalone_browser_tab", None, || {
-        match crate::browser::open_standalone_for_app(appid, session_id, url, None) {
+        match crate::browser::open_standalone_for_app(
+            appid,
+            session_id,
+            url,
+            None,
+            lingxia_webview::WebViewDataMode::ProfileDefault,
+        ) {
             Ok(tab_id) => Some(tab_id),
             Err(e) => {
                 log::error!("open_standalone_browser_tab failed: {}", e);

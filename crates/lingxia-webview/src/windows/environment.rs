@@ -31,8 +31,8 @@ pub(crate) fn create_environment(
         .iter()
         .map(|scheme| scheme.to_string())
         .collect();
-    let transient_user_data_dir = transient_user_data_dir(webtag, effective_options)?;
-    let user_data_folder = transient_user_data_dir
+    let ephemeral_user_data_dir = ephemeral_user_data_dir(webtag, effective_options)?;
+    let user_data_folder = ephemeral_user_data_dir
         .clone()
         .or_else(configured_webview_user_data_dir)
         .map(|path| {
@@ -85,14 +85,19 @@ pub(crate) fn create_environment(
         .recv()
         .map_err(|_| WebViewError::WebView("Environment callback channel failed".to_string()))?
         .map_err(|err| WebViewError::WebView(format!("Environment creation failed: {err}")))?;
-    Ok((environment, transient_user_data_dir))
+    Ok((environment, ephemeral_user_data_dir))
 }
 
-fn transient_user_data_dir(
+fn ephemeral_user_data_dir(
     webtag: &WebTag,
     effective_options: &EffectiveWebViewCreateOptions,
 ) -> StdResult<Option<PathBuf>> {
-    if effective_options.profile != SecurityProfile::StrictDefault {
+    // Strict-profile webviews keep their existing per-creation isolation;
+    // browser-profile webviews opt into it through the data mode (auth sheets
+    // and future private tabs), while ordinary browser tabs stay persistent.
+    if effective_options.profile != SecurityProfile::StrictDefault
+        && effective_options.data_mode != WebViewDataMode::Ephemeral
+    {
         return Ok(None);
     }
 
@@ -103,7 +108,7 @@ fn transient_user_data_dir(
     }
     let base_dir = configured_webview_user_data_dir()
         .unwrap_or_else(|| std::env::temp_dir().join("lingxia-webview"))
-        .join("strict")
+        .join("ephemeral")
         .join(format!("{}-{hash:016x}", std::process::id()));
     let mut dir = base_dir.clone();
     if dir.exists() {
@@ -111,21 +116,21 @@ fn transient_user_data_dir(
             Ok(()) => {}
             Err(err) => {
                 log::warn!(
-                    "strict WebView2 profile {dir:?} is still in use; creating a fresh profile: {err}"
+                    "ephemeral WebView2 profile {dir:?} is still in use; creating a fresh profile: {err}"
                 );
-                dir = strict_fallback_user_data_dir(&base_dir);
+                dir = ephemeral_fallback_user_data_dir(&base_dir);
             }
         }
     }
     std::fs::create_dir_all(&dir).map_err(|err| {
         WebViewError::WebView(format!(
-            "failed to create strict WebView2 profile {dir:?}: {err}"
+            "failed to create ephemeral WebView2 profile {dir:?}: {err}"
         ))
     })?;
     Ok(Some(dir))
 }
 
-fn strict_fallback_user_data_dir(base_dir: &std::path::Path) -> PathBuf {
+fn ephemeral_fallback_user_data_dir(base_dir: &std::path::Path) -> PathBuf {
     let nonce = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|duration| duration.as_nanos())

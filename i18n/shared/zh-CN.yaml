@@ -13,6 +13,12 @@ common:
   exit: "退出"
   version: "版本"
 
+# WebView load errors shared by browser tabs and URL/auth surfaces
+webview:
+  load_error_title: "无法打开此页面"
+  load_error_message: "请检查网络连接后重试。"
+  retry: "重试"
+
 # Capsule Menu
 capsule:
   clean_cache: "清理缓存并重启"

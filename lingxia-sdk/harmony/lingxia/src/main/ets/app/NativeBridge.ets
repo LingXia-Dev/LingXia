@@ -324,7 +324,8 @@ class NativeBridge {
 	      widthRatio: string,
 	      heightRatio: string,
 	      position: string,
-	      role: string
+	      role: string,
+	      ephemeralWebData: string
 	    ): boolean => {
 	      return LxAppSurface.present(
 	        id,
@@ -339,7 +340,8 @@ class NativeBridge {
 	        widthRatio,
 	        heightRatio,
 	        position,
-	        role
+	        role,
+	        ephemeralWebData
 	      );
 	    });
 

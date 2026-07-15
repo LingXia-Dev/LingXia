@@ -24,6 +24,7 @@ import {
   handleWebViewDownloadStart,
   handleWebViewLoadError,
   handleWebViewNavigationPolicy,
+  isEphemeralDataMode,
   isBrowserRelaxed as isWebViewBrowserRelaxed,
   notifyWebViewControllerAttached
 } from './WebViewBridge';
@@ -104,7 +105,7 @@ export struct LingXiaWebView {
 
   @Builder
   private buildManagedWeb(): void {
-    Web({ src: '', controller: this.controller })
+    Web({ src: '', controller: this.controller, incognitoMode: isEphemeralDataMode(this.webTag) })
       // Form controls are web-rendered (lx-input is a real <input> in the
       // page); RESIZE_CONTENT lets ArkWeb shrink the page and scroll the
       // focused editable above the IME — engine-owned keyboard avoidance,

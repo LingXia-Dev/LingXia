@@ -1446,6 +1446,20 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_urlCallbackDispatch<'a>(
 }
 
 #[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_app_NativeApi_webviewLoadErrorDocument<'a>(
+    mut env: EnvUnowned<'a>,
+    _class: JClass<'a>,
+    url: JString<'a>,
+) -> JString<'a> {
+    env.with_env(|env| -> Result<JString, jni::errors::Error> {
+        let url: String = url.try_to_string(env)?;
+        env.new_string(crate::webview_error::load_error_document(&url))
+            .or_else(|_| Ok(JString::null()))
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+#[unsafe(no_mangle)]
 pub extern "system" fn Java_com_lingxia_app_NativeApi_handleBrowserNavigationPolicy<'a>(
     mut env: EnvUnowned<'a>,
     _class: JClass<'a>,
