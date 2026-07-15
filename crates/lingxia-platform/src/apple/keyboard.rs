@@ -45,6 +45,12 @@ async fn perform_app_keyboard_macos(
 
     let target_window_number = parse_window_id(request.window_id.as_deref())?;
     let action_kind = request.action.kind();
+    let modifier_reliability = match &request.action {
+        AppKeyboardAction::Press { modifiers, .. } if !modifiers.is_empty() => {
+            Some("native".to_string())
+        }
+        _ => None,
+    };
     let action = request.action;
 
     let (tx, rx) = oneshot::channel::<Result<String, String>>();
@@ -71,6 +77,7 @@ async fn perform_app_keyboard_macos(
     Ok(AppKeyboardResult {
         window_id,
         action: action_kind.to_string(),
+        modifier_reliability,
     })
 }
 

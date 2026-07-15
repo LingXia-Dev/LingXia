@@ -39,10 +39,17 @@ impl AppKeyboard for Platform {
         let window = hwnd.0 as isize;
         let window_id = window.to_string();
         let action_kind = request.action.kind().to_string();
+        let modifier_reliability = match &request.action {
+            AppKeyboardAction::Press { modifiers, .. } if !modifiers.is_empty() => {
+                Some("best_effort".to_string())
+            }
+            _ => None,
+        };
         dispatch_key(window, &request.action)?;
         Ok(AppKeyboardResult {
             window_id,
             action: action_kind,
+            modifier_reliability,
         })
     }
 }

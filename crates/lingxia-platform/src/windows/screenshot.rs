@@ -18,6 +18,18 @@ impl AppScreenshot for Platform {
         let hwnd = resolve_screenshot_window(window_id)?;
         capture_window_png(hwnd.0 as usize).await
     }
+
+    async fn resolve_app_window(
+        &self,
+        window_id: Option<&str>,
+    ) -> Result<WindowInfo, PlatformError> {
+        let hwnd = resolve_screenshot_window(window_id)?;
+        let id = (hwnd.0 as usize).to_string();
+        list_app_windows()?
+            .into_iter()
+            .find(|window| window.id == id)
+            .ok_or_else(|| PlatformError::Platform(format!("resolved window {id} disappeared")))
+    }
 }
 
 fn list_app_windows() -> Result<Vec<WindowInfo>, PlatformError> {
@@ -43,7 +55,7 @@ fn list_app_windows() -> Result<Vec<WindowInfo>, PlatformError> {
             return BOOL(1);
         }
 
-        let rect = visible_window_rect(hwnd).ok();
+        let rect = content_window_rect(hwnd).ok();
         let visible = unsafe { IsWindowVisible(hwnd).as_bool() && !IsIconic(hwnd).as_bool() };
         let title = window_title(hwnd);
         let width = if let Some(rect) = rect {
@@ -196,11 +208,10 @@ fn capture_window_native_rgba(
 ) -> Result<(u32, u32, image::RgbaImage), PlatformError> {
     use windows::Win32::Graphics::Gdi::{
         BI_RGB, BITMAPINFO, BITMAPINFOHEADER, BitBlt, CreateCompatibleDC, CreateDIBSection,
-        DIB_RGB_COLORS, DeleteDC, DeleteObject, GetWindowDC, HGDIOBJ, ReleaseDC, SRCCOPY,
-        SelectObject,
+        DIB_RGB_COLORS, DeleteDC, DeleteObject, GetDC, HGDIOBJ, ReleaseDC, SRCCOPY, SelectObject,
     };
 
-    let rect = visible_window_rect(hwnd)?;
+    let rect = content_window_rect(hwnd)?;
     let width = rect.right - rect.left;
     let height = rect.bottom - rect.top;
     if width <= 0 || height <= 0 {
@@ -214,9 +225,9 @@ fn capture_window_native_rgba(
     }
 
     unsafe {
-        let window_dc = GetWindowDC(Some(hwnd));
+        let window_dc = GetDC(Some(hwnd));
         if window_dc.is_invalid() {
-            return Err(PlatformError::Platform("GetWindowDC failed".to_string()));
+            return Err(PlatformError::Platform("GetDC failed".to_string()));
         }
 
         let memory_dc = CreateCompatibleDC(Some(window_dc));
@@ -323,6 +334,35 @@ fn visible_window_rect(
     Ok(rect)
 }
 
+/// Client bounds in screen coordinates. These dimensions and the native DC's
+/// origin are the same coordinates accepted by app mouse messages.
+fn content_window_rect(
+    hwnd: windows::Win32::Foundation::HWND,
+) -> Result<windows::Win32::Foundation::RECT, PlatformError> {
+    use windows::Win32::Foundation::{POINT, RECT};
+    use windows::Win32::Graphics::Gdi::ClientToScreen;
+    use windows::Win32::UI::WindowsAndMessaging::GetClientRect;
+
+    let mut client = RECT::default();
+    unsafe {
+        GetClientRect(hwnd, &mut client)
+            .map_err(|err| PlatformError::Platform(format!("GetClientRect failed: {err}")))?;
+    }
+    let mut origin = POINT {
+        x: client.left,
+        y: client.top,
+    };
+    if !unsafe { ClientToScreen(hwnd, &mut origin).as_bool() } {
+        return Err(PlatformError::Platform("ClientToScreen failed".to_string()));
+    }
+    Ok(RECT {
+        left: origin.x,
+        top: origin.y,
+        right: origin.x + (client.right - client.left),
+        bottom: origin.y + (client.bottom - client.top),
+    })
+}
+
 async fn visible_webview_screenshots_for_window(
     window_id: usize,
 ) -> Vec<(
@@ -401,7 +441,7 @@ fn overlay_window_screenshots(
     base: &mut image::RgbaImage,
     hwnd: windows::Win32::Foundation::HWND,
 ) -> Result<(), PlatformError> {
-    let base_rect = visible_window_rect(hwnd)?;
+    let base_rect = content_window_rect(hwnd)?;
     let mut overlays = overlay_windows_for_window(hwnd, base_rect)?;
     overlays.reverse();
     for overlay in overlays {

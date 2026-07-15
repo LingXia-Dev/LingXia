@@ -297,15 +297,24 @@ async fn list_app_windows_macos() -> Result<Vec<WindowInfo>, PlatformError> {
             // a Dock-iconified window is not "visible" for screenshot.
             let is_visible: bool = msg_send![window, isVisible];
             let is_miniaturized: bool = msg_send![window, isMiniaturized];
-            let frame: CGRect = msg_send![window, frame];
+            let content_view: *mut AnyObject = msg_send![window, contentView];
+            let (content_width, content_height) = if content_view.is_null() {
+                (0, 0)
+            } else {
+                let content_bounds: CGRect = msg_send![content_view, bounds];
+                (
+                    content_bounds.size.width.max(0.0) as u32,
+                    content_bounds.size.height.max(0.0) as u32,
+                )
+            };
             out.push(WindowInfo {
                 id: window_number.to_string(),
                 title,
                 focused: window == key_window,
                 main: window == main_window,
                 visible: is_visible && !is_miniaturized,
-                width: frame.size.width.max(0.0) as u32,
-                height: frame.size.height.max(0.0) as u32,
+                width: content_width,
+                height: content_height,
             });
         }
         let _ = sender.send(Ok(out));
