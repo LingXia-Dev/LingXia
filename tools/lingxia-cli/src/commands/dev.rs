@@ -76,7 +76,7 @@ pub struct DevExecuteOptions {
     pub runner_device: Option<String>,
     pub background: bool,
     /// Bind the dev websocket on all interfaces with a session token, so
-    /// `lxdev --ws <printed url>` can control this session from another
+    /// `lxdev attach <printed url>` can pair this session with another
     /// machine on the LAN. Desktop platforms only.
     pub lan: bool,
     pub action: Option<DevSessionAction>,
@@ -172,15 +172,15 @@ impl DevBind {
         match lan_ws_url(port) {
             Ok(lan_url) => {
                 let attach = lingxia_devtool_protocol::ws_url_with_token(&lan_url, token);
-                println!(
-                    "  {} LAN control enabled — from another machine: lxdev --ws \"{}\" …",
-                    "•".cyan(),
-                    attach
-                );
+                println!("  {} {}", "•".cyan(), lan_attach_hint(&attach));
             }
             Err(err) => eprintln!("Warning: could not determine LAN address: {err:#}"),
         }
     }
+}
+
+fn lan_attach_hint(attach_url: &str) -> String {
+    format!("LAN control enabled — pair from another machine: lxdev attach \"{attach_url}\"")
 }
 
 fn prepare_dev_host_assets(
@@ -932,8 +932,20 @@ fn parse_lxapp_framework(value: &str) -> Result<ProjectFramework> {
 
 #[cfg(test)]
 mod tests {
-    use super::process_executable_matches;
+    use super::{lan_attach_hint, process_executable_matches};
     use std::path::Path;
+
+    #[test]
+    fn lan_hint_promotes_persistent_remote_pairing() {
+        let hint = lan_attach_hint("ws://192.168.1.20:39142/?token=abc");
+
+        assert_eq!(
+            hint,
+            "LAN control enabled — pair from another machine: lxdev attach \
+             \"ws://192.168.1.20:39142/?token=abc\""
+        );
+        assert!(!hint.contains("--ws"));
+    }
 
     #[test]
     fn process_match_requires_exact_executable_path() {

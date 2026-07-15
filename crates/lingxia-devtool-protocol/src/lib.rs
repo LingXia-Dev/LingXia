@@ -199,9 +199,9 @@ pub struct DevtoolsLogMessage {
 pub enum DevtoolsWireMessage {
     Hello {
         role: DevtoolsPeerRole,
-        /// Session auth token, required when the dev server was started with
-        /// a non-loopback bind (`lingxia dev --lan`). Peers take it from the
-        /// `?token=` query of the ws URL they were handed.
+        /// Session auth token echoed from the `?token=` query of the websocket
+        /// URL. The server also authenticates that upgrade-query token directly
+        /// so cached peers from before this field remain compatible.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         token: Option<String>,
     },
