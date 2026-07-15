@@ -2733,11 +2733,10 @@ fn show_lxapp_auxiliary_context_menu(
         items,
         Vec::new(),
         Arc::new(move |index| match index {
-            0 => {
-                if set_lxapp_pin_with_limit(&target_appid, !pinned) {
-                    sync_shell_layout(&owner_appid);
-                }
+            0 if set_lxapp_pin_with_limit(&target_appid, !pinned) => {
+                sync_shell_layout(&owner_appid);
             }
+            0 => {}
             2 =>
             {
                 #[cfg(feature = "browser-shell")]
