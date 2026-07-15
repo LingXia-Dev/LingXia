@@ -4028,6 +4028,44 @@ fn apply_window_style(hwnd: HWND, style: WINDOW_STYLE) -> StdResult<()> {
     Ok(())
 }
 
+/// Extend custom shell chrome through the whole top-level window. `WS_SIZEBOX`
+/// is retained for native snap/resize semantics, but its default non-client
+/// frame otherwise leaves a system-colored strip above our caption buttons.
+/// The custom hit test already owns every resize edge.
+fn custom_shell_nc_calc_size(hwnd: HWND, wparam: WPARAM, lparam: LPARAM) -> Option<LRESULT> {
+    if windows_chrome_renderer().is_none() || is_native_framed_window(hwnd) {
+        return None;
+    }
+    if lparam.0 == 0 {
+        return Some(LRESULT(0));
+    }
+
+    // A maximized WS_SIZEBOX window extends beyond the monitor bounds by its
+    // resize frame. Once the non-client frame is removed, clamp the client to
+    // the work area so the custom caption and edge pixels remain reachable.
+    if unsafe { WindowsAndMessaging::IsZoomed(hwnd).as_bool() } {
+        let monitor = unsafe { MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST) };
+        let mut info = MONITORINFO {
+            cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+            ..Default::default()
+        };
+        if unsafe { GetMonitorInfoW(monitor, &mut info).as_bool() } {
+            if wparam.0 != 0 {
+                let params = lparam.0 as *mut WindowsAndMessaging::NCCALCSIZE_PARAMS;
+                if !params.is_null() {
+                    unsafe { (*params).rgrc[0] = info.rcWork };
+                }
+            } else {
+                let rect = lparam.0 as *mut RECT;
+                if !rect.is_null() {
+                    unsafe { *rect = info.rcWork };
+                }
+            }
+        }
+    }
+    Some(LRESULT(0))
+}
+
 fn chrome_interaction(hwnd: HWND) -> ChromeInteraction {
     CHROME_INTERACTIONS
         .get()
@@ -6078,6 +6116,12 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                     #[cfg(all(feature = "shell-chrome", feature = "terminal-runtime"))]
                     let _ = sync_terminal_ime_position(hwnd);
                     return LRESULT(0);
+                }
+                unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
+            }
+            WindowsAndMessaging::WM_NCCALCSIZE => {
+                if let Some(result) = custom_shell_nc_calc_size(hwnd, wparam, lparam) {
+                    return result;
                 }
                 unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
             }
