@@ -31,6 +31,8 @@ fn build_doctor() -> Value {
         "android"
     } else if cfg!(target_os = "ios") {
         "ios"
+    } else if cfg!(all(target_os = "linux", target_env = "ohos")) {
+        "harmony"
     } else {
         "unknown"
     };
@@ -39,13 +41,15 @@ fn build_doctor() -> Value {
     } else {
         "lingxia_mobile"
     };
-    let page_pointer = if page_input {
-        json!({ "supported": true, "tier": "runner", "coordinate_space": "css_pixels" })
-    } else {
-        json!({ "supported": false, "reason": "no first-class page input bridge" })
-    };
-    let page_key = if page_input {
-        json!({ "supported": true, "tier": "runner" })
+    let page_input = if page_input {
+        let tier = if is_desktop {
+            "native"
+        } else if cfg!(target_os = "android") {
+            "hybrid"
+        } else {
+            "js"
+        };
+        json!({ "supported": true, "tier": tier, "coordinate_space": "css_pixels" })
     } else {
         json!({ "supported": false, "reason": "no first-class page input bridge" })
     };
@@ -55,8 +59,7 @@ fn build_doctor() -> Value {
         "backend": backend,
         "capabilities": {
             "page_screenshot": { "supported": true },
-            "page_pointer": page_pointer,
-            "page_key": page_key,
+            "page_input": page_input,
             "runner": { "supported": is_desktop },
         },
         "coordinate_spaces": {

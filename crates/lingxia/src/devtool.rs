@@ -323,7 +323,7 @@ pub struct LxAppDevPageInfo {
     pub in_stack: bool,
     /// Whether the page currently has an attached WebView.
     pub ready: bool,
-    /// Whether direct text-input actions are supported on this platform.
+    /// Whether page element input actions are supported on this platform.
     pub input_supported: bool,
 }
 
@@ -864,11 +864,16 @@ fn dev_page_info(
     }
 }
 
-/// Reports whether direct WebView input actions are supported on this platform build.
+/// Reports whether page element input actions are supported on this platform build.
 pub fn lxapp_dev_page_input_supported() -> bool {
-    cfg!(all(
-        feature = "webview-input",
-        any(target_os = "macos", target_os = "windows")
+    cfg!(any(
+        target_os = "android",
+        target_os = "ios",
+        all(target_os = "linux", target_env = "ohos"),
+        all(
+            feature = "webview-input",
+            any(target_os = "macos", target_os = "windows")
+        )
     ))
 }
 
