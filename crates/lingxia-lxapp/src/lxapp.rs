@@ -49,7 +49,8 @@ pub(crate) mod version;
 use crate::lifecycle::AppServiceEvent;
 pub use crate::page::runtime::{
     CloseReason, CreatePageInstanceRequest, CreatedPageInstance, PageDefinition, PageInstanceEvent,
-    PageOwner, PageQueryInput, PageTarget, PresentationKind, ResolvedPage, SceneId,
+    PageInstanceRuntimeInfo, PageOwner, PageQueryInput, PageTarget, PresentationKind, ResolvedPage,
+    SceneId,
 };
 use crate::page::runtime::{
     PageInstanceLifecycleState, PageInstanceRuntimeRecord, transition_page_instance_lifecycle,
@@ -75,8 +76,8 @@ pub use runtime_registry::{
 pub(crate) use runtime_registry::{get, get_lxapps_manager};
 pub(crate) use surface::SurfaceRecords;
 pub use surface::{
-    PageSurface, PageSurfaceRequest, PageSurfaceTarget, UrlCallbackSurface,
-    register_surface_close_observer, register_surface_context_observer,
+    LxAppRuntimeSurfaceInfo, PageSurface, PageSurfaceRequest, PageSurfaceTarget,
+    UrlCallbackSurface, register_surface_close_observer, register_surface_context_observer,
 };
 use version::Version;
 

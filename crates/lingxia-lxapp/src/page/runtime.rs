@@ -98,6 +98,33 @@ pub(crate) enum PageInstanceLifecycleState {
     Disposed,
 }
 
+impl PageInstanceLifecycleState {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::Created => "created",
+            Self::Mounted => "mounted",
+            Self::Visible => "visible",
+            Self::Hidden => "hidden",
+            Self::Disposed => "disposed",
+        }
+    }
+}
+
+/// Runtime metadata for one live page instance.
+#[derive(Debug, Clone, Serialize)]
+pub struct PageInstanceRuntimeInfo {
+    pub instance_id: String,
+    pub name: Option<String>,
+    pub path: String,
+    pub query: serde_json::Value,
+    pub owner: PageOwner,
+    pub presentation: PresentationKind,
+    pub lifecycle: String,
+    pub stack_index: Option<usize>,
+    pub current: bool,
+    pub state: crate::page::PageAutomationState,
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct PageInstanceRuntimeRecord {
     pub(crate) owner: PageOwner,

@@ -805,6 +805,80 @@ impl LxApp {
             .ok_or_else(|| LxAppError::WebView(format!("PageInstance not found: {}", path)))
     }
 
+    /// Snapshot every live page instance, including isolated surface pages.
+    pub fn page_instance_runtime_info(&self) -> Vec<PageInstanceRuntimeInfo> {
+        let (pages, records, stack) = match self.state.lock() {
+            Ok(state) => {
+                let pages = state
+                    .pages_by_id
+                    .lock()
+                    .map(|pages| pages.values().cloned().collect::<Vec<_>>())
+                    .unwrap_or_default();
+                let records = state
+                    .page_instance_runtime
+                    .lock()
+                    .map(|records| records.clone())
+                    .unwrap_or_default();
+                let stack = state
+                    .page_stack
+                    .lock()
+                    .map(|stack| stack.iter().cloned().collect::<Vec<_>>())
+                    .unwrap_or_default();
+                (pages, records, stack)
+            }
+            Err(_) => return Vec::new(),
+        };
+
+        let stack_instances = stack
+            .iter()
+            .filter_map(|path| self.get_page(path))
+            .enumerate()
+            .map(|(index, page)| (page.instance_id_string(), index))
+            .collect::<HashMap<_, _>>();
+        let current_id = stack_instances
+            .iter()
+            .max_by_key(|(_, index)| *index)
+            .map(|(id, _)| id.clone());
+
+        let mut infos = pages
+            .into_iter()
+            .map(|page| {
+                let instance_id = page.instance_id_string();
+                let record = records.get(&instance_id);
+                let state = page.automation_state();
+                PageInstanceRuntimeInfo {
+                    instance_id: instance_id.clone(),
+                    name: record
+                        .and_then(|record| record.page.definition.name.clone())
+                        .or_else(|| self.page_definition_for_resolved_path(&page.path()).name),
+                    path: page.path(),
+                    query: state.query.clone(),
+                    owner: record
+                        .map(|record| record.owner.clone())
+                        .unwrap_or(PageOwner::Host),
+                    presentation: record
+                        .map(|record| record.surface)
+                        .unwrap_or(PresentationKind::Window),
+                    lifecycle: record
+                        .map(|record| record.lifecycle.as_str().to_string())
+                        .unwrap_or_else(|| "created".to_string()),
+                    stack_index: stack_instances.get(&instance_id).copied(),
+                    current: current_id.as_deref() == Some(instance_id.as_str()),
+                    state,
+                }
+            })
+            .collect::<Vec<_>>();
+        infos.sort_by(|left, right| {
+            left.stack_index
+                .is_none()
+                .cmp(&right.stack_index.is_none())
+                .then_with(|| left.stack_index.cmp(&right.stack_index))
+                .then_with(|| left.path.cmp(&right.path))
+                .then_with(|| left.instance_id.cmp(&right.instance_id))
+        });
+        infos
+    }
+
     /// Call the current page View method without a payload and deserialize the response.
     pub async fn call_view<R>(&self, method: &str) -> Result<R, LxAppError>
     where
