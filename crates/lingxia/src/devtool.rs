@@ -311,6 +311,8 @@ fn register_bundle_source_override() {
 pub struct LxAppDevPageInfo {
     /// App id that owns the page.
     pub appid: String,
+    /// Stable id for this runtime page instance.
+    pub instance_id: String,
     /// Declarative page name from the runtime manifest, when available.
     pub name: String,
     /// Runtime page path.
@@ -343,6 +345,10 @@ pub fn lxapp_dev_page_list(appid: Option<&str>) -> Result<Vec<LxAppDevPageInfo>,
             let active = app.require_page(&entry.path).ok();
             LxAppDevPageInfo {
                 appid: info.appid.clone(),
+                instance_id: active
+                    .as_ref()
+                    .map(|page| page.instance_id_string())
+                    .unwrap_or_default(),
                 name: entry.name.clone(),
                 path: entry.path.clone(),
                 current: info
@@ -786,6 +792,11 @@ fn resolve_dev_page(
         return Ok((page, name));
     }
 
+    if let Some(page) = app.get_page_by_instance_id_str(page_name) {
+        let name = dev_page_name_for_path(app, &page.path());
+        return Ok((page, name));
+    }
+
     let path = app
         .find_page_path_by_name(page_name)
         .ok_or_else(|| format!("unknown page name: {page_name}"))?;
@@ -837,6 +848,7 @@ fn dev_page_info(
     let path = page.path();
     LxAppDevPageInfo {
         appid: info.appid,
+        instance_id: page.instance_id_string(),
         name: name.unwrap_or("").to_string(),
         path: path.clone(),
         current: info

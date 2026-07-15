@@ -152,6 +152,8 @@ fn handle_lxapp_page_command_impl(
         }
         handlers::lxapp_page::SCREENSHOT => {
             let parsed: PageTargetArgs = parse_args(handler, args)?;
+            let info =
+                lingxia::dev::lxapp_dev_page_info(parsed.appid.as_deref(), parsed.page.as_deref())?;
             let bytes = run_async(lingxia::dev::lxapp_dev_page_screenshot(
                 parsed.appid.as_deref(),
                 parsed.page.as_deref(),
@@ -161,8 +163,10 @@ fn handle_lxapp_page_command_impl(
                 "css_pixels",
                 &bytes,
                 [
-                    ("appid", json!(parsed.appid.unwrap_or_default())),
-                    ("page", json!(parsed.page.unwrap_or_default())),
+                    ("appid", json!(info.appid)),
+                    ("page", json!(info.name)),
+                    ("path", json!(info.path)),
+                    ("instance_id", json!(info.instance_id)),
                 ],
             )))
         }

@@ -54,15 +54,13 @@ fn build_doctor() -> Value {
         "platform": platform,
         "backend": backend,
         "capabilities": {
-            "session_screenshot": { "supported": true },
             "page_screenshot": { "supported": true },
             "page_pointer": page_pointer,
             "page_key": page_key,
             "runner": { "supported": is_desktop },
         },
         "coordinate_spaces": {
-            "page": "css_pixels",
-            "session": "session_logical"
+            "page": "css_pixels"
         }
     })
 }

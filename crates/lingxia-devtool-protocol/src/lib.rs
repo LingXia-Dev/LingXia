@@ -83,8 +83,7 @@ pub mod handlers {
     pub mod lxapp {
         pub const LIST: &str = "lxapp.list";
         pub const CURRENT: &str = "lxapp.current";
-        /// Report the selected session's automation capabilities (screenshot,
-        /// page pointer/key support + tier, runner) and coordinate spaces.
+        /// Report page screenshot/input support and the runtime tier.
         pub const DOCTOR: &str = "lxapp.doctor";
         pub const INFO: &str = "lxapp.info";
         pub const PAGES: &str = "lxapp.pages";

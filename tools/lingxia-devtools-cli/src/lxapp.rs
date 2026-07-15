@@ -2,7 +2,7 @@ use crate::client;
 use crate::lxapp_build;
 use crate::project::SessionInfo;
 use crate::screenshot;
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result};
 use clap::{Args, Parser, Subcommand};
 use lingxia_devtool_protocol::handlers;
 use serde_json::{Value, json};
@@ -61,26 +61,6 @@ pub enum LxAppCommand {
         /// Print pretty JSON
         #[arg(long)]
         pretty: bool,
-    },
-    /// List the selected session's top-level windows
-    Windows {
-        /// Print JSON output
-        #[arg(long)]
-        json: bool,
-    },
-    /// Capture a PNG screenshot of the selected session's app surface
-    Screenshot {
-        /// Specific window id (from `lxdev lxapp windows`); defaults to the
-        /// session's focused/main window
-        #[arg(long)]
-        window: Option<String>,
-        /// Output path; use `-` for stdout. Default:
-        /// `.lingxia/screenshots/lxapp-<platform>-<ts>.png`
-        #[arg(long, short = 'o')]
-        output: Option<String>,
-        /// Print the JSON envelope (metadata + base64 PNG)
-        #[arg(long)]
-        json: bool,
     },
     /// Inspect and automate lxapp pages
     Page(PageOptions),
@@ -186,202 +166,6 @@ pub struct PageOptions {
     command: PageCommand,
 }
 
-/// A coordinate parsed from the `X,Y` flag form (e.g. `--at 120,48`).
-#[derive(Clone, Copy)]
-pub struct Point {
-    x: f64,
-    y: f64,
-}
-
-impl std::str::FromStr for Point {
-    type Err = String;
-    fn from_str(s: &str) -> std::result::Result<Self, String> {
-        let (x, y) = s
-            .split_once(',')
-            .ok_or_else(|| format!("expected X,Y (e.g. 120,48), got '{s}'"))?;
-        Ok(Point {
-            x: x.trim()
-                .parse()
-                .map_err(|_| format!("invalid X in '{s}'"))?,
-            y: y.trim()
-                .parse()
-                .map_err(|_| format!("invalid Y in '{s}'"))?,
-        })
-    }
-}
-
-#[derive(Clone, Copy, clap::ValueEnum)]
-pub enum PointerButton {
-    Left,
-    Right,
-    Middle,
-}
-
-impl PointerButton {
-    fn as_str(self) -> &'static str {
-        match self {
-            Self::Left => "left",
-            Self::Right => "right",
-            Self::Middle => "middle",
-        }
-    }
-}
-
-#[derive(Args, Clone)]
-pub struct PagePointerOptions {
-    #[command(subcommand)]
-    command: PagePointerCommand,
-}
-
-#[derive(Subcommand, Clone)]
-pub enum PagePointerCommand {
-    /// Move the pointer to a page coordinate
-    Move(PointerMoveOptions),
-    /// Press a button at a page coordinate
-    Down(PointerButtonOptions),
-    /// Release a button at a page coordinate
-    Up(PointerButtonOptions),
-    /// Click at a page coordinate
-    Click(PointerClickOptions),
-    /// Drag between two page coordinates
-    Drag(PointerDragOptions),
-    /// Scroll at a page coordinate
-    Scroll(PointerScrollOptions),
-}
-
-#[derive(Args, Clone)]
-pub struct PointerTarget {
-    /// Specific window id (from `lxdev lxapp windows`); defaults to the
-    /// session's focused/main window
-    #[arg(long)]
-    window: Option<String>,
-    /// Print JSON output
-    #[arg(long)]
-    json: bool,
-}
-
-#[derive(Args, Clone)]
-pub struct PointerMoveOptions {
-    /// Target coordinate as X,Y in page (CSS) pixels
-    #[arg(long)]
-    at: Point,
-    #[command(flatten)]
-    target: PointerTarget,
-}
-
-#[derive(Args, Clone)]
-pub struct PointerButtonOptions {
-    /// Target coordinate as X,Y in page (CSS) pixels
-    #[arg(long)]
-    at: Point,
-    /// Mouse button
-    #[arg(long, value_enum, default_value = "left")]
-    button: PointerButton,
-    #[command(flatten)]
-    target: PointerTarget,
-}
-
-#[derive(Args, Clone)]
-pub struct PointerClickOptions {
-    /// Target coordinate as X,Y in page (CSS) pixels
-    #[arg(long)]
-    at: Point,
-    /// Mouse button
-    #[arg(long, value_enum, default_value = "left")]
-    button: PointerButton,
-    /// Number of clicks to report in the event
-    #[arg(long, default_value_t = 1)]
-    count: u8,
-    #[command(flatten)]
-    target: PointerTarget,
-}
-
-#[derive(Args, Clone)]
-pub struct PointerDragOptions {
-    /// Start coordinate as X,Y in page (CSS) pixels
-    #[arg(long)]
-    from: Point,
-    /// End coordinate as X,Y in page (CSS) pixels
-    #[arg(long)]
-    to: Point,
-    /// Mouse button
-    #[arg(long, value_enum, default_value = "left")]
-    button: PointerButton,
-    #[command(flatten)]
-    target: PointerTarget,
-}
-
-#[derive(Args, Clone)]
-pub struct PointerScrollOptions {
-    /// Target coordinate as X,Y in page (CSS) pixels
-    #[arg(long)]
-    at: Point,
-    /// Horizontal scroll delta in page pixels
-    #[arg(long, default_value_t = 0.0, allow_hyphen_values = true)]
-    dx: f64,
-    /// Vertical scroll delta in page pixels
-    #[arg(long, default_value_t = 0.0, allow_hyphen_values = true)]
-    dy: f64,
-    #[command(flatten)]
-    target: PointerTarget,
-}
-
-#[derive(Args, Clone)]
-pub struct PageKeyOptions {
-    #[command(subcommand)]
-    command: PageKeyCommand,
-}
-
-#[derive(Subcommand, Clone)]
-pub enum PageKeyCommand {
-    /// Type literal text into the focused control
-    Type(KeyTypeOptions),
-    /// Press a named key (return, tab, escape, delete, space, arrows)
-    Press(KeyPressOptions),
-}
-
-#[derive(Args, Clone)]
-pub struct KeyTypeOptions {
-    /// Text to type
-    #[arg(long)]
-    text: String,
-    #[command(flatten)]
-    target: PointerTarget,
-}
-
-#[derive(Args, Clone)]
-pub struct KeyPressOptions {
-    /// Key name: return, tab, escape, delete, space, left, right, up, down
-    #[arg(long)]
-    key: String,
-    /// Modifier keys held during the press (repeatable)
-    #[arg(long, value_enum)]
-    modifier: Vec<KeyModifier>,
-    #[command(flatten)]
-    target: PointerTarget,
-}
-
-/// Canonical cross-platform modifier vocabulary. Backends map `meta` to the
-/// platform meta key (Command on macOS, Windows key on Windows).
-#[derive(Clone, Copy, clap::ValueEnum)]
-pub enum KeyModifier {
-    Ctrl,
-    Shift,
-    Alt,
-    Meta,
-}
-
-impl KeyModifier {
-    fn to_wire(self) -> &'static str {
-        match self {
-            Self::Ctrl => "control",
-            Self::Shift => "shift",
-            Self::Alt => "option",
-            Self::Meta => "command",
-        }
-    }
-}
-
 #[derive(Args, Clone)]
 pub struct NavOptions {
     #[command(subcommand)]
@@ -453,7 +237,7 @@ pub enum PageCommand {
     },
     /// Print page status
     Info {
-        /// Page name; defaults to current page
+        /// Page name or runtime instance id; defaults to current page
         #[arg(long)]
         page: Option<String>,
         /// LxApp context; defaults to current
@@ -467,7 +251,7 @@ pub enum PageCommand {
     Eval {
         /// JavaScript expression to evaluate in the page WebView
         script: String,
-        /// Page name; defaults to current page
+        /// Page name or runtime instance id; defaults to current page
         #[arg(long)]
         page: Option<String>,
         /// LxApp context; defaults to current
@@ -496,7 +280,7 @@ pub enum PageCommand {
         /// Maximum text/value characters to include
         #[arg(long, default_value_t = 4096)]
         max_text: usize,
-        /// Page name; defaults to current page
+        /// Page name or runtime instance id; defaults to current page
         #[arg(long)]
         page: Option<String>,
         /// LxApp context; defaults to current
@@ -513,7 +297,7 @@ pub enum PageCommand {
         /// Click the nth matching element
         #[arg(long)]
         index: Option<usize>,
-        /// Page name; defaults to current page
+        /// Page name or runtime instance id; defaults to current page
         #[arg(long)]
         page: Option<String>,
         /// LxApp context; defaults to current
@@ -532,7 +316,7 @@ pub enum PageCommand {
         /// Type into the nth matching element
         #[arg(long)]
         index: Option<usize>,
-        /// Page name; defaults to current page
+        /// Page name or runtime instance id; defaults to current page
         #[arg(long)]
         page: Option<String>,
         /// LxApp context; defaults to current
@@ -551,7 +335,7 @@ pub enum PageCommand {
         /// Fill the nth matching element
         #[arg(long)]
         index: Option<usize>,
-        /// Page name; defaults to current page
+        /// Page name or runtime instance id; defaults to current page
         #[arg(long)]
         page: Option<String>,
         /// LxApp context; defaults to current
@@ -565,7 +349,7 @@ pub enum PageCommand {
     Press {
         #[arg(long)]
         key: String,
-        /// Page name; defaults to current page
+        /// Page name or runtime instance id; defaults to current page
         #[arg(long)]
         page: Option<String>,
         /// LxApp context; defaults to current
@@ -583,7 +367,7 @@ pub enum PageCommand {
         /// Vertical delta in CSS pixels (positive = down)
         #[arg(long, default_value_t = 0.0, allow_hyphen_values = true)]
         dy: f64,
-        /// Page name; defaults to current page
+        /// Page name or runtime instance id; defaults to current page
         #[arg(long)]
         page: Option<String>,
         /// LxApp context; defaults to current
@@ -598,7 +382,7 @@ pub enum PageCommand {
         /// CSS selector to scroll into view
         #[arg(long)]
         css: String,
-        /// Page name; defaults to current page
+        /// Page name or runtime instance id; defaults to current page
         #[arg(long)]
         page: Option<String>,
         /// LxApp context; defaults to current
@@ -608,10 +392,6 @@ pub enum PageCommand {
         #[arg(long)]
         json: bool,
     },
-    /// Send pointer input at page coordinates (CSS pixels)
-    Pointer(PagePointerOptions),
-    /// Send keyboard input to the session's focused control
-    Key(PageKeyOptions),
     /// Navigate back in the lxapp page stack
     Back {
         /// LxApp context; defaults to current
@@ -629,7 +409,7 @@ pub enum PageCommand {
         /// LxApp context; defaults to current
         #[arg(long, default_value = "current")]
         app: String,
-        /// Page name; defaults to current
+        /// Page name or runtime instance id; defaults to current
         #[arg(long, default_value = "current")]
         page: String,
         /// Output path; use `-` for stdout. Default: .lingxia/screenshots/<app>-<page>-<ts>.png
@@ -685,21 +465,7 @@ pub fn execute(project_root: &Path, info: &SessionInfo, options: LxAppOptions) -
             .unwrap_or(Value::Null);
             print_json(&data, pretty)?;
         }
-        LxAppCommand::Windows { json } => execute_windows(ws_url, json)?,
-        LxAppCommand::Screenshot {
-            window,
-            output,
-            json,
-        } => execute_screenshot(info, window, output, json)?,
-        LxAppCommand::Page(options) => {
-            if matches!(
-                &options.command,
-                PageCommand::Pointer(_) | PageCommand::Key(_)
-            ) {
-                require_desktop_input(info, "page input")?;
-            }
-            execute_page(ws_url, options)?
-        }
+        LxAppCommand::Page(options) => execute_page(ws_url, options)?,
         LxAppCommand::Nav(options) => execute_nav(ws_url, options)?,
         LxAppCommand::Eval {
             script,
@@ -921,75 +687,11 @@ fn execute_doctor(info: &SessionInfo, json: bool) -> Result<()> {
         "backend      {}",
         get(&["backend"]).and_then(Value::as_str).unwrap_or("-")
     );
-    println!("screenshot   {}", cap("session_screenshot"));
     println!("page shot    {}", cap("page_screenshot"));
     println!("page pointer {}", cap("page_pointer"));
     println!("page key     {}", cap("page_key"));
     println!("runner       {}", cap("runner"));
     Ok(())
-}
-
-fn execute_windows(ws_url: &str, json: bool) -> Result<()> {
-    let data = client::execute_command(ws_url, handlers::app::WINDOWS, None)?
-        .unwrap_or(Value::Array(Vec::new()));
-
-    if json {
-        println!("{}", serde_json::to_string_pretty(&data)?);
-        return Ok(());
-    }
-
-    let Some(array) = data.as_array() else {
-        println!("{}", serde_json::to_string_pretty(&data)?);
-        return Ok(());
-    };
-    if array.is_empty() {
-        println!("No windows reported by the session.");
-        return Ok(());
-    }
-    println!(
-        "{:<12}  {:<5}  {:<5}  {:<7}  {:<9}  TITLE",
-        "ID", "FOCUS", "MAIN", "VISIBLE", "SIZE"
-    );
-    for win in array {
-        let id = win.get("id").and_then(Value::as_str).unwrap_or("-");
-        let focused = win.get("focused").and_then(Value::as_bool).unwrap_or(false);
-        let main = win.get("main").and_then(Value::as_bool).unwrap_or(false);
-        let visible = win.get("visible").and_then(Value::as_bool).unwrap_or(false);
-        let width = win.get("width").and_then(Value::as_u64).unwrap_or(0);
-        let height = win.get("height").and_then(Value::as_u64).unwrap_or(0);
-        let title = win.get("title").and_then(Value::as_str).unwrap_or("");
-        println!(
-            "{:<12}  {:<5}  {:<5}  {:<7}  {:<9}  {}",
-            id,
-            if focused { "yes" } else { "no" },
-            if main { "yes" } else { "no" },
-            if visible { "yes" } else { "no" },
-            format!("{width}x{height}"),
-            title,
-        );
-    }
-    Ok(())
-}
-
-fn execute_screenshot(
-    info: &SessionInfo,
-    window: Option<String>,
-    output: Option<String>,
-    json: bool,
-) -> Result<()> {
-    let args = window.as_ref().map(|id| json!({ "window_id": id }));
-    let data = client::execute_command(&info.ws_url, handlers::app::SCREENSHOT, args)?
-        .unwrap_or(Value::Null);
-
-    if json {
-        println!("{}", serde_json::to_string(&data)?);
-        return Ok(());
-    }
-
-    let bytes = screenshot::decode_png_payload(&data, handlers::app::SCREENSHOT)?;
-    let ts = chrono::Local::now().format("%Y%m%d-%H%M%S");
-    let platform = screenshot::safe_component(&info.target);
-    screenshot::write_png(output, format!("lxapp-{platform}-{ts}.png"), &bytes)
 }
 
 fn execute_nav(ws_url: &str, options: NavOptions) -> Result<()> {
@@ -1222,8 +924,6 @@ fn execute_page(ws_url: &str, options: PageOptions) -> Result<()> {
             )?;
             print_optional_json(data, json)?;
         }
-        PageCommand::Pointer(options) => execute_page_pointer(ws_url, options)?,
-        PageCommand::Key(options) => execute_page_key(ws_url, options)?,
         PageCommand::Back { app, delta, json } => {
             let data = client::execute_command(
                 ws_url,
@@ -1266,142 +966,16 @@ fn execute_page_screenshot(
 
     let bytes = screenshot::decode_png_payload(&data, handlers::lxapp_page::SCREENSHOT)?;
     let ts = chrono::Local::now().format("%Y%m%d-%H%M%S");
-    let app = screenshot::safe_component(&app);
-    let page = screenshot::safe_component(&page);
+    let app = data.get("appid").and_then(Value::as_str).unwrap_or(&app);
+    let page = data
+        .get("page")
+        .and_then(Value::as_str)
+        .filter(|page| !page.is_empty())
+        .or_else(|| data.get("path").and_then(Value::as_str))
+        .unwrap_or(&page);
+    let app = screenshot::safe_component(app);
+    let page = screenshot::safe_component(page);
     screenshot::write_png(output, format!("{app}-{page}-{ts}.png"), &bytes)
-}
-
-/// Page pointer/key input is synthesized on the session's desktop window; fail
-/// fast with a platform hint on sessions that have no desktop input backend.
-fn require_desktop_input(info: &SessionInfo, what: &str) -> Result<()> {
-    let hint = match info.target.as_str() {
-        // "lxapp" is the runner dev session; the runner is a desktop app.
-        "macos" | "windows" | "lxapp" => return Ok(()),
-        "android" => "`adb shell input`",
-        "harmony" => "`hdc shell uitest uiInput`",
-        _ => "`lxdev lxapp page click/type` (DOM automation)",
-    };
-    bail!("{what} is desktop-only; on {} use {hint}", info.target)
-}
-
-fn execute_page_pointer(ws_url: &str, options: PagePointerOptions) -> Result<()> {
-    // WebKit hit-testing needs a cursor move before a press. Keep the press
-    // itself atomic: native controls can run a nested tracking loop during
-    // mouseDown, so waiting for a separate Down response before sending Up
-    // deadlocks them and also loses the platform click count.
-    let (target, actions): (PointerTarget, Vec<Value>) = match options.command {
-        PagePointerCommand::Move(o) => (
-            o.target,
-            vec![json!({ "kind": "move", "x": o.at.x, "y": o.at.y })],
-        ),
-        PagePointerCommand::Down(o) => (
-            o.target,
-            vec![json!({ "kind": "down", "x": o.at.x, "y": o.at.y, "button": o.button.as_str() })],
-        ),
-        PagePointerCommand::Up(o) => (
-            o.target,
-            vec![json!({ "kind": "up", "x": o.at.x, "y": o.at.y, "button": o.button.as_str() })],
-        ),
-        PagePointerCommand::Click(o) => {
-            if o.count == 0 {
-                bail!("--count must be greater than zero");
-            }
-            (
-                o.target,
-                vec![
-                    json!({ "kind": "move", "x": o.at.x, "y": o.at.y }),
-                    json!({
-                        "kind": "click",
-                        "x": o.at.x,
-                        "y": o.at.y,
-                        "button": o.button.as_str(),
-                        "click_count": o.count,
-                    }),
-                ],
-            )
-        }
-        PagePointerCommand::Drag(o) => (
-            o.target,
-            vec![json!({
-                "kind": "drag",
-                "from_x": o.from.x,
-                "from_y": o.from.y,
-                "to_x": o.to.x,
-                "to_y": o.to.y,
-                "button": o.button.as_str(),
-            })],
-        ),
-        PagePointerCommand::Scroll(o) => (
-            o.target,
-            vec![json!({ "kind": "scroll", "x": o.at.x, "y": o.at.y, "dx": o.dx, "dy": o.dy })],
-        ),
-    };
-
-    let mut last = Value::Null;
-    for action in actions {
-        let mut payload = serde_json::Map::new();
-        if let Some(window) = target.window.clone() {
-            payload.insert("window_id".to_string(), Value::String(window));
-        }
-        payload.insert("action".to_string(), action);
-        last = client::execute_command(ws_url, handlers::app::MOUSE, Some(Value::Object(payload)))?
-            .unwrap_or(Value::Null);
-    }
-    let data = last;
-
-    if target.json {
-        println!("{}", serde_json::to_string_pretty(&data)?);
-        return Ok(());
-    }
-
-    let action = data
-        .get("action")
-        .and_then(Value::as_str)
-        .unwrap_or("pointer");
-    let window_id = data
-        .get("window_id")
-        .and_then(Value::as_str)
-        .unwrap_or("unknown");
-    println!("Sent page pointer {action} to window {window_id}");
-    Ok(())
-}
-
-fn execute_page_key(ws_url: &str, options: PageKeyOptions) -> Result<()> {
-    let (target, action) = match options.command {
-        PageKeyCommand::Type(o) => (o.target, json!({ "kind": "type", "text": o.text })),
-        PageKeyCommand::Press(o) => {
-            let modifiers: Vec<&str> = o.modifier.iter().map(|m| m.to_wire()).collect();
-            (
-                o.target,
-                json!({ "kind": "press", "key": o.key, "modifiers": modifiers }),
-            )
-        }
-    };
-
-    let mut payload = serde_json::Map::new();
-    if let Some(window) = target.window {
-        payload.insert("window_id".to_string(), Value::String(window));
-    }
-    payload.insert("action".to_string(), action);
-    let data = client::execute_command(
-        ws_url,
-        handlers::app::KEYBOARD,
-        Some(Value::Object(payload)),
-    )?
-    .unwrap_or(Value::Null);
-
-    if target.json {
-        println!("{}", serde_json::to_string_pretty(&data)?);
-        return Ok(());
-    }
-
-    let action = data.get("action").and_then(Value::as_str).unwrap_or("key");
-    let window_id = data
-        .get("window_id")
-        .and_then(Value::as_str)
-        .unwrap_or("unknown");
-    println!("Sent page key {action} to window {window_id}");
-    Ok(())
 }
 
 fn is_top_level_help(args: &[String]) -> bool {
@@ -1438,16 +1012,7 @@ fn parse_query_pairs(pairs: &[String]) -> Result<Option<Value>> {
 fn commands_for_project(project_root: &Path) -> &'static [&'static str] {
     if project_root.join("lxapp.json").exists() && !project_root.join("lingxia.yaml").exists() {
         &[
-            "doctor",
-            "info",
-            "pages",
-            "windows",
-            "screenshot",
-            "page",
-            "nav",
-            "device",
-            "eval",
-            "reload",
+            "doctor", "info", "pages", "page", "nav", "device", "eval", "reload",
         ]
     } else {
         &[
@@ -1456,8 +1021,6 @@ fn commands_for_project(project_root: &Path) -> &'static [&'static str] {
             "doctor",
             "info",
             "pages",
-            "windows",
-            "screenshot",
             "page",
             "nav",
             "device",
@@ -1493,8 +1056,6 @@ fn command_description(command: &str) -> &'static str {
         "doctor" => "Report the session's automation capabilities",
         "info" => "Print lxapp runtime summary",
         "pages" => "Print configured lxapp pages",
-        "windows" => "List the session's top-level windows",
-        "screenshot" => "Capture a PNG screenshot of the app surface",
         "page" => "Inspect and automate lxapp pages",
         "nav" => "Navigate the lxapp runtime by page name",
         "device" => "Inspect or switch the simulated device",
@@ -1578,98 +1139,11 @@ mod tests {
     }
 
     #[test]
-    fn parses_page_pointer_click() {
-        let cli = parse_lxapp_cli(args(&[
-            "page", "pointer", "click", "--at", "120,48", "--button", "right", "--count", "2",
-            "--window", "0x42", "--json",
-        ]))
-        .unwrap();
-
-        let LxAppCommand::Page(options) = cli.command else {
-            panic!("expected page command");
-        };
-        let PageCommand::Pointer(options) = options.command else {
-            panic!("expected pointer command");
-        };
-        let PagePointerCommand::Click(o) = options.command else {
-            panic!("expected click command");
-        };
-        assert_eq!(o.at.x, 120.0);
-        assert_eq!(o.at.y, 48.0);
-        assert!(matches!(o.button, PointerButton::Right));
-        assert_eq!(o.count, 2);
-        assert_eq!(o.target.window.as_deref(), Some("0x42"));
-        assert!(o.target.json);
-    }
-
-    #[test]
-    fn rejects_bad_pointer_coordinate() {
-        assert!(parse_lxapp_cli(args(&["page", "pointer", "move", "--at", "oops"])).is_err());
-    }
-
-    #[test]
-    fn parses_page_key_press() {
-        let cli = parse_lxapp_cli(args(&[
-            "page",
-            "key",
-            "press",
-            "--key",
-            "return",
-            "--modifier",
-            "ctrl",
-            "--modifier",
-            "shift",
-        ]))
-        .unwrap();
-
-        let LxAppCommand::Page(options) = cli.command else {
-            panic!("expected page command");
-        };
-        let PageCommand::Key(options) = options.command else {
-            panic!("expected key command");
-        };
-        let PageKeyCommand::Press(o) = options.command else {
-            panic!("expected press command");
-        };
-        assert_eq!(o.key, "return");
-        assert_eq!(o.modifier.len(), 2);
-        assert_eq!(o.modifier[0].to_wire(), "control");
-        assert_eq!(o.modifier[1].to_wire(), "shift");
-    }
-
-    #[test]
-    fn parses_windows_options() {
-        let cli = parse_lxapp_cli(args(&["windows", "--json"])).unwrap();
-        let LxAppCommand::Windows { json } = cli.command else {
-            panic!("expected windows command");
-        };
-        assert!(json);
-    }
-
-    #[test]
-    fn parses_screenshot_options() {
-        let cli = parse_lxapp_cli(args(&[
-            "screenshot",
-            "--window",
-            "0x42",
-            "-o",
-            "out.png",
-            "--json",
-        ]))
-        .unwrap();
-
-        let LxAppCommand::Screenshot {
-            window,
-            output,
-            json,
-        } = cli.command
-        else {
-            panic!("expected screenshot command");
-        };
-
-        assert_eq!(window.as_deref(), Some("0x42"));
-        assert_eq!(output.as_deref(), Some("out.png"));
-        assert!(json);
+    fn rejects_host_surface_commands() {
+        assert!(parse_lxapp_cli(args(&["windows"])).is_err());
+        assert!(parse_lxapp_cli(args(&["screenshot"])).is_err());
+        assert!(parse_lxapp_cli(args(&["page", "pointer"])).is_err());
+        assert!(parse_lxapp_cli(args(&["page", "key"])).is_err());
     }
 
     #[test]
