@@ -1,5 +1,5 @@
 use anyhow::Result;
-use clap::{Args, Parser, Subcommand};
+use clap::{ArgGroup, Args, Parser, Subcommand};
 use std::path::Path;
 
 mod app;
@@ -62,11 +62,25 @@ enum Commands {
         #[arg(long)]
         name: Option<String>,
     },
-    /// Detach a previously attached remote dev session
-    Detach {
-        /// The attached session name
-        name: String,
-    },
+    /// Detach one attached remote, or every currently unreachable remote
+    Detach(DetachOptions),
+}
+
+#[derive(Args)]
+#[command(group(
+    ArgGroup::new("detach_target")
+        .required(true)
+        .multiple(false)
+        .args(["name", "unreachable"])
+))]
+struct DetachOptions {
+    /// The attached remote session name
+    #[arg(value_name = "NAME")]
+    name: Option<String>,
+
+    /// Detach all attached remote sessions that are currently unreachable
+    #[arg(long)]
+    unreachable: bool,
 }
 
 #[derive(Args, Clone)]
@@ -145,6 +159,40 @@ fn main() -> Result<()> {
         // Removed namespace: emit a migration hint without needing a session.
         Commands::App(options) => app::migrate(options),
         Commands::Attach { ws_url, name } => remotes::attach(&ws_url, name),
-        Commands::Detach { name } => remotes::detach(&name),
+        Commands::Detach(options) => {
+            if options.unreachable {
+                remotes::detach_unreachable()
+            } else {
+                remotes::detach(
+                    options
+                        .name
+                        .as_deref()
+                        .expect("clap requires a detach target"),
+                )
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::CommandFactory;
+
+    #[test]
+    fn detach_usage_offers_name_or_unreachable() {
+        let command = Cli::command();
+        let mut detach = command
+            .find_subcommand("detach")
+            .expect("detach subcommand")
+            .clone();
+        let usage = detach.render_usage().to_string();
+
+        assert!(usage.contains("--unreachable"));
+        assert!(usage.contains("NAME"));
+        assert!(Cli::try_parse_from(["lxdev", "detach", "win"]).is_ok());
+        assert!(Cli::try_parse_from(["lxdev", "detach", "--unreachable"]).is_ok());
+        assert!(Cli::try_parse_from(["lxdev", "detach"]).is_err());
+        assert!(Cli::try_parse_from(["lxdev", "detach", "win", "--unreachable"]).is_err());
     }
 }
