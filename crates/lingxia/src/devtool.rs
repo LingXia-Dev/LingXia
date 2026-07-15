@@ -472,14 +472,6 @@ fn complete_dev_page_list(
     pages
 }
 
-/// Lists every live dynamic surface owned by the selected lxapp, including
-/// URL-callback surfaces that do not host a PageInstance.
-pub fn lxapp_dev_surface_list(
-    appid: Option<&str>,
-) -> Result<Vec<lxapp::LxAppRuntimeSurfaceInfo>, String> {
-    Ok(resolve_dev_lxapp(appid.unwrap_or("current"))?.runtime_surface_info())
-}
-
 /// Returns information for a specific page, or the current page if omitted.
 pub fn lxapp_dev_page_info(
     appid: Option<&str>,
