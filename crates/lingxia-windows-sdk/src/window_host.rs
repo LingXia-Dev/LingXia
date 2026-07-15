@@ -826,6 +826,19 @@ fn unregister_floating_overlay(webtag_key: &str) {
     }
 }
 
+fn floating_overlay_owner(webtag_key: &str) -> Option<HWND> {
+    FLOATING_OVERLAYS
+        .get()
+        .and_then(|floats| floats.lock().ok())
+        .and_then(|floats| {
+            floats
+                .iter()
+                .find(|(_, keys)| keys.iter().any(|key| key == webtag_key))
+                .map(|(owner, _)| hwnd_from_handle(*owner))
+        })
+        .filter(|owner| is_valid_host_window(*owner))
+}
+
 /// Re-raises the owner's visible floating surfaces above its chrome popups —
 /// the tab-bar overlay repositions with HWND_TOP on every layout pass, which
 /// would otherwise stack it over an open float.
@@ -3465,7 +3478,10 @@ fn active_host_window_except(excluded: Option<HWND>) -> Option<HWND> {
         .get()
         .and_then(|slot| slot.lock().ok())
         .and_then(|slot| slot.as_ref().map(|webtag| webtag.key().to_string()))
-        .and_then(|key| window_handle_for_key(&key))
+        // A focused float/adaptive-aside overlay is a child presentation, not
+        // the shell host that a new main tab should replace. Resolve it back
+        // to its owner before considering the overlay's own HWND.
+        .and_then(|key| floating_overlay_owner(&key).or_else(|| window_handle_for_key(&key)))
         .filter(|hwnd| Some(*hwnd) != excluded)
         .or_else(|| primary_host_window_except(excluded))
         .or_else(|| focused_registered_host_window_except(excluded))

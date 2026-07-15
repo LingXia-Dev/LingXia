@@ -571,8 +571,13 @@ fn finite_or_zero(value: f64) -> f64 {
 /// Shows a surface's webview according to the core-arbitrated role.
 fn present_entry(id: &str, entry: &SurfaceEntry, target: PresentationTarget) -> Result<(), String> {
     let result = match (entry.role, target) {
+        // An adaptive aside overlay is still a companion surface. Giving it
+        // the host's single group-main slot makes the next main-tab switch
+        // replace it even though the graph still marks the aside visible.
+        // Keep it in an owned overlay window so main lxapp/browser selection
+        // and aside visibility remain independent projections of the graph.
         (SurfaceRole::Aside, PresentationTarget::Overlay) => {
-            present_webview_in_active_group(&entry.webtag)
+            present_webview_as_overlay(&entry.webtag, 0.0, 0.0, 1.0, 1.0, entry.placement.position)
         }
         (
             SurfaceRole::Aside,
