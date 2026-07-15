@@ -50,6 +50,9 @@ pub struct AppKeyboardRequest {
 pub struct AppKeyboardResult {
     pub window_id: String,
     pub action: String,
+    /// Reliability of requested modifier chords, when modifiers were present.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub modifier_reliability: Option<String>,
 }
 
 /// Dispatch keyboard input to the host app's focused window.

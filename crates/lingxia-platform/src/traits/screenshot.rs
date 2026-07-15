@@ -20,9 +20,10 @@ pub struct WindowInfo {
     pub main: bool,
     /// `true` if the window is currently on-screen / not minimized.
     pub visible: bool,
-    /// Width in points (logical, not pixels).
+    /// Width in the platform's window-content coordinate unit (points on
+    /// Apple platforms, client pixels on Windows).
     pub width: u32,
-    /// Height in points (logical, not pixels).
+    /// Height in the platform's window-content coordinate unit.
     pub height: u32,
 }
 
@@ -42,6 +43,33 @@ pub trait AppScreenshot: Send + Sync {
         Err(PlatformError::NotSupported(
             "list_app_windows is not implemented for this platform".to_string(),
         ))
+    }
+
+    /// Resolve an optional id using the same default-window policy as capture
+    /// and input, returning the concrete target for automation metadata.
+    async fn resolve_app_window(
+        &self,
+        window_id: Option<&str>,
+    ) -> Result<WindowInfo, PlatformError> {
+        let windows = self.list_app_windows().await?;
+        if let Some(window_id) = window_id {
+            return windows
+                .into_iter()
+                .find(|window| window.id == window_id)
+                .ok_or_else(|| {
+                    PlatformError::InvalidParameter(format!(
+                        "window id does not belong to this app: {window_id}"
+                    ))
+                });
+        }
+        windows
+            .iter()
+            .find(|window| window.focused && window.visible)
+            .or_else(|| windows.iter().find(|window| window.main && window.visible))
+            .or_else(|| windows.iter().find(|window| window.visible))
+            .or_else(|| windows.first())
+            .cloned()
+            .ok_or_else(|| PlatformError::Platform("no app window is available".to_string()))
     }
 
     /// Capture and return PNG-encoded bytes of the app's window.
