@@ -405,7 +405,7 @@ fn chrome_hover_rect(
         && let (Some(navbar), Some(navbar_rect)) = (&layout.navigation_bar, rects.navigation_bar)
         && rect_contains(&navbar_rect, point)
     {
-        let buttons_left = navbar_buttons_left(client, rects.top_bar, layout, navbar_rect);
+        let buttons_left = navbar_buttons_left(navbar_rect);
         if navbar.show_back_button {
             let rect = nav_button_rect(navbar_rect, buttons_left, 0);
             if rect_contains(&rect, point) {
@@ -515,14 +515,13 @@ pub(crate) fn shell_chrome_dirty_rects(
     if old_rects.content != new_rects.content
         || old_rects.panel != new_rects.panel
         || old_rects.tab_bar != new_rects.tab_bar
+        || old_layout.navigation_bar != new_layout.navigation_bar
     {
         return None;
     }
 
     let mut dirty = Vec::new();
-    if old_layout.navigation_bar != new_layout.navigation_bar
-        || old_layout.address_bar != new_layout.address_bar
-    {
+    if old_layout.address_bar != new_layout.address_bar {
         push_dirty_rect(&mut dirty, new_rects.top_bar, client);
         // A phone-width browser paints its address bar (URL, nav state, tab
         // count) in the bottom bar instead of the top band.
@@ -722,7 +721,11 @@ fn clip_dirty_rect(rect: RECT, client: RECT) -> Option<RECT> {
 
 #[derive(Debug, Clone, Copy)]
 pub(super) struct ChromeRects {
+    /// Main/aside workspace below global shell chrome, before aside splits.
+    pub(super) workspace: RECT,
+    /// Main WebView viewport when no aside layout is attached.
     pub(super) content: RECT,
+    /// Unsplit workspace card used by the no-aside painter/activator layout.
     pub(super) panel: RECT,
     pub(super) top_bar: RECT,
     pub(super) navigation_bar: Option<RECT>,
@@ -735,10 +738,6 @@ pub(super) fn compute_chrome_rects(client: RECT, layout: &WindowsShellWindowLayo
     // strip's time/signal). 0 for un-framed windows, so the browser shell is
     // unchanged.
     let top_inset = layout.top_inset.max(0);
-    let navbar_visible = layout
-        .navigation_bar
-        .as_ref()
-        .is_some_and(|navbar| navbar.visible && navbar.height > 0);
     let mut content = client;
     content.top += top_inset;
     let mut top_bar_left = client.left;
@@ -810,19 +809,14 @@ pub(super) fn compute_chrome_rects(client: RECT, layout: &WindowsShellWindowLayo
         layout.tab_bar.as_ref().map(|tabbar| tabbar.position),
         Some(WindowsShellTabBarPosition::Left | WindowsShellTabBarPosition::Right)
     ) {
-        // The browser shell (no device frame) always reserves its top bar. A
-        // device frame reserves the nav-bar row only when the page shows a nav
-        // bar: a plain framed page keeps top_inset for the status bar and no
-        // nav row, and an immersive (custom-nav) framed page has top_inset 0
-        // AND no nav bar, so it must NOT reserve the row — content bleeds up to
-        // the top edge under the transparent status-bar overlay. Distinguish the
-        // immersive frame (top_inset 0 + device frame) from the browser shell
-        // (top_inset 0, no device frame) via suppress_window_controls.
+        // The browser shell (no device frame) reserves its global caption row.
+        // A device frame owns that system chrome externally, so its main region
+        // begins after the status-bar inset and reserves any lxapp navbar later.
+        // Distinguish it from an unframed shell via suppress_window_controls.
         // A presented browser tab always gets the row: it carries the URL
         // capsule and close control — except on the phone-sized frame, whose
         // browser chrome is the bottom bar instead.
         if (top_inset == 0 && !layout.suppress_window_controls)
-            || navbar_visible
             || (address_bar_visible(layout) && !phone_browser_bar_active(client, layout))
         {
             content.top += SHELL_TOP_BAR_HEIGHT;
@@ -838,8 +832,8 @@ pub(super) fn compute_chrome_rects(client: RECT, layout: &WindowsShellWindowLayo
         content.bottom = bar.top.max(content.top);
     }
 
-    content = normalize_rect(content);
-    let panel = content;
+    let workspace = normalize_rect(content);
+    let panel = workspace;
     let top_bar = normalize_rect(RECT {
         left: top_bar_left,
         top: client.top + top_inset,
@@ -847,19 +841,47 @@ pub(super) fn compute_chrome_rects(client: RECT, layout: &WindowsShellWindowLayo
         bottom: (client.top + top_inset + SHELL_TOP_BAR_HEIGHT).min(client.bottom),
     });
 
-    let navigation_bar = layout
-        .navigation_bar
-        .as_ref()
-        .filter(|navbar| navbar.visible && navbar.height > 0)
-        .map(|_| top_bar);
+    let (navigation_bar, content) = split_main_navigation_bar(workspace, layout);
 
     ChromeRects {
+        workspace,
         content: normalize_rect(content),
         panel: normalize_rect(panel),
         top_bar,
         navigation_bar: navigation_bar.map(normalize_rect),
         tab_bar: tab_bar.map(normalize_rect),
     }
+}
+
+/// Reserve the lxapp navigation bar inside the concrete main region. Aside
+/// slots are split before this helper is applied, so their viewports never
+/// inherit or sit beneath main-owned chrome.
+fn split_main_navigation_bar(
+    main_region: RECT,
+    layout: &WindowsShellWindowLayout,
+) -> (Option<RECT>, RECT) {
+    let Some(navbar) = layout
+        .navigation_bar
+        .as_ref()
+        .filter(|navbar| navbar.visible && navbar.height > 0)
+    else {
+        return (None, main_region);
+    };
+    let height = navbar.height.clamp(0, rect_height(&main_region));
+    if height == 0 || rect_width(&main_region) == 0 {
+        return (None, main_region);
+    }
+    let navigation_bar = normalize_rect(RECT {
+        left: main_region.left,
+        top: main_region.top,
+        right: main_region.right,
+        bottom: main_region.top + height,
+    });
+    let content = normalize_rect(RECT {
+        top: navigation_bar.bottom,
+        ..main_region
+    });
+    (Some(navigation_bar), content)
 }
 
 pub(crate) fn transparent_tabbar_overlay_rect(
@@ -1047,7 +1069,7 @@ fn compute_attached_layout(
     layout: &WindowsShellWindowLayout,
     panels: &[WindowsChromePanelLayoutInput],
 ) -> WindowsChromeAttachedLayout {
-    let mut main = compute_chrome_rects(client, layout).content;
+    let mut main_region = compute_chrome_rects(client, layout).workspace;
     let mut out = Vec::new();
 
     let mut ordered = panels.iter().collect::<Vec<_>>();
@@ -1057,50 +1079,54 @@ fn compute_attached_layout(
         out.push(WindowsChromePanelLayout {
             panel_id: maximized.panel_id.clone(),
             webtag_key: maximized.webtag_key.clone(),
-            rect: shell_maximized_panel_rect(main),
+            rect: shell_maximized_panel_rect(main_region),
             header_rect: None,
             resize_handle: None,
         });
-        main.bottom = main.top;
-        return WindowsChromeAttachedLayout { main, panels: out };
+        main_region.bottom = main_region.top;
+        return WindowsChromeAttachedLayout {
+            main_region,
+            main: main_region,
+            panels: out,
+        };
     }
 
     for panel in ordered {
         let (rect, resize_handle) = match panel.position {
             WindowsPanelPosition::Left => {
-                let width = attached_panel_size(panel, main, ATTACHED_PANEL_WIDTH);
+                let width = attached_panel_size(panel, main_region, ATTACHED_PANEL_WIDTH);
                 let rect = RECT {
-                    left: main.left,
-                    top: main.top,
-                    right: (main.left + width).min(main.right),
-                    bottom: main.bottom,
+                    left: main_region.left,
+                    top: main_region.top,
+                    right: (main_region.left + width).min(main_region.right),
+                    bottom: main_region.bottom,
                 };
                 let handle_width = SHELL_PANEL_PADDING.max(ATTACHED_PANEL_HANDLE_SIZE);
                 let handle = normalize_rect(RECT {
                     left: rect.right,
                     top: rect.top,
-                    right: (rect.right + handle_width).min(main.right),
+                    right: (rect.right + handle_width).min(main_region.right),
                     bottom: rect.bottom,
                 });
-                main.left = handle.right.min(main.right);
+                main_region.left = handle.right.min(main_region.right);
                 (rect, Some(handle))
             }
             WindowsPanelPosition::Right => {
-                let width = attached_panel_size(panel, main, ATTACHED_PANEL_WIDTH);
+                let width = attached_panel_size(panel, main_region, ATTACHED_PANEL_WIDTH);
                 let rect = RECT {
-                    left: (main.right - width).max(main.left),
-                    top: main.top,
-                    right: main.right,
-                    bottom: main.bottom,
+                    left: (main_region.right - width).max(main_region.left),
+                    top: main_region.top,
+                    right: main_region.right,
+                    bottom: main_region.bottom,
                 };
                 let handle_width = SHELL_PANEL_PADDING.max(ATTACHED_PANEL_HANDLE_SIZE);
                 let handle = normalize_rect(RECT {
-                    left: (rect.left - handle_width).max(main.left),
+                    left: (rect.left - handle_width).max(main_region.left),
                     top: rect.top,
                     right: rect.left,
                     bottom: rect.bottom,
                 });
-                main.right = handle.left.max(main.left);
+                main_region.right = handle.left.max(main_region.left);
                 (rect, Some(handle))
             }
             // Docked and floating share the geometry: the gutter between the
@@ -1108,48 +1134,48 @@ fn compute_attached_layout(
             // resize handle, so the split reads as a divider — not the panel
             // covering the content. (Side panels already separate this way.)
             WindowsPanelPosition::Top => {
-                let height = attached_panel_size(panel, main, ATTACHED_PANEL_BOTTOM_HEIGHT);
+                let height = attached_panel_size(panel, main_region, ATTACHED_PANEL_BOTTOM_HEIGHT);
                 let rect = RECT {
-                    left: main.left,
-                    top: main.top,
-                    right: main.right,
-                    bottom: (main.top + height).min(main.bottom),
+                    left: main_region.left,
+                    top: main_region.top,
+                    right: main_region.right,
+                    bottom: (main_region.top + height).min(main_region.bottom),
                 };
                 let handle_height = SHELL_PANEL_PADDING.max(ATTACHED_PANEL_HANDLE_SIZE);
                 let handle = normalize_rect(RECT {
                     left: rect.left,
                     top: rect.bottom,
                     right: rect.right,
-                    bottom: (rect.bottom + handle_height).min(main.bottom),
+                    bottom: (rect.bottom + handle_height).min(main_region.bottom),
                 });
-                main.top = handle.bottom.min(main.bottom);
+                main_region.top = handle.bottom.min(main_region.bottom);
                 (rect, Some(handle))
             }
             WindowsPanelPosition::Bottom => {
-                let height = attached_panel_size(panel, main, ATTACHED_PANEL_BOTTOM_HEIGHT);
+                let height = attached_panel_size(panel, main_region, ATTACHED_PANEL_BOTTOM_HEIGHT);
                 // Docked panels split the space flat — flush with the content
                 // edges, divided from the content by the gutter's hairline —
                 // so both regions read as the same layer. A floating panel
                 // keeps a bottom margin and draws as a rounded card instead.
                 let bottom = if panel.docked {
-                    main.bottom
+                    main_region.bottom
                 } else {
-                    (main.bottom - SHELL_PANEL_PADDING).max(main.top)
+                    (main_region.bottom - SHELL_PANEL_PADDING).max(main_region.top)
                 };
                 let rect = RECT {
-                    left: main.left,
-                    top: (bottom - height).max(main.top),
-                    right: main.right,
+                    left: main_region.left,
+                    top: (bottom - height).max(main_region.top),
+                    right: main_region.right,
                     bottom,
                 };
                 let handle_height = SHELL_PANEL_PADDING.max(ATTACHED_PANEL_HANDLE_SIZE);
                 let handle = normalize_rect(RECT {
                     left: rect.left,
-                    top: (rect.top - handle_height).max(main.top),
+                    top: (rect.top - handle_height).max(main_region.top),
                     right: rect.right,
                     bottom: rect.top,
                 });
-                main.bottom = handle.top.max(main.top);
+                main_region.bottom = handle.top.max(main_region.top);
                 (rect, Some(handle))
             }
         };
@@ -1174,7 +1200,10 @@ fn compute_attached_layout(
         });
     }
 
+    let main_region = normalize_rect(main_region);
+    let (_, main) = split_main_navigation_bar(main_region, layout);
     WindowsChromeAttachedLayout {
+        main_region,
         main: normalize_rect(main),
         panels: out,
     }
@@ -1234,8 +1263,9 @@ fn shell_maximized_panel_rect(content: RECT) -> RECT {
     normalize_rect(content)
 }
 
-/// Chrome rects for a concrete window state: when the host has attached
-/// panels, the navigation bar is clipped to the main content card.
+/// Chrome rects for a concrete window state. Attached panels arbitrate the
+/// workspace first; the navigation bar then occupies the top of the resulting
+/// main region.
 pub(super) fn chrome_rects_for_state(
     state: &WindowsChromeState,
     layout: &WindowsShellWindowLayout,
@@ -1244,12 +1274,7 @@ pub(super) fn chrome_rects_for_state(
     if rects.navigation_bar.is_some()
         && let Some(attached) = &state.attached
     {
-        rects.navigation_bar = Some(normalize_rect(RECT {
-            left: attached.main.left,
-            top: rects.top_bar.top,
-            right: attached.main.right,
-            bottom: rects.top_bar.bottom,
-        }));
+        rects.navigation_bar = split_main_navigation_bar(attached.main_region, layout).0;
     }
     rects
 }
@@ -1271,21 +1296,14 @@ pub(super) fn draw_window_chrome(
     if !address_bar_visible(layout)
         && let (Some(navbar), Some(navbar_rect)) = (&layout.navigation_bar, rects.navigation_bar)
     {
-        let buttons_left = navbar_buttons_left(client, rects.top_bar, layout, navbar_rect);
-        draw_navigation_bar(
-            hdc,
-            navbar_rect,
-            buttons_left,
-            navbar,
-            layout.suppress_window_controls,
-            state.cursor,
-        );
+        let buttons_left = navbar_buttons_left(navbar_rect);
+        draw_navigation_bar(hdc, navbar_rect, buttons_left, navbar, state.cursor);
     }
     if let (Some(tabbar), Some(tabbar_rect)) = (&layout.tab_bar, rects.tab_bar) {
         draw_tab_bar(hdc, tabbar_rect, tabbar, state.cursor);
     }
-    // Painted after the navigation bar: the navbar fills the whole top bar
-    // with its own background, and the toggle/address controls sit on top.
+    // Global window/address controls remain in the shell-owned top strip;
+    // the lxapp navigation bar above is confined to the main region below it.
     draw_top_bar_controls(hdc, state, &rects, layout);
     if phone_browser_bar_active(state.client, layout) {
         draw_phone_browser_bar(hdc, state, layout);
@@ -1449,7 +1467,7 @@ pub(super) fn chrome_hit_test(
         && let (Some(navbar), Some(navbar_rect)) = (&layout.navigation_bar, rects.navigation_bar)
         && rect_contains(&navbar_rect, point)
     {
-        let buttons_left = navbar_buttons_left(client, rects.top_bar, layout, navbar_rect);
+        let buttons_left = navbar_buttons_left(navbar_rect);
         if navbar.show_back_button
             && rect_contains(&nav_button_rect(navbar_rect, buttons_left, 0), point)
         {
@@ -1609,11 +1627,11 @@ fn native_panel_hit_by(
 
 pub(super) fn draw_content_cards(hdc: HDC, state: &WindowsChromeState, rects: &ChromeRects) {
     if let Some(attached) = &state.attached {
-        draw_content_card(hdc, attached.main);
+        draw_content_card(hdc, attached.main_region);
         // A docked panel splits the space flat; a 1px hairline centered in
         // the gutter marks the technical divider between the two regions —
         // the same language on every side (bottom terminal, side asides).
-        let main = attached.main;
+        let main = attached.main_region;
         for panel in &attached.panels {
             if !panel.docked {
                 continue;

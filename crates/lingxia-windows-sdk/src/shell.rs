@@ -64,9 +64,8 @@ pub(crate) use chrome::{
     transparent_tabbar_overlay_rect,
 };
 
-/// Height of the shell's top caption strip (where the lxapp navbar and browser
-/// asides' address bars live). Exposed so the host's invalidation can repaint
-/// the whole top band when the attached panel layout changes.
+/// Height of the shell-owned top caption strip. Lxapp navigation bars belong
+/// to the main region below it; browser address chrome may use this strip.
 pub(crate) fn shell_top_bar_height() -> i32 {
     style::SHELL_TOP_BAR_HEIGHT
 }

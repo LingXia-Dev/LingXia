@@ -472,7 +472,6 @@ pub(super) fn draw_navigation_bar(
     rect: RECT,
     buttons_left: i32,
     navbar: &WindowsShellNavigationBarLayout,
-    suppress_window_controls: bool,
     cursor: Option<(i32, i32)>,
 ) {
     fill_rect(hdc, rect, navbar.background_color);
@@ -520,15 +519,7 @@ pub(super) fn draw_navigation_bar(
     }
 
     if !navbar.title.trim().is_empty() {
-        // The window controls (min/max/close) only inset the title when they are
-        // actually drawn; the device-frame runner suppresses them, so reserving
-        // their width here would needlessly squeeze and truncate the page title.
-        let right_controls_width = if suppress_window_controls {
-            0
-        } else {
-            window_frame_buttons_width()
-        };
-        let title_inset = (left_controls_width + 8).max(right_controls_width + 8);
+        let title_inset = left_controls_width + 8;
         let title_rect = normalize_rect(RECT {
             left: rect.left + title_inset,
             top: rect.top,
@@ -802,32 +793,9 @@ pub(super) fn window_frame_button_rects(client: RECT) -> [(WindowsFrameButton, R
     ]
 }
 
-/// Leading x of the navigation bar's back/home buttons: just right of the
-/// top-bar sidebar toggle when one is shown (so they never overlap), else
-/// the navbar's own inset.
-pub(super) fn navbar_buttons_left(
-    client: RECT,
-    top_bar: RECT,
-    layout: &WindowsShellWindowLayout,
-    navbar_rect: RECT,
-) -> i32 {
-    let controls = top_bar_controls(client, top_bar, layout);
-    // Small leading margin so the back chevron sits just in from the edge rather
-    // than flush against it. Clear the leading-edge app-menu button and the
-    // sidebar toggle only when they are actually drawn: the app-menu icon is
-    // suppressed on a device-framed window (its menu lives on the frame's
-    // capsule), so reserving its slot there would needlessly push the back
-    // chevron further in from the edge.
-    let mut left = navbar_rect.left + NAV_LEADING_MARGIN;
-    if !layout.suppress_window_controls
-        && let Some(app_icon) = controls.app_icon
-    {
-        left = left.max(app_icon.right + TOP_BAR_BUTTON_GAP);
-    }
-    if let Some(toggle) = controls.sidebar_toggle {
-        left = left.max(toggle.right + TOP_BAR_BUTTON_GAP);
-    }
-    left
+/// Leading x of the main-owned navigation bar's back/home buttons.
+pub(super) fn navbar_buttons_left(navbar_rect: RECT) -> i32 {
+    navbar_rect.left + NAV_LEADING_MARGIN
 }
 
 pub(super) fn nav_button_rect(navbar: RECT, buttons_left: i32, index: i32) -> RECT {

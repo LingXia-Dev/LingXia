@@ -3110,6 +3110,7 @@ fn attached_layout_for_window(
     renderer
         .attached_layout(client, &layout, &panels)
         .map(|mut attached| {
+            attached.main_region = normalize_rect(attached.main_region);
             attached.main = normalize_rect(attached.main);
             for panel in &mut attached.panels {
                 panel.rect = normalize_rect(panel.rect);
@@ -3142,6 +3143,7 @@ fn attached_state_for_window(
         })
         .collect();
     Some(WindowsChromeAttachedState {
+        main_region: layout.main_region,
         main: layout.main,
         panels,
     })
@@ -4184,17 +4186,19 @@ fn invalidate_precise_shell_chrome(
     for rect in attached_dirty {
         invalidate_rect_if_non_empty(hwnd, rect);
     }
-    // The lxapp navbar is clipped to the main column and browser asides paint
-    // their address bar in the shared top band - both track the main column's
-    // width, which only changes when a panel opens/closes/resizes.
+    // The lxapp navbar belongs to the main region and therefore tracks both
+    // axes when a panel opens, closes, or resizes.
     // `shell_chrome_dirty_rects` diffs only the lxapp layout (unchanged on those
     // events), so repaint the top strip here when the *main rect* changes.
     // Gating on the main rect (not on full attached equality) is deliberate: a
     // live aside's frequent re-syncs leave the main width unchanged, so the top
     // strip is not repainted on every tick - which would flicker the navbar,
     // sidebar header, and address bar.
-    let previous_main = previous.attached.as_ref().map(|attached| attached.main);
-    let current_main = attached.map(|attached| attached.main);
+    let previous_main = previous
+        .attached
+        .as_ref()
+        .map(|attached| attached.main_region);
+    let current_main = attached.map(|attached| attached.main_region);
     if previous_main != current_main {
         invalidate_rect_if_non_empty(
             hwnd,
@@ -4247,6 +4251,7 @@ fn attached_chrome_dirty_rects(
 
 #[cfg(feature = "shell-chrome")]
 fn push_attached_layout_dirty_rects(dirty: &mut Vec<RECT>, attached: &WindowsChromeAttachedLayout) {
+    push_unique_dirty_rect(dirty, attached.main_region);
     for panel in &attached.panels {
         push_unique_dirty_rect(dirty, panel.rect);
         // A tab switch changes only the toolbar row; redraw it even when the

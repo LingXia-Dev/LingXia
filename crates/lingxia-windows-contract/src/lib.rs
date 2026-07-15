@@ -449,12 +449,16 @@ pub struct WindowsChromePanelLayout {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct WindowsChromeAttachedLayout {
+    /// Full main region after aside arbitration, including main-owned chrome.
+    pub main_region: RECT,
+    /// Main WebView viewport after reserving its navigation bar.
     pub main: RECT,
     pub panels: Vec<WindowsChromePanelLayout>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct WindowsChromeAttachedState {
+    pub main_region: RECT,
     pub main: RECT,
     pub panels: Vec<WindowsChromePanel>,
 }
