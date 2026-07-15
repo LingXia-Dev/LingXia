@@ -32,7 +32,7 @@ struct Cli {
     command: Commands,
 }
 
-/// Common build options shared between Build and Dev commands
+/// Common build options shared between Build and Dev commands.
 #[derive(clap::Args, Clone)]
 struct BuildOptions {
     /// Release build (debug is the default)
@@ -42,18 +42,6 @@ struct BuildOptions {
     /// Skip native Rust library compilation (use existing binaries)
     #[arg(long)]
     skip_native: bool,
-
-    /// Android ABIs (comma-separated). Default: arm64-v8a. Use `all` for arm32 + arm64.
-    #[arg(
-        long,
-        value_delimiter = ',',
-        long_help = "Android ABIs (comma-separated).\n\nDefault: arm64-v8a.\nUse `--abis all` to build both arm32 and arm64.\n\nSupported values:\n  - all\n  - arm64-v8a\n  - armeabi-v7a"
-    )]
-    abis: Vec<String>,
-
-    /// macOS architecture for native build
-    #[arg(long, value_parser = ["arm64", "x86_64"])]
-    macos_arch: Option<String>,
 
     /// Override LxApp view framework detection (multi-framework demo projects
     /// only — a real project has exactly one; hidden from help)
@@ -95,6 +83,22 @@ struct BuildOptions {
     /// Falls back to LINGXIA_PROVIDER_<NAME>_PATH / _GIT env when omitted.
     #[arg(long = "provider-path")]
     provider_path: Option<String>,
+}
+
+/// Platform-specific target overrides for distributable builds.
+#[derive(clap::Args, Clone)]
+struct PlatformBuildOptions {
+    /// Android ABIs (comma-separated). Default: arm64-v8a. Use `all` for arm32 + arm64.
+    #[arg(
+        long = "android-abis",
+        value_delimiter = ',',
+        long_help = "Android ABIs (comma-separated).\n\nDefault: arm64-v8a.\nUse `--android-abis all` to build both arm32 and arm64.\n\nSupported values:\n  - all\n  - arm64-v8a\n  - armeabi-v7a"
+    )]
+    android_abis: Vec<String>,
+
+    /// macOS architecture for native build; defaults to the host architecture
+    #[arg(long, value_parser = ["arm64", "x86_64"])]
+    macos_arch: Option<String>,
 }
 
 #[derive(clap::Args, Clone)]
@@ -225,6 +229,9 @@ enum Commands {
     Build {
         #[command(flatten)]
         build_options: BuildOptions,
+
+        #[command(flatten)]
+        platform_options: PlatformBuildOptions,
 
         /// Platforms to build (comma-separated).
         #[arg(
@@ -625,6 +632,7 @@ fn main() -> Result<()> {
         }
         Commands::Build {
             build_options,
+            platform_options,
             platform,
             all_platforms,
             ipa,
@@ -637,8 +645,8 @@ fn main() -> Result<()> {
             commands::build::execute(commands::build::BuildExecuteOptions {
                 release: build_options.release,
                 build_native: !build_options.skip_native,
-                abis: build_options.abis,
-                macos_arch: build_options.macos_arch,
+                android_abis: platform_options.android_abis,
+                macos_arch: platform_options.macos_arch,
                 framework: build_options.framework,
                 progress: build_options.progress,
                 platforms: platform,
@@ -666,7 +674,7 @@ fn main() -> Result<()> {
         } => {
             commands::package::execute(commands::package::PackageExecuteOptions {
                 build_native: !package_options.skip_native,
-                abis: package_options.abis,
+                android_abis: package_options.android_abis,
                 macos_arch: package_options.macos_arch,
                 framework: package_options.framework,
                 progress: package_options.progress,
@@ -712,8 +720,6 @@ fn main() -> Result<()> {
             commands::dev::execute(commands::dev::DevExecuteOptions {
                 release: dev_options.build_options.release,
                 build_native: !dev_options.build_options.skip_native,
-                abis: dev_options.build_options.abis,
-                macos_arch: dev_options.build_options.macos_arch,
                 framework: dev_options.build_options.framework,
                 progress: dev_options.build_options.progress,
                 device: dev_options.device,
@@ -874,6 +880,35 @@ mod cli_tests {
     #[test]
     fn dev_lan_remote_control_is_removed() {
         assert!(Cli::try_parse_from(["lingxia", "dev", "--lan"]).is_err());
+    }
+
+    #[test]
+    fn build_accepts_platform_specific_target_options() {
+        let cli = Cli::try_parse_from([
+            "lingxia",
+            "build",
+            "--platform",
+            "android,macos",
+            "--android-abis",
+            "all",
+            "--macos-arch",
+            "arm64",
+        ])
+        .unwrap();
+        let Commands::Build {
+            platform_options, ..
+        } = cli.command
+        else {
+            panic!("expected build command");
+        };
+        assert_eq!(platform_options.android_abis, vec!["all"]);
+        assert_eq!(platform_options.macos_arch.as_deref(), Some("arm64"));
+    }
+
+    #[test]
+    fn dev_does_not_accept_distribution_target_options() {
+        assert!(Cli::try_parse_from(["lingxia", "dev", "--android-abis", "all"]).is_err());
+        assert!(Cli::try_parse_from(["lingxia", "dev", "--macos-arch", "arm64"]).is_err());
     }
 
     #[test]

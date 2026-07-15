@@ -10,11 +10,11 @@ pub struct PackageOptions {
 
     /// Android ABIs (comma-separated). Default: arm64-v8a. Use `all` for arm32 + arm64.
     #[arg(
-        long,
+        long = "android-abis",
         value_delimiter = ',',
-        long_help = "Android ABIs (comma-separated).\n\nDefault: arm64-v8a.\nUse `--abis all` to build both arm32 and arm64.\n\nSupported values:\n  - all\n  - arm64-v8a\n  - armeabi-v7a"
+        long_help = "Android ABIs (comma-separated).\n\nDefault: arm64-v8a.\nUse `--android-abis all` to build both arm32 and arm64.\n\nSupported values:\n  - all\n  - arm64-v8a\n  - armeabi-v7a"
     )]
-    pub abis: Vec<String>,
+    pub android_abis: Vec<String>,
 
     /// macOS architecture for native build
     #[arg(long, value_parser = ["arm64", "x86_64"])]
@@ -71,7 +71,7 @@ pub struct PackageOptions {
 
 pub struct PackageExecuteOptions {
     pub build_native: bool,
-    pub abis: Vec<String>,
+    pub android_abis: Vec<String>,
     pub macos_arch: Option<String>,
     pub framework: Option<String>,
     pub progress: Option<String>,
@@ -94,7 +94,7 @@ pub fn execute(options: PackageExecuteOptions) -> Result<()> {
     build::execute(BuildExecuteOptions {
         release: true,
         build_native: options.build_native,
-        abis: options.abis,
+        android_abis: options.android_abis,
         macos_arch: options.macos_arch,
         framework: options.framework,
         progress: options.progress,

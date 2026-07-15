@@ -15,7 +15,7 @@ use std::{env, fs};
 pub struct BuildExecuteOptions {
     pub release: bool,
     pub build_native: bool,
-    pub abis: Vec<String>,
+    pub android_abis: Vec<String>,
     pub macos_arch: Option<String>,
     pub framework: Option<String>,
     pub progress: Option<String>,
@@ -43,6 +43,25 @@ pub struct BuildExecuteOptions {
     pub provider_path: Option<String>,
 }
 
+fn validate_platform_target_options(
+    has_android: bool,
+    has_macos: bool,
+    android_abis: &[String],
+    macos_arch: Option<&str>,
+) -> Result<()> {
+    if !android_abis.is_empty() && !has_android {
+        return Err(anyhow!(
+            "--android-abis requires Android in the selected platforms"
+        ));
+    }
+    if macos_arch.is_some() && !has_macos {
+        return Err(anyhow!(
+            "--macos-arch requires macOS in the selected platforms"
+        ));
+    }
+    Ok(())
+}
+
 /// Execute the build command
 ///
 /// Builds the project using the detected platform's build system.
@@ -51,7 +70,7 @@ pub fn execute(options: BuildExecuteOptions) -> Result<()> {
     let BuildExecuteOptions {
         release,
         build_native,
-        abis,
+        android_abis,
         macos_arch,
         framework,
         progress,
@@ -83,6 +102,7 @@ pub fn execute(options: BuildExecuteOptions) -> Result<()> {
 
     // LxApp or LxPlugin project (no host config)
     if (lxapp_json_exists || lxplugin_json_exists) && !host_config_exists {
+        validate_platform_target_options(false, false, &android_abis, macos_arch.as_deref())?;
         if package && !release {
             return Err(anyhow!(
                 "Packaging requires a release build for LxApp/LxPlugin projects."
@@ -191,6 +211,12 @@ pub fn execute(options: BuildExecuteOptions) -> Result<()> {
     }
 
     if standalone_apple_swift_package {
+        validate_platform_target_options(
+            false,
+            inferred_platform_from_subdir == Some(PlatformType::MacOs),
+            &android_abis,
+            macos_arch.as_deref(),
+        )?;
         return build_standalone_apple_swift_package(
             &project_root,
             inferred_platform_from_subdir,
@@ -318,15 +344,13 @@ Specify one with `--platform <name>` or build all with `--all-platforms`."
     let has_android = platforms_to_build
         .iter()
         .any(|p| matches!(p, platform::detector::PlatformType::Android));
+    let has_macos = platforms_to_build
+        .iter()
+        .any(|p| matches!(p, platform::detector::PlatformType::MacOs));
+    validate_platform_target_options(has_android, has_macos, &android_abis, macos_arch.as_deref())?;
     let build_targets = if has_android {
-        crate::platform::android_abis::resolve_android_targets_from_abis(&abis)?
+        crate::platform::android_abis::resolve_android_targets_from_abis(&android_abis)?
     } else {
-        if !abis.is_empty() {
-            println!(
-                "{} Ignoring --abis because Android is not in selected platforms",
-                "ℹ".blue()
-            );
-        }
         Vec::new()
     };
 
@@ -908,7 +932,7 @@ fn build_standalone_apple_swift_package(
 
 #[cfg(test)]
 mod tests {
-    use super::{resolve_build_env, stage_package_artifact};
+    use super::{resolve_build_env, stage_package_artifact, validate_platform_target_options};
     use crate::config::{EnvVersion, LingXiaConfig};
     use crate::platform::BuildArtifacts;
     use crate::platform::detector::PlatformType;
@@ -976,5 +1000,15 @@ mod tests {
         assert_eq!(release.effective_package_id_suffix(), None);
         assert_eq!(preview.version, EnvVersion::Preview);
         assert_eq!(preview.effective_package_id_suffix(), Some(".preview"));
+    }
+
+    #[test]
+    fn platform_target_options_require_their_platform() {
+        let android = vec!["arm64-v8a".to_string()];
+
+        assert!(validate_platform_target_options(true, false, &android, None).is_ok());
+        assert!(validate_platform_target_options(false, true, &[], Some("arm64")).is_ok());
+        assert!(validate_platform_target_options(false, false, &android, None).is_err());
+        assert!(validate_platform_target_options(false, false, &[], Some("arm64")).is_err());
     }
 }

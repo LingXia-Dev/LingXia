@@ -1,11 +1,20 @@
 use super::forward::DevPortForward;
 use super::*;
 
-pub(super) fn execute_android(ctx: DevContext, abis: Vec<String>) -> Result<()> {
+pub(super) fn execute_android(mut ctx: DevContext) -> Result<()> {
     let platform_name = platform_session_name(PlatformType::Android);
     precheck_platform_session(&ctx.project_root, platform_name)?;
     let platform = platform::android::AndroidPlatform::new();
-    let build_targets = crate::platform::android_abis::resolve_android_targets_from_abis(&abis)?;
+    let (device_id, build_target) =
+        platform::android::resolve_dev_device_target(ctx.device.as_deref())?;
+    println!(
+        "  {} Android device {} ({})",
+        "→".cyan(),
+        device_id,
+        build_target
+    );
+    ctx.device = Some(device_id);
+    let build_targets = vec![build_target];
     let stop_requested = Arc::new(AtomicBool::new(false));
     let server = server::start_server_fixed_with_stop(
         &ctx.project_root,
