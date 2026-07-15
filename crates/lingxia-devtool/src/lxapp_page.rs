@@ -33,20 +33,7 @@ fn handle_lxapp_page_command_impl(
         handlers::lxapp_page::LIST => {
             let args: AppArgs = parse_args(handler, args)?;
             let pages = lingxia::dev::lxapp_dev_page_list(args.appid.as_deref())?;
-            let surfaces = lingxia::dev::lxapp_dev_surface_list(args.appid.as_deref())?;
-            let appid = pages
-                .first()
-                .map(|page| page.appid.clone())
-                .or_else(|| surfaces.first().map(|surface| surface.appid.clone()))
-                .unwrap_or_default();
-            Ok(Some(json!({
-                "appid": appid,
-                "pages_count": pages.len(),
-                "opened_pages_count": pages.iter().filter(|page| page.opened).count(),
-                "surfaces_count": surfaces.len(),
-                "pages": pages,
-                "surfaces": surfaces,
-            })))
+            Ok(Some(page_list_response(pages)))
         }
         handlers::lxapp_page::INFO => {
             let args: PageTargetArgs = parse_args(handler, args)?;
@@ -212,6 +199,19 @@ fn handle_lxapp_page_command_impl(
     }
 }
 
+fn page_list_response(pages: Vec<lingxia::dev::LxAppDevPageInfo>) -> Value {
+    let appid = pages
+        .first()
+        .map(|page| page.appid.clone())
+        .unwrap_or_default();
+    json!({
+        "appid": appid,
+        "pages_count": pages.len(),
+        "opened_pages_count": pages.iter().filter(|page| page.opened).count(),
+        "pages": pages,
+    })
+}
+
 fn page_action_response(action: &'static str, page: lingxia::dev::LxAppDevPageInfo) -> Value {
     json!({ "ok": true, "action": action, "page": page })
 }
@@ -332,4 +332,17 @@ struct BackArgs {
     appid: Option<String>,
     #[serde(default)]
     delta: Option<u32>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::page_list_response;
+
+    #[test]
+    fn page_list_contract_contains_only_lxapp_pages() {
+        let response = page_list_response(Vec::new());
+
+        assert!(response.get("pages").is_some());
+        assert!(response.get("surfaces").is_none());
+    }
 }

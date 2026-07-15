@@ -36,7 +36,7 @@ websocket is not a remote machine-management API.
 - `reload` — rebuild the lxapp front-end bundle through the running session, then reload the running lxapp so the new bundle is live (covers Web, Logic, and `lxapp.json` changes); `--build-only` skips the runtime reload
 - `nav to|redirect|switch-tab|relaunch|back` — navigate the runtime by page name (from `pages`)
 - `eval` — run JS in the **Logic runtime**; `page eval` — run JS in the **page WebView** (the two see different things — JS-contexts table below)
-- `page current|list|info` — page-instance status. `page list` includes every live instance (including surface-owned pages), plus every `lxapp.json` route that is not currently open. Its `surfaces` array also reports live URL and URL-callback surfaces; browser tabs remain under `browser`.
+- `page current|list|info` — page-instance status. `page list` includes every live instance (including surface-owned pages), plus every `lxapp.json` route that is not currently open. External URL and URL-callback surfaces are browser tabs, so they appear only under `browser tabs`.
 - `page wait` — wait for the lxapp lifecycle to reach `ready`, or for a CSS selector to become attached, detached, visible, hidden, enabled, or editable
 - `page query|click|type|fill|press` — element-level automation in the page WebView (works cross-platform: native input on desktop/attached, JS synthesis on iOS/Android/Harmony/AppUI-detached)
 - `page scroll` (by `--dx`/`--dy`) / `page scroll-to --css` — scroll the page DOM (nearest scroll container) or bring an element into view
@@ -54,7 +54,7 @@ websocket is not a remote machine-management API.
 
 Mobile reports one host window. Desktop hosts may report several (for example macOS AppUI surfaces); omit `--window` to use the focused/main window. App screenshot JSON always returns the resolved `window_id`, content dimensions, and pixel scale. Mouse coordinates use content pixels on Windows and content points on macOS, so Retina screenshot positions must be divided by the reported scale before feeding them back to `app mouse`.
 
-**`browser`** — the host app's browser tabs (arbitrary web content, Playwright-like):
+**`browser`** — the host app's browser tabs (arbitrary web content, including external URL and URL-callback surfaces; Playwright-like):
 - `open` / `tabs` / `current` / `activate` / `close` / `reload` / `back` / `forward`
 - `eval` / `query` — JS and element inspection in a tab
 - `wait` / `wait-url` / `wait-away` — block until a condition holds

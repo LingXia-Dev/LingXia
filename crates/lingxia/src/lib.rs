@@ -44,8 +44,8 @@ pub mod dev {
         lxapp_dev_page_input_supported, lxapp_dev_page_list, lxapp_dev_page_press,
         lxapp_dev_page_query, lxapp_dev_page_screenshot, lxapp_dev_page_screenshot_with_info,
         lxapp_dev_page_scroll, lxapp_dev_page_scroll_to, lxapp_dev_page_type, lxapp_dev_page_wait,
-        lxapp_dev_restart, lxapp_dev_surface_list, perform_app_keyboard, perform_app_mouse,
-        register_device_controller, take_app_screenshot, take_app_screenshot_with_info,
+        lxapp_dev_restart, perform_app_keyboard, perform_app_mouse, register_device_controller,
+        take_app_screenshot, take_app_screenshot_with_info,
     };
     pub use lingxia_platform::traits::keyboard::{
         AppKeyboardAction, AppKeyboardModifier, AppKeyboardRequest, AppKeyboardResult,
