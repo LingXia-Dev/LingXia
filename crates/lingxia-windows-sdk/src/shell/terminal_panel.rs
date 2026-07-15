@@ -1236,14 +1236,8 @@ fn run_terminal_panel_poll_loop(panel_key: &str, stop: &AtomicBool) {
 /// overrides it or the session is not the focused pane).
 #[cfg(feature = "terminal-runtime")]
 fn update_focused_auto_title(panel_id: &str, session_id: u64, snapshot: &TerminalSnapshot) {
-    let auto_title = snapshot
-        .title
-        .as_deref()
-        .or(snapshot.process_title.as_deref())
-        .map(str::trim)
-        .filter(|title| !title.is_empty())
-        .unwrap_or("terminal")
-        .to_string();
+    let auto_title =
+        stable_tab_title(snapshot.process_title.as_deref(), snapshot.title.as_deref()).to_string();
     let changed = {
         let mut panels = windows_terminal_panels();
         let Some(tab) = panels
@@ -1260,6 +1254,21 @@ fn update_focused_auto_title(panel_id: &str, session_id: u64, snapshot: &Termina
     if changed {
         publish_tab_strip(panel_id);
     }
+}
+
+/// Prefer the stable process identity over OSC titles: TUI apps may animate
+/// their OSC title, which would otherwise repaint the tab on every frame.
+#[cfg(feature = "terminal-runtime")]
+fn stable_tab_title<'a>(
+    process_title: Option<&'a str>,
+    terminal_title: Option<&'a str>,
+) -> &'a str {
+    [process_title, terminal_title]
+        .into_iter()
+        .flatten()
+        .map(str::trim)
+        .find(|title| !title.is_empty())
+        .unwrap_or("terminal")
 }
 
 /// Session id that input/copy/paste route to: the active tab's focused pane.
@@ -1752,5 +1761,23 @@ fn windows_terminal_snapshot_body(snapshot: &TerminalSnapshot) -> String {
         title.to_string()
     } else {
         lines.join("\n")
+    }
+}
+
+#[cfg(all(test, feature = "terminal-runtime"))]
+mod tests {
+    use super::stable_tab_title;
+
+    #[test]
+    fn stable_process_title_ignores_animated_terminal_title() {
+        assert_eq!(stable_tab_title(Some("codex"), Some("⠋ Working")), "codex");
+        assert_eq!(stable_tab_title(Some("codex"), Some("⠙ Working")), "codex");
+    }
+
+    #[test]
+    fn terminal_title_is_only_a_non_empty_fallback() {
+        assert_eq!(stable_tab_title(None, Some("vim")), "vim");
+        assert_eq!(stable_tab_title(Some("  "), Some("vim")), "vim");
+        assert_eq!(stable_tab_title(Some("  "), Some("  ")), "terminal");
     }
 }
