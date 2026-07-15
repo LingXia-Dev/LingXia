@@ -165,15 +165,39 @@ pub fn displays() -> Result<Vec<Display>> {
             id: format!("display-{}", i + 1),
             primary: id == main,
             bounds: rect_to(bounds),
-            // macOS does not expose a per-display work area through Quartz; the
-            // menu bar / Dock insets would require NSScreen.visibleFrame. Report
-            // the full bounds and let callers inset if they care.
-            work_area: rect_to(bounds),
+            work_area: display_work_area(id, bounds),
             scale,
             dpi: (72.0 * scale).round() as u32,
         });
     }
     Ok(out)
+}
+
+/// Return `NSScreen.visibleFrame` in the same top-left coordinate space as
+/// `CGDisplayBounds`. AppKit is main-thread-only, so non-main callers retain the
+/// safe full-display fallback.
+fn display_work_area(id: CGDirectDisplayID, bounds: CGRect) -> Rect {
+    use objc2::MainThreadMarker;
+    use objc2_app_kit::NSScreen;
+
+    let Some(mtm) = MainThreadMarker::new() else {
+        return rect_to(bounds);
+    };
+    let screens = NSScreen::screens(mtm);
+    let Some(screen) = screens
+        .iter()
+        .find(|screen| screen.CGDirectDisplayID() == id)
+    else {
+        return rect_to(bounds);
+    };
+    let frame = screen.frame();
+    let visible = screen.visibleFrame();
+    let left = visible.origin.x - frame.origin.x;
+    let top = (frame.origin.y + frame.size.height) - (visible.origin.y + visible.size.height);
+    rect_to(CGRect::new(
+        objc2_core_foundation::CGPoint::new(bounds.origin.x + left, bounds.origin.y + top),
+        visible.size,
+    ))
 }
 
 /// A display's backing scale factor (2.0 on Retina), from its current mode.
@@ -285,7 +309,7 @@ fn enumerate(query: &WindowQuery, only_onscreen: bool) -> Result<Vec<Window>> {
             if rect.w <= 0 || rect.h <= 0 {
                 continue;
             }
-            let onscreen = cf::dict_i64(dict, kCGWindowIsOnscreen).map(|v| v != 0);
+            let onscreen = cf::dict_bool(dict, kCGWindowIsOnscreen);
             let pid = cf::dict_i64(dict, kCGWindowOwnerPID).unwrap_or(0) as u32;
             let process = cf::dict_string(dict, kCGWindowOwnerName).unwrap_or_default();
             // kCGWindowName (the title) is redacted unless the process holds the
@@ -379,10 +403,10 @@ pub fn wait_window(query: &WindowQuery, visible: Option<bool>, timeout_ms: u64) 
     }
     let deadline = std::time::Instant::now() + std::time::Duration::from_millis(timeout_ms);
     loop {
-        if let Ok(found) = windows(query)
-            && let Some(w) = found
-                .into_iter()
-                .find(|w| visible.is_none_or(|v| w.visible == v))
+        let found = windows(query)?;
+        if let Some(w) = found
+            .into_iter()
+            .find(|w| visible.is_none_or(|v| w.visible == v))
         {
             return Ok(w);
         }

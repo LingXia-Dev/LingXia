@@ -51,6 +51,25 @@ pub enum WindowVisibility {
     Hidden,
 }
 
+#[derive(clap::ValueEnum, Clone, Copy)]
+pub enum AxWaitState {
+    Exists,
+    Gone,
+    Enabled,
+    Focused,
+}
+
+impl AxWaitState {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Exists => "exists",
+            Self::Gone => "gone",
+            Self::Enabled => "enabled",
+            Self::Focused => "focused",
+        }
+    }
+}
+
 impl WindowVisibility {
     fn as_bool(self) -> bool {
         matches!(self, WindowVisibility::Visible)
@@ -276,8 +295,8 @@ pub enum WaitAction {
         #[arg(long = "match")]
         match_query: String,
         /// exists (default) | gone | enabled | focused
-        #[arg(long, default_value = "exists")]
-        state: String,
+        #[arg(long, value_enum, default_value = "exists")]
+        state: AxWaitState,
         #[arg(long, default_value_t = 5000)]
         timeout_ms: u64,
         #[arg(long)]
@@ -506,6 +525,19 @@ pub enum PointerAction {
     },
 }
 
+impl PointerAction {
+    fn json(&self) -> bool {
+        match self {
+            Self::Move { json, .. }
+            | Self::Down { json, .. }
+            | Self::Up { json, .. }
+            | Self::Click { json, .. }
+            | Self::Drag { json, .. }
+            | Self::Scroll { json, .. } => *json,
+        }
+    }
+}
+
 #[derive(Subcommand, Clone)]
 pub enum KeyAction {
     /// Type literal text (may bypass IME; prefer clipboard paste for CJK)
@@ -538,6 +570,17 @@ pub enum KeyAction {
         #[arg(long)]
         json: bool,
     },
+}
+
+impl KeyAction {
+    fn json(&self) -> bool {
+        match self {
+            Self::Type { json, .. }
+            | Self::Press { json, .. }
+            | Self::Down { json, .. }
+            | Self::Up { json, .. } => *json,
+        }
+    }
 }
 
 #[derive(Subcommand, Clone)]
@@ -629,7 +672,7 @@ pub fn execute(options: DesktopOptions) -> ! {
             action,
         } => match resolve_target(pid, window) {
             Ok(t) => run_pointer(action, t, allow_control, allow_destructive),
-            Err(e) => finish::<cu::Ack>(false, Err(e), print_ack),
+            Err(e) => finish::<cu::Ack>(action.json(), Err(e), print_ack),
         },
         DesktopCommand::Key {
             window,
@@ -637,7 +680,7 @@ pub fn execute(options: DesktopOptions) -> ! {
             action,
         } => match resolve_target(pid, window) {
             Ok(t) => run_key(action, t, allow_control, allow_destructive),
-            Err(e) => finish::<cu::Ack>(false, Err(e), print_ack),
+            Err(e) => finish::<cu::Ack>(action.json(), Err(e), print_ack),
         },
         DesktopCommand::Clipboard { action } => {
             run_clipboard(action, allow_control, allow_destructive)
@@ -728,24 +771,30 @@ fn run_snapshot(window: String, no_ax: bool, depth: Option<u32>) -> ! {
         Ok(w) => w,
         Err(e) => finish::<()>(true, Err(e), |_| {}),
     };
-    let shot = cu::screenshot(cu::CaptureTarget::Window(window.clone())).ok();
+    let shot = match cu::screenshot(cu::CaptureTarget::Window(window.clone())) {
+        Ok(shot) => shot,
+        Err(e) => finish::<()>(true, Err(e), |_| {}),
+    };
     let ax = if no_ax {
         None
     } else {
-        cu::ax::tree(&window, depth, None).ok()
+        match cu::ax::tree(&window, depth, None) {
+            Ok(ax) => Some(ax),
+            Err(e) => finish::<()>(true, Err(e), |_| {}),
+        }
     };
     let envelope = serde_json::json!({
         "target": "desktop",
         "kind": "snapshot",
         "window": info,
-        "screenshot": shot.map(|c| serde_json::json!({
+        "screenshot": {
             "format": "png",
-            "width": c.width,
-            "height": c.height,
-            "occlusion_independent": c.occlusion_independent,
+            "width": shot.width,
+            "height": shot.height,
+            "occlusion_independent": shot.occlusion_independent,
             "image": { "mime": "image/png", "encoding": "base64",
-                       "data": base64::engine::general_purpose::STANDARD.encode(&c.png) },
-        })),
+                       "data": base64::engine::general_purpose::STANDARD.encode(&shot.png) },
+        },
         "ax": ax,
     });
     println!(
@@ -853,7 +902,7 @@ fn run_wait(action: WaitAction) -> ! {
             let q = cu::AxQuery::parse(&match_query);
             finish(
                 json,
-                cu::ax::wait(&window, &q, &state, timeout_ms),
+                cu::ax::wait(&window, &q, state.as_str(), timeout_ms),
                 print_ack,
             )
         }

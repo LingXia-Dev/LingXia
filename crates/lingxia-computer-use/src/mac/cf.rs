@@ -15,6 +15,8 @@ unsafe extern "C-unwind" {
     fn CFGetTypeID(cf: *const c_void) -> usize;
     fn CFStringGetTypeID() -> usize;
     fn CFNumberGetTypeID() -> usize;
+    fn CFBooleanGetTypeID() -> usize;
+    fn CFBooleanGetValue(boolean: *const c_void) -> bool;
 }
 
 /// Number of elements in a `CFArray` addressed by raw pointer.
@@ -68,6 +70,17 @@ pub(super) unsafe fn dict_f64(dict: *const c_void, key: &CFString) -> Option<f64
             return None;
         }
         (*(v as *const CFNumber)).as_f64()
+    }
+}
+
+/// Read a dictionary value as a `bool`, guarding the runtime type.
+pub(super) unsafe fn dict_bool(dict: *const c_void, key: &CFString) -> Option<bool> {
+    unsafe {
+        let v = dict_get(dict, key);
+        if v.is_null() || CFGetTypeID(v) != CFBooleanGetTypeID() {
+            return None;
+        }
+        Some(CFBooleanGetValue(v))
     }
 }
 
