@@ -443,9 +443,12 @@ impl LxApp {
 
         if let Ok(state) = self.state.lock() {
             let mut pages = state.pages.lock().unwrap();
-            if let Some(existing) = pages.get(&path)
-                && existing.instance_id().as_str() == id.as_str()
-            {
+            let canonical_instance_id = pages
+                .get(&path)
+                .map(|existing| existing.instance_id_string());
+            let remove_stack_path =
+                disposed_instance_owns_stack_path(canonical_instance_id.as_deref(), id.as_str());
+            if remove_stack_path {
                 pages.remove(&path);
             }
             state.pages_by_id.lock().unwrap().remove(id.as_str());
@@ -454,11 +457,13 @@ impl LxApp {
                 .lock()
                 .unwrap()
                 .remove(id.as_str());
-            state
-                .page_stack
-                .lock()
-                .unwrap()
-                .retain(|stack_path| stack_path != &path);
+            if remove_stack_path {
+                state
+                    .page_stack
+                    .lock()
+                    .unwrap()
+                    .retain(|stack_path| stack_path != &path);
+            }
         }
 
         destroy_webview(&page.webtag());
@@ -969,6 +974,13 @@ fn effective_page_instance_lifecycle(
     }
 }
 
+fn disposed_instance_owns_stack_path(
+    canonical_instance_id: Option<&str>,
+    disposed_instance_id: &str,
+) -> bool {
+    canonical_instance_id == Some(disposed_instance_id)
+}
+
 fn normalize_page_path(path: &str) -> &str {
     path.trim_start_matches('/')
 }
@@ -1019,7 +1031,10 @@ fn plugin_page_map_contains(
 
 #[cfg(test)]
 mod tests {
-    use super::{PageInstanceLifecycleState, effective_page_instance_lifecycle};
+    use super::{
+        PageInstanceLifecycleState, disposed_instance_owns_stack_path,
+        effective_page_instance_lifecycle,
+    };
 
     #[test]
     fn automation_lifecycle_does_not_report_ready_pages_as_created() {
@@ -1040,5 +1055,18 @@ mod tests {
             effective_page_instance_lifecycle(None, false, "onReady", true),
             "mounted"
         );
+    }
+
+    #[test]
+    fn disposing_isolated_surface_page_keeps_canonical_stack_path() {
+        assert!(disposed_instance_owns_stack_path(
+            Some("stack-instance"),
+            "stack-instance"
+        ));
+        assert!(!disposed_instance_owns_stack_path(
+            Some("stack-instance"),
+            "surface-instance"
+        ));
+        assert!(!disposed_instance_owns_stack_path(None, "surface-instance"));
     }
 }
