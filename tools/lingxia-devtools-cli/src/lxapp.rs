@@ -688,8 +688,7 @@ fn execute_doctor(info: &SessionInfo, json: bool) -> Result<()> {
         get(&["backend"]).and_then(Value::as_str).unwrap_or("-")
     );
     println!("page shot    {}", cap("page_screenshot"));
-    println!("page pointer {}", cap("page_pointer"));
-    println!("page key     {}", cap("page_key"));
+    println!("page input   {}", cap("page_input"));
     println!("runner       {}", cap("runner"));
     Ok(())
 }
