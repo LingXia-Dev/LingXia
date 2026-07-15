@@ -83,7 +83,7 @@ pub(crate) fn bookmark_state(url: &str) -> u32 {
     #[cfg(feature = "browser-shell")]
     {
         let normalized = lingxia_browser_shell::normalize_bookmark_url(url);
-        return lingxia_browser_shell::bookmarks_snapshot()
+        lingxia_browser_shell::bookmarks_snapshot()
             .and_then(|snapshot| {
                 snapshot
                     .entries
@@ -93,7 +93,7 @@ pub(crate) fn bookmark_state(url: &str) -> u32 {
                     })
                     .map(|entry| 0b1 | (u32::from(entry.pinned) << 1))
             })
-            .unwrap_or(0);
+            .unwrap_or(0)
     }
     #[cfg(not(feature = "browser-shell"))]
     {
