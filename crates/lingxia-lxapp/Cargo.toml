@@ -17,6 +17,7 @@ js-appservice = [
     "dep:rong_http",
     "dep:rong_console",
     "dep:rong_event",
+    "dep:rong_timer",
 ]
 
 [dependencies]
@@ -45,6 +46,7 @@ rong_rt = { workspace = true, default-features = false }
 rong_http = { workspace = true, default-features = false, optional = true }
 rong_console = { workspace = true, optional = true }
 rong_event = { workspace = true, optional = true }
+rong_timer = { workspace = true, optional = true }
 lingxia-app-context = { workspace = true }
 lingxia-log = { workspace = true }
 lingxia-provider = { workspace = true }

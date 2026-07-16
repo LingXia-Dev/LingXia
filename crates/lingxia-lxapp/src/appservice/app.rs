@@ -82,23 +82,20 @@ impl LxAppSvc {
         args: Option<String>,
     ) -> JSResult<()> {
         if let Some(func) = self.event_handlers.get(&event) {
-            // Lifecycle events should not block the JS invoke queue:
-            // user handlers often `await` network/IO, and waiting here can delay page lifecycle
-            // events and make startup feel "stuck" even when the bridge transport is fine.
+            // The caller runs this outside the worker pump. Await the handler so
+            // its task retains the JSContext through any returned Promise. Call
+            // directly because Rong's runtime-wide invoke queue can outlive this
+            // app context when an LxApp is restarted.
             let args_obj = args
                 .as_ref()
                 .and_then(|json| JSObject::from_json_string(ctx, json).ok());
-            rong::enqueue_js_invoke(
-                ctx,
-                func.clone(),
-                Some(self.this.clone()),
-                args_obj,
-                rong::JsInvokePriority::High,
-                None,
-                false,
-            )
-            .await?;
-            return Ok(());
+            return match args_obj {
+                Some(obj) => {
+                    func.call_async::<_, ()>(Some(self.this.clone()), (obj,))
+                        .await
+                }
+                None => func.call_async::<_, ()>(Some(self.this.clone()), ()).await,
+            };
         }
         // App lifecycle handlers are optional, matching PageInstance handlers.
         Ok(())

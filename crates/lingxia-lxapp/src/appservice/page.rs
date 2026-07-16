@@ -335,7 +335,7 @@ impl PageSvc {
                 error!("[{}] notify '{}' failed: {}", page_path, method_name, e);
             }
         };
-        rong::spawn_local(task);
+        super::context_lifecycle::spawn(&ctx, move |_ctx| task);
     }
 
     pub(crate) async fn handle_ch_open(
@@ -918,16 +918,20 @@ impl PageSvc {
     ) -> JSResult<()> {
         if let Some(js_func) = self.functions.get(event.as_str()) {
             let args_obj = args.and_then(|json| rong::JSObject::from_json_string(ctx, json).ok());
-            rong::enqueue_js_invoke(
-                ctx,
-                js_func.clone(),
-                Some(self.this.clone()),
-                args_obj,
-                rong::JsInvokePriority::Normal,
-                None,
-                false,
-            )
-            .await
+            // The caller owns a task-local JSContext for the full async call;
+            // avoid Rong's runtime-wide invoke queue across LxApp restarts.
+            match args_obj {
+                Some(obj) => {
+                    js_func
+                        .call_async::<_, ()>(Some(self.this.clone()), (obj,))
+                        .await
+                }
+                None => {
+                    js_func
+                        .call_async::<_, ()>(Some(self.this.clone()), ())
+                        .await
+                }
+            }
         } else {
             // PageInstance lifecycle handlers are optional by design.
             Ok(())

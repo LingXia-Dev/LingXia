@@ -17,6 +17,9 @@ use tokio::sync::oneshot;
 mod app;
 use crate::lifecycle::AppServiceEvent;
 
+#[path = "context_lifecycle.rs"]
+mod context_lifecycle;
+
 #[path = "event_bus.rs"]
 pub(crate) mod event_bus;
 
@@ -32,6 +35,12 @@ mod plugin;
 mod runtime_ctx;
 pub(crate) use runtime_ctx::set_app_svc_for_ctx;
 use runtime_ctx::{register_app_ctx, remove_app_ctx, with_app_svc, with_page_svc_map};
+
+pub(crate) async fn shutdown_app_context(ctx: &JSContext) {
+    context_lifecycle::shutdown(ctx).await;
+    console::clear_trace_context(ctx);
+    remove_app_ctx(ctx);
+}
 
 /// Rong modules initialized in every Logic worker. Every name must be backed
 /// by an enabled `rong_modules` Cargo feature: resolution fail-fasts on an
@@ -359,17 +368,12 @@ async fn handle_bridge_source(
 }
 
 // Handles a call from native code to a PageInstance service function
-async fn handle_native_source(
-    page_svc: &PageSvc,
-    appid: String,
-    name: String,
-    args: Option<String>,
-) {
+fn handle_native_source(page_svc: &PageSvc, appid: String, name: String, args: Option<String>) {
     let ctx = page_svc.get_ctx();
     let page_svc_clone = page_svc.clone();
     let name_clone = name.clone();
 
-    let task = async move {
+    context_lifecycle::spawn(&ctx, move |ctx| async move {
         if let Err(e) = page_svc_clone
             .call_or_event_from_native(&ctx, &name, args.as_deref())
             .await
@@ -378,8 +382,7 @@ async fn handle_native_source(
                 .with_appid(appid)
                 .with_path(page_svc_clone.page.path());
         }
-    };
-    rong::spawn_local(task);
+    });
 }
 
 /// The core logic for a persistent worker task.
@@ -395,7 +398,7 @@ pub(crate) async fn lxapp_service_handler(
             let ctx = runtime.context();
 
             // Register LxApp runtime context and bind identity to JSContext
-            register_app_ctx(&runtime, &ctx, &lxapp);
+            register_app_ctx(&ctx, &lxapp);
 
             // register PageInstance, App and getApp function
             if let Err(e) = app::init(&ctx) {
@@ -497,19 +500,14 @@ pub(crate) async fn lxapp_service_handler(
             *current_ctx = Some(ctx.clone());
         }
         ServiceMessage::TerminateAppSvc { lxapp, ack_tx } => {
-            // Drop the JSContext directly to release all JS/PageSvc resources.
-            if current_ctx.is_some() {
-                if let Some(ctx) = current_ctx.as_ref() {
-                    console::clear_trace_context(ctx);
-                }
+            if let Some(ctx) = current_ctx.as_ref() {
+                shutdown_app_context(ctx).await;
                 *current_ctx = None;
                 info!("[Worker {}] Removed LxApp context ", worker_id)
                     .with_appid(lxapp.appid.clone());
             }
             // Clear guards on app terminate so the previous LxAppCtx is dropped immediately.
             http::set_network_access_guard(Box::new(DenyAllNetworkAccessGuard));
-            // Remove runtime context for this app so that all associated resources can be dropped.
-            remove_app_ctx(&runtime, &lxapp.appid);
             // ACK back to the caller that cleanup is complete
             let _ = ack_tx.send(());
         }
@@ -599,9 +597,8 @@ pub(crate) async fn lxapp_service_handler(
                     // Don't block the worker message pump on user JS lifecycle handlers.
                     // If an app handler awaits network/IO, blocking here can starve bridge handshake
                     // and other view messages, causing "Handshake timeout" even when transport is OK.
-                    let ctx = ctx.clone();
                     let appid = lxapp.appid.clone();
-                    rong::spawn_local(async move {
+                    context_lifecycle::spawn(ctx, move |ctx| async move {
                         handle_app_service_event(worker_id, &ctx, appid, event, args).await;
                     });
                 }
@@ -651,7 +648,7 @@ pub(crate) async fn lxapp_service_handler(
                         .unwrap_or(None);
 
                         if let Some(page_svc) = page_svc {
-                            handle_native_source(&page_svc, lxapp.appid.clone(), name, args).await;
+                            handle_native_source(&page_svc, lxapp.appid.clone(), name, args);
                         } else {
                             info!(
                                 "[Worker {}] Dropping native call: page service not loaded",
@@ -683,15 +680,20 @@ pub(crate) async fn lxapp_service_handler(
                 .unwrap_or(None);
 
                 if let Some(page_svc) = page_svc {
-                    // Enqueue page event via PageSvc API (non-blocking)
-                    if let Err(e) = page_svc.call_page_event(ctx, event, args.as_deref()).await {
-                        error!(
-                            "[Worker {}] PageInstance event '{}' failed: {}",
-                            worker_id, event, e
-                        )
-                        .with_appid(lxapp.appid.clone())
-                        .with_path(path);
-                    }
+                    // Keep user lifecycle handlers off the worker pump, but retain
+                    // their JSContext until an async handler has actually settled.
+                    let appid = lxapp.appid.clone();
+                    context_lifecycle::spawn(ctx, move |ctx| async move {
+                        if let Err(e) = page_svc.call_page_event(&ctx, event, args.as_deref()).await
+                        {
+                            error!(
+                                "[Worker {}] PageInstance event '{}' failed: {}",
+                                worker_id, event, e
+                            )
+                            .with_appid(appid)
+                            .with_path(path);
+                        }
+                    });
                 } else {
                     info!(
                         "[Worker {}] Dropping page event: page service not loaded",
@@ -711,9 +713,8 @@ pub(crate) async fn lxapp_service_handler(
                     // Don't block the worker message pump on user JS event handlers. Like app/page
                     // lifecycle events, event bus handlers can await network/IO and would
                     // otherwise starve view messages (including handshake retries).
-                    let ctx = ctx.clone();
                     let appid = lxapp.appid.clone();
-                    rong::spawn_local(async move {
+                    context_lifecycle::spawn(ctx, move |ctx| async move {
                         if let Err(e) = event_bus::dispatch_app_bus_event(&ctx, &event).await {
                             error!(
                                 "[Worker {}] Dispatch app bus event failed: {}",
