@@ -25,18 +25,16 @@ interface MyAppInstance {
 
 App({
   onLaunch: async function (this: MyAppInstance) {
-    // Shell activator entries (home-only writer; silent no-op off-desktop).
-    // Idempotent full-list set: any call timing converges to this state.
-    lx.shell.activator.set([
-      { lxapp: "lingxia-chat" },
-      { lxapp: "lingxia-chat-beta" },
-      { native: "terminal" },
+    // The home lxapp atomically declares the complete desktop activator list.
+    lx.shell.activators.replace([
+      { id: "chat", lxapp: "lingxia-chat" },
+      { id: "chat-beta", lxapp: "lingxia-chat-beta" },
+      { id: "terminal", native: "terminal" },
       {
         id: "ping",
         icon: "icons/tray.svg",
-        name: "Ping",
-        color: "#FF6B00",
-        handler: () => {
+        label: "Ping",
+        onActivate: () => {
           lx.showToast({ title: "activator clicked", icon: "success" });
         },
       },

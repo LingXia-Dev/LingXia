@@ -50,7 +50,7 @@ The scaffold type-checks each layer against its real runtime: Logic (`tsconfig.l
 - Or grep a hunch: `grep -rn "scanCode" node_modules/@lingxia/types`.
 - Every option/result type is importable from the package root — `import type { ScanCodeResult } from '@lingxia/types'` — when typing your own helpers.
 
-**Nested namespaces** (the rest of `lx.*` is flat): `lx.env` (abstract `lx://` paths), `lx.app` (host-app control), `lx.tray` (desktop status item).
+**Nested namespaces** (the rest of `lx.*` is flat): `lx.env` (abstract `lx://` paths), `lx.app` (host-app control), `lx.tray` (desktop status item), and `lx.shell.activators` (home-lxapp-owned desktop activator declarations).
 
 ---
 
@@ -72,6 +72,7 @@ Facts that span the whole surface, so no single method's JSDoc carries them:
 - **Storage is synchronous and untyped.** `lx.getStorage().get(key)` returns `unknown` and is not a promise — never `await` it; cast at the call site. For larger or path-based data use `FileManager` (all-async, `lx://` storage-class paths — see [`../reference/file-lifecycle.md`](../reference/file-lifecycle.md)).
 - **Two distinct update flows.** `lx.getUpdateManager()` updates the **lxapp bundle** (every lxapp, callback model); `lx.app.checkUpdate()` updates the **host app shell** (home lxapp only, task model). Don't mix them.
 - **The tab bar is declared, not built.** The `setTabBar*` / `showTabBar` / `hideTabBar` family mutates a tab bar configured statically in `lxapp.json` — see [LxApp guide → Tab bar navigation](./guide.md#tab-bar-navigation).
+- **Shell activators are app-owned; Pins are user-owned.** Only the home lxapp may atomically declare `lx.shell.activators`; stable ids route activation, and lxapp/native entries survive restart. Sidebar Pins (lxapps and websites, mixed order, eight maximum) are intentionally not exposed to Logic.
 
 ---
 
