@@ -1,3 +1,4 @@
+use super::bridge_transport::{bridge_downstream_shutdown_response, is_bridge_downstream_request};
 use crate::webview::{WebTag, find_webview};
 use crate::{WebResourceBody, WebResourceResponse};
 use dispatch2::DispatchQueue;
@@ -243,7 +244,8 @@ define_class!(
                         scheme,
                         url
                     );
-                    None
+                    is_bridge_downstream_request(&http_request)
+                        .then(|| bridge_downstream_shutdown_response(&http_request))
                 };
                 match response {
                     Some(http_response) => {

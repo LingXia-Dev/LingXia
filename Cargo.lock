@@ -507,7 +507,7 @@ dependencies = [
  "bitflags 2.13.0",
  "cexpr",
  "clang-sys",
- "itertools 0.13.0",
+ "itertools 0.12.1",
  "log",
  "prettyplease",
  "proc-macro2",
@@ -2770,15 +2770,6 @@ dependencies = [
 
 [[package]]
 name = "itertools"
-version = "0.13.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "413ee7dfc52ee1a4949ceeb7dbc8a33f2d6c088194d9f922fb8318faf1f01186"
-dependencies = [
- "either",
-]
-
-[[package]]
-name = "itertools"
 version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2b192c782037fadd9cfa75548310488aabdbf3d2da73885b31bd0abd03351285"
@@ -3345,6 +3336,7 @@ dependencies = [
  "rong_http",
  "rong_modules",
  "rong_rt",
+ "rong_timer",
  "serde",
  "serde_json",
  "tar",
@@ -6090,8 +6082,7 @@ dependencies = [
 [[package]]
 name = "rong"
 version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "894a15349685a24ba20d35dc22ca8701dc116384ce41dfcb324e8f79813511fc"
+source = "git+https://github.com/LingXia-Dev/Rong.git?rev=569fb5d69b026b365840ea5f10538372626ebca2#569fb5d69b026b365840ea5f10538372626ebca2"
 dependencies = [
  "futures",
  "rong_arkjs",
@@ -6118,8 +6109,7 @@ dependencies = [
 [[package]]
 name = "rong_arkjs"
 version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "766747ccbc3504ef78f32a30773677259bb6fb8262fb64c65b7663d7b668ae78"
+source = "git+https://github.com/LingXia-Dev/Rong.git?rev=569fb5d69b026b365840ea5f10538372626ebca2#569fb5d69b026b365840ea5f10538372626ebca2"
 dependencies = [
  "rong_arkjs_sys",
  "rong_core",
@@ -6128,8 +6118,7 @@ dependencies = [
 [[package]]
 name = "rong_arkjs_sys"
 version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "668db2e75ce30c78e672bb38a87ff4424e7484cf0b887e05888f0903a80e4518"
+source = "git+https://github.com/LingXia-Dev/Rong.git?rev=569fb5d69b026b365840ea5f10538372626ebca2#569fb5d69b026b365840ea5f10538372626ebca2"
 dependencies = [
  "bindgen",
 ]
@@ -6194,8 +6183,7 @@ dependencies = [
 [[package]]
 name = "rong_core"
 version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "08efe0bca964a8ca5bf54ce8da92ece90fbbff7c1209e17ec7b40853b6b3cfeb"
+source = "git+https://github.com/LingXia-Dev/Rong.git?rev=569fb5d69b026b365840ea5f10538372626ebca2#569fb5d69b026b365840ea5f10538372626ebca2"
 dependencies = [
  "bytes",
  "futures",
@@ -6209,8 +6197,7 @@ dependencies = [
 [[package]]
 name = "rong_cron"
 version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "acf8c039674945b04bb23b06df4de3a75d01d9479973d063193ab80c39a51a8d"
+source = "git+https://github.com/LingXia-Dev/Rong.git?rev=569fb5d69b026b365840ea5f10538372626ebca2#569fb5d69b026b365840ea5f10538372626ebca2"
 dependencies = [
  "chrono",
  "croner",
@@ -6295,8 +6282,7 @@ dependencies = [
 [[package]]
 name = "rong_jscore"
 version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "60c51e8ca5643b7b9491959f8797b53ef43b0d565dc4a4d6da1145ca4a1289cb"
+source = "git+https://github.com/LingXia-Dev/Rong.git?rev=569fb5d69b026b365840ea5f10538372626ebca2#569fb5d69b026b365840ea5f10538372626ebca2"
 dependencies = [
  "rong_core",
  "rong_jscore_sys",
@@ -6306,8 +6292,7 @@ dependencies = [
 [[package]]
 name = "rong_jscore_sys"
 version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5ed27a18746009b076fd9252a8b862905a38ffa19dbab9812f979f79be9e079a"
+source = "git+https://github.com/LingXia-Dev/Rong.git?rev=569fb5d69b026b365840ea5f10538372626ebca2#569fb5d69b026b365840ea5f10538372626ebca2"
 dependencies = [
  "bindgen",
  "cc",
@@ -6316,8 +6301,7 @@ dependencies = [
 [[package]]
 name = "rong_macro"
 version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7e4f4ac3726dc9aff819cd80451097a5236a35893e77ffa6648677ad40ba5859"
+source = "git+https://github.com/LingXia-Dev/Rong.git?rev=569fb5d69b026b365840ea5f10538372626ebca2#569fb5d69b026b365840ea5f10538372626ebca2"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -6357,8 +6341,7 @@ dependencies = [
 [[package]]
 name = "rong_quickjs"
 version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ca44c8d7715ca34627f4e985e6770c10442bb2f420d531819d3f7b99a7b1916e"
+source = "git+https://github.com/LingXia-Dev/Rong.git?rev=569fb5d69b026b365840ea5f10538372626ebca2#569fb5d69b026b365840ea5f10538372626ebca2"
 dependencies = [
  "rong_core",
  "rong_quickjs_sys",
@@ -6368,8 +6351,7 @@ dependencies = [
 [[package]]
 name = "rong_quickjs_sys"
 version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "21b0c184f02dc02255b6f939d814b027116414ea2a33c276f9c0ff35aa519728"
+source = "git+https://github.com/LingXia-Dev/Rong.git?rev=569fb5d69b026b365840ea5f10538372626ebca2#569fb5d69b026b365840ea5f10538372626ebca2"
 dependencies = [
  "bindgen",
  "cc",
@@ -6391,8 +6373,7 @@ dependencies = [
 [[package]]
 name = "rong_rt"
 version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e9468864de5eed0c63ac5329b5c5a73cebfcc76c6f4470b34f9a8797469ca568"
+source = "git+https://github.com/LingXia-Dev/Rong.git?rev=569fb5d69b026b365840ea5f10538372626ebca2#569fb5d69b026b365840ea5f10538372626ebca2"
 dependencies = [
  "bytes",
  "futures",
@@ -6483,8 +6464,7 @@ dependencies = [
 [[package]]
 name = "rong_typegen"
 version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "069cc0755a59d1707fdfdb87fb29adcf880dd0b1167e9e2e379358f5cb4e9fd9"
+source = "git+https://github.com/LingXia-Dev/Rong.git?rev=569fb5d69b026b365840ea5f10538372626ebca2#569fb5d69b026b365840ea5f10538372626ebca2"
 dependencies = [
  "proc-macro2",
  "quote",

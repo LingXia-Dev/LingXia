@@ -1,6 +1,6 @@
 use crate::{error, info, warn};
 use rong::{
-    JSContext, JSFunc, JSObject, JSResult, JSRuntimeService, RongJSError, error::HostError,
+    JSContext, JSContextService, JSFunc, JSObject, JSResult, RongJSError, error::HostError,
 };
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -20,7 +20,8 @@ pub(crate) struct AppBusEvent {
     pub payload_json: Option<String>,
 }
 
-/// Registry stored on the JSRuntime for handler registrations.
+/// Handler registrations owned by one AppService context.
+#[derive(Default)]
 pub(crate) struct EventBusRegistry {
     handlers: RefCell<HashMap<Scope, Vec<HandlerEntry>>>,
 }
@@ -31,24 +32,24 @@ struct HandlerEntry {
     callback: JSFunc,
 }
 
-impl JSRuntimeService for EventBusRegistry {}
+impl JSContextService for EventBusRegistry {}
 
-impl Default for EventBusRegistry {
-    fn default() -> Self {
-        Self {
-            handlers: RefCell::new(HashMap::new()),
-        }
+fn registry(ctx: &JSContext) -> &EventBusRegistry {
+    if ctx.get_service::<EventBusRegistry>().is_none() {
+        ctx.set_service(EventBusRegistry::default());
     }
+    ctx.get_service::<EventBusRegistry>()
+        .expect("event bus registry was inserted above")
 }
 
-/// Initialize the runtime registry (idempotent).
+/// Initialize the context registry (idempotent).
 pub(crate) fn init(ctx: &JSContext) {
-    ctx.runtime().get_or_init_service::<EventBusRegistry>();
+    registry(ctx);
 }
 
 /// Remove all handler registrations for a page (e.g., on unload).
 pub(crate) fn clear_page(ctx: &JSContext, page_path: &str) {
-    let registry = ctx.runtime().get_or_init_service::<EventBusRegistry>();
+    let registry = registry(ctx);
     registry
         .handlers
         .borrow_mut()
@@ -72,7 +73,7 @@ pub fn register_app_handler(ctx: &JSContext, event_name: &str, callback: JSFunc)
         callback,
     };
 
-    let registry = ctx.runtime().get_or_init_service::<EventBusRegistry>();
+    let registry = registry(ctx);
     registry
         .handlers
         .borrow_mut()
@@ -93,7 +94,7 @@ pub fn unregister_app_handler(
     if event_name.trim().is_empty() {
         return 0;
     }
-    let registry = ctx.runtime().get_or_init_service::<EventBusRegistry>();
+    let registry = registry(ctx);
     let mut remaining = 0usize;
     registry.handlers.borrow_mut().retain(|scope, entries| {
         if !matches!(scope, Scope::App) {
@@ -138,7 +139,7 @@ pub fn register_page_handler(
         callback,
     };
 
-    let registry = ctx.runtime().get_or_init_service::<EventBusRegistry>();
+    let registry = registry(ctx);
     registry
         .handlers
         .borrow_mut()
@@ -153,7 +154,7 @@ pub fn unregister_page_handler(ctx: &JSContext, page_path: &str, event_name: &st
     if page_path.trim().is_empty() || event_name.trim().is_empty() {
         return;
     }
-    let registry = ctx.runtime().get_or_init_service::<EventBusRegistry>();
+    let registry = registry(ctx);
     registry.handlers.borrow_mut().retain(|scope, entries| {
         if let Scope::PageInstance(path) = scope
             && path == page_path
@@ -195,7 +196,7 @@ async fn emit_to_handlers(
     event_name: &str,
     payload_json: Option<&str>,
 ) -> JSResult<()> {
-    let registry = ctx.runtime().get_or_init_service::<EventBusRegistry>();
+    let registry = registry(ctx);
     let handlers = {
         let map = registry.handlers.borrow();
         map.get(&scope).cloned().unwrap_or_default()

@@ -1,7 +1,7 @@
 use crate::appservice::event_bus::AppBusEvent;
 use crate::appservice::js_runtime::{
     PageSvcSource, ServiceMessage, WorkerService, create_app_svc, lxapp_service_handler,
-    terminate_app_svc,
+    shutdown_app_context, terminate_app_svc,
 };
 use crate::lifecycle::AppServiceEvent;
 use crate::lifecycle::PageServiceEvent;
@@ -167,8 +167,9 @@ impl LxAppWorkers {
                         }
                     }
 
-                    // Clean up context when worker shuts down
-                    current_ctx.take();
+                    if let Some(ctx) = current_ctx.take() {
+                        shutdown_app_context(&ctx).await;
+                    }
                     Ok(())
                 })
                 .await
@@ -305,6 +306,7 @@ impl LxAppWorkers {
 
     /// Terminate a lxapp service for a specific instance.
     pub fn terminate_app_svc(&self, lxapp: Arc<crate::lxapp::LxApp>) -> Result<(), LxAppError> {
+        lxapp.cancel_all_page_bridge_work();
         terminate_app_svc(
             lxapp,
             &self.sender,

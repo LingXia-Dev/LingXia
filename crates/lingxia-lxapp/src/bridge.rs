@@ -43,6 +43,7 @@ pub(crate) enum AppServiceCommand {
         method: String,
         params_json: Option<String>,
         cancel_rx: oneshot::Receiver<()>,
+        pending_request: PendingRequestGuard,
     },
     Notify {
         method: String,
@@ -61,6 +62,10 @@ pub(crate) enum AppServiceCommand {
         id: String,
         code: Option<String>,
         reason: Option<String>,
+    },
+    CloseChannels {
+        code: String,
+        reason: String,
     },
     StateAck {
         scope: Option<String>,
@@ -151,12 +156,86 @@ struct HandshakeState {
     ready: bool,
 }
 
+#[derive(Default)]
+struct PendingRequestRegistry {
+    next_token: AtomicUsize,
+    requests: Mutex<HashMap<String, PendingRequestEntry>>,
+}
+
+struct PendingRequestEntry {
+    token: usize,
+    cancel_tx: oneshot::Sender<()>,
+}
+
+pub(crate) struct PendingRequestGuard {
+    registry: Arc<PendingRequestRegistry>,
+    id: String,
+    token: usize,
+}
+
+impl PendingRequestRegistry {
+    fn register(self: &Arc<Self>, id: String) -> (oneshot::Receiver<()>, PendingRequestGuard) {
+        let token = self.next_token.fetch_add(1, Ordering::Relaxed);
+        let (cancel_tx, cancel_rx) = oneshot::channel();
+        let replaced = self
+            .requests
+            .lock()
+            .unwrap()
+            .insert(id.clone(), PendingRequestEntry { token, cancel_tx });
+        if let Some(replaced) = replaced {
+            let _ = replaced.cancel_tx.send(());
+        }
+        (
+            cancel_rx,
+            PendingRequestGuard {
+                registry: Arc::clone(self),
+                id,
+                token,
+            },
+        )
+    }
+
+    fn complete(&self, id: &str, token: usize) {
+        let mut requests = self.requests.lock().unwrap();
+        if requests.get(id).is_some_and(|entry| entry.token == token) {
+            requests.remove(id);
+        }
+    }
+
+    fn cancel(&self, id: &str) {
+        if let Some(entry) = self.requests.lock().unwrap().remove(id) {
+            let _ = entry.cancel_tx.send(());
+        }
+    }
+
+    fn cancel_all(&self) {
+        let requests = {
+            let mut requests = self.requests.lock().unwrap();
+            std::mem::take(&mut *requests)
+        };
+        for (_, entry) in requests {
+            let _ = entry.cancel_tx.send(());
+        }
+    }
+
+    #[cfg(test)]
+    fn len(&self) -> usize {
+        self.requests.lock().unwrap().len()
+    }
+}
+
+impl Drop for PendingRequestGuard {
+    fn drop(&mut self) {
+        self.registry.complete(&self.id, self.token);
+    }
+}
+
 struct PageBridgeState {
     lxapp: Arc<LxApp>,
     js_backend: Arc<dyn AppServiceBackend>,
     msg_counter: AtomicUsize,
     handshake: Mutex<HandshakeState>,
-    pending_req_cancel: Mutex<HashMap<String, oneshot::Sender<()>>>,
+    pending_requests: Arc<PendingRequestRegistry>,
     active_host_channels: Mutex<HashMap<String, host::ChannelContextSender>>,
 }
 
@@ -186,7 +265,7 @@ impl PageBridge {
                 js_backend,
                 msg_counter: AtomicUsize::new(0),
                 handshake: Mutex::new(HandshakeState::default()),
-                pending_req_cancel: Mutex::new(HashMap::new()),
+                pending_requests: Arc::new(PendingRequestRegistry::default()),
                 active_host_channels: Mutex::new(HashMap::new()),
             }),
         }
@@ -267,9 +346,7 @@ impl PageBridge {
                 if msg.v != 2 {
                     return Ok(());
                 }
-                if let Some(tx) = self.take_pending_req_cancel(&msg.id) {
-                    let _ = tx.send(());
-                }
+                self.inner.pending_requests.cancel(&msg.id);
                 Ok(())
             }
             IncomingMessage::StateAck(msg) => {
@@ -336,7 +413,7 @@ impl PageBridge {
             return Err(LxAppError::Bridge("Nonce mismatch".to_string()));
         }
 
-        self.reset_session();
+        self.reset_session(page);
 
         let session_id = self.new_session_id();
         self.send_hello_ack(page, msg.nonce.clone(), session_id.clone())?;
@@ -426,8 +503,7 @@ impl PageBridge {
         }
 
         // everything else → JS runtime
-        let (cancel_tx, cancel_rx) = oneshot::channel();
-        self.register_pending_req_cancel(msg.id.clone(), cancel_tx);
+        let (cancel_rx, pending_request) = self.inner.pending_requests.register(msg.id.clone());
         self.forward_js_request(
             page,
             msg.id.clone(),
@@ -436,6 +512,7 @@ impl PageBridge {
                 method: msg.method.clone(),
                 params_json,
                 cancel_rx,
+                pending_request,
             },
         )
     }
@@ -538,7 +615,6 @@ impl PageBridge {
         message: AppServiceCommand,
     ) -> Result<(), LxAppError> {
         if let Err(err) = self.forward_js_message(page, message) {
-            self.take_pending_req_cancel(&id);
             let _ = self.send_res_err(page, id, BRIDGE_INTERNAL_ERROR, Some(err.to_string()), None);
         }
         Ok(())
@@ -781,32 +857,48 @@ impl PageBridge {
         hs.ready = true;
     }
 
-    fn reset_session(&self) {
+    fn reset_session(&self, page: &PageInstance) {
         {
             let mut hs = self.inner.handshake.lock().unwrap();
             hs.session_id = None;
             hs.ready = false;
         }
 
-        let pending_req = {
-            let mut pending = self.inner.pending_req_cancel.lock().unwrap();
-            std::mem::take(&mut *pending)
-        };
-        for (_, cancel_tx) in pending_req {
-            let _ = cancel_tx.send(());
-        }
+        self.cancel_pending_requests();
+        self.close_host_channels(page, "Session reset");
+    }
 
-        // Drop all host channel senders; their ChannelContext receivers will get None,
-        // signalling the handler that the session ended.
+    /// Cancel in-flight View requests without resetting the reusable bridge session.
+    pub(crate) fn cancel_pending_requests(&self) {
+        self.inner.pending_requests.cancel_all();
+    }
+
+    /// Cancel all page-scoped bridge work while preserving the reusable handshake.
+    pub(crate) fn cancel_page_work(&self, page: &PageInstance) {
+        self.cancel_pending_requests();
+        self.close_host_channels(page, "Page unloaded");
+        let _ = self.forward_js_message(
+            page,
+            AppServiceCommand::CloseChannels {
+                code: BRIDGE_CANCELED.to_string(),
+                reason: "Page unloaded".to_string(),
+            },
+        );
+    }
+
+    fn close_host_channels(&self, page: &PageInstance, reason: &str) {
         let active_host_channels = {
             let mut channels = self.inner.active_host_channels.lock().unwrap();
             std::mem::take(&mut *channels)
         };
-        for (_, sender) in active_host_channels {
-            sender.send_close(
+        for (id, sender) in active_host_channels {
+            let _ = self.send_ch_close(
+                page,
+                id,
                 Some(BRIDGE_CANCELED.to_string()),
-                Some("Session reset".to_string()),
+                Some(reason.to_string()),
             );
+            sender.send_close(Some(BRIDGE_CANCELED.to_string()), Some(reason.to_string()));
         }
     }
 
@@ -818,22 +910,6 @@ impl PageBridge {
             .as_millis();
         let data = format!("{}-{}", ts, count);
         base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(data.as_bytes())
-    }
-
-    pub(crate) fn register_pending_req_cancel(
-        &self,
-        id: impl Into<String>,
-        cancel_tx: oneshot::Sender<()>,
-    ) {
-        self.inner
-            .pending_req_cancel
-            .lock()
-            .unwrap()
-            .insert(id.into(), cancel_tx);
-    }
-
-    pub(crate) fn take_pending_req_cancel(&self, id: &str) -> Option<oneshot::Sender<()>> {
-        self.inner.pending_req_cancel.lock().unwrap().remove(id)
     }
 
     fn register_host_channel(&self, id: impl Into<String>, sender: host::ChannelContextSender) {
@@ -959,8 +1035,7 @@ impl PageBridge {
         let page = page.clone();
         let task_page = page.clone();
         let bridge = self.clone();
-        let (cancel_tx, mut cancel_rx) = oneshot::channel();
-        self.register_pending_req_cancel(id.clone(), cancel_tx);
+        let (mut cancel_rx, pending_request) = self.inner.pending_requests.register(id.clone());
         let task_id = id.clone();
         let task_host_method = host_method.clone();
 
@@ -1018,7 +1093,7 @@ impl PageBridge {
                 ),
             };
 
-            bridge.take_pending_req_cancel(&task_id);
+            drop(pending_request);
 
             let elapsed = started_at.elapsed();
             if elapsed > std::time::Duration::from_secs(3) {
@@ -1153,6 +1228,42 @@ fn rpc_error_from_lxapp_error(err: &LxAppError) -> RpcError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn pending_request_registry_cancels_all_and_auto_unregisters() {
+        let pending = Arc::new(PendingRequestRegistry::default());
+        let (mut first_rx, first_guard) = pending.register("first".to_string());
+        let (mut second_rx, second_guard) = pending.register("second".to_string());
+
+        assert_eq!(pending.len(), 2);
+        drop(first_guard);
+        assert_eq!(pending.len(), 1);
+        assert!(first_rx.try_recv().is_err());
+
+        pending.cancel_all();
+
+        assert_eq!(pending.len(), 0);
+        drop(second_guard);
+        assert_eq!(pending.len(), 0);
+        assert_eq!(second_rx.try_recv(), Ok(()));
+    }
+
+    #[test]
+    fn completed_request_cannot_remove_a_reused_request_id() {
+        let pending = Arc::new(PendingRequestRegistry::default());
+        let (mut first_rx, first_guard) = pending.register("same".to_string());
+        let (mut second_rx, second_guard) = pending.register("same".to_string());
+
+        assert_eq!(first_rx.try_recv(), Ok(()));
+        drop(first_guard);
+        assert_eq!(pending.len(), 1);
+
+        pending.cancel_all();
+
+        drop(second_guard);
+        assert_eq!(pending.len(), 0);
+        assert_eq!(second_rx.try_recv(), Ok(()));
+    }
 
     #[test]
     fn send_event_embeds_payload_without_reencoding() {

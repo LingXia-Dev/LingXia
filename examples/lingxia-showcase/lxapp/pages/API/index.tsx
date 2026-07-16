@@ -1,12 +1,10 @@
 import { useState } from 'react';
-import { useLxPage, usePlatform } from '@lingxia/react';
+import { useLxPage } from '@lingxia/react';
 import '../../tailwind.css';
 
 export default function APIPage() {
   // Use LingXia hook to get data and functions
   const { data, actions } = useLxPage();
-  // The bridge-repro page exercises the Apple downstream transport (iOS/macOS).
-  const { isApple } = usePlatform();
   const {
     navigateToStreamPage,
     navigateToChannelPage,
@@ -171,22 +169,20 @@ export default function APIPage() {
                   </svg>
                 </div>
               </div>
-              {isApple && (
-                <div
-                  className="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between border-t border-gray-200"
-                  onClick={navigateToBridgeReproPage}
-                >
-                  <div>
-                    <div className="text-sm text-gray-700">Downstream Resilience</div>
-                    <div className="text-xs text-gray-400">Apple bridge reconnect audit (no frame loss)</div>
-                  </div>
-                  <div className="w-4 h-4 text-gray-400">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                      <path d="M9 18l6-6-6-6"/>
-                    </svg>
-                  </div>
+              <div
+                className="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between border-t border-gray-200"
+                onClick={navigateToBridgeReproPage}
+              >
+                <div>
+                  <div className="text-sm text-gray-700">Bridge Resilience</div>
+                  <div className="text-xs text-gray-400">Bootstrap, streaming, reconnect, and teardown</div>
                 </div>
-              )}
+                <div className="w-4 h-4 text-gray-400">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                    <path d="M9 18l6-6-6-6"/>
+                  </svg>
+                </div>
+              </div>
             </div>
           )}
         </div>

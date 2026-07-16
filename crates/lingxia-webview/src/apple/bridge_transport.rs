@@ -1,5 +1,5 @@
 use crate::webview::WebTag;
-use crate::{SystemPipeReader, WebViewError};
+use crate::{SystemPipeReader, WebResourceResponse, WebViewError};
 use std::collections::VecDeque;
 use std::io::Write;
 use std::os::fd::IntoRawFd;
@@ -75,6 +75,28 @@ pub(super) fn bridge_downstream_cors_origin(request: &http::Request<Vec<u8>>) ->
     }
 }
 
+/// A terminal response for a downstream request whose WebView has already
+/// left the registry. Custom-scheme fetch reduces non-2xx responses to network
+/// errors, so use the same readable shutdown frame as a live transport.
+pub(super) fn bridge_downstream_shutdown_response(
+    request: &http::Request<Vec<u8>>,
+) -> WebResourceResponse {
+    let response = http::Response::builder()
+        .status(http::StatusCode::OK)
+        .header("Content-Type", "application/x-ndjson")
+        .header("Cache-Control", "no-store")
+        .header("X-LingXia-Bridge-Shutdown", "1")
+        .header(
+            "Access-Control-Allow-Origin",
+            bridge_downstream_cors_origin(request),
+        )
+        .header("Access-Control-Expose-Headers", "X-LingXia-Bridge-Shutdown")
+        .body(())
+        .expect("Failed to build bridge shutdown response");
+    let (parts, _) = response.into_parts();
+    (parts, shutdown_frame()).into()
+}
+
 /// Wrap a business message in the transport envelope carrying its seq. The
 /// message is already-serialized JSON, so it is spliced in without re-parsing:
 /// `{"lxff":<seq>,"m":<message>}`.
@@ -99,6 +121,12 @@ fn reset_frame() -> Vec<u8> {
 /// the client treats it as proof-of-life only.
 fn heartbeat_frame() -> Vec<u8> {
     b"{\"lxhb\":1}\n".to_vec()
+}
+
+/// Terminal frame sent before a WebView transport is destroyed. Unlike a
+/// transient EOF, the client must not reconnect after receiving this.
+fn shutdown_frame() -> Vec<u8> {
+    b"{\"lxshutdown\":true}\n".to_vec()
 }
 
 /// Retained transport frames plus the seq counter. Kept free of socket/thread
@@ -236,6 +264,18 @@ impl AppleBridgeTransport {
     /// received, and the writer loop replays the rest — so a WebKit-initiated
     /// reconnect loses nothing and the bridge session survives it.
     pub(super) fn connect_downstream(&self, from: u64) -> Result<SystemPipeReader, WebViewError> {
+        if self
+            .state
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .shutdown
+        {
+            return Err(WebViewError::WebView(format!(
+                "Apple bridge downstream is closed for {}",
+                self.webtag
+            )));
+        }
+
         let (read_end, mut write_end) = UnixStream::pair().map_err(|e| {
             WebViewError::WebView(format!(
                 "Failed to create Apple bridge downstream pipe: {e}"
@@ -263,6 +303,12 @@ impl AppleBridgeTransport {
 
         let (replaced_existing, resumable, bootstrap) = {
             let mut guard = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            if guard.shutdown {
+                return Err(WebViewError::WebView(format!(
+                    "Apple bridge downstream is closed for {}",
+                    self.webtag
+                )));
+            }
             let replaced = guard.connection.is_some();
             guard.log.evict_through(from);
             let resumable = guard.log.resumable(from);
@@ -335,7 +381,6 @@ impl AppleBridgeTransport {
     pub(super) fn shutdown(&self) {
         let mut guard = self.state.lock().unwrap_or_else(|e| e.into_inner());
         guard.shutdown = true;
-        guard.connection = None;
         self.signal.notify_all();
     }
 
@@ -345,6 +390,18 @@ impl AppleBridgeTransport {
                 let mut guard = self.state.lock().unwrap_or_else(|e| e.into_inner());
                 loop {
                     if guard.shutdown {
+                        let writer = guard.connection.take().map(|connection| connection.writer);
+                        drop(guard);
+                        if let Some(mut writer) = writer {
+                            let _ = writer.set_write_timeout(Some(Duration::from_millis(100)));
+                            if let Err(e) = writer.write_all(&shutdown_frame()) {
+                                log::debug!(
+                                    "Apple bridge downstream shutdown write failed webtag={}: {}",
+                                    self.webtag,
+                                    e
+                                );
+                            }
+                        }
                         return;
                     }
                     if let Some(connection) = guard.connection.as_ref() {
@@ -582,6 +639,27 @@ mod tests {
     }
 
     #[test]
+    fn shutdown_sends_terminal_frame_and_rejects_reconnect() {
+        let transport = AppleBridgeTransport::new(WebTag::new("test", "page", None));
+        let reader = transport.connect_downstream(0).unwrap();
+        transport.shutdown();
+
+        let mut downstream = unsafe { UnixStream::from_raw_fd(reader.into_raw_fd()) };
+        downstream
+            .set_read_timeout(Some(Duration::from_secs(1)))
+            .unwrap();
+        let mut bytes = Vec::new();
+        downstream.read_to_end(&mut bytes).unwrap();
+
+        assert!(
+            String::from_utf8(bytes)
+                .unwrap()
+                .contains(r#"{"lxshutdown":true}"#)
+        );
+        assert!(transport.connect_downstream(0).is_err());
+    }
+
+    #[test]
     fn unreplayable_downstream_finishes_after_reset_sentinel() {
         let transport = AppleBridgeTransport::new(WebTag::new("test", "page", None));
         let reader = transport.connect_downstream(5).unwrap();
@@ -693,5 +771,35 @@ mod tests {
             downstream_from_seq(&req("lx-apple://bridge/downstream?from=bogus")),
             0
         );
+    }
+
+    #[test]
+    fn shutdown_response_is_terminal_and_cors_readable() {
+        let request = http::Request::builder()
+            .uri("lx-apple://bridge/downstream?from=42")
+            .header(http::header::ORIGIN, "lx://lxapp/test/page")
+            .body(Vec::new())
+            .unwrap();
+
+        let response = bridge_downstream_shutdown_response(&request);
+        let (parts, body) = response.into_parts();
+
+        assert_eq!(parts.status, http::StatusCode::OK);
+        assert_eq!(parts.headers["X-LingXia-Bridge-Shutdown"], "1");
+        assert_eq!(
+            parts.headers[http::header::ACCESS_CONTROL_EXPOSE_HEADERS],
+            "X-LingXia-Bridge-Shutdown"
+        );
+        assert_eq!(
+            parts
+                .headers
+                .get(http::header::ACCESS_CONTROL_ALLOW_ORIGIN)
+                .unwrap(),
+            "lx://lxapp/test/page"
+        );
+        assert!(matches!(
+            body,
+            crate::WebResourceBody::Bytes(bytes) if bytes == shutdown_frame()
+        ));
     }
 }

@@ -6,7 +6,7 @@ use lxapp::{
     LxApp, LxAppUpdateQuery, ReleaseType, UpdateManager, register_app_handler, try_get, warn,
 };
 use rong::{
-    Class, HostError, JSContext, JSFunc, JSObject, JSResult, JSRuntimeService, JSValue, js_class,
+    Class, HostError, JSContext, JSContextService, JSFunc, JSObject, JSResult, JSValue, js_class,
     js_method,
 };
 use std::cell::RefCell;
@@ -28,16 +28,24 @@ struct UpdateManagerRegistry {
     state: RefCell<UpdateManagerState>,
 }
 
-impl JSRuntimeService for UpdateManagerRegistry {}
+impl JSContextService for UpdateManagerRegistry {}
+
+fn update_registry(ctx: &JSContext) -> &UpdateManagerRegistry {
+    if ctx.get_service::<UpdateManagerRegistry>().is_none() {
+        ctx.set_service(UpdateManagerRegistry::default());
+    }
+    ctx.get_service::<UpdateManagerRegistry>()
+        .expect("update manager registry was inserted above")
+}
 
 fn with_update_state(ctx: &JSContext, update: impl FnOnce(&mut UpdateManagerState)) {
-    let registry = ctx.runtime().get_or_init_service::<UpdateManagerRegistry>();
+    let registry = update_registry(ctx);
     let mut state = registry.state.borrow_mut();
     update(&mut state);
 }
 
 fn read_update_state<R>(ctx: &JSContext, read: impl FnOnce(&UpdateManagerState) -> R) -> R {
-    let registry = ctx.runtime().get_or_init_service::<UpdateManagerRegistry>();
+    let registry = update_registry(ctx);
     let state = registry.state.borrow();
     read(&state)
 }
@@ -208,7 +216,7 @@ impl JSUpdateManager {
 // Register Update-related JS bindings
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     ctx.register_class::<JSUpdateManager>()?;
-    ctx.runtime().get_or_init_service::<UpdateManagerRegistry>();
+    update_registry(ctx);
     // Register host event handlers early so UpdateReady/UpdateFailed are not lost
     // before lx.getUpdateManager() is called by app logic.
     ensure_update_handlers(ctx)?;
@@ -308,4 +316,22 @@ pub async fn ensure_first_install(
         })?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{read_update_state, with_update_state};
+    use rong::{JSEngine, RongJS};
+
+    #[test]
+    fn update_state_does_not_cross_contexts() {
+        let runtime = RongJS::runtime();
+        let first = runtime.context();
+        with_update_state(&first, |state| state.handlers_registered = true);
+        assert!(read_update_state(&first, |state| state.handlers_registered));
+        drop(first);
+
+        let second = runtime.context();
+        assert!(!read_update_state(&second, |state| state.handlers_registered));
+    }
 }

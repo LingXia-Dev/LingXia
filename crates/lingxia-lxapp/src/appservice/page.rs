@@ -17,7 +17,9 @@ use serde_json::value::RawValue;
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
-use tokio::sync::{Mutex, oneshot};
+use tokio::sync::{Mutex, oneshot, watch};
+
+const ASYNC_ITERATOR_RETURN_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(1);
 
 #[js_class(clone)]
 pub struct PageSvc {
@@ -42,9 +44,13 @@ struct PageSvcState {
     state_rev: u64,
     init_data: Option<JSObject>,
     channels: HashMap<String, ChannelState>,
+    next_channel_token: u64,
 }
 
 struct ChannelState {
+    token: u64,
+    cancel_tx: watch::Sender<bool>,
+    tail: Option<oneshot::Receiver<()>>,
     /// Shared with the `ch.on()` JS closure so that listeners registered at
     /// *any* point during the channel's lifetime take effect immediately.
     listeners: Rc<RefCell<ChannelListeners>>,
@@ -54,6 +60,37 @@ struct ChannelState {
 struct ChannelListeners {
     on_data: Option<JSFunc>,
     on_close: Option<JSFunc>,
+}
+
+struct ChannelTurn {
+    token: u64,
+    previous: Option<oneshot::Receiver<()>>,
+    cancel_rx: watch::Receiver<bool>,
+    _cancel_tx: watch::Sender<bool>,
+    done_tx: Option<oneshot::Sender<()>>,
+}
+
+impl ChannelTurn {
+    async fn wait(&mut self) -> bool {
+        if *self.cancel_rx.borrow() {
+            return false;
+        }
+        let Some(mut previous) = self.previous.take() else {
+            return true;
+        };
+        tokio::select! {
+            _ = &mut previous => !*self.cancel_rx.borrow(),
+            changed = self.cancel_rx.changed() => changed.is_ok() && !*self.cancel_rx.borrow(),
+        }
+    }
+}
+
+impl Drop for ChannelTurn {
+    fn drop(&mut self) {
+        if let Some(done_tx) = self.done_tx.take() {
+            let _ = done_tx.send(());
+        }
+    }
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -85,6 +122,32 @@ fn rpc_error_from_lxapp_error(err: &LxAppError) -> RpcError {
 fn rpc_error_from_rong(err: RongJSError) -> RpcError {
     let lxapp_error: LxAppError = err.into();
     rpc_error_from_lxapp_error(&lxapp_error)
+}
+
+async fn await_js_call_or_cancel<T>(
+    cancel_rx: &mut oneshot::Receiver<()>,
+    call: impl std::future::Future<Output = JSResult<T>>,
+) -> Result<T, RpcError> {
+    tokio::select! {
+        _ = cancel_rx => Err(RpcError::new(BRIDGE_CANCELED, None)),
+        result = call => result.map_err(rpc_error_from_rong),
+    }
+}
+
+async fn await_channel_call_or_cancel<T>(
+    cancel_rx: &mut watch::Receiver<bool>,
+    call: impl std::future::Future<Output = JSResult<T>>,
+) -> Result<T, RpcError> {
+    if *cancel_rx.borrow() {
+        return Err(RpcError::new(BRIDGE_CANCELED, None));
+    }
+    tokio::select! {
+        changed = cancel_rx.changed() => {
+            let _ = changed;
+            Err(RpcError::new(BRIDGE_CANCELED, None))
+        }
+        result = call => result.map_err(rpc_error_from_rong),
+    }
 }
 
 fn js_value_to_json_str(v: JSValue) -> Result<String, RpcError> {
@@ -233,22 +296,24 @@ impl PageSvc {
         // `streamHandle.end(result)` or `streamHandle.error(code, msg)`.
         if self.stream_handlers.contains(method) {
             let (stream_handle, mut end_rx) = self.create_stream_handle(req_id)?;
-            let result = match call_arg {
-                Some(val) => {
-                    js_func
-                        .call_async::<_, JSValue>(Some(self.this.clone()), (val, stream_handle))
-                        .await
-                }
-                None => {
-                    js_func
-                        .call_async::<_, JSValue>(
-                            Some(self.this.clone()),
-                            (JSObject::new(&ctx), stream_handle),
-                        )
-                        .await
+            let call = async {
+                match call_arg {
+                    Some(val) => {
+                        js_func
+                            .call_async::<_, JSValue>(Some(self.this.clone()), (val, stream_handle))
+                            .await
+                    }
+                    None => {
+                        js_func
+                            .call_async::<_, JSValue>(
+                                Some(self.this.clone()),
+                                (JSObject::new(&ctx), stream_handle),
+                            )
+                            .await
+                    }
                 }
             };
-            result.map_err(rpc_error_from_rong)?; // check for sync/setup errors
+            await_js_call_or_cancel(&mut cancel_rx, call).await?;
             return tokio::select! {
                 _ = &mut cancel_rx => Err(RpcError::new(BRIDGE_CANCELED, None)),
                 result = &mut end_rx => match result {
@@ -323,7 +388,7 @@ impl PageSvc {
                 error!("[{}] notify '{}' failed: {}", page_path, method_name, e);
             }
         };
-        rong::spawn_local(task);
+        super::context_lifecycle::spawn(&ctx, move |_ctx| task);
     }
 
     pub(crate) async fn handle_ch_open(
@@ -331,7 +396,7 @@ impl PageSvc {
         id: &str,
         topic: &str,
         params_json: Option<&str>,
-    ) -> Result<(), RpcError> {
+    ) -> Result<oneshot::Receiver<Result<(), RpcError>>, RpcError> {
         let Some(js_func) = self.get_js_func(topic) else {
             return Err(RpcError::new(
                 BRIDGE_TOPIC_NOT_FOUND,
@@ -352,37 +417,65 @@ impl PageSvc {
             on_close: None,
         }));
         let channel_ctx = self.create_channel_context(id, listeners.clone())?;
-        {
+        let mut turn = {
             let mut state = self.state.lock().await;
-            state.channels.insert(
+            let token = state.next_channel_token;
+            state.next_channel_token = state.next_channel_token.wrapping_add(1);
+            let (cancel_tx, cancel_rx) = watch::channel(false);
+            let (done_tx, done_rx) = oneshot::channel();
+            if let Some(replaced) = state.channels.insert(
                 id.to_string(),
                 ChannelState {
+                    token,
+                    cancel_tx: cancel_tx.clone(),
+                    tail: Some(done_rx),
                     listeners,
                     outbound_seq: 0,
                 },
-            );
-        }
-        let result = match call_arg {
-            Some(val) => {
-                js_func
-                    .call_async::<_, JSValue>(Some(self.this.clone()), (val, channel_ctx))
-                    .await
+            ) {
+                let _ = replaced.cancel_tx.send(true);
             }
-            None => {
-                js_func
-                    .call_async::<_, JSValue>(
-                        Some(self.this.clone()),
-                        (JSObject::new(&ctx), channel_ctx),
-                    )
-                    .await
+            ChannelTurn {
+                token,
+                previous: None,
+                cancel_rx,
+                _cancel_tx: cancel_tx,
+                done_tx: Some(done_tx),
             }
         };
-        if let Err(err) = result {
-            let mut state = self.state.lock().await;
-            state.channels.remove(id);
-            return Err(rpc_error_from_rong(err));
-        }
-        Ok(())
+        let (result_tx, result_rx) = oneshot::channel();
+        let page_svc = self.clone();
+        let id = id.to_string();
+        let this = self.this.clone();
+        super::context_lifecycle::spawn(&ctx, move |ctx| async move {
+            let result = if !turn.wait().await {
+                Err(RpcError::new(BRIDGE_CANCELED, None))
+            } else {
+                let call = async {
+                    match call_arg {
+                        Some(val) => {
+                            js_func
+                                .call_async::<_, JSValue>(Some(this), (val, channel_ctx))
+                                .await
+                        }
+                        None => {
+                            js_func
+                                .call_async::<_, JSValue>(
+                                    Some(this),
+                                    (JSObject::new(&ctx), channel_ctx),
+                                )
+                                .await
+                        }
+                    }
+                };
+                await_channel_call_or_cancel(&mut turn.cancel_rx, call).await
+            };
+            if result.is_err() {
+                page_svc.remove_channel_if_token(&id, turn.token).await;
+            }
+            let _ = result_tx.send(result.map(|_| ()));
+        });
+        Ok(result_rx)
     }
 
     pub(crate) async fn handle_ch_data(
@@ -390,40 +483,144 @@ impl PageSvc {
         id: &str,
         payload_json: &str,
     ) -> Result<(), RpcError> {
-        let on_data = {
-            let state = self.state.lock().await;
-            state
-                .channels
-                .get(id)
-                .and_then(|channel| channel.listeners.borrow().on_data.clone())
-        };
-        let Some(on_data) = on_data else {
+        let Some(mut turn) = self.queue_channel_turn(id).await else {
             return Ok(());
         };
         let payload = payload_json
             .json_to_js_value(&self.get_ctx())
             .map_err(rpc_error_from_rong)?;
-        on_data
-            .call_async::<_, ()>(None, (payload,))
+        let page_svc = self.clone();
+        let id = id.to_string();
+        let appid = self.page.appid();
+        let path = self.page.path().to_string();
+        let ctx = self.get_ctx();
+        super::context_lifecycle::spawn(&ctx, move |_ctx| async move {
+            if !turn.wait().await {
+                return;
+            }
+            let on_data = page_svc.channel_on_data_if_token(&id, turn.token).await;
+            let Some(on_data) = on_data else {
+                return;
+            };
+            if let Err(err) = await_channel_call_or_cancel(
+                &mut turn.cancel_rx,
+                on_data.call_async::<_, ()>(None, (payload,)),
+            )
             .await
-            .map_err(rpc_error_from_rong)
+                && err.code != BRIDGE_CANCELED
+            {
+                error!("channel '{}' data handler failed: {}", id, err.code)
+                    .with_appid(appid)
+                    .with_path(path);
+            }
+        });
+        Ok(())
     }
 
     pub(crate) async fn handle_ch_close(&self, id: &str, code: Option<&str>, reason: Option<&str>) {
-        let on_close = {
-            let mut state = self.state.lock().await;
-            state
-                .channels
-                .remove(id)
-                .and_then(|channel| channel.listeners.borrow_mut().on_close.take())
-        };
-        let Some(on_close) = on_close else {
+        let Some(mut turn) = self.queue_channel_turn(id).await else {
             return;
         };
-        let info = JSObject::new(&self.get_ctx());
-        let _ = info.set("code", code.unwrap_or_default().to_string());
-        let _ = info.set("reason", reason.unwrap_or_default().to_string());
-        let _ = on_close.call_async::<_, ()>(None, (info,)).await;
+        let page_svc = self.clone();
+        let id = id.to_string();
+        let code = code.unwrap_or_default().to_string();
+        let reason = reason.unwrap_or_default().to_string();
+        let ctx = self.get_ctx();
+        super::context_lifecycle::spawn(&ctx, move |ctx| async move {
+            if turn.wait().await
+                && let Some(on_close) = page_svc
+                    .take_channel_on_close_if_token(&id, turn.token)
+                    .await
+            {
+                let info = JSObject::new(&ctx);
+                let _ = info.set("code", code);
+                let _ = info.set("reason", reason);
+                let _ = await_channel_call_or_cancel(
+                    &mut turn.cancel_rx,
+                    on_close.call_async::<_, ()>(None, (info,)),
+                )
+                .await;
+            }
+            page_svc.remove_channel_if_token(&id, turn.token).await;
+        });
+    }
+
+    pub(crate) async fn close_channels(&self, code: &str, reason: &str) {
+        let channels = {
+            let mut state = self.state.lock().await;
+            std::mem::take(&mut state.channels)
+        };
+        let mut callbacks = Vec::new();
+        for (id, channel) in channels {
+            let _ = channel.cancel_tx.send(true);
+            let _ = self.bridge().send_ch_close(
+                self,
+                id,
+                Some(code.to_string()),
+                Some(reason.to_string()),
+            );
+            if let Some(callback) = channel.listeners.borrow_mut().on_close.take() {
+                callbacks.push(callback);
+            }
+        }
+        if callbacks.is_empty() {
+            return;
+        }
+
+        let code = code.to_string();
+        let reason = reason.to_string();
+        let ctx = self.get_ctx();
+        super::context_lifecycle::spawn(&ctx, move |ctx| async move {
+            for callback in callbacks {
+                let info = JSObject::new(&ctx);
+                let _ = info.set("code", code.clone());
+                let _ = info.set("reason", reason.clone());
+                let _ = callback.call::<_, JSValue>(None, (info,));
+            }
+        });
+    }
+
+    async fn queue_channel_turn(&self, id: &str) -> Option<ChannelTurn> {
+        let mut state = self.state.lock().await;
+        let channel = state.channels.get_mut(id)?;
+        let previous = channel.tail.take();
+        let (done_tx, done_rx) = oneshot::channel();
+        channel.tail = Some(done_rx);
+        let cancel_tx = channel.cancel_tx.clone();
+        Some(ChannelTurn {
+            token: channel.token,
+            previous,
+            cancel_rx: cancel_tx.subscribe(),
+            _cancel_tx: cancel_tx,
+            done_tx: Some(done_tx),
+        })
+    }
+
+    async fn channel_on_data_if_token(&self, id: &str, token: u64) -> Option<JSFunc> {
+        let state = self.state.lock().await;
+        let channel = state.channels.get(id)?;
+        (channel.token == token)
+            .then(|| channel.listeners.borrow().on_data.clone())
+            .flatten()
+    }
+
+    async fn take_channel_on_close_if_token(&self, id: &str, token: u64) -> Option<JSFunc> {
+        let mut state = self.state.lock().await;
+        let channel = state.channels.get_mut(id)?;
+        (channel.token == token)
+            .then(|| channel.listeners.borrow_mut().on_close.take())
+            .flatten()
+    }
+
+    async fn remove_channel_if_token(&self, id: &str, token: u64) {
+        let mut state = self.state.lock().await;
+        if state
+            .channels
+            .get(id)
+            .is_some_and(|channel| channel.token == token)
+        {
+            state.channels.remove(id);
+        }
     }
 
     pub(crate) async fn handle_bridge_ready(&self) {
@@ -496,6 +693,7 @@ impl PageSvc {
                 state_rev: 0,
                 init_data: None,
                 channels: HashMap::new(),
+                next_channel_token: 0,
             })),
         };
 
@@ -660,7 +858,14 @@ impl PageSvc {
             let step_obj = tokio::select! {
                 _ = &mut *cancel_rx => {
                     if let Some(return_fn) = return_fn.clone() {
-                        let _ = return_fn.call_async::<_, JSObject>(Some(iterator.clone()), ()).await;
+                        let iterator = iterator.clone();
+                        super::context_lifecycle::spawn(&ctx, move |_ctx| async move {
+                            let _ = tokio::time::timeout(
+                                ASYNC_ITERATOR_RETURN_TIMEOUT,
+                                return_fn.call_async::<_, JSObject>(Some(iterator), ()),
+                            )
+                            .await;
+                        });
                     }
                     return Err(RpcError::new(BRIDGE_CANCELED, None));
                 }
@@ -906,16 +1111,20 @@ impl PageSvc {
     ) -> JSResult<()> {
         if let Some(js_func) = self.functions.get(event.as_str()) {
             let args_obj = args.and_then(|json| rong::JSObject::from_json_string(ctx, json).ok());
-            rong::enqueue_js_invoke(
-                ctx,
-                js_func.clone(),
-                Some(self.this.clone()),
-                args_obj,
-                rong::JsInvokePriority::Normal,
-                None,
-                false,
-            )
-            .await
+            // The caller owns a task-local JSContext for the full async call;
+            // avoid Rong's runtime-wide invoke queue across LxApp restarts.
+            match args_obj {
+                Some(obj) => {
+                    js_func
+                        .call_async::<_, ()>(Some(self.this.clone()), (obj,))
+                        .await
+                }
+                None => {
+                    js_func
+                        .call_async::<_, ()>(Some(self.this.clone()), ())
+                        .await
+                }
+            }
         } else {
             // PageInstance lifecycle handlers are optional by design.
             Ok(())
@@ -1096,4 +1305,60 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     ctx.global().set("getCurrentPages", get_current_pages)?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn pending_js_call_is_interrupted_by_request_cancellation() {
+        let (cancel_tx, mut cancel_rx) = oneshot::channel();
+        cancel_tx.send(()).unwrap();
+
+        let result =
+            await_js_call_or_cancel(&mut cancel_rx, std::future::pending::<JSResult<()>>()).await;
+
+        assert_eq!(result.unwrap_err().code, BRIDGE_CANCELED);
+    }
+
+    #[tokio::test]
+    async fn queued_channel_turn_is_interrupted_by_page_teardown() {
+        let (_previous_tx, previous_rx) = oneshot::channel();
+        let (cancel_tx, cancel_rx) = watch::channel(false);
+        let (done_tx, done_rx) = oneshot::channel();
+        let mut turn = ChannelTurn {
+            token: 1,
+            previous: Some(previous_rx),
+            cancel_rx,
+            _cancel_tx: cancel_tx.clone(),
+            done_tx: Some(done_tx),
+        };
+
+        cancel_tx.send(true).unwrap();
+        assert!(!turn.wait().await);
+
+        drop(turn);
+        assert_eq!(done_rx.await, Ok(()));
+    }
+
+    #[tokio::test]
+    async fn queued_channel_turn_preserves_message_order() {
+        let (previous_tx, previous_rx) = oneshot::channel();
+        let (cancel_tx, cancel_rx) = watch::channel(false);
+        let (done_tx, done_rx) = oneshot::channel();
+        let mut turn = ChannelTurn {
+            token: 1,
+            previous: Some(previous_rx),
+            cancel_rx,
+            _cancel_tx: cancel_tx,
+            done_tx: Some(done_tx),
+        };
+
+        previous_tx.send(()).unwrap();
+        assert!(turn.wait().await);
+
+        drop(turn);
+        assert_eq!(done_rx.await, Ok(()));
+    }
 }

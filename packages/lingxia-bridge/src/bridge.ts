@@ -170,6 +170,7 @@ let appleDownstreamTask: Promise<void> | null = null;
 let appleDownstreamAbortController: AbortController | null = null;
 let appleReconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let appleReconnectDelayMs = APPLE_RECONNECT_BASE_MS;
+let appleDownstreamDisposed = false;
 // Highest transport frame seq processed. Sent as `?from=` on reconnect so the
 // host replays the gap; survives reconnects so a WebKit-replaced stream resumes
 // without losing frames or tearing down the bridge session.
@@ -223,6 +224,23 @@ function clearAppleReconnectTimer(): void {
     clearTimeout(appleReconnectTimer);
     appleReconnectTimer = null;
   }
+}
+
+function disposeAppleDownstream(reason: string): void {
+  if (!useAppleDownstreamTransport() || appleDownstreamDisposed) return;
+  appleDownstreamDisposed = true;
+  clearAppleReconnectTimer();
+  if (appleWatchdogTimer !== null) {
+    clearInterval(appleWatchdogTimer);
+    appleWatchdogTimer = null;
+  }
+  if (typeof document !== "undefined") {
+    document.removeEventListener("visibilitychange", handleAppleVisibilityChange);
+  }
+  appleForcedReconnectPending = false;
+  appleDownstreamAbortController?.abort();
+  appleDownstreamConnected = false;
+  resetHandshakeState(reason, true);
 }
 
 function closeActiveChannelsFromTransport(reason: string): void {
@@ -281,7 +299,17 @@ function handleAppleDownstreamFrame(frame: unknown): void {
   if (!frame || typeof frame !== "object") return;
   // Any frame — data, heartbeat, or reset — proves the connection is alive.
   appleLastFrameAt = Date.now();
-  const record = frame as { lxff?: unknown; m?: unknown; lxreset?: unknown; lxhb?: unknown };
+  const record = frame as {
+    lxff?: unknown;
+    m?: unknown;
+    lxreset?: unknown;
+    lxhb?: unknown;
+    lxshutdown?: unknown;
+  };
+  if (record.lxshutdown === true) {
+    disposeAppleDownstream("Apple downstream closed");
+    return;
+  }
   if (record.lxhb !== undefined) return; // heartbeat: liveness only, nothing to dispatch
   if (record.lxreset === true) {
     appleLastFrameSeq = 0;
@@ -320,6 +348,10 @@ async function runAppleDownstream(): Promise<void> {
 
   if (!response.ok) {
     throw new Error(`Apple downstream HTTP ${response.status}`);
+  }
+  if (response.headers.get("X-LingXia-Bridge-Shutdown") === "1") {
+    disposeAppleDownstream("Apple downstream closed");
+    return;
   }
   if (!response.body) {
     throw new Error("Apple downstream response body unavailable");
@@ -361,7 +393,7 @@ async function runAppleDownstream(): Promise<void> {
 }
 
 function scheduleAppleDownstreamReconnect(reason: string, immediate = false): void {
-  if (!useAppleDownstreamTransport()) return;
+  if (!useAppleDownstreamTransport() || appleDownstreamDisposed) return;
   clearAppleReconnectTimer();
   const delay = immediate ? 0 : appleReconnectDelayMs;
   if (!immediate) {
@@ -385,7 +417,7 @@ function scheduleAppleDownstreamReconnect(reason: string, immediate = false): vo
 }
 
 function ensureAppleDownstream(): void {
-  if (!useAppleDownstreamTransport()) return;
+  if (!useAppleDownstreamTransport() || appleDownstreamDisposed) return;
   if (appleDownstreamTask) return;
   clearAppleReconnectTimer();
   let completedCleanly = false;
@@ -406,7 +438,7 @@ function ensureAppleDownstream(): void {
       // last seq and the host replays the gap, so the handshake and in-flight
       // streams stay intact. Only a host-sent reset (handled on the frame path)
       // or a real abort tears things down.
-      if (!aborted) {
+      if (!aborted && !appleDownstreamDisposed) {
         // Native intentionally completes bootstrap/replay responses to flush
         // WebKit. Reconnect without the failure backoff so a live stream can
         // catch up and settle onto a long-lived downstream.
@@ -421,7 +453,7 @@ function ensureAppleDownstream(): void {
 // handler, and exposed as a dev hook for repro harnesses. A no-op off Apple.
 let appleForcedReconnectPending = false;
 function forceDownstreamReconnect(): void {
-  if (!useAppleDownstreamTransport()) return;
+  if (!useAppleDownstreamTransport() || appleDownstreamDisposed) return;
   // Coalesce a burst of triggers (rapid foreground toggles, repeated calls)
   // into a single reconnect so they cannot stack concurrent fetches.
   if (appleForcedReconnectPending) return;
@@ -439,7 +471,12 @@ function forceDownstreamReconnect(): void {
 // A silently dead connection (half-open socket) never surfaces a read error, so
 // poll for heartbeat staleness and reconnect when the host has gone quiet.
 function startAppleWatchdog(): void {
-  if (!useAppleDownstreamTransport() || appleWatchdogTimer !== null) return;
+  if (
+    !useAppleDownstreamTransport() ||
+    appleDownstreamDisposed ||
+    appleWatchdogTimer !== null
+  )
+    return;
   appleWatchdogTimer = setInterval(() => {
     // No `connected` guard: a reconnect that hung before delivering a frame
     // also goes stale, and forcing a reconnect aborts and retries it.
@@ -453,11 +490,13 @@ function startAppleWatchdog(): void {
 
 // WebKit suspends/throttles a backgrounded webview and may tear the stream
 // down; reconnect the moment it returns so the UI is never left stale.
+function handleAppleVisibilityChange(): void {
+  if (document.visibilityState === "visible") forceDownstreamReconnect();
+}
+
 function installAppleForegroundReconnect(): void {
   if (!useAppleDownstreamTransport() || typeof document === "undefined") return;
-  document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible") forceDownstreamReconnect();
-  });
+  document.addEventListener("visibilitychange", handleAppleVisibilityChange);
 }
 
 function getMessagePort(): Promise<MessagePort> {
@@ -1501,8 +1540,10 @@ function handleIncomingMessage(msg: unknown): void {
     case "ch.close": {
       const pendingChannel = pendingChannels.get(message.id);
       if (pendingChannel) {
-        pendingChannels.delete(message.id);
-        pendingChannel.channel._emitClose(message.code, message.reason);
+        rejectPendingChannel(message.id, {
+          code: message.code ?? BRIDGE_ERROR.STREAM_CLOSED,
+          message: message.reason ?? "Channel closed before opening",
+        });
         return;
       }
       const channel = activeChannels.get(message.id);

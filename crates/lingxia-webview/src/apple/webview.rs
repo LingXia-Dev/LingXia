@@ -3884,19 +3884,10 @@ impl Drop for WebViewInner {
         // WebView cleanup - only cleanup the actual WebView resources
         // Runtime storage is managed separately
         if MainThreadMarker::new().is_some() {
-            // Wrap in ObjC exception handler — WKWebView dealloc can throw
-            // ObjC exceptions that Rust's catch_unwind cannot handle.
-            let result =
-                objc2::exception::catch(std::panic::AssertUnwindSafe(|| self.cleanup_webview()));
-            if let Err(exception) = result {
-                log::error!(
-                    "[WebViewInner] ObjC exception during WebView cleanup ({}): {:?}",
-                    self.webtag.as_str(),
-                    exception
-                );
-            }
+            self.cleanup_webview();
         } else {
             let webview_ptr_addr = self.webview as usize;
+            let webtag = self.webtag.as_str().to_string();
             // The KVO observer must be deregistered on the main thread before
             // the WKWebView deallocates; move the retained observer across as
             // a raw pointer and release it there.
@@ -3905,19 +3896,15 @@ impl Drop for WebViewInner {
                 .take()
                 .map(|observer| Retained::into_raw(observer) as usize)
                 .unwrap_or(0);
-            DispatchQueue::main().exec_async(move || {
-                unsafe {
-                    let webview_ptr = webview_ptr_addr as *mut AnyObject;
-                    if observer_ptr_addr != 0 {
-                        let observer_ptr = observer_ptr_addr as *mut LingXiaWebViewStateObserver;
-                        if let Some(observer) = Retained::from_raw(observer_ptr) {
-                            observer.unobserve(webview_ptr);
-                        }
-                    }
-                    // Direct cleanup without creating temporary instance
-                    let _: () = msg_send![webview_ptr, removeFromSuperview];
-                    let _: () = msg_send![webview_ptr, stopLoading];
-                }
+            DispatchQueue::main().exec_async(move || unsafe {
+                let webview_ptr = webview_ptr_addr as *mut AnyObject;
+                let observer = if observer_ptr_addr != 0 {
+                    let observer_ptr = observer_ptr_addr as *mut LingXiaWebViewStateObserver;
+                    Retained::from_raw(observer_ptr)
+                } else {
+                    None
+                };
+                Self::cleanup_webview_on_main(webview_ptr, observer.as_deref(), webtag.as_str());
             });
             log::info!(
                 "[WebViewInner] Apple WebViewInner dropped and cleanup requested ({})",
@@ -3931,29 +3918,45 @@ impl WebViewInner {
     /// Cleanup WebView resources on main thread and properly release the WebView
     fn cleanup_webview(&self) {
         unsafe {
-            // Deregister KVO before the WKWebView can deallocate.
-            if let Some(observer) = self.state_observer.as_ref() {
-                observer.unobserve(self.webview);
+            Self::cleanup_webview_on_main(
+                self.webview,
+                self.state_observer.as_deref(),
+                self.webtag.as_str(),
+            );
+        }
+    }
+
+    unsafe fn cleanup_webview_on_main(
+        webview: *mut AnyObject,
+        observer: Option<&LingXiaWebViewStateObserver>,
+        webtag: &str,
+    ) {
+        // WKWebView deallocation can throw Objective-C exceptions that Rust's
+        // catch_unwind cannot handle. Keep the guard here so both the direct
+        // main-thread drop and the dispatched cleanup path are protected.
+        let result = objc2::exception::catch(std::panic::AssertUnwindSafe(|| unsafe {
+            if let Some(observer) = observer {
+                observer.unobserve(webview);
             }
 
             // Remove from superview if attached to prevent memory leaks
-            let _: () = msg_send![self.webview, removeFromSuperview];
+            let _: () = msg_send![webview, removeFromSuperview];
 
             // Stop loading any ongoing requests
-            let _: () = msg_send![self.webview, stopLoading];
+            let _: () = msg_send![webview, stopLoading];
 
             // Clear navigation delegate to prevent callbacks after deallocation
             let nil_navigation_delegate: *mut AnyObject = std::ptr::null_mut();
-            let _: () = msg_send![self.webview, setNavigationDelegate: nil_navigation_delegate];
+            let _: () = msg_send![webview, setNavigationDelegate: nil_navigation_delegate];
 
             // Clear UI delegate to prevent callbacks after deallocation
             let nil_ui_delegate: *mut AnyObject = std::ptr::null_mut();
-            let _: () = msg_send![self.webview, setUIDelegate: nil_ui_delegate];
+            let _: () = msg_send![webview, setUIDelegate: nil_ui_delegate];
 
             // Clear scroll view delegate if any (iOS only — macOS WKWebView has no scrollView property)
             #[cfg(target_os = "ios")]
             {
-                let scroll_view: *mut AnyObject = msg_send![self.webview, scrollView];
+                let scroll_view: *mut AnyObject = msg_send![webview, scrollView];
                 if !scroll_view.is_null() {
                     let nil_scroll_delegate: *mut AnyObject = std::ptr::null_mut();
                     let _: () = msg_send![scroll_view, setDelegate: nil_scroll_delegate];
@@ -3961,12 +3964,18 @@ impl WebViewInner {
             }
 
             // Release the WebView object
-            // This is critical for proper memory management
-            let _: () = msg_send![self.webview, release];
+            let _: () = msg_send![webview, release];
 
             log::info!(
                 "[WebViewInner] Apple WebView instance completely released: removed from superview, cleared all delegates, and released object ({})",
-                self.webtag.as_str()
+                webtag
+            );
+        }));
+        if let Err(exception) = result {
+            log::error!(
+                "[WebViewInner] ObjC exception during WebView cleanup ({}): {:?}",
+                webtag,
+                exception
             );
         }
     }
