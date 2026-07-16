@@ -1640,6 +1640,22 @@ impl LxApp {
             .cloned()
     }
 
+    pub(crate) fn cancel_all_pending_view_requests(&self) {
+        let pages = {
+            let state = self.state.lock().unwrap();
+            state
+                .pages_by_id
+                .lock()
+                .unwrap()
+                .values()
+                .cloned()
+                .collect::<Vec<_>>()
+        };
+        for page in pages {
+            page.cancel_pending_view_requests();
+        }
+    }
+
     pub fn page_instance_id_for_path(&self, path: &str) -> Option<String> {
         self.get_page(path).map(|page| page.instance_id_string())
     }

@@ -148,7 +148,11 @@ async fn handle_app_service_event(
     let svc = match with_app_svc(ctx, |svc| Ok(svc.clone())) {
         Ok(svc) => svc,
         Err(e) => {
-            error!("[Worker {}] App service not loaded: {}", worker_id, e).with_appid(appid);
+            info!(
+                "[Worker {}] Dropping app service event '{}': {}",
+                worker_id, event, e
+            )
+            .with_appid(appid);
             return;
         }
     };
@@ -289,13 +293,20 @@ async fn handle_bridge_source(
             method,
             params_json,
             cancel_rx,
+            pending_request,
         } => {
             let bridge = page_svc.bridge();
-            match page_svc
+            let result = page_svc
                 .handle_req(&id, &method, params_json.as_deref(), cancel_rx)
-                .await
-            {
+                .await;
+            drop(pending_request);
+            match result {
                 Ok(json) => bridge.send_res_ok(page_svc, id, json)?,
+                Err(err) if err.code == bridge::BRIDGE_CANCELED => {
+                    // Cancellation is teardown control flow. Reply while a cached
+                    // View still exists, but tolerate a concurrent WebView detach.
+                    let _ = bridge.send_res_err(page_svc, id, &err.code, err.message, err.data);
+                }
                 Err(err) => bridge.send_res_err(page_svc, id, &err.code, err.message, err.data)?,
             }
             Ok(())

@@ -87,6 +87,16 @@ fn rpc_error_from_rong(err: RongJSError) -> RpcError {
     rpc_error_from_lxapp_error(&lxapp_error)
 }
 
+async fn await_js_call_or_cancel<T>(
+    cancel_rx: &mut oneshot::Receiver<()>,
+    call: impl std::future::Future<Output = JSResult<T>>,
+) -> Result<T, RpcError> {
+    tokio::select! {
+        _ = cancel_rx => Err(RpcError::new(BRIDGE_CANCELED, None)),
+        result = call => result.map_err(rpc_error_from_rong),
+    }
+}
+
 fn js_value_to_json_str(v: JSValue) -> Result<String, RpcError> {
     if v.is_undefined() || v.is_null() {
         return Ok("null".to_owned());
@@ -233,22 +243,24 @@ impl PageSvc {
         // `streamHandle.end(result)` or `streamHandle.error(code, msg)`.
         if self.stream_handlers.contains(method) {
             let (stream_handle, mut end_rx) = self.create_stream_handle(req_id)?;
-            let result = match call_arg {
-                Some(val) => {
-                    js_func
-                        .call_async::<_, JSValue>(Some(self.this.clone()), (val, stream_handle))
-                        .await
-                }
-                None => {
-                    js_func
-                        .call_async::<_, JSValue>(
-                            Some(self.this.clone()),
-                            (JSObject::new(&ctx), stream_handle),
-                        )
-                        .await
+            let call = async {
+                match call_arg {
+                    Some(val) => {
+                        js_func
+                            .call_async::<_, JSValue>(Some(self.this.clone()), (val, stream_handle))
+                            .await
+                    }
+                    None => {
+                        js_func
+                            .call_async::<_, JSValue>(
+                                Some(self.this.clone()),
+                                (JSObject::new(&ctx), stream_handle),
+                            )
+                            .await
+                    }
                 }
             };
-            result.map_err(rpc_error_from_rong)?; // check for sync/setup errors
+            await_js_call_or_cancel(&mut cancel_rx, call).await?;
             return tokio::select! {
                 _ = &mut cancel_rx => Err(RpcError::new(BRIDGE_CANCELED, None)),
                 result = &mut end_rx => match result {
@@ -1096,4 +1108,20 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     ctx.global().set("getCurrentPages", get_current_pages)?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn pending_js_call_is_interrupted_by_request_cancellation() {
+        let (cancel_tx, mut cancel_rx) = oneshot::channel();
+        cancel_tx.send(()).unwrap();
+
+        let result =
+            await_js_call_or_cancel(&mut cancel_rx, std::future::pending::<JSResult<()>>()).await;
+
+        assert_eq!(result.unwrap_err().code, BRIDGE_CANCELED);
+    }
 }

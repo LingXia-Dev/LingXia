@@ -527,6 +527,10 @@ impl PageInstance {
         self.inner.bridge.clone()
     }
 
+    pub(crate) fn cancel_pending_view_requests(&self) {
+        self.inner.bridge.cancel_pending_requests();
+    }
+
     /// Attach WebView to this page (called when WebView is ready)
     pub fn attach_webview(&self, webview: Arc<WebView>) {
         let mut should_reset_lifecycle = false;
@@ -631,6 +635,10 @@ impl PageInstance {
             // Reset on_show_fired when the page is hidden, to allow onShow to fire again on re-entry.
             state.on_show_fired = false;
         }
+    }
+
+    fn lifecycle_cancels_pending_view_requests(event: PageLifecycleEvent) -> bool {
+        event == PageLifecycleEvent::OnUnload
     }
 
     fn fire_lifecycle_events(&self, events_to_fire: Vec<(PageLifecycleEvent, Option<String>)>) {
@@ -739,6 +747,10 @@ impl PageInstance {
         //   (first-time + each navigateTo with new params)
         // - onReady fires once for each logical navigation after render has finished
         // - onShow fires each time the page becomes visible (after a hide), without query
+
+        if Self::lifecycle_cancels_pending_view_requests(event) {
+            self.cancel_pending_view_requests();
+        }
 
         // A collection of events to fire after the lock is released.
         let mut events_to_fire: Vec<(PageLifecycleEvent, Option<String>)> = Vec::new();
@@ -937,6 +949,7 @@ impl PageInstance {
     /// This breaks PageInstance -> WebView strong reference and triggers platform Drop when
     /// combined with registry removal.
     pub fn detach_webview(&self) {
+        self.cancel_pending_view_requests();
         if let Ok(mut webview_guard) = self.inner.webview.lock() {
             // Drop the Arc by taking it out
             let _ = webview_guard.take();
@@ -1639,6 +1652,16 @@ mod tests {
         assert!(!state.show_requested);
         assert!(!state.load_requested);
         assert!(state.bridge_ready);
+    }
+
+    #[test]
+    fn only_on_unload_cancels_pending_view_requests() {
+        assert!(!PageInstance::lifecycle_cancels_pending_view_requests(
+            PageLifecycleEvent::OnHide
+        ));
+        assert!(PageInstance::lifecycle_cancels_pending_view_requests(
+            PageLifecycleEvent::OnUnload
+        ));
     }
 
     #[test]
