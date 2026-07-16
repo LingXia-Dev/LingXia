@@ -27,8 +27,8 @@ use lingxia_webview::WebTag;
 #[cfg(feature = "browser-runtime")]
 use lingxia_webview::platform::windows::find_webview_handler;
 use lingxia_windows_contract::{
-    WindowsAsidePanelEvent, WindowsChromeCommand, WindowsPanelPosition, WindowsWindowLayout,
-    active_host_window_webtag_key, aside_panel_tabs, current_window_layout,
+    WindowsAsidePanelEvent, WindowsChromeCommand, WindowsHostWindow, WindowsPanelPosition,
+    WindowsWindowLayout, active_host_window_webtag_key, aside_panel_tabs, current_window_layout,
     dispatch_windows_aside_panel_event, hide_host_panel, is_panel_visible,
     restore_presented_group_main, set_webview_chrome_event_handler, set_webview_window_layout,
 };
@@ -851,7 +851,7 @@ fn build_window_layout(app: &LxApp, path: &str) -> WindowsShellWindowLayout {
     // A simulator frame whose toolbar carries the close/minimize dots owns the
     // window controls, so the shell drops its own caption there. A framed
     // simulated desktop keeps the standard Windows caption buttons.
-    let owner_window = owner_window_handle(&app.appid);
+    let owner_window = owner_window_handle(&shell_app.appid);
     let suppress_window_controls = owner_window
         .map(device_frame_owns_window_controls)
         .unwrap_or(false);
@@ -4125,8 +4125,9 @@ fn show_terminal_panel(appid: &str, request: TerminalPanelRequest) {
         title,
         position,
     ) {
-        register_managed_aside(appid, &request.panel_id, request.position);
+        register_managed_native_aside(appid, &request.panel_id, request.position);
         sync_shell_layout(appid);
+        sync_shell_owner_host_layout(appid);
         return;
     }
     if let Err(err) =
@@ -4139,8 +4140,20 @@ fn show_terminal_panel(appid: &str, request: TerminalPanelRequest) {
         );
         return;
     }
-    register_managed_aside(appid, &request.panel_id, request.position);
+    register_managed_native_aside(appid, &request.panel_id, request.position);
     sync_shell_layout(appid);
+    sync_shell_owner_host_layout(appid);
+}
+
+fn sync_shell_owner_host_layout(appid: &str) {
+    let Some(window) = owner_window_handle(appid) else {
+        return;
+    };
+    // A recently hidden aside can remain the process-wide active webtag while
+    // its standalone HWND is hidden. Native panels belong to the shell owner,
+    // so explicitly refresh that HWND instead of relying on global focus.
+    crate::window_host::request_host_window_layout(WindowsHostWindow { window });
+    crate::window_host::restore_and_focus_host_window(window);
 }
 
 fn register_managed_aside(
@@ -4150,6 +4163,16 @@ fn register_managed_aside(
 ) {
     if let Some(app) = lxapp::try_get(appid) {
         app.register_host_aside(panel_id, panel_edge(position));
+    }
+}
+
+fn register_managed_native_aside(
+    appid: &str,
+    panel_id: &str,
+    position: lingxia_app_context::PanelPosition,
+) {
+    if let Some(app) = lxapp::try_get(appid) {
+        app.register_host_aside_content(panel_id, "terminal", panel_edge(position));
     }
 }
 

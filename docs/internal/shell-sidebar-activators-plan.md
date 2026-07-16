@@ -365,12 +365,18 @@ structure permits it.
   checks pass.
 - The bookmarks manager inline script parses after moving Pin state to the
   separate `pinnedIds` projection.
-- A release Windows showcase run verified the `184` sidebar, resolved active
-  and disabled activators, replace/update/remove/clear, duplicate-id atomicity,
-  explicit-empty persistence, and clean runtime logs.
-- Real pointer/accessibility activation could not be automated in the current
-  Windows session. The macOS changes were statically reviewed locally and are
-  compiled by PR CI.
+- A release Windows showcase run driven entirely through `lxdev` verified the
+  `184` sidebar, resolved active and disabled activators,
+  replace/update/remove/clear, duplicate-id atomicity, surface-only persistence,
+  and real pointer activation (`disabled: 0 -> 0`, action: `0 -> 1`).
+- The same run cold-opened and toggled the Chat aside, opened and toggled the
+  dynamic terminal, and captured browser main + Chat right aside + Terminal
+  bottom aside simultaneously. Stable surface id `shell:terminal` remained
+  separate from native content id `terminal` in the surface graph.
+- Runtime logs contained no errors and no shell/browser layout warnings after
+  the exercised interactions. Accessibility activation was not automated in
+  the current Windows session. The macOS changes were statically reviewed
+  locally and are compiled by PR CI.
 
 ### Local Windows showcase
 

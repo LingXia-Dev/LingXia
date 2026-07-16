@@ -277,6 +277,13 @@ mod bridge {
 
         #[swift_bridge(swift_name = "registerHostAside")]
         fn register_host_aside(appid: &str, surface_id: &str, edge: &str) -> bool;
+        #[swift_bridge(swift_name = "registerHostAsideContent")]
+        fn register_host_aside_content(
+            appid: &str,
+            surface_id: &str,
+            content_id: &str,
+            edge: &str,
+        ) -> bool;
 
         #[swift_bridge(swift_name = "unregisterHostAside")]
         fn unregister_host_aside(appid: &str, surface_id: &str) -> bool;
@@ -1075,6 +1082,22 @@ pub fn register_host_aside(appid: &str, surface_id: &str, edge: &str) -> bool {
     ffi_catch_unwind!("register_host_aside", false, || {
         if let Some(lxapp) = lxapp::try_get(appid) {
             lxapp.register_host_aside(surface_id, edge);
+            true
+        } else {
+            false
+        }
+    })
+}
+
+pub fn register_host_aside_content(
+    appid: &str,
+    surface_id: &str,
+    content_id: &str,
+    edge: &str,
+) -> bool {
+    ffi_catch_unwind!("register_host_aside_content", false, || {
+        if let Some(lxapp) = lxapp::try_get(appid) {
+            lxapp.register_host_aside_content(surface_id, content_id, edge);
             true
         } else {
             false

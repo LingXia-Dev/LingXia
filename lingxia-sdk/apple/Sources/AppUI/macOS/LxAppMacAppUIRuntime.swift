@@ -406,7 +406,7 @@ final class LxAppMacAppUIRuntime: NSObject {
             return true
         }
         openTerminalPanel(id: id, position: .bottom, defaultHeight: 320) {
-            _ = registerHostAside(primaryAppId, id, "bottom")
+            _ = registerHostAsideContent(primaryAppId, id, "terminal", "bottom")
         }
         return visibleSurfaceIDs.contains(id)
     }
@@ -864,7 +864,16 @@ final class LxAppMacAppUIRuntime: NSObject {
     private func registerHostAsideForSurface(_ surface: LxAppUIConfig.Surface) {
         guard let primaryAppId = rootSurface.content.appId else { return }
         let edge = managedEdgeOverrides[surface.id] ?? surface.edge
-        _ = registerHostAside(primaryAppId, surface.id, edge?.rawValue ?? "right")
+        if surface.content.kind == .terminal {
+            _ = registerHostAsideContent(
+                primaryAppId,
+                surface.id,
+                "terminal",
+                edge?.rawValue ?? "bottom"
+            )
+        } else {
+            _ = registerHostAside(primaryAppId, surface.id, edge?.rawValue ?? "right")
+        }
     }
 
     private func closeTerminalWorkspaceSurface(id: String) {

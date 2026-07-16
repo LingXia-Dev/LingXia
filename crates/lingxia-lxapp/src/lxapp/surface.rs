@@ -244,34 +244,11 @@ impl WindowSurfaceController {
     fn register_host_aside(
         &self,
         surface_id: &str,
+        content_id: &str,
         edge: &str,
         root_main: lingxia_surface::Surface,
     ) {
-        use lingxia_surface::{
-            Edge as LxEdge, Placement, Role as LxRole, Surface as LxSurface,
-            SurfaceContent as LxContent, SurfaceOwner as LxOwner, SurfaceState as LxState,
-        };
-        let edge = match edge {
-            "left" | "leading" => LxEdge::Left,
-            "top" => LxEdge::Top,
-            "bottom" => LxEdge::Bottom,
-            _ => LxEdge::Right,
-        };
-        let node = LxSurface {
-            id: surface_id.to_string(),
-            role: LxRole::Aside,
-            content: LxContent::Entry {
-                id: surface_id.to_string(),
-                path: None,
-            },
-            owner: LxOwner::Host,
-            placement: Placement {
-                edge: Some(edge),
-                preferred_size: None,
-            },
-            state: LxState::Mounted,
-            float: None,
-        };
+        let node = host_aside_node(surface_id, content_id, edge);
         {
             let mut manager = self.manager.lock().unwrap();
             if manager.graph().mains().is_empty() {
@@ -346,6 +323,33 @@ impl WindowSurfaceController {
 
     fn presentation_plan(&self) -> lingxia_surface::LayoutPresentationPlan {
         self.manager.lock().unwrap().presentation_plan()
+    }
+}
+
+fn host_aside_node(surface_id: &str, content_id: &str, edge: &str) -> lingxia_surface::Surface {
+    use lingxia_surface::{
+        Edge, Placement, Role, Surface, SurfaceContent, SurfaceOwner, SurfaceState,
+    };
+    let edge = match edge {
+        "left" | "leading" => Edge::Left,
+        "top" => Edge::Top,
+        "bottom" => Edge::Bottom,
+        _ => Edge::Right,
+    };
+    Surface {
+        id: surface_id.to_string(),
+        role: Role::Aside,
+        content: SurfaceContent::Entry {
+            id: content_id.to_string(),
+            path: None,
+        },
+        owner: SurfaceOwner::Host,
+        placement: Placement {
+            edge: Some(edge),
+            preferred_size: None,
+        },
+        state: SurfaceState::Mounted,
+        float: None,
     }
 }
 
@@ -969,6 +973,23 @@ impl LxApp {
         }
         window_controller(PRIMARY_WINDOW, &self.runtime).register_host_aside(
             surface_id,
+            surface_id,
+            edge,
+            self.root_main_node(),
+        );
+    }
+
+    /// Mirror a host aside whose stable surface id differs from its content
+    /// identity, such as the shell-owned terminal surface.
+    pub fn register_host_aside_content(&self, surface_id: &str, content_id: &str, edge: &str) {
+        let surface_id = surface_id.trim();
+        let content_id = content_id.trim();
+        if surface_id.is_empty() || content_id.is_empty() {
+            return;
+        }
+        window_controller(PRIMARY_WINDOW, &self.runtime).register_host_aside(
+            surface_id,
+            content_id,
             edge,
             self.root_main_node(),
         );
@@ -1388,5 +1409,17 @@ mod tests {
         assert_eq!(callback.target, "https://example.com/login");
         assert!(callback.url_callback);
         assert!(callback.ephemeral_web_data);
+    }
+
+    #[test]
+    fn host_aside_keeps_surface_identity_separate_from_native_content() {
+        let surface = host_aside_node("shell:terminal", "terminal", "bottom");
+
+        assert_eq!(surface.id, "shell:terminal");
+        assert_eq!(
+            surface.content.slot_kind(),
+            lingxia_surface::SlotKind::Native
+        );
+        assert_eq!(surface.placement.edge, Some(lingxia_surface::Edge::Bottom));
     }
 }
