@@ -370,7 +370,7 @@ pub(super) fn draw_top_bar_controls(
             hdc,
             address,
             rect_height(&address) / 2,
-            shell_palette().panel_background,
+            shell_palette().address_background,
         );
         let text = layout
             .address_bar

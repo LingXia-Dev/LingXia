@@ -3196,6 +3196,7 @@ fn attached_state_for_window(
                 title: webview_panel_title(&panel_id),
                 rect: panel.rect,
                 header_rect: panel.header_rect,
+                resize_handle: panel.resize_handle,
                 host_content: host_panel_content(&panel_id),
                 docked: panel_is_docked(&panel_id),
             }

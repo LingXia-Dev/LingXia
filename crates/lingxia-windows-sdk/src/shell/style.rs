@@ -4,7 +4,7 @@
 pub(super) const SHELL_CONTENT_INSET: i32 = 12;
 
 /// Separation belongs only between independently resizable main/aside panes.
-pub(super) const SHELL_PANEL_GAP: i32 = 6;
+pub(super) const SHELL_PANEL_GAP: i32 = 8;
 
 /// Radius of the elevated content wrapper and its shadow. Windowed WebView2
 /// content remains rectangular, but the wrapper is still visible while a
@@ -36,9 +36,11 @@ pub(super) struct ShellPalette {
     pub text_muted: u32,
     pub accent: u32,
     pub divider: u32,
-    /// Inset control surface (URL pill / input field) that must read against a
-    /// `panel_background` card.
+    /// Inset control surface (phone URL pill / input field) that reads against
+    /// a `panel_background` card.
     pub control_surface: u32,
+    /// Quiet desktop address capsule on the shell's first layer.
+    pub address_background: u32,
     pub frame_button_icon: u32,
     pub sidebar_header_text: u32,
 }
@@ -60,6 +62,7 @@ pub(super) fn shell_palette() -> ShellPalette {
             accent,
             divider: 0x383838,
             control_surface: 0x3a3a3a,
+            address_background: 0x2a2a2a,
             frame_button_icon: 0xe6e6e6,
             sidebar_header_text: 0xb0b4ba,
         }
@@ -76,6 +79,7 @@ pub(super) fn shell_palette() -> ShellPalette {
             accent,
             divider: 0xc7c2d2,
             control_surface: 0xf3f4f6,
+            address_background: 0xe5e2ec,
             frame_button_icon: 0x1f2937,
             sidebar_header_text: 0x4f5661,
         }

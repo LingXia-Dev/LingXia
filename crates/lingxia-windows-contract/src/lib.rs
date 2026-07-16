@@ -422,6 +422,9 @@ pub struct WindowsChromePanel {
     /// Top-band slice (aligned with the main navbar baseline) where a browser
     /// aside paints its address bar; `None` for panels with no band header.
     pub header_rect: Option<RECT>,
+    /// Gutter between this panel and the neighboring workspace region. It is
+    /// both the resize hit target and the exposed first-layer shell surface.
+    pub resize_handle: Option<RECT>,
     pub host_content: Option<WindowsHostPanelContent>,
     pub docked: bool,
 }

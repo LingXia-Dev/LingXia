@@ -1380,7 +1380,7 @@ fn close_pane_session(panel_id: &str, session_id: u64) -> bool {
             {
                 log::warn!("failed to close Windows terminal panel {panel_id}: {err}");
             }
-            super::runtime::sync_owner_shell_layout();
+            super::runtime::unregister_owner_managed_aside(panel_id);
             true
         }
         CloseOutcome::Tab | CloseOutcome::Pane => {

@@ -342,7 +342,7 @@ pub(super) fn draw_browser_panel_header(
     let address = browser_panel_address_rect(panel);
     let address_visible = rect_width(&address) > 0 && rect_height(&address) > 0;
     if address_visible {
-        fill_round_rect_aa(hdc, address, 10, pal.control_surface);
+        fill_round_rect_aa(hdc, address, 10, pal.address_background);
         draw_text(
             hdc,
             browser_panel_title(panel).as_str(),

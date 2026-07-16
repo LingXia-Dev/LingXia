@@ -390,13 +390,13 @@ fn default_tabbar_position() -> Option<WindowsShellTabBarPosition> {
         .map(|position| *position)
 }
 
-/// Re-syncs the shell-owner app's layout (panel activator states etc.)
-/// after a panel changed visibility outside a chrome event, e.g. the
-/// terminal panel closing itself because its last session exited (the
-/// only caller, hence unused without the terminal runtime).
-#[cfg_attr(not(feature = "terminal-runtime"), allow(dead_code))]
-pub(super) fn sync_owner_shell_layout() {
+/// Removes a native aside that closed itself from both the host and the
+/// authoritative surface graph. Leaving the graph node mounted lets a later
+/// unrelated commit (such as opening an lxapp aside) resurrect the panel.
+#[cfg(feature = "terminal-runtime")]
+pub(super) fn unregister_owner_managed_aside(panel_id: &str) {
     if let Some(appid) = shell_owner_appid() {
+        unregister_managed_aside(&appid, panel_id);
         sync_shell_layout(&appid);
     }
 }

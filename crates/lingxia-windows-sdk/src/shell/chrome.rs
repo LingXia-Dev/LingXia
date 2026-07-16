@@ -1893,71 +1893,41 @@ fn native_panel_hit_by(
 
 pub(super) fn draw_content_cards(hdc: HDC, state: &WindowsChromeState, rects: &ChromeRects) {
     if let Some(attached) = &state.attached {
-        // Main and attached asides live inside one elevated content container.
-        // Giving every child its own card creates the continuous white/gray
-        // strips that read as nested frames instead of hierarchy.
+        // Main and asides share one outer shadow; their resize gutters cut
+        // through that wrapper to the first shell layer below.
         draw_content_card(hdc, rects.panel);
-        // A docked panel splits the space flat; a 1px hairline centered in
-        // the gutter marks the technical divider between the two regions —
-        // the same language on every side (bottom terminal, side asides).
-        let main = attached.main_region;
+        // Each resize gutter exposes the first shell layer, matching the top
+        // address-bar band. The centered hairline keeps the split legible on
+        // every edge and between multiple asides.
+        let pal = shell_palette();
         for panel in &attached.panels {
-            if !panel.docked {
+            let Some(handle) = panel.resize_handle else {
                 continue;
-            }
-            let rect = panel.rect;
-            let divider = shell_palette().divider;
-            if rect.top >= main.bottom && rect.top > main.top {
-                // Below the content: horizontal line across the panel.
-                let mid = main.bottom + (rect.top - main.bottom) / 2;
-                fill_rect(
-                    hdc,
-                    RECT {
-                        left: rect.left,
-                        top: mid,
-                        right: rect.right,
-                        bottom: mid + 1,
-                    },
-                    divider,
-                );
-            } else if rect.bottom <= main.top {
-                // Above the content.
-                let mid = rect.bottom + (main.top - rect.bottom) / 2;
-                fill_rect(
-                    hdc,
-                    RECT {
-                        left: rect.left,
-                        top: mid,
-                        right: rect.right,
-                        bottom: mid + 1,
-                    },
-                    divider,
-                );
-            } else if rect.left >= main.right {
-                // Right of the content: vertical line spanning the panel.
-                let mid = main.right + (rect.left - main.right) / 2;
+            };
+            fill_rect(hdc, handle, pal.window_background);
+            if rect_width(&handle) <= rect_height(&handle) {
+                let mid = handle.left + rect_width(&handle) / 2;
                 fill_rect(
                     hdc,
                     RECT {
                         left: mid,
-                        top: rect.top,
+                        top: handle.top,
                         right: mid + 1,
-                        bottom: rect.bottom,
+                        bottom: handle.bottom,
                     },
-                    divider,
+                    pal.divider,
                 );
-            } else if rect.right <= main.left {
-                // Left of the content.
-                let mid = rect.right + (main.left - rect.right) / 2;
+            } else {
+                let mid = handle.top + rect_height(&handle) / 2;
                 fill_rect(
                     hdc,
                     RECT {
-                        left: mid,
-                        top: rect.top,
-                        right: mid + 1,
-                        bottom: rect.bottom,
+                        left: handle.left,
+                        top: mid,
+                        right: handle.right,
+                        bottom: mid + 1,
                     },
-                    divider,
+                    pal.divider,
                 );
             }
         }
@@ -2196,6 +2166,9 @@ mod scroll_tests {
             aside.rect.left - attached.main_region.right,
             SHELL_PANEL_GAP
         );
+        let handle = aside.resize_handle.unwrap();
+        assert_eq!(handle.left, attached.main_region.right);
+        assert_eq!(handle.right, aside.rect.left);
         assert_eq!(
             attached.main_region.bottom,
             client.bottom - SHELL_CONTENT_INSET
