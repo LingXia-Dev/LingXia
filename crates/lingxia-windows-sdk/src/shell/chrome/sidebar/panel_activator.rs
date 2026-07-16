@@ -7,19 +7,10 @@ use super::*;
 const ACTIVATOR_CELL_MIN_WIDTH: i32 = 72;
 const ACTIVATOR_CELL_PADDING: i32 = 8;
 const ACTIVATOR_ICON_TEXT_GAP: i32 = 8;
-const ACTIVATOR_ASCII_ADVANCE: i32 = 7;
-const ACTIVATOR_WIDE_ADVANCE: i32 = 13;
 const ACTIVATOR_SEPARATOR_HEIGHT: i32 = 1;
 
 fn preferred_cell_width(label: &str, available: i32) -> i32 {
-    let text = label.chars().fold(0, |width, ch| {
-        width
-            + if ch.is_ascii() {
-                ACTIVATOR_ASCII_ADVANCE
-            } else {
-                ACTIVATOR_WIDE_ADVANCE
-            }
-    });
+    let text = measure_chrome_text_width(label);
     (2 * ACTIVATOR_CELL_PADDING + PANEL_ACTIVATOR_ICON_SIZE + ACTIVATOR_ICON_TEXT_GAP + text)
         .clamp(ACTIVATOR_CELL_MIN_WIDTH.min(available), available.max(1))
 }
@@ -97,11 +88,6 @@ fn expanded_activator_rects(
         let gaps = (items.len().saturating_sub(1) as i32) * PANEL_ACTIVATOR_GAP;
         let preferred_total = preferred.iter().sum::<i32>() + gaps;
         let extra = (available - preferred_total).max(0);
-        let total_weight = items
-            .iter()
-            .map(|item| item.weight.max(1) as u64)
-            .sum::<u64>()
-            .max(1);
         let mut left = tabbar_rect.left + PANEL_ACTIVATOR_MARGIN;
         let row_right = tabbar_rect.right - PANEL_ACTIVATOR_MARGIN;
         let mut allocated_extra = 0;
@@ -110,7 +96,7 @@ fn expanded_activator_rects(
             let item_extra = if is_last {
                 extra - allocated_extra
             } else {
-                let share = ((extra as u64 * item.weight.max(1) as u64) / total_weight) as i32;
+                let share = extra / items.len() as i32;
                 allocated_extra += share;
                 share
             };
@@ -261,48 +247,41 @@ pub(in crate::shell::chrome) fn draw_panel_activators(
             .panel_activators
             .iter()
             .find(|item| item.id == panel_id);
-        let active = activator.is_some_and(|item| item.active);
+        let disabled = activator.is_some_and(|item| item.disabled);
+        let active = activator.is_some_and(|item| item.active && !item.disabled);
         let label = activator
             .map(|item| item.label.as_str())
             .unwrap_or(panel_id.as_str());
-        let default_text_color = if active {
+        let text_color = if active {
             palette.accent
         } else {
             palette.text_muted
         };
-        let text_color = activator
-            .and_then(|item| item.label_color)
-            .unwrap_or(default_text_color);
 
-        fill_round_rect_aa(
-            hdc,
-            rect,
-            6,
-            if active {
-                palette.panel_background
-            } else {
-                palette.activator_background
-            },
-        );
-        if !active {
+        if active {
+            fill_round_rect_aa(hdc, rect, 6, palette.panel_background);
+        }
+        if !active && !disabled {
             draw_hover_wash(hdc, rect, 6, cursor);
         } else {
-            let accent = if icon_only {
-                RECT {
-                    left: rect.left + 4,
-                    top: rect.bottom - 4,
-                    right: rect.right - 4,
-                    bottom: rect.bottom - 2,
-                }
-            } else {
-                RECT {
-                    left: rect.left + 2,
-                    top: rect.top + 6,
-                    right: rect.left + 4,
-                    bottom: rect.bottom - 6,
-                }
-            };
-            fill_round_rect_aa(hdc, accent, 2, palette.accent);
+            if active {
+                let accent = if icon_only {
+                    RECT {
+                        left: rect.left + 4,
+                        top: rect.bottom - 4,
+                        right: rect.right - 4,
+                        bottom: rect.bottom - 2,
+                    }
+                } else {
+                    RECT {
+                        left: rect.left + 2,
+                        top: rect.top + 6,
+                        right: rect.left + 4,
+                        bottom: rect.bottom - 6,
+                    }
+                };
+                fill_round_rect_aa(hdc, accent, 2, palette.accent);
+            }
         }
 
         let icon_rect = if icon_only {
@@ -364,18 +343,16 @@ mod tests {
         WindowsShellPanelActivatorLayout {
             id: id.to_string(),
             label: label.to_string(),
-            label_color: None,
             icon_path: String::new(),
-            weight: 1_000,
-            position: WindowsPanelPosition::Right,
             active: false,
+            disabled: false,
         }
     }
 
     #[test]
     fn short_activators_share_a_standard_sidebar_row() {
-        let items = vec![item("api", "API"), item("nav", "Navigation")];
-        assert_eq!(activator_rows(220, &items), vec![0..2]);
+        let items = vec![item("api", "API"), item("chat", "Chat")];
+        assert_eq!(activator_rows(184, &items), vec![0..2]);
     }
 
     #[test]
@@ -384,7 +361,7 @@ mod tests {
             item("first", "A deliberately long activator"),
             item("second", "Another deliberately long activator"),
         ];
-        assert_eq!(activator_rows(220, &items), vec![0..1, 1..2]);
+        assert_eq!(activator_rows(184, &items), vec![0..1, 1..2]);
     }
 
     #[test]

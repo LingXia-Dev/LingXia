@@ -89,6 +89,7 @@ pub fn set_windows_shell_tabbar_position(appid: &str, position: WindowsShellTabB
     runtime::set_tabbar_position(appid, position);
 }
 
+#[cfg(feature = "device-frame")]
 pub(crate) fn set_windows_shell_tabbar_position_on_window_thread(
     appid: &str,
     position: WindowsShellTabBarPosition,

@@ -91,7 +91,14 @@ pub(crate) fn bookmark_state(url: &str) -> u32 {
                     .find(|entry| {
                         lingxia_browser_shell::normalize_bookmark_url(&entry.url) == normalized
                     })
-                    .map(|entry| 0b1 | (u32::from(entry.pinned) << 1))
+                    .map(|entry| {
+                        let pinned =
+                            lingxia_shell::is_pinned(&lingxia_shell::ShellPinTarget::Bookmark {
+                                key: entry.id.clone(),
+                            })
+                            .unwrap_or(false);
+                        0b1 | (u32::from(pinned) << 1)
+                    })
             })
             .unwrap_or(0)
     }

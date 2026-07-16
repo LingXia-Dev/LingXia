@@ -181,11 +181,45 @@ impl AppRuntime for Platform {
         }
     }
 
-    fn set_activator_items(&self, items_json: &str) -> Result<(), PlatformError> {
+    fn set_shell_activators(
+        &self,
+        items: &[lingxia_shell::ResolvedShellActivator],
+    ) -> Result<(), PlatformError> {
         // A shell-less host (runner phone shape) answers false; that is a
         // cosmetic absence, not an error.
-        let _ = ffi::set_activator_items(items_json);
+        let json = serde_json::to_string(items)
+            .map_err(|error| PlatformError::Platform(error.to_string()))?;
+        let _ = ffi::set_activator_items(&json);
         Ok(())
+    }
+
+    fn set_shell_pins(&self, items: &[lingxia_shell::ShellPin]) -> Result<(), PlatformError> {
+        let json = serde_json::to_string(items)
+            .map_err(|error| PlatformError::Platform(error.to_string()))?;
+        let _ = ffi::set_shell_pins(&json);
+        Ok(())
+    }
+
+    fn shell_native_active(&self, capability: lingxia_shell::NativeShellCapability) -> bool {
+        match capability {
+            lingxia_shell::NativeShellCapability::Terminal => ffi::shell_native_active("terminal"),
+        }
+    }
+
+    fn activate_shell_native(
+        &self,
+        capability: lingxia_shell::NativeShellCapability,
+    ) -> Result<(), PlatformError> {
+        let capability = match capability {
+            lingxia_shell::NativeShellCapability::Terminal => "terminal",
+        };
+        if ffi::activate_shell_native(capability) {
+            Ok(())
+        } else {
+            Err(PlatformError::Platform(format!(
+                "Failed to activate shell native capability {capability}"
+            )))
+        }
     }
 
     fn set_tray_title(&self, text: &str) -> Result<(), PlatformError> {

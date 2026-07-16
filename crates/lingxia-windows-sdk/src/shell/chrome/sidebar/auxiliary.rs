@@ -2,8 +2,12 @@
 
 use super::*;
 
-const PINNED_SHORTCUT_SIZE: i32 = 34;
+const PINNED_SHORTCUT_SIZE: i32 = 36;
 const PINNED_SHORTCUT_ICON_SIZE: i32 = 20;
+const PINNED_SHORTCUT_GAP: i32 = 5;
+const PINNED_SHORTCUT_COLUMNS: usize = 4;
+const PINNED_GRID_WIDTH: i32 = PINNED_SHORTCUT_COLUMNS as i32 * PINNED_SHORTCUT_SIZE
+    + (PINNED_SHORTCUT_COLUMNS as i32 - 1) * PINNED_SHORTCUT_GAP;
 
 pub(in crate::shell::chrome) fn sidebar_pinned_count(tabbar: &WindowsShellTabBarLayout) -> usize {
     tabbar
@@ -14,18 +18,19 @@ pub(in crate::shell::chrome) fn sidebar_pinned_count(tabbar: &WindowsShellTabBar
 }
 
 pub(in crate::shell::chrome) fn sidebar_pinned_grid_height(
-    rect: RECT,
+    _rect: RECT,
     tabbar: &WindowsShellTabBarLayout,
 ) -> i32 {
     let count = sidebar_pinned_count(tabbar);
     if count == 0 {
         return 0;
     }
-    let grid_width = (rect_width(&rect) - 2 * SIDEBAR_ITEM_INSET).max(PINNED_SHORTCUT_SIZE);
-    let columns = ((grid_width + SIDEBAR_ITEM_GAP) / (PINNED_SHORTCUT_SIZE + SIDEBAR_ITEM_GAP))
-        .max(1) as usize;
-    let stride = PINNED_SHORTCUT_SIZE + SIDEBAR_ITEM_GAP;
-    count.div_ceil(columns) as i32 * stride
+    pinned_grid_height(count)
+}
+
+fn pinned_grid_height(count: usize) -> i32 {
+    let stride = PINNED_SHORTCUT_SIZE + PINNED_SHORTCUT_GAP;
+    count.div_ceil(PINNED_SHORTCUT_COLUMNS) as i32 * stride
 }
 
 /// Geometry of the sidebar auxiliary section: separator line, one row rect
@@ -71,19 +76,16 @@ pub(in crate::shell::chrome) fn sidebar_auxiliary_rects(
     let mut items = Vec::with_capacity(tabbar.auxiliary_items.len());
     let pinned_count = sidebar_pinned_count(tabbar);
     if pinned_count > 0 {
-        let grid_left = rect.left + SIDEBAR_ITEM_INSET;
-        let grid_width = (rect.right - SIDEBAR_ITEM_INSET - grid_left).max(PINNED_SHORTCUT_SIZE);
-        let columns = ((grid_width + SIDEBAR_ITEM_GAP) / (PINNED_SHORTCUT_SIZE + SIDEBAR_ITEM_GAP))
-            .max(1) as usize;
+        let grid_left = rect.left + (rect_width(&rect) - PINNED_GRID_WIDTH) / 2;
         // Pins are global shortcuts, not children of the current
         // lxapp group. They sit immediately below the caption controls and
         // above the lxapp header/navigation, matching macOS.
         let grid_top = rect.top + SHELL_TOP_BAR_HEIGHT - scroll_offset;
         for index in 0..pinned_count {
-            let row = index / columns;
-            let column = index % columns;
-            let left = grid_left + column as i32 * (PINNED_SHORTCUT_SIZE + SIDEBAR_ITEM_GAP);
-            let top = grid_top + row as i32 * (PINNED_SHORTCUT_SIZE + SIDEBAR_ITEM_GAP);
+            let row = index / PINNED_SHORTCUT_COLUMNS;
+            let column = index % PINNED_SHORTCUT_COLUMNS;
+            let left = grid_left + column as i32 * (PINNED_SHORTCUT_SIZE + PINNED_SHORTCUT_GAP);
+            let top = grid_top + row as i32 * (PINNED_SHORTCUT_SIZE + PINNED_SHORTCUT_GAP);
             let pinned_rect = normalize_rect(RECT {
                 left,
                 top,
@@ -343,5 +345,17 @@ pub(in crate::shell::chrome) fn draw_sidebar_auxiliary_section(
         // Add row: a centered "+" glyph only, no label.
         draw_hover_wash(hdc, add_rect, 8, cursor);
         draw_frame_button_glyph(hdc, GLYPH_ADD, add_rect, shell_palette().text_muted);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn fixed_pin_grid_has_four_columns_and_two_bounded_rows() {
+        assert_eq!(pinned_grid_height(1), 41);
+        assert_eq!(pinned_grid_height(4), 41);
+        assert_eq!(pinned_grid_height(8), 82);
     }
 }

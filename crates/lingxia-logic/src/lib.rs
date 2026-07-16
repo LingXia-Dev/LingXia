@@ -81,12 +81,6 @@ fn register_platform_i18n() {
     });
 }
 
-/// Serialized activator items from the previous run (Rust-owned persistence;
-/// skins restore surface items from this before the home logic boots).
-pub fn persisted_activator_items() -> String {
-    ui::persisted_activator_items()
-}
-
 pub fn notify_surface_closed(id: &str, reason: &str) -> bool {
     surface::notify_surface_closed(id, reason)
 }

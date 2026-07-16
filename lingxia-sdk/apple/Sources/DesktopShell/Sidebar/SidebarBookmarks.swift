@@ -2,12 +2,20 @@
 import AppKit
 import CLingXiaRustAPI
 
+@MainActor
+func showShellPinLimitAlert() {
+    let alert = NSAlert()
+    alert.alertStyle = .informational
+    alert.messageText = L10n.string("lx_shell_pin_limit_title")
+    alert.informativeText = L10n.string("lx_shell_pin_limit_message")
+    alert.addButton(withTitle: L10n.string("lx_common_ok"))
+    alert.runModal()
+}
+
 /// Sidebar bookmarks model — decoded from `browserBookmarksSnapshotJson()`.
 ///
-/// Three tiers: bookmarks are the archive (managed in the webui manager
-/// page), pinned bookmarks are the high-frequency subset rendered as the
-/// sidebar's top favicon grid (above lxapp tabs), and browser tabs are the
-/// ephemeral session below. Invariant: pinned ⊆ bookmarked.
+/// Bookmarks are the archive managed in the web UI. Sidebar Pin identity and
+/// order live separately in the shared shell store.
 struct SidebarBookmarksSnapshot: Decodable {
     struct Group: Decodable {
         let id: String
@@ -19,17 +27,12 @@ struct SidebarBookmarksSnapshot: Decodable {
         let url: String
         let title: String
         let groupId: String?
-        let pinned: Bool?
-
-        var isPinned: Bool { pinned ?? false }
     }
 
     let groups: [Group]
     let entries: [Entry]
 
     static let empty = SidebarBookmarksSnapshot(groups: [], entries: [])
-
-    var pinnedEntries: [Entry] { entries.filter { $0.isPinned } }
 
     static func loadFromHost() -> SidebarBookmarksSnapshot {
         let json = browserBookmarksSnapshotJson().toString()
@@ -339,7 +342,7 @@ func jsonEscape(_ s: String) -> String {
 
 /// A pinned LXAPP tile in the sidebar's pin grid — the lxapp counterpart of
 /// SidebarPinTileView (web pins). Click opens/focuses the lxapp as a MAIN;
-/// the pin store itself lives in Rust (shellPinnedLxapps).
+/// the Pin store itself lives in `lingxia-shell`.
 @MainActor
 final class LxappPinTileView: NSView {
     let appId: String
@@ -410,7 +413,7 @@ final class LxappPinTileView: NSView {
     }
 
     @objc private func unpinClicked() {
-        _ = shellSetLxappPinned(appId, false)
+        _ = shellSetPinned("lxapp", appId, false)
         onUnpin?()
     }
 

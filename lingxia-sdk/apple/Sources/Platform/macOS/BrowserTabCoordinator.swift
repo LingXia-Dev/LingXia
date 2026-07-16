@@ -1019,14 +1019,17 @@ final class BrowserTabCoordinator: NSObject {
         let url = activePageURL()
         guard BrowserPageMenu.isBookmarkActionable(url) else { return }
         let normalized = SidebarBookmarksSnapshot.normalize(url)
-        if let pinned = SidebarBookmarksSnapshot.loadFromHost().pinnedEntries.first(where: {
+        if let pinned = SidebarBookmarksSnapshot.loadFromHost().entries.first(where: {
             SidebarBookmarksSnapshot.normalize($0.url) == normalized
+                && shellIsPinned("bookmark", $0.id)
         }) {
             _ = browserBookmarksCommand(
                 #"{"op":"setPinned","id":"\#(jsonEscape(pinned.id))","pinned":false}"#
             )
         } else {
-            _ = browserBookmarkPin(url, activePageTitle())
+            if !browserBookmarkPin(url, activePageTitle()) {
+                showShellPinLimitAlert()
+            }
         }
         updatePageSaveButtons(for: url)
     }

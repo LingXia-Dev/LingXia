@@ -350,7 +350,7 @@
       var t = i18n.t;
       i18n.apply();
       var state = {
-        snapshot: { groups: [], entries: [] },
+        snapshot: { groups: [], entries: [], pinnedIds: [] },
         scope: 'all',
         dragId: null,
         groupPicker: null
@@ -485,9 +485,13 @@
       function scopeEntries() {
         var entries = state.snapshot.entries;
         if (state.scope === 'all') return entries;
-        if (state.scope === 'pinned') return entries.filter(function (e) { return e.pinned; });
+        if (state.scope === 'pinned') return entries.filter(isPinned);
         if (state.scope === 'ungrouped') return entries.filter(function (e) { return !e.groupId; });
         return entries.filter(function (e) { return e.groupId === state.scope; });
+      }
+
+      function isPinned(entry) {
+        return state.snapshot.pinnedIds.indexOf(entry.id) !== -1;
       }
 
       function scopeName() {
@@ -513,7 +517,7 @@
       function countFor(scope) {
         var entries = state.snapshot.entries;
         if (scope === 'all') return entries.length;
-        if (scope === 'pinned') return entries.filter(function (e) { return e.pinned; }).length;
+        if (scope === 'pinned') return entries.filter(isPinned).length;
         if (scope === 'ungrouped') return entries.filter(function (e) { return !e.groupId; }).length;
         return entries.filter(function (e) { return e.groupId === scope; }).length;
       }
@@ -577,9 +581,9 @@
             '<span class="row-url">' + escapeHtml(entry.url) + '</span>' +
             '<span class="row-rename"><input class="rename-input" data-rename-input value="' + escapeHtml(entry.title) + '"></span>' +
             '</span>' +
-            '<button class="pin-btn' + (entry.pinned ? ' pinned' : '') + '" data-pin title="' +
-            escapeHtml(t(entry.pinned ? 'bookmarks.unpinSidebar' : 'bookmarks.pinSidebar')) + '" type="button">' +
-            pinIcon + escapeHtml(t(entry.pinned ? 'bookmarks.unpin' : 'bookmarks.pin')) + '</button>' +
+            '<button class="pin-btn' + (isPinned(entry) ? ' pinned' : '') + '" data-pin title="' +
+            escapeHtml(t(isPinned(entry) ? 'bookmarks.unpinSidebar' : 'bookmarks.pinSidebar')) + '" type="button">' +
+            pinIcon + escapeHtml(t(isPinned(entry) ? 'bookmarks.unpin' : 'bookmarks.pin')) + '</button>' +
             '<span class="group-picker">' +
             '<button class="group-picker-button" data-move-button type="button" aria-haspopup="listbox" aria-expanded="false" title="' + escapeHtml(t('bookmarks.moveGroup')) + '">' +
             '<span>' + escapeHtml(groupLabel) + '</span>' + chevronIcon + '</button></span>' +
@@ -738,7 +742,7 @@
         if (deleteBtn) {
           event.stopPropagation();
           call('bookmarks.deleteGroup', { id: deleteBtn.getAttribute('data-group-delete') })
-            .then(function () { toast(t('bookmarks.groupDeleted')); refreshUnlessWatching();
+            .then(function () { toast(t('bookmarks.groupDeleted')); refreshUnlessWatching(); });
           return;
         }
         var item = event.target.closest('.rail-item');
@@ -816,7 +820,7 @@
         if (event.target.closest('[data-pin]')) {
           var entry = state.snapshot.entries.find(function (e) { return e.id === id; });
           if (!entry) return;
-          call('bookmarks.setPinned', { id: id, pinned: !entry.pinned }).then(function (updated) {
+          call('bookmarks.setPinned', { id: id, pinned: !isPinned(entry) }).then(function (updated) {
             toast(t(updated.pinned ? 'bookmarks.pinnedToast' : 'bookmarks.unpinnedToast'));
             refreshUnlessWatching();
           }, fail);

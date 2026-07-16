@@ -147,7 +147,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     // MARK: - Layout Constants
 
     struct Layout {
-        static let sidebarWidth: CGFloat = 180
+        static let sidebarWidth: CGFloat = 184
         static let sidebarHiddenThreshold: CGFloat = 1
         static let toolbarCenterY: CGFloat = 19
         static let trafficLightClearanceFallback: CGFloat = 80
@@ -1427,25 +1427,19 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         lastSidebarHostActions = items
         let sidebarItems = items.map { item in
             PanelIconItem(
-                labelColor: item.labelColorHex.flatMap { hex in
-                    let cleaned = hex.hasPrefix("#") ? String(hex.dropFirst()) : hex
-                    guard cleaned.count == 6, let rgb = UInt32(cleaned, radix: 16) else {
-                        return nil
-                    }
-                    return NSColor(
-                        red: CGFloat((rgb >> 16) & 0xFF) / 255,
-                        green: CGFloat((rgb >> 8) & 0xFF) / 255,
-                        blue: CGFloat(rgb & 0xFF) / 255,
-                        alpha: 1
-                    )
-                },
                 id: item.id,
                 iconURL: item.iconURL,
                 label: item.label,
-                weight: item.weight
+                active: item.active,
+                disabled: item.disabled
             )
         }
         sidebarView?.updatePanelItems(sidebarItems)
+        reconcileSidebarAutoHide()
+    }
+
+    func updateShellPins(_ json: String) {
+        sidebarView?.updateShellPins(json)
         reconcileSidebarAutoHide()
     }
 

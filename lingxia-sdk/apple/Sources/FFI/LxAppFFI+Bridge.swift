@@ -295,6 +295,41 @@ extension LxApp {
         }
     }
 
+    nonisolated static func setShellPins(items_json: RustStr) -> Bool {
+        let json = items_json.toString()
+        return executeOnMain {
+            #if os(macOS)
+            guard let runtime = LxAppMacAppUIRuntime.active else { return false }
+            runtime.setShellPins(json)
+            return true
+            #else
+            return true
+            #endif
+        }
+    }
+
+    nonisolated static func shellNativeActive(capability: RustStr) -> Bool {
+        let capability = capability.toString()
+        return executeOnMain {
+            #if os(macOS)
+            return LxAppMacAppUIRuntime.active?.shellNativeActive(capability) ?? false
+            #else
+            return false
+            #endif
+        }
+    }
+
+    nonisolated static func activateShellNative(capability: RustStr) -> Bool {
+        let capability = capability.toString()
+        return executeOnMain {
+            #if os(macOS)
+            return LxAppMacAppUIRuntime.active?.activateShellNative(capability) ?? false
+            #else
+            return false
+            #endif
+        }
+    }
+
     nonisolated static func setTrayIcon(icon: RustStr) -> Bool {
         let value = icon.toString()
         return executeOnMain {

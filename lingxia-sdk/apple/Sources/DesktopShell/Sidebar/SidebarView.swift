@@ -203,12 +203,16 @@ private final class SidebarRailTabPopoverViewController: NSViewController {
 /// Minimal display info for a panel icon in the sidebar footer.
 /// SidebarView only needs these — routing details (appId, path) are in Panel.swift.
 struct PanelIconItem {
-    /// Optional title color (writer-configurable); nil = secondary label.
-    var labelColor: NSColor?
     let id: String
     let iconURL: URL?
     let label: String
-    let weight: CGFloat
+    let active: Bool
+    let disabled: Bool
+}
+
+private struct ShellPinItem: Codable, Equatable {
+    let kind: String
+    let key: String
 }
 
 // MARK: - SidebarModel
@@ -255,7 +259,7 @@ private struct SidebarModel {
 extension PanelIconItem: Equatable {
     static func == (lhs: PanelIconItem, rhs: PanelIconItem) -> Bool {
         lhs.id == rhs.id && lhs.iconURL == rhs.iconURL && lhs.label == rhs.label
-            && lhs.labelColor == rhs.labelColor && lhs.weight == rhs.weight
+            && lhs.active == rhs.active && lhs.disabled == rhs.disabled
     }
 }
 
@@ -268,7 +272,7 @@ class SidebarView: NSView, NSPopoverDelegate {
     private static let log = OSLog(subsystem: "LingXia", category: "Sidebar")
 
     struct Layout {
-        static let expandedWidth: CGFloat = 180
+        static let expandedWidth: CGFloat = 184
         static let maxWidth: CGFloat = 400
         static let fullyHiddenThreshold: CGFloat = 1
         /// Minimum width of the collapsed icon-only rail. The effective width
@@ -457,14 +461,25 @@ class SidebarView: NSView, NSPopoverDelegate {
     // normal tab list; they never replace or hide an open tab.
     private var bookmarksSnapshot = SidebarBookmarksSnapshot.empty
     private var pinTileViews: [String: SidebarPinTileView] = [:]
-    /// Pinned lxapp ids (Rust-owned store) and their grid tiles.
-    private var pinnedLxappIds: [String] = []
+    private var shellPinItems: [ShellPinItem] = []
     private var lxappPinTiles: [String: LxappPinTileView] = [:]
     private var pinTileTopConstraints: [String: NSLayoutConstraint] = [:]
     private var pinTileLeadingConstraints: [String: NSLayoutConstraint] = [:]
 
     var hasPinnedWebsites: Bool {
-        !bookmarksSnapshot.pinnedEntries.isEmpty || !pinnedLxappIds.isEmpty
+        !shellPinItems.isEmpty
+    }
+
+
+    private var pinnedLxappIds: [String] {
+        shellPinItems.compactMap { $0.kind == "lxapp" ? $0.key : nil }
+    }
+
+    private var pinnedBookmarkEntries: [SidebarBookmarksSnapshot.Entry] {
+        shellPinItems.compactMap { pin in
+            guard pin.kind == "bookmark" else { return nil }
+            return bookmarksSnapshot.entries.first { $0.id == pin.key }
+        }
     }
 
     private func openTabId(for entry: SidebarBookmarksSnapshot.Entry) -> String? {
@@ -918,6 +933,7 @@ class SidebarView: NSView, NSPopoverDelegate {
                 isTemplate: false
             )
             button.action = #selector(railActivatorClicked(_:))
+            button.isEnabled = !item.disabled
             railStack.addArrangedSubview(button)
             railButtons[key] = button
         }
@@ -959,7 +975,11 @@ class SidebarView: NSView, NSPopoverDelegate {
     /// Highlight the active app/tab button in the rail.
     private func refreshRailHighlight() {
         for (key, btn) in railButtons {
-            let selected = key == activeRailKey
+            let activeActivator = key.hasPrefix("activator:")
+                && model.panelItems.contains {
+                    key == "activator:\($0.id)" && $0.active && !$0.disabled
+                }
+            let selected = key == activeRailKey || activeActivator
             btn.layer?.backgroundColor = selected
                 ? NSColor.labelColor.withAlphaComponent(0.12).cgColor
                 : NSColor.clear.cgColor
@@ -993,7 +1013,7 @@ class SidebarView: NSView, NSPopoverDelegate {
         // Page actions first (Arc keeps pin/copy on the tab row itself).
         let url = tab.url.trimmingCharacters(in: .whitespacesAndNewlines)
         if BrowserPageMenu.isBookmarkActionable(url) {
-            let pinnedEntry = bookmarksSnapshot.pinnedEntries.first {
+            let pinnedEntry = pinnedBookmarkEntries.first {
                 SidebarBookmarksSnapshot.normalize($0.url)
                     == SidebarBookmarksSnapshot.normalize(url)
             }
@@ -1076,7 +1096,7 @@ class SidebarView: NSView, NSPopoverDelegate {
     @objc private func togglePinBrowserMenuItemClicked(_ sender: NSMenuItem) {
         guard let id = sender.representedObject as? String,
               let tab = model.browserTabs.first(where: { $0.id == id }) else { return }
-        if let pinnedEntry = bookmarksSnapshot.pinnedEntries.first(where: {
+        if let pinnedEntry = pinnedBookmarkEntries.first(where: {
             SidebarBookmarksSnapshot.normalize($0.url)
                 == SidebarBookmarksSnapshot.normalize(tab.url)
         }) {
@@ -1084,7 +1104,9 @@ class SidebarView: NSView, NSPopoverDelegate {
                 #"{"op":"setPinned","id":"\#(jsonEscape(pinnedEntry.id))","pinned":false}"#
             )
         } else {
-            _ = browserBookmarkPin(tab.url, tab.title)
+            if !browserBookmarkPin(tab.url, tab.title) {
+                showShellPinLimitAlert()
+            }
         }
     }
 
@@ -1298,17 +1320,18 @@ class SidebarView: NSView, NSPopoverDelegate {
             return
         }
 
-        var entries: [(ActivatorRowView, CGFloat)] = []
+        var entries: [ActivatorRowView] = []
         for item in items {
             let row = ActivatorRowView(
                 label: item.label,
                 iconURL: item.iconURL,
-                labelColor: item.labelColor
+                active: item.active,
+                disabled: item.disabled
             )
             row.onClick = { [weak self] in
                 self?.onPanelItemToggled?(item.id)
             }
-            entries.append((row, item.weight))
+            entries.append(row)
             panelButtons.append(row)
         }
         panelFlow.setEntries(entries)
@@ -1494,7 +1517,7 @@ class SidebarView: NSView, NSPopoverDelegate {
                     self?.relayoutAfterGroupToggle()
                 }
                 groupView.onPinChanged = { [weak self] in
-                    self?.reloadShellPins()
+                    self?.reloadBookmarks()
                 }
                 groupViews[appId] = groupView
             }
@@ -1695,10 +1718,8 @@ class SidebarView: NSView, NSPopoverDelegate {
     /// and whenever the store changes (star toggle, tile action, manager
     /// page edit — routed through `LxApp.browserBookmarksChanged`).
     func reloadBookmarks() {
-        // lxapp pins render in the same grid; load them regardless of the
-        // browser capability (the guard below only covers web pins).
-        let json = shellPinnedLxapps().toString()
-        pinnedLxappIds = (try? JSONDecoder().decode([String].self, from: Data(json.utf8))) ?? []
+        let json = shellPins().toString()
+        shellPinItems = (try? JSONDecoder().decode([ShellPinItem].self, from: Data(json.utf8))) ?? []
         guard (LxAppCore.capabilities & LxAppCore.capBrowser) != 0 else {
             render()
             return
@@ -1707,12 +1728,10 @@ class SidebarView: NSView, NSPopoverDelegate {
         render()
     }
 
-    /// Re-read the Rust-owned lxapp pin store and re-render the grid.
-    func reloadShellPins() {
-        let json = shellPinnedLxapps().toString()
-        let ids = (try? JSONDecoder().decode([String].self, from: Data(json.utf8))) ?? []
-        guard ids != pinnedLxappIds else { return }
-        pinnedLxappIds = ids
+    func updateShellPins(_ json: String) {
+        let pins = (try? JSONDecoder().decode([ShellPinItem].self, from: Data(json.utf8))) ?? []
+        guard pins != shellPinItems else { return }
+        shellPinItems = pins
         render()
     }
 
@@ -1728,11 +1747,10 @@ class SidebarView: NSView, NSPopoverDelegate {
         }
         for id in pinnedLxappIds where lxappPinTiles[id] == nil {
             let tile = LxappPinTileView(appId: id)
-            tile.onUnpin = { [weak self] in self?.reloadShellPins() }
             lxappPinTiles[id] = tile
         }
 
-        let pinned = bookmarksSnapshot.pinnedEntries
+        let pinned = pinnedBookmarkEntries
         let pinnedIds = Set(pinned.map { $0.id })
         for (id, view) in pinTileViews where !pinnedIds.contains(id) {
             pinTileTopConstraints.removeValue(forKey: id)?.isActive = false
@@ -1786,23 +1804,28 @@ class SidebarView: NSView, NSPopoverDelegate {
 
     /// Lay out the pin grid at the very top of the list.
     private func layoutPinGrid(in docView: NSView, yOffset startY: CGFloat) -> CGFloat {
-        let pinned = bookmarksSnapshot.pinnedEntries
-        // One grid, lxapp pins leading: (constraint key, tile view) pairs.
-        let cells: [(String, NSView)] =
-            pinnedLxappIds.compactMap { id in lxappPinTiles[id].map { ("lxapp:" + id, $0) } }
-            + pinned.compactMap { entry in pinTileViews[entry.id].map { (entry.id, $0) } }
+        let cells: [(String, NSView)] = shellPinItems.compactMap { pin in
+            if pin.kind == "lxapp", let tile = lxappPinTiles[pin.key] {
+                return ("lxapp:" + pin.key, tile)
+            }
+            if pin.kind == "bookmark", let tile = pinTileViews[pin.key] {
+                return (pin.key, tile)
+            }
+            return nil
+        }
         guard !cells.isEmpty else { return startY }
-        let inset: CGFloat = SidebarGroupView.Layout.groupInset + 4
         let size = SidebarPinTileView.Layout.size
         let gap = SidebarPinTileView.Layout.gap
         let columns = SidebarPinTileView.Layout.columns
+        let gridWidth = CGFloat(columns) * size + CGFloat(columns - 1) * gap
+        let gridLeft = max(0, (docView.bounds.width - gridWidth) / 2)
         var yOffset = startY
 
         for (index, cell) in cells.enumerated() {
             let (key, tile) = cell
             let column = index % columns
             let row = index / columns
-            let x = inset + CGFloat(column) * (size + gap)
+            let x = gridLeft + CGFloat(column) * (size + gap)
             let y = startY + CGFloat(row) * (size + gap)
             ensureSubview(tile, in: docView) {}
             if let tc = pinTileTopConstraints[key] {
@@ -1939,26 +1962,24 @@ private final class FlippedClipView: NSView {
     override var isFlipped: Bool { true }
 }
 
-/// Wraps whole icon+title cells while keeping each title single-line. Width
-/// left after intrinsic cell sizing is distributed by the writer's flex weight.
+/// Wraps whole icon+title cells while keeping each title single-line.
 @MainActor
 private final class ActivatorFlowView: NSView {
     static let gap: CGFloat = 4
     private static let rowHeight: CGFloat = 30
     private static let minimumCellWidth: CGFloat = 72
 
-    private var entries: [(view: ActivatorRowView, weight: CGFloat)] = []
+    private var entries: [ActivatorRowView] = []
     private var lastLayoutWidth: CGFloat = 0
 
     override var isFlipped: Bool { true }
 
-    func setEntries(_ entries: [(ActivatorRowView, CGFloat)]) {
-        self.entries.forEach { $0.view.removeFromSuperview() }
-        self.entries = entries.map { entry in
-            let weight = entry.1.isFinite && entry.1 > 0 ? entry.1 : 1
-            entry.0.translatesAutoresizingMaskIntoConstraints = true
-            addSubview(entry.0)
-            return (entry.0, weight)
+    func setEntries(_ entries: [ActivatorRowView]) {
+        self.entries.forEach { $0.removeFromSuperview() }
+        self.entries = entries
+        self.entries.forEach { entry in
+            entry.translatesAutoresizingMaskIntoConstraints = true
+            addSubview(entry)
         }
         invalidateIntrinsicContentSize()
         needsLayout = true
@@ -1987,11 +2008,10 @@ private final class ActivatorFlowView: NSView {
         for range in rowRanges(for: width) {
             let row = Array(entries[range])
             let preferred = row.map {
-                min(width, max(Self.minimumCellWidth, $0.view.preferredCellWidth))
+                min(width, max(Self.minimumCellWidth, $0.preferredCellWidth))
             }
             let gaps = CGFloat(max(0, row.count - 1)) * Self.gap
             let extra = max(0, width - preferred.reduce(0, +) - gaps)
-            let totalWeight = max(1, row.reduce(CGFloat(0)) { $0 + $1.weight })
             var x: CGFloat = 0
             var allocatedExtra: CGFloat = 0
             for index in row.indices {
@@ -2000,11 +2020,11 @@ private final class ActivatorFlowView: NSView {
                 if isLast {
                     share = extra - allocatedExtra
                 } else {
-                    share = (extra * row[index].weight / totalWeight).rounded(.down)
+                    share = (extra / CGFloat(row.count)).rounded(.down)
                     allocatedExtra += share
                 }
                 let cellWidth = isLast ? width - x : preferred[index] + share
-                row[index].view.frame = NSRect(
+                row[index].frame = NSRect(
                     x: x,
                     y: y,
                     width: max(1, cellWidth),
@@ -2025,7 +2045,7 @@ private final class ActivatorFlowView: NSView {
         for index in entries.indices {
             let preferred = min(
                 available,
-                max(Self.minimumCellWidth, entries[index].view.preferredCellWidth)
+                max(Self.minimumCellWidth, entries[index].preferredCellWidth)
             )
             let next = index == start ? preferred : used + Self.gap + preferred
             if index > start && next > available {
@@ -2050,17 +2070,22 @@ final class ActivatorRowView: NSView {
 
     private let iconView = NSImageView()
     private let titleLabel: NSTextField
-    private var isHovered = false { didSet { updateBackground() } }
+    private let active: Bool
+    private let disabled: Bool
+    private var isHovered = false { didSet { updateAppearance() } }
     private var tracking: NSTrackingArea?
 
     private let washView = NSView()
+    private let accentView = NSView()
 
     var preferredCellWidth: CGFloat {
         8 + 16 + 8 + titleLabel.intrinsicContentSize.width + 8
     }
 
-    init(label: String, iconURL: URL?, labelColor: NSColor?) {
+    init(label: String, iconURL: URL?, active: Bool, disabled: Bool) {
         titleLabel = NSTextField(labelWithString: label)
+        self.active = active && !disabled
+        self.disabled = disabled
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
         toolTip = label
@@ -2076,6 +2101,13 @@ final class ActivatorRowView: NSView {
         washView.layer?.cornerRadius = 6
         addSubview(washView)
 
+        accentView.translatesAutoresizingMaskIntoConstraints = false
+        accentView.wantsLayer = true
+        accentView.layer?.cornerRadius = 1
+        accentView.layer?.backgroundColor = NSColor.controlAccentColor.cgColor
+        accentView.isHidden = !self.active
+        addSubview(accentView)
+
         let icon = iconURL.flatMap { NSImage(contentsOf: $0) }
             ?? Bundle.lingxiaResources.url(
                 forResource: "lxapp_default", withExtension: "png", subdirectory: "icons")
@@ -2083,11 +2115,14 @@ final class ActivatorRowView: NSView {
         icon?.size = NSSize(width: 16, height: 16)
         iconView.image = icon
         iconView.imageScaling = .scaleProportionallyDown
+        iconView.alphaValue = disabled ? 0.45 : 1
         iconView.translatesAutoresizingMaskIntoConstraints = false
         addSubview(iconView)
 
         titleLabel.font = NSFont.systemFont(ofSize: 13, weight: .regular)
-        titleLabel.textColor = labelColor ?? NSColor.labelColor
+        titleLabel.textColor = disabled
+            ? NSColor.tertiaryLabelColor
+            : (self.active ? NSColor.controlAccentColor : NSColor.labelColor)
         titleLabel.lineBreakMode = .byTruncatingTail
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
         addSubview(titleLabel)
@@ -2097,6 +2132,10 @@ final class ActivatorRowView: NSView {
             washView.trailingAnchor.constraint(equalTo: trailingAnchor),
             washView.topAnchor.constraint(equalTo: topAnchor),
             washView.bottomAnchor.constraint(equalTo: bottomAnchor),
+            accentView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 2),
+            accentView.centerYAnchor.constraint(equalTo: centerYAnchor),
+            accentView.widthAnchor.constraint(equalToConstant: 2),
+            accentView.heightAnchor.constraint(equalToConstant: 18),
             iconView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
             iconView.centerYAnchor.constraint(equalTo: centerYAnchor),
             iconView.widthAnchor.constraint(equalToConstant: 16),
@@ -2105,6 +2144,8 @@ final class ActivatorRowView: NSView {
             titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: washView.trailingAnchor, constant: -8),
             titleLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
         ])
+        setAccessibilityEnabled(!disabled)
+        updateAppearance()
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
@@ -2114,10 +2155,15 @@ final class ActivatorRowView: NSView {
         iconView.image = image
     }
 
-    private func updateBackground() {
-        washView.layer?.backgroundColor = isHovered
-            ? NSColor.labelColor.withAlphaComponent(0.06).cgColor
-            : NSColor.clear.cgColor
+    private func updateAppearance() {
+        if active {
+            washView.layer?.backgroundColor = NSColor.controlAccentColor
+                .withAlphaComponent(0.10).cgColor
+        } else if isHovered && !disabled {
+            washView.layer?.backgroundColor = NSColor.labelColor.withAlphaComponent(0.06).cgColor
+        } else {
+            washView.layer?.backgroundColor = NSColor.clear.cgColor
+        }
     }
 
     override func updateTrackingAreas() {
@@ -2133,11 +2179,12 @@ final class ActivatorRowView: NSView {
         tracking = area
     }
 
-    override func mouseEntered(with event: NSEvent) { isHovered = true }
+    override func mouseEntered(with event: NSEvent) { if !disabled { isHovered = true } }
     override func mouseExited(with event: NSEvent) { isHovered = false }
-    override func mouseDown(with event: NSEvent) { onClick?() }
+    override func mouseDown(with event: NSEvent) { if !disabled { onClick?() } }
     override var mouseDownCanMoveWindow: Bool { false }
     override func accessibilityPerformPress() -> Bool {
+        guard !disabled else { return false }
         onClick?()
         return true
     }

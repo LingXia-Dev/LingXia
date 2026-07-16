@@ -28,9 +28,6 @@ pub(super) struct ShellPalette {
     /// Low-contrast wash for an active top-level lxapp group. Its selected
     /// tabbar child remains the stronger white card, matching macOS hierarchy.
     pub group_active_background: u32,
-    /// Resting surface for persistent panel activators. It stays quieter than
-    /// active/hover states while keeping the controls discoverable.
-    pub activator_background: u32,
     pub sidebar_background: u32,
     pub text_primary: u32,
     pub text_muted: u32,
@@ -55,7 +52,6 @@ pub(super) fn shell_palette() -> ShellPalette {
             panel_background: 0x2b2b2b,
             selection_background: 0x34333a,
             group_active_background: 0x343434,
-            activator_background: 0x272727,
             sidebar_background: 0x202020,
             text_primary: 0xf3f3f3,
             text_muted: 0x9aa0a6,
@@ -72,7 +68,6 @@ pub(super) fn shell_palette() -> ShellPalette {
             panel_background: 0xffffff,
             selection_background: 0xf7f5fb,
             group_active_background: 0xcfccd6,
-            activator_background: 0xe5e2ec,
             sidebar_background: 0xdad6e4,
             text_primary: 0x111827,
             text_muted: 0x667085,

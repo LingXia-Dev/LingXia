@@ -27,10 +27,8 @@ struct LxAppUIActionItem: Sendable {
     let id: String
     let label: String
     let iconURL: URL?
-    /// Writer-configured title color (#RRGGBB), nil = default.
-    var labelColorHex: String?
-    /// Flex weight within one adaptive activator row.
-    var weight: CGFloat = 1
+    var active: Bool = false
+    var disabled: Bool = false
 }
 
 @MainActor
@@ -39,6 +37,7 @@ final class LxAppMacAppUIRuntime: NSObject {
     private static let panelFirstPaintPollNs: UInt64 = 50_000_000
     private static let panelFirstPaintMaxPolls = 24
     private static let panelFirstPaintSettleNs: UInt64 = 16_000_000
+    private static let shellTerminalSurfaceID = "shell:terminal"
 
     nonisolated(unsafe) static weak var active: LxAppMacAppUIRuntime?
 
@@ -135,7 +134,7 @@ final class LxAppMacAppUIRuntime: NSObject {
             self?.collapseExpandedAsides()
         }
         shell.setSidebarHostActionHandler { [weak self] actionID in
-            self?.performActivator(id: actionID)
+            self?.performSidebarActivator(id: actionID)
         }
         shell.setToolbarHostActionHandler { [weak self] actionID in
             self?.performActivator(id: actionID)
@@ -351,38 +350,35 @@ final class LxAppMacAppUIRuntime: NSObject {
         closeSurface(id: rootSurface.id)
     }
 
-    /// Runtime-writer activator entries (lx.shell.activator.set): the shell's
-    /// single entry mechanism. Replaces the yaml-declared sidebar entries when
-    /// non-empty; the declared tray entry is unaffected.
-    private struct RuntimeActivatorItem: Codable {
-        let kind: String       // "lxapp" | "native" | "action"
-        let key: String        // appId / capability / action id
-        let name: String?
-        let icon: String?
-        let color: String?     // title color, #RRGGBB
-        let weight: Double?
+    private struct ResolvedRuntimeActivator: Codable {
+        let id: String
+        let kind: String
+        let label: String
+        let iconPath: String?
+        let active: Bool
+        let disabled: Bool
     }
-    private var runtimeActivatorItems: [RuntimeActivatorItem] = []
+
+    private struct ResolvedRuntimeActivatorSnapshot: Codable {
+        let declared: Bool
+        let items: [ResolvedRuntimeActivator]
+    }
+
+    private var runtimeActivatorItems: [ResolvedRuntimeActivator] = []
     private var runtimeActivatorWriterDeclared = false
 
-    /// Restore the persisted SURFACE items (Rust-owned store) before the home
-    /// logic boots, so the activator renders at launch instead of after
-    /// App.onLaunch's set(). Action items are skipped — their handlers live
-    /// in the writer and only exist once it re-declares them; the writer's
-    /// set() replaces this list.
     private func restorePersistedActivatorItems() {
-        let json = shellPersistedActivatorItems().toString()
-        guard runtimeActivatorItems.isEmpty,
-              let items = try? JSONDecoder().decode(
-                [RuntimeActivatorItem].self, from: Data(json.utf8))
+        let json = shellActivatorSnapshot().toString()
+        guard let snapshot = try? JSONDecoder().decode(
+            ResolvedRuntimeActivatorSnapshot.self, from: Data(json.utf8))
         else { return }
-        runtimeActivatorItems = items.filter { $0.kind != "action" }
-        runtimeActivatorWriterDeclared = !runtimeActivatorItems.isEmpty
+        runtimeActivatorItems = snapshot.items
+        runtimeActivatorWriterDeclared = snapshot.declared
     }
 
     func setRuntimeActivatorItems(_ json: String) {
         guard let data = json.data(using: .utf8),
-              let items = try? JSONDecoder().decode([RuntimeActivatorItem].self, from: data)
+              let items = try? JSONDecoder().decode([ResolvedRuntimeActivator].self, from: data)
         else {
             LXLog.error("setActivatorItems: bad payload", category: "MacAppUI")
             return
@@ -392,74 +388,66 @@ final class LxAppMacAppUIRuntime: NSObject {
         refreshChromeActivators()
     }
 
+    func setShellPins(_ json: String) {
+        shell.updateShellPins(json)
+    }
+
+    func shellNativeActive(_ capability: String) -> Bool {
+        capability == "terminal"
+            && visibleSurfaceIDs.contains(Self.shellTerminalSurfaceID)
+    }
+
+    func activateShellNative(_ capability: String) -> Bool {
+        guard capability == "terminal",
+              let primaryAppId = rootSurface.content.appId else { return false }
+        let id = Self.shellTerminalSurfaceID
+        if visibleSurfaceIDs.contains(id) {
+            closeTerminalWorkspaceSurface(id: id)
+            return true
+        }
+        openTerminalPanel(id: id, position: .bottom, defaultHeight: 320) {
+            _ = registerHostAside(primaryAppId, id, "bottom")
+        }
+        return visibleSurfaceIDs.contains(id)
+    }
+
     /// Sidebar entries from the runtime writer, when it has spoken.
     private func runtimeSidebarActionItems() -> [LxAppUIActionItem]? {
         guard runtimeActivatorWriterDeclared else { return nil }
+        let json = shellActivatorSnapshot().toString()
+        if let snapshot = try? JSONDecoder().decode(
+            ResolvedRuntimeActivatorSnapshot.self, from: Data(json.utf8)),
+           snapshot.declared {
+            runtimeActivatorItems = snapshot.items
+        }
         return runtimeActivatorItems.map { item in
-            let title = item.name ?? displayName(forRuntimeItem: item)
             return LxAppUIActionItem(
-                id: "runtime:\(item.kind):\(item.key)",
-                label: title,
+                id: item.id,
+                label: item.label,
                 iconURL: runtimeItemIconURL(item),
-                labelColorHex: item.color,
-                weight: CGFloat(item.weight ?? 1)
+                active: item.active,
+                disabled: item.disabled
             )
         }
     }
 
-    private func displayName(forRuntimeItem item: RuntimeActivatorItem) -> String {
-        if item.kind == "lxapp" {
-            let info = getLxAppInfo(item.key)
-            let name = info.app_name.toString()
-            if !name.isEmpty { return name }
-        }
-        return item.key
+    private func runtimeItemIconURL(_ item: ResolvedRuntimeActivator) -> URL? {
+        guard let icon = item.iconPath, !icon.isEmpty else { return nil }
+        if let url = URL(string: icon), url.isFileURL { return url }
+        if icon.hasPrefix("/") { return URL(fileURLWithPath: icon) }
+        return LxAppAppUIBundleLoader.resolveRelativeResource(icon, baseURL: uiConfigURL)
     }
 
-    /// Icon resolution order: writer's explicit icon > the content's own
-    /// metadata (lxapp icon, a declared native surface's icon) > none (the
-    /// row falls back to the default mark).
-    private func runtimeItemIconURL(_ item: RuntimeActivatorItem) -> URL? {
-        if let icon = item.icon, !icon.isEmpty {
-            return LxAppAppUIBundleLoader.resolveRelativeResource(icon, baseURL: uiConfigURL)
+    private func performSidebarActivator(id: String) {
+        if runtimeActivatorWriterDeclared,
+           runtimeActivatorItems.contains(where: { $0.id == id }) {
+            _ = shellActivate(id)
+            return
         }
-        if item.kind == "lxapp" {
-            let path = getLxAppInfo(item.key).icon.toString()
-            if !path.isEmpty { return URL(fileURLWithPath: path) }
-        }
-        if item.kind == "native",
-           let icon = uiConfig.activators.first(where: { $0.action.surface == item.key })?.icon,
-           !icon.isEmpty {
-            // A declared native surface carries its icon on its yaml activator.
-            return LxAppAppUIBundleLoader.resolveRelativeResource(icon, baseURL: uiConfigURL)
-        }
-        return nil
-    }
-
-    private func performRuntimeActivator(kind: String, key: String) {
-        switch kind {
-        case "lxapp", "native":
-            // Declared surfaces toggle; an undeclared lxapp opens as an aside
-            // through the privileged runtime path.
-            if surfaceById[key] != nil {
-                toggleSurface(id: key)
-            } else {
-                _ = shellActivatorOpenLxapp(key)
-            }
-        default:
-            // Action item: hand the click to the home Logic's handler.
-            _ = shellActivatorClicked(key)
-        }
+        performActivator(id: id)
     }
 
     private func performActivator(id: String) {
-        if id.hasPrefix("runtime:") {
-            let parts = id.split(separator: ":", maxSplits: 2).map(String.init)
-            if parts.count == 3 {
-                performRuntimeActivator(kind: parts[1], key: parts[2])
-            }
-            return
-        }
         guard let activator = uiConfig.activators.first(where: { $0.id == id }) else { return }
 
         switch activator.action.kind {
@@ -562,6 +550,10 @@ final class LxAppMacAppUIRuntime: NSObject {
     }
 
     private func closeAsideSlotChild(surfaceId: String) -> Bool {
+        if surfaceId == Self.shellTerminalSurfaceID {
+            closeTerminalWorkspaceSurface(id: surfaceId)
+            return true
+        }
         let appId = surfaceById[surfaceId]?.content.appId
             ?? runtimeLxAppPanels[surfaceId]?.appId
             ?? surfaceId
@@ -807,51 +799,65 @@ final class LxAppMacAppUIRuntime: NSObject {
         guard let position = panelPosition(for: surface) else {
             throw LxAppUIError.invalidConfig("surface \(surface.id) terminal panel requires a valid aside edge")
         }
-        let reused = terminalWorkspaces[surface.id] != nil
-        let defaultHeight = CGFloat(surface.size?.height ?? 320)
+        openTerminalPanel(
+            id: surface.id,
+            position: position,
+            defaultHeight: CGFloat(surface.size?.height ?? 320)
+        ) { [weak self] in
+            self?.registerHostAsideForSurface(surface)
+        }
+    }
+
+    private func openTerminalPanel(
+        id: String,
+        position: PanelPosition,
+        defaultHeight: CGFloat,
+        registerAside: () -> Void
+    ) {
+        let reused = terminalWorkspaces[id] != nil
         logTerminal(
-            "runtime.openTerminal surface=\(surface.id) position=\(position.rawValue) reused=\(reused) defaultHeight=\(String(format: "%.1f", defaultHeight)) windowFrameBefore=\(lxTerminalRuntimeFormatRect(shell.hostWindow?.frame ?? .zero))"
+            "runtime.openTerminal surface=\(id) position=\(position.rawValue) reused=\(reused) defaultHeight=\(String(format: "%.1f", defaultHeight)) windowFrameBefore=\(lxTerminalRuntimeFormatRect(shell.hostWindow?.frame ?? .zero))"
         )
         shell.show()
-        let workspace = terminalWorkspaces[surface.id]
-            ?? LingXiaTerminalWorkspaceView(surfaceID: surface.id)
-        terminalWorkspaces[surface.id] = workspace
+        let workspace = terminalWorkspaces[id]
+            ?? LingXiaTerminalWorkspaceView(surfaceID: id)
+        terminalWorkspaces[id] = workspace
         workspace.onRequestClosePanel = { [weak self] in
-            self?.logTerminal("runtime.workspaceRequestedClose surface=\(surface.id)")
-            self?.closeTerminalWorkspaceSurface(id: surface.id)
+            self?.logTerminal("runtime.workspaceRequestedClose surface=\(id)")
+            self?.closeTerminalWorkspaceSurface(id: id)
         }
         workspace.onToggleSurfaceZoom = { [weak self] zoomed in
             guard let self else { return }
-            self.logTerminal("runtime.toggleSurfaceZoom surface=\(surface.id) enabled=\(zoomed)")
-            self.shell.setPanelFullscreen(id: surface.id, enabled: zoomed)
+            self.logTerminal("runtime.toggleSurfaceZoom surface=\(id) enabled=\(zoomed)")
+            self.shell.setPanelFullscreen(id: id, enabled: zoomed)
         }
         workspace.ensureOpenTab()
         logTerminal(
-            "runtime.beforeShowPanel surface=\(surface.id) workspaceFrame=\(lxTerminalRuntimeFormatRect(workspace.frame)) workspaceBounds=\(lxTerminalRuntimeFormatRect(workspace.bounds)) windowFrame=\(lxTerminalRuntimeFormatRect(shell.hostWindow?.frame ?? .zero))"
+            "runtime.beforeShowPanel surface=\(id) workspaceFrame=\(lxTerminalRuntimeFormatRect(workspace.frame)) workspaceBounds=\(lxTerminalRuntimeFormatRect(workspace.bounds)) windowFrame=\(lxTerminalRuntimeFormatRect(shell.hostWindow?.frame ?? .zero))"
         )
         // Register the terminal content (hidden) before mutating the Rust surface
         // graph. registerHostAside below pushes the layout plan that places and
         // shows it.
         shell.registerPanelWithNativeContent(
-            id: surface.id,
+            id: id,
             position: position,
             contentView: workspace,
             defaultSize: defaultHeight
         )
-        registerHostAsideForSurface(surface)
+        registerAside()
         logTerminal(
-            "runtime.afterShowPanel surface=\(surface.id) workspaceFrame=\(lxTerminalRuntimeFormatRect(workspace.frame)) workspaceBounds=\(lxTerminalRuntimeFormatRect(workspace.bounds)) windowFrame=\(lxTerminalRuntimeFormatRect(shell.hostWindow?.frame ?? .zero))"
+            "runtime.afterShowPanel surface=\(id) workspaceFrame=\(lxTerminalRuntimeFormatRect(workspace.frame)) workspaceBounds=\(lxTerminalRuntimeFormatRect(workspace.bounds)) windowFrame=\(lxTerminalRuntimeFormatRect(shell.hostWindow?.frame ?? .zero))"
         )
         workspace.focusActiveTerminal()
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak workspace, weak shell] in
             self.logTerminal(
-                "runtime.delayedFocusTerminal surface=\(surface.id) workspaceFrame=\(lxTerminalRuntimeFormatRect(workspace?.frame ?? .zero)) workspaceBounds=\(lxTerminalRuntimeFormatRect(workspace?.bounds ?? .zero)) windowFrame=\(lxTerminalRuntimeFormatRect(shell?.hostWindow?.frame ?? .zero))"
+                "runtime.delayedFocusTerminal surface=\(id) workspaceFrame=\(lxTerminalRuntimeFormatRect(workspace?.frame ?? .zero)) workspaceBounds=\(lxTerminalRuntimeFormatRect(workspace?.bounds ?? .zero)) windowFrame=\(lxTerminalRuntimeFormatRect(shell?.hostWindow?.frame ?? .zero))"
             )
             workspace?.focusActiveTerminal()
         }
-        openedSurfaceIDs.insert(surface.id)
-        visibleSurfaceIDs.insert(surface.id)
-        logTerminal("runtime.openTerminal markedVisible surface=\(surface.id) opened=\(openedSurfaceIDs.contains(surface.id)) visible=\(visibleSurfaceIDs.contains(surface.id))")
+        openedSurfaceIDs.insert(id)
+        visibleSurfaceIDs.insert(id)
+        logTerminal("runtime.openTerminal markedVisible surface=\(id) opened=\(openedSurfaceIDs.contains(id)) visible=\(visibleSurfaceIDs.contains(id))")
         refreshChromeActivators()
     }
 

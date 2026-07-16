@@ -271,7 +271,6 @@ mod tests {
             url: "https://example.com/?a=1&b=2".into(),
             title: "A \"useful\" page".into(),
             group_id: Some("g1".into()),
-            pinned: true,
             created_at_ms: 123_000,
         }];
         let (exported, count) = export_netscape_html(&snapshot, 456_000);
@@ -297,7 +296,6 @@ mod tests {
                 url: "https://kept.test".into(),
                 title: "Kept".into(),
                 group_id: None,
-                pinned: false,
                 created_at_ms: 0,
             },
             BookmarkEntry {
@@ -305,7 +303,6 @@ mod tests {
                 url: "https://orphan.test".into(),
                 title: "Orphan".into(),
                 group_id: Some("missing-group".into()),
-                pinned: false,
                 created_at_ms: 0,
             },
         ];

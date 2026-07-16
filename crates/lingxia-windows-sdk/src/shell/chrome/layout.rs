@@ -2,8 +2,6 @@
 
 use std::sync::Arc;
 
-use lingxia_windows_contract::WindowsPanelPosition;
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[allow(dead_code)]
 pub enum WindowsShellTabBarPosition {
@@ -130,12 +128,9 @@ pub struct WindowsShellAddressBarLayout {
 pub struct WindowsShellPanelActivatorLayout {
     pub id: String,
     pub label: String,
-    pub label_color: Option<u32>,
     pub icon_path: String,
-    /// Flex weight within the adaptive visual row, normalized to thousandths.
-    pub weight: u32,
-    pub position: WindowsPanelPosition,
     pub active: bool,
+    pub disabled: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]

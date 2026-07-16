@@ -1,23 +1,24 @@
-//! `lx.shell` — the shell chrome writer API (home lxapp only).
-//!
-//! The activator is the shell's single persistent-entry mechanism: entries are
-//! declared at runtime with an idempotent full-list `set` (never in YAML), so
-//! call timing is a non-issue — any moment converges to the same state.
+//! `lx.shell.activators` — app-declared host-shell entries (home lxapp only).
 
 use crate::app::ensure_home_lxapp;
-use lingxia_platform::traits::app_runtime::AppRuntime;
+use lingxia_shell::{
+    ActivatorCollection, NativeShellCapability, ShellActivator, ShellActivatorTarget,
+    ShellActivatorUpdate, ShellError,
+};
 use lxapp::{LxApp, register_app_handler, unregister_app_handler};
 use rong::{JSContext, JSFunc, JSObject, JSResult, JSValue};
-use serde_json::{Value, json};
-use std::collections::HashSet;
-use std::sync::{LazyLock, Mutex};
+use std::cell::RefCell;
+use std::collections::HashMap;
 
-/// Serialized activator items last pushed to the shell, so `update` can merge
-/// a patch without the caller re-sending the full list.
-static ACTIVATOR_ITEMS: LazyLock<Mutex<Vec<Value>>> = LazyLock::new(|| Mutex::new(Vec::new()));
-/// Action-item ids whose click handlers are currently registered.
-static ACTION_HANDLER_IDS: LazyLock<Mutex<HashSet<String>>> =
-    LazyLock::new(|| Mutex::new(HashSet::new()));
+#[derive(Default)]
+struct ActionHandlerGeneration {
+    generation: u64,
+    handlers: HashMap<String, JSFunc>,
+}
+
+thread_local! {
+    static ACTION_HANDLERS: RefCell<ActionHandlerGeneration> = RefCell::new(ActionHandlerGeneration::default());
+}
 
 fn shell_namespace(ctx: &JSContext) -> JSResult<JSObject> {
     let lx = ctx.global().get::<_, JSObject>("lx")?;
@@ -31,293 +32,257 @@ fn shell_namespace(ctx: &JSContext) -> JSResult<JSObject> {
     }
 }
 
-fn activator_namespace(ctx: &JSContext) -> JSResult<JSObject> {
+fn activators_namespace(ctx: &JSContext) -> JSResult<JSObject> {
     let shell = shell_namespace(ctx)?;
-    match shell.get::<_, JSObject>("activator") {
+    match shell.get::<_, JSObject>("activators") {
         Ok(obj) => Ok(obj),
         Err(_) => {
             let obj = JSObject::new(ctx);
-            shell.set("activator", obj.clone())?;
+            shell.set("activators", obj.clone())?;
             Ok(obj)
         }
     }
 }
 
-/// The bus event carrying an action item's click, suffixed by its id.
-fn action_event(id: &str) -> String {
-    format!("lx.shell.activator:{id}")
+fn action_event(generation: u64, id: &str) -> String {
+    format!("lx.shell.activators:{generation}:{id}")
 }
 
-/// Activator items persist in the host data dir (Rust-owned, like pins) so
-/// every platform skin restores the same entries before the home logic
-/// boots. Action items are stored too but skins skip them on restore —
-/// their handlers only exist once the writer re-declares them.
-fn persist_activator_items(lxapp: &LxApp, payload: &str) {
-    let path = lxapp.app_data_dir().join("shell-activator.json");
-    if let Err(err) = std::fs::write(&path, payload) {
-        log::warn!("failed to persist activator items: {err}");
-    }
+struct ParsedActivator {
+    item: ShellActivator,
+    action_handler: Option<JSFunc>,
 }
 
-/// Serialized activator items from the previous run ("[]" when none).
-pub(crate) fn persisted_activator_items() -> String {
-    lxapp::get_platform()
-        .map(|platform| {
-            use lingxia_platform::traits::app_runtime::AppRuntime;
-            platform.app_data_dir().join("shell-activator.json")
-        })
-        .and_then(|path| std::fs::read_to_string(path).ok())
-        .unwrap_or_else(|| "[]".to_string())
-}
-
-struct ParsedActivatorItem {
-    value: Value,
-    action_handler: Option<(String, JSFunc)>,
-}
-
-fn has_item_property(item: &JSObject, field: &str) -> bool {
+fn has_property(item: &JSObject, field: &str) -> bool {
     item.get::<_, JSValue>(field)
         .ok()
         .is_some_and(|value| !value.is_undefined() && !value.is_null())
 }
 
-fn optional_item_string(item: &JSObject, field: &str) -> JSResult<Option<String>> {
-    if !has_item_property(item, field) {
-        return Ok(None);
-    }
+fn required_string(item: &JSObject, field: &'static str) -> JSResult<String> {
     let value = item.get::<_, String>(field).map_err(|_| {
         rong::HostError::new(
             rong::error::E_INVALID_ARG,
-            format!("activator item {field} must be a string"),
+            format!("shell activator {field} must be a string"),
         )
     })?;
     let value = value.trim();
     if value.is_empty() {
         return Err(rong::HostError::new(
             rong::error::E_INVALID_ARG,
-            format!("activator item {field} must not be empty"),
+            format!("shell activator {field} must not be empty"),
         )
         .into());
     }
-    Ok(Some(value.to_string()))
+    Ok(value.to_string())
 }
 
-fn optional_item_weight(item: &JSObject) -> JSResult<Option<f64>> {
-    if !has_item_property(item, "weight") {
+fn optional_string(item: &JSObject, field: &'static str) -> JSResult<Option<String>> {
+    has_property(item, field)
+        .then(|| required_string(item, field))
+        .transpose()
+}
+
+fn optional_bool(item: &JSObject, field: &'static str) -> JSResult<Option<bool>> {
+    if !has_property(item, field) {
         return Ok(None);
     }
-    let weight = item.get::<_, f64>("weight").map_err(|_| {
+    item.get::<_, bool>(field).map(Some).map_err(|_| {
         rong::HostError::new(
             rong::error::E_INVALID_ARG,
-            "activator item weight must be a number",
+            format!("shell activator {field} must be a boolean"),
         )
-    })?;
-    if !weight.is_finite() || weight <= 0.0 {
-        return Err(rong::HostError::new(
-            rong::error::E_INVALID_ARG,
-            "activator item weight must be finite and greater than zero",
-        )
-        .into());
-    }
-    Ok(Some(weight))
-}
-
-/// Validate and serialize one incoming item without mutating handler state.
-/// Surface items carry exactly one content key (`lxapp` / `native`); action
-/// items carry `id` + `handler`.
-fn parse_item(item: &JSObject) -> JSResult<ParsedActivatorItem> {
-    let app_id = optional_item_string(item, "lxapp")?;
-    let capability = optional_item_string(item, "native")?;
-    let id = optional_item_string(item, "id")?;
-    let key_count = [app_id.is_some(), capability.is_some(), id.is_some()]
-        .into_iter()
-        .filter(|present| *present)
-        .count();
-    if key_count != 1 {
-        return Err(rong::HostError::new(
-            rong::error::E_INVALID_ARG,
-            "activator item must set exactly one of lxapp, native, or id",
-        )
-        .into());
-    }
-
-    let name = optional_item_string(item, "name")?;
-    let icon = optional_item_string(item, "icon")?;
-    let color = optional_item_string(item, "color")?;
-    let weight = optional_item_weight(item)?;
-    if let Some(app_id) = app_id {
-        if has_item_property(item, "handler") {
-            return Err(rong::HostError::new(
-                rong::error::E_INVALID_ARG,
-                "an lxapp activator item must not set handler",
-            )
-            .into());
-        }
-        return Ok(ParsedActivatorItem {
-            value: json!({ "kind": "lxapp", "key": app_id, "name": name, "icon": icon, "color": color, "weight": weight }),
-            action_handler: None,
-        });
-    }
-    if let Some(capability) = capability {
-        if has_item_property(item, "handler") {
-            return Err(rong::HostError::new(
-                rong::error::E_INVALID_ARG,
-                "a native activator item must not set handler",
-            )
-            .into());
-        }
-        return Ok(ParsedActivatorItem {
-            value: json!({ "kind": "native", "key": capability, "name": name, "icon": icon, "color": color, "weight": weight }),
-            action_handler: None,
-        });
-    }
-
-    let id = id.expect("exactly one key was validated");
-    let handler = item.get::<_, JSFunc>("handler").map_err(|_| {
-        rong::HostError::new(
-            rong::error::E_INVALID_ARG,
-            "an action activator item requires handler",
-        )
-    })?;
-    let name = name.ok_or_else(|| {
-        rong::HostError::new(
-            rong::error::E_INVALID_ARG,
-            "an action activator item requires name",
-        )
-    })?;
-    let icon = icon.ok_or_else(|| {
-        rong::HostError::new(
-            rong::error::E_INVALID_ARG,
-            "an action activator item requires icon",
-        )
-    })?;
-    Ok(ParsedActivatorItem {
-        value: json!({ "kind": "action", "key": id, "name": name, "icon": icon, "color": color, "weight": weight }),
-        action_handler: Some((id, handler)),
+        .into()
     })
 }
 
-/// `lx.shell.activator.set(items)` — idempotent full-list declaration. The
-/// shell diffs against the previous state; repeat calls converge.
-fn activator_set(ctx: JSContext, items: Vec<JSObject>) -> JSResult<()> {
-    let lxapp = LxApp::from_ctx(&ctx)?;
-    ensure_home_lxapp(&lxapp, "lx.shell.activator.set")?;
+fn parse_item(item: &JSObject) -> JSResult<ParsedActivator> {
+    let id = required_string(item, "id")?;
+    let lxapp = optional_string(item, "lxapp")?;
+    let native = optional_string(item, "native")?;
+    let has_action = has_property(item, "onActivate");
+    let target_count = [lxapp.is_some(), native.is_some(), has_action]
+        .into_iter()
+        .filter(|present| *present)
+        .count();
+    if target_count != 1 {
+        return Err(rong::HostError::new(
+            rong::error::E_INVALID_ARG,
+            "shell activator must set exactly one of lxapp, native, or onActivate",
+        )
+        .into());
+    }
 
-    // Validate the complete generation before changing handlers, persistence,
-    // or native chrome. A bad later item must leave the previous set intact.
-    let mut parsed = Vec::with_capacity(items.len());
-    let mut keys = HashSet::new();
-    for item in &items {
-        let item = parse_item(item)?;
-        let key = item
-            .value
-            .get("key")
-            .and_then(Value::as_str)
-            .expect("validated activator item has a key");
-        if !keys.insert(key.to_string()) {
+    let label = optional_string(item, "label")?;
+    let icon = optional_string(item, "icon")?;
+    let disabled = optional_bool(item, "disabled")?.unwrap_or(false);
+    let (target, action_handler) = if let Some(key) = lxapp {
+        (ShellActivatorTarget::Lxapp { key }, None)
+    } else if let Some(native) = native {
+        if native != "terminal" {
             return Err(rong::HostError::new(
                 rong::error::E_INVALID_ARG,
-                format!("duplicate activator key '{key}'"),
+                format!("unsupported shell native capability '{native}'"),
             )
             .into());
         }
-        parsed.push(item);
-    }
-    let specs: Vec<Value> = parsed.iter().map(|item| item.value.clone()).collect();
-    let payload = serde_json::to_string(&specs).unwrap_or_else(|_| "[]".to_string());
+        (
+            ShellActivatorTarget::Native {
+                key: NativeShellCapability::Terminal,
+            },
+            None,
+        )
+    } else {
+        let handler = item.get::<_, JSFunc>("onActivate").map_err(|_| {
+            rong::HostError::new(
+                rong::error::E_INVALID_ARG,
+                "shell activator onActivate must be a function",
+            )
+        })?;
+        (ShellActivatorTarget::Action, Some(handler))
+    };
 
-    // Native chrome accepts the complete list before the handler generation is
-    // swapped, so a platform failure leaves the old state fully operational.
-    lxapp
-        .runtime
-        .set_activator_items(&payload)
-        .map_err(|e| crate::i18n::js_error_from_platform_error(&e))?;
-
-    let mut handler_ids = ACTION_HANDLER_IDS.lock().map_err(|_| {
-        rong::HostError::new(rong::error::E_INTERNAL, "activator handler state poisoned")
-    })?;
-    for id in handler_ids.drain() {
-        unregister_app_handler(&ctx, &action_event(&id), None);
+    let item = ShellActivator {
+        id,
+        target,
+        label,
+        icon,
+        disabled,
     }
-    for item in parsed {
-        if let Some((id, handler)) = item.action_handler {
-            register_app_handler(&ctx, &action_event(&id), handler)?;
-            handler_ids.insert(id);
+    .validate()
+    .map_err(js_error)?;
+    Ok(ParsedActivator {
+        item,
+        action_handler,
+    })
+}
+
+/// Atomically replaces the complete desktop activator declaration. Home lxapp
+/// only. Relative icons resolve from the home app bundle; lxapp/native entries
+/// persist across restarts, while action entries return after Logic registers
+/// their callbacks. `replace([])` is an explicit persistent empty declaration.
+fn activators_replace(ctx: JSContext, items: Vec<JSObject>) -> JSResult<()> {
+    let lxapp = LxApp::from_ctx(&ctx)?;
+    ensure_home_lxapp(&lxapp, "lx.shell.activators.replace")?;
+    let parsed = items.iter().map(parse_item).collect::<JSResult<Vec<_>>>()?;
+    let next_items = parsed.iter().map(|item| item.item.clone()).collect();
+    let next_handlers = parsed
+        .into_iter()
+        .filter_map(|item| item.action_handler.map(|handler| (item.item.id, handler)))
+        .collect();
+    commit_generation(&ctx, |next| next.replace(next_items), next_handlers)
+}
+
+/// Updates presentation fields for one stable id. Home lxapp only.
+fn activators_update(ctx: JSContext, id: String, patch: JSObject) -> JSResult<()> {
+    let lxapp = LxApp::from_ctx(&ctx)?;
+    ensure_home_lxapp(&lxapp, "lx.shell.activators.update")?;
+    let patch = ShellActivatorUpdate {
+        label: optional_string(&patch, "label")?,
+        icon: optional_string(&patch, "icon")?,
+        disabled: optional_bool(&patch, "disabled")?,
+    };
+    let handlers = retained_handlers();
+    commit_generation(&ctx, |next| next.update(&id, patch), handlers)
+}
+
+/// Removes one stable id from the declaration. Home lxapp only.
+fn activators_remove(ctx: JSContext, id: String) -> JSResult<()> {
+    let lxapp = LxApp::from_ctx(&ctx)?;
+    ensure_home_lxapp(&lxapp, "lx.shell.activators.remove")?;
+    let mut handlers = retained_handlers();
+    handlers.remove(id.trim());
+    commit_generation(&ctx, |next| next.remove(&id), handlers)
+}
+
+/// Persists an explicit empty declaration. Home lxapp only.
+fn activators_clear(ctx: JSContext) -> JSResult<()> {
+    let lxapp = LxApp::from_ctx(&ctx)?;
+    ensure_home_lxapp(&lxapp, "lx.shell.activators.clear")?;
+    commit_generation(
+        &ctx,
+        |next| {
+            next.clear();
+            Ok(())
+        },
+        HashMap::new(),
+    )
+}
+
+fn retained_handlers() -> HashMap<String, JSFunc> {
+    ACTION_HANDLERS.with(|state| state.borrow().handlers.clone())
+}
+
+fn commit_generation(
+    ctx: &JSContext,
+    mutate: impl FnOnce(&mut ActivatorCollection) -> Result<(), ShellError>,
+    mut next_handlers: HashMap<String, JSFunc>,
+) -> JSResult<()> {
+    let manager = lingxia_shell::manager().map_err(js_error)?;
+    let previous = manager.snapshot().activators;
+    let mut next = previous.clone();
+    mutate(&mut next).map_err(js_error)?;
+    next_handlers.retain(|id, _| {
+        next.items()
+            .iter()
+            .any(|item| item.id == *id && matches!(item.target, ShellActivatorTarget::Action))
+    });
+
+    let next_generation = next.generation();
+    let mut registered: Vec<String> = Vec::new();
+    for (id, handler) in &next_handlers {
+        let event = action_event(next_generation, id);
+        if let Err(error) = register_app_handler(ctx, &event, handler.clone()) {
+            for event in registered {
+                unregister_app_handler(ctx, &event, None);
+            }
+            return Err(error);
         }
+        registered.push(event);
     }
-    if let Ok(mut state) = ACTIVATOR_ITEMS.lock() {
-        *state = specs;
+
+    if let Err(error) = manager.commit_activators(previous.generation(), next.clone()) {
+        for event in registered {
+            unregister_app_handler(ctx, &event, None);
+        }
+        return Err(js_error(error).into());
     }
-    persist_activator_items(&lxapp, &payload);
+    if let Err(error) = lingxia_shell::apply_current_activators() {
+        let _ = manager.commit_activators(next.generation(), previous.clone());
+        let _ = lingxia_shell::apply_current_activators();
+        for event in registered {
+            unregister_app_handler(ctx, &event, None);
+        }
+        return Err(js_error(error).into());
+    }
+
+    ACTION_HANDLERS.with(|state| {
+        let mut state = state.borrow_mut();
+        for id in state.handlers.keys() {
+            unregister_app_handler(ctx, &action_event(state.generation, id), None);
+        }
+        state.generation = next_generation;
+        state.handlers = next_handlers;
+    });
     Ok(())
 }
 
-/// `lx.shell.activator.update(key, patch)` — patch one item's icon / name / color
-/// without re-sending the list. `key` is a content key value or an action id.
-fn activator_update(ctx: JSContext, key: String, patch: JSObject) -> JSResult<()> {
-    let lxapp = LxApp::from_ctx(&ctx)?;
-    ensure_home_lxapp(&lxapp, "lx.shell.activator.update")?;
-
-    let key = key.trim();
-    if key.is_empty() {
-        return Err(rong::HostError::new(
-            rong::error::E_INVALID_ARG,
-            "activator update key must not be empty",
-        )
-        .into());
-    }
-    let name = optional_item_string(&patch, "name")?;
-    let icon = optional_item_string(&patch, "icon")?;
-    let color = optional_item_string(&patch, "color")?;
-    if name.is_none() && icon.is_none() && color.is_none() {
-        return Err(rong::HostError::new(
-            rong::error::E_INVALID_ARG,
-            "activator update patch must set name, icon, or color",
-        )
-        .into());
-    }
-    let (next, payload) = {
-        let state = ACTIVATOR_ITEMS.lock().map_err(|_| {
-            rong::HostError::new(rong::error::E_INTERNAL, "activator state poisoned")
-        })?;
-        let mut next = state.clone();
-        let Some(entry) = next
-            .iter_mut()
-            .find(|entry| entry.get("key").and_then(Value::as_str) == Some(key))
-        else {
-            return Err(rong::HostError::new(
-                rong::error::E_NOT_FOUND,
-                format!("no activator item with key '{key}'"),
-            )
-            .into());
-        };
-        if let (Some(name), Some(obj)) = (name, entry.as_object_mut()) {
-            obj.insert("name".into(), json!(name));
-        }
-        if let (Some(icon), Some(obj)) = (icon, entry.as_object_mut()) {
-            obj.insert("icon".into(), json!(icon));
-        }
-        if let (Some(color), Some(obj)) = (color, entry.as_object_mut()) {
-            obj.insert("color".into(), json!(color));
-        }
-        let payload = serde_json::to_string(&next).unwrap_or_else(|_| "[]".to_string());
-        (next, payload)
+fn js_error(error: ShellError) -> rong::HostError {
+    let code = match &error {
+        ShellError::ActivatorNotFound { .. } => rong::error::E_NOT_FOUND,
+        ShellError::Io(_)
+        | ShellError::Host(_)
+        | ShellError::NotInitialized
+        | ShellError::ConcurrentMutation { .. }
+        | ShellError::ConcurrentPinMutation => rong::error::E_INTERNAL,
+        _ => rong::error::E_INVALID_ARG,
     };
-    lxapp
-        .runtime
-        .set_activator_items(&payload)
-        .map_err(|e| crate::i18n::js_error_from_platform_error(&e))?;
-    *ACTIVATOR_ITEMS
-        .lock()
-        .map_err(|_| rong::HostError::new(rong::error::E_INTERNAL, "activator state poisoned"))? =
-        next;
-    persist_activator_items(&lxapp, &payload);
-    Ok(())
+    rong::HostError::new(code, error.to_string())
 }
 
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     register_shell_property(ctx)?;
-    register_activator_api(ctx)
+    register_activators_api(ctx)
 }
 
 rong::js_api! {
@@ -328,11 +293,11 @@ rong::js_api! {
 }
 
 rong::js_api! {
-    fn register_activator_api(ctx) {
-        namespace ActivatorApi = activator_namespace(ctx)?;
-        fn set(ts_params = "items: ShellActivatorItem[]") = activator_set;
-        fn update(
-            ts_params = "key: string, patch: { icon?: string; name?: string; color?: string }"
-        ) = activator_update;
+    fn register_activators_api(ctx) {
+        namespace ShellActivatorsApi = activators_namespace(ctx)?;
+        fn replace(ts_params = "items: ShellActivator[]") = activators_replace;
+        fn update(ts_params = "id: string, patch: ShellActivatorUpdate") = activators_update;
+        fn remove(ts_params = "id: string") = activators_remove;
+        fn clear() = activators_clear;
     }
 }

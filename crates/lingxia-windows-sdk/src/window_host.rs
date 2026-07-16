@@ -4139,6 +4139,7 @@ fn apply_shell_window_frame(hwnd: HWND) -> StdResult<()> {
 /// Last main shell host selected by a presentation. Unlike a page-derived
 /// lookup this remains valid after WM_CLOSE hides the window, so tray activate
 /// can restore the exact HWND the user closed.
+#[cfg(feature = "browser-shell")]
 pub(crate) fn primary_host_window_handle() -> Option<isize> {
     primary_host_window_except(None).map(hwnd_handle)
 }

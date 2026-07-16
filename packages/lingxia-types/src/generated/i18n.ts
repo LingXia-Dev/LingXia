@@ -130,6 +130,8 @@ export const I18N_KEYS = [
   "permission_media_reason",
   "permission_network_reason",
   "permission_wifi_reason",
+  "shell_pin_limit_message",
+  "shell_pin_limit_title",
   "terminal_change_title",
   "terminal_close_pane",
   "terminal_copy",

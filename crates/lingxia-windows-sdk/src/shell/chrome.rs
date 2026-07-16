@@ -98,7 +98,7 @@ pub(super) const SIDEBAR_CHEVRON_SIZE: i32 = 18;
 pub(super) const SIDEBAR_HEADER_ACTION_SIZE: i32 = 22;
 pub(super) const SIDEBAR_HEADER_ACTION_GAP: i32 = 4;
 
-pub(super) const SHELL_SIDEBAR_WIDTH: i32 = 220;
+pub(super) const SHELL_SIDEBAR_WIDTH: i32 = 184;
 
 /// Width of the icon-only rail (the macOS first-collapse state).
 pub(super) const SHELL_SIDEBAR_RAIL_WIDTH: i32 = 44;
@@ -1662,7 +1662,12 @@ pub(super) fn chrome_hit_test(
     }
 
     for (panel_id, rect) in panel_activator_rects(client, &rects, layout) {
-        if rect_contains(&rect, point) {
+        let disabled = layout
+            .panel_activators
+            .iter()
+            .find(|item| item.id == panel_id)
+            .is_some_and(|item| item.disabled);
+        if !disabled && rect_contains(&rect, point) {
             return Some(chrome_command(
                 command_id::PANEL_ACTIVATOR_CLICK,
                 json!({ "panel_id": panel_id }),

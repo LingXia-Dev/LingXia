@@ -1217,46 +1217,46 @@ export type ShareTitleOptions = {
 };
 
 /**
- * One shell activator entry. A surface item references content by key
- * (`lxapp` appId or `native` capability) — icon/label derive from the
- * content and click toggles its panel. An action item carries its own
- * `id`, presentation, and click `handler`.
+ * One app-declared shell activator. Its `id` remains stable across
+ * updates and activation. Set exactly one target: `lxapp`, `native`,
+ * or `onActivate`; action entries require their own label and icon.
  */
-export type ShellActivatorItem = {
+export type ShellActivator = {
+    id: string;
     lxapp: string;
     native?: never;
-    id?: never;
-    handler?: never;
+    onActivate?: never;
     icon?: string;
-    name?: string;
-    color?: string;
-    weight?: number;
+    label?: string;
+    disabled?: boolean;
 } | {
-    native: string;
+    id: string;
+    native: 'terminal';
     lxapp?: never;
-    id?: never;
-    handler?: never;
+    onActivate?: never;
     icon?: string;
-    name?: string;
-    color?: string;
-    weight?: number;
+    label?: string;
+    disabled?: boolean;
 } | {
     id: string;
     lxapp?: never;
     native?: never;
     icon: string;
-    name: string;
-    color?: string;
-    weight?: number;
-    handler: () => void;
+    label: string;
+    disabled?: boolean;
+    onActivate: () => void;
 };
 
-/**
- * Shell chrome writer API (home lxapp only): the activator is the
- * shell's single persistent-entry mechanism.
- */
+/** Mutable presentation fields for an existing activator. */
+export type ShellActivatorUpdate = {
+    icon?: string;
+    label?: string;
+    disabled?: boolean;
+};
+
+/** Shell chrome writer API (home lxapp only). */
 export type ShellApi = {
-    activator: ActivatorApi;
+    activators: ShellActivatorsApi;
 };
 
 export type ShowActionSheetOptions = {
@@ -1817,21 +1817,6 @@ export declare class JSVideoContext {
 }
 
 declare global {
-  interface ActivatorApi {
-    /**
-     * `lx.shell.activator.set(items)` — idempotent full-list declaration. The
-     * shell diffs against the previous state; repeat calls converge.
-     */
-    set(items: ShellActivatorItem[]): void;
-    /**
-     * `lx.shell.activator.update(key, patch)` — patch one item's icon / name / color
-     * without re-sending the list. `key` is a content key value or an action id.
-     */
-    update(key: string, patch: { icon?: string; name?: string; color?: string }): void;
-  }
-}
-
-declare global {
   interface HostAppApi {
     /**
      * `lx.app.screenshot(options?)` — capture the host app's window as a PNG.
@@ -2036,6 +2021,24 @@ declare global {
   interface LxEnv {
     readonly USER_DATA_PATH: 'lx://userdata';
     readonly USER_CACHE_PATH: 'lx://usercache';
+  }
+}
+
+declare global {
+  interface ShellActivatorsApi {
+    /**
+     * Atomically replaces the complete desktop activator declaration. Home lxapp
+     * only. Relative icons resolve from the home app bundle; lxapp/native entries
+     * persist across restarts, while action entries return after Logic registers
+     * their callbacks. `replace([])` is an explicit persistent empty declaration.
+     */
+    replace(items: ShellActivator[]): void;
+    /** Updates presentation fields for one stable id. Home lxapp only. */
+    update(id: string, patch: ShellActivatorUpdate): void;
+    /** Removes one stable id from the declaration. Home lxapp only. */
+    remove(id: string): void;
+    /** Persists an explicit empty declaration. Home lxapp only. */
+    clear(): void;
   }
 }
 

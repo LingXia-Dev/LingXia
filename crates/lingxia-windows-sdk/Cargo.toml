@@ -55,6 +55,7 @@ shell-chrome = [
     "runtime",
     "dep:lingxia-app-context",
     "dep:lingxia-logic",
+    "dep:lingxia-shell",
     "dep:lingxia-surface",
     "dep:resvg",
     "dep:tiny-skia",
@@ -80,6 +81,7 @@ lingxia = { workspace = true, default-features = false, optional = true }
 lingxia-app-context = { workspace = true, optional = true }
 lingxia-browser = { workspace = true, optional = true }
 lingxia-logic = { workspace = true, optional = true }
+lingxia-shell = { workspace = true, optional = true }
 lingxia-surface = { workspace = true, optional = true }
 lingxia-browser-shell = { workspace = true, optional = true }
 lingxia-terminal = { workspace = true, optional = true }

@@ -672,7 +672,7 @@ class SidebarGroupView: NSView {
         menu.addItem(NSMenuItem.separator())
 
         // Pin to the sidebar grid (Rust-owned user list, mirrors web pins).
-        let pinned = shellPinnedLxapps().toString().contains("\"\(appId)\"")
+        let pinned = shellIsPinned("lxapp", appId)
         let pinItem = NSMenuItem(
             title: L10n.string(pinned ? "lx_browser_unpin" : "lx_browser_pin_to_sidebar"),
             action: #selector(contextMenuTogglePin),
@@ -720,8 +720,10 @@ class SidebarGroupView: NSView {
     }
 
     @objc private func contextMenuTogglePin() {
-        let pinned = shellPinnedLxapps().toString().contains("\"\(appId)\"")
-        _ = shellSetLxappPinned(appId, !pinned)
+        let pinned = shellIsPinned("lxapp", appId)
+        if shellSetPinned("lxapp", appId, !pinned) == -1 {
+            showShellPinLimitAlert()
+        }
         onPinChanged?()
     }
 

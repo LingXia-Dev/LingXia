@@ -93,3 +93,8 @@ date:
 # App Update
 update:
   downloading: "Downloading Update"
+
+# Host shell
+shell:
+  pin_limit_title: "Sidebar Pins"
+  pin_limit_message: "You can keep up to 8 items pinned. Unpin one before adding another."

@@ -42,17 +42,12 @@ pub struct BookmarkEntry {
     pub title: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub group_id: Option<String>,
-    /// Pinned bookmarks are the high-frequency subset shown as the sidebar's
-    /// top favicon grid. Invariant: pinned ⊆ bookmarked (pin implies the entry
-    /// exists here). Order within `entries` is the grid order.
-    #[serde(default)]
-    pub pinned: bool,
     #[serde(default)]
     pub created_at_ms: u64,
 }
 
-/// The persisted file and the `list`/`watch` payload are the same shape.
-/// Entry order within the vec is the display order.
+/// Bookmark persistence. Pin identity and order live in `lingxia-shell`.
+/// Entry order within the vec is the bookmark display order.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct BookmarksSnapshot {
@@ -62,6 +57,38 @@ pub struct BookmarksSnapshot {
     pub groups: Vec<BookmarkGroup>,
     #[serde(default)]
     pub entries: Vec<BookmarkEntry>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BookmarksView {
+    version: u32,
+    groups: Vec<BookmarkGroup>,
+    entries: Vec<BookmarkEntry>,
+    pinned_ids: Vec<String>,
+}
+
+fn bookmarks_view(snapshot: BookmarksSnapshot) -> BookmarksView {
+    bookmarks_view_with_pins(snapshot, lingxia_shell::pins().unwrap_or_default())
+}
+
+fn bookmarks_view_with_pins(
+    snapshot: BookmarksSnapshot,
+    pins: Vec<lingxia_shell::ShellPin>,
+) -> BookmarksView {
+    let pinned_ids = pins
+        .into_iter()
+        .filter_map(|pin| match pin.0 {
+            lingxia_shell::ShellPinTarget::Bookmark { key } => Some(key),
+            lingxia_shell::ShellPinTarget::Lxapp { .. } => None,
+        })
+        .collect();
+    BookmarksView {
+        version: snapshot.version,
+        groups: snapshot.groups,
+        entries: snapshot.entries,
+        pinned_ids,
+    }
 }
 
 fn now_ms() -> u64 {
@@ -258,7 +285,6 @@ fn add_entry(
         url: url.to_string(),
         title,
         group_id: group_id.map(str::to_string),
-        pinned: false,
         created_at_ms: now_ms(),
     };
     snapshot.entries.push(entry.clone());
@@ -302,20 +328,6 @@ fn move_entry_op(
         .find(|e| e.id == id)
         .ok_or_else(|| LxAppError::ResourceNotFound(format!("bookmark not found: {id}")))?;
     entry.group_id = group_id;
-    Ok(entry.clone())
-}
-
-fn set_pinned_op(
-    snapshot: &mut BookmarksSnapshot,
-    id: &str,
-    pinned: bool,
-) -> Result<BookmarkEntry, LxAppError> {
-    let entry = snapshot
-        .entries
-        .iter_mut()
-        .find(|e| e.id == id)
-        .ok_or_else(|| LxAppError::ResourceNotFound(format!("bookmark not found: {id}")))?;
-    entry.pinned = pinned;
     Ok(entry.clone())
 }
 
@@ -395,8 +407,8 @@ pub fn normalize_url_for_match(raw: &str) -> String {
     normalize_url(raw)
 }
 
-/// Typed snapshot for native shell chrome. Platform SDKs use this to render
-/// pinned entries without duplicating the persisted JSON schema.
+/// Typed bookmark snapshot for native shell chrome. Pin identity and order
+/// come from `lingxia-shell`, not this bookmark store.
 pub fn snapshot() -> Option<BookmarksSnapshot> {
     let dir = runtime_data_dir()?;
     let _guard = store_lock().lock().unwrap_or_else(|e| e.into_inner());
@@ -435,6 +447,28 @@ pub fn store_favicon(url: &str, bytes: &[u8]) -> bool {
 /// Pin `url` to the sidebar grid ("Pin to Sidebar" on a tab). Bookmarks the
 /// page first when needed, keeping the pinned ⊆ bookmarked invariant without
 /// forcing a two-step flow on the user.
+fn set_bookmark_pinned(id: &str, pinned: bool) -> Result<(), LxAppError> {
+    lingxia_shell::set_pinned(
+        lingxia_shell::ShellPinTarget::Bookmark {
+            key: id.to_string(),
+        },
+        pinned,
+    )
+    .map_err(|error| LxAppError::InvalidParameter(error.to_string()))?;
+    if let Some(dir) = runtime_data_dir() {
+        let snapshot = {
+            let _guard = store_lock()
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
+            load(&dir).ok()
+        };
+        if let Some(snapshot) = snapshot {
+            let _ = channel().send(snapshot);
+        }
+    }
+    Ok(())
+}
+
 pub fn pin_url(url: &str, title: &str) -> bool {
     pin_url_with_favicon(url, title, None)
 }
@@ -450,18 +484,16 @@ pub fn pin_url_with_favicon(url: &str, title: &str, favicon_png: Option<&[u8]>) 
     } else {
         Some(title)
     };
-    let result = mutate(&dir, |snapshot| {
-        let (entry, _) = add_entry(snapshot, url, title, None)?;
-        let id = entry.id;
-        let entry = snapshot
-            .entries
-            .iter_mut()
-            .find(|e| e.id == id)
-            .expect("entry just added or found");
-        entry.pinned = true;
-        Ok(())
-    });
-    if let Err(error) = result {
+    let entry = match mutate(&dir, |snapshot| {
+        add_entry(snapshot, url, title, None).map(|(entry, _)| entry)
+    }) {
+        Ok(entry) => entry,
+        Err(error) => {
+            log::warn!("[BrowserBookmarks] bookmark before Pin failed: {error}");
+            return false;
+        }
+    };
+    if let Err(error) = set_bookmark_pinned(&entry.id, true) {
         log::warn!("[BrowserBookmarks] pin failed: {error}");
         return false;
     }
@@ -479,15 +511,25 @@ pub fn remove_by_url(url: &str) -> bool {
     let Some(dir) = runtime_data_dir() else {
         return false;
     };
-    mutate(&dir, |snapshot| {
+    let removed = mutate(&dir, |snapshot| {
         let normalized = normalize_url(url);
-        let before = snapshot.entries.len();
-        snapshot
+        let id = snapshot
             .entries
-            .retain(|e| normalize_url(&e.url) != normalized);
-        Ok(snapshot.entries.len() != before)
+            .iter()
+            .find(|entry| normalize_url(&entry.url) == normalized)
+            .map(|entry| entry.id.clone());
+        let Some(id) = id else { return Ok(None) };
+        snapshot.entries.retain(|entry| entry.id != id);
+        Ok(Some(id))
     })
-    .unwrap_or(false)
+    .ok()
+    .flatten();
+    if let Some(id) = removed {
+        let _ = set_bookmark_pinned(&id, false);
+        true
+    } else {
+        false
+    }
 }
 
 /// One in-place management command from native chrome (sidebar menus), as
@@ -525,6 +567,17 @@ pub fn command_json(json: &str) -> bool {
             return false;
         }
     };
+    if let Command::SetPinned { id, pinned } = &command {
+        let exists = {
+            let _guard = store_lock()
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
+            load(&dir)
+                .ok()
+                .is_some_and(|snapshot| snapshot.entries.iter().any(|entry| entry.id == *id))
+        };
+        return exists && set_bookmark_pinned(id, *pinned).is_ok();
+    }
     let result = mutate(&dir, |snapshot| match command {
         Command::Rename { id, title } => rename_entry_op(snapshot, &id, &title).map(|_| ()),
         Command::Move { id, group_id } => move_entry_op(snapshot, &id, group_id).map(|_| ()),
@@ -545,7 +598,7 @@ pub fn command_json(json: &str) -> bool {
             move_entry_op(snapshot, &id, Some(group_id)).map(|_| ())
         }
         Command::RenameGroup { id, name } => rename_group_op(snapshot, &id, &name).map(|_| ()),
-        Command::SetPinned { id, pinned } => set_pinned_op(snapshot, &id, pinned).map(|_| ()),
+        Command::SetPinned { .. } => unreachable!(),
         Command::DeleteGroup { id } => delete_group_op(snapshot, &id),
     });
     result
@@ -562,19 +615,23 @@ pub fn toggle_bookmark(url: &str, title: &str) -> Option<bool> {
     } else {
         Some(title)
     };
-    mutate(&dir, |snapshot| {
+    let (bookmarked, removed_id) = mutate(&dir, |snapshot| {
         let normalized = normalize_url(url);
         if let Some(existing) = find_entry(snapshot, &normalized) {
             let id = existing.id.clone();
             snapshot.entries.retain(|e| e.id != id);
-            Ok(false)
+            Ok((false, Some(id)))
         } else {
             add_entry(snapshot, url, title, None)?;
-            Ok(true)
+            Ok((true, None))
         }
     })
     .map_err(|e| log::warn!("[BrowserBookmarks] toggle failed: {e}"))
-    .ok()
+    .ok()?;
+    if let Some(id) = removed_id {
+        let _ = set_bookmark_pinned(&id, false);
+    }
+    Some(bookmarked)
 }
 
 // MARK: - Host routes
@@ -641,6 +698,11 @@ struct OrderedIdsInput {
 #[serde(rename_all = "camelCase")]
 struct SetPinnedInput {
     id: String,
+    pinned: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct PinStatus {
     pinned: bool,
 }
 
@@ -823,10 +885,10 @@ fn reorder_entries(
 }
 
 #[lingxia::native("bookmarks.list")]
-fn list_bookmarks(app: Arc<LxApp>) -> HostResult<BookmarksSnapshot> {
+fn list_bookmarks(app: Arc<LxApp>) -> HostResult<BookmarksView> {
     crate::require_builtin_browser(&app)?;
     let _guard = store_lock().lock().unwrap_or_else(|e| e.into_inner());
-    load(&app.app_data_dir())
+    load(&app.app_data_dir()).map(bookmarks_view)
 }
 
 #[lingxia::native("bookmarks.add")]
@@ -856,21 +918,25 @@ fn remove_bookmark(app: Arc<LxApp>, input: IdInput) -> HostResult<()> {
             )));
         }
         Ok(())
-    })
+    })?;
+    set_bookmark_pinned(&input.id, false)
 }
 
 #[lingxia::native("bookmarks.toggle")]
 fn toggle_bookmark_route(app: Arc<LxApp>, input: UrlInput) -> HostResult<StatusResult> {
     crate::require_builtin_browser(&app)?;
-    mutate(&app.app_data_dir(), |snapshot| {
+    let (status, removed_id) = mutate(&app.app_data_dir(), |snapshot| {
         let normalized = normalize_url(&input.url);
         if let Some(existing) = find_entry(snapshot, &normalized) {
             let id = existing.id.clone();
             snapshot.entries.retain(|e| e.id != id);
-            Ok(StatusResult {
-                bookmarked: false,
-                entry: None,
-            })
+            Ok((
+                StatusResult {
+                    bookmarked: false,
+                    entry: None,
+                },
+                Some(id),
+            ))
         } else {
             let (entry, _) = add_entry(
                 snapshot,
@@ -878,12 +944,19 @@ fn toggle_bookmark_route(app: Arc<LxApp>, input: UrlInput) -> HostResult<StatusR
                 input.title.as_deref(),
                 input.group_id.as_deref(),
             )?;
-            Ok(StatusResult {
-                bookmarked: true,
-                entry: Some(entry),
-            })
+            Ok((
+                StatusResult {
+                    bookmarked: true,
+                    entry: Some(entry),
+                },
+                None,
+            ))
         }
-    })
+    })?;
+    if let Some(id) = removed_id {
+        set_bookmark_pinned(&id, false)?;
+    }
+    Ok(status)
 }
 
 #[lingxia::native("bookmarks.getStatus")]
@@ -923,10 +996,26 @@ fn reorder_bookmarks(app: Arc<LxApp>, input: ReorderInput) -> HostResult<()> {
 }
 
 #[lingxia::native("bookmarks.setPinned")]
-fn set_pinned(app: Arc<LxApp>, input: SetPinnedInput) -> HostResult<BookmarkEntry> {
+fn set_pinned(app: Arc<LxApp>, input: SetPinnedInput) -> HostResult<PinStatus> {
     crate::require_builtin_browser(&app)?;
-    mutate(&app.app_data_dir(), |snapshot| {
-        set_pinned_op(snapshot, &input.id, input.pinned)
+    let exists = {
+        let _guard = store_lock()
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        load(&app.app_data_dir())?
+            .entries
+            .into_iter()
+            .any(|entry| entry.id == input.id)
+    };
+    if !exists {
+        return Err(LxAppError::ResourceNotFound(format!(
+            "bookmark not found: {}",
+            input.id
+        )));
+    }
+    set_bookmark_pinned(&input.id, input.pinned)?;
+    Ok(PinStatus {
+        pinned: input.pinned,
     })
 }
 
@@ -1088,7 +1177,7 @@ fn export_html_bookmarks(app: Arc<LxApp>) -> HostResult<ExportResult> {
 #[lingxia::native("bookmarks.watch", stream)]
 async fn watch_bookmarks(
     app: Arc<LxApp>,
-    mut stream: StreamContext<BookmarksSnapshot>,
+    mut stream: StreamContext<BookmarksView>,
 ) -> HostResult<()> {
     crate::require_builtin_browser(&app)?;
     let mut rx = channel().subscribe();
@@ -1097,19 +1186,19 @@ async fn watch_bookmarks(
     {
         let _guard = store_lock().lock().unwrap_or_else(|e| e.into_inner());
         let snapshot = load(&app.app_data_dir())?;
-        stream.send(snapshot)?;
+        stream.send(bookmarks_view(snapshot))?;
     }
     loop {
         tokio::select! {
             _ = stream.canceled() => return Ok(()),
             recv = rx.recv() => {
                 match recv {
-                    Ok(snapshot) => stream.send(snapshot)?,
+                    Ok(snapshot) => stream.send(bookmarks_view(snapshot))?,
                     Err(broadcast::error::RecvError::Lagged(_)) => {
                         // Snapshots are self-contained; resync from disk.
                         let _guard = store_lock().lock().unwrap_or_else(|e| e.into_inner());
                         let snapshot = load(&app.app_data_dir())?;
-                        stream.send(snapshot)?;
+                        stream.send(bookmarks_view(snapshot))?;
                     }
                     Err(broadcast::error::RecvError::Closed) => return stream.end(()),
                 }
@@ -1162,6 +1251,29 @@ mod tests {
     }
 
     #[test]
+    fn bookmark_view_projects_only_bookmark_pins_in_shell_order() {
+        let mut snapshot = BookmarksSnapshot::default();
+        let (first, _) = add_entry(&mut snapshot, "https://a.test", Some("A"), None).unwrap();
+        let (second, _) = add_entry(&mut snapshot, "https://b.test", Some("B"), None).unwrap();
+        let view = bookmarks_view_with_pins(
+            snapshot,
+            vec![
+                lingxia_shell::ShellPin(lingxia_shell::ShellPinTarget::Bookmark {
+                    key: second.id.clone(),
+                }),
+                lingxia_shell::ShellPin(lingxia_shell::ShellPinTarget::Lxapp {
+                    key: "app.chat".to_string(),
+                }),
+                lingxia_shell::ShellPin(lingxia_shell::ShellPinTarget::Bookmark {
+                    key: first.id.clone(),
+                }),
+            ],
+        );
+
+        assert_eq!(view.pinned_ids, vec![second.id, first.id]);
+    }
+
+    #[test]
     fn add_rejects_unknown_group() {
         let mut snapshot = BookmarksSnapshot::default();
         assert!(add_entry(&mut snapshot, "https://a.test", None, Some("nope")).is_err());
@@ -1209,7 +1321,6 @@ mod tests {
             url: url.to_string(),
             title: String::new(),
             group_id: None,
-            pinned: false,
             created_at_ms: 0,
         };
         // Damaged store: two entries share an id.
@@ -1324,6 +1435,5 @@ mod tests {
         assert_eq!(snapshot.entries.len(), 2);
         assert_eq!(snapshot.groups.len(), 1);
         assert_eq!(snapshot.entries[1].created_at_ms, 42_000);
-        assert!(!snapshot.entries[1].pinned);
     }
 }

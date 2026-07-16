@@ -231,6 +231,9 @@ pub(crate) fn init_with_platform(platform: lingxia_platform::Platform) -> Option
     #[cfg(feature = "standard")]
     lingxia_logic::register_logic_runtime();
     let home_app_id = lxapp::init(platform);
+    if let Err(error) = crate::shell::initialize(runtime.clone()) {
+        log::error!("Failed to initialize host shell state: {error}");
+    }
     crate::update::install_auto_trigger(runtime.clone());
     crate::browser::register_builtin_assets();
     crate::host_addon::run_after_init();

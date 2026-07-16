@@ -253,27 +253,27 @@ mod bridge {
         // Runtime activator click return paths: an action item's click hands
         // off to the home Logic's registered handler; an undeclared lxapp
         // surface item opens as an aside panel (ensure + panel open).
-        #[swift_bridge(swift_name = "shellActivatorClicked")]
-        fn shell_activator_clicked(item_id: &str) -> bool;
-
-        #[swift_bridge(swift_name = "shellActivatorOpenLxapp")]
-        fn shell_activator_open_lxapp(app_id: &str) -> bool;
+        #[swift_bridge(swift_name = "shellActivate")]
+        fn shell_activate(item_id: &str) -> bool;
 
         // Open (or focus) an lxapp as a MAIN — the pinned-lxapp tile's click.
         #[swift_bridge(swift_name = "shellOpenLxappMain")]
         fn shell_open_lxapp_main(app_id: &str) -> bool;
 
-        // Pinned lxapps (sidebar pin grid), user list + order, Rust-owned.
-        #[swift_bridge(swift_name = "shellPinnedLxapps")]
-        fn shell_pinned_lxapps() -> String;
+        #[swift_bridge(swift_name = "shellPins")]
+        fn shell_pins() -> String;
 
-        #[swift_bridge(swift_name = "shellSetLxappPinned")]
-        fn shell_set_lxapp_pinned(app_id: &str, pinned: bool) -> bool;
+        #[swift_bridge(swift_name = "shellIsPinned")]
+        fn shell_is_pinned(kind: &str, key: &str) -> bool;
+
+        // 1 = success, -1 = shared eight-Pin limit, 0 = invalid/unavailable.
+        #[swift_bridge(swift_name = "shellSetPinned")]
+        fn shell_set_pinned(kind: &str, key: &str, pinned: bool) -> i32;
 
         // Activator items persisted by the last writer set(), for the shell
         // to restore before the home logic boots ("[]" when none).
-        #[swift_bridge(swift_name = "shellPersistedActivatorItems")]
-        fn shell_persisted_activator_items() -> String;
+        #[swift_bridge(swift_name = "shellActivatorSnapshot")]
+        fn shell_activator_snapshot() -> String;
 
         #[swift_bridge(swift_name = "registerHostAside")]
         fn register_host_aside(appid: &str, surface_id: &str, edge: &str) -> bool;
@@ -970,48 +970,9 @@ pub fn set_active_main(appid: &str) -> bool {
     })
 }
 
-pub fn shell_activator_clicked(item_id: &str) -> bool {
-    ffi_catch_unwind!("shell_activator_clicked", false, || {
-        let Some(home) = lingxia_app_context::home_app_id() else {
-            return false;
-        };
-        let event = format!("lx.shell.activator:{item_id}");
-        lxapp::publish_app_event(home, &event, None);
-        true
-    })
-}
-
-pub fn shell_activator_open_lxapp(app_id: &str) -> bool {
-    ffi_catch_unwind!("shell_activator_open_lxapp", false, || {
-        let app_id = app_id.trim().to_string();
-        if app_id.is_empty() {
-            return false;
-        }
-        // One lxapp, one region: refuse to dock a main-open app as an aside.
-        if lxapp::open_region(&app_id) == Some(lxapp::LxAppOpenRegion::Main) {
-            log::warn!("activator open refused: {app_id} is open as a main");
-            return false;
-        }
-        // Ensure (installs from the configured cloud when missing) before the
-        // panel presents — same order as the privileged openSurface path.
-        std::mem::drop(rong_rt::RongExecutor::global().spawn(async move {
-            if let Err(err) = lxapp::prepare_lxapp_open(&app_id, lxapp::ReleaseType::Release).await
-            {
-                log::error!("activator open failed for {app_id}: {err}");
-                return;
-            }
-            let options = lxapp::LxAppStartupOptions {
-                open_mode: lingxia_platform::traits::app_runtime::LxAppOpenMode::Panel,
-                panel_id: app_id.clone(),
-                ..Default::default()
-            };
-            if let Err(err) = lxapp::open_lxapp(&app_id, options) {
-                log::error!("activator open failed for {app_id}: {err}");
-                return;
-            }
-            lxapp::schedule_lxapp_update_check(&app_id, lxapp::ReleaseType::Release);
-        }));
-        true
+pub fn shell_activate(item_id: &str) -> bool {
+    ffi_catch_unwind!("shell_activate", false, || {
+        lingxia_shell::activate(item_id).is_ok()
     })
 }
 
@@ -1042,21 +1003,61 @@ pub fn shell_open_lxapp_main(app_id: &str) -> bool {
     })
 }
 
-pub fn shell_pinned_lxapps() -> String {
-    ffi_catch_unwind!("shell_pinned_lxapps", String::new(), || {
-        serde_json::to_string(&lxapp::shell_pins::pinned_lxapps()).unwrap_or_default()
+pub fn shell_pins() -> String {
+    ffi_catch_unwind!("shell_pins", String::new(), || {
+        lingxia_shell::pins()
+            .ok()
+            .and_then(|pins| serde_json::to_string(&pins).ok())
+            .unwrap_or_default()
     })
 }
 
-pub fn shell_set_lxapp_pinned(app_id: &str, pinned: bool) -> bool {
-    ffi_catch_unwind!("shell_set_lxapp_pinned", false, || {
-        lxapp::shell_pins::set_lxapp_pinned(app_id.trim(), pinned)
+pub fn shell_is_pinned(kind: &str, key: &str) -> bool {
+    ffi_catch_unwind!("shell_is_pinned", false, || {
+        shell_pin_target(kind, key)
+            .and_then(|target| lingxia_shell::is_pinned(&target).ok())
+            .unwrap_or(false)
     })
 }
 
-pub fn shell_persisted_activator_items() -> String {
-    ffi_catch_unwind!("shell_persisted_activator_items", String::new(), || {
-        lingxia_logic::persisted_activator_items()
+pub fn shell_set_pinned(kind: &str, key: &str, pinned: bool) -> i32 {
+    ffi_catch_unwind!("shell_set_pinned", 0, || {
+        let Some(target) = shell_pin_target(kind, key) else {
+            return 0;
+        };
+        match lingxia_shell::set_pinned(target, pinned) {
+            Ok(_) => 1,
+            Err(lingxia_shell::ShellError::LimitReached { .. }) => -1,
+            Err(error) => {
+                log::warn!("failed to update shell Pin: {error}");
+                0
+            }
+        }
+    })
+}
+
+fn shell_pin_target(kind: &str, key: &str) -> Option<lingxia_shell::ShellPinTarget> {
+    let key = key.trim();
+    if key.is_empty() {
+        return None;
+    }
+    match kind {
+        "lxapp" => Some(lingxia_shell::ShellPinTarget::Lxapp {
+            key: key.to_string(),
+        }),
+        "bookmark" => Some(lingxia_shell::ShellPinTarget::Bookmark {
+            key: key.to_string(),
+        }),
+        _ => None,
+    }
+}
+
+pub fn shell_activator_snapshot() -> String {
+    ffi_catch_unwind!("shell_activator_snapshot", String::new(), || {
+        lingxia_shell::resolved_activator_snapshot()
+            .ok()
+            .and_then(|snapshot| serde_json::to_string(&snapshot).ok())
+            .unwrap_or_default()
     })
 }
 

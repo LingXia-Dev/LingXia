@@ -50,7 +50,6 @@ pub use lingxia_update::{
 };
 pub use lingxia_webview::url_callback;
 pub use lxapp::set_num_workers;
-pub use lxapp::shell_pins;
 pub use lxapp::{
     CloseReason, CreatePageInstanceRequest, CreatedPageInstance, LxApp, LxAppOpenRegion,
     LxAppRuntimeInfo, LxAppRuntimePageInfo, LxAppRuntimeSurfaceInfo, LxAppSecurityPrivilege,

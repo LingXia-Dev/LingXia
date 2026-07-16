@@ -23,7 +23,7 @@ public struct LxAppSidebarTree: Codable, Sendable, Hashable {
     public init(
         sections: [LxAppSidebarSection] = [],
         width: Double? = nil,
-        minWidth: Double = 180,
+        minWidth: Double = 184,
         maxWidth: Double = 400
     ) {
         self.sections = sections

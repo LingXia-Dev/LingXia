@@ -41,7 +41,6 @@ mod runtime_ops;
 mod runtime_registry;
 mod scheme;
 mod security;
-pub mod shell_pins;
 mod surface;
 pub use security::LxAppSecurityPrivilege;
 pub mod tabbar;
@@ -2028,6 +2027,14 @@ impl LxApp {
             .lock()
             .unwrap_or_else(|err| err.into_inner())
             .open_region
+    }
+
+    /// Host surface id currently used for an aside presentation.
+    pub fn open_panel_id(&self) -> Option<String> {
+        let state = self.state.lock().unwrap_or_else(|error| error.into_inner());
+        (state.open_region == Some(LxAppOpenRegion::Aside))
+            .then(|| state.startup_options.panel_id.trim().to_string())
+            .filter(|panel_id| !panel_id.is_empty())
     }
 
     /// Navigates to another LxApp (forward navigation).

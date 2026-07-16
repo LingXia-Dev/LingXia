@@ -12,8 +12,6 @@ mod toast;
 mod tray;
 
 pub(crate) use action_sheet::present_action_sheet;
-pub(crate) use shell::persisted_activator_items;
-
 /// Initialize UI module
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     toast::init(ctx)?;

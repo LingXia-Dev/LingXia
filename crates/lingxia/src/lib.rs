@@ -75,6 +75,7 @@ pub mod network;
 /// Provider traits and registration helpers.
 pub mod provider;
 mod runtime;
+pub(crate) mod shell;
 /// Shared async task helpers backed by LingXia's global executor.
 pub mod task;
 /// Terminal backend status and integration helpers.

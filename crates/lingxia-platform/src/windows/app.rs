@@ -4,6 +4,7 @@ use std::io::Read;
 use std::path::{Component, Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
+use lingxia_shell::{NativeShellCapability, ResolvedShellActivator, ShellPin};
 use lingxia_webview::WebTag;
 use lingxia_webview::runtime as webview_runtime;
 
@@ -19,8 +20,18 @@ const DEFAULT_APP_IDENTIFIER: &str = "app.lingxia.windows";
 type WindowsAppExitHandler = Arc<dyn Fn() + Send + Sync>;
 static WINDOWS_APP_EXIT_HANDLER: Mutex<Option<WindowsAppExitHandler>> = Mutex::new(None);
 
-pub type WindowsActivatorItemsHandler = Arc<dyn Fn(&str) -> bool + Send + Sync>;
+pub type WindowsActivatorItemsHandler =
+    Arc<dyn Fn(&[ResolvedShellActivator]) -> bool + Send + Sync>;
 static WINDOWS_ACTIVATOR_ITEMS_HANDLER: Mutex<Option<WindowsActivatorItemsHandler>> =
+    Mutex::new(None);
+pub type WindowsShellPinsHandler = Arc<dyn Fn(&[ShellPin]) -> bool + Send + Sync>;
+static WINDOWS_SHELL_PINS_HANDLER: Mutex<Option<WindowsShellPinsHandler>> = Mutex::new(None);
+pub type WindowsShellNativeActiveHandler = Arc<dyn Fn(NativeShellCapability) -> bool + Send + Sync>;
+pub type WindowsShellNativeActivateHandler =
+    Arc<dyn Fn(NativeShellCapability) -> bool + Send + Sync>;
+static WINDOWS_SHELL_NATIVE_ACTIVE_HANDLER: Mutex<Option<WindowsShellNativeActiveHandler>> =
+    Mutex::new(None);
+static WINDOWS_SHELL_NATIVE_ACTIVATE_HANDLER: Mutex<Option<WindowsShellNativeActivateHandler>> =
     Mutex::new(None);
 
 pub fn set_windows_app_exit_handler(handler: WindowsAppExitHandler) {
@@ -35,12 +46,54 @@ pub fn set_windows_activator_items_handler(handler: WindowsActivatorItemsHandler
     }
 }
 
-fn invoke_windows_activator_items_handler(items_json: &str) -> bool {
+pub fn set_windows_shell_pins_handler(handler: WindowsShellPinsHandler) {
+    if let Ok(mut slot) = WINDOWS_SHELL_PINS_HANDLER.lock() {
+        *slot = Some(handler);
+    }
+}
+
+pub fn set_windows_shell_native_handlers(
+    active: WindowsShellNativeActiveHandler,
+    activate: WindowsShellNativeActivateHandler,
+) {
+    if let Ok(mut slot) = WINDOWS_SHELL_NATIVE_ACTIVE_HANDLER.lock() {
+        *slot = Some(active);
+    }
+    if let Ok(mut slot) = WINDOWS_SHELL_NATIVE_ACTIVATE_HANDLER.lock() {
+        *slot = Some(activate);
+    }
+}
+
+fn invoke_windows_activator_items_handler(items: &[ResolvedShellActivator]) -> bool {
     WINDOWS_ACTIVATOR_ITEMS_HANDLER
         .lock()
         .ok()
         .and_then(|slot| slot.clone())
-        .is_none_or(|handler| handler(items_json))
+        .is_none_or(|handler| handler(items))
+}
+
+fn invoke_windows_shell_pins_handler(items: &[ShellPin]) -> bool {
+    WINDOWS_SHELL_PINS_HANDLER
+        .lock()
+        .ok()
+        .and_then(|slot| slot.clone())
+        .is_none_or(|handler| handler(items))
+}
+
+fn invoke_windows_shell_native_active(capability: NativeShellCapability) -> bool {
+    WINDOWS_SHELL_NATIVE_ACTIVE_HANDLER
+        .lock()
+        .ok()
+        .and_then(|slot| slot.clone())
+        .is_some_and(|handler| handler(capability))
+}
+
+fn invoke_windows_shell_native_activate(capability: NativeShellCapability) -> bool {
+    WINDOWS_SHELL_NATIVE_ACTIVATE_HANDLER
+        .lock()
+        .ok()
+        .and_then(|slot| slot.clone())
+        .is_some_and(|handler| handler(capability))
 }
 
 pub(crate) fn request_windows_app_exit() {
@@ -422,13 +475,40 @@ impl AppRuntime for Platform {
         Ok(())
     }
 
-    fn set_activator_items(&self, items_json: &str) -> Result<(), PlatformError> {
-        if invoke_windows_activator_items_handler(items_json) {
+    fn set_shell_activators(&self, items: &[ResolvedShellActivator]) -> Result<(), PlatformError> {
+        if invoke_windows_activator_items_handler(items) {
             Ok(())
         } else {
-            Err(PlatformError::InvalidParameter(
-                "invalid Windows activator items payload".to_string(),
+            Err(PlatformError::Platform(
+                "Windows shell rejected resolved activators".to_string(),
             ))
+        }
+    }
+
+    fn set_shell_pins(&self, items: &[ShellPin]) -> Result<(), PlatformError> {
+        if invoke_windows_shell_pins_handler(items) {
+            Ok(())
+        } else {
+            Err(PlatformError::Platform(
+                "Windows shell rejected Pins".to_string(),
+            ))
+        }
+    }
+
+    fn shell_native_active(&self, capability: NativeShellCapability) -> bool {
+        invoke_windows_shell_native_active(capability)
+    }
+
+    fn activate_shell_native(
+        &self,
+        capability: NativeShellCapability,
+    ) -> Result<(), PlatformError> {
+        if invoke_windows_shell_native_activate(capability) {
+            Ok(())
+        } else {
+            Err(PlatformError::Platform(format!(
+                "Windows shell could not activate native capability {capability:?}"
+            )))
         }
     }
 

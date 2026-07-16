@@ -1442,43 +1442,45 @@ true
         type LxEnv = "globalThis.LxEnv";
         type TrayApi = "globalThis.TrayApi";
 
-        /// Shell chrome writer API (home lxapp only): the activator is the
-        /// shell's single persistent-entry mechanism.
+        /// Shell chrome writer API (home lxapp only).
         type ShellApi = r###"{
-    activator: ActivatorApi;
+    activators: ShellActivatorsApi;
 }"###;
 
-        /// One shell activator entry. A surface item references content by key
-        /// (`lxapp` appId or `native` capability) — icon/label derive from the
-        /// content and click toggles its panel. An action item carries its own
-        /// `id`, presentation, and click `handler`.
-        type ShellActivatorItem = r###"{
+        /// One app-declared shell activator. Its `id` remains stable across
+        /// updates and activation. Set exactly one target: `lxapp`, `native`,
+        /// or `onActivate`; action entries require their own label and icon.
+        type ShellActivator = r###"{
+    id: string;
     lxapp: string;
     native?: never;
-    id?: never;
-    handler?: never;
+    onActivate?: never;
     icon?: string;
-    name?: string;
-    color?: string;
-    weight?: number;
+    label?: string;
+    disabled?: boolean;
 } | {
-    native: string;
+    id: string;
+    native: 'terminal';
     lxapp?: never;
-    id?: never;
-    handler?: never;
+    onActivate?: never;
     icon?: string;
-    name?: string;
-    color?: string;
-    weight?: number;
+    label?: string;
+    disabled?: boolean;
 } | {
     id: string;
     lxapp?: never;
     native?: never;
     icon: string;
-    name: string;
-    color?: string;
-    weight?: number;
-    handler: () => void;
+    label: string;
+    disabled?: boolean;
+    onActivate: () => void;
+}"###;
+
+        /// Mutable presentation fields for an existing activator.
+        type ShellActivatorUpdate = r###"{
+    icon?: string;
+    label?: string;
+    disabled?: boolean;
 }"###;
 
     }
