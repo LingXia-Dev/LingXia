@@ -213,7 +213,8 @@ export default function BridgeReproPage() {
       </button>
 
       <p className="text-gray-500 text-xs leading-relaxed">
-        Start the stream, then reconnect. Any gap or bridge error fails the check.
+        Start the stream, then reconnect. Any gap or bridge error fails the check. Echo may time out
+        while the long stream occupies AppService; try it while idle.
       </p>
     </div>
   );
