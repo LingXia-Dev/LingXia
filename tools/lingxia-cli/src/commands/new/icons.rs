@@ -25,6 +25,7 @@ pub fn configure_and_apply_icons(
     }
 
     // Determine icon configuration (icon is required, explicit or default).
+    // `None` background means auto-detect from the source's flat backdrop.
     let (icon_path, background_color) = match (icon, yes) {
         // User provided explicit icon path
         (Some(path), _) => {
@@ -35,7 +36,7 @@ pub fn configure_and_apply_icons(
             if !std::path::Path::new(&icon_path).exists() {
                 return Err(anyhow!("Icon file not found: {}", icon_path));
             }
-            (icon_path, DEFAULT_ICON_BACKGROUND_COLOR.to_string())
+            (icon_path, None)
         }
         // Auto mode (-y): use default icon if it exists
         (None, true) => {
@@ -44,10 +45,7 @@ pub fn configure_and_apply_icons(
                     "Default AppIcon.png not found. Please pass --icon <path-to-png>."
                 ));
             }
-            (
-                project_icon_path.to_string_lossy().to_string(),
-                DEFAULT_ICON_BACKGROUND_COLOR.to_string(),
-            )
+            (project_icon_path.to_string_lossy().to_string(), None)
         }
         // Interactive mode: ask for icon path, default to the bundled icon.
         (None, false) => {
@@ -84,12 +82,12 @@ pub fn configure_and_apply_icons(
 
             (
                 path.trim().to_string(),
-                appicon::normalize_android_color(&background_color)?,
+                Some(appicon::normalize_android_color(&background_color)?),
             )
         }
     };
 
-    generate_app_icons(config, &icon_path, &background_color)?;
+    generate_app_icons(config, &icon_path, background_color.as_deref())?;
 
     Ok(())
 }
@@ -125,7 +123,7 @@ pub fn ensure_lxapp_public_icon(target_dir: &Path) -> Result<()> {
 fn generate_app_icons(
     config: &ProjectConfig,
     icon_path: &str,
-    background_color: &str,
+    background_color: Option<&str>,
 ) -> Result<()> {
     use std::path::PathBuf;
 

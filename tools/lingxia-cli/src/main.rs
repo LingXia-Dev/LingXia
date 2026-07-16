@@ -223,6 +223,12 @@ enum Commands {
         /// Output size in px for `--output *.png` (default 1024). Ignored for `.ico`.
         #[arg(long)]
         size: Option<u32>,
+
+        /// Preview only: analyze the source, render every platform treatment
+        /// (masks, safe zones, small sizes) into icon-preview.html, and write
+        /// nothing into the project.
+        #[arg(long)]
+        check: bool,
     },
 
     /// Build the project
@@ -619,6 +625,7 @@ fn main() -> Result<()> {
             foreground,
             output,
             size,
+            check,
         } => {
             commands::icon::execute(
                 icon_path,
@@ -628,6 +635,7 @@ fn main() -> Result<()> {
                 foreground,
                 output,
                 size,
+                check,
             )?;
         }
         Commands::Build {

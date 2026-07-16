@@ -163,19 +163,13 @@ pub const WINDOWS_ICO_SIZES: &[u32] = &[16, 24, 32, 48, 64, 128, 256];
 /// (via the resource compiler in `lingxia-windows-build`). The `ico` crate stores
 /// the 256px entry as PNG and the rest as BMP, which every resource compiler
 /// (rc.exe / llvm-rc / windres) accepts.
+///
+/// Renders once at master resolution and shares the PNG path — including its
+/// launcher-padding tightening — so SVG and PNG sources produce identical ICOs.
 pub fn svg_to_ico_bytes(svg_content: &str, sizes: &[u32]) -> Result<Vec<u8>> {
-    let mut dir = ico::IconDir::new(ico::ResourceType::Icon);
-    for &size in sizes {
-        let png = svg_to_png_bytes(svg_content, size)?;
-        let image = ico::IconImage::read_png(png.as_slice())
-            .with_context(|| format!("Failed to decode {size}px PNG for ICO entry"))?;
-        let entry = ico::IconDirEntry::encode(&image)
-            .with_context(|| format!("Failed to encode {size}px ICO entry"))?;
-        dir.add_entry(entry);
-    }
-    let mut buf = Vec::new();
-    dir.write(&mut buf).context("Failed to write ICO")?;
-    Ok(buf)
+    let master = sizes.iter().copied().max().unwrap_or(256).max(256) * 4;
+    let png = svg_to_png_bytes(svg_content, master)?;
+    png_to_ico_bytes(&png, sizes)
 }
 
 /// Pack a source app-icon PNG (e.g. a 1024px `AppIcon.png`) into a multi-size
@@ -204,11 +198,11 @@ pub fn png_to_ico_bytes(png: &[u8], sizes: &[u32]) -> Result<Vec<u8>> {
 /// Crop uniform launcher padding so the glyph fills the small icon cell. A
 /// mobile launcher icon centers its glyph in a wide safe-area margin, which
 /// reads as a tiny logo lost in padding at 16–48px. When the border is one flat
-/// color (the four corners agree), crop to the glyph plus a small square margin;
-/// full-bleed / photographic icons are returned unchanged. Mirrors the runtime
-/// `lingxia-windows-sdk::app_icon` tightening so the embedded `.exe` icon and
-/// the running window icon match.
-fn tighten_icon(img: image::RgbaImage) -> image::RgbaImage {
+/// color or fully transparent (the four corners agree), crop to the glyph plus
+/// a small square margin; full-bleed / photographic icons are returned
+/// unchanged. Mirrors the runtime `lingxia-windows-sdk::app_icon` tightening so
+/// the embedded `.exe` icon and the running window icon match.
+pub(crate) fn tighten_icon(img: image::RgbaImage) -> image::RgbaImage {
     let (w, h) = img.dimensions();
     if w == 0 || h == 0 {
         return img;
@@ -219,14 +213,26 @@ fn tighten_icon(img: image::RgbaImage) -> image::RgbaImage {
         img.get_pixel(0, h - 1).0,
         img.get_pixel(w - 1, h - 1).0,
     ];
-    if corners.iter().any(|c| !color_close(*c, bg, 12)) {
+    // Transparent corners mean the padding is alpha, not a flat color — the
+    // RGB of transparent pixels is meaningless, so compare alpha only there.
+    let transparent_bg = bg[3] < 16;
+    if transparent_bg {
+        if corners.iter().any(|c| c[3] >= 16) {
+            return img;
+        }
+    } else if corners.iter().any(|c| !color_close(*c, bg, 12)) {
         return img;
     }
     let (mut min_x, mut min_y, mut max_x, mut max_y) = (w, h, 0u32, 0u32);
     let mut found = false;
     for (x, y, pixel) in img.enumerate_pixels() {
         let p = pixel.0;
-        if p[3] < 16 || color_close(p, bg, 32) {
+        let is_background = if transparent_bg {
+            p[3] < 16
+        } else {
+            p[3] < 16 || color_close(p, bg, 32)
+        };
+        if is_background {
             continue;
         }
         found = true;
@@ -324,7 +330,7 @@ fn svg_to_vector_drawable(svg_content: &str) -> Result<String> {
     };
 
     let mut paths = Vec::new();
-    collect_paths(&svg_node, &mut paths);
+    collect_paths(&svg_node, &mut paths)?;
 
     let mut xml = String::new();
     xml.push_str("<?xml version=\"1.0\" encoding=\"utf-8\"?>\n");
@@ -392,20 +398,38 @@ struct InheritedStyle {
     fill: Option<String>,
 }
 
-fn collect_paths(node: &roxmltree::Node, paths: &mut Vec<PathInfo>) {
-    collect_paths_with_style(node, paths, &InheritedStyle::default());
+fn collect_paths(node: &roxmltree::Node, paths: &mut Vec<PathInfo>) -> Result<()> {
+    collect_paths_with_style(node, paths, &InheritedStyle::default(), (0.0, 0.0))
 }
 
 fn collect_paths_with_style(
     node: &roxmltree::Node,
     paths: &mut Vec<PathInfo>,
     inherited: &InheritedStyle,
-) {
+    offset: (f64, f64),
+) -> Result<()> {
     let tag = node.tag_name().name();
 
     // Skip definition elements and their children
     if SKIP_ELEMENTS.contains(&tag) {
-        return;
+        return Ok(());
+    }
+
+    // Masked content cannot be represented in a Vector Drawable; rendering it
+    // unmasked would be silently wrong, so drop the whole subtree loudly.
+    if node.attribute("mask").is_some() {
+        eprintln!("  Warning: skipping <{tag}> subtree with unsupported SVG mask");
+        return Ok(());
+    }
+
+    // Accumulate translate() transforms; anything else (scale/rotate/matrix)
+    // cannot be baked into path data here — fail loudly instead of emitting
+    // silently misplaced geometry.
+    let mut offset = offset;
+    if let Some(t) = node.attribute("transform") {
+        let (tx, ty) = parse_translate_transform(t)
+            .with_context(|| format!("Unsupported transform '{t}' on <{tag}> (only translate is supported; flatten the SVG first)"))?;
+        offset = (offset.0 + tx, offset.1 + ty);
     }
 
     // Build inherited style for children (merge current node's attributes)
@@ -426,83 +450,172 @@ fn collect_paths_with_style(
         child_style.fill = Some(s.to_string());
     }
 
-    // Skip elements with mask attribute (they reference masks we can't render)
-    if node.attribute("mask").is_some() {
-        // Still process children but skip this element's own rendering
-    }
-
-    match tag {
-        "path" => {
-            if let Some(d) = node.attribute("d") {
-                paths.push(extract_path_info_with_inherited(
-                    node,
-                    d.to_string(),
-                    &child_style,
-                ));
-            }
-        }
-        "rect" => {
-            if let Some(path_data) = rect_to_path(node) {
-                paths.push(extract_path_info_with_inherited(
-                    node,
-                    path_data,
-                    &child_style,
-                ));
-            }
-        }
-        "circle" => {
-            if let Some(path_data) = circle_to_path(node) {
-                paths.push(extract_path_info_with_inherited(
-                    node,
-                    path_data,
-                    &child_style,
-                ));
-            }
-        }
-        "ellipse" => {
-            if let Some(path_data) = ellipse_to_path(node) {
-                paths.push(extract_path_info_with_inherited(
-                    node,
-                    path_data,
-                    &child_style,
-                ));
-            }
-        }
-        "polygon" => {
-            if let Some(path_data) = polygon_to_path(node) {
-                paths.push(extract_path_info_with_inherited(
-                    node,
-                    path_data,
-                    &child_style,
-                ));
-            }
-        }
-        "polyline" => {
-            if let Some(path_data) = polyline_to_path(node) {
-                paths.push(extract_path_info_with_inherited(
-                    node,
-                    path_data,
-                    &child_style,
-                ));
-            }
-        }
-        "line" => {
-            if let Some(path_data) = line_to_path(node) {
-                paths.push(extract_path_info_with_inherited(
-                    node,
-                    path_data,
-                    &child_style,
-                ));
-            }
-        }
-        _ => {}
+    let path_data = match tag {
+        "path" => node.attribute("d").map(|d| d.to_string()),
+        "rect" => rect_to_path(node),
+        "circle" => circle_to_path(node),
+        "ellipse" => ellipse_to_path(node),
+        "polygon" => polygon_to_path(node),
+        "polyline" => polyline_to_path(node),
+        "line" => line_to_path(node),
+        _ => None,
+    };
+    if let Some(data) = path_data {
+        let data = if offset == (0.0, 0.0) {
+            data
+        } else {
+            translate_path_data(&data, offset)?
+        };
+        paths.push(extract_path_info_with_inherited(node, data, &child_style));
     }
 
     for child in node.children() {
         if child.is_element() {
-            collect_paths_with_style(&child, paths, &child_style);
+            collect_paths_with_style(&child, paths, &child_style, offset)?;
         }
     }
+    Ok(())
+}
+
+/// Parse an SVG `transform` attribute consisting solely of `translate(...)`
+/// functions (possibly several), returning the summed offset. Any other
+/// transform function is an error.
+fn parse_translate_transform(t: &str) -> Result<(f64, f64)> {
+    let mut tx = 0.0;
+    let mut ty = 0.0;
+    let mut rest = t.trim();
+    while !rest.is_empty() {
+        let open = rest
+            .find('(')
+            .ok_or_else(|| anyhow::anyhow!("Malformed transform"))?;
+        let close = rest
+            .find(')')
+            .ok_or_else(|| anyhow::anyhow!("Malformed transform"))?;
+        let name = rest[..open].trim();
+        anyhow::ensure!(
+            name == "translate",
+            "unsupported transform function '{name}'"
+        );
+        let args: Vec<f64> = rest[open + 1..close]
+            .split([',', ' '])
+            .filter(|s| !s.is_empty())
+            .map(|s| s.parse::<f64>().context("Invalid translate argument"))
+            .collect::<Result<_>>()?;
+        anyhow::ensure!(
+            matches!(args.len(), 1 | 2),
+            "translate takes 1 or 2 arguments"
+        );
+        tx += args[0];
+        ty += args.get(1).copied().unwrap_or(0.0);
+        rest = rest[close + 1..].trim_start_matches([',', ' ']).trim();
+    }
+    Ok((tx, ty))
+}
+
+/// Number of arguments per repetition group of an SVG path command.
+fn command_arity(cmd: char) -> Result<usize> {
+    Ok(match cmd.to_ascii_uppercase() {
+        'M' | 'L' | 'T' => 2,
+        'H' | 'V' => 1,
+        'C' => 6,
+        'S' | 'Q' => 4,
+        'A' => 7,
+        'Z' => 0,
+        other => anyhow::bail!("Unknown path command '{other}'"),
+    })
+}
+
+/// Apply a translation to SVG path data by rewriting the coordinates of
+/// absolute commands. Relative commands are translation-invariant, except a
+/// leading relative moveto whose first pair is absolute by spec.
+fn translate_path_data(d: &str, (tx, ty): (f64, f64)) -> Result<String> {
+    let bytes = d.as_bytes();
+    let mut out = String::with_capacity(d.len() + 16);
+    let mut i = 0;
+    let mut cmd: Option<char> = None;
+    let mut arg_index = 0usize;
+    let mut seen_command = false;
+    let mut leading_relative_move = false;
+
+    while i < bytes.len() {
+        let c = bytes[i] as char;
+        if c.is_ascii_alphabetic() {
+            cmd = Some(c);
+            arg_index = 0;
+            leading_relative_move = !seen_command && c == 'm';
+            seen_command = true;
+            out.push(c);
+            i += 1;
+        } else if c.is_ascii_whitespace() || c == ',' {
+            out.push(c);
+            i += 1;
+        } else {
+            // Scan one number token (sign, digits, single dot, exponent).
+            let start = i;
+            if bytes[i] == b'+' || bytes[i] == b'-' {
+                i += 1;
+            }
+            let mut seen_dot = false;
+            while i < bytes.len() {
+                match bytes[i] {
+                    b'0'..=b'9' => i += 1,
+                    b'.' if !seen_dot => {
+                        seen_dot = true;
+                        i += 1;
+                    }
+                    _ => break,
+                }
+            }
+            if i < bytes.len() && (bytes[i] == b'e' || bytes[i] == b'E') {
+                i += 1;
+                if i < bytes.len() && (bytes[i] == b'+' || bytes[i] == b'-') {
+                    i += 1;
+                }
+                while i < bytes.len() && bytes[i].is_ascii_digit() {
+                    i += 1;
+                }
+            }
+            let token = &d[start..i];
+            let cmd_ch = cmd.ok_or_else(|| anyhow::anyhow!("Path data begins with a number"))?;
+            let arity = command_arity(cmd_ch)?;
+            anyhow::ensure!(arity > 0, "Numeric argument after '{cmd_ch}'");
+            let pos = arg_index % arity;
+            let delta = if cmd_ch.is_ascii_uppercase() {
+                match cmd_ch {
+                    'M' | 'L' | 'T' | 'C' | 'S' | 'Q' => {
+                        if pos.is_multiple_of(2) {
+                            tx
+                        } else {
+                            ty
+                        }
+                    }
+                    'H' => tx,
+                    'V' => ty,
+                    'A' => match pos {
+                        5 => tx,
+                        6 => ty,
+                        _ => 0.0,
+                    },
+                    _ => 0.0,
+                }
+            } else if leading_relative_move && arg_index < 2 {
+                // First pair of a leading 'm' is absolute per the SVG spec.
+                if pos == 0 { tx } else { ty }
+            } else {
+                0.0
+            };
+            if delta != 0.0 {
+                let value: f64 = token
+                    .parse()
+                    .with_context(|| format!("Invalid number '{token}' in path data"))?;
+                out.push_str(&format!("{}", value + delta));
+            } else {
+                out.push_str(token);
+            }
+            arg_index += 1;
+        }
+    }
+    Ok(out)
 }
 
 fn extract_path_info_with_inherited(
@@ -534,6 +647,10 @@ fn extract_path_info_with_inherited(
         .attribute("stroke-linejoin")
         .map(|s| s.to_string())
         .or_else(|| inherited.stroke_line_join.clone());
+
+    // SVG's initial fill is black; Vector Drawable's is transparent. Make the
+    // spec default explicit so unspecified fills don't vanish on Android.
+    let fill = fill.or_else(|| Some("black".to_string()));
 
     PathInfo {
         data,
@@ -787,6 +904,46 @@ fn parse_dimension(s: Option<&str>) -> Option<f64> {
             .parse()
             .ok()
     })
+}
+
+#[cfg(test)]
+mod vector_drawable_tests {
+    use super::*;
+
+    #[test]
+    fn translate_shifts_absolute_commands_only() {
+        let d = "M184 804V548C184 472.9 244.9 412 320 412l10 20h5H30Z";
+        let out = translate_path_data(d, (0.0, -24.0)).unwrap();
+        assert_eq!(out, "M184 780V524C184 448.9 244.9 388 320 388l10 20h5H30Z");
+    }
+
+    #[test]
+    fn translate_handles_leading_relative_moveto_and_arcs() {
+        let out = translate_path_data("m10 20l5 5", (2.0, 3.0)).unwrap();
+        assert_eq!(out, "m12 23l5 5");
+        let out = translate_path_data("M0 0A5 5 0 0 1 10 20", (1.0, 2.0)).unwrap();
+        assert_eq!(out, "M1 2A5 5 0 0 1 11 22");
+    }
+
+    #[test]
+    fn vector_drawable_applies_group_translate() {
+        let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><g transform="translate(0 -24)"><path d="M10 30L20 40" fill="#FF0000"/></g></svg>"##;
+        let xml = svg_to_vector_drawable(svg).unwrap();
+        assert!(xml.contains(r##"android:pathData="M10 6L20 16""##), "{xml}");
+    }
+
+    #[test]
+    fn vector_drawable_rejects_unsupported_transforms() {
+        let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><g transform="rotate(45)"><path d="M10 30L20 40"/></g></svg>"##;
+        assert!(svg_to_vector_drawable(svg).is_err());
+    }
+
+    #[test]
+    fn vector_drawable_defaults_unspecified_fill_to_black() {
+        let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><path d="M10 30L20 40Z"/></svg>"##;
+        let xml = svg_to_vector_drawable(svg).unwrap();
+        assert!(xml.contains(r##"android:fillColor="#000000""##), "{xml}");
+    }
 }
 
 #[cfg(test)]

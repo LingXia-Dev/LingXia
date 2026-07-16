@@ -1246,7 +1246,7 @@ pub fn get_resources_dir(
     )
 }
 
-fn build_macos_icon_source(source_icon: &Path) -> Result<tempfile::NamedTempFile> {
+pub(crate) fn build_macos_icon_source(source_icon: &Path) -> Result<tempfile::NamedTempFile> {
     if !source_icon.exists() {
         anyhow::bail!("Source icon not found: {:?}", source_icon);
     }
