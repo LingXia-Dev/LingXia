@@ -124,9 +124,10 @@ request/event/id types):
 
 | Symbol | Role |
 |---|---|
-| `Lingxia` | Entry points: `quickStart()`, `handleAppActivation()`, `initializeRuntime()`, `activate(controller:)`, `enableWebViewDebugging()`, `handleAppLink(url:)` |
+| `Lingxia` | Entry points and host state: `quickStart()`, `handleAppActivation()`, `initializeRuntime()`, `activate(controller:)`, `enableWebViewDebugging()`, `handleAppLink(url:)`, `displayLanguage` |
 | `LxAppController` | Session lifecycle for advanced embedding: `open` / `openHomeApp` / `navigate` / `close`, `events` stream, interceptors |
 | `LxAppHostView` | The embeddable native view: `mount` / `unmount` / `dispatch`, `events` stream (`LxAppHostViewRepresentable` wraps it for SwiftUI) |
+| `L10n` | SDK localization lookup for host-owned native chrome: `string(_:)` and formatted `string(_:_:)` |
 
 `Lingxia.initialize()` has been removed. Use `quickStart()` for product apps or
 `initializeRuntime()` for advanced embedding. Most apps should also never touch
@@ -141,6 +142,11 @@ Semantics the signatures can't convey:
   `didFinishLoading`, and `didFail` come from the mounted webview;
   `dispatch(.triggerCapsuleAction(...))` forwards that action into the runtime
   for the mounted app session.
+- `Lingxia.displayLanguage` is the effective display language after
+  initialization. A language saved in LingXia settings wins; otherwise it is
+  the locale supplied to the Rust runtime by `initializeRuntime()`. `L10n.string`
+  resolves the SDK's `en` or `zh-Hans` resource bundle from this value instead
+  of independently following the process locale.
 
 ## Legacy Shell Override
 

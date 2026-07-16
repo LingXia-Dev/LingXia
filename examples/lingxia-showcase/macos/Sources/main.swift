@@ -6,11 +6,10 @@ class LingXiaAppDelegate: NSObject, NSApplicationDelegate {
     private static let log = OSLog(subsystem: "LingXia", category: "ExampleApp")
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        setupStandardMenu()
-
         Lingxia.enableWebViewDebugging()
         do {
             _ = try Lingxia.quickStart()
+            setupStandardMenu()
         } catch {
             os_log(
                 "Lingxia.quickStart() app-ui path failed: %{public}@",
