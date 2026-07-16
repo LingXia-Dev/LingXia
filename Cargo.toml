@@ -116,6 +116,10 @@ rong_timer = "0.5.0"
 rong_url = "0.5.0"
 
 [patch.crates-io]
+rong = { git = "https://github.com/LingXia-Dev/Rong.git", rev = "a86a3ff24392d6f1af37812e09e8951340345b4c" }
+rong_core = { git = "https://github.com/LingXia-Dev/Rong.git", rev = "a86a3ff24392d6f1af37812e09e8951340345b4c" }
+rong_cron = { git = "https://github.com/LingXia-Dev/Rong.git", rev = "a86a3ff24392d6f1af37812e09e8951340345b4c" }
+rong_rt = { git = "https://github.com/LingXia-Dev/Rong.git", rev = "a86a3ff24392d6f1af37812e09e8951340345b4c" }
 windows = { git = "https://github.com/microsoft/windows-rs.git", rev = "cf58d5cfe7deccb73a55aeb4aa6799dc1b06544c", package = "windows" }
 windows-collections = { git = "https://github.com/microsoft/windows-rs.git", rev = "cf58d5cfe7deccb73a55aeb4aa6799dc1b06544c", package = "windows-collections" }
 windows-core = { git = "https://github.com/microsoft/windows-rs.git", rev = "cf58d5cfe7deccb73a55aeb4aa6799dc1b06544c", package = "windows-core" }

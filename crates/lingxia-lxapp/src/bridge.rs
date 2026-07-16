@@ -63,6 +63,10 @@ pub(crate) enum AppServiceCommand {
         code: Option<String>,
         reason: Option<String>,
     },
+    CloseChannels {
+        code: String,
+        reason: String,
+    },
     StateAck {
         scope: Option<String>,
         rev: u64,
@@ -409,7 +413,7 @@ impl PageBridge {
             return Err(LxAppError::Bridge("Nonce mismatch".to_string()));
         }
 
-        self.reset_session();
+        self.reset_session(page);
 
         let session_id = self.new_session_id();
         self.send_hello_ack(page, msg.nonce.clone(), session_id.clone())?;
@@ -853,7 +857,7 @@ impl PageBridge {
         hs.ready = true;
     }
 
-    fn reset_session(&self) {
+    fn reset_session(&self, page: &PageInstance) {
         {
             let mut hs = self.inner.handshake.lock().unwrap();
             hs.session_id = None;
@@ -861,24 +865,41 @@ impl PageBridge {
         }
 
         self.cancel_pending_requests();
-
-        // Drop all host channel senders; their ChannelContext receivers will get None,
-        // signalling the handler that the session ended.
-        let active_host_channels = {
-            let mut channels = self.inner.active_host_channels.lock().unwrap();
-            std::mem::take(&mut *channels)
-        };
-        for (_, sender) in active_host_channels {
-            sender.send_close(
-                Some(BRIDGE_CANCELED.to_string()),
-                Some("Session reset".to_string()),
-            );
-        }
+        self.close_host_channels(page, "Session reset");
     }
 
     /// Cancel in-flight View requests without resetting the reusable bridge session.
     pub(crate) fn cancel_pending_requests(&self) {
         self.inner.pending_requests.cancel_all();
+    }
+
+    /// Cancel all page-scoped bridge work while preserving the reusable handshake.
+    pub(crate) fn cancel_page_work(&self, page: &PageInstance) {
+        self.cancel_pending_requests();
+        self.close_host_channels(page, "Page unloaded");
+        let _ = self.forward_js_message(
+            page,
+            AppServiceCommand::CloseChannels {
+                code: BRIDGE_CANCELED.to_string(),
+                reason: "Page unloaded".to_string(),
+            },
+        );
+    }
+
+    fn close_host_channels(&self, page: &PageInstance, reason: &str) {
+        let active_host_channels = {
+            let mut channels = self.inner.active_host_channels.lock().unwrap();
+            std::mem::take(&mut *channels)
+        };
+        for (id, sender) in active_host_channels {
+            let _ = self.send_ch_close(
+                page,
+                id,
+                Some(BRIDGE_CANCELED.to_string()),
+                Some(reason.to_string()),
+            );
+            sender.send_close(Some(BRIDGE_CANCELED.to_string()), Some(reason.to_string()));
+        }
     }
 
     fn new_session_id(&self) -> String {

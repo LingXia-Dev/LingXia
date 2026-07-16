@@ -620,7 +620,7 @@ impl LxApp {
         // Remove the oldest page
         if let Some(path) = oldest_path.clone() {
             if let Some(page) = pages.get(&path) {
-                page.cancel_pending_view_requests();
+                page.cancel_bridge_work();
             }
             // First, ask AppService to remove the PageSvc for this path (object-identity safe)
             let _ = self

@@ -339,7 +339,29 @@ async fn handle_bridge_source(
                 .handle_ch_open(&id, &topic, params_json.as_deref())
                 .await
             {
-                Ok(()) => bridge.send_ch_ack_ok(page_svc, id)?,
+                Ok(result_rx) => {
+                    let ctx = page_svc.get_ctx();
+                    let page_svc = page_svc.clone();
+                    context_lifecycle::spawn(&ctx, move |_ctx| async move {
+                        let result = result_rx.await.unwrap_or_else(|_| {
+                            Err(bridge::RpcError::new(bridge::BRIDGE_CANCELED, None))
+                        });
+                        match result {
+                            Ok(()) => {
+                                let _ = bridge.send_ch_ack_ok(&page_svc, id);
+                            }
+                            Err(err) => {
+                                let _ = bridge.send_ch_ack_err(
+                                    &page_svc,
+                                    id,
+                                    &err.code,
+                                    err.message,
+                                    err.data,
+                                );
+                            }
+                        }
+                    });
+                }
                 Err(err) => {
                     bridge.send_ch_ack_err(page_svc, id, &err.code, err.message, err.data)?
                 }
@@ -358,6 +380,10 @@ async fn handle_bridge_source(
             page_svc
                 .handle_ch_close(&id, code.as_deref(), reason.as_deref())
                 .await;
+            Ok(())
+        }
+        AppServiceCommand::CloseChannels { code, reason } => {
+            page_svc.close_channels(&code, &reason).await;
             Ok(())
         }
         AppServiceCommand::StateAck { scope, rev } => {
@@ -578,7 +604,10 @@ pub(crate) async fn lxapp_service_handler(
                 })
                 .unwrap_or(None);
 
-                if page_svc.is_some() {
+                if let Some(page_svc) = page_svc {
+                    page_svc
+                        .close_channels(bridge::BRIDGE_CANCELED, "Page terminated")
+                        .await;
                     event_bus::clear_page(ctx, &path);
 
                     info!("[Worker {}] Removed page", worker_id)

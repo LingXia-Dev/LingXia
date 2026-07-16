@@ -306,7 +306,7 @@ impl LxAppWorkers {
 
     /// Terminate a lxapp service for a specific instance.
     pub fn terminate_app_svc(&self, lxapp: Arc<crate::lxapp::LxApp>) -> Result<(), LxAppError> {
-        lxapp.cancel_all_pending_view_requests();
+        lxapp.cancel_all_page_bridge_work();
         terminate_app_svc(
             lxapp,
             &self.sender,

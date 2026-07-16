@@ -58,7 +58,6 @@ use crate::page::runtime::{
 pub use lingxia_platform::traits::ui::{SurfaceKind, SurfacePosition};
 pub use lingxia_surface::Role as SurfaceRole;
 pub use lingxia_update::ReleaseType;
-use lingxia_webview::WebTag;
 use lingxia_webview::runtime::destroy_webview;
 pub use runtime_bootstrap::dev_session_active as is_dev_session;
 pub use runtime_bootstrap::init;
@@ -974,6 +973,7 @@ impl LxApp {
     pub fn shutdown_with_options(&self, skip_hide: bool) -> Result<(), LxAppError> {
         // Mark closing to suppress TerminatePage from PageInstance drops
         self.set_status(LxAppSessionStatus::Closing);
+        self.cancel_all_page_bridge_work();
         self.clear_transient_files();
         self.cancel_all_page_instance_dispose_timers();
         self.close_all_surfaces(CloseReason::AppClosed);
@@ -988,27 +988,29 @@ impl LxApp {
         }
 
         // Collect current pages
-        let (page_webtags, page_instance_ids): (Vec<WebTag>, Vec<String>) = {
+        let pages = {
             let state = self.state.lock().unwrap();
-            let pages_by_id = state.pages_by_id.lock().unwrap();
-            (
-                pages_by_id.values().map(|page| page.webtag()).collect(),
-                pages_by_id
-                    .values()
-                    .map(|page| page.instance_id_string())
-                    .collect(),
-            )
+            state
+                .pages_by_id
+                .lock()
+                .unwrap()
+                .values()
+                .cloned()
+                .collect::<Vec<_>>()
         };
+        let page_webtags = pages.iter().map(|page| page.webtag()).collect::<Vec<_>>();
+        let page_instance_ids = pages
+            .iter()
+            .map(|page| page.instance_id_string())
+            .collect::<Vec<_>>();
         crate::view_call::cancel_view_calls_for_page_instances(
             &page_instance_ids,
             "PageInstance removed while waiting for view response",
         );
 
         // Break PageInstance <-> WebView links early and detach WebViews, then drop pages by clearing the map
-        if let Ok(state) = self.state.lock() {
-            for (_k, page) in state.pages.lock().unwrap().iter() {
-                page.detach_webview();
-            }
+        for page in pages {
+            page.detach_webview();
         }
         if let Ok(state) = self.state.lock() {
             state.pages.lock().unwrap().clear();
@@ -1640,7 +1642,7 @@ impl LxApp {
             .cloned()
     }
 
-    pub(crate) fn cancel_all_pending_view_requests(&self) {
+    pub(crate) fn cancel_all_page_bridge_work(&self) {
         let pages = {
             let state = self.state.lock().unwrap();
             state
@@ -1652,7 +1654,7 @@ impl LxApp {
                 .collect::<Vec<_>>()
         };
         for page in pages {
-            page.cancel_pending_view_requests();
+            page.cancel_bridge_work();
         }
     }
 

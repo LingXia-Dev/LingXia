@@ -527,8 +527,8 @@ impl PageInstance {
         self.inner.bridge.clone()
     }
 
-    pub(crate) fn cancel_pending_view_requests(&self) {
-        self.inner.bridge.cancel_pending_requests();
+    pub(crate) fn cancel_bridge_work(&self) {
+        self.inner.bridge.cancel_page_work(self);
     }
 
     /// Attach WebView to this page (called when WebView is ready)
@@ -637,7 +637,7 @@ impl PageInstance {
         }
     }
 
-    fn lifecycle_cancels_pending_view_requests(event: PageLifecycleEvent) -> bool {
+    fn lifecycle_cancels_bridge_work(event: PageLifecycleEvent) -> bool {
         event == PageLifecycleEvent::OnUnload
     }
 
@@ -748,8 +748,8 @@ impl PageInstance {
         // - onReady fires once for each logical navigation after render has finished
         // - onShow fires each time the page becomes visible (after a hide), without query
 
-        if Self::lifecycle_cancels_pending_view_requests(event) {
-            self.cancel_pending_view_requests();
+        if Self::lifecycle_cancels_bridge_work(event) {
+            self.cancel_bridge_work();
         }
 
         // A collection of events to fire after the lock is released.
@@ -949,7 +949,7 @@ impl PageInstance {
     /// This breaks PageInstance -> WebView strong reference and triggers platform Drop when
     /// combined with registry removal.
     pub fn detach_webview(&self) {
-        self.cancel_pending_view_requests();
+        self.cancel_bridge_work();
         if let Ok(mut webview_guard) = self.inner.webview.lock() {
             // Drop the Arc by taking it out
             let _ = webview_guard.take();
@@ -1655,11 +1655,11 @@ mod tests {
     }
 
     #[test]
-    fn only_on_unload_cancels_pending_view_requests() {
-        assert!(!PageInstance::lifecycle_cancels_pending_view_requests(
+    fn only_on_unload_cancels_page_bridge_work() {
+        assert!(!PageInstance::lifecycle_cancels_bridge_work(
             PageLifecycleEvent::OnHide
         ));
-        assert!(PageInstance::lifecycle_cancels_pending_view_requests(
+        assert!(PageInstance::lifecycle_cancels_bridge_work(
             PageLifecycleEvent::OnUnload
         ));
     }

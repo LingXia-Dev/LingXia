@@ -1540,8 +1540,10 @@ function handleIncomingMessage(msg: unknown): void {
     case "ch.close": {
       const pendingChannel = pendingChannels.get(message.id);
       if (pendingChannel) {
-        pendingChannels.delete(message.id);
-        pendingChannel.channel._emitClose(message.code, message.reason);
+        rejectPendingChannel(message.id, {
+          code: message.code ?? BRIDGE_ERROR.STREAM_CLOSED,
+          message: message.reason ?? "Channel closed before opening",
+        });
         return;
       }
       const channel = activeChannels.get(message.id);
