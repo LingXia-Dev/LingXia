@@ -3520,6 +3520,12 @@ fn set_primary_host_window(hwnd: HWND) {
     if let Ok(mut slot) = slot.lock() {
         *slot = Some(hwnd_handle(hwnd));
     }
+    // The first WM_SIZE can run while the home lxapp is still opening, before
+    // its surface graph can accept the width. Seed again once this HWND has
+    // become the real shell host so the graph never stays at its Medium
+    // default until the user manually resizes the window.
+    #[cfg(feature = "shell-chrome")]
+    report_shell_surface_width(hwnd);
 }
 
 fn primary_host_window_except(excluded: Option<HWND>) -> Option<HWND> {
@@ -5190,6 +5196,23 @@ fn window_logical_client_width(hwnd: HWND) -> f64 {
     physical / scale
 }
 
+/// Reports the adaptive container width only from the primary shell host.
+/// Every WebView2 controller starts with its own 1024px top-level parent; an
+/// aside or a new aside-browser tab must not overwrite the real workspace
+/// width while that temporary parent is created.
+#[cfg(feature = "shell-chrome")]
+fn report_shell_surface_width(hwnd: HWND) {
+    let primary = PRIMARY_HOST_WINDOW
+        .get()
+        .and_then(|slot| slot.lock().ok())
+        .and_then(|slot| *slot)
+        .is_some_and(|window| window == hwnd_handle(hwnd));
+    if !primary || is_native_framed_window(hwnd) || active_webtag_key_for_window(hwnd).is_none() {
+        return;
+    }
+    crate::shell::update_surface_width(window_logical_client_width(hwnd));
+}
+
 pub fn find_webview_content_window(webtag: &WebTag) -> Option<WindowsWebViewContentWindow> {
     let hwnd = window_handle_for_key(webtag.key())?;
     let client = content_rect_for_window(hwnd, webtag.key());
@@ -6364,7 +6387,7 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                 // Keep the adaptive surface graph's size class tracking the
                 // real window width (see `update_surface_width`).
                 #[cfg(feature = "shell-chrome")]
-                crate::shell::update_surface_width(window_logical_client_width(hwnd));
+                report_shell_surface_width(hwnd);
                 sync_window_layout(hwnd);
                 if windows_chrome_renderer().is_some() && !is_native_framed_window(hwnd) {
                     invalidate_window(hwnd);
