@@ -463,6 +463,7 @@ Specify one with `--platform <name>` or build all with `--all-platforms`."
         build_profile,
         framework_override,
         progress.as_deref(),
+        false,
         &platforms_to_build,
         &build_targets,
         constrained_platforms,

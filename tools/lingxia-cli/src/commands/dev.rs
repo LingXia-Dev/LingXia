@@ -135,6 +135,7 @@ fn prepare_dev_host_assets(
         ctx.build_profile,
         ctx.framework,
         ctx.progress.as_deref(),
+        true,
         platforms_to_build,
         build_targets,
         true,

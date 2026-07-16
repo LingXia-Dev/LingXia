@@ -377,6 +377,7 @@ mod tests {
 
     fn build_options() -> BuildOptions {
         BuildOptions {
+            dev_session: false,
             release: false,
             package: false,
             framework: None,

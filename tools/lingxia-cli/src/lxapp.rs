@@ -41,6 +41,10 @@ pub fn run_in_dir(args: &[String], cwd: &Path) -> Result<()> {
     build::run(args, cwd)
 }
 
+pub fn run_in_dir_for_dev(args: &[String], cwd: &Path) -> Result<()> {
+    build::run_for_dev(args, cwd)
+}
+
 pub(crate) fn parse_framework_override(
     framework: Option<&str>,
 ) -> Result<Option<ProjectFramework>> {

@@ -30,6 +30,7 @@ struct ResourceBundlePlan {
     output_dir: PathBuf,
     version: String,
     framework_override: Option<ProjectFramework>,
+    dev: bool,
     build: bool,
 }
 
@@ -39,6 +40,7 @@ pub(super) fn prepare_home_app_bundle(
     build_profile: BuildProfile,
     framework_override: Option<ProjectFramework>,
     progress_override: Option<&str>,
+    dev: bool,
     cache: &mut HostAssetsCache,
 ) -> Result<PreparedResourceBundle> {
     let app = config
@@ -56,6 +58,7 @@ pub(super) fn prepare_home_app_bundle(
             build_profile,
             framework_override,
             progress_override,
+            dev,
             cache,
         );
     }
@@ -72,6 +75,7 @@ pub(super) fn prepare_resource_lxapp_bundles(
     build_profile: BuildProfile,
     framework_override: Option<ProjectFramework>,
     progress_override: Option<&str>,
+    dev: bool,
     cache: &mut HostAssetsCache,
 ) -> Result<Vec<PreparedResourceBundle>> {
     let home_app_id = config
@@ -104,6 +108,7 @@ pub(super) fn prepare_resource_lxapp_bundles(
             build_profile,
             framework_override,
             progress_override,
+            dev,
             cache,
         )?);
     }
@@ -142,6 +147,7 @@ fn prepare_resource_bundle(
     build_profile: BuildProfile,
     framework_override: Option<ProjectFramework>,
     progress_override: Option<&str>,
+    dev: bool,
     cache: &mut HostAssetsCache,
 ) -> Result<PreparedResourceBundle> {
     let source = resolve_resource_bundle_source(project_root, bundle)?;
@@ -153,6 +159,7 @@ fn prepare_resource_bundle(
         build_profile,
         framework_override,
         progress_override,
+        dev,
         source.build,
         cache,
     )
@@ -210,6 +217,7 @@ fn prepare_lxapp_bundle_dir(
     build_profile: BuildProfile,
     framework_override: Option<ProjectFramework>,
     progress_override: Option<&str>,
+    dev: bool,
     build: bool,
     cache: &mut HostAssetsCache,
 ) -> Result<PreparedResourceBundle> {
@@ -250,6 +258,7 @@ fn prepare_lxapp_bundle_dir(
         output_dir: bundle_dir.join("dist"),
         version: metadata.version,
         framework_override,
+        dev,
         build,
     };
 
@@ -260,6 +269,7 @@ pub(super) fn prepare_browser_shell_webui_bundle(
     project_root: &Path,
     config: &LingXiaConfig,
     build_profile: BuildProfile,
+    dev: bool,
     cache: &mut HostAssetsCache,
 ) -> Result<PreparedResourceBundle> {
     // Customization goes through `browser.webui.path` / `browser.webui.package`.
@@ -290,6 +300,7 @@ pub(super) fn prepare_browser_shell_webui_bundle(
             .join("dist"),
         version: metadata.version,
         framework_override: None,
+        dev,
         build: source.build,
     };
 
@@ -312,13 +323,14 @@ fn prepare_lxapp_plan(
     cache: &mut HostAssetsCache,
 ) -> Result<PreparedResourceBundle> {
     let cache_key = format!(
-        "{}|{}|{}|framework={}",
+        "{}|{}|{}|framework={}|dev={}",
         path_key(&plan.bundle_dir),
         build_profile.as_str(),
         kind,
         plan.framework_override
             .map(|framework| framework.as_str())
-            .unwrap_or("auto")
+            .unwrap_or("auto"),
+        plan.dev
     );
     let inputs_hash = hash_resource_bundle_inputs(&plan)?;
     let mut needs_build = plan.build;
@@ -328,7 +340,7 @@ fn prepare_lxapp_plan(
         && stamp.inputs_hash == inputs_hash
         && plan.output_dir.exists()
     {
-        needs_build = false;
+        needs_build = hash_tree(&plan.output_dir, &[])? != stamp.dist_hash;
     }
 
     if needs_build {
@@ -349,7 +361,11 @@ fn prepare_lxapp_plan(
             args.push("--progress".to_string());
             args.push(progress.to_string());
         }
-        lxapp::run_in_dir(&args, &plan.bundle_dir)?;
+        if plan.dev {
+            lxapp::run_in_dir_for_dev(&args, &plan.bundle_dir)?;
+        } else {
+            lxapp::run_in_dir(&args, &plan.bundle_dir)?;
+        }
     } else {
         let message = if plan.build {
             "bundle unchanged, skip build"
@@ -540,6 +556,7 @@ mod tests {
             BuildProfile::Debug,
             None,
             None,
+            false,
             false,
             &mut cache,
         )
