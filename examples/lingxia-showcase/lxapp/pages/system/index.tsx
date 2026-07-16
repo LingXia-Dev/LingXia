@@ -30,7 +30,7 @@ export default function SystemPage() {
                 </div>
                 <div className="flex-1">
                   <div className="text-sm text-gray-800 font-semibold">Fetch App Base Info</div>
-                  <div className="text-xs text-gray-500 mt-0.5">Get application language settings</div>
+                  <div className="text-xs text-gray-500 mt-0.5">Get app environment info (locale, display language, OS, version)</div>
                 </div>
                 <button
                   onClick={getBaseInfo}
@@ -47,7 +47,9 @@ export default function SystemPage() {
                       <span className="w-1 h-4 bg-blue-500 rounded-full"></span>
                       <h4 className="text-sm font-semibold text-gray-700">Result</h4>
                     </div>
-                    <InfoRow label="Language" value={appBaseInfo.language} />
+                    <InfoRow label="Locale" value={appBaseInfo.locale} />
+                    <InfoRow label="Display Language" value={appBaseInfo.displayLanguage} />
+                    <InfoRow label="OS" value={appBaseInfo.os} />
                     <InfoRow label="Product Name" value={appBaseInfo.productName} />
                     <InfoRow label="Product Version" value={appBaseInfo.version} />
                     <InfoRow label="SDK Version" value={appBaseInfo.SDKVersion} />

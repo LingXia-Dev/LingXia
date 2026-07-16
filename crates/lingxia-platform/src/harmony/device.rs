@@ -268,7 +268,7 @@ impl Device for Platform {
         let brand = call_cstr(OH_GetBrand).unwrap_or_else(|| "Unknown".to_string());
         let model = call_cstr(OH_GetProductModel).unwrap_or_else(|| "Unknown".to_string());
         let market_name = call_cstr(OH_GetMarketName).unwrap_or_else(|| model.clone());
-        let os_name = "OpenHarmony".to_string();
+        let os_name = crate::os_label().to_string();
         let distribution_os_version = call_cstr(OH_GetDistributionOSVersion);
         let os_full_name = call_cstr(OH_GetOSFullName);
         let os_version = os_full_name

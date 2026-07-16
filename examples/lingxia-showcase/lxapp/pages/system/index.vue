@@ -15,7 +15,7 @@
             </div>
             <div class="flex-1">
               <div class="text-sm text-gray-800 font-semibold">Fetch App Base Info</div>
-              <div class="text-xs text-gray-500 mt-0.5">Get application language settings</div>
+              <div class="text-xs text-gray-500 mt-0.5">Get app environment info (locale, display language, OS, version)</div>
             </div>
             <button
               @click="getBaseInfo"
@@ -32,8 +32,16 @@
                 <h4 class="text-sm font-semibold text-gray-700">Result</h4>
               </div>
               <div class="flex justify-between items-center py-3 border-b border-gray-200">
-                <span class="text-sm text-gray-600">Language</span>
-                <span class="text-sm font-semibold text-gray-800 px-3 py-1 bg-blue-50 rounded-lg">{{ appBaseInfo.language || '--' }}</span>
+                <span class="text-sm text-gray-600">Locale</span>
+                <span class="text-sm font-semibold text-gray-800 px-3 py-1 bg-blue-50 rounded-lg">{{ appBaseInfo.locale || '--' }}</span>
+              </div>
+              <div class="flex justify-between items-center py-3 border-b border-gray-200">
+                <span class="text-sm text-gray-600">Display Language</span>
+                <span class="text-sm font-semibold text-gray-800 px-3 py-1 bg-blue-50 rounded-lg">{{ appBaseInfo.displayLanguage || '--' }}</span>
+              </div>
+              <div class="flex justify-between items-center py-3 border-b border-gray-200">
+                <span class="text-sm text-gray-600">OS</span>
+                <span class="text-sm font-semibold text-gray-800 px-3 py-1 bg-blue-50 rounded-lg">{{ appBaseInfo.os || '--' }}</span>
               </div>
               <div class="flex justify-between items-center py-3 border-b border-gray-200">
                 <span class="text-sm text-gray-600">Product Name</span>

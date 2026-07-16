@@ -231,26 +231,7 @@ fn build_connect_src_policy() -> String {
 }
 
 fn build_bridge_config_script(bridge_nonce: Option<&str>) -> String {
-    #[cfg(any(target_os = "ios", target_os = "macos"))]
-    let bridge_os = if cfg!(target_os = "macos") {
-        "macOS"
-    } else {
-        "iOS"
-    };
-    #[cfg(target_os = "android")]
-    let bridge_os = "Android";
-    #[cfg(target_os = "windows")]
-    let bridge_os = "Windows";
-    #[cfg(all(target_os = "linux", target_env = "ohos"))]
-    let bridge_os = "Harmony";
-    #[cfg(not(any(
-        target_os = "ios",
-        target_os = "macos",
-        target_os = "android",
-        target_os = "windows",
-        all(target_os = "linux", target_env = "ohos"),
-    )))]
-    let bridge_os = "unknown";
+    let bridge_os = lingxia_platform::os_label();
 
     #[cfg(any(target_os = "ios", target_os = "macos"))]
     let apple_downstream_url = Some(escape_js_string(

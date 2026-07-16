@@ -54,7 +54,7 @@ impl Device for Platform {
             .or_else(|| get_system_property("ro.config.marketing_name"))
             .unwrap_or_else(|| model.clone());
 
-        let os_name = "Android".to_string();
+        let os_name = crate::os_label().to_string();
         let os_version = get_system_property("ro.build.version.release")
             .unwrap_or_else(|| "Unknown".to_string());
 

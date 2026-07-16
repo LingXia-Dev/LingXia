@@ -15,7 +15,17 @@ mod update;
 /// Host app base information.
 #[derive(Debug, Clone, IntoJSObject)]
 struct AppBaseInfo {
-    language: String,
+    /// Raw system locale, unaffected by a saved in-app language override.
+    /// For the language the UI should actually render in, use
+    /// `display_language` instead.
+    locale: String,
+    /// Effective display language: a saved user override when set, else
+    /// `locale`. This is what native chrome and `lx.*` i18n strings follow.
+    #[js_name = "displayLanguage"]
+    display_language: String,
+    /// Platform family: `"iOS"` / `"macOS"` / `"Android"` / `"Windows"` /
+    /// `"Harmony"`. Matches the View-side `usePlatform().os` value.
+    os: String,
     #[js_name = "productName"]
     product_name: String,
     #[js_name = "version"]
@@ -30,7 +40,9 @@ fn get_app_base_info(ctx: JSContext) -> JSResult<AppBaseInfo> {
     let app_cfg =
         app_config().ok_or_else(|| js_service_unavailable_error("app config not available"))?;
     Ok(AppBaseInfo {
-        language: locale.to_string(),
+        locale: locale.to_string(),
+        display_language: lxapp::get_display_language(),
+        os: lingxia_platform::os_label().to_string(),
         product_name: app_cfg.product_name.clone(),
         version: app_cfg.product_version.clone(),
         sdk_version: lxapp::SDK_RUNTIME_VERSION.to_string(),

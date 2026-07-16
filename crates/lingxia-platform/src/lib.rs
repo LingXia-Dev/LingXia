@@ -55,6 +55,44 @@ mod unsupported;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 pub mod desktop;
 
+/// Canonical platform-family label — the single source of truth for "which
+/// OS is this," shared by the WebView bridge config injection
+/// (`lingxia-lxapp`), `lx.app.getBaseInfo().os`, and `lx.getDeviceInfo().osName`
+/// (`lingxia-logic`) so the three can never drift apart. Matches the values
+/// the View-side bridge already exposes via `usePlatform().os`.
+pub fn os_label() -> &'static str {
+    #[cfg(any(target_os = "ios", target_os = "macos"))]
+    {
+        if cfg!(target_os = "macos") {
+            "macOS"
+        } else {
+            "iOS"
+        }
+    }
+    #[cfg(target_os = "android")]
+    {
+        "Android"
+    }
+    #[cfg(target_os = "windows")]
+    {
+        "Windows"
+    }
+    #[cfg(all(target_os = "linux", target_env = "ohos"))]
+    {
+        "Harmony"
+    }
+    #[cfg(not(any(
+        target_os = "ios",
+        target_os = "macos",
+        target_os = "android",
+        target_os = "windows",
+        all(target_os = "linux", target_env = "ohos"),
+    )))]
+    {
+        "unknown"
+    }
+}
+
 /// Whether launch-at-startup can actually work on this host, probed at
 /// runtime. macOS builds target 12 but SMAppService needs 13+, so the
 /// `lx.app.autostart` member must not be registered from a compile-time
