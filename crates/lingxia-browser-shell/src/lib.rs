@@ -151,7 +151,6 @@ pub fn register_runtime() {
     #[cfg(all(any(target_os = "macos", target_os = "windows"), feature = "proxy"))]
     proxy::register();
     settings::register();
-    settings::seed_display_language();
 }
 
 #[doc(hidden)]

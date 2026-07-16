@@ -1,7 +1,6 @@
 use crate::host::{HostCancel, HostResult, StreamContext, await_or_cancel};
 use crate::platform_error::map_platform_error;
 use lingxia_app_context::app_config;
-use lingxia_platform::traits::app_runtime::AppRuntime;
 use lingxia_service::file::ChooseDirectoryRequest;
 use lxapp::LxApp;
 use serde::{Deserialize, Serialize};
@@ -52,19 +51,6 @@ static LANGUAGE_CHANGE_LISTENER: OnceLock<Box<dyn Fn() + Send + Sync>> = OnceLoc
 
 pub fn set_display_language_change_listener(listener: Box<dyn Fn() + Send + Sync>) {
     let _ = LANGUAGE_CHANGE_LISTENER.set(listener);
-}
-
-/// Seed the process-wide display-language override from the settings store.
-/// Called once at runtime registration; `lxapp::get_locale` then resolves the
-/// user's choice for every consumer, native chrome i18n included.
-pub(crate) fn seed_display_language() {
-    let Some(runtime) = lxapp::get_platform() else {
-        return;
-    };
-    match lingxia_service::settings::display_language(&runtime.app_data_dir()) {
-        Ok(language) => lxapp::set_display_language(language),
-        Err(error) => log::warn!("failed to load display language: {error}"),
-    }
 }
 
 fn language_settings_result(app: &LxApp) -> HostResult<LanguageSettingsResult> {
