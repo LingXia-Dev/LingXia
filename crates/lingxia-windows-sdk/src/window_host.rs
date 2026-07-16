@@ -79,6 +79,7 @@ static NATIVE_FRAMED_WINDOWS: OnceLock<Mutex<HashSet<isize>>> = OnceLock::new();
 #[cfg(feature = "shell-chrome")]
 static HOST_CHROME_SNAPSHOTS: OnceLock<Mutex<HashMap<isize, HostChromeSnapshot>>> = OnceLock::new();
 static CHROME_INTERACTIONS: OnceLock<Mutex<HashMap<isize, ChromeInteraction>>> = OnceLock::new();
+static WINDOW_RESIZE_DRAGS: OnceLock<Mutex<HashMap<isize, WindowResizeDrag>>> = OnceLock::new();
 static CHROME_BACK_BUFFERS: OnceLock<Mutex<HashMap<isize, ChromeBackBuffer>>> = OnceLock::new();
 static ATTACHED_PANEL_RESIZE_DRAG: OnceLock<Mutex<Option<AttachedPanelResizeDrag>>> =
     OnceLock::new();
@@ -133,6 +134,25 @@ struct ChromeInteraction {
     /// renderer's `hover_rect`); the previous/next rects are invalidated on
     /// change so hover feedback repaints exactly the affected element.
     hover_rect: Option<RECT>,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum WindowResizeEdge {
+    Left,
+    Right,
+    Top,
+    Bottom,
+    TopLeft,
+    TopRight,
+    BottomLeft,
+    BottomRight,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct WindowResizeDrag {
+    edge: WindowResizeEdge,
+    cursor: POINT,
+    window: RECT,
 }
 
 /// Per-window offscreen surface chrome renders into; WM_PAINT blits the
@@ -699,7 +719,7 @@ pub fn present_webview_in_active_group(webtag: &WebTag) -> StdResult<()> {
 
     mark_active(webtag);
     notify_webtag_visibility(webtag.key(), true);
-    invalidate_window_chrome(host);
+    repaint_window_now(host);
     Ok(())
 }
 
@@ -1419,7 +1439,7 @@ pub fn restore_presented_group_main() -> StdResult<()> {
     }
     mark_active(&main_webtag);
     notify_webtag_visibility(main_webtag.key(), true);
-    invalidate_window_chrome(host);
+    repaint_window_now(host);
     Ok(())
 }
 
@@ -2987,6 +3007,13 @@ fn sync_webtag_content_bounds_to_rect(hwnd: HWND, webtag_key: &str, rect: RECT) 
     {
         log::debug!("Failed to sync Windows WebView content bounds: {err}");
     }
+    if bounds_changed {
+        // WebView2 does not invalidate the parent pixels it just uncovered.
+        // Without this repaint, a smaller incoming surface leaves the old
+        // page's white right/bottom strips in the shell gutter until another
+        // unrelated desktop activation happens.
+        repaint_window_now(hwnd);
+    }
     let _ = handler.notify_parent_position_changed();
 }
 
@@ -3998,9 +4025,53 @@ fn apply_shell_window_frame(hwnd: HWND) -> StdResult<()> {
     let style = if window_is_device_framed(hwnd) {
         WS_POPUP.0 | WS_SYSMENU.0 | WS_MINIMIZEBOX.0
     } else {
-        WS_POPUP.0 | WS_SIZEBOX.0 | WS_SYSMENU.0 | WS_MINIMIZEBOX.0 | WS_MAXIMIZEBOX.0
+        // WS_SIZEBOX reserves an 8px DWM-owned strip inside every edge even
+        // after WM_NCCALCSIZE makes the client full-window. Edge resize and
+        // snap are handled by the custom hit-test/drag path instead.
+        WS_POPUP.0 | WS_SYSMENU.0 | WS_MINIMIZEBOX.0 | WS_MAXIMIZEBOX.0
     };
-    apply_window_style(hwnd, WINDOW_STYLE(style))
+    apply_window_style(hwnd, WINDOW_STYLE(style))?;
+    if !window_is_device_framed(hwnd) {
+        apply_shell_window_dressing(hwnd);
+    }
+    Ok(())
+}
+
+/// Last main shell host selected by a presentation. Unlike a page-derived
+/// lookup this remains valid after WM_CLOSE hides the window, so tray activate
+/// can restore the exact HWND the user closed.
+pub(crate) fn primary_host_window_handle() -> Option<isize> {
+    primary_host_window_except(None).map(hwnd_handle)
+}
+
+/// Ask DWM to round the outer window without extending its non-client frame
+/// into the client. Extending even one pixel recreates the unpaintable system
+/// strip this custom shell deliberately removes.
+fn apply_shell_window_dressing(hwnd: HWND) {
+    use windows::Win32::Graphics::Dwm::{
+        DWMWA_BORDER_COLOR, DWMWA_COLOR_NONE, DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_ROUND,
+        DwmSetWindowAttribute,
+    };
+
+    unsafe {
+        let preference = DWMWCP_ROUND;
+        let _ = DwmSetWindowAttribute(
+            hwnd,
+            DWMWA_WINDOW_CORNER_PREFERENCE,
+            &preference as *const _ as *const c_void,
+            std::mem::size_of_val(&preference) as u32,
+        );
+        // Win11 otherwise paints a light/dark activation-dependent stroke
+        // around WS_SIZEBOX windows. With custom client chrome that becomes
+        // the unwanted white/gray band around all four app edges.
+        let border_color = DWMWA_COLOR_NONE;
+        let _ = DwmSetWindowAttribute(
+            hwnd,
+            DWMWA_BORDER_COLOR,
+            &border_color as *const _ as *const c_void,
+            std::mem::size_of_val(&border_color) as u32,
+        );
+    }
 }
 
 fn apply_window_style(hwnd: HWND, style: WINDOW_STYLE) -> StdResult<()> {
@@ -4028,10 +4099,8 @@ fn apply_window_style(hwnd: HWND, style: WINDOW_STYLE) -> StdResult<()> {
     Ok(())
 }
 
-/// Extend custom shell chrome through the whole top-level window. `WS_SIZEBOX`
-/// is retained for native snap/resize semantics, but its default non-client
-/// frame otherwise leaves a system-colored strip above our caption buttons.
-/// The custom hit test already owns every resize edge.
+/// Extend custom shell chrome through the whole top-level window. The custom
+/// hit test and drag path own every resize edge, so no native frame is needed.
 fn custom_shell_nc_calc_size(hwnd: HWND, wparam: WPARAM, lparam: LPARAM) -> Option<LRESULT> {
     if windows_chrome_renderer().is_none() || is_native_framed_window(hwnd) {
         return None;
@@ -4115,6 +4184,17 @@ fn chrome_hit_for_window(hwnd: HWND, point: (i32, i32)) -> Option<WindowsChromeH
 fn invalidate_window(hwnd: HWND) {
     unsafe {
         let _ = windows::Win32::Graphics::Gdi::InvalidateRect(Some(hwnd), None, false);
+    }
+}
+
+/// Repaints exposed host pixels synchronously. WebView2 composition can keep
+/// presenting an outgoing controller until `SetIsVisible(false)` completes;
+/// a queued invalidation alone then leaves its last white frame in the newly
+/// uncovered shell gutter until some unrelated desktop damage occurs.
+fn repaint_window_now(hwnd: HWND) {
+    invalidate_window(hwnd);
+    unsafe {
+        let _ = windows::Win32::Graphics::Gdi::UpdateWindow(hwnd);
     }
 }
 
@@ -4417,6 +4497,12 @@ fn hit_test_window(hwnd: HWND, lparam: LPARAM) -> LRESULT {
     }
 
     match chrome_hit_for_window(hwnd, point_tuple) {
+        // Windows 11 discovers custom-titlebar snap layouts through
+        // HTMAXBUTTON. The other caption buttons stay client-owned because
+        // the shell paints and invokes them itself.
+        Some(WindowsChromeHit::FrameButton(button)) => frame_button_non_client_hit(button)
+            .map(LRESULT)
+            .unwrap_or(LRESULT(WindowsAndMessaging::HTCLIENT as isize)),
         Some(WindowsChromeHit::Caption) => LRESULT(WindowsAndMessaging::HTCAPTION as isize),
         Some(_) => LRESULT(WindowsAndMessaging::HTCLIENT as isize),
         None => LRESULT(WindowsAndMessaging::HTCLIENT as isize),
@@ -4447,6 +4533,207 @@ fn resize_hit_test(hwnd: HWND, point: (i32, i32)) -> Option<LRESULT> {
         (_, _, true, _) => Some(LRESULT(WindowsAndMessaging::HTTOP as isize)),
         (_, _, _, true) => Some(LRESULT(WindowsAndMessaging::HTBOTTOM as isize)),
         _ => None,
+    }
+}
+
+fn window_resize_edge(hit: usize) -> Option<WindowResizeEdge> {
+    match hit as u32 {
+        WindowsAndMessaging::HTLEFT => Some(WindowResizeEdge::Left),
+        WindowsAndMessaging::HTRIGHT => Some(WindowResizeEdge::Right),
+        WindowsAndMessaging::HTTOP => Some(WindowResizeEdge::Top),
+        WindowsAndMessaging::HTBOTTOM => Some(WindowResizeEdge::Bottom),
+        WindowsAndMessaging::HTTOPLEFT => Some(WindowResizeEdge::TopLeft),
+        WindowsAndMessaging::HTTOPRIGHT => Some(WindowResizeEdge::TopRight),
+        WindowsAndMessaging::HTBOTTOMLEFT => Some(WindowResizeEdge::BottomLeft),
+        WindowsAndMessaging::HTBOTTOMRIGHT => Some(WindowResizeEdge::BottomRight),
+        _ => None,
+    }
+}
+
+/// `WS_SIZEBOX` gives Windows native resize/snap behavior but also reserves an
+/// unpaintable, system-colored frame inside every edge of this custom client
+/// window. Keep the HWND frame-free and run the same edge gesture from our
+/// existing `WM_NCHITTEST` results.
+fn begin_window_resize_drag(hwnd: HWND, hit: usize) -> bool {
+    let Some(edge) = window_resize_edge(hit) else {
+        return false;
+    };
+    if unsafe { WindowsAndMessaging::IsZoomed(hwnd).as_bool() } {
+        return false;
+    }
+    let mut cursor = POINT::default();
+    let mut window = RECT::default();
+    unsafe {
+        if WindowsAndMessaging::GetCursorPos(&mut cursor).is_err()
+            || WindowsAndMessaging::GetWindowRect(hwnd, &mut window).is_err()
+        {
+            return false;
+        }
+        let _ = SetCapture(hwnd);
+    }
+    if let Ok(mut drags) = WINDOW_RESIZE_DRAGS
+        .get_or_init(|| Mutex::new(HashMap::new()))
+        .lock()
+    {
+        drags.insert(
+            hwnd_handle(hwnd),
+            WindowResizeDrag {
+                edge,
+                cursor,
+                window,
+            },
+        );
+        true
+    } else {
+        unsafe {
+            let _ = ReleaseCapture();
+        }
+        false
+    }
+}
+
+fn window_resize_drag(hwnd: HWND) -> Option<WindowResizeDrag> {
+    WINDOW_RESIZE_DRAGS
+        .get()
+        .and_then(|drags| drags.lock().ok())
+        .and_then(|drags| drags.get(&hwnd_handle(hwnd)).copied())
+}
+
+fn update_window_resize_drag(hwnd: HWND) -> bool {
+    let Some(drag) = window_resize_drag(hwnd) else {
+        return false;
+    };
+    let mut cursor = POINT::default();
+    if unsafe { WindowsAndMessaging::GetCursorPos(&mut cursor).is_err() } {
+        return true;
+    }
+    let dpi = unsafe { windows::Win32::UI::HiDpi::GetDpiForWindow(hwnd) }.max(96) as i32;
+    let rect = resized_window_rect(drag, cursor, dpi);
+    unsafe {
+        let _ = WindowsAndMessaging::SetWindowPos(
+            hwnd,
+            None,
+            rect.left,
+            rect.top,
+            rect.right - rect.left,
+            rect.bottom - rect.top,
+            WindowsAndMessaging::SWP_NOACTIVATE | WindowsAndMessaging::SWP_NOZORDER,
+        );
+    }
+    true
+}
+
+fn resized_window_rect(drag: WindowResizeDrag, cursor: POINT, dpi: i32) -> RECT {
+    let dx = cursor.x - drag.cursor.x;
+    let dy = cursor.y - drag.cursor.y;
+    let mut rect = drag.window;
+    let moves_left = matches!(
+        drag.edge,
+        WindowResizeEdge::Left | WindowResizeEdge::TopLeft | WindowResizeEdge::BottomLeft
+    );
+    let moves_right = matches!(
+        drag.edge,
+        WindowResizeEdge::Right | WindowResizeEdge::TopRight | WindowResizeEdge::BottomRight
+    );
+    let moves_top = matches!(
+        drag.edge,
+        WindowResizeEdge::Top | WindowResizeEdge::TopLeft | WindowResizeEdge::TopRight
+    );
+    let moves_bottom = matches!(
+        drag.edge,
+        WindowResizeEdge::Bottom | WindowResizeEdge::BottomLeft | WindowResizeEdge::BottomRight
+    );
+    if moves_left {
+        rect.left += dx;
+    }
+    if moves_right {
+        rect.right += dx;
+    }
+    if moves_top {
+        rect.top += dy;
+    }
+    if moves_bottom {
+        rect.bottom += dy;
+    }
+
+    let dpi = dpi.max(96);
+    let min_width = 640 * dpi / 96;
+    let min_height = 480 * dpi / 96;
+    if rect.right - rect.left < min_width {
+        if moves_left {
+            rect.left = rect.right - min_width;
+        } else {
+            rect.right = rect.left + min_width;
+        }
+    }
+    if rect.bottom - rect.top < min_height {
+        if moves_top {
+            rect.top = rect.bottom - min_height;
+        } else {
+            rect.bottom = rect.top + min_height;
+        }
+    }
+
+    rect
+}
+
+fn end_window_resize_drag(hwnd: HWND, release_capture: bool) -> bool {
+    let removed = WINDOW_RESIZE_DRAGS
+        .get()
+        .and_then(|drags| drags.lock().ok())
+        .and_then(|mut drags| drags.remove(&hwnd_handle(hwnd)))
+        .is_some();
+    if removed && release_capture {
+        unsafe {
+            let _ = ReleaseCapture();
+        }
+    }
+    removed
+}
+
+fn snap_window_after_caption_drag(hwnd: HWND) {
+    if unsafe { WindowsAndMessaging::IsZoomed(hwnd).as_bool() } {
+        return;
+    }
+    let mut cursor = POINT::default();
+    if unsafe { WindowsAndMessaging::GetCursorPos(&mut cursor).is_err() } {
+        return;
+    }
+    let monitor = unsafe { MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST) };
+    let mut info = MONITORINFO {
+        cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+        ..Default::default()
+    };
+    if !unsafe { GetMonitorInfoW(monitor, &mut info).as_bool() } {
+        return;
+    }
+    let work = info.rcWork;
+    let threshold = 2;
+    unsafe {
+        if cursor.y <= work.top + threshold {
+            let _ = WindowsAndMessaging::ShowWindow(hwnd, WindowsAndMessaging::SW_MAXIMIZE);
+        } else if cursor.x <= work.left + threshold {
+            let _ = WindowsAndMessaging::SetWindowPos(
+                hwnd,
+                None,
+                work.left,
+                work.top,
+                (work.right - work.left) / 2,
+                work.bottom - work.top,
+                WindowsAndMessaging::SWP_NOACTIVATE | WindowsAndMessaging::SWP_NOZORDER,
+            );
+        } else if cursor.x >= work.right - threshold {
+            let width = (work.right - work.left) / 2;
+            let _ = WindowsAndMessaging::SetWindowPos(
+                hwnd,
+                None,
+                work.right - width,
+                work.top,
+                width,
+                work.bottom - work.top,
+                WindowsAndMessaging::SWP_NOACTIVATE | WindowsAndMessaging::SWP_NOZORDER,
+            );
+        }
     }
 }
 
@@ -4642,26 +4929,46 @@ fn handle_chrome_mouse_move(hwnd: HWND, point: (i32, i32), from_host: bool) -> b
     )
 }
 
-#[cfg(feature = "shell-chrome")]
+fn frame_button_non_client_hit(button: WindowsFrameButton) -> Option<isize> {
+    (button == WindowsFrameButton::Maximize).then_some(WindowsAndMessaging::HTMAXBUTTON as isize)
+}
+
 fn handle_chrome_mouse_wheel(hwnd: HWND, wparam: WPARAM, lparam: LPARAM) -> bool {
     let mut point = lparam_screen_point(lparam);
     if unsafe { !ScreenToClient(hwnd, &mut point).as_bool() } {
         return false;
     }
     let client_point = (point.x, point.y);
-    let Some(WindowsChromeHit::Focusable { id, .. }) = chrome_hit_for_window(hwnd, client_point)
-    else {
-        return false;
-    };
-    if id != "terminal" {
-        return false;
-    }
 
-    let wheel_delta = ((wparam.0 >> 16) & 0xffff) as u16 as i16 as i32;
-    if wheel_delta == 0 {
+    let wheel_delta = ((wparam.0 >> 16) & 0xffff) as u16 as i16;
+    #[cfg(feature = "shell-chrome")]
+    if let Some(WindowsChromeHit::Focusable { id, .. }) = chrome_hit_for_window(hwnd, client_point)
+        && id == "terminal"
+    {
+        if wheel_delta != 0 {
+            let _ = crate::shell::scroll_pane_at(
+                &id,
+                client_point.0,
+                client_point.1,
+                i32::from(wheel_delta),
+            );
+        }
         return true;
     }
-    let _ = crate::shell::scroll_pane_at(&id, client_point.0, client_point.1, wheel_delta);
+
+    let Some(renderer) = windows_chrome_renderer() else {
+        return false;
+    };
+    let Some(state) = chrome_state_for_window(hwnd) else {
+        return false;
+    };
+    let Some(command) = renderer.mouse_wheel(&state, client_point, wheel_delta) else {
+        return false;
+    };
+    let Some(webtag_key) = active_webtag_key_for_window(hwnd) else {
+        return false;
+    };
+    invoke_chrome_command(&webtag_key, hwnd, client_point, command);
     true
 }
 
@@ -6011,6 +6318,7 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
             WindowsAndMessaging::WM_CLOSE => {
                 #[cfg(feature = "browser-shell")]
                 if should_hide_window_on_close(hwnd) {
+                    set_primary_host_window(hwnd);
                     unsafe {
                         let _ = WindowsAndMessaging::ShowWindow(hwnd, WindowsAndMessaging::SW_HIDE);
                     }
@@ -6037,10 +6345,11 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
             }
             WindowsAndMessaging::WM_ACTIVATEAPP => {
                 if let Some(webtag_key) = active_webtag_key_for_window(hwnd) {
-                    notify_webtag_visibility(
-                        &webtag_key,
-                        wparam.0 != 0 && is_window_visible(hwnd) && !is_minimized(hwnd),
-                    );
+                    // Activation is an app lifecycle signal, not controller or
+                    // HWND visibility. Mutating WEBTAG_VISIBILITY here made a
+                    // visible inactive WebView look hidden to reconciliation,
+                    // so switching apps could expose stale white host pixels.
+                    dispatch_webtag_lifecycle_visibility(&webtag_key, wparam.0 != 0);
                 }
                 unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
             }
@@ -6136,7 +6445,35 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                 }
                 unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
             }
+            WindowsAndMessaging::WM_NCLBUTTONDOWN => {
+                if windows_chrome_renderer().is_some()
+                    && !is_native_framed_window(hwnd)
+                    && begin_window_resize_drag(hwnd, wparam.0)
+                {
+                    return LRESULT(0);
+                }
+                unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
+            }
+            WindowsAndMessaging::WM_NCLBUTTONUP => {
+                if end_window_resize_drag(hwnd, true) {
+                    return LRESULT(0);
+                }
+                unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
+            }
+            WindowsAndMessaging::WM_CAPTURECHANGED | WindowsAndMessaging::WM_CANCELMODE => {
+                let _ = end_window_resize_drag(hwnd, false);
+                #[cfg(feature = "shell-chrome")]
+                let _ = finish_terminal_selection_drag(hwnd, None);
+                unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
+            }
+            WindowsAndMessaging::WM_EXITSIZEMOVE => {
+                snap_window_after_caption_drag(hwnd);
+                unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
+            }
             WindowsAndMessaging::WM_MOUSEMOVE => {
+                if update_window_resize_drag(hwnd) {
+                    return LRESULT(0);
+                }
                 if windows_chrome_renderer().is_some()
                     && !is_native_framed_window(hwnd)
                     && handle_chrome_mouse_move(hwnd, lparam_client_point(lparam), true)
@@ -6146,7 +6483,6 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                 unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
             }
             WindowsAndMessaging::WM_MOUSEWHEEL => {
-                #[cfg(feature = "shell-chrome")]
                 if windows_chrome_renderer().is_some()
                     && !is_native_framed_window(hwnd)
                     && handle_chrome_mouse_wheel(hwnd, wparam, lparam)
@@ -6173,17 +6509,15 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                 unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
             }
             WindowsAndMessaging::WM_LBUTTONUP => {
+                if end_window_resize_drag(hwnd, true) {
+                    return LRESULT(0);
+                }
                 if windows_chrome_renderer().is_some()
                     && !is_native_framed_window(hwnd)
                     && handle_chrome_left_up(hwnd, lparam_client_point(lparam))
                 {
                     return LRESULT(0);
                 }
-                unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
-            }
-            WindowsAndMessaging::WM_CAPTURECHANGED | WindowsAndMessaging::WM_CANCELMODE => {
-                #[cfg(feature = "shell-chrome")]
-                let _ = finish_terminal_selection_drag(hwnd, None);
                 unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
             }
             WindowsAndMessaging::WM_LBUTTONDBLCLK => {
@@ -6214,6 +6548,7 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                 LRESULT(0)
             }
             WindowsAndMessaging::WM_NCDESTROY => {
+                let _ = end_window_resize_drag(hwnd, false);
                 #[cfg(feature = "shell-chrome")]
                 destroy_transparent_tabbar_overlay(hwnd);
                 #[cfg(feature = "shell-chrome")]
@@ -6779,6 +7114,10 @@ fn notify_webtag_visibility(webtag_key: &str, visible: bool) {
     if !changed {
         return;
     }
+    dispatch_webtag_lifecycle_visibility(webtag_key, visible);
+}
+
+fn dispatch_webtag_lifecycle_visibility(webtag_key: &str, visible: bool) {
     let Some(webtag) = webtag_for_key(webtag_key) else {
         return;
     };
@@ -6940,4 +7279,62 @@ fn hwnd_handle(hwnd: HWND) -> isize {
 
 fn to_wide(value: &str) -> Vec<u16> {
     value.encode_utf16().chain(std::iter::once(0)).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        WindowResizeDrag, WindowResizeEdge, WindowsFrameButton, frame_button_non_client_hit,
+        resized_window_rect,
+    };
+    use windows::Win32::Foundation::{POINT, RECT};
+    use windows::Win32::UI::WindowsAndMessaging;
+
+    #[test]
+    fn maximize_exposes_the_native_snap_hit_target() {
+        assert_eq!(
+            frame_button_non_client_hit(WindowsFrameButton::Maximize),
+            Some(WindowsAndMessaging::HTMAXBUTTON as isize)
+        );
+        assert_eq!(
+            frame_button_non_client_hit(WindowsFrameButton::Minimize),
+            None
+        );
+        assert_eq!(frame_button_non_client_hit(WindowsFrameButton::Close), None);
+    }
+
+    #[test]
+    fn frame_free_resize_tracks_edges_and_dpi_minimums() {
+        let base = RECT {
+            left: 100,
+            top: 100,
+            right: 1124,
+            bottom: 868,
+        };
+        let grown = resized_window_rect(
+            WindowResizeDrag {
+                edge: WindowResizeEdge::Right,
+                cursor: POINT { x: 1124, y: 400 },
+                window: base,
+            },
+            POINT { x: 1244, y: 400 },
+            144,
+        );
+        assert_eq!(grown.right, 1244);
+        assert_eq!(grown.left, base.left);
+
+        let clamped = resized_window_rect(
+            WindowResizeDrag {
+                edge: WindowResizeEdge::TopLeft,
+                cursor: POINT { x: 100, y: 100 },
+                window: base,
+            },
+            POINT { x: 500, y: 500 },
+            144,
+        );
+        assert_eq!(clamped.right - clamped.left, 960);
+        assert_eq!(clamped.bottom - clamped.top, 720);
+        assert_eq!(clamped.right, base.right);
+        assert_eq!(clamped.bottom, base.bottom);
+    }
 }

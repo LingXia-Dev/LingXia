@@ -287,7 +287,6 @@ pub fn begin_address_edit(
 
 pub(super) fn draw_shell_top_bar(hdc: HDC, rects: &ChromeRects) {
     fill_rect(hdc, rects.top_bar, shell_palette().window_background);
-    draw_bottom_border(hdc, rects.top_bar, shell_palette().divider);
 }
 
 /// Draws the interactive top-bar controls (sidebar toggle, browser nav
@@ -367,7 +366,12 @@ pub(super) fn draw_top_bar_controls(
         draw_frame_button_glyph(hdc, GLYPH_CLOSE, close, shell_palette().frame_button_icon);
     }
     if let Some(address) = controls.address {
-        fill_rect(hdc, address, shell_palette().panel_background);
+        fill_round_rect_aa(
+            hdc,
+            address,
+            rect_height(&address) / 2,
+            shell_palette().panel_background,
+        );
         let text = layout
             .address_bar
             .as_ref()

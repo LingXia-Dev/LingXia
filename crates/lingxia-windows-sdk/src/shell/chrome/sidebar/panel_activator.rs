@@ -53,6 +53,12 @@ fn activator_rows(
     rows
 }
 
+fn capped_row_window(total: usize, requested_start: usize) -> Range<usize> {
+    let max_start = total.saturating_sub(PANEL_ACTIVATOR_MAX_ROWS);
+    let start = requested_start.min(max_start);
+    start..(start + PANEL_ACTIVATOR_MAX_ROWS).min(total)
+}
+
 pub(in crate::shell::chrome) fn panel_activator_footer_height_for_width(
     width: i32,
     activators: &[WindowsShellPanelActivatorLayout],
@@ -81,7 +87,8 @@ fn expanded_activator_rects(
     let mut top = footer_top + ACTIVATOR_SEPARATOR_HEIGHT + PANEL_ACTIVATOR_MARGIN;
     let mut out = Vec::with_capacity(activators.len());
 
-    for row in rows.into_iter().take(PANEL_ACTIVATOR_MAX_ROWS) {
+    let visible_rows = capped_row_window(rows.len(), tabbar.activator_scroll_row);
+    for row in &rows[visible_rows] {
         let items = &activators[row.clone()];
         let preferred = items
             .iter()
@@ -130,9 +137,11 @@ fn expanded_activator_rects(
 
 fn rail_activator_rects(
     tabbar_rect: RECT,
+    tabbar: &WindowsShellTabBarLayout,
     activators: &[WindowsShellPanelActivatorLayout],
 ) -> Vec<(String, RECT)> {
-    let count = activators.len().min(PANEL_ACTIVATOR_MAX_ROWS);
+    let visible = capped_row_window(activators.len(), tabbar.activator_scroll_row);
+    let count = visible.len();
     if count == 0 {
         return Vec::new();
     }
@@ -144,6 +153,7 @@ fn rail_activator_rects(
     let left = tabbar_rect.left + (rect_width(&tabbar_rect) - PANEL_ACTIVATOR_SIZE) / 2;
     activators
         .iter()
+        .skip(visible.start)
         .take(count)
         .map(|activator| {
             let rect = normalize_rect(RECT {
@@ -174,7 +184,7 @@ pub(in crate::shell::chrome) fn panel_activator_rects(
         )
     {
         if tabbar.collapsed || tabbar.icon_rail {
-            return rail_activator_rects(tabbar_rect, &layout.panel_activators);
+            return rail_activator_rects(tabbar_rect, tabbar, &layout.panel_activators);
         }
         return expanded_activator_rects(tabbar_rect, tabbar, &layout.panel_activators);
     }
@@ -205,6 +215,33 @@ pub(in crate::shell::chrome) fn panel_activator_rects(
     out
 }
 
+pub(in crate::shell::chrome) fn panel_activator_max_scroll_row(
+    tabbar_rect: RECT,
+    tabbar: &WindowsShellTabBarLayout,
+    activators: &[WindowsShellPanelActivatorLayout],
+) -> usize {
+    let rows = if tabbar.collapsed || tabbar.icon_rail {
+        activators.len()
+    } else {
+        activator_rows(rect_width(&tabbar_rect), activators).len()
+    };
+    rows.saturating_sub(PANEL_ACTIVATOR_MAX_ROWS)
+}
+
+pub(in crate::shell::chrome) fn sidebar_navigation_viewport_bottom(
+    tabbar_rect: RECT,
+    tabbar: &WindowsShellTabBarLayout,
+    activators: &[WindowsShellPanelActivatorLayout],
+) -> i32 {
+    if tabbar.collapsed || tabbar.icon_rail {
+        return rail_activator_rects(tabbar_rect, tabbar, activators)
+            .first()
+            .map(|(_, rect)| rect.top - PANEL_ACTIVATOR_MARGIN)
+            .unwrap_or_else(|| sidebar_rail_expand_rect(tabbar_rect).top - PANEL_ACTIVATOR_MARGIN);
+    }
+    tabbar_rect.bottom - tabbar.activator_footer_height
+}
+
 pub(in crate::shell::chrome) fn draw_panel_activators(
     hdc: HDC,
     client: RECT,
@@ -212,6 +249,7 @@ pub(in crate::shell::chrome) fn draw_panel_activators(
     layout: &WindowsShellWindowLayout,
     cursor: Option<(i32, i32)>,
 ) {
+    let palette = shell_palette();
     let icon_only = layout.tab_bar.as_ref().is_some_and(|tabbar| {
         matches!(
             tabbar.position,
@@ -227,20 +265,28 @@ pub(in crate::shell::chrome) fn draw_panel_activators(
         let label = activator
             .map(|item| item.label.as_str())
             .unwrap_or(panel_id.as_str());
+        let default_text_color = if active {
+            palette.accent
+        } else {
+            palette.text_muted
+        };
         let text_color = activator
             .and_then(|item| item.label_color)
-            .unwrap_or_else(|| {
-                if active {
-                    shell_palette().accent
-                } else {
-                    shell_palette().text_muted
-                }
-            });
+            .unwrap_or(default_text_color);
 
+        fill_round_rect_aa(
+            hdc,
+            rect,
+            6,
+            if active {
+                palette.panel_background
+            } else {
+                palette.activator_background
+            },
+        );
         if !active {
             draw_hover_wash(hdc, rect, 6, cursor);
         } else {
-            fill_round_rect_aa(hdc, rect, 6, shell_palette().panel_background);
             let accent = if icon_only {
                 RECT {
                     left: rect.left + 4,
@@ -256,7 +302,7 @@ pub(in crate::shell::chrome) fn draw_panel_activators(
                     bottom: rect.bottom - 6,
                 }
             };
-            fill_round_rect_aa(hdc, accent, 2, shell_palette().accent);
+            fill_round_rect_aa(hdc, accent, 2, palette.accent);
         }
 
         let icon_rect = if icon_only {
@@ -339,5 +385,13 @@ mod tests {
             item("second", "Another deliberately long activator"),
         ];
         assert_eq!(activator_rows(220, &items), vec![0..1, 1..2]);
+    }
+
+    #[test]
+    fn capped_footer_window_keeps_overflow_rows_reachable() {
+        assert_eq!(capped_row_window(8, 0), 0..5);
+        assert_eq!(capped_row_window(8, 2), 2..7);
+        assert_eq!(capped_row_window(8, usize::MAX), 3..8);
+        assert_eq!(capped_row_window(3, 1), 0..3);
     }
 }

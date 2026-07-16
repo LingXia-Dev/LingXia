@@ -583,6 +583,18 @@ pub trait WindowsChromeRenderer: Send + Sync {
         let _ = (state, point);
         None
     }
+
+    /// Translate a wheel gesture over owner-drawn chrome into a runtime
+    /// command. Returning `None` lets the host forward the gesture normally.
+    fn mouse_wheel(
+        &self,
+        state: &WindowsChromeState,
+        point: (i32, i32),
+        delta: i16,
+    ) -> Option<WindowsChromeCommand> {
+        let _ = (state, point, delta);
+        None
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

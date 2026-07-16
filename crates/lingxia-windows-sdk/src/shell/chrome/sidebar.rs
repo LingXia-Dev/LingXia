@@ -20,12 +20,14 @@ pub(super) fn draw_tab_bar(
     rect: RECT,
     tabbar: &WindowsShellTabBarLayout,
     cursor: Option<(i32, i32)>,
+    scroll_offset: i32,
+    viewport_bottom: i32,
 ) {
     if matches!(
         tabbar.position,
         WindowsShellTabBarPosition::Left | WindowsShellTabBarPosition::Right
     ) {
-        draw_sidebar_tab_bar(hdc, rect, tabbar, cursor);
+        draw_sidebar_tab_bar(hdc, rect, tabbar, cursor, scroll_offset, viewport_bottom);
         return;
     }
 
@@ -101,52 +103,53 @@ pub(super) fn draw_sidebar_tab_bar(
     rect: RECT,
     tabbar: &WindowsShellTabBarLayout,
     cursor: Option<(i32, i32)>,
+    scroll_offset: i32,
+    viewport_bottom: i32,
 ) {
     if rect_width(&rect) == 0 {
         return;
     }
+    // The app's tabbar background styles its expanded child strip on macOS;
+    // it does not replace the whole desktop sidebar surface.
     fill_rect(hdc, rect, shell_palette().sidebar_background);
 
     // Icon-only rail: first-level entries only, centered in a compact column.
     if tabbar.collapsed || tabbar.icon_rail {
-        draw_sidebar_rail(hdc, rect, tabbar, cursor);
+        draw_sidebar_rail(hdc, rect, tabbar, cursor, scroll_offset, viewport_bottom);
         return;
     }
 
-    let title = if tabbar.app_name.trim().is_empty() {
-        "LXAPP".to_string()
-    } else {
-        tabbar.app_name.to_ascii_uppercase()
-    };
-    let group_top = sidebar_group_top(rect, tabbar);
-    let group_bottom = sidebar_group_bottom(rect, tabbar);
-    let group_rect = sidebar_group_rect(rect, tabbar);
-    let chevron_rect = sidebar_group_chevron_rect(rect, tabbar);
-    let close_rect = sidebar_group_close_rect(rect, tabbar);
-    if tabbar.group_active {
-        fill_round_rect_aa(hdc, group_rect, 8, shell_palette().panel_background);
-        fill_round_rect_aa(
+    let saved = unsafe { SaveDC(hdc) };
+    unsafe {
+        let _ = IntersectClipRect(
             hdc,
-            RECT {
-                left: group_rect.left + 6,
-                top: group_rect.top + 9,
-                right: group_rect.left + 10,
-                bottom: group_rect.bottom - 9,
-            },
-            3,
-            tabbar.selected_color,
+            rect.left,
+            rect.top + SHELL_TOP_BAR_HEIGHT,
+            rect.right,
+            viewport_bottom,
         );
+    }
+
+    let title = if tabbar.app_name.trim().is_empty() {
+        "LxApp".to_string()
     } else {
-        draw_hover_wash(hdc, group_rect, 8, cursor);
+        tabbar.app_name.clone()
+    };
+    let group_top = sidebar_group_top(rect, tabbar, scroll_offset);
+    let group_bottom = sidebar_group_bottom(rect, tabbar, scroll_offset);
+    let group_rect = sidebar_group_rect(rect, tabbar, scroll_offset);
+    let chevron_rect = sidebar_group_chevron_rect(rect, tabbar, scroll_offset);
+    let close_rect = sidebar_group_close_rect(rect, tabbar, scroll_offset);
+    // The active lxapp is a top-level tab just like a web tab. macOS gives the
+    // group header a quiet wash while its selected child carries the stronger
+    // page-level card, preserving both levels without stacking white pills.
+    if tabbar.group_active {
+        fill_round_rect_aa(hdc, group_rect, 6, shell_palette().group_active_background);
+    } else {
+        draw_hover_wash(hdc, group_rect, 6, cursor);
     }
     // The lxapp's own icon (via the app-info API) leads the group header.
-    let icon_top = group_top + (group_bottom - group_top - SIDEBAR_ICON_SIZE).max(0) / 2;
-    let icon_rect = RECT {
-        left: rect.left + SIDEBAR_ITEM_INSET + 2,
-        top: icon_top,
-        right: rect.left + SIDEBAR_ITEM_INSET + 2 + SIDEBAR_ICON_SIZE,
-        bottom: icon_top + SIDEBAR_ICON_SIZE,
-    };
+    let icon_rect = sidebar_top_level_icon_rect(group_rect, SIDEBAR_ICON_SIZE);
     draw_icon_or_default(
         hdc,
         &tabbar.app_icon_path,
@@ -170,7 +173,7 @@ pub(super) fn draw_sidebar_tab_bar(
         hdc,
         &title,
         header_rect,
-        shell_palette().sidebar_header_text,
+        shell_palette().text_primary,
         DT_LEFT,
     );
     if show_chevron {
@@ -199,13 +202,18 @@ pub(super) fn draw_sidebar_tab_bar(
     }
 
     if !tabbar.items_collapsed {
-        draw_sidebar_items(hdc, rect, tabbar, cursor);
+        draw_sidebar_items(hdc, rect, tabbar, cursor, scroll_offset);
     }
 
-    draw_sidebar_auxiliary_section(hdc, rect, tabbar, cursor);
+    draw_sidebar_auxiliary_section(hdc, rect, tabbar, cursor, scroll_offset, viewport_bottom);
+    unsafe {
+        let _ = RestoreDC(hdc, saved);
+    }
 
     if tabbar.activator_footer_height > 0 {
         let footer_top = rect.bottom - tabbar.activator_footer_height;
+        // The footer is host chrome, so its separator follows the shell theme
+        // instead of inheriting the lxapp tabbar's page-owned border color.
         draw_top_border(
             hdc,
             RECT {
@@ -228,6 +236,19 @@ pub(super) fn draw_sidebar_tab_bar(
         draw_hover_wash(hdc, action_rect, 4, cursor);
         draw_sidebar_header_action(hdc, &action.id, &action.glyph, action_rect);
     }
+}
+
+/// Shared icon box for top-level lxapp and web tabs. Keeping this geometry in
+/// one function prevents their draw paths from silently acquiring different
+/// leading padding again.
+pub(super) fn sidebar_top_level_icon_rect(item_rect: RECT, icon_size: i32) -> RECT {
+    let top = item_rect.top + (rect_height(&item_rect) - icon_size).max(0) / 2;
+    normalize_rect(RECT {
+        left: item_rect.left + SIDEBAR_TOP_LEVEL_ICON_INSET,
+        top,
+        right: item_rect.left + SIDEBAR_TOP_LEVEL_ICON_INSET + icon_size,
+        bottom: top + icon_size,
+    })
 }
 
 fn draw_sidebar_header_action(hdc: HDC, action_id: &str, fallback_glyph: &str, rect: RECT) {
@@ -253,61 +274,82 @@ fn draw_sidebar_header_action(hdc: HDC, action_id: &str, fallback_glyph: &str, r
     draw_frame_button_glyph(hdc, fallback_glyph, rect, shell_palette().text_muted);
 }
 
-/// Draws the lxapp item rows plus the macOS-parity connector line: a thin
-/// vertical line along the items' leading edge linking them, drawn first so
-/// it sits behind the item cards and accent bars.
+/// Draws the indented lxapp leaves plus a parent-child guide. The guide stays
+/// outside the selected pill, so the group remains legible without another
+/// enclosing card.
 pub(super) fn draw_sidebar_items(
     hdc: HDC,
     rect: RECT,
     tabbar: &WindowsShellTabBarLayout,
     cursor: Option<(i32, i32)>,
+    scroll_offset: i32,
 ) {
+    if !tabbar.background_transparent && !tabbar.items.is_empty() {
+        let last = sidebar_item_rect(rect, tabbar, tabbar.items.len() - 1, scroll_offset);
+        fill_round_rect_aa(
+            hdc,
+            RECT {
+                left: rect.left + SIDEBAR_ITEM_INSET,
+                top: sidebar_group_bottom(rect, tabbar, scroll_offset),
+                right: rect.right - SIDEBAR_ITEM_INSET,
+                bottom: last.bottom,
+            },
+            6,
+            tabbar.background_color,
+        );
+    }
+
     if !tabbar.items.is_empty() {
-        let first = sidebar_item_rect(rect, tabbar, 0);
-        let last = sidebar_item_rect(rect, tabbar, tabbar.items.len() - 1);
+        let last = sidebar_item_rect(rect, tabbar, tabbar.items.len() - 1, scroll_offset);
+        // Same 12pt attribution axis as macOS (group inset + 12).
+        let guide_x = rect.left + SIDEBAR_ITEM_INSET + 12;
         fill_rect(
             hdc,
             RECT {
-                left: first.left + 7,
-                top: first.top + 8,
-                right: first.left + 8,
-                bottom: (last.bottom - 8).max(first.top + 8),
+                left: guide_x,
+                top: sidebar_group_bottom(rect, tabbar, scroll_offset) - 2,
+                right: guide_x + 1,
+                bottom: (last.bottom - 7)
+                    .max(sidebar_group_bottom(rect, tabbar, scroll_offset) - 2),
             },
             shell_palette().divider,
         );
     }
 
     for (index, item) in tabbar.items.iter().enumerate() {
-        let item_rect = sidebar_item_rect(rect, tabbar, index);
+        let item_rect = sidebar_item_rect(rect, tabbar, index, scroll_offset);
         let selected = tabbar.selected_index == index as i32;
         if selected {
-            // White item card on the gray sidebar, accent bar on white.
-            fill_round_rect_aa(hdc, item_rect, 8, shell_palette().panel_background);
+            // A flat selection avoids the horizontal shadow residue that was
+            // especially visible while the old and new rows repainted during
+            // tab switches. The accent guide already carries active emphasis.
+            fill_round_rect_aa(hdc, item_rect, 5, shell_palette().selection_background);
+            let guide_x = rect.left + SIDEBAR_ITEM_INSET + 12;
             fill_round_rect_aa(
                 hdc,
                 RECT {
-                    left: item_rect.left + 6,
-                    top: item_rect.top + 9,
-                    right: item_rect.left + 10,
-                    bottom: item_rect.bottom - 9,
+                    left: guide_x - 1,
+                    top: item_rect.top + 6,
+                    right: guide_x + 2,
+                    bottom: item_rect.bottom - 6,
                 },
-                3,
+                2,
                 tabbar.selected_color,
             );
         } else {
-            draw_hover_wash(hdc, item_rect, 8, cursor);
+            draw_hover_wash(hdc, item_rect, 6, cursor);
         }
 
         let label_rect = RECT {
-            left: item_rect.left + 42,
+            left: item_rect.left + 32,
             top: item_rect.top,
             right: item_rect.right - 8,
             bottom: item_rect.bottom,
         };
         let text_color = if selected {
-            shell_palette().text_primary
+            tabbar.selected_color
         } else {
-            shell_palette().text_muted
+            tabbar.color
         };
         let icon_path = if selected && !item.selected_icon_path.trim().is_empty() {
             &item.selected_icon_path
@@ -316,9 +358,9 @@ pub(super) fn draw_sidebar_items(
         };
         let icon_rect = centered_icon_rect(
             RECT {
-                left: item_rect.left + 18,
+                left: item_rect.left + 8,
                 top: item_rect.top,
-                right: item_rect.left + 18 + SIDEBAR_ICON_SIZE,
+                right: item_rect.left + 8 + SIDEBAR_ICON_SIZE,
                 bottom: item_rect.bottom,
             },
             SIDEBAR_ICON_SIZE,
@@ -339,12 +381,24 @@ fn draw_sidebar_rail(
     rect: RECT,
     tabbar: &WindowsShellTabBarLayout,
     cursor: Option<(i32, i32)>,
+    scroll_offset: i32,
+    viewport_bottom: i32,
 ) {
-    let app_rect = sidebar_rail_item_rect(rect, sidebar_group_rail_index(tabbar));
-    if tabbar.group_active {
-        fill_round_rect_aa(hdc, app_rect, 8, shell_palette().panel_background);
+    let saved = unsafe { SaveDC(hdc) };
+    unsafe {
+        let _ = IntersectClipRect(
+            hdc,
+            rect.left,
+            rect.top + SHELL_TOP_BAR_HEIGHT,
+            rect.right,
+            viewport_bottom,
+        );
     }
-    draw_hover_wash(hdc, app_rect, 8, cursor);
+    let app_rect = sidebar_rail_item_rect(rect, sidebar_group_rail_index(tabbar), scroll_offset);
+    if tabbar.group_active {
+        fill_round_rect_aa(hdc, app_rect, 6, shell_palette().selection_background);
+    }
+    draw_hover_wash(hdc, app_rect, 6, cursor);
     let app_icon_rect = centered_icon_rect(app_rect, SIDEBAR_RAIL_ICON_SIZE);
     draw_icon_or_default(
         hdc,
@@ -354,11 +408,15 @@ fn draw_sidebar_rail(
     );
 
     for (index, item) in tabbar.auxiliary_items.iter().enumerate() {
-        let item_rect = sidebar_rail_item_rect(rect, sidebar_auxiliary_rail_index(tabbar, index));
+        let item_rect = sidebar_rail_item_rect(
+            rect,
+            sidebar_auxiliary_rail_index(tabbar, index),
+            scroll_offset,
+        );
         if item.active {
-            fill_round_rect_aa(hdc, item_rect, 8, shell_palette().panel_background);
+            fill_round_rect_aa(hdc, item_rect, 6, shell_palette().selection_background);
         }
-        draw_hover_wash(hdc, item_rect, 8, cursor);
+        draw_hover_wash(hdc, item_rect, 6, cursor);
         let icon_rect = centered_icon_rect(item_rect, SIDEBAR_RAIL_ICON_SIZE);
         let drew = match item.icon_png.as_deref() {
             Some(png) => draw_icon_from_png_bytes(hdc, &item.id, png, icon_rect),
@@ -377,9 +435,13 @@ fn draw_sidebar_rail(
     // The new-tab "+" stays reachable while collapsed, mirroring the expanded
     // auxiliary section (full browser environment only).
     if tabbar.show_auxiliary_add {
-        let add_rect = sidebar_rail_add_rect(rect, tabbar);
+        let add_rect = sidebar_rail_add_rect(rect, tabbar, scroll_offset);
         draw_hover_wash(hdc, add_rect, 8, cursor);
         draw_frame_button_glyph(hdc, GLYPH_ADD, add_rect, shell_palette().text_muted);
+    }
+
+    unsafe {
+        let _ = RestoreDC(hdc, saved);
     }
 
     // The collapse/expand toggle (same `SidebarExpand` design icon the top bar
@@ -410,8 +472,12 @@ pub(super) fn sidebar_rail_expand_rect(rect: RECT) -> RECT {
 }
 
 /// The new-tab "+" cell, one slot past the app icon and auxiliary items.
-pub(super) fn sidebar_rail_add_rect(rect: RECT, tabbar: &WindowsShellTabBarLayout) -> RECT {
-    sidebar_rail_item_rect(rect, 1 + tabbar.auxiliary_items.len())
+pub(super) fn sidebar_rail_add_rect(
+    rect: RECT,
+    tabbar: &WindowsShellTabBarLayout,
+    scroll_offset: i32,
+) -> RECT {
+    sidebar_rail_item_rect(rect, 1 + tabbar.auxiliary_items.len(), scroll_offset)
 }
 
 pub(super) fn sidebar_group_rail_index(tabbar: &WindowsShellTabBarLayout) -> usize {
@@ -434,12 +500,13 @@ pub(super) fn sidebar_auxiliary_rail_index(
     pinned + unpinned_index + usize::from(unpinned_index >= tabbar.group_order_index)
 }
 
-pub(super) fn sidebar_rail_item_rect(rect: RECT, index: usize) -> RECT {
+pub(super) fn sidebar_rail_item_rect(rect: RECT, index: usize, scroll_offset: i32) -> RECT {
     let cell = SIDEBAR_RAIL_ITEM_SIZE;
     let top = rect.top
         + SHELL_TOP_BAR_HEIGHT
         + SIDEBAR_ITEM_GAP
-        + index as i32 * (cell + SIDEBAR_ITEM_GAP);
+        + index as i32 * (cell + SIDEBAR_ITEM_GAP)
+        - scroll_offset;
     let left = rect.left + (rect_width(&rect) - cell).max(0) / 2;
     normalize_rect(RECT {
         left,
@@ -451,34 +518,44 @@ pub(super) fn sidebar_rail_item_rect(rect: RECT, index: usize) -> RECT {
 
 /// Chevron hit/draw rect at the trailing edge of the sidebar group header
 /// row (the lxapp name).
-fn sidebar_group_top(rect: RECT, tabbar: &WindowsShellTabBarLayout) -> i32 {
+fn sidebar_group_top(rect: RECT, tabbar: &WindowsShellTabBarLayout, scroll_offset: i32) -> i32 {
     let pinned = sidebar_pinned_count(tabbar);
     let unpinned = tabbar.auxiliary_items.len().saturating_sub(pinned);
     rect.top
         + SHELL_TOP_BAR_HEIGHT
         + sidebar_pinned_grid_height(rect, tabbar)
         + tabbar.group_order_index.min(unpinned) as i32 * (SIDEBAR_ITEM_HEIGHT + SIDEBAR_ITEM_GAP)
+        - scroll_offset
 }
 
 pub(in crate::shell::chrome) fn sidebar_group_bottom(
     rect: RECT,
     tabbar: &WindowsShellTabBarLayout,
+    scroll_offset: i32,
 ) -> i32 {
-    sidebar_group_top(rect, tabbar) + SIDEBAR_ITEM_HEIGHT
+    sidebar_group_top(rect, tabbar, scroll_offset) + SIDEBAR_ITEM_HEIGHT
 }
 
-pub(super) fn sidebar_group_rect(rect: RECT, tabbar: &WindowsShellTabBarLayout) -> RECT {
+pub(super) fn sidebar_group_rect(
+    rect: RECT,
+    tabbar: &WindowsShellTabBarLayout,
+    scroll_offset: i32,
+) -> RECT {
     normalize_rect(RECT {
         left: rect.left + SIDEBAR_ITEM_INSET,
-        top: sidebar_group_top(rect, tabbar),
+        top: sidebar_group_top(rect, tabbar, scroll_offset),
         right: rect.right - SIDEBAR_ITEM_INSET,
-        bottom: sidebar_group_bottom(rect, tabbar),
+        bottom: sidebar_group_bottom(rect, tabbar, scroll_offset),
     })
 }
 
-pub(super) fn sidebar_group_chevron_rect(rect: RECT, tabbar: &WindowsShellTabBarLayout) -> RECT {
-    let group_top = sidebar_group_top(rect, tabbar);
-    let group_bottom = sidebar_group_bottom(rect, tabbar);
+pub(super) fn sidebar_group_chevron_rect(
+    rect: RECT,
+    tabbar: &WindowsShellTabBarLayout,
+    scroll_offset: i32,
+) -> RECT {
+    let group_top = sidebar_group_top(rect, tabbar, scroll_offset);
+    let group_bottom = sidebar_group_bottom(rect, tabbar, scroll_offset);
     let top = group_top + (group_bottom - group_top - SIDEBAR_CHEVRON_SIZE).max(0) / 2;
     normalize_rect(RECT {
         left: rect.right - SIDEBAR_ITEM_INSET - SIDEBAR_CHEVRON_SIZE,
@@ -488,13 +565,17 @@ pub(super) fn sidebar_group_chevron_rect(rect: RECT, tabbar: &WindowsShellTabBar
     })
 }
 
-pub(super) fn sidebar_group_close_rect(rect: RECT, tabbar: &WindowsShellTabBarLayout) -> RECT {
-    let chevron = sidebar_group_chevron_rect(rect, tabbar);
+pub(super) fn sidebar_group_close_rect(
+    rect: RECT,
+    tabbar: &WindowsShellTabBarLayout,
+    scroll_offset: i32,
+) -> RECT {
+    let chevron = sidebar_group_chevron_rect(rect, tabbar, scroll_offset);
     normalize_rect(RECT {
         left: chevron.left - SIDEBAR_BROWSER_CLOSE_SIZE,
-        top: sidebar_group_top(rect, tabbar),
+        top: sidebar_group_top(rect, tabbar, scroll_offset),
         right: chevron.left,
-        bottom: sidebar_group_bottom(rect, tabbar),
+        bottom: sidebar_group_bottom(rect, tabbar, scroll_offset),
     })
 }
 
@@ -592,15 +673,14 @@ pub(super) fn sidebar_item_rect(
     rect: RECT,
     tabbar: &WindowsShellTabBarLayout,
     index: usize,
+    scroll_offset: i32,
 ) -> RECT {
-    let top = rect.top
-        + SHELL_TOP_BAR_HEIGHT
-        + sidebar_pinned_grid_height(rect, tabbar)
+    let top = sidebar_group_top(rect, tabbar, scroll_offset)
         + SIDEBAR_ITEM_HEIGHT
         + SIDEBAR_PARENT_CHILD_GAP
         + index as i32 * (SIDEBAR_CHILD_ITEM_HEIGHT + SIDEBAR_CHILD_ITEM_GAP);
     normalize_rect(RECT {
-        left: rect.left + SIDEBAR_ITEM_INSET,
+        left: rect.left + SIDEBAR_ITEM_INSET + SIDEBAR_CHILD_INDENT,
         top,
         right: rect.right - SIDEBAR_ITEM_INSET,
         bottom: top + SIDEBAR_CHILD_ITEM_HEIGHT,

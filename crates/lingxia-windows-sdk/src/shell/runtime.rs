@@ -64,6 +64,9 @@ static RUNTIME_ACTIVATOR_ITEMS: OnceLock<Mutex<Option<Vec<serde_json::Value>>>> 
 
 /// Browser tab currently presented over the main content card, if any.
 static PRESENTED_BROWSER_TAB: OnceLock<Mutex<Option<String>>> = OnceLock::new();
+/// LxApp group that was expanded under the presented browser tab. Browser
+/// selection must not silently replace/collapse that navigation group.
+static PRESENTED_BROWSER_GROUP_APPID: OnceLock<Mutex<Option<String>>> = OnceLock::new();
 #[cfg(feature = "browser-runtime")]
 static SUPPRESSED_BROWSER_TAB_SYNCS: OnceLock<Mutex<u32>> = OnceLock::new();
 #[cfg(feature = "browser-runtime")]
@@ -241,6 +244,8 @@ mod chrome_command {
     pub(super) const SIDEBAR_TOGGLE: &str = "sidebar.toggle";
     pub(super) const SIDEBAR_GROUP_TOGGLE: &str = "sidebar.group.toggle";
     pub(super) const SIDEBAR_ACTION: &str = "sidebar.action";
+    pub(super) const SIDEBAR_SCROLL: &str = "sidebar.scroll";
+    pub(super) const PANEL_ACTIVATOR_SCROLL: &str = "panel-activator.scroll";
     pub(super) const APP_MENU_CLICK: &str = "app-menu.click";
 }
 
@@ -253,6 +258,8 @@ struct SidebarUiState {
     /// Sidebar shown as an icon-only rail (the macOS first-collapse state).
     icon_rail: bool,
     items_collapsed: bool,
+    main_scroll_offset: i32,
+    activator_scroll_row: usize,
 }
 
 static SIDEBAR_UI_STATE: OnceLock<Mutex<HashMap<String, SidebarUiState>>> = OnceLock::new();
@@ -402,10 +409,40 @@ fn presented_browser_tab() -> Option<String> {
 }
 
 fn set_presented_browser_tab(tab_id: Option<String>) {
+    if tab_id.is_none()
+        && let Ok(mut group) = PRESENTED_BROWSER_GROUP_APPID
+            .get_or_init(|| Mutex::new(None))
+            .lock()
+    {
+        *group = None;
+    }
     let slot = PRESENTED_BROWSER_TAB.get_or_init(|| Mutex::new(None));
     if let Ok(mut slot) = slot.lock() {
         *slot = tab_id;
     }
+}
+
+fn presented_browser_group_appid() -> Option<String> {
+    PRESENTED_BROWSER_GROUP_APPID
+        .get()
+        .and_then(|slot| slot.lock().ok())
+        .and_then(|slot| slot.clone())
+}
+
+fn set_presented_browser_group_appid(appid: String) {
+    if let Ok(mut slot) = PRESENTED_BROWSER_GROUP_APPID
+        .get_or_init(|| Mutex::new(None))
+        .lock()
+    {
+        *slot = Some(appid);
+    }
+}
+
+fn preferred_sidebar_group_appid(
+    presented_group: Option<String>,
+    active_main: Option<String>,
+) -> Option<String> {
+    presented_group.or(active_main)
 }
 
 #[cfg(feature = "browser-runtime")]
@@ -817,7 +854,11 @@ fn build_window_layout(app: &LxApp, path: &str) -> WindowsShellWindowLayout {
     };
     // A presented browser tab covers the phone tab bar, matching the macOS
     // runner's full-screen browser surface; side tab bars (sidebar) stay.
-    let tab_bar_app = tab_bar_owner_for_layout(app, owner_app.as_deref());
+    let active_main_app =
+        preferred_sidebar_group_appid(presented_browser_group_appid(), active_main_lxapp_id())
+            .and_then(|appid| lxapp::try_get(&appid));
+    let tab_bar_app =
+        tab_bar_owner_for_layout(app, owner_app.as_deref(), active_main_app.as_deref());
     let tab_bar = build_tab_bar_layout(tab_bar_app, &panel_activators).filter(|tabbar| {
         address_bar.is_none() || !matches!(tabbar.position, WindowsShellTabBarPosition::Bottom)
     });
@@ -839,14 +880,18 @@ fn shell_owner_app_for(active: &LxApp) -> Option<Arc<LxApp>> {
     lxapp::try_get(&owner_appid)
 }
 
-fn tab_bar_owner_for_layout<'a>(active: &'a LxApp, owner: Option<&'a LxApp>) -> &'a LxApp {
+fn tab_bar_owner_for_layout<'a>(
+    active: &'a LxApp,
+    owner: Option<&'a LxApp>,
+    active_main: Option<&'a LxApp>,
+) -> &'a LxApp {
     if matches!(
         tabbar_position(&active.appid),
         WindowsShellTabBarPosition::Bottom
     ) {
         active
     } else {
-        owner.unwrap_or(active)
+        active_main.or(owner).unwrap_or(active)
     }
 }
 
@@ -1139,15 +1184,21 @@ fn build_tab_bar_layout(
             .map(|tabbar| tabbar.dimension.max(MIN_SIDEBAR_WIDTH))
             .unwrap_or(MIN_SIDEBAR_WIDTH),
     };
-    let tabbar_background = tabbar
-        .as_ref()
-        .map(|tabbar| tabbar.backgroundColor.as_str())
-        .unwrap_or("#ffffff");
-    let tabbar_background_transparent = is_transparent_css_color(tabbar_background);
     let desktop_sidebar = matches!(
         position,
         WindowsShellTabBarPosition::Left | WindowsShellTabBarPosition::Right
     );
+    // An app without a tabBar declaration inherits the desktop shell surface;
+    // an explicit backgroundColor still styles the full sidebar as requested.
+    let tabbar_background = tabbar
+        .as_ref()
+        .map(|tabbar| tabbar.backgroundColor.as_str())
+        .unwrap_or(if desktop_sidebar {
+            "transparent"
+        } else {
+            "#ffffff"
+        });
+    let tabbar_background_transparent = is_transparent_css_color(tabbar_background);
     let items_api_hidden =
         desktop_sidebar && tabbar.as_ref().is_some_and(|tabbar| tabbar.api_hidden);
     Some(WindowsShellTabBarLayout {
@@ -1179,6 +1230,8 @@ fn build_tab_bar_layout(
         } else {
             0
         },
+        main_scroll_offset: ui_state.main_scroll_offset,
+        activator_scroll_row: ui_state.activator_scroll_row,
         color: parse_css_color(
             tabbar
                 .as_ref()
@@ -1904,10 +1957,7 @@ fn handle_chrome_event(appid: &str, event: WindowsChromeCommand) {
     // every other command (sidebar rows, browser tabs, panels, app menu)
     // targets the shell owner's chrome state — route there instead of
     // dropping the event.
-    let page_scoped = matches!(
-        event.id.as_str(),
-        chrome_command::NAVIGATION_BACK | chrome_command::NAVIGATION_HOME
-    );
+    let page_scoped = chrome_command_is_page_scoped(event.id.as_str());
     let appid = if page_scoped || is_shell_owner_appid(appid) {
         appid.to_string()
     } else {
@@ -2249,6 +2299,32 @@ fn handle_chrome_event(appid: &str, event: WindowsChromeCommand) {
             sync_shell_layout(appid);
             return;
         }
+        chrome_command::SIDEBAR_SCROLL => {
+            let Some(group) = payload_string(&event, "group") else {
+                return;
+            };
+            let Some(offset) = payload_i32(&event, "offset") else {
+                return;
+            };
+            update_sidebar_ui_state(&group, |state| {
+                state.main_scroll_offset = offset.max(0);
+            });
+            sync_shell_layout(appid);
+            return;
+        }
+        chrome_command::PANEL_ACTIVATOR_SCROLL => {
+            let Some(group) = payload_string(&event, "group") else {
+                return;
+            };
+            let Some(row) = payload_usize(&event, "row") else {
+                return;
+            };
+            update_sidebar_ui_state(&group, |state| {
+                state.activator_scroll_row = row;
+            });
+            sync_shell_layout(appid);
+            return;
+        }
         chrome_command::SIDEBAR_ACTION => {
             let Some(action_id) = payload_string(&event, "action_id") else {
                 return;
@@ -2302,6 +2378,15 @@ fn payload_u64(command: &WindowsChromeCommand, field: &str) -> Option<u64> {
             );
             None
         })
+}
+
+fn chrome_command_is_page_scoped(command: &str) -> bool {
+    matches!(
+        command,
+        chrome_command::NAVIGATION_BACK
+            | chrome_command::NAVIGATION_HOME
+            | chrome_command::TAB_BAR_CLICK
+    )
 }
 
 fn payload_usize(command: &WindowsChromeCommand, field: &str) -> Option<usize> {
@@ -2617,10 +2702,7 @@ fn focus_or_open_lxapp(owner_appid: &str, target_appid: &str) {
     match lxapp::open_region(target_appid) {
         Some(lxapp::LxAppOpenRegion::Main) => {
             return_to_lxapp_from_browser(owner_appid);
-            match lxapp::open_lxapp(target_appid, LxAppStartupOptions::default()) {
-                Ok(target) => target.set_active_main(),
-                Err(err) => log::warn!("failed to focus main lxapp {target_appid}: {err}"),
-            }
+            focus_existing_main_lxapp(target_appid);
         }
         Some(lxapp::LxAppOpenRegion::Aside) => {
             let configured = panel_item_for_lxapp(target_appid);
@@ -2651,6 +2733,16 @@ fn focus_or_open_lxapp(owner_appid: &str, target_appid: &str) {
                 Err(err) => log::warn!("failed to open pinned lxapp {target_appid}: {err}"),
             }
         }
+    }
+}
+
+/// Focus an already-open main without running its startup path again. Reopening
+/// with default options presents the initial route while retaining the live
+/// navigation/tab state, producing mismatched content and sidebar selection.
+fn focus_existing_main_lxapp(appid: &str) {
+    match lxapp::try_get(appid) {
+        Some(app) => app.set_active_main(),
+        None => log::warn!("failed to focus missing main lxapp {appid}"),
     }
 }
 
@@ -2884,6 +2976,10 @@ fn present_browser_tab_when_ready(appid: &str, tab_id: String) {
             let result = present_webview_in_active_group(&webtag);
             match result {
                 Ok(()) => {
+                    let group_appid = presented_browser_group_appid()
+                        .or_else(active_main_lxapp_id)
+                        .unwrap_or_else(|| owner_appid.clone());
+                    set_presented_browser_group_appid(group_appid);
                     set_presented_browser_tab(Some(tab_id.clone()));
                     sync_shell_layout(&owner_appid);
                     return;
@@ -3600,7 +3696,8 @@ pub(crate) fn handle_menu_bar_surface_action(surface_id: &str, action_kind: &str
         return false;
     }
     if action_kind == "focusSurface" {
-        return owner_window_handle(&owner_appid)
+        return crate::window_host::primary_host_window_handle()
+            .or_else(|| owner_window_handle(&owner_appid))
             .is_some_and(crate::window_host::restore_and_focus_host_window);
     }
     if action_kind == "toggleSurface"
@@ -3610,8 +3707,15 @@ pub(crate) fn handle_menu_bar_surface_action(surface_id: &str, action_kind: &str
         return crate::window_host::hide_host_window(window);
     }
 
+    if let Some(window) = crate::window_host::primary_host_window_handle()
+        && crate::window_host::restore_and_focus_host_window(window)
+    {
+        return true;
+    }
     let opened = open_home_app(&owner_appid).is_ok();
-    if let Some(window) = owner_window_handle(&owner_appid) {
+    if let Some(window) = crate::window_host::primary_host_window_handle()
+        .or_else(|| owner_window_handle(&owner_appid))
+    {
         return crate::window_host::restore_and_focus_host_window(window) || opened;
     }
     opened
@@ -3647,10 +3751,7 @@ fn handle_runtime_lxapp_activator(owner_appid: &str, appid: &str) {
     }
     match lxapp::open_region(appid) {
         Some(lxapp::LxAppOpenRegion::Main) => {
-            match lxapp::open_lxapp(appid, LxAppStartupOptions::default()) {
-                Ok(app) => app.set_active_main(),
-                Err(err) => log::warn!("failed to focus main lxapp {appid}: {err}"),
-            }
+            focus_existing_main_lxapp(appid);
         }
         Some(lxapp::LxAppOpenRegion::Aside) if shell_surface_is_active(appid) => {
             if let Some(panel) = lxapp::try_get(appid)
@@ -4007,7 +4108,21 @@ fn is_transparent_css_color(raw: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{browser_internal_page_deep_link, browser_internal_page_key};
+    use super::{
+        browser_internal_page_deep_link, browser_internal_page_key, chrome_command,
+        chrome_command_is_page_scoped, preferred_sidebar_group_appid,
+    };
+
+    #[test]
+    fn tabbar_clicks_stay_scoped_to_the_visible_lxapp() {
+        assert!(chrome_command_is_page_scoped(chrome_command::TAB_BAR_CLICK));
+        assert!(chrome_command_is_page_scoped(
+            chrome_command::NAVIGATION_BACK
+        ));
+        assert!(!chrome_command_is_page_scoped(
+            chrome_command::BROWSER_TAB_CLICK
+        ));
+    }
 
     #[test]
     fn internal_page_key_ignores_url_decoration() {
@@ -4035,5 +4150,18 @@ mod tests {
         assert!(!browser_internal_page_deep_link("lingxia://settings"));
         assert!(!browser_internal_page_deep_link("lingxia://settings/"));
         assert!(!browser_internal_page_deep_link("https://example.com/?q=1"));
+    }
+
+    #[test]
+    fn browser_tabs_preserve_the_expanded_lxapp_group() {
+        assert_eq!(
+            preferred_sidebar_group_appid(Some("app-b".to_string()), Some("owner".to_string()))
+                .as_deref(),
+            Some("app-b")
+        );
+        assert_eq!(
+            preferred_sidebar_group_appid(None, Some("owner".to_string())).as_deref(),
+            Some("owner")
+        );
     }
 }

@@ -95,6 +95,10 @@ pub struct WindowsShellTabBarLayout {
     /// Height reserved at the sidebar bottom for adaptive activator rows.
     /// Zero when no activators are declared.
     pub activator_footer_height: i32,
+    /// Pixel offset of the scrollable sidebar navigation region.
+    pub main_scroll_offset: i32,
+    /// First visual activator row rendered inside the capped footer/rail.
+    pub activator_scroll_row: usize,
     pub auxiliary_items: Vec<WindowsShellAuxiliaryItemLayout>,
     pub show_auxiliary_add: bool,
     pub header_actions: Vec<WindowsShellHeaderActionLayout>,
