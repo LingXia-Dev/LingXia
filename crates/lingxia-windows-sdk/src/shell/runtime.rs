@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-// Atomics here back the browser tab-sync debounce only.
+// Atomics here back browser tab-sync debounce and presentation generations.
 #[cfg(feature = "browser-runtime")]
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
@@ -23,11 +23,13 @@ use lingxia_platform::traits::app_runtime::{
 };
 use lingxia_surface::{Edge, LayoutPresentationPlan, SlotKind};
 use lingxia_webview::WebTag;
+#[cfg(feature = "browser-runtime")]
+use lingxia_webview::platform::windows::find_webview_handler;
 use lingxia_windows_contract::{
     WindowsAsidePanelEvent, WindowsChromeCommand, WindowsPanelPosition, WindowsWindowLayout,
-    active_host_window_webtag_key, aside_panel_tabs, dispatch_windows_aside_panel_event,
-    hide_host_panel, is_panel_visible, restore_presented_group_main,
-    set_webview_chrome_event_handler, set_webview_window_layout,
+    active_host_window_webtag_key, aside_panel_tabs, current_window_layout,
+    dispatch_windows_aside_panel_event, hide_host_panel, is_panel_visible,
+    restore_presented_group_main, set_webview_chrome_event_handler, set_webview_window_layout,
 };
 // Presenting a browser tab over the main card is browser-only.
 #[cfg(feature = "browser-runtime")]
@@ -49,6 +51,8 @@ const PRESENT_BROWSER_TAB_MAX_RETRY: u32 = 30;
 const PRESENT_BROWSER_TAB_RETRY_DELAY_MS: u64 = 100;
 #[cfg(feature = "browser-runtime")]
 const BROWSER_TAB_SYNC_DEBOUNCE_MS: u64 = 180;
+#[cfg(feature = "browser-runtime")]
+const BROWSER_FIRST_FRAME_GUARD_MS: u64 = 75;
 
 /// Panel ids whose lxapp open is still in flight, used to ignore repeated
 /// activator clicks until the open completes.
@@ -71,6 +75,8 @@ static PRESENTED_BROWSER_GROUP_APPID: OnceLock<Mutex<Option<String>>> = OnceLock
 static SUPPRESSED_BROWSER_TAB_SYNCS: OnceLock<Mutex<u32>> = OnceLock::new();
 #[cfg(feature = "browser-runtime")]
 static BROWSER_TAB_SYNC_EPOCH: AtomicU64 = AtomicU64::new(0);
+#[cfg(feature = "browser-runtime")]
+static BROWSER_PRESENT_EPOCH: AtomicU64 = AtomicU64::new(0);
 static DEFAULT_TABBAR_POSITION: OnceLock<Mutex<WindowsShellTabBarPosition>> = OnceLock::new();
 static TABBAR_POSITION_OVERRIDES: OnceLock<Mutex<HashMap<String, WindowsShellTabBarPosition>>> =
     OnceLock::new();
@@ -429,12 +435,12 @@ fn presented_browser_group_appid() -> Option<String> {
         .and_then(|slot| slot.clone())
 }
 
-fn set_presented_browser_group_appid(appid: String) {
+fn set_presented_browser_group_appid(appid: Option<String>) {
     if let Ok(mut slot) = PRESENTED_BROWSER_GROUP_APPID
         .get_or_init(|| Mutex::new(None))
         .lock()
     {
-        *slot = Some(appid);
+        *slot = appid;
     }
 }
 
@@ -1979,19 +1985,34 @@ fn handle_chrome_event(appid: &str, event: WindowsChromeCommand) {
             let Some(index) = payload_usize(&event, "index") else {
                 return;
             };
-            // Selecting an lxapp item while a browser tab is presented
-            // returns the main surface to the lxapp webview.
-            return_to_lxapp_from_browser(appid);
+            // Clear browser presentation state without restoring the saved
+            // lxapp first. That restore target may be an older tab page; showing
+            // it before SwitchTab presents the requested page creates a very
+            // visible old-page -> target-page flicker.
+            let returning_from_browser = clear_browser_presentation();
             prime_tabbar_selection(&app, index);
             let _ = app.on_lxapp_event(LxAppUiEventType::TabBarClick, index.to_string());
+            if returning_from_browser
+                && !present_current_lxapp_main(&app)
+                && let Err(err) = restore_presented_group_main()
+            {
+                log::warn!("failed to restore lxapp webview for {appid}: {err}");
+            }
             return;
         }
         chrome_command::NAVIGATION_BACK => {
             app.on_lxapp_event(LxAppUiEventType::NavigationClick, "back".to_string())
         }
         chrome_command::NAVIGATION_HOME => {
-            return_to_lxapp_from_browser(appid);
-            app.on_lxapp_event(LxAppUiEventType::NavigationClick, "home".to_string())
+            let returning_from_browser = clear_browser_presentation();
+            let handled = app.on_lxapp_event(LxAppUiEventType::NavigationClick, "home".to_string());
+            if returning_from_browser
+                && !present_current_lxapp_main(&app)
+                && let Err(err) = restore_presented_group_main()
+            {
+                log::warn!("failed to restore lxapp webview for {appid}: {err}");
+            }
+            handled
         }
         // The device-framed browser's close button: dismiss the presented tab
         // back to the lxapp (tabs stay alive, like the macOS phone browser).
@@ -2436,13 +2457,81 @@ fn browser_tab_id_for_webtag_key(_webtag_key: &str) -> Option<String> {
 /// Ends a browser-tab presentation (if any), restoring the lxapp webview
 /// as the main surface. Safe to call when nothing is presented.
 fn return_to_lxapp_from_browser(appid: &str) {
-    if presented_browser_tab().is_none() {
+    if !clear_browser_presentation() {
         return;
     }
-    set_presented_browser_tab(None);
-    if let Err(err) = restore_presented_group_main() {
+    let restored_current = lxapp::try_get(appid)
+        .as_deref()
+        .is_some_and(present_current_lxapp_main);
+    if !restored_current && let Err(err) = restore_presented_group_main() {
         log::warn!("failed to restore lxapp webview for {appid}: {err}");
     }
+}
+
+/// Clears only the browser chrome-selection state. Callers that immediately
+/// navigate/focus another lxapp main can then replace the browser directly,
+/// without flashing the stale saved restore target in between.
+fn clear_browser_presentation() -> bool {
+    cancel_pending_browser_presentation();
+    let state_presented = presented_browser_tab().is_some();
+    if !state_presented && !active_host_is_browser() {
+        return false;
+    }
+    set_presented_browser_tab(None);
+    true
+}
+
+#[cfg(feature = "browser-runtime")]
+fn cancel_pending_browser_presentation() {
+    BROWSER_PRESENT_EPOCH.fetch_add(1, Ordering::Relaxed);
+}
+
+#[cfg(not(feature = "browser-runtime"))]
+fn cancel_pending_browser_presentation() {}
+
+#[cfg(feature = "browser-runtime")]
+fn active_host_is_browser() -> bool {
+    active_host_window_webtag_key().is_some_and(|key| {
+        key.strip_prefix(lingxia_browser::BUILTIN_BROWSER_APPID)
+            .is_some_and(|suffix| suffix.starts_with(':'))
+    })
+}
+
+#[cfg(not(feature = "browser-runtime"))]
+fn active_host_is_browser() -> bool {
+    false
+}
+
+#[cfg(feature = "browser-runtime")]
+fn present_current_lxapp_main(app: &LxApp) -> bool {
+    let path = app
+        .peek_current_page()
+        .unwrap_or_else(|| app.initial_route());
+    if path.is_empty() {
+        return false;
+    }
+    let webtag = WebTag::new(&app.appid, &path, Some(app.session_id()));
+    install_shell_chrome_event_handler(&webtag, &app.appid);
+    let _ = set_webview_window_layout(
+        &webtag,
+        WindowsWindowLayout::new(build_window_layout(app, &path)),
+    );
+    match present_webview_in_active_group(&webtag) {
+        Ok(()) => true,
+        Err(err) => {
+            log::warn!(
+                "failed to present current lxapp main {}:{}: {err}",
+                app.appid,
+                path
+            );
+            false
+        }
+    }
+}
+
+#[cfg(not(feature = "browser-runtime"))]
+fn present_current_lxapp_main(_app: &LxApp) -> bool {
+    false
 }
 
 /// Opens a new browser tab at `lingxia://newtab` owned by the shell app
@@ -2701,7 +2790,7 @@ fn handle_lxapp_auxiliary_close(owner_appid: &str, target_appid: &str) {
 fn focus_or_open_lxapp(owner_appid: &str, target_appid: &str) {
     match lxapp::open_region(target_appid) {
         Some(lxapp::LxAppOpenRegion::Main) => {
-            return_to_lxapp_from_browser(owner_appid);
+            clear_browser_presentation();
             focus_existing_main_lxapp(target_appid);
         }
         Some(lxapp::LxAppOpenRegion::Aside) => {
@@ -2727,7 +2816,7 @@ fn focus_or_open_lxapp(owner_appid: &str, target_appid: &str) {
             }
         }
         None => {
-            return_to_lxapp_from_browser(owner_appid);
+            clear_browser_presentation();
             match lxapp::open_lxapp(target_appid, LxAppStartupOptions::default()) {
                 Ok(target) => target.set_active_main(),
                 Err(err) => log::warn!("failed to open pinned lxapp {target_appid}: {err}"),
@@ -2962,8 +3051,14 @@ fn clear_lxapp_user_cache(appid: &str) -> Result<(), String> {
 #[cfg(feature = "browser-runtime")]
 fn present_browser_tab_when_ready(appid: &str, tab_id: String) {
     let owner_appid = appid.to_string();
+    let epoch = BROWSER_PRESENT_EPOCH.fetch_add(1, Ordering::Relaxed) + 1;
     std::mem::drop(lingxia::task::spawn(async move {
+        let previous_tab = presented_browser_tab();
+        let previous_group = presented_browser_group_appid();
         for attempt in 0..PRESENT_BROWSER_TAB_MAX_RETRY {
+            if BROWSER_PRESENT_EPOCH.load(Ordering::Relaxed) != epoch {
+                return;
+            }
             let Some(tab) = browser_tab_summary(&tab_id) else {
                 // Tab was closed while waiting.
                 return;
@@ -2973,18 +3068,80 @@ fn present_browser_tab_when_ready(appid: &str, tab_id: String) {
                 &tab.path,
                 Some(tab.session_id),
             );
-            let result = present_webview_in_active_group(&webtag);
+            let first_presentation = current_window_layout(webtag.key()).is_empty();
+
+            // Do not use `present_webview_in_active_group` as the readiness
+            // probe: once a handler exists that call changes the active host
+            // immediately. Prime the incoming WebView's FINAL shell layout
+            // first, so neither main nor attached panels ever paint an empty
+            // or inherited intermediate frame.
+            if find_webview_handler(&webtag).is_none() {
+                if attempt + 1 == PRESENT_BROWSER_TAB_MAX_RETRY {
+                    log::error!("failed to present browser tab {tab_id}: WebView not ready");
+                    return;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(
+                    PRESENT_BROWSER_TAB_RETRY_DELAY_MS,
+                ))
+                .await;
+                continue;
+            }
+
+            // A WebView2 controller exists before its first document frame is
+            // ready. Showing it at that point replaces the outgoing main with
+            // about:blank for a frame (very visible on New Tab) even though
+            // the shell geometry is already correct. Keep the old main until
+            // the target document is interactive and has real body content.
+            let content_ready = browser_tab_first_content_ready(&tab_id).await;
+            if BROWSER_PRESENT_EPOCH.load(Ordering::Relaxed) != epoch {
+                return;
+            }
+            if !content_ready && attempt + 1 < PRESENT_BROWSER_TAB_MAX_RETRY {
+                tokio::time::sleep(std::time::Duration::from_millis(
+                    PRESENT_BROWSER_TAB_RETRY_DELAY_MS,
+                ))
+                .await;
+                continue;
+            }
+            if !content_ready {
+                // Never strand a slow/unusual page in the background forever;
+                // after the normal readiness window, present its loading view.
+                log::warn!("browser tab {tab_id} had no first-content signal before presentation");
+            }
+
+            let group_appid = previous_group
+                .clone()
+                .or_else(active_main_lxapp_id)
+                .unwrap_or_else(|| owner_appid.clone());
+            set_presented_browser_group_appid(Some(group_appid));
+            set_presented_browser_tab(Some(tab_id.clone()));
+            if !prime_browser_tab_shell_layout(&owner_appid, &webtag) {
+                set_presented_browser_tab(previous_tab.clone());
+                set_presented_browser_group_appid(previous_group.clone());
+                log::error!("failed to prime shell layout for browser tab {tab_id}");
+                return;
+            }
+
+            let result = if first_presentation {
+                crate::window_host::present_webview_in_active_group_with_snapshot_guard(
+                    &webtag,
+                    BROWSER_FIRST_FRAME_GUARD_MS,
+                )
+            } else {
+                present_webview_in_active_group(&webtag)
+            };
             match result {
                 Ok(()) => {
-                    let group_appid = presented_browser_group_appid()
-                        .or_else(active_main_lxapp_id)
-                        .unwrap_or_else(|| owner_appid.clone());
-                    set_presented_browser_group_appid(group_appid);
-                    set_presented_browser_tab(Some(tab_id.clone()));
+                    // The target is visible with the final layout now; this
+                    // pass only mirrors that state to hidden lxapp webtags and
+                    // refreshes chrome data that changed while it was loading.
                     sync_shell_layout(&owner_appid);
                     return;
                 }
                 Err(err) => {
+                    set_presented_browser_tab(previous_tab.clone());
+                    set_presented_browser_group_appid(previous_group.clone());
+                    sync_shell_layout(&owner_appid);
                     if attempt + 1 == PRESENT_BROWSER_TAB_MAX_RETRY {
                         log::error!("failed to present browser tab {tab_id}: {err}");
                         return;
@@ -2997,6 +3154,44 @@ fn present_browser_tab_when_ready(appid: &str, tab_id: String) {
             .await;
         }
     }));
+}
+
+/// Installs the incoming browser WebView's final chrome/layout without
+/// touching the still-visible outgoing main WebView. The target is still on
+/// its temporary helper window here, whose layout backend intentionally skips
+/// host synchronization while the primary shell host is active.
+#[cfg(feature = "browser-runtime")]
+fn prime_browser_tab_shell_layout(owner_appid: &str, webtag: &WebTag) -> bool {
+    let Some(app) = lxapp::try_get(owner_appid) else {
+        return false;
+    };
+    let path = app
+        .peek_current_page()
+        .unwrap_or_else(|| app.initial_route());
+    if path.is_empty() {
+        return false;
+    }
+    install_shell_chrome_event_handler(webtag, &app.appid);
+    set_webview_window_layout(
+        webtag,
+        WindowsWindowLayout::new(build_window_layout(&app, &path)),
+    )
+    .is_ok()
+}
+
+#[cfg(feature = "browser-runtime")]
+async fn browser_tab_first_content_ready(tab_id: &str) -> bool {
+    const FIRST_CONTENT_SCRIPT: &str = r#"
+        (() => location.href !== "about:blank"
+            && document.readyState !== "loading"
+            && !!document.body
+            && document.body.childElementCount > 0)()
+    "#;
+    lingxia_browser::evaluate_javascript(tab_id, FIRST_CONTENT_SCRIPT)
+        .await
+        .ok()
+        .and_then(|value| value.as_bool())
+        .unwrap_or(false)
 }
 
 /// Opens the browser page behind a sidebar header action (settings /

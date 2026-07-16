@@ -664,12 +664,25 @@ pub fn present_webview_in_active_group(webtag: &WebTag) -> StdResult<()> {
         return Ok(());
     }
 
+    // A newly-created browser/surface WebView has no shell layout yet. Keep
+    // the outgoing main surface's geometry until its owner installs the final
+    // layout; otherwise this intermediate pass treats the target as a raw
+    // full-client WebView, drops every attached panel from reconciliation,
+    // and makes the asides disappear/reappear during a sidebar switch.
+    let inherited_layout = previous
+        .as_deref()
+        .filter(|previous| !webtag_is_registered_panel(previous))
+        .map(current_window_layout)
+        .filter(|layout| !layout.is_empty());
+    let target_has_layout = !current_window_layout(webtag.key()).is_empty();
+
     // Remember the lxapp page a browser tab covers so closing the last tab
     // restores it. Track the LATEST lxapp page (the user may have navigated
     // since the group first presented) but never a browser tab itself —
     // switching between tabs must not overwrite the restore target.
     if let Some(previous) = previous.as_ref()
         && previous != webtag.key()
+        && !webtag_is_registered_panel(previous)
         && group_main_restore_candidate(previous)
     {
         let presented = PRESENTED_GROUP_MAIN.get_or_init(|| Mutex::new(HashMap::new()));
@@ -684,7 +697,21 @@ pub fn present_webview_in_active_group(webtag: &WebTag) -> StdResult<()> {
     set_window_handle(webtag.key(), host);
     set_host_active_webtag(host, webtag.key());
     set_primary_host_window(host);
-    sync_window_layout(host);
+    let inherited = if target_has_layout {
+        false
+    } else if let Some(layout) = inherited_layout {
+        set_webview_window_layout(webtag, layout).is_ok()
+    } else {
+        false
+    };
+    if !inherited {
+        sync_window_layout(host);
+    }
+    // Paint the incoming webtag's chrome while the outgoing controller still
+    // covers the content. Without this synchronous pass, switching from a
+    // browser row to an already-selected lxapp tab can show the new page for
+    // one frame under the old browser address bar.
+    repaint_window_now(host);
     // Show the host before the content so the controller's SetIsVisible(true)
     // lands on a visible parent chain and composition starts immediately.
     if !is_window_visible(host) {
@@ -708,6 +735,7 @@ pub fn present_webview_in_active_group(webtag: &WebTag) -> StdResult<()> {
 
     if let Some(previous) = previous
         && previous != webtag.key()
+        && !webtag_is_registered_panel(&previous)
     {
         if let Some(previous_webtag) = webtag_for_key(&previous)
             && let Some(previous_handler) = find_webview_handler(&previous_webtag)
@@ -725,6 +753,62 @@ pub fn present_webview_in_active_group(webtag: &WebTag) -> StdResult<()> {
 
 pub fn present_webview_as_group_main(webtag: &WebTag, _group_key: String) -> StdResult<()> {
     present_webview_in_active_group(webtag)
+}
+
+/// Covers a first-time group-main swap with the outgoing WebView snapshot
+/// until WebView2 has had a short window to submit the incoming controller's
+/// first composed frame. DOM readiness alone is insufficient: an invisible
+/// controller can be fully interactive while its first visible frame is still
+/// blank white.
+pub(crate) fn present_webview_in_active_group_with_snapshot_guard(
+    webtag: &WebTag,
+    hold_ms: u64,
+) -> StdResult<()> {
+    #[cfg(feature = "components")]
+    {
+        let host = active_host_window();
+        let guard = host.and_then(|host| {
+            active_webtag_key_for_window(host).and_then(|previous| {
+                (!webtag_is_registered_panel(&previous)
+                    && webtag_is_visible(&previous)
+                    && prepare_nav_snapshot_slide(host, &previous, true))
+                .then(|| nav_snapshot_overlay(host).map(|overlay| (host, overlay)))
+                .flatten()
+            })
+        });
+        let result = present_webview_in_active_group(webtag);
+        if let Some((host, overlay)) = guard {
+            if result.is_ok() {
+                schedule_nav_snapshot_guard_release(host, overlay, hold_ms);
+            } else {
+                finish_nav_snapshot_slide(host);
+            }
+        }
+        result
+    }
+    #[cfg(not(feature = "components"))]
+    {
+        let _ = hold_ms;
+        present_webview_in_active_group(webtag)
+    }
+}
+
+#[cfg(feature = "components")]
+fn schedule_nav_snapshot_guard_release(host: HWND, overlay: isize, hold_ms: u64) {
+    let host_handle = hwnd_handle(host);
+    let _ = std::thread::Builder::new()
+        .name("lingxia-first-frame-guard".to_string())
+        .spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(hold_ms));
+            if !post_to_window_thread(
+                host_handle,
+                Box::new(move || {
+                    finish_nav_snapshot_slide_if_overlay(hwnd_from_handle(host_handle), overlay);
+                }),
+            ) {
+                finish_nav_snapshot_slide_if_overlay(hwnd_from_handle(host_handle), overlay);
+            }
+        });
 }
 
 pub fn present_webview_as_overlay(
@@ -1429,6 +1513,7 @@ pub fn restore_presented_group_main() -> StdResult<()> {
 
     if let Some(current) = current
         && current != main_webtag.key()
+        && !webtag_is_registered_panel(&current)
     {
         if let Some(current_webtag) = webtag_for_key(&current)
             && let Some(current_handler) = find_webview_handler(&current_webtag)
@@ -3832,6 +3917,13 @@ fn panel_id_for_webtag(webtag_key: &str) -> Option<String> {
         })
 }
 
+fn webtag_is_registered_panel(webtag_key: &str) -> bool {
+    WEBVIEW_PANELS
+        .get()
+        .and_then(|panels| panels.lock().ok())
+        .is_some_and(|panels| panels.values().any(|panel| panel.webtag_key == webtag_key))
+}
+
 fn panel_is_docked(panel_id: &str) -> bool {
     if let Some(docked) = WEBVIEW_PANELS
         .get()
@@ -5393,6 +5485,12 @@ fn show_webview_window_replacing(
     if !inherited {
         sync_window_layout(target);
     }
+    // The incoming layout may have the same content bounds as the outgoing
+    // one (browser address bar and lxapp navbar are both one row tall), so the
+    // bounds cache does not trigger a repaint. Paint the final active chrome
+    // before revealing the incoming controller; otherwise one desktop frame
+    // combines new page content with the old tab/address chrome.
+    repaint_window_now(target);
     handler.set_content_visible(true)?;
 
     for hidden in &hide_webtags {
@@ -5504,6 +5602,7 @@ fn navigate_with_snapshot_slide(
             && !is_minimized(host);
         if slide
             && let Some(prev_key) = active_webtag_key_for_window(host)
+            && !webtag_is_registered_panel(&prev_key)
             && webtag_is_visible(&prev_key)
             && prepare_nav_snapshot_slide(
                 host,
@@ -5922,6 +6021,21 @@ fn nav_snapshot_slide_active(host: isize) -> bool {
         .is_some_and(|slides| slides.contains_key(&host))
 }
 
+#[cfg(feature = "components")]
+fn nav_snapshot_overlay(host: HWND) -> Option<isize> {
+    NAV_SNAPSHOT_SLIDES
+        .get()
+        .and_then(|slides| slides.lock().ok())
+        .and_then(|slides| slides.get(&hwnd_handle(host)).map(|slide| slide.overlay))
+}
+
+#[cfg(feature = "components")]
+fn finish_nav_snapshot_slide_if_overlay(host: HWND, overlay: isize) {
+    if nav_snapshot_overlay(host) == Some(overlay) {
+        finish_nav_snapshot_slide(host);
+    }
+}
+
 /// Advances one slide frame; runs on the host's `WM_TIMER`. Shifts the
 /// snapshot image inside the fixed overlay (forward reveals leftward, backward
 /// rightward) and tears the overlay down when the duration elapses.
@@ -6006,6 +6120,7 @@ fn normal_group_webtags(active: &WebTag) -> Vec<WebTag> {
                 && webtag.extract_appid() == appid
                 && webtag.session_id() == session_id
                 && !is_page_instance_webtag(webtag)
+                && !webtag_is_registered_panel(webtag.key())
         })
         .collect()
 }
