@@ -21,38 +21,40 @@ class LingXiaAppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// Built once at launch from `Lingxia.displayLanguage` at that moment — it
+    /// does not re-localize if the in-app language setting changes later in
+    /// the same run. Rebuild the menu (or listen for a language-change
+    /// notification) if this app ever needs live language switching.
     @MainActor
     private func setupStandardMenu() {
         let mainMenu = NSMenu()
-        let appName = Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String
-            ?? ProcessInfo.processInfo.processName
 
         // App Menu
         let appMenuItem = NSMenuItem()
         let appMenu = NSMenu()
-        appMenu.addItem(withTitle: L10n.string("lx_app_about", appName), action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
+        appMenu.addItem(withTitle: L10n.AppMenu.about, action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
         appMenu.addItem(NSMenuItem.separator())
-        appMenu.addItem(withTitle: L10n.string("lx_app_quit", appName), action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        appMenu.addItem(withTitle: L10n.AppMenu.quit, action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         appMenuItem.submenu = appMenu
         mainMenu.addItem(appMenuItem)
 
         // Edit Menu
         let editMenuItem = NSMenuItem()
-        let editMenu = NSMenu(title: L10n.string("lx_app_edit"))
-        editMenu.addItem(withTitle: L10n.string("lx_menu_cut"), action: #selector(NSText.cut(_:)), keyEquivalent: "x")
-        editMenu.addItem(withTitle: L10n.string("lx_menu_copy"), action: #selector(NSText.copy(_:)), keyEquivalent: "c")
-        editMenu.addItem(withTitle: L10n.string("lx_menu_paste"), action: #selector(NSText.paste(_:)), keyEquivalent: "v")
-        editMenu.addItem(withTitle: L10n.string("lx_menu_select_all"), action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+        let editMenu = NSMenu(title: L10n.AppMenu.edit)
+        editMenu.addItem(withTitle: L10n.AppMenu.cut, action: #selector(NSText.cut(_:)), keyEquivalent: "x")
+        editMenu.addItem(withTitle: L10n.AppMenu.copy, action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+        editMenu.addItem(withTitle: L10n.AppMenu.paste, action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        editMenu.addItem(withTitle: L10n.AppMenu.selectAll, action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
         editMenuItem.submenu = editMenu
         mainMenu.addItem(editMenuItem)
 
         // Window Menu
         let windowMenuItem = NSMenuItem()
-        let windowMenu = NSMenu(title: L10n.string("lx_app_window"))
-        windowMenu.addItem(withTitle: L10n.string("lx_app_minimize"), action: #selector(NSWindow.miniaturize(_:)), keyEquivalent: "m")
-        windowMenu.addItem(withTitle: L10n.string("lx_app_zoom"), action: #selector(NSWindow.zoom(_:)), keyEquivalent: "")
+        let windowMenu = NSMenu(title: L10n.AppMenu.window)
+        windowMenu.addItem(withTitle: L10n.AppMenu.minimize, action: #selector(NSWindow.miniaturize(_:)), keyEquivalent: "m")
+        windowMenu.addItem(withTitle: L10n.AppMenu.zoom, action: #selector(NSWindow.zoom(_:)), keyEquivalent: "")
         windowMenu.addItem(NSMenuItem.separator())
-        windowMenu.addItem(withTitle: L10n.string("lx_app_bring_all_to_front"), action: #selector(NSApplication.arrangeInFront(_:)), keyEquivalent: "")
+        windowMenu.addItem(withTitle: L10n.AppMenu.bringAllToFront, action: #selector(NSApplication.arrangeInFront(_:)), keyEquivalent: "")
         windowMenuItem.submenu = windowMenu
         mainMenu.addItem(windowMenuItem)
         NSApp.windowsMenu = windowMenu
