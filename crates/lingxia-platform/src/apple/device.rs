@@ -39,11 +39,7 @@ impl Device for Platform {
     fn device_info(&self) -> DeviceInfo {
         let brand = "Apple".to_string(); // Fixed for Apple devices
         let model = get_device_model();
-        let os_name = if cfg!(target_os = "ios") {
-            "iOS".to_string()
-        } else {
-            "macOS".to_string()
-        };
+        let os_name = crate::os_label().to_string();
         let os_version = get_os_version();
         DeviceInfo {
             brand,

@@ -121,7 +121,7 @@ fn collect_device_info() -> DeviceInfo {
         brand,
         model,
         market_name,
-        os_name: "Windows".to_string(),
+        os_name: crate::os_label().to_string(),
         os_version: os_version_string(),
     }
 }

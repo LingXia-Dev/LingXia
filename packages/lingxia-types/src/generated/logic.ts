@@ -1544,7 +1544,22 @@ export type WriteTextFileOptions = {
 
 /** Host app base information. */
 export interface AppBaseInfo {
-  language: string;
+  /**
+   * Raw system locale, unaffected by a saved in-app language override.
+   * For the language the UI should actually render in, use
+   * `display_language` instead.
+   */
+  locale: string;
+  /**
+   * Effective display language: a saved user override when set, else
+   * `locale`. This is what native chrome and `lx.*` i18n strings follow.
+   */
+  displayLanguage: string;
+  /**
+   * Platform family: `"iOS"` / `"macOS"` / `"Android"` / `"Windows"` /
+   * `"Harmony"`. Matches the View-side `usePlatform().os` value.
+   */
+  os: string;
   productName: string;
   version: string;
   SDKVersion: string;
