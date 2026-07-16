@@ -9,6 +9,7 @@ pub enum ProgressMode {
 
 #[derive(Debug, Clone)]
 pub struct BuildOptions {
+    pub dev_session: bool,
     pub release: bool,
     pub package: bool,
     pub framework: Option<ProjectFramework>,
@@ -33,6 +34,7 @@ impl BuildOptions {
         let progress = parse_progress_arg(args)?;
 
         Ok(Self {
+            dev_session: false,
             release,
             package,
             framework,
@@ -105,6 +107,7 @@ mod tests {
     #[test]
     fn parses_build_defaults() {
         let options = BuildOptions::parse(&args(&["build"])).unwrap();
+        assert!(!options.dev_session);
         assert!(!options.release);
         assert!(!options.package);
         assert_eq!(options.framework, None);
@@ -123,6 +126,7 @@ mod tests {
         ]))
         .unwrap();
 
+        assert!(!options.dev_session);
         assert!(options.release);
         assert!(options.package);
         assert_eq!(options.framework, Some(ProjectFramework::Vue));

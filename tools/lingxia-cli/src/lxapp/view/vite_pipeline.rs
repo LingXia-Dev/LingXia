@@ -47,7 +47,7 @@ pub fn build(
                 install_duration_hint,
             )?;
             fs::create_dir_all(&project.output_dir)?;
-            super::vite_assets::copy_static_assets(project)?;
+            super::vite_assets::copy_static_assets(project, options)?;
             super::vite_assets::write_root_manifest(project)?;
             build_component_pages(project, options, install_duration, progress)
         }
@@ -61,7 +61,7 @@ pub fn build(
                     install_duration_hint,
                 )?;
                 fs::create_dir_all(&project.output_dir)?;
-                super::vite_assets::copy_static_assets(project)?;
+                super::vite_assets::copy_static_assets(project, options)?;
                 super::vite_assets::write_root_manifest(project)?;
                 return build_html_pages(project, options, install_duration, progress);
             }
@@ -70,7 +70,7 @@ pub fn build(
             let started = Instant::now();
             let install_duration = None;
             fs::create_dir_all(&project.output_dir)?;
-            super::vite_assets::copy_static_assets(project)?;
+            super::vite_assets::copy_static_assets(project, options)?;
             super::vite_assets::write_root_manifest(project)?;
             if let Some(progress) = progress.as_ref() {
                 progress.preparing_pages(total, project.framework);

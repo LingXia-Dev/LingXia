@@ -789,7 +789,7 @@ fn run_lxapp_build(project_root: &Path, args: Option<&serde_json::Value>) -> Res
         build_args.push("--framework".to_string());
         build_args.push(framework.to_string());
     }
-    crate::lxapp::run_in_dir(&build_args, &resolve_lxapp_dir(project_root)?)
+    crate::lxapp::run_in_dir_for_dev(&build_args, &resolve_lxapp_dir(project_root)?)
 }
 
 /// The directory holding the lxapp to build: the project root itself for a

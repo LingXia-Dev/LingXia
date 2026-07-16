@@ -1,5 +1,6 @@
 use super::vite_pipeline::strip_ext;
 use crate::lxapp::framework::ProjectFramework;
+use crate::lxapp::options::BuildOptions;
 use crate::lxapp::project::{Project, ProjectKind};
 use anyhow::{Context, Result, anyhow, bail};
 use oxc_allocator::Allocator;
@@ -14,6 +15,7 @@ use std::path::{Path, PathBuf};
 #[derive(Debug, Default, Clone)]
 struct LxAppBuildConfig {
     static_dirs: Vec<String>,
+    dev_static_dirs: Vec<String>,
     optional_static_dirs: BTreeSet<String>,
 }
 
@@ -93,29 +95,21 @@ fn rewrite_page_value(
     Ok(())
 }
 
-pub(super) fn copy_static_assets(project: &Project) -> Result<()> {
+pub(super) fn copy_static_assets(project: &Project, options: &BuildOptions) -> Result<()> {
     let build_config = load_lxapp_build_config(project.root.as_path())?;
-    for relative_dir in build_config.static_dirs {
-        if is_internal_lingxia_dir(&relative_dir) {
-            bail!(".lingxia is internal build state and cannot be copied as static assets");
-        }
-        let source_dir = project.root.join(&relative_dir);
-        if !source_dir.exists() {
-            if build_config.optional_static_dirs.contains(&relative_dir) {
-                continue;
-            }
-            bail!(
-                "Configured staticDirs entry does not exist: {}",
-                source_dir.display()
-            );
-        }
-        if !source_dir.is_dir() {
-            bail!(
-                "Configured staticDirs entry is not a directory: {}",
-                source_dir.display()
-            );
-        }
-        copy_dir_recursive(&source_dir, &project.output_dir.join(&relative_dir))?;
+    copy_configured_static_dirs(
+        project,
+        &build_config.static_dirs,
+        &build_config.optional_static_dirs,
+        "staticDirs",
+    )?;
+    if options.dev_session {
+        copy_configured_static_dirs(
+            project,
+            &build_config.dev_static_dirs,
+            &BTreeSet::new(),
+            "devStaticDirs",
+        )?;
     }
 
     let pages_dir = project.root.join("pages");
@@ -139,6 +133,37 @@ pub(super) fn copy_static_assets(project: &Project) -> Result<()> {
         }
     }
     copy_generated_native_client(project)?;
+    Ok(())
+}
+
+fn copy_configured_static_dirs(
+    project: &Project,
+    static_dirs: &[String],
+    optional_static_dirs: &BTreeSet<String>,
+    config_key: &str,
+) -> Result<()> {
+    for relative_dir in static_dirs {
+        if is_internal_lingxia_dir(relative_dir) {
+            bail!(".lingxia is internal build state and cannot be copied as static assets");
+        }
+        let source_dir = project.root.join(relative_dir);
+        if !source_dir.exists() {
+            if optional_static_dirs.contains(relative_dir) {
+                continue;
+            }
+            bail!(
+                "Configured {config_key} entry does not exist: {}",
+                source_dir.display()
+            );
+        }
+        if !source_dir.is_dir() {
+            bail!(
+                "Configured {config_key} entry is not a directory: {}",
+                source_dir.display()
+            );
+        }
+        copy_dir_recursive(&source_dir, &project.output_dir.join(relative_dir))?;
+    }
     Ok(())
 }
 
@@ -212,6 +237,7 @@ pub(super) fn copy_dir_recursive(source: &Path, destination: &Path) -> Result<()
 
 fn load_lxapp_build_config(project_root: &Path) -> Result<LxAppBuildConfig> {
     let mut static_dirs = BTreeSet::new();
+    let mut dev_static_dirs = BTreeSet::new();
     let mut optional_static_dirs = BTreeSet::new();
     for default_dir in ["public", "assets"] {
         if project_root.join(default_dir).is_dir() {
@@ -225,6 +251,7 @@ fn load_lxapp_build_config(project_root: &Path) -> Result<LxAppBuildConfig> {
     if !config_path.exists() {
         return Ok(LxAppBuildConfig {
             static_dirs: static_dirs.into_iter().collect(),
+            dev_static_dirs: Vec::new(),
             optional_static_dirs,
         });
     }
@@ -262,6 +289,7 @@ fn load_lxapp_build_config(project_root: &Path) -> Result<LxAppBuildConfig> {
     let Some(config_object) = object_expr else {
         return Ok(LxAppBuildConfig {
             static_dirs: static_dirs.into_iter().collect(),
+            dev_static_dirs: Vec::new(),
             optional_static_dirs,
         });
     };
@@ -273,10 +301,11 @@ fn load_lxapp_build_config(project_root: &Path) -> Result<LxAppBuildConfig> {
         let Some(name) = property_name(&property.key) else {
             continue;
         };
-        if name.as_str() == "staticDirs" {
+        if matches!(name.as_str(), "staticDirs" | "devStaticDirs") {
+            let config_key = name.as_str();
             let Expression::ArrayExpression(array) = unwrap_expression(&property.value) else {
                 bail!(
-                    "lxapp.config.ts staticDirs must be an array of root-relative directory strings"
+                    "lxapp.config.ts {config_key} must be an array of root-relative directory strings"
                 );
             };
             for element in &array.elements {
@@ -284,32 +313,37 @@ fn load_lxapp_build_config(project_root: &Path) -> Result<LxAppBuildConfig> {
                     oxc_ast::ast::ArrayExpressionElement::SpreadElement(_)
                     | oxc_ast::ast::ArrayExpressionElement::Elision(_) => {
                         bail!(
-                            "lxapp.config.ts staticDirs must contain only root-relative directory strings"
+                            "lxapp.config.ts {config_key} must contain only root-relative directory strings"
                         );
                     }
                     _ => unwrap_expression(element.to_expression()),
                 };
                 let Expression::StringLiteral(value) = expression else {
                     bail!(
-                        "lxapp.config.ts staticDirs must contain only root-relative directory strings"
+                        "lxapp.config.ts {config_key} must contain only root-relative directory strings"
                     );
                 };
                 let normalized =
                     normalize_static_dir_entry(value.value.as_str()).ok_or_else(|| {
                         anyhow!(
-                            "Invalid staticDirs entry in {}: {:?}",
+                            "Invalid {config_key} entry in {}: {:?}",
                             config_path.display(),
                             value.value
                         )
                     })?;
-                optional_static_dirs.remove(&normalized);
-                static_dirs.insert(normalized);
+                if config_key == "staticDirs" {
+                    optional_static_dirs.remove(&normalized);
+                    static_dirs.insert(normalized);
+                } else {
+                    dev_static_dirs.insert(normalized);
+                }
             }
         }
     }
 
     Ok(LxAppBuildConfig {
         static_dirs: static_dirs.into_iter().collect(),
+        dev_static_dirs: dev_static_dirs.into_iter().collect(),
         optional_static_dirs,
     })
 }
@@ -399,6 +433,16 @@ mod tests {
         }
     }
 
+    fn build_options(dev_session: bool) -> BuildOptions {
+        BuildOptions {
+            dev_session,
+            release: false,
+            package: false,
+            framework: None,
+            progress: crate::lxapp::options::ProgressMode::Task,
+        }
+    }
+
     #[test]
     fn write_root_manifest_rewrites_named_pages() {
         let temp = tempdir().unwrap();
@@ -458,7 +502,7 @@ mod tests {
             "console.log('extra');",
         );
 
-        copy_static_assets(&project).unwrap();
+        copy_static_assets(&project, &build_options(false)).unwrap();
 
         assert!(project.output_dir.join("public/runtime-extra.js").exists());
         assert!(!project.output_dir.join("runtime-extra.js").exists());
@@ -470,7 +514,7 @@ mod tests {
         let project = make_project(temp.path());
         write_file(temp.path(), "assets/logo.svg", "<svg />");
 
-        copy_static_assets(&project).unwrap();
+        copy_static_assets(&project, &build_options(false)).unwrap();
 
         assert!(project.output_dir.join("assets/logo.svg").exists());
     }
@@ -490,7 +534,7 @@ mod tests {
         write_file(temp.path(), "view/info-panel.js", "console.log('info');");
         write_file(temp.path(), "assets/logo.svg", "<svg />");
 
-        copy_static_assets(&project).unwrap();
+        copy_static_assets(&project, &build_options(false)).unwrap();
 
         assert!(project.output_dir.join("public/home.png").exists());
         assert!(project.output_dir.join("view/info-panel.js").exists());
@@ -503,7 +547,7 @@ mod tests {
         let project = make_project(temp.path());
         write_file(temp.path(), ".lingxia/native.js", "window.native = {};");
 
-        copy_static_assets(&project).unwrap();
+        copy_static_assets(&project, &build_options(false)).unwrap();
 
         let generated = fs::read_to_string(project.output_dir.join(".lingxia/native.js")).unwrap();
         assert_eq!(generated, "window.native = {};");
@@ -520,7 +564,7 @@ mod tests {
             "export const native = {};",
         );
 
-        copy_static_assets(&project).unwrap();
+        copy_static_assets(&project, &build_options(false)).unwrap();
 
         assert!(!project.output_dir.join(".lingxia/native.ts").exists());
     }
@@ -537,7 +581,9 @@ mod tests {
 };"#,
         );
 
-        let error = copy_static_assets(&project).unwrap_err().to_string();
+        let error = copy_static_assets(&project, &build_options(false))
+            .unwrap_err()
+            .to_string();
         assert!(error.contains(".lingxia is internal build state"));
     }
 
@@ -554,7 +600,9 @@ mod tests {
 };"#,
         );
 
-        let error = copy_static_assets(&project).unwrap_err().to_string();
+        let error = copy_static_assets(&project, &build_options(false))
+            .unwrap_err()
+            .to_string();
         assert!(error.contains(".lingxia is internal build state"));
     }
 
@@ -570,8 +618,53 @@ mod tests {
 };"#,
         );
 
-        let error = copy_static_assets(&project).unwrap_err().to_string();
+        let error = copy_static_assets(&project, &build_options(false))
+            .unwrap_err()
+            .to_string();
         assert!(error.contains("Configured staticDirs entry does not exist"));
         assert!(error.contains("assets"));
+    }
+
+    #[test]
+    fn copy_static_assets_includes_dev_static_dirs_only_for_dev_builds() {
+        let temp = tempdir().unwrap();
+        let project = make_project(temp.path());
+        write_file(
+            temp.path(),
+            "lxapp.config.ts",
+            r#"export default {
+  devStaticDirs: ['mock']
+};"#,
+        );
+        write_file(temp.path(), "mock/assets/test.png", "mock-image");
+
+        copy_static_assets(&project, &build_options(false)).unwrap();
+        assert!(!project.output_dir.join("mock/assets/test.png").exists());
+
+        if project.output_dir.exists() {
+            fs::remove_dir_all(&project.output_dir).unwrap();
+        }
+        copy_static_assets(&project, &build_options(true)).unwrap();
+        assert!(project.output_dir.join("mock/assets/test.png").exists());
+    }
+
+    #[test]
+    fn copy_static_assets_requires_dev_static_dirs_only_for_dev_builds() {
+        let temp = tempdir().unwrap();
+        let project = make_project(temp.path());
+        write_file(
+            temp.path(),
+            "lxapp.config.ts",
+            r#"export default {
+  devStaticDirs: ['mock']
+};"#,
+        );
+
+        copy_static_assets(&project, &build_options(false)).unwrap();
+        let error = copy_static_assets(&project, &build_options(true))
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("Configured devStaticDirs entry does not exist"));
+        assert!(error.contains("mock"));
     }
 }

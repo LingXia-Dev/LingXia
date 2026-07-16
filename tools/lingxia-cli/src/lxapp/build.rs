@@ -11,8 +11,17 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 
 pub fn run(args: &[String], cwd: &Path) -> Result<()> {
+    run_with_context(args, cwd, false)
+}
+
+pub fn run_for_dev(args: &[String], cwd: &Path) -> Result<()> {
+    run_with_context(args, cwd, true)
+}
+
+fn run_with_context(args: &[String], cwd: &Path, dev_session: bool) -> Result<()> {
     let build_started = Instant::now();
-    let options = BuildOptions::parse(args)?;
+    let mut options = BuildOptions::parse(args)?;
+    options.dev_session = dev_session;
     let project = Project::discover(cwd, options.framework)?;
 
     if options.package && !options.release {

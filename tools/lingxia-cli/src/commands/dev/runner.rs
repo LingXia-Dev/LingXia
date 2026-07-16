@@ -158,7 +158,7 @@ pub(super) fn execute_lxapp_dev(project_root: PathBuf, options: DevExecuteOption
 
     let run_result = (|| -> Result<()> {
         println!("{}", "Step 1/2: Building lxapp...".bold());
-        crate::lxapp::run_in_dir(&build_args, &project_root)?;
+        crate::lxapp::run_in_dir_for_dev(&build_args, &project_root)?;
 
         install_ctrlc_handler(stop_requested.clone())?;
         let _session_registration =

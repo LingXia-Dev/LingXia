@@ -155,6 +155,7 @@ pub(crate) fn prepare_configured_host_assets(
     build_profile: BuildProfile,
     framework_override: Option<ProjectFramework>,
     progress_override: Option<&str>,
+    dev: bool,
     platforms: &[platform::detector::PlatformType],
     build_targets: &[String],
     _explicit_platforms: bool,
@@ -186,6 +187,7 @@ pub(crate) fn prepare_configured_host_assets(
         build_profile,
         framework_override,
         progress_override,
+        dev,
         &mut cache,
     )?;
     let mut prepared_bundles = vec![home_bundle];
@@ -195,6 +197,7 @@ pub(crate) fn prepare_configured_host_assets(
         build_profile,
         framework_override,
         progress_override,
+        dev,
         &mut cache,
     )?);
     if config.browser_enabled() {
@@ -202,6 +205,7 @@ pub(crate) fn prepare_configured_host_assets(
             project_root,
             config,
             build_profile,
+            dev,
             &mut cache,
         )?);
     }
