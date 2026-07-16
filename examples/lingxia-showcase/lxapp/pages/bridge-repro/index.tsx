@@ -11,8 +11,12 @@ interface AuditState {
 }
 
 const INITIAL_AUDIT: AuditState = { last: 0, received: 0, gaps: [], firstAtMs: null };
-const PAGE_START = Date.now();
 const BOOTSTRAP_TIMEOUT_MS = 5000;
+
+function logicReadyTiming(logicLoadedAt: number, viewStartedAt: number): string {
+  const offset = logicLoadedAt - viewStartedAt;
+  return offset <= 0 ? 'preloaded' : `${offset} ms after view`;
+}
 
 function isBridgeReady(): boolean {
   const bridge = (window as unknown as {
@@ -29,6 +33,7 @@ function forceReconnect(): boolean {
 }
 
 export default function BridgeReproPage() {
+  const viewStartedAt = useRef(Date.now()).current;
   const { data, actions } = useLxPage<BootstrapData, {
     onBootstrapProbe: (p: { nonce: number; viewSentAt: number }) => Promise<BootstrapProbe>;
     onTicks: () => AsyncGenerator<Tick, void>;
@@ -57,7 +62,7 @@ export default function BridgeReproPage() {
         last: tick.seq,
         received: acc.received + 1,
         gaps,
-        firstAtMs: acc.firstAtMs ?? Date.now() - PAGE_START,
+        firstAtMs: acc.firstAtMs ?? Date.now() - viewStartedAt,
       };
     },
   });
@@ -73,7 +78,7 @@ export default function BridgeReproPage() {
 
     const runProbe = async () => {
       try {
-        const result = await actions.onBootstrapProbe({ nonce: 1, viewSentAt: PAGE_START });
+        const result = await actions.onBootstrapProbe({ nonce: 1, viewSentAt: viewStartedAt });
         if (active) setProbe(result);
       } catch (error) {
         if (active) setProbeError(String((error as Error)?.message ?? error));
@@ -158,7 +163,8 @@ export default function BridgeReproPage() {
               : 'waiting'}
         </div>
         <div id="bootstrap-logic-loaded">
-          logic loaded: {snapshotReady ? `${data.logicLoadedAt - PAGE_START} ms` : '-'}
+          logic ready:{' '}
+          {snapshotReady ? logicReadyTiming(data.logicLoadedAt, viewStartedAt) : '-'}
         </div>
         <div className="text-gray-500 text-xs">Restart the lxapp to repeat.</div>
       </div>
