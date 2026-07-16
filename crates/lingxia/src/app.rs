@@ -46,6 +46,15 @@ pub fn notifications_enabled() -> bool {
     lingxia_app_context::notifications_enabled()
 }
 
+/// Returns the effective host display language.
+///
+/// A saved user language takes precedence over the locale supplied by the
+/// native host during runtime initialization. Clearing the saved language
+/// returns this value to the initialization locale.
+pub fn display_language() -> String {
+    lxapp::get_display_language()
+}
+
 fn data_dir() -> crate::Result<PathBuf> {
     APP_DATA_DIR
         .get()

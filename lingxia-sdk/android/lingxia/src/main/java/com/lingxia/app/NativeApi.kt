@@ -88,6 +88,10 @@ internal object NativeApi {
         locale: String
     ): String?
 
+    /** Effective display language selected by the initialized runtime. */
+    @JvmStatic
+    external fun getDisplayLanguage(): String
+
     /**
      * Notify native layer that an LxApp has been opened
      * @param appId The ID of the opened app

@@ -6,11 +6,10 @@ class LingXiaAppDelegate: NSObject, NSApplicationDelegate {
     private static let log = OSLog(subsystem: "LingXia", category: "ExampleApp")
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        setupStandardMenu()
-
         Lingxia.enableWebViewDebugging()
         do {
             _ = try Lingxia.quickStart()
+            setupStandardMenu()
         } catch {
             os_log(
                 "Lingxia.quickStart() app-ui path failed: %{public}@",
@@ -22,6 +21,10 @@ class LingXiaAppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// Built once at launch from `Lingxia.displayLanguage` at that moment — it
+    /// does not re-localize if the in-app language setting changes later in
+    /// the same run. Rebuild the menu (or listen for a language-change
+    /// notification) if this app ever needs live language switching.
     @MainActor
     private func setupStandardMenu() {
         let mainMenu = NSMenu()
@@ -29,29 +32,29 @@ class LingXiaAppDelegate: NSObject, NSApplicationDelegate {
         // App Menu
         let appMenuItem = NSMenuItem()
         let appMenu = NSMenu()
-        appMenu.addItem(withTitle: "About LingXia", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
+        appMenu.addItem(withTitle: L10n.AppMenu.about, action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
         appMenu.addItem(NSMenuItem.separator())
-        appMenu.addItem(withTitle: "Quit LingXia", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        appMenu.addItem(withTitle: L10n.AppMenu.quit, action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         appMenuItem.submenu = appMenu
         mainMenu.addItem(appMenuItem)
 
         // Edit Menu
         let editMenuItem = NSMenuItem()
-        let editMenu = NSMenu(title: "Edit")
-        editMenu.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
-        editMenu.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
-        editMenu.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
-        editMenu.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+        let editMenu = NSMenu(title: L10n.AppMenu.edit)
+        editMenu.addItem(withTitle: L10n.AppMenu.cut, action: #selector(NSText.cut(_:)), keyEquivalent: "x")
+        editMenu.addItem(withTitle: L10n.AppMenu.copy, action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+        editMenu.addItem(withTitle: L10n.AppMenu.paste, action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        editMenu.addItem(withTitle: L10n.AppMenu.selectAll, action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
         editMenuItem.submenu = editMenu
         mainMenu.addItem(editMenuItem)
 
         // Window Menu
         let windowMenuItem = NSMenuItem()
-        let windowMenu = NSMenu(title: "Window")
-        windowMenu.addItem(withTitle: "Minimize", action: #selector(NSWindow.miniaturize(_:)), keyEquivalent: "m")
-        windowMenu.addItem(withTitle: "Zoom", action: #selector(NSWindow.zoom(_:)), keyEquivalent: "")
+        let windowMenu = NSMenu(title: L10n.AppMenu.window)
+        windowMenu.addItem(withTitle: L10n.AppMenu.minimize, action: #selector(NSWindow.miniaturize(_:)), keyEquivalent: "m")
+        windowMenu.addItem(withTitle: L10n.AppMenu.zoom, action: #selector(NSWindow.zoom(_:)), keyEquivalent: "")
         windowMenu.addItem(NSMenuItem.separator())
-        windowMenu.addItem(withTitle: "Bring All to Front", action: #selector(NSApplication.arrangeInFront(_:)), keyEquivalent: "")
+        windowMenu.addItem(withTitle: L10n.AppMenu.bringAllToFront, action: #selector(NSApplication.arrangeInFront(_:)), keyEquivalent: "")
         windowMenuItem.submenu = windowMenu
         mainMenu.addItem(windowMenuItem)
         NSApp.windowsMenu = windowMenu

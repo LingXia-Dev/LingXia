@@ -3,6 +3,21 @@ import Foundation
 /// Top-level entry point for the LingXia SDK.
 @MainActor
 public enum Lingxia {
+    /// Effective display language selected by the runtime. A saved user
+    /// choice takes precedence over the locale supplied during
+    /// initialization.
+    ///
+    /// Before `quickStart()`/`initializeRuntime()` completes, the Rust side
+    /// cannot yet resolve a saved override, so this falls back to the real
+    /// system locale (`Locale.current`) instead of silently returning a
+    /// fixed default in the wrong language.
+    public nonisolated static var displayLanguage: String {
+        guard LxAppRuntime.isInitializedUnsafe else {
+            return Locale.current.identifier
+        }
+        return getDisplayLanguage().toString()
+    }
+
     static func resolvedShellConfiguration(
         from configuration: LxAppShellConfiguration,
         capabilities: LxAppCapabilities,

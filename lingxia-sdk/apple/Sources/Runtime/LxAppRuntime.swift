@@ -24,6 +24,17 @@ public final class LxAppRuntime {
     /// Whether the runtime has been successfully initialized.
     public var isInitialized: Bool { info != nil }
 
+    /// Nonisolated mirror of `isInitialized`, set once at the end of a
+    /// successful `initialize()`. `LxAppRuntime` is `@MainActor`-isolated, so
+    /// `shared.isInitialized` cannot be read synchronously from a nonisolated
+    /// context; callers that must (e.g. `Lingxia.displayLanguage`, reachable
+    /// from background threads) use this instead. Single writer (`initialize()`
+    /// on the main actor), many readers — safe without a lock.
+    private nonisolated(unsafe) static var didInitializeUnsafe = false
+
+    /// Nonisolated-safe equivalent of `shared.isInitialized`.
+    public nonisolated static var isInitializedUnsafe: Bool { didInitializeUnsafe }
+
     private init() {}
 
     // MARK: - Initialize
@@ -79,6 +90,7 @@ public final class LxAppRuntime {
         )
 
         self.info = runtimeInfo
+        Self.didInitializeUnsafe = true
 
         LxAppCore.homeLxAppId = homeAppId
         LxAppCore.capabilities = caps.rawValue

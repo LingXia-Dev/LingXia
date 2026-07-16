@@ -192,6 +192,13 @@ fn panel_position_from_edge(edge: &str) -> Option<lingxia_app_context::PanelPosi
     }
 }
 
+fn seed_display_language(app_data_dir: &std::path::Path) {
+    match lingxia_service::settings::display_language(app_data_dir) {
+        Ok(language) => lxapp::set_display_language(language),
+        Err(error) => log::warn!("Failed to load display language: {error}"),
+    }
+}
+
 /// Common initialization after Platform is created.
 /// Registers built-in runtime and initializes the lxapp system.
 pub(crate) fn init_with_platform(platform: lingxia_platform::Platform) -> Option<String> {
@@ -206,6 +213,7 @@ pub(crate) fn init_with_platform(platform: lingxia_platform::Platform) -> Option
     #[cfg(not(feature = "devtool"))]
     let app_config = load_bundled_app_config(&runtime)?;
     crate::app::set_data_dir(runtime.app_data_dir());
+    seed_display_language(&runtime.app_data_dir());
     install_global_executor();
     if let Err(err) = lingxia_app_context::set_app_config(app_config.clone()) {
         log::error!("Failed to initialize app configuration: {}", err);
@@ -234,8 +242,20 @@ pub(crate) fn init_with_platform(platform: lingxia_platform::Platform) -> Option
 
 #[cfg(test)]
 mod tests {
-    use super::panels_from_ui_config;
+    use super::{panels_from_ui_config, seed_display_language};
     use lingxia_app_context::PanelPosition;
+
+    #[test]
+    fn seeds_saved_display_language_before_runtime_init() {
+        let dir = tempfile::tempdir().expect("temp app data");
+        lingxia_service::settings::set_display_language(dir.path(), Some("zh-CN"))
+            .expect("save display language");
+
+        seed_display_language(dir.path());
+
+        assert_eq!(crate::app::display_language(), "zh-CN");
+        lxapp::set_display_language(None);
+    }
 
     #[test]
     fn derives_lxapp_aside_panels_from_ui_config() {

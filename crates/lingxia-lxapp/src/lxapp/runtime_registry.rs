@@ -39,8 +39,8 @@ static DISPLAY_LANGUAGE: Mutex<Option<String>> = Mutex::new(None);
 
 /// Set (or clear) the display-language override. The shell that owns the
 /// language setting seeds this at startup and updates it on change so every
-/// `get_locale` consumer — native chrome i18n included — follows the user's
-/// choice without re-reading the settings store.
+/// `get_display_language` consumer — native chrome i18n included — follows
+/// the user's choice without re-reading the settings store.
 pub fn set_display_language(language: Option<String>) {
     let normalized = language.filter(|value| !value.trim().is_empty());
     *DISPLAY_LANGUAGE.lock().unwrap_or_else(|e| e.into_inner()) = normalized;
@@ -48,7 +48,7 @@ pub fn set_display_language(language: Option<String>) {
 
 /// Get the product display language: the user override when set, else the
 /// system locale. Returns "en-US" if the SDK has not been initialized.
-pub fn get_locale() -> String {
+pub fn get_display_language() -> String {
     if let Some(language) = DISPLAY_LANGUAGE
         .lock()
         .unwrap_or_else(|e| e.into_inner())

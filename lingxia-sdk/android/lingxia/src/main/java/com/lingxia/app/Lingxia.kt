@@ -98,7 +98,7 @@ object Lingxia {
                 ctx.cacheDir.absolutePath,
                 ctx.assets,
                 ctx,
-                getLocale()
+                getSystemLocale()
             )
 
             if (initResultString != null) {
@@ -123,7 +123,14 @@ object Lingxia {
     }
 
     @JvmStatic
-    fun getLocale(): String {
+    fun getDisplayLanguage(): String {
+        if (LxApp.homeAppId != null && NativeApi.ensureLoaded()) {
+            return NativeApi.getDisplayLanguage()
+        }
+        return getSystemLocale()
+    }
+
+    private fun getSystemLocale(): String {
         return try {
             val locale = java.util.Locale.getDefault()
             "${locale.language}-${locale.country}"

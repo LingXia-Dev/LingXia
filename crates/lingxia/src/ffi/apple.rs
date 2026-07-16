@@ -131,6 +131,9 @@ mod bridge {
         #[swift_bridge(swift_name = "lingxiaInit")]
         fn lingxia_init(data_dir: &str, cache_dir: &str, locale: &str) -> Option<String>;
 
+        #[swift_bridge(swift_name = "getDisplayLanguage")]
+        fn get_display_language() -> String;
+
         #[swift_bridge(swift_name = "forwardHostLog")]
         fn forward_host_log(
             level: i32,
@@ -509,6 +512,11 @@ pub fn lingxia_init(data_dir: &str, cache_dir: &str, locale: &str) -> Option<Str
     };
 
     crate::init_with_platform(platform)
+}
+
+/// Return the effective display language selected by the runtime.
+pub fn get_display_language() -> String {
+    crate::app::display_language()
 }
 
 pub fn forward_host_log(
