@@ -1,0 +1,15 @@
+[package]
+name = "lingxia-shell"
+version.workspace = true
+edition.workspace = true
+description = "Platform-neutral host shell state and policy for LingXia"
+license = "MIT"
+repository.workspace = true
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"

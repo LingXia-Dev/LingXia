@@ -3521,6 +3521,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "lingxia-shell"
+version = "0.10.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "lingxia-surface"
 version = "0.10.0"
 dependencies = [
