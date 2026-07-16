@@ -3903,7 +3903,7 @@ dependencies = [
 [[package]]
 name = "rong"
 version = "0.5.0"
-source = "git+https://github.com/LingXia-Dev/Rong.git?rev=a86a3ff24392d6f1af37812e09e8951340345b4c#a86a3ff24392d6f1af37812e09e8951340345b4c"
+source = "git+https://github.com/LingXia-Dev/Rong.git?rev=569fb5d69b026b365840ea5f10538372626ebca2#569fb5d69b026b365840ea5f10538372626ebca2"
 dependencies = [
  "futures",
  "rong_arkjs",
@@ -3930,7 +3930,7 @@ dependencies = [
 [[package]]
 name = "rong_arkjs"
 version = "0.5.0"
-source = "git+https://github.com/LingXia-Dev/Rong.git?rev=a86a3ff24392d6f1af37812e09e8951340345b4c#a86a3ff24392d6f1af37812e09e8951340345b4c"
+source = "git+https://github.com/LingXia-Dev/Rong.git?rev=569fb5d69b026b365840ea5f10538372626ebca2#569fb5d69b026b365840ea5f10538372626ebca2"
 dependencies = [
  "rong_arkjs_sys",
  "rong_core",
@@ -3939,7 +3939,7 @@ dependencies = [
 [[package]]
 name = "rong_arkjs_sys"
 version = "0.4.0"
-source = "git+https://github.com/LingXia-Dev/Rong.git?rev=a86a3ff24392d6f1af37812e09e8951340345b4c#a86a3ff24392d6f1af37812e09e8951340345b4c"
+source = "git+https://github.com/LingXia-Dev/Rong.git?rev=569fb5d69b026b365840ea5f10538372626ebca2#569fb5d69b026b365840ea5f10538372626ebca2"
 dependencies = [
  "bindgen",
 ]
@@ -4004,7 +4004,7 @@ dependencies = [
 [[package]]
 name = "rong_core"
 version = "0.5.0"
-source = "git+https://github.com/LingXia-Dev/Rong.git?rev=a86a3ff24392d6f1af37812e09e8951340345b4c#a86a3ff24392d6f1af37812e09e8951340345b4c"
+source = "git+https://github.com/LingXia-Dev/Rong.git?rev=569fb5d69b026b365840ea5f10538372626ebca2#569fb5d69b026b365840ea5f10538372626ebca2"
 dependencies = [
  "bytes",
  "futures",
@@ -4018,7 +4018,7 @@ dependencies = [
 [[package]]
 name = "rong_cron"
 version = "0.5.0"
-source = "git+https://github.com/LingXia-Dev/Rong.git?rev=a86a3ff24392d6f1af37812e09e8951340345b4c#a86a3ff24392d6f1af37812e09e8951340345b4c"
+source = "git+https://github.com/LingXia-Dev/Rong.git?rev=569fb5d69b026b365840ea5f10538372626ebca2#569fb5d69b026b365840ea5f10538372626ebca2"
 dependencies = [
  "chrono",
  "croner",
@@ -4103,7 +4103,7 @@ dependencies = [
 [[package]]
 name = "rong_jscore"
 version = "0.5.0"
-source = "git+https://github.com/LingXia-Dev/Rong.git?rev=a86a3ff24392d6f1af37812e09e8951340345b4c#a86a3ff24392d6f1af37812e09e8951340345b4c"
+source = "git+https://github.com/LingXia-Dev/Rong.git?rev=569fb5d69b026b365840ea5f10538372626ebca2#569fb5d69b026b365840ea5f10538372626ebca2"
 dependencies = [
  "rong_core",
  "rong_jscore_sys",
@@ -4113,7 +4113,7 @@ dependencies = [
 [[package]]
 name = "rong_jscore_sys"
 version = "0.5.0"
-source = "git+https://github.com/LingXia-Dev/Rong.git?rev=a86a3ff24392d6f1af37812e09e8951340345b4c#a86a3ff24392d6f1af37812e09e8951340345b4c"
+source = "git+https://github.com/LingXia-Dev/Rong.git?rev=569fb5d69b026b365840ea5f10538372626ebca2#569fb5d69b026b365840ea5f10538372626ebca2"
 dependencies = [
  "bindgen",
  "cc",
@@ -4122,7 +4122,7 @@ dependencies = [
 [[package]]
 name = "rong_macro"
 version = "0.5.0"
-source = "git+https://github.com/LingXia-Dev/Rong.git?rev=a86a3ff24392d6f1af37812e09e8951340345b4c#a86a3ff24392d6f1af37812e09e8951340345b4c"
+source = "git+https://github.com/LingXia-Dev/Rong.git?rev=569fb5d69b026b365840ea5f10538372626ebca2#569fb5d69b026b365840ea5f10538372626ebca2"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -4162,7 +4162,7 @@ dependencies = [
 [[package]]
 name = "rong_quickjs"
 version = "0.5.0"
-source = "git+https://github.com/LingXia-Dev/Rong.git?rev=a86a3ff24392d6f1af37812e09e8951340345b4c#a86a3ff24392d6f1af37812e09e8951340345b4c"
+source = "git+https://github.com/LingXia-Dev/Rong.git?rev=569fb5d69b026b365840ea5f10538372626ebca2#569fb5d69b026b365840ea5f10538372626ebca2"
 dependencies = [
  "rong_core",
  "rong_quickjs_sys",
@@ -4172,7 +4172,7 @@ dependencies = [
 [[package]]
 name = "rong_quickjs_sys"
 version = "0.4.0"
-source = "git+https://github.com/LingXia-Dev/Rong.git?rev=a86a3ff24392d6f1af37812e09e8951340345b4c#a86a3ff24392d6f1af37812e09e8951340345b4c"
+source = "git+https://github.com/LingXia-Dev/Rong.git?rev=569fb5d69b026b365840ea5f10538372626ebca2#569fb5d69b026b365840ea5f10538372626ebca2"
 dependencies = [
  "bindgen",
  "cc",
@@ -4194,7 +4194,7 @@ dependencies = [
 [[package]]
 name = "rong_rt"
 version = "0.4.0"
-source = "git+https://github.com/LingXia-Dev/Rong.git?rev=a86a3ff24392d6f1af37812e09e8951340345b4c#a86a3ff24392d6f1af37812e09e8951340345b4c"
+source = "git+https://github.com/LingXia-Dev/Rong.git?rev=569fb5d69b026b365840ea5f10538372626ebca2#569fb5d69b026b365840ea5f10538372626ebca2"
 dependencies = [
  "bytes",
  "futures",
@@ -4285,7 +4285,7 @@ dependencies = [
 [[package]]
 name = "rong_typegen"
 version = "0.5.0"
-source = "git+https://github.com/LingXia-Dev/Rong.git?rev=a86a3ff24392d6f1af37812e09e8951340345b4c#a86a3ff24392d6f1af37812e09e8951340345b4c"
+source = "git+https://github.com/LingXia-Dev/Rong.git?rev=569fb5d69b026b365840ea5f10538372626ebca2#569fb5d69b026b365840ea5f10538372626ebca2"
 dependencies = [
  "proc-macro2",
  "quote",
