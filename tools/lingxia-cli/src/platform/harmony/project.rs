@@ -407,7 +407,7 @@ pub fn read_bundle_name(harmony_dir: &Path) -> Result<String> {
 pub fn generate_icons(
     project_root: &Path,
     source_icon: &Path,
-    background_color: &str,
+    background_color: Option<&str>,
     harmony_config: Option<&HarmonyConfig>,
     foreground_icon: Option<&Path>,
 ) -> Result<()> {

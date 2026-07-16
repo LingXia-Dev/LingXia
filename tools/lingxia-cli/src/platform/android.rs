@@ -1289,12 +1289,13 @@ fn infer_android_package_id_for_uninstall(project_root: &Path) -> Option<String>
 /// # Arguments
 /// * `project_root` - Project root directory
 /// * `source_icon` - Path to source icon image
-/// * `background_color` - Hex color for adaptive icon background (e.g., "#FFFFFF")
+/// * `background_color` - Hex color for adaptive icon background; `None`
+///   auto-detects from the source's flat backdrop
 /// * `legacy` - Whether to generate legacy icons for minSdk < 26
 pub fn generate_icons(
     project_root: &Path,
     source_icon: &Path,
-    background_color: &str,
+    background_color: Option<&str>,
     legacy: bool,
     foreground_icon: Option<&Path>,
 ) -> Result<()> {
