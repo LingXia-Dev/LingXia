@@ -217,6 +217,15 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_lingxiaInit<'a>(
 }
 
 #[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_app_NativeApi_getDisplayLanguage<'a>(
+    mut env: EnvUnowned<'a>,
+    _class: JClass<'a>,
+) -> JString<'a> {
+    env.with_env(|env| env.new_string(crate::app::display_language()))
+        .resolve::<LogErrorAndDefault>()
+}
+
+#[unsafe(no_mangle)]
 pub extern "system" fn Java_com_lingxia_app_NativeApi_forwardHostLog(
     mut env: EnvUnowned,
     _class: JClass,

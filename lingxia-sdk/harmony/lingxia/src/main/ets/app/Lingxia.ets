@@ -15,6 +15,7 @@ import {
   getCurrentLxapp,
   getPageOrientation,
   getAppCapabilities,
+  getDisplayLanguage as getRuntimeDisplayLanguage,
   shouldEnableWebViewDebugging,
   onApplinkReceived,
   CurrentLxApp
@@ -38,6 +39,14 @@ export class Lingxia {
   public static readonly CAP_NOTIFICATIONS: number = 0x2;
   public static readonly CAP_TERMINAL: number = 0x4;
   public static readonly CAP_PROXY: number = 0x8;
+
+  /** Effective display language selected by the initialized runtime. */
+  public static getDisplayLanguage(): string {
+    if (LxApp.getInstance().getHomeAppId() === null) {
+      return Lingxia.getSystemLocale();
+    }
+    return getRuntimeDisplayLanguage();
+  }
 
   // Host UIAbility context + window stage, registered once during
   // initializeRuntime. Shared with LxApp-scope APIs that need a host context
@@ -105,14 +114,7 @@ export class Lingxia {
 
     hilog.info(DOMAIN, TAG, `Calling lingxiaInit with callback and file system paths (FIRST AND ONLY TIME)`);
 
-    // Get system locale using HarmonyOS i18n API
-    const systemLanguage = i18n.System.getSystemLanguage();
-    const systemRegion = i18n.System.getSystemRegion();
-
-    // Convert HarmonyOS locale format to standard format
-    // HarmonyOS returns "zh-Hans" but we want "zh"
-    const normalizedLanguage = systemLanguage.split('-')[0];
-    const locale = `${normalizedLanguage}-${systemRegion}`;
+    const locale = Lingxia.getSystemLocale();
 
     const appId: string | null = lingxiaInit(callbackFunction, dataDir, cacheDir, resourceManager, locale);
 
@@ -135,6 +137,15 @@ export class Lingxia {
         LxLog.e(TAG, `Push init error: ${e}`);
       }
     }
+  }
+
+  private static getSystemLocale(): string {
+    const systemLanguage = i18n.System.getSystemLanguage();
+    const systemRegion = i18n.System.getSystemRegion();
+    // HarmonyOS may include a script (for example zh-Hans); the runtime
+    // locale contract uses the primary language plus region.
+    const normalizedLanguage = systemLanguage.split('-')[0];
+    return `${normalizedLanguage}-${systemRegion}`;
   }
 
   /**

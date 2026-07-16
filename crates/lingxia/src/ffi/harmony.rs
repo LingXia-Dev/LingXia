@@ -148,6 +148,12 @@ pub fn lingxia_init(
     crate::init_with_platform(platform)
 }
 
+/// Return the effective display language selected by the runtime.
+#[napi]
+pub fn get_display_language() -> String {
+    crate::app::display_language()
+}
+
 #[napi]
 pub fn forward_host_log(
     level: i32,

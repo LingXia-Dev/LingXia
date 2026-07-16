@@ -3,6 +3,13 @@ import Foundation
 /// Top-level entry point for the LingXia SDK.
 @MainActor
 public enum Lingxia {
+    /// Effective display language selected by the runtime. A saved user
+    /// choice takes precedence over the locale supplied during
+    /// initialization.
+    public nonisolated static var displayLanguage: String {
+        getDisplayLanguage().toString()
+    }
+
     static func resolvedShellConfiguration(
         from configuration: LxAppShellConfiguration,
         capabilities: LxAppCapabilities,

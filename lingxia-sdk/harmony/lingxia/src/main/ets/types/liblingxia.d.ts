@@ -135,6 +135,12 @@ declare module 'liblingxia.so' {
   ): string | null;
 
   /**
+   * Effective display language. A saved user choice takes precedence over
+   * the locale supplied to lingxiaInit.
+   */
+  export function getDisplayLanguage(): string;
+
+  /**
    * Get LxApp information for a specific app
    * @param appid - LxApp ID
    * @returns LxApp information or null if not found
