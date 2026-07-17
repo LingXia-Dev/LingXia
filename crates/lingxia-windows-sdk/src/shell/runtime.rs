@@ -3028,18 +3028,10 @@ fn show_lxapp_auxiliary_context_menu(
                 }
             }
             Some(LxappContextMenuAction::Restart) => {
-                if let Err(err) = restart_lxapp_in_place(&target_appid) {
-                    log::warn!("failed to restart sidebar lxapp {target_appid}: {err}");
-                }
+                schedule_lxapp_restart_in_place(target_appid.clone(), false);
             }
             Some(LxappContextMenuAction::CleanCacheRestart) => {
-                if let Err(err) = clear_lxapp_user_cache(&target_appid)
-                    .and_then(|_| restart_lxapp_in_place(&target_appid))
-                {
-                    log::warn!(
-                        "failed to clean cache + reload sidebar lxapp {target_appid}: {err}"
-                    );
-                }
+                schedule_lxapp_restart_in_place(target_appid.clone(), true);
             }
             None => {}
         }),
@@ -3109,18 +3101,29 @@ fn set_device_frame_status_bar_style(
 ) {
 }
 
-fn restart_lxapp_in_place(appid: &str) -> Result<(), String> {
-    lxapp::try_get(appid)
-        .ok_or_else(|| format!("lxapp is not active: {appid}"))?
-        .restart_in_place()
-        .map_err(|err| err.to_string())
-}
-
-fn clear_lxapp_user_cache(appid: &str) -> Result<(), String> {
-    lxapp::try_get(appid)
-        .ok_or_else(|| format!("lxapp is not active: {appid}"))?
-        .clear_user_cache()
-        .map_err(|err| err.to_string())
+fn schedule_lxapp_restart_in_place(appid: String, clear_cache: bool) {
+    // Native context-menu callbacks run on the WebView UI thread. WebView2's
+    // synchronous Reload command rejects that thread, after the app service
+    // has already restarted, leaving fresh logic behind stale DOM. Run the
+    // complete cache/restart/reload transaction on a blocking worker instead.
+    std::mem::drop(lingxia::task::spawn_blocking_handle(move || {
+        let result = (|| {
+            let app =
+                lxapp::try_get(&appid).ok_or_else(|| format!("lxapp is not active: {appid}"))?;
+            if clear_cache {
+                app.clear_user_cache().map_err(|err| err.to_string())?;
+            }
+            app.restart_in_place().map_err(|err| err.to_string())
+        })();
+        if let Err(err) = result {
+            let action = if clear_cache {
+                "clean cache + restart"
+            } else {
+                "restart"
+            };
+            log::warn!("failed to {action} sidebar lxapp {appid}: {err}");
+        }
+    }));
 }
 
 /// Presents `tab_id`'s webview over the main content card, retrying while
