@@ -200,28 +200,6 @@ impl AppRuntime for Platform {
         Ok(())
     }
 
-    fn shell_native_active(&self, capability: lingxia_shell::NativeShellCapability) -> bool {
-        match capability {
-            lingxia_shell::NativeShellCapability::Terminal => ffi::shell_native_active("terminal"),
-        }
-    }
-
-    fn activate_shell_native(
-        &self,
-        capability: lingxia_shell::NativeShellCapability,
-    ) -> Result<(), PlatformError> {
-        let capability = match capability {
-            lingxia_shell::NativeShellCapability::Terminal => "terminal",
-        };
-        if ffi::activate_shell_native(capability) {
-            Ok(())
-        } else {
-            Err(PlatformError::Platform(format!(
-                "Failed to activate shell native capability {capability}"
-            )))
-        }
-    }
-
     fn set_tray_title(&self, text: &str) -> Result<(), PlatformError> {
         if ffi::set_tray_title(text) {
             Ok(())

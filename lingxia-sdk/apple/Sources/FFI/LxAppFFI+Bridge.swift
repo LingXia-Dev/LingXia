@@ -308,28 +308,6 @@ extension LxApp {
         }
     }
 
-    nonisolated static func shellNativeActive(capability: RustStr) -> Bool {
-        let capability = capability.toString()
-        return executeOnMain {
-            #if os(macOS)
-            return LxAppMacAppUIRuntime.active?.shellNativeActive(capability) ?? false
-            #else
-            return false
-            #endif
-        }
-    }
-
-    nonisolated static func activateShellNative(capability: RustStr) -> Bool {
-        let capability = capability.toString()
-        return executeOnMain {
-            #if os(macOS)
-            return LxAppMacAppUIRuntime.active?.activateShellNative(capability) ?? false
-            #else
-            return false
-            #endif
-        }
-    }
-
     nonisolated static func setTrayIcon(icon: RustStr) -> Bool {
         let value = icon.toString()
         return executeOnMain {

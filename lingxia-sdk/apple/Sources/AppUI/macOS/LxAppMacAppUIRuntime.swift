@@ -160,7 +160,6 @@ final class LxAppMacAppUIRuntime: NSObject {
         }
         trayController.installMenuBarActivators(menuBarActivators)
         installAppActivationActivators()
-        restorePersistedActivatorItems()
         refreshChromeActivators()
         if uiConfig.launch.openOnLaunch ?? true {
             try openSurface(id: uiConfig.launch.initialSurface)
@@ -352,29 +351,13 @@ final class LxAppMacAppUIRuntime: NSObject {
 
     private struct ResolvedRuntimeActivator: Codable {
         let id: String
-        let kind: String
         let label: String
         let iconPath: String?
-        let active: Bool
         let disabled: Bool
-    }
-
-    private struct ResolvedRuntimeActivatorSnapshot: Codable {
-        let declared: Bool
-        let items: [ResolvedRuntimeActivator]
     }
 
     private var runtimeActivatorItems: [ResolvedRuntimeActivator] = []
     private var runtimeActivatorWriterDeclared = false
-
-    private func restorePersistedActivatorItems() {
-        let json = shellActivatorSnapshot().toString()
-        guard let snapshot = try? JSONDecoder().decode(
-            ResolvedRuntimeActivatorSnapshot.self, from: Data(json.utf8))
-        else { return }
-        runtimeActivatorItems = snapshot.items
-        runtimeActivatorWriterDeclared = snapshot.declared
-    }
 
     func setRuntimeActivatorItems(_ json: String) {
         guard let data = json.data(using: .utf8),
@@ -392,40 +375,14 @@ final class LxAppMacAppUIRuntime: NSObject {
         shell.updateShellPins(json)
     }
 
-    func shellNativeActive(_ capability: String) -> Bool {
-        capability == "terminal"
-            && visibleSurfaceIDs.contains(Self.shellTerminalSurfaceID)
-    }
-
-    func activateShellNative(_ capability: String) -> Bool {
-        guard capability == "terminal",
-              let primaryAppId = rootSurface.content.appId else { return false }
-        let id = Self.shellTerminalSurfaceID
-        if visibleSurfaceIDs.contains(id) {
-            closeTerminalWorkspaceSurface(id: id)
-            return true
-        }
-        openTerminalPanel(id: id, position: .bottom, defaultHeight: 320) {
-            _ = registerHostAsideContent(primaryAppId, id, "terminal", "bottom")
-        }
-        return visibleSurfaceIDs.contains(id)
-    }
-
     /// Sidebar entries from the runtime writer, when it has spoken.
     private func runtimeSidebarActionItems() -> [LxAppUIActionItem]? {
         guard runtimeActivatorWriterDeclared else { return nil }
-        let json = shellActivatorSnapshot().toString()
-        if let snapshot = try? JSONDecoder().decode(
-            ResolvedRuntimeActivatorSnapshot.self, from: Data(json.utf8)),
-           snapshot.declared {
-            runtimeActivatorItems = snapshot.items
-        }
         return runtimeActivatorItems.map { item in
             return LxAppUIActionItem(
                 id: item.id,
                 label: item.label,
                 iconURL: runtimeItemIconURL(item),
-                active: item.active,
                 disabled: item.disabled
             )
         }
