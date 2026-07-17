@@ -17,6 +17,7 @@ pub struct SurfaceManager {
     graph: SurfaceGraph,
     policy: Policy,
     width: f64,
+    sidebar_width: f64,
     hysteresis: f64,
     size_class: SizeClass,
     /// Most recently explicitly shown aside that could not be admitted as a
@@ -35,6 +36,7 @@ impl SurfaceManager {
             graph: SurfaceGraph::new(),
             policy,
             width,
+            sidebar_width: 0.0,
             hysteresis: DEFAULT_HYSTERESIS,
             size_class: SizeClass::from_width(width),
             overlay_fallback_surface_id: None,
@@ -52,12 +54,28 @@ impl SurfaceManager {
     }
 
     fn workspace_width(&self) -> f64 {
-        let sidebar_width = match self.size_class {
-            SizeClass::Compact => 0.0,
-            SizeClass::Medium => self.policy.sidebar_medium_width,
-            SizeClass::Expanded => self.policy.sidebar_expanded_width,
-        };
-        (self.width - sidebar_width).max(0.0)
+        (self.width - self.sidebar_width).max(0.0)
+    }
+
+    fn needs_overlay(&self, id: &str) -> bool {
+        self.graph.role_of(id) == Some(crate::model::Role::Aside)
+            && (self.size_class == SizeClass::Compact
+                || !self
+                    .graph
+                    .aside_slots_admitted(self.size_class, self.workspace_width(), &self.policy)
+                    .into_iter()
+                    .find(|slot| slot.children.iter().any(|child| child == id))
+                    .is_some_and(|slot| slot.visible))
+    }
+
+    fn reconcile_overlay_fallback(&mut self) {
+        if self
+            .overlay_fallback_surface_id
+            .as_deref()
+            .is_some_and(|id| !self.needs_overlay(id))
+        {
+            self.overlay_fallback_surface_id = None;
+        }
     }
 
     /// Update the container width. Returns `true` if the `SizeClass` changed
@@ -67,6 +85,21 @@ impl SurfaceManager {
         let next = SizeClass::resolve(Some(self.size_class), width, self.hysteresis);
         let changed = next != self.size_class;
         self.size_class = next;
+        self.reconcile_overlay_fallback();
+        changed
+    }
+
+    /// Report the platform's live sidebar allocation. Mobile/custom hosts use
+    /// zero; desktop shells update this during resize and collapse.
+    pub fn set_sidebar_width(&mut self, width: f64) -> bool {
+        let width = if width.is_finite() {
+            width.max(0.0).min(self.width)
+        } else {
+            0.0
+        };
+        let changed = (self.sidebar_width - width).abs() > f64::EPSILON;
+        self.sidebar_width = width;
+        self.reconcile_overlay_fallback();
         changed
     }
 
@@ -85,6 +118,8 @@ impl SurfaceManager {
             outcome.overlay |= self.size_class == SizeClass::Compact || !admitted;
             if outcome.overlay {
                 self.overlay_fallback_surface_id = Some(outcome.resolved_surface_id.clone());
+            } else {
+                self.overlay_fallback_surface_id = None;
             }
         }
         outcome
@@ -98,21 +133,31 @@ impl SurfaceManager {
             .as_ref()
             .is_some_and(|fallback| removed.contains(fallback))
         {
-            self.overlay_fallback_surface_id = self
+            let focused = self
                 .graph
                 .focused_surface_id
                 .as_deref()
                 .filter(|focused| self.graph.role_of(focused) == Some(crate::model::Role::Aside))
                 .map(str::to_string);
+            self.overlay_fallback_surface_id =
+                focused.filter(|focused| self.needs_overlay(focused));
         }
         removed
     }
 
     pub fn set_active_main(&mut self, id: &str) -> bool {
-        self.graph.set_active_main(id)
+        let active = self.graph.set_active_main(id);
+        if active {
+            self.overlay_fallback_surface_id = None;
+        }
+        active
     }
     pub fn set_focus(&mut self, id: &str) -> bool {
-        self.graph.set_focus(id)
+        let focused = self.graph.set_focus(id);
+        if focused {
+            self.overlay_fallback_surface_id = self.needs_overlay(id).then(|| id.to_string());
+        }
+        focused
     }
 
     pub fn show(&mut self, id: &str) -> bool {
@@ -126,6 +171,8 @@ impl SurfaceManager {
                 .is_some_and(|slot| slot.visible);
             if self.size_class == SizeClass::Compact || !admitted {
                 self.overlay_fallback_surface_id = Some(id.to_string());
+            } else {
+                self.overlay_fallback_surface_id = None;
             }
         }
         shown
@@ -134,12 +181,14 @@ impl SurfaceManager {
     pub fn hide(&mut self, id: &str) -> bool {
         let hidden = self.graph.hide(id);
         if hidden && self.overlay_fallback_surface_id.as_deref() == Some(id) {
-            self.overlay_fallback_surface_id = self
+            let focused = self
                 .graph
                 .focused_surface_id
                 .as_deref()
                 .filter(|focused| self.graph.role_of(focused) == Some(crate::model::Role::Aside))
                 .map(str::to_string);
+            self.overlay_fallback_surface_id =
+                focused.filter(|focused| self.needs_overlay(focused));
         }
         hidden
     }
@@ -230,6 +279,7 @@ mod tests {
     #[test]
     fn width_changes_recompute_physical_admission_within_a_size_class() {
         let mut manager = SurfaceManager::new(1400.0);
+        manager.set_sidebar_width(184.0);
         manager.open(main_s("home"));
         manager.open(aside_s("lxapp", Edge::Right));
         let mut browser = Surface::entry("browser", Role::Aside, "browser");
@@ -280,6 +330,92 @@ mod tests {
         let slot = &manager.presentation_plan().aside_slots[0];
         assert!(slot.visible);
         assert!(!slot.overlay);
+    }
+
+    #[test]
+    fn compact_focus_updates_the_overlay_tab() {
+        let mut manager = SurfaceManager::new(500.0);
+        manager.open(main_s("home"));
+        manager.open(aside_s("first", Edge::Right));
+        manager.open(aside_s("second", Edge::Right));
+
+        assert!(manager.set_focus("first"));
+        let slot = &manager.presentation_plan().aside_slots[0];
+        assert_eq!(slot.active_child.as_deref(), Some("first"));
+    }
+
+    #[test]
+    fn docked_fallback_does_not_reappear_after_later_resize() {
+        let policy = Policy {
+            main_min_width: 400.0,
+            aside_min_width: 240.0,
+            ..Policy::default()
+        };
+        let mut manager = SurfaceManager::with_policy(620.0, policy);
+        manager.open(main_s("home"));
+        let mut browser = Surface::entry("browser", Role::Aside, "browser");
+        browser.content = crate::model::SurfaceContent::Web {
+            url: "https://example.com".to_string(),
+        };
+        browser.placement.edge = Some(Edge::Right);
+        assert!(manager.open(browser).overlay);
+
+        manager.set_width(1000.0);
+        manager.open(aside_s("chat", Edge::Right));
+        assert!(manager.set_focus("chat"));
+        manager.set_width(700.0);
+
+        let visible: Vec<_> = manager
+            .presentation_plan()
+            .aside_slots
+            .into_iter()
+            .filter(|slot| slot.visible)
+            .map(|slot| slot.kind)
+            .collect();
+        assert_eq!(visible, vec![crate::model::SlotKind::Lxapp]);
+    }
+
+    #[test]
+    fn live_sidebar_width_controls_physical_admission() {
+        let mut manager = SurfaceManager::new(900.0);
+        manager.open(main_s("home"));
+        manager.open(aside_s("chat", Edge::Right));
+        let mut browser = Surface::entry("browser", Role::Aside, "browser");
+        browser.content = crate::model::SurfaceContent::Web {
+            url: "https://example.com".to_string(),
+        };
+        browser.placement.edge = Some(Edge::Right);
+        manager.open(browser);
+
+        assert_eq!(
+            manager
+                .presentation_plan()
+                .aside_slots
+                .iter()
+                .filter(|slot| slot.visible)
+                .count(),
+            2
+        );
+        manager.set_sidebar_width(300.0);
+        assert_eq!(
+            manager
+                .presentation_plan()
+                .aside_slots
+                .iter()
+                .filter(|slot| slot.visible)
+                .count(),
+            1
+        );
+        manager.set_sidebar_width(0.0);
+        assert_eq!(
+            manager
+                .presentation_plan()
+                .aside_slots
+                .iter()
+                .filter(|slot| slot.visible)
+                .count(),
+            2
+        );
     }
 
     #[test]

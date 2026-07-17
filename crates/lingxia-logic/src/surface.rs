@@ -242,21 +242,23 @@ async fn open_surface_spec(ctx: JSContext, spec: JSValue) -> JSResult<JSValue> {
         get_property(&obj, "url").is_some(),
         get_property(&obj, "lxapp").is_some(),
         get_property(&obj, "native").is_some(),
+        get_property(&obj, "surface").is_some(),
     ];
     if keys.iter().filter(|set| **set).count() != 1 {
         return Err(surface_error(
             rong::error::E_INVALID_ARG,
             "invalid_surface_spec",
-            "spec must contain exactly one content key: lxapp, page, url, or native",
+            "spec must contain exactly one content key: lxapp, page, url, native, or surface",
         ));
     }
     match keys {
         [true, ..] => open_page_spec(ctx, &obj).await.map(JSObject::into_js_value),
         [_, true, ..] => open_url_spec(ctx, &obj).await,
-        [_, _, true, _] => open_lxapp_spec(ctx, &obj)
+        [_, _, true, ..] => open_lxapp_spec(ctx, &obj)
             .await
             .map(JSObject::into_js_value),
-        _ => open_native_spec(&ctx, &obj).map(JSObject::into_js_value),
+        [_, _, _, true, _] => open_native_spec(&ctx, &obj).map(JSObject::into_js_value),
+        _ => open_declared_surface_spec(&ctx, &obj).map(JSObject::into_js_value),
     }
 }
 
@@ -454,7 +456,17 @@ fn show_lxapp_region(
     edge: Option<&str>,
 ) -> JSResult<()> {
     match region {
-        lxapp::LxAppOpenRegion::Main => open_lxapp_region(app_id, region, app_id, ""),
+        lxapp::LxAppOpenRegion::Main => {
+            let app = lxapp::try_get(app_id).ok_or_else(|| {
+                surface_error(
+                    rong::error::E_NOT_FOUND,
+                    "lxapp_not_found",
+                    format!("lxapp is not active: {app_id}"),
+                )
+            })?;
+            app.set_active_main();
+            Ok(())
+        }
         lxapp::LxAppOpenRegion::Aside => {
             if shell
                 .set_shell_surface_visible(shell_surface_id, true, edge)
@@ -494,6 +506,19 @@ fn open_native_spec(ctx: &JSContext, spec: &JSObject) -> JSResult<JSObject> {
         .set_shell_surface_visible(name.trim(), true, edge.as_deref())
         .map_err(|err| surface_error(rong::error::E_NOT_FOUND, "native_not_found", err))?;
     managed_surface_handle(ctx, lxapp, name.trim().to_string())
+}
+
+/// Published declaration-id form. It remains available to non-home lxapps;
+/// only the newer product-level `{ lxapp }` and `{ native }` selectors are
+/// restricted to the home app.
+fn open_declared_surface_spec(ctx: &JSContext, spec: &JSObject) -> JSResult<JSObject> {
+    let id = read_required_string(spec, "surface")?;
+    let edge = read_validated_edge(spec)?;
+    let lxapp = LxApp::from_ctx(ctx)?;
+    lxapp
+        .set_shell_surface_visible(id.trim(), true, edge.as_deref())
+        .map_err(|err| surface_error(rong::error::E_NOT_FOUND, "surface_not_found", err))?;
+    managed_surface_handle(ctx, lxapp, id.trim().to_string())
 }
 
 fn read_validated_edge(spec: &JSObject) -> JSResult<Option<String>> {
@@ -649,6 +674,9 @@ fn lxapp_surface_handle(
     shell_surface_id: String,
     region: lxapp::LxAppOpenRegion,
 ) -> JSResult<JSObject> {
+    let session_id = lxapp::try_get(&app_id)
+        .map(|app| app.session_id())
+        .unwrap_or_default();
     let (message_port, _) = crate::message_port::pair(ctx)?;
     let handle = Class::lookup::<JSSurface>(ctx)?.instance(JSSurface {
         id: app_id.clone(),
@@ -683,11 +711,12 @@ fn lxapp_surface_handle(
     let show_shell = shell.clone();
     let show_id = app_id.clone();
     let show_surface_id = shell_surface_id.clone();
+    let show_session_id = session_id;
     let show_handle = handle.clone();
     handle.set(
         "show",
         JSFunc::new(ctx, move || -> JSResult<()> {
-            ensure_lxapp_surface_open(&show_handle, &show_id)?;
+            ensure_lxapp_surface_open(&show_handle, &show_id, region, show_session_id)?;
             show_lxapp_region(&show_shell, &show_id, &show_surface_id, region, None)?;
             mark_visible(&show_handle, true, "opener")
         })?,
@@ -696,11 +725,12 @@ fn lxapp_surface_handle(
     let hide_shell = shell.clone();
     let hide_id = app_id.clone();
     let hide_surface_id = shell_surface_id.clone();
+    let hide_session_id = session_id;
     let hide_handle = handle.clone();
     handle.set(
         "hide",
         JSFunc::new(ctx, move || -> JSResult<()> {
-            ensure_lxapp_surface_open(&hide_handle, &hide_id)?;
+            ensure_lxapp_surface_open(&hide_handle, &hide_id, region, hide_session_id)?;
             match region {
                 lxapp::LxAppOpenRegion::Main => Err(surface_error(
                     rong::error::E_NOT_SUPPORTED,
@@ -718,6 +748,7 @@ fn lxapp_surface_handle(
     let close_shell = shell;
     let close_id = app_id;
     let close_surface_id = shell_surface_id;
+    let close_session_id = session_id;
     let close_handle = handle.clone();
     handle.set(
         "close",
@@ -725,7 +756,7 @@ fn lxapp_surface_handle(
             if !close_handle.borrow::<JSSurface>()?.alive.get() {
                 return Ok(());
             }
-            if lxapp::open_region(&close_id).is_none() {
+            if !lxapp_surface_session_is_current(&close_id, region, close_session_id) {
                 return emit_lxapp_handle_close(&close_handle, &close_id, "app_closed");
             }
             if region == lxapp::LxAppOpenRegion::Aside {
@@ -755,15 +786,42 @@ fn lxapp_surface_handle(
     Ok(handle)
 }
 
-fn ensure_lxapp_surface_open(handle: &JSObject, app_id: &str) -> JSResult<()> {
+fn ensure_lxapp_surface_open(
+    handle: &JSObject,
+    app_id: &str,
+    region: lxapp::LxAppOpenRegion,
+    session_id: u64,
+) -> JSResult<()> {
     if !handle.borrow::<JSSurface>()?.alive.get() {
         return Err(closed_surface_error());
     }
-    if lxapp::open_region(app_id).is_none() {
+    if !lxapp_surface_session_is_current(app_id, region, session_id) {
         emit_lxapp_handle_close(handle, app_id, "app_closed")?;
         return Err(closed_surface_error());
     }
     Ok(())
+}
+
+fn lxapp_surface_session_is_current(
+    app_id: &str,
+    region: lxapp::LxAppOpenRegion,
+    session_id: u64,
+) -> bool {
+    lxapp_surface_identity_matches(
+        region,
+        session_id,
+        lxapp::open_region(app_id),
+        lxapp::try_get(app_id).map(|app| app.session_id()),
+    )
+}
+
+fn lxapp_surface_identity_matches(
+    expected_region: lxapp::LxAppOpenRegion,
+    expected_session_id: u64,
+    current_region: Option<lxapp::LxAppOpenRegion>,
+    current_session_id: Option<u64>,
+) -> bool {
+    current_region == Some(expected_region) && current_session_id == Some(expected_session_id)
 }
 
 fn emit_lxapp_handle_close(handle: &JSObject, app_id: &str, reason: &str) -> JSResult<()> {
@@ -2093,5 +2151,24 @@ mod tests {
         assert!(file_url_path("file://server/share/report.pdf").is_err());
         assert!(file_url_path("file://relative").is_err());
         assert!(file_url_path("file:///tmp/report.pdf#fragment").is_err());
+    }
+
+    #[test]
+    fn stale_lxapp_handle_does_not_match_a_reopened_region_or_session() {
+        use lxapp::LxAppOpenRegion::{Aside, Main};
+
+        assert!(lxapp_surface_identity_matches(Main, 7, Some(Main), Some(7)));
+        assert!(!lxapp_surface_identity_matches(
+            Main,
+            7,
+            Some(Aside),
+            Some(8)
+        ));
+        assert!(!lxapp_surface_identity_matches(
+            Main,
+            7,
+            Some(Main),
+            Some(8)
+        ));
     }
 }

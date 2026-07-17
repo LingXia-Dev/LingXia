@@ -136,10 +136,10 @@ impl WindowSurfaceController {
         }
     }
 
-    fn close(&self, id: &str) -> bool {
+    fn close(&self, id: &str) -> Vec<String> {
         let removed = {
             let mut manager = self.manager.lock().unwrap();
-            !manager.close(id).is_empty()
+            manager.close(id)
         };
         self.commit();
         removed
@@ -150,47 +150,43 @@ impl WindowSurfaceController {
     }
 
     fn show_surface(&self, app_id: &str, id: &str) -> Result<(), LxAppError> {
-        let previous = {
-            let mut manager = self.manager.lock().unwrap();
-            let previous = manager.clone();
-            if !manager.show(id) {
+        {
+            let manager = self.manager.lock().unwrap();
+            if manager.graph().get(id).is_none() {
                 return Err(LxAppError::InvalidParameter(format!(
                     "unknown surface: {id}"
                 )));
             }
-            previous
-        };
-        if let Err(err) = self.runtime.show_surface(app_id, id) {
-            *self.manager.lock().unwrap() = previous;
-            self.commit();
-            return Err(err.into());
+        }
+        self.runtime.show_surface(app_id, id)?;
+        if !self.manager.lock().unwrap().show(id) {
+            let _ = self.runtime.hide_surface(app_id, id);
+            return Err(LxAppError::InvalidParameter(format!(
+                "unknown surface: {id}"
+            )));
         }
         self.commit();
         Ok(())
     }
 
     fn hide_surface(&self, app_id: &str, id: &str) -> Result<(), LxAppError> {
-        let previous = {
-            let mut manager = self.manager.lock().unwrap();
+        {
+            let manager = self.manager.lock().unwrap();
             if manager.graph().role_of(id) == Some(lingxia_surface::Role::Main) {
                 return Err(LxAppError::UnsupportedOperation(
                     "a main surface cannot be hidden".to_string(),
                 ));
             }
-            let previous = manager.clone();
-            if !manager.hide(id) {
+            if manager.graph().get(id).is_none() {
                 return Err(LxAppError::InvalidParameter(format!(
                     "unknown surface: {id}"
                 )));
             }
-            previous
-        };
-        if let Err(err) = self.runtime.hide_surface(app_id, id) {
-            *self.manager.lock().unwrap() = previous;
-            self.commit();
-            return Err(err.into());
         }
-        self.commit();
+        self.runtime.hide_surface(app_id, id)?;
+        if self.manager.lock().unwrap().hide(id) {
+            self.commit();
+        }
         Ok(())
     }
 
@@ -200,34 +196,29 @@ impl WindowSurfaceController {
         visible: bool,
         edge: Option<&str>,
     ) -> Result<(), LxAppError> {
-        let previous = {
+        let parsed_edge = edge.map(parse_surface_edge).transpose()?;
+        // The host handler owns first presentation and may register a declared
+        // surface into this graph. Delegate before mirroring visibility so a
+        // declared-but-never-opened surface is not rejected as unknown.
+        self.runtime
+            .set_managed_surface_visible(id, visible, edge)?;
+        let changed = {
             let mut manager = self.manager.lock().unwrap();
-            let previous = manager.clone();
             if visible {
-                if let Some(edge) = edge
+                if let Some(edge) = parsed_edge
                     && let Some(mut surface) = manager.graph().get(id).cloned()
                 {
-                    surface.placement.edge = Some(parse_surface_edge(edge)?);
+                    surface.placement.edge = Some(edge);
                     manager.open(surface);
                 }
-                if !manager.show(id) {
-                    return Err(LxAppError::InvalidParameter(format!(
-                        "unknown shell surface: {id}"
-                    )));
-                }
-            } else if !manager.hide(id) {
-                return Err(LxAppError::InvalidParameter(format!(
-                    "unknown shell surface: {id}"
-                )));
+                manager.show(id)
+            } else {
+                manager.hide(id)
             }
-            previous
         };
-        if let Err(err) = self.runtime.set_managed_surface_visible(id, visible, edge) {
-            *self.manager.lock().unwrap() = previous;
+        if changed {
             self.commit();
-            return Err(err.into());
         }
-        self.commit();
         Ok(())
     }
 
@@ -303,6 +294,15 @@ impl WindowSurfaceController {
     /// aside admission, seeding the root main if absent. Commits whenever the
     /// render plan changes; returns whether the adaptive size class flipped.
     fn set_width(&self, width: f64, root_main: lingxia_surface::Surface) -> bool {
+        self.set_layout_metrics(width, None, root_main)
+    }
+
+    fn set_layout_metrics(
+        &self,
+        width: f64,
+        sidebar_width: Option<f64>,
+        root_main: lingxia_surface::Surface,
+    ) -> bool {
         let (class_changed, plan_changed) = {
             let mut manager = self.manager.lock().unwrap();
             let before = manager.presentation_plan();
@@ -312,6 +312,9 @@ impl WindowSurfaceController {
                 seeded = true;
             }
             let class_changed = manager.set_width(width);
+            if let Some(sidebar_width) = sidebar_width {
+                manager.set_sidebar_width(sidebar_width);
+            }
             let after = manager.presentation_plan();
             (class_changed, seeded || before != after)
         };
@@ -319,6 +322,19 @@ impl WindowSurfaceController {
             self.commit();
         }
         class_changed
+    }
+
+    fn set_sidebar_width(&self, width: f64) -> bool {
+        let plan_changed = {
+            let mut manager = self.manager.lock().unwrap();
+            let before = manager.presentation_plan();
+            manager.set_sidebar_width(width);
+            before != manager.presentation_plan()
+        };
+        if plan_changed {
+            self.commit();
+        }
+        plan_changed
     }
 
     fn presentation_plan(&self) -> lingxia_surface::LayoutPresentationPlan {
@@ -813,24 +829,16 @@ impl LxApp {
             .close_surface(&platform_owner_appid, id, reason)
         {
             Ok(()) => {
-                controller.close(id);
-                for info in crate::lxapp::list_lxapps() {
-                    if let Some(owner) = crate::lxapp::try_get(&info.appid)
-                        && owner.has_surface(id)
-                    {
-                        if let Ok(state) = owner.state.lock() {
-                            state.surfaces.lock().unwrap().remove(id);
-                        }
-                        break;
-                    }
+                let mut removed = controller.close(id);
+                if !removed.iter().any(|removed| removed == id) {
+                    removed.push(id.to_string());
+                }
+                for removed_id in removed {
+                    remove_surface_record_from_owner(&removed_id);
                 }
                 Ok(())
             }
-            Err(err) => {
-                self.forget_surface(id);
-                notify_surface_close_observer(id, "failed");
-                Err(err.into())
-            }
+            Err(err) => Err(err.into()),
         }
     }
 
@@ -1070,6 +1078,23 @@ impl LxApp {
         // — not just the core state. The controller commits internally only when
         // the sizeClass flips.
         window_controller(PRIMARY_WINDOW, &self.runtime).set_width(width, self.root_main_node())
+    }
+
+    /// Atomically report window and sidebar widths so admission never
+    /// publishes a plan calculated with one stale metric.
+    pub fn set_surface_layout_metrics(&self, width: f64, sidebar_width: f64) -> bool {
+        window_controller(PRIMARY_WINDOW, &self.runtime).set_layout_metrics(
+            width,
+            Some(sidebar_width),
+            self.root_main_node(),
+        )
+    }
+
+    /// Report the sidebar's current logical width for physical aside
+    /// admission. Desktop shells update it on resize/collapse; other hosts
+    /// leave the zero default.
+    pub fn set_surface_sidebar_width(&self, width: f64) -> bool {
+        window_controller(PRIMARY_WINDOW, &self.runtime).set_sidebar_width(width)
     }
 
     /// Report this lxapp presentation's actual viewport. Unlike shell width,
@@ -1324,6 +1349,21 @@ fn surface_owner_appid(id: &str) -> Option<String> {
         .into_iter()
         .find(|info| crate::lxapp::try_get(&info.appid).is_some_and(|owner| owner.has_surface(id)))
         .map(|info| info.appid)
+}
+
+fn remove_surface_record_from_owner(id: &str) -> bool {
+    let Some(appid) = surface_owner_appid(id) else {
+        return false;
+    };
+    crate::lxapp::try_get(&appid)
+        .and_then(|owner| {
+            owner
+                .state
+                .lock()
+                .ok()
+                .and_then(|state| state.surfaces.lock().ok()?.remove(id))
+        })
+        .is_some()
 }
 
 fn finite_or_nan(value: Option<f64>) -> f64 {

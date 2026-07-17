@@ -347,7 +347,14 @@ pub(crate) fn update_surface_width(logical_width: f64) {
         return;
     }
     if let Some(appid) = shell_owner_appid() {
-        lingxia::windows::set_surface_width(&appid, logical_width);
+        let group_appid =
+            preferred_sidebar_group_appid(presented_browser_group_appid(), active_main_lxapp_id())
+                .unwrap_or_else(|| appid.clone());
+        lingxia::windows::set_surface_layout_metrics(
+            &appid,
+            logical_width,
+            current_sidebar_width(&group_appid),
+        );
     }
 }
 
@@ -649,7 +656,36 @@ fn sync_related_shell_layouts(appid: &str) {
 /// shell owner, and the current app — never just one layout, or the change
 /// only shows up after the next unrelated sync.
 fn sync_shell_layout(appid: &str) {
+    if let Some(owner_appid) = shell_owner_appid() {
+        let group_appid =
+            preferred_sidebar_group_appid(presented_browser_group_appid(), active_main_lxapp_id())
+                .unwrap_or_else(|| appid.to_string());
+        lingxia::windows::set_surface_sidebar_width(
+            &owner_appid,
+            current_sidebar_width(&group_appid),
+        );
+    }
     sync_related_shell_layouts(appid);
+}
+
+fn current_sidebar_width(group_appid: &str) -> f64 {
+    let app = lxapp::try_get(group_appid)
+        .or_else(|| shell_owner_appid().and_then(|appid| lxapp::try_get(&appid)));
+    let Some(app) = app else {
+        return 0.0;
+    };
+    let owner = shell_owner_app_for(&app);
+    let shell_app = owner.as_deref().unwrap_or(&app);
+    let activators = build_panel_activators(shell_app);
+    build_tab_bar_layout(&app, &activators)
+        .filter(|tabbar| {
+            matches!(
+                tabbar.position,
+                WindowsShellTabBarPosition::Left | WindowsShellTabBarPosition::Right
+            )
+        })
+        .map(|tabbar| super::chrome::sidebar_column_width(&tabbar) as f64)
+        .unwrap_or(0.0)
 }
 
 /// Routes `open_url` requests with in-app targets into the internal
@@ -1648,58 +1684,26 @@ fn runtime_activator_items() -> Option<Vec<ResolvedShellActivator>> {
 }
 
 fn build_panel_activators(app: &LxApp) -> Vec<WindowsShellPanelActivatorLayout> {
-    if let Some(items) = runtime_activator_items() {
-        let asset_dir = app.runtime.asset_dir();
-        return items
-            .into_iter()
-            .map(|item| WindowsShellPanelActivatorLayout {
-                id: item.id,
-                label: item.label,
-                icon_path: item
-                    .icon_path
-                    .as_deref()
-                    .and_then(|icon| {
-                        resolve_asset_path(asset_dir, icon)
-                            .map(|path| path.to_string_lossy().to_string())
-                            .or_else(|| Some(icon.to_string()))
-                    })
-                    .unwrap_or_default(),
-                active: item.active,
-                disabled: item.disabled,
-            })
-            .collect();
-    }
     let asset_dir = app.runtime.asset_dir();
-    lingxia_app_context::app_config()
-        .and_then(|config| config.panels.as_ref().cloned())
-        .map(|panels| {
-            panels
-                .items
-                .into_iter()
-                .map(|item| {
-                    let icon_path = if !item.icon.trim().is_empty() {
-                        resolve_asset_path(asset_dir, &item.icon)
-                            .map(|path| path.to_string_lossy().to_string())
-                            .unwrap_or(item.icon)
-                    } else if item.content.kind.is_lxapp() {
-                        lxapp::try_get(&item.content.app_id)
-                            .map(|app| app.get_lxapp_info().icon)
-                            .filter(|icon| !icon.trim().is_empty())
-                            .unwrap_or_default()
-                    } else {
-                        String::new()
-                    };
-                    WindowsShellPanelActivatorLayout {
-                        id: item.id.clone(),
-                        label: item.label,
-                        icon_path,
-                        active: is_panel_visible(&item.id),
-                        disabled: false,
-                    }
-                })
-                .collect()
-        })
+    runtime_activator_items()
         .unwrap_or_default()
+        .into_iter()
+        .map(|item| WindowsShellPanelActivatorLayout {
+            id: item.id,
+            label: item.label,
+            icon_path: item
+                .icon_path
+                .as_deref()
+                .and_then(|icon| {
+                    resolve_asset_path(asset_dir, icon)
+                        .map(|path| path.to_string_lossy().to_string())
+                        .or_else(|| Some(icon.to_string()))
+                })
+                .unwrap_or_default(),
+            active: item.active,
+            disabled: item.disabled,
+        })
+        .collect()
 }
 
 fn set_runtime_shell_pins(items: &[ShellPin]) -> bool {
@@ -1986,15 +1990,10 @@ fn handle_chrome_event(appid: &str, event: WindowsChromeCommand) {
             let Some(panel_id) = payload_string(&event, "panel_id") else {
                 return;
             };
-            if runtime_activator_items().is_some() {
-                if let Err(error) = lingxia_shell::activate(&panel_id) {
-                    log::warn!("shell activator '{panel_id}' failed: {error}");
-                }
-                sync_shell_layout(appid);
-                return;
+            if let Err(error) = lingxia_shell::activate(&panel_id) {
+                log::warn!("shell activator '{panel_id}' failed: {error}");
             }
-            // The activator handlers sync the shell layout in every branch.
-            handle_panel_activator(appid, panel_id);
+            sync_shell_layout(appid);
             return;
         }
         chrome_command::BROWSER_TABS_CYCLE => {
@@ -4094,23 +4093,36 @@ fn show_lxapp_panel(
 }
 
 fn panel_target_for_id(panel_id: &str) -> Option<PanelTarget> {
-    let item = lingxia_app_context::app_config()
+    let configured = lingxia_app_context::app_config()
         .and_then(|config| config.panels.as_ref().cloned())
-        .and_then(|panels| panels.items.into_iter().find(|item| item.id == panel_id))?;
+        .and_then(|panels| panels.items.into_iter().find(|item| item.id == panel_id));
 
-    if item.content.kind.is_lxapp() {
-        Some(PanelTarget::LxApp {
-            appid: item.content.app_id,
-            path: item.content.path.unwrap_or_default(),
-            position: item.position,
-        })
-    } else {
-        Some(PanelTarget::Terminal(TerminalPanelRequest {
-            panel_id: item.id,
-            label: item.label,
-            position: item.position,
-        }))
+    if let Some(item) = configured {
+        return if item.content.kind.is_lxapp() {
+            Some(PanelTarget::LxApp {
+                appid: item.content.app_id,
+                path: item.content.path.unwrap_or_default(),
+                position: item.position,
+            })
+        } else {
+            Some(PanelTarget::Terminal(TerminalPanelRequest {
+                panel_id: item.id,
+                label: item.label,
+                position: item.position,
+            }))
+        };
     }
+
+    lxapp::list_lxapps().into_iter().find_map(|info| {
+        let app = lxapp::try_get(&info.appid)?;
+        (lxapp::open_region(&app.appid) == Some(lxapp::LxAppOpenRegion::Aside)
+            && app.open_panel_id().as_deref().unwrap_or(app.appid.as_str()) == panel_id)
+            .then(|| PanelTarget::LxApp {
+                appid: app.appid.clone(),
+                path: String::new(),
+                position: lingxia_app_context::PanelPosition::Right,
+            })
+    })
 }
 
 fn panel_item_for_lxapp(

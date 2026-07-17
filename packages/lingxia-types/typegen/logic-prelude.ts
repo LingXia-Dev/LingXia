@@ -143,7 +143,7 @@ declare global {
      * `as: "window"` is desktop-only.
      */
     openSurface(spec: OpenUrlTabSpec): Promise<null>;
-    openSurface(spec: OpenLxappSurfaceSpec | OpenNativeSurfaceSpec): Promise<SurfaceHandle>;
+    openSurface(spec: OpenDeclaredSurfaceSpec | OpenLxappSurfaceSpec | OpenNativeSurfaceSpec): Promise<SurfaceHandle>;
     openSurface(spec: OpenPageSurfaceSpec | OpenUrlAsideSpec): Promise<Surface>;
     openSurface(spec: OpenSurfaceSpec): Promise<Surface | SurfaceHandle | null>;
 

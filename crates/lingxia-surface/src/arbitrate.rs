@@ -75,10 +75,6 @@ pub struct Policy {
     /// a guarantee — a technically-expanded but narrow window admits fewer.
     pub main_min_width: f64,
     pub aside_min_width: f64,
-    /// Sidebar allocation happens before aside admission. Compact has no
-    /// sidebar; Medium uses the rail token and Expanded uses the full token.
-    pub sidebar_expanded_width: f64,
-    pub sidebar_medium_width: f64,
 }
 
 impl Default for Policy {
@@ -92,8 +88,6 @@ impl Default for Policy {
             max_asides_compact: 1,
             main_min_width: 360.0,
             aside_min_width: 240.0,
-            sidebar_expanded_width: 220.0,
-            sidebar_medium_width: 56.0,
         }
     }
 }

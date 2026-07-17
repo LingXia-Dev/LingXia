@@ -567,6 +567,22 @@ rong::js_api! {
     ipv6: string[];
 }"###;
 
+        /// Show a surface declared by id in the host's `lingxia.yaml`.
+        /// Available to any lxapp granted access to that declaration.
+        type OpenDeclaredSurfaceSpec = r###"{
+    surface: string;
+    /** Docking edge override for this open. */
+    edge?: SurfaceEdge;
+    page?: never;
+    url?: never;
+    lxapp?: never;
+    native?: never;
+    as?: never;
+    position?: never;
+    size?: never;
+    query?: never;
+}"###;
+
         /// Network status APIs.
         ///
         type NetworkType = r###"'none' | 'unknown' | 'wifi' | '2g' | '3g' | '4g' | '5g' | 'ethernet'"###;
@@ -695,7 +711,7 @@ rong::js_api! {
     url?: never;
 }"###;
 
-        type OpenSurfaceSpec = r###"OpenPageSurfaceSpec | OpenLxappSurfaceSpec | OpenNativeSurfaceSpec | OpenUrlTabSpec | OpenUrlAsideSpec"###;
+        type OpenSurfaceSpec = r###"OpenPageSurfaceSpec | OpenDeclaredSurfaceSpec | OpenLxappSurfaceSpec | OpenNativeSurfaceSpec | OpenUrlTabSpec | OpenUrlAsideSpec"###;
 
         /// Open `url` in the multi-tab browser aside. `url` must be `https://` or
         /// `file://` (external content only). Repeated calls add/focus tabs (deduped by

@@ -528,12 +528,10 @@ pub async fn prepare_lxapp_open(
         LxAppError::ResourceNotFound(format!("home lxapp '{home_appid}' not found"))
     })?;
 
-    // Only a MISSING bundle blocks the open (first install must download).
-    // An installed lxapp opens immediately: freshness and force-update checks
-    // run in the background (`schedule_lxapp_update_check`) — a foreground
-    // check here made every open pay a network round trip, which reads as a
-    // multi-second dead click on slow update transports.
+    // First install and any mandatory update complete before presentation.
     ensure_first_install(&home_lxapp, target_appid, release_type).await?;
+    // Server-mandated updates are admission gates, not freshness hints.
+    ensure_force_update_for_installed(&home_lxapp, target_appid, release_type).await?;
     Ok(())
 }
 

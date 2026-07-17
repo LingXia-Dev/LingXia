@@ -462,10 +462,12 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     private func reportSurfaceWidth() {
         guard let appId = currentViewController?.appId,
               let windowWidth = window?.contentView?.frame.width, windowWidth > 0 else { return }
-        // Shell size class is defined from the complete client area. Sidebar
-        // and aside subtraction belongs to individual surface viewport
-        // contexts, not to shell admission breakpoints.
-        _ = setSurfaceWidth(appId, Double(windowWidth))
+        // Size class uses the complete client area; the live sidebar width is
+        // reported separately so physical aside admission uses real workspace.
+        let sidebarWidth = sidebarChromeEnabled
+            ? max(0, sidebarWidthConstraint?.constant ?? Layout.sidebarWidth)
+            : 0
+        _ = setSurfaceLayoutMetrics(appId, Double(windowWidth), Double(sidebarWidth))
     }
 
     // MARK: - Sidebar Interface Setup
@@ -983,6 +985,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         window?.contentView?.layoutSubtreeIfNeeded()
         workspaceManager.relayoutPanels()
         persistSidebarState()
+        reportSurfaceWidth()
     }
 
     // MARK: - Tab Lifecycle

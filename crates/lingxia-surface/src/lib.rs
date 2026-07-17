@@ -229,6 +229,18 @@ mod tests {
         assert_eq!(switched, SizeClass::Compact);
     }
 
+    #[test]
+    fn hysteresis_does_not_hold_across_two_classes() {
+        assert_eq!(
+            SizeClass::resolve(Some(SizeClass::Expanded), 590.0, DEFAULT_HYSTERESIS),
+            SizeClass::Compact
+        );
+        assert_eq!(
+            SizeClass::resolve(Some(SizeClass::Compact), 850.0, DEFAULT_HYSTERESIS),
+            SizeClass::Expanded
+        );
+    }
+
     // ---- arbitration (§3.4) ----
 
     #[test]

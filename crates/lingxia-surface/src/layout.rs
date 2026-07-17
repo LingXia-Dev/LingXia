@@ -41,10 +41,21 @@ impl SizeClass {
         if prev == raw {
             return prev;
         }
-        // Within the hysteresis band around a boundary, stick with prev.
-        let near_lower = (width - COMPACT_MAX).abs() < margin;
-        let near_upper = (width - MEDIUM_MAX).abs() < margin;
-        if near_lower || near_upper { prev } else { raw }
+        // Only an adjacent transition shares a hysteresis boundary. A jump
+        // across two classes must converge immediately.
+        let boundary =
+            match (prev, raw) {
+                (SizeClass::Compact, SizeClass::Medium)
+                | (SizeClass::Medium, SizeClass::Compact) => Some(COMPACT_MAX),
+                (SizeClass::Medium, SizeClass::Expanded)
+                | (SizeClass::Expanded, SizeClass::Medium) => Some(MEDIUM_MAX),
+                _ => None,
+            };
+        if boundary.is_some_and(|boundary| (width - boundary).abs() < margin) {
+            prev
+        } else {
+            raw
+        }
     }
 }
 

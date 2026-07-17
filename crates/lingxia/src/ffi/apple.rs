@@ -230,6 +230,9 @@ mod bridge {
         #[swift_bridge(swift_name = "setSurfaceWidth")]
         fn set_surface_width(appid: &str, width: f64) -> bool;
 
+        #[swift_bridge(swift_name = "setSurfaceLayoutMetrics")]
+        fn set_surface_layout_metrics(appid: &str, width: f64, sidebar_width: f64) -> bool;
+
         #[swift_bridge(swift_name = "setSurfaceViewport")]
         fn set_surface_viewport(appid: &str, width: f64, height: f64) -> bool;
 
@@ -945,6 +948,14 @@ pub fn set_surface_width(appid: &str, width: f64) -> bool {
     ffi_catch_unwind!("set_surface_width", false, || {
         lxapp::try_get(appid)
             .map(|lxapp| lxapp.set_surface_width(width))
+            .unwrap_or(false)
+    })
+}
+
+pub fn set_surface_layout_metrics(appid: &str, width: f64, sidebar_width: f64) -> bool {
+    ffi_catch_unwind!("set_surface_layout_metrics", false, || {
+        lxapp::try_get(appid)
+            .map(|lxapp| lxapp.set_surface_layout_metrics(width, sidebar_width))
             .unwrap_or(false)
     })
 }

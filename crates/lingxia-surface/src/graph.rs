@@ -76,13 +76,16 @@ impl SurfaceGraph {
     pub fn insert(&mut self, surface: Surface) {
         let surface_id = surface.id.clone();
         let modal = surface.is_modal_float();
+        let was_modal = self.get(&surface.id).is_some_and(Surface::is_modal_float);
         let previous_slot = self
             .get(&surface.id)
             .filter(|existing| existing.role == Role::Aside)
             .map(|existing| existing.content.slot_kind());
         let next_slot = (surface.role == Role::Aside).then(|| surface.content.slot_kind());
-        if modal {
+        if modal && !was_modal {
             self.modal_focus_stack.push(self.focused_surface_id.clone());
+        } else if !modal && was_modal {
+            let _ = self.modal_focus_stack.pop();
         }
         if let Some(existing) = self.surfaces.iter_mut().find(|s| s.id == surface.id) {
             *existing = surface;
@@ -644,4 +647,29 @@ fn pick_successor_main(surfaces: &[Surface], removed_pos: usize) -> Option<Surfa
                 .find(|s| s.role == Role::Main)
         })
         .map(|s| s.id.clone())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn replacing_modal_float_does_not_push_another_focus_snapshot() {
+        let mut graph = SurfaceGraph::new();
+        graph.insert(Surface::entry("home", Role::Main, "home"));
+        let mut modal = Surface::entry("dialog", Role::Float, "dialog");
+        modal.float = Some(crate::model::FloatSpec {
+            modal: true,
+            ..Default::default()
+        });
+
+        graph.insert(modal.clone());
+        graph.set_focus("dialog");
+        graph.insert(modal);
+
+        assert_eq!(graph.modal_focus_stack.len(), 1);
+        graph.remove("dialog");
+        assert_eq!(graph.focused_surface_id.as_deref(), Some("home"));
+        assert!(graph.modal_focus_stack.is_empty());
+    }
 }

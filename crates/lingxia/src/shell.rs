@@ -31,7 +31,8 @@ impl ShellHost for HostShell {
         items
             .iter()
             .map(|item| {
-                let (kind, fallback_label, fallback_icon, active) = match &item.target {
+                let (kind, fallback_label, fallback_icon, active, unavailable) = match &item.target
+                {
                     ShellActivatorTarget::Lxapp { key } => {
                         let info = lxapp::try_get(key).map(|app| app.get_lxapp_info());
                         let label = info
@@ -48,25 +49,23 @@ impl ShellHost for HostShell {
                             label,
                             icon,
                             lxapp_target_active(key, plan.as_ref()),
+                            false,
                         )
                     }
                     ShellActivatorTarget::Native { key } => match key {
                         NativeShellCapability::Terminal => {
-                            if !lingxia_app_context::terminal_enabled() {
-                                return Err(ShellError::UnsupportedCapability {
-                                    capability: "terminal".to_string(),
-                                });
-                            }
+                            let available = lingxia_app_context::terminal_enabled();
                             (
                                 ActivatorKind::Native,
                                 "Terminal".to_string(),
                                 None,
-                                self.platform.shell_native_active(*key),
+                                available && self.platform.shell_native_active(*key),
+                                !available,
                             )
                         }
                     },
                     ShellActivatorTarget::Action => {
-                        (ActivatorKind::Action, item.id.clone(), None, false)
+                        (ActivatorKind::Action, item.id.clone(), None, false, false)
                     }
                 };
                 Ok(ResolvedShellActivator {
@@ -75,7 +74,7 @@ impl ShellHost for HostShell {
                     label: item.label.clone().unwrap_or(fallback_label),
                     icon_path: item.icon.clone().or(fallback_icon),
                     active: kind != ActivatorKind::Action && active,
-                    disabled: item.disabled,
+                    disabled: item.disabled || unavailable,
                 })
             })
             .collect()
@@ -146,13 +145,9 @@ fn activate_lxapp(appid: &str) -> ShellResult<()> {
         Some(lxapp::LxAppOpenRegion::Aside)
             if lxapp_target_active(appid, owner.surface_derived_layout().as_ref()) =>
         {
-            if let Some(panel) = lxapp::try_get(appid) {
-                panel
-                    .runtime
-                    .hide_lxapp(appid.to_string(), panel.session_id())
-                    .map_err(|error| ShellError::Host(error.to_string()))?;
-            }
-            owner.unregister_host_aside(&surface_id);
+            owner
+                .set_shell_surface_visible(&surface_id, false, None)
+                .map_err(|error| ShellError::Host(error.to_string()))?;
         }
         Some(lxapp::LxAppOpenRegion::Aside) => {
             let in_graph = owner
@@ -209,6 +204,7 @@ fn schedule_lxapp_aside_open(owner_appid: String, appid: String) {
         if let Err(error) = open_lxapp_aside(&owner, &appid, &surface_id) {
             log::error!("shell activator could not open lxapp {appid}: {error}");
         } else {
+            lxapp::schedule_lxapp_update_check(&appid, lxapp::ReleaseType::Release);
             let _ = lingxia_shell::apply_current_activators();
         }
         release_pending_lxapp_open(&appid);
@@ -235,6 +231,23 @@ fn open_lxapp_aside(owner: &lxapp::LxApp, appid: &str, surface_id: &str) -> Shel
             .set_panel_id(surface_id.to_string()),
     )
     .map_err(|error| ShellError::Host(error.to_string()))?;
-    owner.register_host_aside(surface_id, "right");
+    owner.register_host_aside(surface_id, lxapp_aside_edge(appid));
     Ok(())
+}
+
+fn lxapp_aside_edge(appid: &str) -> &'static str {
+    let position = lingxia_app_context::app_config()
+        .and_then(|config| config.panels.as_ref().cloned())
+        .and_then(|panels| {
+            panels.items.into_iter().find_map(|item| {
+                (item.content.kind.is_lxapp() && item.content.app_id == appid)
+                    .then_some(item.position)
+            })
+        });
+    match position {
+        Some(lingxia_app_context::PanelPosition::Left) => "left",
+        Some(lingxia_app_context::PanelPosition::Top) => "top",
+        Some(lingxia_app_context::PanelPosition::Bottom) => "bottom",
+        Some(lingxia_app_context::PanelPosition::Right) | None => "right",
+    }
 }

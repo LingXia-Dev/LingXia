@@ -1187,12 +1187,11 @@ impl PageInstance {
         }
 
         if let Some(path) = lxapp.peek_current_page() {
-            // Update UI for the destination page
-            // Check if destination is a tabbar page without holding any locks
+            // Forward navigation clears selected_index on detail pages, so
+            // Back must restore selection as well as visibility.
             let is_tabbar_page = lxapp
-                .get_tabbar()
-                .is_some_and(|tabbar| tabbar.is_tabbar_page(&path));
-            lxapp.with_tabbar_mut(|t| t.set_visible(is_tabbar_page));
+                .with_tabbar_mut(|tabbar| restore_tabbar_after_back(tabbar, &path))
+                .unwrap_or(false);
 
             // Update NavBar back button visibility based on the new stack size
             let new_stack_size = lxapp.get_page_stack_size();
@@ -1478,6 +1477,17 @@ impl Drop for PageInstanceInner {
     }
 }
 
+fn restore_tabbar_after_back(tabbar: &mut crate::lxapp::tabbar::TabBar, path: &str) -> bool {
+    let index = tabbar.find_index_by_path(path);
+    tabbar.set_visible(index.is_some());
+    if let Some(index) = index {
+        tabbar.set_selected_index(index);
+        true
+    } else {
+        false
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1537,6 +1547,23 @@ mod tests {
     #[test]
     fn view_call_options_default_timeout_is_positive() {
         assert!(ViewCallOptions::default().timeout() > Duration::ZERO);
+    }
+
+    #[test]
+    fn back_to_tab_page_restores_the_selected_item() {
+        let mut tabbar: crate::lxapp::tabbar::TabBar = serde_json::from_value(serde_json::json!({
+            "list": [
+                { "pagePath": "pages/home/index" },
+                { "pagePath": "pages/api/index" }
+            ]
+        }))
+        .unwrap();
+        tabbar.clear_selected_index();
+        tabbar.set_visible(false);
+
+        assert!(restore_tabbar_after_back(&mut tabbar, "pages/api/index"));
+        assert!(tabbar.is_visible);
+        assert_eq!(tabbar.get_selected_index(), 1);
     }
 
     #[test]

@@ -146,7 +146,7 @@ declare global {
      * `as: "window"` is desktop-only.
      */
     openSurface(spec: OpenUrlTabSpec): Promise<null>;
-    openSurface(spec: OpenLxappSurfaceSpec | OpenNativeSurfaceSpec): Promise<SurfaceHandle>;
+    openSurface(spec: OpenDeclaredSurfaceSpec | OpenLxappSurfaceSpec | OpenNativeSurfaceSpec): Promise<SurfaceHandle>;
     openSurface(spec: OpenPageSurfaceSpec | OpenUrlAsideSpec): Promise<Surface>;
     openSurface(spec: OpenSurfaceSpec): Promise<Surface | SurfaceHandle | null>;
 
@@ -716,6 +716,24 @@ export type NetworkInfo = {
 /** Network status APIs. */
 export type NetworkType = 'none' | 'unknown' | 'wifi' | '2g' | '3g' | '4g' | '5g' | 'ethernet';
 
+/**
+ * Show a surface declared by id in the host's `lingxia.yaml`.
+ * Available to any lxapp granted access to that declaration.
+ */
+export type OpenDeclaredSurfaceSpec = {
+    surface: string;
+    /** Docking edge override for this open. */
+    edge?: SurfaceEdge;
+    page?: never;
+    url?: never;
+    lxapp?: never;
+    native?: never;
+    as?: never;
+    position?: never;
+    size?: never;
+    query?: never;
+};
+
 /** File system APIs. */
 export type OpenFileOptions = {
     /** Local file path or runtime-managed temp path. */
@@ -840,7 +858,7 @@ export type OpenPageSurfaceSpec = {
     url?: never;
 };
 
-export type OpenSurfaceSpec = OpenPageSurfaceSpec | OpenLxappSurfaceSpec | OpenNativeSurfaceSpec | OpenUrlTabSpec | OpenUrlAsideSpec;
+export type OpenSurfaceSpec = OpenPageSurfaceSpec | OpenDeclaredSurfaceSpec | OpenLxappSurfaceSpec | OpenNativeSurfaceSpec | OpenUrlTabSpec | OpenUrlAsideSpec;
 
 /**
  * Open `url` in the multi-tab browser aside. `url` must be `https://` or

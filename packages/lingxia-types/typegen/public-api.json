@@ -81,6 +81,7 @@
     "NetworkChangeCallback",
     "NetworkInfo",
     "NetworkType",
+    "OpenDeclaredSurfaceSpec",
     "OpenLxappSurfaceSpec",
     "OpenNativeSurfaceSpec",
     "OpenFileOptions",
