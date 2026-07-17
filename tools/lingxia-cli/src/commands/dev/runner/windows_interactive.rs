@@ -381,7 +381,7 @@ fn windows_wscript_path() -> PathBuf {
 }
 
 fn current_user_sid() -> Result<String> {
-    let output = Command::new("whoami.exe")
+    let output = hidden_console_command("whoami.exe")
         .args(["/user", "/fo", "csv", "/nh"])
         .stdin(Stdio::null())
         .output()
@@ -425,6 +425,8 @@ fn render_launch_script(
         "cmd.exe /D /S /C \"{command} > {} 2>&1\"",
         quote_windows_arg(&output_log.display().to_string())
     );
+    // Keep the redirecting cmd wrapper hidden; dev-focus-window below restores
+    // and activates the GUI app itself after its window exists.
     let environment_assignments = environment
         .iter()
         .map(|(key, value)| {
@@ -447,7 +449,7 @@ fn render_launch_script(
          Set shell = CreateObject(\"WScript.Shell\")\r\n\
          Set environment = shell.Environment(\"PROCESS\")\r\n\
          {environment_assignments}\
-         shell.Run {}, 1, False\r\n\
+         shell.Run {}, 0, False\r\n\
          focusExitCode = shell.Run({}, 0, True)\r\n\
          Set fileSystem = CreateObject(\"Scripting.FileSystemObject\")\r\n\
          On Error Resume Next\r\n\
@@ -533,7 +535,7 @@ fn xml_escape(value: &str) -> String {
 }
 
 fn execute_schtasks(args: &[OsString], action: &str) -> Result<Output> {
-    let output = Command::new("schtasks.exe")
+    let output = hidden_console_command("schtasks.exe")
         .args(args)
         .stdin(Stdio::null())
         .output()
@@ -543,6 +545,15 @@ fn execute_schtasks(args: &[OsString], action: &str) -> Result<Output> {
     } else {
         Err(anyhow!("Failed to {action}: {}", command_output(&output)))
     }
+}
+
+fn hidden_console_command(program: impl AsRef<OsStr>) -> Command {
+    use std::os::windows::process::CommandExt;
+
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    let mut command = Command::new(program);
+    command.creation_flags(CREATE_NO_WINDOW);
+    command
 }
 
 fn command_output(output: &Output) -> String {
@@ -758,6 +769,7 @@ mod tests {
         assert!(script.contains(r"D:\state\interactive.log"));
         assert!(script.contains("dev-focus-window"));
         assert!(script.contains("123,456"));
+        assert!(script.contains(", 0, False"));
         assert!(script.contains(", 0, True)"));
         assert!(script.contains("fileSystem.DeleteFile WScript.ScriptFullName"));
     }
