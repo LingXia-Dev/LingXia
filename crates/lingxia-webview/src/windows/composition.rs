@@ -28,16 +28,22 @@ pub(crate) enum HostingMode {
 }
 
 pub(crate) struct CompositionSurface {
-    /// The `LingXiaWebViewSurface` child window. Created on — and therefore
-    /// destroyed with — this webview's UI thread. Holds the input-forwarding
-    /// state (with the composition-interface clone of the controller) in its
-    /// window user data.
+    /// The `LingXiaWebViewSurface` child window. Created on this webview's
+    /// UI thread, but parented into foreign host windows — if such a host is
+    /// destroyed, the surface dies with it and is recreated on the next
+    /// reparent (see [`CompositionSurface::ensure_alive`]). Holds the
+    /// input-forwarding state in its window user data.
     pub(crate) hwnd: HWND,
+    env3: ICoreWebView2Environment3,
+    controller: ICoreWebView2CompositionController,
     dcomp: DcompTree,
     /// Last applied per-corner clip radii `[tl, tr, br, bl]`, physical px.
     radii: [i32; 4],
     /// Last applied wedge backdrop color (`0xAARGB`; alpha 0 = no wedges).
     corner_color: u32,
+    /// Last applied bounds/visibility, replayed after a recreation.
+    bounds: RECT,
+    visible: bool,
 }
 
 static COMPOSITION_HOSTING: std::sync::atomic::AtomicBool =
@@ -98,25 +104,21 @@ fn create_composition_surface(
     let assembled = (|| {
         let dcomp = DcompTree::new(hwnd)?;
         let controller = create_composition_controller(&env3, hwnd)?;
-        unsafe {
-            controller
-                .SetRootVisualTarget(dcomp.webview_visual())
-                .map_err(|err| {
-                    WebViewError::WebView(format!("SetRootVisualTarget failed: {err}"))
-                })?;
-        }
+        attach_surface(hwnd, &dcomp, &env3, &controller)?;
         let base: ICoreWebView2Controller = controller.cast().map_err(|err| {
             WebViewError::WebView(format!("composition controller cast failed: {err}"))
         })?;
-        surface_window::attach_input(hwnd, &env3, &controller, &base);
-        dragdrop::register_drop_target(hwnd, &controller);
         Ok((
             base,
             Box::new(CompositionSurface {
                 hwnd,
+                env3,
+                controller,
                 dcomp,
                 radii: [0; 4],
                 corner_color: 0,
+                bounds,
+                visible: false,
             }),
         ))
     })();
@@ -126,6 +128,28 @@ fn create_composition_surface(
         }
     }
     assembled
+}
+
+/// Binds a surface window to the controller: visual target, input
+/// forwarding, drag-and-drop. Shared by creation and post-teardown
+/// recreation.
+fn attach_surface(
+    hwnd: HWND,
+    dcomp: &DcompTree,
+    env3: &ICoreWebView2Environment3,
+    controller: &ICoreWebView2CompositionController,
+) -> StdResult<()> {
+    unsafe {
+        controller
+            .SetRootVisualTarget(dcomp.webview_visual())
+            .map_err(|err| WebViewError::WebView(format!("SetRootVisualTarget failed: {err}")))?;
+    }
+    let base: ICoreWebView2Controller = controller.cast().map_err(|err| {
+        WebViewError::WebView(format!("composition controller cast failed: {err}"))
+    })?;
+    surface_window::attach_input(hwnd, env3, controller, &base);
+    dragdrop::register_drop_target(hwnd, controller);
+    Ok(())
 }
 
 fn create_composition_controller(
@@ -159,6 +183,40 @@ fn create_composition_controller(
 }
 
 impl CompositionSurface {
+    /// Recreates the surface window under `parent` when the previous one was
+    /// destroyed (its former host window was torn down — DestroyWindow kills
+    /// reparented children), replaying the last applied geometry and
+    /// visibility. Returns `true` when a recreation happened.
+    fn ensure_alive(&mut self, parent: HWND, base: &ICoreWebView2Controller) -> StdResult<bool> {
+        if unsafe { WindowsAndMessaging::IsWindow(Some(self.hwnd)).as_bool() } {
+            return Ok(false);
+        }
+        log::info!("composition surface window died with its former host; recreating");
+        let hwnd = surface_window::create_surface_window(parent, self.bounds)?;
+        let rebuilt = (|| {
+            let dcomp = DcompTree::new(hwnd)?;
+            attach_surface(hwnd, &dcomp, &self.env3, &self.controller)?;
+            Ok(dcomp)
+        })();
+        let dcomp = match rebuilt {
+            Ok(dcomp) => dcomp,
+            Err(err) => {
+                unsafe {
+                    let _ = WindowsAndMessaging::DestroyWindow(hwnd);
+                }
+                return Err(err);
+            }
+        };
+        self.hwnd = hwnd;
+        self.dcomp = dcomp;
+        let bounds = self.bounds;
+        self.set_geometry(base, bounds, None)?;
+        if self.visible {
+            self.set_visible(base, true)?;
+        }
+        Ok(true)
+    }
+
     /// Positions the surface window at `bounds` (host client coordinates),
     /// sizes the controller to match, and re-applies the corner clip and
     /// wedges — one commit, so bounds and corners never present out of sync.
@@ -191,6 +249,7 @@ impl CompositionSurface {
             })
             .map_err(|err| WebViewError::WebView(format!("SetBounds failed: {err}")))?;
         }
+        self.bounds = bounds;
         self.radii = radii;
         self.corner_color = corner_color;
         self.dcomp
@@ -204,10 +263,11 @@ impl CompositionSurface {
     /// The timer suspends long-hidden controllers to stop background
     /// rasterization.
     pub(crate) fn set_visible(
-        &self,
+        &mut self,
         base: &ICoreWebView2Controller,
         visible: bool,
     ) -> StdResult<()> {
+        self.visible = visible;
         unsafe {
             if visible {
                 surface_window::cancel_hide_suspend(self.hwnd);
@@ -226,11 +286,18 @@ impl CompositionSurface {
 
     /// Moves the surface window under a new host. WebView2's own parent stays
     /// the surface window, so its composition target survives the move — no
-    /// blank frame, unlike the windowed controller's `SetParentWindow`.
-    pub(crate) fn set_parent(&self, parent: HWND) -> StdResult<()> {
+    /// blank frame, unlike the windowed controller's `SetParentWindow`. A
+    /// surface killed by its former host's teardown is recreated here.
+    pub(crate) fn set_parent(
+        &mut self,
+        base: &ICoreWebView2Controller,
+        parent: HWND,
+    ) -> StdResult<()> {
         unsafe {
-            WindowsAndMessaging::SetParent(self.hwnd, Some(parent))
-                .map_err(|err| WebViewError::WebView(format!("SetParent failed: {err}")))?;
+            if !self.ensure_alive(parent, base)? {
+                WindowsAndMessaging::SetParent(self.hwnd, Some(parent))
+                    .map_err(|err| WebViewError::WebView(format!("SetParent failed: {err}")))?;
+            }
             // Sit beneath native-component siblings, matching the windowed
             // controller's placement; the shell paints chrome on the host
             // window itself, below all children.

@@ -1146,7 +1146,7 @@ pub(crate) fn handle_command(state: &mut UiState, command: UiCommand) -> StdResu
                 let _ = resp.send(Ok(()));
                 return Ok(false);
             }
-            let result = match &state.hosting {
+            let result = match &mut state.hosting {
                 HostingMode::Windowed => unsafe {
                     state.controller.SetParentWindow(hwnd).map_err(|err| {
                         WebViewError::WebView(format!("SetParentWindow failed: {err}"))
@@ -1154,7 +1154,7 @@ pub(crate) fn handle_command(state: &mut UiState, command: UiCommand) -> StdResu
                 },
                 // The surface window moves hosts; WebView2's own parent stays
                 // the surface window, so its composition target survives.
-                HostingMode::Composition(surface) => surface.set_parent(hwnd),
+                HostingMode::Composition(surface) => surface.set_parent(&state.controller, hwnd),
             };
             if result.is_ok() {
                 state.hwnd = hwnd;
@@ -1201,8 +1201,8 @@ fn schedule_ephemeral_profile_cleanup(dir: PathBuf) {
         });
 }
 
-pub(crate) fn set_controller_visible(state: &UiState, visible: bool) -> StdResult<()> {
-    match &state.hosting {
+pub(crate) fn set_controller_visible(state: &mut UiState, visible: bool) -> StdResult<()> {
+    match &mut state.hosting {
         HostingMode::Windowed => unsafe {
             state
                 .controller
