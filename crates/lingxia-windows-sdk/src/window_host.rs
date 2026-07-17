@@ -91,6 +91,8 @@ static TRANSPARENT_TABBAR_OVERLAYS: OnceLock<Mutex<HashMap<isize, TransparentTab
 #[cfg(feature = "shell-chrome")]
 static SIDEBAR_TABBAR_POPUPS: OnceLock<Mutex<HashMap<isize, SidebarTabbarPopup>>> = OnceLock::new();
 #[cfg(feature = "shell-chrome")]
+static SHELL_NOTICE_POPUPS: OnceLock<Mutex<HashMap<isize, ShellNoticePopup>>> = OnceLock::new();
+#[cfg(feature = "shell-chrome")]
 static TERMINAL_SELECTION_DRAGS: OnceLock<Mutex<HashMap<isize, String>>> = OnceLock::new();
 #[cfg(feature = "components")]
 static NAV_SNAPSHOT_SLIDES: OnceLock<Mutex<HashMap<isize, NavSnapshotSlide>>> = OnceLock::new();
@@ -108,6 +110,10 @@ const OVERLAY_MARGIN: i32 = 24;
 const SIDEBAR_TABBAR_POPUP_TIMER_ID: usize = 0x5A18;
 #[cfg(feature = "shell-chrome")]
 const SIDEBAR_TABBAR_POPUP_TIMER_MS: u32 = 80;
+#[cfg(feature = "shell-chrome")]
+const SHELL_NOTICE_TIMER_ID: usize = 0x5A19;
+#[cfg(feature = "shell-chrome")]
+const SHELL_NOTICE_TIMER_MS: u32 = 3_000;
 #[cfg(feature = "runtime")]
 const SYSTEM_MENU_ABOUT_COMMAND: usize = 0x7100;
 #[cfg(feature = "runtime")]
@@ -2378,6 +2384,286 @@ fn upload_sidebar_tabbar_popup(
             cy: height,
         };
         let origin = POINT { x: 0, y: 0 };
+        let blend = BLENDFUNCTION {
+            BlendOp: AC_SRC_OVER as u8,
+            BlendFlags: 0,
+            SourceConstantAlpha: 255,
+            AlphaFormat: AC_SRC_ALPHA as u8,
+        };
+        let _ = WindowsAndMessaging::UpdateLayeredWindow(
+            hwnd,
+            Some(screen),
+            None,
+            Some(&size),
+            Some(dc),
+            Some(&origin),
+            COLORREF(0),
+            Some(&blend),
+            WindowsAndMessaging::ULW_ALPHA,
+        );
+        if !old_bitmap.is_invalid() {
+            let _ = SelectObject(dc, old_bitmap);
+        }
+        let _ = DeleteObject(HGDIOBJ(bitmap.0));
+        let _ = DeleteDC(dc);
+        let _ = ReleaseDC(None, screen);
+    }
+}
+
+/// One non-activating, short-lived notice per shell window. It is an owned
+/// layered popup so it remains visible above windowed WebView2 children while
+/// keeping keyboard focus in the page or context menu that triggered it.
+#[cfg(feature = "shell-chrome")]
+#[derive(Debug, Clone, Copy)]
+struct ShellNoticePopup {
+    window: isize,
+    owner: isize,
+}
+
+#[cfg(feature = "shell-chrome")]
+pub fn show_shell_notice(owner: isize, title: String, message: String) {
+    if title.trim().is_empty() && message.trim().is_empty() {
+        return;
+    }
+    post_to_window_thread(
+        owner,
+        Box::new(move || show_shell_notice_on_thread(owner, title, message)),
+    );
+}
+
+#[cfg(feature = "shell-chrome")]
+fn show_shell_notice_on_thread(owner: isize, title: String, message: String) {
+    const IDEAL_WIDTH: i32 = 380;
+    const HEIGHT: i32 = 88;
+    const WINDOW_MARGIN: i32 = 24;
+
+    let owner_hwnd = hwnd_from_handle(owner);
+    destroy_shell_notice(owner_hwnd);
+
+    let mut client = RECT::default();
+    unsafe {
+        if WindowsAndMessaging::GetClientRect(owner_hwnd, &mut client).is_err() {
+            return;
+        }
+    }
+    let client_width = client.right - client.left;
+    let client_height = client.bottom - client.top;
+    let width = IDEAL_WIDTH.min(client_width - WINDOW_MARGIN * 2);
+    if width < 220 || client_height < HEIGHT + WINDOW_MARGIN * 2 {
+        return;
+    }
+
+    let mut origin = POINT::default();
+    unsafe {
+        if !windows::Win32::Graphics::Gdi::ClientToScreen(owner_hwnd, &mut origin).as_bool() {
+            return;
+        }
+    }
+    let left = origin.x + (client_width - width) / 2;
+    let top_offset = (crate::shell::shell_top_bar_height() + 12)
+        .clamp(WINDOW_MARGIN, client_height - HEIGHT - WINDOW_MARGIN);
+    let top = origin.y + top_offset;
+
+    let result = unsafe {
+        WindowsAndMessaging::CreateWindowExW(
+            WindowsAndMessaging::WS_EX_LAYERED
+                | WindowsAndMessaging::WS_EX_TOOLWINDOW
+                | WindowsAndMessaging::WS_EX_NOACTIVATE,
+            shell_notice_class(),
+            PCWSTR::null(),
+            WS_POPUP,
+            left,
+            top,
+            width,
+            HEIGHT,
+            Some(owner_hwnd),
+            None,
+            LibraryLoader::GetModuleHandleW(None)
+                .ok()
+                .map(|module| HINSTANCE(module.0)),
+            None,
+        )
+    };
+    let Ok(window) = result else {
+        log::warn!(
+            "shell notice creation failed: {}",
+            windows::core::Error::from_thread()
+        );
+        return;
+    };
+
+    if let Ok(mut notices) = SHELL_NOTICE_POPUPS
+        .get_or_init(|| Mutex::new(HashMap::new()))
+        .lock()
+    {
+        notices.insert(
+            owner,
+            ShellNoticePopup {
+                window: hwnd_handle(window),
+                owner,
+            },
+        );
+    }
+    upload_shell_notice(window, &title, &message, width, HEIGHT);
+    unsafe {
+        let _ = WindowsAndMessaging::SetWindowPos(
+            window,
+            Some(WindowsAndMessaging::HWND_TOP),
+            left,
+            top,
+            width,
+            HEIGHT,
+            WindowsAndMessaging::SWP_NOACTIVATE | WindowsAndMessaging::SWP_SHOWWINDOW,
+        );
+        let _ = WindowsAndMessaging::SetTimer(
+            Some(window),
+            SHELL_NOTICE_TIMER_ID,
+            SHELL_NOTICE_TIMER_MS,
+            None,
+        );
+    }
+}
+
+#[cfg(feature = "shell-chrome")]
+fn destroy_shell_notice(owner: HWND) {
+    let notice = SHELL_NOTICE_POPUPS
+        .get()
+        .and_then(|notices| notices.lock().ok())
+        .and_then(|mut notices| notices.remove(&hwnd_handle(owner)));
+    if let Some(notice) = notice
+        && is_window_handle_valid(notice.window)
+    {
+        unsafe {
+            let _ = WindowsAndMessaging::DestroyWindow(hwnd_from_handle(notice.window));
+        }
+    }
+}
+
+#[cfg(feature = "shell-chrome")]
+fn shell_notice_owner_for_window(window: HWND) -> Option<HWND> {
+    SHELL_NOTICE_POPUPS
+        .get()
+        .and_then(|notices| notices.lock().ok())
+        .and_then(|notices| {
+            notices
+                .values()
+                .find(|notice| notice.window == hwnd_handle(window))
+                .map(|notice| hwnd_from_handle(notice.owner))
+        })
+}
+
+#[cfg(feature = "shell-chrome")]
+fn remove_shell_notice_window(window: HWND) {
+    if let Some(notices) = SHELL_NOTICE_POPUPS.get()
+        && let Ok(mut notices) = notices.lock()
+    {
+        notices.retain(|_, notice| notice.window != hwnd_handle(window));
+    }
+}
+
+#[cfg(feature = "shell-chrome")]
+fn shell_notice_class() -> PCWSTR {
+    static REGISTERED: OnceLock<()> = OnceLock::new();
+    REGISTERED.get_or_init(|| {
+        let module = unsafe { LibraryLoader::GetModuleHandleW(None) }
+            .map(|module| HINSTANCE(module.0))
+            .unwrap_or_default();
+        let cursor =
+            unsafe { WindowsAndMessaging::LoadCursorW(None, WindowsAndMessaging::IDC_ARROW) }
+                .unwrap_or_default();
+        let class = WNDCLASSW {
+            lpfnWndProc: Some(shell_notice_proc),
+            hInstance: module,
+            hCursor: cursor,
+            lpszClassName: w!("LingXiaShellNotice"),
+            ..Default::default()
+        };
+        if unsafe { WindowsAndMessaging::RegisterClassW(&class) } == 0 {
+            log::error!(
+                "shell notice class registration failed: {}",
+                windows::core::Error::from_thread()
+            );
+        }
+    });
+    w!("LingXiaShellNotice")
+}
+
+#[cfg(feature = "shell-chrome")]
+unsafe extern "system" fn shell_notice_proc(
+    hwnd: HWND,
+    msg: u32,
+    wparam: WPARAM,
+    lparam: LPARAM,
+) -> LRESULT {
+    match msg {
+        WindowsAndMessaging::WM_MOUSEACTIVATE => {
+            return LRESULT(WindowsAndMessaging::MA_NOACTIVATE as isize);
+        }
+        WindowsAndMessaging::WM_TIMER if wparam.0 == SHELL_NOTICE_TIMER_ID => {
+            if let Some(owner) = shell_notice_owner_for_window(hwnd) {
+                destroy_shell_notice(owner);
+            }
+            return LRESULT(0);
+        }
+        WindowsAndMessaging::WM_LBUTTONUP => {
+            if let Some(owner) = shell_notice_owner_for_window(hwnd) {
+                destroy_shell_notice(owner);
+            }
+            return LRESULT(0);
+        }
+        WindowsAndMessaging::WM_ERASEBKGND => return LRESULT(1),
+        WindowsAndMessaging::WM_NCDESTROY => remove_shell_notice_window(hwnd),
+        _ => {}
+    }
+    unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
+}
+
+#[cfg(feature = "shell-chrome")]
+fn upload_shell_notice(hwnd: HWND, title: &str, message: &str, width: i32, height: i32) {
+    unsafe {
+        let screen = GetDC(None);
+        if screen.is_invalid() {
+            return;
+        }
+        let dc = CreateCompatibleDC(Some(screen));
+        if dc.is_invalid() {
+            let _ = ReleaseDC(None, screen);
+            return;
+        }
+        let info = BITMAPINFO {
+            bmiHeader: BITMAPINFOHEADER {
+                biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+                biWidth: width,
+                biHeight: -height,
+                biPlanes: 1,
+                biBitCount: 32,
+                biCompression: BI_RGB.0,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let mut bits: *mut c_void = std::ptr::null_mut();
+        let Ok(bitmap) = CreateDIBSection(Some(screen), &info, DIB_RGB_COLORS, &mut bits, None, 0)
+        else {
+            let _ = DeleteDC(dc);
+            let _ = ReleaseDC(None, screen);
+            return;
+        };
+        if bits.is_null() {
+            let _ = DeleteObject(HGDIOBJ(bitmap.0));
+            let _ = DeleteDC(dc);
+            let _ = ReleaseDC(None, screen);
+            return;
+        }
+        let old_bitmap = SelectObject(dc, HGDIOBJ(bitmap.0));
+        crate::shell::paint_shell_notice(dc, title, message, width, height);
+        let pixels = std::slice::from_raw_parts_mut(bits.cast::<u32>(), (width * height) as usize);
+        apply_rounded_alpha_mask(pixels, width, height, 12);
+        let size = SIZE {
+            cx: width,
+            cy: height,
+        };
+        let origin = POINT::default();
         let blend = BLENDFUNCTION {
             BlendOp: AC_SRC_OVER as u8,
             BlendFlags: 0,

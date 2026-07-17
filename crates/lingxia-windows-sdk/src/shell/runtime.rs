@@ -1529,7 +1529,7 @@ fn auxiliary_lxapp_id(raw: &str) -> Option<&str> {
         .filter(|appid| !appid.is_empty())
 }
 
-fn set_lxapp_pin_with_limit(appid: &str, pinned: bool) -> bool {
+fn set_lxapp_pin_with_limit(owner_appid: &str, appid: &str, pinned: bool) -> bool {
     match lingxia_shell::set_pinned(
         ShellPinTarget::Lxapp {
             key: appid.to_string(),
@@ -1538,7 +1538,7 @@ fn set_lxapp_pin_with_limit(appid: &str, pinned: bool) -> bool {
     ) {
         Ok(_) => true,
         Err(lingxia_shell::ShellError::LimitReached { .. }) => {
-            show_pin_limit_message();
+            show_pin_limit_message(owner_appid);
             false
         }
         Err(error) => {
@@ -1555,30 +1555,11 @@ fn is_lxapp_pinned(appid: &str) -> bool {
     .unwrap_or(false)
 }
 
-fn show_pin_limit_message() {
-    use windows::Win32::UI::WindowsAndMessaging::{MB_OK, MessageBoxW};
-    use windows::core::PCWSTR;
-
+fn show_pin_limit_message(appid: &str) {
     let title = lingxia_logic::i18n::t(lingxia_logic::I18nKey::ShellPinLimitTitle);
     let message = lingxia_logic::i18n::t(lingxia_logic::I18nKey::ShellPinLimitMessage);
-    let title = title
-        .encode_utf16()
-        .chain(std::iter::once(0))
-        .collect::<Vec<_>>();
-    let message = message
-        .encode_utf16()
-        .chain(std::iter::once(0))
-        .collect::<Vec<_>>();
-    let window = shell_owner_appid()
-        .and_then(|appid| owner_window_handle(&appid))
-        .map(|window| windows::Win32::Foundation::HWND(window as *mut core::ffi::c_void));
-    unsafe {
-        let _ = MessageBoxW(
-            window,
-            PCWSTR(message.as_ptr()),
-            PCWSTR(title.as_ptr()),
-            MB_OK,
-        );
+    if let Some(window) = owner_window_handle(appid) {
+        crate::window_host::show_shell_notice(window, title, message);
     }
 }
 
@@ -2605,6 +2586,8 @@ fn handle_browser_tab_close(_appid: &str, _tab_id: &str) {}
 
 #[derive(Debug, Clone, Copy)]
 enum BrowserTabContextAction {
+    #[cfg(feature = "browser-shell")]
+    TogglePin,
     Close,
     CloseOtherTabs,
     CloseTabsBelow,
@@ -2618,26 +2601,67 @@ fn show_browser_tab_context_menu(appid: &str, tab_id: &str, screen_x: i32, scree
     let Some(window) = owner_window_handle(appid) else {
         return;
     };
+    use super::context_menu::ContextMenuEntry;
+    use crate::WindowsDesignIcon;
     use lingxia_logic::I18nKey;
-    let mut actions = vec![BrowserTabContextAction::Close];
-    let mut items = vec![lingxia_logic::i18n::t(I18nKey::CommonClose)];
+    let mut actions = Vec::new();
+    let mut items = Vec::new();
+    #[cfg(feature = "browser-shell")]
+    if let Some(url) = tabs[index]
+        .current_url
+        .as_deref()
+        .map(str::trim)
+        .filter(|url| url.starts_with("http://") || url.starts_with("https://"))
+    {
+        let pinned = pinned_bookmark_for_url(url).is_some();
+        actions.extend([Some(BrowserTabContextAction::TogglePin), None]);
+        items.extend([
+            ContextMenuEntry::item(
+                lingxia_logic::i18n::t(if pinned {
+                    I18nKey::BrowserUnpin
+                } else {
+                    I18nKey::BrowserPinToSidebar
+                }),
+                true,
+                if pinned {
+                    WindowsDesignIcon::Unpin
+                } else {
+                    WindowsDesignIcon::Pin
+                },
+            ),
+            ContextMenuEntry::separator(),
+        ]);
+    }
+    actions.push(Some(BrowserTabContextAction::Close));
+    items.push(ContextMenuEntry::item(
+        lingxia_logic::i18n::t(I18nKey::CommonClose),
+        true,
+        WindowsDesignIcon::CloseX,
+    ));
     if tabs.len() > 1 {
-        actions.push(BrowserTabContextAction::CloseOtherTabs);
-        items.push(lingxia_logic::i18n::t(I18nKey::BrowserCloseOtherTabs));
+        actions.push(Some(BrowserTabContextAction::CloseOtherTabs));
+        items.push(ContextMenuEntry::item(
+            lingxia_logic::i18n::t(I18nKey::BrowserCloseOtherTabs),
+            true,
+            WindowsDesignIcon::CloseOtherTabs,
+        ));
     }
     if index + 1 < tabs.len() {
-        actions.push(BrowserTabContextAction::CloseTabsBelow);
-        items.push(lingxia_logic::i18n::t(I18nKey::BrowserCloseTabsBelow));
+        actions.push(Some(BrowserTabContextAction::CloseTabsBelow));
+        items.push(ContextMenuEntry::item(
+            lingxia_logic::i18n::t(I18nKey::BrowserCloseTabsBelow),
+            true,
+            WindowsDesignIcon::CloseTabsBelow,
+        ));
     }
     let appid = appid.to_string();
     let tab_id = tab_id.to_string();
-    super::context_menu::show_context_menu_checked(
+    super::context_menu::show_context_menu_entries(
         window,
         (screen_x, screen_y),
         items,
-        Vec::new(),
         Arc::new(move |index| {
-            if let Some(action) = actions.get(index).copied() {
+            if let Some(action) = actions.get(index).copied().flatten() {
                 handle_browser_tab_context_action(&appid, &tab_id, action);
             }
         }),
@@ -2687,6 +2711,12 @@ fn show_pinned_bookmark_context_menu(_appid: &str, _row_id: &str, _screen_x: i32
 #[cfg(feature = "browser-runtime")]
 fn handle_browser_tab_context_action(appid: &str, tab_id: &str, action: BrowserTabContextAction) {
     match action {
+        #[cfg(feature = "browser-shell")]
+        BrowserTabContextAction::TogglePin => {
+            if let Some(tab) = browser_tab_summary(tab_id) {
+                toggle_browser_tab_pin(appid, &tab);
+            }
+        }
         BrowserTabContextAction::Close => handle_browser_tab_close(appid, tab_id),
         BrowserTabContextAction::CloseOtherTabs => close_other_browser_tabs(appid, tab_id),
         BrowserTabContextAction::CloseTabsBelow => close_browser_tabs_below(appid, tab_id),
@@ -2921,7 +2951,7 @@ fn show_lxapp_auxiliary_context_menu(
         items,
         Vec::new(),
         Arc::new(move |index| match index {
-            0 if set_lxapp_pin_with_limit(&target_appid, !pinned) => {
+            0 if set_lxapp_pin_with_limit(&owner_appid, &target_appid, !pinned) => {
                 sync_shell_layout(&owner_appid);
             }
             0 => {}
@@ -3561,6 +3591,11 @@ fn toggle_presented_tab_pin(appid: &str) {
     let Some(tab) = browser_tab_summary(&tab_id) else {
         return;
     };
+    toggle_browser_tab_pin(appid, &tab);
+}
+
+#[cfg(feature = "browser-shell")]
+fn toggle_browser_tab_pin(appid: &str, tab: &BrowserTabSummary) {
     let Some(url) = tab
         .current_url
         .as_deref()
@@ -3577,7 +3612,7 @@ fn toggle_presented_tab_pin(appid: &str) {
         });
         let _ = lingxia_browser_shell::bookmarks_command_json(&command.to_string());
     } else {
-        let title = browser_tab_display_title(&tab);
+        let title = browser_tab_display_title(tab);
         let pinned = lingxia_browser_shell::pin_bookmark_url_with_favicon(
             url,
             &title,
@@ -3586,7 +3621,7 @@ fn toggle_presented_tab_pin(appid: &str) {
         if !pinned
             && lingxia_shell::pins().is_ok_and(|pins| pins.len() >= lingxia_shell::MAX_SHELL_PINS)
         {
-            show_pin_limit_message();
+            show_pin_limit_message(appid);
         }
     }
     sync_shell_layout(appid);
@@ -3682,26 +3717,7 @@ fn show_browser_page_menu(appid: &str, screen_x: i32, screen_y: i32) {
                 let _ = lingxia_browser_shell::toggle_bookmark(&url, &title);
             }
             1 if is_web_url => {
-                if let Some(id) = pinned_id.as_deref() {
-                    let command = serde_json::json!({
-                        "op": "setPinned",
-                        "id": id,
-                        "pinned": false,
-                    });
-                    let _ = lingxia_browser_shell::bookmarks_command_json(&command.to_string());
-                } else {
-                    let pinned = lingxia_browser_shell::pin_bookmark_url_with_favicon(
-                        &url,
-                        &title,
-                        tab.favicon_png.as_deref().map(Vec::as_slice),
-                    );
-                    if !pinned
-                        && lingxia_shell::pins()
-                            .is_ok_and(|pins| pins.len() >= lingxia_shell::MAX_SHELL_PINS)
-                    {
-                        show_pin_limit_message();
-                    }
-                }
+                toggle_browser_tab_pin(&appid, &tab);
             }
             2 if page_actionable => {
                 let _ = super::clipboard::set_clipboard_text(&url);

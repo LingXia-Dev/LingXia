@@ -36,6 +36,7 @@ mod drawing;
 mod icons;
 mod layout;
 mod native_panel;
+mod notice;
 mod phone_bar;
 mod sidebar;
 mod top_bar;
@@ -45,6 +46,7 @@ pub(crate) use aside_panel::*;
 pub(super) use drawing::*;
 pub use layout::*;
 use native_panel::*;
+pub(crate) use notice::paint_shell_notice;
 pub(crate) use phone_bar::*;
 use sidebar::*;
 #[cfg(feature = "browser-runtime")]

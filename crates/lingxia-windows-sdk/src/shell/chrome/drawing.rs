@@ -8,10 +8,10 @@ use windows::Win32::Foundation::{COLORREF, RECT, SIZE};
 use windows::Win32::Graphics::Gdi::{
     ANTIALIASED_QUALITY, CLEARTYPE_QUALITY, CLIP_DEFAULT_PRECIS, CreateFontW, CreateRoundRectRgn,
     CreateSolidBrush, DEFAULT_CHARSET, DEFAULT_PITCH, DT_CENTER, DT_END_ELLIPSIS, DT_SINGLELINE,
-    DT_VCENTER, DeleteObject, DrawTextW, ExtSelectClipRgn, FF_SWISS, FONT_QUALITY, FillRect, GetDC,
-    GetDeviceCaps, GetStockObject, GetTextExtentPoint32W, HDC, HFONT, HGDIOBJ, IntersectClipRect,
-    LOGPIXELSY, NULL_PEN, OUT_DEFAULT_PRECIS, RGN_AND, ReleaseDC, RestoreDC, RoundRect, SaveDC,
-    SelectObject, SetBkMode, SetTextColor, TRANSPARENT,
+    DT_VCENTER, DT_WORDBREAK, DeleteObject, DrawTextW, ExtSelectClipRgn, FF_SWISS, FONT_QUALITY,
+    FillRect, GetDC, GetDeviceCaps, GetStockObject, GetTextExtentPoint32W, HDC, HFONT, HGDIOBJ,
+    IntersectClipRect, LOGPIXELSY, NULL_PEN, OUT_DEFAULT_PRECIS, RGN_AND, ReleaseDC, RestoreDC,
+    RoundRect, SaveDC, SelectObject, SetBkMode, SetTextColor, TRANSPARENT,
 };
 use windows::Win32::Graphics::GdiPlus;
 use windows::Win32::UI::WindowsAndMessaging::{self, HICON};
@@ -125,6 +125,38 @@ pub(in crate::shell) fn draw_text_antialiased(
     horizontal: windows::Win32::Graphics::Gdi::DRAW_TEXT_FORMAT,
 ) {
     draw_text_with_quality(hdc, text, rect, rgb, horizontal, ANTIALIASED_QUALITY)
+}
+
+pub(in crate::shell) fn draw_text_multiline_antialiased(
+    hdc: HDC,
+    text: &str,
+    rect: RECT,
+    rgb: u32,
+) {
+    if text.is_empty() || rect_width(&rect) == 0 || rect_height(&rect) == 0 {
+        return;
+    }
+    let mut wide = text.encode_utf16().collect::<Vec<_>>();
+    let mut rect = rect;
+    let font = chrome_text_font_with_quality(hdc, ANTIALIASED_QUALITY);
+    unsafe {
+        let old_font = if font.is_invalid() {
+            HGDIOBJ::default()
+        } else {
+            SelectObject(hdc, HGDIOBJ(font.0))
+        };
+        let _ = SetBkMode(hdc, TRANSPARENT);
+        let _ = SetTextColor(hdc, rgb_to_colorref(rgb));
+        let _ = DrawTextW(
+            hdc,
+            &mut wide,
+            &mut rect,
+            DT_LEFT | DT_WORDBREAK | DT_END_ELLIPSIS,
+        );
+        if !old_font.is_invalid() {
+            let _ = SelectObject(hdc, old_font);
+        }
+    }
 }
 
 fn draw_text_with_quality(

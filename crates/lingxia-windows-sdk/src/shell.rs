@@ -54,7 +54,7 @@ pub use chrome::{begin_address_edit, begin_panel_address_edit};
 pub(crate) use chrome::shell_chrome_dirty_rects;
 pub(crate) use chrome::{
     PHONE_SWITCHER_SHEET_RADIUS, PhoneTabSwitcherHit, PhoneTabSwitcherLayout,
-    paint_phone_tab_switcher, phone_tab_click_command, phone_tab_close_command,
+    paint_phone_tab_switcher, paint_shell_notice, phone_tab_click_command, phone_tab_close_command,
     phone_tab_switcher_hit, phone_tab_switcher_layout,
 };
 pub(crate) use chrome::{
