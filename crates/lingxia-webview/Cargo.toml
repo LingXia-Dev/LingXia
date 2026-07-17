@@ -65,7 +65,7 @@ webview2-com = "0.39.1"
 # `#[implement]` attribute used by the composition drop target) ships in no
 # published windows-core, and workspace [patch] entries don't reach
 # non-workspace consumers such as the example native projects.
-windows-core = { git = "https://github.com/microsoft/windows-rs.git", rev = "cf58d5cfe7deccb73a55aeb4aa6799dc1b06544c", package = "windows-core", features = ["proc-macros"] }
+windows-core = { git = "https://github.com/microsoft/windows-rs.git", rev = "a1e9fce43c026221f62f0a149267cb6d7d3c607b", package = "windows-core", features = ["proc-macros"] }
 windows = { workspace = true, features = [
     "Win32_Foundation",
     "Win32_Graphics_Direct3D",
