@@ -347,9 +347,12 @@ pub(crate) fn update_surface_width(logical_width: f64) {
         return;
     }
     if let Some(appid) = shell_owner_appid() {
-        let group_appid =
-            preferred_sidebar_group_appid(presented_browser_group_appid(), active_main_lxapp_id())
-                .unwrap_or_else(|| appid.clone());
+        let group_appid = preferred_sidebar_group_appid(
+            shell_owner_appid(),
+            presented_browser_group_appid(),
+            active_main_lxapp_id(),
+        )
+        .unwrap_or_else(|| appid.clone());
         lingxia::windows::set_surface_layout_metrics(
             &appid,
             logical_width,
@@ -456,10 +459,11 @@ fn set_presented_browser_group_appid(appid: Option<String>) {
 }
 
 fn preferred_sidebar_group_appid(
+    owner: Option<String>,
     presented_group: Option<String>,
     active_main: Option<String>,
 ) -> Option<String> {
-    presented_group.or(active_main)
+    owner.or(presented_group).or(active_main)
 }
 
 #[cfg(feature = "browser-runtime")]
@@ -657,9 +661,12 @@ fn sync_related_shell_layouts(appid: &str) {
 /// only shows up after the next unrelated sync.
 fn sync_shell_layout(appid: &str) {
     if let Some(owner_appid) = shell_owner_appid() {
-        let group_appid =
-            preferred_sidebar_group_appid(presented_browser_group_appid(), active_main_lxapp_id())
-                .unwrap_or_else(|| appid.to_string());
+        let group_appid = preferred_sidebar_group_appid(
+            shell_owner_appid(),
+            presented_browser_group_appid(),
+            active_main_lxapp_id(),
+        )
+        .unwrap_or_else(|| appid.to_string());
         lingxia::windows::set_surface_sidebar_width(
             &owner_appid,
             current_sidebar_width(&group_appid),
@@ -909,9 +916,12 @@ fn build_window_layout(app: &LxApp, path: &str) -> WindowsShellWindowLayout {
     };
     // A presented browser tab covers the phone tab bar, matching the macOS
     // runner's full-screen browser surface; side tab bars (sidebar) stay.
-    let active_main_app =
-        preferred_sidebar_group_appid(presented_browser_group_appid(), active_main_lxapp_id())
-            .and_then(|appid| lxapp::try_get(&appid));
+    let active_main_app = preferred_sidebar_group_appid(
+        shell_owner_appid(),
+        presented_browser_group_appid(),
+        active_main_lxapp_id(),
+    )
+    .and_then(|appid| lxapp::try_get(&appid));
     let tab_bar_app =
         tab_bar_owner_for_layout(app, owner_app.as_deref(), active_main_app.as_deref());
     let tab_bar = build_tab_bar_layout(tab_bar_app, &panel_activators).filter(|tabbar| {
@@ -940,13 +950,21 @@ fn tab_bar_owner_for_layout<'a>(
     owner: Option<&'a LxApp>,
     active_main: Option<&'a LxApp>,
 ) -> &'a LxApp {
+    if let Some(owner) = owner
+        && matches!(
+            tabbar_position(&owner.appid),
+            WindowsShellTabBarPosition::Left | WindowsShellTabBarPosition::Right
+        )
+    {
+        return owner;
+    }
     if matches!(
         tabbar_position(&active.appid),
         WindowsShellTabBarPosition::Bottom
     ) {
         active
     } else {
-        active_main.or(owner).unwrap_or(active)
+        owner.or(active_main).unwrap_or(active)
     }
 }
 
@@ -1941,7 +1959,12 @@ fn handle_chrome_event(appid: &str, event: WindowsChromeCommand) {
     // targets the shell owner's chrome state — route there instead of
     // dropping the event.
     let page_scoped = chrome_command_is_page_scoped(event.id.as_str());
-    let appid = if page_scoped || is_shell_owner_appid(appid) {
+    let tabbar_target = (event.id == chrome_command::TAB_BAR_CLICK)
+        .then(|| payload_string(&event, "group"))
+        .flatten();
+    let appid = if let Some(target) = tabbar_target {
+        target
+    } else if page_scoped || is_shell_owner_appid(appid) {
         appid.to_string()
     } else {
         match shell_owner_appid() {
@@ -1967,13 +1990,20 @@ fn handle_chrome_event(appid: &str, event: WindowsChromeCommand) {
             // it before SwitchTab presents the requested page creates a very
             // visible old-page -> target-page flicker.
             let returning_from_browser = clear_browser_presentation();
+            let switching_main = active_main_lxapp_id().as_deref() != Some(appid);
+            if switching_main {
+                app.set_active_main();
+            }
             prime_tabbar_selection(&app, index);
             let _ = app.on_lxapp_event(LxAppUiEventType::TabBarClick, index.to_string());
-            if returning_from_browser
-                && !present_current_lxapp_main(&app)
-                && let Err(err) = restore_presented_group_main()
-            {
-                log::warn!("failed to restore lxapp webview for {appid}: {err}");
+            if (returning_from_browser || switching_main) && !present_current_lxapp_main(&app) {
+                if returning_from_browser {
+                    if let Err(err) = restore_presented_group_main() {
+                        log::warn!("failed to restore lxapp webview for {appid}: {err}");
+                    }
+                } else {
+                    log::warn!("failed to present tabbar owner lxapp {appid}");
+                }
             }
             return;
         }
@@ -4425,15 +4455,28 @@ mod tests {
     }
 
     #[test]
-    fn browser_tabs_preserve_the_expanded_lxapp_group() {
+    fn home_group_remains_the_sidebar_owner_across_main_switches() {
         assert_eq!(
-            preferred_sidebar_group_appid(Some("app-b".to_string()), Some("owner".to_string()))
-                .as_deref(),
-            Some("app-b")
+            preferred_sidebar_group_appid(
+                Some("home".to_string()),
+                Some("browser-owner".to_string()),
+                Some("app-b".to_string()),
+            )
+            .as_deref(),
+            Some("home")
         );
         assert_eq!(
-            preferred_sidebar_group_appid(None, Some("owner".to_string())).as_deref(),
-            Some("owner")
+            preferred_sidebar_group_appid(
+                None,
+                Some("browser-owner".to_string()),
+                Some("app-b".to_string()),
+            )
+            .as_deref(),
+            Some("browser-owner")
+        );
+        assert_eq!(
+            preferred_sidebar_group_appid(None, None, Some("app-b".to_string())).as_deref(),
+            Some("app-b")
         );
     }
 

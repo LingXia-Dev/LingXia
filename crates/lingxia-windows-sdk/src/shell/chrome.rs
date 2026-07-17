@@ -1134,8 +1134,12 @@ pub(crate) fn collapsed_sidebar_tabbar_popup_hit(
     })
 }
 
-pub(crate) fn collapsed_sidebar_tabbar_click_command(index: usize) -> WindowsChromeCommand {
-    WindowsChromeCommand::new(command_id::TAB_BAR_CLICK).with_payload(json!({ "index": index }))
+pub(crate) fn collapsed_sidebar_tabbar_click_command(
+    group: &str,
+    index: usize,
+) -> WindowsChromeCommand {
+    WindowsChromeCommand::new(command_id::TAB_BAR_CLICK)
+        .with_payload(json!({ "group": group, "index": index }))
 }
 
 /// The tabbar variant the popup renders: expanded first-level rows only, no
@@ -1828,7 +1832,7 @@ pub(super) fn chrome_hit_test(
                 if rect_contains(&item_rect, point) {
                     return Some(chrome_command(
                         command_id::TAB_BAR_CLICK,
-                        json!({ "index": index }),
+                        json!({ "group": tabbar.group_id, "index": index }),
                     ));
                 }
             }
@@ -2111,9 +2115,10 @@ mod scroll_tests {
         SIDEBAR_ITEM_HEIGHT, WindowsChromePanelLayoutInput, WindowsPanelPosition,
         WindowsShellAuxiliaryItemLayout, WindowsShellNavigationBarLayout,
         WindowsShellTabBarItemLayout, WindowsShellTabBarLayout, WindowsShellTabBarPosition,
-        WindowsShellWindowLayout, clamp_sidebar_scroll, compute_attached_layout,
-        compute_chrome_rects, sidebar_auxiliary_rects, sidebar_caption_contains,
-        sidebar_group_rect, sidebar_top_level_icon_rect, tabbar_requires_full_repaint,
+        WindowsShellWindowLayout, clamp_sidebar_scroll, collapsed_sidebar_tabbar_click_command,
+        compute_attached_layout, compute_chrome_rects, sidebar_auxiliary_rects,
+        sidebar_caption_contains, sidebar_group_rect, sidebar_top_level_icon_rect,
+        tabbar_requires_full_repaint,
     };
     use windows::Win32::Foundation::RECT;
 
@@ -2349,6 +2354,14 @@ mod scroll_tests {
         pinned.auxiliary_items[0].closable = false;
 
         assert!(tabbar_requires_full_repaint(&old, &pinned));
+    }
+
+    #[test]
+    fn collapsed_tabbar_click_keeps_its_group_owner() {
+        let command = collapsed_sidebar_tabbar_click_command("home", 2);
+
+        assert_eq!(command.payload["group"], "home");
+        assert_eq!(command.payload["index"], 2);
     }
 }
 

@@ -3333,7 +3333,10 @@ unsafe extern "system" fn sidebar_tabbar_popup_proc(
                     && let Some(webtag_key) =
                         active_webtag_key_for_window(hwnd_from_handle(popup.owner))
                 {
-                    let command = crate::shell::collapsed_sidebar_tabbar_click_command(index);
+                    let command = crate::shell::collapsed_sidebar_tabbar_click_command(
+                        &popup.tabbar.group_id,
+                        index,
+                    );
                     invoke_chrome_command(
                         &webtag_key,
                         hwnd_from_handle(popup.owner),
