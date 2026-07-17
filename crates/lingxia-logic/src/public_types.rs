@@ -1465,13 +1465,13 @@ true
 
         /// One app-declared shell activator. Its `id` remains stable across
         /// updates and activation. Set exactly one target: `lxapp`, `native`,
-        /// or `onActivate`; action entries require their own label and icon.
+        /// or `onActivate`. Every entry owns its icon; hosts never infer one.
         type ShellActivator = r###"{
     id: string;
     lxapp: string;
     native?: never;
     onActivate?: never;
-    icon?: string;
+    icon: string;
     label?: string;
     disabled?: boolean;
 } | {
@@ -1479,7 +1479,7 @@ true
     native: 'terminal';
     lxapp?: never;
     onActivate?: never;
-    icon?: string;
+    icon: string;
     label?: string;
     disabled?: boolean;
 } | {

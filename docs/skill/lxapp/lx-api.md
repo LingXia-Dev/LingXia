@@ -72,7 +72,7 @@ Facts that span the whole surface, so no single method's JSDoc carries them:
 - **Storage is synchronous and untyped.** `lx.getStorage().get(key)` returns `unknown` and is not a promise — never `await` it; cast at the call site. For larger or path-based data use `FileManager` (all-async, `lx://` storage-class paths — see [`../reference/file-lifecycle.md`](../reference/file-lifecycle.md)).
 - **Two distinct update flows.** `lx.getUpdateManager()` updates the **lxapp bundle** (every lxapp, callback model); `lx.app.checkUpdate()` updates the **host app shell** (home lxapp only, task model). Don't mix them.
 - **The tab bar is declared, not built.** The `setTabBar*` / `showTabBar` / `hideTabBar` family mutates a tab bar configured statically in `lxapp.json` — see [LxApp guide → Tab bar navigation](./guide.md#tab-bar-navigation).
-- **Shell activators are app-owned; Pins are user-owned.** Only the home lxapp may atomically declare `lx.shell.activators`; stable ids route activation, and lxapp/native entries survive restart. Sidebar Pins (lxapps and websites, mixed order, eight maximum) are intentionally not exposed to Logic.
+- **Shell activators are app-owned; Pins are user-owned.** Only the home lxapp may atomically declare `lx.shell.activators`; stable ids route activation, and lxapp/native entries survive restart. Every activator declares its own `icon`, resolved relative to the home lxapp bundle; hosts do not infer metadata icons or render fallback glyphs. Sidebar Pins (lxapps and websites, mixed order, eight maximum) are intentionally not exposed to Logic.
 
 ---
 

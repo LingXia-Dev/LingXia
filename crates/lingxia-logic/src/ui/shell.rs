@@ -114,7 +114,7 @@ fn parse_item(item: &JSObject) -> JSResult<ParsedActivator> {
     }
 
     let label = optional_string(item, "label")?;
-    let icon = optional_string(item, "icon")?;
+    let icon = Some(required_string(item, "icon")?);
     let disabled = optional_bool(item, "disabled")?.unwrap_or(false);
     let (target, action_handler) = if let Some(key) = lxapp {
         (ShellActivatorTarget::Lxapp { key }, None)

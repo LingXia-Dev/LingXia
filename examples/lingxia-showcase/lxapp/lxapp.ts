@@ -27,12 +27,22 @@ App({
   onLaunch: async function (this: MyAppInstance) {
     // The home lxapp atomically declares the complete desktop activator list.
     lx.shell.activators.replace([
-      { id: "chat", lxapp: "lingxia-chat" },
-      { id: "chat-beta", lxapp: "lingxia-chat-beta" },
-      { id: "terminal", native: "terminal" },
+      {
+        id: "chat",
+        lxapp: "lingxia-chat",
+        icon: "public/activator.svg",
+        label: "lingxia-chat",
+      },
+      {
+        id: "chat-beta",
+        lxapp: "lingxia-chat-beta",
+        icon: "public/activator.svg",
+        label: "lingxia-chat-beta",
+      },
+      { id: "terminal", native: "terminal", icon: "public/activator.svg" },
       {
         id: "ping",
-        icon: "icons/tray.svg",
+        icon: "public/activator.svg",
         label: "Ping",
         onActivate: () => {
           lx.showToast({ title: "activator clicked", icon: "success" });

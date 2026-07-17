@@ -298,15 +298,7 @@ pub(in crate::shell::chrome) fn draw_panel_activators(
         let icon_path = activator
             .map(|item| item.icon_path.as_str())
             .unwrap_or_default();
-        if !draw_icon_or_default(hdc, icon_path, icon_rect, PANEL_ACTIVATOR_ICON_SIZE as u32) {
-            draw_text(
-                hdc,
-                &panel_activator_label(label),
-                icon_rect,
-                text_color,
-                DT_CENTER,
-            );
-        }
+        let _ = draw_icon_from_path(hdc, icon_path, icon_rect, PANEL_ACTIVATOR_ICON_SIZE as u32);
         if !icon_only {
             draw_text(
                 hdc,
@@ -322,17 +314,6 @@ pub(in crate::shell::chrome) fn draw_panel_activators(
             );
         }
     }
-}
-
-pub(in crate::shell::chrome) fn panel_activator_label(label: &str) -> String {
-    let mut out = String::new();
-    for ch in label.chars().filter(|ch| ch.is_ascii_alphanumeric()) {
-        out.push(ch.to_ascii_uppercase());
-        if out.len() == 2 {
-            break;
-        }
-    }
-    if out.is_empty() { "?".to_string() } else { out }
 }
 
 #[cfg(test)]

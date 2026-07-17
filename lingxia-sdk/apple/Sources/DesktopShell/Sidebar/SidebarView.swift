@@ -299,11 +299,9 @@ class SidebarView: NSView, NSPopoverDelegate {
         static let footerButtonSize: CGFloat = 30
         /// Rendered glyph size inside footer icon buttons.
         static let footerIconSize: CGFloat = 16
-        /// Vertical padding inside the dock.
+        /// Shared outer inset for the activator flow. Windows uses the same
+        /// 6pt margin, leaving 172pt of flow width in the standard 184pt rail.
         static let footerInset: CGFloat = 6
-        /// Activator rows span the same outer extents as the tabbar item
-        /// rows (group inset), so their hover rect and icon axis line up.
-        static let footerLeading: CGFloat = 8
         /// Rows shown before the activator area caps and scrolls internally.
         static let footerMaxRows: CGFloat = 5
     }
@@ -511,6 +509,11 @@ class SidebarView: NSView, NSPopoverDelegate {
         updateActivatorFooterHeight()
     }
 
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        footerSeparator.layer?.backgroundColor = ActivatorChromePalette.divider.cgColor
+    }
+
     // MARK: - Setup
 
     private func setupViews() {
@@ -612,7 +615,7 @@ class SidebarView: NSView, NSPopoverDelegate {
         // A subtle divider grouping the activator dock. `separatorColor` washes
         // out on the sidebar material, so use a low-alpha label tint that keeps a
         // little contrast in both light and dark without being prominent.
-        footerSeparator.layer?.backgroundColor = NSColor.labelColor.withAlphaComponent(0.12).cgColor
+        footerSeparator.layer?.backgroundColor = ActivatorChromePalette.divider.cgColor
         footerView.addSubview(footerSeparator)
 
         panelFlow.translatesAutoresizingMaskIntoConstraints = false
@@ -623,6 +626,9 @@ class SidebarView: NSView, NSPopoverDelegate {
         panelScroll.drawsBackground = false
         panelScroll.hasVerticalScroller = true
         panelScroll.autohidesScrollers = true
+        // Keep the scrollbar out of the flow width. A legacy scroller reserves
+        // enough space to force Terminal + Ping onto separate rows at 184pt.
+        panelScroll.scrollerStyle = .overlay
         panelScroll.verticalScrollElasticity = .none
         let panelDoc = FlippedClipView()
         panelDoc.translatesAutoresizingMaskIntoConstraints = false
@@ -723,18 +729,21 @@ class SidebarView: NSView, NSPopoverDelegate {
             railScrollView.bottomAnchor.constraint(equalTo: footerView.topAnchor),
 
             footerView.leadingAnchor.constraint(equalTo: leadingAnchor),
-            footerView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -Layout.resizeHandleWidth),
+            footerView.trailingAnchor.constraint(equalTo: trailingAnchor),
             footerView.bottomAnchor.constraint(equalTo: bottomAnchor),
 
             footerSeparator.topAnchor.constraint(equalTo: footerView.topAnchor),
-            footerSeparator.leadingAnchor.constraint(equalTo: footerView.leadingAnchor),
-            footerSeparator.trailingAnchor.constraint(equalTo: footerView.trailingAnchor),
+            footerSeparator.leadingAnchor.constraint(
+                equalTo: footerView.leadingAnchor, constant: Layout.footerInset),
+            footerSeparator.trailingAnchor.constraint(
+                equalTo: footerView.trailingAnchor, constant: -Layout.footerInset),
             footerSeparator.heightAnchor.constraint(equalToConstant: 1.0),
 
             hideButton.widthAnchor.constraint(equalToConstant: Layout.actionButtonSize),
             hideButton.heightAnchor.constraint(equalToConstant: Layout.actionButtonSize),
 
-            panelScroll.leadingAnchor.constraint(equalTo: footerView.leadingAnchor, constant: Layout.footerLeading),
+            panelScroll.leadingAnchor.constraint(
+                equalTo: footerView.leadingAnchor, constant: Layout.footerInset),
             panelScroll.trailingAnchor.constraint(equalTo: footerView.trailingAnchor, constant: -Layout.footerInset),
             panelScroll.topAnchor.constraint(equalTo: footerView.topAnchor, constant: Layout.footerInset + 1),
             panelScroll.bottomAnchor.constraint(equalTo: footerView.bottomAnchor, constant: -Layout.footerInset),
@@ -924,7 +933,7 @@ class SidebarView: NSView, NSPopoverDelegate {
         // In the icon rail, an activator keeps only its icon; its single-line
         // title moves to the tooltip and the click target stays identical.
         for item in model.panelItems {
-            let image = item.iconURL.flatMap { NSImage(contentsOf: $0) } ?? Self.defaultAppIcon
+            let image = item.iconURL.flatMap { NSImage(contentsOf: $0) }
             let key = "activator:\(item.id)"
             let button = makeRailButton(
                 key: key,
@@ -1347,7 +1356,7 @@ class SidebarView: NSView, NSPopoverDelegate {
             1,
             panelScroll.contentView.bounds.width > 1
                 ? panelScroll.contentView.bounds.width
-                : bounds.width - Layout.footerLeading - Layout.footerInset - Layout.resizeHandleWidth
+                : bounds.width - 2 * Layout.footerInset
         )
         let rows = min(CGFloat(panelFlow.visualRowCount(for: width)), Layout.footerMaxRows)
         let height = Layout.footerInset * 2 + 1
@@ -2061,6 +2070,44 @@ private final class ActivatorFlowView: NSView {
     }
 }
 
+@MainActor
+private enum ActivatorChromePalette {
+    static let activeSurface = adaptive(dark: 0x34333A, light: 0xFFFFFF)
+    static let mutedText = adaptive(dark: 0x9AA0A6, light: 0x667085)
+    static let divider = adaptive(dark: 0x383838, light: 0xC7C2D2)
+
+    static let hover = NSColor(name: nil) { appearance in
+        isDark(appearance)
+            ? NSColor.white.withAlphaComponent(0.10)
+            : NSColor.black.withAlphaComponent(0.06)
+    }
+
+    static let pressed = NSColor(name: nil) { appearance in
+        isDark(appearance)
+            ? NSColor.white.withAlphaComponent(0.16)
+            : NSColor.black.withAlphaComponent(0.10)
+    }
+
+    private static func adaptive(dark: UInt32, light: UInt32) -> NSColor {
+        NSColor(name: nil) { appearance in
+            color(isDark(appearance) ? dark : light)
+        }
+    }
+
+    private static func isDark(_ appearance: NSAppearance) -> Bool {
+        appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+    }
+
+    private static func color(_ rgb: UInt32) -> NSColor {
+        NSColor(
+            srgbRed: CGFloat((rgb >> 16) & 0xFF) / 255,
+            green: CGFloat((rgb >> 8) & 0xFF) / 255,
+            blue: CGFloat(rgb & 0xFF) / 255,
+            alpha: 1
+        )
+    }
+}
+
 /// One activator entry: a left-aligned icon + title row sharing the tabbar
 /// items' rhythm (30pt, hover wash). A custom view because a borderless
 /// NSButton centers its image+title block and cannot left-align it.
@@ -2073,6 +2120,7 @@ final class ActivatorRowView: NSView {
     private let active: Bool
     private let disabled: Bool
     private var isHovered = false { didSet { updateAppearance() } }
+    private var isPressed = false { didSet { updateAppearance() } }
     private var tracking: NSTrackingArea?
 
     private let washView = NSView()
@@ -2109,20 +2157,20 @@ final class ActivatorRowView: NSView {
         addSubview(accentView)
 
         let icon = iconURL.flatMap { NSImage(contentsOf: $0) }
-            ?? Bundle.lingxiaResources.url(
-                forResource: "lxapp_default", withExtension: "png", subdirectory: "icons")
-                .flatMap { NSImage(contentsOf: $0) }
         icon?.size = NSSize(width: 16, height: 16)
         iconView.image = icon
         iconView.imageScaling = .scaleProportionallyDown
-        iconView.alphaValue = disabled ? 0.45 : 1
+        iconView.alphaValue = disabled ? 0.42 : (self.active ? 1 : 0.82)
         iconView.translatesAutoresizingMaskIntoConstraints = false
         addSubview(iconView)
 
-        titleLabel.font = NSFont.systemFont(ofSize: 13, weight: .regular)
+        titleLabel.font = NSFont.systemFont(
+            ofSize: 13,
+            weight: self.active ? .medium : .regular
+        )
         titleLabel.textColor = disabled
             ? NSColor.tertiaryLabelColor
-            : (self.active ? NSColor.controlAccentColor : NSColor.labelColor)
+            : (self.active ? NSColor.controlAccentColor : ActivatorChromePalette.mutedText)
         titleLabel.lineBreakMode = .byTruncatingTail
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
         addSubview(titleLabel)
@@ -2156,14 +2204,24 @@ final class ActivatorRowView: NSView {
     }
 
     private func updateAppearance() {
-        if active {
-            washView.layer?.backgroundColor = NSColor.controlAccentColor
-                .withAlphaComponent(0.10).cgColor
+        accentView.layer?.backgroundColor = NSColor.controlAccentColor.cgColor
+        titleLabel.textColor = disabled
+            ? NSColor.tertiaryLabelColor
+            : (active ? NSColor.controlAccentColor : ActivatorChromePalette.mutedText)
+        if isPressed && !disabled {
+            washView.layer?.backgroundColor = ActivatorChromePalette.pressed.cgColor
+        } else if active {
+            washView.layer?.backgroundColor = ActivatorChromePalette.activeSurface.cgColor
         } else if isHovered && !disabled {
-            washView.layer?.backgroundColor = NSColor.labelColor.withAlphaComponent(0.06).cgColor
+            washView.layer?.backgroundColor = ActivatorChromePalette.hover.cgColor
         } else {
             washView.layer?.backgroundColor = NSColor.clear.cgColor
         }
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        updateAppearance()
     }
 
     override func updateTrackingAreas() {
@@ -2180,8 +2238,24 @@ final class ActivatorRowView: NSView {
     }
 
     override func mouseEntered(with event: NSEvent) { if !disabled { isHovered = true } }
-    override func mouseExited(with event: NSEvent) { isHovered = false }
-    override func mouseDown(with event: NSEvent) { if !disabled { onClick?() } }
+    override func mouseExited(with event: NSEvent) {
+        isHovered = false
+        isPressed = false
+    }
+    override func mouseDown(with event: NSEvent) {
+        if !disabled { isPressed = true }
+    }
+    override func mouseDragged(with event: NSEvent) {
+        guard !disabled else { return }
+        isPressed = bounds.contains(convert(event.locationInWindow, from: nil))
+    }
+    override func mouseUp(with event: NSEvent) {
+        guard !disabled else { return }
+        let shouldActivate = isPressed
+            && bounds.contains(convert(event.locationInWindow, from: nil))
+        isPressed = false
+        if shouldActivate { onClick?() }
+    }
     override var mouseDownCanMoveWindow: Bool { false }
     override func accessibilityPerformPress() -> Bool {
         guard !disabled else { return false }

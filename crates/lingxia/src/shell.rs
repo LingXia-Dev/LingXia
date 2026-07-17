@@ -5,6 +5,7 @@ use lingxia_shell::{
     ShellActivator, ShellActivatorTarget, ShellError, ShellHost, ShellResult,
 };
 use std::collections::HashSet;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::{Mutex, OnceLock};
 
@@ -27,12 +28,15 @@ impl ShellHost for HostShell {
         &self,
         items: &[ShellActivator],
     ) -> ShellResult<Vec<ResolvedShellActivator>> {
-        let plan = shell_owner().and_then(|owner| owner.surface_derived_layout());
+        let owner = shell_owner();
+        let plan = owner
+            .as_ref()
+            .and_then(|owner| owner.surface_derived_layout());
+        let asset_dir = owner.as_ref().map(|owner| owner.lxapp_dir.clone());
         items
             .iter()
             .map(|item| {
-                let (kind, fallback_label, fallback_icon, active, unavailable) = match &item.target
-                {
+                let (kind, fallback_label, active, unavailable) = match &item.target {
                     ShellActivatorTarget::Lxapp { key } => {
                         let info = lxapp::try_get(key).map(|app| app.get_lxapp_info());
                         let label = info
@@ -41,13 +45,9 @@ impl ShellHost for HostShell {
                             .filter(|label| !label.is_empty())
                             .unwrap_or(key)
                             .to_string();
-                        let icon = info
-                            .map(|info| info.icon)
-                            .filter(|icon| !icon.trim().is_empty());
                         (
                             ActivatorKind::Lxapp,
                             label,
-                            icon,
                             lxapp_target_active(key, plan.as_ref()),
                             false,
                         )
@@ -58,21 +58,20 @@ impl ShellHost for HostShell {
                             (
                                 ActivatorKind::Native,
                                 "Terminal".to_string(),
-                                None,
                                 available && self.platform.shell_native_active(*key),
                                 !available,
                             )
                         }
                     },
                     ShellActivatorTarget::Action => {
-                        (ActivatorKind::Action, item.id.clone(), None, false, false)
+                        (ActivatorKind::Action, item.id.clone(), false, false)
                     }
                 };
                 Ok(ResolvedShellActivator {
                     id: item.id.clone(),
                     kind,
                     label: item.label.clone().unwrap_or(fallback_label),
-                    icon_path: item.icon.clone().or(fallback_icon),
+                    icon_path: resolve_declared_icon(asset_dir.as_deref(), item.icon.as_deref()),
                     active: kind != ActivatorKind::Action && active,
                     disabled: item.disabled || unavailable,
                 })
@@ -107,6 +106,22 @@ impl ShellHost for HostShell {
             }
         }
     }
+}
+
+fn resolve_declared_icon(asset_dir: Option<&Path>, icon: Option<&str>) -> Option<String> {
+    let icon = icon?.trim();
+    if icon.is_empty() {
+        return None;
+    }
+    let path = Path::new(icon);
+    let resolved = if path.is_absolute() {
+        PathBuf::from(path)
+    } else if let Some(asset_dir) = asset_dir {
+        asset_dir.join(path)
+    } else {
+        PathBuf::from(path)
+    };
+    Some(resolved.to_string_lossy().into_owned())
 }
 
 fn shell_owner() -> Option<Arc<lxapp::LxApp>> {
@@ -249,5 +264,26 @@ fn lxapp_aside_edge(appid: &str) -> &'static str {
         Some(lingxia_app_context::PanelPosition::Top) => "top",
         Some(lingxia_app_context::PanelPosition::Bottom) => "bottom",
         Some(lingxia_app_context::PanelPosition::Right) | None => "right",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn declared_icon_resolves_from_the_home_lxapp_bundle() {
+        assert_eq!(
+            resolve_declared_icon(Some(Path::new("/app/home")), Some("public/icon.svg")),
+            Some("/app/home/public/icon.svg".to_string())
+        );
+    }
+
+    #[test]
+    fn missing_declared_icon_stays_missing() {
+        assert_eq!(
+            resolve_declared_icon(Some(Path::new("/app/home")), None),
+            None
+        );
     }
 }
