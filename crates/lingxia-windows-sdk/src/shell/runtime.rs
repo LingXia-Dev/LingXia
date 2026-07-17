@@ -21,7 +21,7 @@ use lingxia_browser_shell::{
 use lingxia_platform::traits::app_runtime::{
     AppRuntime, LxAppOpenMode, OpenUrlRequest, OpenUrlTarget,
 };
-use lingxia_shell::{NativeShellCapability, ResolvedShellActivator, ShellPin, ShellPinTarget};
+use lingxia_shell::{ResolvedShellActivator, ShellPin, ShellPinTarget};
 use lingxia_surface::{Edge, LayoutPresentationPlan, SlotKind};
 use lingxia_webview::WebTag;
 #[cfg(feature = "browser-runtime")]
@@ -565,10 +565,6 @@ pub(super) fn install() {
     lingxia_platform::set_windows_managed_surface_toggle_handler(Arc::new(toggle_managed_surface));
     lingxia_platform::set_windows_activator_items_handler(Arc::new(set_runtime_activator_items));
     lingxia_platform::set_windows_shell_pins_handler(Arc::new(set_runtime_shell_pins));
-    lingxia_platform::set_windows_shell_native_handlers(
-        Arc::new(shell_native_active),
-        Arc::new(activate_shell_native),
-    );
     lingxia_platform::set_windows_layout_plan_handler(Arc::new(apply_windows_layout_plan));
     lingxia_platform::set_windows_managed_aside_event_handler(Arc::new(handle_managed_aside_event));
     if lingxia_shell::manager().is_ok_and(|manager| manager.snapshot().activators.declared()) {
@@ -1712,7 +1708,6 @@ fn build_panel_activators(app: &LxApp) -> Vec<WindowsShellPanelActivatorLayout> 
                         .or_else(|| Some(icon.to_string()))
                 })
                 .unwrap_or_default(),
-            active: item.active,
             disabled: item.disabled,
         })
         .collect()
@@ -3939,48 +3934,6 @@ fn toggle_managed_surface(panel_id: &str) -> bool {
     }
     handle_panel_activator(&owner_appid, panel_id.to_string());
     true
-}
-
-fn shell_native_active(capability: NativeShellCapability) -> bool {
-    match capability {
-        NativeShellCapability::Terminal => is_panel_visible(SHELL_TERMINAL_SURFACE_ID),
-    }
-}
-
-fn activate_shell_native(capability: NativeShellCapability) -> bool {
-    match capability {
-        NativeShellCapability::Terminal => {
-            let Some(owner_appid) = shell_owner_appid() else {
-                return false;
-            };
-            if shell_surface_is_active(SHELL_TERMINAL_SURFACE_ID) {
-                if let Err(error) = hide_host_panel(SHELL_TERMINAL_SURFACE_ID) {
-                    log::warn!("failed to hide shell terminal: {error}");
-                    return false;
-                }
-                unregister_managed_aside(&owner_appid, SHELL_TERMINAL_SURFACE_ID);
-                sync_shell_layout(&owner_appid);
-                return true;
-            }
-            if shell_surface_in_graph(SHELL_TERMINAL_SURFACE_ID) {
-                if let Some(owner) = lxapp::try_get(&owner_appid) {
-                    owner.focus_shell_surface(SHELL_TERMINAL_SURFACE_ID);
-                    sync_shell_layout(&owner_appid);
-                    return true;
-                }
-                return false;
-            }
-            show_terminal_panel(
-                &owner_appid,
-                TerminalPanelRequest {
-                    panel_id: SHELL_TERMINAL_SURFACE_ID.to_string(),
-                    label: "Terminal".to_string(),
-                    position: lingxia_app_context::PanelPosition::Bottom,
-                },
-            );
-            shell_surface_in_graph(SHELL_TERMINAL_SURFACE_ID)
-        }
-    }
 }
 
 #[cfg(feature = "browser-shell")]
