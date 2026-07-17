@@ -271,7 +271,7 @@ Each entry starts with its **content key** — exactly one of `lxapp` / `url` / 
 | Field | Type | Required | Description |
 |---|---|---:|---|
 | `lxapp` | string | one content key | An lxapp, by appId. Roles: `main` \| `aside` \| `float`. |
-| `url` | string | one content key | A page in the in-app browser (requires the top-level `browser:` config). Roles: `main` \| `aside`. |
+| `url` | string | one content key | A page in the in-app browser (requires `capabilities.browser: true`). Roles: `main` \| `aside`. |
 | `native` | string | one content key | A host-native capability — only the built-in `terminal` today. Role: `aside`. |
 | `role` | `main` \| `aside` \| `float` | Yes | `main` = a switchable primary surface; `aside` = a docked companion; `float` = a tray-anchored popover (requires a `tray:`). |
 | `launch` | bool | No | Open on start. At most one `main` may set `launch: true` (the initial surface). Omit on all mains for a tray-launched app. |
@@ -289,7 +289,7 @@ There is **no `sidebar:` entry field**: persistent sidebar entries are declared 
 - A config needs at least one `lxapp` `main` surface — or, for a pure popover app, a `role: float` surface with a `tray:` and no `main`.
 - At most one `main` may set `launch: true`; `launch` is invalid on a non-main surface and only supported on an lxapp main.
 - `edge` and `size` are only valid on `aside`.
-- A `url` surface requires the top-level `browser:` config and supports `role: main | aside`.
+- A `url` surface requires `capabilities.browser: true` and supports `role: main | aside`.
 - `native` supports only `terminal`, requires `capabilities.terminal: true`, and its `edge` must be `top` or `bottom`.
 - The same content key may be declared at most once.
 - `role: float` requires a `tray:` (it is a tray-anchored popover); a bare `role: float` is rejected.
@@ -321,6 +321,21 @@ surfaces:
 ```
 
 Each `lxapp` surface needs its assets bundled — list its appId in `resources.bundles`, or let the runtime/update flow provide it.
+
+### How the desktop shell realizes surfaces
+
+On desktop the main window is a sidebar plus a main area plus docked asides, and the shell picks the realized form from the window width:
+
+- **Wide**: full sidebar (pins, main tabs, activators) with up to three docked asides beside the main.
+- **Medium**: the sidebar collapses to an icon rail and at most one aside stays docked.
+- **Narrow** (and mobile): the sidebar disappears, `main` goes full screen, and asides overlay the main full screen.
+
+Asides group into per-engine slots (lxapp / browser / native), each with its own tab strip; switching tabs hides and shows content, and only an explicit close destroys it.
+
+Two sidebar regions have fixed ownership:
+
+- **Pins are the user's** — quick entries for lxapps and websites (eight at most), added and removed through context menus. There is no app API to write them.
+- **Activators are the app's** — persistent entries the home lxapp declares at runtime via `lx.shell.activators` (see the `@lingxia/types` declarations). They activate an lxapp or native capability, or invoke app logic, and need no matching `surfaces:` entry.
 
 ### Menu-bar / system-tray apps
 
@@ -359,15 +374,15 @@ It shares a single cross-platform Rust engine that owns sessions, PTY transport,
 
 ## Icon Paths
 
-Surface `sidebar.icon` / `tray.icon` are source icon paths relative to the host project root.
+Surface `tray.icon` values are source icon paths relative to the host project root.
 
 The current UI supports SVG source icons only. During `lingxia build`, the CLI validates each source icon, converts it to a platform resource, copies it into generated `icons/`, and rewrites the generated `ui.json` to reference that generated resource path.
 
 Example:
 
 ```yaml
-sidebar:
-  icon: icons/browser.svg
+tray:
+  icon: icons/tray.svg
 ```
 
 Validation rules:
