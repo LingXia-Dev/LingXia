@@ -64,10 +64,22 @@ pub(crate) use chrome::{
     transparent_tabbar_overlay_rect,
 };
 
+pub(crate) use chrome::{workspace_corner_radii, workspace_silhouette_rect};
+
 /// Height of the shell-owned top caption strip. Lxapp navigation bars belong
 /// to the main region below it; browser address chrome may use this strip.
 pub(crate) fn shell_top_bar_height() -> i32 {
     style::SHELL_TOP_BAR_HEIGHT
+}
+
+/// Corner radius of the rounded workspace silhouette (the content card).
+pub(crate) fn shell_content_radius() -> i32 {
+    style::SHELL_CONTENT_RADIUS
+}
+
+/// Corner radius of free-standing (floating) panel cards.
+pub(crate) fn shell_panel_radius() -> i32 {
+    style::SHELL_PANEL_RADIUS
 }
 
 /// Re-read the Win11 light/dark + system-accent theme into the shell palette

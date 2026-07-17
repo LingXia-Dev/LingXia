@@ -303,6 +303,10 @@ struct ContentBounds {
     top: i32,
     width: i32,
     height: i32,
+    /// Composition clip corners `[tl, tr, br, bl]`; part of the dedupe key so
+    /// a radii-only layout change (aside open/close, dock/float, frame
+    /// enter/exit) still reaches the webview.
+    corner_radii: [i32; 4],
 }
 
 #[derive(Debug, Clone)]
@@ -1737,6 +1741,58 @@ fn refresh_adjusted_content_rect(webtag_key: &str, mut rect: RECT) -> RECT {
         rect.top = (rect.top + PULL_REFRESH_SLOT_HEIGHT).min(rect.bottom);
     }
     normalize_rect(rect)
+}
+
+/// Per-corner composition clip for a surface, derived from the same layout
+/// pass that produced `rect`. Square whenever the surface is not part of a
+/// rounded silhouette (fullscreen drill, no shell chrome, collapsed rect).
+#[cfg(feature = "shell-chrome")]
+fn surface_clip_radii(hwnd: HWND, webtag_key: &str, rect: RECT) -> [i32; 4] {
+    // A framed simulator screen rounds to the device silhouette, not the
+    // shell workspace.
+    #[cfg(feature = "device-frame")]
+    if let Some(radius) = crate::device_frame::device_frame_screen_clip_radius(hwnd_handle(hwnd)) {
+        let mut client = RECT::default();
+        if unsafe { WindowsAndMessaging::GetClientRect(hwnd, &mut client) }.is_err() {
+            return [0; 4];
+        }
+        return crate::shell::workspace_corner_radii(rect, client, radius);
+    }
+    if windows_chrome_renderer().is_none() || webtag_is_fullscreen_drill(webtag_key) {
+        return [0; 4];
+    }
+    // Floating panels are free-standing cards outside the workspace union.
+    if let Some(panel_id) = panel_id_for_webtag(webtag_key)
+        && !panel_is_docked(&panel_id)
+    {
+        return [crate::shell::shell_panel_radius(); 4];
+    }
+    let mut client = RECT::default();
+    if unsafe { WindowsAndMessaging::GetClientRect(hwnd, &mut client) }.is_err() {
+        return [0; 4];
+    }
+    let Some(active_key) = active_webtag_key_for_window(hwnd) else {
+        return [0; 4];
+    };
+    let Some(silhouette) =
+        crate::shell::workspace_silhouette_rect(client, &current_window_layout(&active_key))
+    else {
+        return [0; 4];
+    };
+    crate::shell::workspace_corner_radii(rect, silhouette, crate::shell::shell_content_radius())
+}
+
+#[cfg(not(feature = "shell-chrome"))]
+fn surface_clip_radii(_hwnd: HWND, _webtag_key: &str, _rect: RECT) -> [i32; 4] {
+    [0; 4]
+}
+
+#[cfg(feature = "shell-chrome")]
+fn webtag_is_fullscreen_drill(webtag_key: &str) -> bool {
+    FULLSCREEN_DRILLS
+        .get()
+        .and_then(|drills| drills.lock().ok())
+        .is_some_and(|drills| drills.values().any(|key| key == webtag_key))
 }
 
 fn sync_window_layout(hwnd: HWND) {
@@ -3343,12 +3399,14 @@ fn sync_webtag_content_bounds(hwnd: HWND, webtag_key: &str) {
 fn sync_webtag_content_bounds_to_rect(hwnd: HWND, webtag_key: &str, rect: RECT) {
     let width = (rect.right - rect.left).max(0);
     let height = (rect.bottom - rect.top).max(0);
+    let corner_radii = surface_clip_radii(hwnd, webtag_key, rect);
     let host_bounds = ContentBounds {
         hwnd: hwnd_handle(hwnd),
         left: rect.left,
         top: rect.top,
         width,
         height,
+        corner_radii,
     };
     let Some(webtag) = webtag_for_key(webtag_key) else {
         return;
@@ -3369,11 +3427,12 @@ fn sync_webtag_content_bounds_to_rect(hwnd: HWND, webtag_key: &str, rect: RECT) 
         report_surface_viewport(hwnd, &webtag, width, height);
     }
     if bounds_changed
-        && let Err(err) = handler.set_content_bounds(
+        && let Err(err) = handler.set_content_geometry(
             controller_bounds.left,
             controller_bounds.top,
             controller_bounds.right - controller_bounds.left,
             controller_bounds.bottom - controller_bounds.top,
+            corner_radii,
         )
     {
         log::debug!("Failed to sync Windows WebView content bounds: {err}");

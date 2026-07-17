@@ -358,6 +358,97 @@ pub(in crate::shell) fn fill_round_rect_aa_band(
     }
 }
 
+/// Anti-aliased fill with independent corner radii `[tl, tr, br, bl]` (0 =
+/// square), for chrome bands that own only some corners of the workspace
+/// silhouette. Plain fill when every corner is square or GDI+ is unavailable.
+pub(in crate::shell) fn fill_round_rect_aa_corners(
+    hdc: HDC,
+    rect: RECT,
+    radii: [i32; 4],
+    rgb: u32,
+) {
+    let width = rect_width(&rect);
+    let height = rect_height(&rect);
+    if width == 0 || height == 0 {
+        return;
+    }
+    let max_radius = (width / 2).min(height / 2);
+    let [tl, tr, br, bl] = radii.map(|radius| radius.clamp(0, max_radius));
+    if [tl, tr, br, bl] == [0; 4] || !ensure_gdiplus_started() {
+        fill_rect(hdc, rect, rgb);
+        return;
+    }
+    unsafe {
+        let mut graphics: *mut GdiPlus::GpGraphics = std::ptr::null_mut();
+        if GdiPlus::GdipCreateFromHDC(hdc, &mut graphics) != GdiPlus::Ok || graphics.is_null() {
+            fill_rect(hdc, rect, rgb);
+            return;
+        }
+        let _ = GdiPlus::GdipSetSmoothingMode(graphics, GdiPlus::SmoothingModeAntiAlias);
+        let mut path: *mut GdiPlus::GpPath = std::ptr::null_mut();
+        if GdiPlus::GdipCreatePath(GdiPlus::FillModeAlternate, &mut path) == GdiPlus::Ok
+            && !path.is_null()
+        {
+            let (left, top) = (rect.left as f32, rect.top as f32);
+            let (right, bottom) = (rect.right as f32, rect.bottom as f32);
+            let [tl, tr, br, bl] = [tl as f32, tr as f32, br as f32, bl as f32];
+            // Edge lines with quarter arcs at each rounded corner; GDI+
+            // connects consecutive figure segments, so square corners fall
+            // out of adjacent edges meeting.
+            let _ = GdiPlus::GdipAddPathLine(path, left + tl, top, right - tr, top);
+            if tr > 0.0 {
+                let _ = GdiPlus::GdipAddPathArc(
+                    path,
+                    right - tr * 2.0,
+                    top,
+                    tr * 2.0,
+                    tr * 2.0,
+                    270.0,
+                    90.0,
+                );
+            }
+            let _ = GdiPlus::GdipAddPathLine(path, right, top + tr, right, bottom - br);
+            if br > 0.0 {
+                let _ = GdiPlus::GdipAddPathArc(
+                    path,
+                    right - br * 2.0,
+                    bottom - br * 2.0,
+                    br * 2.0,
+                    br * 2.0,
+                    0.0,
+                    90.0,
+                );
+            }
+            let _ = GdiPlus::GdipAddPathLine(path, right - br, bottom, left + bl, bottom);
+            if bl > 0.0 {
+                let _ = GdiPlus::GdipAddPathArc(
+                    path,
+                    left,
+                    bottom - bl * 2.0,
+                    bl * 2.0,
+                    bl * 2.0,
+                    90.0,
+                    90.0,
+                );
+            }
+            let _ = GdiPlus::GdipAddPathLine(path, left, bottom - bl, left, top + tl);
+            if tl > 0.0 {
+                let _ = GdiPlus::GdipAddPathArc(path, left, top, tl * 2.0, tl * 2.0, 180.0, 90.0);
+            }
+            let _ = GdiPlus::GdipClosePathFigure(path);
+            let mut brush: *mut GdiPlus::GpSolidFill = std::ptr::null_mut();
+            if GdiPlus::GdipCreateSolidFill(0xff00_0000 | rgb, &mut brush) == GdiPlus::Ok
+                && !brush.is_null()
+            {
+                let _ = GdiPlus::GdipFillPath(graphics, brush.cast(), path);
+                let _ = GdiPlus::GdipDeleteBrush(brush.cast());
+            }
+            let _ = GdiPlus::GdipDeletePath(path);
+        }
+        let _ = GdiPlus::GdipDeleteGraphics(graphics);
+    }
+}
+
 /// Intersects the DC's clip with a rounded rect one pixel inside `rect`.
 /// Pairs with an outer [`fill_round_rect_aa`] of the same rect: the AA fill
 /// provides the card's smooth edge, and plain square fills painted inside the

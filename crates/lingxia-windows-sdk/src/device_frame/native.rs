@@ -321,6 +321,13 @@ pub(super) fn window_has_frame(content: isize) -> bool {
     frame_state(content, |_| ()).is_some()
 }
 
+/// Screen-silhouette corner radius for a framed content window, `None` when
+/// unframed. The webview composition clip rounds the simulated screen's
+/// corners instead of the shell workspace's while a frame is up.
+pub(super) fn content_screen_clip_radius(content: isize) -> Option<i32> {
+    frame_state(content, |state| screen_corner_radius(&state.spec))
+}
+
 /// True while `content`'s frame toolbar carries the close/minimize dots and
 /// therefore owns the window controls. A framed simulated desktop returns
 /// `false`: the shell keeps its standard caption buttons there.

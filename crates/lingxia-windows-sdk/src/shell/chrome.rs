@@ -1469,7 +1469,16 @@ pub(super) fn draw_window_chrome(
         && let (Some(navbar), Some(navbar_rect)) = (&layout.navigation_bar, rects.navigation_bar)
     {
         let buttons_left = navbar_buttons_left(navbar_rect);
-        draw_navigation_bar(hdc, navbar_rect, buttons_left, navbar, state.cursor);
+        let corner_radii =
+            workspace_corner_radii(navbar_rect, rects.workspace, SHELL_CONTENT_RADIUS);
+        draw_navigation_bar(
+            hdc,
+            navbar_rect,
+            corner_radii,
+            buttons_left,
+            navbar,
+            state.cursor,
+        );
     }
     if let (Some(tabbar), Some(tabbar_rect)) = (&layout.tab_bar, rects.tab_bar) {
         let (scroll_offset, _, viewport_bottom) =
@@ -1960,9 +1969,9 @@ pub(super) fn draw_content_cards(hdc: HDC, state: &WindowsChromeState, rects: &C
                 draw_native_panel_content(hdc, state.hwnd, state.client, panel);
             }
         }
-        // Attached cards are painted as plain filled rounded rects; the
-        // rectangular WebView2 child overlays the corners, so they currently
-        // read as square.
+        // The card's arcs show wherever no surface covers them (loading,
+        // gutters); composition-hosted webviews clip to the same silhouette
+        // via `workspace_corner_radii`, windowed ones still overlay square.
         return;
     }
 
@@ -2042,8 +2051,6 @@ pub(super) fn rect_contains(rect: &RECT, point: (i32, i32)) -> bool {
 /// Per-corner clip radii for a composition-hosted surface,
 /// `[top_left, top_right, bottom_right, bottom_left]`, in the same raw client
 /// pixels as `set_content_bounds`.
-// TODO(#134): dead_code allows drop once window_host drives the surface clip.
-#[allow(dead_code)]
 pub(crate) type SurfaceCornerRadii = [i32; 4];
 
 /// Corner radii for a surface rect inside the rounded workspace silhouette.
@@ -2053,7 +2060,6 @@ pub(crate) type SurfaceCornerRadii = [i32; 4];
 /// coordinates are exactly equal — gutters, aside headers, and the navigation
 /// bar break coincidence for interior seams by construction. The radius is
 /// clamped so tiny surfaces never self-intersect.
-#[allow(dead_code)]
 pub(crate) fn workspace_corner_radii(
     surface: RECT,
     silhouette: RECT,
@@ -2090,7 +2096,6 @@ pub(crate) fn workspace_corner_radii(
 
 /// The workspace silhouette a window layout rounds — the union rect that
 /// `compute_attached_layout` carves main and aside surfaces from.
-#[allow(dead_code)]
 pub(crate) fn workspace_silhouette_rect(
     client: RECT,
     layout: &WindowsWindowLayout,

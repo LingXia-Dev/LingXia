@@ -474,11 +474,14 @@ const NAV_LEADING_MARGIN: i32 = 8;
 pub(super) fn draw_navigation_bar(
     hdc: HDC,
     rect: RECT,
+    corner_radii: [i32; 4],
     buttons_left: i32,
     navbar: &WindowsShellNavigationBarLayout,
     cursor: Option<(i32, i32)>,
 ) {
-    fill_rect(hdc, rect, navbar.background_color);
+    // The band owns whichever workspace-silhouette corners it touches; a
+    // square fill in the page's bar color would poke past the card's arcs.
+    fill_round_rect_aa_corners(hdc, rect, corner_radii, navbar.background_color);
     draw_bottom_border(hdc, rect, shell_palette().divider);
 
     let text_color = navbar.text_color;
