@@ -144,9 +144,6 @@ enum DevAction {
     Stop {
         /// Session id prefix or platform name. Omit when only one session is live.
         session: Option<String>,
-        /// Kill the owning process if graceful shutdown fails
-        #[arg(long)]
-        force: bool,
     },
 }
 
@@ -741,8 +738,8 @@ fn main() -> Result<()> {
                 background: dev_options.background,
                 action: dev_options.action.map(|action| match action {
                     DevAction::Status { json } => commands::dev::DevSessionAction::Status { json },
-                    DevAction::Stop { session, force } => {
-                        commands::dev::DevSessionAction::Stop { session, force }
+                    DevAction::Stop { session } => {
+                        commands::dev::DevSessionAction::Stop { session }
                     }
                 }),
             })?;
@@ -888,6 +885,19 @@ mod cli_tests {
     #[test]
     fn dev_lan_remote_control_is_removed() {
         assert!(Cli::try_parse_from(["lingxia", "dev", "--lan"]).is_err());
+    }
+
+    #[test]
+    fn dev_stop_has_one_guaranteed_mode() {
+        let cli = Cli::try_parse_from(["lingxia", "dev", "stop", "windows"]).unwrap();
+        let Commands::Dev { dev_options } = cli.command else {
+            panic!("expected dev command");
+        };
+        let Some(DevAction::Stop { session }) = dev_options.action else {
+            panic!("expected stop action");
+        };
+        assert_eq!(session.as_deref(), Some("windows"));
+        assert!(Cli::try_parse_from(["lingxia", "dev", "stop", "--force"]).is_err());
     }
 
     #[test]

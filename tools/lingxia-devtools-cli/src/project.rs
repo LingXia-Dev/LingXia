@@ -279,6 +279,7 @@ mod tests {
             target: target.to_string(),
             pid: 1,
             started_at,
+            executable: "/usr/local/bin/lingxia".to_string(),
             ws_url: "ws://127.0.0.1:1".to_string(),
             log_file: "/p/.lingxia/logs/x.jsonl".to_string(),
         }

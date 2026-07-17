@@ -140,6 +140,9 @@ pub fn register_session(
         target: target.to_string(),
         pid: std::process::id(),
         started_at: now_timestamp_ms(),
+        executable: std::env::current_exe()
+            .map(|path| path.display().to_string())
+            .unwrap_or_default(),
         ws_url: ws_url.to_string(),
         log_file: session.log_file.display().to_string(),
     };

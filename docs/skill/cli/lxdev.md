@@ -12,7 +12,7 @@ next runtime-backed `lxdev` command will not race Runner/app startup. Both
 `lingxia dev status` and `lxdev session list` report `starting`, `ready`, or
 `stale`.
 
-**Start a session for automation with `lingxia dev --background`.** `lxdev` needs a *live* session, and a session lives only as long as its owning `lingxia dev` process — a foreground `lingxia dev` blocks the terminal, and if an agent backgrounds it and later loses that process, the session dies with it. `--background` builds, launches, and returns once the session is ready; check it with `lingxia dev status`, stop it with `lingxia dev stop`. Then drive it with `lxdev`.
+**Start a session for automation with `lingxia dev --background`.** `lxdev` needs a *live* session, and a session lives only as long as its owning `lingxia dev` process — a foreground `lingxia dev` blocks the terminal, and if an agent backgrounds it and later loses that process, the session dies with it. `--background` builds, launches, and returns once the session is ready; check it with `lingxia dev status`, stop it with `lingxia dev stop` from the project. Then drive it with `lxdev`.
 
 Each `lingxia dev` session registers with a per-user local broker and stays registered for exactly as long as its process lives; `lxdev` queries the broker, so it works from **any directory** — the session may be one you started or one already running. One live session → used automatically. Several → it **refuses to guess** and prints the candidates; pick one with the global selector (before the subcommand) or the `LXDEV_SESSION` env var:
 
@@ -64,7 +64,9 @@ Mobile reports one host window. Desktop hosts may report several (for example ma
 
 **`logs`** — the session's JSONL log stream: tail or `-f` follow; filter by `--level`, `--source` (`native` host, your app's `lxview`/`lxlogic`, or a `browser` tab), `--path`, `--grep`, `--app <id>`; `--wide` prefixes each line with its app id.
 
-**`session`** — list live sessions (id, target, project path) or request that the owning `lingxia dev` process stop (`session stop`). Force-kill remains on `lingxia dev stop --force`, because `lingxia` owns the platform process lifecycle.
+**`session`** — list live sessions (id, target, project path). Lifecycle stays
+with the owner CLI: use `lingxia dev stop` from that session's project rather
+than stopping it through `lxdev`.
 
 ## The three JS contexts — don't conflate them
 
@@ -105,4 +107,4 @@ Owner-drawn Win32 controls may not expose accessibility nodes.
 | `No live dev session found` | Run `lingxia dev` in the project. |
 | `Multiple LingXia dev sessions are live` | Add `--session <id-prefix\|target>`. |
 | `eval` returns nothing / wrong scope | Wrong JS context — see the table above. |
-| Commands connect but hang | Host app lost its bridge — use `lxdev session stop` or `lingxia dev stop`, then start `lingxia dev` again. |
+| Commands connect but hang | Host app lost its bridge — use `lingxia dev stop` from the project, then start `lingxia dev` again. |

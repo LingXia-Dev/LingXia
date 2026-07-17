@@ -106,6 +106,11 @@ takes the session down when it exits. Either way the session publishes metadata
 and logs for `lxdev`. `lingxia dev status` reports `starting`, `ready`, or `stale`
 and exposes the same state plus `runtime_connected` with `--json`.
 
+`lingxia dev stop` has one terminal-state contract: it requests graceful
+shutdown, waits for the owner to exit, and automatically terminates the owner
+after a bounded timeout. There is no separate force mode. Session lifecycle
+stays with `lingxia`; `lxdev` only connects to and drives a live session.
+
 Desktop and Runner dev websockets stay loopback-only. A physical iOS device is
 the exception: it connects to an authenticated LAN listener using the token in
 `~/.lingxia/apple/dev-device-token`. On a remote development machine, run both
