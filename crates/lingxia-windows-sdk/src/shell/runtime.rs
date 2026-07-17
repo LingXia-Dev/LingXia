@@ -2959,13 +2959,13 @@ fn build_lxapp_context_menu(
         push_lxapp_context_menu_item(
             &mut items,
             &mut actions,
-            "Restart".to_string(),
+            lingxia_logic::i18n::t(lingxia_logic::I18nKey::CapsuleRestart),
             Some(LxappContextMenuAction::Restart),
         );
         push_lxapp_context_menu_item(
             &mut items,
             &mut actions,
-            "Clean Cache && Restart".to_string(),
+            lingxia_logic::i18n::t(lingxia_logic::I18nKey::CapsuleCleanCache),
             Some(LxappContextMenuAction::CleanCacheRestart),
         );
     }
@@ -2984,16 +2984,17 @@ fn show_lxapp_auxiliary_context_menu(
     let target = lxapp::try_get(target_appid);
     let info = target.as_ref().map(|target| target.get_lxapp_info());
     let version_item = info.as_ref().map(|info| {
+        let version_label = lingxia_logic::i18n::t(lingxia_logic::I18nKey::CommonVersion);
         let version = info.version.trim();
         if version.is_empty() {
-            "Version".to_string()
+            version_label
         } else {
-            format!("Version {version}")
+            format!("{version_label} {version}")
         }
     });
     #[cfg(feature = "browser-shell")]
     let about = info.as_ref().map(|info| AboutInfo {
-        title: "About".to_string(),
+        title: lingxia_logic::i18n::t(lingxia_logic::I18nKey::CommonAbout),
         app_name: if info.app_name.trim().is_empty() {
             target_appid.to_string()
         } else {
