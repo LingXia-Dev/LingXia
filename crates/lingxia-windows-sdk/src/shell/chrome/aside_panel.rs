@@ -389,8 +389,10 @@ pub(super) fn draw_aside_panel_header(
     // Chrome-style strip: a tinted bar the active tab lifts out of as a
     // round-topped card merging into the content below. It is first-layer
     // material, so fill its whole slot; rounding this outer fill exposes the
-    // white panel card through both top corners.
-    fill_rect(hdc, header, pal.window_background);
+    // white panel card through both top corners. The wash must sit a step
+    // below the shell background — matching it flattens the strip into the
+    // gutter and the active tab loses its lift.
+    fill_rect(hdc, header, pal.group_active_background);
 
     if panel.panel_id == lingxia_windows_contract::ASIDE_BROWSER_PANEL_ID {
         let (can_back, can_forward) = crate::shell::runtime::aside_panel_nav_state();
