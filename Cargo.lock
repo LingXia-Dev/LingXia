@@ -3294,12 +3294,10 @@ version = "0.10.0"
 dependencies = [
  "lingxia-provider",
  "serde",
- "serde_json",
  "thiserror 2.0.18",
  "tokio",
  "tracing",
  "tracing-subscriber",
- "zstd",
 ]
 
 [[package]]

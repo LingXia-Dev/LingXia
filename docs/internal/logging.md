@@ -10,7 +10,7 @@ This document describes the current logging mechanism in LingXia runtime. It foc
 - in-memory buffering
 - native logger output
 - realtime provider hook
-- collected log archive flow
+- provider-owned collection trigger
 - devtools/live attach flow
 
 This document does not define any specific backend transport or product integration.
@@ -31,8 +31,7 @@ flowchart LR
   B --> D["LogProvider.on_log"]
   B --> E["Platform logger"]
   C --> F["attach_log_stream / devtools"]
-  C --> G["collect_archive"]
-  G --> H["LogProvider.upload_collected_logs"]
+  G["collect_logs"] --> H["LogProvider.collect_logs"]
 ```
 
 There are two separate capability paths:
@@ -41,10 +40,9 @@ There are two separate capability paths:
   - every structured log event passes through `LogManager.dispatch(...)`
   - the active `LogProvider` receives `on_log(&LogMessage)`
 - Collect path:
-  - caller explicitly asks to collect recent logs
-  - runtime snapshots recent in-memory entries
-  - entries are encoded to `jsonl.zst`
-  - the active `LogProvider` receives `upload_collected_logs(CollectedLogArchive)`
+  - caller explicitly triggers diagnostic collection
+  - the active `LogProvider` receives `collect_logs()`
+  - the provider owns retention, record selection, encoding, and transport
 
 ## Core Data Model
 
@@ -71,7 +69,7 @@ The model is intentionally transport-agnostic. It is valid for:
 - platform logger output
 - devtools streaming
 - realtime forwarding to a provider
-- compressed diagnostic archive generation
+- provider-owned diagnostic persistence and export
 
 ## Runtime Initialization
 
@@ -121,7 +119,7 @@ This rule exists to avoid recursive log emission loops.
 `LogBuffer` maintains:
 
 - one bounded broadcast channel for live subscribers
-- one bounded recent-history deque for replay and collection
+- one bounded recent-history deque for replay
 
 Default capacities:
 
@@ -158,30 +156,17 @@ without missing the boundary between replayed entries and new entries.
 
 The explicit collect API is:
 
-- `upload_collected_logs(limit)`
+- `collect_logs()`
 
 Flow:
 
-1. take recent entries from `LogBuffer`
-2. serialize entries as JSON Lines
-3. compress with zstd
-4. build `CollectedLogArchive`
-5. call `LogProvider.upload_collected_logs(...)`
+1. delegate the collection trigger to the active provider
+2. let the provider select records from its own retained log store
+3. let the provider own batching, encoding, transport, acknowledgement, and retry
 
-The archive contains:
-
-- file name
-- content type
-- encoding
-- entry count
-- involved lxapp IDs
-- compressed bytes
-
-Current archive encoding:
-
-- file extension: `jsonl.zst`
-- `content_type`: `application/zstd`
-- `encoding`: `jsonl+zstd`
+The trigger carries no archive payload and no record limit. This keeps the
+runtime boundary transport-neutral and avoids building data that a provider
+would otherwise need to decode or discard.
 
 ## Provider Boundary
 
@@ -190,7 +175,7 @@ The logging extension point is `LogProvider`.
 It has two hooks:
 
 - `on_log(&LogMessage)`
-- `upload_collected_logs(CollectedLogArchive)`
+- `collect_logs()`
 
 Registration happens through:
 
@@ -200,15 +185,15 @@ Behavior when no custom provider is registered:
 
 - runtime uses `NoOpProvider`
 - realtime provider forwarding becomes a no-op
-- collected upload becomes a no-op
+- collection trigger becomes a no-op
 - local in-memory buffering and platform logger output still work
 
 This separation is intentional:
 
-- `lingxia-log` defines capability, shared types, dispatch, buffering, live stream, and archive collection
+- `lingxia-log` defines capability, shared types, dispatch, buffering, live stream, and the collection trigger
 - `lingxia` installs platform logging, the Rust `log` crate bridge, and SDK FFI log entry points
 - `lingxia-lxapp` emits runtime/page/appservice logs through `lingxia-log`
-- concrete hosts/providers decide whether and how to forward logs elsewhere
+- concrete hosts/providers decide how to retain, select, encode, and export logs
 
 ## Rust `log` Bridge And Downstream Logger
 
@@ -288,5 +273,5 @@ The current mechanism relies on these invariants:
 2. Provider realtime hook must not perform blocking work inline.
 3. Provider realtime hook must not emit LingXia logs recursively.
 4. Recent history remains bounded in memory.
-5. Collect always operates on recent in-memory logs, not an unbounded persisted log store.
+5. Collection storage, selection, encoding, and transport belong to the provider.
 6. Platform logger output is independent of whether a custom `LogProvider` is registered.

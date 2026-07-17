@@ -128,8 +128,7 @@ fn log_facade_exports_app_authoring_surface_only() {
     assert!(!log_exports.contains("LogBuffer"));
     assert!(!log_exports.contains("register_log_provider"));
     assert!(!log_exports.contains("tracing_layer"));
-    assert!(!log_exports.contains("upload_collected_logs"));
-    assert!(!log_exports.contains("CollectedLogArchive"));
+    assert!(!log_exports.contains("collect_logs"));
 }
 
 #[test]
