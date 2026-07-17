@@ -23,8 +23,8 @@ use windows::Win32::Graphics::Dxgi::Common::{
 };
 use windows::Win32::Graphics::Dxgi::IDXGIDevice;
 
-/// Device → surface-HWND target → root visual (clip) → webview visual
-/// (WebView2's `RootVisualTarget`) + four corner-wedge visuals above it.
+/// Device → surface-HWND target → root visual → webview visual (WebView2's
+/// `RootVisualTarget`, bounds-clipped) + four corner-wedge visuals above it.
 pub(crate) struct DcompTree {
     device: IDCompositionDesktopDevice,
     d3d_context: ID3D11DeviceContext,
@@ -85,11 +85,15 @@ impl DcompTree {
         &self.webview_visual
     }
 
-    /// Applies the clip and the corner wedges for `(0, 0, width, height)`
-    /// with per-corner radii `[tl, tr, br, bl]`, then commits once.
-    /// `corner_color` is the 0xAARGB backdrop the wedges paint outside the
-    /// arc; alpha 0 disables wedges (a separate mask owns the corners, e.g.
-    /// the device frame's bezel ring).
+    /// Applies the bounds clip and the corner wedges for
+    /// `(0, 0, width, height)`, then commits once. Rounding comes solely
+    /// from the wedges — a rounded clip would also clip the wedge visuals
+    /// (their useful pixels live exactly outside the arc), and its cut edge
+    /// is aliased anyway; the webview keeps a square bounds clip and the
+    /// wedges blend the arc over live content. `corner_color` is the 0xAARGB
+    /// backdrop the wedges paint outside the arc; alpha 0 disables wedges
+    /// (a separate mask owns the corners, e.g. the device frame's bezel
+    /// ring).
     pub(crate) fn apply_geometry(
         &mut self,
         width: i32,
@@ -97,22 +101,13 @@ impl DcompTree {
         radii: [i32; 4],
         corner_color: u32,
     ) -> StdResult<()> {
-        let [tl, tr, br, bl] = radii.map(|radius| radius.max(0) as f32);
         unsafe {
             self.clip
                 .SetLeft2(0.0)
                 .and_then(|_| self.clip.SetTop2(0.0))
                 .and_then(|_| self.clip.SetRight2(width.max(0) as f32))
                 .and_then(|_| self.clip.SetBottom2(height.max(0) as f32))
-                .and_then(|_| self.clip.SetTopLeftRadiusX2(tl))
-                .and_then(|_| self.clip.SetTopLeftRadiusY2(tl))
-                .and_then(|_| self.clip.SetTopRightRadiusX2(tr))
-                .and_then(|_| self.clip.SetTopRightRadiusY2(tr))
-                .and_then(|_| self.clip.SetBottomRightRadiusX2(br))
-                .and_then(|_| self.clip.SetBottomRightRadiusY2(br))
-                .and_then(|_| self.clip.SetBottomLeftRadiusX2(bl))
-                .and_then(|_| self.clip.SetBottomLeftRadiusY2(bl))
-                .and_then(|_| self.root.SetClip(&self.clip))
+                .and_then(|_| self.webview_visual.SetClip(&self.clip))
                 .map_err(|err| dcomp_error("clip update", err))?;
         }
         self.update_wedges(width, height, radii, corner_color)?;
