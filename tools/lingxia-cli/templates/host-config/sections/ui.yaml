@@ -5,7 +5,7 @@
 #
 # Each entry starts with its content key (exactly one):
 #   lxapp   an lxapp, by appId          roles: main | aside | float
-#   url     an in-app browser page      roles: main | aside (requires browser:)
+#   url     an in-app browser page      roles: main | aside (requires capabilities.browser: true)
 #   native  a host capability           roles: aside (e.g. the built-in terminal)
 # Other fields:
 #   role    main (switchable primary) | aside (docked companion) | float (popup)
@@ -26,11 +26,16 @@ surfaces:
 
   # Right-edge companion example (e.g. an AI assistant). The referenced lxapp
   # must be provided by the runtime / update flow. Persistent sidebar entries
-  # are declared at runtime via the shell activator API, not in YAML.
+  # are declared at runtime via lx.shell.activators, not in YAML.
   # - lxapp: assistant
   #   role: aside
   #   edge: right            # left | right | top | bottom
   #   size: { width: 320 }
+
+  # In-app browser page (requires capabilities.browser: true).
+  # - url: https://example.com
+  #   role: aside
+  #   edge: right
 
   # Built-in terminal (requires capabilities.terminal: true).
   # - native: terminal
