@@ -218,9 +218,12 @@ impl DcompTree {
     }
 }
 
-/// Premultiplied BGRA wedge bitmap: alpha = 1 − arc coverage, colored
-/// `0xAARGB`. Arc centers per corner index `[tl, tr, br, bl]` sit at the
-/// wedge-local corner farthest into the content.
+/// Premultiplied BGRA wedge bitmap: alpha = 1 − arc coverage (4×4
+/// supersampled, matching the GDI+ card arcs), colored `0xAARGB` shaded by
+/// the same translucent shadow rings `draw_content_card` paints around the
+/// workspace card — a flat backdrop would read as a bright patch against
+/// the shadowed gutter. Arc centers per corner index `[tl, tr, br, bl]` sit
+/// at the wedge-local corner farthest into the content.
 fn wedge_pixels(corner: usize, radius: i32, color: u32) -> Vec<u32> {
     let (center_x, center_y) = match corner {
         0 => (radius, radius),
@@ -233,16 +236,37 @@ fn wedge_pixels(corner: usize, radius: i32, color: u32) -> Vec<u32> {
     let mut pixels = Vec::with_capacity((radius * radius) as usize);
     for y in 0..radius {
         for x in 0..radius {
+            let mut hits = 0u32;
+            for sub_y in 0..4 {
+                for sub_x in 0..4 {
+                    let dx = x as f32 + (sub_x as f32 + 0.5) / 4.0 - center_x as f32;
+                    let dy = y as f32 + (sub_y as f32 + 0.5) / 4.0 - center_y as f32;
+                    if dx * dx + dy * dy <= (radius * radius) as f32 {
+                        hits += 1;
+                    }
+                }
+            }
+            let inside = hits as f32 / 16.0;
+            // The card shadow: rings of radius+spread with a +2px vertical
+            // offset (draw_content_card's layered expansions).
             let dx = x as f32 + 0.5 - center_x as f32;
-            let dy = y as f32 + 0.5 - center_y as f32;
-            let inside = (radius as f32 - (dx * dx + dy * dy).sqrt() + 0.5).clamp(0.0, 1.0);
+            let dy = y as f32 + 0.5 - (center_y as f32 + 2.0);
+            let shadow_distance = (dx * dx + dy * dy).sqrt();
+            let mut keep = 1.0f32;
+            for spread in 1..=8 {
+                if shadow_distance <= (radius + spread) as f32 {
+                    let ring_alpha = if spread <= 2 { 10.0 } else { 5.0 };
+                    keep *= 1.0 - ring_alpha / 255.0;
+                }
+            }
             let coverage = ((1.0 - inside) * alpha as f32) as u32;
+            let shaded = |channel: u32| (channel as f32 * keep) as u32;
             let premultiply = |channel: u32| (channel * coverage + 127) / 255;
             pixels.push(
                 (coverage << 24)
-                    | (premultiply(red) << 16)
-                    | (premultiply(green) << 8)
-                    | premultiply(blue),
+                    | (premultiply(shaded(red)) << 16)
+                    | (premultiply(shaded(green)) << 8)
+                    | premultiply(shaded(blue)),
             );
         }
     }
