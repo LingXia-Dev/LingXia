@@ -5815,18 +5815,12 @@ fn set_webtag_pull_down_refreshing_on_window(webtag_key: &str, refreshing: bool)
 }
 
 pub fn show_webview_window(webtag: &WebTag, title: &str, activate: bool) -> StdResult<()> {
-    let handler = find_webview_handler(webtag).ok_or_else(|| handler_not_ready(webtag))?;
-    let hwnd = hwnd_from_handle(handler.native_view().window);
-    set_native_framed_window(hwnd, false);
-    apply_shell_window_frame(hwnd)?;
-    show_native_view(handler.native_view(), title, activate)?;
-    handler.set_content_visible(true)?;
-    set_window_handle(webtag.key(), hwnd);
-    set_host_active_webtag(hwnd, webtag.key());
-    set_primary_host_window(hwnd);
-    mark_active(webtag);
-    notify_webtag_visibility(webtag.key(), true);
-    Ok(())
+    // Route through the replacing variant's host pick (visible sibling →
+    // registered window → primary host → own parent window): the shell owns
+    // exactly one workspace window, and presenting straight onto the
+    // webview's own parent here was how activating an lxapp whose open
+    // region was already Main popped a duplicate shell window.
+    show_webview_window_replacing(webtag, title, activate, Vec::new())
 }
 
 pub fn show_webview_window_with_content_size(
