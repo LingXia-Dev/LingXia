@@ -671,15 +671,18 @@ class SidebarGroupView: NSView {
         menu.addItem(headerItem)
         menu.addItem(NSMenuItem.separator())
 
-        // Pin to the sidebar grid (Rust-owned user list, mirrors web pins).
-        let pinned = shellIsPinned("lxapp", appId)
-        let pinItem = NSMenuItem(
-            title: L10n.string(pinned ? "lx_browser_unpin" : "lx_browser_pin_to_sidebar"),
-            action: #selector(contextMenuTogglePin),
-            keyEquivalent: ""
-        )
-        pinItem.target = self
-        menu.addItem(pinItem)
+        // Home already owns a permanent sidebar group, so duplicating it in
+        // the Pin grid has no navigation value and creates two identities.
+        if !LxAppCore.isHomeLxApp(appId) {
+            let pinned = shellIsPinned("lxapp", appId)
+            let pinItem = NSMenuItem(
+                title: L10n.string(pinned ? "lx_browser_unpin" : "lx_browser_pin_to_sidebar"),
+                action: #selector(contextMenuTogglePin),
+                keyEquivalent: ""
+            )
+            pinItem.target = self
+            menu.addItem(pinItem)
+        }
 
         // Restart
         let restartItem = NSMenuItem(
@@ -720,6 +723,7 @@ class SidebarGroupView: NSView {
     }
 
     @objc private func contextMenuTogglePin() {
+        guard !LxAppCore.isHomeLxApp(appId) else { return }
         let pinned = shellIsPinned("lxapp", appId)
         if shellSetPinned("lxapp", appId, !pinned) == -1 {
             showShellPinLimitAlert()

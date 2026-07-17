@@ -2,10 +2,10 @@ use lingxia_platform::Platform;
 use lingxia_platform::traits::app_runtime::{AppRuntime, LxAppOpenMode};
 use lingxia_shell::{
     ActivatorKind, NativeShellCapability, ResolvedShellActivator, ShellActivationIntent,
-    ShellActivator, ShellActivatorTarget, ShellError, ShellHost, ShellResult,
+    ShellActivator, ShellActivatorTarget, ShellError, ShellHost, ShellPin, ShellPinTarget,
+    ShellResult,
 };
 use std::collections::HashSet;
-use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::{Mutex, OnceLock};
 
@@ -16,7 +16,16 @@ struct HostShell {
 pub(crate) fn initialize(platform: Arc<Platform>) -> ShellResult<()> {
     let root = platform.app_data_dir();
     lingxia_shell::initialize(root, Arc::new(HostShell { platform }))?;
-    if lingxia_shell::manager()?.snapshot().activators.declared() {
+    let manager = lingxia_shell::manager()?;
+    if let Some(home_appid) = lingxia_app_context::home_app_id() {
+        let target = ShellPinTarget::Lxapp {
+            key: home_appid.to_string(),
+        };
+        if let Err(error) = manager.unpin(&target) {
+            log::warn!("failed to remove obsolete home lxapp Pin: {error}");
+        }
+    }
+    if manager.snapshot().activators.declared() {
         let _ = lingxia_shell::apply_current_activators();
     }
     let _ = lingxia_shell::apply_current_pins();
@@ -32,7 +41,6 @@ impl ShellHost for HostShell {
         let plan = owner
             .as_ref()
             .and_then(|owner| owner.surface_derived_layout());
-        let asset_dir = owner.as_ref().map(|owner| owner.lxapp_dir.clone());
         items
             .iter()
             .map(|item| {
@@ -71,7 +79,7 @@ impl ShellHost for HostShell {
                     id: item.id.clone(),
                     kind,
                     label: item.label.clone().unwrap_or(fallback_label),
-                    icon_path: resolve_declared_icon(asset_dir.as_deref(), item.icon.as_deref()),
+                    icon_path: resolve_declared_icon(owner.as_deref(), item.icon.as_deref()),
                     active: kind != ActivatorKind::Action && active,
                     disabled: item.disabled || unavailable,
                 })
@@ -86,8 +94,9 @@ impl ShellHost for HostShell {
     }
 
     fn apply_pins(&self, items: &[lingxia_shell::ShellPin]) -> ShellResult<()> {
+        let visible = visible_shell_pins(items, lingxia_app_context::home_app_id());
         self.platform
-            .set_shell_pins(items)
+            .set_shell_pins(&visible)
             .map_err(|error| ShellError::Host(error.to_string()))
     }
 
@@ -108,20 +117,26 @@ impl ShellHost for HostShell {
     }
 }
 
-fn resolve_declared_icon(asset_dir: Option<&Path>, icon: Option<&str>) -> Option<String> {
+fn resolve_declared_icon(owner: Option<&lxapp::LxApp>, icon: Option<&str>) -> Option<String> {
     let icon = icon?.trim();
     if icon.is_empty() {
         return None;
     }
-    let path = Path::new(icon);
-    let resolved = if path.is_absolute() {
-        PathBuf::from(path)
-    } else if let Some(asset_dir) = asset_dir {
-        asset_dir.join(path)
-    } else {
-        PathBuf::from(path)
-    };
+    let resolved = owner?.resolve_accessible_path(icon).ok()?;
     Some(resolved.to_string_lossy().into_owned())
+}
+
+pub(crate) fn visible_shell_pins(items: &[ShellPin], home_appid: Option<&str>) -> Vec<ShellPin> {
+    items
+        .iter()
+        .filter(|pin| {
+            !matches!(
+                (&pin.0, home_appid),
+                (ShellPinTarget::Lxapp { key }, Some(home)) if key == home
+            )
+        })
+        .cloned()
+        .collect()
 }
 
 fn shell_owner() -> Option<Arc<lxapp::LxApp>> {
@@ -270,20 +285,27 @@ fn lxapp_aside_edge(appid: &str) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn declared_icon_resolves_from_the_home_lxapp_bundle() {
-        assert_eq!(
-            resolve_declared_icon(Some(Path::new("/app/home")), Some("public/icon.svg")),
-            Some("/app/home/public/icon.svg".to_string())
-        );
-    }
+    use lingxia_shell::{ShellPin, ShellPinTarget};
 
     #[test]
     fn missing_declared_icon_stays_missing() {
-        assert_eq!(
-            resolve_declared_icon(Some(Path::new("/app/home")), None),
-            None
-        );
+        assert_eq!(resolve_declared_icon(None, None), None);
+    }
+
+    #[test]
+    fn home_lxapp_is_never_applied_as_a_pin() {
+        let pins = vec![
+            ShellPin(ShellPinTarget::Lxapp {
+                key: "home".to_string(),
+            }),
+            ShellPin(ShellPinTarget::Lxapp {
+                key: "chat".to_string(),
+            }),
+            ShellPin(ShellPinTarget::Bookmark {
+                key: "bookmark".to_string(),
+            }),
+        ];
+
+        assert_eq!(visible_shell_pins(&pins, Some("home")), pins[1..]);
     }
 }

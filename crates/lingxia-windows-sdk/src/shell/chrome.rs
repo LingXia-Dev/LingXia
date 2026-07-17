@@ -751,7 +751,9 @@ fn same_auxiliary_row_slots(
             .auxiliary_items
             .iter()
             .zip(&new_tabbar.auxiliary_items)
-            .all(|(old_item, new_item)| old_item.id == new_item.id)
+            .all(|(old_item, new_item)| {
+                old_item.id == new_item.id && old_item.pinned == new_item.pinned
+            })
 }
 
 fn push_tabbar_selected_rects(
@@ -820,11 +822,7 @@ fn push_sidebar_auxiliary_dirty_rects(
         .zip(&new_tabbar.auxiliary_items)
         .enumerate()
     {
-        if old_item.active == new_item.active
-            && old_item.title == new_item.title
-            && old_item.icon_png == new_item.icon_png
-            && old_tabbar.selected_color == new_tabbar.selected_color
-        {
+        if old_item == new_item && old_tabbar.selected_color == new_tabbar.selected_color {
             continue;
         }
         if let Some((_, item_rect)) = auxiliary
@@ -2050,7 +2048,7 @@ mod scroll_tests {
         WindowsShellTabBarItemLayout, WindowsShellTabBarLayout, WindowsShellTabBarPosition,
         WindowsShellWindowLayout, clamp_sidebar_scroll, compute_attached_layout,
         compute_chrome_rects, sidebar_auxiliary_rects, sidebar_caption_contains,
-        sidebar_group_rect, sidebar_top_level_icon_rect,
+        sidebar_group_rect, sidebar_top_level_icon_rect, tabbar_requires_full_repaint,
     };
     use windows::Win32::Foundation::RECT;
 
@@ -2241,5 +2239,50 @@ mod scroll_tests {
             sidebar_top_level_icon_rect(lxapp, SIDEBAR_ICON_SIZE).left,
             sidebar_top_level_icon_rect(web, SIDEBAR_ICON_SIZE).left
         );
+    }
+
+    #[test]
+    fn pinning_an_existing_auxiliary_id_repaints_its_old_geometry() {
+        let old = WindowsShellTabBarLayout {
+            visible: true,
+            position: WindowsShellTabBarPosition::Left,
+            dimension: 220,
+            app_name: "App".to_string(),
+            app_icon_path: String::new(),
+            group_id: "app".to_string(),
+            group_active: true,
+            group_closable: false,
+            group_order_index: 0,
+            color: 0,
+            selected_color: 0,
+            background_color: 0,
+            background_transparent: true,
+            border_color: 0,
+            selected_index: -1,
+            items: Vec::new(),
+            collapsed: false,
+            icon_rail: false,
+            items_api_hidden: false,
+            items_collapsed: false,
+            activator_footer_height: 0,
+            main_scroll_offset: 0,
+            activator_scroll_row: 0,
+            auxiliary_items: vec![WindowsShellAuxiliaryItemLayout {
+                id: "lxapp:chat".to_string(),
+                title: "Chat".to_string(),
+                active: true,
+                pinned: false,
+                closable: true,
+                icon_png: None,
+                icon_path: String::new(),
+            }],
+            show_auxiliary_add: true,
+            header_actions: Vec::new(),
+        };
+        let mut pinned = old.clone();
+        pinned.auxiliary_items[0].pinned = true;
+        pinned.auxiliary_items[0].closable = false;
+
+        assert!(tabbar_requires_full_repaint(&old, &pinned));
     }
 }

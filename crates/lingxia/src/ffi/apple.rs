@@ -1025,6 +1025,7 @@ pub fn shell_pins() -> String {
     ffi_catch_unwind!("shell_pins", String::new(), || {
         lingxia_shell::pins()
             .ok()
+            .map(|pins| crate::shell::visible_shell_pins(&pins, lingxia_app_context::home_app_id()))
             .and_then(|pins| serde_json::to_string(&pins).ok())
             .unwrap_or_default()
     })
@@ -1032,6 +1033,9 @@ pub fn shell_pins() -> String {
 
 pub fn shell_is_pinned(kind: &str, key: &str) -> bool {
     ffi_catch_unwind!("shell_is_pinned", false, || {
+        if shell_pin_is_home_lxapp(kind, key) {
+            return false;
+        }
         shell_pin_target(kind, key)
             .and_then(|target| lingxia_shell::is_pinned(&target).ok())
             .unwrap_or(false)
@@ -1040,6 +1044,9 @@ pub fn shell_is_pinned(kind: &str, key: &str) -> bool {
 
 pub fn shell_set_pinned(kind: &str, key: &str, pinned: bool) -> i32 {
     ffi_catch_unwind!("shell_set_pinned", 0, || {
+        if pinned && shell_pin_is_home_lxapp(kind, key) {
+            return 0;
+        }
         let Some(target) = shell_pin_target(kind, key) else {
             return 0;
         };
@@ -1052,6 +1059,10 @@ pub fn shell_set_pinned(kind: &str, key: &str, pinned: bool) -> i32 {
             }
         }
     })
+}
+
+fn shell_pin_is_home_lxapp(kind: &str, key: &str) -> bool {
+    kind == "lxapp" && lingxia_app_context::home_app_id().is_some_and(|home| home == key.trim())
 }
 
 fn shell_pin_target(kind: &str, key: &str) -> Option<lingxia_shell::ShellPinTarget> {

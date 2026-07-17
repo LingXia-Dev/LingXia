@@ -1566,6 +1566,10 @@ fn auxiliary_lxapp_id(raw: &str) -> Option<&str> {
 }
 
 fn set_lxapp_pin_with_limit(owner_appid: &str, appid: &str, pinned: bool) -> bool {
+    if pinned && is_home_lxapp(appid) {
+        log::warn!("ignoring Pin request for home lxapp '{appid}'");
+        return false;
+    }
     match lingxia_shell::set_pinned(
         ShellPinTarget::Lxapp {
             key: appid.to_string(),
@@ -1584,7 +1588,15 @@ fn set_lxapp_pin_with_limit(owner_appid: &str, appid: &str, pinned: bool) -> boo
     }
 }
 
+fn is_home_lxapp(appid: &str) -> bool {
+    lingxia_app_context::home_app_id().is_some_and(|home| home == appid)
+        || lxapp::try_get(appid).is_some_and(|app| app.runtime_info().is_home)
+}
+
 fn is_lxapp_pinned(appid: &str) -> bool {
+    if is_home_lxapp(appid) {
+        return false;
+    }
     lingxia_shell::is_pinned(&ShellPinTarget::Lxapp {
         key: appid.to_string(),
     })
@@ -2465,7 +2477,6 @@ fn active_host_is_browser() -> bool {
     false
 }
 
-#[cfg(feature = "browser-runtime")]
 fn present_current_lxapp_main(app: &LxApp) -> bool {
     let path = app
         .peek_current_page()
@@ -2490,11 +2501,6 @@ fn present_current_lxapp_main(app: &LxApp) -> bool {
             false
         }
     }
-}
-
-#[cfg(not(feature = "browser-runtime"))]
-fn present_current_lxapp_main(_app: &LxApp) -> bool {
-    false
 }
 
 /// Opens a new browser tab at `lingxia://newtab` owned by the shell app
@@ -2842,7 +2848,12 @@ fn focus_or_open_lxapp(owner_appid: &str, target_appid: &str) {
 /// navigation/tab state, producing mismatched content and sidebar selection.
 fn focus_existing_main_lxapp(appid: &str) {
     match lxapp::try_get(appid) {
-        Some(app) => app.set_active_main(),
+        Some(app) => {
+            app.set_active_main();
+            if !present_current_lxapp_main(&app) {
+                log::warn!("failed to present focused main lxapp {appid}");
+            }
+        }
         None => log::warn!("failed to focus missing main lxapp {appid}"),
     }
 }
@@ -2897,6 +2908,70 @@ fn open_lxapp_panel_now(
     .map(|_| ())
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum LxappContextMenuAction {
+    TogglePin,
+    About,
+    Restart,
+    CleanCacheRestart,
+}
+
+fn push_lxapp_context_menu_item(
+    items: &mut Vec<String>,
+    actions: &mut Vec<Option<LxappContextMenuAction>>,
+    label: String,
+    action: Option<LxappContextMenuAction>,
+) {
+    items.push(label);
+    actions.push(action);
+}
+
+fn build_lxapp_context_menu(
+    is_home: bool,
+    pinned: bool,
+    version_item: Option<String>,
+) -> (Vec<String>, Vec<Option<LxappContextMenuAction>>) {
+    let mut items = Vec::new();
+    let mut actions = Vec::new();
+    if !is_home {
+        push_lxapp_context_menu_item(
+            &mut items,
+            &mut actions,
+            lingxia_logic::i18n::t(if pinned {
+                lingxia_logic::I18nKey::BrowserUnpin
+            } else {
+                lingxia_logic::I18nKey::BrowserPinToSidebar
+            }),
+            Some(LxappContextMenuAction::TogglePin),
+        );
+    }
+    if let Some(version_item) = version_item {
+        if !items.is_empty() {
+            push_lxapp_context_menu_item(&mut items, &mut actions, String::new(), None);
+        }
+        push_lxapp_context_menu_item(
+            &mut items,
+            &mut actions,
+            version_item,
+            Some(LxappContextMenuAction::About),
+        );
+        push_lxapp_context_menu_item(&mut items, &mut actions, String::new(), None);
+        push_lxapp_context_menu_item(
+            &mut items,
+            &mut actions,
+            "Restart".to_string(),
+            Some(LxappContextMenuAction::Restart),
+        );
+        push_lxapp_context_menu_item(
+            &mut items,
+            &mut actions,
+            "Clean Cache && Restart".to_string(),
+            Some(LxappContextMenuAction::CleanCacheRestart),
+        );
+    }
+    (items, actions)
+}
+
 fn show_lxapp_auxiliary_context_menu(
     owner_appid: &str,
     target_appid: &str,
@@ -2927,21 +3002,9 @@ fn show_lxapp_auxiliary_context_menu(
         version_line: version_item.clone().unwrap_or_default(),
         icon_path: info.icon.clone(),
     });
+    let is_home = is_home_lxapp(target_appid);
     let pinned = is_lxapp_pinned(target_appid);
-    let mut items = vec![lingxia_logic::i18n::t(if pinned {
-        lingxia_logic::I18nKey::BrowserUnpin
-    } else {
-        lingxia_logic::I18nKey::BrowserPinToSidebar
-    })];
-    if let Some(version_item) = version_item {
-        items.extend([
-            String::new(),
-            version_item,
-            String::new(),
-            "Restart".to_string(),
-            "Clean Cache && Restart".to_string(),
-        ]);
-    }
+    let (items, actions) = build_lxapp_context_menu(is_home, pinned, version_item);
     let owner_appid = owner_appid.to_string();
     let target_appid = target_appid.to_string();
     super::context_menu::show_context_menu_checked(
@@ -2949,24 +3012,26 @@ fn show_lxapp_auxiliary_context_menu(
         (screen_x, screen_y),
         items,
         Vec::new(),
-        Arc::new(move |index| match index {
-            0 if set_lxapp_pin_with_limit(&owner_appid, &target_appid, !pinned) => {
+        Arc::new(move |index| match actions.get(index).copied().flatten() {
+            Some(LxappContextMenuAction::TogglePin)
+                if set_lxapp_pin_with_limit(&owner_appid, &target_appid, !pinned) =>
+            {
                 sync_shell_layout(&owner_appid);
             }
-            0 => {}
-            2 =>
+            Some(LxappContextMenuAction::TogglePin) => {}
+            Some(LxappContextMenuAction::About) =>
             {
                 #[cfg(feature = "browser-shell")]
                 if let Some(about) = &about {
                     show_about_dialog(window, about);
                 }
             }
-            4 => {
+            Some(LxappContextMenuAction::Restart) => {
                 if let Err(err) = restart_lxapp_in_place(&target_appid) {
                     log::warn!("failed to restart sidebar lxapp {target_appid}: {err}");
                 }
             }
-            5 => {
+            Some(LxappContextMenuAction::CleanCacheRestart) => {
                 if let Err(err) = clear_lxapp_user_cache(&target_appid)
                     .and_then(|_| restart_lxapp_in_place(&target_appid))
                 {
@@ -2975,7 +3040,7 @@ fn show_lxapp_auxiliary_context_menu(
                     );
                 }
             }
-            _ => {}
+            None => {}
         }),
     );
 }
@@ -4311,8 +4376,9 @@ fn is_transparent_css_color(raw: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        browser_internal_page_deep_link, browser_internal_page_key, chrome_command,
-        chrome_command_is_page_scoped, preferred_sidebar_group_appid,
+        LxappContextMenuAction, browser_internal_page_deep_link, browser_internal_page_key,
+        build_lxapp_context_menu, chrome_command, chrome_command_is_page_scoped,
+        preferred_sidebar_group_appid,
     };
 
     #[test]
@@ -4365,5 +4431,16 @@ mod tests {
             preferred_sidebar_group_appid(None, Some("owner".to_string())).as_deref(),
             Some("owner")
         );
+    }
+
+    #[test]
+    fn home_lxapp_context_menu_never_offers_pin() {
+        let (_, home_actions) =
+            build_lxapp_context_menu(true, false, Some("Version 1.0.0".to_string()));
+        assert!(!home_actions.contains(&Some(LxappContextMenuAction::TogglePin)));
+
+        let (_, app_actions) =
+            build_lxapp_context_menu(false, false, Some("Version 1.0.0".to_string()));
+        assert!(app_actions.contains(&Some(LxappContextMenuAction::TogglePin)));
     }
 }
