@@ -438,14 +438,45 @@ fn overlay_webview_screenshot(
     let webview = image::load_from_memory(webview_png)
         .map_err(|err| PlatformError::Platform(format!("failed to decode WebView PNG: {err}")))?
         .into_rgba8();
-    let webview = image::imageops::resize(
+    let mut webview = image::imageops::resize(
         &webview,
         width,
         height,
         image::imageops::FilterType::Lanczos3,
     );
+    // CapturePreview sees content pre-clip; reproduce the live surface's
+    // composition-clip corners so screenshots match the screen.
+    mask_corner_alpha(&mut webview, snapshot.content_corner_radii);
     image::imageops::overlay(base, &webview, i64::from(left), i64::from(top));
     Ok(())
+}
+
+/// Multiplies corner alpha by rounded coverage `[tl, tr, br, bl]` (the same
+/// SDF the shell's corner masks use), leaving zero-radius corners untouched.
+fn mask_corner_alpha(image: &mut image::RgbaImage, radii: [i32; 4]) {
+    if radii == [0; 4] {
+        return;
+    }
+    let (width, height) = (image.width() as i32, image.height() as i32);
+    let [tl, tr, br, bl] = radii;
+    for (x, y, pixel) in image.enumerate_pixels_mut() {
+        let (x, y) = (x as i32, y as i32);
+        let (radius, corner_x, corner_y) = if x < tl && y < tl {
+            (tl, tl, tl)
+        } else if x >= width - tr && y < tr {
+            (tr, width - tr, tr)
+        } else if x >= width - br && y >= height - br {
+            (br, width - br, height - br)
+        } else if x < bl && y >= height - bl {
+            (bl, bl, height - bl)
+        } else {
+            continue;
+        };
+        let dx = x as f32 + 0.5 - corner_x as f32;
+        let dy = y as f32 + 0.5 - corner_y as f32;
+        let coverage = (radius as f32 - (dx * dx + dy * dy).sqrt() + 0.5).clamp(0.0, 1.0);
+        pixel.0[3] = (pixel.0[3] as f32 * coverage) as u8;
+    }
 }
 
 fn overlay_window_screenshots(

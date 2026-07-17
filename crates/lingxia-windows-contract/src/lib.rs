@@ -325,6 +325,10 @@ pub struct WindowsWebViewWindowSnapshot {
     pub content_top: i32,
     pub content_width: u32,
     pub content_height: u32,
+    /// Composition-clip corner radii `[tl, tr, br, bl]` of the live surface
+    /// (zeros for windowed hosting), so screenshot compositing can reproduce
+    /// the on-screen rounding.
+    pub content_corner_radii: [i32; 4],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]

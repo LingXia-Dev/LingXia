@@ -3089,6 +3089,54 @@ fn apply_phone_switcher_alpha(pixels: &mut [u32], width: i32, height: i32, sheet
     }
 }
 
+/// Scales premultiplied pixels by per-corner rounded coverage `[tl, tr, br,
+/// bl]`, so a snapshot of a composition-clipped surface keeps the corners the
+/// live surface had (the nav slide otherwise ghosts square corners over the
+/// rounded workspace).
+#[cfg(feature = "components")]
+fn apply_corner_alpha_mask(pixels: &mut [u32], width: i32, height: i32, radii: [i32; 4]) {
+    if radii == [0; 4] {
+        return;
+    }
+    let [tl, tr, br, bl] = radii;
+    let coverage_at = |x: i32, y: i32| -> u32 {
+        let (radius, corner_x, corner_y) = if x < tl && y < tl {
+            (tl, tl, tl)
+        } else if x >= width - tr && y < tr {
+            (tr, width - tr, tr)
+        } else if x >= width - br && y >= height - br {
+            (br, width - br, height - br)
+        } else if x < bl && y >= height - bl {
+            (bl, bl, height - bl)
+        } else {
+            return 255;
+        };
+        let dx = x as f32 + 0.5 - corner_x as f32;
+        let dy = y as f32 + 0.5 - corner_y as f32;
+        let distance = (dx * dx + dy * dy).sqrt();
+        ((radius as f32 - distance + 0.5).clamp(0.0, 1.0) * 255.0) as u32
+    };
+    for y in 0..height {
+        for x in 0..width {
+            let coverage = coverage_at(x, y);
+            if coverage == 255 {
+                continue;
+            }
+            let index = (y * width + x) as usize;
+            if coverage == 0 {
+                pixels[index] = 0;
+                continue;
+            }
+            let pixel = pixels[index];
+            let scale = |channel: u32| (channel * coverage + 127) / 255;
+            pixels[index] = (scale(pixel >> 24) << 24)
+                | (scale((pixel >> 16) & 0xff) << 16)
+                | (scale((pixel >> 8) & 0xff) << 8)
+                | scale(pixel & 0xff);
+        }
+    }
+}
+
 /// Sets each pixel's alpha to its rounded-rect coverage (premultiplied, as
 /// `UpdateLayeredWindow` expects), with a 1px anti-aliased corner falloff.
 /// GDI-drawn content carries garbage alpha, so the mask is geometric.
@@ -5680,6 +5728,10 @@ pub fn webview_window_snapshot(webtag: &WebTag) -> StdResult<WindowsWebViewWindo
         WindowsAndMessaging::GetWindowRect(hwnd, &mut window)
             .map_err(|err| WebViewError::WebView(format!("GetWindowRect failed: {err}")))?;
     }
+    let content_corner_radii = find_webview_handler(webtag)
+        .filter(|handler| handler.is_composition_hosted())
+        .map(|_| surface_clip_radii(hwnd, webtag.key(), content))
+        .unwrap_or([0; 4]);
     Ok(WindowsWebViewWindowSnapshot {
         window_id: hwnd_handle(hwnd) as usize,
         webtag_key: webtag.key().to_string(),
@@ -5693,6 +5745,7 @@ pub fn webview_window_snapshot(webtag: &WebTag) -> StdResult<WindowsWebViewWindo
         content_top: content.top,
         content_width: (content.right - content.left).max(0) as u32,
         content_height: (content.bottom - content.top).max(0) as u32,
+        content_corner_radii,
     })
 }
 
@@ -6023,7 +6076,7 @@ fn prepare_nav_snapshot_slide(host: HWND, prev_key: &str, forward: bool) -> bool
         return false;
     }
     // Premultiplied BGRA, as UpdateLayeredWindow's AC_SRC_ALPHA expects.
-    let pixels: Vec<u32> = rgba
+    let mut pixels: Vec<u32> = rgba
         .pixels()
         .map(|p| {
             let [r, g, b, a] = p.0;
@@ -6034,6 +6087,16 @@ fn prepare_nav_snapshot_slide(host: HWND, prev_key: &str, forward: bool) -> bool
         .collect();
 
     let rect = content_rect_for_window(host, prev_key);
+    // CapturePreview sees content pre-clip; carry the live surface's rounded
+    // corners into the snapshot so the slide doesn't ghost square ones.
+    if handler.is_composition_hosted() {
+        apply_corner_alpha_mask(
+            &mut pixels,
+            width,
+            height,
+            surface_clip_radii(host, prev_key, rect),
+        );
+    }
     let mut origin = POINT {
         x: rect.left,
         y: rect.top,
