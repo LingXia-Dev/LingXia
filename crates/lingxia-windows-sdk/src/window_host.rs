@@ -4100,10 +4100,14 @@ fn prefer_visible_workspace(candidate: Option<HWND>) -> Option<HWND> {
 /// hidden. Real separate windows (native-framed, device-framed) stay.
 fn hide_other_workspace_windows(host: HWND) {
     for hwnd in registered_host_windows() {
+        #[cfg(feature = "device-frame")]
+        let device_framed = crate::device_frame::window_has_device_frame(hwnd_handle(hwnd));
+        #[cfg(not(feature = "device-frame"))]
+        let device_framed = false;
         if hwnd == host
             || !is_window_visible(hwnd)
             || is_native_framed_window(hwnd)
-            || crate::device_frame::window_has_device_frame(hwnd_handle(hwnd))
+            || device_framed
         {
             continue;
         }
