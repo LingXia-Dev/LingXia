@@ -1,8 +1,7 @@
 use lingxia_provider::{BoxFuture, ProviderError};
 use serde::Serialize;
 use std::cell::Cell;
-use std::collections::{HashSet, VecDeque};
-use std::io;
+use std::collections::VecDeque;
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::broadcast;
@@ -116,65 +115,6 @@ impl LogMessage {
     }
 }
 
-/// Compressed in-memory log archive payload.
-#[derive(Debug, Clone)]
-pub struct CollectedLogArchive {
-    pub file_name: String,
-    pub content_type: &'static str,
-    pub encoding: &'static str,
-    pub entry_count: usize,
-    pub lxapp_ids: Vec<String>,
-    pub bytes: Vec<u8>,
-}
-
-/// Metadata returned after a collected log archive has been uploaded.
-#[derive(Debug, Clone)]
-pub struct CollectedLogArchiveInfo {
-    pub file_name: String,
-    pub content_type: &'static str,
-    pub encoding: &'static str,
-    pub entry_count: usize,
-    pub lxapp_ids: Vec<String>,
-}
-
-impl CollectedLogArchive {
-    pub fn from_entries(entries: &[LogMessage]) -> io::Result<Self> {
-        let mut lxapp_ids = Vec::new();
-        let mut seen_lxapp_ids = HashSet::new();
-        let mut jsonl = Vec::new();
-        for entry in entries {
-            if let Some(appid) = entry.appid.as_deref()
-                && seen_lxapp_ids.insert(appid.to_string())
-            {
-                lxapp_ids.push(appid.to_string());
-            }
-            serde_json::to_writer(&mut jsonl, entry)
-                .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))?;
-            jsonl.push(b'\n');
-        }
-
-        let bytes = zstd::stream::encode_all(io::Cursor::new(jsonl), 3)?;
-        Ok(Self {
-            file_name: format!("lingxia-logs-{}.jsonl.zst", now_timestamp_ms()),
-            content_type: "application/zstd",
-            encoding: "jsonl+zstd",
-            entry_count: entries.len(),
-            lxapp_ids,
-            bytes,
-        })
-    }
-
-    pub fn info(&self) -> CollectedLogArchiveInfo {
-        CollectedLogArchiveInfo {
-            file_name: self.file_name.clone(),
-            content_type: self.content_type,
-            encoding: self.encoding,
-            entry_count: self.entry_count,
-            lxapp_ids: self.lxapp_ids.clone(),
-        }
-    }
-}
-
 /// Combined recent replay plus live log receiver for diagnostics consumers.
 pub struct AttachedLogStream {
     pub recent: Vec<LogMessage>,
@@ -267,17 +207,11 @@ impl LogBuffer {
             .collect()
     }
 
-    pub fn collect_archive(&self, limit: usize) -> io::Result<CollectedLogArchive> {
-        let entries = self.snapshot_recent(limit);
-        CollectedLogArchive::from_entries(&entries)
-    }
-
     pub fn push(&self, message: LogMessage) {
         // Separate the two concerns: the live broadcast (what `lxdev logs`
         // subscribes to) gets every record at the console level, but only warn+
-        // is retained in the bounded history that `collect_archive` uploads — so
-        // routine info/debug stay visible in dev without churning the crash-
-        // upload buffer and evicting the errors it exists to preserve.
+        // is retained in bounded recent history. Routine info/debug stay visible
+        // live without evicting the diagnostics that replay exists to preserve.
         if matches!(message.level, LogLevel::Warn | LogLevel::Error) {
             let mut history = self
                 .history
@@ -319,7 +253,7 @@ pub fn now_timestamp_ms() -> u64 {
         .as_millis() as u64
 }
 
-/// Realtime plus diagnostic log upload contract.
+/// Realtime forwarding plus diagnostic collection contract.
 ///
 /// # Re-entrancy
 ///
@@ -336,11 +270,10 @@ pub trait LogProvider: Send + Sync + 'static {
     /// **Must not** emit lingxia log events — see trait-level re-entrancy note.
     fn on_log(&self, _message: &LogMessage) {}
 
-    /// Upload a collected compressed log archive for diagnostics.
-    fn upload_collected_logs<'a>(
-        &'a self,
-        _archive: CollectedLogArchive,
-    ) -> BoxFuture<'a, Result<(), ProviderError>> {
+    /// Trigger provider-owned diagnostic log collection.
+    ///
+    /// The provider owns retention, record selection, encoding, and transport.
+    fn collect_logs(&self) -> BoxFuture<'_, Result<(), ProviderError>> {
         Box::pin(async { Ok(()) })
     }
 }
@@ -430,11 +363,6 @@ impl LogManager {
         self.buffer.snapshot_recent(limit)
     }
 
-    /// Build a compressed JSONL archive of recent logs.
-    pub fn collect_archive(&self, limit: usize) -> io::Result<CollectedLogArchive> {
-        self.buffer.collect_archive(limit)
-    }
-
     fn dispatch(&self, message: LogMessage) {
         let should_dispatch = LOG_DISPATCH_GUARD.with(|guard| {
             if guard.get() {
@@ -509,20 +437,12 @@ pub fn log(tag: LogTag, level: LogLevel, message: impl std::fmt::Display) {
     emit_log_message(log_message);
 }
 
-/// Upload a recent compressed log archive through the registered provider.
+/// Trigger diagnostic log collection through the registered provider.
 ///
-/// This is the diagnostic path for "collect log". It snapshots the recent in-memory
-/// log ring buffer, encodes it as `jsonl.zst`, and delegates the network upload to
-/// the active `LogProvider`.
-pub async fn upload_collected_logs(limit: usize) -> Result<CollectedLogArchiveInfo, ProviderError> {
-    let manager = LogManager::get()
-        .ok_or_else(|| ProviderError::internal("log manager is not initialized"))?;
-    let archive = manager
-        .collect_archive(limit)
-        .map_err(|err| ProviderError::internal(format!("collect logs failed: {err}")))?;
-    let metadata = archive.info();
-    get_log_provider().upload_collected_logs(archive).await?;
-    Ok(metadata)
+/// LingXia does not prescribe a retention policy or wire format. The active
+/// provider selects records from its own store and owns the export lifecycle.
+pub async fn collect_logs() -> Result<(), ProviderError> {
+    get_log_provider().collect_logs().await
 }
 
 /// Log builder that automatically emits on drop.

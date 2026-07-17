@@ -10,9 +10,7 @@ mod executor;
 pub mod host;
 pub mod lifecycle;
 pub mod log {
-    pub use lingxia_log::{
-        CollectedLogArchive, CollectedLogArchiveInfo, LogLevel, LogMessage, LogProvider,
-    };
+    pub use lingxia_log::{LogLevel, LogMessage, LogProvider};
 }
 #[cfg(feature = "js-appservice")]
 pub mod lx;
