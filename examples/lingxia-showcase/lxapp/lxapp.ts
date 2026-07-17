@@ -25,21 +25,26 @@ interface MyAppInstance {
 
 App({
   onLaunch: async function (this: MyAppInstance) {
-    // The home lxapp atomically declares the complete desktop activator list.
-    lx.shell.activators.replace([
+    const { os } = lx.app.getBaseInfo();
+    type Activator = Parameters<typeof lx.shell.activators.replace>[0][number];
+    const activators: Activator[] = [
       {
         id: "chat",
         lxapp: "lingxia-chat",
         icon: "public/activator.svg",
-        label: "lingxia-chat",
+        label: "chat",
       },
-      {
-        id: "chat-beta",
-        lxapp: "lingxia-chat-beta",
+    ];
+
+    if (os === "macOS" || os === "Windows") {
+      activators.push({
+        id: "terminal",
+        native: "terminal",
         icon: "public/activator.svg",
-        label: "lingxia-chat-beta",
-      },
-      { id: "terminal", native: "terminal", icon: "public/activator.svg" },
+      });
+    }
+
+    activators.push(
       {
         id: "ping",
         icon: "public/activator.svg",
@@ -48,7 +53,8 @@ App({
           lx.showToast({ title: "activator clicked", icon: "success" });
         },
       },
-    ]);
+    );
+    lx.shell.activators.replace(activators);
 
     const um = lx.getUpdateManager();
     um.onUpdateReady(async (info) => {
