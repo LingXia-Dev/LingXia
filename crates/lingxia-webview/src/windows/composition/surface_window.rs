@@ -33,6 +33,7 @@ fn controller_cursor(
 /// controller exists. The wndproc runs on the webview's UI thread — the
 /// controller's creating thread — so calls need no marshalling.
 struct SurfaceInputState {
+    env3: ICoreWebView2Environment3,
     controller: ICoreWebView2CompositionController,
     base: ICoreWebView2Controller,
     /// MK_* mask of buttons currently down; capture is held while non-zero
@@ -91,10 +92,12 @@ pub(crate) fn create_surface_window(parent: HWND, bounds: RECT) -> StdResult<HWN
 /// a failed subscription degrades cursor/tab-out polish, not input itself.
 pub(crate) fn attach_input(
     hwnd: HWND,
+    env3: &ICoreWebView2Environment3,
     controller: &ICoreWebView2CompositionController,
     base: &ICoreWebView2Controller,
 ) {
     let state = Box::new(SurfaceInputState {
+        env3: env3.clone(),
         controller: controller.clone(),
         base: base.clone(),
         buttons_down: 0,
@@ -205,6 +208,22 @@ unsafe extern "system" fn surface_proc(
         | WM::WM_MOUSEWHEEL
         | WM::WM_MOUSEHWHEEL
         | WM_MOUSELEAVE => forward_mouse_message(hwnd, msg, wparam, lparam),
+        WM::WM_POINTERDOWN | WM::WM_POINTERUPDATE | WM::WM_POINTERUP => {
+            // Touch/pen only; a mouse pointer falls through so DefWindowProc
+            // synthesizes the legacy mouse messages handled above.
+            if let Some(state) = input_state(hwnd)
+                && let Some(result) = super::pointer::forward_pointer_message(
+                    &state.env3,
+                    &state.controller,
+                    hwnd,
+                    msg,
+                    wparam,
+                )
+            {
+                return result;
+            }
+            unsafe { WM::DefWindowProcW(hwnd, msg, wparam, lparam) }
+        }
         WM::WM_SETCURSOR => {
             if (lparam.0 & 0xffff) as u32 == HTCLIENT
                 && let Some(state) = input_state(hwnd)

@@ -13,6 +13,7 @@ use super::*;
 
 mod dcomp;
 mod dragdrop;
+mod pointer;
 mod surface_window;
 
 use dcomp::DcompTree;
@@ -107,7 +108,7 @@ fn create_composition_surface(
         let base: ICoreWebView2Controller = controller.cast().map_err(|err| {
             WebViewError::WebView(format!("composition controller cast failed: {err}"))
         })?;
-        surface_window::attach_input(hwnd, &controller, &base);
+        surface_window::attach_input(hwnd, &env3, &controller, &base);
         dragdrop::register_drop_target(hwnd, &controller);
         Ok((
             base,
