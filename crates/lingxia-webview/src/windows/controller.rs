@@ -102,12 +102,14 @@ pub(crate) enum UiCommand {
         bounds: RECT,
         resp: Sender<StdResult<()>>,
     },
-    /// Position the controller and set the per-corner clip radii in one
-    /// composition commit, so bounds and clip never present out of sync.
-    /// Windowed hosting applies the bounds and ignores the radii.
+    /// Position the controller and set the per-corner rounding (radii +
+    /// wedge backdrop color) in one composition commit, so bounds and
+    /// corners never present out of sync. Windowed hosting applies the
+    /// bounds and ignores the corner style.
     SetContentGeometry {
         bounds: RECT,
         radii: [i32; 4],
+        corner_color: u32,
         resp: Sender<StdResult<()>>,
     },
     /// Show or hide the WebView2 controller without touching the parent HWND.
@@ -306,10 +308,16 @@ impl WebViewInner {
         self.dispatch_command_same_thread_safe(|resp| UiCommand::SetContentBounds { bounds, resp })
     }
 
-    pub(crate) fn set_content_geometry(&self, bounds: RECT, radii: [i32; 4]) -> StdResult<()> {
+    pub(crate) fn set_content_geometry(
+        &self,
+        bounds: RECT,
+        radii: [i32; 4],
+        corner_color: u32,
+    ) -> StdResult<()> {
         self.dispatch_command_same_thread_safe(|resp| UiCommand::SetContentGeometry {
             bounds,
             radii,
+            corner_color,
             resp,
         })
     }
@@ -688,15 +696,16 @@ pub(crate) fn run_ui_thread(
     startup_tx: Sender<StdResult<WebViewStartup>>,
 ) -> StdResult<()> {
     unsafe {
-        windows::Win32::System::Com::CoInitializeEx(None, COINIT_APARTMENTTHREADED)
-            .ok()
-            .map_err(|err| WebViewError::WebView(format!("CoInitializeEx failed: {err}")))?;
+        // OleInitialize = CoInitializeEx(STA) + OLE (clipboard/drag-drop);
+        // composition hosting registers the surface window as a drop target.
+        windows::Win32::System::Ole::OleInitialize(None)
+            .map_err(|err| WebViewError::WebView(format!("OleInitialize failed: {err}")))?;
     }
 
     let result = run_ui_thread_inner(webtag, effective_options, startup_tx);
 
     unsafe {
-        windows::Win32::System::Com::CoUninitialize();
+        windows::Win32::System::Ole::OleUninitialize();
     }
 
     result
@@ -1117,9 +1126,10 @@ pub(crate) fn handle_command(state: &mut UiState, command: UiCommand) -> StdResu
         UiCommand::SetContentGeometry {
             bounds,
             radii,
+            corner_color,
             resp,
         } => {
-            let result = set_content_geometry(state, bounds, Some(radii));
+            let result = set_content_geometry(state, bounds, Some((radii, corner_color)));
             let _ = resp.send(result);
         }
         UiCommand::SetContentVisible { visible, resp } => {
@@ -1203,13 +1213,13 @@ pub(crate) fn set_controller_visible(state: &UiState, visible: bool) -> StdResul
     }
 }
 
-/// Applies content bounds (and, on the composition path, the per-corner clip
-/// radii; `None` keeps the last applied corners). Windowed hosting positions
-/// the controller directly and has no clip to update.
+/// Applies content bounds (and, on the composition path, the per-corner
+/// rounding; `None` keeps the last applied style). Windowed hosting positions
+/// the controller directly and has no corners to update.
 fn set_content_geometry(
     state: &mut UiState,
     bounds: RECT,
-    radii: Option<[i32; 4]>,
+    corners: Option<([i32; 4], u32)>,
 ) -> StdResult<()> {
     match &mut state.hosting {
         HostingMode::Windowed => unsafe {
@@ -1218,6 +1228,8 @@ fn set_content_geometry(
                 .SetBounds(bounds)
                 .map_err(|err| WebViewError::WebView(format!("SetBounds failed: {err}")))
         },
-        HostingMode::Composition(surface) => surface.set_geometry(&state.controller, bounds, radii),
+        HostingMode::Composition(surface) => {
+            surface.set_geometry(&state.controller, bounds, corners)
+        }
     }
 }

@@ -307,6 +307,9 @@ struct ContentBounds {
     /// a radii-only layout change (aside open/close, dock/float, frame
     /// enter/exit) still reaches the webview.
     corner_radii: [i32; 4],
+    /// Wedge backdrop color; part of the dedupe key so theme flips repaint
+    /// the corner wedges.
+    corner_color: u32,
 }
 
 #[derive(Debug, Clone)]
@@ -1743,48 +1746,61 @@ fn refresh_adjusted_content_rect(webtag_key: &str, mut rect: RECT) -> RECT {
     normalize_rect(rect)
 }
 
-/// Per-corner composition clip for a surface, derived from the same layout
+/// Per-corner composition rounding for a surface — clip radii plus the
+/// backdrop color its corner wedges paint — derived from the same layout
 /// pass that produced `rect`. Square whenever the surface is not part of a
 /// rounded silhouette (fullscreen drill, no shell chrome, collapsed rect).
 #[cfg(feature = "shell-chrome")]
-fn surface_clip_radii(hwnd: HWND, webtag_key: &str, rect: RECT) -> [i32; 4] {
+fn surface_clip_style(hwnd: HWND, webtag_key: &str, rect: RECT) -> ([i32; 4], u32) {
     // A framed simulator screen rounds to the device silhouette, not the
-    // shell workspace.
+    // shell workspace. Color alpha 0: the frame's corner-mask overlay owns
+    // the anti-aliased bezel ring, so the clip alone suffices underneath.
     #[cfg(feature = "device-frame")]
     if let Some(radius) = crate::device_frame::device_frame_screen_clip_radius(hwnd_handle(hwnd)) {
         let mut client = RECT::default();
         if unsafe { WindowsAndMessaging::GetClientRect(hwnd, &mut client) }.is_err() {
-            return [0; 4];
+            return ([0; 4], 0);
         }
-        return crate::shell::workspace_corner_radii(rect, client, radius);
+        return (
+            crate::shell::workspace_corner_radii(rect, client, radius),
+            0,
+        );
     }
     if windows_chrome_renderer().is_none() || webtag_is_fullscreen_drill(webtag_key) {
-        return [0; 4];
+        return ([0; 4], 0);
     }
+    let backdrop = 0xff00_0000 | crate::shell::shell_window_background();
     // Floating panels are free-standing cards outside the workspace union.
     if let Some(panel_id) = panel_id_for_webtag(webtag_key)
         && !panel_is_docked(&panel_id)
     {
-        return [crate::shell::shell_panel_radius(); 4];
+        return ([crate::shell::shell_panel_radius(); 4], backdrop);
     }
     let mut client = RECT::default();
     if unsafe { WindowsAndMessaging::GetClientRect(hwnd, &mut client) }.is_err() {
-        return [0; 4];
+        return ([0; 4], 0);
     }
     let Some(active_key) = active_webtag_key_for_window(hwnd) else {
-        return [0; 4];
+        return ([0; 4], 0);
     };
     let Some(silhouette) =
         crate::shell::workspace_silhouette_rect(client, &current_window_layout(&active_key))
     else {
-        return [0; 4];
+        return ([0; 4], 0);
     };
-    crate::shell::workspace_corner_radii(rect, silhouette, crate::shell::shell_content_radius())
+    (
+        crate::shell::workspace_corner_radii(
+            rect,
+            silhouette,
+            crate::shell::shell_content_radius(),
+        ),
+        backdrop,
+    )
 }
 
 #[cfg(not(feature = "shell-chrome"))]
-fn surface_clip_radii(_hwnd: HWND, _webtag_key: &str, _rect: RECT) -> [i32; 4] {
-    [0; 4]
+fn surface_clip_style(_hwnd: HWND, _webtag_key: &str, _rect: RECT) -> ([i32; 4], u32) {
+    ([0; 4], 0)
 }
 
 #[cfg(feature = "shell-chrome")]
@@ -3447,7 +3463,7 @@ fn sync_webtag_content_bounds(hwnd: HWND, webtag_key: &str) {
 fn sync_webtag_content_bounds_to_rect(hwnd: HWND, webtag_key: &str, rect: RECT) {
     let width = (rect.right - rect.left).max(0);
     let height = (rect.bottom - rect.top).max(0);
-    let corner_radii = surface_clip_radii(hwnd, webtag_key, rect);
+    let (corner_radii, corner_color) = surface_clip_style(hwnd, webtag_key, rect);
     let host_bounds = ContentBounds {
         hwnd: hwnd_handle(hwnd),
         left: rect.left,
@@ -3455,6 +3471,7 @@ fn sync_webtag_content_bounds_to_rect(hwnd: HWND, webtag_key: &str, rect: RECT) 
         width,
         height,
         corner_radii,
+        corner_color,
     };
     let Some(webtag) = webtag_for_key(webtag_key) else {
         return;
@@ -3481,6 +3498,7 @@ fn sync_webtag_content_bounds_to_rect(hwnd: HWND, webtag_key: &str, rect: RECT) 
             controller_bounds.right - controller_bounds.left,
             controller_bounds.bottom - controller_bounds.top,
             corner_radii,
+            corner_color,
         )
     {
         log::debug!("Failed to sync Windows WebView content bounds: {err}");
@@ -5730,7 +5748,7 @@ pub fn webview_window_snapshot(webtag: &WebTag) -> StdResult<WindowsWebViewWindo
     }
     let content_corner_radii = find_webview_handler(webtag)
         .filter(|handler| handler.is_composition_hosted())
-        .map(|_| surface_clip_radii(hwnd, webtag.key(), content))
+        .map(|_| surface_clip_style(hwnd, webtag.key(), content).0)
         .unwrap_or([0; 4]);
     Ok(WindowsWebViewWindowSnapshot {
         window_id: hwnd_handle(hwnd) as usize,
@@ -6094,7 +6112,7 @@ fn prepare_nav_snapshot_slide(host: HWND, prev_key: &str, forward: bool) -> bool
             &mut pixels,
             width,
             height,
-            surface_clip_radii(host, prev_key, rect),
+            surface_clip_style(host, prev_key, rect).0,
         );
     }
     let mut origin = POINT {
@@ -6964,6 +6982,10 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                     && !is_native_framed_window(hwnd)
                 {
                     invalidate_window(hwnd);
+                    // The webview corner wedges carry the (theme-dependent)
+                    // shell background; force the geometry resync the
+                    // bounds-dedupe cache would otherwise swallow.
+                    let _ = request_host_layout_sync_inner(hwnd, true);
                 }
                 unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
             }

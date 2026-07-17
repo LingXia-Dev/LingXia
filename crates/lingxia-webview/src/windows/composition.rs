@@ -12,6 +12,7 @@
 use super::*;
 
 mod dcomp;
+mod dragdrop;
 mod surface_window;
 
 use dcomp::DcompTree;
@@ -34,6 +35,8 @@ pub(crate) struct CompositionSurface {
     dcomp: DcompTree,
     /// Last applied per-corner clip radii `[tl, tr, br, bl]`, physical px.
     radii: [i32; 4],
+    /// Last applied wedge backdrop color (`0xAARGB`; alpha 0 = no wedges).
+    corner_color: u32,
 }
 
 static COMPOSITION_HOSTING: std::sync::atomic::AtomicBool =
@@ -105,12 +108,14 @@ fn create_composition_surface(
             WebViewError::WebView(format!("composition controller cast failed: {err}"))
         })?;
         surface_window::attach_input(hwnd, &controller, &base);
+        dragdrop::register_drop_target(hwnd, &controller);
         Ok((
             base,
             Box::new(CompositionSurface {
                 hwnd,
                 dcomp,
                 radii: [0; 4],
+                corner_color: 0,
             }),
         ))
     })();
@@ -154,16 +159,16 @@ fn create_composition_controller(
 
 impl CompositionSurface {
     /// Positions the surface window at `bounds` (host client coordinates),
-    /// sizes the controller to match, and re-applies the corner clip —
-    /// one commit, so bounds and clip never present out of sync. `radii` of
-    /// `None` keeps the last applied corners.
+    /// sizes the controller to match, and re-applies the corner clip and
+    /// wedges — one commit, so bounds and corners never present out of sync.
+    /// `corners` of `None` keeps the last applied style.
     pub(crate) fn set_geometry(
         &mut self,
         base: &ICoreWebView2Controller,
         bounds: RECT,
-        radii: Option<[i32; 4]>,
+        corners: Option<([i32; 4], u32)>,
     ) -> StdResult<()> {
-        let radii = radii.unwrap_or(self.radii);
+        let (radii, corner_color) = corners.unwrap_or((self.radii, self.corner_color));
         let width = (bounds.right - bounds.left).max(0);
         let height = (bounds.bottom - bounds.top).max(0);
         unsafe {
@@ -186,7 +191,9 @@ impl CompositionSurface {
             .map_err(|err| WebViewError::WebView(format!("SetBounds failed: {err}")))?;
         }
         self.radii = radii;
-        self.dcomp.apply_clip(width, height, radii)
+        self.corner_color = corner_color;
+        self.dcomp
+            .apply_geometry(width, height, radii, corner_color)
     }
 
     /// Shows the surface window before the controller (so composition starts
@@ -239,6 +246,7 @@ impl CompositionSurface {
     /// Destroys the surface window. Must run on the webview's UI thread (the
     /// window's owner); called from `cleanup_state` after `Controller.Close`.
     pub(crate) fn destroy(&self) {
+        dragdrop::revoke_drop_target(self.hwnd);
         unsafe {
             let _ = WindowsAndMessaging::DestroyWindow(self.hwnd);
         }

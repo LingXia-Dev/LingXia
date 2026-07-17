@@ -34,10 +34,7 @@ use windows::{
     Win32::{
         Foundation::{E_POINTER, HWND, LPARAM, RECT, WPARAM},
         System::{
-            Com::{
-                COINIT_APARTMENTTHREADED, IStream, STREAM_SEEK_SET,
-                StructuredStorage::CreateStreamOnHGlobal,
-            },
+            Com::{IStream, STREAM_SEEK_SET, StructuredStorage::CreateStreamOnHGlobal},
             Threading,
         },
         UI::{

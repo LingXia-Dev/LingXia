@@ -231,6 +231,22 @@ unsafe extern "system" fn surface_proc(
             }
             LRESULT(0)
         }
+        WM::WM_GETOBJECT => {
+            use windows::Win32::UI::Accessibility::{
+                IRawElementProviderSimple, UiaReturnRawElementProvider, UiaRootObjectId,
+            };
+            if lparam.0 as i32 == UiaRootObjectId
+                && let Some(state) = input_state(hwnd)
+                && let Ok(controller2) = state
+                    .controller
+                    .cast::<ICoreWebView2CompositionController2>()
+                && let Ok(provider) = unsafe { controller2.AutomationProvider() }
+                && let Ok(provider) = provider.cast::<IRawElementProviderSimple>()
+            {
+                return unsafe { UiaReturnRawElementProvider(hwnd, wparam, lparam, &provider) };
+            }
+            unsafe { WM::DefWindowProcW(hwnd, msg, wparam, lparam) }
+        }
         WM::WM_NCDESTROY => {
             let ptr =
                 unsafe { WM::SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0) } as *mut SurfaceInputState;

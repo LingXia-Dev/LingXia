@@ -69,8 +69,10 @@ impl WindowsWebViewHandler {
         })
     }
 
-    /// Bounds plus per-corner clip radii `[tl, tr, br, bl]` applied in one
-    /// composition commit. Radii are ignored by windowed hosting.
+    /// Bounds plus per-corner rounding applied in one composition commit:
+    /// clip radii `[tl, tr, br, bl]` and the `0xAARGB` backdrop the corner
+    /// wedges paint outside the arc (alpha 0 = clip only, no wedges).
+    /// Windowed hosting applies the bounds and ignores the corner style.
     pub fn set_content_geometry(
         &self,
         left: i32,
@@ -78,6 +80,7 @@ impl WindowsWebViewHandler {
         width: i32,
         height: i32,
         corner_radii: [i32; 4],
+        corner_color: u32,
     ) -> StdResult<()> {
         self.webview.inner.set_content_geometry(
             RECT {
@@ -87,6 +90,7 @@ impl WindowsWebViewHandler {
                 bottom: top + height.max(0),
             },
             corner_radii,
+            corner_color,
         )
     }
 

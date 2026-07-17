@@ -82,6 +82,12 @@ pub(crate) fn shell_panel_radius() -> i32 {
     style::SHELL_PANEL_RADIUS
 }
 
+/// The shell background surrounding the workspace card (theme-dependent) —
+/// the backdrop color the webview corner wedges paint outside the arc.
+pub(crate) fn shell_window_background() -> u32 {
+    style::shell_palette().window_background
+}
+
 /// Re-read the Win11 light/dark + system-accent theme into the shell palette
 /// cache. Returns `true` when the values changed, so the window proc can
 /// repaint only on a real theme change.
