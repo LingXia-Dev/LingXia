@@ -2036,7 +2036,7 @@ declare global {
     update(id: string, patch: ShellActivatorUpdate): void;
     /** Removes one stable id from the declaration. Home lxapp only. */
     remove(id: string): void;
-    /** Persists an explicit empty declaration. Home lxapp only. */
+    /** Clears the current runtime declaration. Home lxapp only. */
     clear(): void;
   }
 }
