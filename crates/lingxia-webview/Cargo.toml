@@ -61,7 +61,11 @@ ohos-web-sys="0.0.1"
 [target.'cfg(target_os = "windows")'.dependencies]
 base64 = { workspace = true }
 webview2-com = "0.39.1"
-windows-core = { workspace = true, features = ["proc-macros"] }
+# Git-pinned directly (like lingxia-windows-sdk): `proc-macros` (the
+# `#[implement]` attribute used by the composition drop target) ships in no
+# published windows-core, and workspace [patch] entries don't reach
+# non-workspace consumers such as the example native projects.
+windows-core = { git = "https://github.com/microsoft/windows-rs.git", rev = "cf58d5cfe7deccb73a55aeb4aa6799dc1b06544c", package = "windows-core", features = ["proc-macros"] }
 windows = { workspace = true, features = [
     "Win32_Foundation",
     "Win32_Graphics_Direct3D",
