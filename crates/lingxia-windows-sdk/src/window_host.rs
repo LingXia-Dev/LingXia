@@ -1774,17 +1774,19 @@ fn refresh_adjusted_content_rect(webtag_key: &str, mut rect: RECT) -> RECT {
 #[cfg(feature = "shell-chrome")]
 fn surface_clip_style(hwnd: HWND, webtag_key: &str, rect: RECT) -> ([i32; 4], u32) {
     // A framed simulator screen rounds to the device silhouette, not the
-    // shell workspace. Color alpha 0: the frame's corner-mask overlay owns
-    // the anti-aliased bezel ring, so the clip alone suffices underneath.
+    // shell workspace: bezel-colored wedges replace the frame's old
+    // SetWindowRgn cut + corner-mask overlay on the composition path.
     #[cfg(feature = "device-frame")]
-    if let Some(radius) = crate::device_frame::device_frame_screen_clip_radius(hwnd_handle(hwnd)) {
+    if let Some((radius, bezel)) =
+        crate::device_frame::device_frame_screen_clip_style(hwnd_handle(hwnd))
+    {
         let mut client = RECT::default();
         if unsafe { WindowsAndMessaging::GetClientRect(hwnd, &mut client) }.is_err() {
             return ([0; 4], 0);
         }
         return (
             crate::shell::workspace_corner_radii(rect, client, radius),
-            0,
+            0xff00_0000 | bezel,
         );
     }
     if windows_chrome_renderer().is_none() || webtag_is_fullscreen_drill(webtag_key) {

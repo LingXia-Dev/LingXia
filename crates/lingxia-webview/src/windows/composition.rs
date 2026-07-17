@@ -62,6 +62,13 @@ pub fn set_webview_composition_hosting(enabled: bool) {
     COMPOSITION_HOSTING.store(enabled, std::sync::atomic::Ordering::Relaxed);
 }
 
+/// True when new webviews will attempt composition hosting. Host chrome
+/// keys workarounds off this — e.g. the device frame drops its corner-mask
+/// overlay and region clip when the composition corner wedges replace them.
+pub fn webview_composition_hosting_enabled() -> bool {
+    composition_hosting_enabled()
+}
+
 fn composition_hosting_enabled() -> bool {
     let configured = || COMPOSITION_HOSTING.load(std::sync::atomic::Ordering::Relaxed);
     match std::env::var("LINGXIA_WEBVIEW_COMPOSITION") {

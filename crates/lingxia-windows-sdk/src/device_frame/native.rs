@@ -321,11 +321,17 @@ pub(super) fn window_has_frame(content: isize) -> bool {
     frame_state(content, |_| ()).is_some()
 }
 
-/// Screen-silhouette corner radius for a framed content window, `None` when
-/// unframed. The webview composition clip rounds the simulated screen's
-/// corners instead of the shell workspace's while a frame is up.
-pub(super) fn content_screen_clip_radius(content: isize) -> Option<i32> {
-    frame_state(content, |state| screen_corner_radius(&state.spec))
+/// Screen-silhouette corner radius plus the bezel fill (`0xRRGGBB`) for a
+/// framed content window, `None` when unframed. The webview composition
+/// wedges round the simulated screen's corners in the bezel color instead
+/// of the shell workspace's silhouette while a frame is up.
+pub(super) fn content_screen_clip_style(content: isize) -> Option<(i32, u32)> {
+    frame_state(content, |state| {
+        (
+            screen_corner_radius(&state.spec),
+            state.spec.screen_corner_color,
+        )
+    })
 }
 
 /// True while `content`'s frame toolbar carries the close/minimize dots and
@@ -646,14 +652,29 @@ fn apply_device_frame_inner(content: HWND, mut spec: WindowsDeviceFrame, sync_ho
                 | WindowsAndMessaging::SWP_FRAMECHANGED,
         );
     }
-    apply_content_screen_region(content, &spec);
+    // Composition-hosted webviews clip their own screen corners (bezel-
+    // colored wedges in the visual tree), so the aliased SetWindowRgn cut
+    // and the corner-mask overlay that hid its edge are unnecessary there.
+    let composition_corners =
+        lingxia_webview::platform::windows::webview_composition_hosting_enabled();
+    if composition_corners {
+        unsafe {
+            let _ = SetWindowRgn(content, None, true);
+        }
+    } else {
+        apply_content_screen_region(content, &spec);
+    }
 
     let Some((frame, layout)) = create_frame_window(content, &spec, layout) else {
         return;
     };
     let capsule = create_capsule_window(content, &spec).unwrap_or(0);
     let cutout = create_cutout_window(content, &spec).unwrap_or(0);
-    let corner_mask = create_corner_mask(content, &spec);
+    let corner_mask = if composition_corners {
+        0
+    } else {
+        create_corner_mask(content, &spec)
+    };
     let status_bar = create_status_bar(content, &spec);
     let frames = DEVICE_FRAMES.get_or_init(|| Mutex::new(HashMap::new()));
     if let Ok(mut frames) = frames.lock() {

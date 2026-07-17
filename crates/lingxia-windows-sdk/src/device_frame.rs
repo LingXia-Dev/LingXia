@@ -184,10 +184,10 @@ pub(crate) fn window_has_device_frame(window: isize) -> bool {
     native::window_has_frame(window)
 }
 
-/// Screen corner radius for a framed content window (`None` when unframed),
-/// used by the webview composition clip.
-pub(crate) fn device_frame_screen_clip_radius(window: isize) -> Option<i32> {
-    native::content_screen_clip_radius(window)
+/// Screen corner radius + bezel fill for a framed content window (`None`
+/// when unframed), used by the webview composition corner wedges.
+pub(crate) fn device_frame_screen_clip_style(window: isize) -> Option<(i32, u32)> {
+    native::content_screen_clip_style(window)
 }
 
 /// True while `window`'s device frame owns the window controls (macOS-style

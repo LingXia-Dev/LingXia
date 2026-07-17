@@ -269,7 +269,7 @@ pub mod platform {
             WindowsWebViewHandler, WindowsWebViewNativeView, WindowsWebViewNativeViewHost,
             find_webview_handler, set_webview_composition_hosting, set_webview_devtools_enabled,
             set_webview_native_view_host, set_webview_user_data_dir,
-            set_windows_context_menu_refresh_provider,
+            set_windows_context_menu_refresh_provider, webview_composition_hosting_enabled,
         };
     }
 }

@@ -59,7 +59,7 @@ mod scheme;
 
 pub(crate) use controller::WebViewInner;
 
-pub use composition::set_webview_composition_hosting;
+pub use composition::{set_webview_composition_hosting, webview_composition_hosting_enabled};
 pub use environment::set_windows_context_menu_refresh_provider;
 pub use native_view::{
     WindowsWebViewHandler, WindowsWebViewNativeView, WindowsWebViewNativeViewHost,
