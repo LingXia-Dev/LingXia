@@ -1464,28 +1464,10 @@ true
 }"###;
 
         /// One app-declared shell activator. Its `id` remains stable across
-        /// updates and activation. Set exactly one target: `lxapp`, `native`,
-        /// or `onActivate`. Every entry owns its icon; hosts never infer one.
+        /// updates and activation. The shell only routes activation to the
+        /// callback; the app owns every resulting action.
         type ShellActivator = r###"{
     id: string;
-    lxapp: string;
-    native?: never;
-    onActivate?: never;
-    icon: string;
-    label?: string;
-    disabled?: boolean;
-} | {
-    id: string;
-    native: 'terminal';
-    lxapp?: never;
-    onActivate?: never;
-    icon: string;
-    label?: string;
-    disabled?: boolean;
-} | {
-    id: string;
-    lxapp?: never;
-    native?: never;
     icon: string;
     label: string;
     disabled?: boolean;

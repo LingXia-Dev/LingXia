@@ -1,15 +1,14 @@
 use crate::{
-    NativeShellCapability, ResolvedActivatorSnapshot, ResolvedShellActivator, ShellActivator,
-    ShellActivatorTarget, ShellError, ShellManager, ShellPin, ShellPinTarget, ShellResult,
+    ResolvedShellActivator, ShellActivator, ShellError, ShellManager, ShellPin, ShellPinTarget,
+    ShellResult,
 };
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, OnceLock};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ShellActivationIntent {
-    Lxapp { key: String },
-    Native { key: NativeShellCapability },
-    Action { id: String, generation: u64 },
+pub struct ShellActivationIntent {
+    pub id: String,
+    pub generation: u64,
 }
 
 pub trait ShellHost: Send + Sync + 'static {
@@ -55,18 +54,9 @@ pub fn manager() -> ShellResult<Arc<ShellManager>> {
 }
 
 pub fn resolved_activators() -> ShellResult<Vec<ResolvedShellActivator>> {
-    resolved_activator_snapshot().map(|snapshot| snapshot.items)
-}
-
-pub fn resolved_activator_snapshot() -> ShellResult<ResolvedActivatorSnapshot> {
     with_active(|active| {
         let snapshot = active.manager.snapshot();
-        Ok(ResolvedActivatorSnapshot {
-            declared: snapshot.activators.declared(),
-            items: active
-                .host
-                .resolve_activators(snapshot.activators.items())?,
-        })
+        active.host.resolve_activators(snapshot.activators.items())
     })
 }
 
@@ -142,15 +132,9 @@ pub fn activate(id: &str) -> ShellResult<()> {
         if item.disabled {
             return Err(ShellError::ActivatorDisabled { id: id.to_string() });
         }
-        let intent = match &item.target {
-            ShellActivatorTarget::Lxapp { key } => {
-                ShellActivationIntent::Lxapp { key: key.clone() }
-            }
-            ShellActivatorTarget::Native { key } => ShellActivationIntent::Native { key: *key },
-            ShellActivatorTarget::Action => ShellActivationIntent::Action {
-                id: item.id.clone(),
-                generation: snapshot.activators.generation(),
-            },
+        let intent = ShellActivationIntent {
+            id: item.id.clone(),
+            generation: snapshot.activators.generation(),
         };
         active.host.activate(intent)
     })?;
@@ -176,7 +160,6 @@ pub(crate) fn reset_for_test() {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{ActivatorKind, ShellActivatorTarget};
     use std::sync::atomic::{AtomicBool, Ordering};
 
     fn test_guard() -> std::sync::MutexGuard<'static, ()> {
@@ -201,10 +184,8 @@ mod tests {
                 .iter()
                 .map(|item| ResolvedShellActivator {
                     id: item.id.clone(),
-                    kind: item.target.kind(),
-                    label: item.label.clone().unwrap_or_else(|| item.id.clone()),
-                    icon_path: item.icon.clone(),
-                    active: false,
+                    label: item.label.clone(),
+                    icon_path: Some(item.icon.clone()),
                     disabled: item.disabled,
                 })
                 .collect())
@@ -240,9 +221,8 @@ mod tests {
             .unwrap()
             .replace_activators(vec![ShellActivator {
                 id: "sync".to_string(),
-                target: ShellActivatorTarget::Action,
-                label: Some("Sync".to_string()),
-                icon: Some("icons/sync.svg".to_string()),
+                label: "Sync".to_string(),
+                icon: "icons/sync.svg".to_string(),
                 disabled: false,
             }])
             .unwrap();
@@ -251,15 +231,12 @@ mod tests {
 
         assert_eq!(
             host.activated.lock().unwrap().as_slice(),
-            &[ShellActivationIntent::Action {
+            &[ShellActivationIntent {
                 id: "sync".to_string(),
                 generation: 1,
             }]
         );
-        assert_eq!(
-            host.applied.lock().unwrap()[0][0].kind,
-            ActivatorKind::Action
-        );
+        assert_eq!(host.applied.lock().unwrap()[0][0].label, "Sync");
     }
 
     #[test]
@@ -273,11 +250,8 @@ mod tests {
             .unwrap()
             .replace_activators(vec![ShellActivator {
                 id: "chat".to_string(),
-                target: ShellActivatorTarget::Lxapp {
-                    key: "app.chat".to_string(),
-                },
-                label: None,
-                icon: None,
+                label: "Chat".to_string(),
+                icon: "icons/chat.svg".to_string(),
                 disabled: true,
             }])
             .unwrap();

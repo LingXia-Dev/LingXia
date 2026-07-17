@@ -20,7 +20,7 @@ impl ShellManager {
     pub fn open(root: impl Into<PathBuf>) -> ShellResult<Self> {
         let store = ShellStore::new(root);
         let state = ShellSnapshot {
-            activators: store.load_activators()?,
+            activators: ActivatorCollection::default(),
             pins: store.load_pins_recovering(),
         };
         Ok(Self {
@@ -71,7 +71,6 @@ impl ShellManager {
         }
         let mut snapshot = state.clone();
         snapshot.activators = next;
-        self.store.save_activators(&snapshot.activators)?;
         *state = snapshot;
         Ok(state.clone())
     }
@@ -132,20 +131,17 @@ impl ShellManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{ShellActivatorTarget, ShellError};
+    use crate::ShellError;
 
     #[test]
-    fn failed_replacement_changes_neither_memory_nor_disk() {
+    fn failed_replacement_does_not_change_memory() {
         let dir = tempfile::tempdir().unwrap();
         let manager = ShellManager::open(dir.path()).unwrap();
         manager
             .replace_activators(vec![ShellActivator {
                 id: "chat".to_string(),
-                target: ShellActivatorTarget::Lxapp {
-                    key: "app.chat".to_string(),
-                },
-                label: None,
-                icon: None,
+                label: "Chat".to_string(),
+                icon: "icons/chat.svg".to_string(),
                 disabled: false,
             }])
             .unwrap();
@@ -153,14 +149,30 @@ mod tests {
 
         let result = manager.replace_activators(vec![ShellActivator {
             id: "".to_string(),
-            target: ShellActivatorTarget::Action,
-            label: None,
-            icon: None,
+            label: "Broken".to_string(),
+            icon: "icons/broken.svg".to_string(),
             disabled: false,
         }]);
 
         assert_eq!(result, Err(ShellError::EmptyActivatorId));
         assert_eq!(manager.snapshot(), before);
-        assert_eq!(ShellManager::open(dir.path()).unwrap().snapshot(), before);
+    }
+
+    #[test]
+    fn activators_are_process_local() {
+        let dir = tempfile::tempdir().unwrap();
+        let manager = ShellManager::open(dir.path()).unwrap();
+        manager
+            .replace_activators(vec![ShellActivator {
+                id: "chat".to_string(),
+                label: "Chat".to_string(),
+                icon: "icons/chat.svg".to_string(),
+                disabled: false,
+            }])
+            .unwrap();
+
+        let reopened = ShellManager::open(dir.path()).unwrap();
+        assert!(!reopened.snapshot().activators.declared());
+        assert!(reopened.snapshot().activators.items().is_empty());
     }
 }
