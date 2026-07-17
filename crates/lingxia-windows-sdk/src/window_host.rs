@@ -4587,11 +4587,18 @@ fn apply_shell_window_dressing(hwnd: HWND) {
 
 fn apply_window_style(hwnd: HWND, style: WINDOW_STYLE) -> StdResult<()> {
     unsafe {
-        let _ = WindowsAndMessaging::SetWindowLongPtrW(
-            hwnd,
-            WindowsAndMessaging::GWL_STYLE,
-            style.0 as isize,
-        );
+        // Idempotence matters: SWP_FRAMECHANGED makes DWM rebuild the
+        // window's composition tree, which drops the child surfaces'
+        // DirectComposition content for a frame — a re-present with an
+        // unchanged style (clicking the already-active tab) would flash
+        // every webview to garbage for that frame.
+        let current = WindowsAndMessaging::GetWindowLongPtrW(hwnd, WindowsAndMessaging::GWL_STYLE);
+        let wanted = style.0 as isize | (current & WindowsAndMessaging::WS_VISIBLE.0 as isize);
+        if current == wanted {
+            return Ok(());
+        }
+        let _ =
+            WindowsAndMessaging::SetWindowLongPtrW(hwnd, WindowsAndMessaging::GWL_STYLE, wanted);
         WindowsAndMessaging::SetWindowPos(
             hwnd,
             None,
