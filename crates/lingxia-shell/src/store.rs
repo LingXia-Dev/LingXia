@@ -35,12 +35,24 @@ impl ShellStore {
         value.restore()
     }
 
+    pub(crate) fn load_pins_recovering(&self) -> PinCollection {
+        match self.load_pins() {
+            Ok(pins) => pins,
+            Err(_) => {
+                let _ = self.quarantine(PIN_STORE_FILE);
+                PinCollection::default()
+            }
+        }
+    }
+
     pub fn save_pins(&self, pins: &PinCollection) -> ShellResult<()> {
         self.save(PIN_STORE_FILE, pins)
     }
 
     fn load_optional<T: DeserializeOwned>(&self, name: &str) -> ShellResult<Option<T>> {
         let path = self.root.join(name);
+        #[cfg(windows)]
+        restore_backup_if_needed(&path)?;
         if !path.is_file() {
             return Ok(None);
         }
@@ -49,6 +61,35 @@ impl ShellStore {
         serde_json::from_str(&raw)
             .map(Some)
             .map_err(|error| ShellError::InvalidState(format!("{}: {error}", path.display())))
+    }
+
+    fn quarantine(&self, name: &str) -> ShellResult<Option<PathBuf>> {
+        let path = self.root.join(name);
+        if !path.exists() {
+            return Ok(None);
+        }
+        for index in 0..=u16::MAX {
+            let suffix = if index == 0 {
+                "invalid".to_string()
+            } else {
+                format!("invalid.{index}")
+            };
+            let target = self.root.join(format!("{name}.{suffix}"));
+            if !target.exists() {
+                fs::rename(&path, &target).map_err(|error| {
+                    ShellError::Io(format!(
+                        "quarantine {} as {}: {error}",
+                        path.display(),
+                        target.display()
+                    ))
+                })?;
+                return Ok(Some(target));
+            }
+        }
+        Err(ShellError::Io(format!(
+            "no quarantine filename available for {}",
+            path.display()
+        )))
     }
 
     fn save<T: Serialize>(&self, name: &str, value: &T) -> ShellResult<()> {
@@ -67,6 +108,19 @@ impl ShellStore {
 fn replace_file(tmp: &Path, path: &Path) -> ShellResult<()> {
     fs::rename(tmp, path)
         .map_err(|error| ShellError::Io(format!("replace {}: {error}", path.display())))
+}
+
+#[cfg(windows)]
+fn restore_backup_if_needed(path: &Path) -> ShellResult<()> {
+    if path.exists() {
+        return Ok(());
+    }
+    let backup = path.with_extension("json.bak");
+    if backup.exists() {
+        fs::rename(&backup, path)
+            .map_err(|error| ShellError::Io(format!("restore {}: {error}", path.display())))?;
+    }
+    Ok(())
 }
 
 #[cfg(windows)]
@@ -146,5 +200,55 @@ mod tests {
         let restored = store.load_activators().unwrap();
         assert!(restored.declared());
         assert!(restored.items().is_empty());
+    }
+
+    #[test]
+    fn invalid_pin_store_is_quarantined_without_blocking_manager_open() {
+        let overflow = serde_json::json!({
+            "version": 1,
+            "items": (0..=crate::MAX_SHELL_PINS)
+                .map(|index| serde_json::json!({ "kind": "lxapp", "key": format!("app.{index}") }))
+                .collect::<Vec<_>>()
+        })
+        .to_string();
+        for invalid in [
+            "{".to_string(),
+            r#"{"version":2,"items":[]}"#.to_string(),
+            r#"{"version":1,"items":[{"kind":"lxapp","key":"chat"},{"kind":"lxapp","key":"chat"}]}"#.to_string(),
+            overflow,
+        ] {
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join(PIN_STORE_FILE);
+            fs::write(&path, invalid).unwrap();
+
+            let manager = crate::ShellManager::open(dir.path()).unwrap();
+
+            assert!(manager.snapshot().pins.items.is_empty());
+            assert!(!path.exists());
+            assert!(
+                dir.path()
+                    .join(format!("{PIN_STORE_FILE}.invalid"))
+                    .is_file()
+            );
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn interrupted_windows_replace_restores_the_backup() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(PIN_STORE_FILE);
+        let backup = path.with_extension("json.bak");
+        fs::write(
+            &backup,
+            r#"{"version":1,"items":[{"kind":"lxapp","key":"chat"}]}"#,
+        )
+        .unwrap();
+
+        let manager = crate::ShellManager::open(dir.path()).unwrap();
+
+        assert_eq!(manager.snapshot().pins.items.len(), 1);
+        assert!(path.is_file());
+        assert!(!backup.exists());
     }
 }

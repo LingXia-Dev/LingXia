@@ -21,7 +21,7 @@ impl ShellManager {
         let store = ShellStore::new(root);
         let state = ShellSnapshot {
             activators: store.load_activators()?,
-            pins: store.load_pins()?,
+            pins: store.load_pins_recovering(),
         };
         Ok(Self {
             store,
