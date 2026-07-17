@@ -69,6 +69,32 @@ impl WindowsWebViewHandler {
         })
     }
 
+    /// Bounds plus per-corner clip radii `[tl, tr, br, bl]` applied in one
+    /// composition commit. Radii are ignored by windowed hosting.
+    pub fn set_content_geometry(
+        &self,
+        left: i32,
+        top: i32,
+        width: i32,
+        height: i32,
+        corner_radii: [i32; 4],
+    ) -> StdResult<()> {
+        self.webview.inner.set_content_geometry(
+            RECT {
+                left,
+                top,
+                right: left + width.max(0),
+                bottom: top + height.max(0),
+            },
+            corner_radii,
+        )
+    }
+
+    /// True when this webview renders through the composition-hosted path.
+    pub fn is_composition_hosted(&self) -> bool {
+        self.webview.inner.composition_hosted
+    }
+
     pub fn set_content_visible(&self, visible: bool) -> StdResult<()> {
         self.webview.inner.set_content_visible(visible)
     }
