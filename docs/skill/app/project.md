@@ -81,8 +81,7 @@ macos:
   executableName: MyApp
 
 surfaces:
-  - id: my-home          # main screen; equals its lxapp appId
-    render: lxapp
+  - lxapp: my-home       # main screen: your lxapp, by appId
     role: main
     launch: true
 ```
@@ -119,7 +118,7 @@ The authoritative, version-matched field list is a freshly scaffolded `lingxia.y
 **The id-alignment rule (the one that bites).** Three ids must line up or the wrong app launches, and the build enforces it:
 
 - `app.homeAppId` = a `resources.bundles[].appId` = that bundle's `lxapp.json.appId`.
-- For a `render: lxapp` surface, the launch `main` surface `id` is the appId it renders — point it at the same home app.
+- The launch `main` surface's `lxapp:` key is the appId it renders — point it at the same home app.
 
 `homeAppVersion` is not configured here; the CLI derives it from the matching `resources.bundles` source. The full, current field set is in a freshly scaffolded `lingxia.yaml`.
 
@@ -202,7 +201,7 @@ The browser, terminal, and HTTP-proxy runtime features are **not** set here — 
 
 - `notifications` — push/notification integration where supported. iOS/Harmony SDK startup may request notification permission and fetch a push token.
 - `browser` — the in-app browser (its newtab / settings / downloads pages and shell runtime). Cross-platform; bundles the browser webui, overridable via the [`browser`](#browser-section) section.
-- `terminal` — the built-in terminal runtime. Required before a `render: native` `terminal` surface can be declared (desktop only).
+- `terminal` — the built-in terminal runtime. Required before a `native: terminal` surface can be declared (desktop only).
 - `proxy` — the in-app browser's HTTP proxy (desktop). Requires `browser`.
 - `autostart` — unlocks `lx.app.autostart` (launch at system startup; macOS/Windows, home lxapp only). Declaring it never registers the app by itself — enabling is a runtime user decision via the API.
 
@@ -267,29 +266,32 @@ A host app's UI is a flat list under top-level `surfaces:`. You declare *what* e
 
 ### Surface fields
 
+Each entry starts with its **content key** — exactly one of `lxapp` / `url` / `native` — whose value names the content and doubles as the surface's identity (there is no separate `id` and no `render` field):
+
 | Field | Type | Required | Description |
 |---|---|---:|---|
-| `id` | string | Yes | Unique surface id. For `render: lxapp` it doubles as the lxapp `appId` (the surface is opened by id). |
-| `render` | `lxapp` \| `native` | No (`lxapp`) | `lxapp` = a web page surface; `native` = a host-native surface (only the built-in `terminal` today). |
+| `lxapp` | string | one content key | An lxapp, by appId. Roles: `main` \| `aside` \| `float`. |
+| `url` | string | one content key | A page in the in-app browser (requires the top-level `browser:` config). Roles: `main` \| `aside`. |
+| `native` | string | one content key | A host-native capability — only the built-in `terminal` today. Role: `aside`. |
 | `role` | `main` \| `aside` \| `float` | Yes | `main` = a switchable primary surface; `aside` = a docked companion; `float` = a tray-anchored popover (requires a `tray:`). |
 | `launch` | bool | No | Open on start. At most one `main` may set `launch: true` (the initial surface). Omit on all mains for a tray-launched app. |
-| `edge` | `left`\|`right`\|`top`\|`bottom` | For `aside` | Which edge the aside docks to. |
-| `sidebar` | object | No | Adds a sidebar entry that toggles this surface: `{ icon?, label?, section? }`. `section`: `top` (default) or `bottom` (footer / utility entries). |
+| `edge` | `left`\|`right`\|`top`\|`bottom` | No | Aside docking edge. Defaults to `right`; the terminal defaults to `bottom` (and only accepts `top`/`bottom`). |
+| `size` | object | No | Aside preferred-size hint, e.g. `{ width: 320 }`. The shell clamps it at layout time. |
 | `tray` | object | No | Adds a menu-bar (macOS) / system-tray (Windows) entry: `{ icon?, label?, action?, exclusive?, size? }`. `action`: `toggle` (visible→hide, hidden→show) or `activate` (show + bring to front). `exclusive: true` → no dock / taskbar icon. `size: { width, height }` (on a `role: float` popover) sets the popover content size. |
 | `platforms` | string[] | No | Availability filter — `macos`, `windows`, `ios`, `android`, `harmony`. Empty = all platforms. |
 
-Icons (`sidebar.icon`, `tray.icon`) are host-root-relative SVG source paths — see [Icon Paths](#icon-paths).
+Icons (`tray.icon`) are host-root-relative SVG source paths — see [Icon Paths](#icon-paths).
 
-The sidebar itself auto-hides when it has nothing to show and reappears when it does. It has content when any of: more than one open lxapp tab, the active lxapp declares a `tabBar`, browser entries exist, or any surface declares `sidebar:`. A config with `sidebar:` surfaces therefore always shows the sidebar.
+There is **no `sidebar:` entry field**: persistent sidebar entries are declared at runtime through the shell activator API, never in YAML — declarative and imperative entry systems don't coexist.
 
 ### Rules (enforced at build)
 
-- A config needs exactly one `main` surface — or, for a pure popover app, a `role: float` surface with a `tray:` and no `main`.
-- At most one `main` may set `launch: true`; `launch` is invalid on a non-main surface.
-- `edge` is required on `aside` and invalid on `main`.
-- `role: main` cannot use `render: native`.
-- `render: native` supports only `id: terminal`, requires `capabilities.terminal: true`, and its `edge` must be `top` or `bottom`.
-- Surface ids must be unique.
+- A config needs at least one `lxapp` `main` surface — or, for a pure popover app, a `role: float` surface with a `tray:` and no `main`.
+- At most one `main` may set `launch: true`; `launch` is invalid on a non-main surface and only supported on an lxapp main.
+- `edge` and `size` are only valid on `aside`.
+- A `url` surface requires the top-level `browser:` config and supports `role: main | aside`.
+- `native` supports only `terminal`, requires `capabilities.terminal: true`, and its `edge` must be `top` or `bottom`.
+- The same content key may be declared at most once.
 - `role: float` requires a `tray:` (it is a tray-anchored popover); a bare `role: float` is rejected.
 - At most one surface may declare `tray:`.
 
@@ -301,30 +303,24 @@ capabilities:
   terminal: true
 
 surfaces:
-  - id: my-home          # main screen; equals its lxapp appId
-    render: lxapp
+  - lxapp: my-home       # main screen: your lxapp, by appId
     role: main
     launch: true
     tray:
       icon: icons/tray.svg
       label: My App
       action: activate
-  - id: assistant        # right-docked companion lxapp
-    render: lxapp
+  - lxapp: assistant     # right-docked companion lxapp
     role: aside
     edge: right
-    sidebar:
-      icon: icons/chat.svg
-      label: AI Chat
-  - id: terminal         # built-in native terminal (needs capabilities.terminal)
-    render: native
+    size: { width: 320 }
+  - native: terminal     # built-in native terminal (needs capabilities.terminal)
     role: aside
     edge: bottom
     platforms: [macos, windows]   # desktop-only
-    sidebar: {}                   # built-in terminal icon — omit `icon` to use it
 ```
 
-Each `render: lxapp` surface needs its assets bundled — list its `id` (= appId) in `resources.bundles`, or let the runtime/update flow provide it.
+Each `lxapp` surface needs its assets bundled — list its appId in `resources.bundles`, or let the runtime/update flow provide it.
 
 ### Menu-bar / system-tray apps
 
@@ -336,7 +332,7 @@ A `tray:` entry adds a menu-bar item (macOS) / system-tray icon (Windows). The s
 
 ```yaml
 surfaces:
-  - id: my-panel
+  - lxapp: my-panel
     role: float            # tray-anchored popover
     tray:
       icon: icons/tray.svg
@@ -355,7 +351,7 @@ Pass `null` / empty to clear a badge or title. The tray *shape* is declared in `
 
 ### Terminal surface
 
-The built-in terminal is a native aside (`render: native`, `id: terminal`, `edge: top | bottom`) gated by `capabilities.terminal`. A bare `sidebar: {}` gives it the host's built-in terminal icon (you don't supply one).
+The built-in terminal is a native aside (`native: terminal`, `edge: top | bottom`, default `bottom`) gated by `capabilities.terminal`. Its sidebar entry, like every persistent entry, is declared at runtime via the shell activator API.
 
 It shares a single cross-platform Rust engine that owns sessions, PTY transport, terminal semantics, and the snapshot/input protocol; platform SDKs only render snapshots into a native view and capture input. Backend selection is owned by the runtime — there is no backend selector in `lingxia.yaml`.
 
@@ -437,7 +433,7 @@ If `--skip-native` is used, SwiftPM links an existing Rust static library. That 
 - `homeAppId` not matching any `resources.bundles[].appId` — build fails or the wrong app launches.
 - Declaring more than one `main` with `launch: true`, or `launch: true` on an `aside`.
 - An `aside` without an `edge`, or an `edge` on a `main`.
-- `render: native` on anything but `id: terminal`, or a terminal surface without `capabilities.terminal: true`, or a terminal `edge` other than `top`/`bottom`.
+- `native:` on anything but `terminal`, or a terminal surface without `capabilities.terminal: true`, or a terminal `edge` other than `top`/`bottom`.
 - Using `role: float` without a `tray:` — a float surface is only valid as a tray-anchored popover.
 - Reusing one lxapp `appId` across multiple surfaces.
 - Adding Settings or Downloads as their own surfaces — those are built-in browser pages, opened by built-in chrome when `capabilities.browser` is on.
@@ -465,5 +461,5 @@ The surface model intentionally does not yet define:
 - multiple `main` surfaces open as separate top-level windows simultaneously
 - asides nested under other asides
 - reusing one lxapp `appId` across multiple surfaces
-- native (`render: native`) surfaces other than the built-in `terminal`
+- native (`native:`) surfaces other than the built-in `terminal`
 - terminal backend selection in config

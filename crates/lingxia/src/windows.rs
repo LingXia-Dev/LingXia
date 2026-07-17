@@ -69,6 +69,24 @@ pub fn set_surface_width(appid: &str, width: f64) -> bool {
         .unwrap_or(false)
 }
 
+pub fn set_surface_layout_metrics(appid: &str, width: f64, sidebar_width: f64) -> bool {
+    lxapp::try_get(appid)
+        .map(|app| app.set_surface_layout_metrics(width, sidebar_width))
+        .unwrap_or(false)
+}
+
+pub fn set_surface_sidebar_width(appid: &str, width: f64) -> bool {
+    lxapp::try_get(appid)
+        .map(|app| app.set_surface_sidebar_width(width))
+        .unwrap_or(false)
+}
+
+pub fn set_surface_viewport(appid: &str, width: f64, height: f64) -> bool {
+    lxapp::try_get(appid)
+        .map(|app| app.set_surface_viewport(width, height))
+        .unwrap_or(false)
+}
+
 fn current_page_webview(appid: &str) -> Result<std::sync::Arc<lingxia_webview::WebView>, String> {
     let app = lxapp::try_get(appid).ok_or_else(|| format!("lxapp is not active: {appid}"))?;
     let page = app.current_page().map_err(|err| err.to_string())?;

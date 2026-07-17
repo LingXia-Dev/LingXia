@@ -146,7 +146,7 @@ declare global {
      * `as: "window"` is desktop-only.
      */
     openSurface(spec: OpenUrlTabSpec): Promise<null>;
-    openSurface(spec: OpenDeclaredSurfaceSpec): Promise<SurfaceHandle>;
+    openSurface(spec: OpenDeclaredSurfaceSpec | OpenLxappSurfaceSpec | OpenNativeSurfaceSpec): Promise<SurfaceHandle>;
     openSurface(spec: OpenPageSurfaceSpec | OpenUrlAsideSpec): Promise<Surface>;
     openSurface(spec: OpenSurfaceSpec): Promise<Surface | SurfaceHandle | null>;
 
@@ -716,16 +716,18 @@ export type NetworkInfo = {
 /** Network status APIs. */
 export type NetworkType = 'none' | 'unknown' | 'wifi' | '2g' | '3g' | '4g' | '5g' | 'ethernet';
 
+/**
+ * Show a surface declared by id in the host's `lingxia.yaml`.
+ * Available to any lxapp granted access to that declaration.
+ */
 export type OpenDeclaredSurfaceSpec = {
     surface: string;
-    /**
-     * Docking edge override for this open. Without it the surface keeps its
-     * current placement (initially the `lingxia.yaml` edge); with it the panel
-     * opens there — or moves there if already visible.
-     */
+    /** Docking edge override for this open. */
     edge?: SurfaceEdge;
     page?: never;
     url?: never;
+    lxapp?: never;
+    native?: never;
     as?: never;
     position?: never;
     size?: never;
@@ -746,6 +748,46 @@ export type OpenFileOptions = {
     mode?: 'auto' | 'review' | 'external';
     /** Hint for whether the native review UI should expose its action menu when supported. */
     showMenu?: boolean;
+};
+
+/**
+ * Open another lxapp by appId (home lxapp only). A declared surface
+ * toggles its shell presentation; an undeclared lxapp opens as a main
+ * tab, or docks as an aside panel with `as: 'aside'`.
+ */
+export type OpenLxappSurfaceSpec = {
+    lxapp: string;
+    /** Defaults to the lingxia.yaml role, else 'main'. */
+    as?: 'main' | 'aside' | 'float';
+    /**
+     * Docking edge override for this open. Without it the surface keeps its
+     * current placement (initially the `lingxia.yaml` edge); with it the panel
+     * opens there — or moves there if already visible.
+     */
+    edge?: SurfaceEdge;
+    page?: never;
+    url?: never;
+    native?: never;
+    position?: never;
+    size?: never;
+    query?: never;
+};
+
+/**
+ * Open a host-registered native capability (home lxapp only), e.g.
+ * the built-in terminal declared in `lingxia.yaml` surfaces.
+ */
+export type OpenNativeSurfaceSpec = {
+    native: string;
+    /** Docking edge override for this open. */
+    edge?: SurfaceEdge;
+    page?: never;
+    url?: never;
+    lxapp?: never;
+    as?: never;
+    position?: never;
+    size?: never;
+    query?: never;
 };
 
 /**
@@ -816,7 +858,7 @@ export type OpenPageSurfaceSpec = {
     url?: never;
 };
 
-export type OpenSurfaceSpec = OpenPageSurfaceSpec | OpenDeclaredSurfaceSpec | OpenUrlTabSpec | OpenUrlAsideSpec;
+export type OpenSurfaceSpec = OpenPageSurfaceSpec | OpenDeclaredSurfaceSpec | OpenLxappSurfaceSpec | OpenNativeSurfaceSpec | OpenUrlTabSpec | OpenUrlAsideSpec;
 
 /**
  * Open `url` in the multi-tab browser aside. `url` must be `https://` or
@@ -1192,6 +1234,49 @@ export type ShareTitleOptions = {
     title?: string;
 };
 
+/**
+ * One app-declared shell activator. Its `id` remains stable across
+ * updates and activation. Set exactly one target: `lxapp`, `native`,
+ * or `onActivate`. Every entry owns its icon; hosts never infer one.
+ */
+export type ShellActivator = {
+    id: string;
+    lxapp: string;
+    native?: never;
+    onActivate?: never;
+    icon: string;
+    label?: string;
+    disabled?: boolean;
+} | {
+    id: string;
+    native: 'terminal';
+    lxapp?: never;
+    onActivate?: never;
+    icon: string;
+    label?: string;
+    disabled?: boolean;
+} | {
+    id: string;
+    lxapp?: never;
+    native?: never;
+    icon: string;
+    label: string;
+    disabled?: boolean;
+    onActivate: () => void;
+};
+
+/** Mutable presentation fields for an existing activator. */
+export type ShellActivatorUpdate = {
+    icon?: string;
+    label?: string;
+    disabled?: boolean;
+};
+
+/** Shell chrome writer API (home lxapp only). */
+export type ShellApi = {
+    activators: ShellActivatorsApi;
+};
+
 export type ShowActionSheetOptions = {
     itemList: string[];
     itemColor?: string;
@@ -1312,14 +1397,16 @@ export type SurfaceClosedEvent = {
 };
 
 /**
- * The window's adaptive context, delivered to `lx.onSurfaceContext()` so an
- * lxapp can self-adapt (e.g. switch column count by `sizeClass`).
+ * The current surface viewport context, delivered to `lx.onSurfaceContext()`
+ * so an lxapp can self-adapt (e.g. switch column count by `sizeClass`).
  */
 export type SurfaceContext = {
     /** compact (<600) / medium (600–840) / expanded (>840), with hysteresis. */
     sizeClass: 'compact' | 'medium' | 'expanded';
-    /** In compact, the bottom region belongs to the app content. */
-    bottomOwner: 'app';
+    /** Actual surface viewport width in logical pixels. */
+    width: number;
+    /** Actual surface viewport height in logical pixels. */
+    height: number;
 };
 
 /** Edge an aside docks to; the Host decides the realized form by screen size. */
@@ -1330,6 +1417,11 @@ export type SurfaceFloatPosition = 'center' | 'top' | 'bottom' | 'left' | 'right
 
 export type SurfaceHandle = {
     readonly id: string;
+    /** Standalone windows have no role in the primary shell graph. */
+    readonly role?: SurfaceRole;
+    readonly presentation: SurfacePresentation;
+    readonly visible: boolean;
+    readonly alive: boolean;
     /**
      * Show a host-managed surface. Dynamic page/url surfaces return a Promise;
      * host-declared surfaces may complete synchronously.
@@ -1340,10 +1432,17 @@ export type SurfaceHandle = {
      */
     hide(): void | Promise<void>;
     /**
-     * Close or hide the surface depending on how it is managed by the host.
+     * Destroy the live surface. Repeated close calls are idempotent.
      */
     close(): void | Promise<void>;
+    onShow(handler: (event: SurfaceVisibilityEvent) => void): () => void;
+    onHide(handler: (event: SurfaceVisibilityEvent) => void): () => void;
+    onClose(handler: (event: SurfaceClosedEvent) => void): () => void;
 };
+
+export type SurfacePresentation = 'main' | 'dock' | 'overlay' | 'popover' | 'sheet' | 'window';
+
+export type SurfaceRole = 'main' | 'aside' | 'float';
 
 /**
  * Detail payload for `onShow` / `onHide` events. `source` identifies which
@@ -1861,15 +1960,15 @@ declare global {
      * window). Pages cannot be docked as an `aside` — an aside shows external
      * content only.
      * - `{ surface, edge?, query? }` shows a host-declared surface by its `ui` id.
-     * - `{ url }` opens an http(s)/lingxia url in the in-app chromed browser.
+     * - `{ url }` opens an authorized HTTPS/file URL in the in-app chromed browser.
      */
     openSurface(spec: never): Promise<never>;
     /** `lx.openExternal(url)` — hand the url off to the OS default browser. */
     openExternal(url: string): void;
     /**
      * `lx.onSurfaceContext(handler)` — register a JS callback (scoped to this
-     * lxapp's JS context) invoked with `{ sizeClass, bottomOwner }` whenever the
-     * window's adaptive context flips. Returns an unsubscribe fn.
+     * lxapp's JS context), invoke it immediately, then again whenever that
+     * presentation's actual viewport changes. Returns an unsubscribe fn.
      */
     onSurfaceContext(handler: (context: SurfaceContext) => void): () => void;
     getSystemSetting(): SystemSettingInfo;
@@ -1910,6 +2009,7 @@ declare global {
     switchTab(options: SwitchTabOptions): Promise<void>;
     /** Relaunch to a new page (clear page stack) */
     reLaunch(options: ReLaunchOptions): Promise<void>;
+    readonly shell: ShellApi;
     /** Show TabBar red dot */
     showTabBarRedDot(options: TabBarRedDotOptions): boolean;
     /** Hide TabBar red dot */
@@ -1939,6 +2039,24 @@ declare global {
   interface LxEnv {
     readonly USER_DATA_PATH: 'lx://userdata';
     readonly USER_CACHE_PATH: 'lx://usercache';
+  }
+}
+
+declare global {
+  interface ShellActivatorsApi {
+    /**
+     * Atomically replaces the complete desktop activator declaration. Home lxapp
+     * only. Relative icons resolve from the home app bundle; lxapp/native entries
+     * persist across restarts, while action entries return after Logic registers
+     * their callbacks. `replace([])` is an explicit persistent empty declaration.
+     */
+    replace(items: ShellActivator[]): void;
+    /** Updates presentation fields for one stable id. Home lxapp only. */
+    update(id: string, patch: ShellActivatorUpdate): void;
+    /** Removes one stable id from the declaration. Home lxapp only. */
+    remove(id: string): void;
+    /** Persists an explicit empty declaration. Home lxapp only. */
+    clear(): void;
   }
 }
 

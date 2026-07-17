@@ -545,7 +545,13 @@ impl Platform for MacosPlatform {
 
         sync_primary_spm_resources_to_app_root(&bin_dir, &app_path)?;
 
-        apple::notarize::maybe_sign_and_notarize(&app_path)?;
+        // Developer ID signing + notarization is a distribution concern: only
+        // packaged artifacts (.app.zip / DMG) go through it. Dev and plain
+        // builds keep the SwiftPM default signature so a notary outage or slow
+        // upload can never break the local loop.
+        if config.package || config.dmg {
+            apple::notarize::maybe_sign_and_notarize(&app_path)?;
+        }
 
         let update_zip_path = if config.package {
             Some(create_update_zip(

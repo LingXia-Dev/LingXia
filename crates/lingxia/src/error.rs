@@ -72,7 +72,8 @@ impl From<lxapp::LxAppError> for Error {
         match error {
             lxapp::LxAppError::ResourceNotFound(detail) => Self::NotFound(detail),
             lxapp::LxAppError::InvalidJsonFile(detail)
-            | lxapp::LxAppError::InvalidParameter(detail) => Self::InvalidRequest(detail),
+            | lxapp::LxAppError::InvalidParameter(detail)
+            | lxapp::LxAppError::SurfaceConflict(detail) => Self::InvalidRequest(detail),
             lxapp::LxAppError::UnsupportedOperation(detail) => Self::InvalidRequest(detail),
             lxapp::LxAppError::IoError(detail) => Self::Internal(detail),
             lxapp::LxAppError::WebView(detail)

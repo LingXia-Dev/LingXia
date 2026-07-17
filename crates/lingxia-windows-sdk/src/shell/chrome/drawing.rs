@@ -4,14 +4,14 @@ use std::collections::HashMap;
 use std::ffi::c_void;
 use std::sync::{Mutex, OnceLock};
 
-use windows::Win32::Foundation::{COLORREF, RECT};
+use windows::Win32::Foundation::{COLORREF, RECT, SIZE};
 use windows::Win32::Graphics::Gdi::{
     ANTIALIASED_QUALITY, CLEARTYPE_QUALITY, CLIP_DEFAULT_PRECIS, CreateFontW, CreateRoundRectRgn,
     CreateSolidBrush, DEFAULT_CHARSET, DEFAULT_PITCH, DT_CENTER, DT_END_ELLIPSIS, DT_SINGLELINE,
-    DT_VCENTER, DeleteObject, DrawTextW, ExtSelectClipRgn, FF_SWISS, FONT_QUALITY, FillRect,
-    GetDeviceCaps, GetStockObject, HDC, HFONT, HGDIOBJ, IntersectClipRect, LOGPIXELSY, NULL_PEN,
-    OUT_DEFAULT_PRECIS, RGN_AND, RestoreDC, RoundRect, SaveDC, SelectObject, SetBkMode,
-    SetTextColor, TRANSPARENT,
+    DT_VCENTER, DT_WORDBREAK, DeleteObject, DrawTextW, ExtSelectClipRgn, FF_SWISS, FONT_QUALITY,
+    FillRect, GetDC, GetDeviceCaps, GetStockObject, GetTextExtentPoint32W, HDC, HFONT, HGDIOBJ,
+    IntersectClipRect, LOGPIXELSY, NULL_PEN, OUT_DEFAULT_PRECIS, RGN_AND, ReleaseDC, RestoreDC,
+    RoundRect, SaveDC, SelectObject, SetBkMode, SetTextColor, TRANSPARENT,
 };
 use windows::Win32::Graphics::GdiPlus;
 use windows::Win32::UI::WindowsAndMessaging::{self, HICON};
@@ -51,6 +51,38 @@ pub(in crate::shell) fn cached_font_with(
 /// `hdc`'s DPI. Shared cache entry - do not delete.
 pub(in crate::shell) fn chrome_text_font(hdc: HDC) -> HFONT {
     chrome_text_font_with_quality(hdc, CLEARTYPE_QUALITY)
+}
+
+pub(in crate::shell::chrome) fn measure_chrome_text_width(text: &str) -> i32 {
+    static WIDTHS: OnceLock<Mutex<HashMap<String, i32>>> = OnceLock::new();
+    let widths = WIDTHS.get_or_init(|| Mutex::new(HashMap::new()));
+    if let Ok(widths) = widths.lock()
+        && let Some(width) = widths.get(text)
+    {
+        return *width;
+    }
+
+    let wide = text.encode_utf16().collect::<Vec<_>>();
+    let width = unsafe {
+        let hdc = GetDC(None);
+        if hdc.is_invalid() {
+            0
+        } else {
+            let font = chrome_text_font(hdc);
+            let old = SelectObject(hdc, HGDIOBJ(font.0));
+            let mut size = SIZE::default();
+            let _ = GetTextExtentPoint32W(hdc, &wide, &mut size);
+            if !old.is_invalid() {
+                let _ = SelectObject(hdc, old);
+            }
+            let _ = ReleaseDC(None, hdc);
+            size.cx
+        }
+    };
+    if let Ok(mut widths) = widths.lock() {
+        widths.insert(text.to_string(), width);
+    }
+    width
 }
 
 fn chrome_text_font_with_quality(hdc: HDC, quality: FONT_QUALITY) -> HFONT {
@@ -93,6 +125,38 @@ pub(in crate::shell) fn draw_text_antialiased(
     horizontal: windows::Win32::Graphics::Gdi::DRAW_TEXT_FORMAT,
 ) {
     draw_text_with_quality(hdc, text, rect, rgb, horizontal, ANTIALIASED_QUALITY)
+}
+
+pub(in crate::shell) fn draw_text_multiline_antialiased(
+    hdc: HDC,
+    text: &str,
+    rect: RECT,
+    rgb: u32,
+) {
+    if text.is_empty() || rect_width(&rect) == 0 || rect_height(&rect) == 0 {
+        return;
+    }
+    let mut wide = text.encode_utf16().collect::<Vec<_>>();
+    let mut rect = rect;
+    let font = chrome_text_font_with_quality(hdc, ANTIALIASED_QUALITY);
+    unsafe {
+        let old_font = if font.is_invalid() {
+            HGDIOBJ::default()
+        } else {
+            SelectObject(hdc, HGDIOBJ(font.0))
+        };
+        let _ = SetBkMode(hdc, TRANSPARENT);
+        let _ = SetTextColor(hdc, rgb_to_colorref(rgb));
+        let _ = DrawTextW(
+            hdc,
+            &mut wide,
+            &mut rect,
+            DT_LEFT | DT_WORDBREAK | DT_END_ELLIPSIS,
+        );
+        if !old_font.is_invalid() {
+            let _ = SelectObject(hdc, old_font);
+        }
+    }
 }
 
 fn draw_text_with_quality(

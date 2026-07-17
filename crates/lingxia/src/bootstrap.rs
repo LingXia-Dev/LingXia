@@ -49,10 +49,22 @@ fn load_bundled_app_config(
     }
     match lingxia_app_context::AppConfig::parse_and_validate(&content) {
         Ok(mut config) => {
-            if config.panels.is_none()
-                && let Some(panels) = load_panels_from_ui_config(runtime)
-            {
-                config.panels = Some(panels);
+            if let Some(mut generated) = load_panels_from_ui_config(runtime) {
+                if let Some(existing) = config.panels.as_mut() {
+                    let mut ids = existing
+                        .items
+                        .iter()
+                        .map(|item| item.id.clone())
+                        .collect::<std::collections::HashSet<_>>();
+                    existing.items.extend(
+                        generated
+                            .items
+                            .drain(..)
+                            .filter(|item| ids.insert(item.id.clone())),
+                    );
+                } else {
+                    config.panels = Some(generated);
+                }
             }
             Some(config)
         }
@@ -80,51 +92,38 @@ fn panels_from_ui_config(ui: &serde_json::Value) -> Option<lingxia_app_context::
     use lingxia_app_context::PanelsConfig;
 
     let surfaces = ui.get("surfaces")?.as_array()?;
-    let surfaces_by_id = surfaces
+    let activators_by_surface = ui
+        .get("activators")
+        .and_then(serde_json::Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|activator| {
+            let surface = activator.get("action")?.get("surface")?.as_str()?.trim();
+            (!surface.is_empty()).then_some((surface, activator))
+        })
+        .collect::<std::collections::HashMap<_, _>>();
+
+    let items = surfaces
         .iter()
         .filter_map(|surface| {
             let id = surface.get("id")?.as_str()?.trim();
-            (!id.is_empty()).then_some((id, surface))
+            panel_item_from_surface(id, surface, activators_by_surface.get(id).copied())
         })
-        .collect::<std::collections::HashMap<_, _>>();
-    let activators = ui.get("activators")?.as_array()?;
-
-    let items = activators
-        .iter()
-        .filter_map(|activator| panel_item_from_activator(activator, &surfaces_by_id))
         .collect::<Vec<_>>();
 
     (!items.is_empty()).then_some(PanelsConfig { items })
 }
 
-fn panel_item_from_activator(
-    activator: &serde_json::Value,
-    surfaces_by_id: &std::collections::HashMap<&str, &serde_json::Value>,
+fn panel_item_from_surface(
+    surface_id: &str,
+    surface: &serde_json::Value,
+    activator: Option<&serde_json::Value>,
 ) -> Option<lingxia_app_context::PanelItem> {
     use lingxia_app_context::{PanelContent, PanelContentKind, PanelItem};
 
-    if activator.get("kind").and_then(serde_json::Value::as_str) != Some("sidebarItem") {
-        return None;
-    }
-    let activator_id = activator
-        .get("id")
-        .and_then(serde_json::Value::as_str)
-        .map(str::trim)
-        .filter(|id| !id.is_empty())?;
-    let action = activator.get("action")?;
-    if !matches!(
-        action.get("kind").and_then(serde_json::Value::as_str),
-        Some("toggleSurface" | "openSurface")
-    ) {
-        return None;
-    }
-    let surface_id = action
-        .get("surface")
-        .and_then(serde_json::Value::as_str)
-        .map(str::trim)
-        .filter(|surface_id| !surface_id.is_empty())?;
-    let surface = surfaces_by_id.get(surface_id)?;
-    if surface.get("role").and_then(serde_json::Value::as_str) != Some("aside") {
+    if surface_id.is_empty()
+        || surface.get("role").and_then(serde_json::Value::as_str) != Some("aside")
+    {
         return None;
     }
     let content = surface.get("content")?;
@@ -147,14 +146,14 @@ fn panel_item_from_activator(
     }
 
     let label = activator
-        .get("label")
+        .and_then(|activator| activator.get("label"))
         .and_then(serde_json::Value::as_str)
         .map(str::trim)
         .filter(|label| !label.is_empty())
-        .unwrap_or(activator_id)
+        .unwrap_or_else(|| app_id.unwrap_or(surface_id))
         .to_string();
     let icon = activator
-        .get("icon")
+        .and_then(|activator| activator.get("icon"))
         .and_then(serde_json::Value::as_str)
         .unwrap_or_default()
         .to_string();
@@ -232,6 +231,9 @@ pub(crate) fn init_with_platform(platform: lingxia_platform::Platform) -> Option
     #[cfg(feature = "standard")]
     lingxia_logic::register_logic_runtime();
     let home_app_id = lxapp::init(platform);
+    if let Err(error) = crate::shell::initialize(runtime.clone()) {
+        log::error!("Failed to initialize host shell state: {error}");
+    }
     crate::update::install_auto_trigger(runtime.clone());
     crate::browser::register_builtin_assets();
     crate::host_addon::run_after_init();
@@ -293,6 +295,31 @@ mod tests {
             panels.items[0].content.path.as_deref(),
             Some("pages/chat/index")
         );
+    }
+
+    #[test]
+    fn derives_declared_asides_without_yaml_activators() {
+        let ui = serde_json::json!({
+            "surfaces": [{
+                "id": "assistant",
+                "role": "aside",
+                "edge": "right",
+                "content": { "kind": "lxapp", "appId": "lingxia-chat" }
+            }, {
+                "id": "terminal",
+                "role": "aside",
+                "edge": "bottom",
+                "content": { "kind": "terminal" }
+            }],
+            "activators": []
+        });
+
+        let panels = panels_from_ui_config(&ui).expect("panel config");
+        assert_eq!(panels.items.len(), 2);
+        assert_eq!(panels.items[0].id, "assistant");
+        assert_eq!(panels.items[0].label, "lingxia-chat");
+        assert_eq!(panels.items[1].id, "terminal");
+        assert_eq!(panels.items[1].label, "terminal");
     }
 
     #[test]

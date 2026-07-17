@@ -27,6 +27,8 @@ struct LxAppUIActionItem: Sendable {
     let id: String
     let label: String
     let iconURL: URL?
+    var active: Bool = false
+    var disabled: Bool = false
 }
 
 @MainActor
@@ -35,6 +37,7 @@ final class LxAppMacAppUIRuntime: NSObject {
     private static let panelFirstPaintPollNs: UInt64 = 50_000_000
     private static let panelFirstPaintMaxPolls = 24
     private static let panelFirstPaintSettleNs: UInt64 = 16_000_000
+    private static let shellTerminalSurfaceID = "shell:terminal"
 
     nonisolated(unsafe) static weak var active: LxAppMacAppUIRuntime?
 
@@ -58,6 +61,14 @@ final class LxAppMacAppUIRuntime: NSObject {
     /// Runtime edge overrides from `lx.openSurface({surface, edge})`; the
     /// declared `lingxia.yaml` edge applies when absent.
     private var managedEdgeOverrides: [String: LxAppUIConfig.Edge] = [:]
+    private struct RuntimeLxAppPanel {
+        let appId: String
+        let path: String
+    }
+    /// Undeclared or role-overridden lxapps opened as asides. They participate
+    /// in the same managed visibility API as declared panels, but remain live
+    /// while hidden until the Rust handle explicitly closes the lxapp.
+    private var runtimeLxAppPanels: [String: RuntimeLxAppPanel] = [:]
     private lazy var trayController = LxAppMacTrayController(
         appConfig: appConfig,
         uiConfigURL: uiConfigURL
@@ -123,7 +134,7 @@ final class LxAppMacAppUIRuntime: NSObject {
             self?.collapseExpandedAsides()
         }
         shell.setSidebarHostActionHandler { [weak self] actionID in
-            self?.performActivator(id: actionID)
+            self?.performSidebarActivator(id: actionID)
         }
         shell.setToolbarHostActionHandler { [weak self] actionID in
             self?.performActivator(id: actionID)
@@ -149,6 +160,7 @@ final class LxAppMacAppUIRuntime: NSObject {
         }
         trayController.installMenuBarActivators(menuBarActivators)
         installAppActivationActivators()
+        restorePersistedActivatorItems()
         refreshChromeActivators()
         if uiConfig.launch.openOnLaunch ?? true {
             try openSurface(id: uiConfig.launch.initialSurface)
@@ -188,6 +200,13 @@ final class LxAppMacAppUIRuntime: NSObject {
         return active.performAppActivation()
     }
 
+    /// Native aside-slot close affordance. Unlike managed hide, this destroys
+    /// the lxapp session and releases its one-region claim.
+    static func handleAsideSlotClose(surfaceId: String) -> Bool {
+        guard let active else { return false }
+        return active.closeAsideSlotChild(surfaceId: surfaceId)
+    }
+
     // MARK: - Tray runtime updates (lx.tray.*)
 
     func setTrayBadge(_ text: String?) { trayController.setBadge(text) }
@@ -203,8 +222,20 @@ final class LxAppMacAppUIRuntime: NSObject {
         sessionId: UInt64,
         panelId: String
     ) -> Bool {
-        guard let surface = surfaceById[panelId] else {
-            return false
+        guard let surface = surfaceById[panelId], surface.role == .aside else {
+            // An UNDECLARED lxapp opened with panel presentation (privileged
+            // openSurface / activator): dock it as a runtime aside keyed by
+            // its appId. Returning false here would fall through to the main
+            // tab path — an aside must never enter the sidebar.
+            guard let primaryAppId = rootSurface.content.appId else { return false }
+            shell.storeSession(sessionId, for: appId)
+            shell.registerPanelWithContent(id: panelId, position: .right, appId: appId, path: path)
+            runtimeLxAppPanels[panelId] = RuntimeLxAppPanel(appId: appId, path: path)
+            _ = registerHostAside(primaryAppId, panelId, managedEdgeOverrides[panelId]?.rawValue ?? "right")
+            openedSurfaceIDs.insert(panelId)
+            visibleSurfaceIDs.insert(panelId)
+            refreshChromeActivators()
+            return true
         }
 
         if isIndependentPanelSurface(surface),
@@ -319,6 +350,103 @@ final class LxAppMacAppUIRuntime: NSObject {
         closeSurface(id: rootSurface.id)
     }
 
+    private struct ResolvedRuntimeActivator: Codable {
+        let id: String
+        let kind: String
+        let label: String
+        let iconPath: String?
+        let active: Bool
+        let disabled: Bool
+    }
+
+    private struct ResolvedRuntimeActivatorSnapshot: Codable {
+        let declared: Bool
+        let items: [ResolvedRuntimeActivator]
+    }
+
+    private var runtimeActivatorItems: [ResolvedRuntimeActivator] = []
+    private var runtimeActivatorWriterDeclared = false
+
+    private func restorePersistedActivatorItems() {
+        let json = shellActivatorSnapshot().toString()
+        guard let snapshot = try? JSONDecoder().decode(
+            ResolvedRuntimeActivatorSnapshot.self, from: Data(json.utf8))
+        else { return }
+        runtimeActivatorItems = snapshot.items
+        runtimeActivatorWriterDeclared = snapshot.declared
+    }
+
+    func setRuntimeActivatorItems(_ json: String) {
+        guard let data = json.data(using: .utf8),
+              let items = try? JSONDecoder().decode([ResolvedRuntimeActivator].self, from: data)
+        else {
+            LXLog.error("setActivatorItems: bad payload", category: "MacAppUI")
+            return
+        }
+        runtimeActivatorItems = items
+        runtimeActivatorWriterDeclared = true
+        refreshChromeActivators()
+    }
+
+    func setShellPins(_ json: String) {
+        shell.updateShellPins(json)
+    }
+
+    func shellNativeActive(_ capability: String) -> Bool {
+        capability == "terminal"
+            && visibleSurfaceIDs.contains(Self.shellTerminalSurfaceID)
+    }
+
+    func activateShellNative(_ capability: String) -> Bool {
+        guard capability == "terminal",
+              let primaryAppId = rootSurface.content.appId else { return false }
+        let id = Self.shellTerminalSurfaceID
+        if visibleSurfaceIDs.contains(id) {
+            closeTerminalWorkspaceSurface(id: id)
+            return true
+        }
+        openTerminalPanel(id: id, position: .bottom, defaultHeight: 320) {
+            _ = registerHostAsideContent(primaryAppId, id, "terminal", "bottom")
+        }
+        return visibleSurfaceIDs.contains(id)
+    }
+
+    /// Sidebar entries from the runtime writer, when it has spoken.
+    private func runtimeSidebarActionItems() -> [LxAppUIActionItem]? {
+        guard runtimeActivatorWriterDeclared else { return nil }
+        let json = shellActivatorSnapshot().toString()
+        if let snapshot = try? JSONDecoder().decode(
+            ResolvedRuntimeActivatorSnapshot.self, from: Data(json.utf8)),
+           snapshot.declared {
+            runtimeActivatorItems = snapshot.items
+        }
+        return runtimeActivatorItems.map { item in
+            return LxAppUIActionItem(
+                id: item.id,
+                label: item.label,
+                iconURL: runtimeItemIconURL(item),
+                active: item.active,
+                disabled: item.disabled
+            )
+        }
+    }
+
+    private func runtimeItemIconURL(_ item: ResolvedRuntimeActivator) -> URL? {
+        guard let icon = item.iconPath, !icon.isEmpty else { return nil }
+        if let url = URL(string: icon), url.isFileURL { return url }
+        if icon.hasPrefix("/") { return URL(fileURLWithPath: icon) }
+        return LxAppAppUIBundleLoader.resolveRelativeResource(icon, baseURL: uiConfigURL)
+    }
+
+    private func performSidebarActivator(id: String) {
+        if runtimeActivatorWriterDeclared,
+           runtimeActivatorItems.contains(where: { $0.id == id }) {
+            _ = shellActivate(id)
+            return
+        }
+        performActivator(id: id)
+    }
+
     private func performActivator(id: String) {
         guard let activator = uiConfig.activators.first(where: { $0.id == id }) else { return }
 
@@ -348,6 +476,14 @@ final class LxAppMacAppUIRuntime: NSObject {
     /// not a declared surface, so the caller can report the failure.
     @discardableResult
     func toggleManagedSurface(id: String) -> Bool {
+        if runtimeLxAppPanels[id] != nil {
+            if visibleSurfaceIDs.contains(id) {
+                _ = closeManagedSurface(id: id)
+            } else {
+                _ = openManagedSurface(id: id)
+            }
+            return true
+        }
         guard surfaceById[id] != nil else { return false }
         toggleSurface(id: id)
         return true
@@ -358,6 +494,22 @@ final class LxAppMacAppUIRuntime: NSObject {
     /// re-entering the open path. Returns `false` for an unknown surface `id`.
     @discardableResult
     func openManagedSurface(id: String, edge: String? = nil) -> Bool {
+        if runtimeLxAppPanels[id] != nil {
+            if let edge, let parsed = LxAppUIConfig.Edge(rawValue: edge) {
+                managedEdgeOverrides[id] = parsed
+            }
+            guard let primaryAppId = rootSurface.content.appId else { return false }
+            shell.show()
+            _ = registerHostAside(
+                primaryAppId,
+                id,
+                managedEdgeOverrides[id]?.rawValue ?? "right"
+            )
+            openedSurfaceIDs.insert(id)
+            visibleSurfaceIDs.insert(id)
+            refreshChromeActivators()
+            return true
+        }
         guard let surface = surfaceById[id] else { return false }
         let previous = managedEdgeOverrides[id] ?? surface.edge
         if let edge, let parsed = LxAppUIConfig.Edge(rawValue: edge) {
@@ -379,10 +531,39 @@ final class LxAppMacAppUIRuntime: NSObject {
     /// for an unknown surface `id`.
     @discardableResult
     func closeManagedSurface(id: String) -> Bool {
+        if runtimeLxAppPanels[id] != nil {
+            if visibleSurfaceIDs.contains(id) {
+                if let primaryAppId = rootSurface.content.appId {
+                    _ = unregisterHostAside(primaryAppId, id)
+                }
+                shell.hidePanel(id: id)
+                visibleSurfaceIDs.remove(id)
+                refreshChromeActivators()
+            }
+            return true
+        }
         guard surfaceById[id] != nil else { return false }
         if visibleSurfaceIDs.contains(id) {
             closeSurface(id: id)
         }
+        return true
+    }
+
+    private func closeAsideSlotChild(surfaceId: String) -> Bool {
+        if surfaceId == Self.shellTerminalSurfaceID {
+            closeTerminalWorkspaceSurface(id: surfaceId)
+            return true
+        }
+        let appId = surfaceById[surfaceId]?.content.appId
+            ?? runtimeLxAppPanels[surfaceId]?.appId
+            ?? surfaceId
+        guard !appId.isEmpty else { return false }
+        _ = closeManagedSurface(id: surfaceId)
+        runtimeLxAppPanels.removeValue(forKey: surfaceId)
+        openedSurfaceIDs.remove(surfaceId)
+        visibleSurfaceIDs.remove(surfaceId)
+        shell.closeAsideLxApp(appId: appId)
+        refreshChromeActivators()
         return true
     }
 
@@ -618,58 +799,81 @@ final class LxAppMacAppUIRuntime: NSObject {
         guard let position = panelPosition(for: surface) else {
             throw LxAppUIError.invalidConfig("surface \(surface.id) terminal panel requires a valid aside edge")
         }
-        let reused = terminalWorkspaces[surface.id] != nil
-        let defaultHeight = CGFloat(surface.size?.height ?? 320)
+        openTerminalPanel(
+            id: surface.id,
+            position: position,
+            defaultHeight: CGFloat(surface.size?.height ?? 320)
+        ) { [weak self] in
+            self?.registerHostAsideForSurface(surface)
+        }
+    }
+
+    private func openTerminalPanel(
+        id: String,
+        position: PanelPosition,
+        defaultHeight: CGFloat,
+        registerAside: () -> Void
+    ) {
+        let reused = terminalWorkspaces[id] != nil
         logTerminal(
-            "runtime.openTerminal surface=\(surface.id) position=\(position.rawValue) reused=\(reused) defaultHeight=\(String(format: "%.1f", defaultHeight)) windowFrameBefore=\(lxTerminalRuntimeFormatRect(shell.hostWindow?.frame ?? .zero))"
+            "runtime.openTerminal surface=\(id) position=\(position.rawValue) reused=\(reused) defaultHeight=\(String(format: "%.1f", defaultHeight)) windowFrameBefore=\(lxTerminalRuntimeFormatRect(shell.hostWindow?.frame ?? .zero))"
         )
         shell.show()
-        let workspace = terminalWorkspaces[surface.id]
-            ?? LingXiaTerminalWorkspaceView(surfaceID: surface.id)
-        terminalWorkspaces[surface.id] = workspace
+        let workspace = terminalWorkspaces[id]
+            ?? LingXiaTerminalWorkspaceView(surfaceID: id)
+        terminalWorkspaces[id] = workspace
         workspace.onRequestClosePanel = { [weak self] in
-            self?.logTerminal("runtime.workspaceRequestedClose surface=\(surface.id)")
-            self?.closeTerminalWorkspaceSurface(id: surface.id)
+            self?.logTerminal("runtime.workspaceRequestedClose surface=\(id)")
+            self?.closeTerminalWorkspaceSurface(id: id)
         }
         workspace.onToggleSurfaceZoom = { [weak self] zoomed in
             guard let self else { return }
-            self.logTerminal("runtime.toggleSurfaceZoom surface=\(surface.id) enabled=\(zoomed)")
-            self.shell.setPanelFullscreen(id: surface.id, enabled: zoomed)
+            self.logTerminal("runtime.toggleSurfaceZoom surface=\(id) enabled=\(zoomed)")
+            self.shell.setPanelFullscreen(id: id, enabled: zoomed)
         }
         workspace.ensureOpenTab()
         logTerminal(
-            "runtime.beforeShowPanel surface=\(surface.id) workspaceFrame=\(lxTerminalRuntimeFormatRect(workspace.frame)) workspaceBounds=\(lxTerminalRuntimeFormatRect(workspace.bounds)) windowFrame=\(lxTerminalRuntimeFormatRect(shell.hostWindow?.frame ?? .zero))"
+            "runtime.beforeShowPanel surface=\(id) workspaceFrame=\(lxTerminalRuntimeFormatRect(workspace.frame)) workspaceBounds=\(lxTerminalRuntimeFormatRect(workspace.bounds)) windowFrame=\(lxTerminalRuntimeFormatRect(shell.hostWindow?.frame ?? .zero))"
         )
         // Register the terminal content (hidden) before mutating the Rust surface
         // graph. registerHostAside below pushes the layout plan that places and
         // shows it.
         shell.registerPanelWithNativeContent(
-            id: surface.id,
+            id: id,
             position: position,
             contentView: workspace,
             defaultSize: defaultHeight
         )
-        registerHostAsideForSurface(surface)
+        registerAside()
         logTerminal(
-            "runtime.afterShowPanel surface=\(surface.id) workspaceFrame=\(lxTerminalRuntimeFormatRect(workspace.frame)) workspaceBounds=\(lxTerminalRuntimeFormatRect(workspace.bounds)) windowFrame=\(lxTerminalRuntimeFormatRect(shell.hostWindow?.frame ?? .zero))"
+            "runtime.afterShowPanel surface=\(id) workspaceFrame=\(lxTerminalRuntimeFormatRect(workspace.frame)) workspaceBounds=\(lxTerminalRuntimeFormatRect(workspace.bounds)) windowFrame=\(lxTerminalRuntimeFormatRect(shell.hostWindow?.frame ?? .zero))"
         )
         workspace.focusActiveTerminal()
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak workspace, weak shell] in
             self.logTerminal(
-                "runtime.delayedFocusTerminal surface=\(surface.id) workspaceFrame=\(lxTerminalRuntimeFormatRect(workspace?.frame ?? .zero)) workspaceBounds=\(lxTerminalRuntimeFormatRect(workspace?.bounds ?? .zero)) windowFrame=\(lxTerminalRuntimeFormatRect(shell?.hostWindow?.frame ?? .zero))"
+                "runtime.delayedFocusTerminal surface=\(id) workspaceFrame=\(lxTerminalRuntimeFormatRect(workspace?.frame ?? .zero)) workspaceBounds=\(lxTerminalRuntimeFormatRect(workspace?.bounds ?? .zero)) windowFrame=\(lxTerminalRuntimeFormatRect(shell?.hostWindow?.frame ?? .zero))"
             )
             workspace?.focusActiveTerminal()
         }
-        openedSurfaceIDs.insert(surface.id)
-        visibleSurfaceIDs.insert(surface.id)
-        logTerminal("runtime.openTerminal markedVisible surface=\(surface.id) opened=\(openedSurfaceIDs.contains(surface.id)) visible=\(visibleSurfaceIDs.contains(surface.id))")
+        openedSurfaceIDs.insert(id)
+        visibleSurfaceIDs.insert(id)
+        logTerminal("runtime.openTerminal markedVisible surface=\(id) opened=\(openedSurfaceIDs.contains(id)) visible=\(visibleSurfaceIDs.contains(id))")
         refreshChromeActivators()
     }
 
     private func registerHostAsideForSurface(_ surface: LxAppUIConfig.Surface) {
         guard let primaryAppId = rootSurface.content.appId else { return }
         let edge = managedEdgeOverrides[surface.id] ?? surface.edge
-        _ = registerHostAside(primaryAppId, surface.id, edge?.rawValue ?? "right")
+        if surface.content.kind == .terminal {
+            _ = registerHostAsideContent(
+                primaryAppId,
+                surface.id,
+                "terminal",
+                edge?.rawValue ?? "bottom"
+            )
+        } else {
+            _ = registerHostAside(primaryAppId, surface.id, edge?.rawValue ?? "right")
+        }
     }
 
     private func closeTerminalWorkspaceSurface(id: String) {
@@ -804,7 +1008,7 @@ final class LxAppMacAppUIRuntime: NSObject {
             }
             .map(makeChromeActionItem)
 
-        shell.updateSidebarHostActions(sidebarItems)
+        shell.updateSidebarHostActions(runtimeSidebarActionItems() ?? sidebarItems)
         shell.setManagedNavigationToolbarVisible(true)
         shell.updateToolbarHostActions(toolbarItems)
         shell.updateTitlebarHostActions(titlebarItems)

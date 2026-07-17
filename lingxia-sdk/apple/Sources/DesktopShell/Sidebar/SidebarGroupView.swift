@@ -125,14 +125,13 @@ private class SidebarGroupHeaderView: NSView {
 class SidebarGroupView: NSView {
 
     struct Layout {
-        static let headerHeight: CGFloat = 26
+        static let headerHeight: CGFloat = 36
         static let headerCornerRadius: CGFloat = 6
         static let groupInset: CGFloat = 8
         static let headerHPadding: CGFloat = 8
         static let chevronSize: CGFloat = 10
         static let closeButtonSize: CGFloat = 16
-        static let connectorLineWidth: CGFloat = 1.5
-        static let itemTopPadding: CGFloat = 4
+        static let itemTopPadding: CGFloat = 2
     }
 
     let appId: String
@@ -152,18 +151,44 @@ class SidebarGroupView: NSView {
         return NSImage(contentsOf: url)
     }()
     private let chevronIndicator = NSButton()
+    /// Collapsed-state aggregate: a dot on the header while any tabbar item
+    /// carries a badge or red dot (notifications never vanish
+    /// with the collapse).
+    private let aggregateDot = NSView()
     private let closeButton = NSButton()
     private let itemsContainer = NSView()
-    private let connectorLine = NSView()
     private var itemViews: [SidebarItemView] = []
 
     private var isExpanded = true
+    /// Last tabbar visibility applied from Rust. Collapse/expand only follows a
+    /// visibility CHANGE so unrelated refreshes (badge, style) don't undo a
+    /// manual chevron toggle.
+    private var lastAppliedTabBarVisible: Bool?
+    /// One-shot guard for applying the persisted user collapse state.
+    private var didRestoreCollapsedState = false
     /// True when this group's lxapp is the active main — set by SidebarView.
     /// Clicking the active group's header toggles collapse; a non-active group's
     /// header switches to it instead.
-    var isActiveGroup = false
+    var isActiveGroup = false { didSet { updateActiveAppearance() } }
+    /// Fired after a pin/unpin from the context menu so the sidebar
+    /// re-renders its pin grid (the store itself lives in Rust).
+    var onPinChanged: (() -> Void)?
+    /// Selected-state tint from this lxapp's tabbar style (`selectedColor`);
+    /// nil = system neutral. Feeds the items' selected state.
+    private var tabBarTint: NSColor?
+    /// Attribution-line base from the tabbar's borderStyle: "white" reads as
+    /// a light hairline, "black" (default) as the darker separator.
+    private var attributionBaseColor: NSColor = .separatorColor
+    /// Unselected item title tint from the tabbar's `color`; nil = neutral.
+    private var itemTint: NSColor?
+    /// Expanded items-area wash from the tabbar's `backgroundColor`;
+    /// nil = transparent (the sidebar base shows through).
+    private var itemsAreaColor: NSColor?
+    /// Thin vertical line binding the expanded items to their group header
+    /// (Windows-baseline attribution line, tabbar-tinted).
+    private let attributionLine = NSView()
+    private var attributionHeightConstraint: NSLayoutConstraint?
     private var itemsHeightConstraint: NSLayoutConstraint?
-    private var connectorHeightConstraint: NSLayoutConstraint?
     private var headerTrackingArea: NSTrackingArea?
     private var closeButtonTrackingArea: NSTrackingArea?
     private var isHeaderHovered = false
@@ -195,13 +220,28 @@ class SidebarGroupView: NSView {
         applyColors()
     }
 
+    /// Identity cues only — app icon tile, name, chevron. No accent pill,
+    /// no tinted items area, no connector line: decoration would break the
+    /// sidebar's uniform rhythm.
+    /// The lxapp tab (group header) highlights while its app owns the main —
+    /// regardless of page or tabbar item — so a collapsed group still shows
+    /// where you are. Distinct from the item accent (two independent levels).
+    private func updateActiveAppearance() {
+        headerView.layer?.backgroundColor = isActiveGroup
+            ? NSColor.labelColor.withAlphaComponent(0.09).cgColor
+            : NSColor.clear.cgColor
+    }
+
     private func applyColors() {
-        headerView.layer?.backgroundColor = palette.headerBg.cgColor
-        appNameLabel.textColor = palette.headerText
-        chevronIndicator.contentTintColor = palette.headerText
-        closeButton.contentTintColor = palette.headerText.withAlphaComponent(0.7)
-        itemsBackground.layer?.backgroundColor = palette.itemsTint.cgColor
-        connectorLine.layer?.backgroundColor = palette.connector.cgColor
+        updateActiveAppearance()
+        attributionLine.layer?.backgroundColor = attributionBaseColor
+            .withAlphaComponent(0.5).cgColor
+        appNameLabel.textColor = .labelColor
+        chevronIndicator.contentTintColor = .secondaryLabelColor
+        closeButton.contentTintColor = NSColor.secondaryLabelColor.withAlphaComponent(0.9)
+        // tabbar backgroundColor maps to the expanded items area (the group's
+        // own strip surface); unset stays transparent on the sidebar base.
+        itemsBackground.layer?.backgroundColor = (itemsAreaColor ?? NSColor.clear).cgColor
     }
 
     private func setupViews() {
@@ -211,7 +251,10 @@ class SidebarGroupView: NSView {
         itemsBackground.translatesAutoresizingMaskIntoConstraints = false
         itemsBackground.wantsLayer = true
         itemsBackground.layer?.cornerRadius = Layout.headerCornerRadius
-        itemsBackground.layer?.maskedCorners = [.layerMinXMaxYCorner, .layerMaxXMaxYCorner]
+        // Bottom corners (non-flipped: minY = bottom) — the expanded group
+        // reads as ONE card: header rounds the top, this rounds the bottom,
+        // and the seam between them stays square.
+        itemsBackground.layer?.maskedCorners = [.layerMinXMinYCorner, .layerMaxXMinYCorner]
         addSubview(itemsBackground)
 
         // Header (colored pill, custom hitTest)
@@ -266,6 +309,19 @@ class SidebarGroupView: NSView {
         headerView.addSubview(chevronIndicator)
         headerView.chevronButton = chevronIndicator
 
+        aggregateDot.translatesAutoresizingMaskIntoConstraints = false
+        aggregateDot.wantsLayer = true
+        aggregateDot.layer?.cornerRadius = 3
+        aggregateDot.layer?.backgroundColor = NSColor.systemRed.cgColor
+        aggregateDot.isHidden = true
+        headerView.addSubview(aggregateDot)
+        NSLayoutConstraint.activate([
+            aggregateDot.trailingAnchor.constraint(equalTo: chevronIndicator.leadingAnchor, constant: -6),
+            aggregateDot.topAnchor.constraint(equalTo: headerView.topAnchor, constant: 9),
+            aggregateDot.widthAnchor.constraint(equalToConstant: 6),
+            aggregateDot.heightAnchor.constraint(equalToConstant: 6),
+        ])
+
         // Close button (hidden by default, shown on hover)
         closeButton.translatesAutoresizingMaskIntoConstraints = false
         closeButton.image = NSImage(systemSymbolName: "xmark", accessibilityDescription: "Close")
@@ -280,11 +336,11 @@ class SidebarGroupView: NSView {
         headerView.addSubview(closeButton)
         headerView.closeButton = closeButton
 
-        // Vertical connector line
-        connectorLine.translatesAutoresizingMaskIntoConstraints = false
-        connectorLine.wantsLayer = true
-        connectorLine.isHidden = true
-        addSubview(connectorLine)
+        // Attribution line binding items to their header
+        attributionLine.translatesAutoresizingMaskIntoConstraints = false
+        attributionLine.wantsLayer = true
+        attributionLine.isHidden = true
+        addSubview(attributionLine)
 
         // Items container (must clip so collapsed items are hidden)
         itemsContainer.translatesAutoresizingMaskIntoConstraints = false
@@ -294,9 +350,9 @@ class SidebarGroupView: NSView {
 
         let itemsHeight = itemsContainer.heightAnchor.constraint(equalToConstant: 0)
         itemsHeightConstraint = itemsHeight
+        let attributionHeight = attributionLine.heightAnchor.constraint(equalToConstant: 0)
+        attributionHeightConstraint = attributionHeight
 
-        let connectorHeight = connectorLine.heightAnchor.constraint(equalToConstant: 0)
-        connectorHeightConstraint = connectorHeight
 
         NSLayoutConstraint.activate([
             // Header: top, inset left/right
@@ -334,11 +390,11 @@ class SidebarGroupView: NSView {
             itemsBackground.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -Layout.groupInset),
             itemsBackground.bottomAnchor.constraint(equalTo: bottomAnchor),
 
-            // Connector line: left edge of items area, below header
-            connectorLine.leadingAnchor.constraint(equalTo: leadingAnchor, constant: Layout.groupInset + 14),
-            connectorLine.widthAnchor.constraint(equalToConstant: Layout.connectorLineWidth),
-            connectorLine.topAnchor.constraint(equalTo: headerView.bottomAnchor, constant: 2),
-            connectorHeight,
+            // Attribution line: left edge of the items area
+            attributionLine.leadingAnchor.constraint(equalTo: leadingAnchor, constant: Layout.groupInset + 12),
+            attributionLine.widthAnchor.constraint(equalToConstant: 1),
+            attributionLine.topAnchor.constraint(equalTo: headerView.bottomAnchor, constant: Layout.itemTopPadding),
+            attributionHeight,
 
             // Items container: below header
             itemsContainer.topAnchor.constraint(equalTo: headerView.bottomAnchor),
@@ -378,8 +434,44 @@ class SidebarGroupView: NSView {
             return
         }
 
+        // Style follows the lxapp's tabbar config — but only fields the app
+        // DECLARED (styled_mask). The color values always carry effective
+        // mobile defaults, and those are designed for a light bar: inheriting
+        // them here would paint every unstyled app light-on-dark.
+        let mask = tabBar.styled_mask
+        itemTint = mask & 0b0001 != 0 ? PlatformColor(argb: tabBar.color) : nil
+        tabBarTint = mask & 0b0010 != 0 ? PlatformColor(argb: tabBar.selected_color) : nil
+        itemsAreaColor = mask & 0b0100 != 0 ? PlatformColor(argb: tabBar.background_color) : nil
+        attributionBaseColor = mask & 0b1000 != 0
+            ? PlatformColor(argb: tabBar.border_style)
+            : NSColor.separatorColor
+        applyColors()
+
         let items = tabBar.getItems(appId: appId)
         rebuildItems(items: items)
+
+        // Only an EXPLICIT lx.hideTabBar/showTabBar collapses/expands this
+        // group. `is_visible` also flips on every navigation to a non-tab page
+        // (mobile auto-hide) — on desktop the sidebar stays put for that; the
+        // item selection clearing already covers it. Not persisted — the app
+        // re-establishes API state on launch.
+        let apiVisible = !tabBar.is_api_hidden
+        if lastAppliedTabBarVisible != apiVisible {
+            lastAppliedTabBarVisible = apiVisible
+            if isExpanded != apiVisible && !itemViews.isEmpty {
+                toggleExpanded(persist: false)
+            }
+        }
+
+        // One-time restore of the user's saved collapse state (after the API
+        // sync above, so a launch-time hideTabBar wins over the stored value).
+        if !didRestoreCollapsedState, !itemViews.isEmpty {
+            didRestoreCollapsedState = true
+            if let collapsed = LxAppShellPersistence.groupCollapsed(appId: appId),
+               collapsed == isExpanded {
+                toggleExpanded(persist: false)
+            }
+        }
     }
 
     private func rebuildItems(items: [TabBarItem]) {
@@ -390,6 +482,8 @@ class SidebarGroupView: NSView {
         for (index, item) in items.enumerated() {
             let itemView = SidebarItemView(appId: appId, itemIndex: index)
             itemView.translatesAutoresizingMaskIntoConstraints = false
+            itemView.selectedTint = tabBarTint
+            itemView.unselectedTint = itemTint
             itemView.configure(item: item)
             itemView.onClick = { [weak self] idx in
                 guard let self else { return }
@@ -404,17 +498,22 @@ class SidebarGroupView: NSView {
             ])
 
             itemViews.append(itemView)
-            yOffset += SidebarItemView.Layout.height + 2
+            yOffset += SidebarItemView.Layout.height
+            if index + 1 < items.count {
+                yOffset += 1
+            }
         }
 
         let totalHeight = yOffset
         // The chevron is a collapse/expand affordance — only meaningful when the
         // group actually has items. No tabBar items → no chevron.
         chevronIndicator.isHidden = items.isEmpty
-        connectorLine.isHidden = items.count <= 1
+        attributionLine.isHidden = items.isEmpty
+        let hasNotifications = items.contains { !$0.badge.toString().isEmpty || $0.has_red_dot }
+        aggregateDot.isHidden = isExpanded || !hasNotifications
         if isExpanded {
             itemsHeightConstraint?.constant = totalHeight
-            connectorHeightConstraint?.constant = max(0, totalHeight - Layout.itemTopPadding - 6)
+            attributionHeightConstraint?.constant = max(0, totalHeight - Layout.itemTopPadding * 2)
         }
     }
 
@@ -432,11 +531,21 @@ class SidebarGroupView: NSView {
         }
     }
 
-    private func toggleExpanded() {
+    /// `persist: true` only for user-driven toggles (chevron/header click);
+    /// API sync and state restore pass false so only user intent is stored.
+    private func toggleExpanded(persist: Bool = true) {
         isExpanded.toggle()
+        if persist {
+            LxAppShellPersistence.setGroupCollapsed(!isExpanded, appId: appId)
+        }
+        // Re-evaluate the collapsed aggregate against the current items.
+        let hasNotifications = itemViews.contains { $0.hasNotification }
+        aggregateDot.isHidden = isExpanded || !hasNotifications
 
-        let totalHeight = CGFloat(itemViews.count) * (SidebarItemView.Layout.height + 2) + Layout.itemTopPadding
-        let connectorTarget = isExpanded ? max(0, totalHeight - Layout.itemTopPadding - 6) : 0
+        let itemGaps = CGFloat(max(0, itemViews.count - 1))
+        let totalHeight = Layout.itemTopPadding
+            + CGFloat(itemViews.count) * SidebarItemView.Layout.height
+            + itemGaps
 
         // Show container before expand animation; hide after collapse animation
         if isExpanded {
@@ -448,7 +557,8 @@ class SidebarGroupView: NSView {
             context.duration = 0.2
             context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
             itemsHeightConstraint?.animator().constant = isExpanded ? totalHeight : 0
-            connectorHeightConstraint?.animator().constant = connectorTarget
+            attributionHeightConstraint?.animator().constant =
+                isExpanded ? max(0, totalHeight - Layout.itemTopPadding * 2) : 0
         }, completionHandler: { [weak self] in
             Task { @MainActor [weak self] in
                 guard let self else { return }
@@ -468,12 +578,11 @@ class SidebarGroupView: NSView {
 
         // Round only top corners when expanded (bottom blends into items bg), all corners when collapsed
         if isExpanded {
-            headerView.layer?.maskedCorners = [.layerMinXMinYCorner, .layerMaxXMinYCorner]
+            headerView.layer?.maskedCorners = [.layerMinXMaxYCorner, .layerMaxXMaxYCorner]
         } else {
             headerView.layer?.maskedCorners = [.layerMinXMinYCorner, .layerMaxXMinYCorner, .layerMinXMaxYCorner, .layerMaxXMaxYCorner]
         }
 
-        connectorLine.isHidden = !isExpanded || itemViews.count <= 1
     }
 
     @objc private func chevronClicked() {
@@ -562,6 +671,19 @@ class SidebarGroupView: NSView {
         menu.addItem(headerItem)
         menu.addItem(NSMenuItem.separator())
 
+        // Home already owns a permanent sidebar group, so duplicating it in
+        // the Pin grid has no navigation value and creates two identities.
+        if !LxAppCore.isHomeLxApp(appId) {
+            let pinned = shellIsPinned("lxapp", appId)
+            let pinItem = NSMenuItem(
+                title: L10n.string(pinned ? "lx_browser_unpin" : "lx_browser_pin_to_sidebar"),
+                action: #selector(contextMenuTogglePin),
+                keyEquivalent: ""
+            )
+            pinItem.target = self
+            menu.addItem(pinItem)
+        }
+
         // Restart
         let restartItem = NSMenuItem(
             title: L10n.string("lx_capsule_restart"),
@@ -598,6 +720,15 @@ class SidebarGroupView: NSView {
     private func showContextMenu(with event: NSEvent) {
         let menu = buildContextMenu()
         NSMenu.popUpContextMenu(menu, with: event, for: headerView)
+    }
+
+    @objc private func contextMenuTogglePin() {
+        guard !LxAppCore.isHomeLxApp(appId) else { return }
+        let pinned = shellIsPinned("lxapp", appId)
+        if shellSetPinned("lxapp", appId, !pinned) == -1 {
+            showShellPinLimitAlert()
+        }
+        onPinChanged?()
     }
 
     @objc private func contextMenuRestart() {

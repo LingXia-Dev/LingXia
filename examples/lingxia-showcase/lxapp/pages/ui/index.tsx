@@ -81,11 +81,13 @@ export default function UIPage() {
   const surfaceMessage = (surfaceDemo && surfaceDemo.message) || '';
   const surfaceActive = surfaceDemo?.active === true;
   const surfaceVisible = surfaceDemo?.visible === true;
-  const [surfaceKind, setSurfaceKind] = React.useState<'aside' | 'float' | 'window'>('aside');
-  const surfaceKinds: Array<{ id: 'aside' | 'float' | 'window'; label: string; hint: string }> = [
+  const [surfaceKind, setSurfaceKind] = React.useState<'aside' | 'float' | 'window' | 'lxapp' | 'native'>('aside');
+  const surfaceKinds: Array<{ id: 'aside' | 'float' | 'window' | 'lxapp' | 'native'; label: string; hint: string }> = [
     { id: 'aside', label: 'Aside', hint: 'Docks beside the main and splits it; a compact window folds it into a switchable tab.' },
     { id: 'float', label: 'Float', hint: 'A popup above the main; it does not take layout space (like a dialog).' },
     { id: 'window', label: 'Window', hint: 'A bare standalone window — no sidebar, no shell. Desktop only.' },
+    { id: 'lxapp', label: 'Lxapp', hint: 'Opens another lxapp (the chat app) docked as an aside. Home-app privilege.' },
+    { id: 'native', label: 'Native', hint: 'Shows a host capability (the terminal) by name. Home-app privilege.' },
   ];
   const [surfaceEdge, setSurfaceEdge] = React.useState<'left' | 'right' | 'top' | 'bottom'>('right');
   const surfaceEdges: Array<'left' | 'right' | 'top' | 'bottom'> = ['left', 'right', 'top', 'bottom'];

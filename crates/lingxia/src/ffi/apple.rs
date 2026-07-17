@@ -57,7 +57,16 @@ mod bridge {
         pub dimension: i32,
         pub items_count: i32,
         pub is_visible: bool,
+        /// Hidden by an explicit lx.hideTabBar() (not navigation-derived) —
+        /// what desktop skins map to group collapse.
+        pub is_api_hidden: bool,
         pub selected_index: i32,
+        /// Which style fields the app DECLARED (bit0 color, bit1
+        /// selectedColor, bit2 backgroundColor, bit3 borderStyle). The color
+        /// fields above always carry effective values (mobile defaults);
+        /// desktop skins use this mask to keep undeclared styles on the
+        /// neutral theme instead of inheriting light mobile defaults.
+        pub styled_mask: u32,
     }
 
     // TabBar item for Swift
@@ -221,6 +230,12 @@ mod bridge {
         #[swift_bridge(swift_name = "setSurfaceWidth")]
         fn set_surface_width(appid: &str, width: f64) -> bool;
 
+        #[swift_bridge(swift_name = "setSurfaceLayoutMetrics")]
+        fn set_surface_layout_metrics(appid: &str, width: f64, sidebar_width: f64) -> bool;
+
+        #[swift_bridge(swift_name = "setSurfaceViewport")]
+        fn set_surface_viewport(appid: &str, width: f64, height: f64) -> bool;
+
         #[swift_bridge(swift_name = "surfaceDerivedLayout")]
         fn surface_derived_layout(appid: &str) -> String;
 
@@ -232,8 +247,46 @@ mod bridge {
         #[swift_bridge(swift_name = "setActiveMain")]
         fn set_active_main(appid: &str) -> bool;
 
+        // Focus a surface in the window graph (aside-slot tab switch): the
+        // committed plan's slot `activeChild` follows the focus and the skin
+        // reconciler swaps the slot's visible child.
+        #[swift_bridge(swift_name = "focusSurface")]
+        fn focus_surface(appid: &str, surface_id: &str) -> bool;
+
+        // Runtime activator click return paths: an action item's click hands
+        // off to the home Logic's registered handler; an undeclared lxapp
+        // surface item opens as an aside panel (ensure + panel open).
+        #[swift_bridge(swift_name = "shellActivate")]
+        fn shell_activate(item_id: &str) -> bool;
+
+        // Open (or focus) an lxapp as a MAIN — the pinned-lxapp tile's click.
+        #[swift_bridge(swift_name = "shellOpenLxappMain")]
+        fn shell_open_lxapp_main(app_id: &str) -> bool;
+
+        #[swift_bridge(swift_name = "shellPins")]
+        fn shell_pins() -> String;
+
+        #[swift_bridge(swift_name = "shellIsPinned")]
+        fn shell_is_pinned(kind: &str, key: &str) -> bool;
+
+        // 1 = success, -1 = shared eight-Pin limit, 0 = invalid/unavailable.
+        #[swift_bridge(swift_name = "shellSetPinned")]
+        fn shell_set_pinned(kind: &str, key: &str, pinned: bool) -> i32;
+
+        // Activator items persisted by the last writer set(), for the shell
+        // to restore before the home logic boots ("[]" when none).
+        #[swift_bridge(swift_name = "shellActivatorSnapshot")]
+        fn shell_activator_snapshot() -> String;
+
         #[swift_bridge(swift_name = "registerHostAside")]
         fn register_host_aside(appid: &str, surface_id: &str, edge: &str) -> bool;
+        #[swift_bridge(swift_name = "registerHostAsideContent")]
+        fn register_host_aside_content(
+            appid: &str,
+            surface_id: &str,
+            content_id: &str,
+            edge: &str,
+        ) -> bool;
 
         #[swift_bridge(swift_name = "unregisterHostAside")]
         fn unregister_host_aside(appid: &str, surface_id: &str) -> bool;
@@ -324,6 +377,11 @@ mod bridge {
         // missing entry is being fetched.
         #[swift_bridge(swift_name = "browserBookmarkFaviconPath")]
         fn browser_bookmark_favicon_path(url: &str) -> String;
+
+        // Store favicon bytes the webview resolved (declared icon link) into
+        // the shared cache so pins/tabs/docked browser all show it.
+        #[swift_bridge(swift_name = "browserFaviconStore")]
+        fn browser_favicon_store(url: &str, bytes: &[u8]) -> bool;
 
         // One sidebar management command as JSON ({"op": "rename" | "move" |
         // "createGroupAndMove" | "renameGroup" | "deleteGroup" | "setPinned",
@@ -858,6 +916,12 @@ pub fn browser_bookmark_favicon_path(url: &str) -> String {
     })
 }
 
+pub fn browser_favicon_store(url: &str, bytes: &[u8]) -> bool {
+    ffi_catch_unwind!("browser_favicon_store", false, || {
+        crate::browser::store_favicon(url, bytes)
+    })
+}
+
 pub fn browser_bookmarks_command(json: &str) -> bool {
     ffi_catch_unwind!("browser_bookmarks_command", false, || {
         crate::browser::bookmarks_command_json(json)
@@ -888,6 +952,22 @@ pub fn set_surface_width(appid: &str, width: f64) -> bool {
     })
 }
 
+pub fn set_surface_layout_metrics(appid: &str, width: f64, sidebar_width: f64) -> bool {
+    ffi_catch_unwind!("set_surface_layout_metrics", false, || {
+        lxapp::try_get(appid)
+            .map(|lxapp| lxapp.set_surface_layout_metrics(width, sidebar_width))
+            .unwrap_or(false)
+    })
+}
+
+pub fn set_surface_viewport(appid: &str, width: f64, height: f64) -> bool {
+    ffi_catch_unwind!("set_surface_viewport", false, || {
+        lxapp::try_get(appid)
+            .map(|lxapp| lxapp.set_surface_viewport(width, height))
+            .unwrap_or(false)
+    })
+}
+
 pub fn surface_derived_layout(appid: &str) -> String {
     ffi_catch_unwind!("surface_derived_layout", "null".to_string(), || {
         lxapp::try_get(appid)
@@ -908,10 +988,138 @@ pub fn set_active_main(appid: &str) -> bool {
     })
 }
 
+pub fn shell_activate(item_id: &str) -> bool {
+    ffi_catch_unwind!("shell_activate", false, || {
+        lingxia_shell::activate(item_id).is_ok()
+    })
+}
+
+pub fn shell_open_lxapp_main(app_id: &str) -> bool {
+    ffi_catch_unwind!("shell_open_lxapp_main", false, || {
+        let app_id = app_id.trim().to_string();
+        if app_id.is_empty() {
+            return false;
+        }
+        // One lxapp, one region: refuse to pull an aside into the main.
+        if lxapp::open_region(&app_id) == Some(lxapp::LxAppOpenRegion::Aside) {
+            log::warn!("pin open refused: {app_id} is open as an aside");
+            return false;
+        }
+        std::mem::drop(rong_rt::RongExecutor::global().spawn(async move {
+            if let Err(err) = lxapp::prepare_lxapp_open(&app_id, lxapp::ReleaseType::Release).await
+            {
+                log::error!("pin open failed for {app_id}: {err}");
+                return;
+            }
+            if let Err(err) = lxapp::open_lxapp(&app_id, lxapp::LxAppStartupOptions::default()) {
+                log::error!("pin open failed for {app_id}: {err}");
+                return;
+            }
+            lxapp::schedule_lxapp_update_check(&app_id, lxapp::ReleaseType::Release);
+        }));
+        true
+    })
+}
+
+pub fn shell_pins() -> String {
+    ffi_catch_unwind!("shell_pins", String::new(), || {
+        lingxia_shell::pins()
+            .ok()
+            .map(|pins| crate::shell::visible_shell_pins(&pins, lingxia_app_context::home_app_id()))
+            .and_then(|pins| serde_json::to_string(&pins).ok())
+            .unwrap_or_default()
+    })
+}
+
+pub fn shell_is_pinned(kind: &str, key: &str) -> bool {
+    ffi_catch_unwind!("shell_is_pinned", false, || {
+        if shell_pin_is_home_lxapp(kind, key) {
+            return false;
+        }
+        shell_pin_target(kind, key)
+            .and_then(|target| lingxia_shell::is_pinned(&target).ok())
+            .unwrap_or(false)
+    })
+}
+
+pub fn shell_set_pinned(kind: &str, key: &str, pinned: bool) -> i32 {
+    ffi_catch_unwind!("shell_set_pinned", 0, || {
+        if pinned && shell_pin_is_home_lxapp(kind, key) {
+            return 0;
+        }
+        let Some(target) = shell_pin_target(kind, key) else {
+            return 0;
+        };
+        match lingxia_shell::set_pinned(target, pinned) {
+            Ok(_) => 1,
+            Err(lingxia_shell::ShellError::LimitReached { .. }) => -1,
+            Err(error) => {
+                log::warn!("failed to update shell Pin: {error}");
+                0
+            }
+        }
+    })
+}
+
+fn shell_pin_is_home_lxapp(kind: &str, key: &str) -> bool {
+    kind == "lxapp" && lingxia_app_context::home_app_id().is_some_and(|home| home == key.trim())
+}
+
+fn shell_pin_target(kind: &str, key: &str) -> Option<lingxia_shell::ShellPinTarget> {
+    let key = key.trim();
+    if key.is_empty() {
+        return None;
+    }
+    match kind {
+        "lxapp" => Some(lingxia_shell::ShellPinTarget::Lxapp {
+            key: key.to_string(),
+        }),
+        "bookmark" => Some(lingxia_shell::ShellPinTarget::Bookmark {
+            key: key.to_string(),
+        }),
+        _ => None,
+    }
+}
+
+pub fn shell_activator_snapshot() -> String {
+    ffi_catch_unwind!("shell_activator_snapshot", String::new(), || {
+        lingxia_shell::resolved_activator_snapshot()
+            .ok()
+            .and_then(|snapshot| serde_json::to_string(&snapshot).ok())
+            .unwrap_or_default()
+    })
+}
+
+pub fn focus_surface(appid: &str, surface_id: &str) -> bool {
+    ffi_catch_unwind!("focus_surface", false, || {
+        if let Some(lxapp) = lxapp::try_get(appid) {
+            lxapp.focus_shell_surface(surface_id)
+        } else {
+            false
+        }
+    })
+}
+
 pub fn register_host_aside(appid: &str, surface_id: &str, edge: &str) -> bool {
     ffi_catch_unwind!("register_host_aside", false, || {
         if let Some(lxapp) = lxapp::try_get(appid) {
             lxapp.register_host_aside(surface_id, edge);
+            true
+        } else {
+            false
+        }
+    })
+}
+
+pub fn register_host_aside_content(
+    appid: &str,
+    surface_id: &str,
+    content_id: &str,
+    edge: &str,
+) -> bool {
+    ffi_catch_unwind!("register_host_aside_content", false, || {
+        if let Some(lxapp) = lxapp::try_get(appid) {
+            lxapp.register_host_aside_content(surface_id, content_id, edge);
             true
         } else {
             false
@@ -1324,7 +1532,12 @@ pub fn get_tab_bar(appid: &str) -> Option<self::bridge::TabBar> {
             dimension: tabbar.dimension,
             items_count: tabbar.list.len() as i32,
             is_visible: tabbar.is_visible,
+            is_api_hidden: tabbar.api_hidden,
             selected_index: tabbar.selected_index,
+            styled_mask: (!tabbar.color.is_empty() as u32)
+                | ((!tabbar.selectedColor.is_empty() as u32) << 1)
+                | ((!tabbar.backgroundColor.is_empty() as u32) << 2)
+                | ((!tabbar.borderStyle.is_empty() as u32) << 3),
         })
     })
 }

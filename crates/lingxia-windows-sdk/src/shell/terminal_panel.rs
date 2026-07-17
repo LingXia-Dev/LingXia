@@ -677,6 +677,30 @@ pub(super) fn toggle_terminal_panel_maximized(panel_id: &str) {
     let _ = panel_id;
 }
 
+/// Applies the shared layout projection without treating it as a user toggle.
+pub(super) fn set_terminal_panel_maximized(panel_id: &str, maximized: bool) {
+    #[cfg(feature = "terminal-runtime")]
+    {
+        let changed = {
+            let mut panels = windows_terminal_panels();
+            let Some(panel) = panels.get_mut(panel_id) else {
+                return;
+            };
+            if panel.maximized == maximized {
+                false
+            } else {
+                panel.maximized = maximized;
+                true
+            }
+        };
+        if changed {
+            lingxia_windows_contract::set_host_panel_maximized(panel_id, maximized);
+        }
+    }
+    #[cfg(not(feature = "terminal-runtime"))]
+    let _ = (panel_id, maximized);
+}
+
 /// Starts an inline rename of `tab_id`'s title (shell EDIT helper over the
 /// painted title rect). Committing a non-empty text sets the tab's custom
 /// title; committing an empty text reverts to the automatic title.
@@ -1356,7 +1380,7 @@ fn close_pane_session(panel_id: &str, session_id: u64) -> bool {
             {
                 log::warn!("failed to close Windows terminal panel {panel_id}: {err}");
             }
-            super::runtime::sync_owner_shell_layout();
+            super::runtime::unregister_owner_managed_aside(panel_id);
             true
         }
         CloseOutcome::Tab | CloseOutcome::Pane => {

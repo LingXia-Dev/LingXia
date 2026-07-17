@@ -10,6 +10,8 @@ import type {
   HostAppApi,
   Lx,
   OpenDeclaredSurfaceSpec,
+  OpenLxappSurfaceSpec,
+  OpenNativeSurfaceSpec,
   OpenPageSurfaceSpec,
   OpenUrlAsideSpec,
   OpenUrlTabSpec,
@@ -30,6 +32,8 @@ type Not<T extends boolean> = T extends true ? false : true;
 declare const lx: Lx;
 declare const urlTab: OpenUrlTabSpec;
 declare const declaredSurface: OpenDeclaredSurfaceSpec;
+declare const lxappSurface: OpenLxappSurfaceSpec;
+declare const nativeSurface: OpenNativeSurfaceSpec;
 declare const pageSurface: OpenPageSurfaceSpec;
 declare const urlAside: OpenUrlAsideSpec;
 declare const appDownload: AppDownloadOptions;
@@ -42,6 +46,8 @@ declare const app: HostAppApi;
 
 const urlTabResult: Promise<null> = lx.openSurface(urlTab);
 const declaredResult: Promise<SurfaceHandle> = lx.openSurface(declaredSurface);
+const lxappResult: Promise<SurfaceHandle> = lx.openSurface(lxappSurface);
+const nativeResult: Promise<SurfaceHandle> = lx.openSurface(nativeSurface);
 const pageResult: Promise<Surface> = lx.openSurface(pageSurface);
 const asideResult: Promise<Surface> = lx.openSurface(urlAside);
 const appDownloadResult: DownloadTask<AppDownloadResult> = lx.downloadFile(appDownload);
@@ -58,6 +64,8 @@ type BrandsStayDistinct = Assert<Not<AppDownloadFilePath extends SystemDownloads
 export type GeneratedQualityGate = [
   typeof urlTabResult,
   typeof declaredResult,
+  typeof lxappResult,
+  typeof nativeResult,
   typeof pageResult,
   typeof asideResult,
   typeof appDownloadResult,

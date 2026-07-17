@@ -3050,6 +3050,8 @@ dependencies = [
  "lingxia-platform",
  "lingxia-provider",
  "lingxia-service",
+ "lingxia-shell",
+ "lingxia-surface",
  "lingxia-terminal",
  "lingxia-transfer",
  "lingxia-update",
@@ -3114,6 +3116,7 @@ dependencies = [
  "lingxia-platform",
  "lingxia-proxy",
  "lingxia-service",
+ "lingxia-shell",
  "lingxia-webview",
  "log",
  "rong",
@@ -3290,6 +3293,7 @@ dependencies = [
  "lingxia-messaging",
  "lingxia-platform",
  "lingxia-service",
+ "lingxia-shell",
  "lingxia-surface",
  "lingxia-transfer",
  "log",
@@ -3398,6 +3402,7 @@ dependencies = [
  "jni",
  "libc",
  "lingxia-messaging",
+ "lingxia-shell",
  "lingxia-surface",
  "lingxia-webview",
  "lingxia-windows-contract",
@@ -3521,6 +3526,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "lingxia-shell"
+version = "0.10.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "lingxia-surface"
 version = "0.10.0"
 dependencies = [
@@ -3634,6 +3649,8 @@ dependencies = [
  "lingxia-lxapp",
  "lingxia-messaging",
  "lingxia-platform",
+ "lingxia-shell",
+ "lingxia-surface",
  "lingxia-terminal",
  "lingxia-webview",
  "lingxia-windows-contract",

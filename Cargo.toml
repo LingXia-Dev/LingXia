@@ -20,6 +20,7 @@ members = [
     "crates/lingxia-windows-sdk",
     "crates/lingxia-windows-build",
     "crates/lingxia-platform",
+    "crates/lingxia-shell",
     "crates/lingxia-surface",
     "crates/lingxia-logic",
     "crates/lingxia-messaging",
@@ -79,6 +80,7 @@ lingxia-windows-contract = { path = "crates/lingxia-windows-contract", version =
 lingxia-windows-sdk = { path = "crates/lingxia-windows-sdk", version = "0.10.0", default-features = false }
 lingxia-windows-build = { path = "crates/lingxia-windows-build", version = "0.10.0" }
 lingxia-platform = { path = "crates/lingxia-platform", version = "0.10.0" }
+lingxia-shell = { path = "crates/lingxia-shell", version = "0.10.0" }
 lingxia-surface = { path = "crates/lingxia-surface", version = "0.10.0" }
 lingxia-messaging = { path = "crates/lingxia-messaging", version = "0.10.0" }
 lingxia-logic = { path = "crates/lingxia-logic", version = "0.10.0" }

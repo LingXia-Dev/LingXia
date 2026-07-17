@@ -156,6 +156,39 @@ pub trait AppRuntime:
         Ok(())
     }
 
+    /// Replace the resolved shell activator render list. Target semantics,
+    /// fallback metadata, active state, and disabled state are resolved before
+    /// this platform boundary; desktop skins only render and report stable ids.
+    fn set_shell_activators(
+        &self,
+        _items: &[lingxia_shell::ResolvedShellActivator],
+    ) -> Result<(), PlatformError> {
+        Ok(())
+    }
+
+    /// Replace the ordered mixed user Pin list. Platform skins resolve visual
+    /// metadata only; target identity and the eight-item limit are shell-owned.
+    fn set_shell_pins(&self, _items: &[lingxia_shell::ShellPin]) -> Result<(), PlatformError> {
+        Ok(())
+    }
+
+    /// Whether a host-native shell capability is currently presented.
+    fn shell_native_active(&self, _capability: lingxia_shell::NativeShellCapability) -> bool {
+        false
+    }
+
+    /// Toggle a host-native shell capability using its host-owned default
+    /// presentation. Unlike cosmetic rendering, an unavailable capability is
+    /// a real contract error.
+    fn activate_shell_native(
+        &self,
+        capability: lingxia_shell::NativeShellCapability,
+    ) -> Result<(), PlatformError> {
+        Err(PlatformError::NotSupported(format!(
+            "shell native capability {capability:?}"
+        )))
+    }
+
     /// Set the tray title (text beside the icon, macOS). Desktop only; no-op elsewhere.
     fn set_tray_title(&self, _text: &str) -> Result<(), PlatformError> {
         Ok(())

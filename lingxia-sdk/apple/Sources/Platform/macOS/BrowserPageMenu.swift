@@ -52,12 +52,16 @@ enum BrowserPageMenu {
         bookmarkItem.isEnabled = bookmarkActionable
         menu.addItem(bookmarkItem)
 
-        let pinnedEntry = bookmarkActionable
-            ? SidebarBookmarksSnapshot.loadFromHost().entries.first {
+        let pinnedEntry: SidebarBookmarksSnapshot.Entry?
+        if bookmarkActionable {
+            pinnedEntry = SidebarBookmarksSnapshot.loadFromHost().entries.first(where: {
                 SidebarBookmarksSnapshot.normalize($0.url)
-                    == SidebarBookmarksSnapshot.normalize(context.url) && $0.isPinned
-            }
-            : nil
+                    == SidebarBookmarksSnapshot.normalize(context.url)
+                    && shellIsPinned("bookmark", $0.id)
+            })
+        } else {
+            pinnedEntry = nil
+        }
         let pinItem = actionItem(
             title: L10n.string(pinnedEntry == nil ? "lx_browser_pin_to_sidebar" : "lx_browser_unpin"),
             iconName: pinnedEntry == nil ? "icon_pin" : "icon_unpin"

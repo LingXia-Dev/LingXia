@@ -9,10 +9,11 @@ use lingxia_webview::WebTag;
 use lingxia_webview::platform::windows::{WindowsWebViewHandler, find_webview_handler};
 use lingxia_webview::runtime as webview_runtime;
 use lingxia_windows_contract::{
-    WindowsAsidePanelEvent, WindowsAsidePanelTab, WindowsNavAnimation, WindowsPanelPosition,
-    active_host_window_is_device_framed, hide_webview_window, navigate_webview_window,
-    present_webview_as_overlay, present_webview_in_active_group, refresh_aside_panel,
-    set_aside_panel_tabs, set_webview_close_handler, set_windows_aside_panel_event_handler,
+    ASIDE_LXAPP_PANEL_ID, WindowsAsidePanelEvent, WindowsAsidePanelTab, WindowsNavAnimation,
+    WindowsPanelPosition, active_host_window_is_device_framed, hide_host_panel,
+    hide_webview_window, navigate_webview_window, present_webview_as_overlay,
+    present_webview_in_active_group, refresh_aside_panel, set_aside_panel_tabs,
+    set_webview_close_handler, set_windows_aside_panel_event_handler,
     show_webview_as_adaptive_panel, show_webview_as_panel, show_webview_window,
     show_webview_window_with_content_size,
 };
@@ -25,6 +26,39 @@ use crate::traits::ui::{SurfaceContent, SurfaceKind, SurfaceRequest, SurfaceRole
 static WINDOWS_SHOW_SEQUENCE: AtomicU64 = AtomicU64::new(1);
 static WINDOWS_SHOW_REQUESTS: LazyLock<Mutex<HashMap<String, u64>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
+
+#[derive(Clone)]
+struct RuntimeLxappAside {
+    webtag: WebTag,
+    title: String,
+}
+
+/// Panel-mode lxapps are created by the lxapp runtime rather than
+/// `SurfacePresenter::present_surface`, so retain the webtag here and let the
+/// window-global slot plan decide which child is attached to the shared dock.
+static RUNTIME_LXAPP_ASIDES: LazyLock<Mutex<HashMap<String, RuntimeLxappAside>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+static LAST_LAYOUT_PLAN: Mutex<Option<LayoutPresentationPlan>> = Mutex::new(None);
+
+pub type LayoutPlanHandler = Arc<dyn Fn(&LayoutPresentationPlan) + Send + Sync>;
+static LAYOUT_PLAN_HANDLER: Mutex<Option<LayoutPlanHandler>> = Mutex::new(None);
+pub type ManagedAsideEventHandler = Arc<dyn Fn(WindowsAsidePanelEvent) + Send + Sync>;
+static MANAGED_ASIDE_EVENT_HANDLER: Mutex<Option<ManagedAsideEventHandler>> = Mutex::new(None);
+
+/// Install the Windows shell consumer for host-managed panels. The platform
+/// surface layer still reconciles page/webview surfaces itself; the SDK handler
+/// consumes the same slot plan for declared lxapp/native panels.
+pub fn set_windows_layout_plan_handler(handler: LayoutPlanHandler) {
+    if let Ok(mut slot) = LAYOUT_PLAN_HANDLER.lock() {
+        *slot = Some(handler);
+    }
+}
+
+pub fn set_windows_managed_aside_event_handler(handler: ManagedAsideEventHandler) {
+    if let Ok(mut slot) = MANAGED_ASIDE_EVENT_HANDLER.lock() {
+        *slot = Some(handler);
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum WindowsCloseAction {
@@ -39,6 +73,9 @@ pub(super) fn show_webtag_window(
     open_mode: LxAppOpenMode,
     panel_id: String,
 ) {
+    if open_mode == LxAppOpenMode::Panel {
+        remember_runtime_lxapp_aside(&panel_id, webtag.clone(), title.clone());
+    }
     let request_key = show_request_key(&webtag, open_mode, &panel_id);
     let request_id = remember_show_request(&request_key);
     if let Some(handler) = find_webview_handler(&webtag) {
@@ -112,6 +149,27 @@ pub(super) fn hide_lxapp_window(appid: &str, session_id: u64) {
     // Invalidate any pending show request first so the polling waiter thread
     // cannot re-show the window after this hide.
     invalidate_show_request(&format!("main:{appid}#{session_id}"));
+    let removed_panel_ids = RUNTIME_LXAPP_ASIDES
+        .lock()
+        .ok()
+        .map(|mut entries| {
+            let ids = entries
+                .iter()
+                .filter(|(_, entry)| {
+                    entry.webtag.extract_appid() == appid
+                        && entry.webtag.session_id() == Some(session_id)
+                })
+                .map(|(id, _)| id.clone())
+                .collect::<Vec<_>>();
+            for id in &ids {
+                entries.remove(id);
+            }
+            ids
+        })
+        .unwrap_or_default();
+    for panel_id in removed_panel_ids {
+        invalidate_show_request(&format!("panel:{panel_id}"));
+    }
     for webtag in webview_runtime::list_webviews() {
         if webtag.extract_appid() == appid && webtag.session_id() == Some(session_id) {
             let _ = hide_webview_window(&webtag);
@@ -127,7 +185,24 @@ fn show_webview_handler_for_mode(
     panel_id: &str,
 ) {
     let result = match open_mode {
-        LxAppOpenMode::Panel => show_webview_as_panel(&handler.webtag(), title, panel_id),
+        LxAppOpenMode::Panel => {
+            if sync_runtime_lxapp_asides_from_last_plan(panel_id) {
+                Ok(())
+            } else if LAST_LAYOUT_PLAN
+                .lock()
+                .map(|plan| plan.is_some())
+                .unwrap_or(false)
+            {
+                // The adaptive host publishes the graph immediately after the
+                // lxapp open returns. Keep the new controller hidden until
+                // that commit assigns it to the stable lxapp slot.
+                Ok(())
+            } else {
+                // Hosts without an adaptive shell plan retain the legacy
+                // single-panel presentation.
+                show_webview_as_panel(&handler.webtag(), title, panel_id)
+            }
+        }
         LxAppOpenMode::Normal if active_host_window_is_device_framed() => {
             present_webview_in_active_group(&handler.webtag())
         }
@@ -140,6 +215,25 @@ fn show_webview_handler_for_mode(
             err
         );
     }
+}
+
+fn remember_runtime_lxapp_aside(panel_id: &str, webtag: WebTag, title: String) {
+    if panel_id.trim().is_empty() {
+        return;
+    }
+    if let Ok(mut entries) = RUNTIME_LXAPP_ASIDES.lock() {
+        entries.insert(panel_id.to_string(), RuntimeLxappAside { webtag, title });
+    }
+}
+
+fn sync_runtime_lxapp_asides_from_last_plan(panel_id: &str) -> bool {
+    let plan = LAST_LAYOUT_PLAN.lock().ok().and_then(|plan| plan.clone());
+    plan.as_ref().is_some_and(|plan| {
+        plan.aside_slots.iter().any(|slot| {
+            slot.kind == lingxia_surface::SlotKind::Lxapp
+                && slot.children.iter().any(|child| child == panel_id)
+        }) && sync_runtime_lxapp_asides(plan)
+    })
 }
 
 fn show_webview_handler_navigate(
@@ -447,6 +541,7 @@ struct SurfaceEntry {
 #[derive(Clone, Copy)]
 enum PresentationTarget {
     Stored,
+    Overlay,
     Aside {
         edge: Option<Edge>,
         preferred_size: Option<f64>,
@@ -476,6 +571,14 @@ fn finite_or_zero(value: f64) -> f64 {
 /// Shows a surface's webview according to the core-arbitrated role.
 fn present_entry(id: &str, entry: &SurfaceEntry, target: PresentationTarget) -> Result<(), String> {
     let result = match (entry.role, target) {
+        // An adaptive aside overlay is still a companion surface. Giving it
+        // the host's single group-main slot makes the next main-tab switch
+        // replace it even though the graph still marks the aside visible.
+        // Keep it in an owned overlay window so main lxapp/browser selection
+        // and aside visibility remain independent projections of the graph.
+        (SurfaceRole::Aside, PresentationTarget::Overlay) => {
+            present_webview_as_overlay(&entry.webtag, 0.0, 0.0, 1.0, 1.0, entry.placement.position)
+        }
         (
             SurfaceRole::Aside,
             PresentationTarget::Aside {
@@ -554,6 +657,104 @@ fn hide_entry(entry: &SurfaceEntry) {
     };
 }
 
+/// Reconcile the lxapp slot as one stable dock region. All child webviews stay
+/// alive; only `activeChild` is attached and the rest have their controllers
+/// hidden. Returns whether the plan owns at least one lxapp child.
+fn sync_runtime_lxapp_asides(plan: &LayoutPresentationPlan) -> bool {
+    let Some(slot) = plan
+        .aside_slots
+        .iter()
+        .find(|slot| slot.kind == lingxia_surface::SlotKind::Lxapp)
+    else {
+        set_aside_panel_tabs(ASIDE_LXAPP_PANEL_ID, Vec::new());
+        hide_all_runtime_lxapp_asides();
+        return false;
+    };
+    if slot.children.is_empty() {
+        set_aside_panel_tabs(ASIDE_LXAPP_PANEL_ID, Vec::new());
+        hide_all_runtime_lxapp_asides();
+        return false;
+    }
+
+    let entries = RUNTIME_LXAPP_ASIDES
+        .lock()
+        .ok()
+        .map(|entries| entries.clone())
+        .unwrap_or_default();
+    let active_id = slot
+        .active_child
+        .as_deref()
+        .filter(|id| slot.children.iter().any(|child| child == *id))
+        .or_else(|| slot.children.last().map(String::as_str));
+    let tabs = slot
+        .children
+        .iter()
+        .map(|id| WindowsAsidePanelTab {
+            surface_id: id.clone(),
+            title: entries
+                .get(id)
+                .map(|entry| entry.title.clone())
+                .filter(|title| !title.trim().is_empty())
+                .unwrap_or_else(|| id.clone()),
+            active: Some(id.as_str()) == active_id,
+        })
+        .collect();
+    set_aside_panel_tabs(ASIDE_LXAPP_PANEL_ID, tabs);
+
+    let aside_by_id: HashMap<_, _> = plan
+        .asides
+        .iter()
+        .map(|aside| (aside.id.as_str(), aside))
+        .collect();
+    if slot.visible
+        && let Some(active_id) = active_id
+        && let Some(entry) = entries.get(active_id)
+        && find_webview_handler(&entry.webtag).is_some()
+    {
+        let aside = aside_by_id.get(active_id).copied();
+        let edge = slot.edge.or_else(|| aside.and_then(|aside| aside.edge));
+        let preferred_size = aside.and_then(|aside| aside.preferred_size);
+        let result = if slot.overlay {
+            let _ = hide_host_panel(ASIDE_LXAPP_PANEL_ID);
+            present_webview_in_active_group(&entry.webtag)
+        } else {
+            show_webview_as_adaptive_panel(
+                &entry.webtag,
+                &entry.title,
+                ASIDE_LXAPP_PANEL_ID,
+                panel_position_for(edge, 3),
+                preferred_panel_size(preferred_size),
+            )
+        };
+        if let Err(err) = result {
+            log::warn!(
+                "Failed to present lxapp aside {}: {}",
+                entry.webtag.key(),
+                err
+            );
+        }
+    }
+    for (id, entry) in entries {
+        if !slot.visible || Some(id.as_str()) != active_id {
+            let _ = hide_webview_window(&entry.webtag);
+        }
+    }
+    refresh_aside_panel(ASIDE_LXAPP_PANEL_ID);
+    true
+}
+
+fn hide_all_runtime_lxapp_asides() {
+    let _ = hide_host_panel(ASIDE_LXAPP_PANEL_ID);
+    let entries = RUNTIME_LXAPP_ASIDES
+        .lock()
+        .ok()
+        .map(|entries| entries.values().cloned().collect::<Vec<_>>())
+        .unwrap_or_default();
+    for entry in entries {
+        let _ = hide_webview_window(&entry.webtag);
+    }
+}
+
 /// Panel id of the shared multi-tab aside browser (grouped web asides). A
 /// stable id decoupled from the surface nodes, so tabs come and go without
 /// re-anchoring the docked panel.
@@ -566,6 +767,7 @@ struct AsideBrowserGroup {
     active: Option<String>,
     /// Last planned dock geometry per surface id.
     placement: HashMap<String, (Option<Edge>, Option<f64>)>,
+    overlay: bool,
 }
 
 static ASIDE_BROWSER_GROUP: LazyLock<Mutex<AsideBrowserGroup>> =
@@ -577,31 +779,34 @@ fn aside_browser_group() -> std::sync::MutexGuard<'static, AsideBrowserGroup> {
         .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
-fn store_aside_browser_plan(tabs: Vec<(String, Option<Edge>, Option<f64>)>) {
+fn store_aside_browser_plan(
+    tabs: Vec<(String, Option<Edge>, Option<f64>)>,
+    active: Option<&str>,
+    overlay: bool,
+) {
     let mut group = aside_browser_group();
     group.placement = tabs
         .iter()
         .map(|(id, edge, size)| (id.clone(), (*edge, *size)))
         .collect();
     group.order = tabs.into_iter().map(|(id, _, _)| id).collect();
-    let still_active = group
-        .active
-        .as_ref()
-        .is_some_and(|id| group.order.contains(id));
-    if !still_active {
-        group.active = group.order.last().cloned();
-    }
+    group.active = active
+        .filter(|id| group.order.iter().any(|child| child == *id))
+        .map(str::to_string)
+        .or_else(|| group.order.last().cloned());
+    group.overlay = overlay;
 }
 
 /// Re-presents the grouped panel from the stored plan: publishes the tab
 /// strip, docks the active tab's webview, hides the rest.
 fn sync_aside_browser_group() {
-    let (order, active, placement) = {
+    let (order, active, placement, overlay) = {
         let group = aside_browser_group();
         (
             group.order.clone(),
             group.active.clone(),
             group.placement.clone(),
+            group.overlay,
         )
     };
     let tabs: Vec<(String, SurfaceEntry)> = order
@@ -617,18 +822,23 @@ fn sync_aside_browser_group() {
         })
         .collect();
     set_aside_panel_tabs(ASIDE_BROWSER_PANEL_ID, strip);
+    if active.is_none() {
+        let _ = hide_host_panel(ASIDE_BROWSER_PANEL_ID);
+    }
     // The active tab docks first so switching never exposes the bare panel.
     if let Some((id, entry)) = tabs.iter().find(|(id, _)| Some(id) == active.as_ref()) {
         let (edge, preferred_size) = placement.get(id).copied().unwrap_or((None, None));
-        present_surface_when_ready(
-            entry.webtag.clone(),
-            id.clone(),
+        let target = if overlay {
+            let _ = hide_host_panel(ASIDE_BROWSER_PANEL_ID);
+            PresentationTarget::Overlay
+        } else {
             PresentationTarget::Aside {
                 edge,
                 preferred_size,
                 grouped: true,
-            },
-        );
+            }
+        };
+        present_surface_when_ready(entry.webtag.clone(), id.clone(), target);
     }
     for (id, entry) in &tabs {
         if Some(id) != active.as_ref() {
@@ -638,26 +848,6 @@ fn sync_aside_browser_group() {
     // Repaint the header strip even when the attached layout is unchanged
     // (title updates, an inactive tab closing).
     refresh_aside_panel(ASIDE_BROWSER_PANEL_ID);
-}
-
-/// The grouped aside tab whose webview matches `webtag` (URL surfaces share
-/// one webview per URL, so a reopen resolves to the same webtag).
-/// Grouped aside tab already showing `url`, if any. Matches by normalized
-/// URL (ignore trailing slash + fragment, case-insensitive) — the webtag
-/// can't serve as the key because a browser-runtime host mints a fresh tab
-/// (new webtag) per open. Mirrors the macOS `sameURL` dedupe.
-fn grouped_aside_with_url(url: &str) -> Option<String> {
-    let target = normalize_aside_url(url);
-    let order = aside_browser_group().order.clone();
-    order.into_iter().find(|id| {
-        surface_entry(id)
-            .is_some_and(|entry| entry.is_web && normalize_aside_url(&entry.title) == target)
-    })
-}
-
-fn normalize_aside_url(raw: &str) -> String {
-    let no_fragment = raw.trim().split('#').next().unwrap_or_default();
-    no_fragment.trim_end_matches('/').to_ascii_lowercase()
 }
 
 /// Tab label for a URL aside: the host, falling back to the raw URL.
@@ -682,8 +872,26 @@ pub fn install_windows_aside_panel_bridge() {
 }
 
 fn handle_aside_panel_event(event: WindowsAsidePanelEvent) {
+    let panel_id = match &event {
+        WindowsAsidePanelEvent::TabClick { panel_id, .. }
+        | WindowsAsidePanelEvent::TabClose { panel_id, .. }
+        | WindowsAsidePanelEvent::CloseAll { panel_id }
+        | WindowsAsidePanelEvent::NavBack { panel_id }
+        | WindowsAsidePanelEvent::NavForward { panel_id }
+        | WindowsAsidePanelEvent::NavReload { panel_id } => panel_id,
+    };
+    if panel_id != ASIDE_BROWSER_PANEL_ID {
+        if let Some(handler) = MANAGED_ASIDE_EVENT_HANDLER
+            .lock()
+            .ok()
+            .and_then(|slot| slot.clone())
+        {
+            handler(event);
+        }
+        return;
+    }
     match event {
-        WindowsAsidePanelEvent::TabClick { surface_id } => {
+        WindowsAsidePanelEvent::TabClick { surface_id, .. } => {
             {
                 let mut group = aside_browser_group();
                 if !group.order.contains(&surface_id) {
@@ -693,18 +901,22 @@ fn handle_aside_panel_event(event: WindowsAsidePanelEvent) {
             }
             sync_aside_browser_group();
         }
-        WindowsAsidePanelEvent::TabClose { surface_id } => close_aside_tab(&surface_id),
-        WindowsAsidePanelEvent::CloseAll => {
+        WindowsAsidePanelEvent::TabClose { surface_id, .. } => close_aside_tab(&surface_id),
+        WindowsAsidePanelEvent::CloseAll { .. } => {
             let order = aside_browser_group().order.clone();
             for id in order {
                 close_aside_tab(&id);
             }
         }
-        WindowsAsidePanelEvent::NavBack => with_active_aside_webview(|webview| webview.go_back()),
-        WindowsAsidePanelEvent::NavForward => {
+        WindowsAsidePanelEvent::NavBack { .. } => {
+            with_active_aside_webview(|webview| webview.go_back())
+        }
+        WindowsAsidePanelEvent::NavForward { .. } => {
             with_active_aside_webview(|webview| webview.go_forward())
         }
-        WindowsAsidePanelEvent::NavReload => with_active_aside_webview(|webview| webview.reload()),
+        WindowsAsidePanelEvent::NavReload { .. } => {
+            with_active_aside_webview(|webview| webview.reload())
+        }
     }
 }
 
@@ -745,25 +957,6 @@ pub(super) fn present_surface(
     request: SurfaceRequest,
     product_name: &str,
 ) -> Result<(), PlatformError> {
-    // A URL that is already a grouped aside tab arrives as a merged reopen:
-    // the arbiter deduped the node (MergedIntoTabs), so the request fell back
-    // to the default main role. Focus the existing tab and resolve the fresh
-    // JS handle as closed — before resolving a webview, which would mint a
-    // fresh browser tab just to throw it away.
-    if request.content == SurfaceContent::Url
-        && request.role == SurfaceRole::Main
-        && request.kind == SurfaceKind::Overlay
-        && let Some(existing_id) = grouped_aside_with_url(&request.path)
-    {
-        log::info!(
-            "windows surface merged reopen: id={} focuses aside {existing_id}",
-            request.id
-        );
-        aside_browser_group().active = Some(existing_id);
-        sync_aside_browser_group();
-        notify_surface_closed(&request.id, "merged");
-        return Ok(());
-    }
     // A page-content surface's webview is created with a per-instance webtag
     // (`{path}#{page_instance_id}`, see lxapp create_page_instance), so the
     // plain path would never match. Url-content surfaces carry no instance id.
@@ -857,6 +1050,9 @@ pub(super) fn present_layout(
     plan: &LayoutPresentationPlan,
     _product_name: &str,
 ) -> Result<(), PlatformError> {
+    if let Ok(mut last) = LAST_LAYOUT_PLAN.lock() {
+        *last = Some(plan.clone());
+    }
     let known = SURFACES
         .lock()
         .ok()
@@ -882,9 +1078,47 @@ pub(super) fn present_layout(
         );
     }
 
+    let aside_by_id: HashMap<_, _> = plan
+        .asides
+        .iter()
+        .map(|aside| (aside.id.as_str(), aside))
+        .collect();
+    let desired_aside_ids: Vec<&str> = if plan.aside_slots.is_empty() {
+        plan.asides.iter().map(|aside| aside.id.as_str()).collect()
+    } else {
+        plan.aside_slots
+            .iter()
+            .filter(|slot| slot.visible)
+            .flat_map(|slot| {
+                if slot.kind == lingxia_surface::SlotKind::Browser {
+                    slot.children.iter().map(String::as_str).collect::<Vec<_>>()
+                } else {
+                    slot.active_child
+                        .as_deref()
+                        .or_else(|| slot.children.last().map(String::as_str))
+                        .into_iter()
+                        .collect()
+                }
+            })
+            .collect()
+    };
+
+    let overlay_ids: HashSet<&str> = plan
+        .aside_slots
+        .iter()
+        .filter(|slot| slot.visible && slot.overlay)
+        .filter_map(|slot| {
+            slot.active_child
+                .as_deref()
+                .or_else(|| slot.children.last().map(String::as_str))
+        })
+        .collect();
     let mut planned_asides = HashSet::new();
     let mut planned_web_asides = Vec::new();
-    for aside in &plan.asides {
+    for id in desired_aside_ids {
+        let Some(aside) = aside_by_id.get(id).copied() else {
+            continue;
+        };
         planned_asides.insert(aside.id.clone());
         let Some(entry) = known.get(&aside.id) else {
             continue;
@@ -895,18 +1129,31 @@ pub(super) fn present_layout(
             planned_web_asides.push((aside.id.clone(), aside.edge, aside.preferred_size));
             continue;
         }
-        present_surface_when_ready(
-            entry.webtag.clone(),
-            aside.id.clone(),
+        let target = if overlay_ids.contains(aside.id.as_str()) {
+            let _ = hide_host_panel(&aside.id);
+            PresentationTarget::Overlay
+        } else {
             PresentationTarget::Aside {
                 edge: aside.edge,
                 preferred_size: aside.preferred_size,
                 grouped: false,
-            },
-        );
+            }
+        };
+        present_surface_when_ready(entry.webtag.clone(), aside.id.clone(), target);
     }
-    store_aside_browser_plan(planned_web_asides);
+    let active_browser = plan
+        .aside_slots
+        .iter()
+        .find(|slot| slot.kind == lingxia_surface::SlotKind::Browser && slot.visible)
+        .and_then(|slot| slot.active_child.as_deref());
+    let browser_overlay = plan
+        .aside_slots
+        .iter()
+        .find(|slot| slot.kind == lingxia_surface::SlotKind::Browser && slot.visible)
+        .is_some_and(|slot| slot.overlay);
+    store_aside_browser_plan(planned_web_asides, active_browser, browser_overlay);
     sync_aside_browser_group();
+    sync_runtime_lxapp_asides(plan);
 
     let planned_floats: HashSet<_> = plan.floats.iter().map(|float| float.id.clone()).collect();
     for float_id in &planned_floats {
@@ -928,6 +1175,14 @@ pub(super) fn present_layout(
         if !still_planned {
             hide_entry(&entry);
         }
+    }
+
+    if let Some(handler) = LAYOUT_PLAN_HANDLER
+        .lock()
+        .ok()
+        .and_then(|slot| slot.clone())
+    {
+        handler(plan);
     }
 
     Ok(())

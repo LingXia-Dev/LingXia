@@ -1422,6 +1422,26 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_setSurfaceWidth(
 }
 
 #[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_app_NativeApi_setSurfaceViewport(
+    mut env: EnvUnowned,
+    _class: JClass,
+    appid: JString,
+    width: jdouble,
+    height: jdouble,
+) -> jboolean {
+    env.with_env(|env| -> Result<jboolean, jni::errors::Error> {
+        let appid: String = match appid.try_to_string(env) {
+            Ok(s) => s.to_string(),
+            Err(_) => return Ok(false),
+        };
+        Ok(lxapp::try_get(&appid)
+            .map(|lxapp| lxapp.set_surface_viewport(width, height))
+            .unwrap_or(false) as jboolean)
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+#[unsafe(no_mangle)]
 pub extern "system" fn Java_com_lingxia_app_NativeApi_surfaceDerivedLayout<'a>(
     mut env: EnvUnowned<'a>,
     _class: JClass<'a>,

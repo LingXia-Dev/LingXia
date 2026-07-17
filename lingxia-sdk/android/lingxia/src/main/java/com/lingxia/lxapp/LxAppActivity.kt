@@ -314,7 +314,9 @@ class LxAppActivity : AppCompatActivity() {
     private var pendingNavBarVisibility: Int? = null
     private var shouldRestoreOverlayOrder = false
     private var lastDispatchedDeviceOrientation: String? = null
+    private var lastReportedShellWidthDp: Int = -1
     private var lastReportedSurfaceWidthDp: Int = -1
+    private var lastReportedSurfaceHeightDp: Int = -1
     private var pendingFileChooserCallback: ValueCallback<Array<Uri>>? = null
     private var pendingHostFileDialogCallback: ((List<String>?) -> Unit)? = null
     private val fileChooserLauncher = registerForActivityResult(
@@ -663,17 +665,38 @@ class LxAppActivity : AppCompatActivity() {
     fun getContentBottomInset(): Int = systemBottomInset
 
     private fun reportSurfaceWidthIfNeeded() {
-        if (!::rootContainer.isInitialized || !::appId.isInitialized || appId.isBlank()) return
-        val rawWidth = rootContainer.width
-        if (rawWidth <= 0) return
-        val contentWidthPx = (rawWidth - rootContainer.paddingLeft - rootContainer.paddingRight).coerceAtLeast(0)
-        val widthDp = (contentWidthPx / resources.displayMetrics.density).toInt()
-        if (widthDp <= 0 || widthDp == lastReportedSurfaceWidthDp) return
-        lastReportedSurfaceWidthDp = widthDp
+        if (!::rootContainer.isInitialized || !::webViewContainer.isInitialized ||
+            !::appId.isInitialized || appId.isBlank()
+        ) return
+        val density = resources.displayMetrics.density
+        val shellWidthPx = (rootContainer.width - rootContainer.paddingLeft - rootContainer.paddingRight)
+            .coerceAtLeast(0)
+        val viewportWidthPx = (webViewContainer.width - webViewContainer.paddingLeft - webViewContainer.paddingRight)
+            .coerceAtLeast(0)
+        val viewportHeightPx = (webViewContainer.height - webViewContainer.paddingTop - webViewContainer.paddingBottom)
+            .coerceAtLeast(0)
+        val shellWidthDp = (shellWidthPx / density).toInt()
+        val viewportWidthDp = (viewportWidthPx / density).toInt()
+        val viewportHeightDp = (viewportHeightPx / density).toInt()
         runCatching {
-            NativeApi.setSurfaceWidth(appId, widthDp.toDouble())
+            if (shellWidthDp > 0 && shellWidthDp != lastReportedShellWidthDp) {
+                lastReportedShellWidthDp = shellWidthDp
+                NativeApi.setSurfaceWidth(appId, shellWidthDp.toDouble())
+            }
+            if (viewportWidthDp > 0 && viewportHeightDp > 0 &&
+                (viewportWidthDp != lastReportedSurfaceWidthDp ||
+                    viewportHeightDp != lastReportedSurfaceHeightDp)
+            ) {
+                lastReportedSurfaceWidthDp = viewportWidthDp
+                lastReportedSurfaceHeightDp = viewportHeightDp
+                NativeApi.setSurfaceViewport(
+                    appId,
+                    viewportWidthDp.toDouble(),
+                    viewportHeightDp.toDouble()
+                )
+            }
         }.onFailure { error ->
-            Log.w(TAG, "Failed to report surface width: ${error.message}")
+            Log.w(TAG, "Failed to report surface layout: ${error.message}")
         }
     }
 

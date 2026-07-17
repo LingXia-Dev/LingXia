@@ -695,7 +695,7 @@ final class BrowserTabCoordinator: NSObject {
                         self.tabFaviconRequestOrigins[activeId] = origin
                     }
                     if self.tabFavicons[activeId] == nil {
-                        self.fetchFavicon(for: origin, tabId: activeId)
+                        self.fetchFavicon(for: origin, tabId: activeId, webView: webView)
                     }
                 }
                 self.host?.updateSidebarBrowserItems(self.sidebarItems(), activeId: activeId)
@@ -1019,14 +1019,17 @@ final class BrowserTabCoordinator: NSObject {
         let url = activePageURL()
         guard BrowserPageMenu.isBookmarkActionable(url) else { return }
         let normalized = SidebarBookmarksSnapshot.normalize(url)
-        if let pinned = SidebarBookmarksSnapshot.loadFromHost().pinnedEntries.first(where: {
+        if let pinned = SidebarBookmarksSnapshot.loadFromHost().entries.first(where: {
             SidebarBookmarksSnapshot.normalize($0.url) == normalized
+                && shellIsPinned("bookmark", $0.id)
         }) {
             _ = browserBookmarksCommand(
                 #"{"op":"setPinned","id":"\#(jsonEscape(pinned.id))","pinned":false}"#
             )
         } else {
-            _ = browserBookmarkPin(url, activePageTitle())
+            if !browserBookmarkPin(url, activePageTitle()) {
+                showShellPinLimitAlert()
+            }
         }
         updatePageSaveButtons(for: url)
     }
@@ -1424,7 +1427,18 @@ final class BrowserTabCoordinator: NSObject {
     }
 
     private func sidebarItems() -> [(id: String, title: String, url: String, favicon: NSImage?)] {
-        tabIds.map { id in
+        // Favicons are normally kicked by the URL observation — which never
+        // fires for tabs RESTORED across a restart. Kick any icon-less tab
+        // here (idempotent: the request-origin map dedupes in-flight work).
+        for id in tabIds where tabFavicons[id] == nil {
+            guard let raw = lastObservedURLs[id], let url = URL(string: raw),
+                  let origin = faviconRequestOrigin(for: url),
+                  tabFaviconRequestOrigins[id] != origin,
+                  let webView = findWebView(for: id) else { continue }
+            tabFaviconRequestOrigins[id] = origin
+            fetchFavicon(for: origin, tabId: id, webView: webView)
+        }
+        return tabIds.map { id in
             (id, tabTitles[id] ?? L10n.string("lx_browser_new_tab"), lastObservedURLs[id] ?? "", tabFavicons[id])
         }
     }
@@ -1470,7 +1484,7 @@ final class BrowserTabCoordinator: NSObject {
         return NSImage(contentsOf: faviconURL)
     }
 
-    private func fetchFavicon(for origin: String, tabId: String) {
+    private func fetchFavicon(for origin: String, tabId: String, webView: WKWebView) {
         if origin.hasPrefix("lingxia://") {
             guard let image = bundledFavicon() else { return }
             tabFavicons[tabId] = image
@@ -1478,22 +1492,17 @@ final class BrowserTabCoordinator: NSObject {
             return
         }
 
-        guard let faviconURL = URL(string: "\(origin)/favicon.ico") else { return }
-        URLSession.shared.dataTask(with: faviconURL) { [weak self] data, response, _ in
-            guard let data,
-                  let httpResponse = response as? HTTPURLResponse,
-                  httpResponse.statusCode == 200,
-                  let contentType = httpResponse.value(forHTTPHeaderField: "Content-Type"),
-                  !contentType.hasPrefix("text/"),
-                  let image = NSImage(data: data), image.isValid else { return }
-            Task { @MainActor in
-                guard let self,
-                      self.tabIds.contains(tabId),
-                      self.tabFaviconRequestOrigins[tabId] == origin else { return }
-                self.tabFavicons[tabId] = image
-                self.host?.updateSidebarBrowserItems(self.sidebarItems(), activeId: self.activeTabId)
-            }
-        }.resume()
+        // Page-declared icon first, /favicon.ico fallback (FaviconLoader waits
+        // for the load to settle — the old fetch ran at navigation time and
+        // only tried the default path, so most sites never got an icon).
+        Task { @MainActor [weak self] in
+            guard let image = await FaviconLoader.resolve(webView: webView) else { return }
+            guard let self,
+                  self.tabIds.contains(tabId),
+                  self.tabFaviconRequestOrigins[tabId] == origin else { return }
+            self.tabFavicons[tabId] = image
+            self.host?.updateSidebarBrowserItems(self.sidebarItems(), activeId: self.activeTabId)
+        }
     }
 }
 

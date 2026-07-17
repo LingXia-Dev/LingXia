@@ -25,6 +25,37 @@ interface MyAppInstance {
 
 App({
   onLaunch: async function (this: MyAppInstance) {
+    const { os } = lx.app.getBaseInfo();
+    type Activator = Parameters<typeof lx.shell.activators.replace>[0][number];
+    const activators: Activator[] = [
+      {
+        id: "chat",
+        lxapp: "lingxia-chat",
+        icon: "public/activator.svg",
+        label: "chat",
+      },
+    ];
+
+    if (os === "macOS" || os === "Windows") {
+      activators.push({
+        id: "terminal",
+        native: "terminal",
+        icon: "public/activator.svg",
+      });
+    }
+
+    activators.push(
+      {
+        id: "ping",
+        icon: "public/activator.svg",
+        label: "Ping",
+        onActivate: () => {
+          lx.showToast({ title: "activator clicked", icon: "success" });
+        },
+      },
+    );
+    lx.shell.activators.replace(activators);
+
     const um = lx.getUpdateManager();
     um.onUpdateReady(async (info) => {
       if (info?.isForceUpdate) {

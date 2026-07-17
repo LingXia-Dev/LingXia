@@ -38,6 +38,8 @@ lingxia-browser = { workspace = true, optional = true }
 lingxia-logic = { workspace = true, optional = true }
 lingxia-browser-shell = { workspace = true, optional = true }
 lingxia-platform = { workspace = true }
+lingxia-shell = { workspace = true }
+lingxia-surface = { workspace = true }
 lingxia-webview = { workspace = true }
 lingxia-windows-contract = { workspace = true }
 lingxia-messaging = { workspace = true }

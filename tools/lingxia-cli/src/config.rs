@@ -156,14 +156,6 @@ pub enum ResourceBundleType {
 // native runtimes.
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
-#[serde(rename_all = "camelCase")]
-pub enum SurfaceRender {
-    #[default]
-    Lxapp,
-    Native,
-}
-
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub enum SurfaceRole {
@@ -172,24 +164,41 @@ pub enum SurfaceRole {
     Float,
 }
 
+/// One `surfaces:` entry, keyed by content: exactly one of `lxapp` / `page` /
+/// `url` / `native` names the content, and that key doubles as the surface's
+/// identity — there is no separate `id` and no `render` discriminator.
+///
+/// Accepted role combinations today: `lxapp` main|aside|float, `url`
+/// main|aside, `native` aside (terminal). `page` float and `native` float are
+/// reserved by the spec but rejected until the runtime can present them.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SurfaceDecl {
-    /// Surface id. For `render: lxapp` this doubles as the lxapp `appId`.
-    pub id: String,
-    #[serde(default)]
-    pub render: SurfaceRender,
+    /// Content key: an lxapp, by appId.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lxapp: Option<String>,
+    /// Content key: a home-lxapp page, by page name.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub page: Option<String>,
+    /// Content key: a URL opened in the in-app browser.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+    /// Content key: a host-registered native capability (e.g. `terminal`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub native: Option<String>,
     pub role: SurfaceRole,
     /// At most one `role: main` may set `launch: true` (the initial surface).
     #[serde(default)]
     pub launch: bool,
-    /// Required for `role: aside`. One of left|right|top|bottom.
+    /// Aside docking edge, one of left|right|top|bottom. Optional: asides
+    /// default to `right`; a native capability may carry its own default
+    /// (terminal: `bottom`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub edge: Option<String>,
-    /// Inline sidebar entry; clicking it toggles this surface.
+    /// Preferred aside size hint (points). The shell clamps it at admission.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub sidebar: Option<SurfaceSidebar>,
-    /// Inline tray/menubar entry.
+    pub size: Option<SurfaceSize>,
+    /// Inline tray/menubar entry. Required on a declared float.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tray: Option<SurfaceTray>,
     /// Availability filter. Omitted = follows `app.platforms`. When present,
@@ -199,16 +208,75 @@ pub struct SurfaceDecl {
     pub platforms: Option<Vec<String>>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct SurfaceSidebar {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub icon: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub label: Option<String>,
-    /// Placement within the sidebar: `top` (default) or `bottom`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub section: Option<String>,
+/// A surface declaration's resolved content key.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SurfaceContent<'a> {
+    Lxapp(&'a str),
+    Page(&'a str),
+    Url(&'a str),
+    Native(&'a str),
+}
+
+impl<'a> SurfaceContent<'a> {
+    fn kind(self) -> &'static str {
+        match self {
+            SurfaceContent::Lxapp(_) => "lxapp",
+            SurfaceContent::Page(_) => "page",
+            SurfaceContent::Url(_) => "url",
+            SurfaceContent::Native(_) => "native",
+        }
+    }
+
+    fn name(self) -> &'a str {
+        match self {
+            SurfaceContent::Lxapp(name)
+            | SurfaceContent::Page(name)
+            | SurfaceContent::Url(name)
+            | SurfaceContent::Native(name) => name,
+        }
+    }
+
+    fn trimmed(self) -> Self {
+        match self {
+            SurfaceContent::Lxapp(name) => SurfaceContent::Lxapp(name.trim()),
+            SurfaceContent::Page(name) => SurfaceContent::Page(name.trim()),
+            SurfaceContent::Url(name) => SurfaceContent::Url(name.trim()),
+            SurfaceContent::Native(name) => SurfaceContent::Native(name.trim()),
+        }
+    }
+}
+
+impl SurfaceDecl {
+    /// Resolve the content key. Exactly one of `lxapp` / `page` / `url` /
+    /// `native` must be set to a non-empty value.
+    pub fn content(&self) -> Result<SurfaceContent<'_>> {
+        let keys = [
+            self.lxapp.as_deref().map(SurfaceContent::Lxapp),
+            self.page.as_deref().map(SurfaceContent::Page),
+            self.url.as_deref().map(SurfaceContent::Url),
+            self.native.as_deref().map(SurfaceContent::Native),
+        ];
+        // An empty value is diagnosed before the exactly-one count so that
+        // e.g. `lxapp: ""` + `url: ...` names the real problem.
+        for key in keys.iter().flatten() {
+            if key.name().trim().is_empty() {
+                return Err(anyhow!(
+                    "surfaces[]: the {} content key must not be empty",
+                    key.kind()
+                ));
+            }
+        }
+        let mut set = keys.iter().flatten();
+        match (set.next(), set.next()) {
+            (Some(one), None) => Ok(one.trimmed()),
+            (None, _) => Err(anyhow!(
+                "surfaces[]: each entry must set exactly one content key (lxapp | page | url | native)"
+            )),
+            (Some(_), Some(_)) => Err(anyhow!(
+                "surfaces[]: entry sets more than one content key; use exactly one of lxapp | page | url | native"
+            )),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -254,269 +322,248 @@ pub enum SurfaceTrayAction {
 /// consumed by native runtimes.
 ///
 /// Mapping:
-/// - `role: main` + `render: lxapp` -> surface `role: main`,
-///   content `{ kind: lxapp, appId: <id> }`. `launch: true` ->
-///   `launch.initialSurface = <id>`.
-/// - `role: aside` + `render: lxapp` -> surface `role: aside`,
-///   `attachTo: <main>`, edge `left|right|top|bottom` carried through verbatim.
-/// - `role: aside` + `render: native` (id `terminal`) -> an explicit terminal
-///   surface. `capabilities.terminal` only enables the runtime; it does not add
-///   UI by itself.
-/// - `sidebar` -> a `sidebarItem` activator toggling the surface.
+/// - `lxapp` + `role: main` -> surface `role: main`, content
+///   `{ kind: lxapp, appId }`. `launch: true` -> `launch.initialSurface`.
+/// - `lxapp`/`url` + `role: aside` -> surface `role: aside`,
+///   `attachTo: <launch surface>`, edge defaulting to `right`.
+/// - `native: terminal` + `role: aside` -> the built-in terminal surface,
+///   edge defaulting to `bottom`. `capabilities.terminal` only enables the
+///   runtime; it does not add UI by itself.
+/// - `url` -> content `{ kind: web, url }` (requires the browser capability).
 /// - `tray` -> a `menuBarItem` activator (closest existing kind).
-fn surfaces_to_ui(surfaces: &[SurfaceDecl], terminal_enabled: bool) -> Result<Value> {
-    // `role: float` is only supported as a tray-anchored popover (it carries a
-    // `tray:`). Reject a bare float up front rather than mis-mapping it.
-    if let Some(float) = surfaces
-        .iter()
-        .find(|s| s.role == SurfaceRole::Float && s.tray.is_none())
-    {
-        return Err(anyhow!(
-            "surface '{}' uses role: float, which is only supported as a tray-anchored popover (add a tray:)",
-            float.id.trim()
-        ));
+///
+/// There is no `sidebar:` entry field: persistent entries are declared at
+/// runtime through the shell activator API, never in YAML.
+fn surfaces_to_ui(
+    surfaces: &[SurfaceDecl],
+    terminal_enabled: bool,
+    browser_enabled: bool,
+) -> Result<Value> {
+    // Resolve every entry's content key up front. The content name becomes the
+    // emitted surface id, and ids share ONE namespace across content kinds
+    // (runtimes index surfaces by bare id) — so names must be globally unique,
+    // not just unique per kind.
+    let mut resolved: Vec<(SurfaceContent<'_>, &SurfaceDecl)> = Vec::new();
+    let mut seen_names = HashSet::new();
+    for surface in surfaces {
+        let content = surface.content()?;
+        if !seen_names.insert(content.name().to_string()) {
+            return Err(anyhow!(
+                "surfaces: duplicate declaration for '{}' (surface ids share one namespace across content kinds)",
+                content.name()
+            ));
+        }
+        resolved.push((content, surface));
     }
-    // Identify the launch main.
-    let mains: Vec<&SurfaceDecl> = surfaces
+
+    // Per-entry structural validation: the legal role matrix and fields that
+    // only make sense on a given role.
+    for (content, surface) in &resolved {
+        let name = content.name();
+        if let SurfaceContent::Url(url) = *content {
+            validate_declared_surface_url(url)?;
+        }
+        match (*content, surface.role) {
+            (SurfaceContent::Lxapp(_), _) => {}
+            (SurfaceContent::Page(_), SurfaceRole::Float) => {
+                return Err(anyhow!(
+                    "surface '{name}': declared page floats are not supported by the runtime yet; \
+                     open the page at runtime with lx.openSurface({{ page, as: 'float' }})"
+                ));
+            }
+            (SurfaceContent::Page(_), _) => {
+                return Err(anyhow!(
+                    "surface '{name}': a page surface only supports role: float"
+                ));
+            }
+            (SurfaceContent::Url(_), SurfaceRole::Main | SurfaceRole::Aside) => {
+                if !browser_enabled {
+                    return Err(anyhow!(
+                        "surface '{name}': a url surface requires the browser capability"
+                    ));
+                }
+            }
+            (SurfaceContent::Url(_), SurfaceRole::Float) => {
+                return Err(anyhow!(
+                    "surface '{name}': a url surface only supports role: main or aside"
+                ));
+            }
+            (SurfaceContent::Native(_), SurfaceRole::Aside) => {}
+            (SurfaceContent::Native(_), SurfaceRole::Float) => {
+                return Err(anyhow!(
+                    "surface '{name}': native floats are not supported by the runtime yet"
+                ));
+            }
+            (SurfaceContent::Native(_), SurfaceRole::Main) => {
+                return Err(anyhow!(
+                    "surface '{name}': a native surface only supports role: aside or float"
+                ));
+            }
+        }
+        if surface.launch {
+            if surface.role != SurfaceRole::Main {
+                return Err(anyhow!(
+                    "surface '{name}': launch: true is only valid on a main surface"
+                ));
+            }
+            if !matches!(content, SurfaceContent::Lxapp(_)) {
+                return Err(anyhow!(
+                    "surface '{name}': launch: true is only supported on an lxapp main today"
+                ));
+            }
+        }
+        if surface.edge.is_some() && surface.role != SurfaceRole::Aside {
+            return Err(anyhow!(
+                "surface '{name}': edge is only valid on an aside surface"
+            ));
+        }
+        if surface.size.is_some() && surface.role != SurfaceRole::Aside {
+            return Err(anyhow!(
+                "surface '{name}': size is only valid on an aside surface (a float popover's size lives under tray.size)"
+            ));
+        }
+        if surface.role == SurfaceRole::Float && surface.tray.is_none() {
+            return Err(anyhow!(
+                "surface '{name}' uses role: float, which is only supported as a tray-anchored popover (add a tray:)"
+            ));
+        }
+    }
+
+    // At most one launch main; at most one tray surface.
+    let launch_mains: Vec<&SurfaceDecl> = surfaces
         .iter()
-        .filter(|s| s.role == SurfaceRole::Main)
+        .filter(|s| s.role == SurfaceRole::Main && s.launch)
         .collect();
-    let launch_mains: Vec<&SurfaceDecl> = mains.iter().copied().filter(|s| s.launch).collect();
     if launch_mains.len() > 1 {
         return Err(anyhow!(
             "surfaces: at most one main surface may set launch: true"
         ));
     }
-    let tray_surfaces = surfaces
-        .iter()
-        .filter(|surface| surface.tray.is_some())
-        .count();
+    let tray_surfaces = surfaces.iter().filter(|s| s.tray.is_some()).count();
     if tray_surfaces > 1 {
         return Err(anyhow!("surfaces: at most one surface may declare tray"));
     }
+
+    // The launch surface: an explicit launch main, else the first lxapp main,
+    // else a tray-anchored popover (a pure tray app has no main window and
+    // launches into the tray).
     let open_on_launch = !launch_mains.is_empty();
-    // A pure tray-popover app has no main window; it launches into the tray and
-    // the menu-bar / tray entry opens the popover. Fall back to the popover surface
-    // as the initial surface when there is no main.
-    let launch_surface = launch_mains
+    let launch_content = launch_mains
         .first()
-        .copied()
-        .or_else(|| mains.first().copied())
+        .map(|s| s.content())
+        .transpose()?
         .or_else(|| {
-            surfaces
+            resolved
                 .iter()
-                .find(|s| s.role == SurfaceRole::Float && s.tray.is_some())
+                .find(|(content, surface)| {
+                    surface.role == SurfaceRole::Main && matches!(content, SurfaceContent::Lxapp(_))
+                })
+                .map(|(content, _)| *content)
+        })
+        .or_else(|| {
+            resolved
+                .iter()
+                .find(|(_, surface)| surface.role == SurfaceRole::Float && surface.tray.is_some())
+                .map(|(content, _)| *content)
         })
         .ok_or_else(|| {
-            anyhow!("surfaces: requires a main surface or a tray-anchored popover surface")
+            anyhow!(
+                "surfaces: requires an lxapp main surface or a tray-anchored popover surface \
+                 (a url main cannot be the launch surface yet)"
+            )
         })?;
-    let launch_id = launch_surface.id.trim().to_string();
-    if launch_id.is_empty() {
-        return Err(anyhow!("surfaces[].id must not be empty"));
-    }
-
-    // Structural validation: unique ids, and fields that only make sense on a
-    // given role.
-    let mut seen_ids = std::collections::HashSet::new();
-    for surface in surfaces {
-        let id = surface.id.trim();
-        if id.is_empty() {
-            return Err(anyhow!("surfaces[].id must not be empty"));
-        }
-        if !seen_ids.insert(id) {
-            return Err(anyhow!("surfaces: duplicate surface id '{id}'"));
-        }
-        if surface.launch && surface.role != SurfaceRole::Main {
-            return Err(anyhow!(
-                "surface '{id}': launch: true is only valid on a main surface"
-            ));
-        }
-        if surface.edge.is_some() && surface.role != SurfaceRole::Aside {
-            return Err(anyhow!(
-                "surface '{id}': edge is only valid on an aside surface"
-            ));
-        }
-        if surface.platforms.as_ref().is_some_and(Vec::is_empty) {
-            return Err(anyhow!(
-                "surface '{id}': platforms must not be empty; omit platforms to follow app.platforms"
-            ));
-        }
-    }
+    let launch_id = launch_content.name().to_string();
 
     let mut out_surfaces: Vec<Value> = Vec::new();
     let mut out_activators: Vec<Value> = Vec::new();
 
-    for surface in surfaces {
-        let id = surface.id.trim();
-        if id.is_empty() {
-            return Err(anyhow!("surfaces[].id must not be empty"));
-        }
+    for (content, surface) in &resolved {
+        let name = content.name();
+        let mut out = Map::new();
+        out.insert("id".into(), json!(name));
         match surface.role {
             SurfaceRole::Float => {
-                // A float surface is only valid as a tray-anchored popover: it must
-                // carry a `tray:`. Emit it anchored to the tray activator so the
-                // runtime presents it as an auto-dismissing panel under the icon.
-                if surface.tray.is_none() {
-                    return Err(anyhow!(
-                        "surface '{id}' uses role: float, which is only supported as a tray-anchored popover (add a tray:)"
-                    ));
+                // Tray-anchored popover (float always carries tray, checked
+                // above). Emit it anchored to the tray activator so the runtime
+                // presents it as an auto-dismissing panel under the icon.
+                out.insert("role".into(), json!("float"));
+                out.insert("anchor".into(), json!("activator"));
+                out.insert("content".into(), surface_content_json(*content));
+                if let Some(size) = surface
+                    .tray
+                    .as_ref()
+                    .and_then(|t| t.size.as_ref())
+                    .and_then(size_to_json)
+                {
+                    out.insert("size".into(), size);
                 }
-                if surface.render == SurfaceRender::Native {
-                    return Err(anyhow!(
-                        "surface '{id}': role: float with render: native is not supported"
-                    ));
-                }
-                let mut float_surface = Map::new();
-                float_surface.insert("id".into(), json!(id));
-                float_surface.insert("role".into(), json!("float"));
-                float_surface.insert("anchor".into(), json!("activator"));
-                float_surface.insert("content".into(), json!({ "kind": "lxapp", "appId": id }));
-                if let Some(size) = surface.tray.as_ref().and_then(|t| t.size.as_ref()) {
-                    let mut size_obj = Map::new();
-                    if let Some(w) = size.width {
-                        size_obj.insert("width".into(), json!(w));
-                    }
-                    if let Some(h) = size.height {
-                        size_obj.insert("height".into(), json!(h));
-                    }
-                    if !size_obj.is_empty() {
-                        float_surface.insert("size".into(), Value::Object(size_obj));
-                    }
-                }
-                out_surfaces.push(Value::Object(float_surface));
             }
             SurfaceRole::Main => {
-                if surface.render == SurfaceRender::Native {
-                    return Err(anyhow!(
-                        "surface '{id}': role: main with render: native is not supported"
-                    ));
-                }
-                out_surfaces.push(json!({
-                    "id": id,
-                    "role": "main",
-                    "content": { "kind": "lxapp", "appId": id }
-                }));
+                out.insert("role".into(), json!("main"));
+                out.insert("content".into(), surface_content_json(*content));
             }
             SurfaceRole::Aside => {
+                let default_edge = match content {
+                    SurfaceContent::Native(_) => "bottom",
+                    _ => "right",
+                };
                 let edge = surface
                     .edge
                     .as_deref()
                     .map(str::trim)
                     .filter(|e| !e.is_empty())
-                    .ok_or_else(|| anyhow!("aside surface '{id}' requires an edge"))?;
-                match surface.render {
-                    SurfaceRender::Lxapp => {
-                        let mapped_edge = map_edge(edge, id)?;
-                        out_surfaces.push(json!({
-                            "id": id,
-                            "role": "aside",
-                            "attachTo": launch_id,
-                            "edge": mapped_edge,
-                            "content": { "kind": "lxapp", "appId": id }
-                        }));
+                    .unwrap_or(default_edge);
+                let edge = map_edge(edge, name)?;
+                if let SurfaceContent::Native(capability) = content {
+                    // The only native capability currently supported is the
+                    // built-in terminal.
+                    if *capability != "terminal" {
+                        return Err(anyhow!(
+                            "native surface '{capability}' is not supported; only the built-in 'terminal' capability is available"
+                        ));
                     }
-                    SurfaceRender::Native => {
-                        // The only native surface currently supported is the
-                        // built-in terminal.
-                        if id != "terminal" {
-                            return Err(anyhow!(
-                                "native surface '{id}' is not supported; only the built-in 'terminal' surface is available"
-                            ));
-                        }
-                        if !terminal_enabled {
-                            return Err(anyhow!(
-                                "surface '{id}' uses render: native (terminal) but capabilities.terminal is not enabled"
-                            ));
-                        }
-                        if edge != "bottom" && edge != "top" {
-                            return Err(anyhow!(
-                                "terminal surface '{id}' must use edge 'top' or 'bottom'"
-                            ));
-                        }
-                        out_surfaces.push(json!({
-                            "id": "terminal",
-                            "role": "aside",
-                            "attachTo": launch_id,
-                            "edge": edge,
-                            "size": { "height": 320 },
-                            "content": { "kind": "terminal" }
-                        }));
-                        // The terminal surface is always available once declared
-                        // (openable programmatically); a sidebar entry is opt-in.
-                        // Emit `terminalSidebar` only when the surface declares a
-                        // `sidebar:` block. Its icon defaults to the host-provided
-                        // built-in when omitted, so authors never write an internal
-                        // sentinel; a supplied icon is a normal repo-relative path.
-                        if let Some(sidebar) = &surface.sidebar {
-                            let terminal_icon = sidebar
-                                .icon
-                                .as_deref()
-                                .unwrap_or("__lingxia_builtin__/terminal.svg");
-                            out_activators.push(json!({
-                                "id": "terminalSidebar",
-                                "kind": "sidebarItem",
-                                "hostSurface": launch_id,
-                                "label": "Terminal",
-                                "icon": terminal_icon,
-                                "action": { "kind": "toggleSurface", "surface": "terminal" }
-                            }));
-                        }
-                        // A native terminal carries its sidebar implicitly; skip
-                        // the generic sidebar/tray emission below for it.
-                        continue;
+                    if !terminal_enabled {
+                        return Err(anyhow!(
+                            "surface '{name}' uses the native terminal but capabilities.terminal is not enabled"
+                        ));
+                    }
+                    if edge != "bottom" && edge != "top" {
+                        return Err(anyhow!(
+                            "terminal surface '{name}' must use edge 'top' or 'bottom'"
+                        ));
                     }
                 }
-            }
-        }
-
-        if let Some(sidebar) = &surface.sidebar {
-            let mut activator = Map::new();
-            activator.insert("id".into(), json!(format!("{id}Sidebar")));
-            activator.insert("kind".into(), json!("sidebarItem"));
-            activator.insert("hostSurface".into(), json!(launch_id));
-            let label = sidebar
-                .label
-                .as_deref()
-                .map(str::trim)
-                .filter(|s| !s.is_empty())
-                .unwrap_or(id);
-            activator.insert("label".into(), json!(label));
-            if let Some(icon) = sidebar
-                .icon
-                .as_deref()
-                .map(str::trim)
-                .filter(|s| !s.is_empty())
-            {
-                activator.insert("icon".into(), json!(icon));
-            }
-            if let Some(section) = sidebar
-                .section
-                .as_deref()
-                .map(str::trim)
-                .filter(|s| !s.is_empty())
-            {
-                if section != "top" && section != "bottom" {
-                    return Err(anyhow!(
-                        "surface '{id}' sidebar.section must be 'top' or 'bottom'"
-                    ));
+                out.insert("role".into(), json!("aside"));
+                out.insert("attachTo".into(), json!(launch_id));
+                out.insert("edge".into(), json!(edge));
+                let mut size = surface.size.as_ref().and_then(size_to_json);
+                if matches!(content, SurfaceContent::Native(_)) {
+                    // The terminal keeps its historical default height, also
+                    // when a size hint sets only the width.
+                    let obj = size
+                        .get_or_insert_with(|| json!({}))
+                        .as_object_mut()
+                        .expect("size_to_json emits an object");
+                    obj.entry("height").or_insert(json!(320));
                 }
-                // The internal activator schema has no first-class placement
-                // field today; carry `section` through verbatim (runtime ignores
-                // unknown keys, defaulting to top).
-                activator.insert("section".into(), json!(section));
+                if let Some(size) = size {
+                    out.insert("size".into(), size);
+                }
+                out.insert("content".into(), surface_content_json(*content));
             }
-            activator.insert(
-                "action".into(),
-                json!({ "kind": "toggleSurface", "surface": id }),
-            );
-            out_activators.push(Value::Object(activator));
         }
+        // Carry surface-level `platforms` onto generated surfaces so platform
+        // packaging/runtime code can hide surfaces not meant for that target.
+        if let Some(platforms) = surface.platforms.as_ref() {
+            out.insert("platforms".into(), json!(platforms));
+        }
+        out_surfaces.push(Value::Object(out));
 
         if let Some(tray) = &surface.tray {
             // The internal schema's closest existing kind is `menuBarItem`.
             // (There is no dedicated status/tray runtime kind today.)
             let mut activator = Map::new();
-            activator.insert("id".into(), json!(format!("{id}Tray")));
+            activator.insert("id".into(), json!(format!("{name}Tray")));
             activator.insert("kind".into(), json!("menuBarItem"));
             if let Some(icon) = tray
                 .icon
@@ -540,25 +587,9 @@ fn surfaces_to_ui(surfaces: &[SurfaceDecl], terminal_enabled: bool) -> Result<Va
             };
             activator.insert(
                 "action".into(),
-                json!({ "kind": action_kind, "surface": id }),
+                json!({ "kind": action_kind, "surface": name }),
             );
             out_activators.push(Value::Object(activator));
-        }
-    }
-
-    // Carry surface-level `platforms` onto generated surfaces so platform
-    // packaging/runtime code can hide surfaces not meant for that target.
-    for surface in surfaces {
-        let Some(platforms) = surface.platforms.as_ref() else {
-            continue;
-        };
-        let sid = surface.id.trim();
-        if let Some(obj) = out_surfaces
-            .iter_mut()
-            .find(|s| s.get("id").and_then(Value::as_str) == Some(sid))
-            .and_then(Value::as_object_mut)
-        {
-            obj.insert("platforms".into(), json!(platforms));
         }
     }
 
@@ -581,6 +612,48 @@ fn surfaces_to_ui(surfaces: &[SurfaceDecl], terminal_enabled: bool) -> Result<Va
         "surfaces": out_surfaces,
         "activators": out_activators
     }))
+}
+
+fn validate_declared_surface_url(url: &str) -> Result<()> {
+    let (scheme, rest) = url
+        .split_once(':')
+        .ok_or_else(|| anyhow!("surface '{url}': url must be absolute"))?;
+    let scheme = scheme.to_ascii_lowercase();
+    if !matches!(scheme.as_str(), "https" | "file") {
+        return Err(anyhow!(
+            "surface '{url}': url scheme must be https or a host-authorized file"
+        ));
+    }
+    if !rest.starts_with("//") {
+        return Err(anyhow!("surface '{url}': url must use {scheme}:// syntax"));
+    }
+    Ok(())
+}
+
+fn surface_content_json(content: SurfaceContent<'_>) -> Value {
+    match content {
+        SurfaceContent::Lxapp(app_id) => json!({ "kind": "lxapp", "appId": app_id }),
+        SurfaceContent::Page(page) => json!({ "kind": "page", "page": page }),
+        SurfaceContent::Url(url) => json!({ "kind": "web", "url": url }),
+        // Native capabilities keep their historical content shape
+        // (`{ "kind": "terminal" }`).
+        SurfaceContent::Native(capability) => json!({ "kind": capability }),
+    }
+}
+
+fn size_to_json(size: &SurfaceSize) -> Option<Value> {
+    let mut obj = Map::new();
+    if let Some(width) = size.width {
+        obj.insert("width".into(), json!(width));
+    }
+    if let Some(height) = size.height {
+        obj.insert("height".into(), json!(height));
+    }
+    if obj.is_empty() {
+        None
+    } else {
+        Some(Value::Object(obj))
+    }
 }
 
 fn map_edge(edge: &str, id: &str) -> Result<&'static str> {
@@ -630,7 +703,8 @@ fn validate_surface_platforms(surfaces: &[SurfaceDecl], app_platforms: &[String]
     let app_platform_set: HashSet<&str> = app_platforms.iter().map(String::as_str).collect();
 
     for surface in surfaces {
-        let id = surface.id.trim();
+        let content = surface.content()?;
+        let id = content.name();
         let Some(platforms) = surface.platforms.as_ref() else {
             validate_surface_intrinsic_platforms(surface, id, app_platforms)?;
             continue;
@@ -674,7 +748,7 @@ fn validate_surface_intrinsic_platforms(
     id: &str,
     effective_platforms: &[String],
 ) -> Result<()> {
-    if surface.render == SurfaceRender::Native && id == "terminal" {
+    if matches!(surface.content(), Ok(SurfaceContent::Native("terminal"))) {
         for platform in effective_platforms {
             if !TERMINAL_SURFACE_PLATFORMS.contains(&platform.as_str()) {
                 return Err(anyhow!(
@@ -1304,7 +1378,8 @@ impl LingXiaConfig {
             .as_ref()
             .map(|capabilities| capabilities.terminal)
             .unwrap_or(false);
-        self.generated_ui = Some(surfaces_to_ui(surfaces, terminal_enabled)?);
+        let browser_enabled = self.browser_enabled();
+        self.generated_ui = Some(surfaces_to_ui(surfaces, terminal_enabled, browser_enabled)?);
         Ok(())
     }
 
@@ -2343,7 +2418,7 @@ app:
   platforms: [mac]
   homeAppId: home
 surfaces:
-  - id: home
+  - lxapp: home
     role: main
     launch: true
 "#;
@@ -2363,7 +2438,7 @@ app:
   platforms: [macos, android]
   homeAppId: home
 surfaces:
-  - id: home
+  - lxapp: home
     role: main
     launch: true
     platforms: [andriod]
@@ -2384,7 +2459,7 @@ app:
   platforms: [macos]
   homeAppId: home
 surfaces:
-  - id: home
+  - lxapp: home
     role: main
     launch: true
     platforms: []
@@ -2404,7 +2479,7 @@ app:
   platforms: [ios]
   homeAppId: home
 surfaces:
-  - id: home
+  - lxapp: home
     role: main
     launch: true
     platforms: [macos]
@@ -2427,11 +2502,10 @@ app:
 capabilities:
   terminal: true
 surfaces:
-  - id: home
+  - lxapp: home
     role: main
     launch: true
-  - id: terminal
-    render: native
+  - native: terminal
     role: aside
     edge: bottom
     platforms: [ios]
@@ -2457,11 +2531,10 @@ app:
 capabilities:
   terminal: true
 surfaces:
-  - id: home
+  - lxapp: home
     role: main
     launch: true
-  - id: terminal
-    render: native
+  - native: terminal
     role: aside
     edge: bottom
 "#;
@@ -2931,50 +3004,48 @@ surfaces:
         assert!(err.contains("unique lxapp content.appId"));
     }
 
+    /// Empty declaration with the given role; set exactly one content key.
+    fn surface_decl(role: SurfaceRole) -> SurfaceDecl {
+        SurfaceDecl {
+            lxapp: None,
+            page: None,
+            url: None,
+            native: None,
+            role,
+            launch: false,
+            edge: None,
+            size: None,
+            tray: None,
+            platforms: None,
+        }
+    }
+
+    fn lxapp_decl(app_id: &str, role: SurfaceRole) -> SurfaceDecl {
+        SurfaceDecl {
+            lxapp: Some(app_id.into()),
+            ..surface_decl(role)
+        }
+    }
+
     #[test]
     fn surfaces_maps_showcase_to_internal_ui() {
         let surfaces = vec![
             SurfaceDecl {
-                id: "lingxia-showcase".into(),
-                render: SurfaceRender::Lxapp,
-                role: SurfaceRole::Main,
                 launch: true,
-                edge: None,
-                sidebar: None,
-                tray: None,
-                platforms: None,
+                ..lxapp_decl("lingxia-showcase", SurfaceRole::Main)
             },
             SurfaceDecl {
-                id: "lingxia-chat".into(),
-                render: SurfaceRender::Lxapp,
-                role: SurfaceRole::Aside,
-                launch: false,
                 edge: Some("right".into()),
-                sidebar: Some(SurfaceSidebar {
-                    icon: Some("icons/chat.svg".into()),
-                    label: Some("AI Chat".into()),
-                    section: None,
-                }),
-                tray: None,
-                platforms: None,
+                ..lxapp_decl("lingxia-chat", SurfaceRole::Aside)
             },
             SurfaceDecl {
-                id: "terminal".into(),
-                render: SurfaceRender::Native,
-                role: SurfaceRole::Aside,
-                launch: false,
-                edge: Some("bottom".into()),
-                sidebar: Some(SurfaceSidebar {
-                    icon: Some("__lingxia_builtin__/terminal.svg".into()),
-                    label: None,
-                    section: None,
-                }),
-                tray: None,
-                platforms: None,
+                native: Some("terminal".into()),
+                // No edge: the terminal defaults to bottom.
+                ..surface_decl(SurfaceRole::Aside)
             },
         ];
 
-        let ui = surfaces_to_ui(&surfaces, true).unwrap();
+        let ui = surfaces_to_ui(&surfaces, true, false).unwrap();
         let expected = serde_json::json!({
             "launch": { "initialSurface": "lingxia-showcase" },
             "surfaces": [
@@ -2999,24 +3070,7 @@ surfaces:
                     "content": { "kind": "terminal" }
                 }
             ],
-            "activators": [
-                {
-                    "id": "lingxia-chatSidebar",
-                    "kind": "sidebarItem",
-                    "hostSurface": "lingxia-showcase",
-                    "label": "AI Chat",
-                    "icon": "icons/chat.svg",
-                    "action": { "kind": "toggleSurface", "surface": "lingxia-chat" }
-                },
-                {
-                    "id": "terminalSidebar",
-                    "kind": "sidebarItem",
-                    "hostSurface": "lingxia-showcase",
-                    "label": "Terminal",
-                    "icon": "__lingxia_builtin__/terminal.svg",
-                    "action": { "kind": "toggleSurface", "surface": "terminal" }
-                }
-            ]
+            "activators": []
         });
         assert_eq!(ui, expected);
 
@@ -3033,12 +3087,6 @@ surfaces:
     #[test]
     fn surfaces_maps_tray_to_menubar_item_and_no_launch() {
         let surfaces = vec![SurfaceDecl {
-            id: "home".into(),
-            render: SurfaceRender::Lxapp,
-            role: SurfaceRole::Main,
-            launch: false,
-            edge: None,
-            sidebar: None,
             tray: Some(SurfaceTray {
                 icon: Some("icons/tray.svg".into()),
                 label: Some("Demo".into()),
@@ -3046,10 +3094,10 @@ surfaces:
                 exclusive: false,
                 size: None,
             }),
-            platforms: None,
+            ..lxapp_decl("home", SurfaceRole::Main)
         }];
 
-        let ui = surfaces_to_ui(&surfaces, false).unwrap();
+        let ui = surfaces_to_ui(&surfaces, false, false).unwrap();
         let expected = serde_json::json!({
             "launch": {
                 "initialSurface": "home",
@@ -3084,12 +3132,6 @@ surfaces:
         // emit role: float + anchor: activator (the runtime's anchored panel) and
         // launch into the tray with no dock icon.
         let surfaces = vec![SurfaceDecl {
-            id: "panel".into(),
-            render: SurfaceRender::Lxapp,
-            role: SurfaceRole::Float,
-            launch: false,
-            edge: None,
-            sidebar: None,
             tray: Some(SurfaceTray {
                 icon: Some("icons/tray.svg".into()),
                 label: Some("Panel".into()),
@@ -3100,10 +3142,10 @@ surfaces:
                     height: Some(480),
                 }),
             }),
-            platforms: None,
+            ..lxapp_decl("panel", SurfaceRole::Float)
         }];
 
-        let ui = surfaces_to_ui(&surfaces, false).unwrap();
+        let ui = surfaces_to_ui(&surfaces, false, false).unwrap();
         let expected = serde_json::json!({
             "launch": {
                 "initialSurface": "panel",
@@ -3129,18 +3171,194 @@ surfaces:
     }
 
     #[test]
-    fn surfaces_rejects_float_without_tray() {
+    fn surfaces_maps_url_declarations_to_web_content() {
+        let surfaces = vec![
+            SurfaceDecl {
+                launch: true,
+                ..lxapp_decl("home", SurfaceRole::Main)
+            },
+            SurfaceDecl {
+                url: Some("https://example.com/docs".into()),
+                // No edge: asides default to right.
+                size: Some(SurfaceSize {
+                    width: Some(320),
+                    height: None,
+                }),
+                ..surface_decl(SurfaceRole::Aside)
+            },
+        ];
+
+        let ui = surfaces_to_ui(&surfaces, false, true).unwrap();
+        assert_eq!(
+            ui["surfaces"][1],
+            serde_json::json!({
+                "id": "https://example.com/docs",
+                "role": "aside",
+                "attachTo": "home",
+                "edge": "right",
+                "size": { "width": 320 },
+                "content": { "kind": "web", "url": "https://example.com/docs" }
+            })
+        );
+    }
+
+    #[test]
+    fn surfaces_rejects_url_without_browser_capability() {
+        let surfaces = vec![
+            SurfaceDecl {
+                launch: true,
+                ..lxapp_decl("home", SurfaceRole::Main)
+            },
+            SurfaceDecl {
+                url: Some("https://example.com".into()),
+                ..surface_decl(SurfaceRole::Aside)
+            },
+        ];
+        let err = surfaces_to_ui(&surfaces, false, false)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("browser capability"), "{err}");
+    }
+
+    #[test]
+    fn capability_only_browser_accepts_url_surface() {
+        let yaml = r#"
+app:
+  projectName: demo
+  productName: Demo
+  productVersion: 0.1.0
+  platforms: [windows]
+  homeAppId: home
+capabilities:
+  browser: true
+surfaces:
+  - lxapp: home
+    role: main
+    launch: true
+  - url: https://example.com
+    role: aside
+"#;
+
+        let config = load_config_yaml(yaml).unwrap();
+        assert!(config.generated_ui.is_some());
+        assert!(config.browser.is_none());
+    }
+
+    #[test]
+    fn surfaces_reject_plain_http_url() {
+        let yaml = r#"
+app:
+  projectName: demo
+  productName: Demo
+  productVersion: 0.1.0
+  platforms: [windows]
+  homeAppId: home
+capabilities:
+  browser: true
+surfaces:
+  - lxapp: home
+    role: main
+    launch: true
+  - url: http://example.com
+    role: aside
+"#;
+
+        let err = load_config_yaml(yaml).unwrap_err().to_string();
+        assert!(err.contains("url scheme must be https"), "{err}");
+    }
+
+    #[test]
+    fn surfaces_rejects_entry_without_content_key() {
+        let surfaces = vec![surface_decl(SurfaceRole::Main)];
+        let err = surfaces_to_ui(&surfaces, false, false)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("exactly one content key"), "{err}");
+    }
+
+    #[test]
+    fn surfaces_rejects_multiple_content_keys() {
         let surfaces = vec![SurfaceDecl {
-            id: "panel".into(),
-            render: SurfaceRender::Lxapp,
-            role: SurfaceRole::Float,
-            launch: false,
-            edge: None,
-            sidebar: None,
-            tray: None,
-            platforms: None,
+            url: Some("https://example.com".into()),
+            ..lxapp_decl("home", SurfaceRole::Main)
         }];
-        let err = surfaces_to_ui(&surfaces, false).unwrap_err().to_string();
+        let err = surfaces_to_ui(&surfaces, false, false)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("more than one content key"), "{err}");
+    }
+
+    #[test]
+    fn surfaces_rejects_page_float_for_now() {
+        let surfaces = vec![
+            SurfaceDecl {
+                launch: true,
+                ..lxapp_decl("home", SurfaceRole::Main)
+            },
+            SurfaceDecl {
+                page: Some("inspector".into()),
+                ..surface_decl(SurfaceRole::Float)
+            },
+        ];
+        let err = surfaces_to_ui(&surfaces, false, false)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("not supported by the runtime yet"), "{err}");
+    }
+
+    #[test]
+    fn surfaces_rejects_native_float_for_now() {
+        let surfaces = vec![
+            SurfaceDecl {
+                launch: true,
+                ..lxapp_decl("home", SurfaceRole::Main)
+            },
+            SurfaceDecl {
+                native: Some("terminal".into()),
+                ..surface_decl(SurfaceRole::Float)
+            },
+        ];
+        let err = surfaces_to_ui(&surfaces, true, false)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("native floats"), "{err}");
+    }
+
+    #[test]
+    fn surfaces_rejects_launch_on_url_main() {
+        let surfaces = vec![SurfaceDecl {
+            url: Some("https://example.com".into()),
+            launch: true,
+            ..surface_decl(SurfaceRole::Main)
+        }];
+        let err = surfaces_to_ui(&surfaces, false, true)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("only supported on an lxapp main"), "{err}");
+    }
+
+    #[test]
+    fn surfaces_rejects_size_on_main() {
+        let surfaces = vec![SurfaceDecl {
+            launch: true,
+            size: Some(SurfaceSize {
+                width: Some(320),
+                height: None,
+            }),
+            ..lxapp_decl("home", SurfaceRole::Main)
+        }];
+        let err = surfaces_to_ui(&surfaces, false, false)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("size is only valid on an aside"), "{err}");
+    }
+
+    #[test]
+    fn surfaces_rejects_float_without_tray() {
+        let surfaces = vec![lxapp_decl("panel", SurfaceRole::Float)];
+        let err = surfaces_to_ui(&surfaces, false, false)
+            .unwrap_err()
+            .to_string();
         assert!(err.contains("tray-anchored popover"), "got: {err}");
     }
 
@@ -3148,7 +3366,7 @@ surfaces:
     fn surfaces_rejects_unsupported_tray_action() {
         let yaml = r#"
 surfaces:
-  - id: home
+  - lxapp: home
     role: main
     tray:
       action: open
@@ -3163,42 +3381,28 @@ surfaces:
 
     #[test]
     fn surfaces_rejects_multiple_tray_entries() {
+        let empty_tray = SurfaceTray {
+            icon: None,
+            label: None,
+            action: None,
+            exclusive: false,
+            size: None,
+        };
         let surfaces = vec![
             SurfaceDecl {
-                id: "home".into(),
-                render: SurfaceRender::Lxapp,
-                role: SurfaceRole::Main,
-                launch: false,
-                edge: None,
-                sidebar: None,
-                tray: Some(SurfaceTray {
-                    icon: None,
-                    label: None,
-                    action: None,
-                    exclusive: false,
-                    size: None,
-                }),
-                platforms: None,
+                tray: Some(empty_tray.clone()),
+                ..lxapp_decl("home", SurfaceRole::Main)
             },
             SurfaceDecl {
-                id: "chat".into(),
-                render: SurfaceRender::Lxapp,
-                role: SurfaceRole::Aside,
-                launch: false,
                 edge: Some("right".into()),
-                sidebar: None,
-                tray: Some(SurfaceTray {
-                    icon: None,
-                    label: None,
-                    action: None,
-                    exclusive: false,
-                    size: None,
-                }),
-                platforms: None,
+                tray: Some(empty_tray),
+                ..lxapp_decl("chat", SurfaceRole::Aside)
             },
         ];
 
-        let err = surfaces_to_ui(&surfaces, false).unwrap_err().to_string();
+        let err = surfaces_to_ui(&surfaces, false, false)
+            .unwrap_err()
+            .to_string();
         assert!(
             err.contains("at most one surface may declare tray"),
             "{err}"
@@ -3209,27 +3413,18 @@ surfaces:
     fn surfaces_rejects_native_terminal_without_capability() {
         let surfaces = vec![
             SurfaceDecl {
-                id: "home".into(),
-                render: SurfaceRender::Lxapp,
-                role: SurfaceRole::Main,
                 launch: true,
-                edge: None,
-                sidebar: None,
-                tray: None,
-                platforms: None,
+                ..lxapp_decl("home", SurfaceRole::Main)
             },
             SurfaceDecl {
-                id: "terminal".into(),
-                render: SurfaceRender::Native,
-                role: SurfaceRole::Aside,
-                launch: false,
+                native: Some("terminal".into()),
                 edge: Some("bottom".into()),
-                sidebar: None,
-                tray: None,
-                platforms: None,
+                ..surface_decl(SurfaceRole::Aside)
             },
         ];
-        let err = surfaces_to_ui(&surfaces, false).unwrap_err().to_string();
+        let err = surfaces_to_ui(&surfaces, false, false)
+            .unwrap_err()
+            .to_string();
         assert!(err.contains("capabilities.terminal"), "{err}");
     }
 
@@ -3237,83 +3432,98 @@ surfaces:
     fn surfaces_rejects_two_launch_mains() {
         let surfaces = vec![
             SurfaceDecl {
-                id: "a".into(),
-                render: SurfaceRender::Lxapp,
-                role: SurfaceRole::Main,
                 launch: true,
-                edge: None,
-                sidebar: None,
-                tray: None,
-                platforms: None,
+                ..lxapp_decl("a", SurfaceRole::Main)
             },
             SurfaceDecl {
-                id: "b".into(),
-                render: SurfaceRender::Lxapp,
-                role: SurfaceRole::Main,
                 launch: true,
-                edge: None,
-                sidebar: None,
-                tray: None,
-                platforms: None,
+                ..lxapp_decl("b", SurfaceRole::Main)
             },
         ];
-        let err = surfaces_to_ui(&surfaces, false).unwrap_err().to_string();
+        let err = surfaces_to_ui(&surfaces, false, false)
+            .unwrap_err()
+            .to_string();
         assert!(err.contains("at most one"), "{err}");
     }
 
     #[test]
-    fn surfaces_rejects_duplicate_id() {
+    fn surfaces_rejects_duplicate_content_key() {
         let surfaces = vec![
             SurfaceDecl {
-                id: "dup".into(),
-                render: SurfaceRender::Lxapp,
-                role: SurfaceRole::Main,
                 launch: true,
-                edge: None,
-                sidebar: None,
-                tray: None,
-                platforms: None,
+                ..lxapp_decl("dup", SurfaceRole::Main)
             },
             SurfaceDecl {
-                id: "dup".into(),
-                render: SurfaceRender::Lxapp,
-                role: SurfaceRole::Aside,
-                launch: false,
                 edge: Some("right".into()),
-                sidebar: None,
-                tray: None,
-                platforms: None,
+                ..lxapp_decl("dup", SurfaceRole::Aside)
             },
         ];
-        let err = surfaces_to_ui(&surfaces, false).unwrap_err().to_string();
-        assert!(err.contains("duplicate surface id"), "{err}");
+        let err = surfaces_to_ui(&surfaces, false, false)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("duplicate declaration for 'dup'"), "{err}");
+    }
+
+    #[test]
+    fn surfaces_rejects_same_name_across_content_kinds() {
+        // Surface ids share one namespace: an lxapp and a native capability
+        // with the same name would emit two surfaces with identical ids.
+        let surfaces = vec![
+            SurfaceDecl {
+                launch: true,
+                ..lxapp_decl("terminal", SurfaceRole::Main)
+            },
+            SurfaceDecl {
+                native: Some("terminal".into()),
+                ..surface_decl(SurfaceRole::Aside)
+            },
+        ];
+        let err = surfaces_to_ui(&surfaces, true, false)
+            .unwrap_err()
+            .to_string();
+        assert!(
+            err.contains("duplicate declaration for 'terminal'"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn surfaces_terminal_partial_size_keeps_default_height() {
+        let surfaces = vec![
+            SurfaceDecl {
+                launch: true,
+                ..lxapp_decl("home", SurfaceRole::Main)
+            },
+            SurfaceDecl {
+                native: Some("terminal".into()),
+                size: Some(SurfaceSize {
+                    width: Some(400),
+                    height: None,
+                }),
+                ..surface_decl(SurfaceRole::Aside)
+            },
+        ];
+        let ui = surfaces_to_ui(&surfaces, true, false).unwrap();
+        assert_eq!(ui["surfaces"][1]["size"]["width"], 400);
+        assert_eq!(ui["surfaces"][1]["size"]["height"], 320);
     }
 
     #[test]
     fn surfaces_rejects_launch_on_aside() {
         let surfaces = vec![
             SurfaceDecl {
-                id: "a".into(),
-                render: SurfaceRender::Lxapp,
-                role: SurfaceRole::Main,
                 launch: true,
-                edge: None,
-                sidebar: None,
-                tray: None,
-                platforms: None,
+                ..lxapp_decl("a", SurfaceRole::Main)
             },
             SurfaceDecl {
-                id: "b".into(),
-                render: SurfaceRender::Lxapp,
-                role: SurfaceRole::Aside,
                 launch: true,
                 edge: Some("right".into()),
-                sidebar: None,
-                tray: None,
-                platforms: None,
+                ..lxapp_decl("b", SurfaceRole::Aside)
             },
         ];
-        let err = surfaces_to_ui(&surfaces, false).unwrap_err().to_string();
+        let err = surfaces_to_ui(&surfaces, false, false)
+            .unwrap_err()
+            .to_string();
         assert!(
             err.contains("launch: true is only valid on a main"),
             "{err}"
@@ -3323,16 +3533,13 @@ surfaces:
     #[test]
     fn surfaces_rejects_edge_on_main() {
         let surfaces = vec![SurfaceDecl {
-            id: "a".into(),
-            render: SurfaceRender::Lxapp,
-            role: SurfaceRole::Main,
             launch: true,
             edge: Some("right".into()),
-            sidebar: None,
-            tray: None,
-            platforms: None,
+            ..lxapp_decl("a", SurfaceRole::Main)
         }];
-        let err = surfaces_to_ui(&surfaces, false).unwrap_err().to_string();
+        let err = surfaces_to_ui(&surfaces, false, false)
+            .unwrap_err()
+            .to_string();
         assert!(err.contains("edge is only valid on an aside"), "{err}");
     }
 

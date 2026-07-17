@@ -67,27 +67,20 @@ resources:
       path: ../lingxia-chat
 
 surfaces:
-  - id: lingxia-showcase
-    render: lxapp
+  - lxapp: lingxia-showcase
     role: main
     launch: true
     tray: # dock + tray: dock icon stays, tray brings the window to front
       icon: icons/tray.svg
       label: LingXia
       action: activate
-  - id: lingxia-chat
-    render: lxapp
+  - lxapp: lingxia-chat
     role: aside
     edge: right
-    sidebar:
-      icon: icons/chat.svg
-      label: AI Chat
-  - id: terminal
-    render: native
+  - native: terminal
     role: aside
     edge: bottom
     platforms: [macos, windows] # terminal is desktop-only
-    sidebar: {} # built-in terminal icon comes from the host; omit to use it
 
 appLinks:
   hosts:

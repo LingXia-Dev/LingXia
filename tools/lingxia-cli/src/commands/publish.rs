@@ -1023,8 +1023,7 @@ android:
 macos:
   bundleId: app.example.demo
 surfaces:
-  - id: demo.home
-    render: lxapp
+  - lxapp: demo.home
     role: main
     launch: true
 "#,

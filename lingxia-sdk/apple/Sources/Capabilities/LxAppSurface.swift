@@ -389,7 +389,7 @@ enum LxAppSurface {
             }
 
         case contentUrl:
-            guard let url = URL(string: path), let scheme = url.scheme?.lowercased(), scheme == "https" || scheme == "http" else {
+            guard let url = URL(string: path), let scheme = url.scheme?.lowercased(), scheme == "https" || scheme == "file" else {
                 LXLog.error("invalid web surface url id=\(id) url=\(path)", category: "Surface", appId: appId, path: path)
                 return false
             }
@@ -646,7 +646,7 @@ enum LxAppSurface {
 
         case contentUrl:
             guard let url = URL(string: path), let scheme = url.scheme?.lowercased(),
-                  scheme == "https" || scheme == "http" || scheme == "file" else {
+                  scheme == "https" || scheme == "file" else {
                 LXLog.error("invalid web aside url id=\(id) url=\(path)", category: "Surface", appId: appId, path: path)
                 return false
             }
@@ -1556,7 +1556,7 @@ enum LxAppSurface {
             }
 
         case contentUrl:
-            guard let url = URL(string: path), let scheme = url.scheme?.lowercased(), scheme == "https" || scheme == "http" else {
+            guard let url = URL(string: path), let scheme = url.scheme?.lowercased(), scheme == "https" || scheme == "file" else {
                 LXLog.error("invalid web surface url id=\(id) url=\(path)", category: "Surface", appId: appId, path: path)
                 return false
             }

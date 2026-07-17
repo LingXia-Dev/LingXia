@@ -73,7 +73,7 @@ pub(crate) async fn browser_download_resource(
 
 fn map_lxapp_error_to_downloads(err: LxAppError) -> transfer::DownloadsError {
     match err {
-        LxAppError::InvalidParameter(message) => {
+        LxAppError::InvalidParameter(message) | LxAppError::SurfaceConflict(message) => {
             transfer::DownloadsError::InvalidParameter(message)
         }
         LxAppError::ResourceNotFound(message) => {

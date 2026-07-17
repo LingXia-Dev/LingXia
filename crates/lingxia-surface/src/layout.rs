@@ -6,8 +6,9 @@ use serde::{Deserialize, Serialize};
 use crate::model::SurfaceId;
 
 /// Available-width band. Aligned to Material breakpoints and computed from the
-/// *container* width, not the physical screen.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+/// full client-area width, not the physical screen. `Ord` follows the declared
+/// order (Compact < Medium < Expanded).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum SizeClass {
     Compact,
@@ -40,10 +41,21 @@ impl SizeClass {
         if prev == raw {
             return prev;
         }
-        // Within the hysteresis band around a boundary, stick with prev.
-        let near_lower = (width - COMPACT_MAX).abs() < margin;
-        let near_upper = (width - MEDIUM_MAX).abs() < margin;
-        if near_lower || near_upper { prev } else { raw }
+        // Only an adjacent transition shares a hysteresis boundary. A jump
+        // across two classes must converge immediately.
+        let boundary =
+            match (prev, raw) {
+                (SizeClass::Compact, SizeClass::Medium)
+                | (SizeClass::Medium, SizeClass::Compact) => Some(COMPACT_MAX),
+                (SizeClass::Medium, SizeClass::Expanded)
+                | (SizeClass::Expanded, SizeClass::Medium) => Some(MEDIUM_MAX),
+                _ => None,
+            };
+        if boundary.is_some_and(|boundary| (width - boundary).abs() < margin) {
+            prev
+        } else {
+            raw
+        }
     }
 }
 
@@ -193,6 +205,32 @@ pub struct PlanAside {
     pub preferred_size: Option<f64>,
 }
 
+/// One aside slot in the [`LayoutPresentationPlan`]: the aside area holds at
+/// most one region per content kind (lxapp / browser / native); the region's
+/// contents are its tabs, in open order. Skins render ONE docked panel per
+/// slot, with a header tab strip when `children` has more than one entry.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlanAsideSlot {
+    pub kind: crate::model::SlotKind,
+    /// Edge the slot docks to (the most recently placed child's edge wins).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub edge: Option<crate::model::Edge>,
+    /// Tab order = open order; never reordered.
+    pub children: Vec<SurfaceId>,
+    /// The child the slot currently shows.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub active_child: Option<SurfaceId>,
+    /// Admitted visible at this size class. Hidden slots stay alive and
+    /// reappear when the container widens — they are never evicted.
+    pub visible: bool,
+    /// Temporarily covers the main instead of consuming dock space. This is
+    /// the compact projection and the fallback for an explicitly opened aside
+    /// that physical admission cannot fit.
+    #[serde(default)]
+    pub overlay: bool,
+}
+
 /// One float in the [`LayoutPresentationPlan`]: the surface id plus the
 /// render-relevant `FloatSpec` semantics (anchor, dismiss, modal). Floats are
 /// popups above the layout and are never in the tree, so the skin reads this
@@ -232,6 +270,11 @@ pub struct LayoutPresentationPlan {
     /// Asides currently in the layout. `split_form` decides whether they dock
     /// beside the main or present full-screen on compact.
     pub asides: Vec<PlanAside>,
+    /// Asides grouped into per-kind slots (lxapp / browser / native) with tab
+    /// order and admission visibility. Supersedes per-aside handling; `asides`
+    /// stays for skins that have not migrated yet.
+    #[serde(default)]
+    pub aside_slots: Vec<PlanAsideSlot>,
     /// Floats currently open: popups above the layout (never in the tree),
     /// each carrying its render-relevant `FloatSpec` semantics.
     pub floats: Vec<PlanFloat>,

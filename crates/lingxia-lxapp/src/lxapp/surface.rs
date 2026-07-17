@@ -11,10 +11,19 @@ use std::time::Duration;
 
 const SURFACE_DISPOSE_TTL_MS: u64 = 30_000;
 static SURFACE_CLOSE_OBSERVER: OnceLock<fn(&str, &str) -> bool> = OnceLock::new();
-/// Observer fired when a window's adaptive context (sizeClass/bottomOwner)
-/// changes, so the logic layer can push `lx.onSurfaceContext` to subscribers.
-/// Receives the window id whose context flipped.
+/// Observer fired when one lxapp presentation's actual viewport changes.
+/// Receives that lxapp's app id.
 static SURFACE_CONTEXT_OBSERVER: OnceLock<fn(&str)> = OnceLock::new();
+static SURFACE_VIEWPORTS: OnceLock<std::sync::Mutex<HashMap<String, SurfaceViewportContext>>> =
+    OnceLock::new();
+
+#[derive(Debug, Clone, Copy)]
+struct SurfaceViewportContext {
+    session_id: u64,
+    width: f64,
+    height: f64,
+    size_class: lingxia_surface::SizeClass,
+}
 
 /// The surface graph is per-WINDOW, not per-lxapp. The graph and its single
 /// commit point live on a controller keyed by `window_id`; macOS/mobile are
@@ -24,6 +33,16 @@ pub(crate) struct WindowSurfaceController {
     window_id: String,
     manager: std::sync::Mutex<lingxia_surface::SurfaceManager>,
     runtime: std::sync::Arc<Platform>,
+}
+
+struct OpenNodeResult {
+    surface_id: String,
+    kind: SurfaceKind,
+    position: SurfacePosition,
+    role: SurfaceRole,
+    evicted: Vec<String>,
+    reused: bool,
+    overlay: bool,
 }
 
 static WINDOW_CONTROLLERS: OnceLock<
@@ -71,8 +90,8 @@ impl WindowSurfaceController {
         &self,
         node: lingxia_surface::Surface,
         requested_position: SurfacePosition,
-    ) -> (SurfaceKind, SurfacePosition, SurfaceRole, Vec<String>) {
-        let id = node.id.clone();
+    ) -> OpenNodeResult {
+        let requested_id = node.id.clone();
         let mut present_kind = match node.role {
             lingxia_surface::Role::Main => SurfaceKind::Window,
             _ => SurfaceKind::Overlay,
@@ -86,9 +105,13 @@ impl WindowSurfaceController {
             .iter()
             .map(|s| s.id.clone())
             .collect();
-        let _decision = manager.open(node);
-        if let Some(role) = manager.graph().role_of(&id) {
-            let edge = manager.graph().get(&id).and_then(|s| s.placement.edge);
+        let outcome = manager.open(node);
+        let resolved_id = outcome.resolved_surface_id;
+        if let Some(role) = manager.graph().role_of(&resolved_id) {
+            let edge = manager
+                .graph()
+                .get(&resolved_id)
+                .and_then(|s| s.placement.edge);
             (present_kind, present_position, present_role) =
                 present_params_for_role(role, edge, requested_position);
         }
@@ -100,18 +123,111 @@ impl WindowSurfaceController {
             .collect();
         let evicted = before
             .into_iter()
-            .filter(|prev| prev != &id && !after.contains(prev))
+            .filter(|prev| prev != &resolved_id && !after.contains(prev))
             .collect();
-        (present_kind, present_position, present_role, evicted)
+        OpenNodeResult {
+            reused: resolved_id != requested_id,
+            surface_id: resolved_id,
+            kind: present_kind,
+            position: present_position,
+            role: present_role,
+            evicted,
+            overlay: outcome.overlay,
+        }
     }
 
-    fn close(&self, id: &str) -> bool {
+    fn close(&self, id: &str) -> Vec<String> {
         let removed = {
             let mut manager = self.manager.lock().unwrap();
-            !manager.close(id).is_empty()
+            manager.close(id)
         };
         self.commit();
         removed
+    }
+
+    fn contains(&self, id: &str) -> bool {
+        self.manager.lock().unwrap().graph().get(id).is_some()
+    }
+
+    fn show_surface(&self, app_id: &str, id: &str) -> Result<(), LxAppError> {
+        {
+            let manager = self.manager.lock().unwrap();
+            if manager.graph().get(id).is_none() {
+                return Err(LxAppError::InvalidParameter(format!(
+                    "unknown surface: {id}"
+                )));
+            }
+        }
+        self.runtime.show_surface(app_id, id)?;
+        if !self.manager.lock().unwrap().show(id) {
+            let _ = self.runtime.hide_surface(app_id, id);
+            return Err(LxAppError::InvalidParameter(format!(
+                "unknown surface: {id}"
+            )));
+        }
+        self.commit();
+        Ok(())
+    }
+
+    fn hide_surface(&self, app_id: &str, id: &str) -> Result<(), LxAppError> {
+        {
+            let manager = self.manager.lock().unwrap();
+            if manager.graph().role_of(id) == Some(lingxia_surface::Role::Main) {
+                return Err(LxAppError::UnsupportedOperation(
+                    "a main surface cannot be hidden".to_string(),
+                ));
+            }
+            if manager.graph().get(id).is_none() {
+                return Err(LxAppError::InvalidParameter(format!(
+                    "unknown surface: {id}"
+                )));
+            }
+        }
+        self.runtime.hide_surface(app_id, id)?;
+        if self.manager.lock().unwrap().hide(id) {
+            self.commit();
+        }
+        Ok(())
+    }
+
+    fn set_managed_surface_visible(
+        &self,
+        id: &str,
+        visible: bool,
+        edge: Option<&str>,
+    ) -> Result<(), LxAppError> {
+        let parsed_edge = edge.map(parse_surface_edge).transpose()?;
+        // The host handler owns first presentation and may register a declared
+        // surface into this graph. Delegate before mirroring visibility so a
+        // declared-but-never-opened surface is not rejected as unknown.
+        self.runtime
+            .set_managed_surface_visible(id, visible, edge)?;
+        let changed = {
+            let mut manager = self.manager.lock().unwrap();
+            if visible {
+                if let Some(edge) = parsed_edge
+                    && let Some(mut surface) = manager.graph().get(id).cloned()
+                {
+                    surface.placement.edge = Some(edge);
+                    manager.open(surface);
+                }
+                manager.show(id)
+            } else {
+                manager.hide(id)
+            }
+        };
+        if changed {
+            self.commit();
+        }
+        Ok(())
+    }
+
+    fn surface_presentation(&self, id: &str) -> Option<&'static str> {
+        let plan = self.manager.lock().unwrap().presentation_plan();
+        plan.aside_slots
+            .iter()
+            .find(|slot| slot.children.iter().any(|child| child == id))
+            .map(|slot| if slot.overlay { "overlay" } else { "dock" })
     }
 
     /// Mirror a host-declared aside into the core graph, seeding the root `main`
@@ -119,34 +235,11 @@ impl WindowSurfaceController {
     fn register_host_aside(
         &self,
         surface_id: &str,
+        content_id: &str,
         edge: &str,
         root_main: lingxia_surface::Surface,
     ) {
-        use lingxia_surface::{
-            Edge as LxEdge, Placement, Role as LxRole, Surface as LxSurface,
-            SurfaceContent as LxContent, SurfaceOwner as LxOwner, SurfaceState as LxState,
-        };
-        let edge = match edge {
-            "left" | "leading" => LxEdge::Left,
-            "top" => LxEdge::Top,
-            "bottom" => LxEdge::Bottom,
-            _ => LxEdge::Right,
-        };
-        let node = LxSurface {
-            id: surface_id.to_string(),
-            role: LxRole::Aside,
-            content: LxContent::Entry {
-                id: surface_id.to_string(),
-                path: None,
-            },
-            owner: LxOwner::Host,
-            placement: Placement {
-                edge: Some(edge),
-                preferred_size: None,
-            },
-            state: LxState::Mounted,
-            float: None,
-        };
+        let node = host_aside_node(surface_id, content_id, edge);
         {
             let mut manager = self.manager.lock().unwrap();
             if manager.graph().mains().is_empty() {
@@ -186,28 +279,93 @@ impl WindowSurfaceController {
         self.commit();
     }
 
-    /// Report the container width so the core resolves the right `sizeClass`
-    /// (with hysteresis), seeding the root `main` if absent. Commits (and
-    /// returns `true`) only when the `sizeClass` flipped.
+    /// Focus a surface (any role) and commit. Drives aside-slot tab switches:
+    /// the plan's `activeChild` follows the graph focus, so the skin reconciler
+    /// swaps the slot's visible child. Returns `false` for an unknown id.
+    fn focus_surface(&self, surface_id: &str) -> bool {
+        let focused = self.manager.lock().unwrap().set_focus(surface_id);
+        if focused {
+            self.commit();
+        }
+        focused
+    }
+
+    /// Report the container width so the core resolves size class and physical
+    /// aside admission, seeding the root main if absent. Commits whenever the
+    /// render plan changes; returns whether the adaptive size class flipped.
     fn set_width(&self, width: f64, root_main: lingxia_surface::Surface) -> bool {
-        let changed = {
+        self.set_layout_metrics(width, None, root_main)
+    }
+
+    fn set_layout_metrics(
+        &self,
+        width: f64,
+        sidebar_width: Option<f64>,
+        root_main: lingxia_surface::Surface,
+    ) -> bool {
+        let (class_changed, plan_changed) = {
             let mut manager = self.manager.lock().unwrap();
+            let before = manager.presentation_plan();
+            let mut seeded = false;
             if manager.graph().mains().is_empty() {
                 manager.open(root_main);
+                seeded = true;
             }
-            manager.set_width(width)
+            let class_changed = manager.set_width(width);
+            if let Some(sidebar_width) = sidebar_width {
+                manager.set_sidebar_width(sidebar_width);
+            }
+            let after = manager.presentation_plan();
+            (class_changed, seeded || before != after)
         };
-        if changed {
+        if plan_changed {
             self.commit();
-            // The sizeClass flip changed this window's derived adaptive context;
-            // notify so `lx.onSurfaceContext` subscribers see the new context.
-            notify_surface_context_observer(&self.window_id);
         }
-        changed
+        class_changed
+    }
+
+    fn set_sidebar_width(&self, width: f64) -> bool {
+        let plan_changed = {
+            let mut manager = self.manager.lock().unwrap();
+            let before = manager.presentation_plan();
+            manager.set_sidebar_width(width);
+            before != manager.presentation_plan()
+        };
+        if plan_changed {
+            self.commit();
+        }
+        plan_changed
     }
 
     fn presentation_plan(&self) -> lingxia_surface::LayoutPresentationPlan {
         self.manager.lock().unwrap().presentation_plan()
+    }
+}
+
+fn host_aside_node(surface_id: &str, content_id: &str, edge: &str) -> lingxia_surface::Surface {
+    use lingxia_surface::{
+        Edge, Placement, Role, Surface, SurfaceContent, SurfaceOwner, SurfaceState,
+    };
+    let edge = match edge {
+        "left" | "leading" => Edge::Left,
+        "top" => Edge::Top,
+        "bottom" => Edge::Bottom,
+        _ => Edge::Right,
+    };
+    Surface {
+        id: surface_id.to_string(),
+        role: Role::Aside,
+        content: SurfaceContent::Entry {
+            id: content_id.to_string(),
+            path: None,
+        },
+        owner: SurfaceOwner::Host,
+        placement: Placement {
+            edge: Some(edge),
+            preferred_size: None,
+        },
+        state: SurfaceState::Mounted,
+        float: None,
     }
 }
 
@@ -260,6 +418,9 @@ pub struct PageSurface {
     pub page_path: Option<String>,
     pub page_instance_id: Option<String>,
     pub kind: SurfaceKind,
+    pub role: SurfaceRole,
+    pub position: SurfacePosition,
+    pub presentation: String,
 }
 
 /// Automation-facing metadata for a live lxapp-owned surface.
@@ -415,11 +576,14 @@ impl LxApp {
         let mut present_kind = request.kind;
         let mut present_position = request.position;
         let mut present_role = SurfaceRole::default();
+        let mut resolved_id = id.clone();
+        let mut reused = false;
+        let mut overlay = false;
         // Surfaces the core evicted to make room for this one (arbitration
         // replacement). Closed natively after the new surface is presented so
         // the platform never leaks the victim's window/pane.
         let mut evicted: Vec<String> = Vec::new();
-        if let Ok(state) = self.state.lock() {
+        if self.state.lock().is_ok() {
             // Mirror into the Adaptive Surface Layout core (authoritative model).
             let node = self.build_surface_node(
                 &id,
@@ -430,8 +594,33 @@ impl LxApp {
                 owner_pid.as_deref(),
                 request.role,
             );
-            (present_kind, present_position, present_role, evicted) =
-                controller.open_node(node, request.position);
+            let opened = controller.open_node(node, request.position);
+            present_kind = opened.kind;
+            present_position = opened.position;
+            present_role = opened.role;
+            resolved_id = opened.surface_id;
+            evicted = opened.evicted;
+            reused = opened.reused;
+            overlay = opened.overlay;
+        }
+
+        if reused {
+            if !page_instance_id.is_empty() {
+                let _ = dispose_page_instance_by_id(&page_instance_id, CloseReason::Programmatic);
+            }
+            controller.commit();
+            return Ok(PageSurface {
+                id: resolved_id,
+                page_path: None,
+                page_instance_id: None,
+                kind: present_kind,
+                role: present_role,
+                position: present_position,
+                presentation: surface_presentation(present_kind, present_role, overlay).to_string(),
+            });
+        }
+
+        if let Ok(state) = self.state.lock() {
             state.surfaces.lock().unwrap().insert(
                 id.clone(),
                 SurfaceRecord {
@@ -499,10 +688,13 @@ impl LxApp {
         controller.commit();
 
         Ok(PageSurface {
-            id,
+            id: resolved_id,
             page_path,
             page_instance_id: (!page_instance_id.is_empty()).then_some(page_instance_id),
             kind: present_kind,
+            role: present_role,
+            position: present_position,
+            presentation: surface_presentation(present_kind, present_role, overlay).to_string(),
         })
     }
 
@@ -605,6 +797,9 @@ impl LxApp {
             page_path,
             page_instance_id: (!page_instance_id.is_empty()).then_some(page_instance_id),
             kind: SurfaceKind::Window,
+            role: SurfaceRole::Main,
+            position: SurfacePosition::Center,
+            presentation: "window".to_string(),
         })
     }
 
@@ -616,23 +811,34 @@ impl LxApp {
             ));
         }
 
+        let controller = window_controller(PRIMARY_WINDOW, &self.runtime);
         let is_known = self
             .state
             .lock()
             .ok()
             .map(|state| state.surfaces.lock().unwrap().contains_key(id))
-            .unwrap_or(false);
+            .unwrap_or(false)
+            || controller.contains(id);
         if !is_known {
             return Ok(());
         }
 
-        match self.runtime.close_surface(&self.appid, id, reason) {
-            Ok(()) => Ok(()),
-            Err(err) => {
-                self.forget_surface(id);
-                notify_surface_close_observer(id, "failed");
-                Err(err.into())
+        let platform_owner_appid = surface_owner_appid(id).unwrap_or_else(|| self.appid.clone());
+        match self
+            .runtime
+            .close_surface(&platform_owner_appid, id, reason)
+        {
+            Ok(()) => {
+                let mut removed = controller.close(id);
+                if !removed.iter().any(|removed| removed == id) {
+                    removed.push(id.to_string());
+                }
+                for removed_id in removed {
+                    remove_surface_record_from_owner(&removed_id);
+                }
+                Ok(())
             }
+            Err(err) => Err(err.into()),
         }
     }
 
@@ -707,14 +913,19 @@ impl LxApp {
                 "surface id must not be empty".to_string(),
             ));
         }
-        if !self.has_surface(id) {
-            return Err(LxAppError::InvalidParameter(format!(
+        let platform_owner_appid = surface_owner_appid(id).unwrap_or_else(|| self.appid.clone());
+        let controller = window_controller(PRIMARY_WINDOW, &self.runtime);
+        if controller.contains(id) {
+            controller.show_surface(&platform_owner_appid, id)
+        } else if self.has_surface(id) {
+            self.runtime
+                .show_surface(&platform_owner_appid, id)
+                .map_err(Into::into)
+        } else {
+            Err(LxAppError::InvalidParameter(format!(
                 "unknown surface: {id}"
-            )));
+            )))
         }
-        self.runtime
-            .show_surface(&self.appid, id)
-            .map_err(Into::into)
     }
 
     pub fn hide_surface(&self, id: &str) -> Result<(), LxAppError> {
@@ -724,14 +935,19 @@ impl LxApp {
                 "surface id must not be empty".to_string(),
             ));
         }
-        if !self.has_surface(id) {
-            return Err(LxAppError::InvalidParameter(format!(
+        let platform_owner_appid = surface_owner_appid(id).unwrap_or_else(|| self.appid.clone());
+        let controller = window_controller(PRIMARY_WINDOW, &self.runtime);
+        if controller.contains(id) {
+            controller.hide_surface(&platform_owner_appid, id)
+        } else if self.has_surface(id) {
+            self.runtime
+                .hide_surface(&platform_owner_appid, id)
+                .map_err(Into::into)
+        } else {
+            Err(LxAppError::InvalidParameter(format!(
                 "unknown surface: {id}"
-            )));
+            )))
         }
-        self.runtime
-            .hide_surface(&self.appid, id)
-            .map_err(Into::into)
     }
 
     /// Show or hide a host-declared top-level surface (e.g. the AI-chat panel
@@ -750,9 +966,8 @@ impl LxApp {
                 "shell surface id must not be empty".to_string(),
             ));
         }
-        self.runtime
+        window_controller(PRIMARY_WINDOW, &self.runtime)
             .set_managed_surface_visible(id, visible, edge)
-            .map_err(Into::into)
     }
 
     /// Mirror a host-declared aside (e.g. the assistant/terminal attach-panel)
@@ -766,6 +981,23 @@ impl LxApp {
         }
         window_controller(PRIMARY_WINDOW, &self.runtime).register_host_aside(
             surface_id,
+            surface_id,
+            edge,
+            self.root_main_node(),
+        );
+    }
+
+    /// Mirror a host aside whose stable surface id differs from its content
+    /// identity, such as the shell-owned terminal surface.
+    pub fn register_host_aside_content(&self, surface_id: &str, content_id: &str, edge: &str) {
+        let surface_id = surface_id.trim();
+        let content_id = content_id.trim();
+        if surface_id.is_empty() || content_id.is_empty() {
+            return;
+        }
+        window_controller(PRIMARY_WINDOW, &self.runtime).register_host_aside(
+            surface_id,
+            content_id,
             edge,
             self.root_main_node(),
         );
@@ -789,6 +1021,21 @@ impl LxApp {
             return;
         }
         window_controller(PRIMARY_WINDOW, &self.runtime).unregister_host_aside(surface_id);
+    }
+
+    pub fn shell_surface_presentation(&self, surface_id: &str) -> Option<&'static str> {
+        window_controller(PRIMARY_WINDOW, &self.runtime).surface_presentation(surface_id)
+    }
+
+    /// Focus a surface in the window graph (aside-slot tab switch). The commit
+    /// pushes a plan whose slot `activeChild` follows the focus, and the skin
+    /// reconciler swaps the visible child. Returns `false` for an unknown id.
+    pub fn focus_shell_surface(&self, surface_id: &str) -> bool {
+        let surface_id = surface_id.trim();
+        if surface_id.is_empty() {
+            return false;
+        }
+        window_controller(PRIMARY_WINDOW, &self.runtime).focus_surface(surface_id)
     }
 
     /// Flip a host-declared top-level surface's visibility by its `ui` id.
@@ -831,6 +1078,71 @@ impl LxApp {
         // — not just the core state. The controller commits internally only when
         // the sizeClass flips.
         window_controller(PRIMARY_WINDOW, &self.runtime).set_width(width, self.root_main_node())
+    }
+
+    /// Atomically report window and sidebar widths so admission never
+    /// publishes a plan calculated with one stale metric.
+    pub fn set_surface_layout_metrics(&self, width: f64, sidebar_width: f64) -> bool {
+        window_controller(PRIMARY_WINDOW, &self.runtime).set_layout_metrics(
+            width,
+            Some(sidebar_width),
+            self.root_main_node(),
+        )
+    }
+
+    /// Report the sidebar's current logical width for physical aside
+    /// admission. Desktop shells update it on resize/collapse; other hosts
+    /// leave the zero default.
+    pub fn set_surface_sidebar_width(&self, width: f64) -> bool {
+        window_controller(PRIMARY_WINDOW, &self.runtime).set_sidebar_width(width)
+    }
+
+    /// Report this lxapp presentation's actual viewport. Unlike shell width,
+    /// this is measured after sidebar/navbar/aside layout and therefore drives
+    /// the content-facing `lx.onSurfaceContext` size class.
+    pub fn set_surface_viewport(&self, width: f64, height: f64) -> bool {
+        if !width.is_finite() || !height.is_finite() || width <= 0.0 || height <= 0.0 {
+            return false;
+        }
+        let viewports = SURFACE_VIEWPORTS.get_or_init(|| std::sync::Mutex::new(HashMap::new()));
+        let changed = if let Ok(mut viewports) = viewports.lock() {
+            let previous = viewports
+                .get(&self.appid)
+                .filter(|context| context.session_id == self.session_id());
+            let size_class = lingxia_surface::SizeClass::resolve(
+                previous.map(|context| context.size_class),
+                width,
+                lingxia_surface::DEFAULT_HYSTERESIS,
+            );
+            let next = SurfaceViewportContext {
+                session_id: self.session_id(),
+                width,
+                height,
+                size_class,
+            };
+            let changed = previous.is_none_or(|previous| {
+                previous.width != width
+                    || previous.height != height
+                    || previous.size_class != size_class
+            });
+            viewports.insert(self.appid.clone(), next);
+            changed
+        } else {
+            false
+        };
+        if changed {
+            notify_surface_context_observer(&self.appid);
+        }
+        changed
+    }
+
+    pub fn surface_viewport(&self) -> Option<(f64, f64, lingxia_surface::SizeClass)> {
+        SURFACE_VIEWPORTS
+            .get()
+            .and_then(|viewports| viewports.lock().ok())
+            .and_then(|viewports| viewports.get(&self.appid).copied())
+            .filter(|context| context.session_id == self.session_id())
+            .map(|context| (context.width, context.height, context.size_class))
     }
 
     /// The app's root primary, represented as a `main` surface (id = appid).
@@ -1011,6 +1323,49 @@ fn present_params_for_role(
     }
 }
 
+fn parse_surface_edge(edge: &str) -> Result<lingxia_surface::Edge, LxAppError> {
+    match edge.trim() {
+        "left" | "leading" => Ok(lingxia_surface::Edge::Left),
+        "right" | "trailing" => Ok(lingxia_surface::Edge::Right),
+        "top" => Ok(lingxia_surface::Edge::Top),
+        "bottom" => Ok(lingxia_surface::Edge::Bottom),
+        other => Err(LxAppError::InvalidParameter(format!(
+            "unknown surface edge: {other}"
+        ))),
+    }
+}
+
+fn surface_presentation(kind: SurfaceKind, role: SurfaceRole, overlay: bool) -> &'static str {
+    match (role, kind, overlay) {
+        (SurfaceRole::Main, _, _) => "main",
+        (SurfaceRole::Aside, _, true) => "overlay",
+        (SurfaceRole::Aside, _, false) => "dock",
+        (SurfaceRole::Float, _, _) => "popover",
+    }
+}
+
+fn surface_owner_appid(id: &str) -> Option<String> {
+    crate::lxapp::list_lxapps()
+        .into_iter()
+        .find(|info| crate::lxapp::try_get(&info.appid).is_some_and(|owner| owner.has_surface(id)))
+        .map(|info| info.appid)
+}
+
+fn remove_surface_record_from_owner(id: &str) -> bool {
+    let Some(appid) = surface_owner_appid(id) else {
+        return false;
+    };
+    crate::lxapp::try_get(&appid)
+        .and_then(|owner| {
+            owner
+                .state
+                .lock()
+                .ok()
+                .and_then(|state| state.surfaces.lock().ok()?.remove(id))
+        })
+        .is_some()
+}
+
 fn finite_or_nan(value: Option<f64>) -> f64 {
     match value {
         Some(value) if value.is_finite() => value,
@@ -1094,5 +1449,17 @@ mod tests {
         assert_eq!(callback.target, "https://example.com/login");
         assert!(callback.url_callback);
         assert!(callback.ephemeral_web_data);
+    }
+
+    #[test]
+    fn host_aside_keeps_surface_identity_separate_from_native_content() {
+        let surface = host_aside_node("shell:terminal", "terminal", "bottom");
+
+        assert_eq!(surface.id, "shell:terminal");
+        assert_eq!(
+            surface.content.slot_kind(),
+            lingxia_surface::SlotKind::Native
+        );
+        assert_eq!(surface.placement.edge, Some(lingxia_surface::Edge::Bottom));
     }
 }

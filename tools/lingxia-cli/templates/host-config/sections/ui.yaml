@@ -2,16 +2,20 @@
 # UI declaration: one surface per entry. You declare "what + relationship";
 # the Host derives the platform form (window/panel/sidebar/tab/tray) by screen
 # size — no macos: / windows: blocks.
-#   id      unique id; equals the appId when render: lxapp (opened by id)
-#   render  lxapp (web page) | native (host-native, e.g. the built-in terminal)
+#
+# Each entry starts with its content key (exactly one):
+#   lxapp   an lxapp, by appId          roles: main | aside | float
+#   url     an in-app browser page      roles: main | aside (requires browser:)
+#   native  a host capability           roles: aside (e.g. the built-in terminal)
+# Other fields:
 #   role    main (switchable primary) | aside (docked companion) | float (popup)
-#   edge    aside dock edge: left | right | top | bottom (default right)
+#   edge    aside dock edge: left | right | top | bottom (default right;
+#           terminal defaults to bottom)
+#   size    aside preferred size hint, e.g. { width: 320 }
 #   launch  open on start; at most one main has launch (none = launch from tray)
-#   entry   sidebar (sidebar item) / tray (menu bar · tray); icon is a
-#           repo-relative path, converted to the native format at build
+#   tray    menu bar (macOS) / system tray (Windows) entry; required on float
 surfaces:
-  - id: {{HOME_APP_ID}}      # main screen: your lxapp
-    render: lxapp
+  - lxapp: {{HOME_APP_ID}}   # main screen: your lxapp
     role: main
     launch: true
     # tray:                  # off by default; uncomment for a menu-bar / tray app
@@ -21,27 +25,22 @@ surfaces:
     #   # exclusive: true     # menu-bar / tray only, no dock / taskbar icon
 
   # Right-edge companion example (e.g. an AI assistant). The referenced lxapp
-  # must be provided by the runtime / update flow.
-  # - id: assistant
-  #   render: lxapp
+  # must be provided by the runtime / update flow. Persistent sidebar entries
+  # are declared at runtime via the shell activator API, not in YAML.
+  # - lxapp: assistant
   #   role: aside
   #   edge: right            # left | right | top | bottom
-  #   sidebar:               # sidebar entry; click toggles this panel
-  #     icon: icons/chat.svg
-  #     # section: bottom     # pin to the sidebar footer (system/utility entries)
+  #   size: { width: 320 }
 
-  # Built-in terminal (requires capabilities.terminal: true). The icon uses the
-  # host default — omit `icon`.
-  # - id: terminal
-  #   render: native
+  # Built-in terminal (requires capabilities.terminal: true).
+  # - native: terminal
   #   role: aside
   #   edge: bottom           # top | bottom
   #   platforms: [macos, windows]   # availability filter: desktop only
-  #   sidebar: {}
 
   # Tray popover (role: float requires a tray; clicking the tray icon opens it
   # as an auto-dismissing popover anchored under the icon).
-  # - id: panel
+  # - lxapp: panel
   #   role: float
   #   tray:
   #     # icon: icons/status.svg

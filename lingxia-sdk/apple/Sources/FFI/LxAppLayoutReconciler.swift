@@ -54,6 +54,7 @@ enum LxAppLayoutReconciler {
         let mains: [String]
         let activeMainId: String?
         let asides: [PlanAside]
+        let asideSlots: [PlanAsideSlot]?
         let floats: [PlanFloat]
         let tree: LxAppJSONValue?
     }
@@ -62,6 +63,15 @@ enum LxAppLayoutReconciler {
         let id: String
         let edge: String?
         let preferredSize: Double?
+    }
+
+    private struct PlanAsideSlot: Decodable {
+        let kind: String
+        let edge: String?
+        let children: [String]
+        let activeChild: String?
+        let visible: Bool
+        let overlay: Bool
     }
 
     private struct PlanFloat: Decodable {
@@ -115,21 +125,68 @@ enum LxAppLayoutReconciler {
         // also lists compact full-screen asides so mobile skins can keep them
         // in their desired set; macOS only docks them when the split form says
         // there is a side-by-side container.
+        //
+        // With slots the aside area holds ONE region per content kind:
+        // only each visible slot's active child docks; sibling children stay
+        // registered-but-hidden and switch via the slot's header tab strip.
         var desired: [String: PanelPosition] = [:]
-        if plan.splitForm != "fullScreen" {
-            for aside in plan.asides {
-                desired[aside.id] = panelPosition(for: aside.edge)
+        var overlayIds = Set<String>()
+        let slots = plan.asideSlots ?? []
+        if slots.isEmpty {
+            if plan.splitForm != "fullScreen" {
+                for aside in plan.asides {
+                    desired[aside.id] = panelPosition(for: aside.edge)
+                }
+            }
+        } else {
+            for slot in slots where slot.visible {
+                let projectedOverlay = slot.overlay || plan.splitForm == "fullScreen"
+                if slot.kind == "browser" {
+                    // Browser-slot children live inside the ONE docked browser
+                    // (its own title tabs), not the panel registry. Keep every
+                    // child desired because only the anchor owns the panel;
+                    // the browser coordinator selects the active tab itself.
+                    for child in slot.children {
+                        desired[child] = panelPosition(for: slot.edge)
+                    }
+                    if projectedOverlay,
+                       let anchor = shell.browserCoordinator.activeDockedBrowser?.anchorSurfaceId {
+                        overlayIds.insert(anchor)
+                    }
+                    continue
+                }
+                guard let active = slot.activeChild ?? slot.children.last else { continue }
+                desired[active] = panelPosition(for: slot.edge)
+                if projectedOverlay { overlayIds.insert(active) }
             }
         }
         let desiredIds = Set(desired.keys)
+
+        // Ids taking part in an INTRA-SLOT tab switch: some sibling of the
+        // slot's active child is currently on screen, so the region itself
+        // stays put — hide/show must be instant, not a slide (the slide is the
+        // "a new aside docks" affordance, wrong for switching tabs in place).
+        let visibleNow = workspace.visiblePanelIds()
+        var instantIds = Set<String>()
+        for slot in slots where slot.visible && slot.kind != "browser" {
+            guard let active = slot.activeChild ?? slot.children.last else { continue }
+            if slot.children.contains(where: { $0 != active && visibleNow.contains($0) }) {
+                instantIds.formUnion(slot.children)
+            }
+        }
 
         // Undock asides the core removed. The placed-aside set is derived from
         // the view-registry itself: a visible registered panel is, by
         // construction, one the reconciler placed (every registered panel is an
         // aside, and the reconciler is the sole code that shows asides). Hide
         // any such panel that the core no longer wants.
-        for id in workspace.visiblePanelIds().subtracting(desiredIds) {
-            shell.hidePanel(id: id)
+        for id in visibleNow.subtracting(desiredIds) {
+            let intraSlotSwitch = instantIds.contains(id)
+            // On a switch the sibling re-occupies the region in this same
+            // pass: skip the card-edge update so the main area's webview is
+            // not resized out and back (a visible flash).
+            shell.hidePanel(id: id, animated: !intraSlotSwitch, updateCardEdges: !intraSlotSwitch)
+            workspace.setPanelFullscreen(id: id, enabled: false)
         }
 
         // Place each desired aside at the tree's edge and show it. Content paths
@@ -140,6 +197,7 @@ enum LxAppLayoutReconciler {
 
             let atCorrectEdge = workspace.panelPosition(id: id) == edge
             let visible = workspace.isPanelVisible(id: id)
+            workspace.setPanelFullscreen(id: id, enabled: overlayIds.contains(id))
 
             // Idempotent fast path: already shown at the right edge — leave it
             // exactly as is (no hide/show/re-place → no flicker, no empty paint).
@@ -154,8 +212,46 @@ enum LxAppLayoutReconciler {
                 workspace.repositionPanel(id: id, to: edge)
             }
             if !workspace.isPanelVisible(id: id) {
-                shell.showPanel(id: id)
+                // Show immediately: the panel is the click's feedback. Its
+                // container spins a loading indicator on light paper until
+                // the content view lands, so a cold lxapp boot reads as
+                // progress, not as a dead click or a dark flash.
+                shell.showPanel(id: id, animated: !instantIds.contains(id))
             }
+        }
+
+        // Slot tab pass — bind each visible slot's header strip onto the panel
+        // presenting it. Selecting a tab focuses that child in the core graph
+        // (the next plan swaps the visible child); closing destroys that child.
+        // The strip remains visible for a single child as its close affordance.
+        for slot in slots where slot.visible && slot.kind == "lxapp" {
+            guard let active = slot.activeChild ?? slot.children.last,
+                  workspace.isPanelRegistered(id: active) else { continue }
+            // An lxapp aside's surface id IS its app id — resolve the
+            // human-facing app name + icon for the tab; fall back to the raw id.
+            let tabs = slot.children.map { child -> AsideSlotTab in
+                let info = getLxAppInfo(child)
+                let name = info.app_name.toString()
+                let icon = info.icon.toString()
+                return AsideSlotTab(
+                    id: child,
+                    title: name.isEmpty ? child : name,
+                    iconPath: icon.isEmpty ? nil : icon
+                )
+            }
+            let focusAppId = shell.attachedMainAppId ?? active
+            workspace.setSlotTabs(
+                panelId: active,
+                tabs: tabs,
+                activeId: active,
+                onSelect: { childId in
+                    guard childId != active else { return }
+                    _ = focusSurface(focusAppId, childId)
+                },
+                onClose: { childId in
+                    _ = LxAppMacAppUIRuntime.handleAsideSlotClose(surfaceId: childId)
+                }
+            )
         }
 
         // Float pass — popups above the layout. The reconciler is the single

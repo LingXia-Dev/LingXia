@@ -93,3 +93,8 @@ date:
 # App Update
 update:
   downloading: "正在下载更新"
+
+# Host shell
+shell:
+  pin_limit_title: "侧栏固定项"
+  pin_limit_message: "最多可固定 8 项。请先取消一项，再添加新的固定项。"

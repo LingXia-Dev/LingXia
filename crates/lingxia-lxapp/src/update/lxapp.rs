@@ -528,7 +528,9 @@ pub async fn prepare_lxapp_open(
         LxAppError::ResourceNotFound(format!("home lxapp '{home_appid}' not found"))
     })?;
 
+    // First install and any mandatory update complete before presentation.
     ensure_first_install(&home_lxapp, target_appid, release_type).await?;
+    // Server-mandated updates are admission gates, not freshness hints.
     ensure_force_update_for_installed(&home_lxapp, target_appid, release_type).await?;
     Ok(())
 }

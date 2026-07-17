@@ -2,8 +2,6 @@
 
 use std::sync::Arc;
 
-use lingxia_windows_contract::WindowsPanelPosition;
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[allow(dead_code)]
 pub enum WindowsShellTabBarPosition {
@@ -39,7 +37,7 @@ pub struct WindowsShellAuxiliaryItemLayout {
     pub id: String,
     pub title: String,
     pub active: bool,
-    /// Compact pinned-site shortcut rendered in the sidebar icon grid.
+    /// Compact pinned lxapp/web shortcut rendered in the sidebar icon grid.
     pub pinned: bool,
     /// Whether the row exposes the trailing close affordance. Pinned bookmark
     /// shortcuts are independent from open tabs and therefore are not closed.
@@ -67,6 +65,14 @@ pub struct WindowsShellTabBarLayout {
     /// bundled LingXia mark.
     pub app_icon_path: String,
     pub group_id: String,
+    /// The lxapp group is the selected main. Browser selection is independent,
+    /// so presenting a web tab clears this highlight without collapsing it.
+    pub group_active: bool,
+    /// Home owns the host and cannot be closed from its group header.
+    pub group_closable: bool,
+    /// Position of the expanded lxapp group among the unpinned top-level
+    /// lxapp/web rows. This keeps the active group in the shared tab order.
+    pub group_order_index: usize,
     pub color: u32,
     pub selected_color: u32,
     pub background_color: u32,
@@ -79,7 +85,18 @@ pub struct WindowsShellTabBarLayout {
     /// Sidebar collapsed to an icon-only rail (the macOS first-collapse
     /// state). Ignored when `collapsed` is set.
     pub icon_rail: bool,
+    /// The lxapp explicitly hid its tabbar. Desktop keeps the group and the
+    /// surrounding sidebar visible, but removes the child rows and disables
+    /// the chevron until `showTabBar()` clears this state.
+    pub items_api_hidden: bool,
     pub items_collapsed: bool,
+    /// Height reserved at the sidebar bottom for adaptive activator rows.
+    /// Zero when no activators are declared.
+    pub activator_footer_height: i32,
+    /// Pixel offset of the scrollable sidebar navigation region.
+    pub main_scroll_offset: i32,
+    /// First visual activator row rendered inside the capped footer/rail.
+    pub activator_scroll_row: usize,
     pub auxiliary_items: Vec<WindowsShellAuxiliaryItemLayout>,
     pub show_auxiliary_add: bool,
     pub header_actions: Vec<WindowsShellHeaderActionLayout>,
@@ -112,8 +129,8 @@ pub struct WindowsShellPanelActivatorLayout {
     pub id: String,
     pub label: String,
     pub icon_path: String,
-    pub position: WindowsPanelPosition,
     pub active: bool,
+    pub disabled: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]

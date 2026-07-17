@@ -2,12 +2,20 @@
 import AppKit
 import CLingXiaRustAPI
 
+@MainActor
+func showShellPinLimitAlert() {
+    let alert = NSAlert()
+    alert.alertStyle = .informational
+    alert.messageText = L10n.string("lx_shell_pin_limit_title")
+    alert.informativeText = L10n.string("lx_shell_pin_limit_message")
+    alert.addButton(withTitle: L10n.string("lx_common_ok"))
+    alert.runModal()
+}
+
 /// Sidebar bookmarks model — decoded from `browserBookmarksSnapshotJson()`.
 ///
-/// Three tiers: bookmarks are the archive (managed in the webui manager
-/// page), pinned bookmarks are the high-frequency subset rendered as the
-/// sidebar's top favicon grid (above lxapp tabs), and browser tabs are the
-/// ephemeral session below. Invariant: pinned ⊆ bookmarked.
+/// Bookmarks are the archive managed in the web UI. Sidebar Pin identity and
+/// order live separately in the shared shell store.
 struct SidebarBookmarksSnapshot: Decodable {
     struct Group: Decodable {
         let id: String
@@ -19,17 +27,12 @@ struct SidebarBookmarksSnapshot: Decodable {
         let url: String
         let title: String
         let groupId: String?
-        let pinned: Bool?
-
-        var isPinned: Bool { pinned ?? false }
     }
 
     let groups: [Group]
     let entries: [Entry]
 
     static let empty = SidebarBookmarksSnapshot(groups: [], entries: [])
-
-    var pinnedEntries: [Entry] { entries.filter { $0.isPinned } }
 
     static func loadFromHost() -> SidebarBookmarksSnapshot {
         let json = browserBookmarksSnapshotJson().toString()
@@ -336,4 +339,89 @@ func jsonEscape(_ s: String) -> String {
     }
     return out
 }
+
+/// A pinned LXAPP tile in the sidebar's pin grid — the lxapp counterpart of
+/// SidebarPinTileView (web pins). Click opens/focuses the lxapp as a MAIN;
+/// the Pin store itself lives in `lingxia-shell`.
+@MainActor
+final class LxappPinTileView: NSView {
+    let appId: String
+    var onUnpin: (() -> Void)?
+
+    private let background = NSView()
+    private let iconView = NSImageView()
+
+    init(appId: String) {
+        self.appId = appId
+        super.init(frame: .zero)
+        translatesAutoresizingMaskIntoConstraints = false
+        wantsLayer = true
+
+        background.translatesAutoresizingMaskIntoConstraints = false
+        background.wantsLayer = true
+        background.layer?.cornerRadius = SidebarPinTileView.Layout.cornerRadius
+        background.layer?.backgroundColor = NSColor.labelColor.withAlphaComponent(0.06).cgColor
+        addSubview(background)
+
+        let info = getLxAppInfo(appId)
+        let iconPath = info.icon.toString()
+        let icon = (iconPath.isEmpty ? nil : NSImage(contentsOfFile: iconPath))
+            ?? Bundle.lingxiaResources.url(
+                forResource: "lxapp_default", withExtension: "png", subdirectory: "icons")
+                .flatMap { NSImage(contentsOf: $0) }
+        iconView.image = icon
+        iconView.imageScaling = .scaleProportionallyDown
+        iconView.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(iconView)
+
+        let name = info.app_name.toString()
+        toolTip = name.isEmpty ? appId : name
+        setAccessibilityElement(true)
+        setAccessibilityRole(.button)
+        setAccessibilityLabel(toolTip ?? appId)
+
+        NSLayoutConstraint.activate([
+            widthAnchor.constraint(equalToConstant: SidebarPinTileView.Layout.size),
+            heightAnchor.constraint(equalToConstant: SidebarPinTileView.Layout.size),
+            background.topAnchor.constraint(equalTo: topAnchor),
+            background.leadingAnchor.constraint(equalTo: leadingAnchor),
+            background.trailingAnchor.constraint(equalTo: trailingAnchor),
+            background.bottomAnchor.constraint(equalTo: bottomAnchor),
+            iconView.centerXAnchor.constraint(equalTo: centerXAnchor),
+            iconView.centerYAnchor.constraint(equalTo: centerYAnchor),
+            iconView.widthAnchor.constraint(equalToConstant: SidebarPinTileView.Layout.iconSize + 4),
+            iconView.heightAnchor.constraint(equalToConstant: SidebarPinTileView.Layout.iconSize + 4),
+        ])
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+
+    override func mouseDown(with event: NSEvent) {
+        _ = shellOpenLxappMain(appId)
+    }
+
+    override func rightMouseDown(with event: NSEvent) {
+        let menu = NSMenu()
+        let unpin = NSMenuItem(
+            title: L10n.string("lx_browser_unpin"),
+            action: #selector(unpinClicked),
+            keyEquivalent: ""
+        )
+        unpin.target = self
+        menu.addItem(unpin)
+        NSMenu.popUpContextMenu(menu, with: event, for: self)
+    }
+
+    @objc private func unpinClicked() {
+        _ = shellSetPinned("lxapp", appId, false)
+        onUnpin?()
+    }
+
+    override var mouseDownCanMoveWindow: Bool { false }
+    override func accessibilityPerformPress() -> Bool {
+        _ = shellOpenLxappMain(appId)
+        return true
+    }
+}
+
 #endif

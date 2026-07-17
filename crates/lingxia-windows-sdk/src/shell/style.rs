@@ -1,4 +1,14 @@
-pub(super) const SHELL_PANEL_PADDING: i32 = 6;
+/// Side and bottom clearance around the elevated desktop content card. Its
+/// top edge stays flush with the first sidebar row below the caption band.
+pub(super) const SHELL_CONTENT_INSET: i32 = 12;
+
+/// Separation belongs only between independently resizable main/aside panes.
+pub(super) const SHELL_PANEL_GAP: i32 = 8;
+
+/// Radius of the elevated content wrapper and its shadow. Windowed WebView2
+/// content remains rectangular, but the wrapper is still visible while a
+/// surface is loading and around native/attached regions.
+pub(super) const SHELL_CONTENT_RADIUS: i32 = 10;
 
 pub(super) const SHELL_PANEL_RADIUS: i32 = 14;
 
@@ -11,14 +21,22 @@ pub(super) const SHELL_BADGE_RED: u32 = 0xff3b30;
 pub(super) struct ShellPalette {
     pub window_background: u32,
     pub panel_background: u32,
+    /// Quiet selection wash used by sidebar rows. Keeping this distinct from
+    /// the content-card white avoids stacking bright cards inside the rail.
+    pub selection_background: u32,
+    /// Low-contrast wash for an active top-level lxapp group. Its selected
+    /// tabbar child remains the stronger white card, matching macOS hierarchy.
+    pub group_active_background: u32,
     pub sidebar_background: u32,
     pub text_primary: u32,
     pub text_muted: u32,
     pub accent: u32,
     pub divider: u32,
-    /// Inset control surface (URL pill / input field) that must read against a
-    /// `panel_background` card.
+    /// Inset control surface (phone URL pill / input field) that reads against
+    /// a `panel_background` card.
     pub control_surface: u32,
+    /// Quiet desktop address capsule on the shell's first layer.
+    pub address_background: u32,
     pub frame_button_icon: u32,
     pub sidebar_header_text: u32,
 }
@@ -31,25 +49,31 @@ pub(super) fn shell_palette() -> ShellPalette {
         ShellPalette {
             window_background: 0x202020,
             panel_background: 0x2b2b2b,
+            selection_background: 0x34333a,
+            group_active_background: 0x343434,
             sidebar_background: 0x202020,
             text_primary: 0xf3f3f3,
             text_muted: 0x9aa0a6,
             accent,
             divider: 0x383838,
             control_surface: 0x3a3a3a,
+            address_background: 0x2a2a2a,
             frame_button_icon: 0xe6e6e6,
             sidebar_header_text: 0xb0b4ba,
         }
     } else {
         ShellPalette {
-            window_background: 0xe7e8eb,
+            window_background: 0xdad6e4,
             panel_background: 0xffffff,
-            sidebar_background: 0xe7e8eb,
+            selection_background: 0xf7f5fb,
+            group_active_background: 0xcfccd6,
+            sidebar_background: 0xdad6e4,
             text_primary: 0x111827,
             text_muted: 0x667085,
             accent,
-            divider: 0xd6d9de,
+            divider: 0xc7c2d2,
             control_surface: 0xf3f4f6,
+            address_background: 0xe5e2ec,
             frame_button_icon: 0x1f2937,
             sidebar_header_text: 0x4f5661,
         }

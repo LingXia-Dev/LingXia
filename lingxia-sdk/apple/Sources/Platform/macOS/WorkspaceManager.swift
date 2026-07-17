@@ -127,6 +127,13 @@ private class PanelSlot {
     /// vertical extent, out to the window edge) while fullscreen.
     var sideFullscreenConstraints: [NSLayoutConstraint] = []
 
+    /// Aside-slot header tab strip. Mounted above `containerView`;
+    /// zero-height while the slot has at most one child.
+    let slotTabStrip = AsideSlotTabStripView()
+    private var slotStripHeight: NSLayoutConstraint?
+    /// Centered spinner shown until the first content view attaches.
+    private let loadingIndicator = NSProgressIndicator()
+
     var isVisible: Bool = false
     var currentSize: CGFloat
     var isFullscreen: Bool = false
@@ -150,24 +157,57 @@ private class PanelSlot {
 
         containerView = NSView()
         containerView.wantsLayer = true
+        // Fixed light paper while content loads (matches the main card): the
+        // blur material alone reads near-black in dark mode.
+        containerView.layer?.backgroundColor = NSColor.white.cgColor
         containerView.translatesAutoresizingMaskIntoConstraints = false
+
+        // Loading feedback for a cold first open: the panel docks on click,
+        // and this spinner owns the paper until the content view lands
+        // (the content attach clears the container's subviews).
+        loadingIndicator.style = .spinning
+        loadingIndicator.controlSize = .small
+        loadingIndicator.isDisplayedWhenStopped = false
+        loadingIndicator.translatesAutoresizingMaskIntoConstraints = false
+        loadingIndicator.startAnimation(nil)
+        containerView.addSubview(loadingIndicator)
 
         resizeHandle = PanelResizeHandle(position: config.position)
         resizeHandle.translatesAutoresizingMaskIntoConstraints = false
 
         shadowWrapper.addSubview(blurView)
+        slotTabStrip.translatesAutoresizingMaskIntoConstraints = false
+        blurView.addSubview(slotTabStrip)
         blurView.addSubview(containerView)
 
+        let stripHeight = slotTabStrip.heightAnchor.constraint(equalToConstant: 0)
+        slotStripHeight = stripHeight
         NSLayoutConstraint.activate([
             blurView.topAnchor.constraint(equalTo: shadowWrapper.topAnchor),
             blurView.leadingAnchor.constraint(equalTo: shadowWrapper.leadingAnchor),
             blurView.trailingAnchor.constraint(equalTo: shadowWrapper.trailingAnchor),
             blurView.bottomAnchor.constraint(equalTo: shadowWrapper.bottomAnchor),
-            containerView.topAnchor.constraint(equalTo: blurView.topAnchor),
+            slotTabStrip.topAnchor.constraint(equalTo: blurView.topAnchor),
+            slotTabStrip.leadingAnchor.constraint(equalTo: blurView.leadingAnchor),
+            slotTabStrip.trailingAnchor.constraint(equalTo: blurView.trailingAnchor),
+            stripHeight,
+            containerView.topAnchor.constraint(equalTo: slotTabStrip.bottomAnchor),
             containerView.leadingAnchor.constraint(equalTo: blurView.leadingAnchor),
             containerView.trailingAnchor.constraint(equalTo: blurView.trailingAnchor),
             containerView.bottomAnchor.constraint(equalTo: blurView.bottomAnchor),
+            loadingIndicator.centerXAnchor.constraint(equalTo: containerView.centerXAnchor),
+            loadingIndicator.centerYAnchor.constraint(equalTo: containerView.centerYAnchor),
         ])
+    }
+
+    /// Show the slot strip whenever the slot has content — a single child still
+    /// shows its tab (the strip is the slot's management surface: switch AND
+    /// close live here, and the region doesn't reflow when a sibling arrives).
+    func setSlotTabs(_ tabs: [AsideSlotTab], activeId: String?) {
+        slotTabStrip.update(tabs: tabs, activeId: activeId)
+        let wantsStrip = !tabs.isEmpty
+        slotTabStrip.isHidden = !wantsStrip
+        slotStripHeight?.constant = wantsStrip ? AsideSlotTabStripView.stripHeight : 0
     }
 
     func applyShadow(for position: PanelPosition) {
@@ -255,12 +295,27 @@ class WorkspaceManager: NSObject {
     /// below native navigation chrome inside the main card.
     private weak var toolbarRef: NSView?
 
+    /// Cold-boot feedback for the main card: spins on the paper until the
+    /// first webview attaches on top of it.
+    private let mainLoadingIndicator = NSProgressIndicator()
+
     override init() {
         super.init()
         workspaceView.wantsLayer = true
         contentContainer.wantsLayer = true
         contentContainer.translatesAutoresizingMaskIntoConstraints = false
         workspaceView.addSubview(contentContainer)
+
+        mainLoadingIndicator.style = .spinning
+        mainLoadingIndicator.controlSize = .small
+        mainLoadingIndicator.isDisplayedWhenStopped = false
+        mainLoadingIndicator.translatesAutoresizingMaskIntoConstraints = false
+        mainLoadingIndicator.startAnimation(nil)
+        contentContainer.addSubview(mainLoadingIndicator)
+        NSLayoutConstraint.activate([
+            mainLoadingIndicator.centerXAnchor.constraint(equalTo: contentContainer.centerXAnchor),
+            mainLoadingIndicator.centerYAnchor.constraint(equalTo: contentContainer.centerYAnchor),
+        ])
     }
 
     /// Must be called once by WindowController after the sidebar is placed.
@@ -305,6 +360,11 @@ class WorkspaceManager: NSObject {
 
         let slot = PanelSlot(config: config, cornerRadius: Self.cornerRadius)
         slot.applyShadow(for: config.position)
+        // Asides restore geometry only (never content): a user-resized size
+        // survives restarts, clamped against the current layout.
+        if let saved = LxAppShellPersistence.asideSize(panelId: config.id) {
+            slot.currentSize = clampedPanelSize(saved, for: config.position, excluding: config.id)
+        }
         panels[config.id] = slot
         lxWorkspaceStdoutLog(
             "registerPanel new id=\(config.id) position=\(config.position.rawValue) defaultSize=\(String(format: "%.1f", config.defaultSize)) currentSize=\(String(format: "%.1f", slot.currentSize))"
@@ -332,8 +392,24 @@ class WorkspaceManager: NSObject {
         return slot.containerView
     }
 
+    /// Bind an aside slot's header tabs onto the panel currently presenting
+    /// that slot. `tabs` follow open order and remain visible for one child,
+    /// because the strip owns the slot's close affordance.
+    func setSlotTabs(
+        panelId: String,
+        tabs: [AsideSlotTab],
+        activeId: String?,
+        onSelect: @escaping (String) -> Void,
+        onClose: @escaping (String) -> Void
+    ) {
+        guard let slot = panels[panelId] else { return }
+        slot.slotTabStrip.onSelect = onSelect
+        slot.slotTabStrip.onClose = onClose
+        slot.setSlotTabs(tabs, activeId: activeId)
+    }
+
     /// Show a panel, animating it in and shrinking the WebView card.
-    func showPanel(id: String) {
+    func showPanel(id: String, animated: Bool = true) {
         guard let slot = panels[id] else {
             lxWorkspaceStdoutLog("showPanel missing id=\(id)")
             return
@@ -379,10 +455,13 @@ class WorkspaceManager: NSObject {
         if slot.isFullscreen {
             bringPanelToFront(slot)
         }
-        slot.shadowWrapper.layer?.transform = CATransform3DMakeTranslation(offset.x, offset.y, 0)
+        // Slide in only for a NEW dock; an intra-slot tab switch is instant.
+        if animated {
+            slot.shadowWrapper.layer?.transform = CATransform3DMakeTranslation(offset.x, offset.y, 0)
+        }
 
         NSAnimationContext.runAnimationGroup { ctx in
-            ctx.duration = Self.animationDuration
+            ctx.duration = animated ? Self.animationDuration : 0
             ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
             ctx.allowsImplicitAnimation = true
             slot.shadowWrapper.layer?.transform = CATransform3DIdentity
@@ -404,7 +483,9 @@ class WorkspaceManager: NSObject {
     }
 
     /// Hide a panel, animating it out and restoring the WebView card's space.
-    func hidePanel(id: String) {
+    /// `updateCardEdges: false` when a sibling takes the space in the same
+    /// pass (intra-slot tab switch) — the card must not expand and re-shrink.
+    func hidePanel(id: String, animated: Bool = true, updateCardEdges: Bool = true) {
         guard let slot = panels[id], slot.isVisible else {
             lxWorkspaceStdoutLog("hidePanel ignored id=\(id)")
             return
@@ -412,7 +493,10 @@ class WorkspaceManager: NSObject {
         lxWorkspaceStdoutLog(
             "hidePanel start id=\(id) position=\(slot.config.position.rawValue) wrapperFrame=\(lxWorkspaceFormatRect(slot.shadowWrapper.frame))"
         )
-        hidePanelInternal(id: id, duration: Self.animationDuration, updateCardEdges: true)
+        hidePanelInternal(
+            id: id,
+            duration: animated ? Self.animationDuration : 0,
+            updateCardEdges: updateCardEdges)
         os_log("Panel hidden: %@", log: Self.log, type: .info, id)
     }
 
@@ -582,6 +666,7 @@ class WorkspaceManager: NSObject {
         )
         slot.currentSize = clamped
         slot.sizeConstraint?.constant = clamped
+        LxAppShellPersistence.setAsideSize(clamped, panelId: id)
         relayoutSideChain(slot.config.position)
         onCardEdgesChanged?(cardTrailingInset(), cardBottomInset(), cardTopInset(), cardLeadingInset())
         overlayParent?.layoutSubtreeIfNeeded()

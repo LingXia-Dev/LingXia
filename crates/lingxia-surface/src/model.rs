@@ -50,6 +50,30 @@ pub enum SurfaceContent {
     Web { url: String },
 }
 
+/// Aside slot grouping: the aside area holds at most one region per render
+/// engine — lxapp, browser, native — and multiple contents of one kind live
+/// inside that region as tabs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum SlotKind {
+    Lxapp,
+    Browser,
+    Native,
+}
+
+impl SurfaceContent {
+    /// The aside slot this content belongs to. The built-in terminal is the
+    /// only native capability today; native contents get a first-class marker
+    /// when a second capability lands.
+    pub fn slot_kind(&self) -> SlotKind {
+        match self {
+            SurfaceContent::Web { .. } => SlotKind::Browser,
+            SurfaceContent::Entry { id, .. } if id == "terminal" => SlotKind::Native,
+            SurfaceContent::Entry { .. } => SlotKind::Lxapp,
+        }
+    }
+}
+
 /// Owner scope: decides when the surface is closed (§5).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "scope", rename_all = "camelCase")]

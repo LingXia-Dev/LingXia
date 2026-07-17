@@ -567,12 +567,33 @@ rong::js_api! {
     ipv6: string[];
 }"###;
 
+        /// Show a surface declared by id in the host's `lingxia.yaml`.
+        /// Available to any lxapp granted access to that declaration.
+        type OpenDeclaredSurfaceSpec = r###"{
+    surface: string;
+    /** Docking edge override for this open. */
+    edge?: SurfaceEdge;
+    page?: never;
+    url?: never;
+    lxapp?: never;
+    native?: never;
+    as?: never;
+    position?: never;
+    size?: never;
+    query?: never;
+}"###;
+
         /// Network status APIs.
         ///
         type NetworkType = r###"'none' | 'unknown' | 'wifi' | '2g' | '3g' | '4g' | '5g' | 'ethernet'"###;
 
-        type OpenDeclaredSurfaceSpec = r###"{
-    surface: string;
+        /// Open another lxapp by appId (home lxapp only). A declared surface
+        /// toggles its shell presentation; an undeclared lxapp opens as a main
+        /// tab, or docks as an aside panel with `as: 'aside'`.
+        type OpenLxappSurfaceSpec = r###"{
+    lxapp: string;
+    /** Defaults to the lingxia.yaml role, else 'main'. */
+    as?: 'main' | 'aside' | 'float';
     /**
      * Docking edge override for this open. Without it the surface keeps its
      * current placement (initially the `lingxia.yaml` edge); with it the panel
@@ -581,6 +602,21 @@ rong::js_api! {
     edge?: SurfaceEdge;
     page?: never;
     url?: never;
+    native?: never;
+    position?: never;
+    size?: never;
+    query?: never;
+}"###;
+
+        /// Open a host-registered native capability (home lxapp only), e.g.
+        /// the built-in terminal declared in `lingxia.yaml` surfaces.
+        type OpenNativeSurfaceSpec = r###"{
+    native: string;
+    /** Docking edge override for this open. */
+    edge?: SurfaceEdge;
+    page?: never;
+    url?: never;
+    lxapp?: never;
     as?: never;
     position?: never;
     size?: never;
@@ -675,7 +711,7 @@ rong::js_api! {
     url?: never;
 }"###;
 
-        type OpenSurfaceSpec = r###"OpenPageSurfaceSpec | OpenDeclaredSurfaceSpec | OpenUrlTabSpec | OpenUrlAsideSpec"###;
+        type OpenSurfaceSpec = r###"OpenPageSurfaceSpec | OpenDeclaredSurfaceSpec | OpenLxappSurfaceSpec | OpenNativeSurfaceSpec | OpenUrlTabSpec | OpenUrlAsideSpec"###;
 
         /// Open `url` in the multi-tab browser aside. `url` must be `https://` or
         /// `file://` (external content only). Repeated calls add/focus tabs (deduped by
@@ -1156,14 +1192,16 @@ true
  */
  | 'reclaimed' | 'unknown'"###;
 
-        /// The window's adaptive context, delivered to `lx.onSurfaceContext()` so an
-        /// lxapp can self-adapt (e.g. switch column count by `sizeClass`).
+        /// The current surface viewport context, delivered to `lx.onSurfaceContext()`
+        /// so an lxapp can self-adapt (e.g. switch column count by `sizeClass`).
         ///
         type SurfaceContext = r###"{
     /** compact (<600) / medium (600–840) / expanded (>840), with hysteresis. */
     sizeClass: 'compact' | 'medium' | 'expanded';
-    /** In compact, the bottom region belongs to the app content. */
-    bottomOwner: 'app';
+    /** Actual surface viewport width in logical pixels. */
+    width: number;
+    /** Actual surface viewport height in logical pixels. */
+    height: number;
 }"###;
 
         /// Edge an aside docks to; the Host decides the realized form by screen size.
@@ -1172,8 +1210,17 @@ true
         /// Where a float popup anchors (default `center`).
         type SurfaceFloatPosition = r###"'center' | 'top' | 'bottom' | 'left' | 'right'"###;
 
+        type SurfaceRole = r###"'main' | 'aside' | 'float'"###;
+
+        type SurfacePresentation = r###"'main' | 'dock' | 'overlay' | 'popover' | 'sheet' | 'window'"###;
+
         type SurfaceHandle = r###"{
     readonly id: string;
+    /** Standalone windows have no role in the primary shell graph. */
+    readonly role?: SurfaceRole;
+    readonly presentation: SurfacePresentation;
+    readonly visible: boolean;
+    readonly alive: boolean;
     /**
      * Show a host-managed surface. Dynamic page/url surfaces return a Promise;
      * host-declared surfaces may complete synchronously.
@@ -1184,9 +1231,12 @@ true
      */
     hide(): void | Promise<void>;
     /**
-     * Close or hide the surface depending on how it is managed by the host.
+     * Destroy the live surface. Repeated close calls are idempotent.
      */
     close(): void | Promise<void>;
+    onShow(handler: (event: SurfaceVisibilityEvent) => void): () => void;
+    onHide(handler: (event: SurfaceVisibilityEvent) => void): () => void;
+    onClose(handler: (event: SurfaceClosedEvent) => void): () => void;
 }"###;
 
         /// Detail payload for `onShow` / `onHide` events. `source` identifies which
@@ -1407,6 +1457,47 @@ true
         type HostAppApi = "globalThis.HostAppApi";
         type LxEnv = "globalThis.LxEnv";
         type TrayApi = "globalThis.TrayApi";
+
+        /// Shell chrome writer API (home lxapp only).
+        type ShellApi = r###"{
+    activators: ShellActivatorsApi;
+}"###;
+
+        /// One app-declared shell activator. Its `id` remains stable across
+        /// updates and activation. Set exactly one target: `lxapp`, `native`,
+        /// or `onActivate`. Every entry owns its icon; hosts never infer one.
+        type ShellActivator = r###"{
+    id: string;
+    lxapp: string;
+    native?: never;
+    onActivate?: never;
+    icon: string;
+    label?: string;
+    disabled?: boolean;
+} | {
+    id: string;
+    native: 'terminal';
+    lxapp?: never;
+    onActivate?: never;
+    icon: string;
+    label?: string;
+    disabled?: boolean;
+} | {
+    id: string;
+    lxapp?: never;
+    native?: never;
+    icon: string;
+    label: string;
+    disabled?: boolean;
+    onActivate: () => void;
+}"###;
+
+        /// Mutable presentation fields for an existing activator.
+        type ShellActivatorUpdate = r###"{
+    icon?: string;
+    label?: string;
+    disabled?: boolean;
+}"###;
 
     }
 }

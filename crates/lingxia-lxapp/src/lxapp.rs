@@ -263,9 +263,16 @@ impl LxApps {
             release_type,
         )?);
 
-        // Insert into collection and return
-        self.lxapps.insert(appid, new_lxapp.clone());
-        Ok(new_lxapp)
+        // Publish with the map entry API. Two concurrent cold opens must both
+        // receive the same LxApp instance; otherwise each instance could claim
+        // a different shell region and defeat the one-app/one-region invariant.
+        match self.lxapps.entry(appid) {
+            dashmap::mapref::entry::Entry::Occupied(entry) => Ok(entry.get().clone()),
+            dashmap::mapref::entry::Entry::Vacant(entry) => {
+                entry.insert(new_lxapp.clone());
+                Ok(new_lxapp)
+            }
+        }
     }
 
     /// Completely destroy an LxApp (shutdown + removal from manager and stack).
@@ -456,6 +463,11 @@ pub(crate) struct LxAppState {
     /// Startup options for the app
     pub(crate) startup_options: LxAppStartupOptions,
 
+    /// Shell region currently owned by this live lxapp presentation. This is
+    /// claimed atomically before platform presentation starts and released only
+    /// by a real close; hide/show keeps the claim.
+    open_region: Option<LxAppOpenRegion>,
+
     /// Dynamic page surfaces created by lx.openSurface.
     pub(crate) surfaces: Mutex<SurfaceRecords>,
 
@@ -475,6 +487,7 @@ impl LxAppState {
             network_security: NetworkSecurity::new(),
             tabbar: None,
             startup_options: LxAppStartupOptions::default(),
+            open_region: None,
             surfaces: Mutex::new(SurfaceRecords::new()),
             orientation_override: None,
         }
@@ -521,6 +534,10 @@ pub struct LxApp {
 
     // Mutable state - protected by mutex for fine-grained locking
     pub(crate) state: Mutex<LxAppState>,
+
+    /// Serializes presentation opens so a failed cold open cannot release a
+    /// same-region claim that a concurrent reopen has already made live.
+    presentation_open_lock: Mutex<()>,
 
     page_creation_lock: Mutex<()>,
 
@@ -1023,6 +1040,7 @@ impl LxApp {
         let _ = self.clear_page_stack();
         // Terminate AppService (receiver handles its own state)
         let _ = self.executor.terminate_app_svc(self.clone_arc());
+        self.clear_open_region();
         Ok(())
     }
 
@@ -1065,6 +1083,7 @@ impl LxApp {
             restart_closing_session: AtomicU64::new(0),
             session,
             state: Mutex::new(LxAppState::new()),
+            presentation_open_lock: Mutex::new(()),
             page_creation_lock: Mutex::new(()),
             page_scripts: Mutex::new(Vec::new()),
         }
@@ -1450,6 +1469,14 @@ impl LxApp {
                 continue;
             }
             if path_ref.starts_with(root) {
+                if let Some(target) = resolved_target.as_ref()
+                    && let Ok(canonical_root) = std::fs::canonicalize(root)
+                {
+                    if target.starts_with(&canonical_root) {
+                        return Ok(target.to_path_buf());
+                    }
+                    continue;
+                }
                 return Ok(path_ref.to_path_buf());
             }
             if let (Some(target), Ok(canonical_root)) =
@@ -1457,22 +1484,6 @@ impl LxApp {
                 && target.starts_with(&canonical_root)
             {
                 return Ok(target.to_path_buf());
-            }
-        }
-
-        // Also check if it's under the parents of userdata/usercache to support the
-        // full path directory structure if needed (though usually not recommended for JS)
-        for root in [&self.user_data_dir, &self.user_cache_dir] {
-            if let Some(parent) = root.parent() {
-                if path_ref.starts_with(parent) {
-                    return Ok(path_ref.to_path_buf());
-                }
-                if let (Some(target), Ok(canonical_parent)) =
-                    (resolved_target.as_ref(), std::fs::canonicalize(parent))
-                    && target.starts_with(&canonical_parent)
-                {
-                    return Ok(target.to_path_buf());
-                }
             }
         }
 
@@ -1873,6 +1884,25 @@ impl LxApp {
     }
 
     pub(crate) fn open(&self, options: LxAppStartupOptions) -> Result<(), LxAppError> {
+        let _open_guard = self
+            .presentation_open_lock
+            .lock()
+            .unwrap_or_else(|err| err.into_inner());
+        let requested_region = LxAppOpenRegion::from(options.open_mode);
+        let claimed = self.claim_open_region(requested_region)?;
+        let result = self.open_claimed(options);
+        if result.is_err() && claimed {
+            // A platform can fail after it has attached the controller (for
+            // example while finalizing a Windows page instance). Roll back the
+            // cold presentation before releasing the region claim; otherwise
+            // another role could open while the first View is still visible.
+            let _ = self.runtime.hide_lxapp(self.appid.clone(), self.session.id);
+            self.release_open_region(requested_region);
+        }
+        result
+    }
+
+    fn open_claimed(&self, options: LxAppStartupOptions) -> Result<(), LxAppError> {
         if self.logic_enabled() && !crate::js_appservice_supported() {
             return Err(LxAppError::UnsupportedOperation(
                 "this host app was built without JS AppService runtime".to_string(),
@@ -1952,10 +1982,59 @@ impl LxApp {
                 startup_options.open_mode,
                 lingxia_platform::traits::app_runtime::LxAppOpenMode::Panel
             ) {
+                self.set_active_main();
                 self.sync_host_ui();
             }
         }
         Ok(())
+    }
+
+    /// Claim the app's one live shell region. Returning `true` means this call
+    /// created the claim and therefore owns rollback if platform open fails.
+    fn claim_open_region(&self, requested: LxAppOpenRegion) -> Result<bool, LxAppError> {
+        let mut state = self.state.lock().unwrap_or_else(|err| err.into_inner());
+        match state.open_region {
+            None => {
+                state.open_region = Some(requested);
+                Ok(true)
+            }
+            Some(current) if current == requested => Ok(false),
+            Some(current) => Err(LxAppError::SurfaceConflict(format!(
+                "lxapp '{}' is already open as {}; close it before opening as {}",
+                self.appid,
+                current.as_str(),
+                requested.as_str()
+            ))),
+        }
+    }
+
+    fn release_open_region(&self, expected: LxAppOpenRegion) {
+        let mut state = self.state.lock().unwrap_or_else(|err| err.into_inner());
+        if state.open_region == Some(expected) {
+            state.open_region = None;
+        }
+    }
+
+    pub(crate) fn clear_open_region(&self) {
+        self.state
+            .lock()
+            .unwrap_or_else(|err| err.into_inner())
+            .open_region = None;
+    }
+
+    fn current_open_region(&self) -> Option<LxAppOpenRegion> {
+        self.state
+            .lock()
+            .unwrap_or_else(|err| err.into_inner())
+            .open_region
+    }
+
+    /// Host surface id currently used for an aside presentation.
+    pub fn open_panel_id(&self) -> Option<String> {
+        let state = self.state.lock().unwrap_or_else(|error| error.into_inner());
+        (state.open_region == Some(LxAppOpenRegion::Aside))
+            .then(|| state.startup_options.panel_id.trim().to_string())
+            .filter(|panel_id| !panel_id.is_empty())
     }
 
     /// Navigates to another LxApp (forward navigation).
@@ -2146,4 +2225,38 @@ impl Drop for LxApp {
         // instance with the same appid after restart.
         info!("Dropping LxApp").with_appid(self.appid.clone());
     }
+}
+
+/// The shell region an OPEN lxapp currently occupies. One lxapp lives in
+/// exactly one region (main or aside); the shell never silently copies or
+/// moves an instance between them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LxAppOpenRegion {
+    Main,
+    Aside,
+}
+
+impl LxAppOpenRegion {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Main => "main",
+            Self::Aside => "aside",
+        }
+    }
+}
+
+impl From<lingxia_platform::traits::app_runtime::LxAppOpenMode> for LxAppOpenRegion {
+    fn from(mode: lingxia_platform::traits::app_runtime::LxAppOpenMode) -> Self {
+        match mode {
+            lingxia_platform::traits::app_runtime::LxAppOpenMode::Panel => Self::Aside,
+            lingxia_platform::traits::app_runtime::LxAppOpenMode::Normal => Self::Main,
+        }
+    }
+}
+
+/// `None` means the app owns no live shell presentation. Region ownership is
+/// independent from visibility: hide/show keeps the claim; close releases it.
+pub fn open_region(appid: &str) -> Option<LxAppOpenRegion> {
+    let app = runtime_registry::try_get(appid)?;
+    app.current_open_region()
 }

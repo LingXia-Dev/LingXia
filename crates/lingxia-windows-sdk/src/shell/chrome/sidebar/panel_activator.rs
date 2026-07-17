@@ -1,6 +1,158 @@
-//! Panel activator geometry and painting.
+//! Activator flow geometry and painting.
+
+use std::ops::Range;
 
 use super::*;
+
+const ACTIVATOR_CELL_MIN_WIDTH: i32 = 72;
+const ACTIVATOR_CELL_PADDING: i32 = 8;
+const ACTIVATOR_ICON_TEXT_GAP: i32 = 8;
+const ACTIVATOR_SEPARATOR_HEIGHT: i32 = 1;
+
+fn preferred_cell_width(label: &str, available: i32) -> i32 {
+    let text = measure_chrome_text_width(label);
+    (2 * ACTIVATOR_CELL_PADDING + PANEL_ACTIVATOR_ICON_SIZE + ACTIVATOR_ICON_TEXT_GAP + text)
+        .clamp(ACTIVATOR_CELL_MIN_WIDTH.min(available), available.max(1))
+}
+
+fn activator_rows(
+    width: i32,
+    activators: &[WindowsShellPanelActivatorLayout],
+) -> Vec<Range<usize>> {
+    let available = (width - 2 * PANEL_ACTIVATOR_MARGIN).max(1);
+    let mut rows = Vec::new();
+    let mut row_start = 0;
+    let mut used = 0;
+    for (index, activator) in activators.iter().enumerate() {
+        let preferred = preferred_cell_width(&activator.label, available);
+        let next = if index == row_start {
+            preferred
+        } else {
+            used + PANEL_ACTIVATOR_GAP + preferred
+        };
+        if index > row_start && next > available {
+            rows.push(row_start..index);
+            row_start = index;
+            used = preferred;
+        } else {
+            used = next;
+        }
+    }
+    if row_start < activators.len() {
+        rows.push(row_start..activators.len());
+    }
+    rows
+}
+
+fn capped_row_window(total: usize, requested_start: usize) -> Range<usize> {
+    let max_start = total.saturating_sub(PANEL_ACTIVATOR_MAX_ROWS);
+    let start = requested_start.min(max_start);
+    start..(start + PANEL_ACTIVATOR_MAX_ROWS).min(total)
+}
+
+pub(in crate::shell::chrome) fn panel_activator_footer_height_for_width(
+    width: i32,
+    activators: &[WindowsShellPanelActivatorLayout],
+) -> i32 {
+    let rows = activator_rows(width, activators)
+        .len()
+        .min(PANEL_ACTIVATOR_MAX_ROWS) as i32;
+    if rows == 0 {
+        0
+    } else {
+        ACTIVATOR_SEPARATOR_HEIGHT
+            + 2 * PANEL_ACTIVATOR_MARGIN
+            + rows * PANEL_ACTIVATOR_SIZE
+            + (rows - 1) * PANEL_ACTIVATOR_GAP
+    }
+}
+
+fn expanded_activator_rects(
+    tabbar_rect: RECT,
+    tabbar: &WindowsShellTabBarLayout,
+    activators: &[WindowsShellPanelActivatorLayout],
+) -> Vec<(String, RECT)> {
+    let rows = activator_rows(rect_width(&tabbar_rect), activators);
+    let footer_top = tabbar_rect.bottom - tabbar.activator_footer_height;
+    let available = (rect_width(&tabbar_rect) - 2 * PANEL_ACTIVATOR_MARGIN).max(1);
+    let mut top = footer_top + ACTIVATOR_SEPARATOR_HEIGHT + PANEL_ACTIVATOR_MARGIN;
+    let mut out = Vec::with_capacity(activators.len());
+
+    let visible_rows = capped_row_window(rows.len(), tabbar.activator_scroll_row);
+    for row in &rows[visible_rows] {
+        let items = &activators[row.clone()];
+        let preferred = items
+            .iter()
+            .map(|item| preferred_cell_width(&item.label, available))
+            .collect::<Vec<_>>();
+        let gaps = (items.len().saturating_sub(1) as i32) * PANEL_ACTIVATOR_GAP;
+        let preferred_total = preferred.iter().sum::<i32>() + gaps;
+        let extra = (available - preferred_total).max(0);
+        let mut left = tabbar_rect.left + PANEL_ACTIVATOR_MARGIN;
+        let row_right = tabbar_rect.right - PANEL_ACTIVATOR_MARGIN;
+        let mut allocated_extra = 0;
+        for (offset, item) in items.iter().enumerate() {
+            let is_last = offset + 1 == items.len();
+            let item_extra = if is_last {
+                extra - allocated_extra
+            } else {
+                let share = extra / items.len() as i32;
+                allocated_extra += share;
+                share
+            };
+            let right = if is_last {
+                row_right
+            } else {
+                (left + preferred[offset] + item_extra).min(row_right)
+            };
+            out.push((
+                item.id.clone(),
+                normalize_rect(RECT {
+                    left,
+                    top,
+                    right,
+                    bottom: top + PANEL_ACTIVATOR_SIZE,
+                }),
+            ));
+            left = right + PANEL_ACTIVATOR_GAP;
+        }
+        top += PANEL_ACTIVATOR_SIZE + PANEL_ACTIVATOR_GAP;
+    }
+    out
+}
+
+fn rail_activator_rects(
+    tabbar_rect: RECT,
+    tabbar: &WindowsShellTabBarLayout,
+    activators: &[WindowsShellPanelActivatorLayout],
+) -> Vec<(String, RECT)> {
+    let visible = capped_row_window(activators.len(), tabbar.activator_scroll_row);
+    let count = visible.len();
+    if count == 0 {
+        return Vec::new();
+    }
+    let expand = sidebar_rail_expand_rect(tabbar_rect);
+    let total =
+        count as i32 * PANEL_ACTIVATOR_SIZE + count.saturating_sub(1) as i32 * PANEL_ACTIVATOR_GAP;
+    let mut top =
+        (expand.top - PANEL_ACTIVATOR_MARGIN - total).max(tabbar_rect.top + SHELL_TOP_BAR_HEIGHT);
+    let left = tabbar_rect.left + (rect_width(&tabbar_rect) - PANEL_ACTIVATOR_SIZE) / 2;
+    activators
+        .iter()
+        .skip(visible.start)
+        .take(count)
+        .map(|activator| {
+            let rect = normalize_rect(RECT {
+                left,
+                top,
+                right: left + PANEL_ACTIVATOR_SIZE,
+                bottom: top + PANEL_ACTIVATOR_SIZE,
+            });
+            top = rect.bottom + PANEL_ACTIVATOR_GAP;
+            (activator.id.clone(), rect)
+        })
+        .collect()
+}
 
 pub(in crate::shell::chrome) fn panel_activator_rects(
     client: RECT,
@@ -11,39 +163,16 @@ pub(in crate::shell::chrome) fn panel_activator_rects(
         return Vec::new();
     }
 
-    let mut out = Vec::with_capacity(layout.panel_activators.len());
-
     if let (Some(tabbar), Some(tabbar_rect)) = (&layout.tab_bar, rects.tab_bar)
         && matches!(
             tabbar.position,
             WindowsShellTabBarPosition::Left | WindowsShellTabBarPosition::Right
         )
     {
-        // The icon rail hides footer activators (mirroring macOS compact).
-        if tabbar.icon_rail {
-            return Vec::new();
+        if tabbar.collapsed || tabbar.icon_rail {
+            return rail_activator_rects(tabbar_rect, tabbar, &layout.panel_activators);
         }
-        let footer_top = tabbar_rect.bottom - SIDEBAR_FOOTER_HEIGHT;
-        let top = footer_top + (SIDEBAR_FOOTER_HEIGHT - PANEL_ACTIVATOR_SIZE) / 2;
-        let mut left = tabbar_rect.left + PANEL_ACTIVATOR_MARGIN;
-        let right_limit = tabbar_rect.right - PANEL_ACTIVATOR_MARGIN;
-        for activator in &layout.panel_activators {
-            let right = left + PANEL_ACTIVATOR_SIZE;
-            if right > right_limit {
-                break;
-            }
-            out.push((
-                activator.id.clone(),
-                normalize_rect(RECT {
-                    left,
-                    top,
-                    right,
-                    bottom: top + PANEL_ACTIVATOR_SIZE,
-                }),
-            ));
-            left = right + PANEL_ACTIVATOR_GAP;
-        }
-        return out;
+        return expanded_activator_rects(tabbar_rect, tabbar, &layout.panel_activators);
     }
 
     let bottom_limit = rects
@@ -52,7 +181,7 @@ pub(in crate::shell::chrome) fn panel_activator_rects(
         .unwrap_or(client.bottom);
     let left = rects.panel.left + PANEL_ACTIVATOR_MARGIN;
     let mut bottom = bottom_limit - PANEL_ACTIVATOR_MARGIN;
-
+    let mut out = Vec::new();
     for activator in &layout.panel_activators {
         let top = bottom - PANEL_ACTIVATOR_SIZE;
         if top < client.top + PANEL_ACTIVATOR_MARGIN {
@@ -69,8 +198,34 @@ pub(in crate::shell::chrome) fn panel_activator_rects(
         ));
         bottom = top - PANEL_ACTIVATOR_GAP;
     }
-
     out
+}
+
+pub(in crate::shell::chrome) fn panel_activator_max_scroll_row(
+    tabbar_rect: RECT,
+    tabbar: &WindowsShellTabBarLayout,
+    activators: &[WindowsShellPanelActivatorLayout],
+) -> usize {
+    let rows = if tabbar.collapsed || tabbar.icon_rail {
+        activators.len()
+    } else {
+        activator_rows(rect_width(&tabbar_rect), activators).len()
+    };
+    rows.saturating_sub(PANEL_ACTIVATOR_MAX_ROWS)
+}
+
+pub(in crate::shell::chrome) fn sidebar_navigation_viewport_bottom(
+    tabbar_rect: RECT,
+    tabbar: &WindowsShellTabBarLayout,
+    activators: &[WindowsShellPanelActivatorLayout],
+) -> i32 {
+    if tabbar.collapsed || tabbar.icon_rail {
+        return rail_activator_rects(tabbar_rect, tabbar, activators)
+            .first()
+            .map(|(_, rect)| rect.top - PANEL_ACTIVATOR_MARGIN)
+            .unwrap_or_else(|| sidebar_rail_expand_rect(tabbar_rect).top - PANEL_ACTIVATOR_MARGIN);
+    }
+    tabbar_rect.bottom - tabbar.activator_footer_height
 }
 
 pub(in crate::shell::chrome) fn draw_panel_activators(
@@ -80,63 +235,121 @@ pub(in crate::shell::chrome) fn draw_panel_activators(
     layout: &WindowsShellWindowLayout,
     cursor: Option<(i32, i32)>,
 ) {
+    let palette = shell_palette();
+    let icon_only = layout.tab_bar.as_ref().is_some_and(|tabbar| {
+        matches!(
+            tabbar.position,
+            WindowsShellTabBarPosition::Left | WindowsShellTabBarPosition::Right
+        ) && (tabbar.collapsed || tabbar.icon_rail)
+    });
     for (panel_id, rect) in panel_activator_rects(client, rects, layout) {
-        let active = layout
-            .panel_activators
-            .iter()
-            .find(|item| item.id == panel_id)
-            .is_some_and(|item| item.active);
         let activator = layout
             .panel_activators
             .iter()
             .find(|item| item.id == panel_id);
-        let text = activator
-            .map(|item| panel_activator_label(&item.label))
-            .unwrap_or_else(|| panel_activator_label(&panel_id));
+        let disabled = activator.is_some_and(|item| item.disabled);
+        let active = activator.is_some_and(|item| item.active && !item.disabled);
+        let label = activator
+            .map(|item| item.label.as_str())
+            .unwrap_or(panel_id.as_str());
         let text_color = if active {
-            shell_palette().accent
+            palette.accent
         } else {
-            shell_palette().text_muted
+            palette.text_muted
         };
 
-        if !active {
-            draw_hover_wash(hdc, rect, 6, cursor);
-        }
         if active {
-            // White activator pill on the gray sidebar footer.
-            fill_round_rect_aa(hdc, rect, 6, shell_palette().panel_background);
-            fill_round_rect_aa(
-                hdc,
-                RECT {
-                    left: rect.left + 3,
-                    top: rect.bottom - 5,
-                    right: rect.right - 3,
-                    bottom: rect.bottom - 3,
-                },
-                2,
-                shell_palette().accent,
-            );
+            fill_round_rect_aa(hdc, rect, 6, palette.panel_background);
         }
-        let icon_rect = centered_icon_rect(rect, PANEL_ACTIVATOR_ICON_SIZE);
+        if !active && !disabled {
+            draw_hover_wash(hdc, rect, 6, cursor);
+        } else {
+            if active {
+                let accent = if icon_only {
+                    RECT {
+                        left: rect.left + 4,
+                        top: rect.bottom - 4,
+                        right: rect.right - 4,
+                        bottom: rect.bottom - 2,
+                    }
+                } else {
+                    RECT {
+                        left: rect.left + 2,
+                        top: rect.top + 6,
+                        right: rect.left + 4,
+                        bottom: rect.bottom - 6,
+                    }
+                };
+                fill_round_rect_aa(hdc, accent, 2, palette.accent);
+            }
+        }
+
+        let icon_rect = if icon_only {
+            centered_icon_rect(rect, PANEL_ACTIVATOR_ICON_SIZE)
+        } else {
+            let top = rect.top + (rect_height(&rect) - PANEL_ACTIVATOR_ICON_SIZE) / 2;
+            RECT {
+                left: rect.left + ACTIVATOR_CELL_PADDING,
+                top,
+                right: rect.left + ACTIVATOR_CELL_PADDING + PANEL_ACTIVATOR_ICON_SIZE,
+                bottom: top + PANEL_ACTIVATOR_ICON_SIZE,
+            }
+        };
         let icon_path = activator
             .map(|item| item.icon_path.as_str())
             .unwrap_or_default();
-        // Resolved lxapp icon (or static path); falls back to the LingXia mark.
-        let icon_drawn =
-            draw_icon_or_default(hdc, icon_path, icon_rect, PANEL_ACTIVATOR_ICON_SIZE as u32);
-        if !icon_drawn {
-            draw_text(hdc, &text, rect, text_color, DT_CENTER);
+        let _ = draw_icon_from_path(hdc, icon_path, icon_rect, PANEL_ACTIVATOR_ICON_SIZE as u32);
+        if !icon_only {
+            draw_text(
+                hdc,
+                label,
+                RECT {
+                    left: icon_rect.right + ACTIVATOR_ICON_TEXT_GAP,
+                    top: rect.top,
+                    right: rect.right - ACTIVATOR_CELL_PADDING,
+                    bottom: rect.bottom,
+                },
+                text_color,
+                DT_LEFT,
+            );
         }
     }
 }
 
-pub(in crate::shell::chrome) fn panel_activator_label(label: &str) -> String {
-    let mut out = String::new();
-    for ch in label.chars().filter(|ch| ch.is_ascii_alphanumeric()) {
-        out.push(ch.to_ascii_uppercase());
-        if out.len() == 2 {
-            break;
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn item(id: &str, label: &str) -> WindowsShellPanelActivatorLayout {
+        WindowsShellPanelActivatorLayout {
+            id: id.to_string(),
+            label: label.to_string(),
+            icon_path: String::new(),
+            active: false,
+            disabled: false,
         }
     }
-    if out.is_empty() { "?".to_string() } else { out }
+
+    #[test]
+    fn short_activators_share_a_standard_sidebar_row() {
+        let items = vec![item("api", "API"), item("chat", "Chat")];
+        assert_eq!(activator_rows(184, &items), vec![0..2]);
+    }
+
+    #[test]
+    fn long_activators_wrap_as_whole_cells() {
+        let items = vec![
+            item("first", "A deliberately long activator"),
+            item("second", "Another deliberately long activator"),
+        ];
+        assert_eq!(activator_rows(184, &items), vec![0..1, 1..2]);
+    }
+
+    #[test]
+    fn capped_footer_window_keeps_overflow_rows_reachable() {
+        assert_eq!(capped_row_window(8, 0), 0..5);
+        assert_eq!(capped_row_window(8, 2), 2..7);
+        assert_eq!(capped_row_window(8, usize::MAX), 3..8);
+        assert_eq!(capped_row_window(3, 1), 0..3);
+    }
 }

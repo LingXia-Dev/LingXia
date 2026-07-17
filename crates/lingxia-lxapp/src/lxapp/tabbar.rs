@@ -45,6 +45,12 @@ pub struct TabBar {
     // Runtime state (not from JSON)
     #[serde(skip)]
     pub is_visible: bool,
+    /// Hidden by an explicit lx.hideTabBar() call — as opposed to the
+    /// navigation-derived `is_visible`, which mobile flips on every non-tab
+    /// page. Desktop skins collapse/expand on THIS, so drilling into a
+    /// detail page never collapses the sidebar group.
+    #[serde(skip)]
+    pub api_hidden: bool,
     #[serde(skip)]
     pub selected_index: i32,
 }
@@ -86,6 +92,7 @@ impl TabBar {
 
         // Initialize runtime state
         result.is_visible = true;
+        result.api_hidden = false;
         result.selected_index = 0; // Default to first tab
 
         for item in &mut result.list {
@@ -121,6 +128,11 @@ impl TabBar {
     /// Set TabBar visibility
     pub fn set_visible(&mut self, visible: bool) {
         self.is_visible = visible;
+    }
+
+    /// Record an explicit lx.hideTabBar/showTabBar intent (see `api_hidden`).
+    pub fn set_api_hidden(&mut self, hidden: bool) {
+        self.api_hidden = hidden;
     }
 
     /// Set badge for a specific tab
@@ -223,6 +235,14 @@ impl TabBar {
         self
     }
 
+    /// Clear the selection: the current page is not a tabbar page, so no item
+    /// may highlight (the sidebar's lxapp tab still does). `selected_index`
+    /// becomes -1 until the next tab switch.
+    pub fn clear_selected_index(&mut self) -> &mut Self {
+        self.selected_index = -1;
+        self
+    }
+
     /// Find tab index by page path
     pub fn find_index_by_path(&self, path: &str) -> Option<i32> {
         self.list
@@ -243,17 +263,21 @@ impl TabBar {
 }
 
 // Default functions for serde
+// Undeclared style stays EMPTY so each platform skin applies its own
+// default (mobile: gray/#1677FF/white/#F0F0F0 at the FFI parse sites;
+// desktop: the neutral dark sidebar theme). Baking mobile defaults in
+// here made every app "explicitly" light-styled on the dark sidebar.
 fn default_selected_color() -> String {
-    "#1677FF".to_string()
+    String::new()
 }
 fn default_unselected_color() -> String {
-    "#666666".to_string()
+    String::new()
 }
 fn default_background_color() -> String {
-    "#ffffff".to_string()
+    String::new()
 }
 fn default_border_color() -> String {
-    "#F0F0F0".to_string()
+    String::new()
 }
 fn default_dimension() -> i32 {
     64

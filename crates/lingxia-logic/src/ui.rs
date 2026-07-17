@@ -6,12 +6,12 @@ mod modal;
 mod navbar;
 mod pull_to_refresh;
 mod router;
+mod shell;
 mod tabbar;
 mod toast;
 mod tray;
 
 pub(crate) use action_sheet::present_action_sheet;
-
 /// Initialize UI module
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     toast::init(ctx)?;
@@ -22,6 +22,7 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     router::init(ctx)?;
     pull_to_refresh::init(ctx)?;
     capsule::init(ctx)?;
+    shell::init(ctx)?;
     tray::init(ctx)?;
     Ok(())
 }

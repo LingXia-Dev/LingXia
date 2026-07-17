@@ -76,7 +76,7 @@ fn set_app_badge(ctx: JSContext, text: Option<String>) -> JSResult<()> {
 
 /// Guard for host-app-level APIs (`checkUpdate`, `screenshot`, `autostart`):
 /// only the home lxapp may call them; others get a permission error.
-pub(super) fn ensure_home_lxapp(lxapp: &LxApp, api_name: &str) -> JSResult<()> {
+pub(crate) fn ensure_home_lxapp(lxapp: &LxApp, api_name: &str) -> JSResult<()> {
     let home_appid = home_app_id()
         .ok_or_else(|| js_service_unavailable_error("home lxapp is not configured"))?;
     if lxapp.appid == home_appid {

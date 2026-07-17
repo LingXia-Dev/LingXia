@@ -41,7 +41,7 @@ static ASIDE_PANEL_TABS: OnceLock<Mutex<HashMap<String, Vec<WindowsAsidePanelTab
 static ASIDE_PANEL_EVENT_HANDLER: OnceLock<Mutex<Option<WindowsAsidePanelEventHandler>>> =
     OnceLock::new();
 
-/// One tab of a docked aside browser panel (grouped web-URL asides).
+/// One tab in a docked aside slot.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WindowsAsidePanelTab {
     pub surface_id: String,
@@ -49,22 +49,38 @@ pub struct WindowsAsidePanelTab {
     pub active: bool,
 }
 
-/// Chrome events from a docked aside browser panel, routed back to the
-/// surface layer that owns the grouped web asides.
+/// Chrome events from a docked aside slot, routed back to the owner of the
+/// addressed browser, lxapp, or native slot.
 #[derive(Debug, Clone)]
 pub enum WindowsAsidePanelEvent {
-    TabClick { surface_id: String },
-    TabClose { surface_id: String },
-    CloseAll,
-    NavBack,
-    NavForward,
-    NavReload,
+    TabClick {
+        panel_id: String,
+        surface_id: String,
+    },
+    TabClose {
+        panel_id: String,
+        surface_id: String,
+    },
+    CloseAll {
+        panel_id: String,
+    },
+    NavBack {
+        panel_id: String,
+    },
+    NavForward {
+        panel_id: String,
+    },
+    NavReload {
+        panel_id: String,
+    },
 }
 
 pub type WindowsAsidePanelEventHandler = Arc<dyn Fn(WindowsAsidePanelEvent) + Send + Sync>;
 
 /// Stable panel id of the shared aside browser panel (one per window).
 pub const ASIDE_BROWSER_PANEL_ID: &str = "lx.aside-browser";
+/// Stable panel id of the shared lxapp aside slot (one per window).
+pub const ASIDE_LXAPP_PANEL_ID: &str = "lx.aside-lxapp";
 
 /// Publishes the tab strip of an aside browser panel; an empty list removes
 /// it (the panel then falls back to non-tabbed chrome).
@@ -406,6 +422,9 @@ pub struct WindowsChromePanel {
     /// Top-band slice (aligned with the main navbar baseline) where a browser
     /// aside paints its address bar; `None` for panels with no band header.
     pub header_rect: Option<RECT>,
+    /// Gutter between this panel and the neighboring workspace region. It is
+    /// both the resize hit target and the exposed first-layer shell surface.
+    pub resize_handle: Option<RECT>,
     pub host_content: Option<WindowsHostPanelContent>,
     pub docked: bool,
 }
@@ -433,12 +452,16 @@ pub struct WindowsChromePanelLayout {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct WindowsChromeAttachedLayout {
+    /// Full main region after aside arbitration, including main-owned chrome.
+    pub main_region: RECT,
+    /// Main WebView viewport after reserving its navigation bar.
     pub main: RECT,
     pub panels: Vec<WindowsChromePanelLayout>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct WindowsChromeAttachedState {
+    pub main_region: RECT,
     pub main: RECT,
     pub panels: Vec<WindowsChromePanel>,
 }
@@ -561,6 +584,18 @@ pub trait WindowsChromeRenderer: Send + Sync {
     /// repaints exactly the affected element.
     fn hover_rect(&self, state: &WindowsChromeState, point: (i32, i32)) -> Option<RECT> {
         let _ = (state, point);
+        None
+    }
+
+    /// Translate a wheel gesture over owner-drawn chrome into a runtime
+    /// command. Returning `None` lets the host forward the gesture normally.
+    fn mouse_wheel(
+        &self,
+        state: &WindowsChromeState,
+        point: (i32, i32),
+        delta: i16,
+    ) -> Option<WindowsChromeCommand> {
+        let _ = (state, point, delta);
         None
     }
 }

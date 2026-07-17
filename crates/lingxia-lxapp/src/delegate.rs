@@ -70,8 +70,18 @@ impl LxAppDelegate for LxApp {
         let resolved_path = resolved.internal_path();
         let was_already_opened = self.is_opened();
 
+        // An aside (panel) opens BESIDE the main: it neither hides the
+        // previously active app nor becomes the current one on the
+        // navigation stack — the main keeps selection, and app-targeted
+        // APIs (tabbar, eval) keep resolving to the main.
+        let opened_as_panel = matches!(
+            self.state.lock().unwrap().startup_options.open_mode,
+            lingxia_platform::traits::app_runtime::LxAppOpenMode::Panel
+        );
+
         // When switching to this app, hide the previously active app (if any).
-        if !previous_appid.is_empty()
+        if !opened_as_panel
+            && !previous_appid.is_empty()
             && previous_appid != self.appid
             && let Some(previous) = lxapp::try_get(&previous_appid)
         {
@@ -84,7 +94,7 @@ impl LxAppDelegate for LxApp {
         }
 
         // Move this app to the top of the navigation stack.
-        if let Some(manager) = lxapp::get_lxapps_manager() {
+        if !opened_as_panel && let Some(manager) = lxapp::get_lxapps_manager() {
             manager.remove_from_stack(&self.appid);
             manager.push_lxapp_stack(self.appid.clone());
         }
@@ -176,6 +186,7 @@ impl LxAppDelegate for LxApp {
         }
 
         self.set_status(LxAppSessionStatus::Closed);
+        self.clear_open_region();
         self.clear_transient_files();
 
         // Update last active time. Recover from poisoned mutex instead of panicking.

@@ -54,7 +54,7 @@ pub use chrome::{begin_address_edit, begin_panel_address_edit};
 pub(crate) use chrome::shell_chrome_dirty_rects;
 pub(crate) use chrome::{
     PHONE_SWITCHER_SHEET_RADIUS, PhoneTabSwitcherHit, PhoneTabSwitcherLayout,
-    paint_phone_tab_switcher, phone_tab_click_command, phone_tab_close_command,
+    paint_phone_tab_switcher, paint_shell_notice, phone_tab_click_command, phone_tab_close_command,
     phone_tab_switcher_hit, phone_tab_switcher_layout,
 };
 pub(crate) use chrome::{
@@ -64,9 +64,8 @@ pub(crate) use chrome::{
     transparent_tabbar_overlay_rect,
 };
 
-/// Height of the shell's top caption strip (where the lxapp navbar and browser
-/// asides' address bars live). Exposed so the host's invalidation can repaint
-/// the whole top band when the attached panel layout changes.
+/// Height of the shell-owned top caption strip. Lxapp navigation bars belong
+/// to the main region below it; browser address chrome may use this strip.
 pub(crate) fn shell_top_bar_height() -> i32 {
     style::SHELL_TOP_BAR_HEIGHT
 }
@@ -90,6 +89,7 @@ pub fn set_windows_shell_tabbar_position(appid: &str, position: WindowsShellTabB
     runtime::set_tabbar_position(appid, position);
 }
 
+#[cfg(feature = "device-frame")]
 pub(crate) fn set_windows_shell_tabbar_position_on_window_thread(
     appid: &str,
     position: WindowsShellTabBarPosition,

@@ -27,6 +27,10 @@ pub enum LxAppError {
     #[error("Unsupported operation: {0}")]
     UnsupportedOperation(String),
 
+    /// The lxapp already owns a live presentation in another shell region.
+    #[error("Surface conflict: {0}")]
+    SurfaceConflict(String),
+
     /// Error for I/O operations (file access, network, etc.)
     #[error("I/O error: {0}")]
     IoError(String),

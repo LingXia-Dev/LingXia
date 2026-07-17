@@ -327,6 +327,9 @@ internal object NativeApi {
     external fun setSurfaceWidth(appId: String, width: Double): Boolean
 
     @JvmStatic
+    external fun setSurfaceViewport(appId: String, width: Double, height: Double): Boolean
+
+    @JvmStatic
     external fun surfaceDerivedLayout(appId: String): String?
 
     @JvmStatic

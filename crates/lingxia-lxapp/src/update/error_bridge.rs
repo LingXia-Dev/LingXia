@@ -11,6 +11,7 @@ pub(super) fn lxapp_error_to_update_error(error: LxAppError) -> UpdateError {
         | LxAppError::Runtime(detail)
         | LxAppError::ChannelError(detail)
         | LxAppError::ResourceExhausted(detail)
+        | LxAppError::SurfaceConflict(detail)
         | LxAppError::Bridge(detail)
         | LxAppError::RongJS(detail)
         | LxAppError::PluginNotConfigured(detail)

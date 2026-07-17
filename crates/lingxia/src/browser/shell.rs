@@ -83,7 +83,7 @@ pub(crate) fn bookmark_state(url: &str) -> u32 {
     #[cfg(feature = "browser-shell")]
     {
         let normalized = lingxia_browser_shell::normalize_bookmark_url(url);
-        return lingxia_browser_shell::bookmarks_snapshot()
+        lingxia_browser_shell::bookmarks_snapshot()
             .and_then(|snapshot| {
                 snapshot
                     .entries
@@ -91,9 +91,16 @@ pub(crate) fn bookmark_state(url: &str) -> u32 {
                     .find(|entry| {
                         lingxia_browser_shell::normalize_bookmark_url(&entry.url) == normalized
                     })
-                    .map(|entry| 0b1 | (u32::from(entry.pinned) << 1))
+                    .map(|entry| {
+                        let pinned =
+                            lingxia_shell::is_pinned(&lingxia_shell::ShellPinTarget::Bookmark {
+                                key: entry.id.clone(),
+                            })
+                            .unwrap_or(false);
+                        0b1 | (u32::from(pinned) << 1)
+                    })
             })
-            .unwrap_or(0);
+            .unwrap_or(0)
     }
     #[cfg(not(feature = "browser-shell"))]
     {
@@ -161,6 +168,17 @@ pub(crate) fn bookmark_favicon_path(url: &str) -> String {
     {
         let _ = url;
         String::new()
+    }
+}
+
+#[cfg_attr(not(any(target_os = "ios", target_os = "macos")), allow(dead_code))]
+pub(crate) fn store_favicon(url: &str, bytes: &[u8]) -> bool {
+    #[cfg(feature = "browser-shell")]
+    return lingxia_browser_shell::store_bookmark_favicon(url, bytes);
+    #[cfg(not(feature = "browser-shell"))]
+    {
+        let _ = (url, bytes);
+        false
     }
 }
 

@@ -8,15 +8,15 @@ import CLingXiaRustAPI
 class SidebarItemView: NSView {
 
     struct Layout {
-        static let height: CGFloat = 28
+        static let height: CGFloat = 30
         static let iconSize: CGFloat = 16
-        static let leadingPadding: CGFloat = 32
+        static let leadingPadding: CGFloat = 30
         static let trailingPadding: CGFloat = 8
         static let iconTitleSpacing: CGFloat = 8
         static let cornerRadius: CGFloat = 6
         /// Inset from item leading edge so the selection background
         /// aligns with the connector line (SidebarGroupView.Layout.groupInset + 14 - groupInset = 14).
-        static let selectionLeadingInset: CGFloat = 14
+        static let selectionLeadingInset: CGFloat = 22
     }
 
     private let selectionBackground = NSView()
@@ -29,6 +29,27 @@ class SidebarItemView: NSView {
     private var trackingArea: NSTrackingArea?
     private(set) var isHovered = false
     var isSelected = false { didSet { updateAppearance() } }
+    /// Whether this item currently shows a badge or red dot — feeds the
+    /// group header's collapsed aggregate.
+    private(set) var hasNotification = false
+    /// Collapses the hidden badge capsule to zero width so it stops
+    /// reserving title space on rows without a badge.
+    private var badgeCollapsed: NSLayoutConstraint?
+    private var badgeTextPins: [NSLayoutConstraint] = []
+    /// Accent bar at the row's leading edge while selected (Windows-style),
+    /// colored from the tabbar's selectedColor.
+    private let accentBar = NSView()
+    /// Selected-state tint from the lxapp's tabbar style (`selectedColor`);
+    /// nil falls back to the system accent (spec: style follows the tabbar
+    /// config, the shell injects no accent of its own).
+    var selectedTint: NSColor? { didSet { updateAppearance() } }
+    /// Unselected title tint from the tabbar's `color`; nil keeps the neutral
+    /// label color.
+    var unselectedTint: NSColor? { didSet { updateAppearance() } }
+    /// Icon pair from the item config; selection swaps between them exactly
+    /// like the mobile tabbar (colors style TEXT, icons come as a pair).
+    private var normalIconPath = ""
+    private var selectedIconPath = ""
 
     let itemIndex: Int
     let appId: String
@@ -53,8 +74,22 @@ class SidebarItemView: NSView {
         // Selection/hover background — inset to align with the connector line
         selectionBackground.translatesAutoresizingMaskIntoConstraints = false
         selectionBackground.wantsLayer = true
-        selectionBackground.layer?.cornerRadius = Layout.cornerRadius
+        selectionBackground.layer?.cornerRadius = 7
         addSubview(selectionBackground)
+        accentBar.translatesAutoresizingMaskIntoConstraints = false
+        accentBar.wantsLayer = true
+        accentBar.layer?.cornerRadius = 1.5
+        accentBar.isHidden = true
+        addSubview(accentBar)
+        NSLayoutConstraint.activate([
+            // Same axis as the group's attribution line (groupInset + 12,
+            // and this row is inset by groupInset already): the bar is the
+            // line's thickened, colored segment at the selected row.
+            accentBar.centerXAnchor.constraint(equalTo: leadingAnchor, constant: 12.5),
+            accentBar.centerYAnchor.constraint(equalTo: centerYAnchor),
+            accentBar.widthAnchor.constraint(equalToConstant: 3),
+            accentBar.heightAnchor.constraint(equalToConstant: 18),
+        ])
 
         // Icon
         iconView.translatesAutoresizingMaskIntoConstraints = false
@@ -73,13 +108,13 @@ class SidebarItemView: NSView {
         badgeBackground.translatesAutoresizingMaskIntoConstraints = false
         badgeBackground.wantsLayer = true
         badgeBackground.layer?.backgroundColor = NSColor.systemRed.cgColor
-        badgeBackground.layer?.cornerRadius = 8
+        badgeBackground.layer?.cornerRadius = 7.5
         badgeBackground.isHidden = true
         addSubview(badgeBackground)
 
         // Badge label
         badgeLabel.translatesAutoresizingMaskIntoConstraints = false
-        badgeLabel.font = NSFont.systemFont(ofSize: 9, weight: .medium)
+        badgeLabel.font = NSFont.systemFont(ofSize: 9.5, weight: .semibold)
         badgeLabel.textColor = NSColor.white
         badgeLabel.alignment = .center
         badgeLabel.isHidden = true
@@ -98,9 +133,9 @@ class SidebarItemView: NSView {
 
             // Selection background: inset from item leading to align with connector line
             selectionBackground.leadingAnchor.constraint(equalTo: leadingAnchor, constant: Layout.selectionLeadingInset),
-            selectionBackground.trailingAnchor.constraint(equalTo: trailingAnchor),
-            selectionBackground.topAnchor.constraint(equalTo: topAnchor),
-            selectionBackground.bottomAnchor.constraint(equalTo: bottomAnchor),
+            selectionBackground.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
+            selectionBackground.topAnchor.constraint(equalTo: topAnchor, constant: 2),
+            selectionBackground.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -2),
 
             iconView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: Layout.leadingPadding),
             iconView.centerYAnchor.constraint(equalTo: centerYAnchor),
@@ -109,17 +144,17 @@ class SidebarItemView: NSView {
 
             titleLabel.leadingAnchor.constraint(equalTo: iconView.trailingAnchor, constant: Layout.iconTitleSpacing),
             titleLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
-            titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -Layout.trailingPadding),
+            titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: badgeBackground.leadingAnchor, constant: -6),
 
-            badgeBackground.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -Layout.trailingPadding),
+            // Inside the selection card's edge so a selected row keeps the
+            // badge fully on the card, with clear air to the sidebar edge.
+            badgeBackground.trailingAnchor.constraint(equalTo: selectionBackground.trailingAnchor, constant: -10),
             badgeBackground.centerYAnchor.constraint(equalTo: centerYAnchor),
-            badgeBackground.heightAnchor.constraint(equalToConstant: 16),
-            badgeBackground.widthAnchor.constraint(greaterThanOrEqualToConstant: 16),
+            badgeBackground.heightAnchor.constraint(equalToConstant: 15),
 
             badgeLabel.centerXAnchor.constraint(equalTo: badgeBackground.centerXAnchor),
             badgeLabel.centerYAnchor.constraint(equalTo: badgeBackground.centerYAnchor),
-            badgeLabel.leadingAnchor.constraint(greaterThanOrEqualTo: badgeBackground.leadingAnchor, constant: 4),
-            badgeLabel.trailingAnchor.constraint(lessThanOrEqualTo: badgeBackground.trailingAnchor, constant: -4),
+
 
             redDotView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -Layout.trailingPadding),
             redDotView.centerYAnchor.constraint(equalTo: centerYAnchor),
@@ -131,28 +166,54 @@ class SidebarItemView: NSView {
     }
 
     /// Configure with TabBarItem data from Rust
+    private func setBadgeVisible(_ visible: Bool) {
+        if badgeCollapsed == nil {
+            // Equalities pin the capsule's width to its text (inequalities
+            // leave it under-determined and the engine stretches it); the
+            // zero-width alternative collapses hidden capsules entirely.
+            badgeTextPins = [
+                badgeLabel.leadingAnchor.constraint(equalTo: badgeBackground.leadingAnchor, constant: 5),
+                badgeLabel.trailingAnchor.constraint(equalTo: badgeBackground.trailingAnchor, constant: -5),
+                badgeBackground.widthAnchor.constraint(greaterThanOrEqualToConstant: 15),
+            ]
+            badgeCollapsed = badgeBackground.widthAnchor.constraint(equalToConstant: 0)
+        }
+        if visible {
+            badgeCollapsed?.isActive = false
+            NSLayoutConstraint.activate(badgeTextPins)
+        } else {
+            NSLayoutConstraint.deactivate(badgeTextPins)
+            badgeCollapsed?.isActive = true
+        }
+    }
+
     func configure(item: TabBarItem) {
         titleLabel.stringValue = item.cachedText
 
-        // Load icon
-        let iconPath = item.cachedIconPath
-        loadIcon(path: iconPath)
+        // Icon pair: selection swaps normal/selected images (mobile parity).
+        normalIconPath = item.cachedIconPath
+        selectedIconPath = item.cachedSelectedIconPath
+        loadIcon(path: isSelected && !selectedIconPath.isEmpty ? selectedIconPath : normalIconPath)
 
         // Badge / red dot from Rust state
         if let rustItem = getTabBarItem(appId, Int32(itemIndex)) {
             let badgeText = rustItem.badge.toString()
+            hasNotification = !badgeText.isEmpty || rustItem.has_red_dot
             if !badgeText.isEmpty {
                 badgeLabel.stringValue = badgeText
                 badgeLabel.isHidden = false
                 badgeBackground.isHidden = false
+                setBadgeVisible(true)
                 redDotView.isHidden = true
             } else if rustItem.has_red_dot {
                 badgeLabel.isHidden = true
                 badgeBackground.isHidden = true
+                setBadgeVisible(false)
                 redDotView.isHidden = false
             } else {
                 badgeLabel.isHidden = true
                 badgeBackground.isHidden = true
+                setBadgeVisible(false)
                 redDotView.isHidden = true
             }
         }
@@ -189,17 +250,39 @@ class SidebarItemView: NSView {
     }
 
     private func updateAppearance() {
+        let accent = selectedTint ?? NSColor.controlAccentColor
+        accentBar.isHidden = !isSelected
+        accentBar.layer?.backgroundColor = accent.cgColor
+        // Selection swaps the icon pair, mirroring the mobile tabbar.
+        loadIcon(path: isSelected && !selectedIconPath.isEmpty ? selectedIconPath : normalIconPath)
         if isSelected {
-            selectionBackground.layer?.backgroundColor = NSColor.controlAccentColor.withAlphaComponent(0.15).cgColor
-            titleLabel.textColor = NSColor.controlAccentColor
-            iconView.contentTintColor = NSColor.controlAccentColor
+            // Windows-baseline selected card: a light floating card on the
+            // dark base, accent icon + accent bar. The title takes the
+            // tabbar's selectedColor (mobile parity); a near-neutral dark
+            // stands in when the app declares none.
+            selectionBackground.layer?.backgroundColor =
+                NSColor.white.withAlphaComponent(0.95).cgColor
+            selectionBackground.shadow = {
+                let shadow = NSShadow()
+                shadow.shadowBlurRadius = 6
+                shadow.shadowOffset = NSSize(width: 0, height: -1)
+                shadow.shadowColor = NSColor.black.withAlphaComponent(0.35)
+                return shadow
+            }()
+            titleLabel.font = NSFont.systemFont(ofSize: 13, weight: .medium)
+            titleLabel.textColor = selectedTint ?? NSColor(calibratedWhite: 0.15, alpha: 1)
+            iconView.contentTintColor = accent
         } else if isHovered {
+            selectionBackground.shadow = nil
+            titleLabel.font = NSFont.systemFont(ofSize: 13, weight: .regular)
             selectionBackground.layer?.backgroundColor = NSColor.labelColor.withAlphaComponent(0.06).cgColor
-            titleLabel.textColor = NSColor.labelColor
+            titleLabel.textColor = unselectedTint ?? NSColor.labelColor
             iconView.contentTintColor = NSColor.secondaryLabelColor
         } else {
+            selectionBackground.shadow = nil
+            titleLabel.font = NSFont.systemFont(ofSize: 13, weight: .regular)
             selectionBackground.layer?.backgroundColor = NSColor.clear.cgColor
-            titleLabel.textColor = NSColor.labelColor
+            titleLabel.textColor = unselectedTint ?? NSColor.labelColor
             iconView.contentTintColor = NSColor.secondaryLabelColor
         }
     }

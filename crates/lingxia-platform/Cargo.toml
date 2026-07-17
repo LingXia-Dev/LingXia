@@ -13,6 +13,7 @@ thiserror = { workspace = true }
 log = { workspace = true }
 serde = { workspace = true }
 lingxia-surface = { workspace = true }
+lingxia-shell = { workspace = true }
 lingxia-messaging = { workspace = true }
 tokio = { workspace = true, features = ["rt", "time"] }
 rong_rt = { workspace = true, default-features = false }

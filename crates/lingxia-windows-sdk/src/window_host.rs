@@ -79,6 +79,7 @@ static NATIVE_FRAMED_WINDOWS: OnceLock<Mutex<HashSet<isize>>> = OnceLock::new();
 #[cfg(feature = "shell-chrome")]
 static HOST_CHROME_SNAPSHOTS: OnceLock<Mutex<HashMap<isize, HostChromeSnapshot>>> = OnceLock::new();
 static CHROME_INTERACTIONS: OnceLock<Mutex<HashMap<isize, ChromeInteraction>>> = OnceLock::new();
+static WINDOW_RESIZE_DRAGS: OnceLock<Mutex<HashMap<isize, WindowResizeDrag>>> = OnceLock::new();
 static CHROME_BACK_BUFFERS: OnceLock<Mutex<HashMap<isize, ChromeBackBuffer>>> = OnceLock::new();
 static ATTACHED_PANEL_RESIZE_DRAG: OnceLock<Mutex<Option<AttachedPanelResizeDrag>>> =
     OnceLock::new();
@@ -89,6 +90,8 @@ static TRANSPARENT_TABBAR_OVERLAYS: OnceLock<Mutex<HashMap<isize, TransparentTab
     OnceLock::new();
 #[cfg(feature = "shell-chrome")]
 static SIDEBAR_TABBAR_POPUPS: OnceLock<Mutex<HashMap<isize, SidebarTabbarPopup>>> = OnceLock::new();
+#[cfg(feature = "shell-chrome")]
+static SHELL_NOTICE_POPUPS: OnceLock<Mutex<HashMap<isize, ShellNoticePopup>>> = OnceLock::new();
 #[cfg(feature = "shell-chrome")]
 static TERMINAL_SELECTION_DRAGS: OnceLock<Mutex<HashMap<isize, String>>> = OnceLock::new();
 #[cfg(feature = "components")]
@@ -107,6 +110,10 @@ const OVERLAY_MARGIN: i32 = 24;
 const SIDEBAR_TABBAR_POPUP_TIMER_ID: usize = 0x5A18;
 #[cfg(feature = "shell-chrome")]
 const SIDEBAR_TABBAR_POPUP_TIMER_MS: u32 = 80;
+#[cfg(feature = "shell-chrome")]
+const SHELL_NOTICE_TIMER_ID: usize = 0x5A19;
+#[cfg(feature = "shell-chrome")]
+const SHELL_NOTICE_TIMER_MS: u32 = 3_000;
 #[cfg(feature = "runtime")]
 const SYSTEM_MENU_ABOUT_COMMAND: usize = 0x7100;
 #[cfg(feature = "runtime")]
@@ -133,6 +140,25 @@ struct ChromeInteraction {
     /// renderer's `hover_rect`); the previous/next rects are invalidated on
     /// change so hover feedback repaints exactly the affected element.
     hover_rect: Option<RECT>,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum WindowResizeEdge {
+    Left,
+    Right,
+    Top,
+    Bottom,
+    TopLeft,
+    TopRight,
+    BottomLeft,
+    BottomRight,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct WindowResizeDrag {
+    edge: WindowResizeEdge,
+    cursor: POINT,
+    window: RECT,
 }
 
 /// Per-window offscreen surface chrome renders into; WM_PAINT blits the
@@ -644,12 +670,25 @@ pub fn present_webview_in_active_group(webtag: &WebTag) -> StdResult<()> {
         return Ok(());
     }
 
+    // A newly-created browser/surface WebView has no shell layout yet. Keep
+    // the outgoing main surface's geometry until its owner installs the final
+    // layout; otherwise this intermediate pass treats the target as a raw
+    // full-client WebView, drops every attached panel from reconciliation,
+    // and makes the asides disappear/reappear during a sidebar switch.
+    let inherited_layout = previous
+        .as_deref()
+        .filter(|previous| !webtag_is_registered_panel(previous))
+        .map(current_window_layout)
+        .filter(|layout| !layout.is_empty());
+    let target_has_layout = !current_window_layout(webtag.key()).is_empty();
+
     // Remember the lxapp page a browser tab covers so closing the last tab
     // restores it. Track the LATEST lxapp page (the user may have navigated
     // since the group first presented) but never a browser tab itself —
     // switching between tabs must not overwrite the restore target.
     if let Some(previous) = previous.as_ref()
         && previous != webtag.key()
+        && !webtag_is_registered_panel(previous)
         && group_main_restore_candidate(previous)
     {
         let presented = PRESENTED_GROUP_MAIN.get_or_init(|| Mutex::new(HashMap::new()));
@@ -664,7 +703,21 @@ pub fn present_webview_in_active_group(webtag: &WebTag) -> StdResult<()> {
     set_window_handle(webtag.key(), host);
     set_host_active_webtag(host, webtag.key());
     set_primary_host_window(host);
-    sync_window_layout(host);
+    let inherited = if target_has_layout {
+        false
+    } else if let Some(layout) = inherited_layout {
+        set_webview_window_layout(webtag, layout).is_ok()
+    } else {
+        false
+    };
+    if !inherited {
+        sync_window_layout(host);
+    }
+    // Paint the incoming webtag's chrome while the outgoing controller still
+    // covers the content. Without this synchronous pass, switching from a
+    // browser row to an already-selected lxapp tab can show the new page for
+    // one frame under the old browser address bar.
+    repaint_window_now(host);
     // Show the host before the content so the controller's SetIsVisible(true)
     // lands on a visible parent chain and composition starts immediately.
     if !is_window_visible(host) {
@@ -688,6 +741,7 @@ pub fn present_webview_in_active_group(webtag: &WebTag) -> StdResult<()> {
 
     if let Some(previous) = previous
         && previous != webtag.key()
+        && !webtag_is_registered_panel(&previous)
     {
         if let Some(previous_webtag) = webtag_for_key(&previous)
             && let Some(previous_handler) = find_webview_handler(&previous_webtag)
@@ -699,12 +753,68 @@ pub fn present_webview_in_active_group(webtag: &WebTag) -> StdResult<()> {
 
     mark_active(webtag);
     notify_webtag_visibility(webtag.key(), true);
-    invalidate_window_chrome(host);
+    repaint_window_now(host);
     Ok(())
 }
 
 pub fn present_webview_as_group_main(webtag: &WebTag, _group_key: String) -> StdResult<()> {
     present_webview_in_active_group(webtag)
+}
+
+/// Covers a first-time group-main swap with the outgoing WebView snapshot
+/// until WebView2 has had a short window to submit the incoming controller's
+/// first composed frame. DOM readiness alone is insufficient: an invisible
+/// controller can be fully interactive while its first visible frame is still
+/// blank white.
+pub(crate) fn present_webview_in_active_group_with_snapshot_guard(
+    webtag: &WebTag,
+    hold_ms: u64,
+) -> StdResult<()> {
+    #[cfg(feature = "components")]
+    {
+        let host = active_host_window();
+        let guard = host.and_then(|host| {
+            active_webtag_key_for_window(host).and_then(|previous| {
+                (!webtag_is_registered_panel(&previous)
+                    && webtag_is_visible(&previous)
+                    && prepare_nav_snapshot_slide(host, &previous, true))
+                .then(|| nav_snapshot_overlay(host).map(|overlay| (host, overlay)))
+                .flatten()
+            })
+        });
+        let result = present_webview_in_active_group(webtag);
+        if let Some((host, overlay)) = guard {
+            if result.is_ok() {
+                schedule_nav_snapshot_guard_release(host, overlay, hold_ms);
+            } else {
+                finish_nav_snapshot_slide(host);
+            }
+        }
+        result
+    }
+    #[cfg(not(feature = "components"))]
+    {
+        let _ = hold_ms;
+        present_webview_in_active_group(webtag)
+    }
+}
+
+#[cfg(feature = "components")]
+fn schedule_nav_snapshot_guard_release(host: HWND, overlay: isize, hold_ms: u64) {
+    let host_handle = hwnd_handle(host);
+    let _ = std::thread::Builder::new()
+        .name("lingxia-first-frame-guard".to_string())
+        .spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(hold_ms));
+            if !post_to_window_thread(
+                host_handle,
+                Box::new(move || {
+                    finish_nav_snapshot_slide_if_overlay(hwnd_from_handle(host_handle), overlay);
+                }),
+            ) {
+                finish_nav_snapshot_slide_if_overlay(hwnd_from_handle(host_handle), overlay);
+            }
+        });
 }
 
 pub fn present_webview_as_overlay(
@@ -824,6 +934,19 @@ fn unregister_floating_overlay(webtag_key: &str) {
         }
         floats.retain(|_, keys| !keys.is_empty());
     }
+}
+
+fn floating_overlay_owner(webtag_key: &str) -> Option<HWND> {
+    FLOATING_OVERLAYS
+        .get()
+        .and_then(|floats| floats.lock().ok())
+        .and_then(|floats| {
+            floats
+                .iter()
+                .find(|(_, keys)| keys.iter().any(|key| key == webtag_key))
+                .map(|(owner, _)| hwnd_from_handle(*owner))
+        })
+        .filter(|owner| is_valid_host_window(*owner))
 }
 
 /// Re-raises the owner's visible floating surfaces above its chrome popups —
@@ -1396,6 +1519,7 @@ pub fn restore_presented_group_main() -> StdResult<()> {
 
     if let Some(current) = current
         && current != main_webtag.key()
+        && !webtag_is_registered_panel(&current)
     {
         if let Some(current_webtag) = webtag_for_key(&current)
             && let Some(current_handler) = find_webview_handler(&current_webtag)
@@ -1406,7 +1530,7 @@ pub fn restore_presented_group_main() -> StdResult<()> {
     }
     mark_active(&main_webtag);
     notify_webtag_visibility(main_webtag.key(), true);
-    invalidate_window_chrome(host);
+    repaint_window_now(host);
     Ok(())
 }
 
@@ -2286,6 +2410,286 @@ fn upload_sidebar_tabbar_popup(
     }
 }
 
+/// One non-activating, short-lived notice per shell window. It is an owned
+/// layered popup so it remains visible above windowed WebView2 children while
+/// keeping keyboard focus in the page or context menu that triggered it.
+#[cfg(feature = "shell-chrome")]
+#[derive(Debug, Clone, Copy)]
+struct ShellNoticePopup {
+    window: isize,
+    owner: isize,
+}
+
+#[cfg(feature = "shell-chrome")]
+pub fn show_shell_notice(owner: isize, title: String, message: String) {
+    if title.trim().is_empty() && message.trim().is_empty() {
+        return;
+    }
+    post_to_window_thread(
+        owner,
+        Box::new(move || show_shell_notice_on_thread(owner, title, message)),
+    );
+}
+
+#[cfg(feature = "shell-chrome")]
+fn show_shell_notice_on_thread(owner: isize, title: String, message: String) {
+    const IDEAL_WIDTH: i32 = 380;
+    const HEIGHT: i32 = 88;
+    const WINDOW_MARGIN: i32 = 24;
+
+    let owner_hwnd = hwnd_from_handle(owner);
+    destroy_shell_notice(owner_hwnd);
+
+    let mut client = RECT::default();
+    unsafe {
+        if WindowsAndMessaging::GetClientRect(owner_hwnd, &mut client).is_err() {
+            return;
+        }
+    }
+    let client_width = client.right - client.left;
+    let client_height = client.bottom - client.top;
+    let width = IDEAL_WIDTH.min(client_width - WINDOW_MARGIN * 2);
+    if width < 220 || client_height < HEIGHT + WINDOW_MARGIN * 2 {
+        return;
+    }
+
+    let mut origin = POINT::default();
+    unsafe {
+        if !windows::Win32::Graphics::Gdi::ClientToScreen(owner_hwnd, &mut origin).as_bool() {
+            return;
+        }
+    }
+    let left = origin.x + (client_width - width) / 2;
+    let top_offset = (crate::shell::shell_top_bar_height() + 12)
+        .clamp(WINDOW_MARGIN, client_height - HEIGHT - WINDOW_MARGIN);
+    let top = origin.y + top_offset;
+
+    let result = unsafe {
+        WindowsAndMessaging::CreateWindowExW(
+            WindowsAndMessaging::WS_EX_LAYERED
+                | WindowsAndMessaging::WS_EX_TOOLWINDOW
+                | WindowsAndMessaging::WS_EX_NOACTIVATE,
+            shell_notice_class(),
+            PCWSTR::null(),
+            WS_POPUP,
+            left,
+            top,
+            width,
+            HEIGHT,
+            Some(owner_hwnd),
+            None,
+            LibraryLoader::GetModuleHandleW(None)
+                .ok()
+                .map(|module| HINSTANCE(module.0)),
+            None,
+        )
+    };
+    let Ok(window) = result else {
+        log::warn!(
+            "shell notice creation failed: {}",
+            windows::core::Error::from_thread()
+        );
+        return;
+    };
+
+    if let Ok(mut notices) = SHELL_NOTICE_POPUPS
+        .get_or_init(|| Mutex::new(HashMap::new()))
+        .lock()
+    {
+        notices.insert(
+            owner,
+            ShellNoticePopup {
+                window: hwnd_handle(window),
+                owner,
+            },
+        );
+    }
+    upload_shell_notice(window, &title, &message, width, HEIGHT);
+    unsafe {
+        let _ = WindowsAndMessaging::SetWindowPos(
+            window,
+            Some(WindowsAndMessaging::HWND_TOP),
+            left,
+            top,
+            width,
+            HEIGHT,
+            WindowsAndMessaging::SWP_NOACTIVATE | WindowsAndMessaging::SWP_SHOWWINDOW,
+        );
+        let _ = WindowsAndMessaging::SetTimer(
+            Some(window),
+            SHELL_NOTICE_TIMER_ID,
+            SHELL_NOTICE_TIMER_MS,
+            None,
+        );
+    }
+}
+
+#[cfg(feature = "shell-chrome")]
+fn destroy_shell_notice(owner: HWND) {
+    let notice = SHELL_NOTICE_POPUPS
+        .get()
+        .and_then(|notices| notices.lock().ok())
+        .and_then(|mut notices| notices.remove(&hwnd_handle(owner)));
+    if let Some(notice) = notice
+        && is_window_handle_valid(notice.window)
+    {
+        unsafe {
+            let _ = WindowsAndMessaging::DestroyWindow(hwnd_from_handle(notice.window));
+        }
+    }
+}
+
+#[cfg(feature = "shell-chrome")]
+fn shell_notice_owner_for_window(window: HWND) -> Option<HWND> {
+    SHELL_NOTICE_POPUPS
+        .get()
+        .and_then(|notices| notices.lock().ok())
+        .and_then(|notices| {
+            notices
+                .values()
+                .find(|notice| notice.window == hwnd_handle(window))
+                .map(|notice| hwnd_from_handle(notice.owner))
+        })
+}
+
+#[cfg(feature = "shell-chrome")]
+fn remove_shell_notice_window(window: HWND) {
+    if let Some(notices) = SHELL_NOTICE_POPUPS.get()
+        && let Ok(mut notices) = notices.lock()
+    {
+        notices.retain(|_, notice| notice.window != hwnd_handle(window));
+    }
+}
+
+#[cfg(feature = "shell-chrome")]
+fn shell_notice_class() -> PCWSTR {
+    static REGISTERED: OnceLock<()> = OnceLock::new();
+    REGISTERED.get_or_init(|| {
+        let module = unsafe { LibraryLoader::GetModuleHandleW(None) }
+            .map(|module| HINSTANCE(module.0))
+            .unwrap_or_default();
+        let cursor =
+            unsafe { WindowsAndMessaging::LoadCursorW(None, WindowsAndMessaging::IDC_ARROW) }
+                .unwrap_or_default();
+        let class = WNDCLASSW {
+            lpfnWndProc: Some(shell_notice_proc),
+            hInstance: module,
+            hCursor: cursor,
+            lpszClassName: w!("LingXiaShellNotice"),
+            ..Default::default()
+        };
+        if unsafe { WindowsAndMessaging::RegisterClassW(&class) } == 0 {
+            log::error!(
+                "shell notice class registration failed: {}",
+                windows::core::Error::from_thread()
+            );
+        }
+    });
+    w!("LingXiaShellNotice")
+}
+
+#[cfg(feature = "shell-chrome")]
+unsafe extern "system" fn shell_notice_proc(
+    hwnd: HWND,
+    msg: u32,
+    wparam: WPARAM,
+    lparam: LPARAM,
+) -> LRESULT {
+    match msg {
+        WindowsAndMessaging::WM_MOUSEACTIVATE => {
+            return LRESULT(WindowsAndMessaging::MA_NOACTIVATE as isize);
+        }
+        WindowsAndMessaging::WM_TIMER if wparam.0 == SHELL_NOTICE_TIMER_ID => {
+            if let Some(owner) = shell_notice_owner_for_window(hwnd) {
+                destroy_shell_notice(owner);
+            }
+            return LRESULT(0);
+        }
+        WindowsAndMessaging::WM_LBUTTONUP => {
+            if let Some(owner) = shell_notice_owner_for_window(hwnd) {
+                destroy_shell_notice(owner);
+            }
+            return LRESULT(0);
+        }
+        WindowsAndMessaging::WM_ERASEBKGND => return LRESULT(1),
+        WindowsAndMessaging::WM_NCDESTROY => remove_shell_notice_window(hwnd),
+        _ => {}
+    }
+    unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
+}
+
+#[cfg(feature = "shell-chrome")]
+fn upload_shell_notice(hwnd: HWND, title: &str, message: &str, width: i32, height: i32) {
+    unsafe {
+        let screen = GetDC(None);
+        if screen.is_invalid() {
+            return;
+        }
+        let dc = CreateCompatibleDC(Some(screen));
+        if dc.is_invalid() {
+            let _ = ReleaseDC(None, screen);
+            return;
+        }
+        let info = BITMAPINFO {
+            bmiHeader: BITMAPINFOHEADER {
+                biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+                biWidth: width,
+                biHeight: -height,
+                biPlanes: 1,
+                biBitCount: 32,
+                biCompression: BI_RGB.0,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let mut bits: *mut c_void = std::ptr::null_mut();
+        let Ok(bitmap) = CreateDIBSection(Some(screen), &info, DIB_RGB_COLORS, &mut bits, None, 0)
+        else {
+            let _ = DeleteDC(dc);
+            let _ = ReleaseDC(None, screen);
+            return;
+        };
+        if bits.is_null() {
+            let _ = DeleteObject(HGDIOBJ(bitmap.0));
+            let _ = DeleteDC(dc);
+            let _ = ReleaseDC(None, screen);
+            return;
+        }
+        let old_bitmap = SelectObject(dc, HGDIOBJ(bitmap.0));
+        crate::shell::paint_shell_notice(dc, title, message, width, height);
+        let pixels = std::slice::from_raw_parts_mut(bits.cast::<u32>(), (width * height) as usize);
+        apply_rounded_alpha_mask(pixels, width, height, 12);
+        let size = SIZE {
+            cx: width,
+            cy: height,
+        };
+        let origin = POINT::default();
+        let blend = BLENDFUNCTION {
+            BlendOp: AC_SRC_OVER as u8,
+            BlendFlags: 0,
+            SourceConstantAlpha: 255,
+            AlphaFormat: AC_SRC_ALPHA as u8,
+        };
+        let _ = WindowsAndMessaging::UpdateLayeredWindow(
+            hwnd,
+            Some(screen),
+            None,
+            Some(&size),
+            Some(dc),
+            Some(&origin),
+            COLORREF(0),
+            Some(&blend),
+            WindowsAndMessaging::ULW_ALPHA,
+        );
+        if !old_bitmap.is_invalid() {
+            let _ = SelectObject(dc, old_bitmap);
+        }
+        let _ = DeleteObject(HGDIOBJ(bitmap.0));
+        let _ = DeleteDC(dc);
+        let _ = ReleaseDC(None, screen);
+    }
+}
+
 /// One phone tab-switcher sheet per host window (the macOS runner's
 /// in-frame bottom sheet), shown from the phone bar's tabs button.
 #[cfg(feature = "shell-chrome")]
@@ -2959,7 +3363,12 @@ fn sync_webtag_content_bounds_to_rect(hwnd: HWND, webtag_key: &str, rect: RECT) 
         log::debug!("Failed to set Windows WebView parent for {webtag_key}: {err}");
     }
     let controller_bounds = rect;
-    if webtag_content_bounds_changed(webtag_key, host_bounds)
+    let bounds_changed = webtag_content_bounds_changed(webtag_key, host_bounds);
+    if bounds_changed {
+        #[cfg(feature = "runtime")]
+        report_surface_viewport(hwnd, &webtag, width, height);
+    }
+    if bounds_changed
         && let Err(err) = handler.set_content_bounds(
             controller_bounds.left,
             controller_bounds.top,
@@ -2969,7 +3378,28 @@ fn sync_webtag_content_bounds_to_rect(hwnd: HWND, webtag_key: &str, rect: RECT) 
     {
         log::debug!("Failed to sync Windows WebView content bounds: {err}");
     }
+    if bounds_changed {
+        // WebView2 does not invalidate the parent pixels it just uncovered.
+        // Without this repaint, a smaller incoming surface leaves the old
+        // page's white right/bottom strips in the shell gutter until another
+        // unrelated desktop activation happens.
+        repaint_window_now(hwnd);
+    }
     let _ = handler.notify_parent_position_changed();
+}
+
+#[cfg(feature = "runtime")]
+fn report_surface_viewport(hwnd: HWND, webtag: &WebTag, width: i32, height: i32) {
+    if width <= 0 || height <= 0 {
+        return;
+    }
+    let appid = webtag.extract_appid();
+    if appid.is_empty() {
+        return;
+    }
+    let dpi = unsafe { windows::Win32::UI::HiDpi::GetDpiForWindow(hwnd) };
+    let scale = if dpi == 0 { 1.0 } else { dpi as f64 / 96.0 };
+    lingxia::windows::set_surface_viewport(&appid, width as f64 / scale, height as f64 / scale);
 }
 
 fn attached_has_maximized_native_panel(attached: &WindowsChromeAttachedLayout) -> bool {
@@ -3110,6 +3540,7 @@ fn attached_layout_for_window(
     renderer
         .attached_layout(client, &layout, &panels)
         .map(|mut attached| {
+            attached.main_region = normalize_rect(attached.main_region);
             attached.main = normalize_rect(attached.main);
             for panel in &mut attached.panels {
                 panel.rect = normalize_rect(panel.rect);
@@ -3136,12 +3567,14 @@ fn attached_state_for_window(
                 title: webview_panel_title(&panel_id),
                 rect: panel.rect,
                 header_rect: panel.header_rect,
+                resize_handle: panel.resize_handle,
                 host_content: host_panel_content(&panel_id),
                 docked: panel_is_docked(&panel_id),
             }
         })
         .collect();
     Some(WindowsChromeAttachedState {
+        main_region: layout.main_region,
         main: layout.main,
         panels,
     })
@@ -3444,7 +3877,10 @@ fn active_host_window_except(excluded: Option<HWND>) -> Option<HWND> {
         .get()
         .and_then(|slot| slot.lock().ok())
         .and_then(|slot| slot.as_ref().map(|webtag| webtag.key().to_string()))
-        .and_then(|key| window_handle_for_key(&key))
+        // A focused float/adaptive-aside overlay is a child presentation, not
+        // the shell host that a new main tab should replace. Resolve it back
+        // to its owner before considering the overlay's own HWND.
+        .and_then(|key| floating_overlay_owner(&key).or_else(|| window_handle_for_key(&key)))
         .filter(|hwnd| Some(*hwnd) != excluded)
         .or_else(|| primary_host_window_except(excluded))
         .or_else(|| focused_registered_host_window_except(excluded))
@@ -3456,6 +3892,12 @@ fn set_primary_host_window(hwnd: HWND) {
     if let Ok(mut slot) = slot.lock() {
         *slot = Some(hwnd_handle(hwnd));
     }
+    // The first WM_SIZE can run while the home lxapp is still opening, before
+    // its surface graph can accept the width. Seed again once this HWND has
+    // become the real shell host so the graph never stays at its Medium
+    // default until the user manually resizes the window.
+    #[cfg(feature = "shell-chrome")]
+    report_shell_surface_width(hwnd);
 }
 
 fn primary_host_window_except(excluded: Option<HWND>) -> Option<HWND> {
@@ -3761,6 +4203,13 @@ fn panel_id_for_webtag(webtag_key: &str) -> Option<String> {
         })
 }
 
+fn webtag_is_registered_panel(webtag_key: &str) -> bool {
+    WEBVIEW_PANELS
+        .get()
+        .and_then(|panels| panels.lock().ok())
+        .is_some_and(|panels| panels.values().any(|panel| panel.webtag_key == webtag_key))
+}
+
 fn panel_is_docked(panel_id: &str) -> bool {
     if let Some(docked) = WEBVIEW_PANELS
         .get()
@@ -3961,9 +4410,54 @@ fn apply_shell_window_frame(hwnd: HWND) -> StdResult<()> {
     let style = if window_is_device_framed(hwnd) {
         WS_POPUP.0 | WS_SYSMENU.0 | WS_MINIMIZEBOX.0
     } else {
-        WS_POPUP.0 | WS_SIZEBOX.0 | WS_SYSMENU.0 | WS_MINIMIZEBOX.0 | WS_MAXIMIZEBOX.0
+        // WS_SIZEBOX reserves an 8px DWM-owned strip inside every edge even
+        // after WM_NCCALCSIZE makes the client full-window. Edge resize and
+        // snap are handled by the custom hit-test/drag path instead.
+        WS_POPUP.0 | WS_SYSMENU.0 | WS_MINIMIZEBOX.0 | WS_MAXIMIZEBOX.0
     };
-    apply_window_style(hwnd, WINDOW_STYLE(style))
+    apply_window_style(hwnd, WINDOW_STYLE(style))?;
+    if !window_is_device_framed(hwnd) {
+        apply_shell_window_dressing(hwnd);
+    }
+    Ok(())
+}
+
+/// Last main shell host selected by a presentation. Unlike a page-derived
+/// lookup this remains valid after WM_CLOSE hides the window, so tray activate
+/// can restore the exact HWND the user closed.
+#[cfg(feature = "browser-shell")]
+pub(crate) fn primary_host_window_handle() -> Option<isize> {
+    primary_host_window_except(None).map(hwnd_handle)
+}
+
+/// Ask DWM to round the outer window without extending its non-client frame
+/// into the client. Extending even one pixel recreates the unpaintable system
+/// strip this custom shell deliberately removes.
+fn apply_shell_window_dressing(hwnd: HWND) {
+    use windows::Win32::Graphics::Dwm::{
+        DWMWA_BORDER_COLOR, DWMWA_COLOR_NONE, DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_ROUND,
+        DwmSetWindowAttribute,
+    };
+
+    unsafe {
+        let preference = DWMWCP_ROUND;
+        let _ = DwmSetWindowAttribute(
+            hwnd,
+            DWMWA_WINDOW_CORNER_PREFERENCE,
+            &preference as *const _ as *const c_void,
+            std::mem::size_of_val(&preference) as u32,
+        );
+        // Win11 otherwise paints a light/dark activation-dependent stroke
+        // around WS_SIZEBOX windows. With custom client chrome that becomes
+        // the unwanted white/gray band around all four app edges.
+        let border_color = DWMWA_COLOR_NONE;
+        let _ = DwmSetWindowAttribute(
+            hwnd,
+            DWMWA_BORDER_COLOR,
+            &border_color as *const _ as *const c_void,
+            std::mem::size_of_val(&border_color) as u32,
+        );
+    }
 }
 
 fn apply_window_style(hwnd: HWND, style: WINDOW_STYLE) -> StdResult<()> {
@@ -3989,6 +4483,42 @@ fn apply_window_style(hwnd: HWND, style: WINDOW_STYLE) -> StdResult<()> {
         .map_err(|err| WebViewError::WebView(format!("SetWindowPos failed: {err}")))?;
     }
     Ok(())
+}
+
+/// Extend custom shell chrome through the whole top-level window. The custom
+/// hit test and drag path own every resize edge, so no native frame is needed.
+fn custom_shell_nc_calc_size(hwnd: HWND, wparam: WPARAM, lparam: LPARAM) -> Option<LRESULT> {
+    if windows_chrome_renderer().is_none() || is_native_framed_window(hwnd) {
+        return None;
+    }
+    if lparam.0 == 0 {
+        return Some(LRESULT(0));
+    }
+
+    // A maximized WS_SIZEBOX window extends beyond the monitor bounds by its
+    // resize frame. Once the non-client frame is removed, clamp the client to
+    // the work area so the custom caption and edge pixels remain reachable.
+    if unsafe { WindowsAndMessaging::IsZoomed(hwnd).as_bool() } {
+        let monitor = unsafe { MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST) };
+        let mut info = MONITORINFO {
+            cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+            ..Default::default()
+        };
+        if unsafe { GetMonitorInfoW(monitor, &mut info).as_bool() } {
+            if wparam.0 != 0 {
+                let params = lparam.0 as *mut WindowsAndMessaging::NCCALCSIZE_PARAMS;
+                if !params.is_null() {
+                    unsafe { (*params).rgrc[0] = info.rcWork };
+                }
+            } else {
+                let rect = lparam.0 as *mut RECT;
+                if !rect.is_null() {
+                    unsafe { *rect = info.rcWork };
+                }
+            }
+        }
+    }
+    Some(LRESULT(0))
 }
 
 fn chrome_interaction(hwnd: HWND) -> ChromeInteraction {
@@ -4040,6 +4570,17 @@ fn chrome_hit_for_window(hwnd: HWND, point: (i32, i32)) -> Option<WindowsChromeH
 fn invalidate_window(hwnd: HWND) {
     unsafe {
         let _ = windows::Win32::Graphics::Gdi::InvalidateRect(Some(hwnd), None, false);
+    }
+}
+
+/// Repaints exposed host pixels synchronously. WebView2 composition can keep
+/// presenting an outgoing controller until `SetIsVisible(false)` completes;
+/// a queued invalidation alone then leaves its last white frame in the newly
+/// uncovered shell gutter until some unrelated desktop damage occurs.
+fn repaint_window_now(hwnd: HWND) {
+    invalidate_window(hwnd);
+    unsafe {
+        let _ = windows::Win32::Graphics::Gdi::UpdateWindow(hwnd);
     }
 }
 
@@ -4184,17 +4725,19 @@ fn invalidate_precise_shell_chrome(
     for rect in attached_dirty {
         invalidate_rect_if_non_empty(hwnd, rect);
     }
-    // The lxapp navbar is clipped to the main column and browser asides paint
-    // their address bar in the shared top band - both track the main column's
-    // width, which only changes when a panel opens/closes/resizes.
+    // The lxapp navbar belongs to the main region and therefore tracks both
+    // axes when a panel opens, closes, or resizes.
     // `shell_chrome_dirty_rects` diffs only the lxapp layout (unchanged on those
     // events), so repaint the top strip here when the *main rect* changes.
     // Gating on the main rect (not on full attached equality) is deliberate: a
     // live aside's frequent re-syncs leave the main width unchanged, so the top
     // strip is not repainted on every tick - which would flicker the navbar,
     // sidebar header, and address bar.
-    let previous_main = previous.attached.as_ref().map(|attached| attached.main);
-    let current_main = attached.map(|attached| attached.main);
+    let previous_main = previous
+        .attached
+        .as_ref()
+        .map(|attached| attached.main_region);
+    let current_main = attached.map(|attached| attached.main_region);
     if previous_main != current_main {
         invalidate_rect_if_non_empty(
             hwnd,
@@ -4247,6 +4790,7 @@ fn attached_chrome_dirty_rects(
 
 #[cfg(feature = "shell-chrome")]
 fn push_attached_layout_dirty_rects(dirty: &mut Vec<RECT>, attached: &WindowsChromeAttachedLayout) {
+    push_unique_dirty_rect(dirty, attached.main_region);
     for panel in &attached.panels {
         push_unique_dirty_rect(dirty, panel.rect);
         // A tab switch changes only the toolbar row; redraw it even when the
@@ -4339,6 +4883,12 @@ fn hit_test_window(hwnd: HWND, lparam: LPARAM) -> LRESULT {
     }
 
     match chrome_hit_for_window(hwnd, point_tuple) {
+        // Windows 11 discovers custom-titlebar snap layouts through
+        // HTMAXBUTTON. The other caption buttons stay client-owned because
+        // the shell paints and invokes them itself.
+        Some(WindowsChromeHit::FrameButton(button)) => frame_button_non_client_hit(button)
+            .map(LRESULT)
+            .unwrap_or(LRESULT(WindowsAndMessaging::HTCLIENT as isize)),
         Some(WindowsChromeHit::Caption) => LRESULT(WindowsAndMessaging::HTCAPTION as isize),
         Some(_) => LRESULT(WindowsAndMessaging::HTCLIENT as isize),
         None => LRESULT(WindowsAndMessaging::HTCLIENT as isize),
@@ -4369,6 +4919,207 @@ fn resize_hit_test(hwnd: HWND, point: (i32, i32)) -> Option<LRESULT> {
         (_, _, true, _) => Some(LRESULT(WindowsAndMessaging::HTTOP as isize)),
         (_, _, _, true) => Some(LRESULT(WindowsAndMessaging::HTBOTTOM as isize)),
         _ => None,
+    }
+}
+
+fn window_resize_edge(hit: usize) -> Option<WindowResizeEdge> {
+    match hit as u32 {
+        WindowsAndMessaging::HTLEFT => Some(WindowResizeEdge::Left),
+        WindowsAndMessaging::HTRIGHT => Some(WindowResizeEdge::Right),
+        WindowsAndMessaging::HTTOP => Some(WindowResizeEdge::Top),
+        WindowsAndMessaging::HTBOTTOM => Some(WindowResizeEdge::Bottom),
+        WindowsAndMessaging::HTTOPLEFT => Some(WindowResizeEdge::TopLeft),
+        WindowsAndMessaging::HTTOPRIGHT => Some(WindowResizeEdge::TopRight),
+        WindowsAndMessaging::HTBOTTOMLEFT => Some(WindowResizeEdge::BottomLeft),
+        WindowsAndMessaging::HTBOTTOMRIGHT => Some(WindowResizeEdge::BottomRight),
+        _ => None,
+    }
+}
+
+/// `WS_SIZEBOX` gives Windows native resize/snap behavior but also reserves an
+/// unpaintable, system-colored frame inside every edge of this custom client
+/// window. Keep the HWND frame-free and run the same edge gesture from our
+/// existing `WM_NCHITTEST` results.
+fn begin_window_resize_drag(hwnd: HWND, hit: usize) -> bool {
+    let Some(edge) = window_resize_edge(hit) else {
+        return false;
+    };
+    if unsafe { WindowsAndMessaging::IsZoomed(hwnd).as_bool() } {
+        return false;
+    }
+    let mut cursor = POINT::default();
+    let mut window = RECT::default();
+    unsafe {
+        if WindowsAndMessaging::GetCursorPos(&mut cursor).is_err()
+            || WindowsAndMessaging::GetWindowRect(hwnd, &mut window).is_err()
+        {
+            return false;
+        }
+        let _ = SetCapture(hwnd);
+    }
+    if let Ok(mut drags) = WINDOW_RESIZE_DRAGS
+        .get_or_init(|| Mutex::new(HashMap::new()))
+        .lock()
+    {
+        drags.insert(
+            hwnd_handle(hwnd),
+            WindowResizeDrag {
+                edge,
+                cursor,
+                window,
+            },
+        );
+        true
+    } else {
+        unsafe {
+            let _ = ReleaseCapture();
+        }
+        false
+    }
+}
+
+fn window_resize_drag(hwnd: HWND) -> Option<WindowResizeDrag> {
+    WINDOW_RESIZE_DRAGS
+        .get()
+        .and_then(|drags| drags.lock().ok())
+        .and_then(|drags| drags.get(&hwnd_handle(hwnd)).copied())
+}
+
+fn update_window_resize_drag(hwnd: HWND) -> bool {
+    let Some(drag) = window_resize_drag(hwnd) else {
+        return false;
+    };
+    let mut cursor = POINT::default();
+    if unsafe { WindowsAndMessaging::GetCursorPos(&mut cursor).is_err() } {
+        return true;
+    }
+    let dpi = unsafe { windows::Win32::UI::HiDpi::GetDpiForWindow(hwnd) }.max(96) as i32;
+    let rect = resized_window_rect(drag, cursor, dpi);
+    unsafe {
+        let _ = WindowsAndMessaging::SetWindowPos(
+            hwnd,
+            None,
+            rect.left,
+            rect.top,
+            rect.right - rect.left,
+            rect.bottom - rect.top,
+            WindowsAndMessaging::SWP_NOACTIVATE | WindowsAndMessaging::SWP_NOZORDER,
+        );
+    }
+    true
+}
+
+fn resized_window_rect(drag: WindowResizeDrag, cursor: POINT, dpi: i32) -> RECT {
+    let dx = cursor.x - drag.cursor.x;
+    let dy = cursor.y - drag.cursor.y;
+    let mut rect = drag.window;
+    let moves_left = matches!(
+        drag.edge,
+        WindowResizeEdge::Left | WindowResizeEdge::TopLeft | WindowResizeEdge::BottomLeft
+    );
+    let moves_right = matches!(
+        drag.edge,
+        WindowResizeEdge::Right | WindowResizeEdge::TopRight | WindowResizeEdge::BottomRight
+    );
+    let moves_top = matches!(
+        drag.edge,
+        WindowResizeEdge::Top | WindowResizeEdge::TopLeft | WindowResizeEdge::TopRight
+    );
+    let moves_bottom = matches!(
+        drag.edge,
+        WindowResizeEdge::Bottom | WindowResizeEdge::BottomLeft | WindowResizeEdge::BottomRight
+    );
+    if moves_left {
+        rect.left += dx;
+    }
+    if moves_right {
+        rect.right += dx;
+    }
+    if moves_top {
+        rect.top += dy;
+    }
+    if moves_bottom {
+        rect.bottom += dy;
+    }
+
+    let dpi = dpi.max(96);
+    let min_width = 640 * dpi / 96;
+    let min_height = 480 * dpi / 96;
+    if rect.right - rect.left < min_width {
+        if moves_left {
+            rect.left = rect.right - min_width;
+        } else {
+            rect.right = rect.left + min_width;
+        }
+    }
+    if rect.bottom - rect.top < min_height {
+        if moves_top {
+            rect.top = rect.bottom - min_height;
+        } else {
+            rect.bottom = rect.top + min_height;
+        }
+    }
+
+    rect
+}
+
+fn end_window_resize_drag(hwnd: HWND, release_capture: bool) -> bool {
+    let removed = WINDOW_RESIZE_DRAGS
+        .get()
+        .and_then(|drags| drags.lock().ok())
+        .and_then(|mut drags| drags.remove(&hwnd_handle(hwnd)))
+        .is_some();
+    if removed && release_capture {
+        unsafe {
+            let _ = ReleaseCapture();
+        }
+    }
+    removed
+}
+
+fn snap_window_after_caption_drag(hwnd: HWND) {
+    if unsafe { WindowsAndMessaging::IsZoomed(hwnd).as_bool() } {
+        return;
+    }
+    let mut cursor = POINT::default();
+    if unsafe { WindowsAndMessaging::GetCursorPos(&mut cursor).is_err() } {
+        return;
+    }
+    let monitor = unsafe { MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST) };
+    let mut info = MONITORINFO {
+        cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+        ..Default::default()
+    };
+    if !unsafe { GetMonitorInfoW(monitor, &mut info).as_bool() } {
+        return;
+    }
+    let work = info.rcWork;
+    let threshold = 2;
+    unsafe {
+        if cursor.y <= work.top + threshold {
+            let _ = WindowsAndMessaging::ShowWindow(hwnd, WindowsAndMessaging::SW_MAXIMIZE);
+        } else if cursor.x <= work.left + threshold {
+            let _ = WindowsAndMessaging::SetWindowPos(
+                hwnd,
+                None,
+                work.left,
+                work.top,
+                (work.right - work.left) / 2,
+                work.bottom - work.top,
+                WindowsAndMessaging::SWP_NOACTIVATE | WindowsAndMessaging::SWP_NOZORDER,
+            );
+        } else if cursor.x >= work.right - threshold {
+            let width = (work.right - work.left) / 2;
+            let _ = WindowsAndMessaging::SetWindowPos(
+                hwnd,
+                None,
+                work.right - width,
+                work.top,
+                width,
+                work.bottom - work.top,
+                WindowsAndMessaging::SWP_NOACTIVATE | WindowsAndMessaging::SWP_NOZORDER,
+            );
+        }
     }
 }
 
@@ -4564,26 +5315,46 @@ fn handle_chrome_mouse_move(hwnd: HWND, point: (i32, i32), from_host: bool) -> b
     )
 }
 
-#[cfg(feature = "shell-chrome")]
+fn frame_button_non_client_hit(button: WindowsFrameButton) -> Option<isize> {
+    (button == WindowsFrameButton::Maximize).then_some(WindowsAndMessaging::HTMAXBUTTON as isize)
+}
+
 fn handle_chrome_mouse_wheel(hwnd: HWND, wparam: WPARAM, lparam: LPARAM) -> bool {
     let mut point = lparam_screen_point(lparam);
     if unsafe { !ScreenToClient(hwnd, &mut point).as_bool() } {
         return false;
     }
     let client_point = (point.x, point.y);
-    let Some(WindowsChromeHit::Focusable { id, .. }) = chrome_hit_for_window(hwnd, client_point)
-    else {
-        return false;
-    };
-    if id != "terminal" {
-        return false;
-    }
 
-    let wheel_delta = ((wparam.0 >> 16) & 0xffff) as u16 as i16 as i32;
-    if wheel_delta == 0 {
+    let wheel_delta = ((wparam.0 >> 16) & 0xffff) as u16 as i16;
+    #[cfg(feature = "shell-chrome")]
+    if let Some(WindowsChromeHit::Focusable { id, .. }) = chrome_hit_for_window(hwnd, client_point)
+        && id == "terminal"
+    {
+        if wheel_delta != 0 {
+            let _ = crate::shell::scroll_pane_at(
+                &id,
+                client_point.0,
+                client_point.1,
+                i32::from(wheel_delta),
+            );
+        }
         return true;
     }
-    let _ = crate::shell::scroll_pane_at(&id, client_point.0, client_point.1, wheel_delta);
+
+    let Some(renderer) = windows_chrome_renderer() else {
+        return false;
+    };
+    let Some(state) = chrome_state_for_window(hwnd) else {
+        return false;
+    };
+    let Some(command) = renderer.mouse_wheel(&state, client_point, wheel_delta) else {
+        return false;
+    };
+    let Some(webtag_key) = active_webtag_key_for_window(hwnd) else {
+        return false;
+    };
+    invoke_chrome_command(&webtag_key, hwnd, client_point, command);
     true
 }
 
@@ -4805,6 +5576,23 @@ fn window_logical_client_width(hwnd: HWND) -> f64 {
     physical / scale
 }
 
+/// Reports the adaptive container width only from the primary shell host.
+/// Every WebView2 controller starts with its own 1024px top-level parent; an
+/// aside or a new aside-browser tab must not overwrite the real workspace
+/// width while that temporary parent is created.
+#[cfg(feature = "shell-chrome")]
+fn report_shell_surface_width(hwnd: HWND) {
+    let primary = PRIMARY_HOST_WINDOW
+        .get()
+        .and_then(|slot| slot.lock().ok())
+        .and_then(|slot| *slot)
+        .is_some_and(|window| window == hwnd_handle(hwnd));
+    if !primary || is_native_framed_window(hwnd) || active_webtag_key_for_window(hwnd).is_none() {
+        return;
+    }
+    crate::shell::update_surface_width(window_logical_client_width(hwnd));
+}
+
 pub fn find_webview_content_window(webtag: &WebTag) -> Option<WindowsWebViewContentWindow> {
     let hwnd = window_handle_for_key(webtag.key())?;
     let client = content_rect_for_window(hwnd, webtag.key());
@@ -4984,6 +5772,12 @@ fn show_webview_window_replacing(
     if !inherited {
         sync_window_layout(target);
     }
+    // The incoming layout may have the same content bounds as the outgoing
+    // one (browser address bar and lxapp navbar are both one row tall), so the
+    // bounds cache does not trigger a repaint. Paint the final active chrome
+    // before revealing the incoming controller; otherwise one desktop frame
+    // combines new page content with the old tab/address chrome.
+    repaint_window_now(target);
     handler.set_content_visible(true)?;
 
     for hidden in &hide_webtags {
@@ -5095,6 +5889,7 @@ fn navigate_with_snapshot_slide(
             && !is_minimized(host);
         if slide
             && let Some(prev_key) = active_webtag_key_for_window(host)
+            && !webtag_is_registered_panel(&prev_key)
             && webtag_is_visible(&prev_key)
             && prepare_nav_snapshot_slide(
                 host,
@@ -5513,6 +6308,21 @@ fn nav_snapshot_slide_active(host: isize) -> bool {
         .is_some_and(|slides| slides.contains_key(&host))
 }
 
+#[cfg(feature = "components")]
+fn nav_snapshot_overlay(host: HWND) -> Option<isize> {
+    NAV_SNAPSHOT_SLIDES
+        .get()
+        .and_then(|slides| slides.lock().ok())
+        .and_then(|slides| slides.get(&hwnd_handle(host)).map(|slide| slide.overlay))
+}
+
+#[cfg(feature = "components")]
+fn finish_nav_snapshot_slide_if_overlay(host: HWND, overlay: isize) {
+    if nav_snapshot_overlay(host) == Some(overlay) {
+        finish_nav_snapshot_slide(host);
+    }
+}
+
 /// Advances one slide frame; runs on the host's `WM_TIMER`. Shifts the
 /// snapshot image inside the fixed overlay (forward reveals leftward, backward
 /// rightward) and tears the overlay down when the duration elapses.
@@ -5597,6 +6407,7 @@ fn normal_group_webtags(active: &WebTag) -> Vec<WebTag> {
                 && webtag.extract_appid() == appid
                 && webtag.session_id() == session_id
                 && !is_page_instance_webtag(webtag)
+                && !webtag_is_registered_panel(webtag.key())
         })
         .collect()
 }
@@ -5933,6 +6744,7 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
             WindowsAndMessaging::WM_CLOSE => {
                 #[cfg(feature = "browser-shell")]
                 if should_hide_window_on_close(hwnd) {
+                    set_primary_host_window(hwnd);
                     unsafe {
                         let _ = WindowsAndMessaging::ShowWindow(hwnd, WindowsAndMessaging::SW_HIDE);
                     }
@@ -5959,10 +6771,11 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
             }
             WindowsAndMessaging::WM_ACTIVATEAPP => {
                 if let Some(webtag_key) = active_webtag_key_for_window(hwnd) {
-                    notify_webtag_visibility(
-                        &webtag_key,
-                        wparam.0 != 0 && is_window_visible(hwnd) && !is_minimized(hwnd),
-                    );
+                    // Activation is an app lifecycle signal, not controller or
+                    // HWND visibility. Mutating WEBTAG_VISIBILITY here made a
+                    // visible inactive WebView look hidden to reconciliation,
+                    // so switching apps could expose stale white host pixels.
+                    dispatch_webtag_lifecycle_visibility(&webtag_key, wparam.0 != 0);
                 }
                 unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
             }
@@ -5977,7 +6790,7 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                 // Keep the adaptive surface graph's size class tracking the
                 // real window width (see `update_surface_width`).
                 #[cfg(feature = "shell-chrome")]
-                crate::shell::update_surface_width(window_logical_client_width(hwnd));
+                report_shell_surface_width(hwnd);
                 sync_window_layout(hwnd);
                 if windows_chrome_renderer().is_some() && !is_native_framed_window(hwnd) {
                     invalidate_window(hwnd);
@@ -6041,6 +6854,12 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                 }
                 unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
             }
+            WindowsAndMessaging::WM_NCCALCSIZE => {
+                if let Some(result) = custom_shell_nc_calc_size(hwnd, wparam, lparam) {
+                    return result;
+                }
+                unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
+            }
             WindowsAndMessaging::WM_TIMER if wparam.0 == PULL_REFRESH_TIMER_ID => {
                 advance_pull_refresh_tick(hwnd);
                 invalidate_window(hwnd);
@@ -6052,7 +6871,35 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                 }
                 unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
             }
+            WindowsAndMessaging::WM_NCLBUTTONDOWN => {
+                if windows_chrome_renderer().is_some()
+                    && !is_native_framed_window(hwnd)
+                    && begin_window_resize_drag(hwnd, wparam.0)
+                {
+                    return LRESULT(0);
+                }
+                unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
+            }
+            WindowsAndMessaging::WM_NCLBUTTONUP => {
+                if end_window_resize_drag(hwnd, true) {
+                    return LRESULT(0);
+                }
+                unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
+            }
+            WindowsAndMessaging::WM_CAPTURECHANGED | WindowsAndMessaging::WM_CANCELMODE => {
+                let _ = end_window_resize_drag(hwnd, false);
+                #[cfg(feature = "shell-chrome")]
+                let _ = finish_terminal_selection_drag(hwnd, None);
+                unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
+            }
+            WindowsAndMessaging::WM_EXITSIZEMOVE => {
+                snap_window_after_caption_drag(hwnd);
+                unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
+            }
             WindowsAndMessaging::WM_MOUSEMOVE => {
+                if update_window_resize_drag(hwnd) {
+                    return LRESULT(0);
+                }
                 if windows_chrome_renderer().is_some()
                     && !is_native_framed_window(hwnd)
                     && handle_chrome_mouse_move(hwnd, lparam_client_point(lparam), true)
@@ -6062,7 +6909,6 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                 unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
             }
             WindowsAndMessaging::WM_MOUSEWHEEL => {
-                #[cfg(feature = "shell-chrome")]
                 if windows_chrome_renderer().is_some()
                     && !is_native_framed_window(hwnd)
                     && handle_chrome_mouse_wheel(hwnd, wparam, lparam)
@@ -6089,17 +6935,15 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                 unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
             }
             WindowsAndMessaging::WM_LBUTTONUP => {
+                if end_window_resize_drag(hwnd, true) {
+                    return LRESULT(0);
+                }
                 if windows_chrome_renderer().is_some()
                     && !is_native_framed_window(hwnd)
                     && handle_chrome_left_up(hwnd, lparam_client_point(lparam))
                 {
                     return LRESULT(0);
                 }
-                unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
-            }
-            WindowsAndMessaging::WM_CAPTURECHANGED | WindowsAndMessaging::WM_CANCELMODE => {
-                #[cfg(feature = "shell-chrome")]
-                let _ = finish_terminal_selection_drag(hwnd, None);
                 unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
             }
             WindowsAndMessaging::WM_LBUTTONDBLCLK => {
@@ -6130,6 +6974,7 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                 LRESULT(0)
             }
             WindowsAndMessaging::WM_NCDESTROY => {
+                let _ = end_window_resize_drag(hwnd, false);
                 #[cfg(feature = "shell-chrome")]
                 destroy_transparent_tabbar_overlay(hwnd);
                 #[cfg(feature = "shell-chrome")]
@@ -6695,6 +7540,10 @@ fn notify_webtag_visibility(webtag_key: &str, visible: bool) {
     if !changed {
         return;
     }
+    dispatch_webtag_lifecycle_visibility(webtag_key, visible);
+}
+
+fn dispatch_webtag_lifecycle_visibility(webtag_key: &str, visible: bool) {
     let Some(webtag) = webtag_for_key(webtag_key) else {
         return;
     };
@@ -6856,4 +7705,62 @@ fn hwnd_handle(hwnd: HWND) -> isize {
 
 fn to_wide(value: &str) -> Vec<u16> {
     value.encode_utf16().chain(std::iter::once(0)).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        WindowResizeDrag, WindowResizeEdge, WindowsFrameButton, frame_button_non_client_hit,
+        resized_window_rect,
+    };
+    use windows::Win32::Foundation::{POINT, RECT};
+    use windows::Win32::UI::WindowsAndMessaging;
+
+    #[test]
+    fn maximize_exposes_the_native_snap_hit_target() {
+        assert_eq!(
+            frame_button_non_client_hit(WindowsFrameButton::Maximize),
+            Some(WindowsAndMessaging::HTMAXBUTTON as isize)
+        );
+        assert_eq!(
+            frame_button_non_client_hit(WindowsFrameButton::Minimize),
+            None
+        );
+        assert_eq!(frame_button_non_client_hit(WindowsFrameButton::Close), None);
+    }
+
+    #[test]
+    fn frame_free_resize_tracks_edges_and_dpi_minimums() {
+        let base = RECT {
+            left: 100,
+            top: 100,
+            right: 1124,
+            bottom: 868,
+        };
+        let grown = resized_window_rect(
+            WindowResizeDrag {
+                edge: WindowResizeEdge::Right,
+                cursor: POINT { x: 1124, y: 400 },
+                window: base,
+            },
+            POINT { x: 1244, y: 400 },
+            144,
+        );
+        assert_eq!(grown.right, 1244);
+        assert_eq!(grown.left, base.left);
+
+        let clamped = resized_window_rect(
+            WindowResizeDrag {
+                edge: WindowResizeEdge::TopLeft,
+                cursor: POINT { x: 100, y: 100 },
+                window: base,
+            },
+            POINT { x: 500, y: 500 },
+            144,
+        );
+        assert_eq!(clamped.right - clamped.left, 960);
+        assert_eq!(clamped.bottom - clamped.top, 720);
+        assert_eq!(clamped.right, base.right);
+        assert_eq!(clamped.bottom, base.bottom);
+    }
 }

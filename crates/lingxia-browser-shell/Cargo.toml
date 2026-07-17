@@ -23,6 +23,7 @@ lingxia-service = { workspace = true }
 lingxia-webview = { workspace = true }
 lingxia-native-macros = { workspace = true }
 lingxia-platform = { workspace = true }
+lingxia-shell = { workspace = true }
 futures = { workspace = true }
 serde = { workspace = true }
 tokio = { workspace = true }
