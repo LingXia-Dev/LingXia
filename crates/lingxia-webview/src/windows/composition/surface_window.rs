@@ -20,6 +20,26 @@ const SURFACE_CLASS: PCWSTR = windows::core::w!("LingXiaWebViewSurface");
 // Defined next to TrackMouseEvent's TME_LEAVE, not with the WM_MOUSE* set.
 const WM_MOUSELEAVE: u32 = windows::Win32::UI::Controls::WM_MOUSELEAVE;
 
+/// Grace period between hiding a surface window and suspending its
+/// controller ("LXHS"). Quick hide→show cycles within it re-reveal a live
+/// frame instead of flashing the card while presentation restarts.
+const HIDE_SUSPEND_TIMER: usize = 0x4C58_4853;
+const HIDE_SUSPEND_GRACE_MS: u32 = 1_000;
+
+/// Starts the hide→suspend grace timer; called after `ShowWindow(SW_HIDE)`.
+pub(crate) fn schedule_hide_suspend(hwnd: HWND) {
+    unsafe {
+        WindowsAndMessaging::SetTimer(Some(hwnd), HIDE_SUSPEND_TIMER, HIDE_SUSPEND_GRACE_MS, None);
+    }
+}
+
+/// Cancels a pending hide→suspend; called before re-showing.
+pub(crate) fn cancel_hide_suspend(hwnd: HWND) {
+    unsafe {
+        let _ = WindowsAndMessaging::KillTimer(Some(hwnd), HIDE_SUSPEND_TIMER);
+    }
+}
+
 /// Engine cursor for the surface, `None` when the query fails.
 fn controller_cursor(
     controller: &ICoreWebView2CompositionController,
@@ -247,6 +267,18 @@ unsafe extern "system" fn surface_proc(
         WM::WM_CAPTURECHANGED => {
             if let Some(state) = input_state(hwnd) {
                 state.buttons_down = 0;
+            }
+            LRESULT(0)
+        }
+        WM::WM_TIMER if wparam.0 == HIDE_SUSPEND_TIMER => {
+            cancel_hide_suspend(hwnd);
+            // Still hidden after the grace period: stop rasterization.
+            if let Some(state) = input_state(hwnd)
+                && unsafe { !WindowsAndMessaging::IsWindowVisible(hwnd).as_bool() }
+            {
+                unsafe {
+                    let _ = state.base.SetIsVisible(false);
+                }
             }
             LRESULT(0)
         }

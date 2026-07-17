@@ -197,9 +197,12 @@ impl CompositionSurface {
             .apply_geometry(width, height, radii, corner_color)
     }
 
-    /// Shows the surface window before the controller (so composition starts
-    /// against a visible window) and hides the controller before the window
-    /// (so no live frame flashes through the hide).
+    /// Visibility is window-level first: hiding only hides the surface
+    /// window and leaves the controller rendering through a grace timer, so
+    /// a quick hide→show cycle (tab switches) re-reveals a live frame
+    /// instead of flashing the card while WebView2 restarts presentation.
+    /// The timer suspends long-hidden controllers to stop background
+    /// rasterization.
     pub(crate) fn set_visible(
         &self,
         base: &ICoreWebView2Controller,
@@ -207,15 +210,17 @@ impl CompositionSurface {
     ) -> StdResult<()> {
         unsafe {
             if visible {
+                surface_window::cancel_hide_suspend(self.hwnd);
+                let result = base
+                    .SetIsVisible(true)
+                    .map_err(|err| WebViewError::WebView(format!("SetIsVisible failed: {err}")));
                 let _ = WindowsAndMessaging::ShowWindow(self.hwnd, WindowsAndMessaging::SW_SHOWNA);
-            }
-            let result = base
-                .SetIsVisible(visible)
-                .map_err(|err| WebViewError::WebView(format!("SetIsVisible failed: {err}")));
-            if !visible {
+                result
+            } else {
                 let _ = WindowsAndMessaging::ShowWindow(self.hwnd, WindowsAndMessaging::SW_HIDE);
+                surface_window::schedule_hide_suspend(self.hwnd);
+                Ok(())
             }
-            result
         }
     }
 
