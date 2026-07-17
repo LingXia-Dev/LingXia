@@ -387,7 +387,7 @@ pub(super) fn window_has_frame(content: isize) -> bool {
 
 /// Hairline color for the frameless screen outline (`0xAARGB`; the partial
 /// alpha selects the composition layer's outline mode).
-const FRAMELESS_OUTLINE_COLOR: u32 = 0xCC30_3030;
+const FRAMELESS_OUTLINE_COLOR: u32 = 0xE030_3030;
 
 /// Screen-silhouette corner radius plus the corner style (`0xAARGB`) for a
 /// framed content window, `None` when unframed. A bezeled device gets

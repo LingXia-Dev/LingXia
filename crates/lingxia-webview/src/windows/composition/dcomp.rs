@@ -351,9 +351,10 @@ fn wedge_pixels(corner: usize, radius: i32, color: u32) -> Vec<u32> {
 }
 
 /// Premultiplied BGRA corner-ring bitmap for outline mode: a ~2px
-/// anti-aliased arc band centered on the clip radius, transparent on both
-/// sides. It covers the rounded clip's aliased cut edge; the exterior stays
-/// see-through for frameless surfaces over arbitrary backdrops.
+/// anti-aliased arc band hugging the inside of the clip radius,
+/// transparent on both sides. The band sits fully inside the radius so a
+/// host window region cutting at the same radius cannot clip it away; the
+/// dark hairline masks the cut's aliased content edge on any backdrop.
 fn ring_pixels(corner: usize, radius: i32, color: u32) -> Vec<u32> {
     let (center_x, center_y) = match corner {
         0 => (radius, radius),
@@ -363,7 +364,7 @@ fn ring_pixels(corner: usize, radius: i32, color: u32) -> Vec<u32> {
     };
     let alpha = (color >> 24) & 0xff;
     let (red, green, blue) = ((color >> 16) & 0xff, (color >> 8) & 0xff, color & 0xff);
-    let (inner, outer) = (radius as f32 - 1.0, radius as f32 + 1.0);
+    let (inner, outer) = (radius as f32 - 2.0, radius as f32);
     let mut pixels = Vec::with_capacity((radius * radius) as usize);
     for y in 0..radius {
         for x in 0..radius {
