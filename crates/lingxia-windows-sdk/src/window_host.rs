@@ -674,6 +674,26 @@ pub fn present_webview_in_active_group(webtag: &WebTag) -> StdResult<()> {
         handler.set_content_visible(true)?;
         sync_window_layout(host);
         invalidate_window_chrome(host);
+        // A re-present of the active page is still a present: surface the
+        // host if something hid it and converge stray duplicates.
+        if !is_window_visible(host) {
+            unsafe {
+                let _ = WindowsAndMessaging::SetWindowPos(
+                    host,
+                    None,
+                    0,
+                    0,
+                    0,
+                    0,
+                    WindowsAndMessaging::SWP_NOMOVE
+                        | WindowsAndMessaging::SWP_NOSIZE
+                        | WindowsAndMessaging::SWP_SHOWWINDOW,
+                );
+                let _ = WindowsAndMessaging::BringWindowToTop(host);
+                let _ = WindowsAndMessaging::SetForegroundWindow(host);
+            }
+        }
+        hide_other_workspace_windows(host);
         return Ok(());
     }
 
@@ -4090,9 +4110,23 @@ fn prefer_visible_workspace(candidate: Option<HWND>) -> Option<HWND> {
     match candidate {
         Some(hwnd) if is_window_visible(hwnd) => Some(hwnd),
         other => first_visible_registered_host_window_except(None)
-            .filter(|hwnd| !is_native_framed_window(*hwnd))
+            .filter(|hwnd| !is_separate_shell_window(*hwnd))
             .or(other),
     }
+}
+
+/// True for windows that are legitimately their own top-level presentation
+/// (native-framed windows, device-framed simulators) rather than the shared
+/// shell workspace.
+fn is_separate_shell_window(hwnd: HWND) -> bool {
+    if is_native_framed_window(hwnd) {
+        return true;
+    }
+    #[cfg(feature = "device-frame")]
+    if crate::device_frame::window_has_device_frame(hwnd_handle(hwnd)) {
+        return true;
+    }
+    false
 }
 
 /// Convergence half of the single-workspace invariant: after presenting
@@ -4100,15 +4134,7 @@ fn prefer_visible_workspace(candidate: Option<HWND>) -> Option<HWND> {
 /// hidden. Real separate windows (native-framed, device-framed) stay.
 fn hide_other_workspace_windows(host: HWND) {
     for hwnd in registered_host_windows() {
-        #[cfg(feature = "device-frame")]
-        let device_framed = crate::device_frame::window_has_device_frame(hwnd_handle(hwnd));
-        #[cfg(not(feature = "device-frame"))]
-        let device_framed = false;
-        if hwnd == host
-            || !is_window_visible(hwnd)
-            || is_native_framed_window(hwnd)
-            || device_framed
-        {
+        if hwnd == host || !is_window_visible(hwnd) || is_separate_shell_window(hwnd) {
             continue;
         }
         log::info!("hiding duplicate shell workspace window {:?}", hwnd.0);
@@ -4645,9 +4671,15 @@ fn apply_window_style(hwnd: HWND, style: WINDOW_STYLE) -> StdResult<()> {
         // window's composition tree, which drops the child surfaces'
         // DirectComposition content for a frame — a re-present with an
         // unchanged style (clicking the already-active tab) would flash
-        // every webview to garbage for that frame.
+        // every webview to garbage for that frame. Runtime state bits stay
+        // out of the rewrite: clearing WS_MAXIMIZE/WS_MINIMIZE would corrupt
+        // maximize/restore and defeat this check on a maximized window.
         let current = WindowsAndMessaging::GetWindowLongPtrW(hwnd, WindowsAndMessaging::GWL_STYLE);
-        let wanted = style.0 as isize | (current & WindowsAndMessaging::WS_VISIBLE.0 as isize);
+        let preserved = current
+            & (WindowsAndMessaging::WS_VISIBLE.0
+                | WindowsAndMessaging::WS_MAXIMIZE.0
+                | WindowsAndMessaging::WS_MINIMIZE.0) as isize;
+        let wanted = style.0 as isize | preserved;
         if current == wanted {
             return Ok(());
         }
@@ -5937,6 +5969,25 @@ fn show_webview_window_replacing(
         && webtag_is_visible(webtag.key());
     if already_active {
         sync_window_layout(target);
+        // The deleted direct-show path unconditionally surfaced and (with
+        // activate) foregrounded the window; a re-open of the already-active
+        // page must still do both, and still converge stray duplicates.
+        if !is_window_visible(target) || activate {
+            unsafe {
+                let mut flags = WindowsAndMessaging::SWP_NOMOVE
+                    | WindowsAndMessaging::SWP_NOSIZE
+                    | WindowsAndMessaging::SWP_SHOWWINDOW;
+                if !activate {
+                    flags |= WindowsAndMessaging::SWP_NOACTIVATE;
+                }
+                let _ = WindowsAndMessaging::SetWindowPos(target, None, 0, 0, 0, 0, flags);
+                if activate {
+                    let _ = WindowsAndMessaging::BringWindowToTop(target);
+                    let _ = WindowsAndMessaging::SetForegroundWindow(target);
+                }
+            }
+        }
+        hide_other_workspace_windows(target);
         return Ok(());
     }
 
@@ -7036,16 +7087,22 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
             // WM_DWMCOLORIZATIONCOLORCHANGED. Re-read the system theme and, only
             // when it actually changed, repaint the whole shell in the new palette.
             WindowsAndMessaging::WM_SETTINGCHANGE | WM_DWMCOLORIZATIONCOLORCHANGED => {
+                // refresh_system_theme() reports the change exactly once per
+                // process, and the broadcast may reach a hidden parked parent
+                // window first — so the winner refreshes EVERY registered
+                // host, not just itself: repaint plus a forced geometry
+                // resync (the webview corner wedges carry the
+                // theme-dependent shell background and the bounds-dedupe
+                // cache would otherwise swallow the change).
                 #[cfg(feature = "shell-chrome")]
-                if crate::shell::refresh_system_theme()
-                    && windows_chrome_renderer().is_some()
-                    && !is_native_framed_window(hwnd)
-                {
-                    invalidate_window(hwnd);
-                    // The webview corner wedges carry the (theme-dependent)
-                    // shell background; force the geometry resync the
-                    // bounds-dedupe cache would otherwise swallow.
-                    let _ = request_host_layout_sync_inner(hwnd, true);
+                if crate::shell::refresh_system_theme() && windows_chrome_renderer().is_some() {
+                    for host in registered_host_windows() {
+                        if is_native_framed_window(host) {
+                            continue;
+                        }
+                        invalidate_window(host);
+                        let _ = request_host_layout_sync_inner(host, true);
+                    }
                 }
                 unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
             }

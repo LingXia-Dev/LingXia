@@ -37,6 +37,12 @@ pub(crate) struct CompositionSurface {
     env3: ICoreWebView2Environment3,
     controller: ICoreWebView2CompositionController,
     dcomp: DcompTree,
+    /// Controller-level event subscriptions owned by the current surface
+    /// window; removed before a recreation re-subscribes.
+    input_tokens: surface_window::InputSubscriptions,
+    /// The host the surface currently lives under, so a recreation from the
+    /// geometry/visibility paths knows where to rebuild.
+    parent: HWND,
     /// Last applied per-corner clip radii `[tl, tr, br, bl]`, physical px.
     radii: [i32; 4],
     /// Last applied wedge backdrop color (`0xAARGB`; alpha 0 = no wedges).
@@ -104,7 +110,7 @@ fn create_composition_surface(
     let assembled = (|| {
         let dcomp = DcompTree::new(hwnd)?;
         let controller = create_composition_controller(&env3, hwnd)?;
-        attach_surface(hwnd, &dcomp, &env3, &controller)?;
+        let input_tokens = attach_surface(hwnd, &dcomp, &env3, &controller)?;
         let base: ICoreWebView2Controller = controller.cast().map_err(|err| {
             WebViewError::WebView(format!("composition controller cast failed: {err}"))
         })?;
@@ -115,6 +121,8 @@ fn create_composition_surface(
                 env3,
                 controller,
                 dcomp,
+                input_tokens,
+                parent,
                 radii: [0; 4],
                 corner_color: 0,
                 bounds,
@@ -138,7 +146,7 @@ fn attach_surface(
     dcomp: &DcompTree,
     env3: &ICoreWebView2Environment3,
     controller: &ICoreWebView2CompositionController,
-) -> StdResult<()> {
+) -> StdResult<surface_window::InputSubscriptions> {
     unsafe {
         controller
             .SetRootVisualTarget(dcomp.webview_visual())
@@ -147,9 +155,9 @@ fn attach_surface(
     let base: ICoreWebView2Controller = controller.cast().map_err(|err| {
         WebViewError::WebView(format!("composition controller cast failed: {err}"))
     })?;
-    surface_window::attach_input(hwnd, env3, controller, &base);
+    let tokens = surface_window::attach_input(hwnd, env3, controller, &base);
     dragdrop::register_drop_target(hwnd, controller);
-    Ok(())
+    Ok(tokens)
 }
 
 fn create_composition_controller(
@@ -192,14 +200,19 @@ impl CompositionSurface {
             return Ok(false);
         }
         log::info!("composition surface window died with its former host; recreating");
+        // The dead window's controller-level subscriptions outlive it; drop
+        // them before attach_surface re-subscribes, or handler chains grow
+        // with every recovery.
+        surface_window::detach_input(&self.controller, base, self.input_tokens);
+        self.input_tokens = surface_window::InputSubscriptions::default();
         let hwnd = surface_window::create_surface_window(parent, self.bounds)?;
         let rebuilt = (|| {
             let dcomp = DcompTree::new(hwnd)?;
-            attach_surface(hwnd, &dcomp, &self.env3, &self.controller)?;
-            Ok(dcomp)
+            let tokens = attach_surface(hwnd, &dcomp, &self.env3, &self.controller)?;
+            Ok((dcomp, tokens))
         })();
-        let dcomp = match rebuilt {
-            Ok(dcomp) => dcomp,
+        let (dcomp, tokens) = match rebuilt {
+            Ok(parts) => parts,
             Err(err) => {
                 unsafe {
                     let _ = WindowsAndMessaging::DestroyWindow(hwnd);
@@ -209,6 +222,8 @@ impl CompositionSurface {
         };
         self.hwnd = hwnd;
         self.dcomp = dcomp;
+        self.input_tokens = tokens;
+        self.parent = parent;
         let bounds = self.bounds;
         self.set_geometry(base, bounds, None)?;
         if self.visible {
@@ -227,6 +242,18 @@ impl CompositionSurface {
         bounds: RECT,
         corners: Option<([i32; 4], u32)>,
     ) -> StdResult<()> {
+        // Self-heal here too: the main surface's own parent window never gets
+        // a reparent command, so a surface killed elsewhere would otherwise
+        // stay dead when re-shown standalone.
+        if !unsafe { WindowsAndMessaging::IsWindow(Some(self.hwnd)).as_bool() } {
+            self.bounds = bounds;
+            if let Some((radii, corner_color)) = corners {
+                self.radii = radii;
+                self.corner_color = corner_color;
+            }
+            let parent = self.parent;
+            return self.ensure_alive(parent, base).map(|_| ());
+        }
         let (radii, corner_color) = corners.unwrap_or((self.radii, self.corner_color));
         let width = (bounds.right - bounds.left).max(0);
         let height = (bounds.bottom - bounds.top).max(0);
@@ -298,6 +325,7 @@ impl CompositionSurface {
                 WindowsAndMessaging::SetParent(self.hwnd, Some(parent))
                     .map_err(|err| WebViewError::WebView(format!("SetParent failed: {err}")))?;
             }
+            self.parent = parent;
             // Sit beneath native-component siblings, matching the windowed
             // controller's placement; the shell paints chrome on the host
             // window itself, below all children.
@@ -318,8 +346,8 @@ impl CompositionSurface {
 
     /// Destroys the surface window. Must run on the webview's UI thread (the
     /// window's owner); called from `cleanup_state` after `Controller.Close`.
+    /// The wndproc's WM_DESTROY arm revokes the OLE drop target.
     pub(crate) fn destroy(&self) {
-        dragdrop::revoke_drop_target(self.hwnd);
         unsafe {
             let _ = WindowsAndMessaging::DestroyWindow(self.hwnd);
         }
