@@ -663,7 +663,7 @@ class SidebarGroupView: NSView {
         // App info header (disabled item)
         var headerTitle = appName
         if !version.isEmpty {
-            headerTitle += " · \(L10n.string(\"lx_common_version\")) \(version)"
+            headerTitle += " · \(L10n.string("lx_common_version")) \(version)"
         }
         switch releaseType.lowercased() {
         case "developer": headerTitle += " [DEV]"
