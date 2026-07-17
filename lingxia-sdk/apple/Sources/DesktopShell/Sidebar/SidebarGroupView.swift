@@ -655,12 +655,16 @@ class SidebarGroupView: NSView {
         let menu = NSMenu()
 
         let info = getLxAppInfo(appId)
-        let appName = info.app_name.toString()
-        let version = info.version.toString()
+        let resolvedName = info.app_name.toString().trimmingCharacters(in: .whitespacesAndNewlines)
+        let appName = resolvedName.isEmpty ? appId : resolvedName
+        let version = info.version.toString().trimmingCharacters(in: .whitespacesAndNewlines)
         let releaseType = info.release_type.toString()
 
         // App info header (disabled item)
-        var headerTitle = "\(appName) v\(version)"
+        var headerTitle = appName
+        if !version.isEmpty {
+            headerTitle += " · \(L10n.string(\"lx_common_version\")) \(version)"
+        }
         switch releaseType.lowercased() {
         case "developer": headerTitle += " [DEV]"
         case "preview": headerTitle += " [PRE]"

@@ -101,7 +101,8 @@ pub fn show_context_menu_entries(
                         let _ = AppendMenuW(menu, MF_SEPARATOR, 0, PCWSTR::null());
                         continue;
                     }
-                    let mut text: Vec<u16> = entry.label.encode_utf16().collect();
+                    let mut text: Vec<u16> =
+                        literal_menu_label(&entry.label).encode_utf16().collect();
                     text.push(0);
                     let mut flags = MF_STRING;
                     if entry.checked {
@@ -148,6 +149,13 @@ pub fn show_context_menu_entries(
     );
 }
 
+/// Win32 treats `&` as a mnemonic marker. Context-menu labels come from the
+/// localization catalog as literal text, so escape ampersands before passing
+/// them to `AppendMenuW`.
+fn literal_menu_label(label: &str) -> String {
+    label.replace('&', "&&")
+}
+
 fn create_menu_icon_bitmap(icon: WindowsDesignIcon) -> Option<HBITMAP> {
     const SIZE: i32 = 16;
     let pixels = design_icon_argb_premultiplied(icon, SIZE as u32, Some(0x333333))?;
@@ -172,5 +180,19 @@ fn create_menu_icon_bitmap(icon: WindowsDesignIcon) -> Option<HBITMAP> {
         }
         std::ptr::copy_nonoverlapping(pixels.as_ptr(), bits.cast::<u32>(), pixels.len());
         Some(bitmap)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::literal_menu_label;
+
+    #[test]
+    fn localized_menu_labels_preserve_literal_ampersands() {
+        assert_eq!(
+            literal_menu_label("Clean cache & Restart"),
+            "Clean cache && Restart"
+        );
+        assert_eq!(literal_menu_label("清理缓存并重启"), "清理缓存并重启");
     }
 }
