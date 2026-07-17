@@ -30,17 +30,26 @@ App({
     const activators: Activator[] = [
       {
         id: "chat",
-        lxapp: "lingxia-chat",
         icon: "public/activator.svg",
         label: "chat",
+        onActivate: () => {
+          void lx
+            .openSurface({ lxapp: "lingxia-chat", as: "aside" })
+            .catch((error) => console.warn("chat activator failed", error));
+        },
       },
     ];
 
     if (os === "macOS" || os === "Windows") {
       activators.push({
         id: "terminal",
-        native: "terminal",
         icon: "public/activator.svg",
+        label: "Terminal",
+        onActivate: () => {
+          void lx
+            .openSurface({ native: "terminal" })
+            .catch((error) => console.warn("terminal activator failed", error));
+        },
       });
     }
 
