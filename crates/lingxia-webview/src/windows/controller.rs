@@ -126,6 +126,13 @@ pub(crate) enum UiCommand {
     NotifyParentPositionChanged {
         resp: Sender<StdResult<()>>,
     },
+    /// Rendering scale for a fit-scaled presentation (the device-frame
+    /// runner shrunk to the work area): CSS px = physical px / scale, so the
+    /// page keeps the simulated device's logical viewport.
+    SetRasterizationScale {
+        scale: f64,
+        resp: Sender<StdResult<()>>,
+    },
     Shutdown,
 }
 
@@ -359,6 +366,13 @@ impl WebViewInner {
 
     pub(crate) fn notify_parent_position_changed(&self) -> StdResult<()> {
         self.dispatch_command_same_thread_safe(|resp| UiCommand::NotifyParentPositionChanged {
+            resp,
+        })
+    }
+
+    pub(crate) fn set_rasterization_scale(&self, scale: f64) -> StdResult<()> {
+        self.dispatch_command_same_thread_safe(|resp| UiCommand::SetRasterizationScale {
+            scale,
             resp,
         })
     }
@@ -1164,6 +1178,20 @@ pub(crate) fn handle_command(state: &mut UiState, command: UiCommand) -> StdResu
         UiCommand::NotifyParentPositionChanged { resp } => {
             state.notify_parent_position_changed();
             let _ = resp.send(Ok(()));
+        }
+        UiCommand::SetRasterizationScale { scale, resp } => {
+            let result = state
+                .controller
+                .cast::<ICoreWebView2Controller3>()
+                .map_err(|err| WebViewError::WebView(format!("Controller3 cast failed: {err}")))
+                .and_then(|controller3| unsafe {
+                    controller3
+                        .SetRasterizationScale(scale.max(0.1))
+                        .map_err(|err| {
+                            WebViewError::WebView(format!("SetRasterizationScale failed: {err}"))
+                        })
+                });
+            let _ = resp.send(result);
         }
         UiCommand::Shutdown => return Ok(true),
     }

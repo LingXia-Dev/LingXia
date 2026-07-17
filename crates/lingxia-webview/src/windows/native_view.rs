@@ -99,6 +99,12 @@ impl WindowsWebViewHandler {
         self.webview.inner.composition_hosted
     }
 
+    /// Rendering scale for a fit-scaled presentation: CSS px = physical px /
+    /// `scale`, so a shrunk simulated device keeps its logical viewport.
+    pub fn set_rasterization_scale(&self, scale: f64) -> StdResult<()> {
+        self.webview.inner.set_rasterization_scale(scale)
+    }
+
     pub fn set_content_visible(&self, visible: bool) -> StdResult<()> {
         self.webview.inner.set_content_visible(visible)
     }
