@@ -26,12 +26,10 @@ pub(crate) enum HostingMode {
 }
 
 pub(crate) struct CompositionSurface {
-    /// Same COM object as `UiState::controller`, seen through the
-    /// composition interface. Read by the input-forwarding wndproc.
-    #[allow(dead_code)] // TODO(#134): consumed once input forwarding lands.
-    pub(crate) controller: ICoreWebView2CompositionController,
     /// The `LingXiaWebViewSurface` child window. Created on — and therefore
-    /// destroyed with — this webview's UI thread.
+    /// destroyed with — this webview's UI thread. Holds the input-forwarding
+    /// state (with the composition-interface clone of the controller) in its
+    /// window user data.
     pub(crate) hwnd: HWND,
     dcomp: DcompTree,
     /// Last applied per-corner clip radii `[tl, tr, br, bl]`, physical px.
@@ -106,10 +104,10 @@ fn create_composition_surface(
         let base: ICoreWebView2Controller = controller.cast().map_err(|err| {
             WebViewError::WebView(format!("composition controller cast failed: {err}"))
         })?;
+        surface_window::attach_input(hwnd, &controller, &base);
         Ok((
             base,
             Box::new(CompositionSurface {
-                controller,
                 hwnd,
                 dcomp,
                 radii: [0; 4],
