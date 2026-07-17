@@ -736,11 +736,11 @@ class SidebarGroupView: NSView {
     }
 
     @objc private func contextMenuRestart() {
-        _ = onLxappEvent(appId, LxAppEvent.capsuleClick, "restart")
+        _ = onLxappEvent(appId, LxAppEvent.capsuleClick, "restart_in_place")
     }
 
     @objc private func contextMenuCleanCache() {
-        _ = onLxappEvent(appId, LxAppEvent.capsuleClick, "clean_cache_restart")
+        _ = onLxappEvent(appId, LxAppEvent.capsuleClick, "clean_cache_restart_in_place")
     }
 
     @objc private func contextMenuUninstall() {
