@@ -77,13 +77,8 @@ pub struct DevExecuteOptions {
 }
 
 pub enum DevSessionAction {
-    Status {
-        json: bool,
-    },
-    Stop {
-        session: Option<String>,
-        force: bool,
-    },
+    Status { json: bool },
+    Stop { session: Option<String> },
 }
 
 #[derive(Clone)]
@@ -191,7 +186,7 @@ fn precheck_platform_session(project_root: &Path, platform: &str) -> Result<()> 
         );
         if let Err(err) = log_store::request_shutdown(info) {
             eprintln!("Graceful stop failed ({err:#}); killing pid {}.", info.pid);
-            force_stop_session(info)?;
+            terminate_session_owner(info)?;
         }
     }
     if wait_for_platform_sessions_gone(project_root, platform, Duration::from_secs(10))? {
@@ -200,13 +195,13 @@ fn precheck_platform_session(project_root: &Path, platform: &str) -> Result<()> 
     // Graceful shutdown stalled — escalate to a kill, then give the broker a
     // moment to drop the registrations.
     for info in log_store::find_live_for_platform(project_root, platform)? {
-        force_stop_session(&info)?;
+        terminate_session_owner(&info)?;
     }
     if wait_for_platform_sessions_gone(project_root, platform, Duration::from_secs(5))? {
         return Ok(());
     }
     Err(anyhow!(
-        "Existing {platform} dev session did not stop; stop it manually with `lingxia dev stop --force`."
+        "Existing {platform} dev session did not stop after automatic termination."
     ))
 }
 
@@ -399,7 +394,7 @@ pub fn focus_windows_launch(executable: &Path, excluded_pids: &str) -> Result<()
 fn execute_session_action(project_root: &Path, action: DevSessionAction) -> Result<()> {
     match action {
         DevSessionAction::Status { json } => print_session_status(project_root, json),
-        DevSessionAction::Stop { session, force } => stop_session(project_root, session, force),
+        DevSessionAction::Stop { session } => stop_session(project_root, session),
     }
 }
 
@@ -576,30 +571,35 @@ fn print_session_status(project_root: &Path, json_output: bool) -> Result<()> {
     Ok(())
 }
 
-fn stop_session(project_root: &Path, selector: Option<String>, force: bool) -> Result<()> {
+fn stop_session(project_root: &Path, selector: Option<String>) -> Result<()> {
     let session = log_store::resolve_session(project_root, selector.as_deref())?;
+    println!(
+        "Stopping {} dev session {}...",
+        session.target, session.session_id
+    );
     match log_store::request_shutdown(&session) {
         Ok(()) => {
-            println!(
-                "Stop requested for {} dev session {}.",
-                session.target, session.session_id
+            if wait_for_pid_exit(sysinfo::Pid::from_u32(session.pid), Duration::from_secs(5)) {
+                println!(
+                    "Stopped {} dev session {}.",
+                    session.target, session.session_id
+                );
+                return Ok(());
+            }
+            eprintln!(
+                "Graceful shutdown timed out; terminating session owner pid {}.",
+                session.pid
             );
-            Ok(())
         }
-        Err(err) if force => {
-            eprintln!("Graceful stop failed: {err:#}");
-            force_stop_session(&session)
-        }
-        Err(err) => Err(err).with_context(|| {
-            format!(
-                "Failed to stop session {} gracefully. Re-run with --force to kill pid {}.",
-                session.session_id, session.pid
-            )
-        }),
+        Err(err) => eprintln!(
+            "Graceful shutdown unavailable ({err:#}); terminating session owner pid {}.",
+            session.pid
+        ),
     }
+    terminate_session_owner(&session)
 }
 
-fn force_stop_session(session: &log_store::SessionInfo) -> Result<()> {
+fn terminate_session_owner(session: &log_store::SessionInfo) -> Result<()> {
     let pid = sysinfo::Pid::from_u32(session.pid);
     let mut system = System::new();
     system.refresh_processes(ProcessesToUpdate::Some(&[pid]), true);
@@ -612,8 +612,11 @@ fn force_stop_session(session: &log_store::SessionInfo) -> Result<()> {
     // Guard against PID reuse: only kill if this really is the `lingxia dev`
     // process that registered the session.
     if !is_owning_dev_process(process, session) {
-        println!("Session pid {} was reused by another process.", session.pid);
-        return Ok(());
+        return Err(anyhow!(
+            "Refusing to terminate pid {} because it no longer matches dev session {}",
+            session.pid,
+            session.session_id
+        ));
     }
 
     // Prefer a graceful interrupt: the dev process's Ctrl+C handler runs its own
@@ -633,30 +636,37 @@ fn force_stop_session(session: &log_store::SessionInfo) -> Result<()> {
     }
 
     println!(
-        "Killed {} dev session {} (pid {}).",
+        "Terminated {} dev session {} (pid {}).",
         session.target, session.session_id, session.pid
     );
     Ok(())
 }
 
 /// Whether `process` is still the `lingxia dev` process that wrote `session`.
-/// Defends `force_stop_session` against PID reuse by requiring the same
+/// Defends `terminate_session_owner` against PID reuse by requiring the same
 /// executable and a process start time compatible with the recorded session.
 fn is_owning_dev_process(process: &sysinfo::Process, session: &log_store::SessionInfo) -> bool {
     let Some(exe) = process.exe() else {
         return false;
     };
-    let Ok(current) = env::current_exe() else {
-        return false;
+    let expected = if session.executable.is_empty() {
+        let Ok(current) = env::current_exe() else {
+            return false;
+        };
+        current
+    } else {
+        PathBuf::from(&session.executable)
     };
-    if !process_executable_matches(exe, &current) {
+    if !process_executable_matches(exe, &expected) {
         return false;
     }
     let started_at = process.start_time();
     if started_at == 0 {
         return false;
     }
-    // Allow a little slack for the sub-second gap before write_session ran.
+    // A process reusing this PID must have started after the original session
+    // registered. Allow only sub-second timestamp slack around registration;
+    // the real owner may be much older because it registers after its build.
     started_at <= session.started_at / 1000 + 2
 }
 

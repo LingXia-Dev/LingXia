@@ -39,6 +39,9 @@ pub struct SessionInfo {
     pub pid: u32,
     #[serde(default)]
     pub started_at: u64,
+    /// Exact owner executable path, used to guard termination against PID reuse.
+    #[serde(default)]
+    pub executable: String,
     pub ws_url: String,
     pub log_file: String,
 }
@@ -346,6 +349,7 @@ mod tests {
             target: "macos".to_string(),
             pid: 42,
             started_at: 1,
+            executable: "/usr/local/bin/lingxia".to_string(),
             ws_url: "ws://127.0.0.1:1".to_string(),
             log_file: "/tmp/p/.lingxia/logs/x.jsonl".to_string(),
         }
@@ -374,5 +378,6 @@ mod tests {
         }"#;
         let info: SessionInfo = serde_json::from_str(json).unwrap();
         assert_eq!(info.target, "lxapp");
+        assert!(info.executable.is_empty());
     }
 }

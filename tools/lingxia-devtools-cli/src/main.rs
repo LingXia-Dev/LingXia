@@ -38,7 +38,7 @@ enum Commands {
     Lxapp(lxapp::LxAppOptions),
     /// Query and filter the current dev session log file
     Logs(logs::LogsOptions),
-    /// List or stop live dev sessions
+    /// List live dev sessions
     #[command(alias = "sessions")]
     Session(SessionCmd),
     /// Automate the local desktop OS (no dev session required)
@@ -64,11 +64,6 @@ enum SessionAction {
         /// Print pretty JSON output
         #[arg(long)]
         json: bool,
-    },
-    /// Stop a dev session by asking its owning `lingxia dev` process to exit
-    Stop {
-        /// Session id prefix or target name. Overrides --session.
-        session: Option<String>,
     },
 }
 
@@ -155,12 +150,6 @@ fn run() -> Result<()> {
         }
         Commands::Session(cmd) => match cmd.command {
             Some(SessionAction::List { json }) => sessions::execute_list(json),
-            Some(SessionAction::Stop { session }) => {
-                let selector = SessionSelector {
-                    query: session.or(selector.query),
-                };
-                sessions::execute_stop(&selector)
-            }
             None => sessions::execute_list(cmd.json),
         },
         // Local OS automation: no dev session; the handler owns process exit.
@@ -180,5 +169,11 @@ mod tests {
         assert!(Cli::try_parse_from(["lxdev", "attach", "ws://host:39000"]).is_err());
         assert!(Cli::try_parse_from(["lxdev", "detach", "host"]).is_err());
         assert!(Cli::try_parse_from(["lxdev", "--ws", "ws://host:39000", "session"]).is_err());
+    }
+
+    #[test]
+    fn session_lifecycle_commands_belong_to_lingxia() {
+        assert!(Cli::try_parse_from(["lxdev", "stop", "windows"]).is_err());
+        assert!(Cli::try_parse_from(["lxdev", "session", "stop", "windows"]).is_err());
     }
 }
