@@ -978,11 +978,11 @@ pub(super) fn compute_chrome_rects(client: RECT, layout: &WindowsShellWindowLayo
         content.top = top_bar.bottom.max(content.top);
     }
 
-    // The WebView workspace is the second layer: give it breathing room on
-    // every edge, including the edge next to a sidebar. That leading gap is
-    // what makes the page read as a card rather than an extension of the rail.
+    // The WebView workspace is the second layer. Side and bottom clearance
+    // keep the card distinct from the shell base; its top edge aligns with
+    // the first sidebar row immediately below the caption/address band.
     if desktop_card {
-        content = inset_rect(content, SHELL_CONTENT_INSET, SHELL_CONTENT_INSET);
+        content = inset_desktop_workspace(content);
     }
 
     // The phone-frame browser chrome docks at the screen's bottom (the macOS
@@ -1005,6 +1005,15 @@ pub(super) fn compute_chrome_rects(client: RECT, layout: &WindowsShellWindowLayo
         navigation_bar: navigation_bar.map(normalize_rect),
         tab_bar: tab_bar.map(normalize_rect),
     }
+}
+
+fn inset_desktop_workspace(rect: RECT) -> RECT {
+    normalize_rect(RECT {
+        left: rect.left + SHELL_CONTENT_INSET,
+        top: rect.top,
+        right: rect.right - SHELL_CONTENT_INSET,
+        bottom: rect.bottom - SHELL_CONTENT_INSET,
+    })
 }
 
 /// Reserve the lxapp navigation bar inside the concrete main region. Aside
@@ -2116,13 +2125,10 @@ mod scroll_tests {
         assert_eq!(rects.top_bar.top, client.top);
         assert_eq!(rects.top_bar.bottom, client.top + SHELL_TOP_BAR_HEIGHT);
         assert_eq!(rects.panel.left, 220 + SHELL_CONTENT_INSET);
-        assert_eq!(rects.panel.top, SHELL_TOP_BAR_HEIGHT + SHELL_CONTENT_INSET);
+        assert_eq!(rects.panel.top, SHELL_TOP_BAR_HEIGHT);
         assert_eq!(client.right - rects.panel.right, SHELL_CONTENT_INSET);
         assert_eq!(client.bottom - rects.panel.bottom, SHELL_CONTENT_INSET);
-        assert_eq!(
-            rects.content.top,
-            SHELL_TOP_BAR_HEIGHT + SHELL_CONTENT_INSET
-        );
+        assert_eq!(rects.content.top, SHELL_TOP_BAR_HEIGHT);
 
         layout.navigation_bar = Some(WindowsShellNavigationBarLayout {
             visible: true,
@@ -2134,14 +2140,8 @@ mod scroll_tests {
             height: 38,
         });
         let rects = compute_chrome_rects(client, &layout);
-        assert_eq!(
-            rects.workspace.top,
-            SHELL_TOP_BAR_HEIGHT + SHELL_CONTENT_INSET
-        );
-        assert_eq!(
-            rects.navigation_bar.unwrap().top,
-            SHELL_TOP_BAR_HEIGHT + SHELL_CONTENT_INSET
-        );
+        assert_eq!(rects.workspace.top, SHELL_TOP_BAR_HEIGHT);
+        assert_eq!(rects.navigation_bar.unwrap().top, SHELL_TOP_BAR_HEIGHT);
     }
 
     #[test]
@@ -2165,6 +2165,8 @@ mod scroll_tests {
         let attached = compute_attached_layout(client, &layout, &[panel]);
         let aside = &attached.panels[0];
 
+        assert_eq!(attached.main_region.top, SHELL_TOP_BAR_HEIGHT);
+        assert_eq!(aside.rect.top, SHELL_TOP_BAR_HEIGHT);
         assert_eq!(aside.rect.right, client.right - SHELL_CONTENT_INSET);
         assert_eq!(aside.rect.bottom, client.bottom - SHELL_CONTENT_INSET);
         assert_eq!(

@@ -1,6 +1,5 @@
-/// Clear space around the elevated desktop content card. The top caption /
-/// address row and the sidebar stay on the shell's base layer; the WebView
-/// card is inset from both so it reads as a separate surface.
+/// Side and bottom clearance around the elevated desktop content card. Its
+/// top edge stays flush with the first sidebar row below the caption band.
 pub(super) const SHELL_CONTENT_INSET: i32 = 12;
 
 /// Separation belongs only between independently resizable main/aside panes.
