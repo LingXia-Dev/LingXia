@@ -3,7 +3,7 @@ use super::locate_templates_dir;
 use super::template::process_template_dir;
 use super::types::{AppServiceMode, LxAppInfo, ProjectConfig};
 use crate::versions::LingXiaVersions;
-use anyhow::{Result, anyhow};
+use anyhow::{Result, anyhow, bail};
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
@@ -18,6 +18,7 @@ pub(super) fn create_lxapp_from_template(
     versions: &LingXiaVersions,
     lingxia_bridge_version: &str,
     lingxia_types_version: &str,
+    template_override: Option<&Path>,
 ) -> Result<()> {
     if target_dir.exists() {
         return Err(anyhow!(
@@ -26,15 +27,25 @@ pub(super) fn create_lxapp_from_template(
         ));
     }
 
-    fs::create_dir_all(target_dir)?;
-
-    let templates_base = locate_templates_dir()?;
-    let template_dir = templates_base.join("lxapp-create");
+    let uses_custom_template = template_override.is_some();
+    let embedded_template;
+    let template_dir = if let Some(template) = template_override {
+        template
+    } else {
+        embedded_template = locate_templates_dir()?.join("lxapp-create");
+        &embedded_template
+    };
     if !template_dir.exists() {
         return Err(anyhow!(
             "LxApp template not found at: {}",
             template_dir.display()
         ));
+    }
+    if uses_custom_template {
+        let target_parent = target_dir
+            .parent()
+            .ok_or_else(|| anyhow!("Project directory has no parent: {}", target_dir.display()))?;
+        ensure_custom_template_target_parent(template_dir, target_parent)?;
     }
 
     let vars = build_framework_vars(
@@ -47,24 +58,50 @@ pub(super) fn create_lxapp_from_template(
         lingxia_types_version,
     )?;
 
-    process_template_dir(&template_dir, target_dir, &vars)?;
-    remove_dir_if_exists(&target_dir.join("native"))?;
-    remove_dir_if_exists(&target_dir.join("html"))?;
-    if framework.eq_ignore_ascii_case("html") {
-        let html_template_dir = template_dir.join("html");
-        if !html_template_dir.exists() {
-            return Err(anyhow!(
-                "HTML LxApp template overlay not found at: {}",
-                html_template_dir.display()
-            ));
+    fs::create_dir_all(target_dir)?;
+    let result = (|| {
+        process_template_dir(template_dir, target_dir, &vars)?;
+        if uses_custom_template {
+            return Ok(());
         }
-        process_template_dir(&html_template_dir, target_dir, &vars)?;
-    }
-    if !app_service.enabled() {
-        configure_native_logic_shell(target_dir, framework, &vars)?;
-    }
-    icons::ensure_lxapp_public_icon(target_dir)?;
 
+        remove_dir_if_exists(&target_dir.join("native"))?;
+        remove_dir_if_exists(&target_dir.join("html"))?;
+        if framework.eq_ignore_ascii_case("html") {
+            let html_template_dir = template_dir.join("html");
+            if !html_template_dir.exists() {
+                return Err(anyhow!(
+                    "HTML LxApp template overlay not found at: {}",
+                    html_template_dir.display()
+                ));
+            }
+            process_template_dir(&html_template_dir, target_dir, &vars)?;
+        }
+        if !app_service.enabled() {
+            configure_native_logic_shell(target_dir, framework, &vars)?;
+        }
+        icons::ensure_lxapp_public_icon(target_dir)?;
+        Ok(())
+    })();
+
+    if result.is_err() {
+        let _ = fs::remove_dir_all(target_dir);
+    }
+    result
+}
+
+pub(super) fn ensure_custom_template_target_parent(
+    template_dir: &Path,
+    target_parent: &Path,
+) -> Result<()> {
+    let template_dir = template_dir.canonicalize()?;
+    let target_parent = target_parent.canonicalize()?;
+    if target_parent.starts_with(&template_dir) {
+        bail!(
+            "Run `lingxia new` outside the custom template directory: {}",
+            template_dir.display()
+        );
+    }
     Ok(())
 }
 
@@ -209,6 +246,7 @@ pub(super) fn create_lxapp_project(
         versions,
         lingxia_bridge_version,
         lingxia_types_version,
+        None,
     )?;
     Ok(LxAppInfo {
         app_id,
@@ -291,6 +329,16 @@ mod tests {
     use crate::versions::LingXiaVersions;
     use std::fs;
     use tempfile::tempdir;
+
+    #[test]
+    fn rejects_target_inside_custom_template() {
+        let template = tempdir().unwrap();
+
+        let error =
+            ensure_custom_template_target_parent(template.path(), template.path()).unwrap_err();
+
+        assert!(error.to_string().contains("outside the custom template"));
+    }
 
     fn dummy_versions() -> LingXiaVersions {
         LingXiaVersions {

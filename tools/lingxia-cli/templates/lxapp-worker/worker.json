@@ -1,7 +1,0 @@
-{
-  "dir": "./server",
-  "dev": {
-    "default": "mock",
-    "overrides": {}
-  }
-}

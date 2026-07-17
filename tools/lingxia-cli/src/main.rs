@@ -177,11 +177,11 @@ enum Commands {
         #[arg(long)]
         icon: Option<String>,
 
-        /// (lxapp) Scaffold a LingXiao cloud worker: a `server/` worker (mock +
-        /// live), `worker.json` routing, and a home page wired to `lx.cloud`.
-        /// The worker id is always the lxapp's appId; it is not configurable.
-        #[arg(long, hide = true)]
-        worker: bool,
+        /// Path to a custom React lxapp template directory.
+        /// Overrides ~/.lingxia/templates/lxapp and implies --project-type lxapp.
+        /// Without this flag, the user template is used when it exists.
+        #[arg(long, value_name = "PATH")]
+        template: Option<std::path::PathBuf>,
 
         /// Skip confirmation prompt
         #[arg(short = 'y', long)]
@@ -609,10 +609,18 @@ fn main() -> Result<()> {
             platform,
             package_id,
             icon,
-            worker,
+            template,
             yes,
         } => {
-            commands::new::execute(name, project_type, platform, package_id, icon, worker, yes)?;
+            commands::new::execute(
+                name,
+                project_type,
+                platform,
+                package_id,
+                icon,
+                template,
+                yes,
+            )?;
         }
         Commands::Icon {
             icon_path,

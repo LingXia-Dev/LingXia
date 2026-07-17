@@ -39,6 +39,17 @@ Scaffold a new LingXia project. Run it interactively to be prompted for project
 type (a native host **app** or a standalone **lxapp**), target platforms, and
 package id, or pass those up front to script it. Can also seed an app icon.
 
+Custom React template precedence is explicit `--template <path>`, then
+`~/.lingxia/templates/lxapp` when present, then the embedded template. The flag
+implies `--project-type lxapp`. A custom root must contain `package.json` and
+`lxapp.json`; it replaces the embedded template as one unit. Repository metadata
+and generated build directories are not copied, and standard `{{...}}` scaffold
+placeholders are expanded in text files.
+
+```bash
+lingxia new my-lxapp --template ../my-lxapp-template --yes
+```
+
 See `lingxia new --help` for the flags.
 
 ### `lingxia build`

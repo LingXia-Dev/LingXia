@@ -27,10 +27,20 @@ pub fn process_template_dir(
         };
 
         // Skip build artifacts and cache directories
-        if file_name_str == ".gradle"
-            || file_name_str == "build"
-            || file_name_str == ".idea"
-            || file_name_str == "target"
+        if matches!(
+            file_name_str.as_ref(),
+            ".git"
+                | ".gradle"
+                | ".idea"
+                | ".lingxia"
+                | ".lingxiao"
+                | ".worker"
+                | "build"
+                | "dist"
+                | "node_modules"
+                | "target"
+                | ".DS_Store"
+        ) || file_name_str.ends_with(".tsbuildinfo")
         {
             continue;
         }
@@ -59,19 +69,26 @@ pub fn process_template_dir(
 
             let target_file = target_dir.join(output_name.as_str());
 
-            if is_binary {
-                // Copy binary file as-is
+            let content = if is_binary {
+                None
+            } else {
+                match fs::read_to_string(&path) {
+                    Ok(content) => Some(content),
+                    Err(error) if error.kind() == std::io::ErrorKind::InvalidData => None,
+                    Err(error) => {
+                        return Err(error)
+                            .context(format!("Failed to read template file: {}", path.display()));
+                    }
+                }
+            };
+
+            if let Some(content) = content {
+                fs::write(&target_file, substitute_variables(&content, vars))
+                    .context(format!("Failed to write file: {}", target_file.display()))?;
+                fs::set_permissions(&target_file, fs::metadata(&path)?.permissions())?;
+            } else {
                 fs::copy(&path, &target_file)
                     .context(format!("Failed to copy binary file: {}", path.display()))?;
-            } else {
-                // Process template file
-                let content = fs::read_to_string(&path)
-                    .context(format!("Failed to read template file: {}", path.display()))?;
-
-                let processed_content = substitute_variables(&content, vars);
-
-                fs::write(&target_file, processed_content)
-                    .context(format!("Failed to write file: {}", target_file.display()))?;
             }
         }
     }
@@ -215,6 +232,66 @@ mod tests {
         assert!(!dst.path().join("Cargo.toml.template").exists());
         let content = fs::read_to_string(dst.path().join("Cargo.toml")).unwrap();
         assert!(content.contains("name = \"demo\""));
+    }
+
+    #[test]
+    fn skips_template_repository_metadata() {
+        let src = tempdir().unwrap();
+        let dst = tempdir().unwrap();
+        fs::create_dir_all(src.path().join(".git/objects")).unwrap();
+        fs::write(src.path().join(".git/HEAD"), "ref: refs/heads/main").unwrap();
+        fs::write(src.path().join("package.json"), "{}").unwrap();
+
+        process_template_dir(src.path(), dst.path(), &HashMap::new()).unwrap();
+
+        assert!(!dst.path().join(".git").exists());
+        assert!(dst.path().join("package.json").exists());
+    }
+
+    #[test]
+    fn skips_generated_template_artifacts() {
+        let src = tempdir().unwrap();
+        let dst = tempdir().unwrap();
+        for directory in [
+            "node_modules",
+            "dist",
+            ".lingxia",
+            ".lingxiao",
+            ".worker",
+            "target",
+        ] {
+            fs::create_dir_all(src.path().join(directory)).unwrap();
+            fs::write(src.path().join(directory).join("artifact"), "generated").unwrap();
+        }
+        fs::write(src.path().join("tsconfig.tsbuildinfo"), "generated").unwrap();
+        fs::write(src.path().join("package.json"), "{}").unwrap();
+
+        process_template_dir(src.path(), dst.path(), &HashMap::new()).unwrap();
+
+        for directory in [
+            "node_modules",
+            "dist",
+            ".lingxia",
+            ".lingxiao",
+            ".worker",
+            "target",
+        ] {
+            assert!(!dst.path().join(directory).exists());
+        }
+        assert!(!dst.path().join("tsconfig.tsbuildinfo").exists());
+        assert!(dst.path().join("package.json").exists());
+    }
+
+    #[test]
+    fn copies_unknown_binary_files_without_decoding_them() {
+        let src = tempdir().unwrap();
+        let dst = tempdir().unwrap();
+        let bytes = [0xff, 0xfe, 0x00, 0x7f];
+        fs::write(src.path().join("fixture.unknown"), bytes).unwrap();
+
+        process_template_dir(src.path(), dst.path(), &HashMap::new()).unwrap();
+
+        assert_eq!(fs::read(dst.path().join("fixture.unknown")).unwrap(), bytes);
     }
 
     // --- process_template_dir: variable substitution in files ---

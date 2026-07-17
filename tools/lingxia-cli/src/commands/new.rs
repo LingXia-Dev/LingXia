@@ -16,13 +16,15 @@ mod windows;
 
 use crate::runtime;
 use crate::versions::current_versions;
-use anyhow::{Context, Result, anyhow, bail};
+use anyhow::{Context, Result, bail};
 use colored::Colorize;
 use dialoguer::{Confirm, theme::ColorfulTheme};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use self::config_files::generate_config_file;
-use self::lxapp_scaffold::{create_lxapp_from_template, create_lxapp_project};
+use self::lxapp_scaffold::{
+    create_lxapp_from_template, create_lxapp_project, ensure_custom_template_target_parent,
+};
 use self::native::{create_project, create_rust_library};
 use self::prompts::{
     gather_lxapp_dir_name, gather_lxapp_framework, gather_lxapp_id, gather_native_app_service_mode,
@@ -46,6 +48,54 @@ pub(super) fn locate_templates_dir() -> Result<PathBuf> {
     template_assets::locate_templates_dir()
 }
 
+/// Resolve the optional user-level standalone lxapp template.
+///
+/// The directory is a complete React lxapp template repository and replaces
+/// the embedded standalone template as one unit.
+fn locate_user_lxapp_template_dir() -> Result<Option<PathBuf>> {
+    let Some(home) = dirs::home_dir() else {
+        return Ok(None);
+    };
+    locate_user_lxapp_template_dir_from(&home)
+}
+
+fn locate_user_lxapp_template_dir_from(home: &Path) -> Result<Option<PathBuf>> {
+    let root = user_lxapp_template_root(home);
+    match std::fs::symlink_metadata(&root) {
+        Ok(_) => validate_lxapp_template_dir(&root).map(Some),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(error)
+            .with_context(|| format!("Failed to inspect LxApp template: {}", root.display())),
+    }
+}
+
+fn validate_lxapp_template_dir(root: &Path) -> Result<PathBuf> {
+    if !root.exists() {
+        bail!("Custom LxApp template does not exist: {}", root.display());
+    }
+    if !root.is_dir() {
+        bail!(
+            "Custom LxApp template is not a directory: {}",
+            root.display()
+        );
+    }
+    for required in ["package.json", "lxapp.json"] {
+        if !root.join(required).is_file() {
+            bail!(
+                "Custom LxApp template is missing {}",
+                root.join(required).display()
+            );
+        }
+    }
+
+    root.canonicalize()
+        .with_context(|| format!("Failed to resolve LxApp template: {}", root.display()))
+}
+
+fn user_lxapp_template_root(home: &Path) -> PathBuf {
+    home.join(".lingxia").join("templates").join("lxapp")
+}
+
 /// Execute the new project command
 pub fn execute(
     name: Option<String>,
@@ -53,7 +103,7 @@ pub fn execute(
     platforms: Vec<String>,
     package_id: Option<String>,
     icon: Option<String>,
-    worker: bool,
+    template: Option<PathBuf>,
     yes: bool,
 ) -> Result<()> {
     println!("{}", "Create a new LingXia project".bold());
@@ -72,24 +122,43 @@ pub fn execute(
     );
     println!();
 
-    let project_type = gather_project_type(project_type)?;
+    let project_type = if template.is_some() && project_type.is_none() {
+        ProjectType::LxApp
+    } else {
+        gather_project_type(project_type)?
+    };
+
+    if !matches!(project_type, ProjectType::LxApp) && template.is_some() {
+        bail!("--template is only supported for standalone lxapp projects");
+    }
+
+    let user_template = if matches!(project_type, ProjectType::LxApp) {
+        match template.as_deref() {
+            Some(path) => Some(validate_lxapp_template_dir(path)?),
+            None => locate_user_lxapp_template_dir()?,
+        }
+    } else {
+        None
+    };
+    if let Some(template) = user_template.as_deref() {
+        ensure_custom_template_target_parent(template, &std::env::current_dir()?)?;
+    }
     let name = gather_project_name(name)?;
 
     if matches!(project_type, ProjectType::LxApp) {
         // A lightweight lxapp keeps a single name: the project name doubles as
         // the display name. Only the appId is separately editable.
         let product_name = name.clone();
-        // --worker needs the lingxiao CLI (it scaffolds + builds the worker).
-        // Fail fast before creating anything — no half-worker fallback.
-        if worker && !lingxiao_available() {
-            return Err(anyhow!(
-                "`lingxia new --worker` requires the `lingxiao` CLI on PATH — it scaffolds \
-                 and builds the cloud worker.\nInstall lingxiao and retry, or omit --worker."
-            ));
-        }
         let app_id = gather_lxapp_id(&self::types::default_lxapp_app_id(&name), yes)?;
-        let framework = gather_lxapp_framework(yes)?;
+        let framework = if user_template.is_some() {
+            "react".to_string()
+        } else {
+            gather_lxapp_framework(yes)?
+        };
         let target_dir = std::env::current_dir()?.join(&name);
+        if let Some(template) = user_template.as_deref() {
+            println!("  {} LxApp template: {}", "✓".green(), template.display());
+        }
         create_lxapp_from_template(
             &target_dir,
             &name,
@@ -100,10 +169,8 @@ pub fn execute(
             &versions,
             &scaffold_versions.bridge,
             &scaffold_versions.types,
+            user_template.as_deref(),
         )?;
-        if worker {
-            scaffold_worker(&target_dir)?;
-        }
 
         println!();
         println!("{}", "Project created successfully!".green().bold());
@@ -261,75 +328,64 @@ fn print_manual_skill_hint() {
 
 // Platform-specific helpers are in `commands/new/*`.
 
-/// `--worker`: lay the typed-cloud-functions overlay onto a fresh lxapp.
-/// lingxia owns the contract + sample impl + mock + `worker.json` + home
-/// variant; the worker *structure* (lingxiao.toml / tsconfig / src/index.ts /
-/// package.json) is scaffolded by `lingxiao new` — which is required (the caller
-/// checks availability first, so this only fails if the run itself errors).
-/// The worker id is always the lxapp's appId — never recorded anywhere else.
-fn scaffold_worker(target_dir: &std::path::Path) -> Result<()> {
-    let overlay = locate_templates_dir()?.join("lxapp-worker");
-    let server = target_dir.join("server");
+#[cfg(test)]
+mod user_template_tests {
+    use super::*;
+    use tempfile::tempdir;
 
-    // Worker structure: lingxiao owns it (never hand-mirror its scaffold).
-    run_lingxiao_new(&server)?;
-    // Drop lingxiao's placeholder fn; we ship a coherent `hello` sample.
-    let _ = std::fs::remove_file(server.join("src/functions/main.ts"));
-
-    // lingxia's overlay: build-ready sample + mock + config + home variant.
-    copy_dir_all(&overlay.join("server"), &server)?;
-    std::fs::copy(overlay.join("worker.json"), target_dir.join("worker.json"))?;
-    // Home variant: swap the `greet` action body to call the cloud function
-    // (the View is untouched).
-    std::fs::copy(
-        overlay.join("pages/home/index.ts"),
-        target_dir.join("pages/home/index.ts"),
-    )?;
-
-    println!(
-        "  {} Cloud worker: server/ (via lingxiao new) + worker.json",
-        "✓".green()
-    );
-    Ok(())
-}
-
-/// Whether the `lingxiao` CLI is on PATH (it scaffolds + builds the worker).
-fn lingxiao_available() -> bool {
-    std::process::Command::new("lingxiao")
-        .arg("--help")
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status()
-        .is_ok()
-}
-
-/// Scaffold the worker structure via `lingxiao new <server>`.
-fn run_lingxiao_new(server: &std::path::Path) -> Result<()> {
-    let status = std::process::Command::new("lingxiao")
-        .arg("new")
-        .arg(server)
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status()
-        .context("failed to run `lingxiao new` (is the lingxiao CLI installed?)")?;
-    if !status.success() {
-        bail!("`lingxiao new {}` failed", server.display());
+    #[test]
+    fn missing_user_template_uses_builtin() {
+        let home = tempdir().unwrap();
+        assert_eq!(
+            locate_user_lxapp_template_dir_from(home.path()).unwrap(),
+            None
+        );
     }
-    Ok(())
-}
 
-/// Recursively copy `src` into `dst` (creating `dst`).
-fn copy_dir_all(src: &std::path::Path, dst: &std::path::Path) -> Result<()> {
-    std::fs::create_dir_all(dst)?;
-    for entry in std::fs::read_dir(src)? {
-        let entry = entry?;
-        if entry.file_type()?.is_dir() {
-            copy_dir_all(&entry.path(), &dst.join(entry.file_name()))?;
-        } else {
-            std::fs::copy(entry.path(), dst.join(entry.file_name()))?;
+    #[test]
+    fn resolves_complete_user_template() {
+        let home = tempdir().unwrap();
+        let template = user_lxapp_template_root(home.path());
+        std::fs::create_dir_all(&template).unwrap();
+        for file in ["package.json", "lxapp.json"] {
+            std::fs::write(template.join(file), "template").unwrap();
         }
+
+        assert_eq!(
+            locate_user_lxapp_template_dir_from(home.path()).unwrap(),
+            Some(template.canonicalize().unwrap())
+        );
     }
-    Ok(())
+
+    #[test]
+    fn rejects_incomplete_user_template() {
+        let home = tempdir().unwrap();
+        std::fs::create_dir_all(user_lxapp_template_root(home.path())).unwrap();
+
+        let error = locate_user_lxapp_template_dir_from(home.path()).unwrap_err();
+        assert!(error.to_string().contains("package.json"));
+    }
+
+    #[test]
+    fn validates_explicit_template_root() {
+        let root = tempdir().unwrap();
+        for file in ["package.json", "lxapp.json"] {
+            std::fs::write(root.path().join(file), "template").unwrap();
+        }
+
+        assert_eq!(
+            validate_lxapp_template_dir(root.path()).unwrap(),
+            root.path().canonicalize().unwrap()
+        );
+    }
+
+    #[test]
+    fn rejects_missing_explicit_template() {
+        let root = tempdir().unwrap();
+        let missing = root.path().join("missing");
+
+        let error = validate_lxapp_template_dir(&missing).unwrap_err();
+
+        assert!(error.to_string().contains("does not exist"));
+    }
 }
