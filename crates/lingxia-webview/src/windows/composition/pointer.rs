@@ -74,7 +74,7 @@ fn build_pointer_info(
         let _ = out.SetPointerKind(pointer_kind);
         let _ = out.SetPointerId(pointer_id);
         let _ = out.SetFrameId(info.frameId);
-        let _ = out.SetPointerFlags(info.pointerFlags.0 as u32);
+        let _ = out.SetPointerFlags(info.pointerFlags.0);
         if have_rects {
             let _ = out.SetPointerDeviceRect(device_rect);
             let _ = out.SetDisplayRect(display_rect);

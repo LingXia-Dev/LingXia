@@ -131,13 +131,12 @@ impl DcompTree {
         let style = (radii, corner_color);
         if self.wedge_style != style {
             self.wedge_style = style;
-            for corner in 0..4 {
+            for (corner, radius) in radii.into_iter().enumerate() {
                 if let Some(visual) = self.wedges[corner].take() {
                     unsafe {
                         let _ = self.root.RemoveVisual(&visual);
                     }
                 }
-                let radius = radii[corner];
                 if disabled || radius <= 0 {
                     continue;
                 }
