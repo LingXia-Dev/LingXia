@@ -100,38 +100,34 @@ lingxia-runner-config = { path = "tools/lingxia-runner/config", version = "0.10.
 napi-ohos = "1.1.0"
 napi-derive-ohos = "1.1.0"
 
-# Rong runtime (published on crates.io)
+# Rong v0.5.2 product release (component crates use independent versions)
 rong = { version = "0.5.0", default-features = false }
-rong_rt = { version = "0.4.0", default-features = false }
+rong_rt = { version = "0.4.1", default-features = false }
 rong_modules = { version = "0.5.0", default-features = false }
-rong_http = { version = "0.5.0", default-features = false }
+rong_http = { version = "0.5.1", default-features = false }
 rong_console = "0.5.0"
 rong_event = "0.5.0"
-rong_storage = "0.5.0"
-rong_abort = "0.5.0"
+rong_storage = "0.5.1"
+rong_abort = "0.5.1"
 rong_assert = "0.5.0"
 rong_buffer = "0.5.0"
-rong_encoding = "0.5.0"
+rong_encoding = "0.5.1"
 rong_exception = "0.5.0"
-rong_stream = "0.5.0"
-rong_timer = "0.5.0"
-rong_url = "0.5.0"
+rong_stream = "0.5.1"
+rong_timer = "0.5.1"
+rong_url = "0.5.1"
 
 [patch.crates-io]
-rong = { git = "https://github.com/LingXia-Dev/Rong.git", rev = "569fb5d69b026b365840ea5f10538372626ebca2" }
-rong_core = { git = "https://github.com/LingXia-Dev/Rong.git", rev = "569fb5d69b026b365840ea5f10538372626ebca2" }
-rong_cron = { git = "https://github.com/LingXia-Dev/Rong.git", rev = "569fb5d69b026b365840ea5f10538372626ebca2" }
-rong_rt = { git = "https://github.com/LingXia-Dev/Rong.git", rev = "569fb5d69b026b365840ea5f10538372626ebca2" }
-windows = { git = "https://github.com/microsoft/windows-rs.git", rev = "cf58d5cfe7deccb73a55aeb4aa6799dc1b06544c", package = "windows" }
-windows-collections = { git = "https://github.com/microsoft/windows-rs.git", rev = "cf58d5cfe7deccb73a55aeb4aa6799dc1b06544c", package = "windows-collections" }
-windows-core = { git = "https://github.com/microsoft/windows-rs.git", rev = "cf58d5cfe7deccb73a55aeb4aa6799dc1b06544c", package = "windows-core" }
-windows-future = { git = "https://github.com/microsoft/windows-rs.git", rev = "cf58d5cfe7deccb73a55aeb4aa6799dc1b06544c", package = "windows-future" }
-windows-implement = { git = "https://github.com/microsoft/windows-rs.git", rev = "cf58d5cfe7deccb73a55aeb4aa6799dc1b06544c", package = "windows-implement" }
-windows-interface = { git = "https://github.com/microsoft/windows-rs.git", rev = "cf58d5cfe7deccb73a55aeb4aa6799dc1b06544c", package = "windows-interface" }
-windows-link = { git = "https://github.com/microsoft/windows-rs.git", rev = "cf58d5cfe7deccb73a55aeb4aa6799dc1b06544c", package = "windows-link" }
-windows-numerics = { git = "https://github.com/microsoft/windows-rs.git", rev = "cf58d5cfe7deccb73a55aeb4aa6799dc1b06544c", package = "windows-numerics" }
-windows-reference = { git = "https://github.com/microsoft/windows-rs.git", rev = "cf58d5cfe7deccb73a55aeb4aa6799dc1b06544c", package = "windows-reference" }
-windows-result = { git = "https://github.com/microsoft/windows-rs.git", rev = "cf58d5cfe7deccb73a55aeb4aa6799dc1b06544c", package = "windows-result" }
-windows-strings = { git = "https://github.com/microsoft/windows-rs.git", rev = "cf58d5cfe7deccb73a55aeb4aa6799dc1b06544c", package = "windows-strings" }
-windows-threading = { git = "https://github.com/microsoft/windows-rs.git", rev = "cf58d5cfe7deccb73a55aeb4aa6799dc1b06544c", package = "windows-threading" }
-windows-time = { git = "https://github.com/microsoft/windows-rs.git", rev = "cf58d5cfe7deccb73a55aeb4aa6799dc1b06544c", package = "windows-time" }
+windows = { git = "https://github.com/microsoft/windows-rs.git", rev = "a1e9fce43c026221f62f0a149267cb6d7d3c607b", package = "windows" }
+windows-collections = { git = "https://github.com/microsoft/windows-rs.git", rev = "a1e9fce43c026221f62f0a149267cb6d7d3c607b", package = "windows-collections" }
+windows-core = { git = "https://github.com/microsoft/windows-rs.git", rev = "a1e9fce43c026221f62f0a149267cb6d7d3c607b", package = "windows-core" }
+windows-future = { git = "https://github.com/microsoft/windows-rs.git", rev = "a1e9fce43c026221f62f0a149267cb6d7d3c607b", package = "windows-future" }
+windows-implement = { git = "https://github.com/microsoft/windows-rs.git", rev = "a1e9fce43c026221f62f0a149267cb6d7d3c607b", package = "windows-implement" }
+windows-interface = { git = "https://github.com/microsoft/windows-rs.git", rev = "a1e9fce43c026221f62f0a149267cb6d7d3c607b", package = "windows-interface" }
+windows-link = { git = "https://github.com/microsoft/windows-rs.git", rev = "a1e9fce43c026221f62f0a149267cb6d7d3c607b", package = "windows-link" }
+windows-numerics = { git = "https://github.com/microsoft/windows-rs.git", rev = "a1e9fce43c026221f62f0a149267cb6d7d3c607b", package = "windows-numerics" }
+windows-reference = { git = "https://github.com/microsoft/windows-rs.git", rev = "a1e9fce43c026221f62f0a149267cb6d7d3c607b", package = "windows-reference" }
+windows-result = { git = "https://github.com/microsoft/windows-rs.git", rev = "a1e9fce43c026221f62f0a149267cb6d7d3c607b", package = "windows-result" }
+windows-strings = { git = "https://github.com/microsoft/windows-rs.git", rev = "a1e9fce43c026221f62f0a149267cb6d7d3c607b", package = "windows-strings" }
+windows-threading = { git = "https://github.com/microsoft/windows-rs.git", rev = "a1e9fce43c026221f62f0a149267cb6d7d3c607b", package = "windows-threading" }
+windows-time = { git = "https://github.com/microsoft/windows-rs.git", rev = "a1e9fce43c026221f62f0a149267cb6d7d3c607b", package = "windows-time" }
