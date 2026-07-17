@@ -11,8 +11,8 @@
 use crate::resolve::json_to_js;
 use lingxia_computer_use as cu;
 use rong::{
-    Class, FromJSObj, HostError, JSContext, JSObject, JSResult, JSValue, function::Optional,
-    js_class, js_export, js_method,
+    Class, FromJSObject, HostError, JSContext, JSObject, JSResult, JSValue, function::Optional,
+    js_class, js_method,
 };
 use serde_json::json;
 use std::time::{Duration, Instant};
@@ -142,7 +142,7 @@ fn capture_to_js(ctx: &JSContext, capture: &cu::Capture) -> JSResult<JSValue> {
 
 // ===================== desktop =====================
 
-#[js_export]
+#[js_class(clone)]
 pub(crate) struct JSDesktopDriver {}
 
 impl JSDesktopDriver {
@@ -151,18 +151,18 @@ impl JSDesktopDriver {
     }
 }
 
-#[derive(FromJSObj, Default)]
+#[derive(FromJSObject, Default)]
 struct PermissionsOpt {
     request: Option<bool>,
 }
 
-#[derive(FromJSObj, Default)]
+#[derive(FromJSObject, Default)]
 struct WindowsOpt {
-    #[rename = "match"]
+    #[js_name = "match"]
     match_query: Option<String>,
 }
 
-#[derive(FromJSObj, Default)]
+#[derive(FromJSObject, Default)]
 struct ScreenshotOpt {
     /// Monitor by 1-based index (as listed by `displays()`).
     display: Option<usize>,
@@ -172,17 +172,17 @@ struct ScreenshotOpt {
     region: Option<Vec<f64>>,
 }
 
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
 struct AtOpt {
     at: Vec<f64>,
 }
 
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
 struct SnapshotOpt {
     /// Window id from `windows()`.
     window: String,
     /// Skip the accessibility tree.
-    #[rename = "noAx"]
+    #[js_name = "noAx"]
     no_ax: Option<bool>,
     /// Limit ax tree depth.
     depth: Option<u32>,
@@ -357,7 +357,7 @@ impl JSDesktopDriver {
 
 // ===================== desktop.window.* =====================
 
-#[js_export]
+#[js_class(clone)]
 pub(crate) struct JSDesktopWindow {}
 
 impl JSDesktopWindow {
@@ -366,45 +366,45 @@ impl JSDesktopWindow {
     }
 }
 
-#[derive(FromJSObj, Default)]
+#[derive(FromJSObject, Default)]
 struct WindowSel {
     /// Window id from `windows()`.
     window: Option<String>,
     /// Match query (`text | title: | class: | process: | pid:`); must resolve
     /// to exactly one window.
-    #[rename = "match"]
+    #[js_name = "match"]
     match_query: Option<String>,
 }
 
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
 struct WindowMove {
     window: Option<String>,
-    #[rename = "match"]
+    #[js_name = "match"]
     match_query: Option<String>,
     to: Vec<f64>,
 }
 
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
 struct WindowResize {
     window: Option<String>,
-    #[rename = "match"]
+    #[js_name = "match"]
     match_query: Option<String>,
     width: f64,
     height: f64,
 }
 
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
 struct WindowMoveDisplay {
     window: Option<String>,
-    #[rename = "match"]
+    #[js_name = "match"]
     match_query: Option<String>,
     display: String,
 }
 
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
 struct WindowAlwaysOnTop {
     window: Option<String>,
-    #[rename = "match"]
+    #[js_name = "match"]
     match_query: Option<String>,
     on: bool,
 }
@@ -520,7 +520,7 @@ impl JSDesktopWindow {
 
 // ===================== desktop.pointer.* =====================
 
-#[js_export]
+#[js_class(clone)]
 pub(crate) struct JSDesktopPointer {}
 
 impl JSDesktopPointer {
@@ -529,7 +529,7 @@ impl JSDesktopPointer {
     }
 }
 
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
 struct DesktopPointerAt {
     /// Target coordinate as `[x, y]` in backend-native desktop pixels.
     at: Vec<f64>,
@@ -538,7 +538,7 @@ struct DesktopPointerAt {
     pid: Option<u32>,
 }
 
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
 struct DesktopPointerButton {
     at: Vec<f64>,
     button: Option<String>,
@@ -546,7 +546,7 @@ struct DesktopPointerButton {
     pid: Option<u32>,
 }
 
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
 struct DesktopPointerClick {
     at: Vec<f64>,
     button: Option<String>,
@@ -555,7 +555,7 @@ struct DesktopPointerClick {
     pid: Option<u32>,
 }
 
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
 struct DesktopPointerDrag {
     from: Vec<f64>,
     to: Vec<f64>,
@@ -564,7 +564,7 @@ struct DesktopPointerDrag {
     pid: Option<u32>,
 }
 
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
 struct DesktopPointerScroll {
     at: Vec<f64>,
     dx: Option<f64>,
@@ -660,7 +660,7 @@ impl JSDesktopPointer {
 
 // ===================== desktop.key.* =====================
 
-#[js_export]
+#[js_class(clone)]
 pub(crate) struct JSDesktopKey {}
 
 impl JSDesktopKey {
@@ -669,14 +669,14 @@ impl JSDesktopKey {
     }
 }
 
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
 struct DesktopKeyType {
     text: String,
     window: Option<String>,
     pid: Option<u32>,
 }
 
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
 struct DesktopKeyPress {
     key: String,
     modifiers: Option<Vec<String>>,
@@ -684,7 +684,7 @@ struct DesktopKeyPress {
     pid: Option<u32>,
 }
 
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
 struct DesktopKeyName {
     key: String,
     window: Option<String>,
@@ -744,7 +744,7 @@ impl JSDesktopKey {
 
 // ===================== desktop.clipboard.* =====================
 
-#[js_export]
+#[js_class(clone)]
 pub(crate) struct JSDesktopClipboard {}
 
 impl JSDesktopClipboard {
@@ -753,7 +753,7 @@ impl JSDesktopClipboard {
     }
 }
 
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
 struct ClipboardSet {
     text: String,
 }
@@ -793,7 +793,7 @@ impl JSDesktopClipboard {
 
 // ===================== desktop.ax.* =====================
 
-#[js_export]
+#[js_class(clone)]
 pub(crate) struct JSDesktopAx {}
 
 impl JSDesktopAx {
@@ -802,35 +802,35 @@ impl JSDesktopAx {
     }
 }
 
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
 struct AxTreeOpt {
     window: String,
     depth: Option<u32>,
-    #[rename = "maxNodes"]
+    #[js_name = "maxNodes"]
     max_nodes: Option<usize>,
 }
 
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
 struct AxQueryOpt {
     window: String,
     /// Node match query (`text | name: | role: | value: | id:`).
-    #[rename = "match"]
+    #[js_name = "match"]
     match_query: String,
     all: Option<bool>,
     index: Option<usize>,
 }
 
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
 struct AxSelOpt {
     window: String,
-    #[rename = "match"]
+    #[js_name = "match"]
     match_query: String,
 }
 
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
 struct AxSetValueOpt {
     window: String,
-    #[rename = "match"]
+    #[js_name = "match"]
     match_query: String,
     value: String,
 }
@@ -923,7 +923,7 @@ impl JSDesktopAx {
 
 // ===================== desktop.wait.* =====================
 
-#[js_export]
+#[js_class(clone)]
 pub(crate) struct JSDesktopWait {}
 
 impl JSDesktopWait {
@@ -932,34 +932,34 @@ impl JSDesktopWait {
     }
 }
 
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
 struct WaitWindowOpt {
-    #[rename = "match"]
+    #[js_name = "match"]
     match_query: String,
     /// `visible` (default) | `hidden`.
     state: Option<String>,
-    #[rename = "timeoutMs"]
+    #[js_name = "timeoutMs"]
     timeout_ms: Option<u64>,
 }
 
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
 struct WaitAxOpt {
     window: String,
-    #[rename = "match"]
+    #[js_name = "match"]
     match_query: String,
     /// `exists` (default) | `gone` | `enabled` | `focused`.
     state: Option<String>,
-    #[rename = "timeoutMs"]
+    #[js_name = "timeoutMs"]
     timeout_ms: Option<u64>,
 }
 
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
 struct WaitPixelOpt {
     at: Vec<f64>,
     /// Expected color as `#rrggbb`.
     color: String,
     tolerance: Option<u8>,
-    #[rename = "timeoutMs"]
+    #[js_name = "timeoutMs"]
     timeout_ms: Option<u64>,
 }
 
@@ -1041,7 +1041,7 @@ impl JSDesktopWait {
 
 // ===================== desktop.app.* / desktop.process.* =====================
 
-#[js_export]
+#[js_class(clone)]
 pub(crate) struct JSDesktopApp {}
 
 impl JSDesktopApp {
@@ -1050,21 +1050,21 @@ impl JSDesktopApp {
     }
 }
 
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
 struct AppLaunchOpt {
     /// Path or PATH-resolved command.
     app: String,
     args: Option<Vec<String>>,
     /// Wait for a window matching this query before resolving.
-    #[rename = "waitWindow"]
+    #[js_name = "waitWindow"]
     wait_window: Option<String>,
-    #[rename = "timeoutMs"]
+    #[js_name = "timeoutMs"]
     timeout_ms: Option<u64>,
 }
 
-#[derive(FromJSObj, Default)]
+#[derive(FromJSObject, Default)]
 struct AppQuitOpt {
-    #[rename = "match"]
+    #[js_name = "match"]
     match_query: Option<String>,
     pid: Option<u32>,
     window: Option<String>,
@@ -1110,7 +1110,7 @@ impl JSDesktopApp {
     }
 }
 
-#[js_export]
+#[js_class(clone)]
 pub(crate) struct JSDesktopProcess {}
 
 impl JSDesktopProcess {
@@ -1119,13 +1119,13 @@ impl JSDesktopProcess {
     }
 }
 
-#[derive(FromJSObj, Default)]
+#[derive(FromJSObject, Default)]
 struct ProcessListOpt {
     /// Case-insensitive name substring filter.
     filter: Option<String>,
 }
 
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
 struct ProcessKillOpt {
     pid: u32,
     force: Option<bool>,

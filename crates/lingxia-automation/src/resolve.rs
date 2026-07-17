@@ -28,7 +28,7 @@ pub(crate) fn js_object_to_json(object: &JSObject) -> JSResult<Value> {
 }
 
 /// Recursively convert a serde_json value into a JS value (for runtime data
-/// that has no dedicated IntoJSObj struct: query payloads, browser tabs,
+/// that has no dedicated IntoJSObject struct: query payloads, browser tabs,
 /// app windows, eval results).
 pub(crate) fn json_to_js(ctx: &JSContext, value: &Value) -> JSResult<JSValue> {
     Ok(match value {

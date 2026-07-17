@@ -6,7 +6,7 @@
 use crate::auto_err;
 use crate::resolve::json_to_js;
 use lingxia_platform::traits::{keyboard, mouse};
-use rong::{FromJSObj, HostError, JSContext, JSResult, JSValue, js_class, js_export, js_method};
+use rong::{FromJSObject, HostError, JSContext, JSResult, JSValue, js_class, js_method};
 
 fn illegal_ctor() -> rong::RongJSError {
     HostError::new(rong::error::E_ILLEGAL_CONSTRUCTOR, "Use lx.automation()").into()
@@ -86,7 +86,7 @@ fn keyboard_modifiers(raw: &Option<Vec<String>>) -> JSResult<Vec<keyboard::AppKe
 
 // ===================== page.pointer.* =====================
 
-#[js_export]
+#[js_class(clone)]
 pub(crate) struct JSPagePointer {}
 
 impl JSPagePointer {
@@ -95,21 +95,21 @@ impl JSPagePointer {
     }
 }
 
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
 struct PointerAt {
     /// Target coordinate as `[x, y]` in page (CSS) pixels.
     at: Vec<f64>,
     window: Option<String>,
 }
 
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
 struct PointerButtonAt {
     at: Vec<f64>,
     button: Option<String>,
     window: Option<String>,
 }
 
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
 struct PointerClick {
     at: Vec<f64>,
     button: Option<String>,
@@ -117,7 +117,7 @@ struct PointerClick {
     window: Option<String>,
 }
 
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
 struct PointerDrag {
     from: Vec<f64>,
     to: Vec<f64>,
@@ -125,7 +125,7 @@ struct PointerDrag {
     window: Option<String>,
 }
 
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
 struct PointerScroll {
     at: Vec<f64>,
     dx: Option<f64>,
@@ -219,7 +219,7 @@ impl JSPagePointer {
 
 // ===================== page.key.* =====================
 
-#[js_export]
+#[js_class(clone)]
 pub(crate) struct JSPageKey {}
 
 impl JSPageKey {
@@ -228,13 +228,13 @@ impl JSPageKey {
     }
 }
 
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
 struct KeyType {
     text: String,
     window: Option<String>,
 }
 
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
 struct KeyPress {
     key: String,
     modifiers: Option<Vec<String>>,

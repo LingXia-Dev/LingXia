@@ -8,8 +8,8 @@ use crate::resolve::{json_to_js, resolve_lxapp_by_id};
 use base64::{Engine as _, engine::general_purpose};
 use lxapp::{LxApp, LxAppStartupOptions, ReleaseType};
 use rong::{
-    Class, FromJSObj, HostError, IntoJSObj, JSContext, JSObject, JSResult, JSValue,
-    function::Optional, js_class, js_export, js_method,
+    Class, FromJSObject, HostError, IntoJSObject, JSContext, JSObject, JSResult, JSValue,
+    function::Optional, js_class, js_method,
 };
 use serde_json::json;
 use std::time::Duration;
@@ -53,7 +53,7 @@ fn reject_self(ctx: &JSContext, target: &LxApp, verb: &str) -> JSResult<()> {
 
 // ===================== LxAppManager =====================
 
-#[js_export]
+#[js_class(clone)]
 pub(crate) struct JSLxAppManager {}
 
 impl JSLxAppManager {
@@ -62,35 +62,35 @@ impl JSLxAppManager {
     }
 }
 
-#[derive(FromJSObj, Default)]
+#[derive(FromJSObject, Default)]
 struct AppOpt {
     app: Option<String>,
 }
 
-#[derive(FromJSObj, Default)]
+#[derive(FromJSObject, Default)]
 struct ListOpt {
     // Accepted for API shape; runtime currently returns all instances.
     #[allow(dead_code)]
     all: Option<bool>,
 }
 
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
 struct OpenOpt {
     appid: String,
     path: Option<String>,
-    #[rename = "releaseType"]
+    #[js_name = "releaseType"]
     release_type: Option<String>,
 }
 
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
 struct EvalOpt {
     script: String,
     app: Option<String>,
-    #[rename = "timeoutMs"]
+    #[js_name = "timeoutMs"]
     timeout_ms: Option<u64>,
 }
 
-#[derive(Debug, Clone, IntoJSObj)]
+#[derive(Debug, Clone, IntoJSObject)]
 struct JSOpenResult {
     appid: String,
     path: String,
@@ -243,7 +243,7 @@ impl JSLxAppManager {
 
 // ===================== DeviceDriver =====================
 
-#[js_export]
+#[js_class(clone)]
 pub(crate) struct JSDeviceDriver {}
 
 impl JSDeviceDriver {
@@ -252,7 +252,7 @@ impl JSDeviceDriver {
     }
 }
 
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
 struct DeviceSetOpt {
     /// Device preset id (see `list()`).
     id: String,
@@ -291,7 +291,7 @@ impl JSDeviceDriver {
 
 // ===================== BrowserDriver =====================
 
-#[js_export]
+#[js_class(clone)]
 pub(crate) struct JSBrowserDriver {}
 
 impl JSBrowserDriver {
@@ -300,42 +300,42 @@ impl JSBrowserDriver {
     }
 }
 
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
 struct BrowserOpenOpt {
     url: String,
     tab: Option<String>,
 }
 
-#[derive(FromJSObj, Default)]
+#[derive(FromJSObject, Default)]
 struct TabOpt {
     tab: Option<String>,
 }
 
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
 struct BrowserEvalOpt {
     js: String,
     tab: Option<String>,
     /// After the eval, wait for a navigation it triggers.
-    #[rename = "waitNavigation"]
+    #[js_name = "waitNavigation"]
     wait_navigation: Option<bool>,
     /// With `waitNavigation`, wait until the load completes.
     complete: Option<bool>,
-    #[rename = "timeoutMs"]
+    #[js_name = "timeoutMs"]
     timeout_ms: Option<u64>,
 }
 
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
 struct BrowserQueryOpt {
     css: String,
     tab: Option<String>,
-    #[rename = "maxText"]
+    #[js_name = "maxText"]
     max_text: Option<usize>,
     /// Return untruncated text/value (ignores `maxText`).
     full: Option<bool>,
 }
 
 /// Exactly one condition field must be set.
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
 struct BrowserWaitOpt {
     loaded: Option<bool>,
     exists: Option<String>,
@@ -344,63 +344,63 @@ struct BrowserWaitOpt {
     editable: Option<String>,
     js: Option<String>,
     url: Option<String>,
-    #[rename = "urlContains"]
+    #[js_name = "urlContains"]
     url_contains: Option<String>,
     navigation: Option<bool>,
     /// With `navigation`: baseline URL to detect a change from (default: the
     /// current URL is not pinned, so any navigation satisfies it).
-    #[rename = "fromUrl"]
+    #[js_name = "fromUrl"]
     from_url: Option<String>,
     complete: Option<bool>,
     tab: Option<String>,
-    #[rename = "timeoutMs"]
+    #[js_name = "timeoutMs"]
     timeout_ms: Option<u64>,
 }
 
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
 struct BrowserSelectorOpt {
     css: String,
     tab: Option<String>,
 }
 
 /// `click` / `press` also carry the navigation-sync flags.
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
 struct BrowserClickOpt {
     css: String,
     tab: Option<String>,
-    #[rename = "waitNavigation"]
+    #[js_name = "waitNavigation"]
     wait_navigation: Option<bool>,
     complete: Option<bool>,
-    #[rename = "timeoutMs"]
+    #[js_name = "timeoutMs"]
     timeout_ms: Option<u64>,
 }
 
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
 struct BrowserTextOpt {
     css: String,
     text: String,
     tab: Option<String>,
 }
 
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
 struct BrowserPressOpt {
     key: String,
     tab: Option<String>,
-    #[rename = "waitNavigation"]
+    #[js_name = "waitNavigation"]
     wait_navigation: Option<bool>,
     complete: Option<bool>,
-    #[rename = "timeoutMs"]
+    #[js_name = "timeoutMs"]
     timeout_ms: Option<u64>,
 }
 
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
 struct BrowserScrollOpt {
     dx: Option<f64>,
     dy: Option<f64>,
     tab: Option<String>,
 }
 
-#[derive(Debug, Clone, IntoJSObj)]
+#[derive(Debug, Clone, IntoJSObject)]
 struct JSTabResult {
     tab: String,
 }
@@ -732,7 +732,7 @@ impl JSBrowserDriver {
 
 // ---- browser.cookies.* ----
 
-#[js_export]
+#[js_class(clone)]
 pub(crate) struct JSBrowserCookies {}
 
 impl JSBrowserCookies {
@@ -741,13 +741,13 @@ impl JSBrowserCookies {
     }
 }
 
-#[derive(FromJSObj, Default)]
+#[derive(FromJSObject, Default)]
 struct CookiesListOpt {
     tab: Option<String>,
     all: Option<bool>,
 }
 
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
 struct CookieSetOpt {
     name: String,
     value: String,
@@ -755,16 +755,16 @@ struct CookieSetOpt {
     domain: Option<String>,
     path: Option<String>,
     secure: Option<bool>,
-    #[rename = "httpOnly"]
+    #[js_name = "httpOnly"]
     http_only: Option<bool>,
-    #[rename = "expiresUnixMs"]
+    #[js_name = "expiresUnixMs"]
     expires_unix_ms: Option<i64>,
-    #[rename = "sameSite"]
+    #[js_name = "sameSite"]
     same_site: Option<String>,
     tab: Option<String>,
 }
 
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
 struct CookieDeleteOpt {
     name: String,
     domain: String,
@@ -844,12 +844,12 @@ impl JSBrowserCookies {
 }
 // ===================== shared window option / screenshot payload =====================
 
-#[derive(FromJSObj, Default)]
+#[derive(FromJSObject, Default)]
 struct WindowOpt {
     window: Option<String>,
 }
 
-#[derive(Debug, Clone, IntoJSObj)]
+#[derive(Debug, Clone, IntoJSObject)]
 struct JSAppScreenshot {
     format: String,
     base64: String,

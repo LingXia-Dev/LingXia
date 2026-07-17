@@ -4,10 +4,10 @@
 
 use crate::resolve::upgrade;
 use lxapp::LxApp;
-use rong::{HostError, IntoJSObj, JSContext, JSResult, js_class, js_export, js_method};
+use rong::{HostError, IntoJSObject, JSContext, JSResult, js_class, js_method};
 use std::sync::{Arc, Weak};
 
-#[js_export]
+#[js_class(clone)]
 pub(crate) struct JSSelfInfo {
     lxapp: Weak<LxApp>,
 }
@@ -20,14 +20,14 @@ impl JSSelfInfo {
     }
 }
 
-#[derive(Debug, Clone, IntoJSObj)]
+#[derive(Debug, Clone, IntoJSObject)]
 struct JSLxAppSummary {
     appid: String,
-    #[rename = "currentPage"]
+    #[js_name = "currentPage"]
     current_page: Option<String>,
 }
 
-#[derive(Debug, Clone, IntoJSObj)]
+#[derive(Debug, Clone, IntoJSObject)]
 struct JSPageConfig {
     name: String,
     path: String,

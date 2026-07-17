@@ -16,8 +16,8 @@ mod resolve;
 
 use lxapp::{LxApp, LxAppSecurityPrivilege, lx};
 use rong::{
-    Class, FromJSObj, HostError, JSContext, JSFunc, JSObject, JSResult, RongJSError,
-    function::Optional, js_class, js_export, js_method,
+    Class, FromJSObject, HostError, JSContext, JSFunc, JSObject, JSResult, RongJSError,
+    function::Optional, js_class, js_method,
 };
 use std::sync::{Arc, Weak};
 
@@ -50,7 +50,7 @@ fn require_privilege(app: &LxApp, id: &str) -> JSResult<()> {
     }
 }
 
-#[derive(FromJSObj, Default, Clone)]
+#[derive(FromJSObject, Default, Clone)]
 struct JSAutomationOptions {
     host: Option<bool>,
 }
@@ -58,7 +58,7 @@ struct JSAutomationOptions {
 /// The capability handle returned by `lx.automation()`. Sub-drivers are
 /// created lazily per property access; the drivers themselves are stateless
 /// (a `Weak<LxApp>` at most), so no instance caching is needed.
-#[js_export]
+#[js_class(clone)]
 pub(crate) struct JSAutomation {
     lxapp: Weak<LxApp>,
     host: bool,

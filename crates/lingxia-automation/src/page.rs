@@ -7,8 +7,8 @@ use crate::resolve::{json_to_js, upgrade};
 use base64::{Engine as _, engine::general_purpose};
 use lxapp::{LxApp, automation as auto};
 use rong::{
-    Class, FromJSObj, HostError, IntoJSObj, JSContext, JSObject, JSResult, JSValue,
-    function::Optional, js_class, js_export, js_method,
+    Class, FromJSObject, HostError, IntoJSObject, JSContext, JSObject, JSResult, JSValue,
+    function::Optional, js_class, js_method,
 };
 use std::sync::{Arc, Weak};
 use std::time::{Duration, Instant};
@@ -19,7 +19,7 @@ const WAIT_POLL_MS: u64 = 100;
 const WAIT_DEFAULT_MS: u64 = 10_000;
 const WAIT_MAX_MS: u64 = 60_000;
 
-#[js_export]
+#[js_class(clone)]
 pub(crate) struct JSPageDriver {
     lxapp: Weak<LxApp>,
 }
@@ -32,34 +32,34 @@ impl JSPageDriver {
     }
 }
 
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
 struct JSEvalOptions {
     script: String,
     page: Option<String>,
-    #[rename = "timeoutMs"]
+    #[js_name = "timeoutMs"]
     timeout_ms: Option<u64>,
 }
 
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
 struct JSQueryOptions {
     css: String,
     index: Option<usize>,
     all: Option<bool>,
-    #[rename = "maxText"]
+    #[js_name = "maxText"]
     max_text: Option<usize>,
     /// Return untruncated text/value (ignores `maxText`).
     full: Option<bool>,
     page: Option<String>,
 }
 
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
 struct JSClickOptions {
     css: String,
     index: Option<usize>,
     page: Option<String>,
 }
 
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
 struct JSTypeOptions {
     css: String,
     text: String,
@@ -67,35 +67,35 @@ struct JSTypeOptions {
     page: Option<String>,
 }
 
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
 struct JSPressOptions {
     key: String,
     page: Option<String>,
 }
 
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
 struct JSScrollToOptions {
     css: String,
     page: Option<String>,
 }
 
-#[derive(FromJSObj, Default)]
+#[derive(FromJSObject, Default)]
 struct JSScrollOptions {
     dx: Option<f64>,
     dy: Option<f64>,
     page: Option<String>,
 }
 
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
 struct JSWaitForOptions {
     css: String,
     state: Option<String>,
-    #[rename = "timeoutMs"]
+    #[js_name = "timeoutMs"]
     timeout_ms: Option<u64>,
     page: Option<String>,
 }
 
-#[derive(FromJSObj, Default)]
+#[derive(FromJSObject, Default)]
 struct JSScreenshotOptions {
     page: Option<String>,
 }
@@ -108,7 +108,7 @@ struct WaitProbe {
     visible: bool,
 }
 
-#[derive(Debug, Clone, IntoJSObj)]
+#[derive(Debug, Clone, IntoJSObject)]
 struct JSScreenshot {
     format: String,
     base64: String,

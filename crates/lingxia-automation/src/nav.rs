@@ -8,12 +8,12 @@ use crate::auto_err;
 use crate::resolve::{js_object_to_json, upgrade};
 use lxapp::{LxApp, NavigationType, automation as auto};
 use rong::{
-    FromJSObj, HostError, IntoJSObj, JSContext, JSObject, JSResult, function::Optional, js_class,
-    js_export, js_method,
+    FromJSObject, HostError, IntoJSObject, JSContext, JSObject, JSResult, function::Optional,
+    js_class, js_method,
 };
 use std::sync::{Arc, Weak};
 
-#[js_export]
+#[js_class(clone)]
 pub(crate) struct JSNavDriver {
     lxapp: Weak<LxApp>,
 }
@@ -26,28 +26,28 @@ impl JSNavDriver {
     }
 }
 
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
 struct JSBackOptions {
     delta: Option<u32>,
 }
 
-#[derive(FromJSObj)]
+#[derive(FromJSObject)]
 struct JSNavOptions {
     page: String,
     query: Option<JSObject>,
 }
 
-#[derive(FromJSObj, Default)]
+#[derive(FromJSObject, Default)]
 struct JSPageRef {
     page: Option<String>,
 }
 
-#[derive(Debug, Clone, IntoJSObj)]
+#[derive(Debug, Clone, IntoJSObject)]
 struct JSPageInfo {
     path: String,
     name: Option<String>,
     current: bool,
-    #[rename = "inStack"]
+    #[js_name = "inStack"]
     in_stack: bool,
     ready: bool,
 }
