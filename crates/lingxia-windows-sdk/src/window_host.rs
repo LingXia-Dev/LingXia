@@ -650,7 +650,7 @@ pub fn show_webview_as_adaptive_panel(
 
 pub fn present_webview_in_active_group(webtag: &WebTag) -> StdResult<()> {
     let handler = find_webview_handler(webtag).ok_or_else(|| handler_not_ready(webtag))?;
-    let Some(host) = active_host_window() else {
+    let Some(host) = prefer_visible_workspace(active_host_window()) else {
         handler.set_content_visible(true)?;
         show_native_view(handler.native_view(), "", true)?;
         let hwnd = hwnd_from_handle(handler.native_view().window);
@@ -761,6 +761,7 @@ pub fn present_webview_in_active_group(webtag: &WebTag) -> StdResult<()> {
     mark_active(webtag);
     notify_webtag_visibility(webtag.key(), true);
     repaint_window_now(host);
+    hide_other_workspace_windows(host);
     Ok(())
 }
 
@@ -4079,6 +4080,52 @@ fn first_visible_registered_host_window_except(excluded: Option<HWND>) -> Option
         .find(|hwnd| Some(*hwnd) != excluded && is_window_visible(*hwnd) && !is_minimized(*hwnd))
 }
 
+/// The shell owns exactly ONE workspace window. Whenever a visible shell
+/// host exists, a hidden candidate (typically a stale per-webtag
+/// registration pointing at the webview's own parked parent window) must
+/// lose to it — showing the candidate would surface a duplicate shell
+/// window beside the workspace. With no visible host (startup presents
+/// into a still-hidden window) the candidate passes through untouched.
+fn prefer_visible_workspace(candidate: Option<HWND>) -> Option<HWND> {
+    match candidate {
+        Some(hwnd) if is_window_visible(hwnd) => Some(hwnd),
+        other => first_visible_registered_host_window_except(None)
+            .filter(|hwnd| !is_native_framed_window(*hwnd))
+            .or(other),
+    }
+}
+
+/// Convergence half of the single-workspace invariant: after presenting
+/// into `host`, any other visible shell host window is a duplicate and is
+/// hidden. Real separate windows (native-framed, device-framed) stay.
+fn hide_other_workspace_windows(host: HWND) {
+    for hwnd in registered_host_windows() {
+        if hwnd == host
+            || !is_window_visible(hwnd)
+            || is_native_framed_window(hwnd)
+            || crate::device_frame::window_has_device_frame(hwnd_handle(hwnd))
+        {
+            continue;
+        }
+        log::info!("hiding duplicate shell workspace window {:?}", hwnd.0);
+        unsafe {
+            let _ = WindowsAndMessaging::SetWindowPos(
+                hwnd,
+                None,
+                0,
+                0,
+                0,
+                0,
+                WindowsAndMessaging::SWP_NOMOVE
+                    | WindowsAndMessaging::SWP_NOSIZE
+                    | WindowsAndMessaging::SWP_NOZORDER
+                    | WindowsAndMessaging::SWP_NOACTIVATE
+                    | WindowsAndMessaging::SWP_HIDEWINDOW,
+            );
+        }
+    }
+}
+
 fn sync_active_host_layout() {
     if let Some(hwnd) = active_host_window() {
         request_host_layout_sync(hwnd);
@@ -5867,10 +5914,14 @@ fn show_webview_window_replacing(
     // window) used to find no candidate and jump the app to the webview's raw
     // parent window, hiding every page in the host the user was looking at
     // (a stuck white shell) while a duplicate shell window appeared.
-    let target = stable_host_for_replacement(webtag, &hide_webtags)
-        .or_else(|| window_handle_for_key(webtag.key()).filter(|hwnd| is_valid_host_window(*hwnd)))
-        .or_else(|| primary_host_window_except(None))
-        .unwrap_or_else(|| hwnd_from_handle(handler.native_view().window));
+    let target = prefer_visible_workspace(
+        stable_host_for_replacement(webtag, &hide_webtags)
+            .or_else(|| {
+                window_handle_for_key(webtag.key()).filter(|hwnd| is_valid_host_window(*hwnd))
+            })
+            .or_else(|| primary_host_window_except(None)),
+    )
+    .unwrap_or_else(|| hwnd_from_handle(handler.native_view().window));
     set_native_framed_window(target, false);
     apply_shell_window_frame(target)?;
     let title = to_wide(title);
@@ -5961,6 +6012,7 @@ fn show_webview_window_replacing(
     for hidden in &hide_webtags {
         notify_webtag_visibility(hidden.key(), false);
     }
+    hide_other_workspace_windows(target);
     Ok(())
 }
 
