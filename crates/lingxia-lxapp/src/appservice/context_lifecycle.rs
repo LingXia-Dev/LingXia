@@ -1,4 +1,4 @@
-use rong::{JSContext, JSRuntimeService};
+use rong::{JSContext, JSContextService};
 use std::future::Future;
 use std::pin::Pin;
 use std::task::{Context, Poll};
@@ -32,11 +32,11 @@ where
 }
 
 pub(super) async fn shutdown(ctx: &JSContext) {
-    // Rong's callback timers are runtime-scoped even though their JSFunc values
-    // belong to one context. Drain them before that context is released.
-    ctx.runtime()
-        .get_or_init_service::<rong_timer::TimerRegistry>()
-        .on_shutdown();
+    // Release timer callbacks before draining the context-owned tasks that
+    // dispatch them.
+    if let Some(timers) = ctx.get_service::<rong_timer::TimerRegistry>() {
+        timers.on_shutdown();
+    }
 
     ctx.shutdown_tasks().await;
 }

@@ -3,7 +3,7 @@
 /// LingXia component versions used in project templates
 #[derive(Debug, Clone)]
 pub struct LingXiaVersions {
-    /// @rongjs/rong NPM package version
+    /// Rong runtime product release version
     pub rong: String,
     /// lingxia Rust crate version
     pub lingxia_crate: String,

@@ -51,10 +51,6 @@ codegen-units = 1
 strip = true
 
 [patch.crates-io]
-rong = { git = "https://github.com/LingXia-Dev/Rong.git", rev = "569fb5d69b026b365840ea5f10538372626ebca2" }
-rong_core = { git = "https://github.com/LingXia-Dev/Rong.git", rev = "569fb5d69b026b365840ea5f10538372626ebca2" }
-rong_cron = { git = "https://github.com/LingXia-Dev/Rong.git", rev = "569fb5d69b026b365840ea5f10538372626ebca2" }
-rong_rt = { git = "https://github.com/LingXia-Dev/Rong.git", rev = "569fb5d69b026b365840ea5f10538372626ebca2" }
 lingxia = { path = "../../../crates/lingxia" }
 lingxia-app-context = { path = "../../../crates/lingxia-app-context" }
 lingxia-browser = { path = "../../../crates/lingxia-browser" }
