@@ -1134,8 +1134,12 @@ pub(crate) fn collapsed_sidebar_tabbar_popup_hit(
     })
 }
 
-pub(crate) fn collapsed_sidebar_tabbar_click_command(index: usize) -> WindowsChromeCommand {
-    WindowsChromeCommand::new(command_id::TAB_BAR_CLICK).with_payload(json!({ "index": index }))
+pub(crate) fn collapsed_sidebar_tabbar_click_command(
+    group: &str,
+    index: usize,
+) -> WindowsChromeCommand {
+    WindowsChromeCommand::new(command_id::TAB_BAR_CLICK)
+        .with_payload(json!({ "group": group, "index": index }))
 }
 
 /// The tabbar variant the popup renders: expanded first-level rows only, no
@@ -1469,7 +1473,16 @@ pub(super) fn draw_window_chrome(
         && let (Some(navbar), Some(navbar_rect)) = (&layout.navigation_bar, rects.navigation_bar)
     {
         let buttons_left = navbar_buttons_left(navbar_rect);
-        draw_navigation_bar(hdc, navbar_rect, buttons_left, navbar, state.cursor);
+        let corner_radii =
+            workspace_corner_radii(navbar_rect, rects.workspace, SHELL_CONTENT_RADIUS);
+        draw_navigation_bar(
+            hdc,
+            navbar_rect,
+            corner_radii,
+            buttons_left,
+            navbar,
+            state.cursor,
+        );
     }
     if let (Some(tabbar), Some(tabbar_rect)) = (&layout.tab_bar, rects.tab_bar) {
         let (scroll_offset, _, viewport_bottom) =
@@ -1819,7 +1832,7 @@ pub(super) fn chrome_hit_test(
                 if rect_contains(&item_rect, point) {
                     return Some(chrome_command(
                         command_id::TAB_BAR_CLICK,
-                        json!({ "index": index }),
+                        json!({ "group": tabbar.group_id, "index": index }),
                     ));
                 }
             }
@@ -1960,9 +1973,9 @@ pub(super) fn draw_content_cards(hdc: HDC, state: &WindowsChromeState, rects: &C
                 draw_native_panel_content(hdc, state.hwnd, state.client, panel);
             }
         }
-        // Attached cards are painted as plain filled rounded rects; the
-        // rectangular WebView2 child overlays the corners, so they currently
-        // read as square.
+        // The card's arcs show wherever no surface covers them (loading,
+        // gutters); composition-hosted webviews clip to the same silhouette
+        // via `workspace_corner_radii`, windowed ones still overlay square.
         return;
     }
 
@@ -2039,6 +2052,62 @@ pub(super) fn rect_contains(rect: &RECT, point: (i32, i32)) -> bool {
     point.0 >= rect.left && point.0 < rect.right && point.1 >= rect.top && point.1 < rect.bottom
 }
 
+/// Per-corner clip radii for a composition-hosted surface,
+/// `[top_left, top_right, bottom_right, bottom_left]`, in the same raw client
+/// pixels as `set_content_bounds`.
+pub(crate) type SurfaceCornerRadii = [i32; 4];
+
+/// Corner radii for a surface rect inside the rounded workspace silhouette.
+///
+/// `compute_attached_layout` carves every surface from the workspace rect by
+/// integer assignment, so a corner belongs to the silhouette iff both of its
+/// coordinates are exactly equal — gutters, aside headers, and the navigation
+/// bar break coincidence for interior seams by construction. The radius is
+/// clamped so tiny surfaces never self-intersect.
+pub(crate) fn workspace_corner_radii(
+    surface: RECT,
+    silhouette: RECT,
+    radius: i32,
+) -> SurfaceCornerRadii {
+    let surface = normalize_rect(surface);
+    if rect_width(&surface) == 0 || rect_height(&surface) == 0 {
+        return [0; 4];
+    }
+    let radius = radius
+        .min(rect_width(&surface) / 2)
+        .min(rect_height(&surface) / 2)
+        .max(0);
+    let corner = |x: bool, y: bool| if x && y { radius } else { 0 };
+    [
+        corner(
+            surface.left == silhouette.left,
+            surface.top == silhouette.top,
+        ),
+        corner(
+            surface.right == silhouette.right,
+            surface.top == silhouette.top,
+        ),
+        corner(
+            surface.right == silhouette.right,
+            surface.bottom == silhouette.bottom,
+        ),
+        corner(
+            surface.left == silhouette.left,
+            surface.bottom == silhouette.bottom,
+        ),
+    ]
+}
+
+/// The workspace silhouette a window layout rounds — the union rect that
+/// `compute_attached_layout` carves main and aside surfaces from.
+pub(crate) fn workspace_silhouette_rect(
+    client: RECT,
+    layout: &WindowsWindowLayout,
+) -> Option<RECT> {
+    let layout = shell_layout(layout)?;
+    Some(compute_chrome_rects(client, layout).workspace)
+}
+
 #[cfg(test)]
 mod scroll_tests {
     use super::{
@@ -2046,9 +2115,10 @@ mod scroll_tests {
         SIDEBAR_ITEM_HEIGHT, WindowsChromePanelLayoutInput, WindowsPanelPosition,
         WindowsShellAuxiliaryItemLayout, WindowsShellNavigationBarLayout,
         WindowsShellTabBarItemLayout, WindowsShellTabBarLayout, WindowsShellTabBarPosition,
-        WindowsShellWindowLayout, clamp_sidebar_scroll, compute_attached_layout,
-        compute_chrome_rects, sidebar_auxiliary_rects, sidebar_caption_contains,
-        sidebar_group_rect, sidebar_top_level_icon_rect, tabbar_requires_full_repaint,
+        WindowsShellWindowLayout, clamp_sidebar_scroll, collapsed_sidebar_tabbar_click_command,
+        compute_attached_layout, compute_chrome_rects, sidebar_auxiliary_rects,
+        sidebar_caption_contains, sidebar_group_rect, sidebar_top_level_icon_rect,
+        tabbar_requires_full_repaint,
     };
     use windows::Win32::Foundation::RECT;
 
@@ -2284,5 +2354,324 @@ mod scroll_tests {
         pinned.auxiliary_items[0].closable = false;
 
         assert!(tabbar_requires_full_repaint(&old, &pinned));
+    }
+
+    #[test]
+    fn collapsed_tabbar_click_keeps_its_group_owner() {
+        let command = collapsed_sidebar_tabbar_click_command("home", 2);
+
+        assert_eq!(command.payload["group"], "home");
+        assert_eq!(command.payload["index"], 2);
+    }
+}
+
+#[cfg(test)]
+mod corner_tests {
+    use super::{
+        WindowsChromePanelLayoutInput, WindowsPanelPosition, WindowsShellNavigationBarLayout,
+        WindowsShellWindowLayout, compute_attached_layout, compute_chrome_rects,
+        workspace_corner_radii,
+    };
+    use windows::Win32::Foundation::RECT;
+
+    const R: i32 = super::SHELL_CONTENT_RADIUS;
+
+    fn client() -> RECT {
+        RECT {
+            left: 0,
+            top: 0,
+            right: 1024,
+            bottom: 768,
+        }
+    }
+
+    fn panel(id: &str, position: WindowsPanelPosition) -> WindowsChromePanelLayoutInput {
+        WindowsChromePanelLayoutInput {
+            panel_id: id.to_string(),
+            webtag_key: format!("{id}:webtag"),
+            position,
+            requested_size: Some(240),
+            docked: true,
+            maximized: false,
+        }
+    }
+
+    #[test]
+    fn main_only_rounds_all_four_workspace_corners() {
+        let layout = WindowsShellWindowLayout::default();
+        let rects = compute_chrome_rects(client(), &layout);
+
+        assert_eq!(
+            workspace_corner_radii(rects.content, rects.workspace, R),
+            [R, R, R, R]
+        );
+    }
+
+    #[test]
+    fn navigation_bar_band_owns_main_top_corners() {
+        let layout = WindowsShellWindowLayout {
+            navigation_bar: Some(WindowsShellNavigationBarLayout {
+                visible: true,
+                title: "Page".to_string(),
+                background_color: 0,
+                text_color: 0,
+                show_back_button: false,
+                show_home_button: false,
+                height: 38,
+            }),
+            ..Default::default()
+        };
+        let rects = compute_chrome_rects(client(), &layout);
+        let navbar = rects.navigation_bar.unwrap();
+
+        assert_eq!(
+            workspace_corner_radii(navbar, rects.workspace, R),
+            [R, R, 0, 0]
+        );
+        assert_eq!(
+            workspace_corner_radii(rects.content, rects.workspace, R),
+            [0, 0, R, R]
+        );
+    }
+
+    #[test]
+    fn right_aside_takes_right_exterior_corners() {
+        let layout = WindowsShellWindowLayout::default();
+        let attached = compute_attached_layout(
+            client(),
+            &layout,
+            &[panel("aside", WindowsPanelPosition::Right)],
+        );
+        let silhouette = compute_chrome_rects(client(), &layout).workspace;
+
+        assert_eq!(
+            workspace_corner_radii(attached.main, silhouette, R),
+            [R, 0, 0, R]
+        );
+        assert_eq!(
+            workspace_corner_radii(attached.panels[0].rect, silhouette, R),
+            [0, R, R, 0]
+        );
+    }
+
+    #[test]
+    fn left_aside_mirrors_corner_ownership() {
+        let layout = WindowsShellWindowLayout::default();
+        let attached = compute_attached_layout(
+            client(),
+            &layout,
+            &[panel("aside", WindowsPanelPosition::Left)],
+        );
+        let silhouette = compute_chrome_rects(client(), &layout).workspace;
+
+        assert_eq!(
+            workspace_corner_radii(attached.main, silhouette, R),
+            [0, R, R, 0]
+        );
+        assert_eq!(
+            workspace_corner_radii(attached.panels[0].rect, silhouette, R),
+            [R, 0, 0, R]
+        );
+    }
+
+    #[test]
+    fn bottom_aside_owns_full_width_bottom_corners() {
+        let layout = WindowsShellWindowLayout::default();
+        let attached = compute_attached_layout(
+            client(),
+            &layout,
+            &[panel("terminal", WindowsPanelPosition::Bottom)],
+        );
+        let silhouette = compute_chrome_rects(client(), &layout).workspace;
+
+        assert_eq!(
+            workspace_corner_radii(attached.main, silhouette, R),
+            [R, R, 0, 0]
+        );
+        assert_eq!(
+            workspace_corner_radii(attached.panels[0].rect, silhouette, R),
+            [0, 0, R, R]
+        );
+    }
+
+    #[test]
+    fn browser_aside_header_leaves_webview_top_square() {
+        let layout = WindowsShellWindowLayout::default();
+        let browser = WindowsChromePanelLayoutInput {
+            panel_id: "browser-aside".to_string(),
+            webtag_key: "app.lingxia.browser:aside".to_string(),
+            position: WindowsPanelPosition::Right,
+            requested_size: Some(320),
+            docked: true,
+            maximized: false,
+        };
+        let attached = compute_attached_layout(client(), &layout, &[browser]);
+        let silhouette = compute_chrome_rects(client(), &layout).workspace;
+        let aside = &attached.panels[0];
+        let header = aside.header_rect.unwrap();
+
+        // The header band owns the panel's exterior top corner; the webview
+        // below it (top clamped to the header bottom) keeps only the bottom.
+        assert_eq!(workspace_corner_radii(header, silhouette, R), [0, R, 0, 0]);
+        let webview = RECT {
+            top: header.bottom,
+            ..aside.rect
+        };
+        assert_eq!(workspace_corner_radii(webview, silhouette, R), [0, 0, R, 0]);
+    }
+
+    #[test]
+    fn stacked_side_asides_round_only_the_outermost() {
+        let layout = WindowsShellWindowLayout::default();
+        let attached = compute_attached_layout(
+            client(),
+            &layout,
+            &[
+                panel("a-outer", WindowsPanelPosition::Right),
+                panel("b-inner", WindowsPanelPosition::Right),
+            ],
+        );
+        let silhouette = compute_chrome_rects(client(), &layout).workspace;
+        let outer = attached
+            .panels
+            .iter()
+            .find(|panel| panel.panel_id == "a-outer")
+            .unwrap();
+        let inner = attached
+            .panels
+            .iter()
+            .find(|panel| panel.panel_id == "b-inner")
+            .unwrap();
+
+        assert_eq!(
+            workspace_corner_radii(outer.rect, silhouette, R),
+            [0, R, R, 0]
+        );
+        assert_eq!(workspace_corner_radii(inner.rect, silhouette, R), [0; 4]);
+    }
+
+    #[test]
+    fn side_plus_bottom_asides_split_bottom_corners() {
+        let layout = WindowsShellWindowLayout::default();
+        let attached = compute_attached_layout(
+            client(),
+            &layout,
+            &[
+                panel("aside", WindowsPanelPosition::Right),
+                panel("terminal", WindowsPanelPosition::Bottom),
+            ],
+        );
+        let silhouette = compute_chrome_rects(client(), &layout).workspace;
+        let aside = attached
+            .panels
+            .iter()
+            .find(|panel| panel.panel_id == "aside")
+            .unwrap();
+        let terminal = attached
+            .panels
+            .iter()
+            .find(|panel| panel.panel_id == "terminal")
+            .unwrap();
+
+        // The side aside spans the full workspace height, so it owns the
+        // right corners; the bottom panel spans only the narrowed main region
+        // and owns the remaining bottom-left arc.
+        assert_eq!(
+            workspace_corner_radii(aside.rect, silhouette, R),
+            [0, R, R, 0]
+        );
+        assert_eq!(
+            workspace_corner_radii(terminal.rect, silhouette, R),
+            [0, 0, 0, R]
+        );
+        assert_eq!(
+            workspace_corner_radii(attached.main, silhouette, R),
+            [R, 0, 0, 0]
+        );
+    }
+
+    #[test]
+    fn maximized_panel_owns_all_corners_and_main_collapses() {
+        let layout = WindowsShellWindowLayout::default();
+        let mut maximized = panel("terminal", WindowsPanelPosition::Bottom);
+        maximized.maximized = true;
+        let attached = compute_attached_layout(client(), &layout, &[maximized]);
+        let silhouette = compute_chrome_rects(client(), &layout).workspace;
+
+        assert_eq!(
+            workspace_corner_radii(attached.panels[0].rect, silhouette, R),
+            [R, R, R, R]
+        );
+        // The collapsed main region is zero-area and must clip square.
+        assert_eq!(workspace_corner_radii(attached.main, silhouette, R), [0; 4]);
+    }
+
+    #[test]
+    fn floating_bottom_panel_never_coincides_with_the_silhouette() {
+        let layout = WindowsShellWindowLayout::default();
+        let mut floating = panel("panel", WindowsPanelPosition::Bottom);
+        floating.docked = false;
+        let attached = compute_attached_layout(client(), &layout, &[floating]);
+        let silhouette = compute_chrome_rects(client(), &layout).workspace;
+
+        // The floating card keeps a bottom margin, so the coincidence rule
+        // yields squares; the caller assigns the free-standing card radius.
+        assert_eq!(
+            workspace_corner_radii(attached.panels[0].rect, silhouette, R),
+            [0; 4]
+        );
+    }
+
+    #[test]
+    fn device_frame_surface_rounds_screen_bottom_corners_only() {
+        // Device-frame mode: silhouette = the content window's client rect,
+        // radius = the device screen radius; the webview starts below the
+        // simulated status-bar strip, whose overlay owns the top arcs.
+        let screen = RECT {
+            left: 0,
+            top: 0,
+            right: 393,
+            bottom: 852,
+        };
+        let webview = RECT { top: 54, ..screen };
+
+        assert_eq!(workspace_corner_radii(webview, screen, 54), [0, 0, 54, 54]);
+    }
+
+    #[test]
+    fn tiny_surface_clamps_radius() {
+        let silhouette = RECT {
+            left: 0,
+            top: 0,
+            right: 400,
+            bottom: 12,
+        };
+
+        assert_eq!(
+            workspace_corner_radii(silhouette, silhouette, R),
+            [6, 6, 6, 6]
+        );
+    }
+
+    #[test]
+    fn zero_area_surface_has_square_clip() {
+        let silhouette = RECT {
+            left: 0,
+            top: 0,
+            right: 400,
+            bottom: 300,
+        };
+        let collapsed = RECT {
+            left: 0,
+            top: 300,
+            right: 400,
+            bottom: 300,
+        };
+
+        assert_eq!(workspace_corner_radii(collapsed, silhouette, R), [0; 4]);
+        assert_eq!(
+            workspace_corner_radii(RECT::default(), silhouette, R),
+            [0; 4]
+        );
     }
 }

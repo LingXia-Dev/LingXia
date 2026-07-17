@@ -303,6 +303,13 @@ struct ContentBounds {
     top: i32,
     width: i32,
     height: i32,
+    /// Composition clip corners `[tl, tr, br, bl]`; part of the dedupe key so
+    /// a radii-only layout change (aside open/close, dock/float, frame
+    /// enter/exit) still reaches the webview.
+    corner_radii: [i32; 4],
+    /// Wedge backdrop color; part of the dedupe key so theme flips repaint
+    /// the corner wedges.
+    corner_color: u32,
 }
 
 #[derive(Debug, Clone)]
@@ -643,7 +650,7 @@ pub fn show_webview_as_adaptive_panel(
 
 pub fn present_webview_in_active_group(webtag: &WebTag) -> StdResult<()> {
     let handler = find_webview_handler(webtag).ok_or_else(|| handler_not_ready(webtag))?;
-    let Some(host) = active_host_window() else {
+    let Some(host) = prefer_visible_workspace(active_host_window()) else {
         handler.set_content_visible(true)?;
         show_native_view(handler.native_view(), "", true)?;
         let hwnd = hwnd_from_handle(handler.native_view().window);
@@ -667,6 +674,26 @@ pub fn present_webview_in_active_group(webtag: &WebTag) -> StdResult<()> {
         handler.set_content_visible(true)?;
         sync_window_layout(host);
         invalidate_window_chrome(host);
+        // A re-present of the active page is still a present: surface the
+        // host if something hid it and converge stray duplicates.
+        if !is_window_visible(host) {
+            unsafe {
+                let _ = WindowsAndMessaging::SetWindowPos(
+                    host,
+                    None,
+                    0,
+                    0,
+                    0,
+                    0,
+                    WindowsAndMessaging::SWP_NOMOVE
+                        | WindowsAndMessaging::SWP_NOSIZE
+                        | WindowsAndMessaging::SWP_SHOWWINDOW,
+                );
+                let _ = WindowsAndMessaging::BringWindowToTop(host);
+                let _ = WindowsAndMessaging::SetForegroundWindow(host);
+            }
+        }
+        hide_other_workspace_windows(host);
         return Ok(());
     }
 
@@ -754,6 +781,7 @@ pub fn present_webview_in_active_group(webtag: &WebTag) -> StdResult<()> {
     mark_active(webtag);
     notify_webtag_visibility(webtag.key(), true);
     repaint_window_now(host);
+    hide_other_workspace_windows(host);
     Ok(())
 }
 
@@ -1737,6 +1765,73 @@ fn refresh_adjusted_content_rect(webtag_key: &str, mut rect: RECT) -> RECT {
         rect.top = (rect.top + PULL_REFRESH_SLOT_HEIGHT).min(rect.bottom);
     }
     normalize_rect(rect)
+}
+
+/// Per-corner composition rounding for a surface — clip radii plus the
+/// backdrop color its corner wedges paint — derived from the same layout
+/// pass that produced `rect`. Square whenever the surface is not part of a
+/// rounded silhouette (fullscreen drill, no shell chrome, collapsed rect).
+#[cfg(feature = "shell-chrome")]
+fn surface_clip_style(hwnd: HWND, webtag_key: &str, rect: RECT) -> ([i32; 4], u32) {
+    // A framed simulator screen rounds to the device silhouette, not the
+    // shell workspace: bezel-colored wedges replace the frame's old
+    // SetWindowRgn cut + corner-mask overlay on the composition path.
+    #[cfg(feature = "device-frame")]
+    if let Some((radius, bezel)) =
+        crate::device_frame::device_frame_screen_clip_style(hwnd_handle(hwnd))
+    {
+        let mut client = RECT::default();
+        if unsafe { WindowsAndMessaging::GetClientRect(hwnd, &mut client) }.is_err() {
+            return ([0; 4], 0);
+        }
+        return (
+            crate::shell::workspace_corner_radii(rect, client, radius),
+            0xff00_0000 | bezel,
+        );
+    }
+    if windows_chrome_renderer().is_none() || webtag_is_fullscreen_drill(webtag_key) {
+        return ([0; 4], 0);
+    }
+    let backdrop = 0xff00_0000 | crate::shell::shell_window_background();
+    // Floating panels are free-standing cards outside the workspace union.
+    if let Some(panel_id) = panel_id_for_webtag(webtag_key)
+        && !panel_is_docked(&panel_id)
+    {
+        return ([crate::shell::shell_panel_radius(); 4], backdrop);
+    }
+    let mut client = RECT::default();
+    if unsafe { WindowsAndMessaging::GetClientRect(hwnd, &mut client) }.is_err() {
+        return ([0; 4], 0);
+    }
+    let Some(active_key) = active_webtag_key_for_window(hwnd) else {
+        return ([0; 4], 0);
+    };
+    let Some(silhouette) =
+        crate::shell::workspace_silhouette_rect(client, &current_window_layout(&active_key))
+    else {
+        return ([0; 4], 0);
+    };
+    (
+        crate::shell::workspace_corner_radii(
+            rect,
+            silhouette,
+            crate::shell::shell_content_radius(),
+        ),
+        backdrop,
+    )
+}
+
+#[cfg(not(feature = "shell-chrome"))]
+fn surface_clip_style(_hwnd: HWND, _webtag_key: &str, _rect: RECT) -> ([i32; 4], u32) {
+    ([0; 4], 0)
+}
+
+#[cfg(feature = "shell-chrome")]
+fn webtag_is_fullscreen_drill(webtag_key: &str) -> bool {
+    FULLSCREEN_DRILLS
+        .get()
+        .and_then(|drills| drills.lock().ok())
+        .is_some_and(|drills| drills.values().any(|key| key == webtag_key))
 }
 
 fn sync_window_layout(hwnd: HWND) {
@@ -3033,6 +3128,54 @@ fn apply_phone_switcher_alpha(pixels: &mut [u32], width: i32, height: i32, sheet
     }
 }
 
+/// Scales premultiplied pixels by per-corner rounded coverage `[tl, tr, br,
+/// bl]`, so a snapshot of a composition-clipped surface keeps the corners the
+/// live surface had (the nav slide otherwise ghosts square corners over the
+/// rounded workspace).
+#[cfg(feature = "components")]
+fn apply_corner_alpha_mask(pixels: &mut [u32], width: i32, height: i32, radii: [i32; 4]) {
+    if radii == [0; 4] {
+        return;
+    }
+    let [tl, tr, br, bl] = radii;
+    let coverage_at = |x: i32, y: i32| -> u32 {
+        let (radius, corner_x, corner_y) = if x < tl && y < tl {
+            (tl, tl, tl)
+        } else if x >= width - tr && y < tr {
+            (tr, width - tr, tr)
+        } else if x >= width - br && y >= height - br {
+            (br, width - br, height - br)
+        } else if x < bl && y >= height - bl {
+            (bl, bl, height - bl)
+        } else {
+            return 255;
+        };
+        let dx = x as f32 + 0.5 - corner_x as f32;
+        let dy = y as f32 + 0.5 - corner_y as f32;
+        let distance = (dx * dx + dy * dy).sqrt();
+        ((radius as f32 - distance + 0.5).clamp(0.0, 1.0) * 255.0) as u32
+    };
+    for y in 0..height {
+        for x in 0..width {
+            let coverage = coverage_at(x, y);
+            if coverage == 255 {
+                continue;
+            }
+            let index = (y * width + x) as usize;
+            if coverage == 0 {
+                pixels[index] = 0;
+                continue;
+            }
+            let pixel = pixels[index];
+            let scale = |channel: u32| (channel * coverage + 127) / 255;
+            pixels[index] = (scale(pixel >> 24) << 24)
+                | (scale((pixel >> 16) & 0xff) << 16)
+                | (scale((pixel >> 8) & 0xff) << 8)
+                | scale(pixel & 0xff);
+        }
+    }
+}
+
 /// Sets each pixel's alpha to its rounded-rect coverage (premultiplied, as
 /// `UpdateLayeredWindow` expects), with a 1px anti-aliased corner falloff.
 /// GDI-drawn content carries garbage alpha, so the mask is geometric.
@@ -3213,7 +3356,10 @@ unsafe extern "system" fn sidebar_tabbar_popup_proc(
                     && let Some(webtag_key) =
                         active_webtag_key_for_window(hwnd_from_handle(popup.owner))
                 {
-                    let command = crate::shell::collapsed_sidebar_tabbar_click_command(index);
+                    let command = crate::shell::collapsed_sidebar_tabbar_click_command(
+                        &popup.tabbar.group_id,
+                        index,
+                    );
                     invoke_chrome_command(
                         &webtag_key,
                         hwnd_from_handle(popup.owner),
@@ -3343,12 +3489,15 @@ fn sync_webtag_content_bounds(hwnd: HWND, webtag_key: &str) {
 fn sync_webtag_content_bounds_to_rect(hwnd: HWND, webtag_key: &str, rect: RECT) {
     let width = (rect.right - rect.left).max(0);
     let height = (rect.bottom - rect.top).max(0);
+    let (corner_radii, corner_color) = surface_clip_style(hwnd, webtag_key, rect);
     let host_bounds = ContentBounds {
         hwnd: hwnd_handle(hwnd),
         left: rect.left,
         top: rect.top,
         width,
         height,
+        corner_radii,
+        corner_color,
     };
     let Some(webtag) = webtag_for_key(webtag_key) else {
         return;
@@ -3369,11 +3518,13 @@ fn sync_webtag_content_bounds_to_rect(hwnd: HWND, webtag_key: &str, rect: RECT) 
         report_surface_viewport(hwnd, &webtag, width, height);
     }
     if bounds_changed
-        && let Err(err) = handler.set_content_bounds(
+        && let Err(err) = handler.set_content_geometry(
             controller_bounds.left,
             controller_bounds.top,
             controller_bounds.right - controller_bounds.left,
             controller_bounds.bottom - controller_bounds.top,
+            corner_radii,
+            corner_color,
         )
     {
         log::debug!("Failed to sync Windows WebView content bounds: {err}");
@@ -3951,6 +4102,62 @@ fn first_visible_registered_host_window_except(excluded: Option<HWND>) -> Option
         .find(|hwnd| Some(*hwnd) != excluded && is_window_visible(*hwnd) && !is_minimized(*hwnd))
 }
 
+/// The shell owns exactly ONE workspace window. Whenever a visible shell
+/// host exists, a hidden candidate (typically a stale per-webtag
+/// registration pointing at the webview's own parked parent window) must
+/// lose to it — showing the candidate would surface a duplicate shell
+/// window beside the workspace. With no visible host (startup presents
+/// into a still-hidden window) the candidate passes through untouched.
+fn prefer_visible_workspace(candidate: Option<HWND>) -> Option<HWND> {
+    match candidate {
+        Some(hwnd) if is_window_visible(hwnd) => Some(hwnd),
+        other => first_visible_registered_host_window_except(None)
+            .filter(|hwnd| !is_separate_shell_window(*hwnd))
+            .or(other),
+    }
+}
+
+/// True for windows that are legitimately their own top-level presentation
+/// (native-framed windows, device-framed simulators) rather than the shared
+/// shell workspace.
+fn is_separate_shell_window(hwnd: HWND) -> bool {
+    if is_native_framed_window(hwnd) {
+        return true;
+    }
+    #[cfg(feature = "device-frame")]
+    if crate::device_frame::window_has_device_frame(hwnd_handle(hwnd)) {
+        return true;
+    }
+    false
+}
+
+/// Convergence half of the single-workspace invariant: after presenting
+/// into `host`, any other visible shell host window is a duplicate and is
+/// hidden. Real separate windows (native-framed, device-framed) stay.
+fn hide_other_workspace_windows(host: HWND) {
+    for hwnd in registered_host_windows() {
+        if hwnd == host || !is_window_visible(hwnd) || is_separate_shell_window(hwnd) {
+            continue;
+        }
+        log::info!("hiding duplicate shell workspace window {:?}", hwnd.0);
+        unsafe {
+            let _ = WindowsAndMessaging::SetWindowPos(
+                hwnd,
+                None,
+                0,
+                0,
+                0,
+                0,
+                WindowsAndMessaging::SWP_NOMOVE
+                    | WindowsAndMessaging::SWP_NOSIZE
+                    | WindowsAndMessaging::SWP_NOZORDER
+                    | WindowsAndMessaging::SWP_NOACTIVATE
+                    | WindowsAndMessaging::SWP_HIDEWINDOW,
+            );
+        }
+    }
+}
+
 fn sync_active_host_layout() {
     if let Some(hwnd) = active_host_window() {
         request_host_layout_sync(hwnd);
@@ -4462,11 +4669,24 @@ fn apply_shell_window_dressing(hwnd: HWND) {
 
 fn apply_window_style(hwnd: HWND, style: WINDOW_STYLE) -> StdResult<()> {
     unsafe {
-        let _ = WindowsAndMessaging::SetWindowLongPtrW(
-            hwnd,
-            WindowsAndMessaging::GWL_STYLE,
-            style.0 as isize,
-        );
+        // Idempotence matters: SWP_FRAMECHANGED makes DWM rebuild the
+        // window's composition tree, which drops the child surfaces'
+        // DirectComposition content for a frame — a re-present with an
+        // unchanged style (clicking the already-active tab) would flash
+        // every webview to garbage for that frame. Runtime state bits stay
+        // out of the rewrite: clearing WS_MAXIMIZE/WS_MINIMIZE would corrupt
+        // maximize/restore and defeat this check on a maximized window.
+        let current = WindowsAndMessaging::GetWindowLongPtrW(hwnd, WindowsAndMessaging::GWL_STYLE);
+        let preserved = current
+            & (WindowsAndMessaging::WS_VISIBLE.0
+                | WindowsAndMessaging::WS_MAXIMIZE.0
+                | WindowsAndMessaging::WS_MINIMIZE.0) as isize;
+        let wanted = style.0 as isize | preserved;
+        if current == wanted {
+            return Ok(());
+        }
+        let _ =
+            WindowsAndMessaging::SetWindowLongPtrW(hwnd, WindowsAndMessaging::GWL_STYLE, wanted);
         WindowsAndMessaging::SetWindowPos(
             hwnd,
             None,
@@ -5621,6 +5841,10 @@ pub fn webview_window_snapshot(webtag: &WebTag) -> StdResult<WindowsWebViewWindo
         WindowsAndMessaging::GetWindowRect(hwnd, &mut window)
             .map_err(|err| WebViewError::WebView(format!("GetWindowRect failed: {err}")))?;
     }
+    let content_corner_radii = find_webview_handler(webtag)
+        .filter(|handler| handler.is_composition_hosted())
+        .map(|_| surface_clip_style(hwnd, webtag.key(), content).0)
+        .unwrap_or([0; 4]);
     Ok(WindowsWebViewWindowSnapshot {
         window_id: hwnd_handle(hwnd) as usize,
         webtag_key: webtag.key().to_string(),
@@ -5634,6 +5858,7 @@ pub fn webview_window_snapshot(webtag: &WebTag) -> StdResult<WindowsWebViewWindo
         content_top: content.top,
         content_width: (content.right - content.left).max(0) as u32,
         content_height: (content.bottom - content.top).max(0) as u32,
+        content_corner_radii,
     })
 }
 
@@ -5675,18 +5900,12 @@ fn set_webtag_pull_down_refreshing_on_window(webtag_key: &str, refreshing: bool)
 }
 
 pub fn show_webview_window(webtag: &WebTag, title: &str, activate: bool) -> StdResult<()> {
-    let handler = find_webview_handler(webtag).ok_or_else(|| handler_not_ready(webtag))?;
-    let hwnd = hwnd_from_handle(handler.native_view().window);
-    set_native_framed_window(hwnd, false);
-    apply_shell_window_frame(hwnd)?;
-    show_native_view(handler.native_view(), title, activate)?;
-    handler.set_content_visible(true)?;
-    set_window_handle(webtag.key(), hwnd);
-    set_host_active_webtag(hwnd, webtag.key());
-    set_primary_host_window(hwnd);
-    mark_active(webtag);
-    notify_webtag_visibility(webtag.key(), true);
-    Ok(())
+    // Route through the replacing variant's host pick (visible sibling →
+    // registered window → primary host → own parent window): the shell owns
+    // exactly one workspace window, and presenting straight onto the
+    // webview's own parent here was how activating an lxapp whose open
+    // region was already Main popped a duplicate shell window.
+    show_webview_window_replacing(webtag, title, activate, Vec::new())
 }
 
 pub fn show_webview_window_with_content_size(
@@ -5733,10 +5952,14 @@ fn show_webview_window_replacing(
     // window) used to find no candidate and jump the app to the webview's raw
     // parent window, hiding every page in the host the user was looking at
     // (a stuck white shell) while a duplicate shell window appeared.
-    let target = stable_host_for_replacement(webtag, &hide_webtags)
-        .or_else(|| window_handle_for_key(webtag.key()).filter(|hwnd| is_valid_host_window(*hwnd)))
-        .or_else(|| primary_host_window_except(None))
-        .unwrap_or_else(|| hwnd_from_handle(handler.native_view().window));
+    let target = prefer_visible_workspace(
+        stable_host_for_replacement(webtag, &hide_webtags)
+            .or_else(|| {
+                window_handle_for_key(webtag.key()).filter(|hwnd| is_valid_host_window(*hwnd))
+            })
+            .or_else(|| primary_host_window_except(None)),
+    )
+    .unwrap_or_else(|| hwnd_from_handle(handler.native_view().window));
     set_native_framed_window(target, false);
     apply_shell_window_frame(target)?;
     let title = to_wide(title);
@@ -5748,6 +5971,25 @@ fn show_webview_window_replacing(
         && webtag_is_visible(webtag.key());
     if already_active {
         sync_window_layout(target);
+        // The deleted direct-show path unconditionally surfaced and (with
+        // activate) foregrounded the window; a re-open of the already-active
+        // page must still do both, and still converge stray duplicates.
+        if !is_window_visible(target) || activate {
+            unsafe {
+                let mut flags = WindowsAndMessaging::SWP_NOMOVE
+                    | WindowsAndMessaging::SWP_NOSIZE
+                    | WindowsAndMessaging::SWP_SHOWWINDOW;
+                if !activate {
+                    flags |= WindowsAndMessaging::SWP_NOACTIVATE;
+                }
+                let _ = WindowsAndMessaging::SetWindowPos(target, None, 0, 0, 0, 0, flags);
+                if activate {
+                    let _ = WindowsAndMessaging::BringWindowToTop(target);
+                    let _ = WindowsAndMessaging::SetForegroundWindow(target);
+                }
+            }
+        }
+        hide_other_workspace_windows(target);
         return Ok(());
     }
 
@@ -5827,6 +6069,7 @@ fn show_webview_window_replacing(
     for hidden in &hide_webtags {
         notify_webtag_visibility(hidden.key(), false);
     }
+    hide_other_workspace_windows(target);
     Ok(())
 }
 
@@ -5964,7 +6207,7 @@ fn prepare_nav_snapshot_slide(host: HWND, prev_key: &str, forward: bool) -> bool
         return false;
     }
     // Premultiplied BGRA, as UpdateLayeredWindow's AC_SRC_ALPHA expects.
-    let pixels: Vec<u32> = rgba
+    let mut pixels: Vec<u32> = rgba
         .pixels()
         .map(|p| {
             let [r, g, b, a] = p.0;
@@ -5975,6 +6218,16 @@ fn prepare_nav_snapshot_slide(host: HWND, prev_key: &str, forward: bool) -> bool
         .collect();
 
     let rect = content_rect_for_window(host, prev_key);
+    // CapturePreview sees content pre-clip; carry the live surface's rounded
+    // corners into the snapshot so the slide doesn't ghost square ones.
+    if handler.is_composition_hosted() {
+        apply_corner_alpha_mask(
+            &mut pixels,
+            width,
+            height,
+            surface_clip_style(host, prev_key, rect).0,
+        );
+    }
     let mut origin = POINT {
         x: rect.left,
         y: rect.top,
@@ -6836,12 +7089,22 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
             // WM_DWMCOLORIZATIONCOLORCHANGED. Re-read the system theme and, only
             // when it actually changed, repaint the whole shell in the new palette.
             WindowsAndMessaging::WM_SETTINGCHANGE | WM_DWMCOLORIZATIONCOLORCHANGED => {
+                // refresh_system_theme() reports the change exactly once per
+                // process, and the broadcast may reach a hidden parked parent
+                // window first — so the winner refreshes EVERY registered
+                // host, not just itself: repaint plus a forced geometry
+                // resync (the webview corner wedges carry the
+                // theme-dependent shell background and the bounds-dedupe
+                // cache would otherwise swallow the change).
                 #[cfg(feature = "shell-chrome")]
-                if crate::shell::refresh_system_theme()
-                    && windows_chrome_renderer().is_some()
-                    && !is_native_framed_window(hwnd)
-                {
-                    invalidate_window(hwnd);
+                if crate::shell::refresh_system_theme() && windows_chrome_renderer().is_some() {
+                    for host in registered_host_windows() {
+                        if is_native_framed_window(host) {
+                            continue;
+                        }
+                        invalidate_window(host);
+                        let _ = request_host_layout_sync_inner(host, true);
+                    }
                 }
                 unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
             }

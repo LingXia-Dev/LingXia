@@ -34,10 +34,7 @@ use windows::{
     Win32::{
         Foundation::{E_POINTER, HWND, LPARAM, RECT, WPARAM},
         System::{
-            Com::{
-                COINIT_APARTMENTTHREADED, IStream, STREAM_SEEK_SET,
-                StructuredStorage::CreateStreamOnHGlobal,
-            },
+            Com::{IStream, STREAM_SEEK_SET, StructuredStorage::CreateStreamOnHGlobal},
             Threading,
         },
         UI::{
@@ -48,6 +45,7 @@ use windows::{
     core::{BOOL, Interface, PCWSTR, PWSTR, Result as WinResult},
 };
 
+mod composition;
 mod console;
 mod controller;
 pub(crate) mod data_store;
@@ -61,6 +59,7 @@ mod scheme;
 
 pub(crate) use controller::WebViewInner;
 
+pub use composition::{set_webview_composition_hosting, webview_composition_hosting_enabled};
 pub use environment::set_windows_context_menu_refresh_provider;
 pub use native_view::{
     WindowsWebViewHandler, WindowsWebViewNativeView, WindowsWebViewNativeViewHost,
@@ -70,6 +69,7 @@ pub use native_view::{
 
 // Private glob re-imports so submodules can reach their siblings (and this
 // prelude) through a single `use super::*;`.
+use composition::*;
 use environment::*;
 use events::*;
 use native_view::*;

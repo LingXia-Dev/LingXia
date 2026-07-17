@@ -69,6 +69,36 @@ impl WindowsWebViewHandler {
         })
     }
 
+    /// Bounds plus per-corner rounding applied in one composition commit:
+    /// clip radii `[tl, tr, br, bl]` and the `0xAARGB` backdrop the corner
+    /// wedges paint outside the arc (alpha 0 = clip only, no wedges).
+    /// Windowed hosting applies the bounds and ignores the corner style.
+    pub fn set_content_geometry(
+        &self,
+        left: i32,
+        top: i32,
+        width: i32,
+        height: i32,
+        corner_radii: [i32; 4],
+        corner_color: u32,
+    ) -> StdResult<()> {
+        self.webview.inner.set_content_geometry(
+            RECT {
+                left,
+                top,
+                right: left + width.max(0),
+                bottom: top + height.max(0),
+            },
+            corner_radii,
+            corner_color,
+        )
+    }
+
+    /// True when this webview renders through the composition-hosted path.
+    pub fn is_composition_hosted(&self) -> bool {
+        self.webview.inner.composition_hosted
+    }
+
     pub fn set_content_visible(&self, visible: bool) -> StdResult<()> {
         self.webview.inner.set_content_visible(visible)
     }

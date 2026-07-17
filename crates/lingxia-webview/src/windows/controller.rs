@@ -102,6 +102,16 @@ pub(crate) enum UiCommand {
         bounds: RECT,
         resp: Sender<StdResult<()>>,
     },
+    /// Position the controller and set the per-corner rounding (radii +
+    /// wedge backdrop color) in one composition commit, so bounds and
+    /// corners never present out of sync. Windowed hosting applies the
+    /// bounds and ignores the corner style.
+    SetContentGeometry {
+        bounds: RECT,
+        radii: [i32; 4],
+        corner_color: u32,
+        resp: Sender<StdResult<()>>,
+    },
     /// Show or hide the WebView2 controller without touching the parent HWND.
     SetContentVisible {
         visible: bool,
@@ -122,6 +132,7 @@ pub(crate) enum UiCommand {
 pub(crate) struct UiState {
     pub(crate) controller: ICoreWebView2Controller,
     pub(crate) webview: ICoreWebView2,
+    pub(crate) hosting: HostingMode,
     pub(crate) hwnd: HWND,
     pub(crate) native_view: WindowsWebViewNativeView,
     pub(crate) webtag_key: String,
@@ -152,6 +163,7 @@ pub struct WebViewInner {
     join_handle: Mutex<Option<JoinHandle<()>>>,
     pub(crate) webtag: WebTag,
     pub(crate) native_view: isize,
+    pub(crate) composition_hosted: bool,
 }
 
 impl std::fmt::Debug for WebViewInner {
@@ -201,7 +213,7 @@ impl WebViewInner {
         };
 
         match startup_rx.recv() {
-            Ok(Ok((command_tx, thread_id, native_view))) => {
+            Ok(Ok((command_tx, thread_id, native_view, composition_hosted))) => {
                 let webview = Arc::new(crate::WebView::new(
                     WebViewInner {
                         command_tx,
@@ -209,6 +221,7 @@ impl WebViewInner {
                         join_handle: Mutex::new(Some(join_handle)),
                         webtag,
                         native_view,
+                        composition_hosted,
                     },
                     effective_options,
                 ));
@@ -293,6 +306,20 @@ impl WebViewInner {
 
     pub(crate) fn set_content_bounds(&self, bounds: RECT) -> StdResult<()> {
         self.dispatch_command_same_thread_safe(|resp| UiCommand::SetContentBounds { bounds, resp })
+    }
+
+    pub(crate) fn set_content_geometry(
+        &self,
+        bounds: RECT,
+        radii: [i32; 4],
+        corner_color: u32,
+    ) -> StdResult<()> {
+        self.dispatch_command_same_thread_safe(|resp| UiCommand::SetContentGeometry {
+            bounds,
+            radii,
+            corner_color,
+            resp,
+        })
     }
 
     pub(crate) fn set_content_visible(&self, visible: bool) -> StdResult<()> {
@@ -659,21 +686,26 @@ impl Drop for WebViewInner {
     }
 }
 
+/// Published once the UI thread is up: the command channel, the thread id,
+/// the native-view HWND handle, and whether composition hosting engaged.
+pub(crate) type WebViewStartup = (Sender<UiCommand>, u32, isize, bool);
+
 pub(crate) fn run_ui_thread(
     webtag: WebTag,
     effective_options: EffectiveWebViewCreateOptions,
-    startup_tx: Sender<StdResult<(Sender<UiCommand>, u32, isize)>>,
+    startup_tx: Sender<StdResult<WebViewStartup>>,
 ) -> StdResult<()> {
     unsafe {
-        windows::Win32::System::Com::CoInitializeEx(None, COINIT_APARTMENTTHREADED)
-            .ok()
-            .map_err(|err| WebViewError::WebView(format!("CoInitializeEx failed: {err}")))?;
+        // OleInitialize = CoInitializeEx(STA) + OLE (clipboard/drag-drop);
+        // composition hosting registers the surface window as a drop target.
+        windows::Win32::System::Ole::OleInitialize(None)
+            .map_err(|err| WebViewError::WebView(format!("OleInitialize failed: {err}")))?;
     }
 
     let result = run_ui_thread_inner(webtag, effective_options, startup_tx);
 
     unsafe {
-        windows::Win32::System::Com::CoUninitialize();
+        windows::Win32::System::Ole::OleUninitialize();
     }
 
     result
@@ -683,6 +715,7 @@ pub(crate) fn run_ui_thread(
 /// the fallible setup closure so a single error path can tear the window down.
 type WebViewControllerSetup = (
     ICoreWebView2Controller,
+    HostingMode,
     ICoreWebView2,
     Arc<Mutex<HashMap<String, Vec<u8>>>>,
     EphemeralProfileGuard,
@@ -707,7 +740,7 @@ impl Drop for EphemeralProfileGuard {
 pub(crate) fn run_ui_thread_inner(
     webtag: WebTag,
     effective_options: EffectiveWebViewCreateOptions,
-    startup_tx: Sender<StdResult<(Sender<UiCommand>, u32, isize)>>,
+    startup_tx: Sender<StdResult<WebViewStartup>>,
 ) -> StdResult<()> {
     ensure_message_queue();
 
@@ -720,7 +753,7 @@ pub(crate) fn run_ui_thread_inner(
     let setup = (|| -> StdResult<WebViewControllerSetup> {
         let (env, ephemeral_user_data_dir) = create_environment(&webtag, &effective_options)?;
         let ephemeral_profile = EphemeralProfileGuard(ephemeral_user_data_dir);
-        let controller = create_controller(&env, hwnd)?;
+        let (controller, hosting) = create_hosting_controller(&env, hwnd)?;
         let webview = unsafe {
             controller
                 .CoreWebView2()
@@ -750,10 +783,16 @@ pub(crate) fn run_ui_thread_inner(
             &effective_options.registered_schemes,
             memory_pages.clone(),
         )?;
-        Ok((controller, webview, memory_pages, ephemeral_profile))
+        Ok((
+            controller,
+            hosting,
+            webview,
+            memory_pages,
+            ephemeral_profile,
+        ))
     })();
 
-    let (controller, webview, memory_pages, mut ephemeral_profile) = match setup {
+    let (controller, hosting, webview, memory_pages, mut ephemeral_profile) = match setup {
         Ok(parts) => parts,
         Err(err) => {
             let _ = startup_tx.send(Err(err.clone()));
@@ -768,11 +807,15 @@ pub(crate) fn run_ui_thread_inner(
             command_tx,
             unsafe { Threading::GetCurrentThreadId() },
             native_view.window,
+            matches!(hosting, HostingMode::Composition(_)),
         )))
         .is_err()
     {
         unsafe {
             let _ = controller.Close();
+        }
+        if let HostingMode::Composition(surface) = &hosting {
+            surface.destroy();
         }
         destroy_webview_parent(webtag.key(), native_view);
         return Err(WebViewError::WebView(
@@ -798,6 +841,7 @@ pub(crate) fn run_ui_thread_inner(
     let mut state = UiState {
         controller,
         webview,
+        hosting,
         hwnd,
         native_view,
         webtag_key,
@@ -1076,12 +1120,16 @@ pub(crate) fn handle_command(state: &mut UiState, command: UiCommand) -> StdResu
             let _ = resp.send(result);
         }
         UiCommand::SetContentBounds { bounds, resp } => {
-            let result = unsafe {
-                state
-                    .controller
-                    .SetBounds(bounds)
-                    .map_err(|err| WebViewError::WebView(format!("SetBounds failed: {err}")))
-            };
+            let result = set_content_geometry(state, bounds, None);
+            let _ = resp.send(result);
+        }
+        UiCommand::SetContentGeometry {
+            bounds,
+            radii,
+            corner_color,
+            resp,
+        } => {
+            let result = set_content_geometry(state, bounds, Some((radii, corner_color)));
             let _ = resp.send(result);
         }
         UiCommand::SetContentVisible { visible, resp } => {
@@ -1098,11 +1146,15 @@ pub(crate) fn handle_command(state: &mut UiState, command: UiCommand) -> StdResu
                 let _ = resp.send(Ok(()));
                 return Ok(false);
             }
-            let result = unsafe {
-                state
-                    .controller
-                    .SetParentWindow(hwnd)
-                    .map_err(|err| WebViewError::WebView(format!("SetParentWindow failed: {err}")))
+            let result = match &mut state.hosting {
+                HostingMode::Windowed => unsafe {
+                    state.controller.SetParentWindow(hwnd).map_err(|err| {
+                        WebViewError::WebView(format!("SetParentWindow failed: {err}"))
+                    })
+                },
+                // The surface window moves hosts; WebView2's own parent stays
+                // the surface window, so its composition target survives.
+                HostingMode::Composition(surface) => surface.set_parent(&state.controller, hwnd),
             };
             if result.is_ok() {
                 state.hwnd = hwnd;
@@ -1122,6 +1174,9 @@ pub(crate) fn handle_command(state: &mut UiState, command: UiCommand) -> StdResu
 pub(crate) fn cleanup_state(state: &mut UiState) {
     unsafe {
         let _ = state.controller.Close();
+    }
+    if let HostingMode::Composition(surface) = &state.hosting {
+        surface.destroy();
     }
     destroy_webview_parent(&state.webtag_key, state.native_view);
     if let Some(dir) = state.ephemeral_user_data_dir.take() {
@@ -1146,11 +1201,35 @@ fn schedule_ephemeral_profile_cleanup(dir: PathBuf) {
         });
 }
 
-pub(crate) fn set_controller_visible(state: &UiState, visible: bool) -> StdResult<()> {
-    unsafe {
-        state
-            .controller
-            .SetIsVisible(visible)
-            .map_err(|err| WebViewError::WebView(format!("SetIsVisible failed: {err}")))
+pub(crate) fn set_controller_visible(state: &mut UiState, visible: bool) -> StdResult<()> {
+    match &mut state.hosting {
+        HostingMode::Windowed => unsafe {
+            state
+                .controller
+                .SetIsVisible(visible)
+                .map_err(|err| WebViewError::WebView(format!("SetIsVisible failed: {err}")))
+        },
+        HostingMode::Composition(surface) => surface.set_visible(&state.controller, visible),
+    }
+}
+
+/// Applies content bounds (and, on the composition path, the per-corner
+/// rounding; `None` keeps the last applied style). Windowed hosting positions
+/// the controller directly and has no corners to update.
+fn set_content_geometry(
+    state: &mut UiState,
+    bounds: RECT,
+    corners: Option<([i32; 4], u32)>,
+) -> StdResult<()> {
+    match &mut state.hosting {
+        HostingMode::Windowed => unsafe {
+            state
+                .controller
+                .SetBounds(bounds)
+                .map_err(|err| WebViewError::WebView(format!("SetBounds failed: {err}")))
+        },
+        HostingMode::Composition(surface) => {
+            surface.set_geometry(&state.controller, bounds, corners)
+        }
     }
 }
