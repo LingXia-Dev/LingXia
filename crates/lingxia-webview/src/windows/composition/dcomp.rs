@@ -36,11 +36,8 @@ pub(crate) struct DcompTree {
     /// Wedge/ring visuals for corners with a nonzero radius, `[tl, tr, br,
     /// bl]`.
     wedges: [Option<IDCompositionVisual2>; 4],
-    /// Outline-mode edge hairlines, `[top, right, bottom, left]`.
-    edges: [Option<IDCompositionVisual2>; 4],
-    /// The `(radii, color, width, height)` the current visuals were built
-    /// for (edges depend on the surface dimensions).
-    wedge_style: ([i32; 4], u32, i32, i32),
+    /// The `(radii, color)` the current visuals were built for.
+    wedge_style: ([i32; 4], u32),
 }
 
 impl DcompTree {
@@ -80,8 +77,7 @@ impl DcompTree {
                 webview_visual,
                 clip,
                 wedges: [const { None }; 4],
-                edges: [const { None }; 4],
-                wedge_style: ([0; 4], 0, 0, 0),
+                wedge_style: ([0; 4], 0),
             })
         }
     }
@@ -101,10 +97,11 @@ impl DcompTree {
     ///   — and its cut edge is aliased anyway). Used where the corner sits
     ///   on a known solid backdrop (shell gutter, device bezel).
     /// - `0x01..=0xFE` — **outline**: the webview clip itself rounds at
-    ///   `radii` (aliased) and a hairline outline — corner rings plus edge
-    ///   lines in the color at that alpha — covers the cut edge. The corner
-    ///   exterior stays fully transparent, for frameless surfaces over
-    ///   arbitrary backdrops (the frameless runner screen).
+    ///   `radii` (aliased) and hairline corner arc rings in the color at
+    ///   that alpha cover the aliased cut. The corner exterior stays fully
+    ///   transparent, for frameless surfaces over arbitrary backdrops (the
+    ///   frameless runner screen — the device frame paints the straight
+    ///   perimeter hairline, surfaces only patch their own arcs).
     /// - `0x00` — square clip, no visuals.
     pub(crate) fn apply_geometry(
         &mut self,
@@ -145,8 +142,8 @@ impl DcompTree {
         }
     }
 
-    /// Rebuilds the corner (and, in outline mode, edge) visuals when the
-    /// style or dimensions changed, then repositions them.
+    /// Rebuilds the corner visuals when the style changed, then repositions
+    /// them for the current dimensions.
     fn update_corner_visuals(
         &mut self,
         width: i32,
@@ -156,13 +153,7 @@ impl DcompTree {
         outline: bool,
     ) -> StdResult<()> {
         let disabled = corner_color >> 24 == 0;
-        // Edge hairlines span between the corner arcs, so outline visuals
-        // depend on the dimensions too; wedge mode only depends on style.
-        let style = if outline {
-            (radii, corner_color, width, height)
-        } else {
-            (radii, corner_color, 0, 0)
-        };
+        let style = (radii, corner_color);
         if self.wedge_style != style {
             self.wedge_style = style;
             for (corner, radius) in radii.into_iter().enumerate() {
@@ -182,32 +173,6 @@ impl DcompTree {
                 };
                 self.wedges[corner] = Some(self.create_pixel_visual(size, size, &pixels)?);
             }
-            for slot in &mut self.edges {
-                if let Some(visual) = slot.take() {
-                    unsafe {
-                        let _ = self.root.RemoveVisual(&visual);
-                    }
-                }
-            }
-            if outline && !disabled {
-                let [tl, tr, br, bl] = radii.map(|radius| radius.max(0));
-                // [top, right, bottom, left], each between its corner arcs.
-                let spans = [
-                    (width - tl - tr, 1),
-                    (1, height - tr - br),
-                    (width - bl - br, 1),
-                    (1, height - tl - bl),
-                ];
-                for (edge, (edge_width, edge_height)) in spans.into_iter().enumerate() {
-                    if edge_width <= 0 || edge_height <= 0 {
-                        continue;
-                    }
-                    let pixels =
-                        edge_pixels(edge_width as usize * edge_height as usize, corner_color);
-                    self.edges[edge] =
-                        Some(self.create_pixel_visual(edge_width, edge_height, &pixels)?);
-                }
-            }
         }
         for (corner, slot) in self.wedges.iter().enumerate() {
             let Some(visual) = slot else { continue };
@@ -223,18 +188,6 @@ impl DcompTree {
                     .SetOffsetX2(x as f32)
                     .and_then(|_| visual.SetOffsetY2(y as f32))
                     .map_err(|err| dcomp_error("wedge offset", err))?;
-            }
-        }
-        let [tl, tr, _br, bl] = radii.map(|radius| radius.max(0));
-        let edge_offsets = [(tl, 0), (width - 1, tr), (bl, height - 1), (0, tl)];
-        for (edge, slot) in self.edges.iter().enumerate() {
-            let Some(visual) = slot else { continue };
-            let (x, y) = edge_offsets[edge];
-            unsafe {
-                visual
-                    .SetOffsetX2(x as f32)
-                    .and_then(|_| visual.SetOffsetY2(y as f32))
-                    .map_err(|err| dcomp_error("edge offset", err))?;
             }
         }
         Ok(())
@@ -390,17 +343,6 @@ fn ring_pixels(corner: usize, radius: i32, color: u32) -> Vec<u32> {
         }
     }
     pixels
-}
-
-/// Uniform premultiplied hairline pixels for the outline's straight edges.
-fn edge_pixels(count: usize, color: u32) -> Vec<u32> {
-    let alpha = (color >> 24) & 0xff;
-    let premultiply = |channel: u32| (channel * alpha + 127) / 255;
-    let pixel = (alpha << 24)
-        | (premultiply((color >> 16) & 0xff) << 16)
-        | (premultiply((color >> 8) & 0xff) << 8)
-        | premultiply(color & 0xff);
-    vec![pixel; count]
 }
 
 fn create_d3d_device() -> StdResult<(ID3D11Device, ID3D11DeviceContext)> {
