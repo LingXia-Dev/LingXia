@@ -167,7 +167,13 @@ pub(crate) fn frame_spec(index: usize, landscape: bool) -> WindowsDeviceFrame {
     } else {
         (preset.width, preset.height)
     };
-    let outer_radius = preset.screen_radius.max(preset.outer_radius);
+    // Frameless: the frame silhouette IS the screen — its outline hairline
+    // must trace the same radius the content window's region cuts at.
+    let outer_radius = if visual_bezel_width(preset) == 0 {
+        preset.screen_radius
+    } else {
+        preset.screen_radius.max(preset.outer_radius)
+    };
     WindowsDeviceFrame {
         screen_width,
         screen_height,
