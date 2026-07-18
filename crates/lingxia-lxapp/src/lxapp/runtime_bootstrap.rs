@@ -93,6 +93,26 @@ fn installed_home_version(
     }))
 }
 
+use std::sync::atomic::{AtomicBool, Ordering};
+
+/// Set by dev/test hosts (the Runner) to grant `lx.automation()` without an
+/// lxapp declaring the `automation`/`host` privilege. Off for product hosts,
+/// where the manifest gates as usual. See `set_automation_auto_grant`.
+static AUTOMATION_AUTO_GRANT: AtomicBool = AtomicBool::new(false);
+
+/// Grant automation privileges to every lxapp in this process, bypassing the
+/// manifest privilege check. Call once at host startup — the Runner does this
+/// so lxapps launched for testing need not declare `automation`/`host`.
+pub fn set_automation_auto_grant(enabled: bool) {
+    AUTOMATION_AUTO_GRANT.store(enabled, Ordering::Relaxed);
+}
+
+/// Whether this host auto-grants automation (Runner/dev harness). A dev session
+/// also implies auto-grant, so callers usually check both.
+pub fn automation_auto_grant() -> bool {
+    AUTOMATION_AUTO_GRANT.load(Ordering::Relaxed)
+}
+
 /// Whether this process is an active `lingxia dev` session: a dev websocket is
 /// configured either via the `LINGXIA_DEV_WS_URL` env var or `app.json`'s
 /// `dev_ws_url` (written by `lingxia dev`). Drives dev-only behaviour such as

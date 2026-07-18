@@ -32,6 +32,9 @@ impl lingxia::HostAddon for RunnerDevtoolAddon {
     }
 
     fn start_services(&self) {
+        // The Runner is a dev/test harness: grant lx.automation() to every
+        // lxapp it launches so test scripts need not declare the privilege.
+        lingxia::set_automation_auto_grant(true);
         lingxia_devtool::start_devtool_bridge_from_env();
     }
 }

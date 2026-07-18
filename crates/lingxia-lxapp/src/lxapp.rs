@@ -62,6 +62,7 @@ use lingxia_webview::runtime::destroy_webview;
 pub use runtime_bootstrap::dev_session_active as is_dev_session;
 pub use runtime_bootstrap::init;
 pub use runtime_bootstrap::runner_active as is_runner;
+pub use runtime_bootstrap::{automation_auto_grant, set_automation_auto_grant};
 pub use runtime_ops::{
     close_lxapp, create_page_instance, dispose_page_instance, dispose_page_instance_by_id,
     ensure_builtin_lxapp, ensure_lxapp, get_current_lxapp, installed_lxapp_path, is_lxapp_open,

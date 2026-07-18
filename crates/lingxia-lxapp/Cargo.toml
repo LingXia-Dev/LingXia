@@ -11,6 +11,9 @@ categories = ["web-programming", "api-bindings"]
 [features]
 default = ["standard"]
 standard = ["js-appservice"]
+# Shared automation lower half (target resolution, nav, DOM query script)
+# consumed by the devtool handlers and the lx.automation() JS API.
+automation = []
 js-appservice = [
     "dep:rong",
     "dep:rong_modules",

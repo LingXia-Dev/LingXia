@@ -29,7 +29,7 @@ features = ["dev"]
 # for lx.surface URL/browser surfaces, but it must not require the product
 # browser shell webui bundle.
 [dependencies]
-lingxia = { workspace = true, features = ["standard", "devtool", "browser-runtime", "webview-input"] }
+lingxia = { workspace = true, features = ["standard", "devtool", "browser-runtime", "webview-input", "automation"] }
 lingxia_devtool = { workspace = true, features = ["browser"] }
 # Reads ~/.lingxia/runner/config.toml for the runtime lingxiaServer override.
 toml = "1.1.2"

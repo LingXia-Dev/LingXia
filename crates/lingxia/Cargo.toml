@@ -11,7 +11,8 @@ categories = ["web-programming", "api-bindings"]
 [features]
 default = ["standard"]
 standard = ["lxapp/standard", "dep:lingxia-logic"]
-devtool = []
+automation = ["dep:lingxia-automation"]
+devtool = ["lxapp/automation"]
 # Low-level managed browser tabs. Advanced hosts may provide their own native
 # browser UI/chrome on top of this.
 browser-runtime = ["dep:lingxia-browser"]
@@ -36,6 +37,7 @@ lingxia-transfer = { workspace = true }
 lingxia-terminal = { workspace = true, optional = true }
 lingxia-browser = { workspace = true, optional = true }
 lingxia-logic = { workspace = true, optional = true }
+lingxia-automation = { workspace = true, optional = true }
 lingxia-browser-shell = { workspace = true, optional = true }
 lingxia-platform = { workspace = true }
 lingxia-shell = { workspace = true }

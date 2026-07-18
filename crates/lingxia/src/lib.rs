@@ -23,6 +23,10 @@ pub use lingxia_native_macros::native;
 
 pub use lxapp::host;
 pub use lxapp::host::{ChannelContext, ChannelMessage, StreamContext};
+/// Grant `lx.automation()` to every lxapp in this process without a manifest
+/// privilege declaration. For dev/test hosts (the Runner) only — product hosts
+/// must not call this. A `lingxia dev` session already implies auto-grant.
+pub use lxapp::set_automation_auto_grant;
 pub use lxapp::{LxApp, LxAppSecurityPrivilege};
 
 /// Host app metadata, state-path helpers, and lifecycle helpers.
