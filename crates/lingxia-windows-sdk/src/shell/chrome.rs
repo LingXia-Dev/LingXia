@@ -1463,8 +1463,13 @@ pub(super) fn draw_window_chrome(
     let client = state.client;
     let rects = chrome_rects_for_state(state, layout);
 
+    // A framed/mobile presentation has no floating workspace card: content is
+    // edge-to-edge, the nav bar fuses with the status strip above and the page
+    // below (square corners, no divider, flat backdrop).
+    let desktop_card = layout.top_inset.max(0) == 0 && !layout.suppress_window_controls;
+
     fill_rect(hdc, client, shell_palette().window_background);
-    draw_content_cards(hdc, state, &rects);
+    draw_content_cards(hdc, state, &rects, desktop_card);
     draw_shell_top_bar(hdc, &rects);
 
     // The address bar owns the top bar while a browser surface is
@@ -1473,12 +1478,16 @@ pub(super) fn draw_window_chrome(
         && let (Some(navbar), Some(navbar_rect)) = (&layout.navigation_bar, rects.navigation_bar)
     {
         let buttons_left = navbar_buttons_left(navbar_rect);
-        let corner_radii =
-            workspace_corner_radii(navbar_rect, rects.workspace, SHELL_CONTENT_RADIUS);
+        let corner_radii = if desktop_card {
+            workspace_corner_radii(navbar_rect, rects.workspace, SHELL_CONTENT_RADIUS)
+        } else {
+            [0; 4]
+        };
         draw_navigation_bar(
             hdc,
             navbar_rect,
             corner_radii,
+            desktop_card,
             buttons_left,
             navbar,
             state.cursor,
@@ -1918,11 +1927,16 @@ fn native_panel_hit_by(
     None
 }
 
-pub(super) fn draw_content_cards(hdc: HDC, state: &WindowsChromeState, rects: &ChromeRects) {
+pub(super) fn draw_content_cards(
+    hdc: HDC,
+    state: &WindowsChromeState,
+    rects: &ChromeRects,
+    desktop_card: bool,
+) {
     if let Some(attached) = &state.attached {
         // Main and asides share one outer shadow; their resize gutters cut
         // through that wrapper to the first shell layer below.
-        draw_content_card(hdc, rects.panel);
+        draw_content_card(hdc, rects.panel, desktop_card);
         // Each resize gutter exposes the first shell layer, matching the top
         // address-bar band. The centered hairline keeps the split legible on
         // every edge and between multiple asides.
@@ -1979,11 +1993,16 @@ pub(super) fn draw_content_cards(hdc: HDC, state: &WindowsChromeState, rects: &C
         return;
     }
 
-    draw_content_card(hdc, rects.panel);
+    draw_content_card(hdc, rects.panel, desktop_card);
 }
 
-pub(super) fn draw_content_card(hdc: HDC, rect: RECT) {
+pub(super) fn draw_content_card(hdc: HDC, rect: RECT, desktop_card: bool) {
     if rect_width(&rect) > 0 && rect_height(&rect) > 0 {
+        // Mobile/framed form: edge-to-edge backdrop, no card silhouette.
+        if !desktop_card {
+            fill_rect(hdc, rect, shell_palette().panel_background);
+            return;
+        }
         // macOS uses an 8pt, 15%-opacity shadow on one wrapper around the whole
         // workspace. Layered translucent expansions approximate that blur in
         // GDI+ without creating a solid band around the card.

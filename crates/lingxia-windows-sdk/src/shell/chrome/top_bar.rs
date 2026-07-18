@@ -475,6 +475,7 @@ pub(super) fn draw_navigation_bar(
     hdc: HDC,
     rect: RECT,
     corner_radii: [i32; 4],
+    desktop_card: bool,
     buttons_left: i32,
     navbar: &WindowsShellNavigationBarLayout,
     cursor: Option<(i32, i32)>,
@@ -482,7 +483,10 @@ pub(super) fn draw_navigation_bar(
     // The band owns whichever workspace-silhouette corners it touches; a
     // square fill in the page's bar color would poke past the card's arcs.
     fill_round_rect_aa_corners(hdc, rect, corner_radii, navbar.background_color);
-    draw_bottom_border(hdc, rect, shell_palette().divider);
+    // Mobile/framed form fuses the bar with the page — no divider seam.
+    if desktop_card {
+        draw_bottom_border(hdc, rect, shell_palette().divider);
+    }
 
     let text_color = navbar.text_color;
     let mut left_controls_width = 0;
