@@ -1,10 +1,9 @@
-use crate::{ActivatorCollection, ActivatorDeclaration, PinCollection, ShellError, ShellResult};
+use crate::{PinCollection, ShellError, ShellResult};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-pub const ACTIVATOR_STORE_FILE: &str = "shell-activators-v1.json";
 pub const PIN_STORE_FILE: &str = "shell-pins-v1.json";
 
 #[derive(Debug, Clone)]
@@ -15,17 +14,6 @@ pub struct ShellStore {
 impl ShellStore {
     pub fn new(root: impl Into<PathBuf>) -> Self {
         Self { root: root.into() }
-    }
-
-    pub fn load_activators(&self) -> ShellResult<ActivatorCollection> {
-        let Some(value) = self.load_optional::<ActivatorDeclaration>(ACTIVATOR_STORE_FILE)? else {
-            return Ok(ActivatorCollection::default());
-        };
-        ActivatorCollection::restore(value)
-    }
-
-    pub fn save_activators(&self, activators: &ActivatorCollection) -> ShellResult<()> {
-        self.save(ACTIVATOR_STORE_FILE, &activators.declaration())
     }
 
     pub fn load_pins(&self) -> ShellResult<PinCollection> {
@@ -153,16 +141,12 @@ fn replace_file(tmp: &Path, path: &Path) -> ShellResult<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{ShellActivator, ShellActivatorTarget, ShellPinTarget};
+    use crate::ShellPinTarget;
 
     #[test]
-    fn stores_explicit_empty_activators_and_mixed_pins_independently() {
+    fn stores_mixed_pins() {
         let dir = tempfile::tempdir().unwrap();
         let store = ShellStore::new(dir.path());
-        let mut activators = ActivatorCollection::default();
-        activators.clear();
-        store.save_activators(&activators).unwrap();
-
         let mut pins = PinCollection::default();
         pins.pin(ShellPinTarget::Lxapp {
             key: "app.chat".to_string(),
@@ -174,32 +158,8 @@ mod tests {
         .unwrap();
         store.save_pins(&pins).unwrap();
 
-        let restored_activators = store.load_activators().unwrap();
         let restored_pins = store.load_pins().unwrap();
-        assert!(restored_activators.declared());
-        assert!(restored_activators.items().is_empty());
         assert_eq!(restored_pins, pins);
-    }
-
-    #[test]
-    fn action_activators_are_not_restored() {
-        let dir = tempfile::tempdir().unwrap();
-        let store = ShellStore::new(dir.path());
-        let mut activators = ActivatorCollection::default();
-        activators
-            .replace(vec![ShellActivator {
-                id: "sync".to_string(),
-                target: ShellActivatorTarget::Action,
-                label: Some("Sync".to_string()),
-                icon: Some("icons/sync.svg".to_string()),
-                disabled: false,
-            }])
-            .unwrap();
-        store.save_activators(&activators).unwrap();
-
-        let restored = store.load_activators().unwrap();
-        assert!(restored.declared());
-        assert!(restored.items().is_empty());
     }
 
     #[test]

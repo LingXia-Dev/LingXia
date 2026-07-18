@@ -70,7 +70,7 @@ relationships, or lifecycle semantics defined here.
 | **web tab** | A top-level sidebar tab representing a main browser tab |
 | **tabbar item** | A child row under an expanded lxapp tab, sourced from that lxapp's mobile tabbar |
 | **pin** | A user-saved quick entry for an lxapp or website |
-| **activator** | An app-declared persistent shell entry owned by the single runtime writer |
+| **activator** | An app-declared runtime callback entry owned by the single runtime writer |
 | **home lxapp** | The host's primary lxapp named by `app.homeAppId`; its identity is independent of `launch` and of whether it currently has a visible surface |
 
 ### 1.1 Content
@@ -427,46 +427,40 @@ Pins are the user's quick entries for lxapps and websites.
 
 ### 4.5 Activators
 
-An activator is an app-declared persistent shell entry at the bottom of the
-sidebar: it either activates dynamic content or invokes Logic. It is not the
-whole sidebar, and it is not a shortcut that requires a YAML surface.
+An activator is an app-declared runtime shell entry at the bottom of the
+sidebar. The shell invokes Logic and owns no built-in target behavior. It is
+not the whole sidebar, and it does not require a YAML surface.
 
 Declaration model (owned by the single runtime writer, §7.2):
 
-- Three target kinds: an **lxapp** (by appId), a **native capability** (by
-  name, e.g. `terminal`), or an **action** (a Logic callback).
-- Every entry carries an explicit **stable id** used for updates, activation
-  routing, and persistence; target values are never overloaded as keys.
-- Every entry declares its own icon (resolved against the home lxapp bundle);
-  hosts do not infer target metadata icons or render fallback glyphs.
+- Every entry carries an explicit **stable id**, `label`, bundle-relative
+  `icon`, and `onActivate` callback. Stable ids route updates and activation;
+  callbacks decide what activation does.
+- Hosts do not infer target metadata, open lxapps, toggle native capabilities,
+  or render fallback glyphs. A callback explicitly calls APIs such as
+  `lx.openSurface({ lxapp: ... })` or `lx.openSurface({ native: ... })`.
 - The declaration is a **full-generation atomic replace**: the shell validates
-  the complete generation before touching handlers, persistence, or chrome — a
+  the complete generation before touching handlers or chrome — a
   bad item leaves the previous generation intact. Single-item patches may
   update label/icon/disabled state. Removing or clearing entries are atomic
   transformations of the same generation, not separate mutation protocols.
-- Action callback registration is generation-scoped: replacing or removing an
-  item unregisters its previous callback.
+- Callback registration is generation-scoped: replacing or removing an item
+  unregisters its previous callback.
+- Activators are runtime-scoped because callbacks are not serializable. The
+  home Logic writer redeclares them on every launch; the shell does not restore
+  stale entries before their callbacks exist.
 - There are no app-controlled layout knobs: no weight, no arbitrary colors.
-  Row allocation, hover, active, and disabled styling are shell-owned. Density
-  is a future shell-level user preference, not an app configuration.
-- An lxapp or native activator does not require a matching YAML `surfaces:`
-  entry. An lxapp target only needs to be resolvable (bundled, installed, or
-  runtime-provided); a native target requires the corresponding host
-  capability (e.g. `capabilities.terminal: true`). Actions have no YAML
-  dependency.
+  Row allocation, hover, and disabled styling are shell-owned. Density is a
+  future shell-level user preference, not an app configuration.
 
 Activation behavior:
 
-- **lxapp target**: already main → focus; already aside → toggle visibility;
-  not open → resolve and present as an adaptive aside.
-- **native target**: verify the capability, then toggle it under its host-owned
-  default presentation (terminal: bottom aside).
-- **action target**: invoke the currently registered callback; never shown as
-  selected/active. Mouse, keyboard, accessibility, shortcut, and automation
-  activation are one semantic; each activation invokes the callback once.
+- Invoke the currently registered callback. Mouse, keyboard, accessibility,
+  shortcut, and automation activation are one semantic; each activation
+  invokes the callback once.
 - A disabled activator stays visible but cannot activate.
-- `active` is derived by the shell from the presentation graph for lxapp/native
-  targets; it is never app-written for them.
+- Activators are never selected/active. Any content state created by the
+  callback belongs to that content's own UI and APIs.
 
 Expanded footer geometry:
 
@@ -482,18 +476,17 @@ Expanded footer geometry:
   no ASCII/wide-character width heuristics. Row breaks MAY differ where native
   fonts genuinely differ; padding, minimums, state treatment, overflow, and
   order MUST NOT.
-- Inactive background is transparent; hover uses a quiet shell-owned wash
-  (radius 6); active lxapp/native items use a light selected background plus an
-  accent marker; disabled items mute icon/text with no hover wash.
+- Background is transparent; hover uses a quiet shell-owned wash (radius 6);
+  disabled items mute icon/text with no hover wash.
 
 Compact rail:
 
-- Icon-only, label as tooltip/accessibility text, same bounded scrolling, same
-  active/disabled treatment. The rail reserves the expand control; activators
+- Icon-only, label as tooltip/accessibility text, same bounded scrolling and
+  disabled treatment. The rail reserves the expand control; activators
   MUST NOT overlap it or run off-window. Rail width MAY stay platform-specific
   for system-chrome clearance.
-- In compact shells activators do not render at all, but declarations still
-  validate and persist, and reappear in wider forms.
+- In compact shells activators do not render, but declarations still validate
+  and reappear if the same process returns to a wider form.
 
 ### 4.6 Aside slots
 
@@ -626,9 +619,8 @@ The build MUST validate:
 - a host has at least one main — or is a main-less, tray-float-only app;
 - `controls: content` satisfies the single-main constraint of §4.7.
 
-YAML has **no `sidebar:` entry field**. Persistent app entries are exclusively
-the activator's job — one entry system, not a declarative one beside an
-imperative one.
+YAML has **no `sidebar:` entry field**. App-owned sidebar entries are runtime
+activators — one entry system, not a declarative one beside an imperative one.
 
 ---
 
@@ -690,8 +682,8 @@ Shell chrome always has exactly one writer:
   `frameless + controls: content`, drives window controls
   (minimize/maximize/close/state); in other modes window-control calls fail
   with `E_NOT_SUPPORTED`.
-- In compact shells writer declarations still validate and persist but do not
-  render.
+- In compact shells writer declarations still validate for the current runtime
+  but do not render.
 - Process/app-level capabilities (update, exit, badge, autostart, screenshot)
   stay on `lx.app`; they never migrate into `lx.shell`.
 
@@ -708,15 +700,12 @@ Desktop shell persistence:
 | Pins | The user's ordered mixed list |
 | Main session | Tab content keys, session entry ids, order, and selection |
 | lxapp tabs | User collapse state; API-hidden state is rebuilt by the app |
-| Activators | Serializable lxapp/native items; action items are rebuilt by the writer |
+| Activators | Not persisted; the home Logic writer redeclares callbacks each launch |
 | Aside geometry | Each slot's edge and size |
 
-- The activator store is versioned and distinguishes an explicit empty
-  declaration from "no writer yet". Persisted lxapp/native items render before
-  Logic boots; action items never restore before the writer redeclares them
-  (their callbacks are process-local). An explicitly declared empty generation
-  stays empty across restarts. Both desktop platforms restore the same
-  generation.
+- Within one process, activators distinguish an explicit empty declaration from
+  "no writer yet" so `replace([])` can clear fallback chrome. No activator
+  metadata crosses a process restart without its callback.
 - Main sessions restore lazily: tab placeholders appear immediately; a live
   surface and runtime id are created on first selection. Failed restores show a
   retry/close placeholder. Session entry ids and runtime ids MUST NOT be
@@ -739,7 +728,7 @@ As of 2026-07 (post `feat/shell-ui-spec`, PR #126):
 | Activator footer overflow scrolling (5-row cap) | Specified, not yet implemented |
 | Sidebar/tabbar parity | 184 width, 36/4 and 30/2/1 rhythm, two-level selection, style mapping landed on both platforms |
 | `hideTabBar`/`showTabBar` ↔ group collapse | Landed |
-| Shell persistence | Window frame, sidebar mode/width, group collapse, aside geometry, pins, activator store landed; main-session lazy restore and the aside geometry-only policy still to be verified against §8 |
+| Shell persistence | Window frame, sidebar mode/width, group collapse, aside geometry, and pins landed; main-session lazy restore and the aside geometry-only policy still to be verified against §8 |
 | `E_SURFACE_CONFLICT` | Error path exists in the logic layer; full runtime enforcement across role conflicts pending |
 | Admission | Arbitration module exists; the 45% clamp / slot-cap / overlay-fallback behavior of §3.3 not yet verified end to end |
 | Compact projection | Slot-based back/close semantics of §5 pending regression on mobile |

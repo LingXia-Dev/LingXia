@@ -1,23 +1,20 @@
 //! `lx.shell.activators` — app-declared host-shell entries (home lxapp only).
 
 use crate::app::ensure_home_lxapp;
-use lingxia_shell::{
-    ActivatorCollection, NativeShellCapability, ShellActivator, ShellActivatorTarget,
-    ShellActivatorUpdate, ShellError,
-};
+use lingxia_shell::{ActivatorCollection, ShellActivator, ShellActivatorUpdate, ShellError};
 use lxapp::{LxApp, register_app_handler, unregister_app_handler};
 use rong::{JSContext, JSFunc, JSObject, JSResult, JSValue};
 use std::cell::RefCell;
 use std::collections::HashMap;
 
 #[derive(Default)]
-struct ActionHandlerGeneration {
+struct ActivatorHandlerGeneration {
     generation: u64,
     handlers: HashMap<String, JSFunc>,
 }
 
 thread_local! {
-    static ACTION_HANDLERS: RefCell<ActionHandlerGeneration> = RefCell::new(ActionHandlerGeneration::default());
+    static ACTIVATOR_HANDLERS: RefCell<ActivatorHandlerGeneration> = RefCell::new(ActivatorHandlerGeneration::default());
 }
 
 fn shell_namespace(ctx: &JSContext) -> JSResult<JSObject> {
@@ -44,13 +41,13 @@ fn activators_namespace(ctx: &JSContext) -> JSResult<JSObject> {
     }
 }
 
-fn action_event(generation: u64, id: &str) -> String {
+fn activator_event(generation: u64, id: &str) -> String {
     format!("lx.shell.activators:{generation}:{id}")
 }
 
 struct ParsedActivator {
     item: ShellActivator,
-    action_handler: Option<JSFunc>,
+    handler: JSFunc,
 }
 
 fn has_property(item: &JSObject, field: &str) -> bool {
@@ -98,69 +95,30 @@ fn optional_bool(item: &JSObject, field: &'static str) -> JSResult<Option<bool>>
 
 fn parse_item(item: &JSObject) -> JSResult<ParsedActivator> {
     let id = required_string(item, "id")?;
-    let lxapp = optional_string(item, "lxapp")?;
-    let native = optional_string(item, "native")?;
-    let has_action = has_property(item, "onActivate");
-    let target_count = [lxapp.is_some(), native.is_some(), has_action]
-        .into_iter()
-        .filter(|present| *present)
-        .count();
-    if target_count != 1 {
-        return Err(rong::HostError::new(
-            rong::error::E_INVALID_ARG,
-            "shell activator must set exactly one of lxapp, native, or onActivate",
-        )
-        .into());
-    }
-
-    let label = optional_string(item, "label")?;
-    let icon = Some(required_string(item, "icon")?);
+    let label = required_string(item, "label")?;
+    let icon = required_string(item, "icon")?;
     let disabled = optional_bool(item, "disabled")?.unwrap_or(false);
-    let (target, action_handler) = if let Some(key) = lxapp {
-        (ShellActivatorTarget::Lxapp { key }, None)
-    } else if let Some(native) = native {
-        if native != "terminal" {
-            return Err(rong::HostError::new(
-                rong::error::E_INVALID_ARG,
-                format!("unsupported shell native capability '{native}'"),
-            )
-            .into());
-        }
-        (
-            ShellActivatorTarget::Native {
-                key: NativeShellCapability::Terminal,
-            },
-            None,
+    let handler = item.get::<_, JSFunc>("onActivate").map_err(|_| {
+        rong::HostError::new(
+            rong::error::E_INVALID_ARG,
+            "shell activator onActivate must be a function",
         )
-    } else {
-        let handler = item.get::<_, JSFunc>("onActivate").map_err(|_| {
-            rong::HostError::new(
-                rong::error::E_INVALID_ARG,
-                "shell activator onActivate must be a function",
-            )
-        })?;
-        (ShellActivatorTarget::Action, Some(handler))
-    };
+    })?;
 
     let item = ShellActivator {
         id,
-        target,
         label,
         icon,
         disabled,
     }
     .validate()
     .map_err(js_error)?;
-    Ok(ParsedActivator {
-        item,
-        action_handler,
-    })
+    Ok(ParsedActivator { item, handler })
 }
 
 /// Atomically replaces the complete desktop activator declaration. Home lxapp
-/// only. Relative icons resolve from the home app bundle; lxapp/native entries
-/// persist across restarts, while action entries return after Logic registers
-/// their callbacks. `replace([])` is an explicit persistent empty declaration.
+/// only. Relative icons resolve from the home app bundle. Every entry is bound
+/// to its generation-scoped callback; `replace([])` explicitly clears chrome.
 fn activators_replace(ctx: JSContext, items: Vec<JSObject>) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     ensure_home_lxapp(&lxapp, "lx.shell.activators.replace")?;
@@ -168,7 +126,7 @@ fn activators_replace(ctx: JSContext, items: Vec<JSObject>) -> JSResult<()> {
     let next_items = parsed.iter().map(|item| item.item.clone()).collect();
     let next_handlers = parsed
         .into_iter()
-        .filter_map(|item| item.action_handler.map(|handler| (item.item.id, handler)))
+        .map(|item| (item.item.id, item.handler))
         .collect();
     commit_generation(&ctx, |next| next.replace(next_items), next_handlers)
 }
@@ -195,7 +153,7 @@ fn activators_remove(ctx: JSContext, id: String) -> JSResult<()> {
     commit_generation(&ctx, |next| next.remove(&id), handlers)
 }
 
-/// Persists an explicit empty declaration. Home lxapp only.
+/// Clears the current runtime declaration. Home lxapp only.
 fn activators_clear(ctx: JSContext) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     ensure_home_lxapp(&lxapp, "lx.shell.activators.clear")?;
@@ -210,7 +168,7 @@ fn activators_clear(ctx: JSContext) -> JSResult<()> {
 }
 
 fn retained_handlers() -> HashMap<String, JSFunc> {
-    ACTION_HANDLERS.with(|state| state.borrow().handlers.clone())
+    ACTIVATOR_HANDLERS.with(|state| state.borrow().handlers.clone())
 }
 
 fn commit_generation(
@@ -222,16 +180,12 @@ fn commit_generation(
     let previous = manager.snapshot().activators;
     let mut next = previous.clone();
     mutate(&mut next).map_err(js_error)?;
-    next_handlers.retain(|id, _| {
-        next.items()
-            .iter()
-            .any(|item| item.id == *id && matches!(item.target, ShellActivatorTarget::Action))
-    });
+    next_handlers.retain(|id, _| next.items().iter().any(|item| item.id == *id));
 
     let next_generation = next.generation();
     let mut registered: Vec<String> = Vec::new();
     for (id, handler) in &next_handlers {
-        let event = action_event(next_generation, id);
+        let event = activator_event(next_generation, id);
         if let Err(error) = register_app_handler(ctx, &event, handler.clone()) {
             for event in registered {
                 unregister_app_handler(ctx, &event, None);
@@ -256,10 +210,10 @@ fn commit_generation(
         return Err(js_error(error).into());
     }
 
-    ACTION_HANDLERS.with(|state| {
+    ACTIVATOR_HANDLERS.with(|state| {
         let mut state = state.borrow_mut();
         for id in state.handlers.keys() {
-            unregister_app_handler(ctx, &action_event(state.generation, id), None);
+            unregister_app_handler(ctx, &activator_event(state.generation, id), None);
         }
         state.generation = next_generation;
         state.handlers = next_handlers;

@@ -248,40 +248,13 @@ pub(in crate::shell::chrome) fn draw_panel_activators(
             .iter()
             .find(|item| item.id == panel_id);
         let disabled = activator.is_some_and(|item| item.disabled);
-        let active = activator.is_some_and(|item| item.active && !item.disabled);
         let label = activator
             .map(|item| item.label.as_str())
             .unwrap_or(panel_id.as_str());
-        let text_color = if active {
-            palette.accent
-        } else {
-            palette.text_muted
-        };
+        let text_color = palette.text_muted;
 
-        if active {
-            fill_round_rect_aa(hdc, rect, 6, palette.panel_background);
-        }
-        if !active && !disabled {
+        if !disabled {
             draw_hover_wash(hdc, rect, 6, cursor);
-        } else {
-            if active {
-                let accent = if icon_only {
-                    RECT {
-                        left: rect.left + 4,
-                        top: rect.bottom - 4,
-                        right: rect.right - 4,
-                        bottom: rect.bottom - 2,
-                    }
-                } else {
-                    RECT {
-                        left: rect.left + 2,
-                        top: rect.top + 6,
-                        right: rect.left + 4,
-                        bottom: rect.bottom - 6,
-                    }
-                };
-                fill_round_rect_aa(hdc, accent, 2, palette.accent);
-            }
         }
 
         let icon_rect = if icon_only {
@@ -325,7 +298,6 @@ mod tests {
             id: id.to_string(),
             label: label.to_string(),
             icon_path: String::new(),
-            active: false,
             disabled: false,
         }
     }

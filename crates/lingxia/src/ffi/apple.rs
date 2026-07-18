@@ -253,9 +253,8 @@ mod bridge {
         #[swift_bridge(swift_name = "focusSurface")]
         fn focus_surface(appid: &str, surface_id: &str) -> bool;
 
-        // Runtime activator click return paths: an action item's click hands
-        // off to the home Logic's registered handler; an undeclared lxapp
-        // surface item opens as an aside panel (ensure + panel open).
+        // Runtime activator clicks hand off to the home Logic's registered
+        // callback. The callback owns any resulting surface operation.
         #[swift_bridge(swift_name = "shellActivate")]
         fn shell_activate(item_id: &str) -> bool;
 
@@ -272,11 +271,6 @@ mod bridge {
         // 1 = success, -1 = shared eight-Pin limit, 0 = invalid/unavailable.
         #[swift_bridge(swift_name = "shellSetPinned")]
         fn shell_set_pinned(kind: &str, key: &str, pinned: bool) -> i32;
-
-        // Activator items persisted by the last writer set(), for the shell
-        // to restore before the home logic boots ("[]" when none).
-        #[swift_bridge(swift_name = "shellActivatorSnapshot")]
-        fn shell_activator_snapshot() -> String;
 
         #[swift_bridge(swift_name = "registerHostAside")]
         fn register_host_aside(appid: &str, surface_id: &str, edge: &str) -> bool;
@@ -1079,15 +1073,6 @@ fn shell_pin_target(kind: &str, key: &str) -> Option<lingxia_shell::ShellPinTarg
         }),
         _ => None,
     }
-}
-
-pub fn shell_activator_snapshot() -> String {
-    ffi_catch_unwind!("shell_activator_snapshot", String::new(), || {
-        lingxia_shell::resolved_activator_snapshot()
-            .ok()
-            .and_then(|snapshot| serde_json::to_string(&snapshot).ok())
-            .unwrap_or_default()
-    })
 }
 
 pub fn focus_surface(appid: &str, surface_id: &str) -> bool {

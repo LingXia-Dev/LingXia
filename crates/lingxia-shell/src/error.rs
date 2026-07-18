@@ -6,20 +6,14 @@ pub type ShellResult<T> = Result<T, ShellError>;
 pub enum ShellError {
     #[error("shell activator id must not be empty")]
     EmptyActivatorId,
-    #[error("shell activator target must not be empty")]
-    EmptyActivatorTarget,
     #[error("shell activator field '{field}' must not be empty")]
     EmptyActivatorField { field: &'static str },
-    #[error("action activator '{id}' requires both label and icon")]
-    IncompleteAction { id: String },
     #[error("duplicate shell activator id '{id}'")]
     DuplicateActivatorId { id: String },
     #[error("shell activator '{id}' was not found")]
     ActivatorNotFound { id: String },
     #[error("shell activator update for '{id}' is empty")]
     EmptyActivatorUpdate { id: String },
-    #[error("shell native capability '{capability}' is not available")]
-    UnsupportedCapability { capability: String },
     #[error("shell runtime is not initialized")]
     NotInitialized,
     #[error("shell host operation failed: {0}")]

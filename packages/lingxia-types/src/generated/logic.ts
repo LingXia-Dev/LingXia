@@ -1236,29 +1236,11 @@ export type ShareTitleOptions = {
 
 /**
  * One app-declared shell activator. Its `id` remains stable across
- * updates and activation. Set exactly one target: `lxapp`, `native`,
- * or `onActivate`. Every entry owns its icon; hosts never infer one.
+ * updates and activation. The shell only routes activation to the
+ * callback; the app owns every resulting action.
  */
 export type ShellActivator = {
     id: string;
-    lxapp: string;
-    native?: never;
-    onActivate?: never;
-    icon: string;
-    label?: string;
-    disabled?: boolean;
-} | {
-    id: string;
-    native: 'terminal';
-    lxapp?: never;
-    onActivate?: never;
-    icon: string;
-    label?: string;
-    disabled?: boolean;
-} | {
-    id: string;
-    lxapp?: never;
-    native?: never;
     icon: string;
     label: string;
     disabled?: boolean;
@@ -2046,16 +2028,15 @@ declare global {
   interface ShellActivatorsApi {
     /**
      * Atomically replaces the complete desktop activator declaration. Home lxapp
-     * only. Relative icons resolve from the home app bundle; lxapp/native entries
-     * persist across restarts, while action entries return after Logic registers
-     * their callbacks. `replace([])` is an explicit persistent empty declaration.
+     * only. Relative icons resolve from the home app bundle. Every entry is bound
+     * to its generation-scoped callback; `replace([])` explicitly clears chrome.
      */
     replace(items: ShellActivator[]): void;
     /** Updates presentation fields for one stable id. Home lxapp only. */
     update(id: string, patch: ShellActivatorUpdate): void;
     /** Removes one stable id from the declaration. Home lxapp only. */
     remove(id: string): void;
-    /** Persists an explicit empty declaration. Home lxapp only. */
+    /** Clears the current runtime declaration. Home lxapp only. */
     clear(): void;
   }
 }

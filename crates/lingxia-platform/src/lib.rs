@@ -133,11 +133,11 @@ pub use windows::{
     set_windows_layout_plan_handler, set_windows_managed_aside_event_handler,
     set_windows_managed_surface_toggle_handler, set_windows_managed_surface_visible_handler,
     set_windows_open_url_handler, set_windows_page_visibility_handler,
-    set_windows_pull_to_refresh_handler, set_windows_shell_native_handlers,
-    set_windows_shell_pins_handler, set_windows_surface_closed_handler,
-    set_windows_surface_dispose_handler, set_windows_tray_click_intercept_handler,
-    set_windows_tray_menu_handler, set_windows_ui_update_async_handler,
-    set_windows_ui_update_handler, set_windows_url_surface_handler, sync_windows_ui,
+    set_windows_pull_to_refresh_handler, set_windows_shell_pins_handler,
+    set_windows_surface_closed_handler, set_windows_surface_dispose_handler,
+    set_windows_tray_click_intercept_handler, set_windows_tray_menu_handler,
+    set_windows_ui_update_async_handler, set_windows_ui_update_handler,
+    set_windows_url_surface_handler, sync_windows_ui,
 };
 
 #[cfg(not(any(

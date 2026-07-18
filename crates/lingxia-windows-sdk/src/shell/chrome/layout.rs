@@ -129,7 +129,6 @@ pub struct WindowsShellPanelActivatorLayout {
     pub id: String,
     pub label: String,
     pub icon_path: String,
-    pub active: bool,
     pub disabled: bool,
 }
 

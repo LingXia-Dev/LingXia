@@ -282,7 +282,7 @@ Each entry starts with its **content key** — exactly one of `lxapp` / `url` / 
 
 Icons (`tray.icon`) are host-root-relative SVG source paths — see [Icon Paths](#icon-paths).
 
-There is **no `sidebar:` entry field**: persistent sidebar entries are declared at runtime through the shell activator API, never in YAML — declarative and imperative entry systems don't coexist.
+There is **no `sidebar:` entry field**: app-owned sidebar activators are declared at runtime through `lx.shell.activators`, never in YAML. Each entry provides `onActivate`; the callback explicitly opens the desired surface or performs the action.
 
 ### Rules (enforced at build)
 
@@ -335,7 +335,7 @@ Asides group into per-engine slots (lxapp / browser / native), each with its own
 Two sidebar regions have fixed ownership:
 
 - **Pins are the user's** — quick entries for lxapps and websites (eight at most), added and removed through context menus. There is no app API to write them.
-- **Activators are the app's** — persistent entries the home lxapp declares at runtime via `lx.shell.activators` (see the `@lingxia/types` declarations). They activate an lxapp or native capability, or invoke app logic, and need no matching `surfaces:` entry.
+- **Activators are the app's** — runtime entries the home lxapp declares via `lx.shell.activators` (see the `@lingxia/types` declarations). The shell invokes `onActivate` and performs no built-in navigation; callbacks can call `lx.openSurface(...)` or run any other app logic. Redeclare them each Logic launch.
 
 ### Menu-bar / system-tray apps
 
@@ -366,7 +366,7 @@ Pass `null` / empty to clear a badge or title. The tray *shape* is declared in `
 
 ### Terminal surface
 
-The built-in terminal is a native aside (`native: terminal`, `edge: top | bottom`, default `bottom`) gated by `capabilities.terminal`. Its sidebar entry, like every persistent entry, is declared at runtime via the shell activator API.
+The built-in terminal is a native aside (`native: terminal`, `edge: top | bottom`, default `bottom`) gated by `capabilities.terminal`. To expose it as an activator, declare a runtime entry whose `onActivate` calls `lx.openSurface({ native: 'terminal' })`.
 
 It shares a single cross-platform Rust engine that owns sessions, PTY transport, terminal semantics, and the snapshot/input protocol; platform SDKs only render snapshots into a native view and capture input. Backend selection is owned by the runtime — there is no backend selector in `lingxia.yaml`.
 
