@@ -78,7 +78,7 @@ pub(super) fn aside_panel_header_hit(
             json!({ "panel_id": panel.panel_id.clone() }),
         );
     }
-    for (tab, rect) in tabs.iter().zip(aside_panel_tab_rects(panel, tabs.len())) {
+    for (tab, rect) in tabs.iter().zip(aside_panel_tab_rects(panel, tabs)) {
         if let Some(close) = aside_panel_tab_close_rect(rect)
             && rect_contains(&close, point)
         {
@@ -170,8 +170,10 @@ pub(super) fn aside_panel_nav_button_rects(
 }
 
 const ASIDE_PANEL_TAB_MAX_WIDTH: i32 = 190;
+const ASIDE_PANEL_TAB_MIN_WIDTH: i32 = 44;
+/// Horizontal air around a tab title inside its shape.
+const ASIDE_PANEL_TAB_TEXT_PADDING: i32 = 14;
 const ASIDE_PANEL_TAB_GAP: i32 = 4;
-const ASIDE_PANEL_TAB_CLOSE_WIDTH: i32 = 20;
 /// Air above the tabs; they run flush to the toolbar's bottom edge so the
 /// active tab merges into the content below (Chrome style).
 const ASIDE_PANEL_TAB_TOP_INSET: i32 = 6;
@@ -179,9 +181,13 @@ const ASIDE_PANEL_TAB_TOP_INSET: i32 = 6;
 const ASIDE_PANEL_TAB_RADIUS: i32 = 8;
 
 /// Tab rects of the aside panel's strip, index-aligned with the registered
-/// tabs: equal widths (capped) between the nav cluster and close-all.
-pub(super) fn aside_panel_tab_rects(panel: &WindowsChromePanel, count: usize) -> Vec<RECT> {
-    if count == 0 {
+/// tabs: each fitted to its title (capped), shrunk proportionally when the
+/// strip runs out of room between the nav cluster and close-all.
+pub(super) fn aside_panel_tab_rects(
+    panel: &WindowsChromePanel,
+    tabs: &[WindowsAsidePanelTab],
+) -> Vec<RECT> {
+    if tabs.is_empty() {
         return Vec::new();
     }
     let header = browser_panel_header_rect(panel);
@@ -191,12 +197,24 @@ pub(super) fn aside_panel_tab_rects(panel: &WindowsChromePanel, count: usize) ->
         header.left + BROWSER_PANEL_HEADER_PADDING
     };
     let right_edge = browser_panel_close_rect(panel).left - BROWSER_PANEL_HEADER_PADDING;
-    let count_i32 = count as i32;
-    let avail = (right_edge - left_edge - (count_i32 - 1) * ASIDE_PANEL_TAB_GAP).max(0);
-    let width = (avail / count_i32).clamp(24, ASIDE_PANEL_TAB_MAX_WIDTH);
-    let mut out = Vec::with_capacity(count);
+    let count = tabs.len() as i32;
+    let avail = (right_edge - left_edge - (count - 1) * ASIDE_PANEL_TAB_GAP).max(0);
+    let mut widths = tabs
+        .iter()
+        .map(|tab| {
+            (measure_chrome_text_width(&tab.title) + 2 * ASIDE_PANEL_TAB_TEXT_PADDING)
+                .clamp(ASIDE_PANEL_TAB_MIN_WIDTH, ASIDE_PANEL_TAB_MAX_WIDTH)
+        })
+        .collect::<Vec<_>>();
+    let total: i32 = widths.iter().sum();
+    if total > avail && total > 0 {
+        for width in &mut widths {
+            *width = (*width * avail / total).max(24);
+        }
+    }
+    let mut out = Vec::with_capacity(tabs.len());
     let mut left = left_edge;
-    for _ in 0..count {
+    for width in widths {
         out.push(normalize_rect(RECT {
             left,
             top: header.top + ASIDE_PANEL_TAB_TOP_INSET,
@@ -211,14 +229,10 @@ pub(super) fn aside_panel_tab_rects(panel: &WindowsChromePanel, count: usize) ->
 /// Close-glyph rect at a tab's trailing edge; dropped on tabs too narrow to
 /// keep a readable title next to it.
 pub(super) fn aside_panel_tab_close_rect(tab: RECT) -> Option<RECT> {
-    (rect_width(&tab) >= 3 * ASIDE_PANEL_TAB_CLOSE_WIDTH).then(|| {
-        normalize_rect(RECT {
-            left: tab.right - ASIDE_PANEL_TAB_CLOSE_WIDTH,
-            top: tab.top,
-            right: tab.right,
-            bottom: tab.bottom,
-        })
-    })
+    // The pill is an address/title chip, not a closable tab — the header's
+    // close-all button is the aside's only close affordance.
+    let _ = tab;
+    None
 }
 
 /// The URL capsule rect inside a browser aside's header (between the nav
@@ -384,15 +398,12 @@ pub(super) fn draw_aside_panel_header(
     cursor: Option<(i32, i32)>,
 ) {
     let pal = shell_palette();
-    let header = browser_panel_header_rect(panel);
 
-    // Chrome-style strip: a tinted bar the active tab lifts out of as a
-    // round-topped card merging into the content below. It is first-layer
-    // material, so fill its whole slot; rounding this outer fill exposes the
-    // white panel card through both top corners. The wash must sit a step
-    // below the shell background — matching it flattens the strip into the
-    // gutter and the active tab loses its lift.
-    fill_rect(hdc, header, pal.group_active_background);
+    // Chrome-style strip: the tinted cap is painted by the card itself (see
+    // `draw_content_cards` — cap and body split at the header seam so each
+    // arc is rasterized once). Here only the controls and tabs go on top;
+    // the active tab lifts out as a round-topped shape in the card's fill,
+    // merging seamlessly into the web content below.
 
     if panel.panel_id == lingxia_windows_contract::ASIDE_BROWSER_PANEL_ID {
         let (can_back, can_forward) = crate::shell::runtime::aside_panel_nav_state();
@@ -414,7 +425,7 @@ pub(super) fn draw_aside_panel_header(
         }
     }
 
-    let rects = aside_panel_tab_rects(panel, tabs.len());
+    let rects = aside_panel_tab_rects(panel, tabs);
     for (index, (tab, rect)) in tabs.iter().zip(rects.iter().copied()).enumerate() {
         if tab.active {
             // Rounded top, flush bottom: the tab joins the web content.

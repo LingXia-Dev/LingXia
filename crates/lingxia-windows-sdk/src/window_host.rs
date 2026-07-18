@@ -1796,12 +1796,6 @@ fn surface_clip_style(hwnd: HWND, webtag_key: &str, rect: RECT) -> ([i32; 4], u3
         return ([0; 4], 0);
     }
     let backdrop = 0xff00_0000 | crate::shell::shell_window_background();
-    // Floating panels are free-standing cards outside the workspace union.
-    if let Some(panel_id) = panel_id_for_webtag(webtag_key)
-        && !panel_is_docked(&panel_id)
-    {
-        return ([crate::shell::shell_panel_radius(); 4], backdrop);
-    }
     let mut client = RECT::default();
     if unsafe { WindowsAndMessaging::GetClientRect(hwnd, &mut client) }.is_err() {
         return ([0; 4], 0);
@@ -1809,6 +1803,38 @@ fn surface_clip_style(hwnd: HWND, webtag_key: &str, rect: RECT) -> ([i32; 4], u3
     let Some(active_key) = active_webtag_key_for_window(hwnd) else {
         return ([0; 4], 0);
     };
+    // Main and each attached panel are individual cards separated by
+    // gutters — the macOS aside look. A surface rounds against its own card
+    // rect (main region including its nav bar, or the panel including its
+    // header), so the band above it owns the top arcs and the webview the
+    // bottom ones.
+    if let Some(attached) = attached_layout_for_window(hwnd, &active_key, client) {
+        let card = if webtag_key == active_key {
+            Some(attached.main_region)
+        } else {
+            attached
+                .panels
+                .iter()
+                .find(|panel| panel.webtag_key == webtag_key)
+                .map(|panel| panel.rect)
+        };
+        if let Some(card) = card {
+            return (
+                crate::shell::workspace_corner_radii(
+                    rect,
+                    card,
+                    crate::shell::shell_content_radius(),
+                ),
+                backdrop,
+            );
+        }
+    }
+    // Panels outside the attached layout are free-standing cards.
+    if let Some(panel_id) = panel_id_for_webtag(webtag_key)
+        && !panel_is_docked(&panel_id)
+    {
+        return ([crate::shell::shell_panel_radius(); 4], backdrop);
+    }
     let Some(silhouette) =
         crate::shell::workspace_silhouette_rect(client, &current_window_layout(&active_key))
     else {

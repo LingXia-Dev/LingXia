@@ -282,11 +282,12 @@ fn wedge_pixels(corner: usize, radius: i32, color: u32) -> Vec<u32> {
             let dx = x as f32 + 0.5 - center_x as f32;
             let dy = y as f32 + 0.5 - (center_y as f32 + 2.0);
             let shadow_distance = (dx * dx + dy * dy).sqrt();
+            // Ring alphas must match the shell's CARD_SHADOW_RING_ALPHA.
+            let ring_alphas = [5.0f32, 4.0, 3.0, 3.0, 2.0, 2.0, 1.0, 1.0];
             let mut keep = 1.0f32;
-            for spread in 1..=8 {
-                if shadow_distance <= (radius + spread) as f32 {
-                    let ring_alpha = if spread <= 2 { 10.0 } else { 5.0 };
-                    keep *= 1.0 - ring_alpha / 255.0;
+            for spread in 1usize..=8 {
+                if shadow_distance <= (radius as usize + spread) as f32 {
+                    keep *= 1.0 - ring_alphas[spread - 1] / 255.0;
                 }
             }
             let coverage = ((1.0 - inside) * alpha as f32) as u32;

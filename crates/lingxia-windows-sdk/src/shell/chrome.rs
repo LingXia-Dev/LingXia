@@ -510,7 +510,7 @@ fn chrome_hover_rect(
                 return Some(close_all);
             }
             let tabs = panel_aside_tabs(panel);
-            for rect in aside_panel_tab_rects(panel, tabs.len()) {
+            for rect in aside_panel_tab_rects(panel, &tabs) {
                 if let Some(close) = aside_panel_tab_close_rect(rect)
                     && rect_contains(&close, point)
                 {
@@ -1277,7 +1277,7 @@ fn compute_attached_layout(
                     right: (main_region.left + width).min(main_region.right),
                     bottom: main_region.bottom,
                 };
-                let handle_width = SHELL_PANEL_GAP.max(ATTACHED_PANEL_HANDLE_SIZE);
+                let handle_width = ATTACHED_PANEL_HANDLE_SIZE;
                 let handle = normalize_rect(RECT {
                     left: rect.right,
                     top: rect.top,
@@ -1295,7 +1295,7 @@ fn compute_attached_layout(
                     right: main_region.right,
                     bottom: main_region.bottom,
                 };
-                let handle_width = SHELL_PANEL_GAP.max(ATTACHED_PANEL_HANDLE_SIZE);
+                let handle_width = ATTACHED_PANEL_HANDLE_SIZE;
                 let handle = normalize_rect(RECT {
                     left: (rect.left - handle_width).max(main_region.left),
                     top: rect.top,
@@ -1317,7 +1317,7 @@ fn compute_attached_layout(
                     right: main_region.right,
                     bottom: (main_region.top + height).min(main_region.bottom),
                 };
-                let handle_height = SHELL_PANEL_GAP.max(ATTACHED_PANEL_HANDLE_SIZE);
+                let handle_height = ATTACHED_PANEL_HANDLE_SIZE;
                 let handle = normalize_rect(RECT {
                     left: rect.left,
                     top: rect.bottom,
@@ -1344,7 +1344,7 @@ fn compute_attached_layout(
                     right: main_region.right,
                     bottom,
                 };
-                let handle_height = SHELL_PANEL_GAP.max(ATTACHED_PANEL_HANDLE_SIZE);
+                let handle_height = ATTACHED_PANEL_HANDLE_SIZE;
                 let handle = normalize_rect(RECT {
                     left: rect.left,
                     top: (rect.top - handle_height).max(main_region.top),
@@ -1498,8 +1498,15 @@ pub(super) fn draw_window_chrome(
         && let (Some(navbar), Some(navbar_rect)) = (&layout.navigation_bar, rects.navigation_bar)
     {
         let buttons_left = navbar_buttons_left(navbar_rect);
+        // The band rounds against its own card: the main region when asides
+        // split the workspace into individual cards.
+        let silhouette = state
+            .attached
+            .as_ref()
+            .map(|attached| attached.main_region)
+            .unwrap_or(rects.workspace);
         let corner_radii = if desktop_card {
-            workspace_corner_radii(navbar_rect, rects.workspace, SHELL_CONTENT_RADIUS)
+            workspace_corner_radii(navbar_rect, silhouette, SHELL_CONTENT_RADIUS)
         } else {
             [0; 4]
         };
@@ -1954,31 +1961,57 @@ pub(super) fn draw_content_cards(
     desktop_card: bool,
 ) {
     if let Some(attached) = &state.attached {
-        // Main and asides share one outer shadow; their resize gutters cut
-        // through that wrapper to the first shell layer below.
-        draw_content_card(hdc, rects.panel, desktop_card);
-        // Each resize gutter exposes the first shell layer, matching the top
-        // address-bar band. The centered hairline keeps the split legible on
-        // every edge and between multiple asides.
+        // Main and each docked aside are individual cards floating on the
+        // shell base — the macOS aside look. The resize gutters between them
+        // show the base itself; side gutters need no hairline (the gap and
+        // the card shadows carry the split), horizontal terminal splits keep
+        // theirs since native panels stay flat.
+        draw_content_card(hdc, attached.main_region, desktop_card);
+        for panel in &attached.panels {
+            if panel.host_content.is_some() {
+                continue;
+            }
+            // A tab-strip aside paints its tinted cap as part of the card
+            // itself — cap and body split at the header seam, each owning
+            // its arcs, so the corner is rasterized exactly once (a tinted
+            // overlay on a white card leaves a pale fringe on the arc).
+            let header = browser_panel_header_rect(panel);
+            let capped = desktop_card
+                && browser_panel_header_visible(panel)
+                && !panel_aside_tabs(panel).is_empty()
+                && rect_height(&header) > 0
+                && header.bottom < panel.rect.bottom;
+            if capped {
+                draw_content_card_shadow(hdc, panel.rect);
+                let pal = shell_palette();
+                fill_round_rect_aa_corners(
+                    hdc,
+                    header,
+                    [SHELL_CONTENT_RADIUS, SHELL_CONTENT_RADIUS, 0, 0],
+                    pal.group_active_background,
+                );
+                fill_round_rect_aa_corners(
+                    hdc,
+                    RECT {
+                        left: panel.rect.left,
+                        top: header.bottom,
+                        right: panel.rect.right,
+                        bottom: panel.rect.bottom,
+                    },
+                    [0, 0, SHELL_CONTENT_RADIUS, SHELL_CONTENT_RADIUS],
+                    pal.panel_background,
+                );
+            } else {
+                draw_content_card(hdc, panel.rect, desktop_card);
+            }
+        }
         let pal = shell_palette();
         for panel in &attached.panels {
             let Some(handle) = panel.resize_handle else {
                 continue;
             };
             fill_rect(hdc, handle, pal.window_background);
-            if rect_width(&handle) <= rect_height(&handle) {
-                let mid = handle.left + rect_width(&handle) / 2;
-                fill_rect(
-                    hdc,
-                    RECT {
-                        left: mid,
-                        top: handle.top,
-                        right: mid + 1,
-                        bottom: handle.bottom,
-                    },
-                    pal.divider,
-                );
-            } else {
+            if rect_width(&handle) > rect_height(&handle) {
                 let mid = handle.top + rect_height(&handle) / 2;
                 fill_rect(
                     hdc,
@@ -2016,6 +2049,31 @@ pub(super) fn draw_content_cards(
     draw_content_card(hdc, rects.panel, desktop_card);
 }
 
+/// Per-ring shadow alphas for card shadows, spread 1..=8. Decaying values
+/// keep the corner arcs clean (equal-strength rings band up visibly there).
+/// Must match the wedge shading in `lingxia-webview`'s composition wedges.
+pub(super) const CARD_SHADOW_RING_ALPHA: [u32; 8] = [5, 4, 3, 3, 2, 2, 1, 1];
+
+pub(super) fn draw_content_card_shadow(hdc: HDC, rect: RECT) {
+    // macOS uses an 8pt, 15%-opacity shadow on one wrapper around the whole
+    // workspace. Layered translucent expansions approximate that blur in
+    // GDI+ without creating a solid band around the card.
+    for spread in (1..=8).rev() {
+        let alpha = CARD_SHADOW_RING_ALPHA[spread as usize - 1];
+        fill_round_rect_overlay(
+            hdc,
+            RECT {
+                left: rect.left - spread,
+                top: rect.top - spread + 2,
+                right: rect.right + spread,
+                bottom: rect.bottom + spread + 2,
+            },
+            SHELL_CONTENT_RADIUS + spread,
+            alpha << 24,
+        );
+    }
+}
+
 pub(super) fn draw_content_card(hdc: HDC, rect: RECT, desktop_card: bool) {
     if rect_width(&rect) > 0 && rect_height(&rect) > 0 {
         // Mobile/framed form: edge-to-edge backdrop, no card silhouette.
@@ -2023,23 +2081,7 @@ pub(super) fn draw_content_card(hdc: HDC, rect: RECT, desktop_card: bool) {
             fill_rect(hdc, rect, shell_palette().panel_background);
             return;
         }
-        // macOS uses an 8pt, 15%-opacity shadow on one wrapper around the whole
-        // workspace. Layered translucent expansions approximate that blur in
-        // GDI+ without creating a solid band around the card.
-        for spread in (1..=8).rev() {
-            let alpha = if spread <= 2 { 10 } else { 5 };
-            fill_round_rect_overlay(
-                hdc,
-                RECT {
-                    left: rect.left - spread,
-                    top: rect.top - spread + 2,
-                    right: rect.right + spread,
-                    bottom: rect.bottom + spread + 2,
-                },
-                SHELL_CONTENT_RADIUS + spread,
-                (alpha as u32) << 24,
-            );
-        }
+        draw_content_card_shadow(hdc, rect);
         fill_round_rect_aa(
             hdc,
             rect,
@@ -2150,7 +2192,7 @@ pub(crate) fn workspace_silhouette_rect(
 #[cfg(test)]
 mod scroll_tests {
     use super::{
-        SHELL_CONTENT_INSET, SHELL_PANEL_GAP, SHELL_TOP_BAR_HEIGHT, SIDEBAR_ICON_SIZE,
+        ATTACHED_PANEL_HANDLE_SIZE, SHELL_CONTENT_INSET, SHELL_TOP_BAR_HEIGHT, SIDEBAR_ICON_SIZE,
         SIDEBAR_ITEM_HEIGHT, WindowsChromePanelLayoutInput, WindowsPanelPosition,
         WindowsShellAuxiliaryItemLayout, WindowsShellNavigationBarLayout,
         WindowsShellTabBarItemLayout, WindowsShellTabBarLayout, WindowsShellTabBarPosition,
@@ -2280,7 +2322,7 @@ mod scroll_tests {
         assert_eq!(aside.rect.bottom, client.bottom - SHELL_CONTENT_INSET);
         assert_eq!(
             aside.rect.left - attached.main_region.right,
-            SHELL_PANEL_GAP
+            ATTACHED_PANEL_HANDLE_SIZE
         );
         let handle = aside.resize_handle.unwrap();
         assert_eq!(handle.left, attached.main_region.right);
