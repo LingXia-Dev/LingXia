@@ -32,8 +32,8 @@ use windows::Win32::Graphics::Dwm::{
 };
 use windows::Win32::Graphics::Gdi::{
     AC_SRC_ALPHA, AC_SRC_OVER, BI_RGB, BITMAPINFO, BITMAPINFOHEADER, BLENDFUNCTION, ClientToScreen,
-    CreateCompatibleDC, CreateDIBSection, CreateRoundRectRgn, DIB_RGB_COLORS, DeleteDC,
-    DeleteObject, GetDC, HDC, HGDIOBJ, ReleaseDC, SelectObject, SetWindowRgn,
+    CombineRgn, CreateCompatibleDC, CreateDIBSection, CreateRectRgn, DIB_RGB_COLORS, DeleteDC,
+    DeleteObject, GetDC, HDC, HGDIOBJ, RGN_OR, ReleaseDC, SelectObject, SetWindowRgn,
 };
 use windows::Win32::System::LibraryLoader;
 use windows::Win32::UI::WindowsAndMessaging::{self, WNDCLASSW, WNDPROC};
@@ -1197,15 +1197,33 @@ fn apply_content_screen_region(content: HWND, spec: &WindowsDeviceFrame) {
         }
         return;
     }
+    // Build the corner spans from the same circular-arc coverage the frame
+    // outline, status-bar clip and webview corner rings rasterize with
+    // (keep a pixel while its center's coverage is >= 0.5, i.e. distance to
+    // the corner center <= radius). `CreateRoundRectRgn`'s elliptical
+    // corners diverge from that arc by up to a pixel, exposing jagged
+    // content specks between the inner and outer hairlines.
+    let (width, height) = (spec.screen_width, spec.screen_height);
+    let radius_f = radius as f32;
     unsafe {
-        let region = CreateRoundRectRgn(
-            0,
-            0,
-            spec.screen_width + 1,
-            spec.screen_height + 1,
-            radius * 2,
-            radius * 2,
-        );
+        let region = CreateRectRgn(0, radius, width, height - radius);
+        for y in (0..radius).chain(height - radius..height) {
+            let py = y as f32 + 0.5;
+            let dy = if y < radius {
+                radius_f - py
+            } else {
+                py - (height as f32 - radius_f)
+            };
+            let dx = (radius_f * radius_f - dy * dy).max(0.0).sqrt();
+            let left = (radius_f - dx - 0.5).ceil().max(0.0) as i32;
+            let right = width - left;
+            if right <= left {
+                continue;
+            }
+            let row = CreateRectRgn(left, y, right, y + 1);
+            CombineRgn(Some(region), Some(region), Some(row), RGN_OR);
+            let _ = DeleteObject(HGDIOBJ(row.0));
+        }
         let applied = SetWindowRgn(content, Some(region), true);
         if applied == 0 {
             let _ = DeleteObject(HGDIOBJ(region.0));

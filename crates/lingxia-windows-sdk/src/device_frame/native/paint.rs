@@ -372,10 +372,14 @@ fn frame_pixels(spec: &WindowsDeviceFrame, layout: &FrameLayout) -> Vec<u32> {
             let mut blue = toolbar_blue as f32 * toolbar_alpha
                 + bezel_blue as f32 * bezel_coverage * (1.0 - toolbar_alpha);
 
-            // Outline hairline: an anti-aliased ~1.5px band centered just
-            // outside the silhouette edge, composited over body + shadow.
+            // Outline hairline: a solid ~1px band just outside the
+            // silhouette edge with anti-aliased flanks (trapezoid profile —
+            // a triangle profile reads fuzzy), composited over body +
+            // shadow. The content region covers the inner flank.
             if frameless {
-                let line = (1.0 - (bezel_d - 0.25).abs() / 0.75).clamp(0.0, 1.0) * outline_alpha;
+                let line = ((bezel_d + 0.5) * 2.0).clamp(0.0, 1.0)
+                    * ((1.0 - bezel_d) * 2.0).clamp(0.0, 1.0)
+                    * outline_alpha;
                 if line > 0.0 {
                     red = outline_red * line + red * (1.0 - line);
                     green = outline_green * line + green * (1.0 - line);

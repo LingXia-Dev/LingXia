@@ -1469,6 +1469,26 @@ pub(super) fn draw_window_chrome(
     let desktop_card = layout.top_inset.max(0) == 0 && !layout.suppress_window_controls;
 
     fill_rect(hdc, client, shell_palette().window_background);
+    // Under a fused status strip the device frame's status-bar overlay fades
+    // out with anti-aliased corners; paint the strip beneath it in the same
+    // bar color so its translucent rim doesn't blend toward white and the
+    // screen region's cut edge stays tone-on-tone (no jagged specks).
+    if !desktop_card
+        && layout.top_inset > 0
+        && !address_bar_visible(layout)
+        && let Some(navbar) = &layout.navigation_bar
+    {
+        fill_rect(
+            hdc,
+            RECT {
+                left: client.left,
+                top: client.top,
+                right: client.right,
+                bottom: (client.top + layout.top_inset).min(client.bottom),
+            },
+            navbar.background_color,
+        );
+    }
     draw_content_cards(hdc, state, &rects, desktop_card);
     draw_shell_top_bar(hdc, &rects);
 
