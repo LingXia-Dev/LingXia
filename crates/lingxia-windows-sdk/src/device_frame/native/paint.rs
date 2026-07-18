@@ -320,6 +320,18 @@ fn frame_pixels(spec: &WindowsDeviceFrame, layout: &FrameLayout) -> Vec<u32> {
     // *behind* the content, so carving the notch here would never be
     // visible — keep it out of the frame paint.
 
+    // A frameless screen (bezel 0) has no body ring; a hairline outline
+    // hugging the silhouette takes its place. Painted mostly OUTSIDE the
+    // edge: the content window's region cut covers the inner half, so the
+    // visible ~1px line is this bitmap's anti-aliased pixels — smooth along
+    // the full perimeter, status/nav strip included (surfaces only patch
+    // their own corner arcs on the inside).
+    let frameless = spec.bezel_width <= 0;
+    let outline_alpha = ((FRAMELESS_OUTLINE_COLOR >> 24) & 0xff) as f32 / 255.0;
+    let outline_red = ((FRAMELESS_OUTLINE_COLOR >> 16) & 0xff) as f32;
+    let outline_green = ((FRAMELESS_OUTLINE_COLOR >> 8) & 0xff) as f32;
+    let outline_blue = (FRAMELESS_OUTLINE_COLOR & 0xff) as f32;
+
     let shadow_reach = FRAME_SHADOW_MARGIN as f32;
     let mut pixels = Vec::with_capacity((layout.width * layout.height) as usize);
     for y in 0..layout.height {
@@ -359,6 +371,22 @@ fn frame_pixels(spec: &WindowsDeviceFrame, layout: &FrameLayout) -> Vec<u32> {
                 + bezel_green as f32 * bezel_coverage * (1.0 - toolbar_alpha);
             let mut blue = toolbar_blue as f32 * toolbar_alpha
                 + bezel_blue as f32 * bezel_coverage * (1.0 - toolbar_alpha);
+
+            // Outline hairline: a solid ~1px band just outside the
+            // silhouette edge with anti-aliased flanks (trapezoid profile —
+            // a triangle profile reads fuzzy), composited over body +
+            // shadow. The content region covers the inner flank.
+            if frameless {
+                let line = ((bezel_d + 0.5) * 2.0).clamp(0.0, 1.0)
+                    * ((1.0 - bezel_d) * 2.0).clamp(0.0, 1.0)
+                    * outline_alpha;
+                if line > 0.0 {
+                    red = outline_red * line + red * (1.0 - line);
+                    green = outline_green * line + green * (1.0 - line);
+                    blue = outline_blue * line + blue * (1.0 - line);
+                    alpha = line + alpha * (1.0 - line);
+                }
+            }
 
             // Dots paint opaquely over the toolbar. A device that keeps the
             // shell's standard caption buttons (e.g. a simulated desktop) leaves

@@ -1710,6 +1710,14 @@ fn runtime_activator_items() -> Option<Vec<ResolvedShellActivator>> {
 }
 
 fn build_panel_activators(app: &LxApp) -> Vec<WindowsShellPanelActivatorLayout> {
+    // Activators are desktop sidebar affordances. A mobile presentation —
+    // the device-framed runner or a phone-style bottom tab bar — never
+    // shows them (matching the mobile platforms).
+    if owner_window_handle(&app.appid).is_some_and(window_has_device_frame)
+        || tabbar_position(&app.appid) == WindowsShellTabBarPosition::Bottom
+    {
+        return Vec::new();
+    }
     let asset_dir = app.runtime.asset_dir();
     runtime_activator_items()
         .unwrap_or_default()

@@ -33,9 +33,10 @@ pub(crate) struct DcompTree {
     root: IDCompositionVisual2,
     webview_visual: IDCompositionVisual2,
     clip: IDCompositionRectangleClip,
-    /// Wedge visuals for corners with a nonzero radius, `[tl, tr, br, bl]`.
+    /// Wedge/ring visuals for corners with a nonzero radius, `[tl, tr, br,
+    /// bl]`.
     wedges: [Option<IDCompositionVisual2>; 4],
-    /// The `(radii, color)` the current wedge set was rendered for.
+    /// The `(radii, color)` the current visuals were built for.
     wedge_style: ([i32; 4], u32),
 }
 
@@ -85,15 +86,23 @@ impl DcompTree {
         &self.webview_visual
     }
 
-    /// Applies the bounds clip and the corner wedges for
-    /// `(0, 0, width, height)`, then commits once. Rounding comes solely
-    /// from the wedges — a rounded clip would also clip the wedge visuals
-    /// (their useful pixels live exactly outside the arc), and its cut edge
-    /// is aliased anyway; the webview keeps a square bounds clip and the
-    /// wedges blend the arc over live content. `corner_color` is the 0xAARGB
-    /// backdrop the wedges paint outside the arc; alpha 0 disables wedges
-    /// (a separate mask owns the corners, e.g. the device frame's bezel
-    /// ring).
+    /// Applies the bounds clip and the corner visuals for
+    /// `(0, 0, width, height)`, then commits once. `corner_color` is
+    /// `0xAARGB` and its alpha selects the corner treatment:
+    ///
+    /// - `0xFF` — **backdrop wedges**: the webview keeps a square bounds
+    ///   clip and each owned corner is covered by an opaque wedge blending
+    ///   the anti-aliased arc over live content (a rounded clip would also
+    ///   clip the wedges — their useful pixels live exactly outside the arc
+    ///   — and its cut edge is aliased anyway). Used where the corner sits
+    ///   on a known solid backdrop (shell gutter, device bezel).
+    /// - `0x01..=0xFE` — **outline**: the webview clip itself rounds at
+    ///   `radii` (aliased) and hairline corner arc rings in the color at
+    ///   that alpha cover the aliased cut. The corner exterior stays fully
+    ///   transparent, for frameless surfaces over arbitrary backdrops (the
+    ///   frameless runner screen — the device frame paints the straight
+    ///   perimeter hairline, surfaces only patch their own arcs).
+    /// - `0x00` — square clip, no visuals.
     pub(crate) fn apply_geometry(
         &mut self,
         width: i32,
@@ -101,16 +110,31 @@ impl DcompTree {
         radii: [i32; 4],
         corner_color: u32,
     ) -> StdResult<()> {
+        let alpha = corner_color >> 24;
+        let outline = alpha > 0 && alpha < 0xff;
+        let clip_radii = if outline {
+            radii.map(|radius| radius.max(0) as f32)
+        } else {
+            [0.0; 4]
+        };
         unsafe {
             self.clip
                 .SetLeft2(0.0)
                 .and_then(|_| self.clip.SetTop2(0.0))
                 .and_then(|_| self.clip.SetRight2(width.max(0) as f32))
                 .and_then(|_| self.clip.SetBottom2(height.max(0) as f32))
+                .and_then(|_| self.clip.SetTopLeftRadiusX2(clip_radii[0]))
+                .and_then(|_| self.clip.SetTopLeftRadiusY2(clip_radii[0]))
+                .and_then(|_| self.clip.SetTopRightRadiusX2(clip_radii[1]))
+                .and_then(|_| self.clip.SetTopRightRadiusY2(clip_radii[1]))
+                .and_then(|_| self.clip.SetBottomRightRadiusX2(clip_radii[2]))
+                .and_then(|_| self.clip.SetBottomRightRadiusY2(clip_radii[2]))
+                .and_then(|_| self.clip.SetBottomLeftRadiusX2(clip_radii[3]))
+                .and_then(|_| self.clip.SetBottomLeftRadiusY2(clip_radii[3]))
                 .and_then(|_| self.webview_visual.SetClip(&self.clip))
                 .map_err(|err| dcomp_error("clip update", err))?;
         }
-        self.update_wedges(width, height, radii, corner_color)?;
+        self.update_corner_visuals(width, height, radii, corner_color, outline)?;
         unsafe {
             self.device
                 .Commit()
@@ -118,14 +142,15 @@ impl DcompTree {
         }
     }
 
-    /// Rebuilds wedge visuals when the style changed, then repositions them
-    /// at the current corners.
-    fn update_wedges(
+    /// Rebuilds the corner visuals when the style changed, then repositions
+    /// them for the current dimensions.
+    fn update_corner_visuals(
         &mut self,
         width: i32,
         height: i32,
         radii: [i32; 4],
         corner_color: u32,
+        outline: bool,
     ) -> StdResult<()> {
         let disabled = corner_color >> 24 == 0;
         let style = (radii, corner_color);
@@ -140,7 +165,13 @@ impl DcompTree {
                 if disabled || radius <= 0 {
                     continue;
                 }
-                self.wedges[corner] = Some(self.create_wedge(corner, radius, corner_color)?);
+                let size = radius;
+                let pixels = if outline {
+                    ring_pixels(corner, radius, corner_color)
+                } else {
+                    wedge_pixels(corner, radius, corner_color)
+                };
+                self.wedges[corner] = Some(self.create_pixel_visual(size, size, &pixels)?);
             }
         }
         for (corner, slot) in self.wedges.iter().enumerate() {
@@ -162,21 +193,20 @@ impl DcompTree {
         Ok(())
     }
 
-    /// One radius×radius wedge visual above the webview visual: opaque
-    /// `color` outside the corner arc, transparent inside, AA on the arc.
-    fn create_wedge(
+    /// A visual above the webview visual showing the given premultiplied
+    /// BGRA pixels.
+    fn create_pixel_visual(
         &self,
-        corner: usize,
-        radius: i32,
-        color: u32,
+        width: i32,
+        height: i32,
+        pixels: &[u32],
     ) -> StdResult<IDCompositionVisual2> {
-        let pixels = wedge_pixels(corner, radius, color);
         unsafe {
             let surface = self
                 .device
                 .CreateSurface(
-                    radius as u32,
-                    radius as u32,
+                    width as u32,
+                    height as u32,
                     DXGI_FORMAT_B8G8R8A8_UNORM,
                     DXGI_ALPHA_MODE_PREMULTIPLIED,
                 )
@@ -192,12 +222,12 @@ impl DcompTree {
                     left: offset.x as u32,
                     top: offset.y as u32,
                     front: 0,
-                    right: (offset.x + radius) as u32,
-                    bottom: (offset.y + radius) as u32,
+                    right: (offset.x + width) as u32,
+                    bottom: (offset.y + height) as u32,
                     back: 1,
                 }),
                 pixels.as_ptr() as *const _,
-                (radius * 4) as u32,
+                (width * 4) as u32,
                 0,
             );
             surface
@@ -252,11 +282,12 @@ fn wedge_pixels(corner: usize, radius: i32, color: u32) -> Vec<u32> {
             let dx = x as f32 + 0.5 - center_x as f32;
             let dy = y as f32 + 0.5 - (center_y as f32 + 2.0);
             let shadow_distance = (dx * dx + dy * dy).sqrt();
+            // Ring alphas must match the shell's CARD_SHADOW_RING_ALPHA.
+            let ring_alphas = [5.0f32, 4.0, 3.0, 3.0, 2.0, 2.0, 1.0, 1.0];
             let mut keep = 1.0f32;
-            for spread in 1..=8 {
-                if shadow_distance <= (radius + spread) as f32 {
-                    let ring_alpha = if spread <= 2 { 10.0 } else { 5.0 };
-                    keep *= 1.0 - ring_alpha / 255.0;
+            for spread in 1usize..=8 {
+                if shadow_distance <= (radius as usize + spread) as f32 {
+                    keep *= 1.0 - ring_alphas[spread - 1] / 255.0;
                 }
             }
             let coverage = ((1.0 - inside) * alpha as f32) as u32;
@@ -267,6 +298,48 @@ fn wedge_pixels(corner: usize, radius: i32, color: u32) -> Vec<u32> {
                     | (premultiply(shaded(red)) << 16)
                     | (premultiply(shaded(green)) << 8)
                     | premultiply(shaded(blue)),
+            );
+        }
+    }
+    pixels
+}
+
+/// Premultiplied BGRA corner-ring bitmap for outline mode: a ~2px
+/// anti-aliased arc band hugging the inside of the clip radius,
+/// transparent on both sides. The band sits fully inside the radius so a
+/// host window region cutting at the same radius cannot clip it away; the
+/// dark hairline masks the cut's aliased content edge on any backdrop.
+fn ring_pixels(corner: usize, radius: i32, color: u32) -> Vec<u32> {
+    let (center_x, center_y) = match corner {
+        0 => (radius, radius),
+        1 => (0, radius),
+        2 => (0, 0),
+        _ => (radius, 0),
+    };
+    let alpha = (color >> 24) & 0xff;
+    let (red, green, blue) = ((color >> 16) & 0xff, (color >> 8) & 0xff, color & 0xff);
+    let (inner, outer) = (radius as f32 - 2.0, radius as f32);
+    let mut pixels = Vec::with_capacity((radius * radius) as usize);
+    for y in 0..radius {
+        for x in 0..radius {
+            let mut hits = 0u32;
+            for sub_y in 0..4 {
+                for sub_x in 0..4 {
+                    let dx = x as f32 + (sub_x as f32 + 0.5) / 4.0 - center_x as f32;
+                    let dy = y as f32 + (sub_y as f32 + 0.5) / 4.0 - center_y as f32;
+                    let distance = (dx * dx + dy * dy).sqrt();
+                    if distance >= inner && distance <= outer {
+                        hits += 1;
+                    }
+                }
+            }
+            let coverage = hits * alpha / 16;
+            let premultiply = |channel: u32| (channel * coverage + 127) / 255;
+            pixels.push(
+                (coverage << 24)
+                    | (premultiply(red) << 16)
+                    | (premultiply(green) << 8)
+                    | premultiply(blue),
             );
         }
     }

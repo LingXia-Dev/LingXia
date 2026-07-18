@@ -32,8 +32,8 @@ use windows::Win32::Graphics::Dwm::{
 };
 use windows::Win32::Graphics::Gdi::{
     AC_SRC_ALPHA, AC_SRC_OVER, BI_RGB, BITMAPINFO, BITMAPINFOHEADER, BLENDFUNCTION, ClientToScreen,
-    CreateCompatibleDC, CreateDIBSection, CreateRoundRectRgn, DIB_RGB_COLORS, DeleteDC,
-    DeleteObject, GetDC, HDC, HGDIOBJ, ReleaseDC, SelectObject, SetWindowRgn,
+    CombineRgn, CreateCompatibleDC, CreateDIBSection, CreateRectRgn, DIB_RGB_COLORS, DeleteDC,
+    DeleteObject, GetDC, HDC, HGDIOBJ, RGN_OR, ReleaseDC, SelectObject, SetWindowRgn,
 };
 use windows::Win32::System::LibraryLoader;
 use windows::Win32::UI::WindowsAndMessaging::{self, WNDCLASSW, WNDPROC};
@@ -117,6 +117,66 @@ const CLOCK_TIMER_INTERVAL_MS: u32 = 20_000;
 fn screen_corner_radius(spec: &WindowsDeviceFrame) -> i32 {
     spec.screen_corner_radius
         .clamp(0, spec.screen_width.min(spec.screen_height) / 2)
+}
+
+/// Fit factor shrinking the device assembly into the monitor work area,
+/// capped at 1.0 (small devices never scale up). The toolbar and shadow
+/// margins are fixed chrome, so only the bezel block scales.
+fn fit_scale_for(content: HWND, spec: &WindowsDeviceFrame) -> f64 {
+    let margin = FRAME_SHADOW_MARGIN;
+    let toolbar_block = if spec.toolbar.is_some() {
+        TOOLBAR_HEIGHT + TOOLBAR_GAP
+    } else {
+        0
+    };
+    let work = monitor_work_area(content);
+    let avail_width = (work.right - work.left - 2 * margin).max(1) as f64;
+    let avail_height = (work.bottom - work.top - toolbar_block - 2 * margin).max(1) as f64;
+    let bezel_width = (spec.screen_width + 2 * spec.bezel_width).max(1) as f64;
+    let bezel_height = (spec.screen_height + 2 * spec.bezel_width).max(1) as f64;
+    (avail_width / bezel_width)
+        .min(avail_height / bezel_height)
+        .min(1.0)
+}
+
+fn monitor_work_area(hwnd: HWND) -> RECT {
+    use windows::Win32::Graphics::Gdi::{
+        GetMonitorInfoW, MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromWindow,
+    };
+    let mut info = MONITORINFO {
+        cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+        ..Default::default()
+    };
+    unsafe {
+        let monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+        if GetMonitorInfoW(monitor, &mut info).as_bool() {
+            return info.rcWork;
+        }
+    }
+    RECT {
+        left: 0,
+        top: 0,
+        right: 1920,
+        bottom: 1040,
+    }
+}
+
+/// Uniformly scales every geometric spec field by `fit`.
+fn scale_spec(spec: &mut WindowsDeviceFrame, fit: f64) {
+    let scaled = |value: i32| ((value as f64) * fit).round() as i32;
+    spec.screen_width = scaled(spec.screen_width).max(1);
+    spec.screen_height = scaled(spec.screen_height).max(1);
+    spec.bezel_width = scaled(spec.bezel_width);
+    spec.outer_corner_radius = scaled(spec.outer_corner_radius);
+    spec.screen_corner_radius = scaled(spec.screen_corner_radius);
+    if let Some(cutout) = spec.cutout.as_mut() {
+        cutout.width = scaled(cutout.width).max(1);
+        cutout.height = scaled(cutout.height).max(1);
+        cutout.corner_radius = scaled(cutout.corner_radius);
+    }
+    if let Some(status_bar) = spec.status_bar.as_mut() {
+        status_bar.height = scaled(status_bar.height).max(1);
+    }
 }
 
 /// Outer radius shared by the frame bitmap and the corner-mask overlay.
@@ -258,6 +318,10 @@ struct DeviceFrameState {
     /// The top status-bar overlay (time + signal/battery), 0 when absent.
     status_bar: isize,
     spec: WindowsDeviceFrame,
+    /// Work-area fit factor applied to `spec` (1.0 = native size). The
+    /// webview mirrors it as its rasterization scale so pages keep the
+    /// simulated device's logical viewport.
+    fit_scale: f64,
     layout: FrameLayout,
     /// `GWL_STYLE` of the content window before the borderless restyle.
     saved_style: isize,
@@ -321,17 +385,29 @@ pub(super) fn window_has_frame(content: isize) -> bool {
     frame_state(content, |_| ()).is_some()
 }
 
-/// Screen-silhouette corner radius plus the bezel fill (`0xRRGGBB`) for a
-/// framed content window, `None` when unframed. The webview composition
-/// wedges round the simulated screen's corners in the bezel color instead
-/// of the shell workspace's silhouette while a frame is up.
+/// Hairline color for the frameless screen outline (`0xAARGB`; the partial
+/// alpha selects the composition layer's outline mode).
+const FRAMELESS_OUTLINE_COLOR: u32 = 0xE030_3030;
+
+/// Screen-silhouette corner radius plus the corner style (`0xAARGB`) for a
+/// framed content window, `None` when unframed. A bezeled device gets
+/// opaque bezel-colored wedges; a frameless one gets the outline ring that
+/// covers the window region's cut edge.
 pub(super) fn content_screen_clip_style(content: isize) -> Option<(i32, u32)> {
     frame_state(content, |state| {
-        (
-            screen_corner_radius(&state.spec),
-            state.spec.screen_corner_color,
-        )
+        let color = if state.spec.bezel_width > 0 {
+            0xff00_0000 | state.spec.screen_corner_color
+        } else {
+            FRAMELESS_OUTLINE_COLOR
+        };
+        (screen_corner_radius(&state.spec), color)
     })
+}
+
+/// Work-area fit factor of the content window's device frame, `None` when
+/// unframed.
+pub(super) fn content_fit_scale(content: isize) -> Option<f64> {
+    frame_state(content, |state| state.fit_scale)
 }
 
 /// True while `content`'s frame toolbar carries the close/minimize dots and
@@ -536,6 +612,15 @@ fn apply_device_frame_inner(content: HWND, mut spec: WindowsDeviceFrame, sync_ho
         log::warn!("ignoring device frame with empty screen: {spec:?}");
         return;
     }
+    // Fit the simulated device to the monitor work area (the macOS runner's
+    // fitScale): every geometric spec field scales together, so the frame,
+    // overlays, and corner visuals stay proportionate. The factor is kept on
+    // the frame state; the shell mirrors it into the webview's
+    // rasterization scale so the page keeps the device's logical viewport.
+    let fit = fit_scale_for(content, &spec);
+    if fit < 1.0 {
+        scale_spec(&mut spec, fit);
+    }
     install_device_frame_subclass(content);
     let handle = hwnd_handle(content);
     // The status bar's transparent/foreground/background are page-driven — the
@@ -655,9 +740,13 @@ fn apply_device_frame_inner(content: HWND, mut spec: WindowsDeviceFrame, sync_ho
     // Composition-hosted webviews clip their own screen corners (bezel-
     // colored wedges in the visual tree), so the aliased SetWindowRgn cut
     // and the corner-mask overlay that hid its edge are unnecessary there.
+    // A frameless device (bezel 0) still needs the window region: its
+    // corners cut through to the desktop, which no opaque wedge can fake —
+    // the composition outline ring covers the cut's inner edge instead.
     let composition_corners =
         lingxia_webview::platform::windows::webview_composition_hosting_enabled();
-    if composition_corners {
+    let frameless = spec.bezel_width <= 0;
+    if composition_corners && !frameless {
         unsafe {
             let _ = SetWindowRgn(content, None, true);
         }
@@ -687,6 +776,7 @@ fn apply_device_frame_inner(content: HWND, mut spec: WindowsDeviceFrame, sync_ho
                 corner_mask,
                 status_bar,
                 spec,
+                fit_scale: fit,
                 layout,
                 saved_style,
             },
@@ -1107,15 +1197,33 @@ fn apply_content_screen_region(content: HWND, spec: &WindowsDeviceFrame) {
         }
         return;
     }
+    // Build the corner spans from the same circular-arc coverage the frame
+    // outline, status-bar clip and webview corner rings rasterize with
+    // (keep a pixel while its center's coverage is >= 0.5, i.e. distance to
+    // the corner center <= radius). `CreateRoundRectRgn`'s elliptical
+    // corners diverge from that arc by up to a pixel, exposing jagged
+    // content specks between the inner and outer hairlines.
+    let (width, height) = (spec.screen_width, spec.screen_height);
+    let radius_f = radius as f32;
     unsafe {
-        let region = CreateRoundRectRgn(
-            0,
-            0,
-            spec.screen_width + 1,
-            spec.screen_height + 1,
-            radius * 2,
-            radius * 2,
-        );
+        let region = CreateRectRgn(0, radius, width, height - radius);
+        for y in (0..radius).chain(height - radius..height) {
+            let py = y as f32 + 0.5;
+            let dy = if y < radius {
+                radius_f - py
+            } else {
+                py - (height as f32 - radius_f)
+            };
+            let dx = (radius_f * radius_f - dy * dy).max(0.0).sqrt();
+            let left = (radius_f - dx - 0.5).ceil().max(0.0) as i32;
+            let right = width - left;
+            if right <= left {
+                continue;
+            }
+            let row = CreateRectRgn(left, y, right, y + 1);
+            CombineRgn(Some(region), Some(region), Some(row), RGN_OR);
+            let _ = DeleteObject(HGDIOBJ(row.0));
+        }
         let applied = SetWindowRgn(content, Some(region), true);
         if applied == 0 {
             let _ = DeleteObject(HGDIOBJ(region.0));

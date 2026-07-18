@@ -310,6 +310,9 @@ struct ContentBounds {
     /// Wedge backdrop color; part of the dedupe key so theme flips repaint
     /// the corner wedges.
     corner_color: u32,
+    /// Device-frame fit factor ×1000; part of the dedupe key so a device
+    /// switch re-applies the webview's rasterization scale.
+    fit_scale_milli: u32,
 }
 
 #[derive(Debug, Clone)]
@@ -1793,12 +1796,6 @@ fn surface_clip_style(hwnd: HWND, webtag_key: &str, rect: RECT) -> ([i32; 4], u3
         return ([0; 4], 0);
     }
     let backdrop = 0xff00_0000 | crate::shell::shell_window_background();
-    // Floating panels are free-standing cards outside the workspace union.
-    if let Some(panel_id) = panel_id_for_webtag(webtag_key)
-        && !panel_is_docked(&panel_id)
-    {
-        return ([crate::shell::shell_panel_radius(); 4], backdrop);
-    }
     let mut client = RECT::default();
     if unsafe { WindowsAndMessaging::GetClientRect(hwnd, &mut client) }.is_err() {
         return ([0; 4], 0);
@@ -1806,6 +1803,38 @@ fn surface_clip_style(hwnd: HWND, webtag_key: &str, rect: RECT) -> ([i32; 4], u3
     let Some(active_key) = active_webtag_key_for_window(hwnd) else {
         return ([0; 4], 0);
     };
+    // Main and each attached panel are individual cards separated by
+    // gutters — the macOS aside look. A surface rounds against its own card
+    // rect (main region including its nav bar, or the panel including its
+    // header), so the band above it owns the top arcs and the webview the
+    // bottom ones.
+    if let Some(attached) = attached_layout_for_window(hwnd, &active_key, client) {
+        let card = if webtag_key == active_key {
+            Some(attached.main_region)
+        } else {
+            attached
+                .panels
+                .iter()
+                .find(|panel| panel.webtag_key == webtag_key)
+                .map(|panel| panel.rect)
+        };
+        if let Some(card) = card {
+            return (
+                crate::shell::workspace_corner_radii(
+                    rect,
+                    card,
+                    crate::shell::shell_content_radius(),
+                ),
+                backdrop,
+            );
+        }
+    }
+    // Panels outside the attached layout are free-standing cards.
+    if let Some(panel_id) = panel_id_for_webtag(webtag_key)
+        && !panel_is_docked(&panel_id)
+    {
+        return ([crate::shell::shell_panel_radius(); 4], backdrop);
+    }
     let Some(silhouette) =
         crate::shell::workspace_silhouette_rect(client, &current_window_layout(&active_key))
     else {
@@ -3490,6 +3519,7 @@ fn sync_webtag_content_bounds_to_rect(hwnd: HWND, webtag_key: &str, rect: RECT) 
     let width = (rect.right - rect.left).max(0);
     let height = (rect.bottom - rect.top).max(0);
     let (corner_radii, corner_color) = surface_clip_style(hwnd, webtag_key, rect);
+    let fit_scale = window_fit_scale(hwnd);
     let host_bounds = ContentBounds {
         hwnd: hwnd_handle(hwnd),
         left: rect.left,
@@ -3498,6 +3528,7 @@ fn sync_webtag_content_bounds_to_rect(hwnd: HWND, webtag_key: &str, rect: RECT) 
         height,
         corner_radii,
         corner_color,
+        fit_scale_milli: (fit_scale * 1000.0).round() as u32,
     };
     let Some(webtag) = webtag_for_key(webtag_key) else {
         return;
@@ -3514,6 +3545,11 @@ fn sync_webtag_content_bounds_to_rect(hwnd: HWND, webtag_key: &str, rect: RECT) 
     let controller_bounds = rect;
     let bounds_changed = webtag_content_bounds_changed(webtag_key, host_bounds);
     if bounds_changed {
+        // A fit-scaled device frame renders the page at `fit` physical px
+        // per CSS px, keeping the simulated device's logical viewport.
+        if let Err(err) = handler.set_rasterization_scale(fit_scale) {
+            log::debug!("Failed to set WebView rasterization scale: {err}");
+        }
         #[cfg(feature = "runtime")]
         report_surface_viewport(hwnd, &webtag, width, height);
     }
@@ -3539,6 +3575,16 @@ fn sync_webtag_content_bounds_to_rect(hwnd: HWND, webtag_key: &str, rect: RECT) 
     let _ = handler.notify_parent_position_changed();
 }
 
+/// Device-frame fit factor for a host window; 1.0 when unframed.
+fn window_fit_scale(hwnd: HWND) -> f64 {
+    #[cfg(feature = "device-frame")]
+    if let Some(fit) = crate::device_frame::device_frame_fit_scale(hwnd_handle(hwnd)) {
+        return fit;
+    }
+    let _ = hwnd;
+    1.0
+}
+
 #[cfg(feature = "runtime")]
 fn report_surface_viewport(hwnd: HWND, webtag: &WebTag, width: i32, height: i32) {
     if width <= 0 || height <= 0 {
@@ -3548,8 +3594,15 @@ fn report_surface_viewport(hwnd: HWND, webtag: &WebTag, width: i32, height: i32)
     if appid.is_empty() {
         return;
     }
-    let dpi = unsafe { windows::Win32::UI::HiDpi::GetDpiForWindow(hwnd) };
-    let scale = if dpi == 0 { 1.0 } else { dpi as f64 / 96.0 };
+    // A fit-scaled device frame overrides the DPI mapping: physical px are
+    // `fit` per CSS px there, regardless of monitor scale.
+    let fit = window_fit_scale(hwnd);
+    let scale = if fit < 1.0 {
+        fit
+    } else {
+        let dpi = unsafe { windows::Win32::UI::HiDpi::GetDpiForWindow(hwnd) };
+        if dpi == 0 { 1.0 } else { dpi as f64 / 96.0 }
+    };
     lingxia::windows::set_surface_viewport(&appid, width as f64 / scale, height as f64 / scale);
 }
 
@@ -5826,8 +5879,10 @@ pub fn find_webview_content_window(webtag: &WebTag) -> Option<WindowsWebViewCont
         // 1.0 in `configure_controller`), so CSS px == physical px regardless
         // of the monitor DPI. Native component overlays must map document
         // rects with the same factor — the monitor scale would blow them up
-        // past the elements they cover (a 1.5x video on a 150% laptop).
-        scale: 1.0,
+        // past the elements they cover (a 1.5x video on a 150% laptop). A
+        // fit-scaled device frame is the exception: there CSS px map to
+        // `fit` physical px.
+        scale: window_fit_scale(hwnd),
     })
 }
 

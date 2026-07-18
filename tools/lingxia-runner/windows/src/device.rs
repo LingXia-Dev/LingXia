@@ -149,12 +149,13 @@ fn status_bar_foreground() -> u32 {
     }
 }
 
+/// The runner presents devices frameless: the screen floats with a hairline
+/// outline instead of a black body, saving work-area height on small
+/// displays. Bezeled presentation remains available through the spec (the
+/// preset's `bezel_width` stays parsed) for hosts that want it.
 fn visual_bezel_width(preset: &DevicePreset) -> i32 {
-    if preset.group == "phone" {
-        preset.bezel_width.max(10)
-    } else {
-        preset.bezel_width
-    }
+    let _ = preset.bezel_width;
+    0
 }
 
 pub(crate) fn frame_spec(index: usize, landscape: bool) -> WindowsDeviceFrame {
@@ -166,9 +167,13 @@ pub(crate) fn frame_spec(index: usize, landscape: bool) -> WindowsDeviceFrame {
     } else {
         (preset.width, preset.height)
     };
-    // A windowed WebView2 surface cannot be clipped directly; the device-frame
-    // corner mask covers the cut-away screen corners over this slim bezel.
-    let outer_radius = preset.screen_radius.max(preset.outer_radius);
+    // Frameless: the frame silhouette IS the screen — its outline hairline
+    // must trace the same radius the content window's region cuts at.
+    let outer_radius = if visual_bezel_width(preset) == 0 {
+        preset.screen_radius
+    } else {
+        preset.screen_radius.max(preset.outer_radius)
+    };
     WindowsDeviceFrame {
         screen_width,
         screen_height,
@@ -195,9 +200,8 @@ pub(crate) fn frame_spec(index: usize, landscape: bool) -> WindowsDeviceFrame {
             },
         ),
         bezel_color: preset.bezel_color,
-        // The cut-away square WebView2 corners are masked in the bezel color
-        // at the full screen radius, so the wedges read as the device body
-        // around the rounded screen (concentric with the outer silhouette).
+        // Bezeled presentation fills the corner wedges in the bezel color;
+        // the frameless runner ignores this and draws the outline ring.
         screen_corner_color: preset.bezel_color,
         toolbar: Some(WindowsDeviceFrameToolbar {
             selector_label: preset.name.clone(),
