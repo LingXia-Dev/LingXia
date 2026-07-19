@@ -1,5 +1,5 @@
-//! `NavDriver` — page-stack navigation + runtime stack reads, for the calling
-//! lxapp itself. Action verbs (`to` / `redirect` / `switchTab` / `relaunch`)
+//! `NavDriver` — page-stack navigation + runtime reads for one selected lxapp.
+//! Action verbs (`to` / `redirect` / `switchTab` / `relaunch`)
 //! take a configured page name (+ optional `query`); reads are `current` /
 //! `stack`; `back` pops. Semantics come from the shared `lxapp::automation`
 //! lower half (tab-bar guard included), matching `lxdev lxapp nav`.

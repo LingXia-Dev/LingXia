@@ -23,9 +23,10 @@ standard = ["lingxia/standard"]
 browser-shell = ["lingxia/browser-shell", "webview-input", "standard"]
 proxy = ["lingxia/proxy", "browser-shell"]
 terminal-runtime = ["lingxia/terminal-runtime"]
+process = ["lingxia/process", "standard"]
 # Dev builds always enable `devtools`; ride automation in so `lingxia dev`
 # sessions get lx.automation() by default (still privilege-gated per lxapp.json).
-devtools = ["dep:lingxia_devtool", "lingxia/devtool", "lingxia_devtool/browser", "automation"]
+devtools = ["dep:lingxia_devtool", "lingxia/devtool", "lingxia_devtool/browser", "lingxia_devtool/test-runtime", "automation"]
 automation = ["lingxia/automation"]
 webview-input = ["lingxia/webview-input"]
 # Cloud provider. Inert by default; `lingxia build/dev --with-provider cloud`

@@ -1,10 +1,8 @@
 //! In-process UI/runtime automation JS API for LingXia lxapps.
 //!
-//! Exposes `lx.automation()` — a factory returning a capability handle whose
-//! members (`page`, `nav`, `lxapp`) drive the calling lxapp's own UI and
-//! runtime. Gated by the `automation` security privilege; dev sessions grant it
-//! by default. This is the product-side, privilege-scoped mapping of the
-//! devtool (lxdev) automation surface.
+//! Exposes `lx.automation()` — a stable root whose `lxapp([appid])` selector
+//! returns one lxapp driver. Host-only managers and surfaces enforce their
+//! privilege when used; callers do not select an internal privilege tier.
 
 mod desktop;
 mod host;
@@ -13,17 +11,19 @@ mod input;
 mod nav;
 mod page;
 mod resolve;
+#[cfg(feature = "runtime")]
+pub mod runtime;
 
 use lxapp::{LxApp, LxAppSecurityPrivilege, lx};
 use rong::{
-    Class, FromJSObject, HostError, JSContext, JSFunc, JSObject, JSResult, RongJSError,
+    Class, HostError, JSContext, JSFunc, JSObject, JSResult, JSValue, RongJSError,
     function::Optional, js_class, js_method,
 };
 use std::sync::{Arc, Weak};
 
-/// Base-tier privilege: operate on the calling lxapp itself.
+/// Operate on the calling lxapp itself.
 const PRIV_AUTOMATION: &str = "automation";
-/// Privileged tier: cross-lxapp, browser, and host-window input.
+/// Cross-lxapp, browser, and host-window input.
 const PRIV_HOST: &str = "host";
 
 /// Build a JS-facing automation error.
@@ -45,45 +45,61 @@ fn require_privilege(app: &LxApp, id: &str) -> JSResult<()> {
         Ok(())
     } else {
         Err(auto_err(format!(
-            "automation_privilege_required: declare \"{id}\" in lxapp.json security.privileges"
+            "{id}_privilege_required: declare \"{id}\" in lxapp.json security.privileges"
         )))
     }
 }
 
-#[derive(FromJSObject, Default, Clone)]
-struct JSAutomationOptions {
-    host: Option<bool>,
+/// Sealed marker for an isolated context created by `AutomationRuntime`.
+#[derive(Debug, Clone)]
+struct HostAutomationAuthority;
+
+#[cfg(feature = "runtime")]
+fn attach_host_automation_authority(ctx: &JSContext) {
+    ctx.set_state(HostAutomationAuthority);
 }
 
-/// The capability handle returned by `lx.automation()`. Sub-drivers are
-/// created lazily per property access; the drivers themselves are stateless
-/// (a `Weak<LxApp>` at most), so no instance caching is needed.
+pub(crate) fn host_automation_authority(ctx: &JSContext) -> Option<&HostAutomationAuthority> {
+    ctx.get_state::<HostAutomationAuthority>()
+}
+
+/// The stable root returned by `lx.automation()`. It carries no authority by
+/// itself; each selector checks the privilege for the capability it returns.
 #[js_class(clone)]
 pub(crate) struct JSAutomation {
     lxapp: Weak<LxApp>,
-    host: bool,
+    /// True when created from trusted host authority: no owner lxapp exists.
+    host_runtime: bool,
 }
 
 impl JSAutomation {
-    pub(crate) fn new(lxapp: &Arc<LxApp>, host: bool) -> Self {
+    pub(crate) fn new(lxapp: &Arc<LxApp>) -> Self {
         Self {
             lxapp: Arc::downgrade(lxapp),
-            host,
+            host_runtime: false,
+        }
+    }
+
+    fn host_runtime() -> Self {
+        Self {
+            lxapp: Weak::new(),
+            host_runtime: true,
         }
     }
 
     fn owner(&self) -> JSResult<Arc<LxApp>> {
+        if self.host_runtime {
+            return Err(auto_err("a host automation run has no calling lxapp"));
+        }
         resolve::upgrade(&self.lxapp)
     }
 
     fn require_host(&self) -> JSResult<()> {
-        if self.host {
-            Ok(())
-        } else {
-            Err(auto_err(
-                "host tier required: call lx.automation({ host: true })",
-            ))
+        if self.host_runtime {
+            return Ok(());
         }
+        let owner = self.owner()?;
+        require_privilege(&owner, PRIV_HOST)
     }
 }
 
@@ -94,27 +110,31 @@ impl JSAutomation {
         Err(HostError::new(rong::error::E_ILLEGAL_CONSTRUCTOR, "Use lx.automation()").into())
     }
 
-    #[js_method(getter, enumerable)]
-    fn page(&self, ctx: JSContext) -> JSResult<JSObject> {
-        let app = self.owner()?;
-        Ok(Class::lookup::<page::JSPageDriver>(&ctx)?.instance(page::JSPageDriver::new(&app)))
+    /// Select the calling/current lxapp, or an explicit app id. Explicit
+    /// cross-app selection requires the host privilege.
+    #[js_method]
+    fn lxapp(&self, ctx: JSContext, appid: Optional<String>) -> JSResult<JSObject> {
+        let app = match appid.0 {
+            Some(appid) => {
+                self.require_host()?;
+                resolve::resolve_lxapp_by_id(&appid)?
+            }
+            None if self.host_runtime => resolve::resolve_lxapp_by_id("current")?,
+            None => {
+                let owner = self.owner()?;
+                require_privilege(&owner, PRIV_AUTOMATION)?;
+                owner
+            }
+        };
+        Ok(Class::lookup::<info::JSLxAppDriver>(&ctx)?.instance(info::JSLxAppDriver::new(&app)))
     }
 
+    /// Cross-lxapp lifecycle manager. Selection for page/nav/eval goes through
+    /// [`JSAutomation::lxapp`].
     #[js_method(getter, enumerable)]
-    fn nav(&self, ctx: JSContext) -> JSResult<JSObject> {
-        let app = self.owner()?;
-        Ok(Class::lookup::<nav::JSNavDriver>(&ctx)?.instance(nav::JSNavDriver::new(&app)))
-    }
-
-    /// Base tier: read-only self introspection. Host tier: the cross-app manager.
-    #[js_method(getter, enumerable)]
-    fn lxapp(&self, ctx: JSContext) -> JSResult<JSObject> {
-        if self.host {
-            Ok(Class::lookup::<host::JSLxAppManager>(&ctx)?.instance(host::JSLxAppManager::new()))
-        } else {
-            let app = self.owner()?;
-            Ok(Class::lookup::<info::JSSelfInfo>(&ctx)?.instance(info::JSSelfInfo::new(&app)))
-        }
+    fn lxapps(&self, ctx: JSContext) -> JSResult<JSObject> {
+        self.require_host()?;
+        Ok(Class::lookup::<host::JSLxAppManager>(&ctx)?.instance(host::JSLxAppManager::new()))
     }
 
     #[js_method(getter, enumerable)]
@@ -124,62 +144,79 @@ impl JSAutomation {
     }
 
     /// Session-less local-OS desktop automation (`lxdev desktop`). Beyond the
-    /// app sandbox — it drives the whole OS — so on top of the host tier it is
-    /// restricted to dev/test hosts (a `lingxia dev` session or the Runner).
+    /// app sandbox — it drives the whole OS — so it is available only to a
+    /// trusted host automation runtime or an explicitly enabled dev host.
     #[js_method(getter, enumerable)]
     fn desktop(&self, ctx: JSContext) -> JSResult<JSObject> {
         self.require_host()?;
-        if !(lxapp::is_dev_session() || lxapp::automation_auto_grant()) {
+        if !(self.host_runtime || lxapp::is_dev_session() || lxapp::automation_auto_grant()) {
             return Err(auto_err(
-                "desktop tier is available only in dev/test hosts (lingxia dev or the Runner)",
+                "desktop tier requires a trusted host automation runtime or dev host",
             ));
         }
         Ok(Class::lookup::<desktop::JSDesktopDriver>(&ctx)?
             .instance(desktop::JSDesktopDriver::new()))
     }
+
+    #[js_method(getter, enumerable)]
+    fn device(&self, ctx: JSContext) -> JSResult<JSObject> {
+        self.require_host()?;
+        Ok(Class::lookup::<host::JSDeviceDriver>(&ctx)?.instance(host::JSDeviceDriver::new()))
+    }
 }
 
-/// `lx.automation([{ host }])`. Base tier → `{ page, nav, lxapp(self) }`.
-/// Host tier (`{ host: true }`) additionally exposes `{ lxapp(manager),
-/// browser, app }`. Permission is checked here, once, per tier.
-fn make_automation(ctx: JSContext, options: Optional<JSAutomationOptions>) -> JSResult<JSObject> {
-    let lxapp = LxApp::from_ctx(&ctx)?;
-    let host = options.as_ref().and_then(|opts| opts.host).unwrap_or(false);
-
-    if host {
-        require_privilege(&lxapp, PRIV_HOST)?;
-    } else {
-        require_privilege(&lxapp, PRIV_AUTOMATION)?;
+/// `lx.automation()` has one shape in Logic and host automation contexts. The
+/// factory itself grants nothing; selectors enforce their own privileges.
+fn make_automation(ctx: JSContext, options: Optional<JSValue>) -> JSResult<JSObject> {
+    if options.0.is_some() {
+        return Err(auto_err("lx.automation() takes no options"));
     }
 
-    Ok(Class::lookup::<JSAutomation>(&ctx)?.instance(JSAutomation::new(&lxapp, host)))
+    if let Ok(lxapp) = LxApp::from_ctx(&ctx) {
+        return Ok(Class::lookup::<JSAutomation>(&ctx)?.instance(JSAutomation::new(&lxapp)));
+    }
+
+    if host_automation_authority(&ctx).is_some() {
+        return Ok(Class::lookup::<JSAutomation>(&ctx)?.instance(JSAutomation::host_runtime()));
+    }
+
+    Err(auto_err(
+        "lx.automation() requires an lxapp logic context or trusted host automation context",
+    ))
+}
+
+/// Register the automation classes and the `lx.automation` factory on a
+/// context. Used by the lxapp logic extension below and by isolated host
+/// automation programs, whose contexts are not lxapp logic contexts.
+pub fn init_automation_context(ctx: &JSContext) -> JSResult<()> {
+    ctx.register_hidden_class::<JSAutomation>()?;
+    ctx.register_hidden_class::<page::JSPageDriver>()?;
+    ctx.register_hidden_class::<input::JSPagePointer>()?;
+    ctx.register_hidden_class::<input::JSPageKey>()?;
+    ctx.register_hidden_class::<nav::JSNavDriver>()?;
+    ctx.register_hidden_class::<info::JSLxAppDriver>()?;
+    ctx.register_hidden_class::<host::JSLxAppManager>()?;
+    ctx.register_hidden_class::<host::JSDeviceDriver>()?;
+    ctx.register_hidden_class::<host::JSBrowserDriver>()?;
+    ctx.register_hidden_class::<host::JSBrowserCookies>()?;
+    ctx.register_hidden_class::<desktop::JSDesktopDriver>()?;
+    ctx.register_hidden_class::<desktop::JSDesktopWindow>()?;
+    ctx.register_hidden_class::<desktop::JSDesktopPointer>()?;
+    ctx.register_hidden_class::<desktop::JSDesktopKey>()?;
+    ctx.register_hidden_class::<desktop::JSDesktopClipboard>()?;
+    ctx.register_hidden_class::<desktop::JSDesktopAx>()?;
+    ctx.register_hidden_class::<desktop::JSDesktopWait>()?;
+    ctx.register_hidden_class::<desktop::JSDesktopApp>()?;
+    ctx.register_hidden_class::<desktop::JSDesktopProcess>()?;
+    lx::register_js_api(ctx, "automation", JSFunc::new(ctx, make_automation)?)?;
+    Ok(())
 }
 
 struct AutomationExtension;
 
 impl lx::LxLogicExtension for AutomationExtension {
     fn init(&self, ctx: &JSContext) -> JSResult<()> {
-        ctx.register_hidden_class::<JSAutomation>()?;
-        ctx.register_hidden_class::<page::JSPageDriver>()?;
-        ctx.register_hidden_class::<input::JSPagePointer>()?;
-        ctx.register_hidden_class::<input::JSPageKey>()?;
-        ctx.register_hidden_class::<nav::JSNavDriver>()?;
-        ctx.register_hidden_class::<info::JSSelfInfo>()?;
-        ctx.register_hidden_class::<host::JSLxAppManager>()?;
-        ctx.register_hidden_class::<host::JSDeviceDriver>()?;
-        ctx.register_hidden_class::<host::JSBrowserDriver>()?;
-        ctx.register_hidden_class::<host::JSBrowserCookies>()?;
-        ctx.register_hidden_class::<desktop::JSDesktopDriver>()?;
-        ctx.register_hidden_class::<desktop::JSDesktopWindow>()?;
-        ctx.register_hidden_class::<desktop::JSDesktopPointer>()?;
-        ctx.register_hidden_class::<desktop::JSDesktopKey>()?;
-        ctx.register_hidden_class::<desktop::JSDesktopClipboard>()?;
-        ctx.register_hidden_class::<desktop::JSDesktopAx>()?;
-        ctx.register_hidden_class::<desktop::JSDesktopWait>()?;
-        ctx.register_hidden_class::<desktop::JSDesktopApp>()?;
-        ctx.register_hidden_class::<desktop::JSDesktopProcess>()?;
-        lx::register_js_api(ctx, "automation", JSFunc::new(ctx, make_automation)?)?;
-        Ok(())
+        init_automation_context(ctx)
     }
 }
 

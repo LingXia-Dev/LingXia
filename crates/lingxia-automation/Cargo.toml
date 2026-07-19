@@ -8,6 +8,21 @@ repository.workspace = true
 keywords = ["lingxia", "automation", "javascript"]
 categories = ["api-bindings"]
 
+[features]
+default = []
+# Isolated host-owned automation programs. Optional so embedding
+# `lx.automation()` alone does not pull the worker/profile dependencies.
+runtime = [
+    "dep:uuid",
+    "dep:lingxia-log",
+    "dep:rong_modules",
+    "dep:rong_console",
+    "dep:rong_timer",
+]
+# JSC execution-time-limit SPI for Apple hosts. Product hosts can use the
+# generic runtime without opting into this private API.
+runtime-interrupt = ["runtime", "rong/jscore-interrupt"]
+
 [dependencies]
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -20,16 +35,31 @@ lingxia-computer-use = { workspace = true }
 futures = { workspace = true }
 tokio = { workspace = true }
 base64 = { workspace = true }
+uuid = { version = "1.20", features = ["v4"], optional = true }
+lingxia-log = { workspace = true, optional = true }
+rong_modules = { workspace = true, optional = true, default-features = false, features = ["timer", "http", "encoding", "event", "exception", "abort", "url", "buffer", "stream", "compression"] }
+rong_console = { workspace = true, optional = true }
+rong_timer = { workspace = true, optional = true }
 
 # Target-specific JavaScript engine selection (mirrors lingxia-logic).
 [target.'cfg(any(target_os = "ios", target_os = "macos"))'.dependencies]
 rong = { workspace = true, features = ["jscore"] }
+rong_modules = { workspace = true, optional = true, default-features = false, features = ["jscore"] }
 
 [target.'cfg(target_os = "android")'.dependencies]
 rong = { workspace = true, features = ["quickjs"] }
+rong_modules = { workspace = true, optional = true, default-features = false, features = ["quickjs", "tls-ring"] }
 
 [target.'cfg(all(target_os = "linux", target_env = "ohos"))'.dependencies]
 rong = { workspace = true, features = ["arkjs"] }
+rong_modules = { workspace = true, optional = true, default-features = false, features = ["arkjs", "tls-ring"] }
 
 [target.'cfg(not(any(target_os = "ios", target_os = "macos", target_os = "android", all(target_os = "linux", target_env = "ohos"))))'.dependencies]
 rong = { workspace = true, features = ["quickjs"] }
+rong_modules = { workspace = true, optional = true, default-features = false, features = ["quickjs", "tls-aws-lc"] }
+
+[target.'cfg(target_os = "ios")'.dependencies]
+rong_modules = { workspace = true, optional = true, default-features = false, features = ["tls-ring"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+rong_modules = { workspace = true, optional = true, default-features = false, features = ["tls-aws-lc"] }

@@ -18,27 +18,20 @@ import type {
   PageConfig,
   PageInstance,
 } from './generated/logic';
-import type {
-  Automation,
-  AutomationOptions,
-  HostAutomation,
-} from './automation';
+import type { Automation } from './automation';
 
 export type Lx = globalThis.Lx;
 
 declare global {
   interface Lx {
     /**
-     * In-process UI/runtime automation of the calling lxapp.
+     * In-process UI/runtime automation.
      *
-     * Base tier drives the app's own pages, navigation, and self info. The host
-     * tier (`{ host: true }`) additionally exposes cross-lxapp management, the
-     * host browser tabs, and host-window input. Gated by the `automation` /
-     * `host` security privileges; `lingxia dev` and the Runner grant them.
+     * Select the current app with `.lxapp()` or a specific running app with
+     * `.lxapp(appid)`. Host-only surfaces enforce the `host` privilege when
+     * selected; `lingxia dev` and the Runner grant it implicitly.
      */
     automation(): Automation;
-    automation(options: { host: true }): HostAutomation;
-    automation(options?: AutomationOptions): Automation;
   }
 
   const lx: Lx;

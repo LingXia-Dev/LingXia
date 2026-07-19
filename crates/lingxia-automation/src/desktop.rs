@@ -20,7 +20,7 @@ use std::time::{Duration, Instant};
 fn illegal_ctor() -> rong::RongJSError {
     HostError::new(
         rong::error::E_ILLEGAL_CONSTRUCTOR,
-        "Use lx.automation({ host: true }).desktop",
+        "Use lx.automation().desktop",
     )
     .into()
 }

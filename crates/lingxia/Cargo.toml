@@ -12,7 +12,12 @@ categories = ["web-programming", "api-bindings"]
 default = ["standard"]
 standard = ["lxapp/standard", "dep:lingxia-logic"]
 automation = ["dep:lingxia-automation"]
+automation-runtime = ["automation", "lingxia-automation/runtime"]
+# Apple hard cancellation for non-yielding scripts; uses JSC's private
+# execution-time-limit SPI and is therefore opt-in for product hosts.
+automation-runtime-interrupt = ["automation-runtime", "lingxia-automation/runtime-interrupt"]
 devtool = ["lxapp/automation"]
+process = ["lxapp/process"]
 # Low-level managed browser tabs. Advanced hosts may provide their own native
 # browser UI/chrome on top of this.
 browser-runtime = ["dep:lingxia-browser"]
