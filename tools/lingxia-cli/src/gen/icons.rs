@@ -365,14 +365,75 @@ fn svg_to_vector_drawable(svg_content: &str) -> Result<String> {
                 line_join
             ));
         }
-        xml.push_str(&format!(
-            "        android:pathData=\"{}\" />\n",
-            path_info.data
-        ));
+        let path_data = normalize_android_path_data(&path_info.data);
+        xml.push_str(&format!("        android:pathData=\"{}\" />\n", path_data));
     }
 
     xml.push_str("</vector>\n");
     Ok(xml)
+}
+
+fn normalize_android_path_data(data: &str) -> String {
+    let bytes = data.as_bytes();
+    let mut normalized = String::with_capacity(data.len() + 16);
+    let mut i = 0;
+
+    while i < bytes.len() {
+        let ch = bytes[i] as char;
+        if ch.is_ascii_alphabetic() || ch.is_ascii_whitespace() || ch == ',' {
+            normalized.push(ch);
+            i += 1;
+            continue;
+        }
+
+        let start = i;
+        if bytes[i] == b'+' || bytes[i] == b'-' {
+            i += 1;
+        }
+        let mut seen_dot = false;
+        while i < bytes.len() {
+            match bytes[i] {
+                b'0'..=b'9' => i += 1,
+                b'.' if !seen_dot => {
+                    seen_dot = true;
+                    i += 1;
+                }
+                _ => break,
+            }
+        }
+        if i < bytes.len() && (bytes[i] == b'e' || bytes[i] == b'E') {
+            i += 1;
+            if i < bytes.len() && (bytes[i] == b'+' || bytes[i] == b'-') {
+                i += 1;
+            }
+            while i < bytes.len() && bytes[i].is_ascii_digit() {
+                i += 1;
+            }
+        }
+        if i == start {
+            normalized.push(ch);
+            i += 1;
+            continue;
+        }
+
+        let token = &data[start..i];
+        if token.starts_with('.') {
+            if start > 0 && bytes[start - 1].is_ascii_digit() {
+                normalized.push(' ');
+            }
+            normalized.push('0');
+            normalized.push_str(token);
+        } else if let Some(rest) = token.strip_prefix("-.") {
+            normalized.push_str("-0.");
+            normalized.push_str(rest);
+        } else if let Some(rest) = token.strip_prefix("+.") {
+            normalized.push_str("+0.");
+            normalized.push_str(rest);
+        } else {
+            normalized.push_str(token);
+        }
+    }
+    normalized
 }
 
 struct PathInfo {
@@ -943,6 +1004,16 @@ mod vector_drawable_tests {
         let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><path d="M10 30L20 40Z"/></svg>"##;
         let xml = svg_to_vector_drawable(svg).unwrap();
         assert!(xml.contains(r##"android:fillColor="#000000""##), "{xml}");
+    }
+
+    #[test]
+    fn vector_drawable_adds_leading_zeroes_to_decimal_path_values() {
+        let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M.5 1l-.25 .75.5"/></svg>"##;
+        let xml = svg_to_vector_drawable(svg).unwrap();
+        assert!(
+            xml.contains(r##"android:pathData="M0.5 1l-0.25 0.75 0.5""##),
+            "{xml}"
+        );
     }
 }
 
