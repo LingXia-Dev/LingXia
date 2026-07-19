@@ -1,6 +1,7 @@
 Page({
   data: {
     location: null,
+    locationError: "",
     isLoading: false,
   },
 
@@ -15,11 +16,11 @@ Page({
 
     this.setData({
       isLoading: true,
+      locationError: "",
     });
 
     try {
-      // Call location API without parameters (uses default WGS84)
-      const location = await lx.getLocation();
+      const location = await lx.getLocation({ highAccuracyExpireTime: 10_000 });
 
       console.log("Location info:", location);
 
@@ -28,9 +29,10 @@ Page({
         isLoading: false,
       });
     } catch (error) {
-      console.error("Failed to get location:", error);
+      console.warn("Failed to get location:", error);
 
       this.setData({
+        locationError: error instanceof Error ? error.message : String(error),
         isLoading: false,
       });
     }
@@ -40,6 +42,7 @@ Page({
   clearLocation: async function () {
     this.setData({
       location: null,
+      locationError: "",
     });
   },
 });

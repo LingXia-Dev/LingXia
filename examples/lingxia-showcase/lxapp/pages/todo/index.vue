@@ -1,9 +1,10 @@
 <template>
-  <div class="todo-page">
+  <div class="todo-page" data-testid="todo-page">
     <section class="todoapp">
       <h1>todos</h1>
       <input
         class="new-todo"
+        data-testid="todo-input"
         placeholder="What needs to be done?"
         v-model="newTodo"
         @keydown.enter="handleAddTodo"
@@ -26,7 +27,12 @@
         />
         <label for="toggle-all">Mark all as complete</label>
         <ul class="todo-list">
-          <li v-for="todo in filteredTodos" :key="todo.id" :class="{ completed: todo.completed }">
+          <li
+            v-for="todo in filteredTodos"
+            :key="todo.id"
+            :class="{ completed: todo.completed }"
+            data-testid="todo-item"
+          >
             <div class="view">
               <input
                 class="toggle"
@@ -34,9 +40,10 @@
                 :checked="todo.completed"
                 @change="toggleTodo({ id: todo.id })"
               />
-              <label>{{ todo.text }}</label>
+              <label data-testid="todo-label">{{ todo.text }}</label>
               <button
                 class="destroy"
+                data-testid="todo-delete"
                 @click="deleteTodo({ id: todo.id })"
                 aria-label="Delete todo"
               />

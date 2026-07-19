@@ -93,11 +93,12 @@ export default function TodoPage() {
   const hasTodos = todos.length > 0;
 
   return (
-    <div className="todo-page">
+    <div className="todo-page" data-testid="todo-page">
       <section className="todoapp">
         <h1>todos</h1>
       <input
         className="new-todo"
+        data-testid="todo-input"
         placeholder="What needs to be done?"
         value={newTodo}
         onChange={event => setNewTodo(event.target.value)}
@@ -125,7 +126,11 @@ export default function TodoPage() {
           <label htmlFor="toggle-all">Mark all as complete</label>
           <ul className="todo-list">
             {filteredTodos.map(todo => (
-              <li key={todo.id} className={todo.completed ? 'completed' : ''}>
+              <li
+                key={todo.id}
+                className={todo.completed ? 'completed' : ''}
+                data-testid="todo-item"
+              >
                 <div className="view">
                   <input
                     className="toggle"
@@ -133,9 +138,10 @@ export default function TodoPage() {
                     checked={todo.completed}
                     onChange={() => toggleTodo({ id: todo.id })}
                   />
-                  <label>{todo.text}</label>
+                  <label data-testid="todo-label">{todo.text}</label>
                   <button
                     className="destroy"
+                    data-testid="todo-delete"
                     onClick={() => deleteTodo({ id: todo.id })}
                     aria-label="Delete todo"
                   />

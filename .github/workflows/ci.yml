@@ -76,6 +76,8 @@ jobs:
               - 'examples/lingxia-showcase/lingxia.yaml'
               - 'examples/lingxia-showcase/AppIcon.png'
               - 'examples/lingxia-showcase/icons/**'
+              - 'examples/lingxia-showcase/lxapp/**'
+              - 'examples/lingxia-showcase/native/**'
               - 'examples/lingxia-showcase/lingxia-lib/**'
               - 'examples/lingxia-showcase/lingxia-showcase/**'
               - 'examples/lingxia-chat/**'

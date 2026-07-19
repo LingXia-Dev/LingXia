@@ -347,7 +347,9 @@
 }
 
 .todo-list li .destroy {
-  display: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   position: absolute;
   top: 0;
   right: 12px;
@@ -362,8 +364,8 @@
   background: none;
   border: none;
   border-radius: 50%;
-  opacity: 0;
-  transform: scale(0.8);
+  opacity: 0.55;
+  transform: scale(1);
 }
 
 .todo-list li .destroy:hover {
@@ -379,11 +381,7 @@
 }
 
 .todo-list li:hover .destroy {
-  display: flex;
-  align-items: center;
-  justify-content: center;
   opacity: 1;
-  transform: scale(1);
 }
 
 @media (max-width: 768px) {
