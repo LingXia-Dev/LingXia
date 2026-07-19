@@ -32,6 +32,8 @@ use lingxia_windows_contract::{
     dispatch_windows_aside_panel_event, hide_host_panel, is_panel_visible,
     restore_presented_group_main, set_webview_chrome_event_handler, set_webview_window_layout,
 };
+#[cfg(feature = "browser-runtime")]
+use windows::Win32::System::SystemInformation::{GlobalMemoryStatusEx, MEMORYSTATUSEX};
 // Presenting a browser tab over the main card is browser-only.
 #[cfg(feature = "browser-runtime")]
 use lingxia_windows_contract::present_webview_in_active_group;
@@ -54,6 +56,16 @@ const PRESENT_BROWSER_TAB_RETRY_DELAY_MS: u64 = 100;
 const BROWSER_TAB_SYNC_DEBOUNCE_MS: u64 = 180;
 #[cfg(feature = "browser-runtime")]
 const BROWSER_FIRST_FRAME_GUARD_MS: u64 = 75;
+#[cfg(feature = "browser-runtime")]
+const BROWSER_TAB_MEMORY_SHARE: u64 = 4;
+#[cfg(feature = "browser-runtime")]
+const ESTIMATED_BROWSER_TAB_BYTES: u64 = 256 * 1024 * 1024;
+#[cfg(feature = "browser-runtime")]
+const MIN_LIVE_BROWSER_TABS: usize = 4;
+#[cfg(feature = "browser-runtime")]
+const MAX_LIVE_BROWSER_TABS: usize = 16;
+#[cfg(feature = "browser-runtime")]
+const DEFAULT_LIVE_BROWSER_TABS: usize = 8;
 
 /// Panel ids whose lxapp open is still in flight, used to ignore repeated
 /// activator clicks until the open completes.
@@ -80,12 +92,25 @@ static SUPPRESSED_BROWSER_TAB_SYNCS: OnceLock<Mutex<u32>> = OnceLock::new();
 static BROWSER_TAB_SYNC_EPOCH: AtomicU64 = AtomicU64::new(0);
 #[cfg(feature = "browser-runtime")]
 static BROWSER_PRESENT_EPOCH: AtomicU64 = AtomicU64::new(0);
+#[cfg(feature = "browser-runtime")]
+static BROWSER_TAB_MEMORY_STATE: OnceLock<Mutex<BrowserTabMemoryState>> = OnceLock::new();
+#[cfg(feature = "browser-runtime")]
+static LIVE_BROWSER_TAB_LIMIT: OnceLock<usize> = OnceLock::new();
 static DEFAULT_TABBAR_POSITION: OnceLock<Mutex<WindowsShellTabBarPosition>> = OnceLock::new();
 static TABBAR_POSITION_OVERRIDES: OnceLock<Mutex<HashMap<String, WindowsShellTabBarPosition>>> =
     OnceLock::new();
 /// Stable shared order of main lxapp and browser tabs. The currently selected
 /// lxapp expands in place instead of jumping above every web tab.
 static MAIN_TAB_ORDER: OnceLock<Mutex<Vec<String>>> = OnceLock::new();
+
+#[cfg(feature = "browser-runtime")]
+#[derive(Default)]
+struct BrowserTabMemoryState {
+    /// Activation order, least-recently-used first.
+    recency: Vec<String>,
+    /// Tabs whose WebView has been destroyed while their sidebar row remains.
+    discarded: HashSet<String>,
+}
 
 /// Sidebar header action ids and their browser targets.
 const SIDEBAR_ACTION_SETTINGS: &str = "settings";
@@ -165,6 +190,147 @@ fn browser_tab_summary(tab_id: &str) -> Option<BrowserTabSummary> {
 #[cfg(not(feature = "browser-runtime"))]
 fn browser_tab_summary(_tab_id: &str) -> Option<BrowserTabSummary> {
     None
+}
+
+#[cfg(feature = "browser-runtime")]
+fn live_browser_tab_limit_for_memory(total_physical_bytes: u64) -> usize {
+    ((total_physical_bytes / BROWSER_TAB_MEMORY_SHARE) / ESTIMATED_BROWSER_TAB_BYTES)
+        .try_into()
+        .unwrap_or(usize::MAX)
+        .clamp(MIN_LIVE_BROWSER_TABS, MAX_LIVE_BROWSER_TABS)
+}
+
+#[cfg(feature = "browser-runtime")]
+fn live_browser_tab_limit() -> usize {
+    *LIVE_BROWSER_TAB_LIMIT.get_or_init(|| {
+        let mut status = MEMORYSTATUSEX {
+            dwLength: std::mem::size_of::<MEMORYSTATUSEX>() as u32,
+            ..Default::default()
+        };
+        // SAFETY: `status` has the required size in `dwLength` and remains
+        // valid for the duration of the synchronous Win32 call.
+        unsafe { GlobalMemoryStatusEx(&mut status) }
+            .map(|()| live_browser_tab_limit_for_memory(status.ullTotalPhys))
+            .unwrap_or(DEFAULT_LIVE_BROWSER_TABS)
+    })
+}
+
+#[cfg(feature = "browser-runtime")]
+fn touch_browser_tab_recency(recency: &mut Vec<String>, tab_id: &str) {
+    recency.retain(|candidate| candidate != tab_id);
+    recency.push(tab_id.to_string());
+}
+
+#[cfg(feature = "browser-runtime")]
+fn record_browser_tab_recency(tab_id: &str) {
+    if let Ok(mut state) = BROWSER_TAB_MEMORY_STATE
+        .get_or_init(|| Mutex::new(BrowserTabMemoryState::default()))
+        .lock()
+    {
+        touch_browser_tab_recency(&mut state.recency, tab_id);
+    }
+}
+
+#[cfg(feature = "browser-runtime")]
+fn browser_tab_discard_candidates(
+    live_tab_ids: &HashSet<String>,
+    recency: &[String],
+    discarded: &HashSet<String>,
+    protected: &HashSet<String>,
+    limit: usize,
+) -> Vec<String> {
+    let live_count = live_tab_ids
+        .iter()
+        .filter(|tab_id| !discarded.contains(*tab_id))
+        .count();
+    let excess = live_count.saturating_sub(limit);
+    recency
+        .iter()
+        .filter(|tab_id| {
+            live_tab_ids.contains(*tab_id)
+                && !discarded.contains(*tab_id)
+                && !protected.contains(*tab_id)
+        })
+        .take(excess)
+        .cloned()
+        .collect()
+}
+
+/// Keeps only a memory-scaled number of browser WebViews alive. Older
+/// background tabs retain their metadata/sidebar entry and are recreated when
+/// presented again.
+#[cfg(feature = "browser-runtime")]
+fn enforce_browser_tab_memory_limit(recent_tab_id: Option<&str>) {
+    let tabs = browser_tabs();
+    let ordered_tab_ids: Vec<String> = tabs.into_iter().map(|tab| tab.tab_id).collect();
+    let live_tab_ids: HashSet<String> = ordered_tab_ids.iter().cloned().collect();
+    let mut protected = HashSet::new();
+    if let Some(tab_id) = lingxia_browser::current_tab().map(|tab| tab.tab_id) {
+        protected.insert(tab_id);
+    }
+    if let Some(tab_id) = presented_browser_tab() {
+        protected.insert(tab_id);
+    }
+    if let Some(tab_id) = recent_tab_id {
+        protected.insert(tab_id.to_string());
+    }
+
+    let candidates = {
+        let state =
+            BROWSER_TAB_MEMORY_STATE.get_or_init(|| Mutex::new(BrowserTabMemoryState::default()));
+        let Ok(mut state) = state.lock() else {
+            return;
+        };
+        state.recency.retain(|tab_id| live_tab_ids.contains(tab_id));
+        state
+            .discarded
+            .retain(|tab_id| live_tab_ids.contains(tab_id));
+        // Normally every tab was already observed by the raw tabs-changed
+        // callback. The ordered snapshot is only a deterministic bootstrap
+        // fallback for tabs that predated handler installation.
+        for tab_id in &ordered_tab_ids {
+            if !state.recency.contains(tab_id) {
+                state.recency.push(tab_id.clone());
+            }
+        }
+        if let Some(tab_id) = recent_tab_id.filter(|tab_id| live_tab_ids.contains(*tab_id)) {
+            touch_browser_tab_recency(&mut state.recency, tab_id);
+        }
+        browser_tab_discard_candidates(
+            &live_tab_ids,
+            &state.recency,
+            &state.discarded,
+            &protected,
+            live_browser_tab_limit(),
+        )
+    };
+
+    for tab_id in candidates {
+        match lingxia_browser::discard(&tab_id) {
+            Ok(()) => {
+                if let Ok(mut state) = BROWSER_TAB_MEMORY_STATE
+                    .get_or_init(|| Mutex::new(BrowserTabMemoryState::default()))
+                    .lock()
+                {
+                    state.discarded.insert(tab_id);
+                }
+            }
+            Err(err) => log::warn!("failed to discard background browser tab {tab_id}: {err}"),
+        }
+    }
+}
+
+#[cfg(feature = "browser-runtime")]
+fn reactivate_browser_tab_if_needed(tab_id: &str) -> Result<(), lxapp::LxAppError> {
+    lingxia_browser::reactivate(tab_id)?;
+    if let Ok(mut state) = BROWSER_TAB_MEMORY_STATE
+        .get_or_init(|| Mutex::new(BrowserTabMemoryState::default()))
+        .lock()
+    {
+        state.discarded.remove(tab_id);
+    }
+    enforce_browser_tab_memory_limit(Some(tab_id));
+    Ok(())
 }
 
 // Browser-tab navigation, stubbed to no-ops without the browser engine so the
@@ -535,6 +701,12 @@ pub(super) fn install() {
     // touching window state (layout syncs block on those UI threads).
     #[cfg(feature = "browser-runtime")]
     lingxia_browser::set_tabs_changed_handler(Arc::new(|| {
+        // Record every raw event before the layout debounce collapses bursts;
+        // otherwise multiple background opens would be initialized from an
+        // unordered snapshot and the first eviction would not be true LRU.
+        if let Some(tab) = lingxia_browser::current_tab() {
+            record_browser_tab_recency(&tab.tab_id);
+        }
         schedule_browser_tabs_changed_sync();
     }));
     #[cfg(feature = "browser-shell")]
@@ -768,6 +940,8 @@ fn schedule_browser_tabs_changed_sync() {
 /// sidebar of the shell owner app.
 #[cfg(feature = "browser-runtime")]
 fn on_browser_tabs_changed() {
+    let recent_tab = lingxia_browser::current_tab().map(|tab| tab.tab_id);
+    enforce_browser_tab_memory_limit(recent_tab.as_deref());
     if let Some(presented) = presented_browser_tab()
         && browser_tab_summary(&presented).is_none()
     {
@@ -3164,6 +3338,10 @@ fn schedule_lxapp_restart_in_place(appid: String, clear_cache: bool) {
 /// webview asynchronously).
 #[cfg(feature = "browser-runtime")]
 fn present_browser_tab_when_ready(appid: &str, tab_id: String) {
+    if let Err(err) = reactivate_browser_tab_if_needed(&tab_id) {
+        log::warn!("failed to reactivate browser tab {tab_id}: {err}");
+        return;
+    }
     let owner_appid = appid.to_string();
     let epoch = BROWSER_PRESENT_EPOCH.fetch_add(1, Ordering::Relaxed) + 1;
     std::mem::drop(lingxia::task::spawn(async move {
@@ -4375,6 +4553,13 @@ mod tests {
         build_lxapp_context_menu, chrome_command, chrome_command_is_page_scoped,
         preferred_sidebar_group_appid,
     };
+    #[cfg(feature = "browser-runtime")]
+    use super::{
+        browser_tab_discard_candidates, live_browser_tab_limit_for_memory,
+        touch_browser_tab_recency,
+    };
+    #[cfg(feature = "browser-runtime")]
+    use std::collections::HashSet;
 
     #[test]
     fn tabbar_clicks_stay_scoped_to_the_visible_lxapp() {
@@ -4450,5 +4635,45 @@ mod tests {
         let (_, app_actions) =
             build_lxapp_context_menu(false, false, Some("Version 1.0.0".to_string()));
         assert!(app_actions.contains(&Some(LxappContextMenuAction::TogglePin)));
+    }
+
+    #[cfg(feature = "browser-runtime")]
+    #[test]
+    fn live_browser_tab_limit_scales_with_physical_memory() {
+        const GIB: u64 = 1024 * 1024 * 1024;
+        assert_eq!(live_browser_tab_limit_for_memory(2 * GIB), 4);
+        assert_eq!(live_browser_tab_limit_for_memory(8 * GIB), 8);
+        assert_eq!(live_browser_tab_limit_for_memory(16 * GIB), 16);
+        assert_eq!(live_browser_tab_limit_for_memory(64 * GIB), 16);
+    }
+
+    #[cfg(feature = "browser-runtime")]
+    #[test]
+    fn browser_tab_discard_candidates_are_lru_and_protect_visible_tabs() {
+        let live = ["old", "discarded", "visible", "active", "new"]
+            .into_iter()
+            .map(str::to_string)
+            .collect::<HashSet<_>>();
+        let mut recency = Vec::new();
+        for tab_id in ["old", "discarded", "visible", "active", "new"] {
+            touch_browser_tab_recency(&mut recency, tab_id);
+        }
+        let discarded = HashSet::from(["discarded".to_string()]);
+        let protected = HashSet::from(["visible".to_string(), "active".to_string()]);
+
+        assert_eq!(
+            browser_tab_discard_candidates(&live, &recency, &discarded, &protected, 3),
+            vec!["old".to_string()]
+        );
+    }
+
+    #[cfg(feature = "browser-runtime")]
+    #[test]
+    fn browser_tab_recency_preserves_raw_event_order() {
+        let mut recency = Vec::new();
+        for tab_id in ["first", "second", "third", "first"] {
+            touch_browser_tab_recency(&mut recency, tab_id);
+        }
+        assert_eq!(recency, ["second", "third", "first"]);
     }
 }
