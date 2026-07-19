@@ -1028,6 +1028,16 @@ pub(crate) fn mark_browser_tab_active(tab_id: &str) {
     }
 }
 
+/// Clear browser active state when the platform leaves browser UI entirely.
+/// With no active browser tab, every tab is eligible for background memory
+/// reclamation according to the host policy.
+pub(crate) fn clear_active_browser_tab() {
+    let changed = lock_active_tab().take().is_some();
+    if changed {
+        notify_tabs_changed();
+    }
+}
+
 /// Recreate a discarded tab's WebView and reload its saved URL, then make it
 /// the active tab. No-op if the tab is already live.
 pub(crate) fn reactivate_browser_tab(tab_id: &str) -> Result<(), LxAppError> {

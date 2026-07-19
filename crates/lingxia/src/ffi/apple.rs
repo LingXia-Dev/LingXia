@@ -334,6 +334,10 @@ mod bridge {
         #[swift_bridge(swift_name = "browserTabActivate")]
         fn browser_tab_activate(tab_id: &str);
 
+        // Clear Rust-side active state when no browser tab is visible.
+        #[swift_bridge(swift_name = "browserTabDeactivate")]
+        fn browser_tab_deactivate();
+
         #[swift_bridge(swift_name = "getBuiltinBrowserAppId")]
         fn get_builtin_browser_app_id() -> String;
 
@@ -861,6 +865,12 @@ pub fn browser_tab_reactivate(tab_id: &str) -> bool {
 pub fn browser_tab_activate(tab_id: &str) {
     ffi_catch_unwind!("browser_tab_activate", (), || {
         crate::browser::mark_active(tab_id)
+    })
+}
+
+pub fn browser_tab_deactivate() {
+    ffi_catch_unwind!("browser_tab_deactivate", (), || {
+        crate::browser::clear_active()
     })
 }
 

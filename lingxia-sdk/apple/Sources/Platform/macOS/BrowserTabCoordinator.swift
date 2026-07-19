@@ -198,6 +198,9 @@ final class BrowserTabCoordinator: NSObject {
         // tab that was active, so it isn't treated as infinitely idle and
         // discarded prematurely on the next pressure event / sweep.
         backgroundedAt[previous] = Date()
+        // No browser tab is visible while an lxapp owns the foreground. Clear
+        // core active state so critical pressure can reclaim this last tab too.
+        browserTabDeactivate()
         activeTabId = nil
         host?.forceHideNavigationToolbar(false)
     }
@@ -781,21 +784,29 @@ final class BrowserTabCoordinator: NSObject {
 
         startMemoryManagementIfNeeded()
 
-        host?.browserWillActivateTab()
-        clearWebViewAttachment()
-
         // If the tab was discarded to save memory, recreate its WebView and
         // reload the saved URL before attaching (reactivate also marks it
         // active in Rust); otherwise sync the Rust-side active tab so a
         // previously-active live tab can be discarded once it's in the
         // background.
         if discardedTabs.contains(id) {
-            if browserTabReactivate(tabIdString(id)) {
-                discardedTabs.remove(id)
+            guard browserTabReactivate(tabIdString(id)) else {
+                // Keep the previous tab attached and active so another click
+                // can retry recreation immediately instead of hitting the
+                // active-tab early return above with no WebView to present.
+                LXLog.error(
+                    "Failed to reactivate discarded browser tab \(id)",
+                    category: "BrowserTabCoordinator"
+                )
+                return
             }
+            discardedTabs.remove(id)
         } else {
             browserTabActivate(tabIdString(id))
         }
+
+        host?.browserWillActivateTab()
+        clearWebViewAttachment()
 
         // The tab we're leaving starts its background idle clock now.
         if let previous = activeTabId {
