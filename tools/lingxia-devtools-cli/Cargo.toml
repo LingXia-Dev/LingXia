@@ -19,3 +19,20 @@ lingxia-computer-use = { workspace = true }
 tungstenite = { version = "0.29", features = ["native-tls"] }
 owo-colors = "4.3"
 base64 = { workspace = true }
+ctrlc = "3.5"
+
+# `lxdev test` bundler — the same Oxc components as lingxia-cli's Logic
+# bundler, but a dedicated entry mode (no Page()/App() rewrites).
+oxc_parser = "0.138"
+oxc_resolver = "11.23.0"
+oxc_transformer = "0.138"
+oxc_codegen = "0.138"
+oxc_allocator = "0.138"
+oxc_span = "0.138"
+oxc_ast = "0.138"
+oxc_ast_visit = "0.138"
+oxc_semantic = "0.138"
+oxc_sourcemap = "8.1"
+
+[dev-dependencies]
+tempfile = "3"

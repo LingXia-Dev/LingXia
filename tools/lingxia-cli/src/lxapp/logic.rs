@@ -13,7 +13,7 @@ use oxc_resolver::{ModuleType, ResolveOptions, Resolver};
 use oxc_semantic::SemanticBuilder;
 use oxc_span::{GetSpan, SourceType};
 use oxc_transformer::{TransformOptions, Transformer};
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -186,18 +186,9 @@ impl<'a> LogicBundler<'a> {
         let export_dependencies =
             collect_export_dependencies(&program, &path, self.project.root.as_path())?;
         let mut dependency_vars = BTreeMap::new();
-        let mut dependency_paths = BTreeSet::new();
-        for import in &imports {
-            if let Some(local_path) = &import.resolved_local {
-                dependency_paths.insert(local_path.clone());
-            }
-        }
-        for export in &export_dependencies {
-            if let Some(local_path) = &export.resolved_local {
-                dependency_paths.insert(local_path.clone());
-            }
-        }
-        for local_path in dependency_paths {
+        for local_path in
+            dependency_paths_in_source_order(&program, &imports, &export_dependencies)?
+        {
             let module_var = self.compile_module(local_path.clone(), ModuleRole::Plain)?;
             dependency_vars.insert(local_path, module_var);
         }
@@ -226,6 +217,44 @@ impl<'a> LogicBundler<'a> {
         self.visiting.remove(&path);
         Ok(module_var)
     }
+}
+
+fn dependency_paths_in_source_order(
+    program: &oxc_ast::ast::Program<'_>,
+    imports: &[ImportRecord],
+    export_dependencies: &[ExportDependencyRecord],
+) -> Result<Vec<PathBuf>> {
+    let mut paths = Vec::new();
+    let mut seen = HashSet::new();
+    for statement in &program.body {
+        let path = match statement {
+            Statement::ImportDeclaration(declaration) => imports
+                .iter()
+                .find(|record| record.statement_span == declaration.span)
+                .ok_or_else(|| anyhow!("Internal import bookkeeping mismatch"))?
+                .resolved_local
+                .as_ref(),
+            Statement::ExportNamedDeclaration(declaration) => export_dependencies
+                .iter()
+                .find(|record| record.statement_span == declaration.span)
+                .ok_or_else(|| anyhow!("Internal export bookkeeping mismatch"))?
+                .resolved_local
+                .as_ref(),
+            Statement::ExportAllDeclaration(declaration) => export_dependencies
+                .iter()
+                .find(|record| record.statement_span == declaration.span)
+                .ok_or_else(|| anyhow!("Internal export bookkeeping mismatch"))?
+                .resolved_local
+                .as_ref(),
+            _ => None,
+        };
+        if let Some(path) = path
+            && seen.insert(path.clone())
+        {
+            paths.push(path.clone());
+        }
+    }
+    Ok(paths)
 }
 
 fn discover_app_logic(project_root: &Path) -> Result<Option<PathBuf>> {
@@ -313,23 +342,28 @@ fn collect_imports(
             .transpose()?
             .unwrap_or_default();
 
+        let side_effect_only = import_decl
+            .specifiers
+            .as_ref()
+            .is_none_or(|specifiers| specifiers.is_empty());
         let has_runtime_bindings = bindings.iter().any(|binding| !binding.type_only);
-        let resolved_local =
-            if import_decl.import_kind == ImportOrExportKind::Type || !has_runtime_bindings {
-                None
-            } else if is_local_specifier(&import_source) {
-                Some(resolve_local_import(
-                    module_path,
-                    &import_source,
-                    project_root,
-                )?)
-            } else {
-                Some(resolve_bare_import(
-                    module_path,
-                    &import_source,
-                    project_root,
-                )?)
-            };
+        let resolved_local = if import_decl.import_kind == ImportOrExportKind::Type
+            || (!has_runtime_bindings && !side_effect_only)
+        {
+            None
+        } else if is_local_specifier(&import_source) {
+            Some(resolve_local_import(
+                module_path,
+                &import_source,
+                project_root,
+            )?)
+        } else {
+            Some(resolve_bare_import(
+                module_path,
+                &import_source,
+                project_root,
+            )?)
+        };
 
         imports.push(ImportRecord {
             statement_span: import_decl.span,
@@ -668,6 +702,10 @@ fn collect_exports_from_declaration(
                 exports.push((name.clone(), name));
             }
         }
+        Declaration::TSEnumDeclaration(enum_decl) if !enum_decl.r#const => {
+            let name = enum_decl.id.name.as_str().to_string();
+            exports.push((name.clone(), name));
+        }
         Declaration::TSTypeAliasDeclaration(_)
         | Declaration::TSInterfaceDeclaration(_)
         | Declaration::TSEnumDeclaration(_)
@@ -882,6 +920,7 @@ pub(crate) fn transpile_module(path: &Path, source: &str) -> Result<String> {
     let mut program = parse_result.program;
     let semantic = SemanticBuilder::new()
         .with_check_syntax_error(true)
+        .with_enum_eval(true)
         .build(&program);
     if !semantic.diagnostics.is_empty() {
         bail!(
@@ -1233,5 +1272,22 @@ mod tests {
             bundle.contains("delete __lx_module_exports[__lx_export_name];"),
             "{bundle}"
         );
+    }
+
+    #[test]
+    fn exports_runtime_enum() {
+        let temp = TempDir::new().unwrap();
+        fs::write(
+            temp.path().join("entry.ts"),
+            "export enum Color { Red, Green }\nexport const enum Erased { A }\n",
+        )
+        .unwrap();
+
+        let bundle = build_test_bundle(temp.path(), "entry.ts");
+        assert!(
+            bundle.contains("__lx_module_exports[\"Color\"]"),
+            "{bundle}"
+        );
+        assert!(!bundle.contains("__lx_module_exports[\"Erased\"]"));
     }
 }

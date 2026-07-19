@@ -29,7 +29,7 @@ features = ["dev"]
 lingxia = { workspace = true, features = ["standard", "devtool", "webview-input"] }
 # The runner links the browser engine (below), so the devtool bridge carries
 # its browser commands too — otherwise `lxdev browser ...` errors on Windows.
-lingxia_devtool = { workspace = true, features = ["browser"] }
+lingxia_devtool = { workspace = true, features = ["browser", "test-runtime"] }
 lingxia-windows-sdk = { workspace = true, features = ["standard", "browser-runtime", "webview-input", "device-frame"] }
 lxapp = { workspace = true, default-features = false }
 serde = { workspace = true, features = ["derive"] }

@@ -17,6 +17,8 @@ mod lxapp;
 mod lxapp_device;
 mod lxapp_nav;
 mod lxapp_page;
+#[cfg(feature = "test-runtime")]
+mod session_test;
 mod util;
 
 pub use lingxia_devtool_protocol::{
@@ -234,6 +236,11 @@ fn handle_incoming_message(
         return Ok(());
     };
 
+    #[cfg(feature = "test-runtime")]
+    if let Some(result) = session_test::handle_session_test_command(&handler, args.clone()) {
+        return send_wire_message(websocket, &command_result(command_id, result));
+    }
+
     let result = if let Some(result) = app::handle_app_command(&handler, args.clone()) {
         command_result(command_id, result)
     } else if let Some(result) = browser::handle_browser_command(&handler, args.clone()) {
@@ -324,6 +331,7 @@ fn devtools_log_source(value: LogTag) -> DevtoolsLogSource {
         LogTag::WebViewConsole => DevtoolsLogSource::WebViewConsole,
         LogTag::LxAppServiceConsole => DevtoolsLogSource::LxAppServiceConsole,
         LogTag::BrowserConsole => DevtoolsLogSource::BrowserConsole,
+        LogTag::Automation => DevtoolsLogSource::Automation,
     }
 }
 

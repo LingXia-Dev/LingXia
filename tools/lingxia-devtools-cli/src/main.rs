@@ -12,6 +12,8 @@ mod lxapp_build;
 mod project;
 mod screenshot;
 mod sessions;
+mod test;
+mod test_bundle;
 
 use project::SessionSelector;
 
@@ -45,6 +47,8 @@ enum Commands {
     Desktop(desktop::DesktopOptions),
     /// Automate the host app surface in the current dev session
     App(app::AppOptions),
+    /// Run JavaScript/TypeScript test cases in the current dev session
+    Test(test::TestOptions),
 }
 
 #[derive(Args, Clone)]
@@ -157,6 +161,12 @@ fn run() -> Result<()> {
         Commands::App(options) => {
             let info = resolve(&selector)?;
             app::execute(&info, options)
+        }
+        // Session test runner: the handler owns process exit (run state
+        // becomes the exit code).
+        Commands::Test(options) => {
+            let info = resolve(&selector)?;
+            test::execute(&info, options)
         }
     }
 }

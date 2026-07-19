@@ -1,5 +1,6 @@
 #[cfg(feature = "broker")]
 pub mod broker;
+pub mod session_test;
 
 use serde::{Deserialize, Serialize};
 
@@ -35,6 +36,15 @@ pub mod handlers {
         /// Request the owning `lingxia dev` process to stop this session.
         /// Handled by the dev server, not forwarded to the runtime.
         pub const SHUTDOWN: &str = "session.shutdown";
+
+        /// Session test runner (`lxdev test`). Runtime-owned: the dev server
+        /// forwards these to the host, which executes the bundled test in an
+        /// isolated `lingxia-automation` runtime.
+        pub mod test {
+            pub const START: &str = "session.test.start";
+            pub const POLL: &str = "session.test.poll";
+            pub const CANCEL: &str = "session.test.cancel";
+        }
     }
 
     pub mod browser {
@@ -173,6 +183,9 @@ pub enum DevtoolsLogSource {
     WebViewConsole,
     LxAppServiceConsole,
     BrowserConsole,
+    /// Isolated host automation output mirrored into the session log (`path`
+    /// carries the run id). `lxdev test` live output flows through poll.
+    Automation,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
