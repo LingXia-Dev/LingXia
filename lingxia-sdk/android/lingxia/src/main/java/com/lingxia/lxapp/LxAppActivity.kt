@@ -650,7 +650,7 @@ class LxAppActivity : AppCompatActivity() {
         try {
             contentResolver.takePersistableUriPermission(
                 uri,
-                flags and Intent.FLAG_GRANT_READ_URI_PERMISSION
+                Intent.FLAG_GRANT_READ_URI_PERMISSION
             )
         } catch (_: Throwable) {
             // Not every provider/result supports persistable grants. The immediate grant
@@ -2022,8 +2022,9 @@ class LxAppActivity : AppCompatActivity() {
             return true
         }
 
-        return packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK) ||
+        val isLeanbackOnly = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
             packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK_ONLY)
+        return packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK) || isLeanbackOnly
     }
 
     private fun isHostImmersiveEnabled(): Boolean {

@@ -383,6 +383,7 @@ internal class ScanCodeFragment : Fragment() {
     }
 
     private inner class BarcodeAnalyzer : ImageAnalysis.Analyzer {
+        @androidx.camera.core.ExperimentalGetImage
         override fun analyze(imageProxy: androidx.camera.core.ImageProxy) {
             if (hasReportedResult) {
                 imageProxy.close()

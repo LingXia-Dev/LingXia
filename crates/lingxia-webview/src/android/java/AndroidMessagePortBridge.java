@@ -1,12 +1,15 @@
 package com.lingxia.webview;
 
 import android.net.Uri;
+import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
 import android.webkit.WebMessage;
 import android.webkit.WebMessagePort;
+import androidx.annotation.RequiresApi;
 
+@RequiresApi(api = Build.VERSION_CODES.M)
 public final class AndroidMessagePortBridge {
     private static final String TAG = "LingXiaWebView";
     private static final String ANDROID_MESSAGE_PORT_INIT = "LingXia-port-init";

@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.ContentUris
 import android.content.Context
 import android.content.pm.PackageManager
+import android.media.ThumbnailUtils
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
@@ -39,6 +40,45 @@ import android.graphics.drawable.GradientDrawable
 import android.graphics.Bitmap
 import android.util.LruCache
 import java.util.concurrent.Executors
+
+@Suppress("DEPRECATION")
+private fun loadThumbnailCompat(
+    context: Context,
+    uri: Uri,
+    width: Int,
+    height: Int,
+    isVideoHint: Boolean? = null,
+): Bitmap? {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        return context.contentResolver.loadThumbnail(uri, Size(width, height), null)
+    }
+
+    val mediaId = runCatching { ContentUris.parseId(uri) }.getOrNull() ?: return null
+    val isVideo = isVideoHint
+        ?: context.contentResolver.getType(uri)?.startsWith("video/")
+        ?: uri.pathSegments.any { it.equals("video", ignoreCase = true) }
+    val source = if (isVideo) {
+        MediaStore.Video.Thumbnails.getThumbnail(
+            context.contentResolver,
+            mediaId,
+            MediaStore.Video.Thumbnails.MINI_KIND,
+            null,
+        )
+    } else {
+        MediaStore.Images.Thumbnails.getThumbnail(
+            context.contentResolver,
+            mediaId,
+            MediaStore.Images.Thumbnails.MINI_KIND,
+            null,
+        )
+    } ?: return null
+    return ThumbnailUtils.extractThumbnail(
+        source,
+        width,
+        height,
+        ThumbnailUtils.OPTIONS_RECYCLE_INPUT,
+    )
+}
 
 /**
  * Unified custom media picker UI (grid multi-select, confirm), attached to current Activity.
@@ -1125,7 +1165,13 @@ internal class MediaPickerFragment : Fragment() {
                     holder.image.setBackgroundColor(THUMB_PLACEHOLDER_COLOR)
                     thumbnailExecutor.execute {
                         try {
-                            val bmp = context.contentResolver.loadThumbnail(item.uri, Size(300, 300), null)
+                            val bmp = loadThumbnailCompat(
+                                context,
+                                item.uri,
+                                300,
+                                300,
+                                isVideoHint = item.fileType == "video",
+                            ) ?: error("thumbnail unavailable")
                             synchronized(cacheLock) { thumbnailCache.put(item.uri, bmp) }
                             holder.image.post {
                                 if (holder.image.tag == item.uri) {
@@ -1219,7 +1265,8 @@ internal class MediaPickerFragment : Fragment() {
                 try {
                     val uri = item.coverUri
                     if (uri != null) {
-                        val bmp = ctx.contentResolver.loadThumbnail(uri, Size(200, 200), null)
+                        val bmp = loadThumbnailCompat(ctx, uri, 200, 200)
+                            ?: error("thumbnail unavailable")
                         holder.cover.setImageBitmap(bmp)
                     } else {
                         holder.cover.setImageDrawable(null)

@@ -1,11 +1,13 @@
 package com.lingxia.webview;
 
+import android.os.Build;
 import android.util.Log;
 import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import androidx.annotation.RequiresApi;
 import android.os.ParcelFileDescriptor;
 import java.io.BufferedInputStream;
 import java.io.ByteArrayInputStream;
@@ -122,6 +124,7 @@ public class LingXiaWebViewClient extends WebViewClient {
     }
 
     @Override
+    @RequiresApi(api = Build.VERSION_CODES.M)
     public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
         super.onReceivedError(view, request, error);
         String failingUrl = request != null ? request.getUrl().toString() : "";
