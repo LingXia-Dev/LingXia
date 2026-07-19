@@ -406,8 +406,10 @@ Creation:
 
 ### Tab state and teardown
 
-`BrowserTabState` holds: `session_id`, `create_token`, `pending_url`,
-`current_url`, `title`. Note what is **not** in it:
+`BrowserTabState` holds the WebView creation state (`session_id`, `create_token`,
+`create_in_flight`, `pending_url`), restorable browser metadata (`current_url`,
+`title`, favicon and history state), discard state (`discarded`, `data_mode`),
+and presentation/ownership flags. Note what is **not** in it:
 - the **tab id** is the `HashMap` key, not a field;
 - the **active tab** is tracked by a separate global (`BROWSER_ACTIVE_TAB_ID`);
 - **download state** lives in the separate `lingxia_transfer` registry.
@@ -421,6 +423,65 @@ is the in-flight reattach guard.
 Tab teardown (`close_browser_tab`) must: remove tab state, detach the page if it
 currently backs the shared bridge, `destroy_webview` the tab path/session, and
 reassign the active tab if the closed one was active.
+
+### Browser tab discard and reactivation
+
+Discard is memory reclamation, not tab teardown. It destroys a background
+tab's native WebView, controller, and JS heap while keeping the
+`BrowserTabState` and sidebar row. The core implementation lives in
+`crates/lingxia-browser/src/tabs.rs`. The lifecycle is:
+
+```
+Live -> Discarded -> Recreating -> Live
+```
+
+`discard_browser_tab(tab_id)`:
+
+1. Rejects the Rust-side active tab. The host must keep
+   `BROWSER_ACTIVE_TAB_ID` synchronized with its visible selection.
+2. Advances `create_token` **before** destruction. An older in-flight create
+   callback then resolves as `Stale` and cannot remove or reattach the retained
+   tab.
+3. Detaches the tab from the shared startup bridge and removes any per-tab
+   internal `Page`.
+4. Calls `destroy_webview` for the tab path/session.
+5. Keeps the tab map entry, sets `discarded = true`, clears
+   `create_in_flight`, and preserves `pending_url` (falling back to
+   `current_url`) as the restore target.
+
+`reactivate_browser_tab(tab_id)` reverses that operation. For a discarded tab
+it allocates a new create token, restores the original `data_mode`, creates a
+new browser-profile WebView, and reloads the saved URL through the normal
+creation callback. For an already-live tab it only synchronizes active state.
+If recreation fails, the entry returns to `discarded` so a later activation can
+retry.
+
+Discard deliberately retains the tab id, URL, title, favicon, ownership, and
+sidebar position. It does not emit page `onHide`/`onUnload` and must not run the
+close-tab successor logic. A subsequent user activation therefore looks like
+an ordinary tab switch, except the document reloads in a newly created WebView.
+
+Platform hosts decide *when* to discard:
+
+- **macOS:** `BrowserTabCoordinator`
+  (`lingxia-sdk/apple/Sources/Platform/macOS/BrowserTabCoordinator.swift`)
+  maintains activation recency and idle
+  timestamps. A memory-pressure warning discards background tabs idle for at
+  least 60 seconds; critical pressure discards all eligible background tabs.
+  A periodic sweep also discards tabs idle for 30 minutes. The active tab is
+  excluded; `isProtectedFromDiscard` is the extension point for pinned or
+  audio-playing tabs. Leaving browser UI clears the Rust-side active browser
+  state, so the last visible tab becomes eligible once it is backgrounded.
+- **Windows:** the shell policy in
+  `crates/lingxia-windows-sdk/src/shell/runtime.rs` maintains LRU activation
+  order and caps the number of
+  live browser WebViews according to physical memory. The budget is one quarter
+  of physical memory at an estimated 256 MiB per tab, clamped to 4 through 16
+  live tabs (8 if memory detection fails). Tab changes and presentation both
+  run the policy. When over the cap, it discards the oldest background tabs
+  while protecting the Rust-side active tab, the actually presented tab, and
+  the incoming tab. Presentation calls `reactivate` before waiting for WebView2
+  readiness.
 
 ## Page Lifecycle Events vs WebView Callbacks
 
@@ -541,6 +602,7 @@ is the quickest way to keep them straight:
 | `destroy_webview(tag)` | Removes registry entry + clears delegate (other cycle edge) | No | No | No | When last `Arc` released |
 | `dispose_page_instance_internal()` | Full page-instance teardown | Yes | Yes | Yes (both) | Yes (via the two edges) |
 | LRU eviction | Lightweight reclaim of an inactive page | **No** | **No** | **No** | Yes |
+| Browser tab discard | Destroys a background tab WebView but retains restorable tab state | No | Internal browser page only | No | Yes; recreated on activation |
 
 ### PageInstance disposal
 
@@ -608,7 +670,10 @@ dispatch `onHide`/`onUnload`, does **not** call `detach_webview()`, and does
 
 Owned by `lingxia-browser`: remove tab state, reject stale creation tokens,
 cancel pending URL state, `destroy_webview`, and prevent reattachment of
-in-flight WebViews to closed tabs (the `Missing`/`Stale` guard).
+in-flight WebViews to closed tabs (the `Missing`/`Stale` guard). This is the
+permanent close path. Browser tab discard instead retains the state, advances
+the token, and uses the `Stale` guard to protect the retained entry until
+reactivation creates a replacement WebView.
 
 ## Known Pitfalls
 
@@ -638,6 +703,10 @@ in-flight WebViews to closed tabs (the `Missing`/`Stale` guard).
 - **Browser external pages have no LxApp page lifecycle.** Do not wait for
   `wait_webview_ready()` on a normal web URL tab. Internal pages (and the shared
   startup page) are the exception — they bind a headless `Page`.
+- **Browser tab discard is not close.** Do not remove the tab state or run
+  successor selection while reclaiming memory. Keep host active state in sync
+  before discarding, and always reactivate a discarded tab before attempting to
+  present its WebView.
 - **External-navigation policy lives in the lxapp navigation handler, not in
   the core or the Apple https interception.** If you need to change what
   happens when a strict page hits an external URL, edit the handler in
@@ -723,6 +792,30 @@ sequenceDiagram
   Platform->>LxApp: on_surface_closed(id, reason)
   LxApp->>LxApp: forget_surface(id)
   Note over Platform: platform destroys its own view
+```
+
+## Sequence: Browser Tab Discard and Reactivation
+
+```mermaid
+sequenceDiagram
+  participant Policy as Platform Memory Policy
+  participant Browser as lingxia-browser
+  participant Core as webview.rs
+  participant Backend as Platform WebViewInner
+
+  Policy->>Browser: discard(background_tab_id)
+  Browser->>Browser: advance create token + retain state/restore URL
+  Browser->>Core: destroy_webview
+  Core->>Backend: Drop when last Arc is released
+
+  Note over Policy,Backend: tab id and sidebar row remain
+
+  Policy->>Browser: reactivate(tab_id)
+  Browser->>Browser: new create token + restore data mode
+  Browser->>Core: WebViewBuilder::browser(tag).create()
+  Core->>Backend: create replacement WebView
+  Backend-->>Browser: ready
+  Browser->>Backend: reload retained URL
 ```
 
 ## Sequence: Browser Tab
