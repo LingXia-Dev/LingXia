@@ -10,12 +10,12 @@ use crate::input_helper::INPUT_HELPER_BOOTSTRAP;
 #[cfg(all(feature = "webview-input", target_os = "macos"))]
 use crate::input_helper::build_helper_invocation;
 use crate::input_helper::{build_async_eval_body, parse_wrapped_eval_result};
-#[cfg(all(feature = "webview-input", target_os = "macos"))]
-use crate::traits::{ClickOptions, PressOptions, ScrollOptions, TypeOptions};
 use crate::traits::{
     FileChooserRequest, FileChooserResponse, LoadError, LoadErrorKind, NavigationPolicy,
     NewWindowPolicy,
 };
+#[cfg(all(feature = "webview-input", target_os = "macos"))]
+use crate::traits::{PressOptions, ScrollOptions, TypeOptions};
 use crate::webview::{find_webview, find_webview_delegate};
 use crate::{
     ClearSiteDataOptions, ClearSiteDataResult, DownloadRequest, LoadDataRequest, LogLevel,
@@ -3271,6 +3271,35 @@ impl WebViewInner {
         Ok(result)
     }
 
+    async fn focus_helper_element(
+        &self,
+        selector: &str,
+        index: Option<usize>,
+    ) -> Result<(), WebViewInputError> {
+        let selector_json = serde_json::to_string(selector)
+            .map_err(|err| WebViewInputError::Platform(format!("Invalid selector: {err}")))?;
+        let index_json = serde_json::to_string(&index)
+            .map_err(|err| WebViewInputError::Platform(format!("Invalid selector index: {err}")))?;
+        let expr = format!("window.__LingXiaInput.focus({selector_json}, {index_json})");
+        let script = format!("JSON.stringify({})", build_helper_invocation(&expr));
+        let raw = self
+            .eval_js_raw_string(&script)
+            .await
+            .map_err(WebViewInputError::Script)?;
+        let result: InputHelperElementResult = serde_json::from_str(&raw).map_err(|err| {
+            WebViewInputError::Platform(format!("Failed to decode input focus result: {err}"))
+        })?;
+        if result.ok {
+            Ok(())
+        } else {
+            Err(WebViewInputError::ElementNotInteractable(
+                result
+                    .error
+                    .unwrap_or_else(|| format!("Element cannot be focused: {selector}")),
+            ))
+        }
+    }
+
     fn webview_screen_point_on_main(
         webview_ptr: usize,
         x: f64,
@@ -3694,24 +3723,6 @@ impl WebViewInner {
             .await
     }
 
-    fn edit_command_for_key(key_code: u16) -> Option<&'static str> {
-        match key_code {
-            36 => Some("InsertNewline"),
-            48 => Some("InsertTab"),
-            51 => Some("DeleteBackward"),
-            115 => Some("MoveToBeginningOfLine"),
-            116 => Some("ScrollPageBackward"),
-            117 => Some("DeleteForward"),
-            119 => Some("MoveToEndOfLine"),
-            121 => Some("ScrollPageForward"),
-            123 => Some("MoveLeft"),
-            124 => Some("MoveRight"),
-            125 => Some("MoveDown"),
-            126 => Some("MoveUp"),
-            _ => None,
-        }
-    }
-
     fn key_char_for_code(key_code: u16) -> &'static str {
         match key_code {
             36 => "\r",
@@ -3781,17 +3792,6 @@ impl WebViewInner {
         .unwrap_or(false)
     }
 
-    pub(crate) async fn click_inner(
-        &self,
-        selector: &str,
-        options: ClickOptions,
-    ) -> Result<(), WebViewInputError> {
-        let result = self.ensure_element_visible(selector, options.index).await?;
-        self.focus_webview_for_input().await?;
-        self.post_mouse_click_at(result.center_x, result.center_y)
-            .await
-    }
-
     pub(crate) async fn type_text_inner(
         &self,
         selector: &str,
@@ -3822,8 +3822,13 @@ impl WebViewInner {
     pub(crate) async fn press_inner(
         &self,
         key: &str,
-        _options: PressOptions,
+        options: PressOptions,
     ) -> Result<(), WebViewInputError> {
+        if let Some(selector) = options.selector.as_deref() {
+            self.ensure_element_visible(selector, options.index).await?;
+            self.focus_webview_for_input().await?;
+            self.focus_helper_element(selector, options.index).await?;
+        }
         self.focus_webview_for_input().await?;
         let normalized = key.trim().to_ascii_lowercase();
         let mapped = match normalized.as_str() {
@@ -3844,11 +3849,7 @@ impl WebViewInner {
             _ => None,
         };
         if let Some(key_code) = mapped {
-            if let Some(command) = Self::edit_command_for_key(key_code) {
-                self.execute_edit_command(command, String::new()).await
-            } else {
-                self.post_special_key(key_code).await
-            }
+            self.post_special_key(key_code).await
         } else if key.chars().count() == 1 {
             self.post_unicode_text(key).await
         } else {

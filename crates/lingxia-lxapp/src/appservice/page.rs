@@ -729,6 +729,13 @@ impl PageSvc {
         let bridge = self.bridge();
 
         if !bridge.is_ready() {
+            if self.page.is_unloaded() {
+                drop(state);
+                if let Some(callback) = callback.0 {
+                    let _ = callback.call::<_, ()>(None, ());
+                }
+                return Ok(());
+            }
             return Err(RongJSError::from(HostError::new(
                 rong::error::E_INTERNAL,
                 format!("Bridge of {} is not ready", self.page.path()),
@@ -755,11 +762,19 @@ impl PageSvc {
 
         drop(state);
 
-        bridge
-            .send_state_patch(self, None, base_rev, new_rev, ops, ack)
-            .map_err(|e| {
-                RongJSError::from(HostError::new(rong::error::E_INTERNAL, e.to_string()))
-            })?;
+        if let Err(error) = bridge.send_state_patch(self, None, base_rev, new_rev, ops, ack) {
+            if self.page.is_unloaded() {
+                let callback = self.state.lock().await.state_callback.remove(&new_rev);
+                if let Some(callback) = callback {
+                    let _ = callback.call::<_, ()>(None, ());
+                }
+                return Ok(());
+            }
+            return Err(RongJSError::from(HostError::new(
+                rong::error::E_INTERNAL,
+                error.to_string(),
+            )));
+        }
 
         Ok(())
     }

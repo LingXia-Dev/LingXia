@@ -10,7 +10,7 @@ use crate::lxapp::{self, navbar::NavigationBarState};
 use crate::page::config::{OrientationOverride, PageConfig};
 use crate::plugin;
 use crate::startup::parse_query_string;
-use crate::{LxApp, LxAppError, error, info};
+use crate::{LxApp, LxAppError, debug, error, info};
 use base64::Engine;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -317,7 +317,7 @@ impl PageInstance {
             navbar_state: page_config.create_navbar_state(),
             enable_pull_down_refresh: page_config.is_pull_down_refresh_enabled(),
             orientation_override: page_config.get_orientation_override(),
-            query: serde_json::Value::Null,
+            query: serde_json::json!({}),
         }
     }
 
@@ -860,7 +860,7 @@ impl PageInstance {
         let query = state
             .as_ref()
             .map(|state| state.query.clone())
-            .unwrap_or(Value::Null);
+            .unwrap_or_else(|| serde_json::json!({}));
         PageAutomationState {
             webview_attached,
             webview_ready,
@@ -871,6 +871,13 @@ impl PageInstance {
             ready,
             query,
         }
+    }
+
+    pub(crate) fn is_unloaded(&self) -> bool {
+        self.inner
+            .state
+            .lock()
+            .is_ok_and(|state| state.event == PageLifecycleEvent::OnUnload)
     }
 
     pub(crate) fn mark_webview_ready(&self, result: Result<(), String>) {
@@ -1396,8 +1403,15 @@ impl WebViewDelegate for PageInstance {
         match IncomingMessage::from_json_str(&msg) {
             Ok(incoming) => {
                 if let Err(e) = self.bridge().handle_incoming(self, Arc::new(incoming)) {
-                    error!("Failed to handle view message: {}", e)
-                        .with_appid(self.inner.appid.clone());
+                    if self.is_unloaded() || self.webview().is_none() {
+                        debug!("Dropping view message after page unload")
+                            .with_appid(self.inner.appid.clone())
+                            .with_path(self.inner.path.clone());
+                    } else {
+                        error!("Failed to handle view message: {}", e)
+                            .with_appid(self.inner.appid.clone())
+                            .with_path(self.inner.path.clone());
+                    }
                 }
             }
             Err(e) => {
@@ -1511,7 +1525,7 @@ mod tests {
             navbar_state: NavigationBarState::default(),
             enable_pull_down_refresh: false,
             orientation_override: OrientationOverride::default(),
-            query: serde_json::Value::Null,
+            query: serde_json::json!({}),
         }
     }
 
@@ -1584,7 +1598,7 @@ mod tests {
 
         assert_eq!(
             events,
-            vec![(PageLifecycleEvent::OnLoad, Some("null".to_string()))]
+            vec![(PageLifecycleEvent::OnLoad, Some("{}".to_string()))]
         );
         assert!(!state.load_requested);
         assert!(state.on_load_fired);
@@ -1602,7 +1616,7 @@ mod tests {
 
         assert_eq!(
             events,
-            vec![(PageLifecycleEvent::OnLoad, Some("null".to_string()))]
+            vec![(PageLifecycleEvent::OnLoad, Some("{}".to_string()))]
         );
         assert!(!state.load_requested);
         assert!(state.on_load_fired);
@@ -1622,7 +1636,7 @@ mod tests {
         assert_eq!(
             events,
             vec![
-                (PageLifecycleEvent::OnLoad, Some("null".to_string())),
+                (PageLifecycleEvent::OnLoad, Some("{}".to_string())),
                 (PageLifecycleEvent::OnShow, None),
                 (PageLifecycleEvent::OnReady, None),
             ]
@@ -1719,7 +1733,7 @@ mod tests {
 
         assert_eq!(
             events,
-            vec![(PageLifecycleEvent::OnLoad, Some("null".to_string()))]
+            vec![(PageLifecycleEvent::OnLoad, Some("{}".to_string()))]
         );
         assert!(state.on_load_fired);
     }
@@ -1741,7 +1755,7 @@ mod tests {
         assert_eq!(
             events,
             vec![
-                (PageLifecycleEvent::OnLoad, Some("null".to_string())),
+                (PageLifecycleEvent::OnLoad, Some("{}".to_string())),
                 (PageLifecycleEvent::OnShow, None),
             ]
         );

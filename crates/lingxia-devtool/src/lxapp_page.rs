@@ -143,6 +143,8 @@ fn handle_lxapp_page_command_impl(
                 Some(&info.appid),
                 Some(&info.instance_id),
                 &args.key,
+                args.selector.as_deref(),
+                args.index,
             ))?;
             Ok(Some(page_action_response("press", info)))
         }
@@ -324,6 +326,10 @@ struct PressArgs {
     #[serde(default)]
     page: Option<String>,
     key: String,
+    #[serde(default)]
+    selector: Option<String>,
+    #[serde(default)]
+    index: Option<usize>,
 }
 
 #[derive(Deserialize)]

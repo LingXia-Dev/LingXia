@@ -4,7 +4,7 @@ use crate::lx;
 use crate::lxapp::LxApp;
 #[cfg(feature = "process")]
 use crate::warn;
-use crate::{error, info};
+use crate::{debug, error, info};
 
 use rong::{JSContext, JSResult, JSRuntime, JSValue, RongJSError, Source, error::HostError};
 use rong_console as console;
@@ -690,9 +690,21 @@ pub(crate) async fn lxapp_service_handler(
 
                         if let Some(page_svc) = page_svc {
                             if let Err(e) = handle_bridge_source(&page_svc, message).await {
-                                error!("[Worker {}] Handle bridge message error: {}", worker_id, e)
+                                if page_svc.get_page().is_unloaded() {
+                                    debug!(
+                                        "[Worker {}] Dropping bridge response after page unload",
+                                        worker_id
+                                    )
                                     .with_appid(lxapp.appid.clone())
                                     .with_path(path.clone());
+                                } else {
+                                    error!(
+                                        "[Worker {}] Handle bridge message error: {}",
+                                        worker_id, e
+                                    )
+                                    .with_appid(lxapp.appid.clone())
+                                    .with_path(path.clone());
+                                }
                             }
                         } else {
                             info!(
@@ -752,12 +764,22 @@ pub(crate) async fn lxapp_service_handler(
                     context_lifecycle::spawn(ctx, move |ctx| async move {
                         if let Err(e) = page_svc.call_page_event(&ctx, event, args.as_deref()).await
                         {
-                            error!(
-                                "[Worker {}] PageInstance event '{}' failed: {}",
-                                worker_id, event, e
-                            )
-                            .with_appid(appid)
-                            .with_path(path);
+                            let error = eval_error_from_rong(&ctx, e);
+                            if page_svc.get_page().is_unloaded() {
+                                debug!(
+                                    "[Worker {}] PageInstance event '{}' cancelled after unload",
+                                    worker_id, event
+                                )
+                                .with_appid(appid)
+                                .with_path(path);
+                            } else {
+                                error!(
+                                    "[Worker {}] PageInstance event '{}' failed: {}",
+                                    worker_id, event, error
+                                )
+                                .with_appid(appid)
+                                .with_path(path);
+                            }
                         }
                     });
                 } else {

@@ -1,4 +1,4 @@
-//! `PageDriver` — element-level automation of the calling lxapp's own pages.
+//! `PageDriver` — element-level automation of one selected lxapp's pages.
 //! All page/DOM semantics come from the shared `lxapp::automation` lower half,
 //! so results match the devtool (`lxdev lxapp page …`) exactly.
 
@@ -18,6 +18,12 @@ const EVAL_DEFAULT_MS: u64 = 5_000;
 const WAIT_POLL_MS: u64 = 100;
 const WAIT_DEFAULT_MS: u64 = 10_000;
 const WAIT_MAX_MS: u64 = 60_000;
+
+fn is_transient_page_error(error: &str) -> bool {
+    error.starts_with("page is not active:")
+        || error == "page WebView is not ready"
+        || error == "no current page"
+}
 
 #[js_class(clone)]
 pub(crate) struct JSPageDriver {
@@ -70,6 +76,8 @@ struct JSTypeOptions {
 #[derive(FromJSObject)]
 struct JSPressOptions {
     key: String,
+    css: Option<String>,
+    index: Option<usize>,
     page: Option<String>,
 }
 
@@ -203,9 +211,15 @@ impl JSPageDriver {
     #[js_method]
     async fn press(&self, _ctx: JSContext, options: JSPressOptions) -> JSResult<()> {
         let app = upgrade(&self.lxapp)?;
-        auto::page_press(&app, options.page.as_deref(), &options.key)
-            .await
-            .map_err(auto_err)
+        auto::page_press(
+            &app,
+            options.page.as_deref(),
+            &options.key,
+            options.css.as_deref(),
+            options.index,
+        )
+        .await
+        .map_err(auto_err)
     }
 
     #[js_method(rename = "scrollTo")]
@@ -269,8 +283,9 @@ impl JSPageDriver {
         );
         let started = Instant::now();
         loop {
-            // A page that is no longer active (or whose webview is torn down)
-            // counts as `gone`; for the other states it stays an error.
+            // Navigation returns before the destination WebView is attached.
+            // Treat that transient absence like an unsatisfied selector so a
+            // targeted wait can also be the page-readiness barrier.
             let probe = match auto::page_query(
                 &app,
                 options.page.as_deref(),
@@ -283,7 +298,19 @@ impl JSPageDriver {
             {
                 Ok(value) => serde_json::from_value::<WaitProbe>(value)
                     .map_err(|err| auto_err(format!("waitFor decode: {err}")))?,
-                Err(_) if state == "gone" => return Ok(()),
+                Err(err) if is_transient_page_error(&err) => {
+                    if state == "gone" {
+                        return Ok(());
+                    }
+                    if started.elapsed() >= timeout {
+                        return Err(auto_err(format!(
+                            "E_TIMEOUT: waitFor '{}' ({state}): {}",
+                            options.css, err
+                        )));
+                    }
+                    tokio::time::sleep(Duration::from_millis(WAIT_POLL_MS)).await;
+                    continue;
+                }
                 Err(err) => return Err(auto_err(err)),
             };
             let satisfied = match state {
@@ -333,4 +360,16 @@ pub(crate) fn png_dimensions(bytes: &[u8]) -> Option<(u32, u32)> {
     let width = u32::from_be_bytes(bytes[16..20].try_into().ok()?);
     let height = u32::from_be_bytes(bytes[20..24].try_into().ok()?);
     Some((width, height))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_transient_page_error;
+
+    #[test]
+    fn wait_retries_only_page_readiness_errors() {
+        assert!(is_transient_page_error("page is not active: todo"));
+        assert!(is_transient_page_error("page WebView is not ready"));
+        assert!(!is_transient_page_error("SyntaxError: invalid selector"));
+    }
 }

@@ -62,7 +62,7 @@ impl serde::Serialize for LxAppStartupOptions {
 /// This is the centralized query parsing function used by both startup options and page navigation
 pub fn parse_query_string(query_str: &str) -> Result<serde_json::Value, serde_json::Error> {
     if query_str.is_empty() {
-        return Ok(serde_json::Value::Null);
+        return Ok(serde_json::Value::Object(serde_json::Map::new()));
     }
 
     let mut query_map = serde_json::Map::new();
@@ -185,5 +185,15 @@ impl LxAppStartupOptions {
     pub fn set_panel_id(mut self, panel_id: String) -> Self {
         self.panel_id = panel_id;
         self
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_query_string;
+
+    #[test]
+    fn empty_query_is_an_options_object() {
+        assert_eq!(parse_query_string("").unwrap(), serde_json::json!({}));
     }
 }

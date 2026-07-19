@@ -727,9 +727,11 @@ pub async fn lxapp_dev_page_press(
     appid: Option<&str>,
     page_name: Option<&str>,
     key: &str,
+    selector: Option<&str>,
+    index: Option<usize>,
 ) -> Result<(), String> {
     let app = auto::resolve_lxapp(appid.unwrap_or("current"))?;
-    auto::page_press(&app, page_name, key).await
+    auto::page_press(&app, page_name, key, selector, index).await
 }
 
 /// Scrolls the page DOM by `(dx, dy)`, walking up to the nearest scrollable

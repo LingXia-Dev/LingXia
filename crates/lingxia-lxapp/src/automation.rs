@@ -356,9 +356,17 @@ pub async fn page_press(
     app: &Arc<LxApp>,
     page_name: Option<&str>,
     key: &str,
+    selector: Option<&str>,
+    index: Option<usize>,
 ) -> Result<(), String> {
     resolve_webview(app, page_name)?
-        .press(key, lingxia_webview::PressOptions)
+        .press(
+            key,
+            lingxia_webview::PressOptions {
+                selector: selector.map(ToOwned::to_owned),
+                index,
+            },
+        )
         .await
         .map_err(|err| err.to_string())
 }
