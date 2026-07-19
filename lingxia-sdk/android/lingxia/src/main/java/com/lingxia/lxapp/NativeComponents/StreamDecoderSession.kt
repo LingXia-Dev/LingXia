@@ -5,8 +5,10 @@ import android.app.ActivityManager
 import android.content.Context
 import android.media.AudioAttributes
 import android.media.AudioFormat
+import android.media.AudioManager
 import android.media.AudioTrack
 import android.media.MediaCodec
+import android.media.MediaCodecList
 import android.media.MediaFormat
 import android.os.Build
 import android.os.Handler
@@ -22,6 +24,7 @@ import android.view.View
 import org.json.JSONArray
 import org.json.JSONObject
 import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -41,13 +44,19 @@ internal class StreamDecoderSession(
     private val videoQueue = ArrayBlockingQueue<VideoFrame>(queueProfile.maxVideoQueue)
     private val audioQueue = ArrayBlockingQueue<AudioFrame>(queueProfile.maxAudioQueue)
 
-    private var videoConfig: VideoConfig? = null
+    @Volatile private var videoConfig: VideoConfig? = null
     @Volatile private var lastVideoConfigJson: String? = null
     @Volatile private var audioConfig: AudioConfig? = null
     @Volatile private var lastAudioConfigJson: String? = null
 
     private var videoDecoder: MediaCodec? = null
+    private var activeVideoDecoderName: String? = null
+    private val failedVideoDecoderNames = linkedSetOf<String>()
+    private var videoDecoderInitFailed = false
     @Volatile private var audioDecoder: MediaCodec? = null
+    private var activeAudioDecoderName: String? = null
+    private val failedAudioDecoderNames = linkedSetOf<String>()
+    private var audioDecoderInitFailed = false
     private var videoSurface: Surface? = null
     @Volatile private var audioTrack: AudioTrack? = null
     @Volatile private var audioIsPcm = false
@@ -67,13 +76,15 @@ internal class StreamDecoderSession(
     private var audioDrainScheduled = false
     private val audioDrainRunnable = Runnable { drainAudio() }
     private val audioBufferInfo = MediaCodec.BufferInfo()
-    private var audioScratch = ByteArray(0)
+    private var decodedAudioPending: ByteBuffer? = null
+    private var decodedAudioScratch: ByteBuffer? = null
 
     private var pcmPending: ByteArray? = null
     private var pcmPendingOffset: Int = 0
     private var streamVolume = 1.0f
     private var streamMuted = false
     @Volatile private var pendingAudioReconfigure = false
+    private var audioTrackFormat: AudioTrackFormat? = null
 
     @Volatile private var pendingPlay = false
     @Volatile private var surfaceReady = false
@@ -153,12 +164,16 @@ internal class StreamDecoderSession(
     fun configureVideo(configJson: String): Boolean {
         if (configJson == lastVideoConfigJson) return true
         return try {
-            videoConfig = VideoConfig.fromJson(configJson)
+            val config = VideoConfig.fromJson(configJson)
+            videoQueue.clear()
+            videoConfig = config
             lastVideoConfigJson = configJson
             needKeyframe = true
             playNotified = false
             pendingVideoReconfigure = true
             handler.post {
+                failedVideoDecoderNames.clear()
+                videoDecoderInitFailed = false
                 updateSurfaceBufferSize()
                 ensureVideoDecoder()
             }
@@ -173,10 +188,18 @@ internal class StreamDecoderSession(
         if (configJson == lastAudioConfigJson) return true
         return try {
             val config = AudioConfig.fromJson(configJson)
+            audioQueue.clear()
             audioConfig = config
             lastAudioConfigJson = configJson
             pendingAudioReconfigure = true
-            audioHandler.post { ensureAudioDecoder() }
+            audioHandler.post {
+                pcmPending = null
+                pcmPendingOffset = 0
+                decodedAudioPending = null
+                failedAudioDecoderNames.clear()
+                audioDecoderInitFailed = false
+                ensureAudioDecoder()
+            }
             true
         } catch (e: Exception) {
             emitError("configure audio failed: ${e.message}")
@@ -195,6 +218,21 @@ internal class StreamDecoderSession(
             needKeyframe = true
             return true
         }
+        val config = videoConfig
+        val normalizedData = if (config != null) {
+            StreamVideoData.normalizeAccessUnit(config.format, config.nalLengthSize, data)
+        } else {
+            data
+        }
+        if (normalizedData == null) {
+            videoQueue.clear()
+            needKeyframe = true
+            Log.w(
+                logTag,
+                "[$componentId] dropping malformed ${videoConfig?.format ?: "video"} access unit ptsMs=$ptsMs"
+            )
+            return true
+        }
         if (needKeyframe && !keyframe) {
             return true
         }
@@ -202,7 +240,7 @@ internal class StreamDecoderSession(
             needKeyframe = false
         }
 
-        val frame = VideoFrame(data, dtsMs, ptsMs, keyframe)
+        val frame = VideoFrame(normalizedData, dtsMs, ptsMs, keyframe)
         if (!videoQueue.offer(frame)) {
             dropVideoBacklogAndOffer(frame)
         }
@@ -292,6 +330,7 @@ internal class StreamDecoderSession(
                     pendingAudioReconfigure = true
                     pcmPending = null
                     pcmPendingOffset = 0
+                    decodedAudioPending = null
                 }
                 handler.post {
                     if (!surfaceReady) {
@@ -325,6 +364,7 @@ internal class StreamDecoderSession(
                     audioQueue.clear()
                     pcmPending = null
                     pcmPendingOffset = 0
+                    decodedAudioPending = null
                     audioTrack?.pause()
                     audioTrack?.flush()
                 }
@@ -425,6 +465,7 @@ internal class StreamDecoderSession(
             releaseAudioDecoder()
             releaseAudioTrack()
             audioQueue.clear()
+            decodedAudioPending = null
         }
     }
 
@@ -482,6 +523,7 @@ internal class StreamDecoderSession(
             audioQueue.clear()
             pcmPending = null
             pcmPendingOffset = 0
+            decodedAudioPending = null
             if (hard) {
                 releaseAudioDecoder()
                 releaseAudioTrack()
@@ -590,6 +632,7 @@ internal class StreamDecoderSession(
             if (!pendingVideoReconfigure) return
             releaseVideoDecoder()
         }
+        if (videoDecoderInitFailed) return
         if (!surfaceReady) return
         val config = videoConfig ?: return
         val surface = videoSurface ?: return
@@ -598,36 +641,58 @@ internal class StreamDecoderSession(
             return
         }
 
-        try {
-            val format = buildVideoFormat(config)
-            val decoder = MediaCodec.createDecoderByType(format.getString(MediaFormat.KEY_MIME) ?: return)
-            decoder.configure(format, surface, null, 0)
-            decoder.start()
-            videoDecoder = decoder
-            pendingVideoReconfigure = false
-            requestRectSync("video_decoder_started")
+        val format = buildVideoFormat(config)
+        val candidates = decoderNamesForFormat(format)
+            .filterNot(failedVideoDecoderNames::contains)
+        var lastFailure: Throwable? = null
 
-            scheduleVideoDrain()
+        for (name in candidates) {
+            var decoder: MediaCodec? = null
+            try {
+                decoder = MediaCodec.createByCodecName(name)
+                decoder.configure(format, surface, null, 0)
+                decoder.start()
+                videoDecoder = decoder
+                activeVideoDecoderName = name
+                pendingVideoReconfigure = false
+                videoDecoderInitFailed = false
+                Log.i(logTag, "[$componentId] video decoder started: $name")
+                requestRectSync("video_decoder_started")
+                scheduleVideoDrain()
 
-            if (!metadataNotified) {
-                metadataNotified = true
-                val width = config.width ?: 0
-                val height = config.height ?: 0
-                eventEmitter(
-                    "loadedmetadata",
-                    mapOf("width" to width, "height" to height, "duration" to 0)
+                if (!metadataNotified) {
+                    metadataNotified = true
+                    val width = config.width ?: 0
+                    val height = config.height ?: 0
+                    eventEmitter(
+                        "loadedmetadata",
+                        mapOf("width" to width, "height" to height, "duration" to 0)
+                    )
+                }
+                return
+            } catch (failure: Throwable) {
+                lastFailure = failure
+                failedVideoDecoderNames.add(name)
+                releaseCodec(decoder)
+                Log.w(
+                    logTag,
+                    "[$componentId] video decoder $name rejected the stream: ${failure.message}"
                 )
             }
-        } catch (e: Exception) {
-            emitError("video decoder init failed: ${e.message}")
         }
+
+        videoDecoderInitFailed = true
+        val attempted = failedVideoDecoderNames.joinToString().ifEmpty { "none" }
+        emitError("video decoder init failed (attempted: $attempted): ${lastFailure?.message ?: "no compatible decoder"}")
     }
 
     private fun ensureAudioDecoder() {
         if (audioDecoder != null) {
             if (!pendingAudioReconfigure) return
             releaseAudioDecoder()
+            releaseAudioTrack()
         }
+        if (audioDecoderInitFailed) return
         if (audioIsPcm) {
             // Don't early-return if AudioTrack was torn down (can happen after pause/resume or
             // audio focus changes). Recreate based on the latest config.
@@ -640,7 +705,8 @@ internal class StreamDecoderSession(
         if (config.codec == CODEC_PCM_S16LE) {
             audioIsPcm = true
             ensurePcmAudioTrack(config)
-            pendingAudioReconfigure = false
+            pendingAudioReconfigure = audioTrack == null
+            if (audioTrack == null) return
             drainAudio()
             return
         }
@@ -649,24 +715,46 @@ internal class StreamDecoderSession(
             return
         }
 
-        try {
-            val sampleRate = config.sampleRate ?: 44100
-            val channels = config.channels ?: 2
-            val format = MediaFormat.createAudioFormat(MIME_AAC, sampleRate, channels)
+        val sampleRate = config.sampleRate ?: 44100
+        val channels = config.channels ?: 2
+        val format = MediaFormat.createAudioFormat(MIME_AAC, sampleRate, channels)
+        if (config.audioSpecificConfig.isNotEmpty()) {
             format.setByteBuffer("csd-0", ByteBuffer.wrap(config.audioSpecificConfig))
-            if (config.aacIsAdts) {
-                format.setInteger(MediaFormat.KEY_IS_ADTS, 1)
-            }
-            val decoder = MediaCodec.createDecoderByType(MIME_AAC)
-            decoder.configure(format, null, null, 0)
-            decoder.start()
-            audioDecoder = decoder
-            pendingAudioReconfigure = false
-
-            drainAudio()
-        } catch (e: Exception) {
-            emitError("audio decoder init failed: ${e.message}")
         }
+        if (config.aacIsAdts) {
+            format.setInteger(MediaFormat.KEY_IS_ADTS, 1)
+        }
+
+        val candidates = decoderNamesForFormat(format)
+            .filterNot(failedAudioDecoderNames::contains)
+        var lastFailure: Throwable? = null
+        for (name in candidates) {
+            var decoder: MediaCodec? = null
+            try {
+                decoder = MediaCodec.createByCodecName(name)
+                decoder.configure(format, null, null, 0)
+                decoder.start()
+                audioDecoder = decoder
+                activeAudioDecoderName = name
+                pendingAudioReconfigure = false
+                audioDecoderInitFailed = false
+                Log.i(logTag, "[$componentId] audio decoder started: $name")
+                drainAudio()
+                return
+            } catch (failure: Throwable) {
+                lastFailure = failure
+                failedAudioDecoderNames.add(name)
+                releaseCodec(decoder)
+                Log.w(
+                    logTag,
+                    "[$componentId] audio decoder $name rejected the stream: ${failure.message}"
+                )
+            }
+        }
+
+        audioDecoderInitFailed = true
+        val attempted = failedAudioDecoderNames.joinToString().ifEmpty { "none" }
+        emitError("audio decoder init failed (attempted: $attempted): ${lastFailure?.message ?: "no compatible decoder"}")
     }
 
     private fun buildVideoFormat(config: VideoConfig): MediaFormat {
@@ -711,9 +799,41 @@ internal class StreamDecoderSession(
     }
 
     private fun prefixCsd(data: ByteArray): ByteArray {
-        if (data.isEmpty()) return data
-        val prefix = byteArrayOf(0, 0, 0, 1)
-        return prefix + data
+        return StreamVideoData.withAnnexBStartCode(data)
+    }
+
+    private fun decoderNamesForFormat(format: MediaFormat): List<String> {
+        val mime = format.getString(MediaFormat.KEY_MIME) ?: return emptyList()
+        val codecList = MediaCodecList(MediaCodecList.REGULAR_CODECS)
+        val names = linkedSetOf<String>()
+        runCatching { codecList.findDecoderForFormat(format) }
+            .getOrNull()
+            ?.let(names::add)
+
+        val mimeDecoders = codecList.codecInfos.filter { info ->
+            !info.isEncoder && info.supportedTypes.any { it.equals(mime, ignoreCase = true) }
+        }
+        mimeDecoders.filter { info ->
+            runCatching { info.getCapabilitiesForType(mime).isFormatSupported(format) }
+                .getOrDefault(false)
+        }.forEach { names.add(it.name) }
+
+        // Some vendor codecs under-report format support. Keep them as final
+        // fallbacks and let configure() make the authoritative decision.
+        mimeDecoders.forEach { names.add(it.name) }
+        return names.toList()
+    }
+
+    private fun releaseCodec(codec: MediaCodec?) {
+        if (codec == null) return
+        try {
+            codec.stop()
+        } catch (_: Throwable) {
+        }
+        try {
+            codec.release()
+        } catch (_: Throwable) {
+        }
     }
 
     private fun dropVideoBacklogAndOffer(incoming: VideoFrame) {
@@ -790,16 +910,32 @@ internal class StreamDecoderSession(
 
                 val inputIndex = decoder.dequeueInputBuffer(0)
                 if (inputIndex < 0) break
-                val buffer = decoder.getInputBuffer(inputIndex) ?: break
-                val queued = videoQueue.poll() ?: break
+                val buffer = decoder.getInputBuffer(inputIndex)
+                if (buffer == null) {
+                    decoder.queueInputBuffer(inputIndex, 0, 0, 0, 0)
+                    break
+                }
+                val queued = videoQueue.poll()
+                if (queued == null) {
+                    decoder.queueInputBuffer(inputIndex, 0, 0, 0, 0)
+                    break
+                }
+                val queuedPtsUs = queued.ptsMs.toLong() * 1000L
                 buffer.clear()
                 if (queued.data.size > buffer.remaining()) {
-                    Log.w(logTag, "[$componentId] video frame too large: ${queued.data.size}")
+                    decoder.queueInputBuffer(inputIndex, 0, 0, queuedPtsUs, 0)
+                    videoQueue.clear()
+                    needKeyframe = true
+                    playNotified = false
+                    Log.w(
+                        logTag,
+                        "[$componentId] video frame too large: ${queued.data.size} > ${buffer.capacity()}; waiting for next keyframe",
+                    )
                     continue
                 }
                 val size = queued.data.size
                 buffer.put(queued.data, 0, size)
-                decoder.queueInputBuffer(inputIndex, 0, size, ptsUs, 0)
+                decoder.queueInputBuffer(inputIndex, 0, size, queuedPtsUs, 0)
             }
 
             val info = videoBufferInfo
@@ -830,58 +966,39 @@ internal class StreamDecoderSession(
                 // Report relative position (media time) to avoid wall-clock drift and double-offsetting.
                 playbackPositionMs = (ptsUs - effectiveBasePts).coerceAtLeast(0L) / 1000L
 
-                if (Build.VERSION.SDK_INT >= 21) {
-                    val targetNs = effectiveBaseNs + (ptsUs - effectiveBasePts) * 1000L
-                    val leadNs = targetNs - nowNs
-                    if (leadNs > VIDEO_OUTPUT_MAX_LEAD_NS) {
-                        if (!surface.isValid) {
-                            Log.w(logTag, "[$componentId] video surface invalid, pausing drain")
-                            surfaceReady = false
-                            releaseVideoDecoder()
-                            requestSurfaceRebind()
-                            return
-                        }
-                        try {
-                            decoder.releaseOutputBuffer(outputIndex, targetNs)
-                        } catch (e: Throwable) {
-                            LxLog.e(logTag, "[$componentId] video releaseOutputBuffer error: ${e.message}", e)
-                            releaseVideoDecoder()
-                            return
-                        }
-                        renderedAny = true
-                        val delayMs = (leadNs / 1_000_000L).coerceIn(5L, 50L)
-                        nextDelayMs = nextDelayMs?.let { minOf(it, delayMs) } ?: delayMs
-                        break
-                    }
-                    try {
-                        if (!surface.isValid) {
-                            Log.w(logTag, "[$componentId] video surface invalid, pausing drain")
-                            surfaceReady = false
-                            releaseVideoDecoder()
-                            requestSurfaceRebind()
-                            return
-                        }
-                        decoder.releaseOutputBuffer(outputIndex, maxOf(nowNs, targetNs))
-                    } catch (e: Throwable) {
-                        LxLog.e(logTag, "[$componentId] video releaseOutputBuffer error: ${e.message}", e)
+                val targetNs = effectiveBaseNs + (ptsUs - effectiveBasePts) * 1000L
+                val leadNs = targetNs - nowNs
+                if (leadNs > VIDEO_OUTPUT_MAX_LEAD_NS) {
+                    if (!surface.isValid) {
+                        Log.w(logTag, "[$componentId] video surface invalid, pausing drain")
+                        surfaceReady = false
                         releaseVideoDecoder()
+                        requestSurfaceRebind()
                         return
                     }
-                } else {
                     try {
-                        if (!surface.isValid) {
-                            Log.w(logTag, "[$componentId] video surface invalid, pausing drain")
-                            surfaceReady = false
-                            releaseVideoDecoder()
-                            requestSurfaceRebind()
-                            return
-                        }
-                        decoder.releaseOutputBuffer(outputIndex, true)
+                        decoder.releaseOutputBuffer(outputIndex, targetNs)
                     } catch (e: Throwable) {
-                        LxLog.e(logTag, "[$componentId] video releaseOutputBuffer error: ${e.message}", e)
-                        releaseVideoDecoder()
+                        handleVideoDecoderFailure("video releaseOutputBuffer failed", e)
                         return
                     }
+                    renderedAny = true
+                    val delayMs = (leadNs / 1_000_000L).coerceIn(5L, 50L)
+                    nextDelayMs = nextDelayMs?.let { minOf(it, delayMs) } ?: delayMs
+                    break
+                }
+                try {
+                    if (!surface.isValid) {
+                        Log.w(logTag, "[$componentId] video surface invalid, pausing drain")
+                        surfaceReady = false
+                        releaseVideoDecoder()
+                        requestSurfaceRebind()
+                        return
+                    }
+                    decoder.releaseOutputBuffer(outputIndex, maxOf(nowNs, targetNs))
+                } catch (e: Throwable) {
+                    handleVideoDecoderFailure("video releaseOutputBuffer failed", e)
+                    return
                 }
                 renderedAny = true
                 if (!firstVideoOutputSeen) {
@@ -900,8 +1017,7 @@ internal class StreamDecoderSession(
                 scheduleVideoDrain(nextDelayMs ?: 5L)
             }
         } catch (e: Throwable) {
-            LxLog.e(logTag, "[$componentId] video decode error: ${e.message}", e)
-            releaseVideoDecoder()
+            handleVideoDecoderFailure("video decode failed", e)
         }
     }
 
@@ -949,6 +1065,13 @@ internal class StreamDecoderSession(
                         remainingBudget -= written
                         continue
                     }
+                    if (written == AudioTrack.ERROR_DEAD_OBJECT) {
+                        releaseAudioTrack()
+                    } else if (written < 0) {
+                        Log.w(logTag, "[$componentId] PCM AudioTrack write failed: $written")
+                        pcmPending = null
+                        pcmPendingOffset = 0
+                    }
                     break
                 }
 
@@ -967,63 +1090,87 @@ internal class StreamDecoderSession(
 
         val decoder = audioDecoder ?: return
         try {
+            if (decodedAudioPending != null) {
+                if (audioTrack == null) {
+                    ensureAudioTrack(decoder.outputFormat)
+                }
+                val track = audioTrack ?: return
+                if (!writeDecodedAudioPending(track)) {
+                    scheduleAudioDrain()
+                    return
+                }
+            }
+
             while (!audioQueue.isEmpty()) {
                 val inputIndex = decoder.dequeueInputBuffer(0)
                 if (inputIndex < 0) break
-                val buffer = decoder.getInputBuffer(inputIndex) ?: break
-                val frame = audioQueue.poll() ?: break
+                val buffer = decoder.getInputBuffer(inputIndex)
+                if (buffer == null) {
+                    decoder.queueInputBuffer(inputIndex, 0, 0, 0, 0)
+                    break
+                }
+                val frame = audioQueue.poll()
+                if (frame == null) {
+                    decoder.queueInputBuffer(inputIndex, 0, 0, 0, 0)
+                    break
+                }
                 buffer.clear()
+                val ptsUs = frame.ptsMs.toLong() * 1000L
                 if (frame.data.size > buffer.remaining()) {
-                    Log.w(logTag, "[$componentId] audio frame too large: ${frame.data.size}")
+                    decoder.queueInputBuffer(inputIndex, 0, 0, ptsUs, 0)
+                    Log.w(
+                        logTag,
+                        "[$componentId] audio frame too large: ${frame.data.size} > ${buffer.capacity()}",
+                    )
                     continue
                 }
                 val size = frame.data.size
                 buffer.put(frame.data, 0, size)
-                val ptsUs = frame.ptsMs.toLong() * 1000L
                 decoder.queueInputBuffer(inputIndex, 0, size, ptsUs, 0)
             }
 
             val info = audioBufferInfo
             var outputIndex = decoder.dequeueOutputBuffer(info, 0)
             while (outputIndex >= 0) {
-                if (info.size > 0) {
+                var decodedAudio: ByteBuffer? = null
+                val isCodecConfig = info.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG != 0
+                if (info.size > 0 && !isCodecConfig) {
                     val outBuffer = decoder.getOutputBuffer(outputIndex)
                     if (outBuffer != null) {
                         ensureAudioTrack(decoder.outputFormat)
-                        outBuffer.position(info.offset)
-                        outBuffer.limit(info.offset + info.size)
-                        val track = audioTrack
-                        if (track != null) {
-                            if (!paused && track.playState != AudioTrack.PLAYSTATE_PLAYING) {
-                                try {
-                                    track.play()
-                                } catch (_: Throwable) {
-                                }
-                            }
-                            if (Build.VERSION.SDK_INT >= 23) {
-                                // Avoid blocking the audio thread; blocking writes can hang after pause/resume
-                                // on some devices, leading to an ever-growing input queue and "no audio".
-                                track.write(outBuffer, info.size, AudioTrack.WRITE_NON_BLOCKING)
-                            } else {
-                                if (audioScratch.size < info.size) {
-                                    audioScratch = ByteArray(info.size)
-                                }
-                                outBuffer.get(audioScratch, 0, info.size)
-                                track.write(audioScratch, 0, info.size)
-                            }
+                        val source = outBuffer.duplicate().apply {
+                            position(info.offset)
+                            limit(info.offset + info.size)
                         }
+                        decodedAudio = copyDecodedAudio(source, info.size)
                     }
                 }
                 decoder.releaseOutputBuffer(outputIndex, false)
+                if (decodedAudio != null) {
+                    decodedAudioPending = decodedAudio
+                    val track = audioTrack ?: return
+                    if (!paused && track.playState != AudioTrack.PLAYSTATE_PLAYING) {
+                        try {
+                            track.play()
+                        } catch (_: Throwable) {
+                        }
+                    }
+                    if (!writeDecodedAudioPending(track)) {
+                        scheduleAudioDrain()
+                        return
+                    }
+                }
                 outputIndex = decoder.dequeueOutputBuffer(info, 0)
             }
 
             if (outputIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
                 ensureAudioTrack(decoder.outputFormat)
             }
-        } catch (e: Exception) {
-            LxLog.e(logTag, "[$componentId] audio decode error: ${e.message}", e)
-            releaseAudioDecoder()
+            if (!paused && (decodedAudioPending != null || audioQueue.isNotEmpty())) {
+                scheduleAudioDrain()
+            }
+        } catch (e: Throwable) {
+            handleAudioDecoderFailure("audio decode failed", e)
         }
     }
 
@@ -1034,15 +1181,18 @@ internal class StreamDecoderSession(
     }
 
     private fun ensurePcmAudioTrack(config: AudioConfig) {
-        if (audioTrack != null) return
         val sampleRate = config.sampleRate ?: 44100
         val channels = config.channels ?: 1
-        val channelMask = if (channels == 1) {
-            AudioFormat.CHANNEL_OUT_MONO
-        } else {
-            AudioFormat.CHANNEL_OUT_STEREO
+        val channelMask = outputChannelMask(channels)
+        if (channelMask == null) {
+            emitError("unsupported PCM channel count: $channels")
+            return
         }
         val encoding = AudioFormat.ENCODING_PCM_16BIT
+        val desiredFormat = AudioTrackFormat(sampleRate, channelMask, encoding)
+        if (audioTrack != null && audioTrackFormat == desiredFormat) return
+        if (audioTrack != null) releaseAudioTrack()
+
         val minBuffer = AudioTrack.getMinBufferSize(sampleRate, channelMask, encoding)
         if (minBuffer <= 0) {
             emitError("pcm AudioTrack minBuffer invalid: $minBuffer (sr=$sampleRate ch=$channels)")
@@ -1050,28 +1200,14 @@ internal class StreamDecoderSession(
         }
         val bufferSize = minBuffer
         try {
-            audioTrack = AudioTrack.Builder()
-                .setAudioAttributes(
-                    AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_MEDIA)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_MOVIE)
-                        .build()
-                )
-                .setAudioFormat(
-                    AudioFormat.Builder()
-                        .setSampleRate(sampleRate)
-                        .setChannelMask(channelMask)
-                        .setEncoding(encoding)
-                        .build()
-                )
-                .setBufferSizeInBytes(bufferSize)
-                .setTransferMode(AudioTrack.MODE_STREAM)
-                .also {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                        it.setPerformanceMode(AudioTrack.PERFORMANCE_MODE_LOW_LATENCY)
-                    }
-                }
-                .build()
+            audioTrack = createAudioTrack(
+                sampleRate = sampleRate,
+                channelMask = channelMask,
+                encoding = encoding,
+                bufferSize = bufferSize,
+                lowLatency = true,
+            )
+            audioTrackFormat = desiredFormat
             applyStreamVolume()
             if (!paused) {
                 audioTrack?.play()
@@ -1084,19 +1220,25 @@ internal class StreamDecoderSession(
     }
 
     private fun ensureAudioTrack(format: MediaFormat) {
-        if (audioTrack != null) return
         val sampleRate = format.getInteger(MediaFormat.KEY_SAMPLE_RATE)
         val channels = format.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
-        val channelMask = if (channels == 1) {
-            AudioFormat.CHANNEL_OUT_MONO
-        } else {
-            AudioFormat.CHANNEL_OUT_STEREO
+        val channelMask = outputChannelMask(channels)
+        if (channelMask == null) {
+            emitError("unsupported decoded audio channel count: $channels")
+            return
         }
-        val encoding = if (format.containsKey(MediaFormat.KEY_PCM_ENCODING)) {
+        val encoding = if (
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.N &&
+            format.containsKey(MediaFormat.KEY_PCM_ENCODING)
+        ) {
             format.getInteger(MediaFormat.KEY_PCM_ENCODING)
         } else {
             AudioFormat.ENCODING_PCM_16BIT
         }
+        val desiredFormat = AudioTrackFormat(sampleRate, channelMask, encoding)
+        if (audioTrack != null && audioTrackFormat == desiredFormat) return
+        if (audioTrack != null) releaseAudioTrack()
+
         val minBuffer = AudioTrack.getMinBufferSize(sampleRate, channelMask, encoding)
         if (minBuffer <= 0) {
             emitError("aac AudioTrack minBuffer invalid: $minBuffer (sr=$sampleRate ch=$channels enc=$encoding)")
@@ -1104,7 +1246,68 @@ internal class StreamDecoderSession(
         }
         val bufferSize = (minBuffer * 2).coerceAtLeast(minBuffer)
         try {
-            audioTrack = AudioTrack.Builder()
+            audioTrack = createAudioTrack(
+                sampleRate = sampleRate,
+                channelMask = channelMask,
+                encoding = encoding,
+                bufferSize = bufferSize,
+                lowLatency = false,
+            )
+            audioTrackFormat = desiredFormat
+            applyStreamVolume()
+            if (!paused) {
+                audioTrack?.play()
+            }
+        } catch (t: Throwable) {
+            emitError("aac AudioTrack create failed: ${t.message}")
+            releaseAudioTrack()
+            pendingAudioReconfigure = true
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun outputChannelMask(channelCount: Int): Int? {
+        return when (channelCount) {
+            1 -> AudioFormat.CHANNEL_OUT_MONO
+            2 -> AudioFormat.CHANNEL_OUT_STEREO
+            3 -> AudioFormat.CHANNEL_OUT_STEREO or AudioFormat.CHANNEL_OUT_FRONT_CENTER
+            4 -> AudioFormat.CHANNEL_OUT_QUAD
+            5 -> AudioFormat.CHANNEL_OUT_QUAD or AudioFormat.CHANNEL_OUT_FRONT_CENTER
+            6 -> AudioFormat.CHANNEL_OUT_5POINT1
+            7 -> AudioFormat.CHANNEL_OUT_5POINT1 or AudioFormat.CHANNEL_OUT_BACK_CENTER
+            8 -> if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                AudioFormat.CHANNEL_OUT_7POINT1_SURROUND
+            } else {
+                AudioFormat.CHANNEL_OUT_7POINT1
+            }
+            else -> null
+        }
+    }
+
+    private fun copyDecodedAudio(source: ByteBuffer, size: Int): ByteBuffer {
+        val buffer = decodedAudioScratch
+            ?.takeIf { it.capacity() >= size }
+            ?: ByteBuffer.allocateDirect(size)
+                .order(ByteOrder.nativeOrder())
+                .also { decodedAudioScratch = it }
+        buffer.clear()
+        buffer.limit(size)
+        buffer.put(source)
+        buffer.flip()
+        return buffer
+    }
+
+    @Suppress("DEPRECATION")
+    private fun createAudioTrack(
+        sampleRate: Int,
+        channelMask: Int,
+        encoding: Int,
+        bufferSize: Int,
+        lowLatency: Boolean,
+    ): AudioTrack {
+        // AudioTrack.Builder starts at API 23; Android 5 must use the legacy constructor.
+        val track = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            AudioTrack.Builder()
                 .setAudioAttributes(
                     AudioAttributes.Builder()
                         .setUsage(AudioAttributes.USAGE_MEDIA)
@@ -1120,15 +1323,56 @@ internal class StreamDecoderSession(
                 )
                 .setBufferSizeInBytes(bufferSize)
                 .setTransferMode(AudioTrack.MODE_STREAM)
+                .also { builder ->
+                    if (lowLatency && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        builder.setPerformanceMode(AudioTrack.PERFORMANCE_MODE_LOW_LATENCY)
+                    }
+                }
                 .build()
-            applyStreamVolume()
-            if (!paused) {
-                audioTrack?.play()
+        } else {
+            AudioTrack(
+                AudioManager.STREAM_MUSIC,
+                sampleRate,
+                channelMask,
+                encoding,
+                bufferSize,
+                AudioTrack.MODE_STREAM,
+            )
+        }
+
+        if (track.state != AudioTrack.STATE_INITIALIZED) {
+            track.release()
+            throw IllegalStateException("AudioTrack is uninitialized")
+        }
+        return track
+    }
+
+    private fun writeDecodedAudioPending(track: AudioTrack): Boolean {
+        while (true) {
+            val pending = decodedAudioPending ?: return true
+            if (!pending.hasRemaining()) {
+                decodedAudioPending = null
+                return true
             }
-        } catch (t: Throwable) {
-            emitError("aac AudioTrack create failed: ${t.message}")
-            releaseAudioTrack()
-            pendingAudioReconfigure = true
+
+            val written = track.write(
+                pending,
+                pending.remaining(),
+                AudioTrack.WRITE_NON_BLOCKING,
+            )
+            when {
+                written > 0 -> Unit
+                written == 0 -> return false
+                written == AudioTrack.ERROR_DEAD_OBJECT -> {
+                    releaseAudioTrack()
+                    return false
+                }
+                else -> {
+                    Log.w(logTag, "[$componentId] AudioTrack write failed: $written")
+                    decodedAudioPending = null
+                    return true
+                }
+            }
         }
     }
 
@@ -1146,6 +1390,7 @@ internal class StreamDecoderSession(
         } catch (_: Exception) {
         }
         videoDecoder = null
+        activeVideoDecoderName = null
         videoQueue.clear()
         needKeyframe = true
         firstVideoOutputSeen = false
@@ -1170,7 +1415,37 @@ internal class StreamDecoderSession(
         } catch (_: Exception) {
         }
         audioDecoder = null
+        activeAudioDecoderName = null
         audioIsPcm = false
+        decodedAudioPending = null
+    }
+
+    private fun handleVideoDecoderFailure(message: String, failure: Throwable) {
+        activeVideoDecoderName?.let(failedVideoDecoderNames::add)
+        LxLog.e(
+            logTag,
+            "[$componentId] $message on ${activeVideoDecoderName ?: "unknown"}: ${failure.message}",
+            failure,
+        )
+        releaseVideoDecoder()
+        videoDecoderInitFailed = false
+        pendingVideoReconfigure = true
+        needKeyframe = true
+        playNotified = false
+        eventEmitter("waiting", mapOf("reason" to "decoder"))
+    }
+
+    private fun handleAudioDecoderFailure(message: String, failure: Throwable) {
+        activeAudioDecoderName?.let(failedAudioDecoderNames::add)
+        LxLog.e(
+            logTag,
+            "[$componentId] $message on ${activeAudioDecoderName ?: "unknown"}: ${failure.message}",
+            failure,
+        )
+        releaseAudioDecoder()
+        releaseAudioTrack()
+        audioDecoderInitFailed = false
+        pendingAudioReconfigure = true
     }
 
     private fun releaseAudioTrack() {
@@ -1183,17 +1458,13 @@ internal class StreamDecoderSession(
         } catch (_: Exception) {
         }
         audioTrack = null
+        audioTrackFormat = null
     }
 
     private fun applyStreamVolume() {
         val effective = if (streamMuted) 0.0f else streamVolume
         audioHandler.post {
-            if (Build.VERSION.SDK_INT >= 21) {
-                audioTrack?.setVolume(effective)
-            } else {
-                @Suppress("DEPRECATION")
-                audioTrack?.setStereoVolume(effective, effective)
-            }
+            audioTrack?.setVolume(effective)
         }
     }
 
@@ -1311,6 +1582,12 @@ internal class StreamDecoderSession(
         val data: ByteArray,
         val dtsMs: Int,
         val ptsMs: Int
+    )
+
+    private data class AudioTrackFormat(
+        val sampleRate: Int,
+        val channelMask: Int,
+        val encoding: Int,
     )
 
     private data class QueueProfile(

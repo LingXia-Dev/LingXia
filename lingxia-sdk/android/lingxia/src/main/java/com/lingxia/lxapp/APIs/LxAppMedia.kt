@@ -1089,6 +1089,7 @@ internal object LxAppMedia {
         }
     }
 
+    @OptIn(UnstableApi::class)
     private fun buildVideoEffects(
         sourceInfo: SourceVideoMetadata?,
         resolutionRatio: Float?

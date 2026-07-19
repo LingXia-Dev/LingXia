@@ -59,6 +59,7 @@ dependencies {
     implementation(libs.material)
     implementation("androidx.viewpager2:viewpager2:1.0.0")
     implementation("androidx.media3:media3-exoplayer:1.4.1")
+    implementation("androidx.media3:media3-exoplayer-hls:1.4.1")
     implementation("androidx.media3:media3-ui:1.4.1")
     implementation("androidx.media3:media3-transformer:1.4.1")
     implementation("androidx.camera:camera-core:1.3.4")
@@ -68,6 +69,7 @@ dependencies {
     implementation("androidx.camera:camera-video:1.3.4")
     implementation("androidx.exifinterface:exifinterface:1.3.6")
     implementation("com.google.mlkit:barcode-scanning:17.2.0")
+    testImplementation("junit:junit:4.13.2")
 }
 
 val sdkGroupId = "io.github.lingxia-dev"

@@ -6,14 +6,17 @@ import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import androidx.annotation.OptIn
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.VideoSize as M3VideoSize
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 
+@OptIn(UnstableApi::class)
 internal class UrlEngine(
     context: Context,
     private val playerView: PlayerView,
@@ -43,6 +46,7 @@ internal class UrlEngine(
             object : Player.Listener {
                 override fun onPlaybackStateChanged(playbackState: Int) {
                     when (playbackState) {
+                        Player.STATE_IDLE -> stopPolling()
                         Player.STATE_BUFFERING -> {
                             listener?.onEngineEvent(
                                 EngineEvent.BufferingChanged(
