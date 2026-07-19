@@ -1870,8 +1870,11 @@ impl WebViewCreateSender {
     /// True if the session was destroyed (e.g. the tab was closed/discarded)
     /// while the native WebView was still being built. The platform create
     /// path checks this before registering, to avoid leaving a zombie in the
-    /// global registry. Only the Apple create path consults it today.
-    #[cfg_attr(not(any(target_os = "macos", target_os = "ios")), allow(dead_code))]
+    /// global registry. Apple and Windows consult it around native registration.
+    #[cfg_attr(
+        not(any(target_os = "macos", target_os = "ios", target_os = "windows")),
+        allow(dead_code)
+    )]
     pub(crate) fn is_destroyed(&self) -> bool {
         self.signals.is_destroyed()
     }
@@ -1884,6 +1887,9 @@ static WEBVIEW_INSTANCES: OnceLock<WebViewInstancesMap> = OnceLock::new();
 /// Stored here between builder-based session creation and `register_webview`.
 static PENDING_CALLBACKS: OnceLock<Mutex<HashMap<String, PendingCallbacks>>> = OnceLock::new();
 static WEBVIEW_SESSIONS: OnceLock<Mutex<HashMap<String, Arc<WebViewSessionSignals>>>> =
+    OnceLock::new();
+#[cfg(target_os = "windows")]
+static WEBVIEW_CREATE_LOCKS: OnceLock<Mutex<HashMap<String, std::sync::Weak<Mutex<()>>>>> =
     OnceLock::new();
 static DESIRED_PROXY_FOR_NEW_WEBVIEWS: OnceLock<RwLock<Option<ProxyConfig>>> = OnceLock::new();
 static PROXY_APPLY_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
@@ -2201,12 +2207,34 @@ fn request_create_webview(
 }
 
 fn create_webview_session(webtag: WebTag, options: WebViewCreateOptions) -> WebViewSession {
+    // Windows creation blocks until its WebView2 UI thread registers the
+    // native instance. Serialize the whole same-tag transaction, including
+    // session replacement and pending callbacks, so a discard/reactivate race
+    // cannot cross-wire two generations of callbacks.
+    #[cfg(target_os = "windows")]
+    let create_lock = windows_webview_create_lock(webtag.key());
+    #[cfg(target_os = "windows")]
+    let _create_guard = lock_or_recover(&create_lock, "windows_webview_create_lock");
+
     let signals = WebViewSessionSignals::new();
     let session = signals.subscribe(webtag.clone());
     let sender = WebViewCreateSender::new(signals.clone());
     replace_session_signals(&webtag, signals);
     request_create_webview(&webtag, sender, options);
     session
+}
+
+#[cfg(target_os = "windows")]
+fn windows_webview_create_lock(webtag_key: &str) -> Arc<Mutex<()>> {
+    let locks = WEBVIEW_CREATE_LOCKS.get_or_init(|| Mutex::new(HashMap::new()));
+    let mut locks = lock_or_recover(locks, "windows_webview_create_locks");
+    locks.retain(|_, lock| lock.strong_count() > 0);
+    if let Some(lock) = locks.get(webtag_key).and_then(std::sync::Weak::upgrade) {
+        return lock;
+    }
+    let lock = Arc::new(Mutex::new(()));
+    locks.insert(webtag_key.to_string(), Arc::downgrade(&lock));
+    lock
 }
 
 pub(crate) fn register_webview(webview: Arc<WebView>) {

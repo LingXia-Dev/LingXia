@@ -232,7 +232,25 @@ impl WebViewInner {
                     },
                     effective_options,
                 ));
+                if sender.is_destroyed() {
+                    log::info!(
+                        "Windows WebView for {} was destroyed during creation; discarding",
+                        webview.webtag().key()
+                    );
+                    return;
+                }
                 register_webview(webview.clone());
+                // Destruction can race the registry insertion. Re-check after
+                // registration so the destroyed generation never remains as a
+                // zombie that blocks a later same-tag reactivation.
+                if sender.is_destroyed() {
+                    log::info!(
+                        "Windows WebView for {} was destroyed during registration; discarding",
+                        webview.webtag().key()
+                    );
+                    crate::webview::destroy_webview(&webview.webtag());
+                    return;
+                }
                 sender.succeed(webview);
             }
             Ok(Err(err)) => {

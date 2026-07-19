@@ -124,6 +124,7 @@ windows = { git = "https://github.com/microsoft/windows-rs.git", rev = "a1e9fce4
     "Win32_System_LibraryLoader",
     "Win32_System_Memory",
     "Win32_System_Registry",
+    "Win32_System_SystemInformation",
     "Win32_System_Threading",
     "Win32_System_Variant",
     "Win32_UI_Controls",
