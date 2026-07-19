@@ -273,6 +273,12 @@ pub(crate) fn mark_active(tab_id: &str) {
     let _ = tab_id;
 }
 
+#[cfg(any(target_os = "ios", target_os = "macos"))]
+pub(crate) fn clear_active() {
+    #[cfg(feature = "browser-runtime")]
+    lingxia_browser::clear_active();
+}
+
 pub(crate) fn tab_path(tab_id: &str) -> String {
     #[cfg(feature = "browser-runtime")]
     return lingxia_browser::tab_path(tab_id);

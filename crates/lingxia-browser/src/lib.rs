@@ -165,6 +165,11 @@ pub fn mark_active(tab_id: &str) {
     tabs::mark_browser_tab_active(tab_id)
 }
 
+/// Clear active browser state when the host leaves browser UI entirely.
+pub fn clear_active() {
+    tabs::clear_active_browser_tab()
+}
+
 pub fn tabs() -> Vec<BrowserTabInfo> {
     tabs::browser_tabs()
 }

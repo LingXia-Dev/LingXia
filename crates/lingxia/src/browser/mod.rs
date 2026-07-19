@@ -20,7 +20,7 @@ pub(crate) use runtime::{
     set_tabs_changed_handler, tab_summary, tabs,
 };
 #[cfg(any(target_os = "ios", target_os = "macos"))]
-pub(crate) use runtime::{discard, open_standalone_for_app, reactivate};
+pub(crate) use runtime::{clear_active, discard, open_standalone_for_app, reactivate};
 #[cfg(any(target_os = "ios", target_os = "macos"))]
 pub(crate) use runtime::{download, navigate, update_tab};
 pub(crate) use runtime::{open_aside_for_app, tab_is_aside};
