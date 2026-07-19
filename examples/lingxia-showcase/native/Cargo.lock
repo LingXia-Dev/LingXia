@@ -2086,7 +2086,7 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 2.0.18",
- "windows",
+ "windows 0.62.2",
 ]
 
 [[package]]
@@ -2122,12 +2122,10 @@ version = "0.10.0"
 dependencies = [
  "lingxia-provider",
  "serde",
- "serde_json",
  "thiserror 2.0.18",
  "tokio",
  "tracing",
  "tracing-subscriber",
- "zstd",
 ]
 
 [[package]]
@@ -3965,9 +3963,9 @@ dependencies = [
 
 [[package]]
 name = "rong"
-version = "0.5.0"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "894a15349685a24ba20d35dc22ca8701dc116384ce41dfcb324e8f79813511fc"
+checksum = "a74280977bb8e5003444ad9b462de00eaa5926c83c0e2fa99a0f61c9047a75db"
 dependencies = [
  "futures",
  "rong_arkjs",
@@ -3981,9 +3979,9 @@ dependencies = [
 
 [[package]]
 name = "rong_abort"
-version = "0.5.1"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "db0a22e42603caa6c706491c7335ac89992ba45a4bdd04e231ec78ef4c8641d5"
+checksum = "038c71efb9e1a8e3e581cdb46190e7f774f2efbe431c74f62306e0e8ec19f1cd"
 dependencies = [
  "rong",
  "rong_event",
@@ -3993,9 +3991,9 @@ dependencies = [
 
 [[package]]
 name = "rong_arkjs"
-version = "0.5.1"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0ad221d0f3af5619f37c80b7f913bc814758ec41f2b046be37d31a9e4f22f139"
+checksum = "f620a32356a522d68dd9e21bee9adcf29f6824daaef5ce66ffa683ad3735c722"
 dependencies = [
  "rong_arkjs_sys",
  "rong_core",
@@ -4003,27 +4001,27 @@ dependencies = [
 
 [[package]]
 name = "rong_arkjs_sys"
-version = "0.4.0"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "668db2e75ce30c78e672bb38a87ff4424e7484cf0b887e05888f0903a80e4518"
+checksum = "1f4d30ebdda9d18823fe0bf3603b8aefb19d77544cdee7848bcf2f0518a96267"
 dependencies = [
  "bindgen",
 ]
 
 [[package]]
 name = "rong_assert"
-version = "0.5.0"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "13064a4a531934ef49ee5aa4dda73833040d26350a9d3e5799d2cc929c4c353b"
+checksum = "3ef3bdafcf71ba6d3ea77dbdd07fba1d104e9065a477e1f297cb8c2b64d4d41d"
 dependencies = [
  "rong",
 ]
 
 [[package]]
 name = "rong_buffer"
-version = "0.5.0"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e81dfd408c2fe4bbad3b368224a99111f837bf084a75a7627ef9c0517ed17f98"
+checksum = "bfb7a4d0cdc13c42d43923fef280d47ec8339aeefc6cd93a26e5fcf9db413305"
 dependencies = [
  "bytes",
  "rong",
@@ -4031,9 +4029,9 @@ dependencies = [
 
 [[package]]
 name = "rong_command"
-version = "0.5.0"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bc8ae791e0b1223542ea3760c6fd24735d10583f188fa1909d6823e88909349a"
+checksum = "fd408eb9651e9d910af00dfb426f7f518bbf46a736534067e6482df84e4d882f"
 dependencies = [
  "libc",
  "rong",
@@ -4047,9 +4045,9 @@ dependencies = [
 
 [[package]]
 name = "rong_compression"
-version = "0.5.0"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d41a0356120a83dc7af74fc5218d3e4795d0f8424093b8dfabd444f8587a6435"
+checksum = "b43fd26bca2d2b33ed8ef0438ab4d67c8e56bf2993dae61a4695ffd687205efd"
 dependencies = [
  "flate2",
  "rong",
@@ -4059,9 +4057,9 @@ dependencies = [
 
 [[package]]
 name = "rong_console"
-version = "0.5.0"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7564fe64a2708fdf2433b29dbd484710eff70a02f2246bc96c7a415d67ebbe3a"
+checksum = "8add74db907213328fd4d9df62efd3140091b57d85d4fe45778b2e5b73e10753"
 dependencies = [
  "rong",
  "tracing",
@@ -4069,9 +4067,9 @@ dependencies = [
 
 [[package]]
 name = "rong_core"
-version = "0.5.1"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "38971e9ba7d11e31a6cd9a523669a2c9b5b366f518d53c3f1afbf1364267c5b3"
+checksum = "0256c25eaa1e30f753553270de954f8442f691f13fc292096aef943be2c9a93e"
 dependencies = [
  "bytes",
  "futures",
@@ -4084,9 +4082,9 @@ dependencies = [
 
 [[package]]
 name = "rong_cron"
-version = "0.5.1"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ab4c02f57606ef44d035bef0c9045ad2dabde0923dde8c7c63b8942dd9875dc8"
+checksum = "95b0e92289406017fe02ab0e89059a3c54e87676e8b81f6491227d35ac3e9bb6"
 dependencies = [
  "chrono",
  "croner",
@@ -4098,9 +4096,9 @@ dependencies = [
 
 [[package]]
 name = "rong_encoding"
-version = "0.5.1"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5a0b2a3682612e8e4ee802f20d7d9b8288e9037f19efc223d883cd3a7375f5c5"
+checksum = "ebcfe90e25f5cb1edb0dfb02a5109d8af806c7354e13fa6db6dcd2b6f216c559"
 dependencies = [
  "base64",
  "rong",
@@ -4108,27 +4106,27 @@ dependencies = [
 
 [[package]]
 name = "rong_event"
-version = "0.5.0"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "53d72a985e384c347fe6f83478c18c1bcf98e8156c9c91ea5e8804d6a6be5ba8"
+checksum = "8e4074d49b9a3e2583879166cae4fea56847a829482d6e8cba048239eb5d3e70"
 dependencies = [
  "rong",
 ]
 
 [[package]]
 name = "rong_exception"
-version = "0.5.0"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6eb23082e92b33e70274b60a70e796aafec9d271009ddee5c1bc1f1d608aad60"
+checksum = "e87d4fc8d9993243d32748cd3ebee1c1220d167939e9395554ca70c05bceceb0"
 dependencies = [
  "rong",
 ]
 
 [[package]]
 name = "rong_fs"
-version = "0.5.1"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e34ae705da6f6e1c3b509619642c15a2673d99e2d68d5e0a20227dce8b5dc709"
+checksum = "c382eb341f95b49068a40918325c902fbdbf7610a1ce6ac995ed07aaafaf89ca"
 dependencies = [
  "bytes",
  "filetime",
@@ -4143,9 +4141,9 @@ dependencies = [
 
 [[package]]
 name = "rong_http"
-version = "0.5.1"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f11073535bbd489f7d6f4b3019b03146a0bbef8fca86300fd0dffec7a8d345d3"
+checksum = "ceaab5d38aece7582297fa1b1cb9d5a005f104fe8b56b7a2ce276e28c1d3aa31"
 dependencies = [
  "bytes",
  "flate2",
@@ -4170,9 +4168,9 @@ dependencies = [
 
 [[package]]
 name = "rong_jscore"
-version = "0.5.1"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7cd2aee6f6a6e542c7c18d80e67a12d5db828922710e3d78d884c5d8ff3929eb"
+checksum = "6d6661b0b0ff6b41021f0e73bb445b6a3948a28008b80cc063807c49d3fee658"
 dependencies = [
  "rong_core",
  "rong_jscore_sys",
@@ -4181,9 +4179,9 @@ dependencies = [
 
 [[package]]
 name = "rong_jscore_sys"
-version = "0.5.0"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5ed27a18746009b076fd9252a8b862905a38ffa19dbab9812f979f79be9e079a"
+checksum = "0d71ae357824781b2cea72533dd7fdcf0225689d58c956c131e04c50e2dc017f"
 dependencies = [
  "bindgen",
  "cc",
@@ -4191,9 +4189,9 @@ dependencies = [
 
 [[package]]
 name = "rong_macro"
-version = "0.5.1"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e2e170f21494ea705926069f09a8b78c9f36f13536077d4a76a5625d69bb75c1"
+checksum = "d12791e3c97a0a7fc95141418c61659a81dd52e7d91e271abc9cbe660839ad5e"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -4203,9 +4201,9 @@ dependencies = [
 
 [[package]]
 name = "rong_modules"
-version = "0.5.0"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1bb9c596e2f092ade93f8a49f1c012b55d86b50de88f6d168288c2e2c9f609d9"
+checksum = "aeec769b904a15080d543e4e13a0e6fcb8c17d93b5a7c3024ea60682cc5bfeaf"
 dependencies = [
  "rong",
  "rong_abort",
@@ -4232,9 +4230,9 @@ dependencies = [
 
 [[package]]
 name = "rong_quickjs"
-version = "0.5.1"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "74de83db509f7ed22a52cfc8b5b0c78f423bfc8b5c2be3d279c3b926270e0f09"
+checksum = "a4dda46c483a35c74211f89f360098385f8b5255cfb05395409c59f19a87be56"
 dependencies = [
  "rong_core",
  "rong_quickjs_sys",
@@ -4243,9 +4241,9 @@ dependencies = [
 
 [[package]]
 name = "rong_quickjs_sys"
-version = "0.4.0"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "21b0c184f02dc02255b6f939d814b027116414ea2a33c276f9c0ff35aa519728"
+checksum = "22953f37e18ff85a2e0278d21937c16c12a6fba8e632232ec770fc4fa847d6f9"
 dependencies = [
  "bindgen",
  "cc",
@@ -4253,9 +4251,9 @@ dependencies = [
 
 [[package]]
 name = "rong_redis"
-version = "0.5.0"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b555a255a5b88653e7761292541e77239a0399d5c12f92a8ddc67b099c9f7278"
+checksum = "f8ae56a764b10ae040b8319f90569a7d8dbb89e49a24e7b64a17edb3e3b23c4b"
 dependencies = [
  "futures",
  "redis",
@@ -4266,9 +4264,9 @@ dependencies = [
 
 [[package]]
 name = "rong_rt"
-version = "0.4.1"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b6bea97fc01acd523e83affba6d8bd20e79d000a2e62a862b47519c533732732"
+checksum = "f3526d9565dbe1cf76dbfe414991bc33df7d6a962b16ab25532fdba520dd5828"
 dependencies = [
  "bytes",
  "futures",
@@ -4290,9 +4288,9 @@ dependencies = [
 
 [[package]]
 name = "rong_s3"
-version = "0.5.2"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "11515105ec9faf057938558ea86b5133bf47fd44e751d3b13eb0441ea648b433"
+checksum = "330623e59f9f6f1f7853ee31a1d030a6dd777ab024d09199193bd874ecd14df0"
 dependencies = [
  "bytes",
  "chrono",
@@ -4305,9 +4303,9 @@ dependencies = [
 
 [[package]]
 name = "rong_sqlite"
-version = "0.5.1"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c71ffef5ae53f850c54568600e6f5b28e681c99f6990d0a3aa41e9dc37f7350e"
+checksum = "ba7795fb407048bc0c10760110927075a682d44bf91536d0308012ed22a37f1f"
 dependencies = [
  "rong",
  "rusqlite",
@@ -4315,9 +4313,9 @@ dependencies = [
 
 [[package]]
 name = "rong_storage"
-version = "0.5.1"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e5295fffabd8f7141334e56b4112fdf7a640afdbf3709285e641ed4bc7e5c5d8"
+checksum = "251ca968561a0e9cd058beb2fc5498c3da8ec44d50d86f75c08cc5dfc063f490"
 dependencies = [
  "futures",
  "redb 4.1.0",
@@ -4331,9 +4329,9 @@ dependencies = [
 
 [[package]]
 name = "rong_stream"
-version = "0.5.1"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "22a6aa2b80437d3f223b78c61cbf81f2db0a924fb7ffed2bb8ec843f8916f028"
+checksum = "ae86c8fc02248ce436ba874b3a74c4e692eb414963c299e3e48d806942f255ab"
 dependencies = [
  "bytes",
  "flate2",
@@ -4346,9 +4344,9 @@ dependencies = [
 
 [[package]]
 name = "rong_timer"
-version = "0.5.1"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f2c6c6c6b096fef118f43721d9c16094ea4d69451d143839e86fe8fba84cc8f2"
+checksum = "41c189de0a5f930e28253aedd9f1285b0848d3ae268c20d3cf0bf6eb147badad"
 dependencies = [
  "futures",
  "rong",
@@ -4358,9 +4356,9 @@ dependencies = [
 
 [[package]]
 name = "rong_typegen"
-version = "0.5.1"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d48ff5d99575dd377e55aa0a8639294b814493095fba968619a44a096fe098ce"
+checksum = "b9187bb75a1d940cbd97c87a87915c2a0d37663e1cba4abb842582ba88a55a7e"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -4369,9 +4367,9 @@ dependencies = [
 
 [[package]]
 name = "rong_url"
-version = "0.5.1"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "149ab7fc6610352a6ce49b78930f14745377fa40b2f99f86d56db78baf666835"
+checksum = "1bd82b157b3e4312011aaf36dea0a423d89df0b6f3a4d8bb1ad55a3c316bd160"
 dependencies = [
  "rong",
  "url",
@@ -4379,9 +4377,9 @@ dependencies = [
 
 [[package]]
 name = "rong_worker"
-version = "0.5.1"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b6aa1cc8fa0496d46f9e79475c8ef0e2e6602d2700a929313476ef219532e5aa"
+checksum = "c106d9930925ded02dbe5b521c94dbb5ea534fd8acc28d546ecde1186b43b6cc"
 dependencies = [
  "rong",
  "rong_console",

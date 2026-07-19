@@ -102,22 +102,22 @@ lingxia-runner-config = { path = "tools/lingxia-runner/config", version = "0.10.
 napi-ohos = "1.1.0"
 napi-derive-ohos = "1.1.0"
 
-# Rong v0.5.2 product release (component crates use independent versions)
-rong = { version = "0.5.0", default-features = false }
-rong_rt = { version = "0.4.1", default-features = false }
-rong_modules = { version = "0.5.0", default-features = false }
-rong_http = { version = "0.5.1", default-features = false }
-rong_console = "0.5.0"
-rong_event = "0.5.0"
-rong_storage = "0.5.1"
-rong_abort = "0.5.1"
-rong_assert = "0.5.0"
-rong_buffer = "0.5.0"
-rong_encoding = "0.5.1"
-rong_exception = "0.5.0"
-rong_stream = "0.5.1"
-rong_timer = "0.5.1"
-rong_url = "0.5.1"
+# Rong v0.6 product release
+rong = { version = "0.6.0", default-features = false }
+rong_rt = { version = "0.6.0", default-features = false }
+rong_modules = { version = "0.6.0", default-features = false }
+rong_http = { version = "0.6.0", default-features = false }
+rong_console = "0.6.0"
+rong_event = "0.6.0"
+rong_storage = "0.6.0"
+rong_abort = "0.6.0"
+rong_assert = "0.6.0"
+rong_buffer = "0.6.0"
+rong_encoding = "0.6.0"
+rong_exception = "0.6.0"
+rong_stream = "0.6.0"
+rong_timer = "0.6.0"
+rong_url = "0.6.0"
 
 [patch.crates-io]
 windows = { git = "https://github.com/microsoft/windows-rs.git", rev = "a1e9fce43c026221f62f0a149267cb6d7d3c607b", package = "windows" }
