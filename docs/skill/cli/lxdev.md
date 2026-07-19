@@ -39,7 +39,7 @@ websocket is not a remote machine-management API.
 - `eval` — run JS in the **Logic runtime**; `page eval` — run JS in the **page WebView** (the two see different things — JS-contexts table below)
 - `page current|list|info` — page-instance status. `page list` includes every live instance (including surface-owned pages), plus every `lxapp.json` route that is not currently open. External URL and URL-callback surfaces are browser tabs, so they appear only under `browser tabs`.
 - `page wait` — wait for the lxapp lifecycle to reach `ready`, or for a CSS selector to become attached, detached, visible, hidden, enabled, or editable
-- `page query|click|type|fill|press` — element-level automation in the page WebView (works cross-platform: native input on desktop/attached, JS synthesis on iOS/Android/Harmony/AppUI-detached)
+- `page query|click|type|fill|press` — cross-platform element automation in the page WebView
 - `page scroll` (by `--dx`/`--dy`) / `page scroll-to --css` — scroll the page DOM (nearest scroll container) or bring an element into view
 - `page back` — pop the page stack
 - `page screenshot` — PNG of one page's WebView
@@ -63,7 +63,15 @@ Mobile reports one host window. Desktop hosts may report several (for example ma
 - `cookies list|set|delete|clear`
 - `screenshot` — PNG of the tab's web content only
 
-**`logs`** — the session's JSONL log stream: tail or `-f` follow; filter by `--level`, `--source` (`native` host, your app's `lxview`/`lxlogic`, or a `browser` tab), `--path`, `--grep`, `--app <id>`; `--wide` prefixes each line with its app id.
+**`test`** — run bundled JavaScript/TypeScript cases in the session (`lxdev test tests/flows/checkout.test.ts`). Install `@rongjs/test`, import its `describe` / `test` / hooks / `expect`, and keep contracts in `tests/api/`, page behavior in `tests/pages/`, and journeys in `tests/flows/`.
+
+- `const auto = lx.automation()` — select the current app with `auto.lxapp()` or a specific running app with `auto.lxapp(appid)`; the returned driver's `page`, `nav`, and `eval` surfaces all target that app. Cross-app lifecycle operations live on `auto.lxapps`.
+- `test.args` — strings from repeatable `--arg key=value`; `test.attach(name, { mimeType, base64 })` — save an artifact, downloaded into `--output-dir` (default `test-results/lxdev/<run-id>`).
+- `console`, timers, and host-device `fetch`
+
+There is no appid-scoped `lx.*`, filesystem, environment, or dynamic `import()`. Cases run sequentially; async hooks/cases are awaited. `--timeout` bounds the run, Ctrl-C cancels it, `--json` emits one final report, and failures map back to source files. `lingxia dev` and the Runner include the required runtime.
+
+**`logs`** — the session's JSONL log stream: tail or `-f` follow; filter by `--level`, `--source` (`native` host, your app's `lxview`/`lxlogic`, a `browser` tab, or `automation` output), `--path`, `--grep`, `--app <id>`; `--wide` prefixes each line with its app id.
 
 **`session`** — list live sessions (id, target, project path). Lifecycle stays
 with the owner CLI: use `lingxia dev stop` from that session's project rather
