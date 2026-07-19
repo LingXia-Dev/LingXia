@@ -24,6 +24,8 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.annotation.OptIn
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
@@ -72,6 +74,7 @@ internal data class LxMediaQuality(
 )
 
 // Object fit modes
+@OptIn(UnstableApi::class)
 internal enum class LxMediaObjectFit {
     COVER, CONTAIN, FILL, FIT;
 
@@ -198,6 +201,7 @@ sealed class LxMediaEvent {
  * LxMediaPlayer - A native video player with built-in controls.
  * Designed to be reused by native components and MediaPreview.
  */
+@OptIn(UnstableApi::class)
 internal class LxMediaPlayer(
     private val context: Context,
     private val eventSink: (Map<String, Any>) -> Unit,
