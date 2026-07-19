@@ -1,5 +1,5 @@
-// Rong 0.5 cannot yet express generic TypeScript-only aliases or correlated
-// overloads. Keep only those irreducible declarations in this generated prelude.
+// Keep generic TypeScript-only aliases, correlated overloads, and types owned
+// by external Rong modules in this generated prelude.
 declare const appDownloadPathBrand: unique symbol;
 declare const systemDownloadsPathBrand: unique symbol;
 

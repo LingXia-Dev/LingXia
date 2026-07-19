@@ -1,7 +1,7 @@
 # Type generation
 
 `@lingxia/types` generates its Logic runtime declarations from the Rust bindings
-in `crates/lingxia-logic` with `rong-typegen` 0.5.0.
+in `crates/lingxia-logic` with `rong-typegen` 0.6.0.
 
 ```sh
 npm run gen:logic
@@ -19,7 +19,7 @@ files. Runtime-backed structs/classes come directly from their Rust bindings;
 semantic unions, callbacks, handles, and lifecycle contracts live as TS-only
 `js_api!` metadata in `crates/lingxia-logic/src/public_types.rs`.
 
-Rong 0.5 cannot yet express generic TS-only declaration names or correlated
+Rong typegen cannot yet express generic TS-only declaration names or correlated
 overloads. The minimal generation prelude therefore contains only nine generic
 contracts plus the `openSurface`, `downloadFile`, and `FileManager.readFile`
 overloads. It is generator input, not a second public declaration tree.

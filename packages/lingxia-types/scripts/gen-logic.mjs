@@ -3,7 +3,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const VERSION = "0.5.0";
+const VERSION = "0.6.0";
 const packageDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const workspaceDir = resolve(packageDir, "../..");
 const installRoot = join(workspaceDir, "target", "rong-typegen", VERSION);
@@ -13,7 +13,7 @@ const outputs = [
   join(packageDir, "src", "generated", "logic.ts"),
   join(packageDir, "src", "generated", "logic-web.d.ts"),
 ];
-// rong-typegen 0.5 hard-codes a regeneration hint naming a package this
+// rong-typegen hard-codes a regeneration hint naming a package this
 // workspace does not have; rewrite it to the real command.
 const UPSTREAM_HINT = "// Do not edit by hand — run `cargo run -p rong_typegen` to regenerate.";
 const REGEN_HINT = "// Do not edit by hand — run `npm run gen:logic` in packages/lingxia-types to regenerate.";

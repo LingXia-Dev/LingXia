@@ -792,6 +792,16 @@ impl LxApp {
         self.release_type
     }
 
+    #[cfg(feature = "process")]
+    pub(crate) fn process_access_enabled(&self) -> bool {
+        if !self.is_home_lxapp || !lingxia_app_context::process_enabled() {
+            return false;
+        }
+        let privilege = LxAppSecurityPrivilege::new("process")
+            .expect("process is a valid security privilege id");
+        self.has_security_privilege(&privilege)
+    }
+
     pub fn app_data_dir(&self) -> PathBuf {
         self.runtime.app_data_dir()
     }

@@ -205,6 +205,7 @@ fn generated_app_json_includes_capabilities() {
             browser: false,
             terminal: true,
             proxy: false,
+            process: true,
             autostart: false,
         }),
         browser: None,
@@ -220,6 +221,7 @@ fn generated_app_json_includes_capabilities() {
 
     assert_eq!(value["capabilities"]["notifications"], true);
     assert_eq!(value["capabilities"]["terminal"], true);
+    assert_eq!(value["capabilities"]["process"], true);
 }
 
 #[test]
@@ -464,6 +466,7 @@ fn generated_ui_json_rejects_terminal_when_capability_disabled() {
             browser: false,
             terminal: false,
             proxy: false,
+            process: false,
             autostart: false,
         }),
         browser: None,

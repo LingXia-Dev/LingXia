@@ -2,6 +2,8 @@ use crate::bridge::{self, AppServiceCommand};
 use crate::error::LxAppError;
 use crate::lx;
 use crate::lxapp::LxApp;
+#[cfg(feature = "process")]
+use crate::warn;
 use crate::{error, info};
 
 use rong::{JSContext, JSResult, JSRuntime, JSValue, RongJSError, Source, error::HostError};
@@ -62,12 +64,25 @@ const RONG_MODULES: [&str; 13] = [
     "storage",
 ];
 
+/// High-authority modules compiled for hosts that declare the corresponding
+/// product capability. Keep this list explicit: adding a module changes the
+/// authority of home-lxapp Logic code.
+#[cfg(feature = "process")]
+const PROCESS_RONG_MODULES: [&str; 1] = ["command"];
+
 #[cfg(test)]
 mod rong_modules_tests {
     #[test]
     fn requested_rong_modules_resolve() {
         rong_modules::resolve_modules(super::RONG_MODULES)
             .expect("every requested Rong module must be compiled into this build");
+    }
+
+    #[cfg(feature = "process")]
+    #[test]
+    fn requested_process_rong_modules_resolve() {
+        rong_modules::resolve_modules(super::PROCESS_RONG_MODULES)
+            .expect("every requested process module must be compiled into this build");
     }
 }
 
@@ -237,7 +252,7 @@ async fn eval_logic_script(ctx: &JSContext, script: &str) -> Result<String, LxAp
         .await
     {
         Ok(value) => js_value_to_json_string(value),
-        Err(expression_error) if script_may_be_function_body(script, &expression_error) => {
+        Err(expression_error) if script_may_be_function_body(ctx, script, &expression_error) => {
             let body = format!(
                 r#"(async () => {{
 {script}
@@ -253,12 +268,17 @@ async fn eval_logic_script(ctx: &JSContext, script: &str) -> Result<String, LxAp
     }
 }
 
-fn script_may_be_function_body(script: &str, expression_error: &RongJSError) -> bool {
-    if !expression_error
-        .to_string()
-        .to_ascii_lowercase()
-        .contains("syntax")
-    {
+fn script_may_be_function_body(
+    ctx: &JSContext,
+    script: &str,
+    expression_error: &RongJSError,
+) -> bool {
+    let is_syntax_error = expression_error
+        .thrown_value(ctx)
+        .and_then(|value| value.into_object())
+        .and_then(|object| object.get::<_, String>("name").ok())
+        .is_some_and(|name| name == "SyntaxError");
+    if !is_syntax_error {
         return false;
     }
     let trimmed = script.trim_start();
@@ -473,6 +493,23 @@ pub(crate) async fn lxapp_service_handler(
                 )
                 .with_appid(lxapp.appid.clone());
                 return;
+            }
+            #[cfg(feature = "process")]
+            if lxapp.is_home_lxapp && lingxia_app_context::process_enabled() {
+                if !lxapp.process_access_enabled() {
+                    warn!(
+                        "[Worker {}] Process capability requires security.privileges: [process]",
+                        worker_id
+                    )
+                    .with_appid(lxapp.appid.clone());
+                } else if let Err(e) = rong_modules::init(&ctx, PROCESS_RONG_MODULES) {
+                    error!(
+                        "[Worker {}] Failed to initialize process capability: {}",
+                        worker_id, e
+                    )
+                    .with_appid(lxapp.appid.clone());
+                    return;
+                }
             }
             let _ = lx::init(&ctx);
 

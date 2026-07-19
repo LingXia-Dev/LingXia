@@ -141,6 +141,7 @@
     "ShowToastOptions",
     "StatOptions",
     "Storage",
+    "StorageInfo",
     "StreamHandle",
     "StreamSourceOptions",
     "Surface",
