@@ -648,7 +648,10 @@ internal class LocalFileChooserActivity : AppCompatActivity() {
 
     private fun isWithinRoot(candidate: File): Boolean {
         return try {
-            candidate.canonicalFile.toPath().startsWith(rootDir.canonicalFile.toPath())
+            val candidatePath = candidate.canonicalPath
+            val rootPath = rootDir.canonicalPath
+            val rootPrefix = if (rootPath.endsWith(File.separator)) rootPath else rootPath + File.separator
+            candidatePath == rootPath || candidatePath.startsWith(rootPrefix)
         } catch (_: IOException) {
             false
         }

@@ -1,5 +1,6 @@
 package com.lingxia.lxapp.APIs
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
 import android.net.ConnectivityManager
@@ -376,6 +377,9 @@ object LxAppNetwork {
         return null
     }
 
+    // RAT detail is best-effort: every telephony call is guarded, so hosts do
+    // not need READ_PHONE_STATE merely to distinguish 4G from 5G.
+    @SuppressLint("MissingPermission")
     private fun resolveCellularNetworkType(
         context: Context?,
         connMgr: ConnectivityManager? = null,
@@ -412,7 +416,7 @@ object LxAppNetwork {
             null
         }
         val voiceType: Int? = try {
-            tm.voiceNetworkType
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) tm.voiceNetworkType else null
         } catch (_: Throwable) {
             null
         }

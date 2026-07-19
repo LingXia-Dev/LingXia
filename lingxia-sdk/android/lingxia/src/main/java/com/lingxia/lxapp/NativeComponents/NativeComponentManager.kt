@@ -112,7 +112,9 @@ internal class NativeComponentManager(
             if (view.visibility == View.INVISIBLE && webOverlayCoverageRestore.containsKey(componentId)) {
                 return
             }
-            webOverlayCoverageRestore.putIfAbsent(componentId, view.visibility)
+            if (!webOverlayCoverageRestore.containsKey(componentId)) {
+                webOverlayCoverageRestore[componentId] = view.visibility
+            }
             view.visibility = View.INVISIBLE
             return
         }

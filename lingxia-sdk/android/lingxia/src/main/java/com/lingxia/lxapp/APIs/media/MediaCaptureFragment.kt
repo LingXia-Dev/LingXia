@@ -22,10 +22,11 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.MotionEvent
 import android.widget.FrameLayout
-import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.TextView
+import androidx.annotation.OptIn
 import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.widget.AppCompatImageButton
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
@@ -43,6 +44,7 @@ import androidx.camera.video.VideoRecordEvent
 import androidx.camera.view.PreviewView
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import androidx.media3.ui.AspectRatioFrameLayout
@@ -857,6 +859,7 @@ internal class MediaCaptureFragment : Fragment() {
         updateHint()
     }
 
+    @OptIn(UnstableApi::class)
     private fun enterPreviewState(pending: PendingCapture) {
         // Clean any previous pending capture
         pendingCapture?.let { prev -> if (prev.file != pending.file && prev.file.exists()) prev.file.delete() }
@@ -1494,7 +1497,7 @@ internal class MediaCaptureFragment : Fragment() {
     }
 
     // Flash button using XML drawable icons
-    private inner class FlashButton(context: Context) : ImageButton(context) {
+    private inner class FlashButton(context: Context) : AppCompatImageButton(context) {
         init {
             setBackgroundColor(Color.TRANSPARENT)
             scaleType = ScaleType.FIT_XY  // Scale to fill container

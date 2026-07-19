@@ -629,7 +629,8 @@ internal object LxAppPicker {
                 currentSelectedIndices[columnIndex] = initialIndex
             }
 
-            scrollView.setOnScrollChangeListener { _, _, scrollY, _, _ ->
+            scrollView.viewTreeObserver.addOnScrollChangedListener {
+                val scrollY = scrollView.scrollY
                 val currentTime = System.currentTimeMillis()
                 lastScrollTime = currentTime
 
@@ -642,7 +643,7 @@ internal object LxAppPicker {
                 updateTextColors(linearLayout, validIndex, itemHeight, centerOffset)
 
                 // Cancel previous scroll end detection
-                scrollEndRunnable?.let { scrollView.handler.removeCallbacks(it) }
+                scrollEndRunnable?.let(scrollView::removeCallbacks)
 
                 // Set new scroll end detection with proper debouncing
                 scrollEndRunnable = Runnable {
@@ -673,7 +674,7 @@ internal object LxAppPicker {
                         }
                     }
                 }
-                scrollView.handler.postDelayed(scrollEndRunnable!!, 300) // 300ms debounce for scroll end detection
+                scrollEndRunnable?.let { scrollView.postDelayed(it, 300) }
             }
             addView(scrollView)
 

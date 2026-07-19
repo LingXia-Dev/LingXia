@@ -7,6 +7,7 @@ import android.security.KeyPairGeneratorSpec
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
+import androidx.annotation.RequiresApi
 import com.lingxia.app.Lingxia
 import com.lingxia.app.LxLog
 import com.lingxia.lxapp.LxApp
@@ -201,6 +202,7 @@ internal object AndroidSecureStore {
         return key
     }
 
+    @RequiresApi(Build.VERSION_CODES.M)
     private fun getOrCreateModernMasterKey(
         context: Context,
         prefs: SharedPreferences
@@ -217,6 +219,7 @@ internal object AndroidSecureStore {
         return entry.secretKey
     }
 
+    @RequiresApi(Build.VERSION_CODES.M)
     private fun generateModernAesKey(alias: String) {
         val keyGenerator =
             KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, ANDROID_KEYSTORE)
