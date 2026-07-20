@@ -100,6 +100,16 @@ Harmony get reverse port forwarding so the device reaches the local dev server;
 iOS embeds a LAN dev websocket URL, so the iOS device must be able to reach the
 host Mac over the local network.
 
+Override the display language for one Runner session when testing localization:
+
+```bash
+lingxia dev --display-language zh-CN  # explicit language
+lingxia dev --display-language auto   # system locale
+```
+
+The override applies only to that process; it is not written to host settings
+or lxapp storage.
+
 `dev` chooses native targets from what it launches: Android uses the selected
 device's reported ABI and macOS uses the host architecture. Explicit
 `--android-abis` / `--macos-arch` overrides belong to `build` and `package`,

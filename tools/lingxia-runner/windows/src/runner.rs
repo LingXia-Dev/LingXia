@@ -19,6 +19,7 @@ const ARG_DEV_WS_URL: &str = "--dev-ws-url";
 const ARG_LINGXIAO_MOCK_DIR: &str = "--lingxiao-mock-dir";
 const ARG_RUNNER_DEVICE: &str = "--runner-device";
 const ARG_RUNNER_ENV: &str = "--runner-env";
+const ARG_DISPLAY_LANGUAGE: &str = "--display-language";
 const ARG_RESOURCE_LXAPP_PATHS: &str = "--resource-lxapp-paths";
 const ENV_LXAPP_PATH: &str = "LINGXIA_LXAPP_PATH";
 const ENV_DEV_WS_URL: &str = "LINGXIA_DEV_WS_URL";
@@ -26,6 +27,7 @@ const ENV_STATE_ROOT: &str = "LINGXIA_STATE_ROOT";
 const ENV_LINGXIAO_MOCK_DIR: &str = "LINGXIAO_MOCK_DIR";
 const ENV_RUNNER_DEVICE: &str = "LINGXIA_RUNNER_DEVICE";
 const ENV_RUNNER_ENV: &str = "LINGXIA_RUNNER_ENV";
+const ENV_DISPLAY_LANGUAGE: &str = "LINGXIA_RUNNER_DISPLAY_LANGUAGE";
 const ENV_RESOURCE_LXAPP_PATHS: &str = "LINGXIA_RESOURCE_LXAPP_PATHS";
 
 #[derive(Debug, serde::Deserialize)]
@@ -128,6 +130,7 @@ fn install_launch_args_env() -> Option<std::path::PathBuf> {
             ARG_LINGXIAO_MOCK_DIR => Some(ENV_LINGXIAO_MOCK_DIR),
             ARG_RUNNER_DEVICE => Some(ENV_RUNNER_DEVICE),
             ARG_RUNNER_ENV => Some(ENV_RUNNER_ENV),
+            ARG_DISPLAY_LANGUAGE => Some(ENV_DISPLAY_LANGUAGE),
             ARG_RESOURCE_LXAPP_PATHS => Some(ENV_RESOURCE_LXAPP_PATHS),
             _ => None,
         };

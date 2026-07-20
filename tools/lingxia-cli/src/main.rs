@@ -124,6 +124,10 @@ struct DevOptions {
     #[arg(long, num_args = 0..=1, default_missing_value = "")]
     runner: Option<String>,
 
+    /// Override the effective display language for this Runner session.
+    #[arg(long, value_parser = ["auto", "en-US", "zh-CN"])]
+    display_language: Option<String>,
+
     /// Start the dev session in the background and return after it is ready
     #[arg(long)]
     background: bool,
@@ -743,6 +747,7 @@ fn main() -> Result<()> {
                 with_provider: dev_options.build_options.with_provider,
                 provider_path: dev_options.build_options.provider_path,
                 runner_device: dev_options.runner,
+                display_language: dev_options.display_language,
                 background: dev_options.background,
                 action: dev_options.action.map(|action| match action {
                     DevAction::Status { json } => commands::dev::DevSessionAction::Status { json },

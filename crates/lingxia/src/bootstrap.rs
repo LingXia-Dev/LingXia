@@ -191,9 +191,28 @@ fn panel_position_from_edge(edge: &str) -> Option<lingxia_app_context::PanelPosi
     }
 }
 
+const RUNNER_DISPLAY_LANGUAGE_ENV: &str = "LINGXIA_RUNNER_DISPLAY_LANGUAGE";
+
+fn resolved_display_language_seed(
+    saved: Option<String>,
+    runner_override: Option<&str>,
+) -> Option<String> {
+    match runner_override
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        Some("auto") => None,
+        Some(language) => Some(language.to_string()),
+        None => saved,
+    }
+}
+
 fn seed_display_language(app_data_dir: &std::path::Path) {
     match lingxia_service::settings::display_language(app_data_dir) {
-        Ok(language) => lxapp::set_display_language(language),
+        Ok(saved) => lxapp::set_display_language(resolved_display_language_seed(
+            saved,
+            std::env::var(RUNNER_DISPLAY_LANGUAGE_ENV).ok().as_deref(),
+        )),
         Err(error) => log::warn!("Failed to load display language: {error}"),
     }
 }
@@ -246,7 +265,7 @@ pub(crate) fn init_with_platform(platform: lingxia_platform::Platform) -> Option
 
 #[cfg(test)]
 mod tests {
-    use super::{panels_from_ui_config, seed_display_language};
+    use super::{panels_from_ui_config, resolved_display_language_seed, seed_display_language};
     use lingxia_app_context::PanelPosition;
 
     #[test]
@@ -259,6 +278,22 @@ mod tests {
 
         assert_eq!(crate::app::display_language(), "zh-CN");
         lxapp::set_display_language(None);
+    }
+
+    #[test]
+    fn runner_display_language_override_is_session_scoped() {
+        assert_eq!(
+            resolved_display_language_seed(Some("zh-CN".to_string()), Some("en-US")),
+            Some("en-US".to_string())
+        );
+        assert_eq!(
+            resolved_display_language_seed(Some("zh-CN".to_string()), Some("auto")),
+            None
+        );
+        assert_eq!(
+            resolved_display_language_seed(Some("zh-CN".to_string()), None),
+            Some("zh-CN".to_string())
+        );
     }
 
     #[test]
