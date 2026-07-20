@@ -6,8 +6,11 @@ let ready = false;
 
 while (Date.now() < deadline) {
   try {
-    const info = await lx.automation().lxapp().info();
-    if (info.appid === 'lingxia-showcase') {
+    const app = lx.automation().lxapp();
+    const info = await app.info();
+    const logicReady = info.appid === 'lingxia-showcase'
+      && (await app.eval({ script: 'true', timeoutMs: 20_000 })) === true;
+    if (logicReady) {
       ready = true;
       break;
     }
@@ -18,5 +21,5 @@ while (Date.now() < deadline) {
 }
 
 if (!ready) {
-  throw new Error(`Showcase lxapp did not become current: ${String(lastError)}`);
+  throw new Error(`Showcase lxapp and Logic runtime did not become ready: ${String(lastError)}`);
 }
