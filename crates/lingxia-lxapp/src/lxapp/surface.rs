@@ -847,17 +847,19 @@ impl LxApp {
     /// the URL with [`UrlCallbackSurface::recv`], drop the handle to close the
     /// surface. `request.target` must be [`PageSurfaceTarget::Url`]. The
     /// interception channel opens before the surface presents, so the sentinel
-    /// can never load unobserved.
+    /// can never load unobserved. Targets require HTTPS outside a dev session;
+    /// dev sessions may use HTTP, while file URLs are always rejected.
     pub fn open_url_callback_surface(
         &self,
         callback_url: impl Into<String>,
         request: PageSurfaceRequest,
     ) -> Result<UrlCallbackSurface, LxAppError> {
-        if !matches!(request.target, PageSurfaceTarget::Url(_)) {
+        let PageSurfaceTarget::Url(target_url) = &request.target else {
             return Err(LxAppError::InvalidParameter(
                 "a URL callback surface requires PageSurfaceTarget::Url".to_string(),
             ));
-        }
+        };
+        validate_url_callback_target(target_url, is_dev_session())?;
         let channel = lingxia_webview::url_callback::open_channel(callback_url)
             .map_err(|err| LxAppError::InvalidParameter(err.to_string()))?;
         // Handoff flows persist through their callback payload (tokens), never
@@ -1291,6 +1293,37 @@ impl LxApp {
     }
 }
 
+fn validate_url_callback_target(target: &str, dev_mode: bool) -> Result<(), LxAppError> {
+    let scheme = target
+        .split_once(':')
+        .map(|(scheme, _)| scheme.to_ascii_lowercase());
+    if scheme.as_deref() == Some("file") {
+        return Err(LxAppError::InvalidParameter(
+            "a URL callback surface cannot load file URLs".to_string(),
+        ));
+    }
+    let uri = target.parse::<http::Uri>().map_err(|_| {
+        LxAppError::InvalidParameter(
+            "a URL callback surface requires an absolute HTTPS URL".to_string(),
+        )
+    })?;
+    if uri.authority().is_none() {
+        return Err(LxAppError::InvalidParameter(
+            "a URL callback surface requires an absolute HTTPS URL".to_string(),
+        ));
+    }
+    match scheme.as_deref() {
+        Some(scheme) if scheme.eq_ignore_ascii_case("https") => Ok(()),
+        Some(scheme) if scheme.eq_ignore_ascii_case("http") && dev_mode => Ok(()),
+        Some(scheme) if scheme.eq_ignore_ascii_case("http") => Err(LxAppError::InvalidParameter(
+            "a URL callback surface requires HTTPS outside dev mode".to_string(),
+        )),
+        _ => Err(LxAppError::InvalidParameter(
+            "a URL callback surface requires an absolute HTTPS URL".to_string(),
+        )),
+    }
+}
+
 pub(crate) type SurfaceRecords = HashMap<String, SurfaceRecord>;
 
 /// Map a core-arbitrated role (+ resolved edge) back to the platform present
@@ -1449,6 +1482,46 @@ mod tests {
         assert_eq!(callback.target, "https://example.com/login");
         assert!(callback.url_callback);
         assert!(callback.ephemeral_web_data);
+    }
+
+    #[test]
+    fn url_callback_target_requires_https_outside_dev_mode() {
+        assert!(validate_url_callback_target("https://auth.example.com/authorize", false).is_ok());
+        assert!(matches!(
+            validate_url_callback_target("http://127.0.0.1:18080/authorize", false),
+            Err(LxAppError::InvalidParameter(message))
+                if message == "a URL callback surface requires HTTPS outside dev mode"
+        ));
+    }
+
+    #[test]
+    fn url_callback_target_allows_http_only_in_dev_mode() {
+        assert!(validate_url_callback_target("http://127.0.0.1:18080/authorize", true).is_ok());
+        assert!(validate_url_callback_target("http://192.168.1.20:18080/authorize", true).is_ok());
+    }
+
+    #[test]
+    fn url_callback_target_never_allows_file_urls() {
+        for dev_mode in [false, true] {
+            assert!(matches!(
+                validate_url_callback_target("file:///tmp/authorize.html", dev_mode),
+                Err(LxAppError::InvalidParameter(message))
+                    if message == "a URL callback surface cannot load file URLs"
+            ));
+        }
+    }
+
+    #[test]
+    fn url_callback_target_rejects_other_or_relative_urls() {
+        for target in [
+            "ftp://auth.example.com/authorize",
+            "/authorize",
+            "not a url",
+            " https://auth.example.com/authorize",
+            "https://auth.example.com/authorize ",
+        ] {
+            assert!(validate_url_callback_target(target, true).is_err());
+        }
     }
 
     #[test]
