@@ -1,6 +1,6 @@
 fn main() {
-    // Embed the dev runner's "vessel" identity icon (the committed runner.ico,
-    // generated from design/app-icon via `lingxia icon … --output runner.ico`)
+    // Embed the dev runner's identity icon (the committed runner.ico, generated
+    // from the macOS Runner's 1024px AppIcon via `lingxia icon … --output`)
     // as an .exe resource so the loose release exe shows its icon in Explorer /
     // taskbar / Alt-Tab before the process runs — the runner zip ships only the
     // exe, with no assets.
