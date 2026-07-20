@@ -24,6 +24,7 @@ import type {
   Surface,
   SurfaceHandle,
   SystemDownloadsPath,
+  VideoInfo,
 } from "../src/index.js";
 
 type Assert<T extends true> = T;
@@ -43,6 +44,7 @@ declare const files: FileManager;
 declare const readText: ReadTextFileOptions;
 declare const readBinary: ReadBinaryFileOptions;
 declare const app: HostAppApi;
+declare const videoInfo: VideoInfo;
 
 const urlTabResult: Promise<null> = lx.openSurface(urlTab);
 const declaredResult: Promise<SurfaceHandle> = lx.openSurface(declaredSurface);
@@ -56,6 +58,11 @@ const previewResult: PreviewMediaHandle = lx.previewMedia(previewOptions);
 const textResult: Promise<ReadTextFileResult> = files.readFile(readText);
 const binaryResult: Promise<ReadBinaryFileResult> = files.readFile(readBinary);
 const screenshotResult: Promise<AppScreenshotResult> = app.screenshot();
+const videoSize: number = videoInfo.size;
+const videoPath: string = videoInfo.path;
+const videoCodec: string | undefined = videoInfo.videoCodec;
+const hasAudio: boolean | undefined = videoInfo.hasAudio;
+const audioCodec: string | undefined = videoInfo.audioCodec;
 
 type AppPathIsBranded = Assert<Not<string extends AppDownloadFilePath ? true : false>>;
 type DownloadsPathIsBranded = Assert<Not<string extends SystemDownloadsPath ? true : false>>;
@@ -74,6 +81,11 @@ export type GeneratedQualityGate = [
   typeof textResult,
   typeof binaryResult,
   typeof screenshotResult,
+  typeof videoSize,
+  typeof videoPath,
+  typeof videoCodec,
+  typeof hasAudio,
+  typeof audioCodec,
   AppPathIsBranded,
   DownloadsPathIsBranded,
   BrandsStayDistinct,

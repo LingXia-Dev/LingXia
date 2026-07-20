@@ -34,11 +34,18 @@ struct JSVideoInfoResult {
     height: u32,
     #[js_name = "durationMs"]
     duration_ms: u64,
+    size: u64,
     rotation: Option<u16>,
     bitrate: Option<u64>,
     fps: Option<f64>,
     #[js_name = "type"]
     video_type: Option<String>,
+    #[js_name = "videoCodec"]
+    video_codec: Option<String>,
+    #[js_name = "hasAudio"]
+    has_audio: Option<bool>,
+    #[js_name = "audioCodec"]
+    audio_codec: Option<String>,
     path: String,
 }
 
@@ -155,6 +162,12 @@ rong::js_api! {
     }
 }
 
+/// Reads local video metadata for upload preflight and presentation.
+///
+/// Size, dimensions, duration, and path form the portable core. Container type,
+/// rotation, and track-level codec/audio fields are best-effort and may be
+/// omitted when the platform cannot determine them. The receiving service must
+/// still validate the uploaded bytes.
 async fn get_video_info_api(
     ctx: JSContext,
     options: JSGetVideoInfoOptions,
@@ -508,10 +521,14 @@ fn platform_video_info_to_js(info: PlatformVideoInfo, path: String) -> JSVideoIn
         width: info.width,
         height: info.height,
         duration_ms: info.duration_ms,
+        size: info.size,
         rotation: info.rotation,
         bitrate: info.bitrate,
         fps: info.fps.map(|v| v as f64),
         video_type: info.mime_type,
+        video_codec: info.video_codec,
+        has_audio: info.has_audio,
+        audio_codec: info.audio_codec,
         path,
     }
 }
@@ -648,5 +665,37 @@ fn ensure_output_quota(lxapp: &LxApp, path: &Path) -> JSResult<()> {
             let _ = std::fs::remove_file(path);
             Err(js_error_from_business_code_with_detail(1002, err.detail()))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{PlatformVideoInfo, platform_video_info_to_js};
+
+    #[test]
+    fn video_info_conversion_keeps_upload_preflight_metadata() {
+        let result = platform_video_info_to_js(
+            PlatformVideoInfo {
+                width: 1920,
+                height: 1080,
+                duration_ms: 12_345,
+                size: 4_096,
+                rotation: Some(90),
+                bitrate: Some(2_000_000),
+                fps: Some(29.97),
+                mime_type: Some("video/mp4".to_string()),
+                video_codec: Some("video/avc".to_string()),
+                has_audio: Some(true),
+                audio_codec: Some("audio/mp4a-latm".to_string()),
+            },
+            "lx://temp/upload.mp4".to_string(),
+        );
+
+        assert_eq!(result.size, 4_096);
+        assert_eq!(result.video_type.as_deref(), Some("video/mp4"));
+        assert_eq!(result.video_codec.as_deref(), Some("video/avc"));
+        assert_eq!(result.has_audio, Some(true));
+        assert_eq!(result.audio_codec.as_deref(), Some("audio/mp4a-latm"));
+        assert_eq!(result.path, "lx://temp/upload.mp4");
     }
 }

@@ -48,7 +48,13 @@ function declarations(path) {
 }
 
 const contract = JSON.parse(readFileSync(resolve(packageDir, "typegen/public-api.json"), "utf8"));
-const generated = declarations(resolve(packageDir, "src/generated/logic.ts"));
+const generatedPath = resolve(packageDir, "src/generated/logic.ts");
+const generatedSource = readFileSync(generatedPath, "utf8");
+if (generatedSource.includes("/** *")) {
+  console.error("Generated declarations contain malformed single-line JSDoc starting with '/** *'.");
+  process.exit(1);
+}
+const generated = declarations(generatedPath);
 const missing = contract.types.filter((name) => !generated.names.has(name)).sort();
 
 if (missing.length > 0) {

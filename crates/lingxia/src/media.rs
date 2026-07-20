@@ -113,6 +113,7 @@ pub struct VideoInfo {
     pub width: u32,
     pub height: u32,
     pub duration_ms: u64,
+    pub size: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rotation: Option<u16>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -121,6 +122,12 @@ pub struct VideoInfo {
     pub fps: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mime_type: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub video_codec: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub has_audio: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub audio_codec: Option<String>,
 }
 
 /// Request for [`extract_video_thumbnail`].
@@ -233,7 +240,7 @@ pub fn compress_image(input: CompressImage) -> crate::Result<CompressedImage> {
     Ok(CompressedImage { path })
 }
 
-/// Reads dimensions/duration/codec metadata for a video file.
+/// Reads size, dimensions, duration, and track codec metadata for a video file.
 pub fn video_info(path: &str) -> crate::Result<VideoInfo> {
     let info = crate::runtime::platform()?
         .get_video_info(path)
@@ -242,10 +249,14 @@ pub fn video_info(path: &str) -> crate::Result<VideoInfo> {
         width: info.width,
         height: info.height,
         duration_ms: info.duration_ms,
+        size: info.size,
         rotation: info.rotation,
         bitrate: info.bitrate,
         fps: info.fps,
         mime_type: info.mime_type,
+        video_codec: info.video_codec,
+        has_audio: info.has_audio,
+        audio_codec: info.audio_codec,
     })
 }
 
