@@ -523,6 +523,13 @@ pub async fn lxapp_dev_restart(
     let appid = resolve_dev_appid(appid)?;
     let app = resolve_dev_lxapp(&appid)?;
     let previous_session = app.runtime_info().session_id;
+
+    // A host dev session runs from its synchronized bundle cache rather than
+    // directly from the project dist directory. Pull the freshly generated
+    // manifest and files before restarting so reload cannot serve stale code.
+    let runtime = crate::runtime::platform().map_err(|err| err.to_string())?;
+    sync::sync_dev_home_bundle(runtime)?;
+
     lxapp::restart_lxapp(&appid).map_err(|err| err.to_string())?;
     let deadline = tokio::time::Instant::now()
         .checked_add(timeout)
