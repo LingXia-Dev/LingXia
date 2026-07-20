@@ -1,5 +1,5 @@
 import { expect, test } from '@rongjs/test';
-import type { LxAppDriver } from 'lingxia-types';
+import type { LxAppDriver, PageInfo } from 'lingxia-types';
 import {
   SHOWCASE_PAGE_EXPECTATIONS,
   SHOWCASE_PAGE_TITLES,
@@ -10,6 +10,22 @@ interface DocumentState {
   title: string;
   text: string;
   isNotFound: boolean;
+}
+
+async function waitForCurrentPageReady(
+  app: LxAppDriver,
+  page: string,
+): Promise<PageInfo> {
+  const deadline = Date.now() + 10_000;
+  let current = await app.nav.current();
+  while (Date.now() < deadline) {
+    if (current.name === page && current.ready) return current;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    current = await app.nav.current();
+  }
+  throw new Error(
+    `Timed out waiting for rendered page '${page}' lifecycle readiness: ${JSON.stringify(current)}`,
+  );
 }
 
 async function waitForRenderedFeature(
@@ -90,7 +106,7 @@ for (const expectation of SHOWCASE_PAGE_EXPECTATIONS) {
       expect(documentState.title).toBe(SHOWCASE_PAGE_TITLES[expectation.page]);
       expect(documentState.text.length > 0).toBeTruthy();
       expect(documentState.isNotFound).toBeFalsy();
-      const ready = await app.nav.current();
+      const ready = await waitForCurrentPageReady(app, expectation.page);
       expect(ready.name).toBe(expectation.page);
       expect(ready.ready).toBeTruthy();
     } catch (error) {
