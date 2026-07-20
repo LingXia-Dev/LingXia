@@ -44,11 +44,22 @@ public class RunnerApp {
     /// Set device size for the Runner window
     /// This can be called to change device while running
     public func setDeviceSize(_ size: MobileDeviceSize) {
+        setDeviceSize(size, orientation: nil)
+    }
+
+    /// Apply a device and an optional explicit orientation as one host update.
+    /// A nil orientation preserves the selector's existing family behavior.
+    func setDeviceSize(
+        _ size: MobileDeviceSize,
+        orientation: RunnerDeviceOrientation?
+    ) {
         let shapeChanged = size.shape != selectedDeviceSize.shape
         selectedDeviceSize = size
-        // Reset to the shape's natural orientation on a device-family change; keep
-        // the user's rotation within the same family.
-        if shapeChanged || !size.supportsOrientation {
+        if let orientation, size.supportsOrientation {
+            deviceOrientation = orientation
+        } else if shapeChanged || !size.supportsOrientation {
+            // Reset to the shape's natural orientation on a device-family
+            // change; keep the user's rotation within the same family.
             deviceOrientation = Self.defaultOrientation(for: size)
         }
         applyDeviceConfiguration()

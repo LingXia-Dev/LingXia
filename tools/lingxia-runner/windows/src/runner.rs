@@ -209,9 +209,9 @@ fn register_resource_lxapp_paths_from_env() {
 struct RunnerDeviceController;
 
 impl lingxia::dev::DeviceController for RunnerDeviceController {
-    fn list(&self) -> Vec<lingxia::dev::DeviceEntry> {
+    fn list(&self) -> Result<Vec<lingxia::dev::DeviceEntry>, String> {
         let current = CURRENT_DEVICE.load(Ordering::Acquire);
-        presets()
+        Ok(presets()
             .iter()
             .enumerate()
             .map(|(index, preset)| lingxia::dev::DeviceEntry {
@@ -222,13 +222,13 @@ impl lingxia::dev::DeviceController for RunnerDeviceController {
                 height: preset.height.max(0) as u32,
                 current: index == current,
             })
-            .collect()
+            .collect())
     }
 
-    fn get(&self) -> lingxia::dev::DeviceState {
+    fn get(&self) -> Result<lingxia::dev::DeviceState, String> {
         let index = CURRENT_DEVICE.load(Ordering::Acquire);
         let landscape = LANDSCAPE.load(Ordering::Acquire);
-        device_state(index, landscape)
+        Ok(device_state(index, landscape))
     }
 
     fn set(&self, id: &str, landscape: Option<bool>) -> Result<lingxia::dev::DeviceState, String> {

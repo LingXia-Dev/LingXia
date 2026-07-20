@@ -47,8 +47,8 @@ pub struct DeviceState {
 /// registered via [`register_device_controller`]; the `device_*` helpers call
 /// through this indirection so callers stay platform-agnostic.
 pub trait DeviceController: Send + Sync {
-    fn list(&self) -> Vec<DeviceEntry>;
-    fn get(&self) -> DeviceState;
+    fn list(&self) -> Result<Vec<DeviceEntry>, String>;
+    fn get(&self) -> Result<DeviceState, String>;
     fn set(&self, id: &str, landscape: Option<bool>) -> Result<DeviceState, String>;
 }
 
@@ -71,12 +71,12 @@ fn device_controller() -> Result<&'static dyn DeviceController, String> {
 
 /// List the device presets the host runner offers.
 pub fn device_list() -> Result<Vec<DeviceEntry>, String> {
-    Ok(device_controller()?.list())
+    device_controller()?.list()
 }
 
 /// Report the currently selected device and orientation.
 pub fn device_get() -> Result<DeviceState, String> {
-    Ok(device_controller()?.get())
+    device_controller()?.get()
 }
 
 /// Switch the simulated device by preset id and/or orientation.

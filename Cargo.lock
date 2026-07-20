@@ -3509,8 +3509,11 @@ dependencies = [
 name = "lingxia-runner-lib"
 version = "0.10.1"
 dependencies = [
+ "libc",
  "lingxia",
  "lingxia-devtool",
+ "serde",
+ "serde_json",
  "toml",
 ]
 
