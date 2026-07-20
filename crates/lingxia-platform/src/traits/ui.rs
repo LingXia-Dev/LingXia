@@ -99,6 +99,10 @@ pub struct SurfaceRequest {
     /// shared persistent data and discard them when the surface closes (auth
     /// handoffs). `Page` content ignores it.
     pub ephemeral_web_data: bool,
+    /// `Url` content only: navigation is paired with a native callback
+    /// interception channel. Platforms use this to keep local-file access out
+    /// of callback surfaces without restricting ordinary browser surfaces.
+    pub url_callback: bool,
 }
 
 pub trait SurfacePresenter: Send + Sync + 'static {

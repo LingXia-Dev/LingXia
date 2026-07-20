@@ -793,6 +793,7 @@ pub fn open_standalone_browser_tab(appid: &str, session_id: u64, url: &str) -> O
             url,
             None,
             lingxia_webview::WebViewDataMode::ProfileDefault,
+            false,
         ) {
             Ok(tab_id) => Some(tab_id),
             Err(e) => {

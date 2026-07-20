@@ -651,6 +651,7 @@ impl LxApp {
             position: present_position,
             role: present_role,
             ephemeral_web_data,
+            url_callback,
         });
         if let Err(err) = present_result {
             self.forget_surface(&id);
@@ -780,6 +781,7 @@ impl LxApp {
             role: SurfaceRole::Main,
             // Window surfaces host this lxapp's own pages, never external web.
             ephemeral_web_data: false,
+            url_callback: false,
         });
         if let Err(err) = present_result {
             // Remove only our bookkeeping; there is no graph node to close.

@@ -91,6 +91,7 @@ pub fn open_for_app(
         false,
         false,
         lingxia_webview::WebViewDataMode::ProfileDefault,
+        false,
     )
 }
 
@@ -110,6 +111,7 @@ pub fn open_aside_for_app(
         false,
         true,
         lingxia_webview::WebViewDataMode::ProfileDefault,
+        false,
     )
 }
 
@@ -122,9 +124,17 @@ pub fn open_standalone_for_app(
     url: &str,
     tab_id: Option<&str>,
     data_mode: lingxia_webview::WebViewDataMode,
+    url_callback: bool,
 ) -> Result<String, LxAppError> {
     tabs::open_internal_browser_tab_for_owner(
-        appid, session_id, url, tab_id, true, false, data_mode,
+        appid,
+        session_id,
+        url,
+        tab_id,
+        true,
+        false,
+        data_mode,
+        url_callback,
     )
 }
 

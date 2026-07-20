@@ -162,6 +162,7 @@ fn resolve_url_surface_as_browser_tab(
         &request.path,
         None,
         data_mode,
+        request.url_callback,
     )
     .inspect_err(|err| log::warn!("URL surface browser tab failed for {}: {err}", request.path))
     .ok()?;
