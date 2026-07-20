@@ -1,5 +1,9 @@
 <template>
-  <div class="min-h-screen space-y-3 p-4 text-sm">
+  <div
+    data-testid="bridge-repro-page"
+    data-automation-contract="bridge-v1"
+    class="min-h-screen space-y-3 p-4 text-sm"
+  >
     <div
       id="bootstrap-verdict"
       class="rounded-lg px-4 py-3 text-lg font-bold text-white"
@@ -67,13 +71,22 @@
       </button>
     </div>
 
-    <button
-      id="btn-restart"
-      class="w-full rounded-lg bg-gray-700 py-3 font-semibold text-white active:opacity-70"
-      @click="restartStream"
-    >
-      {{ audit.received === 0 ? 'Start stream' : 'Restart stream' }}
-    </button>
+    <div class="flex gap-2">
+      <button
+        id="btn-restart"
+        class="flex-1 rounded-lg bg-gray-700 py-3 font-semibold text-white active:opacity-70"
+        @click="restartStream"
+      >
+        {{ audit.received === 0 ? 'Start stream' : 'Restart stream' }}
+      </button>
+      <button
+        id="btn-stop"
+        class="rounded-lg bg-gray-500 px-5 py-3 font-semibold text-white active:opacity-70"
+        @click="stopStream"
+      >
+        Stop
+      </button>
+    </div>
 
     <p class="text-xs leading-relaxed text-gray-500">
       Start the stream, then reconnect. Any gap or bridge error fails the check. Echo may time out
@@ -199,6 +212,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   if (bridgePoll !== undefined) window.clearInterval(bridgePoll);
   if (bootstrapDeadline !== undefined) window.clearTimeout(bootstrapDeadline);
+  ticks.cancel();
 });
 
 watch(ticks.error, (error) => {
@@ -227,5 +241,9 @@ async function echo() {
 function restartStream() {
   streamError.value = null;
   ticks.start();
+}
+
+function stopStream() {
+  ticks.cancel();
 }
 </script>

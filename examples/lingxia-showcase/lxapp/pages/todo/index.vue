@@ -36,6 +36,7 @@
             <div class="view">
               <input
                 class="toggle"
+                data-testid="todo-toggle"
                 type="checkbox"
                 :checked="todo.completed"
                 @change="toggleTodo({ id: todo.id })"
@@ -61,6 +62,7 @@
           <li>
             <a
               href="#/"
+              data-testid="todo-filter-all"
               :class="{ selected: currentFilter === 'all' }"
               @click.prevent="setFilter({ filter: 'all' })"
             >
@@ -70,6 +72,7 @@
           <li>
             <a
               href="#/active"
+              data-testid="todo-filter-active"
               :class="{ selected: currentFilter === 'active' }"
               @click.prevent="setFilter({ filter: 'active' })"
             >
@@ -79,6 +82,7 @@
           <li>
             <a
               href="#/completed"
+              data-testid="todo-filter-completed"
               :class="{ selected: currentFilter === 'completed' }"
               @click.prevent="setFilter({ filter: 'completed' })"
             >
@@ -86,7 +90,7 @@
             </a>
           </li>
         </ul>
-        <button v-if="todoStats.completed > 0" class="clear-completed" @click="clearCompleted">
+        <button v-if="todoStats.completed > 0" class="clear-completed" data-testid="todo-clear-completed" @click="clearCompleted">
           Clear completed
         </button>
       </footer>

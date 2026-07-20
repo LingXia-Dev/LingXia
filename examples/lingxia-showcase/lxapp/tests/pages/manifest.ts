@@ -24,3 +24,30 @@ export const SHOWCASE_PAGE_EXPECTATIONS = [
 ] as const;
 
 export const SHOWCASE_PAGES = SHOWCASE_PAGE_EXPECTATIONS.map(({ page }) => page);
+
+export type ShowcasePage = (typeof SHOWCASE_PAGE_EXPECTATIONS)[number]['page'];
+
+export const SHOWCASE_PAGE_TITLES: Record<ShowcasePage, string> = {
+  home: 'Home',
+  surface: 'Surface',
+  api: 'API',
+  cloud: 'Cloud',
+  video: 'Native Component Video',
+  media: 'Media APIs',
+  ui: 'User Interface',
+  device: 'Device',
+  wifi: 'WiFi',
+  system: 'System',
+  location: 'Location',
+  file: 'File',
+  share: 'Share',
+  components: 'Components',
+  pullToRefresh: 'Pull Down Refresh',
+  todo: 'ToDo',
+  picker: 'LxPicker',
+  navigator: 'Navigator',
+  stream: 'Stream',
+  channel: 'Channel',
+  swiper: 'LxMediaSwiper',
+  'bridge-repro': 'Bridge Repro',
+};

@@ -1,5 +1,5 @@
 <template>
-  <div class="fixed inset-0 w-screen h-screen overflow-hidden">
+  <div class="fixed inset-0 w-screen h-screen overflow-hidden" data-testid="home-page">
     <!-- Background Image - Full Screen -->
     <img
       v-if="imageUrl"
@@ -23,6 +23,7 @@
 
         <div class="space-y-3">
           <input
+            data-testid="home-name"
             type="text"
             placeholder="Enter your name"
             v-model="name"
@@ -31,6 +32,7 @@
           />
 
           <button
+            data-testid="home-greet"
             type="button"
             @click="handleGreet"
             :disabled="!name.trim() || isSending"
@@ -48,7 +50,7 @@
                 <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" />
               </svg>
             </div>
-            <p class="text-sm text-green-700 leading-relaxed">
+            <p class="text-sm text-green-700 leading-relaxed" data-testid="home-greeting">
               {{ greetingMessage }}
             </p>
           </div>

@@ -134,6 +134,7 @@ export default function TodoPage() {
                 <div className="view">
                   <input
                     className="toggle"
+                    data-testid="todo-toggle"
                     type="checkbox"
                     checked={todo.completed}
                     onChange={() => toggleTodo({ id: todo.id })}
@@ -162,6 +163,7 @@ export default function TodoPage() {
             <li>
               <a
                 href="#/"
+                data-testid="todo-filter-all"
                 className={currentFilter === 'all' ? 'selected' : ''}
                 onClick={handleFilterClick('all')}
               >
@@ -171,6 +173,7 @@ export default function TodoPage() {
             <li>
               <a
                 href="#/active"
+                data-testid="todo-filter-active"
                 className={currentFilter === 'active' ? 'selected' : ''}
                 onClick={handleFilterClick('active')}
               >
@@ -180,6 +183,7 @@ export default function TodoPage() {
             <li>
               <a
                 href="#/completed"
+                data-testid="todo-filter-completed"
                 className={currentFilter === 'completed' ? 'selected' : ''}
                 onClick={handleFilterClick('completed')}
               >
@@ -188,7 +192,7 @@ export default function TodoPage() {
             </li>
           </ul>
           {todoStats.completed > 0 && (
-            <button className="clear-completed" onClick={clearCompleted}>
+            <button className="clear-completed" data-testid="todo-clear-completed" onClick={clearCompleted}>
               Clear completed
             </button>
           )}

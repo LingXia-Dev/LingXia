@@ -73,7 +73,7 @@ export default function ChannelPage() {
   const changePrefix = latest && latest.change > 0 ? '+' : '';
 
   return (
-    <div className="min-h-screen bg-gray-50 px-4 py-6">
+    <div className="min-h-screen bg-gray-50 px-4 py-6" data-testid="channel-page">
       {/* Connection status */}
       <div className="flex items-center gap-2 mb-4">
         <div
@@ -81,7 +81,7 @@ export default function ChannelPage() {
             session.connected ? 'bg-green-500' : session.connecting ? 'bg-yellow-400' : 'bg-gray-300'
           }`}
         />
-        <span className="text-xs text-gray-500">
+        <span className="text-xs text-gray-500" data-testid="channel-status">
           {session.connected ? 'Connected' : session.connecting ? 'Connecting...' : 'Disconnected'}
         </span>
       </div>
@@ -91,6 +91,8 @@ export default function ChannelPage() {
         {symbols.map((sym) => (
           <button
             key={sym}
+            data-testid="channel-symbol"
+            data-symbol={sym}
             onClick={() => switchSymbol(sym)}
             className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
               sym === active
@@ -105,9 +107,9 @@ export default function ChannelPage() {
 
       {/* Price card */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 mb-6">
-        <p className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-1">{active || '---'}</p>
+        <p className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-1" data-testid="channel-active">{active || '---'}</p>
         <div className="flex items-baseline gap-3">
-          <span className="text-4xl font-bold text-gray-900">
+          <span className="text-4xl font-bold text-gray-900" data-testid="channel-price">
             {latest ? `$${latest.price.toFixed(2)}` : '---'}
           </span>
           {latest && (
@@ -159,6 +161,7 @@ export default function ChannelPage() {
       {/* Actions */}
       <div className="mt-6 flex gap-3">
         <button
+          data-testid="channel-disconnect"
           onClick={() => session.close()}
           disabled={!session.connected}
           className="flex-1 py-3 rounded-xl text-sm font-medium bg-gray-200 text-gray-700 disabled:opacity-40"
@@ -166,6 +169,7 @@ export default function ChannelPage() {
           Disconnect
         </button>
         <button
+          data-testid="channel-reconnect"
           onClick={() => session.reopen()}
           disabled={session.connected || session.connecting}
           className="flex-1 py-3 rounded-xl text-sm font-medium bg-blue-600 text-white disabled:opacity-40"

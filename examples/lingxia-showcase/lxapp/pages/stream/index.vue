@@ -1,5 +1,5 @@
 <template>
-  <div class="flex h-screen flex-col bg-gray-100">
+  <div class="flex h-screen flex-col bg-gray-100" data-testid="stream-page">
     <div v-if="messages.length > 0 && !chat.streaming.value" class="absolute right-4 top-3 z-10">
       <button
         type="button"
@@ -42,6 +42,8 @@
         <div
           v-for="message in messages"
           :key="message.id"
+          data-testid="stream-message"
+          :data-role="message.role"
           class="flex"
           :class="message.role === 'user' ? 'justify-end' : 'justify-start'"
         >
@@ -63,7 +65,7 @@
           </div>
         </div>
 
-        <div v-if="chat.streaming.value" class="flex justify-start">
+        <div v-if="chat.streaming.value" class="flex justify-start" data-testid="stream-live">
           <div class="flex max-w-[90%] items-start gap-2">
             <div class="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-violet-500 to-blue-600">
               <svg viewBox="0 0 24 24" fill="white" class="h-3.5 w-3.5">
@@ -95,6 +97,7 @@
     >
       <div class="flex flex-1 items-end gap-2 rounded-2xl bg-gray-100 px-3.5 py-2.5">
         <textarea
+          data-testid="stream-input"
           ref="textareaRef"
           v-model="inputText"
           rows="1"
@@ -108,6 +111,7 @@
 
       <button
         v-if="chat.streaming.value"
+        data-testid="stream-stop"
         type="button"
         @click="chat.cancel()"
         class="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-gray-800 active:opacity-70"
@@ -117,6 +121,7 @@
 
       <button
         v-else
+        data-testid="stream-send"
         type="button"
         :disabled="!inputText.trim()"
         class="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-blue-600 active:opacity-70 disabled:cursor-not-allowed disabled:opacity-30"

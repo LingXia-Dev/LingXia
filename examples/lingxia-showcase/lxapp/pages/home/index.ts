@@ -2,6 +2,8 @@ const app = getApp();
 const globalData = app.globalData;
 
 Page({
+  ipReadyCallback: null as ((ip: string) => void) | null,
+
   data: {
     greeting: globalData.greeting,
     imageUrl:
@@ -15,12 +17,15 @@ Page({
   onReady: function() {
     console.log("[Home] Page ready");
     // Add callback directly to App
-    app.ipReadyCallback = (ip) => {
+    const callback = (ip: string) => {
+      if (this.ipReadyCallback !== callback) return;
       console.log("IP received in Page:", ip);
       this.setData({
         ipAddr: ip,
       });
     };
+    this.ipReadyCallback = callback;
+    app.ipReadyCallback = callback;
 
     // Check if IP is already available
     if (app.globalData.ipAddr) {
@@ -34,6 +39,10 @@ Page({
 
   onUnload: function() {
     console.log("[Home] Page unloaded");
+    if (app.ipReadyCallback === this.ipReadyCallback) {
+      app.ipReadyCallback = undefined;
+    }
+    this.ipReadyCallback = null;
   },
 
   onLoad: async function() {

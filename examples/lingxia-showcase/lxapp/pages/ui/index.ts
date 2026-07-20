@@ -40,7 +40,7 @@ function isSurfaceNotSupported(error: unknown): boolean {
 
 Page({
   data: {
-    currentType: "",
+    currentType: "navigation",
     pageStack: [],
     modalResult: null,
     toastIcon: "success",
@@ -70,14 +70,14 @@ Page({
 
   _activeSurface: null,
 
-  onLoad: function (options) {
+  onLoad: function (options = {}) {
     console.log("UI page onLoad options:", options);
 
     // Pass querystring parameters to page via setData
-    const type = options.type || "navigation";
-    this.setData({
-      currentType: type,
-    });
+    const { type = "navigation" } = (options || {}) as { type?: string };
+    if (type !== this.data.currentType) {
+      this.setData({ currentType: type });
+    }
 
     const title = NAV_TITLE_MAP[type] || "User Interface";
     this.setNavigationBarTitle({ title });
