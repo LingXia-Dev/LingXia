@@ -14,6 +14,7 @@ const RUNNER_LXAPP_PATH_ENV: &str = "LINGXIA_LXAPP_PATH";
 const RUNNER_DEV_WS_URL_ENV: &str = "LINGXIA_DEV_WS_URL";
 const RUNNER_LINGXIAO_MOCK_DIR_ENV: &str = "LINGXIAO_MOCK_DIR";
 const RUNNER_ENV_ENV: &str = "LINGXIA_RUNNER_ENV";
+const RUNNER_DISPLAY_LANGUAGE_ENV: &str = "LINGXIA_RUNNER_DISPLAY_LANGUAGE";
 /// Marks the child process as the LingXia Runner (vs a real host app). The core
 /// runtime injects `runner:true` into `__LX_BRIDGE_CFG` so the View bridge can
 /// expose `platform.isRunner()`; the Runner lacks host-declared surfaces like
@@ -171,12 +172,14 @@ pub(super) fn execute_lxapp_dev(project_root: PathBuf, options: DevExecuteOption
                 &project_root,
                 &ws_url,
                 options.runner_device.as_deref(),
+                options.display_language.as_deref(),
                 runner_env,
             )?,
             LxAppRunnerHost::Windows => launch_windows_runner_for_lxapp(
                 &project_root,
                 &ws_url,
                 options.runner_device.as_deref(),
+                options.display_language.as_deref(),
                 runner_env,
             )?,
         };
@@ -278,6 +281,7 @@ fn launch_runner_for_lxapp(
     lxapp_path: &Path,
     ws_url: &str,
     runner_device: Option<&str>,
+    display_language: Option<&str>,
     runner_env: crate::config::EnvVersion,
 ) -> Result<RunnerProcess> {
     platform::apple::ensure_macos()?;
@@ -313,6 +317,9 @@ fn launch_runner_for_lxapp(
     command.env(RUNNER_INSTANCE_ENV, runner_instance_id(lxapp_path));
     if let Some(device) = runner_device.map(str::trim).filter(|s| !s.is_empty()) {
         command.env("LINGXIA_RUNNER_DEVICE", device);
+    }
+    if let Some(language) = display_language.map(str::trim).filter(|s| !s.is_empty()) {
+        command.env(RUNNER_DISPLAY_LANGUAGE_ENV, language);
     }
     // Cloud worker: transpile mocks + generate typed `lx.cloud.invoke`, then
     // point the runner at the loadable mock dir (it reads routing from worker.json).
@@ -506,6 +513,7 @@ fn launch_windows_runner_for_lxapp(
     lxapp_path: &Path,
     ws_url: &str,
     runner_device: Option<&str>,
+    display_language: Option<&str>,
     runner_env: crate::config::EnvVersion,
 ) -> Result<RunnerProcess> {
     platform::host_support::ensure_supported_host(&PlatformType::Windows)?;
@@ -532,6 +540,7 @@ fn launch_windows_runner_for_lxapp(
         ws_url,
         mock_dir.as_deref(),
         runner_device,
+        display_language,
         runner_env,
         &resource_lxapp_paths,
     )?;
@@ -580,6 +589,7 @@ fn windows_runner_launch_args(
     ws_url: &str,
     mock_dir: Option<&Path>,
     runner_device: Option<&str>,
+    display_language: Option<&str>,
     runner_env: crate::config::EnvVersion,
     resource_lxapp_paths: &[WindowsRunnerResourceLxAppPath],
 ) -> Result<Vec<String>> {
@@ -600,6 +610,10 @@ fn windows_runner_launch_args(
     if let Some(device) = runner_device.map(str::trim).filter(|s| !s.is_empty()) {
         args.push("--runner-device".to_string());
         args.push(device.to_string());
+    }
+    if let Some(language) = display_language.map(str::trim).filter(|s| !s.is_empty()) {
+        args.push("--display-language".to_string());
+        args.push(language.to_string());
     }
     if !resource_lxapp_paths.is_empty() {
         args.push("--resource-lxapp-paths".to_string());
@@ -1214,6 +1228,7 @@ mod tests {
             "ws://127.0.0.1:39000/?token=abc",
             Some(std::path::Path::new(r"D:\apps\mock")),
             Some("desktop-1440"),
+            Some("zh-CN"),
             crate::config::EnvVersion::Developer,
             &resources,
         )
@@ -1230,6 +1245,10 @@ mod tests {
         assert!(
             args.windows(2)
                 .any(|pair| pair == ["--runner-device", "desktop-1440"])
+        );
+        assert!(
+            args.windows(2)
+                .any(|pair| pair == ["--display-language", "zh-CN"])
         );
         assert!(args.iter().any(|arg| arg.contains("com.example.extra")));
     }

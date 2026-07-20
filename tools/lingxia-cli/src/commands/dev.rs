@@ -72,6 +72,8 @@ pub struct DevExecuteOptions {
     pub provider_path: Option<String>,
     /// Runner simulator device (macOS lxapp runner only), e.g. `desktop-1440`.
     pub runner_device: Option<String>,
+    /// Session-only effective display language for an lxapp Runner.
+    pub display_language: Option<String>,
     pub background: bool,
     pub action: Option<DevSessionAction>,
 }
@@ -253,6 +255,12 @@ pub fn execute(options: DevExecuteOptions) -> Result<()> {
 
     if runner::is_standalone_lxapp_project(&project_root) {
         return runner::execute_lxapp_dev(project_root, options);
+    }
+
+    if options.display_language.is_some() {
+        return Err(anyhow!(
+            "`--display-language` is only supported by the lxapp Runner."
+        ));
     }
 
     println!();
