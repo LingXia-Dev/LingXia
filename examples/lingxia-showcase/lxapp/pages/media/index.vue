@@ -266,12 +266,16 @@
               <div v-if="videoInfoResult" class="rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50 to-white p-5 space-y-4">
                 <h3 class="text-sm font-semibold text-gray-700 flex items-center gap-2">
                   <span class="w-1 h-4 bg-blue-500 rounded-full"></span>
-                  Video Information
+                  Upload Preflight Metadata
                 </h3>
                 <div class="space-y-3">
                   <div class="flex items-center justify-between text-sm">
+                    <span class="text-gray-600">File Size</span>
+                    <span class="font-semibold text-gray-800">{{ formatFileSize(videoInfoResult.size) }}</span>
+                  </div>
+                  <div class="flex items-center justify-between text-sm">
                     <span class="text-gray-600">Resolution</span>
-                    <span class="font-semibold text-gray-800">{{ videoInfoResult.width ?? '--' }} × {{ videoInfoResult.height ?? '--' }}</span>
+                    <span class="font-semibold text-gray-800">{{ videoInfoResult.width }} × {{ videoInfoResult.height }}</span>
                   </div>
                   <div class="flex items-center justify-between text-sm">
                     <span class="text-gray-600">Duration</span>
@@ -290,18 +294,31 @@
                     <span class="font-semibold text-gray-800">{{ videoInfoResult.fps ?? '--' }}</span>
                   </div>
                   <div class="flex items-center justify-between text-sm">
-                    <span class="text-gray-600">Type</span>
-                    <span class="font-semibold text-gray-800">{{ videoInfoResult.type || '--' }}</span>
+                    <span class="text-gray-600">Container MIME</span>
+                    <span class="font-semibold text-gray-800">{{ videoInfoResult.type || 'Not reported' }}</span>
                   </div>
                   <div class="flex items-center justify-between text-sm">
-                    <span class="text-gray-600">Size</span>
-                    <span class="font-semibold text-gray-800">{{ formatFileSize(videoInfoResult.size || 0) }}</span>
+                    <span class="text-gray-600">Video Codec</span>
+                    <span class="font-semibold text-gray-800">{{ videoInfoResult.videoCodec || 'Not reported' }}</span>
+                  </div>
+                  <div class="flex items-center justify-between text-sm">
+                    <span class="text-gray-600">Has Audio</span>
+                    <span class="font-semibold text-gray-800">{{ videoInfoResult.hasAudio == null ? 'Not reported' : (videoInfoResult.hasAudio ? 'Yes' : 'No') }}</span>
+                  </div>
+                  <div class="flex items-center justify-between text-sm">
+                    <span class="text-gray-600">Audio Codec</span>
+                    <span class="font-semibold text-gray-800">{{ videoInfoResult.hasAudio === false ? 'N/A' : (videoInfoResult.audioCodec || 'Not reported') }}</span>
                   </div>
                 </div>
-                <div v-if="videoInfoResult.path" class="pt-4 border-t border-gray-200 space-y-1">
-                  <div class="text-xs font-medium text-gray-700">Path</div>
-                  <div class="text-[11px] text-gray-500 break-all bg-gray-100 px-3 py-2 rounded-lg">
-                    {{ videoInfoResult.path }}
+                <div class="pt-4 border-t border-gray-200 space-y-3">
+                  <div class="text-[11px] text-gray-500">
+                    Track metadata is best-effort. The receiving service must validate uploaded bytes.
+                  </div>
+                  <div class="space-y-1">
+                    <div class="text-xs font-medium text-gray-700">Path</div>
+                    <div class="text-[11px] text-gray-500 break-all bg-gray-100 px-3 py-2 rounded-lg">
+                      {{ videoInfoResult.path }}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -891,15 +908,18 @@ type MediaItem = {
 };
 type ImageInfoResult = { width?: number; height?: number; type?: string; path?: string; size?: number };
 type VideoInfoResult = {
-  width?: number;
-  height?: number;
-  durationMs?: number;
+  width: number;
+  height: number;
+  durationMs: number;
+  size: number;
+  path: string;
   rotation?: number;
   bitrate?: number;
   fps?: number;
   type?: string;
-  path?: string;
-  size?: number;
+  videoCodec?: string;
+  hasAudio?: boolean;
+  audioCodec?: string;
 };
 type VideoThumbnailSourceInfo = {
   width?: number;

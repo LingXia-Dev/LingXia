@@ -158,7 +158,7 @@ function getModeCopy(mediaType) {
   if (mediaType === "videoTools") {
     return {
       headerSubtitle: "lx.getVideoInfo / lx.extractVideoThumbnail / lx.compressVideo",
-      emptyHint: "Pick one video, inspect metadata, generate thumbnail, and compress.",
+      emptyHint: "Pick one video, inspect upload metadata, generate a thumbnail, and compress.",
       previewHint: "",
       galleryHint: "",
       addLabel: "Video Tools",
@@ -771,8 +771,7 @@ Page({
     });
     try {
       const info = await lx.getVideoInfo({ path: picked });
-      const size = await this._getFileSize(picked);
-      this.setData({ videoInfoResult: { ...info, size }, videoInfoBusy: false, thumbnailSourceInfo: info });
+      this.setData({ videoInfoResult: info, videoInfoBusy: false, thumbnailSourceInfo: info });
     } catch (error) {
       const message = error?.message || "getVideoInfo failed";
       this.setData({
