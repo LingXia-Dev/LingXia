@@ -1,6 +1,6 @@
 name: Build web packages
 description: >
-  Install and build the @lingxia npm packages the example lxapps import: the
+  Install and build the @lingxia npm packages the example lxapps import: types,
   embedded runtime (bridge, polyfills — also needed by lingxia-cli's build.rs)
   plus the frontend libs (elements, page-runtime, react, vue). The react/vue
   build scripts cascade to elements + page-runtime, so a clean checkout ends up
@@ -22,14 +22,14 @@ runs:
         npm_config_script_shell: bash
       run: |
         set -euo pipefail
-        for pkg in lingxia-bridge lingxia-polyfills lingxia-elements \
+        for pkg in lingxia-types lingxia-bridge lingxia-polyfills lingxia-elements \
                    lingxia-page-runtime lingxia-react lingxia-vue; do
           echo "::group::npm install ($pkg)"
           (cd "packages/$pkg" && npm install)
           echo "::endgroup::"
         done
         # react/vue cascade to elements + page-runtime + bridge:types.
-        for pkg in lingxia-bridge lingxia-polyfills lingxia-react lingxia-vue; do
+        for pkg in lingxia-types lingxia-bridge lingxia-polyfills lingxia-react lingxia-vue; do
           echo "::group::npm run build ($pkg)"
           (cd "packages/$pkg" && npm run build)
           echo "::endgroup::"
