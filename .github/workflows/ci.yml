@@ -6,6 +6,16 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      focus:
+        description: Run only one focused validation job
+        required: true
+        default: auto
+        type: choice
+        options:
+          - auto
+          - automation-macos
+          - automation-windows
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -27,7 +37,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       rust: ${{ steps.compute.outputs.rust }}
-      i18n: ${{ steps.filter.outputs.i18n }}
+      i18n: ${{ steps.compute.outputs.i18n }}
       ios: ${{ steps.compute.outputs.ios }}
       macos: ${{ steps.compute.outputs.macos }}
       android: ${{ steps.compute.outputs.android }}
@@ -37,6 +47,7 @@ jobs:
       harmony: ${{ steps.compute.outputs.harmony }}
       npm: ${{ steps.compute.outputs.npm }}
       automation: ${{ steps.compute.outputs.automation }}
+      automation_matrix: ${{ steps.compute.outputs.automation_matrix }}
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@v3
@@ -124,6 +135,7 @@ jobs:
           NPM: ${{ steps.filter.outputs.npm }}
           TYPEGEN_SRC: ${{ steps.filter.outputs.typegen_src }}
           AUTOMATION_TYPES: ${{ steps.filter.outputs.automation_types }}
+          FOCUS: ${{ github.event_name == 'workflow_dispatch' && inputs.focus || 'auto' }}
           # A release/* PR (from Prepare Release PR) only touches Cargo.toml /
           # install.sh / packages/*, so the path filters would skip sdk/harmony.
           # Force the FULL validate set on release PRs so a maintainer sees every
@@ -161,8 +173,44 @@ jobs:
           # @lingxia/types, so Rust-only PRs must still run the drift gate).
           npm=$(any "$rel" "$NPM" "$TYPEGEN_SRC")
           automation=$(any "$rel" "$CI_F" "$rust" "$WEB_FE" "$EX_COMMON" "$APPLE" "$AUTOMATION_TYPES")
+          i18n="$I18N"
+          automation_matrix='{"include":[{"platform":"macos","os":"macos-latest","exe":""},{"platform":"windows","os":"windows-latest","exe":".exe"}]}'
+
+          # Focused workflow_dispatch runs are an iteration aid. Pull requests
+          # still use the complete path-based gate above.
+          case "$FOCUS" in
+            automation-macos)
+              rust=false
+              i18n=false
+              ios=false
+              macos=false
+              android=false
+              runner=false
+              sdk_apple=false
+              sdk_android=false
+              harmony=false
+              npm=false
+              automation=true
+              automation_matrix='{"include":[{"platform":"macos","os":"macos-latest","exe":""}]}'
+              ;;
+            automation-windows)
+              rust=false
+              i18n=false
+              ios=false
+              macos=false
+              android=false
+              runner=false
+              sdk_apple=false
+              sdk_android=false
+              harmony=false
+              npm=false
+              automation=true
+              automation_matrix='{"include":[{"platform":"windows","os":"windows-latest","exe":".exe"}]}'
+              ;;
+          esac
           {
             echo "rust=$rust"
+            echo "i18n=$i18n"
             echo "ios=$ios"
             echo "macos=$macos"
             echo "android=$android"
@@ -172,6 +220,7 @@ jobs:
             echo "harmony=$harmony"
             echo "npm=$npm"
             echo "automation=$automation"
+            echo "automation_matrix=$automation_matrix"
           } >> "$GITHUB_OUTPUT"
 
   # ---- Gating jobs (required via ci-success) ----
@@ -550,14 +599,7 @@ jobs:
     timeout-minutes: 75
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - platform: macos
-            os: macos-latest
-            exe: ""
-          - platform: windows
-            os: windows-latest
-            exe: ".exe"
+      matrix: ${{ fromJSON(needs.changes.outputs.automation_matrix) }}
     steps:
       - uses: actions/checkout@v4
 
