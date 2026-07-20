@@ -433,8 +433,8 @@ fn prepare_windows_runner_assets(
     std::fs::write(&runtime_path, runtime.bytes)
         .with_context(|| format!("Failed to write {}", runtime_path.display()))?;
 
-    // Runner window/taskbar icon: the LingXia vessel mark, embedded in the
-    // CLI so published builds don't depend on the repo's design sources.
+    // Runner window/taskbar icon: the macOS Runner artwork, embedded in the CLI
+    // so published builds don't depend on the repo's Apple asset catalog.
     // `lingxia-windows-sdk` picks `<assets>/AppIcon.png` up automatically.
     let icon_path = assets_dir.join("AppIcon.png");
     std::fs::write(
