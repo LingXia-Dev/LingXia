@@ -266,6 +266,7 @@ impl MediaRuntime for Platform {
                 width: info.width,
                 height: info.height,
                 duration_ms: info.duration_ms,
+                size: info.size,
                 rotation: if info.has_rotation && info.rotation >= 0 {
                     Some(info.rotation as u16)
                 } else {
@@ -281,6 +282,17 @@ impl MediaRuntime for Platform {
                     None
                 } else {
                     Some(info.mime_type)
+                },
+                video_codec: if info.video_codec.is_empty() {
+                    None
+                } else {
+                    Some(info.video_codec)
+                },
+                has_audio: Some(info.has_audio),
+                audio_codec: if info.audio_codec.is_empty() {
+                    None
+                } else {
+                    Some(info.audio_codec)
                 },
             })
         }

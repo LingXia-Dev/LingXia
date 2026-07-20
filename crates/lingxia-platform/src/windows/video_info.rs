@@ -9,10 +9,15 @@ use windows::Win32::Media::MediaFoundation::{
     IMFSourceReader, MF_API_VERSION, MF_MT_AVG_BITRATE, MF_MT_DEFAULT_STRIDE, MF_MT_FRAME_RATE,
     MF_MT_FRAME_SIZE, MF_MT_MAJOR_TYPE, MF_MT_SUBTYPE, MF_MT_VIDEO_ROTATION, MF_PD_DURATION,
     MF_SDK_VERSION, MF_SOURCE_READER_DISABLE_DXVA,
-    MF_SOURCE_READER_ENABLE_ADVANCED_VIDEO_PROCESSING, MF_SOURCE_READER_FIRST_VIDEO_STREAM,
-    MF_SOURCE_READER_MEDIASOURCE, MF_SOURCE_READERF_ENDOFSTREAM, MFCreateAttributes,
-    MFCreateMediaType, MFCreateSourceReaderFromURL, MFMediaType_Video, MFStartup,
-    MFVideoFormat_RGB32,
+    MF_SOURCE_READER_ENABLE_ADVANCED_VIDEO_PROCESSING, MF_SOURCE_READER_FIRST_AUDIO_STREAM,
+    MF_SOURCE_READER_FIRST_VIDEO_STREAM, MF_SOURCE_READER_MEDIASOURCE,
+    MF_SOURCE_READERF_ENDOFSTREAM, MFAudioFormat_AAC, MFAudioFormat_ADTS, MFAudioFormat_ALAC,
+    MFAudioFormat_Dolby_AC3, MFAudioFormat_Dolby_DDPlus, MFAudioFormat_FLAC, MFAudioFormat_MP3,
+    MFAudioFormat_MPEG, MFAudioFormat_Opus, MFAudioFormat_PCM, MFAudioFormat_Vorbis,
+    MFCreateAttributes, MFCreateMediaType, MFCreateSourceReaderFromURL, MFMediaType_Video,
+    MFStartup, MFVideoFormat_AV1, MFVideoFormat_H264, MFVideoFormat_H264_ES, MFVideoFormat_H265,
+    MFVideoFormat_HEVC, MFVideoFormat_HEVC_ES, MFVideoFormat_MJPG, MFVideoFormat_MP4V,
+    MFVideoFormat_MPEG2, MFVideoFormat_RGB32, MFVideoFormat_VP80, MFVideoFormat_VP90,
 };
 use windows::Win32::System::Com::StructuredStorage::PROPVARIANT;
 use windows::Win32::System::Com::{COINIT_MULTITHREADED, CoInitializeEx};
@@ -97,6 +102,57 @@ fn mime_for(path: &Path) -> Option<String> {
     Some(mime.to_string())
 }
 
+fn video_codec_mime(subtype: &GUID) -> Option<String> {
+    let mime = if *subtype == MFVideoFormat_H264 || *subtype == MFVideoFormat_H264_ES {
+        "video/avc"
+    } else if *subtype == MFVideoFormat_H265
+        || *subtype == MFVideoFormat_HEVC
+        || *subtype == MFVideoFormat_HEVC_ES
+    {
+        "video/hevc"
+    } else if *subtype == MFVideoFormat_VP80 {
+        "video/x-vnd.on2.vp8"
+    } else if *subtype == MFVideoFormat_VP90 {
+        "video/x-vnd.on2.vp9"
+    } else if *subtype == MFVideoFormat_AV1 {
+        "video/av01"
+    } else if *subtype == MFVideoFormat_MP4V {
+        "video/mp4v-es"
+    } else if *subtype == MFVideoFormat_MPEG2 {
+        "video/mpeg2"
+    } else if *subtype == MFVideoFormat_MJPG {
+        "video/mjpeg"
+    } else {
+        return None;
+    };
+    Some(mime.to_string())
+}
+
+fn audio_codec_mime(subtype: &GUID) -> Option<String> {
+    let mime = if *subtype == MFAudioFormat_AAC || *subtype == MFAudioFormat_ADTS {
+        "audio/mp4a-latm"
+    } else if *subtype == MFAudioFormat_MP3 || *subtype == MFAudioFormat_MPEG {
+        "audio/mpeg"
+    } else if *subtype == MFAudioFormat_Opus {
+        "audio/opus"
+    } else if *subtype == MFAudioFormat_Vorbis {
+        "audio/vorbis"
+    } else if *subtype == MFAudioFormat_FLAC {
+        "audio/flac"
+    } else if *subtype == MFAudioFormat_ALAC {
+        "audio/alac"
+    } else if *subtype == MFAudioFormat_Dolby_AC3 {
+        "audio/ac3"
+    } else if *subtype == MFAudioFormat_Dolby_DDPlus {
+        "audio/eac3"
+    } else if *subtype == MFAudioFormat_PCM {
+        "audio/raw"
+    } else {
+        return None;
+    };
+    Some(mime.to_string())
+}
+
 pub(super) fn read_video_info(path: &Path) -> Result<VideoInfo, PlatformError> {
     let reader = open_reader(path, false)?;
     let duration_ms = unsafe {
@@ -123,15 +179,34 @@ pub(super) fn read_video_info(path: &Path) -> Result<VideoInfo, PlatformError> {
     let rotation = unsafe { native.GetUINT32(&MF_MT_VIDEO_ROTATION) }
         .ok()
         .map(|rotation| rotation as u16);
+    let video_codec = unsafe { native.GetGUID(&MF_MT_SUBTYPE) }
+        .ok()
+        .and_then(|subtype| video_codec_mime(&subtype));
+
+    let audio_native =
+        unsafe { reader.GetNativeMediaType(MF_SOURCE_READER_FIRST_AUDIO_STREAM.0 as u32, 0) }.ok();
+    let has_audio = Some(audio_native.is_some());
+    let audio_codec = audio_native
+        .and_then(|media_type| unsafe { media_type.GetGUID(&MF_MT_SUBTYPE) }.ok())
+        .and_then(|subtype| audio_codec_mime(&subtype));
+    let size = std::fs::metadata(path)
+        .map_err(|err| {
+            PlatformError::Platform(format!("failed to read {} size: {err}", path.display()))
+        })?
+        .len();
 
     Ok(VideoInfo {
         width,
         height,
         duration_ms,
+        size,
         rotation,
         bitrate,
         fps,
         mime_type: mime_for(path),
+        video_codec,
+        has_audio,
+        audio_codec,
     })
 }
 
@@ -297,4 +372,37 @@ pub(super) fn extract_thumbnail(
         height: dynamic.height(),
         mime_type: Some(if is_png { "image/png" } else { "image/jpeg" }.to_string()),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{audio_codec_mime, video_codec_mime};
+    use windows::Win32::Media::MediaFoundation::{
+        MFAudioFormat_AAC, MFAudioFormat_Opus, MFVideoFormat_H264, MFVideoFormat_HEVC,
+        MFVideoFormat_VP90,
+    };
+
+    #[test]
+    fn codec_subtypes_use_stable_mime_names() {
+        assert_eq!(
+            video_codec_mime(&MFVideoFormat_H264).as_deref(),
+            Some("video/avc")
+        );
+        assert_eq!(
+            video_codec_mime(&MFVideoFormat_HEVC).as_deref(),
+            Some("video/hevc")
+        );
+        assert_eq!(
+            video_codec_mime(&MFVideoFormat_VP90).as_deref(),
+            Some("video/x-vnd.on2.vp9")
+        );
+        assert_eq!(
+            audio_codec_mime(&MFAudioFormat_AAC).as_deref(),
+            Some("audio/mp4a-latm")
+        );
+        assert_eq!(
+            audio_codec_mime(&MFAudioFormat_Opus).as_deref(),
+            Some("audio/opus")
+        );
+    }
 }

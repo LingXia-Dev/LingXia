@@ -1861,14 +1861,26 @@ mod video_native {
 
     pub(super) fn get_video_info(uri: &str) -> Result<VideoInfo, PlatformError> {
         let source_path = normalize_to_path(uri)?;
+        let size = fs::metadata(&source_path)
+            .map_err(|err| {
+                PlatformError::Platform(format!(
+                    "Failed to read video size for {}: {}",
+                    source_path, err
+                ))
+            })?
+            .len();
         let mut info = VideoInfo {
             width: 0,
             height: 0,
             duration_ms: 0,
+            size,
             rotation: None,
             bitrate: None,
             fps: None,
             mime_type: infer_video_mime_type(&source_path),
+            video_codec: None,
+            has_audio: None,
+            audio_codec: None,
         };
 
         let metadata_error = match read_video_metadata(&source_path) {
@@ -1885,9 +1897,8 @@ mod video_native {
                 info.rotation = metadata.rotation;
                 info.bitrate = metadata.bitrate;
                 info.fps = metadata.fps;
-                if metadata.mime_type.is_some() {
-                    info.mime_type = metadata.mime_type;
-                }
+                info.video_codec = metadata.video_codec;
+                info.has_audio = metadata.has_audio;
                 None
             }
             Err(err) => Some(err),
@@ -1954,7 +1965,8 @@ mod video_native {
         rotation: Option<u16>,
         bitrate: Option<u64>,
         fps: Option<f32>,
-        mime_type: Option<String>,
+        video_codec: Option<String>,
+        has_audio: Option<bool>,
     }
 
     fn read_video_metadata(path: &str) -> Result<RawVideoMetadata, PlatformError> {
@@ -1988,9 +2000,12 @@ mod video_native {
                     None
                 }
             });
-        let mime_type = format
+        let video_codec = format
             .get_string(unsafe { OH_MD_KEY_CODEC_MIME })
             .and_then(|v| if v.is_empty() { None } else { Some(v) });
+        let has_audio = format
+            .get_int_compatible(unsafe { OH_MD_KEY_AUD_SAMPLE_RATE })
+            .map(|sample_rate| sample_rate > 0);
 
         Ok(RawVideoMetadata {
             width,
@@ -1999,7 +2014,8 @@ mod video_native {
             rotation,
             bitrate,
             fps,
-            mime_type,
+            video_codec,
+            has_audio,
         })
     }
 

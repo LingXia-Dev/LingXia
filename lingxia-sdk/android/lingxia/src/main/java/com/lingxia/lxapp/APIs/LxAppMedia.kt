@@ -4,6 +4,8 @@ import android.content.ContentResolver
 import android.content.ContentValues
 import android.graphics.Color
 import android.graphics.Bitmap
+import android.media.MediaExtractor
+import android.media.MediaFormat
 import android.media.MediaMetadataRetriever
 import android.media.ThumbnailUtils
 import android.net.Uri
@@ -74,6 +76,12 @@ internal object LxAppMedia {
     private const val PLAYER_THUMBNAIL_DEFAULT_HEIGHT = 360
     private val mainHandler = Handler(Looper.getMainLooper())
     private val playerThumbnailSemaphore = Semaphore(1, true)
+
+    private data class VideoTrackMetadata(
+        val videoCodec: String?,
+        val hasAudio: Boolean,
+        val audioCodec: String?,
+    )
 
     @JvmStatic
     fun previewMedia(
@@ -311,16 +319,24 @@ internal object LxAppMedia {
             }
             val mimeType = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_MIMETYPE)
                 ?: inferVideoMimeType(sourceFile)
+            val tracks = readVideoTrackMetadata(sourceFile)
+            val retrieverHasAudio = retriever
+                .extractMetadata(MediaMetadataRetriever.METADATA_KEY_HAS_AUDIO)
+                .equals("yes", ignoreCase = true)
 
             JSONObject().apply {
                 put("success", true)
                 put("width", width)
                 put("height", height)
                 put("durationMs", durationMs)
+                put("size", sourceFile.length())
                 if (rotation != null) put("rotation", rotation)
                 if (bitrate != null) put("bitrate", bitrate)
                 if (fps != null) put("fps", fps)
                 put("mimeType", mimeType)
+                if (tracks.videoCodec != null) put("videoCodec", tracks.videoCodec)
+                put("hasAudio", tracks.hasAudio || retrieverHasAudio)
+                if (tracks.audioCodec != null) put("audioCodec", tracks.audioCodec)
             }.toString()
         } catch (e: Exception) {
             JSONObject().apply {
@@ -330,6 +346,38 @@ internal object LxAppMedia {
         } finally {
             try {
                 retriever.release()
+            } catch (_: Exception) {
+            }
+        }
+    }
+
+    private fun readVideoTrackMetadata(sourceFile: File): VideoTrackMetadata {
+        val extractor = MediaExtractor()
+        return try {
+            extractor.setDataSource(sourceFile.absolutePath)
+            var videoCodec: String? = null
+            var audioCodec: String? = null
+            var hasAudio = false
+            for (index in 0 until extractor.trackCount) {
+                val mime = extractor.getTrackFormat(index).getString(MediaFormat.KEY_MIME)
+                when {
+                    mime?.startsWith("video/") == true && videoCodec == null -> videoCodec = mime
+                    mime?.startsWith("audio/") == true -> {
+                        hasAudio = true
+                        if (audioCodec == null) audioCodec = mime
+                    }
+                }
+            }
+            VideoTrackMetadata(videoCodec, hasAudio, audioCodec)
+        } catch (e: Exception) {
+            LxLog.w(
+                TAG,
+                "Failed to inspect video tracks for ${sourceFile.absolutePath}: ${e.message}"
+            )
+            VideoTrackMetadata(null, false, null)
+        } finally {
+            try {
+                extractor.release()
             } catch (_: Exception) {
             }
         }

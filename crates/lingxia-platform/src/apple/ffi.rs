@@ -76,6 +76,7 @@ mod bridge {
         pub width: u32,
         pub height: u32,
         pub duration_ms: u64,
+        pub size: u64,
         pub rotation: i32,
         pub has_rotation: bool,
         pub bitrate: u64,
@@ -83,6 +84,9 @@ mod bridge {
         pub fps: f32,
         pub has_fps: bool,
         pub mime_type: String,
+        pub video_codec: String,
+        pub has_audio: bool,
+        pub audio_codec: String,
     }
 
     #[swift_bridge(swift_repr = "struct")]
