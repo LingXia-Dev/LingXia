@@ -9,6 +9,9 @@ import WebKit
 /// selection and window sizing policy here.
 @MainActor
 final class RunnerSurfaceShellHost {
+    private static let surfaceMetricsRetryDelay: TimeInterval = 0.05
+    private static let surfaceMetricsRetryLimit = 20
+
     let shell: LxAppShell
 
     private(set) var appId: String
@@ -74,6 +77,7 @@ final class RunnerSurfaceShellHost {
         RunnerSupport.Runtime.setCurrentApp(appId: appId, path: path)
         activate()
         RunnerSupport.SurfaceShell.open(shell, appId: appId, path: path, sessionId: sessionId)
+        reportSurfaceMetricsWhenReady()
         DevToolsLogger.shared.log("Opened \(appId) in SDK shell -> \(path)", level: .nav)
     }
 
@@ -97,7 +101,42 @@ final class RunnerSurfaceShellHost {
         device = newDevice
         toolbar.setCurrentDevice(newDevice)
         configureWindow(for: newDevice, center: false)
+        reportSurfaceMetricsWhenReady()
         DevToolsLogger.shared.log("Device -> \(newDevice.displayName) (\(newDevice.sizeDescription))", level: .debug)
+    }
+
+    /// A phone-to-shell switch reuses the existing page webview. Its previous
+    /// phone controller can publish one final compact viewport while closing,
+    /// so report the shell's attached webview after the host transition settles.
+    private func reportSurfaceMetricsWhenReady(attempt: Int = 0) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self, !self.isHiddenForHostSwitch else { return }
+            guard RunnerSupport.Runtime.currentAppId() == self.appId,
+                  let webView = RunnerSupport.WebView.resolve(
+                    appId: self.appId,
+                    path: self.currentPath
+                  ),
+                  webView.window != nil
+            else {
+                self.retrySurfaceMetricsReport(after: attempt)
+                return
+            }
+
+            webView.layoutSubtreeIfNeeded()
+            let size = webView.bounds.size
+            guard size.width > 0, size.height > 0 else {
+                self.retrySurfaceMetricsReport(after: attempt)
+                return
+            }
+            _ = setSurfaceViewport(self.appId, Double(size.width), Double(size.height))
+        }
+    }
+
+    private func retrySurfaceMetricsReport(after attempt: Int) {
+        guard attempt < Self.surfaceMetricsRetryLimit else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.surfaceMetricsRetryDelay) { [weak self] in
+            self?.reportSurfaceMetricsWhenReady(attempt: attempt + 1)
+        }
     }
 
     func hideForHostSwitch() {
