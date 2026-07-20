@@ -892,54 +892,7 @@ fn resolve_dev_page(
     app: &std::sync::Arc<lxapp::LxApp>,
     page_name: Option<&str>,
 ) -> Result<(lxapp::PageInstance, Option<String>), String> {
-    let Some(page_name) = page_name.map(str::trim).filter(|value| !value.is_empty()) else {
-        let page = app.current_page().map_err(|err| err.to_string())?;
-        let name = dev_page_name_for_path(app, &page.path());
-        return Ok((page, name));
-    };
-
-    if page_name.eq_ignore_ascii_case("current") {
-        let page = app.current_page().map_err(|err| err.to_string())?;
-        let name = dev_page_name_for_path(app, &page.path());
-        return Ok((page, name));
-    }
-
-    if let Some(page) = app.get_page_by_instance_id_str(page_name) {
-        let name = dev_page_name_for_path(app, &page.path());
-        return Ok((page, name));
-    }
-
-    let path = app
-        .find_page_path_by_name(page_name)
-        .ok_or_else(|| format!("unknown page name: {page_name}"))?;
-    let page = resolve_active_dev_page_by_path(app, &path)
-        .ok_or_else(|| format!("page is not active: {page_name}"))?;
-    Ok((page, Some(page_name.to_string())))
-}
-
-fn resolve_active_dev_page_by_path(
-    app: &std::sync::Arc<lxapp::LxApp>,
-    path: &str,
-) -> Option<lxapp::PageInstance> {
-    if let Ok(page) = app.require_page(path) {
-        return Some(page);
-    }
-
-    let info = app.runtime_info();
-    info.current_page
-        .iter()
-        .chain(info.page_stack.iter().rev())
-        .find(|candidate| dev_page_paths_match(candidate, path))
-        .and_then(|candidate| app.get_page(candidate))
-}
-
-fn dev_page_name_for_path(app: &std::sync::Arc<lxapp::LxApp>, path: &str) -> Option<String> {
-    app.runtime_info()
-        .page_entries
-        .into_iter()
-        .find(|entry| dev_page_paths_match(&entry.path, path))
-        .map(|entry| entry.name)
-        .filter(|name| !name.is_empty())
+    auto::resolve_page(app, page_name)
 }
 
 fn dev_page_path_key(path: &str) -> String {

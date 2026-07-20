@@ -501,13 +501,15 @@ impl LxApp {
         });
 
         let path = resolved.internal_path();
-        let query = resolved.query;
+        // Page instances are keyed by path, not URL. Every requested URL must
+        // therefore replace the cached query, including the empty query; if
+        // it only updates on `Some`, a later `/page` navigation incorrectly
+        // inherits state from an earlier `/page?mode=...` visit.
+        let query = resolved.query.unwrap_or_default();
 
         let _creation_guard = self.page_creation_lock.lock().unwrap();
         if let Some(page) = self.get_page(&path) {
-            if let Some(query) = query.clone() {
-                page.set_query(query);
-            }
+            page.set_query(query);
             return page;
         }
 
@@ -559,9 +561,7 @@ impl LxApp {
 
         self.evict_inactive_pages_if_needed();
 
-        if let Some(query) = query {
-            page.set_query(query);
-        }
+        page.set_query(query);
 
         page
     }

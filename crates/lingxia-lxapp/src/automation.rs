@@ -54,12 +54,12 @@ pub fn resolve_page(
     let name = page_name.map(str::trim).filter(|value| !value.is_empty());
     match name {
         None => {
-            let page = app.current_page().map_err(|err| err.to_string())?;
+            let page = resolve_current_page(app)?;
             let name = page_name_for_path(app, &page.path());
             Ok((page, name))
         }
         Some(n) if n.eq_ignore_ascii_case("current") => {
-            let page = app.current_page().map_err(|err| err.to_string())?;
+            let page = resolve_current_page(app)?;
             let name = page_name_for_path(app, &page.path());
             Ok((page, name))
         }
@@ -76,6 +76,18 @@ pub fn resolve_page(
             Ok((page, Some(n.to_string())))
         }
     }
+}
+
+fn resolve_current_page(app: &Arc<LxApp>) -> Result<PageInstance, String> {
+    if let Some(page) = app
+        .page_instance_runtime_info()
+        .into_iter()
+        .find(|page| page.current)
+        .and_then(|page| app.get_page_by_instance_id_str(&page.instance_id))
+    {
+        return Ok(page);
+    }
+    app.current_page().map_err(|err| err.to_string())
 }
 
 /// Resolve a page's attached WebView, erroring while it is not ready.
@@ -98,15 +110,25 @@ pub fn page_name_known(app: &Arc<LxApp>, page_name: Option<&str>) -> bool {
 }
 
 fn resolve_active_page_by_path(app: &Arc<LxApp>, path: &str) -> Option<PageInstance> {
-    if let Ok(page) = app.require_page(path) {
-        return Some(page);
-    }
-    let info = app.runtime_info();
-    info.current_page
+    let pages = app.page_instance_runtime_info();
+    active_runtime_page_by_path(&pages, path)
+        .and_then(|page| app.get_page_by_instance_id_str(&page.instance_id))
+        .or_else(|| app.require_page(path).ok())
+}
+
+fn active_runtime_page_by_path<'a>(
+    pages: &'a [crate::PageInstanceRuntimeInfo],
+    path: &str,
+) -> Option<&'a crate::PageInstanceRuntimeInfo> {
+    pages
         .iter()
-        .chain(info.page_stack.iter().rev())
-        .find(|candidate| page_paths_match(candidate, path))
-        .and_then(|candidate| app.get_page(candidate))
+        .find(|page| page_paths_match(&page.path, path) && page.current)
+        .or_else(|| {
+            pages
+                .iter()
+                .filter(|page| page_paths_match(&page.path, path) && page.stack_index.is_some())
+                .max_by_key(|page| page.stack_index)
+        })
 }
 
 fn page_path_key(path: &str) -> String {
@@ -133,6 +155,21 @@ pub fn page_name_for_path(app: &Arc<LxApp>, path: &str) -> Option<String> {
 pub fn page_status(app: &Arc<LxApp>, page: &PageInstance, name: Option<&str>) -> PageStatus {
     let info = app.runtime_info();
     let path = page.path();
+    let instance_id = page.instance_id_string();
+    if let Some(runtime_page) = app
+        .page_instance_runtime_info()
+        .into_iter()
+        .find(|runtime_page| runtime_page.instance_id == instance_id)
+    {
+        return PageStatus {
+            appid: info.appid,
+            name: name.map(str::to_string),
+            path: runtime_page.path,
+            current: runtime_page.current,
+            in_stack: runtime_page.stack_index.is_some(),
+            ready: runtime_page.state.ready,
+        };
+    }
     PageStatus {
         appid: info.appid,
         name: name.map(str::to_string),
@@ -152,26 +189,84 @@ pub fn page_status(app: &Arc<LxApp>, page: &PageInstance, name: Option<&str>) ->
 /// [`PageStatus`] for every configured page of the app.
 pub fn list_page_statuses(app: &Arc<LxApp>) -> Vec<PageStatus> {
     let info = app.runtime_info();
+    let runtime_pages = app.page_instance_runtime_info();
     info.page_entries
         .iter()
-        .map(|entry| PageStatus {
-            appid: info.appid.clone(),
-            name: (!entry.name.is_empty()).then(|| entry.name.clone()),
-            path: entry.path.clone(),
-            current: info
-                .current_page
-                .as_deref()
-                .is_some_and(|current| page_paths_match(current, &entry.path)),
-            in_stack: info
-                .page_stack
-                .iter()
-                .any(|stack_page| page_paths_match(stack_page, &entry.path)),
-            ready: app
-                .require_page(&entry.path)
-                .ok()
-                .is_some_and(|page| page.webview().is_some()),
+        .map(|entry| {
+            let runtime_page = active_runtime_page_by_path(&runtime_pages, &entry.path);
+            PageStatus {
+                appid: info.appid.clone(),
+                name: (!entry.name.is_empty()).then(|| entry.name.clone()),
+                path: entry.path.clone(),
+                current: runtime_page.is_some_and(|page| page.current),
+                in_stack: runtime_page.is_some_and(|page| page.stack_index.is_some()),
+                ready: runtime_page.is_some_and(|page| page.state.ready),
+            }
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn runtime_page(
+        instance_id: &str,
+        path: &str,
+        current: bool,
+        stack_index: Option<usize>,
+    ) -> crate::PageInstanceRuntimeInfo {
+        crate::PageInstanceRuntimeInfo {
+            instance_id: instance_id.to_string(),
+            name: None,
+            path: path.to_string(),
+            query: Value::Null,
+            owner: crate::PageOwner::Host,
+            presentation: crate::PresentationKind::Window,
+            lifecycle: if current { "visible" } else { "hidden" }.to_string(),
+            stack_index,
+            current,
+            state: crate::PageAutomationState {
+                webview_attached: true,
+                webview_ready: true,
+                webview_error: None,
+                bridge_ready: true,
+                render_state: "finished",
+                lifecycle: if current { "onShow" } else { "onHide" },
+                ready: true,
+                query: Value::Null,
+            },
+        }
+    }
+
+    #[test]
+    fn active_page_resolution_ignores_stale_same_path_instances() {
+        let pages = vec![
+            runtime_page("disposed", "pages/device/index.vue", false, None),
+            runtime_page(
+                "current",
+                "pages/device/index.vue?type=screen",
+                true,
+                Some(0),
+            ),
+        ];
+
+        let selected = active_runtime_page_by_path(&pages, "pages/device/index.vue").unwrap();
+
+        assert_eq!(selected.instance_id, "current");
+    }
+
+    #[test]
+    fn active_page_resolution_prefers_topmost_stack_instance() {
+        let pages = vec![
+            runtime_page("lower", "pages/device/index.vue", false, Some(1)),
+            runtime_page("upper", "pages/device/index.vue", false, Some(3)),
+        ];
+
+        let selected = active_runtime_page_by_path(&pages, "pages/device/index.vue").unwrap();
+
+        assert_eq!(selected.instance_id, "upper");
+    }
 }
 
 // ===================== navigation =====================

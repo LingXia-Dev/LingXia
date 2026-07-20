@@ -1052,7 +1052,10 @@ impl PageInstance {
         let lxapp = lxapp::get(self.appid());
 
         // Normalize through LxApp to ensure consistent canonical paths (e.g. plugin routes).
-        let target_page = lxapp.get_or_create_page(&target_page.path());
+        let target_url =
+            crate::append_page_query(target_page.path(), &target_page.automation_state().query)
+                .map_err(LxAppError::InvalidParameter)?;
+        let target_page = lxapp.get_or_create_page(&target_url);
         self.navigate_to_internal(target_page, nav_type, &lxapp)
     }
 
@@ -1064,6 +1067,9 @@ impl PageInstance {
         lxapp: &Arc<LxApp>,
     ) -> Result<PageInstance, LxAppError> {
         let path = target_page.path();
+        let target_url =
+            crate::append_page_query(path.clone(), &target_page.automation_state().query)
+                .map_err(LxAppError::InvalidParameter)?;
         let mut target_page = target_page;
         let is_tabbar_page = lxapp
             .get_tabbar()
@@ -1089,7 +1095,7 @@ impl PageInstance {
                         ));
                     }
                     lxapp.remove_pages(&stack_paths);
-                    target_page = lxapp.get_or_create_page(&path);
+                    target_page = lxapp.get_or_create_page(&target_url);
                 }
                 lxapp.clear_page_stack()?;
             }
