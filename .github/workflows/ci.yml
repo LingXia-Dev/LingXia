@@ -626,6 +626,11 @@ jobs:
       - uses: ./.github/actions/bootstrap-apple-sdk
         if: runner.os == 'macOS'
 
+      - name: Test Apple bridge transport
+        if: runner.os == 'macOS'
+        shell: bash
+        run: cargo test -p lingxia-webview apple::bridge_transport --lib
+
       - name: Install showcase test dependencies
         working-directory: examples/lingxia-showcase/lxapp
         shell: bash
