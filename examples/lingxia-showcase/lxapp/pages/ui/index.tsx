@@ -296,6 +296,8 @@ export default function UIPage() {
                 <button
                   type="button"
                   data-testid="open-surface"
+                  data-surface-width={surfaceWidth}
+                  data-surface-height={surfaceHeight}
                   disabled={surfaceActive}
                   onClick={() => {
                     let width: number | string | undefined;

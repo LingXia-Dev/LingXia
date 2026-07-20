@@ -1,5 +1,5 @@
 <template>
-  <div class="min-h-screen bg-gray-100">
+  <div class="min-h-screen bg-gray-100" data-testid="components-page">
     <div class="px-3 py-2 pb-12 space-y-2">
 
       <!-- Compact Header -->
@@ -22,6 +22,7 @@
       <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden divide-y divide-gray-100">
         <!-- Video -->
         <div
+          data-testid="components-video"
           class="px-4 py-3.5 hover:bg-gray-50 cursor-pointer flex items-center justify-between group transition-colors"
           @click="navigateTo({ page: 'video' })"
         >
@@ -45,6 +46,7 @@
 
         <!-- Media Swiper -->
         <div
+          data-testid="components-swiper"
           class="px-4 py-3.5 hover:bg-gray-50 cursor-pointer flex items-center justify-between group transition-colors"
           @click="navigateTo({ page: 'swiper' })"
         >
@@ -70,6 +72,7 @@
 
         <!-- Navigator -->
         <div
+          data-testid="components-navigator"
           class="px-4 py-3.5 hover:bg-gray-50 cursor-pointer flex items-center justify-between group transition-colors"
           @click="navigateTo({ page: 'navigator' })"
         >
@@ -93,6 +96,7 @@
 
         <!-- Picker -->
         <div
+          data-testid="components-picker"
           class="px-4 py-3.5 hover:bg-gray-50 cursor-pointer flex items-center justify-between group transition-colors"
           @click="navigateTo({ page: 'picker' })"
         >

@@ -16,9 +16,10 @@ async function waitForRenderedFeature(
   app: LxAppDriver,
   page: string,
   expectedTitle: string,
-  expectedText: string,
+  expectedText: string | readonly string[],
 ): Promise<DocumentState> {
   const deadline = Date.now() + 10_000;
+  const expectedTexts = typeof expectedText === 'string' ? [expectedText] : expectedText;
   let lastState: DocumentState | null = null;
   while (Date.now() < deadline) {
     try {
@@ -34,7 +35,9 @@ async function waitForRenderedFeature(
       }) as DocumentState;
       if (
         lastState.title === expectedTitle
-        && lastState.text.toLocaleLowerCase().includes(expectedText.toLocaleLowerCase())
+        && expectedTexts.some((text) => (
+          lastState?.text.toLocaleLowerCase().includes(text.toLocaleLowerCase())
+        ))
         && !lastState.isNotFound
       ) {
         return lastState;
@@ -46,7 +49,7 @@ async function waitForRenderedFeature(
   }
   throw new Error(
     `Expected rendered page '${page}' with title '${expectedTitle}' and text `
-      + `'${expectedText}', received: ${JSON.stringify(lastState)}`,
+      + `${JSON.stringify(expectedTexts)}, received: ${JSON.stringify(lastState)}`,
   );
 }
 
@@ -70,7 +73,13 @@ for (const expectation of SHOWCASE_PAGE_EXPECTATIONS) {
 
       const current = await app.nav.current();
       expect(current.name).toBe(expectation.page);
-      expect(current.ready).toBeTruthy();
+
+      await app.page.waitFor({
+        page: expectation.page,
+        css: 'body',
+        state: 'exists',
+        timeoutMs: 20_000,
+      });
 
       const documentState = await waitForRenderedFeature(
         app,
@@ -81,6 +90,9 @@ for (const expectation of SHOWCASE_PAGE_EXPECTATIONS) {
       expect(documentState.title).toBe(SHOWCASE_PAGE_TITLES[expectation.page]);
       expect(documentState.text.length > 0).toBeTruthy();
       expect(documentState.isNotFound).toBeFalsy();
+      const ready = await app.nav.current();
+      expect(ready.name).toBe(expectation.page);
+      expect(ready.ready).toBeTruthy();
     } catch (error) {
       try {
         const screenshot = await app.page.screenshot({ page: expectation.page });

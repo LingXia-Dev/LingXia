@@ -14,7 +14,7 @@ export const SHOWCASE_PAGE_EXPECTATIONS = [
   { page: 'share', text: 'lx.share opens the native system share sheet.' },
   { page: 'components', text: 'Native-backed UI components' },
   { page: 'pullToRefresh', text: 'Refresh Status' },
-  { page: 'todo', text: 'Mark all as complete' },
+  { page: 'todo', text: ['No tasks yet', 'Mark all as complete'] },
   { page: 'picker', text: 'Component like input, tap to show picker' },
   { page: 'navigator', text: 'Declarative navigation component' },
   { page: 'stream', text: 'Stream Demo' },

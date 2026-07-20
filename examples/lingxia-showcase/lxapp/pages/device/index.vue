@@ -1,8 +1,8 @@
 <template>
-  <div class="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
+  <div class="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100" data-testid="device-page" :data-mode="currentType">
     <div class="px-4 py-6">
       <!-- Device Info Section -->
-      <template v-if="currentType === 'device' || !['device', 'screen', 'vibrate', 'dial', 'orientation'].includes(currentType)">
+      <template v-if="currentType === 'device' || !['device', 'screen', 'vibrate', 'dial', 'networkType', 'localIP', 'networkStatus', 'orientation'].includes(currentType)">
         <div class="mb-6 text-center">
           <h1 class="text-2xl font-light text-gray-800 mb-2">Device Information</h1>
           <div class="w-16 h-0.5 bg-gray-400 mx-auto"></div>
@@ -18,6 +18,7 @@
               <div class="text-xs text-gray-500 mt-0.5">Brand, model, and OS version</div>
             </div>
             <button
+              data-testid="device-get-info"
               @click="getDeviceInfo"
               class="px-5 py-2.5 text-sm font-medium transition-all duration-200 bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-600 text-white rounded-xl shadow-sm active:scale-[0.98]"
             >
@@ -25,7 +26,7 @@
             </button>
           </div>
 
-          <div v-if="deviceInfo" class="p-5">
+          <div v-if="deviceInfo" class="p-5" data-testid="device-info-result">
             <div class="rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50 to-white p-4">
               <div class="flex items-center gap-2 mb-4">
                 <span class="w-1 h-4 bg-blue-500 rounded-full"></span>
@@ -113,6 +114,7 @@
               <div class="text-xs text-gray-500 mt-0.5">Screen dimensions and scale</div>
             </div>
             <button
+              data-testid="device-screen-get-info"
               @click="getScreenInfo"
               class="px-5 py-2.5 text-sm font-medium transition-all duration-200 bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-600 text-white rounded-xl shadow-sm active:scale-[0.98]"
             >
@@ -120,7 +122,7 @@
             </button>
           </div>
 
-          <div v-if="screenInfo" class="p-5">
+          <div v-if="screenInfo" class="p-5" data-testid="device-screen-result">
             <div class="rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50 to-white p-4">
               <div class="flex items-center gap-2 mb-4">
                 <span class="w-1 h-4 bg-purple-500 rounded-full"></span>
@@ -211,6 +213,100 @@
               >
                 Call
               </button>
+            </div>
+          </div>
+        </div>
+      </template>
+
+      <!-- Network Type Section -->
+      <template v-if="currentType === 'networkType'">
+        <div class="mb-6 text-center">
+          <h1 class="text-2xl font-light text-gray-800 mb-2">Network Type</h1>
+          <div class="w-16 h-0.5 bg-gray-400 mx-auto"></div>
+        </div>
+
+        <div class="mb-5 bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+          <div class="flex items-center gap-4 px-5 py-5 border-b border-gray-100">
+            <div class="flex-1">
+              <div class="text-sm text-gray-800 font-semibold">Get Network Type</div>
+              <div class="text-xs text-gray-500 mt-0.5">none / unknown / wifi / 2g / 3g / 4g / 5g / ethernet</div>
+            </div>
+            <button
+              data-testid="device-network-get-info"
+              @click="getNetworkInfo"
+              class="px-5 py-2.5 text-sm font-medium bg-blue-500 hover:bg-blue-600 text-white rounded-xl shadow-sm active:scale-[0.98]"
+            >
+              Get Info
+            </button>
+          </div>
+          <div class="p-5" data-testid="device-network-result">
+            <div class="rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50 to-white p-4 space-y-3">
+              <div class="flex justify-between"><span>Connected</span><strong>{{ networkInfo?.isConnected === undefined ? '--' : (networkInfo.isConnected ? 'Yes' : 'No') }}</strong></div>
+              <div class="flex justify-between"><span>Network Type</span><strong>{{ networkInfo?.networkType || '--' }}</strong></div>
+            </div>
+          </div>
+        </div>
+      </template>
+
+      <!-- Local IP Section -->
+      <template v-if="currentType === 'localIP'">
+        <div class="mb-6 text-center">
+          <h1 class="text-2xl font-light text-gray-800 mb-2">Local IP Addresses</h1>
+          <div class="w-16 h-0.5 bg-gray-400 mx-auto"></div>
+        </div>
+
+        <div class="mb-5 bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+          <div class="flex items-center gap-4 px-5 py-5 border-b border-gray-100">
+            <div class="flex-1">
+              <div class="text-sm text-gray-800 font-semibold">Get Local IPs (IPv4 + IPv6)</div>
+              <div class="text-xs text-gray-500 mt-0.5">Current active network addresses</div>
+            </div>
+            <button
+              data-testid="device-network-get-info"
+              @click="getNetworkInfo"
+              class="px-5 py-2.5 text-sm font-medium bg-teal-500 hover:bg-teal-600 text-white rounded-xl shadow-sm active:scale-[0.98]"
+            >
+              Get IP
+            </button>
+          </div>
+          <div class="p-5" data-testid="device-network-result">
+            <div class="rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50 to-white p-4 space-y-3">
+              <div class="flex justify-between gap-4"><span>IPv4</span><strong class="break-all text-right">{{ networkInfo?.ipv4?.length ? networkInfo.ipv4.join(', ') : '--' }}</strong></div>
+              <div class="flex justify-between gap-4"><span>IPv6</span><strong class="break-all text-right">{{ networkInfo?.ipv6?.length ? networkInfo.ipv6.join(', ') : '--' }}</strong></div>
+            </div>
+          </div>
+        </div>
+      </template>
+
+      <!-- Network Listener Section -->
+      <template v-if="currentType === 'networkStatus'">
+        <div class="mb-6 text-center">
+          <h1 class="text-2xl font-light text-gray-800 mb-2">Network Status Listener</h1>
+          <div class="w-16 h-0.5 bg-gray-400 mx-auto"></div>
+        </div>
+
+        <div class="mb-5 bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+          <div class="p-6 space-y-4">
+            <div class="grid grid-cols-2 gap-3">
+              <button
+                data-testid="device-network-listen-start"
+                @click="startNetworkChangeListen"
+                class="py-3 text-sm font-medium bg-green-500 hover:bg-green-600 text-white rounded-xl shadow-sm active:scale-[0.98]"
+              >
+                Start Listen
+              </button>
+              <button
+                data-testid="device-network-listen-stop"
+                @click="stopNetworkChangeListen"
+                class="py-3 text-sm font-medium bg-gray-500 hover:bg-gray-600 text-white rounded-xl shadow-sm active:scale-[0.98]"
+              >
+                Stop Listen
+              </button>
+            </div>
+            <div class="rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50 to-white p-4 space-y-3" data-testid="device-network-status">
+              <div class="flex justify-between"><span>Listening</span><strong>{{ networkListening ? 'Yes' : 'No' }}</strong></div>
+              <div class="flex justify-between"><span>Connected</span><strong>{{ networkChange?.isConnected === undefined ? '--' : (networkChange.isConnected ? 'Yes' : 'No') }}</strong></div>
+              <div class="flex justify-between"><span>Network Type</span><strong>{{ networkChange?.networkType || '--' }}</strong></div>
             </div>
           </div>
         </div>
@@ -335,6 +431,7 @@ const orientationEvents = computed(() => Array.isArray(data.orientationEvents) ?
 const orientationEventsText = computed(() => orientationEvents.value.length ? orientationEvents.value.join('\n') : '--');
 const networkInfo = computed(() => data.networkInfo ?? null);
 const networkChange = computed(() => data.networkChange ?? null);
+const networkListening = computed(() => data.networkListening ?? false);
 
 watch(currentType, () => {
   phoneNumber.value = '';

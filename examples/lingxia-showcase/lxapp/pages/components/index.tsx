@@ -7,7 +7,7 @@ export default function ComponentsPage() {
   const { navigateTo } = actions;
 
   return (
-    <div className="min-h-screen bg-gray-100">
+    <div className="min-h-screen bg-gray-100" data-testid="components-page">
       <div className="px-3 py-2 pb-12 space-y-2">
 
         {/* Compact Header */}
@@ -30,6 +30,7 @@ export default function ComponentsPage() {
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden divide-y divide-gray-100">
           {/* Video */}
           <div
+            data-testid="components-video"
             className="px-4 py-3.5 hover:bg-gray-50 cursor-pointer flex items-center justify-between group transition-colors"
             onClick={() => navigateTo({ page: 'video' })}
           >
@@ -53,6 +54,7 @@ export default function ComponentsPage() {
 
           {/* Media Swiper */}
           <div
+            data-testid="components-swiper"
             className="px-4 py-3.5 hover:bg-gray-50 cursor-pointer flex items-center justify-between group transition-colors"
             onClick={() => navigateTo({ page: 'swiper' })}
           >
@@ -78,6 +80,7 @@ export default function ComponentsPage() {
 
           {/* Navigator */}
           <div
+            data-testid="components-navigator"
             className="px-4 py-3.5 hover:bg-gray-50 cursor-pointer flex items-center justify-between group transition-colors"
             onClick={() => navigateTo({ page: 'navigator' })}
           >
@@ -101,6 +104,7 @@ export default function ComponentsPage() {
 
           {/* Picker */}
           <div
+            data-testid="components-picker"
             className="px-4 py-3.5 hover:bg-gray-50 cursor-pointer flex items-center justify-between group transition-colors"
             onClick={() => navigateTo({ page: 'picker' })}
           >

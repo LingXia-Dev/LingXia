@@ -5,6 +5,7 @@
       <input
         class="new-todo"
         data-testid="todo-input"
+        :data-controlled-value="newTodo"
         placeholder="What needs to be done?"
         v-model="newTodo"
         @keydown.enter="handleAddTodo"
@@ -35,13 +36,14 @@
           >
             <div class="view">
               <input
+                :id="`todo-${todo.id}`"
                 class="toggle"
                 data-testid="todo-toggle"
                 type="checkbox"
                 :checked="todo.completed"
                 @change="toggleTodo({ id: todo.id })"
               />
-              <label data-testid="todo-label">{{ todo.text }}</label>
+              <label :for="`todo-${todo.id}`" data-testid="todo-label">{{ todo.text }}</label>
               <button
                 class="destroy"
                 data-testid="todo-delete"

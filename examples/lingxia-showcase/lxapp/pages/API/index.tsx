@@ -418,6 +418,7 @@ export default function APIPage() {
         {/* Device - Dropdown */}
         <div className="bg-white rounded-lg shadow-sm">
           <div
+            data-testid="api-device-section"
             className="px-4 py-4 flex items-center justify-between cursor-pointer hover:bg-gray-50"
             onClick={() => toggleSection({ section: 'device' })}
           >

@@ -99,6 +99,7 @@ export default function TodoPage() {
       <input
         className="new-todo"
         data-testid="todo-input"
+        data-controlled-value={newTodo}
         placeholder="What needs to be done?"
         value={newTodo}
         onChange={event => setNewTodo(event.target.value)}
@@ -133,13 +134,14 @@ export default function TodoPage() {
               >
                 <div className="view">
                   <input
+                    id={`todo-${todo.id}`}
                     className="toggle"
                     data-testid="todo-toggle"
                     type="checkbox"
                     checked={todo.completed}
                     onChange={() => toggleTodo({ id: todo.id })}
                   />
-                  <label data-testid="todo-label">{todo.text}</label>
+                  <label htmlFor={`todo-${todo.id}`} data-testid="todo-label">{todo.text}</label>
                   <button
                     className="destroy"
                     data-testid="todo-delete"

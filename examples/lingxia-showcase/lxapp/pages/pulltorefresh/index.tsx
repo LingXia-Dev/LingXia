@@ -12,7 +12,7 @@ export default function PullDownRefreshPage() {
   } = data;
 
   return (
-    <div className="min-h-screen bg-gray-100">
+    <div className="min-h-screen bg-gray-100" data-testid="pull-refresh-page">
       <div className="px-4 py-6 pb-12 space-y-4">
 
         {/* Header Info Card */}
@@ -40,13 +40,13 @@ export default function PullDownRefreshPage() {
           <div className="px-4 py-4 space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-sm text-gray-600">Status</span>
-              <span className={`text-sm font-medium ${isRefreshing ? 'text-blue-600' : 'text-green-600'}`}>
+              <span data-testid="pull-refresh-status" className={`text-sm font-medium ${isRefreshing ? 'text-blue-600' : 'text-green-600'}`}>
                 {isRefreshing ? 'Refreshing...' : 'Idle'}
               </span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-sm text-gray-600">Refresh Count</span>
-              <span className="text-sm font-medium text-gray-900">{refreshCount}</span>
+              <span data-testid="pull-refresh-count" className="text-sm font-medium text-gray-900">{refreshCount}</span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-sm text-gray-600">Last Refresh</span>
@@ -65,6 +65,7 @@ export default function PullDownRefreshPage() {
           </div>
           <div className="p-4 space-y-3">
             <button
+              data-testid="pull-refresh-start"
               onClick={startRefresh}
               disabled={isRefreshing}
               className={`w-full py-3 px-4 rounded-lg text-sm font-medium transition-colors ${
@@ -76,6 +77,7 @@ export default function PullDownRefreshPage() {
               lx.startPullDownRefresh()
             </button>
             <button
+              data-testid="pull-refresh-stop"
               onClick={stopRefresh}
               className="w-full bg-gray-500 hover:bg-gray-600 text-white py-3 px-4 rounded-lg text-sm font-medium transition-colors"
             >

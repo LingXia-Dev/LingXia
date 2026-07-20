@@ -109,7 +109,8 @@
                   <p v-if="sizeError" data-testid="size-error" class="mt-2 text-xs text-rose-600">{{ sizeError }}</p>
                 </div>
               </div>
-              <button type="button" data-testid="open-surface" :disabled="surfaceActive"
+              <button type="button" data-testid="open-surface" :data-surface-width="surfaceWidth"
+                :data-surface-height="surfaceHeight" :disabled="surfaceActive"
                 @click="handleOpenSurface"
                 class="w-full bg-gray-800 hover:bg-gray-900 disabled:bg-gray-300 disabled:cursor-not-allowed text-white py-2 px-4 rounded-lg text-sm font-medium transition-colors">
                 {{ surfaceActive ? `Open ${surfaceKind} (already open)` : `Open ${surfaceKind}` }}
