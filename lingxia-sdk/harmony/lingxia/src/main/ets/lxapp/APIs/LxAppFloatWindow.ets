@@ -251,7 +251,7 @@ struct LingXiaFloatSurfacePage {
             Web({ src: this.layout!.path, controller: this.urlController, incognitoMode: this.layout!.ephemeralWebData })
               .domStorageAccess(true)
               .javaScriptAccess(true)
-              .fileAccess(false)
+              .fileAccess(!this.layout!.urlCallback)
               .mixedMode(MixedMode.None)
               .onErrorReceive((event) => {
                 if (!event || !event.request || !event.error || !event.request.isMainFrame()) {
@@ -288,8 +288,11 @@ struct LingXiaFloatSurfacePage {
                 if (urlCallbackDispatch(targetUrl)) {
                   return true;
                 }
-                if (isHttpUrl(targetUrl)) {
+                if (isHttpUrl(targetUrl) || (!this.layout!.urlCallback && targetUrl.trim().toLowerCase().startsWith('file://'))) {
                   return false;
+                }
+                if (targetUrl.trim().toLowerCase().startsWith('file://')) {
+                  return true;
                 }
                 Lingxia.launchWithUrl(targetUrl);
                 return true;

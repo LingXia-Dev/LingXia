@@ -96,7 +96,8 @@ internal object LxAppSurface {
         val heightRatio: Double,
         val position: SurfacePosition,
         val role: Int,
-        val ephemeralWebData: Boolean
+        val ephemeralWebData: Boolean,
+        val urlCallback: Boolean
     )
 
     private enum class PendingVisibility {
@@ -123,12 +124,13 @@ internal object LxAppSurface {
         heightRatio: Double,
         position: Int,
         role: Int,
-        ephemeralWebData: Boolean
+        ephemeralWebData: Boolean,
+        urlCallback: Boolean
     ): Boolean {
         if (id.isBlank() || appId.isBlank() || sessionId <= 0L) return false
         if (kind != KIND_POPUP && kind != KIND_WINDOW) return false
         if (content == CONTENT_PAGE && pageInstanceId.isBlank()) return false
-        if (content == CONTENT_URL && !isHttpUrl(path)) return false
+        if (content == CONTENT_URL && !isSupportedUrl(path, urlCallback)) return false
         if (content != CONTENT_PAGE && content != CONTENT_URL) return false
         val activity = LxApp.getCurrentActivity() ?: return false
         if (activity.getAppId() != appId) {
@@ -150,12 +152,22 @@ internal object LxAppSurface {
             heightRatio = heightRatio,
             position = SurfacePosition.fromInt(position),
             role = role,
-            ephemeralWebData = ephemeralWebData
+            ephemeralWebData = ephemeralWebData,
+            urlCallback = urlCallback
         )
         pendingRequests[request.id] = request
         activity.runOnUiThread {
             if (request.content == CONTENT_URL) {
-                mount(activity, request, createExternalWebView(activity, request.path, request.ephemeralWebData))
+                mount(
+                    activity,
+                    request,
+                    createExternalWebView(
+                        activity,
+                        request.path,
+                        request.ephemeralWebData,
+                        request.urlCallback
+                    )
+                )
             } else {
                 mountWhenReady(activity, request, 0)
             }
@@ -602,13 +614,14 @@ internal object LxAppSurface {
     private fun createExternalWebView(
         activity: Activity,
         url: String,
-        ephemeralWebData: Boolean
+        ephemeralWebData: Boolean,
+        urlCallback: Boolean
     ): android.webkit.WebView {
         val webView = android.webkit.WebView(activity).apply {
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
             settings.databaseEnabled = true
-            settings.allowFileAccess = false
+            settings.allowFileAccess = !urlCallback
             settings.allowContentAccess = false
             webViewClient = object : WebViewClient() {
                 // A registered URL-callback sentinel (e.g. an auth handoff) is
@@ -622,7 +635,9 @@ internal object LxAppSurface {
                 private fun handles(next: Uri): Boolean {
                     if (NativeApi.urlCallbackDispatch(next.toString())) return true
                     val scheme = next.scheme?.lowercase()
-                    if (scheme == "http" || scheme == "https") return false
+                    if (scheme == "http" || scheme == "https" ||
+                        (scheme == "file" && !urlCallback)) return false
+                    if (scheme == "file") return true
                     try {
                         activity.startActivity(
                             android.content.Intent(android.content.Intent.ACTION_VIEW, next)
@@ -815,7 +830,8 @@ internal object LxAppSurface {
         else -> "unknown"
     }
 
-    private fun isHttpUrl(value: String): Boolean =
+    private fun isSupportedUrl(value: String, urlCallback: Boolean): Boolean =
         value.startsWith("https://", ignoreCase = true) ||
-            value.startsWith("http://", ignoreCase = true)
+            value.startsWith("http://", ignoreCase = true) ||
+            (!urlCallback && value.startsWith("file://", ignoreCase = true))
 }

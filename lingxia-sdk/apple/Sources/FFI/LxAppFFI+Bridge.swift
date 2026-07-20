@@ -128,7 +128,8 @@ extension LxApp {
         height_ratio: Double,
         position: Int32,
         role: Int32,
-        ephemeral_web_data: Bool
+        ephemeral_web_data: Bool,
+        url_callback: Bool
     ) -> Bool {
         let idString = id.toString()
         let appIdString = appid.toString()
@@ -157,7 +158,8 @@ extension LxApp {
                 heightRatio: height_ratio,
                 position: position,
                 role: role,
-                ephemeralWebData: ephemeral_web_data
+                ephemeralWebData: ephemeral_web_data,
+                urlCallback: url_callback
             )
         }
     }

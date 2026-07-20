@@ -72,6 +72,9 @@ export interface SurfaceLayoutConfig {
   // URL surfaces only: run the Web incognito with a wiped cookie/storage
   // store so each session (auth handoff) starts clean.
   ephemeralWebData: boolean;
+  // Callback surfaces never receive local-file access; ordinary browser
+  // surfaces may render host-authorized file URLs.
+  urlCallback: boolean;
 }
 
 interface SurfacePlanAside {
@@ -117,7 +120,8 @@ export class LxAppSurface {
 	    heightRatioValue: string,
 	    positionValue: string,
 	    roleValue: string,
-	    ephemeralWebDataValue: string
+	    ephemeralWebDataValue: string,
+	    urlCallbackValue: string
 	  ): boolean {
 	    const content = parseInt(contentValue, 10);
 	    const kind = parseInt(kindValue, 10);
@@ -131,7 +135,8 @@ export class LxAppSurface {
 	    if (content === CONTENT_PAGE && !pageInstanceId) {
       return false;
     }
-    if (content === CONTENT_URL && !isHttpUrl(path)) {
+    const urlCallback = urlCallbackValue === 'true';
+    if (content === CONTENT_URL && !isSupportedUrl(path, urlCallback)) {
       return false;
     }
     if (content !== CONTENT_PAGE && content !== CONTENT_URL) {
@@ -171,7 +176,8 @@ export class LxAppSurface {
       bottomInset: dimensions.bottomInset,
       fullWidth: dimensions.fullWidth,
 	      fullHeight: dimensions.fullHeight,
-	      ephemeralWebData: ephemeralWebDataValue === 'true'
+	      ephemeralWebData: ephemeralWebDataValue === 'true',
+	      urlCallback
 	    };
 
     const key = LxAppSurface.surfaceKey(id, appId);
@@ -598,6 +604,14 @@ export function isHttpUrl(value: string): boolean {
   return normalized.startsWith('https://') || normalized.startsWith('http://');
 }
 
+function isFileUrl(value: string): boolean {
+  return value.trim().toLowerCase().startsWith('file://');
+}
+
+function isSupportedUrl(value: string, urlCallback: boolean): boolean {
+  return isHttpUrl(value) || (!urlCallback && isFileUrl(value));
+}
+
 function originOf(value: string): string {
   const normalized = value.trim().toLowerCase();
   const schemeEnd = normalized.indexOf('://');
@@ -744,6 +758,7 @@ function surfaceRenderState(layout: SurfaceLayoutConfig, isVisible: boolean, pag
     fullWidth: layout.fullWidth,
     fullHeight: layout.fullHeight,
     ephemeralWebData: layout.ephemeralWebData,
+    urlCallback: layout.urlCallback,
     isVisible,
     pageWebTag
   };
@@ -914,7 +929,7 @@ export struct SurfaceManager {
             Web({ src: '', controller: this.getWebController(surface), incognitoMode: surface.ephemeralWebData })
               .domStorageAccess(true)
               .javaScriptAccess(true)
-              .fileAccess(false)
+              .fileAccess(!surface.urlCallback)
               .mixedMode(MixedMode.None)
               .onLoadIntercept((event) => {
                 if (!event || !event.data) {
@@ -934,8 +949,11 @@ export struct SurfaceManager {
                 if (urlCallbackDispatch(targetUrl)) {
                   return true;
                 }
-                if (isHttpUrl(targetUrl)) {
+                if (isHttpUrl(targetUrl) || (!surface.urlCallback && isFileUrl(targetUrl))) {
                   return false;
+                }
+                if (isFileUrl(targetUrl)) {
+                  return true;
                 }
                 Lingxia.launchWithUrl(targetUrl);
                 return true;
