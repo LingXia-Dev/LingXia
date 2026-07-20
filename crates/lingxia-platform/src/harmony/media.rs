@@ -935,6 +935,9 @@ mod video_native {
     const TRANSCODER_VIDEO_WIDTH_MAX: i32 = 3840;
     const TRANSCODER_VIDEO_HEIGHT_MIN: i32 = 240;
     const TRANSCODER_VIDEO_HEIGHT_MAX: i32 = 2160;
+    const MEDIA_TYPE_AUDIO: i32 = 0;
+    const MEDIA_TYPE_VIDEO: i32 = 1;
+    const MAX_MEDIA_TRACKS: u32 = 64;
 
     fn video_image_lock() -> &'static Mutex<()> {
         static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
@@ -947,7 +950,7 @@ mod video_native {
     }
 
     #[repr(C)]
-    struct OH_AVMetadataExtractor {
+    struct OH_AVSource {
         _private: [u8; 0],
     }
 
@@ -1826,22 +1829,9 @@ mod video_native {
     }
 
     fn source_has_audio_track(path: &str) -> bool {
-        let Ok(mut extractor) = NativeMetadataExtractor::new() else {
-            return false;
-        };
-        if extractor.set_file_source(path).is_err() {
-            return false;
-        }
-        let Ok(format) = NativeAvFormat::new() else {
-            return false;
-        };
-        if extractor.fetch_metadata(format.as_ptr()).is_err() {
-            return false;
-        }
-        // If we can read an audio sample rate, the source has an audio track.
-        format
-            .get_int_compatible(unsafe { OH_MD_KEY_AUD_SAMPLE_RATE })
-            .map(|v| v > 0)
+        read_video_metadata(path)
+            .ok()
+            .and_then(|metadata| metadata.has_audio)
             .unwrap_or(false)
     }
 
@@ -1899,6 +1889,7 @@ mod video_native {
                 info.fps = metadata.fps;
                 info.video_codec = metadata.video_codec;
                 info.has_audio = metadata.has_audio;
+                info.audio_codec = metadata.audio_codec;
                 None
             }
             Err(err) => Some(err),
@@ -1967,45 +1958,78 @@ mod video_native {
         fps: Option<f32>,
         video_codec: Option<String>,
         has_audio: Option<bool>,
+        audio_codec: Option<String>,
     }
 
     fn read_video_metadata(path: &str) -> Result<RawVideoMetadata, PlatformError> {
-        let mut extractor = NativeMetadataExtractor::new()?;
-        extractor.set_file_source(path)?;
-        let format = NativeAvFormat::new()?;
-        extractor.fetch_metadata(format.as_ptr())?;
-
-        let width = format
-            .get_int_compatible(unsafe { OH_MD_KEY_WIDTH })
-            .map(|v| v.max(0) as u32);
-        let height = format
-            .get_int_compatible(unsafe { OH_MD_KEY_HEIGHT })
-            .map(|v| v.max(0) as u32);
-
-        let duration_ms = format
+        let source = NativeAvSource::open(path)?;
+        let source_format = source.source_format()?;
+        let duration_ms = source_format
             .get_long_compatible(unsafe { OH_MD_KEY_DURATION })
-            .map(normalize_metadata_duration_ms);
-        let rotation = format
-            .get_int_compatible(unsafe { OH_MD_KEY_ROTATION })
-            .map(normalize_rotation_degrees);
-        let bitrate = format
+            .map(normalize_source_duration_ms);
+        let mut bitrate = source_format
             .get_long_compatible(unsafe { OH_MD_KEY_BITRATE })
             .map(|v| v.max(0) as u64);
-        let fps = format
-            .get_double_compatible(unsafe { OH_MD_KEY_FRAME_RATE })
-            .and_then(|v| {
-                if v.is_finite() && v > 0.0 {
-                    Some(v as f32)
-                } else {
-                    None
+        let track_count = source_format
+            .get_int_compatible(unsafe { OH_MD_KEY_TRACK_COUNT })
+            .filter(|count| *count > 0)
+            .map(|count| count as u32)
+            .ok_or_else(|| {
+                PlatformError::Platform("Video source is missing its track count".to_string())
+            })?
+            .min(MAX_MEDIA_TRACKS);
+
+        let mut width = None;
+        let mut height = None;
+        let mut rotation = None;
+        let mut fps = None;
+        let mut video_codec = None;
+        let mut audio_codec = None;
+        let mut found_video = false;
+        let mut has_audio = false;
+
+        for index in 0..track_count {
+            let Some(format) = source.track_format(index) else {
+                continue;
+            };
+            let track_type = format.get_int_compatible(unsafe { OH_MD_KEY_TRACK_TYPE });
+            let codec = format.get_string(unsafe { OH_MD_KEY_CODEC_MIME });
+            let codec_type = codec.as_deref().unwrap_or_default();
+            let is_video = track_type == Some(MEDIA_TYPE_VIDEO)
+                || (track_type.is_none() && codec_type.starts_with("video/"));
+            let is_audio = track_type == Some(MEDIA_TYPE_AUDIO)
+                || (track_type.is_none() && codec_type.starts_with("audio/"));
+
+            if is_video && !found_video {
+                found_video = true;
+                width = format
+                    .get_int_compatible(unsafe { OH_MD_KEY_WIDTH })
+                    .filter(|value| *value > 0)
+                    .map(|value| value as u32);
+                height = format
+                    .get_int_compatible(unsafe { OH_MD_KEY_HEIGHT })
+                    .filter(|value| *value > 0)
+                    .map(|value| value as u32);
+                rotation = format
+                    .get_int_compatible(unsafe { OH_MD_KEY_ROTATION })
+                    .map(normalize_rotation_degrees);
+                bitrate = format
+                    .get_long_compatible(unsafe { OH_MD_KEY_BITRATE })
+                    .filter(|value| *value > 0)
+                    .map(|value| value as u64)
+                    .or(bitrate);
+                fps = format
+                    .get_double_compatible(unsafe { OH_MD_KEY_FRAME_RATE })
+                    .filter(|value| value.is_finite() && *value > 0.0)
+                    .map(|value| value as f32);
+                video_codec = codec;
+            } else if is_audio {
+                has_audio = true;
+                if audio_codec.is_none() {
+                    audio_codec = codec;
                 }
-            });
-        let video_codec = format
-            .get_string(unsafe { OH_MD_KEY_CODEC_MIME })
-            .and_then(|v| if v.is_empty() { None } else { Some(v) });
-        let has_audio = format
-            .get_int_compatible(unsafe { OH_MD_KEY_AUD_SAMPLE_RATE })
-            .map(|sample_rate| sample_rate > 0);
+            }
+        }
 
         Ok(RawVideoMetadata {
             width,
@@ -2015,7 +2039,8 @@ mod video_native {
             bitrate,
             fps,
             video_codec,
-            has_audio,
+            has_audio: Some(has_audio),
+            audio_codec,
         })
     }
 
@@ -2040,8 +2065,8 @@ mod video_native {
         pixelmap.dimensions()
     }
 
-    fn normalize_metadata_duration_ms(raw: i64) -> u64 {
-        raw.max(0) as u64
+    fn normalize_source_duration_ms(raw: i64) -> u64 {
+        (raw.max(0) as u64) / 1000
     }
 
     fn reconcile_duration_ms(metadata_duration_ms: u64, player_duration_ms: u64) -> u64 {
@@ -2288,59 +2313,49 @@ mod video_native {
         rgb
     }
 
-    struct NativeMetadataExtractor {
-        handle: *mut OH_AVMetadataExtractor,
-        source_fd: Option<i32>,
+    struct NativeAvSource {
+        handle: *mut OH_AVSource,
+        source_fd: i32,
     }
 
-    impl NativeMetadataExtractor {
-        fn new() -> Result<Self, PlatformError> {
-            let handle = unsafe { OH_AVMetadataExtractor_Create() };
+    impl NativeAvSource {
+        fn open(path: &str) -> Result<Self, PlatformError> {
+            let (source_fd, size) = open_file_descriptor(path)?;
+            let handle = unsafe { OH_AVSource_CreateWithFD(source_fd, 0, size) };
             if handle.is_null() {
+                unsafe { libc::close(source_fd) };
                 return Err(PlatformError::Platform(
-                    "OH_AVMetadataExtractor_Create returned null".to_string(),
+                    "OH_AVSource_CreateWithFD returned null".to_string(),
                 ));
             }
-            Ok(Self {
-                handle,
-                source_fd: None,
-            })
+            Ok(Self { handle, source_fd })
         }
 
-        fn set_file_source(&mut self, path: &str) -> Result<(), PlatformError> {
-            let (fd, size) = open_file_descriptor(path)?;
-            if let Err(err) = check_av(
-                unsafe { OH_AVMetadataExtractor_SetFDSource(self.handle, fd, 0, size) },
-                "OH_AVMetadataExtractor_SetFDSource",
-            ) {
-                unsafe { libc::close(fd) };
-                return Err(err);
-            }
-            if let Some(existing) = self.source_fd.take() {
-                unsafe { libc::close(existing) };
-            }
-            self.source_fd = Some(fd);
-            Ok(())
-        }
-
-        fn fetch_metadata(&self, format: *mut OH_AVFormat) -> Result<(), PlatformError> {
-            check_av(
-                unsafe { OH_AVMetadataExtractor_FetchMetadata(self.handle, format) },
-                "OH_AVMetadataExtractor_FetchMetadata",
+        fn source_format(&self) -> Result<NativeAvFormat, PlatformError> {
+            NativeAvFormat::from_owned(
+                unsafe { OH_AVSource_GetSourceFormat(self.handle) },
+                "OH_AVSource_GetSourceFormat",
             )
+        }
+
+        fn track_format(&self, index: u32) -> Option<NativeAvFormat> {
+            NativeAvFormat::from_optional_owned(unsafe {
+                OH_AVSource_GetTrackFormat(self.handle, index)
+            })
         }
     }
 
-    impl Drop for NativeMetadataExtractor {
+    impl Drop for NativeAvSource {
         fn drop(&mut self) {
             if !self.handle.is_null() {
                 unsafe {
-                    let _ = OH_AVMetadataExtractor_Release(self.handle);
+                    let _ = OH_AVSource_Destroy(self.handle);
                 }
                 self.handle = ptr::null_mut();
             }
-            if let Some(fd) = self.source_fd.take() {
-                unsafe { libc::close(fd) };
+            if self.source_fd >= 0 {
+                unsafe { libc::close(self.source_fd) };
+                self.source_fd = -1;
             }
         }
     }
@@ -2348,18 +2363,15 @@ mod video_native {
     struct NativeAvFormat(*mut OH_AVFormat);
 
     impl NativeAvFormat {
-        fn new() -> Result<Self, PlatformError> {
-            let handle = unsafe { OH_AVFormat_Create() };
+        fn from_owned(handle: *mut OH_AVFormat, context: &str) -> Result<Self, PlatformError> {
             if handle.is_null() {
-                return Err(PlatformError::Platform(
-                    "OH_AVFormat_Create returned null".to_string(),
-                ));
+                return Err(PlatformError::Platform(format!("{context} returned null")));
             }
             Ok(Self(handle))
         }
 
-        fn as_ptr(&self) -> *mut OH_AVFormat {
-            self.0
+        fn from_optional_owned(handle: *mut OH_AVFormat) -> Option<Self> {
+            (!handle.is_null()).then_some(Self(handle))
         }
 
         fn get_int(&self, key: *const c_char) -> Option<i32> {
@@ -3046,25 +3058,16 @@ mod video_native {
         }
     }
 
-    #[link(name = "avmetadata_extractor")]
+    #[link(name = "native_media_avsource")]
     unsafe extern "C" {
-        fn OH_AVMetadataExtractor_Create() -> *mut OH_AVMetadataExtractor;
-        fn OH_AVMetadataExtractor_SetFDSource(
-            extractor: *mut OH_AVMetadataExtractor,
-            fd: i32,
-            offset: i64,
-            size: i64,
-        ) -> i32;
-        fn OH_AVMetadataExtractor_FetchMetadata(
-            extractor: *mut OH_AVMetadataExtractor,
-            metadata: *mut OH_AVFormat,
-        ) -> i32;
-        fn OH_AVMetadataExtractor_Release(extractor: *mut OH_AVMetadataExtractor) -> i32;
+        fn OH_AVSource_CreateWithFD(fd: i32, offset: i64, size: i64) -> *mut OH_AVSource;
+        fn OH_AVSource_Destroy(source: *mut OH_AVSource) -> i32;
+        fn OH_AVSource_GetSourceFormat(source: *mut OH_AVSource) -> *mut OH_AVFormat;
+        fn OH_AVSource_GetTrackFormat(source: *mut OH_AVSource, index: u32) -> *mut OH_AVFormat;
     }
 
     #[link(name = "native_media_core")]
     unsafe extern "C" {
-        fn OH_AVFormat_Create() -> *mut OH_AVFormat;
         fn OH_AVFormat_Destroy(format: *mut OH_AVFormat);
         fn OH_AVFormat_GetIntValue(
             format: *mut OH_AVFormat,
@@ -3102,7 +3105,8 @@ mod video_native {
         static OH_MD_KEY_HEIGHT: *const c_char;
         static OH_MD_KEY_FRAME_RATE: *const c_char;
         static OH_MD_KEY_ROTATION: *const c_char;
-        static OH_MD_KEY_AUD_SAMPLE_RATE: *const c_char;
+        static OH_MD_KEY_TRACK_COUNT: *const c_char;
+        static OH_MD_KEY_TRACK_TYPE: *const c_char;
     }
 
     #[link(name = "avtranscoder")]
