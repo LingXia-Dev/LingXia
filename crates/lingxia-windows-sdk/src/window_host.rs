@@ -4136,6 +4136,13 @@ fn is_valid_host_window(hwnd: HWND) -> bool {
         && !is_minimized(hwnd)
 }
 
+fn host_window_owner_is_live(hwnd: HWND) -> bool {
+    window_webtag_key(hwnd)
+        .and_then(|owner_key| webtag_for_key(&owner_key))
+        .and_then(|owner| find_webview_handler(&owner))
+        .is_some_and(|owner| hwnd_from_handle(owner.native_view().window) == hwnd)
+}
+
 fn focused_registered_host_window_except(excluded: Option<HWND>) -> Option<HWND> {
     let focused = unsafe { WindowsAndMessaging::GetForegroundWindow() };
     if focused.0.is_null() {
@@ -6007,6 +6014,7 @@ fn show_webview_window_replacing(
     // window) used to find no candidate and jump the app to the webview's raw
     // parent window, hiding every page in the host the user was looking at
     // (a stuck white shell) while a duplicate shell window appeared.
+    let native_parent = hwnd_from_handle(handler.native_view().window);
     let target = prefer_visible_workspace(
         stable_host_for_replacement(webtag, &hide_webtags)
             .or_else(|| {
@@ -6014,7 +6022,13 @@ fn show_webview_window_replacing(
             })
             .or_else(|| primary_host_window_except(None)),
     )
-    .unwrap_or_else(|| hwnd_from_handle(handler.native_view().window));
+    // reLaunch removes the outgoing WebView from the registry before its UI
+    // thread destroys the parent HWND. That still-visible window is already
+    // retiring: presenting the incoming controller into it races recursive
+    // DestroyWindow and produces an invalid-handle warning (or a dead DComp
+    // surface). Only reuse a host while its owning WebView is still live.
+    .filter(|candidate| host_window_owner_is_live(*candidate))
+    .unwrap_or(native_parent);
     set_native_framed_window(target, false);
     apply_shell_window_frame(target)?;
     let title = to_wide(title);
@@ -6081,22 +6095,35 @@ fn show_webview_window_replacing(
         if let Some(hidden_handler) = find_webview_handler(hidden) {
             let _ = hidden_handler.set_content_visible(false);
             let native = hwnd_from_handle(hidden_handler.native_view().window);
-            if native != target && is_window_visible(native) {
-                set_window_handle(hidden.key(), native);
-                unsafe {
-                    let _ = WindowsAndMessaging::SetWindowPos(
-                        native,
-                        None,
-                        0,
-                        0,
-                        0,
-                        0,
-                        WindowsAndMessaging::SWP_NOMOVE
-                            | WindowsAndMessaging::SWP_NOSIZE
-                            | WindowsAndMessaging::SWP_NOZORDER
-                            | WindowsAndMessaging::SWP_NOACTIVATE
-                            | WindowsAndMessaging::SWP_HIDEWINDOW,
+            if native != target {
+                // The visibility swap reparents the controller into the shared
+                // workspace. Park hidden controllers back under their own
+                // durable parent before that workspace can be destroyed;
+                // DestroyWindow recursively kills composition children and a
+                // WebView2 root target cannot be repaired afterwards.
+                if let Err(err) = hidden_handler.set_parent_window(hwnd_handle(native)) {
+                    log::debug!(
+                        "Failed to park hidden Windows WebView {}: {err}",
+                        hidden.key()
                     );
+                }
+                set_window_handle(hidden.key(), native);
+                if is_window_visible(native) {
+                    unsafe {
+                        let _ = WindowsAndMessaging::SetWindowPos(
+                            native,
+                            None,
+                            0,
+                            0,
+                            0,
+                            0,
+                            WindowsAndMessaging::SWP_NOMOVE
+                                | WindowsAndMessaging::SWP_NOSIZE
+                                | WindowsAndMessaging::SWP_NOZORDER
+                                | WindowsAndMessaging::SWP_NOACTIVATE
+                                | WindowsAndMessaging::SWP_HIDEWINDOW,
+                        );
+                    }
                 }
             }
         }
@@ -7320,7 +7347,7 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                 }
                 clear_native_framed_window(hwnd);
                 if let Some(webtag_key) = webtag_key {
-                    cleanup_window_state(&webtag_key);
+                    cleanup_window_state(&webtag_key, hwnd);
                 }
                 if is_top_level_window(hwnd) && !has_live_top_level_host_window_except(hwnd) {
                     unsafe {
@@ -7779,7 +7806,16 @@ fn remove_window_handle(webtag_key: &str) {
     }
 }
 
-fn cleanup_window_state(webtag_key: &str) {
+fn cleanup_window_state(webtag_key: &str, destroyed_window: HWND) {
+    if !same_window_generation(
+        window_handle_for_key(webtag_key).map(hwnd_handle),
+        hwnd_handle(destroyed_window),
+    ) {
+        log::debug!(
+            "Skipping stale window cleanup for {webtag_key}; a newer WebView generation is registered"
+        );
+        return;
+    }
     notify_webtag_visibility(webtag_key, false);
     clear_pull_refreshing(webtag_key);
     let removed_panel = cleanup_webview_panel(webtag_key);
@@ -7810,6 +7846,10 @@ fn cleanup_window_state(webtag_key: &str) {
     if removed_panel {
         sync_active_host_layout();
     }
+}
+
+fn same_window_generation(registered: Option<isize>, destroyed: isize) -> bool {
+    registered == Some(destroyed)
 }
 
 fn cleanup_webview_panel(webtag_key: &str) -> bool {
@@ -8029,7 +8069,7 @@ fn to_wide(value: &str) -> Vec<u16> {
 mod tests {
     use super::{
         WindowResizeDrag, WindowResizeEdge, WindowsFrameButton, frame_button_non_client_hit,
-        resized_window_rect,
+        resized_window_rect, same_window_generation,
     };
     use windows::Win32::Foundation::{POINT, RECT};
     use windows::Win32::UI::WindowsAndMessaging;
@@ -8080,5 +8120,12 @@ mod tests {
         assert_eq!(clamped.bottom - clamped.top, 720);
         assert_eq!(clamped.right, base.right);
         assert_eq!(clamped.bottom, base.bottom);
+    }
+
+    #[test]
+    fn stale_window_cleanup_cannot_remove_a_new_generation() {
+        assert!(same_window_generation(Some(42), 42));
+        assert!(!same_window_generation(Some(43), 42));
+        assert!(!same_window_generation(None, 42));
     }
 }
