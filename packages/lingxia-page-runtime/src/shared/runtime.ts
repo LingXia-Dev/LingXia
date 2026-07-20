@@ -1,6 +1,6 @@
 import { type DataSubscriber, type StateInfo } from "@lingxia/bridge";
 
-export type ActionMap = Record<string, (...args: unknown[]) => unknown>;
+export type ActionMap = Record<string, (...args: never[]) => unknown>;
 export type Snapshot = Record<string, unknown>;
 export type Listener = () => void;
 type BridgeMode = "notify" | "call" | "stream";
