@@ -149,13 +149,8 @@ fn status_bar_foreground() -> u32 {
     }
 }
 
-/// The runner presents devices frameless: the screen floats with a hairline
-/// outline instead of a black body, saving work-area height on small
-/// displays. Bezeled presentation remains available through the spec (the
-/// preset's `bezel_width` stays parsed) for hosts that want it.
 fn visual_bezel_width(preset: &DevicePreset) -> i32 {
-    let _ = preset.bezel_width;
-    0
+    preset.bezel_width.max(0)
 }
 
 pub(crate) fn frame_spec(index: usize, landscape: bool) -> WindowsDeviceFrame {
@@ -167,18 +162,11 @@ pub(crate) fn frame_spec(index: usize, landscape: bool) -> WindowsDeviceFrame {
     } else {
         (preset.width, preset.height)
     };
-    // Frameless: the frame silhouette IS the screen — its outline hairline
-    // must trace the same radius the content window's region cuts at.
-    let outer_radius = if visual_bezel_width(preset) == 0 {
-        preset.screen_radius
-    } else {
-        preset.screen_radius.max(preset.outer_radius)
-    };
     WindowsDeviceFrame {
         screen_width,
         screen_height,
         bezel_width: visual_bezel_width(preset),
-        outer_corner_radius: outer_radius,
+        outer_corner_radius: preset.outer_radius,
         screen_corner_radius: preset.screen_radius,
         cutout: (!landscape && preset.notch.width > 0 && preset.notch.height > 0).then(|| {
             WindowsDeviceFrameCutout {
@@ -200,8 +188,8 @@ pub(crate) fn frame_spec(index: usize, landscape: bool) -> WindowsDeviceFrame {
             },
         ),
         bezel_color: preset.bezel_color,
-        // Bezeled presentation fills the corner wedges in the bezel color;
-        // the frameless runner ignores this and draws the outline ring.
+        // Keep clipped screen corners backed by the device shell instead of
+        // exposing the desktop through the rounded edge.
         screen_corner_color: preset.bezel_color,
         toolbar: Some(WindowsDeviceFrameToolbar {
             selector_label: preset.name.clone(),
@@ -219,5 +207,45 @@ pub(crate) fn frame_spec(index: usize, landscape: bool) -> WindowsDeviceFrame {
             // Windows caption buttons in the shell chrome instead.
             window_dots: is_phone(index) || is_tablet(index),
         }),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn frame_spec_uses_manifest_device_shell() {
+        for (index, preset) in presets().iter().enumerate() {
+            let frame = frame_spec(index, false);
+            assert_eq!(
+                frame.bezel_width,
+                preset.bezel_width.max(0),
+                "{}",
+                preset.id
+            );
+            assert_eq!(
+                frame.outer_corner_radius, preset.outer_radius,
+                "{}",
+                preset.id
+            );
+            assert_eq!(
+                frame.screen_corner_radius, preset.screen_radius,
+                "{}",
+                preset.id
+            );
+        }
+    }
+
+    #[test]
+    fn rotating_keeps_the_device_shell_and_swaps_the_screen() {
+        let index = default_device_index();
+        let preset = &presets()[index];
+        let frame = frame_spec(index, true);
+
+        assert_eq!(frame.screen_width, preset.height);
+        assert_eq!(frame.screen_height, preset.width);
+        assert_eq!(frame.bezel_width, preset.bezel_width.max(0));
+        assert_eq!(frame.outer_corner_radius, preset.outer_radius);
     }
 }

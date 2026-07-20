@@ -737,22 +737,14 @@ fn apply_device_frame_inner(content: HWND, mut spec: WindowsDeviceFrame, sync_ho
                 | WindowsAndMessaging::SWP_FRAMECHANGED,
         );
     }
-    // Composition-hosted webviews clip their own screen corners (bezel-
-    // colored wedges in the visual tree), so the aliased SetWindowRgn cut
-    // and the corner-mask overlay that hid its edge are unnecessary there.
-    // A frameless device (bezel 0) still needs the window region: its
-    // corners cut through to the desktop, which no opaque wedge can fake —
-    // the composition outline ring covers the cut's inner edge instead.
+    // Composition-hosted webviews clip their own corners, but the host window
+    // also paints native shell chrome (notably the phone tab bar). Keep the
+    // whole host clipped to the simulated screen or that chrome leaks through
+    // the device's rounded outer corners. Composition wedges still smooth the
+    // WebView edge inside this authoritative window cut.
     let composition_corners =
         lingxia_webview::platform::windows::webview_composition_hosting_enabled();
-    let frameless = spec.bezel_width <= 0;
-    if composition_corners && !frameless {
-        unsafe {
-            let _ = SetWindowRgn(content, None, true);
-        }
-    } else {
-        apply_content_screen_region(content, &spec);
-    }
+    apply_content_screen_region(content, &spec);
 
     let Some((frame, layout)) = create_frame_window(content, &spec, layout) else {
         return;
