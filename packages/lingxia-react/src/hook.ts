@@ -4,6 +4,7 @@ import type {
   LxBridgeError,
   LxStream,
 } from "@lingxia/bridge";
+import { getDisplayLanguage } from "@lingxia/bridge";
 import {
   getMethodKey,
   invokeMethod,
@@ -348,4 +349,9 @@ function readPlatform(): LxPlatform {
 // or hand-roll an OS check. Fixed for the session, so it resolves once.
 export function usePlatform(): LxPlatform {
   return React.useMemo(readPlatform, []);
+}
+
+/** Effective product language selected by the host. */
+export function useDisplayLanguage(): string {
+  return getDisplayLanguage();
 }

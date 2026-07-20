@@ -232,6 +232,7 @@ fn build_connect_src_policy() -> String {
 
 fn build_bridge_config_script(bridge_nonce: Option<&str>) -> String {
     let bridge_os = lingxia_platform::os_label();
+    let display_language = escape_js_string(&super::get_display_language());
 
     #[cfg(any(target_os = "ios", target_os = "macos"))]
     let apple_downstream_url = Some(escape_js_string(
@@ -269,7 +270,10 @@ fn build_bridge_config_script(bridge_nonce: Option<&str>) -> String {
         ""
     };
 
-    let generated_kv = format!("{}{}", nonce_kv, apple_downstream_kv);
+    let generated_kv = format!(
+        r#",displayLanguage:"{}"{}{}"#,
+        display_language, nonce_kv, apple_downstream_kv
+    );
 
     // Merge rather than overwrite so developer-provided config can coexist.
     format!(

@@ -3,6 +3,7 @@ export {
   useLxStream,
   useLxChannel,
   usePlatform,
+  useDisplayLanguage,
   type LxStreamOptions,
   type LxStreamState,
   type LxChannelOptions,
