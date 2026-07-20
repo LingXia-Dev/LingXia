@@ -19,10 +19,10 @@ const APPLE_BRIDGE_DOWNSTREAM_PATH: &str = "/downstream";
 const APPLE_BRIDGE_REPLAY_LIMIT: usize = 4096;
 // Query key carrying the client's last-seen transport seq on (re)connect.
 const APPLE_BRIDGE_FROM_QUERY: &str = "from";
-// A WKURLSchemeTask response carrying initial or replayed frames is completed
-// after its first burst. WebKit can otherwise buffer later `didReceiveData`
-// chunks indefinitely; EOF flushes them, and the client resumes by sequence.
-const APPLE_BRIDGE_BOOTSTRAP_IDLE: Duration = Duration::from_millis(10);
+// Complete each WKURLSchemeTask response after a frame burst. WebKit can
+// otherwise buffer later `didReceiveData` chunks indefinitely; EOF flushes
+// them, and the client resumes by sequence.
+const APPLE_BRIDGE_BURST_IDLE: Duration = Duration::from_millis(10);
 // Heartbeat cadence for an idle connection. Keeps the socket warm and lets the
 // client detect a silently dead connection (half-open socket) it would
 // otherwise never see a read error for.
@@ -224,9 +224,8 @@ struct AppleBridgeConnection {
     writer: UnixStream,
     // Next seq to write on this connection.
     cursor: u64,
-    // Finish an initial/replay response after catch-up so WebKit flushes it.
-    bootstrap: bool,
-    bootstrap_has_data: bool,
+    // Finish every response after its first frame burst so WebKit flushes it.
+    response_has_data: bool,
 }
 
 struct AppleBridgeTransportState {
@@ -330,8 +329,7 @@ impl AppleBridgeTransport {
                 id,
                 writer: write_end,
                 cursor,
-                bootstrap,
-                bootstrap_has_data: !resumable,
+                response_has_data: !resumable,
             });
             (replaced, resumable, bootstrap)
         };
@@ -441,17 +439,16 @@ impl AppleBridgeTransport {
                             }
                         }
                     }
-                    // An initial/replay response is finite: once its first
-                    // frame burst is quiet, close it so WKURLSchemeTask must
-                    // flush all bytes. A caught-up reconnect is long-lived.
+                    // Every response is finite once a frame burst is quiet.
+                    // WKURLSchemeTask may otherwise buffer later chunks until
+                    // the idle heartbeat, delaying bridge events by 15 seconds.
                     let wait_duration = match guard.connection.as_ref() {
                         Some(connection)
-                            if connection.bootstrap
-                                && connection.bootstrap_has_data
+                            if connection.response_has_data
                                 && guard.log.cursor_state(connection.cursor)
                                     == CursorState::CaughtUp =>
                         {
-                            APPLE_BRIDGE_BOOTSTRAP_IDLE
+                            APPLE_BRIDGE_BURST_IDLE
                         }
                         _ => APPLE_BRIDGE_HEARTBEAT_INTERVAL,
                     };
@@ -461,18 +458,16 @@ impl AppleBridgeTransport {
                         .unwrap_or_else(|e| e.into_inner());
                     guard = next_guard;
                     if timeout.timed_out() {
-                        let completed_bootstrap =
-                            guard.connection.as_ref().and_then(|connection| {
-                                (connection.bootstrap
-                                    && connection.bootstrap_has_data
-                                    && guard.log.cursor_state(connection.cursor)
-                                        == CursorState::CaughtUp)
-                                    .then_some(connection.id)
-                            });
-                        if let Some(id) = completed_bootstrap {
+                        let completed_response = guard.connection.as_ref().and_then(|connection| {
+                            (connection.response_has_data
+                                && guard.log.cursor_state(connection.cursor)
+                                    == CursorState::CaughtUp)
+                                .then_some(connection.id)
+                        });
+                        if let Some(id) = completed_response {
                             guard.connection = None;
                             log::debug!(
-                                "Apple bridge downstream bootstrap completed webtag={} connection={}",
+                                "Apple bridge downstream response completed webtag={} connection={}",
                                 self.webtag,
                                 id
                             );
@@ -521,12 +516,20 @@ impl AppleBridgeTransport {
                     && connection.id == connection_id
                 {
                     connection.cursor = next;
-                    if connection.bootstrap {
-                        connection.bootstrap_has_data = true;
-                    }
+                    connection.response_has_data = true;
                 }
             } else {
                 log::debug!("Apple bridge downstream heartbeat webtag={}", self.webtag);
+                // EOF flushes the heartbeat through WKURLSchemeTask and makes
+                // the client reconnect from its unchanged sequence cursor.
+                let mut guard = self.state.lock().unwrap_or_else(|e| e.into_inner());
+                if guard
+                    .connection
+                    .as_ref()
+                    .is_some_and(|connection| connection.id == connection_id)
+                {
+                    guard.connection = None;
+                }
             }
         }
     }
@@ -625,17 +628,39 @@ mod tests {
     }
 
     #[test]
-    fn caught_up_resume_stays_streaming() {
+    fn caught_up_resume_waits_for_data() {
         let transport = AppleBridgeTransport::new(WebTag::new("test", "page", None));
         transport.enqueue_message(r#"{"n":1}"#).unwrap();
         let reader = transport.connect_downstream(1).unwrap();
         let downstream = unsafe { UnixStream::from_raw_fd(reader.into_raw_fd()) };
 
         let state = transport.state.lock().unwrap();
-        assert!(!state.connection.as_ref().unwrap().bootstrap);
+        assert!(!state.connection.as_ref().unwrap().response_has_data);
         drop(state);
         transport.shutdown();
         drop(downstream);
+    }
+
+    #[test]
+    fn caught_up_resume_finishes_after_next_frame_burst() {
+        let transport = AppleBridgeTransport::new(WebTag::new("test", "page", None));
+        transport.enqueue_message(r#"{"n":1}"#).unwrap();
+        let reader = transport.connect_downstream(1).unwrap();
+        transport.enqueue_message(r#"{"n":2}"#).unwrap();
+
+        let mut downstream = unsafe { UnixStream::from_raw_fd(reader.into_raw_fd()) };
+        downstream
+            .set_read_timeout(Some(Duration::from_secs(1)))
+            .unwrap();
+        let mut bytes = Vec::new();
+        downstream.read_to_end(&mut bytes).unwrap();
+        transport.shutdown();
+
+        assert!(
+            String::from_utf8(bytes)
+                .unwrap()
+                .contains(r#"{"lxff":2,"m":{"n":2}}"#)
+        );
     }
 
     #[test]
