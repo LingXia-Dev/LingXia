@@ -1,5 +1,6 @@
 import { expect, test } from '@rongjs/test';
 import type { LxAppDriver, PageInfo } from 'lingxia-types';
+import { waitForElementAttribute } from '../helpers/page.js';
 
 async function waitForCurrent(app: LxAppDriver, name: string): Promise<PageInfo> {
   const deadline = Date.now() + 10_000;
@@ -21,6 +22,13 @@ test('preserves navigation stack, query, redirect, back, and tab semantics', asy
   await app.nav.to({ page: 'device', query: { type: 'screen' } });
   await waitForCurrent(app, 'device');
   await app.page.waitFor({ page: 'device', css: '[data-testid="device-page"]' });
+  await waitForElementAttribute(
+    app,
+    'device',
+    '[data-testid="device-page"]',
+    'data-mode',
+    'screen',
+  );
   const mode = await app.page.eval({
     page: 'device',
     script: 'document.querySelector(\'[data-testid="device-page"]\')?.getAttribute(\'data-mode\')',
@@ -46,6 +54,13 @@ test('preserves navigation stack, query, redirect, back, and tab semantics', asy
   await app.nav.relaunch({ page: 'device' });
   await waitForCurrent(app, 'device');
   await app.page.waitFor({ page: 'device', css: '[data-testid="device-page"]' });
+  await waitForElementAttribute(
+    app,
+    'device',
+    '[data-testid="device-page"]',
+    'data-mode',
+    'device',
+  );
   const defaultMode = await app.page.eval({
     page: 'device',
     script: 'document.querySelector(\'[data-testid="device-page"]\')?.getAttribute(\'data-mode\')',
