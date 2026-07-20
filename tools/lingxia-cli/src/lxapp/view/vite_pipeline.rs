@@ -504,6 +504,17 @@ fn finalize_component_page(
     if view_js.exists() {
         fs::copy(&view_js, page_output_dir.join("view.js"))
             .with_context(|| format!("Failed to copy {}", view_js.display()))?;
+
+        // Keep Vite's canonical entry path as an internal module target. A
+        // lazy chunk can import bindings that Rollup placed in the entry
+        // chunk; the page HTML still loads the stable `./view.js` alias.
+        let canonical_entry_dir = project.output_dir.join("pages").join(&page.page_id);
+        fs::create_dir_all(&canonical_entry_dir)?;
+        fs::copy(
+            &view_js,
+            canonical_entry_dir.join(format!("{}.js", page.page_id)),
+        )
+        .with_context(|| format!("Failed to preserve Vite entry {}", view_js.display()))?;
     }
 
     let base = Path::new(&page.page_path)
@@ -703,4 +714,63 @@ fn sanitize_page_id(value: &str) -> String {
             _ => '_',
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::lxapp::project::ProjectKind;
+    use tempfile::tempdir;
+
+    #[test]
+    fn component_finalize_preserves_canonical_vite_entry_for_lazy_chunks() {
+        let temp = tempdir().unwrap();
+        let root = temp.path().join("project");
+        let vite_dist = temp.path().join("vite-dist");
+        let page_id = "pages_home_index";
+        let vite_page = vite_dist.join("pages").join(page_id);
+        fs::create_dir_all(&vite_page).unwrap();
+        fs::write(
+            vite_page.join(format!("{page_id}.js")),
+            "export const shared = true;",
+        )
+        .unwrap();
+        fs::write(
+            vite_page.join("index.html"),
+            format!(
+                "<div id=\"root\"></div><script type=\"module\" src=\"/pages/{page_id}/{page_id}.js\"></script>"
+            ),
+        )
+        .unwrap();
+
+        let project = Project {
+            root: root.clone(),
+            kind: ProjectKind::LxApp,
+            framework: ProjectFramework::React,
+            output_dir: root.join("dist"),
+            pages: vec!["pages/home/index.tsx".to_string()],
+            logic_entry: None,
+            plugin_id: None,
+            package_name: Some("test-app".to_string()),
+            version: "0.0.1".to_string(),
+        };
+        let page = ComponentPageBuild {
+            page_path: "pages/home/index.tsx".to_string(),
+            page_id: page_id.to_string(),
+            output_extension: ".tsx",
+            actions: Vec::new(),
+        };
+
+        finalize_component_page(&project, &vite_dist, &page).unwrap();
+
+        assert!(project.output_dir.join("pages/home/view.js").is_file());
+        assert!(
+            project
+                .output_dir
+                .join("pages")
+                .join(page_id)
+                .join(format!("{page_id}.js"))
+                .is_file()
+        );
+    }
 }
