@@ -11,6 +11,16 @@ export type PlatformOS = NonNullable<BridgeConfig['os']> | 'unknown';
 export const BRIDGE_CONFIG: BridgeConfig =
   (typeof window !== 'undefined' && window.__LX_BRIDGE_CFG) || {};
 
+const displayLanguage = BRIDGE_CONFIG.displayLanguage?.trim() || 'en-US';
+
+if (typeof document !== 'undefined' && document.documentElement) {
+  document.documentElement.lang = displayLanguage;
+}
+
+export function getDisplayLanguage(): string {
+  return displayLanguage;
+}
+
 export function getPlatformOS(): PlatformOS {
   return BRIDGE_CONFIG.os || 'unknown';
 }

@@ -1,5 +1,7 @@
 export interface BridgeConfig {
   os?: 'Harmony' | 'iOS' | 'Android' | 'macOS' | 'Windows';
+  /** Effective host display language; distinct from the raw system locale. */
+  displayLanguage?: string;
   nonce?: string;
   appleDownstreamURL?: string;
   // Set by the host when attached to a `lingxia dev` session; gates the
