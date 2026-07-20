@@ -296,20 +296,28 @@ async fn execute_run(
         }
     };
 
-    let watchdog = shared.remaining() + TEARDOWN_GRACE;
     let join = handle.join();
     tokio::pin!(join);
-    if tokio::time::timeout(watchdog, &mut join).await.is_ok() {
-        return;
+    match tokio::time::timeout(shared.remaining(), &mut join).await {
+        Ok(Ok(_)) => return,
+        Ok(Err(err)) => {
+            finalize_worker_join_failure(&shared, format!("{err:?}"));
+            note_worker_recovered(&runtime);
+            return;
+        }
+        Err(_) => {}
     }
 
     shared.request_preemption();
     worker.interrupt_handle().interrupt();
-    if tokio::time::timeout(TEARDOWN_GRACE, &mut join)
-        .await
-        .is_ok()
-    {
-        return;
+    match tokio::time::timeout(TEARDOWN_GRACE, &mut join).await {
+        Ok(Ok(_)) => return,
+        Ok(Err(err)) => {
+            finalize_worker_join_failure(&shared, format!("{err:?}"));
+            note_worker_recovered(&runtime);
+            return;
+        }
+        Err(_) => {}
     }
 
     let state = if shared.cancel_requested() {
@@ -330,6 +338,16 @@ async fn execute_run(
         );
         set_unhealthy(&runtime);
     }
+}
+
+fn finalize_worker_join_failure(shared: &RunShared, detail: String) {
+    shared.finalize(
+        AutomationRunState::InternalError,
+        Some(internal_error(format!(
+            "automation worker task ended before finalizing the run: {detail}"
+        ))),
+        None,
+    );
 }
 
 async fn run_on_worker(runtime: Arc<RuntimeInner>, js_runtime: JSRuntime, request: RunRequest) {
@@ -590,6 +608,45 @@ mod tests {
         assert_eq!(
             response.result.expect("result").output,
             Some(serde_json::json!({ "recovered": true }))
+        );
+    }
+
+    #[test]
+    fn interrupts_non_yielding_javascript_at_the_deadline() {
+        let runtime = AutomationRuntime::new().expect("automation runtime");
+        let started_at = Instant::now();
+        let timed_out = start(&runtime, "while (true) {}", MIN_TIMEOUT_MS);
+        assert_eq!(
+            wait_for_terminal(&runtime, &timed_out.run_id).state,
+            AutomationRunState::TimedOut
+        );
+        assert!(
+            started_at.elapsed() < Duration::from_secs(5),
+            "hard timeout exceeded its deadline: {:?}",
+            started_at.elapsed()
+        );
+
+        let next = start(&runtime, "true", 5_000);
+        assert_eq!(
+            wait_for_terminal(&runtime, &next.run_id).state,
+            AutomationRunState::Succeeded
+        );
+    }
+
+    #[test]
+    fn worker_join_failure_is_terminal() {
+        let shared = RunShared::new("join-failure".to_string(), Duration::from_secs(1));
+
+        finalize_worker_join_failure(&shared, "worker aborted".to_string());
+
+        assert_eq!(shared.state(), AutomationRunState::InternalError);
+        let result = shared.poll(0).result.expect("terminal result");
+        assert!(
+            result
+                .error
+                .expect("internal error")
+                .message
+                .contains("worker aborted")
         );
     }
 

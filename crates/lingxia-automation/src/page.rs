@@ -23,6 +23,7 @@ fn is_transient_page_error(error: &str) -> bool {
     error.starts_with("page is not active:")
         || error == "page WebView is not ready"
         || error == "no current page"
+        || error.to_ascii_lowercase().contains("0x8007139f")
 }
 
 #[js_class(clone)]
@@ -370,6 +371,9 @@ mod tests {
     fn wait_retries_only_page_readiness_errors() {
         assert!(is_transient_page_error("page is not active: todo"));
         assert!(is_transient_page_error("page WebView is not ready"));
+        assert!(is_transient_page_error(
+            "The group or resource is not in the correct state (0x8007139F)"
+        ));
         assert!(!is_transient_page_error("SyntaxError: invalid selector"));
     }
 }

@@ -124,10 +124,7 @@ fn parse_position_suffix(text: &str) -> Option<(u32, u32, usize)> {
 pub fn bundle_test_entry(entry: &Path) -> Result<TestBundle> {
     let entry = normalize_path(entry)
         .with_context(|| format!("test entry not found: {}", entry.display()))?;
-    match entry.extension().and_then(|ext| ext.to_str()) {
-        Some("js" | "ts" | "mjs" | "mts" | "jsx" | "tsx") => {}
-        _ => bail!("test entry must be a .js or .ts file: {}", entry.display()),
-    }
+    ensure_supported_test_module(&entry)?;
     let root = find_project_root(&entry);
 
     let mut bundler = TestBundler {
@@ -168,6 +165,7 @@ struct TestBundler {
 
 impl TestBundler {
     fn compile_module(&mut self, path: PathBuf) -> Result<String> {
+        ensure_supported_test_module(&path)?;
         if let Some(module_var) = self.module_vars.get(&path) {
             return Ok(module_var.clone());
         }
@@ -222,6 +220,16 @@ impl TestBundler {
         });
         self.visiting.remove(&path);
         Ok(module_var)
+    }
+}
+
+fn ensure_supported_test_module(path: &Path) -> Result<()> {
+    match path.extension().and_then(|ext| ext.to_str()) {
+        Some("js" | "ts" | "mjs" | "mts") => Ok(()),
+        _ => bail!(
+            "test modules must use .js, .ts, .mjs, or .mts; JSX/TSX is not available in the isolated runtime: {}",
+            path.display()
+        ),
     }
 }
 
@@ -870,23 +878,15 @@ fn resolve_bare_import(
     options.main_fields = vec!["module".into(), "main".into()];
     options.extensions = vec![
         ".ts".into(),
-        ".tsx".into(),
         ".mts".into(),
         ".js".into(),
-        ".jsx".into(),
         ".mjs".into(),
         ".json".into(),
     ];
     options.extension_alias = vec![
         (
             ".js".into(),
-            vec![
-                ".ts".into(),
-                ".tsx".into(),
-                ".js".into(),
-                ".jsx".into(),
-                ".mjs".into(),
-            ],
+            vec![".ts".into(), ".js".into(), ".mjs".into()],
         ),
         (
             ".mjs".into(),
@@ -1030,10 +1030,9 @@ fn local_candidates(base: &Path) -> Vec<PathBuf> {
         // specifier (`./x.js`) even when the file on disk is `x.ts`. Try the
         // literal path first, then the TypeScript sibling — matching the
         // bare-import resolver's extension_alias.
-        Some("js" | "jsx") => {
+        Some("js") => {
             candidates.push(base.to_path_buf());
             candidates.push(base.with_extension("ts"));
-            candidates.push(base.with_extension("tsx"));
         }
         Some("mjs") => {
             candidates.push(base.to_path_buf());
@@ -1042,9 +1041,7 @@ fn local_candidates(base: &Path) -> Vec<PathBuf> {
         Some(_) => candidates.push(base.to_path_buf()),
         None => {
             candidates.push(base.with_extension("ts"));
-            candidates.push(base.with_extension("tsx"));
             candidates.push(base.with_extension("js"));
-            candidates.push(base.with_extension("jsx"));
             candidates.push(base.with_extension("mts"));
             candidates.push(base.with_extension("mjs"));
             candidates.push(base.join("index.ts"));
@@ -1193,6 +1190,37 @@ mod tests {
                 .get_source_contents()
                 .all(|content| content.is_some())
         );
+    }
+
+    #[test]
+    fn rejects_jsx_and_tsx_modules_before_transforming() {
+        let dir = project();
+        for extension in ["jsx", "tsx"] {
+            let entry = write(
+                &dir,
+                &format!("flow.{extension}"),
+                "export const view = <div>unsupported</div>;\n",
+            );
+            let error = bundle_test_entry(&entry)
+                .err()
+                .expect("JSX entry must be rejected")
+                .to_string();
+            assert!(error.contains("JSX/TSX is not available"), "{error}");
+            assert!(error.contains(".js, .ts, .mjs, or .mts"), "{error}");
+        }
+
+        write(
+            &dir,
+            "component.tsx",
+            "export const view = <div>unsupported</div>;\n",
+        );
+        let entry = write(&dir, "imports-tsx.ts", "import './component.tsx';\n");
+        let error = bundle_test_entry(&entry)
+            .err()
+            .expect("imported TSX module must be rejected")
+            .to_string();
+        assert!(error.contains("component.tsx"), "{error}");
+        assert!(error.contains("JSX/TSX is not available"), "{error}");
     }
 
     #[test]

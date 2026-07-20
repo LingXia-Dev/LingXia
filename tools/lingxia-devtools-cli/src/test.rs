@@ -32,7 +32,7 @@ const MAX_ARTIFACT_BASE64_BYTES: usize = MAX_ARTIFACT_BYTES.div_ceil(3) * 4;
 Example: lxdev test tests/home.test.ts --arg locale=en"
 )]
 pub struct TestOptions {
-    /// Test entry (.js/.ts, including JSX/TSX and ESM variants)
+    /// Test entry (.js/.ts and .mjs/.mts ESM variants)
     entry: PathBuf,
 
     /// Overall registration and case timeout in seconds
