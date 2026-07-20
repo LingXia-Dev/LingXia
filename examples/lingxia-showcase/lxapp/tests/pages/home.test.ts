@@ -1,5 +1,5 @@
 import { expect, test } from '@rongjs/test';
-import { waitForElementEnabled } from '../helpers/page.js';
+import { waitForElementAttribute, waitForElementEnabled } from '../helpers/page.js';
 
 test('greets through real page input and the Logic bridge', async () => {
   const app = lx.automation().lxapp();
@@ -8,6 +8,13 @@ test('greets through real page input and the Logic bridge', async () => {
 
   const name = `Gate ${Date.now()}`;
   await app.page.fill({ page: 'home', css: '[data-testid="home-name"]', text: name });
+  await waitForElementAttribute(
+    app,
+    'home',
+    '[data-testid="home-name"]',
+    'data-controlled-value',
+    name,
+  );
   await waitForElementEnabled(app, 'home', '[data-testid="home-greet"]');
   await app.page.click({ page: 'home', css: '[data-testid="home-greet"]' });
 

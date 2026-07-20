@@ -1,5 +1,6 @@
 use super::bridge_transport::{bridge_downstream_shutdown_response, is_bridge_downstream_request};
-use crate::webview::{WebTag, find_webview};
+use super::webview::find_webview_for_native;
+use crate::webview::WebTag;
 use crate::{WebResourceBody, WebResourceResponse};
 use dispatch2::DispatchQueue;
 use objc2::runtime::{AnyObject, NSObject, Sel};
@@ -105,7 +106,7 @@ define_class!(
 
     unsafe impl WKURLSchemeHandler for LingXiaSchemeHandler {
         #[unsafe(method(webView:startURLSchemeTask:))]
-        fn start_url_scheme_task(&self, _webview: *mut AnyObject, task: *mut AnyObject) {
+        fn start_url_scheme_task(&self, webview: *mut AnyObject, task: *mut AnyObject) {
             if task.is_null() {
                 log::error!("Task is null!");
                 return;
@@ -235,11 +236,13 @@ define_class!(
 
                 // Dispatch to closure-based scheme handler
                 let webtag = &self.ivars().webtag;
-                let response = if let Some(webview) = find_webview(webtag) {
-                    webview.handle_scheme_request(&scheme, http_request)
+                let response = if let Some(managed_webview) =
+                    find_webview_for_native(webtag, webview)
+                {
+                    managed_webview.handle_scheme_request(&scheme, http_request)
                 } else {
-                    log::warn!(
-                        "WebView not found for webtag={} (scheme={} url={})",
+                    log::debug!(
+                        "Dropping scheme request from stale Apple WebView webtag={} (scheme={} url={})",
                         webtag.as_str(),
                         scheme,
                         url

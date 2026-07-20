@@ -16,7 +16,7 @@ use crate::traits::{
 };
 #[cfg(all(feature = "webview-input", target_os = "macos"))]
 use crate::traits::{PressOptions, ScrollOptions, TypeOptions};
-use crate::webview::{find_webview, find_webview_delegate};
+use crate::webview::find_webview;
 use crate::{
     ClearSiteDataOptions, ClearSiteDataResult, DownloadRequest, LoadDataRequest, LogLevel,
     WebResourceResponse, WebViewController, WebViewCookie, WebViewCookieSameSite,
@@ -1690,6 +1690,16 @@ pub struct WebViewInner {
     apple_bridge_transport: Arc<AppleBridgeTransport>,
 }
 
+/// Resolve a registry entry only when the callback came from that exact
+/// WKWebView. Logical webtags are reusable, so a retired view may finish
+/// delivering callbacks after its replacement has been registered.
+pub(super) fn find_webview_for_native(
+    webtag: &WebTag,
+    native_webview: *mut AnyObject,
+) -> Option<Arc<crate::WebView>> {
+    find_webview(webtag).filter(|webview| webview.inner.webview == native_webview)
+}
+
 #[cfg(target_os = "macos")]
 pub(crate) fn toggle_devtools_by_swift_ptr(swift_ptr: usize, detached: bool) -> bool {
     if swift_ptr == 0 {
@@ -2301,6 +2311,7 @@ impl WebViewInner {
                 appid.to_string(),
                 path.to_string(),
                 session_id,
+                webview as usize,
                 MainThreadMarker::new().unwrap(),
             )
             .ok_or_else(|| WebViewError::WebView("Failed to create message handler".to_string()))?;
@@ -3990,6 +4001,7 @@ pub struct LingXiaMessageHandlerIvars {
     appid: String,
     path: String,
     session_id: Option<u64>,
+    native_webview: usize,
 }
 
 define_class!(
@@ -4095,6 +4107,7 @@ impl LingXiaMessageHandler {
         appid: String,
         path: String,
         session_id: Option<u64>,
+        native_webview: usize,
         mtm: MainThreadMarker,
     ) -> Option<Retained<Self>> {
         unsafe {
@@ -4103,6 +4116,7 @@ impl LingXiaMessageHandler {
                 appid,
                 path,
                 session_id,
+                native_webview,
             });
             let instance: Retained<Self> = msg_send![super(instance), init];
             Some(instance)
@@ -4114,8 +4128,13 @@ impl LingXiaMessageHandler {
         let ivars = self.ivars();
 
         let webtag = WebTag::new(&ivars.appid, &ivars.path, ivars.session_id);
-        if let Some(delegate) = find_webview_delegate(&webtag) {
+        let native_webview = ivars.native_webview as *mut AnyObject;
+        if let Some(delegate) = find_webview_for_native(&webtag, native_webview)
+            .and_then(|webview| webview.get_delegate())
+        {
             delegate.handle_post_message(message);
+        } else {
+            log::debug!("Dropping script message from stale Apple WebView ({webtag})");
         }
     }
 
@@ -4137,7 +4156,10 @@ impl LingXiaMessageHandler {
                 };
 
                 let webtag = WebTag::new(&ivars.appid, &ivars.path, ivars.session_id);
-                if let Some(delegate) = find_webview_delegate(&webtag) {
+                let native_webview = ivars.native_webview as *mut AnyObject;
+                if let Some(delegate) = find_webview_for_native(&webtag, native_webview)
+                    .and_then(|webview| webview.get_delegate())
+                {
                     delegate.log(log_level, console_message);
                 }
             } else {

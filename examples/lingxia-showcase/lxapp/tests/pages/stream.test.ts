@@ -1,6 +1,6 @@
 import { expect, test } from '@rongjs/test';
 import type { LxAppDriver } from 'lingxia-types';
-import { waitForElementEnabled } from '../helpers/page.js';
+import { waitForElementAttribute, waitForElementEnabled } from '../helpers/page.js';
 
 async function waitForElementText(
   app: LxAppDriver,
@@ -25,6 +25,13 @@ test('streams a complete response from real page input', async () => {
 
   const prompt = `gate stream ${Date.now()}`;
   await app.page.fill({ page: 'stream', css: '[data-testid="stream-input"]', text: prompt });
+  await waitForElementAttribute(
+    app,
+    'stream',
+    '[data-testid="stream-input"]',
+    'data-controlled-value',
+    prompt,
+  );
   await waitForElementEnabled(app, 'stream', '[data-testid="stream-send"]');
   await app.page.click({ page: 'stream', css: '[data-testid="stream-send"]' });
 

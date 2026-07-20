@@ -257,6 +257,7 @@ function InputBar({
       <div className="flex-1 bg-gray-100 rounded-2xl px-3.5 py-2.5 flex items-end gap-2">
         <textarea
           data-testid="stream-input"
+          data-controlled-value={value}
           ref={textareaRef}
           value={value}
           onChange={(e) => { onChange(e.target.value); autoResize(); }}

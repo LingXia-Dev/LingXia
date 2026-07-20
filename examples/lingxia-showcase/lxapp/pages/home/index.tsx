@@ -71,6 +71,7 @@ export default function HomePage() {
           <div className="space-y-3">
             <input
               data-testid="home-name"
+              data-controlled-value={name}
               type="text"
               placeholder="Enter your name"
               value={name}

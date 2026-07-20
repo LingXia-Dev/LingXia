@@ -1536,19 +1536,10 @@ impl WebViewInputController for WebView {
     ) -> Result<(), WebViewInputError> {
         #[cfg(all(feature = "webview-input", target_os = "macos"))]
         {
-            if self.inner.is_window_attached().await {
-                return self
-                    .inner
-                    .type_text_inner(
-                        _selector,
-                        _text,
-                        TypeOptions {
-                            index: _options.index,
-                            replace: true,
-                        },
-                    )
-                    .await;
-            }
+            // `fill` is a framework-aware replacement operation. WebKit's
+            // native InsertText command can report success before a controlled
+            // React/Vue input observes the edit, leaving dependent controls in
+            // their old state. `type` retains the native keyboard path.
             return self
                 .type_via_js(_selector, _options.index, _text, true)
                 .await;

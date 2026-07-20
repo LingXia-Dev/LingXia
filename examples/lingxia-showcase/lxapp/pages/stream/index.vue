@@ -98,6 +98,7 @@
       <div class="flex flex-1 items-end gap-2 rounded-2xl bg-gray-100 px-3.5 py-2.5">
         <textarea
           data-testid="stream-input"
+          :data-controlled-value="inputText"
           ref="textareaRef"
           v-model="inputText"
           rows="1"

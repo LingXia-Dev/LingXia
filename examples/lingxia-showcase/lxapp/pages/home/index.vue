@@ -24,6 +24,7 @@
         <div class="space-y-3">
           <input
             data-testid="home-name"
+            :data-controlled-value="name"
             type="text"
             placeholder="Enter your name"
             v-model="name"
