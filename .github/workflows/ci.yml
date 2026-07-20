@@ -615,6 +615,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           prefix-key: showcase-automation-${{ matrix.platform }}
+          cache-on-failure: true
 
       - uses: mlugg/setup-zig@v2
         with:
