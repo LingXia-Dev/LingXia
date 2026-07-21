@@ -973,7 +973,7 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
     @objc private func moreButtonClicked() {
         // Match iOS's "···" sheet: a dimmed backdrop with a white rounded bottom
         // sheet — name + version header, then a clean/restart action row.
-        guard let contentView = window?.contentView, capsuleSheetOverlay == nil else { return }
+        guard let phoneContent = phoneContentView, capsuleSheetOverlay == nil else { return }
         // Mirror iOS: show the lxapp's own name, version, and channel badge from
         // release_type (a `lingxia dev` bundle pins itself to the Developer
         // channel) — not the Runner's own Bundle.main version.
@@ -984,9 +984,9 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
         let versionText = appVersion.isEmpty ? "—" : "v\(appVersion)"
         let releaseType = info.release_type.toString().lowercased()
 
-        let overlay = NSView(frame: contentView.bounds)
+        let overlay = NSView(frame: phoneContent.bounds)
         overlay.autoresizingMask = [.width, .height]
-        contentView.addSubview(overlay)
+        phoneContent.addSubview(overlay)
 
         // Dimmed backdrop behind the sheet — a click on it (outside the sheet)
         // dismisses; clicks on the sheet's buttons are not intercepted.
@@ -1049,6 +1049,7 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
             row.topAnchor.constraint(equalTo: separator.bottomAnchor, constant: 14),
             row.leadingAnchor.constraint(equalTo: sheet.leadingAnchor, constant: 20),
             row.trailingAnchor.constraint(equalTo: sheet.trailingAnchor, constant: -20),
+            row.heightAnchor.constraint(equalToConstant: 72),
             row.bottomAnchor.constraint(equalTo: sheet.bottomAnchor, constant: -20),
         ])
 
