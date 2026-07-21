@@ -1207,25 +1207,34 @@ fn collapsed_sidebar_tabbar_popup_item_bounds(bounds: RECT) -> RECT {
     })
 }
 
+pub(crate) struct LayeredTextRun {
+    pub(crate) rect: RECT,
+    pub(crate) color: u32,
+    pub(crate) text: String,
+    pub(crate) font_height: i32,
+    pub(crate) font_weight: i32,
+}
+
 pub(crate) fn paint_transparent_tabbar_overlay(
     hdc: HDC,
     layout: &WindowsWindowLayout,
     width: i32,
     height: i32,
-) {
+) -> Vec<LayeredTextRun> {
     let Some(layout) = shell_layout(layout) else {
-        return;
+        return Vec::new();
     };
     let Some(tabbar) = layout.tab_bar.as_ref() else {
-        return;
+        return Vec::new();
     };
     if !tabbar.visible
         || !tabbar.background_transparent
         || !matches!(tabbar.position, WindowsShellTabBarPosition::Bottom)
     {
-        return;
+        return Vec::new();
     }
-    draw_tab_bar(
+    let mut text_runs = Vec::with_capacity(tabbar.items.len());
+    draw_tab_bar_with_layered_text(
         hdc,
         RECT {
             left: 0,
@@ -1237,7 +1246,9 @@ pub(crate) fn paint_transparent_tabbar_overlay(
         None,
         0,
         height,
+        &mut text_runs,
     );
+    text_runs
 }
 
 fn compute_attached_layout(

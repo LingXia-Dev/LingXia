@@ -30,6 +30,11 @@ mod app_menu;
 mod design_icons;
 #[cfg(all(target_os = "windows", feature = "device-frame"))]
 mod device_frame;
+#[cfg(all(
+    target_os = "windows",
+    any(feature = "device-frame", feature = "shell-chrome")
+))]
+mod layered_text;
 #[cfg(all(target_os = "windows", feature = "components"))]
 mod media_preview;
 #[cfg(all(target_os = "windows", feature = "components"))]

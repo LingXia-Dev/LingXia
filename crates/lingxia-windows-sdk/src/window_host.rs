@@ -2170,22 +2170,29 @@ fn upload_transparent_tabbar_overlay(hwnd: HWND, layout: &WindowsWindowLayout) {
             0,
             pixel_count * std::mem::size_of::<u32>(),
         );
-        crate::shell::paint_transparent_tabbar_overlay(dc, layout, width, height);
+        let text_runs = crate::shell::paint_transparent_tabbar_overlay(dc, layout, width, height);
         let pixels = std::slice::from_raw_parts_mut(bits.cast::<u32>(), pixel_count);
+        for text_run in text_runs {
+            crate::layered_text::draw_supersampled_text_mask(
+                dc,
+                pixels,
+                width,
+                height,
+                &text_run.text,
+                text_run.rect,
+                text_run.color,
+                text_run.font_height,
+                text_run.font_weight,
+                true,
+            );
+        }
         for pixel in pixels {
             if (*pixel >> 24) == 0 && (*pixel & 0x00ff_ffff) != 0 {
                 let r = (*pixel >> 16) & 0xff;
                 let g = (*pixel >> 8) & 0xff;
                 let b = *pixel & 0xff;
                 let max = r.max(g).max(b);
-                let min = r.min(g).min(b);
-                if max <= 180 && max.saturating_sub(min) <= 8 {
-                    let alpha = ((max * 255 + 76) / 153).clamp(1, 255);
-                    let gray = 153 * alpha / 255;
-                    *pixel = (alpha << 24) | (gray << 16) | (gray << 8) | gray;
-                } else {
-                    *pixel |= max << 24;
-                }
+                *pixel |= max << 24;
             } else if *pixel == 0 {
                 // Per-pixel-alpha layered windows let fully transparent pixels
                 // fall through to the WebView. Keep the visual transparent but

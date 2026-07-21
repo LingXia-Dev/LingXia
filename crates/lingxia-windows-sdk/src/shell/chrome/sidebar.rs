@@ -23,6 +23,46 @@ pub(super) fn draw_tab_bar(
     scroll_offset: i32,
     viewport_bottom: i32,
 ) {
+    draw_tab_bar_inner(
+        hdc,
+        rect,
+        tabbar,
+        cursor,
+        scroll_offset,
+        viewport_bottom,
+        None,
+    );
+}
+
+pub(super) fn draw_tab_bar_with_layered_text(
+    hdc: HDC,
+    rect: RECT,
+    tabbar: &WindowsShellTabBarLayout,
+    cursor: Option<(i32, i32)>,
+    scroll_offset: i32,
+    viewport_bottom: i32,
+    text_runs: &mut Vec<LayeredTextRun>,
+) {
+    draw_tab_bar_inner(
+        hdc,
+        rect,
+        tabbar,
+        cursor,
+        scroll_offset,
+        viewport_bottom,
+        Some(text_runs),
+    );
+}
+
+fn draw_tab_bar_inner(
+    hdc: HDC,
+    rect: RECT,
+    tabbar: &WindowsShellTabBarLayout,
+    cursor: Option<(i32, i32)>,
+    scroll_offset: i32,
+    viewport_bottom: i32,
+    mut text_runs: Option<&mut Vec<LayeredTextRun>>,
+) {
     if matches!(
         tabbar.position,
         WindowsShellTabBarPosition::Left | WindowsShellTabBarPosition::Right
@@ -84,7 +124,17 @@ pub(super) fn draw_tab_bar(
             bottom: item_bottom - 2,
         };
         if tabbar.background_transparent {
-            draw_text_antialiased(hdc, &item.text, label_rect, color, DT_CENTER);
+            if let Some(text_runs) = text_runs.as_deref_mut() {
+                text_runs.push(LayeredTextRun {
+                    rect: label_rect,
+                    color,
+                    text: item.text.clone(),
+                    font_height: logical_font_height(hdc, SHELL_TEXT_POINT_SIZE),
+                    font_weight: SHELL_TEXT_WEIGHT,
+                });
+            } else {
+                draw_text_antialiased(hdc, &item.text, label_rect, color, DT_CENTER);
+            }
         } else {
             draw_text(hdc, &item.text, label_rect, color, DT_CENTER);
         }
