@@ -863,7 +863,8 @@ pub fn present_webview_as_overlay(
     // (e.g. the device frame) instead of floating as an independent top-level
     // window that lingers when the host is minimized. Applies to every overlay
     // surface (page or URL), mirroring the macOS surface sheet.
-    if let Some(owner) = active_host_window_except(Some(hwnd)) {
+    let owner = active_host_window_except(Some(hwnd));
+    if let Some(owner) = owner {
         unsafe {
             let _ = WindowsAndMessaging::SetWindowLongPtrW(
                 hwnd,
@@ -871,7 +872,17 @@ pub fn present_webview_as_overlay(
                 owner.0 as isize,
             );
         }
-        register_floating_overlay(owner, webtag.key());
+        register_floating_overlay(
+            owner,
+            webtag.key(),
+            FloatingOverlayLayout {
+                width,
+                height,
+                width_ratio,
+                height_ratio,
+                position,
+            },
+        );
     }
     // A managed overlay is not user-resizable. The shared webview-parent window
     // carries WS_SIZEBOX, whose non-client frame insets the WebView2 client a few
@@ -886,9 +897,16 @@ pub fn present_webview_as_overlay(
             WindowsAndMessaging::SetWindowLongPtrW(hwnd, WindowsAndMessaging::GWL_STYLE, stripped);
         }
     }
-    apply_floating_card_dressing(hwnd);
-    let bounds = overlay_reference_rect(hwnd);
+    let bounds = owner
+        .and_then(overlay_reference_rect_for_host)
+        .unwrap_or_else(|| overlay_reference_rect(hwnd));
     let rect = overlay_rect(bounds, width, height, width_ratio, height_ratio, position);
+
+    #[cfg(all(feature = "shell-chrome", feature = "device-frame"))]
+    let device_edge_clipped = apply_floating_overlay_device_region(hwnd, owner, rect);
+    #[cfg(not(all(feature = "shell-chrome", feature = "device-frame")))]
+    let device_edge_clipped = false;
+    apply_floating_card_dressing(hwnd, device_edge_clipped);
 
     unsafe {
         WindowsAndMessaging::SetWindowPos(
@@ -913,18 +931,25 @@ pub fn present_webview_as_overlay(
     Ok(())
 }
 
-/// A borderless overlay popup reads as a flat patch without window dressing:
-/// round its corners and re-enable the DWM drop shadow (extending the frame a
-/// single invisible pixel restores the shadow WS_POPUP loses) so the surface
-/// visibly floats over the host content.
-fn apply_floating_card_dressing(hwnd: HWND) {
+/// A borderless overlay popup reads as a flat patch without window dressing.
+/// Regular cards get DWM rounding and a drop shadow; a surface clipped to a
+/// simulated screen edge must not get its own exterior shadow, which would
+/// paint a second outline over the device bezel.
+fn apply_floating_card_dressing(hwnd: HWND, device_edge_clipped: bool) {
     use windows::Win32::Graphics::Dwm::{
-        DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_ROUND, DwmExtendFrameIntoClientArea,
-        DwmSetWindowAttribute,
+        DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_DONOTROUND, DWMWCP_ROUND,
+        DwmExtendFrameIntoClientArea, DwmSetWindowAttribute,
     };
     use windows::Win32::UI::Controls::MARGINS;
     unsafe {
-        let preference = DWMWCP_ROUND;
+        // SetWindowRgn owns the device-edge shape. Explicitly disabling DWM's
+        // independent rounding also makes this reversible when a reused
+        // overlay later returns to ordinary card presentation.
+        let preference = if device_edge_clipped {
+            DWMWCP_DONOTROUND
+        } else {
+            DWMWCP_ROUND
+        };
         let _ = DwmSetWindowAttribute(
             hwnd,
             DWMWA_WINDOW_CORNER_PREFERENCE,
@@ -935,35 +960,153 @@ fn apply_floating_card_dressing(hwnd: HWND) {
             cxLeftWidth: 0,
             cxRightWidth: 0,
             cyTopHeight: 0,
-            cyBottomHeight: 1,
+            // A single invisible bottom pixel restores the shadow WS_POPUP
+            // normally loses. Keep all margins zero for a device-edge sheet:
+            // the simulated frame already owns its outline and shadow.
+            cyBottomHeight: i32::from(!device_edge_clipped),
         };
         let _ = DwmExtendFrameIntoClientArea(hwnd, &margins);
     }
 }
 
-/// Floating overlay surfaces per host window (`owner -> surface webtags`), so
-/// host chrome popups raised on every layout pass (the transparent tab bar)
-/// can be kept underneath them.
-static FLOATING_OVERLAYS: OnceLock<Mutex<HashMap<isize, Vec<String>>>> = OnceLock::new();
+/// Clips a floating overlay's actual HWND when it meets a simulated device
+/// screen corner. Composition rounding alone only paints a bezel-colored mask;
+/// the rectangular popup would still cover and hit-test over the frame.
+#[cfg(all(feature = "shell-chrome", feature = "device-frame"))]
+fn apply_floating_overlay_device_region(hwnd: HWND, owner: Option<HWND>, rect: RECT) -> bool {
+    let radii = owner
+        .and_then(|owner| {
+            let (radius, _) =
+                crate::device_frame::device_frame_screen_clip_style(hwnd_handle(owner))?;
+            let mut screen = RECT::default();
+            if unsafe { WindowsAndMessaging::GetClientRect(owner, &mut screen) }.is_err() {
+                return None;
+            }
+            let screen = client_rect_to_screen(owner, screen)?;
+            Some(device_frame_surface_corner_radii(rect, screen, radius))
+        })
+        .unwrap_or([0; 4]);
+    apply_per_corner_window_region(
+        hwnd,
+        (rect.right - rect.left).max(0),
+        (rect.bottom - rect.top).max(0),
+        radii,
+    );
+    radii.iter().any(|radius| *radius > 0)
+}
 
-fn register_floating_overlay(owner: HWND, webtag_key: &str) {
+#[cfg(all(feature = "shell-chrome", feature = "device-frame"))]
+fn apply_per_corner_window_region(hwnd: HWND, width: i32, height: i32, radii: [i32; 4]) {
+    use windows::Win32::Graphics::Gdi::{
+        CombineRgn, CreateRectRgn, DeleteObject, HGDIOBJ, RGN_OR, SetWindowRgn,
+    };
+
+    if width <= 0 || height <= 0 || radii == [0; 4] {
+        unsafe {
+            let _ = SetWindowRgn(hwnd, None, true);
+        }
+        return;
+    }
+
+    unsafe {
+        let region = CreateRectRgn(0, 0, 0, 0);
+        for y in 0..height {
+            let Some((left, right)) = per_corner_region_row_span(width, height, radii, y) else {
+                continue;
+            };
+            let row = CreateRectRgn(left, y, right, y + 1);
+            CombineRgn(Some(region), Some(region), Some(row), RGN_OR);
+            let _ = DeleteObject(HGDIOBJ(row.0));
+        }
+        // Windows owns the region after a successful SetWindowRgn call.
+        if SetWindowRgn(hwnd, Some(region), true) == 0 {
+            let _ = DeleteObject(HGDIOBJ(region.0));
+        }
+    }
+}
+
+#[cfg(all(feature = "shell-chrome", feature = "device-frame"))]
+fn per_corner_region_row_span(
+    width: i32,
+    height: i32,
+    radii: [i32; 4],
+    y: i32,
+) -> Option<(i32, i32)> {
+    if width <= 0 || height <= 0 || y < 0 || y >= height {
+        return None;
+    }
+    let max_radius = (width / 2).min(height / 2).max(0);
+    let [top_left, top_right, bottom_right, bottom_left] =
+        radii.map(|radius| radius.clamp(0, max_radius));
+    let top_edge_row = y;
+    let bottom_edge_row = height - 1 - y;
+    let left_inset = corner_row_inset(top_left, top_edge_row)
+        .max(corner_row_inset(bottom_left, bottom_edge_row));
+    let right_inset = corner_row_inset(top_right, top_edge_row)
+        .max(corner_row_inset(bottom_right, bottom_edge_row));
+    let right = width - right_inset;
+    (right > left_inset).then_some((left_inset, right))
+}
+
+#[cfg(all(feature = "shell-chrome", feature = "device-frame"))]
+fn corner_row_inset(radius: i32, edge_row: i32) -> i32 {
+    if radius <= 0 || edge_row < 0 || edge_row >= radius {
+        return 0;
+    }
+    let radius = radius as f32;
+    let distance_from_center = radius - (edge_row as f32 + 0.5);
+    let horizontal = (radius * radius - distance_from_center * distance_from_center)
+        .max(0.0)
+        .sqrt();
+    (radius - horizontal - 0.5).ceil().max(0.0) as i32
+}
+
+#[derive(Debug, Clone, Copy)]
+struct FloatingOverlayLayout {
+    width: f64,
+    height: f64,
+    width_ratio: f64,
+    height_ratio: f64,
+    position: u8,
+}
+
+#[derive(Debug, Clone)]
+struct FloatingOverlay {
+    webtag_key: String,
+    layout: FloatingOverlayLayout,
+}
+
+/// Floating overlay surfaces per host window (`owner -> surfaces`). Their
+/// presentation layout is retained so an owned popup follows the host while
+/// the simulated device frame is dragged or resized; Win32 ownership alone
+/// tracks z-order/minimize, not screen position.
+static FLOATING_OVERLAYS: OnceLock<Mutex<HashMap<isize, Vec<FloatingOverlay>>>> = OnceLock::new();
+
+fn register_floating_overlay(owner: HWND, webtag_key: &str, layout: FloatingOverlayLayout) {
     if let Ok(mut floats) = FLOATING_OVERLAYS
         .get_or_init(|| Mutex::new(HashMap::new()))
         .lock()
     {
-        let keys = floats.entry(hwnd_handle(owner)).or_default();
-        if !keys.iter().any(|key| key == webtag_key) {
-            keys.push(webtag_key.to_string());
+        for overlays in floats.values_mut() {
+            overlays.retain(|overlay| overlay.webtag_key != webtag_key);
         }
+        floats.retain(|_, overlays| !overlays.is_empty());
+        floats
+            .entry(hwnd_handle(owner))
+            .or_default()
+            .push(FloatingOverlay {
+                webtag_key: webtag_key.to_string(),
+                layout,
+            });
     }
 }
 
 fn unregister_floating_overlay(webtag_key: &str) {
     if let Some(mut floats) = FLOATING_OVERLAYS.get().and_then(|f| f.lock().ok()) {
-        for keys in floats.values_mut() {
-            keys.retain(|key| key != webtag_key);
+        for overlays in floats.values_mut() {
+            overlays.retain(|overlay| overlay.webtag_key != webtag_key);
         }
-        floats.retain(|_, keys| !keys.is_empty());
+        floats.retain(|_, overlays| !overlays.is_empty());
     }
 }
 
@@ -974,10 +1117,79 @@ fn floating_overlay_owner(webtag_key: &str) -> Option<HWND> {
         .and_then(|floats| {
             floats
                 .iter()
-                .find(|(_, keys)| keys.iter().any(|key| key == webtag_key))
+                .find(|(_, overlays)| {
+                    overlays
+                        .iter()
+                        .any(|overlay| overlay.webtag_key == webtag_key)
+                })
                 .map(|(owner, _)| hwnd_from_handle(*owner))
         })
         .filter(|owner| is_valid_host_window(*owner))
+}
+
+fn sync_floating_overlays(owner: HWND) {
+    let overlays = FLOATING_OVERLAYS
+        .get()
+        .and_then(|floats| floats.lock().ok())
+        .and_then(|floats| floats.get(&hwnd_handle(owner)).cloned())
+        .unwrap_or_default();
+    let Some(bounds) = overlay_reference_rect_for_host(owner) else {
+        return;
+    };
+
+    for overlay in overlays {
+        if !webtag_is_visible(&overlay.webtag_key) {
+            continue;
+        }
+        let Some(window) = window_handle_for_key(&overlay.webtag_key) else {
+            continue;
+        };
+        if !is_window_handle_valid(hwnd_handle(window)) {
+            continue;
+        }
+        let layout = overlay.layout;
+        let rect = overlay_rect(
+            bounds,
+            layout.width,
+            layout.height,
+            layout.width_ratio,
+            layout.height_ratio,
+            layout.position,
+        );
+        let mut current = RECT::default();
+        if unsafe { WindowsAndMessaging::GetWindowRect(window, &mut current) }.is_err()
+            || current == rect
+        {
+            continue;
+        }
+        let size_changed = current.right - current.left != rect.right - rect.left
+            || current.bottom - current.top != rect.bottom - rect.top;
+        if size_changed {
+            #[cfg(all(feature = "shell-chrome", feature = "device-frame"))]
+            let device_edge_clipped =
+                apply_floating_overlay_device_region(window, Some(owner), rect);
+            #[cfg(not(all(feature = "shell-chrome", feature = "device-frame")))]
+            let device_edge_clipped = false;
+            apply_floating_card_dressing(window, device_edge_clipped);
+        }
+        unsafe {
+            let mut flags = WindowsAndMessaging::SWP_NOZORDER
+                | WindowsAndMessaging::SWP_NOACTIVATE
+                | WindowsAndMessaging::SWP_NOCOPYBITS;
+            if size_changed {
+                flags |= WindowsAndMessaging::SWP_FRAMECHANGED;
+            }
+            let _ = WindowsAndMessaging::SetWindowPos(
+                window,
+                None,
+                rect.left,
+                rect.top,
+                rect.right - rect.left,
+                rect.bottom - rect.top,
+                flags,
+            );
+        }
+    }
 }
 
 /// Re-raises the owner's visible floating surfaces above its chrome popups —
@@ -985,16 +1197,16 @@ fn floating_overlay_owner(webtag_key: &str) -> Option<HWND> {
 /// would otherwise stack it over an open float.
 #[cfg(feature = "shell-chrome")]
 fn raise_floating_overlays(owner: HWND) {
-    let keys: Vec<String> = FLOATING_OVERLAYS
+    let overlays = FLOATING_OVERLAYS
         .get()
         .and_then(|floats| floats.lock().ok())
         .and_then(|floats| floats.get(&hwnd_handle(owner)).cloned())
         .unwrap_or_default();
-    for key in keys {
-        if !webtag_is_visible(&key) {
+    for overlay in overlays {
+        if !webtag_is_visible(&overlay.webtag_key) {
             continue;
         }
-        if let Some(float) = window_handle_for_key(&key)
+        if let Some(float) = window_handle_for_key(&overlay.webtag_key)
             && is_window_handle_valid(hwnd_handle(float))
         {
             unsafe {
@@ -1340,26 +1552,9 @@ fn overlay_reference_rect(hwnd: HWND) -> RECT {
     // overlay against itself and let its size drift on every hide/show. Excluding
     // the overlay (`hwnd`) pins it to the device-frame content instead.
     if let Some(host) = active_host_window_except(Some(hwnd))
-        && let Some(host_key) = active_webtag_key_for_window(host)
+        && let Some(rect) = overlay_reference_rect_for_host(host)
     {
-        let client = content_rect_for_window(host, &host_key);
-        let width = client.right - client.left;
-        let height = client.bottom - client.top;
-        if width > OVERLAY_MIN_WIDTH && height > OVERLAY_MIN_HEIGHT {
-            let mut origin = windows::Win32::Foundation::POINT {
-                x: client.left,
-                y: client.top,
-            };
-            unsafe {
-                let _ = windows::Win32::Graphics::Gdi::ClientToScreen(host, &mut origin);
-            }
-            return RECT {
-                left: origin.x,
-                top: origin.y,
-                right: origin.x + width,
-                bottom: origin.y + height,
-            };
-        }
+        return rect;
     }
 
     unsafe {
@@ -1379,6 +1574,31 @@ fn overlay_reference_rect(hwnd: HWND) -> RECT {
         right: 1024,
         bottom: 768,
     }
+}
+
+fn overlay_reference_rect_for_host(host: HWND) -> Option<RECT> {
+    let host_key = active_webtag_key_for_window(host)?;
+    let client = content_rect_for_window(host, &host_key);
+    let width = client.right - client.left;
+    let height = client.bottom - client.top;
+    if width <= OVERLAY_MIN_WIDTH || height <= OVERLAY_MIN_HEIGHT {
+        return None;
+    }
+    let mut origin = POINT {
+        x: client.left,
+        y: client.top,
+    };
+    unsafe {
+        if !windows::Win32::Graphics::Gdi::ClientToScreen(host, &mut origin).as_bool() {
+            return None;
+        }
+    }
+    Some(RECT {
+        left: origin.x,
+        top: origin.y,
+        right: origin.x + width,
+        bottom: origin.y + height,
+    })
 }
 
 fn overlay_rect(
@@ -1777,20 +1997,13 @@ fn refresh_adjusted_content_rect(webtag_key: &str, mut rect: RECT) -> RECT {
 #[cfg(feature = "shell-chrome")]
 fn surface_clip_style(hwnd: HWND, webtag_key: &str, rect: RECT) -> ([i32; 4], u32) {
     // A framed simulator screen rounds to the device silhouette, not the
-    // shell workspace: bezel-colored wedges replace the frame's old
-    // SetWindowRgn cut + corner-mask overlay on the composition path.
+    // shell workspace. Floating overlays live in their own top-level window,
+    // so resolve their framed owner and compare both rectangles in screen
+    // coordinates. A full-width bottom sheet then inherits only the device's
+    // bottom corners instead of painting a square WebView over the bezel.
     #[cfg(feature = "device-frame")]
-    if let Some((radius, bezel)) =
-        crate::device_frame::device_frame_screen_clip_style(hwnd_handle(hwnd))
-    {
-        let mut client = RECT::default();
-        if unsafe { WindowsAndMessaging::GetClientRect(hwnd, &mut client) }.is_err() {
-            return ([0; 4], 0);
-        }
-        return (
-            crate::shell::workspace_corner_radii(rect, client, radius),
-            0xff00_0000 | bezel,
-        );
+    if let Some(style) = device_frame_surface_clip_style(hwnd, webtag_key, rect) {
+        return style;
     }
     if windows_chrome_renderer().is_none() || webtag_is_fullscreen_drill(webtag_key) {
         return ([0; 4], 0);
@@ -1848,6 +2061,58 @@ fn surface_clip_style(hwnd: HWND, webtag_key: &str, rect: RECT) -> ([i32; 4], u3
         ),
         backdrop,
     )
+}
+
+#[cfg(all(feature = "shell-chrome", feature = "device-frame"))]
+fn device_frame_surface_clip_style(
+    hwnd: HWND,
+    webtag_key: &str,
+    rect: RECT,
+) -> Option<([i32; 4], u32)> {
+    let frame_owner = floating_overlay_owner(webtag_key).unwrap_or(hwnd);
+    let (radius, corner_color) =
+        crate::device_frame::device_frame_screen_clip_style(hwnd_handle(frame_owner))?;
+
+    let mut screen = RECT::default();
+    if unsafe { WindowsAndMessaging::GetClientRect(frame_owner, &mut screen) }.is_err() {
+        return None;
+    }
+    let screen = client_rect_to_screen(frame_owner, screen)?;
+    let surface = client_rect_to_screen(hwnd, rect)?;
+    Some((
+        device_frame_surface_corner_radii(surface, screen, radius),
+        0xff00_0000 | corner_color,
+    ))
+}
+
+#[cfg(all(feature = "shell-chrome", feature = "device-frame"))]
+fn client_rect_to_screen(hwnd: HWND, rect: RECT) -> Option<RECT> {
+    let mut top_left = POINT {
+        x: rect.left,
+        y: rect.top,
+    };
+    let mut bottom_right = POINT {
+        x: rect.right,
+        y: rect.bottom,
+    };
+    unsafe {
+        if !windows::Win32::Graphics::Gdi::ClientToScreen(hwnd, &mut top_left).as_bool()
+            || !windows::Win32::Graphics::Gdi::ClientToScreen(hwnd, &mut bottom_right).as_bool()
+        {
+            return None;
+        }
+    }
+    Some(RECT {
+        left: top_left.x,
+        top: top_left.y,
+        right: bottom_right.x,
+        bottom: bottom_right.y,
+    })
+}
+
+#[cfg(all(feature = "shell-chrome", feature = "device-frame"))]
+fn device_frame_surface_corner_radii(surface: RECT, screen: RECT, radius: i32) -> [i32; 4] {
+    crate::shell::workspace_corner_radii(surface, screen, radius)
 }
 
 #[cfg(not(feature = "shell-chrome"))]
@@ -3728,6 +3993,9 @@ fn handle_window_position_changed(hwnd: HWND, lparam: LPARAM) {
         }
     } else if moved {
         notify_window_position_changed(hwnd);
+    }
+    if moved || sized {
+        sync_floating_overlays(hwnd);
     }
 }
 
@@ -8078,6 +8346,8 @@ mod tests {
         WindowResizeDrag, WindowResizeEdge, WindowsFrameButton, frame_button_non_client_hit,
         resized_window_rect, same_window_generation,
     };
+    #[cfg(all(feature = "shell-chrome", feature = "device-frame"))]
+    use super::{device_frame_surface_corner_radii, per_corner_region_row_span};
     use windows::Win32::Foundation::{POINT, RECT};
     use windows::Win32::UI::WindowsAndMessaging;
 
@@ -8134,5 +8404,51 @@ mod tests {
         assert!(same_window_generation(Some(42), 42));
         assert!(!same_window_generation(Some(43), 42));
         assert!(!same_window_generation(None, 42));
+    }
+
+    #[cfg(all(feature = "shell-chrome", feature = "device-frame"))]
+    #[test]
+    fn bottom_sheet_inherits_only_device_screen_bottom_corners() {
+        let screen = RECT {
+            left: 1083,
+            top: 270,
+            right: 1476,
+            bottom: 1122,
+        };
+        let bottom_sheet = RECT {
+            left: 1083,
+            top: 590,
+            right: 1476,
+            bottom: 1122,
+        };
+        let inset_card = RECT {
+            left: 1107,
+            top: 430,
+            right: 1452,
+            bottom: 930,
+        };
+
+        assert_eq!(
+            device_frame_surface_corner_radii(bottom_sheet, screen, 54),
+            [0, 0, 54, 54]
+        );
+        assert_eq!(
+            device_frame_surface_corner_radii(inset_card, screen, 54),
+            [0; 4]
+        );
+
+        let radii = [0, 0, 54, 54];
+        assert_eq!(
+            per_corner_region_row_span(393, 532, radii, 0),
+            Some((0, 393))
+        );
+        assert_eq!(
+            per_corner_region_row_span(393, 532, radii, 531),
+            Some((47, 346))
+        );
+        assert_eq!(
+            per_corner_region_row_span(393, 532, radii, 300),
+            Some((0, 393))
+        );
     }
 }
