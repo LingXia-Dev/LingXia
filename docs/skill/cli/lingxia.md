@@ -148,23 +148,6 @@ should also run on that machine through SSH.
 
 See `lingxia dev --help` for the flags.
 
-**Runner cloud defaults (`~/.lingxia/runner/config.toml`):**
-
-Standalone lxapp dev on macOS/Windows launches LingXia Runner. When the Runner
-uses the cloud provider, this hand-edited file can override the backend and app
-identity. Each value follows the same shape as `app.lingxiaServer` in
-`lingxia.yaml`: a scalar applies to every env, an env-keyed map is explicit per
-env (`developer` / `preview` / `release`) with no fallback for envs it omits.
-The active env comes from `lingxia dev --env` (`developer` when omitted).
-
-```toml
-lingxiaId = "com.example.app"      # scalar: same for every env
-
-[lingxiaServer]                    # map: explicit per env
-developer = "http://127.0.0.1:8787"
-release = "https://api.example.com"
-```
-
 > **Drive the live session with [`lxdev`](./lxdev.md)** — a separate binary that
 > automates the running app (browser tabs, lxapp pages, screenshots, logs) and
 > can rebuild + reload lxapps, without starting a new session. The split:

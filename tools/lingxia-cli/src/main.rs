@@ -370,6 +370,12 @@ enum Commands {
         dev_options: DevOptions,
     },
 
+    /// Configure the standalone lxapp Runner cloud identity
+    Runner {
+        #[command(subcommand)]
+        action: Option<commands::runner::RunnerAction>,
+    },
+
     /// Per-user dev-session broker (started on demand by `lingxia dev`/`lxdev`)
     #[command(hide = true, name = "dev-broker")]
     DevBroker,
@@ -757,6 +763,9 @@ fn main() -> Result<()> {
                 }),
             })?;
         }
+        Commands::Runner { action } => {
+            commands::runner::execute(action)?;
+        }
         Commands::DevBroker => {
             lingxia_devtool_protocol::broker::run_broker()?;
         }
@@ -893,6 +902,46 @@ mod cli_tests {
             panic!("expected dev command");
         };
         assert!(dev_options.background);
+    }
+
+    #[test]
+    fn runner_without_action_shows_config() {
+        let cli = Cli::try_parse_from(["lingxia", "runner"]).unwrap();
+        let Commands::Runner { action } = cli.command else {
+            panic!("expected runner command");
+        };
+        assert!(action.is_none());
+    }
+
+    #[test]
+    fn runner_set_accepts_identity_and_environment_urls() {
+        let cli = Cli::try_parse_from([
+            "lingxia",
+            "runner",
+            "set",
+            "com.example.app",
+            "--developer",
+            "http://127.0.0.1:8787",
+            "--release",
+            "https://api.example.com",
+        ])
+        .unwrap();
+        let Commands::Runner {
+            action:
+                Some(commands::runner::RunnerAction::Set {
+                    lingxia_id,
+                    developer,
+                    preview,
+                    release,
+                }),
+        } = cli.command
+        else {
+            panic!("expected runner set command");
+        };
+        assert_eq!(lingxia_id, "com.example.app");
+        assert_eq!(developer.as_deref(), Some("http://127.0.0.1:8787"));
+        assert!(preview.is_none());
+        assert_eq!(release.as_deref(), Some("https://api.example.com"));
     }
 
     #[test]
