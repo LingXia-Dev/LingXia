@@ -281,6 +281,7 @@ enum LxAppSurface {
                 height: height,
                 widthRatio: widthRatio,
                 heightRatio: heightRatio,
+                ephemeralWebData: ephemeralWebData,
                 urlCallback: urlCallback,
                 shell: shell
             )
@@ -411,7 +412,7 @@ enum LxAppSurface {
             wkWebView.translatesAutoresizingMaskIntoConstraints = false
             contentHost.addSubview(wkWebView)
             pinToEdges(wkWebView, in: contentHost)
-            wkWebView.load(URLRequest(url: url))
+            loadWebSurfaceURL(url, in: wkWebView)
             webView = wkWebView
             navigationDelegate = delegate
 
@@ -597,6 +598,7 @@ enum LxAppSurface {
         height: Double,
         widthRatio: Double,
         heightRatio: Double,
+        ephemeralWebData: Bool,
         urlCallback: Bool,
         shell: LxAppShell
     ) -> Bool {
@@ -661,8 +663,8 @@ enum LxAppSurface {
             }
             // Every web-aside node is a tab in the single per-window browser
             // panel. The FIRST node anchors the panel (docks its container +
-            // registers the shell slot); later nodes just add a tab (deduped by
-            // URL) — no second dock. onCloseTab(sid) closes that one tab/node;
+            // registers the shell slot); later nodes just add a tab (ordinary
+            // surfaces dedupe by URL) — no second dock. onCloseTab(sid) closes that one tab/node;
             // onCloseAside closes the anchor, which cascades to every tab.
             let onCloseTab: (String) -> Void = { sid in
                 _ = LxAppSurface.close(id: sid, appId: appId, reason: "user")
@@ -679,6 +681,8 @@ enum LxAppSurface {
             guard let opened = shell.browserCoordinator.openDockedAsideTab(
                 surfaceId: id,
                 url: url.absoluteString,
+                ephemeralWebData: ephemeralWebData,
+                urlCallback: urlCallback,
                 onCloseTab: onCloseTab,
                 onCloseAside: onCloseAside
             ) else {
@@ -1598,7 +1602,7 @@ enum LxAppSurface {
             }
             controller.contentView.addSubview(wkWebView)
             pinToEdges(wkWebView, in: controller.contentView)
-            wkWebView.load(URLRequest(url: url))
+            loadWebSurfaceURL(url, in: wkWebView)
             webView = wkWebView
             navigationDelegate = delegate
 
@@ -1884,6 +1888,14 @@ extension LxAppSurface {
             configuration.websiteDataStore = .nonPersistent()
         }
         return configuration
+    }
+
+    static func loadWebSurfaceURL(_ url: URL, in webView: WKWebView) {
+        if url.isFileURL {
+            webView.loadFileURL(url, allowingReadAccessTo: url.deletingLastPathComponent())
+        } else {
+            webView.load(URLRequest(url: url))
+        }
     }
 
     static func loadWebSurfaceError(in webView: WKWebView, url: URL, error: Error) {

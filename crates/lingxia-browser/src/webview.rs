@@ -32,6 +32,7 @@ use lingxia_webview::{
 use lxapp::LxAppError;
 use serde_json::Value;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 // ---------------------------------------------------------------------------
 // Browser tab WebView delegate
@@ -345,13 +346,17 @@ fn callback_blocks_file_navigation(url_callback: bool, url: &str) -> bool {
     url_callback && extract_url_scheme(url).as_deref() == Some("file")
 }
 
+fn callback_policy_blocks_file_navigation(url_callback: &AtomicBool, url: &str) -> bool {
+    callback_blocks_file_navigation(url_callback.load(Ordering::Acquire), url)
+}
+
 pub(crate) fn browser_create_webview(
     path: &str,
     session_id: u64,
     tab_id: &str,
     create_token: u64,
     data_mode: WebViewDataMode,
-    url_callback: bool,
+    url_callback: Arc<AtomicBool>,
 ) -> Result<(), LxAppError> {
     let webtag = browser_webtag(path, session_id);
     let browser_owner = ensure_browser_lxapp()?;
@@ -380,6 +385,7 @@ pub(crate) fn browser_create_webview(
     let tab_id_for_download = tab_id_owned.clone();
     let owner_for_download = browser_owner.clone();
     let owner_for_file_chooser = browser_owner.clone();
+    let url_callback_for_navigation = url_callback.clone();
     let session = WebViewBuilder::browser(webtag)
         .data_mode(data_mode)
         .delegate(Arc::new(BrowserTabDelegate {
@@ -410,7 +416,7 @@ pub(crate) fn browser_create_webview(
             async move { handle_browser_lingxia_scheme(&ctx, req).await.into() }
         })
         .on_navigation(move |url| {
-            if callback_blocks_file_navigation(url_callback, url) {
+            if callback_policy_blocks_file_navigation(&url_callback_for_navigation, url) {
                 return NavigationPolicy::Cancel;
             }
             // Keep internal lx:// and lingxia:// browser pages inside this WebView.
@@ -442,7 +448,7 @@ pub(crate) fn browser_create_webview(
             }
         })
         .on_new_window(move |url| {
-            if callback_blocks_file_navigation(url_callback, url) {
+            if callback_policy_blocks_file_navigation(&url_callback, url) {
                 return NewWindowPolicy::Cancel;
             }
             let normalized = normalize_browser_target_url(url);
@@ -650,7 +656,8 @@ pub(crate) fn browser_destroy_webview(path: &str, session_id: u64) {
 
 #[cfg(test)]
 mod tests {
-    use super::callback_blocks_file_navigation;
+    use super::{callback_blocks_file_navigation, callback_policy_blocks_file_navigation};
+    use std::sync::atomic::{AtomicBool, Ordering};
 
     #[test]
     fn callback_tabs_block_file_navigation_only() {
@@ -668,6 +675,21 @@ mod tests {
         ));
         assert!(!callback_blocks_file_navigation(
             false,
+            "file:///tmp/document.html"
+        ));
+    }
+
+    #[test]
+    fn callback_policy_updates_apply_to_an_existing_webview_handler() {
+        let policy = AtomicBool::new(false);
+        assert!(!callback_policy_blocks_file_navigation(
+            &policy,
+            "file:///tmp/document.html"
+        ));
+
+        policy.store(true, Ordering::Release);
+        assert!(callback_policy_blocks_file_navigation(
+            &policy,
             "file:///tmp/document.html"
         ));
     }

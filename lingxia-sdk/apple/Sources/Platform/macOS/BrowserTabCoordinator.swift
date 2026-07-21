@@ -369,11 +369,17 @@ final class BrowserTabCoordinator: NSObject {
     func openDockedAsideTab(
         surfaceId: String,
         url: String,
+        ephemeralWebData: Bool,
+        urlCallback: Bool,
         onCloseTab: @escaping (String) -> Void,
         onCloseAside: @escaping () -> Void
     ) -> (browser: DockedBrowser, isNew: Bool)? {
         if let existing = dockedBrowser {
-            if existing.addOrFocusTab(surfaceId: surfaceId, url: url) {
+            if existing.addOrFocusTab(
+                surfaceId: surfaceId,
+                url: url,
+                ephemeralWebData: ephemeralWebData,
+                urlCallback: urlCallback) {
                 return (existing, false)
             }
             // Stale panel reference (e.g. torn down without clearing): drop it
@@ -390,6 +396,8 @@ final class BrowserTabCoordinator: NSObject {
             owner: owner,
             surfaceId: surfaceId,
             url: url,
+            ephemeralWebData: ephemeralWebData,
+            urlCallback: urlCallback,
             onCloseTab: onCloseTab,
             onCloseAside: onCloseAside
         ) else { return nil }

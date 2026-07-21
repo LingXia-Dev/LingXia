@@ -8,7 +8,8 @@ import CLingXiaRustAPI
 /// more external-content tabs (https/file) behind a Chrome-style title tab strip
 /// — there is **no address input** (that is the only thing distinguishing the
 /// aside from the self/main browser). Tabs are opened only through the API
-/// (`openSurface({ url, as: 'aside' })`), deduped by URL; each tab is a real
+/// (`openSurface({ url, as: 'aside' })`); ordinary tabs dedupe by URL, while
+/// callback tabs stay isolated. Each tab is a real
 /// LingXia browser webview (created via the Rust browser path) so it takes
 /// native input and drives back/forward.
 ///
@@ -43,6 +44,8 @@ final class DockedBrowser: NSObject {
     private final class Tab {
         let surfaceId: String
         let browserTabId: String
+        let ephemeralWebData: Bool
+        let urlCallback: Bool
         var url: String
         var title: String = ""
         var webView: WKWebView?
@@ -58,10 +61,18 @@ final class DockedBrowser: NSObject {
         nonisolated(unsafe) var backObs: NSKeyValueObservation?
         nonisolated(unsafe) var forwardObs: NSKeyValueObservation?
         nonisolated(unsafe) var titleObs: NSKeyValueObservation?
-        init(surfaceId: String, browserTabId: String, url: String) {
+        init(
+            surfaceId: String,
+            browserTabId: String,
+            url: String,
+            ephemeralWebData: Bool,
+            urlCallback: Bool
+        ) {
             self.surfaceId = surfaceId
             self.browserTabId = browserTabId
             self.url = url
+            self.ephemeralWebData = ephemeralWebData
+            self.urlCallback = urlCallback
         }
         func invalidate() {
             urlObs?.invalidate(); backObs?.invalidate()
@@ -100,6 +111,8 @@ final class DockedBrowser: NSObject {
         owner: (appId: String, sessionId: UInt64),
         surfaceId: String,
         url: String,
+        ephemeralWebData: Bool,
+        urlCallback: Bool,
         onCloseTab: @escaping (String) -> Void,
         onCloseAside: @escaping () -> Void
     ) {
@@ -108,7 +121,11 @@ final class DockedBrowser: NSObject {
         self.onCloseAside = onCloseAside
         super.init()
         buildChrome()
-        guard addOrFocusTab(surfaceId: surfaceId, url: url) else { return nil }
+        guard addOrFocusTab(
+            surfaceId: surfaceId,
+            url: url,
+            ephemeralWebData: ephemeralWebData,
+            urlCallback: urlCallback) else { return nil }
         // First click inside the web area marks the active tab as interacted
         // (observe-only; the event passes through untouched).
         interactionMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { [weak self] event in
@@ -149,22 +166,42 @@ final class DockedBrowser: NSObject {
 
     // MARK: - Tab management
 
-    /// Add a tab for `url`, or focus an existing tab with the same URL (dedup).
+    /// Add a tab for `url`, or focus an equivalent ordinary tab. Callback tabs
+    /// never deduplicate because each one owns an isolated navigation channel.
     /// Returns false only if the underlying browser tab could not be created.
     @discardableResult
-    func addOrFocusTab(surfaceId: String, url: String) -> Bool {
+    func addOrFocusTab(
+        surfaceId: String,
+        url: String,
+        ephemeralWebData: Bool,
+        urlCallback: Bool
+    ) -> Bool {
         if torn { return false }
-        if let existing = tabs.first(where: { Self.sameURL($0.url, url) }) {
+        if !urlCallback, let existing = tabs.first(where: {
+            !$0.urlCallback
+                && Self.sameURL($0.url, url)
+                && $0.ephemeralWebData == ephemeralWebData
+        }) {
             activate(existing.surfaceId)
             return true
         }
-        guard let opened = openStandaloneBrowserTab(owner.appId, owner.sessionId, url) else {
+        guard let opened = openStandaloneBrowserTab(
+            owner.appId,
+            owner.sessionId,
+            url,
+            ephemeralWebData,
+            urlCallback) else {
             LXLog.error("openStandaloneBrowserTab failed url=\(url)", category: "DockedBrowser")
             return false
         }
         let browserTabId = opened.toString().trimmingCharacters(in: .whitespacesAndNewlines)
         guard !browserTabId.isEmpty else { return false }
-        let tab = Tab(surfaceId: surfaceId, browserTabId: browserTabId, url: url)
+        let tab = Tab(
+            surfaceId: surfaceId,
+            browserTabId: browserTabId,
+            url: url,
+            ephemeralWebData: ephemeralWebData,
+            urlCallback: urlCallback)
         tab.title = Self.shortTitle(for: url)
         tabs.append(tab)
         buildTabRow(tab)

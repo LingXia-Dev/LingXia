@@ -604,8 +604,10 @@ export function isHttpUrl(value: string): boolean {
   return normalized.startsWith('https://') || normalized.startsWith('http://');
 }
 
-function isFileUrl(value: string): boolean {
-  return value.trim().toLowerCase().startsWith('file://');
+export function isFileUrl(value: string): boolean {
+  const normalized = value.trim();
+  const schemeEnd = normalized.indexOf(':');
+  return schemeEnd > 0 && normalized.substring(0, schemeEnd).toLowerCase() === 'file';
 }
 
 function isSupportedUrl(value: string, urlCallback: boolean): boolean {

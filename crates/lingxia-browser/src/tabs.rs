@@ -10,7 +10,7 @@ use crate::webview::{
 use lingxia_webview::WebViewDataMode;
 use lxapp::{LxApp, LxAppError};
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 
 pub(crate) const INTERNAL_TAB_PATH_PREFIX: &str = "/tabs/";
@@ -57,7 +57,7 @@ pub(crate) struct BrowserTabState {
     pub(crate) data_mode: WebViewDataMode,
     /// URL-callback tabs reject every file navigation, including redirects
     /// initiated after the initial HTTP(S) document loads.
-    pub(crate) url_callback: bool,
+    pub(crate) url_callback: Arc<AtomicBool>,
     /// When true this tab is a standalone browser with no tab strip (e.g. a
     /// docked aside browser). New-window requests (`target=_blank`,
     /// `window.open`) load in the same WebView instead of spawning a new
@@ -712,18 +712,20 @@ fn open_internal_browser_tab_with_scope(
     let mut create_token: Option<u64> = None;
     let mut is_new_tab = false;
 
-    {
+    let url_callback_policy = {
         let mut state = lock_state();
         if let Some(existing) = state.tabs.get_mut(&tab_id) {
             existing.session_id = session_id;
-            existing.url_callback = url_callback;
+            existing.url_callback.store(url_callback, Ordering::Release);
             if has_target_url {
                 existing.pending_url = Some(normalized_target_url.clone());
             }
+            existing.url_callback.clone()
         } else {
             is_new_tab = true;
             let token = next_browser_create_token();
             create_token = Some(token);
+            let url_callback_policy = Arc::new(AtomicBool::new(url_callback));
             state.tabs.insert(
                 tab_id.clone(),
                 BrowserTabState {
@@ -743,21 +745,27 @@ fn open_internal_browser_tab_with_scope(
                     can_go_forward: false,
                     discarded: false,
                     data_mode,
-                    url_callback,
+                    url_callback: url_callback_policy.clone(),
                     standalone,
                     aside,
                     owner_appid,
                     owner_session_id,
                 },
             );
+            url_callback_policy
         }
-    }
+    };
 
     if is_new_tab {
         let token = create_token.expect("create_token must exist for new tab");
-        if let Err(e) =
-            browser_create_webview(&path, session_id, &tab_id, token, data_mode, url_callback)
-        {
+        if let Err(e) = browser_create_webview(
+            &path,
+            session_id,
+            &tab_id,
+            token,
+            data_mode,
+            url_callback_policy.clone(),
+        ) {
             lock_state().tabs.remove(&tab_id);
             return Err(e);
         }
@@ -804,7 +812,7 @@ fn open_internal_browser_tab_with_scope(
                         &tab_id,
                         token,
                         data_mode,
-                        url_callback,
+                        url_callback_policy.clone(),
                     )
                 {
                     lock_state().tabs.remove(&tab_id);
@@ -1076,7 +1084,12 @@ pub(crate) fn reactivate_browser_tab(tab_id: &str) -> Result<(), LxAppError> {
             tab.discarded = false;
             tab.create_in_flight = true;
             // `pending_url` already holds the saved `current_url` from discard.
-            Some((tab.session_id, token, tab.data_mode, tab.url_callback))
+            Some((
+                tab.session_id,
+                token,
+                tab.data_mode,
+                tab.url_callback.clone(),
+            ))
         } else {
             None
         }
@@ -1161,7 +1174,7 @@ mod tests {
                 can_go_forward: false,
                 discarded: false,
                 data_mode: WebViewDataMode::ProfileDefault,
-                url_callback: false,
+                url_callback: Arc::new(AtomicBool::new(false)),
                 standalone: false,
                 aside: false,
                 owner_appid: None,

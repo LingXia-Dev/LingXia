@@ -289,7 +289,13 @@ mod bridge {
         fn open_browser_tab(appid: &str, session_id: u64, url: &str) -> Option<String>;
 
         #[swift_bridge(swift_name = "openStandaloneBrowserTab")]
-        fn open_standalone_browser_tab(appid: &str, session_id: u64, url: &str) -> Option<String>;
+        fn open_standalone_browser_tab(
+            appid: &str,
+            session_id: u64,
+            url: &str,
+            ephemeral_web_data: bool,
+            url_callback: bool,
+        ) -> Option<String>;
 
         // Open an aside tab in the shared in-app browser: self chrome minus the
         // address bar (compact `{ url, as: 'aside' }`).
@@ -785,15 +791,26 @@ pub fn webview_load_error_document(url: &str) -> String {
     crate::webview_error::load_error_document(url)
 }
 
-pub fn open_standalone_browser_tab(appid: &str, session_id: u64, url: &str) -> Option<String> {
+pub fn open_standalone_browser_tab(
+    appid: &str,
+    session_id: u64,
+    url: &str,
+    ephemeral_web_data: bool,
+    url_callback: bool,
+) -> Option<String> {
     ffi_catch_unwind!("open_standalone_browser_tab", None, || {
+        let data_mode = if ephemeral_web_data {
+            lingxia_webview::WebViewDataMode::Ephemeral
+        } else {
+            lingxia_webview::WebViewDataMode::ProfileDefault
+        };
         match crate::browser::open_standalone_for_app(
             appid,
             session_id,
             url,
             None,
-            lingxia_webview::WebViewDataMode::ProfileDefault,
-            false,
+            data_mode,
+            url_callback,
         ) {
             Ok(tab_id) => Some(tab_id),
             Err(e) => {

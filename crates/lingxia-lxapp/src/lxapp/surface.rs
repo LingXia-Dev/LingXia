@@ -593,6 +593,7 @@ impl LxApp {
                 &page_path,
                 owner_pid.as_deref(),
                 request.role,
+                url_callback,
             );
             let opened = controller.open_node(node, request.position);
             present_kind = opened.kind;
@@ -850,7 +851,8 @@ impl LxApp {
     /// surface. `request.target` must be [`PageSurfaceTarget::Url`]. The
     /// interception channel opens before the surface presents, so the sentinel
     /// can never load unobserved. Targets require HTTPS outside a dev session;
-    /// dev sessions may use HTTP, while file URLs are always rejected.
+    /// loopback HTTP is always allowed and dev sessions may use other HTTP,
+    /// while file URLs are always rejected.
     pub fn open_url_callback_surface(
         &self,
         callback_url: impl Into<String>,
@@ -862,6 +864,15 @@ impl LxApp {
             ));
         };
         validate_url_callback_target(target_url, is_dev_session())?;
+        let surface_id = request.id.trim();
+        if !surface_id.is_empty()
+            && (self.has_surface(surface_id)
+                || window_controller(PRIMARY_WINDOW, &self.runtime).contains(surface_id))
+        {
+            return Err(LxAppError::InvalidParameter(format!(
+                "a URL callback surface requires a unique surface id: {surface_id}"
+            )));
+        }
         let channel = lingxia_webview::url_callback::open_channel(callback_url)
             .map_err(|err| LxAppError::InvalidParameter(err.to_string()))?;
         // Handoff flows persist through their callback payload (tokens), never
@@ -1187,6 +1198,7 @@ impl LxApp {
         page_path: &Option<String>,
         owner_page_instance_id: Option<&str>,
         role: lingxia_surface::Role,
+        url_callback: bool,
     ) -> lingxia_surface::Surface {
         use lingxia_surface::{
             Edge as LxEdge, FloatSpec, Placement, Role as LxRole, Surface as LxSurface,
@@ -1211,6 +1223,7 @@ impl LxApp {
             },
             SurfaceContent::Url => LxContent::Web {
                 url: path_or_url.to_string(),
+                reuse_by_url: !url_callback,
             },
         };
         // A surface opened dynamically by an lxapp is caller-scoped: owned by the
@@ -1296,10 +1309,10 @@ impl LxApp {
 }
 
 fn validate_url_callback_target(target: &str, dev_mode: bool) -> Result<(), LxAppError> {
-    let scheme = target
+    let raw_scheme = target
         .split_once(':')
         .map(|(scheme, _)| scheme.to_ascii_lowercase());
-    if scheme.as_deref() == Some("file") {
+    if raw_scheme.as_deref() == Some("file") {
         return Err(LxAppError::InvalidParameter(
             "a URL callback surface cannot load file URLs".to_string(),
         ));
@@ -1314,16 +1327,30 @@ fn validate_url_callback_target(target: &str, dev_mode: bool) -> Result<(), LxAp
             "a URL callback surface requires an absolute HTTPS URL".to_string(),
         ));
     }
+    let scheme = uri.scheme_str().map(str::to_ascii_lowercase);
     match scheme.as_deref() {
-        Some(scheme) if scheme.eq_ignore_ascii_case("https") => Ok(()),
-        Some(scheme) if scheme.eq_ignore_ascii_case("http") && dev_mode => Ok(()),
-        Some(scheme) if scheme.eq_ignore_ascii_case("http") => Err(LxAppError::InvalidParameter(
-            "a URL callback surface requires HTTPS outside dev mode".to_string(),
+        Some("https") => Ok(()),
+        Some("http") if dev_mode || uri.host().is_some_and(is_url_callback_loopback_host) => Ok(()),
+        Some("http") => Err(LxAppError::InvalidParameter(
+            "a URL callback surface requires HTTPS or a loopback HTTP URL outside dev mode"
+                .to_string(),
         )),
         _ => Err(LxAppError::InvalidParameter(
             "a URL callback surface requires an absolute HTTPS URL".to_string(),
         )),
     }
+}
+
+fn is_url_callback_loopback_host(host: &str) -> bool {
+    let host = host
+        .trim_matches(|ch| ch == '[' || ch == ']')
+        .trim_end_matches('.')
+        .to_ascii_lowercase();
+    if host == "localhost" || host.ends_with(".localhost") {
+        return true;
+    }
+    host.parse::<std::net::IpAddr>()
+        .is_ok_and(|ip| ip.is_loopback())
 }
 
 pub(crate) type SurfaceRecords = HashMap<String, SurfaceRecord>;
@@ -1490,10 +1517,37 @@ mod tests {
     fn url_callback_target_requires_https_outside_dev_mode() {
         assert!(validate_url_callback_target("https://auth.example.com/authorize", false).is_ok());
         assert!(matches!(
-            validate_url_callback_target("http://127.0.0.1:18080/authorize", false),
+            validate_url_callback_target("http://192.168.1.20:18080/authorize", false),
             Err(LxAppError::InvalidParameter(message))
-                if message == "a URL callback surface requires HTTPS outside dev mode"
+                if message == "a URL callback surface requires HTTPS or a loopback HTTP URL outside dev mode"
         ));
+    }
+
+    #[test]
+    fn url_callback_target_allows_loopback_http_in_standard_mode() {
+        for target in [
+            "http://127.0.0.1:18080/authorize",
+            "http://127.23.4.5/authorize",
+            "http://localhost:18080/authorize",
+            "http://auth.localhost/authorize",
+            "http://[::1]:18080/authorize",
+        ] {
+            assert!(
+                validate_url_callback_target(target, false).is_ok(),
+                "loopback target should be accepted: {target}"
+            );
+        }
+    }
+
+    #[test]
+    fn url_callback_target_rejects_hosts_that_only_resemble_loopback() {
+        for target in [
+            "http://localhost.example.com/authorize",
+            "http://127.0.0.1.example.com/authorize",
+            "http://192.168.1.20/authorize",
+        ] {
+            assert!(validate_url_callback_target(target, false).is_err());
+        }
     }
 
     #[test]

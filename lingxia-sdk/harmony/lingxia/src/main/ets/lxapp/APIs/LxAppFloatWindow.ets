@@ -21,7 +21,7 @@ import { Lingxia } from '../../app/Lingxia';
 import { LingXiaWebView } from '../LingXiaWebView';
 import { addWebViewUiCallback, removeWebViewUiCallback, WebViewInfo, WebViewManager, toWebTag } from '../WebViewBridge';
 import { notifyPageInstanceMounted, notifyPageInstanceVisible, urlCallbackDispatch, webviewLoadErrorDocument } from 'liblingxia.so';
-import { isHttpUrl, isSameOrigin } from './LxAppSurface';
+import { isFileUrl, isHttpUrl, isSameOrigin } from './LxAppSurface';
 import type { SurfaceLayoutConfig } from './LxAppSurface';
 
 const DOMAIN = 0x0000;
@@ -288,10 +288,10 @@ struct LingXiaFloatSurfacePage {
                 if (urlCallbackDispatch(targetUrl)) {
                   return true;
                 }
-                if (isHttpUrl(targetUrl) || (!this.layout!.urlCallback && targetUrl.trim().toLowerCase().startsWith('file://'))) {
+                if (isHttpUrl(targetUrl) || (!this.layout!.urlCallback && isFileUrl(targetUrl))) {
                   return false;
                 }
-                if (targetUrl.trim().toLowerCase().startsWith('file://')) {
+                if (isFileUrl(targetUrl)) {
                   return true;
                 }
                 Lingxia.launchWithUrl(targetUrl);
