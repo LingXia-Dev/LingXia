@@ -3521,9 +3521,9 @@ dependencies = [
  "libc",
  "lingxia",
  "lingxia-devtool",
+ "lingxia-runner-config",
  "serde",
  "serde_json",
- "toml",
 ]
 
 [[package]]
