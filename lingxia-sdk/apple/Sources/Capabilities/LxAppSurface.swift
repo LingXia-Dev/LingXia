@@ -28,8 +28,9 @@ enum LxAppSurface {
         let appId: String
         let pageInstanceId: String
         let hostView: LxAppHostView?
-        let webView: WKWebView?
+        var webView: WKWebView?
         let navigationDelegate: WKNavigationDelegate?
+        let browserTabId: String?
         let window: NSWindow?
         weak var parentWindow: NSWindow?
         let delegate: WindowDelegate
@@ -67,7 +68,8 @@ enum LxAppSurface {
             dockedContainer: NSView? = nil,
             isFloat: Bool = false,
             isFullScreen: Bool = false,
-            dockedBrowser: DockedBrowser? = nil
+            dockedBrowser: DockedBrowser? = nil,
+            browserTabId: String? = nil
         ) {
             self.id = id
             self.appId = appId
@@ -75,6 +77,7 @@ enum LxAppSurface {
             self.hostView = hostView
             self.webView = webView
             self.navigationDelegate = navigationDelegate
+            self.browserTabId = browserTabId
             self.window = window
             self.parentWindow = parentWindow
             self.delegate = delegate
@@ -344,9 +347,11 @@ enum LxAppSurface {
         let hostView: LxAppHostView?
         let webView: WKWebView?
         let navigationDelegate: WKNavigationDelegate?
+        var browserTabId: String?
 
         switch content {
         case contentPage:
+            browserTabId = nil
             pageInstanceId = rawPageInstanceId.trimmingCharacters(in: .whitespacesAndNewlines)
             if path.isEmpty || pageInstanceId.isEmpty {
                 LXLog.error(
@@ -402,19 +407,35 @@ enum LxAppSurface {
             }
             pageInstanceId = ""
             hostView = nil
-            let configuration = webSurfaceConfiguration(ephemeral: ephemeralWebData)
-            let wkWebView = WKWebView(frame: contentHost.bounds, configuration: configuration)
-            let delegate = WebNavigationDelegate(
-                initialURL: url,
-                allowsCrossOrigin: true,
-                urlCallback: urlCallback)
-            wkWebView.navigationDelegate = delegate
-            wkWebView.translatesAutoresizingMaskIntoConstraints = false
-            contentHost.addSubview(wkWebView)
-            pinToEdges(wkWebView, in: contentHost)
-            loadWebSurfaceURL(url, in: wkWebView)
-            webView = wkWebView
-            navigationDelegate = delegate
+            if let opened = openStandaloneBrowserTab(
+                appId,
+                sessionId,
+                url.absoluteString,
+                ephemeralWebData,
+                urlCallback
+            ) {
+                let tabId = opened.toString().trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !tabId.isEmpty else { return false }
+                browserTabId = tabId
+                webView = nil
+                navigationDelegate = nil
+            } else {
+                browserTabId = nil
+                let wkWebView = WKWebView(
+                    frame: contentHost.bounds,
+                    configuration: webSurfaceConfiguration(ephemeral: ephemeralWebData))
+                let delegate = WebNavigationDelegate(
+                    initialURL: url,
+                    allowsCrossOrigin: true,
+                    urlCallback: urlCallback)
+                wkWebView.navigationDelegate = delegate
+                wkWebView.translatesAutoresizingMaskIntoConstraints = false
+                contentHost.addSubview(wkWebView)
+                pinToEdges(wkWebView, in: contentHost)
+                loadWebSurfaceURL(url, in: wkWebView)
+                webView = wkWebView
+                navigationDelegate = delegate
+            }
 
         default:
             LXLog.error("unsupported surface content=\(content) id=\(id) app=\(appId) path=\(path) kind=\(kind)", category: "Surface", appId: appId, path: path)
@@ -436,8 +457,13 @@ enum LxAppSurface {
             window: window,
             parentWindow: context.parentWindow,
             delegate: delegate,
-            isFloat: isFloat
+            isFloat: isFloat,
+            browserTabId: browserTabId
         )
+
+        if let tabId = browserTabId {
+            attachManagedBrowserTab(id: id, tabId: tabId, to: contentHost, attempt: 0)
+        }
 
         if isFloat {
             // Do NOT order the popup front directly. Visibility is owned by the
@@ -786,6 +812,36 @@ enum LxAppSurface {
         }
     }
 
+    private static func attachManagedBrowserTab(
+        id: String,
+        tabId: String,
+        to container: NSView,
+        attempt: Int
+    ) {
+        guard let entry = entries[id], entry.browserTabId == tabId else { return }
+        let browserAppId = getBuiltinBrowserAppId().toString()
+        let sessionId = getLxAppSessionId(browserAppId)
+        let path = browserTabPathForId(tabId).toString()
+        if sessionId > 0,
+           let webView = WebViewManager.resolveWebView(
+               appId: browserAppId,
+               path: path,
+               sessionId: sessionId
+           ) {
+            WebViewManager.configureWebViewTransparency(webView, transparent: false)
+            WebViewManager.attachWebViewToContainer(webView, container: container)
+            entry.webView = webView
+            return
+        }
+        guard attempt < 40 else {
+            _ = close(id: id, appId: entry.appId, reason: "failed")
+            return
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            attachManagedBrowserTab(id: id, tabId: tabId, to: container, attempt: attempt + 1)
+        }
+    }
+
     static func close(id: String, appId: String, reason: String) -> Bool {
         guard let entry = entries.removeValue(forKey: id) else {
             _ = onSurfaceClosed(appId, id, closeReason(reason))
@@ -797,8 +853,13 @@ enum LxAppSurface {
         }
 
         entry.hostView?.unmount(reason: closeReason(reason))
-        entry.webView?.stopLoading()
-        entry.webView?.navigationDelegate = nil
+        if let tabId = entry.browserTabId {
+            entry.webView?.removeFromSuperview()
+            _ = browserTabClose(tabId)
+        } else {
+            entry.webView?.stopLoading()
+            entry.webView?.navigationDelegate = nil
+        }
         // Multi-tab browser aside: a tab close removes just that tab. When the
         // closed node is the anchor (dockedContainer set) and other tabs
         // survive, the panel re-anchors to a survivor node; the LAST tab
@@ -1250,8 +1311,9 @@ enum LxAppSurface {
         /// when a float fills the screen (size 100%) and so reads as full-screen.
         let isFloat: Bool
         let hostView: LxAppHostView?
-        let webView: WKWebView?
+        var webView: WKWebView?
         let navigationDelegate: WKNavigationDelegate?
+        let browserTabId: String?
         let window: UIWindow
 
         init(
@@ -1263,6 +1325,7 @@ enum LxAppSurface {
             hostView: LxAppHostView?,
             webView: WKWebView?,
             navigationDelegate: WKNavigationDelegate?,
+            browserTabId: String? = nil,
             window: UIWindow
         ) {
             self.id = id
@@ -1273,6 +1336,7 @@ enum LxAppSurface {
             self.hostView = hostView
             self.webView = webView
             self.navigationDelegate = navigationDelegate
+            self.browserTabId = browserTabId
             self.window = window
         }
     }
@@ -1536,9 +1600,11 @@ enum LxAppSurface {
         let hostView: LxAppHostView?
         let webView: WKWebView?
         let navigationDelegate: WKNavigationDelegate?
+        var browserTabId: String?
 
         switch content {
         case contentPage:
+            browserTabId = nil
             pageInstanceId = rawPageInstanceId.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !path.isEmpty, !pageInstanceId.isEmpty else {
                 LXLog.error("present page requires path and pageInstanceId id=\(id) app=\(appId)", category: "Surface", appId: appId, path: path)
@@ -1580,31 +1646,42 @@ enum LxAppSurface {
             }
             pageInstanceId = ""
             hostView = nil
-            let wkWebView = WKWebView(
-                frame: controller.contentView.bounds,
-                configuration: webSurfaceConfiguration(ephemeral: ephemeralWebData))
-            let delegate = WebNavigationDelegate(
-                initialURL: url,
-                allowsCrossOrigin: true,
-                urlCallback: urlCallback)
-            wkWebView.navigationDelegate = delegate
-            wkWebView.translatesAutoresizingMaskIntoConstraints = false
-            // The page paints the whole sheet, matching Android: no automatic
-            // bottom safe-area inset (which leaves an underscroll band in the
-            // home-indicator zone), and no opaque system background behind the
-            // document that would flash white around/under it.
-            wkWebView.scrollView.contentInsetAdjustmentBehavior = .never
-            wkWebView.isOpaque = false
-            wkWebView.backgroundColor = .clear
-            wkWebView.scrollView.backgroundColor = .clear
-            if #available(iOS 15.0, *) {
-                wkWebView.underPageBackgroundColor = .clear
+            if let opened = openStandaloneBrowserTab(
+                appId,
+                sessionId,
+                url.absoluteString,
+                ephemeralWebData,
+                urlCallback
+            ) {
+                let tabId = opened.toString().trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !tabId.isEmpty else { return false }
+                browserTabId = tabId
+                webView = nil
+                navigationDelegate = nil
+            } else {
+                browserTabId = nil
+                let wkWebView = WKWebView(
+                    frame: controller.contentView.bounds,
+                    configuration: webSurfaceConfiguration(ephemeral: ephemeralWebData))
+                let delegate = WebNavigationDelegate(
+                    initialURL: url,
+                    allowsCrossOrigin: true,
+                    urlCallback: urlCallback)
+                wkWebView.navigationDelegate = delegate
+                wkWebView.translatesAutoresizingMaskIntoConstraints = false
+                wkWebView.scrollView.contentInsetAdjustmentBehavior = .never
+                wkWebView.isOpaque = false
+                wkWebView.backgroundColor = .clear
+                wkWebView.scrollView.backgroundColor = .clear
+                if #available(iOS 15.0, *) {
+                    wkWebView.underPageBackgroundColor = .clear
+                }
+                controller.contentView.addSubview(wkWebView)
+                pinToEdges(wkWebView, in: controller.contentView)
+                loadWebSurfaceURL(url, in: wkWebView)
+                webView = wkWebView
+                navigationDelegate = delegate
             }
-            controller.contentView.addSubview(wkWebView)
-            pinToEdges(wkWebView, in: controller.contentView)
-            loadWebSurfaceURL(url, in: wkWebView)
-            webView = wkWebView
-            navigationDelegate = delegate
 
         default:
             return false
@@ -1619,8 +1696,12 @@ enum LxAppSurface {
             hostView: hostView,
             webView: webView,
             navigationDelegate: navigationDelegate,
+            browserTabId: browserTabId,
             window: window
         )
+        if let tabId = browserTabId {
+            attachManagedBrowserTab(id: id, tabId: tabId, to: controller.contentView, attempt: 0)
+        }
         window.makeKeyAndVisible()
         return true
     }
@@ -1643,6 +1724,42 @@ enum LxAppSurface {
         return close(id: id, appId: entry.appId, reason: "programmatic")
     }
 
+    private static func attachManagedBrowserTab(
+        id: String,
+        tabId: String,
+        to container: UIView,
+        attempt: Int
+    ) {
+        guard let entry = entries[id], entry.browserTabId == tabId else { return }
+        let browserAppId = getBuiltinBrowserAppId().toString()
+        let sessionId = getLxAppSessionId(browserAppId)
+        let path = browserTabPathForId(tabId).toString()
+        if sessionId > 0,
+           let webView = WebViewManager.resolveWebView(
+               appId: browserAppId,
+               path: path,
+               sessionId: sessionId
+           ) {
+            // Preserve the pre-managed URL-surface presentation: the document
+            // extends through the sheet safe area without an opaque WebKit band.
+            webView.scrollView.contentInsetAdjustmentBehavior = .never
+            WebViewManager.configureWebViewTransparency(webView, transparent: true)
+            if #available(iOS 15.0, *) {
+                webView.underPageBackgroundColor = .clear
+            }
+            WebViewManager.attachWebViewToContainer(webView, container: container)
+            entry.webView = webView
+            return
+        }
+        guard attempt < 40 else {
+            _ = close(id: id, appId: entry.appId, reason: "failed")
+            return
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            attachManagedBrowserTab(id: id, tabId: tabId, to: container, attempt: attempt + 1)
+        }
+    }
+
     static func close(id: String, appId: String, reason: String) -> Bool {
         guard let entry = entries.removeValue(forKey: id) else {
             _ = onSurfaceClosed(appId, id, closeReason(reason))
@@ -1653,8 +1770,13 @@ enum LxAppSurface {
             return false
         }
         entry.hostView?.unmount(reason: closeReason(reason))
-        entry.webView?.stopLoading()
-        entry.webView?.navigationDelegate = nil
+        if let tabId = entry.browserTabId {
+            entry.webView?.removeFromSuperview()
+            _ = browserTabClose(tabId)
+        } else {
+            entry.webView?.stopLoading()
+            entry.webView?.navigationDelegate = nil
+        }
         entry.window.rootViewController = nil
         entry.window.isHidden = true
         _ = onSurfaceClosed(appId, id, closeReason(reason))
