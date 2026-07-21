@@ -1562,6 +1562,12 @@ export type VideoContext = {
     setStreamSource(options: StreamSourceOptions): void;
 };
 
+/**
+ * Local video metadata for client-side upload preflight and presentation.
+ * Track-level codec and audio fields are best-effort. The receiving service
+ * must still validate the uploaded bytes; this result does not indicate
+ * whether the file already exists in cloud storage.
+ */
 export type VideoInfo = {
     /**
      * Encoded display width in pixels.
@@ -1576,6 +1582,10 @@ export type VideoInfo = {
      */
     durationMs: number;
     /**
+     * Exact local file size in bytes.
+     */
+    size: number;
+    /**
      * Clockwise rotation in degrees (usually `0 | 90 | 180 | 270`).
      */
     rotation?: number;
@@ -1588,9 +1598,27 @@ export type VideoInfo = {
      */
     fps?: number;
     /**
-     * MIME type, e.g. `video/mp4`.
+     * Best-effort container MIME type, e.g. `video/mp4`.
+     * It may be inferred from the file extension when the platform does not expose it.
      */
     type?: string;
+    /**
+     * Normalized video-track codec MIME type. Known values include `video/avc`,
+     * `video/hevc`, `video/x-vnd.on2.vp8`, `video/x-vnd.on2.vp9`, `video/av01`,
+     * `video/mp4v-es`, `video/mpeg2`, and `video/mjpeg`. Other valid `video/*`
+     * values may be returned for codecs added by the platform. Omitted when the
+     * platform cannot determine it.
+     */
+    videoCodec?: string;
+    /**
+     * Whether an audio track was detected. Omitted when the platform cannot determine it.
+     */
+    hasAudio?: boolean;
+    /**
+     * Best-effort audio-track codec MIME type, e.g. `audio/mp4a-latm` or `audio/opus`.
+     * Omitted when there is no audio track or the platform cannot determine it.
+     */
+    audioCodec?: string;
     /**
      * Resolved path used by runtime (typically `lx://...`).
      */
@@ -1933,6 +1961,13 @@ declare global {
     saveVideoToPhotosAlbum(options: SaveMediaOptions): Promise<void>;
     scanCode(options?: ScanCodeOptions): Promise<ScanCodeResult>;
     createVideoContext(componentId: string): VideoContext;
+    /**
+     * Reads local video metadata for upload preflight and presentation.
+     * Size, dimensions, duration, and path form the portable core. Container type,
+     * rotation, and track-level codec/audio fields are best-effort and may be
+     * omitted when the platform cannot determine them. The receiving service must
+     * still validate the uploaded bytes.
+     */
     getVideoInfo(options: GetVideoInfoOptions): Promise<VideoInfo>;
     extractVideoThumbnail(options: ExtractVideoThumbnailOptions): Promise<ExtractVideoThumbnailResult>;
     compressVideo(options: CompressVideoOptions): CompressVideoTask;

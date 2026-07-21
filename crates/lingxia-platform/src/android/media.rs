@@ -511,10 +511,14 @@ fn get_video_info_impl(uri: &str) -> Result<VideoInfo, Box<dyn std::error::Error
             width: parsed.width.unwrap_or(0),
             height: parsed.height.unwrap_or(0),
             duration_ms: parsed.duration_ms.unwrap_or(0),
+            size: parsed.size,
             rotation: parsed.rotation,
             bitrate: parsed.bitrate,
             fps: parsed.fps.map(|v| v as f32),
             mime_type: parsed.mime_type.filter(|s| !s.is_empty()),
+            video_codec: parsed.video_codec.filter(|s| !s.is_empty()),
+            has_audio: parsed.has_audio,
+            audio_codec: parsed.audio_codec.filter(|s| !s.is_empty()),
         })
     })
 }
@@ -657,11 +661,18 @@ struct AndroidVideoInfoResponse {
     height: Option<u32>,
     #[serde(rename = "durationMs")]
     duration_ms: Option<u64>,
+    size: u64,
     rotation: Option<u16>,
     bitrate: Option<u64>,
     fps: Option<f64>,
     #[serde(rename = "mimeType")]
     mime_type: Option<String>,
+    #[serde(rename = "videoCodec")]
+    video_codec: Option<String>,
+    #[serde(rename = "hasAudio")]
+    has_audio: Option<bool>,
+    #[serde(rename = "audioCodec")]
+    audio_codec: Option<String>,
 }
 
 #[derive(Deserialize)]

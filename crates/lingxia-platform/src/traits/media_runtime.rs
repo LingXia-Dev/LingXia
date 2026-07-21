@@ -63,10 +63,14 @@ pub struct VideoInfo {
     pub width: u32,
     pub height: u32,
     pub duration_ms: u64,
+    pub size: u64,
     pub rotation: Option<u16>,
     pub bitrate: Option<u64>,
     pub fps: Option<f32>,
     pub mime_type: Option<String>,
+    pub video_codec: Option<String>,
+    pub has_audio: Option<bool>,
+    pub audio_codec: Option<String>,
 }
 
 #[derive(Debug, Clone)]

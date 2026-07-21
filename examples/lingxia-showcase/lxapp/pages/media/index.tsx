@@ -68,15 +68,18 @@ type ImageInfoResult = {
 };
 
 type VideoInfoResult = {
-  width?: number;
-  height?: number;
-  durationMs?: number;
+  width: number;
+  height: number;
+  durationMs: number;
+  size: number;
+  path: string;
   rotation?: number;
   bitrate?: number;
   fps?: number;
   type?: string;
-  path?: string;
-  size?: number;
+  videoCodec?: string;
+  hasAudio?: boolean;
+  audioCodec?: string;
 };
 
 type VideoThumbnailResult = {
@@ -697,25 +700,37 @@ export default function MediaPage() {
 
         {videoInfoResult && (
           <InfoCard
-            title="Video Information"
+            title="Upload Preflight Metadata"
             items={[
-              { label: 'Resolution', value: `${videoInfoResult.width ?? '--'} × ${videoInfoResult.height ?? '--'}` },
+              { label: 'File Size', value: formatFileSize(videoInfoResult.size) },
+              { label: 'Resolution', value: `${videoInfoResult.width} × ${videoInfoResult.height}` },
               { label: 'Duration', value: formatDuration(videoInfoResult.durationMs) },
               { label: 'Rotation', value: videoInfoResult.rotation ?? '--' },
               { label: 'Bitrate', value: formatBitrate(videoInfoResult.bitrate) },
               { label: 'FPS', value: videoInfoResult.fps ?? '--' },
-              { label: 'Type', value: videoInfoResult.type || '--' },
-              { label: 'Size', value: formatFileSize(videoInfoResult.size || 0) },
+              { label: 'Container MIME', value: videoInfoResult.type || 'Not reported' },
+              { label: 'Video Codec', value: videoInfoResult.videoCodec || 'Not reported' },
+              {
+                label: 'Has Audio',
+                value: videoInfoResult.hasAudio == null ? 'Not reported' : (videoInfoResult.hasAudio ? 'Yes' : 'No'),
+              },
+              {
+                label: 'Audio Codec',
+                value: videoInfoResult.hasAudio === false ? 'N/A' : (videoInfoResult.audioCodec || 'Not reported'),
+              },
             ]}
             footer={
-              videoInfoResult.path ? (
+              <div className="space-y-3">
+                <div className="text-[11px] text-gray-500">
+                  Track metadata is best-effort. The receiving service must validate uploaded bytes.
+                </div>
                 <div className="space-y-1">
                   <div className="text-xs font-medium text-gray-700">Path</div>
                   <div className="text-[11px] text-gray-500 break-all bg-gray-100 px-3 py-2 rounded-lg">
                     {videoInfoResult.path}
                   </div>
                 </div>
-              ) : undefined
+              </div>
             }
           />
         )}

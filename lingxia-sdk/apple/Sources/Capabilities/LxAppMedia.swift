@@ -18,6 +18,43 @@ import AVFoundation
 final class LxAppMedia {
 }
 
+private func mediaCodecMimeType(track: AVAssetTrack, mediaType: AVMediaType) -> String {
+    guard let formatDescription = track.formatDescriptions.first else {
+        return ""
+    }
+    let subtype = CMFormatDescriptionGetMediaSubType(formatDescription as! CMFormatDescription)
+    let bytes: [UInt8] = [
+        UInt8((subtype >> 24) & 0xff),
+        UInt8((subtype >> 16) & 0xff),
+        UInt8((subtype >> 8) & 0xff),
+        UInt8(subtype & 0xff),
+    ]
+    let code = String(bytes: bytes, encoding: .ascii) ?? ""
+    if mediaType == .video {
+        switch code {
+        case "avc1", "avc3": return "video/avc"
+        case "hvc1", "hev1": return "video/hevc"
+        case "vp08": return "video/x-vnd.on2.vp8"
+        case "vp09": return "video/x-vnd.on2.vp9"
+        case "av01": return "video/av01"
+        case "mp4v": return "video/mp4v-es"
+        case "jpeg": return "video/mjpeg"
+        default: return ""
+        }
+    }
+    switch code {
+    case "mp4a", "aac ": return "audio/mp4a-latm"
+    case ".mp3", "mp3 ": return "audio/mpeg"
+    case "Opus": return "audio/opus"
+    case "fLaC": return "audio/flac"
+    case "alac": return "audio/alac"
+    case "ac-3": return "audio/ac3"
+    case "ec-3": return "audio/eac3"
+    case "lpcm": return "audio/raw"
+    default: return ""
+    }
+}
+
 #if os(iOS)
 extension LxAppMedia {
     private final class MediaBundleToken {}
@@ -125,6 +162,14 @@ extension LxAppMedia {
         let bitrate = videoTrack.estimatedDataRate > 0 ? UInt64(videoTrack.estimatedDataRate.rounded()) : nil
         let fps = videoTrack.nominalFrameRate > 0 ? videoTrack.nominalFrameRate : nil
         let mimeType = mimeTypeFromExtension(sourceURL.pathExtension.lowercased())
+        let videoCodec = mediaCodecMimeType(track: videoTrack, mediaType: .video)
+        let audioTrack = asset.tracks(withMediaType: .audio).first
+        let audioCodec = audioTrack.map { mediaCodecMimeType(track: $0, mediaType: .audio) } ?? ""
+        guard let fileSize = (try? sourceURL.resourceValues(forKeys: [.fileSizeKey]))?.fileSize,
+              fileSize >= 0 else {
+            return videoInfoFailure("Failed to read video file size")
+        }
+        let size = UInt64(fileSize)
 
         return SwiftVideoInfoResult(
             success: true,
@@ -132,13 +177,17 @@ extension LxAppMedia {
             width: UInt32(clamping: width),
             height: UInt32(clamping: height),
             duration_ms: durationMs,
+            size: size,
             rotation: rotation ?? 0,
             has_rotation: rotation != nil,
             bitrate: bitrate ?? 0,
             has_bitrate: bitrate != nil,
             fps: fps ?? 0,
             has_fps: fps != nil,
-            mime_type: RustString(mimeType)
+            mime_type: RustString(mimeType),
+            video_codec: RustString(videoCodec),
+            has_audio: audioTrack != nil,
+            audio_codec: RustString(audioCodec)
         )
     }
 
@@ -742,13 +791,17 @@ extension LxAppMedia {
             width: 0,
             height: 0,
             duration_ms: 0,
+            size: 0,
             rotation: 0,
             has_rotation: false,
             bitrate: 0,
             has_bitrate: false,
             fps: 0,
             has_fps: false,
-            mime_type: RustString("")
+            mime_type: RustString(""),
+            video_codec: RustString(""),
+            has_audio: false,
+            audio_codec: RustString("")
         )
     }
 
@@ -869,6 +922,14 @@ extension LxAppMedia {
         let bitrate = videoTrack.estimatedDataRate > 0 ? UInt64(videoTrack.estimatedDataRate.rounded()) : nil
         let fps = videoTrack.nominalFrameRate > 0 ? videoTrack.nominalFrameRate : nil
         let mimeType = inferVideoMimeTypeMac(sourceURL.pathExtension.lowercased())
+        let videoCodec = mediaCodecMimeType(track: videoTrack, mediaType: .video)
+        let audioTrack = asset.tracks(withMediaType: .audio).first
+        let audioCodec = audioTrack.map { mediaCodecMimeType(track: $0, mediaType: .audio) } ?? ""
+        guard let fileSize = (try? sourceURL.resourceValues(forKeys: [.fileSizeKey]))?.fileSize,
+              fileSize >= 0 else {
+            return videoInfoFailureMac("Failed to read video file size")
+        }
+        let size = UInt64(fileSize)
 
         return SwiftVideoInfoResult(
             success: true,
@@ -876,13 +937,17 @@ extension LxAppMedia {
             width: UInt32(clamping: width),
             height: UInt32(clamping: height),
             duration_ms: durationMs,
+            size: size,
             rotation: rotation ?? 0,
             has_rotation: rotation != nil,
             bitrate: bitrate ?? 0,
             has_bitrate: bitrate != nil,
             fps: fps ?? 0,
             has_fps: fps != nil,
-            mime_type: RustString(mimeType)
+            mime_type: RustString(mimeType),
+            video_codec: RustString(videoCodec),
+            has_audio: audioTrack != nil,
+            audio_codec: RustString(audioCodec)
         )
     }
 
@@ -1333,13 +1398,17 @@ extension LxAppMedia {
             width: 0,
             height: 0,
             duration_ms: 0,
+            size: 0,
             rotation: 0,
             has_rotation: false,
             bitrate: 0,
             has_bitrate: false,
             fps: 0,
             has_fps: false,
-            mime_type: RustString("")
+            mime_type: RustString(""),
+            video_codec: RustString(""),
+            has_audio: false,
+            audio_codec: RustString("")
         )
     }
 

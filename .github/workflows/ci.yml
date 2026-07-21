@@ -360,6 +360,10 @@ jobs:
         shell: bash
         run: cargo clippy --workspace --exclude lingxia-terminal -- -D warnings -A clippy::let_underscore_future
 
+      - name: Test Windows media metadata mappings
+        shell: bash
+        run: cargo test -p lingxia-platform codec_subtypes_use_stable_mime_names
+
       # `--workspace` above only builds each crate's default features, i.e.
       # windows-sdk's `standard`. Exercise the other tiers standalone too — in
       # particular `components` (advanced / bring-your-own-host mode, without the
@@ -554,7 +558,7 @@ jobs:
     name: example-macos
     if: ${{ needs.changes.outputs.macos == 'true' }}
     runs-on: macos-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       # Pin Xcode 26.0 (Swift 6.2): the media SDK needs 6.2 concurrency inference
