@@ -526,11 +526,35 @@ fn platform_video_info_to_js(info: PlatformVideoInfo, path: String) -> JSVideoIn
         bitrate: info.bitrate,
         fps: info.fps.map(|v| v as f64),
         video_type: info.mime_type,
-        video_codec: info.video_codec,
+        video_codec: normalize_video_codec_mime(info.video_codec),
         has_audio: info.has_audio,
         audio_codec: info.audio_codec,
         path,
     }
+}
+
+fn normalize_video_codec_mime(codec: Option<String>) -> Option<String> {
+    let codec = codec?.trim().to_ascii_lowercase();
+    let normalized = match codec.as_str() {
+        "avc" | "avc1" | "avc3" | "h264" | "h.264" | "video/avc" | "video/avc1" | "video/avc3"
+        | "video/h264" | "video/x-h264" => "video/avc",
+        "hevc" | "hev1" | "hvc1" | "h265" | "h.265" | "video/hevc" | "video/hev1"
+        | "video/hvc1" | "video/h265" | "video/x-h265" => "video/hevc",
+        "vp8" | "vp08" | "video/vp8" | "video/x-vnd.on2.vp8" => "video/x-vnd.on2.vp8",
+        "vp9" | "vp09" | "video/vp9" | "video/x-vnd.on2.vp9" => "video/x-vnd.on2.vp9",
+        "av1" | "av01" | "video/av1" | "video/av01" => "video/av01",
+        "mp4v" | "video/mp4v" | "video/mp4v-es" => "video/mp4v-es",
+        "mpeg2" | "mpeg-2" | "video/mpeg2" => "video/mpeg2",
+        "jpeg" | "mjpeg" | "video/jpeg" | "video/mjpeg" => "video/mjpeg",
+        _ if codec.starts_with("video/")
+            && codec.len() > "video/".len()
+            && !codec.chars().any(char::is_whitespace) =>
+        {
+            return Some(codec);
+        }
+        _ => return None,
+    };
+    Some(normalized.to_string())
 }
 
 fn parse_video_quality(value: Option<&str>) -> JSResult<Option<VideoCompressQuality>> {
@@ -670,7 +694,7 @@ fn ensure_output_quota(lxapp: &LxApp, path: &Path) -> JSResult<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{PlatformVideoInfo, platform_video_info_to_js};
+    use super::{PlatformVideoInfo, normalize_video_codec_mime, platform_video_info_to_js};
 
     #[test]
     fn video_info_conversion_keeps_upload_preflight_metadata() {
@@ -684,7 +708,7 @@ mod tests {
                 bitrate: Some(2_000_000),
                 fps: Some(29.97),
                 mime_type: Some("video/mp4".to_string()),
-                video_codec: Some("video/avc".to_string()),
+                video_codec: Some("H264".to_string()),
                 has_audio: Some(true),
                 audio_codec: Some("audio/mp4a-latm".to_string()),
             },
@@ -697,5 +721,44 @@ mod tests {
         assert_eq!(result.has_audio, Some(true));
         assert_eq!(result.audio_codec.as_deref(), Some("audio/mp4a-latm"));
         assert_eq!(result.path, "lx://temp/upload.mp4");
+    }
+
+    #[test]
+    fn video_codec_mime_normalizes_known_platform_values() {
+        let cases = [
+            ("avc1", "video/avc"),
+            ("video/h264", "video/avc"),
+            ("hvc1", "video/hevc"),
+            ("video/h265", "video/hevc"),
+            ("vp08", "video/x-vnd.on2.vp8"),
+            ("video/vp9", "video/x-vnd.on2.vp9"),
+            ("av1", "video/av01"),
+            ("video/mp4v", "video/mp4v-es"),
+            ("mpeg-2", "video/mpeg2"),
+            ("video/jpeg", "video/mjpeg"),
+        ];
+
+        for (input, expected) in cases {
+            assert_eq!(
+                normalize_video_codec_mime(Some(input.to_string())).as_deref(),
+                Some(expected),
+                "input: {input}"
+            );
+        }
+    }
+
+    #[test]
+    fn video_codec_mime_preserves_future_video_mime_values() {
+        assert_eq!(
+            normalize_video_codec_mime(Some(" Video/Dolby-Vision ".to_string())).as_deref(),
+            Some("video/dolby-vision")
+        );
+    }
+
+    #[test]
+    fn video_codec_mime_omits_empty_and_non_video_values() {
+        for input in [None, Some(""), Some("audio/opus"), Some("h266")] {
+            assert_eq!(normalize_video_codec_mime(input.map(str::to_string)), None);
+        }
     }
 }

@@ -1597,8 +1597,11 @@ export type VideoInfo = {
      */
     type?: string;
     /**
-     * Best-effort video-track codec MIME type, e.g. `video/avc` or `video/hevc`.
-     * Omitted when the platform cannot determine it.
+     * Normalized video-track codec MIME type. Known values include `video/avc`,
+     * `video/hevc`, `video/x-vnd.on2.vp8`, `video/x-vnd.on2.vp9`, `video/av01`,
+     * `video/mp4v-es`, `video/mpeg2`, and `video/mjpeg`. Other valid `video/*`
+     * values may be returned for codecs added by the platform. Omitted when the
+     * platform cannot determine it.
      */
     videoCodec?: string;
     /**
