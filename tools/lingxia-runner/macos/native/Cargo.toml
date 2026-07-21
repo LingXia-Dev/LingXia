@@ -34,5 +34,7 @@ lingxia_devtool = { workspace = true, features = ["browser", "test-runtime"] }
 libc = "0.2"
 serde = { workspace = true }
 serde_json = { workspace = true }
-# Reads ~/.lingxia/runner/config.toml for the runtime lingxiaServer override.
-toml = "1.1.2"
+# Shared resolver for the dev runner's config (config.toml overrides, mock dir,
+# lxapp routing); mapped onto the provider's types below. This stays a regular
+# dependency so `cloud = []` remains available for build-time provider injection.
+lingxia-runner-config = { workspace = true }
