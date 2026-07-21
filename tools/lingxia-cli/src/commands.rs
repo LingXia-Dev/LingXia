@@ -11,6 +11,7 @@ pub mod new;
 pub mod package;
 pub mod provider;
 pub mod publish;
+pub mod runner;
 pub mod rust;
 pub mod store;
 pub mod version;
