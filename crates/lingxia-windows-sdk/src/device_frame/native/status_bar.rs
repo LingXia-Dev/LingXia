@@ -20,9 +20,11 @@
 
 use super::*;
 
+use crate::layered_text::draw_supersampled_text_mask;
+
 use windows::Win32::Graphics::Gdi::{
-    ANTIALIASED_QUALITY, CLEARTYPE_QUALITY, CreateFontW, FONT_QUALITY, FW_BOLD,
-    GetTextExtentPoint32W, SetBkMode, SetTextColor, TRANSPARENT, TextOutW,
+    CLEARTYPE_QUALITY, CreateFontW, FW_MEDIUM, GetTextExtentPoint32W, SetBkMode, SetTextColor,
+    TRANSPARENT, TextOutW,
 };
 use windows::Win32::System::SystemInformation::GetLocalTime;
 
@@ -270,25 +272,30 @@ fn paint_status_bar(
                 let old_bitmap = SelectObject(memory_dc, HGDIOBJ(bitmap.0));
                 let dib = std::slice::from_raw_parts_mut(bits.cast::<u32>(), pixels.len());
                 if bar.transparent {
-                    // Draw the clock in white with grayscale AA so each pixel's
-                    // luminance is its coverage, then recolor to the foreground
-                    // with that coverage as the (premultiplied) alpha. The
-                    // already-opaque indicators keep their alpha and are skipped.
-                    draw_time(
+                    let has_cutout = cutout_width > 0;
+                    let clock_rect = RECT {
+                        left: if has_cutout { 0 } else { SIDE_MARGIN },
+                        top: 0,
+                        right: clock_slot_right,
+                        bottom: height,
+                    };
+                    draw_supersampled_text_mask(
                         memory_dc,
+                        dib,
+                        width,
                         height,
-                        0xff_ffff,
-                        true,
-                        clock_slot_right,
-                        cutout_width > 0,
+                        &current_time_string(),
+                        clock_rect,
+                        bar.foreground,
+                        (height * 5 / 16).clamp(13, 22),
+                        FW_MEDIUM.0 as i32,
+                        has_cutout,
                     );
-                    premultiply_glyph_pixels(dib, bar.foreground);
                 } else {
                     draw_time(
                         memory_dc,
                         height,
                         bar.foreground,
-                        false,
                         clock_slot_right,
                         cutout_width > 0,
                     );
@@ -334,38 +341,23 @@ fn paint_status_bar(
     }
 }
 
-fn draw_time(
-    dc: HDC,
-    height: i32,
-    color: u32,
-    antialiased: bool,
-    slot_right: i32,
-    has_cutout: bool,
-) {
+fn draw_time(dc: HDC, height: i32, color: u32, slot_right: i32, has_cutout: bool) {
     let time = current_time_string();
     let font_height = -(height * 5 / 16).clamp(13, 22);
-    // A transparent strip derives per-pixel alpha from text coverage, so it must
-    // use grayscale AA (ClearType's colored sub-pixels would fringe once
-    // recolored). An opaque strip can use ClearType for the crispest text.
-    let quality: FONT_QUALITY = if antialiased {
-        ANTIALIASED_QUALITY
-    } else {
-        CLEARTYPE_QUALITY
-    };
     let font = unsafe {
         CreateFontW(
             font_height,
             0,
             0,
             0,
-            FW_BOLD.0 as i32,
+            FW_MEDIUM.0 as i32,
             0,
             0,
             0,
             Default::default(),
             Default::default(),
             Default::default(),
-            quality,
+            CLEARTYPE_QUALITY,
             Default::default(),
             w!("Segoe UI"),
         )
@@ -445,33 +437,6 @@ fn force_opaque(dib: &mut [u32]) {
     }
 }
 
-/// Recolors the white grayscale-AA clock GDI drew over a transparent strip into
-/// premultiplied `fg`, using each touched pixel's coverage as its alpha. Pixels
-/// that already carry alpha (the indicators) and untouched transparent pixels
-/// are left as-is.
-fn premultiply_glyph_pixels(dib: &mut [u32], fg: u32) {
-    let fr = (fg >> 16) & 0xff;
-    let fg_g = (fg >> 8) & 0xff;
-    let fb = fg & 0xff;
-    for pixel in dib.iter_mut() {
-        if (*pixel >> 24) != 0 {
-            continue; // already-opaque indicator pixel
-        }
-        // White-on-(transparent-)black text: max channel is the coverage.
-        let r = (*pixel >> 16) & 0xff;
-        let g = (*pixel >> 8) & 0xff;
-        let b = *pixel & 0xff;
-        let coverage = r.max(g).max(b);
-        if coverage == 0 {
-            continue; // untouched transparent pixel
-        }
-        let pr = fr * coverage / 255;
-        let pg = fg_g * coverage / 255;
-        let pb = fb * coverage / 255;
-        *pixel = (coverage << 24) | (pr << 16) | (pg << 8) | pb;
-    }
-}
-
 /// Opaque ARGB strip: `bg` fill plus the trailing signal bars + battery (in
 /// `fg`), vertically centered and inset by `SIDE_MARGIN` from the right edge.
 fn status_bar_pixels(width: i32, height: i32, fg: u32, bg: u32) -> Vec<u32> {
@@ -482,9 +447,8 @@ fn status_bar_pixels(width: i32, height: i32, fg: u32, bg: u32) -> Vec<u32> {
 }
 
 /// Transparent ARGB strip: no fill, just the trailing signal bars + battery in
-/// (premultiplied-opaque) `fg`. The clock is added later by [`draw_time`] +
-/// [`premultiply_glyph_pixels`]. Used for immersive pages so WebView content
-/// shows through.
+/// (premultiplied-opaque) `fg`. The clock is added later through a supersampled
+/// grayscale mask. Used for immersive pages so WebView content shows through.
 fn status_bar_pixels_transparent(width: i32, height: i32, fg: u32) -> Vec<u32> {
     let mut pixels = vec![0u32; (width * height).max(0) as usize];
     draw_indicators(&mut pixels, width, height, fg);
