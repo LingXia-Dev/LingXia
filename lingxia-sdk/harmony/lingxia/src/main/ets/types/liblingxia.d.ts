@@ -198,6 +198,7 @@ declare module 'liblingxia.so' {
    * Open or navigate a managed internal browser tab and return tabId.
    */
   export function openBrowserTab(appid: string, sessionId: number, url: string): string | null;
+  export function openStandaloneBrowserTab(appid: string, sessionId: number, url: string, ephemeralWebData: boolean, urlCallback: boolean): string | null;
 
   /**
    * Open an aside tab in the shared in-app browser: same as openBrowserTab
@@ -491,7 +492,12 @@ declare module 'liblingxia.so' {
   /**
    * Ask native layer whether current navigation should be intercepted.
    */
-  export function onNavigationPolicy(webtag: string, url: string): boolean;
+  export function onNavigationPolicy(
+    webtag: string,
+    url: string,
+    hasUserGesture: boolean,
+    isMainFrame: boolean
+  ): boolean;
 
   /**
    * Forward Web download-start event to native layer.

@@ -111,10 +111,10 @@ pub use events::{
 pub use traits::{
     ClearSiteDataOptions, ClearSiteDataResult, ClickOptions, DownloadRequest, FileChooserFile,
     FileChooserRequest, FileChooserResponse, FillOptions, LoadDataRequest, LoadError,
-    LoadErrorKind, NavigationPolicy, NetworkBody, NetworkCaptureSnapshot, NetworkEntry,
-    NewWindowPolicy, PressOptions, SchemeOutcome, ScrollOptions, SystemPipeReader, TypeOptions,
-    WebResourceBody, WebResourceResponse, WebViewController, WebViewCookie, WebViewCookieSameSite,
-    WebViewCookieSetRequest, WebViewDelegate, WebViewInputController,
+    LoadErrorKind, NavigationPolicy, NavigationRequest, NetworkBody, NetworkCaptureSnapshot,
+    NetworkEntry, NewWindowPolicy, PressOptions, SchemeOutcome, ScrollOptions, SystemPipeReader,
+    TypeOptions, WebResourceBody, WebResourceResponse, WebViewController, WebViewCookie,
+    WebViewCookieSameSite, WebViewCookieSetRequest, WebViewDelegate, WebViewInputController,
 };
 pub use webview::{
     BrowserWebViewBuilder, ProxyActivation, ProxyApplyReport, ProxyApplyStatus, ProxyConfig,

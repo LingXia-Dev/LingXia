@@ -453,7 +453,7 @@ public class LingXiaWebView extends WebView {
             cookieManager.removeAllCookies(value -> {
                 cookieManager.flush();
                 WebStorage.getInstance().deleteAllData();
-                post(continuation);
+                new Handler(Looper.getMainLooper()).post(continuation);
             });
             return;
         }
@@ -1250,7 +1250,14 @@ public class LingXiaWebView extends WebView {
     native void onFaviconChanged(String appId, String path, long sessionId, byte[] pngBytes);
     native void onLoadError(String appId, String path, long sessionId, String url, int errorCode, String description);
     native WebResourceResponseData handleRequest(String appId, String path, long sessionId, String url, String method, String[] headerKeysAndValues);
-    native boolean handleNavigationPolicy(String appId, String path, long sessionId, String url);
+    native boolean handleNavigationPolicy(
+        String appId,
+        String path,
+        long sessionId,
+        String url,
+        boolean hasUserGesture,
+        boolean isMainFrame
+    );
     native int handleNewWindowPolicy(String appId, String path, long sessionId, String url);
     native void onFileChooserRequested(
         String appId,

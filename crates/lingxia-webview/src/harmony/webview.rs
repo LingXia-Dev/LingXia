@@ -1847,11 +1847,20 @@ extern "C" fn on_web_message_received(
 /// Check navigation policy for a given webtag and URL.
 /// Returns `true` to intercept (cancel) the navigation, `false` to allow it.
 /// Called from the ArkTS `onLoadIntercept` handler via NAPI.
-pub fn check_navigation_policy(webtag_str: &str, url: &str) -> bool {
+pub fn check_navigation_policy(
+    webtag_str: &str,
+    url: &str,
+    has_user_gesture: bool,
+    is_main_frame: bool,
+) -> bool {
     record_map(&RECENT_NAV_URLS, &WebTag::from(webtag_str), url);
     let webtag = WebTag::from(webtag_str);
     if let Some(webview) = find_webview(&webtag) {
-        return matches!(webview.handle_navigation(url), NavigationPolicy::Cancel);
+        let request = crate::NavigationRequest::new(url, has_user_gesture, is_main_frame);
+        return matches!(
+            webview.handle_navigation(&request),
+            NavigationPolicy::Cancel
+        );
     }
 
     false

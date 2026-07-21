@@ -159,8 +159,13 @@ export function isEphemeralDataMode(webtag: string): boolean {
   return coreIsEphemeralDataMode(webtag);
 }
 
-export function handleWebViewNavigationPolicy(webtag: string, url: string): boolean {
-  return coreHandleWebViewNavigationPolicy(webtag, url);
+export function handleWebViewNavigationPolicy(
+  webtag: string,
+  url: string,
+  hasUserGesture: boolean,
+  isMainFrame: boolean
+): boolean {
+  return coreHandleWebViewNavigationPolicy(webtag, url, hasUserGesture, isMainFrame);
 }
 
 export function handleWebViewLoadError(

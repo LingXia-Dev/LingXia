@@ -62,7 +62,12 @@ export interface WebViewLoadError {
 export interface WebViewHostHooks {
   onControllerCreated?: (webtag: string) => void;
   onControllerDestroyed?: (webtag: string) => void;
-  onNavigationPolicy?: (webtag: string, url: string) => boolean;
+  onNavigationPolicy?: (
+    webtag: string,
+    url: string,
+    hasUserGesture: boolean,
+    isMainFrame: boolean
+  ) => boolean;
   onDownloadStart?: (request: WebViewDownloadRequest) => void;
   onLoadError?: (error: WebViewLoadError) => void;
 }
@@ -112,8 +117,13 @@ function bindDefaultHostHooksIfNeeded(): void {
     onControllerDestroyed: (webtag: string): void => {
       hostOnWebviewControllerDestroyed(webtag);
     },
-    onNavigationPolicy: (webtag: string, url: string): boolean => {
-      return hostOnNavigationPolicy(webtag, url);
+    onNavigationPolicy: (
+      webtag: string,
+      url: string,
+      hasUserGesture: boolean,
+      isMainFrame: boolean
+    ): boolean => {
+      return hostOnNavigationPolicy(webtag, url, hasUserGesture, isMainFrame);
     },
     onDownloadStart: (request: WebViewDownloadRequest): void => {
       hostOnDownloadStart(
@@ -812,7 +822,12 @@ export function notifyWebViewControllerCreated(webtag: string): void {
   notifyControllerCreated(webtag);
 }
 
-export function handleWebViewNavigationPolicy(webtag: string, url: string): boolean {
+export function handleWebViewNavigationPolicy(
+  webtag: string,
+  url: string,
+  hasUserGesture: boolean,
+  isMainFrame: boolean
+): boolean {
   bindDefaultHostHooksIfNeeded();
   if (url.length === 0) {
     return false;
@@ -822,7 +837,7 @@ export function handleWebViewNavigationPolicy(webtag: string, url: string): bool
     return false;
   }
   try {
-    return callback(webtag, url) === true;
+    return callback(webtag, url, hasUserGesture, isMainFrame) === true;
   } catch (error) {
     hilog.error(DOMAIN, TAG, `Host hook onNavigationPolicy failed for ${webtag}: ${error}`);
     return false;

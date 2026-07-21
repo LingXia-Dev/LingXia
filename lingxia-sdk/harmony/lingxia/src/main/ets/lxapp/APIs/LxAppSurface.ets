@@ -6,7 +6,7 @@ import { display, window } from '@kit.ArkUI';
 import { webview } from '@kit.ArkWeb';
 import { LingXiaWebView } from '../LingXiaWebView';
 import { addWebViewUiCallback, removeWebViewUiCallback, WebViewInfo, WebViewManager, toWebTag } from '../WebViewBridge';
-import { disposePageInstance, notifyPageInstanceHidden, notifyPageInstanceMounted, notifyPageInstanceVisible, onSurfaceClosed, urlCallbackDispatch, webviewLoadErrorDocument } from 'liblingxia.so';
+import { browserTabClose, browserTabPathForId, disposePageInstance, getBuiltinBrowserAppId, getLxappSessionId, notifyPageInstanceHidden, notifyPageInstanceMounted, notifyPageInstanceVisible, onSurfaceClosed, openStandaloneBrowserTab, urlCallbackDispatch, webviewLoadErrorDocument } from 'liblingxia.so';
 import { FloatWindowManager } from './LxAppFloatWindow';
 
 const DOMAIN = 0x0000;
@@ -75,6 +75,7 @@ export interface SurfaceLayoutConfig {
   // Callback surfaces never receive local-file access; ordinary browser
   // surfaces may render host-authorized file URLs.
   urlCallback: boolean;
+  browserTabId: string;
 }
 
 interface SurfacePlanAside {
@@ -158,6 +159,17 @@ export class LxAppSurface {
       role
     );
 
+    let browserTabId = '';
+    if (content === CONTENT_URL) {
+      browserTabId = String(openStandaloneBrowserTab(
+        appId,
+        Math.trunc(Number(sessionId)),
+        path,
+        ephemeralWebDataValue === 'true',
+        urlCallback
+      ) ?? '').trim();
+    }
+
     const layout: SurfaceLayoutConfig = {
       id,
       appId,
@@ -177,10 +189,15 @@ export class LxAppSurface {
       fullWidth: dimensions.fullWidth,
 	      fullHeight: dimensions.fullHeight,
 	      ephemeralWebData: ephemeralWebDataValue === 'true',
-	      urlCallback
-	    };
+	      urlCallback,
+        browserTabId
+    };
 
     const key = LxAppSurface.surfaceKey(id, appId);
+    const previous = LxAppSurface.layouts.get(key) ?? null;
+    if (previous?.browserTabId) {
+      browserTabClose(previous.browserTabId);
+    }
     LxAppSurface.layouts.delete(key);
     LxAppSurface.layouts.set(key, layout);
     LxAppSurface.visibleSurfaceKeys.add(key);
@@ -211,6 +228,9 @@ export class LxAppSurface {
 	      if (content === CONTENT_PAGE) {
 	        disposePageInstance(pageInstanceId, 'failed');
 	      }
+      if (browserTabId) {
+        browserTabClose(browserTabId);
+      }
       onSurfaceClosed(appId, id, 'failed');
     }
 	    return success;
@@ -270,6 +290,9 @@ export class LxAppSurface {
       }
       LxAppSurface.layouts.delete(key);
       LxAppSurface.visibleSurfaceKeys.delete(key);
+      if (layout.browserTabId) {
+        browserTabClose(layout.browserTabId);
+      }
       FloatWindowManager.close(key).then(() => {
         onSurfaceClosed(layout.appId, layout.id, normalizedReason);
       });
@@ -294,6 +317,9 @@ export class LxAppSurface {
 	      if (layout.content === CONTENT_PAGE) {
 	        notifyPageInstanceHidden(layout.pageInstanceId, normalizedReason);
 	      }
+          if (layout.browserTabId) {
+            browserTabClose(layout.browserTabId);
+          }
       LxAppSurface.layouts.delete(key);
       LxAppSurface.visibleSurfaceKeys.delete(key);
 	      setTimeout(() => {
@@ -477,6 +503,9 @@ export class LxAppSurface {
 	      notifyPageInstanceHidden(layout.pageInstanceId, 'failed');
 	      disposePageInstance(layout.pageInstanceId, 'failed');
 	    }
+    if (layout.browserTabId) {
+      browserTabClose(layout.browserTabId);
+    }
     LxAppSurface.layouts.delete(key);
     LxAppSurface.visibleSurfaceKeys.delete(key);
 	    if (manager) {
@@ -761,6 +790,7 @@ function surfaceRenderState(layout: SurfaceLayoutConfig, isVisible: boolean, pag
     fullHeight: layout.fullHeight,
     ephemeralWebData: layout.ephemeralWebData,
     urlCallback: layout.urlCallback,
+    browserTabId: layout.browserTabId,
     isVisible,
     pageWebTag
   };
@@ -781,7 +811,8 @@ export struct SurfaceManager {
       const surface = this.surfaces[i];
       if (surface.content === CONTENT_PAGE && this.matchesPageSurface(surface, info.webtag)) {
         this.attachPageSurface(surface);
-        return;
+      } else if (surface.content === CONTENT_URL) {
+        this.attachUrlSurface(surface);
       }
     }
   }
@@ -802,10 +833,9 @@ export struct SurfaceManager {
 
   public present(state: SurfaceLayoutConfig): boolean {
     const key = this.surfaceKey(state.id, state.appId);
-    if (state.content === CONTENT_URL && !this.webControllers.has(key)) {
+    if (state.content === CONTENT_URL && !state.browserTabId && !this.webControllers.has(key)) {
       this.webControllers.set(key, new webview.WebviewController());
     }
-
     const existing = this.findSurface(state.id, state.appId);
     const pageWebTag = existing ? existing.pageWebTag : '';
     const nextSurface = surfaceRenderState(state, true, pageWebTag);
@@ -818,6 +848,9 @@ export struct SurfaceManager {
     }
     next.push(nextSurface);
     this.surfaces = next;
+    if (state.content === CONTENT_URL && state.browserTabId) {
+      this.attachUrlSurface(state);
+    }
     this.syncFullscreenMode();
     hilog.info(DOMAIN, TAG, `present surface id=${state.id} role=${state.role} content=${state.content} pos=${state.position} url=${state.path} frame=${state.leftVp},${state.topVp},${state.widthVp},${state.heightVp}`);
     return true;
@@ -847,6 +880,25 @@ export struct SurfaceManager {
     }
     hilog.warn(DOMAIN, TAG, `attachPageSurface: WebView not found for ${layout.appId}:${layout.path}#${layout.pageInstanceId}`);
     return false;
+  }
+
+  private attachUrlSurface(layout: SurfaceLayoutConfig): boolean {
+    const key = this.surfaceKey(layout.id, layout.appId);
+    const current = this.findSurface(layout.id, layout.appId);
+    if (!current || !layout.browserTabId) return false;
+    const browserAppId = String(getBuiltinBrowserAppId() ?? '').trim();
+    const path = String(browserTabPathForId(layout.browserTabId) ?? '').trim();
+    if (!browserAppId || !path || getLxappSessionId(browserAppId) <= 0) return false;
+    const controller = WebViewManager.findWebview(browserAppId, path);
+    if (!controller) return false;
+    const infos = WebViewManager.getAllWebViewInfos();
+    const info = infos.find((candidate: WebViewInfo) => candidate.controller === controller);
+    if (!info) return false;
+    this.webControllers.set(key, controller);
+    if (current.pageWebTag !== info.webtag) {
+      this.replaceSurface(surfaceRenderState(current, true, info.webtag));
+    }
+    return true;
   }
 
   public hasSurface(id: string, appId: string): boolean {
@@ -921,13 +973,25 @@ export struct SurfaceManager {
 
   @Builder
   private SurfaceLayer(surface: SurfaceRenderState): void {
-    if ((surface.content === CONTENT_URL && surface.isVisible) || (surface.content === CONTENT_PAGE && surface.pageWebTag.length > 0)) {
+    if ((surface.content === CONTENT_URL && surface.isVisible && (!surface.browserTabId || surface.pageWebTag.length > 0)) || (surface.content === CONTENT_PAGE && surface.pageWebTag.length > 0)) {
       Stack() {
         if (surface.isVisible) {
           this.buildMaskLayer(surface)
         }
         Column() {
-          if (surface.content === CONTENT_URL) {
+          if (surface.content === CONTENT_URL && surface.browserTabId && surface.pageWebTag.length > 0) {
+            LingXiaWebView({
+              webTag: surface.pageWebTag,
+              controller: this.getWebController(surface),
+              renderVisibility: Visibility.Visible,
+              renderWidth: '100%',
+              renderHeight: '100%',
+              renderBorderRadius: this.getBorderRadius(surface),
+              renderClip: true,
+              renderZIndex: 0,
+              renderHitTest: surface.isVisible ? HitTestMode.Block : HitTestMode.None
+            })
+          } else if (surface.content === CONTENT_URL && !surface.browserTabId) {
             Web({ src: '', controller: this.getWebController(surface), incognitoMode: surface.ephemeralWebData })
               .domStorageAccess(true)
               .javaScriptAccess(true)

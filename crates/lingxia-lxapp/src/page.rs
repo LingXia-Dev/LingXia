@@ -412,7 +412,8 @@ impl PageInstance {
                     lxapp.handle_lingxia_request(&page, req).into()
                 }
             })
-            .on_navigation(move |url| {
+            .on_navigation(move |request| {
+                let url = request.url.as_str();
                 let scheme = url.split(':').next().unwrap_or("");
                 match scheme {
                     // lx:// pages and inline content are always allowed

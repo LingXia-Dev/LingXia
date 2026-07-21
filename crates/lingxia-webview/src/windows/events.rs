@@ -42,7 +42,14 @@ pub(crate) fn register_event_handlers(
                     args.NavigationId(&mut navigation_id)?;
 
                     if let Some(webview) = find_webview(&started_tag)
-                        && matches!(webview.handle_navigation(&uri), NavigationPolicy::Cancel)
+                        && matches!(
+                            webview.handle_navigation(&crate::NavigationRequest::new(
+                                uri.clone(),
+                                false,
+                                true,
+                            )),
+                            NavigationPolicy::Cancel
+                        )
                     {
                         // Policy rejected before loading: the follow-up
                         // completion for this key is expected and consumed.
