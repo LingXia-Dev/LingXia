@@ -654,7 +654,7 @@ pub async fn browser_type_text(
 pub async fn browser_press(tab_id: &str, key: &str) -> Result<(), BrowserAutomationError> {
     prepare_browser_tab_for_input(tab_id).await?;
     browser_tab_webview(tab_id)?
-        .press(key, lingxia_webview::PressOptions)
+        .press(key, lingxia_webview::PressOptions::default())
         .await
         .map_err(BrowserAutomationError::from)
 }

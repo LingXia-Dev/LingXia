@@ -143,7 +143,11 @@ export default function BridgeReproPage() {
         : 'bg-gray-400';
 
   return (
-    <div className="min-h-screen p-4 space-y-3 text-sm">
+    <div
+      data-testid="bridge-repro-page"
+      data-automation-contract="bridge-v1"
+      className="min-h-screen p-4 space-y-3 text-sm"
+    >
       <div
         className={`rounded-lg px-4 py-3 text-white font-bold text-lg ${bootstrapColor}`}
         id="bootstrap-verdict"
@@ -207,16 +211,25 @@ export default function BridgeReproPage() {
         </button>
       </div>
 
-      <button
-        id="btn-restart"
-        onClick={() => {
-          setStreamError(null);
-          ticks.start();
-        }}
-        className="w-full bg-gray-700 text-white rounded-lg py-3 font-semibold active:opacity-70"
-      >
-        {audit.received === 0 ? 'Start stream' : 'Restart stream'}
-      </button>
+      <div className="flex gap-2">
+        <button
+          id="btn-restart"
+          onClick={() => {
+            setStreamError(null);
+            ticks.start();
+          }}
+          className="flex-1 bg-gray-700 text-white rounded-lg py-3 font-semibold active:opacity-70"
+        >
+          {audit.received === 0 ? 'Start stream' : 'Restart stream'}
+        </button>
+        <button
+          id="btn-stop"
+          onClick={() => ticks.cancel()}
+          className="bg-gray-500 px-5 text-white rounded-lg py-3 font-semibold active:opacity-70"
+        >
+          Stop
+        </button>
+      </div>
 
       <p className="text-gray-500 text-xs leading-relaxed">
         Start the stream, then reconnect. Any gap or bridge error fails the check. Echo may time out

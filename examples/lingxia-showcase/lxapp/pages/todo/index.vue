@@ -1,9 +1,11 @@
 <template>
-  <div class="todo-page">
+  <div class="todo-page" data-testid="todo-page">
     <section class="todoapp">
       <h1>todos</h1>
       <input
         class="new-todo"
+        data-testid="todo-input"
+        :data-controlled-value="newTodo"
         placeholder="What needs to be done?"
         v-model="newTodo"
         @keydown.enter="handleAddTodo"
@@ -26,17 +28,25 @@
         />
         <label for="toggle-all">Mark all as complete</label>
         <ul class="todo-list">
-          <li v-for="todo in filteredTodos" :key="todo.id" :class="{ completed: todo.completed }">
+          <li
+            v-for="todo in filteredTodos"
+            :key="todo.id"
+            :class="{ completed: todo.completed }"
+            data-testid="todo-item"
+          >
             <div class="view">
               <input
+                :id="`todo-${todo.id}`"
                 class="toggle"
+                data-testid="todo-toggle"
                 type="checkbox"
                 :checked="todo.completed"
                 @change="toggleTodo({ id: todo.id })"
               />
-              <label>{{ todo.text }}</label>
+              <label :for="`todo-${todo.id}`" data-testid="todo-label">{{ todo.text }}</label>
               <button
                 class="destroy"
+                data-testid="todo-delete"
                 @click="deleteTodo({ id: todo.id })"
                 aria-label="Delete todo"
               />
@@ -54,6 +64,7 @@
           <li>
             <a
               href="#/"
+              data-testid="todo-filter-all"
               :class="{ selected: currentFilter === 'all' }"
               @click.prevent="setFilter({ filter: 'all' })"
             >
@@ -63,6 +74,7 @@
           <li>
             <a
               href="#/active"
+              data-testid="todo-filter-active"
               :class="{ selected: currentFilter === 'active' }"
               @click.prevent="setFilter({ filter: 'active' })"
             >
@@ -72,6 +84,7 @@
           <li>
             <a
               href="#/completed"
+              data-testid="todo-filter-completed"
               :class="{ selected: currentFilter === 'completed' }"
               @click.prevent="setFilter({ filter: 'completed' })"
             >
@@ -79,7 +92,7 @@
             </a>
           </li>
         </ul>
-        <button v-if="todoStats.completed > 0" class="clear-completed" @click="clearCompleted">
+        <button v-if="todoStats.completed > 0" class="clear-completed" data-testid="todo-clear-completed" @click="clearCompleted">
           Clear completed
         </button>
       </footer>

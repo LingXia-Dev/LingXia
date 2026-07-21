@@ -83,6 +83,11 @@ in the running app and watched it behave. Close the loop with `lxdev`:
 Any step fails → fix and rerun from step 1. Don't hand back partially verified
 work, and report what you actually observed — not what the edit should do.
 
+Keep regressions and repeatable business flows as `lxdev test` cases:
+`tests/api/` for `lx.*` contracts, `tests/pages/` for page behavior, and
+`tests/flows/` for cross-page journeys.
+One-off visual polish needs live verification, not necessarily a permanent test.
+
 Command details: [`lingxia` CLI](./cli/lingxia.md) · [`lxdev`](./cli/lxdev.md).
 
 ---

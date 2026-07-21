@@ -1215,6 +1215,15 @@ impl LingXiaConfig {
         terminal_requested && matches!(platform, "macos" | "windows")
     }
 
+    pub fn process_enabled(&self, platform: &str) -> bool {
+        let process_requested = self
+            .capabilities
+            .as_ref()
+            .map(|capabilities| capabilities.process)
+            .unwrap_or(false);
+        process_requested && matches!(platform, "macos" | "windows")
+    }
+
     pub fn proxy_enabled(&self, platform: &str) -> bool {
         let proxy_requested = self
             .capabilities
@@ -1235,6 +1244,9 @@ impl LingXiaConfig {
         let mut features = Vec::new();
         if self.app_service_enabled() {
             features.push("standard".to_string());
+        }
+        if self.process_enabled(platform) {
+            features.push("process".to_string());
         }
         // The browser capability brings its runtime and webui pages (newtab /
         // settings / downloads) on every platform it is enabled for.
@@ -1394,7 +1406,25 @@ impl LingXiaConfig {
             Version::parse(app.product_version.trim()).map_err(|_| {
                 anyhow!("app.productVersion must be a semantic version (major.minor.patch)")
             })?;
-            validate_app_platforms(app)?;
+            let app_platforms = validate_app_platforms(app)?;
+            let process_requested = self
+                .capabilities
+                .as_ref()
+                .is_some_and(|capabilities| capabilities.process);
+            if process_requested && !self.app_service_enabled() {
+                return Err(anyhow!(
+                    "capabilities.process requires features.appService: true"
+                ));
+            }
+            if process_requested
+                && !app_platforms
+                    .iter()
+                    .any(|platform| matches!(platform.as_str(), "macos" | "windows"))
+            {
+                return Err(anyhow!(
+                    "capabilities.process is supported only by macOS and Windows hosts"
+                ));
+            }
             let home_app_id = app.home_app_id.trim();
             if home_app_id.is_empty() {
                 return Err(anyhow!("app.homeAppId must not be empty"));
@@ -2284,6 +2314,38 @@ android:
                 "webview-input".to_string(),
             ]
         );
+    }
+
+    #[test]
+    fn process_capability_enables_desktop_runtime_feature() {
+        let mut config = LingXiaConfig::new_android("my-app", "com.example.myapp", "my-app");
+        config.capabilities.as_mut().unwrap().process = true;
+
+        assert!(config.process_enabled("macos"));
+        assert!(config.process_enabled("windows"));
+        assert!(!config.process_enabled("android"));
+        assert_eq!(
+            config.native_features_for_platform("macos"),
+            vec![
+                "standard".to_string(),
+                "process".to_string(),
+                "webview-input".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn process_capability_requires_app_service_and_desktop_host() {
+        let mut config = LingXiaConfig::new_android("my-app", "com.example.myapp", "my-app");
+        config.capabilities.as_mut().unwrap().process = true;
+
+        let err = config.validate().unwrap_err().to_string();
+        assert!(err.contains("supported only by macOS and Windows"), "{err}");
+
+        config.app.as_mut().unwrap().platforms = vec!["macos".to_string()];
+        config.features.as_mut().unwrap().app_service = false;
+        let err = config.validate().unwrap_err().to_string();
+        assert!(err.contains("requires features.appService: true"), "{err}");
     }
 
     #[test]

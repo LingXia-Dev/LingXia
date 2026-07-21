@@ -42,6 +42,8 @@ pub enum LogTag {
     WebViewConsole,
     LxAppServiceConsole,
     BrowserConsole,
+    /// Isolated host automation output (path = run id).
+    Automation,
 }
 
 impl LogTag {
@@ -51,6 +53,7 @@ impl LogTag {
             Self::WebViewConsole => "LXView",
             Self::LxAppServiceConsole => "LXLogic",
             Self::BrowserConsole => "Browser",
+            Self::Automation => "Automation",
         }
     }
 }
@@ -552,6 +555,7 @@ fn log_tag_from_str(value: &str) -> Option<LogTag> {
         "LXView" => Some(LogTag::WebViewConsole),
         "LXLogic" => Some(LogTag::LxAppServiceConsole),
         "Browser" => Some(LogTag::BrowserConsole),
+        "Automation" => Some(LogTag::Automation),
         _ => None,
     }
 }

@@ -23,7 +23,7 @@ pub struct LogsOptions {
     pub level: Option<String>,
 
     /// Only include entries for this source
-    #[arg(long, alias = "tag", value_parser = ["native", "lxview", "lxlogic", "browser"])]
+    #[arg(long, alias = "tag", value_parser = ["native", "lxview", "lxlogic", "browser", "automation"])]
     pub source: Option<String>,
 
     /// Only include entries for this app id (exact match)
@@ -299,6 +299,7 @@ fn parse_source(value: &str) -> Result<DevtoolsLogSource> {
         "lxview" => Ok(DevtoolsLogSource::WebViewConsole),
         "lxlogic" => Ok(DevtoolsLogSource::LxAppServiceConsole),
         "browser" => Ok(DevtoolsLogSource::BrowserConsole),
+        "automation" => Ok(DevtoolsLogSource::Automation),
         _ => Err(anyhow!("Unsupported log source: {}", value)),
     }
 }
@@ -319,6 +320,7 @@ fn format_source(source: DevtoolsLogSource) -> &'static str {
         DevtoolsLogSource::WebViewConsole => "lxview",
         DevtoolsLogSource::LxAppServiceConsole => "lxlogic",
         DevtoolsLogSource::BrowserConsole => "browser",
+        DevtoolsLogSource::Automation => "automation",
     }
 }
 
@@ -348,7 +350,7 @@ mod tests {
     }
 
     #[test]
-    fn source_names_are_the_four_canonical_values() {
+    fn source_names_are_the_five_canonical_values() {
         assert_eq!(parse_source("native").unwrap(), DevtoolsLogSource::Native);
         assert_eq!(
             parse_source("lxview").unwrap(),
@@ -361,6 +363,10 @@ mod tests {
         assert_eq!(
             parse_source("browser").unwrap(),
             DevtoolsLogSource::BrowserConsole
+        );
+        assert_eq!(
+            parse_source("automation").unwrap(),
+            DevtoolsLogSource::Automation
         );
         assert!(parse_source("webview").is_err());
         assert!(parse_source("browser_console").is_err());

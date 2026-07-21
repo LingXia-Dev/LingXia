@@ -789,7 +789,22 @@ fn run_lxapp_build(project_root: &Path, args: Option<&serde_json::Value>) -> Res
         build_args.push("--framework".to_string());
         build_args.push(framework.to_string());
     }
-    crate::lxapp::run_in_dir_for_dev(&build_args, &resolve_lxapp_dir(project_root)?)
+    crate::lxapp::run_in_dir_for_dev(&build_args, &resolve_lxapp_dir(project_root)?)?;
+
+    // Host dev sessions serve bundles through the generated manifest. Without
+    // refreshing it here, the runtime sees the previous dist hash and a
+    // successful `lxdev lxapp reload` silently restarts stale assets.
+    refresh_lxapp_manifests(project_root)?;
+    Ok(())
+}
+
+fn refresh_lxapp_manifests(project_root: &Path) -> Result<()> {
+    if !project_root.join("lingxia.yaml").is_file() {
+        return Ok(());
+    }
+    let config = crate::config::LingXiaConfig::load(project_root)?;
+    super::lxapp_manifest::write_configured_manifests(project_root, &config)?;
+    Ok(())
 }
 
 /// The directory holding the lxapp to build: the project root itself for a
@@ -881,7 +896,10 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::{DevServerState, accept_websocket, dev_port, read_wire_message, send_wire_message};
+    use super::{
+        DevServerState, accept_websocket, dev_port, read_wire_message, refresh_lxapp_manifests,
+        send_wire_message,
+    };
     use lingxia_devtool_protocol::{DevtoolsPeerRole, DevtoolsWireMessage};
     use std::net::TcpListener;
     use std::path::PathBuf;
@@ -895,6 +913,37 @@ mod tests {
             Arc::new(AtomicBool::new(false)),
             Some("secret".to_string()),
         )
+    }
+
+    #[test]
+    fn reload_manifest_refresh_tracks_rebuilt_dist() {
+        let temp = tempfile::tempdir().unwrap();
+        let project = temp.path();
+        let dist = project.join("lxapp/dist");
+        std::fs::create_dir_all(&dist).unwrap();
+        std::fs::write(
+            project.join("lingxia.yaml"),
+            "app:\n  projectName: demo-host\n  productName: Demo Host\n  productVersion: 1.0.0\n  platforms: [windows]\n  homeAppId: demo\nresources:\n  bundles:\n    - type: lxapp\n      appId: demo\n      path: lxapp\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dist.join("lxapp.json"),
+            r#"{"appId":"demo","version":"1.0.0","pages":{}}"#,
+        )
+        .unwrap();
+        std::fs::write(dist.join("logic.js"), "Page({ value: 1 })").unwrap();
+
+        refresh_lxapp_manifests(project).unwrap();
+        let manifest_path = project.join(".lingxia/dev/lxapp/demo/manifest.json");
+        let first: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&manifest_path).unwrap()).unwrap();
+
+        std::fs::write(dist.join("logic.js"), "Page({ value: 2 })").unwrap();
+        refresh_lxapp_manifests(project).unwrap();
+        let second: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&manifest_path).unwrap()).unwrap();
+
+        assert_ne!(first["distHash"], second["distHash"]);
     }
 
     #[test]

@@ -483,7 +483,12 @@ pub struct FillOptions {
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct PressOptions;
+pub struct PressOptions {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selector: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub index: Option<usize>,
+}
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ScrollOptions;

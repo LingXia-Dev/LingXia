@@ -1,9 +1,9 @@
 /**
  * In-process UI/runtime automation — `lx.automation()`.
  *
- * Returns a capability handle for driving the calling lxapp's own UI and
- * runtime. Gated by the `automation` security privilege (base tier) or `host`
- * (host tier); `lingxia dev` sessions and the Runner grant them implicitly.
+ * Returns a stable selector root. Selecting the calling lxapp requires the
+ * `automation` security privilege; cross-lxapp and host surfaces require
+ * `host`. `lingxia dev` sessions and the Runner grant both implicitly.
  *
  * This mirrors the devtool (`lxdev`) automation surface as a privilege-scoped,
  * product-side API.
@@ -11,30 +11,18 @@
 
 // ============================ factory ============================
 
-export interface AutomationOptions {
-  /** Opt into the host tier: cross-lxapp management, browser tabs, and
-   *  host-window input. Requires the `host` privilege. */
-  host?: boolean;
-}
-
-/** Base tier: operate on the calling lxapp itself. */
+/** Stable automation root; it grants no capability until one is selected. */
 export interface Automation {
-  /** Element-level automation of the lxapp's own page WebViews. */
-  readonly page: PageDriver;
-  /** Page-stack navigation and runtime reads. */
-  readonly nav: NavDriver;
-  /** Read-only introspection of the calling lxapp. */
-  readonly lxapp: LxAppSelfInfo;
-}
-
-/** Host tier: adds cross-lxapp, browser, and local-OS desktop control. */
-export interface HostAutomation {
-  readonly page: PageDriver;
-  readonly nav: NavDriver;
-  /** Cross-lxapp lifecycle + logic-runtime access. */
-  readonly lxapp: LxAppManager;
+  /** Drive the calling/current lxapp. Requires `automation` outside dev. */
+  lxapp(): LxAppDriver;
+  /** Drive a specific running lxapp. Requires `host` outside dev. */
+  lxapp(appid: string): LxAppDriver;
+  /** Cross-lxapp lifecycle and host-window capture. */
+  readonly lxapps: LxAppManager;
   /** The host app's browser tabs. */
   readonly browser: BrowserDriver;
+  /** Simulated-device selection in a host runner. */
+  readonly device: DeviceDriver;
   /**
    * Session-less local-OS desktop automation (`lxdev desktop`). Beyond the
    * app sandbox, so restricted to dev/test hosts (`lingxia dev` or the
@@ -83,6 +71,10 @@ export interface PageTypeOptions extends PageSelectorOptions {
 export interface PagePressOptions extends PageTarget {
   /** Key name, e.g. `Enter`, `Escape`, `Tab`. */
   key: string;
+  /** Focus this CSS selector before pressing; otherwise use the current focus. */
+  css?: string;
+  /** Target the nth selector match. Requires `css`. */
+  index?: number;
 }
 
 export interface PageScrollOptions extends PageTarget {
@@ -172,7 +164,7 @@ export interface Screenshot {
   height: number;
 }
 
-/** Element-level automation of the calling lxapp's own page WebViews. */
+/** Element-level automation of the selected lxapp's page WebViews. */
 export interface PageDriver {
   /** Evaluate JavaScript in the page WebView; resolves to the returned value. */
   eval(options: PageEvalOptions): Promise<unknown>;
@@ -225,7 +217,7 @@ export interface PageInfo {
 }
 
 /**
- * Page-stack navigation for the calling lxapp. Action verbs take a configured
+ * Page-stack navigation for the selected lxapp. Action verbs take a configured
  * page name (`redirect` rejects a tab-bar page); `back` pops; `current`/`stack`
  * read. Unlike the JS `lx.navigateTo` family this returns the landed page, but
  * like it does not wait for the destination WebView (awaiting in-process would
@@ -247,7 +239,7 @@ export interface NavDriver {
   stack(): Promise<PageInfo[]>;
 }
 
-// ============================ lxapp (base) ============================
+// ============================ lxapp driver ============================
 
 export interface LxAppSummary {
   appid: string;
@@ -259,11 +251,22 @@ export interface LxAppPageConfig {
   path: string;
 }
 
-/** Read-only introspection of the calling lxapp (base tier). */
-export interface LxAppSelfInfo {
-  current(): Promise<LxAppSummary>;
-  /** Configured pages of the calling lxapp. */
+export interface LxAppEvalOptions {
+  /** JavaScript expression or function body run in the selected Logic runtime. */
+  script: string;
+  timeoutMs?: number;
+}
+
+/** Capability for one selected running lxapp. */
+export interface LxAppDriver {
+  readonly page: PageDriver;
+  readonly nav: NavDriver;
+  /** Complete runtime snapshot of the selected lxapp. */
+  info(): Promise<LxAppRuntimeInfo>;
+  /** Configured pages of the selected lxapp. */
   pages(): Promise<LxAppPageConfig[]>;
+  /** Logic-runtime eval; self-eval from that Logic runtime is rejected. */
+  eval(options: LxAppEvalOptions): Promise<unknown>;
 }
 
 // ======================= lxapp manager (host) =======================
@@ -299,11 +302,6 @@ export interface LxAppRef {
   app?: string;
 }
 
-export interface LxAppListOptions {
-  /** Accepted for API shape; currently returns all instances regardless. */
-  all?: boolean;
-}
-
 export interface LxAppOpenOptions {
   appid: string;
   /** Initial page/path. */
@@ -316,33 +314,19 @@ export interface LxAppOpenResult {
   path: string;
 }
 
-export interface LxAppEvalOptions extends LxAppRef {
-  /** JavaScript expression or function body run in the target logic runtime. */
-  script: string;
-  timeoutMs?: number;
-}
-
 /**
- * Cross-lxapp lifecycle and logic-runtime access (host tier).
+ * Cross-lxapp lifecycle and host-window access. Requires `host` outside dev.
  *
- * `eval`, `close`, `restart`, and `uninstall` reject when they target the
- * calling app itself — running teardown or a re-entrant eval from inside the
- * app's own single-threaded logic runtime would deadlock. Use `lx.app.exit()`
- * to self-exit.
+ * `close`, `restart`, and `uninstall` reject when they target the calling app
+ * itself. Use `lx.app.exit()` to self-exit.
  */
 export interface LxAppManager {
-  list(options?: LxAppListOptions): Promise<LxAppRuntimeInfo[]>;
+  list(): Promise<LxAppRuntimeInfo[]>;
   current(): Promise<LxAppSummary>;
-  info(options?: LxAppRef): Promise<LxAppRuntimeInfo>;
-  pages(options?: LxAppRef): Promise<LxAppPageEntry[]>;
   open(options: LxAppOpenOptions): Promise<LxAppOpenResult>;
   close(options?: LxAppRef): Promise<void>;
   restart(options?: LxAppRef): Promise<void>;
   uninstall(options?: LxAppRef): Promise<void>;
-  /** Logic-runtime eval in another app (cannot target the calling app). */
-  eval(options: LxAppEvalOptions): Promise<unknown>;
-  /** A base-tier handle (`page`/`nav`/`lxapp`) scoped to another app. */
-  scope(options?: LxAppRef): Automation;
   /** Enumerate the host app's top-level windows (`lxdev lxapp windows`). */
   windows(): Promise<AppWindowInfo[]>;
   /** PNG of a host app window (`lxdev lxapp screenshot`); defaults to the
@@ -381,7 +365,8 @@ export interface DeviceState {
 export interface DeviceSetOptions {
   /** Device preset id (see `list()`). */
   id: string;
-  /** Force landscape (`true`) or portrait (`false`); omit to keep current. */
+  /** Force landscape (`true`) or portrait (`false`); omit to use the
+   * runner's normal device-selection behavior. */
   landscape?: boolean;
 }
 

@@ -9,6 +9,10 @@ repository.workspace = true
 [features]
 default = []
 browser = ["dep:lingxia-browser"]
+# Session test runner (`lxdev test`). Development hosts only: production
+# builds omit it, so the session.test.* handlers are absent rather than
+# permission-gated.
+test-runtime = ["dep:lingxia-automation"]
 
 [dependencies]
 lingxia-devtool-protocol = { workspace = true }
@@ -23,6 +27,12 @@ serde_json = { workspace = true }
 base64 = { workspace = true }
 tokio = { workspace = true }
 tungstenite = { version = "0.29", default-features = false, features = ["handshake", "rustls-tls-webpki-roots"] }
+
+[target.'cfg(any(target_os = "ios", target_os = "macos"))'.dependencies]
+lingxia-automation = { workspace = true, optional = true, features = ["runtime-interrupt"] }
+
+[target.'cfg(not(any(target_os = "ios", target_os = "macos")))'.dependencies]
+lingxia-automation = { workspace = true, optional = true, features = ["runtime"] }
 
 [target.'cfg(any(target_os = "android", target_os = "ios", all(target_os = "linux", target_env = "ohos")))'.dependencies]
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }

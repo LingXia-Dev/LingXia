@@ -54,7 +54,9 @@
           </template>
 
           <template v-else>
-            <div class="py-8 text-gray-500">No location data available</div>
+            <div :class="['py-8', locationError ? 'text-red-500' : 'text-gray-500']">
+              {{ locationError || 'No location data available' }}
+            </div>
           </template>
         </div>
       </div>
@@ -90,6 +92,7 @@ const { data, actions } = useLxPage();
 const { getLocation, clearLocation } = actions;
 
 const location = computed(() => data.location ?? null);
+const locationError = computed(() => data.locationError ?? '');
 const isLoading = computed(() => data.isLoading ?? false);
 
 function formatCoordinate(value: number | null | undefined, axis: 'latitude' | 'longitude'): string {

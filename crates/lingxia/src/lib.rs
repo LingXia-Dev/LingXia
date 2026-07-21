@@ -29,6 +29,12 @@ pub use lxapp::host::{ChannelContext, ChannelMessage, StreamContext};
 pub use lxapp::set_automation_auto_grant;
 pub use lxapp::{LxApp, LxAppSecurityPrivilege};
 
+/// Isolated host-owned automation programs for trusted Agent-style products.
+#[cfg(feature = "automation-runtime")]
+pub mod automation_runtime {
+    pub use lingxia_automation::runtime::*;
+}
+
 /// Host app metadata, state-path helpers, and lifecycle helpers.
 pub mod app;
 pub use app::{home_app_id, lingxia_id, product_version};

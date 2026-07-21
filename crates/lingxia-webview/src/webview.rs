@@ -1129,19 +1129,33 @@ impl WebView {
         self.run_js_action(&script).await
     }
 
-    /// Press a key by synthesizing keydown/keyup on the focused element.
+    /// Press a key by synthesizing keydown/keyup on the selected or focused element.
     #[cfg(any(
         target_os = "ios",
         target_os = "android",
         all(feature = "webview-input", target_os = "macos"),
         all(target_os = "linux", target_env = "ohos")
     ))]
-    pub(crate) async fn press_via_js(&self, key: &str) -> Result<(), WebViewInputError> {
+    pub(crate) async fn press_via_js(
+        &self,
+        key: &str,
+        selector: Option<&str>,
+        index: Option<usize>,
+    ) -> Result<(), WebViewInputError> {
         let key_json = serde_json::to_string(key)
             .map_err(|err| WebViewInputError::Platform(format!("Invalid key: {err}")))?;
+        let selector_json = serde_json::to_string(&selector)
+            .map_err(|err| WebViewInputError::Platform(format!("Invalid selector: {err}")))?;
+        let idx = index.unwrap_or(0);
         let script = format!(
-            "((key) => {{ \
-              const el = document.activeElement || document.body; \
+            "((key, sel, i) => {{ \
+              const els = sel === null ? null : document.querySelectorAll(sel); \
+              if (els && (!els.length || i < 0 || i >= els.length)) return {{ ok:false, error:'no match', count:els.length }}; \
+              const el = els ? els[i] : (document.activeElement || document.body); \
+              if (els) {{ \
+                try {{ el.scrollIntoView({{block:'center', inline:'center'}}); }} catch(_e) {{}} \
+                if (typeof el.focus === 'function') {{ try {{ el.focus({{preventScroll:true}}); }} catch(_e) {{ try {{ el.focus(); }} catch(__){{}} }} }} \
+              }} \
               const map = {{ enter:'Enter', 'return':'Enter', tab:'Tab', esc:'Escape', escape:'Escape', backspace:'Backspace', 'delete':'Delete', forwarddelete:'Delete', space:' ', up:'ArrowUp', down:'ArrowDown', left:'ArrowLeft', right:'ArrowRight', arrowup:'ArrowUp', arrowdown:'ArrowDown', arrowleft:'ArrowLeft', arrowright:'ArrowRight', home:'Home', end:'End', pageup:'PageUp', pagedown:'PageDown' }}; \
               const norm = String(key).toLowerCase(); \
               const k = map[norm] || key; \
@@ -1149,7 +1163,7 @@ impl WebView {
               el.dispatchEvent(new KeyboardEvent('keydown', opts)); \
               el.dispatchEvent(new KeyboardEvent('keyup', opts)); \
               return {{ ok:true }}; \
-            }})({key_json})"
+            }})({key_json}, {selector_json}, {idx})"
         );
         self.run_js_action(&script).await
     }
@@ -1452,15 +1466,13 @@ impl WebViewInputController for WebView {
         _selector: &str,
         _options: ClickOptions,
     ) -> Result<(), WebViewInputError> {
-        // macOS: native NSEvent input when the WebView is window-attached
-        // (trusted events/IME); otherwise (AppUI off-surface render) fall back
-        // to DOM-level JS synthesis. iOS/OpenHarmony always use JS (no native
-        // touch synthesis).
+        // macOS uses DOM synthesis for selector clicks: AppKit does not expose
+        // a reliable permission-free way to update WKWebView hit testing from
+        // an in-process NSEvent. Text and key input still use native WebKit
+        // editing paths below. iOS/OpenHarmony likewise have no native touch
+        // synthesis.
         #[cfg(all(feature = "webview-input", target_os = "macos"))]
         {
-            if self.inner.is_window_attached().await {
-                return self.inner.click_inner(_selector, _options).await;
-            }
             return self.click_via_js(_selector, _options.index).await;
         }
         #[cfg(all(feature = "webview-input", target_os = "windows"))]
@@ -1524,19 +1536,10 @@ impl WebViewInputController for WebView {
     ) -> Result<(), WebViewInputError> {
         #[cfg(all(feature = "webview-input", target_os = "macos"))]
         {
-            if self.inner.is_window_attached().await {
-                return self
-                    .inner
-                    .type_text_inner(
-                        _selector,
-                        _text,
-                        TypeOptions {
-                            index: _options.index,
-                            replace: true,
-                        },
-                    )
-                    .await;
-            }
+            // `fill` is a framework-aware replacement operation. WebKit's
+            // native InsertText command can report success before a controlled
+            // React/Vue input observes the edit, leaving dependent controls in
+            // their old state. `type` retains the native keyboard path.
             return self
                 .type_via_js(_selector, _options.index, _text, true)
                 .await;
@@ -1572,12 +1575,19 @@ impl WebViewInputController for WebView {
     }
 
     async fn press(&self, _key: &str, _options: PressOptions) -> Result<(), WebViewInputError> {
+        if _options.index.is_some() && _options.selector.is_none() {
+            return Err(WebViewInputError::Platform(
+                "press index requires a selector".to_string(),
+            ));
+        }
         #[cfg(all(feature = "webview-input", target_os = "macos"))]
         {
             if self.inner.is_window_attached().await {
                 return self.inner.press_inner(_key, _options).await;
             }
-            return self.press_via_js(_key).await;
+            return self
+                .press_via_js(_key, _options.selector.as_deref(), _options.index)
+                .await;
         }
         #[cfg(all(feature = "webview-input", target_os = "windows"))]
         {
@@ -1589,7 +1599,9 @@ impl WebViewInputController for WebView {
             all(target_os = "linux", target_env = "ohos")
         ))]
         {
-            return self.press_via_js(_key).await;
+            return self
+                .press_via_js(_key, _options.selector.as_deref(), _options.index)
+                .await;
         }
         #[allow(unreachable_code)]
         Err(WebViewInputError::Unsupported(

@@ -2017,14 +2017,19 @@ dependencies = [
  "futures",
  "lingxia-browser",
  "lingxia-computer-use",
+ "lingxia-log",
  "lingxia-lxapp",
  "lingxia-platform",
  "lingxia-webview",
  "log",
  "rong",
+ "rong_console",
+ "rong_modules",
+ "rong_timer",
  "serde",
  "serde_json",
  "tokio",
+ "uuid",
 ]
 
 [[package]]
@@ -2096,6 +2101,7 @@ dependencies = [
  "base64",
  "lingxia",
  "lingxia-app-context",
+ "lingxia-automation",
  "lingxia-browser",
  "lingxia-devtool-protocol",
  "lingxia-log",
@@ -5050,7 +5056,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.4.3",
+ "getrandom 0.3.4",
  "once_cell",
  "rustix",
  "windows-sys 0.61.2",

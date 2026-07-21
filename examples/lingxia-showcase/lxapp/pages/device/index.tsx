@@ -69,6 +69,7 @@ export default function DevicePage() {
             <div className="text-xs text-gray-500 mt-0.5">Brand, model, and OS version</div>
           </div>
           <button
+            data-testid="device-get-info"
             onClick={getDeviceInfo}
             className="px-5 py-2.5 text-sm font-medium transition-all duration-200 bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-600 text-white rounded-xl shadow-sm active:scale-[0.98]"
           >
@@ -77,7 +78,7 @@ export default function DevicePage() {
         </div>
 
         {deviceInfo && (
-          <div className="p-5">
+          <div className="p-5" data-testid="device-info-result">
             <div className="rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50 to-white p-4">
               <div className="flex items-center gap-2 mb-4">
                 <span className="w-1 h-4 bg-blue-500 rounded-full"></span>
@@ -114,6 +115,7 @@ export default function DevicePage() {
             <div className="text-xs text-gray-500 mt-0.5">Screen dimensions and scale</div>
           </div>
           <button
+            data-testid="device-screen-get-info"
             onClick={getScreenInfo}
             className="px-5 py-2.5 text-sm font-medium transition-all duration-200 bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-600 text-white rounded-xl shadow-sm active:scale-[0.98]"
           >
@@ -122,7 +124,7 @@ export default function DevicePage() {
         </div>
 
         {screenInfo && (
-          <div className="p-5">
+          <div className="p-5" data-testid="device-screen-result">
             <div className="rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50 to-white p-4">
               <div className="flex items-center gap-2 mb-4">
                 <span className="w-1 h-4 bg-purple-500 rounded-full"></span>
@@ -233,6 +235,7 @@ export default function DevicePage() {
             <div className="text-xs text-gray-500 mt-0.5">none / unknown / wifi / 2g / 3g / 4g / 5g / ethernet</div>
           </div>
           <button
+            data-testid="device-network-get-info"
             onClick={getNetworkInfo}
             className="px-5 py-2.5 text-sm font-medium transition-all duration-200 bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-600 text-white rounded-xl shadow-sm active:scale-[0.98]"
           >
@@ -240,7 +243,7 @@ export default function DevicePage() {
           </button>
         </div>
 
-        <div className="p-5">
+        <div className="p-5" data-testid="device-network-result">
           <div className="rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50 to-white p-4">
             <InfoRow label="Connected" value={networkInfo?.isConnected === undefined ? '--' : (networkInfo.isConnected ? 'Yes' : 'No')} />
             <InfoRow label="Network Type" value={networkInfo?.networkType || '--'} />
@@ -267,6 +270,7 @@ export default function DevicePage() {
             <div className="text-xs text-gray-500 mt-0.5">Current active network addresses</div>
           </div>
           <button
+            data-testid="device-network-get-info"
             onClick={getNetworkInfo}
             className="px-5 py-2.5 text-sm font-medium transition-all duration-200 bg-gradient-to-r from-teal-600 to-teal-500 hover:from-teal-500 hover:to-teal-600 text-white rounded-xl shadow-sm active:scale-[0.98]"
           >
@@ -274,7 +278,7 @@ export default function DevicePage() {
           </button>
         </div>
 
-        <div className="p-5">
+        <div className="p-5" data-testid="device-network-result">
           <div className="rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50 to-white p-4">
             <InfoRow label="IPv4" value={networkInfo?.ipv4?.length ? networkInfo.ipv4 : '--'} />
             <InfoRow label="IPv6" value={networkInfo?.ipv6?.length ? networkInfo.ipv6 : '--'} />
@@ -295,12 +299,14 @@ export default function DevicePage() {
         <div className="p-6 space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <button
+              data-testid="device-network-listen-start"
               onClick={startNetworkChangeListen}
               className="py-3 text-sm font-medium transition-all duration-200 bg-gradient-to-r from-green-600 to-green-500 hover:from-green-500 hover:to-green-600 text-white rounded-xl shadow-sm active:scale-[0.98]"
             >
               Start Listen
             </button>
             <button
+              data-testid="device-network-listen-stop"
               onClick={stopNetworkChangeListen}
               className="py-3 text-sm font-medium transition-all duration-200 bg-gradient-to-r from-gray-600 to-gray-500 hover:from-gray-500 hover:to-gray-600 text-white rounded-xl shadow-sm active:scale-[0.98]"
             >
@@ -308,7 +314,7 @@ export default function DevicePage() {
             </button>
           </div>
 
-          <div className="rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50 to-white p-4">
+          <div className="rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50 to-white p-4" data-testid="device-network-status">
             <InfoRow label="Listening" value={networkListening ? 'Yes' : 'No'} />
             <InfoRow label="Connected" value={networkChange?.isConnected === undefined ? '--' : (networkChange.isConnected ? 'Yes' : 'No')} />
             <InfoRow label="Network Type" value={networkChange?.networkType || '--'} />
@@ -395,7 +401,7 @@ export default function DevicePage() {
   );
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100" data-testid="device-page" data-mode={currentType}>
       <div className="px-4 py-6">
         {currentType === 'device' && renderDeviceInfoSection()}
         {currentType === 'screen' && renderScreenInfoSection()}

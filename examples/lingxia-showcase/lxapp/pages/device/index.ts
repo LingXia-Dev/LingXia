@@ -1,6 +1,6 @@
 Page({
   data: {
-    currentType: "",
+    currentType: "device",
     deviceInfo: null,
     screenInfo: null,
     networkInfo: null,
@@ -12,13 +12,13 @@ Page({
     orientationLock: "",
   },
 
-  onLoad: async function (options) {
+  onLoad: async function (options = {}) {
     console.log("Device page onLoad options:", options);
 
-    // Pass querystring parameters to page via setData
-    this.setData({
-      currentType: options.type || "device",
-    });
+    const { type = "device" } = (options || {}) as { type?: string };
+    if (type !== this.data.currentType) {
+      this.setData({ currentType: type });
+    }
   },
 
   onShow: function () {

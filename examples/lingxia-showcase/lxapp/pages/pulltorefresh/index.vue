@@ -1,5 +1,5 @@
 <template>
-  <div class="min-h-screen bg-gray-100">
+  <div class="min-h-screen bg-gray-100" data-testid="pull-refresh-page">
     <div class="px-4 py-6 pb-12 space-y-4">
 
       <!-- Header Info Card -->
@@ -25,13 +25,13 @@
         <div class="px-4 py-4 space-y-3">
           <div class="flex items-center justify-between">
             <span class="text-sm text-gray-600">Status</span>
-            <span :class="['text-sm font-medium', isRefreshing ? 'text-blue-600' : 'text-green-600']">
+            <span data-testid="pull-refresh-status" :class="['text-sm font-medium', isRefreshing ? 'text-blue-600' : 'text-green-600']">
               {{ isRefreshing ? 'Refreshing...' : 'Idle' }}
             </span>
           </div>
           <div class="flex items-center justify-between">
             <span class="text-sm text-gray-600">Refresh Count</span>
-            <span class="text-sm font-medium text-gray-900">{{ refreshCount }}</span>
+            <span data-testid="pull-refresh-count" class="text-sm font-medium text-gray-900">{{ refreshCount }}</span>
           </div>
           <div class="flex items-center justify-between">
             <span class="text-sm text-gray-600">Last Refresh</span>
@@ -48,6 +48,7 @@
         </div>
         <div class="p-4 space-y-3">
           <button
+            data-testid="pull-refresh-start"
             @click="startRefresh"
             :disabled="isRefreshing"
             :class="[
@@ -58,6 +59,7 @@
             lx.startPullDownRefresh()
           </button>
           <button
+            data-testid="pull-refresh-stop"
             @click="stopRefresh"
             class="w-full bg-gray-500 hover:bg-gray-600 text-white py-3 px-4 rounded-lg text-sm font-medium transition-colors"
           >

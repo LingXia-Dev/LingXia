@@ -1,5 +1,6 @@
-//! Host tier (`lx.automation({ host: true })`): cross-lxapp management, browser
-//! tabs, and app-window screenshot/enumeration. Gated by the `host` privilege.
+//! Host-only cross-lxapp management, browser tabs, and app-window capture.
+//! The `Automation` root checks the `host` privilege before exposing these
+//! unforgeable drivers.
 //! macOS is the reference platform where every capability is live.
 
 use crate::auto_err;
@@ -15,11 +16,7 @@ use serde_json::json;
 use std::time::Duration;
 
 fn illegal_ctor() -> rong::RongJSError {
-    HostError::new(
-        rong::error::E_ILLEGAL_CONSTRUCTOR,
-        "Use lx.automation({ host: true })",
-    )
-    .into()
+    HostError::new(rong::error::E_ILLEGAL_CONSTRUCTOR, "Use lx.automation()").into()
 }
 
 fn to_js<T: serde::Serialize>(ctx: &JSContext, value: &T) -> JSResult<JSValue> {
@@ -30,8 +27,8 @@ fn to_js<T: serde::Serialize>(ctx: &JSContext, value: &T) -> JSResult<JSValue> {
 fn release_type(raw: Option<&str>) -> JSResult<ReleaseType> {
     match raw.map(str::trim) {
         None | Some("") | Some("release") => Ok(ReleaseType::Release),
-        Some("preview") | Some("trial") => Ok(ReleaseType::Preview),
-        Some("developer") | Some("develop") | Some("dev") => Ok(ReleaseType::Developer),
+        Some("preview") => Ok(ReleaseType::Preview),
+        Some("developer") => Ok(ReleaseType::Developer),
         Some(other) => Err(auto_err(format!(
             "unknown releaseType '{other}' (expected release | preview | developer)"
         ))),
@@ -40,8 +37,14 @@ fn release_type(raw: Option<&str>) -> JSResult<ReleaseType> {
 
 /// Self-targeted lifecycle ops run teardown from inside the calling app's own
 /// logic runtime (same re-entrancy hazard `eval` guards against). Reject them.
-fn reject_self(ctx: &JSContext, target: &LxApp, verb: &str) -> JSResult<()> {
-    let caller = LxApp::from_ctx(ctx)?;
+/// A host automation context has no self lxapp and runs on its own worker, so
+/// nothing is re-entrant there.
+pub(crate) fn reject_self(ctx: &JSContext, target: &LxApp, verb: &str) -> JSResult<()> {
+    let caller = match LxApp::from_ctx(ctx) {
+        Ok(caller) => caller,
+        Err(_) if crate::host_automation_authority(ctx).is_some() => return Ok(()),
+        Err(err) => return Err(err),
+    };
     if target.appid == caller.appid {
         return Err(auto_err(format!(
             "cannot {verb} the calling app from its own logic runtime; \
@@ -67,27 +70,12 @@ struct AppOpt {
     app: Option<String>,
 }
 
-#[derive(FromJSObject, Default)]
-struct ListOpt {
-    // Accepted for API shape; runtime currently returns all instances.
-    #[allow(dead_code)]
-    all: Option<bool>,
-}
-
 #[derive(FromJSObject)]
 struct OpenOpt {
     appid: String,
     path: Option<String>,
     #[js_name = "releaseType"]
     release_type: Option<String>,
-}
-
-#[derive(FromJSObject)]
-struct EvalOpt {
-    script: String,
-    app: Option<String>,
-    #[js_name = "timeoutMs"]
-    timeout_ms: Option<u64>,
 }
 
 #[derive(Debug, Clone, IntoJSObject)]
@@ -108,7 +96,7 @@ impl JSLxAppManager {
     }
 
     #[js_method]
-    async fn list(&self, ctx: JSContext, _options: Optional<ListOpt>) -> JSResult<JSValue> {
+    async fn list(&self, ctx: JSContext) -> JSResult<JSValue> {
         to_js(&ctx, &lxapp::list_lxapps())
     }
 
@@ -116,20 +104,6 @@ impl JSLxAppManager {
     async fn current(&self, ctx: JSContext) -> JSResult<JSValue> {
         let (appid, path, _) = lxapp::get_current_lxapp();
         to_js(&ctx, &json!({ "appid": appid, "currentPage": path }))
-    }
-
-    #[js_method]
-    async fn info(&self, ctx: JSContext, options: Optional<AppOpt>) -> JSResult<JSValue> {
-        let options = options.0.unwrap_or_default();
-        let app = resolve_lxapp_by_id(app_ref(&options.app))?;
-        to_js(&ctx, &app.runtime_info())
-    }
-
-    #[js_method]
-    async fn pages(&self, ctx: JSContext, options: Optional<AppOpt>) -> JSResult<JSValue> {
-        let options = options.0.unwrap_or_default();
-        let app = resolve_lxapp_by_id(app_ref(&options.app))?;
-        to_js(&ctx, &app.runtime_info().page_entries)
     }
 
     #[js_method]
@@ -168,38 +142,6 @@ impl JSLxAppManager {
         let app = resolve_lxapp_by_id(app_ref(&options.app))?;
         reject_self(&ctx, &app, "uninstall")?;
         lxapp::uninstall_lxapp(&app.appid).map_err(|err| auto_err(err.to_string()))
-    }
-
-    /// Cross-app logic-runtime eval (the host-tier escape hatch). Cannot target
-    /// the calling app itself — the logic runtime is single-threaded, so a
-    /// re-entrant eval would deadlock; reject that up front.
-    #[js_method]
-    async fn eval(&self, ctx: JSContext, options: EvalOpt) -> JSResult<JSValue> {
-        let app = resolve_lxapp_by_id(app_ref(&options.app))?;
-        reject_self(&ctx, &app, "eval")?;
-        let timeout = Duration::from_millis(options.timeout_ms.unwrap_or(5000));
-        let value = tokio::time::timeout(timeout, app.eval_logic(options.script))
-            .await
-            .map_err(|_| auto_err("lxapp eval timed out"))?
-            .map_err(|err| auto_err(err.to_string()))?;
-        json_to_js(&ctx, &value)
-    }
-
-    /// Return a base-tier `Automation` handle (`page` / `nav` / `lxapp` self
-    /// info) scoped to another app.
-    #[js_method]
-    fn scope(&self, ctx: JSContext, options: Optional<AppOpt>) -> JSResult<JSObject> {
-        let options = options.0.unwrap_or_default();
-        let app = resolve_lxapp_by_id(app_ref(&options.app))?;
-        Ok(Class::lookup::<crate::JSAutomation>(&ctx)?
-            .instance(crate::JSAutomation::new(&app, false)))
-    }
-
-    /// Simulated-device control (`lxdev lxapp device`); available only in a host
-    /// runner that registered a device controller (rejects otherwise).
-    #[js_method(getter, enumerable)]
-    fn device(&self, ctx: JSContext) -> JSResult<JSObject> {
-        Ok(Class::lookup::<JSDeviceDriver>(&ctx)?.instance(JSDeviceDriver::new()))
     }
 
     /// Enumerate the host app's windows (`lxdev lxapp windows`).
@@ -256,7 +198,8 @@ impl JSDeviceDriver {
 struct DeviceSetOpt {
     /// Device preset id (see `list()`).
     id: String,
-    /// Force landscape (`true`) or portrait (`false`); omit to keep current.
+    /// Force landscape (`true`) or portrait (`false`); omit to use the
+    /// runner's normal device-selection behavior.
     landscape: Option<bool>,
 }
 

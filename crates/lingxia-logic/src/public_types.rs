@@ -1102,16 +1102,23 @@ true
     path: string;
 }"###;
 
-        /// Key-value storage APIs.
+        /// Persistent key-value storage backed by the lxapp database.
         ///
         type Storage = r###"{
-    get(key: string): unknown;
-    set(key: string, value: unknown): void;
-    remove(key: string): void;
-    clear(): void;
-    keys(): string[];
-    has(key: string): boolean;
-    size(): number;
+    get(key: string): Promise<unknown>;
+    set(key: string, value: unknown): Promise<void>;
+    delete(key: string): Promise<void>;
+    clear(): Promise<void>;
+    list(prefix?: string): Promise<IterableIterator<string>>;
+    info(): Promise<StorageInfo>;
+}"###;
+
+        /// Current persistent-storage usage and configured limits.
+        ///
+        type StorageInfo = r###"{
+    currentSize: number;
+    limitSize: number;
+    keyCount: number;
 }"###;
 
         type StreamSourceOptions = r###"{

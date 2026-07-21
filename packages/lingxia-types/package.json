@@ -19,6 +19,9 @@
     "./logic-globals": {
       "types": "./dist/logic-globals.d.ts"
     },
+    "./process": {
+      "types": "./dist/process.d.ts"
+    },
     "./app": {
       "types": "./dist/generated/logic.d.ts",
       "import": "./dist/generated/logic.js",
@@ -125,6 +128,7 @@
     "gen": "npm run gen:i18n && npm run gen:logic",
     "check:logic": "npm run gen:logic -- --check",
     "check:quality": "node scripts/check-generated-quality.mjs",
+    "test:types": "tsc -p tests/tsconfig.json",
     "build": "tsc && mkdir -p dist/generated && cp src/logic-globals.d.ts dist/logic-globals.d.ts && cp src/generated/logic-web.d.ts dist/generated/logic-web.d.ts",
     "clean": "rm -rf dist",
     "prepublishOnly": "npm run clean && npm run build"

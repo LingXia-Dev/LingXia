@@ -69,6 +69,9 @@ capabilities:
   terminal: false
   # Enable the in-app browser's HTTP proxy (desktop). Requires browser: true.
   proxy: false
+  # Allow the trusted home lxapp to launch and manage OS processes (desktop).
+  # Its lxapp.json must also declare security.privileges: [process].
+  process: false
   # Unlock lx.app.autostart (launch at system startup; macOS 13+/Windows, home lxapp only).
   # Declaring this never registers the app by itself — enabling is a user decision
   # via the API, typically a settings-page toggle.

@@ -1,0 +1,53 @@
+export const SHOWCASE_PAGE_EXPECTATIONS = [
+  { page: 'home', text: 'Lightweight Application Framework' },
+  { page: 'surface', text: 'Page lifecycle' },
+  { page: 'api', text: 'capabilities provided by LingXia' },
+  { page: 'cloud', text: 'Cloud Authentication' },
+  { page: 'video', text: 'Native Video' },
+  { page: 'media', text: 'lx.chooseMedia / lx.previewMedia' },
+  { page: 'ui', text: 'navigateTo/Back, redirectTo' },
+  { page: 'device', text: 'Get Device Information' },
+  { page: 'wifi', text: 'WiFi Management' },
+  { page: 'system', text: 'Fetch App Base Info' },
+  { page: 'location', text: 'Current Location' },
+  { page: 'file', text: 'PDF via lx.downloadFile()' },
+  { page: 'share', text: 'lx.share opens the native system share sheet.' },
+  { page: 'components', text: 'Native-backed UI components' },
+  { page: 'pullToRefresh', text: 'Refresh Status' },
+  { page: 'todo', text: ['No tasks yet', 'Mark all as complete'] },
+  { page: 'picker', text: 'Component like input, tap to show picker' },
+  { page: 'navigator', text: 'Declarative navigation component' },
+  { page: 'stream', text: 'Stream Demo' },
+  { page: 'channel', text: 'Recent Ticks' },
+  { page: 'swiper', text: 'Media Swiper' },
+  { page: 'bridge-repro', text: 'Restart the lxapp to repeat.' },
+] as const;
+
+export const SHOWCASE_PAGES = SHOWCASE_PAGE_EXPECTATIONS.map(({ page }) => page);
+
+export type ShowcasePage = (typeof SHOWCASE_PAGE_EXPECTATIONS)[number]['page'];
+
+export const SHOWCASE_PAGE_TITLES: Record<ShowcasePage, string> = {
+  home: 'Home',
+  surface: 'Surface',
+  api: 'API',
+  cloud: 'Cloud',
+  video: 'Native Component Video',
+  media: 'Media APIs',
+  ui: 'User Interface',
+  device: 'Device',
+  wifi: 'WiFi',
+  system: 'System',
+  location: 'Location',
+  file: 'File',
+  share: 'Share',
+  components: 'Components',
+  pullToRefresh: 'Pull Down Refresh',
+  todo: 'ToDo',
+  picker: 'LxPicker',
+  navigator: 'Navigator',
+  stream: 'Stream',
+  channel: 'Channel',
+  swiper: 'LxMediaSwiper',
+  'bridge-repro': 'Bridge Repro',
+};

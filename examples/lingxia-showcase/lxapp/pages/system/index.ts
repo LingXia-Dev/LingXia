@@ -1,6 +1,6 @@
 Page({
   data: {
-    currentType: '',
+    currentType: 'appBaseInfo',
     appBaseInfo: null,
     systemSetting: null,
     autostartSupported: false,
@@ -8,12 +8,13 @@ Page({
     autostartError: ''
   },
 
-  onLoad: async function (options) {
+  onLoad: async function (options = {}) {
     console.log('System page onLoad options:', options);
-    this.setData({
-      currentType: options.type || 'appBaseInfo'
-    });
-    if (options.type === 'autostart') {
+    const { type = 'appBaseInfo' } = (options || {}) as { type?: string };
+    if (type !== this.data.currentType) {
+      this.setData({ currentType: type });
+    }
+    if (type === 'autostart') {
       await this.refreshAutostart();
     }
   },

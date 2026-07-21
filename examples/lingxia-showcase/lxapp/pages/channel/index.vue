@@ -1,11 +1,11 @@
 <template>
-  <div class="min-h-screen bg-gray-50 px-4 py-6">
+  <div class="min-h-screen bg-gray-50 px-4 py-6" data-testid="channel-page">
     <div class="mb-4 flex items-center gap-2">
       <div
         class="h-2 w-2 rounded-full"
         :class="session.connected.value ? 'bg-green-500' : session.connecting.value ? 'bg-yellow-400' : 'bg-gray-300'"
       />
-      <span class="text-xs text-gray-500">
+      <span class="text-xs text-gray-500" data-testid="channel-status">
         {{ session.connected.value ? 'Connected' : session.connecting.value ? 'Connecting...' : 'Disconnected' }}
       </span>
     </div>
@@ -14,6 +14,8 @@
       <button
         v-for="symbol in symbols"
         :key="symbol"
+        data-testid="channel-symbol"
+        :data-symbol="symbol"
         type="button"
         @click="switchSymbol(symbol)"
         class="rounded-full px-4 py-2 text-sm font-medium transition-colors"
@@ -24,11 +26,11 @@
     </div>
 
     <div class="mb-6 rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-      <p class="mb-1 text-xs font-medium uppercase tracking-wider text-gray-400">
+      <p class="mb-1 text-xs font-medium uppercase tracking-wider text-gray-400" data-testid="channel-active">
         {{ active || '---' }}
       </p>
       <div class="flex items-baseline gap-3">
-        <span class="text-4xl font-bold text-gray-900">
+        <span class="text-4xl font-bold text-gray-900" data-testid="channel-price">
           {{ latest ? `$${latest.price.toFixed(2)}` : '---' }}
         </span>
         <span
@@ -75,6 +77,7 @@
 
     <div class="mt-6 flex gap-3">
       <button
+        data-testid="channel-disconnect"
         type="button"
         @click="session.close()"
         :disabled="!session.connected.value"
@@ -83,6 +86,7 @@
         Disconnect
       </button>
       <button
+        data-testid="channel-reconnect"
         type="button"
         @click="session.reopen()"
         :disabled="session.connected.value || session.connecting.value"

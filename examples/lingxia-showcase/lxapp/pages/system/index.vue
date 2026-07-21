@@ -1,5 +1,5 @@
 <template>
-  <div class="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
+  <div class="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100" data-testid="system-page" :data-mode="currentType">
     <div class="px-4 py-6">
       <!-- App Base Info -->
       <template v-if="currentType === 'appBaseInfo'">
@@ -18,6 +18,7 @@
               <div class="text-xs text-gray-500 mt-0.5">Get app environment info (locale, display language, OS, version)</div>
             </div>
             <button
+              data-testid="system-base-info"
               @click="getBaseInfo"
               class="px-5 py-2.5 text-sm font-medium transition-all duration-200 bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-600 text-white rounded-xl shadow-sm active:scale-[0.98]"
             >
@@ -25,7 +26,7 @@
             </button>
           </div>
 
-          <div v-if="appBaseInfo" class="p-5">
+          <div v-if="appBaseInfo" class="p-5" data-testid="system-base-result">
             <div class="rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50 to-white p-4">
               <div class="flex items-center gap-2 mb-4">
                 <span class="w-1 h-4 bg-blue-500 rounded-full"></span>
@@ -77,6 +78,7 @@
               <div class="text-xs text-gray-500 mt-0.5">WiFi, location, and Bluetooth toggles</div>
             </div>
             <button
+              data-testid="system-setting-info"
               @click="getSystemSetting"
               class="px-5 py-2.5 text-sm font-medium transition-all duration-200 bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-600 text-white rounded-xl shadow-sm active:scale-[0.98]"
             >
@@ -84,7 +86,7 @@
             </button>
           </div>
 
-          <div v-if="systemSetting" class="p-5">
+          <div v-if="systemSetting" class="p-5" data-testid="system-setting-result">
             <div class="rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50 to-white p-4">
               <div class="flex items-center gap-2 mb-4">
                 <span class="w-1 h-4 bg-emerald-500 rounded-full"></span>

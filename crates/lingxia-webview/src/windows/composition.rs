@@ -328,7 +328,8 @@ impl CompositionSurface {
         parent: HWND,
     ) -> StdResult<()> {
         unsafe {
-            if !self.ensure_alive(parent, base)? {
+            let rebuilt = self.ensure_alive(parent, base)?;
+            if !rebuilt && self.parent != parent {
                 WindowsAndMessaging::SetParent(self.hwnd, Some(parent))
                     .map_err(|err| WebViewError::WebView(format!("SetParent failed: {err}")))?;
             }

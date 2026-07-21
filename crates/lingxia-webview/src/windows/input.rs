@@ -120,6 +120,33 @@ impl WebViewInner {
         Ok(result)
     }
 
+    fn focus_helper_element(
+        &self,
+        selector: &str,
+        index: Option<usize>,
+    ) -> std::result::Result<(), WebViewInputError> {
+        let selector_json = serde_json::to_string(selector)
+            .map_err(|err| WebViewInputError::Platform(format!("Invalid selector: {err}")))?;
+        let index_json = serde_json::to_string(&index)
+            .map_err(|err| WebViewInputError::Platform(format!("Invalid selector index: {err}")))?;
+        let expr = format!("window.__LingXiaInput.focus({selector_json}, {index_json})");
+        let value = self
+            .dispatch_eval_command(build_helper_invocation(&expr))
+            .map_err(WebViewInputError::Script)?;
+        let result: InputHelperElementResult = serde_json::from_value(value).map_err(|err| {
+            WebViewInputError::Platform(format!("Failed to decode input focus result: {err}"))
+        })?;
+        if result.ok {
+            Ok(())
+        } else {
+            Err(WebViewInputError::ElementNotInteractable(
+                result
+                    .error
+                    .unwrap_or_else(|| format!("Element cannot be focused: {selector}")),
+            ))
+        }
+    }
+
     fn dispatch_mouse_wheel(
         &self,
         x: f64,
@@ -219,7 +246,7 @@ impl WebViewInner {
                 .dispatch_eval_command("document.execCommand('selectAll')".to_string())
                 .map_err(WebViewInputError::Script)?;
             if text.is_empty() {
-                return self.press_inner("backspace", PressOptions).await;
+                return self.press_inner("backspace", PressOptions::default()).await;
             }
         }
         if !text.is_empty() {
@@ -231,8 +258,12 @@ impl WebViewInner {
     pub(crate) async fn press_inner(
         &self,
         key: &str,
-        _options: PressOptions,
+        options: PressOptions,
     ) -> std::result::Result<(), WebViewInputError> {
+        if let Some(selector) = options.selector.as_deref() {
+            self.ensure_element_visible(selector, options.index).await?;
+            self.focus_helper_element(selector, options.index)?;
+        }
         let normalized = key.trim().to_ascii_lowercase();
         if let Some((key_name, code, virtual_key)) = special_key(&normalized) {
             let mut down = serde_json::json!({

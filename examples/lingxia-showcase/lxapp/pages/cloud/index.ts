@@ -142,6 +142,7 @@ Page({
   mqttStatusUnsubscribe: null as any,
   mqttLoopId: 0,
   mqttStarting: false,
+  pageActive: false,
 
   data: {
     type: CLOUD_PAGE_TYPES.AUTH,
@@ -165,9 +166,12 @@ Page({
   },
 
   onLoad: async function (options = {}) {
-    const { type } = options as { type?: string };
+    this.pageActive = true;
+    const { type } = (options || {}) as { type?: string };
     const pageType = normalizePageType(type);
-    this.setData({ type: pageType });
+    if (pageType !== this.data.type) {
+      this.setData({ type: pageType });
+    }
     if (pageType === CLOUD_PAGE_TYPES.MQTT) {
       this._ensureMqttStatusListener();
       this._refreshMqttStatusSnapshot();
@@ -178,6 +182,7 @@ Page({
   },
 
   onShow: async function () {
+    this.pageActive = true;
     const pageType = this.data.type;
     if (pageType === CLOUD_PAGE_TYPES.MQTT) {
       this._ensureMqttStatusListener();
@@ -188,9 +193,23 @@ Page({
     await this._applyPageType(pageType);
   },
 
+  onHide: function () {
+    this.pageActive = false;
+  },
+
   onUnload: async function () {
+    this.pageActive = false;
     this._stopMqttStatusListener();
-    await this.stopMqttDemo();
+    const subscription = this.mqttSubscription;
+    this.mqttSubscription = null;
+    this.mqttLoopId += 1;
+    if (subscription) {
+      try {
+        await subscription.close();
+      } catch (_error) {
+        // The page is already gone; cleanup must not write back into its WebView.
+      }
+    }
   },
 
   _applyPageType: async function (pageType: CloudPageType) {
@@ -260,9 +279,19 @@ Page({
     }
   },
 
+  _canUpdatePage: function () {
+    if (!this.pageActive) return false;
+    try {
+      return getCurrentPages().includes(this);
+    } catch (_error) {
+      return false;
+    }
+  },
+
   _refreshSnapshot: async function () {
     try {
       const identities = await lx.auth.list();
+      if (!this._canUpdatePage()) return;
       const identity = identities.find((item: LxIdentityLike) => item.active) || null;
       this.setData({
         status: identity
@@ -273,6 +302,7 @@ Page({
         tenants: normalizeTenants(identities),
       });
     } catch (error) {
+      if (!this._canUpdatePage()) return;
       const message = getErrorMessage(error, "Load cloud state failed");
       this.setData({ status: message });
     }
@@ -286,6 +316,7 @@ Page({
     } catch (_error) {
       identity = null;
     }
+    if (!this._canUpdatePage()) return;
     this.setData({
       functionsAvailable: [...DEMO_FUNCTIONS],
       functionsStatus: identity

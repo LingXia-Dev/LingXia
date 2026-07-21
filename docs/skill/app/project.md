@@ -203,6 +203,7 @@ The browser, terminal, and HTTP-proxy runtime features are **not** set here — 
 - `browser` — the in-app browser (its newtab / settings / downloads pages and shell runtime). Cross-platform; bundles the browser webui, overridable via the [`browser`](#browser-section) section.
 - `terminal` — the built-in terminal runtime. Required before a `native: terminal` surface can be declared (desktop only).
 - `proxy` — the in-app browser's HTTP proxy (desktop). Requires `browser`.
+- `process` — OS process launch/management for trusted Agent-style products (macOS/Windows). Available only to the home lxapp, which must also declare `security.privileges: [process]`; adds `Rong.spawn`, `Rong.spawnSync`, and `Rong.$` plus the opt-in `@lingxia/types/process` declarations.
 - `autostart` — unlocks `lx.app.autostart` (launch at system startup; macOS/Windows, home lxapp only). Declaring it never registers the app by itself — enabling is a runtime user decision via the API.
 
 ---

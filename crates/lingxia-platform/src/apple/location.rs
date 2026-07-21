@@ -267,7 +267,7 @@ pub(crate) mod ios {
     ) -> Result<(), PlatformError> {
         let services_enabled = unsafe { CLLocationManager::locationServicesEnabled_class() };
         if !services_enabled {
-            log::error!("Apple Location: Services disabled");
+            log::warn!("Apple Location: Services disabled");
             lingxia_messaging::invoke_callback(callback_id, Err(4001));
             // Error is fully reported via callback; no additional PlatformError needed.
             return Ok(());

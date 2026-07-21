@@ -418,12 +418,15 @@ impl PageBridge {
         let session_id = self.new_session_id();
         self.send_hello_ack(page, msg.nonce.clone(), session_id.clone())?;
         self.set_ready(session_id.clone());
-        self.send_ready(page, session_id.clone())?;
+        // Queue AppService initialization before exposing `ready` to the View.
+        // Otherwise a fast View can flush a page-action notification while the
+        // worker still considers the page uninitialized, losing the action.
         if let Err(err) = self.forward_js_message(page, AppServiceCommand::Ready) {
             crate::warn!("bridge ready bootstrap failed: {}", err)
                 .with_appid(page.appid())
                 .with_path(page.path());
         }
+        self.send_ready(page, session_id.clone())?;
         Ok(())
     }
 

@@ -162,7 +162,7 @@ function AIAvatar() {
 function MessageBubble({ message }: { message: Message }) {
   if (message.role === 'user') {
     return (
-      <div className="flex justify-end">
+      <div className="flex justify-end" data-testid="stream-message" data-role="user">
         <div
           className="max-w-[78%] px-4 py-2.5 rounded-3xl rounded-br-md bg-blue-600 text-white text-sm leading-relaxed"
           style={{ wordBreak: 'break-word' }}
@@ -174,7 +174,7 @@ function MessageBubble({ message }: { message: Message }) {
   }
 
   return (
-    <div className="flex justify-start">
+    <div className="flex justify-start" data-testid="stream-message" data-role="assistant">
       <div className="flex items-start gap-2 max-w-[90%]">
         <AIAvatar />
         <div
@@ -193,7 +193,7 @@ function StreamingBubble({ state }: { state: StreamState }) {
   const showCursor = !state.chart;
 
   return (
-    <div className="flex justify-start">
+    <div className="flex justify-start" data-testid="stream-live">
       <div className="flex items-start gap-2 max-w-[90%]">
         <AIAvatar />
         <div
@@ -256,6 +256,8 @@ function InputBar({
     >
       <div className="flex-1 bg-gray-100 rounded-2xl px-3.5 py-2.5 flex items-end gap-2">
         <textarea
+          data-testid="stream-input"
+          data-controlled-value={value}
           ref={textareaRef}
           value={value}
           onChange={(e) => { onChange(e.target.value); autoResize(); }}
@@ -270,6 +272,7 @@ function InputBar({
 
       {streaming ? (
         <button
+          data-testid="stream-stop"
           onClick={onStop}
           className="w-9 h-9 flex-shrink-0 rounded-full bg-gray-800 flex items-center justify-center active:opacity-70"
         >
@@ -277,6 +280,7 @@ function InputBar({
         </button>
       ) : (
         <button
+          data-testid="stream-send"
           onClick={onSend}
           disabled={!value.trim()}
           className="w-9 h-9 flex-shrink-0 rounded-full bg-blue-600 flex items-center justify-center active:opacity-70 disabled:opacity-30 disabled:cursor-not-allowed"
@@ -332,7 +336,7 @@ export default function StreamPage() {
   const streamState = chat.data ?? { text: '' };
 
   return (
-    <div className="flex flex-col bg-gray-100" style={{ height: '100vh' }}>
+    <div className="flex flex-col bg-gray-100" style={{ height: '100vh' }} data-testid="stream-page">
       {messages.length > 0 && !chat.streaming && (
         <div className="absolute top-3 right-4 z-10">
           <button

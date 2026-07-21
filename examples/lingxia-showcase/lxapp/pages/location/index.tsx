@@ -6,7 +6,7 @@ export default function LocationPage() {
   // Use LingXia hook to get data and functions
   const { data, actions } = useLxPage();
   const { getLocation, clearLocation } = actions;
-  const { location = null, isLoading = false } = data;
+  const { location = null, locationError = '', isLoading = false } = data;
 
   React.useEffect(() => {
     document.body.className = 'location-page';
@@ -85,8 +85,8 @@ export default function LocationPage() {
                 </div>
               </div>
             ) : (
-              <div className="py-8 text-gray-500">
-                No location data available
+              <div className={`py-8 ${locationError ? 'text-red-500' : 'text-gray-500'}`}>
+                {locationError || 'No location data available'}
               </div>
             )}
           </div>

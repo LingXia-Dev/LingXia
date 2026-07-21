@@ -398,6 +398,12 @@ pub enum PageCommand {
     Press {
         #[arg(long)]
         key: String,
+        /// Focus this CSS selector before pressing the key
+        #[arg(long = "css")]
+        selector: Option<String>,
+        /// Focus the nth matching element
+        #[arg(long, requires = "selector")]
+        index: Option<usize>,
         /// Page name or runtime instance id; defaults to current page
         #[arg(long)]
         page: Option<String>,
@@ -621,8 +627,8 @@ fn execute_device(ws_url: &str, options: DeviceOptions) -> Result<()> {
             portrait,
             json,
         } => {
-            // Leave orientation to the runner default (tablet=landscape,
-            // phone/desktop=portrait) unless a flag pins it.
+            // Leave orientation to the runner's normal selector behavior
+            // unless a flag pins it.
             let orientation = if landscape {
                 Some(true)
             } else if portrait {
@@ -945,6 +951,8 @@ fn execute_page(ws_url: &str, options: PageOptions) -> Result<()> {
         }
         PageCommand::Press {
             key,
+            selector,
+            index,
             page,
             app,
             json,
@@ -956,6 +964,8 @@ fn execute_page(ws_url: &str, options: PageOptions) -> Result<()> {
                     "appid": app,
                     "page": page,
                     "key": key,
+                    "selector": selector,
+                    "index": index,
                 })),
             )?;
             print_optional_json(data, json)?;

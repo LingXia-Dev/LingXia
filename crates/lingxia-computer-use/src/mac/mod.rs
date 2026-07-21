@@ -179,15 +179,20 @@ pub fn displays() -> Result<Vec<Display>> {
 fn display_work_area(id: CGDirectDisplayID, bounds: CGRect) -> Rect {
     use objc2::MainThreadMarker;
     use objc2_app_kit::NSScreen;
+    use objc2_foundation::{NSNumber, NSString};
 
     let Some(mtm) = MainThreadMarker::new() else {
         return rect_to(bounds);
     };
     let screens = NSScreen::screens(mtm);
-    let Some(screen) = screens
-        .iter()
-        .find(|screen| screen.CGDirectDisplayID() == id)
-    else {
+    let screen_number = NSString::from_str("NSScreenNumber");
+    let Some(screen) = screens.iter().find(|screen| {
+        screen
+            .deviceDescription()
+            .objectForKey(&screen_number)
+            .and_then(|value| value.downcast_ref::<NSNumber>().map(NSNumber::as_u32))
+            == Some(id)
+    }) else {
         return rect_to(bounds);
     };
     let frame = screen.frame();

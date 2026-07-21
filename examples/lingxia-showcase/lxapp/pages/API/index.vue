@@ -347,6 +347,7 @@
       <!-- Device - Dropdown -->
       <div class="bg-white rounded-lg shadow-sm">
         <div
+          data-testid="api-device-section"
           class="px-4 py-4 flex items-center justify-between cursor-pointer hover:bg-gray-50"
           @click="toggleSection({ section: 'device' })"
         >
@@ -409,6 +410,39 @@
             @click="navigateToDevicePage({ type: 'orientation' })"
           >
             <div class="text-sm text-gray-700">Device Orientation</div>
+            <div class="w-4 h-4 text-gray-400">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M9 18l6-6-6-6"/>
+              </svg>
+            </div>
+          </div>
+          <div
+            class="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between border-t border-gray-200"
+            @click="navigateToDevicePage({ type: 'networkType' })"
+          >
+            <div class="text-sm text-gray-700">Network Type</div>
+            <div class="w-4 h-4 text-gray-400">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M9 18l6-6-6-6"/>
+              </svg>
+            </div>
+          </div>
+          <div
+            class="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between border-t border-gray-200"
+            @click="navigateToDevicePage({ type: 'localIP' })"
+          >
+            <div class="text-sm text-gray-700">Local IP Address</div>
+            <div class="w-4 h-4 text-gray-400">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M9 18l6-6-6-6"/>
+              </svg>
+            </div>
+          </div>
+          <div
+            class="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between border-t border-gray-200"
+            @click="navigateToDevicePage({ type: 'networkStatus' })"
+          >
+            <div class="text-sm text-gray-700">Network Status Listener</div>
             <div class="w-4 h-4 text-gray-400">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                 <path d="M9 18l6-6-6-6"/>

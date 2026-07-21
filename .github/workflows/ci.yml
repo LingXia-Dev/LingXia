@@ -6,6 +6,16 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      focus:
+        description: Run only one focused validation job
+        required: true
+        default: auto
+        type: choice
+        options:
+          - auto
+          - automation-macos
+          - automation-windows
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -27,7 +37,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       rust: ${{ steps.compute.outputs.rust }}
-      i18n: ${{ steps.filter.outputs.i18n }}
+      i18n: ${{ steps.compute.outputs.i18n }}
       ios: ${{ steps.compute.outputs.ios }}
       macos: ${{ steps.compute.outputs.macos }}
       android: ${{ steps.compute.outputs.android }}
@@ -36,6 +46,8 @@ jobs:
       sdk_android: ${{ steps.compute.outputs.sdk_android }}
       harmony: ${{ steps.compute.outputs.harmony }}
       npm: ${{ steps.compute.outputs.npm }}
+      automation: ${{ steps.compute.outputs.automation }}
+      automation_matrix: ${{ steps.compute.outputs.automation_matrix }}
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@v3
@@ -76,6 +88,8 @@ jobs:
               - 'examples/lingxia-showcase/lingxia.yaml'
               - 'examples/lingxia-showcase/AppIcon.png'
               - 'examples/lingxia-showcase/icons/**'
+              - 'examples/lingxia-showcase/lxapp/**'
+              - 'examples/lingxia-showcase/native/**'
               - 'examples/lingxia-showcase/lingxia-lib/**'
               - 'examples/lingxia-showcase/lingxia-showcase/**'
               - 'examples/lingxia-chat/**'
@@ -94,6 +108,8 @@ jobs:
             # Source of truth for the generated @lingxia/types Logic API.
             typegen_src:
               - 'crates/lingxia-logic/**'
+            automation_types:
+              - 'packages/lingxia-types/**'
             ci:
               - '.github/**'
       - id: compute
@@ -118,6 +134,8 @@ jobs:
           I18N: ${{ steps.filter.outputs.i18n }}
           NPM: ${{ steps.filter.outputs.npm }}
           TYPEGEN_SRC: ${{ steps.filter.outputs.typegen_src }}
+          AUTOMATION_TYPES: ${{ steps.filter.outputs.automation_types }}
+          FOCUS: ${{ github.event_name == 'workflow_dispatch' && inputs.focus || 'auto' }}
           # A release/* PR (from Prepare Release PR) only touches Cargo.toml /
           # install.sh / packages/*, so the path filters would skip sdk/harmony.
           # Force the FULL validate set on release PRs so a maintainer sees every
@@ -154,8 +172,45 @@ jobs:
           # crates/lingxia-logic change (it is the generation source for
           # @lingxia/types, so Rust-only PRs must still run the drift gate).
           npm=$(any "$rel" "$NPM" "$TYPEGEN_SRC")
+          automation=$(any "$rel" "$CI_F" "$rust" "$WEB_FE" "$EX_COMMON" "$APPLE" "$AUTOMATION_TYPES")
+          i18n="$I18N"
+          automation_matrix='{"include":[{"platform":"macos","os":"macos-latest","exe":""},{"platform":"windows","os":"windows-latest","exe":".exe"}]}'
+
+          # Focused workflow_dispatch runs are an iteration aid. Pull requests
+          # still use the complete path-based gate above.
+          case "$FOCUS" in
+            automation-macos)
+              rust=false
+              i18n=false
+              ios=false
+              macos=false
+              android=false
+              runner=false
+              sdk_apple=false
+              sdk_android=false
+              harmony=false
+              npm=false
+              automation=true
+              automation_matrix='{"include":[{"platform":"macos","os":"macos-latest","exe":""}]}'
+              ;;
+            automation-windows)
+              rust=false
+              i18n=false
+              ios=false
+              macos=false
+              android=false
+              runner=false
+              sdk_apple=false
+              sdk_android=false
+              harmony=false
+              npm=false
+              automation=true
+              automation_matrix='{"include":[{"platform":"windows","os":"windows-latest","exe":".exe"}]}'
+              ;;
+          esac
           {
             echo "rust=$rust"
+            echo "i18n=$i18n"
             echo "ios=$ios"
             echo "macos=$macos"
             echo "android=$android"
@@ -164,6 +219,8 @@ jobs:
             echo "sdk_android=$sdk_android"
             echo "harmony=$harmony"
             echo "npm=$npm"
+            echo "automation=$automation"
+            echo "automation_matrix=$automation_matrix"
           } >> "$GITHUB_OUTPUT"
 
   # ---- Gating jobs (required via ci-success) ----
@@ -534,6 +591,134 @@ jobs:
           path: examples/lingxia-showcase/macos/.lingxia/*.app
           if-no-files-found: warn
 
+  showcase-automation:
+    needs: changes
+    name: automation-${{ matrix.platform }}
+    if: ${{ needs.changes.outputs.automation == 'true' }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.changes.outputs.automation_matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: maxim-lobanov/setup-xcode@v1
+        if: runner.os == 'macOS'
+        with:
+          xcode-version: "26.0"
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: showcase-automation-${{ matrix.platform }}
+          cache-on-failure: true
+
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.15.2
+
+      - uses: ./.github/actions/build-web-packages
+
+      - uses: ./.github/actions/bootstrap-apple-sdk
+        if: runner.os == 'macOS'
+
+      - name: Test Apple bridge transport
+        if: runner.os == 'macOS'
+        shell: bash
+        run: cargo test -p lingxia-webview apple::bridge_transport --lib
+
+      - name: Install showcase test dependencies
+        working-directory: examples/lingxia-showcase/lxapp
+        shell: bash
+        run: npm ci
+
+      - name: Check showcase automation types
+        working-directory: examples/lingxia-showcase/lxapp
+        shell: bash
+        run: npm run test:automation:types
+
+      - name: Build automation CLIs
+        shell: bash
+        run: cargo build -p lingxia-cli -p lingxia-devtools-cli
+
+      - name: Run showcase automation (React and Vue)
+        working-directory: examples/lingxia-showcase
+        shell: bash
+        env:
+          PLATFORM: ${{ matrix.platform }}
+          EXE: ${{ matrix.exe }}
+        run: |
+          set -euo pipefail
+          cli="$(pwd)/../../target/debug/lingxia${EXE}"
+          lxdev="$(pwd)/../../target/debug/lxdev${EXE}"
+          cleanup() { "$cli" dev stop >/dev/null 2>&1 || true; }
+          trap cleanup EXIT
+
+          for framework in react vue; do
+            echo "::group::Start ${PLATFORM}/${framework}"
+            "$cli" dev --background --platform "$PLATFORM" --framework "$framework"
+            "$cli" dev status --json
+            echo "::endgroup::"
+
+            echo "::group::Test ${PLATFORM}/${framework}"
+            set +e
+            (
+              cd lxapp
+              "$lxdev" test tests/all.test.ts \
+                --timeout 180 \
+                --arg "platform=${PLATFORM}" \
+                --output-dir "test-results/automation/${PLATFORM}-${framework}"
+            )
+            test_status=$?
+            set -e
+            echo "::endgroup::"
+
+            mkdir -p "lxapp/test-results/automation/${PLATFORM}-${framework}"
+            "$lxdev" logs --json --limit 5000 \
+              > "lxapp/test-results/automation/${PLATFORM}-${framework}/session.jsonl"
+            errors=$("$lxdev" logs --level error --json --limit 1000)
+            if [ -n "$errors" ]; then
+              echo "::error::Unexpected error-level session logs"
+              echo "$errors"
+              exit 1
+            fi
+            if [ "$test_status" -ne 0 ]; then
+              exit "$test_status"
+            fi
+
+            cleanup
+          done
+
+      - name: Show session diagnostics
+        if: always()
+        working-directory: examples/lingxia-showcase
+        shell: bash
+        run: |
+          ../../target/debug/lingxia${{ matrix.exe }} dev status --json || true
+          ../../target/debug/lxdev${{ matrix.exe }} logs --wide || true
+
+      - name: Stop showcase session
+        if: always()
+        working-directory: examples/lingxia-showcase
+        shell: bash
+        run: ../../target/debug/lingxia${{ matrix.exe }} dev stop || true
+
+      - name: Upload automation diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: showcase-automation-${{ matrix.platform }}
+          path: |
+            examples/lingxia-showcase/.lingxia/dev/**
+            examples/lingxia-showcase/.lingxia/background/**
+            examples/lingxia-showcase/.lingxia/logs/**
+            examples/lingxia-showcase/lxapp/test-results/**
+          if-no-files-found: warn
+
   ios:
     needs: changes
     name: example-ios
@@ -814,6 +999,7 @@ jobs:
           npm install
           npm run check:logic --workspace @lingxia/types
           npm run check:quality --workspace @lingxia/types
+          npm run test:types --workspace @lingxia/types
           npm run build --workspaces --if-present
 
   npm-skill:
@@ -859,6 +1045,7 @@ jobs:
       - macos
       - ios
       - android
+      - showcase-automation
     runs-on: ubuntu-latest
     if: always()
     steps:

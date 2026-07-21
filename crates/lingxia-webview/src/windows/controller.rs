@@ -1170,11 +1170,13 @@ pub(crate) fn handle_command(state: &mut UiState, command: UiCommand) -> StdResu
         }
         UiCommand::SetParentWindow { window, resp } => {
             let hwnd = hwnd_from_handle(window);
-            // Re-parenting to the current parent still tears down and
-            // re-attaches the composition target, blanking the content for a
-            // frame - layout passes re-assert the parent on every sync, so
-            // short-circuit the no-op.
-            if state.hwnd == hwnd {
+            // A windowed controller can skip a same-parent request. A
+            // composition surface cannot: destroying its former host also
+            // destroys the child surface, and Windows may reuse that host's
+            // HWND for the replacement. `set_parent` detects and rebuilds
+            // that dead surface even when the numeric parent is unchanged.
+            let composition_hosted = matches!(&state.hosting, HostingMode::Composition(_));
+            if !should_update_parent(composition_hosted, state.hwnd == hwnd) {
                 let _ = resp.send(Ok(()));
                 return Ok(false);
             }
@@ -1215,6 +1217,10 @@ pub(crate) fn handle_command(state: &mut UiState, command: UiCommand) -> StdResu
     }
 
     Ok(false)
+}
+
+fn should_update_parent(composition_hosted: bool, same_parent: bool) -> bool {
+    composition_hosted || !same_parent
 }
 
 pub(crate) fn cleanup_state(state: &mut UiState) {
@@ -1277,5 +1283,17 @@ fn set_content_geometry(
         HostingMode::Composition(surface) => {
             surface.set_geometry(&state.controller, bounds, corners)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::should_update_parent;
+
+    #[test]
+    fn composition_rechecks_a_reused_parent_handle() {
+        assert!(should_update_parent(true, true));
+        assert!(!should_update_parent(false, true));
+        assert!(should_update_parent(false, false));
     }
 }
