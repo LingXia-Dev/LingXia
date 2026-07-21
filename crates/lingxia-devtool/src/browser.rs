@@ -56,7 +56,7 @@ fn handle_browser_command_impl(
         }
         handlers::browser::CURRENT => {
             let _args: EmptyArgs = parse_args(handler, args)?;
-            serde_json::to_value(lingxia_browser::current_tab())
+            serde_json::to_value(lingxia_browser::automation_current_tab())
                 .map(Some)
                 .map_err(|err| err.to_string())
         }
@@ -424,7 +424,7 @@ fn wait_timeout(timeout_ms: Option<u64>) -> Duration {
 fn resolve_tab_id(raw: &str) -> Result<String, String> {
     let trimmed = raw.trim();
     if trimmed.eq_ignore_ascii_case("current") {
-        return lingxia_browser::current_tab()
+        return lingxia_browser::automation_current_tab()
             .map(|tab| tab.tab_id)
             .ok_or_else(|| "no current browser tab".to_string());
     }
@@ -467,11 +467,17 @@ async fn wait_after_action(
 
 #[cfg(all(feature = "browser", target_os = "macos"))]
 fn present_browser_tab(tab_id: &str) {
+    if lingxia_browser::tab_is_standalone(tab_id) {
+        return;
+    }
     let _ = lingxia::apple::present_internal_browser_tab(tab_id);
 }
 
 #[cfg(all(feature = "browser", target_os = "windows"))]
 fn present_browser_tab(tab_id: &str) {
+    if lingxia_browser::tab_is_standalone(tab_id) {
+        return;
+    }
     let _ = lingxia_browser::present(tab_id);
 }
 

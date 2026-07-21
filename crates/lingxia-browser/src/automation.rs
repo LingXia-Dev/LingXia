@@ -31,6 +31,11 @@ fn native_input_host() -> Option<&'static Arc<dyn BrowserNativeInputHost>> {
 }
 
 async fn prepare_browser_tab_for_input(tab_id: &str) -> Result<(), BrowserAutomationError> {
+    // Surface-hosted tabs are already visible in their owning overlay. Native
+    // preparation is only for tabs that product browser chrome must present.
+    if crate::tabs::is_standalone_tab(tab_id) {
+        return Ok(());
+    }
     if let Some(host) = native_input_host() {
         let mut last_error = None;
         for _ in 0..10 {

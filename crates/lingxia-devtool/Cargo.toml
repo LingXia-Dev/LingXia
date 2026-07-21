@@ -8,7 +8,7 @@ repository.workspace = true
 
 [features]
 default = []
-browser = ["dep:lingxia-browser"]
+browser = ["dep:lingxia-browser", "lingxia/browser-runtime"]
 # Session test runner (`lxdev test`). Development hosts only: production
 # builds omit it, so the session.test.* handlers are absent rather than
 # permission-gated.
