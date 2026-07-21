@@ -40,8 +40,8 @@ use objc2_foundation::{
     NSJSONWritingOptions, NSObjectProtocol, NSPoint, NSRect, NSSize, NSString, NSURL, NSURLRequest,
 };
 use objc2_web_kit::{
-    WKAudiovisualMediaTypes, WKContentWorld, WKNavigation, WKNavigationDelegate, WKUIDelegate,
-    WKURLSchemeHandler, WKWebViewConfiguration, WKWebsiteDataStore,
+    WKAudiovisualMediaTypes, WKContentWorld, WKNavigation, WKNavigationDelegate, WKNavigationType,
+    WKUIDelegate, WKURLSchemeHandler, WKWebViewConfiguration, WKWebsiteDataStore,
 };
 #[cfg(all(feature = "webview-input", target_os = "macos"))]
 use serde::Deserialize;
@@ -65,6 +65,15 @@ use crate::webview::{
 };
 
 const EVAL_TIMEOUT: Duration = Duration::from_secs(10);
+
+fn navigation_type_has_user_gesture(navigation_type: WKNavigationType) -> bool {
+    matches!(
+        navigation_type,
+        WKNavigationType::LinkActivated
+            | WKNavigationType::FormSubmitted
+            | WKNavigationType::FormResubmitted
+    )
+}
 
 #[link(name = "Network", kind = "framework")]
 unsafe extern "C" {
@@ -968,11 +977,23 @@ define_class!(
 
             let webtag = &self.ivars().webtag;
             let target_frame: *mut AnyObject = unsafe { msg_send![navigation_action, targetFrame] };
+            let source_frame: *mut AnyObject = unsafe { msg_send![navigation_action, sourceFrame] };
+            let navigation_type: WKNavigationType =
+                unsafe { msg_send![navigation_action, navigationType] };
+            let has_user_gesture = navigation_type_has_user_gesture(navigation_type);
+            let navigation_frame = if target_frame.is_null() {
+                source_frame
+            } else {
+                target_frame
+            };
+            let is_main_frame =
+                !navigation_frame.is_null() && unsafe { msg_send![navigation_frame, isMainFrame] };
             log::info!(
-                "Apple decidePolicy webtag={} url={} target_frame_null={} intercept_https={}",
+                "Apple decidePolicy webtag={} url={} gesture={} main_frame={} intercept_https={}",
                 webtag,
                 url,
-                target_frame.is_null(),
+                has_user_gesture,
+                is_main_frame,
                 self.ivars().intercept_https_navigation
             );
 
@@ -1018,7 +1039,8 @@ define_class!(
 
             // Check closure-based navigation handler first
             if let Some(webview) = find_webview(webtag) {
-                let request = crate::NavigationRequest::new(url.clone(), false, true);
+                let request =
+                    crate::NavigationRequest::new(url.clone(), has_user_gesture, is_main_frame);
                 match webview.handle_navigation(&request) {
                     NavigationPolicy::Cancel => {
                         log::info!(
@@ -4184,5 +4206,25 @@ impl LingXiaMessageHandler {
         } else {
             log::error!("Failed to parse console message JSON: {}", message);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn apple_navigation_type_preserves_user_initiated_actions() {
+        assert!(navigation_type_has_user_gesture(
+            WKNavigationType::LinkActivated
+        ));
+        assert!(navigation_type_has_user_gesture(
+            WKNavigationType::FormSubmitted
+        ));
+        assert!(navigation_type_has_user_gesture(
+            WKNavigationType::FormResubmitted
+        ));
+        assert!(!navigation_type_has_user_gesture(WKNavigationType::Other));
+        assert!(!navigation_type_has_user_gesture(WKNavigationType::Reload));
     }
 }
