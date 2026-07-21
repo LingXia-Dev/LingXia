@@ -115,9 +115,9 @@ pub fn open_aside_for_app(
     )
 }
 
-/// Open a standalone browser tab (no tab strip) for a docked aside browser.
-/// New-window requests from this tab load inline in the same WebView rather
-/// than spawning a new main-area tab.
+/// Open a standalone browser tab hosted outside the product browser chrome.
+/// This supports docked asides and URL surfaces. New-window requests load
+/// inline in the same WebView rather than spawning a main-area tab.
 pub fn open_standalone_for_app(
     appid: &str,
     session_id: u64,
@@ -144,9 +144,8 @@ pub fn tab_is_aside(tab_id: &str) -> bool {
     tabs::is_aside_tab(tab_id)
 }
 
-/// Whether `tab_id` is a standalone (no-tab-strip) browser, e.g. a docked
-/// aside tab. Standalone tabs are independent of the main tab model, so
-/// shells exclude them from their main tab listings.
+/// Whether `tab_id` is hosted outside the product browser chrome, such as a
+/// docked aside or URL surface. It remains visible to browser automation.
 pub fn tab_is_standalone(tab_id: &str) -> bool {
     tabs::is_standalone_tab(tab_id)
 }
@@ -186,6 +185,12 @@ pub fn tabs() -> Vec<BrowserTabInfo> {
 
 pub fn current_tab() -> Option<BrowserTabInfo> {
     tabs::browser_current_tab()
+}
+
+/// Current tab selected by browser automation. Standalone surface tabs can be
+/// selected here without changing the product browser's active tab.
+pub fn automation_current_tab() -> Option<BrowserTabInfo> {
+    tabs::browser_automation_current_tab()
 }
 
 pub fn activate(tab_id: &str) -> Result<BrowserTabInfo, BrowserAutomationError> {

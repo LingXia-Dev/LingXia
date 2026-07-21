@@ -357,7 +357,7 @@ const BROWSER_WAIT_MAX_MS: u64 = 60_000;
 fn resolve_tab_id(tab: &Option<String>) -> JSResult<String> {
     let raw = tab.as_deref().unwrap_or("current");
     if raw.trim().eq_ignore_ascii_case("current") {
-        lingxia_browser::current_tab()
+        lingxia_browser::automation_current_tab()
             .map(|tab| tab.tab_id)
             .ok_or_else(|| auto_err("no current browser tab"))
     } else {
@@ -479,7 +479,7 @@ impl JSBrowserDriver {
 
     #[js_method]
     async fn current(&self, ctx: JSContext) -> JSResult<JSValue> {
-        to_js(&ctx, &lingxia_browser::current_tab())
+        to_js(&ctx, &lingxia_browser::automation_current_tab())
     }
 
     #[js_method]

@@ -58,10 +58,10 @@ pub(crate) struct BrowserTabState {
     /// URL-callback tabs reject every file navigation, including redirects
     /// initiated after the initial HTTP(S) document loads.
     pub(crate) url_callback: Arc<AtomicBool>,
-    /// When true this tab is a standalone browser with no tab strip (e.g. a
-    /// docked aside browser). New-window requests (`target=_blank`,
+    /// When true this tab is hosted outside product browser chrome (e.g. a
+    /// docked aside or URL surface). New-window requests (`target=_blank`,
     /// `window.open`) load in the same WebView instead of spawning a new
-    /// main-area tab, since there is no tab UI to surface them in.
+    /// main-area tab, while automation can still discover the tab.
     pub(crate) standalone: bool,
     /// When true this tab was opened as an aside; the browser chrome hides
     /// its address bar while it is active.
@@ -85,6 +85,7 @@ static BROWSER_TAB_COUNTER: AtomicU64 = AtomicU64::new(1);
 static BROWSER_CREATE_TOKEN: AtomicU64 = AtomicU64::new(1);
 static BROWSER_LOAD_MUTEX: OnceLock<Mutex<()>> = OnceLock::new();
 static BROWSER_ACTIVE_TAB_ID: OnceLock<Mutex<Option<String>>> = OnceLock::new();
+static BROWSER_AUTOMATION_TAB_ID: OnceLock<Mutex<Option<String>>> = OnceLock::new();
 static BROWSER_TABS_CHANGED_HANDLER: OnceLock<Mutex<Option<TabsChangedHandler>>> = OnceLock::new();
 static BROWSER_TAB_PRESENT_HANDLER: OnceLock<Mutex<Option<TabPresentHandler>>> = OnceLock::new();
 static BROWSER_NAVIGATION_FINISHED_HANDLER: OnceLock<Mutex<Option<NavigationFinishedHandler>>> =
@@ -219,8 +220,18 @@ fn lock_active_tab() -> MutexGuard<'static, Option<String>> {
         .unwrap_or_else(|e| e.into_inner())
 }
 
+fn lock_automation_tab() -> MutexGuard<'static, Option<String>> {
+    BROWSER_AUTOMATION_TAB_ID
+        .get_or_init(|| Mutex::new(None))
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+}
+
 /// Sets the active tab; returns whether the active tab actually changed.
 fn set_active_browser_tab(tab_id: &str) -> bool {
+    if is_standalone_tab(tab_id) {
+        return false;
+    }
     let mut active = lock_active_tab();
     if active.as_deref() == Some(tab_id) {
         return false;
@@ -431,20 +442,48 @@ pub fn browser_tabs() -> Vec<BrowserTabInfo> {
 }
 
 pub fn browser_current_tab() -> Option<BrowserTabInfo> {
-    if let Some(tab_id) = lock_active_tab().clone()
+    let active_tab_id = lock_active_tab().clone();
+    let state = lock_state();
+    if let Some(tab_id) = active_tab_id
+        && let Some(tab) = state.tabs.get(&tab_id)
+        && !tab.standalone
+    {
+        return Some(build_tab_info(&tab_id, tab));
+    }
+    let mut product_tabs = state
+        .tabs
+        .iter()
+        .filter(|(_, tab)| !tab.standalone)
+        .map(|(tab_id, tab)| build_tab_info(tab_id, tab))
+        .collect::<Vec<_>>();
+    product_tabs.sort_by(|a, b| a.tab_id.cmp(&b.tab_id));
+    product_tabs.into_iter().next()
+}
+
+pub fn browser_automation_current_tab() -> Option<BrowserTabInfo> {
+    if let Some(tab_id) = lock_automation_tab().clone()
         && let Some(info) = browser_tab_info(&tab_id)
     {
         return Some(info);
     }
-    browser_tabs().into_iter().next()
+    browser_current_tab().or_else(|| browser_tabs().into_iter().next())
 }
 
 pub fn browser_activate_tab(tab_id: &str) -> Result<BrowserTabInfo, BrowserAutomationError> {
     let normalized_tab_id = normalize_runtime_tab_id(tab_id)
         .ok_or_else(|| BrowserAutomationError::TabNotFound(tab_id.to_string()))?;
-    let info = browser_tab_info(&normalized_tab_id)
-        .ok_or_else(|| BrowserAutomationError::TabNotFound(tab_id.to_string()))?;
-    if set_active_browser_tab(&normalized_tab_id) {
+    let (info, standalone) = {
+        let state = lock_state();
+        let tab = state
+            .tabs
+            .get(&normalized_tab_id)
+            .ok_or_else(|| BrowserAutomationError::TabNotFound(tab_id.to_string()))?;
+        (build_tab_info(&normalized_tab_id, tab), tab.standalone)
+    };
+    *lock_automation_tab() = Some(normalized_tab_id.clone());
+    // Automation may select a standalone tab, but that must not change product
+    // browser chrome, LRU, or lifecycle ownership.
+    if !standalone && set_active_browser_tab(&normalized_tab_id) {
         notify_tabs_changed();
     }
     Ok(info)
@@ -769,9 +808,8 @@ fn open_internal_browser_tab_with_scope(
             lock_state().tabs.remove(&tab_id);
             return Err(e);
         }
-        // A standalone (docked aside) browser is independent of the main tab
-        // model — it must not become the process-wide active browser tab, which
-        // drives the main coordinator's active-tab and memory policy.
+        // A standalone browser is hosted outside product browser chrome, so it
+        // must not drive the main coordinator's active-tab and memory policy.
         if !standalone {
             let _ = set_active_browser_tab(&tab_id);
         }
@@ -826,7 +864,9 @@ fn open_internal_browser_tab_with_scope(
         }
     }
 
-    let _ = set_active_browser_tab(&tab_id);
+    if !standalone {
+        let _ = set_active_browser_tab(&tab_id);
+    }
     notify_tabs_changed();
     Ok(tab_id)
 }
@@ -893,8 +933,8 @@ pub(crate) fn is_aside_tab(tab_id: &str) -> bool {
         .unwrap_or(false)
 }
 
-/// Whether `tab_id` is a standalone (no-tab-strip) browser tab whose new-window
-/// requests should load inline rather than spawn a new main-area tab.
+/// Whether `tab_id` is hosted outside product browser chrome. Its new-window
+/// requests load inline rather than spawning a main-area tab.
 pub(crate) fn is_standalone_tab(tab_id: &str) -> bool {
     let Some(normalized) = normalize_runtime_tab_id(tab_id) else {
         return false;
@@ -948,8 +988,11 @@ pub(crate) fn close_browser_tab(tab_id: &str) -> Result<(), LxAppError> {
     }
     let active_matches_closed = lock_active_tab().as_deref() == Some(normalized.as_str());
     if active_matches_closed {
-        let next = browser_tabs().into_iter().next().map(|tab| tab.tab_id);
+        let next = browser_current_tab().map(|tab| tab.tab_id);
         *lock_active_tab() = next;
+    }
+    if lock_automation_tab().as_deref() == Some(normalized.as_str()) {
+        lock_automation_tab().take();
     }
     if removed_any || active_matches_closed {
         notify_tabs_changed();
@@ -1218,5 +1261,90 @@ mod tests {
             Some("settings".to_string())
         );
         assert!(normalize_runtime_tab_id("settings/main").is_none());
+    }
+
+    #[test]
+    fn standalone_surface_tabs_remain_in_automation_inventory() {
+        let tab_id = generate_tab_id();
+        lock_state().tabs.insert(
+            tab_id.clone(),
+            BrowserTabState {
+                session_id: 7,
+                create_token: 1,
+                create_in_flight: false,
+                pending_url: None,
+                current_url: Some("https://auth.example.test/".to_string()),
+                title: None,
+                title_url: None,
+                favicon_png: None,
+                can_go_back: false,
+                can_go_forward: false,
+                discarded: false,
+                data_mode: WebViewDataMode::Ephemeral,
+                url_callback: Arc::new(AtomicBool::new(true)),
+                standalone: true,
+                aside: false,
+                owner_appid: Some("app.demo".to_string()),
+                owner_session_id: Some(3),
+            },
+        );
+
+        let info = browser_tabs()
+            .into_iter()
+            .find(|tab| tab.tab_id == tab_id)
+            .expect("standalone URL surface should be visible to devtools");
+        assert_eq!(
+            info.current_url.as_deref(),
+            Some("https://auth.example.test/")
+        );
+        lock_state().tabs.remove(&tab_id);
+    }
+
+    #[test]
+    fn activating_standalone_tab_does_not_replace_product_active_tab() {
+        let product_tab_id = generate_tab_id();
+        let standalone_tab_id = generate_tab_id();
+        let make_tab = |standalone| BrowserTabState {
+            session_id: 7,
+            create_token: 1,
+            create_in_flight: false,
+            pending_url: None,
+            current_url: None,
+            title: None,
+            title_url: None,
+            favicon_png: None,
+            can_go_back: false,
+            can_go_forward: false,
+            discarded: false,
+            data_mode: WebViewDataMode::ProfileDefault,
+            url_callback: Arc::new(AtomicBool::new(false)),
+            standalone,
+            aside: false,
+            owner_appid: None,
+            owner_session_id: None,
+        };
+        lock_state()
+            .tabs
+            .insert(product_tab_id.clone(), make_tab(false));
+        lock_state()
+            .tabs
+            .insert(standalone_tab_id.clone(), make_tab(true));
+        assert!(set_active_browser_tab(&product_tab_id));
+
+        let activated = browser_activate_tab(&standalone_tab_id).unwrap();
+
+        assert_eq!(activated.tab_id, standalone_tab_id);
+        assert_eq!(
+            browser_current_tab().map(|tab| tab.tab_id),
+            Some(product_tab_id.clone())
+        );
+        assert_eq!(
+            browser_automation_current_tab().map(|tab| tab.tab_id),
+            Some(standalone_tab_id.clone())
+        );
+        lock_state().tabs.remove(&standalone_tab_id);
+        lock_state().tabs.remove(&product_tab_id);
+        lock_active_tab().take();
+        lock_automation_tab().take();
     }
 }

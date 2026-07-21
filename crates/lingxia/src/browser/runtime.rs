@@ -80,9 +80,8 @@ pub(crate) fn tab_is_aside(tab_id: &str) -> bool {
     }
 }
 
-/// Open a standalone (no-tab-strip) browser tab for a docked aside browser.
-/// New-window requests load inline in the same WebView.
-#[cfg(any(target_os = "ios", target_os = "macos", target_os = "windows"))]
+/// Open a browser tab hosted outside product browser chrome, such as a docked
+/// aside or URL surface. New-window requests load inline in the same WebView.
 pub(crate) fn open_standalone_for_app(
     appid: &str,
     session_id: u64,
