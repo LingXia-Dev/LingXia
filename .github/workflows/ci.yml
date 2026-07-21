@@ -501,7 +501,7 @@ jobs:
     name: example-macos
     if: ${{ needs.changes.outputs.macos == 'true' }}
     runs-on: macos-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       # Pin Xcode 26.0 (Swift 6.2): the media SDK needs 6.2 concurrency inference
