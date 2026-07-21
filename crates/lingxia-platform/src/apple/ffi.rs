@@ -219,6 +219,7 @@ mod bridge {
             position: i32,
             role: i32,
             ephemeral_web_data: bool,
+            url_callback: bool,
         ) -> bool;
 
         // Adaptive Surface Layout (Phase 3): the shared core drives aside

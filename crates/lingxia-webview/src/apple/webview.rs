@@ -89,6 +89,25 @@ fn nsstring_to_string(value: &NSString) -> String {
     }
 }
 
+fn load_apple_url(webview: *mut AnyObject, url: &NSURL) {
+    unsafe {
+        if url.isFileURL() {
+            // WKWebView refuses local-file requests without an explicit read
+            // scope; limit access to the file's containing directory.
+            let read_access_url = url.URLByDeletingLastPathComponent();
+            let read_access_url = read_access_url.as_deref().unwrap_or(url);
+            let _: *mut AnyObject = msg_send![
+                webview,
+                loadFileURL: url,
+                allowingReadAccessToURL: read_access_url
+            ];
+        } else {
+            let request = NSURLRequest::requestWithURL(url);
+            let _: *mut AnyObject = msg_send![webview, loadRequest: &*request];
+        }
+    }
+}
+
 fn cookie_to_webview_cookie(cookie: &NSHTTPCookie) -> WebViewCookie {
     let expires_unix_ms = cookie
         .expiresDate()
@@ -2351,15 +2370,12 @@ impl WebViewInner {
 
     /// Helper method to load URL on main thread
     fn load_url_on_main_thread(&self, url: &str) -> Result<(), WebViewError> {
-        unsafe {
-            let ns_url_string = NSString::from_str(url);
-            if let Some(ns_url) = NSURL::URLWithString(&ns_url_string) {
-                let request = NSURLRequest::requestWithURL(&ns_url);
-                let _: *mut AnyObject = msg_send![self.webview, loadRequest: &*request];
-                Ok(())
-            } else {
-                Err(WebViewError::WebView(format!("Invalid URL: {}", url)))
-            }
+        let ns_url_string = NSString::from_str(url);
+        if let Some(ns_url) = NSURL::URLWithString(&ns_url_string) {
+            load_apple_url(self.webview, &ns_url);
+            Ok(())
+        } else {
+            Err(WebViewError::WebView(format!("Invalid URL: {}", url)))
         }
     }
 
@@ -2786,13 +2802,12 @@ impl WebViewController for WebViewInner {
             let webview_ptr_addr = self.webview as usize;
             let url_clone = url.to_string();
 
-            DispatchQueue::main().exec_async(move || unsafe {
+            DispatchQueue::main().exec_async(move || {
                 let webview_ptr = webview_ptr_addr as *mut AnyObject;
                 let url_nsstring = NSString::from_str(&url_clone);
                 let url = NSURL::URLWithString(&url_nsstring);
                 if let Some(url) = url {
-                    let request = NSURLRequest::requestWithURL(&url);
-                    let _: *mut AnyObject = msg_send![webview_ptr, loadRequest: &*request];
+                    load_apple_url(webview_ptr, &url);
                 }
             });
 

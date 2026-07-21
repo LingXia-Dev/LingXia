@@ -6,7 +6,7 @@ use std::sync::{Arc, LazyLock, Mutex};
 use lingxia_platform::traits::app_runtime::AppRuntime;
 use lingxia_platform::traits::ui::SurfaceContent;
 pub use lingxia_platform::{Platform, PlatformError, set_windows_app_exit_handler};
-use lingxia_webview::{WebTag, WebViewController, WebViewDataMode};
+use lingxia_webview::{NavigationPolicy, WebTag, WebViewController, WebViewDataMode};
 
 static WINDOWS_APP_VISIBLE_WEBTAGS: LazyLock<Mutex<HashMap<String, HashSet<String>>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
@@ -129,8 +129,10 @@ fn install_url_surface_bridge() {
         // `teardown_surface` destroys this webview by its webtag, so no cleanup hook.
         let webtag = WebTag::new(&request.app_id, &request.path, Some(request.session_id));
         let url = request.path.clone();
+        let url_callback = request.url_callback;
         let session = lingxia_webview::WebViewBuilder::browser(webtag)
             .data_mode(data_mode)
+            .on_navigation(move |next_url| url_surface_navigation_policy(url_callback, next_url))
             .create();
         std::mem::drop(crate::task::spawn(async move {
             match session.wait_ready().await {
@@ -151,6 +153,20 @@ fn install_url_surface_bridge() {
     }));
 }
 
+fn url_uses_scheme(url: &str, expected: &str) -> bool {
+    url.trim()
+        .split_once(':')
+        .is_some_and(|(scheme, _)| scheme.eq_ignore_ascii_case(expected))
+}
+
+fn url_surface_navigation_policy(url_callback: bool, url: &str) -> NavigationPolicy {
+    if url_callback && url_uses_scheme(url, "file") {
+        NavigationPolicy::Cancel
+    } else {
+        NavigationPolicy::Allow
+    }
+}
+
 #[cfg(feature = "browser-runtime")]
 fn resolve_url_surface_as_browser_tab(
     request: &lingxia_platform::traits::ui::SurfaceRequest,
@@ -162,6 +178,7 @@ fn resolve_url_surface_as_browser_tab(
         &request.path,
         None,
         data_mode,
+        request.url_callback,
     )
     .inspect_err(|err| log::warn!("URL surface browser tab failed for {}: {err}", request.path))
     .ok()?;
@@ -241,6 +258,22 @@ mod tests {
         assert_eq!(
             update_app_visible_webtags("app", "app:main", false),
             Some(false)
+        );
+    }
+
+    #[test]
+    fn standard_url_surface_policy_keeps_file_for_browsers_only() {
+        assert_eq!(
+            url_surface_navigation_policy(false, "file:///C:/Temp/report.html"),
+            NavigationPolicy::Allow
+        );
+        assert_eq!(
+            url_surface_navigation_policy(true, "FILE:/C:/Temp/report.html"),
+            NavigationPolicy::Cancel
+        );
+        assert_eq!(
+            url_surface_navigation_policy(true, "http://127.0.0.1:18080/authorize"),
+            NavigationPolicy::Allow
         );
     }
 }

@@ -325,7 +325,8 @@ class NativeBridge {
 	      heightRatio: string,
 	      position: string,
 	      role: string,
-	      ephemeralWebData: string
+	      ephemeralWebData: string,
+	      urlCallback: string
 	    ): boolean => {
 	      return LxAppSurface.present(
 	        id,
@@ -341,7 +342,8 @@ class NativeBridge {
 	        heightRatio,
 	        position,
 	        role,
-	        ephemeralWebData
+	        ephemeralWebData,
+	        urlCallback
 	      );
 	    });
 

@@ -162,10 +162,12 @@ enum LxAppSurface {
         /// back). The sentinel check above still intercepts the callback; the
         /// relaxation only permits intermediate http(s) cross-origin hops.
         let allowsCrossOrigin: Bool
+        let urlCallback: Bool
 
-        init(initialURL: URL, allowsCrossOrigin: Bool = false) {
+        init(initialURL: URL, allowsCrossOrigin: Bool = false, urlCallback: Bool = false) {
             self.initialURL = initialURL
             self.allowsCrossOrigin = allowsCrossOrigin
+            self.urlCallback = urlCallback
         }
 
         func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping @MainActor @Sendable (WKNavigationActionPolicy) -> Void) {
@@ -184,8 +186,10 @@ enum LxAppSurface {
                 // deep links (dingtalk://, feishu://, ...) an IdP page uses to
                 // launch its native app — hand those to the OS instead.
                 let scheme = url.scheme?.lowercased()
-                if scheme == "http" || scheme == "https" {
+                if scheme == "http" || scheme == "https" || (scheme == "file" && !urlCallback) {
                     decisionHandler(.allow)
+                } else if scheme == "file" {
+                    decisionHandler(.cancel)
                 } else {
                     NSWorkspace.shared.open(url)
                     decisionHandler(.cancel)
@@ -222,7 +226,8 @@ enum LxAppSurface {
         heightRatio: Double,
         position: Int32,
         role: Int32,
-        ephemeralWebData: Bool
+        ephemeralWebData: Bool,
+        urlCallback: Bool
     ) -> Bool {
         if let existing = entries[id] {
             if existing.dockedPosition != nil {
@@ -276,6 +281,8 @@ enum LxAppSurface {
                 height: height,
                 widthRatio: widthRatio,
                 heightRatio: heightRatio,
+                ephemeralWebData: ephemeralWebData,
+                urlCallback: urlCallback,
                 shell: shell
             )
         }
@@ -389,7 +396,7 @@ enum LxAppSurface {
             }
 
         case contentUrl:
-            guard let url = URL(string: path), let scheme = url.scheme?.lowercased(), scheme == "https" || scheme == "file" else {
+            guard let url = URL(string: path), supportsWebSurfaceURL(url, urlCallback: urlCallback) else {
                 LXLog.error("invalid web surface url id=\(id) url=\(path)", category: "Surface", appId: appId, path: path)
                 return false
             }
@@ -397,12 +404,15 @@ enum LxAppSurface {
             hostView = nil
             let configuration = webSurfaceConfiguration(ephemeral: ephemeralWebData)
             let wkWebView = WKWebView(frame: contentHost.bounds, configuration: configuration)
-            let delegate = WebNavigationDelegate(initialURL: url, allowsCrossOrigin: true)
+            let delegate = WebNavigationDelegate(
+                initialURL: url,
+                allowsCrossOrigin: true,
+                urlCallback: urlCallback)
             wkWebView.navigationDelegate = delegate
             wkWebView.translatesAutoresizingMaskIntoConstraints = false
             contentHost.addSubview(wkWebView)
             pinToEdges(wkWebView, in: contentHost)
-            wkWebView.load(URLRequest(url: url))
+            loadWebSurfaceURL(url, in: wkWebView)
             webView = wkWebView
             navigationDelegate = delegate
 
@@ -588,6 +598,8 @@ enum LxAppSurface {
         height: Double,
         widthRatio: Double,
         heightRatio: Double,
+        ephemeralWebData: Bool,
+        urlCallback: Bool,
         shell: LxAppShell
     ) -> Bool {
         let container = NSView()
@@ -645,15 +657,14 @@ enum LxAppSurface {
             }
 
         case contentUrl:
-            guard let url = URL(string: path), let scheme = url.scheme?.lowercased(),
-                  scheme == "https" || scheme == "file" else {
+            guard let url = URL(string: path), supportsWebSurfaceURL(url, urlCallback: urlCallback) else {
                 LXLog.error("invalid web aside url id=\(id) url=\(path)", category: "Surface", appId: appId, path: path)
                 return false
             }
             // Every web-aside node is a tab in the single per-window browser
             // panel. The FIRST node anchors the panel (docks its container +
-            // registers the shell slot); later nodes just add a tab (deduped by
-            // URL) — no second dock. onCloseTab(sid) closes that one tab/node;
+            // registers the shell slot); later nodes just add a tab (ordinary
+            // surfaces dedupe by URL) — no second dock. onCloseTab(sid) closes that one tab/node;
             // onCloseAside closes the anchor, which cascades to every tab.
             let onCloseTab: (String) -> Void = { sid in
                 _ = LxAppSurface.close(id: sid, appId: appId, reason: "user")
@@ -670,6 +681,8 @@ enum LxAppSurface {
             guard let opened = shell.browserCoordinator.openDockedAsideTab(
                 surfaceId: id,
                 url: url.absoluteString,
+                ephemeralWebData: ephemeralWebData,
+                urlCallback: urlCallback,
                 onCloseTab: onCloseTab,
                 onCloseAside: onCloseAside
             ) else {
@@ -1271,10 +1284,12 @@ enum LxAppSurface {
         /// back). The sentinel check above still intercepts the callback; the
         /// relaxation only permits intermediate http(s) cross-origin hops.
         let allowsCrossOrigin: Bool
+        let urlCallback: Bool
 
-        init(initialURL: URL, allowsCrossOrigin: Bool = false) {
+        init(initialURL: URL, allowsCrossOrigin: Bool = false, urlCallback: Bool = false) {
             self.initialURL = initialURL
             self.allowsCrossOrigin = allowsCrossOrigin
+            self.urlCallback = urlCallback
         }
 
         func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping @MainActor @Sendable (WKNavigationActionPolicy) -> Void) {
@@ -1293,8 +1308,10 @@ enum LxAppSurface {
                 // deep links (dingtalk://, feishu://, ...) an IdP page uses to
                 // launch its native app — hand those to the OS instead.
                 let scheme = url.scheme?.lowercased()
-                if scheme == "http" || scheme == "https" {
+                if scheme == "http" || scheme == "https" || (scheme == "file" && !urlCallback) {
                     decisionHandler(.allow)
+                } else if scheme == "file" {
+                    decisionHandler(.cancel)
                 } else {
                     UIApplication.shared.open(url, options: [:], completionHandler: nil)
                     decisionHandler(.cancel)
@@ -1453,7 +1470,8 @@ enum LxAppSurface {
         heightRatio: Double,
         position: Int32,
         role: Int32,
-        ephemeralWebData: Bool
+        ephemeralWebData: Bool,
+        urlCallback: Bool
     ) -> Bool {
         // A phone has no side-by-side room, so the core promotes an aside to a
         // main and presents it as a window (kind Window); an aside that survives
@@ -1556,7 +1574,7 @@ enum LxAppSurface {
             }
 
         case contentUrl:
-            guard let url = URL(string: path), let scheme = url.scheme?.lowercased(), scheme == "https" || scheme == "file" else {
+            guard let url = URL(string: path), supportsWebSurfaceURL(url, urlCallback: urlCallback) else {
                 LXLog.error("invalid web surface url id=\(id) url=\(path)", category: "Surface", appId: appId, path: path)
                 return false
             }
@@ -1565,7 +1583,10 @@ enum LxAppSurface {
             let wkWebView = WKWebView(
                 frame: controller.contentView.bounds,
                 configuration: webSurfaceConfiguration(ephemeral: ephemeralWebData))
-            let delegate = WebNavigationDelegate(initialURL: url, allowsCrossOrigin: true)
+            let delegate = WebNavigationDelegate(
+                initialURL: url,
+                allowsCrossOrigin: true,
+                urlCallback: urlCallback)
             wkWebView.navigationDelegate = delegate
             wkWebView.translatesAutoresizingMaskIntoConstraints = false
             // The page paints the whole sheet, matching Android: no automatic
@@ -1581,7 +1602,7 @@ enum LxAppSurface {
             }
             controller.contentView.addSubview(wkWebView)
             pinToEdges(wkWebView, in: controller.contentView)
-            wkWebView.load(URLRequest(url: url))
+            loadWebSurfaceURL(url, in: wkWebView)
             webView = wkWebView
             navigationDelegate = delegate
 
@@ -1799,7 +1820,8 @@ enum LxAppSurface {
         heightRatio: Double,
         position: Int32,
         role: Int32,
-        ephemeralWebData: Bool
+        ephemeralWebData: Bool,
+        urlCallback: Bool
     ) -> Bool {
         _ = id
         _ = appId
@@ -1815,6 +1837,7 @@ enum LxAppSurface {
         _ = position
         _ = role
         _ = ephemeralWebData
+        _ = urlCallback
         return false
     }
 
@@ -1847,6 +1870,14 @@ enum LxAppSurface {
 import WebKit
 
 extension LxAppSurface {
+    static func supportsWebSurfaceURL(_ url: URL, urlCallback: Bool) -> Bool {
+        guard let scheme = url.scheme?.lowercased() else { return false }
+        if urlCallback {
+            return scheme == "https" || scheme == "http"
+        }
+        return scheme == "https" || scheme == "http" || scheme == "file"
+    }
+
     /// An ephemeral surface (the runtime requests it for auth handoffs) gets an
     /// in-memory data store so each interactive login starts with a clean IdP
     /// session — logout is real and `lx.auth.add()` can pick a different
@@ -1857,6 +1888,14 @@ extension LxAppSurface {
             configuration.websiteDataStore = .nonPersistent()
         }
         return configuration
+    }
+
+    static func loadWebSurfaceURL(_ url: URL, in webView: WKWebView) {
+        if url.isFileURL {
+            webView.loadFileURL(url, allowingReadAccessTo: url.deletingLastPathComponent())
+        } else {
+            webView.load(URLRequest(url: url))
+        }
     }
 
     static func loadWebSurfaceError(in webView: WKWebView, url: URL, error: Error) {

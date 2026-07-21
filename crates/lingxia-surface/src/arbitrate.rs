@@ -222,7 +222,10 @@ fn promote_to_main(mut request: Surface) -> Surface {
 /// The web URL of a surface, if it is web content.
 fn web_url(surface: &Surface) -> Option<&str> {
     match &surface.content {
-        SurfaceContent::Web { url } => Some(url.as_str()),
+        SurfaceContent::Web {
+            url,
+            reuse_by_url: true,
+        } => Some(url.as_str()),
         _ => None,
     }
 }

@@ -285,6 +285,7 @@ mod tests {
         let mut browser = Surface::entry("browser", Role::Aside, "browser");
         browser.content = crate::model::SurfaceContent::Web {
             url: "https://example.com".to_string(),
+            reuse_by_url: true,
         };
         browser.placement.edge = Some(Edge::Right);
         manager.open(browser);
@@ -356,6 +357,7 @@ mod tests {
         let mut browser = Surface::entry("browser", Role::Aside, "browser");
         browser.content = crate::model::SurfaceContent::Web {
             url: "https://example.com".to_string(),
+            reuse_by_url: true,
         };
         browser.placement.edge = Some(Edge::Right);
         assert!(manager.open(browser).overlay);
@@ -383,6 +385,7 @@ mod tests {
         let mut browser = Surface::entry("browser", Role::Aside, "browser");
         browser.content = crate::model::SurfaceContent::Web {
             url: "https://example.com".to_string(),
+            reuse_by_url: true,
         };
         browser.placement.edge = Some(Edge::Right);
         manager.open(browser);

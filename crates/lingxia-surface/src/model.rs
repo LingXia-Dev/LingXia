@@ -47,7 +47,25 @@ pub enum SurfaceContent {
     /// An ad-hoc web page / PDF rendered by the in-app chromed browser. Whether
     /// it presents as a main browser tab or a docked browser aside is decided by
     /// `role`, not by the content — the browser always carries its own chrome.
-    Web { url: String },
+    Web {
+        url: String,
+        /// Reopening the same URL normally focuses the existing browser aside.
+        /// Callback surfaces opt out because their navigation and data-store
+        /// policy must never inherit an ordinary tab's WebView.
+        #[serde(
+            default = "default_reuse_by_url",
+            skip_serializing_if = "is_reuse_by_url"
+        )]
+        reuse_by_url: bool,
+    },
+}
+
+const fn default_reuse_by_url() -> bool {
+    true
+}
+
+fn is_reuse_by_url(value: &bool) -> bool {
+    *value
 }
 
 /// Aside slot grouping: the aside area holds at most one region per render

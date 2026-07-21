@@ -40,8 +40,17 @@ mod tests {
         let mut s = aside_s(id, edge);
         s.content = SurfaceContent::Web {
             url: url.to_string(),
+            reuse_by_url: true,
         };
         s
+    }
+
+    fn non_reusable_web_aside_s(id: &str, url: &str, edge: Edge) -> Surface {
+        let mut surface = web_aside_s(id, url, edge);
+        if let SurfaceContent::Web { reuse_by_url, .. } = &mut surface.content {
+            *reuse_by_url = false;
+        }
+        surface
     }
     fn terminal_aside_s(id: &str, edge: Edge) -> Surface {
         let mut s = Surface::entry(id, Role::Aside, "terminal");
@@ -523,6 +532,33 @@ mod tests {
     }
 
     #[test]
+    fn non_reusable_web_asides_never_dedup_by_url() {
+        let mut graph = SurfaceGraph::new();
+        graph.insert(main_s("home"));
+        graph.insert(web_aside_s("ordinary", "https://a.example", Edge::Right));
+
+        let (graph, callback_outcome) = arbitrate(
+            &graph,
+            non_reusable_web_aside_s("callback", "https://a.example", Edge::Right),
+            &Policy::default(),
+            SizeClass::Expanded,
+        );
+        assert_eq!(callback_outcome.resolved_surface_id, "callback");
+        assert!(graph.get("ordinary").is_some());
+        assert!(graph.get("callback").is_some());
+
+        let (graph, ordinary_outcome) = arbitrate(
+            &graph,
+            web_aside_s("ordinary-2", "https://a.example", Edge::Right),
+            &Policy::default(),
+            SizeClass::Expanded,
+        );
+        assert_eq!(ordinary_outcome.resolved_surface_id, "ordinary");
+        assert!(graph.get("ordinary-2").is_none());
+        assert!(graph.get("callback").is_some());
+    }
+
+    #[test]
     fn web_aside_url_key_normalizes_origin_and_empty_path_only() {
         assert_eq!(
             normalize_initial_url("HTTPS://Example.COM:443"),
@@ -684,5 +720,24 @@ mod tests {
         let json = serde_json::to_string(&s).unwrap();
         let back: Surface = serde_json::from_str(&json).unwrap();
         assert_eq!(s, back);
+    }
+
+    #[test]
+    fn web_surface_json_preserves_reuse_policy_and_legacy_default() {
+        let ordinary = web_aside_s("ordinary", "https://a.example", Edge::Right);
+        let ordinary_json = serde_json::to_string(&ordinary).unwrap();
+        assert!(!ordinary_json.contains("reuse_by_url"));
+        assert_eq!(
+            serde_json::from_str::<Surface>(&ordinary_json).unwrap(),
+            ordinary
+        );
+
+        let callback = non_reusable_web_aside_s("callback", "https://a.example", Edge::Right);
+        let callback_json = serde_json::to_string(&callback).unwrap();
+        assert!(callback_json.contains("\"reuse_by_url\":false"));
+        assert_eq!(
+            serde_json::from_str::<Surface>(&callback_json).unwrap(),
+            callback
+        );
     }
 }

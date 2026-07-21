@@ -58,6 +58,7 @@ impl SurfacePresenter for Platform {
             },
             request.role as i32,
             request.ephemeral_web_data,
+            request.url_callback,
         ) {
             Ok(())
         } else {

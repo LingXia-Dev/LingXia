@@ -41,6 +41,7 @@ impl SurfacePresenter for Platform {
             (request.position as i32).to_string(),
             (request.role as i32).to_string(),
             request.ephemeral_web_data.to_string(),
+            request.url_callback.to_string(),
         ];
         let arg_refs = args.iter().map(String::as_str).collect::<Vec<_>>();
 

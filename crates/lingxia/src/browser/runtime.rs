@@ -89,12 +89,20 @@ pub(crate) fn open_standalone_for_app(
     url: &str,
     tab_id: Option<&str>,
     data_mode: lingxia_webview::WebViewDataMode,
+    url_callback: bool,
 ) -> Result<String, lxapp::LxAppError> {
     #[cfg(feature = "browser-runtime")]
-    return lingxia_browser::open_standalone_for_app(appid, session_id, url, tab_id, data_mode);
+    return lingxia_browser::open_standalone_for_app(
+        appid,
+        session_id,
+        url,
+        tab_id,
+        data_mode,
+        url_callback,
+    );
     #[cfg(not(feature = "browser-runtime"))]
     {
-        let _ = (appid, session_id, url, tab_id, data_mode);
+        let _ = (appid, session_id, url, tab_id, data_mode, url_callback);
         unavailable()
     }
 }
