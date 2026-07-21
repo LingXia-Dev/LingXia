@@ -30,6 +30,24 @@ pub enum NavigationPolicy {
     Cancel,
 }
 
+/// A platform navigation request passed to the registered policy handler.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NavigationRequest {
+    pub url: String,
+    pub has_user_gesture: bool,
+    pub is_main_frame: bool,
+}
+
+impl NavigationRequest {
+    pub fn new(url: impl Into<String>, has_user_gesture: bool, is_main_frame: bool) -> Self {
+        Self {
+            url: url.into(),
+            has_user_gesture,
+            is_main_frame,
+        }
+    }
+}
+
 /// New-window policy decision returned by the new-window handler.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NewWindowPolicy {
@@ -39,7 +57,7 @@ pub enum NewWindowPolicy {
     Cancel,
 }
 
-pub type NavigationHandler = Box<dyn Fn(&str) -> NavigationPolicy + Send + Sync>;
+pub type NavigationHandler = Box<dyn Fn(&NavigationRequest) -> NavigationPolicy + Send + Sync>;
 pub type NewWindowHandler = Box<dyn Fn(&str) -> NewWindowPolicy + Send + Sync>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]

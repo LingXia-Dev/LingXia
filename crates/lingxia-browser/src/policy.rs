@@ -359,6 +359,21 @@ mod tests {
     }
 
     #[test]
+    fn browser_nav_policy_opens_dingtalk_main_frame_with_gesture() {
+        let response = handle_browser_navigation_policy(BrowserNavigationPolicyRequest {
+            raw_url: "dingtalk://dingtalkclient/page/link?url=https%3A%2F%2Fexample.com"
+                .to_string(),
+            has_user_gesture: true,
+            is_main_frame: true,
+        });
+
+        assert_eq!(
+            response.decision,
+            BrowserNavigationPolicyDecision::OpenExternal
+        );
+    }
+
+    #[test]
     fn browser_nav_policy_denies_lark_without_gesture() {
         let response = handle_browser_navigation_policy(BrowserNavigationPolicyRequest {
             raw_url: "lark://client/auth?code=1".to_string(),

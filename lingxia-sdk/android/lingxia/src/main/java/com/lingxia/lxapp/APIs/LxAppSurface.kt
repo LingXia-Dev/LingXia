@@ -5,18 +5,18 @@ import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Build
+import android.util.Log
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
-import android.webkit.WebChromeClient
 import android.webkit.CookieManager
+import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebStorage
 import android.webkit.WebViewClient
 import android.widget.FrameLayout
-import android.util.Log
 import android.widget.ImageView
 import com.lingxia.app.Lingxia
 import com.lingxia.app.LxLog
@@ -72,6 +72,7 @@ internal object LxAppSurface {
         val pageInstanceId: String?,
         val overlay: FrameLayout,
         val webView: android.webkit.WebView,
+        val browserTabId: String?,
         val fullScreen: Boolean,
         /**
          * True only for explicitly immersive full-screen floats. Adaptive asides
@@ -97,7 +98,8 @@ internal object LxAppSurface {
         val position: SurfacePosition,
         val role: Int,
         val ephemeralWebData: Boolean,
-        val urlCallback: Boolean
+        val urlCallback: Boolean,
+        val browserTabId: String? = null
     )
 
     private enum class PendingVisibility {
@@ -158,16 +160,29 @@ internal object LxAppSurface {
         pendingRequests[request.id] = request
         activity.runOnUiThread {
             if (request.content == CONTENT_URL) {
-                mount(
-                    activity,
-                    request,
-                    createExternalWebView(
-                        activity,
-                        request.path,
-                        request.ephemeralWebData,
-                        request.urlCallback
-                    )
+                val tabId = NativeApi.openStandaloneBrowserTab(
+                    request.appId,
+                    request.sessionId,
+                    request.path,
+                    request.ephemeralWebData,
+                    request.urlCallback
                 )
+                if (tabId.isNullOrBlank()) {
+                    mount(
+                        activity,
+                        request,
+                        createExternalWebView(
+                            activity,
+                            request.path,
+                            request.ephemeralWebData,
+                            request.urlCallback
+                        )
+                    )
+                } else {
+                    val managedRequest = request.copy(browserTabId = tabId)
+                    pendingRequests[request.id] = managedRequest
+                    mountManagedUrlWhenReady(activity, managedRequest, 0)
+                }
             } else {
                 mountWhenReady(activity, request, 0)
             }
@@ -297,6 +312,35 @@ internal object LxAppSurface {
         mount(activity, request, webView)
     }
 
+    private fun mountManagedUrlWhenReady(activity: Activity, request: Request, attempt: Int) {
+        if (!pendingRequests.containsKey(request.id)) return
+        val tabId = request.browserTabId ?: return
+        val browserAppId = NativeApi.getBuiltinBrowserAppId()?.takeIf { it.isNotBlank() }
+        val path = NativeApi.browserTabPathForId(tabId)?.takeIf { it.isNotBlank() }
+        val sessionId = browserAppId?.let { NativeApi.getLxAppSessionId(it) } ?: 0L
+        val webView = if (browserAppId != null && path != null && sessionId > 0L) {
+            NativeApi.findWebView(browserAppId, path, sessionId)
+        } else {
+            null
+        }
+        if (webView == null) {
+            if (attempt < MOUNT_RETRY_COUNT) {
+                activity.window?.decorView?.postDelayed(
+                    { mountManagedUrlWhenReady(activity, request, attempt + 1) },
+                    MOUNT_RETRY_DELAY_MS
+                )
+            } else {
+                pendingRequests.remove(request.id)
+                pendingVisibility.remove(request.id)
+                NativeApi.browserTabClose(tabId)
+                LxLog.e(TAG, "present failed: managed URL WebView not ready for tabId=$tabId", appId = request.appId, path = request.path)
+                NativeApi.onSurfaceClosed(request.appId, request.id, "failed")
+            }
+            return
+        }
+        mount(activity, request, webView)
+    }
+
     private fun mount(activity: Activity, request: Request, webView: android.webkit.WebView) {
         closeEntry(request.id, request.appId, "programmatic", notifyNative = false)
         pendingRequests.remove(request.id)
@@ -306,6 +350,8 @@ internal object LxAppSurface {
         if (rootView == null) {
             if (request.content == CONTENT_PAGE) {
                 NativeApi.disposePageInstance(request.pageInstanceId, "failed")
+            } else if (request.browserTabId != null) {
+                NativeApi.browserTabClose(request.browserTabId)
             } else {
                 webView.stopLoading()
                 webView.destroy()
@@ -377,10 +423,14 @@ internal object LxAppSurface {
         val initiallyVisible = requestedVisibility != PendingVisibility.HIDE
         webView.visibility = if (initiallyVisible) View.VISIBLE else View.GONE
         if (webView is com.lingxia.lxapp.WebView) {
-            NativeApi.notifyPageInstanceMounted(request.pageInstanceId)
+            if (request.content == CONTENT_PAGE) {
+                NativeApi.notifyPageInstanceMounted(request.pageInstanceId)
+            }
             if (initiallyVisible) {
                 webView.resume()
-                NativeApi.notifyPageInstanceVisible(request.pageInstanceId)
+                if (request.content == CONTENT_PAGE) {
+                    NativeApi.notifyPageInstanceVisible(request.pageInstanceId)
+                }
             }
         }
 
@@ -390,6 +440,7 @@ internal object LxAppSurface {
             pageInstanceId = request.pageInstanceId.takeIf { request.content == CONTENT_PAGE },
             overlay = overlay,
             webView = webView,
+            browserTabId = request.browserTabId,
             fullScreen = fillsScreen,
             immersive = immersive,
         )
@@ -539,7 +590,9 @@ internal object LxAppSurface {
 
         (entry.webView.parent as? ViewGroup)?.removeView(entry.webView)
         (entry.overlay.parent as? ViewGroup)?.removeView(entry.overlay)
-        if (entry.webView is com.lingxia.lxapp.WebView) {
+        if (entry.browserTabId != null) {
+            NativeApi.browserTabClose(entry.browserTabId)
+        } else if (entry.webView is com.lingxia.lxapp.WebView) {
             entry.webView.pause()
         } else {
             entry.webView.stopLoading()
@@ -562,6 +615,8 @@ internal object LxAppSurface {
         pendingVisibility.remove(id)
         if (request.content == CONTENT_PAGE) {
             NativeApi.disposePageInstance(request.pageInstanceId, reason)
+        } else {
+            request.browserTabId?.let { NativeApi.browserTabClose(it) }
         }
         NativeApi.onSurfaceClosed(appId, id, reason)
         return true
@@ -624,14 +679,8 @@ internal object LxAppSurface {
             settings.allowFileAccess = !urlCallback
             settings.allowContentAccess = false
             webViewClient = object : WebViewClient() {
-                // A registered URL-callback sentinel (e.g. an auth handoff) is
-                // consumed by the waiting Rust channel; cancel the load.
-                // URL surfaces host multi-origin journeys (an auth page may
-                // hop through an external IdP and back), so cross-origin
-                // http(s) navigation is allowed. Non-http(s) schemes are app
-                // deep links (dingtalk://, feishu://, ...) that IdP pages use
-                // to launch their native app for authorization — hand those
-                // to the OS instead of loading them in the sheet.
+                // URL surfaces may cross origins during auth. Consume the
+                // registered callback, and hand non-web deep links to Android.
                 private fun handles(next: Uri): Boolean {
                     if (NativeApi.urlCallbackDispatch(next.toString())) return true
                     val scheme = next.scheme?.lowercase()
@@ -642,8 +691,8 @@ internal object LxAppSurface {
                         activity.startActivity(
                             android.content.Intent(android.content.Intent.ACTION_VIEW, next)
                         )
-                    } catch (e: Exception) {
-                        Log.w(TAG, "no handler for deep link ${'$'}next: ${'$'}e")
+                    } catch (error: Exception) {
+                        Log.w(TAG, "no handler for deep link $next: $error")
                     }
                     return true
                 }
@@ -655,8 +704,7 @@ internal object LxAppSurface {
                 ) {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && request?.isForMainFrame == true) {
                         if (isNavigationCancellation(error?.description?.toString())) return
-                        val failingUrl = request.url?.toString() ?: url
-                        view?.let { loadWebSurfaceError(it, failingUrl) }
+                        view?.let { loadWebSurfaceError(it, request.url?.toString() ?: url) }
                     }
                 }
 
@@ -676,28 +724,19 @@ internal object LxAppSurface {
                 override fun shouldOverrideUrlLoading(
                     view: android.webkit.WebView?,
                     request: WebResourceRequest?
-                ): Boolean {
-                    val next = request?.url ?: return true
-                    return handles(next)
-                }
+                ): Boolean = request?.url?.let(::handles) ?: true
 
                 @Deprecated("Deprecated in Android")
-                override fun shouldOverrideUrlLoading(view: android.webkit.WebView?, nextUrl: String?): Boolean {
-                    val next = nextUrl?.let { Uri.parse(it) } ?: return true
-                    return handles(next)
-                }
+                override fun shouldOverrideUrlLoading(
+                    view: android.webkit.WebView?,
+                    nextUrl: String?
+                ): Boolean = nextUrl?.let(Uri::parse)?.let(::handles) ?: true
             }
             webChromeClient = WebChromeClient()
         }
         if (ephemeralWebData) {
-            // An ephemeral surface (auth handoffs) starts with a clean IdP
-            // session so logout is real and lx.auth.add() can switch accounts.
-            // Android's CookieManager is process-global AND removeAllCookies is
-            // asynchronous, so the load must wait for the removal callback —
-            // calling loadUrl immediately would race it and still send the
-            // stale SSO cookie on the first IdP request. Ephemeral sheets are
-            // modal and rare, so clearing the global jar is acceptable (other
-            // surfaces simply re-auth).
+            // CookieManager is process-global and asynchronous, so wait for
+            // deletion before issuing the first request for an auth surface.
             val cookieManager = CookieManager.getInstance()
             cookieManager.removeAllCookies {
                 cookieManager.flush()
@@ -710,18 +749,12 @@ internal object LxAppSurface {
         return webView
     }
 
-    // Cancellation is control flow (superseded load, intercepted handoff),
-    // never an application-visible load error. Chromium reports it as exactly
-    // net::ERR_ABORTED — substring matching would also swallow real failures
-    // like net::ERR_CONNECTION_ABORTED.
-    private fun isNavigationCancellation(description: String?): Boolean {
-        return description?.lowercase() == "net::err_aborted"
-    }
+    // Only the exact Chromium cancellation code is control flow; similar
+    // connection errors still need the application-visible error document.
+    private fun isNavigationCancellation(description: String?): Boolean =
+        description?.lowercase() == "net::err_aborted"
 
-    private fun loadWebSurfaceError(
-        webView: android.webkit.WebView,
-        failingUrl: String
-    ) {
+    private fun loadWebSurfaceError(webView: android.webkit.WebView, failingUrl: String) {
         val html = NativeApi.webviewLoadErrorDocument(failingUrl)
         webView.loadDataWithBaseURL(failingUrl, html, "text/html", "UTF-8", failingUrl)
     }

@@ -101,7 +101,9 @@ public class LingXiaWebViewClient extends WebViewClient {
                 webView.getAppId() != null ? webView.getAppId() : "",
                 webView.getCurrentPath() != null ? webView.getCurrentPath() : "",
                 webView.getSessionId(),
-                url
+                url,
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && request.hasGesture(),
+                request.isForMainFrame()
             );
         }
         return false;

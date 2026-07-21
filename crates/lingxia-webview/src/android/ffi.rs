@@ -768,6 +768,8 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_handleNavigationP
     path: JString,
     session_id: jlong,
     url: JString,
+    has_user_gesture: jboolean,
+    is_main_frame: jboolean,
 ) -> bool {
     env.with_env(|env| -> Result<bool, jni::errors::Error> {
         let appid: String = appid.try_to_string(env)?;
@@ -781,8 +783,9 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_handleNavigationP
 
         let webtag = WebTag::new(&appid, &path, session_id);
         if let Some(webview) = find_webview(&webtag) {
+            let request = crate::NavigationRequest::new(url, has_user_gesture, is_main_frame);
             return Ok(matches!(
-                webview.handle_navigation(&url),
+                webview.handle_navigation(&request),
                 NavigationPolicy::Cancel
             ));
         }

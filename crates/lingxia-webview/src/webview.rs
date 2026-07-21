@@ -43,8 +43,8 @@ pub(crate) struct WebViewInner {
 
 use crate::traits::{
     AsyncSchemeHandler, ClickOptions, DownloadHandler, DownloadRequest, FileChooserRequest,
-    FileChooserResponse, FillOptions, NavigationHandler, NavigationPolicy, NewWindowHandler,
-    NewWindowPolicy, PressOptions, SchemeOutcome, ScrollOptions, TypeOptions,
+    FileChooserResponse, FillOptions, NavigationHandler, NavigationPolicy, NavigationRequest,
+    NewWindowHandler, NewWindowPolicy, PressOptions, SchemeOutcome, ScrollOptions, TypeOptions,
     WebViewInputController,
 };
 use crate::{
@@ -466,10 +466,10 @@ impl WebViewCreateOptions {
     }
 
     /// Register a navigation handler that decides whether to allow or cancel navigations.
-    /// The handler receives the URL being navigated to and returns a `NavigationPolicy`.
+    /// The handler receives the URL and available platform navigation metadata.
     fn on_navigation<F>(mut self, handler: F) -> Self
     where
-        F: Fn(&str) -> NavigationPolicy + Send + Sync + 'static,
+        F: Fn(&NavigationRequest) -> NavigationPolicy + Send + Sync + 'static,
     {
         self.navigation_handler = Some(Box::new(handler));
         self
@@ -626,7 +626,7 @@ impl StrictWebViewBuilder {
 
     pub fn on_navigation<F>(mut self, handler: F) -> Self
     where
-        F: Fn(&str) -> NavigationPolicy + Send + Sync + 'static,
+        F: Fn(&NavigationRequest) -> NavigationPolicy + Send + Sync + 'static,
     {
         self.options = self.options.on_navigation(handler);
         self
@@ -680,7 +680,7 @@ impl BrowserWebViewBuilder {
 
     pub fn on_navigation<F>(mut self, handler: F) -> Self
     where
-        F: Fn(&str) -> NavigationPolicy + Send + Sync + 'static,
+        F: Fn(&NavigationRequest) -> NavigationPolicy + Send + Sync + 'static,
     {
         self.options = self.options.on_navigation(handler);
         self
@@ -881,14 +881,14 @@ impl WebView {
     ///
     /// A URL matching an open [`crate::url_callback`] channel is delivered to
     /// that channel and cancelled before any per-webview handler runs.
-    pub fn handle_navigation(&self, url: &str) -> NavigationPolicy {
-        if crate::url_callback::dispatch(url) {
+    pub fn handle_navigation(&self, request: &NavigationRequest) -> NavigationPolicy {
+        if crate::url_callback::dispatch(&request.url) {
             return NavigationPolicy::Cancel;
         }
         if let Ok(guard) = self.navigation_handler.read()
             && let Some(handler) = guard.as_ref()
         {
-            return handler(url);
+            return handler(request);
         }
         NavigationPolicy::Allow
     }

@@ -415,7 +415,8 @@ pub(crate) fn browser_create_webview(
             let ctx = lingxia_ctx.clone();
             async move { handle_browser_lingxia_scheme(&ctx, req).await.into() }
         })
-        .on_navigation(move |url| {
+        .on_navigation(move |request| {
+            let url = request.url.as_str();
             if callback_policy_blocks_file_navigation(&url_callback_for_navigation, url) {
                 return NavigationPolicy::Cancel;
             }
@@ -423,15 +424,10 @@ pub(crate) fn browser_create_webview(
             if matches!(extract_url_scheme(url).as_deref(), Some("lx" | "lingxia")) {
                 return NavigationPolicy::Allow;
             }
-            // This callback only provides the URL string; user-gesture/main-frame
-            // metadata is unavailable here, so treat it as a no-gesture navigation.
-            // http/https stay in-webview regardless, while external-scheme launches
-            // are cancelled in-page: they must come through a platform policy path
-            // that carries real gesture data (see handle_browser_navigation_policy).
             let decision = handle_browser_navigation_policy(BrowserNavigationPolicyRequest {
                 raw_url: url.to_string(),
-                has_user_gesture: false,
-                is_main_frame: false,
+                has_user_gesture: request.has_user_gesture,
+                is_main_frame: request.is_main_frame,
             });
             match decision.decision {
                 BrowserNavigationPolicyDecision::InWebview => NavigationPolicy::Allow,
@@ -444,7 +440,14 @@ pub(crate) fn browser_create_webview(
                     });
                     NavigationPolicy::Cancel
                 }
-                BrowserNavigationPolicyDecision::Deny => NavigationPolicy::Cancel,
+                BrowserNavigationPolicyDecision::Deny => {
+                    lxapp::debug!(
+                        "[InternalBrowser] Denied navigation url={} reason={}",
+                        url,
+                        decision.reason.as_deref().unwrap_or("unspecified")
+                    );
+                    NavigationPolicy::Cancel
+                }
             }
         })
         .on_new_window(move |url| {

@@ -272,6 +272,33 @@ pub fn open_browser_tab(appid: String, session_id: i64, url: String) -> Option<S
     crate::browser::open_for_app(&appid, session_id as u64, &url, None).ok()
 }
 
+#[napi]
+pub fn open_standalone_browser_tab(
+    appid: String,
+    session_id: i64,
+    url: String,
+    ephemeral_web_data: bool,
+    url_callback: bool,
+) -> Option<String> {
+    if session_id <= 0 {
+        return None;
+    }
+    let data_mode = if ephemeral_web_data {
+        lingxia_webview::WebViewDataMode::Ephemeral
+    } else {
+        lingxia_webview::WebViewDataMode::ProfileDefault
+    };
+    crate::browser::open_standalone_for_app(
+        &appid,
+        session_id as u64,
+        &url,
+        None,
+        data_mode,
+        url_callback,
+    )
+    .ok()
+}
+
 /// Open an aside tab in the shared in-app browser: self chrome minus the
 /// address bar (compact `{ url, as: 'aside' }`).
 #[napi]
@@ -843,8 +870,13 @@ pub fn on_screenshot_result(request_id_str: String, png_base64: String, error: S
 }
 
 #[napi]
-pub fn on_navigation_policy(webtag: String, url: String) -> bool {
-    webview_harmony::check_navigation_policy(&webtag, &url)
+pub fn on_navigation_policy(
+    webtag: String,
+    url: String,
+    has_user_gesture: bool,
+    is_main_frame: bool,
+) -> bool {
+    webview_harmony::check_navigation_policy(&webtag, &url, has_user_gesture, is_main_frame)
 }
 
 #[napi]

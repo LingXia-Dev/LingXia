@@ -113,9 +113,23 @@ export struct LingXiaWebView {
       .keyboardAvoidMode(WebKeyboardAvoidMode.RESIZE_CONTENT)
       .onLoadIntercept((event) => {
         if (event && event.data) {
-          const url = event.data.getRequestUrl();
+          const request = event.data;
+          const url = request.getRequestUrl();
           if (url) {
-            return handleWebViewNavigationPolicy(this.webTag, url);
+            let hasUserGesture = false;
+            let isMainFrame = true;
+            try {
+              hasUserGesture = request.isRequestGesture();
+            } catch {}
+            try {
+              isMainFrame = request.isMainFrame();
+            } catch {}
+            return handleWebViewNavigationPolicy(
+              this.webTag,
+              url,
+              hasUserGesture,
+              isMainFrame
+            );
           }
         }
         return false;

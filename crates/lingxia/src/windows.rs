@@ -132,7 +132,7 @@ fn install_url_surface_bridge() {
         let url_callback = request.url_callback;
         let session = lingxia_webview::WebViewBuilder::browser(webtag)
             .data_mode(data_mode)
-            .on_navigation(move |next_url| url_surface_navigation_policy(url_callback, next_url))
+            .on_navigation(move |request| url_surface_navigation_policy(url_callback, &request.url))
             .create();
         std::mem::drop(crate::task::spawn(async move {
             match session.wait_ready().await {

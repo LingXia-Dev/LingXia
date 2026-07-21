@@ -20,8 +20,8 @@ import { webview } from '@kit.ArkWeb';
 import { Lingxia } from '../../app/Lingxia';
 import { LingXiaWebView } from '../LingXiaWebView';
 import { addWebViewUiCallback, removeWebViewUiCallback, WebViewInfo, WebViewManager, toWebTag } from '../WebViewBridge';
-import { notifyPageInstanceMounted, notifyPageInstanceVisible, urlCallbackDispatch, webviewLoadErrorDocument } from 'liblingxia.so';
-import { isFileUrl, isHttpUrl, isSameOrigin } from './LxAppSurface';
+import { browserTabPathForId, getBuiltinBrowserAppId, notifyPageInstanceMounted, notifyPageInstanceVisible, urlCallbackDispatch, webviewLoadErrorDocument } from 'liblingxia.so';
+import { isFileUrl, isHttpUrl } from './LxAppSurface';
 import type { SurfaceLayoutConfig } from './LxAppSurface';
 
 const DOMAIN = 0x0000;
@@ -175,6 +175,7 @@ struct LingXiaFloatSurfacePage {
   private webViewUiCallback = (action: string, info: WebViewInfo): void => {
     if (action === 'create') {
       this.tryAttachPage();
+      this.tryAttachUrl();
     }
   };
 
@@ -184,20 +185,9 @@ struct LingXiaFloatSurfacePage {
     if (!this.layout) {
       LxLog.e(TAG, `float page has no layout key=${this.lxFloatKey}`);
     }
-    if (this.layout?.content === FLOAT_CONTENT_URL && this.layout.ephemeralWebData) {
-      // `incognitoMode` only stops on-disk persistence; the incognito
-      // cookie/storage lives in a shared in-memory store, so a prior session
-      // (e.g. an IdP SSO cookie) would carry into this surface. Wipe that
-      // store before the Web builds and issues its first request.
-      try {
-        webview.WebCookieManager.clearAllCookiesSync(true);
-        webview.WebStorage.deleteAllData(true);
-      } catch (clearErr) {
-        LxLog.e(TAG, `failed to clear incognito web data: ${clearErr}`);
-      }
-    }
     addWebViewUiCallback(this.webViewUiCallback);
     this.tryAttachPage();
+    this.tryAttachUrl();
   }
 
   aboutToDisappear() {
@@ -229,6 +219,26 @@ struct LingXiaFloatSurfacePage {
     }
   }
 
+  private tryAttachUrl(): void {
+    const layout = this.layout;
+    if (!layout || layout.content !== FLOAT_CONTENT_URL || !layout.browserTabId || this.pageWebTag.length > 0) {
+      return;
+    }
+    const appId = String(getBuiltinBrowserAppId() ?? '').trim();
+    const path = String(browserTabPathForId(layout.browserTabId) ?? '').trim();
+    if (!appId || !path) return;
+    const controller = WebViewManager.findWebview(appId, path);
+    if (!controller) return;
+    const infos = WebViewManager.getAllWebViewInfos();
+    for (let i = 0; i < infos.length; i++) {
+      if (infos[i].controller === controller) {
+        this.urlController = controller;
+        this.pageWebTag = infos[i].webtag;
+        return;
+      }
+    }
+  }
+
   private isFullscreen(): boolean {
     return this.layout?.fullWidth === true && this.layout?.fullHeight === true;
   }
@@ -247,53 +257,39 @@ struct LingXiaFloatSurfacePage {
             })
         }
         Column() {
-          if (this.layout!.content === FLOAT_CONTENT_URL) {
-            Web({ src: this.layout!.path, controller: this.urlController, incognitoMode: this.layout!.ephemeralWebData })
+          if (this.layout!.content === FLOAT_CONTENT_URL && this.layout!.browserTabId && this.pageWebTag.length > 0) {
+            LingXiaWebView({
+              webTag: this.pageWebTag,
+              controller: this.urlController,
+              renderVisibility: Visibility.Visible,
+              renderWidth: '100%',
+              renderHeight: '100%',
+              renderZIndex: 0
+            })
+          } else if (this.layout!.content === FLOAT_CONTENT_URL && !this.layout!.browserTabId) {
+            Web({
+              src: this.layout!.path,
+              controller: this.urlController,
+              incognitoMode: this.layout!.ephemeralWebData
+            })
               .domStorageAccess(true)
               .javaScriptAccess(true)
               .fileAccess(!this.layout!.urlCallback)
               .mixedMode(MixedMode.None)
               .onErrorReceive((event) => {
-                if (!event || !event.request || !event.error || !event.request.isMainFrame()) {
-                  return;
-                }
-                // Cancellation is control flow (superseded load, intercepted
-                // handoff), never an application-visible load error. It is
-                // reported as exactly ERR_ABORTED — substring matching would
-                // also swallow real failures like ERR_CONNECTION_ABORTED.
+                if (!event || !event.request || !event.error || !event.request.isMainFrame()) return;
                 const info = (event.error.getErrorInfo() ?? '').toLowerCase();
-                if (info === 'err_aborted' || info === 'net::err_aborted') {
-                  return;
-                }
+                if (info === 'err_aborted' || info === 'net::err_aborted') return;
                 const failingUrl = event.request.getRequestUrl() ?? this.layout!.path;
-                try {
-                  const html: string = webviewLoadErrorDocument(failingUrl);
-                  this.urlController.loadData(html, 'text/html', 'UTF-8', failingUrl, failingUrl);
-                } catch (error) {
-                  LxLog.e(TAG, `failed to render float load error: ${error}`);
-                }
+                const html: string = webviewLoadErrorDocument(failingUrl);
+                this.urlController.loadData(html, 'text/html', 'UTF-8', failingUrl, failingUrl);
               })
               .onLoadIntercept((event) => {
-                if (!event || !event.data) {
-                  return false;
-                }
-                const targetUrl = event.data.getRequestUrl();
-                if (!targetUrl) {
-                  return false;
-                }
-                // A registered URL-callback sentinel (e.g. an auth handoff) is
-                // consumed by the waiting Rust channel; cancel the load.
-                // Cross-origin http(s) is allowed (multi-origin auth journey);
-                // non-http(s) deep links are handed to the system.
-                if (urlCallbackDispatch(targetUrl)) {
-                  return true;
-                }
-                if (isHttpUrl(targetUrl) || (!this.layout!.urlCallback && isFileUrl(targetUrl))) {
-                  return false;
-                }
-                if (isFileUrl(targetUrl)) {
-                  return true;
-                }
+                const targetUrl = event?.data?.getRequestUrl() ?? '';
+                if (!targetUrl) return false;
+                if (urlCallbackDispatch(targetUrl)) return true;
+                if (isHttpUrl(targetUrl) || (!this.layout!.urlCallback && isFileUrl(targetUrl))) return false;
+                if (isFileUrl(targetUrl)) return true;
                 Lingxia.launchWithUrl(targetUrl);
                 return true;
               })

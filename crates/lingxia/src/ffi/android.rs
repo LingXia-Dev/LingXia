@@ -1268,6 +1268,52 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_openBrowserTab<'a>(
     .resolve::<ThrowRuntimeExAndDefault>()
 }
 
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_app_NativeApi_openStandaloneBrowserTab<'a>(
+    mut env: EnvUnowned<'a>,
+    _class: JClass<'a>,
+    appid: JString<'a>,
+    session_id: jlong,
+    url: JString<'a>,
+    ephemeral_web_data: jboolean,
+    url_callback: jboolean,
+) -> JString<'a> {
+    env.with_env(|env| -> Result<JString, jni::errors::Error> {
+        let appid = match appid.try_to_string(env) {
+            Ok(value) => value.to_string(),
+            Err(_) => return Ok(JString::null()),
+        };
+        let url = match url.try_to_string(env) {
+            Ok(value) => value.to_string(),
+            Err(_) => return Ok(JString::null()),
+        };
+        if session_id <= 0 {
+            return Ok(JString::null());
+        }
+        let data_mode = if ephemeral_web_data {
+            lingxia_webview::WebViewDataMode::Ephemeral
+        } else {
+            lingxia_webview::WebViewDataMode::ProfileDefault
+        };
+        let tab_id = match crate::browser::open_standalone_for_app(
+            &appid,
+            session_id as u64,
+            &url,
+            None,
+            data_mode,
+            url_callback,
+        ) {
+            Ok(tab_id) => tab_id,
+            Err(error) => {
+                error!("[Android] openStandaloneBrowserTab failed: {}", error);
+                return Ok(JString::null());
+            }
+        };
+        env.new_string(tab_id).or_else(|_| Ok(JString::null()))
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
+}
+
 /// Open an aside tab in the shared in-app browser: self chrome minus the
 /// address bar (compact `{ url, as: 'aside' }`).
 #[unsafe(no_mangle)]

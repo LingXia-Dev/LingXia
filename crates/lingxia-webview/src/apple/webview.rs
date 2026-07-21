@@ -1018,7 +1018,8 @@ define_class!(
 
             // Check closure-based navigation handler first
             if let Some(webview) = find_webview(webtag) {
-                match webview.handle_navigation(&url) {
+                let request = crate::NavigationRequest::new(url.clone(), false, true);
+                match webview.handle_navigation(&request) {
                     NavigationPolicy::Cancel => {
                         log::info!(
                             "Apple decidePolicy canceled by navigation handler webtag={} url={}",

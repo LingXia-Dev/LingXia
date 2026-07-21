@@ -210,6 +210,20 @@ internal object NativeApi {
     external fun openBrowserTab(appId: String, sessionId: Long, url: String): String?
 
     /**
+     * Open a managed browser target without registering it in product browser
+     * chrome. URL surfaces use this so devtools can inspect and automate the
+     * exact WebView that is mounted in the native overlay.
+     */
+    @JvmStatic
+    external fun openStandaloneBrowserTab(
+        appId: String,
+        sessionId: Long,
+        url: String,
+        ephemeralWebData: Boolean,
+        urlCallback: Boolean
+    ): String?
+
+    /**
      * Open an aside tab in the shared in-app browser: same as openBrowserTab
      * except the chrome hides its address bar while this tab is active.
      */
