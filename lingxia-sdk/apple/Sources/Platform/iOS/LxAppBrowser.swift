@@ -205,6 +205,7 @@ private final class LxAppBrowserViewController: UIViewController, UIGestureRecog
     private var canGoBackObservation: NSKeyValueObservation?
     private var canGoForwardObservation: NSKeyValueObservation?
     private var attachRetryWorkItem: DispatchWorkItem?
+    private var pendingReloadTabId: String?
     private var backEdgePanGesture: UIScreenEdgePanGestureRecognizer?
     private var interactionTapGesture: UITapGestureRecognizer?
 
@@ -267,6 +268,7 @@ private final class LxAppBrowserViewController: UIViewController, UIGestureRecog
     private func suspendManagedWebView() {
         attachRetryWorkItem?.cancel()
         attachRetryWorkItem = nil
+        pendingReloadTabId = nil
         invalidateObservations()
         activeBrowserWebView?.removeFromSuperview()
         activeBrowserWebView?.pauseWebView()
@@ -279,6 +281,9 @@ private final class LxAppBrowserViewController: UIViewController, UIGestureRecog
     /// Swap the attached webview to the manager's currently active tab.
     fileprivate func displayActiveTab() {
         updateTabsBadge()
+        if pendingReloadTabId != LxAppBrowser.activeTabId {
+            pendingReloadTabId = nil
+        }
         // Blank the address and back/forward until the new tab's webview
         // attaches — never show the previous tab's state (they are per-tab).
         if activeWebViewTabId != LxAppBrowser.activeTabId {
@@ -292,6 +297,9 @@ private final class LxAppBrowserViewController: UIViewController, UIGestureRecog
 
     /// Detach (without closing) the webview if it belongs to a tab being removed.
     fileprivate func releaseWebView(forTabId tabId: String) {
+        if pendingReloadTabId == tabId {
+            pendingReloadTabId = nil
+        }
         guard activeWebViewTabId == tabId else { return }
         invalidateObservations()
         activeBrowserWebView?.removeFromSuperview()
@@ -355,9 +363,14 @@ private final class LxAppBrowserViewController: UIViewController, UIGestureRecog
         addressField.placeholder = "Search or enter address"
         addressPill.addSubview(addressField)
 
-        configureIconButton(refreshButton, iconName: "icon_browser_refresh", iconSize: 16, tintColor: UIColor(white: 0.4, alpha: 1.0), action: #selector(refreshTapped))
-        refreshButton.widthAnchor.constraint(equalToConstant: 32).isActive = true
-        refreshButton.heightAnchor.constraint(equalToConstant: 32).isActive = true
+        configureIconButton(
+            refreshButton,
+            iconName: "icon_browser_refresh",
+            iconSize: 16,
+            tintColor: UIColor(white: 0.4, alpha: 1.0),
+            action: #selector(refreshTapped),
+            buttonSize: CGSize(width: 32, height: 32)
+        )
         addressPill.addSubview(refreshButton)
 
         // Action row: back / forward — spacer — tabs / menu / close.
@@ -700,10 +713,17 @@ private final class LxAppBrowserViewController: UIViewController, UIGestureRecog
 
             updateAddressBar(url: webView.url)
             updateNavigationButtons()
+            if pendingReloadTabId == activeTabId {
+                pendingReloadTabId = nil
+                webView.reload()
+            }
             return
         }
 
         guard attempt < Self.maxAttachRetries else {
+            if pendingReloadTabId == activeTabId {
+                pendingReloadTabId = nil
+            }
             LXLog.error("Failed to attach browser webview for tab=\(activeTabId)", category: "BrowserViewController")
             return
         }
@@ -758,6 +778,9 @@ private final class LxAppBrowserViewController: UIViewController, UIGestureRecog
     }
 
     private func updateAddressBar(url: URL?) {
+        // URL KVO can fire repeatedly while a page redirects or a new tab is
+        // attaching. Never replace text that the user is actively editing.
+        guard !addressField.isFirstResponder else { return }
         // A new/blank tab (lingxia://newtab) shows just the placeholder, like a
         // fresh browser tab — never the raw internal URL.
         if let url, browserUrlIsHidden(url.absoluteString) {
@@ -835,7 +858,8 @@ private final class LxAppBrowserViewController: UIViewController, UIGestureRecog
         iconName: String,
         iconSize: CGFloat,
         tintColor: UIColor,
-        action: Selector?
+        action: Selector?,
+        buttonSize: CGSize = CGSize(width: 40, height: 36)
     ) {
         button.translatesAutoresizingMaskIntoConstraints = false
         button.tintColor = tintColor
@@ -847,10 +871,9 @@ private final class LxAppBrowserViewController: UIViewController, UIGestureRecog
             button.setImage(image.withRenderingMode(.alwaysTemplate), for: .normal)
         }
 
-        // Default button size (can be overridden after calling this method)
         NSLayoutConstraint.activate([
-            button.widthAnchor.constraint(equalToConstant: 40),
-            button.heightAnchor.constraint(equalToConstant: 36),
+            button.widthAnchor.constraint(equalToConstant: buttonSize.width),
+            button.heightAnchor.constraint(equalToConstant: buttonSize.height),
         ])
     }
 
@@ -875,7 +898,16 @@ private final class LxAppBrowserViewController: UIViewController, UIGestureRecog
     }
 
     @objc private func refreshTapped() {
-        activeBrowserWebView?.reload()
+        guard let tabId = LxAppBrowser.activeTabId else { return }
+        if activeWebViewTabId == tabId, let webView = activeBrowserWebView {
+            webView.reload()
+            return
+        }
+
+        // A newly activated tab can receive the tap before its managed WebView
+        // has attached. Preserve the action and apply it as soon as it appears.
+        pendingReloadTabId = tabId
+        attachManagedWebViewIfNeeded()
     }
 
     @objc private func tabsTapped() {
@@ -902,8 +934,19 @@ private final class LxAppBrowserViewController: UIViewController, UIGestureRecog
     }
 
     @objc private func newTabTapped() {
-        guard !(LxAppBrowser.activeTabId.map { browserTabIsAside($0) } ?? false) else { return }
-        _ = LxAppBrowser.openNewTab()
+        openNewTabAndFocusAddress()
+    }
+
+    fileprivate func openNewTabAndFocusAddress() {
+        guard LxAppBrowser.openNewTab() else { return }
+        addressField.text = ""
+        addressIcon.isHidden = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self,
+                  !(LxAppBrowser.activeTabId.map { browserTabIsAside($0) } ?? false),
+                  self.viewIfLoaded?.window != nil else { return }
+            self.addressField.becomeFirstResponder()
+        }
     }
 
     /// Resolve a tab's display label from its managed webview, falling back to a
@@ -1120,7 +1163,7 @@ private final class LxAppBrowserTabSwitcherView: UIView, UITableViewDataSource, 
 
     @objc private func newTabTapped() {
         host?.dismissTabSwitcher()
-        _ = LxAppBrowser.openNewTab()
+        host?.openNewTabAndFocusAddress()
     }
 
     private func closeTab(at index: Int) {
