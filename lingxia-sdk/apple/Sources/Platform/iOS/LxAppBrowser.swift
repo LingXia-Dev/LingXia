@@ -4,9 +4,8 @@ import WebKit
 import OSLog
 import CLingXiaRustAPI
 
-/// Tab manager for the in-app browser. Owns a single persistent view
-/// controller and the ordered set of open browser tabs; switching tabs swaps
-/// the displayed managed webview instead of pushing a new screen.
+/// Tab manager for the in-app browser. Self and aside tabs stay in separate
+/// presentation groups even though they share one reusable controller.
 @MainActor
 final class LxAppBrowser: NSObject {
     private static let log = OSLog(subsystem: "LingXia", category: "Browser")
@@ -32,17 +31,19 @@ final class LxAppBrowser: NSObject {
         register(tabId: normalizedTabId)
         activeTabId = normalizedTabId
 
-        if let controller = currentController,
-           controller.navigationController?.topViewController === controller {
-            browserTabActivate(normalizedTabId)
-            controller.displayActiveTab()
-            return true
-        }
-
         guard let manager = iOSLxApp.getInstance().currentLxAppManager,
               let navController = manager.navigationController else {
             LXLog.error("show failed: no active navigation controller", category: "Browser")
             return false
+        }
+
+        if let controller = currentController {
+            if controller.navigationController?.topViewController !== controller {
+                navController.pushViewController(controller, animated: true)
+            }
+            browserTabActivate(normalizedTabId)
+            controller.displayActiveTab()
+            return true
         }
 
         let controller = LxAppBrowserViewController()
@@ -56,6 +57,9 @@ final class LxAppBrowser: NSObject {
     /// Open a fresh built-in start-page tab and switch to it.
     @discardableResult
     static func openNewTab() -> Bool {
+        if activeTabId.map({ browserTabIsAside($0) }) ?? false {
+            return false
+        }
         let appId = getBuiltinBrowserAppId().toString()
         let sessionId = getLxAppSessionId(appId)
         guard sessionId > 0 else {
@@ -76,17 +80,20 @@ final class LxAppBrowser: NSObject {
     /// Make an already-open tab the active, displayed one.
     static func activate(tabId: String) {
         let normalizedTabId = normalizeTabId(tabId)
-        guard openTabIds.contains(normalizedTabId) else { return }
+        guard openTabIds.contains(normalizedTabId),
+              isAside(tabId: normalizedTabId) == activeTabIsAside else { return }
         activeTabId = normalizedTabId
         browserTabActivate(normalizedTabId)
         currentController?.displayActiveTab()
     }
 
-    /// Close a single tab and move focus to a neighbor; exiting the browser when
-    /// the last tab goes away.
+    /// Close a tab and select a neighbor in its group; exit when that group is
+    /// empty.
     static func closeTab(tabId: String) {
         let normalizedTabId = normalizeTabId(tabId)
         guard let index = openTabIds.firstIndex(of: normalizedTabId) else { return }
+        let closingAside = isAside(tabId: normalizedTabId)
+        let groupIndex = tabIds(aside: closingAside).firstIndex(of: normalizedTabId) ?? 0
 
         _ = browserTabClose(normalizedTabId)
         currentController?.releaseWebView(forTabId: normalizedTabId)
@@ -96,14 +103,18 @@ final class LxAppBrowser: NSObject {
         let wasActive = activeTabId == normalizedTabId
         if !wasActive { return }
 
-        if openTabIds.isEmpty {
+        let remaining = tabIds(aside: closingAside)
+        if remaining.isEmpty {
             activeTabId = nil
             exitBrowser()
             return
         }
 
-        let neighborIndex = index > 0 ? index - 1 : 0
-        activate(tabId: openTabIds[neighborIndex])
+        let neighborIndex = min(groupIndex, remaining.count - 1)
+        let neighbor = remaining[neighborIndex]
+        activeTabId = neighbor
+        browserTabActivate(neighbor)
+        currentController?.displayActiveTab()
     }
 
     @objc public static func dismiss() {
@@ -111,8 +122,6 @@ final class LxAppBrowser: NSObject {
 
         if controller.navigationController?.topViewController === controller {
             controller.navigationController?.popViewController(animated: true)
-        } else {
-            controller.closeManagedTabIfNeeded()
         }
     }
 
@@ -127,36 +136,39 @@ final class LxAppBrowser: NSObject {
         }
     }
 
+    private static func isAside(tabId: String) -> Bool {
+        browserTabIsAside(tabId)
+    }
+
+    fileprivate static var activeTabIsAside: Bool {
+        activeTabId.map { isAside(tabId: $0) } ?? false
+    }
+
+    fileprivate static var visibleTabIds: [String] {
+        guard activeTabId != nil else { return [] }
+        return tabIds(aside: activeTabIsAside)
+    }
+
+    private static func tabIds(aside: Bool) -> [String] {
+        openTabIds.filter { isAside(tabId: $0) == aside }
+    }
+
     private static func normalizeTabId(_ tabId: String) -> String {
         tabId.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    /// Pop the browser controller, tearing the whole session down.
+    /// Pop the browser controller while keeping both tab groups alive.
     private static func exitBrowser() {
         guard let controller = currentController else { return }
         if controller.navigationController?.topViewController === controller {
             controller.navigationController?.popViewController(animated: true)
-        } else {
-            controller.closeManagedTabIfNeeded()
         }
     }
 
-    fileprivate static func clearState() {
-        openTabIds.removeAll()
-        interactedTabIds.removeAll()
-        activeTabId = nil
-    }
-
-    fileprivate static func browserControllerDidClose(_ controller: LxAppBrowserViewController) {
-        if currentController === controller {
-            currentController = nil
-        }
-    }
 }
 
 @MainActor
 private final class LxAppBrowserViewController: UIViewController, UIGestureRecognizerDelegate, UITextFieldDelegate {
-    private static let log = OSLog(subsystem: "LingXia", category: "BrowserViewController")
     private static let attachRetryDelay: TimeInterval = 0.1
     private static let maxAttachRetries = 8
 
@@ -169,7 +181,6 @@ private final class LxAppBrowserViewController: UIViewController, UIGestureRecog
     // Action row
     private let backButton = UIButton(type: .system)
     private let forwardButton = UIButton(type: .system)
-    /// Row refresh for aside tabs (self tabs refresh from the address pill).
     private let asideRefreshButton = UIButton(type: .system)
     private let newTabButton = UIButton(type: .system)
     private let tabsButton = UIButton(type: .system)
@@ -183,8 +194,6 @@ private final class LxAppBrowserViewController: UIViewController, UIGestureRecog
     private let bottomBarBackground = UIVisualEffectView(effect: UIBlurEffect(style: .systemThinMaterial))
 
     private var bottomBarBottomConstraint: NSLayoutConstraint?
-    // Action-row top: below the address pill normally, at the bar top for an
-    // aside tab (address row hidden).
     private var actionRowTopWithAddress: NSLayoutConstraint?
     private var actionRowTopWithoutAddress: NSLayoutConstraint?
 
@@ -196,7 +205,6 @@ private final class LxAppBrowserViewController: UIViewController, UIGestureRecog
     private var canGoBackObservation: NSKeyValueObservation?
     private var canGoForwardObservation: NSKeyValueObservation?
     private var attachRetryWorkItem: DispatchWorkItem?
-    private var didCloseManagedTab = false
     private var backEdgePanGesture: UIScreenEdgePanGestureRecognizer?
     private var interactionTapGesture: UITapGestureRecognizer?
 
@@ -240,7 +248,7 @@ private final class LxAppBrowserViewController: UIViewController, UIGestureRecog
         super.viewDidDisappear(animated)
 
         if isMovingFromParent || isBeingDismissed {
-            closeManagedTabIfNeeded()
+            suspendManagedWebView()
         }
     }
 
@@ -256,29 +264,14 @@ private final class LxAppBrowserViewController: UIViewController, UIGestureRecog
         }
     }
 
-    /// Tear down every managed tab and reset the manager when the browser exits.
-    fileprivate func closeManagedTabIfNeeded() {
-        guard !didCloseManagedTab else { return }
-        didCloseManagedTab = true
-
+    private func suspendManagedWebView() {
         attachRetryWorkItem?.cancel()
         attachRetryWorkItem = nil
         invalidateObservations()
-
-        if let webView = activeBrowserWebView {
-            webView.removeFromSuperview()
-            webView.pauseWebView()
-        }
+        activeBrowserWebView?.removeFromSuperview()
+        activeBrowserWebView?.pauseWebView()
         activeBrowserWebView = nil
         activeWebViewTabId = nil
-        backEdgePanGesture?.isEnabled = false
-
-        for tabId in LxAppBrowser.openTabIds {
-            _ = browserTabClose(tabId)
-        }
-        LxAppBrowser.clearState()
-        LxAppBrowser.browserControllerDidClose(self)
-        os_log("Closed all managed browser tabs", log: Self.log, type: .info)
     }
 
     // MARK: - Tab display
@@ -489,14 +482,16 @@ private final class LxAppBrowserViewController: UIViewController, UIGestureRecog
         withAddress.isActive = true
     }
 
-    /// Aside chrome: refresh, smart back/forward, tabs, close — no address
-    /// row, no new-tab, no menu (asides are API-opened; user-created tabs
-    /// are self mode).
-    private func updateAddressRowVisibility() {
-        let aside = LxAppBrowser.activeTabId.map { browserTabIsAside($0) } ?? false
+    /// Compact aside chrome is one row: history, refresh, tabs, and dismiss.
+    /// Desktop's read-only aside address is a separate projection.
+    private func applyActiveModeChrome() {
+        let aside = LxAppBrowser.activeTabIsAside
         newTabButton.isHidden = aside
         menuButton.isHidden = aside
         asideRefreshButton.isHidden = !aside
+        if aside, addressField.isFirstResponder {
+            addressField.resignFirstResponder()
+        }
         guard addressPill.isHidden != aside else { return }
         addressPill.isHidden = aside
         if aside {
@@ -530,7 +525,7 @@ private final class LxAppBrowserViewController: UIViewController, UIGestureRecog
     }
 
     private func updateTabsBadge() {
-        tabsBadge.text = String(LxAppBrowser.openTabIds.count)
+        tabsBadge.text = String(LxAppBrowser.visibleTabIds.count)
     }
 
     @objc private func menuTapped() {
@@ -687,7 +682,7 @@ private final class LxAppBrowserViewController: UIViewController, UIGestureRecog
         attachRetryWorkItem = nil
 
         guard let activeTabId = LxAppBrowser.activeTabId else { return }
-        updateAddressRowVisibility()
+        applyActiveModeChrome()
 
         if let webView = findManagedBrowserWebView(tabId: activeTabId) {
             if activeBrowserWebView !== webView || activeWebViewTabId != activeTabId || webView.superview !== contentContainer {
@@ -865,7 +860,6 @@ private final class LxAppBrowserViewController: UIViewController, UIGestureRecog
         if let navigationController {
             navigationController.popViewController(animated: true)
         } else {
-            closeManagedTabIfNeeded()
             dismiss(animated: true)
         }
     }
@@ -908,6 +902,7 @@ private final class LxAppBrowserViewController: UIViewController, UIGestureRecog
     }
 
     @objc private func newTabTapped() {
+        guard !(LxAppBrowser.activeTabId.map { browserTabIsAside($0) } ?? false) else { return }
         _ = LxAppBrowser.openNewTab()
     }
 
@@ -927,6 +922,10 @@ private final class LxAppBrowserViewController: UIViewController, UIGestureRecog
 
     // MARK: - Address bar navigation
 
+    func textFieldShouldBeginEditing(_ textField: UITextField) -> Bool {
+        !(LxAppBrowser.activeTabId.map { browserTabIsAside($0) } ?? false)
+    }
+
     func textFieldDidBeginEditing(_ textField: UITextField) {
         // Reveal the full URL for editing and select it for quick replacement,
         // except on a blank new tab, where there is nothing to reveal.
@@ -945,6 +944,10 @@ private final class LxAppBrowserViewController: UIViewController, UIGestureRecog
     }
 
     func textFieldShouldReturn(_ textField: UITextField) -> Bool {
+        guard !(LxAppBrowser.activeTabId.map { browserTabIsAside($0) } ?? false) else {
+            textField.resignFirstResponder()
+            return false
+        }
         // Capture the input BEFORE resigning: resignFirstResponder fires
         // textFieldDidEndEditing synchronously, which rewrites the field to the
         // current page URL (empty for a hidden newtab) — reading text after that
@@ -1017,6 +1020,7 @@ private final class LxAppBrowserTabSwitcherView: UIView, UITableViewDataSource, 
     private static let cellReuseId = "LxAppBrowserTabCell"
     private static let rowHeight: CGFloat = 56
     private static let maxListHeight: CGFloat = 360
+    private var tabIds: [String] { LxAppBrowser.visibleTabIds }
 
     init(host: LxAppBrowserViewController) {
         self.host = host
@@ -1105,7 +1109,7 @@ private final class LxAppBrowserTabSwitcherView: UIView, UITableViewDataSource, 
 
     /// Reload the rows and size the list to their count, capped for long lists.
     func refresh() {
-        let rows = max(LxAppBrowser.openTabIds.count, 1)
+        let rows = max(tabIds.count, 1)
         tableHeightConstraint?.constant = min(CGFloat(rows) * Self.rowHeight, Self.maxListHeight)
         tableView.reloadData()
     }
@@ -1120,10 +1124,10 @@ private final class LxAppBrowserTabSwitcherView: UIView, UITableViewDataSource, 
     }
 
     private func closeTab(at index: Int) {
-        guard index < LxAppBrowser.openTabIds.count else { return }
-        let tabId = LxAppBrowser.openTabIds[index]
+        guard index < tabIds.count else { return }
+        let tabId = tabIds[index]
         LxAppBrowser.closeTab(tabId: tabId)
-        if LxAppBrowser.openTabIds.isEmpty {
+        if tabIds.isEmpty {
             host?.dismissTabSwitcher()
         } else {
             refresh()
@@ -1133,12 +1137,12 @@ private final class LxAppBrowserTabSwitcherView: UIView, UITableViewDataSource, 
     // MARK: - UITableViewDataSource / Delegate
 
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        LxAppBrowser.openTabIds.count
+        tabIds.count
     }
 
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: Self.cellReuseId, for: indexPath) as! LxAppBrowserTabCell
-        let tabId = LxAppBrowser.openTabIds[indexPath.row]
+        let tabId = tabIds[indexPath.row]
         let label = host?.tabLabel(forTabId: tabId) ?? tabId
         let isActive = LxAppBrowser.activeTabId == tabId
         cell.configure(title: label, isActive: isActive) { [weak self] in
@@ -1149,7 +1153,7 @@ private final class LxAppBrowserTabSwitcherView: UIView, UITableViewDataSource, 
 
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: false)
-        let tabId = LxAppBrowser.openTabIds[indexPath.row]
+        let tabId = tabIds[indexPath.row]
         host?.dismissTabSwitcher()
         LxAppBrowser.activate(tabId: tabId)
     }
