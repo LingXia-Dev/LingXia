@@ -262,9 +262,7 @@ pub fn begin_address_edit(
     let Some(capsule) = capsule else {
         return false;
     };
-    // The editor sits inside the address bar fill, inset enough to match the
-    // painted URL text.
-    let edit_rect = inset_rect(capsule, 12, 4);
+    let edit_rect = address_editor_rect(capsule);
     if rect_width(&edit_rect) == 0 || rect_height(&edit_rect) == 0 {
         return false;
     }
@@ -280,6 +278,22 @@ pub fn begin_address_edit(
             );
         }),
     )
+}
+
+/// Keeps the borderless Win32 EDIT at the same line-box height as desktop
+/// chrome, then centers that line box inside taller phone address pills.
+/// Letting EDIT fill the phone pill makes its native caret baseline sit below
+/// the custom-painted `DT_VCENTER` text and visibly jump after submission.
+fn address_editor_rect(capsule: RECT) -> RECT {
+    let available_height = rect_height(&capsule);
+    let editor_height = (ADDRESS_CAPSULE_HEIGHT - 8).min(available_height).max(0);
+    let top = capsule.top + (available_height - editor_height).max(0) / 2;
+    normalize_rect(RECT {
+        left: capsule.left + 12,
+        top,
+        right: capsule.right - 12,
+        bottom: top + editor_height,
+    })
 }
 
 pub(super) fn draw_shell_top_bar(hdc: HDC, rects: &ChromeRects) {
@@ -817,5 +831,26 @@ pub(super) fn nav_button_rect(navbar: RECT, buttons_left: i32, index: i32) -> RE
         top: navbar.top,
         right: buttons_left + (index + 1) * width,
         bottom: navbar.bottom,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::address_editor_rect;
+    use windows::Win32::Foundation::RECT;
+
+    #[test]
+    fn phone_address_editor_uses_the_centered_desktop_line_box() {
+        let editor = address_editor_rect(RECT {
+            left: 6,
+            top: 100,
+            right: 387,
+            bottom: 134,
+        });
+
+        assert_eq!(editor.left, 18);
+        assert_eq!(editor.right, 375);
+        assert_eq!(editor.top, 109);
+        assert_eq!(editor.bottom, 125);
     }
 }

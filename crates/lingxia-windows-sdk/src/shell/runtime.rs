@@ -1289,10 +1289,17 @@ fn browser_tab_display_url(tab: &BrowserTabSummary) -> String {
         .filter(|url| !url.is_empty())
         .map(str::to_string)
         .unwrap_or_else(|| browser_tab_display_title(tab));
-    if url == "about:blank" {
+    if browser_url_is_hidden(&url) {
         return String::new();
     }
     url
+}
+
+fn browser_url_is_hidden(url: &str) -> bool {
+    matches!(
+        url.trim().to_ascii_lowercase().as_str(),
+        "about:blank" | "lingxia://newtab" | "lingxia://"
+    )
 }
 
 fn build_navigation_bar_layout(app: &LxApp, path: &str) -> WindowsShellNavigationBarLayout {
@@ -2736,7 +2743,9 @@ fn handle_browser_new_tab(appid: &str, session_id: u64) {
     #[cfg(not(feature = "browser-shell"))]
     const NEW_TAB_URL: &str = "about:blank";
     match lingxia_browser::open_for_app(appid, session_id, NEW_TAB_URL, None) {
-        Ok(tab_id) => present_browser_tab_when_ready(appid, tab_id),
+        Ok(tab_id) => {
+            present_browser_tab_when_ready_with_policy(appid, tab_id, NEW_TAB_URL == "about:blank")
+        }
         Err(err) => log::error!("failed to open new browser tab for {appid}: {err}"),
     }
 }
@@ -2749,7 +2758,9 @@ fn handle_browser_new_tab(_appid: &str, _session_id: u64) {}
 #[cfg(feature = "browser-runtime")]
 fn handle_browser_tabs_toggle(appid: &str) {
     let presented = presented_browser_tab();
-    let aside = presented.as_deref().is_some_and(lingxia_browser::tab_is_aside);
+    let aside = presented
+        .as_deref()
+        .is_some_and(lingxia_browser::tab_is_aside);
     let tabs: Vec<(String, String, bool)> = browser_tabs()
         .into_iter()
         .filter(|tab| lingxia_browser::tab_is_aside(&tab.tab_id) == aside)
@@ -3415,6 +3426,15 @@ fn schedule_lxapp_restart_in_place(appid: String, clear_cache: bool) {
 /// webview asynchronously).
 #[cfg(feature = "browser-runtime")]
 fn present_browser_tab_when_ready(appid: &str, tab_id: String) {
+    present_browser_tab_when_ready_with_policy(appid, tab_id, false);
+}
+
+#[cfg(feature = "browser-runtime")]
+fn present_browser_tab_when_ready_with_policy(
+    appid: &str,
+    tab_id: String,
+    allow_intentional_blank: bool,
+) {
     if let Err(err) = reactivate_browser_tab_if_needed(&tab_id) {
         log::warn!("failed to reactivate browser tab {tab_id}: {err}");
         return;
@@ -3457,11 +3477,12 @@ fn present_browser_tab_when_ready(appid: &str, tab_id: String) {
             }
 
             // A WebView2 controller exists before its first document frame is
-            // ready. Showing it at that point replaces the outgoing main with
-            // about:blank for a frame (very visible on New Tab) even though
-            // the shell geometry is already correct. Keep the old main until
-            // the target document is interactive and has real body content.
-            let content_ready = browser_tab_first_content_ready(&tab_id).await;
+            // ready. Keep the old main until the target document is
+            // interactive and has real body content. The Runner's explicit
+            // blank new tab is the exception: about:blank is its final content,
+            // so waiting for a child element would add the full retry delay.
+            let content_ready =
+                browser_tab_first_content_ready(&tab_id, allow_intentional_blank).await;
             if BROWSER_PRESENT_EPOCH.load(Ordering::Relaxed) != epoch {
                 return;
             }
@@ -3549,14 +3570,25 @@ fn prime_browser_tab_shell_layout(owner_appid: &str, webtag: &WebTag) -> bool {
 }
 
 #[cfg(feature = "browser-runtime")]
-async fn browser_tab_first_content_ready(tab_id: &str) -> bool {
+async fn browser_tab_first_content_ready(tab_id: &str, allow_intentional_blank: bool) -> bool {
     const FIRST_CONTENT_SCRIPT: &str = r#"
-        (() => location.href !== "about:blank"
-            && document.readyState !== "loading"
+        (() => document.readyState !== "loading"
             && !!document.body
+            && location.href !== "about:blank"
             && document.body.childElementCount > 0)()
     "#;
-    lingxia_browser::evaluate_javascript(tab_id, FIRST_CONTENT_SCRIPT)
+    const FIRST_CONTENT_OR_BLANK_SCRIPT: &str = r#"
+        (() => document.readyState !== "loading"
+            && !!document.body
+            && (location.href === "about:blank"
+                || document.body.childElementCount > 0))()
+    "#;
+    let script = if allow_intentional_blank {
+        FIRST_CONTENT_OR_BLANK_SCRIPT
+    } else {
+        FIRST_CONTENT_SCRIPT
+    };
+    lingxia_browser::evaluate_javascript(tab_id, script)
         .await
         .ok()
         .and_then(|value| value.as_bool())
@@ -3911,10 +3943,17 @@ fn begin_presented_tab_address_edit(app: &LxApp) {
     };
 
     let owner_appid = app.appid.clone();
-    let initial = tab.current_url.clone().unwrap_or_default();
+    // Keep internal blank-page URLs out of the native edit control too. The
+    // painted capsule already presents them as an empty, fresh address field.
+    let initial = tab
+        .current_url
+        .as_deref()
+        .map(str::trim)
+        .filter(|url| !browser_url_is_hidden(url))
+        .unwrap_or_default();
     super::begin_address_edit(
         window,
-        &initial,
+        initial,
         Arc::new(move |text: String| {
             commit_address_input(&owner_appid, &tab_id, &text);
         }),
@@ -4607,8 +4646,8 @@ fn is_transparent_css_color(raw: &str) -> bool {
 mod tests {
     use super::{
         LxappContextMenuAction, browser_internal_page_deep_link, browser_internal_page_key,
-        build_lxapp_context_menu, chrome_command, chrome_command_is_page_scoped,
-        preferred_sidebar_group_appid,
+        browser_url_is_hidden, build_lxapp_context_menu, chrome_command,
+        chrome_command_is_page_scoped, preferred_sidebar_group_appid,
     };
     #[cfg(feature = "browser-runtime")]
     use super::{
@@ -4655,6 +4694,14 @@ mod tests {
         assert!(!browser_internal_page_deep_link("lingxia://settings"));
         assert!(!browser_internal_page_deep_link("lingxia://settings/"));
         assert!(!browser_internal_page_deep_link("https://example.com/?q=1"));
+    }
+
+    #[test]
+    fn blank_new_tab_urls_stay_out_of_the_address_editor() {
+        assert!(browser_url_is_hidden("about:blank"));
+        assert!(browser_url_is_hidden(" LINGXIA://NEWTAB "));
+        assert!(browser_url_is_hidden("lingxia://"));
+        assert!(!browser_url_is_hidden("https://example.com"));
     }
 
     #[test]

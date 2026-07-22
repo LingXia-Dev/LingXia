@@ -339,7 +339,7 @@ and phone Runner, the aside is a full-screen browser with a single bottom row
 for page history, refresh, its own tab group, and dismissal; it has no address
 row or generic top-left Back. System Back, edge Back, and dismissal return to
 the main without destroying the aside tabs. The self browser keeps its editable
-address and a separate tab group.
+URL field and a separate tab group; the field accepts URLs, not search queries.
 
 Two sidebar regions have fixed ownership:
 

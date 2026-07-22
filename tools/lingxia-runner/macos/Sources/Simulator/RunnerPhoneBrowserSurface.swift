@@ -1,6 +1,7 @@
 import AppKit
 import WebKit
 import os.log
+@_spi(Runner) import lingxia
 
 /// In-app browser chrome for the simulated phone. Self and aside tabs share the
 /// surface but keep separate switcher groups and chrome policies.
@@ -206,16 +207,16 @@ final class RunnerPhoneBrowserSurface {
         barBackground.blendingMode = .withinWindow
         barBackground.state = .active
         barBackground.wantsLayer = true
-        barBackground.layer?.cornerRadius = 16
-        barBackground.layer?.masksToBounds = true
         bottomBar.addSubview(barBackground)
 
         // Address row: icon + editable URL field + refresh, in a pill.
         let addressPill = NSView()
         addressPill.translatesAutoresizingMaskIntoConstraints = false
         addressPill.wantsLayer = true
-        addressPill.layer?.backgroundColor = NSColor.textBackgroundColor.withAlphaComponent(0.74).cgColor
+        addressPill.layer?.backgroundColor = NSColor.labelColor.withAlphaComponent(0.07).cgColor
         addressPill.layer?.cornerRadius = 16
+        addressPill.layer?.borderWidth = 1
+        addressPill.layer?.borderColor = NSColor.separatorColor.withAlphaComponent(0.7).cgColor
         addressPill.layer?.masksToBounds = true
         barBackground.addSubview(addressPill)
 
@@ -230,6 +231,7 @@ final class RunnerPhoneBrowserSurface {
         addressField.drawsBackground = false
         addressField.focusRingType = .none
         addressField.font = NSFont.systemFont(ofSize: 13)
+        addressField.placeholderString = L10n.Browser.addressPlaceholder
         addressField.lineBreakMode = .byTruncatingMiddle
         addressField.usesSingleLineMode = true
         addressField.target = self
@@ -302,10 +304,10 @@ final class RunnerPhoneBrowserSurface {
 
             bottomBar.leadingAnchor.constraint(equalTo: overlay.leadingAnchor),
             bottomBar.trailingAnchor.constraint(equalTo: overlay.trailingAnchor),
-            bottomBar.bottomAnchor.constraint(equalTo: overlay.bottomAnchor, constant: -4),
+            bottomBar.bottomAnchor.constraint(equalTo: overlay.bottomAnchor),
 
-            barBackground.leadingAnchor.constraint(equalTo: bottomBar.leadingAnchor, constant: 12),
-            barBackground.trailingAnchor.constraint(equalTo: bottomBar.trailingAnchor, constant: -12),
+            barBackground.leadingAnchor.constraint(equalTo: bottomBar.leadingAnchor),
+            barBackground.trailingAnchor.constraint(equalTo: bottomBar.trailingAnchor),
             barBackground.topAnchor.constraint(equalTo: bottomBar.topAnchor),
             barBackground.bottomAnchor.constraint(equalTo: bottomBar.bottomAnchor),
 

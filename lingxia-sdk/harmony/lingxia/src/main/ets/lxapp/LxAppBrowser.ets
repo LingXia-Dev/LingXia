@@ -1005,7 +1005,7 @@ export struct LxAppBrowser {
               .visibility((this.addressEditing || !this.addressIconVisible) ? Visibility.Hidden : Visibility.Visible)
               .margin({ left: 12, right: 6 })
 
-            TextInput({ text: this.addressText, placeholder: 'Search or enter address' })
+            TextInput({ text: this.addressText, placeholder: 'Enter address' })
               .layoutWeight(1)
               .fontSize(13)
               .fontColor('#333333')

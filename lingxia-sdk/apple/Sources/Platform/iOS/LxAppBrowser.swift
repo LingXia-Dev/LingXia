@@ -360,7 +360,7 @@ private final class LxAppBrowserViewController: UIViewController, UIGestureRecog
         addressField.autocorrectionType = .no
         addressField.returnKeyType = .go
         addressField.clearButtonMode = .whileEditing
-        addressField.placeholder = "Search or enter address"
+        addressField.placeholder = "Enter address"
         addressPill.addSubview(addressField)
 
         configureIconButton(
