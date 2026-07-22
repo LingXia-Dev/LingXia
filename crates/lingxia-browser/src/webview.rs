@@ -10,7 +10,7 @@ use crate::internal_pages::{
     handle_browser_lingxia_scheme,
 };
 use crate::policy::{
-    LINGXIA_SCHEME, extract_url_scheme, handle_browser_navigation_policy,
+    BrowserNavigationPolicySession, LINGXIA_SCHEME, extract_url_scheme,
     normalize_browser_target_url,
 };
 use crate::tabs::{
@@ -386,6 +386,9 @@ pub(crate) fn browser_create_webview(
     let owner_for_download = browser_owner.clone();
     let owner_for_file_chooser = browser_owner.clone();
     let url_callback_for_navigation = url_callback.clone();
+    let policy_session_for_navigation = Arc::new(std::sync::Mutex::new(
+        BrowserNavigationPolicySession::default(),
+    ));
     let session = WebViewBuilder::browser(webtag)
         .data_mode(data_mode)
         .delegate(Arc::new(BrowserTabDelegate {
@@ -424,11 +427,25 @@ pub(crate) fn browser_create_webview(
             if matches!(extract_url_scheme(url).as_deref(), Some("lx" | "lingxia")) {
                 return NavigationPolicy::Allow;
             }
-            let decision = handle_browser_navigation_policy(BrowserNavigationPolicyRequest {
+            let policy_request = BrowserNavigationPolicyRequest {
                 raw_url: url.to_string(),
                 has_user_gesture: request.has_user_gesture,
                 is_main_frame: request.is_main_frame,
-            });
+            };
+            let evaluation = match policy_session_for_navigation.lock() {
+                Ok(mut session) => session.evaluate(policy_request),
+                Err(_) => {
+                    lxapp::warn!("[InternalBrowser] Navigation policy session poisoned");
+                    return NavigationPolicy::Cancel;
+                }
+            };
+            if evaluation.inherited_user_activation {
+                lxapp::debug!(
+                    "[InternalBrowser] Inherited transient user activation url={}",
+                    url
+                );
+            }
+            let decision = evaluation.response;
             match decision.decision {
                 BrowserNavigationPolicyDecision::InWebview => NavigationPolicy::Allow,
                 BrowserNavigationPolicyDecision::OpenExternal => {
