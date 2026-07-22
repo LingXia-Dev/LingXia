@@ -19,7 +19,7 @@ final class RunnerUserAgentPolicy {
 
     func prepare() async -> Bool {
         guard defaultUserAgent == nil else { return true }
-        let probe = WKWebView(frame: .zero)
+        let probe = WKWebView(frame: .zero, configuration: WKWebViewConfiguration())
         let result = try? await probe.evaluateJavaScript("navigator.userAgent")
         guard let userAgent = result as? String,
               !userAgent.isEmpty

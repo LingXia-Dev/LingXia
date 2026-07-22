@@ -37,6 +37,7 @@ pub(crate) fn apply_profile(
     webview: &ICoreWebView2,
     default_user_agent: &str,
     default_user_agent_metadata: &serde_json::Value,
+    default_navigator_platform: &str,
     profile: WindowsBrowserEmulationProfile,
     resp: Sender<StdResult<String>>,
 ) {
@@ -59,12 +60,8 @@ pub(crate) fn apply_profile(
         )));
         return;
     };
-    let platform = if profile == WindowsBrowserEmulationProfile::Desktop {
-        metadata
-            .get("platform")
-            .and_then(serde_json::Value::as_str)
-            .unwrap_or("Windows")
-            .to_string()
+    let navigator_platform = if profile == WindowsBrowserEmulationProfile::Desktop {
+        default_navigator_platform.to_string()
     } else {
         metadata.insert("platform".into(), "Android".into());
         metadata.insert("platformVersion".into(), "10.0.0".into());
@@ -80,7 +77,7 @@ pub(crate) fn apply_profile(
                 WindowsBrowserEmulationProfile::Desktop => unreachable!(),
             }]),
         );
-        "Android".to_string()
+        "Linux armv8l".to_string()
     };
     metadata.insert(
         "mobile".into(),
@@ -88,7 +85,7 @@ pub(crate) fn apply_profile(
     );
     let params = serde_json::json!({
         "userAgent": user_agent,
-        "platform": platform,
+        "platform": navigator_platform,
         "userAgentMetadata": metadata,
     })
     .to_string();
@@ -102,10 +99,11 @@ pub(crate) fn start_capture_default_metadata(
     let expression = r#"(async () => {
         const data = navigator.userAgentData;
         if (!data) return null;
-        return await data.getHighEntropyValues([
+        const metadata = await data.getHighEntropyValues([
             'architecture', 'bitness', 'formFactors', 'fullVersionList',
             'model', 'platformVersion', 'wow64'
         ]);
+        return { metadata, navigatorPlatform: navigator.platform };
     })()"#;
     let params = serde_json::json!({
         "expression": expression,
@@ -116,16 +114,28 @@ pub(crate) fn start_capture_default_metadata(
     start_call_devtools_protocol(webview, "Runtime.evaluate", &params, resp);
 }
 
-pub(crate) fn decode_default_metadata(response: &str) -> StdResult<serde_json::Value> {
-    serde_json::from_str::<serde_json::Value>(response)
+pub(crate) fn decode_default_metadata(response: &str) -> StdResult<(serde_json::Value, String)> {
+    let value = serde_json::from_str::<serde_json::Value>(response)
         .ok()
         .and_then(|value| value.get("result")?.get("value").cloned())
-        .filter(serde_json::Value::is_object)
         .ok_or_else(|| {
             WebViewError::WebView(
                 "WebView2 did not expose default User-Agent Client Hints".to_string(),
             )
-        })
+        })?;
+    let metadata = value
+        .get("metadata")
+        .filter(|value| value.is_object())
+        .cloned();
+    let navigator_platform = value
+        .get("navigatorPlatform")
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_string);
+    metadata.zip(navigator_platform).ok_or_else(|| {
+        WebViewError::WebView(
+            "WebView2 did not expose default browser identity metadata".to_string(),
+        )
+    })
 }
 
 fn effective_user_agent(
@@ -216,11 +226,12 @@ mod tests {
     #[test]
     fn decodes_runtime_evaluate_metadata() {
         let metadata = decode_default_metadata(
-            r#"{"result":{"type":"object","value":{"brands":[],"mobile":false,"platform":"Windows"}}}"#,
+            r#"{"result":{"type":"object","value":{"metadata":{"brands":[],"mobile":false,"platform":"Windows"},"navigatorPlatform":"Win32"}}}"#,
         )
         .expect("metadata");
 
-        assert_eq!(metadata["platform"], "Windows");
-        assert_eq!(metadata["mobile"], false);
+        assert_eq!(metadata.0["platform"], "Windows");
+        assert_eq!(metadata.0["mobile"], false);
+        assert_eq!(metadata.1, "Win32");
     }
 }

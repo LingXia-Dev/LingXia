@@ -163,6 +163,8 @@ pub(crate) struct UiState {
     pub(crate) default_user_agent: String,
     /// Engine-supplied UA Client Hints captured before Runner emulation.
     pub(crate) default_user_agent_metadata: Option<serde_json::Value>,
+    /// Engine-supplied `navigator.platform` captured before Runner emulation.
+    pub(crate) default_navigator_platform: Option<String>,
 }
 
 impl UiState {
@@ -897,6 +899,7 @@ pub(crate) fn run_ui_thread_inner(
         _console_receivers: console_receivers,
         default_user_agent,
         default_user_agent_metadata: None,
+        default_navigator_platform: None,
     };
 
     let bootstrap = (|| -> StdResult<()> {
@@ -904,8 +907,10 @@ pub(crate) fn run_ui_thread_inner(
             let (metadata_tx, metadata_rx) = mpsc::channel();
             browser_emulation::start_capture_default_metadata(&state.webview, metadata_tx);
             let response = wait_for_ui_reply(&metadata_rx, BROWSER_EMULATION_TIMEOUT)??;
-            state.default_user_agent_metadata =
-                Some(browser_emulation::decode_default_metadata(&response)?);
+            let (metadata, navigator_platform) =
+                browser_emulation::decode_default_metadata(&response)?;
+            state.default_user_agent_metadata = Some(metadata);
+            state.default_navigator_platform = Some(navigator_platform);
         }
         if let Some(profile) = configured_profile
             && profile != WindowsBrowserEmulationProfile::Desktop
@@ -918,6 +923,10 @@ pub(crate) fn run_ui_thread_inner(
                     .default_user_agent_metadata
                     .as_ref()
                     .expect("configured profile captures UA metadata"),
+                state
+                    .default_navigator_platform
+                    .as_deref()
+                    .expect("configured profile captures navigator.platform"),
                 profile,
                 profile_tx,
             );
@@ -1153,11 +1162,15 @@ pub(crate) fn handle_command(state: &mut UiState, command: UiCommand) -> StdResu
             let _ = resp.send(result);
         }
         UiCommand::SetBrowserEmulationProfile { profile, resp } => {
-            if let Some(metadata) = &state.default_user_agent_metadata {
+            if let (Some(metadata), Some(navigator_platform)) = (
+                &state.default_user_agent_metadata,
+                &state.default_navigator_platform,
+            ) {
                 browser_emulation::apply_profile(
                     &state.webview,
                     &state.default_user_agent,
                     metadata,
+                    navigator_platform,
                     profile,
                     resp,
                 );
