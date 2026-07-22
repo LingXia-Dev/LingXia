@@ -333,6 +333,14 @@ On desktop the main window is a sidebar plus a main area plus docked asides, and
 
 Asides group into per-engine slots (lxapp / browser / native), each with its own tab strip; switching tabs hides and shows content, and only an explicit close destroys it.
 
+Browser asides adapt their chrome with the slot. Desktop may show the current
+URL read-only, but never permits address editing or user-created tabs. On mobile
+and phone Runner, the aside is a full-screen browser with a single bottom row
+for page history, refresh, its own tab group, and dismissal; it has no address
+row or generic top-left Back. System Back, edge Back, and dismissal return to
+the main without destroying the aside tabs. The self browser keeps its editable
+address and a separate tab group.
+
 Two sidebar regions have fixed ownership:
 
 - **Pins are the user's** — quick entries for lxapps and websites (eight at most), added and removed through context menus. There is no app API to write them.
