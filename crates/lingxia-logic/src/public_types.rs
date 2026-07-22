@@ -670,21 +670,24 @@ rong::js_api! {
         ///   aside** — a docked (large screen) / full-screen (phone) **multi-tab** browser
         ///   for external content only (`https://` or `file://`).
         ///
-        ///   The aside is **API-only and has no address input** (its one difference from
-        ///   the self browser): each `openSurface({ url, as: 'aside' })` call opens a tab;
-        ///   there is no manual "new tab" affordance and the address is never editable.
+        ///   The aside is **API-only** and never permits address editing or a manual
+        ///   "new tab" action. Desktop may show the current address read-only; compact
+        ///   phone/Runner chrome omits the address row entirely.
         ///   Tabs are **deduped by URL** — reopening a URL focuses the existing tab and
-        ///   returns its handle. The handle is **tab-scoped**: `close()` closes that tab,
-        ///   and closing the last tab closes the aside. The tab strip shows page
-        ///   **titles** (never the URL), plus per-tab close, back/forward, refresh, and a
-        ///   close-aside control.
+        ///   preserves its current navigation. On `medium` / `expanded`, the returned
+        ///   handle is **tab-scoped**: `close()` closes that tab. Compact browser chrome
+        ///   owns the group and returns `null`. Closing the last tab closes the aside;
+        ///   dismissing it only hides the group. The tab UI shows page **titles** (never
+        ///   the URL), plus per-tab close, back/forward, refresh, and dismissal.
         ///
         ///   Presentation is the only large/small difference: on `medium` / `expanded`
         ///   the aside **docks** and splits beside the main at `edge` (default `'right'`)
         ///   with a horizontal title tab strip; on `compact` (phone / runner) it presents
-        ///   **full-screen** with a **bottom** browser toolbar (tabs reached via a tab
-        ///   switcher), dismissed by the host back affordance. `size` is a host-clamped
-        ///   preferred size (large screen only).
+        ///   **full-screen** with a single-row **bottom** browser toolbar (tabs reached
+        ///   via an aside-only switcher). System/edge Back and the toolbar dismiss action
+        ///   exit the whole aside even when page history exists; the explicit browser
+        ///   Back button navigates history. `size` is a host-clamped preferred size
+        ///   (large screen only).
         ///
         type OpenPageSurfaceSpec = r###"{
     page: string;
@@ -715,8 +718,9 @@ rong::js_api! {
 
         /// Open `url` in the multi-tab browser aside. `url` must be `https://` or
         /// `file://` (external content only). Repeated calls add/focus tabs (deduped by
-        /// URL) in the single aside per window; the returned handle is scoped to that
-        /// tab. See {@link OpenSurfaceSpec} for the full aside contract.
+        /// URL) in the single aside per window. Medium/expanded returns a tab-scoped
+        /// handle; compact returns `null` because browser chrome owns the group. See
+        /// {@link OpenSurfaceSpec} for the full aside contract.
         ///
         type OpenUrlAsideSpec = r###"{
     url: string;
