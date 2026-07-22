@@ -5,8 +5,7 @@
 //! file is pure product policy registered through the
 //! [`WindowsChromeRenderer`] seam.
 
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, OnceLock};
 
 #[cfg(feature = "browser-runtime")]
 use lingxia_windows_contract::post_to_window_thread;
@@ -40,9 +39,7 @@ mod notice;
 mod phone_bar;
 mod sidebar;
 mod top_bar;
-#[cfg(feature = "browser-runtime")]
-pub use aside_panel::begin_panel_address_edit;
-pub(crate) use aside_panel::*;
+use aside_panel::*;
 pub(super) use drawing::*;
 pub use layout::*;
 use native_panel::*;
@@ -209,7 +206,6 @@ pub(super) mod command_id {
     pub(super) const BROWSER_PANEL_NAV_BACK: &str = "browser-panel.nav.back";
     pub(super) const BROWSER_PANEL_NAV_FORWARD: &str = "browser-panel.nav.forward";
     pub(super) const BROWSER_PANEL_NAV_RELOAD: &str = "browser-panel.nav.reload";
-    pub(super) const BROWSER_PANEL_ADDRESS_BAR: &str = "browser-panel.address-bar";
     pub(super) const ASIDE_PANEL_TAB_CLICK: &str = "aside-panel.tab.click";
     pub(super) const ASIDE_PANEL_TAB_CLOSE: &str = "aside-panel.tab.close";
     pub(super) const ASIDE_PANEL_CLOSE_ALL: &str = "aside-panel.close-all";
@@ -1686,7 +1682,11 @@ pub(super) fn chrome_hit_test(
     {
         return Some(chrome_command(command_id::BROWSER_PIN_TOGGLE, json!({})));
     }
-    if let Some(address) = controls.address
+    if !layout
+        .address_bar
+        .as_ref()
+        .is_some_and(|address_bar| address_bar.aside)
+        && let Some(address) = controls.address
         && rect_contains(&address, point)
     {
         return Some(chrome_command(command_id::BROWSER_ADDRESS_BAR, json!({})));
@@ -2041,7 +2041,7 @@ pub(super) fn draw_content_cards(
                 continue;
             }
             if browser_panel_header_visible(panel) {
-                draw_browser_panel_header(hdc, state.hwnd, panel, state.cursor);
+                draw_browser_panel_header(hdc, panel, state.cursor);
             }
         }
         for panel in &attached.panels {
@@ -2204,15 +2204,17 @@ pub(crate) fn workspace_silhouette_rect(
 mod scroll_tests {
     use super::{
         ATTACHED_PANEL_HANDLE_SIZE, SHELL_CONTENT_INSET, SHELL_TOP_BAR_HEIGHT, SIDEBAR_ICON_SIZE,
-        SIDEBAR_ITEM_HEIGHT, WindowsChromePanelLayoutInput, WindowsPanelPosition,
-        WindowsShellAuxiliaryItemLayout, WindowsShellNavigationBarLayout,
-        WindowsShellTabBarItemLayout, WindowsShellTabBarLayout, WindowsShellTabBarPosition,
-        WindowsShellWindowLayout, clamp_sidebar_scroll, collapsed_sidebar_tabbar_click_command,
-        compute_attached_layout, compute_chrome_rects, sidebar_auxiliary_rects,
+        SIDEBAR_ITEM_HEIGHT, WindowsChromeHit, WindowsChromePanelLayoutInput, WindowsChromeState,
+        WindowsPanelPosition, WindowsShellAddressBarLayout, WindowsShellAuxiliaryItemLayout,
+        WindowsShellNavigationBarLayout, WindowsShellTabBarItemLayout, WindowsShellTabBarLayout,
+        WindowsShellTabBarPosition, WindowsShellWindowLayout, chrome_hit_test,
+        clamp_sidebar_scroll, collapsed_sidebar_tabbar_click_command, compute_attached_layout,
+        compute_chrome_rects, phone_browser_bar_rects, sidebar_auxiliary_rects,
         sidebar_caption_contains, sidebar_group_rect, sidebar_top_level_icon_rect,
-        tabbar_requires_full_repaint,
+        tabbar_requires_full_repaint, top_bar_controls,
     };
-    use windows::Win32::Foundation::RECT;
+    use lingxia_windows_contract::WindowsWindowLayout;
+    use windows::Win32::Foundation::{HWND, RECT};
 
     #[test]
     fn sidebar_scroll_is_bounded_by_content_overflow() {
@@ -2220,6 +2222,79 @@ mod scroll_tests {
         assert_eq!(clamp_sidebar_scroll(180, 600, 500), (100, 100));
         assert_eq!(clamp_sidebar_scroll(-20, 600, 500), (0, 100));
         assert_eq!(clamp_sidebar_scroll(20, 400, 500), (0, 0));
+    }
+
+    #[test]
+    fn desktop_aside_keeps_read_only_address_geometry() {
+        let client = RECT {
+            left: 0,
+            top: 0,
+            right: 1024,
+            bottom: 768,
+        };
+        let top_bar = RECT {
+            bottom: SHELL_TOP_BAR_HEIGHT,
+            ..client
+        };
+        let layout = WindowsShellWindowLayout {
+            address_bar: Some(WindowsShellAddressBarLayout {
+                visible: true,
+                aside: true,
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+
+        let controls = top_bar_controls(client, top_bar, &layout);
+        assert!(controls.address.is_some());
+        assert!(controls.page_menu.is_none());
+        assert!(controls.bookmark.is_none());
+        assert!(controls.pin.is_none());
+    }
+
+    #[test]
+    fn compact_aside_omits_address_and_tabs_remain_actionable() {
+        let client = RECT {
+            left: 0,
+            top: 0,
+            right: 390,
+            bottom: 844,
+        };
+        let layout = WindowsShellWindowLayout {
+            address_bar: Some(WindowsShellAddressBarLayout {
+                visible: true,
+                aside: true,
+                ..Default::default()
+            }),
+            suppress_window_controls: true,
+            ..Default::default()
+        };
+        let state = WindowsChromeState {
+            hwnd: HWND::default(),
+            client,
+            layout: WindowsWindowLayout::new(layout.clone()),
+            attached: None,
+            frame_button_hover: None,
+            frame_button_pressed: None,
+            cursor: None,
+        };
+        let rects = phone_browser_bar_rects(client, true);
+        let center = |rect: RECT| ((rect.left + rect.right) / 2, (rect.top + rect.bottom) / 2);
+
+        assert!(rects.address.is_none());
+        assert!(rects.row_reload.is_some());
+        assert!(matches!(
+            chrome_hit_test(&state, &layout, center(rects.tabs)),
+            Some(WindowsChromeHit::Command(command))
+                if command.id == super::command_id::BROWSER_TABS_CYCLE
+        ));
+
+        let mut self_layout = layout.clone();
+        self_layout.address_bar.as_mut().unwrap().aside = false;
+        assert!(
+            compute_chrome_rects(client, &layout).content.bottom
+                > compute_chrome_rects(client, &self_layout).content.bottom
+        );
     }
 
     #[test]

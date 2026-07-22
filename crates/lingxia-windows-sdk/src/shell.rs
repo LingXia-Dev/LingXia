@@ -47,9 +47,9 @@ pub use chrome::{
     WindowsShellTabBarItemLayout, WindowsShellTabBarLayout, WindowsShellTabBarPosition,
     WindowsShellWindowLayout,
 };
-// Inline address-bar editing exists only for the browser (asides + tabs).
+// Inline address-bar editing exists only for self browser tabs.
 #[cfg(feature = "browser-runtime")]
-pub use chrome::{begin_address_edit, begin_panel_address_edit};
+pub use chrome::begin_address_edit;
 
 pub(crate) use chrome::shell_chrome_dirty_rects;
 pub(crate) use chrome::{

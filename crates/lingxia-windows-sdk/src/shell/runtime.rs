@@ -393,7 +393,6 @@ mod chrome_command {
     pub(super) const BROWSER_PANEL_NAV_BACK: &str = "browser-panel.nav.back";
     pub(super) const BROWSER_PANEL_NAV_FORWARD: &str = "browser-panel.nav.forward";
     pub(super) const BROWSER_PANEL_NAV_RELOAD: &str = "browser-panel.nav.reload";
-    pub(super) const BROWSER_PANEL_ADDRESS_BAR: &str = "browser-panel.address-bar";
     pub(super) const ASIDE_PANEL_TAB_CLICK: &str = "aside-panel.tab.click";
     pub(super) const ASIDE_PANEL_TAB_CLOSE: &str = "aside-panel.tab.close";
     pub(super) const ASIDE_PANEL_CLOSE_ALL: &str = "aside-panel.close-all";
@@ -1214,6 +1213,13 @@ fn build_address_bar_layout() -> Option<WindowsShellAddressBarLayout> {
         .current_url
         .as_deref()
         .is_some_and(|url| url.starts_with("http://") || url.starts_with("https://"));
+    #[cfg(feature = "browser-runtime")]
+    let tab_count = browser_tabs()
+        .into_iter()
+        .filter(|tab| lingxia_browser::tab_is_aside(&tab.tab_id) == aside)
+        .count();
+    #[cfg(not(feature = "browser-runtime"))]
+    let tab_count = browser_tabs().len();
     Some(WindowsShellAddressBarLayout {
         visible: true,
         url_text: browser_tab_display_url(&tab),
@@ -1223,7 +1229,7 @@ fn build_address_bar_layout() -> Option<WindowsShellAddressBarLayout> {
         bookmarked,
         pinned,
         web,
-        tab_count: browser_tabs().len(),
+        tab_count,
     })
 }
 
@@ -2220,6 +2226,13 @@ fn handle_chrome_event(appid: &str, event: WindowsChromeCommand) {
             return;
         }
         chrome_command::BROWSER_NEW_TAB => {
+            #[cfg(feature = "browser-runtime")]
+            if presented_browser_tab()
+                .as_deref()
+                .is_some_and(lingxia_browser::tab_is_aside)
+            {
+                return;
+            }
             handle_browser_new_tab(appid, app.session_id());
             return;
         }
@@ -2236,7 +2249,11 @@ fn handle_chrome_event(appid: &str, event: WindowsChromeCommand) {
                 open_or_present_browser_page(appid, app.session_id(), &bookmark.url);
                 return;
             }
-            handle_browser_tab_click(appid, &tab_id);
+            if payload_bool(&event, "compact_group") {
+                handle_compact_browser_tab_click(appid, &tab_id);
+            } else {
+                handle_browser_tab_click(appid, &tab_id);
+            }
             return;
         }
         chrome_command::BROWSER_TAB_CLOSE => {
@@ -2251,7 +2268,11 @@ fn handle_chrome_event(appid: &str, event: WindowsChromeCommand) {
             if auxiliary_bookmark(&tab_id).is_some() {
                 return;
             }
-            handle_browser_tab_close(appid, &tab_id);
+            if payload_bool(&event, "compact_group") {
+                handle_compact_browser_tab_close(appid, &tab_id);
+            } else {
+                handle_browser_tab_close(appid, &tab_id);
+            }
             return;
         }
         chrome_command::SIDEBAR_AUXILIARY_CONTEXT_MENU => {
@@ -2296,20 +2317,6 @@ fn handle_chrome_event(appid: &str, event: WindowsChromeCommand) {
                 return;
             };
             browser_reload(&tab_id);
-            return;
-        }
-        chrome_command::BROWSER_PANEL_ADDRESS_BAR => {
-            let Some(webtag_key) = payload_string(&event, "webtag_key") else {
-                return;
-            };
-            let Some(tab_id) = payload_browser_panel_tab_id(&event) else {
-                return;
-            };
-            // Editing a browser aside's address bar is a browser-only action.
-            #[cfg(feature = "browser-runtime")]
-            begin_browser_panel_address_edit(appid, &webtag_key, &tab_id);
-            #[cfg(not(feature = "browser-runtime"))]
-            let _ = (&webtag_key, &tab_id);
             return;
         }
         // Aside browser panel (grouped web asides): routed to the surface
@@ -2611,6 +2618,14 @@ fn payload_i32(command: &WindowsChromeCommand, field: &str) -> Option<i32> {
         })
 }
 
+fn payload_bool(command: &WindowsChromeCommand, field: &str) -> bool {
+    command
+        .payload
+        .get(field)
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(false)
+}
+
 fn payload_browser_panel_tab_id(command: &WindowsChromeCommand) -> Option<String> {
     let webtag_key = payload_string(command, "webtag_key")?;
     browser_tab_id_for_webtag_key(&webtag_key).or_else(|| {
@@ -2734,8 +2749,10 @@ fn handle_browser_new_tab(_appid: &str, _session_id: u64) {}
 #[cfg(feature = "browser-runtime")]
 fn handle_browser_tabs_toggle(appid: &str) {
     let presented = presented_browser_tab();
+    let aside = presented.as_deref().is_some_and(lingxia_browser::tab_is_aside);
     let tabs: Vec<(String, String, bool)> = browser_tabs()
         .into_iter()
+        .filter(|tab| lingxia_browser::tab_is_aside(&tab.tab_id) == aside)
         .map(|tab| {
             let active = presented.as_deref() == Some(tab.tab_id.as_str());
             let title = browser_tab_display_title(&tab);
@@ -2777,6 +2794,22 @@ fn handle_browser_tab_click(appid: &str, tab_id: &str) {
 fn handle_browser_tab_click(_appid: &str, _tab_id: &str) {}
 
 #[cfg(feature = "browser-runtime")]
+fn handle_compact_browser_tab_click(appid: &str, tab_id: &str) {
+    let Some(presented) = presented_browser_tab() else {
+        return;
+    };
+    if browser_tab_summary(tab_id).is_none()
+        || lingxia_browser::tab_is_aside(&presented) != lingxia_browser::tab_is_aside(tab_id)
+    {
+        return;
+    }
+    handle_browser_tab_click(appid, tab_id);
+}
+
+#[cfg(not(feature = "browser-runtime"))]
+fn handle_compact_browser_tab_click(_appid: &str, _tab_id: &str) {}
+
+#[cfg(feature = "browser-runtime")]
 fn handle_browser_tab_close(appid: &str, tab_id: &str) {
     let was_presented = presented_browser_tab().as_deref() == Some(tab_id);
     let successor = was_presented
@@ -2795,6 +2828,31 @@ fn handle_browser_tab_close(appid: &str, tab_id: &str) {
 
 #[cfg(not(feature = "browser-runtime"))]
 fn handle_browser_tab_close(_appid: &str, _tab_id: &str) {}
+
+#[cfg(feature = "browser-runtime")]
+fn handle_compact_browser_tab_close(appid: &str, tab_id: &str) {
+    let Some(presented) = presented_browser_tab() else {
+        return;
+    };
+    let aside = lingxia_browser::tab_is_aside(&presented);
+    if browser_tab_summary(tab_id).is_none() || lingxia_browser::tab_is_aside(tab_id) != aside {
+        return;
+    }
+    let was_presented = presented == tab_id;
+    let successor = was_presented
+        .then(|| adjacent_browser_tab_in_mode(tab_id, aside, &HashSet::from([tab_id])))
+        .flatten();
+    if let Err(err) = lingxia_browser::close(tab_id) {
+        log::error!("failed to close browser tab {tab_id}: {err}");
+    }
+    if was_presented {
+        activate_main_tab(appid, successor.as_deref());
+    }
+    sync_shell_layout(appid);
+}
+
+#[cfg(not(feature = "browser-runtime"))]
+fn handle_compact_browser_tab_close(_appid: &str, _tab_id: &str) {}
 
 #[derive(Debug, Clone, Copy)]
 enum BrowserTabContextAction {
@@ -3080,6 +3138,25 @@ fn adjacent_main_tab(current: &str, excluded: &HashSet<&str>) -> Option<String> 
         .iter()
         .skip(index + 1)
         .chain(order[..index].iter().rev())
+        .find(|id| !excluded.contains(id.as_str()))
+        .cloned()
+}
+
+#[cfg(feature = "browser-runtime")]
+fn adjacent_browser_tab_in_mode(
+    current: &str,
+    aside: bool,
+    excluded: &HashSet<&str>,
+) -> Option<String> {
+    let tabs: Vec<String> = browser_tabs()
+        .into_iter()
+        .filter(|tab| lingxia_browser::tab_is_aside(&tab.tab_id) == aside)
+        .map(|tab| tab.tab_id)
+        .collect();
+    let index = tabs.iter().position(|id| id == current)?;
+    tabs.iter()
+        .skip(index + 1)
+        .chain(tabs[..index].iter().rev())
         .find(|id| !excluded.contains(id.as_str()))
         .cloned()
 }
@@ -3821,6 +3898,9 @@ fn begin_presented_tab_address_edit(app: &LxApp) {
     let Some(tab_id) = presented_browser_tab() else {
         return;
     };
+    if lingxia_browser::tab_is_aside(&tab_id) {
+        return;
+    }
     let Some(tab) = browser_tab_summary(&tab_id) else {
         return;
     };
@@ -4042,29 +4122,6 @@ fn show_browser_page_menu(_appid: &str, _screen_x: i32, _screen_y: i32) {}
 fn begin_presented_tab_address_edit(_app: &LxApp) {
     // Without the shell chrome no address bar is drawn (plain OS frame),
     // so there is nothing to edit.
-}
-
-/// Starts an inline URL edit over a browser aside's address capsule, prefilled
-/// with the tab's current URL. The commit reuses `commit_address_input`, so the
-/// aside navigates through the same address-input engine as the main bar.
-#[cfg(feature = "browser-runtime")]
-fn begin_browser_panel_address_edit(appid: &str, webtag_key: &str, tab_id: &str) {
-    let Some(window) = owner_window_handle(appid) else {
-        return;
-    };
-    let initial = browser_tab_summary(tab_id)
-        .and_then(|tab| tab.current_url.clone())
-        .unwrap_or_default();
-    let owner_appid = appid.to_string();
-    let tab_id = tab_id.to_string();
-    super::begin_panel_address_edit(
-        window,
-        webtag_key,
-        &initial,
-        Arc::new(move |text: String| {
-            commit_address_input(&owner_appid, &tab_id, &text);
-        }),
-    );
 }
 
 /// Resolves a committed address input and navigates the presented tab.

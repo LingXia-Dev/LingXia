@@ -46,11 +46,9 @@ pub(super) fn browser_panel_hit_test(
                 json!({ "panel_id": panel.panel_id.clone() }),
             ));
         }
+        // The aside address capsule is informational; its tabs are API-only.
         if rect_contains(&browser_panel_address_rect(panel), point) {
-            return Some(chrome_command(
-                command_id::BROWSER_PANEL_ADDRESS_BAR,
-                json!({ "webtag_key": panel.webtag_key.clone() }),
-            ));
+            return Some(WindowsChromeHit::Chrome);
         }
         return Some(WindowsChromeHit::Chrome);
     }
@@ -253,78 +251,19 @@ pub(super) fn browser_panel_address_rect(panel: &WindowsChromePanel) -> RECT {
     })
 }
 
-/// Last painted URL-capsule rect for a browser aside, keyed by host window +
-/// webtag, so a click can start an inline edit over the exact pill (mirrors the
-/// main top bar's `ADDRESS_CAPSULE_RECTS`).
-static PANEL_ADDRESS_RECTS: OnceLock<Mutex<HashMap<(isize, String), RECT>>> = OnceLock::new();
-
-pub(super) fn remember_panel_address_rect(hwnd: HWND, webtag_key: &str, rect: Option<RECT>) {
-    let map = PANEL_ADDRESS_RECTS.get_or_init(|| Mutex::new(HashMap::new()));
-    let Ok(mut map) = map.lock() else {
-        return;
-    };
-    let key = (hwnd.0 as isize, webtag_key.to_string());
-    match rect {
-        Some(rect) => {
-            map.insert(key, rect);
-        }
-        None => {
-            map.remove(&key);
-        }
-    }
-}
-
-/// Starts an inline URL edit over a browser aside's address capsule, prefilled
-/// with `initial_text`. Returns `false` when no capsule was painted for
-/// `(window, webtag_key)`. Mirrors [`top_bar::begin_address_edit`] for the aside.
-#[cfg(feature = "browser-runtime")]
-pub fn begin_panel_address_edit(
-    window: isize,
-    webtag_key: &str,
-    initial_text: &str,
-    on_commit: crate::shell::text_input::InlineEditCommit,
-) -> bool {
-    let rect = PANEL_ADDRESS_RECTS
-        .get()
-        .and_then(|map| map.lock().ok())
-        .and_then(|map| map.get(&(window, webtag_key.to_string())).copied());
-    let Some(rect) = rect else {
-        return false;
-    };
-    let edit_rect = inset_rect(rect, 10, 1);
-    if rect_width(&edit_rect) == 0 || rect_height(&edit_rect) == 0 {
-        return false;
-    }
-    let initial = initial_text.to_string();
-    post_to_window_thread(
-        window,
-        Box::new(move || {
-            crate::shell::text_input::begin_inline_edit(
-                HWND(window as *mut core::ffi::c_void),
-                edit_rect,
-                &initial,
-                on_commit,
-            );
-        }),
-    )
-}
-
 pub(super) fn draw_browser_panel_header(
     hdc: HDC,
-    hwnd: HWND,
     panel: &WindowsChromePanel,
     cursor: Option<(i32, i32)>,
 ) {
     let header = browser_panel_header_rect(panel);
     if rect_width(&header) == 0 || rect_height(&header) == 0 {
-        remember_panel_address_rect(hwnd, &panel.webtag_key, None);
         return;
     }
     let pal = shell_palette();
 
     let tabs = panel_aside_tabs(panel);
     if !tabs.is_empty() {
-        remember_panel_address_rect(hwnd, &panel.webtag_key, None);
         draw_aside_panel_header(hdc, panel, &tabs, cursor);
         return;
     }
@@ -365,9 +304,6 @@ pub(super) fn draw_browser_panel_header(
             DT_LEFT,
         );
     }
-    // Record the painted pill so a click can open the inline editor over it.
-    remember_panel_address_rect(hwnd, &panel.webtag_key, address_visible.then_some(address));
-
     draw_hover_wash(hdc, close, 5, cursor);
     draw_design_icon_button_with_fallback(
         hdc,
