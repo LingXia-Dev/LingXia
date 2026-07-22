@@ -52,8 +52,7 @@ pub(crate) fn open_for_app(
     }
 }
 
-/// Open an aside tab in the shared in-app browser: self chrome minus the
-/// address bar.
+/// Open a tab in the shared browser's API-managed aside group.
 pub(crate) fn open_aside_for_app(
     appid: &str,
     session_id: u64,
@@ -69,7 +68,7 @@ pub(crate) fn open_aside_for_app(
     }
 }
 
-/// Whether `tab_id` was opened as an aside (chrome hides its address bar).
+/// Whether `tab_id` belongs to the API-managed aside browser group.
 pub(crate) fn tab_is_aside(tab_id: &str) -> bool {
     #[cfg(feature = "browser-runtime")]
     return lingxia_browser::tab_is_aside(tab_id);

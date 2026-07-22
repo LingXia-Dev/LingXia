@@ -35,6 +35,9 @@ pub(crate) struct BrowserTabState {
     pub(crate) create_in_flight: bool,
     /// URL queued for loading while WebView creation is in-flight.
     pub(crate) pending_url: Option<String>,
+    /// Normalized first URL. Aside reuse is keyed to this value and navigation
+    /// never rewrites it.
+    pub(crate) initial_url: Option<String>,
     pub(crate) current_url: Option<String>,
     pub(crate) title: Option<String>,
     /// URL `title` was reported for. Titles are never cleared on navigation,
@@ -63,8 +66,7 @@ pub(crate) struct BrowserTabState {
     /// `window.open`) load in the same WebView instead of spawning a new
     /// main-area tab, while automation can still discover the tab.
     pub(crate) standalone: bool,
-    /// When true this tab was opened as an aside; the browser chrome hides
-    /// its address bar while it is active.
+    /// When true this tab belongs to the API-managed aside browser group.
     pub(crate) aside: bool,
     /// The lxapp that opened this tab (None for globally-scoped tabs). Used
     /// to attribute follow-up surfaces (e.g. a new-window request from a
@@ -776,6 +778,9 @@ fn open_internal_browser_tab_with_scope(
                     } else {
                         None
                     },
+                    initial_url: has_target_url.then(|| {
+                        lxapp::lingxia_surface::normalize_initial_url(&normalized_target_url)
+                    }),
                     current_url: None,
                     title: None,
                     title_url: None,
@@ -897,6 +902,25 @@ pub(crate) fn open_internal_browser_tab_for_owner(
     url_callback: bool,
 ) -> Result<String, LxAppError> {
     let _owner = resolve_owner_lxapp(owner_appid, owner_session_id)?;
+    if aside && tab_id.is_none() {
+        let normalized_target = normalize_browser_target_url(url);
+        let initial_url = lxapp::lingxia_surface::normalize_initial_url(&normalized_target);
+        let reusable = {
+            let state = lock_state();
+            state.tabs.iter().find_map(|(tab_id, tab)| {
+                (tab.aside
+                    && tab.owner_appid.as_deref() == Some(owner_appid)
+                    && tab.owner_session_id == Some(owner_session_id)
+                    && tab.initial_url.as_deref() == Some(initial_url.as_str()))
+                .then(|| tab_id.clone())
+            })
+        };
+        if let Some(tab_id) = reusable {
+            let _ = set_active_browser_tab(&tab_id);
+            notify_tabs_changed();
+            return Ok(tab_id);
+        }
+    }
     open_internal_browser_tab_with_scope(
         url,
         tab_id,
@@ -920,8 +944,7 @@ pub(crate) fn tab_owner_appid(tab_id: &str) -> Option<String> {
         .and_then(|tab| tab.owner_appid.clone())
 }
 
-/// Whether `tab_id` was opened as an aside — the chrome hides its address bar
-/// while this tab is active.
+/// Whether `tab_id` belongs to the API-managed aside browser group.
 pub(crate) fn is_aside_tab(tab_id: &str) -> bool {
     let Some(normalized) = normalize_runtime_tab_id(tab_id) else {
         return false;
@@ -1209,6 +1232,7 @@ mod tests {
                 create_token: 1,
                 create_in_flight: false,
                 pending_url: None,
+                initial_url: None,
                 current_url: None,
                 title: None,
                 title_url: None,
@@ -1273,6 +1297,7 @@ mod tests {
                 create_token: 1,
                 create_in_flight: false,
                 pending_url: None,
+                initial_url: Some("https://auth.example.test/".to_string()),
                 current_url: Some("https://auth.example.test/".to_string()),
                 title: None,
                 title_url: None,
@@ -1309,6 +1334,7 @@ mod tests {
             create_token: 1,
             create_in_flight: false,
             pending_url: None,
+            initial_url: None,
             current_url: None,
             title: None,
             title_url: None,
