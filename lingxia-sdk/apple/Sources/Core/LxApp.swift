@@ -38,7 +38,7 @@ enum OpenURLTarget: Int32 {
     case external = 0
     case selfTarget = 1
     case newBrowserTab = 2
-    /// In-app browser tab with aside chrome (no address bar).
+    /// API-managed tab in the compact aside browser group.
     case asideBrowser = 3
 }
 
