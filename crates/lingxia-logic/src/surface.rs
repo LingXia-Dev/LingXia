@@ -612,17 +612,20 @@ async fn open_page_spec(ctx: JSContext, spec: &JSObject) -> JSResult<JSObject> {
 /// as a full in-app browser tab in the main content (host-owned chrome, no
 /// handle), in contrast to `lx.openExternal` which hands off to the OS browser.
 /// With `as: 'aside'` the url is docked beside the main as a closable browser
-/// tab strip without an address bar, driven through the surface graph exactly
-/// like a page aside.
+/// tab strip on desktop. Compact hosts project the same request into the
+/// full-screen in-app browser with aside chrome.
 async fn open_url_spec(ctx: JSContext, spec: &JSObject) -> JSResult<JSValue> {
     let raw_url = read_required_string(spec, "url")?;
     let lxapp = LxApp::from_ctx(&ctx)?;
 
     match read_optional_string(spec, "as")?.as_deref().map(str::trim) {
         Some("aside") => {
+            let position = read_validated_edge(spec)?.unwrap_or_else(|| "right".to_string());
+            let _ = parse_size(spec, SurfaceKind::Overlay)?;
+            if url_aside_uses_compact_browser(&lxapp) {
+                return open_url_in_browser(&ctx, &lxapp, raw_url.trim(), true);
+            }
             let url = validate_url_target(&lxapp, raw_url.trim())?;
-            let position =
-                read_optional_string(spec, "edge")?.unwrap_or_else(|| "right".to_string());
             let size = get_property(spec, "size");
             let options = JSValue::from_rust(
                 &ctx,
@@ -1124,9 +1127,25 @@ fn is_compact_layout(lxapp: &LxApp) -> bool {
     )
 }
 
-/// Open a url as an in-app browser tab; `aside` selects the address-bar-less
-/// aside chrome. Returns null — the tab is host chrome, not a closable
-/// surface, so there is no handle.
+/// Compact has no dock region. A URL aside therefore uses the native in-app
+/// browser's aside projection instead of the generic URL-surface presenter.
+/// Treat an unavailable layout as compact: mobile hosts can receive an open
+/// before their first measured viewport, and showing desktop surface chrome in
+/// that interval is the more disruptive fallback.
+fn url_aside_uses_compact_browser(lxapp: &LxApp) -> bool {
+    use lingxia_surface::SizeClass;
+    !matches!(
+        lxapp
+            .surface_derived_layout()
+            .as_ref()
+            .map(|layout| layout.size_class),
+        Some(SizeClass::Medium) | Some(SizeClass::Expanded)
+    )
+}
+
+/// Open a URL as an in-app browser tab; `aside` selects compact aside chrome.
+/// Returns null because compact browser tabs are owned by browser chrome rather
+/// than the generic surface presenter.
 fn open_url_in_browser(
     ctx: &JSContext,
     lxapp: &LxApp,

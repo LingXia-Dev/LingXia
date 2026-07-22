@@ -1351,7 +1351,7 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_openAsideBrowserTab<'a>(
     .resolve::<ThrowRuntimeExAndDefault>()
 }
 
-/// Whether the tab was opened as an aside (chrome hides its address bar).
+/// Whether the tab belongs to the API-managed aside browser group.
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_com_lingxia_app_NativeApi_browserTabIsAside(
     mut env: EnvUnowned,

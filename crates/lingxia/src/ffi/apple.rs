@@ -297,12 +297,11 @@ mod bridge {
             url_callback: bool,
         ) -> Option<String>;
 
-        // Open an aside tab in the shared in-app browser: self chrome minus the
-        // address bar (compact `{ url, as: 'aside' }`).
+        // Open an API-managed tab in the compact aside browser group.
         #[swift_bridge(swift_name = "openAsideBrowserTab")]
         fn open_aside_browser_tab(appid: &str, session_id: u64, url: &str) -> Option<String>;
 
-        // Whether the tab was opened as an aside (chrome hides its address bar).
+        // Whether the tab belongs to the API-managed aside browser group.
         #[swift_bridge(swift_name = "browserTabIsAside")]
         fn browser_tab_is_aside(tab_id: &str) -> bool;
 

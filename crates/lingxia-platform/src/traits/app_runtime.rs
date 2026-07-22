@@ -36,8 +36,8 @@ pub enum OpenUrlTarget {
     SelfTarget = 1,
     /// Open a new browser tab unconditionally (skips "navigate current tab" heuristic).
     NewBrowserTab = 2,
-    /// Open in the in-app browser as an aside tab: same chrome as `SelfTarget`
-    /// minus the address bar. The compact presentation of `{ url, as: 'aside' }`.
+    /// Open in the compact in-app browser as an API-managed aside tab. It uses
+    /// the one-row toolbar without address editing or user tab creation.
     AsideBrowser = 3,
 }
 

@@ -309,7 +309,7 @@ pub fn open_aside_browser_tab(appid: String, session_id: i64, url: String) -> Op
     crate::browser::open_aside_for_app(&appid, session_id as u64, &url, None).ok()
 }
 
-/// Whether the tab was opened as an aside (chrome hides its address bar).
+/// Whether the tab belongs to the API-managed aside browser group.
 #[napi]
 pub fn browser_tab_is_aside(tab_id: String) -> bool {
     crate::browser::tab_is_aside(&tab_id)

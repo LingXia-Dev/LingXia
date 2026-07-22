@@ -95,8 +95,7 @@ pub fn open_for_app(
     )
 }
 
-/// Open an aside tab in the shared in-app browser: same as [`open_for_app`]
-/// except the chrome hides its address bar while this tab is active.
+/// Open a tab in the API-managed aside browser group.
 pub fn open_aside_for_app(
     appid: &str,
     session_id: u64,
@@ -138,8 +137,7 @@ pub fn open_standalone_for_app(
     )
 }
 
-/// Whether `tab_id` was opened as an aside — chrome hides the address bar
-/// while such a tab is active.
+/// Whether `tab_id` belongs to the API-managed aside browser group.
 pub fn tab_is_aside(tab_id: &str) -> bool {
     tabs::is_aside_tab(tab_id)
 }
