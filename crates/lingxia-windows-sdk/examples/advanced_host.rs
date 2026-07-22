@@ -21,9 +21,10 @@
 //!
 //! ```ignore
 //! lingxia_windows_contract::set_windows_host_backend(Arc::new(MyHostBackend::new()));
-//! let _home_app_id = lingxia_windows_sdk::init_runtime(
+//! let runtime = lingxia_windows_sdk::init_runtime(
 //!     lingxia_windows_sdk::WindowsApp::from_env(),
 //! )?;
+//! println!("configured lxapp: {:?}", runtime.lxapp_id());
 //! // ... then run your own Win32 message loop instead of run_message_loop().
 //! ```
 
@@ -60,12 +61,12 @@ mod advanced {
     #[cfg(feature = "runtime")]
     fn boot_and_run() {
         match lingxia_windows_sdk::init_runtime(lingxia_windows_sdk::WindowsApp::from_env()) {
-            Ok(home_app_id) => {
+            Ok(runtime) => {
                 println!(
-                    "runtime booted (home lxapp: {}); open your own window + pump your own loop",
-                    home_app_id.as_deref().unwrap_or("none")
+                    "runtime booted (lxapp: {}); open your own window + pump your own loop",
+                    runtime.lxapp_id().unwrap_or("none")
                 );
-                // Create your Win32 window for `home_app_id`, then drive messages,
+                // Create your Win32 window, then drive messages,
                 // e.g. `let _code = lingxia_windows_sdk::run_message_loop();`
             }
             Err(error) => eprintln!("init_runtime failed: {error}"),

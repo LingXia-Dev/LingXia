@@ -81,7 +81,6 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
     // MARK: - UI Components - Phone Content
 
     private var viewController: SimulatorViewController?
-    private var webView: WKWebView?
     private var systemStatusBar: NSView?
     private var statusBarHeightConstraint: NSLayoutConstraint?
     private var navigationBar: NSView?
@@ -100,7 +99,11 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
 
     public private(set) var appId: String
     public private(set) var currentPath: String
-    private let webURL: URL?
+    private let webTarget: (tabId: String, ownerAppId: String, ownerSessionId: UInt64)?
+    private var preserveBrowserTabsOnClose = false
+
+    var webTargetTabId: String? { webTarget?.tabId }
+    var preservesWebTargetOnClose: Bool { preserveBrowserTabsOnClose }
 
     // Observers
     nonisolated(unsafe) private var navigationBarObserver: NSObjectProtocol?
@@ -113,7 +116,7 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
     public init(appId: String, path: String) {
         self.appId = appId
         self.currentPath = path
-        self.webURL = nil
+        self.webTarget = nil
         
         let window = Self.createSimulatorWindow()
         super.init(window: window)
@@ -122,10 +125,14 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
         setupNotificationObservers()
     }
 
-    public init(webURL: URL) {
-        self.appId = ""
-        self.currentPath = webURL.absoluteString
-        self.webURL = webURL
+    init(webTarget: RunnerWebTarget) {
+        self.appId = webTarget.ownerAppId
+        self.currentPath = webTarget.url.absoluteString
+        self.webTarget = (
+            webTarget.tabId,
+            webTarget.ownerAppId,
+            webTarget.ownerSessionId
+        )
 
         let window = Self.createSimulatorWindow()
         super.init(window: window)
@@ -379,8 +386,7 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
     }
 
     private func currentInspectableWebView() -> WKWebView? {
-        webView
-            ?? phoneBrowserSurface.activeWebView
+        phoneBrowserSurface.activeWebView
             ?? RunnerSupport.WebView.current()
             ?? RunnerSupport.WebView.resolve(appId: appId, path: currentPath)
     }
@@ -406,20 +412,18 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
         
         self.phoneContentView = phoneContent
         
-        if let webURL {
-            let configuration = WKWebViewConfiguration()
-            configuration.websiteDataStore = .nonPersistent()
-            let webView = WKWebView(frame: .zero, configuration: configuration)
-            webView.translatesAutoresizingMaskIntoConstraints = false
-            phoneContent.addSubview(webView)
-            NSLayoutConstraint.activate([
-                webView.topAnchor.constraint(equalTo: phoneContent.topAnchor),
-                webView.leadingAnchor.constraint(equalTo: phoneContent.leadingAnchor),
-                webView.trailingAnchor.constraint(equalTo: phoneContent.trailingAnchor),
-                webView.bottomAnchor.constraint(equalTo: phoneContent.bottomAnchor),
-            ])
-            webView.load(URLRequest(url: webURL))
-            self.webView = webView
+        if let webTarget {
+            phoneBrowserSurface.onDismiss = { [weak self] in
+                self?.window?.performClose(nil)
+            }
+            phoneBrowserSurface.present(
+                tabId: webTarget.tabId,
+                ownerAppId: webTarget.ownerAppId,
+                ownerSessionId: webTarget.ownerSessionId,
+                in: phoneContent,
+                window: window,
+                dismissible: false
+            )
             if Self.currentDeviceSize.usesPhoneChrome {
                 setupWebStatusBar()
             }
@@ -852,7 +856,7 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
         devToolsPanel?.updateInfo(device: Self.currentDeviceSize, path: currentPath)
 
         // Phone UI overlay: show for phones, hide for larger shell-backed shapes.
-        if webURL != nil {
+        if webTarget != nil {
             navigationBar?.isHidden = true
             floatingCapsuleContainer?.isHidden = true
             systemStatusBar?.isHidden = !device.usesPhoneChrome
@@ -1198,7 +1202,11 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
     // MARK: - NSWindowDelegate
     
     public func windowWillClose(_ notification: Notification) {
-        phoneBrowserSurface.dismiss(closeTab: true)
+        phoneBrowserSurface.dismiss(closeTab: !preserveBrowserTabsOnClose)
+        if webTarget != nil {
+            RunnerApp.shared.handleWindowClosed(self)
+            return
+        }
         if let sessionId = RunnerSupport.Runtime.sessionId(for: appId), sessionId > 0 {
             if !suppressRuntimeCloseNotification {
                 let _ = onLxappClosed(appId, sessionId)
@@ -1252,6 +1260,7 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
     func detachForHostSwitch() {
         suppressRuntimeCloseNotification = true
         preserveRuntimeSessionOnClose = true
+        preserveBrowserTabsOnClose = true
         window?.close()
     }
 
@@ -1267,7 +1276,8 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
             ownerAppId: ownerAppId,
             ownerSessionId: ownerSessionId,
             in: phoneContentView,
-            window: window
+            window: window,
+            dismissible: webTarget == nil
         )
         window?.makeKeyAndOrderFront(nil)
     }

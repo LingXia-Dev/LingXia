@@ -15,7 +15,8 @@ pub fn execute_list(json_output: bool) -> Result<()> {
                     "session_id": s.session_id,
                     "pid": s.pid,
                     "target": s.target,
-                    "project_root": s.project_root,
+                    "context_root": s.project_root,
+                    "content": s.content,
                     "started_at": s.started_at,
                     "ws_url": s.ws_url,
                     "log_file": s.log_file,
@@ -53,7 +54,7 @@ pub fn execute_list(json_output: bool) -> Result<()> {
         .max()
         .unwrap_or(2);
     println!(
-        "{:<id_width$}  {:<target_width$}  {:<8}  {:<19}  {:<ws_width$}  PROJECT",
+        "{:<id_width$}  {:<target_width$}  {:<8}  {:<19}  {:<ws_width$}  CONTENT",
         "ID", "TARGET", "STATE", "STARTED", "WS"
     );
     for info in sessions.iter() {
@@ -69,7 +70,10 @@ pub fn execute_list(json_output: bool) -> Result<()> {
                 format_started(info.started_at)
             },
             info.ws_url,
-            info.project_root,
+            info.content
+                .as_ref()
+                .map(|content| content.display())
+                .unwrap_or(&info.project_root),
         );
     }
     Ok(())

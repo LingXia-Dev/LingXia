@@ -241,8 +241,23 @@ pub(super) fn execute_runner_dev(
         }
 
         install_ctrlc_handler(stop_requested.clone())?;
-        let _session_registration =
-            log_store::register_session(&session_root, &session, platform_name, &ws_url);
+        let content = match &target {
+            RunnerDevTarget::LxApp(path) => {
+                lingxia_devtool_protocol::broker::SessionContent::LxApp {
+                    path: log_store::canonical_project_root(path),
+                }
+            }
+            RunnerDevTarget::Web(url) => {
+                lingxia_devtool_protocol::broker::SessionContent::Browser { url: url.clone() }
+            }
+        };
+        let _session_registration = log_store::register_session_with_content(
+            &session_root,
+            &session,
+            platform_name,
+            &ws_url,
+            content,
+        );
 
         println!();
         println!("{}", "Step 2/2: Launching Runner...".bold());

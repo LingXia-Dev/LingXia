@@ -221,7 +221,7 @@ fn seed_display_language(app_data_dir: &std::path::Path) {
 /// Registers built-in runtime and initializes the lxapp system.
 pub(crate) fn init_with_platform(
     platform: lingxia_platform::Platform,
-) -> crate::Result<Option<String>> {
+) -> crate::Result<crate::RuntimeInfo> {
     use lingxia_platform::traits::app_runtime::AppRuntime;
 
     crate::host_addon::run_before_init();
@@ -265,7 +265,7 @@ pub(crate) fn init_with_platform(
     crate::host_addon::run_after_init();
     crate::browser::warmup();
     crate::host_addon::run_start_services();
-    Ok(home_app_id)
+    Ok(crate::RuntimeInfo::new(home_app_id))
 }
 
 #[cfg(test)]

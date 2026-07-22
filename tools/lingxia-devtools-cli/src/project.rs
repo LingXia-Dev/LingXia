@@ -121,12 +121,17 @@ pub fn resolve_session(selector: &SessionSelector) -> Result<SessionInfo> {
     }
 }
 
-/// The disambiguation listing: session id, target, project path.
+/// The disambiguation listing: session id, container target, mounted content.
 fn pick_message(sessions: &[SessionInfo]) -> String {
     let mut msg =
         String::from("Multiple LingXia dev sessions are live. Pick one with --session:\n\n");
     for s in sessions {
-        let location = abbreviate_home(&s.project_root);
+        let location = abbreviate_home(
+            s.content
+                .as_ref()
+                .map(|content| content.display())
+                .unwrap_or(&s.project_root),
+        );
         msg.push_str(&format!(
             "  {}  {:<8} {}\n",
             s.session_id, s.target, location
@@ -276,6 +281,7 @@ mod tests {
         SessionInfo {
             session_id: id.to_string(),
             project_root: "/p".to_string(),
+            content: None,
             target: target.to_string(),
             pid: 1,
             started_at,

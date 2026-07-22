@@ -46,10 +46,14 @@ pub(super) struct PhoneBarRects {
     pub(super) row_reload: Option<RECT>,
     pub(super) new_tab: Option<RECT>,
     pub(super) tabs: RECT,
-    pub(super) close: RECT,
+    pub(super) close: Option<RECT>,
 }
 
-pub(super) fn phone_browser_bar_rects(client: RECT, aside: bool) -> PhoneBarRects {
+pub(super) fn phone_browser_bar_rects(
+    client: RECT,
+    aside: bool,
+    dismissible: bool,
+) -> PhoneBarRects {
     let height = if aside {
         PHONE_BAR_HEIGHT_ASIDE
     } else {
@@ -96,8 +100,11 @@ pub(super) fn phone_browser_bar_rects(client: RECT, aside: bool) -> PhoneBarRect
     let forward = button(back.right + PHONE_BAR_BUTTON_GAP);
     let row_reload = aside.then(|| button(forward.right + PHONE_BAR_BUTTON_GAP));
 
-    let close = button(bar.right - PHONE_BAR_EDGE - PHONE_BAR_BUTTON);
-    let tabs = button(close.left - PHONE_BAR_BUTTON_GAP - PHONE_BAR_BUTTON);
+    let close = dismissible.then(|| button(bar.right - PHONE_BAR_EDGE - PHONE_BAR_BUTTON));
+    let tabs_right = close
+        .map(|close| close.left - PHONE_BAR_BUTTON_GAP)
+        .unwrap_or(bar.right - PHONE_BAR_EDGE);
+    let tabs = button(tabs_right - PHONE_BAR_BUTTON);
     let new_tab = (!aside).then(|| button(tabs.left - PHONE_BAR_BUTTON_GAP - PHONE_BAR_BUTTON));
 
     PhoneBarRects {
@@ -125,7 +132,7 @@ pub(super) fn draw_phone_browser_bar(
     };
     let pal = shell_palette();
     let cursor = state.cursor;
-    let rects = phone_browser_bar_rects(state.client, address_bar.aside);
+    let rects = phone_browser_bar_rects(state.client, address_bar.aside, address_bar.dismissible);
 
     // The device screen owns the exterior silhouette. Keeping this strip
     // square avoids carving two artificial notches into the WebView seam.
@@ -219,15 +226,17 @@ pub(super) fn draw_phone_browser_bar(
     );
     draw_text(hdc, &count, icon_box, pal.text_primary, DT_CENTER);
 
-    draw_hover_wash(hdc, rects.close, 5, cursor);
-    draw_design_icon_button_with_fallback(
-        hdc,
-        rects.close,
-        WindowsDesignIcon::CloseX,
-        pal.frame_button_icon,
-        16,
-        Some(GLYPH_CLOSE),
-    );
+    if let Some(close) = rects.close {
+        draw_hover_wash(hdc, close, 5, cursor);
+        draw_design_icon_button_with_fallback(
+            hdc,
+            close,
+            WindowsDesignIcon::CloseX,
+            pal.frame_button_icon,
+            16,
+            Some(GLYPH_CLOSE),
+        );
+    }
 }
 
 /// The phone tab-switcher bottom sheet (the macOS runner's in-frame sheet):
@@ -416,8 +425,8 @@ mod tests {
             right: 390,
             bottom: 844,
         };
-        let self_bar = phone_browser_bar_rects(client, false);
-        let aside_bar = phone_browser_bar_rects(client, true);
+        let self_bar = phone_browser_bar_rects(client, false, true);
+        let aside_bar = phone_browser_bar_rects(client, true, true);
 
         assert_eq!(rect_height(&self_bar.bar), PHONE_BAR_HEIGHT_SELF);
         assert_eq!(rect_height(&aside_bar.bar), PHONE_BAR_HEIGHT_ASIDE);
@@ -428,5 +437,21 @@ mod tests {
         assert!(aside_bar.row_reload.is_some());
         assert!(self_bar.new_tab.is_some());
         assert!(aside_bar.new_tab.is_none());
+    }
+
+    #[test]
+    fn browser_only_bar_omits_dismissal_and_uses_trailing_slot_for_tabs() {
+        let client = RECT {
+            left: 0,
+            top: 0,
+            right: 390,
+            bottom: 844,
+        };
+        let dismissible = phone_browser_bar_rects(client, false, true);
+        let browser_only = phone_browser_bar_rects(client, false, false);
+
+        assert!(browser_only.close.is_none());
+        assert_eq!(browser_only.tabs.right, client.right - PHONE_BAR_EDGE);
+        assert!(browser_only.tabs.right > dismissible.tabs.right);
     }
 }

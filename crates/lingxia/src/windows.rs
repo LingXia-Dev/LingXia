@@ -4,23 +4,18 @@ use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, LazyLock, Mutex};
 
 use lingxia_platform::traits::app_runtime::AppRuntime;
-use lingxia_platform::traits::ui::{
-    SurfaceContent, SurfaceKind, SurfacePosition, SurfacePresenter, SurfaceRequest, SurfaceRole,
-};
+use lingxia_platform::traits::ui::SurfaceContent;
 pub use lingxia_platform::{Platform, PlatformError, set_windows_app_exit_handler};
 use lingxia_webview::{NavigationPolicy, WebTag, WebViewController, WebViewDataMode};
 
 static WINDOWS_APP_VISIBLE_WEBTAGS: LazyLock<Mutex<HashMap<String, HashSet<String>>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
-pub const RUNNER_WEB_APP_ID: &str = "__lingxia_runner_web__";
-pub const RUNNER_WEB_SESSION_ID: u64 = 1;
-
 /// Initializes the LingXia runtime for a Windows host process.
 ///
 /// Installs logging and the WebView2 user-data directory before running the
-/// common platform bootstrap. Returns the home app id on success.
-pub fn init(platform: Platform) -> crate::Result<Option<String>> {
+/// common platform bootstrap. Returns runtime information on success.
+pub fn init(platform: Platform) -> crate::Result<crate::RuntimeInfo> {
     crate::logging::init();
     lingxia_webview::platform::windows::set_webview_user_data_dir(
         platform.app_cache_dir().join("webview2"),
@@ -38,34 +33,6 @@ pub fn open_home_app(appid: &str) -> Result<(), String> {
     lxapp::open_lxapp(appid, lxapp::LxAppStartupOptions::new(""))
         .map(|_| ())
         .map_err(|err| err.to_string())
-}
-
-/// Opens a host-owned URL as a chrome-free main surface.
-pub fn open_web_surface(url: &str) -> Result<(), String> {
-    let url = url.trim();
-    if !(url.starts_with("http://") || url.starts_with("https://")) {
-        return Err("web surface URL must use http:// or https://".to_string());
-    }
-    let platform = crate::runtime::platform().map_err(|error| error.to_string())?;
-    platform
-        .present_surface(SurfaceRequest {
-            id: "runner-web-main".to_string(),
-            app_id: RUNNER_WEB_APP_ID.to_string(),
-            path: url.to_string(),
-            session_id: RUNNER_WEB_SESSION_ID,
-            page_instance_id: String::new(),
-            content: SurfaceContent::Url,
-            kind: SurfaceKind::Window,
-            width: 0.0,
-            height: 0.0,
-            width_ratio: 0.0,
-            height_ratio: 0.0,
-            position: SurfacePosition::Center,
-            role: SurfaceRole::Main,
-            ephemeral_web_data: false,
-            url_callback: false,
-        })
-        .map_err(|error| error.to_string())
 }
 
 /// Overrides the initial outer size, in pixels, of Windows host windows
@@ -156,9 +123,7 @@ fn install_url_surface_bridge() {
         // DockedBrowser parity. Without it (plain builds), a browser-profile
         // WebView2 renders the URL directly.
         #[cfg(feature = "browser-runtime")]
-        if request.app_id != RUNNER_WEB_APP_ID
-            && let Some(resolved) = resolve_url_surface_as_browser_tab(request, data_mode)
-        {
+        if let Some(resolved) = resolve_url_surface_as_browser_tab(request, data_mode) {
             return Some(resolved);
         }
         // `teardown_surface` destroys this webview by its webtag, so no cleanup hook.

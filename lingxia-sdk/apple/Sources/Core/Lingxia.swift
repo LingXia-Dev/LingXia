@@ -154,7 +154,7 @@ public enum Lingxia {
         let config = resolvedShellConfiguration(
             from: configuration,
             capabilities: info.capabilities,
-            homeAppId: info.homeAppId
+            homeAppId: info.lxAppId
         )
 
         let shell = LxAppShell(controller: controller, configuration: config)

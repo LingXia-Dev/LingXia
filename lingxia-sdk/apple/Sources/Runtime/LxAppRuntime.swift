@@ -8,7 +8,7 @@ import OSLog
 ///
 /// ```swift
 /// let info = try await LxAppRuntime.shared.initialize()
-/// print(info.homeAppId)
+/// print(info.lxAppId)
 /// ```
 @MainActor
 public final class LxAppRuntime {
@@ -74,13 +74,13 @@ public final class LxAppRuntime {
             )
         }
 
-        let rawHomeAppId = initResult.home_app_id.toString()
-        let homeAppId = rawHomeAppId.isEmpty ? nil : rawHomeAppId
+        let rawLxAppId = initResult.home_app_id.toString()
+        let lxAppId = rawLxAppId.isEmpty ? nil : rawLxAppId
 
         let caps = LxAppCapabilities(rawValue: getAppCapabilities())
 
         let runtimeInfo = LxAppRuntimeInfo(
-            homeAppId: homeAppId,
+            lxAppId: lxAppId,
             capabilities: caps,
             dataPath: dirs.dataPath,
             cachesPath: dirs.cachesPath
@@ -89,14 +89,14 @@ public final class LxAppRuntime {
         self.info = runtimeInfo
         Self.didInitializeUnsafe = true
 
-        LxAppCore.homeLxAppId = homeAppId
+        LxAppCore.homeLxAppId = lxAppId
         LxAppCore.capabilities = caps.rawValue
 
         os_log(
-            "LxAppRuntime initialized — home: %{public}@ capabilities=%{public}u browser=%{public}@",
+            "LxAppRuntime initialized — lxapp: %{public}@ capabilities=%{public}u browser=%{public}@",
             log: Self.log,
             type: .info,
-            homeAppId ?? "none",
+            lxAppId ?? "none",
             caps.rawValue,
             caps.contains(.browser) ? "true" : "false"
         )

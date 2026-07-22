@@ -104,9 +104,22 @@ import WebKit
             )
         }
 
+        /// Opens a tab in the managed browser group without an lxapp owner.
+        public static func openBrowserTab(url: String) -> String? {
+            RunnerBridge.createUnownedBrowserTab(url: url)
+        }
+
         /// Whether the tab belongs to the API-managed aside browser group.
         public static func browserTabIsAside(tabId: String) -> Bool {
             RunnerBridge.browserTabIsAside(tabId: tabId)
+        }
+
+        public static func browserTabIds() -> [String] {
+            RunnerBridge.browserTabIds()
+        }
+
+        public static func browserCurrentTabId() -> String? {
+            RunnerBridge.browserCurrentTabId()
         }
 
         public static func browserTabWebView(tabId: String) -> WKWebView? {
@@ -221,6 +234,13 @@ import WebKit
 
         public static func setTopAccessory(_ shell: LxAppShell, view: NSView?, height: CGFloat) {
             RunnerBridge.setSurfaceShellTopAccessory(shell, view: view, height: height)
+        }
+
+        public static func setBrowserPageActionsVisible(
+            _ shell: LxAppShell,
+            visible: Bool
+        ) {
+            RunnerBridge.setSurfaceShellBrowserPageActionsVisible(shell, visible: visible)
         }
 
         public static func open(

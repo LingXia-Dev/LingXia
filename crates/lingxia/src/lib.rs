@@ -29,6 +29,31 @@ pub use lxapp::host::{ChannelContext, ChannelMessage, StreamContext};
 pub use lxapp::set_automation_auto_grant;
 pub use lxapp::{LxApp, LxAppSecurityPrivilege};
 
+/// Result of successfully initializing a LingXia host runtime.
+///
+/// A browser-only host is valid without a configured lxapp; callers can inspect
+/// [`RuntimeInfo::lxapp_id`] when their launch policy requires one.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RuntimeInfo {
+    lxapp_id: Option<String>,
+}
+
+impl RuntimeInfo {
+    pub(crate) fn new(lxapp_id: Option<String>) -> Self {
+        Self { lxapp_id }
+    }
+
+    /// The configured launch lxapp id, when this host has one.
+    pub fn lxapp_id(&self) -> Option<&str> {
+        self.lxapp_id.as_deref()
+    }
+
+    /// Consumes the snapshot and returns its configured launch lxapp id.
+    pub fn into_lxapp_id(self) -> Option<String> {
+        self.lxapp_id
+    }
+}
+
 /// Isolated host-owned automation programs for trusted Agent-style products.
 #[cfg(feature = "automation-runtime")]
 pub mod automation_runtime {

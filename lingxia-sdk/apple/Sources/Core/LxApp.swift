@@ -211,10 +211,10 @@ final class LxAppCore {
         autoOpenHome: Bool
     ) {
         instance = LxAppCore()
-        homeLxAppId = info.homeAppId
+        homeLxAppId = info.lxAppId
         capabilities = info.capabilities.rawValue
 
-        if autoOpenHome && !skipAutoOpenWindow && info.homeAppId != nil {
+        if autoOpenHome && !skipAutoOpenWindow && info.lxAppId != nil {
             DispatchQueue.main.async {
                 LxAppPlatform.openHomeLxApp()
             }

@@ -50,9 +50,17 @@ private class RunnerKitDelegate: NSObject, NSApplicationDelegate {
         if let rawURL = ProcessInfo.processInfo.environment["LINGXIA_RUNNER_WEB_URL"],
            let url = URL(string: rawURL),
            url.scheme == "http" || url.scheme == "https" {
+            RunnerApp.shared.bind(controller: controller)
+            Lingxia.activate(controller: controller)
             guard initializeRuntime() else { return }
             RunnerApp.shared.setDeviceSize(.defaultDevice)
-            RunnerApp.shared.openWeb(url: url)
+            do {
+                try RunnerApp.shared.openWeb(url: url)
+            } catch {
+                NSLog("LingXia Runner self browser failed: %@", error.localizedDescription)
+                removeRunnerPidFileIfRequested()
+                Darwin.exit(EXIT_FAILURE)
+            }
             return
         }
         RunnerApp.shared.bind(controller: controller)

@@ -1,7 +1,7 @@
 use crate::device::{
     ABOUT_COMMAND, CAPSULE_CLOSE_COMMAND, CLEAN_CACHE_COMMAND, DEVICE_COMMAND_BASE,
-    OPEN_DEVTOOLS_COMMAND, RESTART_LXAPP_COMMAND, ROTATE_COMMAND, frame_spec, initial_device_index,
-    is_phone, is_tablet, presets,
+    OPEN_DEVTOOLS_COMMAND, RESTART_LXAPP_COMMAND, ROTATE_COMMAND, browser_frame_spec, frame_spec,
+    initial_device_index, is_phone, is_tablet, presets,
 };
 use lingxia_windows_sdk::WindowsShellTabBarPosition;
 use lxapp::{LxAppDelegate, LxAppUiEventType};
@@ -13,7 +13,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 /// device from the selector resets to portrait.
 static CURRENT_DEVICE: AtomicUsize = AtomicUsize::new(0);
 static LANDSCAPE: AtomicBool = AtomicBool::new(false);
-static WEB_TARGET_URL: OnceLock<String> = OnceLock::new();
+static BROWSER_HOST: OnceLock<lingxia_windows_sdk::WindowsHost> = OnceLock::new();
 
 const ARG_ASSET_DIR: &str = "--asset-dir";
 const ARG_LXAPP_PATH: &str = "--lxapp-path";
@@ -87,7 +87,12 @@ pub(crate) fn run() -> lingxia_windows_sdk::Result<()> {
     let initial_landscape = is_tablet(default_device);
     CURRENT_DEVICE.store(default_device, Ordering::Release);
     LANDSCAPE.store(initial_landscape, Ordering::Release);
-    let initial_frame = frame_spec(default_device, initial_landscape);
+    let web_url = std::env::var(ENV_WEB_URL).ok();
+    let initial_frame = if web_url.is_some() {
+        browser_frame_spec(default_device, initial_landscape)
+    } else {
+        frame_spec(default_device, initial_landscape)
+    };
     lingxia_windows_sdk::set_windows_default_shell_tabbar_position(tabbar_position_for_device(
         default_device,
     ));
@@ -97,17 +102,22 @@ pub(crate) fn run() -> lingxia_windows_sdk::Result<()> {
     if let Some(asset_dir) = asset_dir {
         app = app.with_asset_dir(asset_dir);
     }
-    let home_app_id = lingxia_windows_sdk::start_default_host(app)?;
+    if let Some(url) = &web_url {
+        app = app.with_browser(url);
+    }
+    let host = lingxia_windows_sdk::start_default_host(app)?;
     lingxia::dev::register_device_controller(Box::new(RunnerDeviceController));
-    if let Ok(url) = std::env::var(ENV_WEB_URL) {
-        lingxia_windows_sdk::open_web_surface(&url)?;
-        let _ = WEB_TARGET_URL.set(url.clone());
-        install_web_runner_commands(url);
+    if web_url.is_some() {
+        let _ = BROWSER_HOST.set(host.clone());
+        install_browser_runner_commands(host);
     } else {
-        let home_app_id =
-            home_app_id.ok_or(lingxia_windows_sdk::WindowsHostError::MissingHomeApp)?;
-        install_runner_commands(home_app_id.clone());
-        apply_default_device(home_app_id, default_device, initial_landscape);
+        let lxapp_id = host
+            .runtime()
+            .lxapp_id()
+            .ok_or(lingxia_windows_sdk::WindowsHostError::MissingLxApp)?
+            .to_string();
+        install_runner_commands(lxapp_id.clone());
+        apply_default_device(lxapp_id, default_device, initial_landscape);
     }
     std::process::exit(lingxia_windows_sdk::run_message_loop());
 }
@@ -282,13 +292,9 @@ fn apply_device(index: usize, landscape: bool) -> Result<(), String> {
     let tabbar_position = tabbar_position_for_device(index);
     lingxia_windows_sdk::set_windows_default_shell_tabbar_position(tabbar_position);
 
-    if let Some(url) = WEB_TARGET_URL.get() {
-        lingxia_windows_sdk::set_web_window_device_frame(
-            lingxia::windows::RUNNER_WEB_APP_ID,
-            url,
-            lingxia::windows::RUNNER_WEB_SESSION_ID,
-            frame_spec(index, landscape),
-        )?;
+    if let Some(host) = BROWSER_HOST.get() {
+        host.set_primary_device_frame(browser_frame_spec(index, landscape), tabbar_position)
+            .map_err(|error| error.to_string())?;
         CURRENT_DEVICE.store(index, Ordering::Release);
         LANDSCAPE.store(landscape, Ordering::Release);
         return Ok(());
@@ -404,15 +410,11 @@ fn install_runner_commands(home_app_id: String) {
     ));
 }
 
-fn install_web_runner_commands(url: String) {
+fn install_browser_runner_commands(host: lingxia_windows_sdk::WindowsHost) {
     lingxia_windows_sdk::set_windows_app_menu_command_handler(std::sync::Arc::new(
         move |command| {
             if command == OPEN_DEVTOOLS_COMMAND {
-                if let Err(error) = lingxia_windows_sdk::open_web_surface_devtools(
-                    lingxia::windows::RUNNER_WEB_APP_ID,
-                    &url,
-                    lingxia::windows::RUNNER_WEB_SESSION_ID,
-                ) {
+                if let Err(error) = host.open_primary_devtools() {
                     eprintln!("lingxia-runner: failed to open DevTools: {error}");
                 }
                 return;

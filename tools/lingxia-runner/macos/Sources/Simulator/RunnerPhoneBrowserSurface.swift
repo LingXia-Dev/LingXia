@@ -27,6 +27,7 @@ final class RunnerPhoneBrowserSurface {
     // Owner of the most recent presentation, used to open new tabs ("+").
     private var ownerAppId: String?
     private var ownerSessionId: UInt64 = 0
+    private var dismissible = true
 
     private var addressField: NSTextField?
     private var addressIcon: NSImageView?
@@ -42,6 +43,7 @@ final class RunnerPhoneBrowserSurface {
     private var actionRowTopWithAddress: NSLayoutConstraint?
     private var actionRowTopWithoutAddress: NSLayoutConstraint?
     private var tabSwitcherOverlay: NSView?
+    var onDismiss: (() -> Void)?
     private var urlObservation: NSKeyValueObservation?
     private var canGoBackObservation: NSKeyValueObservation?
     private var canGoForwardObservation: NSKeyValueObservation?
@@ -61,12 +63,20 @@ final class RunnerPhoneBrowserSurface {
     /// Show `tabId`, registering it. Existing tabs stay open; the displayed
     /// webview is swapped to this tab. `ownerAppId`/`ownerSessionId` are the
     /// lxapp (or builtin browser) that owns the tab, reused to open new tabs.
-    func present(tabId: String, ownerAppId: String, ownerSessionId: UInt64, in phoneContent: NSView, window: NSWindow?) {
+    func present(
+        tabId: String,
+        ownerAppId: String,
+        ownerSessionId: UInt64,
+        in phoneContent: NSView,
+        window: NSWindow?,
+        dismissible: Bool = true
+    ) {
         let normalized = tabId.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalized.isEmpty else { return }
 
         self.ownerAppId = ownerAppId
         self.ownerSessionId = ownerSessionId
+        self.dismissible = dismissible
         hostWindow = window
         phoneContentView = phoneContent
         register(tabId: normalized)
@@ -128,6 +138,13 @@ final class RunnerPhoneBrowserSurface {
         let wasActive = activeTabId == tabId
         let aside = tabIsAside(tabId)
         let groupIndex = tabIds(forAside: aside).firstIndex(of: tabId) ?? 0
+
+        if !dismissible, wasActive, tabIds(forAside: aside).count == 1 {
+            _ = RunnerSupport.Browser.navigate(tabId: tabId, url: "about:blank")
+            interactedTabIds.remove(tabId)
+            activate(tabId: tabId)
+            return
+        }
 
         _ = RunnerSupport.Browser.closeTab(tabId: tabId)
         openTabIds.remove(at: index)
@@ -258,6 +275,7 @@ final class RunnerPhoneBrowserSurface {
         let newTabButton = makeIconButton(named: "icon_browser_plus", action: #selector(newTabClicked))
         let tabsButton = makeIconButton(named: "icon_browser_tabs", action: #selector(tabsClicked))
         let closeButton = makeIconButton(named: "icon_close_x", action: #selector(closeClicked))
+        closeButton.isHidden = !dismissible
 
         let spacer = NSView()
         spacer.translatesAutoresizingMaskIntoConstraints = false
@@ -655,6 +673,7 @@ final class RunnerPhoneBrowserSurface {
 
     @objc private func closeClicked() {
         dismiss(closeTab: false)
+        onDismiss?()
     }
 
     @objc private func newTabClicked() {

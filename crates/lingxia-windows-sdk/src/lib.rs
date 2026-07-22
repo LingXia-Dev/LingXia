@@ -72,10 +72,11 @@ pub use device_frame::set_app_window_device_frame_and_tabbar_position;
 pub use device_frame::{
     WindowsDeviceFrame, WindowsDeviceFrameBadge, WindowsDeviceFrameCutout,
     WindowsDeviceFrameInfoSheet, WindowsDeviceFrameSheetAction, WindowsDeviceFrameStatusBar,
-    WindowsDeviceFrameToolbar, open_current_page_devtools, open_web_surface_devtools,
-    set_app_window_device_frame, set_initial_app_window_device_frame, set_web_window_device_frame,
-    show_device_frame_info_sheet,
+    WindowsDeviceFrameToolbar, open_current_page_devtools, set_app_window_device_frame,
+    set_initial_app_window_device_frame, show_device_frame_info_sheet,
 };
+#[cfg(feature = "runtime")]
+pub use lingxia::RuntimeInfo;
 #[cfg(all(target_os = "windows", feature = "shell-chrome"))]
 pub use shell::{
     WindowsShellTabBarPosition, set_windows_default_shell_tabbar_position,
@@ -92,6 +93,18 @@ pub use shell::{
 pub struct WindowsApp {
     pub(crate) window_size: Option<(i32, i32)>,
     pub(crate) asset_dir: Option<PathBuf>,
+    pub(crate) content: WindowsContent,
+}
+
+/// Primary content mounted by the SDK-managed Windows host.
+#[derive(Debug, Clone, Default)]
+#[cfg(feature = "runtime")]
+pub enum WindowsContent {
+    /// Open the lxapp declared by the generated host configuration.
+    #[default]
+    LxApp,
+    /// Mount the managed browser at the URL.
+    Browser(String),
 }
 
 #[cfg(feature = "runtime")]
@@ -105,11 +118,12 @@ impl WindowsApp {
         Self {
             window_size: None,
             asset_dir: None,
+            content: WindowsContent::LxApp,
         }
     }
 
     /// Sets the initial outer size, in pixels, of the app's webview windows,
-    /// in particular the main window opened for the home lxapp.
+    /// in particular the main window opened for the configured lxapp.
     ///
     /// When unset, windows open at the runtime default (1024x768). Users can
     /// still resize the window afterwards; non-positive dimensions are
@@ -127,6 +141,19 @@ impl WindowsApp {
     /// transient lxapp asset roots.
     pub fn with_asset_dir(mut self, asset_dir: impl Into<PathBuf>) -> Self {
         self.asset_dir = Some(asset_dir.into());
+        self
+    }
+
+    /// Selects the primary content mounted by the host container.
+    pub fn with_content(mut self, content: WindowsContent) -> Self {
+        self.content = content;
+        self
+    }
+
+    /// Mounts the managed browser instead of the configured lxapp. The browser
+    /// owns editable URL chrome, history, and tab state.
+    pub fn with_browser(mut self, url: impl Into<String>) -> Self {
+        self.content = WindowsContent::Browser(url.into());
         self
     }
 
@@ -154,15 +181,18 @@ pub enum WindowsHostError {
     /// The shared LingXia runtime failed to initialize.
     #[error(transparent)]
     Runtime(#[from] lingxia::Error),
-    /// A caller that requires an lxapp home was started with a home-less host.
-    #[error("LingXia host does not define a home lxapp")]
-    MissingHomeApp,
-    /// The home lxapp could not be opened.
-    #[error("failed to open home lxapp: {0}")]
-    OpenHomeApp(String),
-    /// A host-owned web surface could not be opened.
-    #[error("failed to open web surface: {0}")]
-    OpenWebSurface(String),
+    /// A caller that requires an lxapp was started without one.
+    #[error("LingXia host does not define an lxapp")]
+    MissingLxApp,
+    /// The configured lxapp could not be opened.
+    #[error("failed to open lxapp: {0}")]
+    OpenLxApp(String),
+    /// The managed browser could not be opened.
+    #[error("failed to open browser: {0}")]
+    OpenBrowser(String),
+    /// The mounted primary content could not be controlled.
+    #[error("failed to control primary content: {0}")]
+    ControlContent(String),
     /// The window icon could not be loaded from the resolved path.
     #[error("failed to set Windows app icon from {path:?}: {message}")]
     AppIcon { path: PathBuf, message: String },
@@ -172,7 +202,86 @@ pub enum WindowsHostError {
 #[cfg(feature = "runtime")]
 pub type Result<T> = std::result::Result<T, WindowsHostError>;
 
-/// Boots the LingXia runtime and returns the home app id. **Host-agnostic**: it
+/// Handle returned after the SDK-managed Windows host has started.
+#[derive(Debug, Clone)]
+#[cfg(feature = "runtime")]
+pub struct WindowsHost {
+    runtime: RuntimeInfo,
+    #[cfg_attr(not(feature = "device-frame"), allow(dead_code))]
+    content: Option<MountedContent>,
+}
+
+#[derive(Debug, Clone)]
+#[cfg(feature = "runtime")]
+#[cfg_attr(not(feature = "device-frame"), allow(dead_code))]
+enum MountedContent {
+    LxApp(String),
+    Browser,
+}
+
+#[cfg(feature = "runtime")]
+impl WindowsHost {
+    /// Runtime initialization details, including the optional configured lxapp.
+    pub fn runtime(&self) -> &RuntimeInfo {
+        &self.runtime
+    }
+
+    /// Consumes the host handle and returns its runtime initialization details.
+    pub fn into_runtime(self) -> RuntimeInfo {
+        self.runtime
+    }
+
+    /// Applies runner presentation to the mounted lxapp or browser.
+    #[cfg(all(
+        target_os = "windows",
+        feature = "device-frame",
+        feature = "shell-chrome"
+    ))]
+    pub fn set_primary_device_frame(
+        &self,
+        frame: WindowsDeviceFrame,
+        tabbar_position: WindowsShellTabBarPosition,
+    ) -> Result<()> {
+        match self.content.as_ref() {
+            Some(MountedContent::LxApp(appid)) => {
+                device_frame::set_app_window_device_frame_and_tabbar_position(
+                    appid,
+                    frame,
+                    tabbar_position,
+                )
+            }
+            #[cfg(feature = "browser-runtime")]
+            Some(MountedContent::Browser) => {
+                device_frame::set_browser_device_frame_and_tabbar_position(frame, tabbar_position)
+            }
+            #[cfg(not(feature = "browser-runtime"))]
+            Some(MountedContent::Browser) => {
+                Err("managed browser is not enabled in this host".to_string())
+            }
+            None => Err("host has no mounted primary content".to_string()),
+        }
+        .map_err(WindowsHostError::ControlContent)
+    }
+
+    /// Opens DevTools for the mounted lxapp page or browser tab.
+    #[cfg(all(target_os = "windows", feature = "device-frame"))]
+    pub fn open_primary_devtools(&self) -> Result<()> {
+        match self.content.as_ref() {
+            Some(MountedContent::LxApp(appid)) => device_frame::open_current_page_devtools(appid),
+            #[cfg(feature = "browser-runtime")]
+            Some(MountedContent::Browser) => device_frame::open_browser_devtools(),
+            #[cfg(not(feature = "browser-runtime"))]
+            Some(MountedContent::Browser) => {
+                Err("managed browser is not enabled in this host".to_string())
+            }
+            None => Err("host has no mounted primary content".to_string()),
+        }
+        .map_err(WindowsHostError::ControlContent)
+    }
+}
+
+/// Boots the LingXia runtime and returns its initialization snapshot.
+/// **Host-agnostic**: it
 /// installs no Windows host backend and presents no window.
 ///
 /// For the batteries-included host call [`start_default_host`] (or
@@ -180,10 +289,9 @@ pub type Result<T> = std::result::Result<T, WindowsHostError>;
 /// `lingxia_windows_contract::WindowsHostBackend`, optionally call
 /// [`install_windows_components`], then drive your own Win32 message loop.
 ///
-/// Returns the home app id. Must run on the thread that will later pump
-/// messages.
+/// Must run on the thread that will later pump messages.
 #[cfg(all(target_os = "windows", feature = "runtime"))]
-pub fn init_runtime(app: WindowsApp) -> Result<Option<String>> {
+pub fn init_runtime(app: WindowsApp) -> Result<RuntimeInfo> {
     if let Some((width, height)) = app.window_size {
         lingxia::windows::set_default_window_size(width, height);
     }
@@ -228,13 +336,12 @@ pub fn install_default_windows_host() {
 /// Default-host post-boot wiring: design-icon directory, window icon, taskbar
 /// policy, opening the home window, and — under `browser-shell` — the tray.
 #[cfg(all(target_os = "windows", feature = "runtime"))]
-fn present_default_host(home_app_id: Option<&str>, asset_dir: &Path) -> Result<()> {
+fn present_default_host(lxapp_id: Option<&str>, asset_dir: &Path) -> Result<()> {
     #[cfg(feature = "shell-chrome")]
-    if let Some(home_app_id) = home_app_id {
-        shell::set_home_app_id(home_app_id);
+    if let Some(lxapp_id) = lxapp_id {
+        shell::set_home_app_id(lxapp_id);
     }
-    if let Some(icon_path) = home_app_id.and_then(|app_id| resolve_app_icon_path(asset_dir, app_id))
-    {
+    if let Some(icon_path) = lxapp_id.and_then(|app_id| resolve_app_icon_path(asset_dir, app_id)) {
         app_icon::set_app_icon_from_path(&icon_path).map_err(|message| {
             WindowsHostError::AppIcon {
                 path: icon_path,
@@ -246,9 +353,9 @@ fn present_default_host(home_app_id: Option<&str>, asset_dir: &Path) -> Result<(
     // must be created without a taskbar button. Apply before any window opens.
     window_host::set_hide_from_taskbar(should_hide_taskbar(asset_dir));
     if should_open_on_launch(asset_dir)
-        && let Some(home_app_id) = home_app_id
+        && let Some(lxapp_id) = lxapp_id
     {
-        open_home_app(home_app_id).map_err(WindowsHostError::OpenHomeApp)?;
+        open_home_app(lxapp_id).map_err(WindowsHostError::OpenLxApp)?;
     }
     #[cfg(feature = "browser-shell")]
     {
@@ -269,11 +376,12 @@ fn present_default_host(home_app_id: Option<&str>, asset_dir: &Path) -> Result<(
 
 /// Brings up the batteries-included default Windows host *without* pumping the
 /// message loop: installs the default host, boots the runtime, and opens the
-/// home window. Returns the home app id so the caller can do further setup
+/// configured [`WindowsContent`]. Returns a [`WindowsHost`] handle for setup
 /// (menus, device frame, …) before calling [`run_message_loop`] itself.
 /// [`quick_start`] wraps this.
 #[cfg(all(target_os = "windows", feature = "runtime"))]
-pub fn start_default_host(app: WindowsApp) -> Result<Option<String>> {
+pub fn start_default_host(app: WindowsApp) -> Result<WindowsHost> {
+    let content = app.content.clone();
     install_default_windows_host();
     // Own a message queue before any page can request exit from a WebView UI thread.
     install_current_thread_exit_handler();
@@ -282,15 +390,21 @@ pub fn start_default_host(app: WindowsApp) -> Result<Option<String>> {
     // generated SVG-derived icons before that first paint so native chrome
     // never starts with invisible icon-only controls.
     set_windows_design_icon_dir(asset_dir.join("icons").join("design"));
-    let home_app_id = init_runtime(app)?;
-    present_default_host(home_app_id.as_deref(), &asset_dir)?;
-    Ok(home_app_id)
-}
-
-/// Opens an http(s) URL in the default host as its main content surface.
-#[cfg(all(target_os = "windows", feature = "runtime"))]
-pub fn open_web_surface(url: &str) -> Result<()> {
-    lingxia::windows::open_web_surface(url).map_err(WindowsHostError::OpenWebSurface)
+    let runtime = init_runtime(app)?;
+    let configured_lxapp = matches!(content, WindowsContent::LxApp)
+        .then(|| runtime.lxapp_id())
+        .flatten();
+    present_default_host(configured_lxapp, &asset_dir)?;
+    let content = match content {
+        WindowsContent::LxApp => configured_lxapp
+            .map(str::to_string)
+            .map(MountedContent::LxApp),
+        WindowsContent::Browser(url) => {
+            open_browser(&url).map_err(WindowsHostError::OpenBrowser)?;
+            Some(MountedContent::Browser)
+        }
+    };
+    Ok(WindowsHost { runtime, content })
 }
 
 #[cfg(all(target_os = "windows", feature = "shell-chrome"))]
@@ -307,11 +421,25 @@ fn open_home_app(appid: &str) -> std::result::Result<(), String> {
     lingxia::windows::open_home_app(appid)
 }
 
-/// Boots the LingXia runtime and returns the home app id.
+#[cfg(all(target_os = "windows", feature = "shell-chrome"))]
+fn open_browser(url: &str) -> std::result::Result<(), String> {
+    shell::open_self_browser(url)
+}
+
+#[cfg(all(
+    target_os = "windows",
+    feature = "runtime",
+    not(feature = "shell-chrome")
+))]
+fn open_browser(_url: &str) -> std::result::Result<(), String> {
+    Err("managed browser requires the browser-runtime feature".to_string())
+}
+
+/// Boots the LingXia runtime and returns its initialization snapshot.
 ///
 /// This non-Windows stub always fails with [`WindowsHostError::Platform`].
 #[cfg(all(not(target_os = "windows"), feature = "runtime"))]
-pub fn init_runtime(_app: WindowsApp) -> Result<Option<String>> {
+pub fn init_runtime(_app: WindowsApp) -> Result<RuntimeInfo> {
     Err(WindowsHostError::Platform(
         "lingxia-windows-sdk can only initialize on target_os = \"windows\"".to_string(),
     ))
@@ -321,7 +449,7 @@ pub fn init_runtime(_app: WindowsApp) -> Result<Option<String>> {
 ///
 /// This non-Windows stub always fails with [`WindowsHostError::Platform`].
 #[cfg(all(not(target_os = "windows"), feature = "runtime"))]
-pub fn start_default_host(_app: WindowsApp) -> Result<Option<String>> {
+pub fn start_default_host(_app: WindowsApp) -> Result<WindowsHost> {
     Err(WindowsHostError::Platform(
         "lingxia-windows-sdk can only initialize on target_os = \"windows\"".to_string(),
     ))

@@ -183,7 +183,7 @@ public final class LxAppController {
     /// Open the configured home app using this controller.
     @discardableResult
     public func openHomeApp(path: String = "") async throws -> LxAppSession {
-        guard let homeAppId = LxAppRuntime.shared.info?.homeAppId ?? LxAppCore.getHomeLxAppId() else {
+        guard let homeAppId = LxAppRuntime.shared.info?.lxAppId ?? LxAppCore.getHomeLxAppId() else {
             throw LxAppErrorPayload(
                 code: "HOME_APP_UNAVAILABLE",
                 message: "No home app is available in the current runtime"

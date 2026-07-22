@@ -146,7 +146,7 @@ pub fn lingxia_init(
     };
 
     match crate::init_with_platform(platform) {
-        Ok(home_app_id) => home_app_id,
+        Ok(info) => info.into_lxapp_id(),
         Err(error) => {
             log::error!("Failed to initialize LingXia runtime: {error}");
             None

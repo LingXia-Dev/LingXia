@@ -110,8 +110,9 @@ lingxia dev https://preview.example.com  # run a remote web target
 ```
 
 An explicit path must be a standalone lxapp directory. An explicit URL must use
-`http` or `https`; Runner presents it as the main, chrome-free web surface, not
-as the editable self browser. A URL target does not create a placeholder lxapp
+`http` or `https`; Runner mounts its managed browser in self mode, with an editable
+URL field, page history, and its own tab group. The field accepts URLs, not
+search queries. A URL target does not create a placeholder lxapp
 and neither target directory needs `lingxia.yaml` — that file remains native
 host configuration. `status`, `stop`, logs, and `.lingxia/` state are scoped to
 the directory where `lingxia dev <target>` was invoked.

@@ -98,9 +98,21 @@ enum RunnerSupport {
             )
         }
 
+        static func openTab(url: String) -> String? {
+            LingxiaRunnerSPI.WebView.openBrowserTab(url: url)
+        }
+
         /// Whether the tab belongs to the API-managed aside browser group.
         static func isAside(tabId: String) -> Bool {
             LingxiaRunnerSPI.WebView.browserTabIsAside(tabId: tabId)
+        }
+
+        static func tabIds() -> [String] {
+            LingxiaRunnerSPI.WebView.browserTabIds()
+        }
+
+        static func currentTabId() -> String? {
+            LingxiaRunnerSPI.WebView.browserCurrentTabId()
         }
 
         static func webView(tabId: String) -> WKWebView? {
@@ -199,6 +211,10 @@ enum RunnerSupport {
 
         static func setTopAccessory(_ shell: LxAppShell, view: NSView?, height: CGFloat) {
             LingxiaRunnerSPI.SurfaceShell.setTopAccessory(shell, view: view, height: height)
+        }
+
+        static func setBrowserPageActionsVisible(_ shell: LxAppShell, visible: Bool) {
+            LingxiaRunnerSPI.SurfaceShell.setBrowserPageActionsVisible(shell, visible: visible)
         }
 
         static func open(

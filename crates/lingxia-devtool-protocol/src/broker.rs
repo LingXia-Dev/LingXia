@@ -27,6 +27,24 @@ use serde::{Deserialize, Serialize};
 
 pub const PROTOCOL_VERSION: u32 = 1;
 
+/// Content mounted by a live dev-session container.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum SessionContent {
+    Host { path: String },
+    LxApp { path: String },
+    Browser { url: String },
+}
+
+impl SessionContent {
+    pub fn display(&self) -> &str {
+        match self {
+            Self::Host { path } | Self::LxApp { path } => path,
+            Self::Browser { url } => url,
+        }
+    }
+}
+
 /// One live dev session, as registered with the broker.
 ///
 /// `target` is `"lxapp"` for a standalone lxapp Runner session, otherwise the
@@ -34,7 +52,11 @@ pub const PROTOCOL_VERSION: u32 = 1;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionInfo {
     pub session_id: String,
+    /// Filesystem context that owns logs, generated state, and relative output.
+    /// This is not necessarily project content (for example, a Browser session).
     pub project_root: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content: Option<SessionContent>,
     pub target: String,
     pub pid: u32,
     #[serde(default)]
@@ -346,6 +368,9 @@ mod tests {
         SessionInfo {
             session_id: id.to_string(),
             project_root: "/tmp/p".to_string(),
+            content: Some(SessionContent::Host {
+                path: "/tmp/p".to_string(),
+            }),
             target: "macos".to_string(),
             pid: 42,
             started_at: 1,
@@ -378,6 +403,7 @@ mod tests {
         }"#;
         let info: SessionInfo = serde_json::from_str(json).unwrap();
         assert_eq!(info.target, "lxapp");
+        assert!(info.content.is_none());
         assert!(info.executable.is_empty());
     }
 }

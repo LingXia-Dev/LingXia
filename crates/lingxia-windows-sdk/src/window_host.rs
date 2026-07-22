@@ -4888,6 +4888,14 @@ fn focus_active_host_window() {
     }
 }
 
+#[cfg(all(feature = "shell-chrome", feature = "browser-runtime"))]
+pub(crate) fn dismiss_phone_tab_switcher(owner: isize) {
+    let _ = post_to_window_thread(
+        owner,
+        Box::new(move || destroy_phone_tab_switcher(hwnd_from_handle(owner))),
+    );
+}
+
 pub fn restore_and_focus_host_window(window: isize) -> bool {
     post_to_window_thread(
         window,

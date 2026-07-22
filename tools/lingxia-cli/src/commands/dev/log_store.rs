@@ -134,9 +134,28 @@ pub fn register_session(
     target: &str,
     ws_url: &str,
 ) -> Registration {
+    register_session_with_content(
+        project_root,
+        session,
+        target,
+        ws_url,
+        lingxia_devtool_protocol::broker::SessionContent::Host {
+            path: canonical_project_root(project_root),
+        },
+    )
+}
+
+pub fn register_session_with_content(
+    context_root: &Path,
+    session: &DevLogSession,
+    target: &str,
+    ws_url: &str,
+    content: lingxia_devtool_protocol::broker::SessionContent,
+) -> Registration {
     let info = SessionInfo {
         session_id: session.session_id.clone(),
-        project_root: canonical_project_root(project_root),
+        project_root: canonical_project_root(context_root),
+        content: Some(content),
         target: target.to_string(),
         pid: std::process::id(),
         started_at: now_timestamp_ms(),

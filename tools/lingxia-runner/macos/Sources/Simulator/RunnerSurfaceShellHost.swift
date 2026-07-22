@@ -51,10 +51,28 @@ final class RunnerSurfaceShellHost {
         self.appId = appId
         self.currentPath = path
         self.device = device
+        RunnerSupport.SurfaceShell.setBrowserPageActionsVisible(shell, visible: false)
         observeClose()
         installDeviceSelector()
         configureWindow(for: device, center: true)
         open(appId: appId, path: path, sessionId: sessionId)
+    }
+
+    init(
+        controller: LxAppController,
+        webTarget: RunnerWebTarget,
+        device: MobileDeviceSize
+    ) {
+        self.shell = RunnerSupport.SurfaceShell.make(controller: controller)
+        self.appId = webTarget.ownerAppId
+        self.currentPath = webTarget.url.absoluteString
+        self.device = device
+        RunnerSupport.SurfaceShell.setBrowserPageActionsVisible(shell, visible: false)
+        observeClose()
+        installDeviceSelector()
+        configureWindow(for: device, center: true)
+        activate()
+        presentBrowserTab(id: webTarget.tabId)
     }
 
     deinit {

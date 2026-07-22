@@ -1737,6 +1737,10 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
 // MARK: - Browser Coordinator Forwarding
 
 extension LxAppShell {
+    func setBrowserPageActionsVisible(_ visible: Bool) {
+        browserCoordinator.setPageActionsVisible(visible)
+    }
+
     func toggleActiveDevTools() -> Bool {
         browserCoordinator.toggleActiveDevTools()
     }
@@ -1776,6 +1780,13 @@ extension LxAppShell: BrowserCoordinatorHost {
         if let appId = tabManager.activeTab?.appId {
             if let sessionId = resolvedSessionId(for: appId) {
                 return (appId, sessionId)
+            }
+        }
+        if browserCoordinator.activeTabId != nil, !tabManager.hasTabs {
+            let browserAppId = getBuiltinBrowserAppId().toString()
+            let browserSessionId = getLxAppSessionId(browserAppId)
+            if !browserAppId.isEmpty && browserSessionId > 0 {
+                return (browserAppId, browserSessionId)
             }
         }
         let current = getCurrentLxApp()
