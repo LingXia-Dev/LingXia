@@ -219,7 +219,8 @@ All platforms MUST process an open in the same order:
 3. run singleton/reuse/conflict arbitration;
 4. create or focus the instance and assign a runtime id;
 5. hand off to adaptive admission to compute presentation and size;
-6. return a handle (URL mains return none — the browser UI owns those tabs).
+6. return a handle, except for browser-owned projections: URL mains and compact
+   URL asides return none.
 
 Platform skins consume this result only; they MUST NOT alter permission,
 reuse, or lifecycle semantics.
@@ -523,6 +524,9 @@ The aside region is fixed at three slots, grouped by rendering engine:
   click; it does not change the role.
 - Browser "open in main browser" promotes and closes only the **current URL
   tab**; other browser-aside tabs stay. Closing the last tab closes the slot.
+- A desktop browser slot offers history navigation, refresh, title tabs, and
+  slot dismissal. It MUST NOT offer address editing or user-created tabs; a
+  skin MAY expose the current URL as read-only when space permits.
 
 ### 4.7 Window chrome
 
@@ -545,11 +549,26 @@ The aside region is fixed at three slots, grouped by rendering engine:
 ## 5. Compact projection
 
 - Main is full screen; the active lxapp's tabbar returns to the bottom.
-- Asides overlay the main full screen. System Back, edge-swipe back, and header
-  Back hide the **entire active slot** and restore the main; slot tabs are not
-  destroyed.
-- Header close closes only the current slot tab; closing the last tab closes
-  the slot.
+- Asides overlay the main full screen. System Back and edge-swipe Back hide the
+  **entire active slot** and restore the main; slot tabs are not destroyed.
+- Lxapp and native slots MAY use a compact header Back to perform that slot
+  dismissal. Browser asides MUST NOT add the generic header Back: browser
+  chrome already owns navigation and dismissal.
+- A compact browser aside uses one bottom action row: page Back, page Forward,
+  Refresh, aside-tab switcher/count, and Dismiss. It has no address row,
+  user-new-tab action, overflow menu, or top-left shell Back.
+- The explicit page Back/Forward buttons navigate session history. System Back,
+  edge-swipe Back, and Dismiss exit the entire browser-aside slot even when page
+  history exists, preserving its tabs for the next show.
+- The self browser remains a separate two-row projection with an editable
+  address, user-new-tab and overflow actions. Self and aside tab counts,
+  switchers, activation, and close-successor selection MUST remain isolated;
+  neither group may surface a tab from the other group.
+- Closing a browser tab happens in its current group's switcher. Closing the
+  last tab hides that browser group; hiding or dismissing the group does not
+  close its tabs.
+- For non-browser slots, header close closes only the current slot tab; closing
+  the last tab closes the slot.
 - Floats present as bottom sheets in compact; platforms with a native popover
   semantic MAY use popovers.
 - Standalone windows are rejected with `E_NOT_SUPPORTED`.
@@ -658,8 +677,9 @@ semantics every language surface MUST share.
 
 - An open returns a handle bound to the runtime id, carrying role,
   presentation, visibility, and liveness, with show/hide/close and lifecycle
-  events per §2.1. URL mains return no handle — the browser UI owns those
-  tabs; URL asides return a visibility-only handle.
+  events per §2.1. URL mains return no handle. A medium/expanded URL aside uses
+  the generic surface graph and returns a tab-scoped visibility handle; its
+  compact projection is owned by browser chrome and returns no handle.
 - lxapp and page surfaces support instance-bound messaging: messages address a
   runtime id, never broadcast by appId or page name; replies return to the
   opener's handle. Native surfaces support messaging only when the capability
@@ -731,7 +751,7 @@ As of 2026-07 (post `feat/shell-ui-spec`, PR #126):
 | Shell persistence | Window frame, sidebar mode/width, group collapse, aside geometry, and pins landed; main-session lazy restore and the aside geometry-only policy still to be verified against §8 |
 | `E_SURFACE_CONFLICT` | Error path exists in the logic layer; full runtime enforcement across role conflicts pending |
 | Admission | Arbitration module exists; the 45% clamp / slot-cap / overlay-fallback behavior of §3.3 not yet verified end to end |
-| Compact projection | Slot-based back/close semantics of §5 pending regression on mobile |
+| Compact projection | Browser aside/self chrome, group isolation, and browser-owned back/close semantics aligned with §5 on mobile and Runner |
 | Frameless window + `controls:` + writer window controls | Not implemented |
 | Declared page floats; native floats | Parsed but rejected by the CLI pending runtime support |
 | Naming migration (Appendix C ledger) | Pending — `DockedBrowser`, `panel_activator`, `open_panel_lxapp` word roots still present |
