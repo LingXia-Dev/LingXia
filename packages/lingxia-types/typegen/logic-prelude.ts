@@ -139,12 +139,14 @@ declare global {
   interface Lx {
     /**
      * Open a surface. Browser tabs resolve to `null`, declared surfaces to a
-     * host-managed handle, and page/aside surfaces to a full `Surface`.
+     * host-managed handle, and page surfaces to a full `Surface`. URL asides
+     * return a `Surface` when docked and `null` in compact browser chrome.
      * `as: "window"` is desktop-only.
      */
     openSurface(spec: OpenUrlTabSpec): Promise<null>;
     openSurface(spec: OpenDeclaredSurfaceSpec | OpenLxappSurfaceSpec | OpenNativeSurfaceSpec): Promise<SurfaceHandle>;
-    openSurface(spec: OpenPageSurfaceSpec | OpenUrlAsideSpec): Promise<Surface>;
+    openSurface(spec: OpenPageSurfaceSpec): Promise<Surface>;
+    openSurface(spec: OpenUrlAsideSpec): Promise<Surface | null>;
     openSurface(spec: OpenSurfaceSpec): Promise<Surface | SurfaceHandle | null>;
 
     /** Download to the downloads directory. */
