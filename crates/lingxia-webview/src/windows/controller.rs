@@ -992,6 +992,11 @@ fn wait_for_ui_reply<T>(resp_rx: &Receiver<T>, timeout: Duration) -> StdResult<T
             .as_bool()
             {
                 dispatched = true;
+                if msg.message == WindowsAndMessaging::WM_QUIT {
+                    return Err(WebViewError::WebView(
+                        "WebView thread quit during browser emulation".to_string(),
+                    ));
+                }
                 if msg.message != WM_LINGXIA_COMMAND {
                     let _ = WindowsAndMessaging::TranslateMessage(&msg);
                     WindowsAndMessaging::DispatchMessageW(&msg);
@@ -1154,6 +1159,13 @@ pub(crate) fn handle_command(state: &mut UiState, command: UiCommand) -> StdResu
             let _ = resp.send(result);
         }
         UiCommand::SetUserAgentOverride { user_agent, resp } => {
+            if state.default_user_agent_metadata.is_some() {
+                let _ = resp.send(Err(WebViewError::WebView(
+                    "per-WebView user-agent overrides conflict with host browser emulation"
+                        .to_string(),
+                )));
+                return Ok(false);
+            }
             let user_agent = match user_agent {
                 UserAgentOverride::Default => state.default_user_agent.as_str(),
                 UserAgentOverride::Custom(ref user_agent) => user_agent.as_str(),
