@@ -9,7 +9,7 @@ import WebKit
     @MainActor
     public enum Runtime {
         /// Handler receives `(ownerAppId, ownerSessionId, url, aside)`; `aside`
-        /// marks an `{ url, as: 'aside' }` open (chrome hides the address bar).
+        /// marks an `{ url, as: 'aside' }` open for compact one-row chrome.
         public static func setOpenUrlHandler(
             _ handler: @escaping (String, UInt64, String, Bool) -> Bool
         ) {
@@ -104,7 +104,7 @@ import WebKit
             )
         }
 
-        /// Whether the tab was opened as an aside (chrome hides its address bar).
+        /// Whether the tab belongs to the API-managed aside browser group.
         public static func browserTabIsAside(tabId: String) -> Bool {
             RunnerBridge.browserTabIsAside(tabId: tabId)
         }

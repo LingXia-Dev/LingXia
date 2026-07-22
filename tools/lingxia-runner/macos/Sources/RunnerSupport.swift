@@ -98,7 +98,7 @@ enum RunnerSupport {
             )
         }
 
-        /// Whether the tab was opened as an aside (chrome hides its address bar).
+        /// Whether the tab belongs to the API-managed aside browser group.
         static func isAside(tabId: String) -> Bool {
             LingxiaRunnerSPI.WebView.browserTabIsAside(tabId: tabId)
         }

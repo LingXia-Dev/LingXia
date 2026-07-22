@@ -18,7 +18,7 @@ enum RunnerBridge {
                 // The phone simulator has a single in-app browser surface, so an
                 // in-page new-tab request (target="_blank" / window.open) opens
                 // another tab in it, just like a `target="self"` navigation.
-                // An aside open marks its tab so the chrome hides the address bar.
+                // An aside open marks its tab for compact one-row chrome.
                 return .handled(
                     handler(ownerAppId, ownerSessionId, url, target == .asideBrowser))
             case .external:
