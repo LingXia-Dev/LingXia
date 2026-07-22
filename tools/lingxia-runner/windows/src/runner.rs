@@ -92,7 +92,8 @@ pub(crate) fn run() -> lingxia_windows_sdk::Result<()> {
     if let Some(asset_dir) = asset_dir {
         app = app.with_asset_dir(asset_dir);
     }
-    let home_app_id = lingxia_windows_sdk::start_default_host(app)?;
+    let home_app_id = lingxia_windows_sdk::start_default_host(app)?
+        .ok_or(lingxia_windows_sdk::WindowsHostError::MissingHomeApp)?;
     install_runner_commands(home_app_id.clone());
     lingxia::dev::register_device_controller(Box::new(RunnerDeviceController));
     apply_default_device(home_app_id, default_device, initial_landscape);

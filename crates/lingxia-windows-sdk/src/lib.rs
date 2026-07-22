@@ -150,8 +150,8 @@ pub enum WindowsHostError {
     #[cfg(not(target_os = "windows"))]
     #[error("{0}")]
     Platform(String),
-    /// The runtime initialized but did not report a home app id.
-    #[error("LingXia runtime did not return a home app id")]
+    /// A caller that requires an lxapp home was started with a home-less host.
+    #[error("LingXia host does not define a home lxapp")]
     MissingHomeApp,
     /// The home lxapp could not be opened.
     #[error("failed to open home lxapp: {0}")]
@@ -176,7 +176,7 @@ pub type Result<T> = std::result::Result<T, WindowsHostError>;
 /// Returns the home app id. Must run on the thread that will later pump
 /// messages.
 #[cfg(all(target_os = "windows", feature = "runtime"))]
-pub fn init_runtime(app: WindowsApp) -> Result<String> {
+pub fn init_runtime(app: WindowsApp) -> Result<Option<String>> {
     if let Some((width, height)) = app.window_size {
         lingxia::windows::set_default_window_size(width, height);
     }
@@ -185,7 +185,7 @@ pub fn init_runtime(app: WindowsApp) -> Result<String> {
     // (AppUserModelID) so two apps hosted by the same exe — e.g. two dev
     // runners for different projects — get separate taskbar buttons.
     platform.install_taskbar_identity();
-    lingxia::windows::init(platform).ok_or(WindowsHostError::MissingHomeApp)
+    Ok(lingxia::windows::init(platform))
 }
 
 /// Installs the SDK-managed native component integrations:
@@ -221,10 +221,13 @@ pub fn install_default_windows_host() {
 /// Default-host post-boot wiring: design-icon directory, window icon, taskbar
 /// policy, opening the home window, and — under `browser-shell` — the tray.
 #[cfg(all(target_os = "windows", feature = "runtime"))]
-fn present_default_home(home_app_id: &str, asset_dir: &Path) -> Result<()> {
+fn present_default_host(home_app_id: Option<&str>, asset_dir: &Path) -> Result<()> {
     #[cfg(feature = "shell-chrome")]
-    shell::set_home_app_id(home_app_id);
-    if let Some(icon_path) = resolve_app_icon_path(asset_dir, home_app_id) {
+    if let Some(home_app_id) = home_app_id {
+        shell::set_home_app_id(home_app_id);
+    }
+    if let Some(icon_path) = home_app_id.and_then(|app_id| resolve_app_icon_path(asset_dir, app_id))
+    {
         app_icon::set_app_icon_from_path(&icon_path).map_err(|message| {
             WindowsHostError::AppIcon {
                 path: icon_path,
@@ -235,7 +238,9 @@ fn present_default_home(home_app_id: &str, asset_dir: &Path) -> Result<()> {
     // Tray-exclusive apps live only in the system tray, so their windows
     // must be created without a taskbar button. Apply before any window opens.
     window_host::set_hide_from_taskbar(should_hide_taskbar(asset_dir));
-    if should_open_on_launch(asset_dir) {
+    if should_open_on_launch(asset_dir)
+        && let Some(home_app_id) = home_app_id
+    {
         open_home_app(home_app_id).map_err(WindowsHostError::OpenHomeApp)?;
     }
     #[cfg(feature = "browser-shell")]
@@ -261,7 +266,7 @@ fn present_default_home(home_app_id: &str, asset_dir: &Path) -> Result<()> {
 /// (menus, device frame, …) before calling [`run_message_loop`] itself.
 /// [`quick_start`] wraps this.
 #[cfg(all(target_os = "windows", feature = "runtime"))]
-pub fn start_default_host(app: WindowsApp) -> Result<String> {
+pub fn start_default_host(app: WindowsApp) -> Result<Option<String>> {
     install_default_windows_host();
     // Own a message queue before any page can request exit from a WebView UI thread.
     install_current_thread_exit_handler();
@@ -271,7 +276,7 @@ pub fn start_default_host(app: WindowsApp) -> Result<String> {
     // never starts with invisible icon-only controls.
     set_windows_design_icon_dir(asset_dir.join("icons").join("design"));
     let home_app_id = init_runtime(app)?;
-    present_default_home(&home_app_id, &asset_dir)?;
+    present_default_host(home_app_id.as_deref(), &asset_dir)?;
     Ok(home_app_id)
 }
 
@@ -293,7 +298,7 @@ fn open_home_app(appid: &str) -> std::result::Result<(), String> {
 ///
 /// This non-Windows stub always fails with [`WindowsHostError::Platform`].
 #[cfg(all(not(target_os = "windows"), feature = "runtime"))]
-pub fn init_runtime(_app: WindowsApp) -> Result<String> {
+pub fn init_runtime(_app: WindowsApp) -> Result<Option<String>> {
     Err(WindowsHostError::Platform(
         "lingxia-windows-sdk can only initialize on target_os = \"windows\"".to_string(),
     ))
@@ -303,7 +308,7 @@ pub fn init_runtime(_app: WindowsApp) -> Result<String> {
 ///
 /// This non-Windows stub always fails with [`WindowsHostError::Platform`].
 #[cfg(all(not(target_os = "windows"), feature = "runtime"))]
-pub fn start_default_host(_app: WindowsApp) -> Result<String> {
+pub fn start_default_host(_app: WindowsApp) -> Result<Option<String>> {
     Err(WindowsHostError::Platform(
         "lingxia-windows-sdk can only initialize on target_os = \"windows\"".to_string(),
     ))

@@ -65,10 +65,18 @@ pub struct AppConfig {
     #[serde(rename = "envVersion", default)]
     pub env_version: EnvVersion,
 
-    #[serde(rename = "homeAppId")]
+    #[serde(
+        rename = "homeAppId",
+        default,
+        skip_serializing_if = "String::is_empty"
+    )]
     pub home_app_id: String,
 
-    #[serde(rename = "homeAppVersion")]
+    #[serde(
+        rename = "homeAppVersion",
+        default,
+        skip_serializing_if = "String::is_empty"
+    )]
     pub home_app_version: String,
 
     #[serde(rename = "cacheMaxSizeMB", default = "default_cache_max_size_mb")]
@@ -249,21 +257,19 @@ impl AppConfig {
                 "productVersion must be a semantic version (major.minor.patch)".to_string(),
             )
         })?;
-        if self.home_app_id.is_empty() {
+        if self.home_app_id.is_empty() != self.home_app_version.is_empty() {
             return Err(AppContextError::InvalidConfig(
-                "homeAppId is mandatory and cannot be empty".to_string(),
+                "homeAppId and homeAppVersion must either both be set or both be omitted"
+                    .to_string(),
             ));
         }
-        if self.home_app_version.is_empty() {
-            return Err(AppContextError::InvalidConfig(
-                "homeAppVersion is mandatory and cannot be empty".to_string(),
-            ));
+        if !self.home_app_version.is_empty() {
+            Version::parse(&self.home_app_version).map_err(|_| {
+                AppContextError::InvalidConfig(
+                    "homeAppVersion must be a semantic version (major.minor.patch)".to_string(),
+                )
+            })?;
         }
-        Version::parse(&self.home_app_version).map_err(|_| {
-            AppContextError::InvalidConfig(
-                "homeAppVersion must be a semantic version (major.minor.patch)".to_string(),
-            )
-        })?;
         validate_panels(self.panels.as_ref())
     }
 }
@@ -297,11 +303,17 @@ pub fn product_name() -> Option<&'static str> {
 }
 
 pub fn home_app_id() -> Option<&'static str> {
-    APP_CONFIG.get().map(|c| c.home_app_id.as_str())
+    APP_CONFIG
+        .get()
+        .map(|c| c.home_app_id.as_str())
+        .filter(|value| !value.is_empty())
 }
 
 pub fn home_app_version() -> Option<&'static str> {
-    APP_CONFIG.get().map(|c| c.home_app_version.as_str())
+    APP_CONFIG
+        .get()
+        .map(|c| c.home_app_version.as_str())
+        .filter(|value| !value.is_empty())
 }
 
 pub fn product_version() -> Option<&'static str> {
@@ -498,5 +510,26 @@ mod tests {
         assert!(set_app_config(cfg).is_ok());
         let err = set_app_config(test_config("Other")).unwrap_err();
         assert!(matches!(err, AppContextError::InvalidConfig(_)));
+    }
+
+    #[test]
+    fn host_without_home_lxapp_is_valid() {
+        let mut config = test_config("Web Host");
+        config.home_app_id.clear();
+        config.home_app_version.clear();
+
+        let json = serde_json::to_string(&config).unwrap();
+        assert!(!json.contains("homeAppId"));
+        assert!(!json.contains("homeAppVersion"));
+        assert!(AppConfig::parse_and_validate(&json).is_ok());
+    }
+
+    #[test]
+    fn home_lxapp_identity_must_be_complete() {
+        let mut config = test_config("Broken Host");
+        config.home_app_version.clear();
+
+        let error = config.validate().unwrap_err();
+        assert!(matches!(error, AppContextError::InvalidConfig(_)));
     }
 }
