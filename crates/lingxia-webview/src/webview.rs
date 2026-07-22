@@ -1390,6 +1390,7 @@ impl WebViewController for WebView {
     }
 
     fn set_user_agent_override(&self, user_agent: UserAgentOverride) -> Result<(), WebViewError> {
+        user_agent.validate()?;
         self.inner.set_user_agent_override(user_agent)
     }
 
