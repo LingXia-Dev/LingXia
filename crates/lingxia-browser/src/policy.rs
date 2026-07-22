@@ -4,12 +4,93 @@ use crate::types::{
     BrowserNavigationPolicyDecision, BrowserNavigationPolicyRequest,
     BrowserNavigationPolicyResponse,
 };
+use std::time::{Duration, Instant};
 
 pub(crate) const LINGXIA_SCHEME: &str = "lingxia";
 // `file` loads in-webview so the user can open local files from the address bar
 // (the WKWebView still gates actual reads to the granted directory).
 const BROWSER_IN_WEBVIEW_SCHEMES: &[&str] = &["http", "https", "lx", "lingxia", "file"];
 const BROWSER_NON_EXTERNAL_SCHEMES: &[&str] = &["about", "data", "blob", "javascript"];
+const TRANSIENT_USER_ACTIVATION_TTL: Duration = Duration::from_secs(10);
+
+/// Per-tab user activation that survives a short main-frame redirect chain.
+///
+/// WebKit reports a custom-scheme navigation produced by an OAuth page as
+/// `WKNavigationType::Other`, even when the chain began with a real click. Keep
+/// that activation bounded and consume it on the first external navigation.
+#[derive(Debug, Default)]
+struct BrowserTransientUserActivation {
+    expires_at: Option<Instant>,
+}
+
+impl BrowserTransientUserActivation {
+    fn apply_at(&mut self, request: &mut BrowserNavigationPolicyRequest, now: Instant) -> bool {
+        if self.expires_at.is_some_and(|expires_at| now >= expires_at) {
+            self.expires_at = None;
+        }
+
+        if !request.is_main_frame {
+            return false;
+        }
+
+        let scheme = extract_url_scheme(request.raw_url.trim());
+        let can_begin_redirect_chain = matches!(scheme.as_deref(), Some("http" | "https"));
+        let is_external = scheme.as_deref().is_some_and(|scheme| {
+            !scheme_in_list(scheme, BROWSER_IN_WEBVIEW_SCHEMES)
+                && !scheme_in_list(scheme, BROWSER_NON_EXTERNAL_SCHEMES)
+        });
+
+        if request.has_user_gesture {
+            self.expires_at =
+                can_begin_redirect_chain.then_some(now + TRANSIENT_USER_ACTIVATION_TTL);
+            return false;
+        }
+
+        if is_external
+            && self
+                .expires_at
+                .take()
+                .is_some_and(|expires_at| now < expires_at)
+        {
+            request.has_user_gesture = true;
+            return true;
+        }
+
+        false
+    }
+}
+
+pub(crate) struct BrowserNavigationPolicyEvaluation {
+    pub response: BrowserNavigationPolicyResponse,
+    pub inherited_user_activation: bool,
+}
+
+/// Stateful policy entrypoint used by each browser tab and its regression tests.
+#[derive(Debug, Default)]
+pub(crate) struct BrowserNavigationPolicySession {
+    user_activation: BrowserTransientUserActivation,
+}
+
+impl BrowserNavigationPolicySession {
+    pub(crate) fn evaluate(
+        &mut self,
+        request: BrowserNavigationPolicyRequest,
+    ) -> BrowserNavigationPolicyEvaluation {
+        self.evaluate_at(request, Instant::now())
+    }
+
+    fn evaluate_at(
+        &mut self,
+        mut request: BrowserNavigationPolicyRequest,
+        now: Instant,
+    ) -> BrowserNavigationPolicyEvaluation {
+        let inherited_user_activation = self.user_activation.apply_at(&mut request, now);
+        BrowserNavigationPolicyEvaluation {
+            response: handle_browser_navigation_policy(request),
+            inherited_user_activation,
+        }
+    }
+}
 
 /// Extract the (lowercased) scheme from a URL-like string, or `None` if the
 /// text before the first `:` is not a valid scheme.
@@ -369,6 +450,123 @@ mod tests {
 
         assert_eq!(
             response.decision,
+            BrowserNavigationPolicyDecision::OpenExternal
+        );
+    }
+
+    #[test]
+    fn browser_activation_survives_redirect_chain_and_is_consumed_once() {
+        let now = Instant::now();
+        let mut session = BrowserNavigationPolicySession::default();
+        let clicked_https = BrowserNavigationPolicyRequest {
+            raw_url: "https://login.example/oauth/start".to_string(),
+            has_user_gesture: true,
+            is_main_frame: true,
+        };
+        let evaluation = session.evaluate_at(clicked_https, now);
+        assert!(!evaluation.inherited_user_activation);
+        assert_eq!(
+            evaluation.response.decision,
+            BrowserNavigationPolicyDecision::InWebview
+        );
+
+        let redirected_https = BrowserNavigationPolicyRequest {
+            raw_url: "https://idp.example/oauth/challenge".to_string(),
+            has_user_gesture: false,
+            is_main_frame: true,
+        };
+        let evaluation = session.evaluate_at(redirected_https, now + Duration::from_secs(3));
+        assert!(!evaluation.inherited_user_activation);
+        assert_eq!(
+            evaluation.response.decision,
+            BrowserNavigationPolicyDecision::InWebview
+        );
+
+        let dingtalk = BrowserNavigationPolicyRequest {
+            raw_url: "dingtalk://dingtalkclient/page/link".to_string(),
+            has_user_gesture: false,
+            is_main_frame: true,
+        };
+        let evaluation = session.evaluate_at(dingtalk, now + Duration::from_secs(4));
+        assert!(evaluation.inherited_user_activation);
+        assert_eq!(
+            evaluation.response.decision,
+            BrowserNavigationPolicyDecision::OpenExternal
+        );
+
+        let replay = BrowserNavigationPolicyRequest {
+            raw_url: "dingtalk://dingtalkclient/page/link".to_string(),
+            has_user_gesture: false,
+            is_main_frame: true,
+        };
+        let evaluation = session.evaluate_at(replay, now + Duration::from_secs(5));
+        assert!(!evaluation.inherited_user_activation);
+        assert_eq!(
+            evaluation.response.decision,
+            BrowserNavigationPolicyDecision::Deny
+        );
+        assert_eq!(
+            evaluation.response.reason.as_deref(),
+            Some("gesture_required")
+        );
+    }
+
+    #[test]
+    fn browser_activation_expires_before_external_navigation() {
+        let now = Instant::now();
+        let mut session = BrowserNavigationPolicySession::default();
+        let clicked_https = BrowserNavigationPolicyRequest {
+            raw_url: "https://login.example/oauth/start".to_string(),
+            has_user_gesture: true,
+            is_main_frame: true,
+        };
+        session.evaluate_at(clicked_https, now);
+
+        let dingtalk = BrowserNavigationPolicyRequest {
+            raw_url: "dingtalk://dingtalkclient/page/link".to_string(),
+            has_user_gesture: false,
+            is_main_frame: true,
+        };
+        let evaluation = session.evaluate_at(dingtalk, now + TRANSIENT_USER_ACTIVATION_TTL);
+        assert!(!evaluation.inherited_user_activation);
+        assert_eq!(
+            evaluation.response.decision,
+            BrowserNavigationPolicyDecision::Deny
+        );
+    }
+
+    #[test]
+    fn browser_activation_never_promotes_subframe_navigation() {
+        let now = Instant::now();
+        let mut session = BrowserNavigationPolicySession::default();
+        let clicked_https = BrowserNavigationPolicyRequest {
+            raw_url: "https://login.example/oauth/start".to_string(),
+            has_user_gesture: true,
+            is_main_frame: true,
+        };
+        session.evaluate_at(clicked_https, now);
+
+        let subframe = BrowserNavigationPolicyRequest {
+            raw_url: "dingtalk://dingtalkclient/page/link".to_string(),
+            has_user_gesture: false,
+            is_main_frame: false,
+        };
+        let evaluation = session.evaluate_at(subframe, now + Duration::from_secs(1));
+        assert!(!evaluation.inherited_user_activation);
+        assert_eq!(
+            evaluation.response.decision,
+            BrowserNavigationPolicyDecision::Deny
+        );
+
+        let main_frame = BrowserNavigationPolicyRequest {
+            raw_url: "dingtalk://dingtalkclient/page/link".to_string(),
+            has_user_gesture: false,
+            is_main_frame: true,
+        };
+        let evaluation = session.evaluate_at(main_frame, now + Duration::from_secs(2));
+        assert!(evaluation.inherited_user_activation);
+        assert_eq!(
+            evaluation.response.decision,
             BrowserNavigationPolicyDecision::OpenExternal
         );
     }
