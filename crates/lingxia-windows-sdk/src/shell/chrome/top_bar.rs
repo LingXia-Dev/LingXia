@@ -183,14 +183,9 @@ pub(super) fn top_bar_controls(
         nav_left + 2 * (TOP_BAR_BUTTON_SIZE + TOP_BAR_BUTTON_GAP),
     ));
 
-    // An aside tab keeps the nav cluster but has no address input - that is
-    // the sole self-vs-aside chrome distinction.
-    if aside {
-        return controls;
-    }
-
     // The capsule sits right after the nav cluster, keeping the reload
-    // button and the address text together.
+    // button and the address text together. It remains visible but read-only
+    // for API-managed aside tabs.
     let capsule_left = nav_left + nav_width + ADDRESS_CAPSULE_NAV_GAP;
     let capsule_width = capsule_space.min(ADDRESS_CAPSULE_MAX_WIDTH);
     let capsule_height = ADDRESS_CAPSULE_HEIGHT.min(rect_height(&top_bar));
@@ -202,14 +197,16 @@ pub(super) fn top_bar_controls(
         bottom: capsule_top + capsule_height,
     });
     controls.address = Some(capsule);
-    controls.page_menu = Some(square_button(capsule.right + ADDRESS_CAPSULE_NAV_GAP));
+    if !aside {
+        controls.page_menu = Some(square_button(capsule.right + ADDRESS_CAPSULE_NAV_GAP));
+    }
     // Star/pin live inside the capsule's trailing edge, like the macOS
     // address bar; internal pages have neither (they cannot be bookmarked).
     let web = layout
         .address_bar
         .as_ref()
         .is_some_and(|address_bar| address_bar.web);
-    if web && rect_width(&capsule) >= 4 * ADDRESS_CAPSULE_BUTTON_SIZE {
+    if !aside && web && rect_width(&capsule) >= 4 * ADDRESS_CAPSULE_BUTTON_SIZE {
         let button_top =
             capsule.top + (rect_height(&capsule) - ADDRESS_CAPSULE_BUTTON_SIZE).max(0) / 2;
         let capsule_button = |right: i32| RECT {
@@ -462,7 +459,11 @@ pub(super) fn draw_top_bar_controls(
         },
         None => address,
     });
-    remember_address_capsule_rect(state.hwnd, edit_rect);
+    let editable = layout
+        .address_bar
+        .as_ref()
+        .is_some_and(|address_bar| !address_bar.aside);
+    remember_address_capsule_rect(state.hwnd, editable.then_some(edit_rect).flatten());
 }
 
 /// Rendered size of the back/home navigation glyphs.

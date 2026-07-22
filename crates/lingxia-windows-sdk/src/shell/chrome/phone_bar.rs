@@ -401,10 +401,37 @@ pub(crate) fn phone_tab_switcher_hit(
 /// (the sidebar's tab click/close semantics).
 pub(crate) fn phone_tab_click_command(tab_id: &str) -> WindowsChromeCommand {
     WindowsChromeCommand::new(command_id::BROWSER_TAB_CLICK)
-        .with_payload(json!({ "tab_id": tab_id }))
+        .with_payload(json!({ "tab_id": tab_id, "compact_group": true }))
 }
 
 pub(crate) fn phone_tab_close_command(tab_id: &str) -> WindowsChromeCommand {
     WindowsChromeCommand::new(command_id::BROWSER_TAB_CLOSE)
-        .with_payload(json!({ "tab_id": tab_id }))
+        .with_payload(json!({ "tab_id": tab_id, "compact_group": true }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn aside_uses_one_row_without_address_or_new_tab() {
+        let client = RECT {
+            left: 0,
+            top: 0,
+            right: 390,
+            bottom: 844,
+        };
+        let self_bar = phone_browser_bar_rects(client, false);
+        let aside_bar = phone_browser_bar_rects(client, true);
+
+        assert_eq!(rect_height(&self_bar.bar), PHONE_BAR_HEIGHT_SELF);
+        assert_eq!(rect_height(&aside_bar.bar), PHONE_BAR_HEIGHT_ASIDE);
+        assert!(self_bar.address.is_some());
+        assert!(self_bar.address_reload.is_some());
+        assert!(aside_bar.address.is_none());
+        assert!(aside_bar.address_reload.is_none());
+        assert!(aside_bar.row_reload.is_some());
+        assert!(self_bar.new_tab.is_some());
+        assert!(aside_bar.new_tab.is_none());
+    }
 }

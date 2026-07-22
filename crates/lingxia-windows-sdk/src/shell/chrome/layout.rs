@@ -106,8 +106,8 @@ pub struct WindowsShellTabBarLayout {
 pub struct WindowsShellAddressBarLayout {
     pub visible: bool,
     pub url_text: String,
-    /// The presented tab is an aside (a compact-degraded URL aside): the top
-    /// bar keeps the browser controls but draws no address capsule.
+    /// The presented tab is an API-managed aside. Desktop keeps a read-only
+    /// address; compact chrome omits the address and user tab creation.
     pub aside: bool,
     /// Session-history availability of the presented tab; the back/forward
     /// buttons dim while their direction is unavailable.
