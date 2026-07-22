@@ -44,6 +44,7 @@ public enum RunnerDeviceOrientation: String, Equatable, Hashable, CaseIterable, 
 public struct MobileDeviceSize: Equatable, Hashable, Decodable, Sendable {
     public let id: String
     public let group: String
+    public let browserProfile: RunnerBrowserProfile
     public let name: String
     public let width: CGFloat
     public let height: CGFloat
@@ -55,6 +56,7 @@ public struct MobileDeviceSize: Equatable, Hashable, Decodable, Sendable {
     enum CodingKeys: String, CodingKey {
         case id
         case group
+        case browserProfile
         case name
         case width
         case height
@@ -151,6 +153,7 @@ public struct MobileDeviceSize: Equatable, Hashable, Decodable, Sendable {
         return MobileDeviceSize(
             id: id,
             group: group,
+            browserProfile: browserProfile,
             name: name,
             width: targetWidth,
             height: targetHeight,
@@ -168,6 +171,7 @@ public struct MobileDeviceSize: Equatable, Hashable, Decodable, Sendable {
         return MobileDeviceSize(
             id: id,
             group: group,
+            browserProfile: browserProfile,
             name: name,
             // Round the size-bearing dimensions together so the frame lands on
             // whole pixels (radii are cosmetic curves — leave them exact).

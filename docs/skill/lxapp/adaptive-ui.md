@@ -124,6 +124,13 @@ real permissions.
 LingXia Runner device-frame changes report a new surface viewport. Exercise
 them in one session through automation:
 
+On macOS and Windows, changing between phone, tablet, and desktop presets also
+updates the embedded browser identity used by external websites. The Runner
+uses an engine-compatible synthetic UA (WebKit on macOS, Chromium/Android on
+Windows), not the literal branded device name shown by the frame. This browser
+emulation is for website compatibility only; lxapps must still use surface
+context for layout and interaction decisions.
+
 ```ts
 const auto = lx.automation();
 const app = auto.lxapp();

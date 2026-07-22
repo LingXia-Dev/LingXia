@@ -814,6 +814,11 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
         refitToCurrentScreen()
     }
 
+    func applyBrowserEmulationProfile() {
+        guard let webView = currentInspectableWebView() else { return }
+        RunnerUserAgentPolicy.shared.apply(to: webView)
+    }
+
     /// Re-fit the selected device to the window's current screen and resize. Runs
     /// on a device switch and when the window moves to another display (a shorter
     /// screen needs a smaller scale). The device identity is unchanged; only the

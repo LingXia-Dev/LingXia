@@ -39,6 +39,7 @@ public class RunnerApp {
     
     private init() {
         deviceOrientation = Self.defaultOrientation(for: selectedDeviceSize)
+        RunnerUserAgentPolicy.shared.setProfile(selectedDeviceSize.browserProfile)
     }
 
     /// Pads and desktops read most naturally in landscape; phones in portrait.
@@ -84,6 +85,9 @@ public class RunnerApp {
     }
 
     private func applyDeviceConfiguration() {
+        let browserProfileChanged = RunnerUserAgentPolicy.shared.setProfile(
+            selectedDeviceSize.browserProfile
+        )
         let effectiveDevice = selectedDeviceSize.oriented(deviceOrientation)
         deviceSize = effectiveDevice
         SimulatorWindowController.setWindowSize(effectiveDevice)
@@ -106,6 +110,10 @@ public class RunnerApp {
             switchToSurfaceShellHost(device: effectiveDevice)
         } else {
             switchToPhoneSimulatorHost(device: effectiveDevice)
+        }
+        if browserProfileChanged {
+            windowController?.applyBrowserEmulationProfile()
+            surfaceShellHost?.applyBrowserEmulationProfile()
         }
     }
 
