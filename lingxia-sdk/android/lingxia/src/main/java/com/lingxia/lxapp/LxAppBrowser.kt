@@ -53,8 +53,8 @@ internal object LxAppBrowser {
     private var plusButton: View? = null
     private var menuButton: View? = null
     private var tabsBadge: TextView? = null
-    // Aside chrome: the active tab was opened as an aside — hide the address
-    // row and the new-tab/menu affordances; a row refresh appears instead.
+    // Aside tabs are a distinct API-managed group. Their compact projection is
+    // a one-row toolbar without address editing or user tab creation.
     private var isAsideActive = false
     // Chrome-style history intervention: until the user interacts with a tab
     // (page touch or address navigation), auto-created history (SPA pushState
@@ -87,7 +87,7 @@ internal object LxAppBrowser {
         if (tabChanged) {
             onActiveTabSwitched(activity, normalizedTabId)
         } else {
-            refreshAsideChrome(activity)
+            applyActiveModeChrome(activity)
         }
         closeOverflowMenu()
         closeTabSwitcher()
@@ -110,13 +110,6 @@ internal object LxAppBrowser {
         activeWebView = null
         activeWebViewTabId = null
 
-        val tabsToClose = openTabIds.toList()
-        openTabIds.clear()
-        interactedTabIds.clear()
-        isAsideActive = false
-        activeTabId = null
-        tabsToClose.forEach { closeBrowserTab(it) }
-
         overlayContainer?.let { container ->
             ViewCompat.setOnApplyWindowInsetsListener(container, null)
             (container.parent as? ViewGroup)?.removeView(container)
@@ -127,8 +120,12 @@ internal object LxAppBrowser {
         currentActivity = null
         addressIcon = null
         addressField = null
+        addressRow = null
+        plusButton = null
+        menuButton = null
         backButton = null
         forwardButton = null
+        asideRefreshButton = null
         tabsBadge = null
     }
 
@@ -146,7 +143,10 @@ internal object LxAppBrowser {
             closeTabSwitcher()
             return true
         }
-        if (activeWebView?.canGoBack() == true) {
+        // Browser history has its own toolbar button. Back on an aside exits
+        // the full-screen slot; self mode keeps the familiar history-first
+        // behavior.
+        if (!isAsideActive && activeWebView?.canGoBack() == true) {
             navigateBack()
             return true
         }
@@ -341,7 +341,6 @@ internal object LxAppBrowser {
             dismiss()
         }
 
-        // Aside chrome has no address pill, so refresh moves into the row.
         val asideRefreshBtn = createIconButton(activity, R.drawable.icon_browser_refresh, 32, "#333333") {
             activeWebView?.reload()
             scheduleChromeRefreshSoon()
@@ -440,6 +439,9 @@ internal object LxAppBrowser {
     }
 
     private fun openNewTab(activity: Activity) {
+        if (isAsideActive) {
+            return
+        }
         closeOverflowMenu()
         closeTabSwitcher()
         val appId = NativeApi.getBuiltinBrowserAppId()?.takeIf { it.isNotBlank() }
@@ -462,7 +464,7 @@ internal object LxAppBrowser {
 
     private fun activateTab(activity: Activity, tabId: String) {
         val normalizedTabId = normalizeTabId(tabId)
-        if (!openTabIds.contains(normalizedTabId)) {
+        if (!openTabIds.contains(normalizedTabId) || tabIsAside(normalizedTabId) != isAsideActive) {
             return
         }
         activeTabId = normalizedTabId
@@ -475,6 +477,8 @@ internal object LxAppBrowser {
 
     private fun closeTab(tabId: String) {
         val normalizedTabId = normalizeTabId(tabId)
+        val closingAside = tabIsAside(normalizedTabId)
+        val groupIndex = tabIdsForMode(closingAside).indexOf(normalizedTabId)
         val index = openTabIds.indexOf(normalizedTabId)
         if (index < 0) {
             closeBrowserTab(normalizedTabId)
@@ -490,18 +494,21 @@ internal object LxAppBrowser {
             activeWebViewTabId = null
         }
         openTabIds.removeAt(index)
+        interactedTabIds.remove(normalizedTabId)
         closeBrowserTab(normalizedTabId)
 
-        if (openTabIds.isEmpty()) {
-            dismiss()
-            return
-        }
-
         if (activeTabId == normalizedTabId) {
-            val nextIndex = index.coerceAtMost(openTabIds.lastIndex)
+            val remaining = tabIdsForMode(closingAside)
+            if (remaining.isEmpty()) {
+                activeTabId = null
+                dismiss()
+                return
+            }
+            val nextIndex = groupIndex.coerceAtLeast(0).coerceAtMost(remaining.lastIndex)
             currentActivity?.let { activity ->
-                activeTabId = openTabIds[nextIndex]
+                activeTabId = remaining[nextIndex]
                 NativeApi.browserTabActivate(activeTabId!!)
+                onActiveTabSwitched(activity, activeTabId!!)
                 beginAttachActiveTab(activity)
             }
         }
@@ -509,6 +516,10 @@ internal object LxAppBrowser {
     }
 
     private fun navigateFromAddressBar(activity: Activity) {
+        if (isAsideActive) {
+            updateAddressBar(activeWebView?.url.orEmpty())
+            return
+        }
         val raw = addressField?.text?.toString().orEmpty()
         hideKeyboard(activity, addressField)
         addressField?.clearFocus()
@@ -593,12 +604,13 @@ internal object LxAppBrowser {
                 ViewGroup.LayoutParams.WRAP_CONTENT
             )
         }
-        openTabIds.forEach { tabId ->
+        val visibleTabs = tabIdsForMode()
+        visibleTabs.forEach { tabId ->
             list.addView(createTabRow(activity, tabId))
         }
         // Size to the rows (52dp each) and only cap when the list is long, so
         // one tab doesn't float in a half-screen sheet.
-        val contentHeight = dp(activity, 52) * openTabIds.size.coerceAtLeast(1)
+        val contentHeight = dp(activity, 52) * visibleTabs.size.coerceAtLeast(1)
         val maxHeight = minOf(dp(activity, 360), activity.resources.displayMetrics.heightPixels / 2)
         panel.addView(ScrollView(activity).apply {
             layoutParams = LinearLayout.LayoutParams(
@@ -825,7 +837,7 @@ internal object LxAppBrowser {
     }
 
     private fun updateTabsBadge() {
-        val count = openTabIds.size.coerceAtLeast(1)
+        val count = tabIdsForMode().size.coerceAtLeast(1)
         tabsBadge?.text = if (count > 99) "99+" else count.toString()
     }
 
@@ -847,20 +859,24 @@ internal object LxAppBrowser {
         setButtonEnabled(backButton, false)
         setButtonEnabled(forwardButton, false)
         isAsideActive = NativeApi.browserTabIsAside(tabId)
-        refreshAsideChrome(activity)
+        applyActiveModeChrome(activity)
     }
 
-    // The bar holds two rows for self chrome and a single compact action
-    // row for an aside; the insets listener owns the applied height.
     private fun currentBarHeightDp(): Int = if (isAsideActive) 52 else 96
 
-    // Aside chrome: no address row, no new-tab/menu, refresh in the row.
-    private fun refreshAsideChrome(activity: Activity) {
+    // Compact aside chrome is intentionally one row. The desktop docked aside
+    // may expose a read-only address, but that projection must not leak here.
+    private fun applyActiveModeChrome(activity: Activity) {
         val aside = isAsideActive
+        if (aside && addressField?.hasFocus() == true) {
+            hideKeyboard(activity, addressField)
+            addressField?.clearFocus()
+        }
         addressRow?.visibility = if (aside) View.GONE else View.VISIBLE
         plusButton?.visibility = if (aside) View.GONE else View.VISIBLE
         menuButton?.visibility = if (aside) View.GONE else View.VISIBLE
         asideRefreshButton?.visibility = if (aside) View.VISIBLE else View.GONE
+        updateTabsBadge()
         overlayContainer?.let(ViewCompat::requestApplyInsets)
     }
 
@@ -930,6 +946,12 @@ internal object LxAppBrowser {
             openTabIds.add(tabId)
         }
     }
+
+    private fun tabIsAside(tabId: String): Boolean =
+        runCatching { NativeApi.browserTabIsAside(tabId) }.getOrDefault(false)
+
+    private fun tabIdsForMode(aside: Boolean = isAsideActive): List<String> =
+        openTabIds.filter { tabIsAside(it) == aside }
 
     private fun findManagedWebView(tabId: String): WebView? {
         val appId = NativeApi.getBuiltinBrowserAppId()?.takeIf { it.isNotBlank() } ?: return null
