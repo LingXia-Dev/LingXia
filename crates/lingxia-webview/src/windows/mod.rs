@@ -45,6 +45,7 @@ use windows::{
     core::{BOOL, Interface, PCWSTR, PWSTR, Result as WinResult},
 };
 
+mod browser_emulation;
 mod composition;
 mod console;
 mod controller;
@@ -59,6 +60,9 @@ mod scheme;
 
 pub(crate) use controller::WebViewInner;
 
+pub use browser_emulation::{
+    WindowsBrowserEmulationProfile, set_windows_browser_emulation_profile_for_new_webviews,
+};
 pub use composition::{set_webview_composition_hosting, webview_composition_hosting_enabled};
 pub use environment::set_windows_context_menu_refresh_provider;
 pub use native_view::{

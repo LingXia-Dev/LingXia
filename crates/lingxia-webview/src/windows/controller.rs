@@ -35,6 +35,10 @@ pub(crate) enum UiCommand {
         user_agent: UserAgentOverride,
         resp: Sender<StdResult<()>>,
     },
+    SetBrowserEmulationProfile {
+        profile: WindowsBrowserEmulationProfile,
+        resp: Sender<StdResult<String>>,
+    },
     ClearBrowsingData {
         resp: Sender<StdResult<()>>,
     },
@@ -333,6 +337,18 @@ impl WebViewInner {
 
     pub(crate) fn set_content_bounds(&self, bounds: RECT) -> StdResult<()> {
         self.dispatch_command_same_thread_safe(|resp| UiCommand::SetContentBounds { bounds, resp })
+    }
+
+    pub(crate) fn set_browser_emulation_profile(
+        &self,
+        profile: WindowsBrowserEmulationProfile,
+    ) -> StdResult<()> {
+        self.dispatch_ui(
+            |resp| UiCommand::SetBrowserEmulationProfile { profile, resp },
+            None,
+        )
+        .map_err(|err| err.into_webview_error("set browser emulation profile"))??;
+        Ok(())
     }
 
     pub(crate) fn set_content_geometry(
@@ -885,6 +901,14 @@ pub(crate) fn run_ui_thread_inner(
         default_user_agent,
     };
 
+    let (profile_tx, _profile_rx) = mpsc::channel();
+    browser_emulation::apply_profile(
+        &state.webview,
+        &state.default_user_agent,
+        browser_emulation::configured_profile(),
+        profile_tx,
+    );
+
     message_loop(&mut state, command_rx)
 }
 
@@ -1044,6 +1068,14 @@ pub(crate) fn handle_command(state: &mut UiState, command: UiCommand) -> StdResu
             };
             let result = set_user_agent_override(&state.webview, user_agent);
             let _ = resp.send(result);
+        }
+        UiCommand::SetBrowserEmulationProfile { profile, resp } => {
+            browser_emulation::apply_profile(
+                &state.webview,
+                &state.default_user_agent,
+                profile,
+                resp,
+            );
         }
         UiCommand::ClearBrowsingData { resp } => {
             if let Err(err) = begin_clear_browsing_data(&state.webview, resp.clone()) {

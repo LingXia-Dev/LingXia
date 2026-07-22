@@ -7,6 +7,7 @@
 #[cfg(feature = "shell-chrome")]
 use crate::shell::WindowsShellTabBarPosition;
 use crate::{WindowsAppMenuCommandHandler, WindowsAppMenuItem, WindowsDesignIcon, app_menu};
+pub use lingxia_webview::platform::windows::WindowsBrowserEmulationProfile;
 
 mod native;
 
@@ -316,6 +317,34 @@ fn current_browser_webtag() -> Result<lingxia_webview::WebTag, String> {
         &tab.path,
         Some(tab.session_id),
     ))
+}
+
+/// Applies the simulated browser form factor to new and existing WebViews.
+///
+/// Existing pages reload only when requested so callers can switch between
+/// devices in the same form-factor family without losing page state.
+pub fn set_windows_browser_emulation_profile(
+    profile: WindowsBrowserEmulationProfile,
+    reload_existing: bool,
+) -> Result<(), String> {
+    lingxia_webview::platform::windows::set_windows_browser_emulation_profile_for_new_webviews(
+        profile,
+    );
+    let mut failures = Vec::new();
+    for webtag in lingxia_webview::runtime::list_webviews() {
+        let Some(handler) = lingxia_webview::platform::windows::find_webview_handler(&webtag)
+        else {
+            continue;
+        };
+        if let Err(err) = handler.set_browser_emulation_profile(profile, reload_existing) {
+            failures.push(format!("{}: {err}", webtag.key()));
+        }
+    }
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        Err(failures.join("; "))
+    }
 }
 
 fn current_page_webview(appid: &str) -> Result<std::sync::Arc<lingxia_webview::WebView>, String> {

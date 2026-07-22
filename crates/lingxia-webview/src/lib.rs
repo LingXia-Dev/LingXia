@@ -267,9 +267,10 @@ pub mod platform {
     #[cfg(target_os = "windows")]
     pub mod windows {
         pub use crate::windows::{
-            WindowsWebViewHandler, WindowsWebViewNativeView, WindowsWebViewNativeViewHost,
-            find_webview_handler, set_webview_composition_hosting, set_webview_devtools_enabled,
-            set_webview_native_view_host, set_webview_user_data_dir,
+            WindowsBrowserEmulationProfile, WindowsWebViewHandler, WindowsWebViewNativeView,
+            WindowsWebViewNativeViewHost, find_webview_handler, set_webview_composition_hosting,
+            set_webview_devtools_enabled, set_webview_native_view_host, set_webview_user_data_dir,
+            set_windows_browser_emulation_profile_for_new_webviews,
             set_windows_context_menu_refresh_provider, webview_composition_hosting_enabled,
         };
     }

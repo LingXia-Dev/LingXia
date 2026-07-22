@@ -90,6 +90,12 @@ pub(crate) fn run() -> lingxia_windows_sdk::Result<()> {
     } else {
         frame_spec(default_device, initial_landscape)
     };
+    if let Err(err) = lingxia_windows_sdk::set_windows_browser_emulation_profile(
+        presets()[default_device].browser_profile(),
+        false,
+    ) {
+        eprintln!("lingxia-runner: failed to configure initial browser profile: {err}");
+    }
     lingxia_windows_sdk::set_windows_default_shell_tabbar_position(tabbar_position_for_device(
         default_device,
     ));
@@ -285,6 +291,9 @@ fn apply_device(index: usize, landscape: bool) -> Result<(), String> {
     // these into separate immediate + posted updates lets layout briefly sync
     // against the previous device (e.g. iPhone status bar forcing bottom tabs
     // while switching to iPad).
+    let previous_index = CURRENT_DEVICE.load(Ordering::Acquire);
+    let profile_changed =
+        presets()[previous_index].browser_profile() != presets()[index].browser_profile();
     let tabbar_position = tabbar_position_for_device(index);
     lingxia_windows_sdk::set_windows_default_shell_tabbar_position(tabbar_position);
 
@@ -313,6 +322,10 @@ fn apply_device(index: usize, landscape: bool) -> Result<(), String> {
     if !applied {
         return Err("no opened lxapp is ready for device frame".to_string());
     }
+    lingxia_windows_sdk::set_windows_browser_emulation_profile(
+        presets()[index].browser_profile(),
+        profile_changed,
+    )?;
     CURRENT_DEVICE.store(index, Ordering::Release);
     LANDSCAPE.store(landscape, Ordering::Release);
     Ok(())
