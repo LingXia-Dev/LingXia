@@ -1686,7 +1686,6 @@ enum LxAppSurface {
                     allowsCrossOrigin: true,
                     urlCallback: urlCallback)
                 wkWebView.navigationDelegate = delegate
-                prepareRunnerWebSurface(wkWebView)
                 wkWebView.translatesAutoresizingMaskIntoConstraints = false
                 wkWebView.scrollView.contentInsetAdjustmentBehavior = .never
                 wkWebView.isOpaque = false
