@@ -199,6 +199,17 @@ export class LxAppBrowserManager {
    * Open a fresh built-in start-page tab and switch to it.
    */
   public static openNewTab(): boolean {
+    const activeTabId = LxAppBrowserManager.activeTabId;
+    if (activeTabId) {
+      try {
+        if (browserTabIsAside(activeTabId)) {
+          return false;
+        }
+      } catch (error) {
+        LxLog.e(TAG, `openNewTab failed: browserTabIsAside threw: ${error}`);
+        return false;
+      }
+    }
     let appId = '';
     try {
       appId = String(getBuiltinBrowserAppId() ?? '').trim();
@@ -237,7 +248,8 @@ export class LxAppBrowserManager {
    */
   public static activate(tabId: string): void {
     const normalizedTabId = String(tabId ?? '').trim();
-    if (!LxAppBrowserManager.openTabIds.includes(normalizedTabId)) {
+    if (!LxAppBrowserManager.openTabIds.includes(normalizedTabId) ||
+      LxAppBrowserManager.tabIsAside(normalizedTabId) !== LxAppBrowserManager.activeTabIsAside()) {
       return;
     }
     LxAppBrowserManager.activeTabId = normalizedTabId;
@@ -246,8 +258,8 @@ export class LxAppBrowserManager {
   }
 
   /**
-   * Close a single tab and move focus to a neighbor; exiting the browser when
-   * the last tab goes away.
+   * Close a tab and select a neighbor in its group; hide when that group is
+   * empty.
    */
   public static closeTab(tabId: string): void {
     const normalizedTabId = String(tabId ?? '').trim();
@@ -255,6 +267,8 @@ export class LxAppBrowserManager {
     if (index < 0) {
       return;
     }
+    const closingAside = LxAppBrowserManager.tabIsAside(normalizedTabId);
+    const groupIndex = LxAppBrowserManager.tabIdsForMode(closingAside).indexOf(normalizedTabId);
 
     LxAppBrowserManager.closeRuntimeTab(normalizedTabId);
     LxAppBrowserManager.openTabIds.splice(index, 1);
@@ -266,15 +280,19 @@ export class LxAppBrowserManager {
       return;
     }
 
-    if (LxAppBrowserManager.openTabIds.length === 0) {
+    const remaining = LxAppBrowserManager.tabIdsForMode(closingAside);
+    if (remaining.length === 0) {
       LxAppBrowserManager.activeTabId = '';
       LxAppBrowserManager.showing = false;
       LxAppBrowserManager.notifyListeners();
       return;
     }
 
-    const neighborIndex = index > 0 ? index - 1 : 0;
-    LxAppBrowserManager.activate(LxAppBrowserManager.openTabIds[neighborIndex]);
+    const neighborIndex = Math.min(Math.max(groupIndex, 0), remaining.length - 1);
+    const neighbor = remaining[neighborIndex];
+    LxAppBrowserManager.activeTabId = neighbor;
+    LxAppBrowserManager.markActive(neighbor);
+    LxAppBrowserManager.notifyListeners();
   }
 
   /**
@@ -295,9 +313,7 @@ export class LxAppBrowserManager {
   }
 
   public static hide(): void {
-    LxAppBrowserManager.closeAllTabs();
     LxAppBrowserManager.showing = false;
-    LxAppBrowserManager.activeTabId = '';
     LxAppBrowserManager.notifyListeners();
   }
 
@@ -310,11 +326,14 @@ export class LxAppBrowserManager {
   }
 
   public static getOpenTabIds(): Array<string> {
-    return LxAppBrowserManager.openTabIds.slice();
+    if (!LxAppBrowserManager.activeTabId) {
+      return [];
+    }
+    return LxAppBrowserManager.tabIdsForMode(LxAppBrowserManager.activeTabIsAside());
   }
 
   public static getTabCount(): number {
-    return LxAppBrowserManager.openTabIds.length;
+    return LxAppBrowserManager.getOpenTabIds().length;
   }
 
   public static getInitialUrl(tabId: string): string {
@@ -332,6 +351,26 @@ export class LxAppBrowserManager {
   private static register(tabId: string): void {
     if (!LxAppBrowserManager.openTabIds.includes(tabId)) {
       LxAppBrowserManager.openTabIds.push(tabId);
+    }
+  }
+
+  private static activeTabIsAside(): boolean {
+    return LxAppBrowserManager.activeTabId
+      ? LxAppBrowserManager.tabIsAside(LxAppBrowserManager.activeTabId)
+      : false;
+  }
+
+  private static tabIdsForMode(aside: boolean): Array<string> {
+    return LxAppBrowserManager.openTabIds.filter((tabId: string) =>
+      LxAppBrowserManager.tabIsAside(tabId) === aside);
+  }
+
+  private static tabIsAside(tabId: string): boolean {
+    try {
+      return Boolean(browserTabIsAside(tabId));
+    } catch (error) {
+      LxLog.e(TAG, `browserTabIsAside failed for tabId=${tabId}: ${error}`);
+      return false;
     }
   }
 
@@ -367,13 +406,6 @@ export class LxAppBrowserManager {
     }
   }
 
-  private static closeAllTabs(): void {
-    LxAppBrowserManager.openTabIds.forEach((tabId: string) => {
-      LxAppBrowserManager.closeRuntimeTab(tabId);
-    });
-    LxAppBrowserManager.openTabIds = [];
-    LxAppBrowserManager.initialUrls.clear();
-  }
 }
 
 interface BrowserTabRow {
@@ -398,10 +430,8 @@ interface BrowserTabEntry {
 /**
  * In-app browser component.
  *
- * Bottom two-row bar: row 1 = address pill (lock/warning icon + editable URL +
- * refresh); row 2 = back / forward / spacer / new-tab / tabs (with open count) /
- * overflow menu / close. A tab switcher and an overflow menu surface as in-place
- * layers.
+ * Self uses an address row above its actions. Aside uses one action row without
+ * address editing, user tab creation, or overflow actions.
  */
 @Component
 export struct LxAppBrowser {
@@ -415,8 +445,7 @@ export struct LxAppBrowser {
   @State private addressEditing: boolean = false;
   @State private canGoBack: boolean = false;
   @State private canGoForward: boolean = false;
-  // Aside chrome: the active tab was opened as an aside — hide the address
-  // row and the new-tab/menu affordances; a row refresh appears instead.
+  // Aside chrome removes the address and actions that create user-managed tabs.
   @State private isAsideActive: boolean = false;
   // Chrome-style history intervention: until the user interacts with a tab
   // (page touch or address navigation), auto-created history (SPA pushState
@@ -462,6 +491,9 @@ export struct LxAppBrowser {
         // per-tab and must never show the previous tab's values.
         this.activeTabId = nextActiveTabId;
         this.isAsideActive = this.safeTabIsAside(nextActiveTabId);
+        if (this.isAsideActive) {
+          this.addressEditing = false;
+        }
         const initialUrl = LxAppBrowserManager.getInitialUrl(nextActiveTabId);
         this.url = initialUrl;
         if (!this.addressEditing) {
@@ -681,6 +713,7 @@ export struct LxAppBrowser {
       LxLog.e(TAG, `show failed: managed WebView not found for tabId=${this.activeTabId}`);
       this.clearAttachRetryTimer();
       this.attachRetryCount = 0;
+      this.interactedTabIds.delete(this.activeTabId);
       LxAppBrowserManager.closeTab(this.activeTabId);
       return;
     }
@@ -755,7 +788,6 @@ export struct LxAppBrowser {
     this.addressIconColor = '#666666';
     this.addressIconVisible = false;
     this.isAsideActive = false;
-    this.interactedTabIds.clear();
   }
 
 	  build() {
@@ -962,66 +994,66 @@ export struct LxAppBrowser {
       Divider().color('#E0E0E0').strokeWidth(0.5).width('100%')
 
       Column() {
-        // Address row: editable URL pill. An aside tab hides it — asides are
-        // API-opened content with no user navigation.
+        // Compact aside chrome has no address row; desktop's read-only address
+        // is a separate projection.
         if (!this.isAsideActive) {
-        Row() {
-          Image(this.addressIconPath)
-            .width(16)
-            .height(16)
-            .fillColor(this.addressIconColor)
-            .visibility((this.addressEditing || !this.addressIconVisible) ? Visibility.Hidden : Visibility.Visible)
-            .margin({ left: 12, right: 6 })
+          Row() {
+            Image(this.addressIconPath)
+              .width(16)
+              .height(16)
+              .fillColor(this.addressIconColor)
+              .visibility((this.addressEditing || !this.addressIconVisible) ? Visibility.Hidden : Visibility.Visible)
+              .margin({ left: 12, right: 6 })
 
-          TextInput({ text: this.addressText, placeholder: 'Search or enter address' })
-            .layoutWeight(1)
-            .fontSize(13)
-            .fontColor('#333333')
-            .placeholderColor('#999999')
-            .backgroundColor(Color.Transparent)
-            .borderRadius(0)
-            .padding({ left: 0, right: 4 })
-            .type(InputType.URL)
-            .enterKeyType(EnterKeyType.Go)
-            .maxLines(1)
-            .onChange((value: string) => {
-              this.addressText = value;
-            })
-            .onFocus(() => {
-              this.beginAddressEditing();
-            })
-            .onBlur(() => {
-              this.endAddressEditing();
-            })
-            .onSubmit(() => {
-              this.submitAddressInput();
-            })
+            TextInput({ text: this.addressText, placeholder: 'Search or enter address' })
+              .layoutWeight(1)
+              .fontSize(13)
+              .fontColor('#333333')
+              .placeholderColor('#999999')
+              .backgroundColor(Color.Transparent)
+              .borderRadius(0)
+              .padding({ left: 0, right: 4 })
+              .type(InputType.URL)
+              .enterKeyType(EnterKeyType.Go)
+              .maxLines(1)
+              .onChange((value: string) => {
+                this.addressText = value;
+              })
+              .onFocus(() => {
+                this.beginAddressEditing();
+              })
+              .onBlur(() => {
+                this.endAddressEditing();
+              })
+              .onSubmit(() => {
+                this.submitAddressInput();
+              })
 
-          Image($rawfile('icons/icon_browser_refresh.svg'))
-            .width(16)
-            .height(16)
-            .fillColor('#666666')
-            .padding(8)
-            .width(32)
-            .height(32)
-            .margin({ right: 4 })
-            .onClick(() => {
-              const controller = this.activeController();
-              if (!controller) {
-                return;
-              }
-              try {
-                controller.refresh();
-              } catch (error) {
-                hilog.warn(DOMAIN, TAG, `refresh failed: ${error}`);
-              }
-            })
-        }
-        .width('100%')
-        .height(34)
-        .backgroundColor('#F0F0F0')
-        .borderRadius(18)
-        .alignItems(VerticalAlign.Center)
+            Image($rawfile('icons/icon_browser_refresh.svg'))
+              .width(16)
+              .height(16)
+              .fillColor('#666666')
+              .padding(8)
+              .width(32)
+              .height(32)
+              .margin({ right: 4 })
+              .onClick(() => {
+                const controller = this.activeController();
+                if (!controller) {
+                  return;
+                }
+                try {
+                  controller.refresh();
+                } catch (error) {
+                  hilog.warn(DOMAIN, TAG, `refresh failed: ${error}`);
+                }
+              })
+          }
+          .width('100%')
+          .height(34)
+          .backgroundColor('#F0F0F0')
+          .borderRadius(18)
+          .alignItems(VerticalAlign.Center)
         }
 
         // Action row: back / forward / spacer / new-tab / tabs / menu / close.
@@ -1066,7 +1098,6 @@ export struct LxAppBrowser {
               }
             })
 
-          // Aside chrome has no address pill, so refresh moves into the row.
           if (this.isAsideActive) {
             Image($rawfile('icons/icon_browser_refresh.svg'))
               .width(18)
@@ -1160,7 +1191,7 @@ export struct LxAppBrowser {
         }
         .width('100%')
         .height(36)
-        .margin({ top: 4 })
+        .margin({ top: this.isAsideActive ? 0 : 4 })
         .alignItems(VerticalAlign.Center)
       }
       .width('100%')
@@ -1175,14 +1206,10 @@ export struct LxAppBrowser {
     .backgroundColor('#F5F5F7')
 	  }
 
-  /**
-   * Total height of the bottom bar (address row + action row + paddings),
-   * so the overflow overlay can float its menu card just above the bar.
-   */
+  /** Total bottom-bar height for content and overlay placement. */
 	  private bottomBarHeight(): number {
-    // hairline 0.5 + top padding 6 + address row 34 + action margin 4 +
-    // action row 36 + bottom padding (safe area + 10).
-	    return 0.5 + 6 + 34 + 4 + 36 + px2vp(this.bottomSafeAreaHeight) + 10;
+    const addressHeight = this.isAsideActive ? 0 : 34 + 4;
+	    return 0.5 + 6 + addressHeight + 36 + px2vp(this.bottomSafeAreaHeight) + 10;
 	  }
 
   private contentBottomInset(): number {
@@ -1347,6 +1374,9 @@ export struct LxAppBrowser {
   }
 
   private beginAddressEditing(): void {
+    if (this.isAsideActive) {
+      return;
+    }
     this.addressEditing = true;
     this.closeMenus();
     // Reveal the full URL for editing, except on a blank new tab.
@@ -1363,6 +1393,11 @@ export struct LxAppBrowser {
   }
 
   private submitAddressInput(): void {
+    if (this.isAsideActive) {
+      this.addressEditing = false;
+      this.updateAddressDisplay(this.url);
+      return;
+    }
     const target = resolveAddressInput(this.addressText);
     if (target) {
       // An address-bar navigation is a user interaction.
@@ -1424,7 +1459,7 @@ export struct LxAppBrowser {
 
     let newTabId: string | null = null;
     try {
-      // A tab spawned from an aside page stays an aside (no address bar);
+      // A tab spawned from an aside page stays an API-managed aside tab;
       // self tabs keep spawning self tabs.
       newTabId = this.isAsideActive
         ? openAsideBrowserTab(appId, Math.trunc(sessionId), targetUrl)
@@ -1467,6 +1502,7 @@ export struct LxAppBrowser {
   }
 
   private closeTabFromSwitcher(tabId: string): void {
+    this.interactedTabIds.delete(tabId);
     LxAppBrowserManager.closeTab(tabId);
     if (LxAppBrowserManager.getTabCount() === 0) {
       this.showTabSwitcher = false;
