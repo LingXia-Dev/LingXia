@@ -2141,6 +2141,11 @@ impl WebViewInner {
                 ));
             }
 
+            if let Some(user_agent) = super::configured_user_agent_override_for_new_webviews() {
+                let user_agent = NSString::from_str(&user_agent);
+                let _: () = msg_send![webview, setCustomUserAgent: &*user_agent];
+            }
+
             // Make all webviews inspectable (lxapp pages + browser tabs).
             {
                 let can_set_remote_inspection: objc2::runtime::Bool = msg_send![webview, respondsToSelector: objc2::sel!(_setAllowsRemoteInspection:)];

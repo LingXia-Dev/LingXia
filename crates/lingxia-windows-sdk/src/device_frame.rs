@@ -321,8 +321,10 @@ fn current_browser_webtag() -> Result<lingxia_webview::WebTag, String> {
 
 /// Applies the simulated browser form factor to new and existing WebViews.
 ///
-/// Existing pages reload only when requested so callers can switch between
-/// devices in the same form-factor family without losing page state.
+/// Call this before creating the first WebView so WebView2's original UA Client
+/// Hints can be captured for later desktop restoration. Existing pages created
+/// under that configuration reload only when requested, so callers can switch
+/// within one form-factor family without losing page state.
 pub fn set_windows_browser_emulation_profile(
     profile: WindowsBrowserEmulationProfile,
     reload_existing: bool,

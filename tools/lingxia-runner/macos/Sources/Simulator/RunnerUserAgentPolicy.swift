@@ -7,92 +7,55 @@ public enum RunnerBrowserProfile: String, Decodable, Equatable, Hashable, Sendab
     case tablet
 }
 
-/// Keeps the Runner's WKWebViews aligned with the selected device form factor.
-///
-/// The policy retains the installed WebKit version instead of copying a fixed
-/// UA from a specific OS release. It emulates a browser family only; viewport,
-/// safe areas, touch input, and platform APIs remain separate concerns.
+/// Produces an engine-compatible UA before the Runner opens its first page.
+/// Rust-managed lxapp/browser WebViews and Swift URL surfaces both inherit the
+/// configured value during creation, before their first navigation.
 @MainActor
 final class RunnerUserAgentPolicy {
     static let shared = RunnerUserAgentPolicy()
 
-    private final class WebViewState: NSObject {
-        var defaultUserAgent: String?
-        var appliedProfile: RunnerBrowserProfile?
-        var resolvingDefault = false
-        var reloadRequested = false
-    }
-
-    private let states = NSMapTable<WKWebView, WebViewState>(
-        keyOptions: .weakMemory,
-        valueOptions: .strongMemory
-    )
     private(set) var profile: RunnerBrowserProfile = .desktop
+    private var defaultUserAgent: String?
+
+    func prepare() async -> Bool {
+        guard defaultUserAgent == nil else { return true }
+        let probe = WKWebView(frame: .zero)
+        let result = try? await probe.evaluateJavaScript("navigator.userAgent")
+        guard let userAgent = result as? String,
+              !userAgent.isEmpty
+        else {
+            return false
+        }
+        defaultUserAgent = userAgent
+        return applyConfiguredProfile(reloadExisting: false)
+    }
 
     @discardableResult
     func setProfile(_ profile: RunnerBrowserProfile) -> Bool {
         let changed = self.profile != profile
         self.profile = profile
+        if changed, defaultUserAgent != nil {
+            if !applyConfiguredProfile(reloadExisting: true) {
+                NSLog("LingXia Runner could not apply the browser user agent")
+            }
+        }
         return changed
     }
 
-    func apply(to webView: WKWebView, reloadIfChanged: Bool = true) {
-        let state = state(for: webView)
-        state.reloadRequested = state.reloadRequested || reloadIfChanged
-        guard state.defaultUserAgent == nil else {
-            applyResolvedProfile(to: webView, state: state)
-            return
-        }
-        guard !state.resolvingDefault else { return }
-
-        state.resolvingDefault = true
-        Task { @MainActor [weak self, weak webView] in
-            guard let self, let webView else { return }
-            let result = try? await webView.evaluateJavaScript("navigator.userAgent")
-            let state = self.state(for: webView)
-            state.resolvingDefault = false
-            guard let userAgent = result as? String, !userAgent.isEmpty else { return }
-            state.defaultUserAgent = userAgent
-            self.applyResolvedProfile(to: webView, state: state)
-        }
-    }
-
-    private func state(for webView: WKWebView) -> WebViewState {
-        if let state = states.object(forKey: webView) {
-            return state
-        }
-        let state = WebViewState()
-        states.setObject(state, forKey: webView)
-        return state
-    }
-
-    private func applyResolvedProfile(to webView: WKWebView, state: WebViewState) {
-        guard state.appliedProfile != profile, let defaultUserAgent = state.defaultUserAgent else {
-            state.reloadRequested = false
-            return
-        }
-
-        let previousProfile = state.appliedProfile
+    private func applyConfiguredProfile(reloadExisting: Bool) -> Bool {
+        let userAgent: String?
         switch profile {
         case .desktop:
-            webView.customUserAgent = nil
+            userAgent = nil
         case .phone, .tablet:
-            guard let userAgent = Self.mobileUserAgent(from: defaultUserAgent, profile: profile) else {
-                state.reloadRequested = false
-                return
+            userAgent = defaultUserAgent.flatMap {
+                Self.mobileUserAgent(from: $0, profile: profile)
             }
-            webView.customUserAgent = userAgent
         }
-        state.appliedProfile = profile
-
-        let scheme = webView.url?.scheme?.lowercased()
-        let shouldReload = state.reloadRequested
-            && (previousProfile != nil || profile != .desktop)
-            && (scheme == "http" || scheme == "https")
-        state.reloadRequested = false
-        if shouldReload {
-            webView.reload()
-        }
+        return RunnerSupport.WebView.configureUserAgentOverride(
+            userAgent,
+            reloadExisting: reloadExisting
+        )
     }
 
     static func mobileUserAgent(
@@ -108,9 +71,10 @@ final class RunnerUserAgentPolicy {
             return nil
         }
 
+        let osMajor = mobileOSMajor(from: defaultUserAgent)
         let platform = profile == .phone
-            ? "(iPhone; CPU iPhone OS 18_0 like Mac OS X)"
-            : "(iPad; CPU OS 18_0 like Mac OS X)"
+            ? "(iPhone; CPU iPhone OS \(osMajor)_0 like Mac OS X)"
+            : "(iPad; CPU OS \(osMajor)_0 like Mac OS X)"
         var userAgent = String(defaultUserAgent[..<platformStart])
             + platform
             + String(defaultUserAgent[defaultUserAgent.index(after: platformEnd)...])
@@ -122,5 +86,18 @@ final class RunnerUserAgentPolicy {
             }
         }
         return userAgent
+    }
+
+    private static func mobileOSMajor(from userAgent: String) -> Int {
+        if let versionRange = userAgent.range(of: " Version/"),
+           let major = Int(
+               userAgent[versionRange.upperBound...]
+                   .prefix(while: { $0.isNumber })
+           )
+        {
+            return major
+        }
+        let macOSMajor = ProcessInfo.processInfo.operatingSystemVersion.majorVersion
+        return macOSMajor >= 26 ? macOSMajor : macOSMajor + 3
     }
 }

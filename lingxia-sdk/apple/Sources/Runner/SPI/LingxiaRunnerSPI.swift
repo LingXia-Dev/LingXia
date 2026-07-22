@@ -84,6 +84,16 @@ import WebKit
             RunnerBridge.attachLxAppWebView(webView, to: container)
         }
 
+        public static func configureUserAgentOverride(
+            _ userAgent: String?,
+            reloadExisting: Bool
+        ) -> Bool {
+            RunnerBridge.configureUserAgentOverride(
+                userAgent,
+                reloadExisting: reloadExisting
+            )
+        }
+
         /// App id of the built-in browser, which owns in-page new-tab requests
         /// (`target="_blank"` / `window.open`).
         public static var builtinBrowserAppId: String {

@@ -85,7 +85,7 @@ public class RunnerApp {
     }
 
     private func applyDeviceConfiguration() {
-        let browserProfileChanged = RunnerUserAgentPolicy.shared.setProfile(
+        RunnerUserAgentPolicy.shared.setProfile(
             selectedDeviceSize.browserProfile
         )
         let effectiveDevice = selectedDeviceSize.oriented(deviceOrientation)
@@ -110,10 +110,6 @@ public class RunnerApp {
             switchToSurfaceShellHost(device: effectiveDevice)
         } else {
             switchToPhoneSimulatorHost(device: effectiveDevice)
-        }
-        if browserProfileChanged {
-            windowController?.applyBrowserEmulationProfile()
-            surfaceShellHost?.applyBrowserEmulationProfile()
         }
     }
 

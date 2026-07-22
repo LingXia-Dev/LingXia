@@ -299,6 +299,13 @@ mod bridge {
         #[swift_bridge(swift_name = "openUnownedBrowserTab")]
         fn open_unowned_browser_tab(url: &str) -> Option<String>;
 
+        #[swift_bridge(swift_name = "configureAppleUserAgentOverride")]
+        fn configure_apple_user_agent_override(
+            use_default: bool,
+            user_agent: &str,
+            reload_existing: bool,
+        ) -> bool;
+
         #[swift_bridge(swift_name = "openStandaloneBrowserTab")]
         fn open_standalone_browser_tab(
             appid: &str,
@@ -819,6 +826,27 @@ pub fn open_unowned_browser_tab(url: &str) -> Option<String> {
                 None
             }
         }
+    })
+}
+
+pub fn configure_apple_user_agent_override(
+    use_default: bool,
+    user_agent: &str,
+    reload_existing: bool,
+) -> bool {
+    ffi_catch_unwind!("configure_apple_user_agent_override", false, || {
+        let user_agent = if use_default {
+            lingxia_webview::UserAgentOverride::Default
+        } else {
+            lingxia_webview::UserAgentOverride::Custom(user_agent.to_string())
+        };
+        lingxia_webview::platform::apple::configure_user_agent_override_for_webviews(
+            user_agent,
+            true,
+            reload_existing,
+        )
+        .map_err(|err| log::error!("configure Apple user agent failed: {err}"))
+        .is_ok()
     })
 }
 /// Offer a navigation URL from a native (non-managed) WebView to the

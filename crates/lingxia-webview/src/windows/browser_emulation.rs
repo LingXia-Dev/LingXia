@@ -36,6 +36,7 @@ pub fn set_windows_browser_emulation_profile_for_new_webviews(
 pub(crate) fn apply_profile(
     webview: &ICoreWebView2,
     default_user_agent: &str,
+    default_user_agent_metadata: &serde_json::Value,
     profile: WindowsBrowserEmulationProfile,
     resp: Sender<StdResult<String>>,
 ) {
@@ -51,32 +52,80 @@ pub(crate) fn apply_profile(
         return;
     }
 
+    let mut metadata = default_user_agent_metadata.clone();
+    let Some(metadata) = metadata.as_object_mut() else {
+        let _ = resp.send(Err(WebViewError::WebView(
+            "WebView2 supplied invalid default User-Agent Client Hints".to_string(),
+        )));
+        return;
+    };
+    let platform = if profile == WindowsBrowserEmulationProfile::Desktop {
+        metadata
+            .get("platform")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("Windows")
+            .to_string()
+    } else {
+        metadata.insert("platform".into(), "Android".into());
+        metadata.insert("platformVersion".into(), "10.0.0".into());
+        metadata.insert("architecture".into(), "".into());
+        metadata.insert("model".into(), "".into());
+        metadata.insert("bitness".into(), "".into());
+        metadata.insert("wow64".into(), false.into());
+        metadata.insert(
+            "formFactors".into(),
+            serde_json::json!([match profile {
+                WindowsBrowserEmulationProfile::Phone => "Mobile",
+                WindowsBrowserEmulationProfile::Tablet => "Tablet",
+                WindowsBrowserEmulationProfile::Desktop => unreachable!(),
+            }]),
+        );
+        "Android".to_string()
+    };
+    metadata.insert(
+        "mobile".into(),
+        (profile == WindowsBrowserEmulationProfile::Phone).into(),
+    );
     let params = serde_json::json!({
         "userAgent": user_agent,
-        "platform": match profile {
-            WindowsBrowserEmulationProfile::Desktop => "Windows",
-            WindowsBrowserEmulationProfile::Phone | WindowsBrowserEmulationProfile::Tablet => "Android",
-        },
-        "userAgentMetadata": {
-            "platform": match profile {
-                WindowsBrowserEmulationProfile::Desktop => "Windows",
-                WindowsBrowserEmulationProfile::Phone | WindowsBrowserEmulationProfile::Tablet => "Android",
-            },
-            "platformVersion": "10.0.0",
-            "architecture": match profile {
-                WindowsBrowserEmulationProfile::Desktop => "x86",
-                WindowsBrowserEmulationProfile::Phone | WindowsBrowserEmulationProfile::Tablet => "",
-            },
-            "model": "",
-            "mobile": profile == WindowsBrowserEmulationProfile::Phone,
-            "bitness": match profile {
-                WindowsBrowserEmulationProfile::Desktop => "64",
-                WindowsBrowserEmulationProfile::Phone | WindowsBrowserEmulationProfile::Tablet => "",
-            }
-        }
+        "platform": platform,
+        "userAgentMetadata": metadata,
     })
     .to_string();
     start_call_devtools_protocol(webview, "Emulation.setUserAgentOverride", &params, resp);
+}
+
+pub(crate) fn start_capture_default_metadata(
+    webview: &ICoreWebView2,
+    resp: Sender<StdResult<String>>,
+) {
+    let expression = r#"(async () => {
+        const data = navigator.userAgentData;
+        if (!data) return null;
+        return await data.getHighEntropyValues([
+            'architecture', 'bitness', 'formFactors', 'fullVersionList',
+            'model', 'platformVersion', 'wow64'
+        ]);
+    })()"#;
+    let params = serde_json::json!({
+        "expression": expression,
+        "awaitPromise": true,
+        "returnByValue": true,
+    })
+    .to_string();
+    start_call_devtools_protocol(webview, "Runtime.evaluate", &params, resp);
+}
+
+pub(crate) fn decode_default_metadata(response: &str) -> StdResult<serde_json::Value> {
+    serde_json::from_str::<serde_json::Value>(response)
+        .ok()
+        .and_then(|value| value.get("result")?.get("value").cloned())
+        .filter(serde_json::Value::is_object)
+        .ok_or_else(|| {
+            WebViewError::WebView(
+                "WebView2 did not expose default User-Agent Client Hints".to_string(),
+            )
+        })
 }
 
 fn effective_user_agent(
@@ -162,5 +211,16 @@ mod tests {
 
         assert!(user_agent.contains(" Chrome/132.0.0.0 Mobile Safari/537.36"));
         assert!(!user_agent.contains(" EdgA/"));
+    }
+
+    #[test]
+    fn decodes_runtime_evaluate_metadata() {
+        let metadata = decode_default_metadata(
+            r#"{"result":{"type":"object","value":{"brands":[],"mobile":false,"platform":"Windows"}}}"#,
+        )
+        .expect("metadata");
+
+        assert_eq!(metadata["platform"], "Windows");
+        assert_eq!(metadata["mobile"], false);
     }
 }

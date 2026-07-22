@@ -127,11 +127,6 @@ final class RunnerSurfaceShellHost {
         DevToolsLogger.shared.log("Device -> \(newDevice.displayName) (\(newDevice.sizeDescription))", level: .debug)
     }
 
-    func applyBrowserEmulationProfile() {
-        guard let webView = RunnerSupport.WebView.current() else { return }
-        RunnerUserAgentPolicy.shared.apply(to: webView)
-    }
-
     /// A phone-to-shell switch reuses the existing page webview. Its previous
     /// phone controller can publish one final compact viewport while closing,
     /// so report the shell's attached webview after the host transition settles.
@@ -150,7 +145,6 @@ final class RunnerSurfaceShellHost {
             }
 
             webView.layoutSubtreeIfNeeded()
-            RunnerUserAgentPolicy.shared.apply(to: webView)
             let size = webView.bounds.size
             guard size.width > 0, size.height > 0 else {
                 self.retrySurfaceMetricsReport(after: attempt)

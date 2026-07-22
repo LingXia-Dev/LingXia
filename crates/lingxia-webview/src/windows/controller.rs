@@ -7,6 +7,7 @@ use async_trait::async_trait;
 pub(crate) const WM_LINGXIA_COMMAND: u32 = WM_APP + 0x154;
 
 pub(crate) const WEBVIEW_SCREENSHOT_TIMEOUT: Duration = Duration::from_secs(4);
+const BROWSER_EMULATION_TIMEOUT: Duration = Duration::from_secs(4);
 
 pub(crate) enum UiCommand {
     LoadUrl {
@@ -160,6 +161,8 @@ pub(crate) struct UiState {
     pub(crate) _console_receivers: Vec<(ICoreWebView2DevToolsProtocolEventReceiver, i64)>,
     /// Engine-supplied UA captured before any host override.
     pub(crate) default_user_agent: String,
+    /// Engine-supplied UA Client Hints captured before Runner emulation.
+    pub(crate) default_user_agent_metadata: Option<serde_json::Value>,
 }
 
 impl UiState {
@@ -345,7 +348,7 @@ impl WebViewInner {
     ) -> StdResult<()> {
         self.dispatch_ui(
             |resp| UiCommand::SetBrowserEmulationProfile { profile, resp },
-            None,
+            Some(BROWSER_EMULATION_TIMEOUT),
         )
         .map_err(|err| err.into_webview_error("set browser emulation profile"))??;
         Ok(())
@@ -849,26 +852,6 @@ pub(crate) fn run_ui_thread_inner(
     };
 
     let (command_tx, command_rx) = mpsc::channel();
-    if startup_tx
-        .send(Ok((
-            command_tx,
-            unsafe { Threading::GetCurrentThreadId() },
-            native_view.window,
-            matches!(hosting, HostingMode::Composition(_)),
-        )))
-        .is_err()
-    {
-        unsafe {
-            let _ = controller.Close();
-        }
-        if let HostingMode::Composition(surface) = &hosting {
-            surface.destroy();
-        }
-        destroy_webview_parent(webtag.key(), native_view);
-        return Err(WebViewError::WebView(
-            "Failed to publish WebView startup".to_string(),
-        ));
-    }
 
     // Page-log capture over CDP (console calls, uncaught exceptions,
     // browser-level messages) is wired before the message loop pumps any
@@ -885,7 +868,21 @@ pub(crate) fn run_ui_thread_inner(
         }
     };
 
-    let default_user_agent = user_agent(&webview)?;
+    let default_user_agent = match user_agent(&webview) {
+        Ok(user_agent) => user_agent,
+        Err(err) => {
+            let _ = startup_tx.send(Err(err.clone()));
+            unsafe {
+                let _ = controller.Close();
+            }
+            if let HostingMode::Composition(surface) = &hosting {
+                surface.destroy();
+            }
+            destroy_webview_parent(webtag.key(), native_view);
+            return Err(err);
+        }
+    };
+    let configured_profile = browser_emulation::configured_profile();
     let mut state = UiState {
         controller,
         webview,
@@ -899,19 +896,103 @@ pub(crate) fn run_ui_thread_inner(
         network_receivers: Vec::new(),
         _console_receivers: console_receivers,
         default_user_agent,
+        default_user_agent_metadata: None,
     };
 
-    if let Some(profile) = browser_emulation::configured_profile() {
-        let (profile_tx, _profile_rx) = mpsc::channel();
-        browser_emulation::apply_profile(
-            &state.webview,
-            &state.default_user_agent,
-            profile,
-            profile_tx,
-        );
+    let bootstrap = (|| -> StdResult<()> {
+        if configured_profile.is_some() {
+            let (metadata_tx, metadata_rx) = mpsc::channel();
+            browser_emulation::start_capture_default_metadata(&state.webview, metadata_tx);
+            let response = wait_for_ui_reply(&metadata_rx, BROWSER_EMULATION_TIMEOUT)??;
+            state.default_user_agent_metadata =
+                Some(browser_emulation::decode_default_metadata(&response)?);
+        }
+        if let Some(profile) = configured_profile
+            && profile != WindowsBrowserEmulationProfile::Desktop
+        {
+            let (profile_tx, profile_rx) = mpsc::channel();
+            browser_emulation::apply_profile(
+                &state.webview,
+                &state.default_user_agent,
+                state
+                    .default_user_agent_metadata
+                    .as_ref()
+                    .expect("configured profile captures UA metadata"),
+                profile,
+                profile_tx,
+            );
+            wait_for_ui_reply(&profile_rx, BROWSER_EMULATION_TIMEOUT)??;
+        }
+        Ok(())
+    })();
+    if let Err(err) = bootstrap {
+        let _ = startup_tx.send(Err(err.clone()));
+        cleanup_state(&mut state);
+        return Err(err);
+    }
+
+    if startup_tx
+        .send(Ok((
+            command_tx,
+            unsafe { Threading::GetCurrentThreadId() },
+            native_view.window,
+            matches!(state.hosting, HostingMode::Composition(_)),
+        )))
+        .is_err()
+    {
+        cleanup_state(&mut state);
+        return Err(WebViewError::WebView(
+            "Failed to publish WebView startup".to_string(),
+        ));
     }
 
     message_loop(&mut state, command_rx)
+}
+
+/// Waits for a WebView2 callback before the regular message loop starts.
+/// Startup is not published until this completes, so a first navigation cannot
+/// overtake Runner UA/Client-Hints emulation.
+fn wait_for_ui_reply<T>(resp_rx: &Receiver<T>, timeout: Duration) -> StdResult<T> {
+    let deadline = std::time::Instant::now() + timeout;
+    loop {
+        match resp_rx.try_recv() {
+            Ok(reply) => return Ok(reply),
+            Err(mpsc::TryRecvError::Disconnected) => {
+                return Err(WebViewError::WebView(
+                    "WebView2 callback channel disconnected".to_string(),
+                ));
+            }
+            Err(mpsc::TryRecvError::Empty) => {}
+        }
+        if std::time::Instant::now() >= deadline {
+            return Err(WebViewError::WebView(
+                "WebView2 browser emulation timed out".to_string(),
+            ));
+        }
+
+        let mut dispatched = false;
+        unsafe {
+            let mut msg = MSG::default();
+            while WindowsAndMessaging::PeekMessageW(
+                &mut msg,
+                None,
+                0,
+                0,
+                WindowsAndMessaging::PM_REMOVE,
+            )
+            .as_bool()
+            {
+                dispatched = true;
+                if msg.message != WM_LINGXIA_COMMAND {
+                    let _ = WindowsAndMessaging::TranslateMessage(&msg);
+                    WindowsAndMessaging::DispatchMessageW(&msg);
+                }
+            }
+        }
+        if !dispatched {
+            std::thread::sleep(Duration::from_millis(1));
+        }
+    }
 }
 
 /// Waits for a dispatched command's reply while delivering incoming
@@ -1072,12 +1153,19 @@ pub(crate) fn handle_command(state: &mut UiState, command: UiCommand) -> StdResu
             let _ = resp.send(result);
         }
         UiCommand::SetBrowserEmulationProfile { profile, resp } => {
-            browser_emulation::apply_profile(
-                &state.webview,
-                &state.default_user_agent,
-                profile,
-                resp,
-            );
+            if let Some(metadata) = &state.default_user_agent_metadata {
+                browser_emulation::apply_profile(
+                    &state.webview,
+                    &state.default_user_agent,
+                    metadata,
+                    profile,
+                    resp,
+                );
+            } else {
+                let _ = resp.send(Err(WebViewError::WebView(
+                    "browser emulation was not configured before WebView creation".to_string(),
+                )));
+            }
         }
         UiCommand::ClearBrowsingData { resp } => {
             if let Err(err) = begin_clear_browsing_data(&state.webview, resp.clone()) {
