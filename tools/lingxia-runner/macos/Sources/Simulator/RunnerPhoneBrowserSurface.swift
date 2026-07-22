@@ -2,11 +2,8 @@ import AppKit
 import WebKit
 import os.log
 
-/// In-app browser chrome for the simulated phone (the `target="self"` browser).
-/// Mirrors the iOS `LxAppBrowser`: an ordered set of open tabs with a tabs
-/// entrypoint (new-tab / tabs switcher / overflow menu) rather than a single
-/// replace-in-place tab. Switching tabs swaps the displayed managed webview
-/// instead of closing the old one.
+/// In-app browser chrome for the simulated phone. Self and aside tabs share the
+/// surface but keep separate switcher groups and chrome policies.
 @MainActor
 final class RunnerPhoneBrowserSurface {
     private static let log = OSLog(subsystem: "LingXiaRunner", category: "PhoneBrowserSurface")
@@ -33,19 +30,16 @@ final class RunnerPhoneBrowserSurface {
     private var addressField: NSTextField?
     private var addressIcon: NSImageView?
     private var addressPill: NSView?
-    private var bottomBarHeightConstraint: NSLayoutConstraint?
-    // Action-row top: below the address pill normally, at the bar top for an
-    // aside tab (address row hidden).
-    private var actionRowTopWithAddress: NSLayoutConstraint?
-    private var actionRowTopWithoutAddress: NSLayoutConstraint?
     private var backButton: NSButton?
     private var forwardButton: NSButton?
     private var refreshButton: NSButton?
-    /// Row refresh for aside tabs (self tabs refresh from the address pill).
     private var asideRefreshButton: NSButton?
     private var newTabButton: NSButton?
     private var tabsButton: NSButton?
     private var tabsBadge: NSTextField?
+    private var bottomBarHeightConstraint: NSLayoutConstraint?
+    private var actionRowTopWithAddress: NSLayoutConstraint?
+    private var actionRowTopWithoutAddress: NSLayoutConstraint?
     private var tabSwitcherOverlay: NSView?
     private var urlObservation: NSKeyValueObservation?
     private var canGoBackObservation: NSKeyValueObservation?
@@ -76,11 +70,11 @@ final class RunnerPhoneBrowserSurface {
         phoneContentView = phoneContent
         register(tabId: normalized)
         show(in: phoneContent)
-        activate(tabId: normalized)
+        activate(tabId: normalized, allowModeSwitch: true)
     }
 
-    /// Tear the browser down: detach the webview, close every open tab, hide the
-    /// overlay. Called from the close button and on window close.
+    /// Hide the browser while preserving its groups. Window teardown passes
+    /// `closeTab` to release the managed tabs as well.
     func dismiss(closeTab: Bool) {
         clearWebViewAttachment()
         dismissTabSwitcher()
@@ -90,10 +84,10 @@ final class RunnerPhoneBrowserSurface {
             for tabId in openTabIds {
                 _ = RunnerSupport.Browser.closeTab(tabId: tabId)
             }
+            openTabIds.removeAll()
+            interactedTabIds.removeAll()
+            activeTabId = nil
         }
-        openTabIds.removeAll()
-        interactedTabIds.removeAll()
-        activeTabId = nil
     }
 
     private func register(tabId: String) {
@@ -104,8 +98,12 @@ final class RunnerPhoneBrowserSurface {
 
     /// Make an open tab the active, displayed one. Detaches (without closing) the
     /// previous tab's webview and attaches the new one.
-    private func activate(tabId: String) {
+    private func activate(tabId: String, allowModeSwitch: Bool = false) {
         guard openTabIds.contains(tabId) else { return }
+        if !allowModeSwitch, let activeTabId,
+           tabIsAside(activeTabId) != tabIsAside(tabId) {
+            return
+        }
         activeTabId = tabId
         clearWebViewAttachment()
         // Blank the address and back/forward until the new tab's webview
@@ -118,15 +116,17 @@ final class RunnerPhoneBrowserSurface {
         updateAddress(url: nil)
         updateNavigationButtons()
         updateTabsBadge()
-        updateAddressRowVisibility()
+        applyActiveModeChrome()
         attachWebView(tabId: tabId, attempt: 0)
     }
 
-    /// Close a single tab and move focus to a neighbor; tear the browser down when
-    /// the last tab goes away (mirrors iOS closeTab).
+    /// Close a tab and select a neighbor in its group; hide the browser when
+    /// that group becomes empty.
     private func closeTab(_ tabId: String) {
         guard let index = openTabIds.firstIndex(of: tabId) else { return }
         let wasActive = activeTabId == tabId
+        let aside = tabIsAside(tabId)
+        let groupIndex = tabIds(forAside: aside).firstIndex(of: tabId) ?? 0
 
         _ = RunnerSupport.Browser.closeTab(tabId: tabId)
         openTabIds.remove(at: index)
@@ -134,18 +134,40 @@ final class RunnerPhoneBrowserSurface {
         updateTabsBadge()
 
         guard wasActive else { return }
-        if openTabIds.isEmpty {
+        let remaining = tabIds(forAside: aside)
+        if remaining.isEmpty {
+            activeTabId = nil
             dismiss(closeTab: false)
             return
         }
-        let neighbor = index > 0 ? index - 1 : 0
-        activate(tabId: openTabIds[neighbor])
+        let neighbor = min(groupIndex, remaining.count - 1)
+        activate(tabId: remaining[neighbor])
+    }
+
+    private func tabIsAside(_ tabId: String) -> Bool {
+        RunnerSupport.Browser.isAside(tabId: tabId)
+    }
+
+    private func tabIds(forAside aside: Bool) -> [String] {
+        openTabIds.filter { tabIsAside($0) == aside }
+    }
+
+    private var activeTabIsAside: Bool {
+        activeTabId.map(tabIsAside) ?? false
+    }
+
+    private var visibleTabIds: [String] {
+        guard activeTabId != nil else { return [] }
+        return tabIds(forAside: activeTabIsAside)
     }
 
     /// Open a fresh blank tab against the presenting owner and switch to it.
     /// The runner bundles no browser webui, so a new tab is `about:blank`
     /// (a blank page) rather than the `lingxia://newtab` start page.
     private func openNewTab() {
+        if let tabId = activeTabId, RunnerSupport.Browser.isAside(tabId: tabId) {
+            return
+        }
         guard let ownerAppId, ownerSessionId > 0,
               let newId = RunnerSupport.Browser.openTab(
                 ownerAppId: ownerAppId,
@@ -264,6 +286,7 @@ final class RunnerPhoneBrowserSurface {
         self.tabsBadge = tabsBadge
         self.addressField = addressField
         self.addressIcon = addressIcon
+        self.addressPill = addressPill
 
         phoneContent.addSubview(overlay, positioned: .above, relativeTo: nil)
         NSLayoutConstraint.activate([
@@ -310,15 +333,14 @@ final class RunnerPhoneBrowserSurface {
             tabsBadge.centerYAnchor.constraint(equalTo: tabsButton.centerYAnchor, constant: -1),
         ])
 
-        let barHeight = bottomBar.heightAnchor.constraint(equalToConstant: 96)
-        barHeight.isActive = true
-        bottomBarHeightConstraint = barHeight
-        let withAddress = actionRow.topAnchor.constraint(equalTo: addressPill.bottomAnchor, constant: 4)
-        let withoutAddress = actionRow.topAnchor.constraint(equalTo: barBackground.topAnchor, constant: 8)
-        actionRowTopWithAddress = withAddress
-        actionRowTopWithoutAddress = withoutAddress
-        withAddress.isActive = true
-        self.addressPill = addressPill
+        let bottomBarHeight = bottomBar.heightAnchor.constraint(equalToConstant: 96)
+        let actionTopWithAddress = actionRow.topAnchor.constraint(equalTo: addressPill.bottomAnchor, constant: 4)
+        let actionTopWithoutAddress = actionRow.topAnchor.constraint(equalTo: barBackground.topAnchor, constant: 8)
+        bottomBarHeight.isActive = true
+        actionTopWithAddress.isActive = true
+        bottomBarHeightConstraint = bottomBarHeight
+        actionRowTopWithAddress = actionTopWithAddress
+        actionRowTopWithoutAddress = actionTopWithoutAddress
 
         overlayView = overlay
         self.webContainer = webContainer
@@ -326,15 +348,19 @@ final class RunnerPhoneBrowserSurface {
         updateTabsBadge()
     }
 
-    /// Aside chrome: refresh, smart back/forward, tabs, close — no address
-    /// row, no new-tab (asides are API-opened; user-created tabs are self mode).
-    private func updateAddressRowVisibility() {
+    /// Compact aside uses a single action row. Address editing and tab creation
+    /// remain exclusive to self browser chrome.
+    private func applyActiveModeChrome() {
         guard let tabId = activeTabId else { return }
-        let aside = RunnerSupport.Browser.isAside(tabId: tabId)
+        let aside = tabIsAside(tabId)
         newTabButton?.isHidden = aside
         asideRefreshButton?.isHidden = !aside
-        guard let addressPill, addressPill.isHidden != aside else { return }
-        addressPill.isHidden = aside
+        if aside, addressField?.currentEditor() != nil {
+            hostWindow?.makeFirstResponder(nil)
+        }
+        addressField?.isEditable = !aside
+        addressField?.isSelectable = !aside
+        addressPill?.isHidden = aside
         if aside {
             actionRowTopWithAddress?.isActive = false
             actionRowTopWithoutAddress?.isActive = true
@@ -452,6 +478,8 @@ final class RunnerPhoneBrowserSurface {
         forwardButton?.alphaValue = forward ? 1.0 : 0.35
         refreshButton?.isEnabled = webView != nil
         refreshButton?.alphaValue = webView == nil ? 0.35 : 1.0
+        asideRefreshButton?.isEnabled = webView != nil
+        asideRefreshButton?.alphaValue = webView == nil ? 0.35 : 1.0
     }
 
     /// Mark the active tab as user-interacted and refresh the nav affordances.
@@ -462,7 +490,7 @@ final class RunnerPhoneBrowserSurface {
     }
 
     private func updateTabsBadge() {
-        tabsBadge?.stringValue = String(openTabIds.count)
+        tabsBadge?.stringValue = String(visibleTabIds.count)
     }
 
     private func tabLabel(forTabId tabId: String) -> String {
@@ -560,7 +588,7 @@ final class RunnerPhoneBrowserSurface {
         ])
 
         tabSwitcherOverlay = dim
-        for tabId in openTabIds {
+        for tabId in visibleTabIds {
             list.addArrangedSubview(makeTabSwitcherRow(tabId: tabId, width: overlay.bounds.width - 16))
         }
     }
@@ -612,7 +640,7 @@ final class RunnerPhoneBrowserSurface {
     @objc private func closeTabFromSwitcher(_ sender: NSButton) {
         guard let tabId = sender.identifier?.rawValue else { return }
         closeTab(tabId)
-        if openTabIds.isEmpty {
+        if visibleTabIds.isEmpty {
             dismissTabSwitcher()
         } else {
             // Rebuild the list to drop the closed row / refresh active styling.
@@ -624,7 +652,7 @@ final class RunnerPhoneBrowserSurface {
     // MARK: - Actions
 
     @objc private func closeClicked() {
-        dismiss(closeTab: true)
+        dismiss(closeTab: false)
     }
 
     @objc private func newTabClicked() {
@@ -647,6 +675,11 @@ final class RunnerPhoneBrowserSurface {
 
     @objc private func addressSubmitted() {
         guard let tabId = activeTabId else { return }
+        guard !RunnerSupport.Browser.isAside(tabId: tabId) else {
+            hostWindow?.makeFirstResponder(nil)
+            updateAddress(url: activeWebView?.url)
+            return
+        }
         // Parse the typed address here (like iOS LxAppBrowser): the runner's
         // native lib has no `browser-shell` feature, so the rust address-input
         // resolver is unavailable. A full URL loads as-is; a bare host gets
