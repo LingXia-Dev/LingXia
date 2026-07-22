@@ -443,11 +443,7 @@ pub fn execute(info: &SessionInfo, options: BrowserOptions) -> Result<()> {
             if json {
                 print_json(&data, false)?;
             } else {
-                let tab_id = data
-                    .get("tab_id")
-                    .and_then(Value::as_str)
-                    .context("no current browser tab")?;
-                println!("{tab_id}");
+                println!("{}", current_tab_summary(&data)?);
             }
         }
         BrowserCommand::Activate { tab, json } => {
@@ -1154,6 +1150,20 @@ fn print_tabs(data: &Value) -> Result<()> {
     Ok(())
 }
 
+fn current_tab_summary(data: &Value) -> Result<String> {
+    let tab_id = data
+        .get("tab_id")
+        .and_then(Value::as_str)
+        .context("no current browser tab")?;
+    let url = data
+        .get("current_url")
+        .and_then(Value::as_str)
+        .filter(|value| !value.trim().is_empty())
+        .or_else(|| data.get("path").and_then(Value::as_str))
+        .unwrap_or("-");
+    Ok(format!("{tab_id}  {url}"))
+}
+
 fn truncate(value: &str, max_chars: usize) -> String {
     let mut chars = value.chars();
     let mut out: String = chars.by_ref().take(max_chars).collect();
@@ -1338,9 +1348,33 @@ fn has_url_scheme(url: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{file_url_from_path, local_file_url, normalize_open_url};
+    use super::{current_tab_summary, file_url_from_path, local_file_url, normalize_open_url};
+    use serde_json::json;
     use std::path::Path;
 
+    #[test]
+    fn current_tab_summary_includes_url() {
+        let summary = current_tab_summary(&json!({
+            "tab_id": "tab-3",
+            "current_url": "https://example.com/path",
+            "path": "/tabs/tab-3"
+        }))
+        .unwrap();
+
+        assert_eq!(summary, "tab-3  https://example.com/path");
+    }
+
+    #[test]
+    fn current_tab_summary_falls_back_to_path() {
+        let summary = current_tab_summary(&json!({
+            "tab_id": "tab-3",
+            "current_url": "",
+            "path": "/tabs/tab-3"
+        }))
+        .unwrap();
+
+        assert_eq!(summary, "tab-3  /tabs/tab-3");
+    }
     #[test]
     fn bare_remote_host_gets_https() {
         assert_eq!(normalize_open_url("example.com"), "https://example.com");
