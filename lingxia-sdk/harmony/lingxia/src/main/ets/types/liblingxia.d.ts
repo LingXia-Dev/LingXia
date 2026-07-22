@@ -201,13 +201,12 @@ declare module 'liblingxia.so' {
   export function openStandaloneBrowserTab(appid: string, sessionId: number, url: string, ephemeralWebData: boolean, urlCallback: boolean): string | null;
 
   /**
-   * Open an aside tab in the shared in-app browser: same as openBrowserTab
-   * except the chrome hides its address bar while this tab is active.
+   * Open a tab in the shared browser's API-managed compact aside group.
    */
   export function openAsideBrowserTab(appid: string, sessionId: number, url: string): string | null;
 
   /**
-   * Whether the tab was opened as an aside (chrome hides its address bar).
+   * Whether the tab belongs to the API-managed aside browser group.
    */
   export function browserTabIsAside(tabId: string): boolean;
 

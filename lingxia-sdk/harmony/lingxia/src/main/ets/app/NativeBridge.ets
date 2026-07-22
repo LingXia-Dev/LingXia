@@ -159,7 +159,7 @@ class NativeBridge {
       ownerSessionIdRaw?: Object
     ) => {
       // "self", "new_browser_tab" and "aside" open inside the in-app browser;
-      // an aside tab carries the aside flag so the chrome hides its address bar.
+      // an aside tab carries the flag for compact one-row group chrome.
       const isAside = target === 'aside';
       const inAppBrowserTarget = target === 'self' || target === 'new_browser_tab' || isAside;
       if (!inAppBrowserTarget) {
