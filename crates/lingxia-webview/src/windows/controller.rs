@@ -901,13 +901,15 @@ pub(crate) fn run_ui_thread_inner(
         default_user_agent,
     };
 
-    let (profile_tx, _profile_rx) = mpsc::channel();
-    browser_emulation::apply_profile(
-        &state.webview,
-        &state.default_user_agent,
-        browser_emulation::configured_profile(),
-        profile_tx,
-    );
+    if let Some(profile) = browser_emulation::configured_profile() {
+        let (profile_tx, _profile_rx) = mpsc::channel();
+        browser_emulation::apply_profile(
+            &state.webview,
+            &state.default_user_agent,
+            profile,
+            profile_tx,
+        );
+    }
 
     message_loop(&mut state, command_rx)
 }

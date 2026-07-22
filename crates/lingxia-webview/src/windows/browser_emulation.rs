@@ -15,18 +15,14 @@ pub enum WindowsBrowserEmulationProfile {
     Tablet,
 }
 
-static CONFIGURED_PROFILE: std::sync::atomic::AtomicU8 =
-    std::sync::atomic::AtomicU8::new(WindowsBrowserEmulationProfile::Desktop as u8);
+static CONFIGURED_PROFILE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
 
-pub(crate) fn configured_profile() -> WindowsBrowserEmulationProfile {
+pub(crate) fn configured_profile() -> Option<WindowsBrowserEmulationProfile> {
     match CONFIGURED_PROFILE.load(std::sync::atomic::Ordering::Acquire) {
-        value if value == WindowsBrowserEmulationProfile::Phone as u8 => {
-            WindowsBrowserEmulationProfile::Phone
-        }
-        value if value == WindowsBrowserEmulationProfile::Tablet as u8 => {
-            WindowsBrowserEmulationProfile::Tablet
-        }
-        _ => WindowsBrowserEmulationProfile::Desktop,
+        1 => Some(WindowsBrowserEmulationProfile::Desktop),
+        2 => Some(WindowsBrowserEmulationProfile::Phone),
+        3 => Some(WindowsBrowserEmulationProfile::Tablet),
+        _ => None,
     }
 }
 
@@ -34,7 +30,7 @@ pub(crate) fn configured_profile() -> WindowsBrowserEmulationProfile {
 pub fn set_windows_browser_emulation_profile_for_new_webviews(
     profile: WindowsBrowserEmulationProfile,
 ) {
-    CONFIGURED_PROFILE.store(profile as u8, std::sync::atomic::Ordering::Release);
+    CONFIGURED_PROFILE.store(profile as u8 + 1, std::sync::atomic::Ordering::Release);
 }
 
 pub(crate) fn apply_profile(
