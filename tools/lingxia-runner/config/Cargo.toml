@@ -5,9 +5,8 @@ version = "0.10.1"
 edition.workspace = true
 publish = false
 
-# Resolves the dev runner's config (config.toml + env + lxapp routing) into plain
-# data. Dependency-light on purpose: the provider's option/routing types live
-# only in the runner crates (injected at build time), which map this onto them.
+# Resolves the dev runner's config.toml overrides into plain data.
+# Dependency-light on purpose: the provider's option types live only in the
+# runner crates (injected at build time), which map this onto them.
 [dependencies]
-serde_json = { workspace = true }
 toml = "1.1.2"

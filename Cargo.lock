@@ -3510,7 +3510,6 @@ dependencies = [
 name = "lingxia-runner-config"
 version = "0.10.1"
 dependencies = [
- "serde_json",
  "toml",
 ]
 

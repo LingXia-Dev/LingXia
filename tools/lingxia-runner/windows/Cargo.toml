@@ -16,8 +16,9 @@ path = "src/main.rs"
 cloud = ["dep:lingxia-runner-config"]
 
 # The runner is a dev container, so it asks the cloud provider for `dev` — the
-# runtime lingxiaServer/lingxiaId overrides + mock switch. The CLI reads this to
-# decide which provider features to enable; it hardcodes no provider knowledge.
+# runtime lingxiaServer/lingxiaId overrides + provider-owned dev descriptor.
+# The CLI reads this to decide which provider features to enable; it hardcodes
+# no provider implementation details.
 [package.metadata.lingxia.providers.cloud]
 features = ["dev"]
 
@@ -34,8 +35,7 @@ lingxia-windows-sdk = { workspace = true, features = ["standard", "browser-runti
 lxapp = { workspace = true, default-features = false }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
-# Shared resolver for the dev runner's config (config.toml overrides, mock dir,
-# lxapp routing); mapped onto the provider's types in runner.rs. Only needed when
+# Shared resolver for the dev runner's config.toml overrides. Only needed when
 # the provider is injected. Shared with the macOS runner.
 lingxia-runner-config = { workspace = true, optional = true }
 
