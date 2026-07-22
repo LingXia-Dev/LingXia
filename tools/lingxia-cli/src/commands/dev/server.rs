@@ -207,7 +207,25 @@ pub fn start_server_on_with_stop(
     stop_flag: Arc<AtomicBool>,
     auth_token: Option<String>,
 ) -> Result<DevServerHandle> {
-    let session = create_session(project_root)?;
+    start_server_on_with_roots(
+        project_root,
+        project_root,
+        bind_addr,
+        _platform,
+        stop_flag,
+        auth_token,
+    )
+}
+
+fn start_server_on_with_roots(
+    session_root: &Path,
+    content_root: &Path,
+    bind_addr: &str,
+    _platform: &str,
+    stop_flag: Arc<AtomicBool>,
+    auth_token: Option<String>,
+) -> Result<DevServerHandle> {
+    let session = create_session(session_root)?;
     let listener = TcpListener::bind(bind_addr).context("Failed to bind dev websocket")?;
     listener
         .set_nonblocking(true)
@@ -217,7 +235,7 @@ pub fn start_server_on_with_stop(
         .context("Failed to resolve dev websocket address")?;
     let writer = Arc::new(SessionLogWriter::new(&session)?);
     let state = Arc::new(DevServerState::new(
-        project_root.to_path_buf(),
+        content_root.to_path_buf(),
         stop_flag.clone(),
         auth_token,
     ));
@@ -256,6 +274,41 @@ pub fn start_server_fixed_with_stop(
             );
             start_server_on_with_stop(
                 project_root,
+                &format!("{host}:0"),
+                platform,
+                stop_flag,
+                auth_token,
+            )
+        }
+    }
+}
+
+pub fn start_server_fixed_with_roots(
+    session_root: &Path,
+    content_root: &Path,
+    host: &str,
+    platform: &str,
+    stop_flag: Arc<AtomicBool>,
+    auth_token: Option<String>,
+) -> Result<DevServerHandle> {
+    let port = dev_port(&session_root.to_string_lossy(), platform);
+    match start_server_on_with_roots(
+        session_root,
+        content_root,
+        &format!("{host}:{port}"),
+        platform,
+        stop_flag.clone(),
+        auth_token.clone(),
+    ) {
+        Ok(handle) => Ok(handle),
+        Err(error) => {
+            eprintln!(
+                "⚠ dev port {port} unavailable ({error:#}); using an OS-assigned port — \
+                 reconnection after a client restart may need a re-forward."
+            );
+            start_server_on_with_roots(
+                session_root,
+                content_root,
                 &format!("{host}:0"),
                 platform,
                 stop_flag,

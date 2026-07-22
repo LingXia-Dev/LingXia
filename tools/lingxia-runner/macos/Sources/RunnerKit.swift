@@ -43,14 +43,14 @@ private class RunnerKitDelegate: NSObject, NSApplicationDelegate {
         if let rawURL = ProcessInfo.processInfo.environment["LINGXIA_RUNNER_WEB_URL"],
            let url = URL(string: rawURL),
            url.scheme == "http" || url.scheme == "https" {
-            _ = try? Lingxia.initializeRuntime()
+            guard initializeRuntime() else { return }
             RunnerApp.shared.setDeviceSize(.defaultDevice)
             RunnerApp.shared.openWeb(url: url)
             return
         }
         RunnerApp.shared.bind(controller: controller)
         Lingxia.activate(controller: controller)
-        _ = try? Lingxia.initializeRuntime()
+        guard initializeRuntime() else { return }
 
         controller.setInterceptor(.willOpen) { context in
             guard case .object(let payload) = context.payload,
@@ -70,6 +70,17 @@ private class RunnerKitDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
-        return false
+        return ProcessInfo.processInfo.environment["LINGXIA_RUNNER_WEB_URL"] != nil
+    }
+
+    private func initializeRuntime() -> Bool {
+        do {
+            _ = try Lingxia.initializeRuntime()
+            return true
+        } catch {
+            NSLog("LingXia Runner runtime initialization failed: %@", error.localizedDescription)
+            NSApp.terminate(nil)
+            return false
+        }
     }
 }

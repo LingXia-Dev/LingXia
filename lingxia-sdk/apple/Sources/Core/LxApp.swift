@@ -203,7 +203,7 @@ final class LxAppCore {
 
     /// Check if LxApp system is initialized and ready for use
     internal static func isInitialized() -> Bool {
-        return instance != nil && homeLxAppId != nil
+        return instance != nil
     }
 
     private static func bootstrapFromRuntimeInfo(
@@ -214,7 +214,7 @@ final class LxAppCore {
         homeLxAppId = info.homeAppId
         capabilities = info.capabilities.rawValue
 
-        if autoOpenHome && !skipAutoOpenWindow {
+        if autoOpenHome && !skipAutoOpenWindow && info.homeAppId != nil {
             DispatchQueue.main.async {
                 LxAppPlatform.openHomeLxApp()
             }
@@ -231,24 +231,25 @@ final class LxAppCore {
         let locale = Locale.current.identifier
 
         let initResult = lingxiaInit(directoryConfig.dataPath, directoryConfig.cachesPath, locale)
-        let initResultString = initResult?.toString()
 
-        if let homeAppId = initResultString {
+        if initResult.ok {
+            let rawHomeAppId = initResult.home_app_id.toString()
+            let homeAppId = rawHomeAppId.isEmpty ? nil : rawHomeAppId
             homeLxAppId = homeAppId
             capabilities = getAppCapabilities()
             if shouldEnableWebViewDebugging() {
                 enableWebViewDebugging()
             }
-            os_log("LxApp initialized successfully with home app: %{public}@", log: log, type: .info, homeAppId)
+            os_log("LxApp initialized successfully with home app: %{public}@", log: log, type: .info, homeAppId ?? "none")
 
             // Auto-open home lxapp after initialization (unless skipped by external tools)
-            if autoOpenHome && !skipAutoOpenWindow {
+            if autoOpenHome && !skipAutoOpenWindow && homeAppId != nil {
                 DispatchQueue.main.async {
                     LxAppPlatform.openHomeLxApp()
                 }
             }
         } else {
-            LXLog.error("Failed to get home LxApp ID from native init", category: "LxAppCore")
+            LXLog.error("Failed to initialize native runtime: \(initResult.error.toString())", category: "LxAppCore")
         }
     }
 

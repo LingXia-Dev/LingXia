@@ -136,9 +136,16 @@ mod bridge {
         pub webview_ptr: usize,
     }
 
+    #[swift_bridge(swift_repr = "struct")]
+    pub struct LingxiaInitResult {
+        pub ok: bool,
+        pub home_app_id: String,
+        pub error: String,
+    }
+
     extern "Rust" {
         #[swift_bridge(swift_name = "lingxiaInit")]
-        fn lingxia_init(data_dir: &str, cache_dir: &str, locale: &str) -> Option<String>;
+        fn lingxia_init(data_dir: &str, cache_dir: &str, locale: &str) -> LingxiaInitResult;
 
         #[swift_bridge(swift_name = "getDisplayLanguage")]
         fn get_display_language() -> String;
@@ -550,7 +557,7 @@ fn install_browser_native_input_host() {
 fn install_browser_native_input_host() {}
 
 /// Initialize the Lingxia SDK for iOS/macOS
-pub fn lingxia_init(data_dir: &str, cache_dir: &str, locale: &str) -> Option<String> {
+pub fn lingxia_init(data_dir: &str, cache_dir: &str, locale: &str) -> bridge::LingxiaInitResult {
     crate::logging::init();
     install_browser_native_input_host();
 
@@ -568,11 +575,26 @@ pub fn lingxia_init(data_dir: &str, cache_dir: &str, locale: &str) -> Option<Str
         Ok(platform) => platform,
         Err(e) => {
             log::error!("Failed to create Platform: {}", e);
-            return None;
+            return bridge::LingxiaInitResult {
+                ok: false,
+                home_app_id: String::new(),
+                error: e.to_string(),
+            };
         }
     };
 
-    crate::init_with_platform(platform)
+    match crate::init_with_platform(platform) {
+        Ok(home_app_id) => bridge::LingxiaInitResult {
+            ok: true,
+            home_app_id: home_app_id.unwrap_or_default(),
+            error: String::new(),
+        },
+        Err(error) => bridge::LingxiaInitResult {
+            ok: false,
+            home_app_id: String::new(),
+            error: error.to_string(),
+        },
+    }
 }
 
 /// Return the effective display language selected by the runtime.

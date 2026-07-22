@@ -13,11 +13,14 @@ use lingxia_webview::{NavigationPolicy, WebTag, WebViewController, WebViewDataMo
 static WINDOWS_APP_VISIBLE_WEBTAGS: LazyLock<Mutex<HashMap<String, HashSet<String>>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
+pub const RUNNER_WEB_APP_ID: &str = "__lingxia_runner_web__";
+pub const RUNNER_WEB_SESSION_ID: u64 = 1;
+
 /// Initializes the LingXia runtime for a Windows host process.
 ///
 /// Installs logging and the WebView2 user-data directory before running the
 /// common platform bootstrap. Returns the home app id on success.
-pub fn init(platform: Platform) -> Option<String> {
+pub fn init(platform: Platform) -> crate::Result<Option<String>> {
     crate::logging::init();
     lingxia_webview::platform::windows::set_webview_user_data_dir(
         platform.app_cache_dir().join("webview2"),
@@ -47,9 +50,9 @@ pub fn open_web_surface(url: &str) -> Result<(), String> {
     platform
         .present_surface(SurfaceRequest {
             id: "runner-web-main".to_string(),
-            app_id: "__lingxia_runner_web__".to_string(),
+            app_id: RUNNER_WEB_APP_ID.to_string(),
             path: url.to_string(),
-            session_id: 1,
+            session_id: RUNNER_WEB_SESSION_ID,
             page_instance_id: String::new(),
             content: SurfaceContent::Url,
             kind: SurfaceKind::Window,
@@ -153,7 +156,9 @@ fn install_url_surface_bridge() {
         // DockedBrowser parity. Without it (plain builds), a browser-profile
         // WebView2 renders the URL directly.
         #[cfg(feature = "browser-runtime")]
-        if let Some(resolved) = resolve_url_surface_as_browser_tab(request, data_mode) {
+        if request.app_id != RUNNER_WEB_APP_ID
+            && let Some(resolved) = resolve_url_surface_as_browser_tab(request, data_mode)
+        {
             return Some(resolved);
         }
         // `teardown_surface` destroys this webview by its webtag, so no cleanup hook.

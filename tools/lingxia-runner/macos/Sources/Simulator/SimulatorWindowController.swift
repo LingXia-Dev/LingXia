@@ -408,7 +408,7 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
         
         if let webURL {
             let configuration = WKWebViewConfiguration()
-            configuration.websiteDataStore = .default()
+            configuration.websiteDataStore = .nonPersistent()
             let webView = WKWebView(frame: .zero, configuration: configuration)
             webView.translatesAutoresizingMaskIntoConstraints = false
             phoneContent.addSubview(webView)

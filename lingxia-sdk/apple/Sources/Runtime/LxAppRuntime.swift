@@ -48,7 +48,7 @@ public final class LxAppRuntime {
     /// 4. Populates `info` with the results.
     ///
     /// - Throws: `LxAppRuntimeError.alreadyInitialized` on double-init.
-    /// - Throws: `LxAppRuntimeError.initializationFailed` if Rust returns nil.
+    /// - Throws: `LxAppRuntimeError.initializationFailed` if Rust reports failure.
     /// - Returns: The `LxAppRuntimeInfo` snapshot.
     @discardableResult
     public func initialize() throws -> LxAppRuntimeInfo {
@@ -67,18 +67,15 @@ public final class LxAppRuntime {
 
         // 4. Call Rust init.
         let locale = Locale.current.identifier
-        guard let initResult = lingxiaInit(dirs.dataPath, dirs.cachesPath, locale) else {
+        let initResult = lingxiaInit(dirs.dataPath, dirs.cachesPath, locale)
+        guard initResult.ok else {
             throw LxAppRuntimeError.initializationFailed(
-                message: "lingxiaInit returned nil — check lingxia.config.json"
+                message: initResult.error.toString()
             )
         }
 
-        let homeAppId = initResult.toString()
-        guard !homeAppId.isEmpty else {
-            throw LxAppRuntimeError.initializationFailed(
-                message: "lingxiaInit returned empty home app id"
-            )
-        }
+        let rawHomeAppId = initResult.home_app_id.toString()
+        let homeAppId = rawHomeAppId.isEmpty ? nil : rawHomeAppId
 
         let caps = LxAppCapabilities(rawValue: getAppCapabilities())
 
@@ -99,7 +96,7 @@ public final class LxAppRuntime {
             "LxAppRuntime initialized — home: %{public}@ capabilities=%{public}u browser=%{public}@",
             log: Self.log,
             type: .info,
-            homeAppId,
+            homeAppId ?? "none",
             caps.rawValue,
             caps.contains(.browser) ? "true" : "false"
         )

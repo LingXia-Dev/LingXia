@@ -146,6 +146,17 @@ pub fn set_app_window_device_frame(
     Ok(())
 }
 
+/// Applies a simulated-device frame to a host-owned web surface.
+pub fn set_web_window_device_frame(
+    appid: &str,
+    url: &str,
+    session_id: u64,
+    frame: WindowsDeviceFrame,
+) -> Result<(), String> {
+    let webtag = lingxia_webview::WebTag::new(appid, url, Some(session_id));
+    native::set_webview_device_frame(&webtag, Some(frame))
+}
+
 /// Applies a simulated-device frame and shell tabbar position as one UI-thread
 /// transaction. The Windows runner uses this for device switches so layout
 /// does not briefly sync against the previous device frame.
@@ -282,6 +293,15 @@ pub fn open_current_page_devtools(appid: &str) -> Result<(), String> {
         .ok_or_else(|| "page WebView handler is not ready".to_string())?
         .open_devtools()
         .map_err(|err| err.to_string())
+}
+
+/// Opens DevTools for a host-owned web surface.
+pub fn open_web_surface_devtools(appid: &str, url: &str, session_id: u64) -> Result<(), String> {
+    let webtag = lingxia_webview::WebTag::new(appid, url, Some(session_id));
+    lingxia_webview::platform::windows::find_webview_handler(&webtag)
+        .ok_or_else(|| "web surface WebView handler is not ready".to_string())?
+        .open_devtools()
+        .map_err(|error| error.to_string())
 }
 
 fn current_page_webview(appid: &str) -> Result<std::sync::Arc<lingxia_webview::WebView>, String> {

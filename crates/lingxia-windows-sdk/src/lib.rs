@@ -72,8 +72,9 @@ pub use device_frame::set_app_window_device_frame_and_tabbar_position;
 pub use device_frame::{
     WindowsDeviceFrame, WindowsDeviceFrameBadge, WindowsDeviceFrameCutout,
     WindowsDeviceFrameInfoSheet, WindowsDeviceFrameSheetAction, WindowsDeviceFrameStatusBar,
-    WindowsDeviceFrameToolbar, open_current_page_devtools, set_app_window_device_frame,
-    set_initial_app_window_device_frame, show_device_frame_info_sheet,
+    WindowsDeviceFrameToolbar, open_current_page_devtools, open_web_surface_devtools,
+    set_app_window_device_frame, set_initial_app_window_device_frame, set_web_window_device_frame,
+    show_device_frame_info_sheet,
 };
 #[cfg(all(target_os = "windows", feature = "shell-chrome"))]
 pub use shell::{
@@ -150,6 +151,9 @@ pub enum WindowsHostError {
     #[cfg(not(target_os = "windows"))]
     #[error("{0}")]
     Platform(String),
+    /// The shared LingXia runtime failed to initialize.
+    #[error(transparent)]
+    Runtime(#[from] lingxia::Error),
     /// A caller that requires an lxapp home was started with a home-less host.
     #[error("LingXia host does not define a home lxapp")]
     MissingHomeApp,
@@ -188,7 +192,7 @@ pub fn init_runtime(app: WindowsApp) -> Result<Option<String>> {
     // (AppUserModelID) so two apps hosted by the same exe — e.g. two dev
     // runners for different projects — get separate taskbar buttons.
     platform.install_taskbar_identity();
-    Ok(lingxia::windows::init(platform))
+    Ok(lingxia::windows::init(platform)?)
 }
 
 /// Installs the SDK-managed native component integrations:

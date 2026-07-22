@@ -5,6 +5,7 @@ use crate::device::{
 };
 use lingxia_windows_sdk::WindowsShellTabBarPosition;
 use lxapp::{LxAppDelegate, LxAppUiEventType};
+use std::sync::OnceLock;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 /// The device + orientation the simulator currently shows. The toolbar's
@@ -12,6 +13,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 /// device from the selector resets to portrait.
 static CURRENT_DEVICE: AtomicUsize = AtomicUsize::new(0);
 static LANDSCAPE: AtomicBool = AtomicBool::new(false);
+static WEB_TARGET_URL: OnceLock<String> = OnceLock::new();
 
 const ARG_ASSET_DIR: &str = "--asset-dir";
 const ARG_LXAPP_PATH: &str = "--lxapp-path";
@@ -99,6 +101,8 @@ pub(crate) fn run() -> lingxia_windows_sdk::Result<()> {
     lingxia::dev::register_device_controller(Box::new(RunnerDeviceController));
     if let Ok(url) = std::env::var(ENV_WEB_URL) {
         lingxia_windows_sdk::open_web_surface(&url)?;
+        let _ = WEB_TARGET_URL.set(url.clone());
+        install_web_runner_commands(url);
     } else {
         let home_app_id =
             home_app_id.ok_or(lingxia_windows_sdk::WindowsHostError::MissingHomeApp)?;
@@ -278,6 +282,18 @@ fn apply_device(index: usize, landscape: bool) -> Result<(), String> {
     let tabbar_position = tabbar_position_for_device(index);
     lingxia_windows_sdk::set_windows_default_shell_tabbar_position(tabbar_position);
 
+    if let Some(url) = WEB_TARGET_URL.get() {
+        lingxia_windows_sdk::set_web_window_device_frame(
+            lingxia::windows::RUNNER_WEB_APP_ID,
+            url,
+            lingxia::windows::RUNNER_WEB_SESSION_ID,
+            frame_spec(index, landscape),
+        )?;
+        CURRENT_DEVICE.store(index, Ordering::Release);
+        LANDSCAPE.store(landscape, Ordering::Release);
+        return Ok(());
+    }
+
     let mut applied = false;
     for app in lxapp::list_lxapps() {
         if app.status == "opened" {
@@ -381,6 +397,44 @@ fn install_runner_commands(home_app_id: String) {
             if let Err(err) = apply_device(index, is_tablet(index)) {
                 eprintln!(
                     "lingxia-runner: failed to switch to {}: {err}",
+                    presets()[index].name
+                );
+            }
+        },
+    ));
+}
+
+fn install_web_runner_commands(url: String) {
+    lingxia_windows_sdk::set_windows_app_menu_command_handler(std::sync::Arc::new(
+        move |command| {
+            if command == OPEN_DEVTOOLS_COMMAND {
+                if let Err(error) = lingxia_windows_sdk::open_web_surface_devtools(
+                    lingxia::windows::RUNNER_WEB_APP_ID,
+                    &url,
+                    lingxia::windows::RUNNER_WEB_SESSION_ID,
+                ) {
+                    eprintln!("lingxia-runner: failed to open DevTools: {error}");
+                }
+                return;
+            }
+            if command == ROTATE_COMMAND {
+                let index = CURRENT_DEVICE.load(Ordering::Acquire);
+                let landscape = !LANDSCAPE.load(Ordering::Acquire);
+                if let Err(error) = apply_device(index, landscape) {
+                    eprintln!("lingxia-runner: failed to rotate device: {error}");
+                }
+                return;
+            }
+            let Some(index) = command
+                .checked_sub(DEVICE_COMMAND_BASE)
+                .map(|index| index as usize)
+                .filter(|index| *index < presets().len())
+            else {
+                return;
+            };
+            if let Err(error) = apply_device(index, is_tablet(index)) {
+                eprintln!(
+                    "lingxia-runner: failed to switch to {}: {error}",
                     presets()[index].name
                 );
             }

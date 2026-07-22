@@ -125,10 +125,16 @@ pub(super) fn resolve_dev_target(
     if target.is_empty() {
         return Err(anyhow!("dev target cannot be empty"));
     }
-    if target.starts_with("http://") || target.starts_with("https://") {
-        return Ok(Some(RunnerDevTarget::Web(target.to_string())));
+    if target.contains("://") || target.starts_with("http:") || target.starts_with("https:") {
+        let url = url::Url::parse(target).context("invalid dev target URL")?;
+        if !matches!(url.scheme(), "http" | "https") || url.host_str().is_none() {
+            return Err(anyhow!(
+                "dev target URL must use http:// or https:// and include a host"
+            ));
+        }
+        return Ok(Some(RunnerDevTarget::Web(url.to_string())));
     }
-    if target.contains("://") {
+    if target.contains(':') {
         return Err(anyhow!(
             "unsupported dev target URL scheme; use http:// or https://"
         ));
@@ -196,8 +202,13 @@ pub(super) fn execute_runner_dev(
     println!();
 
     let stop_requested = Arc::new(AtomicBool::new(false));
-    let server = server::start_server_fixed_with_stop(
+    let content_root = match &target {
+        RunnerDevTarget::LxApp(path) => path.as_path(),
+        RunnerDevTarget::Web(_) => session_root.as_path(),
+    };
+    let server = server::start_server_fixed_with_roots(
         &session_root,
+        content_root,
         "127.0.0.1",
         platform_name,
         stop_requested.clone(),
@@ -227,6 +238,7 @@ pub(super) fn execute_runner_dev(
         let mut runner = match (&runner_host, &target) {
             (LxAppRunnerHost::MacOs, RunnerDevTarget::LxApp(path)) => launch_runner_for_lxapp(
                 path,
+                &session_root,
                 &ws_url,
                 options.runner_device.as_deref(),
                 options.display_language.as_deref(),
@@ -235,6 +247,7 @@ pub(super) fn execute_runner_dev(
             (LxAppRunnerHost::Windows, RunnerDevTarget::LxApp(path)) => {
                 launch_windows_runner_for_lxapp(
                     path,
+                    &session_root,
                     &ws_url,
                     options.runner_device.as_deref(),
                     options.display_language.as_deref(),
@@ -354,6 +367,7 @@ fn ensure_valid_lxapp_dir(path: &Path) -> Result<()> {
 
 fn launch_runner_for_lxapp(
     lxapp_path: &Path,
+    session_root: &Path,
     ws_url: &str,
     runner_device: Option<&str>,
     display_language: Option<&str>,
@@ -369,7 +383,7 @@ fn launch_runner_for_lxapp(
 
     // Replace only *this* project's prior Runner (a leftover from a crashed
     // session); Runners started for other projects keep running in parallel.
-    let pid_file = runner_pid_file(lxapp_path);
+    let pid_file = runner_pid_file(session_root);
     terminate_runner_from_pid_file(&pid_file);
 
     let executable_path = app_path
@@ -389,7 +403,7 @@ fn launch_runner_for_lxapp(
     command.env(RUNNER_DEV_WS_URL_ENV, ws_url);
     command.env(RUNNER_ENV_ENV, runner_env.as_str());
     command.env(RUNNER_PID_FILE_ENV, &pid_file);
-    command.env(RUNNER_INSTANCE_ENV, runner_instance_id(lxapp_path));
+    command.env(RUNNER_INSTANCE_ENV, runner_instance_id(session_root));
     if let Some(device) = runner_device.map(str::trim).filter(|s| !s.is_empty()) {
         command.env("LINGXIA_RUNNER_DEVICE", device);
     }
@@ -526,12 +540,12 @@ fn read_windows_runner_lxapp_identity(lxapp_path: &Path) -> Result<WindowsRunner
 /// copied — the runner serves it live from the project's `dist/` via
 /// `LINGXIA_LXAPP_PATH` (same dev bundle source as the macOS Runner).
 fn prepare_windows_runner_assets(
-    lxapp_path: &Path,
+    session_root: &Path,
     identity: &WindowsRunnerLxAppIdentity,
     ws_url: &str,
     runner_env: crate::config::EnvVersion,
 ) -> Result<PathBuf> {
-    let assets_dir = log_store::dev_dir(lxapp_path)
+    let assets_dir = log_store::dev_dir(session_root)
         .join("runner")
         .join("windows-assets");
     if assets_dir.exists() {
@@ -673,6 +687,7 @@ fn installed_windows_runner_exe_path() -> Result<PathBuf> {
 /// id contract as the macOS runner's `LINGXIA_RUNNER_DEVICE`.
 fn launch_windows_runner_for_lxapp(
     lxapp_path: &Path,
+    session_root: &Path,
     ws_url: &str,
     runner_device: Option<&str>,
     display_language: Option<&str>,
@@ -683,7 +698,7 @@ fn launch_windows_runner_for_lxapp(
     // Provision the runner from the matching release if it isn't installed yet.
     crate::runner_cache::ensure_runner(REQUIRED_RUNNER_VERSION, false)?;
     let identity = read_windows_runner_lxapp_identity(lxapp_path)?;
-    let assets_dir = prepare_windows_runner_assets(lxapp_path, &identity, ws_url, runner_env)?;
+    let assets_dir = prepare_windows_runner_assets(session_root, &identity, ws_url, runner_env)?;
     let resource_lxapp_paths = windows_runner_resource_lxapp_paths(lxapp_path, &identity)?;
     let cloud_dev_config = std::env::var(RUNNER_CLOUD_DEV_CONFIG_ENV)
         .ok()
@@ -693,6 +708,9 @@ fn launch_windows_runner_for_lxapp(
     let launch_args = windows_runner_launch_args(
         lxapp_path,
         &assets_dir,
+        &log_store::dev_dir(session_root)
+            .join("runner")
+            .join("state"),
         ws_url,
         runner_device,
         display_language,
@@ -705,9 +723,9 @@ fn launch_windows_runner_for_lxapp(
     let child = if windows_interactive::is_ssh_session() {
         let launch = windows_interactive::launch_runner(
             &exe_path,
-            lxapp_path,
+            session_root,
             &launch_args,
-            &log_store::dev_dir(lxapp_path).join("runner"),
+            &log_store::dev_dir(session_root).join("runner"),
         )?;
         println!(
             "{} Bootstrapped Runner in the interactive Windows desktop",
@@ -715,7 +733,7 @@ fn launch_windows_runner_for_lxapp(
         );
         RunnerProcess::WindowsShell(WindowsShellRunnerProcess { launch })
     } else {
-        shell_execute_windows_runner(&exe_path, lxapp_path, &launch_args)?
+        shell_execute_windows_runner(&exe_path, session_root, &launch_args)?
     };
 
     #[cfg(not(target_os = "windows"))]
@@ -815,6 +833,7 @@ fn launch_windows_runner_for_web(
 fn windows_runner_launch_args(
     lxapp_path: &Path,
     assets_dir: &Path,
+    state_root: &Path,
     ws_url: &str,
     runner_device: Option<&str>,
     display_language: Option<&str>,
@@ -831,6 +850,8 @@ fn windows_runner_launch_args(
         runner_env.as_str().to_string(),
         "--asset-dir".to_string(),
         assets_dir.display().to_string(),
+        "--state-root".to_string(),
+        state_root.display().to_string(),
     ];
     if let Some(config) = cloud_dev_config {
         args.push("--cloud-dev-config".to_string());
@@ -1382,13 +1403,15 @@ mod tests {
 
         assert_eq!(
             resolve_dev_target(temp.path(), Some("https://example.com")).unwrap(),
-            Some(RunnerDevTarget::Web("https://example.com".to_string()))
+            Some(RunnerDevTarget::Web("https://example.com/".to_string()))
         );
         assert_eq!(
             resolve_dev_target(temp.path(), Some("child")).unwrap(),
             Some(RunnerDevTarget::LxApp(lxapp))
         );
         assert!(resolve_dev_target(temp.path(), Some("file:///tmp/app")).is_err());
+        assert!(resolve_dev_target(temp.path(), Some("http://")).is_err());
+        assert!(resolve_dev_target(temp.path(), Some("http://[")).is_err());
     }
 
     #[test]
@@ -1489,6 +1512,7 @@ mod tests {
         let args = windows_runner_launch_args(
             std::path::Path::new(r"D:\apps\home"),
             std::path::Path::new(r"D:\apps\assets"),
+            std::path::Path::new(r"D:\sessions\state"),
             "ws://127.0.0.1:39000/?token=abc",
             Some("desktop-1440"),
             Some("zh-CN"),
@@ -1509,6 +1533,10 @@ mod tests {
         assert!(
             args.windows(2)
                 .any(|pair| pair == ["--runner-device", "desktop-1440"])
+        );
+        assert!(
+            args.windows(2)
+                .any(|pair| pair == ["--state-root", r"D:\sessions\state"])
         );
         assert!(
             args.windows(2)

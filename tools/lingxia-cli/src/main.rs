@@ -123,7 +123,7 @@ struct DevOptions {
     #[arg(long)]
     reinstall: bool,
 
-    /// Runner simulator device for `lingxia dev` on an lxapp (macOS and
+    /// Runner simulator device for `lingxia dev` on an lxapp or web URL (macOS and
     /// Windows runners): e.g. `iphone-15-pro`, `ipad`, `desktop-1440`. Only
     /// affects the lxapp runner window; ignored for native host apps.
     #[arg(long, num_args = 0..=1, default_missing_value = "")]
