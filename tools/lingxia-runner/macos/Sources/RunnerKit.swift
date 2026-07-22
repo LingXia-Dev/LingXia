@@ -40,6 +40,13 @@ private class RunnerKitDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         Lingxia.enableWebViewDebugging()
+        if let rawURL = ProcessInfo.processInfo.environment["LINGXIA_RUNNER_WEB_URL"],
+           let url = URL(string: rawURL),
+           url.scheme == "http" || url.scheme == "https" {
+            RunnerApp.shared.setDeviceSize(.defaultDevice)
+            RunnerApp.shared.openWeb(url: url)
+            return
+        }
         RunnerApp.shared.bind(controller: controller)
         Lingxia.activate(controller: controller)
         _ = try? Lingxia.initializeRuntime()

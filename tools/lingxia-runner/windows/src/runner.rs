@@ -15,6 +15,8 @@ static LANDSCAPE: AtomicBool = AtomicBool::new(false);
 
 const ARG_ASSET_DIR: &str = "--asset-dir";
 const ARG_LXAPP_PATH: &str = "--lxapp-path";
+const ARG_WEB_URL: &str = "--web-url";
+const ARG_STATE_ROOT: &str = "--state-root";
 const ARG_DEV_WS_URL: &str = "--dev-ws-url";
 const ARG_CLOUD_DEV_CONFIG: &str = "--cloud-dev-config";
 const ARG_RUNNER_DEVICE: &str = "--runner-device";
@@ -22,6 +24,7 @@ const ARG_RUNNER_ENV: &str = "--runner-env";
 const ARG_DISPLAY_LANGUAGE: &str = "--display-language";
 const ARG_RESOURCE_LXAPP_PATHS: &str = "--resource-lxapp-paths";
 const ENV_LXAPP_PATH: &str = "LINGXIA_LXAPP_PATH";
+const ENV_WEB_URL: &str = "LINGXIA_RUNNER_WEB_URL";
 const ENV_DEV_WS_URL: &str = "LINGXIA_DEV_WS_URL";
 const ENV_STATE_ROOT: &str = "LINGXIA_STATE_ROOT";
 const ENV_CLOUD_DEV_CONFIG: &str = "LINGXIA_CLOUD_DEV_CONFIG";
@@ -92,11 +95,16 @@ pub(crate) fn run() -> lingxia_windows_sdk::Result<()> {
     if let Some(asset_dir) = asset_dir {
         app = app.with_asset_dir(asset_dir);
     }
-    let home_app_id = lingxia_windows_sdk::start_default_host(app)?
-        .ok_or(lingxia_windows_sdk::WindowsHostError::MissingHomeApp)?;
-    install_runner_commands(home_app_id.clone());
+    let home_app_id = lingxia_windows_sdk::start_default_host(app)?;
     lingxia::dev::register_device_controller(Box::new(RunnerDeviceController));
-    apply_default_device(home_app_id, default_device, initial_landscape);
+    if let Ok(url) = std::env::var(ENV_WEB_URL) {
+        lingxia_windows_sdk::open_web_surface(&url)?;
+    } else {
+        let home_app_id =
+            home_app_id.ok_or(lingxia_windows_sdk::WindowsHostError::MissingHomeApp)?;
+        install_runner_commands(home_app_id.clone());
+        apply_default_device(home_app_id, default_device, initial_landscape);
+    }
     std::process::exit(lingxia_windows_sdk::run_message_loop());
 }
 
@@ -128,6 +136,8 @@ fn install_launch_args_env() -> Option<std::path::PathBuf> {
 fn launch_arg_env_key(arg: &str) -> Option<&'static str> {
     match arg {
         ARG_LXAPP_PATH => Some(ENV_LXAPP_PATH),
+        ARG_WEB_URL => Some(ENV_WEB_URL),
+        ARG_STATE_ROOT => Some(ENV_STATE_ROOT),
         ARG_DEV_WS_URL => Some(ENV_DEV_WS_URL),
         ARG_CLOUD_DEV_CONFIG => Some(ENV_CLOUD_DEV_CONFIG),
         ARG_RUNNER_DEVICE => Some(ENV_RUNNER_DEVICE),

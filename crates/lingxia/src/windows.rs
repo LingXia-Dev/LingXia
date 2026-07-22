@@ -4,7 +4,9 @@ use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, LazyLock, Mutex};
 
 use lingxia_platform::traits::app_runtime::AppRuntime;
-use lingxia_platform::traits::ui::SurfaceContent;
+use lingxia_platform::traits::ui::{
+    SurfaceContent, SurfaceKind, SurfacePosition, SurfacePresenter, SurfaceRequest, SurfaceRole,
+};
 pub use lingxia_platform::{Platform, PlatformError, set_windows_app_exit_handler};
 use lingxia_webview::{NavigationPolicy, WebTag, WebViewController, WebViewDataMode};
 
@@ -33,6 +35,34 @@ pub fn open_home_app(appid: &str) -> Result<(), String> {
     lxapp::open_lxapp(appid, lxapp::LxAppStartupOptions::new(""))
         .map(|_| ())
         .map_err(|err| err.to_string())
+}
+
+/// Opens a host-owned URL as a chrome-free main surface.
+pub fn open_web_surface(url: &str) -> Result<(), String> {
+    let url = url.trim();
+    if !(url.starts_with("http://") || url.starts_with("https://")) {
+        return Err("web surface URL must use http:// or https://".to_string());
+    }
+    let platform = crate::runtime::platform().map_err(|error| error.to_string())?;
+    platform
+        .present_surface(SurfaceRequest {
+            id: "runner-web-main".to_string(),
+            app_id: "__lingxia_runner_web__".to_string(),
+            path: url.to_string(),
+            session_id: 1,
+            page_instance_id: String::new(),
+            content: SurfaceContent::Url,
+            kind: SurfaceKind::Window,
+            width: 0.0,
+            height: 0.0,
+            width_ratio: 0.0,
+            height_ratio: 0.0,
+            position: SurfacePosition::Center,
+            role: SurfaceRole::Main,
+            ephemeral_web_data: false,
+            url_callback: false,
+        })
+        .map_err(|error| error.to_string())
 }
 
 /// Overrides the initial outer size, in pixels, of Windows host windows

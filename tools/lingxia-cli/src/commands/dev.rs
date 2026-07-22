@@ -59,6 +59,7 @@ fn dev_native_features(
 }
 
 pub struct DevExecuteOptions {
+    pub target: Option<String>,
     pub release: bool,
     pub build_native: bool,
     pub framework: Option<String>,
@@ -253,8 +254,8 @@ pub fn execute(options: DevExecuteOptions) -> Result<()> {
         return spawn_background_dev(&project_root);
     }
 
-    if runner::is_standalone_lxapp_project(&project_root) {
-        return runner::execute_lxapp_dev(project_root, options);
+    if let Some(target) = runner::resolve_dev_target(&project_root, options.target.as_deref())? {
+        return runner::execute_runner_dev(project_root, target, options);
     }
 
     if options.display_language.is_some() {

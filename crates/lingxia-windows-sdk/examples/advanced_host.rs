@@ -62,7 +62,8 @@ mod advanced {
         match lingxia_windows_sdk::init_runtime(lingxia_windows_sdk::WindowsApp::from_env()) {
             Ok(home_app_id) => {
                 println!(
-                    "runtime booted for {home_app_id}; open your own window + pump your own loop"
+                    "runtime booted (home lxapp: {}); open your own window + pump your own loop",
+                    home_app_id.as_deref().unwrap_or("none")
                 );
                 // Create your Win32 window for `home_app_id`, then drive messages,
                 // e.g. `let _code = lingxia_windows_sdk::run_message_loop();`

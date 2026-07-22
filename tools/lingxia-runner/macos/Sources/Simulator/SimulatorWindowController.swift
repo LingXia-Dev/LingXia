@@ -81,6 +81,7 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
     // MARK: - UI Components - Phone Content
 
     private var viewController: SimulatorViewController?
+    private var webView: WKWebView?
     private var systemStatusBar: NSView?
     private var statusBarHeightConstraint: NSLayoutConstraint?
     private var navigationBar: NSView?
@@ -99,6 +100,7 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
 
     public private(set) var appId: String
     public private(set) var currentPath: String
+    private let webURL: URL?
 
     // Observers
     nonisolated(unsafe) private var navigationBarObserver: NSObjectProtocol?
@@ -111,12 +113,24 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
     public init(appId: String, path: String) {
         self.appId = appId
         self.currentPath = path
+        self.webURL = nil
         
         let window = Self.createSimulatorWindow()
         super.init(window: window)
         
         setupSimulatorMode()
         setupNotificationObservers()
+    }
+
+    public init(webURL: URL) {
+        self.appId = ""
+        self.currentPath = webURL.absoluteString
+        self.webURL = webURL
+
+        let window = Self.createSimulatorWindow()
+        super.init(window: window)
+
+        setupSimulatorMode()
     }
     
     required init?(coder: NSCoder) {
@@ -365,7 +379,8 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
     }
 
     private func currentInspectableWebView() -> WKWebView? {
-        phoneBrowserSurface.activeWebView
+        webView
+            ?? phoneBrowserSurface.activeWebView
             ?? RunnerSupport.WebView.current()
             ?? RunnerSupport.WebView.resolve(appId: appId, path: currentPath)
     }
@@ -391,6 +406,26 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
         
         self.phoneContentView = phoneContent
         
+        if let webURL {
+            let configuration = WKWebViewConfiguration()
+            configuration.websiteDataStore = .default()
+            let webView = WKWebView(frame: .zero, configuration: configuration)
+            webView.translatesAutoresizingMaskIntoConstraints = false
+            phoneContent.addSubview(webView)
+            NSLayoutConstraint.activate([
+                webView.topAnchor.constraint(equalTo: phoneContent.topAnchor),
+                webView.leadingAnchor.constraint(equalTo: phoneContent.leadingAnchor),
+                webView.trailingAnchor.constraint(equalTo: phoneContent.trailingAnchor),
+                webView.bottomAnchor.constraint(equalTo: phoneContent.bottomAnchor),
+            ])
+            webView.load(URLRequest(url: webURL))
+            self.webView = webView
+            if Self.currentDeviceSize.usesPhoneChrome {
+                setupWebStatusBar()
+            }
+            return
+        }
+
         // Create view controller for WebView content
         let vc = SimulatorViewController(appId: appId, path: path)
         viewController = vc
@@ -454,6 +489,22 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
         // exists. Apply the current page config now that the navbar view is
         // available, so the first screen does not wait for a later notification.
         applyInitialNavigationConfiguration()
+    }
+
+    private func setupWebStatusBar() {
+        guard let phoneContent = phoneContentView, systemStatusBar == nil else { return }
+        let statusBar = createSystemStatusBar()
+        setupDragBehavior(statusBar)
+        phoneContent.addSubview(statusBar)
+        let height = statusBar.heightAnchor.constraint(equalToConstant: Layout.systemStatusBarHeight)
+        NSLayoutConstraint.activate([
+            statusBar.topAnchor.constraint(equalTo: phoneContent.topAnchor),
+            statusBar.leadingAnchor.constraint(equalTo: phoneContent.leadingAnchor),
+            statusBar.trailingAnchor.constraint(equalTo: phoneContent.trailingAnchor),
+            height,
+        ])
+        systemStatusBar = statusBar
+        statusBarHeightConstraint = height
     }
     
     private func createSystemStatusBar() -> NSView {
@@ -801,7 +852,14 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
         devToolsPanel?.updateInfo(device: Self.currentDeviceSize, path: currentPath)
 
         // Phone UI overlay: show for phones, hide for larger shell-backed shapes.
-        if !device.usesPhoneChrome {
+        if webURL != nil {
+            navigationBar?.isHidden = true
+            floatingCapsuleContainer?.isHidden = true
+            systemStatusBar?.isHidden = !device.usesPhoneChrome
+            if device.usesPhoneChrome {
+                setupWebStatusBar()
+            }
+        } else if !device.usesPhoneChrome {
             systemStatusBar?.isHidden = true
             navigationBar?.isHidden   = true
             floatingCapsuleContainer?.isHidden = true

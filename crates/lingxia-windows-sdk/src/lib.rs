@@ -156,6 +156,9 @@ pub enum WindowsHostError {
     /// The home lxapp could not be opened.
     #[error("failed to open home lxapp: {0}")]
     OpenHomeApp(String),
+    /// A host-owned web surface could not be opened.
+    #[error("failed to open web surface: {0}")]
+    OpenWebSurface(String),
     /// The window icon could not be loaded from the resolved path.
     #[error("failed to set Windows app icon from {path:?}: {message}")]
     AppIcon { path: PathBuf, message: String },
@@ -278,6 +281,12 @@ pub fn start_default_host(app: WindowsApp) -> Result<Option<String>> {
     let home_app_id = init_runtime(app)?;
     present_default_host(home_app_id.as_deref(), &asset_dir)?;
     Ok(home_app_id)
+}
+
+/// Opens an http(s) URL in the default host as its main content surface.
+#[cfg(all(target_os = "windows", feature = "runtime"))]
+pub fn open_web_surface(url: &str) -> Result<()> {
+    lingxia::windows::open_web_surface(url).map_err(WindowsHostError::OpenWebSurface)
 }
 
 #[cfg(all(target_os = "windows", feature = "shell-chrome"))]

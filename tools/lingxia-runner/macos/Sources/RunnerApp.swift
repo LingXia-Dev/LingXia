@@ -10,6 +10,7 @@ public class RunnerApp {
     private static let log = OSLog(subsystem: "LingXiaRunner", category: "RunnerApp")
     
     private var windowController: SimulatorWindowController?
+    private var webTargetURL: URL?
     private var surfaceShellHost: RunnerSurfaceShellHost?
     private var controller: LxAppController?
     private var controllerEventsTask: Task<Void, Never>?
@@ -88,7 +89,9 @@ public class RunnerApp {
             effectiveDevice.supportsOrientation ? deviceOrientation.displayName : ""
         )
 
-        if effectiveDevice.usesSurfaceShell {
+        if webTargetURL != nil {
+            windowController?.applyDeviceChange(effectiveDevice)
+        } else if effectiveDevice.usesSurfaceShell {
             switchToSurfaceShellHost(device: effectiveDevice)
         } else {
             switchToPhoneSimulatorHost(device: effectiveDevice)
@@ -232,9 +235,23 @@ public class RunnerApp {
     }
     
     // MARK: - LxApp Management
+
+    /// Open an ordinary web development target without creating an lxapp.
+    public func openWeb(url: URL) {
+        webTargetURL = url
+        surfaceShellHost?.shell.window?.close()
+        surfaceShellHost = nil
+        windowController?.window?.close()
+        let host = SimulatorWindowController(webURL: url)
+        host.showWindow(self)
+        host.window?.makeKeyAndOrderFront(self)
+        NSApp.activate(ignoringOtherApps: true)
+        windowController = host
+    }
     
     /// Open LxApp in Simulator window
     public func openLxApp(appId: String, path: String = "") {
+        webTargetURL = nil
         os_log("Runner openLxApp: %@ at path: %@", log: Self.log, type: .info, appId, path)
 
         let sessionId = RunnerSupport.Runtime.sessionId(for: appId) ?? getLxAppSessionId(appId)
