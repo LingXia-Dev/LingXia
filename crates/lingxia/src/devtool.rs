@@ -562,6 +562,7 @@ pub async fn lxapp_dev_restart(
     let appid = resolve_dev_appid(appid)?;
     let app = resolve_dev_lxapp(&appid)?;
     let previous_session = app.runtime_info().session_id;
+    let simulated_device = device_get().ok();
 
     // A host dev session runs from its synchronized bundle cache rather than
     // directly from the project dist directory. Pull the freshly generated
@@ -586,6 +587,11 @@ pub async fn lxapp_dev_restart(
                     return Err(format!("restarted page WebView failed: {error}"));
                 }
                 if state.ready {
+                    if let Some(device) = &simulated_device {
+                        device_set(&device.id, Some(device.landscape)).map_err(|error| {
+                            format!("failed to restore simulated device after restart: {error}")
+                        })?;
+                    }
                     return Ok(dev_page_info(&app, &page, name.as_deref()));
                 }
             }
