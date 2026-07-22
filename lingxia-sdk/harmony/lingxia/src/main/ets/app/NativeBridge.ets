@@ -23,7 +23,7 @@ import {
   destroyWebViewController,
   loadUrl,
   clearBrowsingData,
-  setUserAgent,
+  setUserAgentOverride,
   captureScreenshot
 } from '../lxapp/WebViewBridge';
 import { captureAppScreenshot } from './AppScreenshot';
@@ -229,8 +229,8 @@ class NativeBridge {
     });
 
     // WebView user agent
-    this.register('setUserAgent', (webtag: string, userAgent: string) => {
-      return setUserAgent(webtag, userAgent);
+    this.register('setUserAgentOverride', (webtag: string, mode: string, userAgent: string) => {
+      return setUserAgentOverride(webtag, mode, userAgent);
     });
 
     // WebView screenshot (returns true on dispatch; bytes flow back asynchronously)

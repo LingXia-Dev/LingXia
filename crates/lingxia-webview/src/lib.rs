@@ -113,8 +113,9 @@ pub use traits::{
     FileChooserRequest, FileChooserResponse, FillOptions, LoadDataRequest, LoadError,
     LoadErrorKind, NavigationPolicy, NavigationRequest, NetworkBody, NetworkCaptureSnapshot,
     NetworkEntry, NewWindowPolicy, PressOptions, SchemeOutcome, ScrollOptions, SystemPipeReader,
-    TypeOptions, WebResourceBody, WebResourceResponse, WebViewController, WebViewCookie,
-    WebViewCookieSameSite, WebViewCookieSetRequest, WebViewDelegate, WebViewInputController,
+    TypeOptions, UserAgentOverride, WebResourceBody, WebResourceResponse, WebViewController,
+    WebViewCookie, WebViewCookieSameSite, WebViewCookieSetRequest, WebViewDelegate,
+    WebViewInputController,
 };
 pub use webview::{
     BrowserWebViewBuilder, ProxyActivation, ProxyApplyReport, ProxyApplyStatus, ProxyConfig,

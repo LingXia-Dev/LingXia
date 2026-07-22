@@ -60,6 +60,15 @@ pub enum NewWindowPolicy {
 pub type NavigationHandler = Box<dyn Fn(&NavigationRequest) -> NavigationPolicy + Send + Sync>;
 pub type NewWindowHandler = Box<dyn Fn(&str) -> NewWindowPolicy + Send + Sync>;
 
+/// Per-WebView user-agent override.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum UserAgentOverride {
+    /// Restore the user agent supplied by the platform WebView engine.
+    Default,
+    /// Replace the complete user-agent string.
+    Custom(String),
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DownloadRequest {
     /// Final download URL reported by the platform callback.
@@ -285,8 +294,8 @@ pub trait WebViewController: Send + Sync {
     /// Clear browsing data from the WebView
     fn clear_browsing_data(&self) -> Result<(), WebViewError>;
 
-    /// Set the user agent string for the WebView
-    fn set_user_agent(&self, ua: &str) -> Result<(), WebViewError>;
+    /// Override or restore the WebView user agent.
+    fn set_user_agent_override(&self, user_agent: UserAgentOverride) -> Result<(), WebViewError>;
 
     /// Reload the current WebView document.
     fn reload(&self) -> Result<(), WebViewError> {

@@ -45,7 +45,7 @@ use crate::traits::{
     AsyncSchemeHandler, ClickOptions, DownloadHandler, DownloadRequest, FileChooserRequest,
     FileChooserResponse, FillOptions, NavigationHandler, NavigationPolicy, NavigationRequest,
     NewWindowHandler, NewWindowPolicy, PressOptions, SchemeOutcome, ScrollOptions, TypeOptions,
-    WebViewInputController,
+    UserAgentOverride, WebViewInputController,
 };
 use crate::{
     ClearSiteDataOptions, ClearSiteDataResult, LoadDataRequest, NetworkCaptureSnapshot,
@@ -125,8 +125,8 @@ impl WebViewController for WebViewInner {
         Err(unsupported_webview_error("clear_browsing_data"))
     }
 
-    fn set_user_agent(&self, _ua: &str) -> Result<(), WebViewError> {
-        Err(unsupported_webview_error("set_user_agent"))
+    fn set_user_agent_override(&self, _user_agent: UserAgentOverride) -> Result<(), WebViewError> {
+        Err(unsupported_webview_error("set_user_agent_override"))
     }
 }
 
@@ -1389,8 +1389,8 @@ impl WebViewController for WebView {
         self.inner.clear_browsing_data()
     }
 
-    fn set_user_agent(&self, ua: &str) -> Result<(), WebViewError> {
-        self.inner.set_user_agent(ua)
+    fn set_user_agent_override(&self, user_agent: UserAgentOverride) -> Result<(), WebViewError> {
+        self.inner.set_user_agent_override(user_agent)
     }
 
     fn reload(&self) -> Result<(), WebViewError> {

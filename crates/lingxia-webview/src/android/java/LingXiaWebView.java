@@ -69,6 +69,7 @@ public class LingXiaWebView extends WebView {
     private String currentPath;
     private long sessionId;
     private boolean pageLoaded = false;
+    private String defaultUserAgent;
     private CreateOptions createOptions = CreateOptions.strictDefault();
     private String ephemeralProfileName;
     private boolean usesGlobalEphemeralFallback;
@@ -196,6 +197,8 @@ public class LingXiaWebView extends WebView {
         this.currentPath = null;
         this.sessionId = 0L;
         this.pageLoaded = false;
+        WebSettings settings = getSettings();
+        this.defaultUserAgent = settings != null ? settings.getUserAgentString() : null;
     }
 
     private static android.content.Context sApplicationContext;
@@ -593,6 +596,21 @@ public class LingXiaWebView extends WebView {
             public void run() {
                 LingXiaWebView.super.loadUrl(url);
                 Log.d(TAG, "URL loaded on main thread: " + url);
+            }
+        });
+    }
+
+    /** Override the complete user agent, or restore the engine default. */
+    public void setUserAgentOverride(final boolean useDefault, final String userAgent) {
+        ensureMainThread(new Runnable() {
+            @Override
+            public void run() {
+                WebSettings settings = getSettings();
+                if (settings == null) {
+                    Log.w(TAG, "WebView.getSettings() returned null, skipping user-agent override");
+                    return;
+                }
+                settings.setUserAgentString(useDefault ? defaultUserAgent : userAgent);
             }
         });
     }

@@ -31,8 +31,8 @@ pub(crate) enum UiCommand {
         message: String,
         resp: Sender<StdResult<()>>,
     },
-    SetUserAgent {
-        ua: String,
+    SetUserAgentOverride {
+        user_agent: UserAgentOverride,
         resp: Sender<StdResult<()>>,
     },
     ClearBrowsingData {
@@ -154,6 +154,8 @@ pub(crate) struct UiState {
     /// logs to the delegate. Held for the webview's lifetime (capture is always
     /// on); dropping them would stop delivery.
     pub(crate) _console_receivers: Vec<(ICoreWebView2DevToolsProtocolEventReceiver, i64)>,
+    /// Engine-supplied UA captured before any host override.
+    pub(crate) default_user_agent: String,
 }
 
 impl UiState {
@@ -538,11 +540,8 @@ impl WebViewController for WebViewInner {
         self.dispatch_command(|resp| UiCommand::ClearBrowsingData { resp })
     }
 
-    fn set_user_agent(&self, ua: &str) -> StdResult<()> {
-        self.dispatch_command(|resp| UiCommand::SetUserAgent {
-            ua: ua.to_string(),
-            resp,
-        })
+    fn set_user_agent_override(&self, user_agent: UserAgentOverride) -> StdResult<()> {
+        self.dispatch_command(|resp| UiCommand::SetUserAgentOverride { user_agent, resp })
     }
 
     async fn current_url(&self) -> StdResult<Option<String>> {
@@ -870,6 +869,7 @@ pub(crate) fn run_ui_thread_inner(
         }
     };
 
+    let default_user_agent = user_agent(&webview)?;
     let mut state = UiState {
         controller,
         webview,
@@ -882,6 +882,7 @@ pub(crate) fn run_ui_thread_inner(
         network_log: Arc::new(Mutex::new(network::NetworkLog::default())),
         network_receivers: Vec::new(),
         _console_receivers: console_receivers,
+        default_user_agent,
     };
 
     message_loop(&mut state, command_rx)
@@ -1036,8 +1037,12 @@ pub(crate) fn handle_command(state: &mut UiState, command: UiCommand) -> StdResu
             };
             let _ = resp.send(result);
         }
-        UiCommand::SetUserAgent { ua, resp } => {
-            let result = set_user_agent(&state.webview, &ua);
+        UiCommand::SetUserAgentOverride { user_agent, resp } => {
+            let user_agent = match user_agent {
+                UserAgentOverride::Default => state.default_user_agent.as_str(),
+                UserAgentOverride::Custom(ref user_agent) => user_agent.as_str(),
+            };
+            let result = set_user_agent_override(&state.webview, user_agent);
             let _ = resp.send(result);
         }
         UiCommand::ClearBrowsingData { resp } => {
