@@ -36,8 +36,6 @@ pub fn set_windows_browser_emulation_profile_for_new_webviews(
 pub(crate) fn apply_profile(
     webview: &ICoreWebView2,
     default_user_agent: &str,
-    default_user_agent_metadata: &serde_json::Value,
-    default_navigator_platform: &str,
     profile: WindowsBrowserEmulationProfile,
     resp: Sender<StdResult<String>>,
 ) {
@@ -53,89 +51,57 @@ pub(crate) fn apply_profile(
         return;
     }
 
-    let mut metadata = default_user_agent_metadata.clone();
-    let Some(metadata) = metadata.as_object_mut() else {
-        let _ = resp.send(Err(WebViewError::WebView(
-            "WebView2 supplied invalid default User-Agent Client Hints".to_string(),
-        )));
-        return;
-    };
-    let navigator_platform = if profile == WindowsBrowserEmulationProfile::Desktop {
-        default_navigator_platform.to_string()
-    } else {
-        metadata.insert("platform".into(), "Android".into());
-        metadata.insert("platformVersion".into(), "10.0.0".into());
-        metadata.insert("architecture".into(), "".into());
-        metadata.insert("model".into(), "".into());
-        metadata.insert("bitness".into(), "".into());
-        metadata.insert("wow64".into(), false.into());
-        metadata.insert(
-            "formFactors".into(),
-            serde_json::json!([match profile {
-                WindowsBrowserEmulationProfile::Phone => "Mobile",
-                WindowsBrowserEmulationProfile::Tablet => "Tablet",
-                WindowsBrowserEmulationProfile::Desktop => unreachable!(),
-            }]),
-        );
-        "Linux armv8l".to_string()
-    };
-    metadata.insert(
-        "mobile".into(),
-        (profile == WindowsBrowserEmulationProfile::Phone).into(),
-    );
-    let params = serde_json::json!({
-        "userAgent": user_agent,
-        "platform": navigator_platform,
-        "userAgentMetadata": metadata,
-    })
-    .to_string();
+    let params = override_params(&user_agent, profile).to_string();
     start_call_devtools_protocol(webview, "Emulation.setUserAgentOverride", &params, resp);
 }
 
-pub(crate) fn start_capture_default_metadata(
-    webview: &ICoreWebView2,
-    resp: Sender<StdResult<String>>,
-) {
-    let expression = r#"(async () => {
-        const data = navigator.userAgentData;
-        if (!data) return null;
-        const metadata = await data.getHighEntropyValues([
-            'architecture', 'bitness', 'formFactors', 'fullVersionList',
-            'model', 'platformVersion', 'wow64'
-        ]);
-        return { metadata, navigatorPlatform: navigator.platform };
-    })()"#;
-    let params = serde_json::json!({
-        "expression": expression,
-        "awaitPromise": true,
-        "returnByValue": true,
+fn override_params(user_agent: &str, profile: WindowsBrowserEmulationProfile) -> serde_json::Value {
+    if profile == WindowsBrowserEmulationProfile::Desktop {
+        let architecture = windows_architecture(user_agent);
+        return serde_json::json!({
+            "userAgent": user_agent,
+            // Keep the outer `platform` absent so WebView2 restores its native
+            // navigator.platform (`Win32`) when leaving mobile emulation.
+            "userAgentMetadata": {
+                "platform": "Windows",
+                "platformVersion": "10.0.0",
+                "architecture": architecture,
+                "model": "",
+                "mobile": false,
+            },
+        });
+    }
+
+    // `navigator.userAgentData` is unavailable on WebView2's initial
+    // about:blank. CDP fills omitted optional metadata from the actual engine,
+    // so only declare the fields that define the simulated form factor.
+    let metadata = serde_json::json!({
+        "platform": "Android",
+        "platformVersion": "10.0.0",
+        "architecture": "",
+        "model": "",
+        "mobile": profile == WindowsBrowserEmulationProfile::Phone,
+        "bitness": "",
+        "wow64": false,
+        "formFactors": [match profile {
+            WindowsBrowserEmulationProfile::Phone => "Mobile",
+            WindowsBrowserEmulationProfile::Tablet => "Tablet",
+            WindowsBrowserEmulationProfile::Desktop => unreachable!(),
+        }],
+    });
+    serde_json::json!({
+        "userAgent": user_agent,
+        "platform": "Linux armv8l",
+        "userAgentMetadata": metadata,
     })
-    .to_string();
-    start_call_devtools_protocol(webview, "Runtime.evaluate", &params, resp);
 }
 
-pub(crate) fn decode_default_metadata(response: &str) -> StdResult<(serde_json::Value, String)> {
-    let value = serde_json::from_str::<serde_json::Value>(response)
-        .ok()
-        .and_then(|value| value.get("result")?.get("value").cloned())
-        .ok_or_else(|| {
-            WebViewError::WebView(
-                "WebView2 did not expose default User-Agent Client Hints".to_string(),
-            )
-        })?;
-    let metadata = value
-        .get("metadata")
-        .filter(|value| value.is_object())
-        .cloned();
-    let navigator_platform = value
-        .get("navigatorPlatform")
-        .and_then(serde_json::Value::as_str)
-        .map(str::to_string);
-    metadata.zip(navigator_platform).ok_or_else(|| {
-        WebViewError::WebView(
-            "WebView2 did not expose default browser identity metadata".to_string(),
-        )
-    })
+fn windows_architecture(user_agent: &str) -> &'static str {
+    if user_agent.contains("ARM64") || user_agent.contains("AArch64") {
+        "arm"
+    } else {
+        "x86"
+    }
 }
 
 fn effective_user_agent(
@@ -224,14 +190,42 @@ mod tests {
     }
 
     #[test]
-    fn decodes_runtime_evaluate_metadata() {
-        let metadata = decode_default_metadata(
-            r#"{"result":{"type":"object","value":{"metadata":{"brands":[],"mobile":false,"platform":"Windows"},"navigatorPlatform":"Win32"}}}"#,
-        )
-        .expect("metadata");
+    fn metadata_matches_each_browser_form_factor() {
+        let phone = override_params(DEFAULT, WindowsBrowserEmulationProfile::Phone);
+        assert_eq!(phone["platform"], "Linux armv8l");
+        assert_eq!(phone["userAgentMetadata"]["platform"], "Android");
+        assert_eq!(phone["userAgentMetadata"]["mobile"], true);
+        assert_eq!(
+            phone["userAgentMetadata"]["formFactors"],
+            serde_json::json!(["Mobile"])
+        );
+        assert!(phone["userAgentMetadata"].get("brands").is_none());
 
-        assert_eq!(metadata.0["platform"], "Windows");
-        assert_eq!(metadata.0["mobile"], false);
-        assert_eq!(metadata.1, "Win32");
+        let tablet = override_params(DEFAULT, WindowsBrowserEmulationProfile::Tablet);
+        assert_eq!(tablet["userAgentMetadata"]["mobile"], false);
+        assert_eq!(
+            tablet["userAgentMetadata"]["formFactors"],
+            serde_json::json!(["Tablet"])
+        );
+    }
+
+    #[test]
+    fn desktop_restores_windows_identity_with_engine_versions() {
+        let desktop = override_params(DEFAULT, WindowsBrowserEmulationProfile::Desktop);
+        assert_eq!(desktop["userAgent"], DEFAULT);
+        assert!(desktop.get("platform").is_none());
+        assert_eq!(desktop["userAgentMetadata"]["platform"], "Windows");
+        assert_eq!(desktop["userAgentMetadata"]["architecture"], "x86");
+        assert_eq!(desktop["userAgentMetadata"]["mobile"], false);
+        assert!(desktop["userAgentMetadata"].get("bitness").is_none());
+        assert!(desktop["userAgentMetadata"].get("formFactors").is_none());
+        assert!(desktop["userAgentMetadata"].get("brands").is_none());
+    }
+
+    #[test]
+    fn desktop_architecture_follows_the_engine_user_agent() {
+        assert_eq!(windows_architecture("Windows NT 10.0; ARM64"), "arm");
+        assert_eq!(windows_architecture("Windows NT 10.0; WOW64"), "x86");
+        assert_eq!(windows_architecture("Windows NT 10.0"), "x86");
     }
 }

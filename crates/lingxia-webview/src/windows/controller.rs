@@ -161,10 +161,9 @@ pub(crate) struct UiState {
     pub(crate) _console_receivers: Vec<(ICoreWebView2DevToolsProtocolEventReceiver, i64)>,
     /// Engine-supplied UA captured before any host override.
     pub(crate) default_user_agent: String,
-    /// Engine-supplied UA Client Hints captured before Runner emulation.
-    pub(crate) default_user_agent_metadata: Option<serde_json::Value>,
-    /// Engine-supplied `navigator.platform` captured before Runner emulation.
-    pub(crate) default_navigator_platform: Option<String>,
+    /// Whether the host configured coherent UA + Client Hint emulation before
+    /// this WebView was created.
+    pub(crate) browser_emulation_configured: bool,
 }
 
 impl UiState {
@@ -898,20 +897,10 @@ pub(crate) fn run_ui_thread_inner(
         network_receivers: Vec::new(),
         _console_receivers: console_receivers,
         default_user_agent,
-        default_user_agent_metadata: None,
-        default_navigator_platform: None,
+        browser_emulation_configured: configured_profile.is_some(),
     };
 
     let bootstrap = (|| -> StdResult<()> {
-        if configured_profile.is_some() {
-            let (metadata_tx, metadata_rx) = mpsc::channel();
-            browser_emulation::start_capture_default_metadata(&state.webview, metadata_tx);
-            let response = wait_for_ui_reply(&metadata_rx, BROWSER_EMULATION_TIMEOUT)??;
-            let (metadata, navigator_platform) =
-                browser_emulation::decode_default_metadata(&response)?;
-            state.default_user_agent_metadata = Some(metadata);
-            state.default_navigator_platform = Some(navigator_platform);
-        }
         if let Some(profile) = configured_profile
             && profile != WindowsBrowserEmulationProfile::Desktop
         {
@@ -919,14 +908,6 @@ pub(crate) fn run_ui_thread_inner(
             browser_emulation::apply_profile(
                 &state.webview,
                 &state.default_user_agent,
-                state
-                    .default_user_agent_metadata
-                    .as_ref()
-                    .expect("configured profile captures UA metadata"),
-                state
-                    .default_navigator_platform
-                    .as_deref()
-                    .expect("configured profile captures navigator.platform"),
                 profile,
                 profile_tx,
             );
@@ -1159,7 +1140,7 @@ pub(crate) fn handle_command(state: &mut UiState, command: UiCommand) -> StdResu
             let _ = resp.send(result);
         }
         UiCommand::SetUserAgentOverride { user_agent, resp } => {
-            if state.default_user_agent_metadata.is_some() {
+            if state.browser_emulation_configured {
                 let _ = resp.send(Err(WebViewError::WebView(
                     "per-WebView user-agent overrides conflict with host browser emulation"
                         .to_string(),
@@ -1174,15 +1155,10 @@ pub(crate) fn handle_command(state: &mut UiState, command: UiCommand) -> StdResu
             let _ = resp.send(result);
         }
         UiCommand::SetBrowserEmulationProfile { profile, resp } => {
-            if let (Some(metadata), Some(navigator_platform)) = (
-                &state.default_user_agent_metadata,
-                &state.default_navigator_platform,
-            ) {
+            if state.browser_emulation_configured {
                 browser_emulation::apply_profile(
                     &state.webview,
                     &state.default_user_agent,
-                    metadata,
-                    navigator_platform,
                     profile,
                     resp,
                 );
