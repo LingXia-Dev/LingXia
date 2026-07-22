@@ -195,7 +195,7 @@ object Lingxia {
         Log.d(TAG, "launchWithUrl called with URI: $uri, target: $target")
         // Mobile uses a single in-app browser experience: "self",
         // "new_browser_tab" and "aside" all open there; an aside tab carries
-        // the aside flag so the chrome hides its address bar.
+        // the aside flag so compact chrome applies its one-row group policy.
         val isAside = target == "aside"
         val inAppBrowserTarget = target == "self" || target == "new_browser_tab" || isAside
         if (inAppBrowserTarget && (capabilities and CAP_BROWSER) != 0) {
