@@ -272,10 +272,15 @@ jobs:
       - uses: ./.github/actions/build-web-runtime
 
       # The full `cargo check --workspace` is covered by the Clippy job on the
-      # same macOS runner (clippy is a superset of check), so this job only runs
-      # the i18n-related check and the strict i18n generation gate.
+      # same macOS runner (clippy is a superset of check), so this job runs only
+      # targeted required checks plus the strict i18n generation gate.
       - name: Check i18n-related crates explicitly
         run: cargo check -p lingxia-logic -p lingxia-cli
+
+      # Keep external-app OAuth redirects gated even though the full workspace
+      # test job remains advisory for unrelated environment-sensitive tests.
+      - name: Test browser navigation policy
+        run: cargo test -p lingxia-browser policy::tests
 
       # Byte-compares the committed Rust + TS outputs against a fresh
       # regeneration and fails on drift — catches "edited yaml but forgot to
