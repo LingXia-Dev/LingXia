@@ -199,7 +199,7 @@ pub(super) fn execute_runner_dev(
     }
 
     let platform_name = "runner";
-    precheck_platform_session(&session_root, platform_name)?;
+    take_over_target_session(&session_root, platform_name)?;
 
     println!();
     let mode = match &target {

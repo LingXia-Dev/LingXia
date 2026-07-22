@@ -2,7 +2,7 @@ use super::*;
 
 pub(super) fn execute_ios(ctx: DevContext) -> Result<()> {
     let platform_name = platform_session_name(PlatformType::Ios);
-    precheck_platform_session(&ctx.project_root, platform_name)?;
+    take_over_target_session(&ctx.project_root, platform_name)?;
     let platform = platform::ios::IosPlatform::new();
     let stop_requested = Arc::new(AtomicBool::new(false));
     // The iOS device reaches the host over Wi-Fi, so this bind was always

@@ -894,7 +894,7 @@ pub fn browser_tab_ids_json() -> String {
                 })
                 .map(|tab| tab.tab_id)
                 .collect::<Vec<_>>();
-            return serde_json::to_string(&ids).unwrap_or_else(|_| "[]".to_string());
+            serde_json::to_string(&ids).unwrap_or_else(|_| "[]".to_string())
         }
         #[cfg(not(feature = "browser-runtime"))]
         "[]".to_string()
@@ -905,13 +905,13 @@ pub fn browser_current_tab_id() -> String {
     ffi_catch_unwind!("browser_current_tab_id", String::new(), || {
         #[cfg(feature = "browser-runtime")]
         {
-            return lingxia_browser::current_tab()
+            lingxia_browser::current_tab()
                 .filter(|tab| {
                     !lingxia_browser::tab_is_aside(&tab.tab_id)
                         && !lingxia_browser::tab_is_standalone(&tab.tab_id)
                 })
                 .map(|tab| tab.tab_id)
-                .unwrap_or_default();
+                .unwrap_or_default()
         }
         #[cfg(not(feature = "browser-runtime"))]
         String::new()

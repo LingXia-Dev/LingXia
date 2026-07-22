@@ -3,7 +3,7 @@ use super::*;
 
 pub(super) fn execute_android(mut ctx: DevContext) -> Result<()> {
     let platform_name = platform_session_name(PlatformType::Android);
-    precheck_platform_session(&ctx.project_root, platform_name)?;
+    take_over_target_session(&ctx.project_root, platform_name)?;
     let platform = platform::android::AndroidPlatform::new();
     let (device_id, build_target) =
         platform::android::resolve_dev_device_target(ctx.device.as_deref())?;

@@ -203,7 +203,7 @@ fn session_state_from_echo(echo: Option<(bool, Option<serde_json::Value>)>) -> D
 
 /// Live sessions for a given target in this project. Used by `lingxia dev` to
 /// detect "another session is already running" before launching.
-pub fn find_live_for_platform(project_root: &Path, target: &str) -> Result<Vec<SessionInfo>> {
+pub fn find_live_for_target(project_root: &Path, target: &str) -> Result<Vec<SessionInfo>> {
     Ok(list_sessions(project_root)?
         .into_iter()
         .filter(|s| s.target.eq_ignore_ascii_case(target))

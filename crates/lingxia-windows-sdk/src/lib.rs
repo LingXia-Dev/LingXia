@@ -21,6 +21,26 @@
 use std::path::Path;
 #[cfg(feature = "runtime")]
 use std::path::PathBuf;
+#[cfg(all(target_os = "windows", feature = "host-api"))]
+use std::sync::OnceLock;
+
+#[cfg(all(target_os = "windows", feature = "host-api"))]
+static HOST_MESSAGE_LOOP_THREAD: OnceLock<u32> = OnceLock::new();
+
+#[cfg(all(target_os = "windows", feature = "host-api"))]
+fn request_host_message_loop_exit() {
+    use windows::Win32::UI::WindowsAndMessaging::{PostQuitMessage, PostThreadMessageW, WM_QUIT};
+
+    if let Some(thread_id) = HOST_MESSAGE_LOOP_THREAD.get().copied() {
+        unsafe {
+            let _ = PostThreadMessageW(thread_id, WM_QUIT, Default::default(), Default::default());
+        }
+    } else {
+        unsafe {
+            PostQuitMessage(0);
+        }
+    }
+}
 
 #[cfg(all(target_os = "windows", feature = "runtime"))]
 mod app_icon;
@@ -502,9 +522,7 @@ pub fn run_message_loop() -> i32 {
 fn install_current_thread_exit_handler() {
     use std::sync::Arc;
 
-    use windows::Win32::UI::WindowsAndMessaging::{
-        MSG, PM_NOREMOVE, PeekMessageW, PostThreadMessageW, WM_QUIT,
-    };
+    use windows::Win32::UI::WindowsAndMessaging::{MSG, PM_NOREMOVE, PeekMessageW};
 
     // Ensure this thread owns a message queue before page code can request
     // exit from a WebView UI thread.
@@ -514,14 +532,8 @@ fn install_current_thread_exit_handler() {
     }
 
     let main_thread_id = unsafe { windows::Win32::System::Threading::GetCurrentThreadId() };
-    lingxia::windows::set_windows_app_exit_handler(Arc::new(move || unsafe {
-        let _ = PostThreadMessageW(
-            main_thread_id,
-            WM_QUIT,
-            Default::default(),
-            Default::default(),
-        );
-    }));
+    let _ = HOST_MESSAGE_LOOP_THREAD.set(main_thread_id);
+    lingxia::windows::set_windows_app_exit_handler(Arc::new(request_host_message_loop_exit));
 }
 
 /// Boots the default host from the environment and blocks until the app exits.

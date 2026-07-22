@@ -2,7 +2,7 @@ use super::*;
 
 pub(super) fn execute_macos(ctx: DevContext) -> Result<()> {
     let platform_name = platform_session_name(PlatformType::MacOs);
-    precheck_platform_session(&ctx.project_root, platform_name)?;
+    take_over_target_session(&ctx.project_root, platform_name)?;
     use std::process::Command;
 
     let platform = platform::macos::MacosPlatform::new();
