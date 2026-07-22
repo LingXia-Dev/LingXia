@@ -12,7 +12,6 @@ const RUNNER_APP_NAME: &str = "LingXia Runner.app";
 const RUNNER_EXECUTABLE_NAME: &str = "LingXiaRunner";
 const RUNNER_LXAPP_PATH_ENV: &str = "LINGXIA_LXAPP_PATH";
 const RUNNER_DEV_WS_URL_ENV: &str = "LINGXIA_DEV_WS_URL";
-const RUNNER_LINGXIAO_MOCK_DIR_ENV: &str = "LINGXIAO_MOCK_DIR";
 const RUNNER_ENV_ENV: &str = "LINGXIA_RUNNER_ENV";
 const RUNNER_DISPLAY_LANGUAGE_ENV: &str = "LINGXIA_RUNNER_DISPLAY_LANGUAGE";
 /// Marks the child process as the LingXia Runner (vs a real host app). The core
@@ -321,16 +320,6 @@ fn launch_runner_for_lxapp(
     if let Some(language) = display_language.map(str::trim).filter(|s| !s.is_empty()) {
         command.env(RUNNER_DISPLAY_LANGUAGE_ENV, language);
     }
-    // Cloud worker: transpile mocks + generate typed `lx.cloud.invoke`, then
-    // point the runner at the loadable mock dir (it reads routing from worker.json).
-    if let Some(mock_dir) = crate::lxapp::worker::prepare_dev(lxapp_path) {
-        command.env(RUNNER_LINGXIAO_MOCK_DIR_ENV, &mock_dir);
-        println!(
-            "  {} Cloud functions (mock): {}",
-            "*".cyan(),
-            mock_dir.display()
-        );
-    }
     command.stdin(Stdio::null());
     command.stdout(Stdio::null());
     command.stderr(Stdio::null());
@@ -525,20 +514,10 @@ fn launch_windows_runner_for_lxapp(
     let resource_lxapp_paths = windows_runner_resource_lxapp_paths(lxapp_path, &identity)?;
     let exe_path = installed_windows_runner_exe_path()?;
     terminate_existing_windows_runner_processes(&exe_path, ws_url)?;
-    let mock_dir = crate::lxapp::worker::prepare_dev(lxapp_path);
-    if let Some(mock_dir) = &mock_dir {
-        println!(
-            "  {} Cloud functions (mock): {}",
-            "*".cyan(),
-            mock_dir.display()
-        );
-    }
-
     let launch_args = windows_runner_launch_args(
         lxapp_path,
         &assets_dir,
         ws_url,
-        mock_dir.as_deref(),
         runner_device,
         display_language,
         runner_env,
@@ -587,7 +566,6 @@ fn windows_runner_launch_args(
     lxapp_path: &Path,
     assets_dir: &Path,
     ws_url: &str,
-    mock_dir: Option<&Path>,
     runner_device: Option<&str>,
     display_language: Option<&str>,
     runner_env: crate::config::EnvVersion,
@@ -603,10 +581,6 @@ fn windows_runner_launch_args(
         "--asset-dir".to_string(),
         assets_dir.display().to_string(),
     ];
-    if let Some(mock_dir) = mock_dir {
-        args.push("--lingxiao-mock-dir".to_string());
-        args.push(mock_dir.display().to_string());
-    }
     if let Some(device) = runner_device.map(str::trim).filter(|s| !s.is_empty()) {
         args.push("--runner-device".to_string());
         args.push(device.to_string());
@@ -1226,7 +1200,6 @@ mod tests {
             std::path::Path::new(r"D:\apps\home"),
             std::path::Path::new(r"D:\apps\assets"),
             "ws://127.0.0.1:39000/?token=abc",
-            Some(std::path::Path::new(r"D:\apps\mock")),
             Some("desktop-1440"),
             Some("zh-CN"),
             crate::config::EnvVersion::Developer,

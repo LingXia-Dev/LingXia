@@ -6,7 +6,6 @@ mod options;
 mod package;
 mod project;
 mod view;
-pub(crate) mod worker;
 
 use anyhow::Result;
 use std::env;
