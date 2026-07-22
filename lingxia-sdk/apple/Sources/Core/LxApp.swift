@@ -222,8 +222,6 @@ final class LxAppCore {
     }
 
     private static func performInitialization(autoOpenHome: Bool) {
-        instance = LxAppCore()
-
         // Get platform-specific directory configuration
         let directoryConfig = LxAppDirectoryFactory.createDirectoryConfig()
 
@@ -233,6 +231,7 @@ final class LxAppCore {
         let initResult = lingxiaInit(directoryConfig.dataPath, directoryConfig.cachesPath, locale)
 
         if initResult.ok {
+            instance = LxAppCore()
             let rawHomeAppId = initResult.home_app_id.toString()
             let homeAppId = rawHomeAppId.isEmpty ? nil : rawHomeAppId
             homeLxAppId = homeAppId
@@ -249,6 +248,7 @@ final class LxAppCore {
                 }
             }
         } else {
+            instance = nil
             LXLog.error("Failed to initialize native runtime: \(initResult.error.toString())", category: "LxAppCore")
         }
     }

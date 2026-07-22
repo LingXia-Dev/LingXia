@@ -125,6 +125,22 @@ pub(super) fn resolve_dev_target(
     if target.is_empty() {
         return Err(anyhow!("dev target cannot be empty"));
     }
+    let target_path = PathBuf::from(target);
+    if target_path.is_absolute() {
+        if !target_path.exists() {
+            return Err(anyhow!(
+                "Dev target does not exist: {}",
+                target_path.display()
+            ));
+        }
+        if !is_standalone_lxapp_project(&target_path) {
+            return Err(anyhow!(
+                "Dev target is not a standalone lxapp directory: {}",
+                target_path.display()
+            ));
+        }
+        return Ok(Some(RunnerDevTarget::LxApp(target_path)));
+    }
     if target.contains("://") || target.starts_with("http:") || target.starts_with("https:") {
         let url = url::Url::parse(target).context("invalid dev target URL")?;
         if !matches!(url.scheme(), "http" | "https") || url.host_str().is_none() {
@@ -139,12 +155,7 @@ pub(super) fn resolve_dev_target(
             "unsupported dev target URL scheme; use http:// or https://"
         ));
     }
-    let path = PathBuf::from(target);
-    let path = if path.is_absolute() {
-        path
-    } else {
-        working_dir.join(path)
-    };
+    let path = working_dir.join(target_path);
     if !path.exists() {
         return Err(anyhow!("Dev target does not exist: {}", path.display()));
     }
@@ -1407,6 +1418,10 @@ mod tests {
         );
         assert_eq!(
             resolve_dev_target(temp.path(), Some("child")).unwrap(),
+            Some(RunnerDevTarget::LxApp(lxapp.clone()))
+        );
+        assert_eq!(
+            resolve_dev_target(temp.path(), lxapp.to_str()).unwrap(),
             Some(RunnerDevTarget::LxApp(lxapp))
         );
         assert!(resolve_dev_target(temp.path(), Some("file:///tmp/app")).is_err());
