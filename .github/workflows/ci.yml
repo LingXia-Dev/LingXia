@@ -14,6 +14,7 @@ on:
         type: choice
         options:
           - auto
+          - automation-full
           - automation-macos
           - automation-windows
 
@@ -48,6 +49,7 @@ jobs:
       npm: ${{ steps.compute.outputs.npm }}
       automation: ${{ steps.compute.outputs.automation }}
       automation_matrix: ${{ steps.compute.outputs.automation_matrix }}
+      automation_types: ${{ steps.compute.outputs.automation_types }}
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@v3
@@ -110,8 +112,86 @@ jobs:
               - 'crates/lingxia-logic/**'
             automation_types:
               - 'packages/lingxia-types/**'
+            # Runtime paths exercised by the Showcase end-to-end contracts on
+            # both desktop JS engines. Platform-only implementations are
+            # filtered separately so they do not fan out to the other OS.
+            automation_cross_platform:
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - 'rust-toolchain*'
+              - 'crates/lingxia/**'
+              - 'crates/lingxia-app-context/**'
+              - 'crates/lingxia-automation/**'
+              - 'crates/lingxia-automation-runtime/**'
+              - 'crates/lingxia-browser/**'
+              - 'crates/lingxia-browser-shell/**'
+              - 'crates/lingxia-computer-use/**'
+              - 'crates/lingxia-devtool/**'
+              - 'crates/lingxia-devtool-protocol/**'
+              - 'crates/lingxia-log/**'
+              - 'crates/lingxia-logic/**'
+              - 'crates/lingxia-lxapp/**'
+              - 'crates/lingxia-media/**'
+              - 'crates/lingxia-messaging/**'
+              - 'crates/lingxia-native-codegen/**'
+              - 'crates/lingxia-native-macros/**'
+              - 'crates/lingxia-provider/**'
+              - 'crates/lingxia-proxy/**'
+              - 'crates/lingxia-service/**'
+              - 'crates/lingxia-settings/**'
+              - 'crates/lingxia-shell/**'
+              - 'crates/lingxia-surface/**'
+              - 'crates/lingxia-terminal/**'
+              - 'crates/lingxia-transfer/**'
+              - 'crates/lingxia-update/**'
+              - 'crates/lingxia-platform/Cargo.toml'
+              - 'crates/lingxia-platform/src/*.rs'
+              - 'crates/lingxia-platform/src/desktop/**'
+              - 'crates/lingxia-platform/src/traits/**'
+              - 'crates/lingxia-webview/Cargo.toml'
+              - 'crates/lingxia-webview/src/*.rs'
+              - 'crates/lingxia-webview/src/events/**'
+              - 'tools/lingxia-cli/**'
+              - 'tools/lingxia-devtools-cli/**'
+              - 'packages/lingxia-bridge/**'
+              - 'packages/lingxia-polyfills/**'
+              - 'i18n/**'
+              - '.github/actions/build-web-packages/**'
+            automation_macos:
+              - 'lingxia-sdk/apple/**'
+              - 'crates/lingxia-platform/src/apple/**'
+              - 'crates/lingxia-webview/src/apple/**'
+              - 'examples/lingxia-showcase/macos/**'
+            automation_windows:
+              - 'crates/lingxia-platform/src/windows/**'
+              - 'crates/lingxia-webview/src/windows/**'
+              - 'crates/lingxia-windows-build/**'
+              - 'crates/lingxia-windows-contract/**'
+              - 'crates/lingxia-windows-sdk/**'
+              - 'examples/lingxia-showcase/windows/**'
+            automation_frontend_shared:
+              - 'packages/lingxia-elements/**'
+              - 'packages/lingxia-page-runtime/**'
+            automation_react:
+              - 'packages/lingxia-react/**'
+            automation_vue:
+              - 'packages/lingxia-vue/**'
+            # The Showcase ships both frameworks on both desktop hosts, so
+            # changes to its shared app, lxapp, or native contract keep the
+            # complete matrix. Platform host folders remain scoped above.
+            automation_showcase:
+              - 'examples/lingxia-showcase/lingxia.yaml'
+              - 'examples/lingxia-showcase/lxapp/**'
+              - 'examples/lingxia-showcase/native/**'
+            automation_ci:
+              - '.github/workflows/ci.yml'
+              - 'scripts/ci/automation-matrix.sh'
+              - 'scripts/ci/test-automation-matrix.sh'
             ci:
               - '.github/**'
+      - name: Test automation matrix selection
+        shell: bash
+        run: bash scripts/ci/test-automation-matrix.sh
       - id: compute
         shell: bash
         env:
@@ -135,7 +215,16 @@ jobs:
           NPM: ${{ steps.filter.outputs.npm }}
           TYPEGEN_SRC: ${{ steps.filter.outputs.typegen_src }}
           AUTOMATION_TYPES: ${{ steps.filter.outputs.automation_types }}
+          AUTOMATION_CROSS_PLATFORM: ${{ steps.filter.outputs.automation_cross_platform }}
+          AUTOMATION_MACOS: ${{ steps.filter.outputs.automation_macos }}
+          AUTOMATION_WINDOWS: ${{ steps.filter.outputs.automation_windows }}
+          AUTOMATION_FRONTEND_SHARED: ${{ steps.filter.outputs.automation_frontend_shared }}
+          AUTOMATION_REACT: ${{ steps.filter.outputs.automation_react }}
+          AUTOMATION_VUE: ${{ steps.filter.outputs.automation_vue }}
+          AUTOMATION_SHOWCASE: ${{ steps.filter.outputs.automation_showcase }}
+          AUTOMATION_CI: ${{ steps.filter.outputs.automation_ci }}
           FOCUS: ${{ github.event_name == 'workflow_dispatch' && inputs.focus || 'auto' }}
+          IS_MAIN_PUSH: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
           # A release/* PR (from Prepare Release PR) only touches Cargo.toml /
           # install.sh / packages/*, so the path filters would skip sdk/harmony.
           # Force the FULL validate set on release PRs so a maintainer sees every
@@ -172,42 +261,69 @@ jobs:
           # crates/lingxia-logic change (it is the generation source for
           # @lingxia/types, so Rust-only PRs must still run the drift gate).
           npm=$(any "$rel" "$NPM" "$TYPEGEN_SRC")
-          automation=$(any "$rel" "$CI_F" "$rust" "$WEB_FE" "$EX_COMMON" "$APPLE" "$AUTOMATION_TYPES")
           i18n="$I18N"
-          automation_matrix='{"include":[{"platform":"macos","os":"macos-latest","exe":""},{"platform":"windows","os":"windows-latest","exe":".exe"}]}'
+
+          automation_full=$(any "$rel" "$IS_MAIN_PUSH" "$AUTOMATION_SHOWCASE" "$AUTOMATION_CI")
+          automation_cross_platform="$AUTOMATION_CROSS_PLATFORM"
+          automation_macos="$AUTOMATION_MACOS"
+          automation_windows="$AUTOMATION_WINDOWS"
+          automation_frontend_shared="$AUTOMATION_FRONTEND_SHARED"
+          automation_react="$AUTOMATION_REACT"
+          automation_vue="$AUTOMATION_VUE"
+          automation_macos_all=false
+          automation_windows_all=false
 
           # Focused workflow_dispatch runs are an iteration aid. Pull requests
-          # still use the complete path-based gate above.
+          # still use the path-based gate above.
           case "$FOCUS" in
+            automation-full)
+              automation_full=true
+              ;;
             automation-macos)
-              rust=false
-              i18n=false
-              ios=false
-              macos=false
-              android=false
-              runner=false
-              sdk_apple=false
-              sdk_android=false
-              harmony=false
-              npm=false
-              automation=true
-              automation_matrix='{"include":[{"platform":"macos","os":"macos-latest","exe":""}]}'
+              automation_full=false
+              automation_macos_all=true
               ;;
             automation-windows)
-              rust=false
-              i18n=false
-              ios=false
-              macos=false
-              android=false
-              runner=false
-              sdk_apple=false
-              sdk_android=false
-              harmony=false
-              npm=false
-              automation=true
-              automation_matrix='{"include":[{"platform":"windows","os":"windows-latest","exe":".exe"}]}'
+              automation_full=false
+              automation_windows_all=true
               ;;
           esac
+
+          if [[ "$FOCUS" != "auto" ]]; then
+            rust=false
+            i18n=false
+            ios=false
+            macos=false
+            android=false
+            runner=false
+            sdk_apple=false
+            sdk_android=false
+            harmony=false
+            npm=false
+            automation_cross_platform=false
+            automation_macos=false
+            automation_windows=false
+            automation_frontend_shared=false
+            automation_react=false
+            automation_vue=false
+          fi
+
+          matrix_outputs=$(FULL="$automation_full" \
+            CROSS_PLATFORM="$automation_cross_platform" \
+            MACOS="$automation_macos" \
+            WINDOWS="$automation_windows" \
+            MACOS_ALL="$automation_macos_all" \
+            WINDOWS_ALL="$automation_windows_all" \
+            FRONTEND_SHARED="$automation_frontend_shared" \
+            REACT="$automation_react" \
+            VUE="$automation_vue" \
+            bash scripts/ci/automation-matrix.sh)
+          automation=$(sed -n 's/^automation=//p' <<<"$matrix_outputs")
+          automation_matrix=$(sed -n 's/^automation_matrix=//p' <<<"$matrix_outputs")
+          automation_types=$(any "$rel" "$AUTOMATION_CI" "$AUTOMATION_SHOWCASE" "$TYPEGEN_SRC" "$AUTOMATION_TYPES")
+          if [[ "$FOCUS" != "auto" ]]; then
+            automation_types=true
+          fi
           {
             echo "rust=$rust"
             echo "i18n=$i18n"
@@ -221,6 +337,7 @@ jobs:
             echo "npm=$npm"
             echo "automation=$automation"
             echo "automation_matrix=$automation_matrix"
+            echo "automation_types=$automation_types"
           } >> "$GITHUB_OUTPUT"
 
   # ---- Gating jobs (required via ci-success) ----
@@ -595,9 +712,28 @@ jobs:
           path: examples/lingxia-showcase/macos/.lingxia/*.app
           if-no-files-found: warn
 
+  showcase-automation-types:
+    needs: changes
+    name: automation-types
+    if: ${{ needs.changes.outputs.automation_types == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/build-web-packages
+
+      - name: Install showcase test dependencies
+        working-directory: examples/lingxia-showcase/lxapp
+        run: npm ci
+
+      - name: Check showcase automation types
+        working-directory: examples/lingxia-showcase/lxapp
+        run: npm run test:automation:types
+
   showcase-automation:
     needs: changes
-    name: automation-${{ matrix.platform }}
+    name: automation-${{ matrix.platform }}-${{ matrix.profile }}
     if: ${{ needs.changes.outputs.automation == 'true' }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 75
@@ -640,11 +776,6 @@ jobs:
         shell: bash
         run: npm ci
 
-      - name: Check showcase automation types
-        working-directory: examples/lingxia-showcase/lxapp
-        shell: bash
-        run: npm run test:automation:types
-
       - name: Build automation CLIs
         shell: bash
         run: cargo build -p lingxia-cli -p lingxia-devtools-cli
@@ -655,6 +786,7 @@ jobs:
         env:
           PLATFORM: ${{ matrix.platform }}
           EXE: ${{ matrix.exe }}
+          FRAMEWORKS: ${{ matrix.frameworks }}
         run: |
           set -euo pipefail
           cli="$(pwd)/../../target/debug/lingxia${EXE}"
@@ -662,7 +794,7 @@ jobs:
           cleanup() { "$cli" dev stop >/dev/null 2>&1 || true; }
           trap cleanup EXIT
 
-          for framework in react vue; do
+          for framework in $FRAMEWORKS; do
             echo "::group::Start ${PLATFORM}/${framework}"
             "$cli" dev --background --platform "$PLATFORM" --framework "$framework"
             "$cli" dev status --json
@@ -1049,6 +1181,7 @@ jobs:
       - macos
       - ios
       - android
+      - showcase-automation-types
       - showcase-automation
     runs-on: ubuntu-latest
     if: always()
