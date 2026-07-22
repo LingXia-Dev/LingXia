@@ -4,7 +4,7 @@
 # Browser
 browser:
   label: "Browser"
-  address_placeholder: "Search or enter address"
+  address_placeholder: "Enter address"
   new_tab: "New Tab"
   close_other_tabs: "Close Other Tabs"
   close_tabs_below: "Close Tabs Below"

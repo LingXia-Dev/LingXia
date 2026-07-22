@@ -277,7 +277,7 @@ internal object LxAppBrowser {
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
             setTextColor(Color.parseColor("#333333"))
             setHintTextColor(Color.parseColor("#888888"))
-            hint = "Search or enter address"
+            hint = "Enter address"
             setSingleLine(true)
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.MIDDLE

@@ -3140,6 +3140,12 @@ fn toggle_phone_tab_switcher_on_thread(owner: isize, tabs: Vec<(String, String, 
     let width = client.right - client.left;
     let height = client.bottom - client.top;
     let layout = crate::shell::phone_tab_switcher_layout(width, height, &tabs);
+    #[cfg(feature = "device-frame")]
+    let screen_corner_radius = crate::device_frame::device_frame_screen_clip_style(owner)
+        .map(|(radius, _)| radius)
+        .unwrap_or(0);
+    #[cfg(not(feature = "device-frame"))]
+    let screen_corner_radius = 0;
 
     let class = phone_tab_switcher_class();
     let Ok(window) = (unsafe {
@@ -3181,7 +3187,7 @@ fn toggle_phone_tab_switcher_on_thread(owner: isize, tabs: Vec<(String, String, 
             WindowsAndMessaging::SWP_NOACTIVATE | WindowsAndMessaging::SWP_SHOWWINDOW,
         );
     }
-    upload_phone_tab_switcher(window, &layout);
+    upload_phone_tab_switcher(window, &layout, screen_corner_radius);
     if let Ok(mut switchers) = PHONE_TAB_SWITCHERS
         .get_or_init(|| Mutex::new(HashMap::new()))
         .lock()
@@ -3306,7 +3312,11 @@ fn dispatch_phone_switcher_command(owner: HWND, command: WindowsChromeCommand) {
 /// Uploads the switcher as a per-pixel-alpha layered window: the sheet is
 /// opaque with anti-aliased top corners; everything above it is the dim.
 #[cfg(feature = "shell-chrome")]
-fn upload_phone_tab_switcher(hwnd: HWND, layout: &crate::shell::PhoneTabSwitcherLayout) {
+fn upload_phone_tab_switcher(
+    hwnd: HWND,
+    layout: &crate::shell::PhoneTabSwitcherLayout,
+    screen_corner_radius: i32,
+) {
     let width = layout.width;
     let height = layout.height;
     if width <= 0 || height <= 0 {
@@ -3351,7 +3361,13 @@ fn upload_phone_tab_switcher(hwnd: HWND, layout: &crate::shell::PhoneTabSwitcher
         crate::shell::paint_phone_tab_switcher(dc, layout);
         let pixel_count = (width * height) as usize;
         let pixels = std::slice::from_raw_parts_mut(bits.cast::<u32>(), pixel_count);
-        apply_phone_switcher_alpha(pixels, width, height, layout.sheet.top);
+        apply_phone_switcher_alpha(
+            pixels,
+            width,
+            height,
+            layout.sheet.top,
+            screen_corner_radius,
+        );
         let size = SIZE {
             cx: width,
             cy: height,
@@ -3384,12 +3400,20 @@ fn upload_phone_tab_switcher(hwnd: HWND, layout: &crate::shell::PhoneTabSwitcher
 }
 
 /// Alpha for the switcher surface: a 35% dim above the sheet, opaque sheet
-/// below with an anti-aliased falloff into the dim at its top corners.
+/// below with an anti-aliased falloff into the dim at its top corners. The
+/// final alpha is also clipped to the simulated screen silhouette because an
+/// owned layered popup does not inherit its owner's rounded window region.
 #[cfg(feature = "shell-chrome")]
-fn apply_phone_switcher_alpha(pixels: &mut [u32], width: i32, height: i32, sheet_top: i32) {
+fn apply_phone_switcher_alpha(
+    pixels: &mut [u32],
+    width: i32,
+    height: i32,
+    sheet_top: i32,
+    screen_corner_radius: i32,
+) {
     const DIM: u32 = 0x59;
     let radius = crate::shell::PHONE_SWITCHER_SHEET_RADIUS;
-    let coverage_at = |x: i32, y: i32| -> f32 {
+    let sheet_coverage_at = |x: i32, y: i32| -> f32 {
         if y >= sheet_top + radius {
             return 1.0;
         }
@@ -3405,16 +3429,41 @@ fn apply_phone_switcher_alpha(pixels: &mut [u32], width: i32, height: i32, sheet
         let distance = (dx * dx + dy * dy).sqrt();
         (radius as f32 - distance + 0.5).clamp(0.0, 1.0)
     };
+    let screen_radius = screen_corner_radius.clamp(0, width.min(height) / 2);
+    let screen_coverage_at = |x: i32, y: i32| -> f32 {
+        if screen_radius == 0 {
+            return 1.0;
+        }
+        let corner_x = if x < screen_radius {
+            screen_radius
+        } else if x >= width - screen_radius {
+            width - screen_radius
+        } else {
+            return 1.0;
+        };
+        let corner_y = if y < screen_radius {
+            screen_radius
+        } else if y >= height - screen_radius {
+            height - screen_radius
+        } else {
+            return 1.0;
+        };
+        let dx = x as f32 + 0.5 - corner_x as f32;
+        let dy = y as f32 + 0.5 - corner_y as f32;
+        let distance = (dx * dx + dy * dy).sqrt();
+        (screen_radius as f32 - distance + 0.5).clamp(0.0, 1.0)
+    };
     for y in 0..height {
         for x in 0..width {
             let index = (y * width + x) as usize;
             let pixel = pixels[index];
-            let alpha = if y < sheet_top {
+            let surface_alpha = if y < sheet_top {
                 DIM
             } else {
-                let coverage = coverage_at(x, y);
+                let coverage = sheet_coverage_at(x, y);
                 DIM + ((255 - DIM) as f32 * coverage) as u32
             };
+            let alpha = (surface_alpha as f32 * screen_coverage_at(x, y)).round() as u32;
             pixels[index] = match alpha {
                 255 => 0xff00_0000 | (pixel & 0x00ff_ffff),
                 alpha => {
@@ -8342,6 +8391,8 @@ fn to_wide(value: &str) -> Vec<u16> {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(feature = "shell-chrome")]
+    use super::apply_phone_switcher_alpha;
     use super::{
         WindowResizeDrag, WindowResizeEdge, WindowsFrameButton, frame_button_non_client_hit,
         resized_window_rect, same_window_generation,
@@ -8450,5 +8501,21 @@ mod tests {
             per_corner_region_row_span(393, 532, radii, 300),
             Some((0, 393))
         );
+    }
+
+    #[test]
+    #[cfg(feature = "shell-chrome")]
+    fn phone_switcher_alpha_clips_to_the_device_screen_corners() {
+        let width = 100;
+        let height = 100;
+        let mut pixels = vec![0x00ff_ffff; (width * height) as usize];
+
+        apply_phone_switcher_alpha(&mut pixels, width, height, 50, 20);
+
+        let alpha_at = |x: i32, y: i32| pixels[(y * width + x) as usize] >> 24;
+        assert_eq!(alpha_at(0, 0), 0);
+        assert_eq!(alpha_at(50, 0), 0x59);
+        assert_eq!(alpha_at(0, 99), 0);
+        assert_eq!(alpha_at(50, 99), 0xff);
     }
 }

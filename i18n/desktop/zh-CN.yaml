@@ -4,7 +4,7 @@
 # Browser
 browser:
   label: "浏览器"
-  address_placeholder: "搜索或输入网址"
+  address_placeholder: "输入网址"
   new_tab: "新建标签页"
   close_other_tabs: "关闭其他标签页"
   close_tabs_below: "关闭下方标签页"

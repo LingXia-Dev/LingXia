@@ -560,8 +560,9 @@ The aside region is fixed at three slots, grouped by rendering engine:
 - The explicit page Back/Forward buttons navigate session history. System Back,
   edge-swipe Back, and Dismiss exit the entire browser-aside slot even when page
   history exists, preserving its tabs for the next show.
-- The self browser remains a separate two-row projection with an editable
-  address, user-new-tab and overflow actions. Self and aside tab counts,
+- The self browser remains a separate two-row projection with an editable URL
+  field, user-new-tab and overflow actions. The field accepts URLs, not search
+  queries. Self and aside tab counts,
   switchers, activation, and close-successor selection MUST remain isolated;
   neither group may surface a tab from the other group.
 - Closing a browser tab happens in its current group's switcher. Closing the

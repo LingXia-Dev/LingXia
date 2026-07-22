@@ -55,6 +55,13 @@ public enum L10n {
         public static var paste: String { L10n.string("lx_menu_paste") }
         public static var selectAll: String { L10n.string("lx_menu_select_all") }
     }
+
+    /// Curated strings for host-owned browser chrome.
+    public enum Browser {
+        public static var addressPlaceholder: String {
+            L10n.string("lx_browser_address_placeholder")
+        }
+    }
 }
 
 extension String {

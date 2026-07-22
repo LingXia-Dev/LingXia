@@ -7,15 +7,13 @@ use super::*;
 /// Compact (phone-width) breakpoint, matching the surface arbiter's Compact
 /// size class.
 const PHONE_BROWSER_MAX_WIDTH: i32 = 600;
-/// Bottom browser-bar metrics: an edge-to-edge bottom sheet (rounded top
-/// corners only, flush with the screen sides and bottom, like the iOS
-/// browser bar) with an address-pill row (self tabs only) above the action
+/// Bottom browser-bar metrics: an edge-to-edge strip, clipped by the device
+/// screen itself, with an address-pill row (self tabs only) above the action
 /// row.
 const PHONE_BAR_HEIGHT_SELF: i32 = 96;
 const PHONE_BAR_HEIGHT_ASIDE: i32 = 56;
 const PHONE_BAR_MARGIN: i32 = 0;
 const PHONE_BAR_BOTTOM_GAP: i32 = 0;
-const PHONE_BAR_RADIUS: i32 = 16;
 const PHONE_BAR_BUTTON: i32 = 38;
 const PHONE_BAR_BUTTON_GAP: i32 = 4;
 const PHONE_BAR_EDGE: i32 = 6;
@@ -115,8 +113,8 @@ pub(super) fn phone_browser_bar_rects(client: RECT, aside: bool) -> PhoneBarRect
     }
 }
 
-/// Paints the phone browser bar: a floating bottom card with the address
-/// pill (self tabs only), the nav cluster, and new-tab/tabs/close.
+/// Paints the phone browser bar: a bottom strip with the address pill (self
+/// tabs only), the nav cluster, and new-tab/tabs/close.
 pub(super) fn draw_phone_browser_bar(
     hdc: HDC,
     state: &WindowsChromeState,
@@ -129,19 +127,14 @@ pub(super) fn draw_phone_browser_bar(
     let cursor = state.cursor;
     let rects = phone_browser_bar_rects(state.client, address_bar.aside);
 
-    // Rounded top corners only: extend the fill below the client bottom so
-    // the lower arcs are clipped away and the sheet sits flush with the
-    // screen bottom.
-    let sheet = RECT {
-        left: rects.bar.left,
-        top: rects.bar.top,
-        right: rects.bar.right,
-        bottom: rects.bar.bottom + PHONE_BAR_RADIUS,
-    };
-    fill_round_rect_aa(hdc, sheet, PHONE_BAR_RADIUS, pal.panel_background);
+    // The device screen owns the exterior silhouette. Keeping this strip
+    // square avoids carving two artificial notches into the WebView seam.
+    fill_rect(hdc, rects.bar, pal.panel_background);
 
     if let Some(pill) = rects.address {
-        fill_round_rect_aa(hdc, pill, rect_height(&pill) / 2, pal.control_surface);
+        let pill_radius = rect_height(&pill) / 2;
+        fill_round_rect_aa(hdc, pill, pill_radius, pal.control_surface);
+        stroke_round_rect_aa(hdc, pill, pill_radius, pal.divider);
         let text_rect = normalize_rect(RECT {
             left: pill.left + 12,
             top: pill.top,
@@ -151,13 +144,15 @@ pub(super) fn draw_phone_browser_bar(
                 .unwrap_or(pill.right - 8),
             bottom: pill.bottom,
         });
-        draw_text(
-            hdc,
-            &address_bar.url_text,
-            text_rect,
-            pal.text_primary,
-            DT_LEFT,
-        );
+        let (address_text, address_color) = if address_bar.url_text.trim().is_empty() {
+            (
+                lingxia_logic::i18n::t(lingxia_logic::I18nKey::BrowserAddressPlaceholder),
+                pal.text_muted,
+            )
+        } else {
+            (address_bar.url_text.clone(), pal.text_primary)
+        };
+        draw_text(hdc, &address_text, text_rect, address_color, DT_LEFT);
         // The pill is the inline URL-edit anchor, like the top-bar capsule.
         remember_address_capsule_rect(state.hwnd, Some(pill));
         if let Some(reload) = rects.address_reload {
