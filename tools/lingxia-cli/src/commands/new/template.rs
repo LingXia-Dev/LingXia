@@ -33,8 +33,6 @@ pub fn process_template_dir(
                 | ".gradle"
                 | ".idea"
                 | ".lingxia"
-                | ".lingxiao"
-                | ".worker"
                 | "build"
                 | "dist"
                 | "node_modules"
@@ -252,14 +250,7 @@ mod tests {
     fn skips_generated_template_artifacts() {
         let src = tempdir().unwrap();
         let dst = tempdir().unwrap();
-        for directory in [
-            "node_modules",
-            "dist",
-            ".lingxia",
-            ".lingxiao",
-            ".worker",
-            "target",
-        ] {
+        for directory in ["node_modules", "dist", ".lingxia", "target"] {
             fs::create_dir_all(src.path().join(directory)).unwrap();
             fs::write(src.path().join(directory).join("artifact"), "generated").unwrap();
         }
@@ -268,14 +259,7 @@ mod tests {
 
         process_template_dir(src.path(), dst.path(), &HashMap::new()).unwrap();
 
-        for directory in [
-            "node_modules",
-            "dist",
-            ".lingxia",
-            ".lingxiao",
-            ".worker",
-            "target",
-        ] {
+        for directory in ["node_modules", "dist", ".lingxia", "target"] {
             assert!(!dst.path().join(directory).exists());
         }
         assert!(!dst.path().join("tsconfig.tsbuildinfo").exists());

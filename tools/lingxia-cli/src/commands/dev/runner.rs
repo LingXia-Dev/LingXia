@@ -12,7 +12,6 @@ const RUNNER_APP_NAME: &str = "LingXia Runner.app";
 const RUNNER_EXECUTABLE_NAME: &str = "LingXiaRunner";
 const RUNNER_LXAPP_PATH_ENV: &str = "LINGXIA_LXAPP_PATH";
 const RUNNER_DEV_WS_URL_ENV: &str = "LINGXIA_DEV_WS_URL";
-const RUNNER_CLOUD_DEV_CONFIG_ENV: &str = "LINGXIA_CLOUD_DEV_CONFIG";
 const RUNNER_ENV_ENV: &str = "LINGXIA_RUNNER_ENV";
 const RUNNER_DISPLAY_LANGUAGE_ENV: &str = "LINGXIA_RUNNER_DISPLAY_LANGUAGE";
 /// Marks the child process as the LingXia Runner (vs a real host app). The core
@@ -513,9 +512,6 @@ fn launch_windows_runner_for_lxapp(
     let identity = read_windows_runner_lxapp_identity(lxapp_path)?;
     let assets_dir = prepare_windows_runner_assets(lxapp_path, &identity, ws_url, runner_env)?;
     let resource_lxapp_paths = windows_runner_resource_lxapp_paths(lxapp_path, &identity)?;
-    let cloud_dev_config = std::env::var(RUNNER_CLOUD_DEV_CONFIG_ENV)
-        .ok()
-        .filter(|value| !value.trim().is_empty());
     let exe_path = installed_windows_runner_exe_path()?;
     terminate_existing_windows_runner_processes(&exe_path, ws_url)?;
     let launch_args = windows_runner_launch_args(
@@ -525,7 +521,6 @@ fn launch_windows_runner_for_lxapp(
         runner_device,
         display_language,
         runner_env,
-        cloud_dev_config.as_deref(),
         &resource_lxapp_paths,
     )?;
 
@@ -574,7 +569,6 @@ fn windows_runner_launch_args(
     runner_device: Option<&str>,
     display_language: Option<&str>,
     runner_env: crate::config::EnvVersion,
-    cloud_dev_config: Option<&str>,
     resource_lxapp_paths: &[WindowsRunnerResourceLxAppPath],
 ) -> Result<Vec<String>> {
     let mut args = vec![
@@ -587,10 +581,6 @@ fn windows_runner_launch_args(
         "--asset-dir".to_string(),
         assets_dir.display().to_string(),
     ];
-    if let Some(config) = cloud_dev_config {
-        args.push("--cloud-dev-config".to_string());
-        args.push(config.to_string());
-    }
     if let Some(device) = runner_device.map(str::trim).filter(|s| !s.is_empty()) {
         args.push("--runner-device".to_string());
         args.push(device.to_string());
@@ -1213,7 +1203,6 @@ mod tests {
             Some("desktop-1440"),
             Some("zh-CN"),
             crate::config::EnvVersion::Developer,
-            Some(r"D:\apps\home\.lingxiao\dev.json"),
             &resources,
         )
         .unwrap();
@@ -1233,10 +1222,6 @@ mod tests {
         assert!(
             args.windows(2)
                 .any(|pair| pair == ["--display-language", "zh-CN"])
-        );
-        assert!(
-            args.windows(2)
-                .any(|pair| { pair == ["--cloud-dev-config", r"D:\apps\home\.lingxiao\dev.json"] })
         );
         assert!(args.iter().any(|arg| arg.contains("com.example.extra")));
     }

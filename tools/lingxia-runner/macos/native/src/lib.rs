@@ -71,7 +71,7 @@ impl lingxia::HostAddon for RunnerDevtoolAddon {
         use lingxia_cloud_client::CloudOptions;
 
         let cfg = lingxia_runner_config::from_env();
-        let mut options = CloudOptions::default().dev_from_env();
+        let mut options = CloudOptions::default();
         if let Some(server) = cfg.lingxia_server {
             options = options.lingxia_server(server);
         }

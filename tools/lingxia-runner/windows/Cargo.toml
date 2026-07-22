@@ -15,8 +15,8 @@ path = "src/main.rs"
 # activates this feature, which pulls in the shared runner-config resolver.
 cloud = ["dep:lingxia-runner-config"]
 
-# The runner is a dev container, so it asks the cloud provider for `dev` — the
-# runtime lingxiaServer/lingxiaId overrides + provider-owned dev descriptor.
+# The runner is a dev container, so it asks the cloud provider for its
+# development behavior in addition to runtime lingxiaServer/lingxiaId overrides.
 # The CLI reads this to decide which provider features to enable; it hardcodes
 # no provider implementation details.
 [package.metadata.lingxia.providers.cloud]

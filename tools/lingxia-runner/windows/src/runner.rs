@@ -16,7 +16,6 @@ static LANDSCAPE: AtomicBool = AtomicBool::new(false);
 const ARG_ASSET_DIR: &str = "--asset-dir";
 const ARG_LXAPP_PATH: &str = "--lxapp-path";
 const ARG_DEV_WS_URL: &str = "--dev-ws-url";
-const ARG_CLOUD_DEV_CONFIG: &str = "--cloud-dev-config";
 const ARG_RUNNER_DEVICE: &str = "--runner-device";
 const ARG_RUNNER_ENV: &str = "--runner-env";
 const ARG_DISPLAY_LANGUAGE: &str = "--display-language";
@@ -24,7 +23,6 @@ const ARG_RESOURCE_LXAPP_PATHS: &str = "--resource-lxapp-paths";
 const ENV_LXAPP_PATH: &str = "LINGXIA_LXAPP_PATH";
 const ENV_DEV_WS_URL: &str = "LINGXIA_DEV_WS_URL";
 const ENV_STATE_ROOT: &str = "LINGXIA_STATE_ROOT";
-const ENV_CLOUD_DEV_CONFIG: &str = "LINGXIA_CLOUD_DEV_CONFIG";
 const ENV_RUNNER_DEVICE: &str = "LINGXIA_RUNNER_DEVICE";
 const ENV_RUNNER_ENV: &str = "LINGXIA_RUNNER_ENV";
 const ENV_DISPLAY_LANGUAGE: &str = "LINGXIA_RUNNER_DISPLAY_LANGUAGE";
@@ -42,8 +40,7 @@ struct RunnerDevtoolAddon;
 impl lingxia::HostAddon for RunnerDevtoolAddon {
     // Cloud provider. Must register in this hook — the logic context is built
     // before `start_services`. Injected via `--with-provider cloud`. The runner
-    // env contract (config.toml overrides plus the opaque provider-owned dev
-    // descriptor) is resolved before the provider initializes.
+    // env contract is resolved before the provider initializes.
     #[cfg(feature = "cloud")]
     fn install_logic_extensions(&self) {
         if let Err(err) = lingxia_cloud_client::init(cloud_options()) {
@@ -61,7 +58,7 @@ impl lingxia::HostAddon for RunnerDevtoolAddon {
 fn cloud_options() -> lingxia_cloud_client::CloudOptions {
     use lingxia_cloud_client::CloudOptions;
     let cfg = lingxia_runner_config::from_env();
-    let mut options = CloudOptions::default().dev_from_env();
+    let mut options = CloudOptions::default();
     if let Some(server) = cfg.lingxia_server {
         options = options.lingxia_server(server);
     }
@@ -128,7 +125,6 @@ fn launch_arg_env_key(arg: &str) -> Option<&'static str> {
     match arg {
         ARG_LXAPP_PATH => Some(ENV_LXAPP_PATH),
         ARG_DEV_WS_URL => Some(ENV_DEV_WS_URL),
-        ARG_CLOUD_DEV_CONFIG => Some(ENV_CLOUD_DEV_CONFIG),
         ARG_RUNNER_DEVICE => Some(ENV_RUNNER_DEVICE),
         ARG_RUNNER_ENV => Some(ENV_RUNNER_ENV),
         ARG_DISPLAY_LANGUAGE => Some(ENV_DISPLAY_LANGUAGE),
@@ -466,17 +462,4 @@ fn apply_default_device(home_app_id: String, default_device: usize, landscape: b
         }
         eprintln!("lingxia-runner: home page webview never became ready for the device frame");
     });
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{ARG_CLOUD_DEV_CONFIG, ENV_CLOUD_DEV_CONFIG, launch_arg_env_key};
-
-    #[test]
-    fn cloud_dev_descriptor_arg_restores_provider_environment() {
-        assert_eq!(
-            launch_arg_env_key(ARG_CLOUD_DEV_CONFIG),
-            Some(ENV_CLOUD_DEV_CONFIG)
-        );
-    }
 }
