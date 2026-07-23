@@ -77,6 +77,8 @@ pub struct DevExecuteOptions {
     pub runner_device: Option<String>,
     /// Session-only effective display language for an lxapp Runner.
     pub display_language: Option<String>,
+    /// Keep a Windows web-target Runner window hidden while it remains automatable.
+    pub headless: bool,
     pub background: bool,
     pub action: Option<DevSessionAction>,
 }
@@ -272,6 +274,12 @@ pub fn execute(options: DevExecuteOptions) -> Result<()> {
 
     if let Some(target) = runner::resolve_dev_target(&project_root, options.target.as_deref())? {
         return runner::execute_runner_dev(project_root, target, options);
+    }
+
+    if options.headless {
+        return Err(anyhow!(
+            "`--headless` is only supported with an explicit http:// or https:// Runner target."
+        ));
     }
 
     if options.display_language.is_some() {

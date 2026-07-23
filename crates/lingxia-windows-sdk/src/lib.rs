@@ -115,6 +115,7 @@ pub struct WindowsApp {
     pub(crate) window_size: Option<(i32, i32)>,
     pub(crate) asset_dir: Option<PathBuf>,
     pub(crate) content: WindowsContent,
+    pub(crate) headless: bool,
 }
 
 /// Primary content mounted by the SDK-managed Windows host.
@@ -140,6 +141,7 @@ impl WindowsApp {
             window_size: None,
             asset_dir: None,
             content: WindowsContent::LxApp,
+            headless: false,
         }
     }
 
@@ -175,6 +177,13 @@ impl WindowsApp {
     /// owns editable URL chrome, history, and tab state.
     pub fn with_browser(mut self, url: impl Into<String>) -> Self {
         self.content = WindowsContent::Browser(url.into());
+        self
+    }
+
+    /// Hosts SDK-managed WebView2 controllers in message-only windows.
+    /// Intended for automated browser sessions without desktop UI.
+    pub fn with_headless(mut self, headless: bool) -> Self {
+        self.headless = headless;
         self
     }
 
@@ -403,6 +412,7 @@ fn present_default_host(lxapp_id: Option<&str>, asset_dir: &Path) -> Result<()> 
 #[cfg(all(target_os = "windows", feature = "runtime"))]
 pub fn start_default_host(app: WindowsApp) -> Result<WindowsHost> {
     let content = app.content.clone();
+    window_host::set_default_host_headless(app.headless);
     install_default_windows_host();
     // Own a message queue before any page can request exit from a WebView UI thread.
     install_current_thread_exit_handler();

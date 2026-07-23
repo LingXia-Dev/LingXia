@@ -23,6 +23,7 @@ const ARG_DEV_WS_URL: &str = "--dev-ws-url";
 const ARG_RUNNER_DEVICE: &str = "--runner-device";
 const ARG_RUNNER_ENV: &str = "--runner-env";
 const ARG_DISPLAY_LANGUAGE: &str = "--display-language";
+const ARG_HEADLESS: &str = "--headless";
 const ARG_RESOURCE_LXAPP_PATHS: &str = "--resource-lxapp-paths";
 const ENV_LXAPP_PATH: &str = "LINGXIA_LXAPP_PATH";
 const ENV_WEB_URL: &str = "LINGXIA_RUNNER_WEB_URL";
@@ -31,6 +32,7 @@ const ENV_STATE_ROOT: &str = "LINGXIA_STATE_ROOT";
 const ENV_RUNNER_DEVICE: &str = "LINGXIA_RUNNER_DEVICE";
 const ENV_RUNNER_ENV: &str = "LINGXIA_RUNNER_ENV";
 const ENV_DISPLAY_LANGUAGE: &str = "LINGXIA_RUNNER_DISPLAY_LANGUAGE";
+const ENV_HEADLESS: &str = "LINGXIA_RUNNER_HEADLESS";
 const ENV_RESOURCE_LXAPP_PATHS: &str = "LINGXIA_RESOURCE_LXAPP_PATHS";
 
 #[derive(Debug, serde::Deserialize)]
@@ -101,7 +103,8 @@ pub(crate) fn run() -> lingxia_windows_sdk::Result<()> {
     ));
     lingxia_windows_sdk::set_initial_app_window_device_frame(initial_frame.clone());
     let mut app = lingxia_windows_sdk::WindowsApp::from_env()
-        .with_window_size(initial_frame.screen_width, initial_frame.screen_height);
+        .with_window_size(initial_frame.screen_width, initial_frame.screen_height)
+        .with_headless(headless_requested());
     if let Some(asset_dir) = asset_dir {
         app = app.with_asset_dir(asset_dir);
     }
@@ -159,9 +162,16 @@ fn launch_arg_env_key(arg: &str) -> Option<&'static str> {
         ARG_RUNNER_DEVICE => Some(ENV_RUNNER_DEVICE),
         ARG_RUNNER_ENV => Some(ENV_RUNNER_ENV),
         ARG_DISPLAY_LANGUAGE => Some(ENV_DISPLAY_LANGUAGE),
+        ARG_HEADLESS => Some(ENV_HEADLESS),
         ARG_RESOURCE_LXAPP_PATHS => Some(ENV_RESOURCE_LXAPP_PATHS),
         _ => None,
     }
+}
+
+fn headless_requested() -> bool {
+    std::env::var(ENV_HEADLESS)
+        .ok()
+        .is_some_and(|value| matches!(value.trim(), "1" | "true" | "yes"))
 }
 
 /// Isolates this dev runner's data + cache under its own lxapp directory so two

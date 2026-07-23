@@ -80,6 +80,7 @@ static NATIVE_FRAMED_WINDOWS: OnceLock<Mutex<HashSet<isize>>> = OnceLock::new();
 static HOST_CHROME_SNAPSHOTS: OnceLock<Mutex<HashMap<isize, HostChromeSnapshot>>> = OnceLock::new();
 static CHROME_INTERACTIONS: OnceLock<Mutex<HashMap<isize, ChromeInteraction>>> = OnceLock::new();
 static WINDOW_RESIZE_DRAGS: OnceLock<Mutex<HashMap<isize, WindowResizeDrag>>> = OnceLock::new();
+static DEFAULT_HOST_HEADLESS: AtomicBool = AtomicBool::new(false);
 static CHROME_BACK_BUFFERS: OnceLock<Mutex<HashMap<isize, ChromeBackBuffer>>> = OnceLock::new();
 static ATTACHED_PANEL_RESIZE_DRAG: OnceLock<Mutex<Option<AttachedPanelResizeDrag>>> =
     OnceLock::new();
@@ -129,6 +130,16 @@ const OVERLAY_MIN_HEIGHT: i32 = 220;
 const OVERLAY_DEFAULT_WIDTH: i32 = 460;
 const OVERLAY_DEFAULT_HEIGHT: i32 = 560;
 const RESIZE_BORDER: i32 = 8;
+
+pub(crate) fn set_default_host_headless(headless: bool) {
+    DEFAULT_HOST_HEADLESS.store(headless, Ordering::Release);
+}
+
+fn default_host_parent_window(headless: bool) -> Option<HWND> {
+    // WebView2 supports HWND_MESSAGE specifically for headless hosts: the
+    // controller keeps rendering without requiring an interactive desktop.
+    headless.then_some(WindowsAndMessaging::HWND_MESSAGE)
+}
 
 #[derive(Debug, Clone, Copy, Default)]
 struct ChromeInteraction {
@@ -7778,7 +7789,7 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
             origin_y,
             width,
             height,
-            None,
+            default_host_parent_window(DEFAULT_HOST_HEADLESS.load(Ordering::Acquire)),
             None,
             LibraryLoader::GetModuleHandleW(None)
                 .ok()
@@ -8448,8 +8459,9 @@ mod tests {
     #[cfg(feature = "shell-chrome")]
     use super::apply_phone_switcher_alpha;
     use super::{
-        WindowResizeDrag, WindowResizeEdge, WindowsFrameButton, frame_button_non_client_hit,
-        registered_host_keeps_message_loop, resized_window_rect, same_window_generation,
+        WindowResizeDrag, WindowResizeEdge, WindowsFrameButton, default_host_parent_window,
+        frame_button_non_client_hit, registered_host_keeps_message_loop, resized_window_rect,
+        same_window_generation,
     };
     #[cfg(all(feature = "shell-chrome", feature = "device-frame"))]
     use super::{device_frame_surface_corner_radii, per_corner_region_row_span};
@@ -8516,6 +8528,15 @@ mod tests {
         assert!(!registered_host_keeps_message_loop(1, 2, true, true, false));
         assert!(registered_host_keeps_message_loop(1, 2, true, true, true));
         assert!(!registered_host_keeps_message_loop(1, 1, true, true, true));
+    }
+
+    #[test]
+    fn headless_hosts_use_a_message_only_parent() {
+        assert_eq!(
+            default_host_parent_window(true),
+            Some(WindowsAndMessaging::HWND_MESSAGE)
+        );
+        assert_eq!(default_host_parent_window(false), None);
     }
 
     #[cfg(all(feature = "shell-chrome", feature = "device-frame"))]

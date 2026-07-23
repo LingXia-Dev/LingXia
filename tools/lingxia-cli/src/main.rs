@@ -133,6 +133,10 @@ struct DevOptions {
     #[arg(long, value_parser = ["auto", "en-US", "zh-CN"])]
     display_language: Option<String>,
 
+    /// Run a web URL target in the Windows Runner without showing its window.
+    #[arg(long)]
+    headless: bool,
+
     /// Start the dev session in the background and return after it is ready
     #[arg(long)]
     background: bool,
@@ -760,6 +764,7 @@ fn main() -> Result<()> {
                 provider_path: dev_options.build_options.provider_path,
                 runner_device: dev_options.runner,
                 display_language: dev_options.display_language,
+                headless: dev_options.headless,
                 background: dev_options.background,
                 action: dev_options.action.map(|action| match action {
                     DevAction::Status { json } => commands::dev::DevSessionAction::Status { json },
@@ -920,6 +925,23 @@ mod cli_tests {
             assert_eq!(dev_options.target.as_deref(), Some(target));
             assert!(dev_options.action.is_none());
         }
+    }
+
+    #[test]
+    fn dev_web_target_accepts_headless_mode() {
+        let cli = Cli::try_parse_from([
+            "lingxia",
+            "dev",
+            "http://127.0.0.1:5173",
+            "--headless",
+            "--background",
+        ])
+        .unwrap();
+        let Commands::Dev { dev_options } = cli.command else {
+            panic!("expected dev command");
+        };
+        assert!(dev_options.headless);
+        assert!(dev_options.background);
     }
 
     #[test]
