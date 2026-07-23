@@ -11,8 +11,10 @@ mod shell;
 pub(crate) use runtime::navigate;
 #[cfg(all(target_env = "ohos", not(any(target_os = "ios", target_os = "macos"))))]
 pub(crate) use runtime::navigate;
+#[cfg(any(target_os = "ios", target_os = "macos"))]
+pub(crate) use runtime::open;
 pub(crate) use runtime::open_standalone_for_app;
-pub(crate) use runtime::{APP_ID, close, mark_active, open, open_for_app, tab_path};
+pub(crate) use runtime::{APP_ID, close, mark_active, open_for_app, tab_path};
 #[cfg(target_os = "windows")]
 pub(crate) use runtime::{
     BrowserTabSummary, activate, go_back, go_forward, navigate, reload, runtime_enabled,

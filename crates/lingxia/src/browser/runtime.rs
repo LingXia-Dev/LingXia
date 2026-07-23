@@ -37,6 +37,7 @@ pub(crate) fn warmup() {
     lingxia_browser::warmup();
 }
 
+#[cfg(any(target_os = "ios", target_os = "macos"))]
 pub(crate) fn open(url: &str, tab_id: Option<&str>) -> Result<String, lxapp::LxAppError> {
     #[cfg(feature = "browser-runtime")]
     return lingxia_browser::open(url, tab_id);
