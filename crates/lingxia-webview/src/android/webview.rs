@@ -6,9 +6,11 @@ use crate::webview::{
     EffectiveWebViewCreateOptions, ProxyActivation, ProxyApplyReport, ProxyConfig, WebTag,
     WebViewCreateSender, WebViewCreateStage,
 };
-use crate::{LoadDataRequest, WebViewController, WebViewError, WebViewScriptError};
+use crate::{
+    LoadDataRequest, UserAgentOverride, WebViewController, WebViewError, WebViewScriptError,
+};
 use async_trait::async_trait;
-use jni::objects::{Global, JObject};
+use jni::objects::{Global, JObject, JValue};
 use jni::{jni_sig, jni_str};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -691,19 +693,23 @@ impl WebViewController for WebViewInner {
         .map_err(|e| WebViewError::WebView(format!("Failed to post message: {:?}", e)))
     }
 
-    fn set_user_agent(&self, ua: &str) -> Result<(), WebViewError> {
+    fn set_user_agent_override(&self, user_agent: UserAgentOverride) -> Result<(), WebViewError> {
         with_env(|env| -> Result<(), Box<dyn std::error::Error>> {
-            let ua_string = env.new_string(&ua)?;
+            let (use_default, user_agent) = match user_agent {
+                UserAgentOverride::Default => (true, String::new()),
+                UserAgentOverride::Custom(user_agent) => (false, user_agent),
+            };
+            let user_agent = env.new_string(user_agent)?;
 
             env.call_method(
                 &*self.get_java_webview(),
-                jni_str!("setUserAgent"),
-                jni_sig!("(Ljava/lang/String;)V"),
-                &[(&ua_string).into()],
+                jni_str!("setUserAgentOverride"),
+                jni_sig!("(ZLjava/lang/String;)V"),
+                &[JValue::Bool(use_default), (&user_agent).into()],
             )?;
             Ok(())
         })
-        .map_err(|e| WebViewError::WebView(format!("Failed to set user agent: {:?}", e)))
+        .map_err(|e| WebViewError::WebView(format!("Failed to override user agent: {:?}", e)))
     }
 
     async fn take_screenshot(&self) -> Result<Vec<u8>, WebViewError> {

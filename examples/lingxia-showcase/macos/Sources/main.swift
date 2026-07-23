@@ -9,6 +9,12 @@ class LingXiaAppDelegate: NSObject, NSApplicationDelegate {
         Lingxia.enableWebViewDebugging()
         do {
             _ = try Lingxia.quickStart()
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(displayLanguageDidChange(_:)),
+                name: Lingxia.displayLanguageDidChangeNotification,
+                object: nil
+            )
             setupStandardMenu()
         } catch {
             os_log(
@@ -21,10 +27,12 @@ class LingXiaAppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// Built once at launch from `Lingxia.displayLanguage` at that moment — it
-    /// does not re-localize if the in-app language setting changes later in
-    /// the same run. Rebuild the menu (or listen for a language-change
-    /// notification) if this app ever needs live language switching.
+    @MainActor @objc private func displayLanguageDidChange(_ notification: Notification) {
+        setupStandardMenu()
+    }
+
+    /// Rebuilt at launch and whenever the browser settings change the product
+    /// display language.
     @MainActor
     private func setupStandardMenu() {
         let mainMenu = NSMenu()

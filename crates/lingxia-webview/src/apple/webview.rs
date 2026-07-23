@@ -19,8 +19,8 @@ use crate::traits::{PressOptions, ScrollOptions, TypeOptions};
 use crate::webview::find_webview;
 use crate::{
     ClearSiteDataOptions, ClearSiteDataResult, DownloadRequest, LoadDataRequest, LogLevel,
-    WebResourceResponse, WebViewController, WebViewCookie, WebViewCookieSameSite,
-    WebViewCookieSetRequest, WebViewError, WebViewScriptError,
+    UserAgentOverride, WebResourceResponse, WebViewController, WebViewCookie,
+    WebViewCookieSameSite, WebViewCookieSetRequest, WebViewError, WebViewScriptError,
 };
 use async_trait::async_trait;
 use block2::{Block, RcBlock, StackBlock};
@@ -2141,6 +2141,11 @@ impl WebViewInner {
                 ));
             }
 
+            if let Some(user_agent) = super::configured_user_agent_override_for_new_webviews() {
+                let user_agent = NSString::from_str(&user_agent);
+                let _: () = msg_send![webview, setCustomUserAgent: &*user_agent];
+            }
+
             // Make all webviews inspectable (lxapp pages + browser tabs).
             {
                 let can_set_remote_inspection: objc2::runtime::Bool = msg_send![webview, respondsToSelector: objc2::sel!(_setAllowsRemoteInspection:)];
@@ -2803,11 +2808,22 @@ impl WebViewInner {
         }
     }
 
-    /// Helper method to set user agent on main thread
-    fn set_user_agent_on_main_thread(&self, ua: &str) -> Result<(), WebViewError> {
+    /// Helper method to update the user-agent override on the main thread.
+    fn set_user_agent_override_on_main_thread(
+        &self,
+        user_agent: &UserAgentOverride,
+    ) -> Result<(), WebViewError> {
         unsafe {
-            let ua_string = NSString::from_str(ua);
-            let _: () = msg_send![self.webview, setCustomUserAgent: if ua.is_empty() { std::ptr::null::<NSString>() } else { &*ua_string }];
+            match user_agent {
+                UserAgentOverride::Default => {
+                    let _: () =
+                        msg_send![self.webview, setCustomUserAgent: std::ptr::null::<NSString>()];
+                }
+                UserAgentOverride::Custom(user_agent) => {
+                    let user_agent = NSString::from_str(user_agent);
+                    let _: () = msg_send![self.webview, setCustomUserAgent: &*user_agent];
+                }
+            }
             Ok(())
         }
     }
@@ -2939,19 +2955,25 @@ impl WebViewController for WebViewInner {
         }
     }
 
-    fn set_user_agent(&self, ua: &str) -> Result<(), WebViewError> {
+    fn set_user_agent_override(&self, user_agent: UserAgentOverride) -> Result<(), WebViewError> {
         if MainThreadMarker::new().is_some() {
             // Already on main thread, execute directly
-            self.set_user_agent_on_main_thread(ua)
+            self.set_user_agent_override_on_main_thread(&user_agent)
         } else {
             // Not on main thread, dispatch to main thread using GCD
             let webview_ptr_addr = self.webview as usize;
-            let ua_clone = ua.to_string();
 
             DispatchQueue::main().exec_async(move || unsafe {
                 let webview_ptr = webview_ptr_addr as *mut AnyObject;
-                let ua_nsstring = NSString::from_str(&ua_clone);
-                let _: () = msg_send![webview_ptr, setCustomUserAgent: &*ua_nsstring];
+                match user_agent {
+                    UserAgentOverride::Default => {
+                        let _: () = msg_send![webview_ptr, setCustomUserAgent: std::ptr::null::<NSString>()];
+                    }
+                    UserAgentOverride::Custom(user_agent) => {
+                        let user_agent = NSString::from_str(&user_agent);
+                        let _: () = msg_send![webview_ptr, setCustomUserAgent: &*user_agent];
+                    }
+                }
             });
 
             Ok(())

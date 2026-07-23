@@ -113,8 +113,9 @@ pub use traits::{
     FileChooserRequest, FileChooserResponse, FillOptions, LoadDataRequest, LoadError,
     LoadErrorKind, NavigationPolicy, NavigationRequest, NetworkBody, NetworkCaptureSnapshot,
     NetworkEntry, NewWindowPolicy, PressOptions, SchemeOutcome, ScrollOptions, SystemPipeReader,
-    TypeOptions, WebResourceBody, WebResourceResponse, WebViewController, WebViewCookie,
-    WebViewCookieSameSite, WebViewCookieSetRequest, WebViewDelegate, WebViewInputController,
+    TypeOptions, UserAgentOverride, WebResourceBody, WebResourceResponse, WebViewController,
+    WebViewCookie, WebViewCookieSameSite, WebViewCookieSetRequest, WebViewDelegate,
+    WebViewInputController,
 };
 pub use webview::{
     BrowserWebViewBuilder, ProxyActivation, ProxyApplyReport, ProxyApplyStatus, ProxyConfig,
@@ -224,10 +225,12 @@ pub mod platform {
 
     #[cfg(any(target_os = "ios", target_os = "macos"))]
     pub mod apple {
-        pub use crate::apple::BRIDGE_DOWNSTREAM_CSP_SOURCE;
-        pub use crate::apple::BRIDGE_DOWNSTREAM_URL;
         #[cfg(target_os = "macos")]
         pub use crate::apple::toggle_webview_devtools_by_swift_ptr;
+        pub use crate::apple::{
+            BRIDGE_DOWNSTREAM_CSP_SOURCE, BRIDGE_DOWNSTREAM_URL,
+            configure_user_agent_override_for_webviews,
+        };
     }
 
     #[cfg(all(target_os = "linux", target_env = "ohos"))]
@@ -266,9 +269,10 @@ pub mod platform {
     #[cfg(target_os = "windows")]
     pub mod windows {
         pub use crate::windows::{
-            WindowsWebViewHandler, WindowsWebViewNativeView, WindowsWebViewNativeViewHost,
-            find_webview_handler, set_webview_composition_hosting, set_webview_devtools_enabled,
-            set_webview_native_view_host, set_webview_user_data_dir,
+            WindowsBrowserEmulationProfile, WindowsWebViewHandler, WindowsWebViewNativeView,
+            WindowsWebViewNativeViewHost, find_webview_handler, set_webview_composition_hosting,
+            set_webview_devtools_enabled, set_webview_native_view_host, set_webview_user_data_dir,
+            set_windows_browser_emulation_profile_for_new_webviews,
             set_windows_context_menu_refresh_provider, webview_composition_hosting_enabled,
         };
     }

@@ -597,6 +597,21 @@ public class LingXiaWebView extends WebView {
         });
     }
 
+    /** Override the complete user agent, or restore the engine default. */
+    public void setUserAgentOverride(final boolean useDefault, final String userAgent) {
+        ensureMainThread(new Runnable() {
+            @Override
+            public void run() {
+                WebSettings settings = getSettings();
+                if (settings == null) {
+                    Log.w(TAG, "WebView.getSettings() returned null, skipping user-agent override");
+                    return;
+                }
+                settings.setUserAgentString(useDefault ? null : userAgent);
+            }
+        });
+    }
+
     /**
      * Apply standard WebView settings (static version for external use)
      */

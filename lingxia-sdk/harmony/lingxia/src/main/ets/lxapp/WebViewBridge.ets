@@ -68,8 +68,8 @@ export class WebViewManager {
     return CoreWebViewManager.clearBrowsingData(webtag);
   }
 
-  static setUserAgent(webtag: string, userAgent: string): boolean {
-    return CoreWebViewManager.setUserAgent(webtag, userAgent);
+  static setUserAgentOverride(webtag: string, mode: string, userAgent: string): boolean {
+    return CoreWebViewManager.setUserAgentOverride(webtag, mode, userAgent);
   }
 
   static captureScreenshot(webtag: string, requestIdStr: string): boolean {
@@ -211,8 +211,8 @@ export function clearBrowsingData(webtag: string): boolean {
   return WebViewManager.clearBrowsingData(webtag);
 }
 
-export function setUserAgent(webtag: string, userAgent: string): boolean {
-  return WebViewManager.setUserAgent(webtag, userAgent);
+export function setUserAgentOverride(webtag: string, mode: string, userAgent: string): boolean {
+  return WebViewManager.setUserAgentOverride(webtag, mode, userAgent);
 }
 
 export function captureScreenshot(webtag: string, requestIdStr: string): boolean {

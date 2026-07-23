@@ -60,6 +60,47 @@ pub enum NewWindowPolicy {
 pub type NavigationHandler = Box<dyn Fn(&NavigationRequest) -> NavigationPolicy + Send + Sync>;
 pub type NewWindowHandler = Box<dyn Fn(&str) -> NewWindowPolicy + Send + Sync>;
 
+/// Per-WebView user-agent override.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum UserAgentOverride {
+    /// Restore the user agent supplied by the platform WebView engine.
+    Default,
+    /// Replace the complete user-agent string. The value must be non-empty and
+    /// engine-compatible. This does not emulate other browser capabilities or
+    /// synchronize User-Agent Client Hints.
+    Custom(String),
+}
+
+impl UserAgentOverride {
+    pub(crate) fn validate(&self) -> Result<(), WebViewError> {
+        if let Self::Custom(value) = self
+            && value.trim().is_empty()
+        {
+            return Err(WebViewError::WebView(
+                "custom user-agent override must not be empty".to_string(),
+            ));
+        }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod user_agent_override_tests {
+    use super::*;
+
+    #[test]
+    fn custom_user_agent_must_not_be_blank() {
+        assert!(UserAgentOverride::Custom(String::new()).validate().is_err());
+        assert!(UserAgentOverride::Custom("   ".into()).validate().is_err());
+        assert!(
+            UserAgentOverride::Custom("Mozilla/5.0 valid".into())
+                .validate()
+                .is_ok()
+        );
+        assert!(UserAgentOverride::Default.validate().is_ok());
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DownloadRequest {
     /// Final download URL reported by the platform callback.
@@ -285,8 +326,8 @@ pub trait WebViewController: Send + Sync {
     /// Clear browsing data from the WebView
     fn clear_browsing_data(&self) -> Result<(), WebViewError>;
 
-    /// Set the user agent string for the WebView
-    fn set_user_agent(&self, ua: &str) -> Result<(), WebViewError>;
+    /// Override or restore the WebView user agent.
+    fn set_user_agent_override(&self, user_agent: UserAgentOverride) -> Result<(), WebViewError>;
 
     /// Reload the current WebView document.
     fn reload(&self) -> Result<(), WebViewError> {

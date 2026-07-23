@@ -4,6 +4,7 @@
     {
       "id": "iphone-13-mini",
       "group": "phone",
+      "browserProfile": "phone",
       "name": "iPhone 13 mini",
       "width": 375,
       "height": 812,
@@ -21,6 +22,7 @@
     {
       "id": "iphone-13-pro",
       "group": "phone",
+      "browserProfile": "phone",
       "name": "iPhone 13 Pro",
       "width": 390,
       "height": 844,
@@ -38,6 +40,7 @@
     {
       "id": "iphone-15-pro",
       "group": "phone",
+      "browserProfile": "phone",
       "name": "iPhone 15 Pro",
       "width": 393,
       "height": 852,
@@ -55,6 +58,7 @@
     {
       "id": "iphone-11",
       "group": "phone",
+      "browserProfile": "phone",
       "name": "iPhone 11",
       "width": 414,
       "height": 896,
@@ -72,6 +76,7 @@
     {
       "id": "iphone-15-pro-max",
       "group": "phone",
+      "browserProfile": "phone",
       "name": "iPhone 15 Pro Max",
       "width": 430,
       "height": 932,
@@ -89,6 +94,7 @@
     {
       "id": "ipad",
       "group": "tablet",
+      "browserProfile": "tablet",
       "name": "iPad",
       "width": 768,
       "height": 1024,
@@ -106,6 +112,7 @@
     {
       "id": "ipad-pro-12-9",
       "group": "tablet",
+      "browserProfile": "tablet",
       "name": "iPad Pro 12.9\"",
       "width": 1024,
       "height": 1366,
@@ -123,6 +130,7 @@
     {
       "id": "desktop-1280",
       "group": "desktop",
+      "browserProfile": "desktop",
       "name": "Desktop 1280",
       "width": 1280,
       "height": 800,
@@ -140,6 +148,7 @@
     {
       "id": "desktop-1440",
       "group": "desktop",
+      "browserProfile": "desktop",
       "name": "Desktop 1440",
       "width": 1440,
       "height": 900,
@@ -157,6 +166,7 @@
     {
       "id": "desktop-1920",
       "group": "desktop",
+      "browserProfile": "desktop",
       "name": "Desktop 1920",
       "width": 1920,
       "height": 1080,

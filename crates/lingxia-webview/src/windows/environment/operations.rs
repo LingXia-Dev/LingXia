@@ -2,7 +2,7 @@
 
 use super::*;
 
-pub(crate) fn set_user_agent(webview: &ICoreWebView2, ua: &str) -> StdResult<()> {
+pub(crate) fn user_agent(webview: &ICoreWebView2) -> StdResult<String> {
     unsafe {
         let settings = webview
             .Settings()
@@ -10,9 +10,25 @@ pub(crate) fn set_user_agent(webview: &ICoreWebView2, ua: &str) -> StdResult<()>
         let settings2: ICoreWebView2Settings2 = settings
             .cast()
             .map_err(|err| WebViewError::WebView(format!("Settings2 cast failed: {err}")))?;
-        let ua = CoTaskMemPWSTR::from(ua);
+        let mut user_agent = PWSTR::null();
         settings2
-            .SetUserAgent(*ua.as_ref().as_pcwstr())
+            .UserAgent(&mut user_agent)
+            .map_err(|err| WebViewError::WebView(format!("UserAgent failed: {err}")))?;
+        Ok(CoTaskMemPWSTR::from(user_agent).to_string())
+    }
+}
+
+pub(crate) fn set_user_agent_override(webview: &ICoreWebView2, user_agent: &str) -> StdResult<()> {
+    unsafe {
+        let settings = webview
+            .Settings()
+            .map_err(|err| WebViewError::WebView(format!("Settings failed: {err}")))?;
+        let settings2: ICoreWebView2Settings2 = settings
+            .cast()
+            .map_err(|err| WebViewError::WebView(format!("Settings2 cast failed: {err}")))?;
+        let user_agent = CoTaskMemPWSTR::from(user_agent);
+        settings2
+            .SetUserAgent(*user_agent.as_ref().as_pcwstr())
             .map_err(|err| WebViewError::WebView(format!("SetUserAgent failed: {err}")))?;
     }
     Ok(())

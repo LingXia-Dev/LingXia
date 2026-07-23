@@ -90,10 +90,11 @@ pub use design_icons::{
 pub use device_frame::set_app_window_device_frame_and_tabbar_position;
 #[cfg(all(target_os = "windows", feature = "device-frame"))]
 pub use device_frame::{
-    WindowsDeviceFrame, WindowsDeviceFrameBadge, WindowsDeviceFrameCutout,
-    WindowsDeviceFrameInfoSheet, WindowsDeviceFrameSheetAction, WindowsDeviceFrameStatusBar,
-    WindowsDeviceFrameToolbar, open_current_page_devtools, set_app_window_device_frame,
-    set_initial_app_window_device_frame, show_device_frame_info_sheet,
+    WindowsBrowserEmulationProfile, WindowsDeviceFrame, WindowsDeviceFrameBadge,
+    WindowsDeviceFrameCutout, WindowsDeviceFrameInfoSheet, WindowsDeviceFrameSheetAction,
+    WindowsDeviceFrameStatusBar, WindowsDeviceFrameToolbar, open_current_page_devtools,
+    set_app_window_device_frame, set_initial_app_window_device_frame,
+    set_windows_browser_emulation_profile, show_device_frame_info_sheet,
 };
 #[cfg(feature = "runtime")]
 pub use lingxia::RuntimeInfo;

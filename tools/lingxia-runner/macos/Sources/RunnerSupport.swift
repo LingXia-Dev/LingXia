@@ -74,6 +74,16 @@ enum RunnerSupport {
             LingxiaRunnerSPI.WebView.attachLxApp(webView, to: container)
         }
 
+        static func configureUserAgentOverride(
+            _ userAgent: String?,
+            reloadExisting: Bool
+        ) -> Bool {
+            LingxiaRunnerSPI.WebView.configureUserAgentOverride(
+                userAgent,
+                reloadExisting: reloadExisting
+            )
+        }
+
     }
 
     @MainActor

@@ -272,6 +272,9 @@ export class WebViewManager {
   // Map to store WebView controllers by appId:path
   private static controllers: Map<string, webview.WebviewController> = new Map();
 
+  // Engine UA captured before the first override for each controller.
+  private static defaultUserAgents: Map<string, string> = new Map();
+
   // Map to store WebView info for UI management
   private static webViewInfos: Map<string, WebViewInfo> = new Map();
 
@@ -415,6 +418,7 @@ export class WebViewManager {
     }
 
     WebViewManager.controllers.delete(logicalTag);
+    WebViewManager.defaultUserAgents.delete(logicalTag);
     WebViewManager.webViewInfos.delete(logicalTag);
     WebViewManager.uiCallbacks.forEach(callback => {
       try {
@@ -478,20 +482,34 @@ export class WebViewManager {
   }
 
   /**
-   * Set user agent for WebView
+   * Override or restore the user agent for a WebView.
    * @param webtag - WebView tag
+   * @param mode - "default" restores the engine UA; "custom" replaces it
    * @param userAgent - User agent string
    * @returns true if setting succeeded, false if WebView not found or setting failed
    */
-  static setUserAgent(webtag: string, userAgent: string): boolean {
+  static setUserAgentOverride(webtag: string, mode: string, userAgent: string): boolean {
     const logicalTag = WebViewManager.resolveLogicalTag(webtag);
-    if (!WebViewManager.controllers.has(logicalTag)) {
-      hilog.warn(DOMAIN, TAG, `WebView not found for setUserAgent: ${webtag}`);
+    const controller = WebViewManager.controllers.get(logicalTag);
+    if (!controller) {
+      hilog.warn(DOMAIN, TAG, `WebView not found for setUserAgentOverride: ${webtag}`);
       return false;
     }
 
-    hilog.info(DOMAIN, TAG, `Set user agent for WebView ${webtag}: ${userAgent} (not implemented)`);
-    return true;
+    try {
+      let defaultUserAgent = WebViewManager.defaultUserAgents.get(logicalTag);
+      if (defaultUserAgent === undefined) {
+        defaultUserAgent = controller.getUserAgent();
+        WebViewManager.defaultUserAgents.set(logicalTag, defaultUserAgent);
+      }
+      const effectiveUserAgent = mode === 'default' ? defaultUserAgent : userAgent;
+      controller.setCustomUserAgent(effectiveUserAgent);
+      hilog.info(DOMAIN, TAG, `Updated user-agent override for WebView ${webtag}: ${mode}`);
+      return true;
+    } catch (error) {
+      hilog.error(DOMAIN, TAG, `Failed to update user-agent override for ${webtag}: ${error}`);
+      return false;
+    }
   }
 
   /**
@@ -907,13 +925,14 @@ export function clearBrowsingData(webtag: string): boolean {
 }
 
 /**
- * Set user agent for WebView
+ * Override or restore the user agent for a WebView.
  * @param webtag - WebView tag
+ * @param mode - "default" or "custom"
  * @param userAgent - User agent string
  * @returns true if setting succeeded
  */
-export function setUserAgent(webtag: string, userAgent: string): boolean {
-  return WebViewManager.setUserAgent(webtag, userAgent);
+export function setUserAgentOverride(webtag: string, mode: string, userAgent: string): boolean {
+  return WebViewManager.setUserAgentOverride(webtag, mode, userAgent);
 }
 
 /**

@@ -54,6 +54,19 @@ impl WindowsWebViewHandler {
         self.webview.inner.open_devtools()
     }
 
+    /// Applies a coherent UA + User-Agent Client Hints form factor.
+    pub fn set_browser_emulation_profile(
+        &self,
+        profile: WindowsBrowserEmulationProfile,
+        reload: bool,
+    ) -> StdResult<()> {
+        self.webview.inner.set_browser_emulation_profile(profile)?;
+        if reload {
+            self.webview.reload()?;
+        }
+        Ok(())
+    }
+
     pub fn set_content_bounds(
         &self,
         left: i32,

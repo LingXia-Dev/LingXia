@@ -1,6 +1,6 @@
 use lingxia_windows_sdk::{
-    WindowsAppMenuItem, WindowsDeviceFrame, WindowsDeviceFrameCutout, WindowsDeviceFrameStatusBar,
-    WindowsDeviceFrameToolbar,
+    WindowsAppMenuItem, WindowsBrowserEmulationProfile, WindowsDeviceFrame,
+    WindowsDeviceFrameCutout, WindowsDeviceFrameStatusBar, WindowsDeviceFrameToolbar,
 };
 use serde::Deserialize;
 use std::sync::OnceLock;
@@ -51,6 +51,8 @@ struct RunnerDevices {
 pub(crate) struct DevicePreset {
     id: String,
     group: String,
+    #[serde(rename = "browserProfile")]
+    browser_profile: BrowserProfile,
     pub(crate) name: String,
     pub(crate) width: i32,
     pub(crate) height: i32,
@@ -63,6 +65,14 @@ pub(crate) struct DevicePreset {
     #[serde(rename = "screenRadius")]
     screen_radius: i32,
     notch: DeviceNotch,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum BrowserProfile {
+    Desktop,
+    Phone,
+    Tablet,
 }
 
 #[derive(Debug, Deserialize)]
@@ -84,6 +94,14 @@ impl DevicePreset {
     /// Form-factor group ("phone" | "tablet" | "desktop").
     pub(crate) fn group(&self) -> &str {
         &self.group
+    }
+
+    pub(crate) fn browser_profile(&self) -> WindowsBrowserEmulationProfile {
+        match self.browser_profile {
+            BrowserProfile::Desktop => WindowsBrowserEmulationProfile::Desktop,
+            BrowserProfile::Phone => WindowsBrowserEmulationProfile::Phone,
+            BrowserProfile::Tablet => WindowsBrowserEmulationProfile::Tablet,
+        }
     }
 }
 

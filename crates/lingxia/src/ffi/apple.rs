@@ -299,6 +299,13 @@ mod bridge {
         #[swift_bridge(swift_name = "openUnownedBrowserTab")]
         fn open_unowned_browser_tab(url: &str) -> Option<String>;
 
+        #[swift_bridge(swift_name = "configureAppleUserAgentOverride")]
+        fn configure_apple_user_agent_override(
+            use_default: bool,
+            user_agent: &str,
+            reload_existing: bool,
+        ) -> bool;
+
         #[swift_bridge(swift_name = "openStandaloneBrowserTab")]
         fn open_standalone_browser_tab(
             appid: &str,
@@ -536,6 +543,10 @@ mod bridge {
         // Bookmarks store changed (any writer) — chrome refreshes its sidebar.
         #[swift_bridge(swift_name = "LxApp.browserBookmarksChanged")]
         fn browser_bookmarks_changed();
+
+        // Display language changed — host-owned native chrome re-localizes.
+        #[swift_bridge(swift_name = "LxApp.displayLanguageChanged")]
+        fn display_language_changed();
     }
 }
 
@@ -560,6 +571,9 @@ fn install_browser_native_input_host() {
     // action, webui manager page) notifies the Swift shell.
     lingxia_browser_shell::set_bookmarks_change_listener(Box::new(|| {
         self::bridge::browser_bookmarks_changed();
+    }));
+    lingxia_browser_shell::set_display_language_change_listener(Box::new(|| {
+        self::bridge::display_language_changed();
     }));
 }
 
@@ -819,6 +833,27 @@ pub fn open_unowned_browser_tab(url: &str) -> Option<String> {
                 None
             }
         }
+    })
+}
+
+pub fn configure_apple_user_agent_override(
+    use_default: bool,
+    user_agent: &str,
+    reload_existing: bool,
+) -> bool {
+    ffi_catch_unwind!("configure_apple_user_agent_override", false, || {
+        let user_agent = if use_default {
+            lingxia_webview::UserAgentOverride::Default
+        } else {
+            lingxia_webview::UserAgentOverride::Custom(user_agent.to_string())
+        };
+        lingxia_webview::platform::apple::configure_user_agent_override_for_webviews(
+            user_agent,
+            true,
+            reload_existing,
+        )
+        .map_err(|err| log::error!("configure Apple user agent failed: {err}"))
+        .is_ok()
     })
 }
 /// Offer a navigation URL from a native (non-managed) WebView to the

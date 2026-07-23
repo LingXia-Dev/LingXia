@@ -47,25 +47,8 @@ private class RunnerKitDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         Lingxia.enableWebViewDebugging()
-        if let rawURL = ProcessInfo.processInfo.environment["LINGXIA_RUNNER_WEB_URL"],
-           let url = URL(string: rawURL),
-           url.scheme == "http" || url.scheme == "https" {
-            RunnerApp.shared.bind(controller: controller)
-            Lingxia.activate(controller: controller)
-            guard initializeRuntime() else { return }
-            RunnerApp.shared.setDeviceSize(.defaultDevice)
-            do {
-                try RunnerApp.shared.openWeb(url: url)
-            } catch {
-                NSLog("LingXia Runner self browser failed: %@", error.localizedDescription)
-                removeRunnerPidFileIfRequested()
-                Darwin.exit(EXIT_FAILURE)
-            }
-            return
-        }
         RunnerApp.shared.bind(controller: controller)
         Lingxia.activate(controller: controller)
-        guard initializeRuntime() else { return }
 
         controller.setInterceptor(.willOpen) { context in
             guard case .object(let payload) = context.payload,
@@ -80,6 +63,22 @@ private class RunnerKitDelegate: NSObject, NSApplicationDelegate {
 
         RunnerApp.shared.setDeviceSize(.defaultDevice)
         Task { @MainActor in
+            guard await RunnerUserAgentPolicy.shared.prepare() else {
+                fatalError("LingXia Runner could not configure the engine user agent")
+            }
+            guard initializeRuntime() else { return }
+            if let rawURL = ProcessInfo.processInfo.environment["LINGXIA_RUNNER_WEB_URL"],
+               let url = URL(string: rawURL),
+               url.scheme == "http" || url.scheme == "https" {
+                do {
+                    try RunnerApp.shared.openWeb(url: url)
+                } catch {
+                    NSLog("LingXia Runner self browser failed: %@", error.localizedDescription)
+                    removeRunnerPidFileIfRequested()
+                    Darwin.exit(EXIT_FAILURE)
+                }
+                return
+            }
             _ = try? await controller.openHomeApp()
         }
     }

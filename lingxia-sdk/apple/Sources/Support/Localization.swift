@@ -7,7 +7,10 @@ import Foundation
 public enum L10n {
     private static var localizedBundle: Bundle {
         let locale = Lingxia.displayLanguage.replacingOccurrences(of: "_", with: "-")
-        let localization = locale.lowercased().hasPrefix("zh") ? "zh-Hans" : "en"
+        let requestedLocalization = locale.lowercased().hasPrefix("zh") ? "zh-Hans" : "en"
+        let localization = Bundle.lingxiaResources.localizations.first {
+            $0.caseInsensitiveCompare(requestedLocalization) == .orderedSame
+        } ?? requestedLocalization
         guard let path = Bundle.lingxiaResources.path(
             forResource: localization,
             ofType: "lproj"

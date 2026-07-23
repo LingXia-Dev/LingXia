@@ -14,7 +14,8 @@ use crate::webview::{
     register_webview,
 };
 use crate::{
-    DownloadRequest, LoadDataRequest, LogLevel, WebViewController, WebViewError, WebViewScriptError,
+    DownloadRequest, LoadDataRequest, LogLevel, UserAgentOverride, WebViewController, WebViewError,
+    WebViewScriptError,
 };
 use async_trait::async_trait;
 use ohos_web_sys::*;
@@ -1147,9 +1148,13 @@ impl WebViewController for WebViewInner {
         call_arkts("clearBrowsingData", &[&ark_tag])
     }
 
-    fn set_user_agent(&self, ua: &str) -> Result<(), WebViewError> {
+    fn set_user_agent_override(&self, user_agent: UserAgentOverride) -> Result<(), WebViewError> {
         let ark_tag = self.ark_webtag_string();
-        call_arkts("setUserAgent", &[&ark_tag, &ua])
+        let (mode, user_agent) = match user_agent {
+            UserAgentOverride::Default => ("default", String::new()),
+            UserAgentOverride::Custom(user_agent) => ("custom", user_agent),
+        };
+        call_arkts("setUserAgentOverride", &[&ark_tag, mode, &user_agent])
     }
 
     fn post_message(&self, message: &str) -> Result<(), WebViewError> {

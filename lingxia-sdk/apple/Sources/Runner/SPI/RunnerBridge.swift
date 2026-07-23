@@ -99,6 +99,15 @@ enum RunnerBridge {
         webView.resumeWebView()
     }
 
+    static func configureUserAgentOverride(_ userAgent: String?, reloadExisting: Bool) -> Bool {
+        LxAppSurface.configureRunnerUserAgentOverride(userAgent, reloadExisting: reloadExisting)
+        return configureAppleUserAgentOverride(
+            userAgent == nil,
+            userAgent ?? "",
+            reloadExisting
+        )
+    }
+
     static func createBrowserTab(
         ownerAppId: String,
         ownerSessionId: UInt64,

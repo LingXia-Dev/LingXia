@@ -22,6 +22,23 @@ enum LxAppSurface {
     private static let contentUrl: Int32 = 1
     private static let transientCornerRadius: CGFloat = 12
     private static var entries: [String: Entry] = [:]
+    private static var runnerUserAgentOverride: String?
+    private static let runnerWebSurfaces = NSHashTable<WKWebView>.weakObjects()
+
+    static func configureRunnerUserAgentOverride(_ userAgent: String?, reloadExisting: Bool) {
+        runnerUserAgentOverride = userAgent
+        for webView in runnerWebSurfaces.allObjects {
+            webView.customUserAgent = userAgent
+            if reloadExisting {
+                webView.reload()
+            }
+        }
+    }
+
+    private static func prepareRunnerWebSurface(_ webView: WKWebView) {
+        webView.customUserAgent = runnerUserAgentOverride
+        runnerWebSurfaces.add(webView)
+    }
 
     private final class Entry {
         let id: String
@@ -429,6 +446,7 @@ enum LxAppSurface {
                     allowsCrossOrigin: true,
                     urlCallback: urlCallback)
                 wkWebView.navigationDelegate = delegate
+                prepareRunnerWebSurface(wkWebView)
                 wkWebView.translatesAutoresizingMaskIntoConstraints = false
                 contentHost.addSubview(wkWebView)
                 pinToEdges(wkWebView, in: contentHost)
