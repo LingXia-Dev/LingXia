@@ -3,6 +3,69 @@ use super::*;
 #[cfg(target_os = "windows")]
 pub(super) mod windows_interactive;
 
+#[cfg(any(target_os = "windows", test))]
+fn resolve_interactive_environment(
+    inherited: impl IntoIterator<Item = (String, String)>,
+    overrides: &[(String, String)],
+) -> Result<Vec<(String, String)>> {
+    let inherited = inherited
+        .into_iter()
+        .map(|(key, value)| (key.to_ascii_uppercase(), value))
+        .collect::<std::collections::BTreeMap<_, _>>();
+    let mut environment = std::collections::BTreeMap::new();
+    if let Some(selection) = inherited.get(DEV_FORWARD_ENV) {
+        for raw_name in selection.split(',') {
+            let name = raw_name.trim().to_ascii_uppercase();
+            if name.is_empty() {
+                continue;
+            }
+            if name == DEV_FORWARD_ENV
+                || !name.starts_with("LINGXIA_")
+                || !name
+                    .chars()
+                    .all(|character| character.is_ascii_alphanumeric() || character == '_')
+            {
+                return Err(anyhow!(
+                    "Invalid environment name in {DEV_FORWARD_ENV}: {raw_name:?}"
+                ));
+            }
+            let value = inherited.get(&name).ok_or_else(|| {
+                anyhow!("{DEV_FORWARD_ENV} selects unset environment variable {name}")
+            })?;
+            environment.insert(name, value.clone());
+        }
+    }
+    for (key, value) in overrides {
+        environment.insert(key.to_ascii_uppercase(), value.clone());
+    }
+    Ok(environment.into_iter().collect())
+}
+
+#[cfg(any(target_os = "windows", test))]
+fn vbscript_literal(value: &str) -> String {
+    let mut expression = String::from("\"");
+    for character in value.chars() {
+        match character {
+            '"' => expression.push_str("\"\""),
+            '\r' => expression.push_str("\" & ChrW(13) & \""),
+            '\n' => expression.push_str("\" & ChrW(10) & \""),
+            _ => expression.push(character),
+        }
+    }
+    expression.push('"');
+    expression
+}
+
+#[cfg(any(target_os = "windows", test))]
+fn utf16le_with_bom(value: &str) -> Vec<u8> {
+    let mut bytes = Vec::with_capacity(2 + value.len() * 2);
+    bytes.extend_from_slice(&[0xff, 0xfe]);
+    for code_unit in value.encode_utf16() {
+        bytes.extend_from_slice(&code_unit.to_le_bytes());
+    }
+    bytes
+}
+
 #[cfg(target_os = "windows")]
 pub(super) fn focus_windows_launch(executable: &Path, excluded_pids: &str) -> Result<()> {
     windows_interactive::focus_windows_launch(executable, excluded_pids)
@@ -17,6 +80,8 @@ const RUNNER_ENV_ENV: &str = "LINGXIA_RUNNER_ENV";
 const RUNNER_DISPLAY_LANGUAGE_ENV: &str = "LINGXIA_RUNNER_DISPLAY_LANGUAGE";
 const RUNNER_HEADLESS_ENV: &str = "LINGXIA_RUNNER_HEADLESS";
 const RUNNER_HEADLESS_ARG: &str = "--headless";
+#[cfg(any(target_os = "windows", test))]
+const DEV_FORWARD_ENV: &str = "LINGXIA_DEV_FORWARD_ENV";
 /// Marks the child process as the LingXia Runner (vs a real host app). The core
 /// runtime injects `runner:true` into `__LX_BRIDGE_CFG` so the View bridge can
 /// expose `platform.isRunner()`; the Runner lacks host-declared surfaces like
@@ -1452,10 +1517,11 @@ fn installed_runner_version(app_path: &Path) -> Result<Option<String>> {
 #[cfg(test)]
 mod tests {
     use super::{
-        RunnerDevTarget, WindowsRunnerLxAppIdentity, is_standalone_lxapp_project,
-        lxapp_runner_build_args, prepare_windows_runner_assets, prepare_windows_runner_web_assets,
-        render_runner_devices, resolve_dev_target, windows_runner_launch_args,
-        windows_runner_ui_json, windows_web_runner_launch_args,
+        DEV_FORWARD_ENV, RUNNER_MARKER_ENV, RunnerDevTarget, WindowsRunnerLxAppIdentity,
+        is_standalone_lxapp_project, lxapp_runner_build_args, prepare_windows_runner_assets,
+        prepare_windows_runner_web_assets, render_runner_devices, resolve_dev_target,
+        resolve_interactive_environment, utf16le_with_bom, vbscript_literal,
+        windows_runner_launch_args, windows_runner_ui_json, windows_web_runner_launch_args,
     };
     use crate::config::HOST_CONFIG_FILE;
     use std::fs;
@@ -1509,6 +1575,78 @@ mod tests {
         assert!(list.contains("iphone-15-pro"));
         assert!(list.contains("(default)"));
         assert!(list.contains("lingxia dev --runner <device>"));
+    }
+
+    #[test]
+    fn interactive_launch_forwards_only_selected_environment() {
+        let environment = resolve_interactive_environment(
+            [
+                (
+                    "LINGXIA_PROVIDER_SAMPLE".to_string(),
+                    "session-value".to_string(),
+                ),
+                ("UNRELATED_SECRET".to_string(), "do-not-forward".to_string()),
+                (RUNNER_MARKER_ENV.to_ascii_lowercase(), "stale".to_string()),
+                (
+                    DEV_FORWARD_ENV.to_string(),
+                    "lingxia_provider_sample".to_string(),
+                ),
+            ],
+            &[(RUNNER_MARKER_ENV.to_string(), "1".to_string())],
+        )
+        .unwrap();
+
+        assert_eq!(
+            environment,
+            vec![
+                (
+                    "LINGXIA_PROVIDER_SAMPLE".to_string(),
+                    "session-value".to_string()
+                ),
+                (RUNNER_MARKER_ENV.to_string(), "1".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn interactive_launch_rejects_unsafe_or_missing_forwarded_environment() {
+        let unsafe_selection = resolve_interactive_environment(
+            [(DEV_FORWARD_ENV.to_string(), "UNRELATED_SECRET".to_string())],
+            &[],
+        )
+        .unwrap_err();
+        assert!(
+            unsafe_selection
+                .to_string()
+                .contains("Invalid environment name")
+        );
+
+        let missing_selection = resolve_interactive_environment(
+            [(DEV_FORWARD_ENV.to_string(), "LINGXIA_MISSING".to_string())],
+            &[],
+        )
+        .unwrap_err();
+        assert!(missing_selection.to_string().contains("selects unset"));
+    }
+
+    #[test]
+    fn interactive_launch_encodes_quotes_and_line_breaks_for_vbscript() {
+        assert_eq!(
+            vbscript_literal("first\r\n\"second\""),
+            "\"first\" & ChrW(13) & \"\" & ChrW(10) & \"\"\"second\"\"\""
+        );
+    }
+
+    #[test]
+    fn interactive_launch_writes_unicode_as_utf16le_with_bom() {
+        let bytes = utf16le_with_bom("LingXia 凌霞");
+        assert_eq!(&bytes[..2], &[0xff, 0xfe]);
+        let code_units = bytes[2..]
+            .chunks_exact(2)
+            .map(|pair| u16::from_le_bytes([pair[0], pair[1]]))
+            .collect::<Vec<_>>();
+
+        assert_eq!(String::from_utf16(&code_units).unwrap(), "LingXia 凌霞");
     }
 
     #[test]

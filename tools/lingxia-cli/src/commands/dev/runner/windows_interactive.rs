@@ -1,4 +1,7 @@
-use super::{process_executable_matches, quote_windows_arg};
+use super::{
+    process_executable_matches, quote_windows_arg, resolve_interactive_environment,
+    utf16le_with_bom, vbscript_literal,
+};
 use anyhow::{Context, Result, anyhow};
 use std::collections::HashSet;
 use std::ffi::{OsStr, OsString};
@@ -7,8 +10,17 @@ use std::process::{Command, Output, Stdio};
 use std::time::{Duration, Instant};
 use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System, UpdateKind};
 use windows::Win32::Foundation::{
-    CloseHandle, HANDLE, HWND, LPARAM, RECT, TRUE, WAIT_OBJECT_0, WAIT_TIMEOUT,
+    CloseHandle, HANDLE, HLOCAL, HWND, LPARAM, LocalFree, RECT, TRUE, WAIT_OBJECT_0, WAIT_TIMEOUT,
 };
+use windows::Win32::Security::Authorization::{
+    ConvertStringSidToSidW, EXPLICIT_ACCESS_W, NO_MULTIPLE_TRUSTEE, SE_FILE_OBJECT, SET_ACCESS,
+    SetEntriesInAclW, SetNamedSecurityInfoW, TRUSTEE_IS_SID, TRUSTEE_IS_USER, TRUSTEE_W,
+};
+use windows::Win32::Security::{
+    ACL, DACL_SECURITY_INFORMATION, PROTECTED_DACL_SECURITY_INFORMATION, PSID,
+    SUB_CONTAINERS_AND_OBJECTS_INHERIT,
+};
+use windows::Win32::Storage::FileSystem::FILE_ALL_ACCESS;
 use windows::Win32::System::Threading::{
     AttachThreadInput, GetCurrentThreadId, GetExitCodeProcess, OpenProcess,
     PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SYNCHRONIZE, PROCESS_TERMINATE, TerminateProcess,
@@ -20,7 +32,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
     IsIconic, IsWindowVisible, SW_RESTORE, SW_SHOW, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
     SWP_SHOWWINDOW, SetForegroundWindow, SetWindowPos, ShowWindow, WS_EX_TOOLWINDOW,
 };
-use windows::core::BOOL;
+use windows::core::{BOOL, PCWSTR, PWSTR};
 
 const RUNNER_MARKER_ENV: &str = "LINGXIA_RUNNER";
 const INTERACTIVE_START_TIMEOUT: Duration = Duration::from_secs(15);
@@ -282,31 +294,37 @@ fn launch_interactive(
 ) -> Result<InteractiveLaunch> {
     std::fs::create_dir_all(state_dir)
         .with_context(|| format!("Failed to create {}", state_dir.display()))?;
+    let bootstrap_dir = interactive_bootstrap_dir()?;
+    std::fs::create_dir_all(&bootstrap_dir)
+        .with_context(|| format!("Failed to create {}", bootstrap_dir.display()))?;
+    let user_sid = current_user_sid()?;
+    restrict_interactive_bootstrap_dir(&bootstrap_dir, &user_sid)?;
 
     let launch_id = uuid::Uuid::new_v4().simple().to_string();
     let task_name = format!(r"\LingXia-{label}-{launch_id}");
-    let script_path = state_dir.join(format!("launch-{launch_id}.vbs"));
-    let task_xml_path = state_dir.join(format!("launch-{launch_id}.xml"));
+    let script_path = bootstrap_dir.join(format!("launch-{launch_id}.vbs"));
+    let task_xml_path = bootstrap_dir.join(format!("launch-{launch_id}.xml"));
     let output_log = state_dir.join("interactive.log");
     let mut cleanup = BootstrapCleanup::new(task_name.clone(), task_xml_path, script_path);
     let excluded_pids = process_ids_for_exe(exe_path);
     let excluded_pids_arg = format_excluded_pids(&excluded_pids);
 
     let cli_exe_path = std::env::current_exe().context("Failed to resolve the LingXia CLI path")?;
-    std::fs::write(
+    let inherited_environment = std::env::vars_os()
+        .filter_map(|(key, value)| Some((key.into_string().ok()?, value.into_string().ok()?)));
+    let environment = resolve_interactive_environment(inherited_environment, environment)?;
+    write_utf16_file(
         cleanup.launch_script_path(),
-        render_launch_script(
+        &render_launch_script(
             exe_path,
             launch_args,
             &excluded_pids_arg,
             &cli_exe_path,
-            environment,
+            &environment,
             &output_log,
         ),
-    )
-    .with_context(|| format!("Failed to write {}", cleanup.launch_script_path().display()))?;
+    )?;
 
-    let user_sid = current_user_sid()?;
     // WScript is a GUI-subsystem host, so the interactive bootstrap does not
     // flash a console window before the app appears.
     let wscript_path = windows_wscript_path();
@@ -315,7 +333,7 @@ fn launch_interactive(
         quote_windows_arg(&cleanup.launch_script_path().display().to_string())
     );
     let task_xml = render_task_xml(&user_sid, &wscript_path, &wscript_args, working_dir, label);
-    write_utf16_xml(cleanup.task_xml_path(), &task_xml)?;
+    write_utf16_file(cleanup.task_xml_path(), &task_xml)?;
 
     execute_schtasks(
         &[
@@ -370,6 +388,70 @@ fn launch_interactive(
         }),
         output_log: Some(output_log),
     })
+}
+
+fn interactive_bootstrap_dir() -> Result<PathBuf> {
+    dirs::data_local_dir()
+        .map(|path| path.join("LingXia").join("cli").join("interactive"))
+        .ok_or_else(|| anyhow!("Could not resolve the Windows local application data directory"))
+}
+
+fn restrict_interactive_bootstrap_dir(path: &Path, user_sid: &str) -> Result<()> {
+    use std::os::windows::ffi::OsStrExt;
+
+    let sid_text = user_sid
+        .encode_utf16()
+        .chain(std::iter::once(0))
+        .collect::<Vec<_>>();
+    let path_text = path
+        .as_os_str()
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect::<Vec<_>>();
+    let mut sid = PSID::default();
+    unsafe { ConvertStringSidToSidW(PCWSTR(sid_text.as_ptr()), &mut sid) }
+        .with_context(|| format!("Invalid Windows user SID {user_sid}"))?;
+
+    let result = (|| {
+        let entry = EXPLICIT_ACCESS_W {
+            grfAccessPermissions: FILE_ALL_ACCESS.0,
+            grfAccessMode: SET_ACCESS,
+            grfInheritance: SUB_CONTAINERS_AND_OBJECTS_INHERIT,
+            Trustee: TRUSTEE_W {
+                pMultipleTrustee: std::ptr::null_mut(),
+                MultipleTrusteeOperation: NO_MULTIPLE_TRUSTEE,
+                TrusteeForm: TRUSTEE_IS_SID,
+                TrusteeType: TRUSTEE_IS_USER,
+                ptstrName: PWSTR(sid.0.cast()),
+            },
+        };
+        let mut acl: *mut ACL = std::ptr::null_mut();
+        unsafe { SetEntriesInAclW(Some(&[entry]), None, &mut acl) }
+            .ok()
+            .with_context(|| format!("Failed to create private ACL for {}", path.display()))?;
+        let set_result = unsafe {
+            SetNamedSecurityInfoW(
+                PCWSTR(path_text.as_ptr()),
+                SE_FILE_OBJECT,
+                DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION,
+                None,
+                None,
+                Some(acl),
+                None,
+            )
+        }
+        .ok()
+        .with_context(|| format!("Failed to protect {}", path.display()));
+        unsafe {
+            let _ = LocalFree(Some(HLOCAL(acl.cast())));
+        }
+        set_result
+    })();
+
+    unsafe {
+        let _ = LocalFree(Some(HLOCAL(sid.0)));
+    }
+    result
 }
 
 fn windows_wscript_path() -> PathBuf {
@@ -461,10 +543,6 @@ fn render_launch_script(
     )
 }
 
-fn vbscript_literal(value: &str) -> String {
-    format!("\"{}\"", value.replace('"', "\"\""))
-}
-
 fn render_task_xml(
     user_sid: &str,
     command: &Path,
@@ -516,13 +594,9 @@ fn render_task_xml(
     )
 }
 
-fn write_utf16_xml(path: &Path, xml: &str) -> Result<()> {
-    let mut bytes = Vec::with_capacity(2 + xml.len() * 2);
-    bytes.extend_from_slice(&[0xff, 0xfe]);
-    for code_unit in xml.encode_utf16() {
-        bytes.extend_from_slice(&code_unit.to_le_bytes());
-    }
-    std::fs::write(path, bytes).with_context(|| format!("Failed to write {}", path.display()))
+fn write_utf16_file(path: &Path, contents: &str) -> Result<()> {
+    std::fs::write(path, utf16le_with_bom(contents))
+        .with_context(|| format!("Failed to write {}", path.display()))
 }
 
 fn xml_escape(value: &str) -> String {
