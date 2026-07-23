@@ -23,11 +23,13 @@ function locationPrompt(windows: DesktopWindowInfo[]): DesktopWindowInfo | undef
 function allowButton(nodes: DesktopAxNode[]): DesktopAxNode | undefined {
   return nodes.find((node) => {
     const name = node.name.trim().toLocaleLowerCase();
-    return name.startsWith('allow') || name === 'ok';
+    return name.startsWith('allow')
+      || name === 'ok'
+      || (name.includes('允许') && !name.startsWith('不'));
   });
 }
 
-async function waitForPromptToClose(desktop: DesktopDriver, timeoutMs = 2_000): Promise<boolean> {
+async function waitForPromptToClose(desktop: DesktopDriver, timeoutMs = 5_000): Promise<boolean> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     if (!locationPrompt(await desktop.windows())) return true;
