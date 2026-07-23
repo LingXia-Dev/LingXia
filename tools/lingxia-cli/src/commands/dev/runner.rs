@@ -15,6 +15,7 @@ const RUNNER_WEB_URL_ENV: &str = "LINGXIA_RUNNER_WEB_URL";
 const RUNNER_DEV_WS_URL_ENV: &str = "LINGXIA_DEV_WS_URL";
 const RUNNER_ENV_ENV: &str = "LINGXIA_RUNNER_ENV";
 const RUNNER_DISPLAY_LANGUAGE_ENV: &str = "LINGXIA_RUNNER_DISPLAY_LANGUAGE";
+const RUNNER_HEADLESS_ARG: &str = "--headless";
 /// Marks the child process as the LingXia Runner (vs a real host app). The core
 /// runtime injects `runner:true` into `__LX_BRIDGE_CFG` so the View bridge can
 /// expose `platform.isRunner()`; the Runner lacks host-declared surfaces like
@@ -197,6 +198,17 @@ pub(super) fn execute_runner_dev(
         ));
     }
 
+    if options.headless && !matches!(target, RunnerDevTarget::Web(_)) {
+        return Err(anyhow!(
+            "`--headless` is only supported with an explicit http:// or https:// Runner target."
+        ));
+    }
+    if options.headless && runner_host != LxAppRunnerHost::Windows {
+        return Err(anyhow!(
+            "`--headless` web Runner mode is currently supported on Windows."
+        ));
+    }
+
     let platform_name = "runner";
     take_over_target_session(&session_root, platform_name)?;
 
@@ -293,6 +305,7 @@ pub(super) fn execute_runner_dev(
                 &ws_url,
                 options.runner_device.as_deref(),
                 options.display_language.as_deref(),
+                options.headless,
                 runner_env,
             )?,
         };
@@ -784,6 +797,7 @@ fn launch_windows_runner_for_web(
     ws_url: &str,
     runner_device: Option<&str>,
     display_language: Option<&str>,
+    headless: bool,
     runner_env: crate::config::EnvVersion,
 ) -> Result<RunnerProcess> {
     platform::host_support::ensure_supported_host(&PlatformType::Windows)?;
@@ -794,33 +808,21 @@ fn launch_windows_runner_for_web(
     let state_root = log_store::dev_dir(session_root)
         .join("runner")
         .join("state");
-    let mut launch_args = vec![
-        "--web-url".to_string(),
-        url.to_string(),
-        "--state-root".to_string(),
-        state_root.display().to_string(),
-        "--dev-ws-url".to_string(),
-        ws_url.to_string(),
-        "--runner-env".to_string(),
-        runner_env.as_str().to_string(),
-        "--asset-dir".to_string(),
-        assets_dir.display().to_string(),
-    ];
-    if let Some(device) = runner_device
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    {
-        launch_args.extend(["--runner-device".to_string(), device.to_string()]);
-    }
-    if let Some(language) = display_language
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    {
-        launch_args.extend(["--display-language".to_string(), language.to_string()]);
-    }
+    let launch_args = windows_web_runner_launch_args(
+        url,
+        &state_root,
+        ws_url,
+        &assets_dir,
+        runner_device,
+        display_language,
+        headless,
+        runner_env,
+    );
 
     #[cfg(target_os = "windows")]
-    let child = if windows_interactive::is_ssh_session() {
+    let child = if headless {
+        spawn_windows_runner_headless(&exe_path, session_root, &launch_args)?
+    } else if windows_interactive::is_ssh_session() {
         let launch = windows_interactive::launch_runner(
             &exe_path,
             session_root,
@@ -849,6 +851,47 @@ fn launch_windows_runner_for_web(
     };
     println!("{} Launched {}", "[runner]".cyan(), exe_path.display());
     Ok(child)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn windows_web_runner_launch_args(
+    url: &str,
+    state_root: &Path,
+    ws_url: &str,
+    assets_dir: &Path,
+    runner_device: Option<&str>,
+    display_language: Option<&str>,
+    headless: bool,
+    runner_env: crate::config::EnvVersion,
+) -> Vec<String> {
+    let mut launch_args = vec![
+        "--web-url".to_string(),
+        url.to_string(),
+        "--state-root".to_string(),
+        state_root.display().to_string(),
+        "--dev-ws-url".to_string(),
+        ws_url.to_string(),
+        "--runner-env".to_string(),
+        runner_env.as_str().to_string(),
+        "--asset-dir".to_string(),
+        assets_dir.display().to_string(),
+    ];
+    if let Some(device) = runner_device
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        launch_args.extend(["--runner-device".to_string(), device.to_string()]);
+    }
+    if let Some(language) = display_language
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        launch_args.extend(["--display-language".to_string(), language.to_string()]);
+    }
+    if headless {
+        launch_args.extend([RUNNER_HEADLESS_ARG.to_string(), "1".to_string()]);
+    }
+    launch_args
 }
 
 fn windows_runner_launch_args(
@@ -940,7 +983,6 @@ fn resolve_windows_runner_resource_lxapp_path(bundle_root: &Path) -> PathBuf {
 }
 
 enum RunnerProcess {
-    #[cfg(not(target_os = "windows"))]
     Child(Child),
     /// The macOS Runner: `child` is the executable we spawned, but it may re-exec
     /// itself through LaunchServices and exit 0 while the real app keeps running
@@ -967,7 +1009,6 @@ struct RunnerExitStatus {
 impl RunnerProcess {
     fn try_wait(&mut self) -> Result<Option<RunnerExitStatus>> {
         match self {
-            #[cfg(not(target_os = "windows"))]
             RunnerProcess::Child(child) => child
                 .try_wait()
                 .context("Failed to poll LingXia Runner")
@@ -1024,7 +1065,6 @@ impl RunnerProcess {
 
     fn terminate(&mut self) -> Result<()> {
         match self {
-            #[cfg(not(target_os = "windows"))]
             RunnerProcess::Child(child) => terminate_child(child, "LingXia Runner"),
             RunnerProcess::MacOsApp {
                 child, pid_file, ..
@@ -1037,6 +1077,34 @@ impl RunnerProcess {
             RunnerProcess::WindowsShell(process) => process.terminate(),
         }
     }
+}
+
+#[cfg(target_os = "windows")]
+fn spawn_windows_runner_headless(
+    exe_path: &Path,
+    working_dir: &Path,
+    launch_args: &[String],
+) -> Result<RunnerProcess> {
+    use std::os::windows::process::CommandExt;
+
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    let mut command = Command::new(exe_path);
+    command
+        .current_dir(working_dir)
+        .env(RUNNER_MARKER_ENV, "1")
+        .args(launch_args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit())
+        .creation_flags(CREATE_NO_WINDOW);
+    Ok(RunnerProcess::Child(command.spawn().with_context(
+        || {
+            format!(
+                "Failed to launch headless Windows Runner executable: {}",
+                exe_path.display()
+            )
+        },
+    )?))
 }
 
 #[cfg(target_os = "windows")]
@@ -1387,7 +1455,7 @@ mod tests {
         RunnerDevTarget, WindowsRunnerLxAppIdentity, is_standalone_lxapp_project,
         lxapp_runner_build_args, prepare_windows_runner_assets, prepare_windows_runner_web_assets,
         render_runner_devices, resolve_dev_target, windows_runner_launch_args,
-        windows_runner_ui_json,
+        windows_runner_ui_json, windows_web_runner_launch_args,
     };
     use crate::config::HOST_CONFIG_FILE;
     use std::fs;
@@ -1562,5 +1630,25 @@ mod tests {
                 .any(|pair| pair == ["--display-language", "zh-CN"])
         );
         assert!(args.iter().any(|arg| arg.contains("com.example.extra")));
+    }
+
+    #[test]
+    fn windows_web_runner_launch_args_enable_headless_hosting() {
+        let args = windows_web_runner_launch_args(
+            "http://127.0.0.1:5173/",
+            std::path::Path::new(r"D:\sessions\state"),
+            "ws://127.0.0.1:39000/?token=abc",
+            std::path::Path::new(r"D:\sessions\assets"),
+            Some("desktop-1440"),
+            None,
+            true,
+            crate::config::EnvVersion::Developer,
+        );
+
+        assert!(args.windows(2).any(|pair| pair == ["--headless", "1"]));
+        assert!(
+            args.windows(2)
+                .any(|pair| pair == ["--web-url", "http://127.0.0.1:5173/"])
+        );
     }
 }

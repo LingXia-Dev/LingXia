@@ -107,6 +107,7 @@ the owner of session state while the launched content lives elsewhere:
 lingxia dev ../my-lxapp                  # build and run a standalone lxapp
 lingxia dev http://127.0.0.1:5173        # run an existing web dev server
 lingxia dev https://preview.example.com  # run a remote web target
+lingxia dev http://127.0.0.1:5173 --headless --background  # hidden Windows WebView2 Runner
 ```
 
 An explicit path must be a standalone lxapp directory. An explicit URL must use
@@ -116,6 +117,12 @@ search queries. A URL target does not create a placeholder lxapp
 and neither target directory needs `lingxia.yaml` — that file remains native
 host configuration. `status`, `stop`, logs, and `.lingxia/` state are scoped to
 the directory where `lingxia dev <target>` was invoked.
+
+On Windows, a URL target can run headlessly: the Runner keeps WebView2 mounted
+in a message-only native host window, so `lxdev browser ...` automation,
+evaluation, input, and screenshots remain available without opening desktop UI.
+Headless mode is URL-only; use it with `--background` for CI, SSH, and other
+unattended sessions. It does not require an active local or RDP desktop sign-in.
 
 Override the display language for one Runner session when testing localization:
 
@@ -155,13 +162,15 @@ the exception: it connects to an authenticated LAN listener using the token in
 `lingxia dev` and `lxdev` there through SSH or the machine's existing
 CI/device-lab agent.
 
-When `lingxia dev` runs in an SSH session on Windows, the CLI bootstraps either
-the native host app or the Runner through a temporary interactive-token task so
-its window opens in the signed-in Windows desktop. The same Windows account must
-already be signed in locally or through RDP; otherwise startup fails with an
-actionable error. From the SSH client machine, use `--background`: the SSH
-command returns only after the runtime is connected. Subsequent `lxdev` commands
-should also run on that machine through SSH.
+When `lingxia dev` runs in an SSH session on Windows, the CLI normally
+bootstraps either the native host app or the Runner through a temporary
+interactive-token task so its window opens in the signed-in Windows desktop.
+The same Windows account must already be signed in locally or through RDP;
+otherwise startup fails with an actionable error. A URL target launched with
+`--headless` runs directly in the SSH session and does not need that interactive
+desktop. From the SSH client machine, use `--background`: the SSH command
+returns only after the runtime is connected. Subsequent `lxdev` commands should
+also run on that machine through SSH.
 
 See `lingxia dev --help` for the flags.
 
