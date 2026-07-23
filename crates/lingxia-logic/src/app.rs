@@ -102,6 +102,7 @@ fn app_namespace(ctx: &JSContext) -> JSResult<JSObject> {
 }
 
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     let app = app_namespace(ctx)?;
     register_app_property(ctx)?;
     register_app_api(ctx)?;
