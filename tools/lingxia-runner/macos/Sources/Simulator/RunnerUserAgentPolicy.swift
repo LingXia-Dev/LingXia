@@ -35,7 +35,10 @@ final class RunnerUserAgentPolicy {
         let changed = self.profile != profile
         self.profile = profile
         if changed, defaultUserAgent != nil {
-            if !applyConfiguredProfile(reloadExisting: true) {
+            // Device-family changes immediately reattach or navigate the active
+            // page after this call. Reloading here races that host transition
+            // and can terminate the Runner while its phone/shell window swaps.
+            if !applyConfiguredProfile(reloadExisting: false) {
                 NSLog("LingXia Runner could not apply the browser user agent")
             }
         }
