@@ -1,16 +1,15 @@
 name: Bootstrap harmony SDK
 description: >
-  Generate the gitignored harmony SDK assets a clean checkout lacks and sync the
-  WebView core ArkTS source the SDK module imports. The harmony SDK module is
-  compiled from source (the example wires it via build-profile `srcPath`), so
-  these must exist before `lingxia build --platform harmony` runs hvigor.
-  Mirrors the harmony half of scripts/release/sdk.sh (generate_resources +
-  sync_harmony_webview_core_source). Assumes Rust is set up.
+  Generate the gitignored harmony SDK assets a clean checkout lacks. The harmony
+  SDK module is compiled from source (the example wires it via build-profile
+  `srcPath`), so these must exist before `lingxia build --platform harmony` runs
+  hvigor. Mirrors the harmony half of scripts/release/sdk.sh
+  (generate_resources). Assumes Rust is set up.
 
 runs:
   using: composite
   steps:
-    - name: Generate harmony SDK resources + sync WebViewCore.ets
+    - name: Generate harmony SDK resources
       shell: bash
       run: |
         set -euo pipefail
@@ -22,9 +21,3 @@ runs:
         cargo run -p lingxia-cli -- gen i18n \
           --input i18n --no-rust --no-ts --no-ios --no-android \
           --harmony-out lingxia-sdk/harmony/lingxia/src/main/resources
-        # WebView core ArkTS the SDK module references (synced, not committed).
-        src=crates/lingxia-webview/src/harmony/arkts/WebViewCore.ets
-        dst=lingxia-sdk/harmony/lingxia/src/main/ets/lxapp/WebViewCore.ets
-        mkdir -p "$(dirname "$dst")"
-        cp "$src" "$dst"
-        echo "Synced $dst"

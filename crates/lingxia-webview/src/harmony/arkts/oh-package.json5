@@ -1,9 +1,0 @@
-{
-  "name": "lingxia-webview-core",
-  "version": "0.0.0-local",
-  "description": "LingXia Harmony WebView core package",
-  "main": "WebViewCore.ets",
-  "author": "",
-  "license": "Apache-2.0",
-  "dependencies": {}
-}

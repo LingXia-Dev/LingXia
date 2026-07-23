@@ -151,19 +151,10 @@ HARMONY_SDK_DIR="$ROOT_DIR/lingxia-sdk/harmony"
 HARMONY_RES_DIR="$HARMONY_SDK_DIR/lingxia/src/main/resources"
 HARMONY_RAWFILE_DIR="$HARMONY_RES_DIR/rawfile"
 HARMONY_ICONS_DIR="$HARMONY_RAWFILE_DIR/icons"
-HARMONY_WEBVIEW_CORE_SRC="$LINGXIA_WEBVIEW_CRATE_DIR/src/harmony/arkts/WebViewCore.ets"
-HARMONY_WEBVIEW_CORE_DST="$HARMONY_SDK_DIR/lingxia/src/main/ets/lxapp/WebViewCore.ets"
 
 run() {
   log "+ $*"
   (cd "$ROOT_DIR" && "$@")
-}
-
-sync_harmony_webview_core_source() {
-  [[ -f "$HARMONY_WEBVIEW_CORE_SRC" ]] || die "Missing Harmony WebView core source: $HARMONY_WEBVIEW_CORE_SRC"
-  mkdir -p "$(dirname "$HARMONY_WEBVIEW_CORE_DST")"
-  cp "$HARMONY_WEBVIEW_CORE_SRC" "$HARMONY_WEBVIEW_CORE_DST"
-  log "   ✅ Synced WebView core ArkTS: $HARMONY_WEBVIEW_CORE_DST"
 }
 
 zip_dir() {
@@ -342,9 +333,6 @@ build_android() {
 build_harmony() {
   log "==> Building HarmonyOS SDK (HAR)"
   [[ -d "$HARMONY_SDK_DIR" ]] || die "Missing Harmony SDK dir: $HARMONY_SDK_DIR"
-
-  log "==> Syncing Harmony WebView core ArkTS"
-  sync_harmony_webview_core_source
 
   rm -rf "$HARMONY_SDK_DIR/lingxia/oh_modules" 2>/dev/null || true
   rm -f "$HARMONY_SDK_DIR/lingxia/oh-package-lock.json5" 2>/dev/null || true

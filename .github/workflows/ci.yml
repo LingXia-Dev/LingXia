@@ -1089,8 +1089,7 @@ jobs:
           path: ~/ohos-ndk
           key: ohos-ndk-${{ env.OHOS_SDK_VERSION }}
 
-      # Gen the gitignored harmony SDK resources + sync WebViewCore.ets so the
-      # harmony project tree matches a normal build.
+      # Generate the gitignored Harmony SDK resources a clean checkout lacks.
       - uses: ./.github/actions/bootstrap-harmony-sdk
 
       - name: Build Harmony example (native only)

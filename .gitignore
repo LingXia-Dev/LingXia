@@ -19,9 +19,6 @@ examples/*/windows/Cargo.lock
 
 # Generated TypeScript sources
 
-# Harmony generated/synced artifacts
-lingxia-sdk/harmony/lingxia/src/main/ets/lxapp/WebViewCore.ets
-
 # Draft/working design docs — kept local, never committed
 docs/draft/
 
