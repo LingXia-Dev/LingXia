@@ -27,6 +27,10 @@ enum RunnerBridge {
         }
     }
 
+    static func setPullDownRefreshHandler(_ handler: @escaping (String, String, Bool) -> Bool) {
+        macOSLxApp.runnerPullDownRefreshHandler = handler
+    }
+
     static func sessionId(for appId: String) -> UInt64? {
         if let sessionId = LxAppCore.sessionId(for: appId) {
             return sessionId

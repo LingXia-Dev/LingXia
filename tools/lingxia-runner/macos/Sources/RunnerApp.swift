@@ -119,6 +119,11 @@ public class RunnerApp {
         self.controller = controller
         appMenu.installIfNeeded()
         configureOpenURLHandlingForCurrentShape()
+        RunnerSupport.Runtime.setPullDownRefreshHandler { appId, path, refreshing in
+            guard RunnerSupport.Runtime.currentAppId() == appId else { return false }
+            guard refreshing else { return true }
+            return onLxappEvent(appId, LxAppUiEventType.PullDownRefresh, path)
+        }
         controllerEventsTask?.cancel()
         controllerEventsTask = Task { [weak self, controller] in
             for await event in controller.events {
