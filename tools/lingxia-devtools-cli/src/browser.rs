@@ -710,14 +710,10 @@ pub fn execute(info: &SessionInfo, options: BrowserOptions) -> Result<()> {
 }
 
 fn execute_network(info: &SessionInfo, options: NetworkOptions) -> Result<()> {
-    // Network capture rides the WebView2 DevTools protocol, so it needs a
-    // Windows WebView2 runner. The dev session labels a direct Windows app
-    // "windows" and a runner-hosted lxapp "lxapp"; both host WebView2 on
-    // Windows, so accept either. lxdev and the runner are co-located, so the
-    // real backstop is the runner-side handler (compiled only on Windows) —
-    // a non-Windows runner answers "unknown handler" for these commands.
+    // Runner is platform-neutral session metadata; its compiled runtime
+    // handler is the authority on whether WebView2 capture is available.
     let platform = info.target.as_str();
-    if !platform.eq_ignore_ascii_case("windows") && !platform.eq_ignore_ascii_case("lxapp") {
+    if !network_capture_may_be_supported(platform) {
         return Err(anyhow!(
             "browser network capture needs a Windows WebView2 session (this session is '{platform}')",
         ));
@@ -785,6 +781,13 @@ fn execute_network(info: &SessionInfo, options: NetworkOptions) -> Result<()> {
         }
     }
     Ok(())
+}
+
+fn network_capture_may_be_supported(target: &str) -> bool {
+    matches!(
+        target.to_ascii_lowercase().as_str(),
+        "windows" | "lxapp" | "runner"
+    )
 }
 
 fn network_snapshot(ws_url: &str, tab: &str) -> Result<Value> {
@@ -1348,7 +1351,10 @@ fn has_url_scheme(url: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{current_tab_summary, file_url_from_path, local_file_url, normalize_open_url};
+    use super::{
+        current_tab_summary, file_url_from_path, local_file_url, network_capture_may_be_supported,
+        normalize_open_url,
+    };
     use serde_json::json;
     use std::path::Path;
 
@@ -1375,6 +1381,15 @@ mod tests {
 
         assert_eq!(summary, "tab-3  /tabs/tab-3");
     }
+
+    #[test]
+    fn network_capture_allows_platform_neutral_runner_sessions() {
+        assert!(network_capture_may_be_supported("windows"));
+        assert!(network_capture_may_be_supported("lxapp"));
+        assert!(network_capture_may_be_supported("runner"));
+        assert!(!network_capture_may_be_supported("macos"));
+    }
+
     #[test]
     fn bare_remote_host_gets_https() {
         assert_eq!(normalize_open_url("example.com"), "https://example.com");

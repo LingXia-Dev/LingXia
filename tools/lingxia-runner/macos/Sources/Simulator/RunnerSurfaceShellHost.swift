@@ -17,6 +17,7 @@ final class RunnerSurfaceShellHost {
     private(set) var appId: String
     private(set) var currentPath: String
     private(set) var device: MobileDeviceSize
+    private let headless: Bool
 
     // The same toolbar as the iPhone simulator, so phone and pad share one UI.
     private lazy var toolbar: SimulatorToolbar = {
@@ -51,6 +52,7 @@ final class RunnerSurfaceShellHost {
         self.appId = appId
         self.currentPath = path
         self.device = device
+        self.headless = false
         RunnerSupport.SurfaceShell.setBrowserRootVisible(shell, visible: false)
         RunnerSupport.SurfaceShell.setBrowserPageActionsVisible(shell, visible: false)
         observeClose()
@@ -62,12 +64,14 @@ final class RunnerSurfaceShellHost {
     init(
         controller: LxAppController,
         webTarget: RunnerWebTarget,
-        device: MobileDeviceSize
+        device: MobileDeviceSize,
+        headless: Bool = false
     ) {
         self.shell = RunnerSupport.SurfaceShell.make(controller: controller)
         self.appId = webTarget.ownerAppId
         self.currentPath = webTarget.url.absoluteString
         self.device = device
+        self.headless = headless
         RunnerSupport.SurfaceShell.setBrowserRootVisible(shell, visible: true)
         RunnerSupport.SurfaceShell.setBrowserPageActionsVisible(shell, visible: false)
         observeClose()
@@ -86,8 +90,10 @@ final class RunnerSurfaceShellHost {
     func activate() {
         isHiddenForHostSwitch = false
         RunnerSupport.SurfaceShell.activate(shell)
-        shell.window?.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        if !headless {
+            shell.window?.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+        }
     }
 
     func open(appId: String, path: String, sessionId: UInt64) {
@@ -115,8 +121,10 @@ final class RunnerSurfaceShellHost {
     func presentBrowserTab(id tabId: String) {
         RunnerSupport.SurfaceShell.setBrowserRootVisible(shell, visible: true)
         RunnerSupport.SurfaceShell.presentBrowserTab(shell, tabId: tabId)
-        shell.window?.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        if !headless {
+            shell.window?.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+        }
     }
 
     func applyDevice(_ newDevice: MobileDeviceSize) {

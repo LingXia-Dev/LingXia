@@ -133,7 +133,7 @@ struct DevOptions {
     #[arg(long, value_parser = ["auto", "en-US", "zh-CN"])]
     display_language: Option<String>,
 
-    /// Run a web URL target in the Windows Runner without showing its window.
+    /// Run a web URL target without showing the desktop Runner window.
     #[arg(long)]
     headless: bool,
 

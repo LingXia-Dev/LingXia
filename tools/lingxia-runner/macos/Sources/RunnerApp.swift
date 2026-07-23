@@ -33,6 +33,8 @@ public class RunnerApp {
     /// App ids in a surface-shell (pad/desktop) restart — the runner stands down on
     /// `.didClose` and lets the runtime's recreate re-attach the fresh session.
     private var pendingSurfaceLifecycleReopens: Set<String> = []
+    private let headlessWebTarget =
+        ProcessInfo.processInfo.environment["LINGXIA_RUNNER_HEADLESS"] == "1"
     private(set) var selectedDeviceSize: MobileDeviceSize = .defaultDevice
     private(set) var deviceOrientation: RunnerDeviceOrientation = .portrait
     private(set) var deviceSize: MobileDeviceSize = .defaultDevice
@@ -392,14 +394,23 @@ public class RunnerApp {
         surfaceShellHost?.hideForHostSwitch()
         if let host = windowController, host.webTargetTabId == target.tabId {
             host.applyDeviceChange(device)
-            host.window?.makeKeyAndOrderFront(nil)
+            if !headlessWebTarget {
+                host.window?.makeKeyAndOrderFront(nil)
+            }
             return
         }
-        let host = SimulatorWindowController(webTarget: target)
-        host.showWindow(self)
+        let host = SimulatorWindowController(
+            webTarget: target,
+            headless: headlessWebTarget
+        )
+        if !headlessWebTarget {
+            host.showWindow(self)
+        }
         restoreBrowserTabs(in: host, target: target)
-        host.window?.makeKeyAndOrderFront(self)
-        NSApp.activate(ignoringOtherApps: true)
+        if !headlessWebTarget {
+            host.window?.makeKeyAndOrderFront(self)
+            NSApp.activate(ignoringOtherApps: true)
+        }
         windowController = host
     }
 
@@ -421,7 +432,8 @@ public class RunnerApp {
         let host = RunnerSurfaceShellHost(
             controller: controller,
             webTarget: target,
-            device: device
+            device: device,
+            headless: headlessWebTarget
         )
         host.onClose = { [weak self] closedHost in
             guard let self, self.surfaceShellHost === closedHost else { return }
