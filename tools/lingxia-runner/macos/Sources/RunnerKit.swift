@@ -16,7 +16,8 @@ public struct RunnerKit {
         let delegate = RunnerKitDelegate()
         let app = NSApplication.shared
         app.delegate = delegate
-        app.setActivationPolicy(.regular)
+        let headless = ProcessInfo.processInfo.environment["LINGXIA_RUNNER_HEADLESS"] == "1"
+        app.setActivationPolicy(headless ? .accessory : .regular)
         app.run()
     }
 

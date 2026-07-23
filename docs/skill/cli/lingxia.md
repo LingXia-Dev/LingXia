@@ -104,22 +104,12 @@ host Mac over the local network.
 the owner of session state while the launched content lives elsewhere:
 
 ```bash
-lingxia dev ../my-lxapp                  # build and run a standalone lxapp
-lingxia dev http://127.0.0.1:5173        # run an existing web dev server
-lingxia dev https://preview.example.com  # run a remote web target
-lingxia dev http://127.0.0.1:5173 --headless --background  # hidden Windows WebView2 Runner
+lingxia dev ../my-lxapp
+lingxia dev <http(s)://url> [--headless] [--background]
 ```
 
-An explicit path must be a standalone lxapp directory. An explicit URL must use
-`http` or `https`; Runner mounts its managed browser in self mode, with an editable
-URL field, page history, and its own tab group. The field accepts URLs, not
-search queries. A URL target does not create a placeholder lxapp
-and neither target directory needs `lingxia.yaml` — that file remains native
-host configuration. `status`, `stop`, logs, and `.lingxia/` state are scoped to
-the directory where `lingxia dev <target>` was invoked.
-
-On Windows, add `--headless` to an explicit HTTP(S) URL target to run without a
-visible Runner window.
+URL targets support HTTP(S); `--headless` is available on macOS and Windows.
+Session state stays in the directory where `lingxia dev <target>` was invoked.
 
 Override the display language for one Runner session when testing localization:
 

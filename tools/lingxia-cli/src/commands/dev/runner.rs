@@ -15,6 +15,7 @@ const RUNNER_WEB_URL_ENV: &str = "LINGXIA_RUNNER_WEB_URL";
 const RUNNER_DEV_WS_URL_ENV: &str = "LINGXIA_DEV_WS_URL";
 const RUNNER_ENV_ENV: &str = "LINGXIA_RUNNER_ENV";
 const RUNNER_DISPLAY_LANGUAGE_ENV: &str = "LINGXIA_RUNNER_DISPLAY_LANGUAGE";
+const RUNNER_HEADLESS_ENV: &str = "LINGXIA_RUNNER_HEADLESS";
 const RUNNER_HEADLESS_ARG: &str = "--headless";
 /// Marks the child process as the LingXia Runner (vs a real host app). The core
 /// runtime injects `runner:true` into `__LX_BRIDGE_CFG` so the View bridge can
@@ -203,12 +204,6 @@ pub(super) fn execute_runner_dev(
             "`--headless` is only supported with an explicit http:// or https:// Runner target."
         ));
     }
-    if options.headless && runner_host != LxAppRunnerHost::Windows {
-        return Err(anyhow!(
-            "`--headless` web Runner mode is currently supported on Windows."
-        ));
-    }
-
     let platform_name = "runner";
     take_over_target_session(&session_root, platform_name)?;
 
@@ -297,6 +292,7 @@ pub(super) fn execute_runner_dev(
                 &ws_url,
                 options.runner_device.as_deref(),
                 options.display_language.as_deref(),
+                options.headless,
                 runner_env,
             )?,
             (LxAppRunnerHost::Windows, RunnerDevTarget::Web(url)) => launch_windows_runner_for_web(
@@ -474,6 +470,7 @@ fn launch_runner_for_web(
     ws_url: &str,
     runner_device: Option<&str>,
     display_language: Option<&str>,
+    headless: bool,
     runner_env: crate::config::EnvVersion,
 ) -> Result<RunnerProcess> {
     platform::apple::ensure_macos()?;
@@ -511,6 +508,9 @@ fn launch_runner_for_web(
         .filter(|value| !value.is_empty())
     {
         command.env(RUNNER_DISPLAY_LANGUAGE_ENV, language);
+    }
+    if headless {
+        command.env(RUNNER_HEADLESS_ENV, "1");
     }
     command.stdin(Stdio::null());
     command.stdout(Stdio::null());

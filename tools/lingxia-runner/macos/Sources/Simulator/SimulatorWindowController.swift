@@ -100,6 +100,7 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
     public private(set) var appId: String
     public private(set) var currentPath: String
     private let webTarget: (tabId: String, ownerAppId: String, ownerSessionId: UInt64)?
+    private let headlessWebTarget: Bool
     private var preserveBrowserTabsOnClose = false
 
     var webTargetTabId: String? { webTarget?.tabId }
@@ -117,6 +118,7 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
         self.appId = appId
         self.currentPath = path
         self.webTarget = nil
+        self.headlessWebTarget = false
         
         let window = Self.createSimulatorWindow()
         super.init(window: window)
@@ -125,9 +127,10 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
         setupNotificationObservers()
     }
 
-    init(webTarget: RunnerWebTarget) {
+    init(webTarget: RunnerWebTarget, headless: Bool = false) {
         self.appId = webTarget.ownerAppId
         self.currentPath = webTarget.url.absoluteString
+        self.headlessWebTarget = headless
         self.webTarget = (
             webTarget.tabId,
             webTarget.ownerAppId,
@@ -1290,7 +1293,9 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
                 ? Layout.systemStatusBarHeight
                 : 0
         )
-        window?.makeKeyAndOrderFront(nil)
+        if !headlessWebTarget {
+            window?.makeKeyAndOrderFront(nil)
+        }
     }
     
     // MARK: - Navigation
