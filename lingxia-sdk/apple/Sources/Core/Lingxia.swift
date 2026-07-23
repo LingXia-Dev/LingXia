@@ -3,6 +3,12 @@ import Foundation
 /// Top-level entry point for the LingXia SDK.
 @MainActor
 public enum Lingxia {
+    /// Posted on the main thread after the user changes the effective display
+    /// language. Host-owned native chrome can observe this and rebuild its
+    /// localized labels.
+    public nonisolated static let displayLanguageDidChangeNotification =
+        Notification.Name("LingxiaDisplayLanguageDidChange")
+
     /// Effective display language selected by the runtime. A saved user
     /// choice takes precedence over the locale supplied during
     /// initialization.

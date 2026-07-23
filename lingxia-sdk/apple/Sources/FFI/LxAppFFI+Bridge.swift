@@ -17,6 +17,15 @@ private let lxAppFFILog = OSLog(subsystem: "LingXia", category: "LxAppFFI")
 /// FFI callbacks dispatched from Rust via the generated bridge.
 extension LxApp {
 
+    nonisolated static func displayLanguageChanged() {
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(
+                name: Lingxia.displayLanguageDidChangeNotification,
+                object: nil
+            )
+        }
+    }
+
     nonisolated static func openExternalUrlString(_ urlString: String) -> Bool {
         guard let url = URL(string: urlString) else { return false }
         #if os(iOS)

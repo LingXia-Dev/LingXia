@@ -543,6 +543,10 @@ mod bridge {
         // Bookmarks store changed (any writer) — chrome refreshes its sidebar.
         #[swift_bridge(swift_name = "LxApp.browserBookmarksChanged")]
         fn browser_bookmarks_changed();
+
+        // Display language changed — host-owned native chrome re-localizes.
+        #[swift_bridge(swift_name = "LxApp.displayLanguageChanged")]
+        fn display_language_changed();
     }
 }
 
@@ -567,6 +571,9 @@ fn install_browser_native_input_host() {
     // action, webui manager page) notifies the Swift shell.
     lingxia_browser_shell::set_bookmarks_change_listener(Box::new(|| {
         self::bridge::browser_bookmarks_changed();
+    }));
+    lingxia_browser_shell::set_display_language_change_listener(Box::new(|| {
+        self::bridge::display_language_changed();
     }));
 }
 
