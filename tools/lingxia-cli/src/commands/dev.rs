@@ -34,6 +34,8 @@ mod windows;
 const RUNNER_DEV_WS_URL_ENV: &str = "LINGXIA_DEV_WS_URL";
 const BACKGROUND_CHILD_ENV: &str = "LINGXIA_DEV_BACKGROUND_CHILD";
 const BACKGROUND_START_TIMEOUT: Duration = Duration::from_secs(600);
+const SESSION_TAKEOVER_GRACE: Duration = Duration::from_secs(2);
+const SESSION_TAKEOVER_FINAL_WAIT: Duration = Duration::from_secs(5);
 
 fn dev_native_features(
     config: &LingXiaConfig,
@@ -59,6 +61,7 @@ fn dev_native_features(
 }
 
 pub struct DevExecuteOptions {
+    pub target: Option<String>,
     pub release: bool,
     pub build_native: bool,
     pub framework: Option<String>,
@@ -166,24 +169,25 @@ fn platform_session_name(platform: PlatformType) -> &'static str {
     }
 }
 
-/// Stop any live dev session for the same platform in this project before a
-/// new one starts. A session is bound to its platform, so a second
-/// same-platform session is never wanted — and re-running `lingxia dev` after
+/// Stop any live dev session for the same target in this project before a new
+/// one starts. A session is bound to its target, so a second same-target
+/// session is never wanted — and re-running `lingxia dev` after
 /// a host-code edit is the normal inner loop, so the restart intent is
 /// unambiguous: take over rather than refuse. Different platforms don't
 /// conflict — `lingxia dev -p android` and `-p ios` run side by side.
 ///
-/// Liveness comes from the broker registration: a session that exited (or
-/// crashed) has already dropped off the list. Waits until the old session
-/// deregisters so the new one never races it.
-fn precheck_platform_session(project_root: &Path, platform: &str) -> Result<()> {
-    let live = log_store::find_live_for_platform(project_root, platform)?;
+/// A graceful request gets a short cleanup window. After that, terminate every
+/// still-owning process from the original snapshot even if its broker
+/// registration disappeared, so an orphaned app/Runner cannot race the new
+/// launch or keep the target port alive.
+fn take_over_target_session(project_root: &Path, target: &str) -> Result<()> {
+    let live = log_store::find_live_for_target(project_root, target)?;
     if live.is_empty() {
         return Ok(());
     }
     for info in &live {
         println!(
-            "Stopping existing {platform} dev session {} (pid {})...",
+            "Taking over existing {target} dev session {} (pid {})...",
             info.session_id, info.pid
         );
         if let Err(err) = log_store::request_shutdown(info) {
@@ -191,30 +195,34 @@ fn precheck_platform_session(project_root: &Path, platform: &str) -> Result<()> 
             terminate_session_owner(info)?;
         }
     }
-    if wait_for_platform_sessions_gone(project_root, platform, Duration::from_secs(10))? {
+    if wait_for_target_sessions_stopped(project_root, target, &live, SESSION_TAKEOVER_GRACE)? {
         return Ok(());
     }
-    // Graceful shutdown stalled — escalate to a kill, then give the broker a
-    // moment to drop the registrations.
-    for info in log_store::find_live_for_platform(project_root, platform)? {
-        terminate_session_owner(&info)?;
+
+    for info in &live {
+        if session_owner_is_running(info) {
+            terminate_session_owner(info)?;
+        }
     }
-    if wait_for_platform_sessions_gone(project_root, platform, Duration::from_secs(5))? {
+    if wait_for_target_sessions_stopped(project_root, target, &live, SESSION_TAKEOVER_FINAL_WAIT)? {
         return Ok(());
     }
     Err(anyhow!(
-        "Existing {platform} dev session did not stop after automatic termination."
+        "Existing {target} dev session did not stop after automatic termination."
     ))
 }
 
-fn wait_for_platform_sessions_gone(
+fn wait_for_target_sessions_stopped(
     project_root: &Path,
-    platform: &str,
+    target: &str,
+    previous: &[log_store::SessionInfo],
     timeout: Duration,
 ) -> Result<bool> {
     let deadline = std::time::Instant::now() + timeout;
     loop {
-        if log_store::find_live_for_platform(project_root, platform)?.is_empty() {
+        let registrations_gone = log_store::find_live_for_target(project_root, target)?.is_empty();
+        let owners_gone = previous.iter().all(|info| !session_owner_is_running(info));
+        if registrations_gone && owners_gone {
             return Ok(true);
         }
         if std::time::Instant::now() >= deadline {
@@ -222,6 +230,15 @@ fn wait_for_platform_sessions_gone(
         }
         thread::sleep(Duration::from_millis(200));
     }
+}
+
+fn session_owner_is_running(session: &log_store::SessionInfo) -> bool {
+    let pid = sysinfo::Pid::from_u32(session.pid);
+    let mut system = System::new();
+    system.refresh_processes(ProcessesToUpdate::Some(&[pid]), true);
+    system
+        .process(pid)
+        .is_some_and(|process| is_owning_dev_process(process, session))
 }
 
 /// Execute the dev command.
@@ -253,8 +270,8 @@ pub fn execute(options: DevExecuteOptions) -> Result<()> {
         return spawn_background_dev(&project_root);
     }
 
-    if runner::is_standalone_lxapp_project(&project_root) {
-        return runner::execute_lxapp_dev(project_root, options);
+    if let Some(target) = runner::resolve_dev_target(&project_root, options.target.as_deref())? {
+        return runner::execute_runner_dev(project_root, target, options);
     }
 
     if options.display_language.is_some() {

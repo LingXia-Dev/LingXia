@@ -164,6 +164,20 @@ pub fn set_app_window_device_frame_and_tabbar_position(
     )
 }
 
+#[cfg(all(feature = "browser-runtime", feature = "shell-chrome"))]
+pub(crate) fn set_browser_device_frame_and_tabbar_position(
+    frame: WindowsDeviceFrame,
+    tabbar_position: WindowsShellTabBarPosition,
+) -> Result<(), String> {
+    let webtag = current_browser_webtag()?;
+    native::set_webview_device_frame_and_tabbar_position(
+        &webtag,
+        lingxia_browser::BUILTIN_BROWSER_APPID.to_string(),
+        frame,
+        tabbar_position,
+    )
+}
+
 /// Applies a simulated-device frame to the next WebView host window created
 /// by this process. Intended for runners that know their initial device
 /// before the home lxapp is opened, so the first visible frame already has
@@ -282,6 +296,26 @@ pub fn open_current_page_devtools(appid: &str) -> Result<(), String> {
         .ok_or_else(|| "page WebView handler is not ready".to_string())?
         .open_devtools()
         .map_err(|err| err.to_string())
+}
+
+#[cfg(feature = "browser-runtime")]
+pub(crate) fn open_browser_devtools() -> Result<(), String> {
+    let webtag = current_browser_webtag()?;
+    lingxia_webview::platform::windows::find_webview_handler(&webtag)
+        .ok_or_else(|| "browser WebView handler is not ready".to_string())?
+        .open_devtools()
+        .map_err(|err| err.to_string())
+}
+
+#[cfg(feature = "browser-runtime")]
+fn current_browser_webtag() -> Result<lingxia_webview::WebTag, String> {
+    let tab =
+        lingxia_browser::current_tab().ok_or_else(|| "browser has no active tab".to_string())?;
+    Ok(lingxia_webview::WebTag::new(
+        lingxia_browser::BUILTIN_BROWSER_APPID,
+        &tab.path,
+        Some(tab.session_id),
+    ))
 }
 
 fn current_page_webview(appid: &str) -> Result<std::sync::Arc<lingxia_webview::WebView>, String> {

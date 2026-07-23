@@ -14,8 +14,8 @@ static WINDOWS_APP_VISIBLE_WEBTAGS: LazyLock<Mutex<HashMap<String, HashSet<Strin
 /// Initializes the LingXia runtime for a Windows host process.
 ///
 /// Installs logging and the WebView2 user-data directory before running the
-/// common platform bootstrap. Returns the home app id on success.
-pub fn init(platform: Platform) -> Option<String> {
+/// common platform bootstrap. Returns runtime information on success.
+pub fn init(platform: Platform) -> crate::Result<crate::RuntimeInfo> {
     crate::logging::init();
     lingxia_webview::platform::windows::set_webview_user_data_dir(
         platform.app_cache_dir().join("webview2"),

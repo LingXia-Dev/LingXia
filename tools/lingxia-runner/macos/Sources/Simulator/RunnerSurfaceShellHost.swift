@@ -51,10 +51,30 @@ final class RunnerSurfaceShellHost {
         self.appId = appId
         self.currentPath = path
         self.device = device
+        RunnerSupport.SurfaceShell.setBrowserRootVisible(shell, visible: false)
+        RunnerSupport.SurfaceShell.setBrowserPageActionsVisible(shell, visible: false)
         observeClose()
         installDeviceSelector()
         configureWindow(for: device, center: true)
         open(appId: appId, path: path, sessionId: sessionId)
+    }
+
+    init(
+        controller: LxAppController,
+        webTarget: RunnerWebTarget,
+        device: MobileDeviceSize
+    ) {
+        self.shell = RunnerSupport.SurfaceShell.make(controller: controller)
+        self.appId = webTarget.ownerAppId
+        self.currentPath = webTarget.url.absoluteString
+        self.device = device
+        RunnerSupport.SurfaceShell.setBrowserRootVisible(shell, visible: true)
+        RunnerSupport.SurfaceShell.setBrowserPageActionsVisible(shell, visible: false)
+        observeClose()
+        installDeviceSelector()
+        configureWindow(for: device, center: true)
+        activate()
+        presentBrowserTab(id: webTarget.tabId)
     }
 
     deinit {
@@ -71,6 +91,7 @@ final class RunnerSurfaceShellHost {
     }
 
     func open(appId: String, path: String, sessionId: UInt64) {
+        RunnerSupport.SurfaceShell.setBrowserRootVisible(shell, visible: false)
         self.appId = appId
         self.currentPath = path
         RunnerSupport.Runtime.setSessionId(sessionId, for: appId)
@@ -92,6 +113,7 @@ final class RunnerSurfaceShellHost {
     }
 
     func presentBrowserTab(id tabId: String) {
+        RunnerSupport.SurfaceShell.setBrowserRootVisible(shell, visible: true)
         RunnerSupport.SurfaceShell.presentBrowserTab(shell, tabId: tabId)
         shell.window?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)

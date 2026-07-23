@@ -141,7 +141,7 @@ pub fn runner_active() -> bool {
 }
 
 /// Initialize the LxApps singleton using the host app configuration from app-context.
-pub fn init(runtime: Platform) -> Option<String> {
+pub fn init(runtime: Platform) -> Result<Option<String>, LxAppError> {
     // Set up panic hook to capture panic information
     std::panic::set_hook(Box::new(|panic_info| {
         let location = panic_info
@@ -169,23 +169,29 @@ pub fn init(runtime: Platform) -> Option<String> {
     // Prepare directory structure
     if let Err(e) = prepare_directory_structure(runtime_arc.clone()) {
         error!("Failed to prepare directory structure: {}", e);
-        return None;
+        return Err(e);
     }
 
-    let home_app_id = match lingxia_app_context::home_app_id() {
-        Some(appid) => appid.to_string(),
-        None => {
-            error!("Host app configuration is not initialized");
-            return None;
-        }
+    let num_workers = get_num_workers();
+    let executor = LxAppWorkers::init(num_workers);
+
+    // Hosts may launch native or web content without a home lxapp. Initialize
+    // the manager first so lxapps opened later still have the complete runtime.
+    let lxapps_manager = Arc::new(LxApps::new(runtime, executor.clone(), num_workers));
+    if let Err(e) = super::runtime_registry::set_lxapps_manager(lxapps_manager.clone()) {
+        error!("{}", e);
+        return Err(LxAppError::Runtime(e.to_string()));
+    }
+
+    let (Some(home_app_id), Some(home_app_version)) = (
+        lingxia_app_context::home_app_id(),
+        lingxia_app_context::home_app_version(),
+    ) else {
+        info!("LxApps initialized without a home lxapp");
+        spawn_cache_cleanup(runtime_arc);
+        return Ok(None);
     };
-    let home_app_version = match lingxia_app_context::home_app_version() {
-        Some(version) => version,
-        None => {
-            error!("Host app configuration is not initialized");
-            return None;
-        }
-    };
+    let home_app_id = home_app_id.to_string();
 
     let bundled_home_version = match Version::parse(home_app_version) {
         Ok(version) => version,
@@ -195,7 +201,9 @@ pub fn init(runtime: Platform) -> Option<String> {
                 home_app_version, e
             )
             .with_appid(home_app_id.clone());
-            return None;
+            return Err(LxAppError::InvalidParameter(format!(
+                "invalid bundled home lxapp version '{home_app_version}': {e}"
+            )));
         }
     };
     let installed_home_version = match installed_home_version(&home_app_id, ReleaseType::Release) {
@@ -246,7 +254,7 @@ pub fn init(runtime: Platform) -> Option<String> {
             home_app_version,
         ) {
             error!("Failed to install home LxApp: {}", e);
-            return None;
+            return Err(e);
         }
     } else {
         let has_pending_home_update = metadata::downloaded_get(&home_app_id, ReleaseType::Release)
@@ -269,26 +277,13 @@ pub fn init(runtime: Platform) -> Option<String> {
             }
         }
     }
-    let num_workers = get_num_workers();
-    let executor = LxAppWorkers::init(num_workers);
-
-    // Create LxApps manager BEFORE creating home_lxapp
-    // This makes get_platform() available as early as possible
-    let lxapps_manager = Arc::new(LxApps::new(runtime, executor.clone(), num_workers));
-
-    // Set global instance early so get_platform() works
-    if let Err(e) = super::runtime_registry::set_lxapps_manager(lxapps_manager.clone()) {
-        error!("{}", e);
-        return None;
-    }
-
     // Create the home LxApp instance (loads lxapp.json once)
     let home_lxapp =
         match LxApp::new_as_home(home_app_id.clone(), runtime_arc.clone(), executor.clone()) {
             Ok(app) => app,
             Err(e) => {
                 error!("Failed to setup home LxApp: {}", e).with_appid(home_app_id.clone());
-                return None;
+                return Err(e);
             }
         };
 
@@ -309,5 +304,5 @@ pub fn init(runtime: Platform) -> Option<String> {
     info!("LxApps initialized successfully");
 
     spawn_cache_cleanup(runtime_arc.clone());
-    Some(home_app_id)
+    Ok(Some(home_app_id))
 }

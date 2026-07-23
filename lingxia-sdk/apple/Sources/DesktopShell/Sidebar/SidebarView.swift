@@ -252,6 +252,7 @@ private struct SidebarModel {
 
     var appGroups: [AppGroupVM] = []
     var browserTabs: [BrowserTabVM] = []
+    var browserRootVisible = false
     var panelItems: [PanelIconItem] = []
     var selection: Selection = .none
 }
@@ -407,6 +408,9 @@ class SidebarView: NSView, NSPopoverDelegate {
     // Browser tab views
     private var browserItemViews: [String: SidebarBrowserItemView] = [:]
     private var browserItemTopConstraints: [String: NSLayoutConstraint] = [:]
+    private let browserRootHeader = NSView()
+    private var browserRootTopConstraint: NSLayoutConstraint?
+    private var browserRootHeaderConfigured = false
     private let addButton = NSButton()
     private var addButtonTopConstraint: NSLayoutConstraint?
     private var groupTopConstraints: [String: NSLayoutConstraint] = [:]
@@ -547,6 +551,7 @@ class SidebarView: NSView, NSPopoverDelegate {
         headerView.addSubview(downloadButton)
 
         let browserEnabled = (LxAppCore.capabilities & LxAppCore.capBrowser) != 0
+            || model.browserRootVisible
         os_log(
             "Sidebar setup browserEnabled=%{public}@ capabilities=%{public}u",
             log: Self.log,
@@ -913,17 +918,18 @@ class SidebarView: NSView, NSPopoverDelegate {
             railButtons[key] = btn
         }
 
-        // New-tab affordance for the collapsed rail — only when a full browser is
-        // available (e.g. the showcase desktop app). In hosts without browser-shell
-        // (e.g. the lxapp Runner) a "+" would just open a dead tab, so omit it.
+        // New-tab affordance for the collapsed rail. URL Runner hosts opt in
+        // through the persistent browser root even without `capBrowser`.
         let browserEnabled = (LxAppCore.capabilities & LxAppCore.capBrowser) != 0
+            || model.browserRootVisible
         if browserEnabled {
             let addRailButton = makeRailButton(
                 key: "action:add-tab",
                 tooltip: L10n.string("lx_browser_new_tab"),
                 image: LxIcon.image(
                     named: "icon_browser_plus",
-                    size: CGSize(width: Layout.railIconSize, height: Layout.railIconSize)),
+                    size: CGSize(width: Layout.railIconSize, height: Layout.railIconSize))
+                    ?? NSImage(systemSymbolName: "plus", accessibilityDescription: nil),
                 isTemplate: true
             )
             addRailButton.action = #selector(addButtonClicked)
@@ -1263,6 +1269,7 @@ class SidebarView: NSView, NSPopoverDelegate {
         if enabled {
             model.appGroups = []
             model.browserTabs = []
+            model.browserRootVisible = false
             model.selection = .none
         }
         render()
@@ -1288,6 +1295,9 @@ class SidebarView: NSView, NSPopoverDelegate {
         browserItemViews.values.forEach { $0.removeFromSuperview() }
         browserItemViews.removeAll()
         browserItemTopConstraints.removeAll()
+        browserRootTopConstraint?.isActive = false
+        browserRootHeader.removeFromSuperview()
+        browserRootTopConstraint = nil
         pinTileViews.values.forEach { $0.removeFromSuperview() }
         pinTileViews.removeAll()
         pinTileTopConstraints.removeAll()
@@ -1443,6 +1453,11 @@ class SidebarView: NSView, NSPopoverDelegate {
 
     // MARK: - Browser Items
 
+    func setBrowserRootVisible(_ visible: Bool) {
+        model.browserRootVisible = visible
+        render()
+    }
+
     /// Update browser tab items in the sidebar
     func updateBrowserItems(_ items: [(id: String, title: String, url: String, favicon: NSImage?)], activeId: String?) {
         model.browserTabs = items.map {
@@ -1567,6 +1582,12 @@ class SidebarView: NSView, NSPopoverDelegate {
                 itemView.isSelected = false
             }
         }
+        browserRootHeader.layer?.backgroundColor = {
+            if case .browser = model.selection {
+                return NSColor.labelColor.withAlphaComponent(0.09).cgColor
+            }
+            return NSColor.clear.cgColor
+        }()
 
         // App group selection.
         for (id, group) in groupViews {
@@ -1641,6 +1662,36 @@ class SidebarView: NSView, NSPopoverDelegate {
         let groupInset: CGFloat = SidebarGroupView.Layout.groupInset
         var yOffset = startY
 
+        if model.browserRootVisible {
+            ensureSubview(browserRootHeader, in: docView) {
+                setupBrowserRootHeader()
+                NSLayoutConstraint.activate([
+                    browserRootHeader.leadingAnchor.constraint(
+                        equalTo: docView.leadingAnchor,
+                        constant: groupInset
+                    ),
+                    browserRootHeader.trailingAnchor.constraint(
+                        equalTo: docView.trailingAnchor,
+                        constant: -groupInset
+                    ),
+                    browserRootHeader.heightAnchor.constraint(
+                        equalToConstant: SidebarGroupView.Layout.headerHeight
+                    ),
+                ])
+            }
+            updateOrCreate(
+                &browserRootTopConstraint,
+                on: browserRootHeader,
+                in: docView,
+                constant: yOffset
+            )
+            yOffset += SidebarGroupView.Layout.headerHeight + 4
+        } else {
+            browserRootTopConstraint?.isActive = false
+            browserRootHeader.removeFromSuperview()
+            browserRootTopConstraint = nil
+        }
+
         // Browser item views remain visible independently of pinned shortcuts.
         for tab in model.browserTabs {
             let tabId = tab.id
@@ -1663,7 +1714,7 @@ class SidebarView: NSView, NSPopoverDelegate {
         }
 
         // "+" button — only shown when the browser capability is available
-        if (LxAppCore.capabilities & LxAppCore.capBrowser) != 0 {
+        if (LxAppCore.capabilities & LxAppCore.capBrowser) != 0 || model.browserRootVisible {
             ensureSubview(addButton, in: docView) {
                 setupAddButton()
                 NSLayoutConstraint.activate([
@@ -1680,6 +1731,44 @@ class SidebarView: NSView, NSPopoverDelegate {
         }
 
         return yOffset
+    }
+
+    private func setupBrowserRootHeader() {
+        guard !browserRootHeaderConfigured else { return }
+        browserRootHeaderConfigured = true
+        browserRootHeader.translatesAutoresizingMaskIntoConstraints = false
+        browserRootHeader.wantsLayer = true
+        browserRootHeader.layer?.cornerRadius = SidebarGroupView.Layout.headerCornerRadius
+
+        let icon = NSImageView()
+        icon.translatesAutoresizingMaskIntoConstraints = false
+        icon.image = NSApp.applicationIconImage
+            ?? Self.designIcon("icon_globe")
+            ?? NSImage(systemSymbolName: "globe", accessibilityDescription: nil)
+        icon.imageScaling = .scaleProportionallyDown
+        browserRootHeader.addSubview(icon)
+
+        let label = NSTextField(labelWithString: L10n.string("lx_browser_label").uppercased())
+        label.translatesAutoresizingMaskIntoConstraints = false
+        label.font = NSFont.systemFont(ofSize: 11, weight: .semibold)
+        label.textColor = .labelColor
+        browserRootHeader.addSubview(label)
+
+        NSLayoutConstraint.activate([
+            icon.leadingAnchor.constraint(
+                equalTo: browserRootHeader.leadingAnchor,
+                constant: SidebarGroupView.Layout.headerHPadding
+            ),
+            icon.centerYAnchor.constraint(equalTo: browserRootHeader.centerYAnchor),
+            icon.widthAnchor.constraint(equalToConstant: 16),
+            icon.heightAnchor.constraint(equalToConstant: 16),
+            label.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 6),
+            label.trailingAnchor.constraint(
+                lessThanOrEqualTo: browserRootHeader.trailingAnchor,
+                constant: -SidebarGroupView.Layout.headerHPadding
+            ),
+            label.centerYAnchor.constraint(equalTo: browserRootHeader.centerYAnchor),
+        ])
     }
 
     /// Ensure a view is a subview of parent; run setup closure only on first add
@@ -1862,7 +1951,11 @@ class SidebarView: NSView, NSPopoverDelegate {
         addButton.title = ""
         addButton.image = LxIcon.image(
             named: "icon_browser_plus", size: CGSize(width: 16, height: 16))
+            ?? NSImage(systemSymbolName: "plus", accessibilityDescription: nil)
         addButton.toolTip = L10n.string("lx_browser_new_tab")
+        addButton.setAccessibilityElement(true)
+        addButton.setAccessibilityRole(.button)
+        addButton.setAccessibilityLabel(L10n.string("lx_browser_new_tab"))
         addButton.isBordered = false
         addButton.bezelStyle = .regularSquare
         addButton.imagePosition = .imageOnly

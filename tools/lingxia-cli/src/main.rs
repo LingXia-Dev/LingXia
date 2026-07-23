@@ -103,6 +103,11 @@ struct PlatformBuildOptions {
 
 #[derive(clap::Args, Clone)]
 struct DevOptions {
+    /// LxApp directory or http(s) URL to launch in the local desktop Runner.
+    /// Defaults to the current directory.
+    #[arg(value_name = "TARGET")]
+    target: Option<String>,
+
     #[command(flatten)]
     build_options: BuildOptions,
 
@@ -118,7 +123,7 @@ struct DevOptions {
     #[arg(long)]
     reinstall: bool,
 
-    /// Runner simulator device for `lingxia dev` on an lxapp (macOS and
+    /// Runner simulator device for `lingxia dev` on an lxapp or web URL (macOS and
     /// Windows runners): e.g. `iphone-15-pro`, `ipad`, `desktop-1440`. Only
     /// affects the lxapp runner window; ignored for native host apps.
     #[arg(long, num_args = 0..=1, default_missing_value = "")]
@@ -741,6 +746,7 @@ fn main() -> Result<()> {
         }
         Commands::Dev { dev_options } => {
             commands::dev::execute(commands::dev::DevExecuteOptions {
+                target: dev_options.target,
                 release: dev_options.build_options.release,
                 build_native: !dev_options.build_options.skip_native,
                 framework: dev_options.build_options.framework,
@@ -902,6 +908,18 @@ mod cli_tests {
             panic!("expected dev command");
         };
         assert!(dev_options.background);
+    }
+
+    #[test]
+    fn dev_accepts_lxapp_path_or_web_url_target() {
+        for target in ["../my-lxapp", "http://127.0.0.1:5173"] {
+            let cli = Cli::try_parse_from(["lingxia", "dev", target]).unwrap();
+            let Commands::Dev { dev_options } = cli.command else {
+                panic!("expected dev command");
+            };
+            assert_eq!(dev_options.target.as_deref(), Some(target));
+            assert!(dev_options.action.is_none());
+        }
     }
 
     #[test]

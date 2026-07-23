@@ -99,6 +99,11 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
 
     public private(set) var appId: String
     public private(set) var currentPath: String
+    private let webTarget: (tabId: String, ownerAppId: String, ownerSessionId: UInt64)?
+    private var preserveBrowserTabsOnClose = false
+
+    var webTargetTabId: String? { webTarget?.tabId }
+    var preservesWebTargetOnClose: Bool { preserveBrowserTabsOnClose }
 
     // Observers
     nonisolated(unsafe) private var navigationBarObserver: NSObjectProtocol?
@@ -111,12 +116,28 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
     public init(appId: String, path: String) {
         self.appId = appId
         self.currentPath = path
+        self.webTarget = nil
         
         let window = Self.createSimulatorWindow()
         super.init(window: window)
         
         setupSimulatorMode()
         setupNotificationObservers()
+    }
+
+    init(webTarget: RunnerWebTarget) {
+        self.appId = webTarget.ownerAppId
+        self.currentPath = webTarget.url.absoluteString
+        self.webTarget = (
+            webTarget.tabId,
+            webTarget.ownerAppId,
+            webTarget.ownerSessionId
+        )
+
+        let window = Self.createSimulatorWindow()
+        super.init(window: window)
+
+        setupSimulatorMode()
     }
     
     required init?(coder: NSCoder) {
@@ -391,6 +412,27 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
         
         self.phoneContentView = phoneContent
         
+        if let webTarget {
+            phoneBrowserSurface.onDismiss = { [weak self] in
+                self?.window?.performClose(nil)
+            }
+            phoneBrowserSurface.present(
+                tabId: webTarget.tabId,
+                ownerAppId: webTarget.ownerAppId,
+                ownerSessionId: webTarget.ownerSessionId,
+                in: phoneContent,
+                window: window,
+                dismissible: false,
+                topInset: Self.currentDeviceSize.usesPhoneChrome
+                    ? Layout.systemStatusBarHeight
+                    : 0
+            )
+            if Self.currentDeviceSize.usesPhoneChrome {
+                setupWebStatusBar()
+            }
+            return
+        }
+
         // Create view controller for WebView content
         let vc = SimulatorViewController(appId: appId, path: path)
         viewController = vc
@@ -454,6 +496,24 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
         // exists. Apply the current page config now that the navbar view is
         // available, so the first screen does not wait for a later notification.
         applyInitialNavigationConfiguration()
+    }
+
+    private func setupWebStatusBar() {
+        guard let phoneContent = phoneContentView, systemStatusBar == nil else { return }
+        let statusBar = createSystemStatusBar()
+        statusBar.layer?.backgroundColor = NSColor.white.cgColor
+        setupDragBehavior(statusBar)
+        phoneContent.addSubview(statusBar)
+        let height = statusBar.heightAnchor.constraint(equalToConstant: Layout.systemStatusBarHeight)
+        NSLayoutConstraint.activate([
+            statusBar.topAnchor.constraint(equalTo: phoneContent.topAnchor),
+            statusBar.leadingAnchor.constraint(equalTo: phoneContent.leadingAnchor),
+            statusBar.trailingAnchor.constraint(equalTo: phoneContent.trailingAnchor),
+            height,
+        ])
+        systemStatusBar = statusBar
+        statusBarHeightConstraint = height
+        updateStatusBarTextColors(textStyle: "black")
     }
     
     private func createSystemStatusBar() -> NSView {
@@ -801,7 +861,17 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
         devToolsPanel?.updateInfo(device: Self.currentDeviceSize, path: currentPath)
 
         // Phone UI overlay: show for phones, hide for larger shell-backed shapes.
-        if !device.usesPhoneChrome {
+        if webTarget != nil {
+            navigationBar?.isHidden = true
+            floatingCapsuleContainer?.isHidden = true
+            systemStatusBar?.isHidden = !device.usesPhoneChrome
+            phoneBrowserSurface.setTopInset(
+                device.usesPhoneChrome ? Layout.systemStatusBarHeight : 0
+            )
+            if device.usesPhoneChrome {
+                setupWebStatusBar()
+            }
+        } else if !device.usesPhoneChrome {
             systemStatusBar?.isHidden = true
             navigationBar?.isHidden   = true
             floatingCapsuleContainer?.isHidden = true
@@ -1140,7 +1210,11 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
     // MARK: - NSWindowDelegate
     
     public func windowWillClose(_ notification: Notification) {
-        phoneBrowserSurface.dismiss(closeTab: true)
+        phoneBrowserSurface.dismiss(closeTab: !preserveBrowserTabsOnClose)
+        if webTarget != nil {
+            RunnerApp.shared.handleWindowClosed(self)
+            return
+        }
         if let sessionId = RunnerSupport.Runtime.sessionId(for: appId), sessionId > 0 {
             if !suppressRuntimeCloseNotification {
                 let _ = onLxappClosed(appId, sessionId)
@@ -1194,6 +1268,7 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
     func detachForHostSwitch() {
         suppressRuntimeCloseNotification = true
         preserveRuntimeSessionOnClose = true
+        preserveBrowserTabsOnClose = true
         window?.close()
     }
 
@@ -1209,7 +1284,11 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
             ownerAppId: ownerAppId,
             ownerSessionId: ownerSessionId,
             in: phoneContentView,
-            window: window
+            window: window,
+            dismissible: webTarget == nil,
+            topInset: webTarget != nil && Self.currentDeviceSize.usesPhoneChrome
+                ? Layout.systemStatusBarHeight
+                : 0
         )
         window?.makeKeyAndOrderFront(nil)
     }

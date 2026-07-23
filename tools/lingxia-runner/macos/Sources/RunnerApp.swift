@@ -2,6 +2,13 @@ import AppKit
 import os.log
 @_spi(Runner) import lingxia
 
+struct RunnerWebTarget {
+    let url: URL
+    let tabId: String
+    let ownerAppId: String
+    let ownerSessionId: UInt64
+}
+
 /// LingXia Runner - Development tool with Simulator mode
 /// Provides Xcode-like simulator interface for testing LxApps
 @MainActor
@@ -10,6 +17,7 @@ public class RunnerApp {
     private static let log = OSLog(subsystem: "LingXiaRunner", category: "RunnerApp")
     
     private var windowController: SimulatorWindowController?
+    private var webTarget: RunnerWebTarget?
     private var surfaceShellHost: RunnerSurfaceShellHost?
     private var controller: LxAppController?
     private var controllerEventsTask: Task<Void, Never>?
@@ -88,7 +96,13 @@ public class RunnerApp {
             effectiveDevice.supportsOrientation ? deviceOrientation.displayName : ""
         )
 
-        if effectiveDevice.usesSurfaceShell {
+        if let webTarget {
+            if effectiveDevice.usesSurfaceShell {
+                switchWebTargetToSurfaceShell(webTarget, device: effectiveDevice)
+            } else {
+                switchWebTargetToPhone(webTarget, device: effectiveDevice)
+            }
+        } else if effectiveDevice.usesSurfaceShell {
             switchToSurfaceShellHost(device: effectiveDevice)
         } else {
             switchToPhoneSimulatorHost(device: effectiveDevice)
@@ -232,9 +246,43 @@ public class RunnerApp {
     }
     
     // MARK: - LxApp Management
+
+    /// Open an ordinary web development target without creating an lxapp.
+    public func openWeb(url: URL) throws {
+        let ownerAppId = RunnerSupport.Browser.builtinAppId
+        guard let tabId = RunnerSupport.Browser.openTab(url: url.absoluteString),
+              let ownerSessionId = RunnerSupport.Runtime.sessionId(for: ownerAppId),
+              ownerSessionId > 0 else {
+            throw NSError(
+                domain: "LingXiaRunner.WebTarget",
+                code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "Failed to open managed self browser"]
+            )
+        }
+        if let previous = webTarget {
+            _ = RunnerSupport.Browser.closeTab(tabId: previous.tabId)
+        }
+        let target = RunnerWebTarget(
+            url: url,
+            tabId: tabId,
+            ownerAppId: ownerAppId,
+            ownerSessionId: ownerSessionId
+        )
+        webTarget = target
+        surfaceShellHost?.shell.window?.close()
+        surfaceShellHost = nil
+        windowController?.window?.close()
+        windowController = nil
+        if deviceSize.usesSurfaceShell {
+            openWebInSurfaceShell(target, device: deviceSize)
+        } else {
+            openWebInPhoneSimulator(target, device: deviceSize)
+        }
+    }
     
     /// Open LxApp in Simulator window
     public func openLxApp(appId: String, path: String = "") {
+        webTarget = nil
         os_log("Runner openLxApp: %@ at path: %@", log: Self.log, type: .info, appId, path)
 
         let sessionId = RunnerSupport.Runtime.sessionId(for: appId) ?? getLxAppSessionId(appId)
@@ -334,6 +382,86 @@ public class RunnerApp {
             self?.surfaceShellHost = nil
         }
         surfaceShellHost = host
+    }
+
+    private func openWebInPhoneSimulator(_ target: RunnerWebTarget, device: MobileDeviceSize) {
+        surfaceShellHost?.hideForHostSwitch()
+        if let host = windowController, host.webTargetTabId == target.tabId {
+            host.applyDeviceChange(device)
+            host.window?.makeKeyAndOrderFront(nil)
+            return
+        }
+        let host = SimulatorWindowController(webTarget: target)
+        host.showWindow(self)
+        restoreBrowserTabs(in: host, target: target)
+        host.window?.makeKeyAndOrderFront(self)
+        NSApp.activate(ignoringOtherApps: true)
+        windowController = host
+    }
+
+    private func openWebInSurfaceShell(_ target: RunnerWebTarget, device: MobileDeviceSize) {
+        guard let controller else {
+            os_log("Runner controller not configured", log: Self.log, type: .error)
+            return
+        }
+        if let host = windowController {
+            host.detachForHostSwitch()
+            windowController = nil
+        }
+        if let host = surfaceShellHost {
+            host.activate()
+            host.applyDevice(device)
+            restoreBrowserTabs(in: host, target: target)
+            return
+        }
+        let host = RunnerSurfaceShellHost(
+            controller: controller,
+            webTarget: target,
+            device: device
+        )
+        host.onClose = { [weak self] closedHost in
+            guard let self, self.surfaceShellHost === closedHost else { return }
+            self.surfaceShellHost = nil
+            if self.webTarget?.tabId == target.tabId {
+                _ = RunnerSupport.Browser.closeTab(tabId: target.tabId)
+                self.webTarget = nil
+            }
+        }
+        surfaceShellHost = host
+        restoreBrowserTabs(in: host, target: target)
+    }
+
+    private func browserTabIdsForRestore(_ target: RunnerWebTarget) -> [String] {
+        var ids = RunnerSupport.Browser.tabIds()
+        if !ids.contains(target.tabId) {
+            ids.append(target.tabId)
+        }
+        let active = RunnerSupport.Browser.currentTabId() ?? target.tabId
+        ids.removeAll { $0 == active }
+        ids.append(active)
+        return ids
+    }
+
+    private func restoreBrowserTabs(
+        in host: SimulatorWindowController,
+        target: RunnerWebTarget
+    ) {
+        for tabId in browserTabIdsForRestore(target) {
+            host.presentBrowserTab(
+                id: tabId,
+                ownerAppId: target.ownerAppId,
+                ownerSessionId: target.ownerSessionId
+            )
+        }
+    }
+
+    private func restoreBrowserTabs(
+        in host: RunnerSurfaceShellHost,
+        target: RunnerWebTarget
+    ) {
+        for tabId in browserTabIdsForRestore(target) {
+            host.presentBrowserTab(id: tabId)
+        }
     }
 
     private func resolveOpenPath(appId: String, requestedPath: String, sessionId: UInt64) -> String {
@@ -537,6 +665,13 @@ public class RunnerApp {
     }
 
     func handleWindowClosed(_ controller: SimulatorWindowController) {
+        if !controller.preservesWebTargetOnClose,
+           let tabId = controller.webTargetTabId,
+           webTarget?.tabId == tabId {
+            webTarget = nil
+            surfaceShellHost?.shell.window?.close()
+            surfaceShellHost = nil
+        }
         if windowController === controller {
             windowController = nil
         }
@@ -569,6 +704,20 @@ public class RunnerApp {
             path: current.path,
             sessionId: current.sessionId
         )
+    }
+
+    private func switchWebTargetToSurfaceShell(
+        _ target: RunnerWebTarget,
+        device: MobileDeviceSize
+    ) {
+        openWebInSurfaceShell(target, device: device)
+    }
+
+    private func switchWebTargetToPhone(
+        _ target: RunnerWebTarget,
+        device: MobileDeviceSize
+    ) {
+        openWebInPhoneSimulator(target, device: device)
     }
 
     private func switchToPhoneSimulatorHost(device: MobileDeviceSize) {

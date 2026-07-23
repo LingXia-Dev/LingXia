@@ -239,6 +239,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     /// content too, so the shell can auto-show when they exist and auto-hide
     /// again when they are gone.
     private var sidebarBrowserItemCount = 0
+    private var sidebarBrowserRootVisible = false
 
     var onManagedWindowCloseRequested: (() -> Void)?
 
@@ -1647,7 +1648,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
 
         let hasDeclaredSidebarEntries = !lastSidebarHostActions.isEmpty
         let hasPinnedWebsites = sidebarView?.hasPinnedWebsites == true
-        let hasBrowserEntries = sidebarBrowserItemCount > 0
+        let hasBrowserEntries = sidebarBrowserRootVisible || sidebarBrowserItemCount > 0
 
         let hasContent = hasSwitcher
             || activeLxAppTabBarHasItems
@@ -1737,6 +1738,16 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
 // MARK: - Browser Coordinator Forwarding
 
 extension LxAppShell {
+    func setBrowserRootVisible(_ visible: Bool) {
+        sidebarBrowserRootVisible = visible
+        sidebarView?.setBrowserRootVisible(visible)
+        reconcileSidebarAutoHide()
+    }
+
+    func setBrowserPageActionsVisible(_ visible: Bool) {
+        browserCoordinator.setPageActionsVisible(visible)
+    }
+
     func toggleActiveDevTools() -> Bool {
         browserCoordinator.toggleActiveDevTools()
     }
@@ -1771,11 +1782,19 @@ extension LxAppShell: BrowserCoordinatorHost {
     var browserContentContainer: NSView { workspaceManager.contentContainer }
     var hostWindow: NSWindow? { window }
     var hasOpenTabs: Bool { tabManager.hasTabs }
+    var keepsBrowserRootWithoutTabs: Bool { sidebarBrowserRootVisible }
 
     func browserOwnerForNewTab() -> (appId: String, sessionId: UInt64)? {
         if let appId = tabManager.activeTab?.appId {
             if let sessionId = resolvedSessionId(for: appId) {
                 return (appId, sessionId)
+            }
+        }
+        if browserCoordinator.activeTabId != nil, !tabManager.hasTabs {
+            let browserAppId = getBuiltinBrowserAppId().toString()
+            let browserSessionId = getLxAppSessionId(browserAppId)
+            if !browserAppId.isEmpty && browserSessionId > 0 {
+                return (browserAppId, browserSessionId)
             }
         }
         let current = getCurrentLxApp()

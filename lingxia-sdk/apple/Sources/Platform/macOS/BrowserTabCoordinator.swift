@@ -12,6 +12,10 @@ protocol BrowserCoordinatorHost: AnyObject {
     var browserContentContainer: NSView { get }
     /// The window.
     var hostWindow: NSWindow? { get }
+    /// Whether the host has an lxapp tab to reveal after browser tabs close.
+    var hasOpenTabs: Bool { get }
+    /// Whether browser chrome remains usable when the last web tab closes.
+    var keepsBrowserRootWithoutTabs: Bool { get }
     /// Returns owner (appId, sessionId) for creating a new browser tab.
     func browserOwnerForNewTab() -> (appId: String, sessionId: UInt64)?
     /// Called before a browser tab becomes active. Host should pause current VC.
@@ -69,6 +73,7 @@ final class BrowserTabCoordinator: NSObject {
     private var tabFavicons: [String: NSImage] = [:]
     private var tabFaviconRequestOrigins: [String: String] = [:]
     private var lastObservedURLs: [String: String] = [:]
+    private var retainedNewTabOwner: (appId: String, sessionId: UInt64)?
 
     /// Tabs whose WebView has been discarded to free memory (Chrome-style).
     /// Their sidebar entry stays; the WebView is recreated on reactivation.
@@ -110,6 +115,7 @@ final class BrowserTabCoordinator: NSObject {
     private let bookmarksButton = NSButton()
     /// Per-tab page menu (bookmark, copy link, bookmarks page).
     private let menuButton = NSButton()
+    private var pageActionsVisible = true
     private let webContainer = NSView()
     nonisolated(unsafe) private var shortcutMonitor: Any?
     private var activeWebView: WKWebView?
@@ -221,7 +227,9 @@ final class BrowserTabCoordinator: NSObject {
     // MARK: - Public Tab Operations
 
     func addTab() {
-        addTabWithURL("")
+        // A persistent browser root is used by the URL Runner, which does not
+        // bundle the browser webui behind `lingxia://newtab`.
+        addTabWithURL(host?.keepsBrowserRootWithoutTabs == true ? "about:blank" : "")
     }
 
     func openSettings() {
@@ -272,6 +280,18 @@ final class BrowserTabCoordinator: NSObject {
 
     func closeTab(id: String) {
         guard let index = tabIds.firstIndex(of: id) else { return }
+
+        // A browser-only host has no lxapp surface to reveal. Keep its final
+        // tab as the mounted browser content instead of leaving an empty shell.
+        if tabIds.count == 1,
+           host?.hasOpenTabs == false,
+           host?.keepsBrowserRootWithoutTabs != true {
+            _ = browserTabNavigate(tabIdString(id), "about:blank")
+            interactedTabs.remove(id)
+            lastObservedURLs[id] = "about:blank"
+            switchToTab(id: id)
+            return
+        }
 
         // Detach WebView from UI BEFORE Rust destroy to prevent ObjC exceptions
         // during WebViewInner::Drop (removeFromSuperview/release on attached view).
@@ -347,6 +367,9 @@ final class BrowserTabCoordinator: NSObject {
     }
 
     func presentInternalBrowserTab(id: String) {
+        if let owner = host?.browserOwnerForNewTab() {
+            retainedNewTabOwner = owner
+        }
         if !tabIds.contains(id) {
             tabIds.append(id)
         }
@@ -747,10 +770,13 @@ final class BrowserTabCoordinator: NSObject {
     // MARK: - Internal Tab Operations
 
     private func addTabWithURL(_ url: String, stableTabId: String? = nil) {
-        guard let owner = host?.browserOwnerForNewTab() else {
+        let owner = host?.browserOwnerForNewTab()
+            ?? (host?.keepsBrowserRootWithoutTabs == true ? retainedNewTabOwner : nil)
+        guard let owner else {
             LXLog.error("Cannot create browser tab without active lxapp session", category: "BrowserTabCoordinator")
             return
         }
+        retainedNewTabOwner = owner
 
         let normalizedStableTabId = stableTabId?
             .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -991,6 +1017,11 @@ final class BrowserTabCoordinator: NSObject {
 
     /// Sync the distinct archive (star) and sidebar shortcut (pin) actions.
     private func updatePageSaveButtons(for url: String?) {
+        guard pageActionsVisible else {
+            starButton.isHidden = true
+            pinButton.isHidden = true
+            return
+        }
         let raw = url ?? ""
         guard BrowserPageMenu.isBookmarkActionable(raw) else {
             starButton.isHidden = true
@@ -1025,6 +1056,14 @@ final class BrowserTabCoordinator: NSObject {
     func refreshPageSaveButtons() {
         guard let activeId = activeTabId else { return }
         updatePageSaveButtons(for: activeWebView?.url?.absoluteString ?? lastObservedURLs[activeId])
+    }
+
+    func setPageActionsVisible(_ visible: Bool) {
+        pageActionsVisible = visible
+        starButton.isHidden = !visible
+        pinButton.isHidden = !visible
+        bookmarksButton.isHidden = !visible
+        menuButton.isHidden = !visible
     }
 
     private func toggleActiveBookmark() {
@@ -1254,11 +1293,13 @@ final class BrowserTabCoordinator: NSObject {
         bookmarksButton.toolTip = L10n.string("lx_browser_manage_bookmarks")
         bookmarksButton.setAccessibilityLabel(bookmarksButton.toolTip ?? "")
         toolbar.addSubview(bookmarksButton)
+        bookmarksButton.isHidden = !pageActionsVisible
 
         configureButton(menuButton, iconName: "icon_page_menu", action: #selector(menuClicked))
         menuButton.toolTip = L10n.string("lx_browser_page_menu")
         menuButton.setAccessibilityLabel(menuButton.toolTip ?? "")
         toolbar.addSubview(menuButton)
+        menuButton.isHidden = !pageActionsVisible
 
         toolbarSeparator.translatesAutoresizingMaskIntoConstraints = false
         toolbarSeparator.wantsLayer = true
@@ -1306,32 +1347,45 @@ final class BrowserTabCoordinator: NSObject {
             refreshButton.heightAnchor.constraint(equalToConstant: Layout.buttonSize),
 
             addressBarContainer.leadingAnchor.constraint(equalTo: refreshButton.trailingAnchor, constant: 8),
-            addressBarContainer.trailingAnchor.constraint(equalTo: bookmarksButton.leadingAnchor, constant: -8),
+            addressBarContainer.trailingAnchor.constraint(
+                equalTo: bookmarksButton.leadingAnchor,
+                constant: pageActionsVisible ? -8 : 0
+            ),
             addressCenterY,
             addressBarContainer.heightAnchor.constraint(equalToConstant: Layout.addressBarHeight),
 
-            bookmarksButton.trailingAnchor.constraint(equalTo: menuButton.leadingAnchor, constant: -4),
+            bookmarksButton.trailingAnchor.constraint(
+                equalTo: menuButton.leadingAnchor,
+                constant: pageActionsVisible ? -4 : 0
+            ),
             bookmarksCenterY,
-            bookmarksButton.widthAnchor.constraint(equalToConstant: Layout.buttonSize),
+            bookmarksButton.widthAnchor.constraint(
+                equalToConstant: pageActionsVisible ? Layout.buttonSize : 0
+            ),
             bookmarksButton.heightAnchor.constraint(equalToConstant: Layout.buttonSize),
 
             menuButton.trailingAnchor.constraint(equalTo: toolbar.trailingAnchor, constant: -8),
             menuCenterY,
-            menuButton.widthAnchor.constraint(equalToConstant: Layout.buttonSize),
+            menuButton.widthAnchor.constraint(
+                equalToConstant: pageActionsVisible ? Layout.buttonSize : 0
+            ),
             menuButton.heightAnchor.constraint(equalToConstant: Layout.buttonSize),
 
             addressField.leadingAnchor.constraint(equalTo: addressBarContainer.leadingAnchor, constant: 8),
             addressField.trailingAnchor.constraint(equalTo: starButton.leadingAnchor, constant: -4),
             addressField.centerYAnchor.constraint(equalTo: addressBarContainer.centerYAnchor),
 
-            starButton.trailingAnchor.constraint(equalTo: pinButton.leadingAnchor, constant: -2),
+            starButton.trailingAnchor.constraint(
+                equalTo: pinButton.leadingAnchor,
+                constant: pageActionsVisible ? -2 : 0
+            ),
             starButton.centerYAnchor.constraint(equalTo: addressBarContainer.centerYAnchor),
-            starButton.widthAnchor.constraint(equalToConstant: 20),
+            starButton.widthAnchor.constraint(equalToConstant: pageActionsVisible ? 20 : 0),
             starButton.heightAnchor.constraint(equalToConstant: 20),
 
             pinButton.trailingAnchor.constraint(equalTo: addressBarContainer.trailingAnchor, constant: -5),
             pinButton.centerYAnchor.constraint(equalTo: addressBarContainer.centerYAnchor),
-            pinButton.widthAnchor.constraint(equalToConstant: 20),
+            pinButton.widthAnchor.constraint(equalToConstant: pageActionsVisible ? 20 : 0),
             pinButton.heightAnchor.constraint(equalToConstant: 20),
 
             toolbarSeparator.topAnchor.constraint(equalTo: toolbar.bottomAnchor),

@@ -145,7 +145,13 @@ pub fn lingxia_init(
         }
     };
 
-    crate::init_with_platform(platform)
+    match crate::init_with_platform(platform) {
+        Ok(info) => info.into_lxapp_id(),
+        Err(error) => {
+            log::error!("Failed to initialize LingXia runtime: {error}");
+            None
+        }
+    }
 }
 
 /// Return the effective display language selected by the runtime.

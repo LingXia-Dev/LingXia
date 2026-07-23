@@ -5,6 +5,7 @@ use lingxia_platform::traits::app_runtime::AppRuntime;
 use lxapp::automation as auto;
 
 const LXAPP_PATH_ENV: &str = "LINGXIA_LXAPP_PATH";
+const RUNNER_WEB_URL_ENV: &str = "LINGXIA_RUNNER_WEB_URL";
 
 mod sync;
 
@@ -170,6 +171,18 @@ fn build_host_app_config(
     runtime: &lingxia_platform::Platform,
     dev_config: &LxAppDevConfig,
 ) -> lingxia_app_context::AppConfig {
+    build_default_host_app_config(
+        runtime,
+        dev_config.identity.appid.clone(),
+        dev_config.identity.version.clone(),
+    )
+}
+
+fn build_default_host_app_config(
+    runtime: &lingxia_platform::Platform,
+    home_app_id: String,
+    home_app_version: String,
+) -> lingxia_app_context::AppConfig {
     let product_name = runtime
         .get_app_identifier()
         .ok()
@@ -182,8 +195,8 @@ fn build_host_app_config(
         lingxia_id: None,
         lingxia_server: None,
         env_version: lingxia_app_context::EnvVersion::Developer,
-        home_app_id: dev_config.identity.appid.clone(),
-        home_app_version: dev_config.identity.version.clone(),
+        home_app_id,
+        home_app_version,
         cache_max_size_mb: 1024,
         storage: None,
         dev_ws_url: None,
@@ -192,6 +205,12 @@ fn build_host_app_config(
         capabilities: None,
         panels: None,
     }
+}
+
+fn build_web_runner_app_config(
+    runtime: &lingxia_platform::Platform,
+) -> lingxia_app_context::AppConfig {
+    build_default_host_app_config(runtime, String::new(), String::new())
 }
 
 pub(crate) fn prepare_host_app_config(
@@ -203,6 +222,26 @@ pub(crate) fn prepare_host_app_config(
     let _ = install_lxapp_dev_config_from_env();
 
     let Some(dev_config) = lxapp_dev_config() else {
+        if std::env::var(RUNNER_WEB_URL_ENV)
+            .ok()
+            .is_some_and(|value| !value.trim().is_empty())
+        {
+            let mut config = match runtime.read_asset("app.json") {
+                Ok(_) => load_bundled(runtime)?,
+                Err(lingxia_platform::error::PlatformError::AssetNotFound(path))
+                    if path == "app.json" =>
+                {
+                    build_web_runner_app_config(runtime.as_ref())
+                }
+                Err(error) => {
+                    log::error!("Failed to read app.json: {}", error);
+                    return None;
+                }
+            };
+            config.home_app_id.clear();
+            config.home_app_version.clear();
+            return Some(config);
+        }
         return load_bundled(runtime);
     };
 
@@ -523,6 +562,7 @@ pub async fn lxapp_dev_restart(
     let appid = resolve_dev_appid(appid)?;
     let app = resolve_dev_lxapp(&appid)?;
     let previous_session = app.runtime_info().session_id;
+    let simulated_device = device_get().ok();
 
     // A host dev session runs from its synchronized bundle cache rather than
     // directly from the project dist directory. Pull the freshly generated
@@ -547,6 +587,11 @@ pub async fn lxapp_dev_restart(
                     return Err(format!("restarted page WebView failed: {error}"));
                 }
                 if state.ready {
+                    if let Some(device) = &simulated_device {
+                        device_set(&device.id, Some(device.landscape)).map_err(|error| {
+                            format!("failed to restore simulated device after restart: {error}")
+                        })?;
+                    }
                     return Ok(dev_page_info(&app, &page, name.as_deref()));
                 }
             }

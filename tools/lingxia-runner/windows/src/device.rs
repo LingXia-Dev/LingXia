@@ -210,6 +210,17 @@ pub(crate) fn frame_spec(index: usize, landscape: bool) -> WindowsDeviceFrame {
     }
 }
 
+/// Browser chrome already owns dismissal and tab actions. Keep the simulated
+/// device selector/rotation controls, but do not overlay lxapp capsule actions.
+pub(crate) fn browser_frame_spec(index: usize, landscape: bool) -> WindowsDeviceFrame {
+    let mut frame = frame_spec(index, landscape);
+    if let Some(toolbar) = frame.toolbar.as_mut() {
+        toolbar.capsule_items.clear();
+        toolbar.capsule_close_command = None;
+    }
+    frame
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -247,5 +258,13 @@ mod tests {
         assert_eq!(frame.screen_height, preset.width);
         assert_eq!(frame.bezel_width, preset.bezel_width.max(0));
         assert_eq!(frame.outer_corner_radius, preset.outer_radius);
+    }
+
+    #[test]
+    fn browser_frame_has_no_lxapp_capsule() {
+        let frame = browser_frame_spec(default_device_index(), false);
+        let toolbar = frame.toolbar.expect("runner frame has a toolbar");
+        assert!(toolbar.capsule_items.is_empty());
+        assert_eq!(toolbar.capsule_close_command, None);
     }
 }

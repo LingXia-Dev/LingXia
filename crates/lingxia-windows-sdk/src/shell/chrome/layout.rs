@@ -105,6 +105,9 @@ pub struct WindowsShellTabBarLayout {
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct WindowsShellAddressBarLayout {
     pub visible: bool,
+    /// Whether browser chrome may dismiss back to underlying host content.
+    /// Browser-only containers have nothing to return to and hide this action.
+    pub dismissible: bool,
     pub url_text: String,
     /// The presented tab is an API-managed aside. Desktop keeps a read-only
     /// address; compact chrome omits the address and user tab creation.
@@ -117,6 +120,12 @@ pub struct WindowsShellAddressBarLayout {
     pub bookmarked: bool,
     /// Whether the current page is pinned as a sidebar shortcut.
     pub pinned: bool,
+    /// Whether desktop browser chrome exposes the current-page bookmark action.
+    pub show_bookmark: bool,
+    /// Whether desktop browser chrome exposes the current-page pin action.
+    pub show_pin: bool,
+    /// Whether desktop browser chrome exposes the generic page overflow menu.
+    pub show_page_menu: bool,
     /// Current page is an http(s) website; the capsule's star/pin buttons
     /// only exist then (internal pages cannot be bookmarked, as on macOS).
     pub web: bool,

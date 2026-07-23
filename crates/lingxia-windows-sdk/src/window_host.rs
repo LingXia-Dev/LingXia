@@ -4888,6 +4888,14 @@ fn focus_active_host_window() {
     }
 }
 
+#[cfg(all(feature = "shell-chrome", feature = "browser-runtime"))]
+pub(crate) fn dismiss_phone_tab_switcher(owner: isize) {
+    let _ = post_to_window_thread(
+        owner,
+        Box::new(move || destroy_phone_tab_switcher(hwnd_from_handle(owner))),
+    );
+}
+
 pub fn restore_and_focus_host_window(window: isize) -> bool {
     post_to_window_thread(
         window,
@@ -7409,11 +7417,24 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                     }
                     return LRESULT(0);
                 }
-                if invoke_window_close_handler(hwnd) {
+                // A browser tab can install a page-level close handler on the
+                // same HWND as the application window. Letting that handler
+                // consume the last top-level WM_CLOSE removes the page but
+                // leaves an empty host and its message loop alive.
+                let closes_primary_host = primary_host_window_except(None) == Some(hwnd);
+                let closes_last_top_level =
+                    is_top_level_window(hwnd) && !has_visible_top_level_host_window_except(hwnd);
+                if !closes_primary_host
+                    && !closes_last_top_level
+                    && invoke_window_close_handler(hwnd)
+                {
                     return LRESULT(0);
                 }
                 unsafe {
                     let _ = WindowsAndMessaging::DestroyWindow(hwnd);
+                }
+                if closes_primary_host || closes_last_top_level {
+                    crate::request_host_message_loop_exit();
                 }
                 LRESULT(0)
             }
@@ -8087,6 +8108,29 @@ fn center_and_foreground_window(hwnd: HWND) {
     }
 }
 
+/// Hidden top-level windows are parked WebView parents, not open app windows.
+/// Counting them keeps the message loop alive after the user closes the last
+/// real host window, leaving a headless Runner and its dev session behind.
+fn has_visible_top_level_host_window_except(excluded: HWND) -> bool {
+    let Some(handles) = WEBTAG_WINDOWS.get().and_then(|handles| handles.lock().ok()) else {
+        return false;
+    };
+    let mut seen = HashSet::new();
+    handles.values().copied().any(|handle| {
+        if !seen.insert(handle) {
+            return false;
+        }
+        let hwnd = hwnd_from_handle(handle);
+        registered_host_keeps_message_loop(
+            hwnd_handle(excluded),
+            handle,
+            unsafe { WindowsAndMessaging::IsWindow(Some(hwnd)).as_bool() },
+            is_top_level_window(hwnd),
+            is_window_visible(hwnd),
+        )
+    })
+}
+
 fn has_live_top_level_host_window_except(excluded: HWND) -> bool {
     let Some(handles) = WEBTAG_WINDOWS.get().and_then(|handles| handles.lock().ok()) else {
         return false;
@@ -8099,6 +8143,16 @@ fn has_live_top_level_host_window_except(excluded: HWND) -> bool {
         let hwnd = hwnd_from_handle(handle);
         unsafe { WindowsAndMessaging::IsWindow(Some(hwnd)).as_bool() && is_top_level_window(hwnd) }
     })
+}
+
+fn registered_host_keeps_message_loop(
+    excluded: isize,
+    candidate: isize,
+    exists: bool,
+    top_level: bool,
+    visible: bool,
+) -> bool {
+    candidate != excluded && exists && top_level && visible
 }
 
 fn invoke_host_window_created_handler(hwnd: HWND) {
@@ -8395,7 +8449,7 @@ mod tests {
     use super::apply_phone_switcher_alpha;
     use super::{
         WindowResizeDrag, WindowResizeEdge, WindowsFrameButton, frame_button_non_client_hit,
-        resized_window_rect, same_window_generation,
+        registered_host_keeps_message_loop, resized_window_rect, same_window_generation,
     };
     #[cfg(all(feature = "shell-chrome", feature = "device-frame"))]
     use super::{device_frame_surface_corner_radii, per_corner_region_row_span};
@@ -8455,6 +8509,13 @@ mod tests {
         assert!(same_window_generation(Some(42), 42));
         assert!(!same_window_generation(Some(43), 42));
         assert!(!same_window_generation(None, 42));
+    }
+
+    #[test]
+    fn hidden_parked_hosts_do_not_keep_the_message_loop_alive() {
+        assert!(!registered_host_keeps_message_loop(1, 2, true, true, false));
+        assert!(registered_host_keeps_message_loop(1, 2, true, true, true));
+        assert!(!registered_host_keeps_message_loop(1, 1, true, true, true));
     }
 
     #[cfg(all(feature = "shell-chrome", feature = "device-frame"))]

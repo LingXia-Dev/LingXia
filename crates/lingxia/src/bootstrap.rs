@@ -219,7 +219,9 @@ fn seed_display_language(app_data_dir: &std::path::Path) {
 
 /// Common initialization after Platform is created.
 /// Registers built-in runtime and initializes the lxapp system.
-pub(crate) fn init_with_platform(platform: lingxia_platform::Platform) -> Option<String> {
+pub(crate) fn init_with_platform(
+    platform: lingxia_platform::Platform,
+) -> crate::Result<crate::RuntimeInfo> {
     use lingxia_platform::traits::app_runtime::AppRuntime;
 
     crate::host_addon::run_before_init();
@@ -227,15 +229,18 @@ pub(crate) fn init_with_platform(platform: lingxia_platform::Platform) -> Option
     let runtime = std::sync::Arc::new(platform.clone());
     crate::runtime::set_platform(runtime.clone());
     #[cfg(feature = "devtool")]
-    let app_config = crate::devtool::prepare_host_app_config(&runtime, load_bundled_app_config)?;
+    let app_config = crate::devtool::prepare_host_app_config(&runtime, load_bundled_app_config)
+        .ok_or_else(|| crate::Error::internal("failed to load host app configuration"))?;
     #[cfg(not(feature = "devtool"))]
-    let app_config = load_bundled_app_config(&runtime)?;
+    let app_config = load_bundled_app_config(&runtime)
+        .ok_or_else(|| crate::Error::internal("failed to load host app configuration"))?;
     crate::app::set_data_dir(runtime.app_data_dir());
     seed_display_language(&runtime.app_data_dir());
     install_global_executor();
     if let Err(err) = lingxia_app_context::set_app_config(app_config.clone()) {
-        log::error!("Failed to initialize app configuration: {}", err);
-        return None;
+        return Err(crate::Error::internal(format!(
+            "failed to initialize app configuration: {err}"
+        )));
     }
     // App config (with the device dev-ws-url) is now loaded, so a dev session is
     // detectable: default logging to debug unless LINGXIA_LOG_LEVEL pinned it.
@@ -251,7 +256,7 @@ pub(crate) fn init_with_platform(platform: lingxia_platform::Platform) -> Option
     lingxia_logic::register_logic_runtime();
     #[cfg(feature = "automation")]
     lingxia_automation::register_automation_runtime();
-    let home_app_id = lxapp::init(platform);
+    let home_app_id = lxapp::init(platform)?;
     if let Err(error) = crate::shell::initialize(runtime.clone()) {
         log::error!("Failed to initialize host shell state: {error}");
     }
@@ -260,7 +265,7 @@ pub(crate) fn init_with_platform(platform: lingxia_platform::Platform) -> Option
     crate::host_addon::run_after_init();
     crate::browser::warmup();
     crate::host_addon::run_start_services();
-    home_app_id
+    Ok(crate::RuntimeInfo::new(home_app_id))
 }
 
 #[cfg(test)]

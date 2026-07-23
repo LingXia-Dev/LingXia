@@ -3230,6 +3230,7 @@ dependencies = [
  "toml",
  "tungstenite",
  "ureq",
+ "url",
  "urlencoding",
  "usvg 0.47.0",
  "uuid",

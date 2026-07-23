@@ -28,7 +28,11 @@ enum RunnerBridge {
     }
 
     static func sessionId(for appId: String) -> UInt64? {
-        LxAppCore.sessionId(for: appId)
+        if let sessionId = LxAppCore.sessionId(for: appId) {
+            return sessionId
+        }
+        let sessionId = getLxAppSessionId(appId)
+        return sessionId > 0 ? sessionId : nil
     }
 
     static func currentAppId() -> String? {
@@ -111,10 +115,33 @@ enum RunnerBridge {
         return tabId.isEmpty ? nil : tabId
     }
 
+    static func createUnownedBrowserTab(url: String) -> String? {
+        guard let openedTab = openUnownedBrowserTab(url) else {
+            return nil
+        }
+        let tabId = openedTab.toString().trimmingCharacters(in: .whitespacesAndNewlines)
+        return tabId.isEmpty ? nil : tabId
+    }
+
     static func browserTabIsAside(tabId: String) -> Bool {
         let normalized = tabId.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalized.isEmpty else { return false }
         return lingxia.browserTabIsAside(normalized)
+    }
+
+    static func browserTabIds() -> [String] {
+        let json = lingxia.browserTabIdsJson().toString()
+        guard let data = json.data(using: .utf8),
+              let ids = try? JSONDecoder().decode([String].self, from: data) else {
+            return []
+        }
+        return ids
+    }
+
+    static func browserCurrentTabId() -> String? {
+        let id = lingxia.browserCurrentTabId().toString()
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return id.isEmpty ? nil : id
     }
 
     static func builtinBrowserAppId() -> String {
@@ -239,6 +266,17 @@ enum RunnerBridge {
 
     static func setSurfaceShellTopAccessory(_ shell: LxAppShell, view: NSView?, height: CGFloat) {
         shell.setTopAccessory(view, height: height)
+    }
+
+    static func setSurfaceShellBrowserPageActionsVisible(
+        _ shell: LxAppShell,
+        visible: Bool
+    ) {
+        shell.setBrowserPageActionsVisible(visible)
+    }
+
+    static func setSurfaceShellBrowserRootVisible(_ shell: LxAppShell, visible: Bool) {
+        shell.setBrowserRootVisible(visible)
     }
 
     static func openInSurfaceShell(

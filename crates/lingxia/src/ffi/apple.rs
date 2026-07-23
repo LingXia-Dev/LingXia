@@ -136,9 +136,16 @@ mod bridge {
         pub webview_ptr: usize,
     }
 
+    #[swift_bridge(swift_repr = "struct")]
+    pub struct LingxiaInitResult {
+        pub ok: bool,
+        pub home_app_id: String,
+        pub error: String,
+    }
+
     extern "Rust" {
         #[swift_bridge(swift_name = "lingxiaInit")]
-        fn lingxia_init(data_dir: &str, cache_dir: &str, locale: &str) -> Option<String>;
+        fn lingxia_init(data_dir: &str, cache_dir: &str, locale: &str) -> LingxiaInitResult;
 
         #[swift_bridge(swift_name = "getDisplayLanguage")]
         fn get_display_language() -> String;
@@ -288,6 +295,10 @@ mod bridge {
         #[swift_bridge(swift_name = "openBrowserTab")]
         fn open_browser_tab(appid: &str, session_id: u64, url: &str) -> Option<String>;
 
+        // Opens an ownerless tab in the managed browser group.
+        #[swift_bridge(swift_name = "openUnownedBrowserTab")]
+        fn open_unowned_browser_tab(url: &str) -> Option<String>;
+
         #[swift_bridge(swift_name = "openStandaloneBrowserTab")]
         fn open_standalone_browser_tab(
             appid: &str,
@@ -304,6 +315,12 @@ mod bridge {
         // Whether the tab belongs to the API-managed aside browser group.
         #[swift_bridge(swift_name = "browserTabIsAside")]
         fn browser_tab_is_aside(tab_id: &str) -> bool;
+
+        #[swift_bridge(swift_name = "browserTabIdsJson")]
+        fn browser_tab_ids_json() -> String;
+
+        #[swift_bridge(swift_name = "browserCurrentTabId")]
+        fn browser_current_tab_id() -> String;
 
         #[swift_bridge(swift_name = "urlCallbackDispatch")]
         fn url_callback_dispatch(url: &str) -> bool;
@@ -550,7 +567,7 @@ fn install_browser_native_input_host() {
 fn install_browser_native_input_host() {}
 
 /// Initialize the Lingxia SDK for iOS/macOS
-pub fn lingxia_init(data_dir: &str, cache_dir: &str, locale: &str) -> Option<String> {
+pub fn lingxia_init(data_dir: &str, cache_dir: &str, locale: &str) -> bridge::LingxiaInitResult {
     crate::logging::init();
     install_browser_native_input_host();
 
@@ -568,11 +585,26 @@ pub fn lingxia_init(data_dir: &str, cache_dir: &str, locale: &str) -> Option<Str
         Ok(platform) => platform,
         Err(e) => {
             log::error!("Failed to create Platform: {}", e);
-            return None;
+            return bridge::LingxiaInitResult {
+                ok: false,
+                home_app_id: String::new(),
+                error: e.to_string(),
+            };
         }
     };
 
-    crate::init_with_platform(platform)
+    match crate::init_with_platform(platform) {
+        Ok(info) => bridge::LingxiaInitResult {
+            ok: true,
+            home_app_id: info.into_lxapp_id().unwrap_or_default(),
+            error: String::new(),
+        },
+        Err(error) => bridge::LingxiaInitResult {
+            ok: false,
+            home_app_id: String::new(),
+            error: error.to_string(),
+        },
+    }
 }
 
 /// Return the effective display language selected by the runtime.
@@ -777,6 +809,18 @@ pub fn open_browser_tab(appid: &str, session_id: u64, url: &str) -> Option<Strin
         }
     })
 }
+
+pub fn open_unowned_browser_tab(url: &str) -> Option<String> {
+    ffi_catch_unwind!("open_unowned_browser_tab", None, || {
+        match crate::browser::open(url, None) {
+            Ok(tab_id) => Some(tab_id),
+            Err(error) => {
+                log::error!("open_unowned_browser_tab failed: {error}");
+                None
+            }
+        }
+    })
+}
 /// Offer a navigation URL from a native (non-managed) WebView to the
 /// URL-callback registry. `true` means a channel consumed it and the native
 /// side must cancel the navigation.
@@ -835,6 +879,42 @@ pub fn open_aside_browser_tab(appid: &str, session_id: u64, url: &str) -> Option
 pub fn browser_tab_is_aside(tab_id: &str) -> bool {
     ffi_catch_unwind!("browser_tab_is_aside", false, || {
         crate::browser::tab_is_aside(tab_id)
+    })
+}
+
+pub fn browser_tab_ids_json() -> String {
+    ffi_catch_unwind!("browser_tab_ids_json", "[]".to_string(), || {
+        #[cfg(feature = "browser-runtime")]
+        {
+            let ids = lingxia_browser::tabs()
+                .into_iter()
+                .filter(|tab| {
+                    !lingxia_browser::tab_is_aside(&tab.tab_id)
+                        && !lingxia_browser::tab_is_standalone(&tab.tab_id)
+                })
+                .map(|tab| tab.tab_id)
+                .collect::<Vec<_>>();
+            serde_json::to_string(&ids).unwrap_or_else(|_| "[]".to_string())
+        }
+        #[cfg(not(feature = "browser-runtime"))]
+        "[]".to_string()
+    })
+}
+
+pub fn browser_current_tab_id() -> String {
+    ffi_catch_unwind!("browser_current_tab_id", String::new(), || {
+        #[cfg(feature = "browser-runtime")]
+        {
+            lingxia_browser::current_tab()
+                .filter(|tab| {
+                    !lingxia_browser::tab_is_aside(&tab.tab_id)
+                        && !lingxia_browser::tab_is_standalone(&tab.tab_id)
+                })
+                .map(|tab| tab.tab_id)
+                .unwrap_or_default()
+        }
+        #[cfg(not(feature = "browser-runtime"))]
+        String::new()
     })
 }
 

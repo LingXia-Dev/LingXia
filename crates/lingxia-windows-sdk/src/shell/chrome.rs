@@ -467,7 +467,7 @@ fn chrome_hover_rect(
     if phone_browser_bar_active(client, layout)
         && let Some(address_bar) = &layout.address_bar
     {
-        let rects = phone_browser_bar_rects(client, address_bar.aside);
+        let rects = phone_browser_bar_rects(client, address_bar.aside, address_bar.dismissible);
         if rect_contains(&rects.bar, point) {
             let buttons = [
                 Some(rects.back),
@@ -476,7 +476,7 @@ fn chrome_hover_rect(
                 rects.address_reload,
                 rects.new_tab,
                 Some(rects.tabs),
-                Some(rects.close),
+                rects.close,
             ];
             for rect in buttons.into_iter().flatten() {
                 if rect_contains(&rect, point) {
@@ -663,7 +663,15 @@ pub(crate) fn shell_chrome_dirty_rects(
         if phone_browser_bar_active(client, new_layout) {
             push_dirty_rect(
                 &mut dirty,
-                phone_browser_bar_rects(client, phone_bar_is_aside(new_layout)).bar,
+                phone_browser_bar_rects(
+                    client,
+                    phone_bar_is_aside(new_layout),
+                    new_layout
+                        .address_bar
+                        .as_ref()
+                        .is_some_and(|address_bar| address_bar.dismissible),
+                )
+                .bar,
                 client,
             );
         }
@@ -984,7 +992,15 @@ pub(super) fn compute_chrome_rects(client: RECT, layout: &WindowsShellWindowLayo
     // The phone-frame browser chrome docks at the screen's bottom (the macOS
     // RunnerPhoneBrowserSurface layout); the webview ends above it.
     if phone_browser_bar_active(client, layout) {
-        let bar = phone_browser_bar_rects(client, phone_bar_is_aside(layout)).bar;
+        let bar = phone_browser_bar_rects(
+            client,
+            phone_bar_is_aside(layout),
+            layout
+                .address_bar
+                .as_ref()
+                .is_some_and(|address_bar| address_bar.dismissible),
+        )
+        .bar;
         content.bottom = bar.top.max(content.top);
     }
 
@@ -1615,7 +1631,7 @@ pub(super) fn chrome_hit_test(
     if phone_browser_bar_active(client, layout)
         && let Some(address_bar) = &layout.address_bar
     {
-        let rects = phone_browser_bar_rects(client, address_bar.aside);
+        let rects = phone_browser_bar_rects(client, address_bar.aside, address_bar.dismissible);
         if rect_contains(&rects.bar, point) {
             if rect_contains(&rects.back, point) {
                 return Some(chrome_command(command_id::BROWSER_NAV_BACK, json!({})));
@@ -1639,7 +1655,10 @@ pub(super) fn chrome_hit_test(
             if rect_contains(&rects.tabs, point) {
                 return Some(chrome_command(command_id::BROWSER_TABS_CYCLE, json!({})));
             }
-            if rect_contains(&rects.close, point) {
+            if rects
+                .close
+                .is_some_and(|close| rect_contains(&close, point))
+            {
                 return Some(chrome_command(command_id::BROWSER_CLOSE, json!({})));
             }
             if rects
@@ -2239,6 +2258,7 @@ mod scroll_tests {
         let layout = WindowsShellWindowLayout {
             address_bar: Some(WindowsShellAddressBarLayout {
                 visible: true,
+                dismissible: true,
                 aside: true,
                 ..Default::default()
             }),
@@ -2253,6 +2273,37 @@ mod scroll_tests {
     }
 
     #[test]
+    fn runner_browser_hides_pin_and_page_menu() {
+        let client = RECT {
+            left: 0,
+            top: 0,
+            right: 1024,
+            bottom: 768,
+        };
+        let top_bar = RECT {
+            bottom: SHELL_TOP_BAR_HEIGHT,
+            ..client
+        };
+        let layout = WindowsShellWindowLayout {
+            address_bar: Some(WindowsShellAddressBarLayout {
+                visible: true,
+                web: true,
+                show_bookmark: false,
+                show_pin: false,
+                show_page_menu: false,
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+
+        let controls = top_bar_controls(client, top_bar, &layout);
+        assert!(controls.address.is_some());
+        assert!(controls.bookmark.is_none());
+        assert!(controls.pin.is_none());
+        assert!(controls.page_menu.is_none());
+    }
+
+    #[test]
     fn compact_aside_omits_address_and_tabs_remain_actionable() {
         let client = RECT {
             left: 0,
@@ -2263,6 +2314,7 @@ mod scroll_tests {
         let layout = WindowsShellWindowLayout {
             address_bar: Some(WindowsShellAddressBarLayout {
                 visible: true,
+                dismissible: true,
                 aside: true,
                 ..Default::default()
             }),
@@ -2278,7 +2330,7 @@ mod scroll_tests {
             frame_button_pressed: None,
             cursor: None,
         };
-        let rects = phone_browser_bar_rects(client, true);
+        let rects = phone_browser_bar_rects(client, true, true);
         let center = |rect: RECT| ((rect.left + rect.right) / 2, (rect.top + rect.bottom) / 2);
 
         assert!(rects.address.is_none());

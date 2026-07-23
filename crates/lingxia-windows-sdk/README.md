@@ -3,7 +3,7 @@
 Pure Rust Windows host SDK for LingXia.
 
 `lingxia-windows-sdk` is the crate a native Windows executable uses to boot the
-LingXia runtime, open the home lxapp, register Windows host components, and
+LingXia runtime, mount an LxApp or Browser, register Windows host components, and
 run the Win32 message loop.
 
 It is intentionally not the Windows runner application and not the LingXia
@@ -67,16 +67,17 @@ Feature tiers: `host-api` ⊂ `components` ⊂ `runtime` ⊂ `standard`/`browser
 
 Boot API:
 
-- `init_runtime(app) -> home_app_id` — host-agnostic: boots the runtime,
+- `init_runtime(app) -> RuntimeInfo` — host-agnostic: boots the runtime,
   presents no window, installs no backend.
 - `install_windows_components()` — installs SDK-managed native component
   integrations without installing the default backend.
 - `install_default_windows_host()` — installs the SDK's default WebView
   parent-window host + backend + components + app menu (+ shell under
   `browser-shell`).
-- `start_default_host(app) -> home_app_id` — `install_default_windows_host` +
-  `init_runtime` + opens the home window, *without* pumping the loop (for hosts
-  that want the default UI but their own post-boot setup, e.g. the runner).
+- `start_default_host(app) -> WindowsHost` — `install_default_windows_host` +
+  `init_runtime` + mounts the configured `WindowsContent`, *without* pumping
+  the loop (for hosts that want the default UI but their own post-boot setup,
+  e.g. the runner).
 - `quick_start()` — `start_default_host` + `run_message_loop`.
 
 ## Minimal Host (quick-start)
@@ -92,3 +93,16 @@ Apple SDK pattern where host metadata comes from bundled config rather than
 from the application entry point.
 
 `init_runtime` and `run_message_loop` must run on the same thread.
+
+To mount the managed Browser instead of the configured LxApp, enable the
+`browser-runtime` feature and select it on the container:
+
+```rust,no_run
+let app = lingxia_windows_sdk::WindowsApp::from_env()
+    .with_content(lingxia_windows_sdk::WindowsContent::Browser(
+        "https://example.com".to_string(),
+    ));
+let host = lingxia_windows_sdk::start_default_host(app)?;
+let exit_code = lingxia_windows_sdk::run_message_loop();
+# Ok::<_, lingxia_windows_sdk::WindowsHostError>((host, exit_code))
+```

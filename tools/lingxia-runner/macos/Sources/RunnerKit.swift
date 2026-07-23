@@ -1,5 +1,12 @@
 import AppKit
+import Darwin
 @_spi(Runner) import lingxia
+
+private func removeRunnerPidFileIfRequested() {
+    let env = ProcessInfo.processInfo.environment
+    guard let path = env["LINGXIA_RUNNER_PID_FILE"], !path.isEmpty else { return }
+    try? FileManager.default.removeItem(atPath: path)
+}
 
 /// Public entry point for the LingXia Runner simulator.
 public struct RunnerKit {
@@ -29,7 +36,7 @@ public struct RunnerKit {
         NotificationCenter.default.addObserver(
             forName: NSApplication.willTerminateNotification, object: nil, queue: .main
         ) { _ in
-            try? FileManager.default.removeItem(at: url)
+            removeRunnerPidFileIfRequested()
         }
     }
 }
@@ -40,9 +47,25 @@ private class RunnerKitDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         Lingxia.enableWebViewDebugging()
+        if let rawURL = ProcessInfo.processInfo.environment["LINGXIA_RUNNER_WEB_URL"],
+           let url = URL(string: rawURL),
+           url.scheme == "http" || url.scheme == "https" {
+            RunnerApp.shared.bind(controller: controller)
+            Lingxia.activate(controller: controller)
+            guard initializeRuntime() else { return }
+            RunnerApp.shared.setDeviceSize(.defaultDevice)
+            do {
+                try RunnerApp.shared.openWeb(url: url)
+            } catch {
+                NSLog("LingXia Runner self browser failed: %@", error.localizedDescription)
+                removeRunnerPidFileIfRequested()
+                Darwin.exit(EXIT_FAILURE)
+            }
+            return
+        }
         RunnerApp.shared.bind(controller: controller)
         Lingxia.activate(controller: controller)
-        _ = try? Lingxia.initializeRuntime()
+        guard initializeRuntime() else { return }
 
         controller.setInterceptor(.willOpen) { context in
             guard case .object(let payload) = context.payload,
@@ -62,6 +85,17 @@ private class RunnerKitDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
-        return false
+        return ProcessInfo.processInfo.environment["LINGXIA_RUNNER_WEB_URL"] != nil
+    }
+
+    private func initializeRuntime() -> Bool {
+        do {
+            _ = try Lingxia.initializeRuntime()
+            return true
+        } catch {
+            NSLog("LingXia Runner runtime initialization failed: %@", error.localizedDescription)
+            removeRunnerPidFileIfRequested()
+            Darwin.exit(EXIT_FAILURE)
+        }
     }
 }

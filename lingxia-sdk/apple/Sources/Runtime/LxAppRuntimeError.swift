@@ -2,6 +2,6 @@
 public enum LxAppRuntimeError: Error, Codable, Sendable {
     /// `initialize()` was called more than once.
     case alreadyInitialized
-    /// The Rust `lingxiaInit` call returned nil (no home app configured).
+    /// The Rust runtime reported an initialization failure.
     case initializationFailed(message: String)
 }

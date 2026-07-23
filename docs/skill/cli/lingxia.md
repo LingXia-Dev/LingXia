@@ -100,6 +100,23 @@ Harmony get reverse port forwarding so the device reaches the local dev server;
 iOS embeds a LAN dev websocket URL, so the iOS device must be able to reach the
 host Mac over the local network.
 
+`dev` also accepts an explicit Runner target, so the current directory remains
+the owner of session state while the launched content lives elsewhere:
+
+```bash
+lingxia dev ../my-lxapp                  # build and run a standalone lxapp
+lingxia dev http://127.0.0.1:5173        # run an existing web dev server
+lingxia dev https://preview.example.com  # run a remote web target
+```
+
+An explicit path must be a standalone lxapp directory. An explicit URL must use
+`http` or `https`; Runner mounts its managed browser in self mode, with an editable
+URL field, page history, and its own tab group. The field accepts URLs, not
+search queries. A URL target does not create a placeholder lxapp
+and neither target directory needs `lingxia.yaml` — that file remains native
+host configuration. `status`, `stop`, logs, and `.lingxia/` state are scoped to
+the directory where `lingxia dev <target>` was invoked.
+
 Override the display language for one Runner session when testing localization:
 
 ```bash

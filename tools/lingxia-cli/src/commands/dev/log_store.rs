@@ -134,9 +134,28 @@ pub fn register_session(
     target: &str,
     ws_url: &str,
 ) -> Registration {
+    register_session_with_content(
+        project_root,
+        session,
+        target,
+        ws_url,
+        lingxia_devtool_protocol::broker::SessionContent::Host {
+            path: canonical_project_root(project_root),
+        },
+    )
+}
+
+pub fn register_session_with_content(
+    context_root: &Path,
+    session: &DevLogSession,
+    target: &str,
+    ws_url: &str,
+    content: lingxia_devtool_protocol::broker::SessionContent,
+) -> Registration {
     let info = SessionInfo {
         session_id: session.session_id.clone(),
-        project_root: canonical_project_root(project_root),
+        project_root: canonical_project_root(context_root),
+        content: Some(content),
         target: target.to_string(),
         pid: std::process::id(),
         started_at: now_timestamp_ms(),
@@ -184,7 +203,7 @@ fn session_state_from_echo(echo: Option<(bool, Option<serde_json::Value>)>) -> D
 
 /// Live sessions for a given target in this project. Used by `lingxia dev` to
 /// detect "another session is already running" before launching.
-pub fn find_live_for_platform(project_root: &Path, target: &str) -> Result<Vec<SessionInfo>> {
+pub fn find_live_for_target(project_root: &Path, target: &str) -> Result<Vec<SessionInfo>> {
     Ok(list_sessions(project_root)?
         .into_iter()
         .filter(|s| s.target.eq_ignore_ascii_case(target))

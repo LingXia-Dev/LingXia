@@ -199,10 +199,16 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_lingxiaInit<'a>(
         }
         .map_err(|_| jni::errors::Error::JniCall(jni::errors::JniError::Unknown))?;
 
-        let home_app_id = crate::init_with_platform(platform);
+        let home_app_id = match crate::init_with_platform(platform) {
+            Ok(home_app_id) => home_app_id,
+            Err(error) => {
+                error!("Failed to initialize LingXia runtime: {error}");
+                return Ok(JString::null());
+            }
+        };
 
         // Return the home appid
-        match home_app_id {
+        match home_app_id.into_lxapp_id() {
             Some(appid) => {
                 let java_string = env.new_string(&appid)?;
                 Ok(java_string)

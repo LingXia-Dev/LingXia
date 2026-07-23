@@ -8,7 +8,7 @@ import OSLog
 ///
 /// ```swift
 /// let info = try await LxAppRuntime.shared.initialize()
-/// print(info.homeAppId)
+/// print(info.lxAppId)
 /// ```
 @MainActor
 public final class LxAppRuntime {
@@ -48,7 +48,7 @@ public final class LxAppRuntime {
     /// 4. Populates `info` with the results.
     ///
     /// - Throws: `LxAppRuntimeError.alreadyInitialized` on double-init.
-    /// - Throws: `LxAppRuntimeError.initializationFailed` if Rust returns nil.
+    /// - Throws: `LxAppRuntimeError.initializationFailed` if Rust reports failure.
     /// - Returns: The `LxAppRuntimeInfo` snapshot.
     @discardableResult
     public func initialize() throws -> LxAppRuntimeInfo {
@@ -67,23 +67,20 @@ public final class LxAppRuntime {
 
         // 4. Call Rust init.
         let locale = Locale.current.identifier
-        guard let initResult = lingxiaInit(dirs.dataPath, dirs.cachesPath, locale) else {
+        let initResult = lingxiaInit(dirs.dataPath, dirs.cachesPath, locale)
+        guard initResult.ok else {
             throw LxAppRuntimeError.initializationFailed(
-                message: "lingxiaInit returned nil — check lingxia.config.json"
+                message: initResult.error.toString()
             )
         }
 
-        let homeAppId = initResult.toString()
-        guard !homeAppId.isEmpty else {
-            throw LxAppRuntimeError.initializationFailed(
-                message: "lingxiaInit returned empty home app id"
-            )
-        }
+        let rawLxAppId = initResult.home_app_id.toString()
+        let lxAppId = rawLxAppId.isEmpty ? nil : rawLxAppId
 
         let caps = LxAppCapabilities(rawValue: getAppCapabilities())
 
         let runtimeInfo = LxAppRuntimeInfo(
-            homeAppId: homeAppId,
+            lxAppId: lxAppId,
             capabilities: caps,
             dataPath: dirs.dataPath,
             cachesPath: dirs.cachesPath
@@ -92,14 +89,14 @@ public final class LxAppRuntime {
         self.info = runtimeInfo
         Self.didInitializeUnsafe = true
 
-        LxAppCore.homeLxAppId = homeAppId
+        LxAppCore.homeLxAppId = lxAppId
         LxAppCore.capabilities = caps.rawValue
 
         os_log(
-            "LxAppRuntime initialized — home: %{public}@ capabilities=%{public}u browser=%{public}@",
+            "LxAppRuntime initialized — lxapp: %{public}@ capabilities=%{public}u browser=%{public}@",
             log: Self.log,
             type: .info,
-            homeAppId,
+            lxAppId ?? "none",
             caps.rawValue,
             caps.contains(.browser) ? "true" : "false"
         )

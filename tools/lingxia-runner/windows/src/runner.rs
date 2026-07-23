@@ -1,10 +1,11 @@
 use crate::device::{
     ABOUT_COMMAND, CAPSULE_CLOSE_COMMAND, CLEAN_CACHE_COMMAND, DEVICE_COMMAND_BASE,
-    OPEN_DEVTOOLS_COMMAND, RESTART_LXAPP_COMMAND, ROTATE_COMMAND, frame_spec, initial_device_index,
-    is_phone, is_tablet, presets,
+    OPEN_DEVTOOLS_COMMAND, RESTART_LXAPP_COMMAND, ROTATE_COMMAND, browser_frame_spec, frame_spec,
+    initial_device_index, is_phone, is_tablet, presets,
 };
 use lingxia_windows_sdk::WindowsShellTabBarPosition;
 use lxapp::{LxAppDelegate, LxAppUiEventType};
+use std::sync::OnceLock;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 /// The device + orientation the simulator currently shows. The toolbar's
@@ -12,15 +13,19 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 /// device from the selector resets to portrait.
 static CURRENT_DEVICE: AtomicUsize = AtomicUsize::new(0);
 static LANDSCAPE: AtomicBool = AtomicBool::new(false);
+static BROWSER_HOST: OnceLock<lingxia_windows_sdk::WindowsHost> = OnceLock::new();
 
 const ARG_ASSET_DIR: &str = "--asset-dir";
 const ARG_LXAPP_PATH: &str = "--lxapp-path";
+const ARG_WEB_URL: &str = "--web-url";
+const ARG_STATE_ROOT: &str = "--state-root";
 const ARG_DEV_WS_URL: &str = "--dev-ws-url";
 const ARG_RUNNER_DEVICE: &str = "--runner-device";
 const ARG_RUNNER_ENV: &str = "--runner-env";
 const ARG_DISPLAY_LANGUAGE: &str = "--display-language";
 const ARG_RESOURCE_LXAPP_PATHS: &str = "--resource-lxapp-paths";
 const ENV_LXAPP_PATH: &str = "LINGXIA_LXAPP_PATH";
+const ENV_WEB_URL: &str = "LINGXIA_RUNNER_WEB_URL";
 const ENV_DEV_WS_URL: &str = "LINGXIA_DEV_WS_URL";
 const ENV_STATE_ROOT: &str = "LINGXIA_STATE_ROOT";
 const ENV_RUNNER_DEVICE: &str = "LINGXIA_RUNNER_DEVICE";
@@ -79,7 +84,12 @@ pub(crate) fn run() -> lingxia_windows_sdk::Result<()> {
     let initial_landscape = is_tablet(default_device);
     CURRENT_DEVICE.store(default_device, Ordering::Release);
     LANDSCAPE.store(initial_landscape, Ordering::Release);
-    let initial_frame = frame_spec(default_device, initial_landscape);
+    let web_url = std::env::var(ENV_WEB_URL).ok();
+    let initial_frame = if web_url.is_some() {
+        browser_frame_spec(default_device, initial_landscape)
+    } else {
+        frame_spec(default_device, initial_landscape)
+    };
     lingxia_windows_sdk::set_windows_default_shell_tabbar_position(tabbar_position_for_device(
         default_device,
     ));
@@ -89,10 +99,23 @@ pub(crate) fn run() -> lingxia_windows_sdk::Result<()> {
     if let Some(asset_dir) = asset_dir {
         app = app.with_asset_dir(asset_dir);
     }
-    let home_app_id = lingxia_windows_sdk::start_default_host(app)?;
-    install_runner_commands(home_app_id.clone());
+    if let Some(url) = &web_url {
+        app = app.with_browser(url);
+    }
+    let host = lingxia_windows_sdk::start_default_host(app)?;
     lingxia::dev::register_device_controller(Box::new(RunnerDeviceController));
-    apply_default_device(home_app_id, default_device, initial_landscape);
+    if web_url.is_some() {
+        let _ = BROWSER_HOST.set(host.clone());
+        install_browser_runner_commands(host);
+    } else {
+        let lxapp_id = host
+            .runtime()
+            .lxapp_id()
+            .ok_or(lingxia_windows_sdk::WindowsHostError::MissingLxApp)?
+            .to_string();
+        install_runner_commands(lxapp_id.clone());
+        apply_default_device(lxapp_id, default_device, initial_landscape);
+    }
     std::process::exit(lingxia_windows_sdk::run_message_loop());
 }
 
@@ -124,6 +147,8 @@ fn install_launch_args_env() -> Option<std::path::PathBuf> {
 fn launch_arg_env_key(arg: &str) -> Option<&'static str> {
     match arg {
         ARG_LXAPP_PATH => Some(ENV_LXAPP_PATH),
+        ARG_WEB_URL => Some(ENV_WEB_URL),
+        ARG_STATE_ROOT => Some(ENV_STATE_ROOT),
         ARG_DEV_WS_URL => Some(ENV_DEV_WS_URL),
         ARG_RUNNER_DEVICE => Some(ENV_RUNNER_DEVICE),
         ARG_RUNNER_ENV => Some(ENV_RUNNER_ENV),
@@ -263,6 +288,14 @@ fn apply_device(index: usize, landscape: bool) -> Result<(), String> {
     let tabbar_position = tabbar_position_for_device(index);
     lingxia_windows_sdk::set_windows_default_shell_tabbar_position(tabbar_position);
 
+    if let Some(host) = BROWSER_HOST.get() {
+        host.set_primary_device_frame(browser_frame_spec(index, landscape), tabbar_position)
+            .map_err(|error| error.to_string())?;
+        CURRENT_DEVICE.store(index, Ordering::Release);
+        LANDSCAPE.store(landscape, Ordering::Release);
+        return Ok(());
+    }
+
     let mut applied = false;
     for app in lxapp::list_lxapps() {
         if app.status == "opened" {
@@ -366,6 +399,40 @@ fn install_runner_commands(home_app_id: String) {
             if let Err(err) = apply_device(index, is_tablet(index)) {
                 eprintln!(
                     "lingxia-runner: failed to switch to {}: {err}",
+                    presets()[index].name
+                );
+            }
+        },
+    ));
+}
+
+fn install_browser_runner_commands(host: lingxia_windows_sdk::WindowsHost) {
+    lingxia_windows_sdk::set_windows_app_menu_command_handler(std::sync::Arc::new(
+        move |command| {
+            if command == OPEN_DEVTOOLS_COMMAND {
+                if let Err(error) = host.open_primary_devtools() {
+                    eprintln!("lingxia-runner: failed to open DevTools: {error}");
+                }
+                return;
+            }
+            if command == ROTATE_COMMAND {
+                let index = CURRENT_DEVICE.load(Ordering::Acquire);
+                let landscape = !LANDSCAPE.load(Ordering::Acquire);
+                if let Err(error) = apply_device(index, landscape) {
+                    eprintln!("lingxia-runner: failed to rotate device: {error}");
+                }
+                return;
+            }
+            let Some(index) = command
+                .checked_sub(DEVICE_COMMAND_BASE)
+                .map(|index| index as usize)
+                .filter(|index| *index < presets().len())
+            else {
+                return;
+            };
+            if let Err(error) = apply_device(index, is_tablet(index)) {
+                eprintln!(
+                    "lingxia-runner: failed to switch to {}: {error}",
                     presets()[index].name
                 );
             }

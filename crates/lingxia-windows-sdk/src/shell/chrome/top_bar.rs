@@ -148,25 +148,35 @@ pub(super) fn top_bar_controls(
     // leads with a close button instead (Safari-view style), and the trailing
     // edge stays clear of the floating device capsule.
     if layout.suppress_window_controls {
-        let close = square_button(left_edge);
-        controls.browser_close = Some(close);
-        left_edge = close.right + TOP_BAR_BUTTON_GAP;
+        let dismissible = layout
+            .address_bar
+            .as_ref()
+            .is_some_and(|address_bar| address_bar.dismissible);
+        if dismissible {
+            let close = square_button(left_edge);
+            controls.browser_close = Some(close);
+            left_edge = close.right + TOP_BAR_BUTTON_GAP;
+        }
         right_edge = top_bar.right - TOP_BAR_PADDING - device_capsule_reserve();
     }
     let aside = layout
         .address_bar
         .as_ref()
         .is_some_and(|address_bar| address_bar.aside);
+    let show_page_menu = layout
+        .address_bar
+        .as_ref()
+        .is_some_and(|address_bar| address_bar.show_page_menu);
     // The ••• page menu hugs the capsule's trailing edge (macOS groups the
     // page controls with the address bar, not the window edge); reserve its
     // slot here, place the button once the capsule rect is known.
-    if !aside {
+    if !aside && show_page_menu {
         right_edge -= TOP_BAR_BUTTON_SIZE + ADDRESS_CAPSULE_NAV_GAP;
     }
     let nav_width = 3 * TOP_BAR_BUTTON_SIZE + 2 * TOP_BAR_BUTTON_GAP;
     let capsule_space = right_edge - left_edge - nav_width - ADDRESS_CAPSULE_NAV_GAP;
     if capsule_space < 48 {
-        if !aside {
+        if !aside && show_page_menu {
             controls.page_menu = Some(square_button(right_edge + ADDRESS_CAPSULE_NAV_GAP));
         }
         return controls;
@@ -197,7 +207,7 @@ pub(super) fn top_bar_controls(
         bottom: capsule_top + capsule_height,
     });
     controls.address = Some(capsule);
-    if !aside {
+    if !aside && show_page_menu {
         controls.page_menu = Some(square_button(capsule.right + ADDRESS_CAPSULE_NAV_GAP));
     }
     // Star/pin live inside the capsule's trailing edge, like the macOS
@@ -206,7 +216,19 @@ pub(super) fn top_bar_controls(
         .address_bar
         .as_ref()
         .is_some_and(|address_bar| address_bar.web);
-    if !aside && web && rect_width(&capsule) >= 4 * ADDRESS_CAPSULE_BUTTON_SIZE {
+    let show_pin = layout
+        .address_bar
+        .as_ref()
+        .is_some_and(|address_bar| address_bar.show_pin);
+    let show_bookmark = layout
+        .address_bar
+        .as_ref()
+        .is_some_and(|address_bar| address_bar.show_bookmark);
+    if !aside
+        && web
+        && (show_bookmark || show_pin)
+        && rect_width(&capsule) >= 3 * ADDRESS_CAPSULE_BUTTON_SIZE
+    {
         let button_top =
             capsule.top + (rect_height(&capsule) - ADDRESS_CAPSULE_BUTTON_SIZE).max(0) / 2;
         let capsule_button = |right: i32| RECT {
@@ -215,10 +237,17 @@ pub(super) fn top_bar_controls(
             right,
             bottom: button_top + ADDRESS_CAPSULE_BUTTON_SIZE,
         };
-        let pin = capsule_button(capsule.right - 5);
-        let bookmark = capsule_button(pin.left - 2);
-        controls.pin = Some(pin);
-        controls.bookmark = Some(bookmark);
+        let trailing = capsule_button(capsule.right - 5);
+        if show_pin {
+            controls.pin = Some(trailing);
+        }
+        if show_bookmark {
+            controls.bookmark = Some(if show_pin {
+                capsule_button(trailing.left - 2)
+            } else {
+                trailing
+            });
+        }
     }
     controls
 }
