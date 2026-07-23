@@ -16,6 +16,7 @@ class macOSLxApp: ObservableObject {
     static let shared = macOSLxApp()
     private static var isInitialized = false
     private static let log = OSLog(subsystem: "LingXia", category: "macOSLxApp")
+    static var runnerPullDownRefreshHandler: ((String, String, Bool) -> Bool)?
 
     nonisolated(unsafe) private static var lifecycleObservers: [NSObjectProtocol] = []
     nonisolated(unsafe) private static var hasResignedActive = false
@@ -244,8 +245,11 @@ extension LxApp {
         let pathStr = path.toString()
 
         Task { @MainActor in
-            guard let manager = macOSLxApp.getViewController(for: appIdStr) else { return }
-            manager.startPullDownRefreshProgrammatically()
+            if let manager = macOSLxApp.getViewController(for: appIdStr) {
+                manager.startPullDownRefreshProgrammatically()
+            } else {
+                _ = macOSLxApp.runnerPullDownRefreshHandler?(appIdStr, pathStr, true)
+            }
             os_log("startPullDownRefresh called for %@:%@", log: OSLog(subsystem: "LingXia", category: "PullToRefresh"), type: .info, appIdStr, pathStr)
         }
         return true
@@ -256,8 +260,11 @@ extension LxApp {
         let pathStr = path.toString()
 
         Task { @MainActor in
-            guard let manager = macOSLxApp.getViewController(for: appIdStr) else { return }
-            manager.stopPullDownRefreshProgrammatically()
+            if let manager = macOSLxApp.getViewController(for: appIdStr) {
+                manager.stopPullDownRefreshProgrammatically()
+            } else {
+                _ = macOSLxApp.runnerPullDownRefreshHandler?(appIdStr, pathStr, false)
+            }
             os_log("stopPullDownRefresh called for %@:%@", log: OSLog(subsystem: "LingXia", category: "PullToRefresh"), type: .info, appIdStr, pathStr)
         }
         return true
