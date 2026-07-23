@@ -74,7 +74,11 @@ enum RunnerBridge {
     }
 
     static func removeCurrentWebViewFromSuperview() {
-        LxAppCore.getCurrentWebView()?.removeFromSuperview()
+        guard let webView = LxAppCore.getCurrentWebView() else { return }
+        // Native components are sibling overlays, so removing only the WebView
+        // leaves them visible over the next page.
+        webView.pauseWebView()
+        webView.removeFromSuperview()
     }
 
     static func homeLxAppId() -> String? {
