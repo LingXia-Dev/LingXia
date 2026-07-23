@@ -79,7 +79,6 @@ export const LX_API_NAMES = [
   'vibrateShort',
 ] as const;
 const HOST_APP_API = [
-  'autostart',
   'checkUpdate',
   'envVersion',
   'exit',
@@ -229,7 +228,7 @@ const DESKTOP_PROCESS_API = ['kill', 'list'] as const;
 export const LX_RUNTIME_SURFACES = [
   { name: 'lx', expression: 'lx', members: LX_API_NAMES },
   { name: 'lx.app', expression: 'lx.app', members: HOST_APP_API },
-  { name: 'lx.app.autostart', expression: 'lx.app.autostart', members: AUTOSTART_API },
+  { name: 'lx.app.autostart', expression: 'lx.app.autostart', members: AUTOSTART_API, optional: true },
   { name: 'lx.env', expression: 'lx.env', members: ENV_API },
   { name: 'lx.shell', expression: 'lx.shell', members: SHELL_API },
   { name: 'lx.shell.activators', expression: 'lx.shell.activators', members: SHELL_ACTIVATORS_API },

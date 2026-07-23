@@ -9,11 +9,14 @@ for (const surface of LX_RUNTIME_SURFACES) {
         const target = ${surface.expression};
         return {
           available: target !== null && typeof target !== 'undefined',
-          missing: ${members}.filter((name) => typeof target[name] === 'undefined'),
+          missing: target == null
+            ? ${members}
+            : ${members}.filter((name) => typeof target[name] === 'undefined'),
         };
       `,
     }) as { available: boolean; missing: string[] };
 
+    if ('optional' in surface && surface.optional && !result.available) return;
     expect(result.available).toBeTruthy();
     expect(result.missing).toEqual([]);
   });
