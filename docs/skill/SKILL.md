@@ -64,7 +64,7 @@ that matters:
 
 ```bash
 lingxia dev --background     # start (or take over) this project's session; returns when live
-lingxia dev http://127.0.0.1:5173 --background  # web-only desktop Runner target
+lingxia dev http://127.0.0.1:5173 --headless --background  # Windows HTTP(S), no window
 lxdev lxapp reload           # lxapp inner loop: rebuild + reload in place
 ```
 
