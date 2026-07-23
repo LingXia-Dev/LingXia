@@ -217,6 +217,10 @@ enum RunnerSupport {
             LingxiaRunnerSPI.SurfaceShell.setBrowserPageActionsVisible(shell, visible: visible)
         }
 
+        static func setBrowserRootVisible(_ shell: LxAppShell, visible: Bool) {
+            LingxiaRunnerSPI.SurfaceShell.setBrowserRootVisible(shell, visible: visible)
+        }
+
         static func open(
             _ shell: LxAppShell,
             appId: String,

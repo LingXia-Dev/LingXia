@@ -275,6 +275,10 @@ enum RunnerBridge {
         shell.setBrowserPageActionsVisible(visible)
     }
 
+    static func setSurfaceShellBrowserRootVisible(_ shell: LxAppShell, visible: Bool) {
+        shell.setBrowserRootVisible(visible)
+    }
+
     static func openInSurfaceShell(
         _ shell: LxAppShell,
         appId: String,

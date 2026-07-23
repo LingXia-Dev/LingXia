@@ -14,6 +14,8 @@ protocol BrowserCoordinatorHost: AnyObject {
     var hostWindow: NSWindow? { get }
     /// Whether the host has an lxapp tab to reveal after browser tabs close.
     var hasOpenTabs: Bool { get }
+    /// Whether browser chrome remains usable when the last web tab closes.
+    var keepsBrowserRootWithoutTabs: Bool { get }
     /// Returns owner (appId, sessionId) for creating a new browser tab.
     func browserOwnerForNewTab() -> (appId: String, sessionId: UInt64)?
     /// Called before a browser tab becomes active. Host should pause current VC.
@@ -71,6 +73,7 @@ final class BrowserTabCoordinator: NSObject {
     private var tabFavicons: [String: NSImage] = [:]
     private var tabFaviconRequestOrigins: [String: String] = [:]
     private var lastObservedURLs: [String: String] = [:]
+    private var retainedNewTabOwner: (appId: String, sessionId: UInt64)?
 
     /// Tabs whose WebView has been discarded to free memory (Chrome-style).
     /// Their sidebar entry stays; the WebView is recreated on reactivation.
@@ -224,7 +227,9 @@ final class BrowserTabCoordinator: NSObject {
     // MARK: - Public Tab Operations
 
     func addTab() {
-        addTabWithURL("")
+        // A persistent browser root is used by the URL Runner, which does not
+        // bundle the browser webui behind `lingxia://newtab`.
+        addTabWithURL(host?.keepsBrowserRootWithoutTabs == true ? "about:blank" : "")
     }
 
     func openSettings() {
@@ -278,7 +283,9 @@ final class BrowserTabCoordinator: NSObject {
 
         // A browser-only host has no lxapp surface to reveal. Keep its final
         // tab as the mounted browser content instead of leaving an empty shell.
-        if tabIds.count == 1, host?.hasOpenTabs == false {
+        if tabIds.count == 1,
+           host?.hasOpenTabs == false,
+           host?.keepsBrowserRootWithoutTabs != true {
             _ = browserTabNavigate(tabIdString(id), "about:blank")
             interactedTabs.remove(id)
             lastObservedURLs[id] = "about:blank"
@@ -360,6 +367,9 @@ final class BrowserTabCoordinator: NSObject {
     }
 
     func presentInternalBrowserTab(id: String) {
+        if let owner = host?.browserOwnerForNewTab() {
+            retainedNewTabOwner = owner
+        }
         if !tabIds.contains(id) {
             tabIds.append(id)
         }
@@ -760,10 +770,13 @@ final class BrowserTabCoordinator: NSObject {
     // MARK: - Internal Tab Operations
 
     private func addTabWithURL(_ url: String, stableTabId: String? = nil) {
-        guard let owner = host?.browserOwnerForNewTab() else {
+        let owner = host?.browserOwnerForNewTab()
+            ?? (host?.keepsBrowserRootWithoutTabs == true ? retainedNewTabOwner : nil)
+        guard let owner else {
             LXLog.error("Cannot create browser tab without active lxapp session", category: "BrowserTabCoordinator")
             return
         }
+        retainedNewTabOwner = owner
 
         let normalizedStableTabId = stableTabId?
             .trimmingCharacters(in: .whitespacesAndNewlines)

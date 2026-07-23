@@ -10,6 +10,7 @@ final class RunnerPhoneBrowserSurface {
     private static let log = OSLog(subsystem: "LingXiaRunner", category: "PhoneBrowserSurface")
 
     private var overlayView: NSView?
+    private var overlayTopConstraint: NSLayoutConstraint?
     private var webContainer: NSView?
     private weak var hostWindow: NSWindow?
     private weak var phoneContentView: NSView?
@@ -28,6 +29,7 @@ final class RunnerPhoneBrowserSurface {
     private var ownerAppId: String?
     private var ownerSessionId: UInt64 = 0
     private var dismissible = true
+    private var topInset: CGFloat = 0
 
     private var addressField: NSTextField?
     private var addressIcon: NSImageView?
@@ -69,7 +71,8 @@ final class RunnerPhoneBrowserSurface {
         ownerSessionId: UInt64,
         in phoneContent: NSView,
         window: NSWindow?,
-        dismissible: Bool = true
+        dismissible: Bool = true,
+        topInset: CGFloat = 0
     ) {
         let normalized = tabId.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalized.isEmpty else { return }
@@ -77,11 +80,18 @@ final class RunnerPhoneBrowserSurface {
         self.ownerAppId = ownerAppId
         self.ownerSessionId = ownerSessionId
         self.dismissible = dismissible
+        self.topInset = max(0, topInset)
         hostWindow = window
         phoneContentView = phoneContent
         register(tabId: normalized)
         show(in: phoneContent)
         activate(tabId: normalized, allowModeSwitch: true)
+    }
+
+    func setTopInset(_ inset: CGFloat) {
+        topInset = max(0, inset)
+        overlayTopConstraint?.constant = topInset
+        phoneContentView?.needsLayout = true
     }
 
     /// Hide the browser while preserving its groups. Window teardown passes
@@ -139,13 +149,9 @@ final class RunnerPhoneBrowserSurface {
         let aside = tabIsAside(tabId)
         let groupIndex = tabIds(forAside: aside).firstIndex(of: tabId) ?? 0
 
-        if !dismissible, wasActive, tabIds(forAside: aside).count == 1 {
-            _ = RunnerSupport.Browser.navigate(tabId: tabId, url: "about:blank")
-            interactedTabIds.remove(tabId)
-            activate(tabId: tabId)
-            return
+        if wasActive {
+            clearWebViewAttachment()
         }
-
         _ = RunnerSupport.Browser.closeTab(tabId: tabId)
         openTabIds.remove(at: index)
         interactedTabIds.remove(tabId)
@@ -155,11 +161,30 @@ final class RunnerPhoneBrowserSurface {
         let remaining = tabIds(forAside: aside)
         if remaining.isEmpty {
             activeTabId = nil
-            dismiss(closeTab: false)
+            if dismissible {
+                dismiss(closeTab: false)
+            } else {
+                showEmptyBrowser()
+            }
             return
         }
         let neighbor = min(groupIndex, remaining.count - 1)
         activate(tabId: remaining[neighbor])
+    }
+
+    private func showEmptyBrowser() {
+        updateAddress(url: nil)
+        updateNavigationButtons()
+        updateTabsBadge()
+        newTabButton?.isHidden = false
+        asideRefreshButton?.isHidden = true
+        addressField?.isEditable = true
+        addressField?.isSelectable = true
+        addressPill?.isHidden = false
+        actionRowTopWithoutAddress?.isActive = false
+        actionRowTopWithAddress?.isActive = true
+        bottomBarHeightConstraint?.constant = 96
+        overlayView?.isHidden = false
     }
 
     private func tabIsAside(_ tabId: String) -> Bool {
@@ -309,8 +334,12 @@ final class RunnerPhoneBrowserSurface {
         self.addressPill = addressPill
 
         phoneContent.addSubview(overlay, positioned: .above, relativeTo: nil)
+        let overlayTop = overlay.topAnchor.constraint(
+            equalTo: phoneContent.topAnchor,
+            constant: topInset
+        )
         NSLayoutConstraint.activate([
-            overlay.topAnchor.constraint(equalTo: phoneContent.topAnchor),
+            overlayTop,
             overlay.leadingAnchor.constraint(equalTo: phoneContent.leadingAnchor),
             overlay.trailingAnchor.constraint(equalTo: phoneContent.trailingAnchor),
             overlay.bottomAnchor.constraint(equalTo: phoneContent.bottomAnchor),
@@ -363,6 +392,7 @@ final class RunnerPhoneBrowserSurface {
         actionRowTopWithoutAddress = actionTopWithoutAddress
 
         overlayView = overlay
+        overlayTopConstraint = overlayTop
         self.webContainer = webContainer
         updateNavigationButtons()
         updateTabsBadge()

@@ -243,6 +243,10 @@ import WebKit
             RunnerBridge.setSurfaceShellBrowserPageActionsVisible(shell, visible: visible)
         }
 
+        public static func setBrowserRootVisible(_ shell: LxAppShell, visible: Bool) {
+            RunnerBridge.setSurfaceShellBrowserRootVisible(shell, visible: visible)
+        }
+
         public static func open(
             _ shell: LxAppShell,
             appId: String,

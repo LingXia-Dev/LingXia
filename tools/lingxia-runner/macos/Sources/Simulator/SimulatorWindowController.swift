@@ -422,7 +422,10 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
                 ownerSessionId: webTarget.ownerSessionId,
                 in: phoneContent,
                 window: window,
-                dismissible: false
+                dismissible: false,
+                topInset: Self.currentDeviceSize.usesPhoneChrome
+                    ? Layout.systemStatusBarHeight
+                    : 0
             )
             if Self.currentDeviceSize.usesPhoneChrome {
                 setupWebStatusBar()
@@ -498,6 +501,7 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
     private func setupWebStatusBar() {
         guard let phoneContent = phoneContentView, systemStatusBar == nil else { return }
         let statusBar = createSystemStatusBar()
+        statusBar.layer?.backgroundColor = NSColor.white.cgColor
         setupDragBehavior(statusBar)
         phoneContent.addSubview(statusBar)
         let height = statusBar.heightAnchor.constraint(equalToConstant: Layout.systemStatusBarHeight)
@@ -509,6 +513,7 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
         ])
         systemStatusBar = statusBar
         statusBarHeightConstraint = height
+        updateStatusBarTextColors(textStyle: "black")
     }
     
     private func createSystemStatusBar() -> NSView {
@@ -860,6 +865,9 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
             navigationBar?.isHidden = true
             floatingCapsuleContainer?.isHidden = true
             systemStatusBar?.isHidden = !device.usesPhoneChrome
+            phoneBrowserSurface.setTopInset(
+                device.usesPhoneChrome ? Layout.systemStatusBarHeight : 0
+            )
             if device.usesPhoneChrome {
                 setupWebStatusBar()
             }
@@ -1277,7 +1285,10 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
             ownerSessionId: ownerSessionId,
             in: phoneContentView,
             window: window,
-            dismissible: webTarget == nil
+            dismissible: webTarget == nil,
+            topInset: webTarget != nil && Self.currentDeviceSize.usesPhoneChrome
+                ? Layout.systemStatusBarHeight
+                : 0
         )
         window?.makeKeyAndOrderFront(nil)
     }
