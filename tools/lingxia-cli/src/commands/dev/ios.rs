@@ -4,7 +4,7 @@ pub(super) fn execute_ios(ctx: DevContext) -> Result<()> {
     let platform_name = platform_session_name(PlatformType::Ios);
     take_over_target_session(&ctx.project_root, platform_name)?;
     let platform = platform::ios::IosPlatform::new();
-    let stop_requested = Arc::new(AtomicBool::new(false));
+    let stop_requested = ctx.stop_requested.clone();
     // The iOS device reaches the host over Wi-Fi, so this bind was always
     // 0.0.0.0 — it now carries the persistent session token so the open bind
     // is no longer unauthenticated.
@@ -67,7 +67,6 @@ pub(super) fn execute_ios(ctx: DevContext) -> Result<()> {
 
         // Step 3: Launch app
         println!("{}", "Step 3/3: Launching...".bold());
-        install_ctrlc_handler(stop_requested.clone())?;
         let _session_registration =
             log_store::register_session(&ctx.project_root, &session, platform_name, &host_ws_url);
 

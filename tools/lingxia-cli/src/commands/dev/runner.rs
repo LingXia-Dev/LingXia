@@ -173,6 +173,7 @@ pub(super) fn execute_runner_dev(
     session_root: PathBuf,
     target: RunnerDevTarget,
     options: DevExecuteOptions,
+    stop_requested: Arc<AtomicBool>,
 ) -> Result<()> {
     let runner_host = LxAppRunnerHost::detect()?;
     let runner_env = options
@@ -218,7 +219,6 @@ pub(super) fn execute_runner_dev(
     );
     println!();
 
-    let stop_requested = Arc::new(AtomicBool::new(false));
     let content_root = match &target {
         RunnerDevTarget::LxApp(path) => path.as_path(),
         RunnerDevTarget::Web(_) => session_root.as_path(),
@@ -246,7 +246,6 @@ pub(super) fn execute_runner_dev(
             crate::lxapp::run_in_dir_for_dev(&build_args, lxapp_path)?;
         }
 
-        install_ctrlc_handler(stop_requested.clone())?;
         let content = match &target {
             RunnerDevTarget::LxApp(path) => {
                 lingxia_devtool_protocol::broker::SessionContent::LxApp {

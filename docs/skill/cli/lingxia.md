@@ -131,6 +131,27 @@ project's existing same-platform session automatically and starts fresh.
 Different platforms don't conflict — `-p android` and `-p ios` run side by
 side.
 
+Before starting a new session, `lingxia dev` optionally reads the project file
+`.lingxia/dev-companion.json`:
+
+```json
+{
+  "run": ["some-tool", "companion"]
+}
+```
+
+`run` is an argv array, not a shell command. LingXia starts it once from the
+project root. The process reports readiness using Companion protocol version 1
+and an opaque runtime environment that LingXia injects only into the current dev
+session. LingXia does not interpret tool-specific configuration or environment
+values. An active Companion shares the session lifecycle: startup failure or
+unexpected exit stops `lingxia dev`, and normal session shutdown stops the
+Companion.
+
+The file is normally part of the project template. There is no global Companion
+registration, Companion list, shell evaluation, or ordering model. If the file
+is absent, `lingxia dev` behaves exactly as a standalone LingXia session.
+
 `lingxia dev` owns the session lifecycle — start, `status`, `stop`. For
 automation, start it detached with `--background` (it returns once the session
 and its runtime websocket are ready); a foreground run blocks the terminal and

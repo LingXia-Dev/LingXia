@@ -6,7 +6,7 @@ pub(super) fn execute_macos(ctx: DevContext) -> Result<()> {
     use std::process::Command;
 
     let platform = platform::macos::MacosPlatform::new();
-    let stop_requested = Arc::new(AtomicBool::new(false));
+    let stop_requested = ctx.stop_requested.clone();
     let server = server::start_server_fixed_with_stop(
         &ctx.project_root,
         "127.0.0.1",
@@ -47,7 +47,6 @@ pub(super) fn execute_macos(ctx: DevContext) -> Result<()> {
         let exe = platform::macos::app_bundle_executable(&app_path)?;
         println!();
 
-        install_ctrlc_handler(stop_requested.clone())?;
         let _session_registration =
             log_store::register_session(&ctx.project_root, &session, platform_name, &ws_url);
 

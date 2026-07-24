@@ -5,7 +5,7 @@ pub(super) fn execute_harmony(ctx: DevContext) -> Result<()> {
     let platform_name = platform_session_name(PlatformType::Harmony);
     take_over_target_session(&ctx.project_root, platform_name)?;
     let harmony_platform = platform::harmony::HarmonyPlatform::new();
-    let stop_requested = Arc::new(AtomicBool::new(false));
+    let stop_requested = ctx.stop_requested.clone();
     let server = server::start_server_fixed_with_stop(
         &ctx.project_root,
         "127.0.0.1",
@@ -76,7 +76,6 @@ pub(super) fn execute_harmony(ctx: DevContext) -> Result<()> {
 
         // Step 4: Launch app
         println!("{}", "Step 4/4: Launching app...".bold());
-        install_ctrlc_handler(stop_requested.clone())?;
         let _session_registration =
             log_store::register_session(&ctx.project_root, &session, platform_name, &host_ws_url);
 
