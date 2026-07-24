@@ -123,7 +123,7 @@ pub(crate) fn run() -> lingxia_windows_sdk::Result<()> {
             .ok_or(lingxia_windows_sdk::WindowsHostError::MissingLxApp)?
             .to_string();
         install_runner_commands(lxapp_id.clone());
-        apply_default_device(lxapp_id, default_device, initial_landscape);
+        maintain_device_frame(lxapp_id);
     }
     std::process::exit(lingxia_windows_sdk::run_message_loop());
 }
@@ -538,18 +538,29 @@ fn restart_lxapp(appid: &str, clean_cache: bool) -> Result<(), String> {
     app.restart_in_place().map_err(|err| err.to_string())
 }
 
-fn apply_default_device(home_app_id: String, default_device: usize, landscape: bool) {
+fn maintain_device_frame(home_app_id: String) {
     std::thread::spawn(move || {
-        for attempt in 0..80 {
-            if attempt > 0 {
-                std::thread::sleep(std::time::Duration::from_millis(50));
+        let mut consecutive_failures = 0u32;
+        loop {
+            let has_frame =
+                lingxia_windows_sdk::app_window_has_device_frame(&home_app_id).unwrap_or(false);
+            let restored = has_frame || {
+                let index = CURRENT_DEVICE.load(Ordering::Acquire);
+                let landscape = LANDSCAPE.load(Ordering::Acquire);
+                apply_device_to_app(&home_app_id, index, landscape).is_ok()
+            };
+            if restored {
+                consecutive_failures = 0;
+            } else {
+                consecutive_failures = consecutive_failures.saturating_add(1);
+                if consecutive_failures == 80 {
+                    eprintln!(
+                        "lingxia-runner: home page webview never became ready for the device frame"
+                    );
+                }
             }
-            if apply_device_to_app(&home_app_id, default_device, landscape).is_ok() {
-                CURRENT_DEVICE.store(default_device, Ordering::Release);
-                LANDSCAPE.store(landscape, Ordering::Release);
-                return;
-            }
+            let delay_ms = if restored { 100 } else { 50 };
+            std::thread::sleep(std::time::Duration::from_millis(delay_ms));
         }
-        eprintln!("lingxia-runner: home page webview never became ready for the device frame");
     });
 }

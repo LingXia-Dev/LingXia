@@ -147,6 +147,16 @@ pub fn set_app_window_device_frame(
     Ok(())
 }
 
+/// Whether the current top-level window for `appid` still owns a simulated
+/// device frame. Runners use this to restore the frame after a relaunch swaps
+/// the page WebView and its host window.
+pub fn app_window_has_device_frame(appid: &str) -> Result<bool, String> {
+    let webview = current_page_webview(appid)?;
+    let host_window = crate::window_host::find_host_window_for_webview(&webview.webtag())
+        .map_err(|err| err.to_string())?;
+    Ok(native::window_has_frame(host_window.window))
+}
+
 /// Applies a simulated-device frame and shell tabbar position as one UI-thread
 /// transaction. The Windows runner uses this for device switches so layout
 /// does not briefly sync against the previous device frame.
