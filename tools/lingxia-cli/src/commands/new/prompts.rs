@@ -45,6 +45,7 @@ pub(super) fn gather_product_name(project_name: &str, yes: bool) -> Result<Strin
 /// used unprompted.
 pub(super) fn gather_lxapp_id(default: &str, yes: bool) -> Result<String> {
     if yes {
+        validate_lxapp_id(default)?;
         return Ok(default.to_string());
     }
 

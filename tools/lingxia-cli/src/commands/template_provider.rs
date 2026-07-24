@@ -3,12 +3,15 @@ use colored::Colorize;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fs;
+use std::io::Read as _;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 const MANIFEST_FILE: &str = "lingxia-template.json";
+const SKILL_OWNER_FILE: &str = ".lingxia-template-owner";
 const CHECK_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
+const REMOTE_CHECK_TIMEOUT: Duration = Duration::from_secs(10);
 
 #[derive(Clone, Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
@@ -200,7 +203,6 @@ pub fn write_project_lock(template: &InstalledTemplate, project_root: &Path) -> 
     #[serde(rename_all = "camelCase")]
     struct ProjectTemplateLock<'a> {
         name: &'a str,
-        source: &'a str,
         commit: &'a str,
     }
 
@@ -208,7 +210,6 @@ pub fn write_project_lock(template: &InstalledTemplate, project_root: &Path) -> 
     fs::create_dir_all(&directory)?;
     let bytes = serde_json::to_vec_pretty(&ProjectTemplateLock {
         name: &template.slug,
-        source: &template.source,
         commit: &template.commit,
     })?;
     fs::write(
@@ -264,11 +265,7 @@ fn add_from(home: &Path, source: &str) -> Result<InstalledTemplate> {
         source: source.clone(),
         commit: commit.clone(),
     };
-    if let Err(error) = sync_assets(home, &installed) {
-        let _ = fs::remove_dir_all(&installed.root);
-        return Err(error);
-    }
-    write_state(
+    if let Err(error) = write_state(
         home,
         &slug,
         &TemplateState {
@@ -276,7 +273,15 @@ fn add_from(home: &Path, source: &str) -> Result<InstalledTemplate> {
             commit,
             last_checked: now(),
         },
-    )?;
+    ) {
+        let _ = fs::remove_dir_all(&installed.root);
+        return Err(error);
+    }
+    if let Err(error) = sync_assets(home, &installed, None) {
+        let _ = fs::remove_dir_all(&installed.root);
+        let _ = fs::remove_file(state_path(home, &slug));
+        return Err(error);
+    }
     Ok(installed)
 }
 
@@ -324,6 +329,7 @@ fn update_from(home: &Path, name: &str, force: bool) -> Result<InstalledTemplate
 
     let remote_commit = git_remote_commit(&state.source)?;
     if remote_commit == current.commit {
+        sync_assets(home, &current, Some(&current))?;
         write_state(
             home,
             &current.slug,
@@ -332,7 +338,6 @@ fn update_from(home: &Path, name: &str, force: bool) -> Result<InstalledTemplate
                 ..state
             },
         )?;
-        sync_assets(home, &current)?;
         return Ok(current);
     }
 
@@ -352,6 +357,7 @@ fn update_from(home: &Path, name: &str, force: bool) -> Result<InstalledTemplate
     }
     let commit = git_commit(&checkout)?;
     if commit == current.commit {
+        sync_assets(home, &current, Some(&current))?;
         write_state(
             home,
             &slug,
@@ -360,7 +366,6 @@ fn update_from(home: &Path, name: &str, force: bool) -> Result<InstalledTemplate
                 ..state
             },
         )?;
-        sync_assets(home, &current)?;
         return Ok(current);
     }
 
@@ -380,14 +385,12 @@ fn update_from(home: &Path, name: &str, force: bool) -> Result<InstalledTemplate
         source: state.source.clone(),
         commit: commit.clone(),
     };
-    if let Err(error) = sync_assets(home, &updated) {
+    if let Err(error) = sync_assets(home, &updated, Some(&current)) {
         let _ = fs::remove_dir_all(&updated.root);
         let _ = fs::rename(&backup, &current.root);
-        let _ = sync_assets(home, &current);
         return Err(error);
     }
-    fs::remove_dir_all(&backup)?;
-    write_state(
+    if let Err(error) = write_state(
         home,
         &updated.slug,
         &TemplateState {
@@ -395,12 +398,24 @@ fn update_from(home: &Path, name: &str, force: bool) -> Result<InstalledTemplate
             commit,
             last_checked: now(),
         },
-    )?;
+    ) {
+        let _ = fs::remove_dir_all(&updated.root);
+        let _ = fs::rename(&backup, &current.root);
+        let rollback = sync_assets(home, &current, Some(&updated));
+        return match rollback {
+            Ok(()) => Err(error),
+            Err(rollback) => Err(error).context(format!(
+                "Template update rollback also failed: {rollback:#}"
+            )),
+        };
+    }
+    fs::remove_dir_all(&backup)?;
     Ok(updated)
 }
 
 fn remove_from(home: &Path, name: &str) -> Result<()> {
     let installed = load_from(home, name)?;
+    validate_asset_ownership(home, &installed, Some(&installed))?;
     remove_launchers(home, &installed)?;
     for skill in &installed.manifest.skills {
         let source = resolve_owned_path(&installed.root, skill, "skill")?;
@@ -409,6 +424,7 @@ fn remove_from(home: &Path, name: &str) -> Result<()> {
         };
         let target = home.join(".claude").join("skills").join(name);
         if target.exists() {
+            ensure_skill_owned(&target, &installed.slug)?;
             fs::remove_dir_all(target)?;
         }
     }
@@ -497,9 +513,123 @@ fn resolve_owned_path(root: &Path, relative: &Path, label: &str) -> Result<PathB
     Ok(path)
 }
 
-fn sync_assets(home: &Path, template: &InstalledTemplate) -> Result<()> {
-    install_launchers(home, template)?;
-    install_skills(home, template)?;
+fn sync_assets(
+    home: &Path,
+    template: &InstalledTemplate,
+    previous: Option<&InstalledTemplate>,
+) -> Result<()> {
+    validate_asset_ownership(home, template, previous)?;
+
+    let transaction_root = home.join(".lingxia");
+    fs::create_dir_all(&transaction_root)?;
+    let backup = tempfile::Builder::new()
+        .prefix(".template-assets-")
+        .tempdir_in(&transaction_root)?;
+    let targets = asset_targets(home, template, previous)?;
+    let mut saved = Vec::new();
+    for (index, target) in targets.iter().enumerate() {
+        if target.exists() {
+            let saved_path = backup.path().join(index.to_string());
+            if let Err(error) = fs::rename(target, &saved_path) {
+                for (original, saved) in saved.into_iter().rev() {
+                    let _ = fs::rename(saved, original);
+                }
+                return Err(error).with_context(|| {
+                    format!("Failed to stage template asset {}", target.display())
+                });
+            }
+            saved.push((target.clone(), saved_path));
+        }
+    }
+
+    let result = install_launchers(home, template).and_then(|_| install_skills(home, template));
+    if let Err(error) = result {
+        let mut rollback_error = None;
+        for target in &targets {
+            let removal = if target.is_dir() {
+                fs::remove_dir_all(target)
+            } else if target.exists() {
+                fs::remove_file(target)
+            } else {
+                Ok(())
+            };
+            if let Err(error) = removal {
+                rollback_error.get_or_insert(error);
+            }
+        }
+        for (target, saved_path) in saved {
+            if let Some(parent) = target.parent()
+                && let Err(error) = fs::create_dir_all(parent)
+            {
+                rollback_error.get_or_insert(error);
+                continue;
+            }
+            if let Err(error) = fs::rename(saved_path, target) {
+                rollback_error.get_or_insert(error);
+            }
+        }
+        if let Some(rollback_error) = rollback_error {
+            return Err(error).context(format!(
+                "Template asset rollback also failed: {rollback_error}"
+            ));
+        }
+        return Err(error);
+    }
+    Ok(())
+}
+
+fn asset_targets(
+    home: &Path,
+    template: &InstalledTemplate,
+    previous: Option<&InstalledTemplate>,
+) -> Result<Vec<PathBuf>> {
+    let mut targets = BTreeMap::<PathBuf, ()>::new();
+    for candidate in previous.into_iter().chain(std::iter::once(template)) {
+        let bin = home.join(".local").join("bin");
+        for name in candidate.manifest.commands.keys() {
+            targets.insert(launcher_path(&bin, name), ());
+        }
+        for skill in &candidate.manifest.skills {
+            let name = skill
+                .file_name()
+                .ok_or_else(|| anyhow!("Template skill has no directory name"))?;
+            targets.insert(home.join(".claude").join("skills").join(name), ());
+        }
+    }
+    Ok(targets.into_keys().collect())
+}
+
+fn validate_asset_ownership(
+    home: &Path,
+    template: &InstalledTemplate,
+    previous: Option<&InstalledTemplate>,
+) -> Result<()> {
+    for candidate in previous.into_iter().chain(std::iter::once(template)) {
+        let bin = home.join(".local").join("bin");
+        for name in candidate.manifest.commands.keys() {
+            let path = launcher_path(&bin, name);
+            if path.exists()
+                && !fs::read_to_string(&path)
+                    .unwrap_or_default()
+                    .contains(&launcher_marker(&template.slug))
+            {
+                bail!(
+                    "Cannot manage `{name}` because {} is not owned by template `{}`",
+                    path.display(),
+                    template.slug
+                );
+            }
+        }
+        for skill in &candidate.manifest.skills {
+            let name = skill
+                .file_name()
+                .ok_or_else(|| anyhow!("Template skill has no directory name"))?;
+            let target = home.join(".claude").join("skills").join(name);
+            if target.exists() {
+                ensure_skill_owned(&target, &template.slug)?;
+            }
+        }
+    }
     Ok(())
 }
 
@@ -613,6 +743,10 @@ fn install_skills(home: &Path, template: &InstalledTemplate) -> Result<()> {
             fs::remove_dir_all(&backup)?;
         }
         copy_directory(&source, &temporary)?;
+        fs::write(
+            temporary.join(SKILL_OWNER_FILE),
+            format!("{}\n", template.slug),
+        )?;
         if target.exists() {
             fs::rename(&target, &backup)?;
         }
@@ -625,6 +759,17 @@ fn install_skills(home: &Path, template: &InstalledTemplate) -> Result<()> {
         if backup.exists() {
             fs::remove_dir_all(backup)?;
         }
+    }
+    Ok(())
+}
+
+fn ensure_skill_owned(path: &Path, slug: &str) -> Result<()> {
+    let owner = fs::read_to_string(path.join(SKILL_OWNER_FILE)).unwrap_or_default();
+    if owner.trim() != slug {
+        bail!(
+            "Cannot manage template skill {} because it is not owned by template `{slug}`",
+            path.display()
+        );
     }
     Ok(())
 }
@@ -687,14 +832,40 @@ fn git_commit(root: &Path) -> Result<String> {
 }
 
 fn git_remote_commit(source: &str) -> Result<String> {
-    let output = Command::new("git")
-        .args(["ls-remote", source, "HEAD"])
-        .output()
+    let mut child = Command::new("git")
+        .args([
+            "-c",
+            "credential.interactive=false",
+            "-c",
+            "core.sshCommand=ssh -o BatchMode=yes -o ConnectTimeout=5",
+            "ls-remote",
+            source,
+            "HEAD",
+        ])
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
         .context("Failed to check the template remote")?;
-    if !output.status.success() {
+    let deadline = std::time::Instant::now() + REMOTE_CHECK_TIMEOUT;
+    let status = loop {
+        if let Some(status) = child.try_wait()? {
+            break status;
+        }
+        if std::time::Instant::now() >= deadline {
+            let _ = child.kill();
+            let _ = child.wait();
+            bail!("Template remote check timed out after 10 seconds");
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    };
+    let mut stdout = String::new();
+    if let Some(mut pipe) = child.stdout.take() {
+        pipe.read_to_string(&mut stdout)?;
+    }
+    if !status.success() {
         bail!("Unable to check the template remote");
     }
-    let stdout = String::from_utf8(output.stdout)?;
     stdout
         .split_whitespace()
         .next()
@@ -711,6 +882,21 @@ fn normalize_source(source: &str) -> Result<String> {
             .with_context(|| format!("Failed to resolve template source {source}"))?
             .to_string_lossy()
             .into_owned());
+    }
+    let http_source = source.split_once("://").is_some_and(|(scheme, _)| {
+        scheme.eq_ignore_ascii_case("http") || scheme.eq_ignore_ascii_case("https")
+    });
+    if http_source {
+        let url = url::Url::parse(source).context("Invalid HTTP template Git URL")?;
+        if !url.username().is_empty()
+            || url.password().is_some()
+            || url.query().is_some()
+            || url.fragment().is_some()
+        {
+            bail!(
+                "Template Git URLs must not contain credentials, query parameters, or fragments; use a Git credential helper or SSH"
+            );
+        }
     }
     Ok(source.to_string())
 }
@@ -730,8 +916,41 @@ fn write_state(home: &Path, slug: &str, state: &TemplateState) -> Result<()> {
     let temporary = path.with_extension("json.new");
     let bytes = serde_json::to_vec_pretty(state)?;
     fs::write(&temporary, [bytes, b"\n".to_vec()].concat())?;
-    fs::rename(temporary, path)?;
+    replace_file(&temporary, &path)?;
     Ok(())
+}
+
+#[cfg(not(target_os = "windows"))]
+fn replace_file(source: &Path, target: &Path) -> std::io::Result<()> {
+    fs::rename(source, target)
+}
+
+#[cfg(target_os = "windows")]
+fn replace_file(source: &Path, target: &Path) -> std::io::Result<()> {
+    use std::os::windows::ffi::OsStrExt as _;
+    use windows::Win32::Storage::FileSystem::{
+        MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH, MoveFileExW,
+    };
+    use windows::core::PCWSTR;
+
+    let source = source
+        .as_os_str()
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect::<Vec<_>>();
+    let target = target
+        .as_os_str()
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect::<Vec<_>>();
+    unsafe {
+        MoveFileExW(
+            PCWSTR(source.as_ptr()),
+            PCWSTR(target.as_ptr()),
+            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
+        )
+    }
+    .map_err(std::io::Error::other)
 }
 
 fn slug_for_name(name: &str) -> Result<String> {
@@ -826,10 +1045,61 @@ mod tests {
     }
 
     #[test]
+    fn rejects_http_sources_that_would_persist_secrets() {
+        assert!(normalize_source("https://token@example.com/template.git").is_err());
+        assert!(normalize_source("HTTPS://token@example.com/template.git").is_err());
+        assert!(normalize_source("https://example.com/template.git?token=secret").is_err());
+        assert_eq!(
+            normalize_source("https://example.com/template.git").unwrap(),
+            "https://example.com/template.git"
+        );
+    }
+
+    #[test]
     fn launcher_keeps_arguments_separate() {
         let contents = launcher_contents("example", Path::new("/tmp/example kit/tool.mjs"));
         assert!(contents.contains("\"$@\""));
         assert!(contents.contains("managed by lingxia template example"));
+    }
+
+    #[test]
+    fn asset_collision_preserves_user_files_and_installs_nothing() {
+        let root = tempdir().unwrap();
+        fs::create_dir_all(root.path().join("template")).unwrap();
+        fs::create_dir_all(root.path().join("bin")).unwrap();
+        fs::create_dir_all(root.path().join("skills/example")).unwrap();
+        fs::write(root.path().join("template/package.json"), "{}").unwrap();
+        fs::write(root.path().join("template/lxapp.json"), "{}").unwrap();
+        fs::write(root.path().join("bin/example.mjs"), "").unwrap();
+        fs::write(root.path().join("skills/example/SKILL.md"), "provider\n").unwrap();
+        fs::write(
+            root.path().join(MANIFEST_FILE),
+            r#"{
+  "name": "Example",
+  "template": "template",
+  "commands": { "example": "bin/example.mjs" },
+  "skills": ["skills/example"]
+}"#,
+        )
+        .unwrap();
+        let home = tempdir().unwrap();
+        let user_skill = home.path().join(".claude/skills/example");
+        fs::create_dir_all(&user_skill).unwrap();
+        fs::write(user_skill.join("SKILL.md"), "user\n").unwrap();
+        let template = InstalledTemplate {
+            slug: "example".to_owned(),
+            root: root.path().to_path_buf(),
+            manifest: load_manifest(root.path()).unwrap(),
+            source: "test".to_owned(),
+            commit: "test".to_owned(),
+        };
+
+        assert!(sync_assets(home.path(), &template, None).is_err());
+        assert_eq!(
+            fs::read_to_string(user_skill.join("SKILL.md")).unwrap(),
+            "user\n"
+        );
+        assert!(!home.path().join(".local/bin/example").exists());
     }
 
     #[test]
@@ -879,6 +1149,20 @@ mod tests {
             fs::read_to_string(home.path().join(".claude/skills/example/SKILL.md")).unwrap(),
             "second\n"
         );
+
+        fs::write(
+            source.path().join(MANIFEST_FILE),
+            r#"{
+  "name": "Example",
+  "template": "template"
+}"#,
+        )
+        .unwrap();
+        git(source.path(), &["add", "."]);
+        git(source.path(), &["commit", "-q", "-m", "remove assets"]);
+        update_from(home.path(), "example", true).unwrap();
+        assert!(!home.path().join(".local/bin/example").exists());
+        assert!(!home.path().join(".claude/skills/example").exists());
 
         remove_from(home.path(), "example").unwrap();
         assert!(!home.path().join(".lingxia/templates/example").exists());
