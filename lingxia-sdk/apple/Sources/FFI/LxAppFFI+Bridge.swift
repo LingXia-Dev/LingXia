@@ -137,6 +137,9 @@ extension LxApp {
         height_ratio: Double,
         position: Int32,
         role: Int32,
+        close_button: Bool,
+        dismiss_on_outside: Bool,
+        modal: Bool,
         ephemeral_web_data: Bool,
         url_callback: Bool
     ) -> Bool {
@@ -167,6 +170,9 @@ extension LxApp {
                 heightRatio: height_ratio,
                 position: position,
                 role: role,
+                closeButton: close_button,
+                dismissOnOutside: dismiss_on_outside,
+                modal: modal,
                 ephemeralWebData: ephemeral_web_data,
                 urlCallback: url_callback
             )

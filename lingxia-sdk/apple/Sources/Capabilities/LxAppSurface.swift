@@ -135,21 +135,41 @@ enum LxAppSurface {
     private final class BackdropView: NSView {
         let id: String
         let appId: String
+        let dismissOnClick: Bool
+        let capturesClicks: Bool
 
-        init(id: String, appId: String) {
+        init(id: String, appId: String, dismissOnClick: Bool, modal: Bool) {
             self.id = id
             self.appId = appId
+            self.dismissOnClick = dismissOnClick
+            self.capturesClicks = dismissOnClick || modal
             super.init(frame: .zero)
             wantsLayer = true
-            layer?.backgroundColor = NSColor.black.withAlphaComponent(0.45).cgColor
+            layer?.backgroundColor = modal
+                ? NSColor.black.withAlphaComponent(0.45).cgColor
+                : NSColor.clear.cgColor
         }
 
         required init?(coder: NSCoder) {
             nil
         }
 
+        override func hitTest(_ point: NSPoint) -> NSView? {
+            capturesClicks ? super.hitTest(point) : nil
+        }
+
         override func mouseDown(with event: NSEvent) {
+            guard dismissOnClick else { return }
             _ = LxAppSurface.close(id: id, appId: appId, reason: "user")
+        }
+    }
+
+    private final class SurfaceContentView: NSView {
+        var passesBackgroundClicks = false
+
+        override func hitTest(_ point: NSPoint) -> NSView? {
+            let hit = super.hitTest(point)
+            return passesBackgroundClicks && hit === self ? nil : hit
         }
     }
 
@@ -246,6 +266,9 @@ enum LxAppSurface {
         heightRatio: Double,
         position: Int32,
         role: Int32,
+        closeButton: Bool,
+        dismissOnOutside: Bool,
+        modal: Bool,
         ephemeralWebData: Bool,
         urlCallback: Bool
     ) -> Bool {
@@ -277,7 +300,8 @@ enum LxAppSurface {
                 sessionId: sessionId,
                 pageInstanceId: rawPageInstanceId,
                 content: content,
-                context: context
+                context: context,
+                closeButton: closeButton
             )
         }
 
@@ -301,6 +325,7 @@ enum LxAppSurface {
                 height: height,
                 widthRatio: widthRatio,
                 heightRatio: heightRatio,
+                closeButton: closeButton,
                 ephemeralWebData: ephemeralWebData,
                 urlCallback: urlCallback,
                 shell: shell
@@ -324,12 +349,17 @@ enum LxAppSurface {
         )
         let windowFrame = kind == kindPopup ? context.frame : surfaceFrame
         let window: NSWindow? = makeWindow(kind: kind, frame: windowFrame)
-        let windowContent = NSView(frame: NSRect(origin: .zero, size: windowFrame.size))
+        let windowContent = SurfaceContentView(frame: NSRect(origin: .zero, size: windowFrame.size))
+        windowContent.passesBackgroundClicks = kind == kindPopup && !modal && !dismissOnOutside
         let contentHost: NSView
         if kind == kindPopup {
             windowContent.wantsLayer = true
             windowContent.layer?.backgroundColor = NSColor.clear.cgColor
-            let backdrop = BackdropView(id: id, appId: appId)
+            let backdrop = BackdropView(
+                id: id,
+                appId: appId,
+                dismissOnClick: dismissOnOutside,
+                modal: modal)
             backdrop.frame = windowContent.bounds
             backdrop.autoresizingMask = [.width, .height]
             windowContent.addSubview(backdrop)
@@ -460,6 +490,10 @@ enum LxAppSurface {
             return false
         }
 
+        if closeButton {
+            addCloseButton(to: contentHost, id: id, appId: appId)
+        }
+
         // A popup (kind == kindPopup, non-aside) is a float: created + registered
         // hidden here, then shown/positioned/dismissed by the reconciler from
         // plan.floats — the single authority for float visibility. A bare window
@@ -496,6 +530,26 @@ enum LxAppSurface {
         return true
     }
 
+    private static func addCloseButton(to content: NSView, id: String, appId: String) {
+        let button = SurfaceActionButton(id: id, appId: appId)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.bezelStyle = .circular
+        button.isBordered = false
+        button.wantsLayer = true
+        button.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.45).cgColor
+        button.layer?.cornerRadius = 16
+        button.image = NSImage(systemSymbolName: "xmark", accessibilityDescription: "Close")
+        button.contentTintColor = .white
+        button.identifier = NSUserInterfaceItemIdentifier("LingXiaSurfaceCloseButton")
+        content.addSubview(button, positioned: .above, relativeTo: nil)
+        NSLayoutConstraint.activate([
+            button.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -12),
+            button.topAnchor.constraint(equalTo: content.topAnchor, constant: 12),
+            button.widthAnchor.constraint(equalToConstant: 32),
+            button.heightAnchor.constraint(equalToConstant: 32),
+        ])
+    }
+
     /// Drill a page aside/window in full-screen over the runner's phone-simulator
     /// device screen, mirroring how a real iOS phone presents it. The surface is a
     /// borderless child window pinned to the whole device frame, clipped to the
@@ -509,7 +563,8 @@ enum LxAppSurface {
         sessionId: UInt64,
         pageInstanceId rawPageInstanceId: String,
         content: Int32,
-        context: SurfaceContext
+        context: SurfaceContext,
+        closeButton: Bool
     ) -> Bool {
         let pageInstanceId = rawPageInstanceId.trimmingCharacters(in: .whitespacesAndNewlines)
         if path.isEmpty || pageInstanceId.isEmpty {
@@ -561,6 +616,9 @@ enum LxAppSurface {
         }
 
         addBackAffordance(to: windowContent, id: id, appId: appId)
+        if closeButton {
+            addCloseButton(to: windowContent, id: id, appId: appId)
+        }
 
         let delegate = WindowDelegate(id: id, appId: appId)
         window.contentView = windowContent
@@ -642,6 +700,7 @@ enum LxAppSurface {
         height: Double,
         widthRatio: Double,
         heightRatio: Double,
+        closeButton: Bool,
         ephemeralWebData: Bool,
         urlCallback: Bool,
         shell: LxAppShell
@@ -765,6 +824,10 @@ enum LxAppSurface {
             return false
         }
 
+        if closeButton {
+            addCloseButton(to: container, id: id, appId: appId)
+        }
+
         let defaultSize = dockDefaultSize(
             position: panelPosition,
             width: width,
@@ -848,6 +911,11 @@ enum LxAppSurface {
            ) {
             WebViewManager.configureWebViewTransparency(webView, transparent: false)
             WebViewManager.attachWebViewToContainer(webView, container: container)
+            if let close = container.subviews.first(where: {
+                $0.identifier?.rawValue == "LingXiaSurfaceCloseButton"
+            }) {
+                container.addSubview(close, positioned: .above, relativeTo: nil)
+            }
             entry.webView = webView
             return
         }
@@ -1416,6 +1484,15 @@ enum LxAppSurface {
         }
     }
 
+    private final class SurfaceWindow: UIWindow {
+        var passesBackgroundTouches = false
+
+        override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+            let hit = super.hitTest(point, with: event)
+            return passesBackgroundTouches && hit === rootViewController?.view ? nil : hit
+        }
+    }
+
     private final class PopupViewController: UIViewController, UIGestureRecognizerDelegate {
         let id: String
         let appId: String
@@ -1428,19 +1505,28 @@ enum LxAppSurface {
         /// compact width). These should feel like an iOS drill-in page, not an
         /// immersive popup.
         private let usesDrillInChrome: Bool
+        private let closeButtonVisible: Bool
+        private let dismissOnOutside: Bool
+        private let modal: Bool
 
         init(
             id: String,
             appId: String,
             contentFrame: CGRect,
             fillsScreen: Bool,
-            usesDrillInChrome: Bool
+            usesDrillInChrome: Bool,
+            closeButtonVisible: Bool,
+            dismissOnOutside: Bool,
+            modal: Bool
         ) {
             self.id = id
             self.appId = appId
             self.contentFrame = contentFrame
             self.fillsScreen = fillsScreen
             self.usesDrillInChrome = usesDrillInChrome
+            self.closeButtonVisible = closeButtonVisible
+            self.dismissOnOutside = dismissOnOutside
+            self.modal = modal
             super.init(nibName: nil, bundle: nil)
             modalPresentationStyle = .overFullScreen
         }
@@ -1461,17 +1547,15 @@ enum LxAppSurface {
             super.viewDidLoad()
             view.backgroundColor = fillsScreen
                 ? (usesDrillInChrome ? UIColor.systemBackground : UIColor.clear)
-                : UIColor.black.withAlphaComponent(0.45)
-            let tap = UITapGestureRecognizer(target: self, action: #selector(closeFromBackdrop))
-            tap.delegate = self
-            view.addGestureRecognizer(tap)
+                : (modal ? UIColor.black.withAlphaComponent(0.45) : UIColor.clear)
+            if dismissOnOutside || modal {
+                let tap = UITapGestureRecognizer(target: self, action: #selector(closeFromBackdrop))
+                tap.delegate = self
+                view.addGestureRecognizer(tap)
+            }
 
-            // A drill-in aside has an iOS-style way back (the visible Back
-            // affordance below, plus this left-edge swipe). An immersive
-            // full-screen float draws no SDK chrome, but keeps the same silent
-            // left-edge swipe as a last-resort escape — iOS has no system Back
-            // and backdrop tap is disabled when full-screen, so without it a
-            // float that forgot to draw its own close would trap the user.
+            // A drill-in aside has an iOS-style way back. Full-screen floats
+            // keep the edge swipe as a safety path.
             if fillsScreen {
                 let edge = UIScreenEdgePanGestureRecognizer(target: self, action: #selector(closeFromEdgeSwipe(_:)))
                 edge.edges = .left
@@ -1485,9 +1569,27 @@ enum LxAppSurface {
             contentView.isUserInteractionEnabled = true
             view.addSubview(contentView)
 
+            if closeButtonVisible {
+                let close = UIButton(type: .system)
+                close.translatesAutoresizingMaskIntoConstraints = false
+                close.setImage(UIImage(systemName: "xmark"), for: .normal)
+                close.tintColor = .white
+                close.backgroundColor = UIColor.black.withAlphaComponent(0.45)
+                close.layer.cornerRadius = 16
+                close.accessibilityLabel = "Close"
+                close.addTarget(self, action: #selector(closeFullScreen), for: .touchUpInside)
+                view.addSubview(close)
+                NSLayoutConstraint.activate([
+                    close.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -12),
+                    close.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 12),
+                    close.widthAnchor.constraint(equalToConstant: 32),
+                    close.heightAnchor.constraint(equalToConstant: 32),
+                ])
+            }
+
             // Full-screen surfaces have no host chrome. Adaptive asides get a
-            // page-like Back affordance; immersive floats draw their own close
-            // (the SDK injects none — see the left-edge swipe safety net above).
+            // page-like Back affordance; immersive floats keep the edge swipe
+            // as a safety path when no close button was requested.
             if usesDrillInChrome {
                 let action = UIButton(type: .system)
                 action.translatesAutoresizingMaskIntoConstraints = false
@@ -1519,7 +1621,7 @@ enum LxAppSurface {
             // Full-screen surfaces have no exposed backdrop — disable the
             // tap-to-close affordance so users don't accidentally dismiss by
             // tapping anywhere on the page.
-            if fillsScreen { return }
+            if fillsScreen || !dismissOnOutside { return }
             _ = LxAppSurface.close(id: id, appId: appId, reason: "user")
         }
 
@@ -1552,6 +1654,9 @@ enum LxAppSurface {
         heightRatio: Double,
         position: Int32,
         role: Int32,
+        closeButton: Bool,
+        dismissOnOutside: Bool,
+        modal: Bool,
         ephemeralWebData: Bool,
         urlCallback: Bool
     ) -> Bool {
@@ -1606,9 +1711,13 @@ enum LxAppSurface {
             appId: appId,
             contentFrame: contentFrame,
             fillsScreen: isFullScreenSurface,
-            usesDrillInChrome: usesDrillInChrome
+            usesDrillInChrome: usesDrillInChrome,
+            closeButtonVisible: closeButton,
+            dismissOnOutside: dismissOnOutside,
+            modal: modal
         )
-        let window = UIWindow(windowScene: windowScene)
+        let window = SurfaceWindow(windowScene: windowScene)
+        window.passesBackgroundTouches = !modal && !dismissOnOutside
         window.frame = containerFrame
         window.windowLevel = .alert + 1
         window.backgroundColor = .clear
