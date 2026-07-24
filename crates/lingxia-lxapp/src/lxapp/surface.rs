@@ -404,6 +404,8 @@ pub struct PageSurfaceRequest {
     /// docks (splits the main); `Float` is a popup; `Main` is a window. `kind`
     /// still drives the dispose-TTL distinction.
     pub role: lingxia_surface::Role,
+    /// Overrides the interaction preset selected by the opening API.
+    pub interaction: Option<lingxia_surface::SurfaceInteraction>,
 }
 
 #[derive(Debug, Clone)]
@@ -443,6 +445,12 @@ pub struct LxAppRuntimeSurfaceInfo {
 /// URL is cancelled and delivered here instead. Dropping the handle closes the
 /// surface and stops the interception, so an abandoned wait (e.g. a cancelled
 /// future) tears the surface down with it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+pub enum UrlCallbackWaitError {
+    #[error("URL callback surface was cancelled before a callback arrived")]
+    Cancelled,
+}
+
 pub struct UrlCallbackSurface {
     appid: String,
     surface: PageSurface,
@@ -455,11 +463,28 @@ impl UrlCallbackSurface {
         &self.surface
     }
 
-    /// Waits for the navigation to the callback URL and returns the full
-    /// navigated URL, query and fragment included. Pends indefinitely until it
-    /// happens — bound the wait externally (a timeout or an abort race).
+    /// Waits only for the callback URL. Prefer [`Self::wait`] when user
+    /// dismissal should cancel the flow.
     pub async fn recv(&mut self) -> String {
         self.channel.recv().await
+    }
+
+    /// Waits for either the callback URL or dismissal of the presented surface.
+    /// Consuming the handle guarantees that the ephemeral surface is torn down
+    /// on every outcome.
+    pub async fn wait(mut self) -> Result<String, UrlCallbackWaitError> {
+        loop {
+            tokio::select! {
+                url = self.channel.recv() => return Ok(url),
+                _ = tokio::time::sleep(Duration::from_millis(50)) => {
+                    let open = crate::lxapp::try_get(&self.appid)
+                        .is_some_and(|app| app.has_surface(&self.surface.id));
+                    if !open {
+                        return Err(UrlCallbackWaitError::Cancelled);
+                    }
+                }
+            }
+        }
     }
 
     /// Returns an already-intercepted URL without waiting.
@@ -520,11 +545,22 @@ impl LxApp {
             ));
         }
 
+        let interaction = request.interaction.unwrap_or_else(|| {
+            if url_callback {
+                lingxia_surface::SurfaceInteraction::url_callback()
+            } else if request.kind == SurfaceKind::Window {
+                lingxia_surface::SurfaceInteraction::window()
+            } else {
+                lingxia_surface::SurfaceInteraction::standard()
+            }
+        });
+        validate_surface_interaction(request.kind, url_callback, interaction)?;
+
         // A window-kind surface is a bare standalone window (no sidebar / shell
         // chrome). It is NOT part of the main window's adaptive layout, so it
         // must bypass the per-window surface graph / reconciler entirely.
         if request.kind == SurfaceKind::Window {
-            return self.open_window_surface(id, request);
+            return self.open_window_surface(id, request, interaction);
         }
 
         let owner_page_instance_id = self.current_page().ok().map(|page| page.instance_id());
@@ -594,6 +630,7 @@ impl LxApp {
                 owner_pid.as_deref(),
                 request.role,
                 url_callback,
+                interaction,
             );
             let opened = controller.open_node(node, request.position);
             present_kind = opened.kind;
@@ -651,6 +688,7 @@ impl LxApp {
             height_ratio: finite_or_nan(request.height_ratio),
             position: present_position,
             role: present_role,
+            interaction,
             ephemeral_web_data,
             url_callback,
         });
@@ -711,6 +749,7 @@ impl LxApp {
         &self,
         id: String,
         request: PageSurfaceRequest,
+        interaction: lingxia_surface::SurfaceInteraction,
     ) -> Result<PageSurface, LxAppError> {
         let owner_page_instance_id = self.current_page().ok().map(|page| page.instance_id());
         let owner = owner_page_instance_id
@@ -780,6 +819,7 @@ impl LxApp {
             height_ratio: finite_or_nan(request.height_ratio),
             position: SurfacePosition::Center,
             role: SurfaceRole::Main,
+            interaction,
             // Window surfaces host this lxapp's own pages, never external web.
             ephemeral_web_data: false,
             url_callback: false,
@@ -847,8 +887,8 @@ impl LxApp {
 
     /// Present a URL surface and intercept the navigation to `callback_url`
     /// (see [`lingxia_webview::url_callback`] for the matching rules): await
-    /// the URL with [`UrlCallbackSurface::recv`], drop the handle to close the
-    /// surface. `request.target` must be [`PageSurfaceTarget::Url`]. The
+    /// [`UrlCallbackSurface::wait`] to handle callback or dismissal.
+    /// `request.target` must be [`PageSurfaceTarget::Url`]. The
     /// interception channel opens before the surface presents, so the sentinel
     /// can never load unobserved. Targets require HTTPS outside a dev session;
     /// loopback HTTP is always allowed and dev sessions may use other HTTP,
@@ -1199,6 +1239,7 @@ impl LxApp {
         owner_page_instance_id: Option<&str>,
         role: lingxia_surface::Role,
         url_callback: bool,
+        interaction: lingxia_surface::SurfaceInteraction,
     ) -> lingxia_surface::Surface {
         use lingxia_surface::{
             Edge as LxEdge, FloatSpec, Placement, Role as LxRole, Surface as LxSurface,
@@ -1247,7 +1288,12 @@ impl LxApp {
                 preferred_size: None,
             },
             state: LxState::Mounted,
-            float: (role == LxRole::Float).then(FloatSpec::default),
+            float: (role == LxRole::Float).then(|| FloatSpec {
+                dismiss: interaction.dismiss,
+                modal: interaction.modal,
+                close_button: interaction.close_button,
+                ..FloatSpec::default()
+            }),
         }
     }
 
@@ -1351,6 +1397,29 @@ fn is_url_callback_loopback_host(host: &str) -> bool {
     }
     host.parse::<std::net::IpAddr>()
         .is_ok_and(|ip| ip.is_loopback())
+}
+
+fn validate_surface_interaction(
+    kind: SurfaceKind,
+    url_callback: bool,
+    interaction: lingxia_surface::SurfaceInteraction,
+) -> Result<(), LxAppError> {
+    if kind == SurfaceKind::Window
+        && interaction.dismiss == lingxia_surface::FloatDismiss::TapOutside
+    {
+        return Err(LxAppError::InvalidParameter(
+            "tapOutside dismissal requires an overlay surface".to_string(),
+        ));
+    }
+    if url_callback
+        && interaction.dismiss == lingxia_surface::FloatDismiss::Manual
+        && !interaction.close_button
+    {
+        return Err(LxAppError::InvalidParameter(
+            "a manual URL callback surface requires closeButton".to_string(),
+        ));
+    }
+    Ok(())
 }
 
 pub(crate) type SurfaceRecords = HashMap<String, SurfaceRecord>;
@@ -1578,6 +1647,45 @@ mod tests {
         ] {
             assert!(validate_url_callback_target(target, true).is_err());
         }
+    }
+
+    #[test]
+    fn url_callback_manual_dismissal_requires_native_close_button() {
+        let invalid = lingxia_surface::SurfaceInteraction {
+            close_button: false,
+            dismiss: lingxia_surface::FloatDismiss::Manual,
+            modal: true,
+        };
+        assert!(validate_surface_interaction(SurfaceKind::Overlay, true, invalid).is_err());
+
+        assert!(
+            validate_surface_interaction(
+                SurfaceKind::Overlay,
+                true,
+                lingxia_surface::SurfaceInteraction::url_callback(),
+            )
+            .is_ok()
+        );
+    }
+
+    #[test]
+    fn window_rejects_tap_outside_dismissal() {
+        assert!(
+            validate_surface_interaction(
+                SurfaceKind::Window,
+                false,
+                lingxia_surface::SurfaceInteraction::standard(),
+            )
+            .is_err()
+        );
+        assert!(
+            validate_surface_interaction(
+                SurfaceKind::Window,
+                false,
+                lingxia_surface::SurfaceInteraction::window(),
+            )
+            .is_ok()
+        );
     }
 
     #[test]

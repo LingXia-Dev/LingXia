@@ -3,6 +3,7 @@ package com.lingxia.lxapp.APIs
 import android.app.Activity
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
+import android.content.res.ColorStateList
 import android.net.Uri
 import android.os.Build
 import android.util.Log
@@ -97,6 +98,9 @@ internal object LxAppSurface {
         val heightRatio: Double,
         val position: SurfacePosition,
         val role: Int,
+        val closeButton: Boolean,
+        val dismissOnOutside: Boolean,
+        val modal: Boolean,
         val ephemeralWebData: Boolean,
         val urlCallback: Boolean,
         val browserTabId: String? = null
@@ -126,6 +130,9 @@ internal object LxAppSurface {
         heightRatio: Double,
         position: Int,
         role: Int,
+        closeButton: Boolean,
+        dismissOnOutside: Boolean,
+        modal: Boolean,
         ephemeralWebData: Boolean,
         urlCallback: Boolean
     ): Boolean {
@@ -154,6 +161,9 @@ internal object LxAppSurface {
             heightRatio = heightRatio,
             position = SurfacePosition.fromInt(position),
             role = role,
+            closeButton = closeButton,
+            dismissOnOutside = dismissOnOutside,
+            modal = modal,
             ephemeralWebData = ephemeralWebData,
             urlCallback = urlCallback
         )
@@ -371,14 +381,19 @@ internal object LxAppSurface {
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT
             )
-            isClickable = true
+            isClickable = request.modal || request.dismissOnOutside
             isFocusable = false
             // No backdrop for full-screen surfaces: drill-in asides should feel
             // like a page, and immersive floats cover every edge by definition.
-            setBackgroundColor(if (fillsScreen) Color.TRANSPARENT else Color.parseColor("#80000000"))
+            setBackgroundColor(
+                if (fillsScreen || !request.modal) Color.TRANSPARENT
+                else Color.parseColor("#80000000")
+            )
         }
-        overlay.setOnClickListener {
-            close(request.id, request.appId, "user")
+        if (request.dismissOnOutside) {
+            overlay.setOnClickListener { close(request.id, request.appId, "user") }
+        } else if (request.modal) {
+            overlay.setOnClickListener { }
         }
 
         val surface = FrameLayout(activity).apply {
@@ -403,11 +418,12 @@ internal object LxAppSurface {
             FrameLayout.LayoutParams.MATCH_PARENT,
             FrameLayout.LayoutParams.MATCH_PARENT
         ))
+        if (request.closeButton) {
+            surface.addView(createSurfaceCloseButton(activity, request))
+        }
         overlay.addView(surface)
-        // Drill-in asides/windows are page-like, so they get a Back affordance
-        // (button + left-edge swipe). A full-screen float draws no SDK chrome —
-        // the lxapp owns its own close UI; the system back gesture is the escape
-        // hatch (handleOnBackPressed -> closeTopUser), so we inject nothing.
+        // Drill-in asides/windows are page-like, so they get a Back affordance.
+        // A full-screen float keeps system Back as a safety path.
         if (fillsScreen && usesDrillInChrome) {
             overlay.addView(createFullScreenEdgeSwipeView(activity, request))
             val backButton = createFullScreenBackButton(activity, request)
@@ -525,6 +541,27 @@ internal object LxAppSurface {
             setOnClickListener {
                 close(request.id, request.appId, "user")
             }
+        }
+    }
+
+    private fun createSurfaceCloseButton(activity: Activity, request: Request): ImageView {
+        val size = dp(activity, 44)
+        return ImageView(activity).apply {
+            layoutParams = FrameLayout.LayoutParams(size, size, Gravity.TOP or Gravity.END).apply {
+                topMargin = dp(activity, 12)
+                marginEnd = dp(activity, 12)
+            }
+            setImageResource(R.drawable.icon_close_x)
+            imageTintList = ColorStateList.valueOf(Color.WHITE)
+            setPadding(dp(activity, 14), dp(activity, 14), dp(activity, 14), dp(activity, 14))
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(Color.parseColor("#73000000"))
+            }
+            contentDescription = "Close"
+            isClickable = true
+            elevation = dp(activity, 16).toFloat()
+            setOnClickListener { close(request.id, request.appId, "user") }
         }
     }
 

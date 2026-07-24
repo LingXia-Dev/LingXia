@@ -62,7 +62,7 @@ impl SurfacePresenter for Platform {
                 .call_static_method(
                     surface_class,
                     jni_str!("present"),
-                    jni_sig!("(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;JLjava/lang/String;IIDDDDIIZZ)Z"),
+                    jni_sig!("(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;JLjava/lang/String;IIDDDDIIZZZZZ)Z"),
                     &[
                         JValue::Object(&JObject::from(id)),
                         JValue::Object(&JObject::from(app_id)),
@@ -77,6 +77,13 @@ impl SurfacePresenter for Platform {
                         JValue::Double(request.height_ratio),
                         JValue::Int(request.position as i32),
                         JValue::Int(request.role as i32),
+                        JValue::Bool(request.interaction.close_button.into()),
+                        JValue::Bool(
+                            (request.interaction.dismiss
+                                == lingxia_surface::FloatDismiss::TapOutside)
+                                .into(),
+                        ),
+                        JValue::Bool(request.interaction.modal.into()),
                         JValue::Bool(request.ephemeral_web_data.into()),
                         JValue::Bool(request.url_callback.into()),
                     ],

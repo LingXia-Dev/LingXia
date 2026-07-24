@@ -1,3 +1,6 @@
+#![allow(clippy::too_many_arguments)]
+
+// The generated Swift ABI includes fixed, wide bridge signatures.
 #[swift_bridge::bridge]
 mod bridge {
     // Toast icon types
@@ -218,6 +221,9 @@ mod bridge {
             height_ratio: f64,
             position: i32,
             role: i32,
+            close_button: bool,
+            dismiss_on_outside: bool,
+            modal: bool,
             ephemeral_web_data: bool,
             url_callback: bool,
         ) -> bool;

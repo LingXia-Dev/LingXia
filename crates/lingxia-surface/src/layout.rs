@@ -246,6 +246,8 @@ pub struct PlanFloat {
     pub dismiss: crate::model::FloatDismiss,
     /// Whether the popup blocks input to layers below.
     pub modal: bool,
+    /// Whether the popup renders the standard circular close control.
+    pub close_button: bool,
 }
 
 /// The stable, complete render contract a skin binds. Unlike the pure-core

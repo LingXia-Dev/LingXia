@@ -206,69 +206,6 @@ pub fn list_page_statuses(app: &Arc<LxApp>) -> Vec<PageStatus> {
         .collect()
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn runtime_page(
-        instance_id: &str,
-        path: &str,
-        current: bool,
-        stack_index: Option<usize>,
-    ) -> crate::PageInstanceRuntimeInfo {
-        crate::PageInstanceRuntimeInfo {
-            instance_id: instance_id.to_string(),
-            name: None,
-            path: path.to_string(),
-            query: Value::Null,
-            owner: crate::PageOwner::Host,
-            presentation: crate::PresentationKind::Window,
-            lifecycle: if current { "visible" } else { "hidden" }.to_string(),
-            stack_index,
-            current,
-            state: crate::PageAutomationState {
-                webview_attached: true,
-                webview_ready: true,
-                webview_error: None,
-                bridge_ready: true,
-                render_state: "finished",
-                lifecycle: if current { "onShow" } else { "onHide" },
-                ready: true,
-                query: Value::Null,
-            },
-        }
-    }
-
-    #[test]
-    fn active_page_resolution_ignores_stale_same_path_instances() {
-        let pages = vec![
-            runtime_page("disposed", "pages/device/index.vue", false, None),
-            runtime_page(
-                "current",
-                "pages/device/index.vue?type=screen",
-                true,
-                Some(0),
-            ),
-        ];
-
-        let selected = active_runtime_page_by_path(&pages, "pages/device/index.vue").unwrap();
-
-        assert_eq!(selected.instance_id, "current");
-    }
-
-    #[test]
-    fn active_page_resolution_prefers_topmost_stack_instance() {
-        let pages = vec![
-            runtime_page("lower", "pages/device/index.vue", false, Some(1)),
-            runtime_page("upper", "pages/device/index.vue", false, Some(3)),
-        ];
-
-        let selected = active_runtime_page_by_path(&pages, "pages/device/index.vue").unwrap();
-
-        assert_eq!(selected.instance_id, "upper");
-    }
-}
-
 // ===================== navigation =====================
 
 fn normalize_tabbar_path(url: &str) -> String {
@@ -618,4 +555,67 @@ pub fn build_query_script(
 }})()
 "#
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn runtime_page(
+        instance_id: &str,
+        path: &str,
+        current: bool,
+        stack_index: Option<usize>,
+    ) -> crate::PageInstanceRuntimeInfo {
+        crate::PageInstanceRuntimeInfo {
+            instance_id: instance_id.to_string(),
+            name: None,
+            path: path.to_string(),
+            query: Value::Null,
+            owner: crate::PageOwner::Host,
+            presentation: crate::PresentationKind::Window,
+            lifecycle: if current { "visible" } else { "hidden" }.to_string(),
+            stack_index,
+            current,
+            state: crate::PageAutomationState {
+                webview_attached: true,
+                webview_ready: true,
+                webview_error: None,
+                bridge_ready: true,
+                render_state: "finished",
+                lifecycle: if current { "onShow" } else { "onHide" },
+                ready: true,
+                query: Value::Null,
+            },
+        }
+    }
+
+    #[test]
+    fn active_page_resolution_ignores_stale_same_path_instances() {
+        let pages = vec![
+            runtime_page("disposed", "pages/device/index.vue", false, None),
+            runtime_page(
+                "current",
+                "pages/device/index.vue?type=screen",
+                true,
+                Some(0),
+            ),
+        ];
+
+        let selected = active_runtime_page_by_path(&pages, "pages/device/index.vue").unwrap();
+
+        assert_eq!(selected.instance_id, "current");
+    }
+
+    #[test]
+    fn active_page_resolution_prefers_topmost_stack_instance() {
+        let pages = vec![
+            runtime_page("lower", "pages/device/index.vue", false, Some(1)),
+            runtime_page("upper", "pages/device/index.vue", false, Some(3)),
+        ];
+
+        let selected = active_runtime_page_by_path(&pages, "pages/device/index.vue").unwrap();
+
+        assert_eq!(selected.instance_id, "upper");
+    }
 }

@@ -21,7 +21,7 @@ pub use layout::{
 pub use manager::SurfaceManager;
 pub use model::{
     Edge, FloatAnchor, FloatDismiss, FloatSpec, Placement, Role, SlotKind, Surface, SurfaceContent,
-    SurfaceId, SurfaceOwner, SurfaceState,
+    SurfaceId, SurfaceInteraction, SurfaceOwner, SurfaceState,
 };
 
 #[cfg(test)]

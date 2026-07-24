@@ -667,9 +667,9 @@ semantics every language surface MUST share.
   admission rules instead of erroring.
 - An explicit role override never mutates the declaration; conflicting with a
   live role fails with `E_SURFACE_CONFLICT`.
-- Floats with manual dismissal MUST ship their own close affordance; compact
-  keeps system Back as the safety exit. Modal floats block underlying input
-  and restore prior focus on close.
+- `interaction.closeButton` adds the standard native circular close control.
+  Manual floats require it or an app-owned close path. Modal floats block
+  underlying input and restore prior focus on close.
 - Allowed URL schemes are `https:` and host-authorized `file:`; anything else
   fails with `E_INVALID_ARG`. Handing a URL to the system still passes the host
   scheme allowlist.

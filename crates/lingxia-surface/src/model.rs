@@ -136,6 +136,47 @@ pub enum FloatDismiss {
     Manual,
 }
 
+/// User interaction contract for a dynamically presented surface.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SurfaceInteraction {
+    pub close_button: bool,
+    pub dismiss: FloatDismiss,
+    pub modal: bool,
+}
+
+impl SurfaceInteraction {
+    pub const fn standard() -> Self {
+        Self {
+            close_button: false,
+            dismiss: FloatDismiss::TapOutside,
+            modal: false,
+        }
+    }
+
+    pub const fn url_callback() -> Self {
+        Self {
+            close_button: true,
+            dismiss: FloatDismiss::Manual,
+            modal: true,
+        }
+    }
+
+    pub const fn window() -> Self {
+        Self {
+            close_button: false,
+            dismiss: FloatDismiss::Manual,
+            modal: false,
+        }
+    }
+}
+
+impl Default for SurfaceInteraction {
+    fn default() -> Self {
+        Self::standard()
+    }
+}
+
 /// Minimal semantics carried only by `float` surfaces (§1.1).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -144,6 +185,8 @@ pub struct FloatSpec {
     pub dismiss: FloatDismiss,
     /// Whether it blocks input to layers below (drives focus-restore, §1.5).
     pub modal: bool,
+    /// Whether the platform renders the standard circular close control.
+    pub close_button: bool,
 }
 
 impl Default for FloatSpec {
@@ -152,6 +195,7 @@ impl Default for FloatSpec {
             anchor: FloatAnchor::Screen,
             dismiss: FloatDismiss::TapOutside,
             modal: false,
+            close_button: false,
         }
     }
 }

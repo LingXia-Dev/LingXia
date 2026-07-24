@@ -4,18 +4,18 @@ use std::sync::{Arc, LazyLock, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use lingxia_surface::{Edge, LayoutPresentationPlan};
+use lingxia_surface::{Edge, LayoutPresentationPlan, SurfaceInteraction};
 use lingxia_webview::WebTag;
 use lingxia_webview::platform::windows::{WindowsWebViewHandler, find_webview_handler};
 use lingxia_webview::runtime as webview_runtime;
 use lingxia_windows_contract::{
     ASIDE_LXAPP_PANEL_ID, WindowsAsidePanelEvent, WindowsAsidePanelTab, WindowsNavAnimation,
-    WindowsPanelPosition, active_host_window_is_device_framed, hide_host_panel,
-    hide_webview_window, navigate_webview_window, present_webview_as_overlay,
-    present_webview_in_active_group, refresh_aside_panel, set_aside_panel_tabs,
-    set_webview_close_handler, set_windows_aside_panel_event_handler,
-    show_webview_as_adaptive_panel, show_webview_as_panel, show_webview_window,
-    show_webview_window_with_content_size,
+    WindowsPanelPosition, active_host_window_is_device_framed,
+    configure_webview_surface_interaction, hide_host_panel, hide_webview_window,
+    navigate_webview_window, present_webview_as_overlay, present_webview_in_active_group,
+    refresh_aside_panel, set_aside_panel_tabs, set_webview_close_handler,
+    set_windows_aside_panel_event_handler, show_webview_as_adaptive_panel, show_webview_as_panel,
+    show_webview_window, show_webview_window_with_content_size,
 };
 
 use super::request_windows_app_exit;
@@ -536,6 +536,7 @@ struct SurfaceEntry {
     /// URL-content surface (`{url, as: 'aside'}`); web asides group into the
     /// shared multi-tab aside browser panel instead of docking one panel each.
     is_web: bool,
+    interaction: SurfaceInteraction,
 }
 
 #[derive(Clone, Copy)]
@@ -622,7 +623,14 @@ fn present_entry(id: &str, entry: &SurfaceEntry, target: PresentationTarget) -> 
             ),
         },
     };
-    result.map_err(|err| err.to_string())
+    result.map_err(|err| err.to_string())?;
+    configure_webview_surface_interaction(
+        &entry.webtag,
+        entry.interaction.close_button,
+        entry.interaction.dismiss == lingxia_surface::FloatDismiss::TapOutside,
+        entry.interaction.modal,
+    )
+    .map_err(|err| err.to_string())
 }
 
 fn window_dimension(value: f64) -> Option<i32> {
@@ -995,11 +1003,14 @@ pub(super) fn present_surface(
     };
     let is_web = request.content == SurfaceContent::Url;
     log::info!(
-        "windows surface present: id={} role={:?} kind={:?} web={} path={}",
+        "windows surface present: id={} role={:?} kind={:?} web={} close_button={} dismiss={:?} modal={} path={}",
         request.id,
         request.role,
         request.kind,
         is_web,
+        request.interaction.close_button,
+        request.interaction.dismiss,
+        request.interaction.modal,
         request.path
     );
     // A surface page instance has its own WebView parent. `Window` presents
@@ -1017,6 +1028,7 @@ pub(super) fn present_surface(
                 cleanup,
                 placement,
                 is_web,
+                interaction: request.interaction,
             },
         );
     }

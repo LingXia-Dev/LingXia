@@ -77,7 +77,8 @@ pub(crate) use runtime_registry::{get, get_lxapps_manager};
 pub(crate) use surface::SurfaceRecords;
 pub use surface::{
     LxAppRuntimeSurfaceInfo, PageSurface, PageSurfaceRequest, PageSurfaceTarget,
-    UrlCallbackSurface, register_surface_close_observer, register_surface_context_observer,
+    UrlCallbackSurface, UrlCallbackWaitError, register_surface_close_observer,
+    register_surface_context_observer,
 };
 use version::Version;
 
