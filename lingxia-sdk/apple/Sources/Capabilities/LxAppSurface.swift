@@ -184,11 +184,28 @@ enum LxAppSurface {
             self.appId = appId
             super.init(frame: .zero)
             title = ""
+            isBordered = false
+            focusRingType = .none
             target = self
             action = #selector(closeSurface)
         }
 
         required init?(coder: NSCoder) { nil }
+
+        override func draw(_ dirtyRect: NSRect) {
+            NSColor.black.withAlphaComponent(0.45).setFill()
+            NSBezierPath(ovalIn: bounds).fill()
+
+            let mark = NSBezierPath()
+            mark.move(to: NSPoint(x: 10, y: 10))
+            mark.line(to: NSPoint(x: 22, y: 22))
+            mark.move(to: NSPoint(x: 22, y: 10))
+            mark.line(to: NSPoint(x: 10, y: 22))
+            mark.lineWidth = 2
+            mark.lineCapStyle = .round
+            NSColor.white.setStroke()
+            mark.stroke()
+        }
 
         @objc private func closeSurface() {
             _ = LxAppSurface.close(id: id, appId: appId, reason: "user")
@@ -491,7 +508,11 @@ enum LxAppSurface {
         }
 
         if closeButton {
-            addCloseButton(to: contentHost, id: id, appId: appId)
+            // Keep host chrome outside the WebView/card subtree. WKWebView can
+            // attach its own compositing layers after presentation; placing the
+            // button in the window overlay prevents those layers from covering
+            // part of the circle.
+            addCloseButton(to: windowContent, anchoredTo: contentHost, id: id, appId: appId)
         }
 
         // A popup (kind == kindPopup, non-aside) is a float: created + registered
@@ -530,21 +551,20 @@ enum LxAppSurface {
         return true
     }
 
-    private static func addCloseButton(to content: NSView, id: String, appId: String) {
+    private static func addCloseButton(
+        to overlay: NSView,
+        anchoredTo content: NSView? = nil,
+        id: String,
+        appId: String
+    ) {
+        let anchor = content ?? overlay
         let button = SurfaceActionButton(id: id, appId: appId)
         button.translatesAutoresizingMaskIntoConstraints = false
-        button.bezelStyle = .circular
-        button.isBordered = false
-        button.wantsLayer = true
-        button.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.45).cgColor
-        button.layer?.cornerRadius = 16
-        button.image = NSImage(systemSymbolName: "xmark", accessibilityDescription: "Close")
-        button.contentTintColor = .white
         button.identifier = NSUserInterfaceItemIdentifier("LingXiaSurfaceCloseButton")
-        content.addSubview(button, positioned: .above, relativeTo: nil)
+        overlay.addSubview(button, positioned: .above, relativeTo: nil)
         NSLayoutConstraint.activate([
-            button.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -12),
-            button.topAnchor.constraint(equalTo: content.topAnchor, constant: 12),
+            button.trailingAnchor.constraint(equalTo: anchor.trailingAnchor, constant: -12),
+            button.topAnchor.constraint(equalTo: anchor.topAnchor, constant: 12),
             button.widthAnchor.constraint(equalToConstant: 32),
             button.heightAnchor.constraint(equalToConstant: 32),
         ])
