@@ -106,7 +106,11 @@ pub fn execute(
         let default_app_id = provider
             .as_ref()
             .and_then(|provider| provider.manifest.defaults.app_id.as_deref())
-            .map(|pattern| pattern.replace("{{PROJECT_NAME}}", &name))
+            .map(|pattern| {
+                pattern
+                    .replace("{{PROJECT_NAME}}", &name)
+                    .replace("{{PROJECT_SLUG}}", &lxapp_scaffold::slugify(&name))
+            })
             .unwrap_or_else(|| self::types::default_lxapp_app_id(&name));
         let app_id = gather_lxapp_id(&default_app_id, yes)?;
         let framework = if let Some(provider) = provider.as_ref() {

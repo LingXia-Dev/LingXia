@@ -39,32 +39,18 @@ Scaffold a new LingXia project. Run it interactively to be prompted for project
 type (a native host **app** or a standalone **lxapp**), target platforms, and
 package id, or pass those up front to script it. Can also seed an app icon.
 
-External lxapp templates are installed Git-backed providers. Add a provider
-once, then select it interactively or pass its installed name. The flag implies
-`--project-type lxapp`. `lingxia new` checks a selected provider for updates at
-most once per day, falls back to its last verified checkout when the network is
-unavailable, and records the exact template commit in the generated project.
-Creation happens in a sibling staging directory and becomes visible only after
-the provider lifecycle succeeds.
+Custom React template precedence is explicit `--template <path>`, then
+`~/.lingxia/templates/lxapp` when present, then the embedded template. The flag
+implies `--project-type lxapp`. A custom root must contain `package.json` and
+`lxapp.json`; it replaces the embedded template as one unit. Repository metadata
+and generated build directories are not copied, and standard `{{...}}` scaffold
+placeholders are expanded in text files.
 
 ```bash
-lingxia template add https://github.com/example/lxapp-kit.git
-lingxia new my-lxapp --template example-kit --yes
+lingxia new my-lxapp --template ../my-lxapp-template --yes
 ```
 
 See `lingxia new --help` for the flags.
-
-### `lingxia template`
-
-Manage external project template providers. `add` clones a Git repository into
-`~/.lingxia/templates/`, validates `lingxia-template.json`, registers its CLI
-commands, and installs its declared agent skills. `list`, `update`, and `remove`
-operate on the installed template name. Updates validate a fresh checkout and
-switch the checkout, commands, skills, and state as one transaction; assets
-removed from the new manifest are deleted. Existing commands or skills not
-owned by that provider are never overwritten. HTTP Git URLs containing
-credentials or query parameters are rejected; use SSH or a Git credential
-helper.
 
 ### `lingxia build`
 
@@ -144,27 +130,6 @@ Re-running `lingxia dev` for the same platform **takes over**: it stops the
 project's existing same-platform session automatically and starts fresh.
 Different platforms don't conflict — `-p android` and `-p ios` run side by
 side.
-
-Before starting a new session, `lingxia dev` optionally reads the project file
-`.lingxia/dev-companion.json`:
-
-```json
-{
-  "run": ["some-tool", "companion"]
-}
-```
-
-`run` is an argv array, not a shell command. LingXia starts it once from the
-project root. The process reports readiness using Companion protocol version 1
-and an opaque runtime environment that LingXia injects only into the current dev
-session. LingXia does not interpret tool-specific configuration or environment
-values. An active Companion shares the session lifecycle: startup failure or
-unexpected exit stops `lingxia dev`, and normal session shutdown stops the
-Companion.
-
-The file is normally part of the project template. There is no global Companion
-registration, Companion list, shell evaluation, or ordering model. If the file
-is absent, `lingxia dev` behaves exactly as a standalone LingXia session.
 
 `lingxia dev` owns the session lifecycle — start, `status`, `stop`. For
 automation, start it detached with `--background` (it returns once the session
