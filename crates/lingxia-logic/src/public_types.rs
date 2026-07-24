@@ -653,14 +653,9 @@ rong::js_api! {
         ///   layout, or `role: main` for a switchable destination.
         ///
         ///   `float` is a popup layered above the main at `position` (like a dialog); it
-        ///   takes no layout space. The SDK gives it **no chrome of its own — there is no
-        ///   built-in close button**: the lxapp owns the popup UI and dismisses it by
-        ///   calling `surface.close()` (or `.hide()`). A float sized to the full container
-        ///   (`size: { width: '100%', height: '100%' }`) presents immersively on mobile
-        ///   (system bars hidden) and is likewise chrome-less — draw your own close
-        ///   affordance. (iOS retains a silent left-edge swipe as a last-resort escape so a
-        ///   full-screen float can never trap the user; don't rely on it as the primary
-        ///   dismissal.)
+        ///   takes no layout space. `interaction` controls the native close button,
+        ///   outside-click dismissal, and modality. Defaults are no button,
+        ///   `tapOutside`, and non-modal.
         /// - `{ surface }` — a surface declared in `lingxia.yaml` `surfaces:`, by id
         ///   (e.g. `'terminal'`, `'ai-assistant'`). Form, position, and startup data come
         ///   from the declaration.
@@ -691,14 +686,11 @@ rong::js_api! {
         ///
         type OpenPageSurfaceSpec = r###"{
     page: string;
-    /**
-     * A chrome-less popup above the main: the lxapp draws its own UI and close
-     * affordance — there is no SDK-provided close button (see
-     * {@link OpenPageSurfaceSpec}).
-     */
+    /** A popup above the main. */
     as: 'float';
     position?: SurfaceFloatPosition;
     size?: OverlaySurfaceSize;
+    interaction?: SurfaceInteraction;
     query?: Record<string, unknown>;
     edge?: never;
     surface?: never;
@@ -707,11 +699,23 @@ rong::js_api! {
     page: string;
     as: 'window';
     size?: WindowSurfaceSize;
+    /** Windows use manual dismissal; `tapOutside` is invalid. */
+    interaction?: SurfaceInteraction;
     query?: Record<string, unknown>;
     edge?: never;
     position?: never;
     surface?: never;
     url?: never;
+}"###;
+
+        /// Native interaction supplied by the host around page content.
+        type SurfaceInteraction = r###"{
+    /** Show the standard circular close button. Default `false`. */
+    closeButton?: boolean;
+    /** Default `tapOutside` for floats and `manual` for windows. */
+    dismiss?: 'tapOutside' | 'manual';
+    /** Block interaction with content below. Default `false`. */
+    modal?: boolean;
 }"###;
 
         type OpenSurfaceSpec = r###"OpenPageSurfaceSpec | OpenDeclaredSurfaceSpec | OpenLxappSurfaceSpec | OpenNativeSurfaceSpec | OpenUrlTabSpec | OpenUrlAsideSpec"###;

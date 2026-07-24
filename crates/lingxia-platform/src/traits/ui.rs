@@ -95,6 +95,8 @@ pub struct SurfaceRequest {
     pub position: SurfacePosition,
     /// Arbitrated role; the platform uses it to decide dock vs popup vs window.
     pub role: SurfaceRole,
+    /// Resolved interaction contract. Platforms render this verbatim.
+    pub interaction: lingxia_surface::SurfaceInteraction,
     /// `Url` content only: isolate the WebView's cookies/site storage from
     /// shared persistent data and discard them when the surface closes (auth
     /// handoffs). `Page` content ignores it.

@@ -567,6 +567,7 @@ impl SurfaceGraph {
                         anchor: spec.anchor,
                         dismiss: spec.dismiss,
                         modal: spec.modal,
+                        close_button: spec.close_button,
                     }
                 })
                 .collect(),
