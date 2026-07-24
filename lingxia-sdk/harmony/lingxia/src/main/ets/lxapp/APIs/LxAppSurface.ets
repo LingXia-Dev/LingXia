@@ -59,6 +59,9 @@ export interface SurfaceLayoutConfig {
   content: number;
   kind: number;
   role: number;
+  closeButton: boolean;
+  dismissOnOutside: boolean;
+  modal: boolean;
   screenWidthVp: number;
   screenHeightVp: number;
   widthVp: number;
@@ -121,6 +124,9 @@ export class LxAppSurface {
 	    heightRatioValue: string,
 	    positionValue: string,
 	    roleValue: string,
+	    closeButtonValue: string,
+	    dismissOnOutsideValue: string,
+	    modalValue: string,
 	    ephemeralWebDataValue: string,
 	    urlCallbackValue: string
 	  ): boolean {
@@ -178,6 +184,9 @@ export class LxAppSurface {
 	      content,
       kind,
       role,
+	      closeButton: closeButtonValue === 'true',
+	      dismissOnOutside: dismissOnOutsideValue === 'true',
+	      modal: modalValue === 'true',
 	      screenWidthVp: dimensions.screenWidthVp,
 	      screenHeightVp: dimensions.screenHeightVp,
 	      widthVp: dimensions.widthVp,
@@ -778,6 +787,9 @@ function surfaceRenderState(layout: SurfaceLayoutConfig, isVisible: boolean, pag
     content: layout.content,
     kind: layout.kind,
     role: layout.role,
+    closeButton: layout.closeButton,
+    dismissOnOutside: layout.dismissOnOutside,
+    modal: layout.modal,
     screenWidthVp: layout.screenWidthVp,
     screenHeightVp: layout.screenHeightVp,
     widthVp: layout.widthVp,
@@ -975,7 +987,7 @@ export struct SurfaceManager {
   private SurfaceLayer(surface: SurfaceRenderState): void {
     if ((surface.content === CONTENT_URL && surface.isVisible && (!surface.browserTabId || surface.pageWebTag.length > 0)) || (surface.content === CONTENT_PAGE && surface.pageWebTag.length > 0)) {
       Stack() {
-        if (surface.isVisible) {
+        if (surface.isVisible && (surface.modal || surface.dismissOnOutside)) {
           this.buildMaskLayer(surface)
         }
         Column() {
@@ -1109,6 +1121,9 @@ export struct SurfaceManager {
         if (surface.isVisible && this.shouldUseFullscreenWindow(surface) && surface.role !== ROLE_FLOAT) {
           this.buildFullscreenBackButton(surface)
         }
+        if (surface.isVisible && surface.closeButton) {
+          this.buildSurfaceCloseButton(surface)
+        }
       }
       .width(surface.isVisible ? '100%' : 1)
       .height(surface.isVisible ? '100%' : 1)
@@ -1141,13 +1156,39 @@ export struct SurfaceManager {
       Column()
         .width(`${width}vp`)
         .height(`${height}vp`)
-        .backgroundColor(SURFACE_MASK_COLOR)
+        .backgroundColor(surface.modal ? SURFACE_MASK_COLOR : Color.Transparent)
         .position({ x, y })
         .hitTestBehavior(HitTestMode.Default)
         .onClick(() => {
-          LxAppSurface.close(surface.id, surface.appId, 'user');
+          if (surface.dismissOnOutside) {
+            LxAppSurface.close(surface.id, surface.appId, 'user');
+          }
         })
     }
+  }
+
+  @Builder
+  private buildSurfaceCloseButton(surface: SurfaceRenderState): void {
+    Stack() {
+      Image($rawfile('icons/icon_close_x.svg'))
+        .width('16vp')
+        .height('16vp')
+        .fillColor(Color.White)
+    }
+    .width('44vp')
+    .height('44vp')
+    .borderRadius('22vp')
+    .backgroundColor('rgba(0,0,0,0.45)')
+    .position({
+      x: (this.shouldUseFullscreenWindow(surface)
+        ? surface.screenWidthVp
+        : surface.leftVp + surface.widthVp) - 56,
+      y: (this.shouldUseFullscreenWindow(surface) ? 0 : surface.topVp) + 12
+    })
+    .zIndex(3)
+    .onClick(() => {
+      LxAppSurface.close(surface.id, surface.appId, 'user');
+    })
   }
 
   @Builder

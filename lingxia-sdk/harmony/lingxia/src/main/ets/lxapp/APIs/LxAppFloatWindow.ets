@@ -246,14 +246,15 @@ struct LingXiaFloatSurfacePage {
   build() {
     Stack() {
       if (this.layout) {
-        if (!this.isFullscreen()) {
-          // Dim scrim around the float rect; a tap outside closes.
+        if (!this.isFullscreen() && (this.layout!.modal || this.layout!.dismissOnOutside)) {
           Column()
             .width('100%')
             .height('100%')
-            .backgroundColor(FLOAT_MASK_COLOR)
+            .backgroundColor(this.layout!.modal ? FLOAT_MASK_COLOR : Color.Transparent)
             .onClick(() => {
-              FloatWindowManager.requestClose(this.lxFloatKey, 'user');
+              if (this.layout!.dismissOnOutside) {
+                FloatWindowManager.requestClose(this.lxFloatKey, 'user');
+              }
             })
         }
         Column() {
@@ -312,6 +313,26 @@ struct LingXiaFloatSurfacePage {
         .backgroundColor(this.layout!.content === FLOAT_CONTENT_URL ? Color.White : Color.Transparent)
         .borderRadius(this.isFullscreen() ? 0 : FLOAT_CORNER_RADIUS)
         .clip(!this.isFullscreen())
+        if (this.layout!.closeButton) {
+          Stack() {
+            Image($rawfile('icons/icon_close_x.svg'))
+              .width('16vp')
+              .height('16vp')
+              .fillColor(Color.White)
+          }
+          .width('44vp')
+          .height('44vp')
+          .borderRadius('22vp')
+          .backgroundColor('rgba(0,0,0,0.45)')
+          .position({
+            x: (this.isFullscreen() ? this.layout!.screenWidthVp : this.layout!.leftVp + this.layout!.widthVp) - 56,
+            y: (this.isFullscreen() ? 0 : this.layout!.topVp) + 12
+          })
+          .zIndex(3)
+          .onClick(() => {
+            FloatWindowManager.requestClose(this.lxFloatKey, 'user');
+          })
+        }
       }
     }
     .width('100%')
