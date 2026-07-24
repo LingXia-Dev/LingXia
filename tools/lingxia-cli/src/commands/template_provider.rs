@@ -31,6 +31,7 @@ pub struct TemplateManifest {
     #[serde(default)]
     pub skills: Vec<PathBuf>,
     pub create: Option<TemplateLifecycle>,
+    pub companion: Option<TemplateCompanion>,
     #[serde(default)]
     pub defaults: TemplateDefaults,
 }
@@ -41,6 +42,12 @@ pub struct TemplateLifecycle {
     pub command: PathBuf,
     #[serde(default)]
     pub args: Vec<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct TemplateCompanion {
+    pub run: Vec<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -216,6 +223,13 @@ pub fn write_project_lock(template: &InstalledTemplate, project_root: &Path) -> 
         directory.join("template.json"),
         [bytes, b"\n".to_vec()].concat(),
     )?;
+    if let Some(companion) = &template.manifest.companion {
+        let bytes = serde_json::to_vec_pretty(companion)?;
+        fs::write(
+            directory.join("dev-companion.json"),
+            [bytes, b"\n".to_vec()].concat(),
+        )?;
+    }
     Ok(())
 }
 
@@ -409,7 +423,16 @@ fn update_from(home: &Path, name: &str, force: bool) -> Result<InstalledTemplate
             )),
         };
     }
-    fs::remove_dir_all(&backup)?;
+    if let Err(error) = fs::remove_dir_all(&backup) {
+        eprintln!(
+            "{}",
+            format!(
+                "warning: template {} was updated, but its previous checkout could not be removed: {error}",
+                updated.slug
+            )
+            .yellow()
+        );
+    }
     Ok(updated)
 }
 
@@ -473,6 +496,14 @@ fn validate_manifest(root: &Path, manifest: &TemplateManifest) -> Result<()> {
             bail!("Template create arguments must not contain NUL bytes");
         }
     }
+    if let Some(companion) = &manifest.companion {
+        if companion.run.is_empty() || companion.run.iter().any(|part| part.is_empty()) {
+            bail!("Template companion run must be a non-empty argv array without empty values");
+        }
+        if companion.run.iter().any(|part| part.contains('\0')) {
+            bail!("Template companion run must not contain NUL bytes");
+        }
+    }
     for skill in &manifest.skills {
         let skill = resolve_owned_path(root, skill, "skill")?;
         if !skill.join("SKILL.md").is_file() {
@@ -484,8 +515,9 @@ fn validate_manifest(root: &Path, manifest: &TemplateManifest) -> Result<()> {
     }
     if let Some(app_id) = &manifest.defaults.app_id
         && !app_id.contains("{{PROJECT_NAME}}")
+        && !app_id.contains("{{PROJECT_SLUG}}")
     {
-        bail!("defaults.appId must contain {{PROJECT_NAME}}");
+        bail!("defaults.appId must contain {{PROJECT_NAME}} or {{PROJECT_SLUG}}");
     }
     Ok(())
 }
@@ -680,7 +712,7 @@ fn remove_launchers(home: &Path, template: &InstalledTemplate) -> Result<()> {
 fn launcher_path(bin: &Path, name: &str) -> PathBuf {
     #[cfg(windows)]
     {
-        return bin.join(format!("{name}.cmd"));
+        bin.join(format!("{name}.cmd"))
     }
     #[cfg(not(windows))]
     bin.join(name)
@@ -698,11 +730,11 @@ fn launcher_contents(slug: &str, entry: &Path) -> String {
         } else {
             format!("\"{}\" %*", entry.display())
         };
-        return format!(
+        format!(
             "@echo off\r\nrem {}\r\n{}\r\n",
             launcher_marker(slug),
             invocation
-        );
+        )
     }
     #[cfg(not(windows))]
     {
@@ -1039,6 +1071,7 @@ mod tests {
             commands: BTreeMap::new(),
             skills: Vec::new(),
             create: None,
+            companion: None,
             defaults: TemplateDefaults::default(),
         };
         assert!(validate_manifest(root.path(), &manifest).is_err());
@@ -1122,7 +1155,10 @@ mod tests {
   "name": "Example",
   "template": "template",
   "commands": { "example": "bin/example.mjs" },
-  "skills": ["skills/example"]
+  "skills": ["skills/example"],
+  "companion": {
+    "run": ["example", "companion"]
+  }
 }"#,
         )
         .unwrap();
@@ -1138,6 +1174,16 @@ mod tests {
         assert_eq!(
             fs::read_to_string(home.path().join(".claude/skills/example/SKILL.md")).unwrap(),
             "first\n"
+        );
+        let project = tempdir().unwrap();
+        write_project_lock(&first, project.path()).unwrap();
+        let companion: serde_json::Value = serde_json::from_slice(
+            &fs::read(project.path().join(".lingxia/dev-companion.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            companion["run"],
+            serde_json::json!(["example", "companion"])
         );
 
         fs::write(source.path().join("skills/example/SKILL.md"), "second\n").unwrap();
