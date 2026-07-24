@@ -1,10 +1,20 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
-  <!-- Dev Runner identity: a deep-indigo rounded plate (22.37% radius,
-       transparent corners) so it stays clearly distinct from the light app
-       icons in the taskbar, with the paper-white vessel + jade pearl. Windows
-       draws app icons unmasked, so the rounding is baked in. -->
-  <rect width="1024" height="1024" rx="229" fill="#312E81"/>
-  <path d="M 288 430 L 288 588 Q 288 692 392 692 L 632 692 Q 736 692 736 588 L 736 430"
-        fill="none" stroke="#F4F5F2" stroke-width="96" stroke-linecap="round"/>
-  <circle cx="512" cy="410" r="102" fill="#1FDDA4"/>
+  <!-- Dev Runner identity: a terminal prompt and the LingXia vessel share a
+       graphite tool tile. The diagonal composition stays distinct from app icons
+       while preserving the exact vessel geometry. The 824/1024 plate includes
+       the macOS Dock margin; Windows keeps the baked-in rounded silhouette. -->
+  <rect x="100" y="100" width="824" height="824" rx="184.3" fill="#121619"/>
+
+  <!-- A font-free >_ prompt: universal at a glance and crisp at taskbar size. -->
+  <g fill="none" stroke="#1FDDA4" stroke-width="58" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M 238 278 L 326 350 L 238 422"/>
+    <path d="M 354 422 L 426 422"/>
+  </g>
+
+  <!-- The canonical LingXia vessel, scaled and anchored at bottom-right. -->
+  <g transform="translate(253 252) scale(0.78)">
+    <path d="M 288 430 L 288 588 Q 288 692 392 692 L 632 692 Q 736 692 736 588 L 736 430"
+          fill="none" stroke="#F4F5F2" stroke-width="96" stroke-linecap="round"/>
+    <circle cx="512" cy="410" r="102" fill="#1FDDA4"/>
+  </g>
 </svg>
