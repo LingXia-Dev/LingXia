@@ -39,18 +39,28 @@ Scaffold a new LingXia project. Run it interactively to be prompted for project
 type (a native host **app** or a standalone **lxapp**), target platforms, and
 package id, or pass those up front to script it. Can also seed an app icon.
 
-Custom React template precedence is explicit `--template <path>`, then
-`~/.lingxia/templates/lxapp` when present, then the embedded template. The flag
-implies `--project-type lxapp`. A custom root must contain `package.json` and
-`lxapp.json`; it replaces the embedded template as one unit. Repository metadata
-and generated build directories are not copied, and standard `{{...}}` scaffold
-placeholders are expanded in text files.
+External lxapp templates are installed Git-backed providers. Add a provider
+once, then select it interactively or pass its installed name. The flag implies
+`--project-type lxapp`. `lingxia new` checks a selected provider for updates at
+most once per day, falls back to its last verified checkout when the network is
+unavailable, and records the exact template commit in the generated project.
+Creation happens in a sibling staging directory and becomes visible only after
+the provider lifecycle succeeds.
 
 ```bash
-lingxia new my-lxapp --template ../my-lxapp-template --yes
+lingxia template add https://github.com/example/lxapp-kit.git
+lingxia new my-lxapp --template example-kit --yes
 ```
 
 See `lingxia new --help` for the flags.
+
+### `lingxia template`
+
+Manage external project template providers. `add` clones a Git repository into
+`~/.lingxia/templates/`, validates `lingxia-template.json`, registers its CLI
+commands, and installs its declared agent skills. `list`, `update`, and `remove`
+operate on the installed template name. Updates validate a fresh checkout and
+switch atomically; they never edit a provider checkout in place.
 
 ### `lingxia build`
 

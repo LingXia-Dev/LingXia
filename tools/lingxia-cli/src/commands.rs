@@ -14,4 +14,5 @@ pub mod publish;
 pub mod runner;
 pub mod rust;
 pub mod store;
+pub mod template_provider;
 pub mod version;
