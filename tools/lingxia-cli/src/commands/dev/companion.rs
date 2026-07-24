@@ -75,9 +75,20 @@ impl DevCompanion {
             .ok_or_else(|| anyhow!("Failed to read development companion handshake"))?;
         let (sender, receiver) = mpsc::channel();
         thread::spawn(move || {
+            let mut stdout = BufReader::new(stdout);
             let mut line = String::new();
-            let result = BufReader::new(stdout).read_line(&mut line).map(|_| line);
-            let _ = sender.send(result);
+            let result = stdout.read_line(&mut line).map(|_| line);
+            if sender.send(result).is_err() {
+                return;
+            }
+            let mut line = String::new();
+            loop {
+                line.clear();
+                match stdout.read_line(&mut line) {
+                    Ok(0) | Err(_) => return,
+                    Ok(_) => eprint!("{line}"),
+                }
+            }
         });
 
         let deadline = Instant::now() + HANDSHAKE_TIMEOUT;
