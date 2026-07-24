@@ -122,6 +122,15 @@ pub(crate) fn set_windows_shell_tabbar_position_on_window_thread(
 pub fn windows_shell_background_color() -> u32 {
     style::shell_palette().window_background
 }
+
+pub(crate) fn windows_shell_frame_colors() -> (u32, u32, bool) {
+    let palette = style::shell_palette();
+    (
+        palette.window_background,
+        palette.frame_button_icon,
+        theme::is_dark(),
+    )
+}
 pub(crate) use terminal_panel::{
     begin_divider_drag, begin_terminal_selection, divider_orientation_at, end_divider_drag,
     end_terminal_selection, scroll_pane_at, update_divider_drag, update_terminal_selection,
