@@ -4,15 +4,6 @@ use lxapp::LxApp;
 use rong::{FromJSObject, JSContext, JSResult};
 use std::sync::Arc;
 
-/// Check if NavigationBar is currently visible for the current page
-fn is_navbar_visible(lxapp: &Arc<LxApp>, path: &str) -> bool {
-    lxapp
-        .get_page(path)
-        .and_then(|page| page.get_navbar_state())
-        .map(|state| state.show_navbar)
-        .unwrap_or(false)
-}
-
 fn update_current_navbar(
     ctx: JSContext,
     mutator: impl FnOnce(&Arc<LxApp>, &str) -> bool,
@@ -23,10 +14,8 @@ fn update_current_navbar(
         .ok_or_else(|| js_service_unavailable_error("No current page found"))?;
 
     let updated = mutator(&lxapp, &current_path);
-    if updated
-        && is_navbar_visible(&lxapp, &current_path)
-        && let Err(e) = lxapp.runtime.update_navbar_ui(lxapp.appid.clone())
-    {
+    // Custom navigation still uses this state for the status bar.
+    if updated && let Err(e) = lxapp.runtime.update_navbar_ui(lxapp.appid.clone()) {
         return Err(js_internal_error(format!(
             "Failed to update navbar UI: {}",
             e
