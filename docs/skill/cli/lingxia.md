@@ -60,7 +60,11 @@ Manage external project template providers. `add` clones a Git repository into
 `~/.lingxia/templates/`, validates `lingxia-template.json`, registers its CLI
 commands, and installs its declared agent skills. `list`, `update`, and `remove`
 operate on the installed template name. Updates validate a fresh checkout and
-switch atomically; they never edit a provider checkout in place.
+switch the checkout, commands, skills, and state as one transaction; assets
+removed from the new manifest are deleted. Existing commands or skills not
+owned by that provider are never overwritten. HTTP Git URLs containing
+credentials or query parameters are rejected; use SSH or a Git credential
+helper.
 
 ### `lingxia build`
 
