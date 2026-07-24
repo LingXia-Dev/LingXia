@@ -19,6 +19,7 @@ use std::thread;
 use std::time::Duration;
 use sysinfo::{ProcessesToUpdate, Signal, System};
 
+mod companion;
 pub(crate) mod log_store;
 mod lxapp_manifest;
 mod server;
@@ -100,6 +101,7 @@ struct DevContext {
     reinstall: bool,
     resolved_env: crate::config::ResolvedEnv,
     extra_native_features: Vec<String>,
+    stop_requested: Arc<AtomicBool>,
 }
 
 /// Per-user token authenticating a physical iOS device's connection to the
@@ -272,8 +274,13 @@ pub fn execute(options: DevExecuteOptions) -> Result<()> {
         return spawn_background_dev(&project_root);
     }
 
+    let stop_requested = Arc::new(AtomicBool::new(false));
+    install_ctrlc_handler(stop_requested.clone())?;
+    let companion = companion::DevCompanion::start(&project_root, stop_requested.clone())?;
+
     if let Some(target) = runner::resolve_dev_target(&project_root, options.target.as_deref())? {
-        return runner::execute_runner_dev(project_root, target, options);
+        let result = runner::execute_runner_dev(project_root, target, options, stop_requested);
+        return companion::finish(result, companion.as_ref());
     }
 
     if options.headless {
@@ -406,6 +413,7 @@ pub fn execute(options: DevExecuteOptions) -> Result<()> {
         reinstall: options.reinstall,
         resolved_env,
         extra_native_features,
+        stop_requested,
     };
 
     let result = match platform_type {
@@ -416,7 +424,7 @@ pub fn execute(options: DevExecuteOptions) -> Result<()> {
         PlatformType::Windows => windows::execute_windows(ctx),
     };
     drop(provider_guard);
-    result
+    companion::finish(result, companion.as_ref())
 }
 
 #[cfg(target_os = "windows")]
