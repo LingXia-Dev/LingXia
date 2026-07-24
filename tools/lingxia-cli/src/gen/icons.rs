@@ -198,10 +198,11 @@ pub fn png_to_ico_bytes(png: &[u8], sizes: &[u32]) -> Result<Vec<u8>> {
 /// Crop uniform launcher padding so the glyph fills the small icon cell. A
 /// mobile launcher icon centers its glyph in a wide safe-area margin, which
 /// reads as a tiny logo lost in padding at 16–48px. When the border is one flat
-/// color or fully transparent (the four corners agree), crop to the glyph plus
-/// a small square margin; full-bleed / photographic icons are returned
-/// unchanged. Mirrors the runtime `lingxia-windows-sdk::app_icon` tightening so
-/// the embedded `.exe` icon and the running window icon match.
+/// color or fully transparent (the four corners agree), crop to a square around
+/// the visible content; flat backgrounds retain a small margin. Full-bleed /
+/// photographic icons are returned unchanged. Mirrors the runtime
+/// `lingxia-windows-sdk::app_icon` tightening so the embedded `.exe` icon and
+/// the running window icon match.
 pub(crate) fn tighten_icon(img: image::RgbaImage) -> image::RgbaImage {
     let (w, h) = img.dimensions();
     if w == 0 || h == 0 {
@@ -245,15 +246,22 @@ pub(crate) fn tighten_icon(img: image::RgbaImage) -> image::RgbaImage {
         return img;
     }
     let content = (max_x - min_x + 1).max(max_y - min_y + 1);
-    let side = content + content / 4; // glyph + ~12% margin each side
-    let cx = (min_x + max_x) / 2;
-    let cy = (min_y + max_y) / 2;
-    let half = (side / 2) as i64;
+    // A transparent source already defines its own silhouette; adding another
+    // safe area makes rounded plates visibly smaller than native Windows icons.
+    let side = if transparent_bg {
+        content
+    } else {
+        content + content / 4
+    };
+    // Center pixel spans, not their truncated integer midpoint. This preserves
+    // half-pixel centers for even-sized content and avoids a top-left bias.
+    let start_x = (min_x as i64 + max_x as i64 + 1 - side as i64).div_euclid(2);
+    let start_y = (min_y as i64 + max_y as i64 + 1 - side as i64).div_euclid(2);
     let mut out = image::RgbaImage::from_pixel(side, side, image::Rgba(bg));
     for oy in 0..side {
         for ox in 0..side {
-            let sx = cx as i64 - half + ox as i64;
-            let sy = cy as i64 - half + oy as i64;
+            let sx = start_x + ox as i64;
+            let sy = start_y + oy as i64;
             if sx >= 0 && sy >= 0 && (sx as u32) < w && (sy as u32) < h {
                 out.put_pixel(ox, oy, *img.get_pixel(sx as u32, sy as u32));
             }
@@ -1021,6 +1029,46 @@ mod vector_drawable_tests {
 mod ico_tests {
     use super::*;
 
+    fn assert_alpha_is_symmetric(image: &ico::IconImage) {
+        let (width, height) = (image.width(), image.height());
+        let rgba = image.rgba_data();
+        let alpha = |x: u32, y: u32| rgba[((y * width + x) * 4 + 3) as usize];
+        let (mut max_horizontal, mut max_vertical) = (0, 0);
+        for y in 0..height {
+            for x in 0..width {
+                max_horizontal = max_horizontal.max(alpha(x, y).abs_diff(alpha(width - 1 - x, y)));
+                max_vertical = max_vertical.max(alpha(x, y).abs_diff(alpha(x, height - 1 - y)));
+            }
+        }
+        assert!(
+            max_horizontal <= 3,
+            "{width}px horizontal alpha drift: {max_horizontal}"
+        );
+        assert!(
+            max_vertical <= 3,
+            "{width}px vertical alpha drift: {max_vertical}"
+        );
+    }
+
+    #[test]
+    fn tighten_icon_preserves_even_content_center() {
+        let mut source = image::RgbaImage::new(20, 20);
+        for y in 2..=17 {
+            for x in 3..=16 {
+                source.put_pixel(x, y, image::Rgba([21, 24, 29, 255]));
+            }
+        }
+
+        let tightened = tighten_icon(source);
+        assert_eq!(tightened.dimensions(), (16, 16));
+        assert_eq!(tightened.get_pixel(0, 8).0[3], 0);
+        assert_eq!(tightened.get_pixel(15, 8).0[3], 0);
+        assert_eq!(tightened.get_pixel(8, 0).0[3], 255);
+        assert_eq!(tightened.get_pixel(8, 15).0[3], 255);
+        assert_eq!(tightened.get_pixel(1, 1).0[3], 255);
+        assert_eq!(tightened.get_pixel(14, 14).0[3], 255);
+    }
+
     #[test]
     fn svg_to_ico_packs_all_sizes() {
         let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" fill="#15181D"/><circle cx="32" cy="32" r="16" fill="#1FDDA4"/></svg>"##;
@@ -1029,5 +1077,15 @@ mod ico_tests {
         assert_eq!(&ico[0..4], &[0, 0, 1, 0]);
         let count = u16::from_le_bytes([ico[4], ico[5]]) as usize;
         assert_eq!(count, WINDOWS_ICO_SIZES.len());
+    }
+
+    #[test]
+    fn runner_ico_keeps_rounded_plate_symmetric() {
+        let svg = include_str!("../../../../design/app-icon/icon-vessel-runner.svg");
+        let bytes = svg_to_ico_bytes(svg, WINDOWS_ICO_SIZES).unwrap();
+        let dir = ico::IconDir::read(std::io::Cursor::new(bytes)).unwrap();
+        for entry in dir.entries() {
+            assert_alpha_is_symmetric(&entry.decode().unwrap());
+        }
     }
 }
