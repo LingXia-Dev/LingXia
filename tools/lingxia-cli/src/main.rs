@@ -161,6 +161,27 @@ enum DevAction {
 }
 
 #[derive(Subcommand)]
+enum TemplateAction {
+    /// Clone and install a Git-backed template provider
+    Add {
+        /// Git URL or local Git repository
+        source: String,
+    },
+    /// List installed template providers
+    List,
+    /// Refresh one template provider, or all when omitted
+    Update {
+        /// Installed template name
+        name: Option<String>,
+    },
+    /// Remove an installed template provider
+    Remove {
+        /// Installed template name
+        name: String,
+    },
+}
+
+#[derive(Subcommand)]
 enum Commands {
     /// Show LingXia CLI version information
     Version {
@@ -190,15 +211,19 @@ enum Commands {
         #[arg(long)]
         icon: Option<String>,
 
-        /// Path to a custom React lxapp template directory.
-        /// Overrides ~/.lingxia/templates/lxapp and implies --project-type lxapp.
-        /// Without this flag, the user template is used when it exists.
-        #[arg(long, value_name = "PATH")]
-        template: Option<std::path::PathBuf>,
+        /// Installed template provider name. Implies --project-type lxapp.
+        #[arg(long, value_name = "NAME")]
+        template: Option<String>,
 
         /// Skip confirmation prompt
         #[arg(short = 'y', long)]
         yes: bool,
+    },
+
+    /// Manage Git-backed project template providers
+    Template {
+        #[command(subcommand)]
+        action: TemplateAction,
     },
 
     /// Generate or update app icons
@@ -641,6 +666,18 @@ fn main() -> Result<()> {
                 yes,
             )?;
         }
+        Commands::Template { action } => match action {
+            TemplateAction::Add { source } => {
+                commands::template_provider::execute_add(&source)?;
+            }
+            TemplateAction::List => commands::template_provider::execute_list()?,
+            TemplateAction::Update { name } => {
+                commands::template_provider::execute_update(name.as_deref())?;
+            }
+            TemplateAction::Remove { name } => {
+                commands::template_provider::execute_remove(&name)?;
+            }
+        },
         Commands::Icon {
             icon_path,
             platform,
