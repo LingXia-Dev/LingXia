@@ -1,6 +1,7 @@
 mod android;
 mod apple;
 mod config_files;
+mod git;
 mod harmony;
 mod icons;
 mod ios;
@@ -22,6 +23,7 @@ use dialoguer::{Confirm, Select, theme::ColorfulTheme};
 use std::path::PathBuf;
 
 use self::config_files::generate_config_file;
+use self::git::GitSetup;
 use self::lxapp_scaffold::{
     create_lxapp_from_template, create_lxapp_project, ensure_custom_template_target_parent,
 };
@@ -58,6 +60,7 @@ pub fn execute(
     icon: Option<String>,
     template: Option<String>,
     yes: bool,
+    no_git: bool,
 ) -> Result<()> {
     println!("{}", "Create a new LingXia project".bold());
     println!();
@@ -158,6 +161,7 @@ pub fn execute(
                 target_dir.display()
             )
         })?;
+        setup_git_repository(&target_dir, no_git);
 
         println!();
         println!("{}", "Project created successfully!".green().bold());
@@ -227,6 +231,8 @@ pub fn execute(
         &scaffold_versions.types,
     )?;
     generate_config_file(&config, &lxapp_info, app_service)?;
+    setup_ai_tooling(&config.target_dir, yes);
+    setup_git_repository(&config.target_dir, no_git);
 
     println!();
     println!("{}", "Project created successfully!".green().bold());
@@ -244,9 +250,31 @@ pub fn execute(
     println!("  cd {}", config.name);
     println!("  lingxia dev");
     println!();
-    setup_ai_tooling(&config.target_dir, yes);
-
     Ok(())
+}
+
+fn setup_git_repository(project_dir: &std::path::Path, no_git: bool) {
+    if no_git {
+        return;
+    }
+    match git::initialize_repository(project_dir) {
+        Ok(GitSetup::Initialized) => println!(
+            "  {} Git: initialized `main` with an initial commit",
+            "✓".green()
+        ),
+        Ok(GitSetup::SkippedParentWorktree) => println!(
+            "{}",
+            "  Git: skipped because the project is inside an existing worktree".yellow()
+        ),
+        Ok(GitSetup::SkippedExistingRepository) => println!(
+            "{}",
+            "  Git: skipped because the template already initialized a repository".yellow()
+        ),
+        Err(error) => eprintln!(
+            "{}",
+            format!("warning: Git initialization did not complete: {error:#}").yellow()
+        ),
+    }
 }
 
 fn select_template_provider(name: Option<&str>, yes: bool) -> Result<Option<InstalledTemplate>> {

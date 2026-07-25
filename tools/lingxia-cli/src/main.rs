@@ -218,6 +218,10 @@ enum Commands {
         /// Skip confirmation prompt
         #[arg(short = 'y', long)]
         yes: bool,
+
+        /// Do not initialize a Git repository or create the initial commit
+        #[arg(long)]
+        no_git: bool,
     },
 
     /// Manage Git-backed project template providers
@@ -655,6 +659,7 @@ fn main() -> Result<()> {
             icon,
             template,
             yes,
+            no_git,
         } => {
             commands::new::execute(
                 name,
@@ -664,6 +669,7 @@ fn main() -> Result<()> {
                 icon,
                 template,
                 yes,
+                no_git,
             )?;
         }
         Commands::Template { action } => match action {
@@ -924,6 +930,15 @@ fn main() -> Result<()> {
 #[cfg(test)]
 mod cli_tests {
     use super::*;
+
+    #[test]
+    fn new_accepts_git_opt_out() {
+        let cli = Cli::try_parse_from(["lingxia", "new", "demo", "--no-git"]).unwrap();
+        let Commands::New { no_git, .. } = cli.command else {
+            panic!("expected new command");
+        };
+        assert!(no_git);
+    }
 
     #[test]
     fn dev_runner_accepts_missing_value_for_device_list() {
