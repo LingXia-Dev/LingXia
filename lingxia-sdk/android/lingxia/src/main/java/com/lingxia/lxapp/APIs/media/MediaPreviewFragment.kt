@@ -98,9 +98,11 @@ internal class MediaPreviewFragment : Fragment() {
     private var imageAutoRunnablePagerPosition: Int = RecyclerView.NO_POSITION
     private var previewRoot: View? = null
     private var transitionOverlay: PreviewVideoPosterView? = null
+    private var initialVideoWaitingIndicator: ProgressBar? = null
     private var transitionOverlayBitmap: Bitmap? = null
     private var transitionOverlayOwnsBitmap: Boolean = false
     private var initialContentRevealed: Boolean = false
+    private var initialVideoWaitingVisible: Boolean = false
     private var pendingSwitchPrefetch: Future<*>? = null
     private var pendingSwitchPrefetchGeneration: Long = 0L
     private var pendingUpcomingPrefetch: Future<*>? = null
@@ -152,11 +154,10 @@ internal class MediaPreviewFragment : Fragment() {
     // otherwise the seek-once-per-gen invariant decays into "seek on every
     // re-invocation" and playback keeps restarting from 0.
     private var sharedPlayerActivationPager: Int = Int.MIN_VALUE
-    // The activation gen that has already consumed its first-frame event.
-    // Equal to current `sharedPlayerActivationGen` ⇒ reveal already done
-    // for this activation; smaller ⇒ a fresh activation hasn't been
-    // handled yet.
-    private var sharedPlayerFirstFrameGen: Long = -1L
+    // A rendered frame can arrive while the pager is moving, and a frame that
+    // was visible can be hidden again by a cancelled drag. Track rendering,
+    // historical reveal, and an in-flight reveal independently.
+    private val sharedPlayerFrameReveal = MediaPreviewFrameRevealTracker()
     // The activation gen for which we've already issued a seek-to-0 +
     // play(). Re-invocations of applySharedPlayerForCurrentItem within
     // the same activation (scroll-state-IDLE rebounce, visual-ready, …)
@@ -172,6 +173,8 @@ internal class MediaPreviewFragment : Fragment() {
     private var pendingPrewarmCommit: (() -> Unit)? = null
     private var pendingPrewarmTimeout: Runnable? = null
     private var suppressScrollHostHideForPrewarmGen: Long = -1L
+    private var pendingFirstFrameWatchdog: Runnable? = null
+    private var pendingFirstFrameWatchdogGen: Long = -1L
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -245,6 +248,14 @@ internal class MediaPreviewFragment : Fragment() {
         transitionOverlay = overlay
         root.addView(overlay)
         previewItems.getOrNull(currentIndex)?.let { showTransitionOverlayForTargetVisual(it) }
+
+        val waitingIndicator = ProgressBar(context).apply {
+            layoutParams = FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT, Gravity.CENTER)
+            indeterminateTintList = ColorStateList.valueOf(Color.WHITE)
+            visibility = View.GONE
+        }
+        initialVideoWaitingIndicator = waitingIndicator
+        root.addView(waitingIndicator)
 
         val topBar = createTopBar(context, totalItems)
         root.addView(topBar)
@@ -331,6 +342,8 @@ internal class MediaPreviewFragment : Fragment() {
 
     private fun cleanupPreviewResources() {
         cancelPendingPrewarm()
+        cancelFirstFrameWatchdog()
+        sharedPlayerFrameReveal.invalidatePendingReveal()
         pageChangeCallback?.let { callback ->
             viewPager?.unregisterOnPageChangeCallback(callback)
         }
@@ -348,6 +361,8 @@ internal class MediaPreviewFragment : Fragment() {
         suppressScrollHostHideForPrewarmGen = -1L
         sharedPlayerHost = null
         previewRoot = null
+        initialVideoWaitingIndicator = null
+        initialVideoWaitingVisible = false
         hideTransitionOverlay()
         transitionOverlay = null
         indicatorText = null
@@ -506,7 +521,7 @@ internal class MediaPreviewFragment : Fragment() {
         if (item?.mediaType != MediaPreviewType.VIDEO &&
             previewAdapter?.isPositionVisualReady(position) == true
         ) {
-            hideTransitionOverlay()
+            revealReadyNonVideo(position)
         }
     }
 
@@ -518,7 +533,7 @@ internal class MediaPreviewFragment : Fragment() {
         val item = previewItems.getOrNull(currentIndex)
         val isVideo = item?.mediaType == MediaPreviewType.VIDEO
         val controlsShown = sharedPlayer?.isControlsVisible() == true
-        val showChip = isVideo && controlsShown
+        val showChip = isVideo && (controlsShown || initialVideoWaitingVisible)
         closeButton?.visibility = if (showChip) View.VISIBLE else View.GONE
     }
 
@@ -555,19 +570,15 @@ internal class MediaPreviewFragment : Fragment() {
             eventSink = { payload ->
                 val event = payload["event"] as? String
                 logSharedPlayerEvent(payload)
-                if (event == "firstframerendered" || event == "playing") {
-                    // Capture the activation gen at the posting site, not at
-                    // runnable execution. Otherwise a stale event from a
-                    // previous video activation (still queued in mainHandler
-                    // when the user moves on to the next page) would observe
-                    // the new gen at execution and latch a reveal for the
-                    // wrong source — the new activation's real first-frame
-                    // event then no-ops because firstFrameGen is already
-                    // latched. The runnable matches against the captured
-                    // gen so it can drop itself if a newer activation took
-                    // over before it ran.
+                if (event == "firstframerendered") {
+                    // UrlEngine has already tied this event to the active
+                    // MediaItem. Capture the preview activation here as well
+                    // so a page change after this runnable is queued cannot
+                    // reveal the frame on a newer page.
                     val expectedGen = sharedPlayerActivationGen
                     val expectedPagerPosition = sharedPlayerActivationPager
+                    sharedPlayerFrameReveal.markRendered(expectedGen)
+                    cancelFirstFrameWatchdog()
                     mainHandler.post {
                         if (expectedGen != sharedPlayerActivationGen) return@post
                         // Prewarm first-frame: the activation's pager position is
@@ -581,6 +592,40 @@ internal class MediaPreviewFragment : Fragment() {
                             onSharedPlayerFirstFrame(expectedGen, expectedPagerPosition)
                         }
                     }
+                } else if (event == "playing") {
+                    // Some devices advance playback without delivering
+                    // onRenderedFirstFrame while the TextureView is hidden.
+                    // Give the real frame callback a short head start, then
+                    // use positive playback progress as a liveness fallback.
+                    // The activation checks keep a queued event from revealing
+                    // a page selected in the meantime.
+                    val expectedGen = sharedPlayerActivationGen
+                    val expectedPagerPosition = sharedPlayerActivationPager
+                    mainHandler.postDelayed({
+                        if (finished ||
+                            expectedGen != sharedPlayerActivationGen ||
+                            sharedPlayerFrameReveal.hasRendered(expectedGen)
+                        ) return@postDelayed
+                        val isPrewarm = expectedGen == pendingPrewarmGen
+                        if (!isPrewarm && expectedPagerPosition != currentPagerPosition) {
+                            return@postDelayed
+                        }
+                        val activePlayer = sharedPlayer ?: return@postDelayed
+                        if (!activePlayer.isPlaying() || activePlayer.getCurrentPosition() <= 0L) {
+                            return@postDelayed
+                        }
+                        LxLog.w(
+                            TAG,
+                            "No first-frame callback; revealing active video from playback progress",
+                        )
+                        sharedPlayerFrameReveal.markRendered(expectedGen)
+                        cancelFirstFrameWatchdog()
+                        if (isPrewarm) {
+                            pendingPrewarmCommit?.invoke()
+                        } else {
+                            onSharedPlayerFirstFrame(expectedGen, expectedPagerPosition)
+                        }
+                    }, PLAYING_REVEAL_FALLBACK_DELAY_MS)
                 }
             },
             typedEventSink = { event ->
@@ -670,6 +715,8 @@ internal class MediaPreviewFragment : Fragment() {
                 // scroll-state IDLE both route here, so the same page
                 // legitimately re-enters this branch and must not bump.
                 if (sharedPlayerActivationPager != currentPagerPosition) {
+                    hideInitialVideoWaitingState()
+                    sharedPlayerFrameReveal.invalidatePendingReveal()
                     sharedPlayerActivationGen += 1L
                     sharedPlayerActivationPager = currentPagerPosition
                     logPlaybackState("video_activate", "playlistIdx=pending")
@@ -733,10 +780,20 @@ internal class MediaPreviewFragment : Fragment() {
                 // again — handlePageSelected re-enters this method after a
                 // prewarm commit and that re-entry must not blank the screen
                 // back out.
-                if (sharedPlayerFirstFrameGen != sharedPlayerActivationGen) {
+                if (!sharedPlayerFrameReveal.wasRevealed(sharedPlayerActivationGen) &&
+                    suppressScrollHostHideForPrewarmGen != sharedPlayerActivationGen &&
+                    !sharedPlayerFrameReveal.isPending(
+                        sharedPlayerActivationGen,
+                        currentPagerPosition,
+                    )
+                ) {
                     host.animate().cancel()
                     host.alpha = 0f
-                    host.visibility = View.INVISIBLE
+                    // Keep the TextureView in the visible hierarchy so vendor
+                    // renderers can latch a frame and emit first-frame events.
+                    // Alpha and the transition overlay still prevent a black
+                    // player surface from flashing on screen.
+                    host.visibility = View.VISIBLE
                 }
                 player.playlistGoToIndex(playlistIdx)
                 logPlaybackState("video_apply", "playlistIdx=$playlistIdx")
@@ -759,13 +816,27 @@ internal class MediaPreviewFragment : Fragment() {
                 }
                 logPlaybackState("video_play", "playlistIdx=$playlistIdx")
                 player.play()
+                if (sharedPlayerFrameReveal.hasRendered(sharedPlayerActivationGen)) {
+                    onSharedPlayerFirstFrame(
+                        expectedGen = sharedPlayerActivationGen,
+                        expectedPagerPosition = currentPagerPosition,
+                    )
+                } else {
+                    ensureFirstFrameWatchdog(
+                        expectedGen = sharedPlayerActivationGen,
+                        expectedPagerPosition = currentPagerPosition,
+                    )
+                }
             }
             MediaPreviewType.IMAGE, MediaPreviewType.UNKNOWN -> {
                 if (sharedPlayerActivationPager != Int.MIN_VALUE) {
+                    sharedPlayerFrameReveal.invalidatePendingReveal()
                     sharedPlayerActivationGen += 1L
                     sharedPlayerActivationPager = Int.MIN_VALUE
                     logPlaybackState("video_deactivate_for_non_video")
                 }
+                cancelFirstFrameWatchdog()
+                hideInitialVideoWaitingState()
                 sharedPlayer?.pause()
                 logPlaybackState("non_video_pause_player")
                 // INVISIBLE (not GONE) so the player's TextureView keeps its
@@ -780,51 +851,83 @@ internal class MediaPreviewFragment : Fragment() {
 
     private fun onSharedPlayerFirstFrame(expectedGen: Long, expectedPagerPosition: Int) {
         val gen = expectedGen
+        if (gen != sharedPlayerActivationGen) return
         val currentItem = previewItems.getOrNull(currentIndex)
         if (currentItem?.mediaType != MediaPreviewType.VIDEO) return
         if (expectedPagerPosition != currentPagerPosition) return
-        // Already revealed for this activation? bail.
-        if (gen == sharedPlayerFirstFrameGen) return
         val host = sharedPlayerHost ?: return
+        val currentlyVisible = host.visibility == View.VISIBLE && host.alpha > 0f
+        if (!sharedPlayerFrameReveal.beginReveal(
+                generation = gen,
+                pagerPosition = expectedPagerPosition,
+                currentlyVisible = currentlyVisible,
+            )
+        ) return
         host.post {
-            if (finished ||
-                gen != sharedPlayerActivationGen ||
-                expectedPagerPosition != currentPagerPosition
-            ) return@post
-            // Re-check at deferred-execution time: a stale runnable from a
-            // prior activation can't reach here (the eventSink wrapper drops
-            // mismatched gens before posting), but the firstFrameGen latch
-            // must wait until we actually commit to the reveal — otherwise
-            // a drag mid-flight makes willReveal=false here, we latch
-            // firstFrameGen anyway, and no subsequent firstframerendered
-            // for the same activation can re-trigger the reveal.
-            if (gen == sharedPlayerFirstFrameGen) return@post
-            val item = previewItems.getOrNull(currentIndex)
-            val willReveal = item?.mediaType == MediaPreviewType.VIDEO &&
-                sharedPlayerScrollState == ViewPager2.SCROLL_STATE_IDLE
-            if (willReveal) {
-                sharedPlayerFirstFrameGen = gen
-                logPlaybackState("video_first_frame", "position=$expectedPagerPosition gen=$gen")
-                host.animate().cancel()
-                host.alpha = 0f
-                host.visibility = View.VISIBLE
-                val revealFrames = if (normalizePreviewRotation(item.rotate) == 0) 1 else 3
-                postAfterAnimationFrames(host, revealFrames) {
-                    if (!finished && gen == sharedPlayerActivationGen) {
-                        revealPreviewRoot()
-                        host.alpha = 1f
-                        // First video frame is on screen: settle `presented`.
-                        signalPresentedOnce()
-                        host.postDelayed({
-                            if (!finished && gen == sharedPlayerActivationGen) {
-                                hideTransitionOverlay()
-                            }
-                        }, 50L)
-                    }
-                }
+            if (!sharedPlayerFrameReveal.isPending(gen, expectedPagerPosition)) return@post
+            if (!canRevealSharedPlayerFrame(gen, expectedPagerPosition)) {
+                sharedPlayerFrameReveal.cancelReveal(gen, expectedPagerPosition)
+                return@post
             }
-            previewAdapter?.notifyVideoRenderedAt(expectedPagerPosition)
+            // Record the reveal only after it reaches the screen. A drag can
+            // begin between the event and these frame callbacks; cancelling
+            // the pending reveal lets the IDLE re-entry retry using the frame
+            // already remembered for this activation.
+            val item = previewItems.getOrNull(currentIndex)
+            host.animate().cancel()
+            host.alpha = 0f
+            host.visibility = View.VISIBLE
+            val revealFrames = if (normalizePreviewRotation(item?.rotate) == 0) 1 else 3
+            postAfterAnimationFrames(host, revealFrames) {
+                if (!sharedPlayerFrameReveal.isPending(gen, expectedPagerPosition)) {
+                    return@postAfterAnimationFrames
+                }
+                if (!canRevealSharedPlayerFrame(gen, expectedPagerPosition)) {
+                    sharedPlayerFrameReveal.cancelReveal(gen, expectedPagerPosition)
+                    if (gen == sharedPlayerActivationGen &&
+                        expectedPagerPosition == currentPagerPosition
+                    ) {
+                        host.alpha = 0f
+                        host.visibility = View.INVISIBLE
+                    }
+                    return@postAfterAnimationFrames
+                }
+
+                val firstReveal = !sharedPlayerFrameReveal.wasRevealed(gen)
+                if (!sharedPlayerFrameReveal.commitReveal(gen, expectedPagerPosition)) {
+                    return@postAfterAnimationFrames
+                }
+                cancelFirstFrameWatchdog()
+                logPlaybackState(
+                    if (firstReveal) "video_first_frame" else "video_frame_restore",
+                    "position=$expectedPagerPosition gen=$gen",
+                )
+                revealPreviewRoot()
+                host.visibility = View.VISIBLE
+                host.alpha = 1f
+                hideInitialVideoWaitingState()
+                if (firstReveal) {
+                    signalPresentedOnce()
+                }
+                previewAdapter?.notifyVideoRenderedAt(expectedPagerPosition)
+                host.postDelayed({
+                    if (canRevealSharedPlayerFrame(gen, expectedPagerPosition) &&
+                        host.visibility == View.VISIBLE &&
+                        host.alpha > 0f
+                    ) {
+                        hideTransitionOverlay()
+                    }
+                }, 50L)
+            }
         }
+    }
+
+    private fun canRevealSharedPlayerFrame(gen: Long, pagerPosition: Int): Boolean {
+        if (finished || gen != sharedPlayerActivationGen) return false
+        if (pagerPosition != currentPagerPosition) return false
+        if (sharedPlayerScrollState != ViewPager2.SCROLL_STATE_IDLE) return false
+        if (!sharedPlayerFrameReveal.hasRendered(gen)) return false
+        return previewItems.getOrNull(currentIndex)?.mediaType == MediaPreviewType.VIDEO
     }
 
     private fun postAfterAnimationFrames(view: View, frames: Int, action: () -> Unit) {
@@ -837,9 +940,67 @@ internal class MediaPreviewFragment : Fragment() {
         }
     }
 
+    private fun ensureFirstFrameWatchdog(
+        expectedGen: Long,
+        expectedPagerPosition: Int,
+    ) {
+        if (sharedPlayerFrameReveal.hasRendered(expectedGen) ||
+            pendingPrewarmGen == expectedGen
+        ) return
+        if (pendingFirstFrameWatchdogGen == expectedGen) return
+        cancelFirstFrameWatchdog()
+        val watchdog = Runnable {
+            pendingFirstFrameWatchdog = null
+            pendingFirstFrameWatchdogGen = -1L
+            if (finished ||
+                expectedGen != sharedPlayerActivationGen ||
+                expectedPagerPosition != currentPagerPosition ||
+                sharedPlayerFrameReveal.hasRendered(expectedGen)
+            ) return@Runnable
+
+            showInitialVideoWaitingState("timeout")
+        }
+        pendingFirstFrameWatchdog = watchdog
+        pendingFirstFrameWatchdogGen = expectedGen
+        mainHandler.postDelayed(watchdog, INITIAL_VIDEO_WAITING_TIMEOUT_MS)
+    }
+
+    private fun cancelFirstFrameWatchdog() {
+        pendingFirstFrameWatchdog?.let { mainHandler.removeCallbacks(it) }
+        pendingFirstFrameWatchdog = null
+        pendingFirstFrameWatchdogGen = -1L
+    }
+
+    private fun hideInitialVideoWaitingState() {
+        if (!initialVideoWaitingVisible && initialVideoWaitingIndicator?.visibility != View.VISIBLE) return
+        initialVideoWaitingVisible = false
+        initialVideoWaitingIndicator?.visibility = View.GONE
+        updateCloseButtonVisibility()
+    }
+
+    private fun showInitialVideoWaitingState(reason: String) {
+        if (sharedPlayerFrameReveal.hasRendered(sharedPlayerActivationGen)) return
+        LxLog.w(TAG, "Video has no rendered frame; showing waiting state ($reason)")
+        logPlaybackState("initial_video_waiting", "reason=$reason")
+        revealPreviewRoot()
+        hideTransitionOverlay()
+        sharedPlayerHost?.let { host ->
+            host.animate().cancel()
+            host.visibility = View.VISIBLE
+            host.alpha = 1f
+        }
+        initialVideoWaitingVisible = true
+        initialVideoWaitingIndicator?.visibility = View.VISIBLE
+        updateCloseButtonVisibility()
+    }
+
     private fun onSharedPlayerTerminal(position: Int, terminal: String) {
         val item = previewItems.getOrNull(currentIndex)
         if (item?.mediaType != MediaPreviewType.VIDEO) return
+        if (terminal != "error") {
+            showInitialVideoWaitingState("ended_without_frame")
+        }
+        cancelFirstFrameWatchdog()
         logPlaybackState("video_terminal", "position=$position terminal=$terminal")
         onVideoTerminal(position, terminal)
     }
@@ -1055,10 +1216,7 @@ internal class MediaPreviewFragment : Fragment() {
 
     private fun onItemVisualReady(position: Int) {
         if (position == currentPagerPosition) {
-            val item = previewItems.getOrNull(currentIndex)
-            if (!initialContentRevealed && item?.mediaType != MediaPreviewType.VIDEO) {
-                revealPreviewRoot()
-            }
+            revealReadyNonVideo(position)
             // For video items, the placeholder being ready does not mean the
             // player has decoded its first frame yet. Keep the transition
             // overlay up until the shared player's firstframerendered event
@@ -1069,18 +1227,27 @@ internal class MediaPreviewFragment : Fragment() {
             // screen before the consumer's .then() runs. The video path
             // already goes through postAfterAnimationFrames, so this keeps
             // the two paths' timing guarantees in sync.
-            if (item?.mediaType != MediaPreviewType.VIDEO) {
-                hideTransitionOverlay()
-                val root = previewRoot
-                if (root != null) {
-                    root.postOnAnimation {
-                        if (!finished) signalPresentedOnce()
-                    }
-                } else {
-                    signalPresentedOnce()
-                }
-            }
             scheduleCurrentItemBehavior("visual_ready")
+        }
+    }
+
+    private fun revealReadyNonVideo(position: Int) {
+        if (position != currentPagerPosition) return
+        if (previewItems.getOrNull(currentIndex)?.mediaType == MediaPreviewType.VIDEO) return
+        revealPreviewRoot()
+        hideTransitionOverlay()
+        val root = previewRoot
+        if (root == null) {
+            signalPresentedOnce()
+            return
+        }
+        root.postOnAnimation {
+            if (!finished &&
+                position == currentPagerPosition &&
+                previewItems.getOrNull(currentIndex)?.mediaType != MediaPreviewType.VIDEO
+            ) {
+                signalPresentedOnce()
+            }
         }
     }
 
@@ -1283,6 +1450,7 @@ internal class MediaPreviewFragment : Fragment() {
 
         cancelPendingPrewarm()
 
+        sharedPlayerFrameReveal.invalidatePendingReveal()
         sharedPlayerActivationGen += 1L
         val prewarmGen = sharedPlayerActivationGen
         // Targeting the *future* page so the eventSink's
@@ -1306,10 +1474,11 @@ internal class MediaPreviewFragment : Fragment() {
             if (finished || pendingPrewarmGen != prewarmGen) return@commit
             clearPendingPrewarm()
             logPlaybackState("prewarm_commit", "gen=$prewarmGen")
-            // Mark first-frame already-rendered for this activation so the
-            // post-swap re-entry of applySharedPlayerForCurrentItem skips the
-            // host-hide branch.
-            sharedPlayerFirstFrameGen = prewarmGen
+            sharedPlayerFrameReveal.beginReveal(
+                generation = prewarmGen,
+                pagerPosition = targetPagerPosition,
+                currentlyVisible = false,
+            )
             suppressScrollHostHideForPrewarmGen = prewarmGen
             host.animate().cancel()
             host.alpha = 0f
@@ -1318,29 +1487,41 @@ internal class MediaPreviewFragment : Fragment() {
             // target's first frame; the new page underneath is invisible.
             viewPager?.setCurrentItem(targetPagerPosition, false)
             // Keep the player in the composition for a few frames before
-            // revealing it. On slower TVs firstframerendered/playing can
-            // arrive before the TextureView's visible buffer is latched.
+            // revealing it. On slower TVs firstframerendered can arrive just
+            // before the TextureView's visible buffer is latched.
             val revealFrames = if (normalizePreviewRotation(target.rotate) == 0) 1 else 3
             postAfterAnimationFrames(host, revealFrames) {
-                if (!finished &&
-                    prewarmGen == sharedPlayerActivationGen &&
-                    targetPagerPosition == currentPagerPosition
-                ) {
-                    host.alpha = 1f
-                    suppressScrollHostHideForPrewarmGen = -1L
-                    host.postDelayed({
-                        if (!finished &&
-                            prewarmGen == sharedPlayerActivationGen &&
-                            targetPagerPosition == currentPagerPosition
-                        ) {
-                            hideTransitionOverlay()
-                        }
-                    }, 50L)
-                } else if (suppressScrollHostHideForPrewarmGen == prewarmGen) {
-                    suppressScrollHostHideForPrewarmGen = -1L
+                if (!sharedPlayerFrameReveal.isPending(prewarmGen, targetPagerPosition)) {
+                    return@postAfterAnimationFrames
                 }
+                if (!canRevealSharedPlayerFrame(prewarmGen, targetPagerPosition)) {
+                    sharedPlayerFrameReveal.cancelReveal(prewarmGen, targetPagerPosition)
+                    suppressScrollHostHideForPrewarmGen = -1L
+                    if (prewarmGen == sharedPlayerActivationGen &&
+                        targetPagerPosition == currentPagerPosition
+                    ) {
+                        host.alpha = 0f
+                        host.visibility = View.INVISIBLE
+                    }
+                    return@postAfterAnimationFrames
+                }
+
+                if (!sharedPlayerFrameReveal.commitReveal(prewarmGen, targetPagerPosition)) {
+                    return@postAfterAnimationFrames
+                }
+                host.visibility = View.VISIBLE
+                host.alpha = 1f
+                suppressScrollHostHideForPrewarmGen = -1L
+                previewAdapter?.notifyVideoRenderedAt(targetPagerPosition)
+                host.postDelayed({
+                    if (canRevealSharedPlayerFrame(prewarmGen, targetPagerPosition) &&
+                        host.visibility == View.VISIBLE &&
+                        host.alpha > 0f
+                    ) {
+                        hideTransitionOverlay()
+                    }
+                }, 50L)
             }
-            previewAdapter?.notifyVideoRenderedAt(targetPagerPosition)
         }
         pendingPrewarmGen = prewarmGen
         mainHandler.postDelayed(timeoutRunnable, PREWARM_TIMEOUT_MS)
@@ -1552,6 +1733,11 @@ internal class MediaPreviewFragment : Fragment() {
         // a flaky network / corrupt source we'd otherwise stall the
         // auto-advance indefinitely.
         private const val PREWARM_TIMEOUT_MS = 2_500L
+        // Do not leave a video as an uncloseable black surface while it
+        // buffers. Reveal a visible waiting affordance; playback continues and
+        // can still present a later first frame.
+        private const val INITIAL_VIDEO_WAITING_TIMEOUT_MS = 1_500L
+        private const val PLAYING_REVEAL_FALLBACK_DELAY_MS = 250L
 
         fun show(
             activity: AppCompatActivity,
