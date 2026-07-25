@@ -3,6 +3,8 @@ package com.lingxia.lxapp.APIs
 import android.app.Activity
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.InsetDrawable
+import android.graphics.drawable.RippleDrawable
 import android.content.res.ColorStateList
 import android.net.Uri
 import android.os.Build
@@ -544,24 +546,40 @@ internal object LxAppSurface {
         }
     }
 
-    private fun createSurfaceCloseButton(activity: Activity, request: Request): ImageView {
-        val size = dp(activity, 44)
-        return ImageView(activity).apply {
-            layoutParams = FrameLayout.LayoutParams(size, size, Gravity.TOP or Gravity.END).apply {
-                topMargin = dp(activity, 12)
-                marginEnd = dp(activity, 12)
+    private fun createSurfaceCloseButton(activity: Activity, request: Request): View {
+        val touchSize = dp(activity, 48)
+        val visualSize = dp(activity, 32)
+        val visualInset = (touchSize - visualSize) / 2
+        val chip = GradientDrawable().apply {
+            shape = GradientDrawable.OVAL
+            setColor(Color.parseColor("#73000000"))
+        }
+        val rippleMask = GradientDrawable().apply {
+            shape = GradientDrawable.OVAL
+            setColor(Color.WHITE)
+        }
+        return FrameLayout(activity).apply {
+            layoutParams = FrameLayout.LayoutParams(touchSize, touchSize, Gravity.TOP or Gravity.END).apply {
+                // The 32dp visual chip remains 12dp from each content edge;
+                // the transparent outer area only expands the touch target.
+                topMargin = dp(activity, 4)
+                marginEnd = dp(activity, 4)
             }
-            setImageResource(R.drawable.icon_close_x)
-            imageTintList = ColorStateList.valueOf(Color.WHITE)
-            setPadding(dp(activity, 14), dp(activity, 14), dp(activity, 14), dp(activity, 14))
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.OVAL
-                setColor(Color.parseColor("#73000000"))
-            }
+            background = RippleDrawable(
+                ColorStateList.valueOf(Color.parseColor("#33FFFFFF")),
+                InsetDrawable(chip, visualInset),
+                InsetDrawable(rippleMask, visualInset),
+            )
             contentDescription = "Close"
             isClickable = true
-            elevation = dp(activity, 16).toFloat()
+            isFocusable = true
             setOnClickListener { close(request.id, request.appId, "user") }
+            addView(ImageView(activity).apply {
+                setImageResource(R.drawable.icon_close_x)
+                imageTintList = ColorStateList.valueOf(Color.WHITE)
+                scaleType = ImageView.ScaleType.CENTER
+                isDuplicateParentStateEnabled = true
+            }, FrameLayout.LayoutParams(visualSize, visualSize, Gravity.CENTER))
         }
     }
 
