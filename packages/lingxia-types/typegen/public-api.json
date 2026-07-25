@@ -150,6 +150,7 @@
     "SurfaceContext",
     "SurfaceEdge",
     "SurfaceFloatPosition",
+    "SurfaceInteraction",
     "SurfaceHandle",
     "SurfaceVisibilityEvent",
     "SwitchTabOptions",

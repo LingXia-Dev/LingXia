@@ -57,6 +57,9 @@ impl SurfacePresenter for Platform {
                 SurfacePosition::Top => 4,
             },
             request.role as i32,
+            request.interaction.close_button,
+            request.interaction.dismiss == lingxia_surface::FloatDismiss::TapOutside,
+            request.interaction.modal,
             request.ephemeral_web_data,
             request.url_callback,
         ) {

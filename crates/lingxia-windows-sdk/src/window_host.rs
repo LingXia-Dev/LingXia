@@ -49,8 +49,8 @@ use windows::Win32::UI::Input::Ime::{
     ImmSetCandidateWindow, ImmSetCompositionWindow,
 };
 use windows::Win32::UI::Input::KeyboardAndMouse::{
-    GetKeyState, ReleaseCapture, SetCapture, SetFocus, TME_LEAVE, TRACKMOUSEEVENT, TrackMouseEvent,
-    VK_CONTROL, VK_MENU, VK_SHIFT,
+    EnableWindow, GetKeyState, IsWindowEnabled, ReleaseCapture, SetCapture, SetFocus, TME_LEAVE,
+    TRACKMOUSEEVENT, TrackMouseEvent, VK_CONTROL, VK_MENU, VK_SHIFT,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     self, WINDOW_EX_STYLE, WINDOW_STYLE, WNDCLASSW, WS_MAXIMIZEBOX, WS_MINIMIZEBOX,
@@ -416,6 +416,16 @@ impl WindowsHostBackend for WindowsHostBackendImpl {
         position: u8,
     ) -> StdResult<()> {
         present_webview_as_overlay(webtag, width, height, width_ratio, height_ratio, position)
+    }
+
+    fn configure_webview_surface_interaction(
+        &self,
+        webtag: &WebTag,
+        close_button: bool,
+        dismiss_on_outside: bool,
+        modal: bool,
+    ) -> StdResult<()> {
+        configure_webview_surface_interaction(webtag, close_button, dismiss_on_outside, modal)
     }
 
     fn resize_host_window_content(
@@ -1093,6 +1103,24 @@ struct FloatingOverlay {
 /// tracks z-order/minimize, not screen position.
 static FLOATING_OVERLAYS: OnceLock<Mutex<HashMap<isize, Vec<FloatingOverlay>>>> = OnceLock::new();
 
+#[derive(Debug, Clone, Copy)]
+struct SurfaceInteractionState {
+    dismiss_on_outside: bool,
+    modal_owner: Option<isize>,
+}
+
+static SURFACE_INTERACTIONS: OnceLock<Mutex<HashMap<String, SurfaceInteractionState>>> =
+    OnceLock::new();
+static MODAL_SURFACE_OWNERS: OnceLock<Mutex<HashMap<isize, (usize, bool)>>> = OnceLock::new();
+#[derive(Debug, Clone, Copy)]
+struct SurfaceCloseButton {
+    window: isize,
+    surface: isize,
+}
+
+static SURFACE_CLOSE_BUTTONS: OnceLock<Mutex<HashMap<String, SurfaceCloseButton>>> =
+    OnceLock::new();
+
 fn register_floating_overlay(owner: HWND, webtag_key: &str, layout: FloatingOverlayLayout) {
     if let Ok(mut floats) = FLOATING_OVERLAYS
         .get_or_init(|| Mutex::new(HashMap::new()))
@@ -1118,6 +1146,153 @@ fn unregister_floating_overlay(webtag_key: &str) {
             overlays.retain(|overlay| overlay.webtag_key != webtag_key);
         }
         floats.retain(|_, overlays| !overlays.is_empty());
+    }
+    clear_surface_interaction(webtag_key);
+}
+
+pub fn configure_webview_surface_interaction(
+    webtag: &WebTag,
+    close_button: bool,
+    dismiss_on_outside: bool,
+    modal: bool,
+) -> StdResult<()> {
+    log::debug!(
+        "configure surface interaction: webtag={} close_button={} dismiss_on_outside={} modal={}",
+        webtag.key(),
+        close_button,
+        dismiss_on_outside,
+        modal
+    );
+    let hwnd = window_handle_for_key(webtag.key())
+        .or_else(|| {
+            find_webview_handler(webtag)
+                .map(|handler| hwnd_from_handle(handler.native_view().window))
+        })
+        .ok_or_else(|| handler_not_ready(webtag))?;
+    let key = webtag.key().to_string();
+    let owner = floating_overlay_owner(&key);
+
+    clear_surface_interaction(&key);
+    let modal_owner = if modal && !dismiss_on_outside {
+        owner.map(acquire_modal_surface_owner)
+    } else {
+        None
+    };
+    if let Ok(mut interactions) = SURFACE_INTERACTIONS
+        .get_or_init(|| Mutex::new(HashMap::new()))
+        .lock()
+    {
+        interactions.insert(
+            key.clone(),
+            SurfaceInteractionState {
+                dismiss_on_outside,
+                modal_owner,
+            },
+        );
+    }
+
+    if !close_button {
+        return Ok(());
+    }
+    let handle = hwnd_handle(hwnd);
+    let key_for_button = key.clone();
+    if !post_to_window_thread(
+        handle,
+        Box::new(move || {
+            let hwnd = hwnd_from_handle(handle);
+            show_surface_close_button(hwnd, key_for_button);
+        }),
+    ) {
+        clear_surface_interaction(&key);
+        return Err(WebViewError::WebView(
+            "failed to configure surface interaction on the window thread".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn clear_surface_interaction(webtag_key: &str) {
+    remove_surface_close_button(webtag_key);
+    let removed = SURFACE_INTERACTIONS
+        .get()
+        .and_then(|interactions| interactions.lock().ok())
+        .and_then(|mut interactions| interactions.remove(webtag_key));
+    let Some(owner) = removed.and_then(|state| state.modal_owner) else {
+        return;
+    };
+    release_modal_surface_owner(owner);
+}
+
+fn acquire_modal_surface_owner(owner: HWND) -> isize {
+    let owner = hwnd_handle(owner);
+    if let Ok(mut owners) = MODAL_SURFACE_OWNERS
+        .get_or_init(|| Mutex::new(HashMap::new()))
+        .lock()
+    {
+        if let Some((count, _)) = owners.get_mut(&owner) {
+            *count += 1;
+        } else {
+            let was_enabled = unsafe { IsWindowEnabled(hwnd_from_handle(owner)).as_bool() };
+            if was_enabled {
+                unsafe {
+                    let _ = EnableWindow(hwnd_from_handle(owner), false);
+                }
+            }
+            owners.insert(owner, (1, was_enabled));
+        }
+    }
+    owner
+}
+
+fn release_modal_surface_owner(owner: isize) {
+    let reenable = MODAL_SURFACE_OWNERS
+        .get()
+        .and_then(|owners| owners.lock().ok())
+        .and_then(|mut owners| {
+            let (count, was_enabled) = owners.get_mut(&owner)?;
+            if *count > 1 {
+                *count -= 1;
+                None
+            } else {
+                let was_enabled = *was_enabled;
+                owners.remove(&owner);
+                Some(was_enabled)
+            }
+        })
+        .unwrap_or(false);
+    if reenable {
+        unsafe {
+            let _ = EnableWindow(hwnd_from_handle(owner), true);
+        }
+    }
+}
+
+fn dismiss_surface_on_deactivate(hwnd: HWND, wparam: WPARAM, lparam: LPARAM) {
+    if (wparam.0 & 0xffff) as u32 != WindowsAndMessaging::WA_INACTIVE {
+        return;
+    }
+    let Some(webtag_key) = window_webtag_key(hwnd) else {
+        return;
+    };
+    let dismiss = SURFACE_INTERACTIONS
+        .get()
+        .and_then(|interactions| interactions.lock().ok())
+        .and_then(|interactions| interactions.get(&webtag_key).copied())
+        .is_some_and(|state| state.dismiss_on_outside);
+    if !dismiss {
+        return;
+    }
+    let activated = hwnd_from_handle(lparam.0);
+    let Some(owner) = floating_overlay_owner(&webtag_key) else {
+        return;
+    };
+    let activated_root = if activated.is_invalid() {
+        None
+    } else {
+        Some(unsafe { WindowsAndMessaging::GetAncestor(activated, WindowsAndMessaging::GA_ROOT) })
+    };
+    if activated == owner || activated_root == Some(owner) {
+        invoke_close_handler(&webtag_key);
     }
 }
 
@@ -1427,9 +1602,7 @@ unsafe extern "system" fn drill_back_proc(
             } as *const String;
             if !raw.is_null() {
                 let webtag_key = unsafe { (*raw).clone() };
-                if let Some(close) = webview_close_handler(&webtag_key) {
-                    close();
-                }
+                invoke_button_close_handler(&webtag_key);
             }
             LRESULT(0)
         }
@@ -1536,7 +1709,10 @@ fn upload_drill_back_button(hwnd: HWND) {
 /// Circular alpha: the disc is a 35% black wash, the white chevron strokes
 /// stay opaque; outside the circle is fully transparent.
 fn apply_drill_back_alpha(pixels: &mut [u32], size: i32) {
-    const DIM: u32 = 0x59;
+    apply_circular_button_alpha(pixels, size, 0x59);
+}
+
+fn apply_circular_button_alpha(pixels: &mut [u32], size: i32, dim: u32) {
     let radius = size as f32 / 2.0;
     for y in 0..size {
         for x in 0..size {
@@ -1545,7 +1721,7 @@ fn apply_drill_back_alpha(pixels: &mut [u32], size: i32) {
             let dx = x as f32 + 0.5 - radius;
             let dy = y as f32 + 0.5 - radius;
             let coverage = (radius - (dx * dx + dy * dy).sqrt() + 0.5).clamp(0.0, 1.0);
-            let base = if pixel > 0x00f0_f0f0 { 255 } else { DIM };
+            let base = if pixel > 0x00f0_f0f0 { 255 } else { dim };
             let alpha = (base as f32 * coverage) as u32;
             let premultiply = |channel: u32| (channel * alpha + 127) / 255;
             pixels[index] = (alpha << 24)
@@ -1553,6 +1729,231 @@ fn apply_drill_back_alpha(pixels: &mut [u32], size: i32) {
                 | (premultiply((pixel >> 8) & 0xff) << 8)
                 | premultiply(pixel & 0xff);
         }
+    }
+}
+
+const SURFACE_CLOSE_SIZE: i32 = 32;
+const SURFACE_CLOSE_MARGIN: i32 = 12;
+
+fn show_surface_close_button(surface: HWND, webtag_key: String) {
+    if let Some(existing) = SURFACE_CLOSE_BUTTONS
+        .get()
+        .and_then(|buttons| buttons.lock().ok())
+        .and_then(|buttons| buttons.get(&webtag_key).copied())
+        .filter(|button| is_window_handle_valid(button.window))
+    {
+        sync_surface_close_button(surface, hwnd_from_handle(existing.window));
+        return;
+    }
+
+    let class = surface_close_class();
+    let user_data = Box::into_raw(Box::new(webtag_key.clone()));
+    let Ok(button) = (unsafe {
+        WindowsAndMessaging::CreateWindowExW(
+            WindowsAndMessaging::WS_EX_LAYERED
+                | WindowsAndMessaging::WS_EX_TOOLWINDOW
+                | WindowsAndMessaging::WS_EX_NOACTIVATE,
+            class,
+            w!("Close"),
+            WS_POPUP,
+            0,
+            0,
+            SURFACE_CLOSE_SIZE,
+            SURFACE_CLOSE_SIZE,
+            Some(surface),
+            None,
+            LibraryLoader::GetModuleHandleW(None)
+                .ok()
+                .map(|module| HINSTANCE(module.0)),
+            Some(user_data.cast()),
+        )
+    }) else {
+        let _ = unsafe { Box::from_raw(user_data) };
+        log::error!(
+            "surface close button creation failed: {}",
+            windows::core::Error::from_thread()
+        );
+        return;
+    };
+    if let Ok(mut buttons) = SURFACE_CLOSE_BUTTONS
+        .get_or_init(|| Mutex::new(HashMap::new()))
+        .lock()
+    {
+        buttons.insert(
+            webtag_key.clone(),
+            SurfaceCloseButton {
+                window: hwnd_handle(button),
+                surface: hwnd_handle(surface),
+            },
+        );
+    }
+    sync_surface_close_button(surface, button);
+    upload_surface_close_button(button);
+    log::debug!("surface close button shown for {webtag_key}");
+}
+
+fn sync_surface_close_button(surface: HWND, button: HWND) {
+    let mut rect = RECT::default();
+    if unsafe { WindowsAndMessaging::GetWindowRect(surface, &mut rect) }.is_err() {
+        return;
+    }
+    unsafe {
+        let _ = WindowsAndMessaging::SetWindowPos(
+            button,
+            Some(WindowsAndMessaging::HWND_TOP),
+            rect.right - SURFACE_CLOSE_MARGIN - SURFACE_CLOSE_SIZE,
+            rect.top + SURFACE_CLOSE_MARGIN,
+            SURFACE_CLOSE_SIZE,
+            SURFACE_CLOSE_SIZE,
+            WindowsAndMessaging::SWP_NOACTIVATE | WindowsAndMessaging::SWP_SHOWWINDOW,
+        );
+    }
+}
+
+fn sync_surface_close_button_for_webtag(surface: HWND, webtag_key: &str) {
+    let button = SURFACE_CLOSE_BUTTONS
+        .get()
+        .and_then(|buttons| buttons.lock().ok())
+        .and_then(|buttons| buttons.get(webtag_key).copied());
+    if let Some(button) = button.filter(|button| button.surface == hwnd_handle(surface)) {
+        sync_surface_close_button(surface, hwnd_from_handle(button.window));
+    }
+}
+
+fn remove_surface_close_button(webtag_key: &str) {
+    let button = SURFACE_CLOSE_BUTTONS
+        .get()
+        .and_then(|buttons| buttons.lock().ok())
+        .and_then(|mut buttons| buttons.remove(webtag_key));
+    let Some(button) = button else {
+        return;
+    };
+    let window = hwnd_from_handle(button.window);
+    if !is_window_handle_valid(button.window) {
+        return;
+    }
+    unsafe {
+        let _ = WindowsAndMessaging::ShowWindow(window, WindowsAndMessaging::SW_HIDE);
+    }
+    let surface = button.surface;
+    if !post_to_window_thread(
+        surface,
+        Box::new(move || unsafe {
+            let _ = WindowsAndMessaging::DestroyWindow(hwnd_from_handle(button.window));
+        }),
+    ) {
+        log::debug!("surface close button owner is already gone");
+    }
+}
+
+fn surface_close_class() -> PCWSTR {
+    static REGISTERED: OnceLock<()> = OnceLock::new();
+    REGISTERED.get_or_init(|| {
+        let module = unsafe { LibraryLoader::GetModuleHandleW(None) }
+            .map(|module| HINSTANCE(module.0))
+            .unwrap_or_default();
+        let cursor =
+            unsafe { WindowsAndMessaging::LoadCursorW(None, WindowsAndMessaging::IDC_ARROW) }
+                .unwrap_or_default();
+        let class = WNDCLASSW {
+            lpfnWndProc: Some(drill_back_proc),
+            hInstance: module,
+            hCursor: cursor,
+            lpszClassName: w!("LingXiaSurfaceClose"),
+            ..Default::default()
+        };
+        if unsafe { WindowsAndMessaging::RegisterClassW(&class) } == 0 {
+            log::error!(
+                "surface close class registration failed: {}",
+                windows::core::Error::from_thread()
+            );
+        }
+    });
+    w!("LingXiaSurfaceClose")
+}
+
+fn upload_surface_close_button(hwnd: HWND) {
+    let size = SURFACE_CLOSE_SIZE;
+    unsafe {
+        let screen = GetDC(None);
+        if screen.is_invalid() {
+            return;
+        }
+        let dc = CreateCompatibleDC(Some(screen));
+        if dc.is_invalid() {
+            let _ = ReleaseDC(None, screen);
+            return;
+        }
+        let info = BITMAPINFO {
+            bmiHeader: BITMAPINFOHEADER {
+                biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+                biWidth: size,
+                biHeight: -size,
+                biPlanes: 1,
+                biBitCount: 32,
+                biCompression: BI_RGB.0,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let mut bits: *mut c_void = std::ptr::null_mut();
+        let Ok(bitmap) = CreateDIBSection(Some(screen), &info, DIB_RGB_COLORS, &mut bits, None, 0)
+        else {
+            let _ = DeleteDC(dc);
+            let _ = ReleaseDC(None, screen);
+            return;
+        };
+        if bits.is_null() {
+            let _ = DeleteObject(HGDIOBJ(bitmap.0));
+            let _ = DeleteDC(dc);
+            let _ = ReleaseDC(None, screen);
+            return;
+        }
+        let old_bitmap = SelectObject(dc, HGDIOBJ(bitmap.0));
+        let brush = CreateSolidBrush(COLORREF(0));
+        let pen = CreatePen(PS_SOLID, 0, COLORREF(0));
+        let old_brush = SelectObject(dc, HGDIOBJ(brush.0));
+        let old_pen = SelectObject(dc, HGDIOBJ(pen.0));
+        let _ = windows::Win32::Graphics::Gdi::Rectangle(dc, 0, 0, size, size);
+        let white_pen = CreatePen(PS_SOLID, 2, COLORREF(0x00ffffff));
+        let _ = SelectObject(dc, HGDIOBJ(white_pen.0));
+        let _ = windows::Win32::Graphics::Gdi::MoveToEx(dc, 10, 10, None);
+        let _ = windows::Win32::Graphics::Gdi::LineTo(dc, 22, 22);
+        let _ = windows::Win32::Graphics::Gdi::MoveToEx(dc, 22, 10, None);
+        let _ = windows::Win32::Graphics::Gdi::LineTo(dc, 10, 22);
+        let _ = SelectObject(dc, old_pen);
+        let _ = SelectObject(dc, old_brush);
+        let _ = DeleteObject(HGDIOBJ(white_pen.0));
+        let _ = DeleteObject(HGDIOBJ(pen.0));
+        let _ = DeleteObject(HGDIOBJ(brush.0));
+
+        let pixels = std::slice::from_raw_parts_mut(bits.cast::<u32>(), (size * size) as usize);
+        apply_circular_button_alpha(pixels, size, 0x73);
+        let dib_size = SIZE { cx: size, cy: size };
+        let origin = POINT { x: 0, y: 0 };
+        let blend = BLENDFUNCTION {
+            BlendOp: AC_SRC_OVER as u8,
+            BlendFlags: 0,
+            SourceConstantAlpha: 255,
+            AlphaFormat: AC_SRC_ALPHA as u8,
+        };
+        let _ = WindowsAndMessaging::UpdateLayeredWindow(
+            hwnd,
+            Some(screen),
+            None,
+            Some(&dib_size),
+            Some(dc),
+            Some(&origin),
+            COLORREF(0),
+            Some(&blend),
+            WindowsAndMessaging::ULW_ALPHA,
+        );
+        if !old_bitmap.is_invalid() {
+            let _ = SelectObject(dc, old_bitmap);
+        }
+        let _ = DeleteObject(HGDIOBJ(bitmap.0));
+        let _ = DeleteDC(dc);
+        let _ = ReleaseDC(None, screen);
     }
 }
 
@@ -4056,6 +4457,9 @@ fn handle_window_position_changed(hwnd: HWND, lparam: LPARAM) {
     }
     if moved || sized {
         sync_floating_overlays(hwnd);
+        if let Some(webtag_key) = window_webtag_key(hwnd) {
+            sync_surface_close_button_for_webtag(hwnd, &webtag_key);
+        }
     }
 }
 
@@ -4991,8 +5395,45 @@ fn clear_native_framed_window(hwnd: HWND) {
 }
 
 fn apply_native_window_frame(hwnd: HWND) -> StdResult<()> {
-    apply_window_style(hwnd, WS_OVERLAPPEDWINDOW)
+    apply_window_style(hwnd, WS_OVERLAPPEDWINDOW)?;
+    apply_native_window_dressing(hwnd);
+    Ok(())
 }
+
+#[cfg(feature = "shell-chrome")]
+fn apply_native_window_dressing(hwnd: HWND) {
+    use windows::Win32::Graphics::Dwm::{
+        DWMWA_CAPTION_COLOR, DWMWA_TEXT_COLOR, DWMWA_USE_IMMERSIVE_DARK_MODE, DwmSetWindowAttribute,
+    };
+
+    let (background, foreground, dark) = crate::shell::windows_shell_frame_colors();
+    let background = rgb_to_colorref(background).0;
+    let foreground = rgb_to_colorref(foreground).0;
+    let dark = u32::from(dark);
+    unsafe {
+        let _ = DwmSetWindowAttribute(
+            hwnd,
+            DWMWA_CAPTION_COLOR,
+            &background as *const _ as *const c_void,
+            std::mem::size_of_val(&background) as u32,
+        );
+        let _ = DwmSetWindowAttribute(
+            hwnd,
+            DWMWA_TEXT_COLOR,
+            &foreground as *const _ as *const c_void,
+            std::mem::size_of_val(&foreground) as u32,
+        );
+        let _ = DwmSetWindowAttribute(
+            hwnd,
+            DWMWA_USE_IMMERSIVE_DARK_MODE,
+            &dark as *const _ as *const c_void,
+            std::mem::size_of_val(&dark) as u32,
+        );
+    }
+}
+
+#[cfg(not(feature = "shell-chrome"))]
+fn apply_native_window_dressing(_hwnd: HWND) {}
 
 /// True when `hwnd` presents a fixed-size simulated device frame. Such a window
 /// must never get a resize border or maximize box — dragging it would break the
@@ -6328,7 +6769,6 @@ pub fn show_webview_window_with_content_size(
     handler.set_content_visible(true)?;
     set_window_handle(webtag.key(), hwnd);
     set_host_active_webtag(hwnd, webtag.key());
-    set_primary_host_window(hwnd);
     mark_active(webtag);
     notify_webtag_visibility(webtag.key(), true);
     if width.is_some() || height.is_some() {
@@ -7420,6 +7860,9 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                 unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
             }
             WindowsAndMessaging::WM_CLOSE => {
+                if is_native_framed_window(hwnd) && invoke_window_close_handler(hwnd) {
+                    return LRESULT(0);
+                }
                 #[cfg(feature = "browser-shell")]
                 if should_hide_window_on_close(hwnd) {
                     set_primary_host_window(hwnd);
@@ -7458,6 +7901,10 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                     hwnd,
                     active_webtag_key_for_window(hwnd).as_deref(),
                 );
+                unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
+            }
+            WindowsAndMessaging::WM_ACTIVATE => {
+                dismiss_surface_on_deactivate(hwnd, wparam, lparam);
                 unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
             }
             WindowsAndMessaging::WM_ACTIVATEAPP => {
@@ -7538,6 +7985,7 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                 if crate::shell::refresh_system_theme() && windows_chrome_renderer().is_some() {
                     for host in registered_host_windows() {
                         if is_native_framed_window(host) {
+                            apply_native_window_dressing(host);
                             continue;
                         }
                         invalidate_window(host);
@@ -7868,9 +8316,28 @@ fn invoke_close_handler(webtag_key: &str) -> bool {
     }
 }
 
+fn invoke_button_close_handler(webtag_key: &str) -> bool {
+    let handler = webview_close_handler(webtag_key);
+    let owner = floating_overlay_owner(webtag_key).map(hwnd_handle);
+    if let Some(handler) = handler {
+        let key = webtag_key.to_string();
+        let _ = std::thread::Builder::new()
+            .name(format!("lingxia-windows-close-{key}"))
+            .spawn(move || {
+                handler();
+                if let Some(owner) = owner {
+                    restore_and_focus_host_window(owner);
+                }
+            });
+        true
+    } else {
+        false
+    }
+}
+
 #[cfg(feature = "browser-shell")]
-fn should_hide_window_on_close(_hwnd: HWND) -> bool {
-    crate::tray_icon::is_installed()
+fn should_hide_window_on_close(hwnd: HWND) -> bool {
+    crate::tray_icon::is_installed() && primary_host_window_except(None) == Some(hwnd)
 }
 
 fn invoke_window_close_handler(hwnd: HWND) -> bool {
@@ -8206,6 +8673,7 @@ fn cleanup_window_state(webtag_key: &str, destroyed_window: HWND) {
         return;
     }
     notify_webtag_visibility(webtag_key, false);
+    clear_surface_interaction(webtag_key);
     clear_pull_refreshing(webtag_key);
     let removed_panel = cleanup_webview_panel(webtag_key);
     if let Some(hwnd) = window_handle_for_key(webtag_key) {

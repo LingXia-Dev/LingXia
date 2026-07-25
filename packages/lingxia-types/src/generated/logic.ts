@@ -804,14 +804,9 @@ export type OpenNativeSurfaceSpec = {
  * For a side panel of your own, use a declared `surface`, an in-page split
  * layout, or `role: main` for a switchable destination.
  * `float` is a popup layered above the main at `position` (like a dialog); it
- * takes no layout space. The SDK gives it **no chrome of its own — there is no
- * built-in close button**: the lxapp owns the popup UI and dismisses it by
- * calling `surface.close()` (or `.hide()`). A float sized to the full container
- * (`size: { width: '100%', height: '100%' }`) presents immersively on mobile
- * (system bars hidden) and is likewise chrome-less — draw your own close
- * affordance. (iOS retains a silent left-edge swipe as a last-resort escape so a
- * full-screen float can never trap the user; don't rely on it as the primary
- * dismissal.)
+ * takes no layout space. `interaction` controls the native close button,
+ * outside-click dismissal, and modality. Defaults are no button,
+ * `tapOutside`, and non-modal.
  * - `{ surface }` — a surface declared in `lingxia.yaml` `surfaces:`, by id
  * (e.g. `'terminal'`, `'ai-assistant'`). Form, position, and startup data come
  * from the declaration.
@@ -840,14 +835,11 @@ export type OpenNativeSurfaceSpec = {
  */
 export type OpenPageSurfaceSpec = {
     page: string;
-    /**
-     * A chrome-less popup above the main: the lxapp draws its own UI and close
-     * affordance — there is no SDK-provided close button (see
-     * {@link OpenPageSurfaceSpec}).
-     */
+    /** A popup above the main. */
     as: 'float';
     position?: SurfaceFloatPosition;
     size?: OverlaySurfaceSize;
+    interaction?: SurfaceInteraction;
     query?: Record<string, unknown>;
     edge?: never;
     surface?: never;
@@ -856,6 +848,8 @@ export type OpenPageSurfaceSpec = {
     page: string;
     as: 'window';
     size?: WindowSurfaceSize;
+    /** Windows use manual dismissal; `tapOutside` is invalid. */
+    interaction?: SurfaceInteraction;
     query?: Record<string, unknown>;
     edge?: never;
     position?: never;
@@ -1432,6 +1426,16 @@ export type SurfaceHandle = {
     onShow(handler: (event: SurfaceVisibilityEvent) => void): () => void;
     onHide(handler: (event: SurfaceVisibilityEvent) => void): () => void;
     onClose(handler: (event: SurfaceClosedEvent) => void): () => void;
+};
+
+/** Native interaction supplied by the host around page content. */
+export type SurfaceInteraction = {
+    /** Show the standard circular close button. Default `false`. */
+    closeButton?: boolean;
+    /** Default `tapOutside` for floats and `manual` for windows. */
+    dismiss?: 'tapOutside' | 'manual';
+    /** Block interaction with content below. Default `false`. */
+    modal?: boolean;
 };
 
 export type SurfacePresentation = 'main' | 'dock' | 'overlay' | 'popover' | 'sheet' | 'window';

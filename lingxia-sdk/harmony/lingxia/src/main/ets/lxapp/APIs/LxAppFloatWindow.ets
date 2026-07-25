@@ -170,6 +170,7 @@ struct LingXiaFloatSurfacePage {
   @State lxFloatKey: string = '';
   @State private pageWebTag: string = '';
   @State private layout: SurfaceLayoutConfig | null = null;
+  @State private closePressed: boolean = false;
   private pageController: webview.WebviewController = new webview.WebviewController();
   private urlController: webview.WebviewController = new webview.WebviewController();
   private webViewUiCallback = (action: string, info: WebViewInfo): void => {
@@ -246,14 +247,15 @@ struct LingXiaFloatSurfacePage {
   build() {
     Stack() {
       if (this.layout) {
-        if (!this.isFullscreen()) {
-          // Dim scrim around the float rect; a tap outside closes.
+        if (!this.isFullscreen() && (this.layout!.modal || this.layout!.dismissOnOutside)) {
           Column()
             .width('100%')
             .height('100%')
-            .backgroundColor(FLOAT_MASK_COLOR)
+            .backgroundColor(this.layout!.modal ? FLOAT_MASK_COLOR : Color.Transparent)
             .onClick(() => {
-              FloatWindowManager.requestClose(this.lxFloatKey, 'user');
+              if (this.layout!.dismissOnOutside) {
+                FloatWindowManager.requestClose(this.lxFloatKey, 'user');
+              }
             })
         }
         Column() {
@@ -312,6 +314,51 @@ struct LingXiaFloatSurfacePage {
         .backgroundColor(this.layout!.content === FLOAT_CONTENT_URL ? Color.White : Color.Transparent)
         .borderRadius(this.isFullscreen() ? 0 : FLOAT_CORNER_RADIUS)
         .clip(!this.isFullscreen())
+        if (this.layout!.closeButton) {
+          Stack() {
+            Stack() {
+              Column()
+                .width('12vp')
+                .height('1.5vp')
+                .borderRadius('1vp')
+                .backgroundColor('rgba(255,255,255,0.96)')
+                .rotate({ angle: 45 })
+              Column()
+                .width('12vp')
+                .height('1.5vp')
+                .borderRadius('1vp')
+                .backgroundColor('rgba(255,255,255,0.96)')
+                .rotate({ angle: -45 })
+            }
+            .width('28vp')
+            .height('28vp')
+            .borderRadius('14vp')
+            .backgroundColor('rgba(0,0,0,0.72)')
+            .scale({ x: this.closePressed ? 0.92 : 1, y: this.closePressed ? 0.92 : 1 })
+            .opacity(this.closePressed ? 0.78 : 1)
+            .animation({ duration: 100, curve: Curve.EaseInOut })
+          }
+          .width('48vp')
+          .height('48vp')
+          .backgroundColor(Color.Transparent)
+          .position({
+            x: (this.isFullscreen() ? this.layout!.screenWidthVp : this.layout!.leftVp + this.layout!.widthVp) - 50,
+            y: (this.isFullscreen() ? 0 : this.layout!.topVp) + 2
+          })
+          .zIndex(3)
+          .hitTestBehavior(HitTestMode.Block)
+          .onTouch((event: TouchEvent) => {
+            if (event.type === TouchType.Down) {
+              this.closePressed = true;
+            } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+              this.closePressed = false;
+            }
+          })
+          .onClick(() => {
+            this.closePressed = false;
+            FloatWindowManager.requestClose(this.lxFloatKey, 'user');
+          })
+        }
       }
     }
     .width('100%')

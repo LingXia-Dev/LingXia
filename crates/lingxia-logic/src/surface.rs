@@ -551,6 +551,7 @@ async fn open_page_spec(ctx: JSContext, spec: &JSObject) -> JSResult<JSObject> {
     let as_role = read_required_string(spec, "as")?;
     let size = get_property(spec, "size");
     let query = get_property(spec, "query");
+    let interaction = get_property(spec, "interaction");
     let edge = read_optional_string(spec, "edge")?;
     let position = read_optional_string(spec, "position")?;
 
@@ -604,6 +605,11 @@ async fn open_page_spec(ctx: JSContext, spec: &JSObject) -> JSResult<JSObject> {
         && let Some(opts) = options.clone().into_object()
     {
         opts.set("query", query)?;
+    }
+    if let Some(interaction) = interaction
+        && let Some(opts) = options.clone().into_object()
+    {
+        opts.set("interaction", interaction)?;
     }
     open_surface(ctx, options).await
 }
@@ -1649,6 +1655,7 @@ fn parse_surface_options(lxapp: &LxApp, options: &JSValue) -> JSResult<PageSurfa
     let kind = parse_surface_kind(&obj)?;
     let position = parse_position(&obj, kind)?;
     let (width, height, width_ratio, height_ratio) = parse_size(&obj, kind)?;
+    let interaction = parse_surface_interaction(&obj, kind)?;
     // Resolve the authoritative core role. A window is always the top-level
     // main; for an overlay, `role: "aside"` docks (splits the main); any other
     // overlay is a float popup.
@@ -1671,7 +1678,48 @@ fn parse_surface_options(lxapp: &LxApp, options: &JSValue) -> JSResult<PageSurfa
         height_ratio,
         position,
         role,
+        interaction,
     })
+}
+
+fn parse_surface_interaction(
+    obj: &JSObject,
+    kind: SurfaceKind,
+) -> JSResult<Option<lxapp::lingxia_surface::SurfaceInteraction>> {
+    let Some(value) = get_property(obj, "interaction") else {
+        return Ok(None);
+    };
+    let Some(interaction) = value.into_object() else {
+        return Err(surface_error(
+            rong::error::E_INVALID_ARG,
+            "invalid_surface_options",
+            "interaction must be an object",
+        ));
+    };
+    let close_button = read_optional_bool(&interaction, "closeButton")?.unwrap_or(false);
+    let modal = read_optional_bool(&interaction, "modal")?.unwrap_or(false);
+    let dismiss = match read_optional_string(&interaction, "dismiss")?
+        .as_deref()
+        .unwrap_or(if kind == SurfaceKind::Window {
+            "manual"
+        } else {
+            "tapOutside"
+        }) {
+        "tapOutside" => lxapp::lingxia_surface::FloatDismiss::TapOutside,
+        "manual" => lxapp::lingxia_surface::FloatDismiss::Manual,
+        other => {
+            return Err(surface_error(
+                rong::error::E_INVALID_ARG,
+                "invalid_surface_options",
+                format!("unsupported interaction.dismiss: {other}"),
+            ));
+        }
+    };
+    Ok(Some(lxapp::lingxia_surface::SurfaceInteraction {
+        close_button,
+        dismiss,
+        modal,
+    }))
 }
 
 fn parse_surface_target(lxapp: &LxApp, obj: &JSObject) -> JSResult<PageSurfaceTarget> {
@@ -1918,6 +1966,19 @@ fn read_optional_string(obj: &JSObject, field: &str) -> JSResult<Option<String>>
         .to_rust::<String>()
         .map(Some)
         .map_err(|_| invalid_surface_target(format!("{field} must be a string")))
+}
+
+fn read_optional_bool(obj: &JSObject, field: &str) -> JSResult<Option<bool>> {
+    let Some(value) = get_property(obj, field) else {
+        return Ok(None);
+    };
+    value.to_rust::<bool>().map(Some).map_err(|_| {
+        surface_error(
+            rong::error::E_INVALID_ARG,
+            "invalid_surface_options",
+            format!("interaction.{field} must be a boolean"),
+        )
+    })
 }
 
 fn invalid_surface_target(detail: impl AsRef<str>) -> rong::RongJSError {

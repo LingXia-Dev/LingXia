@@ -186,6 +186,16 @@ pub trait WindowsHostBackend: Send + Sync {
         unsupported_operation("present_webview_as_overlay")
     }
 
+    fn configure_webview_surface_interaction(
+        &self,
+        _webtag: &WebTag,
+        _close_button: bool,
+        _dismiss_on_outside: bool,
+        _modal: bool,
+    ) -> StdResult<()> {
+        unsupported_operation("configure_webview_surface_interaction")
+    }
+
     fn resize_host_window_content(
         &self,
         _webtag: &WebTag,
@@ -817,6 +827,20 @@ pub fn present_webview_as_overlay(
         width_ratio,
         height_ratio,
         position,
+    )
+}
+
+pub fn configure_webview_surface_interaction(
+    webtag: &WebTag,
+    close_button: bool,
+    dismiss_on_outside: bool,
+    modal: bool,
+) -> StdResult<()> {
+    backend()?.configure_webview_surface_interaction(
+        webtag,
+        close_button,
+        dismiss_on_outside,
+        modal,
     )
 }
 

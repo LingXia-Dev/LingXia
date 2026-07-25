@@ -325,6 +325,9 @@ class NativeBridge {
 	      heightRatio: string,
 	      position: string,
 	      role: string,
+	      closeButton: string,
+	      dismissOnOutside: string,
+	      modal: string,
 	      ephemeralWebData: string,
 	      urlCallback: string
 	    ): boolean => {
@@ -342,6 +345,9 @@ class NativeBridge {
 	        heightRatio,
 	        position,
 	        role,
+	        closeButton,
+	        dismissOnOutside,
+	        modal,
 	        ephemeralWebData,
 	        urlCallback
 	      );

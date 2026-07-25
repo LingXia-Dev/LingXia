@@ -75,6 +75,7 @@ Facts that span the whole surface, so no single method's JSDoc carries them:
 - **Two distinct update flows.** `lx.getUpdateManager()` updates the **lxapp bundle** (every lxapp, callback model); `lx.app.checkUpdate()` updates the **host app shell** (home lxapp only, task model). Don't mix them.
 - **The tab bar is declared, not built.** The `setTabBar*` / `showTabBar` / `hideTabBar` family mutates a tab bar configured statically in `lxapp.json` — see [LxApp guide → Tab bar navigation](./guide.md#tab-bar-navigation).
 - **Shell activators are app-owned; Pins are user-owned.** Only the home lxapp may atomically declare `lx.shell.activators`. Every runtime-scoped entry supplies a stable id, `label`, bundle-relative `icon`, and `onActivate`; the shell only invokes that callback, so opening an lxapp/native surface is explicit app code (usually `lx.openSurface(...)`). Redeclare activators each Logic launch. Sidebar Pins (lxapps and websites, mixed order, eight maximum) are intentionally not exposed to Logic.
+- **Float interaction is explicit when needed.** `lx.openSurface({ page, as: 'float', interaction: { closeButton, dismiss, modal } })` controls the native circular close button, outside-click dismissal, and blocking independently. Defaults remain no button, `tapOutside`, and non-modal.
 
 ---
 
