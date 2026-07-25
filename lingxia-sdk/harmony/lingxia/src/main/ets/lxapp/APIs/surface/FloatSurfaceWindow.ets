@@ -13,36 +13,37 @@
  * WebviewController double-binds and the sub-window renders blank.
  */
 import { hilog } from '@kit.PerformanceAnalysisKit';
-import { LxLog } from '../../app/LxLog';
+import { LxLog } from '../../../app/LxLog';
 import { window } from '@kit.ArkUI';
 import { display } from '@kit.ArkUI';
 import { webview } from '@kit.ArkWeb';
-import { Lingxia } from '../../app/Lingxia';
-import { LingXiaWebView } from '../LingXiaWebView';
-import { addWebViewUiCallback, removeWebViewUiCallback, WebViewInfo, WebViewManager, toWebTag } from '../WebViewBridge';
+import { Lingxia } from '../../../app/Lingxia';
+import { LingXiaWebView } from '../../LingXiaWebView';
+import { addWebViewUiCallback, removeWebViewUiCallback, WebViewInfo, WebViewManager, toWebTag } from '../../WebViewBridge';
 import { browserTabPathForId, getBuiltinBrowserAppId, notifyPageInstanceMounted, notifyPageInstanceVisible, urlCallbackDispatch, webviewLoadErrorDocument } from 'liblingxia.so';
-import { isFileUrl, isHttpUrl } from './LxAppSurface';
-import type { SurfaceLayoutConfig } from './LxAppSurface';
+import type { SurfaceLayoutConfig } from './SurfaceModel';
+import { isFileUrl, isHttpUrl } from './SurfaceUrlPolicy';
+import { SurfaceCloseButton } from './SurfaceChrome';
 
 const DOMAIN = 0x0000;
-const TAG = 'LingXia.FloatWindow';
+const TAG = 'LingXia.FloatSurfaceWindow';
 const FLOAT_ROUTE = 'LingXiaFloatSurface';
 const FLOAT_CONTENT_PAGE = 0;
 const FLOAT_CONTENT_URL = 1;
 const FLOAT_MASK_COLOR = 'rgba(0,0,0,0.45)';
 const FLOAT_CORNER_RADIUS = 16;
 
-interface FloatEntry {
+interface FloatSurfaceWindowEntry {
   win: window.Window;
   layout: SurfaceLayoutConfig;
 }
 
 /** Close request raised from float chrome (mask tap / back). */
-type FloatCloseHandler = (id: string, appId: string, reason: string) => void;
+type FloatSurfaceCloseHandler = (id: string, appId: string, reason: string) => void;
 
-export class FloatWindowManager {
-  private static entries: Map<string, FloatEntry> = new Map();
-  private static closeHandler: FloatCloseHandler | null = null;
+export class FloatSurfaceWindowManager {
+  private static entries: Map<string, FloatSurfaceWindowEntry> = new Map();
+  private static closeHandler: FloatSurfaceCloseHandler | null = null;
   /**
    * Key handoff to the content page: `@Entry({ routeName })` does not receive
    * the LocalStorage passed to loadContentByName, so the page reads the key
@@ -52,37 +53,37 @@ export class FloatWindowManager {
   private static pendingKey: string = '';
 
   public static takePendingKey(): string {
-    const key = FloatWindowManager.pendingKey;
-    FloatWindowManager.pendingKey = '';
+    const key = FloatSurfaceWindowManager.pendingKey;
+    FloatSurfaceWindowManager.pendingKey = '';
     return key;
   }
 
-  public static setCloseHandler(handler: FloatCloseHandler): void {
-    FloatWindowManager.closeHandler = handler;
+  public static setCloseHandler(handler: FloatSurfaceCloseHandler): void {
+    FloatSurfaceWindowManager.closeHandler = handler;
   }
 
   public static requestClose(key: string, reason: string): void {
-    const entry = FloatWindowManager.entries.get(key);
-    if (!entry || !FloatWindowManager.closeHandler) {
+    const entry = FloatSurfaceWindowManager.entries.get(key);
+    if (!entry || !FloatSurfaceWindowManager.closeHandler) {
       return;
     }
-    FloatWindowManager.closeHandler(entry.layout.id, entry.layout.appId, reason);
+    FloatSurfaceWindowManager.closeHandler(entry.layout.id, entry.layout.appId, reason);
   }
 
   public static layoutFor(key: string): SurfaceLayoutConfig | null {
-    return FloatWindowManager.entries.get(key)?.layout ?? null;
+    return FloatSurfaceWindowManager.entries.get(key)?.layout ?? null;
   }
 
   public static has(key: string): boolean {
-    return FloatWindowManager.entries.has(key);
+    return FloatSurfaceWindowManager.entries.has(key);
   }
 
   /** Create (or re-present) the float's sub-window and show it. */
   public static async open(key: string, layout: SurfaceLayoutConfig): Promise<boolean> {
-    const existing = FloatWindowManager.entries.get(key);
+    const existing = FloatSurfaceWindowManager.entries.get(key);
     if (existing) {
       existing.layout = layout;
-      return FloatWindowManager.show(key);
+      return FloatSurfaceWindowManager.show(key);
     }
     const stage = Lingxia.windowStage;
     if (!stage) {
@@ -90,9 +91,9 @@ export class FloatWindowManager {
       return false;
     }
     try {
-      const win = await stage.createSubWindow(FloatWindowManager.windowName(key));
-      FloatWindowManager.entries.set(key, { win, layout });
-      FloatWindowManager.pendingKey = key;
+      const win = await stage.createSubWindow(FloatSurfaceWindowManager.windowName(key));
+      FloatSurfaceWindowManager.entries.set(key, { win, layout });
+      FloatSurfaceWindowManager.pendingKey = key;
       await win.loadContentByName(FLOAT_ROUTE);
       // Full-screen: the content page draws the dim mask + the float rect, so
       // tap-outside-to-close matches the in-tree presentation. Window calls
@@ -108,13 +109,13 @@ export class FloatWindowManager {
       LxLog.e(TAG, `open failed key=${key}: ${error}`);
       // Never leave a half-created window behind — even unshown it can hold
       // focus and block the app's input.
-      FloatWindowManager.close(key);
+      FloatSurfaceWindowManager.close(key);
       return false;
     }
   }
 
   public static async show(key: string): Promise<boolean> {
-    const entry = FloatWindowManager.entries.get(key);
+    const entry = FloatSurfaceWindowManager.entries.get(key);
     if (!entry) {
       return false;
     }
@@ -129,7 +130,7 @@ export class FloatWindowManager {
 
   /** Hide the sub-window; the ArkWeb content and page instance stay alive. */
   public static async hide(key: string): Promise<boolean> {
-    const entry = FloatWindowManager.entries.get(key);
+    const entry = FloatSurfaceWindowManager.entries.get(key);
     if (!entry) {
       return false;
     }
@@ -143,11 +144,11 @@ export class FloatWindowManager {
   }
 
   public static async close(key: string): Promise<void> {
-    const entry = FloatWindowManager.entries.get(key);
+    const entry = FloatSurfaceWindowManager.entries.get(key);
     if (!entry) {
       return;
     }
-    FloatWindowManager.entries.delete(key);
+    FloatSurfaceWindowManager.entries.delete(key);
     try {
       await entry.win.destroyWindow();
     } catch (error) {
@@ -170,7 +171,6 @@ struct LingXiaFloatSurfacePage {
   @State lxFloatKey: string = '';
   @State private pageWebTag: string = '';
   @State private layout: SurfaceLayoutConfig | null = null;
-  @State private closePressed: boolean = false;
   private pageController: webview.WebviewController = new webview.WebviewController();
   private urlController: webview.WebviewController = new webview.WebviewController();
   private webViewUiCallback = (action: string, info: WebViewInfo): void => {
@@ -181,8 +181,8 @@ struct LingXiaFloatSurfacePage {
   };
 
   aboutToAppear() {
-    this.lxFloatKey = FloatWindowManager.takePendingKey();
-    this.layout = FloatWindowManager.layoutFor(this.lxFloatKey);
+    this.lxFloatKey = FloatSurfaceWindowManager.takePendingKey();
+    this.layout = FloatSurfaceWindowManager.layoutFor(this.lxFloatKey);
     if (!this.layout) {
       LxLog.e(TAG, `float page has no layout key=${this.lxFloatKey}`);
     }
@@ -196,7 +196,7 @@ struct LingXiaFloatSurfacePage {
   }
 
   onBackPress(): boolean {
-    FloatWindowManager.requestClose(this.lxFloatKey, 'user');
+    FloatSurfaceWindowManager.requestClose(this.lxFloatKey, 'user');
     return true;
   }
 
@@ -254,7 +254,7 @@ struct LingXiaFloatSurfacePage {
             .backgroundColor(this.layout!.modal ? FLOAT_MASK_COLOR : Color.Transparent)
             .onClick(() => {
               if (this.layout!.dismissOnOutside) {
-                FloatWindowManager.requestClose(this.lxFloatKey, 'user');
+                FloatSurfaceWindowManager.requestClose(this.lxFloatKey, 'user');
               }
             })
         }
@@ -315,48 +315,12 @@ struct LingXiaFloatSurfacePage {
         .borderRadius(this.isFullscreen() ? 0 : FLOAT_CORNER_RADIUS)
         .clip(!this.isFullscreen())
         if (this.layout!.closeButton) {
-          Stack() {
-            Stack() {
-              Column()
-                .width('12vp')
-                .height('1.5vp')
-                .borderRadius('1vp')
-                .backgroundColor('rgba(255,255,255,0.96)')
-                .rotate({ angle: 45 })
-              Column()
-                .width('12vp')
-                .height('1.5vp')
-                .borderRadius('1vp')
-                .backgroundColor('rgba(255,255,255,0.96)')
-                .rotate({ angle: -45 })
+          SurfaceCloseButton({
+            surfaceRightVp: this.isFullscreen() ? this.layout!.screenWidthVp : this.layout!.leftVp + this.layout!.widthVp,
+            surfaceTopVp: this.isFullscreen() ? 0 : this.layout!.topVp,
+            onPressed: () => {
+              FloatSurfaceWindowManager.requestClose(this.lxFloatKey, 'user');
             }
-            .width('28vp')
-            .height('28vp')
-            .borderRadius('14vp')
-            .backgroundColor('rgba(0,0,0,0.72)')
-            .scale({ x: this.closePressed ? 0.92 : 1, y: this.closePressed ? 0.92 : 1 })
-            .opacity(this.closePressed ? 0.78 : 1)
-            .animation({ duration: 100, curve: Curve.EaseInOut })
-          }
-          .width('48vp')
-          .height('48vp')
-          .backgroundColor(Color.Transparent)
-          .position({
-            x: (this.isFullscreen() ? this.layout!.screenWidthVp : this.layout!.leftVp + this.layout!.widthVp) - 50,
-            y: (this.isFullscreen() ? 0 : this.layout!.topVp) + 2
-          })
-          .zIndex(3)
-          .hitTestBehavior(HitTestMode.Block)
-          .onTouch((event: TouchEvent) => {
-            if (event.type === TouchType.Down) {
-              this.closePressed = true;
-            } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
-              this.closePressed = false;
-            }
-          })
-          .onClick(() => {
-            this.closePressed = false;
-            FloatWindowManager.requestClose(this.lxFloatKey, 'user');
           })
         }
       }
