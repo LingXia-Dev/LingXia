@@ -7,13 +7,16 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import androidx.annotation.OptIn
+import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.Timeline
 import androidx.media3.common.VideoSize as M3VideoSize
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.ui.PlayerView
 
 @OptIn(UnstableApi::class)
@@ -32,6 +35,7 @@ internal class UrlEngine(
     private var volume = 1.0f
     private var timePoll: Runnable? = null
     private var currentSourceUri: Uri? = null
+    private val playbackGeneration = UrlPlaybackGeneration()
 
     @Volatile
     override var capabilities: PlayerCapabilities = PlayerCapabilities(
@@ -42,6 +46,26 @@ internal class UrlEngine(
 
     init {
         playerView.player = exoPlayer
+        exoPlayer.addAnalyticsListener(
+            object : AnalyticsListener {
+                override fun onRenderedFirstFrame(
+                    eventTime: AnalyticsListener.EventTime,
+                    output: Any,
+                    renderTimeMs: Long,
+                ) {
+                    val eventMediaId = eventMediaId(eventTime)
+                    if (playbackGeneration.accepts(eventMediaId)) {
+                        listener?.onEngineEvent(EngineEvent.FirstFrameRendered)
+                    } else {
+                        Log.w(
+                            tag,
+                            "Ignoring first-frame event for mediaId=${eventMediaId ?: "-"} " +
+                                "current=${exoPlayer.currentMediaItem?.mediaId ?: "-"}",
+                        )
+                    }
+                }
+            }
+        )
         exoPlayer.addListener(
             object : Player.Listener {
                 override fun onPlaybackStateChanged(playbackState: Int) {
@@ -92,10 +116,6 @@ internal class UrlEngine(
                     }
                 }
 
-                override fun onRenderedFirstFrame() {
-                    listener?.onEngineEvent(EngineEvent.FirstFrameRendered)
-                }
-
                 override fun onVideoSizeChanged(videoSize: M3VideoSize) {
                     listener?.onEngineEvent(
                         EngineEvent.Prepared(
@@ -139,11 +159,11 @@ internal class UrlEngine(
     override fun setSource(source: PlayerSource) {
         val url = (source as? PlayerSource.Url)?.url ?: return
         currentSourceUri = Uri.parse(url)
+        playbackGeneration.invalidate()
         // Drop previous queue/buffered samples early before binding the new source.
         exoPlayer.stop()
         exoPlayer.clearMediaItems()
-        exoPlayer.setMediaItem(androidx.media3.common.MediaItem.fromUri(currentSourceUri!!))
-        exoPlayer.prepare()
+        prepareCurrentSource()
         updateCapabilities()
     }
 
@@ -167,6 +187,7 @@ internal class UrlEngine(
     }
 
     override fun stop() {
+        playbackGeneration.invalidate()
         exoPlayer.playWhenReady = false
         exoPlayer.stop()
         exoPlayer.clearMediaItems()
@@ -204,6 +225,7 @@ internal class UrlEngine(
     override fun release() {
         listener = null
         stopPolling()
+        playbackGeneration.invalidate()
         playerView.player = null
         exoPlayer.stop()
         exoPlayer.clearMediaItems()
@@ -295,10 +317,26 @@ internal class UrlEngine(
 
     private fun ensureSourcePreparedIfNeeded() {
         if (exoPlayer.currentMediaItem != null) return
-        val source = currentSourceUri ?: return
-        exoPlayer.setMediaItem(androidx.media3.common.MediaItem.fromUri(source))
-        exoPlayer.prepare()
+        if (currentSourceUri == null) return
+        prepareCurrentSource()
         updateCapabilities()
+    }
+
+    private fun prepareCurrentSource() {
+        val source = currentSourceUri ?: return
+        val mediaItem = MediaItem.Builder()
+            .setUri(source)
+            .setMediaId(playbackGeneration.begin())
+            .build()
+        exoPlayer.setMediaItem(mediaItem)
+        exoPlayer.prepare()
+    }
+
+    private fun eventMediaId(eventTime: AnalyticsListener.EventTime): String? {
+        val timeline = eventTime.timeline
+        val windowIndex = eventTime.windowIndex
+        if (timeline.isEmpty || windowIndex !in 0 until timeline.windowCount) return null
+        return timeline.getWindow(windowIndex, Timeline.Window()).mediaItem.mediaId
     }
 
     private fun isRetryableError(error: PlaybackException): Boolean {
