@@ -7,7 +7,10 @@ import { webview } from '@kit.ArkWeb';
 import { LingXiaWebView } from '../LingXiaWebView';
 import { addWebViewUiCallback, removeWebViewUiCallback, WebViewInfo, WebViewManager, toWebTag } from '../WebViewBridge';
 import { browserTabClose, browserTabPathForId, disposePageInstance, getBuiltinBrowserAppId, getLxappSessionId, notifyPageInstanceHidden, notifyPageInstanceMounted, notifyPageInstanceVisible, onSurfaceClosed, openStandaloneBrowserTab, urlCallbackDispatch, webviewLoadErrorDocument } from 'liblingxia.so';
-import { FloatWindowManager } from './LxAppFloatWindow';
+import { FloatSurfaceWindowManager } from './surface/FloatSurfaceWindow';
+import { SurfaceCloseButton } from './surface/SurfaceChrome';
+import { SurfaceLayoutConfig, SurfacePosition } from './surface/SurfaceModel';
+import { isFileUrl, isHttpUrl, isSameOrigin, isSupportedUrl } from './surface/SurfaceUrlPolicy';
 
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.Surface';
@@ -23,14 +26,6 @@ const SURFACE_NOTIFY_RETRY_LIMIT = 20;
 const SURFACE_CLOSE_FINALIZE_DELAY_MS = 32;
 const SURFACE_MASK_COLOR = 'rgba(0,0,0,0.45)';
 const SURFACE_CORNER_RADIUS = 16;
-
-export enum SurfacePosition {
-  Center = 0,
-  Bottom = 1,
-  Left = 2,
-  Right = 3,
-  Top = 4
-}
 
 enum CornerMaskPosition {
   TopLeft = 0,
@@ -49,36 +44,6 @@ interface SurfaceDimensions {
   bottomInset: number;
   fullWidth: boolean;
   fullHeight: boolean;
-}
-
-export interface SurfaceLayoutConfig {
-  id: string;
-  appId: string;
-  path: string;
-  pageInstanceId: string;
-  content: number;
-  kind: number;
-  role: number;
-  closeButton: boolean;
-  dismissOnOutside: boolean;
-  modal: boolean;
-  screenWidthVp: number;
-  screenHeightVp: number;
-  widthVp: number;
-  heightVp: number;
-  leftVp: number;
-  topVp: number;
-  position: SurfacePosition;
-  bottomInset: number;
-  fullWidth: boolean;
-  fullHeight: boolean;
-  // URL surfaces only: run the Web incognito with a wiped cookie/storage
-  // store so each session (auth handoff) starts clean.
-  ephemeralWebData: boolean;
-  // Callback surfaces never receive local-file access; ordinary browser
-  // surfaces may render host-authorized file URLs.
-  urlCallback: boolean;
-  browserTabId: string;
 }
 
 interface SurfacePlanAside {
@@ -215,10 +180,10 @@ export class LxAppSurface {
     // in-tree ArkWeb would keep intercepting touches); the window's content
     // page attaches the page webview and fires mounted/visible itself.
     if (role === ROLE_FLOAT) {
-      FloatWindowManager.setCloseHandler((closeId: string, closeAppId: string, reason: string) => {
+      FloatSurfaceWindowManager.setCloseHandler((closeId: string, closeAppId: string, reason: string) => {
         LxAppSurface.close(closeId, closeAppId, reason);
       });
-      FloatWindowManager.open(key, layout).then((opened: boolean) => {
+      FloatSurfaceWindowManager.open(key, layout).then((opened: boolean) => {
         if (!opened) {
           LxAppSurface.failPageSurface(layout);
         }
@@ -302,7 +267,7 @@ export class LxAppSurface {
       if (layout.browserTabId) {
         browserTabClose(layout.browserTabId);
       }
-      FloatWindowManager.close(key).then(() => {
+      FloatSurfaceWindowManager.close(key).then(() => {
         onSurfaceClosed(layout.appId, layout.id, normalizedReason);
       });
       return true;
@@ -369,7 +334,7 @@ export class LxAppSurface {
     const manager = LxAppSurface.managerRef;
     if (layout.role === ROLE_FLOAT) {
       LxAppSurface.visibleSurfaceKeys.add(key);
-      FloatWindowManager.show(key);
+      FloatSurfaceWindowManager.show(key);
       if (layout.content === CONTENT_PAGE && layout.pageInstanceId) {
         notifyPageInstanceVisible(layout.pageInstanceId);
       }
@@ -417,7 +382,7 @@ export class LxAppSurface {
 	    }
     if (layout.role === ROLE_FLOAT) {
       LxAppSurface.visibleSurfaceKeys.delete(key);
-      FloatWindowManager.hide(key);
+      FloatSurfaceWindowManager.hide(key);
       if (layout.content === CONTENT_PAGE && layout.pageInstanceId) {
         notifyPageInstanceHidden(layout.pageInstanceId, 'hidden');
       }
@@ -502,7 +467,7 @@ export class LxAppSurface {
 	      return;
 	    }
     if (layout.role === ROLE_FLOAT) {
-      FloatWindowManager.close(key);
+      FloatSurfaceWindowManager.close(key);
     }
 	    const manager = LxAppSurface.managerRef;
 	    if (manager) {
@@ -635,74 +600,6 @@ function normalizeReason(reason: string): string {
     return trimmed;
   }
   return 'unknown';
-}
-
-export function isHttpUrl(value: string): boolean {
-  const normalized = value.trim().toLowerCase();
-  return normalized.startsWith('https://') || normalized.startsWith('http://');
-}
-
-export function isFileUrl(value: string): boolean {
-  const normalized = value.trim();
-  const schemeEnd = normalized.indexOf(':');
-  return schemeEnd > 0 && normalized.substring(0, schemeEnd).toLowerCase() === 'file';
-}
-
-function isSupportedUrl(value: string, urlCallback: boolean): boolean {
-  return isHttpUrl(value) || (!urlCallback && isFileUrl(value));
-}
-
-function originOf(value: string): string {
-  const normalized = value.trim().toLowerCase();
-  const schemeEnd = normalized.indexOf('://');
-  if (schemeEnd <= 0) {
-    return '';
-  }
-  const scheme = normalized.substring(0, schemeEnd);
-  let authority = normalized.substring(schemeEnd + 3);
-  const pathStart = authority.search(/[/?#]/);
-  if (pathStart >= 0) {
-    authority = authority.substring(0, pathStart);
-  }
-  if (!authority) {
-    return '';
-  }
-  const at = authority.lastIndexOf('@');
-  if (at >= 0) {
-    authority = authority.substring(at + 1);
-  }
-  if (authority.startsWith('[')) {
-    const close = authority.indexOf(']');
-    if (close > 0) {
-      const host = authority.substring(0, close + 1);
-      const portPart = authority.substring(close + 1);
-      const port = portPart.startsWith(':') ? portPart.substring(1) : '';
-      return `${scheme}://${host}:${normalizePort(scheme, port)}`;
-    }
-  }
-  const colon = authority.lastIndexOf(':');
-  const host = colon > 0 ? authority.substring(0, colon) : authority;
-  const port = colon > 0 ? authority.substring(colon + 1) : '';
-  return `${scheme}://${host}:${normalizePort(scheme, port)}`;
-}
-
-function normalizePort(scheme: string, port: string): string {
-  if (port) {
-    return port;
-  }
-  if (scheme === 'http') {
-    return '80';
-  }
-  if (scheme === 'https') {
-    return '443';
-  }
-  return '';
-}
-
-export function isSameOrigin(baseUrl: string, targetUrl: string): boolean {
-  const baseOrigin = originOf(baseUrl);
-  const targetOrigin = originOf(targetUrl);
-  return !!baseOrigin && baseOrigin === targetOrigin;
 }
 
 @Component
@@ -1169,25 +1066,14 @@ export struct SurfaceManager {
 
   @Builder
   private buildSurfaceCloseButton(surface: SurfaceRenderState): void {
-    Stack() {
-      Image($rawfile('icons/icon_close_x.svg'))
-        .width('16vp')
-        .height('16vp')
-        .fillColor(Color.White)
-    }
-    .width('44vp')
-    .height('44vp')
-    .borderRadius('22vp')
-    .backgroundColor('rgba(0,0,0,0.45)')
-    .position({
-      x: (this.shouldUseFullscreenWindow(surface)
+    SurfaceCloseButton({
+      surfaceRightVp: this.shouldUseFullscreenWindow(surface)
         ? surface.screenWidthVp
-        : surface.leftVp + surface.widthVp) - 56,
-      y: (this.shouldUseFullscreenWindow(surface) ? 0 : surface.topVp) + 12
-    })
-    .zIndex(3)
-    .onClick(() => {
-      LxAppSurface.close(surface.id, surface.appId, 'user');
+        : surface.leftVp + surface.widthVp,
+      surfaceTopVp: this.shouldUseFullscreenWindow(surface) ? 0 : surface.topVp,
+      onPressed: () => {
+        LxAppSurface.close(surface.id, surface.appId, 'user');
+      }
     })
   }
 
