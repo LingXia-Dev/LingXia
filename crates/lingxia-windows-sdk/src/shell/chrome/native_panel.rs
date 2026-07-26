@@ -129,17 +129,25 @@ pub(super) fn terminal_header_rects(
                 right: (left + tab_width).min(tabs_right_limit),
                 bottom: header.bottom,
             });
-            let close = (item.active && rect_width(&tab_rect) >= 3 * TERMINAL_TAB_CLOSE_WIDTH)
-                .then(|| {
-                    normalize_rect(RECT {
-                        left: tab_rect.right - TERMINAL_TAB_CLOSE_WIDTH,
-                        top: tab_rect.top,
-                        right: tab_rect.right,
-                        bottom: tab_rect.bottom,
-                    })
-                });
+            // Every tab wide enough gets a close glyph (macOS tab-rail
+            // parity); narrow tabs keep the full rect clickable.
+            let close = (rect_width(&tab_rect) >= 3 * TERMINAL_TAB_CLOSE_WIDTH).then(|| {
+                normalize_rect(RECT {
+                    left: tab_rect.right - TERMINAL_TAB_CLOSE_WIDTH,
+                    top: tab_rect.top,
+                    right: tab_rect.right,
+                    bottom: tab_rect.bottom,
+                })
+            });
+            let title_inset = if rect_width(&tab_rect) >= TERMINAL_TAB_DOT_MIN_WIDTH {
+                // Clears the marker dot drawn at the leading edge; same
+                // 14/28 geometry as the macOS tab rail.
+                14 + TERMINAL_TAB_DOT_SIZE + 8
+            } else {
+                10
+            };
             let title = normalize_rect(RECT {
-                left: tab_rect.left + 10,
+                left: tab_rect.left + title_inset,
                 top: tab_rect.top,
                 right: close.map(|close| close.left).unwrap_or(tab_rect.right - 6),
                 bottom: tab_rect.bottom,
@@ -300,22 +308,74 @@ pub(super) fn draw_terminal_panel_content(
         clip_to_round_rect_inside(hdc, rect, SHELL_PANEL_RADIUS);
     }
 
+    // Hairline under the tab strip; the active tab paints over it, so it
+    // visually connects into the surface (macOS rail parity).
+    fill_rect(
+        hdc,
+        RECT {
+            left: rect.left,
+            top: header.bottom - 1,
+            right: rect.right,
+            bottom: header.bottom,
+        },
+        blend_rgb(0xffffff, TERMINAL_HEADER_BACKGROUND, 6),
+    );
+
     for tab in &header_rects.tabs {
         if tab.active {
             // The active tab flows into the surface below it: surface
-            // fill, rounded on top, square at the header's bottom edge.
-            // Surface-on-header contrast: anti-alias the pill arc.
-            fill_round_rect_aa(hdc, tab.rect, 10, surface);
+            // fill, rounded on top, square at the header's bottom edge
+            // (macOS tab-rail shape). A faint inner highlight along the
+            // top edge lifts the pill off the darker chrome.
+            fill_round_rect_aa_corners(
+                hdc,
+                tab.rect,
+                [TERMINAL_TAB_RADIUS, TERMINAL_TAB_RADIUS, 0, 0],
+                surface,
+            );
             fill_rect(
                 hdc,
                 RECT {
-                    left: tab.rect.left,
-                    top: tab.rect.top + rect_height(&tab.rect) / 2,
-                    right: tab.rect.right,
-                    bottom: tab.rect.bottom,
+                    left: tab.rect.left + TERMINAL_TAB_RADIUS + 2,
+                    top: tab.rect.top + 1,
+                    right: tab.rect.right - TERMINAL_TAB_RADIUS - 2,
+                    bottom: tab.rect.top + 2,
                 },
-                surface,
+                blend_rgb(0xffffff, surface, 8),
             );
+        } else {
+            // Hairline separator at the trailing edge of inactive tabs.
+            let inset = rect_height(&tab.rect) / 3;
+            fill_rect(
+                hdc,
+                RECT {
+                    left: tab.rect.right + TERMINAL_TAB_GAP / 2,
+                    top: tab.rect.top + inset,
+                    right: tab.rect.right + TERMINAL_TAB_GAP / 2 + 1,
+                    bottom: tab.rect.bottom - inset,
+                },
+                blend_rgb(0xffffff, TERMINAL_HEADER_BACKGROUND, 8),
+            );
+        }
+        if rect_width(&tab.rect) >= TERMINAL_TAB_DOT_MIN_WIDTH {
+            let dot_top = tab.rect.top + (rect_height(&tab.rect) - TERMINAL_TAB_DOT_SIZE) / 2;
+            let dot = RECT {
+                left: tab.rect.left + 14,
+                top: dot_top,
+                right: tab.rect.left + 14 + TERMINAL_TAB_DOT_SIZE,
+                bottom: dot_top + TERMINAL_TAB_DOT_SIZE,
+            };
+            let dot_background = if tab.active {
+                surface
+            } else {
+                TERMINAL_HEADER_BACKGROUND
+            };
+            let color = if tab.active {
+                TERMINAL_TAB_ACCENT
+            } else {
+                blend_rgb(0xffffff, dot_background, 40)
+            };
+            fill_round_rect_aa(hdc, dot, TERMINAL_TAB_DOT_SIZE / 2, color);
         }
         let title = native
             .tabs
@@ -330,13 +390,12 @@ pub(super) fn draw_terminal_panel_content(
         };
         draw_text(hdc, title, tab.title, color, DT_LEFT);
         if let Some(close) = tab.close {
-            draw_text(
-                hdc,
-                GLYPH_TAB_CLOSE,
-                close,
-                TERMINAL_HEADER_TEXT_MUTED,
-                DT_CENTER,
-            );
+            let close_color = if tab.active {
+                TERMINAL_HEADER_TEXT_MUTED
+            } else {
+                blend_rgb(TERMINAL_HEADER_TEXT_MUTED, TERMINAL_HEADER_BACKGROUND, 55)
+            };
+            draw_text(hdc, GLYPH_TAB_CLOSE, close, close_color, DT_CENTER);
         }
     }
     if header_rects.tabs.is_empty() {

@@ -273,6 +273,18 @@ pub(in crate::shell) fn draw_right_border(hdc: HDC, rect: RECT, rgb: u32) {
     );
 }
 
+/// Blends `fg_percent`% of `fg` with the remainder of `bg`, per channel.
+/// Chrome paints on opaque backgrounds, so translucent accents are
+/// precomputed into solid colors instead of alpha-composited.
+pub(in crate::shell) fn blend_rgb(fg: u32, bg: u32, fg_percent: u32) -> u32 {
+    let blend = |shift: u32| {
+        let fg_channel = (fg >> shift) & 0xff;
+        let bg_channel = (bg >> shift) & 0xff;
+        ((fg_channel * fg_percent + bg_channel * (100 - fg_percent)) / 100) << shift
+    };
+    blend(16) | blend(8) | blend(0)
+}
+
 pub(in crate::shell) fn fill_rect(hdc: HDC, rect: RECT, rgb: u32) {
     if rect_width(&rect) == 0 || rect_height(&rect) == 0 {
         return;

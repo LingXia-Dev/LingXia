@@ -29,7 +29,7 @@ use windows::Win32::Graphics::Gdi::{
 use windows::core::PCWSTR;
 
 use super::chrome::{
-    fill_rect, inset_rect, logical_font_height, rect_height, rect_width, rgb_to_colorref,
+    blend_rgb, fill_rect, inset_rect, logical_font_height, rect_height, rect_width, rgb_to_colorref,
 };
 
 /// Inner padding between the terminal card edge and the cell grid.
@@ -1322,14 +1322,4 @@ fn parse_hex_color(token: &str) -> Option<u32> {
 /// Fades `color` toward `background` for an unfocused split pane.
 fn dim_unfocused(color: u32, background: u32) -> u32 {
     blend_rgb(color, background, UNFOCUSED_KEEP_PERCENT)
-}
-
-/// Blends `fg_percent`% of `fg` with the remainder of `bg`, per channel.
-fn blend_rgb(fg: u32, bg: u32, fg_percent: u32) -> u32 {
-    let blend = |shift: u32| {
-        let fg_channel = (fg >> shift) & 0xff;
-        let bg_channel = (bg >> shift) & 0xff;
-        ((fg_channel * fg_percent + bg_channel * (100 - fg_percent)) / 100) << shift
-    };
-    blend(16) | blend(8) | blend(0)
 }
