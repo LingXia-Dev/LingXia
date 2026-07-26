@@ -15,6 +15,7 @@ on:
         required: true
         type: choice
         options:
+          - all
           - crates
           - sdk
           - cli
@@ -81,7 +82,7 @@ jobs:
           fi
 
           case "$COMPONENT" in
-            crates|sdk|cli|npm) ;;
+            all|crates|sdk|cli|npm) ;;
             *) echo "Unknown component: $COMPONENT" >&2; exit 1 ;;
           esac
 
@@ -162,6 +163,18 @@ jobs:
           }
 
           case "$COMPONENT" in
+            all)
+              verify_workspace_version
+              verify_cli_version
+              for package in $NPM_PACKAGES; do
+                actual="$(read_npm_package_version "$package")"
+                if [[ "$actual" != "$VERSION" ]]; then
+                  echo "Version mismatch: expected $VERSION, found $actual in packages/$package/package.json" >&2
+                  exit 1
+                fi
+                echo "$package version verified: $actual"
+              done
+              ;;
             crates|sdk)
               verify_workspace_version
               ;;
@@ -348,6 +361,12 @@ jobs:
           }
 
           case "$COMPONENT" in
+            all)
+              publish_crates
+              publish_sdk
+              publish_cli
+              publish_all_npm_packages
+              ;;
             crates)
               publish_crates
               ;;
