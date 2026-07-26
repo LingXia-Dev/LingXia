@@ -58,6 +58,11 @@ pub enum WindowsDesignIcon {
     SidebarCollapse,
     SidebarExpand,
     Rotate,
+    // Appearance icons are staged for the Windows simulator toolbar
+    // follow-up; macOS consumes the same SVG sources today.
+    AppearanceSystem,
+    AppearanceLight,
+    AppearanceDark,
     CapsuleMenu,
     CapsuleClose,
     CleanCache,
@@ -101,6 +106,9 @@ impl WindowsDesignIcon {
             Self::SidebarCollapse => "icon_sidebar_collapse.png",
             Self::SidebarExpand => "icon_sidebar_expand.png",
             Self::Rotate => "icon_rotate.png",
+            Self::AppearanceSystem => "icon_appearance_system.png",
+            Self::AppearanceLight => "icon_appearance_light.png",
+            Self::AppearanceDark => "icon_appearance_dark.png",
             Self::CapsuleMenu => "icon_capsule_menu.png",
             Self::CapsuleClose => "icon_capsule_close.png",
             Self::CleanCache => "icon_clean_cache.png",
