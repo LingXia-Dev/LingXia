@@ -400,7 +400,7 @@ pub(crate) fn start_call_devtools_protocol(
 }
 
 pub(crate) fn start_capture_preview_png(webview: &ICoreWebView2, resp: Sender<StdResult<Vec<u8>>>) {
-    let stream = match unsafe { CreateStreamOnHGlobal(None, true) } {
+    let stream = match unsafe { CreateStreamOnHGlobal(Default::default(), true) } {
         Ok(stream) => stream,
         Err(err) => {
             let _ = resp.send(Err(WebViewError::WebView(format!(

@@ -283,11 +283,11 @@ if [[ "$DRY_RUN" -eq 1 ]]; then
     echo "Only: ${SELECTED_CRATES[*]}"
   fi
   for crate in "${SELECTED_CRATES[@]}"; do
-    echo "==> cargo package -p $crate --list"
+    echo "==> cargo package -p $crate --no-verify"
     if [[ "$ALLOW_DIRTY" -eq 1 ]]; then
-      cargo package -p "$crate" --list --allow-dirty >/dev/null
+      cargo package -p "$crate" --no-verify --allow-dirty >/dev/null
     else
-      cargo package -p "$crate" --list >/dev/null
+      cargo package -p "$crate" --no-verify >/dev/null
     fi
     echo "✓ $crate package check passed"
   done
