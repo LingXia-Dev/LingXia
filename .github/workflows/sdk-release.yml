@@ -54,7 +54,9 @@ jobs:
       - name: Reject manual non-dry-run runs
         env:
           DRY_RUN: ${{ inputs.dry_run }}
-          ACTOR: ${{ github.triggering_actor }}
+          # github.actor remains the original bot on a rerun; triggering_actor
+          # becomes the human who clicked rerun and would block safe recovery.
+          ACTOR: ${{ github.actor }}
         run: |
           set -euo pipefail
           if [[ "$DRY_RUN" == "true" ]]; then
@@ -66,7 +68,7 @@ jobs:
             exit 0
           fi
           echo "::error::Internal release executor — do not run it by hand."
-          echo "::error::Use 'Release / 2. Publish Workspace' for a real release, or set dry_run=true to debug. (triggering_actor=$ACTOR)"
+          echo "::error::Use 'Release / 2. Publish Workspace' for a real release, or set dry_run=true to debug. (actor=$ACTOR)"
           exit 1
 
   # Pre-check job to verify version before any platform build uploads assets.
