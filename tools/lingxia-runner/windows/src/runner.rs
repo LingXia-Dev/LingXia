@@ -14,10 +14,8 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 static CURRENT_DEVICE: AtomicUsize = AtomicUsize::new(0);
 static LANDSCAPE: AtomicBool = AtomicBool::new(false);
 /// Simulated appearance as `lingxia::dev::Appearance` discriminant
-/// (0 system / 1 light / 2 dark). Reported through `runner.get`; pinning a
-/// non-system value is rejected until the Windows WebView gains a
-/// preferred-color-scheme hook, so the CLI never claims an appearance the
-/// screen does not actually show.
+/// (0 system / 1 light / 2 dark), applied through the WebView2 profile's
+/// preferred color scheme and reported through `runner.get`.
 static APPEARANCE: AtomicUsize = AtomicUsize::new(0);
 static BROWSER_HOST: OnceLock<lingxia_windows_sdk::WindowsHost> = OnceLock::new();
 
@@ -272,17 +270,8 @@ impl lingxia::dev::DeviceController for RunnerDeviceController {
         landscape: Option<bool>,
         appearance: Option<lingxia::dev::Appearance>,
     ) -> Result<lingxia::dev::DeviceState, String> {
-        if let Some(appearance) = appearance {
-            // TODO(windows): apply via the WebView2 profile
-            // (ICoreWebView2Profile.PreferredColorScheme) once the windows SDK
-            // exposes it, then store and report the pinned value.
-            if appearance != lingxia::dev::Appearance::System {
-                return Err(
-                    "appearance simulation is not yet supported by the Windows runner".into(),
-                );
-            }
-            APPEARANCE.store(0, Ordering::Release);
-        }
+        // Validate the preset before any side effect so a typo cannot leave a
+        // half-applied environment.
         let index = match id {
             Some(id) => presets()
                 .iter()
@@ -293,13 +282,42 @@ impl lingxia::dev::DeviceController for RunnerDeviceController {
         // Default orientation matches the toolbar selector: tablets landscape,
         // phones/desktops portrait — but only when switching devices; a bare
         // appearance change keeps the current rotation.
-        let landscape = match landscape {
+        let landscape_value = match landscape {
             Some(landscape) => landscape,
             None if id.is_some() => is_tablet(index),
             None => LANDSCAPE.load(Ordering::Acquire),
         };
-        apply_device(index, landscape)?;
-        Ok(device_state(index, landscape))
+        if let Some(appearance) = appearance {
+            let scheme = match appearance {
+                lingxia::dev::Appearance::System => {
+                    lingxia_windows_sdk::WindowsPreferredColorScheme::Auto
+                }
+                lingxia::dev::Appearance::Light => {
+                    lingxia_windows_sdk::WindowsPreferredColorScheme::Light
+                }
+                lingxia::dev::Appearance::Dark => {
+                    lingxia_windows_sdk::WindowsPreferredColorScheme::Dark
+                }
+            };
+            // Store first: the scheme below is armed for every future WebView
+            // regardless of per-webview failures, and `runner.get` must report
+            // what was configured rather than the pre-failure value.
+            APPEARANCE.store(
+                match appearance {
+                    lingxia::dev::Appearance::System => 0,
+                    lingxia::dev::Appearance::Light => 1,
+                    lingxia::dev::Appearance::Dark => 2,
+                },
+                Ordering::Release,
+            );
+            lingxia_windows_sdk::set_windows_preferred_color_scheme(scheme)?;
+        }
+        // A bare appearance change must not rebuild frames or re-run browser
+        // emulation; only a device or orientation request touches the frame.
+        if id.is_some() || landscape.is_some() {
+            apply_device(index, landscape_value)?;
+        }
+        Ok(device_state(index, landscape_value))
     }
 }
 

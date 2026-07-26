@@ -92,9 +92,10 @@ pub use device_frame::set_app_window_device_frame_and_tabbar_position;
 pub use device_frame::{
     WindowsBrowserEmulationProfile, WindowsDeviceFrame, WindowsDeviceFrameBadge,
     WindowsDeviceFrameCutout, WindowsDeviceFrameInfoSheet, WindowsDeviceFrameSheetAction,
-    WindowsDeviceFrameStatusBar, WindowsDeviceFrameToolbar, app_window_has_device_frame,
-    open_current_page_devtools, set_app_window_device_frame, set_initial_app_window_device_frame,
-    set_windows_browser_emulation_profile, show_device_frame_info_sheet,
+    WindowsDeviceFrameStatusBar, WindowsDeviceFrameToolbar, WindowsPreferredColorScheme,
+    app_window_has_device_frame, open_current_page_devtools, set_app_window_device_frame,
+    set_initial_app_window_device_frame, set_windows_browser_emulation_profile,
+    set_windows_preferred_color_scheme, show_device_frame_info_sheet,
 };
 #[cfg(feature = "runtime")]
 pub use lingxia::RuntimeInfo;

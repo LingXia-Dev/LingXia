@@ -54,6 +54,11 @@ impl WindowsWebViewHandler {
         self.webview.inner.open_devtools()
     }
 
+    /// Pins the scheme pages observe via `prefers-color-scheme`.
+    pub fn set_preferred_color_scheme(&self, scheme: WindowsPreferredColorScheme) -> StdResult<()> {
+        self.webview.inner.set_preferred_color_scheme(scheme)
+    }
+
     /// Applies a coherent UA + User-Agent Client Hints form factor.
     pub fn set_browser_emulation_profile(
         &self,

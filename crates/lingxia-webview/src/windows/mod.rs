@@ -46,6 +46,7 @@ use windows::{
 };
 
 mod browser_emulation;
+mod color_scheme;
 mod composition;
 mod console;
 mod controller;
@@ -62,6 +63,9 @@ pub(crate) use controller::WebViewInner;
 
 pub use browser_emulation::{
     WindowsBrowserEmulationProfile, set_windows_browser_emulation_profile_for_new_webviews,
+};
+pub use color_scheme::{
+    WindowsPreferredColorScheme, set_windows_preferred_color_scheme_for_new_webviews,
 };
 pub use composition::{set_webview_composition_hosting, webview_composition_hosting_enabled};
 pub use environment::set_windows_context_menu_refresh_provider;

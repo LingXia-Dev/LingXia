@@ -8,6 +8,7 @@
 use crate::shell::WindowsShellTabBarPosition;
 use crate::{WindowsAppMenuCommandHandler, WindowsAppMenuItem, WindowsDesignIcon, app_menu};
 pub use lingxia_webview::platform::windows::WindowsBrowserEmulationProfile;
+pub use lingxia_webview::platform::windows::WindowsPreferredColorScheme;
 
 mod native;
 
@@ -349,6 +350,29 @@ pub fn set_windows_browser_emulation_profile(
             continue;
         };
         if let Err(err) = handler.set_browser_emulation_profile(profile, reload_existing) {
+            failures.push(format!("{}: {err}", webtag.key()));
+        }
+    }
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        Err(failures.join("; "))
+    }
+}
+
+/// Pins the color scheme new and existing WebViews serve through
+/// `prefers-color-scheme`; `Auto` restores following the host OS.
+pub fn set_windows_preferred_color_scheme(
+    scheme: WindowsPreferredColorScheme,
+) -> Result<(), String> {
+    lingxia_webview::platform::windows::set_windows_preferred_color_scheme_for_new_webviews(scheme);
+    let mut failures = Vec::new();
+    for webtag in lingxia_webview::runtime::list_webviews() {
+        let Some(handler) = lingxia_webview::platform::windows::find_webview_handler(&webtag)
+        else {
+            continue;
+        };
+        if let Err(err) = handler.set_preferred_color_scheme(scheme) {
             failures.push(format!("{}: {err}", webtag.key()));
         }
     }
