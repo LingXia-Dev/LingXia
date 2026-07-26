@@ -461,22 +461,24 @@ pub(in crate::shell) fn fill_round_rect_aa_corners(
     }
 }
 
-/// Intersects the DC's clip with a rounded rect one pixel inside `rect`.
+/// Intersects the DC's clip with a rounded rect two pixels inside `rect`.
 /// Pairs with an outer [`fill_round_rect_aa`] of the same rect: the AA fill
 /// provides the card's smooth edge, and plain square fills painted inside the
 /// clip get their corners shaped by it without a second anti-aliased arc (a
-/// re-blend over the card's arc leaves a fringe). Bracket with
-/// `SaveDC`/`RestoreDC`.
+/// re-blend over the card's arc leaves a fringe). The two-pixel inset keeps
+/// the aliased region boundary clear of the arc's blended pixels — a
+/// one-pixel inset lets same-color square fills overwrite them, hardening
+/// the corner into a staircase. Bracket with `SaveDC`/`RestoreDC`.
 pub(in crate::shell) fn clip_to_round_rect_inside(hdc: HDC, rect: RECT, radius: i32) {
     let radius = radius.clamp(1, (rect_width(&rect) / 2).min(rect_height(&rect) / 2));
     unsafe {
         let region = CreateRoundRectRgn(
-            rect.left + 1,
-            rect.top + 1,
-            rect.right - 1,
-            rect.bottom - 1,
-            (radius - 1).max(1) * 2,
-            (radius - 1).max(1) * 2,
+            rect.left + 2,
+            rect.top + 2,
+            rect.right - 2,
+            rect.bottom - 2,
+            (radius - 2).max(1) * 2,
+            (radius - 2).max(1) * 2,
         );
         if region.is_invalid() {
             return;

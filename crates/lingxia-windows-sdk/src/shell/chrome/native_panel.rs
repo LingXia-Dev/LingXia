@@ -388,14 +388,16 @@ pub(super) fn draw_terminal_panel_content(
         } else {
             TERMINAL_HEADER_TEXT_MUTED
         };
-        draw_text(hdc, title, tab.title, color, DT_LEFT);
+        // Grayscale AA throughout the header: ClearType subpixel rendering
+        // fringes light text on this dark chrome.
+        draw_text_antialiased(hdc, title, tab.title, color, DT_LEFT);
         if let Some(close) = tab.close {
             let close_color = if tab.active {
                 TERMINAL_HEADER_TEXT_MUTED
             } else {
                 blend_rgb(TERMINAL_HEADER_TEXT_MUTED, TERMINAL_HEADER_BACKGROUND, 55)
             };
-            draw_text(hdc, GLYPH_TAB_CLOSE, close, close_color, DT_CENTER);
+            draw_text_antialiased(hdc, GLYPH_TAB_CLOSE, close, close_color, DT_CENTER);
         }
     }
     if header_rects.tabs.is_empty() {
@@ -410,7 +412,7 @@ pub(super) fn draw_terminal_panel_content(
             bottom: header.bottom,
         });
         let fallback_title = lingxia_logic::i18n::t(lingxia_logic::I18nKey::TerminalTitle);
-        draw_text(
+        draw_text_antialiased(
             hdc,
             native.title.as_deref().unwrap_or(&fallback_title),
             title_rect,
@@ -419,7 +421,7 @@ pub(super) fn draw_terminal_panel_content(
         );
     }
     if let Some(new_tab) = header_rects.new_tab {
-        draw_frame_button_glyph(hdc, GLYPH_ADD, new_tab, TERMINAL_HEADER_TEXT_MUTED);
+        draw_frame_button_glyph_grayscale(hdc, GLYPH_ADD, new_tab, TERMINAL_HEADER_TEXT_MUTED);
     }
     if let Some(maximize) = header_rects.maximize {
         let glyph = if native.maximized {
@@ -427,7 +429,7 @@ pub(super) fn draw_terminal_panel_content(
         } else {
             GLYPH_PANEL_EXPAND
         };
-        draw_frame_button_glyph(hdc, glyph, maximize, TERMINAL_HEADER_TEXT_MUTED);
+        draw_frame_button_glyph_grayscale(hdc, glyph, maximize, TERMINAL_HEADER_TEXT_MUTED);
     }
 
     // Record the painted tab-title rects so the facade can start an inline
