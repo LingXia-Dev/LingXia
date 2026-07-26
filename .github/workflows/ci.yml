@@ -426,6 +426,11 @@ jobs:
         with:
           prefix-key: rust-android
 
+      # The runtime has no Linux host backend, but its published crate must
+      # still compile on the registry's default Linux verification target.
+      - name: Check WebView compiles for plain Linux
+        run: cargo check -p lingxia-webview
+
       # C-dependency build scripts (e.g. `ring`) compile even under `cargo
       # check`, so they need the NDK clang. The ubuntu runner ships the NDK;
       # point cc/ar/linker at it for the android target (API matches the
