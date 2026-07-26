@@ -1019,6 +1019,10 @@ fn sync_app_shell_layout(appid: &str) {
             // page's status-bar text color over a transparent strip.
             let foreground = match navbar.navigationBarTextStyle.as_str() {
                 "white" => 0xffffff,
+                "black" => 0x111111,
+                // Unset / "auto": follow the app theme, matching pages whose
+                // background adapts via prefers-color-scheme.
+                _ if super::theme::is_dark() => 0xf2f2f7,
                 _ => 0x111111,
             };
             (foreground, 0)
@@ -1027,12 +1031,7 @@ fn sync_app_shell_layout(appid: &str) {
                 Some(nav) => (nav.text_color, nav.background_color),
                 None => {
                     let chrome = super::style::shell_palette().window_background;
-                    let luminance = (((chrome >> 16) & 0xff) * 299
-                        + ((chrome >> 8) & 0xff) * 587
-                        + (chrome & 0xff) * 114)
-                        / 1000;
-                    let foreground = if luminance > 140 { 0x111111 } else { 0xf2f2f7 };
-                    (foreground, chrome)
+                    (contrasting_text_color(chrome), chrome)
                 }
             }
         };
@@ -1439,19 +1438,31 @@ fn browser_url_is_hidden(url: &str) -> bool {
 
 fn build_navigation_bar_layout(app: &LxApp, path: &str) -> WindowsShellNavigationBarLayout {
     let navbar = app.get_navbar_state(path);
+    let background_color = parse_css_color(&navbar.navigationBarBackgroundColor, 0xffffff);
     let text_color = match navbar.navigationBarTextStyle.as_str() {
         "white" => 0xffffff,
-        _ => 0x111111,
+        "black" => 0x111111,
+        // Unset / "auto": contrast against the navbar background.
+        _ => contrasting_text_color(background_color),
     };
     WindowsShellNavigationBarLayout {
         visible: navbar.show_navbar,
         title: navbar.navigationBarTitleText,
-        background_color: parse_css_color(&navbar.navigationBarBackgroundColor, 0xffffff),
+        background_color,
         text_color,
         show_back_button: navbar.show_back_button,
         show_home_button: navbar.show_home_button,
         height: DEFAULT_NAV_BAR_HEIGHT,
     }
+}
+
+/// Dark or light text for legibility over `background` (0xRRGGBB).
+fn contrasting_text_color(background: u32) -> u32 {
+    let luminance = (((background >> 16) & 0xff) * 299
+        + ((background >> 8) & 0xff) * 587
+        + (background & 0xff) * 114)
+        / 1000;
+    if luminance > 140 { 0x111111 } else { 0xf2f2f7 }
 }
 
 /// Strips a leading `/` and a framework file extension so a page route

@@ -33,6 +33,16 @@ export interface NavigationBarState {
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.NavigationBar';
 
+/**
+ * Same luminance rule as the Android/iOS hosts use for navbar contrast.
+ */
+export function isColorDark(argbColor: number): boolean {
+  const red = (argbColor >> 16) & 0xFF;
+  const green = (argbColor >> 8) & 0xFF;
+  const blue = argbColor & 0xFF;
+  return 0.299 * red + 0.587 * green + 0.114 * blue < 128;
+}
+
 // Export layout constants for external use (backward compatibility)
 export const NAVBAR_TOTAL_HEIGHT = NAVIGATION_BAR_TOTAL_HEIGHT;
 export const NAVBAR_CONTENT_HEIGHT = NAVIGATION_BAR_CONTENT_HEIGHT;
@@ -190,10 +200,17 @@ export struct NavigationBar {
   }
 
   /**
-   * Get text color
+   * Get text color: explicit style wins, unset contrasts with the background
    */
   private getTextColor(): ResourceColor {
-    return this.config.navigationBarTextStyle === 'white' ? COLOR_WHITE : COLOR_BLACK;
+    if (this.config.navigationBarTextStyle === 'white') {
+      return COLOR_WHITE;
+    }
+    if (this.config.navigationBarTextStyle === 'black') {
+      return COLOR_BLACK;
+    }
+    return isColorDark(this.config.navigationBarBackgroundColor || 0xFFFFFFFF)
+      ? COLOR_WHITE : COLOR_BLACK;
   }
 }
 

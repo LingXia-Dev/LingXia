@@ -238,10 +238,11 @@ class LxAppActivity : AppCompatActivity() {
          * and edge-to-edge. This method enables immersive view experience.
          *
          * @param activity The activity whose system bars should be configured
-         * @param lightStatusBarIcons Whether the status bar icons should be light (true) or dark (false)
+         * @param lightStatusBarIcons Whether the status bar icons should be light (true)
+         *        or dark (false); null follows the system theme
          */
         @JvmStatic
-        fun configureTransparentSystemBars(activity: AppCompatActivity, lightStatusBarIcons: Boolean = true) {
+        fun configureTransparentSystemBars(activity: AppCompatActivity, lightStatusBarIcons: Boolean? = null) {
             // Enable Edge-to-Edge using WindowCompat
             WindowCompat.setDecorFitsSystemWindows(activity.window, false)
 
@@ -251,9 +252,14 @@ class LxAppActivity : AppCompatActivity() {
                 statusBarColor = Color.TRANSPARENT
             }
 
+            val darkTheme = (activity.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
+                Configuration.UI_MODE_NIGHT_YES
+            val lightGlyphs = lightStatusBarIcons ?: darkTheme
             WindowCompat.getInsetsController(activity.window, activity.window.decorView).apply {
-                isAppearanceLightStatusBars = lightStatusBarIcons
-                isAppearanceLightNavigationBars = lightStatusBarIcons
+                // isAppearanceLight* == true means "bar over a LIGHT background",
+                // i.e. dark glyphs — the inverse of light icons.
+                isAppearanceLightStatusBars = !lightGlyphs
+                isAppearanceLightNavigationBars = !lightGlyphs
             }
         }
 
@@ -1768,7 +1774,30 @@ class LxAppActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * Keep the system status bar glyphs (clock, signal, battery) legible for
+     * the current page. Explicit navigationBarTextStyle wins; otherwise a
+     * shown navbar contrasts against its background color, and a custom
+     * (hidden-navbar) page follows the system theme, matching pages whose
+     * background adapts via prefers-color-scheme.
+     */
+    private fun applyStatusBarGlyphs(navbarState: NavigationBarState?) {
+        val lightGlyphs = when (navbarState?.navigationBarTextStyle?.lowercase()) {
+            "white" -> true
+            "black" -> false
+            else -> if (navbarState?.showNavbar == true) {
+                NavigationBar.ColorUtils.isColorDark(navbarState.navigationBarBackgroundColor)
+            } else {
+                (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
+                    Configuration.UI_MODE_NIGHT_YES
+            }
+        }
+        WindowCompat.getInsetsController(window, window.decorView)
+            .isAppearanceLightStatusBars = !lightGlyphs
+    }
+
     private fun animateNavBar(navbarState: NavigationBarState, isBackNavigation: Boolean) {
+        applyStatusBarGlyphs(navbarState)
         if (!navbarState.showNavbar) {
             navigationBar?.visibility = View.GONE
             if (isMediaFullscreen) {
@@ -1795,6 +1824,7 @@ class LxAppActivity : AppCompatActivity() {
     }
 
     private fun updateNavBar(navbarState: NavigationBarState) {
+        applyStatusBarGlyphs(navbarState)
         if (!navbarState.showNavbar) {
             navigationBar?.visibility = View.GONE
             if (isMediaFullscreen) {
@@ -1849,6 +1879,7 @@ class LxAppActivity : AppCompatActivity() {
         val pathForNavbar = targetPath ?: currentWebView?.getCurrentPath() ?: ""
         val navbarState = config ?: NativeApi.getNavigationBarState(appId, pathForNavbar)
 
+        applyStatusBarGlyphs(navbarState)
         if (navbarState != null) {
             // Create navbar if needed
             if (navigationBar == null) {

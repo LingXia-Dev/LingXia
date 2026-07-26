@@ -89,6 +89,9 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
 
     // Status bar components
     private var timeLabel: NSTextField?
+    /// Last applied navigationBarTextStyle ("" = auto, follows the app theme).
+    private var statusBarTextStyle: String = ""
+    nonisolated(unsafe) private var appearanceObservation: NSKeyValueObservation?
     private var batteryView: NSView?
     private var signalView: NSView?
     private var notchView: NSView?
@@ -151,6 +154,7 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
         navigationBarObserver.map(NotificationCenter.default.removeObserver)
         navBarStateChangedObserver.map(NotificationCenter.default.removeObserver)
         clockTimer?.invalidate()
+        appearanceObservation?.invalidate()
     }
     
     private func setupNotificationObservers() {
@@ -530,6 +534,15 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
         statusBar.addSubview(time)
         self.timeLabel = time
         startClock()
+
+        // Auto glyphs ("" textStyle) track the app theme; re-resolve on flips.
+        appearanceObservation?.invalidate()
+        appearanceObservation = NSApp.observe(\.effectiveAppearance) { [weak self] _, _ in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.updateStatusBarTextColors(textStyle: self.statusBarTextStyle)
+            }
+        }
         
         // Battery view
         let battery = createBatteryView()
@@ -934,10 +947,16 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
         navBar.wantsLayer = true
         
         if let config = config {
-            let textStyle = config.text_style.toString()
             let bgColor = Self.colorFromARGB(config.background_color)
             let isTransparent = RunnerSupport.TabBar.isTransparent(config.background_color)
-            
+            // Explicit navigationBarTextStyle wins; otherwise an opaque navbar
+            // contrasts against its background color, and a transparent/hidden
+            // bar resolves against the app theme ("" → auto).
+            var textStyle = config.text_style.toString()
+            if textStyle.isEmpty, config.show_navbar, !isTransparent {
+                textStyle = Self.isColorDark(config.background_color) ? "white" : "black"
+            }
+
             if config.show_navbar {
                 if isTransparent {
                     navBar.layer?.backgroundColor = NSColor.clear.cgColor
@@ -948,7 +967,7 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
                     systemStatusBar?.layer?.backgroundColor = bgColor.cgColor
                     viewController?.updateTopMargin(Layout.systemStatusBarHeight + Layout.navBarHeight)
                 }
-                
+
                 updateStatusBarTextColors(textStyle: textStyle)
                 setupNavigationBarTitle(in: navBar, title: config.title_text.toString(), textStyle: textStyle)
                 updateNavigationButtons(config, textStyle: textStyle)
@@ -964,6 +983,7 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
         } else {
             navBar.layer?.backgroundColor = NSColor.clear.cgColor
             systemStatusBar?.layer?.backgroundColor = NSColor.clear.cgColor
+            updateStatusBarTextColors(textStyle: "")
             navBar.subviews.forEach { $0.removeFromSuperview() }
             navBar.isHidden = false
             viewController?.updateTopMargin(0)
@@ -1017,10 +1037,22 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
     }
     
     private func updateStatusBarTextColors(textStyle: String) {
-        let textColor = textStyle == "white" ? NSColor.white : NSColor.black
-        
+        statusBarTextStyle = textStyle
+        let textColor: NSColor
+        switch textStyle {
+        case "white":
+            textColor = .white
+        case "black":
+            textColor = .black
+        default:
+            // Unset / "auto": follow the app theme, matching pages whose
+            // background adapts via prefers-color-scheme.
+            let dark = NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            textColor = dark ? .white : .black
+        }
+
         timeLabel?.textColor = textColor
-        
+
         batteryView?.subviews.forEach { subview in
             if subview.layer?.borderColor != nil {
                 subview.layer?.borderColor = textColor.cgColor
@@ -1029,6 +1061,14 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
 
         // Signal bars are solid fills, not outlines — recolor their backgrounds.
         signalView?.subviews.forEach { $0.layer?.backgroundColor = textColor.cgColor }
+    }
+
+    /// Same luminance rule as the Android/iOS hosts use for navbar contrast.
+    private static func isColorDark(_ argb: UInt32) -> Bool {
+        let red = Double((argb >> 16) & 0xFF)
+        let green = Double((argb >> 8) & 0xFF)
+        let blue = Double(argb & 0xFF)
+        return 0.299 * red + 0.587 * green + 0.114 * blue < 128
     }
     
     // MARK: - Button Actions
