@@ -34,7 +34,6 @@ websocket is not a remote machine-management API.
 - `list` / `current` / `info` / `pages` — what's running, and the configured pages
 - `open` / `close` / `restart` / `uninstall` — lifecycle (`restart` relaunches the runtime without rebuilding)
 - `reload` — rebuild the lxapp front-end bundle through the running session, then reload the running lxapp so the new bundle is live (covers Web, Logic, and `lxapp.json` changes); `--build-only` skips the runtime reload
-- `device list|get|set` — inspect or switch a Runner preset without the native selector UI; use `device set --id <preset> [--landscape|--portrait]`
 - `nav to|redirect|switch-tab|relaunch|back` — navigate the runtime by page name (from `pages`)
 - `eval` — run JS in the **Logic runtime**; `page eval` — run JS in the **page WebView** (the two see different things — JS-contexts table below)
 - `page current|list|info` — page-instance status. `page list` includes every live instance (including surface-owned pages), plus every `lxapp.json` route that is not currently open. External URL and URL-callback surfaces are browser tabs, so they appear only under `browser tabs`.
@@ -45,6 +44,11 @@ websocket is not a remote machine-management API.
 - `page screenshot` — PNG of one page's WebView
 
 `lxapp` deliberately has no window selector: a page is the core automation target, independent of how the host embeds it.
+
+**`runner`** — the simulated environment (Runner sessions only): device preset, orientation, appearance:
+- `presets` — the device presets the Runner can simulate
+- `get` — current preset, orientation, and appearance in one line
+- `set [--id <preset>] [--landscape|--portrait] [--appearance system|light|dark]` — partial update: only the given properties change. Appearance pins the simulated screen's `prefers-color-scheme` at the host level (never injected into page DOM); `system` follows the OS. Example: `lxdev runner set --appearance dark` before dark-mode assertions or screenshots.
 
 **`app`** — the selected dev session's host surface. Use this only when the target is the host window rather than an lxapp page:
 - `doctor` — report screenshot/input support, coordinate units, and keyboard-modifier reliability

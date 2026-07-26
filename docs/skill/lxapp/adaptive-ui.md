@@ -145,6 +145,10 @@ await auto.device.set({ id: desktop.id });
 await app.page.waitFor({ css: '[data-view="workspace"]' });
 ```
 
+`device.set` is a partial update: omit `id` to keep the current device, and
+pass `appearance: "light" | "dark" | "system"` to pin or release the simulated
+color scheme for dual-theme assertions.
+
 Assert that the old View is absent from the DOM and that Logic-owned state is
 still visible after each switch. Add a medium preset when the product gives
 `medium` distinct behavior.
