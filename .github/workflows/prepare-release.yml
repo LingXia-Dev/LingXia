@@ -2,12 +2,8 @@ name: Release / 1. Prepare Version PR
 run-name: Prepare ${{ inputs.component }} v${{ inputs.version }}
 
 # Version bump PR helper. `component=all` applies ONE version to the whole
-# workspace/package set via scripts/release/version.sh. `component=cli` bumps
-# only tools/lingxia-cli so the CLI can ship patch releases independently.
-# `component=npm:<package>` bumps a single framework/tool npm package for patch
-# drift within the lockstep major.minor line (internal @lingxia/* deps are caret
-# ranges). Base-runtime npm (bridge/polyfills/types) are NOT listed here — they
-# are embedded as app assets / locked to the workspace and ship via component=all.
+# workspace/package set via scripts/release/version.sh. Independent CLI, SDK,
+# crate, and npm version bumps are deliberately unsupported.
 #
 # After this PR merges, publish from the "Release / 2. Publish Component"
 # workflow for the matching component/version.
@@ -22,13 +18,6 @@ on:
         type: choice
         options:
           - all
-          - cli
-          - npm:elements
-          - npm:html
-          - npm:page-runtime
-          - npm:react
-          - npm:skill
-          - npm:vue
       version:
         description: "Version to release (e.g. 0.5.0)"
         required: true
@@ -65,21 +54,15 @@ jobs:
             echo "Invalid version: $VERSION (expected x.y.z)" >&2
             exit 1
           fi
-          case "$COMPONENT" in
-            all|cli|npm:*) ;;
-            *) echo "Invalid component: $COMPONENT" >&2; exit 1 ;;
-          esac
+          [[ "$COMPONENT" == "all" ]] || {
+            echo "Independent version bumps are disabled; component must be all" >&2
+            exit 1
+          }
 
       - name: Create release branch
         run: |
           set -euo pipefail
-          if [[ "$COMPONENT" == "all" ]]; then
-            branch="release/v${VERSION}"
-          else
-            # ":" is not allowed in git ref names (npm:react -> npm-react)
-            component_slug="$(echo "$COMPONENT" | tr ':' '-')"
-            branch="release/${component_slug}/v${VERSION}"
-          fi
+          branch="release/v${VERSION}"
           remote_sha="$(git ls-remote --heads origin "$branch" | awk '{print $1}')"
           git checkout -B "$branch"
           echo "BRANCH=$branch" >> "$GITHUB_ENV"
@@ -127,90 +110,28 @@ jobs:
         run: |
           set -euo pipefail
           version="$VERSION"
-          component="$COMPONENT"
-          if [[ "$component" == "all" ]]; then
-            pr_title="Release v${version}"
-            pr_body="$(cat <<EOF
+          pr_title="Release v${version}"
+          pr_body="$(cat <<EOF
           ## Release v${version}
 
           Unified version bump to \`${version}\` applied via
           \`scripts/release/version.sh\`. This rewrites the version in one shot:
 
           - \`Cargo.toml\` \`workspace.package.version\` + workspace crate dep versions
-          - \`tools/lingxia-cli/Cargo.toml\`: embedded component versions track the
-            workspace; the CLI \`[package]\` version advances on its **own** patch
-            line (workspace major.minor + next CLI patch), so check the file for
-            the resulting CLI version.
-          - every \`packages/*/package.json\` version — except framework/tool
-            packages unchanged since their last tag, which keep their version and
-            are not republished. Internal \`@lingxia/*\` dep ranges stay caret.
+          - CLI/Runner and embedded component metadata
+          - every \`packages/*/package.json\` version
+          - root and example lockfile workspace entries
 
           ### After merge
 
-          This bump does not publish anything on its own. Publish from the
+          This bump does not publish anything on its own. Run the unified
           **Release / 2. Publish Component** workflow after this PR merges:
 
           \`\`\`bash
-          # Recommended order:
-          # 1. component=crates, version=${version}
-          # 2. component=sdk,    version=${version}
-          # 3. component=cli,    version=<CLI version from tools/lingxia-cli/Cargo.toml>
-          # 4. component=npm,    npm_package=all, version=${version}
+          component=all, version=${version}
           \`\`\`
           EOF
           )"
-          elif [[ "$component" == npm:* ]]; then
-            package="${component#npm:}"
-            pr_title="Release @lingxia/${package} v${version}"
-            pr_body="$(cat <<EOF
-          ## NPM Release @lingxia/${package} v${version}
-
-          Single-package version bump to \`${version}\` applied via:
-
-          \`\`\`bash
-          scripts/release/version.sh ${version} --component npm:${package}
-          \`\`\`
-
-          Internal \`@lingxia/*\` dependency ranges are caret ranges, so this
-          patch stays inside the range sibling packages already accept. Other
-          packages, workspace crates, SDK artifacts, and the CLI stay on their
-          existing versions.
-
-          ### After merge
-
-          Publish from **Release / 2. Publish Component**:
-
-          \`\`\`bash
-          component=npm, npm_package=lingxia-${package}, version=${version}
-          \`\`\`
-          EOF
-          )"
-          else
-            pr_title="Release CLI v${version}"
-            pr_body="$(cat <<EOF
-          ## CLI Release v${version}
-
-          CLI-only version bump to \`${version}\` applied via:
-
-          \`\`\`bash
-          scripts/release/version.sh ${version} --component cli
-          \`\`\`
-
-          This only allows changes to \`tools/lingxia-cli/Cargo.toml\` and,
-          when Cargo needs metadata synchronization, the root \`Cargo.lock\`.
-          Workspace crates, SDK artifacts, and npm packages stay on their
-          existing versions.
-
-          ### After merge
-
-          Publish from **Release / 2. Publish Component**:
-
-          \`\`\`bash
-          component=cli, version=${version}
-          \`\`\`
-          EOF
-          )"
-          fi
 
           existing_pr="$(gh pr list --base main --head "$BRANCH" --state open --json url --jq '.[0].url')"
           if [ -n "$existing_pr" ]; then
