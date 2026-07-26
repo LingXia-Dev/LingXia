@@ -74,7 +74,7 @@ mod capabilities;
 #[cfg(feature = "devtool")]
 pub mod dev {
     pub use crate::devtool::{
-        DeviceController, DeviceEntry, DeviceState, LxAppDevConfig, LxAppDevIdentity,
+        Appearance, DeviceController, DeviceEntry, DeviceState, LxAppDevConfig, LxAppDevIdentity,
         LxAppDevPageInfo, LxAppDevPageWaitResult, LxAppDevPageWaitState, device_get, device_list,
         device_set, install_lxapp_dev_config, install_lxapp_dev_config_from_env, list_app_windows,
         lxapp_dev_nav_back, lxapp_dev_nav_redirect, lxapp_dev_nav_relaunch,

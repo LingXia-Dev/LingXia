@@ -196,11 +196,13 @@ impl JSDeviceDriver {
 
 #[derive(FromJSObject)]
 struct DeviceSetOpt {
-    /// Device preset id (see `list()`).
-    id: String,
+    /// Device preset id (see `list()`); omit to keep the current device.
+    id: Option<String>,
     /// Force landscape (`true`) or portrait (`false`); omit to use the
     /// runner's normal device-selection behavior.
     landscape: Option<bool>,
+    /// Simulated appearance: "system" | "light" | "dark"; omit to keep.
+    appearance: Option<String>,
 }
 
 #[js_class(rename = "DeviceDriver")]
@@ -224,10 +226,22 @@ impl JSDeviceDriver {
         to_js(&ctx, &state)
     }
 
-    /// Switch the simulated device by preset id and/or orientation.
+    /// Update the simulated environment; only provided fields change.
     #[js_method]
     async fn set(&self, ctx: JSContext, options: DeviceSetOpt) -> JSResult<JSValue> {
-        let state = lxapp::device::device_set(&options.id, options.landscape).map_err(auto_err)?;
+        if options.id.is_none() && options.landscape.is_none() && options.appearance.is_none() {
+            return Err(auto_err(
+                "set requires at least one of id, landscape, appearance",
+            ));
+        }
+        let appearance = options
+            .appearance
+            .as_deref()
+            .map(str::parse::<lxapp::device::Appearance>)
+            .transpose()
+            .map_err(auto_err)?;
+        let state = lxapp::device::device_set(options.id.as_deref(), options.landscape, appearance)
+            .map_err(auto_err)?;
         to_js(&ctx, &state)
     }
 }

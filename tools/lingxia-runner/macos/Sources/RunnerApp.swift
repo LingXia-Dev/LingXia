@@ -9,6 +9,32 @@ struct RunnerWebTarget {
     let ownerSessionId: UInt64
 }
 
+/// Simulated system appearance of the device screen. Applied as `NSAppearance`
+/// on the simulator windows so hosted WebViews observe it through
+/// `prefers-color-scheme` — never injected into page DOM, which stays the
+/// app's own override channel.
+public enum RunnerAppearance: String, CaseIterable, Sendable {
+    case system
+    case light
+    case dark
+
+    var nsAppearance: NSAppearance? {
+        switch self {
+        case .system: return nil
+        case .light: return NSAppearance(named: .aqua)
+        case .dark: return NSAppearance(named: .darkAqua)
+        }
+    }
+
+    var displayName: String {
+        switch self {
+        case .system: return "System"
+        case .light: return "Light"
+        case .dark: return "Dark"
+        }
+    }
+}
+
 /// LingXia Runner - Development tool with Simulator mode
 /// Provides Xcode-like simulator interface for testing LxApps
 @MainActor
@@ -38,6 +64,7 @@ public class RunnerApp {
     private(set) var selectedDeviceSize: MobileDeviceSize = .defaultDevice
     private(set) var deviceOrientation: RunnerDeviceOrientation = .portrait
     private(set) var deviceSize: MobileDeviceSize = .defaultDevice
+    private(set) var simulatedAppearance: RunnerAppearance = .system
     
     private init() {
         deviceOrientation = Self.defaultOrientation(for: selectedDeviceSize)
@@ -86,6 +113,28 @@ public class RunnerApp {
         setDeviceOrientation(deviceOrientation.toggled)
     }
 
+    /// Posted after the simulated appearance changes, whatever the entry point
+    /// (toolbar toggle, selector menu, `lxdev runner set`).
+    public static let appearanceDidChange = Notification.Name("LingXiaRunnerAppearanceDidChange")
+
+    /// Pin or release the simulated appearance of the device screen.
+    public func setAppearance(_ appearance: RunnerAppearance) {
+        simulatedAppearance = appearance
+        applyAppearanceToHosts()
+        NotificationCenter.default.post(name: Self.appearanceDidChange, object: nil)
+    }
+
+    /// Window-level `NSAppearance` reaches every hosted WebView (and the
+    /// simulated system chrome — capsule, status bar) via the view hierarchy.
+    private func applyAppearanceToHosts() {
+        let appearance = simulatedAppearance.nsAppearance
+        windowController?.window?.appearance = appearance
+        for suspended in suspendedPhoneControllers {
+            suspended.window?.appearance = appearance
+        }
+        surfaceShellHost?.shell.window?.appearance = appearance
+    }
+
     private func applyDeviceConfiguration() {
         RunnerUserAgentPolicy.shared.setProfile(
             selectedDeviceSize.browserProfile
@@ -113,6 +162,8 @@ public class RunnerApp {
         } else {
             switchToPhoneSimulatorHost(device: effectiveDevice)
         }
+        // Freshly created or revealed hosts must inherit the pinned appearance.
+        applyAppearanceToHosts()
     }
 
     public func bind(controller: LxAppController) {
@@ -154,6 +205,7 @@ public class RunnerApp {
                             phoneHost.closeFromRuntime()
                             self.confirmRuntimeClose(session)
                             self.windowController = previous
+                            previous.window?.appearance = self.simulatedAppearance.nsAppearance
                             previous.window?.makeKeyAndOrderFront(nil)
                             self.alignPhoneHostWithRuntime(previous)
                         } else {
@@ -289,6 +341,7 @@ public class RunnerApp {
         } else {
             openWebInPhoneSimulator(target, device: deviceSize)
         }
+        applyAppearanceToHosts()
     }
     
     /// Open LxApp in Simulator window
@@ -319,9 +372,13 @@ public class RunnerApp {
         } else {
             openInPhoneSimulator(appId: appId, path: resolvedPath, sessionId: sessionId)
         }
+        applyAppearanceToHosts()
     }
 
     private func openInPhoneSimulator(appId: String, path: String, sessionId: UInt64) {
+        // Every return path below either creates, resumes, or reveals a phone
+        // window; all of them must inherit the pinned appearance.
+        defer { applyAppearanceToHosts() }
         surfaceShellHost?.hideForHostSwitch()
         if let controller {
             Lingxia.activate(controller: controller)
@@ -367,6 +424,7 @@ public class RunnerApp {
     }
 
     private func openInSurfaceShell(appId: String, path: String, sessionId: UInt64) {
+        defer { applyAppearanceToHosts() }
         guard let controller else {
             os_log("Runner controller not configured", log: Self.log, type: .error)
             return

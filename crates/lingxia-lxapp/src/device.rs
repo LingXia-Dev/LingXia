@@ -1,5 +1,6 @@
-//! Simulated-device control shared by the devtool (`lxdev lxapp device`) and
-//! the `lx.automation()` host tier.
+//! Simulated-environment control shared by the devtool (`lxdev runner`, plus
+//! the deprecated `lxdev lxapp device` alias) and the `lx.automation()` host
+//! tier.
 //!
 //! The host runner owns the device presets and the window frame; it registers
 //! a [`DeviceController`] here at startup. Both automation front-ends call the
@@ -7,6 +8,49 @@
 //! runner specifics and the two can never drift.
 
 use std::sync::OnceLock;
+
+/// Simulated system appearance of the runner's device screen.
+///
+/// `System` follows the host OS; `Light`/`Dark` pin the scheme for the
+/// simulated device only. The runner applies this at the WebView host level so
+/// pages observe it through `prefers-color-scheme` — never through a DOM
+/// override, which belongs to apps.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Appearance {
+    System,
+    Light,
+    Dark,
+}
+
+impl Appearance {
+    fn default_system() -> Self {
+        Appearance::System
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Appearance::System => "system",
+            Appearance::Light => "light",
+            Appearance::Dark => "dark",
+        }
+    }
+}
+
+impl std::str::FromStr for Appearance {
+    type Err = String;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            "system" => Ok(Appearance::System),
+            "light" => Ok(Appearance::Light),
+            "dark" => Ok(Appearance::Dark),
+            other => Err(format!(
+                "unknown appearance: {other} (expected system|light|dark)"
+            )),
+        }
+    }
+}
 
 /// A device preset the host runner can simulate.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -40,6 +84,9 @@ pub struct DeviceState {
     pub height: u32,
     /// True when the device is rotated to landscape.
     pub landscape: bool,
+    /// Simulated system appearance of the device screen.
+    #[serde(default = "Appearance::default_system")]
+    pub appearance: Appearance,
 }
 
 /// Host-provided controller for switching the simulated device. Implemented by
@@ -49,7 +96,14 @@ pub struct DeviceState {
 pub trait DeviceController: Send + Sync {
     fn list(&self) -> Result<Vec<DeviceEntry>, String>;
     fn get(&self) -> Result<DeviceState, String>;
-    fn set(&self, id: &str, landscape: Option<bool>) -> Result<DeviceState, String>;
+    /// Partial update: only the provided fields change. `id: None` keeps the
+    /// current preset, so orientation or appearance can flip on their own.
+    fn set(
+        &self,
+        id: Option<&str>,
+        landscape: Option<bool>,
+        appearance: Option<Appearance>,
+    ) -> Result<DeviceState, String>;
 }
 
 static DEVICE_CONTROLLER: OnceLock<Box<dyn DeviceController>> = OnceLock::new();
@@ -79,7 +133,11 @@ pub fn device_get() -> Result<DeviceState, String> {
     device_controller()?.get()
 }
 
-/// Switch the simulated device by preset id and/or orientation.
-pub fn device_set(id: &str, landscape: Option<bool>) -> Result<DeviceState, String> {
-    device_controller()?.set(id, landscape)
+/// Update the simulated environment; only the provided fields change.
+pub fn device_set(
+    id: Option<&str>,
+    landscape: Option<bool>,
+    appearance: Option<Appearance>,
+) -> Result<DeviceState, String> {
+    device_controller()?.set(id, landscape, appearance)
 }

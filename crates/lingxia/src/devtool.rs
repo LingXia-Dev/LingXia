@@ -80,7 +80,7 @@ pub(crate) fn lxapp_dev_config() -> Option<&'static LxAppDevConfig> {
 // here to keep the `lingxia::dev::device_*` / `register_device_controller`
 // surface (and the runner's call site) unchanged.
 pub use lxapp::device::{
-    DeviceController, DeviceEntry, DeviceState, device_get, device_list, device_set,
+    Appearance, DeviceController, DeviceEntry, DeviceState, device_get, device_list, device_set,
     register_device_controller,
 };
 
@@ -588,7 +588,12 @@ pub async fn lxapp_dev_restart(
                 }
                 if state.ready {
                     if let Some(device) = &simulated_device {
-                        device_set(&device.id, Some(device.landscape)).map_err(|error| {
+                        device_set(
+                            Some(&device.id),
+                            Some(device.landscape),
+                            Some(device.appearance),
+                        )
+                        .map_err(|error| {
                             format!("failed to restore simulated device after restart: {error}")
                         })?;
                     }
