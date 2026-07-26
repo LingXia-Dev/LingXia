@@ -132,6 +132,18 @@ pub mod handlers {
         pub const KEYBOARD: &str = "app.keyboard";
     }
 
+    pub mod runner {
+        /// List the device presets the runner can simulate.
+        pub const PRESETS: &str = "runner.presets";
+        /// Report the simulated environment (device, orientation, appearance).
+        pub const GET: &str = "runner.get";
+        /// Update the simulated environment; only provided fields change.
+        /// Args: `{id?, landscape?, appearance?}`.
+        pub const SET: &str = "runner.set";
+    }
+
+    /// Deprecated alias for [`runner`]: the simulated environment belongs to
+    /// the runner host, not the lxapp. Kept one release for older CLIs.
     pub mod lxapp_device {
         /// List the device presets the runner offers (id, name, group, size).
         pub const LIST: &str = "lxapp.device.list";
