@@ -2318,13 +2318,6 @@ pub(crate) fn list_webviews() -> Vec<WebTag> {
     Vec::new()
 }
 
-#[cfg(any(
-    target_os = "android",
-    target_os = "ios",
-    target_os = "macos",
-    target_os = "windows",
-    all(target_os = "linux", target_env = "ohos")
-))]
 pub(crate) fn find_webview_delegate(webtag: &WebTag) -> Option<Arc<dyn WebViewDelegate>> {
     find_webview(webtag).and_then(|webview| webview.get_delegate())
 }
