@@ -1,4 +1,5 @@
 mod build;
+mod bundle;
 mod framework;
 mod hardening;
 mod logic;
@@ -11,6 +12,7 @@ use anyhow::Result;
 use std::env;
 use std::path::Path;
 
+pub(crate) use bundle::is_built_bundle_dir;
 pub(crate) use framework::ProjectFramework;
 pub(crate) use project::Project;
 pub(crate) use view::native_client_output_path;
