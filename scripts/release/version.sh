@@ -395,15 +395,13 @@ update_root_lock() {
   [[ -f "$ROOT_DIR/Cargo.lock" ]] || return 0
 
   if [[ "$DRY_RUN" -eq 1 ]]; then
-    echo "would refresh $ROOT_DIR/Cargo.lock if Cargo needs metadata changes"
+    echo "would update workspace package versions in $ROOT_DIR/Cargo.lock"
     return 0
   fi
 
-  cargo metadata \
+  cargo update \
     --manifest-path "$ROOT_DIR/Cargo.toml" \
-    --format-version 1 \
-    --no-deps \
-    >/dev/null
+    --workspace
 }
 
 # The LingXia Runner ships alongside the CLI: runner.sh names the release zip by
