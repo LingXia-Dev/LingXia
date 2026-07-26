@@ -354,7 +354,7 @@ fn create_d3d_device() -> StdResult<(ID3D11Device, ID3D11DeviceContext)> {
             D3D11CreateDevice(
                 None,
                 driver,
-                None,
+                Default::default(),
                 D3D11_CREATE_DEVICE_BGRA_SUPPORT,
                 None,
                 D3D11_SDK_VERSION,
