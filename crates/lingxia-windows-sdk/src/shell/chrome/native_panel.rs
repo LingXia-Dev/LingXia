@@ -241,8 +241,9 @@ pub(super) fn terminal_header_hit_test(
 
 /// Draws a terminal panel as a compact dock: full-bleed surface card, a
 /// 34px header strip (tabs + new-tab + maximize), and the cell grid below.
-/// Docked panels keep square top corners (flush seam with the main card);
-/// while maximized the panel fills the content area with square corners.
+/// Docked and floating panels draw the same rounded card as the webview
+/// content; only a maximized panel fills the content area with square
+/// corners.
 pub(super) fn draw_terminal_panel_content(
     hdc: HDC,
     hwnd: HWND,
@@ -269,10 +270,9 @@ pub(super) fn draw_terminal_panel_content(
     let header_rects = terminal_header_rects(rect, native);
     let header = header_rects.header;
     let _clip_guard = DcClipGuard::save(hdc);
-    if native.maximized || panel.docked {
-        // Flat variant: a docked panel splits the space at the same layer as
-        // the content (the gutter hairline is the divider), and a maximized
-        // panel is flush with the content pane — square fills, no arcs.
+    if native.maximized {
+        // Flat variant: a maximized panel is flush with the content pane —
+        // square fills, no arcs.
         fill_rect(hdc, rect, TERMINAL_HEADER_BACKGROUND);
         fill_rect(
             hdc,
