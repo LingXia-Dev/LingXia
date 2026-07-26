@@ -58,7 +58,7 @@ env:
 
 jobs:
   # Footgun guard: this executor is dispatched by "Release / 2. Publish
-  # Component" (which runs it as github-actions[bot]). Block humans from running
+  # Workspace Component" (which runs it as github-actions[bot]). Block humans from running
   # it by hand with a real publish, which would skip Release / 2's ordering and
   # version-in-code checks. Manual dry_run=true is allowed for debugging.
   guard:
