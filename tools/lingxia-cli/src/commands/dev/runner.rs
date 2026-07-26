@@ -236,14 +236,21 @@ pub(super) fn execute_runner_dev(
 
     let run_result = (|| -> Result<()> {
         if let RunnerDevTarget::LxApp(lxapp_path) = &target {
-            println!("{}", "Step 1/2: Building lxapp...".bold());
-            let build_args = lxapp_runner_build_args(
-                options.release,
-                options.framework.as_deref(),
-                options.progress.as_deref(),
-                runner_env,
-            );
-            crate::lxapp::run_in_dir_for_dev(&build_args, lxapp_path)?;
+            if crate::lxapp::is_built_bundle_dir(lxapp_path) {
+                println!(
+                    "{}",
+                    "Step 1/2: Built lxapp bundle detected — build skipped.".bold()
+                );
+            } else {
+                println!("{}", "Step 1/2: Building lxapp...".bold());
+                let build_args = lxapp_runner_build_args(
+                    options.release,
+                    options.framework.as_deref(),
+                    options.progress.as_deref(),
+                    runner_env,
+                );
+                crate::lxapp::run_in_dir_for_dev(&build_args, lxapp_path)?;
+            }
         }
 
         let content = match &target {
