@@ -361,9 +361,7 @@ jobs:
   # The runtime crates (e.g. lingxia-webview) only have android / apple / ohos /
   # windows backends — there is no plain-linux-gnu host backend — so the
   # workspace-wide check runs on macOS, the project's real desktop host.
-  # lingxia-terminal is excluded from CI gates because its libghostty-vt build
-  # requires external Ghostty tooling that is not part of the normal LingXia CI
-  # toolchain. Android and Windows backends are checked separately by the
+  # Android and Windows backends are checked separately by the
   # *-target jobs below (their cfg-gated code never compiles on macOS).
   rust-check:
     needs: changes
@@ -476,11 +474,9 @@ jobs:
       # Some embedded-runtime build scripts expect the bundled bridge/polyfills JS.
       - uses: ./.github/actions/build-web-runtime
 
-      # lingxia-terminal needs an external toolchain (libghostty), excluded like
-      # the macOS clippy job.
       - name: Clippy Windows host stack
         shell: bash
-        run: cargo clippy --workspace --exclude lingxia-terminal -- -D warnings -A clippy::let_underscore_future
+        run: cargo clippy --workspace -- -D warnings -A clippy::let_underscore_future
 
       - name: Test Windows media metadata mappings
         shell: bash
@@ -559,8 +555,7 @@ jobs:
           path: target/${{ matrix.target }}/release/lingxia${{ matrix.exe }}
           if-no-files-found: error
 
-  # Runs on macOS for the same reason as the workspace check. Excludes
-  # lingxia-terminal for the same external-toolchain reason.
+  # Runs on macOS for the same reason as the workspace check.
   rust-clippy:
     needs: changes
     if: ${{ needs.changes.outputs.rust == 'true' }}
@@ -590,7 +585,7 @@ jobs:
       # cfg'd out, leaving helpers dead), so they are linted by the Windows
       # clippy job instead — exclude them here.
       - name: Clippy (all workspace crates)
-        run: cargo clippy --workspace --exclude lingxia-terminal --exclude lingxia-windows-sdk --exclude lingxia-windows-contract --exclude lingxia-windows-build --exclude lingxia-runner-windows -- -D warnings -A clippy::let_underscore_future
+        run: cargo clippy --workspace --exclude lingxia-windows-sdk --exclude lingxia-windows-contract --exclude lingxia-windows-build --exclude lingxia-runner-windows -- -D warnings -A clippy::let_underscore_future
 
       # `--workspace` builds each crate's default features only, so the
       # `lingxia` facade's `automation`-gated bootstrap wiring never compiles.
@@ -694,11 +689,6 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           prefix-key: example-macos
-      # The showcase enables the terminal (lingxia-terminal builds
-      # libghostty-vt from source), which needs zig on the host.
-      - uses: mlugg/setup-zig@v2
-        with:
-          version: 0.15.2
       - uses: ./.github/actions/build-web-packages
       - uses: ./.github/actions/bootstrap-apple-sdk
       # Inject the private cloud provider when its secrets are present (same-repo
@@ -761,10 +751,6 @@ jobs:
         with:
           prefix-key: showcase-automation-${{ matrix.platform }}
           cache-on-failure: true
-
-      - uses: mlugg/setup-zig@v2
-        with:
-          version: 0.15.2
 
       - uses: ./.github/actions/build-web-packages
 
@@ -936,7 +922,7 @@ jobs:
 
   # ---- Advisory (runs + visible, NOT in ci-success.needs) ----
   # rust-test stays advisory: it has pre-existing environment/timing-dependent
-  # tests (lingxia-terminal dylib rpath, lingxia-transfer wall-clock ordering).
+  # tests (lingxia-transfer wall-clock ordering, live-shell terminal sessions).
   rust-test:
     needs: changes
     if: ${{ needs.changes.outputs.rust == 'true' }}
@@ -957,7 +943,7 @@ jobs:
       - uses: ./.github/actions/build-web-runtime
 
       - name: Test all workspace crates
-        run: cargo test --workspace --exclude lingxia-terminal
+        run: cargo test --workspace
 
   # sdk / harmony / npm run + are visible on PRs but are deliberately NOT in
   # ci-success.needs, so they can never block a merge. Promote each to a gating

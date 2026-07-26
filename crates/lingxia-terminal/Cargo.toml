@@ -7,6 +7,7 @@ description = "Terminal backend integration helpers for LingXia hosts"
 license = "MIT"
 
 [dependencies]
+alacritty_terminal = { version = "0.26", default-features = false }
 portable-pty = "0.9"
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
