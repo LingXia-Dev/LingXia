@@ -7,6 +7,7 @@ ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 CRATES=(
   # Foundational crates.
   "lingxia-app-context"
+  "lingxia-computer-use"
   "lingxia-provider"
   "lingxia-log"
   "lingxia-update"
@@ -16,6 +17,7 @@ CRATES=(
   "lingxia-transfer"
   "lingxia-windows-contract"
   "lingxia-surface"
+  "lingxia-shell"
   "lingxia-platform"
   "lingxia-media"
   "lingxia-service"
@@ -29,6 +31,7 @@ CRATES=(
   "lingxia-native-macros"
   "lingxia-native-codegen"
   "lingxia-browser"
+  "lingxia-automation"
   "lingxia-browser-shell"
   "lingxia-terminal"
 
@@ -47,6 +50,55 @@ CRATES=(
   # in the windows app template instead.
   "lingxia-windows-build"
 )
+
+# Workspace crates that cannot be published to crates.io. Keep this explicit so
+# adding a new crate under crates/ fails the inventory check until the release
+# policy is decided.
+UNPUBLISHED_CRATES=(
+  "lingxia-windows-sdk"
+)
+
+array_contains() {
+  local needle="$1"
+  shift
+  local item
+  for item in "$@"; do
+    [[ "$item" == "$needle" ]] && return 0
+  done
+  return 1
+}
+
+verify_crate_inventory() {
+  local manifest crate
+  local missing=()
+
+  for manifest in "$ROOT_DIR"/crates/*/Cargo.toml; do
+    crate="$(awk '
+      /^\[package\]/ {in_package=1; next}
+      /^\[/ {in_package=0}
+      in_package && $1 == "name" {
+        gsub(/"/, "", $3)
+        print $3
+        exit
+      }' "$manifest")"
+
+    if [[ -z "$crate" ]]; then
+      echo "Failed to read package name from $manifest" >&2
+      exit 1
+    fi
+
+    if ! array_contains "$crate" "${CRATES[@]}" &&
+       ! array_contains "$crate" "${UNPUBLISHED_CRATES[@]}"; then
+      missing+=("$crate")
+    fi
+  done
+
+  if [[ "${#missing[@]}" -gt 0 ]]; then
+    echo "Workspace crate(s) missing from the release inventory: ${missing[*]}" >&2
+    echo "Add each crate to CRATES or UNPUBLISHED_CRATES with a reason." >&2
+    exit 1
+  fi
+}
 
 usage() {
   cat <<'EOF'
@@ -117,6 +169,8 @@ fi
 if [[ "$PUBLISH" -eq 0 && "$DRY_RUN" -eq 0 ]]; then
   DRY_RUN=1
 fi
+
+verify_crate_inventory
 
 if [[ "$ALLOW_DIRTY" -eq 0 ]] && ! git -C "$ROOT_DIR" diff --quiet; then
   echo "Working directory has uncommitted changes." >&2
