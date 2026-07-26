@@ -36,6 +36,10 @@ pub(crate) enum UiCommand {
         user_agent: UserAgentOverride,
         resp: Sender<StdResult<()>>,
     },
+    SetPreferredColorScheme {
+        scheme: WindowsPreferredColorScheme,
+        resp: Sender<StdResult<()>>,
+    },
     SetBrowserEmulationProfile {
         profile: WindowsBrowserEmulationProfile,
         resp: Sender<StdResult<String>>,
@@ -341,6 +345,18 @@ impl WebViewInner {
 
     pub(crate) fn set_content_bounds(&self, bounds: RECT) -> StdResult<()> {
         self.dispatch_command_same_thread_safe(|resp| UiCommand::SetContentBounds { bounds, resp })
+    }
+
+    pub(crate) fn set_preferred_color_scheme(
+        &self,
+        scheme: WindowsPreferredColorScheme,
+    ) -> StdResult<()> {
+        self.dispatch_ui(
+            |resp| UiCommand::SetPreferredColorScheme { scheme, resp },
+            Some(BROWSER_EMULATION_TIMEOUT),
+        )
+        .map_err(|err| err.into_webview_error("set preferred color scheme"))??;
+        Ok(())
     }
 
     pub(crate) fn set_browser_emulation_profile(
@@ -913,6 +929,15 @@ pub(crate) fn run_ui_thread_inner(
             );
             wait_for_ui_reply(&profile_rx, BROWSER_EMULATION_TIMEOUT)??;
         }
+        // Appearance is a dev nicety, not a correctness precondition like UA
+        // emulation: skip the neutral value and never let a failure (e.g. a
+        // WebView2 runtime without ICoreWebView2_13) abort webview creation.
+        if let Some(scheme) = color_scheme::configured_color_scheme()
+            && scheme != WindowsPreferredColorScheme::Auto
+            && let Err(err) = color_scheme::apply_color_scheme(&state.webview, scheme)
+        {
+            log::warn!("Failed to apply preferred color scheme at startup: {err}");
+        }
         Ok(())
     })();
     if let Err(err) = bootstrap {
@@ -1153,6 +1178,9 @@ pub(crate) fn handle_command(state: &mut UiState, command: UiCommand) -> StdResu
             };
             let result = set_user_agent_override(&state.webview, user_agent);
             let _ = resp.send(result);
+        }
+        UiCommand::SetPreferredColorScheme { scheme, resp } => {
+            let _ = resp.send(color_scheme::apply_color_scheme(&state.webview, scheme));
         }
         UiCommand::SetBrowserEmulationProfile { profile, resp } => {
             if state.browser_emulation_configured {
