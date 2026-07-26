@@ -1,3 +1,7 @@
+//! Deprecated `lxapp.device.*` alias for the `runner.*` handlers: the
+//! simulated environment belongs to the runner host, not the lxapp. Kept one
+//! release for older CLIs.
+
 use lingxia_devtool_protocol::handlers;
 use serde::Deserialize;
 use serde_json::Value;
@@ -36,9 +40,13 @@ fn handle_lxapp_device_command_impl(
                     .map_err(|e| format!("invalid args for {}: {}", handler, e))?,
                 None => return Err(format!("missing args for {}", handler)),
             };
-            serde_json::to_value(lingxia::dev::device_set(&parsed.id, parsed.landscape)?)
-                .map(Some)
-                .map_err(|err| err.to_string())
+            serde_json::to_value(lingxia::dev::device_set(
+                Some(&parsed.id),
+                parsed.landscape,
+                None,
+            )?)
+            .map(Some)
+            .map_err(|err| err.to_string())
         }
         other => Err(format!("unknown lxapp.device handler: {}", other)),
     }

@@ -13,6 +13,12 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 /// device from the selector resets to portrait.
 static CURRENT_DEVICE: AtomicUsize = AtomicUsize::new(0);
 static LANDSCAPE: AtomicBool = AtomicBool::new(false);
+/// Simulated appearance as `lingxia::dev::Appearance` discriminant
+/// (0 system / 1 light / 2 dark). Reported through `runner.get`; pinning a
+/// non-system value is rejected until the Windows WebView gains a
+/// preferred-color-scheme hook, so the CLI never claims an appearance the
+/// screen does not actually show.
+static APPEARANCE: AtomicUsize = AtomicUsize::new(0);
 static BROWSER_HOST: OnceLock<lingxia_windows_sdk::WindowsHost> = OnceLock::new();
 
 const ARG_ASSET_DIR: &str = "--asset-dir";
@@ -260,14 +266,38 @@ impl lingxia::dev::DeviceController for RunnerDeviceController {
         Ok(device_state(index, landscape))
     }
 
-    fn set(&self, id: &str, landscape: Option<bool>) -> Result<lingxia::dev::DeviceState, String> {
-        let index = presets()
-            .iter()
-            .position(|preset| preset.id() == id)
-            .ok_or_else(|| format!("unknown device id: {id}"))?;
+    fn set(
+        &self,
+        id: Option<&str>,
+        landscape: Option<bool>,
+        appearance: Option<lingxia::dev::Appearance>,
+    ) -> Result<lingxia::dev::DeviceState, String> {
+        if let Some(appearance) = appearance {
+            // TODO(windows): apply via the WebView2 profile
+            // (ICoreWebView2Profile.PreferredColorScheme) once the windows SDK
+            // exposes it, then store and report the pinned value.
+            if appearance != lingxia::dev::Appearance::System {
+                return Err(
+                    "appearance simulation is not yet supported by the Windows runner".into(),
+                );
+            }
+            APPEARANCE.store(0, Ordering::Release);
+        }
+        let index = match id {
+            Some(id) => presets()
+                .iter()
+                .position(|preset| preset.id() == id)
+                .ok_or_else(|| format!("unknown device id: {id}"))?,
+            None => CURRENT_DEVICE.load(Ordering::Acquire),
+        };
         // Default orientation matches the toolbar selector: tablets landscape,
-        // phones/desktops portrait.
-        let landscape = landscape.unwrap_or_else(|| is_tablet(index));
+        // phones/desktops portrait — but only when switching devices; a bare
+        // appearance change keeps the current rotation.
+        let landscape = match landscape {
+            Some(landscape) => landscape,
+            None if id.is_some() => is_tablet(index),
+            None => LANDSCAPE.load(Ordering::Acquire),
+        };
         apply_device(index, landscape)?;
         Ok(device_state(index, landscape))
     }
@@ -289,6 +319,11 @@ fn device_state(index: usize, landscape: bool) -> lingxia::dev::DeviceState {
         width: width.max(0) as u32,
         height: height.max(0) as u32,
         landscape,
+        appearance: match APPEARANCE.load(Ordering::Acquire) {
+            1 => lingxia::dev::Appearance::Light,
+            2 => lingxia::dev::Appearance::Dark,
+            _ => lingxia::dev::Appearance::System,
+        },
     }
 }
 

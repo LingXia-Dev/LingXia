@@ -17,6 +17,7 @@ private struct RunnerDeviceStatePayload: Encodable, Sendable {
     let width: Int
     let height: Int
     let landscape: Bool
+    let appearance: String
 }
 
 @MainActor
@@ -44,19 +45,31 @@ private func deviceState() -> RunnerDeviceStatePayload {
         group: selected.group,
         width: Int(effective.width),
         height: Int(effective.height),
-        landscape: RunnerApp.shared.deviceOrientation == .landscape
+        landscape: RunnerApp.shared.deviceOrientation == .landscape,
+        appearance: RunnerApp.shared.simulatedAppearance.rawValue
     )
 }
 
 @MainActor
-private func setDevice(id: String, landscape: Bool?) -> RunnerDeviceStatePayload? {
-    guard let device = MobileDeviceSize.allCases.first(where: { $0.id == id }) else {
-        return nil
+private func setDevice(
+    id: String?,
+    landscape: Bool?,
+    appearance: RunnerAppearance?
+) -> RunnerDeviceStatePayload? {
+    if let id {
+        guard let device = MobileDeviceSize.allCases.first(where: { $0.id == id }) else {
+            return nil
+        }
+        let orientation = landscape.map {
+            $0 ? RunnerDeviceOrientation.landscape : .portrait
+        }
+        RunnerApp.shared.setDeviceSize(device, orientation: orientation)
+    } else if let landscape {
+        RunnerApp.shared.setDeviceOrientation(landscape ? .landscape : .portrait)
     }
-    let orientation = landscape.map {
-        $0 ? RunnerDeviceOrientation.landscape : .portrait
+    if let appearance {
+        RunnerApp.shared.setAppearance(appearance)
     }
-    RunnerApp.shared.setDeviceSize(device, orientation: orientation)
     return deviceState()
 }
 
@@ -93,17 +106,27 @@ func lingxiaRunnerDeviceGetJSON() -> UnsafeMutablePointer<CChar>? {
 @_cdecl("lingxia_runner_device_set_json")
 func lingxiaRunnerDeviceSetJSON(
     _ id: UnsafePointer<CChar>?,
-    _ landscape: Int32
+    _ landscape: Int32,
+    _ appearance: Int32
 ) -> UnsafeMutablePointer<CChar>? {
-    guard let id else { return nil }
-    let deviceId = String(cString: id)
+    let deviceId = id.map { String(cString: $0) }
     let requestedOrientation: Bool? = switch landscape {
     case 0: false
     case 1: true
     default: nil
     }
+    let requestedAppearance: RunnerAppearance? = switch appearance {
+    case 0: .system
+    case 1: .light
+    case 2: .dark
+    default: nil
+    }
     guard let state = onRunnerMain({
-        setDevice(id: deviceId, landscape: requestedOrientation)
+        setDevice(
+            id: deviceId,
+            landscape: requestedOrientation,
+            appearance: requestedAppearance
+        )
     }) else {
         return nil
     }
