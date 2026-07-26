@@ -21,7 +21,10 @@ public class SimulatorToolbar: NSView {
     private var closeButton: NSButton!
     private var minimizeButton: NSButton!
     private var rotateButton: NSButton!
+    private var appearanceButton: NSButton!
     private var inspectButton: NSButton!
+    private nonisolated(unsafe) var appearanceObserver: NSObjectProtocol?
+    private var systemAppearanceObservation: NSKeyValueObservation?
 
     // MARK: - State
 
@@ -40,6 +43,12 @@ public class SimulatorToolbar: NSView {
 
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
+    }
+
+    deinit {
+        if let appearanceObserver {
+            NotificationCenter.default.removeObserver(appearanceObserver)
+        }
     }
     
     // MARK: - Setup
@@ -60,6 +69,7 @@ public class SimulatorToolbar: NSView {
         setupDeviceSelector()
         setupRotateButton()
         setupInspectButton()
+        setupAppearanceButton()
     }
     
     private func setupWindowButtons() {
@@ -161,7 +171,74 @@ public class SimulatorToolbar: NSView {
         addSubview(rotateButton)
     }
 
+    private func setupAppearanceButton() {
+        appearanceButton = NSButton()
+        appearanceButton.imagePosition = .imageOnly
+        appearanceButton.title = ""
+        appearanceButton.isBordered = false
+        appearanceButton.bezelStyle = .regularSquare
+        appearanceButton.target = self
+        appearanceButton.action = #selector(appearanceClicked)
+        appearanceButton.contentTintColor = NSColor.white.withAlphaComponent(0.7)
+        appearanceButton.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(appearanceButton)
+
+        NSLayoutConstraint.activate([
+            appearanceButton.trailingAnchor.constraint(equalTo: rotateButton.leadingAnchor, constant: -6),
+            appearanceButton.centerYAnchor.constraint(equalTo: centerYAnchor),
+            appearanceButton.widthAnchor.constraint(equalToConstant: 24),
+            appearanceButton.heightAnchor.constraint(equalToConstant: 24),
+        ])
+
+        refreshAppearanceButton()
+        systemAppearanceObservation = NSApp.observe(\.effectiveAppearance) { [weak self] _, _ in
+            Task { @MainActor [weak self] in self?.refreshAppearanceButton() }
+        }
+        // The CLI (`lxdev runner set`) and the selector menu change the same
+        // state; keep the toolbar icon honest whatever the entry point.
+        appearanceObserver = NotificationCenter.default.addObserver(
+            forName: RunnerApp.appearanceDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.refreshAppearanceButton() }
+        }
+    }
+
+    /// The simulated screen is effectively dark right now — the pin when one
+    /// is set, the host OS otherwise.
+    private func effectiveDark() -> Bool {
+        switch RunnerApp.shared.simulatedAppearance {
+        case .light: return false
+        case .dark: return true
+        case .system:
+            return NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        }
+    }
+
+    private func refreshAppearanceButton() {
+        // Two icons only: the button shows what the screen currently renders
+        // and one click flips it. "Follow system" stays in the selector menu
+        // (and `lxdev runner set --appearance system`).
+        let dark = effectiveDark()
+        // Shared design icons (single source for macOS + Windows), like rotate —
+        // never macOS-only SF Symbols.
+        let assetName = dark ? "icon_appearance_dark" : "icon_appearance_light"
+        let image = RunnerSupport.Assets.image(named: assetName, size: CGSize(width: 15, height: 15))
+        image?.isTemplate = true
+        appearanceButton.image = image
+        let mode = RunnerApp.shared.simulatedAppearance == .system ? "system" : "pinned"
+        let current = dark ? "Dark" : "Light"
+        let next = dark ? "Light" : "Dark"
+        appearanceButton.toolTip = "Appearance: \(current) (\(mode)) — click for \(next)"
+    }
+
     // MARK: - Actions
+
+    @objc private func appearanceClicked() {
+        // Always a visible flip: pin the opposite of what the screen shows.
+        RunnerApp.shared.setAppearance(effectiveDark() ? .light : .dark)
+    }
 
     @objc private func inspectClicked() {
         // The gear is just DevTools. Lxapp lifecycle lives on the capsule sheet;
