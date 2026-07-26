@@ -10,6 +10,7 @@ mod logs;
 mod lxapp;
 mod lxapp_build;
 mod project;
+mod runner;
 mod screenshot;
 mod sessions;
 mod test;
@@ -38,6 +39,9 @@ enum Commands {
     Browser(browser::BrowserOptions),
     /// Manage lxapps in the current dev session
     Lxapp(lxapp::LxAppOptions),
+    /// Control the simulated environment (device, orientation, appearance);
+    /// runner sessions only
+    Runner(runner::RunnerOptions),
     /// Query and filter the current dev session log file
     Logs(logs::LogsOptions),
     /// List live dev sessions
@@ -147,6 +151,10 @@ fn run() -> Result<()> {
             let info = resolve(&selector)?;
             let project_root = std::path::PathBuf::from(&info.project_root);
             lxapp::execute(&project_root, &info, options)
+        }
+        Commands::Runner(options) => {
+            let info = resolve(&selector)?;
+            runner::execute(&info, options)
         }
         Commands::Logs(options) => {
             let info = resolve(&selector)?;
