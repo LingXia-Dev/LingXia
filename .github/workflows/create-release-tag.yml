@@ -1,41 +1,21 @@
-name: Release / 2. Publish Component
-run-name: Publish ${{ inputs.component == 'npm' && format('npm/{0}', inputs.npm_package) || inputs.component }} v${{ inputs.version }}
+name: Release / 2. Publish Workspace
+run-name: Publish workspace v${{ inputs.version }}
 
 # Public release entrypoint. Run AFTER the unified version bump PR has merged
-# to main. This workflow creates the release tag(s), then explicitly dispatches
-# and waits for the matching executor workflow. We do not rely on tag-push
-# fanout here because tags pushed with GITHUB_TOKEN do not reliably trigger
-# downstream workflows.
+# to main. Partial releases are deliberately unsupported: every run publishes
+# crates, SDKs, CLIs/Runners, and npm packages at the workspace version. Internal
+# executor reruns remain available only for recovery of that unified release.
 
 on:
   workflow_dispatch:
     inputs:
       component:
-        description: "High-level component to publish"
+        description: "Version scope"
         required: true
-        type: choice
-        options:
-          - all
-          - crates
-          - sdk
-          - cli
-          - npm
-      npm_package:
-        description: "NPM package when component=npm"
-        required: false
         default: all
         type: choice
         options:
           - all
-          - lingxia-bridge
-          - lingxia-elements
-          - lingxia-html
-          - lingxia-page-runtime
-          - lingxia-polyfills
-          - lingxia-react
-          - lingxia-skill
-          - lingxia-types
-          - lingxia-vue
       version:
         description: "Version to publish (e.g. 0.9.0)"
         required: true
@@ -60,7 +40,7 @@ env:
 
 jobs:
   publish:
-    name: Dispatch ${{ inputs.component == 'npm' && format('npm/{0}', inputs.npm_package) || inputs.component }} v${{ inputs.version }}
+    name: Dispatch workspace v${{ inputs.version }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -71,7 +51,6 @@ jobs:
       - name: Validate inputs
         env:
           COMPONENT: ${{ inputs.component }}
-          NPM_PACKAGE: ${{ inputs.npm_package }}
           VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
@@ -81,26 +60,13 @@ jobs:
             exit 1
           fi
 
-          case "$COMPONENT" in
-            all|crates|sdk|cli|npm) ;;
-            *) echo "Unknown component: $COMPONENT" >&2; exit 1 ;;
-          esac
-
-          if [[ "$COMPONENT" == "npm" && "$NPM_PACKAGE" != "all" ]]; then
-            found=0
-            for package in $NPM_PACKAGES; do
-              [[ "$package" == "$NPM_PACKAGE" ]] && found=1
-            done
-            if [[ "$found" -ne 1 ]]; then
-              echo "Unknown npm package: $NPM_PACKAGE" >&2
-              exit 1
-            fi
-          fi
+          [[ "$COMPONENT" == "all" ]] || {
+            echo "Independent releases are disabled; component must be all" >&2
+            exit 1
+          }
 
       - name: Verify version in code
         env:
-          COMPONENT: ${{ inputs.component }}
-          NPM_PACKAGE: ${{ inputs.npm_package }}
           VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
@@ -127,16 +93,6 @@ jobs:
             echo "lingxia-cli version verified: $actual"
           }
 
-          # bridge/polyfills/types track the workspace version in lockstep; every
-          # other npm package is framework/tools and may stay at an older version
-          # when version.sh skipped its bump (unchanged since its last tag).
-          is_base_npm() {
-            case " lingxia-bridge lingxia-polyfills lingxia-types " in
-              *" $1 "*) return 0 ;;
-            esac
-            return 1
-          }
-
           read_npm_package_version() {
             local package="$1"
             local package_json="packages/$package/package.json"
@@ -147,63 +103,20 @@ jobs:
             node -p "require('./$package_json').version"
           }
 
-          # Base packages must equal $VERSION (this is the "did you merge the
-          # version PR?" guard); framework packages are verified at their own
-          # version since they legitimately drift behind the workspace.
-          verify_npm_package_version() {
-            local package="$1"
-            local actual
+          verify_workspace_version
+          verify_cli_version
+          for package in $NPM_PACKAGES; do
             actual="$(read_npm_package_version "$package")"
-            if is_base_npm "$package" && [[ "$actual" != "$VERSION" ]]; then
+            if [[ "$actual" != "$VERSION" ]]; then
               echo "Version mismatch: expected $VERSION, found $actual in packages/$package/package.json" >&2
-              echo "Did you merge the release PR first?" >&2
               exit 1
             fi
             echo "$package version verified: $actual"
-          }
-
-          case "$COMPONENT" in
-            all)
-              verify_workspace_version
-              verify_cli_version
-              for package in $NPM_PACKAGES; do
-                actual="$(read_npm_package_version "$package")"
-                if [[ "$actual" != "$VERSION" ]]; then
-                  echo "Version mismatch: expected $VERSION, found $actual in packages/$package/package.json" >&2
-                  exit 1
-                fi
-                echo "$package version verified: $actual"
-              done
-              ;;
-            crates|sdk)
-              verify_workspace_version
-              ;;
-            cli)
-              verify_cli_version
-              ;;
-            npm)
-              if [[ "$NPM_PACKAGE" == "all" ]]; then
-                for package in $NPM_PACKAGES; do
-                  verify_npm_package_version "$package"
-                done
-              else
-                # A single-package dispatch always bumps that package to $VERSION.
-                actual="$(read_npm_package_version "$NPM_PACKAGE")"
-                if [[ "$actual" != "$VERSION" ]]; then
-                  echo "Version mismatch: expected $VERSION, found $actual in packages/$NPM_PACKAGE/package.json" >&2
-                  echo "Did you merge the release PR first?" >&2
-                  exit 1
-                fi
-                echo "$NPM_PACKAGE version verified: $actual"
-              fi
-              ;;
-          esac
+          done
 
       - name: Create tag(s) and dispatch executor
         env:
-          COMPONENT: ${{ inputs.component }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NPM_PACKAGE: ${{ inputs.npm_package }}
           VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
@@ -332,26 +245,11 @@ jobs:
             dispatch_and_wait "release-cli.yml" "CLI v$VERSION" -f tag="$tag" -f dry_run=false
           }
 
-          publish_npm_package() {
-            local package="$1"
-            local tag="${package}-v$VERSION"
-            create_or_reuse_tag "$tag" "Release $package v$VERSION"
-            dispatch_and_wait "npm-release.yml" "NPM $package v$VERSION" \
-              -f package="$package" \
-              -f version="$VERSION" \
-              -f dry_run=false
-          }
-
           publish_all_npm_packages() {
-            # Base-runtime packages bump in lockstep with $VERSION; framework/tool
-            # packages may stay at an older version when unchanged (version.sh
-            # skips their bump). Tag each at its actual package.json version so the
-            # tag never claims a version the package was not published at.
+            # Every npm package moves in lockstep with the workspace version.
             for package in $NPM_PACKAGES; do
-              local pkg_version
-              pkg_version="$(node -p "require('./packages/${package}/package.json').version")"
-              local tag="${package}-v${pkg_version}"
-              create_or_reuse_tag "$tag" "Release $package v${pkg_version}"
+              local tag="${package}-v${VERSION}"
+              create_or_reuse_tag "$tag" "Release $package v${VERSION}"
             done
 
             dispatch_and_wait "npm-release.yml" "NPM all v$VERSION" \
@@ -360,27 +258,7 @@ jobs:
               -f dry_run=false
           }
 
-          case "$COMPONENT" in
-            all)
-              publish_crates
-              publish_sdk
-              publish_cli
-              publish_all_npm_packages
-              ;;
-            crates)
-              publish_crates
-              ;;
-            sdk)
-              publish_sdk
-              ;;
-            cli)
-              publish_cli
-              ;;
-            npm)
-              if [[ "$NPM_PACKAGE" == "all" ]]; then
-                publish_all_npm_packages
-              else
-                publish_npm_package "$NPM_PACKAGE"
-              fi
-              ;;
-          esac
+          publish_crates
+          publish_sdk
+          publish_cli
+          publish_all_npm_packages

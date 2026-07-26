@@ -1,5 +1,5 @@
 # INTERNAL executor — dispatched automatically by "Release / 2. Publish
-# Component". Do not run directly except to debug with dry_run; the normal
+# Workspace". Do not run directly except to debug with dry_run; the normal
 # release path is: Release / 1 (version PR) -> merge -> Release / 2.
 name: Release Executor / Crates (internal)
 run-name: Crates ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
@@ -29,7 +29,7 @@ env:
 
 jobs:
   # Footgun guard: this executor is dispatched by "Release / 2. Publish
-  # Component" (which runs it as github-actions[bot]). Block humans from running
+  # Workspace" (which runs it as github-actions[bot]). Block humans from running
   # it by hand with a real publish, which would skip Release / 2's ordering and
   # version-in-code checks. Manual dry_run=true is allowed for debugging.
   guard:
@@ -47,11 +47,11 @@ jobs:
             exit 0
           fi
           if [[ "$ACTOR" == "github-actions[bot]" ]]; then
-            echo "Dispatched by Release / 2. Publish Component — allowed."
+            echo "Dispatched by Release / 2. Publish Workspace — allowed."
             exit 0
           fi
           echo "::error::Internal release executor — do not run it by hand."
-          echo "::error::Use 'Release / 2. Publish Component' for a real release, or set dry_run=true to debug. (triggering_actor=$ACTOR)"
+          echo "::error::Use 'Release / 2. Publish Workspace' for a real release, or set dry_run=true to debug. (triggering_actor=$ACTOR)"
           exit 1
 
   publish:
