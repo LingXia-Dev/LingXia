@@ -241,9 +241,8 @@ pub(super) fn terminal_header_hit_test(
 
 /// Draws a terminal panel as a compact dock: full-bleed surface card, a
 /// 34px header strip (tabs + new-tab + maximize), and the cell grid below.
-/// Docked and floating panels draw the same rounded card as the webview
-/// content; only a maximized panel fills the content area with square
-/// corners.
+/// Docked, floating, and maximized panels all draw the same rounded card
+/// as the webview content.
 pub(super) fn draw_terminal_panel_content(
     hdc: HDC,
     hwnd: HWND,
@@ -266,47 +265,31 @@ pub(super) fn draw_terminal_panel_content(
     // once in its final color — a second rounded fill over the same arc
     // re-blends it (the old header-over-card fringe), and an aliased rounded
     // clip shows a staircase wherever the inner color differs from the card.
-    // A maximized panel is flush with the content pane: plain square fills.
+    // Maximized panels keep the same rounded card, drawn over the workspace.
     let header_rects = terminal_header_rects(rect, native);
     let header = header_rects.header;
     let _clip_guard = DcClipGuard::save(hdc);
-    if native.maximized {
-        // Flat variant: a maximized panel is flush with the content pane —
-        // square fills, no arcs.
-        fill_rect(hdc, rect, TERMINAL_HEADER_BACKGROUND);
-        fill_rect(
-            hdc,
-            RECT {
-                left: rect.left,
-                top: header.bottom,
-                right: rect.right,
-                bottom: rect.bottom,
-            },
-            surface,
-        );
-    } else {
-        fill_round_rect_aa_band(
-            hdc,
-            rect,
-            SHELL_PANEL_RADIUS,
-            TERMINAL_HEADER_BACKGROUND,
-            rect.top,
-            header.bottom,
-        );
-        fill_round_rect_aa_band(
-            hdc,
-            rect,
-            SHELL_PANEL_RADIUS,
-            surface,
-            header.bottom,
-            rect.bottom,
-        );
-        // Body drawing below (pane fills, grid) stays clipped to the card's
-        // interior so square fills cannot overpaint the bottom arcs. The clip
-        // boundary is aliased, but everything drawn inside matches the card's
-        // surface color there, so it stays invisible.
-        clip_to_round_rect_inside(hdc, rect, SHELL_PANEL_RADIUS);
-    }
+    fill_round_rect_aa_band(
+        hdc,
+        rect,
+        SHELL_PANEL_RADIUS,
+        TERMINAL_HEADER_BACKGROUND,
+        rect.top,
+        header.bottom,
+    );
+    fill_round_rect_aa_band(
+        hdc,
+        rect,
+        SHELL_PANEL_RADIUS,
+        surface,
+        header.bottom,
+        rect.bottom,
+    );
+    // Body drawing below (pane fills, grid) stays clipped to the card's
+    // interior so square fills cannot overpaint the bottom arcs. The clip
+    // boundary is aliased, but everything drawn inside matches the card's
+    // surface color there, so it stays invisible.
+    clip_to_round_rect_inside(hdc, rect, SHELL_PANEL_RADIUS);
 
     // Hairline under the tab strip; the active tab paints over it, so it
     // visually connects into the surface (macOS rail parity).
