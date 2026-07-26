@@ -119,7 +119,8 @@ pub enum LxAppCommand {
         #[arg(long)]
         json: bool,
     },
-    /// Inspect or switch the simulated device (runner only)
+    /// Deprecated: use `lxdev runner` (the simulated environment belongs to
+    /// the runner host, not the lxapp)
     Device(DeviceOptions),
 }
 
@@ -572,7 +573,10 @@ pub fn execute(project_root: &Path, info: &SessionInfo, options: LxAppOptions) -
         LxAppCommand::Uninstall { app, json } => {
             action(ws_url, handlers::lxapp::UNINSTALL, app, json)?
         }
-        LxAppCommand::Device(options) => execute_device(ws_url, options)?,
+        LxAppCommand::Device(options) => {
+            eprintln!("note: `lxdev lxapp device` is deprecated; use `lxdev runner`");
+            execute_device(ws_url, options)?
+        }
     }
 
     Ok(())
