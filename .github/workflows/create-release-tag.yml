@@ -1,21 +1,40 @@
-name: Release / 2. Publish Workspace
-run-name: Publish workspace v${{ inputs.version }}
+name: Release / 2. Publish Workspace Component
+run-name: Publish ${{ inputs.component == 'npm' && format('npm/{0}', inputs.npm_package) || inputs.component }} at workspace v${{ inputs.version }}
 
 # Public release entrypoint. Run AFTER the unified version bump PR has merged
-# to main. Partial releases are deliberately unsupported: every run publishes
-# crates, SDKs, CLIs/Runners, and npm packages at the workspace version. Internal
-# executor reruns remain available only for recovery of that unified release.
+# to main. Components may publish independently, but never at independent
+# versions: every path verifies the requested version against the workspace.
 
 on:
   workflow_dispatch:
     inputs:
       component:
-        description: "Version scope"
+        description: "Workspace component to publish"
         required: true
         default: all
         type: choice
         options:
           - all
+          - crates
+          - sdk
+          - cli
+          - npm
+      npm_package:
+        description: "NPM package when component=npm"
+        required: false
+        default: all
+        type: choice
+        options:
+          - all
+          - lingxia-bridge
+          - lingxia-elements
+          - lingxia-html
+          - lingxia-page-runtime
+          - lingxia-polyfills
+          - lingxia-react
+          - lingxia-skill
+          - lingxia-types
+          - lingxia-vue
       version:
         description: "Version to publish (e.g. 0.9.0)"
         required: true
@@ -40,7 +59,7 @@ env:
 
 jobs:
   publish:
-    name: Dispatch workspace v${{ inputs.version }}
+    name: Dispatch ${{ inputs.component == 'npm' && format('npm/{0}', inputs.npm_package) || inputs.component }} at workspace v${{ inputs.version }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -51,6 +70,7 @@ jobs:
       - name: Validate inputs
         env:
           COMPONENT: ${{ inputs.component }}
+          NPM_PACKAGE: ${{ inputs.npm_package }}
           VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
@@ -60,20 +80,37 @@ jobs:
             exit 1
           fi
 
-          [[ "$COMPONENT" == "all" ]] || {
-            echo "Independent releases are disabled; component must be all" >&2
+          case "$COMPONENT" in
+            all|crates|sdk|cli|npm) ;;
+            *) echo "Unknown component: $COMPONENT" >&2; exit 1 ;;
+          esac
+
+          if [[ "$COMPONENT" == "npm" ]]; then
+            found=0
+            [[ "$NPM_PACKAGE" == "all" ]] && found=1
+            for package in $NPM_PACKAGES; do
+              [[ "$package" == "$NPM_PACKAGE" ]] && found=1
+            done
+            if [[ "$found" -ne 1 ]]; then
+              echo "Unknown npm package: $NPM_PACKAGE" >&2
+              exit 1
+            fi
+          elif [[ "$NPM_PACKAGE" != "all" ]]; then
+            echo "npm_package must be all unless component=npm" >&2
             exit 1
-          }
+          fi
 
       - name: Verify version in code
         env:
+          COMPONENT: ${{ inputs.component }}
+          NPM_PACKAGE: ${{ inputs.npm_package }}
           VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
 
           verify_workspace_version() {
             local actual
-            actual="$(awk '/^\[workspace\.package\]/{f=1} f && /^version/{gsub(/"/, "", $3); print $3; exit}' Cargo.toml)"
+            actual="$(awk '/^\[workspace\.package\]/{f=1} f && /^version/{gsub(/["\r]/, "", $3); print $3; exit}' Cargo.toml)"
             if [[ "$actual" != "$VERSION" ]]; then
               echo "Version mismatch: expected $VERSION, found $actual in Cargo.toml" >&2
               echo "Did you merge the release PR first?" >&2
@@ -84,7 +121,7 @@ jobs:
 
           verify_cli_version() {
             local actual
-            actual="$(awk '/^\[package\]/{f=1} f && /^version/{gsub(/"/, "", $3); print $3; exit}' tools/lingxia-cli/Cargo.toml)"
+            actual="$(awk '/^\[package\]/{f=1} f && /^version/{gsub(/["\r]/, "", $3); print $3; exit}' tools/lingxia-cli/Cargo.toml)"
             if [[ "$actual" != "$VERSION" ]]; then
               echo "Version mismatch: expected $VERSION, found $actual in tools/lingxia-cli/Cargo.toml" >&2
               echo "Did you merge the CLI release PR first?" >&2
@@ -103,20 +140,48 @@ jobs:
             node -p "require('./$package_json').version"
           }
 
-          verify_workspace_version
-          verify_cli_version
-          for package in $NPM_PACKAGES; do
+          verify_npm_package_version() {
+            local package="$1"
+            local actual
             actual="$(read_npm_package_version "$package")"
             if [[ "$actual" != "$VERSION" ]]; then
-              echo "Version mismatch: expected $VERSION, found $actual in packages/$package/package.json" >&2
+              echo "Version mismatch: expected workspace $VERSION, found $actual in packages/$package/package.json" >&2
               exit 1
             fi
-            echo "$package version verified: $actual"
-          done
+            echo "$package workspace version verified: $actual"
+          }
+
+          # Every component publish is anchored to the unified workspace
+          # version. Component selection controls what is shipped, not versioning.
+          verify_workspace_version
+          case "$COMPONENT" in
+            all)
+              verify_cli_version
+              for package in $NPM_PACKAGES; do
+                verify_npm_package_version "$package"
+              done
+              ;;
+            crates|sdk)
+              ;;
+            cli)
+              verify_cli_version
+              ;;
+            npm)
+              if [[ "$NPM_PACKAGE" == "all" ]]; then
+                for package in $NPM_PACKAGES; do
+                  verify_npm_package_version "$package"
+                done
+              else
+                verify_npm_package_version "$NPM_PACKAGE"
+              fi
+              ;;
+          esac
 
       - name: Create tag(s) and dispatch executor
         env:
+          COMPONENT: ${{ inputs.component }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NPM_PACKAGE: ${{ inputs.npm_package }}
           VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
@@ -245,6 +310,16 @@ jobs:
             dispatch_and_wait "release-cli.yml" "CLI v$VERSION" -f tag="$tag" -f dry_run=false
           }
 
+          publish_npm_package() {
+            local package="$1"
+            local tag="${package}-v${VERSION}"
+            create_or_reuse_tag "$tag" "Release $package v${VERSION}"
+            dispatch_and_wait "npm-release.yml" "NPM $package v$VERSION" \
+              -f package="$package" \
+              -f version="$VERSION" \
+              -f dry_run=false
+          }
+
           publish_all_npm_packages() {
             # Every npm package moves in lockstep with the workspace version.
             for package in $NPM_PACKAGES; do
@@ -258,7 +333,27 @@ jobs:
               -f dry_run=false
           }
 
-          publish_crates
-          publish_sdk
-          publish_cli
-          publish_all_npm_packages
+          case "$COMPONENT" in
+            all)
+              publish_crates
+              publish_sdk
+              publish_cli
+              publish_all_npm_packages
+              ;;
+            crates)
+              publish_crates
+              ;;
+            sdk)
+              publish_sdk
+              ;;
+            cli)
+              publish_cli
+              ;;
+            npm)
+              if [[ "$NPM_PACKAGE" == "all" ]]; then
+                publish_all_npm_packages
+              else
+                publish_npm_package "$NPM_PACKAGE"
+              fi
+              ;;
+          esac

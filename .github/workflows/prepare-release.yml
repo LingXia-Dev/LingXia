@@ -5,8 +5,8 @@ run-name: Prepare ${{ inputs.component }} v${{ inputs.version }}
 # workspace/package set via scripts/release/version.sh. Independent CLI, SDK,
 # crate, and npm version bumps are deliberately unsupported.
 #
-# After this PR merges, publish from the "Release / 2. Publish Workspace"
-# workflow for the same workspace version.
+# After this PR merges, publish from "Release / 2. Publish Workspace Component"
+# using the same workspace version.
 
 on:
   workflow_dispatch:
@@ -125,11 +125,15 @@ jobs:
           ### After merge
 
           This bump does not publish anything on its own. Run the unified
-          **Release / 2. Publish Workspace** workflow after this PR merges:
+          **Release / 2. Publish Workspace Component** workflow after this PR merges.
+          Publish everything with the recommended default:
 
           \`\`\`bash
           component=all, version=${version}
           \`\`\`
+
+          Or select \`crates\`, \`sdk\`, \`cli\`, or \`npm\` to publish that
+          component independently at the same workspace version.
           EOF
           )"
 
