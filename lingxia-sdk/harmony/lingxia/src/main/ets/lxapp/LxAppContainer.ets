@@ -2,7 +2,7 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 import { LxLog } from '../app/LxLog';
 import { webview } from '@kit.ArkWeb';
 import { window, display, FrameCallback } from '@kit.ArkUI';
-import { common } from '@kit.AbilityKit';
+import { common, ConfigurationConstant } from '@kit.AbilityKit';
 import { LxApp } from './LxApp';
 import { Lingxia } from '../app/Lingxia';
 import { LxAppSurface } from './APIs/LxAppSurface';
@@ -18,7 +18,7 @@ import {
   resumeWebViewComponents
 } from './WebViewBridge';
 import { LingXiaWebView } from './LingXiaWebView';
-import { NavigationBar, NavigationBarState, NAVBAR_TOTAL_HEIGHT } from './NavigationBar';
+import { NavigationBar, NavigationBarState, NAVBAR_TOTAL_HEIGHT, isColorDark } from './NavigationBar';
 import { NavigationButton, CapsuleButton } from './LxAppDrawables';
 import { TabBar } from './TabBar';
 import { TabBarPosition, TabBarItem, UiEventType } from 'liblingxia.so';
@@ -181,6 +181,7 @@ export struct LxAppContainer {
 
     this.pageConfig = getNavigationBarState(this.appId, this.path);
     hilog.info(DOMAIN, TAG, `Initial navbar state for ${this.appId}:${this.path}: showNavbar=${this.pageConfig?.showNavbar}, showBack=${this.pageConfig?.showBackButton}, showHome=${this.pageConfig?.showHomeButton}, bgColor=0x${this.pageConfig?.navigationBarBackgroundColor?.toString(16)}, textStyle=${this.pageConfig?.navigationBarTextStyle}`);
+    this.applyStatusBarContentColor();
 
     this.loadPullDownRefreshState(this.path);
 
@@ -411,6 +412,7 @@ export struct LxAppContainer {
       container.pageConfig = getNavigationBarState(appId, container.path);
       // Force UI update by incrementing refresh key
       container.navbarRefreshKey++;
+      container.applyStatusBarContentColor();
       return true;
     }
     return false;
@@ -1087,6 +1089,41 @@ export struct LxAppContainer {
    */
   private loadNavbarState(path: string): void {
     this.pageConfig = getNavigationBarState(this.appId, path);
+    this.applyStatusBarContentColor();
+  }
+
+  /**
+   * Keep the system status bar glyphs (clock, signal, battery) legible for
+   * the current page: explicit navigationBarTextStyle wins; a shown navbar
+   * contrasts against its background color; a custom (hidden-navbar) page
+   * follows the system theme, matching pages whose background adapts via
+   * prefers-color-scheme.
+   */
+  private applyStatusBarContentColor(): void {
+    const config = this.pageConfig;
+    const style = config?.navigationBarTextStyle ?? '';
+    let lightGlyphs: boolean;
+    if (style === 'white') {
+      lightGlyphs = true;
+    } else if (style === 'black') {
+      lightGlyphs = false;
+    } else if (config && config.showNavbar) {
+      lightGlyphs = isColorDark(config.navigationBarBackgroundColor || 0xFFFFFFFF);
+    } else {
+      const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
+      lightGlyphs = context?.config?.colorMode === ConfigurationConstant.ColorMode.COLOR_MODE_DARK;
+    }
+    this.setStatusBarContentColor(lightGlyphs ? '#FFFFFF' : '#000000');
+  }
+
+  private async setStatusBarContentColor(color: string): Promise<void> {
+    try {
+      const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
+      const mainWindow = await window.getLastWindow(context);
+      await mainWindow.setWindowSystemBarProperties({ statusBarContentColor: color });
+    } catch (error) {
+      LxLog.e(TAG, `Failed to set status bar content color: ${error}`);
+    }
   }
 
   /**

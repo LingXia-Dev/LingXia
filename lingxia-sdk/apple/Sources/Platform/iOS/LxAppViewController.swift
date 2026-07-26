@@ -92,6 +92,12 @@ final class LxAppViewController: UIViewController, ObservableObject {
         view.backgroundColor = UIColor.black
 
         setupUI()
+
+        // Auto status bar glyphs (unset navigationBarTextStyle) follow the
+        // system theme; refresh them when it flips.
+        registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (self: Self, _: UITraitCollection) in
+            self.setNeedsStatusBarAppearanceUpdate()
+        }
     }
 
     public override func viewDidAppear(_ animated: Bool) {
@@ -902,20 +908,19 @@ final class LxAppViewController: UIViewController, ObservableObject {
         let transparent = shouldUseTransparentMode(for: LxAppCore.currentAppId ?? "", path: currentPath)
         let navState = NavigationBarStateManager.shared.currentState
 
-        // When navbar is hidden (transparent mode), check for custom statusBarStyle
+        // When navbar is hidden (custom navigation) the page's declared
+        // navigationBarTextStyle governs the glyphs.
         if transparent {
-            if let navState = navState {
-                let statusBarStyle = navState.text_style.toString()
-
-                if statusBarStyle == "dark" {
-                    return .darkContent
-                } else if statusBarStyle == "light" {
-                    return .lightContent
-                }
+            switch navState?.text_style.toString() ?? "" {
+            case "black", "dark":
+                return .darkContent
+            case "white", "light":
+                return .lightContent
+            default:
+                // Unset / "auto": follow the system theme so theme-adaptive
+                // pages stay legible in both modes.
+                return traitCollection.userInterfaceStyle == .dark ? .lightContent : .darkContent
             }
-
-            // Default for transparent mode: light content (white text)
-            return .lightContent
         }
 
         // When navbar is shown, determine style based on navbar background color
