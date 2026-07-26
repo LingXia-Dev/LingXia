@@ -12,9 +12,12 @@ use std::time::Duration;
 
 use serde_json::json;
 use windows::Devices::Geolocation::{
-    GeolocationAccessStatus, Geolocator, Geoposition, PositionAccuracy, PositionStatus,
+    GeolocationAccessStatus, Geolocator, Geoposition, IGeocoordinate, PositionAccuracy,
+    PositionStatus,
 };
+use windows::Foundation::IPropertyValue;
 use windows::Win32::Foundation::E_ACCESSDENIED;
+use windows::core::{IUnknown, Interface, Type};
 
 use super::Platform;
 use crate::error::PlatformError;
@@ -120,13 +123,34 @@ fn build_location_payload(
     let longitude = coordinate
         .Longitude()
         .map_err(|err| PlatformError::Platform(format!("failed to read longitude: {err}")))?;
-    // Accuracy/AltitudeAccuracy/Speed/Altitude are nullable IReference values;
-    // `unwrap_or` covers both null and call failure.
+    // The published and git windows-rs projections expose nullable WinRT
+    // values differently. Read their stable ABI so both sources behave alike.
     let horizontal_accuracy = sanitize_measurement(coordinate.Accuracy().unwrap_or(0.0));
-    let vertical_accuracy = sanitize_measurement(coordinate.AltitudeAccuracy().unwrap_or(0.0));
-    let speed = sanitize_measurement(coordinate.Speed().unwrap_or(0.0));
+    let coordinate_interface: IGeocoordinate = coordinate.cast().map_err(|err| {
+        PlatformError::Platform(format!("failed to access location coordinate: {err}"))
+    })?;
+    let vertical_accuracy = sanitize_measurement(
+        nullable_f64(
+            &coordinate_interface,
+            Interface::vtable(&coordinate_interface).AltitudeAccuracy,
+        )
+        .unwrap_or(0.0),
+    );
+    let speed = sanitize_measurement(
+        nullable_f64(
+            &coordinate_interface,
+            Interface::vtable(&coordinate_interface).Speed,
+        )
+        .unwrap_or(0.0),
+    );
     let altitude = if include_altitude {
-        sanitize_measurement(coordinate.Altitude().unwrap_or(0.0))
+        sanitize_measurement(
+            nullable_f64(
+                &coordinate_interface,
+                Interface::vtable(&coordinate_interface).Altitude,
+            )
+            .unwrap_or(0.0),
+        )
     } else {
         0.0
     };
@@ -141,6 +165,21 @@ fn build_location_payload(
         "horizontal_accuracy": horizontal_accuracy,
     })
     .to_string())
+}
+
+fn nullable_f64(
+    interface: &IGeocoordinate,
+    getter: unsafe extern "system" fn(
+        *mut std::ffi::c_void,
+        *mut *mut std::ffi::c_void,
+    ) -> windows::core::HRESULT,
+) -> windows::core::Result<f64> {
+    let mut raw = std::ptr::null_mut();
+    unsafe {
+        getter(Interface::as_raw(interface), &mut raw).ok()?;
+        let reference: IUnknown = Type::from_abi(raw)?;
+        reference.cast::<IPropertyValue>()?.GetDouble()
+    }
 }
 
 fn sanitize_measurement(value: f64) -> f64 {

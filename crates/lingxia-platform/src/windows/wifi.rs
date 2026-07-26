@@ -8,9 +8,10 @@ use crate::error::PlatformError;
 use crate::traits::wifi::{Wifi, WifiConnectRequest, WifiGetConnectedRequest};
 use lingxia_messaging::invoke_callback;
 use serde::Serialize;
+use windows::Foundation::IPropertyValue;
 use windows::Networking::Connectivity::{
-    ConnectionProfile, NetworkAuthenticationType, NetworkConnectivityLevel, NetworkInformation,
-    NetworkStatusChangedEventHandler,
+    ConnectionProfile, IConnectionProfile2, NetworkAuthenticationType, NetworkConnectivityLevel,
+    NetworkInformation, NetworkStatusChangedEventHandler,
 };
 use windows::Win32::Foundation::HANDLE;
 use windows::Win32::NetworkManagement::WiFi::{
@@ -26,7 +27,7 @@ use windows::Win32::NetworkManagement::WiFi::{
     wlan_notification_acm_connection_complete, wlan_notification_acm_scan_complete,
     wlan_notification_acm_scan_fail,
 };
-use windows::core::{GUID, PCWSTR};
+use windows::core::{GUID, IUnknown, Interface, PCWSTR, Type};
 
 use super::Platform;
 
@@ -614,11 +615,25 @@ fn has_wlan_interface() -> bool {
 }
 
 fn signal_strength(profile: &ConnectionProfile) -> u8 {
-    profile
-        .GetSignalBars()
-        .ok()
+    let interface: IConnectionProfile2 = match profile.cast() {
+        Ok(interface) => interface,
+        Err(_) => return 0,
+    };
+    nullable_u8(&interface, Interface::vtable(&interface).GetSignalBars)
         .map(|bars| bars.min(5).saturating_mul(20))
         .unwrap_or(0)
+}
+
+fn nullable_u8(
+    interface: &IConnectionProfile2,
+    getter: unsafe extern "system" fn(*mut c_void, *mut *mut c_void) -> windows::core::HRESULT,
+) -> windows::core::Result<u8> {
+    let mut raw = null_mut();
+    unsafe {
+        getter(Interface::as_raw(interface), &mut raw).ok()?;
+        let reference: IUnknown = Type::from_abi(raw)?;
+        reference.cast::<IPropertyValue>()?.GetUInt8()
+    }
 }
 
 fn is_secure(profile: &ConnectionProfile) -> bool {
