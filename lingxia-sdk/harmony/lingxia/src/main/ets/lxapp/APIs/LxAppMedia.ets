@@ -125,6 +125,7 @@ export class LxAppMedia {
 
   private static lastSaveKey: string = '';
   private static lastSaveAt: number = 0;
+  private static inFlightSaves: Map<string, Promise<boolean>> = new Map();
   private static getCreateExtension(path: string, photoType: number): string {
     const lower = (path || '').toLowerCase();
     const idx = lower.lastIndexOf('.');
@@ -352,33 +353,45 @@ export class LxAppMedia {
     const mapType = (mediaType === 2) ? (photoAccessHelper.PhotoType.VIDEO as number) : (photoAccessHelper.PhotoType.IMAGE as number);
     const key = `${mapType}:${path}`;
     if (LxAppMedia.lastSaveKey === key && (now - LxAppMedia.lastSaveAt) < 2000) { return true; }
+    const inFlight = LxAppMedia.inFlightSaves.get(key);
+    if (inFlight) { return inFlight; }
 
-    const helper = photoAccessHelper.getPhotoAccessHelper(Lingxia.context as common.UIAbilityContext);
-    const type = mapType;
-    const ext = LxAppMedia.getCreateExtension(path, type);
+    const save = (async (): Promise<boolean> => {
+      const helper = photoAccessHelper.getPhotoAccessHelper(Lingxia.context as common.UIAbilityContext);
+      const type = mapType;
+      const ext = LxAppMedia.getCreateExtension(path, type);
 
-    let uri: string | undefined;
-    try {
-      uri = LxAppMedia.resolveAssetUri(await helper.createAsset(type, ext));
-      if (!uri) { LxLog.e(TAG, 'saveMediaToAlbum: empty asset uri'); return false; }
-      const src = await fileIo.open(path, fileIo.OpenMode.READ_ONLY);
+      let uri: string | undefined;
       try {
-        const dst = await fileIo.open(uri, fileIo.OpenMode.READ_WRITE | fileIo.OpenMode.CREATE);
+        uri = LxAppMedia.resolveAssetUri(await helper.createAsset(type, ext));
+        if (!uri) { LxLog.e(TAG, 'saveMediaToAlbum: empty asset uri'); return false; }
+        const src = await fileIo.open(path, fileIo.OpenMode.READ_ONLY);
         try {
-          await fileIo.copyFile(src.fd, dst.fd);
-          LxAppMedia.lastSaveKey = key;
-          LxAppMedia.lastSaveAt = Date.now();
-          hilog.info(DOMAIN, TAG, `saveMediaToAlbum: saved to ${uri}`);
-          return true;
+          const dst = await fileIo.open(uri, fileIo.OpenMode.READ_WRITE | fileIo.OpenMode.CREATE);
+          try {
+            await fileIo.copyFile(src.fd, dst.fd);
+            LxAppMedia.lastSaveKey = key;
+            LxAppMedia.lastSaveAt = Date.now();
+            hilog.info(DOMAIN, TAG, `saveMediaToAlbum: saved to ${uri}`);
+            return true;
+          } finally {
+            try { await fileIo.close(dst.fd); } catch {}
+          }
         } finally {
-          try { await fileIo.close(dst.fd); } catch {}
+          try { await fileIo.close(src.fd); } catch {}
         }
-      } finally {
-        try { await fileIo.close(src.fd); } catch {}
+      } catch (err) {
+        LxLog.e(TAG, `saveMediaToAlbum failed: ${err}`);
+        return false;
       }
-    } catch (err) {
-      LxLog.e(TAG, `saveMediaToAlbum failed: ${err}`);
-      return false;
+    })();
+    LxAppMedia.inFlightSaves.set(key, save);
+    try {
+      return await save;
+    } finally {
+      if (LxAppMedia.inFlightSaves.get(key) === save) {
+        LxAppMedia.inFlightSaves.delete(key);
+      }
     }
   }
 
