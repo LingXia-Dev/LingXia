@@ -70,25 +70,6 @@ final class RunnerDeviceSelectorControl: NSButton {
             item.state = device.id == currentDevice?.id ? .on : .off
             menu.addItem(item)
         }
-        // The simulated environment lives in one cluster: appearance follows
-        // the device groups in the same popup.
-        menu.addItem(.separator())
-        let appearanceHeader = NSMenuItem(title: "Appearance", action: nil, keyEquivalent: "")
-        appearanceHeader.isEnabled = false
-        menu.addItem(appearanceHeader)
-        let current = RunnerApp.shared.simulatedAppearance
-        for appearance in RunnerAppearance.allCases {
-            let item = NSMenuItem(
-                title: appearance.displayName,
-                action: #selector(appearanceSelected(_:)),
-                keyEquivalent: ""
-            )
-            item.target = self
-            item.representedObject = appearance.rawValue
-            item.indentationLevel = 1
-            item.state = appearance == current ? .on : .off
-            menu.addItem(item)
-        }
         // Pop downward: the menu's top-left lands at the button's bottom-left.
         menu.popUp(positioning: nil, at: NSPoint(x: 0, y: -2), in: self)
     }
@@ -97,12 +78,6 @@ final class RunnerDeviceSelectorControl: NSButton {
         guard let device = sender.representedObject as? MobileDeviceSize else { return }
         setCurrentDevice(device)
         onDeviceSelected?(device)
-    }
-
-    @objc private func appearanceSelected(_ sender: NSMenuItem) {
-        guard let raw = sender.representedObject as? String,
-              let appearance = RunnerAppearance(rawValue: raw) else { return }
-        RunnerApp.shared.setAppearance(appearance)
     }
 
     private static func groupTitle(_ shape: RunnerDeviceShape) -> String {

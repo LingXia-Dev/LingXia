@@ -1,6 +1,7 @@
 use lingxia_windows_sdk::{
     WindowsAppMenuItem, WindowsBrowserEmulationProfile, WindowsDeviceFrame,
-    WindowsDeviceFrameCutout, WindowsDeviceFrameStatusBar, WindowsDeviceFrameToolbar,
+    WindowsDeviceFrameCutout, WindowsDeviceFrameSelectorEntry, WindowsDeviceFrameStatusBar,
+    WindowsDeviceFrameToolbar,
 };
 use serde::Deserialize;
 use std::sync::OnceLock;
@@ -24,16 +25,41 @@ pub(crate) const ABOUT_COMMAND: u32 = 0x0700;
 /// Capsule close circle: dispatches the lxapp capsule close event.
 pub(crate) const CAPSULE_CLOSE_COMMAND: u32 = 0x0800;
 
+/// Toolbar appearance glyph: pins the opposite of what the screen shows.
+pub(crate) const APPEARANCE_COMMAND: u32 = 0x0900;
+
 /// The selector dropdown only chooses the simulated frame/device.
-fn device_selector_items(index: usize) -> Vec<WindowsAppMenuItem> {
-    presets()
-        .iter()
-        .enumerate()
-        .map(|(item_index, item)| {
-            WindowsAppMenuItem::new(DEVICE_COMMAND_BASE + item_index as u32, device_label(item))
-                .checked(item_index == index)
-        })
-        .collect()
+fn device_selector_items(index: usize) -> Vec<WindowsDeviceFrameSelectorEntry> {
+    let mut entries = Vec::new();
+    let mut previous_group = None;
+    for (item_index, preset) in presets().iter().enumerate() {
+        if previous_group != Some(preset.group()) {
+            if previous_group.is_some() {
+                entries.push(WindowsDeviceFrameSelectorEntry::separator());
+            }
+            entries.push(WindowsDeviceFrameSelectorEntry::header(group_title(
+                preset.group(),
+            )));
+            previous_group = Some(preset.group());
+        }
+        entries.push(WindowsDeviceFrameSelectorEntry::item(
+            WindowsAppMenuItem::new(
+                DEVICE_COMMAND_BASE + item_index as u32,
+                device_label(preset),
+            )
+            .checked(item_index == index),
+        ));
+    }
+    entries
+}
+
+fn group_title(group: &str) -> &str {
+    match group {
+        "phone" => "iPhone",
+        "tablet" => "iPad",
+        "desktop" => "Desktop",
+        other => other,
+    }
 }
 
 /// The floating capsule's menu button opens the app-info bottom sheet.
@@ -214,6 +240,8 @@ pub(crate) fn frame_spec(index: usize, landscape: bool) -> WindowsDeviceFrame {
             selector_items: device_selector_items(index),
             action_command: Some(OPEN_DEVTOOLS_COMMAND),
             rotate_command: Some(ROTATE_COMMAND),
+            appearance_command: Some(APPEARANCE_COMMAND),
+            appearance_dark: crate::runner::effective_appearance_dark(),
             capsule_items: if is_phone(index) {
                 capsule_menu_items()
             } else {
@@ -284,5 +312,24 @@ mod tests {
         let toolbar = frame.toolbar.expect("runner frame has a toolbar");
         assert!(toolbar.capsule_items.is_empty());
         assert_eq!(toolbar.capsule_close_command, None);
+    }
+
+    #[test]
+    fn selector_groups_devices_by_form_factor() {
+        let entries = device_selector_items(default_device_index());
+        let headings = entries
+            .iter()
+            .filter_map(|entry| match entry {
+                WindowsDeviceFrameSelectorEntry::Header(label) => Some(label.as_str()),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        let separators = entries
+            .iter()
+            .filter(|entry| matches!(entry, WindowsDeviceFrameSelectorEntry::Separator))
+            .count();
+
+        assert_eq!(headings, ["iPhone", "iPad", "Desktop"]);
+        assert_eq!(separators, headings.len() - 1);
     }
 }

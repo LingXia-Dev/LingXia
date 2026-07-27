@@ -58,8 +58,8 @@ pub enum WindowsDesignIcon {
     SidebarCollapse,
     SidebarExpand,
     Rotate,
-    // Appearance icons are staged for the Windows simulator toolbar
-    // follow-up; macOS consumes the same SVG sources today.
+    // Light/dark back the simulator toolbar's appearance flip; System is
+    // CLI-only on Windows (macOS consumes the same SVG sources).
     AppearanceSystem,
     AppearanceLight,
     AppearanceDark,

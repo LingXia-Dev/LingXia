@@ -79,6 +79,13 @@ fn handle_toolbar_click(frame: HWND, x: i32, y: i32) {
             .and_then(|toolbar| toolbar.rotate_command)
     {
         dispatch_device_frame_command(command);
+    } else if point_in_rect(&layout.appearance_rect, x, y)
+        && let Some(command) = spec
+            .toolbar
+            .as_ref()
+            .and_then(|toolbar| toolbar.appearance_command)
+    {
+        dispatch_device_frame_command(command);
     } else if point_in_rect(&layout.action_rect, x, y)
         && let Some(command) = spec.toolbar.and_then(|toolbar| toolbar.action_command)
     {
@@ -97,30 +104,44 @@ fn show_selector_menu(
     let Ok(popup) = (unsafe { WindowsAndMessaging::CreatePopupMenu() }) else {
         return;
     };
-    for item in &toolbar.selector_items {
-        if item.id == 0 {
-            unsafe {
+    for entry in &toolbar.selector_items {
+        match entry {
+            WindowsDeviceFrameSelectorEntry::Header(label) => {
+                let label = to_wide(label);
+                unsafe {
+                    let _ = WindowsAndMessaging::AppendMenuW(
+                        popup,
+                        WindowsAndMessaging::MF_STRING
+                            | WindowsAndMessaging::MF_DISABLED
+                            | WindowsAndMessaging::MF_GRAYED,
+                        0,
+                        PCWSTR(label.as_ptr()),
+                    );
+                }
+            }
+            WindowsDeviceFrameSelectorEntry::Item(item) => {
+                let mut flags = WindowsAndMessaging::MF_STRING;
+                if item.checked {
+                    flags |= WindowsAndMessaging::MF_CHECKED;
+                }
+                let label = to_wide(&item.label);
+                unsafe {
+                    let _ = WindowsAndMessaging::AppendMenuW(
+                        popup,
+                        flags,
+                        item.id as usize,
+                        PCWSTR(label.as_ptr()),
+                    );
+                }
+            }
+            WindowsDeviceFrameSelectorEntry::Separator => unsafe {
                 let _ = WindowsAndMessaging::AppendMenuW(
                     popup,
                     WindowsAndMessaging::MF_SEPARATOR,
                     0,
                     PCWSTR::null(),
                 );
-            }
-            continue;
-        }
-        let mut flags = WindowsAndMessaging::MF_STRING;
-        if item.checked {
-            flags |= WindowsAndMessaging::MF_CHECKED;
-        }
-        let label = to_wide(&item.label);
-        unsafe {
-            let _ = WindowsAndMessaging::AppendMenuW(
-                popup,
-                flags,
-                item.id as usize,
-                PCWSTR(label.as_ptr()),
-            );
+            },
         }
     }
     let mut anchor = POINT {
@@ -179,6 +200,7 @@ unsafe extern "system" fn frame_proc(
                 || point_in_rect(&layout.minimize_rect, x, y)
                 || point_in_rect(&layout.selector_rect, x, y)
                 || point_in_rect(&layout.rotate_rect, x, y)
+                || point_in_rect(&layout.appearance_rect, x, y)
                 || point_in_rect(&layout.action_rect, x, y)
             {
                 WindowsAndMessaging::HTCLIENT

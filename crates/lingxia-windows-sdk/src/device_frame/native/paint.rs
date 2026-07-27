@@ -38,13 +38,41 @@ pub(super) fn paint_frame_window(frame: HWND, spec: &WindowsDeviceFrame, layout:
                 std::ptr::copy_nonoverlapping(pixels.as_ptr(), bits.cast::<u32>(), pixels.len());
                 let old_bitmap = SelectObject(memory_dc, HGDIOBJ(bitmap.0));
                 if let Some(toolbar) = &spec.toolbar {
+                    // A toolbar-only repaint reuses the previous layout; drop
+                    // the optional rects so a control the new model omits
+                    // cannot keep a stale hit region.
+                    layout.action_rect = RECT::default();
+                    layout.rotate_rect = RECT::default();
+                    layout.appearance_rect = RECT::default();
                     draw_toolbar_text(memory_dc, toolbar, layout);
                     // GDI writes zero alpha bytes; restore the toolbar
                     // alpha over the text it touched.
                     let dib = std::slice::from_raw_parts_mut(bits.cast::<u32>(), pixels.len());
                     fix_toolbar_alpha(dib, layout);
+                    // Trailing icons stack right-to-left from the gear:
+                    // gear, rotate, appearance.
+                    let mut right_anchor = if layout.action_rect.right > layout.action_rect.left {
+                        layout.action_rect.left - 4
+                    } else {
+                        layout.toolbar.right - TOOLBAR_SIDE_MARGIN
+                    };
                     if toolbar.rotate_command.is_some() {
-                        composite_rotate_icon(dib, layout);
+                        layout.rotate_rect = composite_toolbar_icon(
+                            dib,
+                            layout,
+                            crate::WindowsDesignIcon::Rotate,
+                            right_anchor,
+                        );
+                        right_anchor = layout.rotate_rect.left;
+                    }
+                    if toolbar.appearance_command.is_some() {
+                        let icon = if toolbar.appearance_dark {
+                            crate::WindowsDesignIcon::AppearanceDark
+                        } else {
+                            crate::WindowsDesignIcon::AppearanceLight
+                        };
+                        layout.appearance_rect =
+                            composite_toolbar_icon(dib, layout, icon, right_anchor);
                     }
                     pixels.copy_from_slice(dib);
                 }
@@ -176,44 +204,45 @@ fn draw_toolbar_text(dc: HDC, toolbar: &WindowsDeviceFrameToolbar, layout: &mut 
         }
     }
 
-    // The rotate control is a shared design icon (design/icons/svg/icon_rotate),
-    // composited after the GDI text pass in `composite_rotate_icon`.
+    // The rotate/appearance controls are shared design icons
+    // (design/icons/svg), composited after the GDI text pass in
+    // `composite_toolbar_icon`.
 }
 
-/// Width/height of the rotate design icon in the toolbar.
-const ROTATE_ICON_SIZE: i32 = 16;
+/// Width/height of the trailing toolbar design icons (rotate, appearance).
+const TOOLBAR_ICON_SIZE: i32 = 16;
 
-/// Composites the rotate design icon just left of the gear (or the trailing
-/// edge when there is no gear) and records `rotate_rect` for hit-testing.
-/// Runs after `fix_toolbar_alpha`, writing premultiplied ARGB straight into
-/// the layered DIB — `DrawIconEx` does not reliably set alpha on a per-pixel
-/// alpha surface.
-fn composite_rotate_icon(dib: &mut [u32], layout: &mut FrameLayout) {
+/// Composites a toolbar design icon ending at `right_anchor` and returns its
+/// hit-test rect (whose `left` anchors the next icon). Runs after
+/// `fix_toolbar_alpha`, writing premultiplied ARGB straight into the layered
+/// DIB — `DrawIconEx` does not reliably set alpha on a per-pixel alpha
+/// surface.
+fn composite_toolbar_icon(
+    dib: &mut [u32],
+    layout: &FrameLayout,
+    design_icon: crate::WindowsDesignIcon,
+    right_anchor: i32,
+) -> RECT {
     let toolbar = layout.toolbar;
     let center_y = (toolbar.top + toolbar.bottom) / 2;
-    let right_anchor = if layout.action_rect.right > layout.action_rect.left {
-        layout.action_rect.left - 4
-    } else {
-        toolbar.right - TOOLBAR_SIDE_MARGIN
-    };
-    let x = right_anchor - ROTATE_ICON_SIZE;
-    let y = center_y - ROTATE_ICON_SIZE / 2;
-    layout.rotate_rect = RECT {
+    let x = right_anchor - TOOLBAR_ICON_SIZE;
+    let y = center_y - TOOLBAR_ICON_SIZE / 2;
+    let rect = RECT {
         left: x - 6,
         top: toolbar.top,
         right: right_anchor,
         bottom: toolbar.bottom,
     };
     let Some(icon) = crate::design_icons::design_icon_argb_premultiplied(
-        crate::WindowsDesignIcon::Rotate,
-        ROTATE_ICON_SIZE as u32,
+        design_icon,
+        TOOLBAR_ICON_SIZE as u32,
         Some(0x00B4B4B4),
     ) else {
-        return;
+        return rect;
     };
-    for iy in 0..ROTATE_ICON_SIZE {
-        for ix in 0..ROTATE_ICON_SIZE {
-            let src = icon[(iy * ROTATE_ICON_SIZE + ix) as usize];
+    for iy in 0..TOOLBAR_ICON_SIZE {
+        for ix in 0..TOOLBAR_ICON_SIZE {
+            let src = icon[(iy * TOOLBAR_ICON_SIZE + ix) as usize];
             let sa = src >> 24;
             if sa == 0 {
                 continue;
@@ -234,6 +263,7 @@ fn composite_rotate_icon(dib: &mut [u32], layout: &mut FrameLayout) {
             dib[di] = (a << 24) | (ch(16) << 16) | (ch(8) << 8) | ch(0);
         }
     }
+    rect
 }
 
 /// GDI text output zeroes the alpha byte of every pixel it touches; inside

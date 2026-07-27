@@ -371,7 +371,7 @@ export interface DeviceSetOptions {
 }
 
 /**
- * Simulated-device control (`lxdev lxapp device`). Only functional in a host
+ * Simulated-device control (`lxdev runner`). Only functional in a host
  * runner that registered a device controller; otherwise every call rejects.
  */
 export interface DeviceDriver {

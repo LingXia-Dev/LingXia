@@ -1,6 +1,5 @@
-//! Simulated-environment control shared by the devtool (`lxdev runner`, plus
-//! the deprecated `lxdev lxapp device` alias) and the `lx.automation()` host
-//! tier.
+//! Simulated-environment control shared by the devtool (`lxdev runner`) and
+//! the `lx.automation()` host tier.
 //!
 //! The host runner owns the device presets and the window frame; it registers
 //! a [`DeviceController`] here at startup. Both automation front-ends call the

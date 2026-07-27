@@ -91,18 +91,19 @@ pub use device_frame::set_app_window_device_frame_and_tabbar_position;
 #[cfg(all(target_os = "windows", feature = "device-frame"))]
 pub use device_frame::{
     WindowsBrowserEmulationProfile, WindowsDeviceFrame, WindowsDeviceFrameBadge,
-    WindowsDeviceFrameCutout, WindowsDeviceFrameInfoSheet, WindowsDeviceFrameSheetAction,
-    WindowsDeviceFrameStatusBar, WindowsDeviceFrameToolbar, WindowsPreferredColorScheme,
-    app_window_has_device_frame, open_current_page_devtools, set_app_window_device_frame,
-    set_initial_app_window_device_frame, set_windows_browser_emulation_profile,
-    set_windows_preferred_color_scheme, show_device_frame_info_sheet,
+    WindowsDeviceFrameCutout, WindowsDeviceFrameInfoSheet, WindowsDeviceFrameSelectorEntry,
+    WindowsDeviceFrameSheetAction, WindowsDeviceFrameStatusBar, WindowsDeviceFrameToolbar,
+    WindowsPreferredColorScheme, app_window_has_device_frame, open_current_page_devtools,
+    set_app_window_device_frame, set_initial_app_window_device_frame,
+    set_windows_browser_emulation_profile, set_windows_preferred_color_scheme,
+    show_device_frame_info_sheet,
 };
 #[cfg(feature = "runtime")]
 pub use lingxia::RuntimeInfo;
 #[cfg(all(target_os = "windows", feature = "shell-chrome"))]
 pub use shell::{
     WindowsShellTabBarPosition, set_windows_default_shell_tabbar_position,
-    set_windows_shell_tabbar_position, windows_shell_background_color,
+    set_windows_shell_tabbar_position, windows_shell_background_color, windows_system_dark_mode,
 };
 
 /// Host process description used to initialize the LingXia runtime.
