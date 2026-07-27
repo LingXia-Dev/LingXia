@@ -12,8 +12,10 @@ final class iOSPushManager: NSObject {
     public static let shared = iOSPushManager()
 
     nonisolated private static let log = OSLog(subsystem: "LingXia", category: "Push")
+    nonisolated private static let authorizationDefaultsKey = "app.lingxia.push.authorization-enabled"
     nonisolated private static let authorizationLock = NSLock()
-    nonisolated(unsafe) private static var cachedIsPushEnabled = false
+    nonisolated(unsafe) private static var cachedIsPushEnabled: Bool? =
+        UserDefaults.standard.object(forKey: authorizationDefaultsKey) as? Bool
 
     private var deviceToken: String?
 
@@ -31,9 +33,22 @@ final class iOSPushManager: NSObject {
         }
     }
 
-    /// Return the latest cached authorization state and refresh it asynchronously.
+    /// Return the latest authorization state without ever blocking the main thread.
     nonisolated public static func isPushEnabledSync() -> Bool {
-        isPushEnabled { _ in }
+        if let cached = cachedPushEnabled() {
+            isPushEnabled { _ in }
+            return cached
+        }
+
+        let refreshed = DispatchSemaphore(value: 0)
+        isPushEnabled { _ in refreshed.signal() }
+        guard !Thread.isMainThread else { return false }
+
+        _ = refreshed.wait(timeout: .now() + 1)
+        return cachedPushEnabled() ?? false
+    }
+
+    nonisolated private static func cachedPushEnabled() -> Bool? {
         authorizationLock.lock()
         defer { authorizationLock.unlock() }
         return cachedIsPushEnabled
@@ -41,8 +56,9 @@ final class iOSPushManager: NSObject {
 
     nonisolated private static func setCachedPushEnabled(_ enabled: Bool) {
         authorizationLock.lock()
+        defer { authorizationLock.unlock() }
         cachedIsPushEnabled = enabled
-        authorizationLock.unlock()
+        UserDefaults.standard.set(enabled, forKey: authorizationDefaultsKey)
     }
 
     /// Initialize push manager
