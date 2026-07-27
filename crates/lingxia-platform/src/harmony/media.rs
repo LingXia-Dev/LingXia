@@ -2507,17 +2507,20 @@ mod video_native {
         }
 
         fn release(&mut self) -> Result<(), PlatformError> {
-            if !self.handle.is_null() {
-                check_av(
+            let result = if self.handle.is_null() {
+                Ok(())
+            } else {
+                let result = check_av(
                     unsafe { OH_AVPlayer_Release(self.handle) },
                     "OH_AVPlayer_Release",
-                )?;
+                );
                 self.handle = ptr::null_mut();
-            }
+                result
+            };
             if let Some(fd) = self.source_fd.take() {
                 unsafe { libc::close(fd) };
             }
-            Ok(())
+            result
         }
     }
 
