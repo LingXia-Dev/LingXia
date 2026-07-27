@@ -13,6 +13,7 @@ use rong::{
     IntoJSValue, JSArrayBuffer, JSContext, JSObject, JSResult, JSValue, RongJSError,
     function::Optional, js_class, js_method,
 };
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::{Arc, Weak};
@@ -24,6 +25,8 @@ mod download;
 mod network_security;
 mod storage;
 mod upload;
+
+const READ_FILE_MAX_BYTES: u64 = 16 * 1024 * 1024;
 
 #[derive(FromJSObject)]
 #[ts_skip]
@@ -1077,6 +1080,29 @@ fn bytes_to_read_file_result(
     Ok(result)
 }
 
+fn ensure_read_file_size(size: u64) -> JSResult<()> {
+    if size > READ_FILE_MAX_BYTES {
+        return Err(js_invalid_parameter_error(format!(
+            "readFile file exceeds the {} MiB limit",
+            READ_FILE_MAX_BYTES / 1024 / 1024
+        )));
+    }
+    Ok(())
+}
+
+fn read_file_bytes(path: &Path, expected_size: u64) -> JSResult<Vec<u8>> {
+    ensure_read_file_size(expected_size)?;
+    let file = std::fs::File::open(path)
+        .map_err(|err| js_internal_error(format!("readFile failed: {err}")))?;
+    let mut reader = file.take(READ_FILE_MAX_BYTES + 1);
+    let mut bytes = Vec::with_capacity(expected_size as usize);
+    reader
+        .read_to_end(&mut bytes)
+        .map_err(|err| js_internal_error(format!("readFile failed: {err}")))?;
+    ensure_read_file_size(bytes.len() as u64)?;
+    Ok(bytes)
+}
+
 #[js_class(rename = "FileManager")]
 impl JSFileManager {
     #[js_method(constructor, private)]
@@ -1164,14 +1190,14 @@ impl JSFileManager {
         let lxapp = self.lxapp()?;
         let path = resolve_readable_path(&lxapp, &options.file_path, "readFile", "filePath")?;
         ensure_no_symlink_ancestors(&lxapp, &path, "readFile", "filePath")?;
-        if !symlink_metadata(&path, "readFile")?.file_type().is_file() {
+        let metadata = symlink_metadata(&path, "readFile")?;
+        if !metadata.file_type().is_file() {
             return Err(js_invalid_parameter_error(
                 "readFile filePath must reference a file",
             ));
         }
         mark_usercache_access(&path);
-        let bytes = std::fs::read(&path.path)
-            .map_err(|err| js_internal_error(format!("readFile failed: {err}")))?;
+        let bytes = read_file_bytes(&path.path, metadata.len())?;
         bytes_to_read_file_result(&ctx, bytes, options.encoding.as_deref())
     }
 
@@ -1358,7 +1384,10 @@ rong::js_api! {
 
 #[cfg(test)]
 mod tests {
-    use super::{ManagedPathKind, ensure_managed_path_kind_allowed, resolve_relative_managed_path};
+    use super::{
+        ManagedPathKind, READ_FILE_MAX_BYTES, ensure_managed_path_kind_allowed,
+        ensure_read_file_size, resolve_relative_managed_path,
+    };
     use std::path::Path;
 
     #[test]
@@ -1415,5 +1444,12 @@ mod tests {
             )
             .is_err()
         );
+    }
+
+    #[test]
+    fn read_file_size_is_bounded() {
+        assert!(ensure_read_file_size(READ_FILE_MAX_BYTES).is_ok());
+        assert!(ensure_read_file_size(READ_FILE_MAX_BYTES + 1).is_err());
+        assert!(ensure_read_file_size(u64::MAX).is_err());
     }
 }
