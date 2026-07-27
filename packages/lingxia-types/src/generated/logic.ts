@@ -292,12 +292,12 @@ export type AutostartApi = {
 export type BinaryFileData = ArrayBuffer | ArrayBufferView;
 
 export type CapsuleRect = {
-    width?: number;
-    height?: number;
-    top?: number;
-    right?: number;
-    bottom?: number;
-    left?: number;
+    width: number;
+    height: number;
+    top: number;
+    right: number;
+    bottom: number;
+    left: number;
 };
 
 export type ChooseDirectoryOptions = {
@@ -2007,11 +2007,8 @@ declare global {
     getSystemSetting(): SystemSettingInfo;
     /** Show action sheet function for JavaScript */
     showActionSheet(options: ShowActionSheetOptions): Promise<ActionSheetResult>;
-    /**
-     * Get capsule button bounding client rect (async)
-     * Returns Promise<{width, height, top, right, bottom, left}>
-     */
-    getCapsuleRect(): Promise<CapsuleRect>;
+    /** Get the visible capsule button's bounding rect, or `null` when none is shown. */
+    getCapsuleRect(): Promise<CapsuleRect | null>;
     /** Show modal function (async) */
     showModal(options: ShowModalOptions): Promise<ModalResult>;
     /** Set navigation bar title */

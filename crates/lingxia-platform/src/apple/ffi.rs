@@ -380,7 +380,7 @@ mod bridge {
         fn stop_pull_down_refresh(appid: &str, path: &str) -> bool;
 
         #[swift_bridge(swift_name = "LxAppCapsuleButtons.getCapsuleRect")]
-        fn get_capsule_rect(callback_id: u64);
+        fn get_capsule_rect(appid: &str, callback_id: u64);
 
         // WiFi APIs
         #[swift_bridge(swift_name = "LxAppWifi.startWifi")]

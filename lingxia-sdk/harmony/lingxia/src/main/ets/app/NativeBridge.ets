@@ -418,8 +418,8 @@ class NativeBridge {
       LxAppDevice.getScreenInfo(callbackId);
     });
 
-    this.register('getCapsuleRect', (callbackId: string): void => {
-      LxAppCapsule.getCapsuleRect(callbackId);
+    this.register('getCapsuleRect', (callbackId: string, appId: string): void => {
+      LxAppCapsule.getCapsuleRect(callbackId, appId);
     });
 
     this.register('chooseFile', (

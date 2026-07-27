@@ -490,10 +490,11 @@ impl AppRuntime for Platform {
         file::open_with_shell_detached(&req.url)
     }
 
-    fn get_capsule_rect(&self) -> impl Future<Output = Result<String, PlatformError>> + Send {
-        // No capsule button exists in the Windows shell; a zero rect tells
-        // callers there is nothing to avoid overlapping.
-        async { Ok(r#"{"width":0,"height":0,"top":0,"right":0,"bottom":0,"left":0}"#.to_string()) }
+    fn get_capsule_rect(
+        &self,
+        _appid: &str,
+    ) -> impl Future<Output = Result<String, PlatformError>> + Send {
+        async { Ok("null".to_string()) }
     }
 }
 

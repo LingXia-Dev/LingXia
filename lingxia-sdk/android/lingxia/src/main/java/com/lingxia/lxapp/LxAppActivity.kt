@@ -1157,20 +1157,23 @@ class LxAppActivity : AppCompatActivity() {
         }
     }
 
-    fun getCapsuleRectJSON(): String {
+    fun getCapsuleRectJSON(requestingAppId: String): String {
+        if (requestingAppId != appId) {
+            return "null"
+        }
         if (!shouldShowCapsuleButton(appId, currentSessionId)) {
-            return "{}"
+            return "null"
         }
 
-        val capsuleView = rootContainer.findViewWithTag<View>("capsule_button") ?: return "{}"
+        val capsuleView = rootContainer.findViewWithTag<View>("capsule_button") ?: return "null"
         if (!capsuleView.isShown) {
-            return "{}"
+            return "null"
         }
 
         val widthPx = capsuleView.width
         val heightPx = capsuleView.height
         if (widthPx <= 0 || heightPx <= 0) {
-            return "{}"
+            return "null"
         }
 
         val density = resources.displayMetrics.density

@@ -2,7 +2,8 @@ import display from '@ohos.display';
 import { window } from '@kit.ArkUI';
 import hilog from '@ohos.hilog';
 import { LxLog } from '../../app/LxLog';
-import liblingxia from 'liblingxia.so';
+import { LxApp } from '../LxApp';
+import liblingxia, { getCurrentLxapp, type CurrentLxApp } from 'liblingxia.so';
 
 const DOMAIN = 0xFF00;
 const TAG = 'LingXia.Capsule';
@@ -23,9 +24,16 @@ export interface CapsuleRect {
 }
 
 export class LxAppCapsule {
-  public static getCapsuleRect(callbackId: string): void {
+  public static getCapsuleRect(callbackId: string, appId: string): void {
     (async () => {
       try {
+        const current: CurrentLxApp = getCurrentLxapp();
+        const homeAppId: string | null = LxApp.getInstance().getHomeAppId();
+        if (appId === homeAppId || current.appid !== appId) {
+          liblingxia.onCallback(callbackId, true, 'null');
+          return;
+        }
+
         const defaultDisplay = display.getDefaultDisplaySync();
         const screenWidthVp = Math.round(defaultDisplay.width / defaultDisplay.densityPixels);
 

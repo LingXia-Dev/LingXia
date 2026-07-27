@@ -144,12 +144,12 @@ rong::js_api! {
         type BinaryFileData = r###"ArrayBuffer | ArrayBufferView"###;
 
         type CapsuleRect = r###"{
-    width?: number;
-    height?: number;
-    top?: number;
-    right?: number;
-    bottom?: number;
-    left?: number;
+    width: number;
+    height: number;
+    top: number;
+    right: number;
+    bottom: number;
+    left: number;
 }"###;
 
         type ChooseDirectoryOptions = r###"{
