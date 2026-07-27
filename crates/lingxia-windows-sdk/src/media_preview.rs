@@ -874,46 +874,6 @@ unsafe extern "system" fn preview_proc(
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::{FailedItemAction, failed_item_action, video_generation_matches};
-    use lingxia_platform::traits::media_interaction::PreviewMediaAdvance;
-
-    #[test]
-    fn loop_stops_after_every_item_fails() {
-        assert_eq!(
-            failed_item_action(PreviewMediaAdvance::Loop, 0, 3, 1, false),
-            FailedItemAction::Retry(1)
-        );
-        assert_eq!(
-            failed_item_action(PreviewMediaAdvance::Loop, 1, 3, 2, false),
-            FailedItemAction::Retry(2)
-        );
-        assert_eq!(
-            failed_item_action(PreviewMediaAdvance::Loop, 2, 3, 3, false),
-            FailedItemAction::Close("error")
-        );
-    }
-
-    #[test]
-    fn next_reports_error_when_no_item_ever_rendered() {
-        assert_eq!(
-            failed_item_action(PreviewMediaAdvance::Next, 2, 3, 3, false),
-            FailedItemAction::Close("error")
-        );
-        assert_eq!(
-            failed_item_action(PreviewMediaAdvance::Next, 2, 3, 3, true),
-            FailedItemAction::Close("completed")
-        );
-    }
-
-    #[test]
-    fn stale_video_event_does_not_match_current_attempt() {
-        assert!(video_generation_matches(7, 7));
-        assert!(!video_generation_matches(7, 6));
-    }
-}
-
 /// Paints the current image letterboxed on the black backdrop, plus the
 /// `i/N` indicator; the first successful draw fires `presented`.
 fn paint_preview(hwnd: HWND) {
@@ -985,5 +945,45 @@ fn paint_preview(hwnd: HWND) {
     }
     if drew {
         mark_presented(hwnd);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{FailedItemAction, failed_item_action, video_generation_matches};
+    use lingxia_platform::traits::media_interaction::PreviewMediaAdvance;
+
+    #[test]
+    fn loop_stops_after_every_item_fails() {
+        assert_eq!(
+            failed_item_action(PreviewMediaAdvance::Loop, 0, 3, 1, false),
+            FailedItemAction::Retry(1)
+        );
+        assert_eq!(
+            failed_item_action(PreviewMediaAdvance::Loop, 1, 3, 2, false),
+            FailedItemAction::Retry(2)
+        );
+        assert_eq!(
+            failed_item_action(PreviewMediaAdvance::Loop, 2, 3, 3, false),
+            FailedItemAction::Close("error")
+        );
+    }
+
+    #[test]
+    fn next_reports_error_when_no_item_ever_rendered() {
+        assert_eq!(
+            failed_item_action(PreviewMediaAdvance::Next, 2, 3, 3, false),
+            FailedItemAction::Close("error")
+        );
+        assert_eq!(
+            failed_item_action(PreviewMediaAdvance::Next, 2, 3, 3, true),
+            FailedItemAction::Close("completed")
+        );
+    }
+
+    #[test]
+    fn stale_video_event_does_not_match_current_attempt() {
+        assert!(video_generation_matches(7, 7));
+        assert!(!video_generation_matches(7, 6));
     }
 }
