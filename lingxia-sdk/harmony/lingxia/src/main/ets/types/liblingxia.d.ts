@@ -134,6 +134,9 @@ declare module 'liblingxia.so' {
     locale: string
   ): string | null;
 
+  export function initializeHostAppearance(effectiveDark: boolean): void;
+  export function onHostAppearanceChanged(preference: number, effectiveDark: boolean): boolean;
+
   /**
    * Effective display language. A saved user choice takes precedence over
    * the locale supplied to lingxiaInit.

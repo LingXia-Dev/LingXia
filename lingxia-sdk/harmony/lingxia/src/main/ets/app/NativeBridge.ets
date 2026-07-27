@@ -29,6 +29,7 @@ import {
 import { captureAppScreenshot } from './AppScreenshot';
 import { animationTypeFromInt } from '../lxapp/NavigationBar';
 import { PermissionManager } from './PermissionManager';
+import { HostAppearance } from './HostAppearance';
 import { LxNativeVideoPlayer } from '../lxapp/APIs/media/player/LxNativeVideoPlayer';
 import { updateNativeComponentProps } from '../lxapp/NativeComponents/NativeBridgeInternal';
 import { completeWebFileChooserRequest } from '../lxapp/WebFileChooserBridge';
@@ -103,6 +104,10 @@ class NativeBridge {
    * Register default callbacks that native layer can call
    */
   private registerDefaultCallbacks(): void {
+    this.register('setHostAppearance', (preference: string): boolean => {
+      return HostAppearance.setPreference(Number(preference));
+    });
+
     // Core LxApp functions
     this.register('openLxApp', (appId: string, path: string, sessionIdRaw?: Object) => {
       const sessionId = parseSessionId(sessionIdRaw);

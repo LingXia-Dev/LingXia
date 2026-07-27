@@ -154,6 +154,28 @@ pub fn lingxia_init(
     }
 }
 
+/// Seed Harmony's system-effective appearance before runtime bootstrap applies
+/// the persisted host preference.
+#[napi]
+pub fn initialize_host_appearance(effective_dark: bool) {
+    lingxia_platform::harmony::initialize_appearance(effective_dark);
+}
+
+/// Receive application color-mode changes from the Harmony host.
+#[napi]
+pub fn on_host_appearance_changed(preference: u8, effective_dark: bool) -> bool {
+    match lingxia_platform::harmony::update_appearance(preference, effective_dark) {
+        Ok(state) => {
+            lxapp::set_appearance_state(state);
+            true
+        }
+        Err(error) => {
+            log::warn!("Ignoring invalid Harmony appearance update: {error}");
+            false
+        }
+    }
+}
+
 /// Return the effective display language selected by the runtime.
 #[napi]
 pub fn get_display_language() -> String {
@@ -425,11 +447,16 @@ fn get_tab_bar(appid: String, dark: bool) -> Option<TabBarState> {
 pub fn get_navigation_bar_state(appid: String, path: String) -> Option<NavigationBarState> {
     lxapp::try_get(&appid).map(|lxapp| {
         let rust_state = lxapp.get_navbar_state(&path);
+        let semantic_background = if lxapp::get_appearance_state().effective_dark {
+            0xFF181818
+        } else {
+            0xFFFFFFFF
+        };
 
         NavigationBarState {
             navigation_bar_background_color: parse_color_to_u32(
                 &rust_state.navigationBarBackgroundColor,
-                0xFFFFFFFF,
+                semantic_background,
             ),
             navigation_bar_text_style: rust_state.navigationBarTextStyle,
             navigation_bar_title_text: rust_state.navigationBarTitleText,

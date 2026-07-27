@@ -16,3 +16,4 @@ mod user_feedback;
 pub mod video_player;
 mod wifi;
 pub use app::Platform;
+pub use appearance::{initialize_appearance, update_appearance};

@@ -9,6 +9,7 @@ import { LxAppPush } from '../lxapp/APIs/LxAppPush';
 import { PermissionManager } from './PermissionManager';
 import { initNativeBridge, getNativeCallbackFunction } from './NativeBridge';
 import { LxLog } from './LxLog';
+import { HostAppearance } from './HostAppearance';
 import {
   lingxiaInit,
   registerCustomSchemes,
@@ -79,6 +80,7 @@ export class Lingxia {
     if (context) {
       Lingxia.context = context;
       PermissionManager.initialize(context);
+      HostAppearance.initialize(context);
     } else {
       hilog.warn(DOMAIN, TAG, 'No context provided, skipping permission request');
     }
