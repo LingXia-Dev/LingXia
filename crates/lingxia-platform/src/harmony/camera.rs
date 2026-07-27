@@ -617,7 +617,7 @@ pub fn camera_start_photo_with_surface(
 
         // Remove old photo_output if exists
         if !st.photo_output.is_null() {
-            // release old photo output
+            OH_CaptureSession_RemovePhotoOutput(st.session, st.photo_output);
             OH_PhotoOutput_Release(st.photo_output);
             st.photo_output = ptr::null_mut();
         }
