@@ -263,7 +263,7 @@ fn browser_policy_response(
 /// - `deny`: cancel navigation.
 ///
 /// Security model:
-/// - `http/https/lx` stay in webview.
+/// - `http/https/file` stay in webview; `lx/lingxia` require the main frame.
 /// - Potential external schemes require user gesture + main-frame navigation.
 /// - Non-external internal schemes (`javascript:`, `data:`, etc.) are denied.
 pub(crate) fn handle_browser_navigation_policy(
@@ -287,6 +287,13 @@ pub(crate) fn handle_browser_navigation_policy(
             Some("missing_scheme"),
         );
     };
+
+    if !request.is_main_frame && matches!(scheme.as_str(), "lx" | "lingxia") {
+        return browser_policy_response(
+            BrowserNavigationPolicyDecision::Deny,
+            Some("non_main_frame_internal"),
+        );
+    }
 
     if scheme_in_list(&scheme, BROWSER_IN_WEBVIEW_SCHEMES) {
         return browser_policy_response(BrowserNavigationPolicyDecision::InWebview, None);
@@ -633,6 +640,23 @@ mod tests {
             response.decision,
             BrowserNavigationPolicyDecision::InWebview
         );
+    }
+
+    #[test]
+    fn browser_nav_policy_denies_internal_schemes_in_subframes() {
+        for raw_url in [
+            "lingxia://settings/history/downloads",
+            "lx://userdata/private.html",
+        ] {
+            let response = handle_browser_navigation_policy(BrowserNavigationPolicyRequest {
+                raw_url: raw_url.to_string(),
+                has_user_gesture: true,
+                is_main_frame: false,
+            });
+
+            assert_eq!(response.decision, BrowserNavigationPolicyDecision::Deny);
+            assert_eq!(response.reason.as_deref(), Some("non_main_frame_internal"));
+        }
     }
 
     #[test]

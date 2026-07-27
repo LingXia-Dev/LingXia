@@ -283,6 +283,22 @@ pub(crate) struct LingxiaSchemeContext {
     pub(crate) session_id: u64,
 }
 
+fn internal_page_html_response() -> Response<()> {
+    Response::builder()
+        .status(StatusCode::OK)
+        .header("Content-Type", "text/html; charset=utf-8")
+        .header("Content-Security-Policy", "frame-ancestors 'none'")
+        .header("X-Frame-Options", "DENY")
+        .header("Access-Control-Allow-Origin", "null")
+        .body(())
+        .unwrap_or_else(|_| {
+            Response::builder()
+                .status(StatusCode::INTERNAL_SERVER_ERROR)
+                .body(())
+                .expect("Failed to build fallback lingxia response")
+        })
+}
+
 /// Serve a `lingxia://` request issued by a browser tab WebView.
 ///
 /// - Asset hosts (`lxapp`, `assets`, ...) delegate to the shared `lx://` handler.
@@ -336,17 +352,7 @@ pub(crate) async fn handle_browser_lingxia_scheme(
         let html = ctx
             .browser
             .generate_page_html(internal_page_target_entry_path(&target), nonce.as_deref());
-        let response = Response::builder()
-            .status(StatusCode::OK)
-            .header("Content-Type", "text/html; charset=utf-8")
-            .header("Access-Control-Allow-Origin", "null")
-            .body(())
-            .unwrap_or_else(|_| {
-                Response::builder()
-                    .status(StatusCode::INTERNAL_SERVER_ERROR)
-                    .body(())
-                    .expect("Failed to build fallback lingxia response")
-            });
+        let response = internal_page_html_response();
         let (parts, _) = response.into_parts();
         return Some((parts, html).into());
     }
@@ -503,5 +509,25 @@ mod tests {
         assert!(is_browser_lingxia_asset_host("plugin"));
         assert!(!is_browser_lingxia_asset_host("settings"));
         assert!(!is_browser_lingxia_asset_host("downloads"));
+    }
+
+    #[test]
+    fn internal_page_html_cannot_be_embedded() {
+        let response = internal_page_html_response();
+
+        assert_eq!(
+            response
+                .headers()
+                .get("Content-Security-Policy")
+                .and_then(|value| value.to_str().ok()),
+            Some("frame-ancestors 'none'")
+        );
+        assert_eq!(
+            response
+                .headers()
+                .get("X-Frame-Options")
+                .and_then(|value| value.to_str().ok()),
+            Some("DENY")
+        );
     }
 }
