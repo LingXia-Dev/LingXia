@@ -1,6 +1,6 @@
 {
   "name": "@lingxia/bridge",
-  "version": "0.11.1",
+  "version": "0.11.2",
   "private": false,
   "description": "LingXia Web Runtime - Bridge, boot, and error handling for WebView",
   "repository": {
