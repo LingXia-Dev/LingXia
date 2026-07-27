@@ -285,35 +285,42 @@ pub fn resolve_plugin_resource_path(
     let plugin_cfg = plugins
         .get(plugin_name)
         .ok_or_else(|| LxAppError::PluginNotConfigured(plugin_name.to_string()))?;
+    let plugins_dir = get_plugins_dir(runtime);
     let plugin_dir = get_plugin_dir(runtime, plugin_name, &plugin_cfg.version);
+    if let Some(canonical) =
+        canonical_plugin_resource_path(&plugins_dir, &plugin_dir, relative_path)
+    {
+        return Ok(canonical);
+    }
 
     if relative_path.is_empty() {
-        if plugin_dir.exists() {
-            return Ok(plugin_dir);
-        }
         return Err(LxAppError::ResourceNotFound(format!(
             "Plugin directory not found: {}",
             plugin_name
         )));
     }
 
-    let full_path = plugin_dir.join(relative_path);
-    if let Ok(canonical) = full_path.canonicalize() {
-        let plugin_dir_canonical = plugin_dir
-            .canonicalize()
-            .unwrap_or_else(|_| plugin_dir.clone());
-        if canonical.starts_with(&plugin_dir_canonical) {
-            return Ok(canonical);
-        }
-    }
-    if full_path.exists() {
-        return Ok(full_path);
-    }
-
     Err(LxAppError::ResourceNotFound(format!(
         "Plugin resource not found: plugin/{}/{}",
         plugin_name, relative_path
     )))
+}
+
+fn canonical_plugin_resource_path(
+    plugins_dir: &Path,
+    plugin_dir: &Path,
+    relative_path: &str,
+) -> Option<PathBuf> {
+    let plugins_dir = plugins_dir.canonicalize().ok()?;
+    let plugin_dir = plugin_dir.canonicalize().ok()?;
+    if !plugin_dir.starts_with(&plugins_dir) {
+        return None;
+    }
+    if relative_path.is_empty() {
+        return Some(plugin_dir);
+    }
+    let resource = plugin_dir.join(relative_path).canonicalize().ok()?;
+    resource.starts_with(&plugin_dir).then_some(resource)
 }
 
 pub fn resolve_plugin_resource_path_from_internal_path(
@@ -468,4 +475,37 @@ fn install_plugin_archive(
     let destination = get_plugin_dir(runtime, plugin_name, version);
     archive::extract_tar_zst(archive_path, &destination)?;
     Ok(destination)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::canonical_plugin_resource_path;
+
+    #[test]
+    fn plugin_resources_must_canonicalize_inside_plugin_directory() {
+        let root = tempfile::tempdir().unwrap();
+        let plugins_dir = root.path().join("plugins");
+        let plugin_dir = plugins_dir.join("plugin/1.0.0");
+        let resource = plugin_dir.join("assets/icon.png");
+        std::fs::create_dir_all(resource.parent().unwrap()).unwrap();
+        std::fs::write(&resource, b"icon").unwrap();
+        let outside_dir = root.path().join("outside");
+        std::fs::create_dir_all(&outside_dir).unwrap();
+        std::fs::write(outside_dir.join("secret"), b"secret").unwrap();
+
+        assert_eq!(
+            canonical_plugin_resource_path(&plugins_dir, &plugin_dir, "assets/icon.png"),
+            resource.canonicalize().ok()
+        );
+        assert_eq!(
+            canonical_plugin_resource_path(&plugins_dir, &plugin_dir, ""),
+            plugin_dir.canonicalize().ok()
+        );
+        assert!(
+            canonical_plugin_resource_path(&plugins_dir, &plugin_dir, "../../../outside/secret")
+                .is_none()
+        );
+        assert!(canonical_plugin_resource_path(&plugins_dir, &outside_dir, "secret").is_none());
+        assert!(canonical_plugin_resource_path(&plugins_dir, &outside_dir, "").is_none());
+    }
 }

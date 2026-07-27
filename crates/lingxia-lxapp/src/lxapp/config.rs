@@ -250,6 +250,23 @@ impl LxAppConfig {
             }
         }
 
+        for (plugin_name, plugin) in &mut self.plugins {
+            if !is_safe_plugin_component(plugin_name) {
+                return Err(serde_json::Error::custom(format!(
+                    r#""plugins" names must be safe path components: {:?}"#,
+                    plugin_name
+                )));
+            }
+            let version = plugin.version.trim();
+            if !is_safe_plugin_component(version) {
+                return Err(serde_json::Error::custom(format!(
+                    r#""plugins.{}.version" must be a safe path component: {:?}"#,
+                    plugin_name, plugin.version
+                )));
+            }
+            plugin.version = version.to_string();
+        }
+
         validate_security_config(&mut self.security)?;
 
         Ok(())
@@ -282,6 +299,16 @@ fn is_safe_logic_entry(entry: &str) -> bool {
     Path::new(entry)
         .components()
         .all(|component| matches!(component, Component::Normal(_)))
+}
+
+fn is_safe_plugin_component(value: &str) -> bool {
+    !value.is_empty()
+        && !value.contains('/')
+        && !value.contains('\\')
+        && !value.contains(':')
+        && Path::new(value)
+            .components()
+            .all(|component| matches!(component, Component::Normal(_)))
 }
 
 fn validate_security_shape(
@@ -460,5 +487,28 @@ mod tests {
         .unwrap_err();
 
         assert!(err.to_string().contains("wildcard"));
+    }
+
+    #[test]
+    fn rejects_plugin_name_or_version_that_escapes_storage() {
+        for plugins in [
+            serde_json::json!({ "../evil": { "version": "1.0.0" } }),
+            serde_json::json!({ "evil": { "version": "C:\\Users\\victim" } }),
+        ] {
+            let err = LxAppConfig::from_value(serde_json::json!({
+                "appId": "demo",
+                "appName": "Demo",
+                "version": "1.0.0",
+                "security": {
+                    "network": { "trustedDomains": [] },
+                    "privileges": []
+                },
+                "pages": [{"name":"home","path":"pages/home/index"}],
+                "plugins": plugins
+            }))
+            .unwrap_err();
+
+            assert!(err.to_string().contains("safe path component"));
+        }
     }
 }

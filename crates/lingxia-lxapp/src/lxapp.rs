@@ -1438,14 +1438,19 @@ impl LxApp {
             return self.resolve_lx_path_uri(&lx_uri);
         }
 
-        // 2. Prevent directory traversal for any input
-        if path.split('/').any(|s| s == "..") {
+        let path_ref = Path::new(path);
+
+        // 2. Prevent traversal for relative logical paths on every platform,
+        // and catch native parent components in absolute chooser paths.
+        if path_ref
+            .components()
+            .any(|component| matches!(component, std::path::Component::ParentDir))
+            || (!path_ref.is_absolute() && uri::has_invalid_segment(path))
+        {
             return Err(LxAppError::ResourceNotFound(
                 "directory traversal not allowed".to_string(),
             ));
         }
-
-        let path_ref = Path::new(path);
 
         // 3. Handle Relative path: search in order user data -> user cache -> package
         if !path_ref.is_absolute() && !path.contains(':') {

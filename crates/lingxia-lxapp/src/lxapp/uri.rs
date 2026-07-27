@@ -80,7 +80,23 @@ pub(crate) fn decode_lx_path(path_str: &str) -> String {
 }
 
 pub(crate) fn has_invalid_segment(path: &str) -> bool {
-    path.split('/').any(|s| s == "." || s == "..")
+    path.contains('\\') || path.contains(':') || path.split('/').any(|s| s == "." || s == "..")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::has_invalid_segment;
+
+    #[test]
+    fn logical_paths_reject_traversal_and_platform_syntax() {
+        for path in ["../secret", "nested/../../secret", "..\\secret", "C:secret"] {
+            assert!(
+                has_invalid_segment(path),
+                "expected {path:?} to be rejected"
+            );
+        }
+        assert!(!has_invalid_segment("assets/images/logo.png"));
+    }
 }
 
 fn encode_path_for_lx_uri(relative: &Path) -> Option<String> {
