@@ -131,6 +131,30 @@ impl PaneNode {
             }
         }
     }
+
+    /// Moves an existing leaf beside `target` without replacing its PTY
+    /// session. The source is first collapsed out of its old parent, then
+    /// inserted through the same split path used for a fresh pane.
+    #[cfg(feature = "shell-chrome")]
+    fn move_leaf(&mut self, source: u64, target: u64, dir: SplitDir) -> bool {
+        if source == target {
+            return false;
+        }
+        let mut sessions = Vec::new();
+        self.collect(&mut sessions);
+        if !sessions.contains(&source) || !sessions.contains(&target) {
+            return false;
+        }
+
+        // A valid move always leaves at least the target leaf behind.
+        let Some(mut root) = remove_leaf(std::mem::replace(self, PaneNode::Leaf(source)), source)
+        else {
+            return false;
+        };
+        let moved = root.split(target, source, dir);
+        *self = root;
+        moved
+    }
 }
 
 /// Removes leaf `target` from `node`, collapsing the parent split into the
@@ -1489,6 +1513,221 @@ pub(super) fn focused_session(_panel_id: &str) -> Option<u64> {
     None
 }
 
+// ---- Pane drag (moving an existing session within the active tab) ----
+
+/// Hit target at the top center of each pane. The painter draws a smaller
+/// pill inside this rect so the control stays easy to grab without looking
+/// heavy over terminal content.
+#[cfg(all(feature = "terminal-runtime", feature = "shell-chrome"))]
+pub(super) fn pane_drag_handle_rect(rect: RECT) -> RECT {
+    let width = 44.min((rect.right - rect.left).max(0));
+    let left = rect.left + ((rect.right - rect.left - width) / 2).max(0);
+    RECT {
+        left,
+        top: rect.top + 2,
+        right: left + width,
+        bottom: (rect.top + 14).min(rect.bottom),
+    }
+}
+
+#[cfg(all(feature = "terminal-runtime", feature = "shell-chrome"))]
+#[derive(Clone)]
+struct ActivePaneDrag {
+    panel_id: String,
+    source: u64,
+    target: Option<(u64, SplitDir)>,
+}
+
+#[cfg(all(feature = "terminal-runtime", feature = "shell-chrome"))]
+static ACTIVE_PANE_DRAG: OnceLock<Mutex<Option<ActivePaneDrag>>> = OnceLock::new();
+
+#[cfg(all(feature = "terminal-runtime", feature = "shell-chrome"))]
+fn active_pane_drag() -> std::sync::MutexGuard<'static, Option<ActivePaneDrag>> {
+    ACTIVE_PANE_DRAG
+        .get_or_init(|| Mutex::new(None))
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+#[cfg(all(feature = "terminal-runtime", feature = "shell-chrome"))]
+fn point_in_rect(rect: RECT, x: i32, y: i32) -> bool {
+    x >= rect.left && x < rect.right && y >= rect.top && y < rect.bottom
+}
+
+#[cfg(all(feature = "terminal-runtime", feature = "shell-chrome"))]
+fn pane_drop_direction(rect: RECT, x: i32, y: i32) -> SplitDir {
+    let candidates = [
+        ((x - rect.left).max(0), SplitDir::Left),
+        ((rect.right - x).max(0), SplitDir::Right),
+        ((y - rect.top).max(0), SplitDir::Up),
+        ((rect.bottom - y).max(0), SplitDir::Down),
+    ];
+    candidates
+        .into_iter()
+        .min_by_key(|(distance, _)| *distance)
+        .map(|(_, direction)| direction)
+        .unwrap_or(SplitDir::Right)
+}
+
+/// Returns whether the pointer is over a pane's drag handle. Handles only
+/// exist once a tab is split; dragging a lone pane has no destination.
+#[cfg(all(feature = "terminal-runtime", feature = "shell-chrome"))]
+pub(crate) fn pane_drag_handle_at(panel_id: &str, x: i32, y: i32) -> bool {
+    let Some(body) = super::terminal_grid::panel_body_rect(panel_id) else {
+        return false;
+    };
+    let frames = active_pane_frames(panel_id, body);
+    frames.len() > 1
+        && frames
+            .into_iter()
+            .any(|frame| point_in_rect(pane_drag_handle_rect(frame.rect), x, y))
+}
+
+/// Begins moving the pane whose top-center handle is under the pointer.
+#[cfg(all(feature = "terminal-runtime", feature = "shell-chrome"))]
+pub(crate) fn begin_pane_drag(panel_id: &str, x: i32, y: i32) -> bool {
+    let Some(body) = super::terminal_grid::panel_body_rect(panel_id) else {
+        return false;
+    };
+    let frames = active_pane_frames(panel_id, body);
+    if frames.len() <= 1 {
+        return false;
+    }
+    let Some(source) = frames
+        .into_iter()
+        .find(|frame| point_in_rect(pane_drag_handle_rect(frame.rect), x, y))
+        .map(|frame| frame.session_id)
+    else {
+        return false;
+    };
+    *active_pane_drag() = Some(ActivePaneDrag {
+        panel_id: panel_id.to_string(),
+        source,
+        target: None,
+    });
+    invalidate_panel(panel_id);
+    true
+}
+
+/// Tracks the drop edge under the pointer while the host owns mouse capture.
+#[cfg(all(feature = "terminal-runtime", feature = "shell-chrome"))]
+pub(crate) fn update_pane_drag(x: i32, y: i32) -> bool {
+    let Some((panel_id, source, previous)) = active_pane_drag()
+        .as_ref()
+        .map(|drag| (drag.panel_id.clone(), drag.source, drag.target))
+    else {
+        return false;
+    };
+    let target = super::terminal_grid::panel_body_rect(&panel_id).and_then(|body| {
+        active_pane_frames(&panel_id, body)
+            .into_iter()
+            .find(|frame| frame.session_id != source && point_in_rect(frame.rect, x, y))
+            .map(|frame| (frame.session_id, pane_drop_direction(frame.rect, x, y)))
+    });
+    if target != previous {
+        if let Some(drag) = active_pane_drag().as_mut() {
+            drag.target = target;
+        }
+        invalidate_panel(&panel_id);
+    }
+    true
+}
+
+/// Ends the active pane drag. A valid drop rewrites only the pane tree; the
+/// source session id, PTY process, scrollback, and title state stay intact.
+#[cfg(all(feature = "terminal-runtime", feature = "shell-chrome"))]
+pub(crate) fn end_pane_drag(commit: bool) -> bool {
+    let Some(drag) = active_pane_drag().take() else {
+        return false;
+    };
+    let moved = if commit {
+        drag.target.is_some_and(|(target, direction)| {
+            let mut panels = windows_terminal_panels();
+            let Some(tab) = panels
+                .get_mut(&drag.panel_id)
+                .and_then(|panel| panel.active_tab_mut())
+            else {
+                return false;
+            };
+            if tab.root.move_leaf(drag.source, target, direction) {
+                tab.focused = drag.source;
+                true
+            } else {
+                false
+            }
+        })
+    } else {
+        false
+    };
+    invalidate_panel(&drag.panel_id);
+    if moved {
+        publish_tab_strip(&drag.panel_id);
+        publish_active_snapshot(&drag.panel_id);
+    }
+    true
+}
+
+/// Current drag source, plus the directional half-pane drop indicator.
+#[cfg(all(feature = "terminal-runtime", feature = "shell-chrome"))]
+pub(super) fn pane_drag_visuals(panel_id: &str, body: RECT) -> (Option<u64>, Option<RECT>) {
+    let Some(drag) = active_pane_drag()
+        .as_ref()
+        .filter(|drag| drag.panel_id == panel_id)
+        .cloned()
+    else {
+        return (None, None);
+    };
+    let indicator = drag.target.and_then(|(target, direction)| {
+        active_pane_frames(panel_id, body)
+            .into_iter()
+            .find(|frame| frame.session_id == target)
+            .map(|frame| pane_drop_rect(frame.rect, direction))
+    });
+    (Some(drag.source), indicator)
+}
+
+#[cfg(all(feature = "terminal-runtime", feature = "shell-chrome"))]
+fn pane_drop_rect(rect: RECT, direction: SplitDir) -> RECT {
+    match direction {
+        SplitDir::Left => RECT {
+            right: rect.left + (rect.right - rect.left) / 2,
+            ..rect
+        },
+        SplitDir::Right => RECT {
+            left: rect.left + (rect.right - rect.left) / 2,
+            ..rect
+        },
+        SplitDir::Up => RECT {
+            bottom: rect.top + (rect.bottom - rect.top) / 2,
+            ..rect
+        },
+        SplitDir::Down => RECT {
+            top: rect.top + (rect.bottom - rect.top) / 2,
+            ..rect
+        },
+    }
+}
+
+#[cfg(all(not(feature = "terminal-runtime"), feature = "shell-chrome"))]
+pub(crate) fn pane_drag_handle_at(_panel_id: &str, _x: i32, _y: i32) -> bool {
+    false
+}
+
+#[cfg(all(not(feature = "terminal-runtime"), feature = "shell-chrome"))]
+pub(crate) fn begin_pane_drag(_panel_id: &str, _x: i32, _y: i32) -> bool {
+    false
+}
+
+#[cfg(all(not(feature = "terminal-runtime"), feature = "shell-chrome"))]
+pub(crate) fn update_pane_drag(_x: i32, _y: i32) -> bool {
+    false
+}
+
+#[cfg(all(not(feature = "terminal-runtime"), feature = "shell-chrome"))]
+pub(crate) fn end_pane_drag(_commit: bool) -> bool {
+    false
+}
+
 // ---- Divider drag (resizing split ratios) ----
 
 /// The split divider currently being dragged via the window proc's capture
@@ -1791,6 +2030,8 @@ fn windows_terminal_snapshot_body(snapshot: &TerminalSnapshot) -> String {
 #[cfg(all(test, feature = "terminal-runtime"))]
 mod tests {
     use super::stable_tab_title;
+    #[cfg(feature = "shell-chrome")]
+    use super::{PaneNode, PaneOrientation, SplitDir};
 
     #[test]
     fn stable_process_title_ignores_animated_terminal_title() {
@@ -1803,5 +2044,41 @@ mod tests {
         assert_eq!(stable_tab_title(None, Some("vim")), "vim");
         assert_eq!(stable_tab_title(Some("  "), Some("vim")), "vim");
         assert_eq!(stable_tab_title(Some("  "), Some("  ")), "terminal");
+    }
+
+    #[cfg(feature = "shell-chrome")]
+    #[test]
+    fn moving_a_pane_preserves_its_session_and_collapses_the_old_split() {
+        let mut root = PaneNode::Leaf(1);
+        assert!(root.split(1, 2, SplitDir::Right));
+        assert!(root.split(2, 3, SplitDir::Down));
+
+        assert!(root.move_leaf(3, 1, SplitDir::Left));
+
+        assert_eq!(describe(&root), "cols(cols(3,1),2)");
+        let mut sessions = Vec::new();
+        root.collect(&mut sessions);
+        assert_eq!(sessions, [3, 1, 2]);
+    }
+
+    #[cfg(feature = "shell-chrome")]
+    fn describe(node: &PaneNode) -> String {
+        match node {
+            PaneNode::Leaf(id) => id.to_string(),
+            PaneNode::Split {
+                orient,
+                first,
+                second,
+                ..
+            } => format!(
+                "{}({},{})",
+                match orient {
+                    PaneOrientation::Cols => "cols",
+                    PaneOrientation::Rows => "rows",
+                },
+                describe(first),
+                describe(second)
+            ),
+        }
     }
 }

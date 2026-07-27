@@ -57,6 +57,11 @@ const GRID_MIN_ROWS: i32 = 4;
 /// surface, matching the macOS split divider.
 const PANE_DIVIDER_COLOR: u32 = 0x3a3f4a;
 
+/// Low-profile pane grab handle and the active drop target outline.
+const PANE_DRAG_HANDLE_COLOR: u32 = 0x69717f;
+const PANE_DRAG_HANDLE_ACTIVE_COLOR: u32 = 0xa8b0bf;
+const PANE_DROP_TARGET_COLOR: u32 = 0x4b9cff;
+
 /// Unfocused panes keep this fraction of their colors (the remainder blends
 /// toward the surface background); the focused pane reads as active without
 /// an obtrusive border.
@@ -580,6 +585,7 @@ pub(super) fn draw_panel_panes(hdc: HDC, panel_id: &str, body: RECT) -> bool {
         fill_rect(hdc, body, PANE_DIVIDER_COLOR);
     }
 
+    let (drag_source, drop_indicator) = super::terminal_panel::pane_drag_visuals(panel_id, body);
     let mut fonts = GridFonts::new(hdc);
     let mut drew_any = false;
     for frame in &frames {
@@ -604,7 +610,73 @@ pub(super) fn draw_panel_panes(hdc: HDC, panel_id: &str, body: RECT) -> bool {
             }
         }
     }
+
+    if multi {
+        for frame in &frames {
+            let hit = super::terminal_panel::pane_drag_handle_rect(frame.rect);
+            let width = (hit.right - hit.left - 12).max(8);
+            let left = hit.left + (hit.right - hit.left - width) / 2;
+            let top = hit.top + 3;
+            fill_rect(
+                hdc,
+                RECT {
+                    left,
+                    top,
+                    right: left + width,
+                    bottom: (top + 3).min(hit.bottom),
+                },
+                if drag_source == Some(frame.session_id) {
+                    PANE_DRAG_HANDLE_ACTIVE_COLOR
+                } else {
+                    PANE_DRAG_HANDLE_COLOR
+                },
+            );
+        }
+    }
+    if let Some(indicator) = drop_indicator {
+        draw_rect_outline(hdc, indicator, 3, PANE_DROP_TARGET_COLOR);
+    }
     drew_any
+}
+
+fn draw_rect_outline(hdc: HDC, rect: RECT, thickness: i32, color: u32) {
+    let thickness = thickness
+        .max(1)
+        .min((rect.right - rect.left).max(1) / 2)
+        .min((rect.bottom - rect.top).max(1) / 2)
+        .max(1);
+    fill_rect(
+        hdc,
+        RECT {
+            bottom: rect.top + thickness,
+            ..rect
+        },
+        color,
+    );
+    fill_rect(
+        hdc,
+        RECT {
+            top: rect.bottom - thickness,
+            ..rect
+        },
+        color,
+    );
+    fill_rect(
+        hdc,
+        RECT {
+            right: rect.left + thickness,
+            ..rect
+        },
+        color,
+    );
+    fill_rect(
+        hdc,
+        RECT {
+            left: rect.right - thickness,
+            ..rect
+        },
+        color,
+    );
 }
 
 fn draw_pane_grid_clipped(

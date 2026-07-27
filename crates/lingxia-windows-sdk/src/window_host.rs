@@ -6265,6 +6265,8 @@ pub fn set_hide_from_taskbar(hide: bool) {
 static DIVIDER_DRAG: AtomicBool = AtomicBool::new(false);
 #[cfg(feature = "shell-chrome")]
 static DIVIDER_DRAG_VERTICAL: AtomicBool = AtomicBool::new(false);
+#[cfg(feature = "shell-chrome")]
+static PANE_DRAG: AtomicBool = AtomicBool::new(false);
 
 /// Sets the east-west / north-south resize cursor for a divider.
 fn set_divider_cursor(vertical: bool) {
@@ -6280,6 +6282,16 @@ fn set_divider_cursor(vertical: bool) {
     }
 }
 
+#[cfg(feature = "shell-chrome")]
+fn set_pane_drag_cursor() {
+    unsafe {
+        if let Ok(cursor) = WindowsAndMessaging::LoadCursorW(None, WindowsAndMessaging::IDC_SIZEALL)
+        {
+            let _ = WindowsAndMessaging::SetCursor(Some(cursor));
+        }
+    }
+}
+
 /// `from_host` is false for moves forwarded from an overlay window; arming
 /// WM_MOUSELEAVE tracking then would fire immediately (the cursor is over
 /// the overlay, not the host) and fight the forwarded moves.
@@ -6290,6 +6302,12 @@ fn handle_chrome_mouse_move(hwnd: HWND, point: (i32, i32), from_host: bool) -> b
         (Some(renderer), Some(state)) => renderer.hit_test(state, point),
         _ => None,
     };
+    #[cfg(feature = "shell-chrome")]
+    if PANE_DRAG.load(Ordering::Acquire) {
+        crate::shell::update_pane_drag(point.0, point.1);
+        set_pane_drag_cursor();
+        return true;
+    }
     #[cfg(feature = "shell-chrome")]
     if let Some(panel_id) = TERMINAL_SELECTION_DRAGS
         .get_or_init(|| Mutex::new(HashMap::new()))
@@ -6316,6 +6334,13 @@ fn handle_chrome_mouse_move(hwnd: HWND, point: (i32, i32), from_host: bool) -> b
         if DIVIDER_DRAG.load(Ordering::Acquire) {
             crate::shell::update_divider_drag(point.0, point.1);
             set_divider_cursor(DIVIDER_DRAG_VERTICAL.load(Ordering::Acquire));
+            return true;
+        }
+        if let Some(WindowsChromeHit::Focusable { id, .. }) = &hit
+            && crate::shell::pane_drag_handle_at(id, point.0, point.1)
+        {
+            clear_chrome_hover(hwnd);
+            set_pane_drag_cursor();
             return true;
         }
         if let Some(WindowsChromeHit::Focusable { id, .. }) = &hit
@@ -6473,6 +6498,15 @@ fn handle_chrome_left_down(hwnd: HWND, point: (i32, i32)) -> bool {
         WindowsChromeHit::Focusable {
             id, click_command, ..
         } => {
+            #[cfg(feature = "shell-chrome")]
+            if crate::shell::begin_pane_drag(&id, point.0, point.1) {
+                PANE_DRAG.store(true, Ordering::Release);
+                unsafe {
+                    let _ = SetCapture(hwnd);
+                }
+                set_pane_drag_cursor();
+                return true;
+            }
             // A press on a pane divider starts a resize drag instead of
             // focusing/clicking the pane.
             #[cfg(feature = "shell-chrome")]
@@ -6512,6 +6546,15 @@ fn handle_chrome_left_down(hwnd: HWND, point: (i32, i32)) -> bool {
 }
 
 fn handle_chrome_left_up(hwnd: HWND, point: (i32, i32)) -> bool {
+    #[cfg(feature = "shell-chrome")]
+    if PANE_DRAG.swap(false, Ordering::AcqRel) {
+        crate::shell::update_pane_drag(point.0, point.1);
+        unsafe {
+            let _ = ReleaseCapture();
+        }
+        crate::shell::end_pane_drag(true);
+        return true;
+    }
     #[cfg(feature = "shell-chrome")]
     if finish_terminal_selection_drag(hwnd, Some(point)) {
         unsafe {
@@ -8038,7 +8081,15 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
             WindowsAndMessaging::WM_CAPTURECHANGED | WindowsAndMessaging::WM_CANCELMODE => {
                 let _ = end_window_resize_drag(hwnd, false);
                 #[cfg(feature = "shell-chrome")]
-                let _ = finish_terminal_selection_drag(hwnd, None);
+                {
+                    let _ = finish_terminal_selection_drag(hwnd, None);
+                    if PANE_DRAG.swap(false, Ordering::AcqRel) {
+                        let _ = crate::shell::end_pane_drag(false);
+                    }
+                    if DIVIDER_DRAG.swap(false, Ordering::AcqRel) {
+                        crate::shell::end_divider_drag();
+                    }
+                }
                 unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
             }
             WindowsAndMessaging::WM_EXITSIZEMOVE => {
