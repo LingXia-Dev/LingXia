@@ -8,6 +8,60 @@ import AppKit
 #endif
 
 enum LxAppShare {
+    #if os(macOS)
+    @MainActor
+    private static var macShareCoordinators: [UInt64: MacShareCoordinator] = [:]
+
+    @MainActor
+    private final class MacShareCoordinator: NSObject, NSSharingServicePickerDelegate, NSSharingServiceDelegate {
+        let callbackId: UInt64
+        var picker: NSSharingServicePicker?
+        private var finished = false
+
+        init(callbackId: UInt64) {
+            self.callbackId = callbackId
+        }
+
+        func sharingServicePicker(
+            _ sharingServicePicker: NSSharingServicePicker,
+            delegateFor sharingService: NSSharingService
+        ) -> (any NSSharingServiceDelegate)? {
+            self
+        }
+
+        func sharingServicePicker(
+            _ sharingServicePicker: NSSharingServicePicker,
+            didChoose service: NSSharingService?
+        ) {
+            guard service != nil else {
+                finish(success: true, payload: "{\"completed\":false}")
+                return
+            }
+        }
+
+        func sharingService(_ sharingService: NSSharingService, didShareItems items: [Any]) {
+            finish(success: true, payload: "{\"completed\":true}")
+        }
+
+        func sharingService(
+            _ sharingService: NSSharingService,
+            didFailToShareItems items: [Any],
+            error: any Error
+        ) {
+            LXLog.error("macOS sharing service failed", category: "Share", error: error)
+            finish(success: false, payload: "1000")
+        }
+
+        private func finish(success: Bool, payload: String) {
+            guard !finished else { return }
+            finished = true
+            picker = nil
+            LxAppShare.macShareCoordinators.removeValue(forKey: callbackId)
+            _ = onCallback(callbackId, success, payload)
+        }
+    }
+    #endif
+
     @discardableResult
     @MainActor
     static func share(
@@ -129,8 +183,11 @@ enum LxAppShare {
             width: 1,
             height: 1
         )
+        let coordinator = MacShareCoordinator(callbackId: callbackId)
+        coordinator.picker = picker
+        picker.delegate = coordinator
+        macShareCoordinators[callbackId] = coordinator
         picker.show(relativeTo: rect, of: contentView, preferredEdge: .minY)
-        let _ = onCallback(callbackId, true, "{}")
         return true
     }
     #endif
