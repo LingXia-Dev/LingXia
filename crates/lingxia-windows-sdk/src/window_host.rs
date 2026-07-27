@@ -180,15 +180,20 @@ struct WindowResizeDrag {
 struct ChromeBackBuffer {
     dc: isize,
     bitmap: isize,
+    previous_bitmap: isize,
     width: i32,
     height: i32,
 }
 
 impl ChromeBackBuffer {
-    fn release(&self) {
+    fn release(&self) -> bool {
         unsafe {
-            let _ = DeleteObject(HGDIOBJ(self.bitmap as *mut c_void));
-            let _ = DeleteDC(HDC(self.dc as *mut c_void));
+            let dc = HDC(self.dc as *mut c_void);
+            let restored =
+                !SelectObject(dc, HGDIOBJ(self.previous_bitmap as *mut c_void)).is_invalid();
+            let bitmap_deleted = DeleteObject(HGDIOBJ(self.bitmap as *mut c_void)).as_bool();
+            let dc_deleted = DeleteDC(dc).as_bool();
+            restored && bitmap_deleted && dc_deleted
         }
     }
 }
@@ -252,6 +257,7 @@ fn chrome_back_buffer_dc(hwnd: HWND, width: i32, height: i32) -> Option<HDC> {
             ChromeBackBuffer {
                 dc: dc.0 as isize,
                 bitmap: bitmap.0 as isize,
+                previous_bitmap: previous.0 as isize,
                 width,
                 height,
             },
@@ -9115,14 +9121,53 @@ mod tests {
     #[cfg(feature = "shell-chrome")]
     use super::apply_phone_switcher_alpha;
     use super::{
-        WindowResizeDrag, WindowResizeEdge, WindowsFrameButton, default_host_parent_window,
-        frame_button_non_client_hit, registered_host_keeps_message_loop, resized_window_rect,
-        same_window_generation,
+        ChromeBackBuffer, WindowResizeDrag, WindowResizeEdge, WindowsFrameButton,
+        default_host_parent_window, frame_button_non_client_hit,
+        registered_host_keeps_message_loop, resized_window_rect, same_window_generation,
     };
     #[cfg(all(feature = "shell-chrome", feature = "device-frame"))]
     use super::{device_frame_surface_corner_radii, per_corner_region_row_span};
+    use std::ffi::c_void;
     use windows::Win32::Foundation::{POINT, RECT};
+    use windows::Win32::Graphics::Gdi::{
+        BI_RGB, BITMAPINFO, BITMAPINFOHEADER, CreateCompatibleDC, CreateDIBSection, DIB_RGB_COLORS,
+        HGDIOBJ, SelectObject,
+    };
     use windows::Win32::UI::WindowsAndMessaging;
+
+    #[test]
+    fn chrome_back_buffer_restores_bitmap_before_release() {
+        unsafe {
+            let dc = CreateCompatibleDC(None);
+            assert!(!dc.is_invalid());
+            let info = BITMAPINFO {
+                bmiHeader: BITMAPINFOHEADER {
+                    biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+                    biWidth: 1,
+                    biHeight: -1,
+                    biPlanes: 1,
+                    biBitCount: 32,
+                    biCompression: BI_RGB.0,
+                    ..Default::default()
+                },
+                ..Default::default()
+            };
+            let mut bits: *mut c_void = std::ptr::null_mut();
+            let bitmap = CreateDIBSection(None, &info, DIB_RGB_COLORS, &mut bits, None, 0)
+                .expect("test DIB should be created");
+            let previous = SelectObject(dc, HGDIOBJ(bitmap.0));
+            assert!(!previous.is_invalid());
+
+            let buffer = ChromeBackBuffer {
+                dc: dc.0 as isize,
+                bitmap: bitmap.0 as isize,
+                previous_bitmap: previous.0 as isize,
+                width: 1,
+                height: 1,
+            };
+            assert!(buffer.release());
+        }
+    }
 
     #[test]
     fn maximize_exposes_the_native_snap_hit_target() {
