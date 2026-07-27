@@ -562,7 +562,7 @@ pub fn camera_start_photo_with_surface(
         }
 
         // Setup cameras/capability/session/input/preview once lazily
-        if st.cameras.is_null() {
+        if st.cameras.is_null() || st.capability.is_null() {
             setup_camera_base(&mut st)?;
         }
 
@@ -684,7 +684,7 @@ pub fn camera_start_video_with_surface(video_surface_id: &str) -> Result<bool, P
                 "camera manager not initialized".into(),
             ));
         }
-        if st.cameras.is_null() {
+        if st.cameras.is_null() || st.capability.is_null() {
             setup_camera_base(&mut st)?;
         }
         if st.session.is_null() {
@@ -771,6 +771,22 @@ pub fn camera_video_output_stop_and_release() -> Result<bool, PlatformError> {
 }
 
 unsafe fn setup_camera_base(st: &mut CamState) -> Result<(), PlatformError> {
+    if !st.capability.is_null() {
+        unsafe {
+            OH_CameraManager_DeleteSupportedCameraOutputCapability(st.manager, st.capability);
+        }
+        st.capability = ptr::null_mut();
+    }
+    if !st.cameras.is_null() {
+        if st.cameras_len > 0 {
+            unsafe {
+                OH_CameraManager_DeleteSupportedCameras(st.manager, st.cameras, st.cameras_len);
+            }
+        }
+        st.cameras = ptr::null_mut();
+        st.cameras_len = 0;
+    }
+
     // Enumerate cameras
     let mut cameras_ptr: *mut Camera_Device = ptr::null_mut();
     let mut size: u32 = 0;
@@ -779,21 +795,28 @@ unsafe fn setup_camera_base(st: &mut CamState) -> Result<(), PlatformError> {
     if rc != 0 || cameras_ptr.is_null() || size == 0 {
         return Err(PlatformError::Platform("GetSupportedCameras failed".into()));
     }
-    st.cameras = cameras_ptr;
-    st.cameras_len = size;
-    st.camera_index = 0; // pick first (simple)
-
     // Capability
     let mut cap: *mut Camera_OutputCapability = ptr::null_mut();
-    let device = unsafe { st.cameras.offset(st.camera_index as isize) };
+    let device = cameras_ptr;
     let rc = unsafe {
         OH_CameraManager_GetSupportedCameraOutputCapability(st.manager, device, &mut cap)
     };
     if rc != 0 || cap.is_null() {
+        if !cap.is_null() {
+            unsafe {
+                OH_CameraManager_DeleteSupportedCameraOutputCapability(st.manager, cap);
+            }
+        }
+        unsafe {
+            OH_CameraManager_DeleteSupportedCameras(st.manager, cameras_ptr, size);
+        }
         return Err(PlatformError::Platform(
             "GetSupportedCameraOutputCapability failed".into(),
         ));
     }
+    st.cameras = cameras_ptr;
+    st.cameras_len = size;
+    st.camera_index = 0; // pick first (simple)
     st.capability = cap;
     Ok(())
 }
@@ -801,6 +824,11 @@ unsafe fn setup_camera_base(st: &mut CamState) -> Result<(), PlatformError> {
 fn choose_preview_profile(
     cap: *mut Camera_OutputCapability,
 ) -> Result<*mut Camera_Profile, PlatformError> {
+    if cap.is_null() {
+        return Err(PlatformError::Platform(
+            "camera output capability is null".into(),
+        ));
+    }
     unsafe {
         let caps = &*cap;
         if caps.preview_profiles_size == 0 || caps.preview_profiles.is_null() {
@@ -819,6 +847,11 @@ fn choose_preview_profile(
 fn choose_photo_profile(
     cap: *mut Camera_OutputCapability,
 ) -> Result<*mut Camera_Profile, PlatformError> {
+    if cap.is_null() {
+        return Err(PlatformError::Platform(
+            "camera output capability is null".into(),
+        ));
+    }
     unsafe {
         let caps = &*cap;
         if caps.photo_profiles_size == 0 || caps.photo_profiles.is_null() {
@@ -837,6 +870,11 @@ fn choose_photo_profile(
 fn choose_video_profile(
     cap: *mut Camera_OutputCapability,
 ) -> Result<*mut Camera_VideoProfile, PlatformError> {
+    if cap.is_null() {
+        return Err(PlatformError::Platform(
+            "camera output capability is null".into(),
+        ));
+    }
     unsafe {
         let caps = &*cap;
         if caps.video_profiles_size == 0 || caps.video_profiles.is_null() {
