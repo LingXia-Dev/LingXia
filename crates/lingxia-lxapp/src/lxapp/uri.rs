@@ -83,22 +83,6 @@ pub(crate) fn has_invalid_segment(path: &str) -> bool {
     path.contains('\\') || path.contains(':') || path.split('/').any(|s| s == "." || s == "..")
 }
 
-#[cfg(test)]
-mod tests {
-    use super::has_invalid_segment;
-
-    #[test]
-    fn logical_paths_reject_traversal_and_platform_syntax() {
-        for path in ["../secret", "nested/../../secret", "..\\secret", "C:secret"] {
-            assert!(
-                has_invalid_segment(path),
-                "expected {path:?} to be rejected"
-            );
-        }
-        assert!(!has_invalid_segment("assets/images/logo.png"));
-    }
-}
-
 fn encode_path_for_lx_uri(relative: &Path) -> Option<String> {
     let mut out: Vec<String> = Vec::new();
     for comp in relative.components() {
@@ -233,5 +217,21 @@ pub(crate) fn build_plugin_page_path(plugin_name: &str, page_path: &str) -> Stri
         format!("{}{}", PLUGIN_PAGE_PATH_PREFIX, name)
     } else {
         format!("{}{}/{}", PLUGIN_PAGE_PATH_PREFIX, name, path)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::has_invalid_segment;
+
+    #[test]
+    fn logical_paths_reject_traversal_and_platform_syntax() {
+        for path in ["../secret", "nested/../../secret", "..\\secret", "C:secret"] {
+            assert!(
+                has_invalid_segment(path),
+                "expected {path:?} to be rejected"
+            );
+        }
+        assert!(!has_invalid_segment("assets/images/logo.png"));
     }
 }
