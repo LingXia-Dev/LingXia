@@ -58,7 +58,7 @@ impl Location for Platform {
                             } else {
                                 JNI_FALSE
                             }),
-                            JValue::Int(config.high_accuracy_expire_time.unwrap_or(10000) as i32),
+                            JValue::Int(config.effective_timeout_ms() as i32),
                         ],
                     )?;
                     Ok(())

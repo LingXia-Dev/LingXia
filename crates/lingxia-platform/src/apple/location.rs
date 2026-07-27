@@ -306,34 +306,32 @@ pub(crate) mod ios {
             }
         });
 
-        // Set up timeout monitoring if requested.
-        if let Some(timeout_ms) = config.high_accuracy_expire_time {
-            let callbacks = callbacks().clone();
-            let _ = crate::rt::spawn(async move {
-                tokio::time::sleep(Duration::from_millis(timeout_ms as u64)).await;
-                let should_timeout = {
-                    let mut guard = callbacks.lock().unwrap();
-                    if guard.contains_key(&callback_id) {
-                        guard.remove(&callback_id);
-                        true
-                    } else {
-                        false
-                    }
-                };
-
-                if should_timeout {
-                    log::warn!(
-                        "Apple Location: Request {} timed out after {}ms",
-                        callback_id,
-                        timeout_ms
-                    );
-                    DispatchQueue::main().exec_async(move || {
-                        cleanup_request(callback_id);
-                        lingxia_messaging::invoke_callback(callback_id, Err(5002));
-                    });
+        let timeout_ms = config.effective_timeout_ms();
+        let callbacks = callbacks().clone();
+        let _ = crate::rt::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(timeout_ms as u64)).await;
+            let should_timeout = {
+                let mut guard = callbacks.lock().unwrap();
+                if guard.contains_key(&callback_id) {
+                    guard.remove(&callback_id);
+                    true
+                } else {
+                    false
                 }
-            });
-        }
+            };
+
+            if should_timeout {
+                log::warn!(
+                    "Apple Location: Request {} timed out after {}ms",
+                    callback_id,
+                    timeout_ms
+                );
+                DispatchQueue::main().exec_async(move || {
+                    cleanup_request(callback_id);
+                    lingxia_messaging::invoke_callback(callback_id, Err(5002));
+                });
+            }
+        });
 
         Ok(())
     }
