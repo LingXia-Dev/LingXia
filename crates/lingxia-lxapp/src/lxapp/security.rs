@@ -1,6 +1,7 @@
 use crate::error::LxAppError;
 use std::collections::HashSet;
 use std::fmt;
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::sync::Arc;
 
 #[derive(Debug, Clone, Default)]
@@ -23,11 +24,23 @@ impl NetworkSecurity {
     ///
     /// Empty means deny all. Use `"*"` to explicitly allow all domains.
     pub fn is_domain_allowed(&self, domain: &str) -> bool {
-        if self.trusted_domains.contains("*") {
-            return true;
+        let runtime_host = domain.trim().trim_end_matches('.');
+        let ip_host = runtime_host
+            .strip_prefix('[')
+            .and_then(|host| host.strip_suffix(']'))
+            .unwrap_or(runtime_host);
+        let parsed_address = ip_host.parse::<IpAddr>().ok();
+        if parsed_address.is_some_and(|address| !is_public_network_address(address)) {
+            return false;
+        }
+        if parsed_address.is_none() && !runtime_host.contains('.') {
+            return false;
         }
         let Some(domain) = normalize_trusted_domain(domain) else {
-            return false;
+            return self.trusted_domains.contains("*") && ip_host.parse::<Ipv6Addr>().is_ok();
+        };
+        if self.trusted_domains.contains("*") {
+            return true;
         };
         self.trusted_domains.contains(&domain)
             || self.trusted_domains.iter().any(|trusted| {
@@ -53,6 +66,53 @@ impl NetworkSecurity {
         domains.sort();
         domains
     }
+}
+
+/// Returns whether an address is suitable for untrusted lxapp network access.
+/// Local, private, link-local, documentation, benchmark, multicast, and other
+/// special-use ranges are intentionally excluded.
+pub fn is_public_network_address(address: IpAddr) -> bool {
+    match address {
+        IpAddr::V4(address) => is_public_ipv4(address),
+        IpAddr::V6(address) => is_public_ipv6(address),
+    }
+}
+
+fn is_public_ipv4(address: Ipv4Addr) -> bool {
+    let value = u32::from(address);
+    ![
+        (0x0000_0000, 8),
+        (0x0a00_0000, 8),
+        (0x6440_0000, 10),
+        (0x7f00_0000, 8),
+        (0xa9fe_0000, 16),
+        (0xac10_0000, 12),
+        (0xc000_0000, 24),
+        (0xc000_0200, 24),
+        (0xc058_6300, 24),
+        (0xc0a8_0000, 16),
+        (0xc612_0000, 15),
+        (0xc633_6400, 24),
+        (0xcb00_7100, 24),
+        (0xe000_0000, 4),
+        (0xf000_0000, 4),
+    ]
+    .into_iter()
+    .any(|(network, prefix)| value >> (32 - prefix) == network >> (32 - prefix))
+}
+
+fn is_public_ipv6(address: Ipv6Addr) -> bool {
+    if let Some(ipv4) = address.to_ipv4() {
+        return is_public_ipv4(ipv4);
+    }
+    let segments = address.segments();
+    !(address.is_unspecified()
+        || address.is_loopback()
+        || segments[0] & 0xfe00 == 0xfc00
+        || segments[0] & 0xffc0 == 0xfe80
+        || segments[0] & 0xffc0 == 0xfec0
+        || segments[0] & 0xff00 == 0xff00
+        || (segments[0] == 0x2001 && segments[1] == 0x0db8))
 }
 
 /// Security privilege handle.
@@ -181,9 +241,10 @@ pub(crate) fn normalize_security_privilege_id(privilege: &str) -> Option<String>
 #[cfg(test)]
 mod tests {
     use super::{
-        LxAppSecurityPrivilege, NetworkSecurity, is_valid_trusted_host,
+        LxAppSecurityPrivilege, NetworkSecurity, is_public_network_address, is_valid_trusted_host,
         normalize_security_privilege_id, normalize_trusted_domain,
     };
+    use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
     #[test]
     fn creates_producer_defined_security_privilege() {
@@ -211,6 +272,9 @@ mod tests {
         security.set_domains(&["*".to_string()]);
         assert!(security.is_domain_allowed("example.com"));
         assert!(security.is_domain_allowed("api.lingxia.app"));
+        assert!(!security.is_domain_allowed("localhost"));
+        assert!(!security.is_domain_allowed("127.0.0.1"));
+        assert!(!security.is_domain_allowed("[::1]"));
     }
 
     #[test]
@@ -260,5 +324,29 @@ mod tests {
             normalize_trusted_domain("LOCALHOST"),
             Some("localhost".to_string())
         );
+    }
+
+    #[test]
+    fn identifies_only_public_network_addresses() {
+        for address in [
+            IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)),
+            IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1)),
+            IpAddr::V4(Ipv4Addr::new(100, 64, 0, 1)),
+            IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
+            IpAddr::V4(Ipv4Addr::new(169, 254, 169, 254)),
+            IpAddr::V4(Ipv4Addr::new(172, 16, 0, 1)),
+            IpAddr::V4(Ipv4Addr::new(192, 168, 0, 1)),
+            IpAddr::V4(Ipv4Addr::new(198, 18, 0, 1)),
+            IpAddr::V6(Ipv6Addr::LOCALHOST),
+            "fc00::1".parse().unwrap(),
+            "fe80::1".parse().unwrap(),
+            "::ffff:127.0.0.1".parse().unwrap(),
+        ] {
+            assert!(!is_public_network_address(address), "{address}");
+        }
+        assert!(is_public_network_address("1.1.1.1".parse().unwrap()));
+        assert!(is_public_network_address(
+            "2606:4700:4700::1111".parse().unwrap()
+        ));
     }
 }

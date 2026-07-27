@@ -42,7 +42,7 @@ mod runtime_registry;
 mod scheme;
 mod security;
 mod surface;
-pub use security::LxAppSecurityPrivilege;
+pub use security::{LxAppSecurityPrivilege, is_public_network_address};
 pub mod tabbar;
 pub mod uri;
 pub(crate) mod version;
