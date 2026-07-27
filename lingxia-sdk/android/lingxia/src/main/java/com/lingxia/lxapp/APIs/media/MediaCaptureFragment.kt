@@ -553,7 +553,10 @@ internal class MediaCaptureFragment : Fragment() {
         }
         captureButton?.isEnabled = false
 
-        val file = createOutputFile(".jpg")
+        val file = createOutputFile(".jpg") ?: run {
+            cancelCapture(1000)
+            return
+        }
         val outputOptions = ImageCapture.OutputFileOptions.Builder(file).build()
         imageCapture.takePicture(outputOptions, mainExecutor, object : ImageCapture.OnImageSavedCallback {
             override fun onImageSaved(outputFileResults: ImageCapture.OutputFileResults) {
@@ -573,7 +576,10 @@ internal class MediaCaptureFragment : Fragment() {
             cancelCapture(1000)
             return
         }
-        val file = createOutputFile(".mp4")
+        val file = createOutputFile(".mp4") ?: run {
+            cancelCapture(1000)
+            return
+        }
 
         val recording = videoCapture.output
             .prepareRecording(
@@ -1105,11 +1111,16 @@ internal class MediaCaptureFragment : Fragment() {
         }
     }
 
-    private fun createOutputFile(suffix: String): File {
-        // Strict: LxApp cache dir is guaranteed
-        val appId = (activity as com.lingxia.lxapp.LxAppActivity).getAppId()
-        val info = NativeApi.getLxAppInfo(appId)!!
-        val dir = File(info.cacheDir).apply { if (!exists()) mkdirs() }
+    private fun createOutputFile(suffix: String): File? {
+        val host = activity as? com.lingxia.lxapp.LxAppActivity ?: return null
+        val appId = host.getAppId().trim().takeIf { it.isNotEmpty() } ?: return null
+        val info = NativeApi.getLxAppInfo(appId) ?: return null
+        val cacheDir = info.cacheDir.trim().takeIf { it.isNotEmpty() } ?: return null
+        val dir = File(cacheDir)
+        if ((!dir.exists() && !dir.mkdirs()) || !dir.isDirectory) {
+            LxLog.e(TAG, "createOutputFile: cache directory unavailable for appId=$appId")
+            return null
+        }
         val now = System.currentTimeMillis()
         val name = if (suffix == ".mp4") {
             "video_" + now.toString() + suffix
