@@ -1580,6 +1580,12 @@ fn paint_native_panel_region(hdc: HDC, state: &WindowsChromeState, invalid: RECT
     }) else {
         return false;
     };
+    // The card is not opaque over its whole rect (translucent shadow rings,
+    // anti-aliased arcs): restore the workspace backdrop first so repeated
+    // panel-only repaints stay idempotent instead of compounding blends into
+    // ever-darker, ever-squarer corners. The DC is already clipped to
+    // `invalid`.
+    fill_rect(hdc, panel.rect, shell_palette().window_background);
     draw_native_panel_content(hdc, state.hwnd, state.client, panel);
     true
 }
