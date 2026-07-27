@@ -88,6 +88,9 @@ pub struct SessionTiming {
 
 const MAX_HEADER: usize = 64 * 1024; // 64 KB — plenty for any HTTP header set
 const MAX_BODY: usize = 1024 * 1024; // 1 MB  — cap captured body size
+type Headers = Vec<(String, String)>;
+type ParsedRequestHead = (String, String, String, Headers);
+type ParsedResponseHead = (u16, String, String, Headers);
 
 // ── Main entry point ──────────────────────────────────────────────────────
 
@@ -127,10 +130,11 @@ where
         server.write_all(&raw_req).await?;
 
         let mut req_body_raw = Vec::new();
+        let req_framing = body_framing(&req_headers, false)?;
         let req_body_total = forward_body(
             &mut client,
             &mut server,
-            &req_headers,
+            req_framing,
             &mut req_body_raw,
             MAX_BODY,
         )
@@ -158,18 +162,22 @@ where
 
         let mut resp_body_raw = Vec::new();
         // RFC 7230 §3.3: no body for 1xx, 204, 304 or HEAD responses.
-        let resp_body_total = if matches!(status, 100..=199 | 204 | 304) || method == "HEAD" {
-            0
-        } else {
-            forward_body(
-                &mut server,
-                &mut client,
-                &resp_headers,
-                &mut resp_body_raw,
-                MAX_BODY,
-            )
-            .await?
-        };
+        let (resp_body_total, response_close_delimited) =
+            if matches!(status, 100..=199 | 204 | 304) || method == "HEAD" {
+                (0, false)
+            } else {
+                let framing = body_framing(&resp_headers, true)?;
+                let close_delimited = framing == BodyFraming::CloseDelimited;
+                let total = forward_body(
+                    &mut server,
+                    &mut client,
+                    framing,
+                    &mut resp_body_raw,
+                    MAX_BODY,
+                )
+                .await?;
+                (total, close_delimited)
+            };
         let t_resp_end = now_ms();
 
         let response = CapturedResponse {
@@ -204,7 +212,7 @@ where
         let resp_close = header_value(&resp_headers, "connection").eq_ignore_ascii_case("close");
         let http10 = resp_version == "HTTP/1.0";
 
-        if req_close || resp_close || http10 {
+        if req_close || resp_close || http10 || response_close_delimited {
             break;
         }
     }
@@ -214,9 +222,7 @@ where
 
 // ── HTTP head parsers ─────────────────────────────────────────────────────
 
-fn parse_request_head(
-    buf: &[u8],
-) -> std::io::Result<(String, String, String, Vec<(String, String)>)> {
+fn parse_request_head(buf: &[u8]) -> std::io::Result<ParsedRequestHead> {
     let mut storage = [httparse::EMPTY_HEADER; 96];
     let mut req = httparse::Request::new(&mut storage);
     req.parse(buf)
@@ -235,9 +241,7 @@ fn parse_request_head(
     Ok((method, path, version, headers))
 }
 
-fn parse_response_head(
-    buf: &[u8],
-) -> std::io::Result<(u16, String, String, Vec<(String, String)>)> {
+fn parse_response_head(buf: &[u8]) -> std::io::Result<ParsedResponseHead> {
     let mut storage = [httparse::EMPTY_HEADER; 96];
     let mut resp = httparse::Response::new(&mut storage);
     resp.parse(buf)
@@ -256,7 +260,7 @@ fn parse_response_head(
     Ok((status, reason, version, headers))
 }
 
-fn collect_headers(raw: &[httparse::Header<'_>]) -> Vec<(String, String)> {
+fn collect_headers(raw: &[httparse::Header<'_>]) -> Headers {
     raw.iter()
         .filter(|h| !h.name.is_empty())
         .map(|h| {
@@ -270,13 +274,75 @@ fn collect_headers(raw: &[httparse::Header<'_>]) -> Vec<(String, String)> {
 
 // ── Body I/O ──────────────────────────────────────────────────────────────
 
-/// Read the body declared by `headers` from `reader`, forward every byte to
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum BodyFraming {
+    None,
+    Chunked,
+    ContentLength(usize),
+    CloseDelimited,
+}
+
+fn body_framing(
+    headers: &[(String, String)],
+    allow_close_delimited: bool,
+) -> std::io::Result<BodyFraming> {
+    let transfer_encodings: Vec<&str> = headers
+        .iter()
+        .filter(|(name, _)| name.eq_ignore_ascii_case("transfer-encoding"))
+        .flat_map(|(_, value)| value.split(','))
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .collect();
+    let content_lengths: Vec<usize> = headers
+        .iter()
+        .filter(|(name, _)| name.eq_ignore_ascii_case("content-length"))
+        .flat_map(|(_, value)| value.split(','))
+        .map(str::trim)
+        .map(|value| {
+            value
+                .parse::<usize>()
+                .map_err(|_| invalid_data(format!("invalid Content-Length: {value:?}")))
+        })
+        .collect::<std::io::Result<_>>()?;
+
+    if !transfer_encodings.is_empty() {
+        if !content_lengths.is_empty() {
+            return Err(invalid_data(
+                "message contains both Transfer-Encoding and Content-Length",
+            ));
+        }
+        if transfer_encodings
+            .last()
+            .is_some_and(|encoding| encoding.eq_ignore_ascii_case("chunked"))
+        {
+            return Ok(BodyFraming::Chunked);
+        }
+        return allow_close_delimited
+            .then_some(BodyFraming::CloseDelimited)
+            .ok_or_else(|| invalid_data("request Transfer-Encoding must end in chunked"));
+    }
+
+    if let Some(length) = content_lengths.first().copied() {
+        if content_lengths.iter().any(|candidate| *candidate != length) {
+            return Err(invalid_data("conflicting Content-Length values"));
+        }
+        return Ok(BodyFraming::ContentLength(length));
+    }
+
+    Ok(if allow_close_delimited {
+        BodyFraming::CloseDelimited
+    } else {
+        BodyFraming::None
+    })
+}
+
+/// Read the body declared by `framing` from `reader`, forward every byte to
 /// `writer`, and accumulate up to `max_capture` bytes into `cap`.
 /// Returns the total number of body bytes transferred.
 async fn forward_body<R, W>(
     reader: &mut R,
     writer: &mut W,
-    headers: &[(String, String)],
+    framing: BodyFraming,
     cap: &mut Vec<u8>,
     max_capture: usize,
 ) -> std::io::Result<usize>
@@ -284,24 +350,38 @@ where
     R: AsyncRead + Unpin,
     W: AsyncWrite + Unpin,
 {
-    let is_chunked = header_value(headers, "transfer-encoding")
-        .to_ascii_lowercase()
-        .contains("chunked");
-
-    let content_length = header_value(headers, "content-length")
-        .trim()
-        .parse::<usize>()
-        .ok();
-
-    if is_chunked {
-        forward_chunked(reader, writer, cap, max_capture).await
-    } else if let Some(len) = content_length {
-        if len == 0 {
-            return Ok(0);
+    match framing {
+        BodyFraming::None | BodyFraming::ContentLength(0) => Ok(0),
+        BodyFraming::Chunked => forward_chunked(reader, writer, cap, max_capture).await,
+        BodyFraming::ContentLength(length) => {
+            forward_exact(reader, writer, length, cap, max_capture).await
         }
-        forward_exact(reader, writer, len, cap, max_capture).await
-    } else {
-        Ok(0)
+        BodyFraming::CloseDelimited => forward_to_eof(reader, writer, cap, max_capture).await,
+    }
+}
+
+async fn forward_to_eof<R, W>(
+    reader: &mut R,
+    writer: &mut W,
+    cap: &mut Vec<u8>,
+    max_capture: usize,
+) -> std::io::Result<usize>
+where
+    R: AsyncRead + Unpin,
+    W: AsyncWrite + Unpin,
+{
+    let mut buf = [0u8; 8192];
+    let mut total = 0usize;
+    loop {
+        let read = reader.read(&mut buf).await?;
+        if read == 0 {
+            return Ok(total);
+        }
+        writer.write_all(&buf[..read]).await?;
+        total = total
+            .checked_add(read)
+            .ok_or_else(|| invalid_data("HTTP body size overflow"))?;
+        capture_bytes(cap, &buf[..read], max_capture);
     }
 }
 
@@ -479,4 +559,71 @@ fn make_body(data: Vec<u8>, total: usize) -> CapturedBody {
 
 fn invalid_data(msg: impl Into<String>) -> std::io::Error {
     std::io::Error::new(std::io::ErrorKind::InvalidData, msg.into())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{BodyFraming, body_framing, forward_body};
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    fn headers(values: &[(&str, &str)]) -> Vec<(String, String)> {
+        values
+            .iter()
+            .map(|(name, value)| ((*name).to_string(), (*value).to_string()))
+            .collect()
+    }
+
+    #[test]
+    fn framing_rejects_invalid_or_conflicting_content_lengths() {
+        assert!(body_framing(&headers(&[("Content-Length", "wat")]), true).is_err());
+        assert!(
+            body_framing(
+                &headers(&[("Content-Length", "4"), ("Content-Length", "5")]),
+                true,
+            )
+            .is_err()
+        );
+        assert_eq!(
+            body_framing(&headers(&[("Content-Length", "4, 4")]), true).unwrap(),
+            BodyFraming::ContentLength(4)
+        );
+    }
+
+    #[test]
+    fn only_responses_without_length_are_close_delimited() {
+        assert_eq!(body_framing(&[], false).unwrap(), BodyFraming::None);
+        assert_eq!(
+            body_framing(&[], true).unwrap(),
+            BodyFraming::CloseDelimited
+        );
+    }
+
+    #[tokio::test]
+    async fn close_delimited_body_is_forwarded_until_eof() {
+        let (mut source_writer, mut source_reader) = tokio::io::duplex(64);
+        source_writer.write_all(b"complete body").await.unwrap();
+        source_writer.shutdown().await.unwrap();
+        let (mut destination_reader, mut destination_writer) = tokio::io::duplex(64);
+        let mut captured = Vec::new();
+
+        let total = forward_body(
+            &mut source_reader,
+            &mut destination_writer,
+            BodyFraming::CloseDelimited,
+            &mut captured,
+            1024,
+        )
+        .await
+        .unwrap();
+        destination_writer.shutdown().await.unwrap();
+        let mut forwarded = Vec::new();
+        destination_reader
+            .read_to_end(&mut forwarded)
+            .await
+            .unwrap();
+
+        assert_eq!(total, 13);
+        assert_eq!(captured, b"complete body");
+        assert_eq!(forwarded, b"complete body");
+    }
 }
