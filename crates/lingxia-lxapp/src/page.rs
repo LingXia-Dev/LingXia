@@ -6,7 +6,7 @@ pub use definition::{register_page_resolver, resolve_page_path};
 
 use crate::bridge::{IncomingMessage, PageBridge};
 use crate::lifecycle::PageLifecycleEvent;
-use crate::lxapp::{self, navbar::NavigationBarState};
+use crate::lxapp::{self, LxAppSessionStatus, navbar::NavigationBarState};
 use crate::page::config::{OrientationOverride, PageConfig};
 use crate::plugin;
 use crate::startup::parse_query_string;
@@ -386,8 +386,6 @@ impl PageInstance {
         // Initiate WebView creation with scheme handlers
         // Register closure-based scheme handlers so lingxia-webview
         // doesn't need to know about lxapp business logic.
-        let appid_for_lx = appid.clone();
-
         // Captures for navigation handler (no PageInstanceInner ref → no circular ref)
         let runtime_for_nav = lxapp.runtime.clone();
         let appid_for_nav = appid.clone();
@@ -402,13 +400,15 @@ impl PageInstance {
             .delegate(Arc::new(page.clone()))
             .on_scheme("lx", move |req| {
                 let page_weak_for_lx = page_weak_for_lx.clone();
-                let appid_for_lx = appid_for_lx.clone();
                 async move {
                     let Some(inner) = page_weak_for_lx.upgrade() else {
                         return None.into();
                     };
-                    let lxapp = lxapp::get(appid_for_lx);
                     let page = PageInstance::from_inner(inner);
+                    let lxapp = page.owning_lxapp();
+                    if lxapp.status() == LxAppSessionStatus::Closed {
+                        return None.into();
+                    }
                     lxapp.handle_lingxia_request(&page, req).into()
                 }
             })
@@ -526,6 +526,10 @@ impl PageInstance {
 
     pub(crate) fn bridge(&self) -> PageBridge {
         self.inner.bridge.clone()
+    }
+
+    fn owning_lxapp(&self) -> Arc<LxApp> {
+        self.inner.bridge.lxapp()
     }
 
     pub(crate) fn cancel_bridge_work(&self) {
@@ -647,7 +651,7 @@ impl PageInstance {
             return;
         }
 
-        let lxapp = lxapp::get(self.inner.appid.clone());
+        let lxapp = self.owning_lxapp();
         let appid = self.appid();
         let path = self.path();
 
@@ -978,7 +982,7 @@ impl PageInstance {
 
     /// Load HTML content into this page's WebView
     pub(crate) fn load_html(&self) -> Result<(), LxAppError> {
-        let lxapp = lxapp::get(self.appid());
+        let lxapp = self.owning_lxapp();
         let path = self.path();
         let html_data = lxapp.generate_page_html(&path, self.bridge_nonce().as_deref());
         let base_url = self.base_url();
@@ -1038,7 +1042,7 @@ impl PageInstance {
 
     /// Check if this page is a TabBar page
     pub fn is_tabbar_page(&self) -> bool {
-        let lxapp = lxapp::get(self.inner.appid.clone());
+        let lxapp = self.owning_lxapp();
         match lxapp.get_tabbar() {
             Some(tab_bar) => tab_bar.is_tabbar_page(&self.inner.path),
             None => false,
@@ -1050,7 +1054,7 @@ impl PageInstance {
         target_page: PageInstance,
         nav_type: NavigationType,
     ) -> Result<PageInstance, LxAppError> {
-        let lxapp = lxapp::get(self.appid());
+        let lxapp = self.owning_lxapp();
 
         // Normalize through LxApp to ensure consistent canonical paths (e.g. plugin routes).
         let target_url =
@@ -1174,7 +1178,7 @@ impl PageInstance {
     }
 
     pub fn navigate_back(&self, delta: u32) -> Result<(), LxAppError> {
-        let lxapp = lxapp::get(self.appid());
+        let lxapp = self.owning_lxapp();
         let stack_size = lxapp.get_page_stack_size();
 
         // Ensure at least one page remains
@@ -1257,7 +1261,7 @@ impl PageInstance {
     /// # Returns
     /// `Ok(())` if successful, `Err(LxAppError)` if execution fails
     pub fn call_js(&self, name: String, arg: String) -> Result<(), LxAppError> {
-        let lxapp = lxapp::get(self.appid());
+        let lxapp = self.owning_lxapp();
         lxapp.executor.call_page_service(
             lxapp.clone(),
             self.path(),

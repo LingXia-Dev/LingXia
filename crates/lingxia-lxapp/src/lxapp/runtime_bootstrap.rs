@@ -292,6 +292,7 @@ pub fn init(runtime: Platform) -> Result<Option<String>, LxAppError> {
 
     // Add home lxapp to the manager
     let home_app = Arc::new(home_lxapp);
+    home_app.bind_arc();
     lxapps_manager
         .lxapps
         .insert(home_app_id.clone(), home_app.clone());

@@ -29,6 +29,7 @@ pub fn ensure_builtin_lxapp(appid: &str) -> Result<Arc<LxApp>, LxAppError> {
         manager.executor.clone(),
         ReleaseType::Release,
     )?);
+    app.bind_arc();
     manager.lxapps.insert(appid.to_string(), app.clone());
     Ok(app)
 }
