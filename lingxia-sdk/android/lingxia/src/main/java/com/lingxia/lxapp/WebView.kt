@@ -3,6 +3,8 @@ package com.lingxia.lxapp
 import com.lingxia.app.NativeApi
 
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import android.view.MotionEvent
 import android.webkit.WebView as AndroidWebView
@@ -61,7 +63,13 @@ internal class WebView(context: Context) : LingXiaWebView(context) {
     }
 
     override fun destroy() {
-        NativeBridge.notifyPageDestroyed(this)
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            NativeBridge.notifyPageDestroyed(this)
+        } else {
+            Handler(Looper.getMainLooper()).post {
+                NativeBridge.notifyPageDestroyed(this)
+            }
+        }
         super.destroy()
     }
 }
