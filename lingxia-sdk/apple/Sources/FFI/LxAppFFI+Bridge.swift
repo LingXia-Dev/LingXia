@@ -110,7 +110,7 @@ extension LxApp {
                 }
             } else {
                 #if os(iOS)
-                iOSLxApp.closeLxApp(appId: appIdString, sessionId: session_id)
+                return iOSLxApp.closeLxApp(appId: appIdString, sessionId: session_id)
                 #elseif os(macOS)
                 // Production macOS hosts activate a shell but no controller, so the
                 // runtime-driven close must route to the active shell — otherwise an
@@ -496,15 +496,14 @@ extension LxApp {
         return executeOnMain {
             if let controller = LxAppActiveHost.activeController,
                let session = controller.session(forAppId: appIdString) {
-                controller.navigate(LxAppNavigateRequest(
+                return controller.navigate(LxAppNavigateRequest(
                     sessionId: session.id,
                     path: pathString,
                     animation: animationType
                 ))
             } else {
-                LxAppPlatform.navigate(appId: appIdString, path: pathString, animationType: animationType)
+                return LxAppPlatform.navigate(appId: appIdString, path: pathString, animationType: animationType)
             }
-            return true
         }
     }
 

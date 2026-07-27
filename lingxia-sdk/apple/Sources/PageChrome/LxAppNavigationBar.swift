@@ -29,7 +29,7 @@ final class NavigationBarStateManager: ObservableObject {
     func refreshState(for appId: String) {
         #if os(iOS)
         // Get the current LxAppViewController from iOSLxApp
-        guard let lxAppManager = iOSLxApp.getInstance().currentLxAppManager else {
+        guard let lxAppManager = iOSLxApp.getInstance()?.currentLxAppManager else {
             return
         }
 

@@ -31,7 +31,7 @@ final class LxAppBrowser: NSObject {
         register(tabId: normalizedTabId)
         activeTabId = normalizedTabId
 
-        guard let manager = iOSLxApp.getInstance().currentLxAppManager,
+        guard let manager = iOSLxApp.getInstance()?.currentLxAppManager,
               let navController = manager.navigationController else {
             LXLog.error("show failed: no active navigation controller", category: "Browser")
             return false

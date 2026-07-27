@@ -321,17 +321,18 @@ public final class LxAppController {
     // MARK: - Public: Swift-initiated actions
 
     /// Navigate within a session.
-    public func navigate(_ request: LxAppNavigateRequest) {
+    @discardableResult
+    public func navigate(_ request: LxAppNavigateRequest) -> Bool {
         guard var session = sessions[request.sessionId] else {
             LXLog.error("navigate: unknown session \(String(describing: request.sessionId))", category: "LxAppController")
-            return
+            return false
         }
 
-        LxAppCore.executeNavigation(
+        guard LxAppCore.executeNavigation(
             appId: session.appId,
             path: request.path,
             animationType: request.animation
-        )
+        ) else { return false }
 
         session.path = request.path
         session.userInfo = userInfoWithPageInstanceId(
@@ -342,6 +343,7 @@ public final class LxAppController {
         )
         sessions[request.sessionId] = session
         emit(.didNavigate(sessionId: request.sessionId, to: request.path, animation: request.animation))
+        return true
     }
 
     /// Close a session from the Swift side.
