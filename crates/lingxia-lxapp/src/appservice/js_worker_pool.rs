@@ -1,7 +1,7 @@
 use crate::appservice::event_bus::AppBusEvent;
 use crate::appservice::js_runtime::{
     PageSvcSource, ServiceMessage, WorkerService, create_app_svc, lxapp_service_handler,
-    shutdown_app_context, terminate_app_svc,
+    restart_app_svc, shutdown_app_context, terminate_app_svc,
 };
 use crate::lifecycle::AppServiceEvent;
 use crate::lifecycle::PageServiceEvent;
@@ -313,6 +313,19 @@ impl LxAppWorkers {
             &self.instance_assignments,
             &self.free_workers,
         )
+    }
+
+    pub fn restart_app_svc(&self, lxapp: Arc<crate::lxapp::LxApp>) -> Result<(), LxAppError> {
+        if !lxapp.logic_enabled() {
+            return Ok(());
+        }
+        if !crate::js_appservice_supported() {
+            return Err(LxAppError::UnsupportedOperation(
+                "host was built without JS AppService runtime".to_string(),
+            ));
+        }
+        lxapp.cancel_all_page_bridge_work();
+        restart_app_svc(lxapp, &self.sender, &self.instance_assignments)
     }
 
     // ACK-based helpers removed; use LxApp state subscriptions instead.

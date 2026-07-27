@@ -78,6 +78,13 @@ mod no_js_runtime {
             Ok(())
         }
 
+        pub fn restart_app_svc(&self, lxapp: Arc<crate::lxapp::LxApp>) -> Result<(), LxAppError> {
+            if lxapp.logic_enabled() {
+                return Err(unsupported_js_runtime());
+            }
+            Ok(())
+        }
+
         pub fn create_page_svc_with_ack(
             &self,
             lxapp: Arc<crate::lxapp::LxApp>,
