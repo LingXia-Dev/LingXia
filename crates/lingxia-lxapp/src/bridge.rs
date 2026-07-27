@@ -275,7 +275,7 @@ impl PageBridge {
         self.inner.handshake.lock().unwrap().ready
     }
 
-    fn lxapp(&self) -> Arc<LxApp> {
+    pub(crate) fn lxapp(&self) -> Arc<LxApp> {
         self.inner.lxapp.clone()
     }
 

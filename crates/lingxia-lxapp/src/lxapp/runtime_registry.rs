@@ -77,9 +77,3 @@ pub fn find_page_by_instance_id(id: &str) -> Option<PageInstance> {
             .find_map(|entry| entry.value().get_page_by_instance_id_str(id))
     })
 }
-
-/// Internal helper: get LxApp by appid, panics if not found.
-/// Only for use within lingxia-lxapp where LxApp is known to exist.
-pub(crate) fn get(appid: String) -> Arc<LxApp> {
-    try_get(&appid).expect("LxApp not found")
-}

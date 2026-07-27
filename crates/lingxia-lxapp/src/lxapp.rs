@@ -14,7 +14,7 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock, Weak};
 use std::time::{Duration, Instant};
 use tokio::sync::oneshot;
 use tokio::time;
@@ -70,10 +70,10 @@ pub use runtime_ops::{
     notify_page_host_visibility, notify_page_instance, notify_page_instance_by_id, on_low_memory,
     open_lxapp, restart_lxapp, touch_page_instance_by_id, uninstall_lxapp,
 };
+pub(crate) use runtime_registry::get_lxapps_manager;
 pub use runtime_registry::{
     find_page_by_instance_id, get_display_language, get_platform, set_display_language, try_get,
 };
-pub(crate) use runtime_registry::{get, get_lxapps_manager};
 pub(crate) use surface::SurfaceRecords;
 pub use surface::{
     LxAppRuntimeSurfaceInfo, PageSurface, PageSurfaceRequest, PageSurfaceTarget,
@@ -304,6 +304,7 @@ impl LxApps {
             self.executor.clone(),
             release_type,
         )?);
+        new_lxapp.bind_arc();
 
         // Publish with the map entry API. Two concurrent cold opens must both
         // receive the same LxApp instance; otherwise each instance could claim
@@ -588,6 +589,8 @@ pub struct LxApp {
 
     page_creation_lock: Mutex<()>,
 
+    self_weak: OnceLock<Weak<LxApp>>,
+
     // Scripts injected into every page owned by this LxApp on page load.
     page_scripts: Mutex<Vec<Arc<str>>>,
 }
@@ -690,8 +693,14 @@ impl LxAppSession {
 impl LxApp {
     /// Helper to clone Arc<Self> from within methods needing Arc
     pub(crate) fn clone_arc(&self) -> Arc<LxApp> {
-        // All LxApp instances are stored as Arc in the global manager; retrieve by appid
-        crate::lxapp::get(self.appid.clone())
+        self.self_weak
+            .get()
+            .and_then(Weak::upgrade)
+            .expect("LxApp Arc binding missing")
+    }
+
+    pub(crate) fn bind_arc(self: &Arc<Self>) {
+        let _ = self.self_weak.set(Arc::downgrade(self));
     }
 
     pub(crate) fn status(&self) -> LxAppSessionStatus {
@@ -1138,6 +1147,7 @@ impl LxApp {
             state: Mutex::new(LxAppState::new()),
             presentation_open_lock: Mutex::new(()),
             page_creation_lock: Mutex::new(()),
+            self_weak: OnceLock::new(),
             page_scripts: Mutex::new(Vec::new()),
         }
     }
