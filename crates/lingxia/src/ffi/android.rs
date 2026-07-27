@@ -729,6 +729,26 @@ pub extern "C" fn Java_com_lingxia_app_NativeApi_onDeviceOrientationChanged(
     .resolve::<ThrowRuntimeExAndDefault>()
 }
 
+#[unsafe(no_mangle)]
+pub extern "C" fn Java_com_lingxia_app_NativeApi_onHostAppearanceChanged(
+    _env: EnvUnowned,
+    _class: JClass,
+    preference: jint,
+    effective_dark: jboolean,
+) -> jboolean {
+    let preference = match preference {
+        0 => lingxia_platform::traits::appearance::AppearancePreference::System,
+        1 => lingxia_platform::traits::appearance::AppearancePreference::Light,
+        2 => lingxia_platform::traits::appearance::AppearancePreference::Dark,
+        _ => return false,
+    };
+    lxapp::set_appearance_state(lingxia_platform::traits::appearance::AppearanceState {
+        preference,
+        effective_dark,
+    });
+    true
+}
+
 // Function to notify the Rust layer that an LxApp has been opened
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_com_lingxia_app_NativeApi_onLxAppOpened<'a>(

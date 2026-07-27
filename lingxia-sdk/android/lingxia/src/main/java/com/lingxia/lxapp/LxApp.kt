@@ -3,6 +3,7 @@ package com.lingxia.lxapp
 import com.lingxia.app.CurrentLxApp
 
 import android.content.Intent
+import android.content.res.Configuration
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
@@ -10,6 +11,9 @@ import com.lingxia.app.Lingxia
 import com.lingxia.app.LxLog
 import com.lingxia.app.NativeApi
 import com.lingxia.app.UpdateManager
+import androidx.appcompat.app.AppCompatDelegate
+import org.json.JSONObject
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
@@ -27,6 +31,8 @@ object LxApp {
         internal set
 
     private var currentActivity: LxAppActivity? = null
+    @Volatile private var hostAppearancePreference: Int = 0
+    private val appearanceCallbacks = ConcurrentHashMap.newKeySet<Long>()
 
     @JvmStatic
     internal fun setCurrentActivity(activity: LxAppActivity?) {
@@ -36,6 +42,73 @@ object LxApp {
 
     @JvmStatic
     fun getCurrentActivity(): LxAppActivity? = currentActivity
+
+    @JvmStatic
+    fun getHostAppearancePreference(): Int = hostAppearancePreference
+
+    @JvmStatic
+    fun getHostAppearanceEffectiveDark(): Boolean {
+        return when (hostAppearancePreference) {
+            1 -> false
+            2 -> true
+            else -> {
+                val resources = currentActivity?.resources ?: Lingxia.applicationContext()?.resources
+                resources != null &&
+                    (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
+                    Configuration.UI_MODE_NIGHT_YES
+            }
+        }
+    }
+
+    @JvmStatic
+    fun setHostAppearance(preference: Int): Boolean {
+        if (preference !in 0..2) return false
+        hostAppearancePreference = preference
+        AppCompatDelegate.setDefaultNightMode(
+            when (preference) {
+                1 -> AppCompatDelegate.MODE_NIGHT_NO
+                2 -> AppCompatDelegate.MODE_NIGHT_YES
+                else -> AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM
+            }
+        )
+        emitHostAppearance()
+        return true
+    }
+
+    @JvmStatic
+    fun addHostAppearanceChangeListener(callbackId: Long) {
+        appearanceCallbacks.add(callbackId)
+        emitHostAppearance(callbackId)
+    }
+
+    @JvmStatic
+    fun removeHostAppearanceChangeListener(callbackId: Long) {
+        appearanceCallbacks.remove(callbackId)
+    }
+
+    @JvmStatic
+    fun notifyHostSystemAppearanceChanged() {
+        if (hostAppearancePreference == 0) emitHostAppearance()
+    }
+
+    private fun emitHostAppearance(callbackId: Long? = null) {
+        val preference = when (hostAppearancePreference) {
+            1 -> "light"
+            2 -> "dark"
+            else -> "system"
+        }
+        val effective = if (getHostAppearanceEffectiveDark()) "dark" else "light"
+        NativeApi.onHostAppearanceChanged(hostAppearancePreference, effective == "dark")
+        val payload = JSONObject()
+            .put("preference", preference)
+            .put("effective", effective)
+            .toString()
+        if (callbackId != null) {
+            NativeApi.onCallback(callbackId, true, payload)
+        } else {
+            appearanceCallbacks.forEach { NativeApi.onCallback(it, true, payload) }
+        }
+    }
 
     @JvmStatic
     fun open(appId: String, path: String) {

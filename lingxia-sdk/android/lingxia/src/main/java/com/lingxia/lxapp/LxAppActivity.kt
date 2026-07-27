@@ -2234,6 +2234,7 @@ class LxAppActivity : AppCompatActivity() {
     // Handle configuration changes to prevent Activity recreation
     override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
         super.onConfigurationChanged(newConfig)
+        LxApp.notifyHostSystemAppearanceChanged()
 
         if (
             ::appId.isInitialized &&

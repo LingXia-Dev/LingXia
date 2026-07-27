@@ -141,6 +141,10 @@ internal object NativeApi {
     @JvmStatic
     external fun onDeviceOrientationChanged(appId: String, sessionId: Long, value: String): Boolean
 
+    /** Keep native chrome and every lxapp in sync even when no JS listener is registered. */
+    @JvmStatic
+    external fun onHostAppearanceChanged(preference: Int, effectiveDark: Boolean): Boolean
+
     /**
      * Get LxApp information using typed API
      * @param appId The ID of the app
