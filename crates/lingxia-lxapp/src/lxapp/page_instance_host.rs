@@ -590,21 +590,25 @@ impl LxApp {
         let state = self.state.lock().unwrap();
         let mut pages = state.pages.lock().unwrap();
 
-        // Find the least recently used page (excluding current page in stack)
-        let current_page = state.page_stack.lock().unwrap().back().cloned();
+        let stack_paths = state
+            .page_stack
+            .lock()
+            .unwrap()
+            .iter()
+            .cloned()
+            .collect::<std::collections::HashSet<_>>();
 
         let mut oldest_time: Option<Instant> = None;
         let mut oldest_path: Option<String> = None;
         let mut oldest_page_instance_id: Option<String> = None;
 
         for (path, page) in pages.iter() {
-            if Some(path) == current_page.as_ref() {
-                continue; // Don't evict current page
-            }
-
-            // Don't evict tabbar pages
-            if page.is_tabbar_page() {
-                info!("Skipping tabbar page for eviction: {}", path).with_appid(self.appid.clone());
+            let is_tabbar_page = page.is_tabbar_page();
+            if page_is_protected_from_eviction(path, &stack_paths, is_tabbar_page) {
+                if is_tabbar_page {
+                    info!("Skipping tabbar page for eviction: {}", path)
+                        .with_appid(self.appid.clone());
+                }
                 continue;
             }
 
@@ -1032,12 +1036,21 @@ fn plugin_page_map_contains(
     })
 }
 
+fn page_is_protected_from_eviction(
+    path: &str,
+    stack_paths: &std::collections::HashSet<String>,
+    is_tabbar_page: bool,
+) -> bool {
+    is_tabbar_page || stack_paths.contains(path)
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
         PageInstanceLifecycleState, disposed_instance_owns_stack_path,
-        effective_page_instance_lifecycle,
+        effective_page_instance_lifecycle, page_is_protected_from_eviction,
     };
+    use std::collections::HashSet;
 
     #[test]
     fn automation_lifecycle_does_not_report_ready_pages_as_created() {
@@ -1071,5 +1084,27 @@ mod tests {
             "surface-instance"
         ));
         assert!(!disposed_instance_owns_stack_path(None, "surface-instance"));
+    }
+
+    #[test]
+    fn eviction_protects_every_navigation_stack_page() {
+        let stack = HashSet::from(["pages/oldest".to_string(), "pages/current".to_string()]);
+
+        assert!(page_is_protected_from_eviction(
+            "pages/oldest",
+            &stack,
+            false
+        ));
+        assert!(page_is_protected_from_eviction(
+            "pages/current",
+            &stack,
+            false
+        ));
+        assert!(page_is_protected_from_eviction("pages/tab", &stack, true));
+        assert!(!page_is_protected_from_eviction(
+            "pages/unreferenced",
+            &stack,
+            false
+        ));
     }
 }
