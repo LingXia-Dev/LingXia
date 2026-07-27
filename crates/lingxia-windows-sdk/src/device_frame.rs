@@ -17,13 +17,19 @@ mod native;
 pub struct WindowsDeviceFrameToolbar {
     /// Label shown on the selector, for example the current device name.
     pub selector_label: String,
-    /// Drop-down items offered by the selector.
-    pub selector_items: Vec<WindowsAppMenuItem>,
+    /// Grouped drop-down entries offered by the selector.
+    pub selector_items: Vec<WindowsDeviceFrameSelectorEntry>,
     /// Command id dispatched by the trailing action glyph, when present.
     pub action_command: Option<u32>,
     /// Command id dispatched by the rotate glyph (portrait/landscape toggle),
     /// when present. Drawn just left of the action glyph.
     pub rotate_command: Option<u32>,
+    /// Command id dispatched by the appearance glyph (light/dark flip), when
+    /// present. Drawn just left of the rotate glyph.
+    pub appearance_command: Option<u32>,
+    /// True when the simulated screen currently renders dark. Selects the
+    /// glyph shown — and therefore what a click flips away from.
+    pub appearance_dark: bool,
     /// Items for the floating capsule's menu button. The dev runner uses this
     /// as a single About/info-sheet command. Empty hides the menu button.
     pub capsule_items: Vec<WindowsAppMenuItem>,
@@ -36,6 +42,31 @@ pub struct WindowsDeviceFrameToolbar {
     /// `false` (e.g. a simulated desktop) keeps the standard Windows
     /// min/max/close in the shell chrome and draws no dots.
     pub window_dots: bool,
+}
+
+/// One entry in the simulated-device selector menu.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WindowsDeviceFrameSelectorEntry {
+    /// A non-selectable group heading.
+    Header(String),
+    /// A selectable device command.
+    Item(WindowsAppMenuItem),
+    /// A visual break between device groups.
+    Separator,
+}
+
+impl WindowsDeviceFrameSelectorEntry {
+    pub fn header(label: impl Into<String>) -> Self {
+        Self::Header(label.into())
+    }
+
+    pub fn item(item: WindowsAppMenuItem) -> Self {
+        Self::Item(item)
+    }
+
+    pub fn separator() -> Self {
+        Self::Separator
+    }
 }
 
 /// Optional physical screen cutout rendered over the simulated screen.

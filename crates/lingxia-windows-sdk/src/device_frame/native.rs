@@ -39,7 +39,10 @@ use windows::Win32::System::LibraryLoader;
 use windows::Win32::UI::WindowsAndMessaging::{self, WNDCLASSW, WNDPROC};
 use windows::core::{PCWSTR, w};
 
-use super::{WindowsDeviceFrame, WindowsDeviceFrameStatusBar, WindowsDeviceFrameToolbar};
+use super::{
+    WindowsDeviceFrame, WindowsDeviceFrameSelectorEntry, WindowsDeviceFrameStatusBar,
+    WindowsDeviceFrameToolbar,
+};
 
 mod capsule;
 mod corner_mask;
@@ -57,6 +60,7 @@ use corner_mask::{
 use cutout::{create_cutout_window, destroy_cutout, hide_cutout, reposition_cutout};
 use frame_window::create_frame_window;
 pub(super) use info_sheet::{DeviceFrameInfoSheet, InfoSheetBadge, SheetAction};
+use paint::paint_frame_window;
 use status_bar::{
     create_status_bar, destroy_status_bar, hide_status_bar, repaint_status_bar,
     reposition_status_bar,
@@ -244,6 +248,7 @@ struct FrameLayout {
     selector_rect: RECT,
     action_rect: RECT,
     rotate_rect: RECT,
+    appearance_rect: RECT,
 }
 
 fn compute_layout(spec: &WindowsDeviceFrame) -> FrameLayout {
@@ -642,6 +647,29 @@ fn apply_device_frame_inner(content: HWND, mut spec: WindowsDeviceFrame, sync_ho
     if frame_state(handle, |state| state.spec.clone()) == Some(spec.clone()) {
         if sync_host_layout {
             sync_device_frame_for_content(content);
+        }
+        return;
+    }
+    // Same device, different toolbar model (e.g. the appearance glyph
+    // flipping): repaint the existing layered shell in place instead of
+    // rebuilding every companion window, which visibly flashes the bezel.
+    let toolbar_only = frame_state(handle, |state| {
+        let mut probe = state.spec.clone();
+        probe.toolbar = spec.toolbar.clone();
+        probe == spec
+    })
+    .unwrap_or(false);
+    if toolbar_only
+        && let Some((frame, mut layout)) = frame_state(handle, |state| (state.frame, state.layout))
+        && is_window_handle_valid(frame)
+    {
+        paint_frame_window(hwnd_from_handle(frame), &spec, &mut layout);
+        if let Some(frames) = DEVICE_FRAMES.get()
+            && let Ok(mut frames) = frames.lock()
+            && let Some(state) = frames.get_mut(&handle)
+        {
+            state.spec = spec;
+            state.layout = layout;
         }
         return;
     }

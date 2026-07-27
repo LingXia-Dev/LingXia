@@ -1,7 +1,7 @@
 use crate::device::{
-    ABOUT_COMMAND, CAPSULE_CLOSE_COMMAND, CLEAN_CACHE_COMMAND, DEVICE_COMMAND_BASE,
-    OPEN_DEVTOOLS_COMMAND, RESTART_LXAPP_COMMAND, ROTATE_COMMAND, browser_frame_spec, frame_spec,
-    initial_device_index, is_phone, is_tablet, presets,
+    ABOUT_COMMAND, APPEARANCE_COMMAND, CAPSULE_CLOSE_COMMAND, CLEAN_CACHE_COMMAND,
+    DEVICE_COMMAND_BASE, OPEN_DEVTOOLS_COMMAND, RESTART_LXAPP_COMMAND, ROTATE_COMMAND,
+    browser_frame_spec, frame_spec, initial_device_index, is_phone, is_tablet, presets,
 };
 use lingxia_windows_sdk::WindowsShellTabBarPosition;
 use lxapp::{LxAppDelegate, LxAppUiEventType};
@@ -235,7 +235,7 @@ fn register_resource_lxapp_paths_from_env() {
     }
 }
 
-/// Exposes device switching to the devtool bridge (`lxapp.device.*`). The
+/// Exposes device switching to the devtool bridge (`runner.*`). The
 /// runner owns the presets + window frame, so it implements the shared
 /// `DeviceController` trait and registers it in `run()`; the bridge calls
 /// through `lingxia::dev` without depending on the runner or the windows SDK.
@@ -288,29 +288,7 @@ impl lingxia::dev::DeviceController for RunnerDeviceController {
             None => LANDSCAPE.load(Ordering::Acquire),
         };
         if let Some(appearance) = appearance {
-            let scheme = match appearance {
-                lingxia::dev::Appearance::System => {
-                    lingxia_windows_sdk::WindowsPreferredColorScheme::Auto
-                }
-                lingxia::dev::Appearance::Light => {
-                    lingxia_windows_sdk::WindowsPreferredColorScheme::Light
-                }
-                lingxia::dev::Appearance::Dark => {
-                    lingxia_windows_sdk::WindowsPreferredColorScheme::Dark
-                }
-            };
-            // Store first: the scheme below is armed for every future WebView
-            // regardless of per-webview failures, and `runner.get` must report
-            // what was configured rather than the pre-failure value.
-            APPEARANCE.store(
-                match appearance {
-                    lingxia::dev::Appearance::System => 0,
-                    lingxia::dev::Appearance::Light => 1,
-                    lingxia::dev::Appearance::Dark => 2,
-                },
-                Ordering::Release,
-            );
-            lingxia_windows_sdk::set_windows_preferred_color_scheme(scheme)?;
+            set_appearance(appearance)?;
         }
         // A bare appearance change must not rebuild frames or re-run browser
         // emulation; only a device or orientation request touches the frame.
@@ -337,11 +315,80 @@ fn device_state(index: usize, landscape: bool) -> lingxia::dev::DeviceState {
         width: width.max(0) as u32,
         height: height.max(0) as u32,
         landscape,
-        appearance: match APPEARANCE.load(Ordering::Acquire) {
-            1 => lingxia::dev::Appearance::Light,
-            2 => lingxia::dev::Appearance::Dark,
-            _ => lingxia::dev::Appearance::System,
+        appearance: simulated_appearance(),
+    }
+}
+
+/// The configured simulated appearance (the `runner.set` pin, `System` when
+/// following the OS).
+fn simulated_appearance() -> lingxia::dev::Appearance {
+    match APPEARANCE.load(Ordering::Acquire) {
+        1 => lingxia::dev::Appearance::Light,
+        2 => lingxia::dev::Appearance::Dark,
+        _ => lingxia::dev::Appearance::System,
+    }
+}
+
+/// The simulated screen is effectively dark right now — the pin when one is
+/// set, the host OS otherwise. Selects the toolbar glyph, and one click flips
+/// it (the macOS `SimulatorToolbar` contract).
+pub(crate) fn effective_appearance_dark() -> bool {
+    match APPEARANCE.load(Ordering::Acquire) {
+        1 => false,
+        2 => true,
+        _ => lingxia_windows_sdk::windows_system_dark_mode(),
+    }
+}
+
+/// Applies a simulated appearance: pins the WebView2 profile scheme and
+/// refreshes the toolbar glyph. CLI, selector menu, and toolbar flip all
+/// funnel through here so every entry point keeps the glyph honest.
+fn set_appearance(appearance: lingxia::dev::Appearance) -> Result<(), String> {
+    let scheme = match appearance {
+        lingxia::dev::Appearance::System => lingxia_windows_sdk::WindowsPreferredColorScheme::Auto,
+        lingxia::dev::Appearance::Light => lingxia_windows_sdk::WindowsPreferredColorScheme::Light,
+        lingxia::dev::Appearance::Dark => lingxia_windows_sdk::WindowsPreferredColorScheme::Dark,
+    };
+    // Store first: the scheme below is armed for every future WebView
+    // regardless of per-webview failures, and `runner.get` must report
+    // what was configured rather than the pre-failure value.
+    APPEARANCE.store(
+        match appearance {
+            lingxia::dev::Appearance::System => 0,
+            lingxia::dev::Appearance::Light => 1,
+            lingxia::dev::Appearance::Dark => 2,
         },
+        Ordering::Release,
+    );
+    lingxia_windows_sdk::set_windows_preferred_color_scheme(scheme)?;
+    refresh_device_frame_toolbar();
+    Ok(())
+}
+
+/// Re-sends the current frame spec so a toolbar-model change (the appearance
+/// glyph) repaints in place — the SDK downgrades a same-geometry frame update
+/// to a toolbar repaint, never a bezel rebuild.
+fn refresh_device_frame_toolbar() {
+    let index = CURRENT_DEVICE.load(Ordering::Acquire);
+    let landscape = LANDSCAPE.load(Ordering::Acquire);
+    if let Some(host) = BROWSER_HOST.get() {
+        if let Err(err) = host.set_primary_device_frame(
+            browser_frame_spec(index, landscape),
+            tabbar_position_for_device(index),
+        ) {
+            eprintln!("lingxia-runner: failed to refresh frame toolbar: {err}");
+        }
+        return;
+    }
+    for app in lxapp::list_lxapps() {
+        if app.status == "opened"
+            && let Err(err) = apply_device_to_app(&app.appid, index, landscape)
+        {
+            eprintln!(
+                "lingxia-runner: failed to refresh frame toolbar for {}: {err}",
+                app.appid
+            );
+        }
     }
 }
 
@@ -410,6 +457,19 @@ fn tabbar_position_for_device(index: usize) -> WindowsShellTabBarPosition {
     }
 }
 
+/// Toolbar appearance glyph: always a visible flip — pin the opposite of
+/// what the screen shows.
+fn flip_appearance() {
+    let target = if effective_appearance_dark() {
+        lingxia::dev::Appearance::Light
+    } else {
+        lingxia::dev::Appearance::Dark
+    };
+    if let Err(err) = set_appearance(target) {
+        eprintln!("lingxia-runner: failed to set appearance: {err}");
+    }
+}
+
 fn install_runner_commands(home_app_id: String) {
     // Handles both the simulator toolbar's device selector and its DevTools
     // action (the SDK routes frame-toolbar commands through this handler).
@@ -428,6 +488,11 @@ fn install_runner_commands(home_app_id: String) {
                 if let Err(err) = apply_device(index, landscape) {
                     eprintln!("lingxia-runner: failed to rotate device: {err}");
                 }
+                return;
+            }
+
+            if command == APPEARANCE_COMMAND {
+                flip_appearance();
                 return;
             }
 
@@ -497,6 +562,10 @@ fn install_browser_runner_commands(host: lingxia_windows_sdk::WindowsHost) {
                 if let Err(error) = apply_device(index, landscape) {
                     eprintln!("lingxia-runner: failed to rotate device: {error}");
                 }
+                return;
+            }
+            if command == APPEARANCE_COMMAND {
+                flip_appearance();
                 return;
             }
             let Some(index) = command

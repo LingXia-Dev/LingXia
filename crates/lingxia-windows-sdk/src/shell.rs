@@ -123,6 +123,12 @@ pub fn windows_shell_background_color() -> u32 {
     style::shell_palette().window_background
 }
 
+/// Whether Windows apps currently render dark. Runners use it to resolve a
+/// "follow system" simulated appearance into the icon actually shown.
+pub fn windows_system_dark_mode() -> bool {
+    theme::is_dark()
+}
+
 pub(crate) fn windows_shell_frame_colors() -> (u32, u32, bool) {
     let palette = style::shell_palette();
     (
