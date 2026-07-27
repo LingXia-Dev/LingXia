@@ -4,6 +4,8 @@ import CLingXiaRustAPI
 
 #if os(iOS)
 import UIKit
+#elseif os(macOS)
+import AppKit
 #endif
 
 class LxAppActionSheet {
@@ -30,6 +32,16 @@ class LxAppActionSheet {
 
         DispatchQueue.main.async {
             showIOSActionSheet(options: optionsArray, cancelText: cancelText, itemColor: itemColor, callback_id: callback_id)
+        }
+        #elseif os(macOS)
+        let optionsArray = options["options"] as? [String] ?? []
+        let cancelText = options["cancelText"] as? String ?? ""
+        DispatchQueue.main.async {
+            showMacActionSheet(
+                options: optionsArray,
+                cancelText: cancelText,
+                callback_id: callback_id
+            )
         }
         #endif
     }
@@ -261,6 +273,29 @@ class LxAppActionSheet {
             actionSheetView.removeFromSuperview()
             completion()
         }
+    }
+    #endif
+
+    #if os(macOS)
+    @MainActor
+    private static func showMacActionSheet(
+        options: [String],
+        cancelText: String,
+        callback_id: UInt64
+    ) {
+        let alert = NSAlert()
+        for option in options {
+            alert.addButton(withTitle: option)
+        }
+        alert.addButton(withTitle: cancelText)
+
+        let firstButton = NSApplication.ModalResponse.alertFirstButtonReturn.rawValue
+        let tapIndex = alert.runModal().rawValue - firstButton
+        guard tapIndex >= 0, tapIndex < options.count else {
+            sendResult(callback_id: callback_id, tapIndex: -1)
+            return
+        }
+        sendResult(callback_id: callback_id, tapIndex: tapIndex)
     }
     #endif
 
