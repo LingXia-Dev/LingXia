@@ -21,6 +21,26 @@ use tokio::sync::{Mutex, mpsc};
 static THUMBNAIL_NAME_COUNTER: AtomicU64 = AtomicU64::new(0);
 static COMPRESS_VIDEO_NAME_COUNTER: AtomicU64 = AtomicU64::new(0);
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum VideoOutputStorage {
+    Temp,
+    UserData,
+    UserCache,
+}
+
+struct VideoOutputRoots<'a> {
+    temp: &'a Path,
+    user_data: &'a Path,
+    user_cache: &'a Path,
+}
+
+struct ValidatedVideoOutput {
+    storage: VideoOutputStorage,
+    size: u64,
+    path: PathBuf,
+    root: PathBuf,
+}
+
 #[derive(FromJSObject)]
 #[ts_skip]
 struct JSGetVideoInfoOptions {
@@ -211,10 +231,11 @@ async fn extract_video_thumbnail_api(
         .map_err(|err| js_error_from_lxapp_error(&err))?;
     let source_uri = resolved_source.to_string_lossy().into_owned();
 
+    let explicit_output_uri = explicit_lx_output_uri(options.output_path.as_deref());
     let output_path = resolve_thumbnail_output_path(&lxapp, options.output_path.as_deref())?;
     let request = ExtractVideoThumbnailRequest {
         source_uri,
-        output_path,
+        output_path: output_path.clone(),
         max_width: sanitize_optional_u32(options.max_width),
         max_height: sanitize_optional_u32(options.max_height),
         time_ms: sanitize_time_ms(options.time_ms),
@@ -224,14 +245,19 @@ async fn extract_video_thumbnail_api(
     let thumbnail = runtime
         .extract_video_thumbnail(&request)
         .map_err(|e| js_error_from_platform_error(&e))?;
-    ensure_output_quota(&lxapp, &thumbnail.path)?;
+    ensure_output_quota(&lxapp, &output_path, &thumbnail.path)?;
 
-    let uri = lxapp
-        .to_uri(&thumbnail.path)
-        .ok_or_else(|| {
-            js_internal_error("extractVideoThumbnail failed to convert output path to lx:// uri")
-        })?
-        .into_string();
+    let uri = match explicit_output_uri {
+        Some(uri) => uri,
+        None => lxapp
+            .to_uri(&thumbnail.path)
+            .ok_or_else(|| {
+                js_internal_error(
+                    "extractVideoThumbnail failed to convert output path to lx:// uri",
+                )
+            })?
+            .into_string(),
+    };
 
     Ok(JSVideoThumbnailResult {
         temp_file_path: uri,
@@ -253,6 +279,7 @@ fn compress_video_api(ctx: JSContext, options: JSCompressVideoOptions) -> JSResu
         .map_err(|err| js_error_from_lxapp_error(&err))?;
     let source_uri = resolved_source.to_string_lossy().into_owned();
 
+    let explicit_output_uri = explicit_lx_output_uri(options.output_path.as_deref());
     let output_path = resolve_compress_video_output_path(&lxapp, options.output_path.as_deref())?;
     if paths_refer_to_same_file(&resolved_source, &output_path) {
         return Err(js_invalid_parameter_error(
@@ -293,6 +320,7 @@ fn compress_video_api(ctx: JSContext, options: JSCompressVideoOptions) -> JSResu
     let cancelled = Arc::new(AtomicBool::new(false));
 
     let final_lxapp = lxapp.clone();
+    let final_output_path = output_path.clone();
     let final_promise = Promise::from_future(&ctx, None, async move {
         let result = completion_rx.await;
         // The transcode is over (or cancelled): close the progress stream so
@@ -314,15 +342,18 @@ fn compress_video_api(ctx: JSContext, options: JSCompressVideoOptions) -> JSResu
                 let path = PathBuf::from(parsed.path.ok_or_else(|| {
                     js_internal_error("compressVideo result is missing the output path")
                 })?);
-                ensure_output_quota(&final_lxapp, &path)?;
-                let temp_file_path = final_lxapp
-                    .to_uri(&path)
-                    .ok_or_else(|| {
-                        js_internal_error(
-                            "compressVideo failed to convert output path to lx:// uri",
-                        )
-                    })?
-                    .into_string();
+                ensure_output_quota(&final_lxapp, &final_output_path, &path)?;
+                let temp_file_path = match explicit_output_uri {
+                    Some(uri) => uri,
+                    None => final_lxapp
+                        .to_uri(&path)
+                        .ok_or_else(|| {
+                            js_internal_error(
+                                "compressVideo failed to convert output path to lx:// uri",
+                            )
+                        })?
+                        .into_string(),
+                };
                 Ok(JSCompressVideoResult {
                     temp_file_path,
                     width: parsed.width.unwrap_or(0),
@@ -463,7 +494,7 @@ fn resolve_thumbnail_output_path(
     lxapp: &LxApp,
     raw_output_path: Option<&str>,
 ) -> JSResult<PathBuf> {
-    resolve_output_path(lxapp, raw_output_path, || {
+    resolve_output_path(lxapp, raw_output_path, "extractVideoThumbnail", || {
         generate_thumbnail_output_path(&lxapp.temp_dir)
     })
 }
@@ -472,7 +503,7 @@ fn resolve_compress_video_output_path(
     lxapp: &LxApp,
     raw_output_path: Option<&str>,
 ) -> JSResult<PathBuf> {
-    resolve_output_path(lxapp, raw_output_path, || {
+    resolve_output_path(lxapp, raw_output_path, "compressVideo", || {
         generate_compress_video_output_path(&lxapp.temp_dir)
     })
 }
@@ -480,17 +511,25 @@ fn resolve_compress_video_output_path(
 fn resolve_output_path<F>(
     lxapp: &LxApp,
     raw_output_path: Option<&str>,
+    api_name: &'static str,
     default: F,
 ) -> JSResult<PathBuf>
 where
     F: FnOnce() -> JSResult<PathBuf>,
 {
     match raw_output_path.map(str::trim).filter(|s| !s.is_empty()) {
-        Some(path) => lxapp
-            .resolve_accessible_path(path)
-            .map_err(|err| js_error_from_lxapp_error(&err)),
+        Some(path) => {
+            crate::fs::resolve_writable_file_path(lxapp, path, api_name, "outputPath", true)
+        }
         None => default(),
     }
+}
+
+fn explicit_lx_output_uri(raw_output_path: Option<&str>) -> Option<String> {
+    raw_output_path
+        .map(str::trim)
+        .filter(|path| path.starts_with("lx://"))
+        .map(str::to_string)
 }
 
 fn paths_refer_to_same_file(left: &Path, right: &Path) -> bool {
@@ -652,41 +691,140 @@ fn generate_timestamped_output_path(
     Ok(base_dir.join(filename))
 }
 
-fn ensure_output_quota(lxapp: &LxApp, path: &Path) -> JSResult<()> {
-    let size = storage::path_size(path);
-    let result = if path.starts_with(&lxapp.temp_dir) {
-        storage::ensure_temp_quota(&lxapp.temp_dir, path, size)
-    } else if path.starts_with(&lxapp.user_data_dir) {
-        storage::ensure_userdata_quota(&lxapp.user_data_dir, path, size).and_then(|()| {
-            storage::ensure_app_storage_quota(
-                &lxapp.user_data_dir,
-                &lxapp.user_cache_dir,
-                path,
-                size,
-            )
-        })
-    } else if path.starts_with(&lxapp.user_cache_dir) {
-        storage::ensure_usercache_quota(&lxapp.user_cache_dir, path, size, None).and_then(|()| {
-            storage::ensure_app_storage_quota(
-                &lxapp.user_data_dir,
-                &lxapp.user_cache_dir,
-                path,
-                size,
-            )
-        })
+fn validate_video_output(
+    expected_path: &Path,
+    actual_path: &Path,
+    roots: VideoOutputRoots<'_>,
+) -> Result<ValidatedVideoOutput, String> {
+    if actual_path != expected_path {
+        return Err(format!(
+            "video runtime returned unexpected output path: expected {}, got {}",
+            expected_path.display(),
+            actual_path.display()
+        ));
+    }
+
+    let metadata = fs::symlink_metadata(actual_path).map_err(|err| {
+        format!(
+            "video runtime output is missing or unreadable at {}: {err}",
+            actual_path.display()
+        )
+    })?;
+    if !metadata.file_type().is_file() {
+        return Err(format!(
+            "video runtime output is not a regular file: {}",
+            actual_path.display()
+        ));
+    }
+
+    let canonical_path = fs::canonicalize(actual_path)
+        .map_err(|err| format!("failed to resolve video output path: {err}"))?;
+    let candidates = [
+        (VideoOutputStorage::Temp, roots.temp),
+        (VideoOutputStorage::UserData, roots.user_data),
+        (VideoOutputStorage::UserCache, roots.user_cache),
+    ];
+    let mut matched = None;
+    for (storage, root) in candidates {
+        if root.as_os_str().is_empty() {
+            continue;
+        }
+        let Ok(canonical_root) = fs::canonicalize(root) else {
+            continue;
+        };
+        if canonical_path.starts_with(&canonical_root) {
+            matched = Some((storage, root, canonical_root));
+            break;
+        }
+    }
+    let (storage, root, canonical_root) = matched
+        .ok_or_else(|| "video output path is outside LingXia-managed storage".to_string())?;
+
+    let (inspection_root, inspection_path) = if actual_path.starts_with(root) {
+        (root, actual_path)
     } else {
-        Ok(())
+        (canonical_root.as_path(), canonical_path.as_path())
+    };
+    let relative = inspection_path
+        .strip_prefix(inspection_root)
+        .map_err(|_| "video output path is outside its storage root".to_string())?;
+    let mut current = inspection_root.to_path_buf();
+    let mut components = relative.components().peekable();
+    while let Some(component) = components.next() {
+        if components.peek().is_none() {
+            break;
+        }
+        current.push(component.as_os_str());
+        let ancestor = fs::symlink_metadata(&current).map_err(|err| {
+            format!(
+                "failed to inspect video output ancestor {}: {err}",
+                current.display()
+            )
+        })?;
+        if ancestor.file_type().is_symlink() {
+            return Err(format!(
+                "video output path must not pass through a symlink: {}",
+                current.display()
+            ));
+        }
+    }
+
+    Ok(ValidatedVideoOutput {
+        storage,
+        size: metadata.len(),
+        path: canonical_path,
+        root: canonical_root,
+    })
+}
+
+fn ensure_output_quota(lxapp: &LxApp, expected_path: &Path, actual_path: &Path) -> JSResult<()> {
+    let validated = validate_video_output(
+        expected_path,
+        actual_path,
+        VideoOutputRoots {
+            temp: &lxapp.temp_dir,
+            user_data: &lxapp.user_data_dir,
+            user_cache: &lxapp.user_cache_dir,
+        },
+    )
+    .map_err(js_internal_error)?;
+    let result = match validated.storage {
+        VideoOutputStorage::Temp => {
+            storage::ensure_temp_quota(&validated.root, &validated.path, validated.size)
+        }
+        VideoOutputStorage::UserData => {
+            storage::ensure_userdata_quota(&validated.root, &validated.path, validated.size)
+                .and_then(|()| {
+                    storage::ensure_app_storage_quota(
+                        &validated.root,
+                        &lxapp.user_cache_dir,
+                        &validated.path,
+                        validated.size,
+                    )
+                })
+        }
+        VideoOutputStorage::UserCache => {
+            storage::ensure_usercache_quota(&validated.root, &validated.path, validated.size, None)
+                .and_then(|()| {
+                    storage::ensure_app_storage_quota(
+                        &lxapp.user_data_dir,
+                        &validated.root,
+                        &validated.path,
+                        validated.size,
+                    )
+                })
+        }
     };
 
     match result {
         Ok(()) => {
-            if path.starts_with(&lxapp.user_cache_dir) {
-                lxapp::touch_access_time(path);
+            if validated.storage == VideoOutputStorage::UserCache {
+                lxapp::touch_access_time(&validated.path);
             }
             Ok(())
         }
         Err(err) => {
-            let _ = std::fs::remove_file(path);
+            let _ = fs::remove_file(&validated.path);
             Err(js_error_from_business_code_with_detail(1002, err.detail()))
         }
     }
@@ -694,7 +832,168 @@ fn ensure_output_quota(lxapp: &LxApp, path: &Path) -> JSResult<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{PlatformVideoInfo, normalize_video_codec_mime, platform_video_info_to_js};
+    use super::{
+        PlatformVideoInfo, VideoOutputRoots, VideoOutputStorage, explicit_lx_output_uri,
+        normalize_video_codec_mime, platform_video_info_to_js, validate_video_output,
+    };
+    use std::fs;
+
+    fn create_output_roots(base: &std::path::Path) -> [std::path::PathBuf; 3] {
+        let roots = [
+            base.join("temp"),
+            base.join("userdata"),
+            base.join("usercache"),
+        ];
+        for root in &roots {
+            fs::create_dir_all(root).unwrap();
+        }
+        roots
+    }
+
+    #[test]
+    fn video_output_validation_accepts_expected_regular_managed_file() {
+        let base = tempfile::tempdir().unwrap();
+        let [temp, user_data, user_cache] = create_output_roots(base.path());
+        let output = user_data.join("videos/output.mp4");
+        fs::create_dir_all(output.parent().unwrap()).unwrap();
+        fs::write(&output, b"video").unwrap();
+
+        let validated = validate_video_output(
+            &output,
+            &output,
+            VideoOutputRoots {
+                temp: &temp,
+                user_data: &user_data,
+                user_cache: &user_cache,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(validated.storage, VideoOutputStorage::UserData);
+        assert_eq!(validated.size, 5);
+    }
+
+    #[test]
+    fn video_output_validation_accepts_explicit_temp_file() {
+        let base = tempfile::tempdir().unwrap();
+        let [temp, user_data, user_cache] = create_output_roots(base.path());
+        let output = temp.join("explicit-output.mp4");
+        fs::write(&output, b"video").unwrap();
+
+        let validated = validate_video_output(
+            &output,
+            &output,
+            VideoOutputRoots {
+                temp: &temp,
+                user_data: &user_data,
+                user_cache: &user_cache,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(validated.storage, VideoOutputStorage::Temp);
+    }
+
+    #[test]
+    fn video_output_validation_accepts_canonical_temp_root_alias() {
+        let base = tempfile::tempdir().unwrap();
+        let alias_parent = base.path().join("alias-parent");
+        fs::create_dir(&alias_parent).unwrap();
+        let temp = base.path().join("temp");
+        let user_data = base.path().join("userdata");
+        let user_cache = base.path().join("usercache");
+        for root in [&temp, &user_data, &user_cache] {
+            fs::create_dir(root).unwrap();
+        }
+        let aliased_temp = alias_parent.join("..").join("temp");
+        let output = temp.join("explicit-output.mp4");
+        fs::write(&output, b"video").unwrap();
+
+        let validated = validate_video_output(
+            &output,
+            &output,
+            VideoOutputRoots {
+                temp: &aliased_temp,
+                user_data: &user_data,
+                user_cache: &user_cache,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(validated.storage, VideoOutputStorage::Temp);
+        assert_eq!(validated.root, fs::canonicalize(temp).unwrap());
+        assert_eq!(
+            explicit_lx_output_uri(Some(" lx://temp/existing-token ")).as_deref(),
+            Some("lx://temp/existing-token")
+        );
+    }
+
+    #[test]
+    fn video_output_validation_rejects_mismatch_missing_and_directory() {
+        let base = tempfile::tempdir().unwrap();
+        let [temp, user_data, user_cache] = create_output_roots(base.path());
+        let expected = user_data.join("expected.mp4");
+        let other = user_data.join("other.mp4");
+        fs::write(&other, b"video").unwrap();
+        let roots = || VideoOutputRoots {
+            temp: &temp,
+            user_data: &user_data,
+            user_cache: &user_cache,
+        };
+
+        assert!(validate_video_output(&expected, &other, roots()).is_err());
+        assert!(validate_video_output(&expected, &expected, roots()).is_err());
+        fs::create_dir(&expected).unwrap();
+        assert!(validate_video_output(&expected, &expected, roots()).is_err());
+    }
+
+    #[test]
+    fn video_output_validation_rejects_lexical_storage_escape() {
+        let base = tempfile::tempdir().unwrap();
+        let [temp, user_data, user_cache] = create_output_roots(base.path());
+        let escaped = user_data.join("..").join("outside.mp4");
+        fs::write(base.path().join("outside.mp4"), b"video").unwrap();
+
+        assert!(
+            validate_video_output(
+                &escaped,
+                &escaped,
+                VideoOutputRoots {
+                    temp: &temp,
+                    user_data: &user_data,
+                    user_cache: &user_cache,
+                },
+            )
+            .is_err()
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn video_output_validation_rejects_symlinked_ancestor_inside_root() {
+        use std::os::unix::fs::symlink;
+
+        let base = tempfile::tempdir().unwrap();
+        let [temp, user_data, user_cache] = create_output_roots(base.path());
+        let real_dir = user_data.join("real");
+        fs::create_dir(&real_dir).unwrap();
+        fs::write(real_dir.join("output.mp4"), b"video").unwrap();
+        symlink(&real_dir, user_data.join("link")).unwrap();
+        let output = user_data.join("link/output.mp4");
+
+        assert!(
+            validate_video_output(
+                &output,
+                &output,
+                VideoOutputRoots {
+                    temp: &temp,
+                    user_data: &user_data,
+                    user_cache: &user_cache,
+                },
+            )
+            .is_err()
+        );
+    }
 
     #[test]
     fn video_info_conversion_keeps_upload_preflight_metadata() {
