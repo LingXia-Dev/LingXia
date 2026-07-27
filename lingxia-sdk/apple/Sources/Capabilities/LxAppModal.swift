@@ -11,6 +11,27 @@ import AppKit
 /// Modal dialog management for LingXia applications
 class LxAppModal {
 
+    private final class CallbackOnce {
+        private let callbackId: UInt64
+        private let lock = NSLock()
+        private var completed = false
+
+        init(callbackId: UInt64) {
+            self.callbackId = callbackId
+        }
+
+        func send(success: Bool, payload: String) {
+            lock.lock()
+            guard !completed else {
+                lock.unlock()
+                return
+            }
+            completed = true
+            lock.unlock()
+            _ = onCallback(callbackId, success, payload)
+        }
+    }
+
     /// Show modal with ModalOptions (FFI interface)
     static func showModal(options: ModalOptions, callback_id: UInt64) {
         showModal([
@@ -67,10 +88,12 @@ class LxAppModal {
     confirmText: String,
     callback_id: UInt64
 ) {
+    let callback = CallbackOnce(callbackId: callback_id)
     guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
           let window = windowScene.windows.first(where: { $0.isKeyWindow }) ?? windowScene.windows.first,
           let rootViewController = window.rootViewController else {
         LXLog.error("Could not find root view controller", category: "Modal")
+        callback.send(success: false, payload: "2000")
         return
     }
 
@@ -78,6 +101,14 @@ class LxAppModal {
     var topViewController = rootViewController
     while let presentedViewController = topViewController.presentedViewController {
         topViewController = presentedViewController
+    }
+    guard topViewController.view.window != nil,
+          !topViewController.isBeingPresented,
+          !topViewController.isBeingDismissed,
+          topViewController.transitionCoordinator == nil else {
+        LXLog.error("Could not find a stable modal presenter", category: "Modal")
+        callback.send(success: false, payload: "2000")
+        return
     }
 
     let alertTitle = title.isEmpty ? nil : title
@@ -91,10 +122,12 @@ class LxAppModal {
             "cancel": false
         ]
 
-        if let jsonData = try? JSONSerialization.data(withJSONObject: result),
-           let jsonString = String(data: jsonData, encoding: .utf8) {
-            _ = onCallback(callback_id, true, jsonString)
+        guard let jsonData = try? JSONSerialization.data(withJSONObject: result),
+              let jsonString = String(data: jsonData, encoding: .utf8) else {
+            callback.send(success: false, payload: "2000")
+            return
         }
+        callback.send(success: true, payload: jsonString)
     }
     alert.addAction(confirmAction)
 
@@ -102,13 +135,20 @@ class LxAppModal {
     if showCancel {
         let cancelAction = UIAlertAction(title: cancelText, style: .cancel) { _ in
             // User cancelled = error 2000
-            _ = onCallback(callback_id, false, "2000")
+            callback.send(success: false, payload: "2000")
         }
         alert.addAction(cancelAction)
     }
 
     // Present the alert
     topViewController.present(alert, animated: true)
+    DispatchQueue.main.async {
+        guard alert.presentingViewController != nil || alert.viewIfLoaded?.window != nil else {
+            LXLog.error("UIKit did not present modal alert", category: "Modal")
+            callback.send(success: false, payload: "2000")
+            return
+        }
+    }
 }
 #endif
 
