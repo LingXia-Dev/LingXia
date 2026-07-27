@@ -2322,6 +2322,37 @@ pub(crate) fn find_webview_delegate(webtag: &WebTag) -> Option<Arc<dyn WebViewDe
     find_webview(webtag).and_then(|webview| webview.get_delegate())
 }
 
+fn remove_arc_if_matches<T>(
+    entries: &mut HashMap<String, Arc<T>>,
+    key: &str,
+    expected: &Arc<T>,
+) -> Option<Arc<T>> {
+    entries
+        .get(key)
+        .is_some_and(|current| Arc::ptr_eq(current, expected))
+        .then(|| entries.remove(key))
+        .flatten()
+}
+
+/// Remove one ready WebView only while it is still the instance registered for
+/// its tag. Tag-scoped session, callback, and navigation state may already
+/// belong to a newer create cycle and is deliberately left untouched.
+pub(crate) fn destroy_webview_if_matches(webtag: &WebTag, expected: &Arc<WebView>) -> bool {
+    let removed = if let Some(instances) = WEBVIEW_INSTANCES.get()
+        && let Ok(mut webviews) = instances.lock()
+    {
+        remove_arc_if_matches(&mut webviews, webtag.key(), expected)
+    } else {
+        None
+    };
+    if let Some(webview) = removed {
+        webview.remove_delegate();
+        true
+    } else {
+        false
+    }
+}
+
 /// Destroy a WebView instance by WebTag and remove it from global storage
 pub(crate) fn destroy_webview(webtag: &WebTag) {
     // Drain active navigations as Cancelled(WebViewDestroyed) while the
@@ -2346,4 +2377,27 @@ pub(crate) fn destroy_webview(webtag: &WebTag) {
         webview.remove_delegate();
     }
     clear_pending_callbacks(webtag);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::remove_arc_if_matches;
+    use std::collections::HashMap;
+    use std::sync::Arc;
+
+    #[test]
+    fn conditional_instance_removal_uses_arc_identity() {
+        let current = Arc::new(7_u8);
+        let same_value_different_instance = Arc::new(7_u8);
+        let mut entries = HashMap::from([("tab".to_string(), current.clone())]);
+
+        assert!(
+            remove_arc_if_matches(&mut entries, "tab", &same_value_different_instance).is_none()
+        );
+        assert!(Arc::ptr_eq(entries.get("tab").unwrap(), &current));
+
+        let removed = remove_arc_if_matches(&mut entries, "tab", &current).unwrap();
+        assert!(Arc::ptr_eq(&removed, &current));
+        assert!(!entries.contains_key("tab"));
+    }
 }
