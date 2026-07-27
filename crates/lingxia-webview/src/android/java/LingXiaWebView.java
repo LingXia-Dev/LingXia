@@ -273,6 +273,10 @@ public class LingXiaWebView extends WebView {
         return createOptions != null && "browser_relaxed".equals(createOptions.profile);
     }
 
+    public boolean usesStrictSecurityProfile() {
+        return createOptions != null && "strict_default".equals(createOptions.profile);
+    }
+
     private boolean hasDownloadHandler() {
         return createOptions != null && createOptions.hasDownloadHandler;
     }

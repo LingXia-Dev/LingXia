@@ -78,7 +78,7 @@ internal class NativeBridge private constructor(
         @JavascriptInterface
         fun postMessage(messageJson: String) {
             Handler(Looper.getMainLooper()).post {
-                webViewRef.get()?.let { webView ->
+                webViewRef.get()?.takeIf { it.usesStrictSecurityProfile() }?.let { webView ->
                     val webViewId = System.identityHashCode(webView)
                     bridgeMap[webViewId]?.handleMessage(messageJson)
                 }
@@ -232,6 +232,7 @@ internal class NativeBridge private constructor(
 
         @JvmStatic
         fun registerJsInterface(webView: LingXiaWebView) {
+            if (!webView.usesStrictSecurityProfile()) return
             val id = System.identityHashCode(webView)
             if (jsInterfaceRegistered.add(id)) {
                 val jsInterface = JsInterface(webView)

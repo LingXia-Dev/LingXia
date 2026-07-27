@@ -34,8 +34,11 @@ internal class WebView(context: Context) : LingXiaWebView(context) {
 
     override fun initializeWebView(appId: String, path: String, sessionId: Long) {
         super.initializeWebView(appId, path, sessionId)
-        // Register native bridge JavaScriptInterface right after WebView init, before content loads
-        NativeBridge.registerJsInterface(this)
+        if (usesStrictSecurityProfile()) {
+            // Register before strict lxapp content loads; arbitrary browser pages
+            // must never receive the native-component JavaScript interface.
+            NativeBridge.registerJsInterface(this)
+        }
         // Disable overscroll glow effect - native components stay fixed at boundaries
         overScrollMode = OVER_SCROLL_NEVER
     }
