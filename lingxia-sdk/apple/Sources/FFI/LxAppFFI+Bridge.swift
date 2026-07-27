@@ -496,7 +496,7 @@ extension LxApp {
         return executeOnMain {
             if let controller = LxAppActiveHost.activeController,
                let session = controller.session(forAppId: appIdString) {
-                return controller.navigate(LxAppNavigateRequest(
+                return controller.navigateReturningSuccess(LxAppNavigateRequest(
                     sessionId: session.id,
                     path: pathString,
                     animation: animationType

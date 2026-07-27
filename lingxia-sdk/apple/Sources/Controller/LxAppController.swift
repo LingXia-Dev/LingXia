@@ -321,8 +321,12 @@ public final class LxAppController {
     // MARK: - Public: Swift-initiated actions
 
     /// Navigate within a session.
+    public func navigate(_ request: LxAppNavigateRequest) {
+        _ = navigateReturningSuccess(request)
+    }
+
     @discardableResult
-    public func navigate(_ request: LxAppNavigateRequest) -> Bool {
+    internal func navigateReturningSuccess(_ request: LxAppNavigateRequest) -> Bool {
         guard var session = sessions[request.sessionId] else {
             LXLog.error("navigate: unknown session \(String(describing: request.sessionId))", category: "LxAppController")
             return false
