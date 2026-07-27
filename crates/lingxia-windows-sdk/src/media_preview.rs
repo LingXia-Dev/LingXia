@@ -50,6 +50,8 @@ const MSG_VIDEO_PLAYING: u32 = WindowsAndMessaging::WM_APP + 1;
 const MSG_VIDEO_ENDED: u32 = WindowsAndMessaging::WM_APP + 2;
 const MSG_VIDEO_ERROR: u32 = WindowsAndMessaging::WM_APP + 3;
 const MSG_CANCEL: u32 = WindowsAndMessaging::WM_APP + 4;
+const MSG_VIDEO_PAUSED: u32 = WindowsAndMessaging::WM_APP + 5;
+const MSG_VIDEO_LOADED: u32 = WindowsAndMessaging::WM_APP + 6;
 
 /// Bar refresh / image auto-advance cadence.
 const TICK_TIMER_ID: usize = 0x4C58_5056; // "LXPV"
@@ -125,6 +127,11 @@ struct Session {
     /// At least one item rendered successfully (a session that never
     /// shows anything completes with reason `error`).
     rendered_any: bool,
+    /// Consecutive items that failed since an item became presentable.
+    failed_items: usize,
+    /// Changes for every render attempt so delayed player events cannot be
+    /// applied to a newer item.
+    video_generation: usize,
     /// Completion fired (close is idempotent).
     completed: bool,
     /// Decoded GDI+ image of the current item, if it is an image.
@@ -240,6 +247,8 @@ fn run_session(request: PreviewMediaRequest) {
         index: start,
         presented: false,
         rendered_any: false,
+        failed_items: 0,
+        video_generation: 0,
         completed: false,
         image: std::ptr::null_mut(),
         surface,
@@ -304,11 +313,22 @@ pub(crate) fn resolve_media_path(path: &str) -> Option<String> {
     }
 }
 
-/// Tears down the current item's renderer and shows `session.index`.
+/// Shows `session.index`, iteratively skipping synchronous failures.
 fn show_item(window: HWND) {
+    loop {
+        if try_show_item(window) || !advance_after_failure(window) {
+            return;
+        }
+    }
+}
+
+/// Tears down the current renderer and tries to show `session.index`.
+fn try_show_item(window: HWND) -> bool {
     let Some(session) = session_mut(window) else {
-        return;
+        return false;
     };
+    session.video_generation = session.video_generation.wrapping_add(1);
+    let video_generation = session.video_generation;
     // Teardown.
     if !session.image.is_null() {
         unsafe {
@@ -335,8 +355,7 @@ fn show_item(window: HWND) {
     match item.media_type {
         MediaKind::Video => {
             let Some(path) = resolve_local_or_remote_video(&item.path) else {
-                advance_or_fail(window);
-                return;
+                return false;
             };
             unsafe {
                 let _ = WindowsAndMessaging::ShowWindow(
@@ -344,10 +363,9 @@ fn show_item(window: HWND) {
                     WindowsAndMessaging::SW_SHOWNA,
                 );
             }
-            let sink = preview_video_sink(window.0 as isize);
+            let sink = preview_video_sink(window.0 as isize, video_generation);
             let Some(player) = VideoPlayer::new(session.surface, sink) else {
-                advance_or_fail(window);
-                return;
+                return false;
             };
             player.set_source(&path);
             player.play();
@@ -358,23 +376,23 @@ fn show_item(window: HWND) {
         }
         MediaKind::Image | MediaKind::Unknown => {
             let Some(path) = resolve_media_path(&item.path) else {
-                advance_or_fail(window);
-                return;
+                return false;
             };
             let wide: Vec<u16> = path.encode_utf16().chain(std::iter::once(0)).collect();
             let mut bitmap: *mut GpBitmap = std::ptr::null_mut();
             let status = unsafe { GdipCreateBitmapFromFile(PCWSTR(wide.as_ptr()), &mut bitmap) };
             if status.0 != 0 || bitmap.is_null() {
                 log::warn!("previewMedia: failed to decode image {path}");
-                advance_or_fail(window);
-                return;
+                return false;
             }
             session.image = bitmap as *mut GpImage;
+            session.failed_items = 0;
         }
     }
     unsafe {
         let _ = windows::Win32::Graphics::Gdi::InvalidateRect(Some(window), None, true);
     }
+    true
 }
 
 /// Videos: MFPlay streams remote URLs natively; only file URIs need the
@@ -390,15 +408,79 @@ fn resolve_local_or_remote_video(path: &str) -> Option<String> {
 /// A current item that cannot render: move on (Next/Loop) or end the
 /// session with `error` when nothing was ever shown.
 fn advance_or_fail(window: HWND) {
-    let Some(session) = session_mut(window) else {
-        return;
+    if advance_after_failure(window) {
+        show_item(window);
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum FailedItemAction {
+    Retry(usize),
+    Stop,
+    Close(&'static str),
+}
+
+fn failed_item_action(
+    advance: PreviewMediaAdvance,
+    index: usize,
+    item_count: usize,
+    failed_items: usize,
+    rendered_any: bool,
+) -> FailedItemAction {
+    if item_count == 0 {
+        return FailedItemAction::Close("error");
+    }
+    if advance == PreviewMediaAdvance::Manual {
+        return if rendered_any {
+            FailedItemAction::Stop
+        } else {
+            FailedItemAction::Close("error")
+        };
+    }
+    if advance == PreviewMediaAdvance::Loop && failed_items >= item_count {
+        return FailedItemAction::Close("error");
+    }
+
+    let next = index + 1;
+    match advance {
+        PreviewMediaAdvance::Next if next >= item_count => {
+            FailedItemAction::Close(if rendered_any { "completed" } else { "error" })
+        }
+        PreviewMediaAdvance::Next => FailedItemAction::Retry(next),
+        PreviewMediaAdvance::Loop => FailedItemAction::Retry(next % item_count),
+        PreviewMediaAdvance::Manual => unreachable!(),
+    }
+}
+
+/// Records a failed item and advances its index without recursively rendering.
+fn advance_after_failure(window: HWND) -> bool {
+    let action = {
+        let Some(session) = session_mut(window) else {
+            return false;
+        };
+        session.failed_items = session.failed_items.saturating_add(1);
+        failed_item_action(
+            session.request.advance,
+            session.index,
+            session.request.items.len(),
+            session.failed_items,
+            session.rendered_any,
+        )
     };
-    match session.request.advance {
-        PreviewMediaAdvance::Next | PreviewMediaAdvance::Loop => advance(window, 1),
-        PreviewMediaAdvance::Manual => {
-            if !session.rendered_any {
-                close_session(window, "error");
+
+    match action {
+        FailedItemAction::Retry(index) => {
+            if let Some(session) = session_mut(window) {
+                session.index = index;
+                true
+            } else {
+                false
             }
+        }
+        FailedItemAction::Stop => false,
+        FailedItemAction::Close(reason) => {
+            close_session(window, reason);
+            false
         }
     }
 }
@@ -425,6 +507,7 @@ fn advance(window: HWND, delta: i32) {
         next
     };
     session.index = next as usize;
+    session.failed_items = 0;
     show_item(window);
 }
 
@@ -457,6 +540,7 @@ fn mark_presented(window: HWND) {
         return;
     };
     session.rendered_any = true;
+    session.failed_items = 0;
     if !session.presented {
         session.presented = true;
         lingxia_messaging::invoke_callback(
@@ -511,7 +595,7 @@ fn update_preview_controls(window: HWND) {
 // Sinks (delivered on this session's thread)
 // ---------------------------------------------------------------------------
 
-fn preview_video_sink(window: isize) -> VideoEventSink {
+fn preview_video_sink(window: isize, generation: usize) -> VideoEventSink {
     Arc::new(move |event| {
         let window = HWND(window as *mut _);
         let message = match event {
@@ -521,27 +605,27 @@ fn preview_video_sink(window: isize) -> VideoEventSink {
                 log::warn!("previewMedia video error: {message}");
                 MSG_VIDEO_ERROR
             }
-            VideoPlayerEvent::Pause | VideoPlayerEvent::Stop => {
-                if let Some(session) = session_mut(window) {
-                    session.video_playing = false;
-                }
-                update_preview_controls(window);
-                return;
-            }
-            VideoPlayerEvent::MediaLoaded { .. } => {
-                update_preview_controls(window);
-                return;
-            }
+            VideoPlayerEvent::Pause | VideoPlayerEvent::Stop => MSG_VIDEO_PAUSED,
+            VideoPlayerEvent::MediaLoaded { .. } => MSG_VIDEO_LOADED,
         };
         unsafe {
             let _ = WindowsAndMessaging::PostMessageW(
                 Some(window),
                 message,
-                WPARAM::default(),
+                WPARAM(generation),
                 LPARAM::default(),
             );
         }
     })
+}
+
+fn is_current_video_generation(window: HWND, generation: usize) -> bool {
+    session_mut(window)
+        .is_some_and(|session| video_generation_matches(session.video_generation, generation))
+}
+
+fn video_generation_matches(current: usize, event: usize) -> bool {
+    current == event
 }
 
 fn preview_controls_sink(window: isize) -> super::video_controls::ControlsActionSink {
@@ -719,6 +803,9 @@ unsafe extern "system" fn preview_proc(
             LRESULT(0)
         }
         msg if msg == MSG_VIDEO_PLAYING => {
+            if !is_current_video_generation(hwnd, wparam.0) {
+                return LRESULT(0);
+            }
             if let Some(session) = session_mut(hwnd) {
                 session.video_playing = true;
             }
@@ -727,6 +814,9 @@ unsafe extern "system" fn preview_proc(
             LRESULT(0)
         }
         msg if msg == MSG_VIDEO_ENDED => {
+            if !is_current_video_generation(hwnd, wparam.0) {
+                return LRESULT(0);
+            }
             if let Some(session) = session_mut(hwnd) {
                 session.video_playing = false;
                 match session.request.advance {
@@ -737,7 +827,25 @@ unsafe extern "system" fn preview_proc(
             LRESULT(0)
         }
         msg if msg == MSG_VIDEO_ERROR => {
+            if !is_current_video_generation(hwnd, wparam.0) {
+                return LRESULT(0);
+            }
             advance_or_fail(hwnd);
+            LRESULT(0)
+        }
+        msg if msg == MSG_VIDEO_PAUSED => {
+            if is_current_video_generation(hwnd, wparam.0) {
+                if let Some(session) = session_mut(hwnd) {
+                    session.video_playing = false;
+                }
+                update_preview_controls(hwnd);
+            }
+            LRESULT(0)
+        }
+        msg if msg == MSG_VIDEO_LOADED => {
+            if is_current_video_generation(hwnd, wparam.0) {
+                update_preview_controls(hwnd);
+            }
             LRESULT(0)
         }
         msg if msg == MSG_CANCEL => {
@@ -763,6 +871,46 @@ unsafe extern "system" fn preview_proc(
             }
         }
         _ => unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{FailedItemAction, failed_item_action, video_generation_matches};
+    use lingxia_platform::traits::media_interaction::PreviewMediaAdvance;
+
+    #[test]
+    fn loop_stops_after_every_item_fails() {
+        assert_eq!(
+            failed_item_action(PreviewMediaAdvance::Loop, 0, 3, 1, false),
+            FailedItemAction::Retry(1)
+        );
+        assert_eq!(
+            failed_item_action(PreviewMediaAdvance::Loop, 1, 3, 2, false),
+            FailedItemAction::Retry(2)
+        );
+        assert_eq!(
+            failed_item_action(PreviewMediaAdvance::Loop, 2, 3, 3, false),
+            FailedItemAction::Close("error")
+        );
+    }
+
+    #[test]
+    fn next_reports_error_when_no_item_ever_rendered() {
+        assert_eq!(
+            failed_item_action(PreviewMediaAdvance::Next, 2, 3, 3, false),
+            FailedItemAction::Close("error")
+        );
+        assert_eq!(
+            failed_item_action(PreviewMediaAdvance::Next, 2, 3, 3, true),
+            FailedItemAction::Close("completed")
+        );
+    }
+
+    #[test]
+    fn stale_video_event_does_not_match_current_attempt() {
+        assert!(video_generation_matches(7, 7));
+        assert!(!video_generation_matches(7, 6));
     }
 }
 
