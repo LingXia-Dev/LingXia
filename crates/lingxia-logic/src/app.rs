@@ -36,6 +36,7 @@ struct AppBaseInfo {
 }
 
 #[derive(rong::FromJSObject)]
+#[ts_skip]
 struct SetAppearanceOptions {
     preference: String,
 }

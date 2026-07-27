@@ -253,6 +253,15 @@ export type AppScreenshotResult = {
     height?: number;
 };
 
+export type AppearanceChangeCallback = (state: AppearanceState) => void;
+
+export type AppearancePreference = 'system' | 'light' | 'dark';
+
+export type AppearanceState = {
+    preference: AppearancePreference;
+    effective: EffectiveAppearance;
+};
+
 /**
  * Launch-at-startup control for the host app.
  * **macOS 13+ / Windows only.** Everywhere else — other platforms, or a
@@ -493,6 +502,8 @@ export type DownloadsDownloadResult = {
     mimeType?: string;
     size: number;
 };
+
+export type EffectiveAppearance = 'light' | 'dark';
 
 export type ExistsOptions = {
     path: string;
@@ -1142,6 +1153,10 @@ export type ScanCodeOptions = {
 export type ScanCodeResult = {
     scanResult: string;
     scanType: string;
+};
+
+export type SetAppearanceOptions = {
+    preference: AppearancePreference;
 };
 
 /** Share images, PDFs, or other files. */
@@ -1894,12 +1909,16 @@ declare global {
      * the call as a no-op.
      */
     setBadge(value: string | number | null): void;
+    setAppearance(options: SetAppearanceOptions): AppearanceState;
   }
 }
 
 declare global {
   interface Lx {
     readonly app: HostAppApi;
+    getAppearance(): AppearanceState;
+    onAppearanceChange(callback: AppearanceChangeCallback): void;
+    offAppearanceChange(callback?: AppearanceChangeCallback): void;
     vibrateShort(): boolean;
     vibrateLong(): boolean;
     makePhoneCall(options: MakePhoneCallOptions): boolean;

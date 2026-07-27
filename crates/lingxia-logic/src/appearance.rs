@@ -21,6 +21,7 @@ fn appearance_callback_id(ctx: &JSContext) -> Option<u64> {
 }
 
 #[derive(Debug, Clone, IntoJSObject)]
+#[ts_skip]
 pub(crate) struct JSAppearanceState {
     preference: String,
     effective: String,
