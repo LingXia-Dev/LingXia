@@ -319,17 +319,24 @@ pub async fn upload_file_with_behavior(
         ));
     }
 
-    let file_meta = tokio::fs::metadata(&request.file_path)
-        .await
-        .map_err(|err| {
-            UploadFailure::new(
-                UploadFailureKind::InvalidFile,
-                url.clone(),
-                format!("read upload file metadata failed: {err}"),
-                0,
-                0,
-            )
-        })?;
+    let mut file = File::open(&request.file_path).await.map_err(|err| {
+        UploadFailure::new(
+            UploadFailureKind::InvalidFile,
+            url.clone(),
+            format!("open upload file failed: {err}"),
+            0,
+            0,
+        )
+    })?;
+    let file_meta = file.metadata().await.map_err(|err| {
+        UploadFailure::new(
+            UploadFailureKind::InvalidFile,
+            url.clone(),
+            format!("read upload file metadata failed: {err}"),
+            0,
+            0,
+        )
+    })?;
     if !file_meta.is_file() {
         return Err(UploadFailure::new(
             UploadFailureKind::InvalidFile,
@@ -395,7 +402,6 @@ pub async fn upload_file_with_behavior(
         )
     })?;
 
-    let file_path = request.file_path.clone();
     let url_for_writer = url.clone();
     let event_tx_for_writer = event_tx.clone();
     let chunk_size = behavior.chunk_size.max(16 * 1024);
@@ -427,21 +433,14 @@ pub async fn upload_file_with_behavior(
             });
         }
 
-        let mut file = File::open(&file_path).await.map_err(|err| {
-            UploadFailure::new(
-                UploadFailureKind::InvalidFile,
-                url_for_writer.clone(),
-                format!("open upload file failed: {err}"),
-                uploaded_bytes,
-                total_bytes,
-            )
-        })?;
         let mut buffer = vec![0u8; chunk_size];
         let mut last_emitted = uploaded_bytes;
         let mut last_emit_at = Instant::now();
+        let mut remaining_file_bytes = file_size;
 
-        loop {
-            let read = file.read(&mut buffer).await.map_err(|err| {
+        while remaining_file_bytes > 0 {
+            let read_limit = remaining_file_bytes.min(buffer.len() as u64) as usize;
+            let read = file.read(&mut buffer[..read_limit]).await.map_err(|err| {
                 UploadFailure::new(
                     UploadFailureKind::InvalidFile,
                     url_for_writer.clone(),
@@ -451,7 +450,15 @@ pub async fn upload_file_with_behavior(
                 )
             })?;
             if read == 0 {
-                break;
+                return Err(UploadFailure::new(
+                    UploadFailureKind::InvalidFile,
+                    url_for_writer.clone(),
+                    format!(
+                        "upload file was truncated during transfer with {remaining_file_bytes} bytes remaining"
+                    ),
+                    uploaded_bytes,
+                    total_bytes,
+                ));
             }
             body_tx
                 .send_data(Bytes::copy_from_slice(&buffer[..read]))
@@ -466,6 +473,7 @@ pub async fn upload_file_with_behavior(
                     )
                 })?;
             uploaded_bytes += read as u64;
+            remaining_file_bytes -= read as u64;
             let should_emit = uploaded_bytes.saturating_sub(last_emitted)
                 >= UPLOAD_PROGRESS_INTERVAL_BYTES
                 || last_emit_at.elapsed().as_millis() >= UPLOAD_PROGRESS_INTERVAL_MILLIS;
