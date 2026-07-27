@@ -7,8 +7,8 @@ use std::sync::OnceLock;
 // Global ThreadSafe Function storage
 //
 // Node-API ThreadSafe Function limitation: napi_call_threadsafe_function() can only
-// pass a single void* data pointer. To pass multiple parameters, we pack them into
-// a single string with colon separator: "function_name:arg1:arg2:..."
+// pass a single void* data pointer. Encode the function name and arguments as one
+// JSON string array so arbitrary user strings cannot alter argument boundaries.
 // Store the actual ThreadsafeFunction type with correct parameters
 type TsfnType = napi_ohos::threadsafe_function::ThreadsafeFunction<
     String,
@@ -23,7 +23,7 @@ static CALLBACK_TSFN: OnceLock<TsfnType> = OnceLock::new();
 
 /// Initialize the ThreadSafe Function for TSFN calls
 pub fn init(callback_function: Function<'static>) -> Result<(), String> {
-    // Create ThreadSafe Function for callback - pass colon-separated string with function name and args
+    // Create ThreadSafe Function for the encoded callback payload.
     let tsfn = callback_function
         .build_threadsafe_function::<String>()
         .callee_handled::<false>()
@@ -63,7 +63,9 @@ pub fn call_arkts(name: &str, args: &[&str]) -> Result<(), WebViewError> {
         WebViewError::WebView("No callback".to_string())
     })?;
 
-    let data = format!("{}|{}", name, args.join("|"));
+    let data = crate::bridge_payload::encode_string_callback(name, args).map_err(|err| {
+        WebViewError::WebView(format!("Failed to encode ArkTS callback payload: {err}"))
+    })?;
     // log::info!("Calling TSFN with data: {}", data);
 
     match tsfn.call(data, ThreadsafeFunctionCallMode::NonBlocking) {

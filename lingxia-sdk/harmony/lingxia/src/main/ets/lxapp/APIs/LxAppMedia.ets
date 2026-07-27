@@ -169,8 +169,7 @@ export class LxAppMedia {
 
   public static previewMedia(payload: string): boolean {
     try {
-      const decoded = typeof payload === 'string' ? payload.replace(/%7C/g, '|') : '';
-      const parsed: PreviewMediaRequestPayload = JSON.parse(decoded || '{}');
+      const parsed: PreviewMediaRequestPayload = JSON.parse(payload || '{}');
       if (!parsed || typeof parsed.callbackId !== 'string' || parsed.callbackId.trim().length === 0) {
         return false;
       }
@@ -387,7 +386,7 @@ export class LxAppMedia {
     const cb = String(callbackId ?? '').trim();
     if (!cb) { return false; }
 
-    const normalizedPath = String(path ?? '').replace(/%7C/g, '|');
+    const normalizedPath = String(path ?? '');
     if (!normalizedPath || !Number.isFinite(mediaType)) {
       onCallback(cb, false, '1000');
       return false;
