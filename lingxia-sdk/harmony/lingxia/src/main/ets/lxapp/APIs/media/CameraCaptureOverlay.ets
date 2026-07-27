@@ -250,6 +250,7 @@ export struct CameraCaptureOverlay {
   @State private timerDisplay: string = '00:00';
   @State private showingErrorHint: boolean = false;
   @State private flashOn: boolean = false;
+  private visibilityPollTimer: number = -1;
   private recordingTimer: number = -1;
   private ctrl: XComponentController = new XComponentController();
   private photoSurfaceId: string = ''; // ArkTS ImageReceiver surface ID
@@ -325,7 +326,10 @@ export struct CameraCaptureOverlay {
   }
 
   aboutToAppear() {
-    setInterval(() => {
+    if (this.visibilityPollTimer !== -1) {
+      return;
+    }
+    this.visibilityPollTimer = setInterval(() => {
       const now = CameraCaptureOverlayManager.isShowing();
       if (now !== this.visible) {
         this.visible = now;
@@ -368,7 +372,14 @@ export struct CameraCaptureOverlay {
           this.updateHint();
         }
       }
-    }, 120);
+    }, 120) as number;
+  }
+
+  aboutToDisappear() {
+    if (this.visibilityPollTimer !== -1) {
+      clearInterval(this.visibilityPollTimer);
+      this.visibilityPollTimer = -1;
+    }
   }
 
   private async onSurfaceReady(surfaceId: string): Promise<void> {
