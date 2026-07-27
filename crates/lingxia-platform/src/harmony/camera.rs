@@ -318,9 +318,10 @@ pub fn camera_init(_surface_id: &str, _facing: &str) -> Result<bool, PlatformErr
         );
         // session created
         if rc2 != 0 || sess.is_null() {
-            OH_CameraInput_Close(input);
-            OH_CameraInput_Release(input);
-            OH_Camera_DeleteCameraManager(mgr);
+            if !sess.is_null() {
+                OH_CaptureSession_Release(sess);
+            }
+            cleanup_state(&mut st);
             return Err(PlatformError::Platform(
                 "CreateCaptureSession failed".into(),
             ));
