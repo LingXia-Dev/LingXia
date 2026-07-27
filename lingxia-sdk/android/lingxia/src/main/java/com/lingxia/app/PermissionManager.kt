@@ -9,6 +9,24 @@ import androidx.core.content.ContextCompat
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
 
+internal fun allExpectedPermissionsGranted(
+    expected: Set<String>,
+    permissions: Array<out String>,
+    grantResults: IntArray
+): Boolean {
+    if (expected.isEmpty()) return true
+
+    val resultsByPermission = HashMap<String, Int>(permissions.size)
+    for (index in permissions.indices) {
+        resultsByPermission[permissions[index]] = grantResults.getOrElse(index) {
+            PackageManager.PERMISSION_DENIED
+        }
+    }
+    return expected.all { permission ->
+        resultsByPermission[permission] == PackageManager.PERMISSION_GRANTED
+    }
+}
+
 internal object PermissionManager {
     private data class PendingRequest(
         val permissions: Array<String>,
@@ -51,15 +69,7 @@ internal object PermissionManager {
         val pending = pendingRequests.remove(requestCode) ?: return false
         val expected = pending.permissions.toSet()
 
-        var granted = true
-        for (index in permissions.indices) {
-            val permission = permissions[index]
-            val status = if (index < grantResults.size) grantResults[index] else PackageManager.PERMISSION_DENIED
-            if (permission in expected && status != PackageManager.PERMISSION_GRANTED) {
-                granted = false
-                break
-            }
-        }
+        val granted = allExpectedPermissionsGranted(expected, permissions, grantResults)
 
         mainHandler.post { pending.callback(granted) }
         return true
