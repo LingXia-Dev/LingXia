@@ -81,6 +81,38 @@ pub(crate) fn register_event_handlers(
             })?;
     }
 
+    let frame_started_tag = webtag.clone();
+    unsafe {
+        let mut token = 0;
+        webview
+            .add_FrameNavigationStarting(
+                &NavigationStartingEventHandler::create(Box::new(move |_sender, args| {
+                    let Some(args) = args else {
+                        return Ok(());
+                    };
+
+                    let mut uri = PWSTR::null();
+                    args.Uri(&mut uri)?;
+                    let uri = CoTaskMemPWSTR::from(uri).to_string();
+                    if let Some(webview) = find_webview(&frame_started_tag)
+                        && matches!(
+                            webview.handle_navigation(&crate::NavigationRequest::new(
+                                uri, false, false,
+                            )),
+                            NavigationPolicy::Cancel
+                        )
+                    {
+                        args.SetCancel(true)?;
+                    }
+                    Ok(())
+                })),
+                &mut token,
+            )
+            .map_err(|err| {
+                WebViewError::WebView(format!("add_FrameNavigationStarting failed: {err}"))
+            })?;
+    }
+
     let committed_tag = webtag.clone();
     unsafe {
         let mut token = 0;

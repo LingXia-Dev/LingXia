@@ -461,10 +461,6 @@ pub(crate) fn browser_create_webview(
             if callback_policy_blocks_file_navigation(&url_callback_for_navigation, url) {
                 return NavigationPolicy::Cancel;
             }
-            // Keep internal lx:// and lingxia:// browser pages inside this WebView.
-            if matches!(extract_url_scheme(url).as_deref(), Some("lx" | "lingxia")) {
-                return NavigationPolicy::Allow;
-            }
             let policy_request = BrowserNavigationPolicyRequest {
                 raw_url: url.to_string(),
                 has_user_gesture: request.has_user_gesture,
