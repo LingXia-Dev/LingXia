@@ -80,8 +80,83 @@ private struct LingXiaTerminalGridPoint: Equatable {
     var col: Int
 }
 
+private extension NSPasteboard.PasteboardType {
+    static let lxTerminalPane = NSPasteboard.PasteboardType("dev.lingxia.terminal-pane")
+}
+
 @MainActor
-final class LingXiaTerminalPaneView: NSView {
+private final class LingXiaTerminalPaneDragHandleView: NSView {
+    var onBeginDrag: ((NSEvent) -> Void)?
+    var dragEnabled = false {
+        didSet {
+            isHidden = !dragEnabled
+            needsDisplay = true
+        }
+    }
+    private var trackingArea: NSTrackingArea?
+    private var hovered = false
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let trackingArea {
+            removeTrackingArea(trackingArea)
+        }
+        let area = NSTrackingArea(
+            rect: bounds,
+            options: [.activeInKeyWindow, .mouseEnteredAndExited, .cursorUpdate],
+            owner: self
+        )
+        addTrackingArea(area)
+        trackingArea = area
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        hovered = true
+        needsDisplay = true
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        hovered = false
+        needsDisplay = true
+    }
+
+    override func cursorUpdate(with event: NSEvent) {
+        NSCursor.openHand.set()
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        guard dragEnabled else { return }
+        onBeginDrag?(event)
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        guard dragEnabled else { return }
+        let width = min(32, bounds.width - 8)
+        let pill = NSRect(
+            x: (bounds.width - width) / 2,
+            y: (bounds.height - 3) / 2,
+            width: width,
+            height: 3
+        )
+        (hovered ? NSColor.lxTerminalAccent : NSColor.lxTerminalDivider).setFill()
+        NSBezierPath(roundedRect: pill, xRadius: 1.5, yRadius: 1.5).fill()
+    }
+}
+
+@MainActor
+private final class LingXiaTerminalPaneDropOverlay: NSView {
+    override func draw(_ dirtyRect: NSRect) {
+        NSColor.controlAccentColor.withAlphaComponent(0.12).setFill()
+        bounds.fill()
+        NSColor.controlAccentColor.withAlphaComponent(0.95).setStroke()
+        let path = NSBezierPath(rect: bounds.insetBy(dx: 1.5, dy: 1.5))
+        path.lineWidth = 3
+        path.stroke()
+    }
+}
+
+@MainActor
+final class LingXiaTerminalPaneView: NSView, NSDraggingSource {
     let paneID = UUID()
     var onActivated: ((UUID) -> Void)?
     var onSplitRequested: ((UUID, LingXiaTerminalSplitDirection) -> Void)?
@@ -90,10 +165,14 @@ final class LingXiaTerminalPaneView: NSView {
     var onManualTitleChanged: ((UUID, String) -> Void)?
     var onTitleEditRequested: ((UUID) -> Void)?
     var onExited: ((UUID) -> Void)?
+    var onPaneMoveRequested: ((UUID, UUID, LingXiaTerminalSplitDirection) -> Bool)?
 
     private let terminalView = LingXiaTerminalCanvasView()
+    private let dragHandle = LingXiaTerminalPaneDragHandleView()
+    private let dropOverlay = LingXiaTerminalPaneDropOverlay()
     private let session: LingXiaPTYTerminalSession
     private let font = LingXiaTerminalFont.regular()
+    private var dropDirection: LingXiaTerminalSplitDirection?
 
     init() {
         self.session = LingXiaPTYTerminalSession()
@@ -108,6 +187,11 @@ final class LingXiaTerminalPaneView: NSView {
 
         setupTerminalView()
         setupLayout()
+        registerForDraggedTypes([.lxTerminalPane])
+
+        dragHandle.onBeginDrag = { [weak self] event in
+            self?.beginPaneDrag(with: event)
+        }
 
         terminalView.onInput = { [weak self] input in
             if let self {
@@ -191,6 +275,10 @@ final class LingXiaTerminalPaneView: NSView {
         terminalView.zoomed = zoomed
     }
 
+    func setPaneDragEnabled(_ enabled: Bool) {
+        dragHandle.dragEnabled = enabled
+    }
+
     func focusTerminal() {
         guard let window else {
             lxTerminalLog("pane.focusTerminal no-window pane=\(paneID.uuidString)")
@@ -256,6 +344,17 @@ final class LingXiaTerminalPaneView: NSView {
         onActivated?(paneID)
     }
 
+    override func layout() {
+        super.layout()
+        dragHandle.frame = NSRect(
+            x: max(0, (bounds.width - 44) / 2),
+            y: max(0, bounds.height - 14),
+            width: min(44, bounds.width),
+            height: min(14, bounds.height)
+        )
+        updateDropOverlayFrame()
+    }
+
     override func keyDown(with event: NSEvent) {
         if !consumeKeyDown(event, source: "pane") {
             lxTerminalLog("pane.keyDown pass pane=\(paneID.uuidString) keyCode=\(event.keyCode)")
@@ -274,12 +373,150 @@ final class LingXiaTerminalPaneView: NSView {
 
     private func setupLayout() {
         addSubview(terminalView)
+        dropOverlay.isHidden = true
+        dropOverlay.wantsLayer = true
+        addSubview(dropOverlay, positioned: .above, relativeTo: terminalView)
+        dragHandle.isHidden = true
+        addSubview(dragHandle, positioned: .above, relativeTo: dropOverlay)
         NSLayoutConstraint.activate([
             terminalView.topAnchor.constraint(equalTo: topAnchor),
             terminalView.leadingAnchor.constraint(equalTo: leadingAnchor),
             terminalView.trailingAnchor.constraint(equalTo: trailingAnchor),
             terminalView.bottomAnchor.constraint(equalTo: bottomAnchor),
         ])
+    }
+
+    private func beginPaneDrag(with event: NSEvent) {
+        let pasteboardItem = NSPasteboardItem()
+        pasteboardItem.setString(paneID.uuidString, forType: .lxTerminalPane)
+        let draggingItem = NSDraggingItem(pasteboardWriter: pasteboardItem)
+        let imageSize = NSSize(width: min(160, max(80, bounds.width * 0.45)), height: 54)
+        let image = NSImage(size: imageSize, flipped: false) { rect in
+            NSColor.lxTerminalChromeRaised.withAlphaComponent(0.94).setFill()
+            NSBezierPath(
+                roundedRect: rect.insetBy(dx: 1, dy: 1),
+                xRadius: 7,
+                yRadius: 7
+            ).fill()
+            NSColor.lxTerminalAccent.withAlphaComponent(0.8).setFill()
+            NSBezierPath(
+                roundedRect: NSRect(x: (rect.width - 34) / 2, y: rect.height - 9, width: 34, height: 3),
+                xRadius: 1.5,
+                yRadius: 1.5
+            ).fill()
+            return true
+        }
+        let point = convert(event.locationInWindow, from: nil)
+        draggingItem.setDraggingFrame(
+            NSRect(
+                x: point.x - imageSize.width / 2,
+                y: point.y - imageSize.height + 8,
+                width: imageSize.width,
+                height: imageSize.height
+            ),
+            contents: image
+        )
+        let session = beginDraggingSession(with: [draggingItem], event: event, source: self)
+        session.animatesToStartingPositionsOnCancelOrFail = true
+        session.draggingFormation = .none
+        lxTerminalLog("pane.drag begin pane=\(paneID.uuidString)")
+    }
+
+    func draggingSession(
+        _ session: NSDraggingSession,
+        sourceOperationMaskFor context: NSDraggingContext
+    ) -> NSDragOperation {
+        .move
+    }
+
+    func ignoreModifierKeys(for session: NSDraggingSession) -> Bool {
+        true
+    }
+
+    func draggingSession(
+        _ session: NSDraggingSession,
+        endedAt screenPoint: NSPoint,
+        operation: NSDragOperation
+    ) {
+        lxTerminalLog("pane.drag end pane=\(paneID.uuidString) moved=\(operation == .move)")
+    }
+
+    override func draggingEntered(_ sender: any NSDraggingInfo) -> NSDragOperation {
+        updateDropTarget(sender)
+    }
+
+    override func draggingUpdated(_ sender: any NSDraggingInfo) -> NSDragOperation {
+        updateDropTarget(sender)
+    }
+
+    override func draggingExited(_ sender: (any NSDraggingInfo)?) {
+        clearDropTarget()
+    }
+
+    override func performDragOperation(_ sender: any NSDraggingInfo) -> Bool {
+        guard let sourceID = draggedPaneID(from: sender),
+              sourceID != paneID,
+              let dropDirection else {
+            clearDropTarget()
+            return false
+        }
+        clearDropTarget()
+        let moved = onPaneMoveRequested?(sourceID, paneID, dropDirection) ?? false
+        lxTerminalLog(
+            "pane.drag drop source=\(sourceID.uuidString) target=\(paneID.uuidString) direction=\(dropDirection) moved=\(moved)"
+        )
+        return moved
+    }
+
+    private func updateDropTarget(_ sender: any NSDraggingInfo) -> NSDragOperation {
+        guard let sourceID = draggedPaneID(from: sender),
+              sourceID != paneID,
+              onPaneMoveRequested != nil else {
+            clearDropTarget()
+            return []
+        }
+        let point = convert(sender.draggingLocation, from: nil)
+        dropDirection = nearestDropDirection(to: point)
+        dropOverlay.isHidden = false
+        updateDropOverlayFrame()
+        return .move
+    }
+
+    private func draggedPaneID(from sender: any NSDraggingInfo) -> UUID? {
+        guard let value = sender.draggingPasteboard.string(forType: .lxTerminalPane) else {
+            return nil
+        }
+        return UUID(uuidString: value)
+    }
+
+    private func nearestDropDirection(to point: NSPoint) -> LingXiaTerminalSplitDirection {
+        let candidates: [(CGFloat, LingXiaTerminalSplitDirection)] = [
+            (max(0, point.x), .left),
+            (max(0, bounds.width - point.x), .right),
+            (max(0, bounds.height - point.y), .up),
+            (max(0, point.y), .down),
+        ]
+        return candidates.min { $0.0 < $1.0 }?.1 ?? .right
+    }
+
+    private func updateDropOverlayFrame() {
+        guard let dropDirection else { return }
+        switch dropDirection {
+        case .left:
+            dropOverlay.frame = NSRect(x: 0, y: 0, width: bounds.width / 2, height: bounds.height)
+        case .right:
+            dropOverlay.frame = NSRect(x: bounds.width / 2, y: 0, width: bounds.width / 2, height: bounds.height)
+        case .up:
+            dropOverlay.frame = NSRect(x: 0, y: bounds.height / 2, width: bounds.width, height: bounds.height / 2)
+        case .down:
+            dropOverlay.frame = NSRect(x: 0, y: 0, width: bounds.width, height: bounds.height / 2)
+        }
+        dropOverlay.needsDisplay = true
+    }
+
+    private func clearDropTarget() {
+        dropDirection = nil
+        dropOverlay.isHidden = true
     }
 
     private func appendOutput(_ output: String) {

@@ -727,6 +727,68 @@ final class LingXiaTerminalWorkspaceView: NSView {
         lxTerminalLog("workspace.split complete surface=\(surfaceID) direction=\(direction) newPane=\(newPane.paneID.uuidString) totalPanes=\(tab.panes.count)")
     }
 
+    /// Reparents an existing pane beside another leaf in the same tab. The
+    /// pane view owns its PTY session, so moving the view preserves the
+    /// running process, scrollback, current directory, and title state.
+    private func movePane(
+        sourceID: UUID,
+        targetID: UUID,
+        direction: LingXiaTerminalSplitDirection,
+        tabID: UUID
+    ) -> Bool {
+        guard sourceID != targetID,
+              let tab = tabs.first(where: { $0.id == tabID }),
+              tab.id == activeTabID,
+              tab.panes.count > 1,
+              let source = tab.panes[sourceID],
+              let target = tab.panes[targetID],
+              source.superview != nil,
+              target.superview != nil,
+              detachPaneForMove(source, in: tab.rootContainer) else {
+            return false
+        }
+
+        let split = LingXiaTerminalSplitView()
+        split.isVertical = (direction == .left || direction == .right)
+        split.translatesAutoresizingMaskIntoConstraints = false
+        guard replaceNodeView(target, with: split, in: tab.rootContainer) else {
+            LXLog.error("terminal pane move failed: cannot replace target surface=\(surfaceID)", category: "MacTerminal")
+            installRootView(source, into: tab.rootContainer)
+            return false
+        }
+
+        source.translatesAutoresizingMaskIntoConstraints = false
+        target.translatesAutoresizingMaskIntoConstraints = false
+        if direction == .left || direction == .up {
+            split.addArrangedSubview(source)
+            split.addArrangedSubview(target)
+        } else {
+            split.addArrangedSubview(target)
+            split.addArrangedSubview(source)
+        }
+
+        tab.activePaneID = sourceID
+        tab.zoomedPaneID = nil
+        applyZoomState(in: tab)
+        updatePaneHighlight(in: tab)
+        tab.rootContainer.layoutSubtreeIfNeeded()
+        source.focusTerminal()
+        lxTerminalLog(
+            "workspace.movePane surface=\(surfaceID) tab=\(tabID.uuidString) source=\(sourceID.uuidString) target=\(targetID.uuidString) direction=\(direction)"
+        )
+        return true
+    }
+
+    private func detachPaneForMove(_ pane: LingXiaTerminalPaneView, in root: NSView) -> Bool {
+        guard let split = pane.superview as? NSSplitView else {
+            return false
+        }
+        split.removeArrangedSubview(pane)
+        pane.removeFromSuperview()
+        collapseSingleChildSplit(split, in: root)
+        return true
+    }
+
     private func replaceNodeView(_ target: NSView, with replacement: NSView, in root: NSView) -> Bool {
         guard let parent = target.superview else { return false }
         if let split = parent as? NSSplitView {
@@ -800,6 +862,14 @@ final class LingXiaTerminalWorkspaceView: NSView {
         }
         pane.onExited = { [weak self] paneID in
             self?.closePane(paneID, forTabID: tab.id)
+        }
+        pane.onPaneMoveRequested = { [weak self] sourceID, targetID, direction in
+            self?.movePane(
+                sourceID: sourceID,
+                targetID: targetID,
+                direction: direction,
+                tabID: tab.id
+            ) ?? false
         }
         return pane
     }
@@ -943,8 +1013,10 @@ final class LingXiaTerminalWorkspaceView: NSView {
     }
 
     private func applyZoomState(in tab: TerminalTab) {
+        let dragEnabled = tab.panes.count > 1 && tab.zoomedPaneID == nil
         for (paneID, pane) in tab.panes {
             pane.isHidden = tab.zoomedPaneID.map { $0 != paneID } ?? false
+            pane.setPaneDragEnabled(dragEnabled)
         }
         tab.rootContainer.layoutSubtreeIfNeeded()
     }
