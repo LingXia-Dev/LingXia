@@ -259,9 +259,9 @@ impl BodySink for ProgressSink {
 
 /// Remove downloaded update packages other than the current target so the
 /// cache never accumulates one file per skipped version. Keeps the target's
-/// package and its in-progress `.part` resume file (both share the `keep`
-/// filename prefix); only touches `app_*` package files, not the `staged/` or
-/// `helper/` subdirs the installer manages.
+/// package and its in-progress `.part` resume file, which share the target's
+/// extension-free filename prefix. Only touches `app_*` package files, not the
+/// `staged/` or `helper/` subdirs the installer manages.
 fn prune_stale_app_update_packages(dir: &Path, keep: &str) {
     let Ok(entries) = fs::read_dir(dir) else {
         return;
@@ -298,7 +298,7 @@ async fn download_host_app_update_package(
     // Drop previously-downloaded packages for other versions so the cache holds
     // at most one package. Without this, ignoring successive updates (each a new
     // version) accumulates a package file per version (~tens of MB each).
-    if let Some(keep) = dest.file_name().and_then(|name| name.to_str()) {
+    if let Some(keep) = dest.file_stem().and_then(|name| name.to_str()) {
         prune_stale_app_update_packages(&dest_dir, keep);
     }
 
@@ -485,4 +485,34 @@ fn hash_url(url: &str) -> String {
     let mut hasher = DefaultHasher::new();
     url.hash(&mut hasher);
     format!("{:x}", hasher.finish())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn prune_preserves_current_package_and_resume_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let current = dir.path().join("app_1.2.3_package.apk");
+        let current_part = current.with_extension("part");
+        let stale = dir.path().join("app_1.2.2_package.apk");
+        let stale_part = stale.with_extension("part");
+        let staged = dir.path().join("staged");
+
+        fs::write(&current, b"package").unwrap();
+        fs::write(&current_part, b"partial").unwrap();
+        fs::write(&stale, b"old package").unwrap();
+        fs::write(&stale_part, b"old partial").unwrap();
+        fs::create_dir(&staged).unwrap();
+
+        let keep = current.file_stem().unwrap().to_str().unwrap();
+        prune_stale_app_update_packages(dir.path(), keep);
+
+        assert!(current.exists());
+        assert!(current_part.exists());
+        assert!(!stale.exists());
+        assert!(!stale_part.exists());
+        assert!(staged.exists());
+    }
 }
