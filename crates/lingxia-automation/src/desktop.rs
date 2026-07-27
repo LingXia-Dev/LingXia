@@ -124,7 +124,12 @@ fn input_target(pid: Option<u32>, window: Option<String>) -> cu::Result<Option<u
 }
 
 const WAIT_DEFAULT_MS: u64 = 5_000;
+const WAIT_MAX_MS: u64 = 60_000;
 const POINTER_CLICK_MAX_COUNT: u32 = 32;
+
+fn desktop_timeout_ms(timeout_ms: Option<u64>) -> u64 {
+    timeout_ms.unwrap_or(WAIT_DEFAULT_MS).min(WAIT_MAX_MS)
+}
 
 fn pointer_click_count(count: Option<u32>) -> JSResult<u32> {
     let count = count.unwrap_or(1);
@@ -985,7 +990,7 @@ impl JSDesktopWait {
     /// `hidden` waits until no window matches and resolves to `{ ok, state }`.
     #[js_method]
     async fn window(&self, ctx: JSContext, options: WaitWindowOpt) -> JSResult<JSValue> {
-        let timeout_ms = options.timeout_ms.unwrap_or(WAIT_DEFAULT_MS);
+        let timeout_ms = desktop_timeout_ms(options.timeout_ms);
         let match_query = options.match_query;
         match options.state.as_deref() {
             None | Some("visible") => {
@@ -1029,7 +1034,7 @@ impl JSDesktopWait {
     #[js_method]
     async fn ax(&self, ctx: JSContext, options: WaitAxOpt) -> JSResult<JSValue> {
         let state = options.state.unwrap_or_else(|| "exists".to_string());
-        let timeout_ms = options.timeout_ms.unwrap_or(WAIT_DEFAULT_MS);
+        let timeout_ms = desktop_timeout_ms(options.timeout_ms);
         let ack = blocking(move || {
             let q = cu::AxQuery::parse(&options.match_query);
             cu::ax::wait(&options.window, &q, &state, timeout_ms)
@@ -1043,7 +1048,7 @@ impl JSDesktopWait {
     async fn pixel(&self, ctx: JSContext, options: WaitPixelOpt) -> JSResult<JSValue> {
         let (x, y) = point(&options.at, "at")?;
         let tolerance = options.tolerance.unwrap_or(0);
-        let timeout_ms = options.timeout_ms.unwrap_or(WAIT_DEFAULT_MS);
+        let timeout_ms = desktop_timeout_ms(options.timeout_ms);
         let pixel =
             blocking(move || cu::wait_pixel(x, y, &options.color, tolerance, timeout_ms)).await?;
         to_js(&ctx, &pixel)
@@ -1093,7 +1098,7 @@ impl JSDesktopApp {
     /// Launch an app, optionally waiting for a window to appear.
     #[js_method]
     async fn launch(&self, ctx: JSContext, options: AppLaunchOpt) -> JSResult<JSValue> {
-        let timeout_ms = options.timeout_ms.unwrap_or(WAIT_DEFAULT_MS);
+        let timeout_ms = desktop_timeout_ms(options.timeout_ms);
         let result = blocking(move || {
             cu::app::launch(
                 &options.app,
@@ -1141,6 +1146,14 @@ mod tests {
         assert!(pointer_click_count(Some(0)).is_err());
         assert!(pointer_click_count(Some(33)).is_err());
         assert!(pointer_click_count(Some(u32::MAX)).is_err());
+    }
+
+    #[test]
+    fn desktop_timeouts_are_bounded() {
+        assert_eq!(desktop_timeout_ms(None), WAIT_DEFAULT_MS);
+        assert_eq!(desktop_timeout_ms(Some(0)), 0);
+        assert_eq!(desktop_timeout_ms(Some(WAIT_MAX_MS)), WAIT_MAX_MS);
+        assert_eq!(desktop_timeout_ms(Some(u64::MAX)), WAIT_MAX_MS);
     }
 }
 
