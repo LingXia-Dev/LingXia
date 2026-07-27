@@ -2,9 +2,10 @@
 
 use log::warn;
 use serde_json::json;
+use std::collections::HashMap;
 use std::ffi::c_void;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 
 use crate::error::PlatformError;
 use crate::traits::location::Location;
@@ -81,21 +82,48 @@ unsafe extern "C" {
 struct HarmonyLocationContext {
     callback_id: u64,
     request_config: *mut Location_RequestConfig,
+    delivered: AtomicBool,
+    stopping: AtomicBool,
 }
 
-impl HarmonyLocationContext {
-    fn new(
-        callback_id: u64,
-        request_config: *mut Location_RequestConfig,
-    ) -> *mut HarmonyLocationContext {
-        Box::into_raw(Box::new(Self {
-            callback_id,
-            request_config,
-        }))
-    }
+unsafe impl Send for HarmonyLocationContext {}
+unsafe impl Sync for HarmonyLocationContext {}
 
-    fn from_raw(ptr: *mut c_void) -> Box<Self> {
-        unsafe { Box::from_raw(ptr as *mut Self) }
+impl Drop for HarmonyLocationContext {
+    fn drop(&mut self) {
+        unsafe { OH_Location_DestroyRequestConfig(self.request_config) };
+    }
+}
+
+static LOCATION_CONTEXTS: OnceLock<Mutex<HashMap<usize, Arc<HarmonyLocationContext>>>> =
+    OnceLock::new();
+static NEXT_LOCATION_TOKEN: AtomicUsize = AtomicUsize::new(1);
+
+fn location_contexts() -> MutexGuard<'static, HashMap<usize, Arc<HarmonyLocationContext>>> {
+    LOCATION_CONTEXTS
+        .get_or_init(|| Mutex::new(HashMap::new()))
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+fn register_location_context(context: Arc<HarmonyLocationContext>) -> usize {
+    let mut contexts = location_contexts();
+    loop {
+        let token = NEXT_LOCATION_TOKEN.fetch_add(1, Ordering::Relaxed);
+        if token != 0 && !contexts.contains_key(&token) {
+            contexts.insert(token, context);
+            return token;
+        }
+    }
+}
+
+fn remove_location_context(token: usize, context: &Arc<HarmonyLocationContext>) {
+    let mut contexts = location_contexts();
+    if contexts
+        .get(&token)
+        .is_some_and(|current| Arc::ptr_eq(current, context))
+    {
+        contexts.remove(&token);
     }
 }
 
@@ -104,7 +132,7 @@ unsafe extern "C" fn handle_location_update(location: *mut Location_Info, user_d
         return;
     }
 
-    let ctx = HarmonyLocationContext::from_raw(user_data);
+    let token = user_data as usize;
 
     let basic = unsafe { OH_LocationInfo_GetBasicInfo(location) };
 
@@ -126,15 +154,38 @@ unsafe extern "C" fn handle_location_update(location: *mut Location_Info, user_d
         }
     };
 
-    if unsafe { OH_Location_StopLocating(ctx.request_config) } != LOCATION_SUCCESS {
-        warn!("Failed to stop Harmony location updates");
-    }
-    unsafe { OH_Location_DestroyRequestConfig(ctx.request_config) };
+    let context = {
+        let contexts = location_contexts();
+        contexts.get(&token).cloned()
+    };
+    let Some(context) = context else {
+        return;
+    };
 
-    if !lingxia_messaging::invoke_callback(ctx.callback_id, Ok(payload_str)) {
+    let callback_id =
+        (!context.delivered.swap(true, Ordering::AcqRel)).then_some(context.callback_id);
+
+    if context
+        .stopping
+        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+        .is_ok()
+    {
+        let stop_result = unsafe { OH_Location_StopLocating(context.request_config) };
+        if stop_result == LOCATION_SUCCESS {
+            remove_location_context(token, &context);
+        } else {
+            warn!("Failed to stop Harmony location updates: {stop_result}");
+            context.stopping.store(false, Ordering::Release);
+        }
+    }
+
+    let Some(callback_id) = callback_id else {
+        return;
+    };
+    if !lingxia_messaging::invoke_callback(callback_id, Ok(payload_str)) {
         warn!(
             "Location callback {callback_id} not found",
-            callback_id = ctx.callback_id
+            callback_id = callback_id
         );
     }
 }
@@ -219,17 +270,22 @@ impl Platform {
             let interval = if config.is_high_accuracy { 1 } else { 5 };
             OH_LocationRequestConfig_SetInterval(request_config, interval);
 
-            let context_ptr = HarmonyLocationContext::new(callback_id, request_config);
+            let context = Arc::new(HarmonyLocationContext {
+                callback_id,
+                request_config,
+                delivered: AtomicBool::new(false),
+                stopping: AtomicBool::new(false),
+            });
+            let context_token = register_location_context(context.clone());
             OH_LocationRequestConfig_SetCallback(
                 request_config,
                 Some(handle_location_update),
-                context_ptr as *mut c_void,
+                context_token as *mut c_void,
             );
 
             let result = OH_Location_StartLocating(request_config);
             if result != LOCATION_SUCCESS {
-                OH_Location_DestroyRequestConfig(request_config);
-                drop(Box::from_raw(context_ptr));
+                remove_location_context(context_token, &context);
 
                 let error_code: u32 = if result == 201 {
                     3002 // Permission denied
