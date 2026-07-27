@@ -271,7 +271,7 @@ internal object NativeApi {
      * @return Complete TabBar state or null if not available
      */
     @JvmStatic
-    external fun getTabBarState(appId: String): TabBarState?
+    external fun getTabBarState(appId: String, dark: Boolean): TabBarState?
 
     /**
      * Get the navigation bar configuration for a specific page/path

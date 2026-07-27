@@ -825,6 +825,7 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_getTabBarState<'a>(
     mut env: EnvUnowned<'a>,
     _class: JClass<'a>,
     appid: JString<'a>,
+    dark: jboolean,
 ) -> JObject<'a> {
     env.with_env(|env| -> Result<JObject, jni::errors::Error> {
         let appid: String = appid.try_to_string(env)?;
@@ -839,19 +840,35 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_getTabBarState<'a>(
         // Find the TabBarState class
         let tab_bar_class = env.find_class(jni_str!("com/lingxia/lxapp/chrome/TabBarState"))?;
 
-        // Convert background color using unified function
+        let resolved_style = tab_bar_config.resolved_style(dark);
+        let (default_background, default_selected, default_color, default_border) = if dark {
+            (
+                0xFF1C1C1Eu32 as i32,
+                0xFF0A84FFu32 as i32,
+                0xFF98989Du32 as i32,
+                0xFF38383Au32 as i32,
+            )
+        } else {
+            (
+                0xFFFFFFFFu32 as i32,
+                0xFF1677FFu32 as i32,
+                0xFF666666u32 as i32,
+                0xFFF0F0F0u32 as i32,
+            )
+        };
+
+        // Convert appearance-resolved colors using unified function.
         let background_color =
-            parse_color_to_i32(&tab_bar_config.backgroundColor, 0xFFFFFFFFu32 as i32);
+            parse_color_to_i32(&resolved_style.backgroundColor, default_background);
 
         // Convert selected color using unified function
-        let selected_color =
-            parse_color_to_i32(&tab_bar_config.selectedColor, 0xFF1677FFu32 as i32);
+        let selected_color = parse_color_to_i32(&resolved_style.selectedColor, default_selected);
 
         // Convert unselected color using unified function
-        let color = parse_color_to_i32(&tab_bar_config.color, 0xFF666666u32 as i32);
+        let color = parse_color_to_i32(&resolved_style.color, default_color);
 
         // Convert border style using unified function
-        let border_style = parse_color_to_i32(&tab_bar_config.borderStyle, 0xFFF0F0F0u32 as i32);
+        let border_style = parse_color_to_i32(&resolved_style.borderStyle, default_border);
 
         // Convert dimension (height for top/bottom, width for left/right)
         let dimension = tab_bar_config.dimension;

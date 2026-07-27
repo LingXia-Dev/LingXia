@@ -140,7 +140,7 @@ class LxAppActivity : AppCompatActivity() {
                 val updateTask = {
                     try {
                         // Get fresh TabBar state from Rust
-                        val newTabBarConfig = NativeApi.getTabBarState(appId)
+                        val newTabBarConfig = NativeApi.getTabBarState(appId, activity.isDarkAppearance())
                         if (newTabBarConfig != null) {
                             // Update existing TabBar with new configuration
                             activity.setupTabBar(newTabBarConfig)
@@ -453,7 +453,7 @@ class LxAppActivity : AppCompatActivity() {
         setContentView(rootContainer)
 
         // Get TabBar config and setup UI in parallel
-        val tabBarConfig = NativeApi.getTabBarState(appId)
+        val tabBarConfig = NativeApi.getTabBarState(appId, isDarkAppearance())
 
         // Setup containers and UI components
         setupWebViewContainer()
@@ -1393,7 +1393,7 @@ class LxAppActivity : AppCompatActivity() {
      */
     private fun applyAnimationTypeUpdates(animationType: AnimationType, targetPath: String) {
         // Reflect visibility from Rust TabBarState only
-        val tabBarConfig = NativeApi.getTabBarState(appId)
+        val tabBarConfig = NativeApi.getTabBarState(appId, isDarkAppearance())
         val visible = tabBarConfig?.visible ?: false
         showTabBar(visible)
         tabBarConfig?.let {
@@ -1796,6 +1796,10 @@ class LxAppActivity : AppCompatActivity() {
             .isAppearanceLightStatusBars = !lightGlyphs
     }
 
+    private fun isDarkAppearance(): Boolean =
+        (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
+            Configuration.UI_MODE_NIGHT_YES
+
     private fun animateNavBar(navbarState: NavigationBarState, isBackNavigation: Boolean) {
         applyStatusBarGlyphs(navbarState)
         if (!navbarState.showNavbar) {
@@ -2182,7 +2186,7 @@ class LxAppActivity : AppCompatActivity() {
         pullToRefreshHelper?.setEnabled(false)
 
         // Build tab bar configuration for new app (tabbar is dynamic)
-        val tabBarConfig = NativeApi.getTabBarState(appId)
+        val tabBarConfig = NativeApi.getTabBarState(appId, isDarkAppearance())
         if (tabBarConfig != null) {
             tabBar?.setConfig(tabBarConfig)
             // Reflect visibility from Rust state, not inferred by presence
@@ -2230,6 +2234,14 @@ class LxAppActivity : AppCompatActivity() {
     // Handle configuration changes to prevent Activity recreation
     override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
         super.onConfigurationChanged(newConfig)
+
+        if (
+            ::appId.isInitialized &&
+            ::rootContainer.isInitialized &&
+            ::webViewContainer.isInitialized
+        ) {
+            setupTabBar(NativeApi.getTabBarState(appId, isDarkAppearance()))
+        }
 
         // Update layout to adapt to screen orientation changes
         if (::webViewContainer.isInitialized) {
