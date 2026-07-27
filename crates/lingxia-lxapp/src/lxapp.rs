@@ -249,6 +249,13 @@ fn claim_pending_destroy(
     }
 }
 
+fn first_evictable_appid(
+    stack: &[String],
+    mut is_evictable: impl FnMut(&str) -> bool,
+) -> Option<String> {
+    stack.iter().find(|appid| is_evictable(appid)).cloned()
+}
+
 impl LxApps {
     fn new(runtime: Platform, executor: Arc<LxAppWorkers>, capacity: usize) -> Self {
         info!("LxApps manager initialized with {} workers", capacity);
@@ -340,31 +347,26 @@ impl LxApps {
     }
 
     /// Finds and evicts the least recently used LxApp to free up memory.
-    /// The least recently used app is determined by the front of the navigation stack.
+    /// Selects the first non-home live app from the least-recently-used end.
     fn evict_lru_lxapp(&self) {
-        let appid_to_destroy = {
-            if let Ok(stack) = self.lxapp_stack.lock() {
-                stack.front().cloned()
-            } else {
-                None
-            }
+        let candidates = {
+            let Ok(stack) = self.lxapp_stack.lock() else {
+                return;
+            };
+            stack.iter().cloned().collect::<Vec<_>>()
+        };
+        let Some(appid_to_destroy) = first_evictable_appid(&candidates, |appid| {
+            self.lxapps.get(appid).is_some_and(|app| !app.is_home_lxapp)
+        }) else {
+            warn!("No non-home lxapp is available for eviction");
+            return;
         };
 
-        if let Some(appid_to_destroy) = appid_to_destroy {
-            // Check if it's the home app
-            if let Some(app_arc) = self.lxapps.get(&appid_to_destroy)
-                && app_arc.is_home_lxapp
-            {
-                warn!("Cannot evict the home lxapp").with_appid(appid_to_destroy);
-                return;
-            }
+        info!("Evicting least recently used lxapp").with_appid(appid_to_destroy.clone());
 
-            info!("Evicting least recently used lxapp").with_appid(appid_to_destroy.clone());
-
-            // Explicitly shutdown the app before removing it from the map so that
-            // UI/JSContext/PageInstance/WebView/AppService are cleaned up deterministically.
-            self.destroy_lxapp(&appid_to_destroy);
-        }
+        // Explicitly shutdown the app before removing it from the map so that
+        // UI/JSContext/PageInstance/WebView/AppService are cleaned up deterministically.
+        self.destroy_lxapp(&appid_to_destroy);
     }
 
     /// Schedule a delayed destroy for an app; cancel on reopen.
@@ -2372,5 +2374,21 @@ mod delayed_destroy_tests {
         assert!(pending.contains_key("app"));
         assert!(claim_pending_destroy(&mut pending, "app", 2));
         assert!(!pending.contains_key("app"));
+    }
+
+    #[test]
+    fn lru_eviction_skips_home_and_stale_entries() {
+        let stack = vec![
+            "home".to_string(),
+            "stale".to_string(),
+            "app-b".to_string(),
+            "app-c".to_string(),
+        ];
+
+        assert_eq!(
+            first_evictable_appid(&stack, |appid| matches!(appid, "app-b" | "app-c")),
+            Some("app-b".to_string())
+        );
+        assert_eq!(first_evictable_appid(&stack, |_| false), None);
     }
 }
