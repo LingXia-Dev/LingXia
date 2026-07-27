@@ -48,6 +48,8 @@ use windows::Win32::UI::Input::Ime::{
     CANDIDATEFORM, CFS_EXCLUDE, CFS_POINT, COMPOSITIONFORM, ImmGetContext, ImmReleaseContext,
     ImmSetCandidateWindow, ImmSetCompositionWindow,
 };
+#[cfg(feature = "shell-chrome")]
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_ESCAPE;
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     EnableWindow, GetKeyState, IsWindowEnabled, ReleaseCapture, SetCapture, SetFocus, TME_LEAVE,
     TRACKMOUSEEVENT, TrackMouseEvent, VK_CONTROL, VK_MENU, VK_SHIFT,
@@ -6267,6 +6269,18 @@ static DIVIDER_DRAG: AtomicBool = AtomicBool::new(false);
 static DIVIDER_DRAG_VERTICAL: AtomicBool = AtomicBool::new(false);
 #[cfg(feature = "shell-chrome")]
 static PANE_DRAG: AtomicBool = AtomicBool::new(false);
+#[cfg(feature = "shell-chrome")]
+#[derive(Clone)]
+struct PendingPaneDrag {
+    panel_id: String,
+    start: (i32, i32),
+}
+#[cfg(feature = "shell-chrome")]
+static PENDING_PANE_DRAGS: OnceLock<Mutex<HashMap<isize, PendingPaneDrag>>> = OnceLock::new();
+#[cfg(feature = "shell-chrome")]
+const PANE_DRAG_THRESHOLD: i32 = 4;
+#[cfg(feature = "shell-chrome")]
+static SUPPRESS_ESCAPE_CHAR: OnceLock<Mutex<HashSet<isize>>> = OnceLock::new();
 
 /// Sets the east-west / north-south resize cursor for a divider.
 fn set_divider_cursor(vertical: bool) {
@@ -6292,6 +6306,78 @@ fn set_pane_drag_cursor() {
     }
 }
 
+#[cfg(feature = "shell-chrome")]
+fn set_pane_handle_cursor() {
+    unsafe {
+        if let Ok(cursor) = WindowsAndMessaging::LoadCursorW(None, WindowsAndMessaging::IDC_HAND) {
+            let _ = WindowsAndMessaging::SetCursor(Some(cursor));
+        }
+    }
+}
+
+#[cfg(feature = "shell-chrome")]
+fn pending_pane_drag(hwnd: HWND) -> Option<PendingPaneDrag> {
+    PENDING_PANE_DRAGS
+        .get_or_init(|| Mutex::new(HashMap::new()))
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .get(&hwnd_handle(hwnd))
+        .cloned()
+}
+
+#[cfg(feature = "shell-chrome")]
+fn clear_pending_pane_drag(hwnd: HWND) -> bool {
+    PENDING_PANE_DRAGS
+        .get_or_init(|| Mutex::new(HashMap::new()))
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .remove(&hwnd_handle(hwnd))
+        .is_some()
+}
+
+#[cfg(feature = "shell-chrome")]
+fn cancel_pane_drag(hwnd: HWND, release_capture: bool) -> bool {
+    let pending = clear_pending_pane_drag(hwnd);
+    let active = PANE_DRAG.swap(false, Ordering::AcqRel);
+    if active {
+        let _ = crate::shell::end_pane_drag(false);
+    }
+    if release_capture && (pending || active) {
+        unsafe {
+            let _ = ReleaseCapture();
+        }
+    }
+    pending || active
+}
+
+#[cfg(feature = "shell-chrome")]
+fn suppress_next_escape_char(hwnd: HWND) {
+    SUPPRESS_ESCAPE_CHAR
+        .get_or_init(|| Mutex::new(HashSet::new()))
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .insert(hwnd_handle(hwnd));
+}
+
+#[cfg(feature = "shell-chrome")]
+fn take_suppressed_escape_char(hwnd: HWND, character: usize) -> bool {
+    let suppressed = SUPPRESS_ESCAPE_CHAR
+        .get_or_init(|| Mutex::new(HashSet::new()))
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .remove(&hwnd_handle(hwnd));
+    suppressed && character == usize::from(VK_ESCAPE.0)
+}
+
+#[cfg(feature = "shell-chrome")]
+fn clear_suppressed_escape_char(hwnd: HWND) {
+    SUPPRESS_ESCAPE_CHAR
+        .get_or_init(|| Mutex::new(HashSet::new()))
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .remove(&hwnd_handle(hwnd));
+}
+
 /// `from_host` is false for moves forwarded from an overlay window; arming
 /// WM_MOUSELEAVE tracking then would fire immediately (the cursor is over
 /// the overlay, not the host) and fight the forwarded moves.
@@ -6306,6 +6392,26 @@ fn handle_chrome_mouse_move(hwnd: HWND, point: (i32, i32), from_host: bool) -> b
     if PANE_DRAG.load(Ordering::Acquire) {
         crate::shell::update_pane_drag(point.0, point.1);
         set_pane_drag_cursor();
+        return true;
+    }
+    #[cfg(feature = "shell-chrome")]
+    if let Some(pending) = pending_pane_drag(hwnd) {
+        let crossed_threshold = (point.0 - pending.start.0).abs() >= PANE_DRAG_THRESHOLD
+            || (point.1 - pending.start.1).abs() >= PANE_DRAG_THRESHOLD;
+        if crossed_threshold {
+            clear_pending_pane_drag(hwnd);
+            if crate::shell::begin_pane_drag(&pending.panel_id, pending.start.0, pending.start.1) {
+                PANE_DRAG.store(true, Ordering::Release);
+                crate::shell::update_pane_drag(point.0, point.1);
+                set_pane_drag_cursor();
+            } else {
+                unsafe {
+                    let _ = ReleaseCapture();
+                }
+            }
+        } else {
+            set_pane_handle_cursor();
+        }
         return true;
     }
     #[cfg(feature = "shell-chrome")]
@@ -6340,7 +6446,7 @@ fn handle_chrome_mouse_move(hwnd: HWND, point: (i32, i32), from_host: bool) -> b
             && crate::shell::pane_drag_handle_at(id, point.0, point.1)
         {
             clear_chrome_hover(hwnd);
-            set_pane_drag_cursor();
+            set_pane_handle_cursor();
             return true;
         }
         if let Some(WindowsChromeHit::Focusable { id, .. }) = &hit
@@ -6499,12 +6605,24 @@ fn handle_chrome_left_down(hwnd: HWND, point: (i32, i32)) -> bool {
             id, click_command, ..
         } => {
             #[cfg(feature = "shell-chrome")]
-            if crate::shell::begin_pane_drag(&id, point.0, point.1) {
-                PANE_DRAG.store(true, Ordering::Release);
+            if crate::shell::pane_drag_handle_at(&id, point.0, point.1) {
+                PENDING_PANE_DRAGS
+                    .get_or_init(|| Mutex::new(HashMap::new()))
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .insert(
+                        hwnd_handle(hwnd),
+                        PendingPaneDrag {
+                            panel_id: id.clone(),
+                            start: point,
+                        },
+                    );
                 unsafe {
                     let _ = SetCapture(hwnd);
                 }
-                set_pane_drag_cursor();
+                focus_host_panel(&id);
+                focus_host_window(hwnd);
+                set_pane_handle_cursor();
                 return true;
             }
             // A press on a pane divider starts a resize drag instead of
@@ -6553,6 +6671,13 @@ fn handle_chrome_left_up(hwnd: HWND, point: (i32, i32)) -> bool {
             let _ = ReleaseCapture();
         }
         crate::shell::end_pane_drag(true);
+        return true;
+    }
+    #[cfg(feature = "shell-chrome")]
+    if clear_pending_pane_drag(hwnd) {
+        unsafe {
+            let _ = ReleaseCapture();
+        }
         return true;
     }
     #[cfg(feature = "shell-chrome")]
@@ -8083,9 +8208,7 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                 #[cfg(feature = "shell-chrome")]
                 {
                     let _ = finish_terminal_selection_drag(hwnd, None);
-                    if PANE_DRAG.swap(false, Ordering::AcqRel) {
-                        let _ = crate::shell::end_pane_drag(false);
-                    }
+                    let _ = cancel_pane_drag(hwnd, false);
                     if DIVIDER_DRAG.swap(false, Ordering::AcqRel) {
                         crate::shell::end_divider_drag();
                     }
@@ -8218,12 +8341,23 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                 unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
             }
             WindowsAndMessaging::WM_CHAR => {
+                #[cfg(feature = "shell-chrome")]
+                if take_suppressed_escape_char(hwnd, wparam.0) {
+                    return LRESULT(0);
+                }
                 if handle_host_panel_key_message(msg, wparam) {
                     return LRESULT(0);
                 }
                 unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
             }
             WindowsAndMessaging::WM_KEYDOWN => {
+                #[cfg(feature = "shell-chrome")]
+                if wparam.0 == usize::from(VK_ESCAPE.0) && cancel_pane_drag(hwnd, true) {
+                    suppress_next_escape_char(hwnd);
+                    return LRESULT(0);
+                }
+                #[cfg(feature = "shell-chrome")]
+                clear_suppressed_escape_char(hwnd);
                 if handle_host_panel_key_message(msg, wparam) {
                     return LRESULT(0);
                 }
