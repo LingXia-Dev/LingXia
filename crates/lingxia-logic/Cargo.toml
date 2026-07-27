@@ -57,3 +57,6 @@ rong_modules = { workspace = true, default-features = false, features = ["tls-ri
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios", all(target_os = "linux", target_env = "ohos"))))'.dependencies]
 rong_modules = { workspace = true, default-features = false, features = ["tls-aws-lc"] }
+
+[dev-dependencies]
+tempfile = "3"

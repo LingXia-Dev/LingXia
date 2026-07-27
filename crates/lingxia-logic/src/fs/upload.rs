@@ -1,4 +1,4 @@
-use super::network_security;
+use super::{network_security, normalize_relative_path};
 use crate::i18n::{
     js_error_from_business_code_with_detail, js_error_from_lxapp_error, js_internal_error,
     js_invalid_parameter_error,
@@ -419,7 +419,11 @@ fn parse_upload_options(options: JSValue) -> JSResult<ParsedUploadOptions> {
     })
 }
 
-fn resolve_upload_path(lxapp: &LxApp, file_path: &str) -> JSResult<PathBuf> {
+fn resolve_upload_path(
+    user_data_dir: &Path,
+    file_path: &str,
+    resolve_accessible_path: impl FnOnce(&str) -> JSResult<PathBuf>,
+) -> JSResult<PathBuf> {
     let trimmed = file_path.trim();
     if trimmed.is_empty() {
         return Err(js_error_from_business_code_with_detail(
@@ -430,11 +434,10 @@ fn resolve_upload_path(lxapp: &LxApp, file_path: &str) -> JSResult<PathBuf> {
 
     let path = Path::new(trimmed);
     let resolved = if trimmed.starts_with("lx://") || path.is_absolute() || trimmed.contains(':') {
-        lxapp
-            .resolve_accessible_path(trimmed)
-            .map_err(|err| js_error_from_lxapp_error(&err))?
+        resolve_accessible_path(trimmed)?
     } else {
-        lxapp.user_data_dir.join(trimmed.trim_start_matches('/'))
+        let relative = normalize_relative_path(trimmed, "uploadFile", "filePath")?;
+        user_data_dir.join(relative)
     };
 
     if !resolved.exists() {
@@ -561,7 +564,11 @@ fn upload_file(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
         ));
     }
 
-    let resolved_path = resolve_upload_path(&lxapp, &options.file_path)?;
+    let resolved_path = resolve_upload_path(&lxapp.user_data_dir, &options.file_path, |path| {
+        lxapp
+            .resolve_accessible_path(path)
+            .map_err(|err| js_error_from_lxapp_error(&err))
+    })?;
     let file_name = resolve_upload_file_name(&resolved_path, options.file_name.as_deref());
     let mut behavior = UploadBehavior::default();
     if let Some(timeout_ms) = options.timeout_ms {
@@ -814,6 +821,27 @@ async fn upload_cancel_task(state: &Arc<Mutex<UploadIteratorState>>) -> JSResult
 
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     register_api(ctx)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::resolve_upload_path;
+
+    #[test]
+    fn upload_path_rejects_userdata_escape_and_accepts_nested_file() {
+        let root = tempfile::tempdir().unwrap();
+        let user_data_dir = root.path().join("userdata");
+        let nested_file = user_data_dir.join("media/video.mp4");
+        std::fs::create_dir_all(nested_file.parent().unwrap()).unwrap();
+        std::fs::write(&nested_file, b"video").unwrap();
+        std::fs::write(root.path().join("secret"), b"secret").unwrap();
+
+        assert!(resolve_upload_path(&user_data_dir, "../secret", |_| unreachable!()).is_err());
+        assert_eq!(
+            resolve_upload_path(&user_data_dir, "media/video.mp4", |_| unreachable!()).unwrap(),
+            nested_file
+        );
+    }
 }
 
 rong::js_api! {
