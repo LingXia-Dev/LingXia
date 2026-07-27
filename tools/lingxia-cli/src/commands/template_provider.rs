@@ -935,11 +935,10 @@ fn git_remote_commit(source: &str) -> Result<String> {
 fn normalize_source(source: &str) -> Result<String> {
     let path = Path::new(source);
     if path.exists() {
-        return Ok(path
+        let canonical = path
             .canonicalize()
-            .with_context(|| format!("Failed to resolve template source {source}"))?
-            .to_string_lossy()
-            .into_owned());
+            .with_context(|| format!("Failed to resolve template source {source}"))?;
+        return Ok(git_source_path(&canonical));
     }
     let http_source = source.split_once("://").is_some_and(|(scheme, _)| {
         scheme.eq_ignore_ascii_case("http") || scheme.eq_ignore_ascii_case("https")
@@ -957,6 +956,20 @@ fn normalize_source(source: &str) -> Result<String> {
         }
     }
     Ok(source.to_string())
+}
+
+fn git_source_path(path: &Path) -> String {
+    let source = path.to_string_lossy();
+    #[cfg(windows)]
+    {
+        if let Some(path) = source.strip_prefix(r"\\?\UNC\") {
+            return format!(r"\\{path}");
+        }
+        if let Some(path) = source.strip_prefix(r"\\?\") {
+            return path.to_owned();
+        }
+    }
+    source.into_owned()
 }
 
 fn read_state(home: &Path, slug: &str) -> Result<TemplateState> {
@@ -1187,8 +1200,24 @@ mod tests {
     #[test]
     fn launcher_keeps_arguments_separate() {
         let contents = launcher_contents("example", Path::new("/tmp/example kit/tool.mjs"));
+        #[cfg(windows)]
+        assert!(contents.contains("%*"));
+        #[cfg(not(windows))]
         assert!(contents.contains("\"$@\""));
         assert!(contents.contains("managed by lingxia template example"));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn local_git_sources_drop_verbatim_path_prefixes() {
+        assert_eq!(
+            git_source_path(Path::new(r"\\?\C:\templates\example")),
+            r"C:\templates\example"
+        );
+        assert_eq!(
+            git_source_path(Path::new(r"\\?\UNC\server\templates\example")),
+            r"\\server\templates\example"
+        );
     }
 
     #[test]
@@ -1266,10 +1295,13 @@ mod tests {
 
         let home = tempdir().unwrap();
         let first = add_from(home.path(), source.path().to_str().unwrap()).unwrap();
-        assert!(home.path().join(".local/bin/example").is_file());
+        let launcher = launcher_path(&home.path().join(".local/bin"), "example");
+        assert!(launcher.is_file());
         assert_eq!(
-            fs::read_to_string(home.path().join(".claude/skills/example/SKILL.md")).unwrap(),
-            "first\n"
+            fs::read_to_string(home.path().join(".claude/skills/example/SKILL.md"))
+                .unwrap()
+                .trim_end(),
+            "first"
         );
         let project = tempdir().unwrap();
         write_project_lock(&first, project.path()).unwrap();
@@ -1288,8 +1320,10 @@ mod tests {
         let second = update_from(home.path(), "example", true).unwrap();
         assert_ne!(first.commit, second.commit);
         assert_eq!(
-            fs::read_to_string(home.path().join(".claude/skills/example/SKILL.md")).unwrap(),
-            "second\n"
+            fs::read_to_string(home.path().join(".claude/skills/example/SKILL.md"))
+                .unwrap()
+                .trim_end(),
+            "second"
         );
 
         fs::write(
@@ -1303,12 +1337,12 @@ mod tests {
         git(source.path(), &["add", "."]);
         git(source.path(), &["commit", "-q", "-m", "remove assets"]);
         update_from(home.path(), "example", true).unwrap();
-        assert!(!home.path().join(".local/bin/example").exists());
+        assert!(!launcher.exists());
         assert!(!home.path().join(".claude/skills/example").exists());
 
         remove_from(home.path(), "example").unwrap();
         assert!(!home.path().join(".lingxia/templates/example").exists());
-        assert!(!home.path().join(".local/bin/example").exists());
+        assert!(!launcher.exists());
         assert!(!home.path().join(".claude/skills/example").exists());
     }
 }
