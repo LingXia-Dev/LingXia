@@ -54,6 +54,15 @@ fn mobile_tabbar_default_colors(dark: bool) -> (u32, u32, u32, u32) {
     }
 }
 
+fn desktop_tabbar_default_colors(dark: bool) -> (u32, u32, u32, u32) {
+    let accent = super::theme::system_accent();
+    if dark {
+        (0x9aa0a6, accent, 0x202020, 0x383838)
+    } else {
+        (0x667085, accent, 0xdad6e4, 0xc7c2d2)
+    }
+}
+
 /// How many times to retry presenting a freshly opened browser tab whose
 /// WebView creation is still in flight, and the delay between attempts.
 #[cfg(feature = "browser-runtime")]
@@ -1611,12 +1620,15 @@ fn build_tab_bar_layout(
     // An app without a tabBar declaration inherits the desktop shell surface;
     // an explicit backgroundColor still styles the full sidebar as requested.
     let appearance_dark = super::windows_tabbar_effective_dark_mode();
-    let adaptive_mobile_dark = !desktop_sidebar && appearance_dark;
     let resolved_style = tabbar
         .as_ref()
         .map(|tabbar| tabbar.resolved_style(appearance_dark));
     let (default_color, default_selected_color, default_background_color, default_border_color) =
-        mobile_tabbar_default_colors(adaptive_mobile_dark);
+        if desktop_sidebar {
+            desktop_tabbar_default_colors(appearance_dark)
+        } else {
+            mobile_tabbar_default_colors(appearance_dark)
+        };
     let tabbar_background = resolved_style
         .as_ref()
         .map(|style| style.backgroundColor.as_str())
@@ -4931,7 +4943,8 @@ mod tests {
     use super::{
         LxappContextMenuAction, browser_internal_page_deep_link, browser_internal_page_key,
         browser_url_is_hidden, build_lxapp_context_menu, chrome_command,
-        chrome_command_is_page_scoped, mobile_tabbar_default_colors, preferred_sidebar_group_appid,
+        chrome_command_is_page_scoped, desktop_tabbar_default_colors, mobile_tabbar_default_colors,
+        preferred_sidebar_group_appid,
     };
     #[cfg(feature = "browser-runtime")]
     use super::{
@@ -4961,6 +4974,20 @@ mod tests {
         assert_eq!(
             mobile_tabbar_default_colors(true),
             (0x98989d, 0x0a84ff, 0x1c1c1e, 0x38383a)
+        );
+    }
+
+    #[test]
+    fn omitted_desktop_tabbar_colors_follow_simulated_appearance() {
+        let (_, light_selected, _, _) = desktop_tabbar_default_colors(false);
+        let (_, dark_selected, _, _) = desktop_tabbar_default_colors(true);
+        assert_eq!(
+            desktop_tabbar_default_colors(false),
+            (0x667085, light_selected, 0xdad6e4, 0xc7c2d2)
+        );
+        assert_eq!(
+            desktop_tabbar_default_colors(true),
+            (0x9aa0a6, dark_selected, 0x202020, 0x383838)
         );
     }
 
