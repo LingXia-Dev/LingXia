@@ -45,25 +45,27 @@ struct PressureCacheEntry {
 }
 
 pub fn dir_size(path: &Path) -> u64 {
-    let Ok(entries) = fs::read_dir(path) else {
-        return 0;
-    };
-    entries
-        .flatten()
-        .map(|entry| {
+    let mut total = 0u64;
+    let mut pending_dirs = vec![path.to_path_buf()];
+
+    while let Some(dir) = pending_dirs.pop() {
+        let Ok(entries) = fs::read_dir(dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
             let path = entry.path();
-            let Ok(metadata) = entry.path().symlink_metadata() else {
-                return 0;
+            let Ok(metadata) = path.symlink_metadata() else {
+                continue;
             };
             if metadata.is_dir() {
-                dir_size(&path)
+                pending_dirs.push(path);
             } else if metadata.is_file() {
-                metadata.len()
-            } else {
-                0
+                total = total.saturating_add(metadata.len());
             }
-        })
-        .sum()
+        }
+    }
+
+    total
 }
 
 pub fn existing_file_size(path: &Path) -> u64 {
@@ -632,29 +634,33 @@ fn enforce_cache_limits_preserving(
 }
 
 fn collect_temp_files(root: &Path, out: &mut Vec<TempFileEntry>) {
-    let Ok(entries) = fs::read_dir(root) else {
-        return;
-    };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        let Ok(metadata) = entry.path().symlink_metadata() else {
+    let mut pending_dirs = vec![root.to_path_buf()];
+
+    while let Some(dir) = pending_dirs.pop() {
+        let Ok(entries) = fs::read_dir(dir) else {
             continue;
         };
-        if metadata.is_dir() {
-            if path
-                .file_name()
-                .and_then(|name| name.to_str())
-                .is_some_and(|name| name == DOWNLOAD_STAGING_DIR)
-            {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let Ok(metadata) = path.symlink_metadata() else {
                 continue;
+            };
+            if metadata.is_dir() {
+                if path
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .is_some_and(|name| name == DOWNLOAD_STAGING_DIR)
+                {
+                    continue;
+                }
+                pending_dirs.push(path);
+            } else if metadata.is_file() {
+                out.push(TempFileEntry {
+                    path,
+                    size: metadata.len(),
+                    modified: metadata.modified().unwrap_or(UNIX_EPOCH),
+                });
             }
-            collect_temp_files(&path, out);
-        } else if metadata.is_file() {
-            out.push(TempFileEntry {
-                path,
-                size: metadata.len(),
-                modified: metadata.modified().unwrap_or(UNIX_EPOCH),
-            });
         }
     }
 }
@@ -802,4 +808,33 @@ fn remove_empty_parent_dirs(cache_root: &Path, data_path: &Path) {
 
 fn should_skip_cleanup(filename: &str) -> bool {
     filename.ends_with(".lock") || filename.ends_with(".part")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn storage_walkers_handle_nested_directories_without_recursion() {
+        let root = tempfile::tempdir().unwrap();
+        let mut nested = root.path().to_path_buf();
+        for _ in 0..32 {
+            nested.push("d");
+            fs::create_dir(&nested).unwrap();
+        }
+        let payload = nested.join("payload.bin");
+        fs::write(&payload, b"payload").unwrap();
+
+        let staging = root.path().join(DOWNLOAD_STAGING_DIR);
+        fs::create_dir(&staging).unwrap();
+        fs::write(staging.join("partial.bin"), b"partial").unwrap();
+
+        assert_eq!(dir_size(root.path()), 14);
+
+        let mut files = Vec::new();
+        collect_temp_files(root.path(), &mut files);
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].path, payload);
+        assert_eq!(files[0].size, 7);
+    }
 }
