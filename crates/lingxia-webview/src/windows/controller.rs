@@ -8,6 +8,7 @@ pub(crate) const WM_LINGXIA_COMMAND: u32 = WM_APP + 0x154;
 
 pub(crate) const WEBVIEW_SCREENSHOT_TIMEOUT: Duration = Duration::from_secs(4);
 const BROWSER_EMULATION_TIMEOUT: Duration = Duration::from_secs(4);
+const EVAL_TIMEOUT: Duration = Duration::from_secs(10);
 
 pub(crate) enum UiCommand {
     LoadUrl {
@@ -327,6 +328,14 @@ impl WebViewInner {
         &self,
         command: impl FnOnce(Sender<StdResult<()>>) -> UiCommand,
     ) -> StdResult<()> {
+        self.dispatch_command_same_thread_safe_with_timeout(command, None)
+    }
+
+    fn dispatch_command_same_thread_safe_with_timeout(
+        &self,
+        command: impl FnOnce(Sender<StdResult<()>>) -> UiCommand,
+        timeout: Option<Duration>,
+    ) -> StdResult<()> {
         let (resp_tx, resp_rx) = mpsc::channel();
         self.command_tx
             .send(command(resp_tx))
@@ -338,8 +347,15 @@ impl WebViewInner {
             return Ok(());
         }
 
-        recv_reply_pumping(&resp_rx, None)
-            .map_err(|_| WebViewError::WebView("WebView UI thread did not reply".to_string()))?
+        recv_reply_pumping(&resp_rx, timeout)
+            .map_err(|err| match err {
+                mpsc::RecvTimeoutError::Timeout => {
+                    WebViewError::WebView("WebView command timed out".to_string())
+                }
+                mpsc::RecvTimeoutError::Disconnected => {
+                    WebViewError::WebView("WebView UI thread did not reply".to_string())
+                }
+            })?
             .map_err(|err| WebViewError::WebView(format!("run WebView command: {err}")))
     }
 
@@ -459,15 +475,8 @@ impl WebViewInner {
         &self,
         js: String,
     ) -> std::result::Result<serde_json::Value, WebViewScriptError> {
-        self.dispatch_ui(|resp| UiCommand::EvalJs { js, resp }, None)
-            .map_err(|err| match err {
-                UiDispatchError::SameThread => WebViewScriptError::Platform(
-                    "Cannot evaluate JavaScript from WebView UI thread".to_string(),
-                ),
-                UiDispatchError::Unavailable | UiDispatchError::NoReply(_) => {
-                    WebViewScriptError::Destroyed
-                }
-            })?
+        self.dispatch_ui(|resp| UiCommand::EvalJs { js, resp }, Some(EVAL_TIMEOUT))
+            .map_err(map_eval_dispatch_error)?
     }
 
     fn dispatch_current_url(&self) -> StdResult<Option<String>> {
@@ -530,6 +539,18 @@ impl UiDispatchError {
     }
 }
 
+fn map_eval_dispatch_error(error: UiDispatchError) -> WebViewScriptError {
+    match error {
+        UiDispatchError::SameThread => WebViewScriptError::Platform(
+            "Cannot evaluate JavaScript from WebView UI thread".to_string(),
+        ),
+        UiDispatchError::NoReply(Some(_)) => WebViewScriptError::Timeout,
+        UiDispatchError::Unavailable | UiDispatchError::NoReply(None) => {
+            WebViewScriptError::Destroyed
+        }
+    }
+}
+
 #[async_trait]
 impl WebViewController for WebViewInner {
     fn load_url(&self, url: &str) -> StdResult<()> {
@@ -552,10 +573,13 @@ impl WebViewController for WebViewInner {
         // Fire-and-forget script injection is called from delegate events,
         // which are delivered on this webview's own UI thread — queue without
         // waiting there so callers stay platform-innocent.
-        self.dispatch_command_same_thread_safe(|resp| UiCommand::ExecJs {
-            js: js.to_string(),
-            resp,
-        })
+        self.dispatch_command_same_thread_safe_with_timeout(
+            |resp| UiCommand::ExecJs {
+                js: js.to_string(),
+                resp,
+            },
+            Some(EVAL_TIMEOUT),
+        )
     }
 
     async fn eval_js(
@@ -1444,12 +1468,33 @@ fn set_content_geometry(
 
 #[cfg(test)]
 mod tests {
-    use super::should_update_parent;
+    use super::{UiDispatchError, map_eval_dispatch_error, should_update_parent};
+    use crate::WebViewScriptError;
 
     #[test]
     fn composition_rechecks_a_reused_parent_handle() {
         assert!(should_update_parent(true, true));
         assert!(!should_update_parent(false, true));
         assert!(should_update_parent(false, false));
+    }
+
+    #[test]
+    fn eval_dispatch_timeout_is_reported_as_script_timeout() {
+        assert_eq!(
+            map_eval_dispatch_error(UiDispatchError::NoReply(Some("timed out".to_string()))),
+            WebViewScriptError::Timeout
+        );
+    }
+
+    #[test]
+    fn eval_dispatch_disconnect_is_reported_as_destroyed() {
+        assert_eq!(
+            map_eval_dispatch_error(UiDispatchError::NoReply(None)),
+            WebViewScriptError::Destroyed
+        );
+        assert_eq!(
+            map_eval_dispatch_error(UiDispatchError::Unavailable),
+            WebViewScriptError::Destroyed
+        );
     }
 }
