@@ -121,7 +121,7 @@ impl MediaInteraction for Platform {
     ) -> Result<(), PlatformError> {
         #[cfg(target_os = "ios")]
         {
-            crate::rt::blocking(move || ios::save_image_to_album(&request.file_uri)).await
+            ios::save_image_to_album(&request.file_uri).await
         }
 
         #[cfg(not(target_os = "ios"))]
@@ -139,7 +139,7 @@ impl MediaInteraction for Platform {
     ) -> Result<(), PlatformError> {
         #[cfg(target_os = "ios")]
         {
-            crate::rt::blocking(move || ios::save_video_to_album(&request.file_uri)).await
+            ios::save_video_to_album(&request.file_uri).await
         }
 
         #[cfg(not(target_os = "ios"))]
@@ -426,91 +426,34 @@ mod ios {
     use crate::apple::ffi::scan_code;
     use crate::traits::media_interaction::ScanType;
     use block2::RcBlock;
-    use dispatch2::{DispatchSemaphore, DispatchTime, dispatch_block_t, run_on_main};
+    use dispatch2::{dispatch_block_t, run_on_main};
+    use objc2::runtime::Bool;
     use objc2_foundation::{NSError, NSString, NSURL};
     use objc2_photos::{
         PHAccessLevel, PHAssetCreationRequest, PHAuthorizationStatus, PHPhotoLibrary,
     };
     use std::sync::{Arc, Mutex};
+    use tokio::sync::oneshot;
 
     const PHOTOS_PERMISSION_DENIED: &str = "Photos permission denied";
 
-    pub(super) fn save_image_to_album(file_uri: &str) -> Result<(), PlatformError> {
+    pub(super) async fn save_image_to_album(file_uri: &str) -> Result<(), PlatformError> {
         let path = resolve_file_uri(file_uri)?;
-        run_on_main(|_| save_image_on_main(&path))
+        ensure_photo_authorization().await?;
+        perform_photo_library_change(path, false).await
     }
 
-    pub(super) fn save_video_to_album(file_uri: &str) -> Result<(), PlatformError> {
+    pub(super) async fn save_video_to_album(file_uri: &str) -> Result<(), PlatformError> {
         let path = resolve_file_uri(file_uri)?;
-        run_on_main(|_| save_video_on_main(&path))
+        ensure_photo_authorization().await?;
+        perform_photo_library_change(path, true).await
     }
 
-    fn save_image_on_main(path: &str) -> Result<(), PlatformError> {
-        ensure_photo_authorization()?;
-
-        let ns_path = NSString::from_str(path);
-        let file_url = NSURL::fileURLWithPath(&ns_path);
-
-        let error_holder = Arc::new(Mutex::new(None::<String>));
-        let error_clone = Arc::clone(&error_holder);
-        let change_block = RcBlock::<dyn Fn()>::new({
-            let file_url = file_url.clone();
-            move || {
-                let created = unsafe {
-                    PHAssetCreationRequest::creationRequestForAssetFromImageAtFileURL(&file_url)
-                };
-                if created.is_none()
-                    && let Ok(mut guard) = error_clone.lock()
-                {
-                    *guard = Some("Failed to create photo asset from image file".to_string());
-                }
-            }
-        });
-
-        perform_photo_library_change(&change_block)?;
-
-        if let Some(message) = error_holder.lock().ok().and_then(|guard| guard.clone()) {
-            return Err(PlatformError::Platform(message));
-        }
-
-        Ok(())
-    }
-
-    fn save_video_on_main(path: &str) -> Result<(), PlatformError> {
-        ensure_photo_authorization()?;
-
-        let ns_path = NSString::from_str(path);
-        let file_url = NSURL::fileURLWithPath(&ns_path);
-
-        let error_holder = Arc::new(Mutex::new(None::<String>));
-        let error_clone = Arc::clone(&error_holder);
-        let change_block = RcBlock::<dyn Fn()>::new({
-            let file_url = file_url.clone();
-            move || {
-                let created = unsafe {
-                    PHAssetCreationRequest::creationRequestForAssetFromVideoAtFileURL(&file_url)
-                };
-                if created.is_none()
-                    && let Ok(mut guard) = error_clone.lock()
-                {
-                    *guard = Some("Failed to create photo asset from video file".to_string());
-                }
-            }
-        });
-
-        perform_photo_library_change(&change_block)?;
-
-        if let Some(message) = error_holder.lock().ok().and_then(|guard| guard.clone()) {
-            return Err(PlatformError::Platform(message));
-        }
-
-        Ok(())
-    }
-
-    fn ensure_photo_authorization() -> Result<(), PlatformError> {
+    async fn ensure_photo_authorization() -> Result<(), PlatformError> {
         let access_level = PHAccessLevel::AddOnly;
-        let initial_status =
-            unsafe { PHPhotoLibrary::authorizationStatusForAccessLevel(access_level) };
+        let initial_status = run_on_main(move |_| unsafe {
+            PHPhotoLibrary::authorizationStatusForAccessLevel(access_level)
+        });
         if is_authorized(initial_status) {
             return Ok(());
         }
@@ -524,29 +467,23 @@ mod ios {
             ));
         }
 
-        let semaphore = DispatchSemaphore::new(0);
-        let status_holder = Arc::new(Mutex::new(None));
-        let status_clone = Arc::clone(&status_holder);
-        let semaphore_clone = semaphore.clone();
-
-        let block = RcBlock::new(move |status: PHAuthorizationStatus| {
-            if let Ok(mut guard) = status_clone.lock() {
-                *guard = Some(status);
+        let (tx, rx) = oneshot::channel();
+        let sender = Arc::new(Mutex::new(Some(tx)));
+        run_on_main(move |_| {
+            let sender = Arc::clone(&sender);
+            let block = RcBlock::new(move |status: PHAuthorizationStatus| {
+                if let Some(tx) = sender.lock().ok().and_then(|mut guard| guard.take()) {
+                    let _ = tx.send(status);
+                }
+            });
+            unsafe {
+                PHPhotoLibrary::requestAuthorizationForAccessLevel_handler(access_level, &block);
             }
-            let _ = semaphore_clone.signal();
         });
 
-        unsafe {
-            PHPhotoLibrary::requestAuthorizationForAccessLevel_handler(access_level, &block);
-        }
-
-        semaphore.wait(DispatchTime::FOREVER);
-
-        let status = status_holder
-            .lock()
-            .ok()
-            .and_then(|guard| *guard)
-            .unwrap_or(PHAuthorizationStatus::Denied);
+        let status = rx.await.map_err(|_| {
+            PlatformError::Platform("Photos permission request was canceled".to_string())
+        })?;
 
         if is_authorized(status) {
             Ok(())
@@ -572,19 +509,66 @@ mod ios {
         }
     }
 
-    fn perform_photo_library_change(block: &RcBlock<dyn Fn()>) -> Result<(), PlatformError> {
-        let library = unsafe { PHPhotoLibrary::sharedPhotoLibrary() };
-        let block_ptr = RcBlock::as_ptr(block) as dispatch_block_t;
-        unsafe {
-            library
-                .performChangesAndWait_error(block_ptr)
-                .map_err(|err| {
-                    PlatformError::Platform(format!(
-                        "Photo library change failed: {}",
-                        ns_error_to_string(&err)
-                    ))
-                })
-        }
+    async fn perform_photo_library_change(
+        path: String,
+        is_video: bool,
+    ) -> Result<(), PlatformError> {
+        let (tx, rx) = oneshot::channel();
+        let sender = Arc::new(Mutex::new(Some(tx)));
+        run_on_main(move |_| {
+            let ns_path = NSString::from_str(&path);
+            let file_url = NSURL::fileURLWithPath(&ns_path);
+            let creation_error = Arc::new(Mutex::new(None::<String>));
+            let creation_error_for_change = Arc::clone(&creation_error);
+            let change_block = RcBlock::<dyn Fn()>::new(move || {
+                let created = if is_video {
+                    unsafe {
+                        PHAssetCreationRequest::creationRequestForAssetFromVideoAtFileURL(&file_url)
+                    }
+                } else {
+                    unsafe {
+                        PHAssetCreationRequest::creationRequestForAssetFromImageAtFileURL(&file_url)
+                    }
+                };
+                if created.is_none()
+                    && let Ok(mut guard) = creation_error_for_change.lock()
+                {
+                    *guard = Some(format!(
+                        "Failed to create photo asset from {} file",
+                        if is_video { "video" } else { "image" }
+                    ));
+                }
+            });
+
+            let sender = Arc::clone(&sender);
+            let completion = RcBlock::new(move |success: Bool, error: *mut NSError| {
+                let result = if let Some(message) =
+                    creation_error.lock().ok().and_then(|guard| guard.clone())
+                {
+                    Err(message)
+                } else if success.as_bool() {
+                    Ok(())
+                } else if error.is_null() {
+                    Err("Photo library change failed".to_string())
+                } else {
+                    let message = unsafe { ns_error_to_string(&*error) };
+                    Err(format!("Photo library change failed: {message}"))
+                };
+                if let Some(tx) = sender.lock().ok().and_then(|mut guard| guard.take()) {
+                    let _ = tx.send(result);
+                }
+            });
+
+            let library = unsafe { PHPhotoLibrary::sharedPhotoLibrary() };
+            let block_ptr = RcBlock::as_ptr(&change_block) as dispatch_block_t;
+            unsafe {
+                library.performChanges_completionHandler(block_ptr, Some(&completion));
+            }
+        });
+
+        rx.await
+            .map_err(|_| PlatformError::Platform("Photo library change was canceled".to_string()))?
+            .map_err(PlatformError::Platform)
     }
 
     fn ns_error_to_string(error: &NSError) -> String {
