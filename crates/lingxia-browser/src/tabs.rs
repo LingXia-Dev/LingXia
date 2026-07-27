@@ -148,7 +148,31 @@ pub(crate) fn browser_tab_document_is_internal(tab_id: &str) -> bool {
         == Some(crate::policy::LINGXIA_SCHEME)
 }
 
-pub(crate) fn notify_navigation_finished(tab_id: &str, url: &str) {
+fn records_browser_history(tab: &BrowserTabState) -> bool {
+    tab.data_mode != WebViewDataMode::Ephemeral
+        && !tab.url_callback.load(Ordering::Acquire)
+        && !tab.standalone
+}
+
+fn validate_reused_tab_policy(
+    tab: &BrowserTabState,
+    data_mode: WebViewDataMode,
+    standalone: bool,
+) -> Result<(), LxAppError> {
+    if tab.data_mode != data_mode || tab.standalone != standalone {
+        return Err(LxAppError::InvalidParameter(
+            "an existing browser tab cannot change data mode or standalone status".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+pub(crate) fn notify_navigation_finished(
+    tab_id: &str,
+    session_id: u64,
+    create_token: u64,
+    url: &str,
+) {
     let handler = BROWSER_NAVIGATION_FINISHED_HANDLER
         .get()
         .and_then(|slot| slot.lock().ok())
@@ -160,11 +184,18 @@ pub(crate) fn notify_navigation_finished(tab_id: &str, url: &str) {
             let state = lock_state();
             normalize_runtime_tab_id(tab_id)
                 .and_then(|normalized| state.tabs.get(&normalized))
-                .filter(|tab| tab.title_url.as_deref() == Some(url))
-                .and_then(|tab| tab.title.clone())
-                .unwrap_or_default()
+                .filter(|tab| tab.session_id == session_id && tab.create_token == create_token)
+                .filter(|tab| records_browser_history(tab))
+                .map(|tab| {
+                    (tab.title_url.as_deref() == Some(url))
+                        .then(|| tab.title.clone())
+                        .flatten()
+                        .unwrap_or_default()
+                })
         };
-        handler(url, &title);
+        if let Some(title) = title {
+            handler(url, &title);
+        }
     }
 }
 
@@ -497,8 +528,9 @@ pub fn browser_present_tab(tab_id: &str) -> Result<BrowserTabInfo, BrowserAutoma
     Ok(info)
 }
 
-pub(crate) fn browser_update_tab_info(
+fn browser_update_tab_info_inner(
     tab_id: &str,
+    expected_generation: Option<(u64, u64)>,
     current_url: Option<&str>,
     title: Option<&str>,
 ) -> bool {
@@ -510,6 +542,11 @@ pub(crate) fn browser_update_tab_info(
         let Some(tab) = state.tabs.get_mut(&normalized) else {
             return false;
         };
+        if expected_generation.is_some_and(|(session_id, create_token)| {
+            tab.session_id != session_id || tab.create_token != create_token
+        }) {
+            return false;
+        }
         let mut changed = false;
         let mut changed_title = None;
         if current_url.is_some() {
@@ -528,7 +565,9 @@ pub(crate) fn browser_update_tab_info(
             tab.title_url = tab.current_url.clone();
             if tab.title.as_deref() != Some(value.as_str()) {
                 tab.title = Some(value.clone());
-                if let Some(url) = tab.current_url.clone() {
+                if records_browser_history(tab)
+                    && let Some(url) = tab.current_url.clone()
+                {
                     changed_title = Some((url, value));
                 }
                 changed = true;
@@ -543,6 +582,24 @@ pub(crate) fn browser_update_tab_info(
         notify_title_changed(&url, &title);
     }
     true
+}
+
+pub(crate) fn browser_update_tab_info(
+    tab_id: &str,
+    current_url: Option<&str>,
+    title: Option<&str>,
+) -> bool {
+    browser_update_tab_info_inner(tab_id, None, current_url, title)
+}
+
+pub(crate) fn browser_update_tab_info_if_token_matches(
+    tab_id: &str,
+    session_id: u64,
+    create_token: u64,
+    current_url: Option<&str>,
+    title: Option<&str>,
+) -> bool {
+    browser_update_tab_info_inner(tab_id, Some((session_id, create_token)), current_url, title)
 }
 
 /// Stores the webview-reported session-history availability for `tab_id`
@@ -756,6 +813,7 @@ fn open_internal_browser_tab_with_scope(
     let url_callback_policy = {
         let mut state = lock_state();
         if let Some(existing) = state.tabs.get_mut(&tab_id) {
+            validate_reused_tab_policy(existing, data_mode, standalone)?;
             existing.session_id = session_id;
             existing.url_callback.store(url_callback, Ordering::Release);
             if has_target_url {
@@ -809,6 +867,7 @@ fn open_internal_browser_tab_with_scope(
             token,
             data_mode,
             url_callback_policy.clone(),
+            standalone,
         ) {
             lock_state().tabs.remove(&tab_id);
             return Err(e);
@@ -856,6 +915,7 @@ fn open_internal_browser_tab_with_scope(
                         token,
                         data_mode,
                         url_callback_policy.clone(),
+                        standalone,
                     )
                 {
                     lock_state().tabs.remove(&tab_id);
@@ -1155,13 +1215,14 @@ pub(crate) fn reactivate_browser_tab(tab_id: &str) -> Result<(), LxAppError> {
                 token,
                 tab.data_mode,
                 tab.url_callback.clone(),
+                tab.standalone,
             ))
         } else {
             None
         }
     };
 
-    if let Some((session_id, token, data_mode, url_callback)) = recreate {
+    if let Some((session_id, token, data_mode, url_callback, standalone)) = recreate {
         let path = browser_tab_path_for_runtime_id(&normalized);
         if let Err(error) = browser_create_webview(
             &path,
@@ -1170,6 +1231,7 @@ pub(crate) fn reactivate_browser_tab(tab_id: &str) -> Result<(), LxAppError> {
             token,
             data_mode,
             url_callback,
+            standalone,
         ) {
             if let Some(tab) = lock_state().tabs.get_mut(&normalized) {
                 tab.discarded = true;
@@ -1222,7 +1284,7 @@ mod tests {
     }
 
     #[test]
-    fn navigation_finish_drops_title_from_previous_page() {
+    fn navigation_history_respects_title_privacy_and_generation() {
         // Metadata bookkeeping needs no WebView; seed the tab entry directly.
         let tab_id = "navfinishtitletest";
         lock_state().tabs.insert(
@@ -1254,24 +1316,118 @@ mod tests {
             Some("Page A")
         ));
 
-        let captured: Arc<Mutex<Vec<(String, String)>>> = Arc::new(Mutex::new(Vec::new()));
-        let sink = captured.clone();
+        let visits: Arc<Mutex<Vec<(String, String)>>> = Arc::new(Mutex::new(Vec::new()));
+        let visit_sink = visits.clone();
         set_navigation_finished_handler(Arc::new(move |url, title| {
-            sink.lock()
+            visit_sink
+                .lock()
                 .unwrap()
                 .push((url.to_string(), title.to_string()));
         }));
+        let titles: Arc<Mutex<Vec<(String, String)>>> = Arc::new(Mutex::new(Vec::new()));
+        let title_sink = titles.clone();
+        set_title_changed_handler(Arc::new(move |url, title| {
+            title_sink
+                .lock()
+                .unwrap()
+                .push((url.to_string(), title.to_string()));
+        }));
+
         // Page B finishes before its title is reported: A's title must not leak.
-        notify_navigation_finished(tab_id, "https://b.test/");
-        notify_navigation_finished(tab_id, "https://a.test/");
+        notify_navigation_finished(tab_id, 1, 1, "https://b.test/");
+        notify_navigation_finished(tab_id, 1, 1, "https://a.test/");
         assert_eq!(
-            *captured.lock().unwrap(),
+            *visits.lock().unwrap(),
             vec![
                 ("https://b.test/".to_string(), String::new()),
                 ("https://a.test/".to_string(), "Page A".to_string()),
             ]
         );
+
+        assert!(browser_update_tab_info_if_token_matches(
+            tab_id,
+            1,
+            1,
+            Some("https://normal.test/"),
+            Some("Normal")
+        ));
+        assert_eq!(
+            *titles.lock().unwrap(),
+            vec![("https://normal.test/".to_string(), "Normal".to_string())]
+        );
+
+        let assert_private_policy =
+            |data_mode: WebViewDataMode, url_callback: bool, standalone: bool, suffix: &str| {
+                {
+                    let mut state = lock_state();
+                    let tab = state.tabs.get_mut(tab_id).unwrap();
+                    tab.data_mode = data_mode;
+                    tab.url_callback.store(url_callback, Ordering::Release);
+                    tab.standalone = standalone;
+                }
+                let url = format!("https://auth.test/callback?code={suffix}");
+                notify_navigation_finished(tab_id, 1, 1, &url);
+                assert!(browser_update_tab_info_if_token_matches(
+                    tab_id,
+                    1,
+                    1,
+                    Some(&url),
+                    Some(&format!("Secret {suffix}"))
+                ));
+                assert_eq!(visits.lock().unwrap().len(), 2);
+                assert_eq!(titles.lock().unwrap().len(), 1);
+            };
+
+        assert_private_policy(WebViewDataMode::Ephemeral, false, false, "ephemeral");
+        assert_private_policy(WebViewDataMode::ProfileDefault, true, false, "callback");
+        assert_private_policy(WebViewDataMode::ProfileDefault, false, true, "standalone");
+
+        {
+            let mut state = lock_state();
+            let tab = state.tabs.get_mut(tab_id).unwrap();
+            tab.data_mode = WebViewDataMode::ProfileDefault;
+            tab.standalone = false;
+            tab.create_token = 2;
+        }
+        assert!(!browser_update_tab_info_if_token_matches(
+            tab_id,
+            1,
+            1,
+            Some("https://auth.test/callback?code=stale"),
+            Some("Stale secret")
+        ));
+        notify_navigation_finished(tab_id, 1, 1, "https://auth.test/callback?code=stale");
+        assert_eq!(visits.lock().unwrap().len(), 2);
+        assert_eq!(titles.lock().unwrap().len(), 1);
         lock_state().tabs.remove(tab_id);
+    }
+
+    #[test]
+    fn stable_tab_reuse_rejects_privacy_policy_changes() {
+        let tab = BrowserTabState {
+            session_id: 1,
+            create_token: 1,
+            create_in_flight: false,
+            pending_url: None,
+            initial_url: None,
+            current_url: None,
+            title: None,
+            title_url: None,
+            favicon_png: None,
+            can_go_back: false,
+            can_go_forward: false,
+            discarded: false,
+            data_mode: WebViewDataMode::ProfileDefault,
+            url_callback: Arc::new(AtomicBool::new(false)),
+            standalone: false,
+            aside: false,
+            owner_appid: None,
+            owner_session_id: None,
+        };
+
+        assert!(validate_reused_tab_policy(&tab, WebViewDataMode::ProfileDefault, false).is_ok());
+        assert!(validate_reused_tab_policy(&tab, WebViewDataMode::Ephemeral, false).is_err());
+        assert!(validate_reused_tab_policy(&tab, WebViewDataMode::ProfileDefault, true).is_err());
     }
 
     #[test]
