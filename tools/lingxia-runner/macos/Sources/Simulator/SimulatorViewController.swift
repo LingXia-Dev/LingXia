@@ -24,6 +24,7 @@ public class SimulatorViewController: NSViewController, WKNavigationDelegate {
     private var currentTopMargin: CGFloat = 0
     private var tabBarConstraints: [NSLayoutConstraint] = []
     private var tabBarTopConstraint: NSLayoutConstraint?
+    private var webViewEdgeConstraints: [NSLayoutConstraint] = []
     
     nonisolated(unsafe) private var closeAppObserver: NSObjectProtocol?
     nonisolated(unsafe) private var tabBarObserver: NSObjectProtocol?
@@ -84,8 +85,8 @@ public class SimulatorViewController: NSViewController, WKNavigationDelegate {
     /// Keep the adaptive surface context aligned with the selected device frame.
     private func reportSurfaceMetrics() {
         guard !appId.isEmpty else { return }
-        let width = view.bounds.width
-        let height = view.bounds.height
+        let width = webViewContainer.bounds.width
+        let height = webViewContainer.bounds.height
         guard width > 0, height > 0 else { return }
         _ = setSurfaceWidth(appId, Double(width))
         _ = setSurfaceViewport(appId, Double(width), Double(height))
@@ -101,7 +102,7 @@ public class SimulatorViewController: NSViewController, WKNavigationDelegate {
         view.layer?.backgroundColor = NSColor.clear.cgColor
         
         setupWebViewContainer()
-        setupWebViewConstraintsWithoutTabBar()
+        setupWebViewConstraints()
         updateTabBar()
         
         view.needsLayout = true
@@ -159,13 +160,36 @@ public class SimulatorViewController: NSViewController, WKNavigationDelegate {
         return c
     }
 
-    private func setupWebViewConstraintsWithoutTabBar() {
-        NSLayoutConstraint.activate([
-            makeWebViewTopConstraint(),
-            webViewContainer.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            webViewContainer.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            webViewContainer.bottomAnchor.constraint(equalTo: view.bottomAnchor)
-        ])
+    private func setupWebViewConstraints() {
+        makeWebViewTopConstraint().isActive = true
+        updateWebViewEdgeConstraints(tabBar: nil, config: nil)
+    }
+
+    private func updateWebViewEdgeConstraints(tabBar: NSView?, config: RunnerTabBarConfig?) {
+        NSLayoutConstraint.deactivate(webViewEdgeConstraints)
+
+        var leading = webViewContainer.leadingAnchor.constraint(equalTo: view.leadingAnchor)
+        var trailing = webViewContainer.trailingAnchor.constraint(equalTo: view.trailingAnchor)
+        var bottom = webViewContainer.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+
+        if let tabBar,
+           let config,
+           config.is_visible,
+           !RunnerSupport.TabBar.isTransparent(config.background_color) {
+            switch config.position {
+            case 0: // bottom
+                bottom = webViewContainer.bottomAnchor.constraint(equalTo: tabBar.topAnchor)
+            case 1: // left
+                leading = webViewContainer.leadingAnchor.constraint(equalTo: tabBar.trailingAnchor)
+            case 2: // right
+                trailing = webViewContainer.trailingAnchor.constraint(equalTo: tabBar.leadingAnchor)
+            default:
+                bottom = webViewContainer.bottomAnchor.constraint(equalTo: tabBar.topAnchor)
+            }
+        }
+
+        webViewEdgeConstraints = [leading, trailing, bottom]
+        NSLayoutConstraint.activate(webViewEdgeConstraints)
     }
     
     private func setupWebViewContainer() {
@@ -190,6 +214,7 @@ public class SimulatorViewController: NSViewController, WKNavigationDelegate {
 
     private func updateTabBar() {
         guard let tabBarConfig = RunnerSupport.TabBar.config(for: appId) else {
+            updateWebViewEdgeConstraints(tabBar: nil, config: nil)
             tabBarView?.removeFromSuperview()
             tabBarView = nil
             self.tabBarConfig = nil
@@ -212,6 +237,7 @@ public class SimulatorViewController: NSViewController, WKNavigationDelegate {
 
         if let tabBar = tabBarView {
             view.addSubview(tabBar, positioned: .above, relativeTo: webViewContainer)
+            updateWebViewEdgeConstraints(tabBar: tabBar, config: tabBarConfig)
         }
 
         view.needsLayout = true
