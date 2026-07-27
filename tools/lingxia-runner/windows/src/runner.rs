@@ -3,6 +3,7 @@ use crate::device::{
     DEVICE_COMMAND_BASE, OPEN_DEVTOOLS_COMMAND, RESTART_LXAPP_COMMAND, ROTATE_COMMAND,
     browser_frame_spec, frame_spec, initial_device_index, is_phone, is_tablet, presets,
 };
+use lingxia_platform::traits::appearance::{Appearance as _, AppearancePreference};
 use lingxia_windows_sdk::WindowsShellTabBarPosition;
 use lxapp::{LxAppDelegate, LxAppUiEventType};
 use std::sync::OnceLock;
@@ -90,6 +91,17 @@ pub(crate) fn run() -> lingxia_windows_sdk::Result<()> {
     let initial_landscape = is_tablet(default_device);
     CURRENT_DEVICE.store(default_device, Ordering::Release);
     LANDSCAPE.store(initial_landscape, Ordering::Release);
+    lingxia_platform::set_windows_appearance_handler(std::sync::Arc::new(|preference| {
+        APPEARANCE.store(
+            match preference {
+                AppearancePreference::System => 0,
+                AppearancePreference::Light => 1,
+                AppearancePreference::Dark => 2,
+            },
+            Ordering::Release,
+        );
+        refresh_device_frame_toolbar();
+    }));
     let web_url = std::env::var(ENV_WEB_URL).ok();
     let initial_frame = if web_url.is_some() {
         browser_frame_spec(default_device, initial_landscape)
@@ -344,10 +356,10 @@ pub(crate) fn effective_appearance_dark() -> bool {
 /// refreshes the toolbar glyph. CLI, selector menu, and toolbar flip all
 /// funnel through here so every entry point keeps the glyph honest.
 fn set_appearance(appearance: lingxia::dev::Appearance) -> Result<(), String> {
-    let scheme = match appearance {
-        lingxia::dev::Appearance::System => lingxia_windows_sdk::WindowsPreferredColorScheme::Auto,
-        lingxia::dev::Appearance::Light => lingxia_windows_sdk::WindowsPreferredColorScheme::Light,
-        lingxia::dev::Appearance::Dark => lingxia_windows_sdk::WindowsPreferredColorScheme::Dark,
+    let preference = match appearance {
+        lingxia::dev::Appearance::System => AppearancePreference::System,
+        lingxia::dev::Appearance::Light => AppearancePreference::Light,
+        lingxia::dev::Appearance::Dark => AppearancePreference::Dark,
     };
     // Store first: the scheme below is armed for every future WebView
     // regardless of per-webview failures, and `runner.get` must report
@@ -360,7 +372,12 @@ fn set_appearance(appearance: lingxia::dev::Appearance) -> Result<(), String> {
         },
         Ordering::Release,
     );
-    lingxia_windows_sdk::set_windows_preferred_color_scheme(scheme)?;
+    let platform =
+        lxapp::get_platform().ok_or_else(|| "LingXia runtime is not ready".to_string())?;
+    let state = platform
+        .set_appearance(preference)
+        .map_err(|error| error.to_string())?;
+    lxapp::set_appearance_state(state);
     refresh_device_frame_toolbar();
     Ok(())
 }

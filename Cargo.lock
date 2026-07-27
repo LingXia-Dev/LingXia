@@ -3569,6 +3569,7 @@ dependencies = [
  "lingxia",
  "lingxia-devtool",
  "lingxia-lxapp",
+ "lingxia-platform",
  "lingxia-runner-config",
  "lingxia-windows-build",
  "lingxia-windows-sdk",

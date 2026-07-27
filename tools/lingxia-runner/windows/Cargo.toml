@@ -32,6 +32,7 @@ lingxia = { workspace = true, features = ["standard", "devtool", "webview-input"
 # its browser commands too — otherwise `lxdev browser ...` errors on Windows.
 lingxia_devtool = { workspace = true, features = ["browser", "test-runtime"] }
 lingxia-windows-sdk = { workspace = true, features = ["standard", "browser-runtime", "webview-input", "device-frame"] }
+lingxia-platform = { workspace = true }
 lxapp = { workspace = true, default-features = false }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }

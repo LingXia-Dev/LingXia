@@ -174,6 +174,13 @@ pub(crate) use terminal_panel::{
 /// Must run before the first window is created so hosts get the custom
 /// borderless frame and shell event routing.
 pub(crate) fn install() {
+    lingxia_platform::set_windows_appearance_handler(std::sync::Arc::new(|preference| {
+        set_windows_tabbar_dark_override(match preference {
+            lingxia_platform::traits::appearance::AppearancePreference::System => None,
+            lingxia_platform::traits::appearance::AppearancePreference::Light => Some(false),
+            lingxia_platform::traits::appearance::AppearancePreference::Dark => Some(true),
+        });
+    }));
     chrome::install();
     runtime::install();
 }

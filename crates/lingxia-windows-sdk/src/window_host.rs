@@ -7983,6 +7983,11 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                 // cache would otherwise swallow the change).
                 #[cfg(feature = "shell-chrome")]
                 if crate::shell::refresh_system_theme() && windows_chrome_renderer().is_some() {
+                    if let Some(state) =
+                        lingxia_platform::notify_windows_system_appearance_changed()
+                    {
+                        lxapp::set_appearance_state(state);
+                    }
                     for host in registered_host_windows() {
                         if is_native_framed_window(host) {
                             apply_native_window_dressing(host);

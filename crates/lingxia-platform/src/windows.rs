@@ -3,6 +3,7 @@
 //! Windows platform implementation for LingXia.
 
 mod app;
+mod appearance;
 mod device;
 mod file;
 mod keyboard;
@@ -32,6 +33,7 @@ pub use app::{
     set_windows_open_url_handler, set_windows_shell_pins_handler,
     set_windows_tray_click_intercept_handler, set_windows_tray_menu_handler,
 };
+pub use appearance::{notify_windows_system_appearance_changed, set_windows_appearance_handler};
 pub use media_preview::{
     WindowsMediaPreviewCancel, WindowsMediaPreviewOpen, register_windows_media_preview_host,
 };
