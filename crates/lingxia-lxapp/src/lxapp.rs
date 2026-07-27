@@ -1856,17 +1856,45 @@ impl LxApp {
         })
     }
 
-    fn remove_registered_headless_page_if_current(&self, path: &str, page: &PageInstance) {
-        if let Ok(state) = self.state.lock() {
-            let id = page.instance_id_string();
+    fn remove_registered_page_if_current(&self, path: &str, page: &PageInstance) {
+        let _creation_guard = self.page_creation_lock.lock().unwrap();
+        let id = page.instance_id_string();
+        let removed = if let Ok(state) = self.state.lock() {
             let mut pages = state.pages.lock().unwrap();
-            if pages
+            let is_current = pages
                 .get(path)
-                .is_some_and(|current| current.instance_id_string() == id)
-            {
+                .is_some_and(|current| current.instance_id_string() == id);
+            if is_current {
+                let _ = self.executor.terminate_page_svc(
+                    self.clone_arc(),
+                    path.to_string(),
+                    Some(id.clone()),
+                );
                 pages.remove(path);
             }
             state.pages_by_id.lock().unwrap().remove(id.as_str());
+            state
+                .page_instance_runtime
+                .lock()
+                .unwrap()
+                .remove(id.as_str());
+            if let Some(cancel) = state
+                .page_instance_dispose_timers
+                .lock()
+                .unwrap()
+                .remove(id.as_str())
+            {
+                let _ = cancel.send(());
+            }
+            is_current
+        } else {
+            false
+        };
+
+        if removed {
+            page.cancel_bridge_work();
+            page.detach_webview();
+            destroy_webview(&page.webtag());
         }
     }
 
@@ -1902,7 +1930,7 @@ impl LxApp {
                 .create_page_svc_with_ack(self.clone_arc(), path.to_string(), None, ack_tx)
         {
             page.mark_webview_ready(Err(err.to_string()));
-            self.remove_registered_headless_page_if_current(path, &page);
+            self.remove_registered_page_if_current(path, &page);
             return Err(err);
         }
 
@@ -1916,7 +1944,7 @@ impl LxApp {
                 Err(err) => Err(err.to_string()),
             };
             if result.is_err() {
-                lxapp.remove_registered_headless_page_if_current(&path, &page_clone);
+                lxapp.remove_registered_page_if_current(&path, &page_clone);
             }
             page_clone.mark_webview_ready(result);
         });
