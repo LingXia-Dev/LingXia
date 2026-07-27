@@ -46,6 +46,14 @@ const MIN_SIDEBAR_WIDTH: i32 = 184;
 /// area, so no extra height is reserved here.
 const BOTTOM_TABBAR_CONTENT_HEIGHT: i32 = 49;
 
+fn mobile_tabbar_default_colors(dark: bool) -> (u32, u32, u32, u32) {
+    if dark {
+        (0x98989d, 0x0a84ff, 0x1c1c1e, 0x38383a)
+    } else {
+        (0x666666, 0x1677ff, 0xffffff, 0xf0f0f0)
+    }
+}
+
 /// How many times to retry presenting a freshly opened browser tab whose
 /// WebView creation is still in flight, and the delay between attempts.
 #[cfg(feature = "browser-runtime")]
@@ -848,6 +856,18 @@ fn sync_related_shell_layouts(appid: &str) {
     }
 }
 
+/// Re-resolve native semantic colors after the Runner changes its simulated
+/// appearance. WebView2 is updated separately; this keeps the native tab bar
+/// in the same transaction without involving page JavaScript.
+pub(crate) fn refresh_shell_appearance() {
+    if let Some(appid) = shell_owner_appid().or_else(|| {
+        let current = lxapp::get_current_lxapp().0;
+        (!current.is_empty()).then_some(current)
+    }) {
+        sync_related_shell_layouts(&appid);
+    }
+}
+
 /// Shell chrome state (sidebar rows and collapse, panel activators, the
 /// presented browser tab) is shared by every webtag that renders the shell,
 /// and the visible layout may belong to a presented non-owner lxapp. Any
@@ -1590,9 +1610,16 @@ fn build_tab_bar_layout(
     );
     // An app without a tabBar declaration inherits the desktop shell surface;
     // an explicit backgroundColor still styles the full sidebar as requested.
-    let tabbar_background = tabbar
+    let appearance_dark = super::windows_tabbar_effective_dark_mode();
+    let adaptive_mobile_dark = !desktop_sidebar && appearance_dark;
+    let resolved_style = tabbar
         .as_ref()
-        .map(|tabbar| tabbar.backgroundColor.as_str())
+        .map(|tabbar| tabbar.resolved_style(appearance_dark));
+    let (default_color, default_selected_color, default_background_color, default_border_color) =
+        mobile_tabbar_default_colors(adaptive_mobile_dark);
+    let tabbar_background = resolved_style
+        .as_ref()
+        .map(|style| style.backgroundColor.as_str())
         .unwrap_or(if desktop_sidebar {
             "transparent"
         } else {
@@ -1633,29 +1660,29 @@ fn build_tab_bar_layout(
         main_scroll_offset: ui_state.main_scroll_offset,
         activator_scroll_row: ui_state.activator_scroll_row,
         color: parse_css_color(
-            tabbar
+            resolved_style
                 .as_ref()
-                .map(|tabbar| tabbar.color.as_str())
+                .map(|style| style.color.as_str())
                 .unwrap_or("#666666"),
-            0x666666,
+            default_color,
         ),
         selected_color: parse_css_color(
-            tabbar
+            resolved_style
                 .as_ref()
-                .map(|tabbar| tabbar.selectedColor.as_str())
+                .map(|style| style.selectedColor.as_str())
                 .unwrap_or("#1677ff"),
-            0x1677ff,
+            default_selected_color,
         ),
         // Transparent bottom bars keep the WebView laid out underneath; a
         // small overlay window draws only the tab items above that content.
-        background_color: parse_css_color(tabbar_background, 0xffffff),
+        background_color: parse_css_color(tabbar_background, default_background_color),
         background_transparent: tabbar_background_transparent,
         border_color: parse_css_color(
-            tabbar
+            resolved_style
                 .as_ref()
-                .map(|tabbar| tabbar.borderStyle.as_str())
+                .map(|style| style.borderStyle.as_str())
                 .unwrap_or("#f0f0f0"),
-            0xf0f0f0,
+            default_border_color,
         ),
         // A detail page keeps the lxapp group selected but clears every child
         // selection; group and tabbar-item selection are independent levels.
@@ -4904,7 +4931,7 @@ mod tests {
     use super::{
         LxappContextMenuAction, browser_internal_page_deep_link, browser_internal_page_key,
         browser_url_is_hidden, build_lxapp_context_menu, chrome_command,
-        chrome_command_is_page_scoped, preferred_sidebar_group_appid,
+        chrome_command_is_page_scoped, mobile_tabbar_default_colors, preferred_sidebar_group_appid,
     };
     #[cfg(feature = "browser-runtime")]
     use super::{
@@ -4923,6 +4950,18 @@ mod tests {
         assert!(!chrome_command_is_page_scoped(
             chrome_command::BROWSER_TAB_CLICK
         ));
+    }
+
+    #[test]
+    fn omitted_mobile_tabbar_colors_follow_simulated_appearance() {
+        assert_eq!(
+            mobile_tabbar_default_colors(false),
+            (0x666666, 0x1677ff, 0xffffff, 0xf0f0f0)
+        );
+        assert_eq!(
+            mobile_tabbar_default_colors(true),
+            (0x98989d, 0x0a84ff, 0x1c1c1e, 0x38383a)
+        );
     }
 
     #[cfg(feature = "browser-runtime")]

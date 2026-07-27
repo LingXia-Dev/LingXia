@@ -396,6 +396,12 @@ pub fn set_windows_browser_emulation_profile(
 pub fn set_windows_preferred_color_scheme(
     scheme: WindowsPreferredColorScheme,
 ) -> Result<(), String> {
+    #[cfg(feature = "shell-chrome")]
+    crate::shell::set_windows_tabbar_dark_override(match scheme {
+        WindowsPreferredColorScheme::Auto => None,
+        WindowsPreferredColorScheme::Light => Some(false),
+        WindowsPreferredColorScheme::Dark => Some(true),
+    });
     lingxia_webview::platform::windows::set_windows_preferred_color_scheme_for_new_webviews(scheme);
     let mut failures = Vec::new();
     for webtag in lingxia_webview::runtime::list_webviews() {

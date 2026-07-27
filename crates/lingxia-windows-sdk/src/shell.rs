@@ -41,6 +41,13 @@ mod terminal_panel;
 pub mod text_input;
 mod theme;
 
+use std::sync::atomic::{AtomicU8, Ordering};
+
+/// Runner-only appearance pin for the native app tab bar: 0 follows Windows,
+/// 1 pins light, and 2 pins dark. Product hosts never set this and continue to
+/// follow the system appearance.
+static SHELL_APPEARANCE_OVERRIDE: AtomicU8 = AtomicU8::new(0);
+
 pub use chrome::{
     WindowsShellAddressBarLayout, WindowsShellAuxiliaryItemLayout, WindowsShellHeaderActionLayout,
     WindowsShellNavigationBarLayout, WindowsShellPanelActivatorLayout,
@@ -127,6 +134,26 @@ pub fn windows_shell_background_color() -> u32 {
 /// "follow system" simulated appearance into the icon actually shown.
 pub fn windows_system_dark_mode() -> bool {
     theme::is_dark()
+}
+
+pub(crate) fn set_windows_tabbar_dark_override(value: Option<bool>) {
+    SHELL_APPEARANCE_OVERRIDE.store(
+        match value {
+            None => 0,
+            Some(false) => 1,
+            Some(true) => 2,
+        },
+        Ordering::Release,
+    );
+    runtime::refresh_shell_appearance();
+}
+
+pub(crate) fn windows_tabbar_effective_dark_mode() -> bool {
+    match SHELL_APPEARANCE_OVERRIDE.load(Ordering::Acquire) {
+        1 => false,
+        2 => true,
+        _ => theme::is_dark(),
+    }
 }
 
 pub(crate) fn windows_shell_frame_colors() -> (u32, u32, bool) {
