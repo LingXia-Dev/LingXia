@@ -10,7 +10,7 @@ internal object LxAppCapsule {
     private const val TAG = "LingXia.Capsule"
 
     @JvmStatic
-    fun getCapsuleRect(callbackId: Long) {
+    fun getCapsuleRect(callbackId: Long, appId: String) {
         val activity = LxApp.getCurrentActivity()
         if (activity == null) {
             LxLog.e(TAG, "Current activity not available")
@@ -22,10 +22,10 @@ internal object LxAppCapsule {
             try {
                 Log.i(TAG, "Running getCapsuleRect on UI thread")
 
-                val jsonString = activity.getCapsuleRectJSON()
+                val jsonString = activity.getCapsuleRectJSON(appId)
                 if (jsonString.isEmpty() || jsonString == "{}") {
-                    LxLog.w(TAG, "Capsule rect not available")
-                    NativeApi.onCallback(callbackId, false, "2001") // Not found
+                    LxLog.e(TAG, "Invalid capsule rect payload")
+                    NativeApi.onCallback(callbackId, false, "2001")
                     return@runOnUiThread
                 }
 

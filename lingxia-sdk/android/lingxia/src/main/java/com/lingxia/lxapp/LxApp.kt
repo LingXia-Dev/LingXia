@@ -183,13 +183,13 @@ object LxApp {
     fun getCapsuleRect(): String {
         val activity = currentActivity ?: return "{}"
         if (Looper.myLooper() == Looper.getMainLooper()) {
-            return activity.getCapsuleRectJSON()
+            return activity.getCapsuleRectJSON(activity.getAppId())
         }
         val result = AtomicReference("{}")
         val latch = CountDownLatch(1)
         activity.runOnUiThread {
             try {
-                result.set(activity.getCapsuleRectJSON())
+                result.set(activity.getCapsuleRectJSON(activity.getAppId()))
             } finally {
                 latch.countDown()
             }

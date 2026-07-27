@@ -224,10 +224,11 @@ pub trait AppRuntime:
     /// Opens the given URL according to the host policy for the requested target.
     fn open_url(&self, req: OpenUrlRequest) -> Result<(), PlatformError>;
 
-    /// Gets the capsule button bounding rect in screen coordinates.
-    /// Returns JSON: {"width": f64, "height": f64, "top": f64, "right": f64, "bottom": f64, "left": f64}
+    /// Gets the caller's visible capsule button rect in screen coordinates.
+    /// Returns JSON `null` when the caller has no visible capsule.
     fn get_capsule_rect(
         &self,
+        appid: &str,
     ) -> impl std::future::Future<Output = Result<String, PlatformError>> + Send;
 }
 

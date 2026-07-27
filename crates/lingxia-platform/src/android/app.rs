@@ -547,19 +547,23 @@ impl AppRuntime for Platform {
         .map_err(|e| PlatformError::Platform(format!("Failed to open_url: {}", e)))
     }
 
-    async fn get_capsule_rect(&self) -> Result<String, PlatformError> {
+    async fn get_capsule_rect(&self, appid: &str) -> Result<String, PlatformError> {
         crate::rt::native_call(|callback_id| {
             with_env(|env| -> Result<(), PlatformError> {
                 let capsule_class: &JClass =
                     super::get_cached_class(super::CachedClass::LxAppCapsule).map_err(|e| {
                         PlatformError::Platform(format!("Failed to get LxAppCapsule class: {}", e))
                     })?;
+                let appid_jstring = env.new_string(appid)?;
 
                 env.call_static_method(
                     capsule_class,
                     jni_str!("getCapsuleRect"),
-                    jni_sig!("(J)V"),
-                    &[JValue::Long(callback_id as i64)],
+                    jni_sig!("(JLjava/lang/String;)V"),
+                    &[
+                        JValue::Long(callback_id as i64),
+                        JValue::Object(&appid_jstring),
+                    ],
                 )
                 .map_err(|e| {
                     log::error!("[Android] getCapsuleRect JNI call failed: {}", e);

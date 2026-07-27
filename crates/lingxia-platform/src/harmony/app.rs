@@ -578,12 +578,12 @@ impl AppRuntime for Platform {
         .map_err(|e| PlatformError::Platform(format!("Failed to open url: {}", e)))
     }
 
-    async fn get_capsule_rect(&self) -> Result<String, PlatformError> {
+    async fn get_capsule_rect(&self, appid: &str) -> Result<String, PlatformError> {
         crate::rt::native_call(|callback_id| {
             let callback_id_str = callback_id.to_string();
             lingxia_webview::platform::harmony::tsfn::call_arkts(
                 "getCapsuleRect",
-                &[&callback_id_str],
+                &[&callback_id_str, appid],
             )
             .map_err(|e| PlatformError::Platform(format!("Failed to get capsule rect: {}", e)))
         })

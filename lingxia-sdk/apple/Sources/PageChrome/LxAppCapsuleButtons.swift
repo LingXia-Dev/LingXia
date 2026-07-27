@@ -16,6 +16,8 @@ class LxAppCapsuleButtons {
     static let CAPSULE_BUTTON_TAG = 9999
 
     #if os(iOS)
+    private static weak var capsuleButtonView: UIView?
+
     static func addCapsuleButton(to viewController: UIViewController, appId: String) {
         guard viewController.view.viewWithTag(CAPSULE_BUTTON_TAG) == nil else { return }
 
@@ -32,6 +34,7 @@ class LxAppCapsuleButtons {
         hostingController.view.backgroundColor = UIColor.clear
         hostingController.view.tag = CAPSULE_BUTTON_TAG
         hostingController.view.translatesAutoresizingMaskIntoConstraints = false
+        capsuleButtonView = hostingController.view
 
         viewController.view.addSubview(hostingController.view)
         viewController.addChild(hostingController)
@@ -54,7 +57,11 @@ class LxAppCapsuleButtons {
     }
 
     static func removeCapsuleButton(from viewController: UIViewController) {
-        viewController.view.viewWithTag(CAPSULE_BUTTON_TAG)?.removeFromSuperview()
+        let capsule = viewController.view.viewWithTag(CAPSULE_BUTTON_TAG)
+        capsule?.removeFromSuperview()
+        if capsule === capsuleButtonView {
+            capsuleButtonView = nil
+        }
     }
 
     static func getMenuButtonBoundingRect() -> [String: Double] {
@@ -94,8 +101,15 @@ class LxAppCapsuleButtons {
     }
 
     /// Get capsule rect with async callback pattern (for cross-platform consistency)
-    nonisolated public static func getCapsuleRect(callback_id: UInt64) {
+    nonisolated public static func getCapsuleRect(appid: RustStr, callback_id: UInt64) {
+        let appId = appid.toString()
         Task { @MainActor in
+            guard LxAppCore.currentAppId == appId,
+                  capsuleButtonView?.isHidden == false,
+                  capsuleButtonView?.window != nil else {
+                let _ = onCallback(callback_id, true, "null")
+                return
+            }
             let jsonString = getMenuButtonBoundingRectJSON()
             if jsonString.isEmpty || jsonString == "{}" {
                 let _ = onCallback(callback_id, false, "2001")
@@ -108,24 +122,9 @@ class LxAppCapsuleButtons {
 
     #if os(macOS)
     /// Get capsule rect with async callback pattern (macOS stub - Capsule mode in lingxia-runner)
-    nonisolated public static func getCapsuleRect(callback_id: UInt64) {
-        Task { @MainActor in
-            // Return a minimal rect for macOS
-            let rect: [String: Double] = [
-                "width": 0,
-                "height": 0,
-                "top": 0,
-                "right": 0,
-                "bottom": 0,
-                "left": 0
-            ]
-            if let jsonData = try? JSONSerialization.data(withJSONObject: rect, options: []),
-               let jsonString = String(data: jsonData, encoding: .utf8) {
-                let _ = onCallback(callback_id, true, jsonString)
-            } else {
-                let _ = onCallback(callback_id, false, "2001")
-            }
-        }
+    nonisolated public static func getCapsuleRect(appid: RustStr, callback_id: UInt64) {
+        let _ = appid
+        let _ = onCallback(callback_id, true, "null")
     }
     #endif
 }
