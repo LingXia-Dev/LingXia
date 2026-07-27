@@ -1754,8 +1754,7 @@ impl LxApp {
     /// the LxApp instance. Dev runners use this for an in-place lxapp restart:
     /// logic is recreated, while the existing window/frame stays put.
     pub fn restart_app_service_in_place(&self) -> Result<(), LxAppError> {
-        self.executor.terminate_app_svc(self.clone_arc())?;
-        self.executor.create_app_svc(self.clone_arc())?;
+        self.executor.restart_app_svc(self.clone_arc())?;
         // Re-run onLaunch so app-service state (globalData, network init) is
         // rebuilt. onLaunch normally fires only during open(); an in-place
         // restart skips that lifecycle, so fire it explicitly. It is enqueued

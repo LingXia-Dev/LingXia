@@ -95,7 +95,7 @@ pub(crate) enum ServiceMessage {
     // Terminate AppService for this LxApp instance. ACK returned when cleanup completes.
     TerminateAppSvc {
         lxapp: Arc<LxApp>,
-        ack_tx: mpsc::Sender<()>,
+        ack_tx: oneshot::Sender<()>,
     },
     // Create a new page service
     CreatePage {
@@ -900,37 +900,71 @@ pub(crate) fn terminate_app_svc(
     let appid = lxapp_arc.appid.clone();
     // Ensure mapping remains during terminate; get current worker_id via instance mapping
     let key = lxapp_arc.as_ref() as *const _ as usize;
-    let worker_id_opt = instance_assignments.lock().unwrap().get(&key).copied();
-    if worker_id_opt.is_none() {
+    let Some(worker_id) = instance_assignments.lock().unwrap().get(&key).copied() else {
         info!(
             "No active worker mapping for app {}; skipping terminate",
             appid
         );
         return Ok(());
-    }
+    };
 
     // Set up ACK channel and send terminate to current worker
-    let (tx, rx) = mpsc::channel();
+    let (tx, rx) = oneshot::channel();
     sender.send(ServiceMessage::TerminateAppSvc {
-        lxapp: lxapp_arc,
+        lxapp: lxapp_arc.clone(),
         ack_tx: tx,
     })?;
 
-    // Wait for ACK with timeout
-    let acked = rx.recv_timeout(Duration::from_secs(3)).is_ok();
-    if acked {
-        info!("Terminate ACK received").with_appid(appid.clone());
-    } else {
-        error!("Terminate ACK timeout; forcing release").with_appid(appid.clone());
+    let assignments = instance_assignments.clone();
+    let free_workers = free_workers.clone();
+    crate::executor::spawn(async move {
+        let acked = matches!(
+            tokio::time::timeout(Duration::from_secs(3), rx).await,
+            Ok(Ok(()))
+        );
+        if acked {
+            info!("Terminate ACK received").with_appid(appid.clone());
+        } else {
+            error!("Terminate ACK timeout; forcing release").with_appid(appid.clone());
+        }
+
+        let released = {
+            let mut assignments = assignments.lock().unwrap();
+            if assignments.get(&key) == Some(&worker_id) {
+                assignments.remove(&key)
+            } else {
+                None
+            }
+        };
+        if let Some(worker_id) = released {
+            free_workers.lock().unwrap().push_back(worker_id);
+            info!("Released dedicated worker {} from app {}", worker_id, appid);
+        }
+        drop(lxapp_arc);
+    });
+
+    Ok(())
+}
+
+pub(crate) fn restart_app_svc(
+    lxapp: Arc<LxApp>,
+    sender: &mpsc::Sender<ServiceMessage>,
+    instance_assignments: &Arc<Mutex<HashMap<usize, usize>>>,
+) -> Result<(), LxAppError> {
+    let key = lxapp.as_ref() as *const _ as usize;
+    if !instance_assignments.lock().unwrap().contains_key(&key) {
+        return Err(LxAppError::Runtime(format!(
+            "No active worker mapping for app {}",
+            lxapp.appid
+        )));
     }
 
-    // Remove instance mapping and release the dedicated worker
-    let worker_id_opt = instance_assignments.lock().unwrap().remove(&key);
-    if let Some(worker_id) = worker_id_opt {
-        free_workers.lock().unwrap().push_back(worker_id);
-        info!("Released dedicated worker {} from app {}", worker_id, appid);
-    }
-
+    let (ack_tx, _ack_rx) = oneshot::channel();
+    sender.send(ServiceMessage::TerminateAppSvc {
+        lxapp: lxapp.clone(),
+        ack_tx,
+    })?;
+    sender.send(ServiceMessage::CreateAppSvc { lxapp })?;
     Ok(())
 }
 
