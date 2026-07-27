@@ -166,7 +166,7 @@ fn choose_file_impl(request: &ChooseFileRequest, callback_id: u64) -> Result<(),
         .map_err(|e| PlatformError::Platform(format!("serialize filters failed: {e}")))?;
         let filters_json = env.new_string(filters_json)?;
 
-        let _: bool = env
+        let accepted = env
             .call_static_method(
                 class,
                 jni_str!("chooseFile"),
@@ -180,6 +180,11 @@ fn choose_file_impl(request: &ChooseFileRequest, callback_id: u64) -> Result<(),
                 ],
             )?
             .z()?;
+        if !accepted {
+            return Err(PlatformError::Platform(
+                "failed to launch Android file picker".into(),
+            ));
+        }
         Ok(())
     })
 }
@@ -194,7 +199,7 @@ fn choose_directory_impl(
         let title = env.new_string(request.title.clone().unwrap_or_default())?;
         let default_path = env.new_string(request.default_path.clone().unwrap_or_default())?;
 
-        let _: bool = env
+        let accepted = env
             .call_static_method(
                 class,
                 jni_str!("chooseDirectory"),
@@ -206,6 +211,11 @@ fn choose_directory_impl(
                 ],
             )?
             .z()?;
+        if !accepted {
+            return Err(PlatformError::Platform(
+                "failed to launch Android directory picker".into(),
+            ));
+        }
         Ok(())
     })
 }
