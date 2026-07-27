@@ -519,25 +519,35 @@ impl LxApp {
             let lxapp_arc = lxapp_arc.clone();
             let page_clone = page.clone();
             async move {
-                // Ensure PageSvc exists before loading HTML (for both regular and plugin pages)
-                let (ack_tx, ack_rx) = oneshot::channel::<Result<(), String>>();
-                if let Err(e) = lxapp_arc.executor.create_page_svc_with_ack(
-                    lxapp_arc.clone(),
-                    page_clone.path(),
-                    None,
-                    ack_tx,
-                ) {
-                    return Err(e.to_string());
+                let result = async {
+                    // Ensure PageSvc exists before loading HTML (for both regular and plugin pages)
+                    let (ack_tx, ack_rx) = oneshot::channel::<Result<(), String>>();
+                    lxapp_arc
+                        .executor
+                        .create_page_svc_with_ack(
+                            lxapp_arc.clone(),
+                            page_clone.path(),
+                            None,
+                            ack_tx,
+                        )
+                        .map_err(|e| e.to_string())?;
+
+                    ack_rx
+                        .await
+                        .map_err(|e| {
+                            format!("PageInstance service creation channel closed: {}", e)
+                        })?
+                        .map_err(|e| format!("PageInstance service creation failed: {}", e))?;
+
+                    page_clone
+                        .load_html()
+                        .map_err(|e| format!("Failed to load HTML for page: {}", e))
                 }
-
-                ack_rx
-                    .await
-                    .map_err(|e| format!("PageInstance service creation channel closed: {}", e))?
-                    .map_err(|e| format!("PageInstance service creation failed: {}", e))?;
-
-                page_clone
-                    .load_html()
-                    .map_err(|e| format!("Failed to load HTML for page: {}", e))
+                .await;
+                if result.is_err() {
+                    lxapp_arc.remove_registered_page_if_current(&page_clone.path(), &page_clone);
+                }
+                result
             }
         });
 
