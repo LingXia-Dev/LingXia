@@ -270,9 +270,15 @@ object Lingxia {
         return try {
             if (uri.startsWith("intent://", ignoreCase = true)) {
                 val parsedIntent = Intent.parseUri(uri, Intent.URI_INTENT_SCHEME).apply {
+                    val grantFlags = Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                        Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
+                        Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION or
+                        Intent.FLAG_GRANT_PREFIX_URI_PERMISSION
                     addCategory(Intent.CATEGORY_BROWSABLE)
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     component = null
+                    selector = null
+                    clipData = null
+                    flags = (flags and grantFlags.inv()) or Intent.FLAG_ACTIVITY_NEW_TASK
                 }
                 try {
                     context.startActivity(parsedIntent)
