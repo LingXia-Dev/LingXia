@@ -33,6 +33,7 @@ export default class EntryAbility extends LingxiaBaseAbility {
   }
 
   onWindowStageDestroy(): void {
+    super.onWindowStageDestroy();
     hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onWindowStageDestroy');
   }
 }
