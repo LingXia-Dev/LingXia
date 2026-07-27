@@ -6,6 +6,17 @@ import WebKit
 
 /// Tooling-only SPI consumed by `tools/lingxia-runner`.
 @_spi(Runner) public enum LingxiaRunnerSPI {
+    public enum Appearance {
+        public static func preference() -> Int32 {
+            LxApp.hostAppearancePreference()
+        }
+
+        @discardableResult
+        public static func setPreference(_ preference: Int32) -> Bool {
+            LxApp.setHostAppearance(preference: preference)
+        }
+    }
+
     @MainActor
     public enum Runtime {
         /// Handler receives `(ownerAppId, ownerSessionId, url, aside)`; `aside`

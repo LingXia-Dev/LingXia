@@ -1623,7 +1623,13 @@ pub fn get_lxapp_info(appid: &str) -> self::bridge::LxAppInfo {
 pub fn get_navigation_bar_state(appid: &str, path: &str) -> self::bridge::NavigationBarState {
     if let Some(lxapp) = lxapp::try_get(appid) {
         let nav_state = lxapp.get_navbar_state(path);
-        let bg_color = parse_color_to_u32(&nav_state.navigationBarBackgroundColor, 0xFFFFFFFF);
+        let semantic_background = if lxapp::get_appearance_state().effective_dark {
+            0xFF1C1C1E
+        } else {
+            0xFFFFFFFF
+        };
+        let bg_color =
+            parse_color_to_u32(&nav_state.navigationBarBackgroundColor, semantic_background);
 
         self::bridge::NavigationBarState {
             background_color: bg_color,

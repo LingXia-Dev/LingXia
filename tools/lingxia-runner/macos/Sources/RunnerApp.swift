@@ -65,7 +65,6 @@ public class RunnerApp {
     private(set) var deviceOrientation: RunnerDeviceOrientation = .portrait
     private(set) var deviceSize: MobileDeviceSize = .defaultDevice
     private(set) var simulatedAppearance: RunnerAppearance = .system
-    nonisolated(unsafe) private var systemAppearanceObservation: NSKeyValueObservation?
     private var hostAppearanceObserver: NSObjectProtocol?
 
     var effectiveAppearanceIsDark: Bool {
@@ -80,12 +79,6 @@ public class RunnerApp {
     private init() {
         deviceOrientation = Self.defaultOrientation(for: selectedDeviceSize)
         RunnerUserAgentPolicy.shared.setProfile(selectedDeviceSize.browserProfile)
-        systemAppearanceObservation = NSApp.observe(\.effectiveAppearance) { [weak self] _, _ in
-            Task { @MainActor [weak self] in
-                guard let self, self.simulatedAppearance == .system else { return }
-                _ = onHostAppearanceChanged(0, self.effectiveAppearanceIsDark)
-            }
-        }
         hostAppearanceObserver = NotificationCenter.default.addObserver(
             forName: Notification.Name("LingXiaHostAppearancePreferenceDidChange"),
             object: nil,
@@ -154,14 +147,20 @@ public class RunnerApp {
 
     /// Pin or release the simulated appearance of the device screen.
     public func setAppearance(_ appearance: RunnerAppearance) {
-        simulatedAppearance = appearance
-        applyAppearanceToHosts()
         let preference: Int32 = switch appearance {
         case .system: 0
         case .light: 1
         case .dark: 2
         }
-        _ = onHostAppearanceChanged(preference, effectiveAppearanceIsDark)
+        if simulatedAppearance == appearance,
+           LingxiaRunnerSPI.Appearance.preference() == preference {
+            return
+        }
+        simulatedAppearance = appearance
+        applyAppearanceToHosts()
+        if LingxiaRunnerSPI.Appearance.preference() != preference {
+            _ = LingxiaRunnerSPI.Appearance.setPreference(preference)
+        }
         NotificationCenter.default.post(name: Self.appearanceDidChange, object: nil)
     }
 
