@@ -567,6 +567,8 @@ fn apply_local_proxy_router(
 
 fn clear_webview_proxy() -> Result<ProxyRuntimeSnapshot, LxAppError> {
     log::info!("[BrowserShellProxy] clearing desired webview proxy");
+    webview_runtime::configure_proxy_for_new_webviews(None).map_err(map_webview_error)?;
+    log::info!("[BrowserShellProxy] cleared desired webview proxy for new WebViews");
     if let Some(running) = lock_state().running.clone() {
         running
             .proxy
@@ -576,8 +578,6 @@ fn clear_webview_proxy() -> Result<ProxyRuntimeSnapshot, LxAppError> {
             running.local_addr
         );
     }
-    webview_runtime::configure_proxy_for_new_webviews(None).map_err(map_webview_error)?;
-    log::info!("[BrowserShellProxy] cleared desired webview proxy for new WebViews");
     Ok(snapshot_from_apply_report(
         ProxyApplyReport::cleared(ProxyActivation::NewWebViewsOnly),
         None,
