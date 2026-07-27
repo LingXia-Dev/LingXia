@@ -219,22 +219,21 @@ export class PermissionManager {
       const atManager = abilityAccessCtrl.createAtManager();
       const result = await atManager.requestPermissionsFromUser(context, permissions);
       const grantedCode = permissionGrantedCode();
-      let allGranted = true;
 
-      if (result && Array.isArray(result.authResults)) {
-        result.authResults.forEach((status: number, index: number) => {
-          const permission = permissions[index];
-          if (status === grantedCode) {
-            PermissionManager.granted.add(permission);
-          } else {
-            allGranted = false;
-          }
-        });
-      } else {
-        allGranted = false;
+      if (!result || !Array.isArray(result.authResults) ||
+          result.authResults.length !== permissions.length) {
+        return false;
+      }
+      for (let index = 0; index < permissions.length; index += 1) {
+        if (result.authResults[index] !== grantedCode) {
+          return false;
+        }
       }
 
-      return allGranted;
+      permissions.forEach((permission: Permissions) => {
+        PermissionManager.granted.add(permission);
+      });
+      return true;
     } catch (error) {
       LxLog.e(TAG, `requestPermissionsFromUser failed: ${String(error)}`);
       return false;
