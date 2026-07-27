@@ -303,21 +303,15 @@ async fn download_host_app_update_package(
     }
 
     if dest.exists() {
-        if checksum_sha256.is_empty() {
-            let existing_size = dest.metadata().map(|m| m.len()).unwrap_or(0);
-            if existing_size > 0 {
+        if let Some(existing_size) = reusable_app_update_package_size(&dest, checksum_sha256) {
+            if checksum_sha256.is_empty() {
                 log::info!("App update package already downloaded: {}", dest.display());
-                progress.report(existing_size, expected_size.or(Some(existing_size)));
-                return Ok(dest);
+            } else {
+                log::info!(
+                    "App update package already downloaded and verified: {}",
+                    dest.display()
+                );
             }
-            let _ = fs::remove_file(&dest);
-        }
-        if verify_sha256(&dest, checksum_sha256).is_ok() {
-            log::info!(
-                "App update package already downloaded and verified: {}",
-                dest.display()
-            );
-            let existing_size = dest.metadata().map(|m| m.len()).unwrap_or(0);
             progress.report(existing_size, expected_size.or(Some(existing_size)));
             return Ok(dest);
         }
@@ -487,6 +481,17 @@ fn hash_url(url: &str) -> String {
     format!("{:x}", hasher.finish())
 }
 
+fn reusable_app_update_package_size(path: &Path, checksum_sha256: &str) -> Option<u64> {
+    let metadata = path.metadata().ok()?;
+    if !metadata.is_file() || metadata.len() == 0 {
+        return None;
+    }
+    if !checksum_sha256.is_empty() && verify_sha256(path, checksum_sha256).is_err() {
+        return None;
+    }
+    Some(metadata.len())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -514,5 +519,20 @@ mod tests {
         assert!(!stale.exists());
         assert!(!stale_part.exists());
         assert!(staged.exists());
+    }
+
+    #[test]
+    fn empty_cached_package_without_checksum_is_not_reused() {
+        let dir = tempfile::tempdir().unwrap();
+        let package = dir.path().join("app_1.2.3_package.apk");
+        fs::write(&package, []).unwrap();
+
+        assert_eq!(reusable_app_update_package_size(&package, ""), None);
+
+        fs::write(&package, b"package").unwrap();
+        assert_eq!(
+            reusable_app_update_package_size(&package, ""),
+            Some(b"package".len() as u64)
+        );
     }
 }
