@@ -35,6 +35,7 @@ interface LingxiaWindowSizeChangeEvent {
 
 interface WindowWithOn {
   on?: (type: string, callback: (event: LingxiaWindowKeyEvent) => void) => void;
+  off?: (type: string, callback: (event: LingxiaWindowKeyEvent) => void) => void;
 }
 
 interface WindowWithGestureBackControl {
@@ -60,10 +61,19 @@ class WindowKeyEventTargetWrapper {
     }
     return false;
   }
+
+  public unregister(type: string, callback: (event: LingxiaWindowKeyEvent) => void): void {
+    const listener = this.windowWithOn.off;
+    if (typeof listener === 'function') {
+      const typedListener = listener as (eventType: string, cb: (event: LingxiaWindowKeyEvent) => void) => void;
+      typedListener(type, callback);
+    }
+  }
 }
 
 interface WindowWithSizeOn {
   on?: (type: string, callback: (event: LingxiaWindowSizeChangeEvent) => void) => void;
+  off?: (type: string, callback: (event: LingxiaWindowSizeChangeEvent) => void) => void;
 }
 
 class WindowSizeEventTargetWrapper {
@@ -84,6 +94,14 @@ class WindowSizeEventTargetWrapper {
     }
     return false;
   }
+
+  public unregister(type: string, callback: (event: LingxiaWindowSizeChangeEvent) => void): void {
+    const listener = this.windowWithOn.off;
+    if (typeof listener === 'function') {
+      const typedListener = listener as (eventType: string, cb: (event: LingxiaWindowSizeChangeEvent) => void) => void;
+      typedListener(type, callback);
+    }
+  }
 }
 
 export class LingxiaBaseAbility extends UIAbility {
@@ -93,7 +111,12 @@ export class LingxiaBaseAbility extends UIAbility {
   private mainWindow: window.Window | null = null;
   private hasEnteredBackground: boolean = false;
   private gestureBackConfigInProgress: boolean = false;
+  private backInterceptorRegistered: boolean = false;
+  private screenshotListenerRegistered: boolean = false;
   private sizeChangeListenerRegistered: boolean = false;
+  private keyEventListener: ((event: LingxiaWindowKeyEvent) => void) | null = null;
+  private screenshotListener: ((event: LingxiaWindowKeyEvent) => void) | null = null;
+  private sizeChangeListener: ((event: LingxiaWindowSizeChangeEvent) => void) | null = null;
   private lastReportedDeviceOrientation: string = '';
 
   /**
@@ -171,6 +194,10 @@ export class LingxiaBaseAbility extends UIAbility {
   }
 
   protected registerWindowBackInterceptor(windowStage: window.WindowStage): void {
+    if (this.backInterceptorRegistered) {
+      return;
+    }
+
     try {
       const mainWindow = windowStage.getMainWindowSync();
       if (!mainWindow) {
@@ -186,7 +213,7 @@ export class LingxiaBaseAbility extends UIAbility {
       this.disableSystemGestureBack();
 
       const wrapper = new WindowKeyEventTargetWrapper(mainWindow);
-      const registered = wrapper.register('keyEvent', (event: LingxiaWindowKeyEvent) => {
+      const listener = (event: LingxiaWindowKeyEvent) => {
         if (!event) {
           return;
         }
@@ -202,25 +229,31 @@ export class LingxiaBaseAbility extends UIAbility {
             event.handled = true;
           }
         }
-      });
+      };
+      const registered = wrapper.register('keyEvent', listener);
 
       if (!registered) {
         hilog.warn(DOMAIN, TAG, '%{public}s', 'Window does not expose keyEvent listener');
         return;
       }
+      this.keyEventListener = listener;
+      this.backInterceptorRegistered = true;
     } catch (error) {
       LxLog.e(TAG, `Failed to register back interceptor: ${error}`);
     }
   }
 
   protected registerScreenshotListener(): void {
+    if (this.screenshotListenerRegistered) {
+      return;
+    }
     if (!this.mainWindow) {
       hilog.warn(DOMAIN, TAG, '%{public}s', 'Main window not available for screenshot listener');
       return;
     }
 
     try {
-      this.mainWindow.on('screenshot', () => {
+      const listener = () => {
         hilog.info(DOMAIN, TAG, '%{public}s', 'Screenshot detected');
         try {
           const current: CurrentLxApp = getCurrentLxapp();
@@ -230,7 +263,10 @@ export class LingxiaBaseAbility extends UIAbility {
         } catch (error) {
           LxLog.e(TAG, `Error in screenshot callback: ${error}`);
         }
-      });
+      };
+      this.mainWindow.on('screenshot', listener);
+      this.screenshotListener = listener;
+      this.screenshotListenerRegistered = true;
       hilog.info(DOMAIN, TAG, '%{public}s', 'Screenshot listener registered');
     } catch (error) {
       LxLog.e(TAG, `Failed to register screenshot listener: ${error}`);
@@ -302,20 +338,22 @@ export class LingxiaBaseAbility extends UIAbility {
       }
 
       const wrapper = new WindowSizeEventTargetWrapper(mainWindow);
-      const registered = wrapper.register('windowSizeChange', (event: LingxiaWindowSizeChangeEvent) => {
+      const listener = (event: LingxiaWindowSizeChangeEvent) => {
         const width = Number(event?.width);
         const height = Number(event?.height);
         const orientationValue = this.resolveOrientationFromSize(width, height);
         if (orientationValue) {
           this.reportDeviceOrientation(orientationValue);
         }
-      });
+      };
+      const registered = wrapper.register('windowSizeChange', listener);
 
       if (!registered) {
         hilog.warn(DOMAIN, TAG, '%{public}s', 'Window does not expose windowSizeChange listener');
         return;
       }
 
+      this.sizeChangeListener = listener;
       this.sizeChangeListenerRegistered = true;
       this.syncDeviceOrientationFromDisplay();
     } catch (error) {
@@ -325,6 +363,7 @@ export class LingxiaBaseAbility extends UIAbility {
 
   onWindowStageCreate(windowStage: window.WindowStage): void {
     super.onWindowStageCreate(windowStage);
+    this.unregisterWindowListeners();
 
     // Register native host addon (once only)
     if (!LingxiaBaseAbility.hostAddonInstalled) {
@@ -334,6 +373,46 @@ export class LingxiaBaseAbility extends UIAbility {
     this.registerWindowBackInterceptor(windowStage);
     this.registerScreenshotListener();
     this.registerWindowSizeListener(windowStage);
+  }
+
+  private unregisterWindowListeners(): void {
+    const mainWindow = this.mainWindow;
+    if (mainWindow) {
+      if (this.keyEventListener) {
+        try {
+          new WindowKeyEventTargetWrapper(mainWindow).unregister('keyEvent', this.keyEventListener);
+        } catch (error) {
+          LxLog.e(TAG, `Failed to unregister key listener: ${error}`);
+        }
+      }
+      if (this.screenshotListener) {
+        try {
+          new WindowKeyEventTargetWrapper(mainWindow).unregister('screenshot', this.screenshotListener);
+        } catch (error) {
+          LxLog.e(TAG, `Failed to unregister screenshot listener: ${error}`);
+        }
+      }
+      if (this.sizeChangeListener) {
+        try {
+          new WindowSizeEventTargetWrapper(mainWindow).unregister('windowSizeChange', this.sizeChangeListener);
+        } catch (error) {
+          LxLog.e(TAG, `Failed to unregister orientation listener: ${error}`);
+        }
+      }
+    }
+
+    this.keyEventListener = null;
+    this.screenshotListener = null;
+    this.sizeChangeListener = null;
+    this.backInterceptorRegistered = false;
+    this.screenshotListenerRegistered = false;
+    this.sizeChangeListenerRegistered = false;
+    this.mainWindow = null;
+  }
+
+  onWindowStageDestroy(): void {
+    this.unregisterWindowListeners();
+    super.onWindowStageDestroy();
   }
 
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
@@ -347,6 +426,7 @@ export class LingxiaBaseAbility extends UIAbility {
   }
 
   onDestroy(): void {
+    this.unregisterWindowListeners();
     super.onDestroy();
     hilog.info(DOMAIN, TAG, '%{public}s', 'Ability onDestroy');
   }
