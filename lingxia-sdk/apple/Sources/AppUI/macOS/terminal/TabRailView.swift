@@ -80,6 +80,9 @@ final class LingXiaTerminalTabRailView: NSView {
 
     var items: [Item] = [] {
         didSet {
+            // Rebuilding tears down every tab view (and its hover state);
+            // skip when nothing changed.
+            guard items != oldValue else { return }
             if let editingID, !items.contains(where: { $0.id == editingID }) {
                 cancelEditing()
             }

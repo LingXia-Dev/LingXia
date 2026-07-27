@@ -418,7 +418,10 @@ private final class LingXiaTerminalCanvasView: NSView, @MainActor NSTextInputCli
         selectionFocus = nil
         needsDisplay = true
         let point = gridPoint(for: convert(event.locationInWindow, from: nil))
-        onScroll?(-wholeRows, UInt16(point.col), UInt16(point.row), !readOnly)
+        // gridPoint allows col == cols (selection end-of-line); mouse
+        // reports need an in-range column.
+        let reportCol = UInt16(min(point.col, max(0, cols - 1)))
+        onScroll?(-wholeRows, reportCol, UInt16(point.row), !readOnly)
     }
 
     func showContextMenu(fromWindowEvent event: NSEvent) {
@@ -729,6 +732,9 @@ private final class LingXiaTerminalCanvasView: NSView, @MainActor NSTextInputCli
         flushRun()
 
         drawMarkedText()
+        // Only the focused pane paints the cursor (matches the Windows grid):
+        // hollow cursors in every split make cursor-heavy TUIs appear to
+        // flicker at several positions at once.
         if window?.firstResponder === self, cursorVisible, !hasMarkedText() {
             let x = pixelFloor(insetX + CGFloat(cursorCol) * charSize.width)
             let y = pixelFloor(bounds.height - insetTop - CGFloat(cursorRow + 1) * charSize.height)
@@ -1000,14 +1006,21 @@ private final class LingXiaTerminalCanvasView: NSView, @MainActor NSTextInputCli
     }
 
     private func textInRow(_ row: Int, startCol: Int, endCol: Int) -> String {
-        guard row >= 0, row < lines.count else { return "" }
-        var chars = Array(lines[row])
-        if chars.count < endCol {
-            chars.append(contentsOf: Array(repeating: Character(" "), count: endCol - chars.count))
+        // Extract from the cell grid, not the flattened line string: wide
+        // (CJK) glyphs occupy one character but two columns, so slicing the
+        // string by column index shears mixed-width rows.
+        var text = ""
+        var nextCol = startCol
+        for cell in cells where Int(cell.row) == row && !cell.text.isEmpty {
+            let col = Int(cell.col)
+            guard col >= startCol, col < endCol else { continue }
+            if col > nextCol {
+                text += String(repeating: " ", count: col - nextCol)
+            }
+            text += cell.text
+            nextCol = col + (cell.wide ? 2 : 1)
         }
-        let safeStart = min(max(startCol, 0), chars.count)
-        let safeEnd = min(max(endCol, safeStart), chars.count)
-        return String(chars[safeStart..<safeEnd]).trimmingCharacters(in: .whitespaces)
+        return text.trimmingCharacters(in: .whitespaces)
     }
 
     private func recalculateGridSize() {
@@ -1282,6 +1295,12 @@ private final class LingXiaTerminalCanvasView: NSView, @MainActor NSTextInputCli
 
     private func drawCursor(at origin: NSPoint) {
         let rect = pixelAlignedRect(x: origin.x, y: origin.y, width: charSize.width, height: charSize.height)
+        let strokeHollow = {
+            self.defaultForeground.withAlphaComponent(0.62).setStroke()
+            let path = NSBezierPath(rect: rect.insetBy(dx: 0.5, dy: 0.5))
+            path.lineWidth = max(1 / self.backingScale, 1)
+            path.stroke()
+        }
         defaultForeground.withAlphaComponent(0.62).setFill()
         switch cursorStyle {
         case "bar":
@@ -1289,12 +1308,26 @@ private final class LingXiaTerminalCanvasView: NSView, @MainActor NSTextInputCli
         case "underline":
             pixelAlignedRect(x: origin.x, y: origin.y, width: charSize.width, height: 1.5).fill()
         case "hollow":
-            defaultForeground.setStroke()
-            let path = NSBezierPath(rect: rect.insetBy(dx: 0.5, dy: 0.5))
-            path.lineWidth = max(1 / backingScale, 1)
-            path.stroke()
+            strokeHollow()
         default:
-            pixelAlignedRect(x: origin.x, y: origin.y, width: 1.5, height: charSize.height).fill()
+            // "block" and anything unrecognised: filled cell with the covered
+            // glyph redrawn in the background color (inverse video), matching
+            // the Windows grid renderer.
+            rect.fill()
+            if let covered = cells.first(where: { Int($0.row) == cursorRow && Int($0.col) == cursorCol }),
+               !covered.text.isEmpty {
+                let attrs = textAttributes(
+                    bold: covered.bold,
+                    italic: covered.italic,
+                    underline: covered.underline,
+                    foreground: defaultBackground
+                )
+                drawTerminalText(
+                    covered.text,
+                    at: NSPoint(x: origin.x, y: origin.y + terminalBaselineOffset()),
+                    attributes: attrs
+                )
+            }
         }
     }
 
@@ -1310,31 +1343,8 @@ private final class LingXiaTerminalCanvasView: NSView, @MainActor NSTextInputCli
                 alpha: 1
             )
         }
-        if token.hasPrefix("idx:"),
-           let index = Int(token.dropFirst(4)) {
-            return Self.palette[index % Self.palette.count]
-        }
         return fallback
     }
-
-    private static let palette: [NSColor] = [
-        NSColor(red: 0.08, green: 0.09, blue: 0.11, alpha: 1),
-        NSColor(red: 0.86, green: 0.20, blue: 0.22, alpha: 1),
-        NSColor(red: 0.33, green: 0.75, blue: 0.35, alpha: 1),
-        NSColor(red: 0.92, green: 0.72, blue: 0.31, alpha: 1),
-        NSColor(red: 0.31, green: 0.58, blue: 0.98, alpha: 1),
-        NSColor(red: 0.74, green: 0.38, blue: 0.91, alpha: 1),
-        NSColor(red: 0.35, green: 0.78, blue: 0.86, alpha: 1),
-        NSColor(red: 0.86, green: 0.88, blue: 0.90, alpha: 1),
-        NSColor(red: 0.38, green: 0.42, blue: 0.48, alpha: 1),
-        NSColor(red: 1.00, green: 0.36, blue: 0.38, alpha: 1),
-        NSColor(red: 0.52, green: 0.90, blue: 0.48, alpha: 1),
-        NSColor(red: 1.00, green: 0.84, blue: 0.42, alpha: 1),
-        NSColor(red: 0.48, green: 0.70, blue: 1.00, alpha: 1),
-        NSColor(red: 0.86, green: 0.52, blue: 1.00, alpha: 1),
-        NSColor(red: 0.50, green: 0.92, blue: 0.98, alpha: 1),
-        NSColor(red: 1.00, green: 1.00, blue: 1.00, alpha: 1),
-    ]
 }
 
 private final class LingXiaPTYTerminalSession: @unchecked Sendable {
@@ -1349,6 +1359,7 @@ private final class LingXiaPTYTerminalSession: @unchecked Sendable {
     private var sessionID: UInt64 = 0
     private var readTimer: DispatchSourceTimer?
     private var pendingInput = ""
+    private var lastSnapshotJSON = ""
 
     func start() {
         ioQueue.async { [weak self] in
@@ -1439,6 +1450,7 @@ private final class LingXiaPTYTerminalSession: @unchecked Sendable {
         readTimer?.cancel()
         readTimer = nil
         pendingInput.removeAll(keepingCapacity: false)
+        lastSnapshotJSON = ""
         if sessionID != 0 {
             lxTerminalLogAsync("pty.stop close session=\(sessionID)")
             terminalSessionClose(sessionID)
@@ -1450,6 +1462,11 @@ private final class LingXiaPTYTerminalSession: @unchecked Sendable {
         guard sessionID != 0 else { return }
         let id = sessionID
         let json = terminalSessionSnapshot(id).toString()
+        // The 16ms poll mostly returns an unchanged frame (generation, titles,
+        // and exit state are all part of the JSON); skip the decode and the
+        // main-thread redraw entirely until something actually changed.
+        guard json != lastSnapshotJSON else { return }
+        lastSnapshotJSON = json
         guard let data = json.data(using: .utf8) else {
             lxTerminalLogAsync("pty.snapshot invalid-utf8 session=\(id)", type: .error)
             return
