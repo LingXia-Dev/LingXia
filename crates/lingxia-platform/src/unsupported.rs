@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 
 use crate::error::PlatformError;
 use crate::traits::app_runtime::{AnimationType, AppRuntime, LxAppOpenMode, OpenUrlRequest};
+use crate::traits::appearance::Appearance;
 use crate::traits::device::{Device, DeviceHardware};
 use crate::traits::file::{
     ChooseDirectoryRequest, ChooseFileRequest, FileDialogResult, FileService, OpenFileRequest,
@@ -253,6 +254,8 @@ impl UIUpdate for Platform {
         not_supported("update_tabbar_ui")
     }
 }
+
+impl Appearance for Platform {}
 
 impl UserFeedback for Platform {
     fn show_toast(&self, _options: ToastOptions) -> Result<(), PlatformError> {

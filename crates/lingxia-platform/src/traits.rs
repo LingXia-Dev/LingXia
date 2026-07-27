@@ -1,4 +1,5 @@
 pub mod app_runtime;
+pub mod appearance;
 pub mod device;
 pub mod file;
 pub mod keyboard;
@@ -19,6 +20,7 @@ pub mod wifi;
 
 pub mod prelude {
     pub use super::app_runtime::AppRuntime;
+    pub use super::appearance::{Appearance, AppearancePreference, AppearanceState};
     pub use super::device::{Device, DeviceHardware};
     pub use super::file::FileService;
     pub use super::keyboard::{

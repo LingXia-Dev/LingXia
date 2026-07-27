@@ -217,6 +217,30 @@ fn seed_display_language(app_data_dir: &std::path::Path) {
     }
 }
 
+fn seed_appearance(runtime: &std::sync::Arc<lingxia_platform::Platform>) {
+    use lingxia_platform::traits::app_runtime::AppRuntime;
+    use lingxia_platform::traits::appearance::{Appearance, AppearancePreference};
+
+    let saved = match lingxia_service::settings::appearance(&runtime.app_data_dir()) {
+        Ok(saved) => saved,
+        Err(error) => {
+            log::warn!("Failed to load appearance: {error}");
+            None
+        }
+    };
+    let preference = match saved.as_deref().unwrap_or("system").parse() {
+        Ok(preference) => preference,
+        Err(error) => {
+            log::warn!("Ignoring invalid saved appearance: {error}");
+            AppearancePreference::System
+        }
+    };
+    match runtime.set_appearance(preference) {
+        Ok(state) => lxapp::set_appearance_state(state),
+        Err(error) => log::warn!("Failed to apply saved appearance: {error}"),
+    }
+}
+
 /// Common initialization after Platform is created.
 /// Registers built-in runtime and initializes the lxapp system.
 pub(crate) fn init_with_platform(
@@ -236,6 +260,7 @@ pub(crate) fn init_with_platform(
         .ok_or_else(|| crate::Error::internal("failed to load host app configuration"))?;
     crate::app::set_data_dir(runtime.app_data_dir());
     seed_display_language(&runtime.app_data_dir());
+    seed_appearance(&runtime);
     install_global_executor();
     if let Err(err) = lingxia_app_context::set_app_config(app_config.clone()) {
         return Err(crate::Error::internal(format!(

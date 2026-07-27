@@ -145,6 +145,23 @@ mod bridge {
         #[swift_bridge(swift_name = "LxApp.exitApp")]
         fn exit_app() -> bool;
 
+        // Process-wide host appearance. The preference values are 0 = system,
+        // 1 = light, and 2 = dark.
+        #[swift_bridge(swift_name = "LxApp.hostAppearancePreference")]
+        fn host_appearance_preference() -> i32;
+
+        #[swift_bridge(swift_name = "LxApp.hostAppearanceEffectiveDark")]
+        fn host_appearance_effective_dark() -> bool;
+
+        #[swift_bridge(swift_name = "LxApp.setHostAppearance")]
+        fn set_host_appearance(preference: i32) -> bool;
+
+        #[swift_bridge(swift_name = "LxApp.addHostAppearanceChangeListener")]
+        fn add_host_appearance_change_listener(callback_id: u64);
+
+        #[swift_bridge(swift_name = "LxApp.removeHostAppearanceChangeListener")]
+        fn remove_host_appearance_change_listener(callback_id: u64);
+
         #[swift_bridge(swift_name = "LxApp.setTrayBadge")]
         fn set_tray_badge(text: &str) -> bool;
 
@@ -425,13 +442,17 @@ mod bridge {
 pub use bridge::{
     ActionSheetOptions, ModalOptions, ToastIcon, ToastOptions, ToastPosition, autostart_is_enabled,
     autostart_set_enabled, cancel_preview_media, close_lxapp, close_surface, exit_app,
-    hide_surface, hide_toast, navigate, open_document_external, open_lxapp, open_url,
-    present_layout, present_surface, preview_media, review_document, set_activator_items,
-    set_app_badge, set_managed_surface_visible, set_shell_pins, set_tray_badge,
-    set_tray_click_intercept, set_tray_icon, set_tray_menu, set_tray_title, set_tray_visible,
-    share, show_action_sheet, show_modal, show_surface, show_toast, toggle_managed_surface,
-    update_navbar_ui, update_orientation_ui, update_tabbar_ui, update_tabbar_ui_async,
+    hide_surface, hide_toast, host_appearance_effective_dark, host_appearance_preference, navigate,
+    open_document_external, open_lxapp, open_url, present_layout, present_surface, preview_media,
+    review_document, set_activator_items, set_app_badge, set_host_appearance,
+    set_managed_surface_visible, set_shell_pins, set_tray_badge, set_tray_click_intercept,
+    set_tray_icon, set_tray_menu, set_tray_title, set_tray_visible, share, show_action_sheet,
+    show_modal, show_surface, show_toast, toggle_managed_surface, update_navbar_ui,
+    update_orientation_ui, update_tabbar_ui, update_tabbar_ui_async,
 };
+
+#[cfg(any(target_os = "ios", target_os = "macos"))]
+pub use bridge::{add_host_appearance_change_listener, remove_host_appearance_change_listener};
 #[cfg(target_os = "macos")]
 pub use bridge::{notify_app_update_ready, reveal_in_file_manager};
 

@@ -27,6 +27,10 @@ pub struct Settings {
         skip_serializing_if = "Option::is_none"
     )]
     pub display_language: Option<String>,
+    /// User-selected product appearance. `None` and `"system"` both follow
+    /// the operating system; writers normalize `system` to `None`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub appearance: Option<String>,
 }
 
 static SETTINGS_CACHE: OnceLock<DashMap<String, Settings>> = OnceLock::new();
@@ -150,6 +154,22 @@ pub fn set_display_language(
     save(app_data_dir, &settings)
 }
 
+pub fn get_appearance(app_data_dir: &Path) -> Result<Option<String>, SettingsError> {
+    Ok(load(app_data_dir)?
+        .appearance
+        .filter(|value| !value.trim().is_empty()))
+}
+
+pub fn set_appearance(app_data_dir: &Path, appearance: Option<&str>) -> Result<(), SettingsError> {
+    let _guard = store_lock().lock().unwrap_or_else(|e| e.into_inner());
+    let mut settings = load(app_data_dir)?;
+    settings.appearance = appearance
+        .map(str::trim)
+        .filter(|value| !value.is_empty() && *value != "system")
+        .map(str::to_string);
+    save(app_data_dir, &settings)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -159,6 +179,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         set_download_dir(dir.path(), Some(dir.path().join("downloads"))).unwrap();
         set_display_language(dir.path(), Some("zh-CN")).unwrap();
+        set_appearance(dir.path(), Some("dark")).unwrap();
 
         assert_eq!(
             get_display_language(dir.path()).unwrap().as_deref(),
@@ -168,6 +189,10 @@ mod tests {
             get_download_dir(dir.path()).unwrap(),
             Some(dir.path().join("downloads"))
         );
+        assert_eq!(get_appearance(dir.path()).unwrap().as_deref(), Some("dark"));
+
+        set_appearance(dir.path(), Some("system")).unwrap();
+        assert!(get_appearance(dir.path()).unwrap().is_none());
     }
 
     #[test]

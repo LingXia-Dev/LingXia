@@ -65,6 +65,8 @@ public class RunnerApp {
     private(set) var deviceOrientation: RunnerDeviceOrientation = .portrait
     private(set) var deviceSize: MobileDeviceSize = .defaultDevice
     private(set) var simulatedAppearance: RunnerAppearance = .system
+    nonisolated(unsafe) private var systemAppearanceObservation: NSKeyValueObservation?
+    private var hostAppearanceObserver: NSObjectProtocol?
 
     var effectiveAppearanceIsDark: Bool {
         switch simulatedAppearance {
@@ -78,6 +80,30 @@ public class RunnerApp {
     private init() {
         deviceOrientation = Self.defaultOrientation(for: selectedDeviceSize)
         RunnerUserAgentPolicy.shared.setProfile(selectedDeviceSize.browserProfile)
+        systemAppearanceObservation = NSApp.observe(\.effectiveAppearance) { [weak self] _, _ in
+            Task { @MainActor [weak self] in
+                guard let self, self.simulatedAppearance == .system else { return }
+                _ = onHostAppearanceChanged(0, self.effectiveAppearanceIsDark)
+            }
+        }
+        hostAppearanceObserver = NotificationCenter.default.addObserver(
+            forName: Notification.Name("LingXiaHostAppearancePreferenceDidChange"),
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            let raw = notification.userInfo?["preference"] as? Int32
+            MainActor.assumeIsolated {
+                guard let raw else { return }
+                let appearance: RunnerAppearance
+                switch raw {
+                case 0: appearance = .system
+                case 1: appearance = .light
+                case 2: appearance = .dark
+                default: return
+                }
+                self?.setAppearance(appearance)
+            }
+        }
     }
 
     /// Pads and desktops read most naturally in landscape; phones in portrait.
@@ -130,6 +156,12 @@ public class RunnerApp {
     public func setAppearance(_ appearance: RunnerAppearance) {
         simulatedAppearance = appearance
         applyAppearanceToHosts()
+        let preference: Int32 = switch appearance {
+        case .system: 0
+        case .light: 1
+        case .dark: 2
+        }
+        _ = onHostAppearanceChanged(preference, effectiveAppearanceIsDark)
         NotificationCenter.default.post(name: Self.appearanceDidChange, object: nil)
     }
 

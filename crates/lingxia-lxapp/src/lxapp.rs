@@ -71,7 +71,8 @@ pub use runtime_ops::{
     open_lxapp, restart_lxapp, touch_page_instance_by_id, uninstall_lxapp,
 };
 pub use runtime_registry::{
-    find_page_by_instance_id, get_display_language, get_platform, set_display_language, try_get,
+    find_page_by_instance_id, get_appearance_state, get_display_language, get_platform,
+    set_appearance_state, set_display_language, try_get,
 };
 pub(crate) use runtime_registry::{get, get_lxapps_manager};
 pub(crate) use surface::SurfaceRecords;

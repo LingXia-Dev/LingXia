@@ -187,6 +187,12 @@ mod bridge {
         #[swift_bridge(swift_name = "onDeviceOrientationChanged")]
         fn on_device_orientation_changed(appid: &str, session_id: u64, value: &str) -> bool;
 
+        #[swift_bridge(swift_name = "onHostAppearanceChanged")]
+        fn on_host_appearance_changed(preference: i32, effective_dark: bool) -> bool;
+
+        #[swift_bridge(swift_name = "shellThemeJSON")]
+        fn shell_theme_json() -> String;
+
         #[swift_bridge(swift_name = "getLxAppInfo")]
         fn get_lxapp_info(appid: &str) -> LxAppInfo;
 
@@ -1760,6 +1766,27 @@ pub fn on_callback(id: u64, success: bool, data: &str) -> bool {
         log::warn!("[Apple] Callback not found for id={}", id);
         false
     }
+}
+
+pub fn on_host_appearance_changed(preference: i32, effective_dark: bool) -> bool {
+    let preference = match preference {
+        0 => lingxia_platform::traits::appearance::AppearancePreference::System,
+        1 => lingxia_platform::traits::appearance::AppearancePreference::Light,
+        2 => lingxia_platform::traits::appearance::AppearancePreference::Dark,
+        _ => return false,
+    };
+    lxapp::set_appearance_state(lingxia_platform::traits::appearance::AppearanceState {
+        preference,
+        effective_dark,
+    });
+    true
+}
+
+pub fn shell_theme_json() -> String {
+    lingxia_app_context::app_config()
+        .and_then(|config| config.shell_theme.as_ref())
+        .and_then(|theme| serde_json::to_string(theme).ok())
+        .unwrap_or_else(|| "{}".to_string())
 }
 
 /// Check if pull-down refresh is enabled for a specific page

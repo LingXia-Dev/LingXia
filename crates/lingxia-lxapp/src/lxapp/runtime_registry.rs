@@ -1,6 +1,7 @@
 //! Process-wide runtime/manager registry and lookup helpers.
 
 use super::*;
+use lingxia_platform::traits::appearance::{AppearancePreference, AppearanceState};
 
 // Global instance of LxApps manager
 static LXAPPS_MANAGER: OnceLock<Arc<LxApps>> = OnceLock::new();
@@ -37,6 +38,12 @@ pub fn get_platform() -> Option<Arc<Platform>> {
 /// "Language" choice). `None` follows the system locale.
 static DISPLAY_LANGUAGE: Mutex<Option<String>> = Mutex::new(None);
 
+const APPEARANCE_CHANGE_EVENT: &str = "appearanceChange";
+static APPEARANCE_STATE: Mutex<AppearanceState> = Mutex::new(AppearanceState {
+    preference: AppearancePreference::System,
+    effective_dark: false,
+});
+
 /// Set (or clear) the display-language override. The shell that owns the
 /// language setting seeds this at startup and updates it on change so every
 /// `get_display_language` consumer — native chrome i18n included — follows
@@ -60,6 +67,50 @@ pub fn get_display_language() -> String {
         .get()
         .map(|runtime| runtime.get_system_locale().to_string())
         .unwrap_or_else(|| "en-US".to_string())
+}
+
+pub fn get_appearance_state() -> AppearanceState {
+    *APPEARANCE_STATE
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+}
+
+/// Update the process-wide host appearance and notify every live Logic
+/// runtime. Native hosts call this for both user preference changes and later
+/// operating-system changes while the preference is `system`.
+pub fn set_appearance_state(state: AppearanceState) {
+    let changed = {
+        let mut current = APPEARANCE_STATE
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        if *current == state {
+            false
+        } else {
+            *current = state;
+            true
+        }
+    };
+    if !changed {
+        return;
+    }
+
+    let payload = serde_json::json!({
+        "preference": state.preference.as_str(),
+        "effective": state.effective(),
+    })
+    .to_string();
+    for app in super::runtime_ops::list_lxapps() {
+        let _ = crate::appservice::event_bus::publish_app_event(
+            &app.appid,
+            APPEARANCE_CHANGE_EVENT,
+            Some(payload.clone()),
+        );
+        if let Some(runtime_app) = try_get(&app.appid) {
+            let _ = runtime_app
+                .runtime
+                .update_navbar_ui(runtime_app.appid.clone());
+        }
+    }
 }
 
 /// Try to get a specific LxApp instance by lxappid

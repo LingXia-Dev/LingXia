@@ -1,4 +1,5 @@
 pub mod app;
+mod appearance;
 pub mod camera;
 mod device;
 mod file;

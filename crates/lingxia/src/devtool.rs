@@ -204,6 +204,7 @@ fn build_default_host_app_config(
         app_links: None,
         capabilities: None,
         panels: None,
+        shell_theme: None,
     }
 }
 

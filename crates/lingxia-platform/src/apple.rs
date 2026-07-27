@@ -3,6 +3,7 @@
 //! This module provides Swift FFI interfaces for iOS and macOS platforms.
 
 mod app;
+mod appearance;
 mod device;
 mod ffi;
 
