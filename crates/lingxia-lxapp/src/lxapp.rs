@@ -214,7 +214,39 @@ pub struct LxApps {
     pub(crate) executor: Arc<LxAppWorkers>,
 
     /// Pending delayed-destroy timers keyed by appid
-    pending_destroy: Mutex<HashMap<String, oneshot::Sender<()>>>,
+    pending_destroy: Mutex<HashMap<String, PendingDestroy>>,
+    next_destroy_generation: AtomicU64,
+}
+
+struct PendingDestroy {
+    generation: u64,
+    cancel: oneshot::Sender<()>,
+}
+
+fn replace_pending_destroy(
+    pending: &mut HashMap<String, PendingDestroy>,
+    appid: String,
+    replacement: PendingDestroy,
+) {
+    if let Some(previous) = pending.insert(appid, replacement) {
+        let _ = previous.cancel.send(());
+    }
+}
+
+fn claim_pending_destroy(
+    pending: &mut HashMap<String, PendingDestroy>,
+    appid: &str,
+    generation: u64,
+) -> bool {
+    if pending
+        .get(appid)
+        .is_some_and(|entry| entry.generation == generation)
+    {
+        pending.remove(appid);
+        true
+    } else {
+        false
+    }
 }
 
 impl LxApps {
@@ -228,6 +260,7 @@ impl LxApps {
             executor,
             lxapp_stack: Mutex::new(VecDeque::with_capacity(capacity)),
             pending_destroy: Mutex::new(HashMap::new()),
+            next_destroy_generation: AtomicU64::new(1),
         }
     }
 
@@ -336,44 +369,54 @@ impl LxApps {
 
     /// Schedule a delayed destroy for an app; cancel on reopen.
     pub(crate) fn schedule_delayed_destroy(self: &Arc<Self>, appid: String) {
-        // cancel existing timer if present
-        if let Ok(mut map) = self.pending_destroy.lock()
-            && let Some(cancel) = map.remove(&appid)
+        let generation = self.next_destroy_generation.fetch_add(1, Ordering::Relaxed);
+        let (cancel, rx) = oneshot::channel();
         {
-            let _ = cancel.send(());
-
-            let (tx, rx) = oneshot::channel();
-            map.insert(appid.clone(), tx);
-
-            let mgr_weak = Arc::downgrade(self);
-            let task_appid = appid.clone();
-            std::mem::drop(crate::executor::spawn(async move {
-                let sleep = time::sleep(Duration::from_secs(1800));
-                tokio::pin!(rx);
-                tokio::pin!(sleep);
-                tokio::select! {
-                    _ = &mut sleep => {},
-                    _ = &mut rx => return, // cancelled
-                }
-
-                if let Some(mgr) = mgr_weak.upgrade() {
-                    info!("Delayed destroy triggered after inactivity")
-                        .with_appid(task_appid.clone());
-                    mgr.destroy_lxapp(&task_appid);
-                    if let Ok(mut guard) = mgr.pending_destroy.lock() {
-                        guard.remove(&task_appid);
-                    }
-                }
-            }));
+            let mut pending = self
+                .pending_destroy
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            replace_pending_destroy(
+                &mut pending,
+                appid.clone(),
+                PendingDestroy { generation, cancel },
+            );
         }
+
+        let mgr_weak = Arc::downgrade(self);
+        std::mem::drop(crate::executor::spawn(async move {
+            let sleep = time::sleep(Duration::from_secs(1800));
+            tokio::pin!(rx);
+            tokio::pin!(sleep);
+            tokio::select! {
+                _ = &mut sleep => {},
+                _ = &mut rx => return,
+            }
+
+            if let Some(mgr) = mgr_weak.upgrade() {
+                let should_destroy = {
+                    let mut pending = mgr
+                        .pending_destroy
+                        .lock()
+                        .unwrap_or_else(|poisoned| poisoned.into_inner());
+                    claim_pending_destroy(&mut pending, &appid, generation)
+                };
+                if should_destroy {
+                    info!("Delayed destroy triggered after inactivity").with_appid(appid.clone());
+                    mgr.destroy_lxapp(&appid);
+                }
+            }
+        }));
     }
 
     /// Cancel any pending delayed destroy for the given app.
     pub(crate) fn cancel_delayed_destroy(&self, appid: &str) {
-        if let Ok(mut map) = self.pending_destroy.lock()
-            && let Some(cancel) = map.remove(appid)
-        {
-            let _ = cancel.send(());
+        let mut pending = self
+            .pending_destroy
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if let Some(entry) = pending.remove(appid) {
+            let _ = entry.cancel.send(());
         }
     }
 
@@ -1959,9 +2002,7 @@ impl LxApp {
 
         // Ensure the target app's JS worker is created and mapped before creating pages.
         // View-only lxapps (`logic: false`) skip this path.
-        if let Err(e) = self.executor.create_app_svc(self.clone_arc()) {
-            error!("Failed to trigger app service: {}", e).with_appid(self.appid.clone());
-        }
+        self.executor.create_app_svc(self.clone_arc())?;
 
         // Create native PageInstance + WebView
         let page = self.get_or_create_page(&startup_options.path);
@@ -2276,4 +2317,60 @@ impl From<lingxia_platform::traits::app_runtime::LxAppOpenMode> for LxAppOpenReg
 pub fn open_region(appid: &str) -> Option<LxAppOpenRegion> {
     let app = runtime_registry::try_get(appid)?;
     app.current_open_region()
+}
+
+#[cfg(test)]
+mod delayed_destroy_tests {
+    use super::*;
+    use tokio::sync::oneshot::error::TryRecvError;
+
+    #[test]
+    fn first_timer_is_registered_and_replacement_is_cancelled() {
+        let mut pending = HashMap::new();
+        let (first_cancel, mut first_rx) = oneshot::channel();
+        replace_pending_destroy(
+            &mut pending,
+            "app".to_string(),
+            PendingDestroy {
+                generation: 1,
+                cancel: first_cancel,
+            },
+        );
+
+        assert_eq!(pending.get("app").map(|entry| entry.generation), Some(1));
+        assert!(matches!(first_rx.try_recv(), Err(TryRecvError::Empty)));
+
+        let (second_cancel, mut second_rx) = oneshot::channel();
+        replace_pending_destroy(
+            &mut pending,
+            "app".to_string(),
+            PendingDestroy {
+                generation: 2,
+                cancel: second_cancel,
+            },
+        );
+
+        assert_eq!(first_rx.try_recv(), Ok(()));
+        assert!(matches!(second_rx.try_recv(), Err(TryRecvError::Empty)));
+        assert_eq!(pending.get("app").map(|entry| entry.generation), Some(2));
+    }
+
+    #[test]
+    fn only_current_timer_can_claim_delayed_destroy() {
+        let mut pending = HashMap::new();
+        let (cancel, _rx) = oneshot::channel();
+        replace_pending_destroy(
+            &mut pending,
+            "app".to_string(),
+            PendingDestroy {
+                generation: 2,
+                cancel,
+            },
+        );
+
+        assert!(!claim_pending_destroy(&mut pending, "app", 1));
+        assert!(pending.contains_key("app"));
+        assert!(claim_pending_destroy(&mut pending, "app", 2));
+        assert!(!pending.contains_key("app"));
+    }
 }
