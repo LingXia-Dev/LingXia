@@ -2242,6 +2242,8 @@ class LxAppActivity : AppCompatActivity() {
             ::webViewContainer.isInitialized
         ) {
             setupTabBar(NativeApi.getTabBarState(appId, isDarkAppearance()))
+            val path = currentWebView?.getCurrentPath().orEmpty()
+            updateNavigationBar(NativeApi.getNavigationBarState(appId, path), false, true, path)
         }
 
         // Update layout to adapt to screen orientation changes

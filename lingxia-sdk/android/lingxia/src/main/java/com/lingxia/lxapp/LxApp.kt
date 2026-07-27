@@ -36,8 +36,12 @@ object LxApp {
 
     @JvmStatic
     internal fun setCurrentActivity(activity: LxAppActivity?) {
+        val changed = currentActivity !== activity
         currentActivity = activity
         UpdateManager.init(activity)
+        if (changed && activity != null && homeAppId != null) {
+            emitHostAppearance()
+        }
     }
 
     @JvmStatic

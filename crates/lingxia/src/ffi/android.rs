@@ -524,10 +524,13 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_getNavigationBarState<'a>(
             env.find_class(jni_str!("com/lingxia/lxapp/chrome/NavigationBarState"))?;
 
         // Parse background color using unified function
-        let bg_color_int = parse_color_to_i32(
-            &nav_state.navigationBarBackgroundColor,
-            0xFFFFFFFFu32 as i32,
-        );
+        let semantic_background = if lxapp::get_appearance_state().effective_dark {
+            0xFF121212u32 as i32
+        } else {
+            0xFFFFFFFFu32 as i32
+        };
+        let bg_color_int =
+            parse_color_to_i32(&nav_state.navigationBarBackgroundColor, semantic_background);
 
         // Create Java strings
         let title_text = env.new_string(&nav_state.navigationBarTitleText)?;
