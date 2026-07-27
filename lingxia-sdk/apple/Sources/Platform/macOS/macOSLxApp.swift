@@ -70,8 +70,9 @@ class macOSLxApp: ObservableObject {
         }
     }
 
-    static func navigate(appId: String, path: String, animationType: LxAppAnimation) {
-        LxAppCore.executeNavigation(appId: appId, path: path, animationType: animationType)
+    @discardableResult
+    static func navigate(appId: String, path: String, animationType: LxAppAnimation) -> Bool {
+        return LxAppCore.executeNavigation(appId: appId, path: path, animationType: animationType)
     }
 
     internal static func openHomeLxApp() {

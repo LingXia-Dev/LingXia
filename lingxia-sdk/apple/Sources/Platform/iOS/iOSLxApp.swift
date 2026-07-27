@@ -26,10 +26,7 @@ class iOSLxApp {
     }
 
     /// Gets the singleton iOSLxApp instance
-    static func getInstance() -> iOSLxApp {
-        guard let instance = instance else {
-            fatalError("iOSLxApp not initialized")
-        }
+    static func getInstance() -> iOSLxApp? {
         return instance
     }
     
@@ -184,15 +181,22 @@ class iOSLxApp {
     }
 
     /// Closes a mini app with the specified appId
-    static func closeLxApp(appId: String, sessionId: UInt64, notifyRuntime: Bool = true) {
+    @discardableResult
+    static func closeLxApp(appId: String, sessionId: UInt64, notifyRuntime: Bool = true) -> Bool {
         os_log("Closing LxApp: %@", log: log, type: .info, appId)
-        getInstance().lxAppManager?.closeLxApp(appId: appId, sessionId: sessionId, notifyRuntime: notifyRuntime)
+        guard let manager = getInstanceUnsafe()?.lxAppManager else {
+            LXLog.error("closeLxApp rejected: iOS host is not initialized", category: "iOSLxApp")
+            return false
+        }
+        manager.closeLxApp(appId: appId, sessionId: sessionId, notifyRuntime: notifyRuntime)
+        return true
     }
 
     /// Navigate to a page with specific animation type
-    static func navigate(appId: String, path: String, animationType: LxAppAnimation) {
+    @discardableResult
+    static func navigate(appId: String, path: String, animationType: LxAppAnimation) -> Bool {
         os_log("iOS navigate: %@ to %@ with type: %@", log: log, type: .info, appId, path, String(describing: animationType))
-        LxAppCore.executeNavigation(appId: appId, path: path, animationType: animationType)
+        return LxAppCore.executeNavigation(appId: appId, path: path, animationType: animationType)
     }
 
     /// Resolve WebView for the given appId/path/session through pageInstanceId.
@@ -299,23 +303,34 @@ class iOSLxApp {
 
 extension iOSLxApp {
     /// Direct openLxApp implementation (called from LxAppCore)
-    internal static func openLxAppDirect(appId: String, path: String, sessionId: UInt64) {
-        let instance = getInstance()
+    internal static func openLxAppDirect(appId: String, path: String, sessionId: UInt64) -> Bool {
+        guard let instance = getInstanceUnsafe() else {
+            LXLog.error("openLxApp rejected: iOS host is not initialized", category: "iOSLxApp")
+            return false
+        }
 
         // Ensure LxAppManager exists for iOS
         instance.setupLxAppManagerIfNeeded()
 
         // Open LxApp in manager
-        instance.lxAppManager?.openLxApp(appId: appId, path: path, sessionId: sessionId)
+        guard let manager = instance.lxAppManager else {
+            LXLog.error("openLxApp rejected: no active iOS app manager", category: "iOSLxApp")
+            return false
+        }
+        manager.openLxApp(appId: appId, path: path, sessionId: sessionId)
+        return true
     }
 
     /// Direct navigation implementation (called from LxAppCore)
-    internal static func handleNavigationDirect(appId: String, path: String, animationType: LxAppAnimation) {
-        let instance = getInstance()
-        guard let manager = instance.lxAppManager else { return }
+    internal static func handleNavigationDirect(appId: String, path: String, animationType: LxAppAnimation) -> Bool {
+        guard let manager = getInstanceUnsafe()?.lxAppManager else {
+            LXLog.error("navigate rejected: iOS host is not initialized", category: "iOSLxApp")
+            return false
+        }
 
         // Platform-specific setup/switch WebView - this will handle all UI updates internally
         manager.handleNavigation(appId: appId, path: path, animationType: animationType)
+        return true
     }
 
     private func setupLxAppManagerIfNeeded() {

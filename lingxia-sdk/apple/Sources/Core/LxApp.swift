@@ -135,32 +135,34 @@ final class LxAppCore {
 
         // Direct platform calls instead of using renderer protocol
         #if os(iOS)
-        iOSLxApp.openLxAppDirect(appId: appId, path: finalPath, sessionId: sessionId)
+        return iOSLxApp.openLxAppDirect(appId: appId, path: finalPath, sessionId: sessionId)
         #elseif os(macOS)
         macOSLxApp.openLxAppDirect(appId: appId, path: finalPath, sessionId: sessionId)
-        #endif
         return true
+        #endif
     }
 
     /// Shared navigate logic - used by both iOS and macOS platforms
-    internal static func executeNavigation(appId: String, path: String, animationType: LxAppAnimation) {
+    @discardableResult
+    internal static func executeNavigation(appId: String, path: String, animationType: LxAppAnimation) -> Bool {
         os_log("Core executeNavigation: %@ to %@ with type: %@", log: log, type: .info, appId, path, String(describing: animationType))
 
         guard !appId.isEmpty else {
             LXLog.error("Empty appId provided for navigation", category: "LxAppCore")
-            return
+            return false
         }
 
         // Check for custom handler first (e.g., Runner's Capsule mode)
         if let handler = navigationHandler, handler(appId, path, animationType) {
-            return
+            return true
         }
 
         // Direct platform calls - no need for complex preparation logic
         #if os(iOS)
-        iOSLxApp.handleNavigationDirect(appId: appId, path: path, animationType: animationType)
+        return iOSLxApp.handleNavigationDirect(appId: appId, path: path, animationType: animationType)
         #elseif os(macOS)
         macOSLxApp.handleNavigationDirect(appId: appId, path: path, animationType: animationType)
+        return true
         #endif
     }
 
