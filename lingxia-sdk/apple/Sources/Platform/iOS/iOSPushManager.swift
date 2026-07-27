@@ -12,6 +12,8 @@ final class iOSPushManager: NSObject {
     public static let shared = iOSPushManager()
 
     nonisolated private static let log = OSLog(subsystem: "LingXia", category: "Push")
+    nonisolated private static let authorizationLock = NSLock()
+    nonisolated(unsafe) private static var cachedIsPushEnabled = false
 
     private var deviceToken: String?
 
@@ -24,29 +26,23 @@ final class iOSPushManager: NSObject {
     nonisolated public static func isPushEnabled(completion: @escaping (Bool) -> Void) {
         UNUserNotificationCenter.current().getNotificationSettings { settings in
             let isEnabled = settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional
+            setCachedPushEnabled(isEnabled)
             completion(isEnabled)
         }
     }
 
-    /// Check if push notifications are enabled (sync version for FFI)
-    /// Returns true if authorized or provisional, false otherwise
+    /// Return the latest cached authorization state and refresh it asynchronously.
     nonisolated public static func isPushEnabledSync() -> Bool {
-        let resultPointer = UnsafeMutablePointer<Bool>.allocate(capacity: 1)
-        resultPointer.initialize(to: false)
-        defer {
-            resultPointer.deinitialize(count: 1)
-            resultPointer.deallocate()
-        }
+        isPushEnabled { _ in }
+        authorizationLock.lock()
+        defer { authorizationLock.unlock() }
+        return cachedIsPushEnabled
+    }
 
-        let semaphore = DispatchSemaphore(value: 0)
-
-        isPushEnabled { isEnabled in
-            resultPointer.pointee = isEnabled
-            semaphore.signal()
-        }
-
-        semaphore.wait()
-        return resultPointer.pointee
+    nonisolated private static func setCachedPushEnabled(_ enabled: Bool) {
+        authorizationLock.lock()
+        cachedIsPushEnabled = enabled
+        authorizationLock.unlock()
     }
 
     /// Initialize push manager
@@ -56,6 +52,9 @@ final class iOSPushManager: NSObject {
         // Check current authorization status first
         UNUserNotificationCenter.current().getNotificationSettings { [weak self] settings in
             let authorizationStatus = settings.authorizationStatus
+            Self.setCachedPushEnabled(
+                authorizationStatus == .authorized || authorizationStatus == .provisional
+            )
 
             Task { @MainActor [authorizationStatus] in
                 guard let self else { return }
@@ -83,6 +82,7 @@ final class iOSPushManager: NSObject {
     /// Request notification permission
     private func requestPermission() {
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, _ in
+            Self.setCachedPushEnabled(granted)
             DispatchQueue.main.async {
                 if granted {
                     os_log("Notification permission granted, registering for remote notifications", log: Self.log, type: .info)
