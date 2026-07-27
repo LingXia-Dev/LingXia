@@ -2,7 +2,13 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 import { LxLog } from '../app/LxLog';
 import { webview } from '@kit.ArkWeb';
 import { window, display, FrameCallback } from '@kit.ArkUI';
-import { common, ConfigurationConstant } from '@kit.AbilityKit';
+import {
+  AbilityConstant,
+  common,
+  Configuration,
+  ConfigurationConstant,
+  EnvironmentCallback
+} from '@kit.AbilityKit';
 import { LxApp } from './LxApp';
 import { Lingxia } from '../app/Lingxia';
 import { LxAppSurface } from './APIs/LxAppSurface';
@@ -116,6 +122,19 @@ export struct LxAppContainer {
   private lastReportedSurfaceWidthVp: number = 0;
   private lastReportedSurfaceHeightVp: number = 0;
   private lastReportedShellWidthVp: number = 0;
+  private environmentCallbackId: number | null = null;
+  private lastDarkAppearance: boolean = false;
+  private readonly environmentCallback: EnvironmentCallback = {
+    onConfigurationUpdated: (config: Configuration): void => {
+      const dark = config.colorMode === ConfigurationConstant.ColorMode.COLOR_MODE_DARK;
+      if (dark === this.lastDarkAppearance) {
+        return;
+      }
+      this.lastDarkAppearance = dark;
+      this.refreshTabBarData();
+    },
+    onMemoryLevel: (_level: AbilityConstant.MemoryLevel): void => {}
+  };
 
   /**
    * Trigger onPageShow if WebView hasn't triggered it yet
@@ -162,6 +181,8 @@ export struct LxAppContainer {
 
   aboutToAppear() {
     this.initStatusBarHeight();
+    this.lastDarkAppearance = this.isDarkAppearance();
+    this.registerEnvironmentCallback();
 
     this.path = this.initialPath;
     hilog.info(DOMAIN, TAG, `Container creating for ${this.appId}:${this.path}, isHome=${this.isHomeApp()}`);
@@ -222,8 +243,35 @@ export struct LxAppContainer {
 
     // Remove WebView UI callback when container is destroyed
     removeWebViewUiCallback(this.webViewUiCallback);
+    this.unregisterEnvironmentCallback();
     this.stopKeyboardMonitor();
     hilog.info(DOMAIN, TAG, `Container destroyed for ${this.appId}:${this.path}`);
+  }
+
+  private registerEnvironmentCallback(): void {
+    if (this.environmentCallbackId !== null) {
+      return;
+    }
+    const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
+    if (!context) {
+      return;
+    }
+    this.environmentCallbackId = context.getApplicationContext()
+      .on('environment', this.environmentCallback);
+  }
+
+  private unregisterEnvironmentCallback(): void {
+    if (this.environmentCallbackId === null) {
+      return;
+    }
+    const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
+    const callbackId = this.environmentCallbackId;
+    this.environmentCallbackId = null;
+    if (!context) {
+      return;
+    }
+    context.getApplicationContext().off('environment', callbackId)
+      .catch((error: Error) => LxLog.w(TAG, `Failed to remove environment callback: ${error.message}`));
   }
 
   /**
