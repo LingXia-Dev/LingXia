@@ -274,10 +274,6 @@ impl WindowsChromeRenderer for ShellChromeRenderer {
         compute_chrome_rects(client, layout).content
     }
 
-    fn panel_corner_radius(&self) -> i32 {
-        SHELL_PANEL_RADIUS
-    }
-
     fn attached_layout(
         &self,
         client: RECT,

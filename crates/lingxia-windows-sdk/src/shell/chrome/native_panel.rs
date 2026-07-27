@@ -266,13 +266,16 @@ pub(super) fn draw_terminal_panel_content(
     // re-blends it (the old header-over-card fringe), and an aliased rounded
     // clip shows a staircase wherever the inner color differs from the card.
     // Maximized panels keep the same rounded card, drawn over the workspace.
+    // Radius and shadow match the webview content cards so the workspace
+    // reads as one system of cards.
     let header_rects = terminal_header_rects(rect, native);
     let header = header_rects.header;
     let _clip_guard = DcClipGuard::save(hdc);
+    draw_content_card_shadow(hdc, rect);
     fill_round_rect_aa_band(
         hdc,
         rect,
-        SHELL_PANEL_RADIUS,
+        SHELL_CONTENT_RADIUS,
         TERMINAL_HEADER_BACKGROUND,
         rect.top,
         header.bottom,
@@ -280,7 +283,7 @@ pub(super) fn draw_terminal_panel_content(
     fill_round_rect_aa_band(
         hdc,
         rect,
-        SHELL_PANEL_RADIUS,
+        SHELL_CONTENT_RADIUS,
         surface,
         header.bottom,
         rect.bottom,
@@ -289,7 +292,7 @@ pub(super) fn draw_terminal_panel_content(
     // interior so square fills cannot overpaint the bottom arcs. The clip
     // boundary is aliased, but everything drawn inside matches the card's
     // surface color there, so it stays invisible.
-    clip_to_round_rect_inside(hdc, rect, SHELL_PANEL_RADIUS);
+    clip_to_round_rect_inside(hdc, rect, SHELL_CONTENT_RADIUS);
 
     // Hairline under the tab strip; the active tab paints over it, so it
     // visually connects into the surface (macOS rail parity).

@@ -396,7 +396,7 @@ pub(in crate::shell) fn fill_round_rect_aa_corners(
             fill_rect(hdc, rect, rgb);
             return;
         }
-        let _ = GdiPlus::GdipSetSmoothingMode(graphics, GdiPlus::SmoothingModeAntiAlias);
+        apply_round_rect_quality(graphics);
         let mut path: *mut GdiPlus::GpPath = std::ptr::null_mut();
         if GdiPlus::GdipCreatePath(GdiPlus::FillModeAlternate, &mut path) == GdiPlus::Ok
             && !path.is_null()
@@ -549,6 +549,19 @@ pub(in crate::shell) fn stroke_round_rect_aa(hdc: HDC, rect: RECT, radius: i32, 
     });
 }
 
+/// Best-available arc rendering: 8×8 AA sampling where the GDI+ 1.1
+/// runtime accepts it (the plain AA set first stays on rejection), and
+/// half-pixel offset so integer-coordinate straight edges land on pixel
+/// boundaries — crisp, matching plain GDI fills — while arcs sample
+/// symmetrically around the pixel centers.
+fn apply_round_rect_quality(graphics: *mut GdiPlus::GpGraphics) {
+    unsafe {
+        let _ = GdiPlus::GdipSetSmoothingMode(graphics, GdiPlus::SmoothingModeAntiAlias);
+        let _ = GdiPlus::GdipSetSmoothingMode(graphics, GdiPlus::SmoothingModeAntiAlias8x8);
+        let _ = GdiPlus::GdipSetPixelOffsetMode(graphics, GdiPlus::PixelOffsetModeHalf);
+    }
+}
+
 fn round_rect_path_op(
     hdc: HDC,
     rect: RECT,
@@ -560,7 +573,7 @@ fn round_rect_path_op(
         if GdiPlus::GdipCreateFromHDC(hdc, &mut graphics) != GdiPlus::Ok || graphics.is_null() {
             return;
         }
-        let _ = GdiPlus::GdipSetSmoothingMode(graphics, GdiPlus::SmoothingModeAntiAlias);
+        apply_round_rect_quality(graphics);
         let mut path: *mut GdiPlus::GpPath = std::ptr::null_mut();
         if GdiPlus::GdipCreatePath(GdiPlus::FillModeAlternate, &mut path) == GdiPlus::Ok
             && !path.is_null()
