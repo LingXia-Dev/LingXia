@@ -4,6 +4,7 @@ use super::{
     validate_app_ui_svg_icon,
 };
 use crate::config::{EnvVersion, HostAppConfig, LingXiaConfig, LingxiaServer, ResolvedEnv};
+use lingxia_app_context::{ShellThemeConfig, ShellThemeStyle};
 use std::fs;
 use std::path::Path;
 use tempfile::TempDir;
@@ -38,6 +39,7 @@ fn lingxia_id_is_not_suffixed_by_env() {
         features: None,
         capabilities: None,
         browser: None,
+        shell_theme: None,
         generated_ui: None,
         surfaces: None,
         app_links: None,
@@ -56,6 +58,32 @@ fn lingxia_id_is_not_suffixed_by_env() {
         value.get("lingxiaId").and_then(|v| v.as_str()),
         Some("app.lingxia.demo")
     );
+}
+
+#[test]
+fn generated_app_json_includes_shell_theme() {
+    let mut config = LingXiaConfig::new_android("demo", "com.example.demo", "demo-home");
+    config.shell_theme = Some(ShellThemeConfig {
+        light: ShellThemeStyle {
+            sidebar_background_color: Some("#ffffff".into()),
+            accent_color: Some("#2865ff".into()),
+            ..Default::default()
+        },
+        dark: ShellThemeStyle {
+            sidebar_background_color: Some("#17191d".into()),
+            accent_color: Some("#5285ff".into()),
+            ..Default::default()
+        },
+    });
+
+    let app_json = build_app_json_from_config(&config, None, None, &test_resolved_env()).unwrap();
+    let value: serde_json::Value = serde_json::from_str(&app_json).unwrap();
+
+    assert_eq!(
+        value["shellTheme"]["light"]["sidebarBackgroundColor"],
+        "#ffffff"
+    );
+    assert_eq!(value["shellTheme"]["dark"]["accentColor"], "#5285ff");
 }
 
 #[test]
@@ -80,6 +108,7 @@ fn generated_app_json_excludes_ui_fields() {
         features: None,
         capabilities: None,
         browser: None,
+        shell_theme: None,
         generated_ui: Some(serde_json::json!({
             "launch": { "initialSurface": "main" },
             "surfaces": [],
@@ -120,6 +149,7 @@ fn generated_app_json_includes_dev_ws_url_when_configured() {
         features: None,
         capabilities: None,
         browser: None,
+        shell_theme: None,
         generated_ui: None,
         surfaces: None,
         app_links: None,
@@ -165,6 +195,7 @@ fn generated_app_json_includes_app_link_hosts() {
         features: None,
         capabilities: None,
         browser: None,
+        shell_theme: None,
         generated_ui: None,
         surfaces: None,
         app_links: Some(crate::config::AppLinksConfig {
@@ -209,6 +240,7 @@ fn generated_app_json_includes_capabilities() {
             autostart: false,
         }),
         browser: None,
+        shell_theme: None,
         generated_ui: None,
         surfaces: None,
         app_links: None,
@@ -245,6 +277,7 @@ fn generated_ui_json_preserves_generated_ui_config() {
         features: None,
         capabilities: None,
         browser: None,
+        shell_theme: None,
         generated_ui: Some(ui.clone()),
         surfaces: None,
         app_links: None,
@@ -288,6 +321,7 @@ fn generated_ui_json_rewrites_app_ui_icons() {
         features: None,
         capabilities: None,
         browser: None,
+        shell_theme: None,
         generated_ui: Some(ui),
         surfaces: None,
         app_links: None,
@@ -337,6 +371,7 @@ fn generated_windows_ui_json_rewrites_app_ui_icons_to_png() {
         features: None,
         capabilities: None,
         browser: None,
+        shell_theme: None,
         generated_ui: Some(ui),
         surfaces: None,
         app_links: None,
@@ -470,6 +505,7 @@ fn generated_ui_json_rejects_terminal_when_capability_disabled() {
             autostart: false,
         }),
         browser: None,
+        shell_theme: None,
         generated_ui: Some(serde_json::json!({
             "launch": { "initialSurface": "main" },
             "surfaces": [{
@@ -509,6 +545,7 @@ fn generated_ui_json_prunes_surfaces_for_target_platform() {
         features: None,
         capabilities: None,
         browser: None,
+        shell_theme: None,
         generated_ui: Some(serde_json::json!({
             "launch": { "initialSurface": "main" },
             "surfaces": [{
@@ -577,6 +614,7 @@ fn app_ui_icon_preparation_requires_svg() {
         features: None,
         capabilities: None,
         browser: None,
+        shell_theme: None,
         generated_ui: Some(serde_json::json!({
             "launch": { "initialSurface": "main" },
             "surfaces": [],

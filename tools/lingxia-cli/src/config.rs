@@ -35,6 +35,10 @@ pub struct LingXiaConfig {
     pub capabilities: Option<CapabilitiesConfig>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub browser: Option<BrowserConfig>,
+    /// Semantic colors for host-owned native chrome. This is emitted into
+    /// app.json and never injected into LxApp page CSS.
+    #[serde(rename = "shellTheme", skip_serializing_if = "Option::is_none")]
+    pub shell_theme: Option<ShellThemeConfig>,
     /// Generated UI structure (`ui.json`). Built from `surfaces` at load time;
     /// never authored directly.
     #[serde(skip)]
@@ -72,6 +76,7 @@ impl Default for FeaturesConfig {
 // One shared definition with the runtime (which reads it back from app.json),
 // so a capability can never exist on one side only.
 pub use lingxia_app_context::CapabilitiesConfig;
+pub use lingxia_app_context::ShellThemeConfig;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -1351,6 +1356,7 @@ impl LingXiaConfig {
             features: Some(FeaturesConfig::default()),
             capabilities: Some(CapabilitiesConfig::default()),
             browser: None,
+            shell_theme: None,
             generated_ui: None,
             surfaces: None,
             app_links: None,

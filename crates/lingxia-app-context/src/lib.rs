@@ -101,8 +101,56 @@ pub struct AppConfig {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub capabilities: Option<CapabilitiesConfig>,
 
+    /// Product-owned semantic colors for native shell chrome. LxApp WebViews
+    /// keep their own CSS tokens and inherit only the effective appearance.
+    #[serde(
+        rename = "shellTheme",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub shell_theme: Option<ShellThemeConfig>,
+
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub panels: Option<PanelsConfig>,
+}
+
+/// Appearance-specific semantic colors for host-owned native chrome.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Default)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ShellThemeConfig {
+    #[serde(default)]
+    pub light: ShellThemeStyle,
+    #[serde(default)]
+    pub dark: ShellThemeStyle,
+}
+
+/// Optional semantic shell tokens. Missing values resolve through the
+/// platform's native semantic palette.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Default)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ShellThemeStyle {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub window_background_color: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub surface_background_color: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub foreground_color: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub muted_foreground_color: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub accent_color: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub separator_color: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selection_background_color: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sidebar_background_color: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sidebar_foreground_color: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sidebar_selected_background_color: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sidebar_selected_foreground_color: Option<String>,
 }
 
 /// The `capabilities:` section, shared verbatim between the CLI (parsing
@@ -499,8 +547,37 @@ mod tests {
             dev_bundle_base_url: None,
             app_links: None,
             capabilities: None,
+            shell_theme: None,
             panels: None,
         }
+    }
+
+    #[test]
+    fn shell_theme_parses_semantic_light_and_dark_tokens() {
+        let config = AppConfig::parse_and_validate(
+            r##"{
+                "productName": "Demo",
+                "productVersion": "1.0.0",
+                "shellTheme": {
+                    "light": {
+                        "sidebarBackgroundColor": "#ffffff",
+                        "accentColor": "#2865ff"
+                    },
+                    "dark": {
+                        "sidebarBackgroundColor": "#17191d",
+                        "accentColor": "#5285ff"
+                    }
+                }
+            }"##,
+        )
+        .unwrap();
+
+        let theme = config.shell_theme.unwrap();
+        assert_eq!(
+            theme.light.sidebar_background_color.as_deref(),
+            Some("#ffffff")
+        );
+        assert_eq!(theme.dark.accent_color.as_deref(), Some("#5285ff"));
     }
 
     #[test]

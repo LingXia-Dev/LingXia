@@ -293,6 +293,7 @@ mod tests {
             features: None,
             capabilities: None,
             browser: None,
+            shell_theme: None,
             generated_ui: None,
             surfaces: None,
             app_links: None,
