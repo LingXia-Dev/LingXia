@@ -515,6 +515,10 @@ class SidebarView: NSView, NSPopoverDelegate {
 
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
+        layer?.backgroundColor = LxAppShellTheme.cgColor(
+            LxAppShellTheme.sidebarBackground,
+            for: effectiveAppearance
+        )
         footerSeparator.layer?.backgroundColor = ActivatorChromePalette.divider.cgColor
     }
 
@@ -523,6 +527,10 @@ class SidebarView: NSView, NSPopoverDelegate {
     private func setupViews() {
         wantsLayer = true
         clipsToBounds = true
+        layer?.backgroundColor = LxAppShellTheme.cgColor(
+            LxAppShellTheme.sidebarBackground,
+            for: effectiveAppearance
+        )
 
         // Header (traffic lights + actions)
         headerView.translatesAutoresizingMaskIntoConstraints = false
@@ -2165,9 +2173,9 @@ private final class ActivatorFlowView: NSView {
 
 @MainActor
 private enum ActivatorChromePalette {
-    static let activeSurface = adaptive(dark: 0x34333A, light: 0xFFFFFF)
-    static let mutedText = adaptive(dark: 0x9AA0A6, light: 0x667085)
-    static let divider = adaptive(dark: 0x383838, light: 0xC7C2D2)
+    static let activeSurface = LxAppShellTheme.sidebarSelectedBackground
+    static let mutedText = LxAppShellTheme.mutedForeground
+    static let divider = LxAppShellTheme.separator
 
     static let hover = NSColor(name: nil) { appearance in
         isDark(appearance)

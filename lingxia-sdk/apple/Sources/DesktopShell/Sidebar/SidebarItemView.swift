@@ -99,7 +99,7 @@ class SidebarItemView: NSView {
         // Title
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
         titleLabel.font = NSFont.systemFont(ofSize: 12)
-        titleLabel.textColor = NSColor.labelColor
+        titleLabel.textColor = LxAppShellTheme.sidebarForeground
         titleLabel.lineBreakMode = .byTruncatingTail
         titleLabel.maximumNumberOfLines = 1
         addSubview(titleLabel)
@@ -250,7 +250,7 @@ class SidebarItemView: NSView {
     }
 
     private func updateAppearance() {
-        let accent = selectedTint ?? NSColor.controlAccentColor
+        let accent = selectedTint ?? LxAppShellTheme.accent
         accentBar.isHidden = !isSelected
         accentBar.layer?.backgroundColor = accent.cgColor
         // Selection swaps the icon pair, mirroring the mobile tabbar.
@@ -260,8 +260,10 @@ class SidebarItemView: NSView {
             // dark base, accent icon + accent bar. The title takes the
             // tabbar's selectedColor (mobile parity); a near-neutral dark
             // stands in when the app declares none.
-            selectionBackground.layer?.backgroundColor =
-                NSColor.white.withAlphaComponent(0.95).cgColor
+            selectionBackground.layer?.backgroundColor = LxAppShellTheme.cgColor(
+                LxAppShellTheme.sidebarSelectedBackground,
+                for: effectiveAppearance
+            )
             selectionBackground.shadow = {
                 let shadow = NSShadow()
                 shadow.shadowBlurRadius = 6
@@ -270,20 +272,23 @@ class SidebarItemView: NSView {
                 return shadow
             }()
             titleLabel.font = NSFont.systemFont(ofSize: 13, weight: .medium)
-            titleLabel.textColor = selectedTint ?? NSColor(calibratedWhite: 0.15, alpha: 1)
+            titleLabel.textColor = selectedTint ?? LxAppShellTheme.sidebarSelectedForeground
             iconView.contentTintColor = accent
         } else if isHovered {
             selectionBackground.shadow = nil
             titleLabel.font = NSFont.systemFont(ofSize: 13, weight: .regular)
-            selectionBackground.layer?.backgroundColor = NSColor.labelColor.withAlphaComponent(0.06).cgColor
-            titleLabel.textColor = unselectedTint ?? NSColor.labelColor
-            iconView.contentTintColor = NSColor.secondaryLabelColor
+            selectionBackground.layer?.backgroundColor = LxAppShellTheme.cgColor(
+                LxAppShellTheme.selectionBackground,
+                for: effectiveAppearance
+            )
+            titleLabel.textColor = unselectedTint ?? LxAppShellTheme.sidebarForeground
+            iconView.contentTintColor = LxAppShellTheme.mutedForeground
         } else {
             selectionBackground.shadow = nil
             titleLabel.font = NSFont.systemFont(ofSize: 13, weight: .regular)
             selectionBackground.layer?.backgroundColor = NSColor.clear.cgColor
-            titleLabel.textColor = unselectedTint ?? NSColor.labelColor
-            iconView.contentTintColor = NSColor.secondaryLabelColor
+            titleLabel.textColor = unselectedTint ?? LxAppShellTheme.sidebarForeground
+            iconView.contentTintColor = LxAppShellTheme.mutedForeground
         }
     }
 

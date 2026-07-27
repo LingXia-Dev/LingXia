@@ -166,12 +166,6 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
 
     private static let log = OSLog(subsystem: "LingXia", category: "LxAppShell")
 
-    private var baseLayerColor: NSColor = NSColor(name: nil) { appearance in
-        appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-            ? NSColor(red: 0.16, green: 0.16, blue: 0.18, alpha: 1)
-            : NSColor(red: 0.90, green: 0.90, blue: 0.92, alpha: 1)
-    }
-
     private let tabManager = LxAppTabManager.shared
     let browserCoordinator = BrowserTabCoordinator()
     internal var sidebarView: SidebarView?
@@ -540,10 +534,8 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         contentView.addSubview(sidebar)
 
         // Base layer — solid color fills entire window, visible through padding gaps
-        let base = NSView()
+        let base = LxAppShellThemedView(color: LxAppShellTheme.windowBackground)
         base.translatesAutoresizingMaskIntoConstraints = false
-        base.wantsLayer = true
-        base.layer?.backgroundColor = baseLayerColor.cgColor
         contentView.addSubview(base, positioned: .below, relativeTo: sidebar)
 
         // Shadow wrapper — provides elevation shadow without clipping
@@ -557,13 +549,8 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         contentView.addSubview(shadowWrapper)
 
         // Content container — floating panel with rounded corners, clips content
-        let right = NSView()
+        let right = LxAppShellThemedView(color: LxAppShellTheme.surfaceBackground)
         right.translatesAutoresizingMaskIntoConstraints = false
-        right.wantsLayer = true
-        // Fixed light paper, not a semantic color: pages are light-first, and
-        // the card is the pre-first-paint placeholder — a semantic background
-        // goes near-black in dark mode and reads as a black flash at launch.
-        right.layer?.backgroundColor = NSColor.white.cgColor
         right.layer?.cornerRadius = Layout.contentPanelCornerRadius
         right.layer?.masksToBounds = true
         shadowWrapper.addSubview(right)

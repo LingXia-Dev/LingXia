@@ -223,7 +223,11 @@ pub(super) fn draw_sidebar_tab_bar(
         hdc,
         &title,
         header_rect,
-        shell_palette().text_primary,
+        if tabbar.group_active {
+            shell_palette().sidebar_selected_text
+        } else {
+            shell_palette().text_primary
+        },
         DT_LEFT,
     );
     if show_chevron {

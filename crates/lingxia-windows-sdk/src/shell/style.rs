@@ -39,13 +39,15 @@ pub(super) struct ShellPalette {
     pub address_background: u32,
     pub frame_button_icon: u32,
     pub sidebar_header_text: u32,
+    pub sidebar_selected_text: u32,
 }
 
 /// The active palette for the current system theme. Cheap (two atomic reads +
 /// a literal), so call sites can read it per-draw without caching.
 pub(super) fn shell_palette() -> ShellPalette {
     let accent = super::theme::system_accent();
-    if super::theme::is_dark() {
+    let dark = super::windows_tabbar_effective_dark_mode();
+    let mut palette = if dark {
         ShellPalette {
             window_background: 0x202020,
             panel_background: 0x2b2b2b,
@@ -60,6 +62,7 @@ pub(super) fn shell_palette() -> ShellPalette {
             address_background: 0x2a2a2a,
             frame_button_icon: 0xe6e6e6,
             sidebar_header_text: 0xb0b4ba,
+            sidebar_selected_text: 0xf3f3f3,
         }
     } else {
         ShellPalette {
@@ -76,14 +79,56 @@ pub(super) fn shell_palette() -> ShellPalette {
             address_background: 0xe5e2ec,
             frame_button_icon: 0x1f2937,
             sidebar_header_text: 0x4f5661,
+            sidebar_selected_text: 0x111827,
         }
+    };
+    if let Some(theme) = lingxia_app_context::app_config()
+        .and_then(|config| config.shell_theme.as_ref())
+        .map(|theme| if dark { &theme.dark } else { &theme.light })
+    {
+        let color = |value: &Option<String>| value.as_deref().and_then(parse_rgb);
+        palette.window_background =
+            color(&theme.window_background_color).unwrap_or(palette.window_background);
+        palette.panel_background =
+            color(&theme.surface_background_color).unwrap_or(palette.panel_background);
+        palette.text_primary = color(&theme.foreground_color).unwrap_or(palette.text_primary);
+        palette.text_muted = color(&theme.muted_foreground_color).unwrap_or(palette.text_muted);
+        palette.accent = color(&theme.accent_color).unwrap_or(palette.accent);
+        palette.divider = color(&theme.separator_color).unwrap_or(palette.divider);
+        palette.selection_background =
+            color(&theme.selection_background_color).unwrap_or(palette.selection_background);
+        palette.sidebar_background =
+            color(&theme.sidebar_background_color).unwrap_or(palette.sidebar_background);
+        palette.sidebar_header_text = color(&theme.sidebar_foreground_color)
+            .or_else(|| color(&theme.muted_foreground_color))
+            .unwrap_or(palette.sidebar_header_text);
+        palette.group_active_background = color(&theme.sidebar_selected_background_color)
+            .unwrap_or(palette.group_active_background);
+        palette.sidebar_selected_text = color(&theme.sidebar_selected_foreground_color)
+            .unwrap_or(palette.sidebar_selected_text);
+        palette.control_surface =
+            color(&theme.surface_background_color).unwrap_or(palette.control_surface);
+        palette.address_background =
+            color(&theme.selection_background_color).unwrap_or(palette.address_background);
+        palette.frame_button_icon =
+            color(&theme.foreground_color).unwrap_or(palette.frame_button_icon);
+    }
+    palette
+}
+
+fn parse_rgb(value: &str) -> Option<u32> {
+    let value = value.trim().strip_prefix('#')?;
+    match value.len() {
+        6 => u32::from_str_radix(value, 16).ok(),
+        8 => u32::from_str_radix(&value[2..], 16).ok(),
+        _ => None,
     }
 }
 
 /// Hover wash (`0xAARRGGBB`) for interactive chrome; an alpha overlay reads
 /// correctly on any surface, including colored lxapp navigation bars.
 pub(super) fn hover_overlay() -> u32 {
-    if super::theme::is_dark() {
+    if super::windows_tabbar_effective_dark_mode() {
         0x28ffffff
     } else {
         0x1f000000

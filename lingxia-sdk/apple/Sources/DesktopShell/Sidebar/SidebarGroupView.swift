@@ -234,7 +234,10 @@ class SidebarGroupView: NSView {
     /// where you are. Distinct from the item accent (two independent levels).
     private func updateActiveAppearance() {
         headerView.layer?.backgroundColor = isActiveGroup
-            ? NSColor.labelColor.withAlphaComponent(0.09).cgColor
+            ? LxAppShellTheme.cgColor(
+                LxAppShellTheme.sidebarSelectedBackground,
+                for: effectiveAppearance
+            )
             : NSColor.clear.cgColor
     }
 
@@ -242,9 +245,11 @@ class SidebarGroupView: NSView {
         updateActiveAppearance()
         attributionLine.layer?.backgroundColor = attributionBaseColor
             .withAlphaComponent(0.5).cgColor
-        appNameLabel.textColor = .labelColor
-        chevronIndicator.contentTintColor = .secondaryLabelColor
-        closeButton.contentTintColor = NSColor.secondaryLabelColor.withAlphaComponent(0.9)
+        appNameLabel.textColor = isActiveGroup
+            ? LxAppShellTheme.sidebarSelectedForeground
+            : LxAppShellTheme.sidebarForeground
+        chevronIndicator.contentTintColor = LxAppShellTheme.mutedForeground
+        closeButton.contentTintColor = LxAppShellTheme.mutedForeground.withAlphaComponent(0.9)
         // tabbar backgroundColor maps to the expanded items area (the group's
         // own strip surface); unset stays transparent on the sidebar base.
         itemsBackground.layer?.backgroundColor = (itemsAreaColor ?? NSColor.clear).cgColor
