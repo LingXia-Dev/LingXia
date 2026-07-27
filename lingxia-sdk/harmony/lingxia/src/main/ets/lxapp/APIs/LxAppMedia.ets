@@ -352,8 +352,6 @@ export class LxAppMedia {
     const mapType = (mediaType === 2) ? (photoAccessHelper.PhotoType.VIDEO as number) : (photoAccessHelper.PhotoType.IMAGE as number);
     const key = `${mapType}:${path}`;
     if (LxAppMedia.lastSaveKey === key && (now - LxAppMedia.lastSaveAt) < 2000) { return true; }
-    LxAppMedia.lastSaveKey = key;
-    LxAppMedia.lastSaveAt = now;
 
     const helper = photoAccessHelper.getPhotoAccessHelper(Lingxia.context as common.UIAbilityContext);
     const type = mapType;
@@ -368,6 +366,8 @@ export class LxAppMedia {
         const dst = await fileIo.open(uri, fileIo.OpenMode.READ_WRITE | fileIo.OpenMode.CREATE);
         try {
           await fileIo.copyFile(src.fd, dst.fd);
+          LxAppMedia.lastSaveKey = key;
+          LxAppMedia.lastSaveAt = Date.now();
           hilog.info(DOMAIN, TAG, `saveMediaToAlbum: saved to ${uri}`);
           return true;
         } finally {
