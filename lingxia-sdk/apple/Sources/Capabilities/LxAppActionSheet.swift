@@ -55,6 +55,8 @@ class LxAppActionSheet {
         if let jsonData = try? JSONSerialization.data(withJSONObject: result),
            let jsonString = String(data: jsonData, encoding: .utf8) {
             _ = onCallback(callback_id, true, jsonString)
+        } else {
+            _ = onCallback(callback_id, false, "2000")
         }
     }
 
@@ -65,6 +67,7 @@ class LxAppActionSheet {
               let window = windowScene.windows.first(where: { $0.isKeyWindow }) ?? windowScene.windows.first,
               let rootViewController = window.rootViewController else {
             LXLog.error("Could not find root view controller", category: "ActionSheet")
+            sendResult(callback_id: callback_id, tapIndex: -1)
             return
         }
 
@@ -74,7 +77,11 @@ class LxAppActionSheet {
         }
 
         let actionSheetView = createCustomActionSheet(options: options, cancelText: cancelText, itemColor: itemColor, callback_id: callback_id)
-        presentCustomActionSheet(actionSheetView, on: topViewController)
+        guard presentCustomActionSheet(actionSheetView, on: topViewController) else {
+            LXLog.error("Could not attach action sheet to a visible presenter", category: "ActionSheet")
+            sendResult(callback_id: callback_id, tapIndex: -1)
+            return
+        }
     }
 
     @MainActor
@@ -244,9 +251,12 @@ class LxAppActionSheet {
     }
 
     @MainActor
-    private static func presentCustomActionSheet(_ actionSheetView: UIView, on viewController: UIViewController) {
+    private static func presentCustomActionSheet(_ actionSheetView: UIView, on viewController: UIViewController) -> Bool {
+        guard viewController.view.window != nil,
+              let containerView = actionSheetView.subviews.first else {
+            return false
+        }
         viewController.view.addSubview(actionSheetView)
-        guard let containerView = actionSheetView.subviews.first else { return }
 
         actionSheetView.layoutIfNeeded()
         let offscreenY = max(containerView.frame.height, 200) + 100
@@ -256,6 +266,7 @@ class LxAppActionSheet {
             actionSheetView.alpha = 1
             containerView.transform = .identity
         }
+        return true
     }
 
     @MainActor
