@@ -1373,9 +1373,15 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
 
     private func applyChromeStyle(_ style: LxAppChromeStyle) {
         contentPanelView?.layer?.cornerRadius = style.cornerRadius
-        if let shadowWrapper = contentPanelView?.superview {
-            shadowWrapper.layer?.shadowOpacity = style.hasShadow ? 0.15 : 0
-        }
+        updateContentPanelFullscreenAppearance(style: style)
+    }
+
+    private func updateContentPanelFullscreenAppearance(style: LxAppChromeStyle? = nil) {
+        let chrome = style ?? configuration.chrome
+        let fullscreen = workspaceManager.hasVisibleFullscreenPanel
+        contentPanelView?.isHidden = fullscreen
+        contentPanelView?.superview?.layer?.shadowOpacity =
+            chrome.hasShadow && !fullscreen ? 0.15 : 0
     }
 
     func setTrafficLightsVisible(_ visible: Bool) {
@@ -1969,6 +1975,7 @@ extension LxAppShell {
         lxShellStdoutLog("setPanelFullscreen start id=\(id) enabled=\(enabled)")
         preserveWindowFrameDuringPanelLayout(reason: "setPanelFullscreen:\(id):\(enabled)") {
             workspaceManager.setPanelFullscreen(id: id, enabled: enabled)
+            updateContentPanelFullscreenAppearance()
         }
         lxShellStdoutLog("setPanelFullscreen end id=\(id) enabled=\(enabled)")
     }
