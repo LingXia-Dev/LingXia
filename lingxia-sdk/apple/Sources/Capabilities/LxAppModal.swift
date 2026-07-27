@@ -4,6 +4,8 @@ import CLingXiaRustAPI
 
 #if os(iOS)
 import UIKit
+#elseif os(macOS)
+import AppKit
 #endif
 
 /// Modal dialog management for LingXia applications
@@ -32,6 +34,17 @@ class LxAppModal {
         #if os(iOS)
         DispatchQueue.main.async {
             showIOSModal(
+                title: title,
+                content: content,
+                showCancel: showCancel,
+                cancelText: cancelText,
+                confirmText: confirmText,
+                callback_id: callback_id
+            )
+        }
+        #elseif os(macOS)
+        DispatchQueue.main.async {
+            showMacModal(
                 title: title,
                 content: content,
                 showCancel: showCancel,
@@ -98,5 +111,38 @@ class LxAppModal {
     topViewController.present(alert, animated: true)
 }
 #endif
+
+    #if os(macOS)
+    @MainActor
+    private static func showMacModal(
+        title: String,
+        content: String,
+        showCancel: Bool,
+        cancelText: String,
+        confirmText: String,
+        callback_id: UInt64
+    ) {
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.informativeText = content
+        alert.addButton(withTitle: confirmText)
+        if showCancel {
+            alert.addButton(withTitle: cancelText)
+        }
+
+        guard alert.runModal() == .alertFirstButtonReturn else {
+            _ = onCallback(callback_id, false, "2000")
+            return
+        }
+
+        let result: [String: Any] = ["confirm": true, "cancel": false]
+        guard let jsonData = try? JSONSerialization.data(withJSONObject: result),
+              let jsonString = String(data: jsonData, encoding: .utf8) else {
+            _ = onCallback(callback_id, false, "2000")
+            return
+        }
+        _ = onCallback(callback_id, true, jsonString)
+    }
+    #endif
 
 }
