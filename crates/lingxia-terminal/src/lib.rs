@@ -12,14 +12,14 @@ use alacritty_vt::{
 };
 use portable_pty::{Child, CommandBuilder, MasterPty, PtySize, native_pty_system};
 use serde::Serialize;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 #[cfg(any(target_os = "macos", target_os = "ios"))]
 use std::ffi::CStr;
 use std::io::{Read, Write};
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, TrySendError};
-use std::sync::{Arc, LazyLock, Mutex, OnceLock};
+use std::sync::{Arc, Condvar, LazyLock, Mutex, OnceLock};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -108,10 +108,13 @@ pub fn terminal_write(id: u64, input: &str) -> bool {
     let Some(session) = session(id) else {
         return false;
     };
-    let Ok(mut session) = session.lock() else {
-        return false;
+    let writer = {
+        let Ok(session) = session.lock() else {
+            return false;
+        };
+        Arc::clone(&session.writer)
     };
-    session.write(input.as_bytes()).is_ok()
+    writer.enqueue(input.as_bytes())
 }
 
 pub fn terminal_read(id: u64) -> String {
@@ -241,11 +244,103 @@ pub fn encode_key_event(event: TerminalKeyEvent) -> Option<String> {
 struct TerminalSession {
     master: Box<dyn MasterPty + Send>,
     child: Box<dyn Child + Send + Sync>,
-    writer: Arc<Mutex<Box<dyn Write + Send>>>,
+    writer: Arc<PtyWriterQueue>,
     output: Receiver<Vec<u8>>,
     vt: VtScreen,
     title_state: TerminalTitleState,
     _reader: thread::JoinHandle<()>,
+    _writer: thread::JoinHandle<()>,
+}
+
+const PTY_WRITE_CHUNK_SIZE: usize = 4096;
+const PTY_WRITE_QUEUE_CAPACITY: usize = 4 * 1024 * 1024;
+
+#[derive(Default)]
+struct PtyWriterQueueState {
+    pending: VecDeque<Vec<u8>>,
+    pending_bytes: usize,
+    closed: bool,
+}
+
+#[derive(Default)]
+struct PtyWriterQueue {
+    state: Mutex<PtyWriterQueueState>,
+    ready: Condvar,
+}
+
+impl PtyWriterQueue {
+    fn enqueue(&self, bytes: &[u8]) -> bool {
+        if bytes.is_empty() {
+            return true;
+        }
+        let mut state = self
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if state.closed
+            || bytes.len() > PTY_WRITE_QUEUE_CAPACITY
+            || state.pending_bytes > PTY_WRITE_QUEUE_CAPACITY - bytes.len()
+        {
+            return false;
+        }
+        state.pending_bytes += bytes.len();
+        state.pending.push_back(bytes.to_vec());
+        self.ready.notify_one();
+        true
+    }
+
+    fn run(&self, mut writer: Box<dyn Write + Send>) {
+        loop {
+            let bytes = {
+                let mut state = self
+                    .state
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                while state.pending.is_empty() && !state.closed {
+                    state = self
+                        .ready
+                        .wait(state)
+                        .unwrap_or_else(std::sync::PoisonError::into_inner);
+                }
+                if state.closed {
+                    return;
+                }
+                state.pending.pop_front().unwrap_or_default()
+            };
+
+            let result = write_pty_chunked(writer.as_mut(), &bytes);
+            let mut state = self
+                .state
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            state.pending_bytes = state.pending_bytes.saturating_sub(bytes.len());
+            if result.is_err() {
+                state.closed = true;
+                state.pending.clear();
+                state.pending_bytes = 0;
+                self.ready.notify_all();
+                return;
+            }
+        }
+    }
+
+    fn close(&self) {
+        let mut state = self
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        state.closed = true;
+        state.pending.clear();
+        state.pending_bytes = 0;
+        self.ready.notify_all();
+    }
+}
+
+fn write_pty_chunked(writer: &mut dyn Write, bytes: &[u8]) -> std::io::Result<()> {
+    for chunk in bytes.chunks(PTY_WRITE_CHUNK_SIZE) {
+        writer.write_all(chunk)?;
+    }
+    writer.flush()
 }
 
 struct TerminalTitleState {
@@ -425,12 +520,13 @@ impl TerminalSession {
             .master
             .take_writer()
             .map_err(|err| format!("take pty writer failed: {err}"))?;
-        let writer = Arc::new(Mutex::new(writer));
-        let callback_writer = Arc::clone(&writer);
+        let writer_queue = Arc::new(PtyWriterQueue::default());
+        let worker_queue = Arc::clone(&writer_queue);
+        let writer_thread = thread::spawn(move || worker_queue.run(writer));
+        let callback_writer = Arc::downgrade(&writer_queue);
         let write_pty: PtyWriteCallback = Arc::new(move |bytes: &[u8]| {
-            if let Ok(mut writer) = callback_writer.lock() {
-                let _ = writer.write_all(bytes);
-                let _ = writer.flush();
+            if let Some(writer) = callback_writer.upgrade() {
+                let _ = writer.enqueue(bytes);
             }
         });
         let theme = terminal_theme();
@@ -467,21 +563,13 @@ impl TerminalSession {
         Ok(Self {
             master: pair.master,
             child,
-            writer,
+            writer: writer_queue,
             output: rx,
             vt,
             title_state,
             _reader: reader_thread,
+            _writer: writer_thread,
         })
-    }
-
-    fn write(&mut self, bytes: &[u8]) -> std::io::Result<()> {
-        let mut writer = self
-            .writer
-            .lock()
-            .map_err(|_| std::io::Error::other("terminal writer lock poisoned"))?;
-        writer.write_all(bytes)?;
-        writer.flush()
     }
 
     fn drain_text(&mut self) -> String {
@@ -564,14 +652,19 @@ impl TerminalSession {
     fn write_repeated(&mut self, bytes: &[u8], count: u32) -> std::io::Result<()> {
         const MAX_SCROLL_STEPS: u32 = 4096;
 
-        let mut writer = self
-            .writer
-            .lock()
-            .map_err(|_| std::io::Error::other("terminal writer lock poisoned"))?;
-        for _ in 0..count.min(MAX_SCROLL_STEPS) {
-            writer.write_all(bytes)?;
+        let count = count.min(MAX_SCROLL_STEPS) as usize;
+        let Some(capacity) = bytes.len().checked_mul(count) else {
+            return Err(std::io::Error::other("terminal input is too large"));
+        };
+        let mut repeated = Vec::with_capacity(capacity);
+        for _ in 0..count {
+            repeated.extend_from_slice(bytes);
         }
-        writer.flush()
+        if self.writer.enqueue(&repeated) {
+            Ok(())
+        } else {
+            Err(std::io::Error::other("terminal writer queue is full"))
+        }
     }
 
     fn drain_bytes(&mut self) -> Vec<u8> {
@@ -705,6 +798,7 @@ fn encode_mouse_wheel(sgr: bool, up: bool, col: u16, row: u16) -> Vec<u8> {
 
 impl Drop for TerminalSession {
     fn drop(&mut self) {
+        self.writer.close();
         // Kill, then reap — without the wait the dead child lingers as
         // a zombie until the host process exits.
         let _ = self.child.kill();
@@ -1108,6 +1202,87 @@ fn parse_hex_rgb(value: &str) -> Option<[u8; 3]> {
 mod tests {
     use super::*;
     use std::time::{Duration, Instant};
+
+    struct ChunkRecorder {
+        writes: Arc<Mutex<Vec<usize>>>,
+    }
+
+    impl Write for ChunkRecorder {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            self.writes.lock().unwrap().push(bytes.len());
+            Ok(bytes.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn pty_writes_are_split_into_bounded_chunks() {
+        let writes = Arc::new(Mutex::new(Vec::new()));
+        let mut writer = ChunkRecorder {
+            writes: Arc::clone(&writes),
+        };
+        let input = vec![0_u8; PTY_WRITE_CHUNK_SIZE * 2 + 17];
+
+        write_pty_chunked(&mut writer, &input).unwrap();
+
+        assert_eq!(
+            *writes.lock().unwrap(),
+            vec![PTY_WRITE_CHUNK_SIZE, PTY_WRITE_CHUNK_SIZE, 17]
+        );
+    }
+
+    struct BlockingWriter {
+        started: Option<mpsc::Sender<()>>,
+        release: Arc<(Mutex<bool>, Condvar)>,
+    }
+
+    impl Write for BlockingWriter {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            if let Some(started) = self.started.take() {
+                let _ = started.send(());
+            }
+            let (lock, ready) = &*self.release;
+            let mut released = lock.lock().unwrap();
+            while !*released {
+                released = ready.wait(released).unwrap();
+            }
+            Ok(bytes.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn writer_queue_does_not_block_when_pty_write_stalls() {
+        let queue = Arc::new(PtyWriterQueue::default());
+        let release = Arc::new((Mutex::new(false), Condvar::new()));
+        let (started_tx, started_rx) = mpsc::channel();
+        let worker_queue = Arc::clone(&queue);
+        let worker_release = Arc::clone(&release);
+        let worker = thread::spawn(move || {
+            worker_queue.run(Box::new(BlockingWriter {
+                started: Some(started_tx),
+                release: worker_release,
+            }));
+        });
+
+        assert!(queue.enqueue(b"first"));
+        started_rx.recv_timeout(Duration::from_secs(1)).unwrap();
+        let enqueue_started = Instant::now();
+        assert!(queue.enqueue(b"second"));
+        assert!(enqueue_started.elapsed() < Duration::from_millis(100));
+
+        queue.close();
+        let (lock, ready) = &*release;
+        *lock.lock().unwrap() = true;
+        ready.notify_all();
+        worker.join().unwrap();
+    }
 
     #[test]
     fn status_json_is_valid_shape() {
