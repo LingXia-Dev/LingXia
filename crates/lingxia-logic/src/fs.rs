@@ -674,6 +674,16 @@ fn normalize_relative_path<'a>(
     Ok(path)
 }
 
+fn resolve_relative_managed_path(
+    user_data_dir: &Path,
+    raw_path: &str,
+    api_name: &'static str,
+    field_name: &'static str,
+) -> JSResult<PathBuf> {
+    let relative = normalize_relative_path(raw_path, api_name, field_name)?;
+    Ok(user_data_dir.join(relative))
+}
+
 fn classify_managed_path(lxapp: &LxApp, path: &Path) -> Option<ManagedPathKind> {
     fn path_starts_with_root(path: &Path, root: &Path) -> bool {
         if root.as_os_str().is_empty() {
@@ -707,6 +717,26 @@ fn is_storage_root(lxapp: &LxApp, path: &ManagedPath) -> bool {
     }
 }
 
+fn ensure_managed_path_kind_allowed(
+    kind: ManagedPathKind,
+    api_name: &'static str,
+    field_name: &'static str,
+    allow_temp: bool,
+    allow_usercache: bool,
+) -> JSResult<()> {
+    if kind == ManagedPathKind::Temp && !allow_temp {
+        return Err(js_invalid_parameter_error(format!(
+            "{api_name} {field_name} must not target lx://temp"
+        )));
+    }
+    if kind == ManagedPathKind::UserCache && !allow_usercache {
+        return Err(js_invalid_parameter_error(format!(
+            "{api_name} {field_name} must not target lx://usercache"
+        )));
+    }
+    Ok(())
+}
+
 fn resolve_managed_path(
     lxapp: &LxApp,
     raw_path: &str,
@@ -735,16 +765,7 @@ fn resolve_managed_path(
                 )));
             }
         };
-        if kind == ManagedPathKind::Temp && !allow_temp {
-            return Err(js_invalid_parameter_error(format!(
-                "{api_name} {field_name} must not target lx://temp"
-            )));
-        }
-        if kind == ManagedPathKind::UserCache && !allow_usercache {
-            return Err(js_invalid_parameter_error(format!(
-                "{api_name} {field_name} must not target lx://usercache"
-            )));
-        }
+        ensure_managed_path_kind_allowed(kind, api_name, field_name, allow_temp, allow_usercache)?;
         let path = ManagedPath {
             path: resolved,
             kind,
@@ -758,9 +779,8 @@ fn resolve_managed_path(
         return Ok(path);
     }
 
-    let relative = normalize_relative_path(path, api_name, field_name)?;
     Ok(ManagedPath {
-        path: lxapp.user_data_dir.join(relative),
+        path: resolve_relative_managed_path(&lxapp.user_data_dir, path, api_name, field_name)?,
         kind: ManagedPathKind::UserData,
     })
 }
@@ -787,6 +807,39 @@ fn resolve_writable_path(
     field_name: &'static str,
 ) -> JSResult<ManagedPath> {
     resolve_managed_path(lxapp, raw_path, api_name, field_name, false, true, true)
+}
+
+pub(crate) fn resolve_writable_file_path(
+    lxapp: &LxApp,
+    raw_path: &str,
+    api_name: &'static str,
+    field_name: &'static str,
+    allow_temp: bool,
+) -> JSResult<PathBuf> {
+    let path = resolve_managed_path(
+        lxapp, raw_path, api_name, field_name, allow_temp, true, true,
+    )?;
+    ensure_no_symlink_ancestors(lxapp, &path, api_name, field_name)?;
+    match std::fs::symlink_metadata(&path.path) {
+        Ok(metadata) if metadata.file_type().is_file() => {}
+        Ok(metadata) if metadata.file_type().is_symlink() => {
+            return Err(js_invalid_parameter_error(format!(
+                "{api_name} {field_name} must not target a symlink"
+            )));
+        }
+        Ok(_) => {
+            return Err(js_invalid_parameter_error(format!(
+                "{api_name} {field_name} must target a regular file"
+            )));
+        }
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
+        Err(err) => {
+            return Err(js_internal_error(format!(
+                "{api_name} failed to inspect {field_name}: {err}"
+            )));
+        }
+    }
+    Ok(path.path)
 }
 
 fn file_stats(metadata: std::fs::Metadata) -> FileStats {
@@ -841,7 +894,12 @@ fn ensure_no_symlink_ancestors(
                 )));
             }
             Ok(_) => {}
-            Err(_) => break,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => break,
+            Err(err) => {
+                return Err(js_internal_error(format!(
+                    "{api_name} failed to inspect {field_name}: {err}"
+                )));
+            }
         }
     }
     Ok(())
@@ -1295,5 +1353,67 @@ rong::js_api! {
             ts_return = "Promise<ChooseDirectoryResult>"
         ) = choose_directory;
         fn getFileManager(ts_return = "FileManager") = get_file_manager;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ManagedPathKind, ensure_managed_path_kind_allowed, resolve_relative_managed_path};
+    use std::path::Path;
+
+    #[test]
+    fn writable_relative_paths_resolve_under_userdata() {
+        let user_data_dir = Path::new("sandbox").join("userdata");
+        let resolved = resolve_relative_managed_path(
+            &user_data_dir,
+            "pages/home/index.js",
+            "compressVideo",
+            "outputPath",
+        )
+        .unwrap();
+
+        assert_eq!(resolved, user_data_dir.join("pages/home/index.js"));
+    }
+
+    #[test]
+    fn writable_relative_paths_reject_escape_syntax() {
+        let user_data_dir = Path::new("sandbox").join("userdata");
+        for path in [
+            "../bundle.js",
+            "pages/../../bundle.js",
+            "..\\bundle.js",
+            "C:\\bundle.js",
+            "/bundle.js",
+        ] {
+            assert!(
+                resolve_relative_managed_path(&user_data_dir, path, "compressVideo", "outputPath",)
+                    .is_err(),
+                "path should be rejected: {path}"
+            );
+        }
+    }
+
+    #[test]
+    fn media_writable_policy_can_preserve_explicit_temp_outputs() {
+        assert!(
+            ensure_managed_path_kind_allowed(
+                ManagedPathKind::Temp,
+                "compressVideo",
+                "outputPath",
+                true,
+                true,
+            )
+            .is_ok()
+        );
+        assert!(
+            ensure_managed_path_kind_allowed(
+                ManagedPathKind::Temp,
+                "writeFile",
+                "filePath",
+                false,
+                true,
+            )
+            .is_err()
+        );
     }
 }
