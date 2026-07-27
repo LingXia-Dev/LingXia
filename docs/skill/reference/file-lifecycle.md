@@ -129,6 +129,11 @@ second durable copy and hands the file to cache cleanup.
 `readDir` resolves to an async iterator of directory entries with `name`,
 `isFile`, `isDirectory`, and `isSymlink`.
 
+`readFile` materializes the complete result in the lxapp logic process and is
+limited to 16 MiB per call. Keep larger media and archive files as `lx://`
+paths and pass those paths to streaming, upload, preview, or native file APIs
+instead of reading the whole file into JavaScript memory.
+
 ### Media APIs
 
 `chooseMedia`, `compressImage`, `compressVideo`, and video thumbnail APIs
