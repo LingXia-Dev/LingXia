@@ -116,6 +116,9 @@ internal object LxAppSurface {
     private val entries = LinkedHashMap<String, Entry>()
     private val pendingRequests = LinkedHashMap<String, Request>()
     private val pendingVisibility = LinkedHashMap<String, PendingVisibility>()
+    // JNI entrypoints run on Rust worker threads while mount retries and layout
+    // reconciliation run on the UI thread, so all three maps share one lock.
+    private val stateLock = Any()
 
     @JvmStatic
     fun present(
@@ -169,7 +172,9 @@ internal object LxAppSurface {
             ephemeralWebData = ephemeralWebData,
             urlCallback = urlCallback
         )
-        pendingRequests[request.id] = request
+        synchronized(stateLock) {
+            pendingRequests[request.id] = request
+        }
         activity.runOnUiThread {
             if (request.content == CONTENT_URL) {
                 val tabId = NativeApi.openStandaloneBrowserTab(
@@ -192,7 +197,9 @@ internal object LxAppSurface {
                     )
                 } else {
                     val managedRequest = request.copy(browserTabId = tabId)
-                    pendingRequests[request.id] = managedRequest
+                    synchronized(stateLock) {
+                        pendingRequests[request.id] = managedRequest
+                    }
                     mountManagedUrlWhenReady(activity, managedRequest, 0)
                 }
             } else {
@@ -219,23 +226,26 @@ internal object LxAppSurface {
 
         val activity = LxApp.getCurrentActivity() ?: return false
         activity.runOnUiThread {
-            val entriesToClose = entries.values
-                .filter { entry ->
-                    entry.fullScreen &&
-                        entry.overlay.visibility == View.VISIBLE &&
-                        !desiredIds.contains(entry.id)
-                }
-                .map { it.id to it.appId }
+            val (entriesToClose, pendingToClose) = synchronized(stateLock) {
+                val mounted = entries.values
+                    .filter { entry ->
+                        entry.fullScreen &&
+                            entry.overlay.visibility == View.VISIBLE &&
+                            !desiredIds.contains(entry.id)
+                    }
+                    .map { it.id to it.appId }
+                val pending = pendingRequests.values
+                    .filter { request ->
+                        isFullScreenRequest(request) &&
+                            !desiredIds.contains(request.id)
+                    }
+                    .map { it.id to it.appId }
+                mounted to pending
+            }
             entriesToClose.forEach { (id, ownerAppId) ->
                 closeEntry(id, ownerAppId, "programmatic")
             }
 
-            val pendingToClose = pendingRequests.values
-                .filter { request ->
-                    isFullScreenRequest(request) &&
-                        !desiredIds.contains(request.id)
-                }
-                .map { it.id to it.appId }
             pendingToClose.forEach { (id, ownerAppId) ->
                 closePendingRequest(id, ownerAppId, "programmatic")
             }
@@ -272,7 +282,7 @@ internal object LxAppSurface {
     @JvmStatic
     fun show(id: String, appId: String): Boolean {
         if (id.isBlank() || appId.isBlank()) return false
-        val entry = entries[id]
+        val entry = synchronized(stateLock) { entries[id] }
         if (entry == null) {
             return setPendingVisibility(id, appId, PendingVisibility.SHOW)
         }
@@ -292,7 +302,7 @@ internal object LxAppSurface {
     @JvmStatic
     fun hide(id: String, appId: String): Boolean {
         if (id.isBlank() || appId.isBlank()) return false
-        val entry = entries[id]
+        val entry = synchronized(stateLock) { entries[id] }
         if (entry == null) {
             return setPendingVisibility(id, appId, PendingVisibility.HIDE)
         }
@@ -305,7 +315,7 @@ internal object LxAppSurface {
     }
 
     private fun mountWhenReady(activity: Activity, request: Request, attempt: Int) {
-        if (!pendingRequests.containsKey(request.id)) {
+        if (synchronized(stateLock) { !pendingRequests.containsKey(request.id) }) {
             return
         }
         val webView = NativeApi.findWebViewByPageInstanceId(request.pageInstanceId)
@@ -313,8 +323,10 @@ internal object LxAppSurface {
             if (attempt < MOUNT_RETRY_COUNT) {
                 activity.window?.decorView?.postDelayed({ mountWhenReady(activity, request, attempt + 1) }, MOUNT_RETRY_DELAY_MS)
             } else {
-                pendingRequests.remove(request.id)
-                pendingVisibility.remove(request.id)
+                synchronized(stateLock) {
+                    pendingRequests.remove(request.id)
+                    pendingVisibility.remove(request.id)
+                }
                 LxLog.e(TAG, "present failed: WebView not ready for pageInstanceId=${request.pageInstanceId}", appId = request.appId, path = request.path)
                 NativeApi.disposePageInstance(request.pageInstanceId, "failed")
                 NativeApi.onSurfaceClosed(request.appId, request.id, "failed")
@@ -325,7 +337,7 @@ internal object LxAppSurface {
     }
 
     private fun mountManagedUrlWhenReady(activity: Activity, request: Request, attempt: Int) {
-        if (!pendingRequests.containsKey(request.id)) return
+        if (synchronized(stateLock) { !pendingRequests.containsKey(request.id) }) return
         val tabId = request.browserTabId ?: return
         val browserAppId = NativeApi.getBuiltinBrowserAppId()?.takeIf { it.isNotBlank() }
         val path = NativeApi.browserTabPathForId(tabId)?.takeIf { it.isNotBlank() }
@@ -342,8 +354,10 @@ internal object LxAppSurface {
                     MOUNT_RETRY_DELAY_MS
                 )
             } else {
-                pendingRequests.remove(request.id)
-                pendingVisibility.remove(request.id)
+                synchronized(stateLock) {
+                    pendingRequests.remove(request.id)
+                    pendingVisibility.remove(request.id)
+                }
                 NativeApi.browserTabClose(tabId)
                 LxLog.e(TAG, "present failed: managed URL WebView not ready for tabId=$tabId", appId = request.appId, path = request.path)
                 NativeApi.onSurfaceClosed(request.appId, request.id, "failed")
@@ -355,8 +369,10 @@ internal object LxAppSurface {
 
     private fun mount(activity: Activity, request: Request, webView: android.webkit.WebView) {
         closeEntry(request.id, request.appId, "programmatic", notifyNative = false)
-        pendingRequests.remove(request.id)
-        val requestedVisibility = pendingVisibility.remove(request.id)
+        val requestedVisibility = synchronized(stateLock) {
+            pendingRequests.remove(request.id)
+            pendingVisibility.remove(request.id)
+        }
 
         val rootView = activity.findViewById<ViewGroup>(android.R.id.content)
         if (rootView == null) {
@@ -462,7 +478,9 @@ internal object LxAppSurface {
             fullScreen = fillsScreen,
             immersive = immersive,
         )
-        entries[request.id] = entry
+        synchronized(stateLock) {
+            entries[request.id] = entry
+        }
 
         if (requestedVisibility == PendingVisibility.HIDE) {
             applyEntryVisibility(activity, entry, false)
@@ -621,14 +639,21 @@ internal object LxAppSurface {
 
     @JvmStatic
     fun closeTopUser(): Boolean {
-        val entry = entries.values.lastOrNull { it.overlay.visibility == View.VISIBLE } ?: return false
+        val entry = synchronized(stateLock) {
+            entries.values.lastOrNull { it.overlay.visibility == View.VISIBLE }
+        } ?: return false
         return close(entry.id, entry.appId, "user")
     }
 
     private fun closeEntry(id: String, appId: String, reason: String, notifyNative: Boolean = true): Boolean {
-        val entry = entries[id] ?: return false
-        if (entry.appId != appId) return false
-        entries.remove(id)
+        val entry = synchronized(stateLock) {
+            val current = entries[id]
+            if (current == null || current.appId != appId) {
+                null
+            } else {
+                entries.remove(id)
+            }
+        } ?: return false
 
         // Hand system bars back to whatever the host page had before the
         // surface opened. Safe even if hide() already restored — restore is
@@ -664,10 +689,16 @@ internal object LxAppSurface {
     }
 
     private fun closePendingRequest(id: String, appId: String, reason: String): Boolean {
-        val request = pendingRequests[id] ?: return false
-        if (request.appId != appId) return false
-        pendingRequests.remove(id)
-        pendingVisibility.remove(id)
+        val request = synchronized(stateLock) {
+            val current = pendingRequests[id]
+            if (current == null || current.appId != appId) {
+                null
+            } else {
+                pendingRequests.remove(id)
+                pendingVisibility.remove(id)
+                current
+            }
+        } ?: return false
         if (request.content == CONTENT_PAGE) {
             NativeApi.disposePageInstance(request.pageInstanceId, reason)
         } else {
@@ -678,10 +709,12 @@ internal object LxAppSurface {
     }
 
     private fun setPendingVisibility(id: String, appId: String, visibility: PendingVisibility): Boolean {
-        val request = pendingRequests[id] ?: return false
-        if (request.appId != appId) return false
-        pendingVisibility[id] = visibility
-        return true
+        return synchronized(stateLock) {
+            val request = pendingRequests[id] ?: return@synchronized false
+            if (request.appId != appId) return@synchronized false
+            pendingVisibility[id] = visibility
+            true
+        }
     }
 
     private fun applyEntryVisibility(
