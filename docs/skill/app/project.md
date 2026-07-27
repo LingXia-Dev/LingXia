@@ -108,6 +108,7 @@ The authoritative, version-matched field list is a freshly scaffolded `lingxia.y
 | `browser` | Optional | Override the in-app browser webui (only used when `capabilities.browser: true`) |
 | `appLinks` | Optional | Universal-link / app-link hosts (see [App Links](./applinks.md)) |
 | `storage` | Recommended | Explicit host temp/cache/data size limits |
+| `shellTheme` | Optional | Light/dark semantic colors for host-owned native chrome |
 
 ---
 
@@ -182,6 +183,56 @@ JS Logic (`pages/*/index.ts`): `lx.app.envVersion` — `'developer' | 'preview' 
 Rust host: `lingxia::env_version()` returns the same enum.
 
 The build-time plumbing per platform (Android Gradle properties, iOS bundle id rewrite, Harmony staging mirror, publish-flow id matching) is internal — app authors don't touch it.
+
+---
+
+## Host appearance and `shellTheme`
+
+The host owns one appearance preference: `system`, `light`, or `dark`. Every
+WebView still uses normal CSS `prefers-color-scheme`; native chrome and child
+lxapps inherit the same effective appearance automatically. Logic can read and
+subscribe from any lxapp with `lx.getAppearance()` / `lx.onAppearanceChange()`.
+Only the home lxapp may persist a product-level choice:
+
+```ts
+await lx.app.setAppearance({ preference: 'dark' })
+```
+
+`shellTheme` belongs to the host product, not an lxapp. It styles sidebar,
+window, surface, selection, separator, and foreground semantics without
+injecting variables into page CSS. Omitted tokens retain platform semantic
+defaults:
+
+```yaml
+shellTheme:
+  light:
+    windowBackgroundColor: "#F4F5F7"
+    surfaceBackgroundColor: "#FFFFFF"
+    foregroundColor: "#111827"
+    mutedForegroundColor: "#667085"
+    accentColor: "#2865FF"
+    separatorColor: "#E5E7EB"
+    selectionBackgroundColor: "#EEF3FF"
+    sidebarBackgroundColor: "#F4F5F7"
+    sidebarForegroundColor: "#111827"
+    sidebarSelectedBackgroundColor: "#FFFFFF"
+    sidebarSelectedForegroundColor: "#111827"
+  dark:
+    windowBackgroundColor: "#17191C"
+    surfaceBackgroundColor: "#23262B"
+    foregroundColor: "#F3F4F6"
+    mutedForegroundColor: "#9CA3AF"
+    accentColor: "#5B8CFF"
+    separatorColor: "#343840"
+    selectionBackgroundColor: "#303641"
+    sidebarBackgroundColor: "#17191C"
+    sidebarForegroundColor: "#F3F4F6"
+    sidebarSelectedBackgroundColor: "#303641"
+    sidebarSelectedForegroundColor: "#FFFFFF"
+```
+
+Configure this once in the host `lingxia.yaml`; bundled and dynamically opened
+lxapps cannot replace it.
 
 ---
 

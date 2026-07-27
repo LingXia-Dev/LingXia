@@ -422,6 +422,33 @@ Notes:
 
 ---
 
+## Appearance-aware navigation bar
+
+Page JSON navigation colors can share common values and override only the
+appearance that differs. The host resolves the effective appearance and
+refreshes native chrome; page JavaScript does not synchronize it:
+
+```json
+{
+  "navigationBarTitleText": "Account",
+  "navigationBarBackgroundColor": "#FFFFFF",
+  "navigationBarTextStyle": "black",
+  "navigationBarStyle": {
+    "dark": {
+      "backgroundColor": "#111418",
+      "textStyle": "white"
+    }
+  }
+}
+```
+
+Resolution is the current `navigationBarStyle.light` / `.dark` field, then the
+common `navigationBar*` field, then the platform semantic default. An
+imperative `lx.setNavigationBarColor(...)` applies to both appearances for the
+rest of that page session.
+
+---
+
 ## Tab bar navigation
 
 A **tab bar** is a persistent navigation strip — typically at the bottom of the screen — that shows the lxapp's primary pages. Tapping a tab switches the active page **without** push/pop semantics: the tab bar stays visible across all tab pages, and tab pages do not stack on each other.
