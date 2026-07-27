@@ -12,6 +12,8 @@ use crate::traits::video_player::{
 use core::ffi::{c_char, c_void};
 use std::collections::{HashMap, VecDeque};
 use std::ffi::CString;
+use std::fs::File;
+use std::os::fd::AsRawFd;
 use std::ptr;
 use std::sync::atomic::{AtomicBool, AtomicI32, AtomicI64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, OnceLock, RwLock};
@@ -790,6 +792,7 @@ pub struct NativeVideoPlayer {
     pending_play: bool,
     source_set: bool,
     current_source: Option<String>,
+    source_file: Option<File>,
 }
 
 // SAFETY: Player accessed on main thread, protected by mutex
@@ -836,6 +839,7 @@ impl NativeVideoPlayer {
                 pending_play: false,
                 source_set: false,
                 current_source: None,
+                source_file: None,
             });
         }
 
@@ -850,6 +854,7 @@ impl NativeVideoPlayer {
             pending_play: false,
             source_set: false,
             current_source: None,
+            source_file: None,
         })
     }
 
@@ -911,34 +916,29 @@ impl NativeVideoPlayer {
         check_av_result(
             unsafe { OH_AVPlayer_SetURLSource(self.player, c_url.as_ptr()) },
             "OH_AVPlayer_SetURLSource",
-        )
+        )?;
+        self.source_file = None;
+        Ok(())
     }
 
     fn set_file_source(&mut self, path: &str) -> Result<(), PlatformError> {
-        let c_path = CString::new(path)
-            .map_err(|_| PlatformError::Platform("Path contains invalid characters".to_string()))?;
-
-        let fd = unsafe { libc::open(c_path.as_ptr(), libc::O_RDONLY) };
-        if fd < 0 {
-            return Err(PlatformError::Platform(format!(
-                "Failed to open file: {}",
-                path
-            )));
-        }
-
-        let mut stat: libc::stat = unsafe { std::mem::zeroed() };
-        if unsafe { libc::fstat(fd, &mut stat) } < 0 {
-            unsafe { libc::close(fd) };
-            return Err(PlatformError::Platform(format!(
-                "Failed to stat file: {}",
-                path
-            )));
-        }
-
-        check_av_result(
-            unsafe { OH_AVPlayer_SetFDSource(self.player, fd, 0, stat.st_size) },
-            "OH_AVPlayer_SetFDSource",
+        let file = File::open(path).map_err(|error| {
+            PlatformError::Platform(format!("Failed to open file {path}: {error}"))
+        })?;
+        let size = i64::try_from(
+            file.metadata()
+                .map_err(|error| {
+                    PlatformError::Platform(format!("Failed to stat file {path}: {error}"))
+                })?
+                .len(),
         )
+        .map_err(|_| PlatformError::Platform(format!("File is too large: {path}")))?;
+        check_av_result(
+            unsafe { OH_AVPlayer_SetFDSource(self.player, file.as_raw_fd(), 0, size) },
+            "OH_AVPlayer_SetFDSource",
+        )?;
+        self.source_file = Some(file);
+        Ok(())
     }
 
     pub fn set_video_surface(&mut self, window: *mut OHNativeWindow) -> Result<(), PlatformError> {
@@ -1203,14 +1203,14 @@ impl NativeVideoPlayer {
     }
 
     pub fn release(&mut self) -> Result<(), PlatformError> {
+        let mut release_result = Ok(());
         if !self.player.is_null() {
             unsafe { OH_AVPlayer_SetOnInfoCallback(self.player, None, ptr::null_mut()) };
-            check_av_result(
-                unsafe { OH_AVPlayer_Release(self.player) },
-                "OH_AVPlayer_Release",
-            )?;
+            let result = unsafe { OH_AVPlayer_Release(self.player) };
             self.player = ptr::null_mut();
+            release_result = check_av_result(result, "OH_AVPlayer_Release");
         }
+        self.source_file = None;
         if !self.window.is_null() {
             unsafe { OH_NativeWindow_DestroyNativeWindow(self.window) };
             self.window = ptr::null_mut();
@@ -1220,7 +1220,7 @@ impl NativeVideoPlayer {
         self.info_callback_data = ptr::null_mut();
         self.source_set = false;
         self.current_source = None;
-        Ok(())
+        release_result
     }
 
     pub fn as_ptr(&self) -> *mut OH_AVPlayer {
@@ -1246,9 +1246,7 @@ impl NativeVideoPlayer {
 
 impl Drop for NativeVideoPlayer {
     fn drop(&mut self) {
-        if !self.player.is_null() {
-            let _ = self.release();
-        }
+        let _ = self.release();
     }
 }
 
