@@ -378,9 +378,15 @@ pub fn surface_derived_layout(appid: String) -> String {
 
 /// Get complete TabBar state with items array
 #[napi]
-fn get_tab_bar(appid: String) -> Option<TabBarState> {
+fn get_tab_bar(appid: String, dark: bool) -> Option<TabBarState> {
     lxapp::try_get(&appid).and_then(|lxapp| {
         lxapp.get_tabbar().map(|tabbar| {
+            let style = tabbar.resolved_style(dark);
+            let (color, selected, background, border) = if dark {
+                (0xFF98989D, 0xFF0A84FF, 0xFF1C1C1E, 0xFF38383A)
+            } else {
+                (0xFF666666, 0xFF1677FF, 0xFFFFFFFF, 0xFFF0F0F0)
+            };
             let items: Vec<TabItem> = tabbar
                 .list
                 .iter()
@@ -396,10 +402,10 @@ fn get_tab_bar(appid: String) -> Option<TabBarState> {
                 .collect();
 
             TabBarState {
-                color: parse_color_to_u32(&tabbar.color, 0xFF666666),
-                selected_color: parse_color_to_u32(&tabbar.selectedColor, 0xFF1677FF),
-                background_color: parse_color_to_u32(&tabbar.backgroundColor, 0xFFFFFFFF),
-                border_style: parse_color_to_u32(&tabbar.borderStyle, 0xFFF0F0F0),
+                color: parse_color_to_u32(&style.color, color),
+                selected_color: parse_color_to_u32(&style.selectedColor, selected),
+                background_color: parse_color_to_u32(&style.backgroundColor, background),
+                border_style: parse_color_to_u32(&style.borderStyle, border),
                 position: match tabbar.position {
                     lxapp::tabbar::TabBarPosition::Bottom => TabBarPosition::Bottom,
                     lxapp::tabbar::TabBarPosition::Left => TabBarPosition::Left,

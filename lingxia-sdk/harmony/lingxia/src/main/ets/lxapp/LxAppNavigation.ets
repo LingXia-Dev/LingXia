@@ -456,7 +456,7 @@ export struct LxAppNavigation {
    */
   public isTabBarItem(appId: string, path: string): boolean {
     try {
-      const tabBarState: TabBarState | null = getTabBar(appId);
+      const tabBarState: TabBarState | null = getTabBar(appId, false);
       if (!tabBarState || !tabBarState.items || tabBarState.items.length === 0) {
         return false;
       }

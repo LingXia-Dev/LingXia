@@ -321,7 +321,7 @@ export struct LxAppContainer {
    */
   private loadTabBarState() {
     try {
-      this.tabBarState = liblingxia.getTabBar(this.appId);
+      this.tabBarState = liblingxia.getTabBar(this.appId, this.isDarkAppearance());
 
       if (this.tabBarState) {
         hilog.info(DOMAIN, TAG, `TabBar data loaded: ${this.tabBarState.items.length} items, position=${this.tabBarState.position}`);
@@ -332,6 +332,11 @@ export struct LxAppContainer {
       LxLog.e(TAG, `Failed to load TabBar data: ${error}`);
       this.tabBarState = null;
     }
+  }
+
+  private isDarkAppearance(): boolean {
+    const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
+    return context?.config?.colorMode === ConfigurationConstant.ColorMode.COLOR_MODE_DARK;
   }
 
   /**

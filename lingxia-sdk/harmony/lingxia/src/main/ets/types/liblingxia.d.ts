@@ -256,7 +256,7 @@ declare module 'liblingxia.so' {
    * @param appid - LxApp ID
    * @returns TabBar state or null if not found
    */
-  export function getTabBar(appid: string): TabBarState | null;
+  export function getTabBar(appid: string, dark: boolean): TabBarState | null;
 
   /**
    * Get navigation bar state for a specific LxApp page
