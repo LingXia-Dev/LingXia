@@ -1515,8 +1515,8 @@ pub(super) fn focused_session(_panel_id: &str) -> Option<u64> {
 
 // ---- Pane drag (moving an existing session within the active tab) ----
 
-/// Hit target at the top center of each pane. The painter draws a smaller
-/// pill inside this rect so the control stays easy to grab without looking
+/// Hit target at the top center of each pane. The painter draws three dots
+/// inside this rect so the control stays easy to grab without looking
 /// heavy over terminal content.
 #[cfg(all(feature = "terminal-runtime", feature = "shell-chrome"))]
 pub(super) fn pane_drag_handle_rect(rect: RECT) -> RECT {
@@ -1555,18 +1555,32 @@ fn point_in_rect(rect: RECT, x: i32, y: i32) -> bool {
 }
 
 #[cfg(all(feature = "terminal-runtime", feature = "shell-chrome"))]
-fn pane_drop_direction(rect: RECT, x: i32, y: i32) -> SplitDir {
+fn pane_drop_direction(rect: RECT, x: i32, y: i32, current: Option<SplitDir>) -> Option<SplitDir> {
+    let width = (rect.right - rect.left).max(1) as f64;
+    let height = (rect.bottom - rect.top).max(1) as f64;
+    let x = (f64::from(x - rect.left) / width).clamp(0.0, 1.0);
+    let y = (f64::from(y - rect.top) / height).clamp(0.0, 1.0);
     let candidates = [
-        ((x - rect.left).max(0), SplitDir::Left),
-        ((rect.right - x).max(0), SplitDir::Right),
-        ((y - rect.top).max(0), SplitDir::Up),
-        ((rect.bottom - y).max(0), SplitDir::Down),
+        (x, SplitDir::Left),
+        (1.0 - x, SplitDir::Right),
+        (y, SplitDir::Up),
+        (1.0 - y, SplitDir::Down),
     ];
-    candidates
+    let nearest = candidates
         .into_iter()
-        .min_by_key(|(distance, _)| *distance)
-        .map(|(_, direction)| direction)
-        .unwrap_or(SplitDir::Right)
+        .min_by(|left, right| left.0.total_cmp(&right.0))?;
+    const DROP_ZONE: f64 = 0.35;
+    const HYSTERESIS: f64 = 0.06;
+    if let Some(current) = current
+        && let Some((current_distance, _)) = candidates
+            .into_iter()
+            .find(|(_, direction)| *direction == current)
+        && current_distance <= DROP_ZONE + HYSTERESIS
+        && (nearest.0 > DROP_ZONE || nearest.0 + HYSTERESIS >= current_distance)
+    {
+        return Some(current);
+    }
+    (nearest.0 <= DROP_ZONE).then_some(nearest.1)
 }
 
 /// Returns whether the pointer is over a pane's drag handle. Handles only
@@ -1622,7 +1636,13 @@ pub(crate) fn update_pane_drag(x: i32, y: i32) -> bool {
         active_pane_frames(&panel_id, body)
             .into_iter()
             .find(|frame| frame.session_id != source && point_in_rect(frame.rect, x, y))
-            .map(|frame| (frame.session_id, pane_drop_direction(frame.rect, x, y)))
+            .and_then(|frame| {
+                let current = previous
+                    .filter(|(target, _)| *target == frame.session_id)
+                    .map(|(_, direction)| direction);
+                pane_drop_direction(frame.rect, x, y, current)
+                    .map(|direction| (frame.session_id, direction))
+            })
     });
     if target != previous {
         if let Some(drag) = active_pane_drag().as_mut() {
@@ -2031,7 +2051,9 @@ fn windows_terminal_snapshot_body(snapshot: &TerminalSnapshot) -> String {
 mod tests {
     use super::stable_tab_title;
     #[cfg(feature = "shell-chrome")]
-    use super::{PaneNode, PaneOrientation, SplitDir};
+    use super::{PaneNode, PaneOrientation, SplitDir, pane_drop_direction};
+    #[cfg(feature = "shell-chrome")]
+    use windows::Win32::Foundation::RECT;
 
     #[test]
     fn stable_process_title_ignores_animated_terminal_title() {
@@ -2059,6 +2081,53 @@ mod tests {
         let mut sessions = Vec::new();
         root.collect(&mut sessions);
         assert_eq!(sessions, [3, 1, 2]);
+    }
+
+    #[cfg(feature = "shell-chrome")]
+    #[test]
+    fn pane_drop_direction_is_normalized_and_has_a_center_dead_zone() {
+        let wide = RECT {
+            left: 0,
+            top: 0,
+            right: 1_000,
+            bottom: 200,
+        };
+        assert_eq!(
+            pane_drop_direction(wide, 100, 100, None),
+            Some(SplitDir::Left)
+        );
+        assert_eq!(pane_drop_direction(wide, 500, 20, None), Some(SplitDir::Up));
+        assert_eq!(pane_drop_direction(wide, 500, 100, None), None);
+
+        let tall = RECT {
+            left: 0,
+            top: 0,
+            right: 200,
+            bottom: 1_000,
+        };
+        assert_eq!(
+            pane_drop_direction(tall, 100, 100, None),
+            Some(SplitDir::Up)
+        );
+    }
+
+    #[cfg(feature = "shell-chrome")]
+    #[test]
+    fn pane_drop_direction_keeps_the_current_edge_near_a_boundary() {
+        let square = RECT {
+            left: 0,
+            top: 0,
+            right: 100,
+            bottom: 100,
+        };
+        assert_eq!(
+            pane_drop_direction(square, 34, 34, Some(SplitDir::Up)),
+            Some(SplitDir::Up)
+        );
+        assert_eq!(
+            pane_drop_direction(square, 20, 34, Some(SplitDir::Up)),
+            Some(SplitDir::Left)
+        );
     }
 
     #[cfg(feature = "shell-chrome")]

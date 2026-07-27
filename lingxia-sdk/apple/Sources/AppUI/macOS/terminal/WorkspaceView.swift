@@ -128,7 +128,7 @@ enum LingXiaTerminalFont {
     }
 }
 
-enum LingXiaTerminalSplitDirection {
+enum LingXiaTerminalSplitDirection: Equatable {
     case left
     case right
     case up

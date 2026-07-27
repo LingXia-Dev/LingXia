@@ -89,12 +89,20 @@ private final class LingXiaTerminalPaneDragHandleView: NSView {
     var onBeginDrag: ((NSEvent) -> Void)?
     var dragEnabled = false {
         didSet {
+            if !dragEnabled {
+                mouseDownEvent = nil
+                mouseDownLocation = nil
+            }
             isHidden = !dragEnabled
             needsDisplay = true
         }
     }
     private var trackingArea: NSTrackingArea?
     private var hovered = false
+    private var mouseDownEvent: NSEvent?
+    private var mouseDownLocation: NSPoint?
+
+    private static let dragThreshold: CGFloat = 4
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
@@ -126,20 +134,45 @@ private final class LingXiaTerminalPaneDragHandleView: NSView {
 
     override func mouseDown(with event: NSEvent) {
         guard dragEnabled else { return }
-        onBeginDrag?(event)
+        mouseDownEvent = event
+        mouseDownLocation = convert(event.locationInWindow, from: nil)
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard dragEnabled, let mouseDownEvent, let mouseDownLocation else { return }
+        let current = convert(event.locationInWindow, from: nil)
+        guard hypot(current.x - mouseDownLocation.x, current.y - mouseDownLocation.y)
+            >= Self.dragThreshold else { return }
+        self.mouseDownEvent = nil
+        self.mouseDownLocation = nil
+        onBeginDrag?(mouseDownEvent)
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        mouseDownEvent = nil
+        mouseDownLocation = nil
     }
 
     override func draw(_ dirtyRect: NSRect) {
         guard dragEnabled else { return }
-        let width = min(32, bounds.width - 8)
-        let pill = NSRect(
-            x: (bounds.width - width) / 2,
-            y: (bounds.height - 3) / 2,
-            width: width,
-            height: 3
-        )
         (hovered ? NSColor.lxTerminalAccent : NSColor.lxTerminalDivider).setFill()
-        NSBezierPath(roundedRect: pill, xRadius: 1.5, yRadius: 1.5).fill()
+        let diameter: CGFloat = 3
+        let spacing: CGFloat = 4
+        let totalWidth = diameter * 3 + spacing * 2
+        let origin = NSPoint(
+            x: (bounds.width - totalWidth) / 2,
+            y: (bounds.height - diameter) / 2
+        )
+        for index in 0..<3 {
+            NSBezierPath(
+                ovalIn: NSRect(
+                    x: origin.x + CGFloat(index) * (diameter + spacing),
+                    y: origin.y,
+                    width: diameter,
+                    height: diameter
+                )
+            ).fill()
+        }
     }
 }
 
@@ -390,27 +423,35 @@ final class LingXiaTerminalPaneView: NSView, NSDraggingSource {
         let pasteboardItem = NSPasteboardItem()
         pasteboardItem.setString(paneID.uuidString, forType: .lxTerminalPane)
         let draggingItem = NSDraggingItem(pasteboardWriter: pasteboardItem)
-        let imageSize = NSSize(width: min(160, max(80, bounds.width * 0.45)), height: 54)
+        let imageSize = NSSize(width: 32, height: 18)
         let image = NSImage(size: imageSize, flipped: false) { rect in
             NSColor.lxTerminalChromeRaised.withAlphaComponent(0.94).setFill()
             NSBezierPath(
                 roundedRect: rect.insetBy(dx: 1, dy: 1),
-                xRadius: 7,
-                yRadius: 7
+                xRadius: 6,
+                yRadius: 6
             ).fill()
             NSColor.lxTerminalAccent.withAlphaComponent(0.8).setFill()
-            NSBezierPath(
-                roundedRect: NSRect(x: (rect.width - 34) / 2, y: rect.height - 9, width: 34, height: 3),
-                xRadius: 1.5,
-                yRadius: 1.5
-            ).fill()
+            let diameter: CGFloat = 3
+            let spacing: CGFloat = 4
+            let totalWidth = diameter * 3 + spacing * 2
+            for index in 0..<3 {
+                NSBezierPath(
+                    ovalIn: NSRect(
+                        x: (rect.width - totalWidth) / 2 + CGFloat(index) * (diameter + spacing),
+                        y: (rect.height - diameter) / 2,
+                        width: diameter,
+                        height: diameter
+                    )
+                ).fill()
+            }
             return true
         }
         let point = convert(event.locationInWindow, from: nil)
         draggingItem.setDraggingFrame(
             NSRect(
                 x: point.x - imageSize.width / 2,
-                y: point.y - imageSize.height + 8,
+                y: point.y - imageSize.height / 2,
                 width: imageSize.width,
                 height: imageSize.height
             ),
@@ -476,10 +517,13 @@ final class LingXiaTerminalPaneView: NSView, NSDraggingSource {
             return []
         }
         let point = convert(sender.draggingLocation, from: nil)
-        dropDirection = nearestDropDirection(to: point)
-        dropOverlay.isHidden = false
-        updateDropOverlayFrame()
-        return .move
+        dropDirection = nearestDropDirection(to: point, keeping: dropDirection)
+        dropOverlay.isHidden = dropDirection == nil
+        if dropDirection != nil {
+            updateDropOverlayFrame()
+            return .move
+        }
+        return []
     }
 
     private func draggedPaneID(from sender: any NSDraggingInfo) -> UUID? {
@@ -489,14 +533,32 @@ final class LingXiaTerminalPaneView: NSView, NSDraggingSource {
         return UUID(uuidString: value)
     }
 
-    private func nearestDropDirection(to point: NSPoint) -> LingXiaTerminalSplitDirection {
-        let candidates: [(CGFloat, LingXiaTerminalSplitDirection)] = [
-            (max(0, point.x), .left),
-            (max(0, bounds.width - point.x), .right),
-            (max(0, bounds.height - point.y), .up),
-            (max(0, point.y), .down),
+    private func nearestDropDirection(
+        to point: NSPoint,
+        keeping current: LingXiaTerminalSplitDirection?
+    ) -> LingXiaTerminalSplitDirection? {
+        let width = max(bounds.width, 1)
+        let height = max(bounds.height, 1)
+        let x = min(max(point.x / width, 0), 1)
+        let y = min(max(point.y / height, 0), 1)
+        let candidates: [(distance: CGFloat, direction: LingXiaTerminalSplitDirection)] = [
+            (x, .left),
+            (1 - x, .right),
+            (1 - y, .up),
+            (y, .down),
         ]
-        return candidates.min { $0.0 < $1.0 }?.1 ?? .right
+        guard let nearest = candidates.min(by: { $0.distance < $1.distance }) else {
+            return nil
+        }
+        let zone: CGFloat = 0.35
+        let hysteresis: CGFloat = 0.06
+        if let current,
+           let currentDistance = candidates.first(where: { $0.direction == current })?.distance,
+           currentDistance <= zone + hysteresis,
+           (nearest.distance > zone || nearest.distance + hysteresis >= currentDistance) {
+            return current
+        }
+        return nearest.distance <= zone ? nearest.direction : nil
     }
 
     private func updateDropOverlayFrame() {

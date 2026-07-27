@@ -614,23 +614,29 @@ pub(super) fn draw_panel_panes(hdc: HDC, panel_id: &str, body: RECT) -> bool {
     if multi {
         for frame in &frames {
             let hit = super::terminal_panel::pane_drag_handle_rect(frame.rect);
-            let width = (hit.right - hit.left - 12).max(8);
-            let left = hit.left + (hit.right - hit.left - width) / 2;
+            let dot_size = 3;
+            let dot_gap = 4;
+            let dots_width = dot_size * 3 + dot_gap * 2;
+            let left = hit.left + (hit.right - hit.left - dots_width) / 2;
             let top = hit.top + 3;
-            fill_rect(
-                hdc,
-                RECT {
-                    left,
-                    top,
-                    right: left + width,
-                    bottom: (top + 3).min(hit.bottom),
-                },
-                if drag_source == Some(frame.session_id) {
-                    PANE_DRAG_HANDLE_ACTIVE_COLOR
-                } else {
-                    PANE_DRAG_HANDLE_COLOR
-                },
-            );
+            let color = if drag_source == Some(frame.session_id) {
+                PANE_DRAG_HANDLE_ACTIVE_COLOR
+            } else {
+                PANE_DRAG_HANDLE_COLOR
+            };
+            for index in 0..3 {
+                let dot_left = left + index * (dot_size + dot_gap);
+                fill_rect(
+                    hdc,
+                    RECT {
+                        left: dot_left,
+                        top,
+                        right: dot_left + dot_size,
+                        bottom: (top + dot_size).min(hit.bottom),
+                    },
+                    color,
+                );
+            }
         }
     }
     if let Some(indicator) = drop_indicator {
