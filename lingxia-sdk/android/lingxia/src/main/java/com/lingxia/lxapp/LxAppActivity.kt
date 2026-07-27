@@ -1352,8 +1352,11 @@ class LxAppActivity : AppCompatActivity() {
             view.pause()
         }
 
-        // Clear reference to this activity
-        LxApp.setCurrentActivity(null)
+        // A replacement activity can already be active when Android destroys
+        // this instance during a configuration change.
+        if (LxApp.getCurrentActivity() === this) {
+            LxApp.setCurrentActivity(null)
+        }
 
         super.onDestroy()
     }
