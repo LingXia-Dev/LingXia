@@ -107,62 +107,64 @@ fn preview_media_impl(request: PreviewMediaRequest) -> Result<(), Box<dyn std::e
             env.new_object_array(item_count as i32, payload_class, JObject::null())?;
 
         for (idx, item) in request.items.iter().enumerate() {
-            let path_java = env.new_string(&item.path)?;
-            let path_obj: JObject = path_java.into();
+            env.with_local_frame(5, |env| {
+                let path_java = env.new_string(&item.path)?;
+                let path_obj: JObject = path_java.into();
 
-            let media_type_value = match item.media_type {
-                MediaKind::Image => 0,
-                MediaKind::Video => 1,
-                MediaKind::Unknown => -1,
-            } as jint;
+                let media_type_value = match item.media_type {
+                    MediaKind::Image => 0,
+                    MediaKind::Video => 1,
+                    MediaKind::Unknown => -1,
+                } as jint;
 
-            let rotate_obj = match item.rotate {
-                Some(rotate) => env.new_object(
-                    jni_str!("java/lang/Integer"),
-                    jni_sig!("(I)V"),
-                    &[JValue::Int(rotate as jint)],
-                )?,
-                None => JObject::null(),
-            };
+                let rotate_obj = match item.rotate {
+                    Some(rotate) => env.new_object(
+                        jni_str!("java/lang/Integer"),
+                        jni_sig!("(I)V"),
+                        &[JValue::Int(rotate as jint)],
+                    )?,
+                    None => JObject::null(),
+                };
 
-            let object_fit_obj = match item.object_fit {
-                Some(fit) => {
-                    let value = match fit {
-                        MediaObjectFit::Cover => "cover",
-                        MediaObjectFit::Contain => "contain",
-                        MediaObjectFit::Fill => "fill",
-                        MediaObjectFit::Fit => "fit",
-                    };
-                    let fit_java: JString = env.new_string(value)?;
-                    fit_java.into()
-                }
-                None => JObject::null(),
-            };
+                let object_fit_obj = match item.object_fit {
+                    Some(fit) => {
+                        let value = match fit {
+                            MediaObjectFit::Cover => "cover",
+                            MediaObjectFit::Contain => "contain",
+                            MediaObjectFit::Fill => "fill",
+                            MediaObjectFit::Fit => "fit",
+                        };
+                        let fit_java: JString = env.new_string(value)?;
+                        fit_java.into()
+                    }
+                    None => JObject::null(),
+                };
 
-            let duration_obj = match item.duration_ms {
-                Some(duration_ms) => env.new_object(
-                    jni_str!("java/lang/Long"),
-                    jni_sig!("(J)V"),
-                    &[JValue::Long(duration_ms.min(jlong::MAX as u64) as jlong)],
-                )?,
-                None => JObject::null(),
-            };
+                let duration_obj = match item.duration_ms {
+                    Some(duration_ms) => env.new_object(
+                        jni_str!("java/lang/Long"),
+                        jni_sig!("(J)V"),
+                        &[JValue::Long(duration_ms.min(jlong::MAX as u64) as jlong)],
+                    )?,
+                    None => JObject::null(),
+                };
 
-            let payload_obj = env.new_object(
-                payload_class,
-                jni_sig!(
-                    "(Ljava/lang/String;ILjava/lang/Integer;Ljava/lang/String;Ljava/lang/Long;)V"
-                ),
-                &[
-                    JValue::Object(&path_obj),
-                    JValue::Int(media_type_value),
-                    JValue::Object(&rotate_obj),
-                    JValue::Object(&object_fit_obj),
-                    JValue::Object(&duration_obj),
-                ],
-            )?;
+                let payload_obj = env.new_object(
+                    payload_class,
+                    jni_sig!(
+                        "(Ljava/lang/String;ILjava/lang/Integer;Ljava/lang/String;Ljava/lang/Long;)V"
+                    ),
+                    &[
+                        JValue::Object(&path_obj),
+                        JValue::Int(media_type_value),
+                        JValue::Object(&rotate_obj),
+                        JValue::Object(&object_fit_obj),
+                        JValue::Object(&duration_obj),
+                    ],
+                )?;
 
-            payload_array.set_element(env, idx, &payload_obj)?;
+                payload_array.set_element(env, idx, &payload_obj)
+            })?;
         }
 
         let class: &JClass = media_class_ref.as_ref();
