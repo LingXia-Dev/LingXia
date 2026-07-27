@@ -2,6 +2,7 @@ use ::lxapp::lx::{LxLogicExtension, register_logic_extension};
 use rong::{JSContext, JSResult};
 
 mod app;
+mod appearance;
 mod device;
 mod display;
 mod env;
@@ -33,6 +34,7 @@ impl LxLogicExtension for LxLogicRuntime {
         public_types::init(ctx)?;
         env::init(ctx)?;
         app::init(ctx)?;
+        appearance::init(ctx)?;
         lxapp::init(ctx)?;
         device::init(ctx)?;
         display::init(ctx)?;

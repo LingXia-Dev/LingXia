@@ -4,6 +4,7 @@ use crate::i18n::{
 };
 use lingxia_app_context::{app_config, env_version, home_app_id};
 use lingxia_platform::traits::app_runtime::AppRuntime;
+use lingxia_platform::traits::appearance::{Appearance, AppearancePreference};
 use lxapp::LxApp;
 use rong::{IntoJSObject, JSContext, JSObject, JSResult};
 
@@ -32,6 +33,11 @@ struct AppBaseInfo {
     version: String,
     #[js_name = "SDKVersion"]
     sdk_version: String,
+}
+
+#[derive(rong::FromJSObject)]
+struct SetAppearanceOptions {
+    preference: String,
 }
 
 fn get_app_base_info(ctx: JSContext) -> JSResult<AppBaseInfo> {
@@ -72,6 +78,38 @@ fn set_app_badge(ctx: JSContext, text: Option<String>) -> JSResult<()> {
         .runtime
         .set_app_badge(text.as_deref().unwrap_or(""))
         .map_err(|e| js_error_from_platform_error(&e))
+}
+
+fn set_appearance(
+    ctx: JSContext,
+    options: SetAppearanceOptions,
+) -> JSResult<crate::appearance::JSAppearanceState> {
+    let lxapp = LxApp::from_ctx(&ctx)?;
+    ensure_home_lxapp(&lxapp, "lx.app.setAppearance")?;
+    let preference = options
+        .preference
+        .parse::<AppearancePreference>()
+        .map_err(|error| crate::i18n::js_invalid_parameter_error(error))?;
+
+    let previous = lxapp
+        .runtime
+        .get_appearance()
+        .map_err(|error| js_error_from_platform_error(&error))?;
+    let state = lxapp
+        .runtime
+        .set_appearance(preference)
+        .map_err(|error| js_error_from_platform_error(&error))?;
+    if let Err(error) = lingxia_service::settings::set_appearance(
+        &lxapp.app_data_dir(),
+        (preference != AppearancePreference::System).then_some(preference.as_str()),
+    ) {
+        if let Ok(rolled_back) = lxapp.runtime.set_appearance(previous.preference) {
+            lxapp::set_appearance_state(rolled_back);
+        }
+        return Err(crate::i18n::js_internal_error(error.to_string()));
+    }
+    lxapp::set_appearance_state(state);
+    Ok(state.into())
 }
 
 /// Guard for host-app-level APIs (`checkUpdate`, `screenshot`, `autostart`):
@@ -128,5 +166,9 @@ rong::js_api! {
         fn getBaseInfo = get_app_base_info;
         fn exit = exit_app;
         fn setBadge(ts_params = "value: string | number | null") = set_app_badge;
+        fn setAppearance(
+            ts_params = "options: SetAppearanceOptions",
+            ts_return = "AppearanceState"
+        ) = set_appearance;
     }
 }

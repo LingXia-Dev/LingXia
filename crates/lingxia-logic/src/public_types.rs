@@ -560,6 +560,21 @@ rong::js_api! {
 
         type NetworkChangeCallback = r###"(info: NetworkInfo) => void"###;
 
+        type AppearancePreference = r###"'system' | 'light' | 'dark'"###;
+
+        type EffectiveAppearance = r###"'light' | 'dark'"###;
+
+        type AppearanceState = r###"{
+    preference: AppearancePreference;
+    effective: EffectiveAppearance;
+}"###;
+
+        type AppearanceChangeCallback = r###"(state: AppearanceState) => void"###;
+
+        type SetAppearanceOptions = r###"{
+    preference: AppearancePreference;
+}"###;
+
         type NetworkInfo = r###"{
     isConnected: boolean;
     networkType: NetworkType;
