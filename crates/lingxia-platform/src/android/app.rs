@@ -172,14 +172,16 @@ impl<'a> RecursiveAssetIterator<'a> {
 
                     let mut entries = Vec::with_capacity(array_len);
                     for i in 0..array_len {
-                        let entry_jobject: JObject = jobject_array.get_element(env, i)?;
-                        let entry_jstring_wrapper = unsafe {
-                            jni::objects::JString::from_raw(env, entry_jobject.into_raw() as _)
-                        };
-                        let entry_str = Self::handle_jni_error(
-                            entry_jstring_wrapper.try_to_string(env),
-                            path_to_list,
-                        )?;
+                        let entry_str = env.with_local_frame(1, |env| {
+                            let entry_jobject: JObject = jobject_array.get_element(env, i)?;
+                            let entry_jstring_wrapper = unsafe {
+                                jni::objects::JString::from_raw(env, entry_jobject.into_raw() as _)
+                            };
+                            Self::handle_jni_error(
+                                entry_jstring_wrapper.try_to_string(env),
+                                path_to_list,
+                            )
+                        })?;
                         entries.push(entry_str);
                     }
                     Ok(Some(entries))
