@@ -124,6 +124,17 @@ fn input_target(pid: Option<u32>, window: Option<String>) -> cu::Result<Option<u
 }
 
 const WAIT_DEFAULT_MS: u64 = 5_000;
+const POINTER_CLICK_MAX_COUNT: u32 = 32;
+
+fn pointer_click_count(count: Option<u32>) -> JSResult<u32> {
+    let count = count.unwrap_or(1);
+    if !(1..=POINTER_CLICK_MAX_COUNT).contains(&count) {
+        return Err(usage(format!(
+            "count must be between 1 and {POINTER_CLICK_MAX_COUNT}"
+        )));
+    }
+    Ok(count)
+}
 
 fn capture_to_js(ctx: &JSContext, capture: &cu::Capture) -> JSResult<JSValue> {
     use base64::{Engine as _, engine::general_purpose};
@@ -619,7 +630,7 @@ impl JSDesktopPointer {
     async fn click(&self, ctx: JSContext, o: DesktopPointerClick) -> JSResult<JSValue> {
         let (x, y) = point(&o.at, "at")?;
         let button = mouse_button(&o.button)?;
-        let count = o.count.unwrap_or(1);
+        let count = pointer_click_count(o.count)?;
         let ack = blocking(move || {
             let target = input_target(o.pid, o.window)?;
             cu::input::pointer_click(x, y, button, count, target)
@@ -1116,6 +1127,20 @@ pub(crate) struct JSDesktopProcess {}
 impl JSDesktopProcess {
     pub(crate) fn new() -> Self {
         Self {}
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pointer_click_count_is_bounded() {
+        assert!(matches!(pointer_click_count(None), Ok(1)));
+        assert!(matches!(pointer_click_count(Some(32)), Ok(32)));
+        assert!(pointer_click_count(Some(0)).is_err());
+        assert!(pointer_click_count(Some(33)).is_err());
+        assert!(pointer_click_count(Some(u32::MAX)).is_err());
     }
 }
 
