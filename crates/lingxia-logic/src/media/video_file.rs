@@ -233,6 +233,7 @@ async fn extract_video_thumbnail_api(
 
     let explicit_output_uri = explicit_lx_output_uri(options.output_path.as_deref());
     let output_path = resolve_thumbnail_output_path(&lxapp, options.output_path.as_deref())?;
+    ensure_distinct_video_paths(&resolved_source, &output_path, "extractVideoThumbnail")?;
     let request = ExtractVideoThumbnailRequest {
         source_uri,
         output_path: output_path.clone(),
@@ -281,11 +282,7 @@ fn compress_video_api(ctx: JSContext, options: JSCompressVideoOptions) -> JSResu
 
     let explicit_output_uri = explicit_lx_output_uri(options.output_path.as_deref());
     let output_path = resolve_compress_video_output_path(&lxapp, options.output_path.as_deref())?;
-    if paths_refer_to_same_file(&resolved_source, &output_path) {
-        return Err(js_invalid_parameter_error(
-            "compressVideo outputPath must be different from source path",
-        ));
-    }
+    ensure_distinct_video_paths(&resolved_source, &output_path, "compressVideo")?;
     let quality = parse_video_quality(options.quality.as_deref())?;
     let (bitrate_kbps, fps, resolution_ratio) = if quality.is_some() {
         (None, None, None)
@@ -541,6 +538,15 @@ fn paths_refer_to_same_file(left: &Path, right: &Path) -> bool {
     } else {
         left == right
     }
+}
+
+fn ensure_distinct_video_paths(source: &Path, output: &Path, api_name: &str) -> JSResult<()> {
+    if paths_refer_to_same_file(source, output) {
+        return Err(js_invalid_parameter_error(format!(
+            "{api_name} outputPath must be different from source path"
+        )));
+    }
+    Ok(())
 }
 
 fn comparable_path(path: &Path) -> PathBuf {
@@ -833,8 +839,9 @@ fn ensure_output_quota(lxapp: &LxApp, expected_path: &Path, actual_path: &Path) 
 #[cfg(test)]
 mod tests {
     use super::{
-        PlatformVideoInfo, VideoOutputRoots, VideoOutputStorage, explicit_lx_output_uri,
-        normalize_video_codec_mime, platform_video_info_to_js, validate_video_output,
+        PlatformVideoInfo, VideoOutputRoots, VideoOutputStorage, ensure_distinct_video_paths,
+        explicit_lx_output_uri, normalize_video_codec_mime, platform_video_info_to_js,
+        validate_video_output,
     };
     use std::fs;
 
@@ -871,6 +878,17 @@ mod tests {
 
         assert_eq!(validated.storage, VideoOutputStorage::UserData);
         assert_eq!(validated.size, 5);
+    }
+
+    #[test]
+    fn video_outputs_must_not_replace_the_source() {
+        let base = tempfile::tempdir().unwrap();
+        let source = base.path().join("clip.mp4");
+        let other = base.path().join("thumbnail.jpg");
+        fs::write(&source, b"video").unwrap();
+
+        assert!(ensure_distinct_video_paths(&source, &source, "extractVideoThumbnail").is_err());
+        assert!(ensure_distinct_video_paths(&source, &other, "extractVideoThumbnail").is_ok());
     }
 
     #[test]
