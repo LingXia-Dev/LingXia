@@ -201,6 +201,29 @@ fn escape_multipart_value(value: &str) -> String {
     value.replace('\\', "\\\\").replace('"', "\\\"")
 }
 
+fn invalid_multipart_value(request: &UploadRequest, file_name: &str) -> Option<&'static str> {
+    let contains_control = |value: &str| value.chars().any(char::is_control);
+
+    if contains_control(&request.field_name) {
+        return Some("upload fieldName cannot contain control characters");
+    }
+    if request.file_name.as_deref().is_some_and(contains_control) || contains_control(file_name) {
+        return Some("upload fileName cannot contain control characters");
+    }
+    if request.mime_type.as_deref().is_some_and(contains_control) {
+        return Some("upload mimeType cannot contain control characters");
+    }
+    for (name, value) in &request.form_fields {
+        if contains_control(name) {
+            return Some("upload form field names cannot contain control characters");
+        }
+        if contains_control(value) {
+            return Some("upload form field values cannot contain control characters");
+        }
+    }
+    None
+}
+
 fn file_name_for_request(request: &UploadRequest) -> String {
     request
         .file_name
@@ -319,6 +342,17 @@ pub async fn upload_file_with_behavior(
         ));
     }
 
+    let file_name = file_name_for_request(&request);
+    if let Some(error) = invalid_multipart_value(&request, &file_name) {
+        return Err(UploadFailure::new(
+            UploadFailureKind::InvalidRequest,
+            url.clone(),
+            error,
+            0,
+            0,
+        ));
+    }
+
     let mut file = File::open(&request.file_path).await.map_err(|err| {
         UploadFailure::new(
             UploadFailureKind::InvalidFile,
@@ -347,7 +381,6 @@ pub async fn upload_file_with_behavior(
         ));
     }
 
-    let file_name = file_name_for_request(&request);
     let boundary = multipart_boundary(&request);
     let (prefix, suffix) = build_multipart_parts(&request, &boundary, &file_name);
     let file_size = file_meta.len();
@@ -680,4 +713,47 @@ pub fn resolve_upload_file_name(path: &Path, override_name: Option<&str>) -> Str
                 .map(str::to_string)
         })
         .unwrap_or_else(|| "upload.bin".to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn upload_request() -> UploadRequest {
+        UploadRequest {
+            url: "https://example.com/upload".to_string(),
+            method: UploadMethod::Post,
+            file_path: PathBuf::from("upload.bin"),
+            field_name: "file".to_string(),
+            file_name: Some("upload.bin".to_string()),
+            mime_type: Some("application/octet-stream".to_string()),
+            headers: Vec::new(),
+            form_fields: vec![("description".to_string(), "safe value".to_string())],
+            user_agent: None,
+        }
+    }
+
+    #[test]
+    fn multipart_values_reject_control_characters() {
+        let mut request = upload_request();
+        assert_eq!(invalid_multipart_value(&request, "upload.bin"), None);
+
+        request.file_name = Some("upload\r\nX-Injected: true".to_string());
+        assert_eq!(
+            invalid_multipart_value(&request, request.file_name.as_deref().unwrap()),
+            Some("upload fileName cannot contain control characters")
+        );
+
+        request = upload_request();
+        request.form_fields[0].1 = "safe\r\nunsafe".to_string();
+        assert_eq!(
+            invalid_multipart_value(&request, "upload.bin"),
+            Some("upload form field values cannot contain control characters")
+        );
+    }
+
+    #[test]
+    fn multipart_header_values_still_escape_quotes_and_backslashes() {
+        assert_eq!(escape_multipart_value("a\\b\"c"), "a\\\\b\\\"c");
+    }
 }
