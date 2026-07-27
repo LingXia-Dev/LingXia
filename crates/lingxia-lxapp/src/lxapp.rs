@@ -1893,6 +1893,7 @@ impl LxApp {
         self.get_page(path)
             .or_else(|| self.get_page(&resolved_path))
             .and_then(|page| page.get_navbar_state())
+            .map(|state| state.resolved(crate::get_appearance_state().effective_dark))
             .unwrap_or_default()
     }
 
