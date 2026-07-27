@@ -10,6 +10,9 @@
 
 use thiserror::Error;
 
+#[cfg(any(all(target_os = "linux", target_env = "ohos"), test))]
+mod bridge_payload;
+
 /// WebView-specific error types
 #[derive(Error, Debug, Clone, PartialEq, Eq)]
 pub enum WebViewError {

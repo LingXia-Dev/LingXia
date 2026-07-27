@@ -93,9 +93,7 @@ impl MediaInteraction for Platform {
             PlatformError::Platform(format!("Failed to serialize preview media payload: {}", e))
         })?;
 
-        let safe_json = json.replace('|', "%7C");
-
-        lingxia_webview::platform::harmony::tsfn::call_arkts("previewMedia", &[safe_json.as_str()])
+        lingxia_webview::platform::harmony::tsfn::call_arkts("previewMedia", &[json.as_str()])
             .map_err(|e| PlatformError::Platform(format!("Failed to preview media: {}", e)))
     }
 
@@ -256,12 +254,11 @@ fn save_media_resource(
     resource_type: i32,
     callback_id: u64,
 ) -> Result<(), PlatformError> {
-    let safe_file_uri = file_uri.replace('|', "%7C");
     let media_type_str = resource_type.to_string();
     let callback_id_str = callback_id.to_string();
     lingxia_webview::platform::harmony::tsfn::call_arkts(
         "saveMedia",
-        &[safe_file_uri.as_str(), &media_type_str, &callback_id_str],
+        &[file_uri, &media_type_str, &callback_id_str],
     )
     .map_err(|e| {
         let _ = lingxia_messaging::invoke_callback(callback_id, Err(1000));

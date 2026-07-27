@@ -613,11 +613,29 @@ class NativeBridge {
 /**
  * Get the callback function for native layer
  * Node-API ThreadSafe Function limitation: can only pass single string
- * Format: "function_name|arg1|arg2|arg3|..." (using | as separator to avoid conflicts with URLs)
+ * Format: JSON string array ["function_name", "arg1", "arg2", ...]
  */
 export function getNativeCallbackFunction(): (data: string) => Object | null {
   return (data: string) => {
-    const parts = data.split('|');
+    let parts: Array<string>;
+    try {
+      const parsed: Object = JSON.parse(data) as Object;
+      if (!Array.isArray(parsed)) {
+        return null;
+      }
+      const rawParts: Array<Object> = parsed as Array<Object>;
+      parts = [];
+      for (let index = 0; index < rawParts.length; index += 1) {
+        const part = rawParts[index];
+        if (typeof part !== 'string') {
+          return null;
+        }
+        parts.push(part as string);
+      }
+    } catch (error) {
+      LxLog.e(TAG, `Invalid native callback payload: ${String(error)}`);
+      return null;
+    }
     if (parts.length >= 1) {
       const functionName = parts[0];
       const rawArgs = parts.slice(1); // Get all arguments after function name
@@ -628,9 +646,6 @@ export function getNativeCallbackFunction(): (data: string) => Object | null {
         args = LxAppToast.normalizeNativeArgs(rawArgs) ?? rawArgs;
       } else if (functionName === 'showModal') {
         args = LxAppModal.normalizeNativeArgs(rawArgs) ?? rawArgs;
-      } else if (functionName === 'nativeComponentPropsUpdate' && rawArgs.length >= 3) {
-        // propsJson can contain '|', so rebuild arg3 from the remaining slices.
-        args = [rawArgs[0], rawArgs[1], rawArgs.slice(2).join('|')];
       }
 
       const result = NativeBridge.call(functionName, ...args);
