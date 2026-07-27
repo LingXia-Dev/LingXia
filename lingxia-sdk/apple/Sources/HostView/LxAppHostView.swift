@@ -152,10 +152,33 @@ public final class LxAppHostView: LxAppPlatformView {
     }
 
     deinit {
-        Self.registry.removeValue(forKey: id)
-        MainActor.assumeIsolated {
-            clearEventObservers()
-            controllerEventsTask?.cancel()
+        let hostViewId = id
+        nonisolated(unsafe) let titleObservation = titleObservation
+        nonisolated(unsafe) let canGoBackObservation = canGoBackObservation
+        nonisolated(unsafe) let loadingObservation = loadingObservation
+        nonisolated(unsafe) let hostedWebView = webView
+        nonisolated(unsafe) let delegateProxy = navigationDelegateProxy
+        let eventsTask = controllerEventsTask
+
+        let cleanup = { @Sendable in
+            MainActor.assumeIsolated {
+                Self.registry.removeValue(forKey: hostViewId)
+                titleObservation?.invalidate()
+                canGoBackObservation?.invalidate()
+                loadingObservation?.invalidate()
+                if let hostedWebView,
+                   hostedWebView.navigationDelegate === delegateProxy {
+                    hostedWebView.navigationDelegate = delegateProxy.forwardedDelegate
+                }
+                delegateProxy.forwardedDelegate = nil
+                delegateProxy.hostView = nil
+                eventsTask?.cancel()
+            }
+        }
+        if Thread.isMainThread {
+            cleanup()
+        } else {
+            DispatchQueue.main.async(execute: cleanup)
         }
     }
 
