@@ -36,6 +36,10 @@ pub struct TabBar {
     pub backgroundColor: String,
     #[serde(default = "default_border_color")]
     pub borderStyle: String,
+    /// Optional appearance-specific overrides. Each field falls back to the
+    /// corresponding top-level color, then to the host's semantic default.
+    #[serde(default)]
+    pub style: TabBarThemeStyle,
     pub list: Vec<TabBarItem>,
     #[serde(default)]
     pub position: TabBarPosition,
@@ -53,6 +57,46 @@ pub struct TabBar {
     pub api_hidden: bool,
     #[serde(skip)]
     pub selected_index: i32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[allow(non_snake_case)]
+pub struct TabBarStyle {
+    #[serde(default)]
+    pub color: String,
+    #[serde(default)]
+    pub selectedColor: String,
+    #[serde(default)]
+    pub backgroundColor: String,
+    #[serde(default)]
+    pub borderStyle: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct TabBarThemeStyle {
+    #[serde(default)]
+    pub light: TabBarStyle,
+    #[serde(default)]
+    pub dark: TabBarStyle,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[allow(non_snake_case)]
+pub struct ResolvedTabBarStyle {
+    pub color: String,
+    pub selectedColor: String,
+    pub backgroundColor: String,
+    pub borderStyle: String,
+}
+
+impl ResolvedTabBarStyle {
+    /// bit0 color, bit1 selectedColor, bit2 backgroundColor, bit3 borderStyle.
+    pub fn styled_mask(&self) -> u32 {
+        (!self.color.is_empty() as u32)
+            | ((!self.selectedColor.is_empty() as u32) << 1)
+            | ((!self.backgroundColor.is_empty() as u32) << 2)
+            | ((!self.borderStyle.is_empty() as u32) << 3)
+    }
 }
 
 /// Tab item (unified config and runtime state)
@@ -79,6 +123,23 @@ pub struct TabBarItem {
 impl TabBar {
     pub const MIN_ITEMS: usize = 2;
     pub const MAX_ITEMS: usize = 5;
+
+    /// Resolve one appearance without baking platform fallback colors into the
+    /// manifest model. Native renderers remain responsible for semantic
+    /// defaults when both the themed and common fields are omitted.
+    pub fn resolved_style(&self, dark: bool) -> ResolvedTabBarStyle {
+        let themed = if dark {
+            &self.style.dark
+        } else {
+            &self.style.light
+        };
+        ResolvedTabBarStyle {
+            color: themed_color(&themed.color, &self.color),
+            selectedColor: themed_color(&themed.selectedColor, &self.selectedColor),
+            backgroundColor: themed_color(&themed.backgroundColor, &self.backgroundColor),
+            borderStyle: themed_color(&themed.borderStyle, &self.borderStyle),
+        }
+    }
 
     /// Check if TabBar is valid
     pub fn is_valid(&self) -> bool {
@@ -172,24 +233,32 @@ impl TabBar {
     /// Set TabBar text color (chainable)
     pub fn set_color(&mut self, color: &str) -> &mut Self {
         self.color = color.to_string();
+        self.style.light.color.clear();
+        self.style.dark.color.clear();
         self
     }
 
     /// Set TabBar selected text color (chainable)
     pub fn set_selected_color(&mut self, color: &str) -> &mut Self {
         self.selectedColor = color.to_string();
+        self.style.light.selectedColor.clear();
+        self.style.dark.selectedColor.clear();
         self
     }
 
     /// Set TabBar background color (chainable)
     pub fn set_background_color(&mut self, color: &str) -> &mut Self {
         self.backgroundColor = color.to_string();
+        self.style.light.backgroundColor.clear();
+        self.style.dark.backgroundColor.clear();
         self
     }
 
     /// Set TabBar border style (chainable)
     pub fn set_border_style(&mut self, style: &str) -> &mut Self {
         self.borderStyle = style.to_string();
+        self.style.light.borderStyle.clear();
+        self.style.dark.borderStyle.clear();
         self
     }
 
@@ -262,6 +331,14 @@ impl TabBar {
     }
 }
 
+fn themed_color(themed: &str, common: &str) -> String {
+    if themed.is_empty() {
+        common.to_string()
+    } else {
+        themed.to_string()
+    }
+}
+
 // Default functions for serde
 // Undeclared style stays EMPTY so each platform skin applies its own
 // default (mobile: gray/#1677FF/white/#F0F0F0 at the FFI parse sites;
@@ -319,5 +396,65 @@ impl LxApp {
         } else {
             None
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::TabBar;
+
+    #[test]
+    fn themed_style_overrides_common_fields_independently() {
+        let tabbar: TabBar = serde_json::from_value(serde_json::json!({
+            "color": "#777777",
+            "selectedColor": "#0066ff",
+            "style": {
+                "light": { "backgroundColor": "#ffffff" },
+                "dark": {
+                    "color": "#aaaaaa",
+                    "backgroundColor": "#111111",
+                    "borderStyle": "#333333"
+                }
+            },
+            "list": [
+                { "pagePath": "pages/home/index" },
+                { "pagePath": "pages/account/index" }
+            ]
+        }))
+        .expect("valid themed tabbar");
+
+        let light = tabbar.resolved_style(false);
+        assert_eq!(light.color, "#777777");
+        assert_eq!(light.selectedColor, "#0066ff");
+        assert_eq!(light.backgroundColor, "#ffffff");
+        assert_eq!(light.borderStyle, "");
+        assert_eq!(light.styled_mask(), 0b0111);
+
+        let dark = tabbar.resolved_style(true);
+        assert_eq!(dark.color, "#aaaaaa");
+        assert_eq!(dark.selectedColor, "#0066ff");
+        assert_eq!(dark.backgroundColor, "#111111");
+        assert_eq!(dark.borderStyle, "#333333");
+        assert_eq!(dark.styled_mask(), 0b1111);
+    }
+
+    #[test]
+    fn runtime_style_setters_replace_themed_manifest_fields() {
+        let mut tabbar: TabBar = serde_json::from_value(serde_json::json!({
+            "style": {
+                "light": { "backgroundColor": "#ffffff" },
+                "dark": { "backgroundColor": "#111111" }
+            },
+            "list": [
+                { "pagePath": "pages/home/index" },
+                { "pagePath": "pages/account/index" }
+            ]
+        }))
+        .expect("valid themed tabbar");
+
+        tabbar.set_background_color("#ff00ff");
+
+        assert_eq!(tabbar.resolved_style(false).backgroundColor, "#ff00ff");
+        assert_eq!(tabbar.resolved_style(true).backgroundColor, "#ff00ff");
     }
 }
