@@ -680,13 +680,9 @@ impl LxAppSession {
     }
 
     pub(crate) fn cas_status(&self, from: LxAppSessionStatus, to: LxAppSessionStatus) -> bool {
-        let current = self.status.load(Ordering::SeqCst);
-        if current == from as u8 {
-            self.status.store(to as u8, Ordering::SeqCst);
-            true
-        } else {
-            false
-        }
+        self.status
+            .compare_exchange(from as u8, to as u8, Ordering::SeqCst, Ordering::SeqCst)
+            .is_ok()
     }
 }
 
@@ -2390,5 +2386,31 @@ mod delayed_destroy_tests {
             Some("app-b".to_string())
         );
         assert_eq!(first_evictable_appid(&stack, |_| false), None);
+    }
+
+    #[test]
+    fn session_status_compare_exchange_has_one_winner() {
+        const CONTENDERS: usize = 16;
+        let session = Arc::new(LxAppSession::new());
+        session.set_status(LxAppSessionStatus::Opened);
+        let barrier = Arc::new(std::sync::Barrier::new(CONTENDERS));
+
+        let handles = (0..CONTENDERS)
+            .map(|_| {
+                let session = session.clone();
+                let barrier = barrier.clone();
+                std::thread::spawn(move || {
+                    barrier.wait();
+                    session.cas_status(LxAppSessionStatus::Opened, LxAppSessionStatus::Restarting)
+                })
+            })
+            .collect::<Vec<_>>();
+
+        let winners = handles
+            .into_iter()
+            .map(|handle| usize::from(handle.join().unwrap()))
+            .sum::<usize>();
+        assert_eq!(winners, 1);
+        assert_eq!(session.status(), LxAppSessionStatus::Restarting);
     }
 }
