@@ -2227,12 +2227,78 @@ mod scroll_tests {
     use lingxia_windows_contract::WindowsWindowLayout;
     use windows::Win32::Foundation::{HWND, RECT};
 
+    fn bottom_tabbar(visible: bool, background_transparent: bool) -> WindowsShellTabBarLayout {
+        WindowsShellTabBarLayout {
+            visible,
+            position: WindowsShellTabBarPosition::Bottom,
+            dimension: 64,
+            app_name: "App".to_string(),
+            app_icon_path: String::new(),
+            group_id: "app".to_string(),
+            group_active: true,
+            group_closable: false,
+            group_order_index: 0,
+            color: 0,
+            selected_color: 0,
+            background_color: 0xffffff,
+            background_transparent,
+            border_color: 0,
+            selected_index: 0,
+            items: vec![WindowsShellTabBarItemLayout {
+                page_path: "home".to_string(),
+                text: "Home".to_string(),
+                icon_path: String::new(),
+                selected_icon_path: String::new(),
+                badge: None,
+                has_red_dot: false,
+            }],
+            collapsed: false,
+            icon_rail: false,
+            items_api_hidden: false,
+            items_collapsed: false,
+            activator_footer_height: 0,
+            main_scroll_offset: 0,
+            activator_scroll_row: 0,
+            auxiliary_items: Vec::new(),
+            show_auxiliary_add: false,
+            header_actions: Vec::new(),
+        }
+    }
+
     #[test]
     fn sidebar_scroll_is_bounded_by_content_overflow() {
         assert_eq!(clamp_sidebar_scroll(80, 600, 500), (80, 100));
         assert_eq!(clamp_sidebar_scroll(180, 600, 500), (100, 100));
         assert_eq!(clamp_sidebar_scroll(-20, 600, 500), (0, 100));
         assert_eq!(clamp_sidebar_scroll(20, 400, 500), (0, 0));
+    }
+
+    #[test]
+    fn bottom_tabbar_reserves_content_only_when_opaque_and_visible() {
+        let client = RECT {
+            left: 0,
+            top: 0,
+            right: 393,
+            bottom: 852,
+        };
+        let layout_for = |visible, transparent| WindowsShellWindowLayout {
+            top_inset: 54,
+            suppress_window_controls: true,
+            tab_bar: Some(bottom_tabbar(visible, transparent)),
+            ..Default::default()
+        };
+
+        let opaque = compute_chrome_rects(client, &layout_for(true, false));
+        assert_eq!(opaque.tab_bar.unwrap().top, 788);
+        assert_eq!(opaque.content.bottom, 788);
+
+        let transparent = compute_chrome_rects(client, &layout_for(true, true));
+        assert_eq!(transparent.tab_bar.unwrap().top, 788);
+        assert_eq!(transparent.content.bottom, 852);
+
+        let hidden = compute_chrome_rects(client, &layout_for(false, false));
+        assert!(hidden.tab_bar.is_none());
+        assert_eq!(hidden.content.bottom, 852);
     }
 
     #[test]
