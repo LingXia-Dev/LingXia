@@ -1161,9 +1161,6 @@ class LxAppActivity : AppCompatActivity() {
         if (requestingAppId != appId) {
             return "null"
         }
-        if (!shouldShowCapsuleButton(appId, currentSessionId)) {
-            return "null"
-        }
 
         val capsuleView = rootContainer.findViewWithTag<View>("capsule_button") ?: return "null"
         if (!capsuleView.isShown) {
