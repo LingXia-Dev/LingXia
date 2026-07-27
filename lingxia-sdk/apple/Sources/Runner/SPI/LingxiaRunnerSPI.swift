@@ -187,6 +187,10 @@ import WebKit
             RunnerBridge.isTabBarTransparent(colorValue)
         }
 
+        public static func backgroundColor(_ config: Config, dark: Bool) -> UInt32 {
+            RunnerBridge.tabBarBackground(config, dark: dark)
+        }
+
         public static func makeView(
             config: Config,
             appId: String,

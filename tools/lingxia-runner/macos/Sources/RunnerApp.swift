@@ -65,6 +65,15 @@ public class RunnerApp {
     private(set) var deviceOrientation: RunnerDeviceOrientation = .portrait
     private(set) var deviceSize: MobileDeviceSize = .defaultDevice
     private(set) var simulatedAppearance: RunnerAppearance = .system
+
+    var effectiveAppearanceIsDark: Bool {
+        switch simulatedAppearance {
+        case .light: return false
+        case .dark: return true
+        case .system:
+            return NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        }
+    }
     
     private init() {
         deviceOrientation = Self.defaultOrientation(for: selectedDeviceSize)

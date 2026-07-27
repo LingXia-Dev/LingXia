@@ -63,10 +63,23 @@ mod bridge {
         pub selected_index: i32,
         /// Which style fields the app DECLARED (bit0 color, bit1
         /// selectedColor, bit2 backgroundColor, bit3 borderStyle). The color
-        /// fields above always carry effective values (mobile defaults);
-        /// desktop skins use this mask to keep undeclared styles on the
-        /// neutral theme instead of inheriting light mobile defaults.
+        /// fields above always carry fallback values; Apple renderers use this
+        /// mask to resolve undeclared mobile colors through adaptive platform
+        /// colors, while desktop skins keep their own neutral chrome theme.
         pub styled_mask: u32,
+        /// Fully resolved light/dark values after applying common manifest
+        /// fields. Their masks remain zero for fields that should use native
+        /// semantic defaults.
+        pub light_color: u32,
+        pub light_selected_color: u32,
+        pub light_background_color: u32,
+        pub light_border_style: u32,
+        pub light_styled_mask: u32,
+        pub dark_color: u32,
+        pub dark_selected_color: u32,
+        pub dark_background_color: u32,
+        pub dark_border_style: u32,
+        pub dark_styled_mask: u32,
     }
 
     // TabBar item for Swift
@@ -1650,21 +1663,35 @@ fn orientation_to_value(orientation: OrientationConfig) -> i32 {
 /// Get TabBar state
 pub fn get_tab_bar(appid: &str) -> Option<self::bridge::TabBar> {
     lxapp::try_get(appid).and_then(|lxapp| {
-        lxapp.get_tabbar().map(|tabbar| self::bridge::TabBar {
-            color: parse_color_to_u32(&tabbar.color, 0xFF666666),
-            selected_color: parse_color_to_u32(&tabbar.selectedColor, 0xFF1677FF),
-            background_color: parse_color_to_u32(&tabbar.backgroundColor, 0xFFFFFFFF),
-            border_style: parse_color_to_u32(&tabbar.borderStyle, 0xFFF0F0F0),
-            position: tabbar.position.to_i32(),
-            dimension: tabbar.dimension,
-            items_count: tabbar.list.len() as i32,
-            is_visible: tabbar.is_visible,
-            is_api_hidden: tabbar.api_hidden,
-            selected_index: tabbar.selected_index,
-            styled_mask: (!tabbar.color.is_empty() as u32)
-                | ((!tabbar.selectedColor.is_empty() as u32) << 1)
-                | ((!tabbar.backgroundColor.is_empty() as u32) << 2)
-                | ((!tabbar.borderStyle.is_empty() as u32) << 3),
+        lxapp.get_tabbar().map(|tabbar| {
+            let light = tabbar.resolved_style(false);
+            let dark = tabbar.resolved_style(true);
+            self::bridge::TabBar {
+                color: parse_color_to_u32(&tabbar.color, 0xFF666666),
+                selected_color: parse_color_to_u32(&tabbar.selectedColor, 0xFF1677FF),
+                background_color: parse_color_to_u32(&tabbar.backgroundColor, 0xFFFFFFFF),
+                border_style: parse_color_to_u32(&tabbar.borderStyle, 0xFFF0F0F0),
+                position: tabbar.position.to_i32(),
+                dimension: tabbar.dimension,
+                items_count: tabbar.list.len() as i32,
+                is_visible: tabbar.is_visible,
+                is_api_hidden: tabbar.api_hidden,
+                selected_index: tabbar.selected_index,
+                styled_mask: (!tabbar.color.is_empty() as u32)
+                    | ((!tabbar.selectedColor.is_empty() as u32) << 1)
+                    | ((!tabbar.backgroundColor.is_empty() as u32) << 2)
+                    | ((!tabbar.borderStyle.is_empty() as u32) << 3),
+                light_color: parse_color_to_u32(&light.color, 0xFF666666),
+                light_selected_color: parse_color_to_u32(&light.selectedColor, 0xFF1677FF),
+                light_background_color: parse_color_to_u32(&light.backgroundColor, 0xFFFFFFFF),
+                light_border_style: parse_color_to_u32(&light.borderStyle, 0xFFF0F0F0),
+                light_styled_mask: light.styled_mask(),
+                dark_color: parse_color_to_u32(&dark.color, 0xFF98989D),
+                dark_selected_color: parse_color_to_u32(&dark.selectedColor, 0xFF0A84FF),
+                dark_background_color: parse_color_to_u32(&dark.backgroundColor, 0xFF1C1C1E),
+                dark_border_style: parse_color_to_u32(&dark.borderStyle, 0xFF38383A),
+                dark_styled_mask: dark.styled_mask(),
+            }
         })
     })
 }

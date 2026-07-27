@@ -213,6 +213,10 @@ enum RunnerBridge {
         TabBarHelper.isTransparent(colorValue)
     }
 
+    static func tabBarBackground(_ config: TabBar, dark: Bool) -> UInt32 {
+        config.resolvedBackgroundValue(for: dark ? .dark : .light)
+    }
+
     static func makeTabBarView(
         config: TabBar,
         appId: String,

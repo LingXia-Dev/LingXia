@@ -170,6 +170,10 @@ enum RunnerSupport {
             LingxiaRunnerSPI.Tabs.isTransparent(colorValue)
         }
 
+        static func backgroundColor(_ config: RunnerTabBarConfig, dark: Bool) -> UInt32 {
+            LingxiaRunnerSPI.Tabs.backgroundColor(config, dark: dark)
+        }
+
         static func makeView(
             config: RunnerTabBarConfig,
             appId: String,

@@ -79,6 +79,62 @@ struct TabBarHelper {
     }
 }
 
+/// Manifest tab-bar colors are optional. Keep declared colors exact, while
+/// resolving omitted fields through platform semantic colors so native chrome
+/// follows the host appearance just like the page WebView does.
+extension TabBar {
+    enum StyleField: UInt32 {
+        case color = 1
+        case selectedColor = 2
+        case backgroundColor = 4
+    }
+
+    private func styledMask(for colorScheme: ColorScheme) -> UInt32 {
+        colorScheme == .dark ? dark_styled_mask : light_styled_mask
+    }
+
+    private func colorValue(selected: Bool, for colorScheme: ColorScheme) -> UInt32 {
+        if colorScheme == .dark {
+            return selected ? dark_selected_color : dark_color
+        }
+        return selected ? light_selected_color : light_color
+    }
+
+    func declares(_ field: StyleField, for colorScheme: ColorScheme) -> Bool {
+        styledMask(for: colorScheme) & field.rawValue != 0
+    }
+
+    func itemColor(selected: Bool, for colorScheme: ColorScheme) -> PlatformColor {
+        let field: StyleField = selected ? .selectedColor : .color
+        if declares(field, for: colorScheme) {
+            return PlatformColor(argb: colorValue(selected: selected, for: colorScheme))
+        }
+        #if os(iOS)
+        return selected ? .systemBlue : .secondaryLabel
+        #else
+        return selected ? .systemBlue : .secondaryLabelColor
+        #endif
+    }
+
+    func resolvedBackgroundValue(for colorScheme: ColorScheme) -> UInt32 {
+        if colorScheme == .dark {
+            return dark_background_color
+        }
+        return light_background_color
+    }
+
+    func resolvedBackgroundColor(for colorScheme: ColorScheme) -> PlatformColor {
+        if declares(.backgroundColor, for: colorScheme) {
+            return PlatformColor(argb: resolvedBackgroundValue(for: colorScheme))
+        }
+        #if os(iOS)
+        return .systemBackground
+        #else
+        return .windowBackgroundColor
+        #endif
+    }
+}
+
 /// Unified SwiftUI TabBar for iOS and macOS
 /// Badge / red-dot red, unified across iOS, Android, and Harmony (#FA5151).
 let lxBadgeRed = Color(red: 0xFA / 255.0, green: 0x51 / 255.0, blue: 0x51 / 255.0)
@@ -90,6 +146,7 @@ struct LxAppTabBar: View {
     let onTabSelected: (Int, String) -> Void
     // Simple refresh trigger for UI updates
     @State private var refreshTrigger = false
+    @Environment(\.colorScheme) private var colorScheme
 
     init(
         appId: String,
@@ -149,9 +206,7 @@ struct LxAppTabBar: View {
         // Get state directly from Rust
         let rustItem = getTabBarItem(appId, Int32(index))
 
-        let forceColor = isSelected ?
-            Color(PlatformColor(argb: config.selected_color)) :
-            Color(PlatformColor(argb: config.color))
+        let forceColor = Color(config.itemColor(selected: isSelected, for: colorScheme))
 
         Button(action: {
             // Always trigger callback - let parent decide if action is needed
@@ -260,8 +315,7 @@ struct LxAppTabBar: View {
     }
 
     private func getTabBarBackgroundColor() -> Color {
-        let platformColor = PlatformColor(argb: config.background_color)
-        return Color(platformColor)
+        Color(config.resolvedBackgroundColor(for: colorScheme))
     }
 }
 
@@ -271,6 +325,7 @@ struct MacOSLxAppTabBar: View {
     let config: TabBar
     @Binding var selectedIndex: Int
     let onTabSelected: (Int, String) -> Void
+    @Environment(\.colorScheme) private var colorScheme
 
     init(
         appId: String,
@@ -307,9 +362,7 @@ struct MacOSLxAppTabBar: View {
         // Get state directly from Rust
         let rustItem = getTabBarItem(appId, Int32(index))
 
-        let forceColor = isSelected ?
-            Color(PlatformColor(argb: config.selected_color)) :
-            Color(PlatformColor(argb: config.color))
+        let forceColor = Color(config.itemColor(selected: isSelected, for: colorScheme))
 
         Button(action: {
             // Always trigger callback - let parent decide if action is needed
@@ -445,8 +498,7 @@ struct MacOSLxAppTabBar: View {
     }
 
     private func getTabBarBackgroundColor() -> Color {
-        let platformColor = PlatformColor(argb: config.background_color)
-        return Color(platformColor)
+        Color(config.resolvedBackgroundColor(for: colorScheme))
     }
 }
 
@@ -493,6 +545,13 @@ class iOSTabBarWrapper: UIView, TabBarProtocol {
     required init?(coder: NSCoder) {
         super.init(coder: coder)
         setupView()
+    }
+
+    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+        super.traitCollectionDidChange(previousTraitCollection)
+        guard previousTraitCollection?.userInterfaceStyle != traitCollection.userInterfaceStyle,
+              tabBarConfig != nil else { return }
+        refreshLayout()
     }
 
     private func setupView() {
@@ -544,10 +603,11 @@ class iOSTabBarWrapper: UIView, TabBarProtocol {
         self.selectedIndex = Int(freshConfig.selected_index)
 
         // Apply background color from config
-        let bgColor = PlatformColor(argb: freshConfig.background_color)
+        let colorScheme: ColorScheme = traitCollection.userInterfaceStyle == .dark ? .dark : .light
+        let bgColor = freshConfig.resolvedBackgroundColor(for: colorScheme)
         self.backgroundColor = bgColor
         self.layer.backgroundColor = bgColor.cgColor
-        self.isOpaque = ((freshConfig.background_color >> 24) & 0xFF) == 0xFF
+        self.isOpaque = ((freshConfig.resolvedBackgroundValue(for: colorScheme) >> 24) & 0xFF) == 0xFF
 
         let items = freshConfig.getItems(appId: appId)
 
@@ -652,9 +712,15 @@ class iOSTabBarWrapper: UIView, TabBarProtocol {
         stackView.isUserInteractionEnabled = false
 
         let isSelected = (index == selectedIndex)
+        let colorScheme: ColorScheme = traitCollection.userInterfaceStyle == .dark ? .dark : .light
 
         if !item.icon_path.toString().isEmpty {
-            let iconView = createUIKitIcon(item: item, index: index, isSelected: isSelected)
+            let iconView = createUIKitIcon(
+                item: item,
+                index: index,
+                isSelected: isSelected,
+                color: config.itemColor(selected: isSelected, for: colorScheme)
+            )
             stackView.addArrangedSubview(iconView)
         }
 
@@ -663,9 +729,7 @@ class iOSTabBarWrapper: UIView, TabBarProtocol {
             textLabel.text = item.text.toString()
             textLabel.font = UIFont.systemFont(ofSize: 10, weight: .medium)
             // Use config colors instead of system colors for better visibility
-            textLabel.textColor = isSelected ?
-                PlatformColor(argb: config.selected_color) :
-                PlatformColor(argb: config.color)
+            textLabel.textColor = config.itemColor(selected: isSelected, for: colorScheme)
             textLabel.textAlignment = .center
             textLabel.translatesAutoresizingMaskIntoConstraints = false
             stackView.addArrangedSubview(textLabel)
@@ -692,7 +756,12 @@ class iOSTabBarWrapper: UIView, TabBarProtocol {
         return containerView
     }
 
-    private func createUIKitIcon(item: TabBarItem, index: Int, isSelected: Bool) -> UIView {
+    private func createUIKitIcon(
+        item: TabBarItem,
+        index: Int,
+        isSelected: Bool,
+        color: UIColor
+    ) -> UIView {
         // Create container view for icon + badge/red dot
         let iconContainer = UIView()
         iconContainer.translatesAutoresizingMaskIntoConstraints = false
@@ -705,19 +774,17 @@ class iOSTabBarWrapper: UIView, TabBarProtocol {
             ? item.selected_icon_path.toString()
             : item.icon_path.toString()
 
-        let iconColor = isSelected ? UIColor.systemBlue : UIColor.secondaryLabel
-
         if iconPath.hasPrefix("SF:") {
             let symbolName = String(iconPath.dropFirst(3))
             iconView.image = UIImage(systemName: symbolName)
-            iconView.tintColor = iconColor
+            iconView.tintColor = color
         } else {
             if let bundleImage = UIImage(named: iconPath) {
                 iconView.image = bundleImage
-                iconView.tintColor = iconColor
+                iconView.tintColor = color
             } else {
                 iconView.image = UIImage(systemName: "circle.fill")
-                iconView.tintColor = iconColor
+                iconView.tintColor = color
             }
         }
 
@@ -845,6 +912,14 @@ class macOSTabBarWrapper: NSView, TabBarProtocol, ObservableObject {
     }
 
     override func mouseDown(with event: NSEvent) {}
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        // Rebuild the SwiftUI root so semantic default colors resolve against
+        // a Runner-pinned appearance immediately, without a page-side JS API.
+        guard tabBarConfig != nil else { return }
+        refreshLayout()
+    }
 
     private func setupView() {
         wantsLayer = true

@@ -208,12 +208,7 @@ public class SimulatorToolbar: NSView {
     /// The simulated screen is effectively dark right now — the pin when one
     /// is set, the host OS otherwise.
     private func effectiveDark() -> Bool {
-        switch RunnerApp.shared.simulatedAppearance {
-        case .light: return false
-        case .dark: return true
-        case .system:
-            return NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-        }
+        RunnerApp.shared.effectiveAppearanceIsDark
     }
 
     private func refreshAppearanceButton() {

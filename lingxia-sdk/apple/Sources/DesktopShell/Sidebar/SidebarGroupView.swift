@@ -212,6 +212,12 @@ class SidebarGroupView: NSView {
         fatalError("init(coder:) has not been implemented")
     }
 
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        guard window != nil else { return }
+        refreshFromRust()
+    }
+
     /// Assign a color index (called by SidebarView based on tab order)
     func setColorIndex(_ index: Int) {
         guard index != colorIndex else { return }
@@ -434,16 +440,19 @@ class SidebarGroupView: NSView {
             return
         }
 
-        // Style follows the lxapp's tabbar config — but only fields the app
-        // DECLARED (styled_mask). The color values always carry effective
-        // mobile defaults, and those are designed for a light bar: inheriting
-        // them here would paint every unstyled app light-on-dark.
-        let mask = tabBar.styled_mask
-        itemTint = mask & 0b0001 != 0 ? PlatformColor(argb: tabBar.color) : nil
-        tabBarTint = mask & 0b0010 != 0 ? PlatformColor(argb: tabBar.selected_color) : nil
-        itemsAreaColor = mask & 0b0100 != 0 ? PlatformColor(argb: tabBar.background_color) : nil
+        // Resolve the appearance-specific override first. Undeclared fields
+        // keep the desktop shell's neutral semantic palette.
+        let dark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        let mask = dark ? tabBar.dark_styled_mask : tabBar.light_styled_mask
+        let color = dark ? tabBar.dark_color : tabBar.light_color
+        let selectedColor = dark ? tabBar.dark_selected_color : tabBar.light_selected_color
+        let backgroundColor = dark ? tabBar.dark_background_color : tabBar.light_background_color
+        let borderStyle = dark ? tabBar.dark_border_style : tabBar.light_border_style
+        itemTint = mask & 0b0001 != 0 ? PlatformColor(argb: color) : nil
+        tabBarTint = mask & 0b0010 != 0 ? PlatformColor(argb: selectedColor) : nil
+        itemsAreaColor = mask & 0b0100 != 0 ? PlatformColor(argb: backgroundColor) : nil
         attributionBaseColor = mask & 0b1000 != 0
-            ? PlatformColor(argb: tabBar.border_style)
+            ? PlatformColor(argb: borderStyle)
             : NSColor.separatorColor
         applyColors()
 

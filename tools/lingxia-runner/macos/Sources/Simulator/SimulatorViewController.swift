@@ -28,6 +28,8 @@ public class SimulatorViewController: NSViewController, WKNavigationDelegate {
     
     nonisolated(unsafe) private var closeAppObserver: NSObjectProtocol?
     nonisolated(unsafe) private var tabBarObserver: NSObjectProtocol?
+    nonisolated(unsafe) private var appearanceObserver: NSObjectProtocol?
+    nonisolated(unsafe) private var systemAppearanceObservation: NSKeyValueObservation?
     
     // MARK: - Initialization
     
@@ -44,6 +46,8 @@ public class SimulatorViewController: NSViewController, WKNavigationDelegate {
     deinit {
         closeAppObserver.map(NotificationCenter.default.removeObserver)
         tabBarObserver.map(NotificationCenter.default.removeObserver)
+        appearanceObserver.map(NotificationCenter.default.removeObserver)
+        systemAppearanceObservation?.invalidate()
     }
     
     // MARK: - Layout
@@ -115,7 +119,11 @@ public class SimulatorViewController: NSViewController, WKNavigationDelegate {
         tabBarConstraints = createTabBarConstraints(tabBar: tabBar, position: config.position, dimension: dimension)
         NSLayoutConstraint.activate(tabBarConstraints)
 
-        if RunnerSupport.TabBar.isTransparent(config.background_color) {
+        let background = RunnerSupport.TabBar.backgroundColor(
+            config,
+            dark: RunnerApp.shared.effectiveAppearanceIsDark
+        )
+        if RunnerSupport.TabBar.isTransparent(background) {
             tabBar.wantsLayer = true
             tabBar.layer?.backgroundColor = NSColor.clear.cgColor
         }
@@ -175,7 +183,12 @@ public class SimulatorViewController: NSViewController, WKNavigationDelegate {
         if let tabBar,
            let config,
            config.is_visible,
-           !RunnerSupport.TabBar.isTransparent(config.background_color) {
+           !RunnerSupport.TabBar.isTransparent(
+               RunnerSupport.TabBar.backgroundColor(
+                   config,
+                   dark: RunnerApp.shared.effectiveAppearanceIsDark
+               )
+           ) {
             switch config.position {
             case 0: // bottom
                 bottom = webViewContainer.bottomAnchor.constraint(equalTo: tabBar.topAnchor)
@@ -315,6 +328,23 @@ public class SimulatorViewController: NSViewController, WKNavigationDelegate {
                 self.updateTabBar()
                 // Applied: resolve any awaited lx.showTabBar/hideTabBar.
                 LingxiaRunnerSPI.Tabs.updateApplied(appId: self.appId)
+            }
+        }
+
+        appearanceObserver = NotificationCenter.default.addObserver(
+            forName: RunnerApp.appearanceDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.updateTabBar()
+            }
+        }
+
+        systemAppearanceObservation = NSApp.observe(\.effectiveAppearance) { [weak self] _, _ in
+            Task { @MainActor [weak self] in
+                guard RunnerApp.shared.simulatedAppearance == .system else { return }
+                self?.updateTabBar()
             }
         }
     }
