@@ -327,7 +327,13 @@ impl PageInstance {
         F: Fn(&PageInstance) -> Fut + Send + 'static,
         Fut: std::future::Future<Output = Result<(), String>> + Send + 'static,
     {
-        Self::new_with_webtag_instance(appid, path, lxapp, None, setup_callback)
+        Self::new_with_webtag_instance(
+            appid,
+            path,
+            lxapp,
+            Some(WebTagInstance::PageInstanceId),
+            setup_callback,
+        )
     }
 
     pub(crate) fn new_with_webtag_instance<F, Fut>(
