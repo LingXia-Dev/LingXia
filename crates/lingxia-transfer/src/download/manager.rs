@@ -736,7 +736,7 @@ fn split_filename(filename: &str) -> (String, Option<String>) {
     (filename.to_string(), None)
 }
 
-fn resolve_unique_download_path(root: &Path, filename: &str) -> PathBuf {
+async fn reserve_unique_download_path(root: &Path, filename: &str) -> std::io::Result<PathBuf> {
     let sanitized = sanitize_filename(filename);
     let (stem, ext) = split_filename(&sanitized);
     let mut idx = 0u32;
@@ -749,15 +749,55 @@ fn resolve_unique_download_path(root: &Path, filename: &str) -> PathBuf {
             format!("{stem} ({idx})")
         };
         let candidate = root.join(candidate_name);
-        if !candidate.exists() {
-            return candidate;
+        if fs::try_exists(&candidate).await? {
+            idx = idx
+                .checked_add(1)
+                .ok_or_else(|| IoError::other("download filename suffix overflow"))?;
+            continue;
         }
-        idx += 1;
+        let part_path = part_path_for(&candidate);
+        match OpenOptions::new()
+            .create_new(true)
+            .write(true)
+            .open(&part_path)
+            .await
+        {
+            Ok(_) => {
+                if fs::try_exists(&candidate).await? {
+                    let _ = fs::remove_file(&part_path).await;
+                } else {
+                    return Ok(candidate);
+                }
+            }
+            Err(error) if error.kind() == ErrorKind::AlreadyExists => {}
+            Err(error) => return Err(error),
+        }
+        idx = idx
+            .checked_add(1)
+            .ok_or_else(|| IoError::other("download filename suffix overflow"))?;
     }
 }
 
 fn part_path_for(target: &Path) -> PathBuf {
     target.with_extension("part")
+}
+
+struct EmptyPartReservation {
+    path: PathBuf,
+}
+
+impl EmptyPartReservation {
+    fn new(path: PathBuf) -> Self {
+        Self { path }
+    }
+}
+
+impl Drop for EmptyPartReservation {
+    fn drop(&mut self) {
+        if std::fs::metadata(&self.path).is_ok_and(|metadata| metadata.len() == 0) {
+            let _ = std::fs::remove_file(&self.path);
+        }
+    }
 }
 
 fn link_part_file_no_overwrite(part_path: &Path, target_path: &Path) -> std::io::Result<()> {
@@ -1449,17 +1489,12 @@ async fn run_download_attempt(
 }
 
 async fn run_download_task(
-    task: DownloadTask,
+    mut task: DownloadTask,
     mut cancel_rx: Option<watch::Receiver<crate::download::ActiveDownloadCommand>>,
     mut on_event: impl FnMut(DownloadEvent),
 ) -> Result<DownloadSuccess, DownloadFailure> {
     let request = task.request.clone();
     let filename = suggest_filename(&request);
-    let target_path = task
-        .target_path
-        .clone()
-        .unwrap_or_else(|| resolve_unique_download_path(&task.root_dir, &filename));
-    let part_path = part_path_for(&target_path);
     let url = request.url.clone();
 
     if let Err(e) = fs::create_dir_all(&task.root_dir).await {
@@ -1472,6 +1507,29 @@ async fn run_download_task(
             None,
         ));
     }
+
+    let (target_path, _empty_part_reservation) = if let Some(target_path) = task.target_path.clone()
+    {
+        (target_path, None)
+    } else {
+        let target_path = reserve_unique_download_path(&task.root_dir, &filename)
+            .await
+            .map_err(|error| {
+                emit_failed(
+                    &mut on_event,
+                    DownloadFailureKind::Internal,
+                    url.clone(),
+                    format!("reserve download path failed: {error}"),
+                    0,
+                    None,
+                )
+            })?;
+        task.reuse_existing_target = false;
+        task.overwrite_existing_target = false;
+        let reservation = EmptyPartReservation::new(part_path_for(&target_path));
+        (target_path, Some(reservation))
+    };
+    let part_path = part_path_for(&target_path);
 
     if task.reuse_existing_target
         && fs::try_exists(&target_path).await.unwrap_or(false)
@@ -2128,6 +2186,42 @@ mod tests {
 
         assert_eq!(std::fs::read(&target).expect("target written"), b"partial");
         assert!(!part.exists());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn unique_path_reservation_avoids_existing_part_files() {
+        let root = test_temp_dir("unique-reservation");
+        std::fs::create_dir_all(&root).expect("create test dir");
+
+        let first = reserve_unique_download_path(&root, "report.pdf")
+            .await
+            .expect("reserve first path");
+        let second = reserve_unique_download_path(&root, "report.pdf")
+            .await
+            .expect("reserve second path");
+
+        assert_eq!(first, root.join("report.pdf"));
+        assert_eq!(second, root.join("report (1).pdf"));
+        assert!(part_path_for(&first).exists());
+        assert!(part_path_for(&second).exists());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn empty_part_reservation_only_removes_empty_files() {
+        let root = test_temp_dir("reservation-cleanup");
+        std::fs::create_dir_all(&root).expect("create test dir");
+        let empty = root.join("empty.part");
+        let partial = root.join("partial.part");
+        std::fs::write(&empty, []).expect("write empty part");
+        std::fs::write(&partial, b"data").expect("write partial part");
+
+        drop(EmptyPartReservation::new(empty.clone()));
+        drop(EmptyPartReservation::new(partial.clone()));
+
+        assert!(!empty.exists());
+        assert!(partial.exists());
         let _ = std::fs::remove_dir_all(&root);
     }
 
