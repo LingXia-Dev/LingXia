@@ -54,12 +54,12 @@ const GRID_MIN_COLS: i32 = 20;
 const GRID_MIN_ROWS: i32 = 4;
 
 /// Hairline divider between panes - a soft gray line on the terminal
-/// surface, a la ghostty's split divider.
+/// surface, matching the macOS split divider.
 const PANE_DIVIDER_COLOR: u32 = 0x3a3f4a;
 
 /// Unfocused panes keep this fraction of their colors (the remainder blends
 /// toward the surface background); the focused pane reads as active without
-/// an obtrusive border, closer to ghostty's split focus treatment.
+/// an obtrusive border.
 const UNFOCUSED_KEEP_PERCENT: u32 = 62;
 
 /// Windows selection highlight, blended toward each pane's background.

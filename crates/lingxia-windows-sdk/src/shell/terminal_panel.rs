@@ -52,7 +52,7 @@ pub(super) enum SplitDir {
 }
 
 /// Pixel thickness of the gap between two sibling panes - a thin hairline
-/// divider like ghostty's (the grab area is widened separately for drag).
+/// divider in the iTerm style (the grab area is widened separately for drag).
 #[cfg(all(feature = "terminal-runtime", feature = "shell-chrome"))]
 pub(super) const PANE_DIVIDER: i32 = 1;
 

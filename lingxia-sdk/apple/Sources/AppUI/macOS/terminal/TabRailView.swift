@@ -462,7 +462,7 @@ private final class LingXiaTerminalTabChromeView: NSView {
             NSColor.white.withAlphaComponent(0.07).setFill()
             NSRect(x: 10, y: 3, width: max(0, bounds.width - 20), height: pixel).fill()
 
-            // Active tabs visually connect into the terminal body, like Ghostty/iTerm tab strips.
+            // Active tabs visually connect into the terminal body, like iTerm tab strips.
             NSColor.lxTerminalBackground.setFill()
             NSRect(x: 0, y: bounds.height - 5, width: bounds.width, height: 5).fill()
         } else {
