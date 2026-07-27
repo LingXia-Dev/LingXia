@@ -199,6 +199,10 @@ pub mod runtime {
         webview::destroy_webview(webtag);
     }
 
+    pub fn destroy_webview_if_matches(webtag: &WebTag, expected: &Arc<WebView>) -> bool {
+        webview::destroy_webview_if_matches(webtag, expected)
+    }
+
     pub fn configure_proxy_for_new_webviews(
         config: Option<ProxyConfig>,
     ) -> Result<(), WebViewError> {

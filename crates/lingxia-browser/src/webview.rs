@@ -22,7 +22,9 @@ use crate::types::{BrowserNavigationPolicyDecision, BrowserNavigationPolicyReque
 use lingxia_log::{LogBuilder, LogLevel as LxLogLevel, LogTag};
 use lingxia_platform::traits::app_runtime::{AppRuntime, OpenUrlRequest, OpenUrlTarget};
 use lingxia_webview::runtime::{
-    destroy_webview as destroy_managed_webview, find_webview as find_managed_webview,
+    destroy_webview as destroy_managed_webview,
+    destroy_webview_if_matches as destroy_managed_webview_if_matches,
+    find_webview as find_managed_webview,
 };
 use lingxia_webview::{
     LoadDataRequest, LoadError, LoadErrorPage, LogLevel, NavigationEvent, NavigationPolicy,
@@ -604,12 +606,12 @@ async fn browser_on_webview_ready(
     match tab_state {
         TabCreateState::Missing => {
             // Tab was closed while creation was in-flight.
-            browser_destroy_webview(&path, session_id);
+            browser_destroy_webview_if_matches(&path, session_id, &webview);
         }
         TabCreateState::Stale => {
             // A newer create lifecycle already took ownership of this tab id.
             // Destroy the orphaned webview from this old create cycle.
-            browser_destroy_webview(&path, session_id);
+            browser_destroy_webview_if_matches(&path, session_id, &webview);
         }
         TabCreateState::Active { pending_url } => {
             if let Some(url) = pending_url {
@@ -709,6 +711,11 @@ pub(crate) fn browser_destroy_webview(path: &str, session_id: u64) {
     let webtag = browser_webtag(path, session_id);
     // Remove from global registry (triggers platform-specific cleanup on Drop).
     destroy_managed_webview(&webtag);
+}
+
+fn browser_destroy_webview_if_matches(path: &str, session_id: u64, expected: &Arc<WebView>) {
+    let webtag = browser_webtag(path, session_id);
+    destroy_managed_webview_if_matches(&webtag, expected);
 }
 
 #[cfg(test)]
