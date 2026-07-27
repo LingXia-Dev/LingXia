@@ -323,33 +323,48 @@ fn registry() -> &'static Mutex<HashMap<String, Arc<EventNormalizer>>> {
     NORMALIZERS.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
-fn normalizer_for(webtag: &WebTag) -> Arc<EventNormalizer> {
+fn new_normalizer(webtag: &WebTag) -> Arc<EventNormalizer> {
+    Arc::new(EventNormalizer {
+        webtag: webtag.clone(),
+        state: Mutex::new(NormalizerState {
+            tracker: NavigationTracker::default(),
+            coalescer: StateCoalescer::default(),
+            queue: VecDeque::new(),
+            draining: false,
+            observers: Vec::new(),
+        }),
+    })
+}
+
+/// Start a normalizer lifecycle before native WebView creation can emit events.
+pub(crate) fn begin(webtag: &WebTag) {
     let mut map = registry().lock().unwrap_or_else(|e| e.into_inner());
     map.entry(webtag.key().to_string())
-        .or_insert_with(|| {
-            Arc::new(EventNormalizer {
-                webtag: webtag.clone(),
-                state: Mutex::new(NormalizerState {
-                    tracker: NavigationTracker::default(),
-                    coalescer: StateCoalescer::default(),
-                    queue: VecDeque::new(),
-                    draining: false,
-                    observers: Vec::new(),
-                }),
-            })
-        })
-        .clone()
+        .or_insert_with(|| new_normalizer(webtag));
+}
+
+fn normalizer_for(webtag: &WebTag) -> Option<Arc<EventNormalizer>> {
+    registry()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .get(webtag.key())
+        .cloned()
 }
 
 /// Submit a native signal for `webtag`. Payloads must already be captured on
 /// the native callback thread — the normalizer never queries native objects.
 pub(crate) fn submit(webtag: &WebTag, signal: NativeSignal) {
-    normalizer_for(webtag).submit(signal);
+    if let Some(normalizer) = normalizer_for(webtag) {
+        normalizer.submit(signal);
+    }
 }
 
 /// Register a read-only observer for `webtag`'s events.
 pub fn add_observer(webtag: &WebTag, observer: WebViewEventObserver) {
-    let normalizer = normalizer_for(webtag);
+    let Some(normalizer) = normalizer_for(webtag) else {
+        log::debug!("Ignoring observer for inactive WebView {webtag}");
+        return;
+    };
     let mut state = normalizer.state.lock().unwrap_or_else(|e| e.into_inner());
     state.observers.push(observer);
 }
@@ -429,11 +444,13 @@ impl EventNormalizer {
 
 /// Remove the webtag's normalizer after draining teardown cancellations.
 pub(crate) fn destroy(webtag: &WebTag) {
-    submit(webtag, NativeSignal::Destroyed);
-    registry()
+    let normalizer = registry()
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .remove(webtag.key());
+    if let Some(normalizer) = normalizer {
+        normalizer.submit(NativeSignal::Destroyed);
+    }
 }
 
 #[cfg(test)]
@@ -442,6 +459,7 @@ mod tests {
     use crate::traits::LoadErrorKind;
 
     fn capture(webtag: &WebTag) -> Arc<Mutex<Vec<String>>> {
+        begin(webtag);
         let events = Arc::new(Mutex::new(Vec::new()));
         let sink = events.clone();
         add_observer(
@@ -709,5 +727,47 @@ mod tests {
             *events.lock().unwrap(),
             vec!["started:https://a/", "cancelled:WebViewDestroyed"]
         );
+    }
+
+    #[test]
+    fn late_signals_do_not_recreate_destroyed_normalizer() {
+        let webtag = tag("late-after-destroy");
+        begin(&webtag);
+        assert!(normalizer_for(&webtag).is_some());
+
+        destroy(&webtag);
+        submit(
+            &webtag,
+            NativeSignal::TitleChanged {
+                title: Some("late".into()),
+            },
+        );
+
+        assert!(normalizer_for(&webtag).is_none());
+    }
+
+    #[test]
+    fn reused_webtag_starts_a_fresh_normalizer_lifecycle() {
+        let webtag = tag("reuse-after-destroy");
+        let first_events = capture(&webtag);
+        submit(
+            &webtag,
+            NativeSignal::TitleChanged {
+                title: Some("first".into()),
+            },
+        );
+        destroy(&webtag);
+
+        let second_events = capture(&webtag);
+        submit(
+            &webtag,
+            NativeSignal::TitleChanged {
+                title: Some("second".into()),
+            },
+        );
+
+        assert_eq!(*first_events.lock().unwrap(), vec!["title:first"]);
+        assert_eq!(*second_events.lock().unwrap(), vec!["title:second"]);
+        destroy(&webtag);
     }
 }

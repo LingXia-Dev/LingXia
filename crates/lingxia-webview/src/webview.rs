@@ -1863,12 +1863,13 @@ impl WebViewSessionSignals {
 }
 
 pub(crate) struct WebViewCreateSender {
+    webtag: WebTag,
     signals: Arc<WebViewSessionSignals>,
 }
 
 impl WebViewCreateSender {
-    fn new(signals: Arc<WebViewSessionSignals>) -> Self {
-        Self { signals }
+    fn new(webtag: WebTag, signals: Arc<WebViewSessionSignals>) -> Self {
+        Self { webtag, signals }
     }
 
     pub(crate) fn succeed(self, webview: Arc<WebView>) {
@@ -1877,6 +1878,9 @@ impl WebViewCreateSender {
     }
 
     pub(crate) fn fail(self, stage: WebViewCreateStage, error: WebViewError) {
+        if remove_session_signals_if_matches(&self.webtag, &self.signals) {
+            crate::events::normalizer::destroy(&self.webtag);
+        }
         self.signals.publish_result(Err(error), stage);
     }
 
@@ -2031,6 +2035,25 @@ fn remove_session_signals(webtag: &WebTag) -> Option<Arc<WebViewSessionSignals>>
     let sessions = WEBVIEW_SESSIONS.get()?;
     let mut guard = lock_or_recover(sessions, "webview_sessions.remove");
     guard.remove(webtag.key())
+}
+
+fn remove_session_signals_if_matches(
+    webtag: &WebTag,
+    expected: &Arc<WebViewSessionSignals>,
+) -> bool {
+    let Some(sessions) = WEBVIEW_SESSIONS.get() else {
+        return false;
+    };
+    let mut guard = lock_or_recover(sessions, "webview_sessions.remove_if_matches");
+    if guard
+        .get(webtag.key())
+        .is_some_and(|current| Arc::ptr_eq(current, expected))
+    {
+        guard.remove(webtag.key());
+        true
+    } else {
+        false
+    }
 }
 
 /// WebView identifier combining appid, path, and optional session id.
@@ -2231,8 +2254,9 @@ fn create_webview_session(webtag: WebTag, options: WebViewCreateOptions) -> WebV
 
     let signals = WebViewSessionSignals::new();
     let session = signals.subscribe(webtag.clone());
-    let sender = WebViewCreateSender::new(signals.clone());
+    let sender = WebViewCreateSender::new(webtag.clone(), signals.clone());
     replace_session_signals(&webtag, signals);
+    crate::events::normalizer::begin(&webtag);
     request_create_webview(&webtag, sender, options);
     session
 }
