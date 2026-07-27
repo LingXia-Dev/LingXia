@@ -11,11 +11,11 @@ mod runtime;
 mod style;
 #[cfg(feature = "terminal-runtime")]
 pub mod terminal_grid;
-/// Terminal pane rendering lives behind `terminal-runtime` because it links
-/// libghostty-vt (`lingxia-terminal`). Hosts that enable the shell chrome via
-/// `browser-runtime` but do not opt into a terminal (e.g. the device-frame
-/// runner) must not link that native library, so provide inert stubs for the
-/// handful of entry points the panel painter calls.
+/// Terminal pane rendering lives behind `terminal-runtime` because it pulls
+/// the terminal engine (`lingxia-terminal`). Hosts that enable the shell
+/// chrome via `browser-runtime` but do not opt into a terminal (e.g. the
+/// device-frame runner) must not carry that dependency, so provide inert
+/// stubs for the handful of entry points the panel painter calls.
 #[cfg(not(feature = "terminal-runtime"))]
 pub mod terminal_grid {
     use windows::Win32::Foundation::RECT;

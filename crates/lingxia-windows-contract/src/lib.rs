@@ -563,7 +563,6 @@ pub enum WindowsChromeHit {
 
 pub trait WindowsChromeRenderer: Send + Sync {
     fn content_rect(&self, client: RECT, layout: &WindowsWindowLayout) -> RECT;
-    fn panel_corner_radius(&self) -> i32;
 
     fn attached_layout(
         &self,

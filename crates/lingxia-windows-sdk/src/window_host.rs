@@ -8188,8 +8188,11 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
 
     // No CS_HREDRAW/CS_VREDRAW: they invalidate the whole window on every
     // resize step. WM_SIZE already invalidates chrome windows explicitly, and
-    // the buffered WM_PAINT keeps that repaint tear-free.
+    // the buffered WM_PAINT keeps that repaint tear-free. CS_DBLCLKS is
+    // required for the client-area WM_LBUTTONDBLCLK the chrome double-click
+    // path (e.g. terminal tab rename) relies on.
     let class = WNDCLASSW {
+        style: WindowsAndMessaging::CS_DBLCLKS,
         lpfnWndProc: Some(window_proc),
         hCursor: unsafe { WindowsAndMessaging::LoadCursorW(None, WindowsAndMessaging::IDC_ARROW) }
             .unwrap_or_default(),

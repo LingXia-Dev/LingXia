@@ -6,6 +6,7 @@ use std::ffi::c_void;
 use std::sync::Mutex;
 
 use crate::{WindowsDesignIcon, draw_windows_design_icon_with_color};
+use windows::Win32::Graphics::Gdi::{ANTIALIASED_QUALITY, FONT_QUALITY};
 
 use super::*;
 
@@ -738,10 +739,26 @@ pub(super) fn darken_rgb(rgb: u32, percent: u32) -> u32 {
 }
 
 pub(super) fn draw_frame_button_glyph(hdc: HDC, glyph: &str, rect: RECT, rgb: u32) {
+    draw_frame_button_glyph_with_font(hdc, glyph, rect, rgb, caption_icon_font);
+}
+
+/// Grayscale-antialiased variant for glyphs on dark chrome, where ClearType
+/// subpixel rendering leaves colored fringes.
+pub(super) fn draw_frame_button_glyph_grayscale(hdc: HDC, glyph: &str, rect: RECT, rgb: u32) {
+    draw_frame_button_glyph_with_font(hdc, glyph, rect, rgb, caption_icon_font_grayscale);
+}
+
+fn draw_frame_button_glyph_with_font(
+    hdc: HDC,
+    glyph: &str,
+    rect: RECT,
+    rgb: u32,
+    font: fn(HDC) -> HFONT,
+) {
     let mut wide: Vec<u16> = glyph.encode_utf16().collect();
     let mut rect = rect;
     unsafe {
-        let font = caption_icon_font(hdc);
+        let font = font(hdc);
         let old_font = if font.is_invalid() {
             HGDIOBJ::default()
         } else {
@@ -769,11 +786,18 @@ pub(super) fn draw_frame_button_glyph(hdc: HDC, glyph: &str, rect: RECT, rgb: u3
 pub(super) fn caption_icon_font(hdc: HDC) -> HFONT {
     let height = logical_font_height(hdc, WINDOW_BUTTON_GLYPH_POINT_SIZE);
     cached_font_with("caption-icon", height, 400, CLEARTYPE_QUALITY, || {
-        create_caption_icon_font(hdc, -height)
+        create_caption_icon_font(hdc, -height, CLEARTYPE_QUALITY)
     })
 }
 
-fn create_caption_icon_font(hdc: HDC, height: i32) -> HFONT {
+fn caption_icon_font_grayscale(hdc: HDC) -> HFONT {
+    let height = logical_font_height(hdc, WINDOW_BUTTON_GLYPH_POINT_SIZE);
+    cached_font_with("caption-icon-aa", height, 400, ANTIALIASED_QUALITY, || {
+        create_caption_icon_font(hdc, -height, ANTIALIASED_QUALITY)
+    })
+}
+
+fn create_caption_icon_font(hdc: HDC, height: i32, quality: FONT_QUALITY) -> HFONT {
     for face in ["Segoe Fluent Icons", "Segoe MDL2 Assets"] {
         let face_wide: Vec<u16> = face.encode_utf16().chain(std::iter::once(0)).collect();
         unsafe {
@@ -789,7 +813,7 @@ fn create_caption_icon_font(hdc: HDC, height: i32) -> HFONT {
                 DEFAULT_CHARSET,
                 OUT_DEFAULT_PRECIS,
                 CLIP_DEFAULT_PRECIS,
-                CLEARTYPE_QUALITY,
+                quality,
                 DEFAULT_PITCH.0 as u32 | FF_SWISS.0 as u32,
                 PCWSTR(face_wide.as_ptr()),
             );

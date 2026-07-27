@@ -129,17 +129,25 @@ pub(super) fn terminal_header_rects(
                 right: (left + tab_width).min(tabs_right_limit),
                 bottom: header.bottom,
             });
-            let close = (item.active && rect_width(&tab_rect) >= 3 * TERMINAL_TAB_CLOSE_WIDTH)
-                .then(|| {
-                    normalize_rect(RECT {
-                        left: tab_rect.right - TERMINAL_TAB_CLOSE_WIDTH,
-                        top: tab_rect.top,
-                        right: tab_rect.right,
-                        bottom: tab_rect.bottom,
-                    })
-                });
+            // Every tab wide enough gets a close glyph (macOS tab-rail
+            // parity); narrow tabs keep the full rect clickable.
+            let close = (rect_width(&tab_rect) >= 3 * TERMINAL_TAB_CLOSE_WIDTH).then(|| {
+                normalize_rect(RECT {
+                    left: tab_rect.right - TERMINAL_TAB_CLOSE_WIDTH,
+                    top: tab_rect.top,
+                    right: tab_rect.right,
+                    bottom: tab_rect.bottom,
+                })
+            });
+            let title_inset = if rect_width(&tab_rect) >= TERMINAL_TAB_DOT_MIN_WIDTH {
+                // Clears the marker dot drawn at the leading edge; same
+                // 14/28 geometry as the macOS tab rail.
+                14 + TERMINAL_TAB_DOT_SIZE + 8
+            } else {
+                10
+            };
             let title = normalize_rect(RECT {
-                left: tab_rect.left + 10,
+                left: tab_rect.left + title_inset,
                 top: tab_rect.top,
                 right: close.map(|close| close.left).unwrap_or(tab_rect.right - 6),
                 bottom: tab_rect.bottom,
@@ -233,8 +241,8 @@ pub(super) fn terminal_header_hit_test(
 
 /// Draws a terminal panel as a compact dock: full-bleed surface card, a
 /// 34px header strip (tabs + new-tab + maximize), and the cell grid below.
-/// Docked panels keep square top corners (flush seam with the main card);
-/// while maximized the panel fills the content area with square corners.
+/// Docked, floating, and maximized panels all draw the same rounded card
+/// as the webview content.
 pub(super) fn draw_terminal_panel_content(
     hdc: HDC,
     hwnd: HWND,
@@ -257,65 +265,103 @@ pub(super) fn draw_terminal_panel_content(
     // once in its final color — a second rounded fill over the same arc
     // re-blends it (the old header-over-card fringe), and an aliased rounded
     // clip shows a staircase wherever the inner color differs from the card.
-    // A maximized panel is flush with the content pane: plain square fills.
+    // Maximized panels keep the same rounded card, drawn over the workspace.
+    // Radius and shadow match the webview content cards so the workspace
+    // reads as one system of cards.
     let header_rects = terminal_header_rects(rect, native);
     let header = header_rects.header;
     let _clip_guard = DcClipGuard::save(hdc);
-    if native.maximized || panel.docked {
-        // Flat variant: a docked panel splits the space at the same layer as
-        // the content (the gutter hairline is the divider), and a maximized
-        // panel is flush with the content pane — square fills, no arcs.
-        fill_rect(hdc, rect, TERMINAL_HEADER_BACKGROUND);
-        fill_rect(
-            hdc,
-            RECT {
-                left: rect.left,
-                top: header.bottom,
-                right: rect.right,
-                bottom: rect.bottom,
-            },
-            surface,
-        );
-    } else {
-        fill_round_rect_aa_band(
-            hdc,
-            rect,
-            SHELL_PANEL_RADIUS,
-            TERMINAL_HEADER_BACKGROUND,
-            rect.top,
-            header.bottom,
-        );
-        fill_round_rect_aa_band(
-            hdc,
-            rect,
-            SHELL_PANEL_RADIUS,
-            surface,
-            header.bottom,
-            rect.bottom,
-        );
-        // Body drawing below (pane fills, grid) stays clipped to the card's
-        // interior so square fills cannot overpaint the bottom arcs. The clip
-        // boundary is aliased, but everything drawn inside matches the card's
-        // surface color there, so it stays invisible.
-        clip_to_round_rect_inside(hdc, rect, SHELL_PANEL_RADIUS);
-    }
+    draw_content_card_shadow(hdc, rect);
+    fill_round_rect_aa_band(
+        hdc,
+        rect,
+        SHELL_CONTENT_RADIUS,
+        TERMINAL_HEADER_BACKGROUND,
+        rect.top,
+        header.bottom,
+    );
+    fill_round_rect_aa_band(
+        hdc,
+        rect,
+        SHELL_CONTENT_RADIUS,
+        surface,
+        header.bottom,
+        rect.bottom,
+    );
+    // Body drawing below (pane fills, grid) stays clipped to the card's
+    // interior so square fills cannot overpaint the bottom arcs. The clip
+    // boundary is aliased, but everything drawn inside matches the card's
+    // surface color there, so it stays invisible.
+    clip_to_round_rect_inside(hdc, rect, SHELL_CONTENT_RADIUS);
+
+    // Hairline under the tab strip; the active tab paints over it, so it
+    // visually connects into the surface (macOS rail parity).
+    fill_rect(
+        hdc,
+        RECT {
+            left: rect.left,
+            top: header.bottom - 1,
+            right: rect.right,
+            bottom: header.bottom,
+        },
+        blend_rgb(0xffffff, TERMINAL_HEADER_BACKGROUND, 6),
+    );
 
     for tab in &header_rects.tabs {
         if tab.active {
             // The active tab flows into the surface below it: surface
-            // fill, rounded on top, square at the header's bottom edge.
-            // Surface-on-header contrast: anti-alias the pill arc.
-            fill_round_rect_aa(hdc, tab.rect, 10, surface);
+            // fill, rounded on top, square at the header's bottom edge
+            // (macOS tab-rail shape). A faint inner highlight along the
+            // top edge lifts the pill off the darker chrome.
+            fill_round_rect_aa_corners(
+                hdc,
+                tab.rect,
+                [TERMINAL_TAB_RADIUS, TERMINAL_TAB_RADIUS, 0, 0],
+                surface,
+            );
             fill_rect(
                 hdc,
                 RECT {
-                    left: tab.rect.left,
-                    top: tab.rect.top + rect_height(&tab.rect) / 2,
-                    right: tab.rect.right,
-                    bottom: tab.rect.bottom,
+                    left: tab.rect.left + TERMINAL_TAB_RADIUS + 2,
+                    top: tab.rect.top + 1,
+                    right: tab.rect.right - TERMINAL_TAB_RADIUS - 2,
+                    bottom: tab.rect.top + 2,
                 },
-                surface,
+                blend_rgb(0xffffff, surface, 8),
             );
+        } else {
+            // Hairline separator at the trailing edge of inactive tabs.
+            let inset = rect_height(&tab.rect) / 3;
+            fill_rect(
+                hdc,
+                RECT {
+                    left: tab.rect.right + TERMINAL_TAB_GAP / 2,
+                    top: tab.rect.top + inset,
+                    right: tab.rect.right + TERMINAL_TAB_GAP / 2 + 1,
+                    bottom: tab.rect.bottom - inset,
+                },
+                blend_rgb(0xffffff, TERMINAL_HEADER_BACKGROUND, 8),
+            );
+        }
+        if rect_width(&tab.rect) >= TERMINAL_TAB_DOT_MIN_WIDTH {
+            let dot_top = tab.rect.top + (rect_height(&tab.rect) - TERMINAL_TAB_DOT_SIZE) / 2;
+            let dot = RECT {
+                left: tab.rect.left + 14,
+                top: dot_top,
+                right: tab.rect.left + 14 + TERMINAL_TAB_DOT_SIZE,
+                bottom: dot_top + TERMINAL_TAB_DOT_SIZE,
+            };
+            let dot_background = if tab.active {
+                surface
+            } else {
+                TERMINAL_HEADER_BACKGROUND
+            };
+            let color = if tab.active {
+                TERMINAL_TAB_ACCENT
+            } else {
+                blend_rgb(0xffffff, dot_background, 40)
+            };
+            fill_round_rect_aa(hdc, dot, TERMINAL_TAB_DOT_SIZE / 2, color);
         }
         let title = native
             .tabs
@@ -328,15 +374,16 @@ pub(super) fn draw_terminal_panel_content(
         } else {
             TERMINAL_HEADER_TEXT_MUTED
         };
-        draw_text(hdc, title, tab.title, color, DT_LEFT);
+        // Grayscale AA throughout the header: ClearType subpixel rendering
+        // fringes light text on this dark chrome.
+        draw_text_antialiased(hdc, title, tab.title, color, DT_LEFT);
         if let Some(close) = tab.close {
-            draw_text(
-                hdc,
-                GLYPH_TAB_CLOSE,
-                close,
-                TERMINAL_HEADER_TEXT_MUTED,
-                DT_CENTER,
-            );
+            let close_color = if tab.active {
+                TERMINAL_HEADER_TEXT_MUTED
+            } else {
+                blend_rgb(TERMINAL_HEADER_TEXT_MUTED, TERMINAL_HEADER_BACKGROUND, 55)
+            };
+            draw_text_antialiased(hdc, GLYPH_TAB_CLOSE, close, close_color, DT_CENTER);
         }
     }
     if header_rects.tabs.is_empty() {
@@ -351,7 +398,7 @@ pub(super) fn draw_terminal_panel_content(
             bottom: header.bottom,
         });
         let fallback_title = lingxia_logic::i18n::t(lingxia_logic::I18nKey::TerminalTitle);
-        draw_text(
+        draw_text_antialiased(
             hdc,
             native.title.as_deref().unwrap_or(&fallback_title),
             title_rect,
@@ -360,7 +407,7 @@ pub(super) fn draw_terminal_panel_content(
         );
     }
     if let Some(new_tab) = header_rects.new_tab {
-        draw_frame_button_glyph(hdc, GLYPH_ADD, new_tab, TERMINAL_HEADER_TEXT_MUTED);
+        draw_frame_button_glyph_grayscale(hdc, GLYPH_ADD, new_tab, TERMINAL_HEADER_TEXT_MUTED);
     }
     if let Some(maximize) = header_rects.maximize {
         let glyph = if native.maximized {
@@ -368,7 +415,7 @@ pub(super) fn draw_terminal_panel_content(
         } else {
             GLYPH_PANEL_EXPAND
         };
-        draw_frame_button_glyph(hdc, glyph, maximize, TERMINAL_HEADER_TEXT_MUTED);
+        draw_frame_button_glyph_grayscale(hdc, glyph, maximize, TERMINAL_HEADER_TEXT_MUTED);
     }
 
     // Record the painted tab-title rects so the facade can start an inline

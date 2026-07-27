@@ -221,6 +221,10 @@ private class PanelSlot {
         case .top:    shadowWrapper.layer?.shadowOffset = CGSize(width:  0, height: -3)
         }
     }
+
+    func setFullscreenAppearance(_ fullscreen: Bool) {
+        shadowWrapper.layer?.shadowOpacity = fullscreen ? 0 : 0.15
+    }
 }
 
 // MARK: - WorkspaceManager
@@ -592,6 +596,10 @@ class WorkspaceManager: NSObject {
         panels[id]?.isFullscreen ?? false
     }
 
+    var hasVisibleFullscreenPanel: Bool {
+        panels.values.contains { $0.isVisible && $0.isFullscreen }
+    }
+
     func setPanelFullscreen(id: String, enabled: Bool) {
         guard let slot = panels[id] else {
             lxWorkspaceStdoutLog("setPanelFullscreen missing id=\(id)")
@@ -603,6 +611,7 @@ class WorkspaceManager: NSObject {
         }
 
         slot.isFullscreen = enabled
+        slot.setFullscreenAppearance(enabled)
         lxWorkspaceStdoutLog("setPanelFullscreen id=\(id) enabled=\(enabled) visible=\(slot.isVisible)")
         if slot.config.position == .left || slot.config.position == .right {
             applySideFullscreen(slot, enabled: enabled)
@@ -891,16 +900,13 @@ class WorkspaceManager: NSObject {
     private func layoutBottomPanel(_ slot: PanelSlot, in parent: NSView, sidebar: NSView) {
         let p = padding
         if slot.isFullscreen {
-            // Expand fills the CONTENT pane exactly — flush against the sidebar,
-            // matching its vertical extent, no padding — so it fully covers the
-            // webview (no sliver) while the sidebar/switcher stays reachable
-            // (switching mains then collapses the aside).
             let leading = max(0, sidebar.frame.maxX)
+            let bottom = sidebar.frame.minY + p
             slot.shadowWrapper.frame = NSRect(
                 x: leading,
-                y: sidebar.frame.minY,
-                width: max(0, parent.bounds.width - leading),
-                height: sidebar.frame.height
+                y: bottom,
+                width: max(0, parent.bounds.width - p - leading),
+                height: max(0, sidebar.frame.maxY - p - bottom)
             )
             slot.resizeHandle.frame = .zero
             slot.resizeHandle.isHidden = true
@@ -935,15 +941,13 @@ class WorkspaceManager: NSObject {
     private func layoutTopPanel(_ slot: PanelSlot, in parent: NSView, sidebar: NSView) {
         let p = padding
         if slot.isFullscreen {
-            // Expand fills the CONTENT pane exactly — flush against the sidebar,
-            // matching its vertical extent, no padding — so it fully covers the
-            // webview (no sliver) while the sidebar/switcher stays reachable.
             let leading = max(0, sidebar.frame.maxX)
+            let bottom = sidebar.frame.minY + p
             slot.shadowWrapper.frame = NSRect(
                 x: leading,
-                y: sidebar.frame.minY,
-                width: max(0, parent.bounds.width - leading),
-                height: sidebar.frame.height
+                y: bottom,
+                width: max(0, parent.bounds.width - p - leading),
+                height: max(0, sidebar.frame.maxY - p - bottom)
             )
             slot.resizeHandle.frame = .zero
             slot.resizeHandle.isHidden = true

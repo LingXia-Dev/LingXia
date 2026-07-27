@@ -80,6 +80,9 @@ final class LingXiaTerminalTabRailView: NSView {
 
     var items: [Item] = [] {
         didSet {
+            // Rebuilding tears down every tab view (and its hover state);
+            // skip when nothing changed.
+            guard items != oldValue else { return }
             if let editingID, !items.contains(where: { $0.id == editingID }) {
                 cancelEditing()
             }
@@ -109,6 +112,7 @@ final class LingXiaTerminalTabRailView: NSView {
     }
 
     private let stackView = NSStackView()
+    private let flexibleSpace = NSView()
     private let zoomButton = LingXiaTerminalZoomButton()
     private let addButton = LingXiaTerminalAddTabButton()
     private let titleEditor = LingXiaTerminalInlineTitleTextView(frame: .zero)
@@ -130,6 +134,9 @@ final class LingXiaTerminalTabRailView: NSView {
         stackView.setContentHuggingPriority(.defaultLow, for: .horizontal)
         stackView.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         addSubview(stackView)
+
+        flexibleSpace.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        flexibleSpace.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
         titleEditor.translatesAutoresizingMaskIntoConstraints = true
         titleEditor.isHidden = true
@@ -243,23 +250,21 @@ final class LingXiaTerminalTabRailView: NSView {
             let minimumWidth = tabView.widthAnchor.constraint(greaterThanOrEqualToConstant: 122)
             minimumWidth.priority = .defaultHigh
             minimumWidth.isActive = true
-            if items.count > 1 {
-                let preferredWidth = tabView.widthAnchor.constraint(equalToConstant: 188)
-                preferredWidth.priority = .defaultLow
-                preferredWidth.isActive = true
-            }
-            if items.count > 1 {
-                tabView.widthAnchor.constraint(lessThanOrEqualToConstant: 260).isActive = true
-            }
+            let preferredWidth = tabView.widthAnchor.constraint(equalToConstant: 188)
+            preferredWidth.priority = .defaultLow
+            preferredWidth.isActive = true
+            tabView.widthAnchor.constraint(lessThanOrEqualToConstant: 220).isActive = true
             tabView.heightAnchor.constraint(equalToConstant: 30).isActive = true
-            tabView.setContentHuggingPriority(.defaultLow, for: .horizontal)
+            tabView.setContentHuggingPriority(.defaultHigh, for: .horizontal)
             tabView.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
             stackView.addArrangedSubview(tabView)
             tabViews[item.id] = tabView
         }
 
-        stackView.addArrangedSubview(zoomButton)
+        // Keep tab creation with the tabs and reserve the trailing edge for surface zoom.
         stackView.addArrangedSubview(addButton)
+        stackView.addArrangedSubview(flexibleSpace)
+        stackView.addArrangedSubview(zoomButton)
 
         if let editingID {
             DispatchQueue.main.async { [weak self] in
@@ -452,14 +457,10 @@ private final class LingXiaTerminalTabChromeView: NSView {
             NSColor.lxTerminalBackground.setFill()
             activePath.fill()
 
-            NSColor.white.withAlphaComponent(0.075).setStroke()
-            activePath.lineWidth = pixel
-            activePath.stroke()
-
             NSColor.white.withAlphaComponent(0.07).setFill()
             NSRect(x: 10, y: 3, width: max(0, bounds.width - 20), height: pixel).fill()
 
-            // Active tabs visually connect into the terminal body, like Ghostty/iTerm tab strips.
+            // Active tabs visually connect into the terminal body, like iTerm tab strips.
             NSColor.lxTerminalBackground.setFill()
             NSRect(x: 0, y: bounds.height - 5, width: bounds.width, height: 5).fill()
         } else {

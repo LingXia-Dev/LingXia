@@ -52,7 +52,7 @@ pub(super) enum SplitDir {
 }
 
 /// Pixel thickness of the gap between two sibling panes - a thin hairline
-/// divider like ghostty's (the grab area is widened separately for drag).
+/// divider in the iTerm style (the grab area is widened separately for drag).
 #[cfg(all(feature = "terminal-runtime", feature = "shell-chrome"))]
 pub(super) const PANE_DIVIDER: i32 = 1;
 
@@ -300,7 +300,7 @@ pub(super) fn open_windows_terminal_panel(
     position: WindowsPanelPosition,
 ) -> Result<(), String> {
     #[cfg(feature = "terminal-runtime")]
-    if lingxia_terminal::ghostty_available() {
+    if lingxia_terminal::backend_available() {
         return open_windows_terminal_session_panel(panel_id, title, position);
     }
     lingxia_windows_contract::show_interactive_host_panel(
@@ -341,7 +341,7 @@ pub(super) fn show_existing_windows_terminal_panel(
 fn terminal_panel_status_text() -> &'static str {
     #[cfg(feature = "terminal-runtime")]
     {
-        if lingxia_terminal::ghostty_available() {
+        if lingxia_terminal::backend_available() {
             "Terminal session is waiting for output"
         } else {
             "Terminal runtime is not available"

@@ -273,6 +273,18 @@ pub(in crate::shell) fn draw_right_border(hdc: HDC, rect: RECT, rgb: u32) {
     );
 }
 
+/// Blends `fg_percent`% of `fg` with the remainder of `bg`, per channel.
+/// Chrome paints on opaque backgrounds, so translucent accents are
+/// precomputed into solid colors instead of alpha-composited.
+pub(in crate::shell) fn blend_rgb(fg: u32, bg: u32, fg_percent: u32) -> u32 {
+    let blend = |shift: u32| {
+        let fg_channel = (fg >> shift) & 0xff;
+        let bg_channel = (bg >> shift) & 0xff;
+        ((fg_channel * fg_percent + bg_channel * (100 - fg_percent)) / 100) << shift
+    };
+    blend(16) | blend(8) | blend(0)
+}
+
 pub(in crate::shell) fn fill_rect(hdc: HDC, rect: RECT, rgb: u32) {
     if rect_width(&rect) == 0 || rect_height(&rect) == 0 {
         return;
@@ -384,7 +396,7 @@ pub(in crate::shell) fn fill_round_rect_aa_corners(
             fill_rect(hdc, rect, rgb);
             return;
         }
-        let _ = GdiPlus::GdipSetSmoothingMode(graphics, GdiPlus::SmoothingModeAntiAlias);
+        apply_round_rect_quality(graphics);
         let mut path: *mut GdiPlus::GpPath = std::ptr::null_mut();
         if GdiPlus::GdipCreatePath(GdiPlus::FillModeAlternate, &mut path) == GdiPlus::Ok
             && !path.is_null()
@@ -449,22 +461,24 @@ pub(in crate::shell) fn fill_round_rect_aa_corners(
     }
 }
 
-/// Intersects the DC's clip with a rounded rect one pixel inside `rect`.
+/// Intersects the DC's clip with a rounded rect two pixels inside `rect`.
 /// Pairs with an outer [`fill_round_rect_aa`] of the same rect: the AA fill
 /// provides the card's smooth edge, and plain square fills painted inside the
 /// clip get their corners shaped by it without a second anti-aliased arc (a
-/// re-blend over the card's arc leaves a fringe). Bracket with
-/// `SaveDC`/`RestoreDC`.
+/// re-blend over the card's arc leaves a fringe). The two-pixel inset keeps
+/// the aliased region boundary clear of the arc's blended pixels — a
+/// one-pixel inset lets same-color square fills overwrite them, hardening
+/// the corner into a staircase. Bracket with `SaveDC`/`RestoreDC`.
 pub(in crate::shell) fn clip_to_round_rect_inside(hdc: HDC, rect: RECT, radius: i32) {
     let radius = radius.clamp(1, (rect_width(&rect) / 2).min(rect_height(&rect) / 2));
     unsafe {
         let region = CreateRoundRectRgn(
-            rect.left + 1,
-            rect.top + 1,
-            rect.right - 1,
-            rect.bottom - 1,
-            (radius - 1).max(1) * 2,
-            (radius - 1).max(1) * 2,
+            rect.left + 2,
+            rect.top + 2,
+            rect.right - 2,
+            rect.bottom - 2,
+            (radius - 2).max(1) * 2,
+            (radius - 2).max(1) * 2,
         );
         if region.is_invalid() {
             return;
@@ -535,6 +549,19 @@ pub(in crate::shell) fn stroke_round_rect_aa(hdc: HDC, rect: RECT, radius: i32, 
     });
 }
 
+/// Best-available arc rendering: 8×8 AA sampling where the GDI+ 1.1
+/// runtime accepts it (the plain AA set first stays on rejection), and
+/// half-pixel offset so integer-coordinate straight edges land on pixel
+/// boundaries — crisp, matching plain GDI fills — while arcs sample
+/// symmetrically around the pixel centers.
+fn apply_round_rect_quality(graphics: *mut GdiPlus::GpGraphics) {
+    unsafe {
+        let _ = GdiPlus::GdipSetSmoothingMode(graphics, GdiPlus::SmoothingModeAntiAlias);
+        let _ = GdiPlus::GdipSetSmoothingMode(graphics, GdiPlus::SmoothingModeAntiAlias8x8);
+        let _ = GdiPlus::GdipSetPixelOffsetMode(graphics, GdiPlus::PixelOffsetModeHalf);
+    }
+}
+
 fn round_rect_path_op(
     hdc: HDC,
     rect: RECT,
@@ -546,7 +573,7 @@ fn round_rect_path_op(
         if GdiPlus::GdipCreateFromHDC(hdc, &mut graphics) != GdiPlus::Ok || graphics.is_null() {
             return;
         }
-        let _ = GdiPlus::GdipSetSmoothingMode(graphics, GdiPlus::SmoothingModeAntiAlias);
+        apply_round_rect_quality(graphics);
         let mut path: *mut GdiPlus::GpPath = std::ptr::null_mut();
         if GdiPlus::GdipCreatePath(GdiPlus::FillModeAlternate, &mut path) == GdiPlus::Ok
             && !path.is_null()

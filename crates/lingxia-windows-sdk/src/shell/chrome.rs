@@ -274,10 +274,6 @@ impl WindowsChromeRenderer for ShellChromeRenderer {
         compute_chrome_rects(client, layout).content
     }
 
-    fn panel_corner_radius(&self) -> i32 {
-        SHELL_PANEL_RADIUS
-    }
-
     fn attached_layout(
         &self,
         client: RECT,
@@ -1584,6 +1580,12 @@ fn paint_native_panel_region(hdc: HDC, state: &WindowsChromeState, invalid: RECT
     }) else {
         return false;
     };
+    // The card is not opaque over its whole rect (translucent shadow rings,
+    // anti-aliased arcs): restore the workspace backdrop first so repeated
+    // panel-only repaints stay idempotent instead of compounding blends into
+    // ever-darker, ever-squarer corners. The DC is already clipped to
+    // `invalid`.
+    fill_rect(hdc, panel.rect, shell_palette().window_background);
     draw_native_panel_content(hdc, state.hwnd, state.client, panel);
     true
 }
@@ -2040,20 +2042,10 @@ pub(super) fn draw_content_cards(
             let Some(handle) = panel.resize_handle else {
                 continue;
             };
+            // The gutter itself is the divider between rounded cards
+            // (macOS-style) — no hairline, which would float between the
+            // adjacent corner arcs.
             fill_rect(hdc, handle, pal.window_background);
-            if rect_width(&handle) > rect_height(&handle) {
-                let mid = handle.top + rect_height(&handle) / 2;
-                fill_rect(
-                    hdc,
-                    RECT {
-                        left: handle.left,
-                        top: mid,
-                        right: handle.right,
-                        bottom: mid + 1,
-                    },
-                    pal.divider,
-                );
-            }
         }
         for panel in &attached.panels {
             if panel.host_content.is_some() {

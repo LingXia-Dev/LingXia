@@ -1802,12 +1802,13 @@ pub fn open_panel_lxapp(panel_id: &str, appid: &str, path: &str) {
 pub fn get_terminal_backend_status_json() -> String {
     #[cfg(feature = "terminal-runtime")]
     {
-        return crate::terminal::ghostty_status_json();
+        return crate::terminal::backend_status_json();
     }
 
     #[cfg(not(feature = "terminal-runtime"))]
     {
-        r#"{"backend":"ghostty","available":false,"status":"terminal runtime disabled","sourceDir":null,"libDir":null}"#.to_string()
+        r#"{"backend":"alacritty","available":false,"status":"terminal runtime disabled"}"#
+            .to_string()
     }
 }
 

@@ -121,8 +121,8 @@ pub mod task;
 #[cfg(feature = "terminal-runtime")]
 pub mod terminal {
     pub use lingxia_terminal::{
-        BackendStatus, TerminalBackend, TerminalCell, TerminalSnapshot, ghostty_available,
-        ghostty_status, ghostty_status_json, terminal_close, terminal_create, terminal_exited,
+        BackendStatus, TerminalBackend, TerminalCell, TerminalSnapshot, backend_available,
+        backend_status, backend_status_json, terminal_close, terminal_create, terminal_exited,
         terminal_read, terminal_resize, terminal_scroll, terminal_snapshot, terminal_snapshot_data,
         terminal_write,
     };
