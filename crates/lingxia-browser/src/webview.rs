@@ -49,6 +49,10 @@ struct BrowserTabDelegate {
     tab_id: String,
     page_path: String,
     session_id: u64,
+    create_token: u64,
+    data_mode: WebViewDataMode,
+    url_callback: Arc<AtomicBool>,
+    standalone: bool,
     navigation: std::sync::Mutex<BrowserTabNavigationState>,
 }
 
@@ -73,6 +77,12 @@ fn is_error_document_url(url: &str) -> bool {
 }
 
 impl BrowserTabDelegate {
+    fn records_browser_history(&self) -> bool {
+        self.data_mode != WebViewDataMode::Ephemeral
+            && !self.url_callback.load(Ordering::Acquire)
+            && !self.standalone
+    }
+
     fn document_is_internal(&self) -> bool {
         crate::tabs::browser_tab_document_is_internal(&self.tab_id)
     }
@@ -104,8 +114,10 @@ impl BrowserTabDelegate {
         let failing_url = error.failing_url.as_deref().unwrap_or_default();
         let title =
             lingxia_platform::i18n::text("webview.load_error_title", "Couldn't load this page");
-        let _ = crate::tabs::browser_update_tab_info(
+        let _ = crate::tabs::browser_update_tab_info_if_token_matches(
             &self.tab_id,
+            self.session_id,
+            self.create_token,
             (!failing_url.is_empty()).then_some(failing_url),
             Some(&title),
         );
@@ -184,7 +196,14 @@ impl WebViewDelegate for BrowserTabDelegate {
                 }
                 // Persisted history: exactly one visit per success, keyed by
                 // the authoritative final URL.
-                crate::tabs::notify_navigation_finished(&self.tab_id, final_url);
+                if self.records_browser_history() {
+                    crate::tabs::notify_navigation_finished(
+                        &self.tab_id,
+                        self.session_id,
+                        self.create_token,
+                        final_url,
+                    );
+                }
                 if internal && is_current {
                     match browser_resolve_delegate_page(&self.page_path, self.session_id) {
                         Ok(page) => page.handle_loaded(),
@@ -237,13 +256,25 @@ impl WebViewDelegate for BrowserTabDelegate {
         match change {
             WebViewStateChange::Location { url } => {
                 // Live tab URL for address displays; never a persisted visit.
-                let _ = crate::tabs::browser_update_tab_info(&self.tab_id, Some(&url), None);
+                let _ = crate::tabs::browser_update_tab_info_if_token_matches(
+                    &self.tab_id,
+                    self.session_id,
+                    self.create_token,
+                    Some(&url),
+                    None,
+                );
             }
             WebViewStateChange::Title { title } => {
                 // Tab titles persist until the next document reports one, so
                 // a generation reset (None) is not mirrored into tab state.
                 if let Some(title) = title {
-                    let _ = crate::tabs::browser_update_tab_info(&self.tab_id, None, Some(&title));
+                    let _ = crate::tabs::browser_update_tab_info_if_token_matches(
+                        &self.tab_id,
+                        self.session_id,
+                        self.create_token,
+                        None,
+                        Some(&title),
+                    );
                 }
             }
             WebViewStateChange::Favicon { png_bytes } => {
@@ -357,6 +388,7 @@ pub(crate) fn browser_create_webview(
     create_token: u64,
     data_mode: WebViewDataMode,
     url_callback: Arc<AtomicBool>,
+    standalone: bool,
 ) -> Result<(), LxAppError> {
     let webtag = browser_webtag(path, session_id);
     let browser_owner = ensure_browser_lxapp()?;
@@ -395,6 +427,10 @@ pub(crate) fn browser_create_webview(
             tab_id: tab_id_owned.clone(),
             page_path: tab_path_owned.clone(),
             session_id,
+            create_token,
+            data_mode,
+            url_callback: url_callback.clone(),
+            standalone,
             navigation: std::sync::Mutex::new(BrowserTabNavigationState::default()),
         }))
         .on_scheme("lx", move |req| {
