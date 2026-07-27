@@ -161,7 +161,7 @@ pub(crate) fn windows_shell_frame_colors() -> (u32, u32, bool) {
     (
         palette.window_background,
         palette.frame_button_icon,
-        theme::is_dark(),
+        windows_tabbar_effective_dark_mode(),
     )
 }
 pub(crate) use terminal_panel::{

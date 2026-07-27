@@ -54,13 +54,14 @@ fn mobile_tabbar_default_colors(dark: bool) -> (u32, u32, u32, u32) {
     }
 }
 
-fn desktop_tabbar_default_colors(dark: bool) -> (u32, u32, u32, u32) {
-    let accent = super::theme::system_accent();
-    if dark {
-        (0x9aa0a6, accent, 0x202020, 0x383838)
-    } else {
-        (0x667085, accent, 0xdad6e4, 0xc7c2d2)
-    }
+fn desktop_tabbar_default_colors() -> (u32, u32, u32, u32) {
+    let palette = super::style::shell_palette();
+    (
+        palette.text_muted,
+        palette.accent,
+        palette.sidebar_background,
+        palette.divider,
+    )
 }
 
 /// How many times to retry presenting a freshly opened browser tab whose
@@ -1051,7 +1052,7 @@ fn sync_app_shell_layout(appid: &str) {
                 "black" => 0x111111,
                 // Unset / "auto": follow the app theme, matching pages whose
                 // background adapts via prefers-color-scheme.
-                _ if super::theme::is_dark() => 0xf2f2f7,
+                _ if super::windows_tabbar_effective_dark_mode() => 0xf2f2f7,
                 _ => 0x111111,
             };
             (foreground, 0)
@@ -1467,7 +1468,10 @@ fn browser_url_is_hidden(url: &str) -> bool {
 
 fn build_navigation_bar_layout(app: &LxApp, path: &str) -> WindowsShellNavigationBarLayout {
     let navbar = app.get_navbar_state(path);
-    let background_color = parse_css_color(&navbar.navigationBarBackgroundColor, 0xffffff);
+    let background_color = parse_css_color(
+        &navbar.navigationBarBackgroundColor,
+        super::style::shell_palette().panel_background,
+    );
     let text_color = match navbar.navigationBarTextStyle.as_str() {
         "white" => 0xffffff,
         "black" => 0x111111,
@@ -1625,7 +1629,7 @@ fn build_tab_bar_layout(
         .map(|tabbar| tabbar.resolved_style(appearance_dark));
     let (default_color, default_selected_color, default_background_color, default_border_color) =
         if desktop_sidebar {
-            desktop_tabbar_default_colors(appearance_dark)
+            desktop_tabbar_default_colors()
         } else {
             mobile_tabbar_default_colors(appearance_dark)
         };
@@ -4978,16 +4982,16 @@ mod tests {
     }
 
     #[test]
-    fn omitted_desktop_tabbar_colors_follow_simulated_appearance() {
-        let (_, light_selected, _, _) = desktop_tabbar_default_colors(false);
-        let (_, dark_selected, _, _) = desktop_tabbar_default_colors(true);
+    fn omitted_desktop_tabbar_colors_inherit_the_shell_palette() {
+        let palette = super::super::style::shell_palette();
         assert_eq!(
-            desktop_tabbar_default_colors(false),
-            (0x667085, light_selected, 0xdad6e4, 0xc7c2d2)
-        );
-        assert_eq!(
-            desktop_tabbar_default_colors(true),
-            (0x9aa0a6, dark_selected, 0x202020, 0x383838)
+            desktop_tabbar_default_colors(),
+            (
+                palette.text_muted,
+                palette.accent,
+                palette.sidebar_background,
+                palette.divider,
+            )
         );
     }
 

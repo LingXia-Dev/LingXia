@@ -62,7 +62,7 @@ fn state() -> AppearanceState {
     }
 }
 
-fn apply_webviews(preference: AppearancePreference) -> Result<(), PlatformError> {
+fn apply_webviews(preference: AppearancePreference) {
     let scheme = match preference {
         AppearancePreference::System => WindowsPreferredColorScheme::Auto,
         AppearancePreference::Light => WindowsPreferredColorScheme::Light,
@@ -79,10 +79,11 @@ fn apply_webviews(preference: AppearancePreference) -> Result<(), PlatformError>
             failures.push(format!("{}: {error}", webtag.key()));
         }
     }
-    if failures.is_empty() {
-        Ok(())
-    } else {
-        Err(PlatformError::Platform(failures.join("; ")))
+    if !failures.is_empty() {
+        log::warn!(
+            "failed to apply the preferred color scheme to existing WebViews: {}",
+            failures.join("; ")
+        );
     }
 }
 
@@ -128,7 +129,9 @@ impl Appearance for Platform {
             },
             Ordering::Release,
         );
-        apply_webviews(preference)?;
+        // The process preference is authoritative. A stale or closing WebView
+        // must not leave native chrome and future WebViews on the old theme.
+        apply_webviews(preference);
         let handlers = APPEARANCE_HANDLERS
             .lock()
             .map(|handlers| handlers.clone())
