@@ -464,6 +464,34 @@ Add a `tabBar` block alongside `pages`:
 ```
 
 Style keys (`color`, `selectedColor`, `backgroundColor`, `borderStyle`) are all optional.
+Omitted colors use native semantic defaults and follow the host light/dark
+appearance automatically. Common top-level colors apply to both appearances;
+use `style.light` / `style.dark` for fields that need theme-specific values:
+
+```json
+{
+  "tabBar": {
+    "style": {
+      "light": {
+        "color": "#8E99A3",
+        "selectedColor": "#2865FF",
+        "backgroundColor": "#FFFFFF",
+        "borderStyle": "#E5E7EB"
+      },
+      "dark": {
+        "color": "#9CA7B2",
+        "selectedColor": "#5B8CFF",
+        "backgroundColor": "#111418",
+        "borderStyle": "#252A30"
+      }
+    }
+  }
+}
+```
+
+For each field, resolution order is the current appearance override, the
+common top-level value, then the platform semantic default. The host selects
+the appearance; page JavaScript does not need to synchronize native chrome.
 
 Rules:
 
@@ -505,6 +533,10 @@ lx.setTabBarStyle({ selectedColor: '#ff0000' });
 await lx.showTabBar();
 await lx.hideTabBar();
 ```
+
+`lx.setTabBarStyle` is an imperative override: each supplied field applies to
+both appearances for the rest of the current app session. Restarting the lxapp
+restores the declarative `style.light` / `style.dark` values from the manifest.
 
 Full option shapes: the corresponding `*Options` types in `@lingxia/types`.
 
