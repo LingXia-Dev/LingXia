@@ -26,6 +26,7 @@ pub struct DevServerHandle {
     ws_addr: SocketAddr,
     stop_flag: Arc<AtomicBool>,
     server_thread: Option<JoinHandle<()>>,
+    companion: Option<super::companion::DevCompanion>,
 }
 
 impl DevServerHandle {
@@ -50,21 +51,23 @@ impl DevServerHandle {
 
     pub fn stop(mut self) -> Result<()> {
         self.stop_flag.store(true, Ordering::Release);
-        if let Some(thread) = self.server_thread.take() {
+        let result = if let Some(thread) = self.server_thread.take() {
             thread
                 .join()
-                .map_err(|_| anyhow!("dev server thread panicked"))?;
-        }
-        Ok(())
+                .map_err(|_| anyhow!("dev server thread panicked"))
+        } else {
+            Ok(())
+        };
+        super::companion::finish(result, self.companion.as_ref())
     }
 }
 
-struct SessionLogWriter {
+pub(super) struct SessionLogWriter {
     file: Mutex<File>,
 }
 
 impl SessionLogWriter {
-    fn new(session: &DevLogSession) -> Result<Self> {
+    pub(super) fn new(session: &DevLogSession) -> Result<Self> {
         let file = OpenOptions::new()
             .create(true)
             .append(true)
@@ -75,7 +78,7 @@ impl SessionLogWriter {
         })
     }
 
-    fn append_events(&self, events: &[DevSessionEvent]) -> Result<()> {
+    pub(super) fn append_events(&self, events: &[DevSessionEvent]) -> Result<()> {
         let mut file = self
             .file
             .lock()
@@ -228,6 +231,8 @@ fn start_server_on_with_roots(
         .local_addr()
         .context("Failed to resolve dev websocket address")?;
     let writer = Arc::new(SessionLogWriter::new(&session)?);
+    let companion =
+        super::companion::DevCompanion::start(session_root, stop_flag.clone(), writer.clone())?;
     let state = Arc::new(DevServerState::new(
         content_root.to_path_buf(),
         stop_flag.clone(),
@@ -242,6 +247,7 @@ fn start_server_on_with_roots(
         ws_addr,
         stop_flag,
         server_thread: Some(server_thread),
+        companion,
     })
 }
 
@@ -616,22 +622,22 @@ fn handle_devtool_connection(
 
         match websocket.read() {
             Ok(message) => match parse_text_message(message)? {
-                ParsedWireMessage::Wire(DevSessionMessage::EventBatch { events }) => {
-                    writer.append_events(&events)?;
-                }
-                ParsedWireMessage::Wire(DevSessionMessage::Response { id, result, error }) => {
-                    let payload = DevSessionMessage::Response {
-                        id: id.clone(),
-                        result,
-                        error,
-                    };
-                    if let Some(tx) = state.take_pending_result(&id) {
-                        let _ = tx.send(payload);
+                ParsedWireMessage::Wire(message) => match *message {
+                    DevSessionMessage::EventBatch { events } => {
+                        writer.append_events(&events)?;
                     }
-                }
-                ParsedWireMessage::Wire(
-                    DevSessionMessage::Hello { .. } | DevSessionMessage::Request { .. },
-                ) => {}
+                    DevSessionMessage::Response { id, result, error } => {
+                        let payload = DevSessionMessage::Response {
+                            id: id.clone(),
+                            result,
+                            error,
+                        };
+                        if let Some(tx) = state.take_pending_result(&id) {
+                            let _ = tx.send(payload);
+                        }
+                    }
+                    DevSessionMessage::Hello { .. } | DevSessionMessage::Request { .. } => {}
+                },
                 ParsedWireMessage::Ignored => {}
                 ParsedWireMessage::Closed => break Ok(()),
             },
@@ -867,7 +873,7 @@ fn read_wire_message(websocket: &mut WebSocket<TcpStream>) -> Result<DevSessionM
     loop {
         let message = websocket.read()?;
         match parse_text_message(message)? {
-            ParsedWireMessage::Wire(parsed) => return Ok(parsed),
+            ParsedWireMessage::Wire(parsed) => return Ok(*parsed),
             ParsedWireMessage::Ignored => {}
             ParsedWireMessage::Closed => {
                 return Err(anyhow!(
@@ -879,7 +885,7 @@ fn read_wire_message(websocket: &mut WebSocket<TcpStream>) -> Result<DevSessionM
 }
 
 enum ParsedWireMessage {
-    Wire(DevSessionMessage),
+    Wire(Box<DevSessionMessage>),
     Ignored,
     Closed,
 }
@@ -889,7 +895,7 @@ fn parse_text_message(message: Message) -> Result<ParsedWireMessage> {
         Message::Text(text) => {
             let parsed = serde_json::from_str::<DevSessionMessage>(&text)
                 .context("Failed to parse websocket JSON message")?;
-            Ok(ParsedWireMessage::Wire(parsed))
+            Ok(ParsedWireMessage::Wire(Box::new(parsed)))
         }
         Message::Binary(_) => Err(anyhow!("Binary websocket messages are not supported")),
         Message::Ping(_) | Message::Pong(_) | Message::Frame(_) => Ok(ParsedWireMessage::Ignored),
