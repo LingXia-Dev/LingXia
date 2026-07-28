@@ -3,6 +3,18 @@ pub mod broker;
 pub mod session_test;
 
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
+
+pub const DEV_SESSION_PROTOCOL_VERSION: u32 = 2;
+
+pub mod capabilities {
+    pub const REQUESTS: &str = "requests";
+    pub const LOG_EVENTS: &str = "events.log";
+}
+
+pub mod event_kinds {
+    pub const LOG: &str = "log";
+}
 
 /// Extract the session auth token from a dev websocket URL's `?token=` query
 /// parameter. The tokened URL is the single credential artifact: the server
@@ -162,14 +174,15 @@ pub mod handlers {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum DevtoolsPeerRole {
-    Devtool,
-    Client,
+pub enum DevSessionRole {
+    Runtime,
+    Controller,
+    Companion,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum DevtoolsLogLevel {
+pub enum DevSessionLogLevel {
     Verbose,
     Debug,
     Info,
@@ -177,57 +190,111 @@ pub enum DevtoolsLogLevel {
     Error,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum DevtoolsLogSource {
-    Native,
-    WebViewConsole,
-    LxAppServiceConsole,
-    BrowserConsole,
-    /// Isolated host automation output mirrored into the session log (`path`
-    /// carries the run id). `lxdev test` live output flows through poll.
-    Automation,
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DevSessionLog {
+    pub level: DevSessionLogLevel,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub appid: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target: Option<String>,
+    pub message: String,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub attributes: BTreeMap<String, serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DevtoolsLogMessage {
+pub struct DevSessionEvent {
     pub timestamp_ms: u64,
-    #[serde(alias = "tag")]
-    pub source: DevtoolsLogSource,
-    pub level: DevtoolsLogLevel,
-    pub appid: Option<String>,
-    pub path: Option<String>,
+    /// Open producer-defined namespace used for filtering and routing.
+    pub origin: String,
+    pub kind: String,
+    #[serde(default)]
+    pub data: serde_json::Value,
+}
+
+impl DevSessionEvent {
+    pub fn log(
+        timestamp_ms: u64,
+        origin: impl Into<String>,
+        log: DevSessionLog,
+    ) -> Result<Self, serde_json::Error> {
+        Ok(Self {
+            timestamp_ms,
+            origin: origin.into(),
+            kind: event_kinds::LOG.to_string(),
+            data: serde_json::to_value(log)?,
+        })
+    }
+
+    pub fn as_log(&self) -> Result<Option<DevSessionLog>, serde_json::Error> {
+        if self.kind != event_kinds::LOG {
+            return Ok(None);
+        }
+        serde_json::from_value(self.data.clone()).map(Some)
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DevSessionError {
+    pub code: String,
     pub message: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub data: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
-pub enum DevtoolsWireMessage {
+pub enum DevSessionMessage {
     Hello {
-        role: DevtoolsPeerRole,
-        /// Session auth token echoed from the `?token=` query of the websocket
-        /// URL. The server also authenticates that upgrade-query token directly
-        /// so cached peers from before this field remain compatible.
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        token: Option<String>,
+        version: u32,
+        role: DevSessionRole,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        capabilities: Vec<String>,
     },
-    LogBatch {
-        logs: Vec<DevtoolsLogMessage>,
+    EventBatch {
+        events: Vec<DevSessionEvent>,
     },
-    Command {
-        command_id: String,
-        handler: String,
+    Request {
+        id: String,
+        method: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        args: Option<serde_json::Value>,
+        params: Option<serde_json::Value>,
     },
-    Result {
-        command_id: String,
-        ok: bool,
+    Response {
+        id: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        data: Option<serde_json::Value>,
+        result: Option<serde_json::Value>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        error: Option<String>,
+        error: Option<DevSessionError>,
     },
+}
+
+impl DevSessionMessage {
+    pub fn success(id: impl Into<String>, result: Option<serde_json::Value>) -> Self {
+        Self::Response {
+            id: id.into(),
+            result,
+            error: None,
+        }
+    }
+
+    pub fn error(
+        id: impl Into<String>,
+        code: impl Into<String>,
+        message: impl Into<String>,
+    ) -> Self {
+        Self::Response {
+            id: id.into(),
+            result: None,
+            error: Some(DevSessionError {
+                code: code.into(),
+                message: message.into(),
+                data: None,
+            }),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -260,13 +327,56 @@ mod tests {
     }
 
     #[test]
-    fn hello_without_token_deserializes_as_none() {
-        let hello: DevtoolsWireMessage =
-            serde_json::from_str(r#"{"type":"hello","role":"client"}"#).unwrap();
-        let DevtoolsWireMessage::Hello { role, token } = hello else {
+    fn hello_declares_version_role_and_capabilities() {
+        let hello: DevSessionMessage = serde_json::from_str(
+            r#"{"type":"hello","version":2,"role":"controller","capabilities":["requests"]}"#,
+        )
+        .unwrap();
+        let DevSessionMessage::Hello {
+            version,
+            role,
+            capabilities,
+        } = hello
+        else {
             panic!("expected hello");
         };
-        assert_eq!(role, DevtoolsPeerRole::Client);
-        assert_eq!(token, None);
+        assert_eq!(version, DEV_SESSION_PROTOCOL_VERSION);
+        assert_eq!(role, DevSessionRole::Controller);
+        assert_eq!(capabilities, [capabilities::REQUESTS]);
+    }
+
+    #[test]
+    fn log_event_round_trips_open_origin_and_attributes() {
+        let mut attributes = BTreeMap::new();
+        attributes.insert("request.id".to_string(), serde_json::json!("req-1"));
+        let event = DevSessionEvent::log(
+            42,
+            "runtime.console",
+            DevSessionLog {
+                level: DevSessionLogLevel::Info,
+                appid: Some("com.example".to_string()),
+                path: Some("pages/home".to_string()),
+                target: Some("console".to_string()),
+                message: "ready".to_string(),
+                attributes,
+            },
+        )
+        .unwrap();
+        let encoded = serde_json::to_string(&event).unwrap();
+        let decoded: DevSessionEvent = serde_json::from_str(&encoded).unwrap();
+        assert_eq!(decoded.origin, "runtime.console");
+        let log = decoded.as_log().unwrap().unwrap();
+        assert_eq!(log.message, "ready");
+        assert_eq!(log.attributes["request.id"], "req-1");
+    }
+
+    #[test]
+    fn response_error_is_structured() {
+        let message = DevSessionMessage::error("7", "unknown_method", "not supported");
+        let encoded = serde_json::to_value(message).unwrap();
+        assert_eq!(encoded["type"], "response");
+        assert_eq!(encoded["id"], "7");
+        assert_eq!(encoded["error"]["code"], "unknown_method");
+        assert!(encoded.get("result").is_none());
     }
 }

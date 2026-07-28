@@ -1,5 +1,7 @@
 use anyhow::{Context, Result, anyhow};
-use lingxia_devtool_protocol::{DevtoolsPeerRole, DevtoolsWireMessage};
+use lingxia_devtool_protocol::{
+    DEV_SESSION_PROTOCOL_VERSION, DevSessionMessage, DevSessionRole, capabilities,
+};
 use serde_json::Value;
 use std::net::TcpStream;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -23,19 +25,20 @@ pub fn execute_command(
 
     send_wire_message(
         &mut websocket,
-        &DevtoolsWireMessage::Hello {
-            role: DevtoolsPeerRole::Client,
-            token: lingxia_devtool_protocol::token_from_ws_url(ws_url),
+        &DevSessionMessage::Hello {
+            version: DEV_SESSION_PROTOCOL_VERSION,
+            role: DevSessionRole::Controller,
+            capabilities: vec![capabilities::REQUESTS.to_string()],
         },
     )?;
 
     let command_id = command_id();
     send_wire_message(
         &mut websocket,
-        &DevtoolsWireMessage::Command {
-            command_id: command_id.clone(),
-            handler,
-            args,
+        &DevSessionMessage::Request {
+            id: command_id.clone(),
+            method: handler,
+            params: args,
         },
     )?;
 
@@ -46,12 +49,11 @@ pub fn execute_command(
         let Message::Text(text) = message else {
             continue;
         };
-        let wire: DevtoolsWireMessage =
+        let wire: DevSessionMessage =
             serde_json::from_str(&text).context("Failed to parse dev websocket response")?;
-        let DevtoolsWireMessage::Result {
-            command_id: result_id,
-            ok,
-            data,
+        let DevSessionMessage::Response {
+            id: result_id,
+            result,
             error,
         } = wire
         else {
@@ -60,19 +62,16 @@ pub fn execute_command(
         if result_id != command_id {
             continue;
         }
-        if ok {
-            return Ok(data);
+        if let Some(error) = error {
+            return Err(anyhow!("{}", error.message));
         }
-        return Err(anyhow!(
-            "{}",
-            error.unwrap_or_else(|| "devtool command failed".to_string())
-        ));
+        return Ok(result);
     }
 }
 
 fn send_wire_message(
     websocket: &mut WebSocket<MaybeTlsStream<TcpStream>>,
-    message: &DevtoolsWireMessage,
+    message: &DevSessionMessage,
 ) -> Result<()> {
     let text = serde_json::to_string(message).context("Failed to encode dev websocket message")?;
     websocket

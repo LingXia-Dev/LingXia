@@ -22,8 +22,8 @@ mod session_test;
 mod util;
 
 pub use lingxia_devtool_protocol::{
-    DevtoolsLogLevel, DevtoolsLogMessage, DevtoolsLogSource, DevtoolsPeerRole, DevtoolsWireMessage,
-    handlers,
+    DEV_SESSION_PROTOCOL_VERSION, DevSessionEvent, DevSessionLog, DevSessionLogLevel,
+    DevSessionMessage, DevSessionRole, capabilities, handlers,
 };
 
 const DEV_WS_URL_ENV: &str = "LINGXIA_DEV_WS_URL";
@@ -110,9 +110,13 @@ fn run_dev_bridge(ws_url: String) {
                 connect_failures = 0;
                 if let Err(err) = send_wire_message(
                     &mut websocket,
-                    &DevtoolsWireMessage::Hello {
-                        role: DevtoolsPeerRole::Devtool,
-                        token: lingxia_devtool_protocol::token_from_ws_url(&ws_url),
+                    &DevSessionMessage::Hello {
+                        version: DEV_SESSION_PROTOCOL_VERSION,
+                        role: DevSessionRole::Runtime,
+                        capabilities: vec![
+                            capabilities::REQUESTS.to_string(),
+                            capabilities::LOG_EVENTS.to_string(),
+                        ],
                     },
                 ) {
                     log::warn!("Failed to send devtool hello: {}", err);
@@ -225,48 +229,35 @@ fn bridge_loop(
 
 fn handle_incoming_message(
     websocket: &mut WebSocket<MaybeTlsStream<std::net::TcpStream>>,
-    message: DevtoolsWireMessage,
+    message: DevSessionMessage,
 ) -> Result<(), String> {
-    let DevtoolsWireMessage::Command {
-        command_id,
-        handler,
-        args,
-    } = message
-    else {
+    let DevSessionMessage::Request { id, method, params } = message else {
         return Ok(());
     };
 
     #[cfg(feature = "test-runtime")]
-    if let Some(result) = session_test::handle_session_test_command(&handler, args.clone()) {
-        return send_wire_message(websocket, &command_result(command_id, result));
+    if let Some(result) = session_test::handle_session_test_command(&method, params.clone()) {
+        return send_wire_message(websocket, &command_result(id, result));
     }
 
-    let result = if let Some(result) = app::handle_app_command(&handler, args.clone()) {
-        command_result(command_id, result)
-    } else if let Some(result) = browser::handle_browser_command(&handler, args.clone()) {
-        command_result(command_id, result)
-    } else if let Some(result) = lxapp_nav::handle_lxapp_nav_command(&handler, args.clone()) {
-        command_result(command_id, result)
-    } else if let Some(result) = lxapp_page::handle_lxapp_page_command(&handler, args.clone()) {
-        command_result(command_id, result)
-    } else if let Some(result) = runner::handle_runner_command(&handler, args.clone()) {
-        command_result(command_id, result)
-    } else if let Some(result) = lxapp::handle_lxapp_command(&handler, args.clone()) {
-        command_result(command_id, result)
+    let result = if let Some(result) = app::handle_app_command(&method, params.clone()) {
+        command_result(id, result)
+    } else if let Some(result) = browser::handle_browser_command(&method, params.clone()) {
+        command_result(id, result)
+    } else if let Some(result) = lxapp_nav::handle_lxapp_nav_command(&method, params.clone()) {
+        command_result(id, result)
+    } else if let Some(result) = lxapp_page::handle_lxapp_page_command(&method, params.clone()) {
+        command_result(id, result)
+    } else if let Some(result) = runner::handle_runner_command(&method, params.clone()) {
+        command_result(id, result)
+    } else if let Some(result) = lxapp::handle_lxapp_command(&method, params.clone()) {
+        command_result(id, result)
     } else {
-        match handler.as_str() {
-            handlers::ECHO => DevtoolsWireMessage::Result {
-                command_id,
-                ok: true,
-                data: args,
-                error: None,
-            },
-            other => DevtoolsWireMessage::Result {
-                command_id,
-                ok: false,
-                data: None,
-                error: Some(format!("unknown handler: {}", other)),
-            },
+        match method.as_str() {
+            handlers::ECHO => DevSessionMessage::success(id, params),
+            other => {
+                DevSessionMessage::error(id, "unknown_method", format!("unknown method: {other}"))
+            }
         }
     };
     send_wire_message(websocket, &result)
@@ -275,20 +266,10 @@ fn handle_incoming_message(
 fn command_result(
     command_id: String,
     result: Result<Option<serde_json::Value>, String>,
-) -> DevtoolsWireMessage {
+) -> DevSessionMessage {
     match result {
-        Ok(data) => DevtoolsWireMessage::Result {
-            command_id,
-            ok: true,
-            data,
-            error: None,
-        },
-        Err(error) => DevtoolsWireMessage::Result {
-            command_id,
-            ok: false,
-            data: None,
-            error: Some(error),
-        },
+        Ok(data) => DevSessionMessage::success(command_id, data),
+        Err(error) => DevSessionMessage::error(command_id, "request_failed", error),
     }
 }
 
@@ -298,46 +279,51 @@ fn send_log_batch(
 ) -> Result<(), String> {
     send_wire_message(
         websocket,
-        &DevtoolsWireMessage::LogBatch {
-            logs: logs.iter().map(devtools_log_message).collect(),
+        &DevSessionMessage::EventBatch {
+            events: logs.iter().map(dev_session_log_event).collect(),
         },
     )
 }
 
-fn devtools_log_message(value: &LogMessage) -> DevtoolsLogMessage {
-    DevtoolsLogMessage {
-        timestamp_ms: value.timestamp_ms,
-        source: devtools_log_source(value.tag),
-        level: devtools_log_level(value.level),
-        appid: value.appid.clone(),
-        path: value.path.clone(),
-        message: value.message.clone(),
+fn dev_session_log_event(value: &LogMessage) -> DevSessionEvent {
+    DevSessionEvent::log(
+        value.timestamp_ms,
+        dev_session_log_origin(value.tag),
+        DevSessionLog {
+            level: dev_session_log_level(value.level),
+            appid: value.appid.clone(),
+            path: value.path.clone(),
+            target: value.target.clone(),
+            message: value.message.clone(),
+            attributes: Default::default(),
+        },
+    )
+    .expect("DevSessionLog must serialize")
+}
+
+fn dev_session_log_level(value: LogLevel) -> DevSessionLogLevel {
+    match value {
+        LogLevel::Verbose => DevSessionLogLevel::Verbose,
+        LogLevel::Debug => DevSessionLogLevel::Debug,
+        LogLevel::Info => DevSessionLogLevel::Info,
+        LogLevel::Warn => DevSessionLogLevel::Warn,
+        LogLevel::Error => DevSessionLogLevel::Error,
     }
 }
 
-fn devtools_log_level(value: LogLevel) -> DevtoolsLogLevel {
+fn dev_session_log_origin(value: LogTag) -> &'static str {
     match value {
-        LogLevel::Verbose => DevtoolsLogLevel::Verbose,
-        LogLevel::Debug => DevtoolsLogLevel::Debug,
-        LogLevel::Info => DevtoolsLogLevel::Info,
-        LogLevel::Warn => DevtoolsLogLevel::Warn,
-        LogLevel::Error => DevtoolsLogLevel::Error,
-    }
-}
-
-fn devtools_log_source(value: LogTag) -> DevtoolsLogSource {
-    match value {
-        LogTag::Native => DevtoolsLogSource::Native,
-        LogTag::WebViewConsole => DevtoolsLogSource::WebViewConsole,
-        LogTag::LxAppServiceConsole => DevtoolsLogSource::LxAppServiceConsole,
-        LogTag::BrowserConsole => DevtoolsLogSource::BrowserConsole,
-        LogTag::Automation => DevtoolsLogSource::Automation,
+        LogTag::Native => "native",
+        LogTag::WebViewConsole => "lxview",
+        LogTag::LxAppServiceConsole => "lxlogic",
+        LogTag::BrowserConsole => "browser",
+        LogTag::Automation => "automation",
     }
 }
 
 fn send_wire_message(
     websocket: &mut WebSocket<MaybeTlsStream<std::net::TcpStream>>,
-    message: &DevtoolsWireMessage,
+    message: &DevSessionMessage,
 ) -> Result<(), String> {
     let text = serde_json::to_string(message).map_err(|err| err.to_string())?;
     websocket
@@ -345,7 +331,7 @@ fn send_wire_message(
         .map_err(|err| err.to_string())
 }
 
-fn parse_wire_message(message: Message) -> Result<Option<DevtoolsWireMessage>, String> {
+fn parse_wire_message(message: Message) -> Result<Option<DevSessionMessage>, String> {
     match message {
         Message::Text(text) => serde_json::from_str(&text)
             .map(Some)

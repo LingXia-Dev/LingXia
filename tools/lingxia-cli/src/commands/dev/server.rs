@@ -1,6 +1,8 @@
 use super::log_store::{DevLogSession, create_session};
 use anyhow::{Context, Result, anyhow};
-use lingxia_devtool_protocol::{DevtoolsLogMessage, DevtoolsPeerRole, DevtoolsWireMessage};
+use lingxia_devtool_protocol::{
+    DEV_SESSION_PROTOCOL_VERSION, DevSessionEvent, DevSessionMessage, DevSessionRole,
+};
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
@@ -73,13 +75,13 @@ impl SessionLogWriter {
         })
     }
 
-    fn append_logs(&self, logs: &[DevtoolsLogMessage]) -> Result<()> {
+    fn append_events(&self, events: &[DevSessionEvent]) -> Result<()> {
         let mut file = self
             .file
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
-        for log in logs {
-            serde_json::to_writer(&mut *file, log).context("Failed to encode log line")?;
+        for event in events {
+            serde_json::to_writer(&mut *file, event).context("Failed to encode event line")?;
             file.write_all(b"\n")
                 .context("Failed to write log newline")?;
         }
@@ -91,9 +93,9 @@ impl SessionLogWriter {
 struct DevServerState {
     project_root: PathBuf,
     stop_flag: Arc<AtomicBool>,
-    runtime_sender: Mutex<Option<(u64, Sender<DevtoolsWireMessage>)>>,
+    runtime_sender: Mutex<Option<(u64, Sender<DevSessionMessage>)>>,
     next_runtime_id: AtomicU64,
-    pending_results: Mutex<std::collections::HashMap<String, Sender<DevtoolsWireMessage>>>,
+    pending_results: Mutex<std::collections::HashMap<String, Sender<DevSessionMessage>>>,
     command_lock: Mutex<()>,
     /// When set (non-loopback bind), every peer must present this token in
     /// its `Hello` and HTTP requests must carry it as `?token=`.
@@ -126,15 +128,7 @@ impl DevServerState {
         }
     }
 
-    fn authorizes_websocket(
-        &self,
-        hello_token: Option<&str>,
-        handshake_token: Option<&str>,
-    ) -> bool {
-        self.authorizes(hello_token) || self.authorizes(handshake_token)
-    }
-
-    fn claim_runtime_sender(&self, sender: Sender<DevtoolsWireMessage>) -> (u64, bool) {
+    fn claim_runtime_sender(&self, sender: Sender<DevSessionMessage>) -> (u64, bool) {
         let runtime_id = self.next_runtime_id.fetch_add(1, Ordering::AcqRel);
         let mut guard = self
             .runtime_sender
@@ -160,7 +154,7 @@ impl DevServerState {
         false
     }
 
-    fn runtime_sender(&self) -> Option<Sender<DevtoolsWireMessage>> {
+    fn runtime_sender(&self) -> Option<Sender<DevSessionMessage>> {
         self.runtime_sender
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
@@ -168,14 +162,14 @@ impl DevServerState {
             .map(|(_, sender)| sender.clone())
     }
 
-    fn register_pending_result(&self, command_id: String, tx: Sender<DevtoolsWireMessage>) {
+    fn register_pending_result(&self, command_id: String, tx: Sender<DevSessionMessage>) {
         self.pending_results
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .insert(command_id, tx);
     }
 
-    fn take_pending_result(&self, command_id: &str) -> Option<Sender<DevtoolsWireMessage>> {
+    fn take_pending_result(&self, command_id: &str) -> Option<Sender<DevSessionMessage>> {
         self.pending_results
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
@@ -378,12 +372,23 @@ fn handle_connection(
     }
     let (mut websocket, handshake_token) = accept_websocket(stream)?;
     let hello = read_wire_message(&mut websocket)?;
-    let DevtoolsWireMessage::Hello { role, token } = hello else {
+    let DevSessionMessage::Hello {
+        version,
+        role,
+        capabilities: _,
+    } = hello
+    else {
         return Err(anyhow!("First websocket message must be hello"));
     };
-    if !state.authorizes_websocket(token.as_deref(), handshake_token.as_deref()) {
+    if version != DEV_SESSION_PROTOCOL_VERSION {
         let _ = websocket.close(None);
-        if role == DevtoolsPeerRole::Devtool {
+        return Err(anyhow!(
+            "Unsupported dev session protocol version {version}; expected {DEV_SESSION_PROTOCOL_VERSION}"
+        ));
+    }
+    if !state.authorizes(handshake_token.as_deref()) {
+        let _ = websocket.close(None);
+        if role == DevSessionRole::Runtime {
             state.runtime_rejected.store(true, Ordering::Release);
             return Err(anyhow!(
                 "Rejected a runtime peer with a missing or wrong session token — the running \
@@ -396,18 +401,19 @@ fn handle_connection(
         ));
     }
     match role {
-        DevtoolsPeerRole::Devtool => {
+        DevSessionRole::Runtime => {
             state.runtime_rejected.store(false, Ordering::Release);
             handle_devtool_connection(websocket, writer, state)
         }
-        DevtoolsPeerRole::Client => handle_client_connection(websocket, state),
+        DevSessionRole::Controller => handle_client_connection(websocket, state),
+        DevSessionRole::Companion => Err(anyhow!(
+            "Companion participants use the supervised session transport"
+        )),
     }
 }
 
-/// Capture the token from the HTTP upgrade target as well as accepting it in
-/// `Hello`. Device hosts built before the hello-token field still receive and
-/// dial the tokened URL, so authenticating the handshake keeps cached builds
-/// compatible without allowing tokenless device peers.
+/// Capture the session credential from the HTTP upgrade target. Protocol
+/// messages carry identity and capabilities, never transport credentials.
 #[allow(clippy::result_large_err)] // Tungstenite fixes this type in its callback contract.
 fn accept_websocket(stream: TcpStream) -> Result<(WebSocket<TcpStream>, Option<String>)> {
     let mut handshake_token = None;
@@ -594,7 +600,7 @@ fn handle_devtool_connection(
         .set_read_timeout(Some(Duration::from_millis(100)))
         .context("Failed to set devtool websocket read timeout")?;
 
-    let (outgoing_tx, outgoing_rx) = mpsc::channel::<DevtoolsWireMessage>();
+    let (outgoing_tx, outgoing_rx) = mpsc::channel::<DevSessionMessage>();
     let (runtime_id, replaced_runtime) = state.claim_runtime_sender(outgoing_tx);
     if replaced_runtime {
         eprintln!("[lingxia dev] devtool runtime reconnected; replacing stale runtime connection");
@@ -610,27 +616,21 @@ fn handle_devtool_connection(
 
         match websocket.read() {
             Ok(message) => match parse_text_message(message)? {
-                ParsedWireMessage::Wire(DevtoolsWireMessage::LogBatch { logs }) => {
-                    writer.append_logs(&logs)?;
+                ParsedWireMessage::Wire(DevSessionMessage::EventBatch { events }) => {
+                    writer.append_events(&events)?;
                 }
-                ParsedWireMessage::Wire(DevtoolsWireMessage::Result {
-                    command_id,
-                    ok,
-                    data,
-                    error,
-                }) => {
-                    let payload = DevtoolsWireMessage::Result {
-                        command_id: command_id.clone(),
-                        ok,
-                        data,
+                ParsedWireMessage::Wire(DevSessionMessage::Response { id, result, error }) => {
+                    let payload = DevSessionMessage::Response {
+                        id: id.clone(),
+                        result,
                         error,
                     };
-                    if let Some(tx) = state.take_pending_result(&command_id) {
+                    if let Some(tx) = state.take_pending_result(&id) {
                         let _ = tx.send(payload);
                     }
                 }
                 ParsedWireMessage::Wire(
-                    DevtoolsWireMessage::Hello { .. } | DevtoolsWireMessage::Command { .. },
+                    DevSessionMessage::Hello { .. } | DevSessionMessage::Request { .. },
                 ) => {}
                 ParsedWireMessage::Ignored => {}
                 ParsedWireMessage::Closed => break Ok(()),
@@ -677,12 +677,7 @@ fn handle_client_connection(
     state: &DevServerState,
 ) -> Result<()> {
     let message = read_wire_message(&mut websocket)?;
-    let DevtoolsWireMessage::Command {
-        command_id,
-        handler,
-        args,
-    } = message
-    else {
+    let DevSessionMessage::Request { id, method, params } = message else {
         return Err(anyhow!("Client websocket must send exactly one command"));
     };
 
@@ -690,53 +685,33 @@ fn handle_client_connection(
     // owns the project + build pipeline, so it builds in-process rather than
     // forwarding to the runtime (which has no build toolchain). Works even with
     // no app attached.
-    if handler.as_str() == lingxia_devtool_protocol::handlers::lxapp::BUILD {
-        let payload = match run_lxapp_build(&state.project_root, args.as_ref()) {
-            Ok(()) => DevtoolsWireMessage::Result {
-                command_id,
-                ok: true,
-                data: None,
-                error: None,
-            },
-            Err(err) => DevtoolsWireMessage::Result {
-                command_id,
-                ok: false,
-                data: None,
-                error: Some(format!("{err:#}")),
-            },
+    if method.as_str() == lingxia_devtool_protocol::handlers::lxapp::BUILD {
+        let payload = match run_lxapp_build(&state.project_root, params.as_ref()) {
+            Ok(()) => DevSessionMessage::success(id, None),
+            Err(err) => DevSessionMessage::error(id, "build_failed", format!("{err:#}")),
         };
         send_wire_message(&mut websocket, &payload)?;
         let _ = websocket.close(None);
         return Ok(());
     }
 
-    if handler.as_str() == lingxia_devtool_protocol::handlers::ECHO {
+    if method.as_str() == lingxia_devtool_protocol::handlers::ECHO {
         let runtime_connected = state.runtime_sender().is_some();
         send_wire_message(
             &mut websocket,
-            &DevtoolsWireMessage::Result {
-                command_id,
-                ok: true,
-                data: Some(serde_json::json!({
+            &DevSessionMessage::success(
+                id,
+                Some(serde_json::json!({
                     "runtimeConnected": runtime_connected,
                 })),
-                error: None,
-            },
+            ),
         )?;
         let _ = websocket.close(None);
         return Ok(());
     }
 
-    if handler.as_str() == lingxia_devtool_protocol::handlers::session::SHUTDOWN {
-        send_wire_message(
-            &mut websocket,
-            &DevtoolsWireMessage::Result {
-                command_id,
-                ok: true,
-                data: None,
-                error: None,
-            },
-        )?;
+    if method.as_str() == lingxia_devtool_protocol::handlers::session::SHUTDOWN {
+        send_wire_message(&mut websocket, &DevSessionMessage::success(id, None))?;
         state.request_shutdown();
         let _ = websocket.close(None);
         return Ok(());
@@ -753,29 +728,24 @@ fn handle_client_connection(
         };
         send_wire_message(
             &mut websocket,
-            &DevtoolsWireMessage::Result {
-                command_id,
-                ok: false,
-                data: None,
-                error: Some(error),
-            },
+            &DevSessionMessage::error(id, "runtime_unavailable", error),
         )?;
         let _ = websocket.close(None);
         return Ok(());
     };
 
     let _command_guard = state.lock_command_forwarding();
-    let command_timeout = command_timeout(args.as_ref());
-    let (result_tx, result_rx) = mpsc::channel::<DevtoolsWireMessage>();
-    state.register_pending_result(command_id.clone(), result_tx);
-    let bridged_command = DevtoolsWireMessage::Command {
-        command_id: command_id.clone(),
-        handler,
-        args,
+    let command_timeout = command_timeout(params.as_ref());
+    let (result_tx, result_rx) = mpsc::channel::<DevSessionMessage>();
+    state.register_pending_result(id.clone(), result_tx);
+    let bridged_command = DevSessionMessage::Request {
+        id: id.clone(),
+        method,
+        params,
     };
 
     runtime_sender.send(bridged_command).map_err(|_| {
-        let _ = state.take_pending_result(&command_id);
+        let _ = state.take_pending_result(&id);
         anyhow!("Failed to forward command to devtool")
     })?;
 
@@ -784,27 +754,21 @@ fn handle_client_connection(
             send_wire_message(&mut websocket, &result)?;
         }
         Err(mpsc::RecvTimeoutError::Timeout) => {
-            let _ = state.take_pending_result(&command_id);
+            let _ = state.take_pending_result(&id);
             send_wire_message(
                 &mut websocket,
-                &DevtoolsWireMessage::Result {
-                    command_id,
-                    ok: false,
-                    data: None,
-                    error: Some("command timed out".to_string()),
-                },
+                &DevSessionMessage::error(id, "request_timeout", "request timed out"),
             )?;
         }
         Err(mpsc::RecvTimeoutError::Disconnected) => {
-            let _ = state.take_pending_result(&command_id);
+            let _ = state.take_pending_result(&id);
             send_wire_message(
                 &mut websocket,
-                &DevtoolsWireMessage::Result {
-                    command_id,
-                    ok: false,
-                    data: None,
-                    error: Some("command channel disconnected".to_string()),
-                },
+                &DevSessionMessage::error(
+                    id,
+                    "runtime_disconnected",
+                    "request channel disconnected",
+                ),
             )?;
         }
     }
@@ -891,7 +855,7 @@ fn resolve_lxapp_dir(project_root: &Path) -> Result<PathBuf> {
 
 fn drain_outgoing_messages(
     websocket: &mut WebSocket<TcpStream>,
-    rx: &Receiver<DevtoolsWireMessage>,
+    rx: &Receiver<DevSessionMessage>,
 ) -> Result<()> {
     while let Ok(message) = rx.try_recv() {
         send_wire_message(websocket, &message)?;
@@ -899,7 +863,7 @@ fn drain_outgoing_messages(
     Ok(())
 }
 
-fn read_wire_message(websocket: &mut WebSocket<TcpStream>) -> Result<DevtoolsWireMessage> {
+fn read_wire_message(websocket: &mut WebSocket<TcpStream>) -> Result<DevSessionMessage> {
     loop {
         let message = websocket.read()?;
         match parse_text_message(message)? {
@@ -915,7 +879,7 @@ fn read_wire_message(websocket: &mut WebSocket<TcpStream>) -> Result<DevtoolsWir
 }
 
 enum ParsedWireMessage {
-    Wire(DevtoolsWireMessage),
+    Wire(DevSessionMessage),
     Ignored,
     Closed,
 }
@@ -923,7 +887,7 @@ enum ParsedWireMessage {
 fn parse_text_message(message: Message) -> Result<ParsedWireMessage> {
     match message {
         Message::Text(text) => {
-            let parsed = serde_json::from_str::<DevtoolsWireMessage>(&text)
+            let parsed = serde_json::from_str::<DevSessionMessage>(&text)
                 .context("Failed to parse websocket JSON message")?;
             Ok(ParsedWireMessage::Wire(parsed))
         }
@@ -933,10 +897,7 @@ fn parse_text_message(message: Message) -> Result<ParsedWireMessage> {
     }
 }
 
-pub fn send_wire_message<S>(
-    websocket: &mut WebSocket<S>,
-    message: &DevtoolsWireMessage,
-) -> Result<()>
+pub fn send_wire_message<S>(websocket: &mut WebSocket<S>, message: &DevSessionMessage) -> Result<()>
 where
     S: std::io::Read + std::io::Write,
 {
@@ -953,7 +914,9 @@ mod tests {
         DevServerState, accept_websocket, dev_port, read_wire_message, refresh_lxapp_manifests,
         send_wire_message,
     };
-    use lingxia_devtool_protocol::{DevtoolsPeerRole, DevtoolsWireMessage};
+    use lingxia_devtool_protocol::{
+        DEV_SESSION_PROTOCOL_VERSION, DevSessionMessage, DevSessionRole, capabilities,
+    };
     use std::net::TcpListener;
     use std::path::PathBuf;
     use std::sync::Arc;
@@ -1000,38 +963,44 @@ mod tests {
     }
 
     #[test]
-    fn websocket_auth_accepts_handshake_token_for_legacy_runner() {
+    fn websocket_auth_uses_handshake_token() {
         let state = authenticated_state();
 
-        assert!(state.authorizes_websocket(None, Some("secret")));
-        assert!(state.authorizes_websocket(Some("secret"), None));
-        assert!(!state.authorizes_websocket(None, None));
-        assert!(!state.authorizes_websocket(Some("wrong"), Some("wrong")));
+        assert!(state.authorizes(Some("secret")));
+        assert!(!state.authorizes(None));
+        assert!(!state.authorizes(Some("wrong")));
     }
 
     #[test]
-    fn websocket_upgrade_captures_token_for_legacy_runner_hello() {
+    fn websocket_upgrade_captures_token_independently_of_hello() {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let addr = listener.local_addr().unwrap();
         let server = thread::spawn(move || {
             let (stream, _) = listener.accept().unwrap();
             let (mut websocket, handshake_token) = accept_websocket(stream).unwrap();
             let hello = read_wire_message(&mut websocket).unwrap();
-            let DevtoolsWireMessage::Hello { role, token } = hello else {
+            let DevSessionMessage::Hello {
+                version,
+                role,
+                capabilities: peer_capabilities,
+            } = hello
+            else {
                 panic!("expected hello");
             };
-            assert_eq!(role, DevtoolsPeerRole::Devtool);
-            assert_eq!(token, None);
-            authenticated_state().authorizes_websocket(token.as_deref(), handshake_token.as_deref())
+            assert_eq!(version, DEV_SESSION_PROTOCOL_VERSION);
+            assert_eq!(role, DevSessionRole::Runtime);
+            assert_eq!(peer_capabilities, [capabilities::REQUESTS]);
+            authenticated_state().authorizes(handshake_token.as_deref())
         });
 
         let url = format!("ws://{addr}/?token=secret");
         let (mut websocket, _) = tungstenite::connect(&url).unwrap();
         send_wire_message(
             &mut websocket,
-            &DevtoolsWireMessage::Hello {
-                role: DevtoolsPeerRole::Devtool,
-                token: None,
+            &DevSessionMessage::Hello {
+                version: DEV_SESSION_PROTOCOL_VERSION,
+                role: DevSessionRole::Runtime,
+                capabilities: vec![capabilities::REQUESTS.to_string()],
             },
         )
         .unwrap();
