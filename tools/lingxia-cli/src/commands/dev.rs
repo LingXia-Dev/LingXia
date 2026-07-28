@@ -8,6 +8,7 @@ use anyhow::{Context, Result, anyhow};
 use chrono::{DateTime, Local, TimeZone};
 use colored::Colorize;
 use lingxia_log::now_timestamp_ms;
+use std::collections::HashSet;
 use std::env;
 use std::ffi::OsString;
 use std::fs::{self, OpenOptions};
@@ -276,11 +277,9 @@ pub fn execute(options: DevExecuteOptions) -> Result<()> {
 
     let stop_requested = Arc::new(AtomicBool::new(false));
     install_ctrlc_handler(stop_requested.clone())?;
-    let companion = companion::DevCompanion::start(&project_root, stop_requested.clone())?;
 
     if let Some(target) = runner::resolve_dev_target(&project_root, options.target.as_deref())? {
-        let result = runner::execute_runner_dev(project_root, target, options, stop_requested);
-        return companion::finish(result, companion.as_ref());
+        return runner::execute_runner_dev(project_root, target, options, stop_requested);
     }
 
     if options.headless {
@@ -424,7 +423,7 @@ pub fn execute(options: DevExecuteOptions) -> Result<()> {
         PlatformType::Windows => windows::execute_windows(ctx),
     };
     drop(provider_guard);
-    companion::finish(result, companion.as_ref())
+    result
 }
 
 #[cfg(target_os = "windows")]
@@ -670,10 +669,7 @@ fn terminate_session_owner(session: &log_store::SessionInfo) -> Result<()> {
     let interrupted = process.kill_with(Signal::Interrupt).unwrap_or(false);
     if !(interrupted && wait_for_pid_exit(pid, Duration::from_secs(3))) {
         let mut system = System::new();
-        system.refresh_processes(ProcessesToUpdate::Some(&[pid]), true);
-        if let Some(process) = system.process(pid) {
-            process.kill();
-        }
+        terminate_process_tree(&mut system, pid);
         if !wait_for_pid_exit(pid, Duration::from_secs(2)) {
             return Err(anyhow!("Failed to kill session pid {}", session.pid));
         }
@@ -684,6 +680,37 @@ fn terminate_session_owner(session: &log_store::SessionInfo) -> Result<()> {
         session.target, session.session_id, session.pid
     );
     Ok(())
+}
+
+/// Force-terminate the session owner and every process it still owns. This is
+/// used only after graceful shutdown fails so supervised processes are not
+/// orphaned.
+fn terminate_process_tree(system: &mut System, root_pid: sysinfo::Pid) {
+    system.refresh_processes(ProcessesToUpdate::All, true);
+    let mut tree = HashSet::from([root_pid]);
+    loop {
+        let before = tree.len();
+        for (pid, process) in system.processes() {
+            if process
+                .parent()
+                .is_some_and(|parent| tree.contains(&parent))
+            {
+                tree.insert(*pid);
+            }
+        }
+        if tree.len() == before {
+            break;
+        }
+    }
+
+    for pid in tree.iter().copied().filter(|pid| *pid != root_pid) {
+        if let Some(process) = system.process(pid) {
+            process.kill();
+        }
+    }
+    if let Some(process) = system.process(root_pid) {
+        process.kill();
+    }
 }
 
 /// Whether `process` is still the `lingxia dev` process that wrote `session`.

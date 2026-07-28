@@ -45,6 +45,10 @@ pub mod handlers {
     pub const ECHO: &str = "echo";
 
     pub mod session {
+        /// Prepare an optional supervised session participant. The response is
+        /// [`DevSessionPrepareResult`].
+        pub const PREPARE: &str = "session.prepare";
+
         /// Request the owning `lingxia dev` process to stop this session.
         /// Handled by the dev server, not forwarded to the runtime.
         pub const SHUTDOWN: &str = "session.shutdown";
@@ -207,7 +211,7 @@ pub struct DevSessionLog {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DevSessionEvent {
     pub timestamp_ms: u64,
-    /// Open producer-defined namespace used for filtering and routing.
+    /// Open producer-defined identifier used for filtering and routing.
     pub origin: String,
     pub kind: String,
     #[serde(default)]
@@ -242,6 +246,13 @@ pub struct DevSessionError {
     pub message: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub data: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DevSessionPrepareResult {
+    pub active: bool,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub runtime_env: BTreeMap<String, String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
