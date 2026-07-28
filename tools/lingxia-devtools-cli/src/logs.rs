@@ -1,6 +1,7 @@
 use anyhow::{Context, Result, anyhow};
 use chrono::{DateTime, Local};
 use clap::Args;
+use lingxia_devtool_protocol::broker::{SessionContent, SessionInfo};
 use lingxia_devtool_protocol::{DevSessionEvent, DevSessionLog, DevSessionLogLevel};
 use owo_colors::OwoColorize;
 use std::fs::File;
@@ -14,6 +15,10 @@ const MISSING_FILE_BACKOFF: Duration = Duration::from_millis(500);
 
 #[derive(Args, Clone)]
 pub struct LogsOptions {
+    /// Only include entries from this origin (prefix match)
+    #[arg(value_name = "ORIGIN")]
+    pub origin: Option<String>,
+
     /// Only include entries whose message/path/appid contains this text
     #[arg(long)]
     pub grep: Option<String>,
@@ -21,10 +26,6 @@ pub struct LogsOptions {
     /// Only include entries at this level
     #[arg(long, value_parser = ["verbose", "debug", "info", "warn", "error"])]
     pub level: Option<String>,
-
-    /// Only include entries for this source
-    #[arg(long, alias = "tag")]
-    pub source: Option<String>,
 
     /// Only include entries for this app id (exact match)
     #[arg(long)]
@@ -34,10 +35,12 @@ pub struct LogsOptions {
     #[arg(long)]
     pub path: Option<String>,
 
-    /// Prefix the origin column with the app id (useful when several lxapps
-    /// or the built-in browser share one session)
-    #[arg(long)]
-    pub wide: bool,
+    /// List origins currently present in the session, then exit
+    #[arg(
+        long,
+        conflicts_with_all = ["origin", "follow", "level", "app", "path", "grep"]
+    )]
+    pub origins: bool,
 
     /// Show only the most recent N matching backlog entries (0 to skip backlog when --follow)
     #[arg(long, default_value_t = 200)]
@@ -58,7 +61,7 @@ pub struct LogsOptions {
 
 struct Filters {
     level: Option<DevSessionLogLevel>,
-    source: Option<String>,
+    origin: Option<String>,
     app: Option<String>,
     grep: Option<String>,
     path: Option<String>,
@@ -73,13 +76,19 @@ struct LogEntry {
 struct RenderOpts {
     json: bool,
     pretty: bool,
-    wide: bool,
+    show_origin: bool,
+    show_appid: bool,
 }
 
-pub fn execute(log_file: &Path, options: LogsOptions) -> Result<()> {
+pub fn execute(session: &SessionInfo, options: LogsOptions) -> Result<()> {
+    let log_file = Path::new(&session.log_file);
+    if options.origins {
+        return list_origins(log_file, options.json || options.pretty, options.pretty);
+    }
+
     let filters = Filters {
         level: options.level.as_deref().map(parse_level).transpose()?,
-        source: options.source.as_deref().map(str::to_lowercase),
+        origin: options.origin.as_deref().map(str::to_lowercase),
         app: options.app.as_deref().map(str::to_lowercase),
         grep: options.grep.as_deref().map(str::to_lowercase),
         path: options.path.as_deref().map(str::to_lowercase),
@@ -87,7 +96,8 @@ pub fn execute(log_file: &Path, options: LogsOptions) -> Result<()> {
     let render = RenderOpts {
         json: options.json,
         pretty: options.pretty,
-        wide: options.wide,
+        show_origin: options.origin.is_none(),
+        show_appid: matches!(session.content, Some(SessionContent::Host { .. })),
     };
 
     let end_offset = drain_backlog(log_file, &filters, options.limit, render, options.follow)?;
@@ -97,6 +107,38 @@ pub fn execute(log_file: &Path, options: LogsOptions) -> Result<()> {
             println!("{}", "── live (Ctrl+C to exit) ──".dimmed());
         }
         tail_loop(log_file, end_offset, &filters, render)?;
+    }
+    Ok(())
+}
+
+fn list_origins(log_file: &Path, json: bool, pretty: bool) -> Result<()> {
+    let file =
+        File::open(log_file).with_context(|| format!("Failed to open {}", log_file.display()))?;
+    let mut origins = std::collections::BTreeSet::new();
+    for line in BufReader::new(file).lines() {
+        let line = line.context("Failed to read session event line")?;
+        if line.trim().is_empty() {
+            continue;
+        }
+        let event: DevSessionEvent =
+            serde_json::from_str(&line).context("Failed to parse session event JSON line")?;
+        if event.kind == lingxia_devtool_protocol::event_kinds::LOG {
+            origins.insert(event.origin);
+        }
+    }
+
+    if json {
+        let encoded = if pretty {
+            serde_json::to_string_pretty(&origins)
+        } else {
+            serde_json::to_string(&origins)
+        }
+        .context("Failed to encode session origins")?;
+        println!("{encoded}");
+    } else {
+        for origin in origins {
+            println!("{origin}");
+        }
     }
     Ok(())
 }
@@ -205,8 +247,8 @@ fn matches_filters(entry: &LogEntry, filters: &Filters) -> bool {
     {
         return false;
     }
-    if let Some(source) = filters.source.as_deref()
-        && !entry.event.origin.to_lowercase().starts_with(source)
+    if let Some(origin) = filters.origin.as_deref()
+        && !entry.event.origin.to_lowercase().starts_with(origin)
     {
         return false;
     }
@@ -252,12 +294,11 @@ fn render_entry(entry: &LogEntry, render: RenderOpts) -> Result<String> {
         .with_timezone(&Local);
     let timestamp = dt.format("%H:%M:%S%.3f").to_string();
     let level = format_level(entry.log.level);
-    let source = entry.event.origin.as_str();
-    let context = context_column(&entry.log, render.wide);
+    let origin = entry.event.origin.as_str();
+    let context = context_column(&entry.log, render.show_appid);
 
     if render.pretty {
         let level_field = format!("{level:<7}");
-        let source_field = format!("{source:<7}");
         let level_colored = match entry.log.level {
             DevSessionLogLevel::Error => level_field.red().bold().to_string(),
             DevSessionLogLevel::Warn => level_field.yellow().bold().to_string(),
@@ -266,12 +307,11 @@ fn render_entry(entry: &LogEntry, render: RenderOpts) -> Result<String> {
                 level_field.dimmed().to_string()
             }
         };
-        let mut line = format!(
-            "{} {} {}",
-            timestamp.dimmed(),
-            level_colored,
-            source_field.dimmed()
-        );
+        let mut line = format!("{} {}", timestamp.dimmed(), level_colored);
+        if render.show_origin {
+            line.push(' ');
+            line.push_str(&origin.dimmed().to_string());
+        }
         if !context.is_empty() {
             line.push(' ');
             line.push_str(&context.dimmed().to_string());
@@ -280,7 +320,11 @@ fn render_entry(entry: &LogEntry, render: RenderOpts) -> Result<String> {
         line.push_str(&entry.log.message);
         Ok(line)
     } else {
-        let mut prefix = format!("{timestamp} {level:<7} {source:<7}");
+        let mut prefix = format!("{timestamp} {level:<7}");
+        if render.show_origin {
+            prefix.push(' ');
+            prefix.push_str(origin);
+        }
         if !context.is_empty() {
             prefix.push(' ');
             prefix.push_str(&context);
@@ -289,14 +333,13 @@ fn render_entry(entry: &LogEntry, render: RenderOpts) -> Result<String> {
     }
 }
 
-/// The origin column: the page path, optionally prefixed with the app id when
-/// `--wide` is set so entries from different lxapps (or the built-in browser)
-/// are distinguishable on the line.
-fn context_column(log: &DevSessionLog, wide: bool) -> String {
+/// Render only context that can vary inside the selected session. Host
+/// sessions may contain several apps; Runner-style sessions bind one app.
+fn context_column(log: &DevSessionLog, show_appid: bool) -> String {
     let path = log.path.as_deref().unwrap_or("").trim();
     let appid = log.appid.as_deref().unwrap_or("").trim();
-    match (wide, appid.is_empty(), path.is_empty()) {
-        (true, false, false) => format!("{appid}:{path}"),
+    match (show_appid, appid.is_empty(), path.is_empty()) {
+        (true, false, false) => format!("{appid}/{path}"),
         (true, false, true) => appid.to_string(),
         _ => path.to_string(),
     }
@@ -343,7 +386,7 @@ mod tests {
     fn no_filters() -> Filters {
         Filters {
             level: None,
-            source: None,
+            origin: None,
             app: None,
             grep: None,
             path: None,
@@ -353,7 +396,7 @@ mod tests {
     #[test]
     fn origin_filter_accepts_dynamic_prefixes() {
         let mut filters = no_filters();
-        filters.source = Some("service".to_string());
+        filters.origin = Some("service".to_string());
         assert!(matches_filters(
             &entry("service.api", "com.demo.app", "x"),
             &filters
@@ -365,11 +408,12 @@ mod tests {
     }
 
     #[test]
-    fn source_column_separates_browser_from_page() {
+    fn origin_column_separates_browser_from_page() {
         let render = RenderOpts {
             json: false,
             pretty: false,
-            wide: false,
+            show_origin: true,
+            show_appid: false,
         };
         let page = render_entry(&entry("lxview", "com.demo.app", "pages/home"), render).unwrap();
         let tab = render_entry(
@@ -382,14 +426,27 @@ mod tests {
     }
 
     #[test]
-    fn wide_prefixes_appid_onto_origin() {
+    fn host_session_context_includes_appid() {
         let render = RenderOpts {
             json: false,
             pretty: false,
-            wide: true,
+            show_origin: true,
+            show_appid: true,
         };
         let line = render_entry(&entry("lxview", "com.demo.app", "pages/home"), render).unwrap();
-        assert!(line.contains("com.demo.app:pages/home"), "{line}");
+        assert!(line.contains("com.demo.app/pages/home"), "{line}");
+    }
+
+    #[test]
+    fn selected_origin_is_not_repeated() {
+        let render = RenderOpts {
+            json: false,
+            pretty: false,
+            show_origin: false,
+            show_appid: false,
+        };
+        let line = render_entry(&entry("service.api", "com.demo.app", ""), render).unwrap();
+        assert!(!line.contains("service.api"), "{line}");
     }
 
     #[test]
@@ -409,7 +466,7 @@ mod tests {
     #[test]
     fn origin_filter_selects_browser_only() {
         let mut filters = no_filters();
-        filters.source = Some("browser".to_string());
+        filters.origin = Some("browser".to_string());
         assert!(matches_filters(
             &entry("browser", "app.lingxia.browser", "x"),
             &filters

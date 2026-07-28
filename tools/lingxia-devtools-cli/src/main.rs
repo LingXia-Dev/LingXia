@@ -1,6 +1,5 @@
 use anyhow::Result;
 use clap::{Args, Parser, Subcommand};
-use std::path::Path;
 
 mod app;
 mod browser;
@@ -158,7 +157,7 @@ fn run() -> Result<()> {
         }
         Commands::Logs(options) => {
             let info = resolve(&selector)?;
-            logs::execute(Path::new(&info.log_file), options)
+            logs::execute(&info, options)
         }
         Commands::Session(cmd) => match cmd.command {
             Some(SessionAction::List { json }) => sessions::execute_list(json),
@@ -193,5 +192,17 @@ mod tests {
     fn session_lifecycle_commands_belong_to_lingxia() {
         assert!(Cli::try_parse_from(["lxdev", "stop", "windows"]).is_err());
         assert!(Cli::try_parse_from(["lxdev", "session", "stop", "windows"]).is_err());
+    }
+
+    #[test]
+    fn logs_accepts_dynamic_origin_and_rejects_removed_source_flags() {
+        let cli = Cli::try_parse_from(["lxdev", "logs", "service.api", "--follow"]).unwrap();
+        let Commands::Logs(options) = cli.command else {
+            panic!("expected logs command");
+        };
+        assert_eq!(options.origin.as_deref(), Some("service.api"));
+        assert!(options.follow);
+        assert!(Cli::try_parse_from(["lxdev", "logs", "--source", "native"]).is_err());
+        assert!(Cli::try_parse_from(["lxdev", "logs", "--wide"]).is_err());
     }
 }
