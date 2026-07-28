@@ -90,7 +90,7 @@ fn set_appearance(
     let preference = options
         .preference
         .parse::<AppearancePreference>()
-        .map_err(|error| crate::i18n::js_invalid_parameter_error(error))?;
+        .map_err(crate::i18n::js_invalid_parameter_error)?;
 
     let previous = lxapp
         .runtime
