@@ -40,6 +40,32 @@ windows:
   appId: app.lingxia.example.lxapp
   executableName: LingXiaDemo
 
+shellTheme:
+  light:
+    windowBackgroundColor: "#F2F2F7"
+    surfaceBackgroundColor: "#FFFFFF"
+    foregroundColor: "#1D1D1F"
+    mutedForegroundColor: "#6E6E73"
+    accentColor: "#007AFF"
+    separatorColor: "#D1D1D6"
+    selectionBackgroundColor: "#E5F1FF"
+    sidebarBackgroundColor: "#F2F2F7"
+    sidebarForegroundColor: "#3A3A3C"
+    sidebarSelectedBackgroundColor: "#FFFFFF"
+    sidebarSelectedForegroundColor: "#1D1D1F"
+  dark:
+    windowBackgroundColor: "#1C1C1E"
+    surfaceBackgroundColor: "#2C2C2E"
+    foregroundColor: "#F5F5F7"
+    mutedForegroundColor: "#98989D"
+    accentColor: "#0A84FF"
+    separatorColor: "#3A3A3C"
+    selectionBackgroundColor: "#1B3A57"
+    sidebarBackgroundColor: "#1C1C1E"
+    sidebarForegroundColor: "#E5E5EA"
+    sidebarSelectedBackgroundColor: "#2C2C2E"
+    sidebarSelectedForegroundColor: "#FFFFFF"
+
 features:
   appService: true
   devtools: false
