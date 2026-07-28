@@ -1,7 +1,7 @@
 use anyhow::{Context, Result, anyhow};
 use chrono::{DateTime, Local};
 use clap::Args;
-use lingxia_devtool_protocol::{DevtoolsLogLevel, DevtoolsLogMessage, DevtoolsLogSource};
+use lingxia_devtool_protocol::{DevSessionEvent, DevSessionLog, DevSessionLogLevel};
 use owo_colors::OwoColorize;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Seek, SeekFrom};
@@ -23,7 +23,7 @@ pub struct LogsOptions {
     pub level: Option<String>,
 
     /// Only include entries for this source
-    #[arg(long, alias = "tag", value_parser = ["native", "lxview", "lxlogic", "browser", "automation"])]
+    #[arg(long, alias = "tag")]
     pub source: Option<String>,
 
     /// Only include entries for this app id (exact match)
@@ -57,11 +57,16 @@ pub struct LogsOptions {
 }
 
 struct Filters {
-    level: Option<DevtoolsLogLevel>,
-    source: Option<DevtoolsLogSource>,
+    level: Option<DevSessionLogLevel>,
+    source: Option<String>,
     app: Option<String>,
     grep: Option<String>,
     path: Option<String>,
+}
+
+struct LogEntry {
+    event: DevSessionEvent,
+    log: DevSessionLog,
 }
 
 #[derive(Clone, Copy)]
@@ -74,7 +79,7 @@ struct RenderOpts {
 pub fn execute(log_file: &Path, options: LogsOptions) -> Result<()> {
     let filters = Filters {
         level: options.level.as_deref().map(parse_level).transpose()?,
-        source: options.source.as_deref().map(parse_source).transpose()?,
+        source: options.source.as_deref().map(str::to_lowercase),
         app: options.app.as_deref().map(str::to_lowercase),
         grep: options.grep.as_deref().map(str::to_lowercase),
         path: options.path.as_deref().map(str::to_lowercase),
@@ -178,45 +183,58 @@ fn tail_loop(
     }
 }
 
-fn parse_and_filter(line: &str, filters: &Filters) -> Result<Option<DevtoolsLogMessage>> {
+fn parse_and_filter(line: &str, filters: &Filters) -> Result<Option<LogEntry>> {
     if line.trim().is_empty() {
         return Ok(None);
     }
-    let entry: DevtoolsLogMessage =
-        serde_json::from_str(line).context("Failed to parse log JSON line")?;
+    let event: DevSessionEvent =
+        serde_json::from_str(line).context("Failed to parse session event JSON line")?;
+    let Some(log) = event
+        .as_log()
+        .context("Failed to parse session log event")?
+    else {
+        return Ok(None);
+    };
+    let entry = LogEntry { event, log };
     Ok(matches_filters(&entry, filters).then_some(entry))
 }
 
-fn matches_filters(entry: &DevtoolsLogMessage, filters: &Filters) -> bool {
+fn matches_filters(entry: &LogEntry, filters: &Filters) -> bool {
     if let Some(level) = filters.level
-        && entry.level != level
+        && entry.log.level != level
     {
         return false;
     }
-    if let Some(source) = filters.source
-        && entry.source != source
+    if let Some(source) = filters.source.as_deref()
+        && !entry.event.origin.to_lowercase().starts_with(source)
     {
         return false;
     }
     if let Some(app_filter) = filters.app.as_deref() {
-        let hay = entry.appid.as_deref().unwrap_or("").to_lowercase();
+        let hay = entry.log.appid.as_deref().unwrap_or("").to_lowercase();
         if hay != app_filter {
             return false;
         }
     }
     if let Some(path_filter) = filters.path.as_deref() {
-        let hay = entry.path.as_deref().unwrap_or("").to_lowercase();
+        let hay = entry.log.path.as_deref().unwrap_or("").to_lowercase();
         if !hay.contains(path_filter) {
             return false;
         }
     }
     if let Some(grep) = filters.grep.as_deref() {
-        let mut haystacks = vec![entry.message.to_lowercase()];
-        if let Some(path) = entry.path.as_deref() {
+        let mut haystacks = vec![
+            entry.log.message.to_lowercase(),
+            entry.event.origin.to_lowercase(),
+        ];
+        if let Some(path) = entry.log.path.as_deref() {
             haystacks.push(path.to_lowercase());
         }
-        if let Some(appid) = entry.appid.as_deref() {
+        if let Some(appid) = entry.log.appid.as_deref() {
             haystacks.push(appid.to_lowercase());
+        }
+        if let Some(target) = entry.log.target.as_deref() {
+            haystacks.push(target.to_lowercase());
         }
         if !haystacks.iter().any(|hay| hay.contains(grep)) {
             return false;
@@ -225,26 +243,28 @@ fn matches_filters(entry: &DevtoolsLogMessage, filters: &Filters) -> bool {
     true
 }
 
-fn render_entry(entry: &DevtoolsLogMessage, render: RenderOpts) -> Result<String> {
+fn render_entry(entry: &LogEntry, render: RenderOpts) -> Result<String> {
     if render.json {
-        return serde_json::to_string(entry).context("Failed to encode log JSON");
+        return serde_json::to_string(&entry.event).context("Failed to encode session event JSON");
     }
-    let dt = DateTime::from_timestamp_millis(entry.timestamp_ms as i64)
-        .ok_or_else(|| anyhow!("Invalid log timestamp: {}", entry.timestamp_ms))?
+    let dt = DateTime::from_timestamp_millis(entry.event.timestamp_ms as i64)
+        .ok_or_else(|| anyhow!("Invalid log timestamp: {}", entry.event.timestamp_ms))?
         .with_timezone(&Local);
     let timestamp = dt.format("%H:%M:%S%.3f").to_string();
-    let level = format_level(entry.level);
-    let source = format_source(entry.source);
-    let origin = origin_column(entry, render.wide);
+    let level = format_level(entry.log.level);
+    let source = entry.event.origin.as_str();
+    let context = context_column(&entry.log, render.wide);
 
     if render.pretty {
         let level_field = format!("{level:<7}");
         let source_field = format!("{source:<7}");
-        let level_colored = match entry.level {
-            DevtoolsLogLevel::Error => level_field.red().bold().to_string(),
-            DevtoolsLogLevel::Warn => level_field.yellow().bold().to_string(),
-            DevtoolsLogLevel::Info => level_field.clone(),
-            DevtoolsLogLevel::Debug | DevtoolsLogLevel::Verbose => level_field.dimmed().to_string(),
+        let level_colored = match entry.log.level {
+            DevSessionLogLevel::Error => level_field.red().bold().to_string(),
+            DevSessionLogLevel::Warn => level_field.yellow().bold().to_string(),
+            DevSessionLogLevel::Info => level_field.clone(),
+            DevSessionLogLevel::Debug | DevSessionLogLevel::Verbose => {
+                level_field.dimmed().to_string()
+            }
         };
         let mut line = format!(
             "{} {} {}",
@@ -252,29 +272,29 @@ fn render_entry(entry: &DevtoolsLogMessage, render: RenderOpts) -> Result<String
             level_colored,
             source_field.dimmed()
         );
-        if !origin.is_empty() {
+        if !context.is_empty() {
             line.push(' ');
-            line.push_str(&origin.dimmed().to_string());
+            line.push_str(&context.dimmed().to_string());
         }
         line.push(' ');
-        line.push_str(&entry.message);
+        line.push_str(&entry.log.message);
         Ok(line)
     } else {
         let mut prefix = format!("{timestamp} {level:<7} {source:<7}");
-        if !origin.is_empty() {
+        if !context.is_empty() {
             prefix.push(' ');
-            prefix.push_str(&origin);
+            prefix.push_str(&context);
         }
-        Ok(format!("{prefix} {}", entry.message))
+        Ok(format!("{prefix} {}", entry.log.message))
     }
 }
 
 /// The origin column: the page path, optionally prefixed with the app id when
 /// `--wide` is set so entries from different lxapps (or the built-in browser)
 /// are distinguishable on the line.
-fn origin_column(entry: &DevtoolsLogMessage, wide: bool) -> String {
-    let path = entry.path.as_deref().unwrap_or("").trim();
-    let appid = entry.appid.as_deref().unwrap_or("").trim();
+fn context_column(log: &DevSessionLog, wide: bool) -> String {
+    let path = log.path.as_deref().unwrap_or("").trim();
+    let appid = log.appid.as_deref().unwrap_or("").trim();
     match (wide, appid.is_empty(), path.is_empty()) {
         (true, false, false) => format!("{appid}:{path}"),
         (true, false, true) => appid.to_string(),
@@ -282,45 +302,24 @@ fn origin_column(entry: &DevtoolsLogMessage, wide: bool) -> String {
     }
 }
 
-fn parse_level(value: &str) -> Result<DevtoolsLogLevel> {
+fn parse_level(value: &str) -> Result<DevSessionLogLevel> {
     match value {
-        "verbose" => Ok(DevtoolsLogLevel::Verbose),
-        "debug" => Ok(DevtoolsLogLevel::Debug),
-        "info" => Ok(DevtoolsLogLevel::Info),
-        "warn" => Ok(DevtoolsLogLevel::Warn),
-        "error" => Ok(DevtoolsLogLevel::Error),
+        "verbose" => Ok(DevSessionLogLevel::Verbose),
+        "debug" => Ok(DevSessionLogLevel::Debug),
+        "info" => Ok(DevSessionLogLevel::Info),
+        "warn" => Ok(DevSessionLogLevel::Warn),
+        "error" => Ok(DevSessionLogLevel::Error),
         _ => Err(anyhow!("Unsupported log level: {}", value)),
     }
 }
 
-fn parse_source(value: &str) -> Result<DevtoolsLogSource> {
-    match value {
-        "native" => Ok(DevtoolsLogSource::Native),
-        "lxview" => Ok(DevtoolsLogSource::WebViewConsole),
-        "lxlogic" => Ok(DevtoolsLogSource::LxAppServiceConsole),
-        "browser" => Ok(DevtoolsLogSource::BrowserConsole),
-        "automation" => Ok(DevtoolsLogSource::Automation),
-        _ => Err(anyhow!("Unsupported log source: {}", value)),
-    }
-}
-
-fn format_level(level: DevtoolsLogLevel) -> &'static str {
+fn format_level(level: DevSessionLogLevel) -> &'static str {
     match level {
-        DevtoolsLogLevel::Verbose => "VERBOSE",
-        DevtoolsLogLevel::Debug => "DEBUG",
-        DevtoolsLogLevel::Info => "INFO",
-        DevtoolsLogLevel::Warn => "WARN",
-        DevtoolsLogLevel::Error => "ERROR",
-    }
-}
-
-fn format_source(source: DevtoolsLogSource) -> &'static str {
-    match source {
-        DevtoolsLogSource::Native => "native",
-        DevtoolsLogSource::WebViewConsole => "lxview",
-        DevtoolsLogSource::LxAppServiceConsole => "lxlogic",
-        DevtoolsLogSource::BrowserConsole => "browser",
-        DevtoolsLogSource::Automation => "automation",
+        DevSessionLogLevel::Verbose => "VERBOSE",
+        DevSessionLogLevel::Debug => "DEBUG",
+        DevSessionLogLevel::Info => "INFO",
+        DevSessionLogLevel::Warn => "WARN",
+        DevSessionLogLevel::Error => "ERROR",
     }
 }
 
@@ -328,15 +327,17 @@ fn format_source(source: DevtoolsLogSource) -> &'static str {
 mod tests {
     use super::*;
 
-    fn entry(source: DevtoolsLogSource, appid: &str, path: &str) -> DevtoolsLogMessage {
-        DevtoolsLogMessage {
-            timestamp_ms: 0,
-            source,
-            level: DevtoolsLogLevel::Info,
+    fn entry(origin: &str, appid: &str, path: &str) -> LogEntry {
+        let log = DevSessionLog {
+            level: DevSessionLogLevel::Info,
             appid: Some(appid.to_string()),
             path: Some(path.to_string()),
+            target: None,
             message: "hi".to_string(),
-        }
+            attributes: Default::default(),
+        };
+        let event = DevSessionEvent::log(0, origin, log.clone()).unwrap();
+        LogEntry { event, log }
     }
 
     fn no_filters() -> Filters {
@@ -350,32 +351,17 @@ mod tests {
     }
 
     #[test]
-    fn source_names_are_the_five_canonical_values() {
-        assert_eq!(parse_source("native").unwrap(), DevtoolsLogSource::Native);
-        assert_eq!(
-            parse_source("lxview").unwrap(),
-            DevtoolsLogSource::WebViewConsole
-        );
-        assert_eq!(
-            parse_source("lxlogic").unwrap(),
-            DevtoolsLogSource::LxAppServiceConsole
-        );
-        assert_eq!(
-            parse_source("browser").unwrap(),
-            DevtoolsLogSource::BrowserConsole
-        );
-        assert_eq!(
-            parse_source("automation").unwrap(),
-            DevtoolsLogSource::Automation
-        );
-        assert!(parse_source("webview").is_err());
-        assert!(parse_source("browser_console").is_err());
-        assert_eq!(format_source(DevtoolsLogSource::WebViewConsole), "lxview");
-        assert_eq!(
-            format_source(DevtoolsLogSource::LxAppServiceConsole),
-            "lxlogic"
-        );
-        assert_eq!(format_source(DevtoolsLogSource::BrowserConsole), "browser");
+    fn origin_filter_accepts_dynamic_prefixes() {
+        let mut filters = no_filters();
+        filters.source = Some("service".to_string());
+        assert!(matches_filters(
+            &entry("service.api", "com.demo.app", "x"),
+            &filters
+        ));
+        assert!(!matches_filters(
+            &entry("lxview", "com.demo.app", "x"),
+            &filters
+        ));
     }
 
     #[test]
@@ -385,21 +371,9 @@ mod tests {
             pretty: false,
             wide: false,
         };
-        let page = render_entry(
-            &entry(
-                DevtoolsLogSource::WebViewConsole,
-                "com.demo.app",
-                "pages/home",
-            ),
-            render,
-        )
-        .unwrap();
+        let page = render_entry(&entry("lxview", "com.demo.app", "pages/home"), render).unwrap();
         let tab = render_entry(
-            &entry(
-                DevtoolsLogSource::BrowserConsole,
-                "app.lingxia.browser",
-                "https://example.com/",
-            ),
+            &entry("browser", "app.lingxia.browser", "https://example.com/"),
             render,
         )
         .unwrap();
@@ -414,15 +388,7 @@ mod tests {
             pretty: false,
             wide: true,
         };
-        let line = render_entry(
-            &entry(
-                DevtoolsLogSource::WebViewConsole,
-                "com.demo.app",
-                "pages/home",
-            ),
-            render,
-        )
-        .unwrap();
+        let line = render_entry(&entry("lxview", "com.demo.app", "pages/home"), render).unwrap();
         assert!(line.contains("com.demo.app:pages/home"), "{line}");
     }
 
@@ -431,33 +397,25 @@ mod tests {
         let mut filters = no_filters();
         filters.app = Some("app.lingxia.browser".to_string());
         assert!(matches_filters(
-            &entry(
-                DevtoolsLogSource::BrowserConsole,
-                "app.lingxia.browser",
-                "x"
-            ),
+            &entry("browser", "app.lingxia.browser", "x"),
             &filters
         ));
         assert!(!matches_filters(
-            &entry(DevtoolsLogSource::WebViewConsole, "com.demo.app", "x"),
+            &entry("lxview", "com.demo.app", "x"),
             &filters
         ));
     }
 
     #[test]
-    fn source_filter_selects_browser_only() {
+    fn origin_filter_selects_browser_only() {
         let mut filters = no_filters();
-        filters.source = Some(DevtoolsLogSource::BrowserConsole);
+        filters.source = Some("browser".to_string());
         assert!(matches_filters(
-            &entry(
-                DevtoolsLogSource::BrowserConsole,
-                "app.lingxia.browser",
-                "x"
-            ),
+            &entry("browser", "app.lingxia.browser", "x"),
             &filters
         ));
         assert!(!matches_filters(
-            &entry(DevtoolsLogSource::WebViewConsole, "com.demo.app", "x"),
+            &entry("lxview", "com.demo.app", "x"),
             &filters
         ));
     }

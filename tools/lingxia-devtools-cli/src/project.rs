@@ -1,6 +1,8 @@
 use anyhow::{Context, Result, bail};
 pub use lingxia_devtool_protocol::broker::SessionInfo;
-use lingxia_devtool_protocol::{DevtoolsPeerRole, DevtoolsWireMessage, handlers};
+use lingxia_devtool_protocol::{
+    DEV_SESSION_PROTOCOL_VERSION, DevSessionMessage, DevSessionRole, capabilities, handlers,
+};
 use std::io::{Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
 use std::time::Duration;
@@ -162,9 +164,10 @@ fn devtools_session_state(ws_url: &str, timeout: Duration) -> SessionState {
 
     if send_wire_message(
         &mut websocket,
-        &DevtoolsWireMessage::Hello {
-            role: DevtoolsPeerRole::Client,
-            token: lingxia_devtool_protocol::token_from_ws_url(ws_url),
+        &DevSessionMessage::Hello {
+            version: DEV_SESSION_PROTOCOL_VERSION,
+            role: DevSessionRole::Controller,
+            capabilities: vec![capabilities::REQUESTS.to_string()],
         },
     )
     .is_err()
@@ -181,10 +184,10 @@ fn devtools_session_state(ws_url: &str, timeout: Duration) -> SessionState {
     );
     if send_wire_message(
         &mut websocket,
-        &DevtoolsWireMessage::Command {
-            command_id: command_id.clone(),
-            handler: handlers::ECHO.to_string(),
-            args: None,
+        &DevSessionMessage::Request {
+            id: command_id.clone(),
+            method: handlers::ECHO.to_string(),
+            params: None,
         },
     )
     .is_err()
@@ -200,12 +203,13 @@ fn devtools_session_state(ws_url: &str, timeout: Duration) -> SessionState {
             continue;
         };
         match serde_json::from_str(&text) {
-            Ok(DevtoolsWireMessage::Result {
-                command_id: result_id,
-                ok,
-                data,
-                ..
-            }) if result_id == command_id => return session_state_from_echo_result(ok, data),
+            Ok(DevSessionMessage::Response {
+                id: result_id,
+                result,
+                error,
+            }) if result_id == command_id => {
+                return session_state_from_echo_result(error.is_none(), result);
+            }
             Ok(_) => continue,
             Err(_) => return SessionState::Stale,
         }
@@ -230,7 +234,7 @@ fn session_state_from_echo_result(ok: bool, data: Option<serde_json::Value>) -> 
 
 fn send_wire_message(
     websocket: &mut WebSocket<impl Read + Write>,
-    message: &DevtoolsWireMessage,
+    message: &DevSessionMessage,
 ) -> Result<()> {
     let text = serde_json::to_string(message).context("Failed to encode dev websocket message")?;
     websocket

@@ -1,7 +1,9 @@
 use anyhow::{Context, Result, anyhow};
 use lingxia_devtool_protocol::broker::Registration;
 pub use lingxia_devtool_protocol::broker::SessionInfo;
-use lingxia_devtool_protocol::{DevtoolsPeerRole, DevtoolsWireMessage, handlers};
+use lingxia_devtool_protocol::{
+    DEV_SESSION_PROTOCOL_VERSION, DevSessionMessage, DevSessionRole, capabilities, handlers,
+};
 use lingxia_log::now_timestamp_ms;
 use std::fs;
 use std::io::{Read, Write};
@@ -257,19 +259,20 @@ pub fn request_shutdown(info: &SessionInfo) -> Result<()> {
         .ok_or_else(|| anyhow!("Failed to connect dev websocket: {}", info.ws_url))?;
     send_wire_message(
         &mut websocket,
-        &DevtoolsWireMessage::Hello {
-            role: DevtoolsPeerRole::Client,
-            token: lingxia_devtool_protocol::token_from_ws_url(&info.ws_url),
+        &DevSessionMessage::Hello {
+            version: DEV_SESSION_PROTOCOL_VERSION,
+            role: DevSessionRole::Controller,
+            capabilities: vec![capabilities::REQUESTS.to_string()],
         },
     )?;
 
     let command_id = format!("shutdown-{}", now_timestamp_ms());
     send_wire_message(
         &mut websocket,
-        &DevtoolsWireMessage::Command {
-            command_id: command_id.clone(),
-            handler: handlers::session::SHUTDOWN.to_string(),
-            args: None,
+        &DevSessionMessage::Request {
+            id: command_id.clone(),
+            method: handlers::session::SHUTDOWN.to_string(),
+            params: None,
         },
     )?;
 
@@ -281,19 +284,15 @@ pub fn request_shutdown(info: &SessionInfo) -> Result<()> {
             continue;
         };
         match serde_json::from_str(&text) {
-            Ok(DevtoolsWireMessage::Result {
-                command_id: result_id,
-                ok,
+            Ok(DevSessionMessage::Response {
+                id: result_id,
+                result: _,
                 error,
-                ..
             }) if result_id == command_id => {
-                if ok {
+                if error.is_none() {
                     return Ok(());
                 }
-                return Err(anyhow!(
-                    "{}",
-                    error.unwrap_or_else(|| "shutdown command failed".to_string())
-                ));
+                return Err(anyhow!("{}", error.unwrap().message));
             }
             Ok(_) => continue,
             Err(err) => return Err(err).context("Failed to parse dev websocket shutdown response"),
@@ -306,9 +305,10 @@ fn devtools_ws_echo(ws_url: &str, timeout: Duration) -> Option<(bool, Option<ser
 
     if send_wire_message(
         &mut websocket,
-        &DevtoolsWireMessage::Hello {
-            role: DevtoolsPeerRole::Client,
-            token: lingxia_devtool_protocol::token_from_ws_url(ws_url),
+        &DevSessionMessage::Hello {
+            version: DEV_SESSION_PROTOCOL_VERSION,
+            role: DevSessionRole::Controller,
+            capabilities: vec![capabilities::REQUESTS.to_string()],
         },
     )
     .is_err()
@@ -319,10 +319,10 @@ fn devtools_ws_echo(ws_url: &str, timeout: Duration) -> Option<(bool, Option<ser
     let command_id = format!("probe-{}", now_timestamp_ms());
     if send_wire_message(
         &mut websocket,
-        &DevtoolsWireMessage::Command {
-            command_id: command_id.clone(),
-            handler: handlers::ECHO.to_string(),
-            args: None,
+        &DevSessionMessage::Request {
+            id: command_id.clone(),
+            method: handlers::ECHO.to_string(),
+            params: None,
         },
     )
     .is_err()
@@ -338,12 +338,11 @@ fn devtools_ws_echo(ws_url: &str, timeout: Duration) -> Option<(bool, Option<ser
             continue;
         };
         match serde_json::from_str(&text) {
-            Ok(DevtoolsWireMessage::Result {
-                command_id: result_id,
-                ok,
-                data,
-                ..
-            }) if result_id == command_id => return Some((ok, data)),
+            Ok(DevSessionMessage::Response {
+                id: result_id,
+                result,
+                error,
+            }) if result_id == command_id => return Some((error.is_none(), result)),
             Ok(_) => continue,
             Err(_) => return None,
         }
@@ -352,7 +351,7 @@ fn devtools_ws_echo(ws_url: &str, timeout: Duration) -> Option<(bool, Option<ser
 
 fn send_wire_message(
     websocket: &mut WebSocket<impl Read + Write>,
-    message: &DevtoolsWireMessage,
+    message: &DevSessionMessage,
 ) -> Result<()> {
     let text = serde_json::to_string(message).context("Failed to encode dev websocket message")?;
     websocket
