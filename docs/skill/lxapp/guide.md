@@ -492,6 +492,8 @@ use `style.light` / `style.dark` for fields that need theme-specific values:
 For each field, resolution order is the current appearance override, the
 common top-level value, then the platform semantic default. The host selects
 the appearance; page JavaScript does not need to synchronize native chrome.
+Tab bar keys are case-sensitive, and unknown keys inside `tabBar`, `style`,
+`light`, or `dark` are configuration errors rather than ignored extensions.
 
 Rules:
 

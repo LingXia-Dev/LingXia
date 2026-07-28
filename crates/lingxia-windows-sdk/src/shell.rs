@@ -96,10 +96,15 @@ pub(crate) fn shell_window_background() -> u32 {
 }
 
 /// Re-read the Win11 light/dark + system-accent theme into the shell palette
-/// cache. Returns `true` when the values changed, so the window proc can
-/// repaint only on a real theme change.
+/// cache and rebuild appearance-resolved shell layouts. Returns `true` when
+/// the values changed, so the window proc can repaint only on a real theme
+/// change.
 pub(crate) fn refresh_system_theme() -> bool {
-    theme::refresh()
+    let changed = theme::refresh();
+    if changed {
+        runtime::refresh_shell_appearance();
+    }
+    changed
 }
 
 #[cfg(feature = "browser-shell")]
@@ -136,6 +141,7 @@ pub fn windows_system_dark_mode() -> bool {
     theme::is_dark()
 }
 
+#[cfg(feature = "device-frame")]
 pub(crate) fn set_windows_tabbar_dark_override(value: Option<bool>) {
     SHELL_APPEARANCE_OVERRIDE.store(
         match value {

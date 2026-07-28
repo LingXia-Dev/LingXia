@@ -26,6 +26,7 @@ impl TabBarPosition {
 
 /// TabBar (unified config and runtime state)
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 #[allow(non_snake_case)]
 pub struct TabBar {
     #[serde(default = "default_unselected_color")]
@@ -60,6 +61,7 @@ pub struct TabBar {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 #[allow(non_snake_case)]
 pub struct TabBarStyle {
     #[serde(default)]
@@ -73,6 +75,7 @@ pub struct TabBarStyle {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 pub struct TabBarThemeStyle {
     #[serde(default)]
     pub light: TabBarStyle,
@@ -456,5 +459,31 @@ mod tests {
 
         assert_eq!(tabbar.resolved_style(false).backgroundColor, "#ff00ff");
         assert_eq!(tabbar.resolved_style(true).backgroundColor, "#ff00ff");
+    }
+
+    #[test]
+    fn themed_style_rejects_misspelled_keys() {
+        let tabbar = || {
+            serde_json::json!({
+                "list": [
+                    { "pagePath": "pages/home/index" },
+                    { "pagePath": "pages/account/index" }
+                ]
+            })
+        };
+
+        let mut unknown_tabbar_key = tabbar();
+        unknown_tabbar_key["styles"] = serde_json::json!({});
+        assert!(serde_json::from_value::<TabBar>(unknown_tabbar_key).is_err());
+
+        let mut unknown_theme_key = tabbar();
+        unknown_theme_key["style"] = serde_json::json!({ "Light": {} });
+        assert!(serde_json::from_value::<TabBar>(unknown_theme_key).is_err());
+
+        let mut unknown_style_key = tabbar();
+        unknown_style_key["style"] = serde_json::json!({
+            "light": { "background": "#ffffff" }
+        });
+        assert!(serde_json::from_value::<TabBar>(unknown_style_key).is_err());
     }
 }

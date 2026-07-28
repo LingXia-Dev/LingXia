@@ -62,6 +62,34 @@ fileprivate struct TabBarHelpers {
             .frame(width: 8, height: 8)
             .zIndex(1)
     }
+
+    @ViewBuilder
+    static func buildBorder(
+        position: TabBarPosition,
+        color: Color,
+        thickness: CGFloat,
+        visible: Bool
+    ) -> some View {
+        if visible {
+            switch position {
+            case .bottom:
+                VStack(spacing: 0) {
+                    Rectangle().fill(color).frame(height: thickness)
+                    Spacer(minLength: 0)
+                }
+            case .left:
+                HStack(spacing: 0) {
+                    Spacer(minLength: 0)
+                    Rectangle().fill(color).frame(width: thickness)
+                }
+            case .right:
+                HStack(spacing: 0) {
+                    Rectangle().fill(color).frame(width: thickness)
+                    Spacer(minLength: 0)
+                }
+            }
+        }
+    }
 }
 
 /// Extensions for TabBarItem
@@ -87,6 +115,7 @@ extension TabBar {
         case color = 1
         case selectedColor = 2
         case backgroundColor = 4
+        case borderStyle = 8
     }
 
     private func styledMask(for colorScheme: ColorScheme) -> UInt32 {
@@ -133,6 +162,25 @@ extension TabBar {
         return .windowBackgroundColor
         #endif
     }
+
+    private func resolvedBorderValue(for colorScheme: ColorScheme) -> UInt32 {
+        colorScheme == .dark ? dark_border_style : light_border_style
+    }
+
+    func resolvedBorderColor(for colorScheme: ColorScheme) -> PlatformColor {
+        if declares(.borderStyle, for: colorScheme) {
+            return PlatformColor(argb: resolvedBorderValue(for: colorScheme))
+        }
+        #if os(iOS)
+        return .separator
+        #else
+        return .separatorColor
+        #endif
+    }
+
+    func drawsBorder(for colorScheme: ColorScheme) -> Bool {
+        (resolvedBackgroundValue(for: colorScheme) >> 24) & 0xFF != 0
+    }
 }
 
 /// Unified SwiftUI TabBar for iOS and macOS
@@ -147,6 +195,7 @@ struct LxAppTabBar: View {
     // Simple refresh trigger for UI updates
     @State private var refreshTrigger = false
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.displayScale) private var displayScale
 
     init(
         appId: String,
@@ -176,6 +225,15 @@ struct LxAppTabBar: View {
             }
         }
         .background(getTabBarBackgroundColor())
+        .overlay {
+            TabBarHelpers.buildBorder(
+                position: config.positionEnum,
+                color: Color(config.resolvedBorderColor(for: colorScheme)),
+                thickness: 1 / max(displayScale, 1),
+                visible: config.drawsBorder(for: colorScheme)
+            )
+            .allowsHitTesting(false)
+        }
         .id("tabbar-\(selectedIndex)-\(refreshTrigger)")
     }
 
@@ -326,6 +384,7 @@ struct MacOSLxAppTabBar: View {
     @Binding var selectedIndex: Int
     let onTabSelected: (Int, String) -> Void
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.displayScale) private var displayScale
 
     init(
         appId: String,
@@ -354,6 +413,15 @@ struct MacOSLxAppTabBar: View {
             }
         }
         .background(getTabBarBackgroundColor())
+        .overlay {
+            TabBarHelpers.buildBorder(
+                position: config.positionEnum,
+                color: Color(config.resolvedBorderColor(for: colorScheme)),
+                thickness: 1 / max(displayScale, 1),
+                visible: config.drawsBorder(for: colorScheme)
+            )
+            .allowsHitTesting(false)
+        }
     }
 
     @ViewBuilder
@@ -650,6 +718,44 @@ class iOSTabBarWrapper: UIView, TabBarProtocol {
             containerView.trailingAnchor.constraint(equalTo: trailingAnchor),
             containerView.bottomAnchor.constraint(equalTo: bottomAnchor)
         ])
+
+        let colorScheme: ColorScheme = traitCollection.userInterfaceStyle == .dark ? .dark : .light
+        addUIKitBorder(config: config, colorScheme: colorScheme)
+    }
+
+    private func addUIKitBorder(config: TabBar, colorScheme: ColorScheme) {
+        guard config.drawsBorder(for: colorScheme) else { return }
+
+        let border = UIView()
+        border.backgroundColor = config.resolvedBorderColor(for: colorScheme)
+        border.isUserInteractionEnabled = false
+        border.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(border)
+
+        let thickness = 1 / max(traitCollection.displayScale, 1)
+        switch config.positionEnum {
+        case .bottom:
+            NSLayoutConstraint.activate([
+                border.topAnchor.constraint(equalTo: topAnchor),
+                border.leadingAnchor.constraint(equalTo: leadingAnchor),
+                border.trailingAnchor.constraint(equalTo: trailingAnchor),
+                border.heightAnchor.constraint(equalToConstant: thickness)
+            ])
+        case .left:
+            NSLayoutConstraint.activate([
+                border.topAnchor.constraint(equalTo: topAnchor),
+                border.trailingAnchor.constraint(equalTo: trailingAnchor),
+                border.bottomAnchor.constraint(equalTo: bottomAnchor),
+                border.widthAnchor.constraint(equalToConstant: thickness)
+            ])
+        case .right:
+            NSLayoutConstraint.activate([
+                border.topAnchor.constraint(equalTo: topAnchor),
+                border.leadingAnchor.constraint(equalTo: leadingAnchor),
+                border.bottomAnchor.constraint(equalTo: bottomAnchor),
+                border.widthAnchor.constraint(equalToConstant: thickness)
+            ])
+        }
     }
 
     private func setupVerticalLayout(items: [TabBarItem], config: TabBar, containerView: UIView) {
