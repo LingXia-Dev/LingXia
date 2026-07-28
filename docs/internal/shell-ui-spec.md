@@ -339,6 +339,11 @@ crammed in the moment the window crosses 840.
 
 ### 4.3 lxapp tabs and the tabbar
 
+Page-chrome schema, style inheritance, and mutation semantics are defined by
+[`page-chrome-spec.md`](./page-chrome-spec.md); host appearance and semantic
+fallbacks are defined by [`shell-theme-spec.md`](./shell-theme-spec.md). This
+section owns only the desktop projection and interaction semantics.
+
 - An expanded lxapp tab shows that app's tabbar items; configuration, selected
   state, badges, red dots, icons, and colors are same-sourced with the mobile
   tabbar.
@@ -347,28 +352,28 @@ crammed in the moment the window crosses 840.
 - From the last item back to the next top-level tab the gap returns to
   **4 dp/pt**. Children are tighter to express attribution but MUST NOT shrink
   into mis-tap territory.
-- `hideTabBar()` hides the expanded region and disables the chevron;
-  `showTabBar()` clears the API-hidden state and expands. The user chevron only
-  changes `userCollapsed` while API-visible; it MUST NOT override the
-  API-hidden state.
+- `lx.tabBar.update({ visibility: "hidden" })` hides the expanded region and
+  disables the chevron; `visibility: "auto"` clears the API-hidden state and
+  expands. The user chevron only changes `userCollapsed` while API-visible; it
+  MUST NOT override the API-hidden state.
 - **Only explicit API calls map to collapse/expand.** The mobile implicit
   behavior "navigating to a non-tab page auto-hides the tabbar" does not
   propagate to desktop: the sidebar is a persistent navigation region, so
   drilling into a detail page keeps the group expanded and merely clears item
   selection (see two-level selection below) — otherwise every navigation would
   bounce the group and lose the waypoint.
-- Desktop MUST fully support `setTabBarBadge`, `removeTabBarBadge`,
-  `showTabBarRedDot`, `hideTabBarRedDot`, `setTabBarItem`, `setTabBarStyle`.
-  While collapsed, badges/red dots aggregate onto the parent lxapp tab.
+- Desktop MUST fully support the item, badge, red-dot, visibility, and style
+  patches in `lx.tabBar.update`. While collapsed, badges/red dots aggregate
+  onto the parent lxapp tab.
 - **Mapping of the four style keys onto the sidebar** (one-to-one with mobile
-  semantics; unset keys fall back to a neutral theme):
+  semantics; unset keys fall back to the host ShellTheme):
 
   | tabbar style | Mobile | Desktop sidebar |
   |---|---|---|
-  | `color` | Unselected item text | Unselected item title color |
-  | `selectedColor` | Selected item text | Selected item title color + left-edge accent bar |
+  | `foregroundColor` | Unselected item text | Unselected item title color |
+  | `selectedForegroundColor` | Selected item text | Selected item title color + left-edge accent bar |
   | `backgroundColor` | Bar background | Expanded group (items container) background |
-  | `borderStyle` | Bar border | Attribution line base color |
+  | `dividerColor` | Bar divider | Attribution line base color |
 
   Colors apply to text and structural elements only; icons switch via
   `iconPath`/`selectedIconPath` pairs exactly as on mobile, with no tinting.
@@ -393,11 +398,11 @@ allowed.
 - The expanded items region carries a vertical attribution line on its left,
   visually binding children to the group header; the thin-line treatment is the
   baseline for both platforms.
-- **Styling adapts to the tabbar config**: the attribution line's base color
-  follows `borderStyle` (black/white); the selected item shows a left-edge
-  accent bar colored by `selectedColor`; selected item text/icon colors are
-  same-sourced. All of it is runtime-mutable via `setTabBarStyle`; the shell
-  injects no accent of its own and uses neutral system colors when unset.
+- **Styling adapts to the tabbar config**: the attribution line follows
+  `dividerColor`; the selected item uses `selectedForegroundColor` for its
+  accent and title. Explicit values stay fixed across appearances. Omitted
+  values inherit the corresponding host ShellTheme role and update with the
+  effective appearance. All fields are runtime-mutable via `lx.tabBar.update`.
 
 ### 4.4 Pins
 
