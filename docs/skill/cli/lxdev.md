@@ -75,7 +75,12 @@ Mobile reports one host window. Desktop hosts may report several (for example ma
 
 There is no appid-scoped `lx.*`, filesystem, environment, or dynamic `import()`. Cases run sequentially; async hooks/cases are awaited. `--timeout` bounds the run, Ctrl-C cancels it, `--json` emits one final report, and failures map back to source files. `lingxia dev` and the Runner include the required runtime.
 
-**`logs`** — the session's JSONL log stream: tail or `-f` follow; filter by `--level`, `--source` (`native` host, your app's `lxview`/`lxlogic`, a `browser` tab, or `automation` output), `--path`, `--grep`, `--app <id>`; `--wide` prefixes each line with its app id.
+**`logs [ORIGIN]`** — the session's JSONL log stream: tail or `-f` follow;
+filter by a dynamic origin prefix plus `--level`, `--path`, `--grep`, or
+`--app <id>`. `lxdev logs --origins` lists the origins present in the selected
+session. Text output omits the selected origin and other context fixed by the
+session; host sessions include an app id when logs from multiple apps may be
+mixed. `--json` keeps the complete event.
 
 **`session`** — list live sessions (id, target, project path). Lifecycle stays
 with the owner CLI: use `lingxia dev stop` from that session's project rather
