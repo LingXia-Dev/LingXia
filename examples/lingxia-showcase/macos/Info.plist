@@ -6,8 +6,8 @@
 	<string>en</string>
 	<key>CFBundleExecutable</key>
 	<string>LingXiaDemo</string>
-	<key>CFBundleIconFile</key>
-	<string>AppIcon.png</string>
+	<key>CFBundleIconName</key>
+	<string>AppIcon</string>
 	<key>CFBundleIdentifier</key>
 	<string>app.lingxia.example.lxapp</string>
 	<key>CFBundleInfoDictionaryVersion</key>
