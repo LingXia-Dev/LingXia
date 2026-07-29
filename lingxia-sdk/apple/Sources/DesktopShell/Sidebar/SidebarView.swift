@@ -1539,7 +1539,7 @@ class SidebarView: NSView, NSPopoverDelegate {
             switch item.id {
             case "terminal":
                 fallbackIcon = NSImage(
-                    systemSymbolName: "chevron.left.forwardslash.chevron.right",
+                    systemSymbolName: "terminal",
                     accessibilityDescription: item.label
                 )
             case "browser":
