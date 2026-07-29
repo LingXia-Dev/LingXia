@@ -211,52 +211,60 @@ class LxAppCapsuleMenu {
         let rowView = UIView()
         rowView.translatesAutoresizingMaskIntoConstraints = false
 
-        let actions: [(icon: String, title: String, action: String, isDestructive: Bool)] = [
-            ("icon_clean_cache", L10n.string("lx_capsule_clean_cache"), "clean_cache_restart", false),
-            ("icon_restart", L10n.string("lx_capsule_restart"), "restart", false),
-            ("icon_uninstall", L10n.string("lx_capsule_uninstall"), "uninstall", false)
+        typealias Action = (iconName: String?, iconPath: String?, title: String, token: String, isDestructive: Bool)
+        let snapshot = LxAppMoreActionSnapshot.load(appId: appId)
+        let customActions: [Action] = snapshot.items.enumerated().map { index, item in
+            (nil, item.iconPath, item.label, snapshot.token(at: index), false)
+        }
+        let systemActions: [Action] = [
+            ("icon_clean_cache", nil, L10n.string("lx_capsule_clean_cache"), "clean_cache_restart", false),
+            ("icon_restart", nil, L10n.string("lx_capsule_restart"), "restart", false),
+            ("icon_uninstall", nil, L10n.string("lx_capsule_uninstall"), "uninstall", false)
         ]
 
-        let stackView = UIStackView()
-        stackView.axis = .horizontal
-        stackView.distribution = .fillEqually
-        stackView.spacing = 16
-        stackView.translatesAutoresizingMaskIntoConstraints = false
+        let stack = UIStackView()
+        stack.axis = .horizontal
+        stack.distribution = .fillEqually
+        stack.spacing = 16
+        stack.translatesAutoresizingMaskIntoConstraints = false
 
-        for action in actions {
+        for action in customActions + systemActions {
             let button = createActionButton(
-                iconName: action.icon,
+                iconName: action.iconName,
+                iconPath: action.iconPath,
                 title: action.title,
                 isDestructive: action.isDestructive
             ) {
                 dismissCapsuleMenu(backgroundView) {
-                    _ = onLxappEvent(appId, LxAppEvent.capsuleClick, action.action)
+                    _ = onLxappEvent(appId, LxAppEvent.capsuleClick, action.token)
                 }
             }
-            stackView.addArrangedSubview(button)
+            stack.addArrangedSubview(button)
         }
+        stack.heightAnchor.constraint(equalToConstant: 72).isActive = true
 
-        rowView.addSubview(stackView)
+        rowView.addSubview(stack)
 
         NSLayoutConstraint.activate([
-            stackView.topAnchor.constraint(equalTo: rowView.topAnchor),
-            stackView.leadingAnchor.constraint(equalTo: rowView.leadingAnchor),
-            stackView.trailingAnchor.constraint(equalTo: rowView.trailingAnchor),
-            stackView.bottomAnchor.constraint(equalTo: rowView.bottomAnchor),
-            stackView.heightAnchor.constraint(equalToConstant: 72)
+            stack.topAnchor.constraint(equalTo: rowView.topAnchor),
+            stack.leadingAnchor.constraint(equalTo: rowView.leadingAnchor),
+            stack.trailingAnchor.constraint(equalTo: rowView.trailingAnchor),
+            stack.bottomAnchor.constraint(equalTo: rowView.bottomAnchor)
         ])
 
         return rowView
     }
 
     @MainActor
-    private static func createActionButton(iconName: String, title: String, isDestructive: Bool, action: @escaping () -> Void) -> UIView {
+    private static func createActionButton(iconName: String?, iconPath: String?, title: String, isDestructive: Bool, action: @escaping () -> Void) -> UIView {
         let containerView = UIControl()
         containerView.translatesAutoresizingMaskIntoConstraints = false
 
         // Icon
         let iconView = UIImageView()
-        if let icon = LxIcon.image(named: iconName) {
+        if let iconPath, let icon = UIImage(contentsOfFile: iconPath) {
+            iconView.image = icon
+        } else if let iconName, let icon = LxIcon.image(named: iconName) {
             iconView.image = icon.withRenderingMode(.alwaysTemplate)
         }
         iconView.contentMode = .scaleAspectFit
@@ -421,6 +429,22 @@ class LxAppCapsuleMenu {
             .OBJC_ASSOCIATION_RETAIN_NONATOMIC
         )
 
+        let snapshot = LxAppMoreActionSnapshot.load(appId: appId)
+        for (index, item) in snapshot.items.enumerated() {
+            let customItem = NSMenuItem(
+                title: item.label,
+                action: #selector(MacCapsuleMenuTarget.moreActionClicked(_:)),
+                keyEquivalent: ""
+            )
+            customItem.image = NSImage(contentsOfFile: item.iconPath)
+            customItem.representedObject = snapshot.token(at: index)
+            customItem.target = target
+            menu.addItem(customItem)
+        }
+        if !snapshot.items.isEmpty {
+            menu.addItem(NSMenuItem.separator())
+        }
+
         // Clean Cache & Restart
         let cleanItem = NSMenuItem(
             title: L10n.string("lx_capsule_clean_cache"),
@@ -483,6 +507,13 @@ private final class MacCapsuleMenuTarget: NSObject {
 
     @objc func uninstallClicked() {
         _ = onLxappEvent(appId, LxAppEvent.capsuleClick, "uninstall")
+    }
+
+    @objc func moreActionClicked(_ sender: NSMenuItem) {
+        guard let token = sender.representedObject as? String else { return }
+        DispatchQueue.main.async { [appId] in
+            _ = onLxappEvent(appId, LxAppEvent.capsuleClick, token)
+        }
     }
 }
 #endif
