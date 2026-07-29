@@ -1,6 +1,6 @@
 use super::*;
 
-use crate::{WindowsDesignIcon, draw_windows_design_icon_with_color};
+use crate::{WindowsDeviceFrameSheetIcon, draw_windows_design_icon_with_color};
 use windows::Win32::Graphics::Gdi::{
     BeginPaint, CombineRgn, CreateFontW, CreateRoundRectRgn, CreateSolidBrush, DT_CENTER,
     DT_END_ELLIPSIS, DT_LEFT, DT_SINGLELINE, DT_VCENTER, DeleteObject, DrawTextW, EndPaint,
@@ -65,7 +65,7 @@ struct AboutSheetWindows {
 pub(in crate::device_frame) struct SheetAction {
     pub(in crate::device_frame) label: String,
     pub(in crate::device_frame) command: u32,
-    pub(in crate::device_frame) icon: WindowsDesignIcon,
+    pub(in crate::device_frame) icon: WindowsDeviceFrameSheetIcon,
 }
 
 static ABOUT_SHEETS: OnceLock<Mutex<HashMap<isize, AboutSheetWindows>>> = OnceLock::new();
@@ -440,7 +440,16 @@ fn paint_action_buttons(dc: HDC, client: &RECT, info: &DeviceFrameInfoSheet) {
             right: rect.left + (rect.right - rect.left + BUTTON_ICON_SIZE) / 2,
             bottom: rect.top + BUTTON_ICON_TOP + BUTTON_ICON_SIZE,
         };
-        let _ = draw_windows_design_icon_with_color(dc, action.icon, icon_rect, ACTION_TEXT_COLOR);
+        match &action.icon {
+            WindowsDeviceFrameSheetIcon::Design(icon) => {
+                let _ =
+                    draw_windows_design_icon_with_color(dc, *icon, icon_rect, ACTION_TEXT_COLOR);
+            }
+            WindowsDeviceFrameSheetIcon::Path(path) => {
+                let _ =
+                    crate::shell::draw_icon_from_path(dc, path, icon_rect, BUTTON_ICON_SIZE as u32);
+            }
+        }
         draw_sheet_text(
             dc,
             &action.label,

@@ -57,13 +57,23 @@ pub(crate) use chrome::{
     phone_tab_switcher_hit, phone_tab_switcher_layout,
 };
 pub(crate) use chrome::{
-    SIDEBAR_TABBAR_POPUP_RADIUS, collapsed_sidebar_tabbar_click_command,
+    SIDEBAR_TABBAR_POPUP_RADIUS, bottom_tabbar_rect, collapsed_sidebar_tabbar_click_command,
     collapsed_sidebar_tabbar_popup, collapsed_sidebar_tabbar_popup_hit,
     paint_collapsed_sidebar_tabbar_popup, paint_transparent_tabbar_overlay,
     transparent_tabbar_overlay_rect,
 };
 
 pub(crate) use chrome::{workspace_corner_radii, workspace_silhouette_rect};
+
+#[cfg(feature = "device-frame")]
+pub(crate) fn draw_icon_from_path(
+    hdc: windows::Win32::Graphics::Gdi::HDC,
+    path: &str,
+    rect: windows::Win32::Foundation::RECT,
+    size: u32,
+) -> bool {
+    chrome::draw_icon_from_path(hdc, path, rect, size)
+}
 
 /// Height of the shell-owned top caption strip. Lxapp navigation bars belong
 /// to the main region below it; browser address chrome may use this strip.

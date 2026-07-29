@@ -111,14 +111,20 @@ pub struct WindowsDeviceFrameBadge {
     pub background: u32,
 }
 
-/// One action row in the info sheet. The caller supplies both the icon and the
+/// One action in an info-sheet row. The caller supplies both the icon and the
 /// command id dispatched to the device-frame command handler when it is tapped,
 /// so the device frame never infers either from the label.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WindowsDeviceFrameSheetAction {
     pub command: u32,
     pub label: String,
-    pub icon: WindowsDesignIcon,
+    pub icon: WindowsDeviceFrameSheetIcon,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WindowsDeviceFrameSheetIcon {
+    Design(WindowsDesignIcon),
+    Path(String),
 }
 
 /// Generic info displayed by a device-frame bottom sheet.
@@ -128,8 +134,8 @@ pub struct WindowsDeviceFrameInfoSheet {
     pub version: String,
     /// Optional trailing header badge (e.g. the release channel).
     pub badge: Option<WindowsDeviceFrameBadge>,
-    /// Action rows. The device frame owns presentation only; command ids are
-    /// dispatched to the runner's device-frame command handler.
+    /// Actions shown in one horizontal row. The device frame owns presentation
+    /// only; command ids are dispatched to the runner's command handler.
     pub actions: Vec<WindowsDeviceFrameSheetAction>,
 }
 
