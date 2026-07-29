@@ -76,14 +76,16 @@ impl ShellHost for HostShell {
 fn resolve_declared_icon(owner: Option<&lxapp::LxApp>, icon: &str) -> ShellResult<String> {
     let icon = icon.trim();
     let path = Path::new(icon);
-    if has_uri_scheme(icon)
-        || path.is_absolute()
-        || path.components().any(|component| {
-            matches!(
-                component,
-                Component::ParentDir | Component::RootDir | Component::Prefix(_)
-            )
-        })
+    let is_lx_uri = icon.starts_with("lx://");
+    if !is_lx_uri
+        && (has_uri_scheme(icon)
+            || path.is_absolute()
+            || path.components().any(|component| {
+                matches!(
+                    component,
+                    Component::ParentDir | Component::RootDir | Component::Prefix(_)
+                )
+            }))
     {
         return Err(ShellError::InvalidSidebarActionIcon {
             icon: icon.to_string(),
@@ -155,6 +157,28 @@ mod tests {
             resolve_declared_icon(None, "https://example.com/action.svg"),
             Err(ShellError::InvalidSidebarActionIcon {
                 icon: "https://example.com/action.svg".to_string()
+            })
+        );
+    }
+
+    #[test]
+    fn declared_icon_accepts_runtime_managed_lx_paths_for_resolution() {
+        assert_eq!(
+            resolve_declared_icon(None, "lx://usercache/icons/action.svg"),
+            Err(ShellError::NotInitialized)
+        );
+        assert_eq!(
+            resolve_declared_icon(None, "lx://temp/download-token"),
+            Err(ShellError::NotInitialized)
+        );
+    }
+
+    #[test]
+    fn declared_icon_rejects_file_urls() {
+        assert_eq!(
+            resolve_declared_icon(None, "file:///tmp/action.svg"),
+            Err(ShellError::InvalidSidebarActionIcon {
+                icon: "file:///tmp/action.svg".to_string()
             })
         );
     }

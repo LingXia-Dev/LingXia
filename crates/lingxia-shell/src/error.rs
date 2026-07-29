@@ -16,7 +16,7 @@ pub enum ShellError {
     EmptySidebarActionUpdate { id: String },
     #[error("shell sidebar action header accepts at most {max} items")]
     SidebarActionHeaderLimit { max: usize },
-    #[error("shell sidebar action icon '{icon}' must stay inside the home lxapp bundle")]
+    #[error("shell sidebar action icon '{icon}' must be an lxapp-accessible local resource path")]
     InvalidSidebarActionIcon { icon: String },
     #[error("shell runtime is not initialized")]
     NotInitialized,
