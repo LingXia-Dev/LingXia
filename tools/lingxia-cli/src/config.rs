@@ -11,6 +11,7 @@ pub const HOST_CONFIG_FILE: &str = "lingxia.yaml";
 pub const LXAPP_BUILD_CONFIG_FILE: &str = "lxapp.config.ts";
 const AUTHORING_PLATFORMS: &[&str] = &["macos", "windows", "ios", "android", "harmony"];
 const DESKTOP_SURFACE_PLATFORMS: &[&str] = &["macos", "windows"];
+const CONTENT_AGNOSTIC_MAIN_PLATFORMS: &[&str] = &["macos"];
 
 /// Host project configuration (native app project)
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -401,6 +402,7 @@ fn surfaces_to_ui_for_target(
     home_app_id: &str,
 ) -> Result<Value> {
     let desktop = DESKTOP_SURFACE_PLATFORMS.contains(&platform);
+    let content_agnostic_main = CONTENT_AGNOSTIC_MAIN_PLATFORMS.contains(&platform);
     let mut resolved: Vec<(SurfaceContent<'_>, &SurfaceDecl)> = Vec::new();
     let mut seen_names = HashSet::new();
     for surface in surfaces {
@@ -472,9 +474,14 @@ fn surfaces_to_ui_for_target(
                     "surface '{name}': declarative page surfaces are not supported on {platform}"
                 ));
             }
-            (SurfaceContent::Url(_), SurfaceRole::Main) if !desktop => {
+            (SurfaceContent::Url(_), SurfaceRole::Main) if !content_agnostic_main => {
                 return Err(anyhow!(
-                    "surface '{name}': url main surfaces are supported only on macOS and Windows"
+                    "surface '{name}': url main surfaces are currently supported only on macOS"
+                ));
+            }
+            (SurfaceContent::Url(_), SurfaceRole::Aside) if platform == "macos" => {
+                return Err(anyhow!(
+                    "surface '{name}': declarative url asides are not supported on macOS; open the browser aside at runtime"
                 ));
             }
             (SurfaceContent::Url(_), SurfaceRole::Main | SurfaceRole::Aside) => {
@@ -490,9 +497,9 @@ fn surfaces_to_ui_for_target(
                 ));
             }
             (SurfaceContent::Native(native), SurfaceRole::Main) => {
-                if !desktop {
+                if !content_agnostic_main {
                     return Err(anyhow!(
-                        "surface '{name}': native main surfaces are supported only on macOS and Windows"
+                        "surface '{name}': native main surfaces are currently supported only on macOS"
                     ));
                 }
                 match NativeSurfaceName::parse(native)? {
@@ -555,7 +562,7 @@ fn surfaces_to_ui_for_target(
         .filter(|(_, surface)| surface.role == SurfaceRole::Float)
         .collect::<Vec<_>>();
 
-    let (launch_content, open_on_launch) = if desktop {
+    let (launch_content, open_on_launch) = if content_agnostic_main {
         if !mains.is_empty() {
             if !floats.is_empty() {
                 return Err(anyhow!(
@@ -573,6 +580,51 @@ fn surfaces_to_ui_for_target(
             if floats.len() != 1 || floats[0].1.tray.is_none() {
                 return Err(anyhow!(
                     "surfaces: {platform} requires at least one main or one tray-anchored float"
+                ));
+            }
+            if effective
+                .iter()
+                .any(|(_, surface)| surface.role == SurfaceRole::Aside)
+            {
+                return Err(anyhow!(
+                    "surfaces: a pure tray float configuration cannot contain asides"
+                ));
+            }
+            (floats[0].0, false)
+        }
+    } else if desktop {
+        if !mains.is_empty() {
+            if !floats.is_empty() {
+                return Err(anyhow!(
+                    "surfaces: {platform} cannot combine main surfaces with a tray float root"
+                ));
+            }
+            if mains.len() != 1 {
+                return Err(anyhow!(
+                    "surfaces: {platform} currently requires exactly one home lxapp main"
+                ));
+            }
+            let SurfaceContent::Lxapp(initial_app_id) = mains[0].0 else {
+                return Err(anyhow!(
+                    "surfaces: {platform} initial surface must be the home lxapp '{home_app_id}'"
+                ));
+            };
+            if initial_app_id != home_app_id {
+                return Err(anyhow!(
+                    "surfaces: {platform} initial surface must be the home lxapp '{home_app_id}', got '{initial_app_id}'"
+                ));
+            }
+            let explicit = launch_mains.first().map(|(content, _)| *content);
+            if explicit.is_none() && !effective.iter().any(|(_, surface)| surface.tray.is_some()) {
+                return Err(anyhow!(
+                    "surfaces: {platform} mains without launch: true require a tray activator"
+                ));
+            }
+            (mains[0].0, explicit.is_some())
+        } else {
+            if floats.len() != 1 || floats[0].1.tray.is_none() {
+                return Err(anyhow!(
+                    "surfaces: {platform} requires one home lxapp main or one tray-anchored float"
                 ));
             }
             if effective
@@ -2033,6 +2085,13 @@ fn validate_macos_ui_config(
                 "native browser ui surface '{id}' must use role 'main'"
             ));
         }
+        if surface.content_kind == MacosUiContentKind::Url
+            && surface.role != MacosUiSurfaceRole::Main
+        {
+            return Err(anyhow!(
+                "url ui surface '{id}' must use role 'main' on macOS"
+            ));
+        }
 
         match surface.role {
             MacosUiSurfaceRole::Main | MacosUiSurfaceRole::Float => {
@@ -3453,31 +3512,18 @@ surfaces:
 
     #[test]
     fn surfaces_maps_url_declarations_to_url_content() {
-        let surfaces = vec![
-            SurfaceDecl {
-                launch: true,
-                ..lxapp_decl("home", SurfaceRole::Main)
-            },
-            SurfaceDecl {
-                url: Some("https://example.com/docs".into()),
-                // No edge: asides default to right.
-                size: Some(SurfaceSize {
-                    width: Some(320),
-                    height: None,
-                }),
-                ..surface_decl(SurfaceRole::Aside)
-            },
-        ];
+        let surfaces = vec![SurfaceDecl {
+            url: Some("https://example.com/docs".into()),
+            launch: true,
+            ..surface_decl(SurfaceRole::Main)
+        }];
 
         let ui = surfaces_to_ui(&surfaces, false, true).unwrap();
         assert_eq!(
-            ui["surfaces"][1],
+            ui["surfaces"][0],
             serde_json::json!({
                 "id": "https://example.com/docs",
-                "role": "aside",
-                "attachTo": "home",
-                "edge": "right",
-                "size": { "width": 320 },
+                "role": "main",
                 "content": { "kind": "url", "url": "https://example.com/docs" }
             })
         );
@@ -3485,20 +3531,37 @@ surfaces:
 
     #[test]
     fn surfaces_rejects_url_without_browser_capability() {
+        let surfaces = vec![SurfaceDecl {
+            url: Some("https://example.com".into()),
+            launch: true,
+            ..surface_decl(SurfaceRole::Main)
+        }];
+        let err = surfaces_to_ui(&surfaces, false, false)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("browser capability"), "{err}");
+    }
+
+    #[test]
+    fn surfaces_rejects_declarative_url_aside_on_macos() {
         let surfaces = vec![
             SurfaceDecl {
                 launch: true,
                 ..lxapp_decl("home", SurfaceRole::Main)
             },
             SurfaceDecl {
-                url: Some("https://example.com".into()),
+                url: Some("https://example.com/docs".into()),
                 ..surface_decl(SurfaceRole::Aside)
             },
         ];
-        let err = surfaces_to_ui(&surfaces, false, false)
+
+        let err = surfaces_to_ui(&surfaces, false, true)
             .unwrap_err()
             .to_string();
-        assert!(err.contains("browser capability"), "{err}");
+        assert!(
+            err.contains("declarative url asides are not supported on macOS"),
+            "{err}"
+        );
     }
 
     #[test]
@@ -3639,7 +3702,7 @@ surfaces:
     }
 
     #[test]
-    fn surfaces_resolve_disjoint_launch_mains_per_target() {
+    fn surfaces_resolve_macos_main_separately_from_windows_home() {
         let yaml = r#"
 app:
   projectName: demo
@@ -3654,7 +3717,7 @@ surfaces:
     role: main
     launch: true
     platforms: [macos]
-  - native: browser
+  - lxapp: home
     role: main
     launch: true
     platforms: [windows]
@@ -3669,9 +3732,33 @@ surfaces:
             "https://example.com/macos"
         );
         assert_eq!(macos["surfaces"][0]["content"]["kind"], "url");
-        assert_eq!(windows["launch"]["initialSurface"], "browser");
-        assert_eq!(windows["surfaces"][0]["content"]["kind"], "native");
-        assert_eq!(windows["surfaces"][0]["content"]["name"], "browser");
+        assert_eq!(windows["launch"]["initialSurface"], "home");
+        assert_eq!(windows["surfaces"][0]["content"]["kind"], "lxapp");
+        assert_eq!(windows["surfaces"][0]["content"]["appId"], "home");
+    }
+
+    #[test]
+    fn surfaces_rejects_native_main_on_windows_until_presenter_supports_it() {
+        let yaml = r#"
+app:
+  projectName: demo
+  productName: Demo
+  productVersion: 0.1.0
+  platforms: [windows]
+  homeAppId: home
+capabilities:
+  terminal: true
+surfaces:
+  - native: terminal
+    role: main
+    launch: true
+"#;
+
+        let err = load_config_yaml(yaml).unwrap_err().to_string();
+        assert!(
+            err.contains("native main surfaces are currently supported only on macOS"),
+            "{err}"
+        );
     }
 
     #[test]

@@ -272,8 +272,8 @@ Each entry starts with its **content key** — exactly one of `lxapp` / `url` / 
 | Field | Type | Required | Description |
 |---|---|---:|---|
 | `lxapp` | string | one content key | An lxapp, by appId. Roles: `main` \| `aside` \| `float`. |
-| `url` | string | one content key | A page in the in-app browser (requires `capabilities.browser: true`). Roles: `main` \| `aside`. |
-| `native` | string | one content key | A host-native capability — only the built-in `terminal` today. Role: `aside`. |
+| `url` | string | one content key | A page in the managed browser (requires `capabilities.browser: true`). macOS admits it as `main` and opens browser asides dynamically with `lx.openSurface`; Windows retains declarative `aside` support. |
+| `native` | string | one content key | A built-in host surface: `terminal` or `browser`. On macOS, terminal supports `main` / `aside` and browser supports `main`; Windows currently keeps terminal as `aside`. |
 | `role` | `main` \| `aside` \| `float` | Yes | `main` = a switchable primary surface; `aside` = a docked companion; `float` = a tray-anchored popover (requires a `tray:`). |
 | `launch` | bool | No | Open on start. At most one `main` may set `launch: true` (the initial surface). Omit on all mains for a tray-launched app. |
 | `edge` | `left`\|`right`\|`top`\|`bottom` | No | Aside docking edge. Defaults to `right`; the terminal defaults to `bottom` (and only accepts `top`/`bottom`). |
@@ -287,11 +287,11 @@ There is **no `sidebar:` entry field**: app-owned sidebar actions are declared a
 
 ### Rules (enforced at build)
 
-- A config needs at least one `lxapp` `main` surface — or, for a pure popover app, a `role: float` surface with a `tray:` and no `main`.
-- At most one `main` may set `launch: true`; `launch` is invalid on a non-main surface and only supported on an lxapp main.
+- macOS admits `lxapp`, `url`, `native: terminal`, and `native: browser` as `main`. Other targets still require the home lxapp as their initial main until their native presenters implement this contract. A pure desktop popover app may instead declare one `role: float` surface with a `tray:` and no main.
+- After `platforms` filtering, at most one `main` may set `launch: true`; `launch` is invalid on a non-main. macOS allows it on any admitted main content; other targets currently allow it only on their home lxapp main.
 - `edge` and `size` are only valid on `aside`.
-- A `url` surface requires `capabilities.browser: true` and supports `role: main | aside`.
-- `native` supports only `terminal`, requires `capabilities.terminal: true`, and its `edge` must be `top` or `bottom`.
+- A `url` surface requires `capabilities.browser: true`; declarative URL main is currently macOS-only.
+- `native: terminal` requires `capabilities.terminal: true`; an aside uses `edge: top | bottom`. `native: browser` requires `capabilities.browser: true` and currently supports only a macOS main.
 - The same content key may be declared at most once.
 - `role: float` requires a `tray:` (it is a tray-anchored popover); a bare `role: float` is rejected.
 - At most one surface may declare `tray:`.
@@ -346,7 +346,9 @@ Two sidebar regions have fixed ownership:
 - **Pins are the user's** — quick entries for lxapps and websites (eight at most), added and removed through context menus. There is no app API to write them.
 - **Sidebar actions are the app's** — runtime entries the home lxapp declares via `lx.shell.sidebarActions` (see the `@lingxia/types` declarations). Header actions are icon-only and limited to two; footer actions use labeled cells and scroll after five visible rows. The shell invokes `onActivate` and performs no built-in navigation; callbacks can call `lx.openSurface(...)` or run any other app logic. Redeclare them each Logic launch.
 
-Closing the last main in a product Host does not create a fake browser/terminal or close the app. The window remains with zero active main surfaces and shows shell-owned empty chrome. Configure it from the home Logic with `lx.shell.emptyState.set(...)`; its optional action can reopen a declared surface. This placeholder is window state, so it has no surface id or sidebar tab. Direct URL Runner sessions are the exception: closing their final browser tab closes the Runner window.
+On macOS, closing the last main in a product Host does not create a fake browser/terminal or close the app. The window remains with zero active main surfaces and shows shell-owned empty chrome. Configure it from the home Logic with `lx.shell.emptyState.set(...)`; its optional action can reopen a declared surface. This placeholder is window state, so it has no surface id or sidebar tab. Direct URL Runner sessions are the exception: closing their final browser tab closes the Runner window.
+
+The home lxapp remains the control app even when the visible macOS main is a URL or native surface. Its Logic worker still receives `App.onLaunch` once and may register sidebar actions, empty-state content, tray behavior, and other host chrome without creating a hidden WebView.
 
 ### Menu-bar / system-tray apps
 
@@ -377,7 +379,9 @@ Pass `null` / empty to clear a badge or title. The tray *shape* is declared in `
 
 ### Terminal surface
 
-The built-in terminal is a native aside (`native: terminal`, `edge: top | bottom`, default `bottom`) gated by `capabilities.terminal`. To expose it as an activator, declare a runtime entry whose `onActivate` calls `lx.openSurface({ native: 'terminal' })`.
+The built-in terminal is gated by `capabilities.terminal`. On macOS it may be a main surface or an aside (`edge: top | bottom`, default `bottom`); Windows currently supports the aside form. To expose it as an activator, declare a runtime entry whose `onActivate` calls `lx.openSurface({ native: 'terminal' })`.
+
+`native: browser` is a macOS host-owned browser workspace. It starts with an empty tab and uses the managed browser profile and chrome; use a `url:` main when the declaration should open a specific `https://` or authorized `file://` target.
 
 It shares a single cross-platform Rust engine that owns sessions, PTY transport, terminal semantics, and the snapshot/input protocol; platform SDKs only render snapshots into a native view and capture input. Backend selection is owned by the runtime — there is no backend selector in `lingxia.yaml`.
 
