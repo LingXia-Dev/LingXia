@@ -95,6 +95,70 @@ private final class SidebarRailButton: NSButton {
 }
 
 @MainActor
+private final class SidebarHeaderActionButton: NSButton {
+    private var trackingArea: NSTrackingArea?
+    private var hovered = false
+    private var pressed = false
+
+    override var mouseDownCanMoveWindow: Bool { false }
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        wantsLayer = true
+        layer?.cornerRadius = 6
+        updateAppearance()
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let trackingArea { removeTrackingArea(trackingArea) }
+        let area = NSTrackingArea(
+            rect: bounds,
+            options: [.mouseEnteredAndExited, .activeInActiveApp, .inVisibleRect],
+            owner: self,
+            userInfo: nil
+        )
+        addTrackingArea(area)
+        trackingArea = area
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        hovered = true
+        updateAppearance()
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        hovered = false
+        updateAppearance()
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        pressed = true
+        updateAppearance()
+        super.mouseDown(with: event)
+        pressed = false
+        updateAppearance()
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        updateAppearance()
+    }
+
+    private func updateAppearance() {
+        layer?.backgroundColor = if pressed {
+            SidebarActionChromePalette.pressed.cgColor
+        } else if hovered {
+            SidebarActionChromePalette.hover.cgColor
+        } else {
+            NSColor.clear.cgColor
+        }
+    }
+}
+
+@MainActor
 private final class SidebarPopoverHoverView: NSView {
     var onHoverChanged: ((Bool) -> Void)?
     private var trackingArea: NSTrackingArea?
@@ -1292,7 +1356,7 @@ class SidebarView: NSView, NSPopoverDelegate {
             $0.removeFromSuperview()
         }
         for item in items {
-            let button = NSButton()
+            let button = SidebarHeaderActionButton()
             button.translatesAutoresizingMaskIntoConstraints = false
             button.isBordered = false
             button.bezelStyle = .regularSquare

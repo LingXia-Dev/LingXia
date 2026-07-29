@@ -94,7 +94,7 @@ pub(super) const SIDEBAR_CHEVRON_SIZE: i32 = 18;
 
 /// Side length of the sidebar header action buttons (settings/downloads),
 /// and the gap between them.
-pub(super) const SIDEBAR_HEADER_ACTION_SIZE: i32 = 22;
+pub(super) const SIDEBAR_HEADER_ACTION_SIZE: i32 = 28;
 pub(super) const SIDEBAR_HEADER_ACTION_GAP: i32 = 4;
 
 pub(super) const SHELL_SIDEBAR_WIDTH: i32 = 184;
