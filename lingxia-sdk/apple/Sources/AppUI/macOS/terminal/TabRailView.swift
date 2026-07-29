@@ -110,6 +110,11 @@ final class LingXiaTerminalTabRailView: NSView {
             zoomButton.setZoomed(isSurfaceZoomed)
         }
     }
+    var showsSurfaceZoomControl: Bool = true {
+        didSet {
+            zoomButton.isHidden = !showsSurfaceZoomControl
+        }
+    }
 
     private let stackView = NSStackView()
     private let flexibleSpace = NSView()
