@@ -284,10 +284,10 @@ pub(super) fn draw_sidebar_tab_bar(
             continue;
         };
         if !action.disabled {
-            draw_hover_wash(hdc, action_rect, 4, cursor);
+            draw_hover_wash(hdc, action_rect, 6, cursor);
         }
-        let icon_rect = centered_icon_rect(action_rect, 18);
-        let _ = draw_icon_from_path(hdc, &action.icon_path, icon_rect, 18);
+        let icon_rect = centered_icon_rect(action_rect, 16);
+        let _ = draw_icon_from_path(hdc, &action.icon_path, icon_rect, 16);
     }
 }
 
