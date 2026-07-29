@@ -248,6 +248,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     private var managedMainActivateHandler: ((String) -> Void)?
     private var managedMainCloseHandler: ((String) -> Void)?
     private var declaredBrowserSurfaceActivateHandler: ((String) -> Void)?
+    private var declaredBrowserSurfaceCloseHandler: ((String) -> Void)?
     private weak var managedMainView: NSView?
     private lazy var mainEmptyStateView = MainEmptyStateView()
 
@@ -1854,10 +1855,12 @@ extension LxAppShell {
 
     func configureDeclaredBrowser(
         ownerAppId: String?,
-        onSurfaceActivate: @escaping (String) -> Void
+        onSurfaceActivate: @escaping (String) -> Void,
+        onSurfaceClose: @escaping (String) -> Void
     ) {
         declaredBrowserOwnerAppId = ownerAppId
         declaredBrowserSurfaceActivateHandler = onSurfaceActivate
+        declaredBrowserSurfaceCloseHandler = onSurfaceClose
     }
 
     @discardableResult
@@ -1944,6 +1947,10 @@ extension LxAppShell: BrowserCoordinatorHost {
 
     func browserDidActivateSurface(_ surfaceID: String) {
         declaredBrowserSurfaceActivateHandler?(surfaceID)
+    }
+
+    func browserDidCloseSurface(_ surfaceID: String) {
+        declaredBrowserSurfaceCloseHandler?(surfaceID)
     }
 
     func switchToLxAppTab(_ appId: String) {
