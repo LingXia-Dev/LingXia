@@ -269,6 +269,13 @@ import WebKit
             RunnerBridge.setSurfaceShellBrowserBlankNewTabs(shell, enabled: enabled)
         }
 
+        public static func setBrowserClosesWindowOnLastTab(
+            _ shell: LxAppShell,
+            enabled: Bool
+        ) {
+            RunnerBridge.setSurfaceShellBrowserClosesWindowOnLastTab(shell, enabled: enabled)
+        }
+
         public static func open(
             _ shell: LxAppShell,
             appId: String,

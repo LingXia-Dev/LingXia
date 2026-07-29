@@ -242,6 +242,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     private var sidebarBrowserItemCount = 0
     private var sidebarBrowserRootVisible = false
     private var browserBlankNewTabs = false
+    private var browserClosesWindowOnLastTab = false
     private var declaredBrowserOwnerAppId: String?
     private var managedMainSurfaceIDs = Set<String>()
     private var managedMainActivateHandler: ((String) -> Void)?
@@ -1818,6 +1819,10 @@ extension LxAppShell {
         browserBlankNewTabs = enabled
     }
 
+    func setBrowserClosesWindowOnLastTab(_ enabled: Bool) {
+        browserClosesWindowOnLastTab = enabled
+    }
+
     func configureDeclaredBrowser(
         ownerAppId: String?,
         onSurfaceActivate: @escaping (String) -> Void
@@ -1873,6 +1878,7 @@ extension LxAppShell: BrowserCoordinatorHost {
     var hostWindow: NSWindow? { window }
     var hasOpenTabs: Bool { tabManager.hasTabs }
     var keepsBrowserRootWithoutTabs: Bool { sidebarBrowserRootVisible }
+    var closesWindowOnLastBrowserTab: Bool { browserClosesWindowOnLastTab }
     var usesBlankBrowserNewTabs: Bool { browserBlankNewTabs }
 
     func browserOwnerForNewTab() -> (appId: String, sessionId: UInt64)? {
