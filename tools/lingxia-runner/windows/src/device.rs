@@ -28,6 +28,9 @@ pub(crate) const CAPSULE_CLOSE_COMMAND: u32 = 0x0800;
 /// Toolbar appearance glyph: pins the opposite of what the screen shows.
 pub(crate) const APPEARANCE_COMMAND: u32 = 0x0900;
 
+/// App-declared More actions occupy two generation-scoped command slots.
+pub(crate) const MORE_ACTION_COMMAND_BASE: u32 = 0x0A00;
+
 /// The selector dropdown only chooses the simulated frame/device.
 fn device_selector_items(index: usize) -> Vec<WindowsDeviceFrameSelectorEntry> {
     let mut entries = Vec::new();
