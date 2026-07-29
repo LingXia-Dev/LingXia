@@ -16,6 +16,9 @@ protocol BrowserCoordinatorHost: AnyObject {
     var hasOpenTabs: Bool { get }
     /// Whether browser chrome remains usable when the last web tab closes.
     var keepsBrowserRootWithoutTabs: Bool { get }
+    /// Whether a user-created tab starts at about:blank instead of the bundled
+    /// browser new-tab page.
+    var usesBlankBrowserNewTabs: Bool { get }
     /// Returns owner (appId, sessionId) for creating a new browser tab.
     func browserOwnerForNewTab() -> (appId: String, sessionId: UInt64)?
     /// Called before a browser tab becomes active. Host should pause current VC.
@@ -228,9 +231,7 @@ final class BrowserTabCoordinator: NSObject {
     // MARK: - Public Tab Operations
 
     func addTab() {
-        // A persistent browser root is used by the URL Runner, which does not
-        // bundle the browser webui behind `lingxia://newtab`.
-        addTabWithURL(host?.keepsBrowserRootWithoutTabs == true ? "about:blank" : "")
+        addTabWithURL(host?.usesBlankBrowserNewTabs == true ? "about:blank" : "")
     }
 
     func openSettings() {

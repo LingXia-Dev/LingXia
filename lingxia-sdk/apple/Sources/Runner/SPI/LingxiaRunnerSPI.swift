@@ -265,6 +265,10 @@ import WebKit
             RunnerBridge.setSurfaceShellBrowserRootVisible(shell, visible: visible)
         }
 
+        public static func setBrowserBlankNewTabs(_ shell: LxAppShell, enabled: Bool) {
+            RunnerBridge.setSurfaceShellBrowserBlankNewTabs(shell, enabled: enabled)
+        }
+
         public static func open(
             _ shell: LxAppShell,
             appId: String,
