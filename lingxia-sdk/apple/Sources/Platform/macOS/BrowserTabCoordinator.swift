@@ -73,6 +73,7 @@ final class BrowserTabCoordinator: NSObject {
     private var tabFavicons: [String: NSImage] = [:]
     private var tabFaviconRequestOrigins: [String: String] = [:]
     private var lastObservedURLs: [String: String] = [:]
+    private var stableTabIds: [String: String] = [:]
     private var retainedNewTabOwner: (appId: String, sessionId: UInt64)?
 
     /// Tabs whose WebView has been discarded to free memory (Chrome-style).
@@ -304,6 +305,7 @@ final class BrowserTabCoordinator: NSObject {
         tabFavicons.removeValue(forKey: id)
         tabFaviconRequestOrigins.removeValue(forKey: id)
         lastObservedURLs.removeValue(forKey: id)
+        stableTabIds = stableTabIds.filter { $0.value != id }
         interactedTabs.remove(id)
         discardedTabs.remove(id)
         tabRecency.removeAll { $0 == id }
@@ -358,6 +360,7 @@ final class BrowserTabCoordinator: NSObject {
         tabFavicons.removeAll()
         tabFaviconRequestOrigins.removeAll()
         lastObservedURLs.removeAll()
+        stableTabIds.removeAll()
         discardedTabs.removeAll()
         tabRecency.removeAll()
         backgroundedAt.removeAll()
@@ -781,6 +784,15 @@ final class BrowserTabCoordinator: NSObject {
         let normalizedStableTabId = stableTabId?
             .trimmingCharacters(in: .whitespacesAndNewlines)
         let requestedStableTabId = normalizedStableTabId?.isEmpty == false ? normalizedStableTabId : nil
+        let requestedURL = url.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if let requestedStableTabId,
+           let existingTabId = stableTabIds[requestedStableTabId],
+           tabIds.contains(existingTabId),
+           lastObservedURLs[existingTabId] == requestedURL {
+            presentInternalBrowserTab(id: existingTabId)
+            return
+        }
 
         let openedTab = if let requestedStableTabId {
             openBrowserTabWithId(owner.appId, owner.sessionId, url, requestedStableTabId)
@@ -802,7 +814,9 @@ final class BrowserTabCoordinator: NSObject {
             return
         }
 
-        let requestedURL = url.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let requestedStableTabId {
+            stableTabIds[requestedStableTabId] = tabId
+        }
         if !requestedURL.isEmpty {
             lastObservedURLs[tabId] = requestedURL
         }
