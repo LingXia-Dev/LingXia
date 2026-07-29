@@ -152,6 +152,18 @@ rong::js_api! {
     left: number;
 }"###;
 
+        /// One app-declared action shown in the host-provided More affordance.
+        /// Mobile hosts render these in the capsule sheet; desktop hosts render
+        /// them in the lxapp context menu. The native menu is fully dismissed
+        /// before `onClick` runs.
+        type MoreAction = r###"{
+    /** Bundled resource path or an app-accessible local `lx://` path. */
+    icon: string;
+    /** Visible action label. */
+    label: string;
+    onClick: () => void | Promise<void>;
+}"###;
+
         type ChooseDirectoryOptions = r###"{
     /** Initial directory the dialog opens in. Platform default if omitted. */
     defaultPath?: string;
