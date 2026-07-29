@@ -59,6 +59,7 @@ pub fn execute(
     package_id: Option<String>,
     icon: Option<String>,
     template: Option<String>,
+    template_args: Vec<String>,
     yes: bool,
     no_git: bool,
 ) -> Result<()> {
@@ -93,6 +94,9 @@ pub fn execute(
     } else {
         None
     };
+    if provider.is_none() && !template_args.is_empty() {
+        bail!("Template arguments require an installed template provider");
+    }
     let user_template = provider
         .as_ref()
         .map(template_provider::template_directory)
@@ -151,7 +155,7 @@ pub fn execute(
             user_template.as_deref(),
         )?;
         if let Some(provider) = provider.as_ref() {
-            template_provider::run_create(provider, &staged_dir)?;
+            template_provider::run_create(provider, &staged_dir, &template_args, !yes)?;
             template_provider::write_project_lock(provider, &staged_dir)?;
         }
         setup_ai_tooling(&staged_dir, yes);
