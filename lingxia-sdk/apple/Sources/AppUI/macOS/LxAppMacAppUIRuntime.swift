@@ -606,7 +606,7 @@ final class LxAppMacAppUIRuntime: NSObject {
 
     private func openTerminalMainSurface(_ surface: LxAppUIConfig.Surface) {
         let workspace = terminalWorkspaces[surface.id]
-            ?? LingXiaTerminalWorkspaceView(surfaceID: surface.id)
+            ?? LingXiaTerminalWorkspaceView(surfaceID: surface.id, presentation: .main)
         terminalWorkspaces[surface.id] = workspace
         workspace.onRequestClosePanel = nil
         workspace.onToggleSurfaceZoom = nil
