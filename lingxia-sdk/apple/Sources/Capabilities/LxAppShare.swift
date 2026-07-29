@@ -13,7 +13,7 @@ enum LxAppShare {
     private static var macShareCoordinators: [UInt64: MacShareCoordinator] = [:]
 
     @MainActor
-    private final class MacShareCoordinator: NSObject, NSSharingServicePickerDelegate, NSSharingServiceDelegate {
+    private final class MacShareCoordinator: NSObject, @preconcurrency NSSharingServicePickerDelegate, @preconcurrency NSSharingServiceDelegate {
         let callbackId: UInt64
         var picker: NSSharingServicePicker?
         private var finished = false
