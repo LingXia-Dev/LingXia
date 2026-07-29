@@ -1258,7 +1258,10 @@ export type ShellApi = {
 /**
  * One app-declared shell sidebar action. Its `id` remains stable across
  * updates and activation. The shell only routes activation to the
- * callback; the app owns every resulting action.
+ * callback; the app owns every resulting action. `icon` must be a
+ * bundle-relative path. For portable desktop rendering, use a square,
+ * transparent, monochrome SVG or PNG designed for a 16-point visual;
+ * the host may tint it to match the current shell theme.
  */
 export type ShellSidebarAction = {
     id: string;

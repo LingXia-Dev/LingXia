@@ -438,6 +438,10 @@ Declaration model (owned by the single runtime writer, §7.2):
   `label`, bundle-relative `icon`, and `onActivate` callback. Stable ids share
   one namespace across placements and route updates and activation; callbacks
   decide what activation does.
+- Icon paths must remain inside the home bundle; absolute paths, network URLs,
+  and parent traversal are rejected. The portable asset profile is a square,
+  transparent, monochrome SVG or PNG designed for a 16-point visual. Hosts may
+  tint it to match shell theme and disabled state.
 - Hosts do not infer target metadata, open lxapps, toggle native capabilities,
   or render fallback glyphs. A callback explicitly calls APIs such as
   `lx.openSurface({ lxapp: ... })` or `lx.openSurface({ native: ... })`.
