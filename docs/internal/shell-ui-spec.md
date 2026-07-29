@@ -635,8 +635,8 @@ generated files are never hand-written.
 |---|---|---|
 | lxapp | main / aside / float | main / aside / float |
 | page | float | float / standalone window |
-| URL | main / aside | main browser tab / browser aside |
-| native | aside / float | aside / float |
+| URL | main / aside | declared main ships on macOS; macOS aside is runtime-opened, Windows retains declared aside |
+| native | main / aside | macOS main: terminal/browser; terminal aside: macOS/Windows |
 
 The build MUST validate:
 
@@ -651,8 +651,8 @@ The build MUST validate:
   so tray/activator reopens address the same live instance;
 - a `platforms` filter excluding the current platform removes the surface and
   all of its entries together;
-- a URL surface requires the browser capability; a native surface requires its
-  capability;
+- a URL surface requires the browser capability; a native surface is the closed
+  set `terminal | browser` and requires its matching capability;
 - a host has at least one main — or is a main-less, tray-float-only app;
 - `controls: content` satisfies the single-main constraint of §4.7.
 
