@@ -211,9 +211,13 @@ final class BrowserTabCoordinator: NSObject {
 
     /// Deactivate browser UI (called when switching to an lxapp tab). Idempotent.
     func deactivate() {
-        guard let previous = activeTabId else { return }
+        let previous = activeTabId
         clearWebViewAttachment()
         hideBrowserView()
+        guard let previous else {
+            host?.forceHideNavigationToolbar(false)
+            return
+        }
         // The browser is leaving the foreground — start the idle clock for the
         // tab that was active, so it isn't treated as infinitely idle and
         // discarded prematurely on the next pressure event / sweep.
