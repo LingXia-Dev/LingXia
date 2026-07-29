@@ -21,7 +21,7 @@ webview:
 
 # Capsule Menu
 capsule:
-  clean_cache: "清理缓存并重启"
+  clean_cache: "清缓存"
   restart: "重启"
   uninstall: "卸载"
 
