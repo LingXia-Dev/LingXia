@@ -147,6 +147,9 @@ mod bridge {
         #[swift_bridge(swift_name = "lingxiaInit")]
         fn lingxia_init(data_dir: &str, cache_dir: &str, locale: &str) -> LingxiaInitResult;
 
+        #[swift_bridge(swift_name = "launchHomeControlLogic")]
+        fn launch_home_control_logic() -> bool;
+
         #[swift_bridge(swift_name = "getDisplayLanguage")]
         fn get_display_language() -> String;
 
@@ -698,6 +701,18 @@ macro_rules! ffi_catch_unwind {
             }
         }
     };
+}
+
+pub fn launch_home_control_logic() -> bool {
+    ffi_catch_unwind!("launch_home_control_logic", false, || {
+        match crate::app::launch_home_control_logic() {
+            Ok(()) => true,
+            Err(error) => {
+                log::error!("Failed to launch home control Logic: {error}");
+                false
+            }
+        }
+    })
 }
 
 /// Notify that LxApp was closed

@@ -27,6 +27,8 @@ protocol BrowserCoordinatorHost: AnyObject {
     func browserWillActivateTab()
     /// Reports the declared main surface that owns the activated tab.
     func browserDidActivateSurface(_ surfaceID: String)
+    /// Reports that the last tab owned by a declared main surface closed.
+    func browserDidCloseSurface(_ surfaceID: String)
     /// Switch display to the lxapp tab with this appId.
     func switchToLxAppTab(_ appId: String)
     /// Currently active lxapp tab appId (if any).
@@ -247,6 +249,7 @@ final class BrowserTabCoordinator: NSObject {
     @discardableResult
     func openDeclaredMain(surfaceID: String, mode: DeclaredInitialMode) -> Bool {
         let stableTabID = Self.declaredStableTabID(surfaceID)
+        declaredWorkspaceSurfaceID = surfaceID
         switch mode {
         case .url(let url):
             return addTabWithURL(
@@ -255,7 +258,6 @@ final class BrowserTabCoordinator: NSObject {
                 declaredSurfaceID: surfaceID
             ) != nil
         case .emptyWorkspace:
-            declaredWorkspaceSurfaceID = surfaceID
             return addTabWithURL(
                 "about:blank",
                 stableTabId: stableTabID,
@@ -316,6 +318,7 @@ final class BrowserTabCoordinator: NSObject {
 
     func closeTab(id: String) {
         guard let index = tabIds.firstIndex(of: id) else { return }
+        let declaredSurfaceID = declaredSurfaceIds[id]
 
         // A direct web Runner has no workspace once its target tab closes.
         // Window teardown owns the tab cleanup through the Runner close hook.
@@ -351,7 +354,19 @@ final class BrowserTabCoordinator: NSObject {
 
         if activeTabId == id {
             activeTabId = nil
+        }
 
+        if let declaredSurfaceID,
+           !declaredSurfaceIds.values.contains(declaredSurfaceID) {
+            if declaredWorkspaceSurfaceID == declaredSurfaceID {
+                declaredWorkspaceSurfaceID = nil
+            }
+            host?.browserDidCloseSurface(declaredSurfaceID)
+            host?.updateSidebarBrowserItems(sidebarItems(), activeId: activeTabId)
+            return
+        }
+
+        if activeTabId == nil {
             if let lastBrowser = tabIds.last {
                 switchToTab(id: lastBrowser)
                 host?.updateSidebarBrowserItems(sidebarItems(), activeId: lastBrowser)
@@ -911,6 +926,7 @@ final class BrowserTabCoordinator: NSObject {
 
         activeTabId = id
         if let surfaceID = declaredSurfaceIds[id] {
+            declaredWorkspaceSurfaceID = surfaceID
             host?.browserDidActivateSurface(surfaceID)
         }
         backgroundedAt.removeValue(forKey: id)

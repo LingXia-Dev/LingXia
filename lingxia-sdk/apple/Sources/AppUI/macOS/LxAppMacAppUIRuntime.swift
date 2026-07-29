@@ -150,9 +150,15 @@ final class LxAppMacAppUIRuntime: NSObject {
         shell.setTitlebarHostActionHandler { [weak self] actionID in
             self?.performActivator(id: actionID)
         }
-        shell.configureDeclaredBrowser(ownerAppId: graphOwnerAppId) { [weak self] surfaceID in
-            self?.didActivateBrowserMainSurface(id: surfaceID)
-        }
+        shell.configureDeclaredBrowser(
+            ownerAppId: graphOwnerAppId,
+            onSurfaceActivate: { [weak self] surfaceID in
+                self?.didActivateBrowserMainSurface(id: surfaceID)
+            },
+            onSurfaceClose: { [weak self] surfaceID in
+                self?.closeMainSurface(id: surfaceID)
+            }
+        )
         // A float root never shows the sidebar; for other roots, content drives
         // visibility via the shell's auto-hide recompute.
         shell.setSidebarSuppressed(rootSurface.role == .float)
@@ -174,6 +180,9 @@ final class LxAppMacAppUIRuntime: NSObject {
         refreshChromeActions()
         if uiConfig.launch.openOnLaunch ?? true {
             try openSurface(id: uiConfig.launch.initialSurface)
+        }
+        if !launchHomeControlLogic() {
+            LXLog.error("Home control Logic failed to launch", category: "MacAppUI")
         }
     }
 

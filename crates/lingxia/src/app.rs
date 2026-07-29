@@ -36,6 +36,17 @@ pub fn home_app_id() -> Option<&'static str> {
     lingxia_app_context::home_app_id()
 }
 
+pub(crate) fn launch_home_control_logic() -> crate::Result<()> {
+    let app_id =
+        home_app_id().ok_or_else(|| crate::Error::internal("home lxapp is not configured"))?;
+    let app = lxapp::try_get(app_id)
+        .ok_or_else(|| crate::Error::internal(format!("home lxapp '{app_id}' is not ready")))?;
+    app.ensure_app_service_running()
+        .map_err(|error| crate::Error::internal(error.to_string()))?;
+    app.ensure_app_launch_dispatched()
+        .map_err(|error| crate::Error::internal(error.to_string()))
+}
+
 /// Returns the configured LingXia host identifier, if any.
 pub fn lingxia_id() -> Option<&'static str> {
     lingxia_app_context::lingxia_id()

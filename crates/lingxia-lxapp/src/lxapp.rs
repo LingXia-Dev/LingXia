@@ -526,6 +526,7 @@ pub struct LxApp {
     pub(crate) config: LxAppConfig,
     pub(crate) executor: Arc<LxAppWorkers>,
     home_update_check_dispatched: AtomicBool,
+    app_launch_dispatched: AtomicBool,
     pending_restart_request: AtomicBool,
     /// Session being torn down for a restart, or 0. Page instances must not be
     /// (re)created on it; the recreated instance starts fresh at 0.
@@ -1052,6 +1053,7 @@ impl LxApp {
         let _ = self.clear_page_stack();
         // Terminate AppService (receiver handles its own state)
         let _ = self.executor.terminate_app_svc(self.clone_arc());
+        self.app_launch_dispatched.store(false, Ordering::SeqCst);
         self.clear_open_region();
         Ok(())
     }
@@ -1091,6 +1093,7 @@ impl LxApp {
             config: LxAppConfig::default(),
             executor,
             home_update_check_dispatched: AtomicBool::new(false),
+            app_launch_dispatched: AtomicBool::new(false),
             pending_restart_request: AtomicBool::new(false),
             restart_closing_session: AtomicU64::new(0),
             session,
@@ -1694,18 +1697,37 @@ impl LxApp {
         self.executor.create_app_svc(self.clone_arc())
     }
 
+    /// Dispatch `App.onLaunch` once for the current worker-backed app instance.
+    /// The worker creation and event messages share one FIFO queue, so callers
+    /// may invoke this immediately after `ensure_app_service_running`.
+    pub fn ensure_app_launch_dispatched(&self) -> Result<(), LxAppError> {
+        if self
+            .app_launch_dispatched
+            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+            .is_err()
+        {
+            return Ok(());
+        }
+        if let Err(error) = self.appservice_notify(AppServiceEvent::OnLaunch, None) {
+            self.app_launch_dispatched.store(false, Ordering::SeqCst);
+            return Err(error);
+        }
+        Ok(())
+    }
+
     /// Restart the app service without closing the host surface or recreating
     /// the LxApp instance. Dev runners use this for an in-place lxapp restart:
     /// logic is recreated, while the existing window/frame stays put.
     pub fn restart_app_service_in_place(&self) -> Result<(), LxAppError> {
         self.executor.terminate_app_svc(self.clone_arc())?;
+        self.app_launch_dispatched.store(false, Ordering::SeqCst);
         self.executor.create_app_svc(self.clone_arc())?;
         // Re-run onLaunch so app-service state (globalData, network init) is
         // rebuilt. onLaunch normally fires only during open(); an in-place
         // restart skips that lifecycle, so fire it explicitly. It is enqueued
         // before the page reload, so the reloaded page's first globalData read
         // (which arrives only after the page re-loads) observes the fresh state.
-        self.appservice_notify(AppServiceEvent::OnLaunch, None)
+        self.ensure_app_launch_dispatched()
     }
 
     /// Reload the current page's WebView in place (without recreating the host
