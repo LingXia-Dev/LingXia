@@ -69,12 +69,23 @@ struct LxAppUIConfig: Decodable, Sendable {
         let kind: Kind
         let appId: String?
         let path: String?
-        let backend: String?
+        let url: String?
+        let name: NativeName?
 
         enum Kind: String, Decodable, Sendable {
             case lxapp
-            case terminal
+            case page
+            case url
+            case native
         }
+
+        enum NativeName: String, Decodable, Sendable {
+            case terminal
+            case browser
+        }
+
+        var isNativeTerminal: Bool { kind == .native && name == .terminal }
+        var isNativeBrowser: Bool { kind == .native && name == .browser }
     }
 
     struct Activator: Decodable, Sendable {
