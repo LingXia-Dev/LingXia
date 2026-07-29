@@ -1853,7 +1853,7 @@ final class LxMediaPlayer: NSObject {
         bottomBar.addSubview(volumeSlider)
 
         // Settings button (collapsed menu for quality/speed)
-        settingsButton.setImage(LxIcon.image(named: "icon_settings"), for: .normal)
+        settingsButton.setImage(UIImage(systemName: "gearshape"), for: .normal)
         settingsButton.tintColor = .white
         settingsButton.backgroundColor = .clear
         settingsButton.isHidden = true

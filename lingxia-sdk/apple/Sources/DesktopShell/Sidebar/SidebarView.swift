@@ -394,6 +394,13 @@ class SidebarView: NSView, NSPopoverDelegate {
         return image
     }
 
+    private static func sidebarHeaderActionIcon(_ url: URL?) -> NSImage? {
+        guard let url, let image = NSImage(contentsOf: url) else { return nil }
+        image.isTemplate = true
+        image.size = NSSize(width: 16, height: 16)
+        return image
+    }
+
     /// Called when a panel icon button is clicked: (panelId)
     var onPanelItemToggled: ((UInt64, String) -> Void)?
 
@@ -1292,7 +1299,7 @@ class SidebarView: NSView, NSPopoverDelegate {
             button.imagePosition = .imageOnly
             button.imageScaling = .scaleProportionallyDown
             button.contentTintColor = NSColor.secondaryLabelColor
-            button.image = item.iconURL.flatMap { NSImage(contentsOf: $0) }
+            button.image = Self.sidebarHeaderActionIcon(item.iconURL)
             button.toolTip = item.label
             button.setAccessibilityLabel(item.label)
             button.isEnabled = !item.disabled

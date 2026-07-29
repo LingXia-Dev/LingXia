@@ -31,7 +31,7 @@ App({
       {
         id: "downloads",
         placement: "header",
-        icon: "public/activator.svg",
+        icon: "public/sidebar-downloads.svg",
         label: "Downloads",
         onActivate: () => {
           void lx
@@ -42,7 +42,7 @@ App({
       {
         id: "settings",
         placement: "header",
-        icon: "public/activator.svg",
+        icon: "public/sidebar-settings.svg",
         label: "Settings",
         onActivate: () => {
           void lx

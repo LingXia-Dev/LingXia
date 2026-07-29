@@ -76,7 +76,8 @@ impl ShellHost for HostShell {
 fn resolve_declared_icon(owner: Option<&lxapp::LxApp>, icon: &str) -> ShellResult<String> {
     let icon = icon.trim();
     let path = Path::new(icon);
-    if path.is_absolute()
+    if has_uri_scheme(icon)
+        || path.is_absolute()
         || path.components().any(|component| {
             matches!(
                 component,
@@ -95,6 +96,17 @@ fn resolve_declared_icon(owner: Option<&lxapp::LxApp>, icon: &str) -> ShellResul
             icon: icon.to_string(),
         })?;
     Ok(resolved.to_string_lossy().into_owned())
+}
+
+fn has_uri_scheme(value: &str) -> bool {
+    let Some((scheme, _)) = value.split_once(':') else {
+        return false;
+    };
+    !scheme.is_empty()
+        && scheme.as_bytes()[0].is_ascii_alphabetic()
+        && scheme
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'+' | b'-' | b'.'))
 }
 
 pub(crate) fn visible_shell_pins(items: &[ShellPin], home_appid: Option<&str>) -> Vec<ShellPin> {
@@ -133,6 +145,16 @@ mod tests {
             resolve_declared_icon(None, "../action.svg"),
             Err(ShellError::InvalidSidebarActionIcon {
                 icon: "../action.svg".to_string()
+            })
+        );
+    }
+
+    #[test]
+    fn declared_icon_rejects_urls() {
+        assert_eq!(
+            resolve_declared_icon(None, "https://example.com/action.svg"),
+            Err(ShellError::InvalidSidebarActionIcon {
+                icon: "https://example.com/action.svg".to_string()
             })
         );
     }
