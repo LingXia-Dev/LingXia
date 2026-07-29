@@ -73,6 +73,7 @@ final class RunnerSurfaceShellHost {
         self.device = device
         self.headless = headless
         RunnerSupport.SurfaceShell.setBrowserBlankNewTabs(shell, enabled: true)
+        RunnerSupport.SurfaceShell.setBrowserClosesWindowOnLastTab(shell, enabled: true)
         RunnerSupport.SurfaceShell.setBrowserPageActionsVisible(shell, visible: false)
         observeClose()
         installDeviceSelector()
@@ -98,6 +99,7 @@ final class RunnerSurfaceShellHost {
 
     func open(appId: String, path: String, sessionId: UInt64) {
         RunnerSupport.SurfaceShell.setBrowserBlankNewTabs(shell, enabled: false)
+        RunnerSupport.SurfaceShell.setBrowserClosesWindowOnLastTab(shell, enabled: false)
         self.appId = appId
         self.currentPath = path
         RunnerSupport.Runtime.setSessionId(sessionId, for: appId)

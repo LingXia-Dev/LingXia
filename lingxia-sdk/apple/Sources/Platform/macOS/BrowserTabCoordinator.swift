@@ -16,6 +16,8 @@ protocol BrowserCoordinatorHost: AnyObject {
     var hasOpenTabs: Bool { get }
     /// Whether browser chrome remains usable when the last web tab closes.
     var keepsBrowserRootWithoutTabs: Bool { get }
+    /// Whether closing the final browser tab closes the containing window.
+    var closesWindowOnLastBrowserTab: Bool { get }
     /// Whether a user-created tab starts at about:blank instead of the bundled
     /// browser new-tab page.
     var usesBlankBrowserNewTabs: Bool { get }
@@ -311,15 +313,13 @@ final class BrowserTabCoordinator: NSObject {
     func closeTab(id: String) {
         guard let index = tabIds.firstIndex(of: id) else { return }
 
-        // A browser-only host has no lxapp surface to reveal. Keep its final
-        // tab as the mounted browser content instead of leaving an empty shell.
+        // A direct web Runner has no workspace once its target tab closes.
+        // Window teardown owns the tab cleanup through the Runner close hook.
         if tabIds.count == 1,
            host?.hasOpenTabs == false,
-           host?.keepsBrowserRootWithoutTabs != true {
-            _ = browserTabNavigate(tabIdString(id), "about:blank")
-            interactedTabs.remove(id)
-            lastObservedURLs[id] = "about:blank"
-            switchToTab(id: id)
+           host?.keepsBrowserRootWithoutTabs != true,
+           host?.closesWindowOnLastBrowserTab == true {
+            host?.hostWindow?.close()
             return
         }
 

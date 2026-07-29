@@ -300,6 +300,13 @@ enum RunnerBridge {
         shell.setBrowserBlankNewTabs(enabled)
     }
 
+    static func setSurfaceShellBrowserClosesWindowOnLastTab(
+        _ shell: LxAppShell,
+        enabled: Bool
+    ) {
+        shell.setBrowserClosesWindowOnLastTab(enabled)
+    }
+
     static func openInSurfaceShell(
         _ shell: LxAppShell,
         appId: String,
