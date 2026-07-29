@@ -260,10 +260,10 @@ mod bridge {
         #[swift_bridge(swift_name = "focusSurface")]
         fn focus_surface(appid: &str, surface_id: &str) -> bool;
 
-        // Runtime activator clicks hand off to the home Logic's registered
+        // Runtime sidebar action clicks hand off to the home Logic's registered
         // callback. The callback owns any resulting surface operation.
         #[swift_bridge(swift_name = "shellActivate")]
-        fn shell_activate(item_id: &str) -> bool;
+        fn shell_activate(generation: u64, item_id: &str) -> bool;
 
         // Open (or focus) an lxapp as a MAIN — the pinned-lxapp tile's click.
         #[swift_bridge(swift_name = "shellOpenLxappMain")]
@@ -1124,9 +1124,13 @@ pub fn set_active_main(appid: &str) -> bool {
     })
 }
 
-pub fn shell_activate(item_id: &str) -> bool {
+pub fn shell_activate(generation: u64, item_id: &str) -> bool {
     ffi_catch_unwind!("shell_activate", false, || {
-        lingxia_shell::activate(item_id).is_ok()
+        lingxia_shell::activate_sidebar_action(lingxia_shell::SidebarActionIntent {
+            generation,
+            id: item_id.to_string(),
+        })
+        .is_ok()
     })
 }
 

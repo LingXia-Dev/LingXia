@@ -5,7 +5,7 @@ import AppKit
 ///
 /// Only user-driven geometry and state is stored (window frame, sidebar
 /// width/mode, group collapse, aside sizes). API-driven state — tabbar
-/// hidden, activator items — is rebuilt by the app on launch and never
+/// hidden, sidebar action items — is rebuilt by the app on launch and never
 /// persisted here. Asides restore geometry only, never content.
 @MainActor
 enum LxAppShellPersistence {

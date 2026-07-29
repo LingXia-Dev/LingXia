@@ -5,9 +5,9 @@ use crate::WindowsDesignIcon;
 use super::*;
 
 mod auxiliary;
-mod panel_activator;
+mod footer_action;
 pub(super) use auxiliary::*;
-pub(super) use panel_activator::*;
+pub(super) use footer_action::*;
 
 /// Phone bottom tab bar: 49px item strip plus a lower safe-area hit region.
 const BOTTOM_TAB_ICON_SIZE: i32 = 22;
@@ -260,8 +260,8 @@ pub(super) fn draw_sidebar_tab_bar(
         let _ = RestoreDC(hdc, saved);
     }
 
-    if tabbar.activator_footer_height > 0 {
-        let footer_top = rect.bottom - tabbar.activator_footer_height;
+    if tabbar.footer_action_height > 0 {
+        let footer_top = rect.bottom - tabbar.footer_action_height;
         // The footer is host chrome, so its separator follows the shell theme
         // instead of inheriting the lxapp tabbar's page-owned border color.
         draw_top_border(
@@ -283,8 +283,11 @@ pub(super) fn draw_sidebar_tab_bar(
         else {
             continue;
         };
-        draw_hover_wash(hdc, action_rect, 4, cursor);
-        draw_sidebar_header_action(hdc, &action.id, &action.glyph, action_rect);
+        if !action.disabled {
+            draw_hover_wash(hdc, action_rect, 4, cursor);
+        }
+        let icon_rect = centered_icon_rect(action_rect, 18);
+        let _ = draw_icon_from_path(hdc, &action.icon_path, icon_rect, 18);
     }
 }
 
@@ -299,29 +302,6 @@ pub(super) fn sidebar_top_level_icon_rect(item_rect: RECT, icon_size: i32) -> RE
         right: item_rect.left + SIDEBAR_TOP_LEVEL_ICON_INSET + icon_size,
         bottom: top + icon_size,
     })
-}
-
-fn draw_sidebar_header_action(hdc: HDC, action_id: &str, fallback_glyph: &str, rect: RECT) {
-    let icon = match action_id {
-        "settings" => Some(WindowsDesignIcon::Settings),
-        "downloads" => Some(WindowsDesignIcon::Downloads),
-        _ => None,
-    };
-    // Settings/downloads are secondary chrome actions: drawn muted (like
-    // macOS `secondaryLabelColor`) so they don't compete with content or the
-    // primary caption buttons.
-    if let Some(icon) = icon {
-        draw_design_icon_button_with_fallback(
-            hdc,
-            rect,
-            icon,
-            shell_palette().text_muted,
-            18,
-            Some(fallback_glyph),
-        );
-        return;
-    }
-    draw_frame_button_glyph(hdc, fallback_glyph, rect, shell_palette().text_muted);
 }
 
 /// Draws the indented lxapp leaves plus a parent-child guide. The guide stays
@@ -629,7 +609,7 @@ pub(super) fn sidebar_group_close_rect(
     })
 }
 
-/// Sidebar action buttons (settings/downloads) in the top caption strip,
+/// Sidebar action buttons in the top caption strip,
 /// hidden while the sidebar is collapsed. Right-aligned at the column's
 /// trailing edge (flush with the chevron below) so the strip reads as two
 /// groups - window controls leading, sidebar actions trailing - instead of
@@ -650,13 +630,15 @@ pub(super) fn sidebar_header_action_rects(
         + SIDEBAR_HEADER_ACTION_GAP;
     let mut right = sidebar_rect.right - SIDEBAR_ITEM_INSET;
     let mut out = Vec::with_capacity(tabbar.header_actions.len());
+    let required_width = tabbar.header_actions.len() as i32 * SIDEBAR_HEADER_ACTION_SIZE
+        + tabbar.header_actions.len().saturating_sub(1) as i32 * SIDEBAR_HEADER_ACTION_GAP;
+    if right - required_width < leading_limit {
+        return Vec::new();
+    }
     // Reverse order from the trailing edge keeps the declared left-to-right
     // reading order.
     for action in tabbar.header_actions.iter().rev() {
         let left = right - SIDEBAR_HEADER_ACTION_SIZE;
-        if left < leading_limit {
-            break;
-        }
         out.push((
             action.id.clone(),
             normalize_rect(RECT {

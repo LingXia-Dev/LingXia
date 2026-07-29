@@ -4,14 +4,16 @@ use std::io::Read;
 use std::path::{Component, Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
-use lingxia_shell::{ResolvedShellActivator, ShellPin};
+use lingxia_shell::{ResolvedShellSidebarAction, ShellPin};
 use lingxia_webview::WebTag;
 use lingxia_webview::runtime as webview_runtime;
 
 use super::{file, not_supported, surface, ui_update};
 use crate::AssetFileEntry;
 use crate::error::PlatformError;
-use crate::traits::app_runtime::{AnimationType, AppRuntime, LxAppOpenMode, OpenUrlRequest};
+use crate::traits::app_runtime::{
+    AnimationType, AppRuntime, BuiltinBrowserPage, LxAppOpenMode, OpenUrlRequest,
+};
 use crate::traits::share::{ShareRequest, ShareResult, ShareService};
 use crate::traits::stream_decoder::{VideoStreamDecoderHandle, VideoStreamDecoderManager};
 
@@ -20,9 +22,12 @@ const DEFAULT_APP_IDENTIFIER: &str = "app.lingxia.windows";
 type WindowsAppExitHandler = Arc<dyn Fn() + Send + Sync>;
 static WINDOWS_APP_EXIT_HANDLER: Mutex<Option<WindowsAppExitHandler>> = Mutex::new(None);
 
-pub type WindowsActivatorItemsHandler =
-    Arc<dyn Fn(&[ResolvedShellActivator]) -> bool + Send + Sync>;
-static WINDOWS_ACTIVATOR_ITEMS_HANDLER: Mutex<Option<WindowsActivatorItemsHandler>> =
+pub type WindowsSidebarActionsHandler =
+    Arc<dyn Fn(&[ResolvedShellSidebarAction]) -> bool + Send + Sync>;
+static WINDOWS_SIDEBAR_ACTIONS_HANDLER: Mutex<Option<WindowsSidebarActionsHandler>> =
+    Mutex::new(None);
+pub type WindowsBuiltinBrowserPageHandler = Arc<dyn Fn(BuiltinBrowserPage) -> bool + Send + Sync>;
+static WINDOWS_BUILTIN_BROWSER_PAGE_HANDLER: Mutex<Option<WindowsBuiltinBrowserPageHandler>> =
     Mutex::new(None);
 pub type WindowsShellPinsHandler = Arc<dyn Fn(&[ShellPin]) -> bool + Send + Sync>;
 static WINDOWS_SHELL_PINS_HANDLER: Mutex<Option<WindowsShellPinsHandler>> = Mutex::new(None);
@@ -32,8 +37,14 @@ pub fn set_windows_app_exit_handler(handler: WindowsAppExitHandler) {
     }
 }
 
-pub fn set_windows_activator_items_handler(handler: WindowsActivatorItemsHandler) {
-    if let Ok(mut slot) = WINDOWS_ACTIVATOR_ITEMS_HANDLER.lock() {
+pub fn set_windows_sidebar_actions_handler(handler: WindowsSidebarActionsHandler) {
+    if let Ok(mut slot) = WINDOWS_SIDEBAR_ACTIONS_HANDLER.lock() {
+        *slot = Some(handler);
+    }
+}
+
+pub fn set_windows_builtin_browser_page_handler(handler: WindowsBuiltinBrowserPageHandler) {
+    if let Ok(mut slot) = WINDOWS_BUILTIN_BROWSER_PAGE_HANDLER.lock() {
         *slot = Some(handler);
     }
 }
@@ -44,12 +55,20 @@ pub fn set_windows_shell_pins_handler(handler: WindowsShellPinsHandler) {
     }
 }
 
-fn invoke_windows_activator_items_handler(items: &[ResolvedShellActivator]) -> bool {
-    WINDOWS_ACTIVATOR_ITEMS_HANDLER
+fn invoke_windows_sidebar_actions_handler(items: &[ResolvedShellSidebarAction]) -> bool {
+    WINDOWS_SIDEBAR_ACTIONS_HANDLER
         .lock()
         .ok()
         .and_then(|slot| slot.clone())
         .is_none_or(|handler| handler(items))
+}
+
+fn invoke_windows_builtin_browser_page_handler(page: BuiltinBrowserPage) -> bool {
+    WINDOWS_BUILTIN_BROWSER_PAGE_HANDLER
+        .lock()
+        .ok()
+        .and_then(|slot| slot.clone())
+        .is_some_and(|handler| handler(page))
 }
 
 fn invoke_windows_shell_pins_handler(items: &[ShellPin]) -> bool {
@@ -439,12 +458,25 @@ impl AppRuntime for Platform {
         Ok(())
     }
 
-    fn set_shell_activators(&self, items: &[ResolvedShellActivator]) -> Result<(), PlatformError> {
-        if invoke_windows_activator_items_handler(items) {
+    fn set_shell_sidebar_actions(
+        &self,
+        items: &[ResolvedShellSidebarAction],
+    ) -> Result<(), PlatformError> {
+        if invoke_windows_sidebar_actions_handler(items) {
             Ok(())
         } else {
             Err(PlatformError::Platform(
-                "Windows shell rejected resolved activators".to_string(),
+                "Windows shell rejected resolved sidebar actions".to_string(),
+            ))
+        }
+    }
+
+    fn open_builtin_browser_page(&self, page: BuiltinBrowserPage) -> Result<(), PlatformError> {
+        if invoke_windows_builtin_browser_page_handler(page) {
+            Ok(())
+        } else {
+            Err(PlatformError::NotSupported(
+                "built-in browser page".to_string(),
             ))
         }
     }

@@ -342,6 +342,14 @@ pub fn notifications_enabled() -> bool {
         .unwrap_or(false)
 }
 
+pub fn browser_enabled() -> bool {
+    APP_CONFIG
+        .get()
+        .and_then(|config| config.capabilities.as_ref())
+        .map(|capabilities| capabilities.browser)
+        .unwrap_or(false)
+}
+
 pub fn autostart_enabled() -> bool {
     APP_CONFIG
         .get()

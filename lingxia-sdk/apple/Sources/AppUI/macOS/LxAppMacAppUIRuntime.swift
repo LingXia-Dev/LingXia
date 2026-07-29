@@ -24,6 +24,7 @@ private func lxTerminalRuntimeFormatRect(_ rect: NSRect) -> String {
 
 @MainActor
 struct LxAppUIActionItem: Sendable {
+    var generation: UInt64 = 0
     let id: String
     let label: String
     let iconURL: URL?
@@ -133,8 +134,8 @@ final class LxAppMacAppUIRuntime: NSObject {
         shell.onMainWillSwitch = { [weak self] in
             self?.collapseExpandedAsides()
         }
-        shell.setSidebarHostActionHandler { [weak self] actionID in
-            self?.performSidebarActivator(id: actionID)
+        shell.setSidebarHostActionHandler { [weak self] generation, actionID in
+            self?.performRuntimeSidebarAction(generation: generation, id: actionID)
         }
         shell.setToolbarHostActionHandler { [weak self] actionID in
             self?.performActivator(id: actionID)
@@ -160,7 +161,7 @@ final class LxAppMacAppUIRuntime: NSObject {
         }
         trayController.installMenuBarActivators(menuBarActivators)
         installAppActivationActivators()
-        refreshChromeActivators()
+        refreshChromeActions()
         if uiConfig.launch.openOnLaunch ?? true {
             try openSurface(id: uiConfig.launch.initialSurface)
         }
@@ -233,7 +234,7 @@ final class LxAppMacAppUIRuntime: NSObject {
             _ = registerHostAside(primaryAppId, panelId, managedEdgeOverrides[panelId]?.rawValue ?? "right")
             openedSurfaceIDs.insert(panelId)
             visibleSurfaceIDs.insert(panelId)
-            refreshChromeActivators()
+            refreshChromeActions()
             return true
         }
 
@@ -310,7 +311,7 @@ final class LxAppMacAppUIRuntime: NSObject {
                     openedSurfaceIDs.insert(panelId)
                     visibleSurfaceIDs.insert(panelId)
                     installIndependentPanelOutsideClickMonitorsIfNeeded()
-                    refreshChromeActivators()
+                    refreshChromeActions()
                 } catch is CancellationError {
                     return
                 } catch {
@@ -337,7 +338,7 @@ final class LxAppMacAppUIRuntime: NSObject {
         registerHostAsideForSurface(surface)
         openedSurfaceIDs.insert(panelId)
         visibleSurfaceIDs.insert(panelId)
-        refreshChromeActivators()
+        refreshChromeActions()
         return true
     }
 
@@ -349,37 +350,40 @@ final class LxAppMacAppUIRuntime: NSObject {
         closeSurface(id: rootSurface.id)
     }
 
-    private struct ResolvedRuntimeActivator: Codable {
+    private struct ResolvedRuntimeSidebarAction: Codable {
+        let generation: UInt64
         let id: String
+        let placement: String
         let label: String
         let iconPath: String?
         let disabled: Bool
     }
 
-    private var runtimeActivatorItems: [ResolvedRuntimeActivator] = []
-    private var runtimeActivatorWriterDeclared = false
+    private var runtimeSidebarActions: [ResolvedRuntimeSidebarAction] = []
 
-    func setRuntimeActivatorItems(_ json: String) {
+    func setRuntimeSidebarActions(_ json: String) {
         guard let data = json.data(using: .utf8),
-              let items = try? JSONDecoder().decode([ResolvedRuntimeActivator].self, from: data)
+              let items = try? JSONDecoder().decode([ResolvedRuntimeSidebarAction].self, from: data)
         else {
-            LXLog.error("setActivatorItems: bad payload", category: "MacAppUI")
+            LXLog.error("setSidebarActions: bad payload", category: "MacAppUI")
             return
         }
-        runtimeActivatorItems = items
-        runtimeActivatorWriterDeclared = true
-        refreshChromeActivators()
+        runtimeSidebarActions = items
+        refreshChromeActions()
     }
 
     func setShellPins(_ json: String) {
         shell.updateShellPins(json)
     }
 
-    /// Sidebar entries from the runtime writer, when it has spoken.
-    private func runtimeSidebarActionItems() -> [LxAppUIActionItem]? {
-        guard runtimeActivatorWriterDeclared else { return nil }
-        return runtimeActivatorItems.map { item in
+    func openBuiltinBrowserPage(id: String) -> Bool {
+        shell.openBuiltinShellSurface(id: id)
+    }
+
+    private func runtimeSidebarActionItems(placement: String) -> [LxAppUIActionItem] {
+        return runtimeSidebarActions.filter { $0.placement == placement }.map { item in
             return LxAppUIActionItem(
+                generation: item.generation,
                 id: item.id,
                 label: item.label,
                 iconURL: runtimeItemIconURL(item),
@@ -388,20 +392,15 @@ final class LxAppMacAppUIRuntime: NSObject {
         }
     }
 
-    private func runtimeItemIconURL(_ item: ResolvedRuntimeActivator) -> URL? {
+    private func runtimeItemIconURL(_ item: ResolvedRuntimeSidebarAction) -> URL? {
         guard let icon = item.iconPath, !icon.isEmpty else { return nil }
         if let url = URL(string: icon), url.isFileURL { return url }
         if icon.hasPrefix("/") { return URL(fileURLWithPath: icon) }
         return LxAppAppUIBundleLoader.resolveRelativeResource(icon, baseURL: uiConfigURL)
     }
 
-    private func performSidebarActivator(id: String) {
-        if runtimeActivatorWriterDeclared,
-           runtimeActivatorItems.contains(where: { $0.id == id }) {
-            _ = shellActivate(id)
-            return
-        }
-        performActivator(id: id)
+    private func performRuntimeSidebarAction(generation: UInt64, id: String) {
+        _ = shellActivate(generation, id)
     }
 
     private func performActivator(id: String) {
@@ -464,7 +463,7 @@ final class LxAppMacAppUIRuntime: NSObject {
             )
             openedSurfaceIDs.insert(id)
             visibleSurfaceIDs.insert(id)
-            refreshChromeActivators()
+            refreshChromeActions()
             return true
         }
         guard let surface = surfaceById[id] else { return false }
@@ -495,7 +494,7 @@ final class LxAppMacAppUIRuntime: NSObject {
                 }
                 shell.hidePanel(id: id)
                 visibleSurfaceIDs.remove(id)
-                refreshChromeActivators()
+                refreshChromeActions()
             }
             return true
         }
@@ -520,7 +519,7 @@ final class LxAppMacAppUIRuntime: NSObject {
         openedSurfaceIDs.remove(surfaceId)
         visibleSurfaceIDs.remove(surfaceId)
         shell.closeAsideLxApp(appId: appId)
-        refreshChromeActivators()
+        refreshChromeActions()
         return true
     }
 
@@ -573,7 +572,7 @@ final class LxAppMacAppUIRuntime: NSObject {
         if openedSurfaceIDs.contains(surface.id) {
             shell.show()
             visibleSurfaceIDs.insert(surface.id)
-            refreshChromeActivators()
+            refreshChromeActions()
             return
         }
 
@@ -581,7 +580,7 @@ final class LxAppMacAppUIRuntime: NSObject {
         try openLxAppSurface(surface, presentation: .normal)
         openedSurfaceIDs.insert(surface.id)
         visibleSurfaceIDs.insert(surface.id)
-        refreshChromeActivators()
+        refreshChromeActions()
     }
 
     private func openIndependentPanelSurface(
@@ -631,7 +630,7 @@ final class LxAppMacAppUIRuntime: NSObject {
                 panel.orderFrontRegardless()
                 visibleSurfaceIDs.insert(surface.id)
                 installIndependentPanelOutsideClickMonitorsIfNeeded()
-                refreshChromeActivators()
+                refreshChromeActions()
                 return
             }
             surfacePageInstanceIDs.removeValue(forKey: surface.id)
@@ -673,7 +672,7 @@ final class LxAppMacAppUIRuntime: NSObject {
                 panel?.orderOut(nil)
                 visibleSurfaceIDs.remove(surfaceID)
                 updateIndependentPanelOutsideClickMonitors()
-                refreshChromeActivators()
+                refreshChromeActions()
             }
         }
     }
@@ -701,7 +700,7 @@ final class LxAppMacAppUIRuntime: NSObject {
             // commit path so the layout plan places/shows it at the core edge.
             registerHostAsideForSurface(surface)
             visibleSurfaceIDs.insert(surface.id)
-            refreshChromeActivators()
+            refreshChromeActions()
             return
         }
 
@@ -815,7 +814,7 @@ final class LxAppMacAppUIRuntime: NSObject {
         openedSurfaceIDs.insert(id)
         visibleSurfaceIDs.insert(id)
         logTerminal("runtime.openTerminal markedVisible surface=\(id) opened=\(openedSurfaceIDs.contains(id)) visible=\(visibleSurfaceIDs.contains(id))")
-        refreshChromeActivators()
+        refreshChromeActions()
     }
 
     private func registerHostAsideForSurface(_ surface: LxAppUIConfig.Surface) {
@@ -849,7 +848,7 @@ final class LxAppMacAppUIRuntime: NSObject {
         }
         shell.hidePanel(id: id)
         updateIndependentPanelOutsideClickMonitors()
-        refreshChromeActivators()
+        refreshChromeActions()
     }
 
     private func bringSurfaceToFront(id: String) {
@@ -918,7 +917,7 @@ final class LxAppMacAppUIRuntime: NSObject {
 
         visibleSurfaceIDs.remove(id)
         updateIndependentPanelOutsideClickMonitors()
-        refreshChromeActivators()
+        refreshChromeActions()
     }
 
     private func logTerminal(_ message: String, type: OSLogType = .info) {
@@ -944,14 +943,7 @@ final class LxAppMacAppUIRuntime: NSObject {
         updateIndependentPanelOutsideClickMonitors()
     }
 
-    private func refreshChromeActivators() {
-        let sidebarItems = sidebarActivators
-            .filter { activator in
-                guard let hostSurface = activator.hostSurface else { return false }
-                return visibleSurfaceIDs.contains(hostSurface)
-            }
-            .map(makeChromeActionItem)
-
+    private func refreshChromeActions() {
         let toolbarItems = toolbarActivators
             .filter { activator in
                 guard let hostSurface = activator.hostSurface else { return false }
@@ -965,7 +957,8 @@ final class LxAppMacAppUIRuntime: NSObject {
             }
             .map(makeChromeActionItem)
 
-        shell.updateSidebarHostActions(runtimeSidebarActionItems() ?? sidebarItems)
+        shell.updateSidebarHeaderActions(runtimeSidebarActionItems(placement: "header"))
+        shell.updateSidebarHostActions(runtimeSidebarActionItems(placement: "footer"))
         shell.setManagedNavigationToolbarVisible(true)
         shell.updateToolbarHostActions(toolbarItems)
         shell.updateTitlebarHostActions(titlebarItems)

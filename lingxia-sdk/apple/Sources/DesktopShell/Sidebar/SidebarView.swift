@@ -203,11 +203,17 @@ private final class SidebarRailTabPopoverViewController: NSViewController {
 /// Minimal display info for a panel icon in the sidebar footer.
 /// SidebarView only needs these — routing details (appId, path) are in Panel.swift.
 struct PanelIconItem {
+    var generation: UInt64 = 0
     let id: String
     let iconURL: URL?
     let label: String
     let active: Bool
     let disabled: Bool
+}
+
+private struct SidebarActionIdentity {
+    let generation: UInt64
+    let id: String
 }
 
 private struct ShellPinItem: Codable, Equatable {
@@ -296,29 +302,30 @@ class SidebarView: NSView, NSPopoverDelegate {
         static let resizeHandleWidth: CGFloat = 5
         /// Bottom dock height — tall enough for one row of icon buttons plus breathing room.
         static let footerHeight: CGFloat = 48
-        /// Activator row height — matches the tabbar item rhythm above.
+        /// sidebar action row height — matches the tabbar item rhythm above.
         static let footerButtonSize: CGFloat = 30
         /// Rendered glyph size inside footer icon buttons.
         static let footerIconSize: CGFloat = 16
-        /// Shared outer inset for the activator flow. Windows uses the same
+        /// Shared outer inset for the sidebar action flow. Windows uses the same
         /// 6pt margin, leaving 172pt of flow width in the standard 184pt rail.
         static let footerInset: CGFloat = 6
-        /// Rows shown before the activator area caps and scrolls internally.
+        /// Rows shown before the sidebar action area caps and scrolls internally.
         static let footerMaxRows: CGFloat = 5
     }
 
     private let headerView = NSView()
-    private let settingsButton = NSButton()
-    private let downloadButton = NSButton()
+    private let headerActionStack = NSStackView()
+    private var headerActionItems: [PanelIconItem] = []
+    private var headerActionIdentities: [ObjectIdentifier: SidebarActionIdentity] = [:]
     private let scrollView = SidebarScrollView()
     private let resizeHandle = SidebarResizeHandle()
     private let footerView = NSView()
     private let footerSeparator = NSView()
-    /// Footer height tracks the activator row count (see renderPanelItems).
+    /// Footer height tracks the sidebar action row count (see renderPanelItems).
     private var footerHeightConstraint: NSLayoutConstraint?
-    /// Adaptive flow that keeps short activators on the same visual row.
-    private let panelFlow = ActivatorFlowView()
-    /// Caps the activator area: rows beyond footerMaxRows scroll in here.
+    /// Adaptive flow that keeps short sidebar actions on the same visual row.
+    private let panelFlow = SidebarActionFlowView()
+    /// Caps the sidebar action area: rows beyond footerMaxRows scroll in here.
     private let panelScroll = NSScrollView()
     /// The expanded-state collapse toggle. Lives in the header, next to the
     /// sidebar actions; clicking it collapses the sidebar to the icon rail.
@@ -327,7 +334,7 @@ class SidebarView: NSView, NSPopoverDelegate {
     /// The rail-state expand toggle — the first icon in the collapsed rail,
     /// above the lxapp icons; clicking it restores the expanded sidebar.
     private let railExpandButton = NSButton()
-    private var panelButtons: [ActivatorRowView] = []
+    private var panelButtons: [SidebarActionRowView] = []
     /// The panel items currently materialized as footer buttons. Lets
     /// renderPanelItems() skip a rebuild when render() runs for an unrelated
     /// change — so `updatePanelIcon`'s resolved icons aren't wiped out.
@@ -388,7 +395,7 @@ class SidebarView: NSView, NSPopoverDelegate {
     }
 
     /// Called when a panel icon button is clicked: (panelId)
-    var onPanelItemToggled: ((String) -> Void)?
+    var onPanelItemToggled: ((UInt64, String) -> Void)?
 
     /// Called when the update callout is clicked, with its current state
     /// (`.ready` → restart, `.available` → install).
@@ -450,10 +457,6 @@ class SidebarView: NSView, NSPopoverDelegate {
     var onBrowserTabCloseOtherRequested: ((String) -> Void)?
     /// Called when browser tabs visually below the given tab should close.
     var onBrowserTabCloseTabsBelowRequested: ((String) -> Void)?
-    /// Called when settings button is clicked
-    var onOpenSettings: (() -> Void)?
-    /// Called when downloads button is clicked
-    var onOpenDownloads: (() -> Void)?
     /// Called when a pin tile with no open tab is clicked (open its URL)
     var onBookmarkOpen: ((String) -> Void)?
     /// Called from tile menus to open the bookmarks manager page
@@ -510,12 +513,13 @@ class SidebarView: NSView, NSPopoverDelegate {
 
     override func layout() {
         super.layout()
-        updateActivatorFooterHeight()
+        updateSidebarActionFooterHeight()
+        updateHeaderActionVisibility()
     }
 
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
-        footerSeparator.layer?.backgroundColor = ActivatorChromePalette.divider.cgColor
+        footerSeparator.layer?.backgroundColor = SidebarActionChromePalette.divider.cgColor
     }
 
     // MARK: - Setup
@@ -529,38 +533,11 @@ class SidebarView: NSView, NSPopoverDelegate {
         headerView.wantsLayer = true
         addSubview(headerView)
 
-        // Settings and download buttons — top-right in header
-        settingsButton.translatesAutoresizingMaskIntoConstraints = false
-        settingsButton.image = Self.designIcon("icon_settings") ?? NSImage(systemSymbolName: "gearshape", accessibilityDescription: nil)
-        settingsButton.isBordered = false
-        settingsButton.bezelStyle = .regularSquare
-        settingsButton.imagePosition = .imageOnly
-        settingsButton.contentTintColor = NSColor.secondaryLabelColor
-        settingsButton.target = self
-        settingsButton.action = #selector(settingsClicked)
-        headerView.addSubview(settingsButton)
-
-        downloadButton.translatesAutoresizingMaskIntoConstraints = false
-        downloadButton.image = Self.designIcon("icon_download") ?? NSImage(systemSymbolName: "arrow.down.circle", accessibilityDescription: nil)
-        downloadButton.isBordered = false
-        downloadButton.bezelStyle = .regularSquare
-        downloadButton.imagePosition = .imageOnly
-        downloadButton.contentTintColor = NSColor.secondaryLabelColor
-        downloadButton.target = self
-        downloadButton.action = #selector(downloadClicked)
-        headerView.addSubview(downloadButton)
-
-        let browserEnabled = (LxAppCore.capabilities & LxAppCore.capBrowser) != 0
-            || model.browserRootVisible
-        os_log(
-            "Sidebar setup browserEnabled=%{public}@ capabilities=%{public}u",
-            log: Self.log,
-            type: .info,
-            browserEnabled ? "true" : "false",
-            LxAppCore.capabilities
-        )
-        settingsButton.isHidden = !browserEnabled
-        downloadButton.isHidden = !browserEnabled
+        headerActionStack.translatesAutoresizingMaskIntoConstraints = false
+        headerActionStack.orientation = .horizontal
+        headerActionStack.alignment = .centerY
+        headerActionStack.spacing = 4
+        headerView.addSubview(headerActionStack)
 
         // Scroll view (trailing inset to leave room for resize handle)
         scrollView.translatesAutoresizingMaskIntoConstraints = false
@@ -617,10 +594,10 @@ class SidebarView: NSView, NSPopoverDelegate {
         // Hairline separator between scroll content and footer
         footerSeparator.translatesAutoresizingMaskIntoConstraints = false
         footerSeparator.wantsLayer = true
-        // A subtle divider grouping the activator dock. `separatorColor` washes
+        // A subtle divider grouping the sidebar action dock. `separatorColor` washes
         // out on the sidebar material, so use a low-alpha label tint that keeps a
         // little contrast in both light and dark without being prominent.
-        footerSeparator.layer?.backgroundColor = ActivatorChromePalette.divider.cgColor
+        footerSeparator.layer?.backgroundColor = SidebarActionChromePalette.divider.cgColor
         footerView.addSubview(footerSeparator)
 
         panelFlow.translatesAutoresizingMaskIntoConstraints = false
@@ -668,7 +645,7 @@ class SidebarView: NSView, NSPopoverDelegate {
 
         // Rail expand toggle: pinned to the bottom of the rail (not in the
         // scrolling icon stack) so it stays anchored as chrome below the
-        // activators, leaving the top free for a future branding header.
+        // sidebar actions, leaving the top free for a future branding header.
         railExpandButton.translatesAutoresizingMaskIntoConstraints = false
         railExpandButton.isBordered = false
         railExpandButton.bezelStyle = .regularSquare
@@ -711,13 +688,9 @@ class SidebarView: NSView, NSPopoverDelegate {
 
             hideButton.trailingAnchor.constraint(equalTo: headerView.trailingAnchor, constant: -8),
 
-            downloadButton.trailingAnchor.constraint(equalTo: hideButton.leadingAnchor, constant: -4),
-            downloadButton.widthAnchor.constraint(equalToConstant: Layout.actionButtonSize),
-            downloadButton.heightAnchor.constraint(equalToConstant: Layout.actionButtonSize),
-
-            settingsButton.trailingAnchor.constraint(equalTo: downloadButton.leadingAnchor, constant: -4),
-            settingsButton.widthAnchor.constraint(equalToConstant: Layout.actionButtonSize),
-            settingsButton.heightAnchor.constraint(equalToConstant: Layout.actionButtonSize),
+            headerActionStack.trailingAnchor.constraint(equalTo: hideButton.leadingAnchor, constant: -4),
+            headerActionStack.leadingAnchor.constraint(
+                greaterThanOrEqualTo: headerView.leadingAnchor, constant: 72),
 
             // Scroll view: inset trailing by resize handle width, extends above footer
             scrollView.topAnchor.constraint(equalTo: headerView.bottomAnchor),
@@ -766,10 +739,10 @@ class SidebarView: NSView, NSPopoverDelegate {
 
         // Button center constraints — stored so we can align them to the effective traffic-light center.
         let centerY = buttonCenterYFromTop
-        let downloadCenter = downloadButton.centerYAnchor.constraint(equalTo: headerView.topAnchor, constant: centerY)
-        let settingsCenter = settingsButton.centerYAnchor.constraint(equalTo: headerView.topAnchor, constant: centerY)
+        let headerActionsCenter = headerActionStack.centerYAnchor.constraint(
+            equalTo: headerView.topAnchor, constant: centerY)
         let toggleCenter = hideButton.centerYAnchor.constraint(equalTo: headerView.topAnchor, constant: centerY)
-        buttonCenterYConstraints = [downloadCenter, settingsCenter, toggleCenter]
+        buttonCenterYConstraints = [headerActionsCenter, toggleCenter]
         NSLayoutConstraint.activate(buttonCenterYConstraints)
 
         // Document view fills scroll view width
@@ -936,18 +909,18 @@ class SidebarView: NSView, NSPopoverDelegate {
             railStack.addArrangedSubview(addRailButton)
         }
 
-        // In the icon rail, an activator keeps only its icon; its single-line
+        // In the icon rail, an sidebar action keeps only its icon; its single-line
         // title moves to the tooltip and the click target stays identical.
         for item in model.panelItems {
             let image = item.iconURL.flatMap { NSImage(contentsOf: $0) }
-            let key = "activator:\(item.id)"
+            let key = "sidebar-action:\(item.id)"
             let button = makeRailButton(
                 key: key,
                 tooltip: item.label,
                 image: image,
                 isTemplate: false
             )
-            button.action = #selector(railActivatorClicked(_:))
+            button.action = #selector(railSidebarActionClicked(_:))
             button.isEnabled = !item.disabled
             railStack.addArrangedSubview(button)
             railButtons[key] = button
@@ -955,7 +928,7 @@ class SidebarView: NSView, NSPopoverDelegate {
 
         // The expand toggle is not part of this stack — it's pinned to the rail's
         // bottom in setup() so it always anchors the bottom regardless of how many
-        // activators are present.
+        // sidebar actions are present.
 
         refreshRailHighlight()
     }
@@ -990,11 +963,11 @@ class SidebarView: NSView, NSPopoverDelegate {
     /// Highlight the active app/tab button in the rail.
     private func refreshRailHighlight() {
         for (key, btn) in railButtons {
-            let activeActivator = key.hasPrefix("activator:")
+            let activeSidebarAction = key.hasPrefix("sidebar-action:")
                 && model.panelItems.contains {
-                    key == "activator:\($0.id)" && $0.active && !$0.disabled
+                    key == "sidebar-action:\($0.id)" && $0.active && !$0.disabled
                 }
-            let selected = key == activeRailKey || activeActivator
+            let selected = key == activeRailKey || activeSidebarAction
             btn.layer?.backgroundColor = selected
                 ? NSColor.labelColor.withAlphaComponent(0.12).cgColor
                 : NSColor.clear.cgColor
@@ -1014,10 +987,12 @@ class SidebarView: NSView, NSPopoverDelegate {
         onBrowserTabSelected?(String(key.dropFirst(4)))
     }
 
-    @objc private func railActivatorClicked(_ sender: NSButton) {
+    @objc private func railSidebarActionClicked(_ sender: NSButton) {
         closeRailTabPopover()
-        guard let key = sender.identifier?.rawValue, key.hasPrefix("activator:") else { return }
-        onPanelItemToggled?(String(key.dropFirst("activator:".count)))
+        guard let key = sender.identifier?.rawValue, key.hasPrefix("sidebar-action:") else { return }
+        let id = String(key.dropFirst("sidebar-action:".count))
+        guard let item = model.panelItems.first(where: { $0.id == id }) else { return }
+        onPanelItemToggled?(item.generation, id)
     }
 
     private func browserContextMenu(for id: String) -> NSMenu? {
@@ -1234,24 +1209,14 @@ class SidebarView: NSView, NSPopoverDelegate {
 
     func updateVisibilityState() {
         let hidden = isFullyHidden
-        let browserEnabled = (LxAppCore.capabilities & LxAppCore.capBrowser) != 0
-        os_log(
-            "Sidebar visibility hidden=%{public}@ browserEnabled=%{public}@ capabilities=%{public}u",
-            log: Self.log,
-            type: .debug,
-            hidden ? "true" : "false",
-            browserEnabled ? "true" : "false",
-            LxAppCore.capabilities
-        )
         let compact = isCompact && !hidden && !appUIOnlyMode
         scrollView.isHidden = hidden || appUIOnlyMode || compact
         railScrollView.isHidden = hidden || appUIOnlyMode || !compact
         // The rail's bottom-pinned expand toggle lives outside the scroll view, so
         // toggle it with the rail.
         railExpandButton.isHidden = hidden || appUIOnlyMode || !compact
-        // The header action buttons and footer panel icons don't fit the rail.
-        settingsButton.isHidden = hidden || !browserEnabled || appUIOnlyMode || compact
-        downloadButton.isHidden = hidden || !browserEnabled || appUIOnlyMode || compact
+        // Header actions and footer cells don't fit the rail.
+        updateHeaderActionVisibility()
         // The header collapse toggle shows only in the expanded layout; the rail
         // carries its own expand toggle anchored at the bottom when compact.
         hideButton.isHidden = hidden || appUIOnlyMode || compact
@@ -1311,9 +1276,49 @@ class SidebarView: NSView, NSPopoverDelegate {
         }
     }
 
-    /// Populate panel icon buttons in the footer.
-    /// `PanelIconItem` only carries what the UI needs — id, icon, label.
-    /// Routing details (appId, path, position) stay in Panel.swift.
+    /// Replace the icon-only action buttons in the sidebar header.
+    func updateHeaderActionItems(_ items: [PanelIconItem]) {
+        headerActionItems = items
+        headerActionIdentities.removeAll()
+        headerActionStack.arrangedSubviews.forEach {
+            headerActionStack.removeArrangedSubview($0)
+            $0.removeFromSuperview()
+        }
+        for item in items {
+            let button = NSButton()
+            button.translatesAutoresizingMaskIntoConstraints = false
+            button.isBordered = false
+            button.bezelStyle = .regularSquare
+            button.imagePosition = .imageOnly
+            button.imageScaling = .scaleProportionallyDown
+            button.contentTintColor = NSColor.secondaryLabelColor
+            button.image = item.iconURL.flatMap { NSImage(contentsOf: $0) }
+            button.toolTip = item.label
+            button.setAccessibilityLabel(item.label)
+            button.isEnabled = !item.disabled
+            headerActionIdentities[ObjectIdentifier(button)] = SidebarActionIdentity(
+                generation: item.generation,
+                id: item.id
+            )
+            button.target = self
+            button.action = #selector(headerActionClicked(_:))
+            headerActionStack.addArrangedSubview(button)
+            NSLayoutConstraint.activate([
+                button.widthAnchor.constraint(equalToConstant: Layout.actionButtonSize),
+                button.heightAnchor.constraint(equalToConstant: Layout.actionButtonSize),
+            ])
+        }
+        updateHeaderActionVisibility()
+    }
+
+    private func updateHeaderActionVisibility() {
+        let hidden = isFullyHidden || appUIOnlyMode || isCompact || headerActionItems.isEmpty
+        let requiredWidth = CGFloat(headerActionItems.count) * Layout.actionButtonSize
+            + CGFloat(max(0, headerActionItems.count - 1)) * headerActionStack.spacing
+        let availableWidth = max(0, bounds.width - 72 - 8 - Layout.actionButtonSize - 4)
+        headerActionStack.isHidden = hidden || requiredWidth > availableWidth
+    }
+
     func updatePanelItems(_ items: [PanelIconItem]) {
         model.panelItems = items
         renderPanelItems()
@@ -1339,25 +1344,25 @@ class SidebarView: NSView, NSPopoverDelegate {
             return
         }
 
-        var entries: [ActivatorRowView] = []
+        var entries: [SidebarActionRowView] = []
         for item in items {
-            let row = ActivatorRowView(
+            let row = SidebarActionRowView(
                 label: item.label,
                 iconURL: item.iconURL,
                 active: item.active,
                 disabled: item.disabled
             )
             row.onClick = { [weak self] in
-                self?.onPanelItemToggled?(item.id)
+                self?.onPanelItemToggled?(item.generation, item.id)
             }
             entries.append(row)
             panelButtons.append(row)
         }
         panelFlow.setEntries(entries)
-        updateActivatorFooterHeight()
+        updateSidebarActionFooterHeight()
     }
 
-    private func updateActivatorFooterHeight() {
+    private func updateSidebarActionFooterHeight() {
         guard !model.panelItems.isEmpty else {
             footerHeightConstraint?.constant = 0
             return
@@ -1371,7 +1376,7 @@ class SidebarView: NSView, NSPopoverDelegate {
         let rows = min(CGFloat(panelFlow.visualRowCount(for: width)), Layout.footerMaxRows)
         let height = Layout.footerInset * 2 + 1
             + rows * Layout.footerButtonSize
-            + max(0, rows - 1) * ActivatorFlowView.gap
+            + max(0, rows - 1) * SidebarActionFlowView.gap
         if footerHeightConstraint?.constant != height {
             footerHeightConstraint?.constant = height
         }
@@ -1975,18 +1980,15 @@ class SidebarView: NSView, NSPopoverDelegate {
         onHideRequested?()
     }
 
+    @objc private func headerActionClicked(_ sender: NSButton) {
+        guard let identity = headerActionIdentities[ObjectIdentifier(sender)] else { return }
+        onPanelItemToggled?(identity.generation, identity.id)
+    }
+
     @objc private func railExpandClicked() {
         // Restore the expanded sidebar from the icon rail.
         setCompactMode(false)
         onWidthChanged?(Layout.expandedWidth, true)
-    }
-
-    @objc private func settingsClicked() {
-        onOpenSettings?()
-    }
-
-    @objc private func downloadClicked() {
-        onOpenDownloads?()
     }
 
     // MARK: - Footer / Add button hover
@@ -2066,17 +2068,17 @@ private final class FlippedClipView: NSView {
 
 /// Wraps whole icon+title cells while keeping each title single-line.
 @MainActor
-private final class ActivatorFlowView: NSView {
+private final class SidebarActionFlowView: NSView {
     static let gap: CGFloat = 4
     private static let rowHeight: CGFloat = 30
     private static let minimumCellWidth: CGFloat = 72
 
-    private var entries: [ActivatorRowView] = []
+    private var entries: [SidebarActionRowView] = []
     private var lastLayoutWidth: CGFloat = 0
 
     override var isFlipped: Bool { true }
 
-    func setEntries(_ entries: [ActivatorRowView]) {
+    func setEntries(_ entries: [SidebarActionRowView]) {
         self.entries.forEach { $0.removeFromSuperview() }
         self.entries = entries
         self.entries.forEach { entry in
@@ -2164,7 +2166,7 @@ private final class ActivatorFlowView: NSView {
 }
 
 @MainActor
-private enum ActivatorChromePalette {
+private enum SidebarActionChromePalette {
     static let activeSurface = adaptive(dark: 0x34333A, light: 0xFFFFFF)
     static let mutedText = adaptive(dark: 0x9AA0A6, light: 0x667085)
     static let divider = adaptive(dark: 0x383838, light: 0xC7C2D2)
@@ -2201,11 +2203,11 @@ private enum ActivatorChromePalette {
     }
 }
 
-/// One activator entry: a left-aligned icon + title row sharing the tabbar
+/// One sidebar action entry: a left-aligned icon + title row sharing the tabbar
 /// items' rhythm (30pt, hover wash). A custom view because a borderless
 /// NSButton centers its image+title block and cannot left-align it.
 @MainActor
-final class ActivatorRowView: NSView {
+final class SidebarActionRowView: NSView {
     var onClick: (() -> Void)?
 
     private let iconView = NSImageView()
@@ -2234,7 +2236,7 @@ final class ActivatorRowView: NSView {
         setAccessibilityRole(.button)
         setAccessibilityLabel(label)
 
-        // Activator entries are TOP-LEVEL rows: hover rect and icon axis copy
+        // sidebar action entries are TOP-LEVEL rows: hover rect and icon axis copy
         // the web-tab rows (full-row wash, radius 6, icon inset 8), not the
         // nested tabbar items' deeper card.
         washView.translatesAutoresizingMaskIntoConstraints = false
@@ -2263,7 +2265,7 @@ final class ActivatorRowView: NSView {
         )
         titleLabel.textColor = disabled
             ? NSColor.tertiaryLabelColor
-            : (self.active ? NSColor.controlAccentColor : ActivatorChromePalette.mutedText)
+            : (self.active ? NSColor.controlAccentColor : SidebarActionChromePalette.mutedText)
         titleLabel.lineBreakMode = .byTruncatingTail
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
         addSubview(titleLabel)
@@ -2300,13 +2302,13 @@ final class ActivatorRowView: NSView {
         accentView.layer?.backgroundColor = NSColor.controlAccentColor.cgColor
         titleLabel.textColor = disabled
             ? NSColor.tertiaryLabelColor
-            : (active ? NSColor.controlAccentColor : ActivatorChromePalette.mutedText)
+            : (active ? NSColor.controlAccentColor : SidebarActionChromePalette.mutedText)
         if isPressed && !disabled {
-            washView.layer?.backgroundColor = ActivatorChromePalette.pressed.cgColor
+            washView.layer?.backgroundColor = SidebarActionChromePalette.pressed.cgColor
         } else if active {
-            washView.layer?.backgroundColor = ActivatorChromePalette.activeSurface.cgColor
+            washView.layer?.backgroundColor = SidebarActionChromePalette.activeSurface.cgColor
         } else if isHovered && !disabled {
-            washView.layer?.backgroundColor = ActivatorChromePalette.hover.cgColor
+            washView.layer?.backgroundColor = SidebarActionChromePalette.hover.cgColor
         } else {
             washView.layer?.backgroundColor = NSColor.clear.cgColor
         }

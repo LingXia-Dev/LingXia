@@ -4,22 +4,28 @@ pub type ShellResult<T> = Result<T, ShellError>;
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum ShellError {
-    #[error("shell activator id must not be empty")]
-    EmptyActivatorId,
-    #[error("shell activator field '{field}' must not be empty")]
-    EmptyActivatorField { field: &'static str },
-    #[error("duplicate shell activator id '{id}'")]
-    DuplicateActivatorId { id: String },
-    #[error("shell activator '{id}' was not found")]
-    ActivatorNotFound { id: String },
-    #[error("shell activator update for '{id}' is empty")]
-    EmptyActivatorUpdate { id: String },
+    #[error("shell sidebar action id must not be empty")]
+    EmptySidebarActionId,
+    #[error("shell sidebar action field '{field}' must not be empty")]
+    EmptySidebarActionField { field: &'static str },
+    #[error("duplicate shell sidebar action id '{id}'")]
+    DuplicateSidebarActionId { id: String },
+    #[error("shell sidebar action '{id}' was not found")]
+    SidebarActionNotFound { id: String },
+    #[error("shell sidebar action update for '{id}' is empty")]
+    EmptySidebarActionUpdate { id: String },
+    #[error("shell sidebar action header accepts at most {max} items")]
+    SidebarActionHeaderLimit { max: usize },
+    #[error("shell sidebar action icon '{icon}' must stay inside the home lxapp bundle")]
+    InvalidSidebarActionIcon { icon: String },
     #[error("shell runtime is not initialized")]
     NotInitialized,
     #[error("shell host operation failed: {0}")]
     Host(String),
-    #[error("shell activation '{id}' is disabled")]
-    ActivatorDisabled { id: String },
+    #[error("shell sidebar action '{id}' is disabled")]
+    SidebarActionDisabled { id: String },
+    #[error("stale shell sidebar action generation {generation}; current generation is {current}")]
+    StaleSidebarActionIntent { generation: u64, current: u64 },
     #[error("shell state changed concurrently (expected generation {expected}, found {actual})")]
     ConcurrentMutation { expected: u64, actual: u64 },
     #[error("shell Pins changed concurrently")]

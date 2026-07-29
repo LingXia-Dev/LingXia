@@ -139,6 +139,9 @@ mod bridge {
         #[swift_bridge(swift_name = "LxApp.openUrl")]
         fn open_url(owner_appid: &str, owner_session_id: u64, url: &str, target: i32) -> bool;
 
+        #[swift_bridge(swift_name = "LxApp.openBuiltinBrowserPage")]
+        fn open_builtin_browser_page(page: i32) -> bool;
+
         #[swift_bridge(swift_name = "LxApp.share")]
         fn share(title: &str, text: &str, url: &str, files_json: &str, callback_id: u64) -> bool;
 
@@ -151,8 +154,8 @@ mod bridge {
         #[swift_bridge(swift_name = "LxApp.setTrayIcon")]
         fn set_tray_icon(icon: &str) -> bool;
 
-        #[swift_bridge(swift_name = "LxApp.setActivatorItems")]
-        fn set_activator_items(items_json: &str) -> bool;
+        #[swift_bridge(swift_name = "LxApp.setSidebarActions")]
+        fn set_sidebar_actions(items_json: &str) -> bool;
 
         #[swift_bridge(swift_name = "LxApp.setShellPins")]
         fn set_shell_pins(items_json: &str) -> bool;
@@ -425,12 +428,13 @@ mod bridge {
 pub use bridge::{
     ActionSheetOptions, ModalOptions, ToastIcon, ToastOptions, ToastPosition, autostart_is_enabled,
     autostart_set_enabled, cancel_preview_media, close_lxapp, close_surface, exit_app,
-    hide_surface, hide_toast, navigate, open_document_external, open_lxapp, open_url,
-    present_layout, present_surface, preview_media, review_document, set_activator_items,
-    set_app_badge, set_managed_surface_visible, set_shell_pins, set_tray_badge,
-    set_tray_click_intercept, set_tray_icon, set_tray_menu, set_tray_title, set_tray_visible,
-    share, show_action_sheet, show_modal, show_surface, show_toast, toggle_managed_surface,
-    update_navbar_ui, update_orientation_ui, update_tabbar_ui, update_tabbar_ui_async,
+    hide_surface, hide_toast, navigate, open_builtin_browser_page, open_document_external,
+    open_lxapp, open_url, present_layout, present_surface, preview_media, review_document,
+    set_app_badge, set_managed_surface_visible, set_shell_pins, set_sidebar_actions,
+    set_tray_badge, set_tray_click_intercept, set_tray_icon, set_tray_menu, set_tray_title,
+    set_tray_visible, share, show_action_sheet, show_modal, show_surface, show_toast,
+    toggle_managed_surface, update_navbar_ui, update_orientation_ui, update_tabbar_ui,
+    update_tabbar_ui_async,
 };
 #[cfg(target_os = "macos")]
 pub use bridge::{notify_app_update_ready, reveal_in_file_manager};

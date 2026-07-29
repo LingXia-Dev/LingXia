@@ -65,6 +65,12 @@ pub struct OpenUrlRequest {
     pub target: OpenUrlTarget,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BuiltinBrowserPage {
+    Settings = 0,
+    Downloads = 1,
+}
+
 impl From<i32> for AnimationType {
     fn from(value: i32) -> Self {
         match value {
@@ -156,11 +162,11 @@ pub trait AppRuntime:
         Ok(())
     }
 
-    /// Replace the resolved shell activator render list. Desktop skins only
+    /// Replace the resolved shell sidebar action render list. Desktop skins only
     /// render presentation metadata and report stable ids.
-    fn set_shell_activators(
+    fn set_shell_sidebar_actions(
         &self,
-        _items: &[lingxia_shell::ResolvedShellActivator],
+        _items: &[lingxia_shell::ResolvedShellSidebarAction],
     ) -> Result<(), PlatformError> {
         Ok(())
     }
@@ -223,6 +229,12 @@ pub trait AppRuntime:
 
     /// Opens the given URL according to the host policy for the requested target.
     fn open_url(&self, req: OpenUrlRequest) -> Result<(), PlatformError>;
+
+    fn open_builtin_browser_page(&self, _page: BuiltinBrowserPage) -> Result<(), PlatformError> {
+        Err(PlatformError::NotSupported(
+            "built-in browser pages".to_string(),
+        ))
+    }
 
     /// Gets the caller's visible capsule button rect in screen coordinates.
     /// Returns JSON `null` when the caller has no visible capsule.

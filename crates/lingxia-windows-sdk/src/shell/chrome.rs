@@ -50,11 +50,11 @@ use sidebar::*;
 pub use top_bar::begin_address_edit;
 use top_bar::*;
 
-pub(in crate::shell) fn panel_activator_footer_height(
+pub(in crate::shell) fn panel_footer_action_height(
     width: i32,
-    activators: &[WindowsShellPanelActivatorLayout],
+    footer_actions: &[WindowsShellFooterActionLayout],
 ) -> i32 {
-    panel_activator_footer_height_for_width(width, activators)
+    panel_footer_action_height_for_width(width, footer_actions)
 }
 
 /// More (horizontal ellipsis): the app-menu button at the leading edge.
@@ -160,15 +160,15 @@ pub(super) const SIDEBAR_FAVICON_SIZE: i32 = 16;
 /// Gap between a browser row's favicon and its title text.
 pub(super) const SIDEBAR_FAVICON_TEXT_GAP: i32 = 8;
 
-pub(super) const PANEL_ACTIVATOR_SIZE: i32 = 30;
+pub(super) const FOOTER_ACTION_SIZE: i32 = 30;
 
-pub(super) const PANEL_ACTIVATOR_ICON_SIZE: i32 = 16;
+pub(super) const FOOTER_ACTION_ICON_SIZE: i32 = 16;
 
-pub(super) const PANEL_ACTIVATOR_GAP: i32 = 4;
+pub(super) const FOOTER_ACTION_GAP: i32 = 4;
 
-pub(super) const PANEL_ACTIVATOR_MARGIN: i32 = 6;
+pub(super) const FOOTER_ACTION_MARGIN: i32 = 6;
 
-pub(super) const PANEL_ACTIVATOR_MAX_ROWS: usize = 5;
+pub(super) const FOOTER_ACTION_MAX_ROWS: usize = 5;
 
 pub(super) const BROWSER_PANEL_HEADER_PADDING: i32 = 8;
 pub(super) const BROWSER_PANEL_BUTTON_SIZE: i32 = 28;
@@ -194,7 +194,7 @@ pub(super) const ATTACHED_MAIN_MIN_HEIGHT: i32 = 240;
 
 pub(super) mod command_id {
     pub(super) const TAB_BAR_CLICK: &str = "tabbar.click";
-    pub(super) const PANEL_ACTIVATOR_CLICK: &str = "panel-activator.click";
+    pub(super) const FOOTER_ACTION_CLICK: &str = "sidebar-footer-action.click";
     pub(super) const NAVIGATION_BACK: &str = "navigation.back";
     pub(super) const NAVIGATION_HOME: &str = "navigation.home";
     pub(super) const BROWSER_NEW_TAB: &str = "browser.new-tab";
@@ -231,7 +231,7 @@ pub(super) mod command_id {
     pub(super) const SIDEBAR_GROUP_TOGGLE: &str = "sidebar.group.toggle";
     pub(super) const SIDEBAR_ACTION: &str = "sidebar.action";
     pub(super) const SIDEBAR_SCROLL: &str = "sidebar.scroll";
-    pub(super) const PANEL_ACTIVATOR_SCROLL: &str = "panel-activator.scroll";
+    pub(super) const FOOTER_ACTION_SCROLL: &str = "sidebar-footer-action.scroll";
     pub(super) const APP_MENU_CLICK: &str = "app-menu.click";
 }
 
@@ -349,7 +349,7 @@ fn sidebar_scroll_metrics(
         return None;
     }
     let viewport_bottom =
-        sidebar_navigation_viewport_bottom(tabbar_rect, tabbar, &layout.panel_activators)
+        sidebar_navigation_viewport_bottom(tabbar_rect, tabbar, &layout.footer_actions)
             .clamp(tabbar_rect.top + SHELL_TOP_BAR_HEIGHT, tabbar_rect.bottom);
     let (offset, max_offset) = clamp_sidebar_scroll(
         tabbar.main_scroll_offset,
@@ -384,21 +384,21 @@ fn chrome_mouse_wheel(
         return None;
     }
 
-    let activator_max =
-        panel_activator_max_scroll_row(tabbar_rect, tabbar, &layout.panel_activators);
-    let over_activators = panel_activator_rects(state.client, &rects, layout)
+    let footer_action_max =
+        footer_action_max_scroll_row(tabbar_rect, tabbar, &layout.footer_actions);
+    let over_footer_actions = footer_action_rects(state.client, &rects, layout)
         .iter()
         .any(|(_, rect)| rect_contains(rect, point));
-    if activator_max > 0 && over_activators {
-        let current = tabbar.activator_scroll_row.min(activator_max);
+    if footer_action_max > 0 && over_footer_actions {
+        let current = tabbar.footer_action_scroll_row.min(footer_action_max);
         let row = if delta > 0 {
             current.saturating_sub(1)
         } else {
-            (current + 1).min(activator_max)
+            (current + 1).min(footer_action_max)
         };
         if row != current {
             return Some(
-                WindowsChromeCommand::new(command_id::PANEL_ACTIVATOR_SCROLL).with_payload(json!({
+                WindowsChromeCommand::new(command_id::FOOTER_ACTION_SCROLL).with_payload(json!({
                     "group": tabbar.group_id,
                     "row": row,
                 })),
@@ -537,7 +537,7 @@ fn chrome_hover_rect(
         return None;
     }
 
-    for (_, rect) in panel_activator_rects(client, &rects, layout) {
+    for (_, rect) in footer_action_rects(client, &rects, layout) {
         if rect_contains(&rect, point) {
             return Some(rect);
         }
@@ -680,7 +680,7 @@ pub(crate) fn shell_chrome_dirty_rects(
         new_layout.tab_bar.as_ref(),
     )?;
     dirty.extend(tabbar_dirty);
-    dirty.extend(panel_activator_dirty_rects(
+    dirty.extend(footer_action_dirty_rects(
         client, &old_rects, old_layout, new_layout,
     ));
 
@@ -734,9 +734,9 @@ fn tabbar_requires_full_repaint(
         || old_tabbar.icon_rail != new_tabbar.icon_rail
         || old_tabbar.items_api_hidden != new_tabbar.items_api_hidden
         || old_tabbar.items_collapsed != new_tabbar.items_collapsed
-        || old_tabbar.activator_footer_height != new_tabbar.activator_footer_height
+        || old_tabbar.footer_action_height != new_tabbar.footer_action_height
         || old_tabbar.main_scroll_offset != new_tabbar.main_scroll_offset
-        || old_tabbar.activator_scroll_row != new_tabbar.activator_scroll_row
+        || old_tabbar.footer_action_scroll_row != new_tabbar.footer_action_scroll_row
         || old_tabbar.show_auxiliary_add != new_tabbar.show_auxiliary_add
         || old_tabbar.header_actions != new_tabbar.header_actions
         || !same_auxiliary_row_slots(old_tabbar, new_tabbar)
@@ -807,7 +807,7 @@ fn push_sidebar_auxiliary_dirty_rects(
     ) {
         return;
     }
-    let viewport_bottom = rect.bottom - new_tabbar.activator_footer_height;
+    let viewport_bottom = rect.bottom - new_tabbar.footer_action_height;
     let Some(auxiliary) = sidebar_auxiliary_rects(
         rect,
         new_tabbar,
@@ -835,20 +835,20 @@ fn push_sidebar_auxiliary_dirty_rects(
     }
 }
 
-fn panel_activator_dirty_rects(
+fn footer_action_dirty_rects(
     client: RECT,
     rects: &ChromeRects,
     old_layout: &WindowsShellWindowLayout,
     new_layout: &WindowsShellWindowLayout,
 ) -> Vec<RECT> {
-    if old_layout.panel_activators == new_layout.panel_activators {
+    if old_layout.footer_actions == new_layout.footer_actions {
         return Vec::new();
     }
 
     let mut dirty = Vec::new();
-    for (_, rect) in panel_activator_rects(client, rects, old_layout)
+    for (_, rect) in footer_action_rects(client, rects, old_layout)
         .into_iter()
-        .chain(panel_activator_rects(client, rects, new_layout))
+        .chain(footer_action_rects(client, rects, new_layout))
     {
         push_dirty_rect(&mut dirty, rect, client);
     }
@@ -884,7 +884,7 @@ pub(super) struct ChromeRects {
     pub(super) workspace: RECT,
     /// Main WebView viewport when no aside layout is attached.
     pub(super) content: RECT,
-    /// Unsplit workspace card used by the no-aside painter/activator layout.
+    /// Unsplit workspace card used by the no-aside painter/footer-action layout.
     pub(super) panel: RECT,
     pub(super) top_bar: RECT,
     pub(super) navigation_bar: Option<RECT>,
@@ -910,7 +910,7 @@ pub(super) fn compute_chrome_rects(client: RECT, layout: &WindowsShellWindowLayo
                     || !tabbar.auxiliary_items.is_empty()
                     || tabbar.show_auxiliary_add
                     || !tabbar.header_actions.is_empty()
-                    || tabbar.activator_footer_height > 0)
+                    || tabbar.footer_action_height > 0)
         })
         .map(|tabbar| match tabbar.position {
             WindowsShellTabBarPosition::Left => {
@@ -1557,7 +1557,7 @@ pub(super) fn draw_window_chrome(
     if phone_browser_bar_active(state.client, layout) {
         draw_phone_browser_bar(hdc, state, layout);
     }
-    draw_panel_activators(hdc, client, &rects, layout, state.cursor);
+    draw_footer_actions(hdc, client, &rects, layout, state.cursor);
     draw_maximized_native_panels(hdc, state);
     // A device-framed window's caption lives on the simulator toolbar, not the
     // shell screen.
@@ -1751,16 +1751,18 @@ pub(super) fn chrome_hit_test(
         return Some(hit);
     }
 
-    for (panel_id, rect) in panel_activator_rects(client, &rects, layout) {
-        let disabled = layout
-            .panel_activators
+    for (panel_id, rect) in footer_action_rects(client, &rects, layout) {
+        let action = layout
+            .footer_actions
             .iter()
-            .find(|item| item.id == panel_id)
-            .is_some_and(|item| item.disabled);
-        if !disabled && rect_contains(&rect, point) {
+            .find(|item| item.id == panel_id);
+        if action.is_some_and(|item| !item.disabled) && rect_contains(&rect, point) {
             return Some(chrome_command(
-                command_id::PANEL_ACTIVATOR_CLICK,
-                json!({ "panel_id": panel_id }),
+                command_id::FOOTER_ACTION_CLICK,
+                json!({
+                    "generation": action.map(|item| item.generation).unwrap_or_default(),
+                    "panel_id": panel_id,
+                }),
             ));
         }
     }
@@ -1785,10 +1787,19 @@ pub(super) fn chrome_hit_test(
             // Treating the whole tab-bar column as client chrome made the most
             // obvious Arc-style drag affordance inert.
             for (action_id, action_rect) in sidebar_header_action_rects(tabbar_rect, tabbar) {
-                if rect_contains(&action_rect, point) {
+                let action = tabbar
+                    .header_actions
+                    .iter()
+                    .find(|action| action.id == action_id);
+                if action.is_some_and(|action| !action.disabled)
+                    && rect_contains(&action_rect, point)
+                {
                     return Some(chrome_command(
                         command_id::SIDEBAR_ACTION,
-                        json!({ "action_id": action_id }),
+                        json!({
+                            "generation": action.map(|item| item.generation).unwrap_or_default(),
+                            "action_id": action_id,
+                        }),
                     ));
                 }
             }
@@ -2256,9 +2267,9 @@ mod scroll_tests {
             icon_rail: false,
             items_api_hidden: false,
             items_collapsed: false,
-            activator_footer_height: 0,
+            footer_action_height: 0,
             main_scroll_offset: 0,
-            activator_scroll_row: 0,
+            footer_action_scroll_row: 0,
             auxiliary_items: Vec::new(),
             show_auxiliary_add: false,
             header_actions: Vec::new(),
@@ -2449,9 +2460,9 @@ mod scroll_tests {
             icon_rail: false,
             items_api_hidden: false,
             items_collapsed: false,
-            activator_footer_height: 0,
+            footer_action_height: 0,
             main_scroll_offset: 0,
-            activator_scroll_row: 0,
+            footer_action_scroll_row: 0,
             auxiliary_items: Vec::new(),
             show_auxiliary_add: false,
             header_actions: Vec::new(),
@@ -2552,9 +2563,9 @@ mod scroll_tests {
             icon_rail: false,
             items_api_hidden: false,
             items_collapsed: false,
-            activator_footer_height: 0,
+            footer_action_height: 0,
             main_scroll_offset: 0,
-            activator_scroll_row: 0,
+            footer_action_scroll_row: 0,
             auxiliary_items: vec![WindowsShellAuxiliaryItemLayout {
                 id: "tab-1".to_string(),
                 title: "Web".to_string(),
@@ -2611,9 +2622,9 @@ mod scroll_tests {
             icon_rail: false,
             items_api_hidden: false,
             items_collapsed: false,
-            activator_footer_height: 0,
+            footer_action_height: 0,
             main_scroll_offset: 0,
-            activator_scroll_row: 0,
+            footer_action_scroll_row: 0,
             auxiliary_items: vec![WindowsShellAuxiliaryItemLayout {
                 id: "lxapp:chat".to_string(),
                 title: "Chat".to_string(),

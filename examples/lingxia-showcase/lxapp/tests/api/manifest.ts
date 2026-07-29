@@ -88,8 +88,8 @@ const HOST_APP_API = [
 ] as const;
 const AUTOSTART_API = ['isEnabled', 'setEnabled'] as const;
 const ENV_API = ['USER_CACHE_PATH', 'USER_DATA_PATH'] as const;
-const SHELL_API = ['activators'] as const;
-const SHELL_ACTIVATORS_API = ['clear', 'remove', 'replace', 'update'] as const;
+const SHELL_API = ['sidebarActions'] as const;
+const SHELL_SIDEBAR_ACTIONS_API = ['clear', 'remove', 'replace', 'update'] as const;
 const TRAY_API = ['hide', 'onClick', 'setBadge', 'setIcon', 'setMenu', 'setTitle', 'show'] as const;
 const FILE_MANAGER_API = [
   'copyFile',
@@ -231,7 +231,11 @@ export const LX_RUNTIME_SURFACES = [
   { name: 'lx.app.autostart', expression: 'lx.app.autostart', members: AUTOSTART_API, optional: true },
   { name: 'lx.env', expression: 'lx.env', members: ENV_API },
   { name: 'lx.shell', expression: 'lx.shell', members: SHELL_API },
-  { name: 'lx.shell.activators', expression: 'lx.shell.activators', members: SHELL_ACTIVATORS_API },
+  {
+    name: 'lx.shell.sidebarActions',
+    expression: 'lx.shell.sidebarActions',
+    members: SHELL_SIDEBAR_ACTIONS_API,
+  },
   { name: 'lx.tray', expression: 'lx.tray', members: TRAY_API },
   { name: 'FileManager', expression: 'lx.getFileManager()', members: FILE_MANAGER_API },
   { name: 'Storage', expression: 'lx.getStorage()', members: STORAGE_API },

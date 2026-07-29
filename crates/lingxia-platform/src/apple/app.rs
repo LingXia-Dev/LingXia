@@ -181,15 +181,15 @@ impl AppRuntime for Platform {
         }
     }
 
-    fn set_shell_activators(
+    fn set_shell_sidebar_actions(
         &self,
-        items: &[lingxia_shell::ResolvedShellActivator],
+        items: &[lingxia_shell::ResolvedShellSidebarAction],
     ) -> Result<(), PlatformError> {
         // A shell-less host (runner phone shape) answers false; that is a
         // cosmetic absence, not an error.
         let json = serde_json::to_string(items)
             .map_err(|error| PlatformError::Platform(error.to_string()))?;
-        let _ = ffi::set_activator_items(&json);
+        let _ = ffi::set_sidebar_actions(&json);
         Ok(())
     }
 
@@ -302,6 +302,19 @@ impl AppRuntime for Platform {
                 "Failed to open URL: owner_appid={}, owner_session_id={}, url={}, target={:?}",
                 req.owner_appid, req.owner_session_id, req.url, req.target
             )))
+        }
+    }
+
+    fn open_builtin_browser_page(
+        &self,
+        page: crate::traits::app_runtime::BuiltinBrowserPage,
+    ) -> Result<(), PlatformError> {
+        if ffi::open_builtin_browser_page(page as i32) {
+            Ok(())
+        } else {
+            Err(PlatformError::NotSupported(
+                "built-in browser page".to_string(),
+            ))
         }
     }
 

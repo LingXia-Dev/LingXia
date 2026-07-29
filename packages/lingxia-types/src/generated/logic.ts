@@ -291,6 +291,8 @@ export type AutostartApi = {
 
 export type BinaryFileData = ArrayBuffer | ArrayBufferView;
 
+export type BuiltinBrowserSurfaceUrl = 'lingxia://settings' | 'lingxia://downloads';
+
 export type CapsuleRect = {
     width: number;
     height: number;
@@ -718,6 +720,20 @@ export type NetworkInfo = {
 /** Network status APIs. */
 export type NetworkType = 'none' | 'unknown' | 'wifi' | '2g' | '3g' | '4g' | '5g' | 'ethernet';
 
+export type OpenBuiltinBrowserSurfaceSpec = {
+    url: BuiltinBrowserSurfaceUrl;
+    as?: never;
+    edge?: never;
+    size?: never;
+    position?: never;
+    interaction?: never;
+    page?: never;
+    lxapp?: never;
+    native?: never;
+    surface?: never;
+    query?: never;
+};
+
 /**
  * Show a surface declared by id in the host's `lingxia.yaml`.
  * Available to any lxapp granted access to that declaration.
@@ -857,7 +873,7 @@ export type OpenPageSurfaceSpec = {
     url?: never;
 };
 
-export type OpenSurfaceSpec = OpenPageSurfaceSpec | OpenDeclaredSurfaceSpec | OpenLxappSurfaceSpec | OpenNativeSurfaceSpec | OpenUrlTabSpec | OpenUrlAsideSpec;
+export type OpenSurfaceSpec = OpenPageSurfaceSpec | OpenDeclaredSurfaceSpec | OpenLxappSurfaceSpec | OpenNativeSurfaceSpec | OpenBuiltinBrowserSurfaceSpec | OpenUrlTabSpec | OpenUrlAsideSpec;
 
 /**
  * Open `url` in the multi-tab browser aside. `url` must be `https://` or
@@ -1234,29 +1250,32 @@ export type ShareTitleOptions = {
     title?: string;
 };
 
+/** Shell chrome writer API (home lxapp only). */
+export type ShellApi = {
+    sidebarActions: ShellSidebarActionsApi;
+};
+
 /**
- * One app-declared shell activator. Its `id` remains stable across
+ * One app-declared shell sidebar action. Its `id` remains stable across
  * updates and activation. The shell only routes activation to the
  * callback; the app owns every resulting action.
  */
-export type ShellActivator = {
+export type ShellSidebarAction = {
     id: string;
+    placement: ShellSidebarActionPlacement;
     icon: string;
     label: string;
     disabled?: boolean;
     onActivate: () => void;
 };
 
-/** Mutable presentation fields for an existing activator. */
-export type ShellActivatorUpdate = {
+export type ShellSidebarActionPlacement = 'header' | 'footer';
+
+/** Mutable presentation fields for an existing sidebar action. */
+export type ShellSidebarActionUpdate = {
     icon?: string;
     label?: string;
     disabled?: boolean;
-};
-
-/** Shell chrome writer API (home lxapp only). */
-export type ShellApi = {
-    activators: ShellActivatorsApi;
 };
 
 export type ShowActionSheetOptions = {
@@ -2073,15 +2092,15 @@ declare global {
 }
 
 declare global {
-  interface ShellActivatorsApi {
+  interface ShellSidebarActionsApi {
     /**
-     * Atomically replaces the complete desktop activator declaration. Home lxapp
+     * Atomically replaces the complete desktop sidebar action declaration. Home lxapp
      * only. Relative icons resolve from the home app bundle. Every entry is bound
      * to its generation-scoped callback; `replace([])` explicitly clears chrome.
      */
-    replace(items: ShellActivator[]): void;
+    replace(items: ShellSidebarAction[]): void;
     /** Updates presentation fields for one stable id. Home lxapp only. */
-    update(id: string, patch: ShellActivatorUpdate): void;
+    update(id: string, patch: ShellSidebarActionUpdate): void;
     /** Removes one stable id from the declaration. Home lxapp only. */
     remove(id: string): void;
     /** Clears the current runtime declaration. Home lxapp only. */

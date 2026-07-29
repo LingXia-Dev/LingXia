@@ -1,9 +1,10 @@
 use lingxia_platform::Platform;
 use lingxia_platform::traits::app_runtime::AppRuntime;
 use lingxia_shell::{
-    ResolvedShellActivator, ShellActivationIntent, ShellActivator, ShellError, ShellHost, ShellPin,
-    ShellPinTarget, ShellResult,
+    ResolvedShellSidebarAction, ShellError, ShellHost, ShellPin, ShellPinTarget, ShellResult,
+    ShellSidebarAction, SidebarActionIntent,
 };
+use std::path::{Component, Path};
 use std::sync::Arc;
 
 struct HostShell {
@@ -27,27 +28,30 @@ pub(crate) fn initialize(platform: Arc<Platform>) -> ShellResult<()> {
 }
 
 impl ShellHost for HostShell {
-    fn resolve_activators(
+    fn resolve_sidebar_actions(
         &self,
-        items: &[ShellActivator],
-    ) -> ShellResult<Vec<ResolvedShellActivator>> {
+        generation: u64,
+        items: &[ShellSidebarAction],
+    ) -> ShellResult<Vec<ResolvedShellSidebarAction>> {
         let owner = shell_owner();
         items
             .iter()
             .map(|item| {
-                Ok(ResolvedShellActivator {
+                Ok(ResolvedShellSidebarAction {
+                    generation,
                     id: item.id.clone(),
+                    placement: item.placement,
                     label: item.label.clone(),
-                    icon_path: resolve_declared_icon(owner.as_deref(), Some(&item.icon)),
+                    icon_path: Some(resolve_declared_icon(owner.as_deref(), &item.icon)?),
                     disabled: item.disabled,
                 })
             })
             .collect()
     }
 
-    fn apply_activators(&self, items: &[ResolvedShellActivator]) -> ShellResult<()> {
+    fn apply_sidebar_actions(&self, items: &[ResolvedShellSidebarAction]) -> ShellResult<()> {
         self.platform
-            .set_shell_activators(items)
+            .set_shell_sidebar_actions(items)
             .map_err(|error| ShellError::Host(error.to_string()))
     }
 
@@ -58,21 +62,39 @@ impl ShellHost for HostShell {
             .map_err(|error| ShellError::Host(error.to_string()))
     }
 
-    fn activate(&self, intent: ShellActivationIntent) -> ShellResult<()> {
+    fn activate(&self, intent: SidebarActionIntent) -> ShellResult<()> {
         let owner = lingxia_app_context::home_app_id().ok_or(ShellError::NotInitialized)?;
-        let event = format!("lx.shell.activators:{}:{}", intent.generation, intent.id);
+        let event = format!(
+            "lx.shell.sidebarActions:{}:{}",
+            intent.generation, intent.id
+        );
         lxapp::publish_app_event(owner, &event, None);
         Ok(())
     }
 }
 
-fn resolve_declared_icon(owner: Option<&lxapp::LxApp>, icon: Option<&str>) -> Option<String> {
-    let icon = icon?.trim();
-    if icon.is_empty() {
-        return None;
+fn resolve_declared_icon(owner: Option<&lxapp::LxApp>, icon: &str) -> ShellResult<String> {
+    let icon = icon.trim();
+    let path = Path::new(icon);
+    if path.is_absolute()
+        || path.components().any(|component| {
+            matches!(
+                component,
+                Component::ParentDir | Component::RootDir | Component::Prefix(_)
+            )
+        })
+    {
+        return Err(ShellError::InvalidSidebarActionIcon {
+            icon: icon.to_string(),
+        });
     }
-    let resolved = owner?.resolve_accessible_path(icon).ok()?;
-    Some(resolved.to_string_lossy().into_owned())
+    let resolved = owner
+        .ok_or(ShellError::NotInitialized)?
+        .resolve_accessible_path(icon)
+        .map_err(|_| ShellError::InvalidSidebarActionIcon {
+            icon: icon.to_string(),
+        })?;
+    Ok(resolved.to_string_lossy().into_owned())
 }
 
 pub(crate) fn visible_shell_pins(items: &[ShellPin], home_appid: Option<&str>) -> Vec<ShellPin> {
@@ -99,7 +121,20 @@ mod tests {
 
     #[test]
     fn missing_declared_icon_stays_missing() {
-        assert_eq!(resolve_declared_icon(None, None), None);
+        assert_eq!(
+            resolve_declared_icon(None, "icons/action.svg"),
+            Err(ShellError::NotInitialized)
+        );
+    }
+
+    #[test]
+    fn declared_icon_rejects_parent_traversal() {
+        assert_eq!(
+            resolve_declared_icon(None, "../action.svg"),
+            Err(ShellError::InvalidSidebarActionIcon {
+                icon: "../action.svg".to_string()
+            })
+        );
     }
 
     #[test]
