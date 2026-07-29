@@ -50,7 +50,7 @@ The scaffold type-checks each layer against its real runtime: Logic (`tsconfig.l
 - Or grep a hunch: `grep -rn "scanCode" node_modules/@lingxia/types`.
 - Every option/result type is importable from the package root — `import type { ScanCodeResult } from '@lingxia/types'` — when typing your own helpers.
 
-**Nested namespaces** (the rest of `lx.*` is flat): `lx.env` (abstract `lx://` paths), `lx.app` (host-app control), `lx.tray` (desktop status item), and `lx.shell.activators` (home-lxapp-owned desktop activator declarations).
+**Nested namespaces** (the rest of `lx.*` is flat): `lx.env` (abstract `lx://` paths), `lx.app` (host-app control), `lx.tray` (desktop status item), and `lx.shell.sidebarActions` (home-lxapp-owned desktop sidebar action declarations).
 
 ---
 
@@ -75,7 +75,8 @@ Facts that span the whole surface, so no single method's JSDoc carries them:
 - **Two distinct update flows.** `lx.getUpdateManager()` updates the **lxapp bundle** (every lxapp, callback model); `lx.app.checkUpdate()` updates the **host app shell** (home lxapp only, task model). Don't mix them.
 - **The tab bar is declared, not built.** The `setTabBar*` / `showTabBar` / `hideTabBar` family mutates a tab bar configured statically in `lxapp.json` — see [LxApp guide → Tab bar navigation](./guide.md#tab-bar-navigation).
 - **Capsule geometry reflects visible chrome.** `await lx.getCapsuleRect()` returns a complete rect only while that lxapp's capsule is visible; it returns `null` for the home lxapp, an inactive lxapp, and hosts without a capsule. Treat rejection as an actual platform failure, not as the hidden-state signal.
-- **Shell activators are app-owned; Pins are user-owned.** Only the home lxapp may atomically declare `lx.shell.activators`. Every runtime-scoped entry supplies a stable id, `label`, bundle-relative `icon`, and `onActivate`; the shell only invokes that callback, so opening an lxapp/native surface is explicit app code (usually `lx.openSurface(...)`). Redeclare activators each Logic launch. Sidebar Pins (lxapps and websites, mixed order, eight maximum) are intentionally not exposed to Logic.
+- **Sidebar actions are app-owned; Pins are user-owned.** Only the home lxapp may atomically replace `lx.shell.sidebarActions`. Each action has a globally unique stable id, `placement: 'header' | 'footer'`, `label`, bundle-relative `icon`, and `onActivate`. Header accepts at most two icon actions; footer keeps five visible rows and scrolls overflow. The shell only invokes the callback, so navigation stays explicit app code (usually `lx.openSurface(...)`). Redeclare actions each Logic launch. Sidebar Pins (lxapps and websites, mixed order, eight maximum) are intentionally not exposed to Logic.
+- **Browser product pages use `openSurface`.** The home lxapp may call `lx.openSurface({ url: 'lingxia://settings' })` or `lx.openSurface({ url: 'lingxia://downloads' })` when `capabilities.browser` is enabled. Other `lingxia:` URLs and URL variants are rejected.
 - **Float interaction is explicit when needed.** `lx.openSurface({ page, as: 'float', interaction: { closeButton, dismiss, modal } })` controls the native circular close button, outside-click dismissal, and blocking independently. Defaults remain no button, `tapOutside`, and non-modal.
 
 ---
