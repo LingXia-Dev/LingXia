@@ -242,8 +242,10 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     private var sidebarBrowserItemCount = 0
     private var sidebarBrowserRootVisible = false
     private var browserBlankNewTabs = false
+    private var declaredBrowserOwnerAppId: String?
     private var managedMainSurfaceIDs = Set<String>()
     private var managedMainActivateHandler: ((String) -> Void)?
+    private var declaredBrowserSurfaceActivateHandler: ((String) -> Void)?
     private weak var managedMainView: NSView?
 
     var onManagedWindowCloseRequested: (() -> Void)?
@@ -1816,6 +1818,22 @@ extension LxAppShell {
         browserBlankNewTabs = enabled
     }
 
+    func configureDeclaredBrowser(
+        ownerAppId: String?,
+        onSurfaceActivate: @escaping (String) -> Void
+    ) {
+        declaredBrowserOwnerAppId = ownerAppId
+        declaredBrowserSurfaceActivateHandler = onSurfaceActivate
+    }
+
+    @discardableResult
+    func presentDeclaredBrowserMain(
+        surfaceID: String,
+        mode: BrowserTabCoordinator.DeclaredInitialMode
+    ) -> Bool {
+        browserCoordinator.openDeclaredMain(surfaceID: surfaceID, mode: mode)
+    }
+
     func setBrowserPageActionsVisible(_ visible: Bool) {
         browserCoordinator.setPageActionsVisible(visible)
     }
@@ -1870,6 +1888,10 @@ extension LxAppShell: BrowserCoordinatorHost {
                 return (browserAppId, browserSessionId)
             }
         }
+        if let appId = declaredBrowserOwnerAppId,
+           let sessionId = resolvedSessionId(for: appId) {
+            return (appId, sessionId)
+        }
         let current = getCurrentLxApp()
         let appId = current.appid.toString()
         if !appId.isEmpty && current.session_id > 0 {
@@ -1883,6 +1905,10 @@ extension LxAppShell: BrowserCoordinatorHost {
         // toolbar (the browser has its own address bar). The browser view itself
         // is attached by BrowserTabCoordinator after this returns.
         presentMain(.browser)
+    }
+
+    func browserDidActivateSurface(_ surfaceID: String) {
+        declaredBrowserSurfaceActivateHandler?(surfaceID)
     }
 
     func switchToLxAppTab(_ appId: String) {

@@ -149,6 +149,9 @@ final class LxAppMacAppUIRuntime: NSObject {
         shell.setTitlebarHostActionHandler { [weak self] actionID in
             self?.performActivator(id: actionID)
         }
+        shell.configureDeclaredBrowser(ownerAppId: graphOwnerAppId) { [weak self] surfaceID in
+            self?.didActivateBrowserMainSurface(id: surfaceID)
+        }
         // A float root never shows the sidebar; for other roots, content drives
         // visibility via the shell's auto-hide recompute.
         shell.setSidebarSuppressed(rootSurface.role == .float)
@@ -578,7 +581,11 @@ final class LxAppMacAppUIRuntime: NSObject {
         if activeMainSurfaceID == surface.id, openedSurfaceIDs.contains(surface.id) {
             shell.show()
             visibleSurfaceIDs.insert(surface.id)
-            terminalWorkspaces[surface.id]?.focusActiveTerminal()
+            if surface.content.isNativeTerminal {
+                terminalWorkspaces[surface.id]?.focusActiveTerminal()
+            } else if isBrowserMainSurface(surface) {
+                try openBrowserMainSurface(surface)
+            }
             refreshChromeActions()
             return
         }
@@ -588,11 +595,16 @@ final class LxAppMacAppUIRuntime: NSObject {
         case .lxapp:
             try openLxAppSurface(surface, presentation: .normal)
         case .native:
-            guard surface.content.isNativeTerminal else {
+            if surface.content.isNativeTerminal {
+                openTerminalMainSurface(surface)
+            } else if surface.content.isNativeBrowser {
+                try openBrowserMainSurface(surface)
+            } else {
                 throw LxAppUIError.unsupported("surface \(surface.id) uses unsupported native main content")
             }
-            openTerminalMainSurface(surface)
-        case .page, .url:
+        case .url:
+            try openBrowserMainSurface(surface)
+        case .page:
             throw LxAppUIError.unsupported("surface \(surface.id) uses unsupported main content")
         }
         for main in surfaceById.values where main.role == .main {
@@ -613,6 +625,35 @@ final class LxAppMacAppUIRuntime: NSObject {
         workspace.ensureOpenTab()
         shell.presentManagedMainView(workspace)
         workspace.focusActiveTerminal()
+    }
+
+    private func isBrowserMainSurface(_ surface: LxAppUIConfig.Surface) -> Bool {
+        surface.content.kind == .url || surface.content.isNativeBrowser
+    }
+
+    private func openBrowserMainSurface(_ surface: LxAppUIConfig.Surface) throws {
+        let mode: BrowserTabCoordinator.DeclaredInitialMode
+        if surface.content.isNativeBrowser {
+            mode = .emptyWorkspace
+        } else if surface.content.kind == .url, let url = surface.content.url {
+            mode = .url(url)
+        } else {
+            throw LxAppUIError.invalidConfig("surface \(surface.id) has invalid browser main content")
+        }
+        guard shell.presentDeclaredBrowserMain(surfaceID: surface.id, mode: mode) else {
+            throw LxAppUIError.unsupported("failed to present browser main surface \(surface.id)")
+        }
+    }
+
+    private func didActivateBrowserMainSurface(id: String) {
+        guard let surface = surfaceById[id], isBrowserMainSurface(surface) else { return }
+        for main in surfaceById.values where main.role == .main {
+            visibleSurfaceIDs.remove(main.id)
+        }
+        openedSurfaceIDs.insert(id)
+        visibleSurfaceIDs.insert(id)
+        activeMainSurfaceID = id
+        refreshChromeActions()
     }
 
     private func openIndependentPanelSurface(
@@ -1360,13 +1401,15 @@ final class LxAppMacAppUIRuntime: NSObject {
                 guard let url = surface.content.url, !url.isEmpty else {
                     throw LxAppUIError.invalidConfig("surface \(surface.id) requires content.url")
                 }
-                throw LxAppUIError.unsupported("URL surface \(surface.id) is not implemented on macOS")
+                guard surface.role == .main else {
+                    throw LxAppUIError.unsupported("URL surface \(surface.id) must use role main on macOS")
+                }
             case .native:
                 guard let name = surface.content.name else {
                     throw LxAppUIError.invalidConfig("surface \(surface.id) requires content.name")
                 }
-                if name == .browser {
-                    throw LxAppUIError.unsupported("native browser surface \(surface.id) is not implemented on macOS")
+                if name == .browser && surface.role != .main {
+                    throw LxAppUIError.unsupported("native browser surface \(surface.id) must use role main on macOS")
                 }
             }
 
