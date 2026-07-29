@@ -23,6 +23,8 @@ protocol BrowserCoordinatorHost: AnyObject {
     func browserOwnerForNewTab() -> (appId: String, sessionId: UInt64)?
     /// Called before a browser tab becomes active. Host should pause current VC.
     func browserWillActivateTab()
+    /// Reports the declared main surface that owns the activated tab.
+    func browserDidActivateSurface(_ surfaceID: String)
     /// Switch display to the lxapp tab with this appId.
     func switchToLxAppTab(_ appId: String)
     /// Currently active lxapp tab appId (if any).
@@ -45,6 +47,11 @@ protocol BrowserCoordinatorHost: AnyObject {
 
 @MainActor
 final class BrowserTabCoordinator: NSObject {
+
+    enum DeclaredInitialMode {
+        case url(String)
+        case emptyWorkspace
+    }
 
     private static let log = OSLog(subsystem: "LingXia", category: "BrowserTabCoordinator")
     private static let attachMaxRetry = 5
@@ -77,6 +84,8 @@ final class BrowserTabCoordinator: NSObject {
     private var tabFaviconRequestOrigins: [String: String] = [:]
     private var lastObservedURLs: [String: String] = [:]
     private var stableTabIds: [String: String] = [:]
+    private var declaredSurfaceIds: [String: String] = [:]
+    private var declaredWorkspaceSurfaceID: String?
     private var retainedNewTabOwner: (appId: String, sessionId: UInt64)?
 
     /// Tabs whose WebView has been discarded to free memory (Chrome-style).
@@ -230,6 +239,26 @@ final class BrowserTabCoordinator: NSObject {
 
     // MARK: - Public Tab Operations
 
+    @discardableResult
+    func openDeclaredMain(surfaceID: String, mode: DeclaredInitialMode) -> Bool {
+        let stableTabID = Self.declaredStableTabID(surfaceID)
+        switch mode {
+        case .url(let url):
+            return addTabWithURL(
+                url,
+                stableTabId: stableTabID,
+                declaredSurfaceID: surfaceID
+            ) != nil
+        case .emptyWorkspace:
+            declaredWorkspaceSurfaceID = surfaceID
+            return addTabWithURL(
+                "about:blank",
+                stableTabId: stableTabID,
+                declaredSurfaceID: surfaceID
+            ) != nil
+        }
+    }
+
     func addTab() {
         addTabWithURL(host?.usesBlankBrowserNewTabs == true ? "about:blank" : "")
     }
@@ -307,6 +336,7 @@ final class BrowserTabCoordinator: NSObject {
         tabFaviconRequestOrigins.removeValue(forKey: id)
         lastObservedURLs.removeValue(forKey: id)
         stableTabIds = stableTabIds.filter { $0.value != id }
+        declaredSurfaceIds.removeValue(forKey: id)
         interactedTabs.remove(id)
         discardedTabs.remove(id)
         tabRecency.removeAll { $0 == id }
@@ -362,6 +392,8 @@ final class BrowserTabCoordinator: NSObject {
         tabFaviconRequestOrigins.removeAll()
         lastObservedURLs.removeAll()
         stableTabIds.removeAll()
+        declaredSurfaceIds.removeAll()
+        declaredWorkspaceSurfaceID = nil
         discardedTabs.removeAll()
         tabRecency.removeAll()
         backgroundedAt.removeAll()
@@ -773,12 +805,17 @@ final class BrowserTabCoordinator: NSObject {
 
     // MARK: - Internal Tab Operations
 
-    private func addTabWithURL(_ url: String, stableTabId: String? = nil) {
+    @discardableResult
+    private func addTabWithURL(
+        _ url: String,
+        stableTabId: String? = nil,
+        declaredSurfaceID: String? = nil
+    ) -> String? {
         let owner = host?.browserOwnerForNewTab()
             ?? (host?.keepsBrowserRootWithoutTabs == true ? retainedNewTabOwner : nil)
         guard let owner else {
             LXLog.error("Cannot create browser tab without active lxapp session", category: "BrowserTabCoordinator")
-            return
+            return nil
         }
         retainedNewTabOwner = owner
 
@@ -791,8 +828,11 @@ final class BrowserTabCoordinator: NSObject {
            let existingTabId = stableTabIds[requestedStableTabId],
            tabIds.contains(existingTabId),
            lastObservedURLs[existingTabId] == requestedURL {
+            if let surfaceID = declaredSurfaceID ?? declaredWorkspaceSurfaceID {
+                declaredSurfaceIds[existingTabId] = surfaceID
+            }
             presentInternalBrowserTab(id: existingTabId)
-            return
+            return existingTabId
         }
 
         let openedTab = if let requestedStableTabId {
@@ -806,22 +846,26 @@ final class BrowserTabCoordinator: NSObject {
                 "openBrowserTab failed for \(owner.appId)/\(owner.sessionId) url=\(url) stableTabId=\(requestedStableTabId ?? "")",
                 category: "BrowserTabCoordinator"
             )
-            return
+            return nil
         }
 
         let tabId = tabIdString(openedTab.toString())
         guard !tabId.isEmpty else {
             LXLog.error("openBrowserTab returned empty tab id", category: "BrowserTabCoordinator")
-            return
+            return nil
         }
 
         if let requestedStableTabId {
             stableTabIds[requestedStableTabId] = tabId
         }
+        if let surfaceID = declaredSurfaceID ?? declaredWorkspaceSurfaceID {
+            declaredSurfaceIds[tabId] = surfaceID
+        }
         if !requestedURL.isEmpty {
             lastObservedURLs[tabId] = requestedURL
         }
         presentInternalBrowserTab(id: tabId)
+        return tabId
     }
 
     private func switchToTab(id: String) {
@@ -863,6 +907,9 @@ final class BrowserTabCoordinator: NSObject {
         }
 
         activeTabId = id
+        if let surfaceID = declaredSurfaceIds[id] {
+            host?.browserDidActivateSurface(surfaceID)
+        }
         backgroundedAt.removeValue(forKey: id)
         touchRecency(id)
 
@@ -884,6 +931,15 @@ final class BrowserTabCoordinator: NSObject {
     private func touchRecency(_ id: String) {
         tabRecency.removeAll { $0 == id }
         tabRecency.append(id)
+    }
+
+    private static func declaredStableTabID(_ surfaceID: String) -> String {
+        var hash: UInt64 = 0xcbf29ce484222325
+        for byte in surfaceID.utf8 {
+            hash ^= UInt64(byte)
+            hash &*= 0x100000001b3
+        }
+        return String(format: "surface-%016llx", hash)
     }
 
     // MARK: - Adaptive memory management (no fixed tab cap)
