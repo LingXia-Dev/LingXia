@@ -114,7 +114,6 @@ final class BrowserTabCoordinator: NSObject {
     // UI
     private var browserView: NSView?
     private let toolbar = NSView()
-    private let toolbarSeparator = NSView()
     private let backButton = NSButton()
     private let forwardButton = NSButton()
     private let refreshButton = NSButton()
@@ -1372,11 +1371,6 @@ final class BrowserTabCoordinator: NSObject {
         toolbar.addSubview(menuButton)
         menuButton.isHidden = !pageActionsVisible
 
-        toolbarSeparator.translatesAutoresizingMaskIntoConstraints = false
-        toolbarSeparator.wantsLayer = true
-        toolbarSeparator.layer?.backgroundColor = NSColor.separatorColor.cgColor
-        bv.addSubview(toolbarSeparator)
-
         webContainer.translatesAutoresizingMaskIntoConstraints = false
         webContainer.wantsLayer = true
         bv.addSubview(webContainer)
@@ -1459,12 +1453,7 @@ final class BrowserTabCoordinator: NSObject {
             pinButton.widthAnchor.constraint(equalToConstant: pageActionsVisible ? 20 : 0),
             pinButton.heightAnchor.constraint(equalToConstant: 20),
 
-            toolbarSeparator.topAnchor.constraint(equalTo: toolbar.bottomAnchor),
-            toolbarSeparator.leadingAnchor.constraint(equalTo: bv.leadingAnchor),
-            toolbarSeparator.trailingAnchor.constraint(equalTo: bv.trailingAnchor),
-            toolbarSeparator.heightAnchor.constraint(equalToConstant: 1),
-
-            webContainer.topAnchor.constraint(equalTo: toolbarSeparator.bottomAnchor),
+            webContainer.topAnchor.constraint(equalTo: toolbar.bottomAnchor),
             webContainer.leadingAnchor.constraint(equalTo: bv.leadingAnchor),
             webContainer.trailingAnchor.constraint(equalTo: bv.trailingAnchor),
             webContainer.bottomAnchor.constraint(equalTo: bv.bottomAnchor),

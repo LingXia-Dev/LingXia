@@ -582,9 +582,12 @@ final class LxAppMacAppUIRuntime: NSObject {
             shell.show()
             visibleSurfaceIDs.insert(surface.id)
             if surface.content.isNativeTerminal {
-                terminalWorkspaces[surface.id]?.focusActiveTerminal()
+                openTerminalMainSurface(surface)
             } else if isBrowserMainSurface(surface) {
                 try openBrowserMainSurface(surface)
+            } else if surface.content.kind == .lxapp,
+                      shell.attachedMainAppId != surface.content.appId {
+                try openLxAppSurface(surface, presentation: .normal)
             }
             refreshChromeActions()
             return
