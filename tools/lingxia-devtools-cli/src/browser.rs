@@ -408,7 +408,7 @@ pub fn execute(info: &SessionInfo, options: BrowserOptions) -> Result<()> {
 
     match options.command {
         BrowserCommand::Open { url, tab, json } => {
-            let url = normalize_open_url(&url);
+            let url = normalize_open_url_for_target(&url, &info.target);
             let data = client::execute_command(
                 ws_url,
                 handlers::browser::OPEN,
@@ -1198,6 +1198,15 @@ fn normalize_open_url(input: &str) -> String {
     format!("{scheme}://{trimmed}")
 }
 
+/// Runner does not bundle the product browser's `lingxia://newtab` webui.
+/// Keep an explicitly empty automation target aligned with its native + button.
+fn normalize_open_url_for_target(input: &str, target: &str) -> String {
+    if input.trim().is_empty() && target.eq_ignore_ascii_case("runner") {
+        return "about:blank".to_string();
+    }
+    normalize_open_url(input)
+}
+
 /// Resolve a local filesystem path to an absolute `file://` URL. Explicit path
 /// forms (`/abs`, `./rel`, `../rel`, `~/home`) always resolve; a bare token
 /// (e.g. `a.html`) resolves only when a file actually exists at that relative
@@ -1353,7 +1362,7 @@ fn has_url_scheme(url: &str) -> bool {
 mod tests {
     use super::{
         current_tab_summary, file_url_from_path, local_file_url, network_capture_may_be_supported,
-        normalize_open_url,
+        normalize_open_url, normalize_open_url_for_target,
     };
     use serde_json::json;
     use std::path::Path;
@@ -1479,5 +1488,15 @@ mod tests {
         );
         assert_eq!(normalize_open_url("about:blank"), "about:blank");
         assert_eq!(normalize_open_url("data:text/html,hi"), "data:text/html,hi");
+    }
+
+    #[test]
+    fn runner_empty_url_opens_a_blank_tab() {
+        assert_eq!(normalize_open_url_for_target("", "runner"), "about:blank");
+        assert_eq!(normalize_open_url_for_target("", "macos"), "");
+        assert_eq!(
+            normalize_open_url_for_target("example.com", "runner"),
+            "https://example.com"
+        );
     }
 }
