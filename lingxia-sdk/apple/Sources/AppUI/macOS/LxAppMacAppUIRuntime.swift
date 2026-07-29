@@ -59,6 +59,7 @@ final class LxAppMacAppUIRuntime: NSObject {
 
     private var visibleSurfaceIDs = Set<String>()
     private var openedSurfaceIDs = Set<String>()
+    private var closedMainSurfaceIDs = Set<String>()
     private var activeMainSurfaceID: String?
     /// Runtime edge overrides from `lx.openSurface({surface, edge})`; the
     /// declared `lingxia.yaml` edge applies when absent.
@@ -573,6 +574,7 @@ final class LxAppMacAppUIRuntime: NSObject {
         _ surface: LxAppUIConfig.Surface,
         sourceActivatorID: String? = nil
     ) throws {
+        closedMainSurfaceIDs.remove(surface.id)
         applyWindowPresentation(for: surface)
         if surface.role == .float {
             positionPanelWindow(for: sourceActivatorID)
@@ -616,6 +618,38 @@ final class LxAppMacAppUIRuntime: NSObject {
         openedSurfaceIDs.insert(surface.id)
         visibleSurfaceIDs.insert(surface.id)
         activeMainSurfaceID = surface.id
+        refreshChromeActions()
+    }
+
+    private func closeMainSurface(id: String) {
+        guard let surface = surfaceById[id], surface.role == .main else { return }
+
+        closedMainSurfaceIDs.insert(id)
+        openedSurfaceIDs.remove(id)
+        visibleSurfaceIDs.remove(id)
+
+        if surface.content.isNativeTerminal {
+            terminalWorkspaces[id]?.disarmInput()
+            terminalWorkspaces.removeValue(forKey: id)
+        }
+
+        guard activeMainSurfaceID == id else {
+            refreshChromeActions()
+            return
+        }
+
+        activeMainSurfaceID = nil
+        if let successor = uiConfig.surfaces.first(where: {
+            $0.role == .main
+                && $0.id != id
+                && !closedMainSurfaceIDs.contains($0.id)
+                && surfaceById[$0.id] != nil
+        }) {
+            openSurfaceHandlingError(id: successor.id)
+            return
+        }
+
+        shell.presentMainEmptyState()
         refreshChromeActions()
     }
 
@@ -1045,6 +1079,8 @@ final class LxAppMacAppUIRuntime: NSObject {
             activeId: activeMainSurfaceID
         ) { [weak self] surfaceID in
             self?.openSurfaceHandlingError(id: surfaceID)
+        } onClose: { [weak self] surfaceID in
+            self?.closeMainSurface(id: surfaceID)
         }
         shell.setManagedNavigationToolbarVisible(true)
         shell.updateToolbarHostActions(toolbarItems)
@@ -1053,7 +1089,10 @@ final class LxAppMacAppUIRuntime: NSObject {
 
     private func declaredMainSidebarItems() -> [LxAppUIActionItem] {
         uiConfig.surfaces.compactMap { surface in
-            guard surface.role == .main, surfaceById[surface.id] != nil else { return nil }
+            guard surface.role == .main,
+                  surfaceById[surface.id] != nil,
+                  !closedMainSurfaceIDs.contains(surface.id)
+            else { return nil }
             let label: String
             switch surface.content.kind {
             case .lxapp:

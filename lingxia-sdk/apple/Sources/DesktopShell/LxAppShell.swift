@@ -246,8 +246,10 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     private var declaredBrowserOwnerAppId: String?
     private var managedMainSurfaceIDs = Set<String>()
     private var managedMainActivateHandler: ((String) -> Void)?
+    private var managedMainCloseHandler: ((String) -> Void)?
     private var declaredBrowserSurfaceActivateHandler: ((String) -> Void)?
     private weak var managedMainView: NSView?
+    private lazy var mainEmptyStateView = MainEmptyStateView()
 
     var onManagedWindowCloseRequested: (() -> Void)?
 
@@ -1183,12 +1185,19 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     func updateManagedMainSurfaces(
         _ items: [LxAppUIActionItem],
         activeId: String?,
-        onActivate: @escaping (String) -> Void
+        onActivate: @escaping (String) -> Void,
+        onClose: @escaping (String) -> Void
     ) {
         managedMainSurfaceIDs = Set(items.map(\.id))
         managedMainActivateHandler = onActivate
+        managedMainCloseHandler = onClose
         sidebarView?.updateManagedMainItems(items, activeId: activeId)
         reconcileSidebarAutoHide()
+    }
+
+    func presentMainEmptyState() {
+        presentMain(.native(mainEmptyStateView))
+        sidebarView?.clearAllHighlights()
     }
 
     /// Remove the current lxapp view controller from the main area (pause + detach).
@@ -1303,6 +1312,10 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     // MARK: - Tab Close
 
     private func closeTab(_ appId: String) {
+        if managedMainSurfaceIDs.contains(appId) {
+            managedMainCloseHandler?(appId)
+            return
+        }
         closeSession(appId: appId, notifyRuntime: true)
     }
 
@@ -2232,6 +2245,52 @@ extension LxAppToolbarMode: Equatable {
         default:
             return false
         }
+    }
+}
+
+@MainActor
+private final class MainEmptyStateView: NSView {
+    private let symbolView = NSImageView()
+    private let titleLabel = NSTextField(labelWithString: "Nothing open")
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        translatesAutoresizingMaskIntoConstraints = false
+        wantsLayer = true
+
+        symbolView.translatesAutoresizingMaskIntoConstraints = false
+        symbolView.image = NSImage(
+            systemSymbolName: "rectangle.stack",
+            accessibilityDescription: "Nothing open"
+        )
+        symbolView.contentTintColor = .tertiaryLabelColor
+        symbolView.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 30, weight: .regular)
+
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+        titleLabel.font = .systemFont(ofSize: 13, weight: .medium)
+        titleLabel.textColor = .secondaryLabelColor
+        titleLabel.alignment = .center
+
+        let stack = NSStackView(views: [symbolView, titleLabel])
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        stack.orientation = .vertical
+        stack.alignment = .centerX
+        stack.spacing = 14
+        addSubview(stack)
+
+        NSLayoutConstraint.activate([
+            symbolView.widthAnchor.constraint(equalToConstant: 42),
+            symbolView.heightAnchor.constraint(equalToConstant: 42),
+            stack.centerXAnchor.constraint(equalTo: centerXAnchor),
+            stack.centerYAnchor.constraint(equalTo: centerYAnchor),
+            stack.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor, constant: 24),
+            stack.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -24),
+        ])
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
     }
 }
 
