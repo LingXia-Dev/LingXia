@@ -50,12 +50,22 @@ pub(super) fn prepare_app_ui_icons(
     project_root: &Path,
     config: &LingXiaConfig,
 ) -> Result<Vec<PreparedAppUiIcon>> {
-    let Some(ui) = effective_ui_config(config, None)? else {
-        return Ok(Vec::new());
-    };
-
     let mut icon_sources = Vec::new();
-    collect_app_ui_icon_sources(&ui, &mut icon_sources)?;
+    if let Some(surfaces) = config.surfaces.as_ref() {
+        for surface in surfaces {
+            if let Some(icon) = surface
+                .tray
+                .as_ref()
+                .and_then(|tray| tray.icon.as_deref())
+                .map(str::trim)
+                .filter(|icon| !icon.is_empty())
+            {
+                icon_sources.push(icon.to_string());
+            }
+        }
+    } else if let Some(ui) = effective_ui_config(config, None)? {
+        collect_app_ui_icon_sources(&ui, &mut icon_sources)?;
+    }
     icon_sources.sort();
     icon_sources.dedup();
 

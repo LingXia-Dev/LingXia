@@ -132,7 +132,11 @@ fn panel_item_from_surface(
         .and_then(serde_json::Value::as_str)
         .map(str::trim)
     {
-        Some("terminal") => PanelContentKind::Terminal,
+        Some("native")
+            if content.get("name").and_then(serde_json::Value::as_str) == Some("terminal") =>
+        {
+            PanelContentKind::Terminal
+        }
         Some("lxapp") => PanelContentKind::LxApp,
         _ => return None,
     };
@@ -351,7 +355,7 @@ mod tests {
                 "id": "terminal",
                 "role": "aside",
                 "edge": "bottom",
-                "content": { "kind": "terminal" }
+                "content": { "kind": "native", "name": "terminal" }
             }],
             "activators": []
         });
@@ -371,7 +375,7 @@ mod tests {
                 "id": "terminal",
                 "role": "aside",
                 "edge": "bottom",
-                "content": { "kind": "terminal" }
+                "content": { "kind": "native", "name": "terminal" }
             }],
             "activators": [{
                 "id": "terminalSidebar",
@@ -405,7 +409,7 @@ mod tests {
                 "id": "terminal",
                 "role": "aside",
                 "edge": "bottom",
-                "content": { "kind": "terminal" }
+                "content": { "kind": "native", "name": "terminal" }
             }],
             "activators": [{
                 "id": "lingxia-chatSidebar",
