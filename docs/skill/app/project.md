@@ -346,6 +346,8 @@ Two sidebar regions have fixed ownership:
 - **Pins are the user's** — quick entries for lxapps and websites (eight at most), added and removed through context menus. There is no app API to write them.
 - **Sidebar actions are the app's** — runtime entries the home lxapp declares via `lx.shell.sidebarActions` (see the `@lingxia/types` declarations). Header actions are icon-only and limited to two; footer actions use labeled cells and scroll after five visible rows. The shell invokes `onActivate` and performs no built-in navigation; callbacks can call `lx.openSurface(...)` or run any other app logic. Redeclare them each Logic launch.
 
+Closing the last main in a product Host does not create a fake browser/terminal or close the app. The window remains with zero active main surfaces and shows shell-owned empty chrome. Configure it from the home Logic with `lx.shell.emptyState.set(...)`; its optional action can reopen a declared surface. This placeholder is window state, so it has no surface id or sidebar tab. Direct URL Runner sessions are the exception: closing their final browser tab closes the Runner window.
+
 ### Menu-bar / system-tray apps
 
 A `tray:` entry adds a menu-bar item (macOS) / system-tray icon (Windows). The same declaration drives three shapes:
