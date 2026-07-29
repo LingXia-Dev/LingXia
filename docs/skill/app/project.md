@@ -283,7 +283,7 @@ Each entry starts with its **content key** — exactly one of `lxapp` / `url` / 
 
 Icons (`tray.icon`) are host-root-relative SVG source paths — see [Icon Paths](#icon-paths).
 
-There is **no `sidebar:` entry field**: app-owned sidebar activators are declared at runtime through `lx.shell.activators`, never in YAML. Each entry provides `onActivate`; the callback explicitly opens the desired surface or performs the action.
+There is **no `sidebar:` entry field**: app-owned sidebar actions are declared at runtime through `lx.shell.sidebarActions`, never in YAML. Each entry chooses `placement: header | footer` and provides `onActivate`; the callback explicitly opens the desired surface or performs the action.
 
 ### Rules (enforced at build)
 
@@ -344,7 +344,7 @@ URL field and a separate tab group; the field accepts URLs, not search queries.
 Two sidebar regions have fixed ownership:
 
 - **Pins are the user's** — quick entries for lxapps and websites (eight at most), added and removed through context menus. There is no app API to write them.
-- **Activators are the app's** — runtime entries the home lxapp declares via `lx.shell.activators` (see the `@lingxia/types` declarations). The shell invokes `onActivate` and performs no built-in navigation; callbacks can call `lx.openSurface(...)` or run any other app logic. Redeclare them each Logic launch.
+- **Sidebar actions are the app's** — runtime entries the home lxapp declares via `lx.shell.sidebarActions` (see the `@lingxia/types` declarations). Header actions are icon-only and limited to two; footer actions use labeled cells and scroll after five visible rows. The shell invokes `onActivate` and performs no built-in navigation; callbacks can call `lx.openSurface(...)` or run any other app logic. Redeclare them each Logic launch.
 
 ### Menu-bar / system-tray apps
 

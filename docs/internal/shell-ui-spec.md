@@ -62,7 +62,7 @@ relationships, or lifecycle semantics defined here.
 | **content key** | The logical key that declares and looks up content; not the runtime instance id |
 | **runtime id** | A read-only id the shell assigns to a live surface, used by handles and events |
 | **main area** | The content region of the main window hosting the currently selected main |
-| **sidebar** | The desktop left navigation region: pins, main tabs, activators |
+| **sidebar** | The desktop left navigation region: pins, main tabs, and app-owned header/footer actions |
 | **aside** | Companion content beside a main; docked when wide, overlaying when narrow |
 | **slot** | A container in the aside region grouped by rendering engine: lxapp, browser, native |
 | **float** | A floating surface that does not participate in main/aside layout |
@@ -70,7 +70,7 @@ relationships, or lifecycle semantics defined here.
 | **web tab** | A top-level sidebar tab representing a main browser tab |
 | **tabbar item** | A child row under an expanded lxapp tab, sourced from that lxapp's mobile tabbar |
 | **pin** | A user-saved quick entry for an lxapp or website |
-| **activator** | An app-declared runtime callback entry owned by the single runtime writer |
+| **sidebar action** | An app-declared runtime callback entry owned by the single runtime writer and placed in the header or footer |
 | **home lxapp** | The host's primary lxapp named by `app.homeAppId`; its identity is independent of `launch` and of whether it currently has a visible surface |
 
 ### 1.1 Content
@@ -127,13 +127,13 @@ enters the main window's surface graph.
 
 ### 1.4 Crate boundaries
 
-- `lingxia-shell` is the platform-neutral semantic owner: typed activator/pin
+- `lingxia-shell` is the platform-neutral semantic owner: typed sidebar-action/pin
   state, validation, versioned stores, declaration generations, stable-id
   routing, and the combined pin limit.
 - `lingxia-surface` is the generic presentation graph: main, aside, slot,
   focus, visibility, and layout plans. It knows nothing about pins, bookmarks,
-  activators, or product behavior such as the terminal.
-- The top-level `lingxia` crate coordinates the two domains: a shell activation
+  sidebar actions, or product behavior such as the terminal.
+- The top-level `lingxia` crate coordinates the two domains: a sidebar action
   intent is projected into the surface graph or a native host capability.
 - Logic only parses the JS declaration and owns generation-scoped callbacks.
   Platform SDKs only render resolved snapshots and report stable ids; they MUST
@@ -202,7 +202,7 @@ omit `instanceKey` or use a new key.
 | Error | Meaning |
 |---|---|
 | `E_INVALID_ARG` | Invalid field, combination, URL, or size |
-| `E_DENIED` | Caller lacks permission |
+| `E_PERMISSION_DENIED` | Caller lacks permission |
 | `E_NOT_FOUND` | lxapp, page, native capability, or declaration does not exist |
 | `E_NOT_SUPPORTED` | Platform, capability, or current window mode does not support the operation |
 | `E_SURFACE_CONFLICT` | The same logical content is already live under an incompatible role/presentation |
@@ -320,7 +320,7 @@ crammed in the moment the window crosses 840.
   behavior.
 - While the main window has tabs, exactly one tab MUST be selected.
 - lxapp tabs and web tabs interleave in one scrollable list; pins and
-  activators stay fixed, outside the scroll region.
+  sidebar actions stay fixed, outside the main navigation scroll region.
 - Closing the selected tab selects an adjacent tab; closing the last tab closes
   the main window. Whether the process continues is decided by the tray and the
   platform app lifecycle.
@@ -426,17 +426,18 @@ Pins are the user's quick entries for lxapps and websites.
   the lxapp is live as aside/float, the click focuses the existing instance —
   changing role requires close-then-reopen.
 
-### 4.5 Activators
+### 4.5 Sidebar actions
 
-An activator is an app-declared runtime shell entry at the bottom of the
-sidebar. The shell invokes Logic and owns no built-in target behavior. It is
-not the whole sidebar, and it does not require a YAML surface.
+A sidebar action is an app-declared runtime shell entry in the header or
+footer. The shell invokes Logic and owns no built-in target behavior. It is not
+the whole sidebar, and it does not require a YAML surface.
 
 Declaration model (owned by the single runtime writer, §7.2):
 
-- Every entry carries an explicit **stable id**, `label`, bundle-relative
-  `icon`, and `onActivate` callback. Stable ids route updates and activation;
-  callbacks decide what activation does.
+- Every entry carries an explicit **stable id**, `placement: header | footer`,
+  `label`, bundle-relative `icon`, and `onActivate` callback. Stable ids share
+  one namespace across placements and route updates and activation; callbacks
+  decide what activation does.
 - Hosts do not infer target metadata, open lxapps, toggle native capabilities,
   or render fallback glyphs. A callback explicitly calls APIs such as
   `lx.openSurface({ lxapp: ... })` or `lx.openSurface({ native: ... })`.
@@ -447,7 +448,7 @@ Declaration model (owned by the single runtime writer, §7.2):
   transformations of the same generation, not separate mutation protocols.
 - Callback registration is generation-scoped: replacing or removing an item
   unregisters its previous callback.
-- Activators are runtime-scoped because callbacks are not serializable. The
+- Sidebar actions are runtime-scoped because callbacks are not serializable. The
   home Logic writer redeclares them on every launch; the shell does not restore
   stale entries before their callbacks exist.
 - There are no app-controlled layout knobs: no weight, no arbitrary colors.
@@ -459,9 +460,17 @@ Activation behavior:
 - Invoke the currently registered callback. Mouse, keyboard, accessibility,
   shortcut, and automation activation are one semantic; each activation
   invokes the callback once.
-- A disabled activator stays visible but cannot activate.
-- Activators are never selected/active. Any content state created by the
+- A disabled sidebar action stays visible but cannot activate.
+- Sidebar actions are never selected/active. Any content state created by the
   callback belongs to that content's own UI and APIs.
+
+Header geometry:
+
+- Header accepts at most **2** icon-only actions and preserves declaration
+  order. If the complete set cannot fit beside native window controls, none of
+  the actions render; partial truncation is forbidden.
+- Header actions do not render in the collapsed desktop rail or compact size
+  class. Their `label` is still the tooltip and accessibility text.
 
 Expanded footer geometry:
 
@@ -482,11 +491,12 @@ Expanded footer geometry:
 
 Compact rail:
 
-- Icon-only, label as tooltip/accessibility text, same bounded scrolling and
-  disabled treatment. The rail reserves the expand control; activators
+- Footer actions become icon-only, with label as tooltip/accessibility text,
+  the same bounded scrolling and disabled treatment. The rail reserves the
+  expand control; actions
   MUST NOT overlap it or run off-window. Rail width MAY stay platform-specific
   for system-chrome clearance.
-- In compact shells activators do not render, but declarations still validate
+- In compact shells sidebar actions do not render, but declarations still validate
   and reappear if the same process returns to a wider form.
 
 ### 4.6 Aside slots
@@ -518,7 +528,7 @@ The aside region is fixed at three slots, grouped by rendering engine:
   title. Slots MUST NOT each paint their own style.
 - **The slot tab strip carries no create/menu entries** (no "+", no "···"):
   the strip only switches and closes. Content enters a slot elsewhere — the
-  open API, activator entries, the sidebar browser "+"; page-level actions live
+  open API, sidebar action entries, the sidebar browser "+"; page-level actions live
   in the tab's context menu.
 - Maximizing an aside covers only the main area and toggles back on the next
   click; it does not change the role.
@@ -541,7 +551,7 @@ The aside region is fixed at three slots, grouped by rendering engine:
 - `controls: content` uses `app-region: drag/no-drag`; `controls: shell` ships
   its own drag region.
 - A page opened as a standalone window uses the platform-standard frame — it
-  inherits neither the main window's framelessness nor sidebar/aside/activator
+  inherits neither the main window's framelessness nor sidebar/aside/action
   chrome.
 
 ---
@@ -573,7 +583,7 @@ The aside region is fixed at three slots, grouped by rendering engine:
 - Floats present as bottom sheets in compact; platforms with a native popover
   semantic MAY use popovers.
 - Standalone windows are rejected with `E_NOT_SUPPORTED`.
-- Sidebar, pins, and activators do not render; apps needing compact quick
+- Sidebar, pins, and sidebar actions do not render; apps needing compact quick
   entries provide them in their own UI.
 
 ---
@@ -639,8 +649,8 @@ The build MUST validate:
 - a host has at least one main — or is a main-less, tray-float-only app;
 - `controls: content` satisfies the single-main constraint of §4.7.
 
-YAML has **no `sidebar:` entry field**. App-owned sidebar entries are runtime
-activators — one entry system, not a declarative one beside an imperative one.
+YAML has **no `sidebar:` entry field**. App-owned sidebar entries come only
+from the runtime `lx.shell.sidebarActions` collection.
 
 ---
 
@@ -670,9 +680,11 @@ semantics every language surface MUST share.
 - `interaction.closeButton` adds the standard native circular close control.
   Manual floats require it or an app-owned close path. Modal floats block
   underlying input and restore prior focus on close.
-- Allowed URL schemes are `https:` and host-authorized `file:`; anything else
-  fails with `E_INVALID_ARG`. Handing a URL to the system still passes the host
-  scheme allowlist.
+- Allowed URL schemes are `https:` and host-authorized `file:`. The only public
+  product URLs are exact `lingxia://settings` and `lingxia://downloads`, both
+  restricted to the home lxapp and `capabilities.browser`; every other
+  `lingxia:` value fails with `E_INVALID_ARG`. Handing a URL to the system still
+  passes the host scheme allowlist.
 
 ### 7.2 Handles, messaging, and context
 
@@ -694,12 +706,12 @@ semantics every language surface MUST share.
 Shell chrome always has exactly one writer:
 
 - On an AppService host, the home Logic is the writer (via the `lx.shell`
-  namespace); guest calls fail with `E_DENIED`, and host Rust never writes the
+  namespace); guest calls fail with `E_PERMISSION_DENIED`, and host Rust never writes the
   same state in parallel.
 - On a native-only host there is no home Logic; host Rust uses the semantically
   equivalent `lingxia::shell()` facade.
 - Both facades MUST share the state machines and errors of §2 and this
-  section. The writer declares activators (§4.5) and, under
+  section. The writer declares sidebar actions (§4.5) and, under
   `frameless + controls: content`, drives window controls
   (minimize/maximize/close/state); in other modes window-control calls fail
   with `E_NOT_SUPPORTED`.
@@ -721,11 +733,11 @@ Desktop shell persistence:
 | Pins | The user's ordered mixed list |
 | Main session | Tab content keys, session entry ids, order, and selection |
 | lxapp tabs | User collapse state; API-hidden state is rebuilt by the app |
-| Activators | Not persisted; the home Logic writer redeclares callbacks each launch |
+| Sidebar actions | Not persisted; the home Logic writer redeclares callbacks each launch |
 | Aside geometry | Each slot's edge and size |
 
-- Within one process, activators distinguish an explicit empty declaration from
-  "no writer yet" so `replace([])` can clear fallback chrome. No activator
+- Within one process, sidebar actions distinguish an explicit empty declaration from
+  "no writer yet" so `replace([])` can clear chrome. No action
   metadata crosses a process restart without its callback.
 - Main sessions restore lazily: tab placeholders appear immediately; a live
   surface and runtime id are created on first selection. Failed restores show a
@@ -745,8 +757,8 @@ As of 2026-07 (post `feat/shell-ui-spec`, PR #126):
 |---|---|
 | Content-key YAML + open specs | Landed. A legacy declared-surface open spec (`{ surface: <name> }`) still ships in the generated types; target is pure content keys with no alias |
 | Aside slot model, unified slot tab chrome | Landed and live-verified (dual-tab lxapp slot, shared tab metrics, strip visible at n=1, no "+"/"···") |
-| Activators + pins | Landed per §4.4/§4.5; Windows live-verified, macOS compiled via CI; accessibility activation not yet automated |
-| Activator footer overflow scrolling (5-row cap) | Specified, not yet implemented |
+| Sidebar actions + pins | `lx.shell.sidebarActions` drives header/footer snapshots on Windows/macOS; accessibility activation is not yet automated |
+| Sidebar action footer overflow scrolling (5-row cap) | Landed on Windows/macOS |
 | Sidebar/tabbar parity | 184 width, 36/4 and 30/2/1 rhythm, two-level selection, style mapping landed on both platforms |
 | `hideTabBar`/`showTabBar` ↔ group collapse | Landed |
 | Shell persistence | Window frame, sidebar mode/width, group collapse, aside geometry, and pins landed; main-session lazy restore and the aside geometry-only policy still to be verified against §8 |
@@ -755,7 +767,7 @@ As of 2026-07 (post `feat/shell-ui-spec`, PR #126):
 | Compact projection | Browser aside/self chrome, group isolation, and browser-owned back/close semantics aligned with §5 on mobile and Runner |
 | Frameless window + `controls:` + writer window controls | Not implemented |
 | Declared page floats; native floats | Parsed but rejected by the CLI pending runtime support |
-| Naming migration (Appendix C ledger) | Pending — `DockedBrowser`, `panel_activator`, `open_panel_lxapp` word roots still present |
+| Naming migration (Appendix C ledger) | Pending — `DockedBrowser` and `open_panel_lxapp` word roots still present |
 
 ## Appendix B: Pending visual decisions
 
@@ -781,7 +793,7 @@ lowercase keys). Synonyms are not allowed.
 | main area / main tab | `main` | `MainTab` | `MainArea`, `MainTab` | primary, home tab |
 | lxapp tab / web tab | `lxapp_tab / web_tab` | `LxappTab`, `WebTab` | same roots | auxiliary item |
 | aside / slot | `aside / slot` | `AsideSlot` | `AsideSlot`, `SlotKind` | panel, dock (dock is a presentation value only) |
-| activator | `activator` | `lx.shell.activators`, `ShellActivator`, `ResolvedShellActivator` | `Activator*` | panel activator, launcher |
+| sidebar action | `sidebar_action` | `lx.shell.sidebarActions`, `ShellSidebarAction`, `ResolvedShellSidebarAction` | `SidebarAction*` | activator, launcher |
 | pin | `pin` | — | `Pin*`, `MAX_SHELL_PINS` | favorite, shortcut |
 | size class | `size_class` | `sizeClass` | `SizeClass` | breakpoint (internal boundary values may use it) |
 | admission | `admission` | — | `admission` module/functions | aliases other than arbitrate |
@@ -795,6 +807,6 @@ aliases):
 |---|---|
 | `WindowsShellTabBarLayout` / `...TabBarItemLayout` | `SidebarLayout` / `SidebarTabLayout` (the tabbar root is reserved for the lxapp tabbar expansion) |
 | `WindowsShellAuxiliaryItemLayout` | `WebTabLayout` |
-| `panel_activator.rs` / `WindowsPanelPosition` | `activator.rs` / `AsideEdge` |
+| `WindowsPanelPosition` | `AsideEdge` |
 | `open_panel_lxapp` / `panels_config_json` / `panel_item_for_id` | `open_aside_lxapp` / `activator_config_json` / `activator_item_for_id` |
 | `DockedBrowser` | `BrowserSlot` (the presentation value stays `dock`) |
