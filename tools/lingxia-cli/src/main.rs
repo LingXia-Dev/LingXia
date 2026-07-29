@@ -222,6 +222,10 @@ enum Commands {
         /// Do not initialize a Git repository or create the initial commit
         #[arg(long)]
         no_git: bool,
+
+        /// Arguments passed unchanged to the template create lifecycle
+        #[arg(last = true, value_name = "TEMPLATE_ARGS", allow_hyphen_values = true)]
+        template_args: Vec<String>,
     },
 
     /// Manage Git-backed project template providers
@@ -660,6 +664,7 @@ fn main() -> Result<()> {
             template,
             yes,
             no_git,
+            template_args,
         } => {
             commands::new::execute(
                 name,
@@ -668,6 +673,7 @@ fn main() -> Result<()> {
                 package_id,
                 icon,
                 template,
+                template_args,
                 yes,
                 no_git,
             )?;

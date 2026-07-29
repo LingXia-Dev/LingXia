@@ -46,8 +46,16 @@ implies `--project-type lxapp`. A custom root must contain `package.json` and
 and generated build directories are not copied, and standard `{{...}}` scaffold
 placeholders are expanded in text files.
 
+An installed Git-backed template provider may declare a create lifecycle.
+Arguments after `--` are forwarded unchanged to that lifecycle after its
+declared arguments. LingXia runs it inside the staged project before activation
+and explicitly tells it whether creation is interactive; `--yes` selects
+non-interactive operation. The provider owns the meaning of forwarded arguments
+and any project configuration it creates.
+
 ```bash
 lingxia new my-lxapp --template ../my-lxapp-template --yes
+lingxia new my-lxapp --template my-template --yes -- --preset custom
 ```
 
 See `lingxia new --help` for the flags.

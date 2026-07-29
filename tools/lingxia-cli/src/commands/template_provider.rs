@@ -179,23 +179,28 @@ pub fn template_directory(template: &InstalledTemplate) -> Result<PathBuf> {
     )
 }
 
-pub fn run_create(template: &InstalledTemplate, project_root: &Path) -> Result<()> {
+pub fn run_create(
+    template: &InstalledTemplate,
+    project_root: &Path,
+    user_args: &[String],
+    interactive: bool,
+) -> Result<()> {
     let Some(lifecycle) = template.manifest.create.as_ref() else {
+        if !user_args.is_empty() {
+            bail!(
+                "Template {} does not declare a create lifecycle",
+                template.manifest.name
+            );
+        }
         return Ok(());
     };
-    let entry = resolve_owned_path(&template.root, &lifecycle.command, "create entry")?;
-    let mut command = command_for_entry(&entry);
-    let status = command
-        .args(&lifecycle.args)
-        .current_dir(project_root)
-        .env("LINGXIA_TEMPLATE_ROOT", &template.root)
-        .status()
-        .with_context(|| {
-            format!(
-                "Failed to start create lifecycle for template {}",
-                template.manifest.name
-            )
-        })?;
+    let mut command = create_command(template, lifecycle, project_root, user_args, interactive)?;
+    let status = command.status().with_context(|| {
+        format!(
+            "Failed to start create lifecycle for template {}",
+            template.manifest.name
+        )
+    })?;
     if !status.success() {
         bail!(
             "Template {} create lifecycle failed with {status}",
@@ -203,6 +208,27 @@ pub fn run_create(template: &InstalledTemplate, project_root: &Path) -> Result<(
         );
     }
     Ok(())
+}
+
+fn create_command(
+    template: &InstalledTemplate,
+    lifecycle: &TemplateLifecycle,
+    project_root: &Path,
+    user_args: &[String],
+    interactive: bool,
+) -> Result<Command> {
+    let entry = resolve_owned_path(&template.root, &lifecycle.command, "create entry")?;
+    let mut command = command_for_entry(&entry);
+    command
+        .args(&lifecycle.args)
+        .args(user_args)
+        .current_dir(project_root)
+        .env("LINGXIA_TEMPLATE_ROOT", &template.root)
+        .env(
+            "LINGXIA_TEMPLATE_INTERACTIVE",
+            if interactive { "1" } else { "0" },
+        );
+    Ok(command)
 }
 
 pub fn write_project_lock(template: &InstalledTemplate, project_root: &Path) -> Result<()> {
@@ -1086,6 +1112,76 @@ mod tests {
             normalize_source("https://example.com/template.git").unwrap(),
             "https://example.com/template.git"
         );
+    }
+
+    #[test]
+    fn create_lifecycle_receives_user_args_and_interactive_state() {
+        let root = tempdir().unwrap();
+        fs::create_dir_all(root.path().join("template")).unwrap();
+        fs::create_dir_all(root.path().join("bin")).unwrap();
+        fs::write(root.path().join("template/package.json"), "{}").unwrap();
+        fs::write(root.path().join("template/lxapp.json"), "{}").unwrap();
+        fs::write(root.path().join("bin/create.mjs"), "").unwrap();
+        fs::write(
+            root.path().join(MANIFEST_FILE),
+            r#"{
+  "name": "Example Kit",
+  "template": "template",
+  "create": {
+    "command": "bin/create.mjs",
+    "args": ["create"]
+  }
+}"#,
+        )
+        .unwrap();
+        let template = InstalledTemplate {
+            slug: "example-kit".to_string(),
+            root: root.path().to_path_buf(),
+            manifest: load_manifest(root.path()).unwrap(),
+            source: "test".to_string(),
+            commit: "test".to_string(),
+        };
+        let project = tempdir().unwrap();
+        let lifecycle = template.manifest.create.as_ref().unwrap();
+        let command = create_command(
+            &template,
+            lifecycle,
+            project.path(),
+            &["--view".to_string(), "unified".to_string()],
+            false,
+        )
+        .unwrap();
+        let args = command
+            .get_args()
+            .map(|value| value.to_string_lossy().into_owned())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            args,
+            vec![
+                fs::canonicalize(root.path().join("bin/create.mjs"))
+                    .unwrap()
+                    .to_string_lossy()
+                    .into_owned(),
+                "create".to_string(),
+                "--view".to_string(),
+                "unified".to_string(),
+            ]
+        );
+        let interactive = command
+            .get_envs()
+            .find(|(name, _)| *name == "LINGXIA_TEMPLATE_INTERACTIVE")
+            .and_then(|(_, value)| value)
+            .map(|value| value.to_string_lossy().into_owned());
+        assert_eq!(interactive.as_deref(), Some("0"));
+        assert_eq!(command.get_current_dir(), Some(project.path()));
+
+        let command = create_command(&template, lifecycle, project.path(), &[], true).unwrap();
+        let interactive = command
+            .get_envs()
+            .find(|(name, _)| *name == "LINGXIA_TEMPLATE_INTERACTIVE")
+            .and_then(|(_, value)| value)
+            .map(|value| value.to_string_lossy().into_owned());
+        assert_eq!(interactive.as_deref(), Some("1"));
     }
 
     #[test]
