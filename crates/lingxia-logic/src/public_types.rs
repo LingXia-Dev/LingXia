@@ -1519,6 +1519,18 @@ true
         /// Shell chrome writer API (home lxapp only).
         type ShellApi = r###"{
     sidebarActions: ShellSidebarActionsApi;
+    emptyState: ShellEmptyStateApi;
+}"###;
+
+        type ShellEmptyStateOptions = r###"{
+    title: string;
+    message?: string;
+    icon?: string;
+    action?: {
+        id: string;
+        label: string;
+        onActivate: () => void;
+    };
 }"###;
 
         type ShellSidebarActionPlacement = r###"'header' | 'footer'"###;

@@ -312,6 +312,19 @@ extension LxApp {
         }
     }
 
+    nonisolated static func setShellEmptyState(state_json: RustStr) -> Bool {
+        let json = state_json.toString()
+        return executeOnMain {
+            #if os(macOS)
+            guard let runtime = LxAppMacAppUIRuntime.active else { return false }
+            runtime.setRuntimeEmptyState(json)
+            return true
+            #else
+            return true
+            #endif
+        }
+    }
+
     nonisolated static func setShellPins(items_json: RustStr) -> Bool {
         let json = items_json.toString()
         return executeOnMain {

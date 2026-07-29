@@ -265,6 +265,9 @@ mod bridge {
         #[swift_bridge(swift_name = "shellActivate")]
         fn shell_activate(generation: u64, item_id: &str) -> bool;
 
+        #[swift_bridge(swift_name = "shellEmptyStateActivate")]
+        fn shell_empty_state_activate(generation: u64, item_id: &str) -> bool;
+
         // Open (or focus) an lxapp as a MAIN — the pinned-lxapp tile's click.
         #[swift_bridge(swift_name = "shellOpenLxappMain")]
         fn shell_open_lxapp_main(app_id: &str) -> bool;
@@ -1131,6 +1134,17 @@ pub fn shell_activate(generation: u64, item_id: &str) -> bool {
             id: item_id.to_string(),
         })
         .is_ok()
+    })
+}
+
+pub fn shell_empty_state_activate(generation: u64, item_id: &str) -> bool {
+    ffi_catch_unwind!("shell_empty_state_activate", false, || {
+        let Some(owner) = lingxia_app_context::home_app_id() else {
+            return false;
+        };
+        let event = format!("lx.shell.emptyState:{generation}:{item_id}");
+        lxapp::publish_app_event(owner, &event, None);
+        true
     })
 }
 
