@@ -1985,14 +1985,21 @@ impl LxApp {
             .unwrap_or_else(|err| err.into_inner());
         let requested_region = LxAppOpenRegion::from(options.open_mode);
         let claimed = self.claim_open_region(requested_region)?;
+        let began_opening =
+            self.cas_status(LxAppSessionStatus::Closed, LxAppSessionStatus::Opening);
         let result = self.open_claimed(options);
-        if result.is_err() && claimed {
-            // A platform can fail after it has attached the controller (for
-            // example while finalizing a Windows page instance). Roll back the
-            // cold presentation before releasing the region claim; otherwise
-            // another role could open while the first View is still visible.
-            let _ = self.runtime.hide_lxapp(self.appid.clone(), self.session.id);
-            self.release_open_region(requested_region);
+        if result.is_err() {
+            if began_opening {
+                let _ = self.cas_status(LxAppSessionStatus::Opening, LxAppSessionStatus::Closed);
+            }
+            if claimed {
+                // A platform can fail after it has attached the controller (for
+                // example while finalizing a Windows page instance). Roll back the
+                // cold presentation before releasing the region claim; otherwise
+                // another role could open while the first View is still visible.
+                let _ = self.runtime.hide_lxapp(self.appid.clone(), self.session.id);
+                self.release_open_region(requested_region);
+            }
         }
         result
     }
