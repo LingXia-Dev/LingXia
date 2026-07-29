@@ -1258,10 +1258,13 @@ export type ShellApi = {
 /**
  * One app-declared shell sidebar action. Its `id` remains stable across
  * updates and activation. The shell only routes activation to the
- * callback; the app owns every resulting action. `icon` must be a
- * bundle-relative path. For portable desktop rendering, use a square,
- * transparent, monochrome SVG or PNG designed for a 16-point visual;
- * the host may tint it to match the current shell theme.
+ * callback; the app owns every resulting action. `icon` can be a bundled
+ * asset such as `public/settings.svg` or a local path returned by LingXia
+ * file APIs, including `lx://temp/...`, `lx://usercache/...`, and
+ * `lx://userdata/...`. Download remote icons before registration. For portable desktop
+ * rendering, use a square, transparent, monochrome SVG or PNG designed
+ * for a 16-point visual; the host may tint it to match the current shell
+ * theme.
  */
 export type ShellSidebarAction = {
     id: string;

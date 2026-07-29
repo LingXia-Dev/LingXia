@@ -435,13 +435,16 @@ the whole sidebar, and it does not require a YAML surface.
 Declaration model (owned by the single runtime writer, §7.2):
 
 - Every entry carries an explicit **stable id**, `placement: header | footer`,
-  `label`, bundle-relative `icon`, and `onActivate` callback. Stable ids share
+  `label`, local lxapp-accessible `icon`, and `onActivate` callback. Stable ids share
   one namespace across placements and route updates and activation; callbacks
   decide what activation does.
-- Icon paths must remain inside the home bundle; absolute paths, network URLs,
-  and parent traversal are rejected. The portable asset profile is a square,
-  transparent, monochrome SVG or PNG designed for a 16-point visual. Hosts may
-  tint it to match shell theme and disabled state.
+- `icon` accepts bundled resources and runtime-managed `lx://temp`,
+  `lx://usercache`, or `lx://userdata` files, including icons downloaded before
+  registration. Shell core resolves them through the app's standard sandboxed
+  resource resolver before native projection. Native absolute paths, network
+  URLs, and parent traversal are rejected. The portable asset profile is a
+  square, transparent, monochrome SVG or PNG designed for a 16-point visual.
+  Hosts may tint it to match shell theme and disabled state.
 - Hosts do not infer target metadata, open lxapps, toggle native capabilities,
   or render fallback glyphs. A callback explicitly calls APIs such as
   `lx.openSurface({ lxapp: ... })` or `lx.openSurface({ native: ... })`.
