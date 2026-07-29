@@ -149,6 +149,10 @@ internal object NativeApi {
     @JvmStatic
     external fun getLxAppInfo(appId: String): LxAppInfo?
 
+    /** App-declared More actions as a generation-scoped JSON snapshot. */
+    @JvmStatic
+    external fun getLxAppMoreActions(appId: String): String
+
     /**
      * Resolve a lx:// URI or sandbox path to a native-consumable filesystem path.
      *
