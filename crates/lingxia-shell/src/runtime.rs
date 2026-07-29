@@ -146,9 +146,7 @@ pub fn activate_sidebar_action(mut intent: SidebarActionIntent) -> ShellResult<(
             return Err(ShellError::SidebarActionDisabled { id: id.to_string() });
         }
         active.host.activate(intent)
-    })?;
-    let _ = apply_current_sidebar_actions();
-    Ok(())
+    })
 }
 
 fn with_active<T>(run: impl FnOnce(&ActiveShell) -> ShellResult<T>) -> ShellResult<T> {
@@ -253,7 +251,7 @@ mod tests {
                 generation: 1,
             }]
         );
-        assert_eq!(host.applied.lock().unwrap()[0][0].label, "Sync");
+        assert!(host.applied.lock().unwrap().is_empty());
     }
 
     #[test]
