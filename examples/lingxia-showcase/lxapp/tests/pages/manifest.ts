@@ -1,6 +1,7 @@
 export const SHOWCASE_PAGE_EXPECTATIONS = [
   { page: 'home', text: 'Lightweight Application Framework' },
   { page: 'surface', text: 'Page lifecycle' },
+  { page: 'feedback', text: 'Help us improve' },
   { page: 'api', text: 'capabilities provided by LingXia' },
   { page: 'cloud', text: 'Cloud Authentication' },
   { page: 'video', text: 'Native Video' },
@@ -30,6 +31,7 @@ export type ShowcasePage = (typeof SHOWCASE_PAGE_EXPECTATIONS)[number]['page'];
 export const SHOWCASE_PAGE_TITLES: Record<ShowcasePage, string> = {
   home: 'Home',
   surface: 'Surface',
+  feedback: 'Feedback',
   api: 'API',
   cloud: 'Cloud',
   video: 'Native Component Video',

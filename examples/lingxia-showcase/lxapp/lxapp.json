@@ -28,6 +28,10 @@
       "path": "pages/surface/index"
     },
     {
+      "name": "feedback",
+      "path": "pages/feedback/index"
+    },
+    {
       "name": "api",
       "path": "pages/API/index"
     },
