@@ -1036,7 +1036,10 @@ final class LxAppMacAppUIRuntime: NSObject {
         }
 
         switch surface.role {
-        case .main, .float:
+        case .main:
+            closeMainSurface(id: id)
+            return
+        case .float:
             if isIndependentPanelSurface(surface) {
                 independentPanelOpenTasks[id]?.cancel()
                 independentPanelOpenTasks[id] = nil
