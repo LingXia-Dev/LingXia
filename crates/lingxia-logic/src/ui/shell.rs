@@ -1,18 +1,30 @@
 //! `lx.shell.sidebarActions` — app-declared host-shell entries (home lxapp only).
 
 use crate::app::ensure_home_lxapp;
+use lingxia_platform::traits::app_runtime::AppRuntime;
 use lingxia_shell::{
     ShellError, ShellSidebarAction, ShellSidebarActionUpdate, SidebarActionCollection,
     SidebarActionPlacement,
 };
 use lxapp::{LxApp, register_app_handler, unregister_app_handler};
 use rong::{JSContext, JSContextService, JSFunc, JSObject, JSResult, JSValue};
+use serde_json::json;
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
+
+static EMPTY_STATE_GENERATION: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Default)]
 struct SidebarActionHandlerRegistry {
     state: RefCell<SidebarActionHandlerGeneration>,
+    empty_state: RefCell<Option<EmptyStateHandlerGeneration>>,
+}
+
+struct EmptyStateHandlerGeneration {
+    generation: u64,
+    id: String,
+    handler: JSFunc,
 }
 
 #[derive(Default)]
@@ -79,8 +91,24 @@ fn sidebar_actions_namespace(ctx: &JSContext) -> JSResult<JSObject> {
     }
 }
 
+fn empty_state_namespace(ctx: &JSContext) -> JSResult<JSObject> {
+    let shell = shell_namespace(ctx)?;
+    match shell.get::<_, JSObject>("emptyState") {
+        Ok(obj) => Ok(obj),
+        Err(_) => {
+            let obj = JSObject::new(ctx);
+            shell.set("emptyState", obj.clone())?;
+            Ok(obj)
+        }
+    }
+}
+
 fn sidebar_action_event(generation: u64, id: &str) -> String {
     format!("lx.shell.sidebarActions:{generation}:{id}")
+}
+
+fn empty_state_event(generation: u64, id: &str) -> String {
+    format!("lx.shell.emptyState:{generation}:{id}")
 }
 
 struct ParsedSidebarAction {
@@ -238,6 +266,151 @@ fn sidebar_actions_clear(ctx: JSContext) -> JSResult<()> {
     )
 }
 
+fn empty_state_set(ctx: JSContext, options: JSObject) -> JSResult<()> {
+    let lxapp = LxApp::from_ctx(&ctx)?;
+    ensure_home_lxapp(&lxapp, "lx.shell.emptyState.set")?;
+    reject_empty_state_unknown_keys(&options, &["title", "message", "icon", "action"])?;
+
+    let title = empty_state_required_string(&options, "title")?;
+    let message = empty_state_optional_string(&options, "message")?;
+    let icon_path = if let Some(icon) = empty_state_optional_string(&options, "icon")? {
+        Some(
+            lxapp
+                .resolve_accessible_path(&icon)
+                .map_err(|_| {
+                    rong::HostError::new(
+                        rong::error::E_INVALID_ARG,
+                        format!("shell empty state icon is not accessible: {icon}"),
+                    )
+                })?
+                .to_string_lossy()
+                .into_owned(),
+        )
+    } else {
+        None
+    };
+
+    let (action_json, action_handler) = if has_property(&options, "action") {
+        let action = options.get::<_, JSObject>("action").map_err(|_| {
+            rong::HostError::new(
+                rong::error::E_INVALID_ARG,
+                "shell empty state action must be an object",
+            )
+        })?;
+        reject_empty_state_unknown_keys(&action, &["id", "label", "onActivate"])?;
+        let id = empty_state_required_string(&action, "id")?;
+        let label = empty_state_required_string(&action, "label")?;
+        let handler = action.get::<_, JSFunc>("onActivate").map_err(|_| {
+            rong::HostError::new(
+                rong::error::E_INVALID_ARG,
+                "shell empty state action onActivate must be a function",
+            )
+        })?;
+        (
+            Some(json!({ "id": id.clone(), "label": label })),
+            Some((id, handler)),
+        )
+    } else {
+        (None, None)
+    };
+
+    let generation = EMPTY_STATE_GENERATION.fetch_add(1, Ordering::Relaxed) + 1;
+    if let Some((id, handler)) = action_handler.as_ref() {
+        register_app_handler(&ctx, &empty_state_event(generation, id), handler.clone())?;
+    }
+
+    let payload = serde_json::to_string(&json!({
+        "generation": generation,
+        "title": title,
+        "message": message,
+        "iconPath": icon_path,
+        "action": action_json,
+    }))
+    .map_err(|error| rong::HostError::new(rong::error::E_INTERNAL, error.to_string()))?;
+
+    if let Err(error) = lxapp.runtime.set_shell_empty_state(&payload) {
+        if let Some((id, _)) = action_handler.as_ref() {
+            unregister_app_handler(&ctx, &empty_state_event(generation, id), None);
+        }
+        return Err(crate::i18n::js_error_from_platform_error(&error));
+    }
+
+    let registry = handler_registry(&ctx);
+    if let Some(previous) = registry.empty_state.borrow_mut().take() {
+        unregister_app_handler(
+            &ctx,
+            &empty_state_event(previous.generation, &previous.id),
+            Some(previous.handler),
+        );
+    }
+    if let Some((id, handler)) = action_handler {
+        *registry.empty_state.borrow_mut() = Some(EmptyStateHandlerGeneration {
+            generation,
+            id,
+            handler,
+        });
+    }
+    Ok(())
+}
+
+fn empty_state_clear(ctx: JSContext) -> JSResult<()> {
+    let lxapp = LxApp::from_ctx(&ctx)?;
+    ensure_home_lxapp(&lxapp, "lx.shell.emptyState.clear")?;
+    let generation = EMPTY_STATE_GENERATION.fetch_add(1, Ordering::Relaxed) + 1;
+    let payload = serde_json::to_string(&json!({ "generation": generation }))
+        .map_err(|error| rong::HostError::new(rong::error::E_INTERNAL, error.to_string()))?;
+    lxapp
+        .runtime
+        .set_shell_empty_state(&payload)
+        .map_err(|error| crate::i18n::js_error_from_platform_error(&error))?;
+
+    if let Some(previous) = handler_registry(&ctx).empty_state.borrow_mut().take() {
+        unregister_app_handler(
+            &ctx,
+            &empty_state_event(previous.generation, &previous.id),
+            Some(previous.handler),
+        );
+    }
+    Ok(())
+}
+
+fn empty_state_required_string(item: &JSObject, field: &'static str) -> JSResult<String> {
+    let value = item.get::<_, String>(field).map_err(|_| {
+        rong::HostError::new(
+            rong::error::E_INVALID_ARG,
+            format!("shell empty state {field} must be a string"),
+        )
+    })?;
+    let value = value.trim();
+    if value.is_empty() {
+        return Err(rong::HostError::new(
+            rong::error::E_INVALID_ARG,
+            format!("shell empty state {field} must not be empty"),
+        )
+        .into());
+    }
+    Ok(value.to_string())
+}
+
+fn empty_state_optional_string(item: &JSObject, field: &'static str) -> JSResult<Option<String>> {
+    has_property(item, field)
+        .then(|| empty_state_required_string(item, field))
+        .transpose()
+}
+
+fn reject_empty_state_unknown_keys(item: &JSObject, allowed: &[&str]) -> JSResult<()> {
+    for key in item.keys_as::<String>()? {
+        if !allowed.contains(&key.as_str()) {
+            return Err(rong::HostError::new(
+                rong::error::E_INVALID_ARG,
+                format!("unknown shell empty state field '{key}'"),
+            )
+            .into());
+        }
+    }
+    Ok(())
+}
+
 fn retained_handlers(ctx: &JSContext) -> HashMap<String, JSFunc> {
     handler_registry(ctx).state.borrow().handlers.clone()
 }
@@ -307,13 +480,22 @@ fn js_error(error: ShellError) -> rong::HostError {
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     let _ = handler_registry(ctx);
     register_shell_property(ctx)?;
-    register_sidebar_actions_api(ctx)
+    register_sidebar_actions_api(ctx)?;
+    register_empty_state_api(ctx)
 }
 
 rong::js_api! {
     fn register_shell_property(ctx) {
         namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
         const shell: "ShellApi" = shell_namespace(ctx)?;
+    }
+}
+
+rong::js_api! {
+    fn register_empty_state_api(ctx) {
+        namespace ShellEmptyStateApi = empty_state_namespace(ctx)?;
+        fn set(ts_params = "options: ShellEmptyStateOptions") = empty_state_set;
+        fn clear() = empty_state_clear;
     }
 }
 

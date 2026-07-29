@@ -1253,6 +1253,18 @@ export type ShareTitleOptions = {
 /** Shell chrome writer API (home lxapp only). */
 export type ShellApi = {
     sidebarActions: ShellSidebarActionsApi;
+    emptyState: ShellEmptyStateApi;
+};
+
+export type ShellEmptyStateOptions = {
+    title: string;
+    message?: string;
+    icon?: string;
+    action?: {
+        id: string;
+        label: string;
+        onActivate: () => void;
+    };
 };
 
 /**
@@ -2094,6 +2106,13 @@ declare global {
   interface LxEnv {
     readonly USER_DATA_PATH: 'lx://userdata';
     readonly USER_CACHE_PATH: 'lx://usercache';
+  }
+}
+
+declare global {
+  interface ShellEmptyStateApi {
+    set(options: ShellEmptyStateOptions): void;
+    clear(): void;
   }
 }
 

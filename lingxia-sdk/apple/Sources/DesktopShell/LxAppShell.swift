@@ -1200,6 +1200,22 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         sidebarView?.clearAllHighlights()
     }
 
+    func configureMainEmptyState(
+        title: String,
+        message: String?,
+        icon: NSImage?,
+        actionLabel: String?,
+        onAction: (() -> Void)?
+    ) {
+        mainEmptyStateView.configure(
+            title: title,
+            message: message,
+            icon: icon,
+            actionLabel: actionLabel,
+            onAction: onAction
+        )
+    }
+
     /// Remove the current lxapp view controller from the main area (pause + detach).
     /// The single place this teardown lives.
     private func detachCurrentLxApp() {
@@ -2252,6 +2268,9 @@ extension LxAppToolbarMode: Equatable {
 private final class MainEmptyStateView: NSView {
     private let symbolView = NSImageView()
     private let titleLabel = NSTextField(labelWithString: "Nothing open")
+    private let messageLabel = NSTextField(labelWithString: "")
+    private let actionButton = NSButton(title: "", target: nil, action: nil)
+    private var actionHandler: (() -> Void)?
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -2271,11 +2290,28 @@ private final class MainEmptyStateView: NSView {
         titleLabel.textColor = .secondaryLabelColor
         titleLabel.alignment = .center
 
-        let stack = NSStackView(views: [symbolView, titleLabel])
+        messageLabel.translatesAutoresizingMaskIntoConstraints = false
+        messageLabel.font = .systemFont(ofSize: 12)
+        messageLabel.textColor = .tertiaryLabelColor
+        messageLabel.alignment = .center
+        messageLabel.lineBreakMode = .byWordWrapping
+        messageLabel.maximumNumberOfLines = 3
+        messageLabel.isHidden = true
+
+        actionButton.translatesAutoresizingMaskIntoConstraints = false
+        actionButton.bezelStyle = .rounded
+        actionButton.controlSize = .regular
+        actionButton.target = self
+        actionButton.action = #selector(actionButtonClicked)
+        actionButton.isHidden = true
+
+        let stack = NSStackView(views: [symbolView, titleLabel, messageLabel, actionButton])
         stack.translatesAutoresizingMaskIntoConstraints = false
         stack.orientation = .vertical
         stack.alignment = .centerX
-        stack.spacing = 14
+        stack.spacing = 10
+        stack.setCustomSpacing(14, after: symbolView)
+        stack.setCustomSpacing(16, after: messageLabel)
         addSubview(stack)
 
         NSLayoutConstraint.activate([
@@ -2291,6 +2327,31 @@ private final class MainEmptyStateView: NSView {
     @available(*, unavailable)
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
+    }
+
+    func configure(
+        title: String,
+        message: String?,
+        icon: NSImage?,
+        actionLabel: String?,
+        onAction: (() -> Void)?
+    ) {
+        titleLabel.stringValue = title
+        symbolView.image = icon ?? NSImage(
+            systemSymbolName: "rectangle.stack",
+            accessibilityDescription: title
+        )
+        let message = message?.trimmingCharacters(in: .whitespacesAndNewlines)
+        messageLabel.stringValue = message ?? ""
+        messageLabel.isHidden = message?.isEmpty != false
+        let actionLabel = actionLabel?.trimmingCharacters(in: .whitespacesAndNewlines)
+        actionButton.title = actionLabel ?? ""
+        actionButton.isHidden = actionLabel?.isEmpty != false || onAction == nil
+        actionHandler = onAction
+    }
+
+    @objc private func actionButtonClicked() {
+        actionHandler?()
     }
 }
 
