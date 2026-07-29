@@ -221,7 +221,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     private var controllerEventsTask: Task<Void, Never>?
     private var didRequestHomeOpen = false
     private let startupBehavior: LxAppShellStartupBehavior
-    private var sidebarHostActionHandler: ((String) -> Void)?
+    private var sidebarHostActionHandler: ((UInt64, String) -> Void)?
     private var toolbarHostActionHandler: ((String) -> Void)?
     private var titlebarHostActionHandler: ((String) -> Void)?
     private var appUIRuntimeRef: AnyObject?
@@ -235,6 +235,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     /// Latest declared sidebar host actions, cached so the auto-hide recompute
     /// can read them without re-querying the runtime.
     private var lastSidebarHostActions: [LxAppUIActionItem] = []
+    private var lastSidebarHeaderActions: [LxAppUIActionItem] = []
     /// Latest browser entries rendered in the sidebar. Browser tabs are sidebar
     /// content too, so the shell can auto-show when they exist and auto-hide
     /// again when they are gone.
@@ -499,12 +500,6 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         sidebar.onAddBrowserTab = { [weak self] in
             self?.browserCoordinator.addTab()
         }
-        sidebar.onOpenSettings = { [weak self] in
-            self?.browserCoordinator.openSettings()
-        }
-        sidebar.onOpenDownloads = { [weak self] in
-            self?.browserCoordinator.openDownloads()
-        }
         sidebar.onBookmarkOpen = { [weak self] url in
             self?.browserCoordinator.openBookmark(url: url)
         }
@@ -524,8 +519,8 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         sidebar.onBrowserTabCloseTabsBelowRequested = { [weak self] id in
             self?.browserCoordinator.closeTabsBelow(id: id)
         }
-        sidebar.onPanelItemToggled = { [weak self] actionID in
-            self?.sidebarHostActionHandler?(actionID)
+        sidebar.onPanelItemToggled = { [weak self] generation, actionID in
+            self?.sidebarHostActionHandler?(generation, actionID)
         }
         sidebar.onUpdateActionRequested = { [weak self] state in
             switch state {
@@ -763,7 +758,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
 
     /// Activate (show/focus) a companion (aside) lxapp's surface — its sidebar
     /// entry must not switch the main, and must not close the aside. Wired by the
-    /// AppUI runtime to show the managed surface. Closing stays the activator's job.
+    /// AppUI runtime to show the managed surface. Closing stays the sidebar action's job.
     var onAsideActivateRequested: ((String) -> Void)?
 
     /// Fired right before the active main changes (lxapp/browser switch), so the
@@ -1421,7 +1416,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         window?.contentView?.layoutSubtreeIfNeeded()
     }
 
-    func setSidebarHostActionHandler(_ handler: @escaping (String) -> Void) {
+    func setSidebarHostActionHandler(_ handler: @escaping (UInt64, String) -> Void) {
         sidebarHostActionHandler = handler
     }
 
@@ -1437,6 +1432,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         lastSidebarHostActions = items
         let sidebarItems = items.map { item in
             PanelIconItem(
+                generation: item.generation,
                 id: item.id,
                 iconURL: item.iconURL,
                 label: item.label,
@@ -1445,6 +1441,22 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
             )
         }
         sidebarView?.updatePanelItems(sidebarItems)
+        reconcileSidebarAutoHide()
+    }
+
+    func updateSidebarHeaderActions(_ items: [LxAppUIActionItem]) {
+        lastSidebarHeaderActions = items
+        let sidebarItems = items.map { item in
+            PanelIconItem(
+                generation: item.generation,
+                id: item.id,
+                iconURL: item.iconURL,
+                label: item.label,
+                active: item.active,
+                disabled: item.disabled
+            )
+        }
+        sidebarView?.updateHeaderActionItems(sidebarItems)
         reconcileSidebarAutoHide()
     }
 
@@ -1652,7 +1664,8 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
             activeLxAppTabBarHasItems = tabBar.items_count > 0
         }
 
-        let hasDeclaredSidebarEntries = !lastSidebarHostActions.isEmpty
+        let hasDeclaredSidebarEntries =
+            !lastSidebarHostActions.isEmpty || !lastSidebarHeaderActions.isEmpty
         let hasPinnedWebsites = sidebarView?.hasPinnedWebsites == true
         let hasBrowserEntries = sidebarBrowserRootVisible || sidebarBrowserItemCount > 0
 

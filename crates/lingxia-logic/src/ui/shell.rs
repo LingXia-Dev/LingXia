@@ -1,20 +1,58 @@
-//! `lx.shell.activators` — app-declared host-shell entries (home lxapp only).
+//! `lx.shell.sidebarActions` — app-declared host-shell entries (home lxapp only).
 
 use crate::app::ensure_home_lxapp;
-use lingxia_shell::{ActivatorCollection, ShellActivator, ShellActivatorUpdate, ShellError};
+use lingxia_shell::{
+    ShellError, ShellSidebarAction, ShellSidebarActionUpdate, SidebarActionCollection,
+    SidebarActionPlacement,
+};
 use lxapp::{LxApp, register_app_handler, unregister_app_handler};
-use rong::{JSContext, JSFunc, JSObject, JSResult, JSValue};
+use rong::{JSContext, JSContextService, JSFunc, JSObject, JSResult, JSValue};
 use std::cell::RefCell;
 use std::collections::HashMap;
 
 #[derive(Default)]
-struct ActivatorHandlerGeneration {
+struct SidebarActionHandlerRegistry {
+    state: RefCell<SidebarActionHandlerGeneration>,
+}
+
+#[derive(Default)]
+struct SidebarActionHandlerGeneration {
     generation: u64,
     handlers: HashMap<String, JSFunc>,
 }
 
-thread_local! {
-    static ACTIVATOR_HANDLERS: RefCell<ActivatorHandlerGeneration> = RefCell::new(ActivatorHandlerGeneration::default());
+impl JSContextService for SidebarActionHandlerRegistry {
+    fn on_shutdown(&self) {
+        let state = self.state.borrow();
+        if state.handlers.is_empty() && state.generation == 0 {
+            return;
+        }
+        let Ok(manager) = lingxia_shell::manager() else {
+            return;
+        };
+        let previous = manager.snapshot().sidebar_actions;
+        if previous.generation() != state.generation {
+            return;
+        }
+        let mut next = previous.clone();
+        next.clear();
+        if manager
+            .commit_sidebar_actions(previous.generation(), next.clone())
+            .is_ok()
+            && lingxia_shell::apply_current_sidebar_actions().is_err()
+        {
+            let _ = manager.commit_sidebar_actions(next.generation(), previous);
+            let _ = lingxia_shell::apply_current_sidebar_actions();
+        }
+    }
+}
+
+fn handler_registry(ctx: &JSContext) -> &SidebarActionHandlerRegistry {
+    if ctx.get_service::<SidebarActionHandlerRegistry>().is_none() {
+        ctx.set_service(SidebarActionHandlerRegistry::default());
+    }
+    ctx.get_service::<SidebarActionHandlerRegistry>()
+        .expect("sidebar action handler registry was inserted above")
 }
 
 fn shell_namespace(ctx: &JSContext) -> JSResult<JSObject> {
@@ -29,24 +67,24 @@ fn shell_namespace(ctx: &JSContext) -> JSResult<JSObject> {
     }
 }
 
-fn activators_namespace(ctx: &JSContext) -> JSResult<JSObject> {
+fn sidebar_actions_namespace(ctx: &JSContext) -> JSResult<JSObject> {
     let shell = shell_namespace(ctx)?;
-    match shell.get::<_, JSObject>("activators") {
+    match shell.get::<_, JSObject>("sidebarActions") {
         Ok(obj) => Ok(obj),
         Err(_) => {
             let obj = JSObject::new(ctx);
-            shell.set("activators", obj.clone())?;
+            shell.set("sidebarActions", obj.clone())?;
             Ok(obj)
         }
     }
 }
 
-fn activator_event(generation: u64, id: &str) -> String {
-    format!("lx.shell.activators:{generation}:{id}")
+fn sidebar_action_event(generation: u64, id: &str) -> String {
+    format!("lx.shell.sidebarActions:{generation}:{id}")
 }
 
-struct ParsedActivator {
-    item: ShellActivator,
+struct ParsedSidebarAction {
+    item: ShellSidebarAction,
     handler: JSFunc,
 }
 
@@ -60,18 +98,31 @@ fn required_string(item: &JSObject, field: &'static str) -> JSResult<String> {
     let value = item.get::<_, String>(field).map_err(|_| {
         rong::HostError::new(
             rong::error::E_INVALID_ARG,
-            format!("shell activator {field} must be a string"),
+            format!("shell sidebar action {field} must be a string"),
         )
     })?;
     let value = value.trim();
     if value.is_empty() {
         return Err(rong::HostError::new(
             rong::error::E_INVALID_ARG,
-            format!("shell activator {field} must not be empty"),
+            format!("shell sidebar action {field} must not be empty"),
         )
         .into());
     }
     Ok(value.to_string())
+}
+
+fn reject_unknown_keys(item: &JSObject, allowed: &[&str]) -> JSResult<()> {
+    for key in item.keys_as::<String>()? {
+        if !allowed.contains(&key.as_str()) {
+            return Err(rong::HostError::new(
+                rong::error::E_INVALID_ARG,
+                format!("unknown shell sidebar action field '{key}'"),
+            )
+            .into());
+        }
+    }
+    Ok(())
 }
 
 fn optional_string(item: &JSObject, field: &'static str) -> JSResult<Option<String>> {
@@ -87,42 +138,61 @@ fn optional_bool(item: &JSObject, field: &'static str) -> JSResult<Option<bool>>
     item.get::<_, bool>(field).map(Some).map_err(|_| {
         rong::HostError::new(
             rong::error::E_INVALID_ARG,
-            format!("shell activator {field} must be a boolean"),
+            format!("shell sidebar action {field} must be a boolean"),
         )
         .into()
     })
 }
 
-fn parse_item(item: &JSObject) -> JSResult<ParsedActivator> {
+fn parse_sidebar_action(item: &JSObject) -> JSResult<ParsedSidebarAction> {
+    reject_unknown_keys(
+        item,
+        &["id", "placement", "label", "icon", "disabled", "onActivate"],
+    )?;
     let id = required_string(item, "id")?;
+    let placement = match required_string(item, "placement")?.as_str() {
+        "header" => SidebarActionPlacement::Header,
+        "footer" => SidebarActionPlacement::Footer,
+        value => {
+            return Err(rong::HostError::new(
+                rong::error::E_INVALID_ARG,
+                format!("unknown shell sidebar action placement '{value}'"),
+            )
+            .into());
+        }
+    };
     let label = required_string(item, "label")?;
     let icon = required_string(item, "icon")?;
     let disabled = optional_bool(item, "disabled")?.unwrap_or(false);
     let handler = item.get::<_, JSFunc>("onActivate").map_err(|_| {
         rong::HostError::new(
             rong::error::E_INVALID_ARG,
-            "shell activator onActivate must be a function",
+            "shell sidebar action onActivate must be a function",
         )
     })?;
 
-    let item = ShellActivator {
+    let item = ShellSidebarAction {
         id,
+        placement,
         label,
         icon,
         disabled,
     }
     .validate()
     .map_err(js_error)?;
-    Ok(ParsedActivator { item, handler })
+    Ok(ParsedSidebarAction { item, handler })
 }
 
-/// Atomically replaces the complete desktop activator declaration. Home lxapp
+/// Atomically replaces the complete desktop sidebar action declaration. Home lxapp
 /// only. Relative icons resolve from the home app bundle. Every entry is bound
 /// to its generation-scoped callback; `replace([])` explicitly clears chrome.
-fn activators_replace(ctx: JSContext, items: Vec<JSObject>) -> JSResult<()> {
+fn sidebar_actions_replace(ctx: JSContext, items: Vec<JSObject>) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
-    ensure_home_lxapp(&lxapp, "lx.shell.activators.replace")?;
-    let parsed = items.iter().map(parse_item).collect::<JSResult<Vec<_>>>()?;
+    ensure_home_lxapp(&lxapp, "lx.shell.sidebarActions.replace")?;
+    let parsed = items
+        .iter()
+        .map(parse_sidebar_action)
+        .collect::<JSResult<Vec<_>>>()?;
     let next_items = parsed.iter().map(|item| item.item.clone()).collect();
     let next_handlers = parsed
         .into_iter()
@@ -132,31 +202,32 @@ fn activators_replace(ctx: JSContext, items: Vec<JSObject>) -> JSResult<()> {
 }
 
 /// Updates presentation fields for one stable id. Home lxapp only.
-fn activators_update(ctx: JSContext, id: String, patch: JSObject) -> JSResult<()> {
+fn sidebar_actions_update(ctx: JSContext, id: String, patch: JSObject) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
-    ensure_home_lxapp(&lxapp, "lx.shell.activators.update")?;
-    let patch = ShellActivatorUpdate {
+    ensure_home_lxapp(&lxapp, "lx.shell.sidebarActions.update")?;
+    reject_unknown_keys(&patch, &["label", "icon", "disabled"])?;
+    let patch = ShellSidebarActionUpdate {
         label: optional_string(&patch, "label")?,
         icon: optional_string(&patch, "icon")?,
         disabled: optional_bool(&patch, "disabled")?,
     };
-    let handlers = retained_handlers();
+    let handlers = retained_handlers(&ctx);
     commit_generation(&ctx, |next| next.update(&id, patch), handlers)
 }
 
 /// Removes one stable id from the declaration. Home lxapp only.
-fn activators_remove(ctx: JSContext, id: String) -> JSResult<()> {
+fn sidebar_actions_remove(ctx: JSContext, id: String) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
-    ensure_home_lxapp(&lxapp, "lx.shell.activators.remove")?;
-    let mut handlers = retained_handlers();
+    ensure_home_lxapp(&lxapp, "lx.shell.sidebarActions.remove")?;
+    let mut handlers = retained_handlers(&ctx);
     handlers.remove(id.trim());
     commit_generation(&ctx, |next| next.remove(&id), handlers)
 }
 
 /// Clears the current runtime declaration. Home lxapp only.
-fn activators_clear(ctx: JSContext) -> JSResult<()> {
+fn sidebar_actions_clear(ctx: JSContext) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
-    ensure_home_lxapp(&lxapp, "lx.shell.activators.clear")?;
+    ensure_home_lxapp(&lxapp, "lx.shell.sidebarActions.clear")?;
     commit_generation(
         &ctx,
         |next| {
@@ -167,17 +238,17 @@ fn activators_clear(ctx: JSContext) -> JSResult<()> {
     )
 }
 
-fn retained_handlers() -> HashMap<String, JSFunc> {
-    ACTIVATOR_HANDLERS.with(|state| state.borrow().handlers.clone())
+fn retained_handlers(ctx: &JSContext) -> HashMap<String, JSFunc> {
+    handler_registry(ctx).state.borrow().handlers.clone()
 }
 
 fn commit_generation(
     ctx: &JSContext,
-    mutate: impl FnOnce(&mut ActivatorCollection) -> Result<(), ShellError>,
+    mutate: impl FnOnce(&mut SidebarActionCollection) -> Result<(), ShellError>,
     mut next_handlers: HashMap<String, JSFunc>,
 ) -> JSResult<()> {
     let manager = lingxia_shell::manager().map_err(js_error)?;
-    let previous = manager.snapshot().activators;
+    let previous = manager.snapshot().sidebar_actions;
     let mut next = previous.clone();
     mutate(&mut next).map_err(js_error)?;
     next_handlers.retain(|id, _| next.items().iter().any(|item| item.id == *id));
@@ -185,7 +256,7 @@ fn commit_generation(
     let next_generation = next.generation();
     let mut registered: Vec<String> = Vec::new();
     for (id, handler) in &next_handlers {
-        let event = activator_event(next_generation, id);
+        let event = sidebar_action_event(next_generation, id);
         if let Err(error) = register_app_handler(ctx, &event, handler.clone()) {
             for event in registered {
                 unregister_app_handler(ctx, &event, None);
@@ -195,35 +266,34 @@ fn commit_generation(
         registered.push(event);
     }
 
-    if let Err(error) = manager.commit_activators(previous.generation(), next.clone()) {
+    if let Err(error) = manager.commit_sidebar_actions(previous.generation(), next.clone()) {
         for event in registered {
             unregister_app_handler(ctx, &event, None);
         }
         return Err(js_error(error).into());
     }
-    if let Err(error) = lingxia_shell::apply_current_activators() {
-        let _ = manager.commit_activators(next.generation(), previous.clone());
-        let _ = lingxia_shell::apply_current_activators();
+    if let Err(error) = lingxia_shell::apply_current_sidebar_actions() {
+        let _ = manager.commit_sidebar_actions(next.generation(), previous.clone());
+        let _ = lingxia_shell::apply_current_sidebar_actions();
         for event in registered {
             unregister_app_handler(ctx, &event, None);
         }
         return Err(js_error(error).into());
     }
 
-    ACTIVATOR_HANDLERS.with(|state| {
-        let mut state = state.borrow_mut();
-        for id in state.handlers.keys() {
-            unregister_app_handler(ctx, &activator_event(state.generation, id), None);
-        }
-        state.generation = next_generation;
-        state.handlers = next_handlers;
-    });
+    let registry = handler_registry(ctx);
+    let mut state = registry.state.borrow_mut();
+    for id in state.handlers.keys() {
+        unregister_app_handler(ctx, &sidebar_action_event(state.generation, id), None);
+    }
+    state.generation = next_generation;
+    state.handlers = next_handlers;
     Ok(())
 }
 
 fn js_error(error: ShellError) -> rong::HostError {
     let code = match &error {
-        ShellError::ActivatorNotFound { .. } => rong::error::E_NOT_FOUND,
+        ShellError::SidebarActionNotFound { .. } => rong::error::E_NOT_FOUND,
         ShellError::Io(_)
         | ShellError::Host(_)
         | ShellError::NotInitialized
@@ -235,8 +305,9 @@ fn js_error(error: ShellError) -> rong::HostError {
 }
 
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
+    let _ = handler_registry(ctx);
     register_shell_property(ctx)?;
-    register_activators_api(ctx)
+    register_sidebar_actions_api(ctx)
 }
 
 rong::js_api! {
@@ -247,11 +318,11 @@ rong::js_api! {
 }
 
 rong::js_api! {
-    fn register_activators_api(ctx) {
-        namespace ShellActivatorsApi = activators_namespace(ctx)?;
-        fn replace(ts_params = "items: ShellActivator[]") = activators_replace;
-        fn update(ts_params = "id: string, patch: ShellActivatorUpdate") = activators_update;
-        fn remove(ts_params = "id: string") = activators_remove;
-        fn clear() = activators_clear;
+    fn register_sidebar_actions_api(ctx) {
+        namespace ShellSidebarActionsApi = sidebar_actions_namespace(ctx)?;
+        fn replace(ts_params = "items: ShellSidebarAction[]") = sidebar_actions_replace;
+        fn update(ts_params = "id: string, patch: ShellSidebarActionUpdate") = sidebar_actions_update;
+        fn remove(ts_params = "id: string") = sidebar_actions_remove;
+        fn clear() = sidebar_actions_clear;
     }
 }

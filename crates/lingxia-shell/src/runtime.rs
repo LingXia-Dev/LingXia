@@ -1,27 +1,28 @@
 use crate::{
-    ResolvedShellActivator, ShellActivator, ShellError, ShellManager, ShellPin, ShellPinTarget,
-    ShellResult,
+    ResolvedShellSidebarAction, ShellError, ShellManager, ShellPin, ShellPinTarget, ShellResult,
+    ShellSidebarAction,
 };
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, OnceLock};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ShellActivationIntent {
+pub struct SidebarActionIntent {
     pub id: String,
     pub generation: u64,
 }
 
 pub trait ShellHost: Send + Sync + 'static {
-    fn resolve_activators(
+    fn resolve_sidebar_actions(
         &self,
-        items: &[ShellActivator],
-    ) -> ShellResult<Vec<ResolvedShellActivator>>;
+        generation: u64,
+        items: &[ShellSidebarAction],
+    ) -> ShellResult<Vec<ResolvedShellSidebarAction>>;
 
-    fn apply_activators(&self, items: &[ResolvedShellActivator]) -> ShellResult<()>;
+    fn apply_sidebar_actions(&self, items: &[ResolvedShellSidebarAction]) -> ShellResult<()>;
 
     fn apply_pins(&self, items: &[ShellPin]) -> ShellResult<()>;
 
-    fn activate(&self, intent: ShellActivationIntent) -> ShellResult<()>;
+    fn activate(&self, intent: SidebarActionIntent) -> ShellResult<()>;
 }
 
 #[derive(Clone)]
@@ -53,20 +54,24 @@ pub fn manager() -> ShellResult<Arc<ShellManager>> {
         .ok_or(ShellError::NotInitialized)
 }
 
-pub fn resolved_activators() -> ShellResult<Vec<ResolvedShellActivator>> {
+pub fn resolved_sidebar_actions() -> ShellResult<Vec<ResolvedShellSidebarAction>> {
     with_active(|active| {
         let snapshot = active.manager.snapshot();
-        active.host.resolve_activators(snapshot.activators.items())
+        active.host.resolve_sidebar_actions(
+            snapshot.sidebar_actions.generation(),
+            snapshot.sidebar_actions.items(),
+        )
     })
 }
 
-pub fn apply_current_activators() -> ShellResult<Vec<ResolvedShellActivator>> {
+pub fn apply_current_sidebar_actions() -> ShellResult<Vec<ResolvedShellSidebarAction>> {
     with_active(|active| {
         let snapshot = active.manager.snapshot();
-        let resolved = active
-            .host
-            .resolve_activators(snapshot.activators.items())?;
-        active.host.apply_activators(&resolved)?;
+        let resolved = active.host.resolve_sidebar_actions(
+            snapshot.sidebar_actions.generation(),
+            snapshot.sidebar_actions.items(),
+        )?;
+        active.host.apply_sidebar_actions(&resolved)?;
         Ok(resolved)
     })
 }
@@ -114,31 +119,35 @@ fn pin_mutation_lock() -> &'static Mutex<()> {
     MUTATION.get_or_init(|| Mutex::new(()))
 }
 
-pub fn activate(id: &str) -> ShellResult<()> {
-    let id = id.trim();
+pub fn activate_sidebar_action(mut intent: SidebarActionIntent) -> ShellResult<()> {
+    let id = intent.id.trim().to_string();
     if id.is_empty() {
-        return Err(ShellError::EmptyActivatorId);
+        return Err(ShellError::EmptySidebarActionId);
     }
+    intent.id = id.clone();
     with_active(|active| {
         let snapshot = active.manager.snapshot();
+        let current_generation = snapshot.sidebar_actions.generation();
+        if intent.generation != current_generation {
+            return Err(ShellError::StaleSidebarActionIntent {
+                generation: intent.generation,
+                current: current_generation,
+            });
+        }
         let Some(item) = snapshot
-            .activators
+            .sidebar_actions
             .items()
             .iter()
             .find(|item| item.id == id)
         else {
-            return Err(ShellError::ActivatorNotFound { id: id.to_string() });
+            return Err(ShellError::SidebarActionNotFound { id: id.to_string() });
         };
         if item.disabled {
-            return Err(ShellError::ActivatorDisabled { id: id.to_string() });
+            return Err(ShellError::SidebarActionDisabled { id: id.to_string() });
         }
-        let intent = ShellActivationIntent {
-            id: item.id.clone(),
-            generation: snapshot.activators.generation(),
-        };
         active.host.activate(intent)
     })?;
-    let _ = apply_current_activators();
+    let _ = apply_current_sidebar_actions();
     Ok(())
 }
 
@@ -169,21 +178,24 @@ mod tests {
 
     #[derive(Default)]
     struct TestHost {
-        activated: Mutex<Vec<ShellActivationIntent>>,
-        applied: Mutex<Vec<Vec<ResolvedShellActivator>>>,
+        activated: Mutex<Vec<SidebarActionIntent>>,
+        applied: Mutex<Vec<Vec<ResolvedShellSidebarAction>>>,
         applied_pins: Mutex<Vec<Vec<ShellPin>>>,
         reject_pins: AtomicBool,
     }
 
     impl ShellHost for TestHost {
-        fn resolve_activators(
+        fn resolve_sidebar_actions(
             &self,
-            items: &[ShellActivator],
-        ) -> ShellResult<Vec<ResolvedShellActivator>> {
+            generation: u64,
+            items: &[ShellSidebarAction],
+        ) -> ShellResult<Vec<ResolvedShellSidebarAction>> {
             Ok(items
                 .iter()
-                .map(|item| ResolvedShellActivator {
+                .map(|item| ResolvedShellSidebarAction {
+                    generation,
                     id: item.id.clone(),
+                    placement: item.placement,
                     label: item.label.clone(),
                     icon_path: Some(item.icon.clone()),
                     disabled: item.disabled,
@@ -191,7 +203,7 @@ mod tests {
                 .collect())
         }
 
-        fn apply_activators(&self, items: &[ResolvedShellActivator]) -> ShellResult<()> {
+        fn apply_sidebar_actions(&self, items: &[ResolvedShellSidebarAction]) -> ShellResult<()> {
             self.applied.lock().unwrap().push(items.to_vec());
             Ok(())
         }
@@ -204,7 +216,7 @@ mod tests {
             Ok(())
         }
 
-        fn activate(&self, intent: ShellActivationIntent) -> ShellResult<()> {
+        fn activate(&self, intent: SidebarActionIntent) -> ShellResult<()> {
             self.activated.lock().unwrap().push(intent);
             Ok(())
         }
@@ -219,19 +231,24 @@ mod tests {
         initialize(dir.path(), host.clone()).unwrap();
         manager()
             .unwrap()
-            .replace_activators(vec![ShellActivator {
+            .replace_sidebar_actions(vec![ShellSidebarAction {
                 id: "sync".to_string(),
+                placement: crate::SidebarActionPlacement::Footer,
                 label: "Sync".to_string(),
                 icon: "icons/sync.svg".to_string(),
                 disabled: false,
             }])
             .unwrap();
 
-        activate("sync").unwrap();
+        activate_sidebar_action(SidebarActionIntent {
+            id: "sync".to_string(),
+            generation: 1,
+        })
+        .unwrap();
 
         assert_eq!(
             host.activated.lock().unwrap().as_slice(),
-            &[ShellActivationIntent {
+            &[SidebarActionIntent {
                 id: "sync".to_string(),
                 generation: 1,
             }]
@@ -248,8 +265,9 @@ mod tests {
         initialize(dir.path(), host.clone()).unwrap();
         manager()
             .unwrap()
-            .replace_activators(vec![ShellActivator {
+            .replace_sidebar_actions(vec![ShellSidebarAction {
                 id: "chat".to_string(),
+                placement: crate::SidebarActionPlacement::Footer,
                 label: "Chat".to_string(),
                 icon: "icons/chat.svg".to_string(),
                 disabled: true,
@@ -257,9 +275,44 @@ mod tests {
             .unwrap();
 
         assert_eq!(
-            activate("chat"),
-            Err(ShellError::ActivatorDisabled {
+            activate_sidebar_action(SidebarActionIntent {
+                id: "chat".to_string(),
+                generation: 1,
+            }),
+            Err(ShellError::SidebarActionDisabled {
                 id: "chat".to_string()
+            })
+        );
+        assert!(host.activated.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn stale_generation_never_retargets_a_replaced_action() {
+        let _guard = test_guard();
+        reset_for_test();
+        let dir = tempfile::tempdir().unwrap();
+        let host = Arc::new(TestHost::default());
+        initialize(dir.path(), host.clone()).unwrap();
+        let manager = manager().unwrap();
+        manager
+            .replace_sidebar_actions(vec![ShellSidebarAction {
+                id: "settings".to_string(),
+                placement: crate::SidebarActionPlacement::Header,
+                label: "Settings".to_string(),
+                icon: "icons/settings.svg".to_string(),
+                disabled: false,
+            }])
+            .unwrap();
+        manager.clear_sidebar_actions().unwrap();
+
+        assert_eq!(
+            activate_sidebar_action(SidebarActionIntent {
+                id: "settings".to_string(),
+                generation: 1,
+            }),
+            Err(ShellError::StaleSidebarActionIntent {
+                generation: 1,
+                current: 2,
             })
         );
         assert!(host.activated.lock().unwrap().is_empty());

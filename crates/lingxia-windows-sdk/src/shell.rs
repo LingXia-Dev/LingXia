@@ -42,10 +42,9 @@ pub mod text_input;
 mod theme;
 
 pub use chrome::{
-    WindowsShellAddressBarLayout, WindowsShellAuxiliaryItemLayout, WindowsShellHeaderActionLayout,
-    WindowsShellNavigationBarLayout, WindowsShellPanelActivatorLayout,
-    WindowsShellTabBarItemLayout, WindowsShellTabBarLayout, WindowsShellTabBarPosition,
-    WindowsShellWindowLayout,
+    WindowsShellAddressBarLayout, WindowsShellAuxiliaryItemLayout, WindowsShellFooterActionLayout,
+    WindowsShellHeaderActionLayout, WindowsShellNavigationBarLayout, WindowsShellTabBarItemLayout,
+    WindowsShellTabBarLayout, WindowsShellTabBarPosition, WindowsShellWindowLayout,
 };
 // Inline address-bar editing exists only for self browser tabs.
 #[cfg(feature = "browser-runtime")]

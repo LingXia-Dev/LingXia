@@ -718,7 +718,23 @@ rong::js_api! {
     modal?: boolean;
 }"###;
 
-        type OpenSurfaceSpec = r###"OpenPageSurfaceSpec | OpenDeclaredSurfaceSpec | OpenLxappSurfaceSpec | OpenNativeSurfaceSpec | OpenUrlTabSpec | OpenUrlAsideSpec"###;
+        type OpenSurfaceSpec = r###"OpenPageSurfaceSpec | OpenDeclaredSurfaceSpec | OpenLxappSurfaceSpec | OpenNativeSurfaceSpec | OpenBuiltinBrowserSurfaceSpec | OpenUrlTabSpec | OpenUrlAsideSpec"###;
+
+        type BuiltinBrowserSurfaceUrl = r###"'lingxia://settings' | 'lingxia://downloads'"###;
+
+        type OpenBuiltinBrowserSurfaceSpec = r###"{
+    url: BuiltinBrowserSurfaceUrl;
+    as?: never;
+    edge?: never;
+    size?: never;
+    position?: never;
+    interaction?: never;
+    page?: never;
+    lxapp?: never;
+    native?: never;
+    surface?: never;
+    query?: never;
+}"###;
 
         /// Open `url` in the multi-tab browser aside. `url` must be `https://` or
         /// `file://` (external content only). Repeated calls add/focus tabs (deduped by
@@ -1502,22 +1518,25 @@ true
 
         /// Shell chrome writer API (home lxapp only).
         type ShellApi = r###"{
-    activators: ShellActivatorsApi;
+    sidebarActions: ShellSidebarActionsApi;
 }"###;
 
-        /// One app-declared shell activator. Its `id` remains stable across
+        type ShellSidebarActionPlacement = r###"'header' | 'footer'"###;
+
+        /// One app-declared shell sidebar action. Its `id` remains stable across
         /// updates and activation. The shell only routes activation to the
         /// callback; the app owns every resulting action.
-        type ShellActivator = r###"{
+        type ShellSidebarAction = r###"{
     id: string;
+    placement: ShellSidebarActionPlacement;
     icon: string;
     label: string;
     disabled?: boolean;
     onActivate: () => void;
 }"###;
 
-        /// Mutable presentation fields for an existing activator.
-        type ShellActivatorUpdate = r###"{
+        /// Mutable presentation fields for an existing sidebar action.
+        type ShellSidebarActionUpdate = r###"{
     icon?: string;
     label?: string;
     disabled?: boolean;

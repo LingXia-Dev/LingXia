@@ -1,5 +1,7 @@
 use futures::channel::oneshot;
-use lingxia_platform::traits::app_runtime::{AppRuntime, OpenUrlRequest, OpenUrlTarget};
+use lingxia_platform::traits::app_runtime::{
+    AppRuntime, BuiltinBrowserPage, OpenUrlRequest, OpenUrlTarget,
+};
 use lingxia_platform::traits::ui::{SurfaceKind, SurfacePosition};
 use lxapp::{
     LxApp, LxAppError, PageQueryInput, PageSurfaceRequest, PageSurfaceTarget, PageTarget,
@@ -623,15 +625,46 @@ async fn open_page_spec(ctx: JSContext, spec: &JSObject) -> JSResult<JSObject> {
 async fn open_url_spec(ctx: JSContext, spec: &JSObject) -> JSResult<JSValue> {
     let raw_url = read_required_string(spec, "url")?;
     let lxapp = LxApp::from_ctx(&ctx)?;
+    let trimmed_url = raw_url.trim_matches(|character: char| character.is_ascii_whitespace());
+
+    if let Some(page) = parse_builtin_browser_page(trimmed_url) {
+        validate_builtin_browser_surface_keys(spec)?;
+        require_home_caller(&lxapp, "url")?;
+        if !lingxia_app_context::browser_enabled() {
+            return Err(surface_error(
+                rong::error::E_NOT_SUPPORTED,
+                "browser_not_supported",
+                "built-in browser pages require capabilities.browser",
+            ));
+        }
+        lxapp
+            .runtime
+            .open_builtin_browser_page(page)
+            .map_err(|err| match err {
+                lingxia_platform::error::PlatformError::NotSupported(_) => {
+                    surface_error(rong::error::E_NOT_SUPPORTED, "browser_not_supported", err)
+                }
+                _ => surface_error(rong::error::E_INTERNAL, "browser_open_failed", err),
+            })?;
+        return Ok(JSValue::null(&ctx));
+    }
+    if trimmed_url
+        .get(.."lingxia:".len())
+        .is_some_and(|prefix| prefix.eq_ignore_ascii_case("lingxia:"))
+    {
+        return Err(invalid_surface_target(
+            "only lingxia://settings and lingxia://downloads are public built-in URLs",
+        ));
+    }
 
     match read_optional_string(spec, "as")?.as_deref().map(str::trim) {
         Some("aside") => {
             let position = read_validated_edge(spec)?.unwrap_or_else(|| "right".to_string());
             let _ = parse_size(spec, SurfaceKind::Overlay)?;
             if url_aside_uses_compact_browser(&lxapp) {
-                return open_url_in_browser(&ctx, &lxapp, raw_url.trim(), true);
+                return open_url_in_browser(&ctx, &lxapp, trimmed_url, true);
             }
-            let url = validate_url_target(&lxapp, raw_url.trim())?;
+            let url = validate_url_target(&lxapp, trimmed_url)?;
             let size = get_property(spec, "size");
             let options = JSValue::from_rust(
                 &ctx,
@@ -647,7 +680,7 @@ async fn open_url_spec(ctx: JSContext, spec: &JSObject) -> JSResult<JSValue> {
                 .await
                 .map(JSObject::into_js_value)
         }
-        None => open_url_in_browser(&ctx, &lxapp, raw_url.trim(), false),
+        None => open_url_in_browser(&ctx, &lxapp, trimmed_url, false),
         Some(other) => Err(surface_error(
             rong::error::E_INVALID_ARG,
             "invalid_surface_spec",
@@ -656,6 +689,26 @@ async fn open_url_spec(ctx: JSContext, spec: &JSObject) -> JSResult<JSValue> {
             ),
         )),
     }
+}
+
+fn parse_builtin_browser_page(url: &str) -> Option<BuiltinBrowserPage> {
+    match url {
+        "lingxia://settings" => Some(BuiltinBrowserPage::Settings),
+        "lingxia://downloads" => Some(BuiltinBrowserPage::Downloads),
+        _ => None,
+    }
+}
+
+fn validate_builtin_browser_surface_keys(spec: &JSObject) -> JSResult<()> {
+    let keys = spec.keys_as::<String>()?;
+    if keys.len() == 1 && keys[0] == "url" {
+        return Ok(());
+    }
+    Err(surface_error(
+        rong::error::E_INVALID_ARG,
+        "invalid_surface_spec",
+        "a built-in browser surface accepts only the url field",
+    ))
 }
 
 /// `lx.openExternal(url)` — hand the url off to the OS default browser.
@@ -2214,6 +2267,27 @@ mod tests {
         }
         assert!(!external_scheme_allowed("http"));
         assert!(!external_scheme_allowed("custom+handler"));
+    }
+
+    #[test]
+    fn builtin_browser_pages_require_exact_public_urls() {
+        assert_eq!(
+            parse_builtin_browser_page("lingxia://settings"),
+            Some(BuiltinBrowserPage::Settings)
+        );
+        assert_eq!(
+            parse_builtin_browser_page("lingxia://downloads"),
+            Some(BuiltinBrowserPage::Downloads)
+        );
+        for rejected in [
+            "Lingxia://settings",
+            "lingxia://settings/",
+            "lingxia://settings?tab=privacy",
+            "lingxia://downloads#active",
+            "lingxia://history",
+        ] {
+            assert_eq!(parse_builtin_browser_page(rejected), None, "{rejected}");
+        }
     }
 
     #[test]

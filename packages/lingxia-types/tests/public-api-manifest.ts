@@ -129,8 +129,8 @@ const HOST_APP_API = [
 ] as const;
 const AUTOSTART_API = ['isEnabled', 'setEnabled'] as const;
 const ENV_API = ['USER_CACHE_PATH', 'USER_DATA_PATH'] as const;
-const SHELL_API = ['activators'] as const;
-const SHELL_ACTIVATORS_API = ['clear', 'remove', 'replace', 'update'] as const;
+const SHELL_API = ['sidebarActions'] as const;
+const SHELL_SIDEBAR_ACTIONS_API = ['clear', 'remove', 'replace', 'update'] as const;
 const TRAY_API = ['hide', 'onClick', 'setBadge', 'setIcon', 'setMenu', 'setTitle', 'show'] as const;
 const FILE_MANAGER_API = [
   'copyFile',
@@ -272,7 +272,11 @@ export const LX_RUNTIME_SURFACES = [
   { name: 'lx.app.autostart', expression: 'lx.app.autostart', members: AUTOSTART_API },
   { name: 'lx.env', expression: 'lx.env', members: ENV_API },
   { name: 'lx.shell', expression: 'lx.shell', members: SHELL_API },
-  { name: 'lx.shell.activators', expression: 'lx.shell.activators', members: SHELL_ACTIVATORS_API },
+  {
+    name: 'lx.shell.sidebarActions',
+    expression: 'lx.shell.sidebarActions',
+    members: SHELL_SIDEBAR_ACTIONS_API,
+  },
   { name: 'lx.tray', expression: 'lx.tray', members: TRAY_API },
   { name: 'FileManager', expression: 'lx.getFileManager()', members: FILE_MANAGER_API },
   { name: 'Storage', expression: 'lx.getStorage()', members: STORAGE_API },
@@ -362,7 +366,7 @@ export type LxApiManifestGate = [
   AssertTrue<Exact<AutostartApi, typeof AUTOSTART_API>>,
   AssertTrue<Exact<LxEnv, typeof ENV_API>>,
   AssertTrue<Exact<ShellApi, typeof SHELL_API>>,
-  AssertTrue<Exact<ShellApi['activators'], typeof SHELL_ACTIVATORS_API>>,
+  AssertTrue<Exact<ShellApi['sidebarActions'], typeof SHELL_SIDEBAR_ACTIONS_API>>,
   AssertTrue<Exact<TrayApi, typeof TRAY_API>>,
   AssertTrue<Exact<FileManager, typeof FILE_MANAGER_API>>,
   AssertTrue<Exact<Storage, typeof STORAGE_API>>,

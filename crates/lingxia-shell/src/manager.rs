@@ -1,13 +1,13 @@
 use crate::{
-    ActivatorCollection, PinCollection, PinMutation, ShellActivator, ShellActivatorUpdate,
-    ShellPinTarget, ShellResult, ShellStore,
+    PinCollection, PinMutation, ShellPinTarget, ShellResult, ShellSidebarAction,
+    ShellSidebarActionUpdate, ShellStore, SidebarActionCollection,
 };
 use std::path::PathBuf;
 use std::sync::{Mutex, MutexGuard};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ShellSnapshot {
-    pub activators: ActivatorCollection,
+    pub sidebar_actions: SidebarActionCollection,
     pub pins: PinCollection,
 }
 
@@ -20,7 +20,7 @@ impl ShellManager {
     pub fn open(root: impl Into<PathBuf>) -> ShellResult<Self> {
         let store = ShellStore::new(root);
         let state = ShellSnapshot {
-            activators: ActivatorCollection::default(),
+            sidebar_actions: SidebarActionCollection::default(),
             pins: store.load_pins_recovering(),
         };
         Ok(Self {
@@ -33,36 +33,39 @@ impl ShellManager {
         self.lock().clone()
     }
 
-    pub fn replace_activators(&self, items: Vec<ShellActivator>) -> ShellResult<ShellSnapshot> {
-        self.mutate_activators(|state| state.replace(items))
+    pub fn replace_sidebar_actions(
+        &self,
+        items: Vec<ShellSidebarAction>,
+    ) -> ShellResult<ShellSnapshot> {
+        self.mutate_sidebar_actions(|state| state.replace(items))
     }
 
-    pub fn update_activator(
+    pub fn update_sidebar_action(
         &self,
         id: &str,
-        patch: ShellActivatorUpdate,
+        patch: ShellSidebarActionUpdate,
     ) -> ShellResult<ShellSnapshot> {
-        self.mutate_activators(|state| state.update(id, patch))
+        self.mutate_sidebar_actions(|state| state.update(id, patch))
     }
 
-    pub fn remove_activator(&self, id: &str) -> ShellResult<ShellSnapshot> {
-        self.mutate_activators(|state| state.remove(id))
+    pub fn remove_sidebar_action(&self, id: &str) -> ShellResult<ShellSnapshot> {
+        self.mutate_sidebar_actions(|state| state.remove(id))
     }
 
-    pub fn clear_activators(&self) -> ShellResult<ShellSnapshot> {
-        self.mutate_activators(|state| {
+    pub fn clear_sidebar_actions(&self) -> ShellResult<ShellSnapshot> {
+        self.mutate_sidebar_actions(|state| {
             state.clear();
             Ok(())
         })
     }
 
-    pub fn commit_activators(
+    pub fn commit_sidebar_actions(
         &self,
         expected_generation: u64,
-        next: ActivatorCollection,
+        next: SidebarActionCollection,
     ) -> ShellResult<ShellSnapshot> {
         let mut state = self.lock();
-        let actual = state.activators.generation();
+        let actual = state.sidebar_actions.generation();
         if actual != expected_generation {
             return Err(crate::ShellError::ConcurrentMutation {
                 expected: expected_generation,
@@ -70,7 +73,7 @@ impl ShellManager {
             });
         }
         let mut snapshot = state.clone();
-        snapshot.activators = next;
+        snapshot.sidebar_actions = next;
         *state = snapshot;
         Ok(state.clone())
     }
@@ -113,14 +116,14 @@ impl ShellManager {
         Ok(state.clone())
     }
 
-    fn mutate_activators(
+    fn mutate_sidebar_actions(
         &self,
-        mutate: impl FnOnce(&mut ActivatorCollection) -> ShellResult<()>,
+        mutate: impl FnOnce(&mut SidebarActionCollection) -> ShellResult<()>,
     ) -> ShellResult<ShellSnapshot> {
         let current = self.snapshot();
-        let mut next = current.activators.clone();
+        let mut next = current.sidebar_actions.clone();
         mutate(&mut next)?;
-        self.commit_activators(current.activators.generation(), next)
+        self.commit_sidebar_actions(current.sidebar_actions.generation(), next)
     }
 
     fn lock(&self) -> MutexGuard<'_, ShellSnapshot> {
@@ -138,8 +141,9 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let manager = ShellManager::open(dir.path()).unwrap();
         manager
-            .replace_activators(vec![ShellActivator {
+            .replace_sidebar_actions(vec![ShellSidebarAction {
                 id: "chat".to_string(),
+                placement: crate::SidebarActionPlacement::Footer,
                 label: "Chat".to_string(),
                 icon: "icons/chat.svg".to_string(),
                 disabled: false,
@@ -147,24 +151,26 @@ mod tests {
             .unwrap();
         let before = manager.snapshot();
 
-        let result = manager.replace_activators(vec![ShellActivator {
+        let result = manager.replace_sidebar_actions(vec![ShellSidebarAction {
             id: "".to_string(),
+            placement: crate::SidebarActionPlacement::Footer,
             label: "Broken".to_string(),
             icon: "icons/broken.svg".to_string(),
             disabled: false,
         }]);
 
-        assert_eq!(result, Err(ShellError::EmptyActivatorId));
+        assert_eq!(result, Err(ShellError::EmptySidebarActionId));
         assert_eq!(manager.snapshot(), before);
     }
 
     #[test]
-    fn activators_are_process_local() {
+    fn sidebar_actions_are_process_local() {
         let dir = tempfile::tempdir().unwrap();
         let manager = ShellManager::open(dir.path()).unwrap();
         manager
-            .replace_activators(vec![ShellActivator {
+            .replace_sidebar_actions(vec![ShellSidebarAction {
                 id: "chat".to_string(),
+                placement: crate::SidebarActionPlacement::Footer,
                 label: "Chat".to_string(),
                 icon: "icons/chat.svg".to_string(),
                 disabled: false,
@@ -172,7 +178,7 @@ mod tests {
             .unwrap();
 
         let reopened = ShellManager::open(dir.path()).unwrap();
-        assert!(!reopened.snapshot().activators.declared());
-        assert!(reopened.snapshot().activators.items().is_empty());
+        assert!(!reopened.snapshot().sidebar_actions.declared());
+        assert!(reopened.snapshot().sidebar_actions.items().is_empty());
     }
 }

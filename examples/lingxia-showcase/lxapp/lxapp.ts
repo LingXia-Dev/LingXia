@@ -26,44 +26,69 @@ interface MyAppInstance {
 App({
   onLaunch: async function (this: MyAppInstance) {
     const { os } = lx.app.getBaseInfo();
-    type Activator = Parameters<typeof lx.shell.activators.replace>[0][number];
-    const activators: Activator[] = [
+    type SidebarAction = Parameters<typeof lx.shell.sidebarActions.replace>[0][number];
+    const sidebarActions: SidebarAction[] = [
+      {
+        id: "downloads",
+        placement: "header",
+        icon: "public/activator.svg",
+        label: "Downloads",
+        onActivate: () => {
+          void lx
+            .openSurface({ url: "lingxia://downloads" })
+            .catch((error) => console.warn("downloads action failed", error));
+        },
+      },
+      {
+        id: "settings",
+        placement: "header",
+        icon: "public/activator.svg",
+        label: "Settings",
+        onActivate: () => {
+          void lx
+            .openSurface({ url: "lingxia://settings" })
+            .catch((error) => console.warn("settings action failed", error));
+        },
+      },
       {
         id: "chat",
+        placement: "footer",
         icon: "public/activator.svg",
         label: "chat",
         onActivate: () => {
           void lx
             .openSurface({ lxapp: "lingxia-chat", as: "aside" })
-            .catch((error) => console.warn("chat activator failed", error));
+            .catch((error) => console.warn("chat action failed", error));
         },
       },
     ];
 
     if (os === "macOS" || os === "Windows") {
-      activators.push({
+      sidebarActions.push({
         id: "terminal",
+        placement: "footer",
         icon: "public/activator.svg",
         label: "Terminal",
         onActivate: () => {
           void lx
             .openSurface({ native: "terminal" })
-            .catch((error) => console.warn("terminal activator failed", error));
+            .catch((error) => console.warn("terminal action failed", error));
         },
       });
     }
 
-    activators.push(
+    sidebarActions.push(
       {
         id: "ping",
+        placement: "footer",
         icon: "public/activator.svg",
         label: "Ping",
         onActivate: () => {
-          lx.showToast({ title: "activator clicked", icon: "success" });
+          lx.showToast({ title: "sidebar action clicked", icon: "success" });
         },
       },
     );
-    lx.shell.activators.replace(activators);
+    lx.shell.sidebarActions.replace(sidebarActions);
 
     const um = lx.getUpdateManager();
     um.onUpdateReady(async (info) => {

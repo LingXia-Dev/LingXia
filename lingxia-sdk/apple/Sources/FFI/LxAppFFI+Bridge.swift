@@ -299,12 +299,12 @@ extension LxApp {
         }
     }
 
-    nonisolated static func setActivatorItems(items_json: RustStr) -> Bool {
+    nonisolated static func setSidebarActions(items_json: RustStr) -> Bool {
         let json = items_json.toString()
         return executeOnMain {
             #if os(macOS)
             guard let runtime = LxAppMacAppUIRuntime.active else { return false }
-            runtime.setRuntimeActivatorItems(json)
+            runtime.setRuntimeSidebarActions(json)
             return true
             #else
             return true
@@ -633,6 +633,24 @@ extension LxApp {
         #else
         return false
         #endif
+    }
+
+    nonisolated static func openBuiltinBrowserPage(page: Int32) -> Bool {
+        return executeOnMain {
+            #if os(macOS)
+            guard let runtime = LxAppMacAppUIRuntime.active else { return false }
+            switch page {
+            case 0:
+                return runtime.openBuiltinBrowserPage(id: "settings")
+            case 1:
+                return runtime.openBuiltinBrowserPage(id: "downloads")
+            default:
+                return false
+            }
+            #else
+            return false
+            #endif
+        }
     }
 
     nonisolated static func presentInternalBrowserTab(tab_id: RustStr) -> Bool {

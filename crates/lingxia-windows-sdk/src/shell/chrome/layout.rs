@@ -50,8 +50,11 @@ pub struct WindowsShellAuxiliaryItemLayout {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WindowsShellHeaderActionLayout {
+    pub generation: u64,
     pub id: String,
-    pub glyph: String,
+    pub label: String,
+    pub icon_path: String,
+    pub disabled: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -90,13 +93,13 @@ pub struct WindowsShellTabBarLayout {
     /// the chevron until `showTabBar()` clears this state.
     pub items_api_hidden: bool,
     pub items_collapsed: bool,
-    /// Height reserved at the sidebar bottom for adaptive activator rows.
-    /// Zero when no activators are declared.
-    pub activator_footer_height: i32,
+    /// Height reserved at the sidebar bottom for adaptive footer-action rows.
+    /// Zero when no footer actions are declared.
+    pub footer_action_height: i32,
     /// Pixel offset of the scrollable sidebar navigation region.
     pub main_scroll_offset: i32,
-    /// First visual activator row rendered inside the capped footer/rail.
-    pub activator_scroll_row: usize,
+    /// First visual footer-action row rendered inside the capped footer/rail.
+    pub footer_action_scroll_row: usize,
     pub auxiliary_items: Vec<WindowsShellAuxiliaryItemLayout>,
     pub show_auxiliary_add: bool,
     pub header_actions: Vec<WindowsShellHeaderActionLayout>,
@@ -134,7 +137,8 @@ pub struct WindowsShellAddressBarLayout {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct WindowsShellPanelActivatorLayout {
+pub struct WindowsShellFooterActionLayout {
+    pub generation: u64,
     pub id: String,
     pub label: String,
     pub icon_path: String,
@@ -146,7 +150,7 @@ pub struct WindowsShellWindowLayout {
     pub navigation_bar: Option<WindowsShellNavigationBarLayout>,
     pub address_bar: Option<WindowsShellAddressBarLayout>,
     pub tab_bar: Option<WindowsShellTabBarLayout>,
-    pub panel_activators: Vec<WindowsShellPanelActivatorLayout>,
+    pub footer_actions: Vec<WindowsShellFooterActionLayout>,
     /// Hide the window caption buttons and app-menu icon. Set when the window
     /// is wrapped in a simulator device frame (the runner), whose own toolbar
     /// owns the window controls — the framed screen stays chrome-free.

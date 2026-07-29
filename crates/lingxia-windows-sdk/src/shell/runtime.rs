@@ -6,10 +6,9 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 
 use super::{
-    WindowsShellAddressBarLayout, WindowsShellAuxiliaryItemLayout, WindowsShellHeaderActionLayout,
-    WindowsShellNavigationBarLayout, WindowsShellPanelActivatorLayout,
-    WindowsShellTabBarItemLayout, WindowsShellTabBarLayout, WindowsShellTabBarPosition,
-    WindowsShellWindowLayout,
+    WindowsShellAddressBarLayout, WindowsShellAuxiliaryItemLayout, WindowsShellFooterActionLayout,
+    WindowsShellHeaderActionLayout, WindowsShellNavigationBarLayout, WindowsShellTabBarItemLayout,
+    WindowsShellTabBarLayout, WindowsShellTabBarPosition, WindowsShellWindowLayout,
 };
 #[cfg(feature = "browser-runtime")]
 use lingxia_browser::BrowserTabInfo;
@@ -19,9 +18,12 @@ use lingxia_browser_shell::{
     resolve_input,
 };
 use lingxia_platform::traits::app_runtime::{
-    AppRuntime, LxAppOpenMode, OpenUrlRequest, OpenUrlTarget,
+    AppRuntime, BuiltinBrowserPage, LxAppOpenMode, OpenUrlRequest, OpenUrlTarget,
 };
-use lingxia_shell::{ResolvedShellActivator, ShellPin, ShellPinTarget};
+use lingxia_shell::{
+    ResolvedShellSidebarAction, ShellPin, ShellPinTarget, SidebarActionIntent,
+    SidebarActionPlacement,
+};
 use lingxia_surface::{Edge, LayoutPresentationPlan, SlotKind};
 use lingxia_webview::WebTag;
 #[cfg(feature = "browser-runtime")]
@@ -68,16 +70,16 @@ const MAX_LIVE_BROWSER_TABS: usize = 16;
 const DEFAULT_LIVE_BROWSER_TABS: usize = 8;
 
 /// Panel ids whose lxapp open is still in flight, used to ignore repeated
-/// activator clicks until the open completes.
+/// footer action clicks until the open completes.
 static PENDING_PANEL_OPENS: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
 
 /// The lxapp that owns the main shell window (set when the home app opens
 /// and refreshed on every chrome event); browser tab-change notifications
 /// re-sync this app's layout.
 static SHELL_OWNER_APPID: OnceLock<Mutex<Option<String>>> = OnceLock::new();
-/// `None` means the runtime writer has not declared a list yet, so generated
-/// YAML activators remain the fallback. `Some([])` intentionally clears them.
-static RUNTIME_ACTIVATOR_ITEMS: OnceLock<Mutex<Option<Vec<ResolvedShellActivator>>>> =
+/// `None` means the runtime writer has not declared a list yet. `Some([])`
+/// intentionally clears both sidebar action regions.
+static RUNTIME_SIDEBAR_ACTIONS: OnceLock<Mutex<Option<Vec<ResolvedShellSidebarAction>>>> =
     OnceLock::new();
 static RUNTIME_SHELL_PINS: OnceLock<Mutex<Vec<ShellPin>>> = OnceLock::new();
 
@@ -114,21 +116,9 @@ struct BrowserTabMemoryState {
     discarded: HashSet<String>,
 }
 
-/// Sidebar header action ids and their browser targets.
-const SIDEBAR_ACTION_SETTINGS: &str = "settings";
-const SIDEBAR_ACTION_DOWNLOADS: &str = "downloads";
-#[cfg(feature = "browser-runtime")]
-const SETTINGS_PAGE_URL: &str = "lingxia://settings";
-#[cfg(feature = "browser-runtime")]
-const DOWNLOADS_PAGE_URL: &str = "lingxia://downloads";
 const AUX_LXAPP_PREFIX: &str = "lxapp:";
 const AUX_BOOKMARK_PREFIX: &str = "bookmark:";
 const SHELL_TERMINAL_SURFACE_ID: &str = "shell:terminal";
-
-/// Segoe Fluent Icons glyphs of the sidebar header actions (passed through
-/// layout data so the webview layer stays product-agnostic).
-const GLYPH_SETTINGS: &str = "\u{e713}";
-const GLYPH_DOWNLOAD: &str = "\u{e896}";
 
 #[derive(Debug, Clone)]
 // The type is referenced by the no-browser stubs (empty collections), but its
@@ -384,7 +374,7 @@ fn navigate_browser_tab(tab_id: &str, url: &str) -> Result<(), lxapp::LxAppError
 
 mod chrome_command {
     pub(super) const TAB_BAR_CLICK: &str = "tabbar.click";
-    pub(super) const PANEL_ACTIVATOR_CLICK: &str = "panel-activator.click";
+    pub(super) const FOOTER_ACTION_CLICK: &str = "sidebar-footer-action.click";
     pub(super) const NAVIGATION_BACK: &str = "navigation.back";
     pub(super) const NAVIGATION_HOME: &str = "navigation.home";
     pub(super) const BROWSER_NEW_TAB: &str = "browser.new-tab";
@@ -421,7 +411,7 @@ mod chrome_command {
     pub(super) const SIDEBAR_GROUP_TOGGLE: &str = "sidebar.group.toggle";
     pub(super) const SIDEBAR_ACTION: &str = "sidebar.action";
     pub(super) const SIDEBAR_SCROLL: &str = "sidebar.scroll";
-    pub(super) const PANEL_ACTIVATOR_SCROLL: &str = "panel-activator.scroll";
+    pub(super) const FOOTER_ACTION_SCROLL: &str = "sidebar-footer-action.scroll";
     pub(super) const APP_MENU_CLICK: &str = "app-menu.click";
 }
 
@@ -435,7 +425,7 @@ struct SidebarUiState {
     icon_rail: bool,
     items_collapsed: bool,
     main_scroll_offset: i32,
-    activator_scroll_row: usize,
+    footer_action_scroll_row: usize,
 }
 
 static SIDEBAR_UI_STATE: OnceLock<Mutex<HashMap<String, SidebarUiState>>> = OnceLock::new();
@@ -766,12 +756,13 @@ pub(super) fn install() {
         set_managed_surface_visible,
     ));
     lingxia_platform::set_windows_managed_surface_toggle_handler(Arc::new(toggle_managed_surface));
-    lingxia_platform::set_windows_activator_items_handler(Arc::new(set_runtime_activator_items));
+    lingxia_platform::set_windows_sidebar_actions_handler(Arc::new(set_runtime_sidebar_actions));
+    lingxia_platform::set_windows_builtin_browser_page_handler(Arc::new(open_builtin_browser_page));
     lingxia_platform::set_windows_shell_pins_handler(Arc::new(set_runtime_shell_pins));
     lingxia_platform::set_windows_layout_plan_handler(Arc::new(apply_windows_layout_plan));
     lingxia_platform::set_windows_managed_aside_event_handler(Arc::new(handle_managed_aside_event));
-    if lingxia_shell::manager().is_ok_and(|manager| manager.snapshot().activators.declared()) {
-        let _ = lingxia_shell::apply_current_activators();
+    if lingxia_shell::manager().is_ok_and(|manager| manager.snapshot().sidebar_actions.declared()) {
+        let _ = lingxia_shell::apply_current_sidebar_actions();
     }
     let _ = lingxia_shell::apply_current_pins();
 
@@ -848,7 +839,7 @@ fn sync_related_shell_layouts(appid: &str) {
     }
 }
 
-/// Shell chrome state (sidebar rows and collapse, panel activators, the
+/// Shell chrome state (sidebar rows and collapse, footer actions, the
 /// presented browser tab) is shared by every webtag that renders the shell,
 /// and the visible layout may belong to a presented non-owner lxapp. Any
 /// state change therefore re-syncs the whole related set — the app, the
@@ -878,8 +869,8 @@ fn current_sidebar_width(group_appid: &str) -> f64 {
     };
     let owner = shell_owner_app_for(&app);
     let shell_app = owner.as_deref().unwrap_or(&app);
-    let activators = build_panel_activators(shell_app);
-    build_tab_bar_layout(&app, &activators)
+    let footer_actions = build_footer_actions(shell_app);
+    build_tab_bar_layout(&app, &footer_actions)
         .filter(|tabbar| {
             matches!(
                 tabbar.position,
@@ -1118,7 +1109,7 @@ fn build_window_layout(app: &LxApp, path: &str) -> WindowsShellWindowLayout {
     };
     let owner_app = shell_owner_app_for(app);
     let shell_app = owner_app.as_deref().unwrap_or(app);
-    let panel_activators = build_panel_activators(shell_app);
+    let footer_actions = build_footer_actions(shell_app);
     // A simulator frame whose toolbar carries the close/minimize dots owns the
     // window controls, so the shell drops its own caption there. A framed
     // simulated desktop keeps the standard Windows caption buttons.
@@ -1152,14 +1143,14 @@ fn build_window_layout(app: &LxApp, path: &str) -> WindowsShellWindowLayout {
     .and_then(|appid| lxapp::try_get(&appid));
     let tab_bar_app =
         tab_bar_owner_for_layout(app, owner_app.as_deref(), active_main_app.as_deref());
-    let tab_bar = build_tab_bar_layout(tab_bar_app, &panel_activators).filter(|tabbar| {
+    let tab_bar = build_tab_bar_layout(tab_bar_app, &footer_actions).filter(|tabbar| {
         address_bar.is_none() || !matches!(tabbar.position, WindowsShellTabBarPosition::Bottom)
     });
     WindowsShellWindowLayout {
         navigation_bar,
         address_bar,
         tab_bar,
-        panel_activators,
+        footer_actions,
         top_inset,
         suppress_window_controls,
     }
@@ -1222,9 +1213,9 @@ fn build_self_browser_tab_bar_layout() -> Option<WindowsShellTabBarLayout> {
         icon_rail: ui_state.icon_rail,
         items_api_hidden: false,
         items_collapsed: false,
-        activator_footer_height: 0,
+        footer_action_height: 0,
         main_scroll_offset: ui_state.main_scroll_offset,
-        activator_scroll_row: 0,
+        footer_action_scroll_row: 0,
         auxiliary_items: build_browser_tab_items(
             browser_tabs()
                 .into_iter()
@@ -1480,7 +1471,7 @@ fn normalize_tab_path(path: &str) -> &str {
 
 fn build_tab_bar_layout(
     app: &LxApp,
-    panel_activators: &[WindowsShellPanelActivatorLayout],
+    footer_actions: &[WindowsShellFooterActionLayout],
 ) -> Option<WindowsShellTabBarLayout> {
     if lxapp::open_region(&app.appid) == Some(lxapp::LxAppOpenRegion::Aside) {
         return None;
@@ -1536,9 +1527,11 @@ fn build_tab_bar_layout(
         .map(device_frame_status_bar_height)
         .unwrap_or(0);
     let show_auxiliary_add = browser_runtime_enabled() && !device_framed;
-    let header_actions = build_sidebar_header_actions();
-    let sidebar_has_content =
-        !items.is_empty() || !auxiliary_items.is_empty() || !panel_activators.is_empty();
+    let header_actions = build_sidebar_header_actions(app);
+    let sidebar_has_content = !items.is_empty()
+        || !auxiliary_items.is_empty()
+        || !footer_actions.is_empty()
+        || !header_actions.is_empty();
     if !sidebar_has_content {
         return None;
     }
@@ -1625,13 +1618,13 @@ fn build_tab_bar_layout(
         icon_rail: ui_state.icon_rail,
         items_api_hidden,
         items_collapsed: items_api_hidden || ui_state.items_collapsed,
-        activator_footer_height: if desktop_sidebar {
-            super::chrome::panel_activator_footer_height(dimension, panel_activators)
+        footer_action_height: if desktop_sidebar {
+            super::chrome::panel_footer_action_height(dimension, footer_actions)
         } else {
             0
         },
         main_scroll_offset: ui_state.main_scroll_offset,
-        activator_scroll_row: ui_state.activator_scroll_row,
+        footer_action_scroll_row: ui_state.footer_action_scroll_row,
         color: parse_css_color(
             tabbar
                 .as_ref()
@@ -1758,22 +1751,22 @@ fn order_main_tab_rows(
     (group_order_index, rows)
 }
 
-/// Sidebar header actions (settings / downloads), shown only when the
-/// browser runtime backing their target pages is compiled in.
-fn build_sidebar_header_actions() -> Vec<WindowsShellHeaderActionLayout> {
-    if !browser_runtime_enabled() || !cfg!(feature = "browser-shell") {
+fn build_sidebar_header_actions(app: &LxApp) -> Vec<WindowsShellHeaderActionLayout> {
+    if owner_window_handle(&app.appid).is_some_and(window_has_device_frame)
+        || tabbar_position(&app.appid) == WindowsShellTabBarPosition::Bottom
+    {
         return Vec::new();
     }
-    vec![
-        WindowsShellHeaderActionLayout {
-            id: SIDEBAR_ACTION_SETTINGS.to_string(),
-            glyph: GLYPH_SETTINGS.to_string(),
-        },
-        WindowsShellHeaderActionLayout {
-            id: SIDEBAR_ACTION_DOWNLOADS.to_string(),
-            glyph: GLYPH_DOWNLOAD.to_string(),
-        },
-    ]
+    resolved_sidebar_actions_for_placement(app, SidebarActionPlacement::Header)
+        .into_iter()
+        .map(|item| WindowsShellHeaderActionLayout {
+            generation: item.generation,
+            id: item.id,
+            label: item.label,
+            icon_path: resolved_sidebar_action_icon_path(app, item.icon_path.as_deref()),
+            disabled: item.disabled,
+        })
+        .collect()
 }
 
 // Browser tab rows stay visible independently of pinned shortcuts (a pinned
@@ -1878,7 +1871,7 @@ fn build_open_lxapp_items(owner_appid: &str) -> Vec<WindowsShellAuxiliaryItemLay
 
 /// Sidebar row icon for an open lxapp: the lxapp's own declared icon, else
 /// the icon of its configured surface/panel slot (matching the panel
-/// activator), else empty so the row falls back to the LingXia mark.
+/// footer action), else empty so the row falls back to the LingXia mark.
 fn lxapp_auxiliary_icon_path(appid: &str) -> String {
     let own_icon = lxapp::try_get(appid)
         .map(|app| app.get_lxapp_info().icon)
@@ -2017,8 +2010,8 @@ fn url_host(url: &str) -> Option<String> {
     }
 }
 
-fn set_runtime_activator_items(items: &[ResolvedShellActivator]) -> bool {
-    let state = RUNTIME_ACTIVATOR_ITEMS.get_or_init(|| Mutex::new(None));
+fn set_runtime_sidebar_actions(items: &[ResolvedShellSidebarAction]) -> bool {
+    let state = RUNTIME_SIDEBAR_ACTIONS.get_or_init(|| Mutex::new(None));
     if let Ok(mut state) = state.lock() {
         *state = Some(items.to_vec());
     } else {
@@ -2030,20 +2023,42 @@ fn set_runtime_activator_items(items: &[ResolvedShellActivator]) -> bool {
     true
 }
 
-fn runtime_activator_items() -> Option<Vec<ResolvedShellActivator>> {
-    let cached = RUNTIME_ACTIVATOR_ITEMS
+fn open_builtin_browser_page(page: BuiltinBrowserPage) -> bool {
+    #[cfg(not(feature = "browser-runtime"))]
+    {
+        let _ = page;
+        false
+    }
+    #[cfg(feature = "browser-runtime")]
+    {
+        let Some(appid) = shell_owner_appid() else {
+            return false;
+        };
+        let Some(app) = lxapp::try_get(&appid) else {
+            return false;
+        };
+        let url = match page {
+            BuiltinBrowserPage::Settings => "lingxia://settings",
+            BuiltinBrowserPage::Downloads => "lingxia://downloads",
+        };
+        open_or_present_browser_page(&appid, app.session_id(), url)
+    }
+}
+
+fn runtime_sidebar_actions() -> Option<Vec<ResolvedShellSidebarAction>> {
+    let cached = RUNTIME_SIDEBAR_ACTIONS
         .get()
         .and_then(|state| state.lock().ok())
         .and_then(|state| state.clone());
     if cached.is_some() {
-        lingxia_shell::resolved_activators().ok().or(cached)
+        lingxia_shell::resolved_sidebar_actions().ok().or(cached)
     } else {
         None
     }
 }
 
-fn build_panel_activators(app: &LxApp) -> Vec<WindowsShellPanelActivatorLayout> {
-    // Activators are desktop sidebar affordances. A mobile presentation —
+fn build_footer_actions(app: &LxApp) -> Vec<WindowsShellFooterActionLayout> {
+    // Footer actions are desktop sidebar affordances. A mobile presentation —
     // the device-framed runner or a phone-style bottom tab bar — never
     // shows them (matching the mobile platforms).
     if owner_window_handle(&app.appid).is_some_and(window_has_device_frame)
@@ -2051,25 +2066,36 @@ fn build_panel_activators(app: &LxApp) -> Vec<WindowsShellPanelActivatorLayout> 
     {
         return Vec::new();
     }
-    let asset_dir = app.runtime.asset_dir();
-    runtime_activator_items()
-        .unwrap_or_default()
+    resolved_sidebar_actions_for_placement(app, SidebarActionPlacement::Footer)
         .into_iter()
-        .map(|item| WindowsShellPanelActivatorLayout {
+        .map(|item| WindowsShellFooterActionLayout {
+            generation: item.generation,
             id: item.id,
             label: item.label,
-            icon_path: item
-                .icon_path
-                .as_deref()
-                .and_then(|icon| {
-                    resolve_asset_path(asset_dir, icon)
-                        .map(|path| path.to_string_lossy().to_string())
-                        .or_else(|| Some(icon.to_string()))
-                })
-                .unwrap_or_default(),
+            icon_path: resolved_sidebar_action_icon_path(app, item.icon_path.as_deref()),
             disabled: item.disabled,
         })
         .collect()
+}
+
+fn resolved_sidebar_actions_for_placement(
+    _app: &LxApp,
+    placement: SidebarActionPlacement,
+) -> Vec<ResolvedShellSidebarAction> {
+    runtime_sidebar_actions()
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|item| item.placement == placement)
+        .collect()
+}
+
+fn resolved_sidebar_action_icon_path(app: &LxApp, icon: Option<&str>) -> String {
+    let Some(icon) = icon else {
+        return String::new();
+    };
+    resolve_asset_path(app.runtime.asset_dir(), icon)
+        .map(|path| path.to_string_lossy().to_string())
+        .unwrap_or_else(|| icon.to_string())
 }
 
 fn set_runtime_shell_pins(items: &[ShellPin]) -> bool {
@@ -2364,12 +2390,18 @@ fn handle_chrome_event(appid: &str, event: WindowsChromeCommand) {
             sync_shell_layout(appid);
             return;
         }
-        chrome_command::PANEL_ACTIVATOR_CLICK => {
+        chrome_command::FOOTER_ACTION_CLICK => {
             let Some(panel_id) = payload_string(&event, "panel_id") else {
                 return;
             };
-            if let Err(error) = lingxia_shell::activate(&panel_id) {
-                log::warn!("shell activator '{panel_id}' failed: {error}");
+            let Some(generation) = payload_u64(&event, "generation") else {
+                return;
+            };
+            if let Err(error) = lingxia_shell::activate_sidebar_action(SidebarActionIntent {
+                id: panel_id.clone(),
+                generation,
+            }) {
+                log::warn!("shell sidebar action '{panel_id}' failed: {error}");
             }
             sync_shell_layout(appid);
             return;
@@ -2684,7 +2716,7 @@ fn handle_chrome_event(appid: &str, event: WindowsChromeCommand) {
             sync_shell_layout(appid);
             return;
         }
-        chrome_command::PANEL_ACTIVATOR_SCROLL => {
+        chrome_command::FOOTER_ACTION_SCROLL => {
             let Some(group) = payload_string(&event, "group") else {
                 return;
             };
@@ -2692,7 +2724,7 @@ fn handle_chrome_event(appid: &str, event: WindowsChromeCommand) {
                 return;
             };
             update_sidebar_ui_state(&group, |state| {
-                state.activator_scroll_row = row;
+                state.footer_action_scroll_row = row;
             });
             sync_shell_layout(appid);
             return;
@@ -2701,7 +2733,16 @@ fn handle_chrome_event(appid: &str, event: WindowsChromeCommand) {
             let Some(action_id) = payload_string(&event, "action_id") else {
                 return;
             };
-            handle_sidebar_action(appid, app.session_id(), &action_id);
+            let Some(generation) = payload_u64(&event, "generation") else {
+                return;
+            };
+            if let Err(error) = lingxia_shell::activate_sidebar_action(SidebarActionIntent {
+                id: action_id.clone(),
+                generation,
+            }) {
+                log::warn!("shell sidebar action '{action_id}' failed: {error}");
+            }
+            sync_shell_layout(appid);
             return;
         }
         chrome_command::APP_MENU_CLICK => {
@@ -3852,24 +3893,6 @@ async fn browser_tab_first_content_ready(tab_id: &str, allow_intentional_blank: 
         .unwrap_or(false)
 }
 
-/// Opens the browser page behind a sidebar header action (settings /
-/// downloads) as a presented browser tab.
-#[cfg(feature = "browser-runtime")]
-fn handle_sidebar_action(appid: &str, session_id: u64, action_id: &str) {
-    let target = match action_id {
-        SIDEBAR_ACTION_SETTINGS => SETTINGS_PAGE_URL,
-        SIDEBAR_ACTION_DOWNLOADS => DOWNLOADS_PAGE_URL,
-        _ => {
-            log::warn!("unknown Windows sidebar action: {action_id}");
-            return;
-        }
-    };
-    open_or_present_browser_page(appid, session_id, target);
-}
-
-#[cfg(not(feature = "browser-runtime"))]
-fn handle_sidebar_action(_appid: &str, _session_id: u64, _action_id: &str) {}
-
 #[cfg(feature = "browser-shell")]
 fn browser_page_urls_match(current: &str, target: &str) -> bool {
     if let (Some(current_route), Some(target_route)) = (
@@ -3916,7 +3939,7 @@ fn browser_page_urls_match(current: &str, target: &str) -> bool {
 /// presents it (keeping scroll and dialog state); a deep link (query or
 /// fragment on the target) navigates the tab so hash routing fires.
 #[cfg(feature = "browser-runtime")]
-fn open_or_present_browser_page(appid: &str, session_id: u64, url: &str) {
+fn open_or_present_browser_page(appid: &str, session_id: u64, url: &str) -> bool {
     let existing = browser_tabs().into_iter().find(|tab| {
         tab.current_url
             .as_deref()
@@ -3929,11 +3952,17 @@ fn open_or_present_browser_page(appid: &str, session_id: u64, url: &str) {
             log::error!("failed to navigate browser page {url}: {err}");
         }
         handle_browser_tab_click(appid, &existing.tab_id);
-        return;
+        return true;
     }
     match lingxia_browser::open_for_app(appid, session_id, url, None) {
-        Ok(tab_id) => present_browser_tab_when_ready(appid, tab_id),
-        Err(err) => log::error!("failed to open browser page {url} for {appid}: {err}"),
+        Ok(tab_id) => {
+            present_browser_tab_when_ready(appid, tab_id);
+            true
+        }
+        Err(err) => {
+            log::error!("failed to open browser page {url} for {appid}: {err}");
+            false
+        }
     }
 }
 
@@ -4501,7 +4530,7 @@ fn toggle_managed_surface(panel_id: &str) -> bool {
     if panel_target_for_id(panel_id).is_none() {
         return false;
     }
-    handle_panel_activator(&owner_appid, panel_id.to_string());
+    handle_footer_action(&owner_appid, panel_id.to_string());
     true
 }
 
@@ -4554,9 +4583,9 @@ pub(crate) fn handle_menu_bar_surface_action(surface_id: &str, action_kind: &str
     opened
 }
 
-fn handle_panel_activator(appid: &str, panel_id: String) {
+fn handle_footer_action(appid: &str, panel_id: String) {
     let Some(target) = panel_target_for_id(&panel_id) else {
-        log::error!("Windows panel activator was not found: {panel_id}");
+        log::error!("Windows sidebar footer action was not found: {panel_id}");
         return;
     };
 
