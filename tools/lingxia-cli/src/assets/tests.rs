@@ -422,7 +422,9 @@ surfaces:
     assert_eq!(surfaces.len(), 3);
     let terminal_count = surfaces
         .iter()
-        .filter(|s| s["content"]["kind"] == "terminal")
+        .filter(|surface| {
+            surface["content"]["kind"] == "native" && surface["content"]["name"] == "terminal"
+        })
         .count();
     assert_eq!(terminal_count, 1);
 
@@ -481,7 +483,7 @@ fn generated_ui_json_rejects_terminal_when_capability_disabled() {
                 "role": "aside",
                 "attachTo": "main",
                 "edge": "bottom",
-                "content": { "kind": "terminal" }
+                "content": { "kind": "native", "name": "terminal" }
             }],
             "activators": []
         })),

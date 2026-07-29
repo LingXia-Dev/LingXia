@@ -10,7 +10,7 @@ use std::path::Path;
 pub const HOST_CONFIG_FILE: &str = "lingxia.yaml";
 pub const LXAPP_BUILD_CONFIG_FILE: &str = "lxapp.config.ts";
 const AUTHORING_PLATFORMS: &[&str] = &["macos", "windows", "ios", "android", "harmony"];
-const TERMINAL_SURFACE_PLATFORMS: &[&str] = &["macos", "windows"];
+const DESKTOP_SURFACE_PLATFORMS: &[&str] = &["macos", "windows"];
 
 /// Host project configuration (native app project)
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -168,9 +168,8 @@ pub enum SurfaceRole {
 /// `url` / `native` names the content, and that key doubles as the surface's
 /// identity — there is no separate `id` and no `render` discriminator.
 ///
-/// Accepted role combinations today: `lxapp` main|aside|float, `url`
-/// main|aside, `native` aside (terminal). `page` float and `native` float are
-/// reserved by the spec but rejected until the runtime can present them.
+/// Admission is target-aware. Desktop targets accept content-agnostic mains;
+/// mobile targets keep the home-lxapp startup contract.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SurfaceDecl {
@@ -217,6 +216,31 @@ pub enum SurfaceContent<'a> {
     Native(&'a str),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NativeSurfaceName {
+    Terminal,
+    Browser,
+}
+
+impl NativeSurfaceName {
+    fn parse(value: &str) -> Result<Self> {
+        match value.trim() {
+            "terminal" => Ok(Self::Terminal),
+            "browser" => Ok(Self::Browser),
+            other => Err(anyhow!(
+                "native surface '{other}' is not supported; expected terminal or browser"
+            )),
+        }
+    }
+
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Terminal => "terminal",
+            Self::Browser => "browser",
+        }
+    }
+}
+
 impl<'a> SurfaceContent<'a> {
     fn kind(self) -> &'static str {
         match self {
@@ -242,6 +266,13 @@ impl<'a> SurfaceContent<'a> {
             SurfaceContent::Page(name) => SurfaceContent::Page(name.trim()),
             SurfaceContent::Url(name) => SurfaceContent::Url(name.trim()),
             SurfaceContent::Native(name) => SurfaceContent::Native(name.trim()),
+        }
+    }
+
+    fn native_name(self) -> Result<Option<NativeSurfaceName>> {
+        match self {
+            SurfaceContent::Native(value) => NativeSurfaceName::parse(value).map(Some),
+            _ => Ok(None),
         }
     }
 }
@@ -329,24 +360,52 @@ pub enum SurfaceTrayAction {
 /// - `native: terminal` + `role: aside` -> the built-in terminal surface,
 ///   edge defaulting to `bottom`. `capabilities.terminal` only enables the
 ///   runtime; it does not add UI by itself.
-/// - `url` -> content `{ kind: web, url }` (requires the browser capability).
+/// - `url` -> content `{ kind: url, url }` (requires the browser capability).
+/// - `native` -> content `{ kind: native, name }`.
 /// - `tray` -> a `menuBarItem` activator (closest existing kind).
 ///
 /// There is no `sidebar:` entry field: persistent entries are declared at
 /// runtime through the shell activator API, never in YAML.
+#[cfg(test)]
 fn surfaces_to_ui(
     surfaces: &[SurfaceDecl],
     terminal_enabled: bool,
     browser_enabled: bool,
 ) -> Result<Value> {
-    // Resolve every entry's content key up front. The content name becomes the
-    // emitted surface id, and ids share ONE namespace across content kinds
-    // (runtimes index surfaces by bare id) — so names must be globally unique,
-    // not just unique per kind.
+    let home_app_id = surfaces
+        .iter()
+        .find_map(|surface| {
+            (surface.role == SurfaceRole::Main)
+                .then(|| surface.content().ok())
+                .flatten()
+                .and_then(|content| match content {
+                    SurfaceContent::Lxapp(app_id) => Some(app_id),
+                    _ => None,
+                })
+        })
+        .unwrap_or_default();
+    surfaces_to_ui_for_target(
+        surfaces,
+        terminal_enabled,
+        browser_enabled,
+        "macos",
+        home_app_id,
+    )
+}
+
+fn surfaces_to_ui_for_target(
+    surfaces: &[SurfaceDecl],
+    terminal_enabled: bool,
+    browser_enabled: bool,
+    platform: &str,
+    home_app_id: &str,
+) -> Result<Value> {
+    let desktop = DESKTOP_SURFACE_PLATFORMS.contains(&platform);
     let mut resolved: Vec<(SurfaceContent<'_>, &SurfaceDecl)> = Vec::new();
     let mut seen_names = HashSet::new();
     for surface in surfaces {
         let content = surface.content()?;
+        content.native_name()?;
         if !seen_names.insert(content.name().to_string()) {
             return Err(anyhow!(
                 "surfaces: duplicate declaration for '{}' (surface ids share one namespace across content kinds)",
@@ -356,59 +415,23 @@ fn surfaces_to_ui(
         resolved.push((content, surface));
     }
 
-    // Per-entry structural validation: the legal role matrix and fields that
-    // only make sense on a given role.
+    let tray_surfaces = surfaces
+        .iter()
+        .filter(|surface| surface.tray.is_some())
+        .count();
+    if tray_surfaces > 1 {
+        return Err(anyhow!("surfaces: at most one surface may declare tray"));
+    }
+
     for (content, surface) in &resolved {
         let name = content.name();
         if let SurfaceContent::Url(url) = *content {
             validate_declared_surface_url(url)?;
         }
-        match (*content, surface.role) {
-            (SurfaceContent::Lxapp(_), _) => {}
-            (SurfaceContent::Page(_), SurfaceRole::Float) => {
-                return Err(anyhow!(
-                    "surface '{name}': declared page floats are not supported by the runtime yet; \
-                     open the page at runtime with lx.openSurface({{ page, as: 'float' }})"
-                ));
-            }
-            (SurfaceContent::Page(_), _) => {
-                return Err(anyhow!(
-                    "surface '{name}': a page surface only supports role: float"
-                ));
-            }
-            (SurfaceContent::Url(_), SurfaceRole::Main | SurfaceRole::Aside) => {
-                if !browser_enabled {
-                    return Err(anyhow!(
-                        "surface '{name}': a url surface requires the browser capability"
-                    ));
-                }
-            }
-            (SurfaceContent::Url(_), SurfaceRole::Float) => {
-                return Err(anyhow!(
-                    "surface '{name}': a url surface only supports role: main or aside"
-                ));
-            }
-            (SurfaceContent::Native(_), SurfaceRole::Aside) => {}
-            (SurfaceContent::Native(_), SurfaceRole::Float) => {
-                return Err(anyhow!(
-                    "surface '{name}': native floats are not supported by the runtime yet"
-                ));
-            }
-            (SurfaceContent::Native(_), SurfaceRole::Main) => {
-                return Err(anyhow!(
-                    "surface '{name}': a native surface only supports role: aside or float"
-                ));
-            }
-        }
         if surface.launch {
             if surface.role != SurfaceRole::Main {
                 return Err(anyhow!(
                     "surface '{name}': launch: true is only valid on a main surface"
-                ));
-            }
-            if !matches!(content, SurfaceContent::Lxapp(_)) {
-                return Err(anyhow!(
-                    "surface '{name}': launch: true is only supported on an lxapp main today"
                 ));
             }
         }
@@ -429,55 +452,170 @@ fn surfaces_to_ui(
         }
     }
 
-    // At most one launch main; at most one tray surface.
-    let launch_mains: Vec<&SurfaceDecl> = surfaces
+    let effective = resolved
         .iter()
-        .filter(|s| s.role == SurfaceRole::Main && s.launch)
+        .copied()
+        .filter(|(_, surface)| surface_available_for_target(surface, platform))
+        .collect::<Vec<_>>();
+    if effective.is_empty() {
+        return Err(anyhow!(
+            "surfaces: no surface is available on target {platform}"
+        ));
+    }
+
+    for (content, surface) in &effective {
+        let name = content.name();
+        match (*content, surface.role) {
+            (SurfaceContent::Lxapp(_), _) => {}
+            (SurfaceContent::Page(_), _) => {
+                return Err(anyhow!(
+                    "surface '{name}': declarative page surfaces are not supported on {platform}"
+                ));
+            }
+            (SurfaceContent::Url(_), SurfaceRole::Main) if !desktop => {
+                return Err(anyhow!(
+                    "surface '{name}': url main surfaces are supported only on macOS and Windows"
+                ));
+            }
+            (SurfaceContent::Url(_), SurfaceRole::Main | SurfaceRole::Aside) => {
+                if !browser_enabled {
+                    return Err(anyhow!(
+                        "surface '{name}': a url surface requires the browser capability"
+                    ));
+                }
+            }
+            (SurfaceContent::Url(_), SurfaceRole::Float) => {
+                return Err(anyhow!(
+                    "surface '{name}': a url surface only supports role: main or aside"
+                ));
+            }
+            (SurfaceContent::Native(native), SurfaceRole::Main) => {
+                if !desktop {
+                    return Err(anyhow!(
+                        "surface '{name}': native main surfaces are supported only on macOS and Windows"
+                    ));
+                }
+                match NativeSurfaceName::parse(native)? {
+                    NativeSurfaceName::Terminal if !terminal_enabled => {
+                        return Err(anyhow!(
+                            "surface '{name}' uses the native terminal but capabilities.terminal is not enabled"
+                        ));
+                    }
+                    NativeSurfaceName::Browser if !browser_enabled => {
+                        return Err(anyhow!(
+                            "surface '{name}' uses the native browser but capabilities.browser is not enabled"
+                        ));
+                    }
+                    _ => {}
+                }
+            }
+            (SurfaceContent::Native(native), SurfaceRole::Aside) => {
+                if NativeSurfaceName::parse(native)? != NativeSurfaceName::Terminal {
+                    return Err(anyhow!(
+                        "surface '{name}': native browser only supports role: main"
+                    ));
+                }
+                if !desktop {
+                    return Err(anyhow!(
+                        "surface '{name}': native terminal asides are supported only on macOS and Windows"
+                    ));
+                }
+                if !terminal_enabled {
+                    return Err(anyhow!(
+                        "surface '{name}' uses the native terminal but capabilities.terminal is not enabled"
+                    ));
+                }
+            }
+            (SurfaceContent::Native(_), SurfaceRole::Float) => {
+                return Err(anyhow!(
+                    "surface '{name}': native surfaces do not support role: float"
+                ));
+            }
+        }
+    }
+
+    let launch_mains: Vec<_> = effective
+        .iter()
+        .filter(|(_, surface)| surface.role == SurfaceRole::Main && surface.launch)
         .collect();
     if launch_mains.len() > 1 {
         return Err(anyhow!(
-            "surfaces: at most one main surface may set launch: true"
+            "surfaces: at most one main surface may set launch: true on {platform}"
         ));
     }
-    let tray_surfaces = surfaces.iter().filter(|s| s.tray.is_some()).count();
-    if tray_surfaces > 1 {
-        return Err(anyhow!("surfaces: at most one surface may declare tray"));
-    }
 
-    // The launch surface: an explicit launch main, else the first lxapp main,
-    // else a tray-anchored popover (a pure tray app has no main window and
-    // launches into the tray).
-    let open_on_launch = !launch_mains.is_empty();
-    let launch_content = launch_mains
-        .first()
-        .map(|s| s.content())
-        .transpose()?
-        .or_else(|| {
-            resolved
+    let mains = effective
+        .iter()
+        .copied()
+        .filter(|(_, surface)| surface.role == SurfaceRole::Main)
+        .collect::<Vec<_>>();
+    let floats = effective
+        .iter()
+        .copied()
+        .filter(|(_, surface)| surface.role == SurfaceRole::Float)
+        .collect::<Vec<_>>();
+
+    let (launch_content, open_on_launch) = if desktop {
+        if !mains.is_empty() {
+            if !floats.is_empty() {
+                return Err(anyhow!(
+                    "surfaces: {platform} cannot combine main surfaces with a tray float root"
+                ));
+            }
+            let explicit = launch_mains.first().map(|(content, _)| *content);
+            if explicit.is_none() && !effective.iter().any(|(_, surface)| surface.tray.is_some()) {
+                return Err(anyhow!(
+                    "surfaces: {platform} mains without launch: true require a tray activator"
+                ));
+            }
+            (explicit.unwrap_or(mains[0].0), explicit.is_some())
+        } else {
+            if floats.len() != 1 || floats[0].1.tray.is_none() {
+                return Err(anyhow!(
+                    "surfaces: {platform} requires at least one main or one tray-anchored float"
+                ));
+            }
+            if effective
                 .iter()
-                .find(|(content, surface)| {
-                    surface.role == SurfaceRole::Main && matches!(content, SurfaceContent::Lxapp(_))
-                })
-                .map(|(content, _)| *content)
-        })
-        .or_else(|| {
-            resolved
-                .iter()
-                .find(|(_, surface)| surface.role == SurfaceRole::Float && surface.tray.is_some())
-                .map(|(content, _)| *content)
-        })
-        .ok_or_else(|| {
-            anyhow!(
-                "surfaces: requires an lxapp main surface or a tray-anchored popover surface \
-                 (a url main cannot be the launch surface yet)"
-            )
-        })?;
+                .any(|(_, surface)| surface.role == SurfaceRole::Aside)
+            {
+                return Err(anyhow!(
+                    "surfaces: a pure tray float configuration cannot contain asides"
+                ));
+            }
+            (floats[0].0, false)
+        }
+    } else {
+        if mains.len() != 1 {
+            return Err(anyhow!(
+                "surfaces: {platform} requires exactly one home lxapp main"
+            ));
+        }
+        let SurfaceContent::Lxapp(initial_app_id) = mains[0].0 else {
+            return Err(anyhow!(
+                "surfaces: {platform} initial surface must be the home lxapp '{home_app_id}'"
+            ));
+        };
+        if initial_app_id != home_app_id {
+            return Err(anyhow!(
+                "surfaces: {platform} initial surface must be the home lxapp '{home_app_id}', got '{initial_app_id}'"
+            ));
+        }
+        if let Some((launch_content, _)) = launch_mains.first()
+            && launch_content.name() != home_app_id
+        {
+            return Err(anyhow!(
+                "surfaces: {platform} launch: true is only valid on the home lxapp '{home_app_id}'"
+            ));
+        }
+        (mains[0].0, true)
+    };
     let launch_id = launch_content.name().to_string();
 
     let mut out_surfaces: Vec<Value> = Vec::new();
     let mut out_activators: Vec<Value> = Vec::new();
 
-    for (content, surface) in &resolved {
+    for (content, surface) in &effective {
         let name = content.name();
         let mut out = Map::new();
         out.insert("id".into(), json!(name));
@@ -488,7 +626,7 @@ fn surfaces_to_ui(
                 // presents it as an auto-dismissing panel under the icon.
                 out.insert("role".into(), json!("float"));
                 out.insert("anchor".into(), json!("activator"));
-                out.insert("content".into(), surface_content_json(*content));
+                out.insert("content".into(), surface_content_json(*content)?);
                 if let Some(size) = surface
                     .tray
                     .as_ref()
@@ -500,7 +638,7 @@ fn surfaces_to_ui(
             }
             SurfaceRole::Main => {
                 out.insert("role".into(), json!("main"));
-                out.insert("content".into(), surface_content_json(*content));
+                out.insert("content".into(), surface_content_json(*content)?);
             }
             SurfaceRole::Aside => {
                 let default_edge = match content {
@@ -514,19 +652,7 @@ fn surfaces_to_ui(
                     .filter(|e| !e.is_empty())
                     .unwrap_or(default_edge);
                 let edge = map_edge(edge, name)?;
-                if let SurfaceContent::Native(capability) = content {
-                    // The only native capability currently supported is the
-                    // built-in terminal.
-                    if *capability != "terminal" {
-                        return Err(anyhow!(
-                            "native surface '{capability}' is not supported; only the built-in 'terminal' capability is available"
-                        ));
-                    }
-                    if !terminal_enabled {
-                        return Err(anyhow!(
-                            "surface '{name}' uses the native terminal but capabilities.terminal is not enabled"
-                        ));
-                    }
+                if matches!(content.native_name()?, Some(NativeSurfaceName::Terminal)) {
                     if edge != "bottom" && edge != "top" {
                         return Err(anyhow!(
                             "terminal surface '{name}' must use edge 'top' or 'bottom'"
@@ -537,7 +663,7 @@ fn surfaces_to_ui(
                 out.insert("attachTo".into(), json!(launch_id));
                 out.insert("edge".into(), json!(edge));
                 let mut size = surface.size.as_ref().and_then(size_to_json);
-                if matches!(content, SurfaceContent::Native(_)) {
+                if matches!(content.native_name()?, Some(NativeSurfaceName::Terminal)) {
                     // The terminal keeps its historical default height, also
                     // when a size hint sets only the width.
                     let obj = size
@@ -549,13 +675,8 @@ fn surfaces_to_ui(
                 if let Some(size) = size {
                     out.insert("size".into(), size);
                 }
-                out.insert("content".into(), surface_content_json(*content));
+                out.insert("content".into(), surface_content_json(*content)?);
             }
-        }
-        // Carry surface-level `platforms` onto generated surfaces so platform
-        // packaging/runtime code can hide surfaces not meant for that target.
-        if let Some(platforms) = surface.platforms.as_ref() {
-            out.insert("platforms".into(), json!(platforms));
         }
         out_surfaces.push(Value::Object(out));
 
@@ -595,14 +716,12 @@ fn surfaces_to_ui(
 
     let mut launch = Map::new();
     launch.insert("initialSurface".into(), json!(launch_id));
-    if !open_on_launch {
-        launch.insert("openOnLaunch".into(), json!(false));
-    }
+    launch.insert("openOnLaunch".into(), json!(open_on_launch));
     // An exclusive tray hides the dock / taskbar icon. Drives LSUIElement +
     // .accessory on macOS and WS_EX_TOOLWINDOW on Windows.
-    let hide_dock_icon = surfaces
+    let hide_dock_icon = effective
         .iter()
-        .any(|s| s.tray.as_ref().is_some_and(|t| t.exclusive));
+        .any(|(_, surface)| surface.tray.as_ref().is_some_and(|tray| tray.exclusive));
     if hide_dock_icon {
         launch.insert("hideDockIcon".into(), json!(true));
     }
@@ -612,6 +731,13 @@ fn surfaces_to_ui(
         "surfaces": out_surfaces,
         "activators": out_activators
     }))
+}
+
+fn surface_available_for_target(surface: &SurfaceDecl, platform: &str) -> bool {
+    surface
+        .platforms
+        .as_ref()
+        .is_none_or(|platforms| platforms.iter().any(|candidate| candidate == platform))
 }
 
 fn validate_declared_surface_url(url: &str) -> Result<()> {
@@ -630,15 +756,16 @@ fn validate_declared_surface_url(url: &str) -> Result<()> {
     Ok(())
 }
 
-fn surface_content_json(content: SurfaceContent<'_>) -> Value {
-    match content {
+fn surface_content_json(content: SurfaceContent<'_>) -> Result<Value> {
+    Ok(match content {
         SurfaceContent::Lxapp(app_id) => json!({ "kind": "lxapp", "appId": app_id }),
         SurfaceContent::Page(page) => json!({ "kind": "page", "page": page }),
-        SurfaceContent::Url(url) => json!({ "kind": "web", "url": url }),
-        // Native capabilities keep their historical content shape
-        // (`{ "kind": "terminal" }`).
-        SurfaceContent::Native(capability) => json!({ "kind": capability }),
-    }
+        SurfaceContent::Url(url) => json!({ "kind": "url", "url": url }),
+        SurfaceContent::Native(capability) => {
+            let name = NativeSurfaceName::parse(capability)?.as_str();
+            json!({ "kind": "native", "name": name })
+        }
+    })
 }
 
 fn size_to_json(size: &SurfaceSize) -> Option<Value> {
@@ -748,12 +875,15 @@ fn validate_surface_intrinsic_platforms(
     id: &str,
     effective_platforms: &[String],
 ) -> Result<()> {
-    if matches!(surface.content(), Ok(SurfaceContent::Native("terminal"))) {
+    if matches!(
+        surface.content()?.native_name()?,
+        Some(NativeSurfaceName::Terminal | NativeSurfaceName::Browser)
+    ) {
         for platform in effective_platforms {
-            if !TERMINAL_SURFACE_PLATFORMS.contains(&platform.as_str()) {
+            if !DESKTOP_SURFACE_PLATFORMS.contains(&platform.as_str()) {
                 return Err(anyhow!(
-                    "surface '{id}' is a terminal surface and only supports platforms: {}",
-                    TERMINAL_SURFACE_PLATFORMS.join(", ")
+                    "surface '{id}' is a native surface and only supports platforms: {}",
+                    DESKTOP_SURFACE_PLATFORMS.join(", ")
                 ));
             }
         }
@@ -1382,17 +1512,42 @@ impl LingXiaConfig {
             .ok_or_else(|| anyhow!("surfaces requires app.platforms"))?;
         let app_platforms = validate_app_platforms(app)?;
         validate_surface_platforms(surfaces, &app_platforms)?;
-        // `surfaces` is independent of `capabilities`; terminal availability is
-        // gated by `capabilities.terminal` (any-platform truthiness here, the
-        // per-platform gating stays in `terminal_enabled`).
         let terminal_enabled = self
             .capabilities
             .as_ref()
             .map(|capabilities| capabilities.terminal)
             .unwrap_or(false);
         let browser_enabled = self.browser_enabled();
-        self.generated_ui = Some(surfaces_to_ui(surfaces, terminal_enabled, browser_enabled)?);
+        let home_app_id = app.home_app_id.trim();
+        let first_platform = app_platforms
+            .first()
+            .ok_or_else(|| anyhow!("app.platforms must not be empty"))?;
+        self.generated_ui = Some(surfaces_to_ui_for_target(
+            surfaces,
+            terminal_enabled,
+            browser_enabled,
+            first_platform,
+            home_app_id,
+        )?);
         Ok(())
+    }
+
+    pub(crate) fn resolved_ui_for_platform(&self, platform: &str) -> Result<Option<Value>> {
+        let Some(surfaces) = self.surfaces.as_ref() else {
+            return Ok(self.generated_ui.clone());
+        };
+        let app = self
+            .app
+            .as_ref()
+            .ok_or_else(|| anyhow!("surfaces requires app.homeAppId"))?;
+        surfaces_to_ui_for_target(
+            surfaces,
+            self.terminal_enabled(platform),
+            self.browser_enabled(),
+            platform,
+            app.home_app_id.trim(),
+        )
+        .map(Some)
     }
 
     fn validate(&self) -> Result<()> {
@@ -1442,17 +1597,22 @@ impl LingXiaConfig {
             if let Some(over) = app.package_id_suffix.as_ref() {
                 validate_package_id_suffix_overrides(over)?;
             }
-            let has_macos = app
-                .platforms
-                .iter()
-                .any(|platform| platform.eq_ignore_ascii_case("macos"));
-            if has_macos {
-                let Some(ui) = &self.generated_ui else {
-                    return Err(anyhow!(
-                        "surfaces is required for macOS host app projects; define top-level surfaces:"
-                    ));
+            for platform in &app_platforms {
+                let Some(ui) = self.resolved_ui_for_platform(platform)? else {
+                    if platform == "macos" {
+                        return Err(anyhow!(
+                            "surfaces is required for macOS host app projects; define top-level surfaces:"
+                        ));
+                    }
+                    continue;
                 };
-                validate_macos_ui_config(ui, self.terminal_enabled("macos"))?;
+                if platform == "macos" {
+                    validate_macos_ui_config(
+                        &ui,
+                        self.terminal_enabled("macos"),
+                        self.browser_enabled(),
+                    )?;
+                }
             }
         }
         if let Some(windows) = &self.windows {
@@ -1579,7 +1739,9 @@ enum MacosUiSurfaceRole {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum MacosUiContentKind {
     Lxapp,
-    Terminal,
+    Url,
+    NativeTerminal,
+    NativeBrowser,
 }
 
 #[derive(Debug, Clone)]
@@ -1655,7 +1817,11 @@ fn validate_applink_host(host: &str) -> Result<()> {
     Ok(())
 }
 
-fn validate_macos_ui_config(ui: &Value, terminal_enabled: bool) -> Result<()> {
+fn validate_macos_ui_config(
+    ui: &Value,
+    terminal_enabled: bool,
+    browser_enabled: bool,
+) -> Result<()> {
     let ui_obj = ui
         .as_object()
         .ok_or_else(|| anyhow!("ui must be a JSON object"))?;
@@ -1730,18 +1896,55 @@ fn validate_macos_ui_config(ui: &Value, terminal_enabled: bool) -> Result<()> {
                 }
                 MacosUiContentKind::Lxapp
             }
-            "terminal" => {
-                if !terminal_enabled {
+            "page" => {
+                non_empty_str(
+                    content.get("page"),
+                    &format!("ui.surfaces[{index}].content.page"),
+                )?;
+                return Err(anyhow!(
+                    "ui surface '{id}' uses declarative page content, which is not admitted on macOS"
+                ));
+            }
+            "url" => {
+                non_empty_str(
+                    content.get("url"),
+                    &format!("ui.surfaces[{index}].content.url"),
+                )?;
+                if !browser_enabled {
                     return Err(anyhow!(
-                        "ui surface '{id}' uses terminal content but capabilities.terminal is not enabled"
+                        "ui surface '{id}' uses url content but capabilities.browser is not enabled"
                     ));
                 }
-                if optional_non_empty_str(content.get("backend")).is_some() {
+                MacosUiContentKind::Url
+            }
+            "native" => {
+                let name = non_empty_str(
+                    content.get("name"),
+                    &format!("ui.surfaces[{index}].content.name"),
+                )?;
+                if content.contains_key("backend") {
                     return Err(anyhow!(
-                        "ui surface '{id}' must not set content.backend; terminal runtime is selected internally"
+                        "ui surface '{id}' must not set content.backend; native runtime is selected internally"
                     ));
                 }
-                MacosUiContentKind::Terminal
+                match NativeSurfaceName::parse(name)? {
+                    NativeSurfaceName::Terminal => {
+                        if !terminal_enabled {
+                            return Err(anyhow!(
+                                "ui surface '{id}' uses terminal content but capabilities.terminal is not enabled"
+                            ));
+                        }
+                        MacosUiContentKind::NativeTerminal
+                    }
+                    NativeSurfaceName::Browser => {
+                        if !browser_enabled {
+                            return Err(anyhow!(
+                                "ui surface '{id}' uses browser content but capabilities.browser is not enabled"
+                            ));
+                        }
+                        MacosUiContentKind::NativeBrowser
+                    }
+                }
             }
             _ => {
                 return Err(anyhow!(
@@ -1779,35 +1982,40 @@ fn validate_macos_ui_config(ui: &Value, terminal_enabled: bool) -> Result<()> {
     };
     if !matches!(
         initial.role,
-        MacosUiSurfaceRole::Main | MacosUiSurfaceRole::Float | MacosUiSurfaceRole::Aside
+        MacosUiSurfaceRole::Main | MacosUiSurfaceRole::Float
     ) {
         return Err(anyhow!(
             "ui.launch.initialSurface must reference a supported macOS surface"
         ));
     }
 
-    let root_ids = surface_by_id
+    let main_ids = surface_by_id
         .iter()
         .filter_map(|(id, surface)| {
-            matches!(
-                surface.role,
-                MacosUiSurfaceRole::Main | MacosUiSurfaceRole::Float
-            )
-            .then_some(id.as_str())
+            (surface.role == MacosUiSurfaceRole::Main).then_some(id.as_str())
         })
         .collect::<Vec<_>>();
-    if root_ids.len() != 1 {
+    let float_ids = surface_by_id
+        .iter()
+        .filter_map(|(id, surface)| {
+            (surface.role == MacosUiSurfaceRole::Float).then_some(id.as_str())
+        })
+        .collect::<Vec<_>>();
+    if main_ids.is_empty() && float_ids.len() != 1 {
         return Err(anyhow!(
-            "macOS app UI currently requires exactly one root main or float surface"
+            "macOS app UI requires at least one main or one tray float root"
         ));
     }
-    let root_id = root_ids[0];
+    if !main_ids.is_empty() && !float_ids.is_empty() {
+        return Err(anyhow!(
+            "macOS app UI cannot combine main surfaces with a tray float root"
+        ));
+    }
 
     for (id, surface) in &surface_by_id {
-        if surface.content_kind == MacosUiContentKind::Terminal {
-            if surface.role != MacosUiSurfaceRole::Aside {
-                return Err(anyhow!("terminal ui surface '{id}' must use role 'aside'"));
-            }
+        if surface.content_kind == MacosUiContentKind::NativeTerminal
+            && surface.role == MacosUiSurfaceRole::Aside
+        {
             let edge = surface
                 .edge
                 .as_deref()
@@ -1817,6 +2025,13 @@ fn validate_macos_ui_config(ui: &Value, terminal_enabled: bool) -> Result<()> {
                     "terminal ui surface '{id}' must use edge 'top' or 'bottom'"
                 ));
             }
+        }
+        if surface.content_kind == MacosUiContentKind::NativeBrowser
+            && surface.role != MacosUiSurfaceRole::Main
+        {
+            return Err(anyhow!(
+                "native browser ui surface '{id}' must use role 'main'"
+            ));
         }
 
         match surface.role {
@@ -1833,17 +2048,14 @@ fn validate_macos_ui_config(ui: &Value, terminal_enabled: bool) -> Result<()> {
                 let parent = surface_by_id.get(parent_id).ok_or_else(|| {
                     anyhow!("ui surface '{id}' attaches to unknown surface '{parent_id}'")
                 })?;
-                if !matches!(
-                    parent.role,
-                    MacosUiSurfaceRole::Main | MacosUiSurfaceRole::Float
-                ) {
+                if parent.role != MacosUiSurfaceRole::Main {
                     return Err(anyhow!(
                         "macOS app UI currently does not support aside -> aside; surface '{id}' attaches to '{parent_id}'"
                     ));
                 }
-                if parent_id != root_id {
+                if parent_id != initial_surface {
                     return Err(anyhow!(
-                        "macOS app UI currently supports asides attached only to the root surface"
+                        "macOS app UI requires asides to attach to launch.initialSurface"
                     ));
                 }
                 let edge = surface
@@ -2755,7 +2967,8 @@ surfaces:
                 "attachTo": "main",
                 "edge": "bottom",
                 "content": {
-                    "kind": "terminal"
+                    "kind": "native",
+                    "name": "terminal"
                 }
             }],
             "activators": [{
@@ -2794,7 +3007,8 @@ surfaces:
                 "attachTo": "main",
                 "edge": "bottom",
                 "content": {
-                    "kind": "terminal"
+                    "kind": "native",
+                    "name": "terminal"
                 }
             }],
             "activators": [{
@@ -2835,7 +3049,8 @@ surfaces:
                 "attachTo": "main",
                 "edge": "right",
                 "content": {
-                    "kind": "terminal"
+                    "kind": "native",
+                    "name": "terminal"
                 }
             }],
             "activators": []
@@ -2868,7 +3083,8 @@ surfaces:
                 "attachTo": "main",
                 "edge": "bottom",
                 "content": {
-                    "kind": "terminal",
+                    "kind": "native",
+                    "name": "terminal",
                     "backend": "xterm"
                 }
             }],
@@ -3109,7 +3325,10 @@ surfaces:
 
         let ui = surfaces_to_ui(&surfaces, true, false).unwrap();
         let expected = serde_json::json!({
-            "launch": { "initialSurface": "lingxia-showcase" },
+            "launch": {
+                "initialSurface": "lingxia-showcase",
+                "openOnLaunch": true
+            },
             "surfaces": [
                 {
                     "id": "lingxia-showcase",
@@ -3129,7 +3348,7 @@ surfaces:
                     "attachTo": "lingxia-showcase",
                     "edge": "bottom",
                     "size": { "height": 320 },
-                    "content": { "kind": "terminal" }
+                    "content": { "kind": "native", "name": "terminal" }
                 }
             ],
             "activators": []
@@ -3233,7 +3452,7 @@ surfaces:
     }
 
     #[test]
-    fn surfaces_maps_url_declarations_to_web_content() {
+    fn surfaces_maps_url_declarations_to_url_content() {
         let surfaces = vec![
             SurfaceDecl {
                 launch: true,
@@ -3259,7 +3478,7 @@ surfaces:
                 "attachTo": "home",
                 "edge": "right",
                 "size": { "width": 320 },
-                "content": { "kind": "web", "url": "https://example.com/docs" }
+                "content": { "kind": "url", "url": "https://example.com/docs" }
             })
         );
     }
@@ -3359,13 +3578,23 @@ surfaces:
             },
             SurfaceDecl {
                 page: Some("inspector".into()),
+                tray: Some(SurfaceTray {
+                    icon: None,
+                    label: None,
+                    action: None,
+                    exclusive: false,
+                    size: None,
+                }),
                 ..surface_decl(SurfaceRole::Float)
             },
         ];
         let err = surfaces_to_ui(&surfaces, false, false)
             .unwrap_err()
             .to_string();
-        assert!(err.contains("not supported by the runtime yet"), "{err}");
+        assert!(
+            err.contains("declarative page surfaces are not supported"),
+            "{err}"
+        );
     }
 
     #[test]
@@ -3377,26 +3606,103 @@ surfaces:
             },
             SurfaceDecl {
                 native: Some("terminal".into()),
+                tray: Some(SurfaceTray {
+                    icon: None,
+                    label: None,
+                    action: None,
+                    exclusive: false,
+                    size: None,
+                }),
                 ..surface_decl(SurfaceRole::Float)
             },
         ];
         let err = surfaces_to_ui(&surfaces, true, false)
             .unwrap_err()
             .to_string();
-        assert!(err.contains("native floats"), "{err}");
+        assert!(
+            err.contains("native surfaces do not support role: float"),
+            "{err}"
+        );
     }
 
     #[test]
-    fn surfaces_rejects_launch_on_url_main() {
+    fn surfaces_accepts_launch_on_url_main() {
         let surfaces = vec![SurfaceDecl {
             url: Some("https://example.com".into()),
             launch: true,
             ..surface_decl(SurfaceRole::Main)
         }];
-        let err = surfaces_to_ui(&surfaces, false, true)
-            .unwrap_err()
-            .to_string();
-        assert!(err.contains("only supported on an lxapp main"), "{err}");
+        let ui = surfaces_to_ui(&surfaces, false, true).unwrap();
+        assert_eq!(ui["launch"]["initialSurface"], "https://example.com");
+        assert_eq!(ui["launch"]["openOnLaunch"], true);
+        assert_eq!(ui["surfaces"][0]["content"]["kind"], "url");
+    }
+
+    #[test]
+    fn surfaces_resolve_disjoint_launch_mains_per_target() {
+        let yaml = r#"
+app:
+  projectName: demo
+  productName: Demo
+  productVersion: 0.1.0
+  platforms: [macos, windows]
+  homeAppId: home
+capabilities:
+  browser: true
+surfaces:
+  - url: https://example.com/macos
+    role: main
+    launch: true
+    platforms: [macos]
+  - native: browser
+    role: main
+    launch: true
+    platforms: [windows]
+"#;
+
+        let config = load_config_yaml(yaml).unwrap();
+        let macos = config.resolved_ui_for_platform("macos").unwrap().unwrap();
+        let windows = config.resolved_ui_for_platform("windows").unwrap().unwrap();
+
+        assert_eq!(
+            macos["launch"]["initialSurface"],
+            "https://example.com/macos"
+        );
+        assert_eq!(macos["surfaces"][0]["content"]["kind"], "url");
+        assert_eq!(windows["launch"]["initialSurface"], "browser");
+        assert_eq!(windows["surfaces"][0]["content"]["kind"], "native");
+        assert_eq!(windows["surfaces"][0]["content"]["name"], "browser");
+    }
+
+    #[test]
+    fn surfaces_keep_mobile_home_launch_separate_from_desktop_native_main() {
+        let yaml = r#"
+app:
+  projectName: demo
+  productName: Demo
+  productVersion: 0.1.0
+  platforms: [macos, android]
+  homeAppId: home
+capabilities:
+  browser: true
+surfaces:
+  - native: browser
+    role: main
+    launch: true
+    platforms: [macos]
+  - lxapp: home
+    role: main
+    launch: true
+    platforms: [android]
+"#;
+
+        let config = load_config_yaml(yaml).unwrap();
+        let macos = config.resolved_ui_for_platform("macos").unwrap().unwrap();
+        let android = config.resolved_ui_for_platform("android").unwrap().unwrap();
+
+        assert_eq!(macos["launch"]["initialSurface"], "browser");
+        assert_eq!(android["launch"]["initialSurface"], "home");
+        assert_eq!(android["surfaces"][0]["content"]["appId"], "home");
     }
 
     #[test]
