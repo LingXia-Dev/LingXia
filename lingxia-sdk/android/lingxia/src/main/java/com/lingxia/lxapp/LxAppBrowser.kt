@@ -734,13 +734,13 @@ internal object LxAppBrowser {
         }
 
         panel.addView(
-            createOverflowMenuRow(activity, R.drawable.icon_download, "Downloads") {
+            createOverflowMenuRow(activity, R.drawable.icon_browser_download, "Downloads") {
                 closeOverflowMenu()
                 navigateActiveTab(activity, "lingxia://downloads")
             }
         )
         panel.addView(
-            createOverflowMenuRow(activity, R.drawable.icon_settings, "Settings") {
+            createOverflowMenuRow(activity, R.drawable.icon_browser_settings, "Settings") {
                 closeOverflowMenu()
                 navigateActiveTab(activity, "lingxia://settings")
             }

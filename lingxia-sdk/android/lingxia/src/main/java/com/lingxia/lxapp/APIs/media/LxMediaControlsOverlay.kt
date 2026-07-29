@@ -394,7 +394,7 @@ internal class LxMediaControlsOverlay(
         settingsButton = ImageButton(context).apply {
             layoutParams = LinearLayout.LayoutParams(buttonWidth, buttonWidth)
             setBackgroundColor(Color.TRANSPARENT)
-            setImageResource(R.drawable.icon_settings)
+            setImageResource(R.drawable.icon_browser_settings)
             setColorFilter(Color.WHITE)
             scaleType = ImageView.ScaleType.CENTER_INSIDE
             visibility = View.GONE
