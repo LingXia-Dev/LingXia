@@ -135,6 +135,8 @@ class SidebarGroupView: NSView {
     }
 
     let appId: String
+    private let managedLabel: String?
+    private let managedIcon: NSImage?
     private(set) var colorIndex: Int = 0
     private var palette: SidebarGroupColor.Palette = SidebarGroupColor.palette(for: 0)
 
@@ -201,11 +203,17 @@ class SidebarGroupView: NSView {
     var onCloseRequested: ((String) -> Void)?
     var onLayoutChanged: (() -> Void)?
 
-    init(appId: String) {
+    init(appId: String, managedLabel: String? = nil, managedIcon: NSImage? = nil) {
         self.appId = appId
+        self.managedLabel = managedLabel
+        self.managedIcon = managedIcon
         super.init(frame: .zero)
         setupViews()
-        refreshFromRust()
+        if managedLabel != nil {
+            configureManagedMain()
+        } else {
+            refreshFromRust()
+        }
     }
 
     required init?(coder: NSCoder) {
@@ -274,8 +282,10 @@ class SidebarGroupView: NSView {
                 if !self.isExpanded { self.toggleExpanded() }
             }
         }
-        headerView.onRightClick = { [weak self] event in
-            self?.showContextMenu(with: event)
+        if managedLabel == nil {
+            headerView.onRightClick = { [weak self] event in
+                self?.showContextMenu(with: event)
+            }
         }
         addSubview(headerView)
 
@@ -420,6 +430,10 @@ class SidebarGroupView: NSView {
 
     /// Reload data from Rust API
     func refreshFromRust() {
+        guard managedLabel == nil else {
+            configureManagedMain()
+            return
+        }
         let info = getLxAppInfo(appId)
         appNameLabel.stringValue = info.app_name.toString().uppercased()
         loadAppIcon(path: info.icon.toString())
@@ -472,6 +486,13 @@ class SidebarGroupView: NSView {
                 toggleExpanded(persist: false)
             }
         }
+    }
+
+    private func configureManagedMain() {
+        appNameLabel.stringValue = (managedLabel ?? appId).uppercased()
+        appIconView.image = managedIcon ?? Self.defaultAppIcon
+        closeButton.isHidden = true
+        rebuildItems(items: [])
     }
 
     private func rebuildItems(items: [TabBarItem]) {

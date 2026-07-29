@@ -242,6 +242,9 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     private var sidebarBrowserItemCount = 0
     private var sidebarBrowserRootVisible = false
     private var browserBlankNewTabs = false
+    private var managedMainSurfaceIDs = Set<String>()
+    private var managedMainActivateHandler: ((String) -> Void)?
+    private weak var managedMainView: NSView?
 
     var onManagedWindowCloseRequested: (() -> Void)?
 
@@ -791,6 +794,11 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     /// page, so an lxapp with no tabBar items is still switchable. A companion
     /// (aside) lxapp instead toggles its surface and never takes the main.
     func handleSidebarAppSelection(appId: String) {
+        if managedMainSurfaceIDs.contains(appId) {
+            managedMainActivateHandler?(appId)
+            sidebarView?.setActiveHighlight(appId: appId)
+            return
+        }
         if let tab = tabManager.tabs.first(where: { $0.appId == appId }),
            let surfaceId = tab.asideSurfaceId {
             onAsideActivateRequested?(surfaceId)
@@ -1117,6 +1125,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     private enum MainContent {
         case lxapp(macOSLxAppViewController)
         case browser
+        case native(NSView)
     }
 
     /// The single entry point for what occupies the main content area. It
@@ -1131,15 +1140,52 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         switch content {
         case .lxapp(let viewController):
             browserCoordinator.deactivate()
+            detachManagedMain()
             attachLxAppToMain(viewController)
         case .browser:
             // The browser view is attached by BrowserTabCoordinator.showBrowserView;
             // here we only detach the lxapp and drop its nav toolbar so the
             // toolbar can't sit on top of the browser view.
             detachCurrentLxApp()
+            detachManagedMain()
             navigationToolbar?.forceHide(true)
             navigationToolbar?.isHidden = true
+        case .native(let view):
+            browserCoordinator.deactivate()
+            detachCurrentLxApp()
+            detachManagedMain()
+            navigationToolbar?.forceHide(true)
+            navigationToolbar?.isHidden = true
+            managedMainView = view
+            view.translatesAutoresizingMaskIntoConstraints = false
+            workspaceManager.contentContainer.addSubview(view)
+            NSLayoutConstraint.activate([
+                view.topAnchor.constraint(equalTo: workspaceManager.contentContainer.topAnchor),
+                view.leadingAnchor.constraint(equalTo: workspaceManager.contentContainer.leadingAnchor),
+                view.trailingAnchor.constraint(equalTo: workspaceManager.contentContainer.trailingAnchor),
+                view.bottomAnchor.constraint(equalTo: workspaceManager.contentContainer.bottomAnchor),
+            ])
         }
+    }
+
+    private func detachManagedMain() {
+        managedMainView?.removeFromSuperview()
+        managedMainView = nil
+    }
+
+    func presentManagedMainView(_ view: NSView) {
+        presentMain(.native(view))
+    }
+
+    func updateManagedMainSurfaces(
+        _ items: [LxAppUIActionItem],
+        activeId: String?,
+        onActivate: @escaping (String) -> Void
+    ) {
+        managedMainSurfaceIDs = Set(items.map(\.id))
+        managedMainActivateHandler = onActivate
+        sidebarView?.updateManagedMainItems(items, activeId: activeId)
+        reconcileSidebarAutoHide()
     }
 
     /// Remove the current lxapp view controller from the main area (pause + detach).
@@ -1657,7 +1703,9 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
             return
         }
 
-        let hasSwitcher = tabManager.tabs.count > 1
+        let mainIDs = Set(tabManager.tabs.filter { $0.isMain }.map(\.appId))
+            .union(managedMainSurfaceIDs)
+        let hasSwitcher = mainIDs.count > 1
 
         var activeLxAppTabBarHasItems = false
         if let activeAppId = tabManager.activeTab?.appId,

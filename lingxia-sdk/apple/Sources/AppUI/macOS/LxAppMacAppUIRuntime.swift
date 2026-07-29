@@ -59,6 +59,7 @@ final class LxAppMacAppUIRuntime: NSObject {
 
     private var visibleSurfaceIDs = Set<String>()
     private var openedSurfaceIDs = Set<String>()
+    private var activeMainSurfaceID: String?
     /// Runtime edge overrides from `lx.openSurface({surface, edge})`; the
     /// declared `lingxia.yaml` edge applies when absent.
     private var managedEdgeOverrides: [String: LxAppUIConfig.Edge] = [:]
@@ -91,6 +92,11 @@ final class LxAppMacAppUIRuntime: NSObject {
     nonisolated(unsafe) private var independentPanelOutsideClickLocalMonitor: Any?
     nonisolated(unsafe) private var appActivationObserver: NSObjectProtocol?
     private var handlingAppActivation = false
+
+    private var graphOwnerAppId: String? {
+        let appId = rootSurface.content.appId ?? appConfig.homeAppId
+        return appId?.isEmpty == false ? appId : nil
+    }
 
     init(
         bundleConfig: LxAppGeneratedBundleConfig,
@@ -227,7 +233,7 @@ final class LxAppMacAppUIRuntime: NSObject {
             // openSurface / activator): dock it as a runtime aside keyed by
             // its appId. Returning false here would fall through to the main
             // tab path — an aside must never enter the sidebar.
-            guard let primaryAppId = rootSurface.content.appId else { return false }
+            guard let primaryAppId = graphOwnerAppId else { return false }
             shell.storeSession(sessionId, for: appId)
             shell.registerPanelWithContent(id: panelId, position: .right, appId: appId, path: path)
             runtimeLxAppPanels[panelId] = RuntimeLxAppPanel(appId: appId, path: path)
@@ -454,7 +460,7 @@ final class LxAppMacAppUIRuntime: NSObject {
             if let edge, let parsed = LxAppUIConfig.Edge(rawValue: edge) {
                 managedEdgeOverrides[id] = parsed
             }
-            guard let primaryAppId = rootSurface.content.appId else { return false }
+            guard let primaryAppId = graphOwnerAppId else { return false }
             shell.show()
             _ = registerHostAside(
                 primaryAppId,
@@ -489,7 +495,7 @@ final class LxAppMacAppUIRuntime: NSObject {
     func closeManagedSurface(id: String) -> Bool {
         if runtimeLxAppPanels[id] != nil {
             if visibleSurfaceIDs.contains(id) {
-                if let primaryAppId = rootSurface.content.appId {
+                if let primaryAppId = graphOwnerAppId {
                     _ = unregisterHostAside(primaryAppId, id)
                 }
                 shell.hidePanel(id: id)
@@ -569,18 +575,44 @@ final class LxAppMacAppUIRuntime: NSObject {
             positionPanelWindow(for: sourceActivatorID)
         }
 
-        if openedSurfaceIDs.contains(surface.id) {
+        if activeMainSurfaceID == surface.id, openedSurfaceIDs.contains(surface.id) {
             shell.show()
             visibleSurfaceIDs.insert(surface.id)
+            terminalWorkspaces[surface.id]?.focusActiveTerminal()
             refreshChromeActions()
             return
         }
 
         shell.show()
-        try openLxAppSurface(surface, presentation: .normal)
+        switch surface.content.kind {
+        case .lxapp:
+            try openLxAppSurface(surface, presentation: .normal)
+        case .native:
+            guard surface.content.isNativeTerminal else {
+                throw LxAppUIError.unsupported("surface \(surface.id) uses unsupported native main content")
+            }
+            openTerminalMainSurface(surface)
+        case .page, .url:
+            throw LxAppUIError.unsupported("surface \(surface.id) uses unsupported main content")
+        }
+        for main in surfaceById.values where main.role == .main {
+            visibleSurfaceIDs.remove(main.id)
+        }
         openedSurfaceIDs.insert(surface.id)
         visibleSurfaceIDs.insert(surface.id)
+        activeMainSurfaceID = surface.id
         refreshChromeActions()
+    }
+
+    private func openTerminalMainSurface(_ surface: LxAppUIConfig.Surface) {
+        let workspace = terminalWorkspaces[surface.id]
+            ?? LingXiaTerminalWorkspaceView(surfaceID: surface.id)
+        terminalWorkspaces[surface.id] = workspace
+        workspace.onRequestClosePanel = nil
+        workspace.onToggleSurfaceZoom = nil
+        workspace.ensureOpenTab()
+        shell.presentManagedMainView(workspace)
+        workspace.focusActiveTerminal()
     }
 
     private func openIndependentPanelSurface(
@@ -823,7 +855,7 @@ final class LxAppMacAppUIRuntime: NSObject {
     }
 
     private func registerHostAsideForSurface(_ surface: LxAppUIConfig.Surface) {
-        guard let primaryAppId = rootSurface.content.appId else { return }
+        guard let primaryAppId = graphOwnerAppId else { return }
         let edge = managedEdgeOverrides[surface.id] ?? surface.edge
         if surface.content.isNativeTerminal {
             _ = registerHostAsideContent(
@@ -848,7 +880,7 @@ final class LxAppMacAppUIRuntime: NSObject {
         // Drop the terminal from the core graph so the aside-layout reconciler
         // (sole authority) undocks it and never re-shows it on a later
         // present_layout.
-        if let primaryAppId = rootSurface.content.appId {
+        if let primaryAppId = graphOwnerAppId {
             _ = unregisterHostAside(primaryAppId, id)
         }
         shell.hidePanel(id: id)
@@ -911,7 +943,7 @@ final class LxAppMacAppUIRuntime: NSObject {
                 shell.unregisterAsideLxApp(appId: appId)
             }
             // Drop it from the core surface graph too.
-            if let primaryAppId = rootSurface.content.appId {
+            if let primaryAppId = graphOwnerAppId {
                 _ = unregisterHostAside(primaryAppId, id)
             }
             shell.setPanelFullscreen(id: id, enabled: false)
@@ -964,9 +996,42 @@ final class LxAppMacAppUIRuntime: NSObject {
 
         shell.updateSidebarHeaderActions(runtimeSidebarActionItems(placement: "header"))
         shell.updateSidebarHostActions(runtimeSidebarActionItems(placement: "footer"))
+        shell.updateManagedMainSurfaces(
+            declaredMainSidebarItems(),
+            activeId: activeMainSurfaceID
+        ) { [weak self] surfaceID in
+            self?.openSurfaceHandlingError(id: surfaceID)
+        }
         shell.setManagedNavigationToolbarVisible(true)
         shell.updateToolbarHostActions(toolbarItems)
         shell.updateTitlebarHostActions(titlebarItems)
+    }
+
+    private func declaredMainSidebarItems() -> [LxAppUIActionItem] {
+        uiConfig.surfaces.compactMap { surface in
+            guard surface.role == .main, surfaceById[surface.id] != nil else { return nil }
+            let label: String
+            switch surface.content.kind {
+            case .lxapp:
+                label = surface.content.appId ?? surface.id
+            case .page:
+                label = surface.id
+            case .url:
+                label = URL(string: surface.content.url ?? "")?.host ?? surface.id
+            case .native:
+                switch surface.content.name {
+                case .terminal: label = "Terminal"
+                case .browser: label = "Browser"
+                case .none: label = surface.id
+                }
+            }
+            return LxAppUIActionItem(
+                id: surface.id,
+                label: label,
+                iconURL: nil,
+                active: activeMainSurfaceID == surface.id
+            )
+        }
     }
 
     private func installAppActivationActivators() {
@@ -1325,28 +1390,30 @@ final class LxAppMacAppUIRuntime: NSObject {
             }
             throw LxAppUIError.invalidConfig("launch.initialSurface references unknown surface \(ui.launch.initialSurface)")
         }
-        guard initialSurface.role == .main
-            || initialSurface.role == .float
-            || initialSurface.role == .aside else {
+        guard initialSurface.role == .main || initialSurface.role == .float else {
             throw LxAppUIError.unsupported("launch.initialSurface must reference a supported macOS surface")
         }
 
-        let windowSurfaces = availableSurfaces.filter {
-            $0.role == .main || $0.role == .float
+        let mainSurfaces = availableSurfaces.filter { $0.role == .main }
+        let floatSurfaces = availableSurfaces.filter { $0.role == .float }
+        if mainSurfaces.isEmpty && floatSurfaces.count != 1 {
+            throw LxAppUIError.unsupported("macOS app UI requires at least one main or one float root")
         }
-        guard windowSurfaces.count == 1, let rootSurface = windowSurfaces.first else {
-            throw LxAppUIError.unsupported("macOS app UI currently requires exactly one root window surface")
+        if !mainSurfaces.isEmpty && !floatSurfaces.isEmpty {
+            throw LxAppUIError.unsupported("macOS app UI cannot combine main surfaces with a float root")
         }
+        let rootSurface = initialSurface
 
         var childrenByParentId: [String: [String]] = [:]
 
         for surface in availableSurfaces {
             if surface.content.isNativeTerminal {
-                guard surface.role == .aside else {
-                    throw LxAppUIError.unsupported("terminal surface \(surface.id) must use role aside")
-                }
-                guard surface.edge == .bottom || surface.edge == .top else {
-                    throw LxAppUIError.unsupported("terminal surface \(surface.id) must use edge top or bottom")
+                if surface.role == .aside {
+                    guard surface.edge == .bottom || surface.edge == .top else {
+                        throw LxAppUIError.unsupported("terminal surface \(surface.id) must use edge top or bottom")
+                    }
+                } else if surface.role != .main {
+                    throw LxAppUIError.unsupported("terminal surface \(surface.id) must use role main or aside")
                 }
             }
 
@@ -1362,7 +1429,7 @@ final class LxAppMacAppUIRuntime: NSObject {
                 guard let parent = surfaceById[parentID] else {
                     throw LxAppUIError.invalidConfig("surface \(surface.id) attaches to unknown surface \(parentID)")
                 }
-                guard parent.role == .main || parent.role == .float else {
+                guard parent.role == .main else {
                     throw LxAppUIError.unsupported("macOS v1 does not support aside -> aside; surface \(surface.id) attaches to \(parentID)")
                 }
                 guard parent.id == rootSurface.id else {
