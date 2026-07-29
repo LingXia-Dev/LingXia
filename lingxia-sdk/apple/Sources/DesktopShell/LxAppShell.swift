@@ -241,6 +241,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     /// again when they are gone.
     private var sidebarBrowserItemCount = 0
     private var sidebarBrowserRootVisible = false
+    private var browserBlankNewTabs = false
 
     var onManagedWindowCloseRequested: (() -> Void)?
 
@@ -1763,6 +1764,10 @@ extension LxAppShell {
         reconcileSidebarAutoHide()
     }
 
+    func setBrowserBlankNewTabs(_ enabled: Bool) {
+        browserBlankNewTabs = enabled
+    }
+
     func setBrowserPageActionsVisible(_ visible: Bool) {
         browserCoordinator.setPageActionsVisible(visible)
     }
@@ -1802,6 +1807,7 @@ extension LxAppShell: BrowserCoordinatorHost {
     var hostWindow: NSWindow? { window }
     var hasOpenTabs: Bool { tabManager.hasTabs }
     var keepsBrowserRootWithoutTabs: Bool { sidebarBrowserRootVisible }
+    var usesBlankBrowserNewTabs: Bool { browserBlankNewTabs }
 
     func browserOwnerForNewTab() -> (appId: String, sessionId: UInt64)? {
         if let appId = tabManager.activeTab?.appId {
