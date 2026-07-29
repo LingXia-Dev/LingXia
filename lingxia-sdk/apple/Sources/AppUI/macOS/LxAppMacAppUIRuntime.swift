@@ -682,7 +682,7 @@ final class LxAppMacAppUIRuntime: NSObject {
             try openSurface(id: parentID)
         }
 
-        if surface.content.kind == .terminal {
+        if surface.content.isNativeTerminal {
             try openTerminalAttachPanelSurface(surface)
             return
         }
@@ -717,8 +717,13 @@ final class LxAppMacAppUIRuntime: NSObject {
                 throw LxAppUIError.invalidConfig("surface \(surface.id) requires content.appId for lxapp content")
             }
             openPanelLxapp(surface.id, appId, normalizedPath(surface.content.path))
-        case .terminal:
+        case .native:
+            guard surface.content.isNativeTerminal else {
+                throw LxAppUIError.unsupported("surface \(surface.id) uses native content that cannot be presented as an aside")
+            }
             try openTerminalAttachPanelSurface(surface)
+        case .page, .url:
+            throw LxAppUIError.unsupported("surface \(surface.id) uses content that cannot be presented as an aside on macOS")
         }
     }
 
@@ -746,8 +751,8 @@ final class LxAppMacAppUIRuntime: NSObject {
                     panelId: panelID
                 )
             )
-        case .terminal:
-            throw LxAppUIError.unsupported("surface \(surface.id) uses unsupported terminal content on macOS")
+        case .page, .url, .native:
+            throw LxAppUIError.unsupported("surface \(surface.id) is not lxapp content")
         }
     }
 
@@ -820,7 +825,7 @@ final class LxAppMacAppUIRuntime: NSObject {
     private func registerHostAsideForSurface(_ surface: LxAppUIConfig.Surface) {
         guard let primaryAppId = rootSurface.content.appId else { return }
         let edge = managedEdgeOverrides[surface.id] ?? surface.edge
-        if surface.content.kind == .terminal {
+        if surface.content.isNativeTerminal {
             _ = registerHostAsideContent(
                 primaryAppId,
                 surface.id,
@@ -1284,8 +1289,20 @@ final class LxAppMacAppUIRuntime: NSObject {
                     throw LxAppUIError.unsupported("macOS app UI currently requires unique lxapp content.appId values; duplicate \(appId)")
                 }
                 seenAppIDs.insert(appId)
-            case .terminal:
-                break
+            case .page:
+                throw LxAppUIError.unsupported("declarative page surface \(surface.id) is not supported on macOS")
+            case .url:
+                guard let url = surface.content.url, !url.isEmpty else {
+                    throw LxAppUIError.invalidConfig("surface \(surface.id) requires content.url")
+                }
+                throw LxAppUIError.unsupported("URL surface \(surface.id) is not implemented on macOS")
+            case .native:
+                guard let name = surface.content.name else {
+                    throw LxAppUIError.invalidConfig("surface \(surface.id) requires content.name")
+                }
+                if name == .browser {
+                    throw LxAppUIError.unsupported("native browser surface \(surface.id) is not implemented on macOS")
+                }
             }
 
             if surface.anchor != nil && surface.role != .float {
@@ -1324,7 +1341,7 @@ final class LxAppMacAppUIRuntime: NSObject {
         var childrenByParentId: [String: [String]] = [:]
 
         for surface in availableSurfaces {
-            if surface.content.kind == .terminal {
+            if surface.content.isNativeTerminal {
                 guard surface.role == .aside else {
                     throw LxAppUIError.unsupported("terminal surface \(surface.id) must use role aside")
                 }
