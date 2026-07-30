@@ -34,6 +34,9 @@ pub struct LingXiaConfig {
     pub features: Option<FeaturesConfig>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub capabilities: Option<CapabilitiesConfig>,
+    /// Application-wide native UI colors emitted into `app.json`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub theme: Option<ThemeConfig>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub browser: Option<BrowserConfig>,
     /// Generated UI structure (`ui.json`). Built from `surfaces` at load time;
@@ -72,7 +75,7 @@ impl Default for FeaturesConfig {
 
 // One shared definition with the runtime (which reads it back from app.json),
 // so a capability can never exist on one side only.
-pub use lingxia_app_context::CapabilitiesConfig;
+pub use lingxia_app_context::{CapabilitiesConfig, ThemeConfig};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -1479,6 +1482,7 @@ impl LingXiaConfig {
 
         let mut config: LingXiaConfig = yaml::from_str(&content)
             .with_context(|| format!("Failed to parse {}", config_path.display()))?;
+        config.theme = config.theme.take().and_then(ThemeConfig::normalized);
         config.apply_surfaces()?;
         config.validate()?;
 
@@ -1531,6 +1535,7 @@ impl LingXiaConfig {
             windows: None,
             features: Some(FeaturesConfig::default()),
             capabilities: Some(CapabilitiesConfig::default()),
+            theme: None,
             browser: None,
             generated_ui: None,
             surfaces: None,
@@ -2354,10 +2359,12 @@ pub fn dir_matches_host_config(dir: &Path, requested_name: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use lingxia_app_context::{ThemeColor, ThemeStyle};
     use tempfile::TempDir;
 
     fn load_config_yaml(source: &str) -> Result<LingXiaConfig> {
         let mut config: LingXiaConfig = yaml::from_str(source)?;
+        config.theme = config.theme.take().and_then(ThemeConfig::normalized);
         config.apply_surfaces()?;
         config.validate()?;
         Ok(config)
@@ -2679,13 +2686,42 @@ android:
     #[test]
     fn save_and_load_yaml() {
         let temp = TempDir::new().unwrap();
-        let config = LingXiaConfig::new_android("my-app", "com.example.myapp", "my-app");
+        let mut config = LingXiaConfig::new_android("my-app", "com.example.myapp", "my-app");
+        config.theme = Some(ThemeConfig {
+            light: Some(ThemeStyle {
+                accent_color: Some(ThemeColor::parse("#a1b2c3").unwrap()),
+                ..ThemeStyle::default()
+            }),
+            dark: None,
+        });
 
         config.save(temp.path()).unwrap();
 
         let loaded = LingXiaConfig::load(temp.path()).unwrap();
         assert_eq!(loaded.app.as_ref().unwrap().project_name, "my-app");
+        assert_eq!(
+            loaded
+                .theme
+                .as_ref()
+                .and_then(|theme| theme.light.as_ref())
+                .and_then(|style| style.accent_color)
+                .map(ThemeColor::rgb),
+            Some(0xA1B2C3)
+        );
         assert!(temp.path().join(HOST_CONFIG_FILE).exists());
+    }
+
+    #[test]
+    fn theme_yaml_rejects_alpha_and_unknown_tokens() {
+        for theme in [
+            "  light:\n    accentColor: '#80A1B2C3'",
+            "  light:\n    sidebarBackgroundColor: '#A1B2C3'",
+        ] {
+            let yaml = format!(
+                "app:\n  projectName: demo\n  productName: Demo\n  productVersion: 0.1.0\n  platforms: [android]\n  homeAppId: home\ntheme:\n{theme}\n"
+            );
+            assert!(yaml::from_str::<LingXiaConfig>(&yaml).is_err(), "{theme}");
+        }
     }
 
     #[test]

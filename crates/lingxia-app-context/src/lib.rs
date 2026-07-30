@@ -1,4 +1,5 @@
 use semver::Version;
+use serde::de::Error as _;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -44,6 +45,106 @@ impl EnvVersion {
 impl std::fmt::Display for EnvVersion {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(self.as_str())
+    }
+}
+
+/// Opaque sRGB color used by the host theme wire format.
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ThemeColor(u32);
+
+impl ThemeColor {
+    pub fn parse(value: &str) -> Result<Self, String> {
+        if value.len() != 7 || !value.starts_with('#') {
+            return Err("theme colors must use opaque #RRGGBB syntax".to_string());
+        }
+        let rgb = u32::from_str_radix(&value[1..], 16)
+            .map_err(|_| "theme colors must use opaque #RRGGBB syntax".to_string())?;
+        Ok(Self(rgb))
+    }
+
+    pub const fn rgb(self) -> u32 {
+        self.0
+    }
+}
+
+impl std::fmt::Debug for ThemeColor {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "ThemeColor(#{:06X})", self.0)
+    }
+}
+
+impl std::fmt::Display for ThemeColor {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "#{:06X}", self.0)
+    }
+}
+
+impl Serialize for ThemeColor {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(&self.to_string())
+    }
+}
+
+impl<'de> Deserialize<'de> for ThemeColor {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let value = String::deserialize(deserializer)?;
+        Self::parse(&value).map_err(D::Error::custom)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Default)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ThemeStyle {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub window_background_color: Option<ThemeColor>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub surface_background_color: Option<ThemeColor>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub foreground_color: Option<ThemeColor>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub muted_foreground_color: Option<ThemeColor>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub accent_color: Option<ThemeColor>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub separator_color: Option<ThemeColor>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selection_background_color: Option<ThemeColor>,
+}
+
+impl ThemeStyle {
+    pub fn is_empty(&self) -> bool {
+        *self == Self::default()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Default)]
+#[serde(deny_unknown_fields)]
+pub struct ThemeConfig {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub light: Option<ThemeStyle>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dark: Option<ThemeStyle>,
+}
+
+impl ThemeConfig {
+    pub fn normalized(mut self) -> Option<Self> {
+        self.light = self.light.filter(|style| !style.is_empty());
+        self.dark = self.dark.filter(|style| !style.is_empty());
+        (self.light.is_some() || self.dark.is_some()).then_some(self)
+    }
+
+    pub fn style(&self, dark: bool) -> Option<&ThemeStyle> {
+        if dark {
+            self.dark.as_ref()
+        } else {
+            self.light.as_ref()
+        }
     }
 }
 
@@ -97,6 +198,9 @@ pub struct AppConfig {
 
     #[serde(rename = "appLinks", default, skip_serializing_if = "Option::is_none")]
     pub app_links: Option<AppLinksConfig>,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub theme: Option<ThemeConfig>,
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub capabilities: Option<CapabilitiesConfig>,
@@ -234,9 +338,10 @@ fn default_panel_position() -> PanelPosition {
 
 impl AppConfig {
     pub fn parse_and_validate(content: &str) -> Result<Self, AppContextError> {
-        let config: Self = serde_json::from_str(content).map_err(|e| {
+        let mut config: Self = serde_json::from_str(content).map_err(|e| {
             AppContextError::InvalidJson(format!("Failed to parse app.json: {}", e))
         })?;
+        config.theme = config.theme.take().and_then(ThemeConfig::normalized);
         config.validate()?;
         Ok(config)
     }
@@ -296,6 +401,10 @@ pub fn set_app_config(config: AppConfig) -> Result<(), AppContextError> {
 
 pub fn app_config() -> Option<&'static AppConfig> {
     APP_CONFIG.get()
+}
+
+pub fn theme() -> Option<&'static ThemeConfig> {
+    APP_CONFIG.get().and_then(|config| config.theme.as_ref())
 }
 
 pub fn product_name() -> Option<&'static str> {
@@ -490,7 +599,7 @@ fn panel_position_name(position: PanelPosition) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use super::{AppConfig, AppContextError, set_app_config};
+    use super::{AppConfig, AppContextError, ThemeColor, ThemeConfig, set_app_config};
 
     fn test_config(product_name: &str) -> AppConfig {
         AppConfig {
@@ -506,6 +615,7 @@ mod tests {
             dev_ws_url: None,
             dev_bundle_base_url: None,
             app_links: None,
+            theme: None,
             capabilities: None,
             panels: None,
         }
@@ -539,5 +649,51 @@ mod tests {
 
         let error = config.validate().unwrap_err();
         assert!(matches!(error, AppContextError::InvalidConfig(_)));
+    }
+
+    #[test]
+    fn theme_colors_validate_and_serialize_canonically() {
+        let config = AppConfig::parse_and_validate(
+            r##"{
+                "productName": "Theme Test",
+                "productVersion": "1.0.0",
+                "theme": {
+                    "light": { "accentColor": "#a1b2c3" },
+                    "dark": { "separatorColor": "#343840" }
+                }
+            }"##,
+        )
+        .expect("valid theme");
+
+        let light = config
+            .theme
+            .as_ref()
+            .and_then(|theme| theme.light.as_ref())
+            .expect("light style");
+        assert_eq!(light.accent_color.map(ThemeColor::rgb), Some(0xA1B2C3));
+
+        let json = serde_json::to_string(&config).expect("serialize app config");
+        assert!(json.contains("#A1B2C3"));
+    }
+
+    #[test]
+    fn theme_rejects_alpha_and_unknown_fields() {
+        for theme in [
+            r##"{ "light": { "accentColor": "#80A1B2C3" } }"##,
+            r##"{ "light": { "sidebarBackgroundColor": "#A1B2C3" } }"##,
+            r##"{ "highContrast": { "accentColor": "#A1B2C3" } }"##,
+        ] {
+            let json = format!(
+                r#"{{ "productName": "Theme Test", "productVersion": "1.0.0", "theme": {theme} }}"#
+            );
+            assert!(AppConfig::parse_and_validate(&json).is_err(), "{theme}");
+        }
+    }
+
+    #[test]
+    fn empty_theme_blocks_normalize_to_absence() {
+        let theme: ThemeConfig =
+            serde_json::from_str(r#"{ "light": {}, "dark": {} }"#).expect("parse empty theme");
+        assert!(theme.normalized().is_none());
     }
 }

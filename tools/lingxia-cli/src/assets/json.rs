@@ -97,6 +97,9 @@ pub(super) fn build_app_json_from_config(
             serde_json::to_value(capabilities)?,
         );
     }
+    if let Some(theme) = config.theme.as_ref() {
+        obj.insert("theme".to_string(), serde_json::to_value(theme)?);
+    }
 
     Ok(serde_json::to_string_pretty(&serde_json::Value::Object(
         obj,
