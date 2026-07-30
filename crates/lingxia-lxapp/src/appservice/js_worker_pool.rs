@@ -251,14 +251,17 @@ impl LxAppWorkers {
             | ServiceMessage::Eval { lxapp, .. } => lxapp.logic_enabled(),
         };
 
-        let target_worker_id = instance_key.and_then(|k| {
-            instance_assignments
-                .lock()
-                .unwrap()
-                .get(&k)
-                .copied()
-                .map(WorkerAssignment::worker_id)
-        });
+        let target_worker_id = match &message {
+            ServiceMessage::TerminateAppSvc { worker_id, .. } => Some(*worker_id),
+            _ => instance_key.and_then(|k| {
+                instance_assignments
+                    .lock()
+                    .unwrap()
+                    .get(&k)
+                    .copied()
+                    .map(WorkerAssignment::worker_id)
+            }),
+        };
 
         if let Some(worker_id) = target_worker_id {
             if let Some(worker_task) = worker_tasks.get(&worker_id) {
