@@ -104,6 +104,7 @@ The authoritative, version-matched field list is a freshly scaffolded `lingxia.y
 | `surfaces` | For product hosts | Adaptive UI surface list (generates `ui.json`) |
 | `features` | Recommended | Native Rust compile-time feature switches |
 | `capabilities` | Recommended | Platform/runtime integrations that may initialize SDK capability flows |
+| `theme` | Optional | Application-wide semantic colors for host-owned native UI |
 | `resources` | Recommended | Bundle asset sources copied into native app resources |
 | `browser` | Optional | Override the in-app browser webui (only used when `capabilities.browser: true`) |
 | `appLinks` | Optional | Universal-link / app-link hosts (see [App Links](./applinks.md)) |
@@ -121,6 +122,50 @@ The authoritative, version-matched field list is a freshly scaffolded `lingxia.y
 - The launch `main` surface's `lxapp:` key is the appId it renders — point it at the same home app.
 
 `homeAppVersion` is not configured here; the CLI derives it from the matching `resources.bundles` source. The full, current field set is in a freshly scaffolded `lingxia.yaml`.
+
+---
+
+## `theme` Section
+
+`theme` defines application-wide semantic colors for host-owned native UI. It
+is host configuration, not an lxapp content theme. Both `light` and `dark` are
+optional, and every role inside them is optional:
+
+```yaml
+theme:
+  light:
+    windowBackgroundColor: "#F4F5F7"
+    surfaceBackgroundColor: "#FFFFFF"
+    foregroundColor: "#111827"
+    mutedForegroundColor: "#667085"
+    accentColor: "#2865FF"
+    separatorColor: "#E5E7EB"
+    selectionBackgroundColor: "#EEF3FF"
+  dark:
+    windowBackgroundColor: "#17191C"
+    surfaceBackgroundColor: "#23262B"
+    foregroundColor: "#F3F4F6"
+    mutedForegroundColor: "#9CA3AF"
+    accentColor: "#5B8CFF"
+    separatorColor: "#343840"
+    selectionBackgroundColor: "#303641"
+```
+
+Values use opaque `#RRGGBB` sRGB syntax. The build rejects alpha colors,
+unknown roles, and unknown scheme names. Missing roles retain the platform's
+semantic default for that scheme; values never fall back from light to dark or
+from dark to light. On macOS those defaults are dynamic AppKit semantic colors;
+on Windows they are Fluent theme tokens, with system colors taking precedence
+in a contrast theme.
+
+The Windows and macOS desktop shells consume `windowBackgroundColor` for the
+window backdrop and sidebar, and `surfaceBackgroundColor` for native cards and
+other raised surfaces. Text, selection, accent, and structural dividers consume
+the correspondingly named roles. Other hosts can map the same semantic roles
+without adding platform-specific configuration.
+
+Lxapp page content does not inherit these colors; it responds to the standard
+`prefers-color-scheme` surface and owns its CSS design.
 
 ---
 
