@@ -202,6 +202,7 @@ fn build_default_host_app_config(
         dev_ws_url: None,
         dev_bundle_base_url: None,
         app_links: None,
+        theme: None,
         capabilities: None,
         panels: None,
     }

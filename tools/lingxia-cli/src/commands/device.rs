@@ -227,6 +227,7 @@ mod tests {
             }),
             features: None,
             capabilities: None,
+            theme: None,
             browser: None,
             generated_ui: None,
             surfaces: None,
