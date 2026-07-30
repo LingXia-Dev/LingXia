@@ -41,43 +41,145 @@ pub(super) struct ShellPalette {
     pub sidebar_header_text: u32,
 }
 
-/// The active palette for the current system theme. Cheap (two atomic reads +
-/// a literal), so call sites can read it per-draw without caching.
-pub(super) fn shell_palette() -> ShellPalette {
-    let accent = super::theme::system_accent();
-    if super::theme::is_dark() {
-        ShellPalette {
-            window_background: 0x202020,
-            panel_background: 0x2b2b2b,
-            selection_background: 0x34333a,
-            group_active_background: 0x343434,
-            sidebar_background: 0x202020,
-            text_primary: 0xf3f3f3,
-            text_muted: 0x9aa0a6,
-            accent,
-            divider: 0x383838,
-            control_surface: 0x3a3a3a,
-            address_background: 0x2a2a2a,
-            frame_button_icon: 0xe6e6e6,
-            sidebar_header_text: 0xb0b4ba,
-        }
+fn composite_argb(argb: u32, background: u32) -> u32 {
+    let alpha = argb >> 24;
+    let foreground = argb & 0x00ff_ffff;
+    let blend = |shift: u32| {
+        let foreground = (foreground >> shift) & 0xffu32;
+        let background = (background >> shift) & 0xffu32;
+        ((foreground * alpha + background * (255 - alpha) + 127) / 255) << shift
+    };
+    blend(16) | blend(8) | blend(0)
+}
+
+/// Opaque equivalents of the WinUI common theme resources. The custom GDI
+/// renderer cannot consume XAML brushes, so translucent Fluent tokens are
+/// composited over `SolidBackgroundFillColorBase` before painting.
+fn fluent_shell_palette(dark: bool, accent: u32) -> ShellPalette {
+    let (
+        window_background,
+        panel_fill,
+        selection_fill,
+        text_primary_fill,
+        text_muted_fill,
+        divider_fill,
+        control_fill,
+    ) = if dark {
+        (
+            0x202020,
+            0x0dff_ffff,
+            0x0fff_ffff,
+            0xffff_ffff,
+            0xc5ff_ffff,
+            0x15ff_ffff,
+            0x0fff_ffff,
+        )
     } else {
-        ShellPalette {
-            window_background: 0xdad6e4,
-            panel_background: 0xffffff,
-            selection_background: 0xf7f5fb,
-            group_active_background: 0xcfccd6,
-            sidebar_background: 0xdad6e4,
-            text_primary: 0x111827,
-            text_muted: 0x667085,
-            accent,
-            divider: 0xc7c2d2,
-            control_surface: 0xf3f4f6,
-            address_background: 0xe5e2ec,
-            frame_button_icon: 0x1f2937,
-            sidebar_header_text: 0x4f5661,
-        }
+        (
+            0xf3f3f3,
+            0xb3ff_ffff,
+            0x0900_0000,
+            0xe400_0000,
+            0x9e00_0000,
+            0x0f00_0000,
+            0xb3ff_ffff,
+        )
+    };
+    let panel_background = composite_argb(panel_fill, window_background);
+    let selection_background = composite_argb(selection_fill, window_background);
+    let text_primary = composite_argb(text_primary_fill, window_background);
+    let text_muted = composite_argb(text_muted_fill, window_background);
+    let divider = composite_argb(divider_fill, window_background);
+    let control_surface = composite_argb(control_fill, window_background);
+    ShellPalette {
+        window_background,
+        panel_background,
+        selection_background,
+        group_active_background: selection_background,
+        sidebar_background: window_background,
+        text_primary,
+        text_muted,
+        accent,
+        divider,
+        control_surface,
+        address_background: control_surface,
+        frame_button_icon: text_primary,
+        sidebar_header_text: text_muted,
     }
+}
+
+fn high_contrast_shell_palette(colors: super::theme::SystemColors) -> ShellPalette {
+    ShellPalette {
+        window_background: colors.window,
+        panel_background: colors.window,
+        selection_background: colors.control,
+        group_active_background: colors.control,
+        sidebar_background: colors.window,
+        text_primary: colors.window_text,
+        text_muted: colors.gray_text,
+        accent: colors.highlight,
+        divider: colors.window_text,
+        control_surface: colors.control,
+        address_background: colors.control,
+        frame_button_icon: colors.window_text,
+        sidebar_header_text: colors.window_text,
+    }
+}
+
+fn apply_theme_style(
+    mut palette: ShellPalette,
+    style: Option<&lingxia_app_context::ThemeStyle>,
+) -> ShellPalette {
+    let Some(style) = style else {
+        return palette;
+    };
+    if let Some(color) = style.window_background_color {
+        palette.window_background = color.rgb();
+        palette.sidebar_background = color.rgb();
+    }
+    if let Some(color) = style.surface_background_color {
+        palette.panel_background = color.rgb();
+        palette.control_surface = color.rgb();
+        palette.address_background = color.rgb();
+    }
+    if let Some(color) = style.foreground_color {
+        palette.text_primary = color.rgb();
+        palette.frame_button_icon = color.rgb();
+    }
+    if let Some(color) = style.muted_foreground_color {
+        palette.text_muted = color.rgb();
+        palette.sidebar_header_text = color.rgb();
+    }
+    if let Some(color) = style.accent_color {
+        palette.accent = color.rgb();
+    }
+    if let Some(color) = style.separator_color {
+        palette.divider = color.rgb();
+    }
+    if let Some(color) = style.selection_background_color {
+        palette.selection_background = color.rgb();
+        palette.group_active_background = color.rgb();
+    }
+    palette
+}
+
+fn palette_for(
+    dark: bool,
+    accent: u32,
+    style: Option<&lingxia_app_context::ThemeStyle>,
+) -> ShellPalette {
+    apply_theme_style(fluent_shell_palette(dark, accent), style)
+}
+
+/// The active palette for the current system theme. Values are cached atomics,
+/// so call sites can read it per-draw without querying system APIs.
+pub(super) fn shell_palette() -> ShellPalette {
+    if super::theme::is_high_contrast() {
+        return high_contrast_shell_palette(super::theme::system_colors());
+    }
+    let dark = super::theme::is_dark();
+    let style = lingxia_app_context::theme().and_then(|theme| theme.style(dark));
+    palette_for(dark, super::theme::system_accent(), style)
 }
 
 /// Hover wash (`0xAARRGGBB`) for interactive chrome; an alpha overlay reads
@@ -182,3 +284,89 @@ pub(super) const GLYPH_NAV_FORWARD: &str = "\u{e72a}";
 pub(super) const GLYPH_NAV_RELOAD: &str = "\u{e72c}";
 
 pub(super) const GLYPH_NAV_HOME: &str = "\u{e80f}";
+
+#[cfg(test)]
+mod tests {
+    use super::{high_contrast_shell_palette, palette_for};
+    use crate::shell::theme::SystemColors;
+    use lingxia_app_context::{ThemeColor, ThemeStyle};
+
+    #[test]
+    fn app_theme_maps_semantic_roles_into_windows_shell() {
+        let color = |value| Some(ThemeColor::parse(value).unwrap());
+        let style = ThemeStyle {
+            window_background_color: color("#101112"),
+            surface_background_color: color("#202122"),
+            foreground_color: color("#F0F1F2"),
+            muted_foreground_color: color("#A0A1A2"),
+            accent_color: color("#304FFE"),
+            separator_color: color("#303132"),
+            selection_background_color: color("#404142"),
+        };
+
+        let palette = palette_for(true, 0xABCDEF, Some(&style));
+
+        assert_eq!(palette.window_background, 0x101112);
+        assert_eq!(palette.sidebar_background, 0x101112);
+        assert_eq!(palette.panel_background, 0x202122);
+        assert_eq!(palette.control_surface, 0x202122);
+        assert_eq!(palette.address_background, 0x202122);
+        assert_eq!(palette.text_primary, 0xF0F1F2);
+        assert_eq!(palette.frame_button_icon, 0xF0F1F2);
+        assert_eq!(palette.text_muted, 0xA0A1A2);
+        assert_eq!(palette.sidebar_header_text, 0xA0A1A2);
+        assert_eq!(palette.accent, 0x304FFE);
+        assert_eq!(palette.divider, 0x303132);
+        assert_eq!(palette.selection_background, 0x404142);
+        assert_eq!(palette.group_active_background, 0x404142);
+    }
+
+    #[test]
+    fn partial_theme_keeps_fluent_defaults_for_omitted_roles() {
+        let style = ThemeStyle {
+            accent_color: Some(ThemeColor::parse("#304FFE").unwrap()),
+            ..ThemeStyle::default()
+        };
+
+        let palette = palette_for(false, 0xABCDEF, Some(&style));
+
+        assert_eq!(palette.window_background, 0xF3F3F3);
+        assert_eq!(palette.panel_background, 0xFBFBFB);
+        assert_eq!(palette.text_primary, 0x1A1A1A);
+        assert_eq!(palette.text_muted, 0x5C5C5C);
+        assert_eq!(palette.accent, 0x304FFE);
+        assert_eq!(palette.divider, 0xE5E5E5);
+        assert_eq!(palette.selection_background, 0xEAEAEA);
+    }
+
+    #[test]
+    fn absent_dark_theme_uses_fluent_dark_defaults() {
+        let palette = palette_for(true, 0xABCDEF, None);
+
+        assert_eq!(palette.window_background, 0x202020);
+        assert_eq!(palette.panel_background, 0x2B2B2B);
+        assert_eq!(palette.text_primary, 0xFFFFFF);
+        assert_eq!(palette.text_muted, 0xCCCCCC);
+        assert_eq!(palette.divider, 0x323232);
+        assert_eq!(palette.selection_background, 0x2D2D2D);
+        assert_eq!(palette.accent, 0xABCDEF);
+    }
+
+    #[test]
+    fn contrast_theme_uses_system_colors() {
+        let palette = high_contrast_shell_palette(SystemColors {
+            window: 0x010203,
+            window_text: 0x111213,
+            gray_text: 0x212223,
+            highlight: 0x313233,
+            control: 0x414243,
+        });
+
+        assert_eq!(palette.window_background, 0x010203);
+        assert_eq!(palette.panel_background, 0x010203);
+        assert_eq!(palette.text_primary, 0x111213);
+        assert_eq!(palette.text_muted, 0x212223);
+        assert_eq!(palette.accent, 0x313233);
+        assert_eq!(palette.control_surface, 0x414243);
+    }
+}
