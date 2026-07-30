@@ -268,13 +268,16 @@ pub async fn navigate(
 
     app.ensure_page_exists(&target_url)
         .map_err(|err| err.to_string())?;
-    let current_path = app
-        .peek_current_page()
-        .ok_or_else(|| "no current page".to_string())?;
-    let current_page = app
-        .get_page(&current_path)
-        .ok_or_else(|| "current page not found".to_string())?;
     let target_page = app.get_or_create_page(&target_url);
+    let current_page = match app.peek_current_page() {
+        Some(current_path) => app
+            .get_page(&current_path)
+            .ok_or_else(|| "current page not found".to_string())?,
+        // Relaunch owns the complete stack transition, so it can also bootstrap
+        // an app whose initial page has not reached the stack yet.
+        None if kind == NavigationType::Launch => target_page.clone(),
+        None => return Err("no current page".to_string()),
+    };
     let target_page = current_page
         .navigate_to(target_page, kind)
         .map_err(|err| err.to_string())?;
