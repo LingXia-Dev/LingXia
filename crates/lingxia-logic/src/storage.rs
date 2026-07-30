@@ -29,6 +29,9 @@ impl JSContextService for LxStorageService {
     }
 }
 
+/// Open this lxapp's asynchronous persistent key-value store. Values returned
+/// by `get` are untyped; validate or narrow them at the call site. Use
+/// `lx.getFileManager()` instead for path-based data.
 fn get_storage(ctx: JSContext) -> JSResult<RongStorage> {
     // If a Storage instance has already been created for this JSContext,
     // return a clone so getStorage() can be called multiple times safely.

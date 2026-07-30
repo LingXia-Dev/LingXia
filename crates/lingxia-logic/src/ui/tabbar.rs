@@ -30,7 +30,8 @@ struct RemoveTabBarBadgeOptions {
     index: i32,
 }
 
-/// Options for setting TabBar style
+/// Runtime style overrides for a TabBar declared in `lxapp.json`. These options
+/// do not create a TabBar.
 #[derive(FromJSObject)]
 struct SetTabBarStyleOptions {
     color: Option<String>,
@@ -42,7 +43,8 @@ struct SetTabBarStyleOptions {
     border_style: Option<String>,
 }
 
-/// Options for setting TabBar item
+/// Runtime item overrides for a TabBar declared in `lxapp.json`. These options
+/// do not create a TabBar.
 #[derive(FromJSObject)]
 struct SetTabBarItemOptions {
     index: i32,
@@ -53,7 +55,8 @@ struct SetTabBarItemOptions {
     selected_icon_path: Option<String>,
 }
 
-/// Show TabBar red dot
+/// Show a red dot on a statically declared TabBar item. Returns `false` when
+/// this lxapp has no TabBar or the item does not exist.
 fn show_tabbar_red_dot(ctx: JSContext, options: ShowTabBarRedDotOptions) -> JSResult<bool> {
     let lxapp = LxApp::from_ctx(&ctx)?;
 
@@ -76,7 +79,8 @@ fn show_tabbar_red_dot(ctx: JSContext, options: ShowTabBarRedDotOptions) -> JSRe
     }
 }
 
-/// Hide TabBar red dot
+/// Hide a red dot on a statically declared TabBar item. Returns `false` when
+/// this lxapp has no TabBar or the item does not exist.
 fn hide_tabbar_red_dot(ctx: JSContext, options: HideTabBarRedDotOptions) -> JSResult<bool> {
     let lxapp = LxApp::from_ctx(&ctx)?;
 
@@ -99,7 +103,8 @@ fn hide_tabbar_red_dot(ctx: JSContext, options: HideTabBarRedDotOptions) -> JSRe
     }
 }
 
-/// Set TabBar badge
+/// Set a badge on a statically declared TabBar item. Returns `false` when this
+/// lxapp has no TabBar or the item does not exist.
 fn set_tabbar_badge(ctx: JSContext, options: SetTabBarBadgeOptions) -> JSResult<bool> {
     let lxapp = LxApp::from_ctx(&ctx)?;
 
@@ -122,7 +127,8 @@ fn set_tabbar_badge(ctx: JSContext, options: SetTabBarBadgeOptions) -> JSResult<
     }
 }
 
-/// Remove TabBar badge
+/// Remove a badge from a statically declared TabBar item. Returns `false` when
+/// this lxapp has no TabBar or the item does not exist.
 fn remove_tabbar_badge(ctx: JSContext, options: RemoveTabBarBadgeOptions) -> JSResult<bool> {
     let lxapp = LxApp::from_ctx(&ctx)?;
 
@@ -145,7 +151,8 @@ fn remove_tabbar_badge(ctx: JSContext, options: RemoveTabBarBadgeOptions) -> JSR
     }
 }
 
-/// Show TabBar
+/// Show the TabBar declared in `lxapp.json`. Returns `false` when none is
+/// declared.
 async fn show_tabbar(ctx: JSContext) -> JSResult<bool> {
     let lxapp = LxApp::from_ctx(&ctx)?;
 
@@ -176,7 +183,8 @@ async fn show_tabbar(ctx: JSContext) -> JSResult<bool> {
     }
 }
 
-/// Hide TabBar
+/// Hide the TabBar declared in `lxapp.json`. Returns `false` when none is
+/// declared.
 async fn hide_tabbar(ctx: JSContext) -> JSResult<bool> {
     let lxapp = LxApp::from_ctx(&ctx)?;
 
@@ -207,7 +215,8 @@ async fn hide_tabbar(ctx: JSContext) -> JSResult<bool> {
     }
 }
 
-/// Set TabBar style
+/// Override the style of the TabBar declared in `lxapp.json`. Returns `false`
+/// when none is declared.
 fn set_tabbar_style(ctx: JSContext, options: SetTabBarStyleOptions) -> JSResult<bool> {
     let lxapp = LxApp::from_ctx(&ctx)?;
 
@@ -244,7 +253,8 @@ fn set_tabbar_style(ctx: JSContext, options: SetTabBarStyleOptions) -> JSResult<
     }
 }
 
-/// Set TabBar item
+/// Override an item in the TabBar declared in `lxapp.json`. Returns `false`
+/// when no TabBar is declared.
 fn set_tabbar_item(ctx: JSContext, options: SetTabBarItemOptions) -> JSResult<bool> {
     let lxapp = LxApp::from_ctx(&ctx)?;
 

@@ -113,7 +113,7 @@ fn ensure_update_handlers(ctx: &JSContext) -> JSResult<()> {
     Ok(())
 }
 
-/// JS Update Manager - simply restarts app to apply downloaded updates
+/// Callback-based update manager for this lxapp's bundle.
 #[js_class(clone)]
 pub(crate) struct JSUpdateManager {
     appid: String,
@@ -224,7 +224,9 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     register_update_api(ctx)
 }
 
-// lx.getUpdateManager() -> returns singleton instance
+/// Return the callback-based update manager for this lxapp's bundle. This is
+/// available to every lxapp and is distinct from the home-only
+/// `lx.app.checkUpdate()`, which updates the native host app.
 fn get_update_manager(ctx: JSContext) -> JSResult<JSObject> {
     ensure_update_handlers(&ctx)?;
 
