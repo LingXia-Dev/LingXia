@@ -82,7 +82,7 @@ final class DockedBrowser: NSObject {
     }
 
     /// Root view handed to the aside panel slot.
-    let containerView = NSView()
+    let containerView = LxAppHostThemeLayerView(role: .surfaceBackground)
 
     private let owner: (appId: String, sessionId: UInt64)
     /// A tab's X was clicked: close that surface node (routes back through the
@@ -91,13 +91,13 @@ final class DockedBrowser: NSObject {
     /// The close-aside affordance was clicked: close every tab/node.
     private let onCloseAside: () -> Void
 
-    private let toolbar = NSView()
+    private let toolbar = LxAppHostThemeLayerView(role: .surfaceBackground)
     private let backButton = NSButton()
     private let forwardButton = NSButton()
     private let refreshButton = NSButton()
     private let closeAsideButton = NSButton()
     private let tabStrip = NSStackView()
-    private let separator = NSView()
+    private let separator = LxAppHostThemeLayerView(role: .separator)
     private let webContainer = NSView()
 
     private var tabs: [Tab] = []
@@ -386,11 +386,8 @@ final class DockedBrowser: NSObject {
 
     private func buildChrome() {
         containerView.wantsLayer = true
-        containerView.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
-
         toolbar.translatesAutoresizingMaskIntoConstraints = false
         toolbar.wantsLayer = true
-        toolbar.layer?.backgroundColor = NSColor.controlBackgroundColor.cgColor
         containerView.addSubview(toolbar)
 
         configureToolButton(backButton, iconName: "icon_back", action: #selector(backClicked))
@@ -405,7 +402,7 @@ final class DockedBrowser: NSObject {
         closeAsideButton.imagePosition = .imageOnly
         closeAsideButton.image = LxIcon.image(
             named: "icon_close_x", size: CGSize(width: 14, height: 14))
-        closeAsideButton.contentTintColor = NSColor.secondaryLabelColor
+        closeAsideButton.contentTintColor = LxAppHostTheme.mutedForeground
         closeAsideButton.toolTip = L10n.string("lx_common_close")
         closeAsideButton.setAccessibilityLabel(L10n.string("lx_common_close"))
         closeAsideButton.target = self
@@ -426,7 +423,6 @@ final class DockedBrowser: NSObject {
 
         separator.translatesAutoresizingMaskIntoConstraints = false
         separator.wantsLayer = true
-        separator.layer?.backgroundColor = NSColor.separatorColor.cgColor
         containerView.addSubview(separator)
 
         webContainer.translatesAutoresizingMaskIntoConstraints = false
@@ -489,7 +485,7 @@ final class DockedBrowser: NSObject {
         button.target = self
         button.action = action
         button.image = LxIcon.image(named: iconName, size: CGSize(width: Layout.iconSize, height: Layout.iconSize))
-        button.contentTintColor = NSColor.labelColor.withAlphaComponent(0.8)
+        button.contentTintColor = LxAppHostTheme.foreground.withAlphaComponent(0.8)
     }
 
     /// A tab chip: a title button (activates) + a small close button.
@@ -502,7 +498,7 @@ final class DockedBrowser: NSObject {
         title.alignment = .left
         title.lineBreakMode = .byTruncatingTail
         title.title = tab.title
-        title.contentTintColor = .labelColor
+        title.contentTintColor = LxAppHostTheme.foreground
         title.target = self
         title.action = #selector(tabButtonClicked(_:))
         objc_setAssociatedObject(title, &AssociatedKeys.surfaceId, tab.surfaceId, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
@@ -512,7 +508,7 @@ final class DockedBrowser: NSObject {
         icon.image = LxIcon.image(
             named: "icon_globe", size: CGSize(width: Layout.tabIconSize, height: Layout.tabIconSize))
         icon.imageScaling = .scaleProportionallyDown
-        icon.contentTintColor = .secondaryLabelColor
+        icon.contentTintColor = LxAppHostTheme.mutedForeground
 
         let close = tab.closeButton
         close.translatesAutoresizingMaskIntoConstraints = false
@@ -520,7 +516,7 @@ final class DockedBrowser: NSObject {
         close.imagePosition = .imageOnly
         close.image = LxIcon.image(
             named: "icon_close_x", size: CGSize(width: 12, height: 12))
-        close.contentTintColor = .tertiaryLabelColor
+        close.contentTintColor = LxAppHostTheme.mutedForeground
         close.target = self
         close.action = #selector(tabCloseClicked(_:))
         objc_setAssociatedObject(close, &AssociatedKeys.surfaceId, tab.surfaceId, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
@@ -573,12 +569,16 @@ final class DockedBrowser: NSObject {
             tab.row.isActiveTab = selected
             // The active tab overlaps its neighbours' feet, so lift it above.
             tab.row.layer?.zPosition = selected ? 2 : 0
-            tab.button.contentTintColor = selected ? .labelColor : .secondaryLabelColor
+            tab.button.contentTintColor = selected
+                ? LxAppHostTheme.foreground
+                : LxAppHostTheme.mutedForeground
             // Inactive favicon sits a touch brighter than the title for legibility.
             tab.iconView.contentTintColor = selected
-                ? .controlAccentColor
-                : NSColor.labelColor.withAlphaComponent(0.65)
-            tab.closeButton.contentTintColor = selected ? .secondaryLabelColor : .tertiaryLabelColor
+                ? LxAppHostTheme.accent
+                : LxAppHostTheme.foreground.withAlphaComponent(0.65)
+            tab.closeButton.contentTintColor = selected
+                ? LxAppHostTheme.mutedForeground
+                : LxAppHostTheme.mutedForeground
             tab.closeButton.alphaValue = selected ? 1 : 0.65
             // Hide the divider on the seam shared with the active tab.
             let nextSelected = index + 1 < tabs.count && tabs[index + 1].surfaceId == activeSurfaceId

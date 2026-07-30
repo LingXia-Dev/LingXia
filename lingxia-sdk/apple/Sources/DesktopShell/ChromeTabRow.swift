@@ -75,11 +75,11 @@ final class ChromeTabRowView: NSStackView {
             // with the content colour, flared feet merging into the toolbar
             // bottom (overdraw 1px to bridge the toolbar separator).
             let path = chromeTabPath(topInset: topInset, foot: foot, corner: corner, overdraw: pixel)
-            NSColor.windowBackgroundColor.setFill()
+            LxAppHostTheme.surfaceBackground.setFill()
             path.fill()
             // Whisper-thin top hairline for definition; the colour contrast
             // with the bar carries the separation (Chrome light has none).
-            NSColor.separatorColor.withAlphaComponent(0.3).setStroke()
+            LxAppHostTheme.separator.withAlphaComponent(0.3).setStroke()
             path.lineWidth = pixel
             path.stroke()
         } else if isHovered {
@@ -95,12 +95,12 @@ final class ChromeTabRowView: NSStackView {
                 xRadius: corner,
                 yRadius: corner
             )
-            NSColor.labelColor.withAlphaComponent(0.08).setFill()
+            LxAppHostTheme.foreground.withAlphaComponent(0.08).setFill()
             path.fill()
         } else if !suppressTrailingSeparator {
             // Idle tabs are transparent, divided by a short centred hairline.
             let inset: CGFloat = 8
-            NSColor.separatorColor.withAlphaComponent(0.5).setFill()
+            LxAppHostTheme.separator.withAlphaComponent(0.5).setFill()
             NSRect(
                 x: bounds.width - pixel,
                 y: topInset + inset,
@@ -173,6 +173,11 @@ final class ChromeTabRowView: NSStackView {
 
     override func mouseExited(with event: NSEvent) {
         isHovered = false
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        needsDisplay = true
     }
 }
 #endif

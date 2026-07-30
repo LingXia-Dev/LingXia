@@ -62,14 +62,14 @@ class SidebarBrowserItemView: NSView {
             size: CGSize(width: Layout.iconSize, height: Layout.iconSize)
         )
         iconView.imageScaling = .scaleProportionallyUpOrDown
-        iconView.contentTintColor = NSColor.secondaryLabelColor
+        iconView.contentTintColor = LxAppHostTheme.mutedForeground
         iconView.setAccessibilityLabel(L10n.string("lx_browser_label"))
         addSubview(iconView)
 
         // Title
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
         titleLabel.font = NSFont.systemFont(ofSize: 12)
-        titleLabel.textColor = NSColor.labelColor
+        titleLabel.textColor = LxAppHostTheme.foreground
         titleLabel.lineBreakMode = .byTruncatingTail
         titleLabel.maximumNumberOfLines = 1
         titleLabel.stringValue = L10n.string("lx_browser_new_tab")
@@ -84,7 +84,7 @@ class SidebarBrowserItemView: NSView {
         closeButton.isBordered = false
         closeButton.bezelStyle = .regularSquare
         closeButton.imagePosition = .imageOnly
-        closeButton.contentTintColor = NSColor.secondaryLabelColor
+        closeButton.contentTintColor = LxAppHostTheme.mutedForeground
         closeButton.toolTip = L10n.string("lx_common_close")
         closeButton.setAccessibilityLabel(L10n.string("lx_common_close"))
         closeButton.target = self
@@ -134,7 +134,7 @@ class SidebarBrowserItemView: NSView {
                 named: "icon_globe",
                 size: CGSize(width: Layout.iconSize, height: Layout.iconSize)
             )
-            iconView.contentTintColor = NSColor.secondaryLabelColor  // updateAppearance will refine
+            iconView.contentTintColor = LxAppHostTheme.mutedForeground  // updateAppearance will refine
         }
         self.isSelected = isSelected
     }
@@ -145,21 +145,26 @@ class SidebarBrowserItemView: NSView {
         // Only tint the icon when it's the globe SF symbol (contentTintColor nil = favicon, skip tinting)
         let isFavicon = iconView.contentTintColor == nil
         if isSelected {
-            selectionBackground.layer?.backgroundColor = NSColor.controlAccentColor.withAlphaComponent(0.15).cgColor
-            titleLabel.textColor = NSColor.controlAccentColor
-            if !isFavicon { iconView.contentTintColor = NSColor.controlAccentColor }
-            closeButton.contentTintColor = NSColor.controlAccentColor
+            selectionBackground.layer?.backgroundColor = LxAppHostTheme.selectionBackground.cgColor
+            titleLabel.textColor = LxAppHostTheme.accent
+            if !isFavicon { iconView.contentTintColor = LxAppHostTheme.accent }
+            closeButton.contentTintColor = LxAppHostTheme.accent
         } else if isHovered {
             selectionBackground.layer?.backgroundColor = NSColor.labelColor.withAlphaComponent(0.06).cgColor
-            titleLabel.textColor = NSColor.labelColor
-            if !isFavicon { iconView.contentTintColor = NSColor.secondaryLabelColor }
-            closeButton.contentTintColor = NSColor.labelColor
+            titleLabel.textColor = LxAppHostTheme.foreground
+            if !isFavicon { iconView.contentTintColor = LxAppHostTheme.mutedForeground }
+            closeButton.contentTintColor = LxAppHostTheme.foreground
         } else {
             selectionBackground.layer?.backgroundColor = NSColor.clear.cgColor
-            titleLabel.textColor = NSColor.labelColor
-            if !isFavicon { iconView.contentTintColor = NSColor.secondaryLabelColor }
-            closeButton.contentTintColor = NSColor.secondaryLabelColor
+            titleLabel.textColor = LxAppHostTheme.foreground
+            if !isFavicon { iconView.contentTintColor = LxAppHostTheme.mutedForeground }
+            closeButton.contentTintColor = LxAppHostTheme.mutedForeground
         }
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        updateAppearance()
     }
 
     @objc private func closeClicked() {
@@ -223,7 +228,7 @@ class SidebarBrowserItemView: NSView {
             isHovered = true
             updateAppearance()
         } else if zone == "close" {
-            closeButton.layer?.backgroundColor = NSColor.labelColor.withAlphaComponent(0.12).cgColor
+            closeButton.layer?.backgroundColor = LxAppHostTheme.foreground.withAlphaComponent(0.12).cgColor
         }
     }
 

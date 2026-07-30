@@ -117,7 +117,8 @@ final class BrowserTabCoordinator: NSObject {
 
     // UI
     private var browserView: NSView?
-    private let toolbar = NSView()
+    private let toolbar = LxAppHostThemeLayerView(role: .surfaceBackground)
+    private let toolbarSeparator = LxAppHostThemeLayerView(role: .separator)
     private let backButton = NSButton()
     private let forwardButton = NSButton()
     private let refreshButton = NSButton()
@@ -1129,14 +1130,18 @@ final class BrowserTabCoordinator: NSObject {
             named: bookmarked ? "icon_bookmark_filled" : "icon_bookmark",
             size: CGSize(width: 16, height: 16)
         )
-        starButton.contentTintColor = bookmarked ? .controlAccentColor : .tertiaryLabelColor
+        starButton.contentTintColor = bookmarked
+            ? LxAppHostTheme.accent
+            : LxAppHostTheme.mutedForeground
         starButton.toolTip = L10n.string(bookmarked ? "lx_browser_remove_bookmark" : "lx_browser_add_bookmark")
         starButton.setAccessibilityLabel(starButton.toolTip ?? "")
         pinButton.image = LxIcon.image(
             named: pinned ? "icon_pin_filled" : "icon_pin",
             size: CGSize(width: 16, height: 16)
         )
-        pinButton.contentTintColor = pinned ? .controlAccentColor : .tertiaryLabelColor
+        pinButton.contentTintColor = pinned
+            ? LxAppHostTheme.accent
+            : LxAppHostTheme.mutedForeground
         pinButton.toolTip = L10n.string(pinned ? "lx_browser_unpin" : "lx_browser_pin_to_sidebar")
         pinButton.setAccessibilityLabel(pinButton.toolTip ?? "")
     }
@@ -1321,7 +1326,6 @@ final class BrowserTabCoordinator: NSObject {
 
         toolbar.translatesAutoresizingMaskIntoConstraints = false
         toolbar.wantsLayer = true
-        toolbar.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
         bv.addSubview(toolbar)
 
         configureButton(backButton, iconName: "icon_back", action: #selector(backClicked))
@@ -1338,7 +1342,8 @@ final class BrowserTabCoordinator: NSObject {
         addressBarContainer.translatesAutoresizingMaskIntoConstraints = false
         addressBarContainer.wantsLayer = true
         addressBarContainer.layer?.cornerRadius = 6
-        addressBarContainer.layer?.backgroundColor = NSColor.labelColor.withAlphaComponent(0.06).cgColor
+        addressBarContainer.layer?.backgroundColor =
+            LxAppHostTheme.foreground.withAlphaComponent(0.06).cgColor
         toolbar.addSubview(addressBarContainer)
 
         addressField.translatesAutoresizingMaskIntoConstraints = false
@@ -1390,6 +1395,10 @@ final class BrowserTabCoordinator: NSObject {
         menuButton.setAccessibilityLabel(menuButton.toolTip ?? "")
         toolbar.addSubview(menuButton)
         menuButton.isHidden = !pageActionsVisible
+
+        toolbarSeparator.translatesAutoresizingMaskIntoConstraints = false
+        toolbarSeparator.wantsLayer = true
+        bv.addSubview(toolbarSeparator)
 
         webContainer.translatesAutoresizingMaskIntoConstraints = false
         webContainer.wantsLayer = true
@@ -1473,7 +1482,12 @@ final class BrowserTabCoordinator: NSObject {
             pinButton.widthAnchor.constraint(equalToConstant: pageActionsVisible ? 20 : 0),
             pinButton.heightAnchor.constraint(equalToConstant: 20),
 
-            webContainer.topAnchor.constraint(equalTo: toolbar.bottomAnchor),
+            toolbarSeparator.topAnchor.constraint(equalTo: toolbar.bottomAnchor),
+            toolbarSeparator.leadingAnchor.constraint(equalTo: bv.leadingAnchor),
+            toolbarSeparator.trailingAnchor.constraint(equalTo: bv.trailingAnchor),
+            toolbarSeparator.heightAnchor.constraint(equalToConstant: 1),
+
+            webContainer.topAnchor.constraint(equalTo: toolbarSeparator.bottomAnchor),
             webContainer.leadingAnchor.constraint(equalTo: bv.leadingAnchor),
             webContainer.trailingAnchor.constraint(equalTo: bv.trailingAnchor),
             webContainer.bottomAnchor.constraint(equalTo: bv.bottomAnchor),
@@ -1542,7 +1556,7 @@ final class BrowserTabCoordinator: NSObject {
         button.action = action
 
         button.image = loadToolbarIcon(named: iconName, size: Layout.toolbarIconSize)
-        button.contentTintColor = NSColor.labelColor.withAlphaComponent(0.8)
+        button.contentTintColor = LxAppHostTheme.foreground.withAlphaComponent(0.8)
     }
 
     private func loadToolbarIcon(named iconName: String, size: CGFloat) -> NSImage? {

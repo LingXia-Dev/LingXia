@@ -43,7 +43,7 @@ final class AsideSlotTabStripView: NSView {
 
         separator.translatesAutoresizingMaskIntoConstraints = false
         separator.wantsLayer = true
-        separator.layer?.backgroundColor = NSColor.separatorColor.cgColor
+        separator.layer?.backgroundColor = LxAppHostTheme.separator.cgColor
         addSubview(separator)
 
         stack.orientation = .horizontal
@@ -67,6 +67,12 @@ final class AsideSlotTabStripView: NSView {
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        separator.layer?.backgroundColor = LxAppHostTheme.separator.cgColor
+        applySelection()
+    }
 
     func update(tabs: [AsideSlotTab], activeId: String?) {
         guard self.tabs != tabs || self.activeId != activeId else { return }
@@ -137,7 +143,7 @@ private final class AsideSlotTabItemView: NSView {
         closeButton.imagePosition = .imageOnly
         closeButton.image = LxIcon.image(
             named: "icon_close_x", size: CGSize(width: 12, height: 12))
-        closeButton.contentTintColor = .tertiaryLabelColor
+        closeButton.contentTintColor = LxAppHostTheme.mutedForeground
         closeButton.target = self
         closeButton.action = #selector(closeTapped)
 
@@ -180,8 +186,12 @@ private final class AsideSlotTabItemView: NSView {
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
 
     func applyTint(selected: Bool) {
-        titleButton.contentTintColor = selected ? .labelColor : .secondaryLabelColor
-        closeButton.contentTintColor = selected ? .secondaryLabelColor : .tertiaryLabelColor
+        titleButton.contentTintColor = selected
+            ? LxAppHostTheme.foreground
+            : LxAppHostTheme.mutedForeground
+        closeButton.contentTintColor = selected
+            ? LxAppHostTheme.mutedForeground
+            : LxAppHostTheme.mutedForeground
         closeButton.alphaValue = selected ? 1 : 0.65
     }
 
