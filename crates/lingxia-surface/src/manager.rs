@@ -19,6 +19,7 @@ use crate::{CloseOutcome, SurfacePresentation, SurfaceSwitcherSnapshot};
 pub struct SurfaceManager {
     graph: SurfaceGraph,
     presentations: HashMap<SurfaceId, SurfacePresentation>,
+    revision: u64,
     policy: Policy,
     width: f64,
     sidebar_width: f64,
@@ -39,6 +40,7 @@ impl SurfaceManager {
         Self {
             graph: SurfaceGraph::new(),
             presentations: HashMap::new(),
+            revision: 0,
             policy,
             width,
             sidebar_width: 0.0,
@@ -131,6 +133,7 @@ impl SurfaceManager {
         }
         self.presentations
             .retain(|id, _| self.graph.get(id).is_some());
+        self.bump_revision();
         if outcome.resolved_role == crate::model::Role::Aside {
             let admitted = self
                 .graph
@@ -168,18 +171,27 @@ impl SurfaceManager {
         for id in removed {
             self.presentations.remove(id);
         }
+        if matches!(outcome, CloseOutcome::Closed { .. }) {
+            self.bump_revision();
+        }
         outcome
     }
 
     pub fn close_other_mains(&mut self, keeping: &str) -> Vec<SurfaceId> {
         let removed = self.graph.close_other_mains(keeping);
         self.remove_presentations(&removed);
+        if !removed.is_empty() {
+            self.bump_revision();
+        }
         removed
     }
 
     pub fn close_mains_after(&mut self, id: &str) -> Vec<SurfaceId> {
         let removed = self.graph.close_mains_after(id);
         self.remove_presentations(&removed);
+        if !removed.is_empty() {
+            self.bump_revision();
+        }
         removed
     }
 
@@ -194,6 +206,7 @@ impl SurfaceManager {
             return false;
         }
         self.presentations.insert(id.to_string(), presentation);
+        self.bump_revision();
         true
     }
 
@@ -205,6 +218,7 @@ impl SurfaceManager {
             .map(str::trim)
             .filter(|title| !title.is_empty())
             .map(str::to_string);
+        self.bump_revision();
         true
     }
 
@@ -216,17 +230,28 @@ impl SurfaceManager {
             return false;
         }
         presentation.set_custom_title(title);
+        self.bump_revision();
         true
     }
 
     pub fn switcher_snapshot(&self) -> SurfaceSwitcherSnapshot {
-        SurfaceSwitcherSnapshot::derive(&self.graph, &self.presentations)
+        let mut snapshot = SurfaceSwitcherSnapshot::derive(&self.graph, &self.presentations);
+        snapshot.revision = self.revision;
+        snapshot
+    }
+
+    fn bump_revision(&mut self) {
+        self.revision = self.revision.wrapping_add(1);
     }
 
     pub fn set_active_main(&mut self, id: &str) -> bool {
+        let changed = self.graph.active_main_id.as_deref() != Some(id);
         let active = self.graph.set_active_main(id);
         if active {
             self.overlay_fallback_surface_id = None;
+            if changed {
+                self.bump_revision();
+            }
         }
         active
     }

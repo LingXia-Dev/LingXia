@@ -45,11 +45,13 @@ pub struct SurfaceSwitcherItem {
     pub root: bool,
     pub closable: bool,
     pub renameable: bool,
+    pub title_overridden: bool,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SurfaceSwitcherSnapshot {
+    pub revision: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub root_surface_id: Option<SurfaceId>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -82,10 +84,12 @@ impl SurfaceSwitcherSnapshot {
                     root,
                     closable: !root && presentation.capabilities.close,
                     renameable: presentation.capabilities.rename,
+                    title_overridden: presentation.custom_title.is_some(),
                 }
             })
             .collect();
         Self {
+            revision: 0,
             root_surface_id,
             active_surface_id,
             items,
