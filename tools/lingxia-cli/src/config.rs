@@ -430,12 +430,10 @@ fn surfaces_to_ui_for_target(
         if let SurfaceContent::Url(url) = *content {
             validate_declared_surface_url(url)?;
         }
-        if surface.launch {
-            if surface.role != SurfaceRole::Main {
-                return Err(anyhow!(
-                    "surface '{name}': launch: true is only valid on a main surface"
-                ));
-            }
+        if surface.launch && surface.role != SurfaceRole::Main {
+            return Err(anyhow!(
+                "surface '{name}': launch: true is only valid on a main surface"
+            ));
         }
         if surface.edge.is_some() && surface.role != SurfaceRole::Aside {
             return Err(anyhow!(
@@ -704,12 +702,13 @@ fn surfaces_to_ui_for_target(
                     .filter(|e| !e.is_empty())
                     .unwrap_or(default_edge);
                 let edge = map_edge(edge, name)?;
-                if matches!(content.native_name()?, Some(NativeSurfaceName::Terminal)) {
-                    if edge != "bottom" && edge != "top" {
-                        return Err(anyhow!(
-                            "terminal surface '{name}' must use edge 'top' or 'bottom'"
-                        ));
-                    }
+                if matches!(content.native_name()?, Some(NativeSurfaceName::Terminal))
+                    && edge != "bottom"
+                    && edge != "top"
+                {
+                    return Err(anyhow!(
+                        "terminal surface '{name}' must use edge 'top' or 'bottom'"
+                    ));
                 }
                 out.insert("role".into(), json!("aside"));
                 out.insert("attachTo".into(), json!(launch_id));
