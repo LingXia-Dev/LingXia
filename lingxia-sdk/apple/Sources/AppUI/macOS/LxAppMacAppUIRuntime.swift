@@ -409,21 +409,6 @@ final class LxAppMacAppUIRuntime: NSObject {
 
     private var runtimeSidebarActions: [ResolvedRuntimeSidebarAction] = []
 
-    private struct ResolvedRuntimeEmptyState: Codable {
-        struct Action: Codable {
-            let id: String
-            let label: String
-        }
-
-        let generation: UInt64
-        let title: String?
-        let message: String?
-        let iconPath: String?
-        let action: Action?
-    }
-
-    private var runtimeEmptyStateGeneration: UInt64 = 0
-
     func setRuntimeSidebarActions(_ json: String) {
         guard let data = json.data(using: .utf8),
               let items = try? JSONDecoder().decode([ResolvedRuntimeSidebarAction].self, from: data)
@@ -433,32 +418,6 @@ final class LxAppMacAppUIRuntime: NSObject {
         }
         runtimeSidebarActions = items
         refreshChromeActions()
-    }
-
-    func setRuntimeEmptyState(_ json: String) {
-        guard let data = json.data(using: .utf8),
-              let state = try? JSONDecoder().decode(ResolvedRuntimeEmptyState.self, from: data),
-              state.generation >= runtimeEmptyStateGeneration
-        else {
-            LXLog.error("setShellEmptyState: bad or stale payload", category: "MacAppUI")
-            return
-        }
-        runtimeEmptyStateGeneration = state.generation
-        let trimmedTitle = state.title?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let title = trimmedTitle.flatMap { $0.isEmpty ? nil : $0 }
-        let icon = state.iconPath.flatMap { path in
-            NSImage(contentsOf: URL(fileURLWithPath: path))
-        }
-        let action = state.action
-        shell.configureMainEmptyState(
-            title: title ?? "Nothing open",
-            message: state.message,
-            icon: icon,
-            actionLabel: action?.label,
-            onAction: action.map { action in
-                { _ = shellEmptyStateActivate(state.generation, action.id) }
-            }
-        )
     }
 
     func setShellPins(_ json: String) {

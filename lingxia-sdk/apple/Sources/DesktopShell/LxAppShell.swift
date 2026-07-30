@@ -247,7 +247,6 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     private var declaredBrowserSurfaceActivateHandler: ((String) -> Void)?
     private var declaredBrowserSurfaceCloseHandler: ((String) -> Void)?
     private weak var managedMainView: NSView?
-    private lazy var mainEmptyStateView = MainEmptyStateView()
 
     var onManagedWindowCloseRequested: (() -> Void)?
 
@@ -1219,27 +1218,6 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         sidebarView?.updateForTabs(unmanagedTabs, activeTab: activeTab)
         sidebarView?.updateManagedMainItems(items, activeId: activeId)
         reconcileSidebarAutoHide()
-    }
-
-    func presentMainEmptyState() {
-        presentMain(.native(mainEmptyStateView))
-        sidebarView?.clearAllHighlights()
-    }
-
-    func configureMainEmptyState(
-        title: String,
-        message: String?,
-        icon: NSImage?,
-        actionLabel: String?,
-        onAction: (() -> Void)?
-    ) {
-        mainEmptyStateView.configure(
-            title: title,
-            message: message,
-            icon: icon,
-            actionLabel: actionLabel,
-            onAction: onAction
-        )
     }
 
     /// Remove the current lxapp view controller from the main area (pause + detach).
@@ -2301,97 +2279,6 @@ extension LxAppToolbarMode: Equatable {
         default:
             return false
         }
-    }
-}
-
-@MainActor
-private final class MainEmptyStateView: NSView {
-    private let symbolView = NSImageView()
-    private let titleLabel = NSTextField(labelWithString: "Nothing open")
-    private let messageLabel = NSTextField(labelWithString: "")
-    private let actionButton = NSButton(title: "", target: nil, action: nil)
-    private var actionHandler: (() -> Void)?
-
-    override init(frame frameRect: NSRect) {
-        super.init(frame: frameRect)
-        translatesAutoresizingMaskIntoConstraints = false
-        wantsLayer = true
-
-        symbolView.translatesAutoresizingMaskIntoConstraints = false
-        symbolView.image = NSImage(
-            systemSymbolName: "rectangle.stack",
-            accessibilityDescription: "Nothing open"
-        )
-        symbolView.contentTintColor = .tertiaryLabelColor
-        symbolView.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 30, weight: .regular)
-
-        titleLabel.translatesAutoresizingMaskIntoConstraints = false
-        titleLabel.font = .systemFont(ofSize: 13, weight: .medium)
-        titleLabel.textColor = .secondaryLabelColor
-        titleLabel.alignment = .center
-
-        messageLabel.translatesAutoresizingMaskIntoConstraints = false
-        messageLabel.font = .systemFont(ofSize: 12)
-        messageLabel.textColor = .tertiaryLabelColor
-        messageLabel.alignment = .center
-        messageLabel.lineBreakMode = .byWordWrapping
-        messageLabel.maximumNumberOfLines = 3
-        messageLabel.isHidden = true
-
-        actionButton.translatesAutoresizingMaskIntoConstraints = false
-        actionButton.bezelStyle = .rounded
-        actionButton.controlSize = .regular
-        actionButton.target = self
-        actionButton.action = #selector(actionButtonClicked)
-        actionButton.isHidden = true
-
-        let stack = NSStackView(views: [symbolView, titleLabel, messageLabel, actionButton])
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        stack.orientation = .vertical
-        stack.alignment = .centerX
-        stack.spacing = 10
-        stack.setCustomSpacing(14, after: symbolView)
-        stack.setCustomSpacing(16, after: messageLabel)
-        addSubview(stack)
-
-        NSLayoutConstraint.activate([
-            symbolView.widthAnchor.constraint(equalToConstant: 42),
-            symbolView.heightAnchor.constraint(equalToConstant: 42),
-            stack.centerXAnchor.constraint(equalTo: centerXAnchor),
-            stack.centerYAnchor.constraint(equalTo: centerYAnchor),
-            stack.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor, constant: 24),
-            stack.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -24),
-        ])
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
-    }
-
-    func configure(
-        title: String,
-        message: String?,
-        icon: NSImage?,
-        actionLabel: String?,
-        onAction: (() -> Void)?
-    ) {
-        titleLabel.stringValue = title
-        symbolView.image = icon ?? NSImage(
-            systemSymbolName: "rectangle.stack",
-            accessibilityDescription: title
-        )
-        let message = message?.trimmingCharacters(in: .whitespacesAndNewlines)
-        messageLabel.stringValue = message ?? ""
-        messageLabel.isHidden = message?.isEmpty != false
-        let actionLabel = actionLabel?.trimmingCharacters(in: .whitespacesAndNewlines)
-        actionButton.title = actionLabel ?? ""
-        actionButton.isHidden = actionLabel?.isEmpty != false || onAction == nil
-        actionHandler = onAction
-    }
-
-    @objc private func actionButtonClicked() {
-        actionHandler?()
     }
 }
 

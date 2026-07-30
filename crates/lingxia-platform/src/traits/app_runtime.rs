@@ -171,12 +171,6 @@ pub trait AppRuntime:
         Ok(())
     }
 
-    /// Replace the host window's zero-main placeholder. Desktop skins may
-    /// render it when no main surface is active.
-    fn set_shell_empty_state(&self, _state_json: &str) -> Result<(), PlatformError> {
-        Ok(())
-    }
-
     /// Replace the ordered mixed user Pin list. Platform skins resolve visual
     /// metadata only; target identity and the eight-item limit are shell-owned.
     fn set_shell_pins(&self, _items: &[lingxia_shell::ShellPin]) -> Result<(), PlatformError> {

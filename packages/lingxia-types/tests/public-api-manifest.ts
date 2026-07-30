@@ -130,8 +130,7 @@ const HOST_APP_API = [
 ] as const;
 const AUTOSTART_API = ['isEnabled', 'setEnabled'] as const;
 const ENV_API = ['USER_CACHE_PATH', 'USER_DATA_PATH'] as const;
-const SHELL_API = ['emptyState', 'sidebarActions'] as const;
-const SHELL_EMPTY_STATE_API = ['clear', 'set'] as const;
+const SHELL_API = ['sidebarActions'] as const;
 const SHELL_SIDEBAR_ACTIONS_API = ['clear', 'remove', 'replace', 'update'] as const;
 const TRAY_API = ['hide', 'onClick', 'setBadge', 'setIcon', 'setMenu', 'setTitle', 'show'] as const;
 const FILE_MANAGER_API = [
@@ -275,11 +274,6 @@ export const LX_RUNTIME_SURFACES = [
   { name: 'lx.env', expression: 'lx.env', members: ENV_API },
   { name: 'lx.shell', expression: 'lx.shell', members: SHELL_API },
   {
-    name: 'lx.shell.emptyState',
-    expression: 'lx.shell.emptyState',
-    members: SHELL_EMPTY_STATE_API,
-  },
-  {
     name: 'lx.shell.sidebarActions',
     expression: 'lx.shell.sidebarActions',
     members: SHELL_SIDEBAR_ACTIONS_API,
@@ -373,7 +367,6 @@ export type LxApiManifestGate = [
   AssertTrue<Exact<AutostartApi, typeof AUTOSTART_API>>,
   AssertTrue<Exact<LxEnv, typeof ENV_API>>,
   AssertTrue<Exact<ShellApi, typeof SHELL_API>>,
-  AssertTrue<Exact<ShellApi['emptyState'], typeof SHELL_EMPTY_STATE_API>>,
   AssertTrue<Exact<ShellApi['sidebarActions'], typeof SHELL_SIDEBAR_ACTIONS_API>>,
   AssertTrue<Exact<TrayApi, typeof TRAY_API>>,
   AssertTrue<Exact<FileManager, typeof FILE_MANAGER_API>>,

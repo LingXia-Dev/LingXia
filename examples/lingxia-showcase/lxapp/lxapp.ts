@@ -113,23 +113,6 @@ App({
       },
     ]);
 
-    if (os === "macOS" || os === "Windows") {
-      lx.shell.emptyState.set({
-        title: "No open terminals",
-        message: "Create a terminal to continue working.",
-        icon: "public/activator.svg",
-        action: {
-          id: "new-terminal",
-          label: "New Terminal",
-          onActivate: () => {
-            void lx
-              .openSurface({ native: "terminal" })
-              .catch((error) => console.warn("new terminal action failed", error));
-          },
-        },
-      });
-    }
-
     const um = lx.getUpdateManager();
     um.onUpdateReady(async (info) => {
       if (info?.isForceUpdate) {

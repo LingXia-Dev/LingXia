@@ -1537,24 +1537,6 @@ true
         /// Shell chrome writer API (home lxapp only).
         type ShellApi = r###"{
     sidebarActions: ShellSidebarActionsApi;
-    emptyState: ShellEmptyStateApi;
-}"###;
-
-        /// Content for the desktop shell placeholder shown only while no main
-        /// surface is active. It creates no surface, WebView, or sidebar entry.
-        type ShellEmptyStateOptions = r###"{
-    /** Non-empty placeholder title. */
-    title: string;
-    /** Optional supporting text. */
-    message?: string;
-    /** Bundled asset or lxapp-accessible local path. */
-    icon?: string;
-    /** Optional app-owned action; the callback decides what to open or run. */
-    action?: {
-        id: string;
-        label: string;
-        onActivate: () => void;
-    };
 }"###;
 
         /// Header accepts at most two icon actions. Footer actions are shown as

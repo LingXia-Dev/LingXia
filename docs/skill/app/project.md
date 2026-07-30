@@ -391,9 +391,13 @@ Two sidebar regions have fixed ownership:
 - **Pins are the user's** — quick entries for lxapps and websites (eight at most), added and removed through context menus. There is no app API to write them.
 - **Sidebar actions are the app's** — runtime entries the home lxapp declares via `lx.shell.sidebarActions` (see the `@lingxia/types` declarations). Header actions are icon-only and limited to two; footer actions use labeled cells and scroll after five visible rows. The shell invokes `onActivate` and performs no built-in navigation; callbacks can call `lx.openSurface(...)` or run any other app logic. Redeclare them each Logic launch.
 
-On macOS, closing the last main in a product Host does not create a fake browser/terminal or close the app. The window remains with zero active main surfaces and shows shell-owned empty chrome. Configure it from the home Logic with `lx.shell.emptyState.set(...)`; its optional action can reopen a declared surface. This placeholder is window state, so it has no surface id or sidebar tab. Direct URL Runner sessions are the exception: closing their final browser tab closes the Runner window.
+The first declared `main` is the window's stable root and cannot be closed. Other
+main surfaces expose only the actions their content provider supports: browser
+and terminal surfaces may be closed or renamed, while lxapp lifecycle stays
+lxapp-owned. Closing an active non-root main selects another remaining main, so
+the product Host never enters a synthetic zero-main or empty-state mode.
 
-The home lxapp remains the control app even when the visible macOS main is a URL or native surface. Its Logic worker still receives `App.onLaunch` once and may register sidebar actions, empty-state content, tray behavior, and other host chrome without creating a hidden WebView.
+The home lxapp remains the control app even when the visible macOS main is a URL or native surface. Its Logic worker still receives `App.onLaunch` once and may register sidebar actions, tray behavior, and other host chrome without creating a hidden WebView.
 
 ### Menu-bar / system-tray apps
 

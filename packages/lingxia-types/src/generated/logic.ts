@@ -1271,26 +1271,6 @@ export type ShareTitleOptions = {
 /** Shell chrome writer API (home lxapp only). */
 export type ShellApi = {
     sidebarActions: ShellSidebarActionsApi;
-    emptyState: ShellEmptyStateApi;
-};
-
-/**
- * Content for the desktop shell placeholder shown only while no main
- * surface is active. It creates no surface, WebView, or sidebar entry.
- */
-export type ShellEmptyStateOptions = {
-    /** Non-empty placeholder title. */
-    title: string;
-    /** Optional supporting text. */
-    message?: string;
-    /** Bundled asset or lxapp-accessible local path. */
-    icon?: string;
-    /** Optional app-owned action; the callback decides what to open or run. */
-    action?: {
-        id: string;
-        label: string;
-        onActivate: () => void;
-    };
 };
 
 /**
@@ -2194,22 +2174,6 @@ declare global {
   interface LxEnv {
     readonly USER_DATA_PATH: 'lx://userdata';
     readonly USER_CACHE_PATH: 'lx://usercache';
-  }
-}
-
-declare global {
-  interface ShellEmptyStateApi {
-    /**
-     * Set the desktop shell placeholder shown while no main surface is active.
-     * This home-lxapp-owned chrome creates no surface, WebView, or sidebar entry;
-     * unsupported shells ignore it.
-     */
-    set(options: ShellEmptyStateOptions): void;
-    /**
-     * Clear the home lxapp's empty-state declaration and restore the host's neutral
-     * zero-main placeholder. Unsupported shells ignore it.
-     */
-    clear(): void;
   }
 }
 
