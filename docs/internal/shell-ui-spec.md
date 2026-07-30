@@ -51,6 +51,9 @@ relationships, or lifecycle semantics defined here.
    destroys. All platforms follow the same rule.
 5. **User assets belong to the user.** Pins and user sessions cannot be
    silently rewritten by an app.
+6. **One stable root.** The first admitted main is the window's navigation
+   root. Its content kind does not matter, and ordinary tab actions cannot
+   close it.
 
 ---
 
@@ -67,7 +70,8 @@ relationships, or lifecycle semantics defined here.
 | **slot** | A container in the aside region grouped by rendering engine: lxapp, browser, native |
 | **float** | A floating surface that does not participate in main/aside layout |
 | **lxapp tab** | A top-level sidebar tab representing a main lxapp |
-| **web tab** | A top-level sidebar tab representing a main browser tab |
+| **web tab** | A top-level sidebar tab representing a browser-backed main surface |
+| **browser workspace tab** | A provider-internal page tab inside one browser main; it is not a surface switcher item |
 | **tabbar item** | A child row under an expanded lxapp tab, sourced from that lxapp's mobile tabbar |
 | **pin** | A user-saved quick entry for an lxapp or website |
 | **sidebar action** | An app-declared runtime callback entry owned by the single runtime writer and placed in the header or footer |
@@ -130,9 +134,10 @@ enters the main window's surface graph.
 - `lingxia-shell` is the platform-neutral semantic owner: typed sidebar-action/pin
   state, validation, versioned stores, declaration generations, stable-id
   routing, and the combined pin limit.
-- `lingxia-surface` is the generic presentation graph: main, aside, slot,
-  focus, visibility, and layout plans. It knows nothing about pins, bookmarks,
-  sidebar actions, or product behavior such as the terminal.
+- `lingxia-surface` is the generic presentation graph: main identity/order,
+  switcher presentation, aside, slot, focus, visibility, and layout plans. It
+  knows nothing about pins, bookmarks, sidebar actions, or product behavior
+  such as the terminal.
 - The top-level `lingxia` crate coordinates the two domains: a sidebar action
   intent is projected into the surface graph or a native host capability.
 - Logic only parses the JS declaration and owns generation-scoped callbacks.
@@ -167,8 +172,10 @@ Main is special:
 - when the user switches tabs, the shell MAY turn the previous main hidden; but
   a main handle does not support explicit `hide()` — such a call MUST fail with
   `E_NOT_SUPPORTED`, guaranteeing there is always a selected main;
-- `close()` removes the tab and destroys the instance; closing the selected tab
-  selects an adjacent tab; closing the last tab closes the main window.
+- the first admitted main is a stable root and ordinary close MUST reject it;
+- closing an eligible non-root main removes its switcher item and destroys its
+  provider instance; closing the selected item selects an adjacent remaining
+  main. A product Host therefore never enters a zero-main placeholder state.
 
 Child surfaces inside an aside slot:
 
@@ -313,19 +320,36 @@ crammed in the moment the window crosses 840.
 
 ### 4.2 Main tabs
 
-- **Sidebar tabs represent main surfaces only.** Asides never enter the
+- **The main switcher projects main surfaces only.** A full desktop shell renders
+  it as sidebar tabs; compact/custom shells may use another projection or none.
+  Asides never enter the
   sidebar: opening an aside lxapp MUST NOT append a sidebar entry — its
   switching belongs to its slot's header tabs (§4.6), structurally identical to
   the browser aside's title tabs. A sidebar list of "open asides" is abolished
   behavior.
 - While the main window has tabs, exactly one tab MUST be selected.
-- lxapp tabs and web tabs interleave in one scrollable list; pins and
+- lxapp, browser, and native mains interleave in stable graph order; pins and
   sidebar actions stay fixed, outside the main navigation scroll region.
-- Closing the selected tab selects an adjacent tab; closing the last tab closes
-  the main window. Whether the process continues is decided by the tray and the
-  platform app lifecycle.
-- Web tabs come from browser new-tab/navigation, URL opens, pins, and browser
-  aside promotion.
+- The first admitted main is the stable root regardless of content kind. It has
+  no close action. Root replacement is a host configuration/lifecycle operation,
+  not a user tab action.
+- Each content provider supplies its automatic title, icon, capabilities, and
+  content-specific menu section. The shell applies user title overrides and
+  appends common lifecycle actions. Platform code only renders the resolved
+  snapshot and returns revisioned intents.
+- Browser and terminal providers may expose close and rename for non-root mains.
+  Lxapp presentation lifecycle remains lxapp-owned, so its context menu contains
+  lxapp MoreActions rather than generic close/rename.
+- Closing the selected eligible main selects an adjacent remaining main. Close
+  Others/After operate in global switcher order but skip root and any provider
+  item that does not support close.
+- Browser workspace tabs are internal to one browser Surface. New-tab,
+  navigation, and closing an internal page tab never create, rename, or remove a
+  top-level switcher item. Direct URL Runner window lifecycle remains a Runner
+  policy, outside this product-host root contract.
+- `SurfaceId` is the only switcher identity. An lxapp appId, terminal session id,
+  URL, or browser workspace tab id is provider metadata and MUST NOT be used as
+  a substitute for the Surface id.
 
 #### Uniform spacing
 
@@ -767,6 +791,7 @@ As of 2026-07 (post `feat/shell-ui-spec`, PR #126):
 | Sidebar actions + pins | `lx.shell.sidebarActions` drives header/footer snapshots on Windows/macOS; accessibility activation is not yet automated |
 | Sidebar action footer overflow scrolling (5-row cap) | Landed on Windows/macOS |
 | Sidebar/tabbar parity | 184 width, 36/4 and 30/2/1 rhythm, two-level selection, style mapping landed on both platforms |
+| Main surface switcher | Shared ordered/root/capability snapshot and macOS intent routing landed; Windows still needs the same native/browser renderer projection |
 | `hideTabBar`/`showTabBar` ↔ group collapse | Landed |
 | Shell persistence | Window frame, sidebar mode/width, group collapse, aside geometry, and pins landed; main-session lazy restore and the aside geometry-only policy still to be verified against §8 |
 | `E_SURFACE_CONFLICT` | Error path exists in the logic layer; full runtime enforcement across role conflicts pending |

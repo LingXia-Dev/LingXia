@@ -1078,8 +1078,8 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         }
 
         // The VC + page instance are ready; drive the actual main attach through
-        // the surface graph: setActiveMain makes this lxapp the active main, then
-        // commits a present_layout whose activeMainId is this appId. That fires
+        // the surface graph: setActiveMain makes this lxapp's Surface active, then
+        // commits a present_layout carrying that Surface id. That fires
         // the layout reconciler synchronously, which calls reconcileActiveMain to
         // attach this VC. We no longer call presentMain(.lxapp:) here — the graph
         // is the single source of truth for the active-main switch. The reconcile
@@ -1099,12 +1099,11 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     /// but never calls back into `tabManager` — the tab/sidebar selection that
     /// originated the switch already ran; routing through the tab manager here
     /// would loop. Idempotent: a no-op when this lxapp is already the attached
-    /// main and the browser is not occupying the content area (mirrors the aside
+    /// main and no other provider occupies the content area (mirrors the aside
     /// reconciler's idempotent fast path — no detach/re-attach, no flicker).
     /// The lxapp id currently attached to the primary content area, or `nil`
-    /// when the browser occupies it (the browser is not a graph main). The layout
-    /// reconciler reads this to decide whether the core's `activeMainId` differs
-    /// from what is on screen.
+    /// when another provider owns it. The reconciler resolves the active
+    /// Surface's provider identity before comparing it with this value.
     var attachedMainAppId: String? {
         // "Attached" = the current VC's view is actually mounted, not just same app
         // id — after a restart the rebuilt VC shares the id but the old view is gone.
