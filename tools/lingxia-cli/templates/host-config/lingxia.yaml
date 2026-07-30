@@ -43,6 +43,26 @@ app:
 {{PLATFORMS}}
   # Home app opened by default. Resource source is declared in resources.bundles.
   homeAppId: {{HOME_APP_ID}}
+
+# Optional application-wide native UI colors. Omitted roles keep each
+# platform's semantic defaults. Values must use opaque #RRGGBB syntax.
+# theme:
+#   light:
+#     windowBackgroundColor: "#F4F5F7"
+#     surfaceBackgroundColor: "#FFFFFF"
+#     foregroundColor: "#111827"
+#     mutedForegroundColor: "#667085"
+#     accentColor: "#2865FF"
+#     separatorColor: "#E5E7EB"
+#     selectionBackgroundColor: "#EEF3FF"
+#   dark:
+#     windowBackgroundColor: "#17191C"
+#     surfaceBackgroundColor: "#23262B"
+#     foregroundColor: "#F3F4F6"
+#     mutedForegroundColor: "#9CA3AF"
+#     accentColor: "#5B8CFF"
+#     separatorColor: "#343840"
+#     selectionBackgroundColor: "#303641"
 {{ANDROID_SECTION}}{{IOS_SECTION}}{{MACOS_SECTION}}{{HARMONY_SECTION}}{{WINDOWS_SECTION}}{{UI_SECTION}}
 # Native compile-time features for the host Rust library.
 # appService: false makes the CLI build native Rust with --no-default-features.
