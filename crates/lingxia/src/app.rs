@@ -36,6 +36,7 @@ pub fn home_app_id() -> Option<&'static str> {
     lingxia_app_context::home_app_id()
 }
 
+#[cfg(any(target_os = "ios", target_os = "macos"))]
 pub(crate) fn launch_home_control_logic() -> crate::Result<()> {
     let app_id =
         home_app_id().ok_or_else(|| crate::Error::internal("home lxapp is not configured"))?;
