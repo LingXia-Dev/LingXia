@@ -1,5 +1,7 @@
 package com.lingxia.lxapp
 
+import com.lingxia.webview.LingXiaWebView
+
 import com.lingxia.app.CurrentLxApp
 
 import com.lingxia.lxapp.chrome.NavigationBarState
@@ -333,7 +335,7 @@ class LxAppActivity : AppCompatActivity() {
     private var currentSessionId: Long = 0L
 
     // Tracks the currently visible WebView instance
-    private var currentWebView: com.lingxia.lxapp.WebView? = null
+    private var currentWebView: LingXiaWebView? = null
     private var systemBottomInset: Int = 0
     private var imeContentBottomInset: Int = 0
     /** A visible bottom navigation strip; only opaque TabBars reserve it in root padding. */
@@ -1044,7 +1046,7 @@ class LxAppActivity : AppCompatActivity() {
     }
 
     // Helper function to attach a WebView to the container and resume it
-    private fun attachWebViewToUI(view: com.lingxia.lxapp.WebView?) {
+    private fun attachWebViewToUI(view: LingXiaWebView?) {
         if (view == null) {
             LxLog.e(TAG, "attachWebViewToUI called with null view!")
             return
@@ -1191,7 +1193,7 @@ class LxAppActivity : AppCompatActivity() {
     }
 
     // New method to setup WebView content with an existing WebView
-    private fun setupWebViewContentWithExisting(webView: com.lingxia.lxapp.WebView) {
+    private fun setupWebViewContentWithExisting(webView: LingXiaWebView) {
         // Set the current WebView first
         this.currentWebView = webView
 
@@ -1787,7 +1789,7 @@ class LxAppActivity : AppCompatActivity() {
      */
     private fun animateOldContainerOut(
         oldContainer: ViewGroup,
-        oldWebView: com.lingxia.lxapp.WebView,
+        oldWebView: LingXiaWebView,
         endX: Float,
         duration: Long,
         interpolator: AccelerateDecelerateInterpolator
@@ -1817,7 +1819,7 @@ class LxAppActivity : AppCompatActivity() {
      *
      * Extracted from navigateToPage for reuse in coordinated navigation
      */
-    private fun performWebViewTransition(oldWebView: WebView?, newContainer: FrameLayout, isBackNavigation: Boolean, shouldAnimate: Boolean = true, navbarState: NavigationBarState? = null) {
+    private fun performWebViewTransition(oldWebView: LingXiaWebView?, newContainer: FrameLayout, isBackNavigation: Boolean, shouldAnimate: Boolean = true, navbarState: NavigationBarState? = null) {
         // Get reference to old container BEFORE adding new one. A reused
         // container is already a child and can still carry the current tag, so
         // exclude it here or the page would be mistaken for its own predecessor.
@@ -2599,7 +2601,7 @@ class LxAppActivity : AppCompatActivity() {
     fun getSessionId(): Long = currentSessionId
 
     // Get current WebView (internal access for LxApp)
-    internal fun getCurrentWebView(): com.lingxia.lxapp.WebView? = currentWebView
+    internal fun getCurrentWebView(): LingXiaWebView? = currentWebView
 
     // Handle configuration changes to prevent Activity recreation
     override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {

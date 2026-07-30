@@ -83,13 +83,13 @@ internal class WebView(context: Context) : LingXiaWebView(context) {
         return super.onTouchEvent(event)
     }
 
-    fun pause() {
+    override fun pause() {
         Log.d(TAG, "Pausing WebView operations")
         NativeBridge.notifyPageInactive(this)
         onPause()
     }
 
-    fun resume() {
+    override fun resume() {
         Log.d(TAG, "Resuming WebView operations")
         onResume()
     }
