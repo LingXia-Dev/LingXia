@@ -635,8 +635,8 @@ generated files are never hand-written.
 |---|---|---|
 | lxapp | main / aside / float | main / aside / float |
 | page | float | float / standalone window |
-| URL | main / aside | declared main ships on macOS; macOS aside is runtime-opened, Windows retains declared aside |
-| native | main / aside | macOS main: terminal/browser; terminal aside: macOS/Windows |
+| URL | main / aside | declared main ships on macOS/Windows; macOS aside is runtime-opened, Windows retains declared aside |
+| native | main / aside | terminal/browser main and terminal aside ship on macOS/Windows |
 
 The build MUST validate:
 

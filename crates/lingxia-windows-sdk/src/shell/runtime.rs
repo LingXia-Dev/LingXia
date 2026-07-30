@@ -88,6 +88,8 @@ static PRESENTED_BROWSER_TAB: OnceLock<Mutex<Option<String>>> = OnceLock::new();
 /// LxApp group that was expanded under the presented browser tab. Browser
 /// selection must not silently replace/collapse that navigation group.
 static PRESENTED_BROWSER_GROUP_APPID: OnceLock<Mutex<Option<String>>> = OnceLock::new();
+#[cfg(feature = "terminal-runtime")]
+static PRESENTED_NATIVE_MAIN: OnceLock<Mutex<Option<WebTag>>> = OnceLock::new();
 #[cfg(feature = "browser-runtime")]
 static SUPPRESSED_BROWSER_TAB_SYNCS: OnceLock<Mutex<u32>> = OnceLock::new();
 #[cfg(feature = "browser-runtime")]
@@ -510,6 +512,48 @@ pub(crate) fn open_self_browser(url: &str) -> Result<(), String> {
 #[cfg(not(feature = "browser-runtime"))]
 pub(crate) fn open_self_browser(_url: &str) -> Result<(), String> {
     Err("managed self browser is not enabled in this host".to_string())
+}
+
+/// Opens a generated URL/native-browser main while the home lxapp remains the
+/// shell owner and control Logic. Unlike Runner self-browser mode, this does
+/// not replace the product identity with the built-in browser app.
+#[cfg(feature = "browser-runtime")]
+pub(crate) fn open_declared_browser(owner_appid: &str, url: &str) -> Result<(), String> {
+    SELF_BROWSER_HOST.store(false, Ordering::Release);
+    set_shell_owner_appid(owner_appid);
+    let owner = lxapp::try_get(owner_appid)
+        .ok_or_else(|| format!("home control lxapp is not active: {owner_appid}"))?;
+    let tab_id = lingxia_browser::open_for_app(owner_appid, owner.session_id(), url, None)
+        .map_err(|error| error.to_string())?;
+    present_browser_tab_when_ready_with_policy(owner_appid, tab_id, url == "about:blank");
+    Ok(())
+}
+
+#[cfg(feature = "terminal-runtime")]
+pub(crate) fn open_declared_terminal(owner_appid: &str, surface_id: &str) -> Result<(), String> {
+    set_shell_owner_appid(owner_appid);
+    let owner = lxapp::try_get(owner_appid)
+        .ok_or_else(|| format!("home control lxapp is not active: {owner_appid}"))?;
+    let layout = content_agnostic_window_layout(&owner);
+    let webtag = WebTag::new(owner_appid, &format!("__native_main/{surface_id}"), None);
+    crate::window_host::show_native_main_window(&webtag, layout)?;
+    if let Ok(mut presented) = PRESENTED_NATIVE_MAIN
+        .get_or_init(|| Mutex::new(None))
+        .lock()
+    {
+        *presented = Some(webtag);
+    }
+    super::terminal_panel::open_windows_terminal_panel(
+        surface_id,
+        &lingxia_logic::i18n::t(lingxia_logic::I18nKey::TerminalTitle),
+        WindowsPanelPosition::Bottom,
+    )?;
+    if !lingxia_windows_contract::set_host_panel_maximized(surface_id, true) {
+        return Err(format!(
+            "failed to maximize native terminal surface '{surface_id}'"
+        ));
+    }
+    Ok(())
 }
 
 fn shell_owner_appid() -> Option<String> {
@@ -987,55 +1031,65 @@ fn sync_app_shell_layout(appid: &str) {
     let Some(app) = lxapp::try_get(appid) else {
         return;
     };
-    let path = app
-        .peek_current_page()
-        .unwrap_or_else(|| app.initial_route());
-    if path.is_empty() {
-        return;
-    }
+    if let Some(path) = app.peek_current_page().filter(|path| !path.is_empty()) {
+        let webtag = WebTag::new(&app.appid, &path, Some(app.session_id()));
+        let is_active_content = active_host_window_webtag_key().as_deref() == Some(webtag.key());
+        let layout = build_window_layout(&app, &path);
+        install_shell_chrome_event_handler(&webtag, &app.appid);
 
-    let webtag = WebTag::new(&app.appid, &path, Some(app.session_id()));
-    let is_active_content = active_host_window_webtag_key().as_deref() == Some(webtag.key());
-    let layout = build_window_layout(&app, &path);
-    install_shell_chrome_event_handler(&webtag, &app.appid);
-
-    // Drive the device frame's status bar to match the active page: a visible
-    // navigation bar extends its color up over the status bar (with its text
-    // color); a plain page keeps the chrome-colored strip with contrasting text.
-    if is_active_content && let Some(window) = owner_window_handle(appid) {
-        let navbar = app.get_navbar_state(&path);
-        let immersive = navbar.is_custom_navigation();
-        let (foreground, background) = if immersive {
-            // Content bleeds under the bar; float the clock/indicators in the
-            // page's status-bar text color over a transparent strip.
-            let foreground = match navbar.navigationBarTextStyle.as_str() {
-                "white" => 0xffffff,
-                "black" => 0x111111,
-                // Unset / "auto": follow the app theme, matching pages whose
-                // background adapts via prefers-color-scheme.
-                _ if super::theme::is_dark() => 0xf2f2f7,
-                _ => 0x111111,
-            };
-            (foreground, 0)
-        } else {
-            match layout.navigation_bar.as_ref().filter(|nav| nav.visible) {
-                Some(nav) => (nav.text_color, nav.background_color),
-                None => {
-                    let chrome = super::style::shell_palette().window_background;
-                    (contrasting_text_color(chrome), chrome)
+        // Drive the device frame's status bar to match the active page: a visible
+        // navigation bar extends its color up over the status bar (with its text
+        // color); a plain page keeps the chrome-colored strip with contrasting text.
+        if is_active_content && let Some(window) = owner_window_handle(appid) {
+            let navbar = app.get_navbar_state(&path);
+            let immersive = navbar.is_custom_navigation();
+            let (foreground, background) = if immersive {
+                // Content bleeds under the bar; float the clock/indicators in the
+                // page's status-bar text color over a transparent strip.
+                let foreground = match navbar.navigationBarTextStyle.as_str() {
+                    "white" => 0xffffff,
+                    "black" => 0x111111,
+                    // Unset / "auto": follow the app theme, matching pages whose
+                    // background adapts via prefers-color-scheme.
+                    _ if super::theme::is_dark() => 0xf2f2f7,
+                    _ => 0x111111,
+                };
+                (foreground, 0)
+            } else {
+                match layout.navigation_bar.as_ref().filter(|nav| nav.visible) {
+                    Some(nav) => (nav.text_color, nav.background_color),
+                    None => {
+                        let chrome = super::style::shell_palette().window_background;
+                        (contrasting_text_color(chrome), chrome)
+                    }
                 }
-            }
-        };
-        set_device_frame_status_bar_style(window, foreground, background, immersive);
+            };
+            set_device_frame_status_bar_style(window, foreground, background, immersive);
+        }
+
+        if let Err(err) = set_webview_window_layout(&webtag, WindowsWindowLayout::new(layout)) {
+            log::warn!(
+                "failed to sync Windows shell layout for {}:{}: {}",
+                appid,
+                path,
+                err
+            );
+        }
     }
 
-    if let Err(err) = set_webview_window_layout(&webtag, WindowsWindowLayout::new(layout)) {
-        log::warn!(
-            "failed to sync Windows shell layout for {}:{}: {}",
-            appid,
-            path,
-            err
-        );
+    #[cfg(feature = "terminal-runtime")]
+    if let Some(native_webtag) = PRESENTED_NATIVE_MAIN
+        .get()
+        .and_then(|presented| presented.lock().ok())
+        .and_then(|presented| presented.clone())
+    {
+        install_shell_chrome_event_handler(&native_webtag, &app.appid);
+        if let Err(err) = set_webview_window_layout(
+            &native_webtag,
+            WindowsWindowLayout::new(content_agnostic_window_layout(&app)),
+        ) {
+            log::warn!("failed to sync Windows native main shell layout: {err}");
+        }
     }
     // A presented browser tab re-installs chrome handling on its own webtag.
     #[cfg(feature = "browser-runtime")]
@@ -1048,7 +1102,10 @@ fn sync_app_shell_layout(appid: &str) {
             Some(tab.session_id),
         );
         install_shell_chrome_event_handler(&browser_webtag, &app.appid);
-        let layout = build_window_layout(&app, &path);
+        let layout = match app.peek_current_page() {
+            Some(current) if !current.is_empty() => build_window_layout(&app, &current),
+            _ => content_agnostic_window_layout(&app),
+        };
         if let Err(err) =
             set_webview_window_layout(&browser_webtag, WindowsWindowLayout::new(layout))
         {
@@ -1154,6 +1211,19 @@ fn build_window_layout(app: &LxApp, path: &str) -> WindowsShellWindowLayout {
         top_inset,
         suppress_window_controls,
     }
+}
+
+/// Shell chrome for a browser/native main owned by a headless control lxapp.
+/// Reuse the owner's sidebar actions and browser tabs, but do not expose its
+/// page navigation or tabbar pages because no lxapp page is mounted.
+fn content_agnostic_window_layout(app: &LxApp) -> WindowsShellWindowLayout {
+    let mut layout = build_window_layout(app, &app.initial_route());
+    layout.navigation_bar = None;
+    if let Some(tab_bar) = layout.tab_bar.as_mut() {
+        tab_bar.items.clear();
+        tab_bar.selected_index = -1;
+    }
+    layout
 }
 
 #[cfg(feature = "browser-runtime")]
@@ -3825,13 +3895,10 @@ fn browser_tab_shell_layout_is_current(owner_appid: &str, webtag: &WebTag) -> bo
         let Some(app) = lxapp::try_get(owner_appid) else {
             return false;
         };
-        let path = app
-            .peek_current_page()
-            .unwrap_or_else(|| app.initial_route());
-        if path.is_empty() {
-            return false;
+        match app.peek_current_page() {
+            Some(path) if !path.is_empty() => build_window_layout(&app, &path),
+            _ => content_agnostic_window_layout(&app),
         }
-        build_window_layout(&app, &path)
     };
     current.downcast_ref::<WindowsShellWindowLayout>() == Some(&desired)
 }
@@ -3853,18 +3920,12 @@ fn prime_browser_tab_shell_layout(owner_appid: &str, webtag: &WebTag) -> bool {
     let Some(app) = lxapp::try_get(owner_appid) else {
         return false;
     };
-    let path = app
-        .peek_current_page()
-        .unwrap_or_else(|| app.initial_route());
-    if path.is_empty() {
-        return false;
-    }
     install_shell_chrome_event_handler(webtag, &app.appid);
-    set_webview_window_layout(
-        webtag,
-        WindowsWindowLayout::new(build_window_layout(&app, &path)),
-    )
-    .is_ok()
+    let layout = match app.peek_current_page() {
+        Some(path) if !path.is_empty() => build_window_layout(&app, &path),
+        _ => content_agnostic_window_layout(&app),
+    };
+    set_webview_window_layout(webtag, WindowsWindowLayout::new(layout)).is_ok()
 }
 
 #[cfg(feature = "browser-runtime")]
@@ -4167,9 +4228,9 @@ fn non_empty(value: Option<&str>) -> Option<String> {
 #[cfg(feature = "shell-chrome")]
 pub(super) fn owner_window_handle(appid: &str) -> Option<isize> {
     let app = lxapp::try_get(appid)?;
-    let path = app
-        .peek_current_page()
-        .unwrap_or_else(|| app.initial_route());
+    let Some(path) = app.peek_current_page().filter(|path| !path.is_empty()) else {
+        return crate::window_host::primary_host_window_handle();
+    };
     let webtag = WebTag::new(&app.appid, &path, Some(app.session_id()));
     let snapshot = Some(lingxia_windows_contract::webview_window_snapshot(&webtag));
     match snapshot {

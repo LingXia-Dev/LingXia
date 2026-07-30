@@ -374,6 +374,24 @@ pub fn install_default_windows_backend() {
     set_windows_host_backend(Arc::new(WindowsHostBackendImpl));
 }
 
+/// Creates the SDK shell's top-level workspace without mounting a WebView.
+/// Native main surfaces use a synthetic webtag only as the host-window layout
+/// key; no WebView controller or hidden lxapp page is created for it.
+#[cfg(feature = "terminal-runtime")]
+pub(crate) fn show_native_main_window(
+    webtag: &WebTag,
+    layout: crate::shell::WindowsShellWindowLayout,
+) -> Result<(), String> {
+    let view = create_webview_parent_window(webtag).map_err(|error| error.to_string())?;
+    set_webview_window_layout(webtag, WindowsWindowLayout::new(layout))
+        .map_err(|error| error.to_string())?;
+    let hwnd = hwnd_from_handle(view.window);
+    set_host_active_webtag(hwnd, webtag.key());
+    set_primary_host_window(hwnd);
+    mark_active(webtag);
+    show_native_view(view, &default_window_title(), true).map_err(|error| error.to_string())
+}
+
 struct WindowsHostBackendImpl;
 
 impl WindowsHostBackend for WindowsHostBackendImpl {
@@ -5478,7 +5496,7 @@ fn apply_shell_window_frame(hwnd: HWND) -> StdResult<()> {
 /// Last main shell host selected by a presentation. Unlike a page-derived
 /// lookup this remains valid after WM_CLOSE hides the window, so tray activate
 /// can restore the exact HWND the user closed.
-#[cfg(feature = "browser-shell")]
+#[cfg(feature = "shell-chrome")]
 pub(crate) fn primary_host_window_handle() -> Option<isize> {
     primary_host_window_except(None).map(hwnd_handle)
 }

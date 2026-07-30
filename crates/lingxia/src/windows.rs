@@ -11,6 +11,14 @@ use lingxia_webview::{NavigationPolicy, WebTag, WebViewController, WebViewDataMo
 static WINDOWS_APP_VISIBLE_WEBTAGS: LazyLock<Mutex<HashMap<String, HashSet<String>>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
+/// Starts the configured home lxapp's Logic worker without opening a page.
+///
+/// Native and browser main surfaces use the home lxapp as their control app,
+/// so its app lifecycle must run even though no lxapp WebView is mounted.
+pub fn launch_home_control_logic() -> crate::Result<()> {
+    crate::app::launch_home_control_logic()
+}
+
 /// Initializes the LingXia runtime for a Windows host process.
 ///
 /// Installs logging and the WebView2 user-data directory before running the

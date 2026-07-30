@@ -73,7 +73,11 @@ browser-shell = [
     "lingxia/browser-shell",
 ]
 
-terminal-runtime = ["runtime", "dep:lingxia-terminal", "lingxia/terminal-runtime"]
+terminal-runtime = [
+    "shell-chrome",
+    "dep:lingxia-terminal",
+    "lingxia/terminal-runtime",
+]
 webview-input = ["host-api", "lingxia?/webview-input"]
 
 [dependencies]
