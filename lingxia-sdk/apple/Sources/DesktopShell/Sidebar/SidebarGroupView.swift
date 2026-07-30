@@ -76,6 +76,7 @@ enum SidebarGroupColor {
 @MainActor
 private class SidebarGroupHeaderView: NSView {
     var closeButton: NSButton?
+    var menuButton: NSButton?
     /// The collapse/expand chevron toggle. Like `closeButton`, it must receive
     /// its own clicks — otherwise the header swallows them and the chevron can
     /// never toggle the group.
@@ -90,6 +91,12 @@ private class SidebarGroupHeaderView: NSView {
             let closePoint = convert(localPoint, to: close)
             if close.bounds.contains(closePoint) {
                 return close
+            }
+        }
+        if let menu = menuButton, !menu.isHidden {
+            let menuPoint = convert(localPoint, to: menu)
+            if menu.bounds.contains(menuPoint) {
+                return menu
             }
         }
         if let chevron = chevronButton, !chevron.isHidden {
@@ -160,6 +167,7 @@ class SidebarGroupView: NSView {
     /// with the collapse).
     private let aggregateDot = NSView()
     private let closeButton = NSButton()
+    private let menuButton = NSButton()
     private let itemsContainer = NSView()
     private var itemViews: [SidebarItemView] = []
 
@@ -359,6 +367,17 @@ class SidebarGroupView: NSView {
         headerView.addSubview(closeButton)
         headerView.closeButton = closeButton
 
+        menuButton.translatesAutoresizingMaskIntoConstraints = false
+        menuButton.image = NSImage(systemSymbolName: "ellipsis", accessibilityDescription: "More actions")
+        menuButton.isBordered = false
+        menuButton.bezelStyle = .regularSquare
+        menuButton.imagePosition = .imageOnly
+        menuButton.target = self
+        menuButton.action = #selector(menuClicked)
+        menuButton.isHidden = true
+        headerView.addSubview(menuButton)
+        headerView.menuButton = menuButton
+
         // Attribution line binding items to their header
         attributionLine.translatesAutoresizingMaskIntoConstraints = false
         attributionLine.wantsLayer = true
@@ -394,6 +413,11 @@ class SidebarGroupView: NSView {
             appNameLabel.leadingAnchor.constraint(equalTo: appIconView.trailingAnchor, constant: 6),
             appNameLabel.centerYAnchor.constraint(equalTo: headerView.centerYAnchor),
             appNameLabel.trailingAnchor.constraint(lessThanOrEqualTo: closeButton.leadingAnchor, constant: -2),
+
+            menuButton.trailingAnchor.constraint(equalTo: closeButton.leadingAnchor, constant: -2),
+            menuButton.centerYAnchor.constraint(equalTo: headerView.centerYAnchor),
+            menuButton.widthAnchor.constraint(equalToConstant: Layout.closeButtonSize),
+            menuButton.heightAnchor.constraint(equalToConstant: Layout.closeButtonSize),
 
             // Close button: right of label, left of chevron (only visible on hover)
             closeButton.trailingAnchor.constraint(equalTo: chevronIndicator.leadingAnchor, constant: -2),
@@ -627,6 +651,15 @@ class SidebarGroupView: NSView {
         onCloseRequested?(appId)
     }
 
+    @objc private func menuClicked() {
+        let menu = buildContextMenu()
+        menu.popUp(
+            positioning: nil,
+            at: NSPoint(x: menuButton.frame.minX, y: menuButton.frame.minY),
+            in: headerView
+        )
+    }
+
     // MARK: - Header hover tracking
 
     override func updateTrackingAreas() {
@@ -660,6 +693,7 @@ class SidebarGroupView: NSView {
         let zone = event.trackingArea?.userInfo?["zone"] as? String
         if zone == "header" {
             isHeaderHovered = true
+            menuButton.isHidden = false
             let isHome = LxAppCore.isHomeLxApp(appId)
             if !isHome {
                 closeButton.isHidden = false
@@ -676,6 +710,7 @@ class SidebarGroupView: NSView {
             isHeaderHovered = false
             isCloseHovered = false
             closeButton.isHidden = true
+            menuButton.isHidden = true
             closeButton.layer?.backgroundColor = nil
         } else if zone == "close" {
             isCloseHovered = false
@@ -693,11 +728,12 @@ class SidebarGroupView: NSView {
         let appName = resolvedName.isEmpty ? appId : resolvedName
         let version = info.version.toString().trimmingCharacters(in: .whitespacesAndNewlines)
         let releaseType = info.release_type.toString()
+        let isHome = LxAppCore.isHomeLxApp(appId)
 
         // App info header (disabled item)
         var headerTitle = appName
         if !version.isEmpty {
-            headerTitle += " · \(L10n.string("lx_common_version")) \(version)"
+            headerTitle += " · \(version)"
         }
         switch releaseType.lowercased() {
         case "developer": headerTitle += " [DEV]"
@@ -711,7 +747,7 @@ class SidebarGroupView: NSView {
 
         // Home already owns a permanent sidebar group, so duplicating it in
         // the Pin grid has no navigation value and creates two identities.
-        if !LxAppCore.isHomeLxApp(appId) {
+        if !isHome {
             let pinned = shellIsPinned("lxapp", appId)
             let pinItem = NSMenuItem(
                 title: L10n.string(pinned ? "lx_browser_unpin" : "lx_browser_pin_to_sidebar"),
@@ -720,6 +756,7 @@ class SidebarGroupView: NSView {
             )
             pinItem.target = self
             menu.addItem(pinItem)
+            menu.addItem(NSMenuItem.separator())
         }
 
         // Restart
@@ -740,16 +777,19 @@ class SidebarGroupView: NSView {
         cleanItem.target = self
         menu.addItem(cleanItem)
 
-        // Uninstall (only for non-home lxapps)
-        if !LxAppCore.isHomeLxApp(appId) {
+        let snapshot = LxAppMoreActionSnapshot.load(appId: appId)
+        if !snapshot.items.isEmpty {
             menu.addItem(NSMenuItem.separator())
-            let uninstallItem = NSMenuItem(
-                title: L10n.string("lx_capsule_uninstall"),
-                action: #selector(contextMenuUninstall),
-                keyEquivalent: ""
-            )
-            uninstallItem.target = self
-            menu.addItem(uninstallItem)
+            for (index, item) in snapshot.items.enumerated() {
+                let actionItem = NSMenuItem(
+                    title: item.label,
+                    action: #selector(contextMenuMoreAction(_:)),
+                    keyEquivalent: ""
+                )
+                actionItem.representedObject = snapshot.token(at: index)
+                actionItem.target = self
+                menu.addItem(actionItem)
+            }
         }
 
         return menu
@@ -777,8 +817,11 @@ class SidebarGroupView: NSView {
         _ = onLxappEvent(appId, LxAppEvent.capsuleClick, "clean_cache_restart_in_place")
     }
 
-    @objc private func contextMenuUninstall() {
-        _ = onLxappEvent(appId, LxAppEvent.capsuleClick, "uninstall")
+    @objc private func contextMenuMoreAction(_ sender: NSMenuItem) {
+        guard let token = sender.representedObject as? String else { return }
+        DispatchQueue.main.async { [appId] in
+            _ = onLxappEvent(appId, LxAppEvent.capsuleClick, token)
+        }
     }
 }
 

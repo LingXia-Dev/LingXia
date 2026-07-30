@@ -303,6 +303,10 @@ impl LxApp {
     fn handle_capsule_click(self: &Arc<Self>, data: String) -> bool {
         info!("Capsule button '{}' clicked", data).with_appid(self.appid.clone());
 
+        if let Some((generation, index)) = parse_more_action_token(&data) {
+            return self.activate_more_action(generation, index);
+        }
+
         match data.as_str() {
             "close" => {
                 // Home has nothing beneath it to reveal: reset it to the entry
@@ -511,5 +515,28 @@ impl LxApp {
             }
             false
         }
+    }
+}
+
+fn parse_more_action_token(value: &str) -> Option<(u64, usize)> {
+    let mut parts = value.split(':');
+    if parts.next()? != "more" {
+        return None;
+    }
+    let generation = parts.next()?.parse().ok()?;
+    let index = parts.next()?.parse().ok()?;
+    parts.next().is_none().then_some((generation, index))
+}
+
+#[cfg(test)]
+mod more_action_tests {
+    use super::parse_more_action_token;
+
+    #[test]
+    fn parses_only_complete_more_action_tokens() {
+        assert_eq!(parse_more_action_token("more:42:1"), Some((42, 1)));
+        assert_eq!(parse_more_action_token("more:42"), None);
+        assert_eq!(parse_more_action_token("more:42:1:extra"), None);
+        assert_eq!(parse_more_action_token("restart"), None);
     }
 }

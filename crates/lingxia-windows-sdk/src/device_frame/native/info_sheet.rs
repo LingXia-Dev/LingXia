@@ -1,11 +1,11 @@
 use super::*;
 
-use crate::{WindowsDesignIcon, draw_windows_design_icon_with_color};
+use crate::{WindowsDeviceFrameSheetIcon, draw_windows_design_icon_with_color};
 use windows::Win32::Graphics::Gdi::{
     BeginPaint, CombineRgn, CreateFontW, CreateRoundRectRgn, CreateSolidBrush, DT_CENTER,
-    DT_END_ELLIPSIS, DT_LEFT, DT_SINGLELINE, DT_VCENTER, DeleteObject, DrawTextW, EndPaint,
-    FillRect, HBRUSH, HGDIOBJ, PAINTSTRUCT, RGN_AND, SelectObject, SetBkMode, SetTextColor,
-    SetWindowRgn, TRANSPARENT,
+    DT_END_ELLIPSIS, DT_LEFT, DT_SINGLELINE, DT_VCENTER, DT_WORDBREAK, DeleteObject, DrawTextW,
+    EndPaint, FillRect, HBRUSH, HGDIOBJ, PAINTSTRUCT, RGN_AND, SelectObject, SetBkMode,
+    SetTextColor, SetWindowRgn, TRANSPARENT,
 };
 use windows::Win32::UI::WindowsAndMessaging::LWA_ALPHA;
 
@@ -15,9 +15,12 @@ const HEADER_HEIGHT: i32 = 24;
 const HEADER_SEPARATOR_TOP_GAP: i32 = 12;
 const SEPARATOR_HEIGHT: i32 = 1;
 const BUTTON_ROW_TOP_GAP: i32 = 12;
-const BUTTON_ROW_HEIGHT: i32 = 72;
+const BUTTON_COLUMNS: usize = 5;
+const BUTTON_LIMIT: usize = 10;
+const BUTTON_ROW_HEIGHT: i32 = 88;
+const BUTTON_ROW_GAP: i32 = 8;
 const BOTTOM_PADDING: i32 = 16;
-const BUTTON_GAP: i32 = 16;
+const BUTTON_GAP: i32 = 4;
 const BUTTON_ICON_SIZE: i32 = 24;
 const BUTTON_ICON_TOP: i32 = 12;
 const BUTTON_LABEL_GAP: i32 = 6;
@@ -65,7 +68,7 @@ struct AboutSheetWindows {
 pub(in crate::device_frame) struct SheetAction {
     pub(in crate::device_frame) label: String,
     pub(in crate::device_frame) command: u32,
-    pub(in crate::device_frame) icon: WindowsDesignIcon,
+    pub(in crate::device_frame) icon: WindowsDeviceFrameSheetIcon,
 }
 
 static ABOUT_SHEETS: OnceLock<Mutex<HashMap<isize, AboutSheetWindows>>> = OnceLock::new();
@@ -108,7 +111,7 @@ pub(super) fn show_info_sheet(content: HWND, info: DeviceFrameInfoSheet) {
         return;
     };
 
-    let sheet_height = sheet_height().min(height.max(1));
+    let sheet_height = sheet_height(info.actions.len()).min(height.max(1));
     let sheet = unsafe {
         WindowsAndMessaging::CreateWindowExW(
             WindowsAndMessaging::WS_EX_TOOLWINDOW | WindowsAndMessaging::WS_EX_NOACTIVATE,
@@ -276,14 +279,19 @@ unsafe extern "system" fn sheet_proc(
     unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
 }
 
-fn sheet_height() -> i32 {
+fn sheet_height(action_count: usize) -> i32 {
     HEADER_TOP
         + HEADER_HEIGHT
         + HEADER_SEPARATOR_TOP_GAP
         + SEPARATOR_HEIGHT
         + BUTTON_ROW_TOP_GAP
-        + BUTTON_ROW_HEIGHT
+        + action_grid_height(action_count)
         + BOTTOM_PADDING
+}
+
+fn action_grid_height(action_count: usize) -> i32 {
+    let rows = action_count.clamp(1, BUTTON_LIMIT).div_ceil(BUTTON_COLUMNS) as i32;
+    rows * BUTTON_ROW_HEIGHT + (rows - 1) * BUTTON_ROW_GAP
 }
 
 enum SheetHit {
@@ -296,12 +304,12 @@ fn sheet_hit_at(hwnd: HWND, x: i32, y: i32) -> Option<SheetHit> {
     if actions.is_empty() {
         return None;
     }
-    let row = button_row_rect(sheet_client_rect(hwnd));
-    if y < row.top || y >= row.bottom {
+    let grid = button_grid_rect(sheet_client_rect(hwnd), actions.len());
+    if y < grid.top || y >= grid.bottom {
         return None;
     }
-    for (index, action) in actions.iter().enumerate() {
-        if rect_contains(action_button_rect(row, actions.len(), index), x, y) {
+    for (index, action) in actions.iter().take(BUTTON_LIMIT).enumerate() {
+        if rect_contains(action_button_rect(grid, actions.len(), index), x, y) {
             return Some(SheetHit::Action(action.command));
         }
     }
@@ -431,24 +439,33 @@ fn paint_action_buttons(dc: HDC, client: &RECT, info: &DeviceFrameInfoSheet) {
     if actions.is_empty() {
         return;
     }
-    let row = button_row_rect(*client);
-    for (index, action) in actions.iter().enumerate() {
-        let rect = action_button_rect(row, actions.len(), index);
+    let grid = button_grid_rect(*client, actions.len());
+    for (index, action) in actions.iter().take(BUTTON_LIMIT).enumerate() {
+        let rect = action_button_rect(grid, actions.len(), index);
         let icon_rect = RECT {
             left: rect.left + (rect.right - rect.left - BUTTON_ICON_SIZE) / 2,
             top: rect.top + BUTTON_ICON_TOP,
             right: rect.left + (rect.right - rect.left + BUTTON_ICON_SIZE) / 2,
             bottom: rect.top + BUTTON_ICON_TOP + BUTTON_ICON_SIZE,
         };
-        let _ = draw_windows_design_icon_with_color(dc, action.icon, icon_rect, ACTION_TEXT_COLOR);
-        draw_sheet_text(
+        match &action.icon {
+            WindowsDeviceFrameSheetIcon::Design(icon) => {
+                let _ =
+                    draw_windows_design_icon_with_color(dc, *icon, icon_rect, ACTION_TEXT_COLOR);
+            }
+            WindowsDeviceFrameSheetIcon::Path(path) => {
+                let _ =
+                    crate::shell::draw_icon_from_path(dc, path, icon_rect, BUTTON_ICON_SIZE as u32);
+            }
+        }
+        draw_sheet_wrapped_text(
             dc,
             &action.label,
             RECT {
                 left: rect.left + 4,
                 top: icon_rect.bottom + BUTTON_LABEL_GAP,
                 right: rect.right - 4,
-                bottom: rect.bottom - 12,
+                bottom: rect.bottom - 8,
             },
             -13,
             400,
@@ -458,7 +475,7 @@ fn paint_action_buttons(dc: HDC, client: &RECT, info: &DeviceFrameInfoSheet) {
     }
 }
 
-fn button_row_rect(client: RECT) -> RECT {
+fn button_grid_rect(client: RECT, action_count: usize) -> RECT {
     let top = HEADER_TOP
         + HEADER_HEIGHT
         + HEADER_SEPARATOR_TOP_GAP
@@ -468,24 +485,28 @@ fn button_row_rect(client: RECT) -> RECT {
         left: HORIZONTAL_PADDING,
         top,
         right: client.right - HORIZONTAL_PADDING,
-        bottom: top + BUTTON_ROW_HEIGHT,
+        bottom: top + action_grid_height(action_count),
     }
 }
 
-fn action_button_rect(row: RECT, count: usize, index: usize) -> RECT {
-    let count_i32 = count.max(1) as i32;
-    let gaps = BUTTON_GAP * (count_i32 - 1).max(0);
-    let width = ((row.right - row.left - gaps) / count_i32).max(1);
-    let left = row.left + index as i32 * (width + BUTTON_GAP);
+fn action_button_rect(grid: RECT, action_count: usize, index: usize) -> RECT {
+    let row = index / BUTTON_COLUMNS;
+    let row_start = row * BUTTON_COLUMNS;
+    let columns = BUTTON_COLUMNS.min(action_count.saturating_sub(row_start)) as i32;
+    let gaps = BUTTON_GAP * (columns - 1);
+    let width = ((grid.right - grid.left - gaps) / columns).max(1);
+    let column = (index % BUTTON_COLUMNS) as i32;
+    let left = grid.left + column * (width + BUTTON_GAP);
+    let top = grid.top + row as i32 * (BUTTON_ROW_HEIGHT + BUTTON_ROW_GAP);
     RECT {
         left,
-        top: row.top,
-        right: if index + 1 == count {
-            row.right
+        top,
+        right: if column + 1 == columns {
+            grid.right
         } else {
             left + width
         },
-        bottom: row.bottom,
+        bottom: top + BUTTON_ROW_HEIGHT,
     }
 }
 
@@ -523,11 +544,51 @@ fn fill_rect(dc: HDC, rect: RECT, color: u32) {
 fn draw_sheet_text(
     dc: HDC,
     text: &str,
-    mut rect: RECT,
+    rect: RECT,
     height: i32,
     weight: i32,
     color: u32,
     align: windows::Win32::Graphics::Gdi::DRAW_TEXT_FORMAT,
+) {
+    draw_sheet_text_with_flags(
+        dc,
+        text,
+        rect,
+        height,
+        weight,
+        color,
+        align | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS,
+    );
+}
+
+fn draw_sheet_wrapped_text(
+    dc: HDC,
+    text: &str,
+    rect: RECT,
+    height: i32,
+    weight: i32,
+    color: u32,
+    align: windows::Win32::Graphics::Gdi::DRAW_TEXT_FORMAT,
+) {
+    draw_sheet_text_with_flags(
+        dc,
+        text,
+        rect,
+        height,
+        weight,
+        color,
+        align | DT_WORDBREAK | DT_END_ELLIPSIS,
+    );
+}
+
+fn draw_sheet_text_with_flags(
+    dc: HDC,
+    text: &str,
+    mut rect: RECT,
+    height: i32,
+    weight: i32,
+    color: u32,
+    flags: windows::Win32::Graphics::Gdi::DRAW_TEXT_FORMAT,
 ) {
     let font = unsafe {
         CreateFontW(
@@ -552,12 +613,7 @@ fn draw_sheet_text(
         let old_font = SelectObject(dc, HGDIOBJ(font.0));
         let _ = SetBkMode(dc, TRANSPARENT);
         let _ = SetTextColor(dc, rgb_to_colorref(color));
-        let _ = DrawTextW(
-            dc,
-            &mut wide,
-            &mut rect,
-            align | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS,
-        );
+        let _ = DrawTextW(dc, &mut wide, &mut rect, flags);
         if !old_font.is_invalid() {
             let _ = SelectObject(dc, old_font);
         }
@@ -592,7 +648,14 @@ pub(super) fn reposition_info_sheet(content: HWND) {
     let width = rect.right - rect.left;
     let height = rect.bottom - rect.top;
     let screen_corner_radius = content_screen_corner_radius(content);
-    let sheet_height = sheet_height().min(height.max(1));
+    let sheet_height = if is_window_handle_valid(windows.sheet) {
+        sheet_info(hwnd_from_handle(windows.sheet))
+            .map(|info| sheet_height(info.actions.len()))
+            .unwrap_or_else(|| sheet_height(0))
+    } else {
+        sheet_height(0)
+    }
+    .min(height.max(1));
     unsafe {
         if is_window_handle_valid(windows.mask) {
             let mask_hwnd = hwnd_from_handle(windows.mask);

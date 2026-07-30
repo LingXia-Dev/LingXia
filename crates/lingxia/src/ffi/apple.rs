@@ -180,6 +180,9 @@ mod bridge {
         #[swift_bridge(swift_name = "getLxAppInfo")]
         fn get_lxapp_info(appid: &str) -> LxAppInfo;
 
+        #[swift_bridge(swift_name = "getLxAppMoreActions")]
+        fn get_lxapp_more_actions(appid: &str) -> String;
+
         #[swift_bridge(swift_name = "getNavigationBarState")]
         fn get_navigation_bar_state(appid: &str, path: &str) -> NavigationBarState;
 
@@ -1628,6 +1631,12 @@ pub fn get_lxapp_info(appid: &str) -> self::bridge::LxAppInfo {
             icon: String::new(),
         }
     }
+}
+
+pub fn get_lxapp_more_actions(appid: &str) -> String {
+    lxapp::try_get(appid)
+        .map(|app| app.more_actions_json())
+        .unwrap_or_else(|| r#"{"generation":0,"items":[]}"#.to_string())
 }
 
 /// Get NavigationBar state

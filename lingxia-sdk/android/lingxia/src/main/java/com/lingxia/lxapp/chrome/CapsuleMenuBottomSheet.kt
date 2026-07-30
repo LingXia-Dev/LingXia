@@ -16,6 +16,8 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import com.lingxia.lxapp.ActivityInsets
+import org.json.JSONObject
+import java.io.File
 
 /**
  * Bottom sheet menu that appears when clicking the capsule menu (3-dots) button.
@@ -30,8 +32,9 @@ internal object CapsuleMenuBottomSheet {
 
 
     private data class MenuItem(
-        val iconResId: Int,
-        val titleResId: Int,
+        val iconResId: Int? = null,
+        val iconPath: String? = null,
+        val title: String,
         val action: String,
         val color: Int = Color.parseColor("#333333")
     )
@@ -45,20 +48,20 @@ internal object CapsuleMenuBottomSheet {
         val items = listOf(
             MenuItem(
                 iconResId = R.drawable.icon_clean_cache,
-                titleResId = R.string.lx_capsule_clean_cache,
+                title = activity.getString(R.string.lx_capsule_clean_cache),
                 action = NativeApi.CAPSULE_ACTION_CLEAN_CACHE_RESTART
             ),
             MenuItem(
                 iconResId = R.drawable.icon_restart,
-                titleResId = R.string.lx_capsule_restart,
+                title = activity.getString(R.string.lx_capsule_restart),
                 action = NativeApi.CAPSULE_ACTION_RESTART
             ),
             MenuItem(
                 iconResId = R.drawable.icon_uninstall,
-                titleResId = R.string.lx_capsule_uninstall,
+                title = activity.getString(R.string.lx_capsule_uninstall),
                 action = NativeApi.CAPSULE_ACTION_UNINSTALL
             )
-        )
+        ) + parseMoreActions(NativeApi.getLxAppMoreActions(appId))
 
         val rootView = activity.window.decorView as ViewGroup
         val container = FrameLayout(activity).apply {
@@ -77,14 +80,38 @@ internal object CapsuleMenuBottomSheet {
 
         // Create menu content
         val menuView = createMenuView(activity, lxappInfo, items) { action ->
-            // Send UI event for the selected action
-            NativeApi.onLxappEvent(appId, NativeApi.UI_EVENT_CAPSULE_CLICK, action)
-            // Dismiss the menu
             rootView.removeView(container)
+            NativeApi.onLxappEvent(appId, NativeApi.UI_EVENT_CAPSULE_CLICK, action)
         }
         container.addView(menuView)
 
         rootView.addView(container)
+    }
+
+    private fun parseMoreActions(json: String): List<MenuItem> {
+        return try {
+            val root = JSONObject(json)
+            val generation = root.optLong("generation", 0)
+            val items = root.optJSONArray("items") ?: return emptyList()
+            buildList {
+                for (index in 0 until minOf(items.length(), 7)) {
+                    val item = items.optJSONObject(index) ?: continue
+                    val label = item.optString("label").trim()
+                    val iconPath = item.optString("iconPath").trim()
+                    if (generation > 0 && label.isNotEmpty() && iconPath.isNotEmpty()) {
+                        add(
+                            MenuItem(
+                                iconPath = iconPath,
+                                title = label,
+                                action = "more:$generation:$index"
+                            )
+                        )
+                    }
+                }
+            }
+        } catch (_: Exception) {
+            emptyList()
+        }
     }
 
     private fun createMaskView(context: Context, onClick: () -> Unit): FrameLayout {
@@ -120,9 +147,9 @@ internal object CapsuleMenuBottomSheet {
         // Add separator
         menuContainer.addView(createSeparatorView(context))
 
-        // Add horizontal button row
-        val buttonsRow = createButtonsRow(context, items, onItemClick)
-        menuContainer.addView(buttonsRow)
+        // Add the five-column action grid.
+        val buttonsGrid = createButtonsGrid(context, items, onItemClick)
+        menuContainer.addView(buttonsGrid)
 
         // Apply bottom inset for safe area
         val bottomInset = ActivityInsets.contentBottomInset()
@@ -247,7 +274,7 @@ internal object CapsuleMenuBottomSheet {
         }
     }
 
-    private fun createButtonsRow(
+    private fun createButtonsGrid(
         context: Context,
         items: List<MenuItem>,
         onClick: (String) -> Unit
@@ -255,8 +282,7 @@ internal object CapsuleMenuBottomSheet {
         val density = context.resources.displayMetrics.density
 
         return LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
+            orientation = LinearLayout.VERTICAL
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
@@ -268,18 +294,18 @@ internal object CapsuleMenuBottomSheet {
                 0
             )
 
-            items.forEachIndexed { index, item ->
-                addView(createButtonView(context, item) { onClick(item.action) })
-
-                // Add spacer between buttons (not after last)
-                if (index < items.size - 1) {
-                    addView(android.view.View(context).apply {
-                        layoutParams = LinearLayout.LayoutParams(
-                            (16 * density).toInt(),
-                            1
-                        )
-                    })
-                }
+            items.chunked(5).forEach { rowItems ->
+                addView(LinearLayout(context).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    layoutParams = LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT
+                    )
+                    rowItems.forEach { item ->
+                        addView(createButtonView(context, item) { onClick(item.action) })
+                    }
+                })
             }
         }
     }
@@ -300,11 +326,12 @@ internal object CapsuleMenuBottomSheet {
                 1f
             )
             setPadding(
+                (4 * density).toInt(),
                 (12 * density).toInt(),
-                (12 * density).toInt(),
-                (12 * density).toInt(),
+                (4 * density).toInt(),
                 (12 * density).toInt()
             )
+            minimumHeight = (88 * density).toInt()
             setOnClickListener { onClick() }
 
             // Ripple effect on click
@@ -324,16 +351,27 @@ internal object CapsuleMenuBottomSheet {
                 ).apply {
                     bottomMargin = (6 * density).toInt()
                 }
-                setImageResource(item.iconResId)
-                setColorFilter(item.color)
+                val customDrawable = item.iconPath
+                    ?.let(::File)
+                    ?.takeIf(File::exists)
+                    ?.absolutePath
+                    ?.let { android.graphics.drawable.Drawable.createFromPath(it) }
+                if (customDrawable != null) {
+                    setImageDrawable(customDrawable)
+                } else if (item.iconResId != null) {
+                    setImageResource(item.iconResId)
+                    setColorFilter(item.color)
+                }
             })
 
             // Title
             addView(TextView(context).apply {
-                text = context.getString(item.titleResId)
+                text = item.title
                 textSize = 13f
                 setTextColor(item.color)
                 gravity = Gravity.CENTER
+                maxLines = 2
+                breakStrategy = android.text.Layout.BREAK_STRATEGY_SIMPLE
             })
         }
     }

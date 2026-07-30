@@ -819,6 +819,22 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_getLxAppInfo<'a>(
     .resolve::<ThrowRuntimeExAndDefault>()
 }
 
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_app_NativeApi_getLxAppMoreActions<'a>(
+    mut env: EnvUnowned<'a>,
+    _class: JClass<'a>,
+    appid: JString<'a>,
+) -> JString<'a> {
+    env.with_env(|env| -> Result<JString, jni::errors::Error> {
+        let appid: String = appid.try_to_string(env)?;
+        let json = lxapp::try_get(&appid)
+            .map(|app| app.more_actions_json())
+            .unwrap_or_else(|| r#"{"generation":0,"items":[]}"#.to_string());
+        env.new_string(json)
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
+}
+
 // Get TabBar configuration using new typed API
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_com_lingxia_app_NativeApi_getTabBarState<'a>(

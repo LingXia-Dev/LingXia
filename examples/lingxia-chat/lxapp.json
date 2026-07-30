@@ -1,7 +1,7 @@
 {
   "appId": "lingxia-chat",
   "appName": "LingXia Chat",
-  "version": "1.0.7",
+  "version": "1.0.11",
   "icon": "public/chat.svg",
   "security": {
     "network": {
@@ -9,5 +9,8 @@
     },
     "privileges": []
   },
-  "pages": [{ "name": "chat", "path": "pages/chat/index" }]
+  "pages": [
+    { "name": "chat", "path": "pages/chat/index" },
+    { "name": "feedback", "path": "pages/feedback/index" }
+  ]
 }

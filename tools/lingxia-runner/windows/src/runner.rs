@@ -1,12 +1,14 @@
 use crate::device::{
     ABOUT_COMMAND, APPEARANCE_COMMAND, CAPSULE_CLOSE_COMMAND, CLEAN_CACHE_COMMAND,
-    DEVICE_COMMAND_BASE, OPEN_DEVTOOLS_COMMAND, RESTART_LXAPP_COMMAND, ROTATE_COMMAND,
-    browser_frame_spec, frame_spec, initial_device_index, is_phone, is_tablet, presets,
+    DEVICE_COMMAND_BASE, MORE_ACTION_COMMAND_BASE, OPEN_DEVTOOLS_COMMAND, RESTART_LXAPP_COMMAND,
+    ROTATE_COMMAND, browser_frame_spec, frame_spec, initial_device_index, is_phone, is_tablet,
+    presets,
 };
 use lingxia_windows_sdk::WindowsShellTabBarPosition;
 use lxapp::{LxAppDelegate, LxAppUiEventType};
-use std::sync::OnceLock;
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::{Mutex, OnceLock};
 
 /// The device + orientation the simulator currently shows. The toolbar's
 /// rotate button toggles `LANDSCAPE` for the active `CURRENT_DEVICE`; picking a
@@ -18,6 +20,7 @@ static LANDSCAPE: AtomicBool = AtomicBool::new(false);
 /// preferred color scheme and reported through `runner.get`.
 static APPEARANCE: AtomicUsize = AtomicUsize::new(0);
 static BROWSER_HOST: OnceLock<lingxia_windows_sdk::WindowsHost> = OnceLock::new();
+static MORE_ACTION_TOKENS: OnceLock<Mutex<HashMap<u32, (String, String)>>> = OnceLock::new();
 
 const ARG_ASSET_DIR: &str = "--asset-dir";
 const ARG_LXAPP_PATH: &str = "--lxapp-path";
@@ -529,6 +532,18 @@ fn install_runner_commands(home_app_id: String) {
                 return;
             }
 
+            if let Some((appid, token)) = MORE_ACTION_TOKENS
+                .get_or_init(|| Mutex::new(HashMap::new()))
+                .lock()
+                .ok()
+                .and_then(|tokens| tokens.get(&command).cloned())
+            {
+                if let Some(app) = lxapp::try_get(&appid) {
+                    let _ = app.on_lxapp_event(LxAppUiEventType::CapsuleClick, token);
+                }
+                return;
+            }
+
             let Some(index) = command
                 .checked_sub(DEVICE_COMMAND_BASE)
                 .map(|index| index as usize)
@@ -604,24 +619,55 @@ fn close_current_lxapp(home_app_id: &str) -> Result<(), String> {
 fn show_lxapp_info_sheet(appid: &str) -> Result<(), String> {
     let app = lxapp::try_get(appid).ok_or_else(|| format!("lxapp is not active: {appid}"))?;
     let info = app.runtime_info();
+    let snapshot = app.more_actions();
+    let mut custom_actions = Vec::new();
+    if let Ok(mut tokens) = MORE_ACTION_TOKENS
+        .get_or_init(|| Mutex::new(HashMap::new()))
+        .lock()
+    {
+        tokens.clear();
+        for (index, item) in snapshot.items.iter().enumerate() {
+            let command = MORE_ACTION_COMMAND_BASE + index as u32;
+            tokens.insert(
+                command,
+                (
+                    appid.to_string(),
+                    format!("more:{}:{index}", snapshot.generation),
+                ),
+            );
+            custom_actions.push(lingxia_windows_sdk::WindowsDeviceFrameSheetAction {
+                command,
+                label: item.label.clone(),
+                icon: lingxia_windows_sdk::WindowsDeviceFrameSheetIcon::Path(
+                    item.icon_path.clone(),
+                ),
+            });
+        }
+    }
+    let mut actions = vec![
+        lingxia_windows_sdk::WindowsDeviceFrameSheetAction {
+            command: CLEAN_CACHE_COMMAND,
+            label: "Clear cache".to_string(),
+            icon: lingxia_windows_sdk::WindowsDeviceFrameSheetIcon::Design(
+                lingxia_windows_sdk::WindowsDesignIcon::CleanCache,
+            ),
+        },
+        lingxia_windows_sdk::WindowsDeviceFrameSheetAction {
+            command: RESTART_LXAPP_COMMAND,
+            label: "Restart".to_string(),
+            icon: lingxia_windows_sdk::WindowsDeviceFrameSheetIcon::Design(
+                lingxia_windows_sdk::WindowsDesignIcon::Restart,
+            ),
+        },
+    ];
+    actions.extend(custom_actions);
     lingxia_windows_sdk::show_device_frame_info_sheet(
         appid,
         lingxia_windows_sdk::WindowsDeviceFrameInfoSheet {
             title: info.app_name,
             version: info.version,
             badge: release_badge(&info.release_type),
-            actions: vec![
-                lingxia_windows_sdk::WindowsDeviceFrameSheetAction {
-                    command: CLEAN_CACHE_COMMAND,
-                    label: "Clean Cache && Restart".to_string(),
-                    icon: lingxia_windows_sdk::WindowsDesignIcon::CleanCache,
-                },
-                lingxia_windows_sdk::WindowsDeviceFrameSheetAction {
-                    command: RESTART_LXAPP_COMMAND,
-                    label: "Restart lxapp".to_string(),
-                    icon: lingxia_windows_sdk::WindowsDesignIcon::Restart,
-                },
-            ],
+            actions,
         },
     )
 }

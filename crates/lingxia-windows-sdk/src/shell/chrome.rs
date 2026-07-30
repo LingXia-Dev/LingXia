@@ -1070,6 +1070,15 @@ pub(crate) fn transparent_tabbar_overlay_rect(
     compute_chrome_rects(client, layout).tab_bar
 }
 
+pub(crate) fn bottom_tabbar_rect(client: RECT, layout: &WindowsWindowLayout) -> Option<RECT> {
+    let layout = shell_layout(layout)?;
+    let tabbar = layout.tab_bar.as_ref()?;
+    if !tabbar.visible || !matches!(tabbar.position, WindowsShellTabBarPosition::Bottom) {
+        return None;
+    }
+    compute_chrome_rects(client, layout).tab_bar
+}
+
 pub(crate) fn collapsed_sidebar_tabbar_popup(
     client: RECT,
     layout: &WindowsWindowLayout,
@@ -1861,6 +1870,19 @@ pub(super) fn chrome_hit_test(
             return Some(WindowsChromeHit::Chrome);
         }
         if sidebar {
+            if in_sidebar_viewport
+                && rect_contains(
+                    &sidebar_group_menu_rect(tabbar_rect, tabbar, scroll_offset),
+                    point,
+                )
+            {
+                let payload = json!({ "tab_id": format!("lxapp:{}", tabbar.group_id) });
+                return Some(WindowsChromeHit::Command(
+                    WindowsChromeCommand::new(command_id::SIDEBAR_AUXILIARY_CONTEXT_MENU)
+                        .with_payload(payload)
+                        .with_screen_position(),
+                ));
+            }
             if in_sidebar_viewport
                 && tabbar.group_closable
                 && rect_contains(

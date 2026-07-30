@@ -95,6 +95,7 @@ export const LX_API_NAMES = [
   'saveVideoToPhotosAlbum',
   'scanCode',
   'setDeviceOrientation',
+  'setMoreActions',
   'setNavigationBarColor',
   'setNavigationBarTitle',
   'setTabBarBadge',

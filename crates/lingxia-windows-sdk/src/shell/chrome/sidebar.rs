@@ -190,6 +190,7 @@ pub(super) fn draw_sidebar_tab_bar(
     let group_rect = sidebar_group_rect(rect, tabbar, scroll_offset);
     let chevron_rect = sidebar_group_chevron_rect(rect, tabbar, scroll_offset);
     let close_rect = sidebar_group_close_rect(rect, tabbar, scroll_offset);
+    let menu_rect = sidebar_group_menu_rect(rect, tabbar, scroll_offset);
     // The active lxapp is a top-level tab just like a web tab. macOS gives the
     // group header a quiet wash while its selected child carries the stronger
     // page-level card, preserving both levels without stacking white pills.
@@ -250,7 +251,16 @@ pub(super) fn draw_sidebar_tab_bar(
             DT_CENTER,
         );
     }
-
+    if rect_contains(&group_rect, cursor.unwrap_or((-1, -1))) {
+        draw_hover_wash(hdc, menu_rect, 4, cursor);
+        draw_design_icon_button(
+            hdc,
+            menu_rect,
+            WindowsDesignIcon::PageMenu,
+            shell_palette().text_muted,
+            16,
+        );
+    }
     if !tabbar.items_collapsed {
         draw_sidebar_items(hdc, rect, tabbar, cursor, scroll_offset);
     }
@@ -605,6 +615,24 @@ pub(super) fn sidebar_group_close_rect(
         left: chevron.left - SIDEBAR_BROWSER_CLOSE_SIZE,
         top: sidebar_group_top(rect, tabbar, scroll_offset),
         right: chevron.left,
+        bottom: sidebar_group_bottom(rect, tabbar, scroll_offset),
+    })
+}
+
+pub(super) fn sidebar_group_menu_rect(
+    rect: RECT,
+    tabbar: &WindowsShellTabBarLayout,
+    scroll_offset: i32,
+) -> RECT {
+    let trailing = if tabbar.group_closable {
+        sidebar_group_close_rect(rect, tabbar, scroll_offset).left
+    } else {
+        sidebar_group_chevron_rect(rect, tabbar, scroll_offset).left
+    };
+    normalize_rect(RECT {
+        left: trailing - SIDEBAR_BROWSER_CLOSE_SIZE,
+        top: sidebar_group_top(rect, tabbar, scroll_offset),
+        right: trailing,
         bottom: sidebar_group_bottom(rect, tabbar, scroll_offset),
     })
 }

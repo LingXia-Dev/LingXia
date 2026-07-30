@@ -1999,6 +1999,21 @@ fn overlay_reference_rect(hwnd: HWND) -> RECT {
 fn overlay_reference_rect_for_host(host: HWND) -> Option<RECT> {
     let host_key = active_webtag_key_for_window(host)?;
     let client = content_rect_for_window(host, &host_key);
+    #[cfg(feature = "shell-chrome")]
+    let client = {
+        let mut client = client;
+        let mut host_client = RECT::default();
+        if unsafe { WindowsAndMessaging::GetClientRect(host, &mut host_client) }.is_ok()
+            && let Some(tabbar) =
+                crate::shell::bottom_tabbar_rect(host_client, &current_window_layout(&host_key))
+        {
+            // Floating surfaces are presented above shell chrome. An opaque
+            // bottom tab bar shortens the main content rect, but must not
+            // shorten a bottom sheet or the bar remains exposed below it.
+            client.bottom = client.bottom.max(tabbar.bottom);
+        }
+        client
+    };
     let width = client.right - client.left;
     let height = client.bottom - client.top;
     if width <= OVERLAY_MIN_WIDTH || height <= OVERLAY_MIN_HEIGHT {

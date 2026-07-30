@@ -697,6 +697,20 @@ export type ModalResult = {
     cancel: boolean;
 };
 
+/**
+ * One app-declared action shown in the host-provided More affordance.
+ * Mobile hosts render these in the capsule sheet; desktop hosts render
+ * them in the lxapp context menu. The native menu is fully dismissed
+ * before `onClick` runs.
+ */
+export type MoreAction = {
+    /** Bundled resource path or an app-accessible local `lx://` path. */
+    icon: string;
+    /** Visible action label. */
+    label: string;
+    onClick: () => void | Promise<void>;
+};
+
 export type NavigateBackOptions = {
     delta: number;
 };
@@ -2087,6 +2101,12 @@ declare global {
     getCapsuleRect(): Promise<CapsuleRect | null>;
     /** Show modal function (async) */
     showModal(options: ShowModalOptions): Promise<ModalResult>;
+    /**
+     * Replace the current lxapp's complete app-declared More action list (seven
+     * entries maximum). Pass an empty array to clear it. Native hosts append these
+     * entries after their own lifecycle actions.
+     */
+    setMoreActions(items: MoreAction[]): void;
     /** Set navigation bar title */
     setNavigationBarTitle(options: SetNavigationBarTitleOptions): boolean;
     /** Set navigation bar color */

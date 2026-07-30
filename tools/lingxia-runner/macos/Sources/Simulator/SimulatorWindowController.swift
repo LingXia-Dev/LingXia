@@ -17,6 +17,25 @@ private final class CapsuleSheetDismissView: NSView {
     override func mouseDown(with event: NSEvent) { onMouseDown?() }
 }
 
+private struct RunnerMoreActionItem: Decodable {
+    let label: String
+    let iconPath: String
+}
+
+private struct RunnerMoreActionSnapshot: Decodable {
+    let generation: UInt64
+    let items: [RunnerMoreActionItem]
+
+    static func load(appId: String) -> Self {
+        let json = getLxAppMoreActions(appId).toString()
+        guard let data = json.data(using: .utf8),
+              let snapshot = try? JSONDecoder().decode(Self.self, from: data) else {
+            return Self(generation: 0, items: [])
+        }
+        return Self(generation: snapshot.generation, items: Array(snapshot.items.prefix(7)))
+    }
+}
+
 /// Window controller for Runner Simulator mode
 /// Provides Xcode-like simulator interface with toolbar and device frame
 @MainActor
@@ -1132,17 +1151,36 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
         separator.wantsLayer = true
         separator.layer?.backgroundColor = NSColor(white: 0.9, alpha: 1).cgColor
 
-        let clean = makeCapsuleSheetButton(symbol: "trash", title: "Clean cache & Restart", action: #selector(capsuleCleanTapped))
+        let clean = makeCapsuleSheetButton(symbol: "trash", title: "Clear cache", action: #selector(capsuleCleanTapped))
         let restart = makeCapsuleSheetButton(symbol: "arrow.clockwise", title: "Restart", action: #selector(capsuleRestartTapped))
-        let row = NSStackView(views: [clean, restart])
-        row.distribution = .fillEqually
-        row.spacing = 16
-        row.translatesAutoresizingMaskIntoConstraints = false
+        let snapshot = RunnerMoreActionSnapshot.load(appId: appId)
+        let customButtons = snapshot.items.enumerated().map { index, item -> NSView in
+            let button = makeCapsuleSheetButton(
+                imagePath: item.iconPath,
+                title: item.label,
+                action: #selector(capsuleMoreTapped(_:))
+            )
+            button.identifier = NSUserInterfaceItemIdentifier("more:\(snapshot.generation):\(index)")
+            return button
+        }
+        let actionButtons: [NSView] = [clean, restart] + customButtons
+        let actions = NSStackView()
+        actions.orientation = .vertical
+        actions.distribution = .fill
+        actions.spacing = 8
+        actions.translatesAutoresizingMaskIntoConstraints = false
+        for rowStart in stride(from: 0, to: actionButtons.count, by: 5) {
+            let row = NSStackView(views: Array(actionButtons[rowStart..<min(rowStart + 5, actionButtons.count)]))
+            row.distribution = .fillEqually
+            row.spacing = 0
+            row.heightAnchor.constraint(equalToConstant: 88).isActive = true
+            actions.addArrangedSubview(row)
+        }
 
         sheet.addSubview(name)
         sheet.addSubview(ver)
         sheet.addSubview(separator)
-        sheet.addSubview(row)
+        sheet.addSubview(actions)
 
         NSLayoutConstraint.activate([
             sheet.leadingAnchor.constraint(equalTo: overlay.leadingAnchor),
@@ -1159,11 +1197,10 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
             separator.trailingAnchor.constraint(equalTo: sheet.trailingAnchor),
             separator.heightAnchor.constraint(equalToConstant: 1),
 
-            row.topAnchor.constraint(equalTo: separator.bottomAnchor, constant: 14),
-            row.leadingAnchor.constraint(equalTo: sheet.leadingAnchor, constant: 20),
-            row.trailingAnchor.constraint(equalTo: sheet.trailingAnchor, constant: -20),
-            row.heightAnchor.constraint(equalToConstant: 72),
-            row.bottomAnchor.constraint(equalTo: sheet.bottomAnchor, constant: -20),
+            actions.topAnchor.constraint(equalTo: separator.bottomAnchor, constant: 14),
+            actions.leadingAnchor.constraint(equalTo: sheet.leadingAnchor, constant: 20),
+            actions.trailingAnchor.constraint(equalTo: sheet.trailingAnchor, constant: -20),
+            actions.bottomAnchor.constraint(equalTo: sheet.bottomAnchor, constant: -20),
         ])
 
         if let badge = Self.makeReleaseBadge(releaseType) {
@@ -1225,6 +1262,24 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
         button.title = title
         button.contentTintColor = NSColor(white: 0.2, alpha: 1)
         button.font = .systemFont(ofSize: 11)
+        button.cell?.wraps = true
+        button.cell?.usesSingleLineMode = false
+        button.target = self
+        button.action = action
+        return button
+    }
+
+    private func makeCapsuleSheetButton(imagePath: String, title: String, action: Selector) -> NSButton {
+        let button = NSButton()
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.isBordered = false
+        button.imagePosition = .imageAbove
+        button.image = NSImage(contentsOfFile: imagePath)
+        button.title = title
+        button.contentTintColor = NSColor(white: 0.2, alpha: 1)
+        button.font = .systemFont(ofSize: 11)
+        button.cell?.wraps = true
+        button.cell?.usesSingleLineMode = false
         button.target = self
         button.action = action
         return button
@@ -1238,6 +1293,14 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
     @objc private func capsuleRestartTapped() {
         dismissCapsuleSheet()
         RunnerApp.shared.restartCurrentLxApp()
+    }
+
+    @objc private func capsuleMoreTapped(_ sender: NSButton) {
+        guard let token = sender.identifier?.rawValue else { return }
+        dismissCapsuleSheet()
+        DispatchQueue.main.async { [appId] in
+            _ = onLxappEvent(appId, LxAppUiEventType.CapsuleClick, token)
+        }
     }
 
     @objc private func dismissCapsuleSheet() {

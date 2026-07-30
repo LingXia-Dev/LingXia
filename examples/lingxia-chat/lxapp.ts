@@ -2,6 +2,30 @@ App({
   onLaunch() {
     console.log('LingXia Chat launched');
 
+    lx.setMoreActions([
+      {
+        icon: 'public/chat.png',
+        label: 'Feedback',
+        onClick: async () => {
+          try {
+            await lx.openSurface({
+              page: 'feedback',
+              as: 'float',
+              position: 'bottom',
+              size: { width: '100%', height: '80%' },
+              interaction: {
+                closeButton: true,
+                dismiss: 'manual',
+                modal: true,
+              },
+            });
+          } catch (error) {
+            console.warn('failed to open feedback surface', error);
+          }
+        },
+      },
+    ]);
+
     const um = lx.getUpdateManager();
     um.onUpdateReady(async (info) => {
       if (info?.isForceUpdate) {

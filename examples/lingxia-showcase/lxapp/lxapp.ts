@@ -89,6 +89,29 @@ App({
       },
     );
     lx.shell.sidebarActions.replace(sidebarActions);
+    lx.setMoreActions([
+      {
+        icon: "public/showcase-icon.png",
+        label: "Feedback",
+        onClick: async () => {
+          try {
+            await lx.openSurface({
+              page: "feedback",
+              as: "float",
+              position: "bottom",
+              size: { width: "100%", height: "80%" },
+              interaction: {
+                closeButton: true,
+                dismiss: "manual",
+                modal: true,
+              },
+            });
+          } catch (error) {
+            console.warn("failed to open feedback surface", error);
+          }
+        },
+      },
+    ]);
 
     if (os === "macOS" || os === "Windows") {
       lx.shell.emptyState.set({

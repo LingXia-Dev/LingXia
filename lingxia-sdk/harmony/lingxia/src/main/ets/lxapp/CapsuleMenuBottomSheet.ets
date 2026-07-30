@@ -5,7 +5,7 @@
 
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { LxLog } from '../app/LxLog';
-import { getLxAppInfo, onLxappEvent, UiEventType, type LxAppInfo } from 'liblingxia.so';
+import { getLxAppInfo, getLxAppMoreActions, onLxappEvent, UiEventType, type LxAppInfo } from 'liblingxia.so';
 import {
   CAPSULE_ACTION_CLEAN_CACHE_RESTART,
   CAPSULE_ACTION_RESTART,
@@ -17,9 +17,21 @@ const DOMAIN = 0xFF00;
 
 interface MenuAction {
   iconPath: string;
-  titleKey: string;
+  titleKey?: string;
+  title?: string;
   action: string;
   isDestructive?: boolean;
+  bundled?: boolean;
+}
+
+interface MoreActionItem {
+  label: string;
+  iconPath: string;
+}
+
+interface MoreActionSnapshot {
+  generation: number;
+  items: MoreActionItem[];
 }
 
 interface ReleaseBadge {
@@ -68,22 +80,26 @@ export struct CapsuleMenuBottomSheetComponent {
   @State isVisible: boolean = false;
   @State appId: string = '';
   @State appInfo: LxAppInfo | null = null;
+  @State customActions: MenuAction[] = [];
 
   private readonly actions: MenuAction[] = [
     {
       iconPath: 'icons/icon_clean_cache.svg',
       titleKey: 'lx_capsule_clean_cache',
-      action: CAPSULE_ACTION_CLEAN_CACHE_RESTART
+      action: CAPSULE_ACTION_CLEAN_CACHE_RESTART,
+      bundled: true
     },
     {
       iconPath: 'icons/icon_restart.svg',
       titleKey: 'lx_capsule_restart',
-      action: CAPSULE_ACTION_RESTART
+      action: CAPSULE_ACTION_RESTART,
+      bundled: true
     },
     {
       iconPath: 'icons/icon_uninstall.svg',
       titleKey: 'lx_capsule_uninstall',
-      action: CAPSULE_ACTION_UNINSTALL
+      action: CAPSULE_ACTION_UNINSTALL,
+      bundled: true
     }
   ];
 
@@ -146,35 +162,14 @@ export struct CapsuleMenuBottomSheetComponent {
             .height(1)
             .color('#EEEEEE')
 
-          // Horizontal button row
-          Row() {
-            ForEach(this.actions, (item: MenuAction, index: number) => {
-              Column() {
-                Image($rawfile(item.iconPath))
-                  .width(24)
-                  .height(24)
-                  .objectFit(ImageFit.Contain)
-                  .margin({ bottom: 6 })
-
-                Text($r(`app.string.${item.titleKey}`))
-                  .fontSize(13)
-                  .fontColor(item.isDestructive ? '#FF3B30' : '#555555')
-                  .textAlign(TextAlign.Center)
-              }
-              .layoutWeight(1)
-              .padding(12)
-              .onClick(() => this.handleAction(item.action))
-
-              // Spacer between buttons (not after last)
-              if (index < this.actions.length - 1) {
-                Column()
-                  .width(16)
-              }
-            })
+          Column() {
+            this.actionRow(this.menuActions().slice(0, 5))
+            if (this.menuActions().length > 5) {
+              this.actionRow(this.menuActions().slice(5, 10))
+            }
           }
           .width('100%')
           .padding({ top: 12, bottom: 12 })
-          .justifyContent(FlexAlign.Center)
         }
         .width('100%')
         .backgroundColor('#FFFFFF')
@@ -187,6 +182,49 @@ export struct CapsuleMenuBottomSheetComponent {
     }
   }
 
+  @Builder
+  private actionRow(actions: MenuAction[]) {
+    Row() {
+      ForEach(actions, (item: MenuAction) => {
+              Column() {
+                if (item.bundled) {
+                  Image($rawfile(item.iconPath))
+                    .width(24)
+                    .height(24)
+                    .objectFit(ImageFit.Contain)
+                    .margin({ bottom: 6 })
+                } else {
+                  Image(item.iconPath.startsWith('/') ? `file://${item.iconPath}` : item.iconPath)
+                    .width(24)
+                    .height(24)
+                    .objectFit(ImageFit.Contain)
+                    .margin({ bottom: 6 })
+                }
+
+                if (item.title) {
+                  Text(item.title)
+                    .fontSize(13)
+                    .fontColor(item.isDestructive ? '#FF3B30' : '#555555')
+                    .textAlign(TextAlign.Center)
+                    .maxLines(2)
+                } else if (item.titleKey) {
+                  Text($r(`app.string.${item.titleKey}`))
+                    .fontSize(13)
+                    .fontColor(item.isDestructive ? '#FF3B30' : '#555555')
+                    .textAlign(TextAlign.Center)
+                    .maxLines(2)
+                }
+              }
+              .width(`${100 / actions.length}%`)
+              .height(88)
+              .padding({ left: 4, right: 4, top: 12, bottom: 12 })
+              .onClick(() => this.handleAction(item.action))
+      })
+    }
+    .width('100%')
+    .justifyContent(FlexAlign.Center)
+  }
+
   public show(appId: string): void {
     hilog.info(DOMAIN, TAG, `Showing capsule menu for app: ${appId}`);
 
@@ -195,11 +233,13 @@ export struct CapsuleMenuBottomSheetComponent {
     if (info) {
       this.appId = appId;
       this.appInfo = info;
+      this.customActions = this.parseMoreActions(appId);
       this.isVisible = true;
     } else {
       LxLog.e(TAG, `Failed to get LxApp info for: ${appId}`);
       this.appId = '';
       this.appInfo = null;
+      this.customActions = [];
       this.isVisible = false;
     }
   }
@@ -208,20 +248,40 @@ export struct CapsuleMenuBottomSheetComponent {
     this.isVisible = false;
     this.appId = '';
     this.appInfo = null;
+    this.customActions = [];
   }
 
   private handleAction(action: string): void {
     hilog.info(DOMAIN, TAG, `Action selected: ${action}`);
 
-    // Send UI event to Rust
-    const success: boolean = onLxappEvent(this.appId, UiEventType.CapsuleClick, action);
-
-    if (!success) {
-      LxLog.e(TAG, `Failed to send UI event for action: ${action}`);
-    }
-
-    // Hide the menu
+    const appId: string = this.appId;
     this.hide();
+    setTimeout(() => {
+      const success: boolean = onLxappEvent(appId, UiEventType.CapsuleClick, action);
+      if (!success) {
+        LxLog.e(TAG, `Failed to send UI event for action: ${action}`);
+      }
+    }, 0);
+  }
+
+  private parseMoreActions(appId: string): MenuAction[] {
+    try {
+      const snapshot: MoreActionSnapshot = JSON.parse(getLxAppMoreActions(appId)) as MoreActionSnapshot;
+      return snapshot.items.slice(0, 7).map((item: MoreActionItem, index: number): MenuAction => {
+        return {
+          iconPath: item.iconPath,
+          title: item.label,
+          action: `more:${snapshot.generation}:${index}`,
+          bundled: false
+        };
+      });
+    } catch (_) {
+      return [];
+    }
+  }
+
+  private menuActions(): MenuAction[] {
+    return this.actions.concat(this.customActions).slice(0, 10);
   }
 
   private releaseBadge(): ReleaseBadge | null {

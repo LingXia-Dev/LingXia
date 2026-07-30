@@ -224,6 +224,13 @@ fn get_lx_app_info(appid: String) -> Option<LxAppInfo> {
     })
 }
 
+#[napi]
+fn get_lx_app_more_actions(appid: String) -> String {
+    lxapp::try_get(&appid)
+        .map(|app| app.more_actions_json())
+        .unwrap_or_else(|| r#"{"generation":0,"items":[]}"#.to_string())
+}
+
 /// Resolve a lx:// URI or sandbox path to a native-consumable URL/path.
 ///
 /// - Accepts `lx://usercache/...`, `lx://userdata/...`, relative paths like `images/1.png`,

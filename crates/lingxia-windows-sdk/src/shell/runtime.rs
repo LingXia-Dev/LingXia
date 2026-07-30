@@ -3466,12 +3466,12 @@ fn open_lxapp_panel_now(
     .map(|_| ())
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 enum LxappContextMenuAction {
     TogglePin,
-    About,
     Restart,
     CleanCacheRestart,
+    More { token: String },
 }
 
 fn push_lxapp_context_menu_item(
@@ -3487,10 +3487,12 @@ fn push_lxapp_context_menu_item(
 fn build_lxapp_context_menu(
     is_home: bool,
     pinned: bool,
-    version_item: Option<String>,
+    header_item: String,
 ) -> (Vec<String>, Vec<Option<LxappContextMenuAction>>) {
     let mut items = Vec::new();
     let mut actions = Vec::new();
+    push_lxapp_context_menu_item(&mut items, &mut actions, header_item, None);
+    push_lxapp_context_menu_item(&mut items, &mut actions, String::new(), None);
     if !is_home {
         push_lxapp_context_menu_item(
             &mut items,
@@ -3502,32 +3504,49 @@ fn build_lxapp_context_menu(
             }),
             Some(LxappContextMenuAction::TogglePin),
         );
-    }
-    if let Some(version_item) = version_item {
-        if !items.is_empty() {
-            push_lxapp_context_menu_item(&mut items, &mut actions, String::new(), None);
-        }
-        push_lxapp_context_menu_item(
-            &mut items,
-            &mut actions,
-            version_item,
-            Some(LxappContextMenuAction::About),
-        );
         push_lxapp_context_menu_item(&mut items, &mut actions, String::new(), None);
-        push_lxapp_context_menu_item(
-            &mut items,
-            &mut actions,
-            lingxia_logic::i18n::t(lingxia_logic::I18nKey::CapsuleRestart),
-            Some(LxappContextMenuAction::Restart),
-        );
-        push_lxapp_context_menu_item(
-            &mut items,
-            &mut actions,
-            lingxia_logic::i18n::t(lingxia_logic::I18nKey::CapsuleCleanCache),
-            Some(LxappContextMenuAction::CleanCacheRestart),
-        );
     }
+    push_lxapp_context_menu_item(
+        &mut items,
+        &mut actions,
+        lingxia_logic::i18n::t(lingxia_logic::I18nKey::CapsuleRestart),
+        Some(LxappContextMenuAction::Restart),
+    );
+    push_lxapp_context_menu_item(
+        &mut items,
+        &mut actions,
+        lingxia_logic::i18n::t(lingxia_logic::I18nKey::CapsuleCleanCache),
+        Some(LxappContextMenuAction::CleanCacheRestart),
+    );
     (items, actions)
+}
+
+fn lxapp_context_menu_header(
+    target_appid: &str,
+    app_name: Option<&str>,
+    version: Option<&str>,
+    release_type: Option<&str>,
+) -> String {
+    let mut header = app_name
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .unwrap_or(target_appid)
+        .to_string();
+    if let Some(version) = version.map(str::trim).filter(|version| !version.is_empty()) {
+        header.push_str(" · ");
+        header.push_str(version);
+    }
+    match release_type
+        .unwrap_or_default()
+        .trim()
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "developer" => header.push_str(" [DEV]"),
+        "preview" => header.push_str(" [PRE]"),
+        _ => {}
+    }
+    header
 }
 
 fn show_lxapp_auxiliary_context_menu(
@@ -3541,55 +3560,71 @@ fn show_lxapp_auxiliary_context_menu(
     };
     let target = lxapp::try_get(target_appid);
     let info = target.as_ref().map(|target| target.get_lxapp_info());
-    let version_item = info.as_ref().map(|info| {
-        let version_label = lingxia_logic::i18n::t(lingxia_logic::I18nKey::CommonVersion);
-        let version = info.version.trim();
-        if version.is_empty() {
-            version_label
-        } else {
-            format!("{version_label} {version}")
-        }
-    });
-    #[cfg(feature = "browser-shell")]
-    let about = info.as_ref().map(|info| AboutInfo {
-        title: lingxia_logic::i18n::t(lingxia_logic::I18nKey::CommonAbout),
-        app_name: if info.app_name.trim().is_empty() {
-            target_appid.to_string()
-        } else {
-            info.app_name.clone()
-        },
-        version_line: version_item.clone().unwrap_or_default(),
-        icon_path: info.icon.clone(),
-    });
     let is_home = is_home_lxapp(target_appid);
     let pinned = is_lxapp_pinned(target_appid);
-    let (items, actions) = build_lxapp_context_menu(is_home, pinned, version_item);
+    let header_item = lxapp_context_menu_header(
+        target_appid,
+        info.as_ref().map(|info| info.app_name.as_str()),
+        info.as_ref().map(|info| info.version.as_str()),
+        info.as_ref().map(|info| info.release_type.as_str()),
+    );
+    let (mut items, mut actions) = build_lxapp_context_menu(is_home, pinned, header_item);
+    if let Some(snapshot) = target.as_ref().map(|target| target.more_actions())
+        && !snapshot.items.is_empty()
+    {
+        let mut custom_items = Vec::with_capacity(snapshot.items.len() + 1);
+        let mut custom_actions = Vec::with_capacity(snapshot.items.len() + 1);
+        custom_items.push(String::new());
+        custom_actions.push(None);
+        for (index, item) in snapshot.items.into_iter().enumerate() {
+            custom_items.push(item.label);
+            custom_actions.push(Some(LxappContextMenuAction::More {
+                token: format!("more:{}:{index}", snapshot.generation),
+            }));
+        }
+        items.extend(custom_items);
+        actions.extend(custom_actions);
+    }
+    let entries = items
+        .iter()
+        .zip(actions.iter())
+        .map(|(label, action)| {
+            if label.is_empty() {
+                super::context_menu::ContextMenuEntry::separator()
+            } else {
+                super::context_menu::ContextMenuEntry {
+                    label: label.clone(),
+                    enabled: action.is_some(),
+                    checked: false,
+                    separator: false,
+                    icon: None,
+                }
+            }
+        })
+        .collect();
     let owner_appid = owner_appid.to_string();
     let target_appid = target_appid.to_string();
-    super::context_menu::show_context_menu_checked(
+    super::context_menu::show_context_menu_entries(
         window,
         (screen_x, screen_y),
-        items,
-        Vec::new(),
-        Arc::new(move |index| match actions.get(index).copied().flatten() {
+        entries,
+        Arc::new(move |index| match actions.get(index).cloned().flatten() {
             Some(LxappContextMenuAction::TogglePin)
                 if set_lxapp_pin_with_limit(&owner_appid, &target_appid, !pinned) =>
             {
                 sync_shell_layout(&owner_appid);
             }
             Some(LxappContextMenuAction::TogglePin) => {}
-            Some(LxappContextMenuAction::About) =>
-            {
-                #[cfg(feature = "browser-shell")]
-                if let Some(about) = &about {
-                    show_about_dialog(window, about);
-                }
-            }
             Some(LxappContextMenuAction::Restart) => {
                 schedule_lxapp_restart_in_place(target_appid.clone(), false);
             }
             Some(LxappContextMenuAction::CleanCacheRestart) => {
                 schedule_lxapp_restart_in_place(target_appid.clone(), true);
+            }
+            Some(LxappContextMenuAction::More { token }) => {
+                if let Some(target) = lxapp::try_get(&target_appid) {
+                    let _ = target.on_lxapp_event(LxAppUiEventType::CapsuleClick, token);
+                }
             }
             None => {}
         }),
@@ -5027,12 +5062,24 @@ mod tests {
     #[test]
     fn home_lxapp_context_menu_never_offers_pin() {
         let (_, home_actions) =
-            build_lxapp_context_menu(true, false, Some("Version 1.0.0".to_string()));
+            build_lxapp_context_menu(true, false, "Showcase · 1.0.0 [DEV]".to_string());
         assert!(!home_actions.contains(&Some(LxappContextMenuAction::TogglePin)));
 
         let (_, app_actions) =
-            build_lxapp_context_menu(false, false, Some("Version 1.0.0".to_string()));
+            build_lxapp_context_menu(false, false, "Showcase · 1.0.0 [DEV]".to_string());
         assert!(app_actions.contains(&Some(LxappContextMenuAction::TogglePin)));
+    }
+
+    #[test]
+    fn lxapp_context_menu_header_is_informational() {
+        let (items, actions) =
+            build_lxapp_context_menu(true, false, "Showcase · 1.0.0 [DEV]".to_string());
+        assert_eq!(
+            items.first().map(String::as_str),
+            Some("Showcase · 1.0.0 [DEV]")
+        );
+        assert_eq!(actions.first(), Some(&None));
+        assert!(items.get(1).is_some_and(String::is_empty));
     }
 
     #[cfg(feature = "browser-runtime")]

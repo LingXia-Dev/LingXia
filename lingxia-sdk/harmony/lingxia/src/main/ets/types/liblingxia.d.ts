@@ -147,6 +147,9 @@ declare module 'liblingxia.so' {
    */
   export function getLxAppInfo(appid: string): LxAppInfo | null;
 
+  /** App-declared More actions as a generation-scoped JSON snapshot. */
+  export function getLxAppMoreActions(appid: string): string;
+
   /**
    * Resolve a lx:// URI or sandbox path to a native-consumable URL/path.
    *

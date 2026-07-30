@@ -521,6 +521,9 @@ pub(crate) struct LxAppState {
 
     /// App-level orientation override (runtime + persisted)
     pub(crate) orientation_override: Option<OrientationConfig>,
+
+    /// App-declared actions surfaced by the host's secondary action affordance.
+    more_actions: LxAppMoreActionState,
 }
 
 impl LxAppState {
@@ -538,6 +541,7 @@ impl LxAppState {
             open_region: None,
             surfaces: Mutex::new(SurfaceRecords::new()),
             orientation_override: None,
+            more_actions: LxAppMoreActionState::default(),
         }
     }
 }
@@ -655,6 +659,34 @@ pub struct LxAppRuntimeInfo {
 pub struct LxAppRuntimePageInfo {
     pub name: String,
     pub path: String,
+}
+
+/// One app-declared action after its icon path has been resolved inside the
+/// lxapp sandbox. The callback remains in the Logic context and is addressed by
+/// the snapshot generation plus this item's index.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LxAppMoreAction {
+    pub label: String,
+    pub icon_path: String,
+}
+
+/// Immutable native-facing snapshot used to build a More action menu/sheet.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LxAppMoreActions {
+    pub generation: u64,
+    pub items: Vec<LxAppMoreAction>,
+}
+
+/// Three host lifecycle actions plus these app actions fill a two-row,
+/// five-column capsule menu.
+pub const LXAPP_MORE_ACTION_LIMIT: usize = 7;
+
+#[derive(Debug, Default)]
+struct LxAppMoreActionState {
+    generation: u64,
+    items: Vec<LxAppMoreAction>,
 }
 
 impl LxAppSession {
@@ -894,6 +926,53 @@ impl LxApp {
             data_dir: self.user_data_dir.to_string_lossy().into_owned(),
             cache_dir: self.user_cache_dir.to_string_lossy().into_owned(),
         }
+    }
+
+    /// Atomically replace this lxapp's app-declared More actions.
+    pub fn replace_more_actions(&self, generation: u64, mut items: Vec<LxAppMoreAction>) {
+        items.truncate(LXAPP_MORE_ACTION_LIMIT);
+        let mut state = self.state.lock().unwrap_or_else(|error| error.into_inner());
+        state.more_actions = LxAppMoreActionState { generation, items };
+    }
+
+    /// Clear actions only when the shutting-down Logic context still owns the
+    /// current generation. A newer context must not be erased by an older one.
+    pub fn clear_more_actions_if_generation(&self, generation: u64) {
+        let mut state = self.state.lock().unwrap_or_else(|error| error.into_inner());
+        if state.more_actions.generation == generation {
+            state.more_actions.generation = generation.saturating_add(1);
+            state.more_actions.items.clear();
+        }
+    }
+
+    pub fn more_actions(&self) -> LxAppMoreActions {
+        let state = self.state.lock().unwrap_or_else(|error| error.into_inner());
+        LxAppMoreActions {
+            generation: state.more_actions.generation,
+            items: state.more_actions.items.clone(),
+        }
+    }
+
+    pub fn more_actions_json(&self) -> String {
+        serde_json::to_string(&self.more_actions())
+            .unwrap_or_else(|_| r#"{"generation":0,"items":[]}"#.to_string())
+    }
+
+    /// Validate a native selection against the currently displayed generation,
+    /// then enqueue its callback on this app's Logic thread.
+    pub fn activate_more_action(&self, generation: u64, index: usize) -> bool {
+        let valid = {
+            let state = self.state.lock().unwrap_or_else(|error| error.into_inner());
+            state.more_actions.generation == generation && index < state.more_actions.items.len()
+        };
+        if !valid {
+            return false;
+        }
+        crate::publish_app_event(
+            &self.appid,
+            &format!("lx.moreActions:{generation}:{index}"),
+            None,
+        )
     }
 
     pub async fn eval_logic(&self, script: String) -> Result<serde_json::Value, LxAppError> {
@@ -1477,8 +1556,8 @@ impl LxApp {
 
     /// Resolve an "allowed" lxapp path (package dir, user data, user cache) to a physical path.
     ///
-    /// This implementation uses logical mapping and prefix validation to ensure the path
-    /// stays within the app's sandbox, without requiring the file to exist on disk.
+    /// Installed resources use logical mapping and prefix validation. Built-in package
+    /// resources are materialized into the app cache for native filesystem consumers.
     pub fn resolve_accessible_path(&self, path: &str) -> Result<PathBuf, LxAppError> {
         let path = path.trim();
         if path.is_empty() {
@@ -1517,6 +1596,9 @@ impl LxApp {
 
             // To keep it simple and predictable for "creation", relative paths
             // without lx:// prefix are resolved against the app bundle root by default.
+            if matches!(self.bundle_source, LxAppBundleSource::BuiltinAssets) {
+                return self.materialize_builtin_resource(rel);
+            }
             return Ok(self.lxapp_dir.join(rel));
         }
 
@@ -1562,6 +1644,24 @@ impl LxApp {
             "Access denied: {}",
             path
         )))
+    }
+
+    fn materialize_builtin_resource(&self, relative: &str) -> Result<PathBuf, LxAppError> {
+        let data = self.read_bytes(relative)?;
+        let destination = self.user_cache_dir.join("native-resources").join(relative);
+        let parent = destination.parent().ok_or_else(|| {
+            LxAppError::InvalidParameter(format!(
+                "native resource has no parent: {}",
+                destination.display()
+            ))
+        })?;
+        fs::create_dir_all(parent).map_err(|err| {
+            LxAppError::IoError(format!("failed to create {}: {err}", parent.display()))
+        })?;
+        fs::write(&destination, data).map_err(|err| {
+            LxAppError::IoError(format!("failed to write {}: {err}", destination.display()))
+        })?;
+        Ok(destination)
     }
 
     pub fn to_uri(&self, path: &Path) -> Option<uri::LxUri> {
@@ -1633,7 +1733,11 @@ impl LxApp {
                     return Err(LxAppError::ResourceNotFound(lx_uri.as_str().to_string()));
                 }
 
-                Ok(self.lxapp_dir.join(rel))
+                if matches!(self.bundle_source, LxAppBundleSource::BuiltinAssets) {
+                    self.materialize_builtin_resource(rel)
+                } else {
+                    Ok(self.lxapp_dir.join(rel))
+                }
             }
             _ => Err(LxAppError::ResourceNotFound(format!(
                 "unsupported lx uri host: {}",
