@@ -2217,6 +2217,7 @@ dependencies = [
  "lingxia-provider",
  "lingxia-service",
  "lingxia-settings",
+ "lingxia-shell",
  "lingxia-surface",
  "lingxia-transfer",
  "lingxia-update",

@@ -337,6 +337,52 @@ impl WindowSurfaceController {
         self.manager.lock().unwrap().switcher_snapshot()
     }
 
+    fn surface_menu(
+        &self,
+        surface_id: &str,
+        content_items: Vec<lingxia_shell::SurfaceMenuItem>,
+    ) -> Option<lingxia_shell::SurfaceMenuSnapshot> {
+        let snapshot = self.manager.lock().unwrap().switcher_snapshot();
+        let index = snapshot
+            .items
+            .iter()
+            .position(|item| item.surface_id == surface_id)?;
+        let item = &snapshot.items[index];
+        Some(lingxia_shell::compose_surface_menu(
+            lingxia_shell::SurfaceMenuContext {
+                revision: snapshot.revision,
+                surface_id: item.surface_id.clone(),
+                closable: item.closable,
+                renameable: item.renameable,
+                title_overridden: item.title_overridden,
+                has_other_closable: snapshot
+                    .items
+                    .iter()
+                    .any(|candidate| candidate.surface_id != surface_id && candidate.closable),
+                has_closable_after: snapshot
+                    .items
+                    .iter()
+                    .skip(index + 1)
+                    .any(|candidate| candidate.closable),
+            },
+            content_items,
+        ))
+    }
+
+    fn perform_surface_menu_intent(
+        &self,
+        intent: lingxia_shell::SurfaceMenuIntent,
+    ) -> HostSurfaceMenuExecution {
+        let execution = {
+            let mut manager = self.manager.lock().unwrap();
+            execute_surface_menu_intent(&mut manager, intent)
+        };
+        if execution.accepted {
+            self.commit();
+        }
+        execution
+    }
+
     fn update_surface_automatic_title(&self, surface_id: &str, title: Option<&str>) -> bool {
         let updated = self
             .manager
@@ -515,6 +561,86 @@ pub struct HostMainSurfaceRegistration {
     pub id: String,
     pub content: lingxia_surface::SurfaceContent,
     pub presentation: lingxia_surface::SurfacePresentation,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HostSurfaceMenuExecution {
+    pub accepted: bool,
+    pub removed_surface_ids: Vec<String>,
+    pub snapshot: lingxia_surface::SurfaceSwitcherSnapshot,
+}
+
+impl HostSurfaceMenuExecution {
+    fn rejected(snapshot: lingxia_surface::SurfaceSwitcherSnapshot) -> Self {
+        Self {
+            accepted: false,
+            removed_surface_ids: Vec::new(),
+            snapshot,
+        }
+    }
+}
+
+fn execute_surface_menu_intent(
+    manager: &mut lingxia_surface::SurfaceManager,
+    intent: lingxia_shell::SurfaceMenuIntent,
+) -> HostSurfaceMenuExecution {
+    let before = manager.switcher_snapshot();
+    let Some(item) = before
+        .items
+        .iter()
+        .find(|item| item.surface_id == intent.surface_id)
+    else {
+        return HostSurfaceMenuExecution::rejected(before);
+    };
+    if before.revision != intent.revision {
+        return HostSurfaceMenuExecution::rejected(before);
+    }
+
+    let mut removed_surface_ids = Vec::new();
+    let accepted = match intent.action {
+        lingxia_shell::SurfaceMenuAction::Switcher { action } => match action {
+            lingxia_shell::SurfaceMenuBuiltinAction::Rename => intent
+                .value
+                .as_deref()
+                .map(str::trim)
+                .filter(|title| !title.is_empty())
+                .is_some_and(|title| manager.rename(&intent.surface_id, Some(title))),
+            lingxia_shell::SurfaceMenuBuiltinAction::ResetTitle => {
+                item.renameable && manager.rename(&intent.surface_id, None)
+            }
+            lingxia_shell::SurfaceMenuBuiltinAction::Close => {
+                if !item.closable {
+                    false
+                } else {
+                    match manager.close(&intent.surface_id) {
+                        lingxia_surface::CloseOutcome::Closed { removed } => {
+                            removed_surface_ids = removed;
+                            true
+                        }
+                        lingxia_surface::CloseOutcome::RejectedRoot { .. }
+                        | lingxia_surface::CloseOutcome::NotFound => false,
+                    }
+                }
+            }
+            lingxia_shell::SurfaceMenuBuiltinAction::CloseOthers => {
+                removed_surface_ids = manager.close_other_mains(&intent.surface_id);
+                !removed_surface_ids.is_empty()
+            }
+            lingxia_shell::SurfaceMenuBuiltinAction::CloseAfter => {
+                removed_surface_ids = manager.close_mains_after(&intent.surface_id);
+                !removed_surface_ids.is_empty()
+            }
+        },
+        // Provider actions are dispatched by the provider integration, never
+        // interpreted as shell lifecycle operations.
+        lingxia_shell::SurfaceMenuAction::External { .. } => false,
+    };
+    HostSurfaceMenuExecution {
+        accepted,
+        removed_surface_ids,
+        snapshot: manager.switcher_snapshot(),
+    }
 }
 
 impl HostMainSurfaceRegistration {
@@ -1226,6 +1352,27 @@ impl LxApp {
         window_controller(PRIMARY_WINDOW, &self.runtime).switcher_snapshot()
     }
 
+    pub fn shell_surface_menu(
+        &self,
+        surface_id: &str,
+        content_items: Vec<lingxia_shell::SurfaceMenuItem>,
+    ) -> Option<lingxia_shell::SurfaceMenuSnapshot> {
+        let surface_id = surface_id.trim();
+        (!surface_id.is_empty())
+            .then(|| {
+                window_controller(PRIMARY_WINDOW, &self.runtime)
+                    .surface_menu(surface_id, content_items)
+            })
+            .flatten()
+    }
+
+    pub fn perform_shell_surface_menu_intent(
+        &self,
+        intent: lingxia_shell::SurfaceMenuIntent,
+    ) -> HostSurfaceMenuExecution {
+        window_controller(PRIMARY_WINDOW, &self.runtime).perform_surface_menu_intent(intent)
+    }
+
     pub fn close_main_surface(&self, surface_id: &str) -> lingxia_surface::CloseOutcome {
         let surface_id = surface_id.trim();
         if surface_id.is_empty() {
@@ -1906,5 +2053,109 @@ mod tests {
             lingxia_surface::SlotKind::Native
         );
         assert_eq!(surface.placement.edge, Some(lingxia_surface::Edge::Bottom));
+    }
+
+    fn switcher_intent(
+        revision: u64,
+        surface_id: &str,
+        action: lingxia_shell::SurfaceMenuBuiltinAction,
+    ) -> lingxia_shell::SurfaceMenuIntent {
+        lingxia_shell::SurfaceMenuIntent {
+            revision,
+            surface_id: surface_id.into(),
+            action: lingxia_shell::SurfaceMenuAction::Switcher { action },
+            value: None,
+        }
+    }
+
+    #[test]
+    fn surface_menu_transaction_rejects_root_close() {
+        let mut manager = lingxia_surface::SurfaceManager::new(1200.0);
+        manager.open(lingxia_surface::Surface::native(
+            "terminal",
+            lingxia_surface::Role::Main,
+            "terminal",
+        ));
+        manager.open(lingxia_surface::Surface::browser(
+            "browser",
+            lingxia_surface::Role::Main,
+            "https://example.com",
+        ));
+        let before = manager.switcher_snapshot();
+
+        let execution = execute_surface_menu_intent(
+            &mut manager,
+            switcher_intent(
+                before.revision,
+                "terminal",
+                lingxia_shell::SurfaceMenuBuiltinAction::Close,
+            ),
+        );
+
+        assert!(!execution.accepted);
+        assert!(execution.removed_surface_ids.is_empty());
+        assert_eq!(execution.snapshot, before);
+    }
+
+    #[test]
+    fn surface_menu_transaction_closes_non_root_atomically() {
+        let mut manager = lingxia_surface::SurfaceManager::new(1200.0);
+        manager.open(lingxia_surface::Surface::native(
+            "terminal",
+            lingxia_surface::Role::Main,
+            "terminal",
+        ));
+        manager.open(lingxia_surface::Surface::browser(
+            "browser",
+            lingxia_surface::Role::Main,
+            "https://example.com",
+        ));
+        let revision = manager.switcher_snapshot().revision;
+
+        let execution = execute_surface_menu_intent(
+            &mut manager,
+            switcher_intent(
+                revision,
+                "browser",
+                lingxia_shell::SurfaceMenuBuiltinAction::Close,
+            ),
+        );
+
+        assert!(execution.accepted);
+        assert_eq!(execution.removed_surface_ids, ["browser"]);
+        assert_eq!(
+            execution.snapshot.root_surface_id.as_deref(),
+            Some("terminal")
+        );
+        assert_eq!(execution.snapshot.items.len(), 1);
+    }
+
+    #[test]
+    fn surface_menu_transaction_rejects_stale_revision() {
+        let mut manager = lingxia_surface::SurfaceManager::new(1200.0);
+        manager.open(lingxia_surface::Surface::native(
+            "terminal",
+            lingxia_surface::Role::Main,
+            "terminal",
+        ));
+        manager.open(lingxia_surface::Surface::browser(
+            "browser",
+            lingxia_surface::Role::Main,
+            "https://example.com",
+        ));
+        let stale_revision = manager.switcher_snapshot().revision;
+        assert!(manager.update_automatic_title("browser", Some("Example")));
+
+        let execution = execute_surface_menu_intent(
+            &mut manager,
+            switcher_intent(
+                stale_revision,
+                "browser",
+                lingxia_shell::SurfaceMenuBuiltinAction::Close,
+            ),
+        );
+
+        assert!(!execution.accepted);
+        assert!(manager.graph().get("browser").is_some());
     }
 }
