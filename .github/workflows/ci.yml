@@ -787,6 +787,10 @@ jobs:
           set -euo pipefail
           cli="$(pwd)/../../target/debug/lingxia${EXE}"
           lxdev="$(pwd)/../../target/debug/lxdev${EXE}"
+          test_timeout=180
+          if [ "$PLATFORM" = "windows" ]; then
+            test_timeout=300
+          fi
           cleanup() { "$cli" dev stop >/dev/null 2>&1 || true; }
           trap cleanup EXIT
 
@@ -801,7 +805,7 @@ jobs:
             (
               cd lxapp
               "$lxdev" test tests/all.test.ts \
-                --timeout 180 \
+                --timeout "$test_timeout" \
                 --arg "platform=${PLATFORM}" \
                 --output-dir "test-results/automation/${PLATFORM}-${framework}"
             )
