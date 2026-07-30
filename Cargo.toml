@@ -138,3 +138,6 @@ rong_url = "0.6.1"
 
 [patch.crates-io]
 portable-pty = { git = "https://github.com/LingXia-Dev/wezterm.git", rev = "59d0fb89c54a77c12afe2561dc6969d8dc55fc4f", package = "portable-pty" }
+servo-allocator = { path = "crates/lingxia-webview/vendor/servo-allocator" }
+servo-storage = { path = "crates/lingxia-webview/vendor/servo-storage" }
+sea-query-rusqlite = { path = "crates/lingxia-webview/vendor/sea-query-rusqlite" }
