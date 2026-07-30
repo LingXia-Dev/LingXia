@@ -8,10 +8,14 @@ pub(super) fn effective_ui_config(
     config: &LingXiaConfig,
     platform: Option<&str>,
 ) -> Result<Option<Value>> {
-    let Some(ui) = config.generated_ui.as_ref() else {
+    let resolved = match platform {
+        Some(platform) => config.resolved_ui_for_platform(platform)?,
+        None => config.generated_ui.clone(),
+    };
+    let Some(ui) = resolved else {
         return Ok(None);
     };
-    let mut ui = ui.clone();
+    let mut ui = ui;
     let terminal_enabled = config
         .capabilities
         .as_ref()
@@ -149,9 +153,11 @@ fn contains_terminal_surface(ui: &Value) -> bool {
             surfaces.iter().any(|surface| {
                 surface
                     .get("content")
-                    .and_then(|content| content.get("kind"))
-                    .and_then(Value::as_str)
-                    == Some("terminal")
+                    .and_then(Value::as_object)
+                    .is_some_and(|content| {
+                        content.get("kind").and_then(Value::as_str) == Some("native")
+                            && content.get("name").and_then(Value::as_str) == Some("terminal")
+                    })
             })
         })
         .unwrap_or(false)

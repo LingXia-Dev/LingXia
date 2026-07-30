@@ -260,6 +260,11 @@ func lxTerminalLogAsync(_ message: String, type: OSLogType = .info) {
 
 @MainActor
 final class LingXiaTerminalWorkspaceView: NSView {
+    enum Presentation {
+        case main
+        case aside
+    }
+
     private static let log = lxTerminalViewOSLog
     private static let toolbarHeight: CGFloat = 34
 
@@ -297,6 +302,7 @@ final class LingXiaTerminalWorkspaceView: NSView {
     }
 
     private let surfaceID: String
+    private let presentation: Presentation
 
     var onRequestClosePanel: (() -> Void)?
     var onToggleSurfaceZoom: ((Bool) -> Void)?
@@ -313,8 +319,9 @@ final class LingXiaTerminalWorkspaceView: NSView {
 
     override var isFlipped: Bool { true }
 
-    init(surfaceID: String) {
+    init(surfaceID: String, presentation: Presentation = .aside) {
         self.surfaceID = surfaceID
+        self.presentation = presentation
         super.init(frame: .zero)
         lxTerminalLog("workspace.init surface=\(surfaceID)")
         setupLayout()
@@ -449,6 +456,7 @@ final class LingXiaTerminalWorkspaceView: NSView {
             self.activateTab(id: tab.id, focusPane: true)
         }
         tabRailView.isSurfaceZoomed = surfaceZoomed
+        tabRailView.showsSurfaceZoomControl = presentation == .aside
 
         toolbarStack.addSubview(tabRailView)
 

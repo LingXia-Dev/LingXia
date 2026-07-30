@@ -241,6 +241,16 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     /// again when they are gone.
     private var sidebarBrowserItemCount = 0
     private var sidebarBrowserRootVisible = false
+    private var browserBlankNewTabs = false
+    private var browserClosesWindowOnLastTab = false
+    private var declaredBrowserOwnerAppId: String?
+    private var managedMainSurfaceIDs = Set<String>()
+    private var managedMainActivateHandler: ((String) -> Void)?
+    private var managedMainCloseHandler: ((String) -> Void)?
+    private var declaredBrowserSurfaceActivateHandler: ((String) -> Void)?
+    private var declaredBrowserSurfaceCloseHandler: ((String) -> Void)?
+    private weak var managedMainView: NSView?
+    private lazy var mainEmptyStateView = MainEmptyStateView()
 
     var onManagedWindowCloseRequested: (() -> Void)?
 
@@ -790,6 +800,11 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     /// page, so an lxapp with no tabBar items is still switchable. A companion
     /// (aside) lxapp instead toggles its surface and never takes the main.
     func handleSidebarAppSelection(appId: String) {
+        if managedMainSurfaceIDs.contains(appId) {
+            managedMainActivateHandler?(appId)
+            sidebarView?.setActiveHighlight(appId: appId)
+            return
+        }
         if let tab = tabManager.tabs.first(where: { $0.appId == appId }),
            let surfaceId = tab.asideSurfaceId {
             onAsideActivateRequested?(surfaceId)
@@ -1116,6 +1131,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     private enum MainContent {
         case lxapp(macOSLxAppViewController)
         case browser
+        case native(NSView)
     }
 
     /// The single entry point for what occupies the main content area. It
@@ -1130,15 +1146,75 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         switch content {
         case .lxapp(let viewController):
             browserCoordinator.deactivate()
+            detachManagedMain()
             attachLxAppToMain(viewController)
         case .browser:
             // The browser view is attached by BrowserTabCoordinator.showBrowserView;
             // here we only detach the lxapp and drop its nav toolbar so the
             // toolbar can't sit on top of the browser view.
             detachCurrentLxApp()
+            detachManagedMain()
             navigationToolbar?.forceHide(true)
             navigationToolbar?.isHidden = true
+        case .native(let view):
+            browserCoordinator.deactivate()
+            detachCurrentLxApp()
+            detachManagedMain()
+            navigationToolbar?.forceHide(true)
+            navigationToolbar?.isHidden = true
+            managedMainView = view
+            view.translatesAutoresizingMaskIntoConstraints = false
+            workspaceManager.contentContainer.addSubview(view)
+            NSLayoutConstraint.activate([
+                view.topAnchor.constraint(equalTo: workspaceManager.contentContainer.topAnchor),
+                view.leadingAnchor.constraint(equalTo: workspaceManager.contentContainer.leadingAnchor),
+                view.trailingAnchor.constraint(equalTo: workspaceManager.contentContainer.trailingAnchor),
+                view.bottomAnchor.constraint(equalTo: workspaceManager.contentContainer.bottomAnchor),
+            ])
         }
+    }
+
+    private func detachManagedMain() {
+        managedMainView?.removeFromSuperview()
+        managedMainView = nil
+    }
+
+    func presentManagedMainView(_ view: NSView) {
+        presentMain(.native(view))
+    }
+
+    func updateManagedMainSurfaces(
+        _ items: [LxAppUIActionItem],
+        activeId: String?,
+        onActivate: @escaping (String) -> Void,
+        onClose: @escaping (String) -> Void
+    ) {
+        managedMainSurfaceIDs = Set(items.map(\.id))
+        managedMainActivateHandler = onActivate
+        managedMainCloseHandler = onClose
+        sidebarView?.updateManagedMainItems(items, activeId: activeId)
+        reconcileSidebarAutoHide()
+    }
+
+    func presentMainEmptyState() {
+        presentMain(.native(mainEmptyStateView))
+        sidebarView?.clearAllHighlights()
+    }
+
+    func configureMainEmptyState(
+        title: String,
+        message: String?,
+        icon: NSImage?,
+        actionLabel: String?,
+        onAction: (() -> Void)?
+    ) {
+        mainEmptyStateView.configure(
+            title: title,
+            message: message,
+            icon: icon,
+            actionLabel: actionLabel,
+            onAction: onAction
+        )
     }
 
     /// Remove the current lxapp view controller from the main area (pause + detach).
@@ -1253,6 +1329,10 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     // MARK: - Tab Close
 
     private func closeTab(_ appId: String) {
+        if managedMainSurfaceIDs.contains(appId) {
+            managedMainCloseHandler?(appId)
+            return
+        }
         closeSession(appId: appId, notifyRuntime: true)
     }
 
@@ -1656,7 +1736,9 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
             return
         }
 
-        let hasSwitcher = tabManager.tabs.count > 1
+        let mainIDs = Set(tabManager.tabs.filter { $0.isMain }.map(\.appId))
+            .union(managedMainSurfaceIDs)
+        let hasSwitcher = mainIDs.count > 1
 
         var activeLxAppTabBarHasItems = false
         if let activeAppId = tabManager.activeTab?.appId,
@@ -1763,6 +1845,32 @@ extension LxAppShell {
         reconcileSidebarAutoHide()
     }
 
+    func setBrowserBlankNewTabs(_ enabled: Bool) {
+        browserBlankNewTabs = enabled
+    }
+
+    func setBrowserClosesWindowOnLastTab(_ enabled: Bool) {
+        browserClosesWindowOnLastTab = enabled
+    }
+
+    func configureDeclaredBrowser(
+        ownerAppId: String?,
+        onSurfaceActivate: @escaping (String) -> Void,
+        onSurfaceClose: @escaping (String) -> Void
+    ) {
+        declaredBrowserOwnerAppId = ownerAppId
+        declaredBrowserSurfaceActivateHandler = onSurfaceActivate
+        declaredBrowserSurfaceCloseHandler = onSurfaceClose
+    }
+
+    @discardableResult
+    func presentDeclaredBrowserMain(
+        surfaceID: String,
+        mode: BrowserTabCoordinator.DeclaredInitialMode
+    ) -> Bool {
+        browserCoordinator.openDeclaredMain(surfaceID: surfaceID, mode: mode)
+    }
+
     func setBrowserPageActionsVisible(_ visible: Bool) {
         browserCoordinator.setPageActionsVisible(visible)
     }
@@ -1802,6 +1910,8 @@ extension LxAppShell: BrowserCoordinatorHost {
     var hostWindow: NSWindow? { window }
     var hasOpenTabs: Bool { tabManager.hasTabs }
     var keepsBrowserRootWithoutTabs: Bool { sidebarBrowserRootVisible }
+    var closesWindowOnLastBrowserTab: Bool { browserClosesWindowOnLastTab }
+    var usesBlankBrowserNewTabs: Bool { browserBlankNewTabs }
 
     func browserOwnerForNewTab() -> (appId: String, sessionId: UInt64)? {
         if let appId = tabManager.activeTab?.appId {
@@ -1816,6 +1926,10 @@ extension LxAppShell: BrowserCoordinatorHost {
                 return (browserAppId, browserSessionId)
             }
         }
+        if let appId = declaredBrowserOwnerAppId,
+           let sessionId = resolvedSessionId(for: appId) {
+            return (appId, sessionId)
+        }
         let current = getCurrentLxApp()
         let appId = current.appid.toString()
         if !appId.isEmpty && current.session_id > 0 {
@@ -1829,6 +1943,14 @@ extension LxAppShell: BrowserCoordinatorHost {
         // toolbar (the browser has its own address bar). The browser view itself
         // is attached by BrowserTabCoordinator after this returns.
         presentMain(.browser)
+    }
+
+    func browserDidActivateSurface(_ surfaceID: String) {
+        declaredBrowserSurfaceActivateHandler?(surfaceID)
+    }
+
+    func browserDidCloseSurface(_ surfaceID: String) {
+        declaredBrowserSurfaceCloseHandler?(surfaceID)
     }
 
     func switchToLxAppTab(_ appId: String) {
@@ -2146,6 +2268,97 @@ extension LxAppToolbarMode: Equatable {
         default:
             return false
         }
+    }
+}
+
+@MainActor
+private final class MainEmptyStateView: NSView {
+    private let symbolView = NSImageView()
+    private let titleLabel = NSTextField(labelWithString: "Nothing open")
+    private let messageLabel = NSTextField(labelWithString: "")
+    private let actionButton = NSButton(title: "", target: nil, action: nil)
+    private var actionHandler: (() -> Void)?
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        translatesAutoresizingMaskIntoConstraints = false
+        wantsLayer = true
+
+        symbolView.translatesAutoresizingMaskIntoConstraints = false
+        symbolView.image = NSImage(
+            systemSymbolName: "rectangle.stack",
+            accessibilityDescription: "Nothing open"
+        )
+        symbolView.contentTintColor = .tertiaryLabelColor
+        symbolView.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 30, weight: .regular)
+
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+        titleLabel.font = .systemFont(ofSize: 13, weight: .medium)
+        titleLabel.textColor = .secondaryLabelColor
+        titleLabel.alignment = .center
+
+        messageLabel.translatesAutoresizingMaskIntoConstraints = false
+        messageLabel.font = .systemFont(ofSize: 12)
+        messageLabel.textColor = .tertiaryLabelColor
+        messageLabel.alignment = .center
+        messageLabel.lineBreakMode = .byWordWrapping
+        messageLabel.maximumNumberOfLines = 3
+        messageLabel.isHidden = true
+
+        actionButton.translatesAutoresizingMaskIntoConstraints = false
+        actionButton.bezelStyle = .rounded
+        actionButton.controlSize = .regular
+        actionButton.target = self
+        actionButton.action = #selector(actionButtonClicked)
+        actionButton.isHidden = true
+
+        let stack = NSStackView(views: [symbolView, titleLabel, messageLabel, actionButton])
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        stack.orientation = .vertical
+        stack.alignment = .centerX
+        stack.spacing = 10
+        stack.setCustomSpacing(14, after: symbolView)
+        stack.setCustomSpacing(16, after: messageLabel)
+        addSubview(stack)
+
+        NSLayoutConstraint.activate([
+            symbolView.widthAnchor.constraint(equalToConstant: 42),
+            symbolView.heightAnchor.constraint(equalToConstant: 42),
+            stack.centerXAnchor.constraint(equalTo: centerXAnchor),
+            stack.centerYAnchor.constraint(equalTo: centerYAnchor),
+            stack.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor, constant: 24),
+            stack.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -24),
+        ])
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    func configure(
+        title: String,
+        message: String?,
+        icon: NSImage?,
+        actionLabel: String?,
+        onAction: (() -> Void)?
+    ) {
+        titleLabel.stringValue = title
+        symbolView.image = icon ?? NSImage(
+            systemSymbolName: "rectangle.stack",
+            accessibilityDescription: title
+        )
+        let message = message?.trimmingCharacters(in: .whitespacesAndNewlines)
+        messageLabel.stringValue = message ?? ""
+        messageLabel.isHidden = message?.isEmpty != false
+        let actionLabel = actionLabel?.trimmingCharacters(in: .whitespacesAndNewlines)
+        actionButton.title = actionLabel ?? ""
+        actionButton.isHidden = actionLabel?.isEmpty != false || onAction == nil
+        actionHandler = onAction
+    }
+
+    @objc private func actionButtonClicked() {
+        actionHandler?()
     }
 }
 

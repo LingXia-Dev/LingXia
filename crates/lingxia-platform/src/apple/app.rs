@@ -193,6 +193,11 @@ impl AppRuntime for Platform {
         Ok(())
     }
 
+    fn set_shell_empty_state(&self, state_json: &str) -> Result<(), PlatformError> {
+        let _ = ffi::set_shell_empty_state(state_json);
+        Ok(())
+    }
+
     fn set_shell_pins(&self, items: &[lingxia_shell::ShellPin]) -> Result<(), PlatformError> {
         let json = serde_json::to_string(items)
             .map_err(|error| PlatformError::Platform(error.to_string()))?;

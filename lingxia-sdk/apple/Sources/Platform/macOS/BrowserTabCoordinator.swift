@@ -16,10 +16,19 @@ protocol BrowserCoordinatorHost: AnyObject {
     var hasOpenTabs: Bool { get }
     /// Whether browser chrome remains usable when the last web tab closes.
     var keepsBrowserRootWithoutTabs: Bool { get }
+    /// Whether closing the final browser tab closes the containing window.
+    var closesWindowOnLastBrowserTab: Bool { get }
+    /// Whether a user-created tab starts at about:blank instead of the bundled
+    /// browser new-tab page.
+    var usesBlankBrowserNewTabs: Bool { get }
     /// Returns owner (appId, sessionId) for creating a new browser tab.
     func browserOwnerForNewTab() -> (appId: String, sessionId: UInt64)?
     /// Called before a browser tab becomes active. Host should pause current VC.
     func browserWillActivateTab()
+    /// Reports the declared main surface that owns the activated tab.
+    func browserDidActivateSurface(_ surfaceID: String)
+    /// Reports that the last tab owned by a declared main surface closed.
+    func browserDidCloseSurface(_ surfaceID: String)
     /// Switch display to the lxapp tab with this appId.
     func switchToLxAppTab(_ appId: String)
     /// Currently active lxapp tab appId (if any).
@@ -42,6 +51,11 @@ protocol BrowserCoordinatorHost: AnyObject {
 
 @MainActor
 final class BrowserTabCoordinator: NSObject {
+
+    enum DeclaredInitialMode {
+        case url(String)
+        case emptyWorkspace
+    }
 
     private static let log = OSLog(subsystem: "LingXia", category: "BrowserTabCoordinator")
     private static let attachMaxRetry = 5
@@ -74,6 +88,8 @@ final class BrowserTabCoordinator: NSObject {
     private var tabFaviconRequestOrigins: [String: String] = [:]
     private var lastObservedURLs: [String: String] = [:]
     private var stableTabIds: [String: String] = [:]
+    private var declaredSurfaceIds: [String: String] = [:]
+    private var declaredWorkspaceSurfaceID: String?
     private var retainedNewTabOwner: (appId: String, sessionId: UInt64)?
 
     /// Tabs whose WebView has been discarded to free memory (Chrome-style).
@@ -102,7 +118,6 @@ final class BrowserTabCoordinator: NSObject {
     // UI
     private var browserView: NSView?
     private let toolbar = NSView()
-    private let toolbarSeparator = NSView()
     private let backButton = NSButton()
     private let forwardButton = NSButton()
     private let refreshButton = NSButton()
@@ -198,9 +213,13 @@ final class BrowserTabCoordinator: NSObject {
 
     /// Deactivate browser UI (called when switching to an lxapp tab). Idempotent.
     func deactivate() {
-        guard let previous = activeTabId else { return }
+        let previous = activeTabId
         clearWebViewAttachment()
         hideBrowserView()
+        guard let previous else {
+            host?.forceHideNavigationToolbar(false)
+            return
+        }
         // The browser is leaving the foreground — start the idle clock for the
         // tab that was active, so it isn't treated as infinitely idle and
         // discarded prematurely on the next pressure event / sweep.
@@ -227,10 +246,28 @@ final class BrowserTabCoordinator: NSObject {
 
     // MARK: - Public Tab Operations
 
+    @discardableResult
+    func openDeclaredMain(surfaceID: String, mode: DeclaredInitialMode) -> Bool {
+        let stableTabID = Self.declaredStableTabID(surfaceID)
+        declaredWorkspaceSurfaceID = surfaceID
+        switch mode {
+        case .url(let url):
+            return addTabWithURL(
+                url,
+                stableTabId: stableTabID,
+                declaredSurfaceID: surfaceID
+            ) != nil
+        case .emptyWorkspace:
+            return addTabWithURL(
+                "about:blank",
+                stableTabId: stableTabID,
+                declaredSurfaceID: surfaceID
+            ) != nil
+        }
+    }
+
     func addTab() {
-        // A persistent browser root is used by the URL Runner, which does not
-        // bundle the browser webui behind `lingxia://newtab`.
-        addTabWithURL(host?.keepsBrowserRootWithoutTabs == true ? "about:blank" : "")
+        addTabWithURL(host?.usesBlankBrowserNewTabs == true ? "about:blank" : "")
     }
 
     func openSettings() {
@@ -281,16 +318,15 @@ final class BrowserTabCoordinator: NSObject {
 
     func closeTab(id: String) {
         guard let index = tabIds.firstIndex(of: id) else { return }
+        let declaredSurfaceID = declaredSurfaceIds[id]
 
-        // A browser-only host has no lxapp surface to reveal. Keep its final
-        // tab as the mounted browser content instead of leaving an empty shell.
+        // A direct web Runner has no workspace once its target tab closes.
+        // Window teardown owns the tab cleanup through the Runner close hook.
         if tabIds.count == 1,
            host?.hasOpenTabs == false,
-           host?.keepsBrowserRootWithoutTabs != true {
-            _ = browserTabNavigate(tabIdString(id), "about:blank")
-            interactedTabs.remove(id)
-            lastObservedURLs[id] = "about:blank"
-            switchToTab(id: id)
+           host?.keepsBrowserRootWithoutTabs != true,
+           host?.closesWindowOnLastBrowserTab == true {
+            host?.hostWindow?.close()
             return
         }
 
@@ -306,6 +342,7 @@ final class BrowserTabCoordinator: NSObject {
         tabFaviconRequestOrigins.removeValue(forKey: id)
         lastObservedURLs.removeValue(forKey: id)
         stableTabIds = stableTabIds.filter { $0.value != id }
+        declaredSurfaceIds.removeValue(forKey: id)
         interactedTabs.remove(id)
         discardedTabs.remove(id)
         tabRecency.removeAll { $0 == id }
@@ -317,7 +354,19 @@ final class BrowserTabCoordinator: NSObject {
 
         if activeTabId == id {
             activeTabId = nil
+        }
 
+        if let declaredSurfaceID,
+           !declaredSurfaceIds.values.contains(declaredSurfaceID) {
+            if declaredWorkspaceSurfaceID == declaredSurfaceID {
+                declaredWorkspaceSurfaceID = nil
+            }
+            host?.browserDidCloseSurface(declaredSurfaceID)
+            host?.updateSidebarBrowserItems(sidebarItems(), activeId: activeTabId)
+            return
+        }
+
+        if activeTabId == nil {
             if let lastBrowser = tabIds.last {
                 switchToTab(id: lastBrowser)
                 host?.updateSidebarBrowserItems(sidebarItems(), activeId: lastBrowser)
@@ -361,6 +410,8 @@ final class BrowserTabCoordinator: NSObject {
         tabFaviconRequestOrigins.removeAll()
         lastObservedURLs.removeAll()
         stableTabIds.removeAll()
+        declaredSurfaceIds.removeAll()
+        declaredWorkspaceSurfaceID = nil
         discardedTabs.removeAll()
         tabRecency.removeAll()
         backgroundedAt.removeAll()
@@ -772,12 +823,17 @@ final class BrowserTabCoordinator: NSObject {
 
     // MARK: - Internal Tab Operations
 
-    private func addTabWithURL(_ url: String, stableTabId: String? = nil) {
+    @discardableResult
+    private func addTabWithURL(
+        _ url: String,
+        stableTabId: String? = nil,
+        declaredSurfaceID: String? = nil
+    ) -> String? {
         let owner = host?.browserOwnerForNewTab()
             ?? (host?.keepsBrowserRootWithoutTabs == true ? retainedNewTabOwner : nil)
         guard let owner else {
             LXLog.error("Cannot create browser tab without active lxapp session", category: "BrowserTabCoordinator")
-            return
+            return nil
         }
         retainedNewTabOwner = owner
 
@@ -790,8 +846,11 @@ final class BrowserTabCoordinator: NSObject {
            let existingTabId = stableTabIds[requestedStableTabId],
            tabIds.contains(existingTabId),
            lastObservedURLs[existingTabId] == requestedURL {
+            if let surfaceID = declaredSurfaceID ?? declaredWorkspaceSurfaceID {
+                declaredSurfaceIds[existingTabId] = surfaceID
+            }
             presentInternalBrowserTab(id: existingTabId)
-            return
+            return existingTabId
         }
 
         let openedTab = if let requestedStableTabId {
@@ -805,22 +864,26 @@ final class BrowserTabCoordinator: NSObject {
                 "openBrowserTab failed for \(owner.appId)/\(owner.sessionId) url=\(url) stableTabId=\(requestedStableTabId ?? "")",
                 category: "BrowserTabCoordinator"
             )
-            return
+            return nil
         }
 
         let tabId = tabIdString(openedTab.toString())
         guard !tabId.isEmpty else {
             LXLog.error("openBrowserTab returned empty tab id", category: "BrowserTabCoordinator")
-            return
+            return nil
         }
 
         if let requestedStableTabId {
             stableTabIds[requestedStableTabId] = tabId
         }
+        if let surfaceID = declaredSurfaceID ?? declaredWorkspaceSurfaceID {
+            declaredSurfaceIds[tabId] = surfaceID
+        }
         if !requestedURL.isEmpty {
             lastObservedURLs[tabId] = requestedURL
         }
         presentInternalBrowserTab(id: tabId)
+        return tabId
     }
 
     private func switchToTab(id: String) {
@@ -862,6 +925,10 @@ final class BrowserTabCoordinator: NSObject {
         }
 
         activeTabId = id
+        if let surfaceID = declaredSurfaceIds[id] {
+            declaredWorkspaceSurfaceID = surfaceID
+            host?.browserDidActivateSurface(surfaceID)
+        }
         backgroundedAt.removeValue(forKey: id)
         touchRecency(id)
 
@@ -883,6 +950,15 @@ final class BrowserTabCoordinator: NSObject {
     private func touchRecency(_ id: String) {
         tabRecency.removeAll { $0 == id }
         tabRecency.append(id)
+    }
+
+    private static func declaredStableTabID(_ surfaceID: String) -> String {
+        var hash: UInt64 = 0xcbf29ce484222325
+        for byte in surfaceID.utf8 {
+            hash ^= UInt64(byte)
+            hash &*= 0x100000001b3
+        }
+        return String(format: "surface-%016llx", hash)
     }
 
     // MARK: - Adaptive memory management (no fixed tab cap)
@@ -1315,11 +1391,6 @@ final class BrowserTabCoordinator: NSObject {
         toolbar.addSubview(menuButton)
         menuButton.isHidden = !pageActionsVisible
 
-        toolbarSeparator.translatesAutoresizingMaskIntoConstraints = false
-        toolbarSeparator.wantsLayer = true
-        toolbarSeparator.layer?.backgroundColor = NSColor.separatorColor.cgColor
-        bv.addSubview(toolbarSeparator)
-
         webContainer.translatesAutoresizingMaskIntoConstraints = false
         webContainer.wantsLayer = true
         bv.addSubview(webContainer)
@@ -1402,12 +1473,7 @@ final class BrowserTabCoordinator: NSObject {
             pinButton.widthAnchor.constraint(equalToConstant: pageActionsVisible ? 20 : 0),
             pinButton.heightAnchor.constraint(equalToConstant: 20),
 
-            toolbarSeparator.topAnchor.constraint(equalTo: toolbar.bottomAnchor),
-            toolbarSeparator.leadingAnchor.constraint(equalTo: bv.leadingAnchor),
-            toolbarSeparator.trailingAnchor.constraint(equalTo: bv.trailingAnchor),
-            toolbarSeparator.heightAnchor.constraint(equalToConstant: 1),
-
-            webContainer.topAnchor.constraint(equalTo: toolbarSeparator.bottomAnchor),
+            webContainer.topAnchor.constraint(equalTo: toolbar.bottomAnchor),
             webContainer.leadingAnchor.constraint(equalTo: bv.leadingAnchor),
             webContainer.trailingAnchor.constraint(equalTo: bv.trailingAnchor),
             webContainer.bottomAnchor.constraint(equalTo: bv.bottomAnchor),

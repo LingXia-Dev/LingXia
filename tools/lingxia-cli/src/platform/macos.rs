@@ -467,10 +467,14 @@ impl Platform for MacosPlatform {
 
         // An exclusive tray hides the dock icon. Emit LSUIElement
         // statically so the app starts as an accessory with no dock-icon flash.
-        let hide_dock_icon = config
+        let resolved_macos_ui = config
             .lingxia_config
             .as_ref()
-            .and_then(|c| c.generated_ui.as_ref())
+            .map(|config| config.resolved_ui_for_platform("macos"))
+            .transpose()?
+            .flatten();
+        let hide_dock_icon = resolved_macos_ui
+            .as_ref()
             .and_then(|ui| ui.get("launch"))
             .and_then(|launch| launch.get("hideDockIcon"))
             .and_then(serde_json::Value::as_bool)

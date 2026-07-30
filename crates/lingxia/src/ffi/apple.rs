@@ -147,6 +147,9 @@ mod bridge {
         #[swift_bridge(swift_name = "lingxiaInit")]
         fn lingxia_init(data_dir: &str, cache_dir: &str, locale: &str) -> LingxiaInitResult;
 
+        #[swift_bridge(swift_name = "launchHomeControlLogic")]
+        fn launch_home_control_logic() -> bool;
+
         #[swift_bridge(swift_name = "getDisplayLanguage")]
         fn get_display_language() -> String;
 
@@ -264,6 +267,9 @@ mod bridge {
         // callback. The callback owns any resulting surface operation.
         #[swift_bridge(swift_name = "shellActivate")]
         fn shell_activate(generation: u64, item_id: &str) -> bool;
+
+        #[swift_bridge(swift_name = "shellEmptyStateActivate")]
+        fn shell_empty_state_activate(generation: u64, item_id: &str) -> bool;
 
         // Open (or focus) an lxapp as a MAIN — the pinned-lxapp tile's click.
         #[swift_bridge(swift_name = "shellOpenLxappMain")]
@@ -695,6 +701,18 @@ macro_rules! ffi_catch_unwind {
             }
         }
     };
+}
+
+pub fn launch_home_control_logic() -> bool {
+    ffi_catch_unwind!("launch_home_control_logic", false, || {
+        match crate::app::launch_home_control_logic() {
+            Ok(()) => true,
+            Err(error) => {
+                log::error!("Failed to launch home control Logic: {error}");
+                false
+            }
+        }
+    })
 }
 
 /// Notify that LxApp was closed
@@ -1131,6 +1149,17 @@ pub fn shell_activate(generation: u64, item_id: &str) -> bool {
             id: item_id.to_string(),
         })
         .is_ok()
+    })
+}
+
+pub fn shell_empty_state_activate(generation: u64, item_id: &str) -> bool {
+    ffi_catch_unwind!("shell_empty_state_activate", false, || {
+        let Some(owner) = lingxia_app_context::home_app_id() else {
+            return false;
+        };
+        let event = format!("lx.shell.emptyState:{generation}:{item_id}");
+        lxapp::publish_app_event(owner, &event, None);
+        true
     })
 }
 

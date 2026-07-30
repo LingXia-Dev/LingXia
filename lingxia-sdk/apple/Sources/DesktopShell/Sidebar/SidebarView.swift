@@ -301,6 +301,10 @@ private struct SidebarModel {
     struct AppGroupVM {
         let appId: String
         let asideSurfaceId: String?
+        let managedLabel: String?
+        let managedIcon: NSImage?
+
+        var isManagedMain: Bool { managedLabel != nil }
     }
 
     /// One browser tab row.
@@ -479,6 +483,8 @@ class SidebarView: NSView, NSPopoverDelegate {
     /// the public `update*`/`setActiveHighlight`/`clearAllHighlights` methods,
     /// each of which calls `render()` afterwards.
     private var model = SidebarModel()
+    private var lxappGroups: [SidebarModel.AppGroupVM] = []
+    private var managedMainGroups: [SidebarModel.AppGroupVM] = []
 
     // MARK: Render-side view caches (rebuilt/diffed from `model` by render()).
     private var groupViews: [String: SidebarGroupView] = [:]
@@ -913,21 +919,33 @@ class SidebarView: NSView, NSPopoverDelegate {
         railButtons.removeAll()
 
         for group in model.appGroups {
-            let info = getLxAppInfo(group.appId)
-            let iconPath = info.icon.toString()
+            let tooltip: String
             let image: NSImage?
-            if !iconPath.isEmpty, let img = NSImage(contentsOfFile: iconPath) {
-                image = img
+            if group.isManagedMain {
+                tooltip = group.managedLabel ?? group.appId
+                image = group.managedIcon ?? Self.defaultAppIcon
             } else {
-                image = Self.defaultAppIcon
+                let info = getLxAppInfo(group.appId)
+                let iconPath = info.icon.toString()
+                tooltip = info.app_name.toString()
+                if !iconPath.isEmpty, let img = NSImage(contentsOfFile: iconPath) {
+                    image = img
+                } else {
+                    image = Self.defaultAppIcon
+                }
             }
             let key = "app:\(group.appId)"
-            let btn = makeRailButton(key: key, tooltip: info.app_name.toString(), image: image, isTemplate: false)
+            let btn = makeRailButton(
+                key: key,
+                tooltip: tooltip,
+                image: image,
+                isTemplate: group.isManagedMain
+            )
             btn.action = #selector(railAppClicked(_:))
             if let railButton = btn as? SidebarRailButton {
                 railButton.onHoverChanged = { [weak self, weak railButton] hovering in
                     guard let self, let railButton else { return }
-                    if hovering {
+                    if hovering && !group.isManagedMain {
                         self.showRailTabPopover(appId: group.appId, relativeTo: railButton)
                     } else {
                         self.scheduleRailTabPopoverDismiss()
@@ -1498,15 +1516,55 @@ class SidebarView: NSView, NSPopoverDelegate {
 
     /// Rebuild all groups based on current tabs.
     func updateForTabs(_ tabs: [LxAppTab], activeTab: LxAppTab?) {
-        model.appGroups = tabs.map {
-            SidebarModel.AppGroupVM(appId: $0.appId, asideSurfaceId: $0.asideSurfaceId)
+        lxappGroups = tabs.map {
+            SidebarModel.AppGroupVM(
+                appId: $0.appId,
+                asideSurfaceId: $0.asideSurfaceId,
+                managedLabel: nil,
+                managedIcon: nil
+            )
         }
+        rebuildAppGroups()
         // A provided active tab updates the selection; nil leaves it untouched,
         // matching the original (which only highlighted when activeTab existed).
         if let activeAppId = activeTab?.appId {
             model.selection = .app(appId: activeAppId, pageIndex: nil)
         }
         render()
+    }
+
+    func updateManagedMainItems(_ items: [LxAppUIActionItem], activeId: String?) {
+        managedMainGroups = items.map { item in
+            let fallbackIcon: NSImage?
+            switch item.id {
+            case "terminal":
+                fallbackIcon = NSImage(
+                    systemSymbolName: "terminal",
+                    accessibilityDescription: item.label
+                )
+            case "browser":
+                fallbackIcon = Self.designIcon("icon_globe")
+            default:
+                fallbackIcon = nil
+            }
+            return SidebarModel.AppGroupVM(
+                appId: item.id,
+                asideSurfaceId: nil,
+                managedLabel: item.label,
+                managedIcon: item.iconURL.flatMap(NSImage.init(contentsOf:)) ?? fallbackIcon
+            )
+        }
+        rebuildAppGroups()
+        if let activeId {
+            model.selection = .app(appId: activeId, pageIndex: nil)
+        }
+        render()
+    }
+
+    private func rebuildAppGroups() {
+        let liveLxappIds = Set(lxappGroups.map(\.appId))
+        model.appGroups = lxappGroups
+            + managedMainGroups.filter { !liveLxappIds.contains($0.appId) }
     }
 
     /// Refresh a specific app group from Rust data
@@ -1603,7 +1661,11 @@ class SidebarView: NSView, NSPopoverDelegate {
             if let existing = groupViews[appId] {
                 groupView = existing
             } else {
-                groupView = SidebarGroupView(appId: appId)
+                groupView = SidebarGroupView(
+                    appId: appId,
+                    managedLabel: group.managedLabel,
+                    managedIcon: group.managedIcon
+                )
                 groupView.onPageSelected = { [weak self] appId, itemIndex in
                     self?.onAppPageSelected?(appId, itemIndex)
                 }

@@ -124,7 +124,7 @@ impl LxAppDelegate for LxApp {
                 }
             }
             self.set_status(LxAppSessionStatus::Opening);
-            if let Err(e) = self.appservice_notify(AppServiceEvent::OnLaunch, None) {
+            if let Err(e) = self.ensure_app_launch_dispatched() {
                 error!("Failed to trigger onLaunch service: {}", e).with_appid(self.appid.clone());
             }
             self.set_status(LxAppSessionStatus::Opened);
