@@ -291,6 +291,10 @@ export type AutostartApi = {
 
 export type BinaryFileData = ArrayBuffer | ArrayBufferView;
 
+/**
+ * Built-in browser product page. Opening one requires
+ * `capabilities.browser` and is restricted to the home lxapp.
+ */
 export type BuiltinBrowserSurfaceUrl = 'lingxia://settings' | 'lingxia://downloads';
 
 export type CapsuleRect = {
@@ -1256,10 +1260,18 @@ export type ShellApi = {
     emptyState: ShellEmptyStateApi;
 };
 
+/**
+ * Content for the desktop shell placeholder shown only while no main
+ * surface is active. It creates no surface, WebView, or sidebar entry.
+ */
 export type ShellEmptyStateOptions = {
+    /** Non-empty placeholder title. */
     title: string;
+    /** Optional supporting text. */
     message?: string;
+    /** Bundled asset or lxapp-accessible local path. */
     icon?: string;
+    /** Optional app-owned action; the callback decides what to open or run. */
     action?: {
         id: string;
         label: string;
@@ -1287,6 +1299,10 @@ export type ShellSidebarAction = {
     onActivate: () => void;
 };
 
+/**
+ * Header accepts at most two icon actions. Footer actions are shown as
+ * rows and the host scrolls overflow.
+ */
 export type ShellSidebarActionPlacement = 'header' | 'footer';
 
 /** Mutable presentation fields for an existing sidebar action. */
@@ -1325,7 +1341,11 @@ export type StatOptions = {
     path: string;
 };
 
-/** Persistent key-value storage backed by the lxapp database. */
+/**
+ * Asynchronous persistent key-value storage backed by the lxapp
+ * database. Values are untyped; validate or narrow values returned by
+ * `get`. Use `lx.getFileManager()` for path-based data.
+ */
 export type Storage = {
     get(key: string): Promise<unknown>;
     set(key: string, value: unknown): Promise<void>;
@@ -1530,7 +1550,11 @@ export type UpdateFailedInfo = UpdateReadyInfo & {
     error?: string;
 };
 
-/** Runtime update APIs. */
+/**
+ * Callback-based updates for this lxapp's bundle. Available to every
+ * lxapp. To update the native host app, the home lxapp uses the
+ * task-based `lx.app.checkUpdate()` API instead.
+ */
 export type UpdateManager = {
     applyUpdate(): void;
     onUpdateReady(callback: (info: UpdateReadyInfo) => void): void;
@@ -1806,7 +1830,10 @@ export interface SetTabBarBadgeOptions {
   text: string;
 }
 
-/** Options for setting TabBar item */
+/**
+ * Runtime item overrides for a TabBar declared in `lxapp.json`. These options
+ * do not create a TabBar.
+ */
 export interface SetTabBarItemOptions {
   index: number;
   text?: string;
@@ -1814,7 +1841,10 @@ export interface SetTabBarItemOptions {
   selectedIconPath?: string;
 }
 
-/** Options for setting TabBar style */
+/**
+ * Runtime style overrides for a TabBar declared in `lxapp.json`. These options
+ * do not create a TabBar.
+ */
 export interface SetTabBarStyleOptions {
   color?: string;
   selectedColor?: string;
@@ -2021,6 +2051,11 @@ declare global {
     navigateToLxApp(options: NavigateToLxAppOptions): Promise<void>;
     navigateBackLxApp(): Promise<void>;
     share(options: ShareOptions): Promise<ShareResult>;
+    /**
+     * Open this lxapp's asynchronous persistent key-value store. Values returned
+     * by `get` are untyped; validate or narrow them at the call site. Use
+     * `lx.getFileManager()` instead for path-based data.
+     */
     getStorage(): Storage;
     /**
      * `lx.openSurface(spec)` — unified surface entry point. The spec is a
@@ -2044,7 +2079,11 @@ declare global {
     getSystemSetting(): SystemSettingInfo;
     /** Show action sheet function for JavaScript */
     showActionSheet(options: ShowActionSheetOptions): Promise<ActionSheetResult>;
-    /** Get the visible capsule button's bounding rect, or `null` when none is shown. */
+    /**
+     * Get the visible capsule button's bounding rect. Returns `null` for the home
+     * lxapp, an inactive lxapp, or a host that does not expose a capsule; rejection
+     * indicates an actual platform failure rather than hidden chrome.
+     */
     getCapsuleRect(): Promise<CapsuleRect | null>;
     /** Show modal function (async) */
     showModal(options: ShowModalOptions): Promise<ModalResult>;
@@ -2077,27 +2116,56 @@ declare global {
     /** Relaunch to a new page (clear page stack) */
     reLaunch(options: ReLaunchOptions): Promise<void>;
     readonly shell: ShellApi;
-    /** Show TabBar red dot */
+    /**
+     * Show a red dot on a statically declared TabBar item. Returns `false` when
+     * this lxapp has no TabBar or the item does not exist.
+     */
     showTabBarRedDot(options: TabBarRedDotOptions): boolean;
-    /** Hide TabBar red dot */
+    /**
+     * Hide a red dot on a statically declared TabBar item. Returns `false` when
+     * this lxapp has no TabBar or the item does not exist.
+     */
     hideTabBarRedDot(options: TabBarRedDotOptions): boolean;
-    /** Set TabBar badge */
+    /**
+     * Set a badge on a statically declared TabBar item. Returns `false` when this
+     * lxapp has no TabBar or the item does not exist.
+     */
     setTabBarBadge(options: SetTabBarBadgeOptions): boolean;
-    /** Remove TabBar badge */
+    /**
+     * Remove a badge from a statically declared TabBar item. Returns `false` when
+     * this lxapp has no TabBar or the item does not exist.
+     */
     removeTabBarBadge(options: RemoveTabBarBadgeOptions): boolean;
-    /** Show TabBar */
+    /**
+     * Show the TabBar declared in `lxapp.json`. Returns `false` when none is
+     * declared.
+     */
     showTabBar(): Promise<boolean>;
-    /** Hide TabBar */
+    /**
+     * Hide the TabBar declared in `lxapp.json`. Returns `false` when none is
+     * declared.
+     */
     hideTabBar(): Promise<boolean>;
-    /** Set TabBar style */
+    /**
+     * Override the style of the TabBar declared in `lxapp.json`. Returns `false`
+     * when none is declared.
+     */
     setTabBarStyle(options: SetTabBarStyleOptions): boolean;
-    /** Set TabBar item */
+    /**
+     * Override an item in the TabBar declared in `lxapp.json`. Returns `false`
+     * when no TabBar is declared.
+     */
     setTabBarItem(options: SetTabBarItemOptions): boolean;
     /** Show toast function */
     showToast(options: ShowToastOptions): Promise<void>;
     /** Hide toast function */
     hideToast(): Promise<void>;
     readonly tray: TrayApi;
+    /**
+     * Return the callback-based update manager for this lxapp's bundle. This is
+     * available to every lxapp and is distinct from the home-only
+     * `lx.app.checkUpdate()`, which updates the native host app.
+     */
     getUpdateManager(): UpdateManager;
   }
 }
@@ -2111,7 +2179,16 @@ declare global {
 
 declare global {
   interface ShellEmptyStateApi {
+    /**
+     * Set the desktop shell placeholder shown while no main surface is active.
+     * This home-lxapp-owned chrome creates no surface, WebView, or sidebar entry;
+     * unsupported shells ignore it.
+     */
     set(options: ShellEmptyStateOptions): void;
+    /**
+     * Clear the home lxapp's empty-state declaration and restore the host's neutral
+     * zero-main placeholder. Unsupported shells ignore it.
+     */
     clear(): void;
   }
 }
@@ -2122,6 +2199,7 @@ declare global {
      * Atomically replaces the complete desktop sidebar action declaration. Home lxapp
      * only. Relative icons resolve from the home app bundle. Every entry is bound
      * to its generation-scoped callback; `replace([])` explicitly clears chrome.
+     * The declaration is process-local, so redeclare it on each Logic launch.
      */
     replace(items: ShellSidebarAction[]): void;
     /** Updates presentation fields for one stable id. Home lxapp only. */

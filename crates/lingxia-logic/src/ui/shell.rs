@@ -214,6 +214,7 @@ fn parse_sidebar_action(item: &JSObject) -> JSResult<ParsedSidebarAction> {
 /// Atomically replaces the complete desktop sidebar action declaration. Home lxapp
 /// only. Relative icons resolve from the home app bundle. Every entry is bound
 /// to its generation-scoped callback; `replace([])` explicitly clears chrome.
+/// The declaration is process-local, so redeclare it on each Logic launch.
 fn sidebar_actions_replace(ctx: JSContext, items: Vec<JSObject>) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     ensure_home_lxapp(&lxapp, "lx.shell.sidebarActions.replace")?;
@@ -266,6 +267,9 @@ fn sidebar_actions_clear(ctx: JSContext) -> JSResult<()> {
     )
 }
 
+/// Set the desktop shell placeholder shown while no main surface is active.
+/// This home-lxapp-owned chrome creates no surface, WebView, or sidebar entry;
+/// unsupported shells ignore it.
 fn empty_state_set(ctx: JSContext, options: JSObject) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     ensure_home_lxapp(&lxapp, "lx.shell.emptyState.set")?;
@@ -353,6 +357,8 @@ fn empty_state_set(ctx: JSContext, options: JSObject) -> JSResult<()> {
     Ok(())
 }
 
+/// Clear the home lxapp's empty-state declaration and restore the host's neutral
+/// zero-main placeholder. Unsupported shells ignore it.
 fn empty_state_clear(ctx: JSContext) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     ensure_home_lxapp(&lxapp, "lx.shell.emptyState.clear")?;

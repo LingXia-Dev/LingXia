@@ -16,7 +16,9 @@ struct JSCapsuleRect {
     left: f64,
 }
 
-/// Get the visible capsule button's bounding rect, or `null` when none is shown.
+/// Get the visible capsule button's bounding rect. Returns `null` for the home
+/// lxapp, an inactive lxapp, or a host that does not expose a capsule; rejection
+/// indicates an actual platform failure rather than hidden chrome.
 async fn get_capsule_rect(ctx: JSContext) -> JSResult<Option<JSCapsuleRect>> {
     let lxapp = LxApp::from_ctx(&ctx)?;
 

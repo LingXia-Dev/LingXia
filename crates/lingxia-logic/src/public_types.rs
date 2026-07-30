@@ -720,6 +720,8 @@ rong::js_api! {
 
         type OpenSurfaceSpec = r###"OpenPageSurfaceSpec | OpenDeclaredSurfaceSpec | OpenLxappSurfaceSpec | OpenNativeSurfaceSpec | OpenBuiltinBrowserSurfaceSpec | OpenUrlTabSpec | OpenUrlAsideSpec"###;
 
+        /// Built-in browser product page. Opening one requires
+        /// `capabilities.browser` and is restricted to the home lxapp.
         type BuiltinBrowserSurfaceUrl = r###"'lingxia://settings' | 'lingxia://downloads'"###;
 
         type OpenBuiltinBrowserSurfaceSpec = r###"{
@@ -1126,7 +1128,9 @@ true
     path: string;
 }"###;
 
-        /// Persistent key-value storage backed by the lxapp database.
+        /// Asynchronous persistent key-value storage backed by the lxapp
+        /// database. Values are untyped; validate or narrow values returned by
+        /// `get`. Use `lx.getFileManager()` for path-based data.
         ///
         type Storage = r###"{
     get(key: string): Promise<unknown>;
@@ -1318,7 +1322,9 @@ true
     error?: string;
 }"###;
 
-        /// Runtime update APIs.
+        /// Callback-based updates for this lxapp's bundle. Available to every
+        /// lxapp. To update the native host app, the home lxapp uses the
+        /// task-based `lx.app.checkUpdate()` API instead.
         ///
         type UpdateManager = r###"{
     applyUpdate(): void;
@@ -1522,10 +1528,16 @@ true
     emptyState: ShellEmptyStateApi;
 }"###;
 
+        /// Content for the desktop shell placeholder shown only while no main
+        /// surface is active. It creates no surface, WebView, or sidebar entry.
         type ShellEmptyStateOptions = r###"{
+    /** Non-empty placeholder title. */
     title: string;
+    /** Optional supporting text. */
     message?: string;
+    /** Bundled asset or lxapp-accessible local path. */
     icon?: string;
+    /** Optional app-owned action; the callback decides what to open or run. */
     action?: {
         id: string;
         label: string;
@@ -1533,6 +1545,8 @@ true
     };
 }"###;
 
+        /// Header accepts at most two icon actions. Footer actions are shown as
+        /// rows and the host scrolls overflow.
         type ShellSidebarActionPlacement = r###"'header' | 'footer'"###;
 
         /// One app-declared shell sidebar action. Its `id` remains stable across
