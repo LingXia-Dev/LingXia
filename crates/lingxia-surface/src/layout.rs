@@ -212,7 +212,7 @@ pub struct PlanAside {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PlanAsideSlot {
-    pub kind: crate::model::SlotKind,
+    pub kind: crate::SlotKind,
     /// Edge the slot docks to (the most recently placed child's edge wins).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub edge: Option<crate::model::Edge>,

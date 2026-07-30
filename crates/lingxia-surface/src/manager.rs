@@ -231,13 +231,13 @@ mod tests {
     use super::*;
     use crate::Decision;
     use crate::layout::{SplitForm, SwitcherForm};
-    use crate::model::{Edge, Role, Surface};
+    use crate::{Edge, Role, Surface, SurfaceContent};
 
     fn main_s(id: &str) -> Surface {
-        Surface::entry(id, Role::Main, id)
+        Surface::lxapp(id, Role::Main, id)
     }
     fn aside_s(id: &str, edge: Edge) -> Surface {
-        let mut s = Surface::entry(id, Role::Aside, id);
+        let mut s = Surface::lxapp(id, Role::Aside, id);
         s.placement.edge = Some(edge);
         s
     }
@@ -282,14 +282,14 @@ mod tests {
         manager.set_sidebar_width(184.0);
         manager.open(main_s("home"));
         manager.open(aside_s("lxapp", Edge::Right));
-        let mut browser = Surface::entry("browser", Role::Aside, "browser");
-        browser.content = crate::model::SurfaceContent::Web {
-            url: "https://example.com".to_string(),
+        let mut browser = Surface::lxapp("browser", Role::Aside, "browser");
+        browser.content = SurfaceContent::Browser {
+            initial_url: "https://example.com".to_string(),
             reuse_by_url: true,
         };
         browser.placement.edge = Some(Edge::Right);
         manager.open(browser);
-        let mut native = Surface::entry("terminal", Role::Aside, "terminal");
+        let mut native = Surface::native("terminal", Role::Aside, "terminal");
         native.placement.edge = Some(Edge::Right);
         manager.open(native);
         assert_eq!(
@@ -354,9 +354,9 @@ mod tests {
         };
         let mut manager = SurfaceManager::with_policy(620.0, policy);
         manager.open(main_s("home"));
-        let mut browser = Surface::entry("browser", Role::Aside, "browser");
-        browser.content = crate::model::SurfaceContent::Web {
-            url: "https://example.com".to_string(),
+        let mut browser = Surface::lxapp("browser", Role::Aside, "browser");
+        browser.content = SurfaceContent::Browser {
+            initial_url: "https://example.com".to_string(),
             reuse_by_url: true,
         };
         browser.placement.edge = Some(Edge::Right);
@@ -374,7 +374,7 @@ mod tests {
             .filter(|slot| slot.visible)
             .map(|slot| slot.kind)
             .collect();
-        assert_eq!(visible, vec![crate::model::SlotKind::Lxapp]);
+        assert_eq!(visible, vec![crate::SlotKind::Lxapp]);
     }
 
     #[test]
@@ -382,9 +382,9 @@ mod tests {
         let mut manager = SurfaceManager::new(900.0);
         manager.open(main_s("home"));
         manager.open(aside_s("chat", Edge::Right));
-        let mut browser = Surface::entry("browser", Role::Aside, "browser");
-        browser.content = crate::model::SurfaceContent::Web {
-            url: "https://example.com".to_string(),
+        let mut browser = Surface::lxapp("browser", Role::Aside, "browser");
+        browser.content = SurfaceContent::Browser {
+            initial_url: "https://example.com".to_string(),
             reuse_by_url: true,
         };
         browser.placement.edge = Some(Edge::Right);

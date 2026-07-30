@@ -235,11 +235,11 @@ impl WindowSurfaceController {
     fn register_host_aside(
         &self,
         surface_id: &str,
-        content_id: &str,
+        content: lingxia_surface::SurfaceContent,
         edge: &str,
         root_main: lingxia_surface::Surface,
     ) {
-        let node = host_aside_node(surface_id, content_id, edge);
+        let node = host_aside_node(surface_id, content, edge);
         {
             let mut manager = self.manager.lock().unwrap();
             if manager.graph().mains().is_empty() {
@@ -342,10 +342,12 @@ impl WindowSurfaceController {
     }
 }
 
-fn host_aside_node(surface_id: &str, content_id: &str, edge: &str) -> lingxia_surface::Surface {
-    use lingxia_surface::{
-        Edge, Placement, Role, Surface, SurfaceContent, SurfaceOwner, SurfaceState,
-    };
+fn host_aside_node(
+    surface_id: &str,
+    content: lingxia_surface::SurfaceContent,
+    edge: &str,
+) -> lingxia_surface::Surface {
+    use lingxia_surface::{Edge, Placement, Role, Surface, SurfaceOwner, SurfaceState};
     let edge = match edge {
         "left" | "leading" => Edge::Left,
         "top" => Edge::Top,
@@ -355,10 +357,7 @@ fn host_aside_node(surface_id: &str, content_id: &str, edge: &str) -> lingxia_su
     Surface {
         id: surface_id.to_string(),
         role: Role::Aside,
-        content: SurfaceContent::Entry {
-            id: content_id.to_string(),
-            path: None,
-        },
+        content,
         owner: SurfaceOwner::Host,
         placement: Placement {
             edge: Some(edge),
@@ -1036,7 +1035,10 @@ impl LxApp {
         }
         window_controller(PRIMARY_WINDOW, &self.runtime).register_host_aside(
             surface_id,
-            surface_id,
+            lingxia_surface::SurfaceContent::Lxapp {
+                app_id: surface_id.to_string(),
+                path: None,
+            },
             edge,
             self.root_main_node(),
         );
@@ -1052,7 +1054,9 @@ impl LxApp {
         }
         window_controller(PRIMARY_WINDOW, &self.runtime).register_host_aside(
             surface_id,
-            content_id,
+            lingxia_surface::SurfaceContent::Native {
+                capability: content_id.to_string(),
+            },
             edge,
             self.root_main_node(),
         );
@@ -1208,8 +1212,8 @@ impl LxApp {
         LxSurface {
             id: self.appid.clone(),
             role: Role::Main,
-            content: SurfaceContent::Entry {
-                id: self.appid.clone(),
+            content: SurfaceContent::Lxapp {
+                app_id: self.appid.clone(),
                 path: None,
             },
             owner: SurfaceOwner::Host,
@@ -1258,12 +1262,12 @@ impl LxApp {
             None
         };
         let node_content = match content {
-            SurfaceContent::Page => LxContent::Entry {
-                id: self.appid.clone(),
-                path: page_path.clone(),
+            SurfaceContent::Page => LxContent::Page {
+                app_id: self.appid.clone(),
+                path: page_path.clone().unwrap_or_else(|| path_or_url.to_string()),
             },
-            SurfaceContent::Url => LxContent::Web {
-                url: path_or_url.to_string(),
+            SurfaceContent::Url => LxContent::Browser {
+                initial_url: path_or_url.to_string(),
                 reuse_by_url: !url_callback,
             },
         };
@@ -1690,7 +1694,13 @@ mod tests {
 
     #[test]
     fn host_aside_keeps_surface_identity_separate_from_native_content() {
-        let surface = host_aside_node("shell:terminal", "terminal", "bottom");
+        let surface = host_aside_node(
+            "shell:terminal",
+            lingxia_surface::SurfaceContent::Native {
+                capability: "terminal".into(),
+            },
+            "bottom",
+        );
 
         assert_eq!(surface.id, "shell:terminal");
         assert_eq!(

@@ -3,11 +3,12 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::content::SlotKind;
 use crate::layout::{
     Axis, BottomOwner, DerivedLayout, LayoutPresentationPlan, LayoutTree, PlanAside, SizeClass,
     SplitForm, SwitcherForm,
 };
-use crate::model::{Role, SlotKind, Surface, SurfaceId, SurfaceState};
+use crate::model::{Role, Surface, SurfaceId, SurfaceState};
 
 /// One window's graph. Surfaces are kept in insertion order so that
 /// "adjacent main" succession and "oldest aside" replacement are deterministic.
@@ -657,8 +658,8 @@ mod tests {
     #[test]
     fn replacing_modal_float_does_not_push_another_focus_snapshot() {
         let mut graph = SurfaceGraph::new();
-        graph.insert(Surface::entry("home", Role::Main, "home"));
-        let mut modal = Surface::entry("dialog", Role::Float, "dialog");
+        graph.insert(Surface::lxapp("home", Role::Main, "home"));
+        let mut modal = Surface::native("dialog", Role::Float, "dialog");
         modal.float = Some(crate::model::FloatSpec {
             modal: true,
             ..Default::default()
