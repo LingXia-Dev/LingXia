@@ -1122,6 +1122,15 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         if attachedMainAppId == appId {
             return
         }
+        mountLxAppMainProvider(appId: appId)
+    }
+
+    /// Mount the selected lxapp provider after the Surface graph has accepted
+    /// it. Unlike reconciliation this intentionally reattaches an existing VC:
+    /// initial declaration registration can publish the active root before its
+    /// first page WebView is ready, so provider mount must converge again after
+    /// `openSync` completes.
+    func mountLxAppMainProvider(appId: String) {
         // Attach via the shared presentMain machinery. switchToTab created the VC
         // (and its page instance) before driving setActiveMain, so the common
         // case finds it ready; fall back to ensureViewController for any

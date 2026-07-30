@@ -635,6 +635,9 @@ final class LxAppMacAppUIRuntime: NSObject {
             } else if surface.content.kind == .lxapp,
                       shell.attachedMainAppId != surface.content.appId {
                 try openLxAppSurface(surface, presentation: .normal)
+                if let appId = surface.content.appId {
+                    shell.mountLxAppMainProvider(appId: appId)
+                }
             }
             refreshChromeActions()
             return
@@ -664,6 +667,9 @@ final class LxAppMacAppUIRuntime: NSObject {
         visibleSurfaceIDs.insert(surface.id)
         guard setActiveMainSurface(ownerAppId, surface.id) else {
             throw LxAppUIError.invalidConfig("failed to activate main surface \(surface.id)")
+        }
+        if surface.content.kind == .lxapp, let appId = surface.content.appId {
+            shell.mountLxAppMainProvider(appId: appId)
         }
         refreshChromeActions()
     }
