@@ -685,6 +685,7 @@ mod view_target_warnings {
     fn android_config_with(min_sdk: Option<u32>) -> AndroidConfig {
         AndroidConfig {
             package_id: "com.example.demo".to_string(),
+            webview_backend: None,
             min_sdk,
             target_sdk: Some(35),
             compile_sdk: Some(35),

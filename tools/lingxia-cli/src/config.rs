@@ -1248,6 +1248,9 @@ impl ResolvedEnv {
 #[serde(rename_all = "camelCase")]
 pub struct AndroidConfig {
     pub package_id: String,
+    /// Rendering engine used by managed Android webviews.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub webview_backend: Option<AndroidWebViewBackend>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub min_sdk: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1272,6 +1275,13 @@ pub struct AndroidConfig {
     /// Honor AppGallery identity for `lingxia store --platform honor`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub honor_store: Option<HonorStoreConfig>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum AndroidWebViewBackend {
+    System,
+    Servo,
 }
 
 /// Google Play submission identity. Lives in `lingxia.yaml` under
@@ -1621,6 +1631,15 @@ impl LingXiaConfig {
         if self.devtools_enabled() {
             features.push("devtools".to_string());
         }
+        if platform == "android"
+            && self
+                .android
+                .as_ref()
+                .and_then(|android| android.webview_backend)
+                == Some(AndroidWebViewBackend::Servo)
+        {
+            features.push("servo".to_string());
+        }
         features
     }
 
@@ -1691,6 +1710,7 @@ impl LingXiaConfig {
             }),
             android: Some(AndroidConfig {
                 package_id: package_id.to_string(),
+                webview_backend: None,
                 min_sdk: Some(28),
                 target_sdk: Some(35),
                 compile_sdk: Some(35),
@@ -2570,6 +2590,7 @@ mod tests {
     fn test_android_api_level_derivation() {
         let config = AndroidConfig {
             package_id: "com.example.app".to_string(),
+            webview_backend: None,
             min_sdk: Some(28),
             target_sdk: Some(35),
             compile_sdk: Some(35),
@@ -2584,6 +2605,7 @@ mod tests {
 
         let config_explicit = AndroidConfig {
             package_id: "com.example.app".to_string(),
+            webview_backend: None,
             min_sdk: Some(28),
             target_sdk: Some(35),
             compile_sdk: Some(35),
@@ -2733,6 +2755,23 @@ android:
                 "browser runtime missing on {platform}"
             );
         }
+    }
+
+    #[test]
+    fn servo_webview_backend_is_android_only() {
+        let mut config = LingXiaConfig::new_android("my-app", "com.example.myapp", "my-app");
+        config.android.as_mut().unwrap().webview_backend = Some(AndroidWebViewBackend::Servo);
+
+        assert!(
+            config
+                .native_features_for_platform("android")
+                .contains(&"servo".to_string())
+        );
+        assert!(
+            !config
+                .native_features_for_platform("windows")
+                .contains(&"servo".to_string())
+        );
     }
 
     #[test]
