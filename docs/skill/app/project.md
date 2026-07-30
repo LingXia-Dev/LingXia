@@ -118,6 +118,24 @@ Lingxia.quickStart(this) { registerHostAddon() }
   does not treat a loop point as terminal. v1 passes no HTTP headers to the
   engine.
 
+### Android WebView backend
+
+Android uses the platform WebView by default. A host can opt every managed
+lxapp into the experimental API-embedded Servo backend with one host-level
+setting:
+
+```yaml
+android:
+  packageId: com.example.myapp
+  webviewBackend: servo
+```
+
+The setting belongs to the host rather than individual `lxapp.json` files, so
+bundled and runtime lxapps inherit the same engine. `system` is also accepted
+explicitly. The CLI enables the matching native Cargo feature and configures
+the Android cross-compilation environment; app code does not add a Servo AAR
+or invoke Servo's build scripts.
+
 ---
 
 ## Minimal macOS Example
