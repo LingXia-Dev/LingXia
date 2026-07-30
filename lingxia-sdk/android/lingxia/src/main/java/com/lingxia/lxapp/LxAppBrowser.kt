@@ -25,6 +25,7 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import com.lingxia.app.Lingxia
 import com.lingxia.app.NativeApi
+import com.lingxia.webview.LingXiaWebView
 import java.net.URI
 
 internal object LxAppBrowser {
@@ -43,7 +44,7 @@ internal object LxAppBrowser {
     private var bottomBar: View? = null
     private var tabSwitcher: View? = null
     private var overflowMenu: View? = null
-    private var activeWebView: WebView? = null
+    private var activeWebView: LingXiaWebView? = null
     private var activeWebViewTabId: String? = null
     private var currentActivity: Activity? = null
 
@@ -562,7 +563,7 @@ internal object LxAppBrowser {
         attachWebView(managedWebView, tabId, initialUrl)
     }
 
-    private fun attachWebView(managedWebView: WebView, tabId: String, initialUrl: String) {
+    private fun attachWebView(managedWebView: LingXiaWebView, tabId: String, initialUrl: String) {
         val host = contentHost ?: return
         if (activeWebView !== managedWebView) {
             activeWebView?.pause()
@@ -1123,7 +1124,7 @@ internal object LxAppBrowser {
     private fun tabIdsForMode(aside: Boolean = isAsideActive): List<String> =
         openTabIds.filter { tabIsAside(it) == aside }
 
-    private fun findManagedWebView(tabId: String): WebView? =
+    private fun findManagedWebView(tabId: String): LingXiaWebView? =
         NativeApi.findBrowserTabWebView(tabId)
 
     private fun closeBrowserTab(tabId: String) {
