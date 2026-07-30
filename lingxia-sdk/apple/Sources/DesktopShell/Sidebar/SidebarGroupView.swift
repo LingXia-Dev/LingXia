@@ -137,6 +137,8 @@ class SidebarGroupView: NSView {
     let appId: String
     private let managedLabel: String?
     private let managedIcon: NSImage?
+    let showsLxappTabBar: Bool
+    var isManagedMain: Bool { managedLabel != nil }
     private(set) var colorIndex: Int = 0
     private var palette: SidebarGroupColor.Palette = SidebarGroupColor.palette(for: 0)
 
@@ -203,13 +205,19 @@ class SidebarGroupView: NSView {
     var onCloseRequested: ((String) -> Void)?
     var onLayoutChanged: (() -> Void)?
 
-    init(appId: String, managedLabel: String? = nil, managedIcon: NSImage? = nil) {
+    init(
+        appId: String,
+        managedLabel: String? = nil,
+        managedIcon: NSImage? = nil,
+        showsLxappTabBar: Bool = true
+    ) {
         self.appId = appId
         self.managedLabel = managedLabel
         self.managedIcon = managedIcon
+        self.showsLxappTabBar = showsLxappTabBar
         super.init(frame: .zero)
         setupViews()
-        if managedLabel != nil {
+        if managedLabel != nil && !showsLxappTabBar {
             configureManagedMain()
         } else {
             refreshFromRust()
@@ -430,7 +438,7 @@ class SidebarGroupView: NSView {
 
     /// Reload data from Rust API
     func refreshFromRust() {
-        guard managedLabel == nil else {
+        guard managedLabel == nil || showsLxappTabBar else {
             configureManagedMain()
             return
         }

@@ -28,6 +28,7 @@ struct LxAppUIActionItem: Sendable {
     let id: String
     let label: String
     let iconURL: URL?
+    var showsLxappTabBar: Bool = false
     var active: Bool = false
     var disabled: Bool = false
 }
@@ -1170,6 +1171,7 @@ final class LxAppMacAppUIRuntime: NSObject {
                 id: surface.id,
                 label: label,
                 iconURL: nil,
+                showsLxappTabBar: surface.content.kind == .lxapp,
                 active: activeMainSurfaceID == surface.id
             )
         }
