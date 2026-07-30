@@ -500,6 +500,8 @@ class SidebarView: NSView, NSPopoverDelegate {
     private var addButtonTopConstraint: NSLayoutConstraint?
     private var groupTopConstraints: [String: NSLayoutConstraint] = [:]
     private var addButtonTrackingArea: NSTrackingArea?
+    private var isAddButtonHovered = false
+    private var isHideButtonHovered = false
 
     /// Target center Y for the header buttons, measured from the header's top edge.
     var buttonCenterYFromTop: CGFloat = Layout.trafficLightsHeight / 2 {
@@ -598,6 +600,8 @@ class SidebarView: NSView, NSPopoverDelegate {
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
         footerSeparator.layer?.backgroundColor = SidebarActionChromePalette.divider.cgColor
+        updateAddButtonAppearance()
+        updateHideButtonAppearance()
         applySelection()
     }
 
@@ -2184,15 +2188,25 @@ class SidebarView: NSView, NSPopoverDelegate {
     }
 
     private func setAddButtonHovered(_ hovered: Bool) {
-        let alpha: CGFloat = hovered ? 0.12 : 0.06
+        isAddButtonHovered = hovered
+        updateAddButtonAppearance()
+    }
+
+    private func updateAddButtonAppearance() {
+        let alpha: CGFloat = isAddButtonHovered ? 0.12 : 0.06
         addButton.layer?.backgroundColor = LxAppHostTheme.foreground.withAlphaComponent(alpha).cgColor
     }
 
     private func setHideButtonHovered(_ hovered: Bool) {
-        hideButton.layer?.backgroundColor = hovered
+        isHideButtonHovered = hovered
+        updateHideButtonAppearance()
+    }
+
+    private func updateHideButtonAppearance() {
+        hideButton.layer?.backgroundColor = isHideButtonHovered
             ? LxAppHostTheme.foreground.withAlphaComponent(0.09).cgColor
             : NSColor.clear.cgColor
-        hideButton.contentTintColor = hovered
+        hideButton.contentTintColor = isHideButtonHovered
             ? LxAppHostTheme.foreground
             : LxAppHostTheme.mutedForeground
     }

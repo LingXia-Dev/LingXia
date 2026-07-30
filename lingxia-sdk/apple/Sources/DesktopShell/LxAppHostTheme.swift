@@ -111,9 +111,11 @@ enum LxAppHostTheme {
 @MainActor
 final class LxAppHostThemeLayerView: NSView {
     private let role: LxAppHostThemeRole
+    private let alpha: CGFloat
 
-    init(role: LxAppHostThemeRole) {
+    init(role: LxAppHostThemeRole, alpha: CGFloat = 1) {
         self.role = role
+        self.alpha = alpha
         super.init(frame: .zero)
         wantsLayer = true
         updateThemeColor()
@@ -138,7 +140,7 @@ final class LxAppHostThemeLayerView: NSView {
             layer?.backgroundColor = LxAppHostTheme.resolved(
                 role,
                 for: effectiveAppearance
-            ).cgColor
+            ).withAlphaComponent(alpha).cgColor
         }
     }
 }
