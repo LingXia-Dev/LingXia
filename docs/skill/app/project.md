@@ -177,7 +177,7 @@ Validation rules:
 
 ### Reading the env at runtime
 
-JS Logic (`pages/*/index.ts`): `lx.app.envVersion` — `'developer' | 'preview' | 'release'`, fixed at app boot. See [Logic-side `lx.*` API](../lxapp/lx-api.md).
+JS Logic (`pages/*/index.ts`): `lx.app.envVersion` — `'developer' | 'preview' | 'release'`, fixed at app boot. See [Logic runtime and typings](../lxapp/lx-api.md).
 
 Rust host: `lingxia::env_version()` returns the same enum.
 

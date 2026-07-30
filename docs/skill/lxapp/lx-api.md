@@ -1,91 +1,89 @@
-# Logic-side `lx.*` API
+# Logic runtime and typings
 
-Every lxapp Logic file (`pages/*/index.ts`) runs against a global `lx` object exposing platform capabilities — navigation, file I/O, media, networking, device info, UI chrome, and more.
+Every lxapp Logic file (`pages/*/index.ts`) runs against the global `lx`,
+`Page`, and `App` objects.
 
-**`@lingxia/types` is the authoritative `lx.*` surface.** It declares the exact signature, option shapes, result types, **and JSDoc contract** (platform support, restrictions, task semantics) of every method, globally. This page does **not** re-list any of that — a mirror only drifts. It covers only what the declarations can't tell you: runtime globals, typing wiring, and cross-cutting behavior.
+**`@lingxia/types` is the API reference.** Its declarations and JSDoc are
+generated from the runtime's Rust API definitions and are authoritative for
+method signatures, option and result shapes, defaults, restrictions, platform
+support, and task behavior. Do not maintain a second API catalog in Markdown.
+This page only explains how to wire those declarations into a project and how
+the Logic runtime differs from View.
 
-For page mechanics (`data`, `setData`, lifecycle), see [`./guide.md`](./guide.md). For bridge details (stream, channel), see [`./bridge.md`](./bridge.md).
+For page mechanics (`data`, `setData`, lifecycle), see [`./guide.md`](./guide.md).
+For stream and channel behavior, see [`./bridge.md`](./bridge.md).
 
 ---
 
 ## Install typing
 
-`@lingxia/types` declares everything globally — no `import` needed in Logic files.
+The LingXia scaffold configures this automatically. For an existing lxapp,
+install the package at the same version as the `lingxia` CLI:
 
 ```bash
 npm install --save-dev @lingxia/types@<lingxia-version>
 ```
 
-Match the version to your `lingxia` CLI — the CLI, the skill, and `@lingxia/types` release in lockstep. Then in `tsconfig.json`:
+Logic needs both the LingXia globals and the generated portable Web API profile:
 
 ```json
 {
   "compilerOptions": {
-    "types": ["@lingxia/types"]
+    "lib": ["ES2020"],
+    "types": ["@lingxia/types", "@lingxia/types/logic-globals"]
   }
 }
 ```
 
-That's it. `lx`, `Page`, `App`, `getApp`, and `getCurrentPages` are now globally typed:
-
-```ts
-// pages/home/index.ts — no imports needed for the lx surface
-Page({
-  data: { name: '' },
-  async pickFile() {
-    const res = await lx.chooseFile({ count: 1 });
-    this.setData({ name: res.files[0]?.name ?? '' });
-  },
-});
-```
-
-The scaffold type-checks each layer against its real runtime: Logic (`tsconfig.logic.json`) uses `lib: ["ES2020"]` + `@lingxia/types/logic-globals` — web-standard globals but **no** browser DOM. View (`tsconfig.view.json`) keeps the full DOM. The root `tsconfig.json` references both, so editors route each file automatically.
+Keep that configuration in `tsconfig.logic.json`; View uses a separate config
+with the DOM library. The scaffold's root `tsconfig.json` references both so the
+editor applies the correct environment to each file.
 
 ---
 
-## Finding a method or type
+## Find a method or type
 
-- Type `lx.` in your editor — completion lists every member, and hovering shows the JSDoc contract.
-- Or open `node_modules/@lingxia/types/dist/generated/logic.d.ts` → the `interface Lx { … }` declarations.
-- Or grep a hunch: `grep -rn "scanCode" node_modules/@lingxia/types`.
-- Every option/result type is importable from the package root — `import type { ScanCodeResult } from '@lingxia/types'` — when typing your own helpers.
+- Type `lx.` in the editor and hover a member to read its generated JSDoc.
+- Import reusable shapes from the package root, for example
+  `import type { ScanCodeResult } from '@lingxia/types'`.
+- For the complete declaration, inspect
+  `node_modules/@lingxia/types/dist/generated/logic.d.ts`.
 
-**Nested namespaces** (the rest of `lx.*` is flat): `lx.env` (abstract `lx://` paths), `lx.app` (host-app control), `lx.tray` (desktop status item), `lx.shell.sidebarActions` (home-lxapp-owned desktop sidebar action declarations), and `lx.shell.emptyState` (the zero-main placeholder).
+Most methods are flat on `lx`. Related capabilities use typed namespaces such
+as `lx.env`, `lx.app`, `lx.tray`, and `lx.shell`; editor completion is the
+authoritative namespace map.
 
 ---
 
 ## Standard Web APIs (built-in globals)
 
-The Logic JS runtime is **not** a stripped-down sandbox. It's the Rong runtime with the standard Web API set wired in — `fetch`, `setTimeout`, `URL`, `console`, all global, no import.
+Logic runs in Rong rather than a browser. Its portable Web globals are declared
+by `@lingxia/types/logic-globals`; this includes APIs such as `fetch`, timers,
+`URL`, streams, abort signals, and `console`, but excludes browser DOM and Node
+globals. If a global is absent from that profile, application Logic must not
+assume it exists.
 
-**The authoritative portable list is `@lingxia/types/logic-globals`** (`node_modules/@lingxia/types/dist/logic-globals.d.ts`, which includes the generated `dist/generated/logic-web.d.ts` runtime profile). It is generated against the modules available outside development, so application code neither over- nor under-promises. By group: timers, HTTP (`fetch` family), encoding, URL, streams, compression, events & abort, `DOMException`, and `console`. If a name is not declared there, it is not portable application functionality — `document`, `window`, `localStorage`, and Node globals like `Buffer` correctly error.
-
-**OS processes are an explicit product capability.** Set `capabilities.process: true` on a macOS/Windows host and add `"process"` to the home lxapp's `security.privileges`; it then receives `Rong.spawn`, `Rong.spawnSync`, and `Rong.$` in both development and release builds. Add `@lingxia/types/process` to the Logic tsconfig `types` list. It is a narrow declaration-only entry—do not install the full `@rongjs/rong` types.
-
-**Gating.** `fetch` (and `WebSocket`) is constrained by the lxapp's `security.network.trustedDomains` in `lxapp.json`. A request to a host not on that list **silently fails** — see [LxApp guide → Security Policy](./guide.md#security-policy). For HTTP use this global `fetch`, **not** the `lx.*` networking calls (those are WiFi / network-info only).
-
----
-
-## Cross-cutting behavior
-
-Facts that span the whole surface, so no single method's JSDoc carries them:
-
-- **Unsupported platforms no-op; they don't throw.** A capability some platforms lack — a *cosmetic / optional* one, e.g. the desktop tray, with no mobile equivalent — is a **silent no-op** there, so portable code calls it unconditionally: no platform guards, no `try/catch`. A method that **returns a result** you depend on, or whose failure is a genuine bug (permissions, bad arguments), **throws** instead. Result-bearing platform-exclusive capabilities are **optional members** that are simply absent off-platform (e.g. `lx.app.autostart?`) — presence *is* the support check. Each method's JSDoc states its platform support.
-- **Storage is async and values are untyped.** Await `get` / `set` / `delete` / `clear` / `list` / `info`; cast values returned by `get` at the call site. For path-based data use `FileManager` (`lx://` storage-class paths — see [`../reference/file-lifecycle.md`](../reference/file-lifecycle.md)).
-- **Two distinct update flows.** `lx.getUpdateManager()` updates the **lxapp bundle** (every lxapp, callback model); `lx.app.checkUpdate()` updates the **host app shell** (home lxapp only, task model). Don't mix them.
-- **The tab bar is declared, not built.** The `setTabBar*` / `showTabBar` / `hideTabBar` family mutates a tab bar configured statically in `lxapp.json` — see [LxApp guide → Tab bar navigation](./guide.md#tab-bar-navigation).
-- **Capsule geometry reflects visible chrome.** `await lx.getCapsuleRect()` returns a complete rect only while that lxapp's capsule is visible; it returns `null` for the home lxapp, an inactive lxapp, and hosts without a capsule. Treat rejection as an actual platform failure, not as the hidden-state signal.
-- **Sidebar actions are app-owned; Pins are user-owned.** Only the home lxapp may atomically replace `lx.shell.sidebarActions`. Each action has a globally unique stable id, `placement: 'header' | 'footer'`, `label`, `icon`, and `onActivate`. `icon` can be a bundled asset such as `public/settings.svg` or a local path returned by LingXia file APIs, including `lx://temp`, `lx://usercache`, and `lx://userdata`; download a network icon first, then register its local path. Native absolute paths, network URLs, and `..` traversal are not accepted. For portable Windows/macOS results, use a square, transparent, monochrome SVG or PNG designed for a 16-point visual; the host may tint it for the shell theme. Header accepts at most two icon actions; footer keeps five visible rows and scrolls overflow. The shell only invokes the callback, so navigation stays explicit app code (usually `lx.openSurface(...)`). Redeclare actions each Logic launch. Sidebar Pins (lxapps and websites, mixed order, eight maximum) are intentionally not exposed to Logic.
-- **Empty main is shell chrome, not a surface.** A macOS host may have zero active main surfaces after the last main closes. The home lxapp can call `lx.shell.emptyState.set({ title, message?, icon?, action? })`; the optional action has `id`, `label`, and `onActivate`, and typically reopens a surface with `lx.openSurface(...)`. It renders only while no main is active, creates no tab/WebView, and never appears in the sidebar. `clear()` restores the neutral shell placeholder.
-- **Browser product pages use `openSurface`.** The home lxapp may call `lx.openSurface({ url: 'lingxia://settings' })` or `lx.openSurface({ url: 'lingxia://downloads' })` when `capabilities.browser` is enabled. Other `lingxia:` URLs and URL variants are rejected.
-- **Float interaction is explicit when needed.** `lx.openSurface({ page, as: 'float', interaction: { closeButton, dismiss, modal } })` controls the native circular close button, outside-click dismissal, and blocking independently. Defaults remain no button, `tapOutside`, and non-modal.
+`fetch` and `WebSocket` are still constrained by
+`security.network.trustedDomains`; see [Security Policy](./guide.md#security-policy).
+OS process APIs are a separate host capability with opt-in declarations at
+`@lingxia/types/process`; see
+[`capabilities.process`](../app/project.md#capabilities-section).
 
 ---
 
-## Calling native Rust routes from Logic
+## Runtime convention
 
-`lx.*` is the JS-only surface. Host-app-specific routes defined in Rust with `#[lingxia::native(...)]` are **not** on `lx` — you call them from the **View** layer via the CLI-generated client at `@lingxia/native`.
+Unsupported cosmetic capabilities with no meaningful result, such as desktop
+tray presentation on mobile, are silent no-ops. Result-bearing operations and
+invalid usage reject or throw, while platform-exclusive result APIs may be
+optional members whose presence is the support check. Each generated method's
+JSDoc is authoritative for its exact behavior.
 
-If you need cross-page business helpers callable from Logic as `lx.<yourNamespace>.foo(...)`, define a `lingxia::js` extension in the host Rust crate — see [`../native/development.md` → JS AppService Extensions](../native/development.md#js-appservice-extensions).
+---
 
-The `.d.ts` (with its JSDoc) is the source of truth; this page is just orientation.
+## Logic and native APIs
+
+`lx.*` belongs to Logic. Host routes declared with `#[lingxia::native(...)]` are
+called from View through the generated `@lingxia/native` client. To expose a
+host Rust helper to Logic as `lx.<namespace>.*`, define a `lingxia::js`
+extension. See [Native development](../native/development.md) for both models.
