@@ -9,6 +9,7 @@ use crate::layout::{
     SplitForm, SwitcherForm,
 };
 use crate::model::{Role, Surface, SurfaceId, SurfaceState};
+use crate::switcher::CloseOutcome;
 
 /// One window's graph. Surfaces are kept in insertion order so that
 /// "adjacent main" succession and "oldest aside" replacement are deterministic.
@@ -16,6 +17,8 @@ use crate::model::{Role, Surface, SurfaceId, SurfaceState};
 #[serde(rename_all = "camelCase")]
 pub struct SurfaceGraph {
     surfaces: Vec<Surface>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    root_main_id: Option<SurfaceId>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub active_main_id: Option<SurfaceId>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -49,6 +52,14 @@ impl SurfaceGraph {
 
     pub fn role_of(&self, id: &str) -> Option<Role> {
         self.get(id).map(|s| s.role)
+    }
+
+    pub fn root_main_id(&self) -> Option<&str> {
+        self.root_main_id.as_deref()
+    }
+
+    pub fn is_root_main(&self, id: &str) -> bool {
+        self.root_main_id.as_deref() == Some(id)
     }
 
     pub fn mains(&self) -> Vec<&Surface> {
@@ -135,9 +146,19 @@ impl SurfaceGraph {
     }
 
     fn converge_after_insert(&mut self) {
-        // First main becomes active + focused.
-        if self.active_main_id.is_none()
-            && let Some(first) = self.main_ids().first().cloned()
+        let first_main = self.main_ids().first().cloned();
+        if self
+            .root_main_id
+            .as_deref()
+            .is_none_or(|id| self.role_of(id) != Some(Role::Main))
+        {
+            self.root_main_id = first_main.clone();
+        }
+        if self
+            .active_main_id
+            .as_deref()
+            .is_none_or(|id| self.role_of(id) != Some(Role::Main))
+            && let Some(first) = first_main
         {
             self.active_main_id = Some(first.clone());
             if self.focused_surface_id.is_none() {
@@ -152,11 +173,16 @@ impl SurfaceGraph {
         }
     }
 
-    /// Remove a surface and re-converge per the transition rules.
-    /// Returns the ids actually removed (the target, plus cascaded asides).
-    pub fn remove(&mut self, id: &str) -> Vec<SurfaceId> {
+    /// Close one surface. The window's root main is a stable navigation anchor
+    /// and cannot be closed through ordinary surface lifecycle operations.
+    pub fn close(&mut self, id: &str) -> CloseOutcome {
+        if self.is_root_main(id) {
+            return CloseOutcome::RejectedRoot {
+                surface_id: id.to_string(),
+            };
+        }
         let Some(pos) = self.surfaces.iter().position(|s| s.id == id) else {
-            return Vec::new();
+            return CloseOutcome::NotFound;
         };
         let removed = self.surfaces.remove(pos);
         let removed_aside_kind = (removed.role == Role::Aside).then(|| removed.content.slot_kind());
@@ -206,7 +232,40 @@ impl SurfaceGraph {
                 .or_else(|| self.focus_fallback());
         }
         self.prune_aside_slot_mru();
-        removed_ids
+        CloseOutcome::Closed {
+            removed: removed_ids,
+        }
+    }
+
+    /// Close every other closable main while preserving the root anchor.
+    pub fn close_other_mains(&mut self, keeping: &str) -> Vec<SurfaceId> {
+        if self.role_of(keeping) != Some(Role::Main) {
+            return Vec::new();
+        }
+        let targets: Vec<_> = self
+            .main_ids()
+            .into_iter()
+            .filter(|id| id != keeping && !self.is_root_main(id))
+            .collect();
+        targets
+            .into_iter()
+            .flat_map(|id| self.close(&id).into_removed())
+            .collect()
+    }
+
+    /// Close closable mains after `id` in stable switcher order.
+    pub fn close_mains_after(&mut self, id: &str) -> Vec<SurfaceId> {
+        let mains = self.main_ids();
+        let Some(index) = mains.iter().position(|candidate| candidate == id) else {
+            return Vec::new();
+        };
+        let root_main_id = self.root_main_id.clone();
+        mains
+            .into_iter()
+            .skip(index + 1)
+            .filter(|candidate| root_main_id.as_ref() != Some(candidate))
+            .flat_map(|candidate| self.close(&candidate).into_removed())
+            .collect()
     }
 
     /// Focus fallback order: active main → an aside owned by it → none.
@@ -460,6 +519,13 @@ impl SurfaceGraph {
             None if mains > 0 => v.push("mains exist but activeMainId is None".into()),
             _ => {}
         }
+        match &self.root_main_id {
+            Some(id) if self.role_of(id) != Some(Role::Main) => {
+                v.push(format!("rootMainId '{id}' is not a main"));
+            }
+            None if mains > 0 => v.push("mains exist but rootMainId is None".into()),
+            _ => {}
+        }
         if let Some(f) = &self.focused_surface_id
             && self.get(f).is_none()
         {
@@ -551,6 +617,10 @@ impl SurfaceGraph {
                 .active_main_id
                 .clone()
                 .or_else(|| self.main_ids().first().cloned()),
+            main_switcher: crate::SurfaceSwitcherSnapshot::derive(
+                self,
+                &std::collections::HashMap::new(),
+            ),
             asides,
             aside_slots,
             // Floats are popups above the layout and are valid at every size
@@ -670,7 +740,7 @@ mod tests {
         graph.insert(modal);
 
         assert_eq!(graph.modal_focus_stack.len(), 1);
-        graph.remove("dialog");
+        graph.close("dialog");
         assert_eq!(graph.focused_surface_id.as_deref(), Some("home"));
         assert!(graph.modal_focus_stack.is_empty());
     }

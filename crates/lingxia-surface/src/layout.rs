@@ -269,6 +269,9 @@ pub struct LayoutPresentationPlan {
     /// from the tree's `Tabs.activeId`. `None` only when there are no mains.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub active_main_id: Option<SurfaceId>,
+    /// Ordered semantic items backing the main switcher. Desktop skins render
+    /// these as sidebar tabs; compact skins may keep them entirely implicit.
+    pub main_switcher: crate::SurfaceSwitcherSnapshot,
     /// Asides currently in the layout. `split_form` decides whether they dock
     /// beside the main or present full-screen on compact.
     pub asides: Vec<PlanAside>,

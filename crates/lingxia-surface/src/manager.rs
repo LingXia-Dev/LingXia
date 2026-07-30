@@ -6,15 +6,19 @@
 //! skin renders. All layout decisions stay in the shared core; the platform
 //! only maps legacy primitives in and binds the output.
 
+use std::collections::HashMap;
+
 use crate::arbitrate::{OpenOutcome, Policy, arbitrate};
 use crate::graph::SurfaceGraph;
 use crate::layout::{DEFAULT_HYSTERESIS, DerivedLayout, LayoutPresentationPlan, SizeClass};
 use crate::model::{Surface, SurfaceId};
+use crate::{CloseOutcome, SurfacePresentation, SurfaceSwitcherSnapshot};
 
 /// One window's stateful surface driver.
 #[derive(Debug, Clone)]
 pub struct SurfaceManager {
     graph: SurfaceGraph,
+    presentations: HashMap<SurfaceId, SurfacePresentation>,
     policy: Policy,
     width: f64,
     sidebar_width: f64,
@@ -34,6 +38,7 @@ impl SurfaceManager {
     pub fn with_policy(width: f64, policy: Policy) -> Self {
         Self {
             graph: SurfaceGraph::new(),
+            presentations: HashMap::new(),
             policy,
             width,
             sidebar_width: 0.0,
@@ -106,8 +111,26 @@ impl SurfaceManager {
     /// Open (or replace by id) a surface through the arbiter at the current size.
     /// Always leaves the graph valid; returns the structured decision.
     pub fn open(&mut self, request: Surface) -> OpenOutcome {
+        let requested_id = request.id.clone();
+        let default_presentation = SurfacePresentation::for_content(&request.content);
+        let content_changed = self
+            .graph
+            .get(&requested_id)
+            .is_some_and(|surface| surface.content != request.content);
         let (next, mut outcome) = arbitrate(&self.graph, request, &self.policy, self.size_class);
         self.graph = next;
+        if outcome.resolved_surface_id == requested_id {
+            if content_changed {
+                self.presentations
+                    .insert(requested_id, default_presentation);
+            } else {
+                self.presentations
+                    .entry(requested_id)
+                    .or_insert(default_presentation);
+            }
+        }
+        self.presentations
+            .retain(|id, _| self.graph.get(id).is_some());
         if outcome.resolved_role == crate::model::Role::Aside {
             let admitted = self
                 .graph
@@ -125,9 +148,9 @@ impl SurfaceManager {
         outcome
     }
 
-    /// Close a surface; returns the ids actually removed (target + cascades).
-    pub fn close(&mut self, id: &str) -> Vec<SurfaceId> {
-        let removed = self.graph.remove(id);
+    pub fn close(&mut self, id: &str) -> CloseOutcome {
+        let outcome = self.graph.close(id);
+        let removed = outcome.removed();
         if self
             .overlay_fallback_surface_id
             .as_ref()
@@ -142,7 +165,62 @@ impl SurfaceManager {
             self.overlay_fallback_surface_id =
                 focused.filter(|focused| self.needs_overlay(focused));
         }
+        for id in removed {
+            self.presentations.remove(id);
+        }
+        outcome
+    }
+
+    pub fn close_other_mains(&mut self, keeping: &str) -> Vec<SurfaceId> {
+        let removed = self.graph.close_other_mains(keeping);
+        self.remove_presentations(&removed);
         removed
+    }
+
+    pub fn close_mains_after(&mut self, id: &str) -> Vec<SurfaceId> {
+        let removed = self.graph.close_mains_after(id);
+        self.remove_presentations(&removed);
+        removed
+    }
+
+    fn remove_presentations(&mut self, ids: &[SurfaceId]) {
+        for id in ids {
+            self.presentations.remove(id);
+        }
+    }
+
+    pub fn set_presentation(&mut self, id: &str, presentation: SurfacePresentation) -> bool {
+        if self.graph.get(id).is_none() {
+            return false;
+        }
+        self.presentations.insert(id.to_string(), presentation);
+        true
+    }
+
+    pub fn update_automatic_title(&mut self, id: &str, title: Option<&str>) -> bool {
+        let Some(presentation) = self.presentations.get_mut(id) else {
+            return false;
+        };
+        presentation.automatic_title = title
+            .map(str::trim)
+            .filter(|title| !title.is_empty())
+            .map(str::to_string);
+        true
+    }
+
+    pub fn rename(&mut self, id: &str, title: Option<&str>) -> bool {
+        let Some(presentation) = self.presentations.get_mut(id) else {
+            return false;
+        };
+        if !presentation.capabilities.rename {
+            return false;
+        }
+        presentation.set_custom_title(title);
+        true
+    }
+
+    pub fn switcher_snapshot(&self) -> SurfaceSwitcherSnapshot {
+        SurfaceSwitcherSnapshot::derive(&self.graph, &self.presentations)
     }
 
     pub fn set_active_main(&mut self, id: &str) -> bool {
@@ -206,6 +284,7 @@ impl SurfaceManager {
         let mut plan =
             self.graph
                 .presentation_plan(self.size_class, self.workspace_width(), &self.policy);
+        plan.main_switcher = self.switcher_snapshot();
         if self.size_class == SizeClass::Compact {
             for slot in plan.aside_slots.iter_mut().filter(|slot| slot.visible) {
                 slot.overlay = true;

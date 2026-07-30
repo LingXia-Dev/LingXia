@@ -192,6 +192,21 @@ impl Surface {
         }
     }
 
+    pub fn browser(id: impl Into<SurfaceId>, role: Role, initial_url: impl Into<String>) -> Self {
+        Self {
+            id: id.into(),
+            role,
+            content: SurfaceContent::Browser {
+                initial_url: initial_url.into(),
+                reuse_by_url: true,
+            },
+            owner: SurfaceOwner::Host,
+            placement: Placement::default(),
+            state: SurfaceState::Mounted,
+            float: (role == Role::Float).then(FloatSpec::default),
+        }
+    }
+
     pub fn is_modal_float(&self) -> bool {
         self.role == Role::Float && self.float.as_ref().is_some_and(|f| f.modal)
     }

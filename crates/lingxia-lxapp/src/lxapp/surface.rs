@@ -136,17 +136,21 @@ impl WindowSurfaceController {
         }
     }
 
-    fn close(&self, id: &str) -> Vec<String> {
-        let removed = {
+    fn close(&self, id: &str) -> lingxia_surface::CloseOutcome {
+        let outcome = {
             let mut manager = self.manager.lock().unwrap();
             manager.close(id)
         };
         self.commit();
-        removed
+        outcome
     }
 
     fn contains(&self, id: &str) -> bool {
         self.manager.lock().unwrap().graph().get(id).is_some()
+    }
+
+    fn is_root_main(&self, id: &str) -> bool {
+        self.manager.lock().unwrap().graph().is_root_main(id)
     }
 
     fn show_surface(&self, app_id: &str, id: &str) -> Result<(), LxAppError> {
@@ -864,6 +868,11 @@ impl LxApp {
         if !is_known {
             return Ok(());
         }
+        if controller.is_root_main(id) {
+            return Err(LxAppError::UnsupportedOperation(format!(
+                "root main surface '{id}' cannot be closed"
+            )));
+        }
 
         let platform_owner_appid = surface_owner_appid(id).unwrap_or_else(|| self.appid.clone());
         match self
@@ -871,7 +880,7 @@ impl LxApp {
             .close_surface(&platform_owner_appid, id, reason)
         {
             Ok(()) => {
-                let mut removed = controller.close(id);
+                let mut removed = controller.close(id).into_removed();
                 if !removed.iter().any(|removed| removed == id) {
                     removed.push(id.to_string());
                 }
@@ -1113,6 +1122,10 @@ impl LxApp {
         if id.is_empty() {
             return false;
         }
+        let controller = window_controller(PRIMARY_WINDOW, &self.runtime);
+        if controller.is_root_main(id) {
+            return false;
+        }
         let removed = self
             .state
             .lock()
@@ -1121,7 +1134,7 @@ impl LxApp {
             .is_some();
         // Keep the Adaptive Surface Layout core in sync with removals; the
         // controller re-derives and reconciles aside docking.
-        window_controller(PRIMARY_WINDOW, &self.runtime).close(id);
+        let _ = controller.close(id);
         removed
     }
 

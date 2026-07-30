@@ -11,6 +11,8 @@ mod graph;
 mod layout;
 mod manager;
 mod model;
+mod presentation;
+mod switcher;
 
 pub use arbitrate::{Decision, OpenOutcome, Policy, arbitrate, normalize_initial_url};
 pub use content::{SlotKind, SurfaceContent};
@@ -24,6 +26,10 @@ pub use manager::SurfaceManager;
 pub use model::{
     Edge, FloatAnchor, FloatDismiss, FloatSpec, Placement, Role, Surface, SurfaceId,
     SurfaceInteraction, SurfaceOwner, SurfaceState,
+};
+pub use presentation::{SurfaceCapabilities, SurfaceIcon, SurfacePresentation};
+pub use switcher::{
+    CloseOutcome, SurfaceSwitcherItem, SurfaceSwitcherSnapshot, SwitcherContentKind,
 };
 
 #[cfg(test)]
@@ -80,17 +86,22 @@ mod tests {
     }
 
     #[test]
-    fn aside_requires_a_main_invariant() {
+    fn root_main_keeps_companion_graph_anchored() {
         // Construct an illegal graph directly and assert the checker catches it.
         let mut g = SurfaceGraph::new();
         g.insert(main_s("home"));
         g.insert(aside_s("assistant", Edge::Right));
         assert!(g.is_valid());
-        // Removing the only main cascades the aside closed (§1.5).
-        let removed = g.remove("home");
-        assert!(removed.contains(&"assistant".to_string()));
-        assert!(g.asides().is_empty());
-        assert_eq!(g.active_main_id, None);
+        // The first main is the stable root; ordinary close cannot remove it
+        // or cascade its companions.
+        assert_eq!(
+            g.close("home"),
+            CloseOutcome::RejectedRoot {
+                surface_id: "home".into()
+            }
+        );
+        assert_eq!(g.asides().len(), 1);
+        assert_eq!(g.active_main_id.as_deref(), Some("home"));
         assert!(g.is_valid());
     }
 
@@ -101,7 +112,7 @@ mod tests {
         g.insert(main_s("b"));
         g.insert(main_s("c"));
         g.set_active_main("b");
-        g.remove("b");
+        g.close("b");
         // prefer the next main after the removed position.
         assert_eq!(g.active_main_id.as_deref(), Some("c"));
         assert!(g.is_valid());
@@ -119,7 +130,7 @@ mod tests {
         });
         g.insert(modal);
         g.set_focus("dialog");
-        g.remove("dialog");
+        g.close("dialog");
         assert_eq!(g.focused_surface_id.as_deref(), Some("home"));
         assert!(g.is_valid());
     }
@@ -495,7 +506,12 @@ mod tests {
         graph.set_focus("first");
         graph.set_focus("second");
 
-        assert_eq!(graph.remove("second"), vec!["second"]);
+        assert_eq!(
+            graph.close("second"),
+            CloseOutcome::Closed {
+                removed: vec!["second".into()]
+            }
+        );
         assert_eq!(graph.focused_surface_id.as_deref(), Some("first"));
         assert_eq!(
             graph.aside_slots(SizeClass::Expanded)[0]
