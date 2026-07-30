@@ -8147,7 +8147,10 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
             // "ImmersiveColorSet"); an accent change sends
             // WM_DWMCOLORIZATIONCOLORCHANGED. Re-read the system theme and, only
             // when it actually changed, repaint the whole shell in the new palette.
-            WindowsAndMessaging::WM_SETTINGCHANGE | WM_DWMCOLORIZATIONCOLORCHANGED => {
+            WindowsAndMessaging::WM_SETTINGCHANGE
+            | WindowsAndMessaging::WM_SYSCOLORCHANGE
+            | WindowsAndMessaging::WM_THEMECHANGED
+            | WM_DWMCOLORIZATIONCOLORCHANGED => {
                 // refresh_system_theme() reports the change exactly once per
                 // process, and the broadcast may reach a hidden parked parent
                 // window first — so the winner refreshes EVERY registered
