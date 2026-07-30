@@ -96,6 +96,7 @@ pub(crate) enum ServiceMessage {
     // Terminate AppService for this LxApp instance. ACK returned when cleanup completes.
     TerminateAppSvc {
         lxapp: Arc<LxApp>,
+        worker_id: usize,
         ack_tx: oneshot::Sender<()>,
     },
     // Create a new page service
@@ -579,7 +580,7 @@ pub(crate) async fn lxapp_service_handler(
 
             *current_ctx = Some(ctx.clone());
         }
-        ServiceMessage::TerminateAppSvc { lxapp, ack_tx } => {
+        ServiceMessage::TerminateAppSvc { lxapp, ack_tx, .. } => {
             if let Some(ctx) = current_ctx.as_ref() {
                 shutdown_app_context(ctx).await;
                 *current_ctx = None;
@@ -966,6 +967,7 @@ pub(crate) fn terminate_app_svc(
         // cannot put CreateAppSvc ahead of this termination.
         sender.send(ServiceMessage::TerminateAppSvc {
             lxapp: lxapp_arc.clone(),
+            worker_id,
             ack_tx: tx,
         })?;
         assignments.insert(key, WorkerAssignment::Terminating { worker_id, token });
@@ -974,30 +976,78 @@ pub(crate) fn terminate_app_svc(
 
     let assignments = instance_assignments.clone();
     let free_workers = free_workers.clone();
-    crate::executor::spawn(async move {
-        let acked = matches!(
-            tokio::time::timeout(Duration::from_secs(3), rx).await,
-            Ok(Ok(()))
-        );
-        if acked {
-            info!("Terminate ACK received").with_appid(appid.clone());
-        } else {
-            error!("Terminate ACK timeout; forcing release").with_appid(appid.clone());
-        }
-
-        let released =
-            release_terminated_assignment(&mut assignments.lock().unwrap(), key, worker_id, token);
-        if let Some(worker_id) = released {
-            free_workers.lock().unwrap().push_back(worker_id);
-            info!("Released dedicated worker {} from app {}", worker_id, appid);
-        }
-        drop(lxapp_arc);
-    });
+    crate::executor::spawn(await_termination_ack(
+        appid,
+        key,
+        worker_id,
+        token,
+        rx,
+        assignments,
+        free_workers,
+        Duration::from_secs(3),
+    ));
 
     Ok(())
 }
 
-fn release_terminated_assignment(
+async fn await_termination_ack(
+    appid: String,
+    key: usize,
+    worker_id: usize,
+    token: u64,
+    mut rx: oneshot::Receiver<()>,
+    assignments: Arc<Mutex<HashMap<usize, WorkerAssignment>>>,
+    free_workers: Arc<Mutex<VecDeque<usize>>>,
+    ack_timeout: Duration,
+) {
+    match tokio::time::timeout(ack_timeout, &mut rx).await {
+        Ok(Ok(())) => {
+            info!("Terminate ACK received").with_appid(appid.clone());
+            let released =
+                take_terminated_assignment(&mut assignments.lock().unwrap(), key, worker_id, token);
+            if let Some(worker_id) = released {
+                free_workers.lock().unwrap().push_back(worker_id);
+                info!("Released dedicated worker {} from app {}", worker_id, appid);
+            }
+        }
+        Ok(Err(_)) => {
+            let quarantined =
+                take_terminated_assignment(&mut assignments.lock().unwrap(), key, worker_id, token);
+            if quarantined.is_some() {
+                error!("Terminate ACK channel closed; quarantining worker {worker_id}")
+                    .with_appid(appid);
+            }
+        }
+        Err(_) => {
+            let quarantined =
+                take_terminated_assignment(&mut assignments.lock().unwrap(), key, worker_id, token);
+            if quarantined.is_none() {
+                return;
+            }
+
+            error!("Terminate ACK timeout; quarantining worker {worker_id}")
+                .with_appid(appid.clone());
+            // The terminate message carries its original worker id, so it still
+            // reaches the quarantined worker after this assignment is removed.
+            // A late ACK proves cleanup completed and makes reuse safe again.
+            match rx.await {
+                Ok(()) => {
+                    free_workers.lock().unwrap().push_back(worker_id);
+                    info!(
+                        "Released quarantined worker {} after late ACK for app {}",
+                        worker_id, appid
+                    );
+                }
+                Err(_) => {
+                    error!("Quarantined worker {worker_id} never acknowledged termination")
+                        .with_appid(appid);
+                }
+            }
+        }
+    }
+}
+
+fn take_terminated_assignment(
     assignments: &mut HashMap<usize, WorkerAssignment>,
     key: usize,
     worker_id: usize,
@@ -1036,6 +1086,7 @@ pub(crate) fn restart_app_svc(
     let (ack_tx, _ack_rx) = oneshot::channel();
     sender.send(ServiceMessage::TerminateAppSvc {
         lxapp: lxapp.clone(),
+        worker_id: assignment.worker_id(),
         ack_tx,
     })?;
     sender.send(ServiceMessage::CreateAppSvc { lxapp })?;
@@ -1044,17 +1095,16 @@ pub(crate) fn restart_app_svc(
 
 #[cfg(test)]
 mod worker_assignment_tests {
-    use super::{WorkerAssignment, release_terminated_assignment};
-    use std::collections::HashMap;
+    use super::{WorkerAssignment, await_termination_ack, take_terminated_assignment};
+    use std::collections::{HashMap, VecDeque};
+    use std::sync::{Arc, Mutex};
+    use std::time::Duration;
 
     #[test]
     fn reactivated_assignment_is_not_released_by_old_termination() {
         let mut assignments = HashMap::from([(7, WorkerAssignment::Active(3))]);
 
-        assert_eq!(
-            release_terminated_assignment(&mut assignments, 7, 3, 11),
-            None
-        );
+        assert_eq!(take_terminated_assignment(&mut assignments, 7, 3, 11), None);
         assert_eq!(assignments.get(&7), Some(&WorkerAssignment::Active(3)));
     }
 
@@ -1068,15 +1118,73 @@ mod worker_assignment_tests {
             },
         )]);
 
+        assert_eq!(take_terminated_assignment(&mut assignments, 7, 3, 11), None);
         assert_eq!(
-            release_terminated_assignment(&mut assignments, 7, 3, 11),
-            None
-        );
-        assert_eq!(
-            release_terminated_assignment(&mut assignments, 7, 3, 12),
+            take_terminated_assignment(&mut assignments, 7, 3, 12),
             Some(3)
         );
         assert!(!assignments.contains_key(&7));
+    }
+
+    #[tokio::test]
+    async fn timeout_quarantines_worker_until_late_ack() {
+        let assignments = Arc::new(Mutex::new(HashMap::from([(
+            7,
+            WorkerAssignment::Terminating {
+                worker_id: 3,
+                token: 12,
+            },
+        )])));
+        let free_workers = Arc::new(Mutex::new(VecDeque::new()));
+        let (tx, rx) = tokio::sync::oneshot::channel();
+
+        let wait = tokio::spawn(await_termination_ack(
+            "test.app".to_string(),
+            7,
+            3,
+            12,
+            rx,
+            assignments.clone(),
+            free_workers.clone(),
+            Duration::from_millis(1),
+        ));
+        tokio::time::sleep(Duration::from_millis(10)).await;
+
+        assert!(!assignments.lock().unwrap().contains_key(&7));
+        assert!(free_workers.lock().unwrap().is_empty());
+
+        tx.send(()).unwrap();
+        wait.await.unwrap();
+        assert_eq!(free_workers.lock().unwrap().pop_front(), Some(3));
+    }
+
+    #[tokio::test]
+    async fn acknowledged_termination_releases_worker_immediately() {
+        let assignments = Arc::new(Mutex::new(HashMap::from([(
+            7,
+            WorkerAssignment::Terminating {
+                worker_id: 3,
+                token: 12,
+            },
+        )])));
+        let free_workers = Arc::new(Mutex::new(VecDeque::new()));
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        tx.send(()).unwrap();
+
+        await_termination_ack(
+            "test.app".to_string(),
+            7,
+            3,
+            12,
+            rx,
+            assignments.clone(),
+            free_workers.clone(),
+            Duration::from_secs(1),
+        )
+        .await;
+
+        assert!(!assignments.lock().unwrap().contains_key(&7));
+        assert_eq!(free_workers.lock().unwrap().pop_front(), Some(3));
     }
 }
 
