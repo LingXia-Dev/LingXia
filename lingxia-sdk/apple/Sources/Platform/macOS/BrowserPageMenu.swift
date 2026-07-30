@@ -172,14 +172,14 @@ enum BrowserPageMenu {
             string: displayTitle,
             attributes: [
                 .font: NSFont.systemFont(ofSize: 12.5, weight: .semibold),
-                .foregroundColor: NSColor.labelColor,
+                .foregroundColor: LxAppHostTheme.foreground,
             ]
         )
         text.append(NSAttributedString(
             string: "\n" + displayURL,
             attributes: [
                 .font: NSFont.systemFont(ofSize: 10.5),
-                .foregroundColor: NSColor.secondaryLabelColor,
+                .foregroundColor: LxAppHostTheme.mutedForeground,
             ]
         ))
         let item = NSMenuItem()

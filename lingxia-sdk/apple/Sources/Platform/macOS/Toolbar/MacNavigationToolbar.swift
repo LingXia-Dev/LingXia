@@ -44,6 +44,12 @@ class MacNavigationToolbar: NSView {
         fatalError("init(coder:) has not been implemented")
     }
 
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        separator.layer?.backgroundColor = LxAppHostTheme.separator.cgColor
+        updateFromState(NavigationBarStateManager.shared.currentState)
+    }
+
     private func setupViews() {
         wantsLayer = true
         clipsToBounds = true
@@ -61,7 +67,7 @@ class MacNavigationToolbar: NSView {
         backButton.isBordered = false
         backButton.bezelStyle = .regularSquare
         backButton.imagePosition = .imageOnly
-        backButton.contentTintColor = NSColor.labelColor.withAlphaComponent(0.8)
+        backButton.contentTintColor = LxAppHostTheme.foreground.withAlphaComponent(0.8)
         backButton.target = self
         backButton.action = #selector(backClicked)
         backButton.isHidden = true
@@ -73,7 +79,7 @@ class MacNavigationToolbar: NSView {
         homeButton.isBordered = false
         homeButton.bezelStyle = .regularSquare
         homeButton.imagePosition = .imageOnly
-        homeButton.contentTintColor = NSColor.labelColor.withAlphaComponent(0.8)
+        homeButton.contentTintColor = LxAppHostTheme.foreground.withAlphaComponent(0.8)
         homeButton.target = self
         homeButton.action = #selector(homeClicked)
         homeButton.isHidden = true
@@ -82,7 +88,7 @@ class MacNavigationToolbar: NSView {
         // Title (centered in full toolbar width)
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
         titleLabel.font = NSFont.systemFont(ofSize: 13, weight: .medium)
-        titleLabel.textColor = NSColor.labelColor
+        titleLabel.textColor = LxAppHostTheme.foreground
         titleLabel.alignment = .center
         titleLabel.lineBreakMode = .byTruncatingTail
         titleLabel.maximumNumberOfLines = 1
@@ -125,7 +131,7 @@ class MacNavigationToolbar: NSView {
         // Bottom separator
         separator.translatesAutoresizingMaskIntoConstraints = false
         separator.wantsLayer = true
-        separator.layer?.backgroundColor = NSColor.separatorColor.cgColor
+        separator.layer?.backgroundColor = LxAppHostTheme.separator.cgColor
         addSubview(separator)
 
         NSLayoutConstraint.activate([
@@ -183,7 +189,7 @@ class MacNavigationToolbar: NSView {
         if alpha > 0 {
             layer?.backgroundColor = bgColor.cgColor
         } else {
-            layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
+            layer?.backgroundColor = LxAppHostTheme.surfaceBackground.cgColor
         }
 
         needsLayout = true
@@ -225,10 +231,10 @@ class MacNavigationToolbar: NSView {
             if let iconURL = item.iconURL, let image = NSImage(contentsOf: iconURL) {
                 image.isTemplate = true
                 button.image = image
-                button.contentTintColor = NSColor.secondaryLabelColor
+                button.contentTintColor = LxAppHostTheme.mutedForeground
             } else {
                 button.image = NSImage(systemSymbolName: "square.grid.2x2", accessibilityDescription: item.label)
-                button.contentTintColor = NSColor.secondaryLabelColor
+                button.contentTintColor = LxAppHostTheme.mutedForeground
             }
 
             NSLayoutConstraint.activate([

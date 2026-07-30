@@ -180,7 +180,7 @@ class SidebarGroupView: NSView {
     private var tabBarTint: NSColor?
     /// Attribution-line base from the tabbar's borderStyle: "white" reads as
     /// a light hairline, "black" (default) as the darker separator.
-    private var attributionBaseColor: NSColor = .separatorColor
+    private var attributionBaseColor: NSColor = LxAppHostTheme.separator
     /// Unselected item title tint from the tabbar's `color`; nil = neutral.
     private var itemTint: NSColor?
     /// Expanded items-area wash from the tabbar's `backgroundColor`;
@@ -236,7 +236,7 @@ class SidebarGroupView: NSView {
     /// where you are. Distinct from the item accent (two independent levels).
     private func updateActiveAppearance() {
         headerView.layer?.backgroundColor = isActiveGroup
-            ? NSColor.labelColor.withAlphaComponent(0.09).cgColor
+            ? LxAppHostTheme.selectionBackground.cgColor
             : NSColor.clear.cgColor
     }
 
@@ -244,12 +244,17 @@ class SidebarGroupView: NSView {
         updateActiveAppearance()
         attributionLine.layer?.backgroundColor = attributionBaseColor
             .withAlphaComponent(0.5).cgColor
-        appNameLabel.textColor = .labelColor
-        chevronIndicator.contentTintColor = .secondaryLabelColor
-        closeButton.contentTintColor = NSColor.secondaryLabelColor.withAlphaComponent(0.9)
+        appNameLabel.textColor = LxAppHostTheme.foreground
+        chevronIndicator.contentTintColor = LxAppHostTheme.mutedForeground
+        closeButton.contentTintColor = LxAppHostTheme.mutedForeground.withAlphaComponent(0.9)
         // tabbar backgroundColor maps to the expanded items area (the group's
         // own strip surface); unset stays transparent on the sidebar base.
         itemsBackground.layer?.backgroundColor = (itemsAreaColor ?? NSColor.clear).cgColor
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        applyColors()
     }
 
     private func setupViews() {
@@ -458,7 +463,7 @@ class SidebarGroupView: NSView {
         itemsAreaColor = mask & 0b0100 != 0 ? PlatformColor(argb: tabBar.background_color) : nil
         attributionBaseColor = mask & 0b1000 != 0
             ? PlatformColor(argb: tabBar.border_style)
-            : NSColor.separatorColor
+            : LxAppHostTheme.separator
         applyColors()
 
         let items = tabBar.getItems(appId: appId)

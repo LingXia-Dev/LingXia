@@ -65,6 +65,7 @@ final class UpdateAvailableCard: NSObject {
         panel.standardWindowButton(.closeButton)?.isHidden = true
         panel.standardWindowButton(.miniaturizeButton)?.isHidden = true
         panel.standardWindowButton(.zoomButton)?.isHidden = true
+        panel.backgroundColor = LxAppHostTheme.surfaceBackground
 
         root.orientation = .vertical
         root.alignment = .width
@@ -96,7 +97,7 @@ final class UpdateAvailableCard: NSObject {
             // card and stay left-aligned — not boxed inside a nested container.
             let notesTitle = Self.label(
                 Self.string("lx_update_card_notes_title"), size: 11, weight: .semibold)
-            notesTitle.textColor = .secondaryLabelColor
+            notesTitle.textColor = LxAppHostTheme.mutedForeground
             root.addArrangedSubview(notesTitle)
 
             let body = NSTextField(labelWithAttributedString: Self.notesAttributed(info.releaseNotes))
@@ -151,7 +152,7 @@ final class UpdateAvailableCard: NSObject {
         if !info.version.isEmpty {
             let subtitle = Self.label(
                 Self.string("lx_update_card_version", info.version), size: 12, weight: .regular)
-            subtitle.textColor = .secondaryLabelColor
+            subtitle.textColor = LxAppHostTheme.mutedForeground
             stack.addArrangedSubview(subtitle)
         }
 
@@ -173,7 +174,7 @@ final class UpdateAvailableCard: NSObject {
 
     private func notesView(_ notes: [String]) -> NSView {
         let title = Self.label(Self.string("lx_update_card_notes_title"), size: 11, weight: .semibold)
-        title.textColor = .secondaryLabelColor
+        title.textColor = LxAppHostTheme.mutedForeground
 
         let body = NSTextField(labelWithAttributedString: Self.notesAttributed(notes))
         body.lineBreakMode = .byWordWrapping
@@ -220,7 +221,7 @@ final class UpdateAvailableCard: NSObject {
         para.lineSpacing = 2
         let attrs: [NSAttributedString.Key: Any] = [
             .font: NSFont.systemFont(ofSize: 12.5),
-            .foregroundColor: NSColor.labelColor,
+            .foregroundColor: LxAppHostTheme.foreground,
             .paragraphStyle: para,
         ]
         let result = NSMutableAttributedString()

@@ -597,6 +597,7 @@ class SidebarView: NSView, NSPopoverDelegate {
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
         footerSeparator.layer?.backgroundColor = SidebarActionChromePalette.divider.cgColor
+        applySelection()
     }
 
     // MARK: - Setup
@@ -710,7 +711,7 @@ class SidebarView: NSView, NSPopoverDelegate {
         hideButton.imagePosition = .imageOnly
         hideButton.isBordered = false
         hideButton.bezelStyle = .regularSquare
-        hideButton.contentTintColor = NSColor.secondaryLabelColor
+        hideButton.contentTintColor = LxAppHostTheme.mutedForeground
         hideButton.wantsLayer = true
         hideButton.layer?.cornerRadius = 6
         hideButton.layer?.backgroundColor = NSColor.clear.cgColor
@@ -733,7 +734,7 @@ class SidebarView: NSView, NSPopoverDelegate {
         railExpandButton.layer?.backgroundColor = NSColor.clear.cgColor
         railExpandButton.toolTip = "Expand sidebar"
         railExpandButton.setAccessibilityLabel("Expand sidebar")
-        railExpandButton.contentTintColor = NSColor.secondaryLabelColor
+        railExpandButton.contentTintColor = LxAppHostTheme.mutedForeground
         railExpandButton.image = LxIcon.image(
             named: "icon_sidebar_expand",
             size: NSSize(width: Layout.railIconSize, height: Layout.railIconSize))
@@ -1040,7 +1041,7 @@ class SidebarView: NSView, NSPopoverDelegate {
             copy.size = NSSize(width: Layout.railIconSize, height: Layout.railIconSize)
             copy.isTemplate = isTemplate
             btn.image = copy
-            if isTemplate { btn.contentTintColor = NSColor.secondaryLabelColor }
+            if isTemplate { btn.contentTintColor = LxAppHostTheme.mutedForeground }
         }
         NSLayoutConstraint.activate([
             btn.widthAnchor.constraint(equalToConstant: Layout.railButtonSize),
@@ -1058,7 +1059,7 @@ class SidebarView: NSView, NSPopoverDelegate {
                 }
             let selected = key == activeRailKey || activeSidebarAction
             btn.layer?.backgroundColor = selected
-                ? NSColor.labelColor.withAlphaComponent(0.12).cgColor
+                ? LxAppHostTheme.selectionBackground.cgColor
                 : NSColor.clear.cgColor
         }
     }
@@ -1380,7 +1381,7 @@ class SidebarView: NSView, NSPopoverDelegate {
             button.bezelStyle = .regularSquare
             button.imagePosition = .imageOnly
             button.imageScaling = .scaleProportionallyDown
-            button.contentTintColor = NSColor.secondaryLabelColor
+            button.contentTintColor = LxAppHostTheme.mutedForeground
             button.image = Self.sidebarHeaderActionIcon(item.iconURL)
             button.toolTip = item.label
             button.setAccessibilityLabel(item.label)
@@ -1722,7 +1723,7 @@ class SidebarView: NSView, NSPopoverDelegate {
         }
         browserRootHeader.layer?.backgroundColor = {
             if case .browser = model.selection {
-                return NSColor.labelColor.withAlphaComponent(0.09).cgColor
+                return LxAppHostTheme.selectionBackground.cgColor
             }
             return NSColor.clear.cgColor
         }()
@@ -1889,7 +1890,7 @@ class SidebarView: NSView, NSPopoverDelegate {
         let label = NSTextField(labelWithString: L10n.string("lx_browser_label").uppercased())
         label.translatesAutoresizingMaskIntoConstraints = false
         label.font = NSFont.systemFont(ofSize: 11, weight: .semibold)
-        label.textColor = .labelColor
+        label.textColor = LxAppHostTheme.foreground
         browserRootHeader.addSubview(label)
 
         NSLayoutConstraint.activate([
@@ -2097,10 +2098,10 @@ class SidebarView: NSView, NSPopoverDelegate {
         addButton.isBordered = false
         addButton.bezelStyle = .regularSquare
         addButton.imagePosition = .imageOnly
-        addButton.contentTintColor = NSColor.secondaryLabelColor
+        addButton.contentTintColor = LxAppHostTheme.mutedForeground
         addButton.wantsLayer = true
         addButton.layer?.cornerRadius = 6
-        addButton.layer?.backgroundColor = NSColor.labelColor.withAlphaComponent(0.06).cgColor
+        addButton.layer?.backgroundColor = LxAppHostTheme.foreground.withAlphaComponent(0.06).cgColor
         addButton.target = self
         addButton.action = #selector(addButtonClicked)
     }
@@ -2174,14 +2175,16 @@ class SidebarView: NSView, NSPopoverDelegate {
 
     private func setAddButtonHovered(_ hovered: Bool) {
         let alpha: CGFloat = hovered ? 0.12 : 0.06
-        addButton.layer?.backgroundColor = NSColor.labelColor.withAlphaComponent(alpha).cgColor
+        addButton.layer?.backgroundColor = LxAppHostTheme.foreground.withAlphaComponent(alpha).cgColor
     }
 
     private func setHideButtonHovered(_ hovered: Bool) {
         hideButton.layer?.backgroundColor = hovered
-            ? NSColor.labelColor.withAlphaComponent(0.09).cgColor
+            ? LxAppHostTheme.foreground.withAlphaComponent(0.09).cgColor
             : NSColor.clear.cgColor
-        hideButton.contentTintColor = hovered ? NSColor.labelColor : NSColor.secondaryLabelColor
+        hideButton.contentTintColor = hovered
+            ? LxAppHostTheme.foreground
+            : LxAppHostTheme.mutedForeground
     }
 }
 
@@ -2300,9 +2303,17 @@ private final class SidebarActionFlowView: NSView {
 
 @MainActor
 private enum SidebarActionChromePalette {
-    static let activeSurface = adaptive(dark: 0x34333A, light: 0xFFFFFF)
-    static let mutedText = adaptive(dark: 0x9AA0A6, light: 0x667085)
-    static let divider = adaptive(dark: 0x383838, light: 0xC7C2D2)
+    static var activeSurface: NSColor {
+        LxAppHostTheme.selectionBackground
+    }
+
+    static var mutedText: NSColor {
+        LxAppHostTheme.mutedForeground
+    }
+
+    static var divider: NSColor {
+        LxAppHostTheme.separator
+    }
 
     static let hover = NSColor(name: nil) { appearance in
         isDark(appearance)
@@ -2316,23 +2327,8 @@ private enum SidebarActionChromePalette {
             : NSColor.black.withAlphaComponent(0.10)
     }
 
-    private static func adaptive(dark: UInt32, light: UInt32) -> NSColor {
-        NSColor(name: nil) { appearance in
-            color(isDark(appearance) ? dark : light)
-        }
-    }
-
     private static func isDark(_ appearance: NSAppearance) -> Bool {
         appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-    }
-
-    private static func color(_ rgb: UInt32) -> NSColor {
-        NSColor(
-            srgbRed: CGFloat((rgb >> 16) & 0xFF) / 255,
-            green: CGFloat((rgb >> 8) & 0xFF) / 255,
-            blue: CGFloat(rgb & 0xFF) / 255,
-            alpha: 1
-        )
     }
 }
 
@@ -2380,7 +2376,7 @@ final class SidebarActionRowView: NSView {
         accentView.translatesAutoresizingMaskIntoConstraints = false
         accentView.wantsLayer = true
         accentView.layer?.cornerRadius = 1
-        accentView.layer?.backgroundColor = NSColor.controlAccentColor.cgColor
+        accentView.layer?.backgroundColor = LxAppHostTheme.accent.cgColor
         accentView.isHidden = !self.active
         addSubview(accentView)
 
@@ -2397,8 +2393,8 @@ final class SidebarActionRowView: NSView {
             weight: self.active ? .medium : .regular
         )
         titleLabel.textColor = disabled
-            ? NSColor.tertiaryLabelColor
-            : (self.active ? NSColor.controlAccentColor : SidebarActionChromePalette.mutedText)
+            ? LxAppHostTheme.mutedForeground
+            : (self.active ? LxAppHostTheme.accent : SidebarActionChromePalette.mutedText)
         titleLabel.lineBreakMode = .byTruncatingTail
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
         addSubview(titleLabel)
@@ -2432,10 +2428,10 @@ final class SidebarActionRowView: NSView {
     }
 
     private func updateAppearance() {
-        accentView.layer?.backgroundColor = NSColor.controlAccentColor.cgColor
+        accentView.layer?.backgroundColor = LxAppHostTheme.accent.cgColor
         titleLabel.textColor = disabled
-            ? NSColor.tertiaryLabelColor
-            : (active ? NSColor.controlAccentColor : SidebarActionChromePalette.mutedText)
+            ? LxAppHostTheme.mutedForeground
+            : (active ? LxAppHostTheme.accent : SidebarActionChromePalette.mutedText)
         if isPressed && !disabled {
             washView.layer?.backgroundColor = SidebarActionChromePalette.pressed.cgColor
         } else if active {

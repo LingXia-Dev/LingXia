@@ -140,14 +140,14 @@ final class SidebarPinTileView: NSView {
 
         letterLabel.translatesAutoresizingMaskIntoConstraints = false
         letterLabel.font = .systemFont(ofSize: 14, weight: .bold)
-        letterLabel.textColor = .secondaryLabelColor
+        letterLabel.textColor = LxAppHostTheme.mutedForeground
         letterLabel.alignment = .center
         addSubview(letterLabel)
 
         activeDot.translatesAutoresizingMaskIntoConstraints = false
         activeDot.wantsLayer = true
         activeDot.layer?.cornerRadius = 2
-        activeDot.layer?.backgroundColor = NSColor.controlAccentColor.cgColor
+        activeDot.layer?.backgroundColor = LxAppHostTheme.accent.cgColor
         activeDot.isHidden = true
         addSubview(activeDot)
 
@@ -202,10 +202,15 @@ final class SidebarPinTileView: NSView {
 
     private func refreshChrome() {
         let base: CGFloat = hovered ? 0.14 : 0.07
-        background.layer?.backgroundColor = NSColor.labelColor.withAlphaComponent(base).cgColor
+        background.layer?.backgroundColor = LxAppHostTheme.foreground.withAlphaComponent(base).cgColor
         background.layer?.borderWidth = isFocused ? 1.5 : 0
-        background.layer?.borderColor = NSColor.controlAccentColor.cgColor
+        background.layer?.borderColor = LxAppHostTheme.accent.cgColor
         activeDot.isHidden = openTabId == nil || isFocused
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        refreshChrome()
     }
 
     func syncState() {
@@ -360,7 +365,7 @@ final class LxappPinTileView: NSView {
         background.translatesAutoresizingMaskIntoConstraints = false
         background.wantsLayer = true
         background.layer?.cornerRadius = SidebarPinTileView.Layout.cornerRadius
-        background.layer?.backgroundColor = NSColor.labelColor.withAlphaComponent(0.06).cgColor
+        background.layer?.backgroundColor = LxAppHostTheme.foreground.withAlphaComponent(0.06).cgColor
         addSubview(background)
 
         let info = getLxAppInfo(appId)
@@ -395,6 +400,12 @@ final class LxappPinTileView: NSView {
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        background.layer?.backgroundColor =
+            LxAppHostTheme.foreground.withAlphaComponent(0.06).cgColor
+    }
 
     override func mouseDown(with event: NSEvent) {
         _ = shellOpenLxappMain(appId)

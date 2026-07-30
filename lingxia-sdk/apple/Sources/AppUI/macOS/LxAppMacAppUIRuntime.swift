@@ -770,9 +770,8 @@ final class LxAppMacAppUIRuntime: NSObject {
         let hostView = independentPanelHostViews[surface.id] ?? LxAppHostView(controller: controller)
         independentPanelHostViews[surface.id] = hostView
         if hostView.superview == nil || hostView.window !== panel {
-            let container = NSView(frame: NSRect(origin: .zero, size: panel.contentView?.bounds.size ?? .zero))
-            container.wantsLayer = true
-            container.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
+            let container = LxAppHostThemeLayerView(role: .surfaceBackground)
+            container.frame = NSRect(origin: .zero, size: panel.contentView?.bounds.size ?? .zero)
             container.layer?.cornerRadius = 10
             container.layer?.masksToBounds = true
             panel.contentView = container
@@ -1369,7 +1368,7 @@ final class LxAppMacAppUIRuntime: NSObject {
         panel.hidesOnDeactivate = false
         panel.isReleasedWhenClosed = false
         panel.hasShadow = true
-        panel.backgroundColor = .windowBackgroundColor
+        panel.backgroundColor = LxAppHostTheme.surfaceBackground
         panel.isOpaque = false
         if resizable {
             panel.contentMinSize = CGSize(width: 240, height: 180)
