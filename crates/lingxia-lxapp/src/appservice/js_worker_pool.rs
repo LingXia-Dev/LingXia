@@ -1,7 +1,7 @@
 use crate::appservice::event_bus::AppBusEvent;
 use crate::appservice::js_runtime::{
-    PageSvcSource, ServiceMessage, WorkerService, create_app_svc, lxapp_service_handler,
-    restart_app_svc, shutdown_app_context, terminate_app_svc,
+    PageSvcSource, ServiceMessage, WorkerAssignment, WorkerService, create_app_svc,
+    lxapp_service_handler, restart_app_svc, shutdown_app_context, terminate_app_svc,
 };
 use crate::lifecycle::AppServiceEvent;
 use crate::lifecycle::PageServiceEvent;
@@ -23,8 +23,8 @@ use tokio::sync::oneshot::{self, Sender};
 pub struct LxAppWorkers {
     /// Message sender for communicating with workers
     sender: mpsc::Sender<ServiceMessage>,
-    /// Mapping: LxApp instance pointer -> worker_id (object-identity routing)
-    instance_assignments: Arc<Mutex<HashMap<usize, usize>>>,
+    /// Mapping: LxApp instance pointer -> worker assignment and lifecycle state.
+    instance_assignments: Arc<Mutex<HashMap<usize, WorkerAssignment>>>,
     /// Available worker IDs for new mini-apps (FIFO)
     free_workers: Arc<Mutex<VecDeque<usize>>>,
 }
@@ -79,7 +79,7 @@ impl LxAppWorkers {
     fn run_executor(
         num_workers: usize,
         receiver: Arc<Mutex<mpsc::Receiver<ServiceMessage>>>,
-        instance_assignments: Arc<Mutex<HashMap<usize, usize>>>,
+        instance_assignments: Arc<Mutex<HashMap<usize, WorkerAssignment>>>,
         free_workers: Arc<Mutex<VecDeque<usize>>>,
         barrier: Arc<std::sync::Barrier>,
     ) {
@@ -106,7 +106,7 @@ impl LxAppWorkers {
     async fn run_async_executor(
         num_workers: usize,
         receiver: Arc<Mutex<mpsc::Receiver<ServiceMessage>>>,
-        instance_assignments: Arc<Mutex<HashMap<usize, usize>>>,
+        instance_assignments: Arc<Mutex<HashMap<usize, WorkerAssignment>>>,
         free_workers: Arc<Mutex<VecDeque<usize>>>,
         barrier: Arc<std::sync::Barrier>,
     ) {
@@ -188,7 +188,7 @@ impl LxAppWorkers {
     /// Main message dispatch loop
     async fn run_message_dispatch_loop(
         receiver: Arc<Mutex<mpsc::Receiver<ServiceMessage>>>,
-        instance_assignments: Arc<Mutex<HashMap<usize, usize>>>,
+        instance_assignments: Arc<Mutex<HashMap<usize, WorkerAssignment>>>,
         worker_tasks: HashMap<usize, TaskHandle<()>>,
     ) {
         loop {
@@ -208,7 +208,7 @@ impl LxAppWorkers {
     /// Dispatch a single message to appropriate worker
     async fn dispatch_message(
         message: ServiceMessage,
-        instance_assignments: &Arc<Mutex<HashMap<usize, usize>>>,
+        instance_assignments: &Arc<Mutex<HashMap<usize, WorkerAssignment>>>,
         worker_tasks: &HashMap<usize, TaskHandle<()>>,
     ) {
         let appid = match &message {
@@ -251,8 +251,14 @@ impl LxAppWorkers {
             | ServiceMessage::Eval { lxapp, .. } => lxapp.logic_enabled(),
         };
 
-        let target_worker_id =
-            instance_key.and_then(|k| instance_assignments.lock().unwrap().get(&k).copied());
+        let target_worker_id = instance_key.and_then(|k| {
+            instance_assignments
+                .lock()
+                .unwrap()
+                .get(&k)
+                .copied()
+                .map(WorkerAssignment::worker_id)
+        });
 
         if let Some(worker_id) = target_worker_id {
             if let Some(worker_task) = worker_tasks.get(&worker_id) {
