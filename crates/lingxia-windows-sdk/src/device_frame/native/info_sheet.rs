@@ -544,7 +544,7 @@ fn fill_rect(dc: HDC, rect: RECT, color: u32) {
 fn draw_sheet_text(
     dc: HDC,
     text: &str,
-    mut rect: RECT,
+    rect: RECT,
     height: i32,
     weight: i32,
     color: u32,

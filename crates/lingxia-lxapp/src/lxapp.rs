@@ -1647,8 +1647,8 @@ impl LxApp {
     }
 
     fn materialize_builtin_resource(&self, relative: &str) -> Result<PathBuf, LxAppError> {
-        let data = self.read_bytes(&relative)?;
-        let destination = self.user_cache_dir.join("native-resources").join(&relative);
+        let data = self.read_bytes(relative)?;
+        let destination = self.user_cache_dir.join("native-resources").join(relative);
         let parent = destination.parent().ok_or_else(|| {
             LxAppError::InvalidParameter(format!(
                 "native resource has no parent: {}",
