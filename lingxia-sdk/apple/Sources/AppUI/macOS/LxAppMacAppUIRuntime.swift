@@ -178,10 +178,15 @@ final class LxAppMacAppUIRuntime: NSObject {
         trayController.installMenuBarActivators(menuBarActivators)
         installAppActivationActivators()
         refreshChromeActions()
+        let opensLxAppOnLaunch = (uiConfig.launch.openOnLaunch ?? true)
+            && rootSurface.content.kind == .lxapp
         if uiConfig.launch.openOnLaunch ?? true {
             try openSurface(id: uiConfig.launch.initialSurface)
         }
-        if !launchHomeControlLogic() {
+        // Opening an lxapp already starts its worker and dispatches App.onLaunch.
+        // Starting it again here races the asynchronous page-stack setup and can
+        // expose a Logic-ready app with no current page to automation clients.
+        if !opensLxAppOnLaunch && !launchHomeControlLogic() {
             LXLog.error("Home control Logic failed to launch", category: "MacAppUI")
         }
     }
