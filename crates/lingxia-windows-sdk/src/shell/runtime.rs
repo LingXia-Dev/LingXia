@@ -24,7 +24,7 @@ use lingxia_shell::{
     ResolvedShellSidebarAction, ShellPin, ShellPinTarget, SidebarActionIntent,
     SidebarActionPlacement,
 };
-use lingxia_surface::{Edge, LayoutPresentationPlan, SlotKind};
+use lingxia_surface::{Edge, LayoutPresentationPlan, SlotKind, SwitcherContentKind};
 use lingxia_webview::WebTag;
 #[cfg(feature = "browser-runtime")]
 use lingxia_webview::platform::windows::find_webview_handler;
@@ -1612,7 +1612,7 @@ fn build_tab_bar_layout(
         app_icon_path: app.get_lxapp_info().icon,
         group_id: app.appid.clone(),
         group_active,
-        group_closable: !runtime_info.is_home,
+        group_closable: main_lxapp_closable(&app.appid),
         group_order_index,
         collapsed: ui_state.collapsed,
         icon_rail: ui_state.icon_rail,
@@ -1664,13 +1664,39 @@ fn active_main_lxapp_id() -> Option<String> {
     let graph_active = shell_owner_appid()
         .and_then(|owner_appid| lxapp::try_get(&owner_appid))
         .and_then(|owner| owner.surface_derived_layout())
-        .and_then(|plan| plan.active_main_id)
+        .and_then(|plan| {
+            let active_id = plan.active_main_id?;
+            plan.main_switcher
+                .items
+                .into_iter()
+                .find(|item| item.surface_id == active_id)
+                .and_then(|item| match item.content {
+                    SwitcherContentKind::Lxapp { app_id }
+                    | SwitcherContentKind::Page { app_id } => Some(app_id),
+                    SwitcherContentKind::Browser | SwitcherContentKind::Native { .. } => None,
+                })
+        })
         .filter(|appid| lxapp::open_region(appid) == Some(lxapp::LxAppOpenRegion::Main));
     graph_active.or_else(|| {
         let appid = lxapp::get_current_lxapp().0;
         (!appid.is_empty() && lxapp::open_region(&appid) == Some(lxapp::LxAppOpenRegion::Main))
             .then_some(appid)
     })
+}
+
+fn main_lxapp_closable(appid: &str) -> bool {
+    shell_owner_appid()
+        .and_then(|owner_appid| lxapp::try_get(&owner_appid))
+        .map(|owner| owner.surface_switcher_snapshot())
+        .and_then(|snapshot| {
+            snapshot.items.into_iter().find(|item| {
+                matches!(
+                    &item.content,
+                    SwitcherContentKind::Lxapp { app_id } if app_id == appid
+                )
+            })
+        })
+        .is_some_and(|item| item.closable)
 }
 
 fn build_pinned_items(tabs: &[BrowserTabSummary]) -> Vec<WindowsShellAuxiliaryItemLayout> {
@@ -1861,7 +1887,7 @@ fn build_open_lxapp_items(owner_appid: &str) -> Vec<WindowsShellAuxiliaryItemLay
                 active: presented_browser_tab().is_none()
                     && current_appid.as_deref() == Some(info.appid.as_str()),
                 pinned: false,
-                closable: !info.is_home,
+                closable: main_lxapp_closable(&info.appid),
                 icon_png: None,
                 icon_path,
             }
@@ -3326,6 +3352,9 @@ fn handle_lxapp_auxiliary_click(owner_appid: &str, target_appid: &str) {
 }
 
 fn handle_lxapp_auxiliary_close(owner_appid: &str, target_appid: &str) {
+    if !main_lxapp_closable(target_appid) {
+        return;
+    }
     let was_active = presented_browser_tab().is_none()
         && active_main_lxapp_id().as_deref() == Some(target_appid);
     let row_id = format!("{AUX_LXAPP_PREFIX}{target_appid}");
