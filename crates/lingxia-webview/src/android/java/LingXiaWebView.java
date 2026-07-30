@@ -284,6 +284,30 @@ public class LingXiaWebView extends WebView {
         return base;
     }
 
+    /** Create the API-embedded Servo backend while preserving the SDK's WebView host contract. */
+    public static void requestServoWebView(final String appId, final String path, final long sessionId, final long requestId, final String optionsToken) {
+        ensureMainThreadStatic(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    if (sApplicationContext == null) {
+                        throw new RuntimeException("Application context not set. Call LingXiaWebView.setApplicationContext() first.");
+                    }
+                    LingXiaServoView servoView = new LingXiaServoView(creationContextFor(appId));
+                    LingXiaWebView webView = servoView;
+                    webView.applyCreateOptionsToken(optionsToken);
+                    webView.appId = appId;
+                    webView.currentPath = path;
+                    webView.sessionId = sessionId;
+                    servoView.bindServoWebTag(appId + ":" + path + (sessionId > 0 ? "#" + sessionId : ""));
+                    notifyWebViewReady(appId, path, sessionId, requestId, webView);
+                } catch (Throwable e) {
+                    Log.e(TAG, "Failed to create Servo WebView: " + e.getMessage(), e);
+                }
+            }
+        });
+    }
+
     private void ensureMainThread(Runnable action) {
         if (Looper.myLooper() == Looper.getMainLooper()) {
             action.run();
@@ -1255,6 +1279,16 @@ public class LingXiaWebView extends WebView {
 
     public boolean isPageLoaded() {
         return pageLoaded;
+    }
+
+    /** SDK lifecycle hook shared by Chromium and alternative backend views. */
+    public void pause() {
+        onPause();
+    }
+
+    /** SDK lifecycle hook shared by Chromium and alternative backend views. */
+    public void resume() {
+        onResume();
     }
 
     public void setPageLoaded(boolean loaded) {

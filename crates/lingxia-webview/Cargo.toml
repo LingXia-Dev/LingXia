@@ -14,7 +14,17 @@ webview-input = []
 # Expose NavigationId::from_raw so downstream crates can build synthetic
 # NavigationEvent sequences in their own unit tests.
 test-support = []
-servo = ["dep:servo"]
+servo = [
+    "dep:cookie",
+    "dep:dpi",
+    "dep:euclid",
+    "dep:libc",
+    "dep:png",
+    "dep:raw-window-handle",
+    "dep:rustls",
+    "dep:servo",
+    "dep:url",
+]
 
 [dependencies]
 async-trait = "0.1"
@@ -32,7 +42,15 @@ tokio = { workspace = true, features = ["sync", "time"] }
 base64 = { workspace = true }
 jni = "0.22.1"
 android_logger = "0.15.0"
+cookie = { version = "0.18.1", optional = true }
+dpi = { version = "0.1.2", optional = true }
+euclid = { version = "0.22.11", optional = true }
+libc = { version = "0.2", optional = true }
+png = { version = "0.18.0", optional = true }
+raw-window-handle = { version = "0.6.2", optional = true }
+rustls = { version = "0.23.34", default-features = false, features = ["aws_lc_rs", "std"], optional = true }
 servo = { version = "0.4.0", optional = true }
+url = { version = "2.5.7", optional = true }
 
 # iOS/macOS-specific dependencies for proper os_log integration
 [target.'cfg(any(target_os = "ios", target_os = "macos"))'.dependencies]
