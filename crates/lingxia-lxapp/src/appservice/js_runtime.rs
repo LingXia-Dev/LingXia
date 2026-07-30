@@ -11,6 +11,7 @@ use rong_console as console;
 use rong_http as http;
 
 use std::collections::{HashMap, VecDeque};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, mpsc};
 use std::time::Duration;
 use tokio::sync::oneshot;
@@ -142,6 +143,22 @@ pub(crate) enum ServiceMessage {
         tx: oneshot::Sender<Result<String, LxAppError>>,
     },
 }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum WorkerAssignment {
+    Active(usize),
+    Terminating { worker_id: usize, token: u64 },
+}
+
+impl WorkerAssignment {
+    pub(crate) fn worker_id(self) -> usize {
+        match self {
+            Self::Active(worker_id) | Self::Terminating { worker_id, .. } => worker_id,
+        }
+    }
+}
+
+static NEXT_TERMINATION_TOKEN: AtomicU64 = AtomicU64::new(1);
 
 /// Enum representing different sources of PageInstance service calls
 pub enum PageSvcSource {
@@ -842,19 +859,14 @@ pub(crate) async fn lxapp_service_handler(
 pub(crate) fn create_app_svc(
     lxapp: Arc<crate::lxapp::LxApp>,
     sender: &mpsc::Sender<ServiceMessage>,
-    instance_assignments: &Arc<Mutex<HashMap<usize, usize>>>,
+    instance_assignments: &Arc<Mutex<HashMap<usize, WorkerAssignment>>>,
     free_workers: &Arc<Mutex<VecDeque<usize>>>,
 ) -> Result<(), LxAppError> {
     let appid = lxapp.appid.clone();
 
-    // Establish instance mapping only once; if a mapping exists, reuse it (idempotent)
     let key = lxapp.as_ref() as *const _ as usize;
-    {
-        let assignments = instance_assignments.lock().unwrap();
-        if assignments.contains_key(&key) {
-            info!("Reusing existing worker for app {}", appid);
-            return Ok(());
-        }
+    if reactivate_or_reuse_assignment(&lxapp, sender, instance_assignments, key)? {
+        return Ok(());
     }
 
     // Check if we have free workers available
@@ -874,8 +886,7 @@ pub(crate) fn create_app_svc(
     // the worker before Page.js and the app logic have registered page definitions.
     {
         let mut assignments = instance_assignments.lock().unwrap();
-        if assignments.contains_key(&key) {
-            info!("Reusing existing worker for app {}", appid);
+        if reactivate_or_reuse_locked(&lxapp, sender, &mut assignments, key)? {
             free_workers.lock().unwrap().push_front(worker_id);
             return Ok(());
         }
@@ -883,37 +894,83 @@ pub(crate) fn create_app_svc(
             free_workers.lock().unwrap().push_front(worker_id);
             return Err(e.into());
         }
-        assignments.insert(key, worker_id);
+        assignments.insert(key, WorkerAssignment::Active(worker_id));
     }
 
     info!("Assigned dedicated worker {} to app {}", worker_id, appid);
     Ok(())
 }
 
+fn reactivate_or_reuse_assignment(
+    lxapp: &Arc<LxApp>,
+    sender: &mpsc::Sender<ServiceMessage>,
+    instance_assignments: &Arc<Mutex<HashMap<usize, WorkerAssignment>>>,
+    key: usize,
+) -> Result<bool, LxAppError> {
+    let mut assignments = instance_assignments.lock().unwrap();
+    reactivate_or_reuse_locked(lxapp, sender, &mut assignments, key)
+}
+
+fn reactivate_or_reuse_locked(
+    lxapp: &Arc<LxApp>,
+    sender: &mpsc::Sender<ServiceMessage>,
+    assignments: &mut HashMap<usize, WorkerAssignment>,
+    key: usize,
+) -> Result<bool, LxAppError> {
+    let Some(assignment) = assignments.get(&key).copied() else {
+        return Ok(false);
+    };
+
+    if matches!(assignment, WorkerAssignment::Terminating { .. }) {
+        // The terminate message is already ahead of this create in the same
+        // queue. Marking the assignment active also prevents its old ACK task
+        // from releasing the worker after the new context has been requested.
+        sender.send(ServiceMessage::CreateAppSvc {
+            lxapp: lxapp.clone(),
+        })?;
+        assignments.insert(key, WorkerAssignment::Active(assignment.worker_id()));
+        info!("Reactivating worker for app {}", lxapp.appid);
+    } else {
+        info!("Reusing existing worker for app {}", lxapp.appid);
+    }
+    Ok(true)
+}
+
 /// Terminate a mini-app service - breaks 1:1 mapping and returns worker to pool
 pub(crate) fn terminate_app_svc(
     lxapp_arc: Arc<LxApp>,
     sender: &mpsc::Sender<ServiceMessage>,
-    instance_assignments: &Arc<Mutex<HashMap<usize, usize>>>,
+    instance_assignments: &Arc<Mutex<HashMap<usize, WorkerAssignment>>>,
     free_workers: &Arc<Mutex<VecDeque<usize>>>,
 ) -> Result<(), LxAppError> {
     let appid = lxapp_arc.appid.clone();
-    // Ensure mapping remains during terminate; get current worker_id via instance mapping
     let key = lxapp_arc.as_ref() as *const _ as usize;
-    let Some(worker_id) = instance_assignments.lock().unwrap().get(&key).copied() else {
-        info!(
-            "No active worker mapping for app {}; skipping terminate",
-            appid
-        );
-        return Ok(());
-    };
+    let (worker_id, token, rx) = {
+        let mut assignments = instance_assignments.lock().unwrap();
+        let Some(assignment) = assignments.get(&key).copied() else {
+            info!(
+                "No active worker mapping for app {}; skipping terminate",
+                appid
+            );
+            return Ok(());
+        };
+        if matches!(assignment, WorkerAssignment::Terminating { .. }) {
+            info!("Worker termination already pending for app {}", appid);
+            return Ok(());
+        }
 
-    // Set up ACK channel and send terminate to current worker
-    let (tx, rx) = oneshot::channel();
-    sender.send(ServiceMessage::TerminateAppSvc {
-        lxapp: lxapp_arc.clone(),
-        ack_tx: tx,
-    })?;
+        let worker_id = assignment.worker_id();
+        let token = NEXT_TERMINATION_TOKEN.fetch_add(1, Ordering::Relaxed);
+        let (tx, rx) = oneshot::channel();
+        // Enqueue and publish Terminating under one lock so a concurrent reopen
+        // cannot put CreateAppSvc ahead of this termination.
+        sender.send(ServiceMessage::TerminateAppSvc {
+            lxapp: lxapp_arc.clone(),
+            ack_tx: tx,
+        })?;
+        assignments.insert(key, WorkerAssignment::Terminating { worker_id, token });
+        (worker_id, token, rx)
+    };
 
     let assignments = instance_assignments.clone();
     let free_workers = free_workers.clone();
@@ -928,14 +985,8 @@ pub(crate) fn terminate_app_svc(
             error!("Terminate ACK timeout; forcing release").with_appid(appid.clone());
         }
 
-        let released = {
-            let mut assignments = assignments.lock().unwrap();
-            if assignments.get(&key) == Some(&worker_id) {
-                assignments.remove(&key)
-            } else {
-                None
-            }
-        };
+        let released =
+            release_terminated_assignment(&mut assignments.lock().unwrap(), key, worker_id, token);
         if let Some(worker_id) = released {
             free_workers.lock().unwrap().push_back(worker_id);
             info!("Released dedicated worker {} from app {}", worker_id, appid);
@@ -946,17 +997,40 @@ pub(crate) fn terminate_app_svc(
     Ok(())
 }
 
+fn release_terminated_assignment(
+    assignments: &mut HashMap<usize, WorkerAssignment>,
+    key: usize,
+    worker_id: usize,
+    token: u64,
+) -> Option<usize> {
+    let expected = WorkerAssignment::Terminating { worker_id, token };
+    if assignments.get(&key) == Some(&expected) {
+        assignments.remove(&key).map(WorkerAssignment::worker_id)
+    } else {
+        None
+    }
+}
+
 pub(crate) fn restart_app_svc(
     lxapp: Arc<LxApp>,
     sender: &mpsc::Sender<ServiceMessage>,
-    instance_assignments: &Arc<Mutex<HashMap<usize, usize>>>,
+    instance_assignments: &Arc<Mutex<HashMap<usize, WorkerAssignment>>>,
 ) -> Result<(), LxAppError> {
     let key = lxapp.as_ref() as *const _ as usize;
-    if !instance_assignments.lock().unwrap().contains_key(&key) {
+    let mut assignments = instance_assignments.lock().unwrap();
+    let Some(assignment) = assignments.get(&key).copied() else {
         return Err(LxAppError::Runtime(format!(
             "No active worker mapping for app {}",
             lxapp.appid
         )));
+    };
+
+    if matches!(assignment, WorkerAssignment::Terminating { .. }) {
+        sender.send(ServiceMessage::CreateAppSvc {
+            lxapp: lxapp.clone(),
+        })?;
+        assignments.insert(key, WorkerAssignment::Active(assignment.worker_id()));
+        return Ok(());
     }
 
     let (ack_tx, _ack_rx) = oneshot::channel();
@@ -966,6 +1040,44 @@ pub(crate) fn restart_app_svc(
     })?;
     sender.send(ServiceMessage::CreateAppSvc { lxapp })?;
     Ok(())
+}
+
+#[cfg(test)]
+mod worker_assignment_tests {
+    use super::{WorkerAssignment, release_terminated_assignment};
+    use std::collections::HashMap;
+
+    #[test]
+    fn reactivated_assignment_is_not_released_by_old_termination() {
+        let mut assignments = HashMap::from([(7, WorkerAssignment::Active(3))]);
+
+        assert_eq!(
+            release_terminated_assignment(&mut assignments, 7, 3, 11),
+            None
+        );
+        assert_eq!(assignments.get(&7), Some(&WorkerAssignment::Active(3)));
+    }
+
+    #[test]
+    fn only_matching_termination_releases_worker() {
+        let mut assignments = HashMap::from([(
+            7,
+            WorkerAssignment::Terminating {
+                worker_id: 3,
+                token: 12,
+            },
+        )]);
+
+        assert_eq!(
+            release_terminated_assignment(&mut assignments, 7, 3, 11),
+            None
+        );
+        assert_eq!(
+            release_terminated_assignment(&mut assignments, 7, 3, 12),
+            Some(3)
+        );
+        assert!(!assignments.contains_key(&7));
+    }
 }
 
 /// Wrapper for LxApp to implement external traits
