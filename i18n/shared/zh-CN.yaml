@@ -98,3 +98,11 @@ update:
 shell:
   pin_limit_title: "侧栏固定项"
   pin_limit_message: "最多可固定 8 项。请先取消一项，再添加新的固定项。"
+
+# Main Surface 切换器
+surface:
+  rename: "重命名标签页"
+  reset_title: "重置标签页名称"
+  close: "关闭标签页"
+  close_others: "关闭其他标签页"
+  close_after: "关闭右侧标签页"

@@ -176,6 +176,7 @@ mod tests {
             "https://docs.example.com",
         ));
         manager.open(Surface::native("terminal", Role::Main, "terminal"));
+        manager.open(Surface::lxapp("tools", Role::Main, "tools"));
 
         assert_eq!(manager.close_other_mains("terminal"), vec!["docs"]);
         let snapshot = manager.switcher_snapshot();
@@ -185,7 +186,7 @@ mod tests {
                 .iter()
                 .map(|item| item.surface_id.as_str())
                 .collect::<Vec<_>>(),
-            vec!["home", "terminal"]
+            vec!["home", "terminal", "tools"]
         );
     }
 
@@ -214,12 +215,14 @@ mod tests {
     fn lxapp_titles_are_not_user_renameable() {
         let mut manager = SurfaceManager::new(1200.0);
         manager.open(Surface::lxapp("home", Role::Main, "home"));
+        manager.open(Surface::lxapp("tools", Role::Main, "tools"));
 
         assert!(!manager.rename("home", Some("renamed")));
         assert_eq!(
             manager.switcher_snapshot().items[0].title.as_deref(),
             Some("home")
         );
+        assert!(!manager.switcher_snapshot().items[1].closable);
     }
 
     #[test]
@@ -233,8 +236,9 @@ mod tests {
         ));
         manager.open(Surface::native("terminal", Role::Main, "terminal"));
 
+        manager.open(Surface::lxapp("tools", Role::Main, "tools"));
         assert_eq!(manager.close_mains_after("home"), vec!["docs", "terminal"]);
-        assert_eq!(manager.switcher_snapshot().items.len(), 1);
+        assert_eq!(manager.switcher_snapshot().items.len(), 2);
     }
 
     #[test]

@@ -524,6 +524,7 @@ class SidebarView: NSView, NSPopoverDelegate {
     var onAppSelected: ((String) -> Void)?
     /// Called when user requests to close an app: (appId)
     var onAppCloseRequested: ((String) -> Void)?
+    var onManagedMainContextMenuRequested: ((String, NSEvent, NSView) -> Void)?
     /// Called when the bottom hide button is clicked
     var onHideRequested: (() -> Void)?
     /// Called when width changes via drag: (width, animated)
@@ -1694,6 +1695,9 @@ class SidebarView: NSView, NSPopoverDelegate {
                 }
                 groupView.onCloseRequested = { [weak self] appId in
                     self?.onAppCloseRequested?(appId)
+                }
+                groupView.onManagedContextMenuRequested = { [weak self] surfaceId, event, view in
+                    self?.onManagedMainContextMenuRequested?(surfaceId, event, view)
                 }
                 groupView.onLayoutChanged = { [weak self] in
                     self?.relayoutAfterGroupToggle()

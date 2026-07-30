@@ -212,6 +212,7 @@ class SidebarGroupView: NSView {
     /// main to this lxapp, so an lxapp with no tabBar items is still switchable.
     var onAppSelected: ((String) -> Void)?
     var onCloseRequested: ((String) -> Void)?
+    var onManagedContextMenuRequested: ((String, NSEvent, NSView) -> Void)?
     var onLayoutChanged: (() -> Void)?
 
     init(
@@ -309,6 +310,11 @@ class SidebarGroupView: NSView {
         if managedLabel == nil {
             headerView.onRightClick = { [weak self] event in
                 self?.showContextMenu(with: event)
+            }
+        } else {
+            headerView.onRightClick = { [weak self] event in
+                guard let self else { return }
+                self.onManagedContextMenuRequested?(self.appId, event, self.headerView)
             }
         }
         addSubview(headerView)

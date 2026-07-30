@@ -145,6 +145,22 @@ impl WindowSurfaceController {
         outcome
     }
 
+    fn close_other_mains(&self, keeping: &str) -> Vec<String> {
+        let removed = self.manager.lock().unwrap().close_other_mains(keeping);
+        if !removed.is_empty() {
+            self.commit();
+        }
+        removed
+    }
+
+    fn close_mains_after(&self, surface_id: &str) -> Vec<String> {
+        let removed = self.manager.lock().unwrap().close_mains_after(surface_id);
+        if !removed.is_empty() {
+            self.commit();
+        }
+        removed
+    }
+
     fn contains(&self, id: &str) -> bool {
         self.manager.lock().unwrap().graph().get(id).is_some()
     }
@@ -1208,6 +1224,30 @@ impl LxApp {
 
     pub fn surface_switcher_snapshot(&self) -> lingxia_surface::SurfaceSwitcherSnapshot {
         window_controller(PRIMARY_WINDOW, &self.runtime).switcher_snapshot()
+    }
+
+    pub fn close_main_surface(&self, surface_id: &str) -> lingxia_surface::CloseOutcome {
+        let surface_id = surface_id.trim();
+        if surface_id.is_empty() {
+            return lingxia_surface::CloseOutcome::NotFound;
+        }
+        window_controller(PRIMARY_WINDOW, &self.runtime).close(surface_id)
+    }
+
+    pub fn close_other_main_surfaces(&self, keeping: &str) -> Vec<String> {
+        let keeping = keeping.trim();
+        if keeping.is_empty() {
+            return Vec::new();
+        }
+        window_controller(PRIMARY_WINDOW, &self.runtime).close_other_mains(keeping)
+    }
+
+    pub fn close_main_surfaces_after(&self, surface_id: &str) -> Vec<String> {
+        let surface_id = surface_id.trim();
+        if surface_id.is_empty() {
+            return Vec::new();
+        }
+        window_controller(PRIMARY_WINDOW, &self.runtime).close_mains_after(surface_id)
     }
 
     pub fn update_shell_surface_automatic_title(

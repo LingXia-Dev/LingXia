@@ -92,6 +92,18 @@ final class LxAppMacAppUIRuntime: NSObject {
     private var independentPanelSourceActivatorIDs: [String: String] = [:]
     private var surfacePageInstanceIDs: [String: String] = [:]
     private var terminalWorkspaces: [String: LingXiaTerminalWorkspaceView] = [:]
+    private lazy var surfaceMenuPresenter: SurfaceMenuPresenter = {
+        let presenter = SurfaceMenuPresenter()
+        presenter.onAction = { [weak self] revision, surfaceId, action, value in
+            self?.performSurfaceMenuAction(
+                revision: revision,
+                surfaceId: surfaceId,
+                action: action,
+                value: value
+            )
+        }
+        return presenter
+    }()
     nonisolated(unsafe) private var independentPanelOutsideClickGlobalMonitor: Any?
     nonisolated(unsafe) private var independentPanelOutsideClickLocalMonitor: Any?
     nonisolated(unsafe) private var appActivationObserver: NSObjectProtocol?
@@ -698,29 +710,19 @@ final class LxAppMacAppUIRuntime: NSObject {
 
     private func closeMainSurface(id: String) {
         guard let ownerAppId = graphOwnerAppId,
-              let snapshot = SurfaceSwitcherBridge.snapshot(ownerAppId: ownerAppId),
-              let item = snapshot.items.first(where: { $0.surfaceId == id }),
-              item.closable,
-              let surface = surfaceById[id], surface.role == .main
+              let menu = SurfaceMenuBridge.snapshot(ownerAppId: ownerAppId, surfaceId: id),
+              menu.sections.flatMap(\.items).contains(where: {
+                  $0.action.owner == "switcher" && $0.action.action == "close"
+              })
         else { return }
-
-        openedSurfaceIDs.remove(id)
-        visibleSurfaceIDs.remove(id)
-
-        if surface.content.isNativeTerminal {
-            terminalWorkspaces[id]?.disarmInput()
-            terminalWorkspaces.removeValue(forKey: id)
-        }
-
-        _ = onSurfaceClosed(ownerAppId, id, "user")
-
-        guard snapshot.activeSurfaceId == id else {
-            refreshChromeActions()
-            return
-        }
-        guard let successor = SurfaceSwitcherBridge.snapshot(ownerAppId: ownerAppId)?.activeSurfaceId
-        else { return }
-        openSurfaceHandlingError(id: successor)
+        let action = SurfaceMenuBridge.builtInAction("close")
+        guard let result = SurfaceMenuBridge.perform(
+            ownerAppId: ownerAppId,
+            revision: menu.revision,
+            surfaceId: id,
+            action: action
+        ) else { return }
+        applySurfaceMenuExecution(result)
     }
 
     private func openTerminalMainSurface(_ surface: LxAppUIConfig.Surface) {
@@ -1157,10 +1159,68 @@ final class LxAppMacAppUIRuntime: NSObject {
             self?.openSurfaceHandlingError(id: surfaceID)
         } onClose: { [weak self] surfaceID in
             self?.closeMainSurface(id: surfaceID)
+        } onContextMenu: { [weak self] surfaceID, event, view in
+            self?.presentSurfaceMenu(surfaceID: surfaceID, event: event, from: view)
         }
         shell.setManagedNavigationToolbarVisible(true)
         shell.updateToolbarHostActions(toolbarItems)
         shell.updateTitlebarHostActions(titlebarItems)
+    }
+
+    private func presentSurfaceMenu(surfaceID: String, event: NSEvent, from view: NSView) {
+        guard let ownerAppId = graphOwnerAppId,
+              let snapshot = SurfaceMenuBridge.snapshot(
+                  ownerAppId: ownerAppId,
+                  surfaceId: surfaceID
+              )
+        else { return }
+        surfaceMenuPresenter.present(snapshot, event: event, from: view)
+    }
+
+    private func performSurfaceMenuAction(
+        revision: UInt64,
+        surfaceId: String,
+        action: SurfaceMenuSnapshot.Item.Action,
+        value: String?
+    ) {
+        guard let ownerAppId = graphOwnerAppId,
+              let result = SurfaceMenuBridge.perform(
+                  ownerAppId: ownerAppId,
+                  revision: revision,
+                  surfaceId: surfaceId,
+                  action: action,
+                  value: value
+              )
+        else { return }
+        applySurfaceMenuExecution(result)
+    }
+
+    private func applySurfaceMenuExecution(_ execution: SurfaceMenuExecution) {
+        guard execution.accepted else {
+            refreshChromeActions()
+            return
+        }
+        for surfaceId in execution.removedSurfaceIds {
+            discardMainSurfaceContent(id: surfaceId)
+        }
+        if !execution.removedSurfaceIds.isEmpty,
+           let activeSurfaceId = execution.snapshot.activeSurfaceId {
+            openSurfaceHandlingError(id: activeSurfaceId)
+        } else {
+            refreshChromeActions()
+        }
+    }
+
+    private func discardMainSurfaceContent(id: String) {
+        openedSurfaceIDs.remove(id)
+        visibleSurfaceIDs.remove(id)
+        guard let surface = surfaceById[id] else { return }
+        if surface.content.isNativeTerminal {
+            terminalWorkspaces[id]?.disarmInput()
+            terminalWorkspaces.removeValue(forKey: id)
+        } else if isBrowserMainSurface(surface) {
+            shell.closeDeclaredBrowserMain(surfaceID: id)
+        }
     }
 
     private func declaredMainSidebarItems(

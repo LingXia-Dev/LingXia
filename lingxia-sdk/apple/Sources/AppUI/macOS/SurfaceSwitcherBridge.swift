@@ -179,7 +179,7 @@ enum SurfaceSwitcherBridge {
             presentation = Presentation(
                 automaticTitle: appId,
                 icon: .providerAsset(provider: "lxapp", key: appId),
-                capabilities: Capabilities(close: true, rename: false)
+                capabilities: Capabilities(close: false, rename: false)
             )
         case .url:
             guard let url = surface.content.url, !url.isEmpty else {

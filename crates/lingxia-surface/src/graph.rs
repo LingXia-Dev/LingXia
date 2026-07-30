@@ -262,7 +262,9 @@ impl SurfaceGraph {
         }
     }
 
-    /// Close every other closable main while preserving the root anchor.
+    /// Structurally remove every other non-root main.
+    ///
+    /// User-facing capability filtering belongs to `SurfaceManager`.
     pub fn close_other_mains(&mut self, keeping: &str) -> Vec<SurfaceId> {
         if self.role_of(keeping) != Some(Role::Main) {
             return Vec::new();
@@ -278,7 +280,9 @@ impl SurfaceGraph {
             .collect()
     }
 
-    /// Close closable mains after `id` in stable switcher order.
+    /// Structurally remove non-root mains after `id` in stable switcher order.
+    ///
+    /// User-facing capability filtering belongs to `SurfaceManager`.
     pub fn close_mains_after(&mut self, id: &str) -> Vec<SurfaceId> {
         let mains = self.main_ids();
         let Some(index) = mains.iter().position(|candidate| candidate == id) else {

@@ -320,7 +320,7 @@ final class BrowserTabCoordinator: NSObject {
         host?.updateSidebarBrowserItems(sidebarItems(), activeId: id)
     }
 
-    func closeTab(id: String) {
+    func closeTab(id: String, notifyDeclaredSurfaceClose: Bool = true) {
         guard let index = tabIds.firstIndex(of: id) else { return }
         let declaredSurfaceID = declaredSurfaceIds[id]
 
@@ -365,7 +365,9 @@ final class BrowserTabCoordinator: NSObject {
             if declaredWorkspaceSurfaceID == declaredSurfaceID {
                 declaredWorkspaceSurfaceID = nil
             }
-            host?.browserDidCloseSurface(declaredSurfaceID)
+            if notifyDeclaredSurfaceClose {
+                host?.browserDidCloseSurface(declaredSurfaceID)
+            }
             host?.updateSidebarBrowserItems(sidebarItems(), activeId: activeTabId)
             return
         }
@@ -384,6 +386,13 @@ final class BrowserTabCoordinator: NSObject {
         }
 
         host?.updateSidebarBrowserItems(sidebarItems(), activeId: activeTabId)
+    }
+
+    func closeDeclaredSurface(_ surfaceID: String) {
+        let ownedTabIDs = tabIds.filter { declaredSurfaceIds[$0] == surfaceID }
+        for tabID in ownedTabIDs {
+            closeTab(id: tabID, notifyDeclaredSurfaceClose: false)
+        }
     }
 
     func closeOtherTabs(keeping id: String) {

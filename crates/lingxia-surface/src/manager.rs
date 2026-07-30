@@ -231,7 +231,20 @@ impl SurfaceManager {
     }
 
     pub fn close_other_mains(&mut self, keeping: &str) -> Vec<SurfaceId> {
-        let removed = self.graph.close_other_mains(keeping);
+        if self.graph.role_of(keeping) != Some(Role::Main) {
+            return Vec::new();
+        }
+        let targets: Vec<_> = self
+            .switcher_snapshot()
+            .items
+            .into_iter()
+            .filter(|item| item.surface_id != keeping && item.closable)
+            .map(|item| item.surface_id)
+            .collect();
+        let removed = targets
+            .into_iter()
+            .flat_map(|id| self.graph.close(&id).into_removed())
+            .collect::<Vec<_>>();
         self.remove_presentations(&removed);
         if !removed.is_empty() {
             self.bump_revision();
@@ -240,7 +253,17 @@ impl SurfaceManager {
     }
 
     pub fn close_mains_after(&mut self, id: &str) -> Vec<SurfaceId> {
-        let removed = self.graph.close_mains_after(id);
+        let snapshot = self.switcher_snapshot();
+        let Some(index) = snapshot.items.iter().position(|item| item.surface_id == id) else {
+            return Vec::new();
+        };
+        let removed = snapshot
+            .items
+            .into_iter()
+            .skip(index + 1)
+            .filter(|item| item.closable)
+            .flat_map(|item| self.graph.close(&item.surface_id).into_removed())
+            .collect::<Vec<_>>();
         self.remove_presentations(&removed);
         if !removed.is_empty() {
             self.bump_revision();

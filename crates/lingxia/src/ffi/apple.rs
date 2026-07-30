@@ -269,6 +269,12 @@ mod bridge {
         #[swift_bridge(swift_name = "surfaceSwitcher")]
         fn surface_switcher(appid: &str) -> String;
 
+        #[swift_bridge(swift_name = "surfaceMenu")]
+        fn surface_menu(appid: &str, surface_id: &str) -> String;
+
+        #[swift_bridge(swift_name = "performSurfaceMenuIntent")]
+        fn perform_surface_menu_intent(appid: &str, intent_json: &str) -> String;
+
         #[swift_bridge(swift_name = "setActiveMainSurface")]
         fn set_active_main_surface(appid: &str, surface_id: &str) -> bool;
 
@@ -1190,6 +1196,120 @@ pub fn surface_switcher(appid: &str) -> String {
         lxapp::try_get(appid)
             .and_then(|app| serde_json::to_string(&app.surface_switcher_snapshot()).ok())
             .unwrap_or_default()
+    })
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SurfaceMenuExecution {
+    accepted: bool,
+    removed_surface_ids: Vec<String>,
+    snapshot: lingxia_surface::SurfaceSwitcherSnapshot,
+}
+
+pub fn surface_menu(appid: &str, surface_id: &str) -> String {
+    ffi_catch_unwind!("surface_menu", String::new(), || {
+        let Some(app) = lxapp::try_get(appid) else {
+            return String::new();
+        };
+        let snapshot = app.surface_switcher_snapshot();
+        let Some(index) = snapshot
+            .items
+            .iter()
+            .position(|item| item.surface_id == surface_id)
+        else {
+            return String::new();
+        };
+        let item = &snapshot.items[index];
+        let menu = lingxia_shell::compose_surface_menu(
+            lingxia_shell::SurfaceMenuContext {
+                revision: snapshot.revision,
+                surface_id: item.surface_id.clone(),
+                closable: item.closable,
+                renameable: item.renameable,
+                title_overridden: item.title_overridden,
+                has_other_closable: snapshot
+                    .items
+                    .iter()
+                    .any(|candidate| candidate.surface_id != surface_id && candidate.closable),
+                has_closable_after: snapshot
+                    .items
+                    .iter()
+                    .skip(index + 1)
+                    .any(|candidate| candidate.closable),
+            },
+            Vec::new(),
+        );
+        serde_json::to_string(&menu).unwrap_or_default()
+    })
+}
+
+pub fn perform_surface_menu_intent(appid: &str, intent_json: &str) -> String {
+    ffi_catch_unwind!("perform_surface_menu_intent", String::new(), || {
+        let Some(app) = lxapp::try_get(appid) else {
+            return String::new();
+        };
+        let Ok(intent) = serde_json::from_str::<lingxia_shell::SurfaceMenuIntent>(intent_json)
+        else {
+            return String::new();
+        };
+        let before = app.surface_switcher_snapshot();
+        let item = before
+            .items
+            .iter()
+            .find(|item| item.surface_id == intent.surface_id);
+        if before.revision != intent.revision || item.is_none() {
+            return serde_json::to_string(&SurfaceMenuExecution {
+                accepted: false,
+                removed_surface_ids: Vec::new(),
+                snapshot: before,
+            })
+            .unwrap_or_default();
+        }
+        let item = item.unwrap();
+        let mut removed_surface_ids = Vec::new();
+        let accepted = match intent.action {
+            lingxia_shell::SurfaceMenuAction::Switcher { action } => match action {
+                lingxia_shell::SurfaceMenuBuiltinAction::Rename => intent
+                    .value
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|title| !title.is_empty())
+                    .is_some_and(|title| app.rename_shell_surface(&intent.surface_id, Some(title))),
+                lingxia_shell::SurfaceMenuBuiltinAction::ResetTitle => {
+                    item.renameable && app.rename_shell_surface(&intent.surface_id, None)
+                }
+                lingxia_shell::SurfaceMenuBuiltinAction::Close => {
+                    if !item.closable {
+                        false
+                    } else {
+                        match app.close_main_surface(&intent.surface_id) {
+                            lingxia_surface::CloseOutcome::Closed { removed } => {
+                                removed_surface_ids = removed;
+                                true
+                            }
+                            lingxia_surface::CloseOutcome::RejectedRoot { .. }
+                            | lingxia_surface::CloseOutcome::NotFound => false,
+                        }
+                    }
+                }
+                lingxia_shell::SurfaceMenuBuiltinAction::CloseOthers => {
+                    removed_surface_ids = app.close_other_main_surfaces(&intent.surface_id);
+                    !removed_surface_ids.is_empty()
+                }
+                lingxia_shell::SurfaceMenuBuiltinAction::CloseAfter => {
+                    removed_surface_ids = app.close_main_surfaces_after(&intent.surface_id);
+                    !removed_surface_ids.is_empty()
+                }
+            },
+            lingxia_shell::SurfaceMenuAction::External { .. } => false,
+        };
+        serde_json::to_string(&SurfaceMenuExecution {
+            accepted,
+            removed_surface_ids,
+            snapshot: app.surface_switcher_snapshot(),
+        })
+        .unwrap_or_default()
     })
 }
 

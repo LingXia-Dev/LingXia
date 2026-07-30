@@ -241,6 +241,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     private var managedMainSurfaceIDs = Set<String>()
     private var managedMainActivateHandler: ((String) -> Void)?
     private var managedMainCloseHandler: ((String) -> Void)?
+    private var managedMainContextMenuHandler: ((String, NSEvent, NSView) -> Void)?
     private var declaredBrowserSurfaceActivateHandler: ((String) -> Void)?
     private var declaredBrowserSurfaceCloseHandler: ((String) -> Void)?
     private weak var managedMainView: NSView?
@@ -491,6 +492,9 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         }
         sidebar.onAppCloseRequested = { [weak self] appId in
             self?.closeTab(appId)
+        }
+        sidebar.onManagedMainContextMenuRequested = { [weak self] surfaceId, event, view in
+            self?.managedMainContextMenuHandler?(surfaceId, event, view)
         }
         sidebar.onHideRequested = { [weak self] in
             self?.hideSidebar()
@@ -1177,11 +1181,13 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         _ items: [LxAppUIActionItem],
         activeId: String?,
         onActivate: @escaping (String) -> Void,
-        onClose: @escaping (String) -> Void
+        onClose: @escaping (String) -> Void,
+        onContextMenu: @escaping (String, NSEvent, NSView) -> Void
     ) {
         managedMainSurfaceIDs = Set(items.map(\.id))
         managedMainActivateHandler = onActivate
         managedMainCloseHandler = onClose
+        managedMainContextMenuHandler = onContextMenu
         sidebarView?.updateManagedMainItems(items, activeId: activeId)
         reconcileSidebarAutoHide()
     }
@@ -1859,6 +1865,10 @@ extension LxAppShell {
         mode: BrowserTabCoordinator.DeclaredInitialMode
     ) -> Bool {
         browserCoordinator.openDeclaredMain(surfaceID: surfaceID, mode: mode)
+    }
+
+    func closeDeclaredBrowserMain(surfaceID: String) {
+        browserCoordinator.closeDeclaredSurface(surfaceID)
     }
 
     func setBrowserPageActionsVisible(_ visible: Bool) {

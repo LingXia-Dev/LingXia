@@ -50,7 +50,10 @@ impl SurfacePresentation {
                     provider: "lxapp".into(),
                     key: app_id.clone(),
                 }),
-                capabilities: SurfaceCapabilities::default(),
+                capabilities: SurfaceCapabilities {
+                    close: false,
+                    rename: false,
+                },
             },
             SurfaceContent::Page { path, .. } => Self {
                 automatic_title: Some(path.clone()),
