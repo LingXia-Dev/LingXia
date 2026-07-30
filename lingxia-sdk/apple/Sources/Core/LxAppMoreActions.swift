@@ -15,7 +15,7 @@ struct LxAppMoreActionSnapshot: Decodable {
               let snapshot = try? JSONDecoder().decode(Self.self, from: data) else {
             return Self(generation: 0, items: [])
         }
-        return Self(generation: snapshot.generation, items: Array(snapshot.items.prefix(2)))
+        return Self(generation: snapshot.generation, items: Array(snapshot.items.prefix(7)))
     }
 
     func token(at index: Int) -> String {

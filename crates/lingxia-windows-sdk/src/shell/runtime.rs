@@ -3572,22 +3572,18 @@ fn show_lxapp_auxiliary_context_menu(
     if let Some(snapshot) = target.as_ref().map(|target| target.more_actions())
         && !snapshot.items.is_empty()
     {
-        let insertion = actions
-            .iter()
-            .position(|action| matches!(action, Some(LxappContextMenuAction::Restart)))
-            .unwrap_or(actions.len());
         let mut custom_items = Vec::with_capacity(snapshot.items.len() + 1);
         let mut custom_actions = Vec::with_capacity(snapshot.items.len() + 1);
+        custom_items.push(String::new());
+        custom_actions.push(None);
         for (index, item) in snapshot.items.into_iter().enumerate() {
             custom_items.push(item.label);
             custom_actions.push(Some(LxappContextMenuAction::More {
                 token: format!("more:{}:{index}", snapshot.generation),
             }));
         }
-        custom_items.push(String::new());
-        custom_actions.push(None);
-        items.splice(insertion..insertion, custom_items);
-        actions.splice(insertion..insertion, custom_actions);
+        items.extend(custom_items);
+        actions.extend(custom_actions);
     }
     let entries = items
         .iter()

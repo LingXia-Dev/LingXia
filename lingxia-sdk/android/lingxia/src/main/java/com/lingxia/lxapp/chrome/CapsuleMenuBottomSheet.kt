@@ -45,7 +45,7 @@ internal object CapsuleMenuBottomSheet {
             return
         }
 
-        val items = parseMoreActions(NativeApi.getLxAppMoreActions(appId)) + listOf(
+        val items = listOf(
             MenuItem(
                 iconResId = R.drawable.icon_clean_cache,
                 title = activity.getString(R.string.lx_capsule_clean_cache),
@@ -61,7 +61,7 @@ internal object CapsuleMenuBottomSheet {
                 title = activity.getString(R.string.lx_capsule_uninstall),
                 action = NativeApi.CAPSULE_ACTION_UNINSTALL
             )
-        )
+        ) + parseMoreActions(NativeApi.getLxAppMoreActions(appId))
 
         val rootView = activity.window.decorView as ViewGroup
         val container = FrameLayout(activity).apply {
@@ -94,7 +94,7 @@ internal object CapsuleMenuBottomSheet {
             val generation = root.optLong("generation", 0)
             val items = root.optJSONArray("items") ?: return emptyList()
             buildList {
-                for (index in 0 until minOf(items.length(), 2)) {
+                for (index in 0 until minOf(items.length(), 7)) {
                     val item = items.optJSONObject(index) ?: continue
                     val label = item.optString("label").trim()
                     val iconPath = item.optString("iconPath").trim()
@@ -147,9 +147,9 @@ internal object CapsuleMenuBottomSheet {
         // Add separator
         menuContainer.addView(createSeparatorView(context))
 
-        // Add horizontal button row
-        val buttonsRow = createButtonsRow(context, items, onItemClick)
-        menuContainer.addView(buttonsRow)
+        // Add the five-column action grid.
+        val buttonsGrid = createButtonsGrid(context, items, onItemClick)
+        menuContainer.addView(buttonsGrid)
 
         // Apply bottom inset for safe area
         val bottomInset = ActivityInsets.contentBottomInset()
@@ -274,7 +274,7 @@ internal object CapsuleMenuBottomSheet {
         }
     }
 
-    private fun createButtonsRow(
+    private fun createButtonsGrid(
         context: Context,
         items: List<MenuItem>,
         onClick: (String) -> Unit
@@ -282,8 +282,7 @@ internal object CapsuleMenuBottomSheet {
         val density = context.resources.displayMetrics.density
 
         return LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
+            orientation = LinearLayout.VERTICAL
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
@@ -295,16 +294,18 @@ internal object CapsuleMenuBottomSheet {
                 0
             )
 
-            items.forEachIndexed { index, item ->
-                addView(createButtonView(context, item) { onClick(item.action) })
-                if (index < items.size - 1) {
-                    addView(android.view.View(context).apply {
-                        layoutParams = LinearLayout.LayoutParams(
-                            (16 * density).toInt(),
-                            1
-                        )
-                    })
-                }
+            items.chunked(5).forEach { rowItems ->
+                addView(LinearLayout(context).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    layoutParams = LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT
+                    )
+                    rowItems.forEach { item ->
+                        addView(createButtonView(context, item) { onClick(item.action) })
+                    }
+                })
             }
         }
     }
@@ -325,11 +326,12 @@ internal object CapsuleMenuBottomSheet {
                 1f
             )
             setPadding(
+                (4 * density).toInt(),
                 (12 * density).toInt(),
-                (12 * density).toInt(),
-                (12 * density).toInt(),
+                (4 * density).toInt(),
                 (12 * density).toInt()
             )
+            minimumHeight = (88 * density).toInt()
             setOnClickListener { onClick() }
 
             // Ripple effect on click
@@ -368,6 +370,8 @@ internal object CapsuleMenuBottomSheet {
                 textSize = 13f
                 setTextColor(item.color)
                 gravity = Gravity.CENTER
+                maxLines = 2
+                breakStrategy = android.text.Layout.BREAK_STRATEGY_SIMPLE
             })
         }
     }

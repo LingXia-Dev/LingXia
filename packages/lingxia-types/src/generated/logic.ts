@@ -2102,9 +2102,9 @@ declare global {
     /** Show modal function (async) */
     showModal(options: ShowModalOptions): Promise<ModalResult>;
     /**
-     * Replace the current lxapp's complete app-declared More action list (two
-     * entries maximum). Pass an empty array to clear it. Native hosts merge these
-     * entries with their own lifecycle actions.
+     * Replace the current lxapp's complete app-declared More action list (seven
+     * entries maximum). Pass an empty array to clear it. Native hosts append these
+     * entries after their own lifecycle actions.
      */
     setMoreActions(items: MoreAction[]): void;
     /** Set navigation bar title */

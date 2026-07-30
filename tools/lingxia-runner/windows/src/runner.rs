@@ -644,7 +644,7 @@ fn show_lxapp_info_sheet(appid: &str) -> Result<(), String> {
             });
         }
     }
-    let system_actions = vec![
+    let mut actions = vec![
         lingxia_windows_sdk::WindowsDeviceFrameSheetAction {
             command: CLEAN_CACHE_COMMAND,
             label: "Clear cache".to_string(),
@@ -660,14 +660,14 @@ fn show_lxapp_info_sheet(appid: &str) -> Result<(), String> {
             ),
         },
     ];
-    custom_actions.extend(system_actions);
+    actions.extend(custom_actions);
     lingxia_windows_sdk::show_device_frame_info_sheet(
         appid,
         lingxia_windows_sdk::WindowsDeviceFrameInfoSheet {
             title: info.app_name,
             version: info.version,
             badge: release_badge(&info.release_type),
-            actions: custom_actions,
+            actions,
         },
     )
 }

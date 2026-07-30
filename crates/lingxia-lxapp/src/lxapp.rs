@@ -679,7 +679,9 @@ pub struct LxAppMoreActions {
     pub items: Vec<LxAppMoreAction>,
 }
 
-pub const LXAPP_MORE_ACTION_LIMIT: usize = 2;
+/// Three host lifecycle actions plus these app actions fill a two-row,
+/// five-column capsule menu.
+pub const LXAPP_MORE_ACTION_LIMIT: usize = 7;
 
 #[derive(Debug, Default)]
 struct LxAppMoreActionState {
@@ -1554,8 +1556,8 @@ impl LxApp {
 
     /// Resolve an "allowed" lxapp path (package dir, user data, user cache) to a physical path.
     ///
-    /// This implementation uses logical mapping and prefix validation to ensure the path
-    /// stays within the app's sandbox, without requiring the file to exist on disk.
+    /// Installed resources use logical mapping and prefix validation. Built-in package
+    /// resources are materialized into the app cache for native filesystem consumers.
     pub fn resolve_accessible_path(&self, path: &str) -> Result<PathBuf, LxAppError> {
         let path = path.trim();
         if path.is_empty() {
@@ -1594,6 +1596,9 @@ impl LxApp {
 
             // To keep it simple and predictable for "creation", relative paths
             // without lx:// prefix are resolved against the app bundle root by default.
+            if matches!(self.bundle_source, LxAppBundleSource::BuiltinAssets) {
+                return self.materialize_builtin_resource(rel);
+            }
             return Ok(self.lxapp_dir.join(rel));
         }
 
@@ -1639,6 +1644,24 @@ impl LxApp {
             "Access denied: {}",
             path
         )))
+    }
+
+    fn materialize_builtin_resource(&self, relative: &str) -> Result<PathBuf, LxAppError> {
+        let data = self.read_bytes(&relative)?;
+        let destination = self.user_cache_dir.join("native-resources").join(&relative);
+        let parent = destination.parent().ok_or_else(|| {
+            LxAppError::InvalidParameter(format!(
+                "native resource has no parent: {}",
+                destination.display()
+            ))
+        })?;
+        fs::create_dir_all(parent).map_err(|err| {
+            LxAppError::IoError(format!("failed to create {}: {err}", parent.display()))
+        })?;
+        fs::write(&destination, data).map_err(|err| {
+            LxAppError::IoError(format!("failed to write {}: {err}", destination.display()))
+        })?;
+        Ok(destination)
     }
 
     pub fn to_uri(&self, path: &Path) -> Option<uri::LxUri> {
@@ -1710,7 +1733,11 @@ impl LxApp {
                     return Err(LxAppError::ResourceNotFound(lx_uri.as_str().to_string()));
                 }
 
-                Ok(self.lxapp_dir.join(rel))
+                if matches!(self.bundle_source, LxAppBundleSource::BuiltinAssets) {
+                    self.materialize_builtin_resource(rel)
+                } else {
+                    Ok(self.lxapp_dir.join(rel))
+                }
             }
             _ => Err(LxAppError::ResourceNotFound(format!(
                 "unsupported lx uri host: {}",

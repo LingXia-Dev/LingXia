@@ -163,7 +163,10 @@ export struct CapsuleMenuBottomSheetComponent {
             .color('#EEEEEE')
 
           Column() {
-            this.actionRow(this.customActions.concat(this.actions))
+            this.actionRow(this.menuActions().slice(0, 5))
+            if (this.menuActions().length > 5) {
+              this.actionRow(this.menuActions().slice(5, 10))
+            }
           }
           .width('100%')
           .padding({ top: 12, bottom: 12 })
@@ -182,7 +185,7 @@ export struct CapsuleMenuBottomSheetComponent {
   @Builder
   private actionRow(actions: MenuAction[]) {
     Row() {
-      ForEach(actions, (item: MenuAction, index: number) => {
+      ForEach(actions, (item: MenuAction) => {
               Column() {
                 if (item.bundled) {
                   Image($rawfile(item.iconPath))
@@ -203,22 +206,19 @@ export struct CapsuleMenuBottomSheetComponent {
                     .fontSize(13)
                     .fontColor(item.isDestructive ? '#FF3B30' : '#555555')
                     .textAlign(TextAlign.Center)
+                    .maxLines(2)
                 } else if (item.titleKey) {
                   Text($r(`app.string.${item.titleKey}`))
                     .fontSize(13)
                     .fontColor(item.isDestructive ? '#FF3B30' : '#555555')
                     .textAlign(TextAlign.Center)
+                    .maxLines(2)
                 }
               }
-              .layoutWeight(1)
-              .padding(12)
+              .width(`${100 / actions.length}%`)
+              .height(88)
+              .padding({ left: 4, right: 4, top: 12, bottom: 12 })
               .onClick(() => this.handleAction(item.action))
-
-              // Spacer between buttons (not after last)
-              if (index < actions.length - 1) {
-                Column()
-                  .width(16)
-              }
       })
     }
     .width('100%')
@@ -267,7 +267,7 @@ export struct CapsuleMenuBottomSheetComponent {
   private parseMoreActions(appId: string): MenuAction[] {
     try {
       const snapshot: MoreActionSnapshot = JSON.parse(getLxAppMoreActions(appId)) as MoreActionSnapshot;
-      return snapshot.items.slice(0, 2).map((item: MoreActionItem, index: number): MenuAction => {
+      return snapshot.items.slice(0, 7).map((item: MoreActionItem, index: number): MenuAction => {
         return {
           iconPath: item.iconPath,
           title: item.label,
@@ -278,6 +278,10 @@ export struct CapsuleMenuBottomSheetComponent {
     } catch (_) {
       return [];
     }
+  }
+
+  private menuActions(): MenuAction[] {
+    return this.actions.concat(this.customActions).slice(0, 10);
   }
 
   private releaseBadge(): ReleaseBadge | null {

@@ -32,7 +32,7 @@ private struct RunnerMoreActionSnapshot: Decodable {
               let snapshot = try? JSONDecoder().decode(Self.self, from: data) else {
             return Self(generation: 0, items: [])
         }
-        return Self(generation: snapshot.generation, items: Array(snapshot.items.prefix(2)))
+        return Self(generation: snapshot.generation, items: Array(snapshot.items.prefix(7)))
     }
 }
 
@@ -1163,11 +1163,19 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
             button.identifier = NSUserInterfaceItemIdentifier("more:\(snapshot.generation):\(index)")
             return button
         }
-        let actionButtons: [NSView] = customButtons + [clean, restart]
-        let actions = NSStackView(views: actionButtons)
-        actions.distribution = .fillEqually
-        actions.spacing = 16
+        let actionButtons: [NSView] = [clean, restart] + customButtons
+        let actions = NSStackView()
+        actions.orientation = .vertical
+        actions.distribution = .fill
+        actions.spacing = 8
         actions.translatesAutoresizingMaskIntoConstraints = false
+        for rowStart in stride(from: 0, to: actionButtons.count, by: 5) {
+            let row = NSStackView(views: Array(actionButtons[rowStart..<min(rowStart + 5, actionButtons.count)]))
+            row.distribution = .fillEqually
+            row.spacing = 0
+            row.heightAnchor.constraint(equalToConstant: 88).isActive = true
+            actions.addArrangedSubview(row)
+        }
 
         sheet.addSubview(name)
         sheet.addSubview(ver)
@@ -1192,7 +1200,6 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
             actions.topAnchor.constraint(equalTo: separator.bottomAnchor, constant: 14),
             actions.leadingAnchor.constraint(equalTo: sheet.leadingAnchor, constant: 20),
             actions.trailingAnchor.constraint(equalTo: sheet.trailingAnchor, constant: -20),
-            actions.heightAnchor.constraint(equalToConstant: 72),
             actions.bottomAnchor.constraint(equalTo: sheet.bottomAnchor, constant: -20),
         ])
 
@@ -1255,6 +1262,8 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
         button.title = title
         button.contentTintColor = NSColor(white: 0.2, alpha: 1)
         button.font = .systemFont(ofSize: 11)
+        button.cell?.wraps = true
+        button.cell?.usesSingleLineMode = false
         button.target = self
         button.action = action
         return button
@@ -1269,6 +1278,8 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
         button.title = title
         button.contentTintColor = NSColor(white: 0.2, alpha: 1)
         button.font = .systemFont(ofSize: 11)
+        button.cell?.wraps = true
+        button.cell?.usesSingleLineMode = false
         button.target = self
         button.action = action
         return button

@@ -72,9 +72,9 @@ class LxAppCapsuleMenu {
         let separator = createSeparator()
         containerView.addSubview(separator)
 
-        // Button row
-        let buttonsRow = createButtonsRow(appId: appId, backgroundView: backgroundView)
-        containerView.addSubview(buttonsRow)
+        // Action grid
+        let buttonsGrid = createButtonsGrid(appId: appId, backgroundView: backgroundView)
+        containerView.addSubview(buttonsGrid)
 
         // Full-screen dismiss area behind the bottom sheet.
         let dismissControl = UIControl()
@@ -97,10 +97,10 @@ class LxAppCapsuleMenu {
             separator.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
             separator.heightAnchor.constraint(equalToConstant: 1),
 
-            buttonsRow.topAnchor.constraint(equalTo: separator.bottomAnchor, constant: 12),
-            buttonsRow.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 20),
-            buttonsRow.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -20),
-            buttonsRow.bottomAnchor.constraint(equalTo: containerView.bottomAnchor, constant: -16)
+            buttonsGrid.topAnchor.constraint(equalTo: separator.bottomAnchor, constant: 12),
+            buttonsGrid.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 20),
+            buttonsGrid.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -20),
+            buttonsGrid.bottomAnchor.constraint(equalTo: containerView.bottomAnchor, constant: -16)
         ])
 
         let dismissAction = ActionWrapper {
@@ -207,10 +207,7 @@ class LxAppCapsuleMenu {
     }
 
     @MainActor
-    private static func createButtonsRow(appId: String, backgroundView: UIView) -> UIView {
-        let rowView = UIView()
-        rowView.translatesAutoresizingMaskIntoConstraints = false
-
+    private static func createButtonsGrid(appId: String, backgroundView: UIView) -> UIView {
         typealias Action = (iconName: String?, iconPath: String?, title: String, token: String, isDestructive: Bool)
         let snapshot = LxAppMoreActionSnapshot.load(appId: appId)
         let customActions: [Action] = snapshot.items.enumerated().map { index, item in
@@ -222,48 +219,62 @@ class LxAppCapsuleMenu {
             ("icon_uninstall", nil, L10n.string("lx_capsule_uninstall"), "uninstall", false)
         ]
 
-        let stack = UIStackView()
-        stack.axis = .horizontal
-        stack.distribution = .fillEqually
-        stack.spacing = 16
-        stack.translatesAutoresizingMaskIntoConstraints = false
+        let grid = UIStackView()
+        grid.axis = .vertical
+        grid.distribution = .fill
+        grid.spacing = 8
+        grid.translatesAutoresizingMaskIntoConstraints = false
 
-        for action in customActions + systemActions {
-            let button = createActionButton(
-                iconName: action.iconName,
-                iconPath: action.iconPath,
-                title: action.title,
-                isDestructive: action.isDestructive
-            ) {
-                dismissCapsuleMenu(backgroundView) {
-                    _ = onLxappEvent(appId, LxAppEvent.capsuleClick, action.token)
+        let actions = systemActions + customActions
+        for rowStart in stride(from: 0, to: actions.count, by: 5) {
+            let row = UIStackView()
+            row.axis = .horizontal
+            row.distribution = .fillEqually
+            row.spacing = 0
+
+            for action in actions[rowStart..<min(rowStart + 5, actions.count)] {
+                let button = createActionButton(
+                    appId: appId,
+                    iconName: action.iconName,
+                    iconPath: action.iconPath,
+                    title: action.title,
+                    isDestructive: action.isDestructive
+                ) {
+                    dismissCapsuleMenu(backgroundView) {
+                        _ = onLxappEvent(appId, LxAppEvent.capsuleClick, action.token)
+                    }
                 }
+                row.addArrangedSubview(button)
             }
-            stack.addArrangedSubview(button)
+            row.heightAnchor.constraint(equalToConstant: 88).isActive = true
+            grid.addArrangedSubview(row)
         }
-        stack.heightAnchor.constraint(equalToConstant: 72).isActive = true
-
-        rowView.addSubview(stack)
-
-        NSLayoutConstraint.activate([
-            stack.topAnchor.constraint(equalTo: rowView.topAnchor),
-            stack.leadingAnchor.constraint(equalTo: rowView.leadingAnchor),
-            stack.trailingAnchor.constraint(equalTo: rowView.trailingAnchor),
-            stack.bottomAnchor.constraint(equalTo: rowView.bottomAnchor)
-        ])
-
-        return rowView
+        return grid
     }
 
     @MainActor
-    private static func createActionButton(iconName: String?, iconPath: String?, title: String, isDestructive: Bool, action: @escaping () -> Void) -> UIView {
+    private static func createActionButton(appId: String, iconName: String?, iconPath: String?, title: String, isDestructive: Bool, action: @escaping () -> Void) -> UIView {
         let containerView = UIControl()
         containerView.translatesAutoresizingMaskIntoConstraints = false
 
         // Icon
         let iconView = UIImageView()
-        if let iconPath, let icon = UIImage(contentsOfFile: iconPath) {
-            iconView.image = icon
+        if let iconPath {
+            let resolved = resolveLxUri(appId, iconPath)?.toString() ?? iconPath
+            let filePath = URL(string: resolved).flatMap { url in
+                url.isFileURL ? url.path : nil
+            } ?? resolved
+            if let icon = UIImage(contentsOfFile: filePath) {
+                iconView.image = icon
+            } else {
+                let exists = FileManager.default.fileExists(atPath: filePath)
+                let size = (try? FileManager.default.attributesOfItem(atPath: filePath)[.size]) ?? "unknown"
+                LXLog.warn(
+                    "More action icon failed to load: source=\(iconPath) resolved=\(resolved) path=\(filePath) exists=\(exists) size=\(size)",
+                    category: "LxAppCapsuleMenu",
+                    appId: appId
+                )
+            }
         } else if let iconName, let icon = LxIcon.image(named: iconName) {
             iconView.image = icon.withRenderingMode(.alwaysTemplate)
         }
@@ -277,6 +288,8 @@ class LxAppCapsuleMenu {
         titleLabel.font = .systemFont(ofSize: 13)
         titleLabel.textColor = isDestructive ? UIColor(red: 1.0, green: 0.23, blue: 0.19, alpha: 1) : UIColor(red: 0.2, green: 0.2, blue: 0.2, alpha: 1)
         titleLabel.textAlignment = .center
+        titleLabel.numberOfLines = 2
+        titleLabel.lineBreakMode = .byWordWrapping
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
 
         containerView.addSubview(iconView)
@@ -429,22 +442,6 @@ class LxAppCapsuleMenu {
             .OBJC_ASSOCIATION_RETAIN_NONATOMIC
         )
 
-        let snapshot = LxAppMoreActionSnapshot.load(appId: appId)
-        for (index, item) in snapshot.items.enumerated() {
-            let customItem = NSMenuItem(
-                title: item.label,
-                action: #selector(MacCapsuleMenuTarget.moreActionClicked(_:)),
-                keyEquivalent: ""
-            )
-            customItem.image = NSImage(contentsOfFile: item.iconPath)
-            customItem.representedObject = snapshot.token(at: index)
-            customItem.target = target
-            menu.addItem(customItem)
-        }
-        if !snapshot.items.isEmpty {
-            menu.addItem(NSMenuItem.separator())
-        }
-
         // Clean Cache & Restart
         let cleanItem = NSMenuItem(
             title: L10n.string("lx_capsule_clean_cache"),
@@ -476,6 +473,22 @@ class LxAppCapsuleMenu {
             uninstallItem.image = NSImage(systemSymbolName: "xmark.bin", accessibilityDescription: nil)
             uninstallItem.target = target
             menu.addItem(uninstallItem)
+        }
+
+        let snapshot = LxAppMoreActionSnapshot.load(appId: appId)
+        if !snapshot.items.isEmpty {
+            menu.addItem(NSMenuItem.separator())
+            for (index, item) in snapshot.items.enumerated() {
+                let customItem = NSMenuItem(
+                    title: item.label,
+                    action: #selector(MacCapsuleMenuTarget.moreActionClicked(_:)),
+                    keyEquivalent: ""
+                )
+                customItem.image = NSImage(contentsOfFile: item.iconPath)
+                customItem.representedObject = snapshot.token(at: index)
+                customItem.target = target
+                menu.addItem(customItem)
+            }
         }
 
         return menu

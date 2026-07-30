@@ -759,21 +759,6 @@ class SidebarGroupView: NSView {
             menu.addItem(NSMenuItem.separator())
         }
 
-        let snapshot = LxAppMoreActionSnapshot.load(appId: appId)
-        if !snapshot.items.isEmpty {
-            for (index, item) in snapshot.items.enumerated() {
-                let actionItem = NSMenuItem(
-                    title: item.label,
-                    action: #selector(contextMenuMoreAction(_:)),
-                    keyEquivalent: ""
-                )
-                actionItem.representedObject = snapshot.token(at: index)
-                actionItem.target = self
-                menu.addItem(actionItem)
-            }
-            menu.addItem(NSMenuItem.separator())
-        }
-
         // Restart
         let restartItem = NSMenuItem(
             title: L10n.string("lx_capsule_restart"),
@@ -791,6 +776,21 @@ class SidebarGroupView: NSView {
         )
         cleanItem.target = self
         menu.addItem(cleanItem)
+
+        let snapshot = LxAppMoreActionSnapshot.load(appId: appId)
+        if !snapshot.items.isEmpty {
+            menu.addItem(NSMenuItem.separator())
+            for (index, item) in snapshot.items.enumerated() {
+                let actionItem = NSMenuItem(
+                    title: item.label,
+                    action: #selector(contextMenuMoreAction(_:)),
+                    keyEquivalent: ""
+                )
+                actionItem.representedObject = snapshot.token(at: index)
+                actionItem.target = self
+                menu.addItem(actionItem)
+            }
+        }
 
         return menu
     }

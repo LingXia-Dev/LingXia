@@ -149,9 +149,9 @@ fn parse_action(app: &LxApp, item: &JSObject) -> JSResult<ParsedMoreAction> {
     })
 }
 
-/// Replace the current lxapp's complete app-declared More action list (two
-/// entries maximum). Pass an empty array to clear it. Native hosts merge these
-/// entries with their own lifecycle actions.
+/// Replace the current lxapp's complete app-declared More action list (seven
+/// entries maximum). Pass an empty array to clear it. Native hosts append these
+/// entries after their own lifecycle actions.
 fn set_more_actions(ctx: JSContext, items: Vec<JSObject>) -> JSResult<()> {
     if items.len() > LXAPP_MORE_ACTION_LIMIT {
         return Err(rong::HostError::new(
@@ -212,6 +212,12 @@ rong::js_api! {
 #[cfg(test)]
 mod tests {
     use super::{has_uri_scheme, validate_icon};
+    use lxapp::LXAPP_MORE_ACTION_LIMIT;
+
+    #[test]
+    fn custom_limit_completes_two_five_item_mobile_rows() {
+        assert_eq!(3 + LXAPP_MORE_ACTION_LIMIT, 10);
+    }
 
     #[test]
     fn icon_validation_rejects_external_and_traversing_paths() {
