@@ -819,7 +819,9 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     }
 
     func handleSidebarPageSelection(appId: String, itemIndex: Int) {
-        if browserCoordinator.isActive {
+        if managedMainSurfaceIDs.contains(appId) {
+            managedMainActivateHandler?(appId)
+        } else if browserCoordinator.isActive {
             switchToTab(appId)
         } else if tabManager.activeTab?.appId != appId {
             tabManager.selectTab(appId: appId)

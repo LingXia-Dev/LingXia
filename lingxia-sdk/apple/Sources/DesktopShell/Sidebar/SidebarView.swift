@@ -303,6 +303,7 @@ private struct SidebarModel {
         let asideSurfaceId: String?
         let managedLabel: String?
         let managedIcon: NSImage?
+        let showsLxappTabBar: Bool
 
         var isManagedMain: Bool { managedLabel != nil }
     }
@@ -1521,7 +1522,8 @@ class SidebarView: NSView, NSPopoverDelegate {
                 appId: $0.appId,
                 asideSurfaceId: $0.asideSurfaceId,
                 managedLabel: nil,
-                managedIcon: nil
+                managedIcon: nil,
+                showsLxappTabBar: true
             )
         }
         rebuildAppGroups()
@@ -1551,7 +1553,8 @@ class SidebarView: NSView, NSPopoverDelegate {
                 appId: item.id,
                 asideSurfaceId: nil,
                 managedLabel: item.label,
-                managedIcon: item.iconURL.flatMap(NSImage.init(contentsOf:)) ?? fallbackIcon
+                managedIcon: item.iconURL.flatMap(NSImage.init(contentsOf:)) ?? fallbackIcon,
+                showsLxappTabBar: item.showsLxappTabBar
             )
         }
         rebuildAppGroups()
@@ -1658,13 +1661,20 @@ class SidebarView: NSView, NSPopoverDelegate {
         for (index, group) in model.appGroups.enumerated() {
             let appId = group.appId
             let groupView: SidebarGroupView
-            if let existing = groupViews[appId] {
+            if let existing = groupViews[appId],
+               existing.isManagedMain == group.isManagedMain,
+               existing.showsLxappTabBar == group.showsLxappTabBar {
                 groupView = existing
             } else {
+                if let existing = groupViews.removeValue(forKey: appId) {
+                    existing.removeFromSuperview()
+                    groupTopConstraints.removeValue(forKey: appId)
+                }
                 groupView = SidebarGroupView(
                     appId: appId,
                     managedLabel: group.managedLabel,
-                    managedIcon: group.managedIcon
+                    managedIcon: group.managedIcon,
+                    showsLxappTabBar: group.showsLxappTabBar
                 )
                 groupView.onPageSelected = { [weak self] appId, itemIndex in
                     self?.onAppPageSelected?(appId, itemIndex)
