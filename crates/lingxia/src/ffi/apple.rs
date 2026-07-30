@@ -260,6 +260,21 @@ mod bridge {
         #[swift_bridge(swift_name = "setActiveMain")]
         fn set_active_main(appid: &str) -> bool;
 
+        #[swift_bridge(swift_name = "replaceHostMains")]
+        fn replace_host_mains(appid: &str, registrations_json: &str) -> bool;
+
+        #[swift_bridge(swift_name = "surfaceSwitcher")]
+        fn surface_switcher(appid: &str) -> String;
+
+        #[swift_bridge(swift_name = "setActiveMainSurface")]
+        fn set_active_main_surface(appid: &str, surface_id: &str) -> bool;
+
+        #[swift_bridge(swift_name = "setSurfaceAutomaticTitle")]
+        fn set_surface_automatic_title(appid: &str, surface_id: &str, title: &str) -> bool;
+
+        #[swift_bridge(swift_name = "renameSurface")]
+        fn rename_surface(appid: &str, surface_id: &str, title: &str) -> bool;
+
         // Focus a surface in the window graph (aside-slot tab switch): the
         // committed plan's slot `activeChild` follows the focus and the skin
         // reconciler swaps the slot's visible child.
@@ -1142,6 +1157,46 @@ pub fn set_active_main(appid: &str) -> bool {
         } else {
             false
         }
+    })
+}
+
+pub fn replace_host_mains(appid: &str, registrations_json: &str) -> bool {
+    ffi_catch_unwind!("replace_host_mains", false, || {
+        let Ok(registrations) =
+            serde_json::from_str::<Vec<lxapp::HostMainSurfaceRegistration>>(registrations_json)
+        else {
+            return false;
+        };
+        lxapp::try_get(appid).is_some_and(|app| app.replace_host_mains(registrations).is_ok())
+    })
+}
+
+pub fn surface_switcher(appid: &str) -> String {
+    ffi_catch_unwind!("surface_switcher", String::new(), || {
+        lxapp::try_get(appid)
+            .and_then(|app| serde_json::to_string(&app.surface_switcher_snapshot()).ok())
+            .unwrap_or_default()
+    })
+}
+
+pub fn set_active_main_surface(appid: &str, surface_id: &str) -> bool {
+    ffi_catch_unwind!("set_active_main_surface", false, || {
+        lxapp::try_get(appid).is_some_and(|app| app.set_active_main_surface(surface_id))
+    })
+}
+
+pub fn set_surface_automatic_title(appid: &str, surface_id: &str, title: &str) -> bool {
+    ffi_catch_unwind!("set_surface_automatic_title", false, || {
+        let title = (!title.trim().is_empty()).then_some(title);
+        lxapp::try_get(appid)
+            .is_some_and(|app| app.update_shell_surface_automatic_title(surface_id, title))
+    })
+}
+
+pub fn rename_surface(appid: &str, surface_id: &str, title: &str) -> bool {
+    ffi_catch_unwind!("rename_surface", false, || {
+        let title = (!title.trim().is_empty()).then_some(title);
+        lxapp::try_get(appid).is_some_and(|app| app.rename_shell_surface(surface_id, title))
     })
 }
 

@@ -62,6 +62,31 @@ impl SurfaceGraph {
         self.root_main_id.as_deref() == Some(id)
     }
 
+    pub(crate) fn replace_mains(&mut self, mains: Vec<Surface>) {
+        debug_assert!(mains.iter().all(|surface| surface.role == Role::Main));
+        let old_main_ids: std::collections::HashSet<_> = self.main_ids().into_iter().collect();
+        self.surfaces
+            .retain(|surface| !old_main_ids.contains(&surface.id));
+        self.root_main_id = None;
+        self.active_main_id = None;
+
+        let mut retained = std::mem::take(&mut self.surfaces);
+        self.surfaces = mains;
+        self.surfaces.append(&mut retained);
+        if self.mains().is_empty() {
+            self.surfaces.retain(|surface| surface.role != Role::Aside);
+        }
+        self.converge_after_insert();
+        if self
+            .focused_surface_id
+            .as_deref()
+            .is_none_or(|id| self.get(id).is_none())
+        {
+            self.focused_surface_id = self.active_main_id.clone();
+        }
+        self.prune_aside_slot_mru();
+    }
+
     pub fn mains(&self) -> Vec<&Surface> {
         self.by_role(Role::Main)
     }

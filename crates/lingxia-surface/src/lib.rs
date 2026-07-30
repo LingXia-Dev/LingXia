@@ -29,7 +29,8 @@ pub use model::{
 };
 pub use presentation::{SurfaceCapabilities, SurfaceIcon, SurfacePresentation};
 pub use switcher::{
-    CloseOutcome, SurfaceSwitcherItem, SurfaceSwitcherSnapshot, SwitcherContentKind,
+    CloseOutcome, ReplaceMainsError, SurfaceSwitcherItem, SurfaceSwitcherSnapshot,
+    SwitcherContentKind,
 };
 
 #[cfg(test)]
@@ -744,7 +745,7 @@ mod tests {
     fn browser_surface_json_preserves_reuse_policy_default() {
         let ordinary = web_aside_s("ordinary", "https://a.example", Edge::Right);
         let ordinary_json = serde_json::to_string(&ordinary).unwrap();
-        assert!(!ordinary_json.contains("reuse_by_url"));
+        assert!(!ordinary_json.contains("reuseByUrl"));
         assert_eq!(
             serde_json::from_str::<Surface>(&ordinary_json).unwrap(),
             ordinary
@@ -752,7 +753,7 @@ mod tests {
 
         let callback = non_reusable_web_aside_s("callback", "https://a.example", Edge::Right);
         let callback_json = serde_json::to_string(&callback).unwrap();
-        assert!(callback_json.contains("\"reuse_by_url\":false"));
+        assert!(callback_json.contains("\"reuseByUrl\":false"));
         assert_eq!(
             serde_json::from_str::<Surface>(&callback_json).unwrap(),
             callback

@@ -8,7 +8,11 @@ use serde::{Deserialize, Serialize};
 
 /// Content hosted by a surface after declaration/runtime request resolution.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "lowercase")]
+#[serde(
+    tag = "kind",
+    rename_all = "lowercase",
+    rename_all_fields = "camelCase"
+)]
 pub enum SurfaceContent {
     Lxapp {
         app_id: String,

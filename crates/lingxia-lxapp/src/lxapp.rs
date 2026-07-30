@@ -76,8 +76,8 @@ pub use runtime_registry::{
 };
 pub(crate) use surface::SurfaceRecords;
 pub use surface::{
-    LxAppRuntimeSurfaceInfo, PageSurface, PageSurfaceRequest, PageSurfaceTarget,
-    UrlCallbackSurface, UrlCallbackWaitError, register_surface_close_observer,
+    HostMainSurfaceRegistration, LxAppRuntimeSurfaceInfo, PageSurface, PageSurfaceRequest,
+    PageSurfaceTarget, UrlCallbackSurface, UrlCallbackWaitError, register_surface_close_observer,
     register_surface_context_observer,
 };
 use version::Version;

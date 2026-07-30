@@ -276,6 +276,75 @@ impl WindowSurfaceController {
         self.commit();
     }
 
+    fn replace_host_mains(
+        &self,
+        registrations: Vec<HostMainSurfaceRegistration>,
+    ) -> Result<lingxia_surface::SurfaceSwitcherSnapshot, LxAppError> {
+        let mains = registrations
+            .into_iter()
+            .map(|registration| {
+                let id = registration.id.trim().to_string();
+                if id.is_empty() {
+                    return Err(LxAppError::InvalidParameter(
+                        "host main surface id must not be empty".into(),
+                    ));
+                }
+                Ok((
+                    lingxia_surface::Surface {
+                        id,
+                        role: lingxia_surface::Role::Main,
+                        content: registration.content,
+                        owner: lingxia_surface::SurfaceOwner::Host,
+                        placement: Default::default(),
+                        state: lingxia_surface::SurfaceState::Mounted,
+                        float: None,
+                    },
+                    registration.presentation,
+                ))
+            })
+            .collect::<Result<Vec<_>, LxAppError>>()?;
+        let snapshot = self
+            .manager
+            .lock()
+            .unwrap()
+            .replace_mains(mains)
+            .map_err(|error| LxAppError::InvalidParameter(error.to_string()))?;
+        self.commit();
+        Ok(snapshot)
+    }
+
+    fn set_active_main_surface(&self, surface_id: &str) -> bool {
+        let active = self.manager.lock().unwrap().set_active_main(surface_id);
+        if active {
+            self.commit();
+        }
+        active
+    }
+
+    fn switcher_snapshot(&self) -> lingxia_surface::SurfaceSwitcherSnapshot {
+        self.manager.lock().unwrap().switcher_snapshot()
+    }
+
+    fn update_surface_automatic_title(&self, surface_id: &str, title: Option<&str>) -> bool {
+        let updated = self
+            .manager
+            .lock()
+            .unwrap()
+            .update_automatic_title(surface_id, title);
+        if updated {
+            self.commit();
+        }
+        updated
+    }
+
+    fn rename_surface(&self, surface_id: &str, title: Option<&str>) -> bool {
+        let updated = self.manager.lock().unwrap().rename(surface_id, title);
+        if updated {
+            self.commit();
+        }
+        updated
+    }
+
     fn unregister_host_aside(&self, surface_id: &str) {
         {
             let _ = self.manager.lock().unwrap().close(surface_id);
@@ -426,6 +495,14 @@ pub struct PageSurface {
     pub role: SurfaceRole,
     pub position: SurfacePosition,
     pub presentation: String,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HostMainSurfaceRegistration {
+    pub id: String,
+    pub content: lingxia_surface::SurfaceContent,
+    pub presentation: lingxia_surface::SurfacePresentation,
 }
 
 /// Automation-facing metadata for a live lxapp-owned surface.
@@ -1080,6 +1157,40 @@ impl LxApp {
     pub fn set_active_main(&self) {
         window_controller(PRIMARY_WINDOW, &self.runtime)
             .set_active_main(&self.appid, self.root_main_node());
+    }
+
+    pub fn replace_host_mains(
+        &self,
+        registrations: Vec<HostMainSurfaceRegistration>,
+    ) -> Result<lingxia_surface::SurfaceSwitcherSnapshot, LxAppError> {
+        window_controller(PRIMARY_WINDOW, &self.runtime).replace_host_mains(registrations)
+    }
+
+    pub fn set_active_main_surface(&self, surface_id: &str) -> bool {
+        let surface_id = surface_id.trim();
+        !surface_id.is_empty()
+            && window_controller(PRIMARY_WINDOW, &self.runtime).set_active_main_surface(surface_id)
+    }
+
+    pub fn surface_switcher_snapshot(&self) -> lingxia_surface::SurfaceSwitcherSnapshot {
+        window_controller(PRIMARY_WINDOW, &self.runtime).switcher_snapshot()
+    }
+
+    pub fn update_shell_surface_automatic_title(
+        &self,
+        surface_id: &str,
+        title: Option<&str>,
+    ) -> bool {
+        let surface_id = surface_id.trim();
+        !surface_id.is_empty()
+            && window_controller(PRIMARY_WINDOW, &self.runtime)
+                .update_surface_automatic_title(surface_id, title)
+    }
+
+    pub fn rename_shell_surface(&self, surface_id: &str, title: Option<&str>) -> bool {
+        let surface_id = surface_id.trim();
+        !surface_id.is_empty()
+            && window_controller(PRIMARY_WINDOW, &self.runtime).rename_surface(surface_id, title)
     }
 
     /// Remove a host-declared aside from the surface graph.

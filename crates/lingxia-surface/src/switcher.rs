@@ -104,6 +104,14 @@ pub enum CloseOutcome {
     NotFound,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum ReplaceMainsError {
+    #[error("surface '{surface_id}' is not a main")]
+    InvalidRole { surface_id: SurfaceId },
+    #[error("duplicate main surface id '{surface_id}'")]
+    DuplicateId { surface_id: SurfaceId },
+}
+
 impl CloseOutcome {
     pub fn removed(&self) -> &[SurfaceId] {
         match self {
@@ -227,5 +235,63 @@ mod tests {
 
         assert_eq!(manager.close_mains_after("home"), vec!["docs", "terminal"]);
         assert_eq!(manager.switcher_snapshot().items.len(), 1);
+    }
+
+    #[test]
+    fn declaration_replace_overrides_an_early_seeded_root_atomically() {
+        let mut manager = SurfaceManager::new(1200.0);
+        manager.open(Surface::lxapp("home", Role::Main, "home"));
+        let terminal = Surface::native("terminal", Role::Main, "terminal");
+        let browser = Surface::browser("browser", Role::Main, "https://example.com");
+
+        let snapshot = manager
+            .replace_mains(vec![
+                (
+                    terminal.clone(),
+                    SurfacePresentation::for_content(&terminal.content),
+                ),
+                (
+                    browser.clone(),
+                    SurfacePresentation::for_content(&browser.content),
+                ),
+            ])
+            .unwrap();
+
+        assert_eq!(snapshot.root_surface_id.as_deref(), Some("terminal"));
+        assert_eq!(snapshot.active_surface_id.as_deref(), Some("terminal"));
+        assert_eq!(
+            snapshot
+                .items
+                .iter()
+                .map(|item| item.surface_id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["terminal", "browser"]
+        );
+        assert!(manager.graph().get("home").is_none());
+    }
+
+    #[test]
+    fn invalid_declaration_replace_is_atomic() {
+        let mut manager = SurfaceManager::new(1200.0);
+        manager.open(Surface::lxapp("home", Role::Main, "home"));
+        let before = manager.switcher_snapshot();
+        let duplicate = Surface::native("terminal", Role::Main, "terminal");
+
+        assert_eq!(
+            manager.replace_mains(vec![
+                (
+                    duplicate.clone(),
+                    SurfacePresentation::for_content(&duplicate.content),
+                ),
+                (
+                    duplicate.clone(),
+                    SurfacePresentation::for_content(&duplicate.content),
+                ),
+            ]),
+            Err(ReplaceMainsError::DuplicateId {
+                surface_id: "terminal".into()
+            })
+        );
+        assert_eq!(manager.switcher_snapshot(), before);
     }
 }

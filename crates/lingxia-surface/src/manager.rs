@@ -12,7 +12,7 @@ use crate::arbitrate::{OpenOutcome, Policy, arbitrate};
 use crate::graph::SurfaceGraph;
 use crate::layout::{DEFAULT_HYSTERESIS, DerivedLayout, LayoutPresentationPlan, SizeClass};
 use crate::model::{Surface, SurfaceId};
-use crate::{CloseOutcome, SurfacePresentation, SurfaceSwitcherSnapshot};
+use crate::{CloseOutcome, ReplaceMainsError, Role, SurfacePresentation, SurfaceSwitcherSnapshot};
 
 /// One window's stateful surface driver.
 #[derive(Debug, Clone)]
@@ -175,6 +175,42 @@ impl SurfaceManager {
             self.bump_revision();
         }
         outcome
+    }
+
+    pub fn replace_mains(
+        &mut self,
+        mains: Vec<(Surface, SurfacePresentation)>,
+    ) -> Result<SurfaceSwitcherSnapshot, ReplaceMainsError> {
+        let mut ids = std::collections::HashSet::with_capacity(mains.len());
+        for (surface, _) in &mains {
+            if surface.role != Role::Main {
+                return Err(ReplaceMainsError::InvalidRole {
+                    surface_id: surface.id.clone(),
+                });
+            }
+            if !ids.insert(surface.id.clone()) {
+                return Err(ReplaceMainsError::DuplicateId {
+                    surface_id: surface.id.clone(),
+                });
+            }
+        }
+        let old_main_ids: Vec<_> = self
+            .graph
+            .mains()
+            .into_iter()
+            .map(|surface| surface.id.clone())
+            .collect();
+        self.remove_presentations(&old_main_ids);
+
+        let (surfaces, presentations): (Vec<_>, Vec<_>) = mains.into_iter().unzip();
+        self.graph.replace_mains(surfaces);
+        for (surface, presentation) in self.graph.mains().into_iter().zip(presentations) {
+            self.presentations.insert(surface.id.clone(), presentation);
+        }
+        self.presentations
+            .retain(|id, _| self.graph.get(id).is_some());
+        self.bump_revision();
+        Ok(self.switcher_snapshot())
     }
 
     pub fn close_other_mains(&mut self, keeping: &str) -> Vec<SurfaceId> {
