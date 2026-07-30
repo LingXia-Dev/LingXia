@@ -1,5 +1,7 @@
 mod ffi;
 mod jni_env;
+#[cfg(feature = "servo")]
+mod servo;
 mod webview;
 
 pub(crate) use webview::{WebViewInner, apply_http_proxy};

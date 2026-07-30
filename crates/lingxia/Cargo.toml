@@ -28,6 +28,8 @@ browser-shell = ["browser-runtime", "dep:lingxia-browser-shell"]
 proxy = ["browser-shell", "lingxia-browser-shell/proxy"]
 terminal-runtime = ["dep:lingxia-terminal"]
 webview-input = ["lingxia-webview/webview-input"]
+# Experimental Android backend embedded through Servo's public Rust API.
+servo = ["lingxia-webview/servo"]
 
 [dependencies]
 rong_rt = { workspace = true, default-features = false }
