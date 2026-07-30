@@ -282,32 +282,28 @@ impl WindowSurfaceController {
     ) -> Result<lingxia_surface::SurfaceSwitcherSnapshot, LxAppError> {
         let mains = registrations
             .into_iter()
-            .map(|registration| {
-                let id = registration.id.trim().to_string();
-                if id.is_empty() {
-                    return Err(LxAppError::InvalidParameter(
-                        "host main surface id must not be empty".into(),
-                    ));
-                }
-                Ok((
-                    lingxia_surface::Surface {
-                        id,
-                        role: lingxia_surface::Role::Main,
-                        content: registration.content,
-                        owner: lingxia_surface::SurfaceOwner::Host,
-                        placement: Default::default(),
-                        state: lingxia_surface::SurfaceState::Mounted,
-                        float: None,
-                    },
-                    registration.presentation,
-                ))
-            })
+            .map(HostMainSurfaceRegistration::into_surface)
             .collect::<Result<Vec<_>, LxAppError>>()?;
         let snapshot = self
             .manager
             .lock()
             .unwrap()
             .replace_mains(mains)
+            .map_err(|error| LxAppError::InvalidParameter(error.to_string()))?;
+        self.commit();
+        Ok(snapshot)
+    }
+
+    fn open_host_main(
+        &self,
+        registration: HostMainSurfaceRegistration,
+    ) -> Result<lingxia_surface::SurfaceSwitcherSnapshot, LxAppError> {
+        let (surface, presentation) = registration.into_surface()?;
+        let snapshot = self
+            .manager
+            .lock()
+            .unwrap()
+            .open_main(surface, presentation)
             .map_err(|error| LxAppError::InvalidParameter(error.to_string()))?;
         self.commit();
         Ok(snapshot)
@@ -503,6 +499,37 @@ pub struct HostMainSurfaceRegistration {
     pub id: String,
     pub content: lingxia_surface::SurfaceContent,
     pub presentation: lingxia_surface::SurfacePresentation,
+}
+
+impl HostMainSurfaceRegistration {
+    fn into_surface(
+        self,
+    ) -> Result<
+        (
+            lingxia_surface::Surface,
+            lingxia_surface::SurfacePresentation,
+        ),
+        LxAppError,
+    > {
+        let id = self.id.trim().to_string();
+        if id.is_empty() {
+            return Err(LxAppError::InvalidParameter(
+                "host main surface id must not be empty".into(),
+            ));
+        }
+        Ok((
+            lingxia_surface::Surface {
+                id,
+                role: lingxia_surface::Role::Main,
+                content: self.content,
+                owner: lingxia_surface::SurfaceOwner::Host,
+                placement: Default::default(),
+                state: lingxia_surface::SurfaceState::Mounted,
+                float: None,
+            },
+            self.presentation,
+        ))
+    }
 }
 
 /// Automation-facing metadata for a live lxapp-owned surface.
@@ -1164,6 +1191,13 @@ impl LxApp {
         registrations: Vec<HostMainSurfaceRegistration>,
     ) -> Result<lingxia_surface::SurfaceSwitcherSnapshot, LxAppError> {
         window_controller(PRIMARY_WINDOW, &self.runtime).replace_host_mains(registrations)
+    }
+
+    pub fn open_host_main(
+        &self,
+        registration: HostMainSurfaceRegistration,
+    ) -> Result<lingxia_surface::SurfaceSwitcherSnapshot, LxAppError> {
+        window_controller(PRIMARY_WINDOW, &self.runtime).open_host_main(registration)
     }
 
     pub fn set_active_main_surface(&self, surface_id: &str) -> bool {

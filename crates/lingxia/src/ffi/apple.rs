@@ -263,6 +263,9 @@ mod bridge {
         #[swift_bridge(swift_name = "replaceHostMains")]
         fn replace_host_mains(appid: &str, registrations_json: &str) -> bool;
 
+        #[swift_bridge(swift_name = "openHostMain")]
+        fn open_host_main(appid: &str, registration_json: &str) -> bool;
+
         #[swift_bridge(swift_name = "surfaceSwitcher")]
         fn surface_switcher(appid: &str) -> String;
 
@@ -1168,6 +1171,17 @@ pub fn replace_host_mains(appid: &str, registrations_json: &str) -> bool {
             return false;
         };
         lxapp::try_get(appid).is_some_and(|app| app.replace_host_mains(registrations).is_ok())
+    })
+}
+
+pub fn open_host_main(appid: &str, registration_json: &str) -> bool {
+    ffi_catch_unwind!("open_host_main", false, || {
+        let Ok(registration) =
+            serde_json::from_str::<lxapp::HostMainSurfaceRegistration>(registration_json)
+        else {
+            return false;
+        };
+        lxapp::try_get(appid).is_some_and(|app| app.open_host_main(registration).is_ok())
     })
 }
 

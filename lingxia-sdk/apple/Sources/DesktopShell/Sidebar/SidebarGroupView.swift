@@ -145,6 +145,7 @@ class SidebarGroupView: NSView {
     private let managedLabel: String?
     private let managedIcon: NSImage?
     let showsLxappTabBar: Bool
+    let closable: Bool
     var isManagedMain: Bool { managedLabel != nil }
     private(set) var colorIndex: Int = 0
     private var palette: SidebarGroupColor.Palette = SidebarGroupColor.palette(for: 0)
@@ -217,12 +218,14 @@ class SidebarGroupView: NSView {
         appId: String,
         managedLabel: String? = nil,
         managedIcon: NSImage? = nil,
-        showsLxappTabBar: Bool = true
+        showsLxappTabBar: Bool = true,
+        closable: Bool = true
     ) {
         self.appId = appId
         self.managedLabel = managedLabel
         self.managedIcon = managedIcon
         self.showsLxappTabBar = showsLxappTabBar
+        self.closable = closable
         super.init(frame: .zero)
         setupViews()
         if managedLabel != nil && !showsLxappTabBar {
@@ -477,7 +480,7 @@ class SidebarGroupView: NSView {
 
         // Hide close button for home lxapp
         let isHome = LxAppCore.isHomeLxApp(appId)
-        closeButton.isHidden = isHome || !isHeaderHovered
+        closeButton.isHidden = isHome || !closable || !isHeaderHovered
 
         // Get tabbar config
         guard let tabBar = getTabBar(appId) else {
@@ -695,7 +698,7 @@ class SidebarGroupView: NSView {
             isHeaderHovered = true
             menuButton.isHidden = false
             let isHome = LxAppCore.isHomeLxApp(appId)
-            if !isHome {
+            if closable && !isHome {
                 closeButton.isHidden = false
             }
         } else if zone == "close" {

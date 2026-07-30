@@ -28,8 +28,12 @@ struct LxAppUIActionItem: Sendable {
     let id: String
     let label: String
     let iconURL: URL?
+    var builtInIcon: String? = nil
     var showsLxappTabBar: Bool = false
     var active: Bool = false
+    var closable: Bool = true
+    var renameable: Bool = false
+    var titleOverridden: Bool = false
     var disabled: Bool = false
 }
 
@@ -60,8 +64,6 @@ final class LxAppMacAppUIRuntime: NSObject {
 
     private var visibleSurfaceIDs = Set<String>()
     private var openedSurfaceIDs = Set<String>()
-    private var closedMainSurfaceIDs = Set<String>()
-    private var activeMainSurfaceID: String?
     /// Runtime edge overrides from `lx.openSurface({surface, edge})`; the
     /// declared `lingxia.yaml` edge applies when absent.
     private var managedEdgeOverrides: [String: LxAppUIConfig.Edge] = [:]
@@ -178,6 +180,14 @@ final class LxAppMacAppUIRuntime: NSObject {
         }
         trayController.installMenuBarActivators(menuBarActivators)
         installAppActivationActivators()
+        guard let ownerAppId = graphOwnerAppId,
+              SurfaceSwitcherBridge.replaceDeclaredMains(
+                  ownerAppId: ownerAppId,
+                  surfaces: uiConfig.surfaces
+              )
+        else {
+            throw LxAppUIError.invalidConfig("failed to register declared main surfaces")
+        }
         refreshChromeActions()
         let opensLxAppOnLaunch = (uiConfig.launch.openOnLaunch ?? true)
             && rootSurface.content.kind == .lxapp
@@ -630,13 +640,20 @@ final class LxAppMacAppUIRuntime: NSObject {
         _ surface: LxAppUIConfig.Surface,
         sourceActivatorID: String? = nil
     ) throws {
-        closedMainSurfaceIDs.remove(surface.id)
+        guard let ownerAppId = graphOwnerAppId else {
+            throw LxAppUIError.invalidConfig("main surfaces require a graph owner")
+        }
+        let switcher = SurfaceSwitcherBridge.snapshot(ownerAppId: ownerAppId)
+        if switcher?.items.contains(where: { $0.surfaceId == surface.id }) != true,
+           !SurfaceSwitcherBridge.openDeclaredMain(ownerAppId: ownerAppId, surface: surface) {
+            throw LxAppUIError.invalidConfig("failed to open main surface \(surface.id)")
+        }
         applyWindowPresentation(for: surface)
         if surface.role == .float {
             positionPanelWindow(for: sourceActivatorID)
         }
 
-        if activeMainSurfaceID == surface.id, openedSurfaceIDs.contains(surface.id) {
+        if switcher?.activeSurfaceId == surface.id, openedSurfaceIDs.contains(surface.id) {
             shell.show()
             visibleSurfaceIDs.insert(surface.id)
             if surface.content.isNativeTerminal {
@@ -673,14 +690,20 @@ final class LxAppMacAppUIRuntime: NSObject {
         }
         openedSurfaceIDs.insert(surface.id)
         visibleSurfaceIDs.insert(surface.id)
-        activeMainSurfaceID = surface.id
+        guard setActiveMainSurface(ownerAppId, surface.id) else {
+            throw LxAppUIError.invalidConfig("failed to activate main surface \(surface.id)")
+        }
         refreshChromeActions()
     }
 
     private func closeMainSurface(id: String) {
-        guard let surface = surfaceById[id], surface.role == .main else { return }
+        guard let ownerAppId = graphOwnerAppId,
+              let snapshot = SurfaceSwitcherBridge.snapshot(ownerAppId: ownerAppId),
+              let item = snapshot.items.first(where: { $0.surfaceId == id }),
+              item.closable,
+              let surface = surfaceById[id], surface.role == .main
+        else { return }
 
-        closedMainSurfaceIDs.insert(id)
         openedSurfaceIDs.remove(id)
         visibleSurfaceIDs.remove(id)
 
@@ -689,24 +712,15 @@ final class LxAppMacAppUIRuntime: NSObject {
             terminalWorkspaces.removeValue(forKey: id)
         }
 
-        guard activeMainSurfaceID == id else {
+        _ = onSurfaceClosed(ownerAppId, id, "user")
+
+        guard snapshot.activeSurfaceId == id else {
             refreshChromeActions()
             return
         }
-
-        activeMainSurfaceID = nil
-        if let successor = uiConfig.surfaces.first(where: {
-            $0.role == .main
-                && $0.id != id
-                && !closedMainSurfaceIDs.contains($0.id)
-                && surfaceById[$0.id] != nil
-        }) {
-            openSurfaceHandlingError(id: successor.id)
-            return
-        }
-
-        shell.presentMainEmptyState()
-        refreshChromeActions()
+        guard let successor = SurfaceSwitcherBridge.snapshot(ownerAppId: ownerAppId)?.activeSurfaceId
+        else { return }
+        openSurfaceHandlingError(id: successor)
     }
 
     private func openTerminalMainSurface(_ surface: LxAppUIConfig.Surface) {
@@ -739,13 +753,16 @@ final class LxAppMacAppUIRuntime: NSObject {
     }
 
     private func didActivateBrowserMainSurface(id: String) {
-        guard let surface = surfaceById[id], isBrowserMainSurface(surface) else { return }
+        guard let ownerAppId = graphOwnerAppId,
+              let surface = surfaceById[id],
+              isBrowserMainSurface(surface),
+              setActiveMainSurface(ownerAppId, id)
+        else { return }
         for main in surfaceById.values where main.role == .main {
             visibleSurfaceIDs.remove(main.id)
         }
         openedSurfaceIDs.insert(id)
         visibleSurfaceIDs.insert(id)
-        activeMainSurfaceID = id
         refreshChromeActions()
     }
 
@@ -1132,9 +1149,10 @@ final class LxAppMacAppUIRuntime: NSObject {
 
         shell.updateSidebarHeaderActions(runtimeSidebarActionItems(placement: "header"))
         shell.updateSidebarHostActions(runtimeSidebarActionItems(placement: "footer"))
+        let switcher = graphOwnerAppId.flatMap(SurfaceSwitcherBridge.snapshot)
         shell.updateManagedMainSurfaces(
-            declaredMainSidebarItems(),
-            activeId: activeMainSurfaceID
+            declaredMainSidebarItems(from: switcher),
+            activeId: switcher?.activeSurfaceId
         ) { [weak self] surfaceID in
             self?.openSurfaceHandlingError(id: surfaceID)
         } onClose: { [weak self] surfaceID in
@@ -1145,35 +1163,24 @@ final class LxAppMacAppUIRuntime: NSObject {
         shell.updateTitlebarHostActions(titlebarItems)
     }
 
-    private func declaredMainSidebarItems() -> [LxAppUIActionItem] {
-        uiConfig.surfaces.compactMap { surface in
-            guard surface.role == .main,
-                  surfaceById[surface.id] != nil,
-                  !closedMainSurfaceIDs.contains(surface.id)
-            else { return nil }
-            let label: String
-            switch surface.content.kind {
-            case .lxapp:
-                label = surface.content.appId ?? surface.id
-            case .page:
-                label = surface.id
-            case .url:
-                label = URL(string: surface.content.url ?? "")?.host ?? surface.id
-            case .native:
-                switch surface.content.name {
-                case .terminal: label = "Terminal"
-                case .browser: label = "Browser"
-                case .none: label = surface.id
-                }
-            }
+    private func declaredMainSidebarItems(
+        from snapshot: SurfaceSwitcherSnapshot?
+    ) -> [LxAppUIActionItem] {
+        snapshot?.items.compactMap { item in
+            guard let surface = surfaceById[item.surfaceId] else { return nil }
+            let icon = SurfaceSwitcherBridge.resolvedIcon(item.icon)
             return LxAppUIActionItem(
-                id: surface.id,
-                label: label,
-                iconURL: nil,
+                id: item.surfaceId,
+                label: item.title ?? item.surfaceId,
+                iconURL: icon.url,
+                builtInIcon: icon.builtIn,
                 showsLxappTabBar: surface.content.kind == .lxapp,
-                active: activeMainSurfaceID == surface.id
+                active: item.active,
+                closable: item.closable,
+                renameable: item.renameable,
+                titleOverridden: item.titleOverridden
             )
-        }
+        } ?? []
     }
 
     private func installAppActivationActivators() {

@@ -294,4 +294,30 @@ mod tests {
         );
         assert_eq!(manager.switcher_snapshot(), before);
     }
+
+    #[test]
+    fn closed_registered_main_can_be_opened_again() {
+        let mut manager = SurfaceManager::new(1200.0);
+        manager.open(Surface::lxapp("home", Role::Main, "home"));
+        let terminal = Surface::native("terminal", Role::Main, "terminal");
+        let presentation = SurfacePresentation::for_content(&terminal.content);
+        manager
+            .open_main(terminal.clone(), presentation.clone())
+            .unwrap();
+        assert!(matches!(
+            manager.close("terminal"),
+            CloseOutcome::Closed { .. }
+        ));
+
+        let snapshot = manager.open_main(terminal, presentation).unwrap();
+        assert_eq!(snapshot.active_surface_id.as_deref(), Some("terminal"));
+        assert_eq!(
+            snapshot
+                .items
+                .iter()
+                .map(|item| item.surface_id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["home", "terminal"]
+        );
+    }
 }

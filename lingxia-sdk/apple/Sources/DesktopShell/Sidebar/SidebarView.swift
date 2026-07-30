@@ -304,6 +304,7 @@ private struct SidebarModel {
         let managedLabel: String?
         let managedIcon: NSImage?
         let showsLxappTabBar: Bool
+        let closable: Bool
 
         var isManagedMain: Bool { managedLabel != nil }
     }
@@ -1528,7 +1529,8 @@ class SidebarView: NSView, NSPopoverDelegate {
                 asideSurfaceId: $0.asideSurfaceId,
                 managedLabel: nil,
                 managedIcon: nil,
-                showsLxappTabBar: true
+                showsLxappTabBar: true,
+                closable: true
             )
         }
         rebuildAppGroups()
@@ -1543,7 +1545,7 @@ class SidebarView: NSView, NSPopoverDelegate {
     func updateManagedMainItems(_ items: [LxAppUIActionItem], activeId: String?) {
         managedMainGroups = items.map { item in
             let fallbackIcon: NSImage?
-            switch item.id {
+            switch item.builtInIcon {
             case "terminal":
                 fallbackIcon = NSImage(
                     systemSymbolName: "terminal",
@@ -1559,7 +1561,8 @@ class SidebarView: NSView, NSPopoverDelegate {
                 asideSurfaceId: nil,
                 managedLabel: item.label,
                 managedIcon: item.iconURL.flatMap(NSImage.init(contentsOf:)) ?? fallbackIcon,
-                showsLxappTabBar: item.showsLxappTabBar
+                showsLxappTabBar: item.showsLxappTabBar,
+                closable: item.closable
             )
         }
         rebuildAppGroups()
@@ -1668,7 +1671,8 @@ class SidebarView: NSView, NSPopoverDelegate {
             let groupView: SidebarGroupView
             if let existing = groupViews[appId],
                existing.isManagedMain == group.isManagedMain,
-               existing.showsLxappTabBar == group.showsLxappTabBar {
+               existing.showsLxappTabBar == group.showsLxappTabBar,
+               existing.closable == group.closable {
                 groupView = existing
             } else {
                 if let existing = groupViews.removeValue(forKey: appId) {
@@ -1679,7 +1683,8 @@ class SidebarView: NSView, NSPopoverDelegate {
                     appId: appId,
                     managedLabel: group.managedLabel,
                     managedIcon: group.managedIcon,
-                    showsLxappTabBar: group.showsLxappTabBar
+                    showsLxappTabBar: group.showsLxappTabBar,
+                    closable: group.closable
                 )
                 groupView.onPageSelected = { [weak self] appId, itemIndex in
                     self?.onAppPageSelected?(appId, itemIndex)

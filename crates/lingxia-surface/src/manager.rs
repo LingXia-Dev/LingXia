@@ -213,6 +213,23 @@ impl SurfaceManager {
         Ok(self.switcher_snapshot())
     }
 
+    pub fn open_main(
+        &mut self,
+        surface: Surface,
+        presentation: SurfacePresentation,
+    ) -> Result<SurfaceSwitcherSnapshot, ReplaceMainsError> {
+        if surface.role != Role::Main {
+            return Err(ReplaceMainsError::InvalidRole {
+                surface_id: surface.id,
+            });
+        }
+        let surface_id = surface.id.clone();
+        self.open(surface);
+        self.presentations.insert(surface_id.clone(), presentation);
+        self.set_active_main(&surface_id);
+        Ok(self.switcher_snapshot())
+    }
+
     pub fn close_other_mains(&mut self, keeping: &str) -> Vec<SurfaceId> {
         let removed = self.graph.close_other_mains(keeping);
         self.remove_presentations(&removed);
