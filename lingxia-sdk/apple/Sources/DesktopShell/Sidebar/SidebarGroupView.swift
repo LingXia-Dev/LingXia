@@ -142,6 +142,8 @@ class SidebarGroupView: NSView {
     }
 
     let appId: String
+    let contentAppId: String?
+    private var providerAppId: String { contentAppId ?? appId }
     private let managedLabel: String?
     private let managedIcon: NSImage?
     let showsLxappTabBar: Bool
@@ -219,12 +221,14 @@ class SidebarGroupView: NSView {
         appId: String,
         managedLabel: String? = nil,
         managedIcon: NSImage? = nil,
+        contentAppId: String? = nil,
         showsLxappTabBar: Bool = true,
         closable: Bool = true
     ) {
         self.appId = appId
         self.managedLabel = managedLabel
         self.managedIcon = managedIcon
+        self.contentAppId = contentAppId
         self.showsLxappTabBar = showsLxappTabBar
         self.closable = closable
         super.init(frame: .zero)
@@ -307,7 +311,7 @@ class SidebarGroupView: NSView {
                 if !self.isExpanded { self.toggleExpanded() }
             }
         }
-        if managedLabel == nil {
+        if managedLabel == nil || contentAppId != nil {
             headerView.onRightClick = { [weak self] event in
                 self?.showContextMenu(with: event)
             }
@@ -480,16 +484,16 @@ class SidebarGroupView: NSView {
             configureManagedMain()
             return
         }
-        let info = getLxAppInfo(appId)
+        let info = getLxAppInfo(providerAppId)
         appNameLabel.stringValue = info.app_name.toString().uppercased()
         loadAppIcon(path: info.icon.toString())
 
         // Hide close button for home lxapp
-        let isHome = LxAppCore.isHomeLxApp(appId)
+        let isHome = LxAppCore.isHomeLxApp(providerAppId)
         closeButton.isHidden = isHome || !closable || !isHeaderHovered
 
         // Get tabbar config
-        guard let tabBar = getTabBar(appId) else {
+        guard let tabBar = getTabBar(providerAppId) else {
             rebuildItems(items: [])
             return
         }
@@ -507,7 +511,7 @@ class SidebarGroupView: NSView {
             : LxAppHostTheme.separator
         applyColors()
 
-        let items = tabBar.getItems(appId: appId)
+        let items = tabBar.getItems(appId: providerAppId)
         rebuildItems(items: items)
 
         // Only an EXPLICIT lx.hideTabBar/showTabBar collapses/expands this
@@ -527,7 +531,7 @@ class SidebarGroupView: NSView {
         // sync above, so a launch-time hideTabBar wins over the stored value).
         if !didRestoreCollapsedState, !itemViews.isEmpty {
             didRestoreCollapsedState = true
-            if let collapsed = LxAppShellPersistence.groupCollapsed(appId: appId),
+            if let collapsed = LxAppShellPersistence.groupCollapsed(appId: providerAppId),
                collapsed == isExpanded {
                 toggleExpanded(persist: false)
             }
@@ -547,7 +551,7 @@ class SidebarGroupView: NSView {
 
         var yOffset: CGFloat = Layout.itemTopPadding
         for (index, item) in items.enumerated() {
-            let itemView = SidebarItemView(appId: appId, itemIndex: index)
+            let itemView = SidebarItemView(appId: providerAppId, itemIndex: index)
             itemView.translatesAutoresizingMaskIntoConstraints = false
             itemView.selectedTint = tabBarTint
             itemView.unselectedTint = itemTint
@@ -603,7 +607,7 @@ class SidebarGroupView: NSView {
     private func toggleExpanded(persist: Bool = true) {
         isExpanded.toggle()
         if persist {
-            LxAppShellPersistence.setGroupCollapsed(!isExpanded, appId: appId)
+            LxAppShellPersistence.setGroupCollapsed(!isExpanded, appId: providerAppId)
         }
         // Re-evaluate the collapsed aggregate against the current items.
         let hasNotifications = itemViews.contains { $0.hasNotification }
@@ -703,7 +707,7 @@ class SidebarGroupView: NSView {
         if zone == "header" {
             isHeaderHovered = true
             menuButton.isHidden = false
-            let isHome = LxAppCore.isHomeLxApp(appId)
+            let isHome = LxAppCore.isHomeLxApp(providerAppId)
             if closable && !isHome {
                 closeButton.isHidden = false
             }
@@ -732,12 +736,12 @@ class SidebarGroupView: NSView {
     private func buildContextMenu() -> NSMenu {
         let menu = NSMenu()
 
-        let info = getLxAppInfo(appId)
+        let info = getLxAppInfo(providerAppId)
         let resolvedName = info.app_name.toString().trimmingCharacters(in: .whitespacesAndNewlines)
-        let appName = resolvedName.isEmpty ? appId : resolvedName
+        let appName = resolvedName.isEmpty ? providerAppId : resolvedName
         let version = info.version.toString().trimmingCharacters(in: .whitespacesAndNewlines)
         let releaseType = info.release_type.toString()
-        let isHome = LxAppCore.isHomeLxApp(appId)
+        let isHome = LxAppCore.isHomeLxApp(providerAppId)
 
         // App info header (disabled item)
         var headerTitle = appName
@@ -757,7 +761,7 @@ class SidebarGroupView: NSView {
         // Home already owns a permanent sidebar group, so duplicating it in
         // the Pin grid has no navigation value and creates two identities.
         if !isHome {
-            let pinned = shellIsPinned("lxapp", appId)
+            let pinned = shellIsPinned("lxapp", providerAppId)
             let pinItem = NSMenuItem(
                 title: L10n.string(pinned ? "lx_browser_unpin" : "lx_browser_pin_to_sidebar"),
                 action: #selector(contextMenuTogglePin),
@@ -786,7 +790,7 @@ class SidebarGroupView: NSView {
         cleanItem.target = self
         menu.addItem(cleanItem)
 
-        let snapshot = LxAppMoreActionSnapshot.load(appId: appId)
+        let snapshot = LxAppMoreActionSnapshot.load(appId: providerAppId)
         if !snapshot.items.isEmpty {
             menu.addItem(NSMenuItem.separator())
             for (index, item) in snapshot.items.enumerated() {
@@ -810,24 +814,25 @@ class SidebarGroupView: NSView {
     }
 
     @objc private func contextMenuTogglePin() {
-        guard !LxAppCore.isHomeLxApp(appId) else { return }
-        let pinned = shellIsPinned("lxapp", appId)
-        if shellSetPinned("lxapp", appId, !pinned) == -1 {
+        guard !LxAppCore.isHomeLxApp(providerAppId) else { return }
+        let pinned = shellIsPinned("lxapp", providerAppId)
+        if shellSetPinned("lxapp", providerAppId, !pinned) == -1 {
             showShellPinLimitAlert()
         }
         onPinChanged?()
     }
 
     @objc private func contextMenuRestart() {
-        _ = onLxappEvent(appId, LxAppEvent.capsuleClick, "restart_in_place")
+        _ = onLxappEvent(providerAppId, LxAppEvent.capsuleClick, "restart_in_place")
     }
 
     @objc private func contextMenuCleanCache() {
-        _ = onLxappEvent(appId, LxAppEvent.capsuleClick, "clean_cache_restart_in_place")
+        _ = onLxappEvent(providerAppId, LxAppEvent.capsuleClick, "clean_cache_restart_in_place")
     }
 
     @objc private func contextMenuMoreAction(_ sender: NSMenuItem) {
         guard let token = sender.representedObject as? String else { return }
+        let appId = providerAppId
         DispatchQueue.main.async { [appId] in
             _ = onLxappEvent(appId, LxAppEvent.capsuleClick, token)
         }

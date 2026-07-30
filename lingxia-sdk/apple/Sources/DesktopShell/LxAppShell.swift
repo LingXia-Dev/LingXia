@@ -239,6 +239,8 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     private var browserClosesWindowOnLastTab = false
     private var declaredBrowserOwnerAppId: String?
     private var managedMainSurfaceIDs = Set<String>()
+    private var managedMainSurfaceByLxappId: [String: String] = [:]
+    private var managedMainLxappBySurfaceId: [String: String] = [:]
     private var managedMainActivateHandler: ((String) -> Void)?
     private var managedMainCloseHandler: ((String) -> Void)?
     private var managedMainContextMenuHandler: ((String, NSEvent, NSView) -> Void)?
@@ -410,7 +412,13 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
 
         tabManager.onTabsChanged = { [weak self] tabs in
             guard let self else { return }
-            self.sidebarView?.updateForTabs(tabs, activeTab: self.tabManager.activeTab)
+            let unmanagedTabs = tabs.filter {
+                self.managedMainSurfaceByLxappId[$0.appId] == nil
+            }
+            let activeTab = self.tabManager.activeTab.flatMap { active in
+                self.managedMainSurfaceByLxappId[active.appId] == nil ? active : nil
+            }
+            self.sidebarView?.updateForTabs(unmanagedTabs, activeTab: activeTab)
             self.reconcileSidebarAutoHide()
         }
 
@@ -811,23 +819,28 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     }
 
     func handleSidebarPageSelection(appId: String, itemIndex: Int) {
+        let providerAppId = managedMainLxappBySurfaceId[appId] ?? appId
         if managedMainSurfaceIDs.contains(appId) {
             managedMainActivateHandler?(appId)
         } else if browserCoordinator.isActive {
-            switchToTab(appId)
-        } else if tabManager.activeTab?.appId != appId {
-            tabManager.selectTab(appId: appId)
+            switchToTab(providerAppId)
+        } else if tabManager.activeTab?.appId != providerAppId {
+            tabManager.selectTab(appId: providerAppId)
         }
 
-        if let tabItem = getTabBarItem(appId, Int32(itemIndex)) {
+        if let tabItem = getTabBarItem(providerAppId, Int32(itemIndex)) {
             let path = tabItem.page_path.toString()
             if !path.isEmpty {
-                getViewController(for: appId)?.navigate(appId: appId, to: path, with: .none)
+                getViewController(for: providerAppId)?.navigate(
+                    appId: providerAppId,
+                    to: path,
+                    with: .none
+                )
             }
         }
 
         sidebarView?.setActiveHighlight(appId: appId, pageIndex: itemIndex)
-        let _ = onLxappEvent(appId, LxAppEvent.tabBarClick, String(itemIndex))
+        let _ = onLxappEvent(providerAppId, LxAppEvent.tabBarClick, String(itemIndex))
     }
 
     private func currentTrafficLightClearance() -> CGFloat {
@@ -1072,11 +1085,13 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         // attach this VC. We no longer call presentMain(.lxapp:) here — the graph
         // is the single source of truth for the active-main switch. The reconcile
         // is idempotent, so a redundant plan never re-attaches.
-        _ = setActiveMain(appId)
+        if managedMainSurfaceByLxappId[appId] == nil {
+            _ = setActiveMain(appId)
+        }
         // The sidebar highlight stays imperative: it is not part of the surface
         // graph, and the selection that originated this switch is the source of
         // truth for what to highlight.
-        sidebarView?.setActiveHighlight(appId: appId)
+        sidebarView?.setActiveHighlight(appId: managedMainSurfaceByLxappId[appId] ?? appId)
     }
 
     /// Attach `appId`'s lxapp as the active main, driven by the layout
@@ -1185,9 +1200,23 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         onContextMenu: @escaping (String, NSEvent, NSView) -> Void
     ) {
         managedMainSurfaceIDs = Set(items.map(\.id))
+        managedMainSurfaceByLxappId.removeAll(keepingCapacity: true)
+        managedMainLxappBySurfaceId.removeAll(keepingCapacity: true)
+        for item in items {
+            guard let appId = item.contentAppId else { continue }
+            managedMainSurfaceByLxappId[appId] = item.id
+            managedMainLxappBySurfaceId[item.id] = appId
+        }
         managedMainActivateHandler = onActivate
         managedMainCloseHandler = onClose
         managedMainContextMenuHandler = onContextMenu
+        let unmanagedTabs = tabManager.tabs.filter {
+            managedMainSurfaceByLxappId[$0.appId] == nil
+        }
+        let activeTab = tabManager.activeTab.flatMap { active in
+            managedMainSurfaceByLxappId[active.appId] == nil ? active : nil
+        }
+        sidebarView?.updateForTabs(unmanagedTabs, activeTab: activeTab)
         sidebarView?.updateManagedMainItems(items, activeId: activeId)
         reconcileSidebarAutoHide()
     }
@@ -1732,7 +1761,11 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
             return
         }
 
-        let mainIDs = Set(tabManager.tabs.filter { $0.isMain }.map(\.appId))
+        let mainIDs = Set(
+            tabManager.tabs
+                .filter { $0.isMain && managedMainSurfaceByLxappId[$0.appId] == nil }
+                .map(\.appId)
+        )
             .union(managedMainSurfaceIDs)
         let hasSwitcher = mainIDs.count > 1
 

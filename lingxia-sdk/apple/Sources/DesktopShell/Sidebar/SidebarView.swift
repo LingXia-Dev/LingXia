@@ -303,6 +303,7 @@ private struct SidebarModel {
         let asideSurfaceId: String?
         let managedLabel: String?
         let managedIcon: NSImage?
+        let contentAppId: String?
         let showsLxappTabBar: Bool
         let closable: Bool
 
@@ -1530,6 +1531,7 @@ class SidebarView: NSView, NSPopoverDelegate {
                 asideSurfaceId: $0.asideSurfaceId,
                 managedLabel: nil,
                 managedIcon: nil,
+                contentAppId: nil,
                 showsLxappTabBar: true,
                 closable: true
             )
@@ -1562,6 +1564,7 @@ class SidebarView: NSView, NSPopoverDelegate {
                 asideSurfaceId: nil,
                 managedLabel: item.label,
                 managedIcon: item.iconURL.flatMap(NSImage.init(contentsOf:)) ?? fallbackIcon,
+                contentAppId: item.contentAppId,
                 showsLxappTabBar: item.showsLxappTabBar,
                 closable: item.closable
             )
@@ -1673,6 +1676,7 @@ class SidebarView: NSView, NSPopoverDelegate {
             if let existing = groupViews[appId],
                existing.isManagedMain == group.isManagedMain,
                existing.showsLxappTabBar == group.showsLxappTabBar,
+               existing.contentAppId == group.contentAppId,
                existing.closable == group.closable {
                 groupView = existing
             } else {
@@ -1684,6 +1688,7 @@ class SidebarView: NSView, NSPopoverDelegate {
                     appId: appId,
                     managedLabel: group.managedLabel,
                     managedIcon: group.managedIcon,
+                    contentAppId: group.contentAppId,
                     showsLxappTabBar: group.showsLxappTabBar,
                     closable: group.closable
                 )

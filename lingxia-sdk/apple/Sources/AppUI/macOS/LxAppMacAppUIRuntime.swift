@@ -28,6 +28,7 @@ struct LxAppUIActionItem: Sendable {
     let id: String
     let label: String
     let iconURL: URL?
+    var contentAppId: String? = nil
     var builtInIcon: String? = nil
     var showsLxappTabBar: Bool = false
     var active: Bool = false
@@ -731,7 +732,16 @@ final class LxAppMacAppUIRuntime: NSObject {
         terminalWorkspaces[surface.id] = workspace
         workspace.onRequestClosePanel = nil
         workspace.onToggleSurfaceZoom = nil
+        workspace.onActiveTitleChanged = { [weak self] title in
+            guard let self, let ownerAppId = self.graphOwnerAppId else { return }
+            if setSurfaceAutomaticTitle(ownerAppId, surface.id, title) {
+                self.refreshChromeActions()
+            }
+        }
         workspace.ensureOpenTab()
+        if let ownerAppId = graphOwnerAppId, let title = workspace.activeTitle {
+            _ = setSurfaceAutomaticTitle(ownerAppId, surface.id, title)
+        }
         shell.presentManagedMainView(workspace)
         workspace.focusActiveTerminal()
     }
@@ -1233,6 +1243,7 @@ final class LxAppMacAppUIRuntime: NSObject {
                 id: item.surfaceId,
                 label: item.title ?? item.surfaceId,
                 iconURL: icon.url,
+                contentAppId: item.content.appId,
                 builtInIcon: icon.builtIn,
                 showsLxappTabBar: surface.content.kind == .lxapp,
                 active: item.active,

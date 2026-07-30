@@ -13,6 +13,7 @@ struct SurfaceSwitcherSnapshot: Decodable {
     struct Item: Decodable {
         struct Content: Decodable {
             let kind: String
+            let appId: String?
             let capability: String?
         }
 

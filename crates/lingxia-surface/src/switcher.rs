@@ -13,8 +13,8 @@ use crate::{SurfaceContent, SurfaceGraph, SurfaceIcon, SurfaceId, SurfacePresent
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub enum SwitcherContentKind {
-    Lxapp,
-    Page,
+    Lxapp { app_id: String },
+    Page { app_id: String },
     Browser,
     Native { capability: String },
 }
@@ -22,8 +22,12 @@ pub enum SwitcherContentKind {
 impl From<&SurfaceContent> for SwitcherContentKind {
     fn from(content: &SurfaceContent) -> Self {
         match content {
-            SurfaceContent::Lxapp { .. } => Self::Lxapp,
-            SurfaceContent::Page { .. } => Self::Page,
+            SurfaceContent::Lxapp { app_id, .. } => Self::Lxapp {
+                app_id: app_id.clone(),
+            },
+            SurfaceContent::Page { app_id, .. } => Self::Page {
+                app_id: app_id.clone(),
+            },
             SurfaceContent::Browser { .. } => Self::Browser,
             SurfaceContent::Native { capability } => Self::Native {
                 capability: capability.clone(),

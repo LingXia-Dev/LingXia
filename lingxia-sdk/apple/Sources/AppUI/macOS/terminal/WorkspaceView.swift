@@ -306,6 +306,9 @@ final class LingXiaTerminalWorkspaceView: NSView {
 
     var onRequestClosePanel: (() -> Void)?
     var onToggleSurfaceZoom: ((Bool) -> Void)?
+    var onActiveTitleChanged: ((String) -> Void)?
+
+    var activeTitle: String? { activeTab()?.displayTitle }
 
     private let toolbarStack = NSView()
     private let tabRailView = LingXiaTerminalTabRailView()
@@ -656,6 +659,9 @@ final class LingXiaTerminalWorkspaceView: NSView {
                 subtitle: $0.displaySubtitle,
                 active: $0.id == activeTabID
             )
+        }
+        if let title = activeTitle {
+            onActiveTitleChanged?(title)
         }
     }
 

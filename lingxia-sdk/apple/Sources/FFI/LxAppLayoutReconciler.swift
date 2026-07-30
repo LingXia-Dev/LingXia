@@ -57,6 +57,21 @@ enum LxAppLayoutReconciler {
         let asideSlots: [PlanAsideSlot]?
         let floats: [PlanFloat]
         let tree: LxAppJSONValue?
+        let mainSwitcher: MainSwitcher?
+    }
+
+    private struct MainSwitcher: Decodable {
+        let items: [MainSwitcherItem]
+    }
+
+    private struct MainSwitcherItem: Decodable {
+        struct Content: Decodable {
+            let kind: String
+            let appId: String?
+        }
+
+        let surfaceId: String
+        let content: Content
     }
 
     private struct PlanAside: Decodable {
@@ -267,15 +282,15 @@ enum LxAppLayoutReconciler {
         //     float whose popup is not yet registered is skipped defensively.
         presentFloats(plan.floats.map { $0.id })
 
-        // Main pass — the active-main switch. The core's activeMainId is the
-        // single source of truth for which lxapp occupies the primary content
-        // area; when it differs from what the shell currently has attached, drive
-        // the switch through the shell. reconcileActiveMain reuses the existing
-        // attach machinery and is itself idempotent, and the browser is not a
-        // graph main (attachedMainAppId is nil while the browser is active), so a
-        // plan whose activeMainId already matches the on-screen main is a no-op.
-        if let activeMainId = plan.activeMainId, activeMainId != shell.attachedMainAppId {
-            shell.reconcileActiveMain(appId: activeMainId)
+        // Main provider pass. `activeMainId` is a Surface id, never a provider
+        // app id. Only lxapp content is attached here; browser/native providers
+        // already rendered their content before committing this plan.
+        if let activeMainId = plan.activeMainId,
+           let item = plan.mainSwitcher?.items.first(where: { $0.surfaceId == activeMainId }),
+           item.content.kind == "lxapp",
+           let appId = item.content.appId,
+           appId != shell.attachedMainAppId {
+            shell.reconcileActiveMain(appId: appId)
         }
 
         return true

@@ -290,10 +290,14 @@ impl SurfaceManager {
         let Some(presentation) = self.presentations.get_mut(id) else {
             return false;
         };
-        presentation.automatic_title = title
+        let title = title
             .map(str::trim)
             .filter(|title| !title.is_empty())
             .map(str::to_string);
+        if presentation.automatic_title == title {
+            return false;
+        }
+        presentation.automatic_title = title;
         self.bump_revision();
         true
     }
