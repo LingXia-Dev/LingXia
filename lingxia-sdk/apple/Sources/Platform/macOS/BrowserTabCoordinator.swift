@@ -122,7 +122,10 @@ final class BrowserTabCoordinator: NSObject {
     private let backButton = NSButton()
     private let forwardButton = NSButton()
     private let refreshButton = NSButton()
-    private let addressBarContainer = NSView()
+    private let addressBarContainer = LxAppHostThemeLayerView(
+        role: .foreground,
+        alpha: 0.06
+    )
     private let addressField = NSTextField()
     /// Save the current website to the bookmarks archive.
     private let starButton = NSButton()
@@ -1340,10 +1343,7 @@ final class BrowserTabCoordinator: NSObject {
         toolbar.addSubview(refreshButton)
 
         addressBarContainer.translatesAutoresizingMaskIntoConstraints = false
-        addressBarContainer.wantsLayer = true
         addressBarContainer.layer?.cornerRadius = 6
-        addressBarContainer.layer?.backgroundColor =
-            LxAppHostTheme.foreground.withAlphaComponent(0.06).cgColor
         toolbar.addSubview(addressBarContainer)
 
         addressField.translatesAutoresizingMaskIntoConstraints = false

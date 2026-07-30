@@ -205,6 +205,7 @@ final class SidebarPinTileView: NSView {
         background.layer?.backgroundColor = LxAppHostTheme.foreground.withAlphaComponent(base).cgColor
         background.layer?.borderWidth = isFocused ? 1.5 : 0
         background.layer?.borderColor = LxAppHostTheme.accent.cgColor
+        activeDot.layer?.backgroundColor = LxAppHostTheme.accent.cgColor
         activeDot.isHidden = openTabId == nil || isFocused
     }
 
