@@ -121,7 +121,7 @@ Every published package and what to import from each. Don't guess imports from t
 | `@lingxia/page-runtime` | Internal — shared impl behind react/vue/html | **don't import directly** | — |
 | `@lingxia/skill` | This skill itself | install via `npx @lingxia/skill install` | not imported in code |
 
-**Logic-side typing**: install `@lingxia/types` as a devDependency (declarations are global — no `import`). Full install steps and the `lx.*` surface map: [`./lxapp/lx-api.md`](./lxapp/lx-api.md).
+**Logic-side typing**: install `@lingxia/types` as a devDependency (declarations are global — no `import`). Runtime boundaries and typing setup: [`./lxapp/lx-api.md`](./lxapp/lx-api.md).
 
 ## Reference map (inside this skill)
 
@@ -133,7 +133,7 @@ Every published package and what to import from each. Don't guess imports from t
 | Page authoring: `Page({})`, `useLxPage`, events | [`./lxapp/guide.md`](./lxapp/guide.md) |
 | Adaptive Views: surface size classes, runtime switching, Runner device frames | [`./lxapp/adaptive-ui.md`](./lxapp/adaptive-ui.md) |
 | **Native components: `LxVideo`, `LxMediaSwiper`, `LxPicker`, `LxNavigator` (text input is plain `<input>`/`<textarea>`)** | [`./lxapp/components.md`](./lxapp/components.md) |
-| **Logic-side `lx.*` API surface map** | [`./lxapp/lx-api.md`](./lxapp/lx-api.md) |
+| **Logic runtime globals and typing setup** | [`./lxapp/lx-api.md`](./lxapp/lx-api.md) |
 | Bridge mechanics: `setData`, stream, channel | [`./lxapp/bridge.md`](./lxapp/bridge.md) |
 | Host project: `lingxia.yaml` reference, adaptive `surfaces` | [`./app/project.md`](./app/project.md) |
 | Native Rust: `HostAddon`, `#[lingxia::native]`, facades, JS extensions | [`./native/development.md`](./native/development.md) |

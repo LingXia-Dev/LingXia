@@ -7,7 +7,7 @@ Companion pages in this skill:
 - [Adaptive UI](./adaptive-ui.md) - surface size classes, dynamic View
   selection, and Runner device-frame testing.
 - [Components](./components.md) — `LxPicker`, `LxVideo`, `LxMediaSwiper`, `LxNavigator` — capabilities, callback shapes, and imperative control (attribute lists live in the exported `@lingxia/elements` types); text input is plain `<input>` / `<textarea>`.
-- [Logic-side `lx.*` API](./lx-api.md) — runtime globals, typing wiring, cross-cutting behavior; signatures and per-method contracts live in `@lingxia/types` (install steps here too).
+- [Logic runtime and typings](./lx-api.md) — runtime globals and typing wiring; signatures and behavior live in the generated `@lingxia/types` declarations.
 - [Bridge Guide](./bridge.md) — `setData`, stream, channel mechanics in depth.
 - [App Project](../app/project.md) — host app setup (`lingxia.yaml`, adaptive `surfaces`).
 
@@ -517,7 +517,7 @@ Full option shapes: the corresponding `*Options` types in `@lingxia/types`.
 - Touching the DOM from Logic — Logic has no DOM access; use `lx.*` for platform operations and `setData()` for state.
 - Keeping business state in View `useState`/`ref` instead of Logic-managed `setData()` — state drifts across the bridge boundary.
 - Assuming every component's event handler receives the same shape — `LxPicker` hands you the resolved value, `LxVideo` passes the raw DOM `CustomEvent`. See [Components](./components.md#callback-shapes-by-component).
-- Skipping `@lingxia/types` in the lxapp's devDependencies and losing intellisense on the entire `lx.*` surface. See [Logic-side `lx.*` API](./lx-api.md).
+- Skipping `@lingxia/types` in the lxapp's devDependencies and losing intellisense on the entire `lx.*` surface. See [Logic runtime and typings](./lx-api.md).
 - Forgetting that only public `Page({})` methods become actions; lifecycle hooks and `_`-prefixed helpers are not exposed.
 - Mutating `App({}).globalData` and expecting page views to re-render — `globalData` is not reactive. Propagate to a page's `data` via `setData`.
 - Calling `lx.navigateTo` / `lx.redirectTo` on a tab page — rejected by the runtime. Use `lx.switchTab` for tab-page entry; `navigateBack` for non-tab stack pops.
