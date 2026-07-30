@@ -46,6 +46,7 @@ browser-use = ["control", "lingxia-control-runtime/browser"]
 devtools = ["dep:lingxia-control-runtime", "lingxia/devtool", "lingxia-control-runtime/dev-bridge", "lingxia-control-runtime/browser", "lingxia-control-runtime/test-runtime", "automation"]
 automation = ["lingxia/automation"]
 webview-input = ["lingxia/webview-input"]
+servo = ["lingxia/servo"]
 # Cloud provider. Inert by default; `lingxia build/dev --with-provider cloud`
 # injects the private `lingxia-cloud-client` crate and rewrites this to `dep:`.
 cloud = []
@@ -97,3 +98,8 @@ lingxia-transfer = { path = "../../../crates/lingxia-transfer" }
 lingxia-update = { path = "../../../crates/lingxia-update" }
 lingxia-webview = { path = "../../../crates/lingxia-webview" }
 lingxia-windows-sdk = { path = "../../../crates/lingxia-windows-sdk" }
+
+# Servo 0.4 compatibility fixes needed when cross-compiling Android from Windows.
+servo-allocator = { path = "../../../crates/lingxia-webview/vendor/servo-allocator" }
+servo-storage = { path = "../../../crates/lingxia-webview/vendor/servo-storage" }
+sea-query-rusqlite = { path = "../../../crates/lingxia-webview/vendor/sea-query-rusqlite" }
