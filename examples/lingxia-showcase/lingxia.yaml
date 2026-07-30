@@ -23,6 +23,7 @@ update:
 
 android:
   packageId: com.lingxia.example.lxapp
+  webviewBackend: servo
   minSdk: 29
   targetSdk: 35
   compileSdk: 35
