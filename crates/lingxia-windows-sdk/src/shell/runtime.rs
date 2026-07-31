@@ -3796,9 +3796,18 @@ fn surface_menu_entry(
     item: &lingxia_shell::SurfaceMenuItem,
 ) -> super::context_menu::ContextMenuEntry {
     use lingxia_logic::I18nKey;
-    use lingxia_shell::{SurfaceMenuAction, SurfaceMenuBuiltinAction};
+    use lingxia_shell::{LxappSurfaceMenuAction, SurfaceMenuAction, SurfaceMenuBuiltinAction};
     let (label, icon) = match &item.action {
+        SurfaceMenuAction::Information {} => (item.label.clone().unwrap_or_default(), None),
         SurfaceMenuAction::External { .. } => (item.label.clone().unwrap_or_default(), None),
+        SurfaceMenuAction::Lxapp { action } => match action {
+            LxappSurfaceMenuAction::Restart => {
+                (lingxia_logic::i18n::t(I18nKey::CapsuleRestart), None)
+            }
+            LxappSurfaceMenuAction::CleanCacheRestart => {
+                (lingxia_logic::i18n::t(I18nKey::CapsuleCleanCache), None)
+            }
+        },
         SurfaceMenuAction::Switcher { action } => match action {
             SurfaceMenuBuiltinAction::Rename => {
                 (lingxia_logic::i18n::t(I18nKey::SurfaceRename), None)

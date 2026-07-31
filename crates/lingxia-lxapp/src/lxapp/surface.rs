@@ -487,7 +487,7 @@ impl WindowSurfaceController {
     fn surface_menu(
         &self,
         surface_id: &str,
-        content_items: Vec<lingxia_shell::SurfaceMenuItem>,
+        content_groups: Vec<Vec<lingxia_shell::SurfaceMenuItem>>,
     ) -> Option<lingxia_shell::SurfaceMenuSnapshot> {
         let snapshot = self.manager.lock().unwrap().switcher_snapshot();
         let index = snapshot
@@ -512,7 +512,7 @@ impl WindowSurfaceController {
                     .skip(index + 1)
                     .any(|candidate| candidate.closable),
             },
-            content_items,
+            content_groups,
         ))
     }
 
@@ -781,7 +781,9 @@ fn execute_surface_menu_intent(
         },
         // Provider actions are dispatched by the provider integration, never
         // interpreted as shell lifecycle operations.
-        lingxia_shell::SurfaceMenuAction::External { .. } => false,
+        lingxia_shell::SurfaceMenuAction::Information {}
+        | lingxia_shell::SurfaceMenuAction::Lxapp { .. }
+        | lingxia_shell::SurfaceMenuAction::External { .. } => false,
     };
     HostSurfaceMenuExecution {
         accepted,
@@ -1551,12 +1553,31 @@ impl LxApp {
         if surface_id.is_empty() {
             return None;
         }
-        let content_items = match self.main_surface_content(surface_id) {
+        let content_groups = match self.main_surface_content(surface_id) {
             Some(lingxia_surface::SurfaceContent::Lxapp { app_id, .. }) => crate::try_get(&app_id)
                 .map(|app| {
+                    let info = app.get_lxapp_info();
+                    let mut groups = vec![
+                        vec![lingxia_shell::SurfaceMenuItem::information(
+                            lxapp_surface_menu_header(
+                                &app_id,
+                                &info.app_name,
+                                &info.version,
+                                &info.release_type,
+                            ),
+                        )],
+                        vec![
+                            lingxia_shell::SurfaceMenuItem::lxapp(
+                                lingxia_shell::LxappSurfaceMenuAction::Restart,
+                            ),
+                            lingxia_shell::SurfaceMenuItem::lxapp(
+                                lingxia_shell::LxappSurfaceMenuAction::CleanCacheRestart,
+                            ),
+                        ],
+                    ];
                     let actions = app.more_actions();
                     let generation = actions.generation;
-                    actions
+                    let more_actions = actions
                         .items
                         .into_iter()
                         .enumerate()
@@ -1569,18 +1590,72 @@ impl LxApp {
                                 (!item.icon_path.trim().is_empty()).then_some(item.icon_path),
                             )
                         })
-                        .collect()
+                        .collect::<Vec<_>>();
+                    if !more_actions.is_empty() {
+                        groups.push(more_actions);
+                    }
+                    groups
                 })
                 .unwrap_or_default(),
             _ => Vec::new(),
         };
-        window_controller(PRIMARY_WINDOW, &self.runtime).surface_menu(surface_id, content_items)
+        window_controller(PRIMARY_WINDOW, &self.runtime).surface_menu(surface_id, content_groups)
     }
 
     pub fn perform_shell_surface_menu_intent(
         &self,
         intent: lingxia_shell::SurfaceMenuIntent,
     ) -> HostSurfaceMenuExecution {
+        if matches!(
+            &intent.action,
+            lingxia_shell::SurfaceMenuAction::Information {}
+        ) {
+            return HostSurfaceMenuExecution {
+                accepted: false,
+                removed_surface_ids: Vec::new(),
+                snapshot: self.surface_switcher_snapshot(),
+            };
+        }
+        if let lingxia_shell::SurfaceMenuAction::Lxapp { action } = &intent.action {
+            let action = *action;
+            let snapshot = self.surface_switcher_snapshot();
+            let target = (snapshot.revision == intent.revision)
+                .then(|| self.main_surface_content(&intent.surface_id))
+                .flatten()
+                .and_then(|content| match content {
+                    lingxia_surface::SurfaceContent::Lxapp { app_id, .. } => {
+                        crate::try_get(&app_id)
+                    }
+                    _ => None,
+                });
+            let accepted = target.is_some_and(|app| {
+                let clear_cache = matches!(
+                    action,
+                    lingxia_shell::LxappSurfaceMenuAction::CleanCacheRestart
+                );
+                let app_id = app.appid.clone();
+                std::thread::Builder::new()
+                    .name(format!("lingxia-lxapp-restart-{app_id}"))
+                    .spawn(move || {
+                        let result = (|| {
+                            if clear_cache {
+                                app.clear_user_cache()?;
+                            }
+                            app.restart_in_place()
+                        })();
+                        if let Err(error) = result {
+                            warn!("Failed to run lxapp surface maintenance: {error}")
+                                .with_appid(app_id);
+                        }
+                    })
+                    .is_ok()
+            });
+            return HostSurfaceMenuExecution {
+                accepted,
+                removed_surface_ids: Vec::new(),
+                snapshot,
+            };
+        }
         if let lingxia_shell::SurfaceMenuAction::External {
             namespace,
             generation,
@@ -1942,6 +2017,29 @@ impl LxApp {
     }
 }
 
+fn lxapp_surface_menu_header(
+    app_id: &str,
+    app_name: &str,
+    version: &str,
+    release_type: &str,
+) -> String {
+    let mut header = if app_name.trim().is_empty() {
+        app_id.to_string()
+    } else {
+        app_name.trim().to_string()
+    };
+    if !version.trim().is_empty() {
+        header.push_str(" · ");
+        header.push_str(version.trim());
+    }
+    match release_type.trim().to_ascii_lowercase().as_str() {
+        "developer" => header.push_str(" [DEV]"),
+        "preview" => header.push_str(" [PRE]"),
+        _ => {}
+    }
+    header
+}
+
 fn validate_url_callback_target(target: &str, dev_mode: bool) -> Result<(), LxAppError> {
     let raw_scheme = target
         .split_once(':')
@@ -2152,6 +2250,15 @@ fn close_reason_str(reason: CloseReason) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn lxapp_surface_menu_header_includes_channel_badge() {
+        assert_eq!(
+            lxapp_surface_menu_header("demo", "Showcase", "1.2.3", "developer"),
+            "Showcase · 1.2.3 [DEV]"
+        );
+        assert_eq!(lxapp_surface_menu_header("demo", "", "", "release"), "demo");
+    }
 
     fn url_record(url_callback: bool, ephemeral_web_data: bool) -> SurfaceRecord {
         SurfaceRecord {

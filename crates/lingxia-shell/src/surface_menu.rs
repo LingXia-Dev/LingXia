@@ -16,6 +16,13 @@ pub enum SurfaceMenuBuiltinAction {
     CloseAfter,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum LxappSurfaceMenuAction {
+    Restart,
+    CleanCacheRestart,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(
     tag = "owner",
@@ -23,8 +30,12 @@ pub enum SurfaceMenuBuiltinAction {
     rename_all_fields = "camelCase"
 )]
 pub enum SurfaceMenuAction {
+    Information {},
     Switcher {
         action: SurfaceMenuBuiltinAction,
+    },
+    Lxapp {
+        action: LxappSurfaceMenuAction,
     },
     External {
         namespace: String,
@@ -56,6 +67,26 @@ pub struct SurfaceMenuItem {
 }
 
 impl SurfaceMenuItem {
+    pub fn information(label: impl Into<String>) -> Self {
+        Self {
+            action: SurfaceMenuAction::Information {},
+            label: Some(label.into()),
+            icon: None,
+            enabled: false,
+            role: SurfaceMenuItemRole::Normal,
+        }
+    }
+
+    pub fn lxapp(action: LxappSurfaceMenuAction) -> Self {
+        Self {
+            action: SurfaceMenuAction::Lxapp { action },
+            label: None,
+            icon: None,
+            enabled: true,
+            role: SurfaceMenuItemRole::Normal,
+        }
+    }
+
     pub fn external(
         namespace: impl Into<String>,
         generation: u64,
@@ -123,13 +154,13 @@ pub struct SurfaceMenuContext {
 
 pub fn compose_surface_menu(
     context: SurfaceMenuContext,
-    content_items: Vec<SurfaceMenuItem>,
+    content_groups: Vec<Vec<SurfaceMenuItem>>,
 ) -> SurfaceMenuSnapshot {
     let mut sections = Vec::with_capacity(3);
-    if !content_items.is_empty() {
+    for items in content_groups.into_iter().filter(|items| !items.is_empty()) {
         sections.push(SurfaceMenuSection {
             kind: SurfaceMenuSectionKind::Content,
-            items: content_items,
+            items,
         });
     }
 
@@ -255,7 +286,7 @@ mod tests {
                 has_other_closable: true,
                 has_closable_after: false,
             },
-            vec![more_action],
+            vec![vec![more_action]],
         );
 
         assert_eq!(
@@ -283,5 +314,43 @@ mod tests {
         assert_eq!(json["action"]["namespace"], "browser");
         assert_eq!(json["action"]["generation"], 41);
         assert_eq!(json["action"]["actionId"], "copy-link");
+    }
+
+    #[test]
+    fn lxapp_groups_keep_metadata_maintenance_and_more_actions_separate() {
+        let snapshot = compose_surface_menu(
+            SurfaceMenuContext {
+                revision: 3,
+                surface_id: "home".into(),
+                closable: false,
+                renameable: false,
+                title_overridden: false,
+                has_other_closable: false,
+                has_closable_after: false,
+            },
+            vec![
+                vec![SurfaceMenuItem::information("Showcase · 1.0.0 [DEV]")],
+                vec![
+                    SurfaceMenuItem::lxapp(LxappSurfaceMenuAction::Restart),
+                    SurfaceMenuItem::lxapp(LxappSurfaceMenuAction::CleanCacheRestart),
+                ],
+                vec![SurfaceMenuItem::external(
+                    "showcase", 2, "0", "Feedback", None,
+                )],
+            ],
+        );
+
+        assert_eq!(snapshot.sections.len(), 3);
+        assert!(snapshot.sections[0].items.iter().all(|item| !item.enabled));
+        assert!(matches!(
+            snapshot.sections[1].items[0].action,
+            SurfaceMenuAction::Lxapp {
+                action: LxappSurfaceMenuAction::Restart
+            }
+        ));
+        assert!(matches!(
+            snapshot.sections[2].items[0].action,
+            SurfaceMenuAction::External { .. }
+        ));
     }
 }

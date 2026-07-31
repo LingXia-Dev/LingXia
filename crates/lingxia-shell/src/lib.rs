@@ -28,7 +28,7 @@ pub use sidebar_action::{
 };
 pub use store::{PIN_STORE_FILE, ShellStore};
 pub use surface_menu::{
-    SurfaceMenuAction, SurfaceMenuBuiltinAction, SurfaceMenuContext, SurfaceMenuIntent,
-    SurfaceMenuItem, SurfaceMenuItemRole, SurfaceMenuSection, SurfaceMenuSectionKind,
-    SurfaceMenuSnapshot, compose_surface_menu,
+    LxappSurfaceMenuAction, SurfaceMenuAction, SurfaceMenuBuiltinAction, SurfaceMenuContext,
+    SurfaceMenuIntent, SurfaceMenuItem, SurfaceMenuItemRole, SurfaceMenuSection,
+    SurfaceMenuSectionKind, SurfaceMenuSnapshot, compose_surface_menu,
 };
