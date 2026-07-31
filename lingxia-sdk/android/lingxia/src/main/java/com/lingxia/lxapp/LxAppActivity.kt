@@ -1052,6 +1052,10 @@ class LxAppActivity : AppCompatActivity() {
                 addView(hostView)
             }
 
+            container.visibility = View.VISIBLE
+            container.alpha = 1f
+            container.translationX = 0f
+
             if (existingWrapper == null) {
                 webViewContainer.addView(container)
             } else {
@@ -1728,26 +1732,24 @@ class LxAppActivity : AppCompatActivity() {
      * Extracted from navigateToPage for reuse in coordinated navigation
      */
     private fun performWebViewTransition(oldWebView: LingXiaWebViewHost?, newContainer: FrameLayout, isBackNavigation: Boolean, shouldAnimate: Boolean = true, navbarState: NavigationBarState? = null) {
-        // Get reference to old container BEFORE adding new one. A reused
-        // container is already a child and can still carry the current tag, so
-        // exclude it here or the page would be mistaken for its own predecessor.
-        val oldContainer = webViewContainer.findViewWithTag<ViewGroup>("current_webview_container")
-            ?.takeIf { it !== newContainer }
+        val oldContainer = (oldWebView?.hostView?.parent as? ViewGroup)
+            ?.takeIf { it.parent === webViewContainer && it !== newContainer }
+            ?: webViewContainer.findViewWithTag<ViewGroup>("current_webview_container")
+                ?.takeIf { it !== newContainer }
         oldContainer?.tag = "previous_webview_container" // Re-tag old container
         newContainer.tag = "current_webview_container"
+        newContainer.visibility = View.VISIBLE
+        newContainer.alpha = 1f
 
-        try {
-            if (newContainer.parent == null) {
+        if (newContainer.parent == null) {
+            try {
                 webViewContainer.addView(newContainer)
-            } else {
-                // Retired earlier but never detached, so its surface is intact:
-                // showing it is the whole switch.
-                newContainer.visibility = View.VISIBLE
-                webViewContainer.bringChildToFront(newContainer)
+            } catch (e: Exception) {
+                LxLog.e(TAG, "Error adding new container to webViewContainer: ${e.message}")
+                return
             }
-        } catch (e: Exception) {
-            LxLog.e(TAG, "Error adding new container to webViewContainer: ${e.message}")
-            return
+        } else {
+            webViewContainer.bringChildToFront(newContainer)
         }
         pruneRetiredDuplicates(newContainer)
         // App-context webviews miss the activity's night override; sync the
@@ -1865,7 +1867,7 @@ class LxAppActivity : AppCompatActivity() {
      * Everything else is removed as before — a pushed page is not coming back.
      */
     private fun retireContainer(container: ViewGroup) {
-        val path = (container.getChildAt(0) as? WebView)?.getCurrentPath()
+        val path = (container.getChildAt(0) as? LingXiaWebViewHost)?.getCurrentPath()
         if (isTabPath(path)) {
             container.translationX = 0f
             container.visibility = View.GONE
@@ -1881,12 +1883,12 @@ class LxAppActivity : AppCompatActivity() {
      * containers qualify: a visible one is still mid-transition.
      */
     private fun pruneRetiredDuplicates(keep: ViewGroup) {
-        val keepPath = (keep.getChildAt(0) as? WebView)?.getCurrentPath() ?: return
+        val keepPath = (keep.getChildAt(0) as? LingXiaWebViewHost)?.getCurrentPath() ?: return
         val normalized = keepPath.substringBefore('?').substringBefore('#')
         for (index in webViewContainer.childCount - 1 downTo 0) {
             val child = webViewContainer.getChildAt(index) as? ViewGroup ?: continue
             if (child === keep || child.visibility != View.GONE) continue
-            val childPath = (child.getChildAt(0) as? WebView)?.getCurrentPath() ?: continue
+            val childPath = (child.getChildAt(0) as? LingXiaWebViewHost)?.getCurrentPath() ?: continue
             if (childPath.substringBefore('?').substringBefore('#') == normalized) {
                 cleanupOldContainer(child)
             }
@@ -1895,7 +1897,21 @@ class LxAppActivity : AppCompatActivity() {
 
     private fun cleanupOldContainer(container: ViewGroup) {
         try {
-            webViewContainer.removeView(container)
+            val host = (0 until container.childCount)
+                .asSequence()
+                .map { container.getChildAt(it) }
+                .filterIsInstance<LingXiaWebViewHost>()
+                .firstOrNull()
+            if (host?.retainsSurfaceWhenHidden() == true) {
+                host.pause()
+                // TextureView releases its SurfaceTexture when detached. Keep Servo's
+                // wrapper attached and laid out, but make it fully transparent while idle.
+                container.alpha = 0f
+                container.translationX = 0f
+                container.tag = "cached_webview_container"
+            } else {
+                webViewContainer.removeView(container)
+            }
         } catch (e: Exception) {
             LxLog.e(TAG, "Error cleaning up old container: ${e.message}")
         }
@@ -1985,6 +2001,9 @@ class LxAppActivity : AppCompatActivity() {
                     FrameLayout.LayoutParams.MATCH_PARENT
                 )
 
+                if (newHostView.parent != null) {
+                    (newHostView.parent as? ViewGroup)?.removeView(newHostView)
+                }
                 try {
                     addView(newHostView)
                 } catch (e: Exception) {
@@ -1992,6 +2011,8 @@ class LxAppActivity : AppCompatActivity() {
                     return@apply
                 }
             }
+            newContainer.visibility = View.VISIBLE
+            newContainer.alpha = 1f
 
             NativeBridge.attachIfNeeded(newWebView)
 
