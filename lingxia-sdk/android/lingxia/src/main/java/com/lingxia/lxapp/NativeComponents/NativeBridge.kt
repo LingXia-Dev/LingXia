@@ -11,6 +11,7 @@ import android.widget.FrameLayout
 import com.lingxia.lxapp.NativeComponents.Components.MediaSwiperComponentFactory
 import com.lingxia.lxapp.NativeComponents.Components.VideoComponentFactory
 import com.lingxia.lxapp.NativeComponents.Components.PickerComponentFactory
+import com.lingxia.webview.LingXiaServoView
 import com.lingxia.webview.LingXiaWebView
 import com.lingxia.webview.LingXiaWebViewHost
 import org.json.JSONArray
@@ -193,6 +194,8 @@ internal class NativeBridge private constructor(
         preDrawListener = null
         lastSyncedScrollX = Int.MIN_VALUE
         lastSyncedScrollY = Int.MIN_VALUE
+        (overlayHost?.parent as? ViewGroup)?.removeView(overlayHost)
+        overlayHost = null
     }
 
     private fun refreshPageKeyIfNeeded() {
@@ -246,10 +249,28 @@ internal class NativeBridge private constructor(
 
         @JvmStatic
         fun attachIfNeeded(webView: LingXiaWebViewHost) {
+            if (!webView.usesStrictSecurityProfile()) return
             val id = System.identityHashCode(webView)
-            bridgeMap[id]?.ensureOverlayHostAttached() ?: run {
+            val bridge = bridgeMap[id]?.also { it.ensureOverlayHostAttached() } ?: run {
                 registerDefaultComponents()
-                bridgeMap[id] = NativeBridge(webView).also { it.install() }
+                NativeBridge(webView).also {
+                    it.install()
+                    bridgeMap[id] = it
+                }
+            }
+            if (webView is LingXiaServoView) {
+                val webViewRef = WeakReference(webView)
+                webView.setNativeComponentMessageHandler(
+                    object : LingXiaServoView.NativeComponentMessageHandler {
+                        override fun onMessage(message: String) {
+                            bridge.handleMessage(message)
+                        }
+
+                        override fun onDestroyed() {
+                            webViewRef.get()?.let(::notifyPageDestroyed)
+                        }
+                    }
+                )
             }
         }
 
