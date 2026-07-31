@@ -448,6 +448,16 @@ impl WindowSurfaceController {
         self.manager.lock().unwrap().switcher_snapshot()
     }
 
+    fn main_surface_content(&self, surface_id: &str) -> Option<lingxia_surface::SurfaceContent> {
+        self.manager
+            .lock()
+            .unwrap()
+            .graph()
+            .get(surface_id)
+            .filter(|surface| surface.role == lingxia_surface::Role::Main)
+            .map(|surface| surface.content.clone())
+    }
+
     fn surface_menu(
         &self,
         surface_id: &str,
@@ -1493,6 +1503,18 @@ impl LxApp {
 
     pub fn surface_switcher_snapshot(&self) -> lingxia_surface::SurfaceSwitcherSnapshot {
         window_controller(PRIMARY_WINDOW, &self.runtime).switcher_snapshot()
+    }
+
+    pub fn main_surface_content(
+        &self,
+        surface_id: &str,
+    ) -> Option<lingxia_surface::SurfaceContent> {
+        let surface_id = surface_id.trim();
+        (!surface_id.is_empty())
+            .then(|| {
+                window_controller(PRIMARY_WINDOW, &self.runtime).main_surface_content(surface_id)
+            })
+            .flatten()
     }
 
     pub fn shell_surface_menu(

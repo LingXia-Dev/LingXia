@@ -24,7 +24,9 @@ use lingxia_shell::{
     ResolvedShellSidebarAction, ShellPin, ShellPinTarget, SidebarActionIntent,
     SidebarActionPlacement,
 };
-use lingxia_surface::{Edge, LayoutPresentationPlan, SlotKind, SwitcherContentKind};
+use lingxia_surface::{
+    Edge, LayoutPresentationPlan, SlotKind, SurfaceIcon, SurfaceSwitcherItem, SwitcherContentKind,
+};
 use lingxia_webview::WebTag;
 #[cfg(feature = "browser-runtime")]
 use lingxia_webview::platform::windows::find_webview_handler;
@@ -101,6 +103,8 @@ static SELF_BROWSER_HOST: AtomicBool = AtomicBool::new(false);
 #[cfg(feature = "browser-runtime")]
 static SELF_BROWSER_ROOT_TAB: OnceLock<Mutex<Option<String>>> = OnceLock::new();
 #[cfg(feature = "browser-runtime")]
+static DECLARED_BROWSER_TABS: OnceLock<Mutex<HashMap<String, String>>> = OnceLock::new();
+#[cfg(feature = "browser-runtime")]
 static BROWSER_TAB_MEMORY_STATE: OnceLock<Mutex<BrowserTabMemoryState>> = OnceLock::new();
 #[cfg(feature = "browser-runtime")]
 static LIVE_BROWSER_TAB_LIMIT: OnceLock<usize> = OnceLock::new();
@@ -122,6 +126,7 @@ struct BrowserTabMemoryState {
 
 const AUX_LXAPP_PREFIX: &str = "lxapp:";
 const AUX_BOOKMARK_PREFIX: &str = "bookmark:";
+const AUX_SURFACE_PREFIX: &str = "surface:";
 const SHELL_TERMINAL_SURFACE_ID: &str = "shell:terminal";
 
 #[derive(Debug, Clone)]
@@ -524,13 +529,34 @@ pub(crate) fn open_self_browser(_url: &str) -> Result<(), String> {
 
 /// Opens a declared browser main while the home lxapp remains the shell owner.
 #[cfg(feature = "browser-runtime")]
-pub(crate) fn open_declared_browser(owner_appid: &str, url: &str) -> Result<(), String> {
+pub(crate) fn open_declared_browser(
+    owner_appid: &str,
+    surface_id: &str,
+    url: &str,
+) -> Result<(), String> {
     SELF_BROWSER_HOST.store(false, Ordering::Release);
     set_shell_owner_appid(owner_appid);
     let owner = lxapp::try_get(owner_appid)
         .ok_or_else(|| format!("home control lxapp is not active: {owner_appid}"))?;
+    let existing = DECLARED_BROWSER_TABS
+        .get_or_init(|| Mutex::new(HashMap::new()))
+        .lock()
+        .ok()
+        .and_then(|tabs| tabs.get(surface_id).cloned())
+        .filter(|tab_id| browser_tab_summary(tab_id).is_some());
+    if let Some(tab_id) = existing {
+        let _ = lingxia_browser::activate(&tab_id);
+        present_browser_tab_when_ready(owner_appid, tab_id);
+        return Ok(());
+    }
     let tab_id = lingxia_browser::open_for_app(owner_appid, owner.session_id(), url, None)
         .map_err(|error| error.to_string())?;
+    if let Ok(mut tabs) = DECLARED_BROWSER_TABS
+        .get_or_init(|| Mutex::new(HashMap::new()))
+        .lock()
+    {
+        tabs.insert(surface_id.to_string(), tab_id.clone());
+    }
     present_browser_tab_when_ready_with_policy(owner_appid, tab_id, url == "about:blank");
     Ok(())
 }
@@ -1013,6 +1039,7 @@ fn schedule_browser_tabs_changed_sync() {
 fn on_browser_tabs_changed() {
     let recent_tab = lingxia_browser::current_tab().map(|tab| tab.tab_id);
     enforce_browser_tab_memory_limit(recent_tab.as_deref());
+    reconcile_declared_browser_surfaces();
     if let Some(presented) = presented_browser_tab()
         && browser_tab_summary(&presented).is_none()
     {
@@ -1040,6 +1067,57 @@ fn on_browser_tabs_changed() {
     }
     if let Some(appid) = shell_owner_appid() {
         sync_shell_layout(&appid);
+    }
+}
+
+#[cfg(feature = "browser-runtime")]
+fn reconcile_declared_browser_surfaces() {
+    let entries = DECLARED_BROWSER_TABS
+        .get()
+        .and_then(|tabs| tabs.lock().ok())
+        .map(|tabs| {
+            tabs.iter()
+                .map(|(surface_id, tab_id)| (surface_id.clone(), tab_id.clone()))
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    if entries.is_empty() {
+        return;
+    }
+    let Some(owner) = shell_owner_appid().and_then(|appid| lxapp::try_get(&appid)) else {
+        return;
+    };
+    for (surface_id, tab_id) in entries {
+        if let Some(tab) = browser_tab_summary(&tab_id) {
+            let _ = owner.update_shell_surface_automatic_title(
+                &surface_id,
+                Some(&browser_tab_display_title(&tab)),
+            );
+            continue;
+        }
+        if let Some(tabs) = DECLARED_BROWSER_TABS.get()
+            && let Ok(mut tabs) = tabs.lock()
+        {
+            tabs.remove(&surface_id);
+        }
+        let outcome = owner.close_main_surface(&surface_id);
+        match outcome {
+            lingxia_surface::CloseOutcome::RejectedRoot { .. } => {
+                if let Err(error) = present_main_surface(&owner, &surface_id) {
+                    log::warn!(
+                        "failed to restore closed Windows browser root {surface_id}: {error}"
+                    );
+                }
+            }
+            lingxia_surface::CloseOutcome::Closed { .. } => {
+                if let Some(active) = owner.surface_switcher_snapshot().active_surface_id
+                    && let Err(error) = present_main_surface(&owner, &active)
+                {
+                    log::warn!("failed to present successor after browser close {active}: {error}");
+                }
+            }
+            lingxia_surface::CloseOutcome::NotFound => {}
+        }
     }
 }
 
@@ -1297,6 +1375,10 @@ fn build_self_browser_tab_bar_layout() -> Option<WindowsShellTabBarLayout> {
             .unwrap_or_else(|| "New Tab".to_string()),
         app_icon_path: String::new(),
         group_id: lingxia_browser::BUILTIN_BROWSER_APPID.to_string(),
+        group_target_id: format!(
+            "{AUX_LXAPP_PREFIX}{}",
+            lingxia_browser::BUILTIN_BROWSER_APPID
+        ),
         group_active: true,
         group_closable: false,
         group_order_index: 0,
@@ -1597,9 +1679,19 @@ fn build_tab_bar_layout(
             .position(|item| normalize_tab_path(&item.pagePath) == target)
     });
     let ui_state = sidebar_ui_state(&app.appid);
-    let group_active =
-        presented_browser_tab().is_none() && active_main_lxapp_id().as_deref() == Some(&app.appid);
     let runtime_info = app.runtime_info();
+    let switcher_owner = shell_owner_appid().and_then(|appid| lxapp::try_get(&appid));
+    let switcher_app = switcher_owner.as_deref().unwrap_or(app);
+    let switcher = switcher_app.surface_switcher_snapshot();
+    let root = switcher.root_surface_id.as_deref().and_then(|root_id| {
+        switcher
+            .items
+            .iter()
+            .find(|item| item.surface_id == root_id)
+    });
+    let group_active = root.map(|item| item.active).unwrap_or_else(|| {
+        presented_browser_tab().is_none() && active_main_lxapp_id().as_deref() == Some(&app.appid)
+    });
     let items = tabbar
         .as_ref()
         .map(|tabbar| {
@@ -1617,11 +1709,33 @@ fn build_tab_bar_layout(
                 .collect::<Vec<_>>()
         })
         .unwrap_or_default();
-    let browser_tabs = browser_tabs();
+    let mut browser_tabs = browser_tabs();
+    let declared_browser_tabs = declared_browser_tab_ids();
+    browser_tabs.retain(|tab| !declared_browser_tabs.contains(&tab.tab_id));
     let mut auxiliary_items = build_pinned_items(&browser_tabs);
-    let mut main_rows = build_open_lxapp_items(&app.appid);
+    let declared_lxapps = switcher
+        .items
+        .iter()
+        .filter_map(|item| match &item.content {
+            SwitcherContentKind::Lxapp { app_id } | SwitcherContentKind::Page { app_id } => {
+                Some(app_id.as_str())
+            }
+            SwitcherContentKind::Browser | SwitcherContentKind::Native { .. } => None,
+        })
+        .collect::<HashSet<_>>();
+    let mut main_rows = build_surface_switcher_items(switcher_app, &switcher);
+    main_rows.extend(
+        build_open_lxapp_items(&app.appid)
+            .into_iter()
+            .filter(|row| {
+                auxiliary_lxapp_id(&row.id).is_none_or(|appid| !declared_lxapps.contains(appid))
+            }),
+    );
     main_rows.extend(build_browser_tab_items(browser_tabs));
-    let (group_order_index, main_rows) = order_main_tab_rows(&app.appid, main_rows);
+    let group_target_id = root
+        .map(|item| format!("{AUX_SURFACE_PREFIX}{}", item.surface_id))
+        .unwrap_or_else(|| format!("{AUX_LXAPP_PREFIX}{}", app.appid));
+    let (group_order_index, main_rows) = order_main_tab_rows(&group_target_id, main_rows);
     auxiliary_items.extend(main_rows);
     // The "+" opens a new browser tab, so it belongs to the full browser
     // environment only — not the device-framed dev runner, which hosts a
@@ -1713,11 +1827,18 @@ fn build_tab_bar_layout(
         },
         position,
         dimension,
-        app_name: runtime_info.app_name,
-        app_icon_path: app.get_lxapp_info().icon,
+        app_name: root
+            .map(surface_switcher_title)
+            .unwrap_or(runtime_info.app_name),
+        app_icon_path: root
+            .map(|item| surface_switcher_icon_path(switcher_app, item))
+            .unwrap_or_else(|| app.get_lxapp_info().icon),
         group_id: app.appid.clone(),
+        group_target_id,
         group_active,
-        group_closable: main_lxapp_closable(&app.appid),
+        group_closable: root
+            .map(|item| item.closable)
+            .unwrap_or_else(|| main_lxapp_closable(&app.appid)),
         group_order_index,
         collapsed: ui_state.collapsed,
         icon_rail: ui_state.icon_rail,
@@ -1848,11 +1969,99 @@ fn build_pinned_items(tabs: &[BrowserTabSummary]) -> Vec<WindowsShellAuxiliaryIt
         .collect()
 }
 
+fn build_surface_switcher_items(
+    owner: &LxApp,
+    snapshot: &lingxia_surface::SurfaceSwitcherSnapshot,
+) -> Vec<WindowsShellAuxiliaryItemLayout> {
+    snapshot
+        .items
+        .iter()
+        .filter(|item| !item.root)
+        .map(|item| WindowsShellAuxiliaryItemLayout {
+            id: format!("{AUX_SURFACE_PREFIX}{}", item.surface_id),
+            title: surface_switcher_title(item),
+            active: item.active,
+            pinned: false,
+            closable: item.closable,
+            icon_png: None,
+            icon_path: surface_switcher_icon_path(owner, item),
+        })
+        .collect()
+}
+
+fn surface_switcher_title(item: &SurfaceSwitcherItem) -> String {
+    if let SwitcherContentKind::Lxapp { app_id } | SwitcherContentKind::Page { app_id } =
+        &item.content
+        && item.title.as_deref().is_none_or(|title| title == app_id)
+        && let Some(title) = lxapp::try_get(app_id)
+            .map(|app| app.runtime_info().app_name)
+            .filter(|title| !title.trim().is_empty())
+    {
+        return title;
+    }
+    item.title
+        .as_deref()
+        .filter(|title| !title.trim().is_empty())
+        .unwrap_or(&item.surface_id)
+        .to_string()
+}
+
+fn surface_switcher_icon_path(owner: &LxApp, item: &SurfaceSwitcherItem) -> String {
+    match item.icon.as_ref() {
+        Some(SurfaceIcon::Resource { uri }) => {
+            let path = Path::new(uri);
+            if path.is_absolute() {
+                uri.clone()
+            } else {
+                resolve_asset_path(owner.runtime.asset_dir(), uri)
+                    .map(|path| path.to_string_lossy().into_owned())
+                    .unwrap_or_default()
+            }
+        }
+        Some(SurfaceIcon::ProviderAsset { provider, key }) if provider == "lxapp" => {
+            lxapp_auxiliary_icon_path(key)
+        }
+        Some(SurfaceIcon::BuiltIn { name }) if name == "terminal" => owner
+            .runtime
+            .asset_dir()
+            .join("icons")
+            .join("design")
+            .join("icon_terminal.png")
+            .to_string_lossy()
+            .into_owned(),
+        Some(SurfaceIcon::BuiltIn { name }) if name == "browser" => owner
+            .runtime
+            .asset_dir()
+            .join("icons")
+            .join("design")
+            .join("icon_globe.png")
+            .to_string_lossy()
+            .into_owned(),
+        Some(SurfaceIcon::BuiltIn { .. }) | Some(SurfaceIcon::ProviderAsset { .. }) | None => {
+            String::new()
+        }
+    }
+}
+
+#[cfg(feature = "browser-runtime")]
+fn declared_browser_tab_ids() -> HashSet<String> {
+    DECLARED_BROWSER_TABS
+        .get()
+        .and_then(|tabs| tabs.lock().ok())
+        .map(|tabs| tabs.values().cloned().collect())
+        .unwrap_or_default()
+}
+
+#[cfg(not(feature = "browser-runtime"))]
+fn declared_browser_tab_ids() -> HashSet<String> {
+    HashSet::new()
+}
+
 fn order_main_tab_rows(
-    group_appid: &str,
+    group_id: &str,
     rows: Vec<WindowsShellAuxiliaryItemLayout>,
 ) -> (usize, Vec<WindowsShellAuxiliaryItemLayout>) {
-    let group_id = format!("{AUX_LXAPP_PREFIX}{group_appid}");
+    let group_id = group_id.to_string();
     let mut live = HashSet::with_capacity(rows.len() + 1);
     live.insert(group_id.clone());
     live.extend(rows.iter().map(|row| row.id.clone()));
@@ -2034,6 +2243,12 @@ fn auxiliary_lxapp_id(raw: &str) -> Option<&str> {
     raw.strip_prefix(AUX_LXAPP_PREFIX)
         .map(str::trim)
         .filter(|appid| !appid.is_empty())
+}
+
+fn auxiliary_surface_id(raw: &str) -> Option<&str> {
+    raw.strip_prefix(AUX_SURFACE_PREFIX)
+        .map(str::trim)
+        .filter(|surface_id| !surface_id.is_empty())
 }
 
 fn set_lxapp_pin_with_limit(owner_appid: &str, appid: &str, pinned: bool) -> bool {
@@ -2556,6 +2771,10 @@ fn handle_chrome_event(appid: &str, event: WindowsChromeCommand) {
             let Some(tab_id) = payload_string(&event, "tab_id") else {
                 return;
             };
+            if let Some(surface_id) = auxiliary_surface_id(&tab_id) {
+                handle_main_surface_click(appid, surface_id);
+                return;
+            }
             #[cfg(feature = "browser-runtime")]
             if SELF_BROWSER_HOST.load(Ordering::Acquire) && is_browser_root_group_entry(&tab_id) {
                 if let Some(active) = self_browser_root_tab()
@@ -2587,6 +2806,10 @@ fn handle_chrome_event(appid: &str, event: WindowsChromeCommand) {
             let Some(tab_id) = payload_string(&event, "tab_id") else {
                 return;
             };
+            if let Some(surface_id) = auxiliary_surface_id(&tab_id) {
+                handle_main_surface_close(appid, surface_id);
+                return;
+            }
             if let Some(target_appid) = auxiliary_lxapp_id(&tab_id) {
                 handle_lxapp_auxiliary_close(appid, target_appid);
                 return;
@@ -3450,6 +3673,137 @@ fn close_browser_tab_batch(appid: &str, tab_ids: Vec<String>) {
         activate_main_tab(appid, successor.as_deref());
     }
     sync_shell_layout(appid);
+}
+
+fn handle_main_surface_click(owner_appid: &str, surface_id: &str) {
+    let Some(owner) = lxapp::try_get(owner_appid) else {
+        return;
+    };
+    if !owner.set_active_main_surface(surface_id) {
+        return;
+    }
+    if let Err(error) = present_main_surface(&owner, surface_id) {
+        log::warn!("failed to present Windows main surface {surface_id}: {error}");
+    }
+    sync_shell_layout(owner_appid);
+}
+
+fn handle_main_surface_close(owner_appid: &str, surface_id: &str) {
+    let Some(owner) = lxapp::try_get(owner_appid) else {
+        return;
+    };
+    let content = owner.main_surface_content(surface_id);
+    let outcome = owner.close_main_surface(surface_id);
+    for removed in outcome.removed() {
+        discard_main_surface_provider(&owner, removed, content.as_ref());
+    }
+    if !outcome.removed().is_empty()
+        && let Some(active) = owner.surface_switcher_snapshot().active_surface_id
+        && let Err(error) = present_main_surface(&owner, &active)
+    {
+        log::warn!("failed to present successor main surface {active}: {error}");
+    }
+    sync_shell_layout(owner_appid);
+}
+
+fn present_main_surface(owner: &LxApp, surface_id: &str) -> Result<(), String> {
+    let content = owner
+        .main_surface_content(surface_id)
+        .ok_or_else(|| format!("unknown main surface: {surface_id}"))?;
+    match content {
+        lingxia_surface::SurfaceContent::Lxapp { app_id, path } => {
+            clear_browser_presentation();
+            hide_inactive_native_main_panels(owner, surface_id);
+            let app = lxapp::open_lxapp(
+                &app_id,
+                LxAppStartupOptions::new(path.as_deref().unwrap_or_default()),
+            )
+            .map_err(|error| error.to_string())?;
+            // Opening an lxapp may seed its provider id as a graph main. The
+            // declared surface id remains the shell identity and must win.
+            let _ = owner.set_active_main_surface(surface_id);
+            if !present_current_lxapp_main(&app) {
+                return Err(format!("lxapp main is not ready: {app_id}"));
+            }
+            Ok(())
+        }
+        lingxia_surface::SurfaceContent::Browser { initial_url, .. } => {
+            hide_inactive_native_main_panels(owner, surface_id);
+            open_declared_browser(&owner.appid, surface_id, &initial_url)
+        }
+        lingxia_surface::SurfaceContent::Native { capability, .. } if capability == "terminal" => {
+            clear_browser_presentation();
+            hide_inactive_native_main_panels(owner, surface_id);
+            if open_managed_native_surface(surface_id, &capability, None, "main", "") {
+                Ok(())
+            } else {
+                Err(format!("native main is unavailable: {capability}"))
+            }
+        }
+        lingxia_surface::SurfaceContent::Native { capability, .. } if capability == "browser" => {
+            hide_inactive_native_main_panels(owner, surface_id);
+            open_declared_browser(&owner.appid, surface_id, "about:blank")
+        }
+        other => Err(format!("unsupported Windows main surface: {other:?}")),
+    }
+}
+
+fn hide_inactive_native_main_panels(owner: &LxApp, active_surface_id: &str) {
+    for item in owner.surface_switcher_snapshot().items {
+        if item.surface_id == active_surface_id
+            || !matches!(item.content, SwitcherContentKind::Native { .. })
+        {
+            continue;
+        }
+        if is_panel_visible(&item.surface_id)
+            && let Err(error) = hide_host_panel(&item.surface_id)
+        {
+            log::warn!(
+                "failed to hide inactive Windows native main {}: {error}",
+                item.surface_id
+            );
+        }
+    }
+}
+
+fn discard_main_surface_provider(
+    owner: &LxApp,
+    surface_id: &str,
+    content: Option<&lingxia_surface::SurfaceContent>,
+) {
+    let browser_tab = {
+        #[cfg(feature = "browser-runtime")]
+        {
+            DECLARED_BROWSER_TABS
+                .get()
+                .and_then(|tabs| tabs.lock().ok())
+                .and_then(|mut tabs| tabs.remove(surface_id))
+        }
+        #[cfg(not(feature = "browser-runtime"))]
+        {
+            None::<String>
+        }
+    };
+    #[cfg(feature = "browser-runtime")]
+    if let Some(tab_id) = browser_tab
+        && let Err(error) = lingxia_browser::close(&tab_id)
+    {
+        log::warn!("failed to close browser provider for {surface_id}: {error}");
+    }
+    #[cfg(not(feature = "browser-runtime"))]
+    let _ = browser_tab;
+
+    if is_panel_visible(surface_id)
+        && let Err(error) = hide_host_panel(surface_id)
+    {
+        log::warn!("failed to close native provider for {surface_id}: {error}");
+    }
+    if let Some(lingxia_surface::SurfaceContent::Lxapp { app_id, .. }) = content
+        && app_id.as_str() != owner.appid.as_str()
+        && let Err(error) = lxapp::close_lxapp(&app_id)
+    {
+        log::warn!("failed to close lxapp provider {app_id}: {error}");
+    }
 }
 
 fn handle_lxapp_auxiliary_click(owner_appid: &str, target_appid: &str) {

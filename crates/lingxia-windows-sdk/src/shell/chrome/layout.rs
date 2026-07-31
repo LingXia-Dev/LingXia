@@ -68,6 +68,9 @@ pub struct WindowsShellTabBarLayout {
     /// bundled LingXia mark.
     pub app_icon_path: String,
     pub group_id: String,
+    /// Fully qualified main-switch target emitted when the group row is
+    /// clicked, closed, or opened via its context menu.
+    pub group_target_id: String,
     /// The lxapp group is the selected main. Browser selection is independent,
     /// so presenting a web tab clears this highlight without collapsing it.
     pub group_active: bool,

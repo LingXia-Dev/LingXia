@@ -458,7 +458,7 @@ pub fn start_default_host(app: WindowsApp) -> Result<WindowsHost> {
                                 MountedContent::LxApp(app_id.clone())
                             }
                             lingxia_surface::SurfaceContent::Browser { initial_url, .. } => {
-                                open_declared_browser(owner, initial_url)
+                                open_declared_browser(owner, &main.id, initial_url)
                                     .map_err(WindowsHostError::OpenBrowser)?;
                                 lingxia::windows::launch_home_control_logic()?;
                                 MountedContent::Browser
@@ -474,7 +474,7 @@ pub fn start_default_host(app: WindowsApp) -> Result<WindowsHost> {
                             lingxia_surface::SurfaceContent::Native { capability, .. }
                                 if capability == "browser" =>
                             {
-                                open_declared_browser(owner, "about:blank")
+                                open_declared_browser(owner, &main.id, "about:blank")
                                     .map_err(WindowsHostError::OpenBrowser)?;
                                 lingxia::windows::launch_home_control_logic()?;
                                 MountedContent::Browser
@@ -530,8 +530,12 @@ fn open_browser(_url: &str) -> std::result::Result<(), String> {
 }
 
 #[cfg(all(target_os = "windows", feature = "browser-runtime"))]
-fn open_declared_browser(owner_app_id: &str, url: &str) -> std::result::Result<(), String> {
-    shell::open_declared_browser(owner_app_id, url)
+fn open_declared_browser(
+    owner_app_id: &str,
+    surface_id: &str,
+    url: &str,
+) -> std::result::Result<(), String> {
+    shell::open_declared_browser(owner_app_id, surface_id, url)
 }
 
 #[cfg(all(
@@ -539,7 +543,11 @@ fn open_declared_browser(owner_app_id: &str, url: &str) -> std::result::Result<(
     feature = "runtime",
     not(feature = "browser-runtime")
 ))]
-fn open_declared_browser(_owner_app_id: &str, _url: &str) -> std::result::Result<(), String> {
+fn open_declared_browser(
+    _owner_app_id: &str,
+    _surface_id: &str,
+    _url: &str,
+) -> std::result::Result<(), String> {
     Err("declared browser main requires the browser-runtime feature".to_string())
 }
 

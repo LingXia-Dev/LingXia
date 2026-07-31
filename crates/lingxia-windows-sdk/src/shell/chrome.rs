@@ -1830,7 +1830,7 @@ pub(super) fn chrome_hit_test(
                     point,
                 )
             {
-                let payload = json!({ "tab_id": format!("lxapp:{}", tabbar.group_id) });
+                let payload = json!({ "tab_id": tabbar.group_target_id.clone() });
                 return Some(chrome_command_with_context(
                     command_id::BROWSER_TAB_CLICK,
                     payload.clone(),
@@ -1892,7 +1892,7 @@ pub(super) fn chrome_hit_test(
             {
                 return Some(chrome_command(
                     command_id::BROWSER_TAB_CLOSE,
-                    json!({ "tab_id": format!("lxapp:{}", tabbar.group_id) }),
+                    json!({ "tab_id": tabbar.group_target_id.clone() }),
                 ));
             }
             if in_sidebar_viewport
@@ -1914,7 +1914,7 @@ pub(super) fn chrome_hit_test(
                     point,
                 )
             {
-                let payload = json!({ "tab_id": format!("lxapp:{}", tabbar.group_id) });
+                let payload = json!({ "tab_id": tabbar.group_target_id.clone() });
                 return Some(chrome_command_with_context(
                     command_id::BROWSER_TAB_CLICK,
                     payload.clone(),
@@ -2268,6 +2268,7 @@ mod scroll_tests {
             app_name: "App".to_string(),
             app_icon_path: String::new(),
             group_id: "app".to_string(),
+            group_target_id: "lxapp:app".to_string(),
             group_active: true,
             group_closable: false,
             group_order_index: 0,
@@ -2461,6 +2462,7 @@ mod scroll_tests {
             app_name: "App".to_string(),
             app_icon_path: String::new(),
             group_id: "app".to_string(),
+            group_target_id: "lxapp:app".to_string(),
             group_active: true,
             group_closable: false,
             group_order_index: 0,
@@ -2571,6 +2573,7 @@ mod scroll_tests {
             app_name: "App".to_string(),
             app_icon_path: String::new(),
             group_id: "app".to_string(),
+            group_target_id: "lxapp:app".to_string(),
             group_active: true,
             group_closable: false,
             group_order_index: 0,
@@ -2630,6 +2633,7 @@ mod scroll_tests {
             app_name: "App".to_string(),
             app_icon_path: String::new(),
             group_id: "app".to_string(),
+            group_target_id: "lxapp:app".to_string(),
             group_active: true,
             group_closable: false,
             group_order_index: 0,
