@@ -811,9 +811,9 @@ export type OpenLxappSurfaceSpec = {
 
 /**
  * Open or focus an instance of a host-declared native capability (home
- * lxapp only). The declaration owns role and placement. Omitting
- * `instanceKey` selects its default instance; equal keys reuse one
- * surface, while distinct keys create distinct provider workspaces.
+ * lxapp only). Omitting `instanceKey` opens the declaration's default
+ * role and placement. A key selects a switchable main workspace; equal
+ * keys reuse one surface, while distinct keys create distinct workspaces.
  */
 export type OpenNativeSurfaceSpec = {
     native: string;

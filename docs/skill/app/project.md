@@ -428,9 +428,9 @@ Pass `null` / empty to clear a badge or title. The tray *shape* is declared in `
 
 ### Terminal surface
 
-The built-in terminal is gated by `capabilities.terminal`. On macOS it may be a main surface or an aside (`edge: top | bottom`, default `bottom`); Windows currently supports the aside form. Its role and edge are fixed by `lingxia.yaml` and cannot be changed by JS.
+The built-in terminal is gated by `capabilities.terminal`. On macOS and Windows its default declaration may be a main surface or an aside (`edge: top | bottom`, default `bottom`). Its default role and edge are fixed by `lingxia.yaml` and cannot be changed by JS.
 
-When terminal is declared as `main`, its declaration is the default workspace. The sidebar's global `+` creates another terminal workspace as a separate main Surface; the `+` inside a terminal workspace creates another PTY tab in that workspace. Logic can open or reuse a named workspace with `lx.openSurface({ native: 'terminal', instanceKey: 'project-a' })`. Equal keys resolve to the same runtime Surface, distinct keys create distinct sidebar entries, and the returned handle's read-only `id` is the runtime `SurfaceId` — it is not the key. Keyed instances currently require a macOS main declaration.
+When terminal is declared as `main`, its declaration is the default workspace. The sidebar's global `+` creates another terminal workspace as a separate main Surface; the `+` inside a terminal workspace creates another PTY tab in that workspace. Logic can open or reuse a named workspace with `lx.openSurface({ native: 'terminal', instanceKey: 'project-a' })`. Equal keys resolve to the same runtime Surface, distinct keys create distinct sidebar entries, and the returned handle's read-only `id` is the runtime `SurfaceId` — it is not the key. A keyed instance is always a switchable main workspace, even when the declared default terminal is an aside; the unkeyed default keeps its declared placement.
 
 `native: browser` is a macOS host-owned browser workspace. It starts with an empty tab and uses the managed browser profile and chrome; use a `url:` main when the declaration should open a specific `https://` or authorized `file://` target.
 

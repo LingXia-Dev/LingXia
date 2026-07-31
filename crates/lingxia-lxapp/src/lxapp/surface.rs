@@ -107,22 +107,11 @@ impl WindowSurfaceController {
                             "unknown declared native surface: {capability}"
                         ))
                     })?;
-                if instance_key.is_some() && declaration.surface.role != lingxia_surface::Role::Main
-                {
-                    return Err(LxAppError::UnsupportedOperation(
-                        "native surface instances currently require a main declaration".to_string(),
-                    ));
-                }
-                let mut surface = declaration.surface;
-                if instance_key.is_some() {
-                    let sequence = self.next_native_surface_id.fetch_add(1, Ordering::Relaxed);
-                    surface.id = format!("native:{capability}:{sequence}");
-                }
-                surface.content = lingxia_surface::SurfaceContent::Native {
-                    capability: capability.to_string(),
-                    instance_key: instance_key.map(str::to_string),
-                };
-                (surface, Some(declaration.presentation), false)
+                let sequence = instance_key
+                    .map(|_| self.next_native_surface_id.fetch_add(1, Ordering::Relaxed));
+                let (surface, presentation) =
+                    instantiate_native_declaration(declaration, capability, instance_key, sequence);
+                (surface, Some(presentation), false)
             }
         };
         let role = match surface.role {
@@ -618,6 +607,45 @@ impl WindowSurfaceController {
     fn presentation_plan(&self) -> lingxia_surface::LayoutPresentationPlan {
         self.manager.lock().unwrap().presentation_plan()
     }
+}
+
+fn instantiate_native_declaration(
+    declaration: NativeSurfaceDeclaration,
+    capability: &str,
+    instance_key: Option<&str>,
+    sequence: Option<u64>,
+) -> (
+    lingxia_surface::Surface,
+    lingxia_surface::SurfacePresentation,
+) {
+    let mut surface = declaration.surface;
+    let mut presentation = declaration.presentation;
+    if let Some(instance_key) = instance_key {
+        surface.id = format!(
+            "native:{capability}:{}",
+            sequence.expect("keyed native instances require a sequence")
+        );
+        surface.role = lingxia_surface::Role::Main;
+        surface.placement = Default::default();
+        surface.float = None;
+        presentation.capabilities.close = true;
+        presentation.capabilities.rename = true;
+        presentation.automatic_title = Some(match capability {
+            "terminal" => "Terminal".to_string(),
+            "browser" => "Browser".to_string(),
+            _ => capability.to_string(),
+        });
+        surface.content = lingxia_surface::SurfaceContent::Native {
+            capability: capability.to_string(),
+            instance_key: Some(instance_key.to_string()),
+        };
+    } else {
+        surface.content = lingxia_surface::SurfaceContent::Native {
+            capability: capability.to_string(),
+            instance_key: None,
+        };
+    }
+    (surface, presentation)
 }
 
 fn host_aside_node(
@@ -2258,6 +2286,43 @@ mod tests {
             "Showcase · 1.2.3 [DEV]"
         );
         assert_eq!(lxapp_surface_menu_header("demo", "", "", "release"), "demo");
+    }
+
+    #[test]
+    fn keyed_native_instance_derives_a_switchable_main_from_an_aside_declaration() {
+        let surface = host_aside_node(
+            "terminal",
+            lingxia_surface::SurfaceContent::Native {
+                capability: "terminal".into(),
+                instance_key: None,
+            },
+            "bottom",
+        );
+        let declaration = NativeSurfaceDeclaration {
+            presentation: lingxia_surface::SurfacePresentation::for_content(&surface.content),
+            surface,
+        };
+
+        let (default_surface, _) =
+            instantiate_native_declaration(declaration.clone(), "terminal", None, None);
+        assert_eq!(default_surface.role, lingxia_surface::Role::Aside);
+        assert_eq!(
+            default_surface.placement.edge,
+            Some(lingxia_surface::Edge::Bottom)
+        );
+
+        let (workspace, presentation) =
+            instantiate_native_declaration(declaration, "terminal", Some("project-a"), Some(7));
+        assert_eq!(workspace.id, "native:terminal:7");
+        assert_eq!(workspace.role, lingxia_surface::Role::Main);
+        assert_eq!(workspace.placement.edge, None);
+        assert_eq!(
+            workspace.content.native_identity(),
+            Some(("terminal", Some("project-a")))
+        );
+        assert!(presentation.capabilities.close);
+        assert!(presentation.capabilities.rename);
+        assert_eq!(presentation.automatic_title.as_deref(), Some("Terminal"));
     }
 
     fn url_record(url_callback: bool, ephemeral_web_data: bool) -> SurfaceRecord {

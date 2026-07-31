@@ -498,7 +498,7 @@ fn lxapp_open_error(err: LxAppError) -> rong::RongJSError {
 }
 
 /// `{ native, instanceKey? }` branch of `lx.openSurface`. The declaration owns
-/// layout; the optional key selects one stable provider instance.
+/// the default layout; a key selects one stable switchable workspace.
 fn open_native_spec(ctx: &JSContext, spec: &JSObject) -> JSResult<JSObject> {
     let name = read_required_string(spec, "native")?;
     if get_property(spec, "as").is_some() || get_property(spec, "edge").is_some() {

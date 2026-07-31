@@ -697,16 +697,17 @@ semantics every language surface MUST share.
 
 - An open spec is keyed by exactly one content key (`lxapp` / `page` / `url` /
   `native`). Role overrides and presentation hints apply only to content whose
-  generated declaration types admit them; native role and edge stay YAML-owned.
+  generated declaration types admit them; native specs never accept role or
+  edge overrides.
 - Defaults: an lxapp without `as` takes its YAML role, else main. A URL without
-  `as` becomes a main browser tab. A native capability always takes its YAML
+  `as` becomes a main browser tab. An unkeyed native capability takes its YAML
   role and placement.
 - `lx.openSurface({ native, instanceKey? })` is home-only. Omitting the key
   opens the declaration's default instance. A non-empty key selects or creates
   an instance and the returned handle binds the resolved runtime `SurfaceId`,
-  never the key. Terminal keyed instances currently require a macOS main
-  declaration; unsupported provider/role combinations reject rather than move
-  an existing Surface.
+  never the key. A keyed native instance is a switchable main workspace even
+  when the capability's default declaration is an aside; this does not move or
+  mutate the declared default Surface.
 - Runtime floats default to centered, non-modal, tap-outside dismissal;
   compact ignores position and presents a bottom sheet. A float without a size
   hint uses 480×360 dp/pt clamped to 90% of the container; a standalone window
@@ -715,8 +716,8 @@ semantics every language surface MUST share.
   values fail with `E_INVALID_ARG`; insufficient container space degrades per
   admission rules instead of erroring.
 - An explicit role override never mutates a declaration. Native specs reject
-  role and edge overrides; changing a native Surface's role requires changing
-  the host declaration and rebuilding.
+  role and edge overrides. Keyed native workspaces use their contract-defined
+  main role rather than accepting a caller-selected role.
 - `interaction.closeButton` adds the standard native circular close control.
   Manual floats require it or an app-owned close path. Modal floats block
   underlying input and restore prior focus on close.
