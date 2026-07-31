@@ -33,9 +33,15 @@ struct SurfaceViewportContext {
 pub(crate) struct WindowSurfaceController {
     window_id: String,
     manager: std::sync::Mutex<lingxia_surface::SurfaceManager>,
-    native_declarations: std::sync::Mutex<HashMap<String, lingxia_surface::Surface>>,
+    native_declarations: std::sync::Mutex<HashMap<String, NativeSurfaceDeclaration>>,
     runtime: std::sync::Arc<Platform>,
     next_native_surface_id: AtomicU64,
+}
+
+#[derive(Clone)]
+struct NativeSurfaceDeclaration {
+    surface: lingxia_surface::Surface,
+    presentation: lingxia_surface::SurfacePresentation,
 }
 
 struct OpenNodeResult {
@@ -83,14 +89,14 @@ impl WindowSurfaceController {
     ) -> Result<ManagedNativeSurface, LxAppError> {
         let capability = capability.trim();
         let instance_key = instance_key.map(str::trim).filter(|key| !key.is_empty());
-        let (surface, is_live) = {
+        let (surface, presentation, is_live) = {
             let manager = self.manager.lock().unwrap();
             if let Some(existing) = manager.graph().surfaces().iter().find(|surface| {
                 surface.content.native_identity() == Some((capability, instance_key))
             }) {
-                (existing.clone(), true)
+                (existing.clone(), None, true)
             } else {
-                let template = self
+                let declaration = self
                     .native_declarations
                     .lock()
                     .unwrap()
@@ -101,12 +107,13 @@ impl WindowSurfaceController {
                             "unknown declared native surface: {capability}"
                         ))
                     })?;
-                if instance_key.is_some() && template.role != lingxia_surface::Role::Main {
+                if instance_key.is_some() && declaration.surface.role != lingxia_surface::Role::Main
+                {
                     return Err(LxAppError::UnsupportedOperation(
                         "native surface instances currently require a main declaration".to_string(),
                     ));
                 }
-                let mut surface = template;
+                let mut surface = declaration.surface;
                 if instance_key.is_some() {
                     let sequence = self.next_native_surface_id.fetch_add(1, Ordering::Relaxed);
                     surface.id = format!("native:{capability}:{sequence}");
@@ -115,7 +122,7 @@ impl WindowSurfaceController {
                     capability: capability.to_string(),
                     instance_key: instance_key.map(str::to_string),
                 };
-                (surface, false)
+                (surface, Some(declaration.presentation), false)
             }
         };
         let role = match surface.role {
@@ -144,6 +151,12 @@ impl WindowSurfaceController {
                 }
             } else {
                 manager.open(surface.clone());
+                if let Some(presentation) = presentation {
+                    manager.set_presentation(&surface.id, presentation);
+                }
+                if surface.role == lingxia_surface::Role::Main {
+                    manager.set_active_main(&surface.id);
+                }
             }
         }
         self.commit();
@@ -354,16 +367,20 @@ impl WindowSurfaceController {
     }
 
     fn register_native_aside_declaration(&self, surface_id: &str, capability: &str, edge: &str) {
+        let surface = host_aside_node(
+            surface_id,
+            lingxia_surface::SurfaceContent::Native {
+                capability: capability.to_string(),
+                instance_key: None,
+            },
+            edge,
+        );
         self.native_declarations.lock().unwrap().insert(
             capability.to_string(),
-            host_aside_node(
-                surface_id,
-                lingxia_surface::SurfaceContent::Native {
-                    capability: capability.to_string(),
-                    instance_key: None,
-                },
-                edge,
-            ),
+            NativeSurfaceDeclaration {
+                presentation: lingxia_surface::SurfacePresentation::for_content(&surface.content),
+                surface,
+            },
         );
     }
 
@@ -399,9 +416,15 @@ impl WindowSurfaceController {
             .collect::<Result<Vec<_>, LxAppError>>()?;
         {
             let mut declarations = self.native_declarations.lock().unwrap();
-            for (surface, _) in &mains {
+            for (surface, presentation) in &mains {
                 if let Some((capability, None)) = surface.content.native_identity() {
-                    declarations.insert(capability.to_string(), surface.clone());
+                    declarations.insert(
+                        capability.to_string(),
+                        NativeSurfaceDeclaration {
+                            surface: surface.clone(),
+                            presentation: presentation.clone(),
+                        },
+                    );
                 }
             }
         }
@@ -421,10 +444,13 @@ impl WindowSurfaceController {
     ) -> Result<lingxia_surface::SurfaceSwitcherSnapshot, LxAppError> {
         let (surface, presentation) = registration.into_surface()?;
         if let Some((capability, None)) = surface.content.native_identity() {
-            self.native_declarations
-                .lock()
-                .unwrap()
-                .insert(capability.to_string(), surface.clone());
+            self.native_declarations.lock().unwrap().insert(
+                capability.to_string(),
+                NativeSurfaceDeclaration {
+                    surface: surface.clone(),
+                    presentation: presentation.clone(),
+                },
+            );
         }
         let snapshot = self
             .manager
@@ -1520,21 +1546,69 @@ impl LxApp {
     pub fn shell_surface_menu(
         &self,
         surface_id: &str,
-        content_items: Vec<lingxia_shell::SurfaceMenuItem>,
     ) -> Option<lingxia_shell::SurfaceMenuSnapshot> {
         let surface_id = surface_id.trim();
-        (!surface_id.is_empty())
-            .then(|| {
-                window_controller(PRIMARY_WINDOW, &self.runtime)
-                    .surface_menu(surface_id, content_items)
-            })
-            .flatten()
+        if surface_id.is_empty() {
+            return None;
+        }
+        let content_items = match self.main_surface_content(surface_id) {
+            Some(lingxia_surface::SurfaceContent::Lxapp { app_id, .. }) => crate::try_get(&app_id)
+                .map(|app| {
+                    let actions = app.more_actions();
+                    let generation = actions.generation;
+                    actions
+                        .items
+                        .into_iter()
+                        .enumerate()
+                        .map(|(index, item)| {
+                            lingxia_shell::SurfaceMenuItem::external(
+                                app_id.clone(),
+                                generation,
+                                index.to_string(),
+                                item.label,
+                                (!item.icon_path.trim().is_empty()).then_some(item.icon_path),
+                            )
+                        })
+                        .collect()
+                })
+                .unwrap_or_default(),
+            _ => Vec::new(),
+        };
+        window_controller(PRIMARY_WINDOW, &self.runtime).surface_menu(surface_id, content_items)
     }
 
     pub fn perform_shell_surface_menu_intent(
         &self,
         intent: lingxia_shell::SurfaceMenuIntent,
     ) -> HostSurfaceMenuExecution {
+        if let lingxia_shell::SurfaceMenuAction::External {
+            namespace,
+            generation,
+            action_id,
+        } = &intent.action
+        {
+            let snapshot = self.surface_switcher_snapshot();
+            let accepted = snapshot.revision == intent.revision
+                && self
+                    .main_surface_content(&intent.surface_id)
+                    .is_some_and(|content| {
+                        matches!(
+                            content,
+                            lingxia_surface::SurfaceContent::Lxapp { app_id, .. }
+                                if app_id == *namespace
+                        )
+                    })
+                && action_id
+                    .parse::<usize>()
+                    .ok()
+                    .zip(crate::try_get(namespace))
+                    .is_some_and(|(index, app)| app.activate_more_action(*generation, index));
+            return HostSurfaceMenuExecution {
+                accepted,
+                removed_surface_ids: Vec::new(),
+                snapshot,
+            };
+        }
         window_controller(PRIMARY_WINDOW, &self.runtime).perform_surface_menu_intent(intent)
     }
 

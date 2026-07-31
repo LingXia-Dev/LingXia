@@ -1210,7 +1210,7 @@ pub fn surface_switcher(appid: &str) -> String {
 pub fn surface_menu(appid: &str, surface_id: &str) -> String {
     ffi_catch_unwind!("surface_menu", String::new(), || {
         lxapp::try_get(appid)
-            .and_then(|app| app.shell_surface_menu(surface_id, Vec::new()))
+            .and_then(|app| app.shell_surface_menu(surface_id))
             .and_then(|menu| serde_json::to_string(&menu).ok())
             .unwrap_or_default()
     })
