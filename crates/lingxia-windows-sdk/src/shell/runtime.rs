@@ -30,18 +30,18 @@ use lingxia_surface::{
 use lingxia_webview::WebTag;
 #[cfg(feature = "browser-runtime")]
 use lingxia_webview::platform::windows::find_webview_handler;
+#[cfg(feature = "browser-runtime")]
+use lingxia_windows_contract::current_window_layout;
 use lingxia_windows_contract::{
     WindowsAsidePanelEvent, WindowsChromeCommand, WindowsHostWindow, WindowsPanelPosition,
     WindowsWindowLayout, active_host_window_webtag_key, aside_panel_tabs,
     dispatch_windows_aside_panel_event, hide_host_panel, is_panel_visible,
-    restore_presented_group_main, set_webview_chrome_event_handler, set_webview_window_layout,
+    present_webview_in_active_group, restore_presented_group_main,
+    set_webview_chrome_event_handler, set_webview_window_layout,
 };
+use lxapp::{LxApp, LxAppDelegate, LxAppStartupOptions, LxAppUiEventType, ReleaseType};
 #[cfg(feature = "browser-runtime")]
 use windows::Win32::System::SystemInformation::{GlobalMemoryStatusEx, MEMORYSTATUSEX};
-// Presenting a browser tab over the main card is browser-only.
-#[cfg(feature = "browser-runtime")]
-use lingxia_windows_contract::{current_window_layout, present_webview_in_active_group};
-use lxapp::{LxApp, LxAppDelegate, LxAppStartupOptions, LxAppUiEventType, ReleaseType};
 
 const DEFAULT_NAV_BAR_HEIGHT: i32 = 38;
 const MIN_SIDEBAR_WIDTH: i32 = 184;
@@ -546,7 +546,7 @@ pub(crate) fn open_declared_browser(
         .filter(|tab_id| browser_tab_summary(tab_id).is_some());
     if let Some(tab_id) = existing {
         let _ = lingxia_browser::activate(&tab_id);
-        present_browser_tab_when_ready(owner_appid, tab_id);
+        present_declared_browser_tab_when_ready(owner_appid, surface_id, tab_id, false);
         return Ok(());
     }
     let tab_id = lingxia_browser::open_for_app(owner_appid, owner.session_id(), url, None)
@@ -557,7 +557,7 @@ pub(crate) fn open_declared_browser(
     {
         tabs.insert(surface_id.to_string(), tab_id.clone());
     }
-    present_browser_tab_when_ready_with_policy(owner_appid, tab_id, url == "about:blank");
+    present_declared_browser_tab_when_ready(owner_appid, surface_id, tab_id, url == "about:blank");
     Ok(())
 }
 
@@ -669,15 +669,34 @@ fn default_tabbar_position() -> Option<WindowsShellTabBarPosition> {
         .map(|position| *position)
 }
 
-/// Removes a native aside that closed itself from both the host and the
-/// authoritative surface graph. Leaving the graph node mounted lets a later
-/// unrelated commit (such as opening an lxapp aside) resurrect the panel.
 #[cfg(feature = "terminal-runtime")]
-pub(super) fn unregister_owner_managed_aside(panel_id: &str) {
-    if let Some(appid) = shell_owner_appid() {
-        unregister_managed_aside(&appid, panel_id);
-        sync_shell_layout(&appid);
+pub(super) fn terminal_surface_is_protected_root(panel_id: &str) -> bool {
+    shell_owner_appid()
+        .and_then(|appid| lxapp::try_get(&appid))
+        .and_then(|owner| owner.surface_switcher_snapshot().root_surface_id)
+        .as_deref()
+        == Some(panel_id)
+}
+
+/// Completes the graph/provider transaction after the final PTY in a
+/// non-root terminal surface closes. Main workspaces select and present their
+/// successor; asides are removed from the graph so a later layout commit
+/// cannot resurrect the dead provider.
+#[cfg(feature = "terminal-runtime")]
+pub(super) fn close_exhausted_terminal_surface(panel_id: &str) -> bool {
+    let Some(appid) = shell_owner_appid() else {
+        return false;
+    };
+    let Some(owner) = lxapp::try_get(&appid) else {
+        return false;
+    };
+    if owner.main_surface_content(panel_id).is_some() {
+        return close_main_surface_and_present(&owner, panel_id);
     }
+    super::terminal_panel::destroy_windows_terminal_panel(panel_id);
+    unregister_managed_aside(&appid, panel_id);
+    sync_shell_layout(&appid);
+    true
 }
 
 fn presented_browser_tab() -> Option<String> {
@@ -2498,30 +2517,11 @@ fn shell_surface_in_graph(surface_id: &str) -> bool {
 }
 
 /// Native host panels are not owned by the platform WebView presenter, so the
-/// SDK reconciles both native mains and the native aside slot here. Lxapp and
-/// browser slots are reconciled by `lingxia-platform` where their WebViews
-/// live.
+/// SDK reconciles the native aside slot here. Main providers use an explicit
+/// two-phase handoff: the incoming provider becomes paintable before the old
+/// native main is hidden. Hiding mains from this plan callback would expose an
+/// empty content card while a WebView is still becoming ready.
 fn apply_windows_layout_plan(plan: &LayoutPresentationPlan) {
-    let active_native_main = plan.main_switcher.items.iter().find_map(|item| {
-        (item.active && matches!(item.content, SwitcherContentKind::Native { .. }))
-            .then_some(item.surface_id.as_str())
-    });
-    for item in &plan.main_switcher.items {
-        if !matches!(item.content, SwitcherContentKind::Native { .. })
-            || Some(item.surface_id.as_str()) == active_native_main
-        {
-            continue;
-        }
-        if is_panel_visible(&item.surface_id)
-            && let Err(error) = hide_host_panel(&item.surface_id)
-        {
-            log::warn!(
-                "failed to hide inactive Windows native main {}: {error}",
-                item.surface_id
-            );
-        }
-    }
-
     let native_slot = plan
         .aside_slots
         .iter()
@@ -3312,7 +3312,6 @@ fn active_host_is_browser() -> bool {
     false
 }
 
-#[cfg(feature = "browser-runtime")]
 fn present_current_lxapp_main(app: &LxApp) -> bool {
     let path = app
         .peek_current_page()
@@ -3337,11 +3336,6 @@ fn present_current_lxapp_main(app: &LxApp) -> bool {
             false
         }
     }
-}
-
-#[cfg(not(feature = "browser-runtime"))]
-fn present_current_lxapp_main(_app: &LxApp) -> bool {
-    false
 }
 
 /// Opens a new browser tab at `lingxia://newtab` owned by the shell app
@@ -3726,11 +3720,24 @@ fn handle_main_surface_click(owner_appid: &str, surface_id: &str) {
     let Some(owner) = lxapp::try_get(owner_appid) else {
         return;
     };
-    if !owner.set_active_main_surface(surface_id) {
+    let Some(content) = owner.main_surface_content(surface_id) else {
         return;
-    }
+    };
+    let deferred = match &content {
+        lingxia_surface::SurfaceContent::Browser { .. } => true,
+        lingxia_surface::SurfaceContent::Native { capability, .. } => capability == "browser",
+        _ => false,
+    };
     if let Err(error) = present_main_surface(&owner, surface_id) {
         log::warn!("failed to present Windows main surface {surface_id}: {error}");
+        return;
+    }
+    if deferred {
+        return;
+    }
+    if !owner.set_active_main_surface(surface_id) {
+        log::warn!("failed to activate Windows main surface {surface_id}");
+        return;
     }
     sync_shell_layout(owner_appid);
 }
@@ -3739,18 +3746,25 @@ fn handle_main_surface_close(owner_appid: &str, surface_id: &str) {
     let Some(owner) = lxapp::try_get(owner_appid) else {
         return;
     };
+    let _ = close_main_surface_and_present(&owner, surface_id);
+}
+
+fn close_main_surface_and_present(owner: &LxApp, surface_id: &str) -> bool {
     let content = owner.main_surface_content(surface_id);
     let outcome = owner.close_main_surface(surface_id);
-    for removed in outcome.removed() {
-        discard_main_surface_provider(&owner, removed, content.as_ref());
+    if outcome.removed().is_empty() {
+        return false;
     }
-    if !outcome.removed().is_empty()
-        && let Some(active) = owner.surface_switcher_snapshot().active_surface_id
-        && let Err(error) = present_main_surface(&owner, &active)
+    for removed in outcome.removed() {
+        discard_main_surface_provider(owner, removed, content.as_ref());
+    }
+    if let Some(active) = owner.surface_switcher_snapshot().active_surface_id
+        && let Err(error) = present_main_surface(owner, &active)
     {
         log::warn!("failed to present successor main surface {active}: {error}");
     }
-    sync_shell_layout(owner_appid);
+    sync_shell_layout(&owner.appid);
+    true
 }
 
 fn show_main_surface_context_menu(
@@ -3946,42 +3960,47 @@ fn present_main_surface(owner: &LxApp, surface_id: &str) -> Result<(), String> {
     let content = owner
         .main_surface_content(surface_id)
         .ok_or_else(|| format!("unknown main surface: {surface_id}"))?;
-    match content {
+    crate::window_host::with_host_layout_batch(|| match content {
         lingxia_surface::SurfaceContent::Lxapp { app_id, path } => {
             clear_browser_presentation();
-            hide_inactive_native_main_panels(owner, surface_id);
             let app = lxapp::open_lxapp(
                 &app_id,
                 LxAppStartupOptions::new(path.as_deref().unwrap_or_default()),
             )
             .map_err(|error| error.to_string())?;
-            // Opening an lxapp may seed its provider id as a graph main. The
-            // declared surface id remains the shell identity and must win.
-            let _ = owner.set_active_main_surface(surface_id);
             if !present_current_lxapp_main(&app) {
                 return Err(format!("lxapp main is not ready: {app_id}"));
             }
+            hide_inactive_native_main_panels(owner, surface_id);
             Ok(())
         }
+        #[cfg(feature = "browser-runtime")]
         lingxia_surface::SurfaceContent::Browser { initial_url, .. } => {
-            hide_inactive_native_main_panels(owner, surface_id);
             open_declared_browser(&owner.appid, surface_id, &initial_url)
+        }
+        #[cfg(not(feature = "browser-runtime"))]
+        lingxia_surface::SurfaceContent::Browser { .. } => {
+            Err("browser runtime is unavailable".to_string())
         }
         lingxia_surface::SurfaceContent::Native { capability, .. } if capability == "terminal" => {
             clear_browser_presentation();
-            hide_inactive_native_main_panels(owner, surface_id);
             if open_managed_native_surface(surface_id, &capability, None, "main", "") {
+                hide_inactive_native_main_panels(owner, surface_id);
                 Ok(())
             } else {
                 Err(format!("native main is unavailable: {capability}"))
             }
         }
+        #[cfg(feature = "browser-runtime")]
         lingxia_surface::SurfaceContent::Native { capability, .. } if capability == "browser" => {
-            hide_inactive_native_main_panels(owner, surface_id);
             open_declared_browser(&owner.appid, surface_id, "about:blank")
         }
+        #[cfg(not(feature = "browser-runtime"))]
+        lingxia_surface::SurfaceContent::Native { capability, .. } if capability == "browser" => {
+            Err("browser runtime is unavailable".to_string())
+        }
         other => Err(format!("unsupported Windows main surface: {other:?}")),
-    }
+    })
 }
 
 fn hide_inactive_native_main_panels(owner: &LxApp, active_surface_id: &str) {
@@ -4029,7 +4048,20 @@ fn discard_main_surface_provider(
     #[cfg(not(feature = "browser-runtime"))]
     let _ = browser_tab;
 
-    if is_panel_visible(surface_id)
+    #[cfg(feature = "terminal-runtime")]
+    let destroyed_terminal = matches!(
+        content,
+        Some(lingxia_surface::SurfaceContent::Native { capability, .. })
+            if capability == "terminal"
+    );
+    #[cfg(not(feature = "terminal-runtime"))]
+    let destroyed_terminal = false;
+    #[cfg(feature = "terminal-runtime")]
+    if destroyed_terminal {
+        super::terminal_panel::destroy_windows_terminal_panel(surface_id);
+    }
+    if !destroyed_terminal
+        && is_panel_visible(surface_id)
         && let Err(error) = hide_host_panel(surface_id)
     {
         log::warn!("failed to close native provider for {surface_id}: {error}");
@@ -4459,7 +4491,31 @@ fn present_browser_tab_when_ready_with_policy(
     tab_id: String,
     allow_intentional_blank: bool,
 ) {
-    activate_web_main_carrier(appid);
+    present_browser_tab_when_ready_inner(appid, tab_id, allow_intentional_blank, None);
+}
+
+#[cfg(feature = "browser-runtime")]
+fn present_declared_browser_tab_when_ready(
+    appid: &str,
+    surface_id: &str,
+    tab_id: String,
+    allow_intentional_blank: bool,
+) {
+    present_browser_tab_when_ready_inner(
+        appid,
+        tab_id,
+        allow_intentional_blank,
+        Some(surface_id.to_string()),
+    );
+}
+
+#[cfg(feature = "browser-runtime")]
+fn present_browser_tab_when_ready_inner(
+    appid: &str,
+    tab_id: String,
+    allow_intentional_blank: bool,
+    activate_surface_id: Option<String>,
+) {
     if let Err(err) = reactivate_browser_tab_if_needed(&tab_id) {
         log::warn!("failed to reactivate browser tab {tab_id}: {err}");
         return;
@@ -4529,6 +4585,18 @@ fn present_browser_tab_when_ready_with_policy(
                 log::warn!("browser tab {tab_id} had no first-content signal before presentation");
             }
 
+            let previous_surface_id = activate_surface_id.as_ref().and_then(|surface_id| {
+                let owner = lxapp::try_get(&owner_appid)?;
+                let previous = owner.surface_switcher_snapshot().active_surface_id;
+                owner
+                    .set_active_main_surface(surface_id)
+                    .then_some(previous)
+            });
+            if activate_surface_id.is_some() && previous_surface_id.is_none() {
+                log::error!("failed to activate declared browser surface for tab {tab_id}");
+                return;
+            }
+
             let group_appid = previous_group
                 .clone()
                 .or_else(active_main_lxapp_id)
@@ -4540,6 +4608,7 @@ fn present_browser_tab_when_ready_with_policy(
             {
                 set_presented_browser_tab(previous_tab.clone());
                 set_presented_browser_group_appid(previous_group.clone());
+                restore_previous_main_surface(&owner_appid, previous_surface_id.flatten());
                 log::error!("failed to prime shell layout for browser tab {tab_id}");
                 return;
             }
@@ -4554,6 +4623,11 @@ fn present_browser_tab_when_ready_with_policy(
             };
             match result {
                 Ok(()) => {
+                    if let Some(surface_id) = activate_surface_id.as_deref()
+                        && let Some(owner) = lxapp::try_get(&owner_appid)
+                    {
+                        hide_inactive_native_main_panels(&owner, surface_id);
+                    }
                     // The target is visible with the final layout now; this
                     // pass only mirrors that state to hidden lxapp webtags and
                     // refreshes chrome data that changed while it was loading.
@@ -4563,6 +4637,7 @@ fn present_browser_tab_when_ready_with_policy(
                 Err(err) => {
                     set_presented_browser_tab(previous_tab.clone());
                     set_presented_browser_group_appid(previous_group.clone());
+                    restore_previous_main_surface(&owner_appid, previous_surface_id.flatten());
                     sync_shell_layout(&owner_appid);
                     if attempt + 1 == PRESENT_BROWSER_TAB_MAX_RETRY {
                         log::error!("failed to present browser tab {tab_id}: {err}");
@@ -4579,36 +4654,11 @@ fn present_browser_tab_when_ready_with_policy(
 }
 
 #[cfg(feature = "browser-runtime")]
-fn activate_web_main_carrier(owner_appid: &str) {
-    let Some(owner) = lxapp::try_get(owner_appid) else {
-        return;
-    };
-    let snapshot = owner.surface_switcher_snapshot();
-    let active_is_native = snapshot
-        .items
-        .iter()
-        .any(|item| item.active && matches!(item.content, SwitcherContentKind::Native { .. }));
-    if !active_is_native {
-        return;
-    }
-    let carrier = snapshot
-        .root_surface_id
-        .as_deref()
-        .and_then(|root_id| {
-            snapshot
-                .items
-                .iter()
-                .find(|item| item.surface_id == root_id)
-                .filter(|item| !matches!(item.content, SwitcherContentKind::Native { .. }))
-        })
-        .or_else(|| {
-            snapshot
-                .items
-                .iter()
-                .find(|item| !matches!(item.content, SwitcherContentKind::Native { .. }))
-        });
-    if let Some(carrier) = carrier {
-        let _ = owner.set_active_main_surface(&carrier.surface_id);
+fn restore_previous_main_surface(owner_appid: &str, previous_surface_id: Option<String>) {
+    if let Some(previous_surface_id) = previous_surface_id
+        && let Some(owner) = lxapp::try_get(owner_appid)
+    {
+        let _ = owner.set_active_main_surface(&previous_surface_id);
     }
 }
 
@@ -5272,6 +5322,19 @@ fn commit_address_input(appid: &str, tab_id: &str, raw_input: &str) {
 }
 
 fn set_managed_surface_visible(panel_id: &str, visible: bool, role: &str, edge: &str) -> bool {
+    if role == "main" {
+        let Some(owner_appid) = shell_owner_appid() else {
+            return false;
+        };
+        let Some(owner) = lxapp::try_get(&owner_appid) else {
+            return false;
+        };
+        return if visible {
+            present_main_surface(&owner, panel_id).is_ok()
+        } else {
+            close_main_surface_and_present(&owner, panel_id)
+        };
+    }
     if !role.is_empty() && role != "aside" {
         log::warn!("Windows managed surfaces do not support role override: {role}");
         return false;
@@ -5335,22 +5398,30 @@ fn open_managed_native_surface(
     }
     let title = lingxia_logic::i18n::t(lingxia_logic::I18nKey::TerminalTitle);
     let position = panel_position(position);
-    let opened = match super::terminal_panel::show_existing_windows_terminal_panel(
-        surface_id, &title, position,
-    ) {
-        Ok(true) => true,
-        Ok(false) => {
-            super::terminal_panel::open_windows_terminal_panel(surface_id, &title, position).is_ok()
+    crate::window_host::with_host_layout_batch(|| {
+        let opened = match super::terminal_panel::show_existing_windows_terminal_panel(
+            surface_id, &title, position,
+        ) {
+            Ok(true) => true,
+            Ok(false) => {
+                super::terminal_panel::open_windows_terminal_panel(surface_id, &title, position)
+                    .is_ok()
+            }
+            Err(error) => {
+                log::warn!("failed to restore Windows terminal surface {surface_id}: {error}");
+                false
+            }
+        };
+        if opened {
+            super::terminal_panel::set_terminal_panel_maximized(surface_id, role == "main");
+            if role == "main"
+                && let Some(owner) = lxapp::try_get(&owner_appid)
+            {
+                hide_inactive_native_main_panels(&owner, surface_id);
+            }
         }
-        Err(error) => {
-            log::warn!("failed to restore Windows terminal surface {surface_id}: {error}");
-            false
-        }
-    };
-    if opened {
-        super::terminal_panel::set_terminal_panel_maximized(surface_id, role == "main");
-    }
-    opened
+        opened
+    })
 }
 
 #[cfg(not(feature = "terminal-runtime"))]

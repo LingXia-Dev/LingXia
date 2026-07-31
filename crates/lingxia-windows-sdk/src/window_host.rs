@@ -1,5 +1,6 @@
 //! Windows host-window implementation owned by the Windows SDK layer.
 
+use std::cell::Cell;
 use std::collections::{HashMap, HashSet};
 use std::ffi::c_void;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -77,6 +78,10 @@ static HOST_ACTIVE_WEBTAG: OnceLock<Mutex<HashMap<isize, String>>> = OnceLock::n
 static PRESENTED_GROUP_MAIN: OnceLock<Mutex<HashMap<isize, String>>> = OnceLock::new();
 static PRIMARY_HOST_WINDOW: OnceLock<Mutex<Option<isize>>> = OnceLock::new();
 static FOCUSED_HOST_PANEL: OnceLock<Mutex<Option<String>>> = OnceLock::new();
+thread_local! {
+    static HOST_LAYOUT_BATCH_DEPTH: Cell<u32> = const { Cell::new(0) };
+    static HOST_LAYOUT_BATCH_PENDING: Cell<bool> = const { Cell::new(false) };
+}
 static NATIVE_FRAMED_WINDOWS: OnceLock<Mutex<HashSet<isize>>> = OnceLock::new();
 #[cfg(feature = "shell-chrome")]
 static HOST_CHROME_SNAPSHOTS: OnceLock<Mutex<HashMap<isize, HostChromeSnapshot>>> = OnceLock::new();
@@ -2269,6 +2274,29 @@ pub fn hide_host_panel(panel_id: &str) -> StdResult<()> {
     clear_focused_host_panel(panel_id);
     sync_active_host_layout();
     Ok(())
+}
+
+#[cfg(feature = "terminal-runtime")]
+pub(crate) fn remove_interactive_host_panel(panel_id: &str) {
+    mark_panel_visible(panel_id, false);
+    clear_focused_host_panel(panel_id);
+    if let Some(panels) = HOST_PANELS.get()
+        && let Ok(mut panels) = panels.lock()
+    {
+        panels.remove(panel_id);
+    }
+    if let Some(tabs) = PANEL_TABS.get()
+        && let Ok(mut tabs) = tabs.lock()
+    {
+        tabs.remove(panel_id);
+    }
+    #[cfg(feature = "shell-chrome")]
+    if let Some(overrides) = PANEL_POSITION_OVERRIDES.get()
+        && let Ok(mut overrides) = overrides.lock()
+    {
+        overrides.remove(panel_id);
+    }
+    sync_active_host_layout();
 }
 
 pub fn update_host_panel_body(panel_id: &str, body: &str) -> StdResult<()> {
@@ -4997,7 +5025,44 @@ fn hide_other_workspace_windows(host: HWND) {
     }
 }
 
+pub(crate) fn with_host_layout_batch<T>(operation: impl FnOnce() -> T) -> T {
+    struct BatchGuard;
+
+    impl Drop for BatchGuard {
+        fn drop(&mut self) {
+            let flush = HOST_LAYOUT_BATCH_DEPTH.with(|depth| {
+                let next = depth.get().saturating_sub(1);
+                depth.set(next);
+                next == 0 && HOST_LAYOUT_BATCH_PENDING.with(|pending| pending.replace(false))
+            });
+            if flush {
+                sync_active_host_layout_now();
+            }
+        }
+    }
+
+    HOST_LAYOUT_BATCH_DEPTH.with(|depth| depth.set(depth.get().saturating_add(1)));
+    let guard = BatchGuard;
+    let result = operation();
+    drop(guard);
+    result
+}
+
 fn sync_active_host_layout() {
+    let deferred = HOST_LAYOUT_BATCH_DEPTH.with(|depth| {
+        if depth.get() == 0 {
+            false
+        } else {
+            HOST_LAYOUT_BATCH_PENDING.with(|pending| pending.set(true));
+            true
+        }
+    });
+    if !deferred {
+        sync_active_host_layout_now();
+    }
+}
+
+fn sync_active_host_layout_now() {
     if let Some(hwnd) = active_host_window() {
         request_host_layout_sync(hwnd);
     }

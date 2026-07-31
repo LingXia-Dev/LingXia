@@ -983,7 +983,12 @@ fn managed_surface_handle(
         JSFunc::new(ctx, move || -> JSResult<()> {
             ensure_surface_object_open(&show_handle)?;
             show_lxapp
-                .set_shell_surface_visible(&show_id, true, None, None)
+                .set_shell_surface_visible(
+                    &show_id,
+                    true,
+                    is_main.then_some(ManagedSurfaceRole::Main),
+                    None,
+                )
                 .map_err(|err| {
                     surface_error(rong::error::E_INTERNAL, "shell_surface_failed", err)
                 })?;
@@ -1024,11 +1029,18 @@ fn managed_surface_handle(
                 return Ok(());
             }
             close_lxapp
-                .set_shell_surface_visible(&close_id, false, None, None)
+                .set_shell_surface_visible(
+                    &close_id,
+                    false,
+                    is_main.then_some(ManagedSurfaceRole::Main),
+                    None,
+                )
                 .map_err(|err| {
                     surface_error(rong::error::E_INTERNAL, "shell_surface_failed", err)
                 })?;
-            close_lxapp.unregister_host_aside(&close_id);
+            if !is_main {
+                close_lxapp.unregister_host_aside(&close_id);
+            }
             emit_close(
                 &close_handle,
                 &JSSurfaceClosed {

@@ -318,7 +318,7 @@ Each entry starts with its **content key** — exactly one of `lxapp` / `url` / 
 |---|---|---:|---|
 | `lxapp` | string | one content key | An lxapp, by appId. Roles: `main` \| `aside` \| `float`. |
 | `url` | string | one content key | A page in the managed browser (requires `capabilities.browser: true`). macOS admits it as `main` and opens browser asides dynamically with `lx.openSurface`; Windows retains declarative `aside` support. |
-| `native` | string | one content key | A built-in host surface: `terminal` or `browser`. On macOS, terminal supports `main` / `aside` and browser supports `main`; Windows currently keeps terminal as `aside`. |
+| `native` | string | one content key | A built-in host surface: `terminal` or `browser`. On macOS and Windows, terminal supports `main` / `aside`; browser supports `main`. |
 | `role` | `main` \| `aside` \| `float` | Yes | `main` = a switchable primary surface; `aside` = a docked companion; `float` = a tray-anchored popover (requires a `tray:`). |
 | `launch` | bool | No | Open on start. At most one `main` may set `launch: true` (the initial surface). Omit on all mains for a tray-launched app. |
 | `edge` | `left`\|`right`\|`top`\|`bottom` | No | Aside docking edge. Defaults to `right`; the terminal defaults to `bottom` (and only accepts `top`/`bottom`). |
