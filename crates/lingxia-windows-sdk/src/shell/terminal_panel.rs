@@ -705,21 +705,17 @@ pub(super) fn toggle_terminal_panel_maximized(panel_id: &str) {
 pub(super) fn set_terminal_panel_maximized(panel_id: &str, maximized: bool) {
     #[cfg(feature = "terminal-runtime")]
     {
-        let changed = {
+        {
             let mut panels = windows_terminal_panels();
             let Some(panel) = panels.get_mut(panel_id) else {
                 return;
             };
-            if panel.maximized == maximized {
-                false
-            } else {
-                panel.maximized = maximized;
-                true
-            }
-        };
-        if changed {
-            lingxia_windows_contract::set_host_panel_maximized(panel_id, maximized);
+            panel.maximized = maximized;
         }
+        // Showing an existing panel recreates its host entry with the default
+        // docked state. Reapply the projection even when the terminal registry
+        // already held the requested value.
+        lingxia_windows_contract::set_host_panel_maximized(panel_id, maximized);
     }
     #[cfg(not(feature = "terminal-runtime"))]
     let _ = (panel_id, maximized);

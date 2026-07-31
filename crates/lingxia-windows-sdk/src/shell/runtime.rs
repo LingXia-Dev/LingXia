@@ -1895,27 +1895,27 @@ fn build_tab_bar_layout(
 }
 
 fn active_main_lxapp_id() -> Option<String> {
-    let graph_active = shell_owner_appid()
+    let graph_snapshot = shell_owner_appid()
         .and_then(|owner_appid| lxapp::try_get(&owner_appid))
-        .and_then(|owner| owner.surface_derived_layout())
-        .and_then(|plan| {
-            let active_id = plan.active_main_id?;
-            plan.main_switcher
-                .items
-                .into_iter()
-                .find(|item| item.surface_id == active_id)
-                .and_then(|item| match item.content {
-                    SwitcherContentKind::Lxapp { app_id }
-                    | SwitcherContentKind::Page { app_id } => Some(app_id),
-                    SwitcherContentKind::Browser | SwitcherContentKind::Native { .. } => None,
-                })
-        })
-        .filter(|appid| lxapp::open_region(appid) == Some(lxapp::LxAppOpenRegion::Main));
-    graph_active.or_else(|| {
-        let appid = lxapp::get_current_lxapp().0;
-        (!appid.is_empty() && lxapp::open_region(&appid) == Some(lxapp::LxAppOpenRegion::Main))
-            .then_some(appid)
-    })
+        .map(|owner| owner.surface_switcher_snapshot());
+    if let Some(snapshot) = graph_snapshot
+        && let Some(active_id) = snapshot.active_surface_id
+    {
+        return snapshot
+            .items
+            .into_iter()
+            .find(|item| item.surface_id == active_id)
+            .and_then(|item| match item.content {
+                SwitcherContentKind::Lxapp { app_id } | SwitcherContentKind::Page { app_id } => {
+                    Some(app_id)
+                }
+                SwitcherContentKind::Browser | SwitcherContentKind::Native { .. } => None,
+            })
+            .filter(|appid| lxapp::open_region(appid) == Some(lxapp::LxAppOpenRegion::Main));
+    }
+    let appid = lxapp::get_current_lxapp().0;
+    (!appid.is_empty() && lxapp::open_region(&appid) == Some(lxapp::LxAppOpenRegion::Main))
+        .then_some(appid)
 }
 
 fn main_lxapp_closable(appid: &str) -> bool {
@@ -2498,10 +2498,30 @@ fn shell_surface_in_graph(surface_id: &str) -> bool {
 }
 
 /// Native host panels are not owned by the platform WebView presenter, so the
-/// SDK consumes the same slot plan and applies only the native slot here.
-/// Lxapp and browser slots are reconciled by `lingxia-platform` where their
-/// WebViews live.
+/// SDK reconciles both native mains and the native aside slot here. Lxapp and
+/// browser slots are reconciled by `lingxia-platform` where their WebViews
+/// live.
 fn apply_windows_layout_plan(plan: &LayoutPresentationPlan) {
+    let active_native_main = plan.main_switcher.items.iter().find_map(|item| {
+        (item.active && matches!(item.content, SwitcherContentKind::Native { .. }))
+            .then_some(item.surface_id.as_str())
+    });
+    for item in &plan.main_switcher.items {
+        if !matches!(item.content, SwitcherContentKind::Native { .. })
+            || Some(item.surface_id.as_str()) == active_native_main
+        {
+            continue;
+        }
+        if is_panel_visible(&item.surface_id)
+            && let Err(error) = hide_host_panel(&item.surface_id)
+        {
+            log::warn!(
+                "failed to hide inactive Windows native main {}: {error}",
+                item.surface_id
+            );
+        }
+    }
+
     let native_slot = plan
         .aside_slots
         .iter()
@@ -4439,6 +4459,7 @@ fn present_browser_tab_when_ready_with_policy(
     tab_id: String,
     allow_intentional_blank: bool,
 ) {
+    activate_web_main_carrier(appid);
     if let Err(err) = reactivate_browser_tab_if_needed(&tab_id) {
         log::warn!("failed to reactivate browser tab {tab_id}: {err}");
         return;
@@ -4555,6 +4576,40 @@ fn present_browser_tab_when_ready_with_policy(
             .await;
         }
     }));
+}
+
+#[cfg(feature = "browser-runtime")]
+fn activate_web_main_carrier(owner_appid: &str) {
+    let Some(owner) = lxapp::try_get(owner_appid) else {
+        return;
+    };
+    let snapshot = owner.surface_switcher_snapshot();
+    let active_is_native = snapshot
+        .items
+        .iter()
+        .any(|item| item.active && matches!(item.content, SwitcherContentKind::Native { .. }));
+    if !active_is_native {
+        return;
+    }
+    let carrier = snapshot
+        .root_surface_id
+        .as_deref()
+        .and_then(|root_id| {
+            snapshot
+                .items
+                .iter()
+                .find(|item| item.surface_id == root_id)
+                .filter(|item| !matches!(item.content, SwitcherContentKind::Native { .. }))
+        })
+        .or_else(|| {
+            snapshot
+                .items
+                .iter()
+                .find(|item| !matches!(item.content, SwitcherContentKind::Native { .. }))
+        });
+    if let Some(carrier) = carrier {
+        let _ = owner.set_active_main_surface(&carrier.surface_id);
+    }
 }
 
 #[cfg(feature = "browser-runtime")]
