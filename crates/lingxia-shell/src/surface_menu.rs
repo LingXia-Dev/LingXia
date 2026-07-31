@@ -149,6 +149,7 @@ pub struct SurfaceMenuContext {
     pub renameable: bool,
     pub title_overridden: bool,
     pub has_other_closable: bool,
+    pub has_closable_before: bool,
     pub has_closable_after: bool,
 }
 
@@ -197,7 +198,7 @@ pub fn compose_surface_menu(
             SurfaceMenuItemRole::Destructive,
         ));
     }
-    if context.has_closable_after {
+    if context.has_closable_before && context.has_closable_after {
         lifecycle.push(SurfaceMenuItem::built_in(
             SurfaceMenuBuiltinAction::CloseAfter,
             SurfaceMenuItemRole::Destructive,
@@ -241,7 +242,7 @@ mod tests {
     }
 
     #[test]
-    fn root_omits_close_but_keeps_batch_actions() {
+    fn root_deduplicates_equivalent_batch_actions() {
         let snapshot = compose_surface_menu(
             SurfaceMenuContext {
                 revision: 7,
@@ -250,6 +251,7 @@ mod tests {
                 renameable: false,
                 title_overridden: false,
                 has_other_closable: true,
+                has_closable_before: false,
                 has_closable_after: true,
             },
             Vec::new(),
@@ -262,7 +264,7 @@ mod tests {
         assert!(actions.contains(&SurfaceMenuAction::Switcher {
             action: SurfaceMenuBuiltinAction::CloseOthers,
         }));
-        assert!(actions.contains(&SurfaceMenuAction::Switcher {
+        assert!(!actions.contains(&SurfaceMenuAction::Switcher {
             action: SurfaceMenuBuiltinAction::CloseAfter,
         }));
     }
@@ -284,6 +286,7 @@ mod tests {
                 renameable: true,
                 title_overridden: true,
                 has_other_closable: true,
+                has_closable_before: true,
                 has_closable_after: false,
             },
             vec![vec![more_action]],
@@ -303,6 +306,31 @@ mod tests {
         );
         assert_eq!(snapshot.revision, 9);
         assert_eq!(snapshot.surface_id, "terminal");
+    }
+
+    #[test]
+    fn middle_surface_keeps_distinct_batch_actions() {
+        let snapshot = compose_surface_menu(
+            SurfaceMenuContext {
+                revision: 10,
+                surface_id: "middle".into(),
+                closable: true,
+                renameable: false,
+                title_overridden: false,
+                has_other_closable: true,
+                has_closable_before: true,
+                has_closable_after: true,
+            },
+            Vec::new(),
+        );
+
+        let actions = actions(&snapshot);
+        assert!(actions.contains(&SurfaceMenuAction::Switcher {
+            action: SurfaceMenuBuiltinAction::CloseOthers,
+        }));
+        assert!(actions.contains(&SurfaceMenuAction::Switcher {
+            action: SurfaceMenuBuiltinAction::CloseAfter,
+        }));
     }
 
     #[test]
@@ -326,6 +354,7 @@ mod tests {
                 renameable: false,
                 title_overridden: false,
                 has_other_closable: false,
+                has_closable_before: false,
                 has_closable_after: false,
             },
             vec![

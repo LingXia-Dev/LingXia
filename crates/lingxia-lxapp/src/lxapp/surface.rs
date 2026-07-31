@@ -495,6 +495,11 @@ impl WindowSurfaceController {
                     .items
                     .iter()
                     .any(|candidate| candidate.surface_id != surface_id && candidate.closable),
+                has_closable_before: snapshot
+                    .items
+                    .iter()
+                    .take(index)
+                    .any(|candidate| candidate.closable),
                 has_closable_after: snapshot
                     .items
                     .iter()
