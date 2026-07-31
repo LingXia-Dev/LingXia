@@ -3,10 +3,10 @@ use crate::webview::{
     ProxyActivation, ProxyApplyReport, ProxyConfig, WebTag, find_webview, find_webview_delegate,
 };
 use crate::{
-    ClearSiteDataOptions, ClearSiteDataResult, LogLevel, NavigationPolicy, NavigationRequest,
-    NetworkBody, NetworkCaptureSnapshot, NetworkEntry, UserAgentOverride, WebResourceBody,
-    WebResourceResponse, WebViewCookie, WebViewCookieSameSite, WebViewCookieSetRequest,
-    WebViewError,
+    ClearSiteDataOptions, ClearSiteDataResult, FileChooserRequest, FileChooserResponse, LogLevel,
+    NavigationPolicy, NavigationRequest, NetworkBody, NetworkCaptureSnapshot, NetworkEntry,
+    UserAgentOverride, WebResourceBody, WebResourceResponse, WebViewCookie, WebViewCookieSameSite,
+    WebViewCookieSetRequest, WebViewError,
 };
 use base64::Engine as _;
 use cookie::{Cookie, SameSite};
@@ -27,10 +27,12 @@ use servo::{
     Code, CompositionEvent, CompositionState, ConsoleLogLevel, CookieSource, EmbedderControl,
     EmbedderControlId, EventLoopWaker, ImeEvent, InputEvent, InputMethodControl, InputMethodType,
     Key, KeyState, KeyboardEvent, LoadStatus, Location, Modifiers, NamedKey, PrefValue,
-    Preferences, RenderingContext, Servo, ServoBuilder, StorageType, TouchEvent, TouchEventType,
-    TouchId, TouchPointerType, UserContentManager, UserScript, WebView, WebViewBuilder,
-    WebViewDelegate, WebViewId, WheelDelta, WheelEvent, WheelMode, WindowRenderingContext,
+    Preferences, RenderingContext, RgbColor, SelectElementOptionOrOptgroup, Servo, ServoBuilder,
+    SimpleDialog, StorageType, TouchEvent, TouchEventType, TouchId, TouchPointerType,
+    UserContentManager, UserScript, WebView, WebViewBuilder, WebViewDelegate, WebViewId,
+    WheelDelta, WheelEvent, WheelMode, WindowRenderingContext,
 };
+use std::cell::Cell;
 use std::collections::{HashMap, VecDeque};
 use std::future::{self, Future};
 use std::io::Read;
@@ -169,6 +171,47 @@ fn hide_java_input_method(webtag: &WebTag) {
     }
 }
 
+fn show_java_embedder_control(webtag: &WebTag, token: u64, kind: &str, payload: &str) {
+    if let Err(error) = super::jni_env::with_env(|env| -> Result<(), Box<dyn std::error::Error>> {
+        let class =
+            super::jni_env::get_lingxia_webview_class().ok_or("LingXiaWebView class not cached")?;
+        let webtag = env.new_string(webtag.as_str())?;
+        let kind = env.new_string(kind)?;
+        let payload = env.new_string(payload)?;
+        env.call_static_method(
+            class,
+            jni_str!("showServoEmbedderControl"),
+            jni_sig!("(Ljava/lang/String;JLjava/lang/String;Ljava/lang/String;)V"),
+            &[
+                (&webtag).into(),
+                (token as jlong).into(),
+                (&kind).into(),
+                (&payload).into(),
+            ],
+        )?;
+        Ok(())
+    }) {
+        log::warn!("Failed to show Android embedder control for {webtag}: {error}");
+    }
+}
+
+fn hide_java_embedder_control(webtag: &WebTag, token: u64) {
+    if let Err(error) = super::jni_env::with_env(|env| -> Result<(), Box<dyn std::error::Error>> {
+        let class =
+            super::jni_env::get_lingxia_webview_class().ok_or("LingXiaWebView class not cached")?;
+        let webtag = env.new_string(webtag.as_str())?;
+        env.call_static_method(
+            class,
+            jni_str!("hideServoEmbedderControl"),
+            jni_sig!("(Ljava/lang/String;J)V"),
+            &[(&webtag).into(), (token as jlong).into()],
+        )?;
+        Ok(())
+    }) {
+        log::warn!("Failed to hide Android embedder control for {webtag}: {error}");
+    }
+}
+
 fn dispatch_java_native_component_message(webtag: &WebTag, message: &str) {
     if let Err(error) = super::jni_env::with_env(|env| -> Result<(), Box<dyn std::error::Error>> {
         let class =
@@ -219,6 +262,8 @@ struct CaptureState {
 }
 
 static RUNTIMES: OnceLock<Mutex<HashMap<String, RuntimeHandle>>> = OnceLock::new();
+static EMBEDDER_CONTROLS: OnceLock<Mutex<HashMap<String, HashMap<u64, EmbedderControl>>>> =
+    OnceLock::new();
 static RUNTIME_SENDER: OnceLock<mpsc::Sender<RuntimeCommand>> = OnceLock::new();
 static SERVO_DATA_DIR: OnceLock<PathBuf> = OnceLock::new();
 static WEBVIEW_TAGS: OnceLock<Mutex<HashMap<WebViewId, WebTag>>> = OnceLock::new();
@@ -231,6 +276,10 @@ struct Document {
 
 fn runtimes() -> &'static Mutex<HashMap<String, RuntimeHandle>> {
     RUNTIMES.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn embedder_controls() -> &'static Mutex<HashMap<String, HashMap<u64, EmbedderControl>>> {
+    EMBEDDER_CONTROLS.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
 fn webview_tags() -> &'static Mutex<HashMap<WebViewId, WebTag>> {
@@ -366,6 +415,10 @@ pub(super) fn register(webtag: &WebTag, strict_profile: bool) {
 }
 
 pub(super) fn unregister(webtag: &WebTag) {
+    embedder_controls()
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .remove(webtag.as_str());
     if runtimes()
         .lock()
         .unwrap_or_else(|e| e.into_inner())
@@ -481,6 +534,7 @@ struct EngineState {
     density: f32,
     size: PhysicalSize<u32>,
     pending_load: Option<String>,
+    next_embedder_control_token: Rc<Cell<u64>>,
 }
 
 impl EngineState {
@@ -494,6 +548,7 @@ impl EngineState {
             density: 1.0,
             size: PhysicalSize::new(1, 1),
             pending_load: None,
+            next_embedder_control_token: Rc::new(Cell::new(0)),
         }
     }
 
@@ -773,6 +828,7 @@ impl EngineState {
         ))));
         let delegate = Rc::new(Delegate {
             webtag: self.webtag.clone(),
+            next_embedder_control_token: self.next_embedder_control_token.clone(),
         });
         let initial_url = self
             .pending_load
@@ -965,8 +1021,180 @@ fn cookie_from_servo(cookie: Cookie<'static>) -> WebViewCookie {
     }
 }
 
+fn complete_embedder_control(webtag: &WebTag, token: u64, action: &str, value: &str) -> bool {
+    let control = embedder_controls()
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .get_mut(webtag.as_str())
+        .and_then(|controls| controls.remove(&token));
+    let Some(control) = control else {
+        return false;
+    };
+    let confirm = action == "confirm";
+    match control {
+        EmbedderControl::SelectElement(mut select) => {
+            if confirm && let Ok(indices) = serde_json::from_str::<Vec<usize>>(value) {
+                select.select(indices);
+            }
+            select.submit();
+        }
+        EmbedderControl::ColorPicker(mut picker) => {
+            if confirm {
+                let color = value.strip_prefix('#').unwrap_or(value);
+                if color.len() == 6
+                    && let Ok(rgb) = u32::from_str_radix(color, 16)
+                {
+                    picker.select(Some(RgbColor {
+                        red: (rgb >> 16) as u8,
+                        green: (rgb >> 8) as u8,
+                        blue: rgb as u8,
+                    }));
+                }
+            }
+            picker.submit();
+        }
+        EmbedderControl::FilePicker(mut picker) => {
+            if confirm && let Ok(paths) = serde_json::from_str::<Vec<PathBuf>>(value) {
+                picker.select(&paths);
+                picker.submit();
+            } else {
+                picker.dismiss();
+            }
+        }
+        EmbedderControl::SimpleDialog(mut dialog) => {
+            if confirm {
+                if let SimpleDialog::Prompt(prompt) = &mut dialog {
+                    prompt.set_current_value(value);
+                }
+                dialog.confirm();
+            } else {
+                dialog.dismiss();
+            }
+        }
+        EmbedderControl::ContextMenu(menu) => menu.dismiss(),
+        EmbedderControl::InputMethod(_) => {}
+    }
+    true
+}
+
+fn embedder_control_payload(control: &EmbedderControl) -> Option<(&'static str, String)> {
+    match control {
+        EmbedderControl::SelectElement(select) => {
+            let mut index = 0usize;
+            let mut options = Vec::new();
+            for entry in select.options() {
+                match entry {
+                    SelectElementOptionOrOptgroup::Option(option) => {
+                        options.push(serde_json::json!({
+                            "index": index,
+                            "label": option.label,
+                            "disabled": option.is_disabled,
+                            "group": serde_json::Value::Null,
+                        }));
+                        index += 1;
+                    }
+                    SelectElementOptionOrOptgroup::Optgroup {
+                        label,
+                        options: group_options,
+                    } => {
+                        for option in group_options {
+                            options.push(serde_json::json!({
+                                "index": index,
+                                "label": option.label,
+                                "disabled": option.is_disabled,
+                                "group": label,
+                            }));
+                            index += 1;
+                        }
+                    }
+                }
+            }
+            Some((
+                "select",
+                serde_json::json!({
+                    "options": options,
+                    "selected": select.selected_options(),
+                    "multiple": select.allow_select_multiple(),
+                })
+                .to_string(),
+            ))
+        }
+        EmbedderControl::ColorPicker(picker) => {
+            let color = picker
+                .current_color()
+                .map(|color| format!("#{:02x}{:02x}{:02x}", color.red, color.green, color.blue))
+                .unwrap_or_else(|| "#000000".into());
+            Some(("color", serde_json::json!({ "color": color }).to_string()))
+        }
+        EmbedderControl::FilePicker(picker) => Some((
+            "file",
+            serde_json::json!({
+                "filters": picker
+                    .filter_patterns()
+                    .iter()
+                    .map(|pattern| pattern.0.clone())
+                    .collect::<Vec<_>>(),
+                "multiple": picker.allow_select_multiple(),
+            })
+            .to_string(),
+        )),
+        EmbedderControl::SimpleDialog(dialog) => {
+            let (kind, default_value) = match dialog {
+                SimpleDialog::Alert(_) => ("alert", None),
+                SimpleDialog::Confirm(_) => ("confirm", None),
+                SimpleDialog::Prompt(prompt) => ("prompt", Some(prompt.current_value())),
+            };
+            Some((
+                kind,
+                serde_json::json!({
+                    "message": dialog.message(),
+                    "default": default_value,
+                })
+                .to_string(),
+            ))
+        }
+        EmbedderControl::InputMethod(_) | EmbedderControl::ContextMenu(_) => None,
+    }
+}
+
+fn dispatch_registered_file_chooser(
+    webtag: &WebTag,
+    token: u64,
+    request: FileChooserRequest,
+) -> bool {
+    let Some(webview) = find_webview(webtag) else {
+        return false;
+    };
+    let webtag = webtag.clone();
+    webview.handle_file_chooser(request, move |response| {
+        let (action, value) = match response {
+            FileChooserResponse::Files(files) => {
+                let paths = files
+                    .into_iter()
+                    .filter_map(|file| file.path)
+                    .collect::<Vec<_>>();
+                if paths.is_empty() {
+                    ("cancel".to_string(), String::new())
+                } else {
+                    (
+                        "confirm".to_string(),
+                        serde_json::to_string(&paths).unwrap_or_else(|_| "[]".into()),
+                    )
+                }
+            }
+            FileChooserResponse::Error(error) => {
+                log::warn!("Servo file chooser failed for {webtag}: {error}");
+                ("cancel".to_string(), String::new())
+            }
+            FileChooserResponse::Cancel => ("cancel".to_string(), String::new()),
+        };
+        complete_embedder_control(&webtag, token, &action, &value);
+    })
+}
+
 struct Delegate {
     webtag: WebTag,
+    next_embedder_control_token: Rc<Cell<u64>>,
 }
 
 impl WebViewDelegate for Delegate {
@@ -1045,14 +1273,64 @@ impl WebViewDelegate for Delegate {
         }
     }
 
-    fn show_embedder_control(&self, _webview: WebView, control: EmbedderControl) {
-        if let EmbedderControl::InputMethod(input_method) = control {
-            show_java_input_method(&self.webtag, &input_method);
+    fn show_embedder_control(&self, webview: WebView, control: EmbedderControl) {
+        if let EmbedderControl::InputMethod(input_method) = &control {
+            if input_method.input_method_type() == InputMethodType::Color {
+                hide_java_input_method(&self.webtag);
+            } else {
+                show_java_input_method(&self.webtag, input_method);
+            }
+            return;
+        }
+        let Some((kind, payload)) = embedder_control_payload(&control) else {
+            return;
+        };
+        let token = self
+            .next_embedder_control_token
+            .get()
+            .wrapping_add(1)
+            .max(1);
+        self.next_embedder_control_token.set(token);
+        let host_file_request = match &control {
+            EmbedderControl::FilePicker(picker) => Some(FileChooserRequest {
+                accept_types: picker
+                    .filter_patterns()
+                    .iter()
+                    .map(|pattern| format!(".{}", pattern.0.trim_start_matches('.')))
+                    .collect(),
+                allow_multiple: picker.allow_select_multiple(),
+                allow_directories: false,
+                capture: false,
+                source_page_url: webview.url().map(|url| url.to_string()),
+            }),
+            _ => None,
+        };
+        embedder_controls()
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .entry(self.webtag.to_string())
+            .or_default()
+            .insert(token, control);
+        let handled_by_host = host_file_request
+            .is_some_and(|request| dispatch_registered_file_chooser(&self.webtag, token, request));
+        if !handled_by_host {
+            show_java_embedder_control(&self.webtag, token, kind, &payload);
         }
     }
 
-    fn hide_embedder_control(&self, _webview: WebView, _control_id: EmbedderControlId) {
+    fn hide_embedder_control(&self, _webview: WebView, control_id: EmbedderControlId) {
         hide_java_input_method(&self.webtag);
+        let mut registry = embedder_controls()
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let controls = registry.entry(self.webtag.to_string()).or_default();
+        let token = controls
+            .iter()
+            .find_map(|(token, control)| (control.id() == control_id).then_some(*token));
+        if let Some(token) = token {
+            controls.remove(&token);
+            hide_java_embedder_control(&self.webtag, token);
+        }
     }
 }
 
@@ -1848,6 +2126,24 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaServoView_nativeSurfaceDe
         log::info!("Received Servo surface destruction for {tag}");
         let _ = send(&tag, Command::SurfaceDestroyed);
         Ok(())
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_webview_LingXiaServoView_nativeCompleteEmbedderControl(
+    mut env: EnvUnowned,
+    _this: JObject,
+    tag: JString,
+    token: jlong,
+    action: JString,
+    value: JString,
+) -> jboolean {
+    env.with_env(|env| -> Result<jboolean, jni::errors::Error> {
+        let tag = WebTag::from(jstring(env, tag)?.as_str());
+        let action = jstring(env, action)?;
+        let value = jstring(env, value)?;
+        Ok(complete_embedder_control(&tag, token as u64, &action, &value) as jboolean)
     })
     .resolve::<ThrowRuntimeExAndDefault>()
 }
