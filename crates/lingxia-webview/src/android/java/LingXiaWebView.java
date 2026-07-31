@@ -113,6 +113,21 @@ public class LingXiaWebView extends WebView implements LingXiaWebViewHost {
         });
     }
 
+    public static void showServoInputMethod(
+            String webTag,
+            int type,
+            String text,
+            int insertionPoint,
+            boolean multiline,
+            boolean allowVirtualKeyboard) {
+        LingXiaServoView.showInputMethod(
+                webTag, type, text, insertionPoint, multiline, allowVirtualKeyboard);
+    }
+
+    public static void hideServoInputMethod(String webTag) {
+        LingXiaServoView.hideInputMethod(webTag);
+    }
+
     static void cancelServoEvaluations(final String webTag) {
         new Handler(Looper.getMainLooper()).post(new Runnable() {
             @Override
