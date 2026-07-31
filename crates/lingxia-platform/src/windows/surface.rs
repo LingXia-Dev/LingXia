@@ -414,6 +414,48 @@ pub fn set_windows_managed_surface_visible_handler(handler: ManagedSurfaceVisibl
     }
 }
 
+type ManagedNativeSurfaceOpenHandler =
+    Arc<dyn Fn(&str, &str, Option<&str>, &str, &str) -> bool + Send + Sync>;
+static MANAGED_NATIVE_SURFACE_OPEN_HANDLER: Mutex<Option<ManagedNativeSurfaceOpenHandler>> =
+    Mutex::new(None);
+
+pub fn set_windows_managed_native_surface_open_handler(handler: ManagedNativeSurfaceOpenHandler) {
+    if let Ok(mut slot) = MANAGED_NATIVE_SURFACE_OPEN_HANDLER.lock() {
+        *slot = Some(handler);
+    }
+}
+
+pub(super) fn open_managed_native_surface(
+    surface_id: &str,
+    capability: &str,
+    instance_key: Option<&str>,
+    role: crate::traits::ui::ManagedSurfaceRole,
+    edge: Option<&str>,
+) -> Result<(), PlatformError> {
+    let handler = MANAGED_NATIVE_SURFACE_OPEN_HANDLER
+        .lock()
+        .ok()
+        .and_then(|slot| slot.clone())
+        .ok_or_else(|| {
+            PlatformError::NotSupported(
+                "managed native surfaces are not supported on this Windows host".to_string(),
+            )
+        })?;
+    if handler(
+        surface_id,
+        capability,
+        instance_key,
+        role.as_str(),
+        edge.unwrap_or_default(),
+    ) {
+        Ok(())
+    } else {
+        Err(PlatformError::InvalidParameter(format!(
+            "unsupported managed native surface: {capability}"
+        )))
+    }
+}
+
 pub(super) fn set_managed_surface_visible(
     id: &str,
     visible: bool,

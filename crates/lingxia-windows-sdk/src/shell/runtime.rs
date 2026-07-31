@@ -797,6 +797,9 @@ pub(super) fn install() {
     lingxia_platform::set_windows_managed_surface_visible_handler(Arc::new(
         set_managed_surface_visible,
     ));
+    lingxia_platform::set_windows_managed_native_surface_open_handler(Arc::new(
+        open_managed_native_surface,
+    ));
     lingxia_platform::set_windows_managed_surface_toggle_handler(Arc::new(toggle_managed_surface));
     lingxia_platform::set_windows_sidebar_actions_handler(Arc::new(set_runtime_sidebar_actions));
     lingxia_platform::set_windows_builtin_browser_page_handler(Arc::new(open_builtin_browser_page));
@@ -4644,6 +4647,58 @@ fn set_managed_surface_visible(panel_id: &str, visible: bool, role: &str, edge: 
     }
     show_panel_target(&owner_appid, panel_id, target, position_override);
     true
+}
+
+#[cfg(feature = "terminal-runtime")]
+fn open_managed_native_surface(
+    surface_id: &str,
+    capability: &str,
+    _instance_key: Option<&str>,
+    role: &str,
+    edge: &str,
+) -> bool {
+    if capability != "terminal" || !matches!(role, "main" | "aside") {
+        return false;
+    }
+    let Some(owner_appid) = shell_owner_appid() else {
+        return false;
+    };
+    let position = match parse_panel_position_override(edge) {
+        Ok(position) => position.unwrap_or(lingxia_app_context::PanelPosition::Bottom),
+        Err(()) => return false,
+    };
+    if role == "main" && crate::window_host::primary_host_window_handle().is_none() {
+        return open_declared_terminal(&owner_appid, surface_id).is_ok();
+    }
+    let title = lingxia_logic::i18n::t(lingxia_logic::I18nKey::TerminalTitle);
+    let position = panel_position(position);
+    let opened = match super::terminal_panel::show_existing_windows_terminal_panel(
+        surface_id, &title, position,
+    ) {
+        Ok(true) => true,
+        Ok(false) => {
+            super::terminal_panel::open_windows_terminal_panel(surface_id, &title, position).is_ok()
+        }
+        Err(error) => {
+            log::warn!("failed to restore Windows terminal surface {surface_id}: {error}");
+            false
+        }
+    };
+    if opened {
+        super::terminal_panel::set_terminal_panel_maximized(surface_id, role == "main");
+    }
+    opened
+}
+
+#[cfg(not(feature = "terminal-runtime"))]
+fn open_managed_native_surface(
+    _surface_id: &str,
+    _capability: &str,
+    _instance_key: Option<&str>,
+    _role: &str,
+    _edge: &str,
+) -> bool {
+    false
 }
 
 fn toggle_managed_surface(panel_id: &str) -> bool {

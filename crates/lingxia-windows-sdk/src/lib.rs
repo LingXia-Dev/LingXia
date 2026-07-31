@@ -434,6 +434,9 @@ pub fn start_default_host(app: WindowsApp) -> Result<WindowsHost> {
     let runtime = init_runtime(app)?;
     let configured_lxapp = runtime.lxapp_id();
     present_default_host(configured_lxapp, &asset_dir)?;
+    if let Some(owner) = configured_lxapp {
+        register_generated_native_asides(&asset_dir, owner)?;
+    }
     let content = match content {
         WindowsContent::LxApp => match generated_main_surface(&asset_dir, configured_lxapp)? {
             Some(main) => {
@@ -827,6 +830,55 @@ fn register_generated_main(owner_app_id: &str, main: &GeneratedMainSurface) -> R
         presentation,
     }])
     .map_err(|error| WindowsHostError::InvalidUi(error.to_string()))?;
+    Ok(())
+}
+
+#[cfg(all(target_os = "windows", feature = "runtime"))]
+fn register_generated_native_asides(asset_dir: &Path, owner_app_id: &str) -> Result<()> {
+    let path = asset_dir.join("ui.json");
+    let Ok(text) = std::fs::read_to_string(&path) else {
+        return Ok(());
+    };
+    let ui: serde_json::Value = serde_json::from_str(&text)
+        .map_err(|error| WindowsHostError::InvalidUi(error.to_string()))?;
+    let Some(surfaces) = ui.get("surfaces").and_then(serde_json::Value::as_array) else {
+        return Ok(());
+    };
+    let app = lxapp::try_get(owner_app_id).ok_or_else(|| {
+        WindowsHostError::InvalidUi(format!("home control lxapp is not ready: {owner_app_id}"))
+    })?;
+    for surface in surfaces {
+        if surface.get("role").and_then(serde_json::Value::as_str) != Some("aside") {
+            continue;
+        }
+        let Some(content) = surface
+            .get("content")
+            .and_then(serde_json::Value::as_object)
+        else {
+            continue;
+        };
+        if content.get("kind").and_then(serde_json::Value::as_str) != Some("native") {
+            continue;
+        }
+        let id = surface
+            .get("id")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or_default();
+        let capability = content
+            .get("name")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or_default();
+        if id.trim().is_empty() || capability.trim().is_empty() {
+            return Err(WindowsHostError::InvalidUi(
+                "native aside is missing id or content.name".to_string(),
+            ));
+        }
+        let edge = surface
+            .get("edge")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("bottom");
+        app.register_host_native_aside_declaration(id, capability, edge);
+    }
     Ok(())
 }
 
