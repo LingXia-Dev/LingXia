@@ -169,6 +169,24 @@ fn hide_java_input_method(webtag: &WebTag) {
     }
 }
 
+fn dispatch_java_native_component_message(webtag: &WebTag, message: &str) {
+    if let Err(error) = super::jni_env::with_env(|env| -> Result<(), Box<dyn std::error::Error>> {
+        let class =
+            super::jni_env::get_lingxia_webview_class().ok_or("LingXiaWebView class not cached")?;
+        let webtag = env.new_string(webtag.as_str())?;
+        let message = env.new_string(message)?;
+        env.call_static_method(
+            class,
+            jni_str!("dispatchServoNativeComponentMessage"),
+            jni_sig!("(Ljava/lang/String;Ljava/lang/String;)V"),
+            &[(&webtag).into(), (&message).into()],
+        )?;
+        Ok(())
+    }) {
+        log::warn!("Failed to dispatch Servo native-component message for {webtag}: {error}");
+    }
+}
+
 const CAPTURE_LIMIT: usize = 1_000;
 const CAPTURE_BODY_LIMIT: usize = 8 * 1024 * 1024;
 
@@ -1441,10 +1459,8 @@ fn bridge_response(request: &Request, url: servo::ServoUrl, webtag: Option<WebTa
             }
         }
         "component" => {
-            if let Some(message) = query.get("message")
-                && let Some(delegate) = webtag.as_ref().and_then(find_webview_delegate)
-            {
-                delegate.handle_native_component_message(message.clone());
+            if let (Some(message), Some(webtag)) = (query.get("message"), webtag.as_ref()) {
+                dispatch_java_native_component_message(webtag, message);
             }
         }
         "eval" => {
