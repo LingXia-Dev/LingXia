@@ -339,7 +339,7 @@ internal object NativeApi {
 
     /** The WebView a managed browser tab shows, or null while it has none. */
     @JvmStatic
-    external fun findBrowserTabWebView(tabId: String): com.lingxia.webview.LingXiaWebView?
+    external fun findBrowserTabWebView(tabId: String): com.lingxia.webview.LingXiaWebViewHost?
 
     /**
      * Get complete TabBar state with items array (unified API)
@@ -403,10 +403,10 @@ internal object NativeApi {
         sessionId: Long,
         webtag: String?,
         callback: PageWebViewCallback
-    ): com.lingxia.webview.LingXiaWebView?
+    ): com.lingxia.webview.LingXiaWebViewHost?
 
     @JvmStatic
-    external fun findWebViewByPageInstanceId(pageInstanceId: String): com.lingxia.webview.LingXiaWebView?
+    external fun findWebViewByPageInstanceId(pageInstanceId: String): com.lingxia.webview.LingXiaWebViewHost?
 
     @JvmStatic
     external fun notifyPageInstanceMounted(pageInstanceId: String): Boolean
