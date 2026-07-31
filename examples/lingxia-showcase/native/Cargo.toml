@@ -101,5 +101,6 @@ lingxia-windows-sdk = { path = "../../../crates/lingxia-windows-sdk" }
 
 # Servo 0.4 compatibility fixes needed when cross-compiling Android from Windows.
 servo-allocator = { path = "../../../crates/lingxia-webview/vendor/servo-allocator" }
+servo-net = { path = "../../../crates/lingxia-webview/vendor/servo-net" }
 servo-storage = { path = "../../../crates/lingxia-webview/vendor/servo-storage" }
 sea-query-rusqlite = { path = "../../../crates/lingxia-webview/vendor/sea-query-rusqlite" }
