@@ -391,7 +391,7 @@ Two sidebar regions have fixed ownership:
 - **Pins are the user's** — quick entries for lxapps and websites (eight at most), added and removed through context menus. There is no app API to write them.
 - **Sidebar actions are the app's** — runtime entries the home lxapp declares via `lx.shell.sidebarActions` (see the `@lingxia/types` declarations). Header actions are icon-only and limited to two; footer actions use labeled cells and scroll after five visible rows. The shell invokes `onActivate` and performs no built-in navigation; callbacks can call `lx.openSurface(...)` or run any other app logic. Redeclare them each Logic launch.
 
-The first declared `main` is the window's stable root and cannot be closed. Other
+The initial `main` is admitted first as the window's stable root and cannot be closed. Other
 main surfaces expose only the actions their content provider supports: browser
 and terminal surfaces may be closed or renamed, while lxapp lifecycle stays
 lxapp-owned. Closing an active non-root main selects another remaining main, so
@@ -428,7 +428,9 @@ Pass `null` / empty to clear a badge or title. The tray *shape* is declared in `
 
 ### Terminal surface
 
-The built-in terminal is gated by `capabilities.terminal`. On macOS it may be a main surface or an aside (`edge: top | bottom`, default `bottom`); Windows currently supports the aside form. `lx.openSurface({ native: 'terminal', as: 'main' })` moves its one workspace into the main switcher/sidebar without replacing the launch root; `as: 'aside'` moves it back to the attach panel. Omitting `as` uses the YAML role. To expose it as an activator, declare a runtime entry whose `onActivate` calls the desired form.
+The built-in terminal is gated by `capabilities.terminal`. On macOS it may be a main surface or an aside (`edge: top | bottom`, default `bottom`); Windows currently supports the aside form. Its role and edge are fixed by `lingxia.yaml` and cannot be changed by JS.
+
+When terminal is declared as `main`, its declaration is the default workspace. The sidebar's global `+` creates another terminal workspace as a separate main Surface; the `+` inside a terminal workspace creates another PTY tab in that workspace. Logic can open or reuse a named workspace with `lx.openSurface({ native: 'terminal', instanceKey: 'project-a' })`. Equal keys resolve to the same runtime Surface, distinct keys create distinct sidebar entries, and the returned handle's read-only `id` is the runtime `SurfaceId` — it is not the key. Keyed instances currently require a macOS main declaration.
 
 `native: browser` is a macOS host-owned browser workspace. It starts with an empty tab and uses the managed browser profile and chrome; use a `url:` main when the declaration should open a specific `https://` or authorized `file://` target.
 
@@ -526,7 +528,7 @@ If `--skip-native` is used, SwiftPM links an existing Rust static library. That 
 ## Pre-ship checklist
 
 - [ ] `lingxia.yaml` validates: every required platform section present; `homeAppId` resolvable to a `resources.bundles[].appId`.
-- [ ] Exactly one `main` surface (or a `role: float` tray popover); every `aside` has an `edge`; terminal surfaces have `capabilities.terminal: true`.
+- [ ] At least one `main` surface (or a `role: float` tray popover); the initial main is the stable root, every `aside` has an `edge`, and terminal surfaces have `capabilities.terminal: true`.
 - [ ] `features.appService` matches the embedded lxapp's logic mode.
 - [ ] All native routes return `lingxia::Result<T>` with `Serialize` outputs.
 - [ ] `HostAddon` registers every route and extension; FFI exports present for each target platform.

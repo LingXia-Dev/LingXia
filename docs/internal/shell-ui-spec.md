@@ -124,8 +124,10 @@ enters the main window's surface graph.
 - Page navigation stays per **page instance**: the same route may enter the
   navigation stack multiple times with different queries. Opening a page
   creates a new page instance by default; page names are not global singletons.
-- One native capability is a singleton in the shell; different native
-  capabilities may coexist in the native slot.
+- Native identity is `(capability, instanceKey)`. A missing key addresses the
+  declaration's default instance. Equal keys reuse one Surface; different keys
+  may coexist when the provider and declared role support multiple instances.
+  Provider-private workspace/session ids are not Surface identity.
 - The URL duplication policy only affects browser-tab reuse; it does not change
   content identity after navigation.
 
@@ -693,17 +695,17 @@ semantics every language surface MUST share.
 ### 7.1 Opening surfaces
 
 - An open spec is keyed by exactly one content key (`lxapp` / `page` / `url` /
-  `native`), with an optional role override (`as`) and presentation hints
-  (edge, position, size, modality, dismissal).
+  `native`). Role overrides and presentation hints apply only to content whose
+  generated declaration types admit them; native role and edge stay YAML-owned.
 - Defaults: an lxapp without `as` takes its YAML role, else main. A URL without
-  `as` becomes a main browser tab. A native capability without `as` takes its
-  YAML or capability-metadata default, else a bottom aside. The aside default
-  edge is right.
-- On macOS, `native: terminal` accepts `as: main | aside`. The same stable
-  surface id and terminal workspace move between the main switcher and attach
-  panel; the host never creates simultaneous copies, and the root main remains
-  unchanged. Windows rejects the main override until it has a native main
-  presenter.
+  `as` becomes a main browser tab. A native capability always takes its YAML
+  role and placement.
+- `lx.openSurface({ native, instanceKey? })` is home-only. Omitting the key
+  opens the declaration's default instance. A non-empty key selects or creates
+  an instance and the returned handle binds the resolved runtime `SurfaceId`,
+  never the key. Terminal keyed instances currently require a macOS main
+  declaration; unsupported provider/role combinations reject rather than move
+  an existing Surface.
 - Runtime floats default to centered, non-modal, tap-outside dismissal;
   compact ignores position and presents a bottom sheet. A float without a size
   hint uses 480×360 dp/pt clamped to 90% of the container; a standalone window
@@ -711,9 +713,9 @@ semantics every language surface MUST share.
 - Size values are hints, clamped per §3.3. Non-finite, negative, or malformed
   values fail with `E_INVALID_ARG`; insufficient container space degrades per
   admission rules instead of erroring.
-- An explicit role override never mutates the declaration. A live terminal
-  migrates between its supported roles; content whose provider cannot migrate
-  fails with `E_SURFACE_CONFLICT`.
+- An explicit role override never mutates a declaration. Native specs reject
+  role and edge overrides; changing a native Surface's role requires changing
+  the host declaration and rebuilding.
 - `interaction.closeButton` adds the standard native circular close control.
   Manual floats require it or an app-owned close path. Modal floats block
   underlying input and restore prior focus on close.
