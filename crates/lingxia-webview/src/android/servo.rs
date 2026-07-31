@@ -12,8 +12,8 @@ use cookie::{Cookie, SameSite};
 use dpi::PhysicalSize;
 use euclid::Scale;
 use jni::objects::{JObject, JString};
-use jni::sys::{jboolean, jfloat, jint};
-use jni::{EnvUnowned, errors::ThrowRuntimeExAndDefault};
+use jni::sys::{jboolean, jfloat, jint, jlong};
+use jni::{EnvUnowned, errors::ThrowRuntimeExAndDefault, jni_sig, jni_str};
 use raw_window_handle::{
     AndroidDisplayHandle, AndroidNdkWindowHandle, DisplayHandle, RawDisplayHandle, RawWindowHandle,
     WindowHandle,
@@ -43,6 +43,63 @@ use tokio::sync::oneshot;
 use url::Url;
 
 use super::webview::complete_pending_eval_request;
+
+fn js_value_to_json(value: servo::JSValue) -> serde_json::Value {
+    match value {
+        servo::JSValue::Undefined | servo::JSValue::Null => serde_json::Value::Null,
+        servo::JSValue::Boolean(value) => value.into(),
+        servo::JSValue::Number(value) => serde_json::Number::from_f64(value)
+            .map(serde_json::Value::Number)
+            .unwrap_or(serde_json::Value::Null),
+        servo::JSValue::String(value)
+        | servo::JSValue::Element(value)
+        | servo::JSValue::ShadowRoot(value)
+        | servo::JSValue::Frame(value)
+        | servo::JSValue::Window(value) => value.into(),
+        servo::JSValue::Array(values) => values
+            .into_iter()
+            .map(js_value_to_json)
+            .collect::<Vec<_>>()
+            .into(),
+        servo::JSValue::Object(values) => values
+            .into_iter()
+            .map(|(key, value)| (key, js_value_to_json(value)))
+            .collect::<serde_json::Map<_, _>>()
+            .into(),
+    }
+}
+
+fn complete_java_evaluation(
+    request_id: u64,
+    result: Result<servo::JSValue, servo::JavaScriptEvaluationError>,
+) {
+    if request_id == 0 {
+        return;
+    }
+    let value = match result {
+        Ok(value) => {
+            serde_json::to_string(&js_value_to_json(value)).unwrap_or_else(|_| "null".to_string())
+        }
+        Err(error) => {
+            log::warn!("Servo JavaScript evaluation failed: {error:?}");
+            "null".to_string()
+        }
+    };
+    if let Err(error) = super::jni_env::with_env(|env| -> Result<(), Box<dyn std::error::Error>> {
+        let class =
+            super::jni_env::get_lingxia_webview_class().ok_or("LingXiaWebView class not cached")?;
+        let value = env.new_string(value)?;
+        env.call_static_method(
+            class,
+            jni_str!("completeServoEvaluation"),
+            jni_sig!("(JLjava/lang/String;)V"),
+            &[(request_id as jlong).into(), (&value).into()],
+        )?;
+        Ok(())
+    }) {
+        log::warn!("Failed to return Servo JavaScript result to Java: {error}");
+    }
+}
 
 const CAPTURE_LIMIT: usize = 1_000;
 
@@ -139,6 +196,10 @@ enum Command {
         base_url: String,
     },
     Exec(String),
+    Evaluate {
+        script: String,
+        request_id: u64,
+    },
     CurrentUrl(oneshot::Sender<Option<String>>),
     PostMessage(String),
     ClearBrowsingData,
@@ -443,6 +504,18 @@ impl EngineState {
             Command::Exec(script) => {
                 if let Some(view) = &self.view {
                     view.evaluate_javascript(script, |_| {});
+                }
+            }
+            Command::Evaluate { script, request_id } => {
+                if let Some(view) = &self.view {
+                    view.evaluate_javascript(script, move |result| {
+                        complete_java_evaluation(request_id, result);
+                    });
+                } else {
+                    complete_java_evaluation(
+                        request_id,
+                        Err(servo::JavaScriptEvaluationError::WebViewNotReady),
+                    );
                 }
             }
             Command::CurrentUrl(reply) => {
@@ -1548,13 +1621,24 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaServoView_nativeEvaluate(
     mut env: EnvUnowned,
     _this: JObject,
     tag: JString,
+    request_id: jlong,
     script: JString,
 ) {
     env.with_env(|env| -> Result<(), jni::errors::Error> {
         let tag = WebTag::from(jstring(env, tag)?.as_str());
         let script = jstring(env, script)?;
-        if let Err(error) = exec_js(&tag, &script) {
+        if let Err(error) = send(
+            &tag,
+            Command::Evaluate {
+                script,
+                request_id: request_id as u64,
+            },
+        ) {
             log::warn!("Servo JavaScript dispatch failed for {tag}: {error}");
+            complete_java_evaluation(
+                request_id as u64,
+                Err(servo::JavaScriptEvaluationError::WebViewNotReady),
+            );
         }
         Ok(())
     })

@@ -178,8 +178,12 @@ public final class LingXiaServoView extends FrameLayout implements LingXiaWebVie
 
     @Override
     public void evaluateJavascript(String script, ValueCallback<String> callback) {
-        if (servoWebTag != null) nativeEvaluate(servoWebTag, script);
-        if (callback != null) callback.onReceiveValue("null");
+        if (servoWebTag == null) {
+            if (callback != null) callback.onReceiveValue("null");
+            return;
+        }
+        long requestId = LingXiaWebView.registerServoEvaluation(servoWebTag, callback);
+        nativeEvaluate(servoWebTag, requestId, script);
     }
 
     @Override
@@ -230,6 +234,7 @@ public final class LingXiaServoView extends FrameLayout implements LingXiaWebVie
         android.util.Log.d(TAG, "destroy tag=" + servoWebTag + " attached=" + attached);
         if (frameScheduled) Choreographer.getInstance().removeFrameCallback(this);
         if (attached && servoWebTag != null) nativeSurfaceDestroyed(servoWebTag);
+        if (servoWebTag != null) LingXiaWebView.cancelServoEvaluations(servoWebTag);
         attached = false;
         frameScheduled = false;
         servoSurface.setSurfaceTextureListener(null);
@@ -251,5 +256,5 @@ public final class LingXiaServoView extends FrameLayout implements LingXiaWebVie
     private native boolean nativeCanGoBack(String webTag);
     private native boolean nativeCanGoForward(String webTag);
     private native void nativeNavigate(String webTag, int action);
-    private native void nativeEvaluate(String webTag, String script);
+    private native void nativeEvaluate(String webTag, long requestId, String script);
 }

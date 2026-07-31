@@ -56,6 +56,9 @@ public class LingXiaWebView extends WebView implements LingXiaWebViewHost {
     private static final int NEW_WINDOW_POLICY_LOAD_IN_SELF = 1;
     private static final AtomicLong sProxyRequestRevision = new AtomicLong(0L);
     private static final AtomicLong sFileChooserRequestSeq = new AtomicLong(0L);
+    private static final AtomicLong sServoEvaluationSeq = new AtomicLong(0L);
+    private static final ConcurrentHashMap<Long, ServoEvaluation> sServoEvaluations =
+            new ConcurrentHashMap<>();
     private static final AtomicLong sEphemeralProfileSeq = new AtomicLong(0L);
     private static final String EPHEMERAL_PROFILE_PREFIX = "lingxia_ephemeral_";
 
@@ -75,6 +78,55 @@ public class LingXiaWebView extends WebView implements LingXiaWebViewHost {
     private static volatile boolean sHttpProxyEnabled = false;
     private final ConcurrentHashMap<Long, ValueCallback<android.net.Uri[]>> pendingFileChoosers =
             new ConcurrentHashMap<>();
+
+    private static final class ServoEvaluation {
+        final String webTag;
+        final ValueCallback<String> callback;
+
+        ServoEvaluation(String webTag, ValueCallback<String> callback) {
+            this.webTag = webTag;
+            this.callback = callback;
+        }
+    }
+
+    static long registerServoEvaluation(String webTag, ValueCallback<String> callback) {
+        if (callback == null) {
+            return 0L;
+        }
+        long requestId = sServoEvaluationSeq.incrementAndGet();
+        sServoEvaluations.put(requestId, new ServoEvaluation(webTag, callback));
+        return requestId;
+    }
+
+    public static void completeServoEvaluation(final long requestId, final String value) {
+        if (requestId == 0L) {
+            return;
+        }
+        new Handler(Looper.getMainLooper()).post(new Runnable() {
+            @Override
+            public void run() {
+                ServoEvaluation pending = sServoEvaluations.remove(requestId);
+                if (pending != null) {
+                    pending.callback.onReceiveValue(value != null ? value : "null");
+                }
+            }
+        });
+    }
+
+    static void cancelServoEvaluations(final String webTag) {
+        new Handler(Looper.getMainLooper()).post(new Runnable() {
+            @Override
+            public void run() {
+                for (Map.Entry<Long, ServoEvaluation> entry : sServoEvaluations.entrySet()) {
+                    ServoEvaluation pending = entry.getValue();
+                    if (pending != null && pending.webTag.equals(webTag)
+                            && sServoEvaluations.remove(entry.getKey(), pending)) {
+                        pending.callback.onReceiveValue("null");
+                    }
+                }
+            }
+        });
+    }
 
     public static class WebResourceResponseData {
         public final String mimeType;
