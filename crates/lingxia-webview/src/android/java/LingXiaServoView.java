@@ -57,6 +57,8 @@ public final class LingXiaServoView extends LingXiaWebView
 
     private void createNativeSurface(Surface surface, int width, int height) {
         if (servoWebTag == null || attached) return;
+        android.util.Log.d(TAG, "create native surface tag=" + servoWebTag + " size="
+                + width + "x" + height + " valid=" + surface.isValid());
         nativeSurfaceCreated(servoWebTag, surface, width, height, density());
         attached = true;
         scheduleFrame();
@@ -136,6 +138,7 @@ public final class LingXiaServoView extends LingXiaWebView
 
     @Override
     public void destroy() {
+        android.util.Log.d(TAG, "destroy tag=" + servoWebTag + " attached=" + attached);
         if (frameScheduled) Choreographer.getInstance().removeFrameCallback(this);
         if (attached && servoWebTag != null) nativeSurfaceDestroyed(servoWebTag);
         attached = false;

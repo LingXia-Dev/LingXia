@@ -8,3 +8,5 @@ pub(crate) use webview::{WebViewInner, apply_http_proxy};
 
 // Re-export JNI utilities
 pub use jni_env::{initialize_jni, with_env};
+#[cfg(feature = "servo")]
+pub use servo::set_data_dir as set_servo_data_dir;
