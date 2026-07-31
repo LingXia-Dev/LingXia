@@ -14,6 +14,7 @@ public interface LingXiaWebViewHost {
     boolean canGoBack();
     boolean canGoForward();
     boolean usesStrictSecurityProfile();
+    boolean retainsSurfaceWhenHidden();
     void reload();
     void goBack();
     void goForward();

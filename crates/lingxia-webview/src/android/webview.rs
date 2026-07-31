@@ -5,7 +5,7 @@ use crate::input_helper::{build_async_eval_body, new_eval_token, parse_wrapped_e
 #[cfg(not(feature = "servo"))]
 use crate::webview::ProxyActivation;
 use crate::webview::{
-    EffectiveWebViewCreateOptions, ProxyApplyReport, ProxyConfig, WebTag,
+    EffectiveWebViewCreateOptions, ProxyApplyReport, ProxyConfig, SecurityProfile, WebTag,
     WebViewCreateSender,
 };
 use crate::{
@@ -262,7 +262,10 @@ impl WebViewInner {
     ) {
         let request_id = crate::android_create::register(sender, effective_options.clone());
         #[cfg(feature = "servo")]
-        super::servo::register(&WebTag::new(appid, path, session_id));
+        super::servo::register(
+            &WebTag::new(appid, path, session_id),
+            effective_options.profile == SecurityProfile::StrictDefault,
+        );
         let remove_and_send_error = |error_msg: String| {
             crate::android_create::fail(request_id, error_msg);
         };
