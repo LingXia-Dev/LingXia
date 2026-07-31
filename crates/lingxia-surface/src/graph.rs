@@ -111,6 +111,11 @@ impl SurfaceGraph {
 
     /// Insert (or replace by id) a surface, then re-converge invariants.
     pub fn insert(&mut self, surface: Surface) {
+        // Ordinary opens may update the root's content while it remains main,
+        // but only declaration replacement may choose a different root.
+        if self.is_root_main(&surface.id) && surface.role != Role::Main {
+            return;
+        }
         let surface_id = surface.id.clone();
         let modal = surface.is_modal_float();
         let was_modal = self.get(&surface.id).is_some_and(Surface::is_modal_float);
@@ -183,11 +188,10 @@ impl SurfaceGraph {
             .active_main_id
             .as_deref()
             .is_none_or(|id| self.role_of(id) != Some(Role::Main))
-            && let Some(first) = first_main
         {
-            self.active_main_id = Some(first.clone());
+            self.active_main_id = first_main.clone();
             if self.focused_surface_id.is_none() {
-                self.focused_surface_id = Some(first);
+                self.focused_surface_id = first_main;
             }
         }
         // A freshly inserted last surface still focuses if nothing else did.
@@ -772,5 +776,19 @@ mod tests {
         graph.close("dialog");
         assert_eq!(graph.focused_surface_id.as_deref(), Some("home"));
         assert!(graph.modal_focus_stack.is_empty());
+    }
+
+    #[test]
+    fn inserting_another_role_cannot_replace_the_stable_root() {
+        let mut graph = SurfaceGraph::new();
+        graph.insert(Surface::native("terminal", Role::Main, "terminal"));
+        graph.insert(Surface::lxapp("tools", Role::Main, "tools"));
+
+        graph.insert(Surface::native("terminal", Role::Aside, "terminal"));
+
+        assert_eq!(graph.root_main_id(), Some("terminal"));
+        assert_eq!(graph.role_of("terminal"), Some(Role::Main));
+        assert!(graph.asides().is_empty());
+        assert!(graph.is_valid());
     }
 }

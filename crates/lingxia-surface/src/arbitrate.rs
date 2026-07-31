@@ -114,6 +114,18 @@ pub fn arbitrate(
     let mut next = graph.clone();
     let request_id = request.id.clone();
 
+    // The first main is the window's stable navigation root. Opening the same
+    // identity with another role must not silently replace that root or leave
+    // the graph without a primary; resolve the request back to its main role.
+    if graph.is_root_main(&request_id) && request.role != Role::Main {
+        next.set_active_main(&request_id);
+        next.set_focus(&request_id);
+        return (
+            next,
+            OpenOutcome::new(Decision::DowngradedRole, request_id, Role::Main, false),
+        );
+    }
+
     match request.role {
         // main / float are not bound by the split limit.
         Role::Main | Role::Float => {

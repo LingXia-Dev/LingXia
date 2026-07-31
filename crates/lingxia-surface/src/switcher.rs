@@ -29,7 +29,7 @@ impl From<&SurfaceContent> for SwitcherContentKind {
                 app_id: app_id.clone(),
             },
             SurfaceContent::Browser { .. } => Self::Browser,
-            SurfaceContent::Native { capability } => Self::Native {
+            SurfaceContent::Native { capability, .. } => Self::Native {
                 capability: capability.clone(),
             },
         }
@@ -352,5 +352,25 @@ mod tests {
         assert_eq!(snapshot.active_surface_id.as_deref(), Some("home"));
         assert_eq!(snapshot.items.len(), 1);
         assert_eq!(manager.graph().asides()[0].id, "terminal");
+    }
+
+    #[test]
+    fn native_root_cannot_move_to_aside() {
+        for with_other_main in [false, true] {
+            let mut manager = SurfaceManager::new(1200.0);
+            manager.open(Surface::native("terminal", Role::Main, "terminal"));
+            if with_other_main {
+                manager.open(Surface::lxapp("tools", Role::Main, "tools"));
+            }
+
+            let outcome = manager.open(Surface::native("terminal", Role::Aside, "terminal"));
+
+            assert_eq!(outcome.decision, crate::Decision::DowngradedRole);
+            assert_eq!(outcome.resolved_role, Role::Main);
+            assert_eq!(manager.graph().root_main_id(), Some("terminal"));
+            assert_eq!(manager.graph().role_of("terminal"), Some(Role::Main));
+            assert!(manager.graph().asides().is_empty());
+            assert!(manager.graph().is_valid());
+        }
     }
 }
