@@ -542,5 +542,5 @@ The surface model intentionally does not yet define:
 - multiple `main` surfaces open as separate top-level windows simultaneously
 - asides nested under other asides
 - reusing one lxapp `appId` across multiple surfaces
-- native (`native:`) surfaces other than the built-in `terminal`
+- native (`native:`) surfaces other than the built-in `terminal` and `browser`
 - terminal backend selection in config

@@ -94,7 +94,13 @@ than stopping it through `lxdev`.
 | `lxapp page eval` | page WebView | rendered DOM, `window` — no app state |
 | `browser eval` | a browser tab | that tab's DOM |
 
-Scripts may be an expression or a function body using `return` / `await`. Surface-opening calls (`lx.surface.*`, `navigateTo`) deadlock from `lxapp eval` — trigger those via a real page interaction (`lxapp page click`) instead. To navigate, prefer `lxapp nav`; the JS APIs take `{ page }` or `{ path }`, never `url`.
+Scripts may be an expression or a function body using `return` / `await`. A
+native workspace can be opened directly for host verification, for example
+`await lx.openSurface({ native: 'terminal', instanceKey: 'project-a' })`.
+Use a function body and return a serializable assertion value rather than the
+surface handle itself. For page navigation, prefer `lxapp nav`; when the behavior
+under test is a user interaction, trigger it through `lxapp page click`. The JS
+navigation APIs take `{ page }` or `{ path }`, never `url`.
 
 **`desktop`** — local desktop inspection and automation, independent of a dev
 session. It covers windows, screenshots, accessibility, pixels, clipboard,
