@@ -1770,8 +1770,13 @@ fn bridge_script(webtag: &WebTag, strict_profile: bool) -> String {
         r#"(() => {{
       const webtag = {webtag};
       const beacons = new Set();
+      let sequence = 0;
       const send = (kind, params) => {{
-        const query = new URLSearchParams({{ ...params, tag: webtag }}).toString();
+        const query = new URLSearchParams({{
+          ...params,
+          tag: webtag,
+          sequence: sequence++
+        }}).toString();
         const beacon = new Image();
         const done = () => beacons.delete(beacon);
         beacon.onload = done;
