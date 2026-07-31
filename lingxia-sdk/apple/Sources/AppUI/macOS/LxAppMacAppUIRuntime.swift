@@ -201,9 +201,13 @@ final class LxAppMacAppUIRuntime: NSObject {
                   ownerAppId: ownerAppId,
                   surfaces: uiConfig.surfaces,
                   initialSurfaceID: uiConfig.launch.initialSurface
+              ),
+              SurfaceSwitcherBridge.registerDeclaredNativeAsides(
+                  ownerAppId: ownerAppId,
+                  surfaces: uiConfig.surfaces
               )
         else {
-            throw LxAppUIError.invalidConfig("failed to register declared main surfaces")
+            throw LxAppUIError.invalidConfig("failed to register declared surfaces")
         }
         refreshChromeActions()
         let opensLxAppOnLaunch = (uiConfig.launch.openOnLaunch ?? true)
@@ -558,12 +562,12 @@ final class LxAppMacAppUIRuntime: NSObject {
                   declaredSurfaceIDs.contains($0.id)
                       && $0.content.name?.rawValue == capability
               }),
-              template.role.rawValue == role,
-              template.role == .main
+              template.role.rawValue == role
         else { return false }
 
         if let edge, edge != template.edge?.rawValue { return false }
         if let instanceKey {
+            guard template.role == .main else { return false }
             let identity = "\(capability)\u{0}\(instanceKey)"
             if let existingID = nativeInstanceSurfaceIDs[identity], existingID != id {
                 return false

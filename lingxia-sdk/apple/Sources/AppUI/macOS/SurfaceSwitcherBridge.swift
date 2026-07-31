@@ -128,6 +128,23 @@ enum SurfaceSwitcherBridge {
         }
     }
 
+    static func registerDeclaredNativeAsides(
+        ownerAppId: String,
+        surfaces: [LxAppUIConfig.Surface]
+    ) -> Bool {
+        for surface in surfaces where surface.role == .aside && surface.content.kind == .native {
+            guard let capability = surface.content.name?.rawValue,
+                  registerHostNativeAsideDeclaration(
+                      ownerAppId,
+                      surface.id,
+                      capability,
+                      surface.edge?.rawValue ?? "right"
+                  )
+            else { return false }
+        }
+        return true
+    }
+
     static func openDeclaredMain(
         ownerAppId: String,
         surface: LxAppUIConfig.Surface

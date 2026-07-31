@@ -33,6 +33,7 @@ struct SurfaceViewportContext {
 pub(crate) struct WindowSurfaceController {
     window_id: String,
     manager: std::sync::Mutex<lingxia_surface::SurfaceManager>,
+    native_declarations: std::sync::Mutex<HashMap<String, lingxia_surface::Surface>>,
     runtime: std::sync::Arc<Platform>,
     next_native_surface_id: AtomicU64,
 }
@@ -66,6 +67,7 @@ pub(crate) fn window_controller(
             std::sync::Arc::new(WindowSurfaceController {
                 window_id: window_id.to_string(),
                 manager: std::sync::Mutex::new(lingxia_surface::SurfaceManager::new(700.0)),
+                native_declarations: std::sync::Mutex::new(HashMap::new()),
                 runtime: runtime.clone(),
                 next_native_surface_id: AtomicU64::new(1),
             })
@@ -81,32 +83,34 @@ impl WindowSurfaceController {
     ) -> Result<ManagedNativeSurface, LxAppError> {
         let capability = capability.trim();
         let instance_key = instance_key.map(str::trim).filter(|key| !key.is_empty());
-        let (surface, is_existing) = {
+        let (surface, is_live) = {
             let manager = self.manager.lock().unwrap();
             if let Some(existing) = manager.graph().surfaces().iter().find(|surface| {
                 surface.content.native_identity() == Some((capability, instance_key))
             }) {
                 (existing.clone(), true)
             } else {
-                let template = manager
-                    .graph()
-                    .surfaces()
-                    .iter()
-                    .find(|surface| surface.content.native_identity() == Some((capability, None)))
+                let template = self
+                    .native_declarations
+                    .lock()
+                    .unwrap()
+                    .get(capability)
                     .cloned()
                     .ok_or_else(|| {
                         LxAppError::InvalidParameter(format!(
                             "unknown declared native surface: {capability}"
                         ))
                     })?;
-                if template.role != lingxia_surface::Role::Main {
+                if instance_key.is_some() && template.role != lingxia_surface::Role::Main {
                     return Err(LxAppError::UnsupportedOperation(
                         "native surface instances currently require a main declaration".to_string(),
                     ));
                 }
-                let sequence = self.next_native_surface_id.fetch_add(1, Ordering::Relaxed);
                 let mut surface = template;
-                surface.id = format!("native:{capability}:{sequence}");
+                if instance_key.is_some() {
+                    let sequence = self.next_native_surface_id.fetch_add(1, Ordering::Relaxed);
+                    surface.id = format!("native:{capability}:{sequence}");
+                }
                 surface.content = lingxia_surface::SurfaceContent::Native {
                     capability: capability.to_string(),
                     instance_key: instance_key.map(str::to_string),
@@ -133,7 +137,7 @@ impl WindowSurfaceController {
         )?;
         {
             let mut manager = self.manager.lock().unwrap();
-            if is_existing {
+            if is_live {
                 manager.show(&surface.id);
                 if surface.role == lingxia_surface::Role::Main {
                     manager.set_active_main(&surface.id);
@@ -349,6 +353,20 @@ impl WindowSurfaceController {
         self.commit();
     }
 
+    fn register_native_aside_declaration(&self, surface_id: &str, capability: &str, edge: &str) {
+        self.native_declarations.lock().unwrap().insert(
+            capability.to_string(),
+            host_aside_node(
+                surface_id,
+                lingxia_surface::SurfaceContent::Native {
+                    capability: capability.to_string(),
+                    instance_key: None,
+                },
+                edge,
+            ),
+        );
+    }
+
     /// Make `app_id`'s main the active (primary) main, seeding its root `main`
     /// into the graph first if it isn't a node yet, then commit. The commit
     /// rebuilds the plan with the new `activeMainId` and pushes `present_layout`,
@@ -379,6 +397,14 @@ impl WindowSurfaceController {
             .into_iter()
             .map(HostMainSurfaceRegistration::into_surface)
             .collect::<Result<Vec<_>, LxAppError>>()?;
+        {
+            let mut declarations = self.native_declarations.lock().unwrap();
+            for (surface, _) in &mains {
+                if let Some((capability, None)) = surface.content.native_identity() {
+                    declarations.insert(capability.to_string(), surface.clone());
+                }
+            }
+        }
         let snapshot = self
             .manager
             .lock()
@@ -394,6 +420,12 @@ impl WindowSurfaceController {
         registration: HostMainSurfaceRegistration,
     ) -> Result<lingxia_surface::SurfaceSwitcherSnapshot, LxAppError> {
         let (surface, presentation) = registration.into_surface()?;
+        if let Some((capability, None)) = surface.content.native_identity() {
+            self.native_declarations
+                .lock()
+                .unwrap()
+                .insert(capability.to_string(), surface.clone());
+        }
         let snapshot = self
             .manager
             .lock()
@@ -1411,6 +1443,21 @@ impl LxApp {
             edge,
             self.root_main_node(),
         );
+    }
+
+    pub fn register_host_native_aside_declaration(
+        &self,
+        surface_id: &str,
+        capability: &str,
+        edge: &str,
+    ) {
+        let surface_id = surface_id.trim();
+        let capability = capability.trim();
+        if surface_id.is_empty() || capability.is_empty() {
+            return;
+        }
+        window_controller(PRIMARY_WINDOW, &self.runtime)
+            .register_native_aside_declaration(surface_id, capability, edge);
     }
 
     /// Make this lxapp's main the active (primary) main in the window graph,
