@@ -42,7 +42,7 @@ import org.json.JSONObject;
  * LingXiaWebView provides complete WebView functionality for the LingXia platform.
  * This class contains all WebView logic including callbacks, message handling, and native integration.
  */
-public class LingXiaWebView extends WebView {
+public class LingXiaWebView extends WebView implements LingXiaWebViewHost {
     private static final String TAG = "LingXiaWebView";
     private static final String MESSAGEPORT_BRIDGE_CLASS = "com.lingxia.webview.AndroidMessagePortBridge";
     // Older Chromium builds expose createWebMessageChannel but its native
@@ -198,6 +198,11 @@ public class LingXiaWebView extends WebView {
         this.pageLoaded = false;
     }
 
+    @Override
+    public android.view.View getHostView() {
+        return this;
+    }
+
     private static android.content.Context sApplicationContext;
 
     /**
@@ -294,13 +299,8 @@ public class LingXiaWebView extends WebView {
                         throw new RuntimeException("Application context not set. Call LingXiaWebView.setApplicationContext() first.");
                     }
                     LingXiaServoView servoView = new LingXiaServoView(creationContextFor(appId));
-                    LingXiaWebView webView = servoView;
-                    webView.applyCreateOptionsToken(optionsToken);
-                    webView.appId = appId;
-                    webView.currentPath = path;
-                    webView.sessionId = sessionId;
-                    servoView.bindServoWebTag(appId + ":" + path + (sessionId > 0 ? "#" + sessionId : ""));
-                    notifyWebViewReady(appId, path, sessionId, requestId, webView);
+                    servoView.initialize(appId, path, sessionId);
+                    notifyWebViewReady(appId, path, sessionId, requestId, servoView);
                 } catch (Throwable e) {
                     Log.e(TAG, "Failed to create Servo WebView: " + e.getMessage(), e);
                 }

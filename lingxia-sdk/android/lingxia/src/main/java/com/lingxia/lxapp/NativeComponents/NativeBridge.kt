@@ -12,6 +12,7 @@ import com.lingxia.lxapp.NativeComponents.Components.MediaSwiperComponentFactory
 import com.lingxia.lxapp.NativeComponents.Components.VideoComponentFactory
 import com.lingxia.lxapp.NativeComponents.Components.PickerComponentFactory
 import com.lingxia.webview.LingXiaWebView
+import com.lingxia.webview.LingXiaWebViewHost
 import org.json.JSONArray
 import org.json.JSONObject
 import java.lang.ref.WeakReference
@@ -21,7 +22,7 @@ import java.lang.ref.WeakReference
  * Uses JavaScriptInterface for View→Native component lifecycle/control.
  */
 internal class NativeBridge private constructor(
-    webView: LingXiaWebView
+    webView: LingXiaWebViewHost
 ) {
     private val webViewRef = WeakReference(webView)
     private var overlayHost: ComponentOverlayHost? = null
@@ -58,8 +59,8 @@ internal class NativeBridge private constructor(
         preDrawListener = ViewTreeObserver.OnPreDrawListener {
             val wv = webViewRef.get()
             if (wv != null) {
-                val scrollX = wv.scrollX
-                val scrollY = wv.scrollY
+                val scrollX = wv.hostView.scrollX
+                val scrollY = wv.hostView.scrollY
                 // Only update if scroll position changed to avoid redundant work
                 if (scrollX != lastSyncedScrollX || scrollY != lastSyncedScrollY) {
                     lastSyncedScrollX = scrollX
@@ -69,7 +70,7 @@ internal class NativeBridge private constructor(
             }
             true // Proceed with drawing
         }
-        webView.viewTreeObserver.addOnPreDrawListener(preDrawListener)
+        webView.hostView.viewTreeObserver.addOnPreDrawListener(preDrawListener)
     }
 
     private class JsInterface(webView: LingXiaWebView) {
@@ -86,8 +87,9 @@ internal class NativeBridge private constructor(
         }
     }
 
-    private fun makeOrFindOverlayHost(webView: LingXiaWebView): ComponentOverlayHost {
-        val parent = webView.parent as? ViewGroup
+    private fun makeOrFindOverlayHost(webView: LingXiaWebViewHost): ComponentOverlayHost {
+        val hostView = webView.hostView
+        val parent = hostView.parent as? ViewGroup
 
         overlayHost?.let { existing ->
             if (existing.parent != parent && parent != null) {
@@ -103,7 +105,7 @@ internal class NativeBridge private constructor(
             }
         }
 
-        val host = ComponentOverlayHost(webView.context).apply {
+        val host = ComponentOverlayHost(hostView.context).apply {
             tag = OVERLAY_TAG
             setBackgroundColor(Color.TRANSPARENT)
             isClickable = false
@@ -113,16 +115,17 @@ internal class NativeBridge private constructor(
         return host
     }
 
-    private fun addHostToParent(parent: ViewGroup, webView: LingXiaWebView, host: ComponentOverlayHost) {
+    private fun addHostToParent(parent: ViewGroup, webView: LingXiaWebViewHost, host: ComponentOverlayHost) {
+        val hostView = webView.hostView
         // Match WebView's exact position and size in parent
-        val params = FrameLayout.LayoutParams(webView.width, webView.height).apply {
-            leftMargin = webView.left
-            topMargin = webView.top
+        val params = FrameLayout.LayoutParams(hostView.width, hostView.height).apply {
+            leftMargin = hostView.left
+            topMargin = hostView.top
         }
-        parent.addView(host, parent.indexOfChild(webView) + 1, params)
+        parent.addView(host, parent.indexOfChild(hostView) + 1, params)
         
         // Update overlay position when WebView layout changes
-        webView.addOnLayoutChangeListener { _, left, top, right, bottom, _, _, _, _ ->
+        hostView.addOnLayoutChangeListener { _, left, top, right, bottom, _, _, _, _ ->
             host.layoutParams = (host.layoutParams as? FrameLayout.LayoutParams)?.apply {
                 width = right - left
                 height = bottom - top
@@ -155,7 +158,7 @@ internal class NativeBridge private constructor(
 
     fun ensureOverlayHostAttached() {
         val webView = webViewRef.get() ?: return
-        val parent = webView.parent as? ViewGroup ?: return
+        val parent = webView.hostView.parent as? ViewGroup ?: return
         val host = overlayHost ?: return
         if (host.parent != parent) {
             (host.parent as? ViewGroup)?.removeView(host)
@@ -181,7 +184,7 @@ internal class NativeBridge private constructor(
         
         // Clean up pre-draw listener
         preDrawListener?.let { listener ->
-            webViewRef.get()?.viewTreeObserver?.let { observer ->
+            webViewRef.get()?.hostView?.viewTreeObserver?.let { observer ->
                 if (observer.isAlive) {
                     observer.removeOnPreDrawListener(listener)
                 }
@@ -196,7 +199,7 @@ internal class NativeBridge private constructor(
         webViewRef.get()?.let { pageKey = makePageKey(it) }
     }
 
-    private fun makePageKey(webView: LingXiaWebView) = "${webView.appId ?: "app"}:${webView.currentPath ?: "page"}"
+    private fun makePageKey(webView: LingXiaWebViewHost) = "${webView.appId ?: "app"}:${webView.currentPath ?: "page"}"
 
     private fun jsonToMap(json: JSONObject): Map<String, Any?> {
         val map = mutableMapOf<String, Any?>()
@@ -231,7 +234,8 @@ internal class NativeBridge private constructor(
         private val jsInterfaceRegistered = mutableSetOf<Int>()
 
         @JvmStatic
-        fun registerJsInterface(webView: LingXiaWebView) {
+        fun registerJsInterface(host: LingXiaWebViewHost) {
+            val webView = host as? LingXiaWebView ?: return
             if (!webView.usesStrictSecurityProfile()) return
             val id = System.identityHashCode(webView)
             if (jsInterfaceRegistered.add(id)) {
@@ -241,7 +245,7 @@ internal class NativeBridge private constructor(
         }
 
         @JvmStatic
-        fun attachIfNeeded(webView: LingXiaWebView) {
+        fun attachIfNeeded(webView: LingXiaWebViewHost) {
             val id = System.identityHashCode(webView)
             bridgeMap[id]?.ensureOverlayHostAttached() ?: run {
                 registerDefaultComponents()
@@ -262,11 +266,11 @@ internal class NativeBridge private constructor(
             registeredFactories.getOrPut("picker.native") { PickerComponentFactory() }
         }
 
-        @JvmStatic fun notifyPageInactive(webView: LingXiaWebView?) { webView?.let { bridgeMap[System.identityHashCode(it)]?.markPageInactive() } }
-        @JvmStatic fun notifyPageActive(webView: LingXiaWebView?) { webView?.let { bridgeMap[System.identityHashCode(it)]?.markPageActive() } }
+        @JvmStatic fun notifyPageInactive(webView: LingXiaWebViewHost?) { webView?.let { bridgeMap[System.identityHashCode(it)]?.markPageInactive() } }
+        @JvmStatic fun notifyPageActive(webView: LingXiaWebViewHost?) { webView?.let { bridgeMap[System.identityHashCode(it)]?.markPageActive() } }
 
         @JvmStatic
-        fun notifyPageDestroyed(webView: LingXiaWebView?) {
+        fun notifyPageDestroyed(webView: LingXiaWebViewHost?) {
             webView?.let {
                 val id = System.identityHashCode(it)
                 bridgeMap.remove(id)?.markPageDestroyed()

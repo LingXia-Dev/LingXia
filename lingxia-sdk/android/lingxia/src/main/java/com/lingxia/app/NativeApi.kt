@@ -334,10 +334,10 @@ internal object NativeApi {
      * @return WebView instance or null if not found
      */
     @JvmStatic
-    external fun findWebView(appId: String, path: String, sessionId: Long): com.lingxia.webview.LingXiaWebView?
+    external fun findWebView(appId: String, path: String, sessionId: Long): com.lingxia.webview.LingXiaWebViewHost?
 
     @JvmStatic
-    external fun findWebViewByPageInstanceId(pageInstanceId: String): com.lingxia.webview.LingXiaWebView?
+    external fun findWebViewByPageInstanceId(pageInstanceId: String): com.lingxia.webview.LingXiaWebViewHost?
 
     @JvmStatic
     external fun notifyPageInstanceMounted(pageInstanceId: String): Boolean

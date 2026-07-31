@@ -8,17 +8,24 @@ import android.view.Choreographer;
 import android.view.MotionEvent;
 import android.view.Surface;
 import android.view.TextureView;
+import android.view.View;
 import android.view.ViewGroup;
+import android.webkit.ValueCallback;
+import android.widget.FrameLayout;
 
 /** Android view host for Servo's Rust embedding API. */
-public final class LingXiaServoView extends LingXiaWebView
-        implements TextureView.SurfaceTextureListener, Choreographer.FrameCallback {
+public final class LingXiaServoView extends FrameLayout implements LingXiaWebViewHost,
+        TextureView.SurfaceTextureListener, Choreographer.FrameCallback {
     private static final String TAG = "LingXiaServoView";
     private final TextureView servoSurface;
     private Surface nativeSurface;
     private String servoWebTag;
+    private String appId;
+    private String currentPath;
+    private long sessionId;
     private boolean attached;
     private boolean frameScheduled;
+    private boolean paused;
 
     public LingXiaServoView(Context context) {
         super(context);
@@ -32,10 +39,13 @@ public final class LingXiaServoView extends LingXiaWebView
                 ViewGroup.LayoutParams.MATCH_PARENT));
     }
 
-    void bindServoWebTag(String webTag) {
-        servoWebTag = webTag;
+    void initialize(String appId, String path, long sessionId) {
+        this.appId = appId;
+        this.currentPath = path;
+        this.sessionId = sessionId;
+        servoWebTag = appId + ":" + path + (sessionId > 0 ? "#" + sessionId : "");
         SurfaceTexture texture = servoSurface.getSurfaceTexture();
-        android.util.Log.d(TAG, "bind tag=" + webTag + " valid="
+        android.util.Log.d(TAG, "bind tag=" + servoWebTag + " valid="
                 + (servoSurface.isAvailable() && texture != null) + " size="
                 + servoSurface.getWidth() + "x" + servoSurface.getHeight());
         if (servoSurface.isAvailable() && texture != null
@@ -65,7 +75,7 @@ public final class LingXiaServoView extends LingXiaWebView
     }
 
     private void scheduleFrame() {
-        if (!frameScheduled && attached) {
+        if (!frameScheduled && attached && !paused) {
             frameScheduled = true;
             Choreographer.getInstance().postFrameCallback(this);
         }
@@ -107,6 +117,72 @@ public final class LingXiaServoView extends LingXiaWebView
     }
 
     @Override
+    public View getHostView() {
+        return this;
+    }
+
+    @Override
+    public String getAppId() {
+        return appId;
+    }
+
+    @Override
+    public String getCurrentPath() {
+        return currentPath;
+    }
+
+    @Override
+    public long getSessionId() {
+        return sessionId;
+    }
+
+    @Override
+    public String getUrl() {
+        return servoWebTag != null ? nativeGetUrl(servoWebTag) : "";
+    }
+
+    @Override
+    public String getTitle() {
+        return servoWebTag != null ? nativeGetTitle(servoWebTag) : "";
+    }
+
+    @Override
+    public boolean canGoBack() {
+        return servoWebTag != null && nativeCanGoBack(servoWebTag);
+    }
+
+    @Override
+    public boolean canGoForward() {
+        return servoWebTag != null && nativeCanGoForward(servoWebTag);
+    }
+
+    @Override
+    public boolean usesStrictSecurityProfile() {
+        return true;
+    }
+
+    @Override
+    public void reload() {
+        if (servoWebTag != null) nativeNavigate(servoWebTag, 0);
+    }
+
+    @Override
+    public void goBack() {
+        if (servoWebTag != null) nativeNavigate(servoWebTag, 1);
+    }
+
+    @Override
+    public void goForward() {
+        if (servoWebTag != null) nativeNavigate(servoWebTag, 2);
+    }
+
+    @Override
+    public void evaluateJavascript(String script, ValueCallback<String> callback) {
+        if (servoWebTag != null) nativeEvaluate(servoWebTag, script);
+        if (callback != null) callback.onReceiveValue("null");
+    }
+
+    @Override
     public boolean onTouchEvent(MotionEvent event) {
         if (servoWebTag == null) return false;
         int index = event.getActionIndex();
@@ -137,6 +213,19 @@ public final class LingXiaServoView extends LingXiaWebView
     }
 
     @Override
+    public void pause() {
+        paused = true;
+        if (frameScheduled) Choreographer.getInstance().removeFrameCallback(this);
+        frameScheduled = false;
+    }
+
+    @Override
+    public void resume() {
+        paused = false;
+        scheduleFrame();
+    }
+
+    @Override
     public void destroy() {
         android.util.Log.d(TAG, "destroy tag=" + servoWebTag + " attached=" + attached);
         if (frameScheduled) Choreographer.getInstance().removeFrameCallback(this);
@@ -148,7 +237,6 @@ public final class LingXiaServoView extends LingXiaWebView
             nativeSurface.release();
             nativeSurface = null;
         }
-        super.destroy();
     }
 
     private native void nativeSurfaceCreated(
@@ -158,4 +246,10 @@ public final class LingXiaServoView extends LingXiaWebView
     private native void nativeFrame(String webTag);
     private native void nativeTouch(String webTag, int action, int pointerId, float x, float y);
     private native void nativeWheel(String webTag, double dx, double dy);
+    private native String nativeGetUrl(String webTag);
+    private native String nativeGetTitle(String webTag);
+    private native boolean nativeCanGoBack(String webTag);
+    private native boolean nativeCanGoForward(String webTag);
+    private native void nativeNavigate(String webTag, int action);
+    private native void nativeEvaluate(String webTag, String script);
 }
