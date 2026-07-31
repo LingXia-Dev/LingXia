@@ -12,7 +12,7 @@ use cookie::{Cookie, SameSite};
 use dpi::PhysicalSize;
 use euclid::Scale;
 use jni::objects::{JObject, JString};
-use jni::sys::{jfloat, jint};
+use jni::sys::{jboolean, jfloat, jint};
 use jni::{EnvUnowned, errors::ThrowRuntimeExAndDefault};
 use raw_window_handle::{
     AndroidDisplayHandle, AndroidNdkWindowHandle, DisplayHandle, RawDisplayHandle, RawWindowHandle,
@@ -161,6 +161,15 @@ enum Command {
         reply: oneshot::Sender<Result<ClearSiteDataResult, String>>,
     },
     Screenshot(oneshot::Sender<Result<Vec<u8>, String>>),
+    BrowserState(mpsc::Sender<BrowserState>),
+}
+
+#[derive(Default)]
+struct BrowserState {
+    url: String,
+    title: String,
+    can_go_back: bool,
+    can_go_forward: bool,
 }
 
 #[derive(Clone)]
@@ -529,6 +538,19 @@ impl EngineState {
                 } else {
                     let _ = reply.send(Err("Servo surface is not ready".into()));
                 }
+            }
+            Command::BrowserState(reply) => {
+                let state = self
+                    .view
+                    .as_ref()
+                    .map(|view| BrowserState {
+                        url: view.url().map(|url| url.to_string()).unwrap_or_default(),
+                        title: view.page_title().unwrap_or_default(),
+                        can_go_back: view.can_go_back(),
+                        can_go_forward: view.can_go_forward(),
+                    })
+                    .unwrap_or_default();
+                let _ = reply.send(state);
             }
         }
     }
@@ -1292,6 +1314,13 @@ pub(super) fn wheel(webtag: &WebTag, dx: f64, dy: f64) -> Result<(), WebViewErro
     send(webtag, Command::Wheel(dx, dy))
 }
 
+fn browser_state(webtag: &WebTag) -> Result<BrowserState, WebViewError> {
+    let (tx, rx) = mpsc::channel();
+    send(webtag, Command::BrowserState(tx))?;
+    rx.recv_timeout(std::time::Duration::from_secs(1))
+        .map_err(|_| WebViewError::WebView(format!("Servo browser state timed out for {webtag}")))
+}
+
 fn touch_kind(action: i32) -> Option<TouchEventType> {
     match action {
         0 => Some(TouchEventType::Down),
@@ -1424,6 +1453,109 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaServoView_nativeWheel(
         let tag = jstring(env, tag)?;
         let tag = WebTag::from(tag.as_str());
         let _ = wheel(&tag, dx, dy);
+        Ok(())
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_webview_LingXiaServoView_nativeGetUrl<'a>(
+    mut env: EnvUnowned<'a>,
+    _this: JObject<'a>,
+    tag: JString<'a>,
+) -> JString<'a> {
+    env.with_env(|env| -> Result<JString<'a>, jni::errors::Error> {
+        let tag = WebTag::from(jstring(env, tag)?.as_str());
+        let value = browser_state(&tag)
+            .map(|state| state.url)
+            .unwrap_or_default();
+        env.new_string(value)
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_webview_LingXiaServoView_nativeGetTitle<'a>(
+    mut env: EnvUnowned<'a>,
+    _this: JObject<'a>,
+    tag: JString<'a>,
+) -> JString<'a> {
+    env.with_env(|env| -> Result<JString<'a>, jni::errors::Error> {
+        let tag = WebTag::from(jstring(env, tag)?.as_str());
+        let value = browser_state(&tag)
+            .map(|state| state.title)
+            .unwrap_or_default();
+        env.new_string(value)
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_webview_LingXiaServoView_nativeCanGoBack(
+    mut env: EnvUnowned,
+    _this: JObject,
+    tag: JString,
+) -> jboolean {
+    env.with_env(|env| -> Result<jboolean, jni::errors::Error> {
+        let tag = WebTag::from(jstring(env, tag)?.as_str());
+        Ok(browser_state(&tag)
+            .map(|state| state.can_go_back)
+            .unwrap_or(false) as jboolean)
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_webview_LingXiaServoView_nativeCanGoForward(
+    mut env: EnvUnowned,
+    _this: JObject,
+    tag: JString,
+) -> jboolean {
+    env.with_env(|env| -> Result<jboolean, jni::errors::Error> {
+        let tag = WebTag::from(jstring(env, tag)?.as_str());
+        Ok(browser_state(&tag)
+            .map(|state| state.can_go_forward)
+            .unwrap_or(false) as jboolean)
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_webview_LingXiaServoView_nativeNavigate(
+    mut env: EnvUnowned,
+    _this: JObject,
+    tag: JString,
+    action: jint,
+) {
+    env.with_env(|env| -> Result<(), jni::errors::Error> {
+        let tag = WebTag::from(jstring(env, tag)?.as_str());
+        let result = match action {
+            0 => reload(&tag),
+            1 => go_back(&tag),
+            2 => go_forward(&tag),
+            _ => Ok(()),
+        };
+        if let Err(error) = result {
+            log::warn!("Servo navigation command failed for {tag}: {error}");
+        }
+        Ok(())
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_webview_LingXiaServoView_nativeEvaluate(
+    mut env: EnvUnowned,
+    _this: JObject,
+    tag: JString,
+    script: JString,
+) {
+    env.with_env(|env| -> Result<(), jni::errors::Error> {
+        let tag = WebTag::from(jstring(env, tag)?.as_str());
+        let script = jstring(env, script)?;
+        if let Err(error) = exec_js(&tag, &script) {
+            log::warn!("Servo JavaScript dispatch failed for {tag}: {error}");
+        }
         Ok(())
     })
     .resolve::<ThrowRuntimeExAndDefault>()
