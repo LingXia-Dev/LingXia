@@ -526,6 +526,7 @@ class SidebarView: NSView, NSPopoverDelegate {
     /// Called when user requests to close an app: (appId)
     var onAppCloseRequested: ((String) -> Void)?
     var onManagedMainContextMenuRequested: ((String, NSEvent, NSView) -> Void)?
+    var onManagedMainRenameCommitted: ((String, String) -> Void)?
     /// Called when the bottom hide button is clicked
     var onHideRequested: (() -> Void)?
     /// Called when width changes via drag: (width, animated)
@@ -1576,6 +1577,10 @@ class SidebarView: NSView, NSPopoverDelegate {
         render()
     }
 
+    func beginManagedMainRename(surfaceId: String) {
+        groupViews[surfaceId]?.beginManagedRename()
+    }
+
     private func rebuildAppGroups() {
         let liveLxappIds = Set(lxappGroups.map(\.appId))
         model.appGroups = lxappGroups
@@ -1704,6 +1709,9 @@ class SidebarView: NSView, NSPopoverDelegate {
                 groupView.onManagedContextMenuRequested = { [weak self] surfaceId, event, view in
                     self?.onManagedMainContextMenuRequested?(surfaceId, event, view)
                 }
+                groupView.onManagedRenameCommitted = { [weak self] surfaceId, title in
+                    self?.onManagedMainRenameCommitted?(surfaceId, title)
+                }
                 groupView.onLayoutChanged = { [weak self] in
                     self?.relayoutAfterGroupToggle()
                 }
@@ -1714,6 +1722,12 @@ class SidebarView: NSView, NSPopoverDelegate {
             }
 
             groupView.setColorIndex(index)
+            if group.isManagedMain {
+                groupView.updateManagedPresentation(
+                    label: group.managedLabel,
+                    icon: group.managedIcon
+                )
+            }
 
             if groupView.superview !== docView {
                 groupView.removeFromSuperview()

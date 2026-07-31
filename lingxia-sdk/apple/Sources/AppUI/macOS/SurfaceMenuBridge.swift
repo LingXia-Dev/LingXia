@@ -123,24 +123,7 @@ final class SurfaceMenuPresenter: NSObject {
 
     @objc private func menuItemSelected(_ sender: NSMenuItem) {
         guard let selection = sender.representedObject as? Selection else { return }
-        if selection.action.action == "rename" {
-            presentRenamePrompt(selection)
-        } else {
-            onAction?(selection.revision, selection.surfaceId, selection.action, nil)
-        }
-    }
-
-    private func presentRenamePrompt(_ selection: Selection) {
-        let alert = NSAlert()
-        alert.messageText = L10n.string("lx_surface_rename")
-        alert.addButton(withTitle: L10n.string("lx_common_ok"))
-        alert.addButton(withTitle: L10n.string("lx_common_cancel"))
-        let input = NSTextField(frame: NSRect(x: 0, y: 0, width: 240, height: 24))
-        alert.accessoryView = input
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
-        let title = input.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !title.isEmpty else { return }
-        onAction?(selection.revision, selection.surfaceId, selection.action, title)
+        onAction?(selection.revision, selection.surfaceId, selection.action, nil)
     }
 
     private static func title(for action: String?) -> String {

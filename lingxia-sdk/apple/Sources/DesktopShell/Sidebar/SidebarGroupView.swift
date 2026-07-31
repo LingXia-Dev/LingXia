@@ -81,6 +81,7 @@ private class SidebarGroupHeaderView: NSView {
     /// its own clicks — otherwise the header swallows them and the chevron can
     /// never toggle the group.
     var chevronButton: NSButton?
+    var renameField: NSTextField?
     var onHeaderClicked: (() -> Void)?
     var onRightClick: ((NSEvent) -> Void)?
 
@@ -103,6 +104,12 @@ private class SidebarGroupHeaderView: NSView {
             let chevronPoint = convert(localPoint, to: chevron)
             if chevron.bounds.contains(chevronPoint) {
                 return chevron
+            }
+        }
+        if let renameField, renameField.isEditable {
+            let fieldPoint = convert(localPoint, to: renameField)
+            if renameField.bounds.contains(fieldPoint) {
+                return renameField
             }
         }
         return self
@@ -129,7 +136,7 @@ private class SidebarGroupHeaderView: NSView {
 /// Chrome-style: colored header pill with app name + chevron on right,
 /// tinted items area with vertical connector line.
 @MainActor
-class SidebarGroupView: NSView {
+class SidebarGroupView: NSView, NSTextFieldDelegate {
 
     struct Layout {
         static let headerHeight: CGFloat = 36
@@ -144,8 +151,8 @@ class SidebarGroupView: NSView {
     let appId: String
     let contentAppId: String?
     private var providerAppId: String { contentAppId ?? appId }
-    private let managedLabel: String?
-    private let managedIcon: NSImage?
+    private var managedLabel: String?
+    private var managedIcon: NSImage?
     let showsLxappTabBar: Bool
     let closable: Bool
     var isManagedMain: Bool { managedLabel != nil }
@@ -209,6 +216,7 @@ class SidebarGroupView: NSView {
     private var closeButtonTrackingArea: NSTrackingArea?
     private var isHeaderHovered = false
     private var isCloseHovered = false
+    private var isRenaming = false
 
     var onPageSelected: ((String, Int) -> Void)?
     /// Fired when the group header (the lxapp's name) is clicked — switches the
@@ -216,6 +224,7 @@ class SidebarGroupView: NSView {
     var onAppSelected: ((String) -> Void)?
     var onCloseRequested: ((String) -> Void)?
     var onManagedContextMenuRequested: ((String, NSEvent, NSView) -> Void)?
+    var onManagedRenameCommitted: ((String, String) -> Void)?
     var onLayoutChanged: (() -> Void)?
 
     init(
@@ -337,6 +346,8 @@ class SidebarGroupView: NSView {
         appNameLabel.font = NSFont.systemFont(ofSize: 11, weight: .semibold)
         appNameLabel.lineBreakMode = .byTruncatingTail
         appNameLabel.maximumNumberOfLines = 1
+        appNameLabel.delegate = self
+        headerView.renameField = appNameLabel
         headerView.addSubview(appNameLabel)
 
         // Chevron on right side of header — a real collapse/expand toggle
@@ -544,10 +555,73 @@ class SidebarGroupView: NSView {
     }
 
     private func configureManagedMain() {
-        appNameLabel.stringValue = (managedLabel ?? appId).uppercased()
+        if !isRenaming {
+            appNameLabel.stringValue = (managedLabel ?? appId).uppercased()
+        }
         appIconView.image = managedIcon ?? Self.defaultAppIcon
         closeButton.isHidden = true
         rebuildItems(items: [])
+    }
+
+    func updateManagedPresentation(label: String?, icon: NSImage?) {
+        guard managedLabel != nil else { return }
+        managedLabel = label
+        managedIcon = icon
+        configureManagedMain()
+    }
+
+    func beginManagedRename() {
+        guard managedLabel != nil, !isRenaming else { return }
+        isRenaming = true
+        appNameLabel.stringValue = managedLabel ?? appId
+        appNameLabel.isEditable = true
+        appNameLabel.isSelectable = true
+        appNameLabel.isBordered = true
+        appNameLabel.drawsBackground = true
+        appNameLabel.backgroundColor = .controlBackgroundColor
+        appNameLabel.focusRingType = .none
+        menuButton.isHidden = true
+        closeButton.isHidden = true
+        window?.makeFirstResponder(appNameLabel)
+        appNameLabel.currentEditor()?.selectAll(nil)
+    }
+
+    func control(
+        _ control: NSControl,
+        textView: NSTextView,
+        doCommandBy commandSelector: Selector
+    ) -> Bool {
+        guard control === appNameLabel, isRenaming else { return false }
+        if commandSelector == #selector(NSResponder.insertNewline(_:)) {
+            finishManagedRename(commit: true)
+            return true
+        }
+        if commandSelector == #selector(NSResponder.cancelOperation(_:)) {
+            finishManagedRename(commit: false)
+            return true
+        }
+        return false
+    }
+
+    func controlTextDidEndEditing(_ notification: Notification) {
+        guard isRenaming else { return }
+        finishManagedRename(commit: true)
+    }
+
+    private func finishManagedRename(commit: Bool) {
+        guard isRenaming else { return }
+        let title = appNameLabel.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        isRenaming = false
+        appNameLabel.isEditable = false
+        appNameLabel.isSelectable = false
+        appNameLabel.isBordered = false
+        appNameLabel.drawsBackground = false
+        if commit, !title.isEmpty {
+            managedLabel = title
+            onManagedRenameCommitted?(appId, title)
+        }
+        appNameLabel.stringValue = (managedLabel ?? appId).uppercased()
+        window?.makeFirstResponder(nil)
     }
 
     private func rebuildItems(items: [TabBarItem]) {

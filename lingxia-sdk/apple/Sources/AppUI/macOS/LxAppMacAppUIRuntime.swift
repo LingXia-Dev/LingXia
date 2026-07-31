@@ -1171,6 +1171,8 @@ final class LxAppMacAppUIRuntime: NSObject {
             self?.closeMainSurface(id: surfaceID)
         } onContextMenu: { [weak self] surfaceID, event, view in
             self?.presentSurfaceMenu(surfaceID: surfaceID, event: event, from: view)
+        } onRename: { [weak self] surfaceID, title in
+            self?.commitSurfaceRename(surfaceID: surfaceID, title: title)
         }
         let activeContentKind = switcher?.items.first(where: { $0.active })?.content.kind
         shell.setManagedNavigationToolbarVisible(activeContentKind == "lxapp")
@@ -1194,6 +1196,10 @@ final class LxAppMacAppUIRuntime: NSObject {
         action: SurfaceMenuSnapshot.Item.Action,
         value: String?
     ) {
+        if action.action == "rename", value == nil {
+            shell.beginManagedMainRename(surfaceId: surfaceId)
+            return
+        }
         guard let ownerAppId = graphOwnerAppId,
               let result = SurfaceMenuBridge.perform(
                   ownerAppId: ownerAppId,
@@ -1203,6 +1209,29 @@ final class LxAppMacAppUIRuntime: NSObject {
                   value: value
               )
         else { return }
+        applySurfaceMenuExecution(result)
+    }
+
+    private func commitSurfaceRename(surfaceID: String, title: String) {
+        guard let ownerAppId = graphOwnerAppId,
+              let snapshot = SurfaceMenuBridge.snapshot(
+                  ownerAppId: ownerAppId,
+                  surfaceId: surfaceID
+              ),
+              let item = snapshot.sections
+                  .flatMap(\.items)
+                  .first(where: { $0.enabled && $0.action.action == "rename" }),
+              let result = SurfaceMenuBridge.perform(
+                  ownerAppId: ownerAppId,
+                  revision: snapshot.revision,
+                  surfaceId: surfaceID,
+                  action: item.action,
+                  value: title
+              )
+        else {
+            refreshChromeActions()
+            return
+        }
         applySurfaceMenuExecution(result)
     }
 

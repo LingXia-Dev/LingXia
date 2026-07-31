@@ -244,6 +244,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     private var managedMainActivateHandler: ((String) -> Void)?
     private var managedMainCloseHandler: ((String) -> Void)?
     private var managedMainContextMenuHandler: ((String, NSEvent, NSView) -> Void)?
+    private var managedMainRenameHandler: ((String, String) -> Void)?
     private var declaredBrowserSurfaceActivateHandler: ((String) -> Void)?
     private var declaredBrowserSurfaceCloseHandler: ((String) -> Void)?
     private weak var managedMainView: NSView?
@@ -502,6 +503,9 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         }
         sidebar.onManagedMainContextMenuRequested = { [weak self] surfaceId, event, view in
             self?.managedMainContextMenuHandler?(surfaceId, event, view)
+        }
+        sidebar.onManagedMainRenameCommitted = { [weak self] surfaceId, title in
+            self?.managedMainRenameHandler?(surfaceId, title)
         }
         sidebar.onHideRequested = { [weak self] in
             self?.hideSidebar()
@@ -1204,7 +1208,8 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         activeId: String?,
         onActivate: @escaping (String) -> Void,
         onClose: @escaping (String) -> Void,
-        onContextMenu: @escaping (String, NSEvent, NSView) -> Void
+        onContextMenu: @escaping (String, NSEvent, NSView) -> Void,
+        onRename: @escaping (String, String) -> Void
     ) {
         managedMainSurfaceIDs = Set(items.map(\.id))
         managedMainSurfaceByLxappId.removeAll(keepingCapacity: true)
@@ -1217,6 +1222,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         managedMainActivateHandler = onActivate
         managedMainCloseHandler = onClose
         managedMainContextMenuHandler = onContextMenu
+        managedMainRenameHandler = onRename
         let unmanagedTabs = tabManager.tabs.filter {
             managedMainSurfaceByLxappId[$0.appId] == nil
         }
@@ -1226,6 +1232,10 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         sidebarView?.updateForTabs(unmanagedTabs, activeTab: activeTab)
         sidebarView?.updateManagedMainItems(items, activeId: activeId)
         reconcileSidebarAutoHide()
+    }
+
+    func beginManagedMainRename(surfaceId: String) {
+        sidebarView?.beginManagedMainRename(surfaceId: surfaceId)
     }
 
     /// Remove the current lxapp view controller from the main area (pause + detach).
