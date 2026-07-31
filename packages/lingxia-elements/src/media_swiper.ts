@@ -4,7 +4,11 @@ import {
   addNativeComponentLayoutInvalidationListener,
 } from "./nativecomponent.js";
 import { ensureComponentId, NativeComponentUpdateState, iOSNativeComponentHelper } from "./component.js";
-import { measureElement } from "./dom.js";
+import {
+  clearAspectRatioFallback,
+  ensureAspectRatioFallback,
+  measureElement,
+} from "./dom.js";
 import { isAndroid, isHarmony, isIOS } from "./platform.js";
 
 export type LxMediaSwiperItem =
@@ -176,6 +180,7 @@ export class LxMediaSwiperElement extends HTMLElement implements LxMediaSwiperHa
   private updateState = new NativeComponentUpdateState();
   private unregister?: () => void;
   private resizeObserver?: ResizeObserver;
+  private aspectRatioFallback = false;
   private pendingLayoutFrame: number | null = null;
   private boundUpdatePosition = this.updatePosition.bind(this);
   private removeLayoutInvalidationListener?: () => void;
@@ -325,6 +330,8 @@ export class LxMediaSwiperElement extends HTMLElement implements LxMediaSwiperHa
     Object.keys(this.handlers).forEach((name) => this.removeEventListener(name, this.handlers[name]));
     this.handlers = {};
     this.rawHandlers = {};
+    clearAspectRatioFallback(this, this.aspectRatioFallback);
+    this.aspectRatioFallback = false;
   }
 
   attributeChangedCallback(name: string) {
@@ -407,6 +414,7 @@ export class LxMediaSwiperElement extends HTMLElement implements LxMediaSwiperHa
       return;
     }
     if (!this.componentId) return;
+    this.aspectRatioFallback = ensureAspectRatioFallback(this, this.aspectRatioFallback);
     const measured = measureElement(this);
     const rect = measured.rect;
     if (!rect.width || !rect.height) {
@@ -597,6 +605,7 @@ export class LxMediaSwiperElement extends HTMLElement implements LxMediaSwiperHa
       return;
     }
     if (!this.mounted || !this.componentId) return;
+    this.aspectRatioFallback = ensureAspectRatioFallback(this, this.aspectRatioFallback);
     const measured = measureElement(this);
     const rect = measured.rect;
     if (!rect.width || !rect.height) return;
