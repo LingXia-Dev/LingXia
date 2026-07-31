@@ -3,7 +3,11 @@ import {
   registerNativeComponentHandler,
   addNativeComponentLayoutInvalidationListener
 } from "./nativecomponent.js";
-import { measureElement } from "./dom.js";
+import {
+  clearAspectRatioFallback,
+  ensureAspectRatioFallback,
+  measureElement,
+} from "./dom.js";
 import { ensureComponentId, NativeComponentUpdateState, iOSNativeComponentHelper } from "./component.js";
 import { isAndroid, isHarmony, isIOS, isWindows } from "./platform.js";
 
@@ -85,6 +89,7 @@ export class LxVideoElement extends HTMLElement {
   private updateState = new NativeComponentUpdateState();
   private unregister?: () => void;
   private resizeObserver?: ResizeObserver;
+  private aspectRatioFallback = false;
   private winSettleFrame: number | null = null;
   private pendingLayoutFrame: number | null = null;
   private boundUpdatePosition = this.updatePosition.bind(this);
@@ -328,6 +333,8 @@ export class LxVideoElement extends HTMLElement {
     });
     this._handlers = {};
     this.rawHandlers = {};
+    clearAspectRatioFallback(this, this.aspectRatioFallback);
+    this.aspectRatioFallback = false;
   }
 
   attributeChangedCallback(name: string) {
@@ -580,6 +587,7 @@ export class LxVideoElement extends HTMLElement {
       return;
     }
     if (!this.componentId) return;
+    this.aspectRatioFallback = ensureAspectRatioFallback(this, this.aspectRatioFallback);
     const { rect, cornerRadius } = this.measureForNative();
     const hasSize = rect.width > 0 && rect.height > 0;
     if (!hasSize) {
@@ -624,6 +632,7 @@ export class LxVideoElement extends HTMLElement {
       return;
     }
     if (!this.mounted || !this.componentId) return;
+    this.aspectRatioFallback = ensureAspectRatioFallback(this, this.aspectRatioFallback);
     const { rect, cornerRadius } = this.measureForNative();
     if (!rect.width || !rect.height) return;
     const zIndex = parseFloat(this.style.zIndex || "0") || 0;
