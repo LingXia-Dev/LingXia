@@ -228,6 +228,8 @@ pub mod runtime {
 pub mod platform {
     #[cfg(target_os = "android")]
     pub mod android {
+        #[cfg(feature = "servo")]
+        pub use crate::android::set_servo_data_dir;
         pub use crate::android::{initialize_jni, with_env};
     }
 
