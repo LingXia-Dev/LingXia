@@ -238,13 +238,13 @@ extension LxApp {
     nonisolated static func openManagedNativeSurface(
         id: RustStr,
         capability: RustStr,
-        instanceKey: RustStr,
+        instance_key: RustStr,
         role: RustStr,
         edge: RustStr
     ) -> Bool {
         let idString = id.toString()
         let capabilityString = capability.toString()
-        let instanceKeyString = instanceKey.toString()
+        let instanceKeyString = instance_key.toString()
         let roleString = role.toString()
         let edgeString = edge.toString()
         guard !idString.isEmpty, !capabilityString.isEmpty else { return false }
