@@ -3,21 +3,38 @@ package com.lingxia.webview;
 import android.content.Context;
 import android.graphics.Color;
 import android.graphics.SurfaceTexture;
+import android.os.Handler;
+import android.os.Looper;
+import android.text.Editable;
+import android.text.InputType;
+import android.text.Selection;
+import android.text.SpannableStringBuilder;
 import android.util.DisplayMetrics;
 import android.view.Choreographer;
+import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.Surface;
 import android.view.TextureView;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.inputmethod.BaseInputConnection;
+import android.view.inputmethod.EditorInfo;
+import android.view.inputmethod.InputConnection;
+import android.view.inputmethod.InputMethodManager;
 import android.webkit.ValueCallback;
 import android.widget.FrameLayout;
+import java.lang.ref.WeakReference;
+import java.util.concurrent.ConcurrentHashMap;
 
 /** Android view host for Servo's Rust embedding API. */
 public final class LingXiaServoView extends FrameLayout implements LingXiaWebViewHost,
         TextureView.SurfaceTextureListener, Choreographer.FrameCallback {
     private static final String TAG = "LingXiaServoView";
+    private static final ConcurrentHashMap<String, WeakReference<LingXiaServoView>> sViews =
+            new ConcurrentHashMap<>();
     private final TextureView servoSurface;
+    private final Editable editable = new SpannableStringBuilder();
+    private final ServoInputConnection inputConnection;
     private Surface nativeSurface;
     private String servoWebTag;
     private String appId;
@@ -26,10 +43,17 @@ public final class LingXiaServoView extends FrameLayout implements LingXiaWebVie
     private boolean attached;
     private boolean frameScheduled;
     private boolean paused;
+    private boolean composing;
+    private String composingText = "";
+    private int editorInputType = InputType.TYPE_CLASS_TEXT;
+    private int editorImeOptions = EditorInfo.IME_ACTION_DONE;
 
     public LingXiaServoView(Context context) {
         super(context);
         setBackgroundColor(Color.TRANSPARENT);
+        setFocusable(true);
+        setFocusableInTouchMode(true);
+        inputConnection = new ServoInputConnection();
         servoSurface = new TextureView(context);
         servoSurface.setSurfaceTextureListener(this);
         servoSurface.setFocusable(true);
@@ -44,6 +68,7 @@ public final class LingXiaServoView extends FrameLayout implements LingXiaWebVie
         this.currentPath = path;
         this.sessionId = sessionId;
         servoWebTag = appId + ":" + path + (sessionId > 0 ? "#" + sessionId : "");
+        sViews.put(servoWebTag, new WeakReference<>(this));
         SurfaceTexture texture = servoSurface.getSurfaceTexture();
         android.util.Log.d(TAG, "bind tag=" + servoWebTag + " valid="
                 + (servoSurface.isAvailable() && texture != null) + " size="
@@ -189,6 +214,7 @@ public final class LingXiaServoView extends FrameLayout implements LingXiaWebVie
     @Override
     public boolean onTouchEvent(MotionEvent event) {
         if (servoWebTag == null) return false;
+        if (event.getActionMasked() == MotionEvent.ACTION_DOWN) requestFocus();
         int index = event.getActionIndex();
         nativeTouch(
                 servoWebTag,
@@ -202,6 +228,26 @@ public final class LingXiaServoView extends FrameLayout implements LingXiaWebVie
     @Override
     public boolean dispatchTouchEvent(MotionEvent event) {
         return onTouchEvent(event);
+    }
+
+    @Override
+    public boolean onCheckIsTextEditor() {
+        return true;
+    }
+
+    @Override
+    public InputConnection onCreateInputConnection(EditorInfo outAttrs) {
+        outAttrs.inputType = editorInputType;
+        outAttrs.imeOptions = editorImeOptions;
+        outAttrs.initialSelStart = Selection.getSelectionStart(editable);
+        outAttrs.initialSelEnd = Selection.getSelectionEnd(editable);
+        return inputConnection;
+    }
+
+    @Override
+    public boolean dispatchKeyEvent(KeyEvent event) {
+        if (servoWebTag != null && forwardKeyEvent(event)) return true;
+        return super.dispatchKeyEvent(event);
     }
 
     @Override
@@ -234,13 +280,226 @@ public final class LingXiaServoView extends FrameLayout implements LingXiaWebVie
         android.util.Log.d(TAG, "destroy tag=" + servoWebTag + " attached=" + attached);
         if (frameScheduled) Choreographer.getInstance().removeFrameCallback(this);
         if (attached && servoWebTag != null) nativeSurfaceDestroyed(servoWebTag);
-        if (servoWebTag != null) LingXiaWebView.cancelServoEvaluations(servoWebTag);
+        if (servoWebTag != null) {
+            LingXiaWebView.cancelServoEvaluations(servoWebTag);
+            WeakReference<LingXiaServoView> reference = sViews.get(servoWebTag);
+            if (reference != null && reference.get() == this) sViews.remove(servoWebTag, reference);
+        }
         attached = false;
         frameScheduled = false;
         servoSurface.setSurfaceTextureListener(null);
         if (nativeSurface != null) {
             nativeSurface.release();
             nativeSurface = null;
+        }
+    }
+
+    static void showInputMethod(
+            final String webTag,
+            final int type,
+            final String text,
+            final int insertionPoint,
+            final boolean multiline,
+            final boolean allowVirtualKeyboard) {
+        runOnMainThread(() -> {
+            LingXiaServoView view = findView(webTag);
+            if (view == null) return;
+            view.editorInputType = androidInputType(type, multiline);
+            view.editorImeOptions = multiline
+                    ? EditorInfo.IME_FLAG_NO_ENTER_ACTION
+                    : EditorInfo.IME_ACTION_DONE;
+            view.editable.replace(0, view.editable.length(), text != null ? text : "");
+            int cursor = insertionPoint >= 0
+                    ? Math.min(insertionPoint, view.editable.length())
+                    : view.editable.length();
+            Selection.setSelection(view.editable, cursor);
+            view.composing = false;
+            view.composingText = "";
+            view.requestFocus();
+            InputMethodManager manager = (InputMethodManager) view.getContext()
+                    .getSystemService(Context.INPUT_METHOD_SERVICE);
+            if (manager == null) return;
+            manager.restartInput(view);
+            if (allowVirtualKeyboard) manager.showSoftInput(view, InputMethodManager.SHOW_IMPLICIT);
+        });
+    }
+
+    static void hideInputMethod(final String webTag) {
+        runOnMainThread(() -> {
+            LingXiaServoView view = findView(webTag);
+            if (view == null) return;
+            if (view.composing) view.finishComposition();
+            InputMethodManager manager = (InputMethodManager) view.getContext()
+                    .getSystemService(Context.INPUT_METHOD_SERVICE);
+            if (manager != null) manager.hideSoftInputFromWindow(view.getWindowToken(), 0);
+        });
+    }
+
+    private static LingXiaServoView findView(String webTag) {
+        WeakReference<LingXiaServoView> reference = sViews.get(webTag);
+        LingXiaServoView view = reference != null ? reference.get() : null;
+        if (view == null && reference != null) sViews.remove(webTag, reference);
+        return view;
+    }
+
+    private static void runOnMainThread(Runnable action) {
+        if (Looper.myLooper() == Looper.getMainLooper()) action.run();
+        else new Handler(Looper.getMainLooper()).post(action);
+    }
+
+    private static int androidInputType(int type, boolean multiline) {
+        int value;
+        switch (type) {
+            case 1:
+                value = InputType.TYPE_CLASS_DATETIME | InputType.TYPE_DATETIME_VARIATION_DATE;
+                break;
+            case 2:
+                value = InputType.TYPE_CLASS_DATETIME;
+                break;
+            case 3:
+                value = InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS;
+                break;
+            case 4:
+            case 5:
+            case 12:
+                value = InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL;
+                break;
+            case 6:
+                value = InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD;
+                break;
+            case 7:
+                value = InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_FILTER;
+                break;
+            case 8:
+                value = InputType.TYPE_CLASS_PHONE;
+                break;
+            case 10:
+                value = InputType.TYPE_CLASS_DATETIME | InputType.TYPE_DATETIME_VARIATION_TIME;
+                break;
+            case 11:
+                value = InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI;
+                break;
+            default:
+                value = InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_NORMAL;
+                break;
+        }
+        if (multiline) value |= InputType.TYPE_TEXT_FLAG_MULTI_LINE;
+        return value;
+    }
+
+    private boolean forwardKeyEvent(KeyEvent event) {
+        if (event.getAction() != KeyEvent.ACTION_DOWN && event.getAction() != KeyEvent.ACTION_UP) {
+            return false;
+        }
+        if (!isSupportedKey(event)) return false;
+        nativeKey(
+                servoWebTag,
+                event.getAction(),
+                event.getKeyCode(),
+                event.getUnicodeChar(),
+                event.getMetaState(),
+                event.getRepeatCount());
+        return true;
+    }
+
+    private static boolean isSupportedKey(KeyEvent event) {
+        if (event.getUnicodeChar() != 0) return true;
+        switch (event.getKeyCode()) {
+            case KeyEvent.KEYCODE_DPAD_UP:
+            case KeyEvent.KEYCODE_DPAD_DOWN:
+            case KeyEvent.KEYCODE_DPAD_LEFT:
+            case KeyEvent.KEYCODE_DPAD_RIGHT:
+            case KeyEvent.KEYCODE_TAB:
+            case KeyEvent.KEYCODE_ENTER:
+            case KeyEvent.KEYCODE_DEL:
+            case KeyEvent.KEYCODE_PAGE_UP:
+            case KeyEvent.KEYCODE_PAGE_DOWN:
+            case KeyEvent.KEYCODE_ESCAPE:
+            case KeyEvent.KEYCODE_FORWARD_DEL:
+            case KeyEvent.KEYCODE_MOVE_HOME:
+            case KeyEvent.KEYCODE_MOVE_END:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    private void startComposition() {
+        if (composing || servoWebTag == null) return;
+        nativeIme(servoWebTag, 0, "");
+        composing = true;
+    }
+
+    private void finishComposition() {
+        if (!composing || servoWebTag == null) return;
+        nativeIme(servoWebTag, 2, composingText);
+        composing = false;
+        composingText = "";
+    }
+
+    private final class ServoInputConnection extends BaseInputConnection {
+        ServoInputConnection() {
+            super(LingXiaServoView.this, true);
+        }
+
+        @Override
+        public Editable getEditable() {
+            return editable;
+        }
+
+        @Override
+        public boolean setComposingText(CharSequence text, int newCursorPosition) {
+            startComposition();
+            composingText = text != null ? text.toString() : "";
+            if (servoWebTag != null) nativeIme(servoWebTag, 1, composingText);
+            return super.setComposingText(text, newCursorPosition);
+        }
+
+        @Override
+        public boolean commitText(CharSequence text, int newCursorPosition) {
+            String committed = text != null ? text.toString() : "";
+            if (!composing) startComposition();
+            composingText = committed;
+            finishComposition();
+            return super.commitText(text, newCursorPosition);
+        }
+
+        @Override
+        public boolean finishComposingText() {
+            finishComposition();
+            return super.finishComposingText();
+        }
+
+        @Override
+        public boolean deleteSurroundingText(int beforeLength, int afterLength) {
+            if (composing) finishComposition();
+            for (int index = 0; index < beforeLength; index++) {
+                forwardKeyEvent(new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DEL));
+                forwardKeyEvent(new KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DEL));
+            }
+            for (int index = 0; index < afterLength; index++) {
+                forwardKeyEvent(new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_FORWARD_DEL));
+                forwardKeyEvent(new KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_FORWARD_DEL));
+            }
+            return super.deleteSurroundingText(beforeLength, afterLength);
+        }
+
+        @Override
+        public boolean sendKeyEvent(KeyEvent event) {
+            return forwardKeyEvent(event);
+        }
+
+        @Override
+        public boolean performEditorAction(int actionCode) {
+            if (actionCode == EditorInfo.IME_ACTION_DONE || actionCode == EditorInfo.IME_ACTION_GO
+                    || actionCode == EditorInfo.IME_ACTION_NEXT
+                    || actionCode == EditorInfo.IME_ACTION_SEARCH
+                    || actionCode == EditorInfo.IME_ACTION_SEND) {
+                forwardKeyEvent(new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER));
+                forwardKeyEvent(new KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_ENTER));
+                return true;
+            }
+            return super.performEditorAction(actionCode);
         }
     }
 
@@ -251,6 +510,9 @@ public final class LingXiaServoView extends FrameLayout implements LingXiaWebVie
     private native void nativeFrame(String webTag);
     private native void nativeTouch(String webTag, int action, int pointerId, float x, float y);
     private native void nativeWheel(String webTag, double dx, double dy);
+    private native void nativeIme(String webTag, int state, String text);
+    private native void nativeKey(
+            String webTag, int action, int keyCode, int unicodeCodePoint, int metaState, int repeatCount);
     private native String nativeGetUrl(String webTag);
     private native String nativeGetTitle(String webTag);
     private native boolean nativeCanGoBack(String webTag);
