@@ -258,6 +258,7 @@ enum Command {
         data: String,
         base_url: String,
     },
+    ApplyPendingLoad,
     Exec(String),
     Evaluate {
         script: String,
@@ -569,6 +570,11 @@ impl EngineState {
                     );
                 self.load(url);
             }
+            Command::ApplyPendingLoad => {
+                if let Some(url) = self.pending_load.take() {
+                    self.load(url);
+                }
+            }
             Command::Exec(script) => {
                 if let Some(view) = &self.view {
                     view.evaluate_javascript(script, |_| {});
@@ -766,7 +772,9 @@ impl EngineState {
             log::error!("Servo rejected invalid URL for {}: {url}", self.webtag);
             return;
         };
-        if let Some(view) = &self.view {
+        if let Some(view) = &self.view
+            && view.url().is_some()
+        {
             view.load(url);
         } else {
             self.pending_load = Some(url.to_string());
@@ -954,6 +962,12 @@ impl WebViewDelegate for Delegate {
             .url()
             .map(|url| url.to_string())
             .unwrap_or_else(|| "about:blank".into());
+        if status == LoadStatus::Complete && url == "about:blank" {
+            let _ = runtime_sender().send(RuntimeCommand::Dispatch {
+                webtag: self.webtag.clone(),
+                command: Command::ApplyPendingLoad,
+            });
+        }
         match status {
             LoadStatus::Started => normalizer::submit(
                 &self.webtag,
