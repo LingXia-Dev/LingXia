@@ -317,7 +317,7 @@ Each entry starts with its **content key** — exactly one of `lxapp` / `url` / 
 | Field | Type | Required | Description |
 |---|---|---:|---|
 | `lxapp` | string | one content key | An lxapp, by appId. Roles: `main` \| `aside` \| `float`. |
-| `url` | string | one content key | A page in the managed browser (requires `capabilities.browser: true`). macOS admits it as `main` and opens browser asides dynamically with `lx.openSurface`; Windows retains declarative `aside` support. |
+| `url` | string | one content key | A page in the managed browser (requires `capabilities.browser: true`). macOS and Windows admit it as `main`; Windows also retains declarative `aside` support, while browser asides may be opened dynamically with `lx.openSurface`. |
 | `native` | string | one content key | A built-in host surface: `terminal` or `browser`. On macOS and Windows, terminal supports `main` / `aside`; browser supports `main`. |
 | `role` | `main` \| `aside` \| `float` | Yes | `main` = a switchable primary surface; `aside` = a docked companion; `float` = a tray-anchored popover (requires a `tray:`). |
 | `launch` | bool | No | Open on start. At most one `main` may set `launch: true` (the initial surface). Omit on all mains for a tray-launched app. |
@@ -332,11 +332,11 @@ There is **no `sidebar:` entry field**: app-owned sidebar actions are declared a
 
 ### Rules (enforced at build)
 
-- macOS admits exactly one declared `main`, whose content may be `lxapp`, `url`, `native: terminal`, or `native: browser`. Other targets still require the home lxapp as their initial main until their native presenters implement this contract. A pure desktop popover app may instead declare one `role: float` surface with a `tray:` and no main. Additional browser/terminal main entries are runtime workspace Surfaces, not extra YAML main declarations.
-- After `platforms` filtering, at most one `main` may set `launch: true`; `launch` is invalid on a non-main. macOS allows it on any admitted main content; other targets currently allow it only on their home lxapp main.
+- macOS and Windows admit exactly one declared `main`, whose content may be `lxapp`, `url`, `native: terminal`, or `native: browser`. Other targets still require the home lxapp as their initial main until their native presenters implement this contract. A pure desktop popover app may instead declare one `role: float` surface with a `tray:` and no main. Additional browser/terminal main entries are runtime workspace Surfaces, not extra YAML main declarations.
+- After `platforms` filtering, at most one `main` may set `launch: true`; `launch` is invalid on a non-main. macOS and Windows allow it on any admitted main content; other targets currently allow it only on their home lxapp main.
 - `edge` and `size` are only valid on `aside`.
-- A `url` surface requires `capabilities.browser: true`; declarative URL main is currently macOS-only.
-- `native: terminal` requires `capabilities.terminal: true`; an aside uses `edge: top | bottom`. `native: browser` requires `capabilities.browser: true` and currently supports only a macOS main.
+- A `url` surface requires `capabilities.browser: true`; declarative URL main is supported on macOS and Windows.
+- `native: terminal` requires `capabilities.terminal: true`; an aside uses `edge: top | bottom`. `native: browser` requires `capabilities.browser: true` and supports a macOS or Windows main.
 - The same content key may be declared at most once.
 - `role: float` requires a `tray:` (it is a tray-anchored popover); a bare `role: float` is rejected.
 - At most one surface may declare `tray:`.
@@ -397,7 +397,7 @@ and terminal surfaces may be closed or renamed, while lxapp lifecycle stays
 lxapp-owned. Closing an active non-root main selects another remaining main, so
 the product Host never enters a synthetic zero-main or empty-state mode.
 
-The home lxapp remains the control app even when the visible macOS main is a URL or native surface. Its Logic worker still receives `App.onLaunch` once and may register sidebar actions, tray behavior, and other host chrome without creating a hidden WebView.
+The home lxapp remains the control app even when the visible desktop main is a URL or native surface. Its Logic worker still receives `App.onLaunch` once and may register sidebar actions, tray behavior, and other host chrome without creating a hidden WebView.
 
 ### Menu-bar / system-tray apps
 
@@ -432,7 +432,7 @@ The built-in terminal is gated by `capabilities.terminal`. On macOS and Windows 
 
 When terminal is declared as `main`, its declaration is the default workspace. The sidebar's global `+` creates another terminal workspace as a separate main Surface; the `+` inside a terminal workspace creates another PTY tab in that workspace. Logic can open or reuse a named workspace with `lx.openSurface({ native: 'terminal', instanceKey: 'project-a' })`. Equal keys resolve to the same runtime Surface, distinct keys create distinct sidebar entries, and the returned handle's read-only `id` is the runtime `SurfaceId` — it is not the key. A keyed instance is always a switchable main workspace, even when the declared default terminal is an aside; the unkeyed default keeps its declared placement.
 
-`native: browser` is a macOS host-owned browser workspace. It starts with an empty tab and uses the managed browser profile and chrome; use a `url:` main when the declaration should open a specific `https://` or authorized `file://` target.
+`native: browser` is a macOS or Windows host-owned browser workspace. It starts with an empty tab and uses the managed browser profile and chrome; use a `url:` main when the declaration should open a specific `https://` or authorized `file://` target.
 
 It shares a single cross-platform Rust engine that owns sessions, PTY transport, terminal semantics, and the snapshot/input protocol; platform SDKs only render snapshots into a native view and capture input. Backend selection is owned by the runtime — there is no backend selector in `lingxia.yaml`.
 

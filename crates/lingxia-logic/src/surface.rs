@@ -533,10 +533,19 @@ fn open_declared_surface_spec(ctx: &JSContext, spec: &JSObject) -> JSResult<JSOb
     let id = read_required_string(spec, "surface")?;
     let edge = read_validated_edge(spec)?;
     let lxapp = LxApp::from_ctx(ctx)?;
+    let id = id.trim();
+    let role = lxapp.shell_surface_role(id);
+    if role == Some(ManagedSurfaceRole::Main) && edge.is_some() {
+        return Err(surface_error(
+            rong::error::E_INVALID_ARG,
+            "invalid_surface_spec",
+            "edge is only valid for an aside surface",
+        ));
+    }
     lxapp
-        .set_shell_surface_visible(id.trim(), true, None, edge.as_deref())
+        .set_shell_surface_visible(id, true, role, edge.as_deref())
         .map_err(|err| surface_error(rong::error::E_NOT_FOUND, "surface_not_found", err))?;
-    managed_surface_handle(ctx, lxapp, id.trim().to_string(), None)
+    managed_surface_handle(ctx, lxapp, id.to_string(), role)
 }
 
 fn read_validated_edge(spec: &JSObject) -> JSResult<Option<String>> {
@@ -1020,7 +1029,7 @@ fn managed_surface_handle(
     )?;
 
     let close_lxapp = lxapp;
-    let close_id = id;
+    let close_id = id.clone();
     let close_handle = handle.clone();
     handle.set(
         "close",
@@ -1041,14 +1050,8 @@ fn managed_surface_handle(
             if !is_main {
                 close_lxapp.unregister_host_aside(&close_id);
             }
-            emit_close(
-                &close_handle,
-                &JSSurfaceClosed {
-                    id: close_id.clone(),
-                    kind: kind.to_string(),
-                    reason: "programmatic".to_string(),
-                },
-            )
+            let _ = notify_surface_closed(&close_id, "programmatic");
+            Ok(())
         })?,
     )?;
 
@@ -1061,6 +1064,18 @@ fn managed_surface_handle(
             })?,
         )?;
     }
+
+    let (closed_tx, closed_rx) = oneshot::channel::<JSSurfaceClosed>();
+    register_closed_sender(id.clone(), kind.to_string(), closed_tx);
+    let handle_for_close = handle.clone();
+    Promise::from_future(ctx, None, async move {
+        let event = closed_rx.await.unwrap_or_else(|_| JSSurfaceClosed {
+            id,
+            kind: kind.to_string(),
+            reason: "unknown".to_string(),
+        });
+        let _ = emit_close(&handle_for_close, &event);
+    })?;
 
     Ok(handle)
 }
@@ -2371,5 +2386,26 @@ mod tests {
             Some(Main),
             Some(8)
         ));
+    }
+
+    #[test]
+    fn external_close_notifies_every_retained_managed_handle_once() {
+        let surface_id = "test:managed-handle-external-close";
+        let (first_tx, mut first_rx) = oneshot::channel();
+        let (second_tx, mut second_rx) = oneshot::channel();
+        register_closed_sender(surface_id.to_string(), "native".to_string(), first_tx);
+        register_closed_sender(surface_id.to_string(), "native".to_string(), second_tx);
+
+        assert!(notify_surface_closed(surface_id, "user"));
+        for receiver in [&mut first_rx, &mut second_rx] {
+            let event = receiver
+                .try_recv()
+                .expect("close sender must stay connected")
+                .expect("close event must be delivered");
+            assert_eq!(event.id, surface_id);
+            assert_eq!(event.kind, "native");
+            assert_eq!(event.reason, "user");
+        }
+        assert!(!notify_surface_closed(surface_id, "user"));
     }
 }

@@ -220,12 +220,15 @@ impl WindowSurfaceController {
         }
     }
 
-    fn close(&self, id: &str) -> lingxia_surface::CloseOutcome {
+    fn close(&self, id: &str, reason: &str) -> lingxia_surface::CloseOutcome {
         let outcome = {
             let mut manager = self.manager.lock().unwrap();
             manager.close(id)
         };
         self.commit();
+        for removed in outcome.removed() {
+            notify_surface_close_observer(removed, reason);
+        }
         outcome
     }
 
@@ -233,6 +236,9 @@ impl WindowSurfaceController {
         let removed = self.manager.lock().unwrap().close_other_mains(keeping);
         if !removed.is_empty() {
             self.commit();
+            for surface_id in &removed {
+                notify_surface_close_observer(surface_id, "user");
+            }
         }
         removed
     }
@@ -241,6 +247,9 @@ impl WindowSurfaceController {
         let removed = self.manager.lock().unwrap().close_mains_after(surface_id);
         if !removed.is_empty() {
             self.commit();
+            for surface_id in &removed {
+                notify_surface_close_observer(surface_id, "user");
+            }
         }
         removed
     }
@@ -333,6 +342,14 @@ impl WindowSurfaceController {
             .iter()
             .find(|slot| slot.children.iter().any(|child| child == id))
             .map(|slot| if slot.overlay { "overlay" } else { "dock" })
+    }
+
+    fn managed_surface_role(&self, id: &str) -> Option<ManagedSurfaceRole> {
+        match self.manager.lock().unwrap().graph().role_of(id)? {
+            lingxia_surface::Role::Main => Some(ManagedSurfaceRole::Main),
+            lingxia_surface::Role::Aside => Some(ManagedSurfaceRole::Aside),
+            lingxia_surface::Role::Float => None,
+        }
     }
 
     /// Mirror a host-declared aside into the core graph, seeding the root `main`
@@ -520,6 +537,9 @@ impl WindowSurfaceController {
         };
         if execution.accepted {
             self.commit();
+            for surface_id in &execution.removed_surface_ids {
+                notify_surface_close_observer(surface_id, "user");
+            }
         }
         execution
     }
@@ -545,10 +565,7 @@ impl WindowSurfaceController {
     }
 
     fn unregister_host_aside(&self, surface_id: &str) {
-        {
-            let _ = self.manager.lock().unwrap().close(surface_id);
-        }
-        self.commit();
+        let _ = self.close(surface_id, "programmatic");
     }
 
     /// Focus a surface (any role) and commit. Drives aside-slot tab switches:
@@ -1308,7 +1325,7 @@ impl LxApp {
             .close_surface(&platform_owner_appid, id, reason)
         {
             Ok(()) => {
-                let mut removed = controller.close(id).into_removed();
+                let mut removed = controller.close(id, reason).into_removed();
                 if !removed.iter().any(|removed| removed == id) {
                     removed.push(id.to_string());
                 }
@@ -1720,12 +1737,16 @@ impl LxApp {
         window_controller(PRIMARY_WINDOW, &self.runtime).perform_surface_menu_intent(intent)
     }
 
-    pub fn close_main_surface(&self, surface_id: &str) -> lingxia_surface::CloseOutcome {
+    pub fn close_main_surface(
+        &self,
+        surface_id: &str,
+        reason: &str,
+    ) -> lingxia_surface::CloseOutcome {
         let surface_id = surface_id.trim();
         if surface_id.is_empty() {
             return lingxia_surface::CloseOutcome::NotFound;
         }
-        window_controller(PRIMARY_WINDOW, &self.runtime).close(surface_id)
+        window_controller(PRIMARY_WINDOW, &self.runtime).close(surface_id, reason)
     }
 
     pub fn close_other_main_surfaces(&self, keeping: &str) -> Vec<String> {
@@ -1774,6 +1795,15 @@ impl LxApp {
         window_controller(PRIMARY_WINDOW, &self.runtime).surface_presentation(surface_id)
     }
 
+    pub fn shell_surface_role(&self, surface_id: &str) -> Option<ManagedSurfaceRole> {
+        let surface_id = surface_id.trim();
+        (!surface_id.is_empty())
+            .then(|| {
+                window_controller(PRIMARY_WINDOW, &self.runtime).managed_surface_role(surface_id)
+            })
+            .flatten()
+    }
+
     /// Focus a surface in the window graph (aside-slot tab switch). The commit
     /// pushes a plan whose slot `activeChild` follows the focus, and the skin
     /// reconciler swaps the visible child. Returns `false` for an unknown id.
@@ -1813,7 +1843,7 @@ impl LxApp {
             .is_some();
         // Keep the Adaptive Surface Layout core in sync with removals; the
         // controller re-derives and reconciles aside docking.
-        let _ = controller.close(id);
+        let _ = controller.close(id, "user");
         removed
     }
 

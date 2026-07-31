@@ -561,13 +561,11 @@ final class LxAppMacAppUIRuntime: NSObject {
               let template = surfaceById.values.first(where: {
                   declaredSurfaceIDs.contains($0.id)
                       && $0.content.name?.rawValue == capability
-              }),
-              template.role.rawValue == role
+              })
         else { return false }
 
-        if let edge, edge != template.edge?.rawValue { return false }
         if let instanceKey {
-            guard template.role == .main else { return false }
+            guard role == LxAppUIConfig.Role.main.rawValue, edge == nil else { return false }
             let identity = "\(capability)\u{0}\(instanceKey)"
             if let existingID = nativeInstanceSurfaceIDs[identity], existingID != id {
                 return false
@@ -575,9 +573,9 @@ final class LxAppMacAppUIRuntime: NSObject {
             if surfaceById[id] == nil {
                 surfaceById[id] = LxAppUIConfig.Surface(
                     id: id,
-                    role: template.role,
-                    edge: template.edge,
-                    attachTo: template.attachTo,
+                    role: .main,
+                    edge: nil,
+                    attachTo: nil,
                     size: template.size,
                     anchor: template.anchor,
                     resizable: template.resizable,
@@ -594,8 +592,11 @@ final class LxAppMacAppUIRuntime: NSObject {
                 )
             }
             nativeInstanceSurfaceIDs[identity] = id
-        } else if id != template.id {
-            return false
+        } else {
+            guard id == template.id,
+                  template.role.rawValue == role,
+                  edge == template.edge?.rawValue
+            else { return false }
         }
         return openManagedSurface(id: id)
     }

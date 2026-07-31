@@ -691,7 +691,7 @@ pub(super) fn close_exhausted_terminal_surface(panel_id: &str) -> bool {
         return false;
     };
     if owner.main_surface_content(panel_id).is_some() {
-        return close_main_surface_and_present(&owner, panel_id);
+        return close_main_surface_and_present(&owner, panel_id, "user");
     }
     super::terminal_panel::destroy_windows_terminal_panel(panel_id);
     unregister_managed_aside(&appid, panel_id);
@@ -1119,7 +1119,7 @@ fn reconcile_declared_browser_surfaces() {
         {
             tabs.remove(&surface_id);
         }
-        let outcome = owner.close_main_surface(&surface_id);
+        let outcome = owner.close_main_surface(&surface_id, "user");
         match outcome {
             lingxia_surface::CloseOutcome::RejectedRoot { .. } => {
                 if let Err(error) = present_main_surface(&owner, &surface_id) {
@@ -3746,12 +3746,12 @@ fn handle_main_surface_close(owner_appid: &str, surface_id: &str) {
     let Some(owner) = lxapp::try_get(owner_appid) else {
         return;
     };
-    let _ = close_main_surface_and_present(&owner, surface_id);
+    let _ = close_main_surface_and_present(&owner, surface_id, "user");
 }
 
-fn close_main_surface_and_present(owner: &LxApp, surface_id: &str) -> bool {
+fn close_main_surface_and_present(owner: &LxApp, surface_id: &str, reason: &str) -> bool {
     let content = owner.main_surface_content(surface_id);
-    let outcome = owner.close_main_surface(surface_id);
+    let outcome = owner.close_main_surface(surface_id, reason);
     if outcome.removed().is_empty() {
         return false;
     }
@@ -5332,7 +5332,7 @@ fn set_managed_surface_visible(panel_id: &str, visible: bool, role: &str, edge: 
         return if visible {
             present_main_surface(&owner, panel_id).is_ok()
         } else {
-            close_main_surface_and_present(&owner, panel_id)
+            close_main_surface_and_present(&owner, panel_id, "programmatic")
         };
     }
     if !role.is_empty() && role != "aside" {
@@ -5399,6 +5399,9 @@ fn open_managed_native_surface(
     let title = lingxia_logic::i18n::t(lingxia_logic::I18nKey::TerminalTitle);
     let position = panel_position(position);
     crate::window_host::with_host_layout_batch(|| {
+        if role == "main" {
+            cancel_pending_browser_presentation();
+        }
         let opened = match super::terminal_panel::show_existing_windows_terminal_panel(
             surface_id, &title, position,
         ) {
@@ -5413,6 +5416,9 @@ fn open_managed_native_surface(
             }
         };
         if opened {
+            if role == "main" {
+                clear_browser_presentation();
+            }
             super::terminal_panel::set_terminal_panel_maximized(surface_id, role == "main");
             if role == "main"
                 && let Some(owner) = lxapp::try_get(&owner_appid)
