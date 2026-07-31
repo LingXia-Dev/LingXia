@@ -18,6 +18,8 @@ use std::sync::OnceLock;
 
 static JAVA_VM: OnceLock<JavaVM> = OnceLock::new();
 
+pub use lingxia_platform::present_browser_tab;
+
 fn initialize_jni(vm: JavaVM) {
     let _ = JAVA_VM.set(vm);
 }
