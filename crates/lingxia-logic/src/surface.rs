@@ -2,7 +2,7 @@ use futures::channel::oneshot;
 use lingxia_platform::traits::app_runtime::{
     AppRuntime, BuiltinBrowserPage, OpenUrlRequest, OpenUrlTarget,
 };
-use lingxia_platform::traits::ui::{SurfaceKind, SurfacePosition};
+use lingxia_platform::traits::ui::{ManagedSurfaceRole, SurfaceKind, SurfacePosition};
 use lxapp::{
     LxApp, LxAppError, PageQueryInput, PageSurfaceRequest, PageSurfaceTarget, PageTarget,
     publish_app_event, register_app_handler, try_get, unregister_app_handler,
@@ -381,7 +381,7 @@ async fn open_lxapp_spec(ctx: JSContext, spec: &JSObject) -> JSResult<JSObject> 
         }
         Some("float") => {
             lxapp
-                .set_shell_surface_visible(&app_id, true, edge.as_deref())
+                .set_shell_surface_visible(&app_id, true, None, edge.as_deref())
                 .map_err(|_| {
                     surface_error(
                         rong::error::E_NOT_SUPPORTED,
@@ -471,7 +471,7 @@ fn show_lxapp_region(
         }
         lxapp::LxAppOpenRegion::Aside => {
             if shell
-                .set_shell_surface_visible(shell_surface_id, true, edge)
+                .set_shell_surface_visible(shell_surface_id, true, None, edge)
                 .is_ok()
             {
                 Ok(())
@@ -497,17 +497,36 @@ fn lxapp_open_error(err: LxAppError) -> rong::RongJSError {
     }
 }
 
-/// `{ native, edge? }` branch of `lx.openSurface`. Shows a host-registered
+/// `{ native, as?, edge? }` branch of `lx.openSurface`. Shows a host-registered
 /// native capability (declared in lingxia.yaml surfaces, e.g. the terminal).
 fn open_native_spec(ctx: &JSContext, spec: &JSObject) -> JSResult<JSObject> {
     let name = read_required_string(spec, "native")?;
     let edge = read_validated_edge(spec)?;
+    let role = match read_optional_string(spec, "as")?.as_deref().map(str::trim) {
+        None => None,
+        Some("main") => Some(ManagedSurfaceRole::Main),
+        Some("aside") => Some(ManagedSurfaceRole::Aside),
+        Some(other) => {
+            return Err(surface_error(
+                rong::error::E_INVALID_ARG,
+                "invalid_surface_spec",
+                format!("a native surface supports as: 'main' | 'aside'; got {other}"),
+            ));
+        }
+    };
+    if role == Some(ManagedSurfaceRole::Main) && edge.is_some() {
+        return Err(surface_error(
+            rong::error::E_INVALID_ARG,
+            "invalid_surface_spec",
+            "edge is only valid with as: 'aside'",
+        ));
+    }
     let lxapp = LxApp::from_ctx(ctx)?;
     require_home_caller(&lxapp, "native")?;
     lxapp
-        .set_shell_surface_visible(name.trim(), true, edge.as_deref())
+        .set_shell_surface_visible(name.trim(), true, role, edge.as_deref())
         .map_err(|err| surface_error(rong::error::E_NOT_FOUND, "native_not_found", err))?;
-    managed_surface_handle(ctx, lxapp, name.trim().to_string())
+    managed_surface_handle(ctx, lxapp, name.trim().to_string(), role)
 }
 
 /// Published declaration-id form. It remains available to non-home lxapps;
@@ -518,9 +537,9 @@ fn open_declared_surface_spec(ctx: &JSContext, spec: &JSObject) -> JSResult<JSOb
     let edge = read_validated_edge(spec)?;
     let lxapp = LxApp::from_ctx(ctx)?;
     lxapp
-        .set_shell_surface_visible(id.trim(), true, edge.as_deref())
+        .set_shell_surface_visible(id.trim(), true, None, edge.as_deref())
         .map_err(|err| surface_error(rong::error::E_NOT_FOUND, "surface_not_found", err))?;
-    managed_surface_handle(ctx, lxapp, id.trim().to_string())
+    managed_surface_handle(ctx, lxapp, id.trim().to_string(), None)
 }
 
 fn read_validated_edge(spec: &JSObject) -> JSResult<Option<String>> {
@@ -899,7 +918,7 @@ fn emit_lxapp_handle_close(handle: &JSObject, app_id: &str, reason: &str) -> JSR
 
 fn hide_lxapp_aside(shell: &LxApp, app_id: &str, shell_surface_id: &str) -> JSResult<()> {
     if shell
-        .set_shell_surface_visible(shell_surface_id, false, None)
+        .set_shell_surface_visible(shell_surface_id, false, None, None)
         .is_ok()
     {
         return Ok(());
@@ -926,11 +945,19 @@ fn hide_lxapp_aside(shell: &LxApp, app_id: &str, shell_surface_id: &str) -> JSRe
 
 /// Lifecycle-complete handle for a host-managed native surface. Native
 /// capabilities without messaging omit only postMessage/onMessage.
-fn managed_surface_handle(ctx: &JSContext, lxapp: Arc<LxApp>, id: String) -> JSResult<JSObject> {
+fn managed_surface_handle(
+    ctx: &JSContext,
+    lxapp: Arc<LxApp>,
+    id: String,
+    role: Option<ManagedSurfaceRole>,
+) -> JSResult<JSObject> {
+    let is_main = role == Some(ManagedSurfaceRole::Main);
+    let kind = if is_main { "window" } else { "overlay" };
+    let surface_role = if is_main { "main" } else { "aside" };
     let (message_port, _) = crate::message_port::pair(ctx)?;
     let handle = Class::lookup::<JSSurface>(ctx)?.instance(JSSurface {
         id: id.clone(),
-        kind: "overlay".to_string(),
+        kind: kind.to_string(),
         message_port,
         event_emitter: EventEmitter::default(),
         peer: RefCell::new(None),
@@ -938,11 +965,15 @@ fn managed_surface_handle(ctx: &JSContext, lxapp: Arc<LxApp>, id: String) -> JSR
         alive: Cell::new(true),
     });
     handle.set("id", id.clone())?;
-    handle.set("kind", "overlay")?;
-    handle.set("role", "aside")?;
+    handle.set("kind", kind)?;
+    handle.set("role", surface_role)?;
     handle.set(
         "presentation",
-        lxapp.shell_surface_presentation(&id).unwrap_or("dock"),
+        if is_main {
+            "main"
+        } else {
+            lxapp.shell_surface_presentation(&id).unwrap_or("dock")
+        },
     )?;
     handle.set("visible", true)?;
     handle.set("alive", true)?;
@@ -955,7 +986,7 @@ fn managed_surface_handle(ctx: &JSContext, lxapp: Arc<LxApp>, id: String) -> JSR
         JSFunc::new(ctx, move || -> JSResult<()> {
             ensure_surface_object_open(&show_handle)?;
             show_lxapp
-                .set_shell_surface_visible(&show_id, true, None)
+                .set_shell_surface_visible(&show_id, true, role, None)
                 .map_err(|err| {
                     surface_error(rong::error::E_INTERNAL, "shell_surface_failed", err)
                 })?;
@@ -970,8 +1001,15 @@ fn managed_surface_handle(ctx: &JSContext, lxapp: Arc<LxApp>, id: String) -> JSR
         "hide",
         JSFunc::new(ctx, move || -> JSResult<()> {
             ensure_surface_object_open(&hide_handle)?;
+            if is_main {
+                return Err(surface_error(
+                    rong::error::E_NOT_SUPPORTED,
+                    "main_surface_hide_unsupported",
+                    "a main surface cannot be hidden; close it instead",
+                ));
+            }
             hide_lxapp
-                .set_shell_surface_visible(&hide_id, false, None)
+                .set_shell_surface_visible(&hide_id, false, role, None)
                 .map_err(|err| {
                     surface_error(rong::error::E_INTERNAL, "shell_surface_failed", err)
                 })?;
@@ -989,7 +1027,7 @@ fn managed_surface_handle(ctx: &JSContext, lxapp: Arc<LxApp>, id: String) -> JSR
                 return Ok(());
             }
             close_lxapp
-                .set_shell_surface_visible(&close_id, false, None)
+                .set_shell_surface_visible(&close_id, false, role, None)
                 .map_err(|err| {
                     surface_error(rong::error::E_INTERNAL, "shell_surface_failed", err)
                 })?;
@@ -998,7 +1036,7 @@ fn managed_surface_handle(ctx: &JSContext, lxapp: Arc<LxApp>, id: String) -> JSR
                 &close_handle,
                 &JSSurfaceClosed {
                     id: close_id.clone(),
-                    kind: "overlay".to_string(),
+                    kind: kind.to_string(),
                     reason: "programmatic".to_string(),
                 },
             )

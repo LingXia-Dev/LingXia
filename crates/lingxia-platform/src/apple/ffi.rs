@@ -242,7 +242,7 @@ mod bridge {
         fn close_surface(id: &str, appid: &str, reason: &str) -> bool;
 
         #[swift_bridge(swift_name = "LxApp.setManagedSurfaceVisible")]
-        fn set_managed_surface_visible(id: &str, visible: bool, edge: &str) -> bool;
+        fn set_managed_surface_visible(id: &str, visible: bool, role: &str, edge: &str) -> bool;
 
         #[swift_bridge(swift_name = "LxApp.toggleManagedSurface")]
         fn toggle_managed_surface(id: &str) -> bool;

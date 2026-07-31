@@ -155,6 +155,7 @@ pub trait SurfacePresenter: Send + Sync + 'static {
         &self,
         _id: &str,
         _visible: bool,
+        _role: Option<ManagedSurfaceRole>,
         _edge: Option<&str>,
     ) -> Result<(), PlatformError> {
         Err(PlatformError::NotSupported(
@@ -168,6 +169,21 @@ pub trait SurfacePresenter: Send + Sync + 'static {
         Err(PlatformError::NotSupported(
             "managed surfaces are not supported on this platform".to_string(),
         ))
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ManagedSurfaceRole {
+    Main,
+    Aside,
+}
+
+impl ManagedSurfaceRole {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Main => "main",
+            Self::Aside => "aside",
+        }
     }
 }
 

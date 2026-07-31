@@ -811,16 +811,19 @@ export type OpenLxappSurfaceSpec = {
 
 /**
  * Open a host-registered native capability (home lxapp only), e.g.
- * the built-in terminal declared in `lingxia.yaml` surfaces.
+ * the built-in terminal declared in `lingxia.yaml` surfaces. The
+ * terminal may be moved between the main switcher and an aside; it is
+ * one workspace, never two simultaneous copies.
  */
 export type OpenNativeSurfaceSpec = {
     native: string;
+    /** Defaults to the lingxia.yaml role. */
+    as?: 'main' | 'aside';
     /** Docking edge override for this open. */
     edge?: SurfaceEdge;
     page?: never;
     url?: never;
     lxapp?: never;
-    as?: never;
     position?: never;
     size?: never;
     query?: never;

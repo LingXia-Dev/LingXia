@@ -699,6 +699,11 @@ semantics every language surface MUST share.
   `as` becomes a main browser tab. A native capability without `as` takes its
   YAML or capability-metadata default, else a bottom aside. The aside default
   edge is right.
+- On macOS, `native: terminal` accepts `as: main | aside`. The same stable
+  surface id and terminal workspace move between the main switcher and attach
+  panel; the host never creates simultaneous copies, and the root main remains
+  unchanged. Windows rejects the main override until it has a native main
+  presenter.
 - Runtime floats default to centered, non-modal, tap-outside dismissal;
   compact ignores position and presents a bottom sheet. A float without a size
   hint uses 480×360 dp/pt clamped to 90% of the container; a standalone window
@@ -706,8 +711,9 @@ semantics every language surface MUST share.
 - Size values are hints, clamped per §3.3. Non-finite, negative, or malformed
   values fail with `E_INVALID_ARG`; insufficient container space degrades per
   admission rules instead of erroring.
-- An explicit role override never mutates the declaration; conflicting with a
-  live role fails with `E_SURFACE_CONFLICT`.
+- An explicit role override never mutates the declaration. A live terminal
+  migrates between its supported roles; content whose provider cannot migrate
+  fails with `E_SURFACE_CONFLICT`.
 - `interaction.closeButton` adds the standard native circular close control.
   Manual floats require it or an app-owned close path. Modal floats block
   underlying input and restore prior focus on close.

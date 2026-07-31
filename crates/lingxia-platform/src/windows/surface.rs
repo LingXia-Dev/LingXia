@@ -404,7 +404,7 @@ fn dispose_surface_page(page_instance_id: &str, reason: &str) {
     }
 }
 
-type ManagedSurfaceVisibleHandler = Arc<dyn Fn(&str, bool, &str) -> bool + Send + Sync>;
+type ManagedSurfaceVisibleHandler = Arc<dyn Fn(&str, bool, &str, &str) -> bool + Send + Sync>;
 static MANAGED_SURFACE_VISIBLE_HANDLER: Mutex<Option<ManagedSurfaceVisibleHandler>> =
     Mutex::new(None);
 
@@ -417,6 +417,7 @@ pub fn set_windows_managed_surface_visible_handler(handler: ManagedSurfaceVisibl
 pub(super) fn set_managed_surface_visible(
     id: &str,
     visible: bool,
+    role: Option<crate::traits::ui::ManagedSurfaceRole>,
     edge: Option<&str>,
 ) -> Result<(), PlatformError> {
     let handler = MANAGED_SURFACE_VISIBLE_HANDLER
@@ -428,7 +429,12 @@ pub(super) fn set_managed_surface_visible(
                 "managed surfaces are not supported on this Windows host".to_string(),
             )
         })?;
-    if handler(id, visible, edge.unwrap_or_default()) {
+    if handler(
+        id,
+        visible,
+        role.map_or("", crate::traits::ui::ManagedSurfaceRole::as_str),
+        edge.unwrap_or_default(),
+    ) {
         Ok(())
     } else {
         Err(PlatformError::InvalidParameter(format!(

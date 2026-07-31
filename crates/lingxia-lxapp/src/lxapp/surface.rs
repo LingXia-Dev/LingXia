@@ -1,7 +1,7 @@
 use super::*;
 use lingxia_platform::Platform;
 use lingxia_platform::traits::ui::{
-    SurfaceContent, SurfaceKind, SurfacePosition, SurfacePresenter,
+    ManagedSurfaceRole, SurfaceContent, SurfaceKind, SurfacePosition, SurfacePresenter,
     SurfaceRequest as PlatformSurfaceRequest, SurfaceRole,
 };
 use std::collections::HashMap;
@@ -214,6 +214,7 @@ impl WindowSurfaceController {
         &self,
         id: &str,
         visible: bool,
+        role: Option<ManagedSurfaceRole>,
         edge: Option<&str>,
     ) -> Result<(), LxAppError> {
         let parsed_edge = edge.map(parse_surface_edge).transpose()?;
@@ -221,7 +222,7 @@ impl WindowSurfaceController {
         // surface into this graph. Delegate before mirroring visibility so a
         // declared-but-never-opened surface is not rejected as unknown.
         self.runtime
-            .set_managed_surface_visible(id, visible, edge)?;
+            .set_managed_surface_visible(id, visible, role, edge)?;
         let changed = {
             let mut manager = self.manager.lock().unwrap();
             if visible {
@@ -969,7 +970,7 @@ impl LxApp {
                 notify_surface_close_observer(victim, "programmatic");
                 let _ = self
                     .runtime
-                    .set_managed_surface_visible(victim, false, None);
+                    .set_managed_surface_visible(victim, false, None, None);
             }
         }
 
@@ -1267,6 +1268,7 @@ impl LxApp {
         &self,
         id: &str,
         visible: bool,
+        role: Option<ManagedSurfaceRole>,
         edge: Option<&str>,
     ) -> Result<(), LxAppError> {
         let id = id.trim();
@@ -1276,7 +1278,7 @@ impl LxApp {
             ));
         }
         window_controller(PRIMARY_WINDOW, &self.runtime)
-            .set_managed_surface_visible(id, visible, edge)
+            .set_managed_surface_visible(id, visible, role, edge)
     }
 
     /// Mirror a host-declared aside (e.g. the assistant/terminal attach-panel)

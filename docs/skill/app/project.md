@@ -428,7 +428,7 @@ Pass `null` / empty to clear a badge or title. The tray *shape* is declared in `
 
 ### Terminal surface
 
-The built-in terminal is gated by `capabilities.terminal`. On macOS it may be a main surface or an aside (`edge: top | bottom`, default `bottom`); Windows currently supports the aside form. To expose it as an activator, declare a runtime entry whose `onActivate` calls `lx.openSurface({ native: 'terminal' })`.
+The built-in terminal is gated by `capabilities.terminal`. On macOS it may be a main surface or an aside (`edge: top | bottom`, default `bottom`); Windows currently supports the aside form. `lx.openSurface({ native: 'terminal', as: 'main' })` moves its one workspace into the main switcher/sidebar without replacing the launch root; `as: 'aside'` moves it back to the attach panel. Omitting `as` uses the YAML role. To expose it as an activator, declare a runtime entry whose `onActivate` calls the desired form.
 
 `native: browser` is a macOS host-owned browser workspace. It starts with an empty tab and uses the managed browser profile and chrome; use a `url:` main when the declaration should open a specific `https://` or authorized `file://` target.
 

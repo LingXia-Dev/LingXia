@@ -4550,7 +4550,11 @@ fn commit_address_input(appid: &str, tab_id: &str, raw_input: &str) {
     }));
 }
 
-fn set_managed_surface_visible(panel_id: &str, visible: bool, edge: &str) -> bool {
+fn set_managed_surface_visible(panel_id: &str, visible: bool, role: &str, edge: &str) -> bool {
+    if !role.is_empty() && role != "aside" {
+        log::warn!("Windows managed surfaces do not support role override: {role}");
+        return false;
+    }
     let Some(owner_appid) = shell_owner_appid() else {
         return false;
     };
@@ -4602,8 +4606,8 @@ fn toggle_managed_surface(panel_id: &str) -> bool {
 pub(crate) fn handle_menu_bar_surface_action(surface_id: &str, action_kind: &str) -> bool {
     if panel_target_for_id(surface_id).is_some() {
         return match action_kind {
-            "openSurface" | "focusSurface" => set_managed_surface_visible(surface_id, true, ""),
-            "closeSurface" => set_managed_surface_visible(surface_id, false, ""),
+            "openSurface" | "focusSurface" => set_managed_surface_visible(surface_id, true, "", ""),
+            "closeSurface" => set_managed_surface_visible(surface_id, false, "", ""),
             _ => toggle_managed_surface(surface_id),
         };
     }

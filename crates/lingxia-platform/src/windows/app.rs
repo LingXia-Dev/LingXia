@@ -566,9 +566,10 @@ impl crate::traits::ui::SurfacePresenter for Platform {
         &self,
         id: &str,
         visible: bool,
+        role: Option<crate::traits::ui::ManagedSurfaceRole>,
         edge: Option<&str>,
     ) -> Result<(), PlatformError> {
-        surface::set_managed_surface_visible(id, visible, edge)
+        surface::set_managed_surface_visible(id, visible, role, edge)
     }
 
     fn toggle_managed_surface(&self, id: &str) -> Result<(), PlatformError> {

@@ -328,4 +328,29 @@ mod tests {
             vec!["home", "terminal"]
         );
     }
+
+    #[test]
+    fn native_surface_moves_between_aside_and_main_without_replacing_root() {
+        let mut manager = SurfaceManager::new(1200.0);
+        manager.open(Surface::lxapp("home", Role::Main, "home"));
+        manager.open(Surface::native("terminal", Role::Aside, "terminal"));
+
+        let terminal_main = Surface::native("terminal", Role::Main, "terminal");
+        let snapshot = manager
+            .open_main(
+                terminal_main.clone(),
+                SurfacePresentation::for_content(&terminal_main.content),
+            )
+            .unwrap();
+        assert_eq!(snapshot.root_surface_id.as_deref(), Some("home"));
+        assert_eq!(snapshot.active_surface_id.as_deref(), Some("terminal"));
+        assert_eq!(manager.graph().asides().len(), 0);
+
+        manager.open(Surface::native("terminal", Role::Aside, "terminal"));
+        let snapshot = manager.switcher_snapshot();
+        assert_eq!(snapshot.root_surface_id.as_deref(), Some("home"));
+        assert_eq!(snapshot.active_surface_id.as_deref(), Some("home"));
+        assert_eq!(snapshot.items.len(), 1);
+        assert_eq!(manager.graph().asides()[0].id, "terminal");
+    }
 }

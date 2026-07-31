@@ -260,7 +260,7 @@ func lxTerminalLogAsync(_ message: String, type: OSLogType = .info) {
 
 @MainActor
 final class LingXiaTerminalWorkspaceView: NSView {
-    enum Presentation {
+    enum Presentation: Equatable {
         case main
         case aside
     }
@@ -302,7 +302,7 @@ final class LingXiaTerminalWorkspaceView: NSView {
     }
 
     private let surfaceID: String
-    private let presentation: Presentation
+    private var presentation: Presentation
 
     var onRequestClosePanel: (() -> Void)?
     var onToggleSurfaceZoom: ((Bool) -> Void)?
@@ -334,6 +334,16 @@ final class LingXiaTerminalWorkspaceView: NSView {
 
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
+    }
+
+    func setPresentation(_ presentation: Presentation) {
+        guard self.presentation != presentation else { return }
+        if presentation == .main {
+            setSurfaceZoomEnabled(false, notifyRuntime: false)
+        }
+        self.presentation = presentation
+        tabRailView.showsSurfaceZoomControl = presentation == .aside
+        needsLayout = true
     }
 
     deinit {

@@ -109,9 +109,15 @@ impl SurfacePresenter for Platform {
         &self,
         id: &str,
         visible: bool,
+        role: Option<crate::traits::ui::ManagedSurfaceRole>,
         edge: Option<&str>,
     ) -> Result<(), PlatformError> {
-        if set_managed_surface_visible(id, visible, edge.unwrap_or("")) {
+        if set_managed_surface_visible(
+            id,
+            visible,
+            role.map_or("", crate::traits::ui::ManagedSurfaceRole::as_str),
+            edge.unwrap_or(""),
+        ) {
             Ok(())
         } else {
             Err(PlatformError::Platform(format!(
