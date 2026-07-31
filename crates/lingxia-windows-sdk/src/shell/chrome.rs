@@ -5,9 +5,9 @@
 //! file is pure product policy registered through the
 //! [`WindowsChromeRenderer`] seam.
 
-use std::sync::{Arc, OnceLock};
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex, OnceLock};
 
-#[cfg(feature = "browser-runtime")]
 use lingxia_windows_contract::post_to_window_thread;
 use lingxia_windows_contract::{
     WindowsAsidePanelTab, WindowsChromeAttachedLayout, WindowsChromeCommand, WindowsChromeHit,
@@ -291,7 +291,10 @@ impl WindowsChromeRenderer for ShellChromeRenderer {
         let saved = unsafe { SaveDC(hdc) };
         super::text_input::exclude_active_inline_edit(hdc, state.hwnd);
         if let Some(layout) = shell_layout(&state.layout) {
+            sync_sidebar_surface_title_rects(state.hwnd, state.client, layout);
             draw_window_chrome(hdc, state, layout);
+        } else {
+            clear_sidebar_surface_title_rects(state.hwnd);
         }
         unsafe {
             let _ = RestoreDC(hdc, saved);
@@ -628,6 +631,99 @@ pub(super) fn install() {
 
 fn shell_layout(layout: &WindowsWindowLayout) -> Option<&WindowsShellWindowLayout> {
     layout.downcast_ref::<WindowsShellWindowLayout>()
+}
+
+type SidebarSurfaceTitleRects = HashMap<isize, HashMap<String, RECT>>;
+static SIDEBAR_SURFACE_TITLE_RECTS: OnceLock<Mutex<SidebarSurfaceTitleRects>> = OnceLock::new();
+
+fn sidebar_surface_title_rects() -> std::sync::MutexGuard<'static, SidebarSurfaceTitleRects> {
+    SIDEBAR_SURFACE_TITLE_RECTS
+        .get_or_init(|| Mutex::new(HashMap::new()))
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+fn clear_sidebar_surface_title_rects(hwnd: HWND) {
+    sidebar_surface_title_rects().remove(&(hwnd.0 as isize));
+}
+
+fn sync_sidebar_surface_title_rects(hwnd: HWND, client: RECT, layout: &WindowsShellWindowLayout) {
+    let Some(tabbar) = layout.tab_bar.as_ref().filter(|tabbar| {
+        tabbar.visible
+            && !tabbar.collapsed
+            && !tabbar.icon_rail
+            && matches!(
+                tabbar.position,
+                WindowsShellTabBarPosition::Left | WindowsShellTabBarPosition::Right
+            )
+    }) else {
+        clear_sidebar_surface_title_rects(hwnd);
+        return;
+    };
+    let rects = compute_chrome_rects(client, layout);
+    let Some(tabbar_rect) = rects.tab_bar else {
+        clear_sidebar_surface_title_rects(hwnd);
+        return;
+    };
+    let (scroll_offset, _, viewport_bottom) =
+        sidebar_scroll_metrics(tabbar_rect, layout).unwrap_or((0, 0, tabbar_rect.bottom));
+    let mut titles = HashMap::new();
+    titles.insert(
+        tabbar.group_target_id.clone(),
+        sidebar_group_title_rect(tabbar_rect, tabbar, scroll_offset),
+    );
+    if let Some(auxiliary) =
+        sidebar_auxiliary_rects(tabbar_rect, tabbar, scroll_offset, viewport_bottom)
+    {
+        for (index, item_rect) in auxiliary.items {
+            let Some(item) = tabbar
+                .auxiliary_items
+                .get(index)
+                .filter(|item| !item.pinned)
+            else {
+                continue;
+            };
+            let icon_rect = sidebar_top_level_icon_rect(item_rect, SIDEBAR_FAVICON_SIZE);
+            titles.insert(
+                item.id.clone(),
+                sidebar_auxiliary_title_rect(
+                    item_rect,
+                    item,
+                    icon_rect.right + SIDEBAR_FAVICON_TEXT_GAP,
+                ),
+            );
+        }
+    }
+    sidebar_surface_title_rects().insert(hwnd.0 as isize, titles);
+}
+
+pub(crate) fn begin_sidebar_surface_rename(
+    window: isize,
+    target_id: &str,
+    initial_text: &str,
+    on_commit: super::text_input::InlineEditCommit,
+) -> bool {
+    let rect = sidebar_surface_title_rects()
+        .get(&window)
+        .and_then(|rects| rects.get(target_id))
+        .copied();
+    let Some(mut rect) = rect else {
+        return false;
+    };
+    rect.top += 7;
+    rect.bottom -= 7;
+    let initial = initial_text.to_string();
+    post_to_window_thread(
+        window,
+        Box::new(move || {
+            super::text_input::begin_inline_edit(
+                HWND(window as *mut core::ffi::c_void),
+                rect,
+                &initial,
+                on_commit,
+            );
+        }),
+    )
 }
 
 pub(crate) fn shell_chrome_dirty_rects(
@@ -1876,7 +1972,7 @@ pub(super) fn chrome_hit_test(
                     point,
                 )
             {
-                let payload = json!({ "tab_id": format!("lxapp:{}", tabbar.group_id) });
+                let payload = json!({ "tab_id": tabbar.group_target_id.clone() });
                 return Some(WindowsChromeHit::Command(
                     WindowsChromeCommand::new(command_id::SIDEBAR_AUXILIARY_CONTEXT_MENU)
                         .with_payload(payload)

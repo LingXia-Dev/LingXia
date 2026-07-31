@@ -314,16 +314,7 @@ pub(in crate::shell::chrome) fn draw_sidebar_auxiliary_section(
         if icon_drawn {
             label_left = icon_rect.right + SIDEBAR_FAVICON_TEXT_GAP;
         }
-        let label_rect = normalize_rect(RECT {
-            left: label_left,
-            top: item_rect.top,
-            right: if item.closable {
-                close_rect.left - 2
-            } else {
-                item_rect.right - 8
-            },
-            bottom: item_rect.bottom,
-        });
+        let label_rect = sidebar_auxiliary_title_rect(item_rect, item, label_left);
         let text_color = if item.active {
             shell_palette().text_primary
         } else {
@@ -346,6 +337,23 @@ pub(in crate::shell::chrome) fn draw_sidebar_auxiliary_section(
         draw_hover_wash(hdc, add_rect, 8, cursor);
         draw_frame_button_glyph(hdc, GLYPH_ADD, add_rect, shell_palette().text_muted);
     }
+}
+
+pub(in crate::shell::chrome) fn sidebar_auxiliary_title_rect(
+    item_rect: RECT,
+    item: &WindowsShellAuxiliaryItemLayout,
+    label_left: i32,
+) -> RECT {
+    normalize_rect(RECT {
+        left: label_left,
+        top: item_rect.top,
+        right: if item.closable {
+            sidebar_auxiliary_close_rect(item_rect).left - 2
+        } else {
+            item_rect.right - 8
+        },
+        bottom: item_rect.bottom,
+    })
 }
 
 #[cfg(test)]

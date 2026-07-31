@@ -1692,8 +1692,16 @@ fn build_tab_bar_layout(
     let group_active = root.map(|item| item.active).unwrap_or_else(|| {
         presented_browser_tab().is_none() && active_main_lxapp_id().as_deref() == Some(&app.appid)
     });
+    let root_owns_lxapp_navigation = root.is_none_or(|item| {
+        matches!(
+            &item.content,
+            SwitcherContentKind::Lxapp { app_id } | SwitcherContentKind::Page { app_id }
+                if app_id == &app.appid
+        )
+    });
     let items = tabbar
         .as_ref()
+        .filter(|_| root_owns_lxapp_navigation)
         .map(|tabbar| {
             tabbar
                 .list
@@ -2549,6 +2557,9 @@ fn apply_windows_layout_plan(plan: &LayoutPresentationPlan) {
             );
         }
     }
+    if let Some(owner_appid) = shell_owner_appid() {
+        sync_shell_layout(&owner_appid);
+    }
 }
 
 fn present_terminal_from_layout(request: TerminalPanelRequest, overlay: bool) {
@@ -2831,7 +2842,9 @@ fn handle_chrome_event(appid: &str, event: WindowsChromeCommand) {
             };
             let screen_x = payload_i32(&event, "screen_x").unwrap_or(0);
             let screen_y = payload_i32(&event, "screen_y").unwrap_or(0);
-            if let Some(target_appid) = auxiliary_lxapp_id(&tab_id) {
+            if let Some(surface_id) = auxiliary_surface_id(&tab_id) {
+                show_main_surface_context_menu(appid, surface_id, screen_x, screen_y);
+            } else if let Some(target_appid) = auxiliary_lxapp_id(&tab_id) {
                 show_lxapp_auxiliary_context_menu(appid, target_appid, screen_x, screen_y);
             } else if tab_id.starts_with(AUX_BOOKMARK_PREFIX) {
                 show_pinned_bookmark_context_menu(appid, &tab_id, screen_x, screen_y);
@@ -3706,6 +3719,184 @@ fn handle_main_surface_close(owner_appid: &str, surface_id: &str) {
     sync_shell_layout(owner_appid);
 }
 
+fn show_main_surface_context_menu(
+    owner_appid: &str,
+    surface_id: &str,
+    screen_x: i32,
+    screen_y: i32,
+) {
+    let Some(owner) = lxapp::try_get(owner_appid) else {
+        return;
+    };
+    let Some(snapshot) = owner.shell_surface_menu(surface_id) else {
+        return;
+    };
+    let Some(window) = owner_window_handle(owner_appid) else {
+        return;
+    };
+    let mut entries = Vec::new();
+    let mut actions = Vec::new();
+    for section in &snapshot.sections {
+        if !entries.is_empty() && !section.items.is_empty() {
+            entries.push(super::context_menu::ContextMenuEntry::separator());
+            actions.push(None);
+        }
+        for item in &section.items {
+            entries.push(surface_menu_entry(item));
+            actions.push(Some(item.action.clone()));
+        }
+    }
+    let title = owner
+        .surface_switcher_snapshot()
+        .items
+        .iter()
+        .find(|item| item.surface_id == surface_id)
+        .map(surface_switcher_title)
+        .unwrap_or_else(|| surface_id.to_string());
+    let owner_appid = owner_appid.to_string();
+    let surface_id = snapshot.surface_id;
+    let revision = snapshot.revision;
+    super::context_menu::show_context_menu_entries(
+        window,
+        (screen_x, screen_y),
+        entries,
+        Arc::new(move |index| {
+            let Some(action) = actions.get(index).cloned().flatten() else {
+                return;
+            };
+            handle_main_surface_menu_action(
+                &owner_appid,
+                &surface_id,
+                revision,
+                &title,
+                window,
+                action,
+            );
+        }),
+    );
+}
+
+fn surface_menu_entry(
+    item: &lingxia_shell::SurfaceMenuItem,
+) -> super::context_menu::ContextMenuEntry {
+    use lingxia_logic::I18nKey;
+    use lingxia_shell::{SurfaceMenuAction, SurfaceMenuBuiltinAction};
+    let (label, icon) = match &item.action {
+        SurfaceMenuAction::External { .. } => (item.label.clone().unwrap_or_default(), None),
+        SurfaceMenuAction::Switcher { action } => match action {
+            SurfaceMenuBuiltinAction::Rename => {
+                (lingxia_logic::i18n::t(I18nKey::SurfaceRename), None)
+            }
+            SurfaceMenuBuiltinAction::ResetTitle => {
+                (lingxia_logic::i18n::t(I18nKey::SurfaceResetTitle), None)
+            }
+            SurfaceMenuBuiltinAction::Close => (
+                lingxia_logic::i18n::t(I18nKey::SurfaceClose),
+                Some(crate::WindowsDesignIcon::CloseX),
+            ),
+            SurfaceMenuBuiltinAction::CloseOthers => (
+                lingxia_logic::i18n::t(I18nKey::SurfaceCloseOthers),
+                Some(crate::WindowsDesignIcon::CloseOtherTabs),
+            ),
+            SurfaceMenuBuiltinAction::CloseAfter => (
+                lingxia_logic::i18n::t(I18nKey::SurfaceCloseAfter),
+                Some(crate::WindowsDesignIcon::CloseTabsBelow),
+            ),
+        },
+    };
+    super::context_menu::ContextMenuEntry {
+        label,
+        enabled: item.enabled,
+        checked: false,
+        separator: false,
+        icon,
+    }
+}
+
+fn handle_main_surface_menu_action(
+    owner_appid: &str,
+    surface_id: &str,
+    revision: u64,
+    title: &str,
+    window: isize,
+    action: lingxia_shell::SurfaceMenuAction,
+) {
+    use lingxia_shell::{SurfaceMenuAction, SurfaceMenuBuiltinAction, SurfaceMenuIntent};
+    match action {
+        SurfaceMenuAction::Switcher {
+            action: SurfaceMenuBuiltinAction::Rename,
+        } => {
+            let owner_appid = owner_appid.to_string();
+            let surface_id = surface_id.to_string();
+            let target_id = format!("{AUX_SURFACE_PREFIX}{surface_id}");
+            let started = super::chrome::begin_sidebar_surface_rename(
+                window,
+                &target_id,
+                title,
+                Arc::new(move |value| {
+                    let value = value.trim().to_string();
+                    if value.is_empty() {
+                        return;
+                    }
+                    perform_main_surface_menu_intent(
+                        &owner_appid,
+                        SurfaceMenuIntent {
+                            revision,
+                            surface_id: surface_id.clone(),
+                            action: SurfaceMenuAction::Switcher {
+                                action: SurfaceMenuBuiltinAction::Rename,
+                            },
+                            value: Some(value),
+                        },
+                    );
+                }),
+            );
+            if !started {
+                log::warn!("sidebar row is unavailable for inline surface rename");
+            }
+        }
+        action => perform_main_surface_menu_intent(
+            owner_appid,
+            SurfaceMenuIntent {
+                revision,
+                surface_id: surface_id.to_string(),
+                action,
+                value: None,
+            },
+        ),
+    }
+}
+
+fn perform_main_surface_menu_intent(owner_appid: &str, intent: lingxia_shell::SurfaceMenuIntent) {
+    let Some(owner) = lxapp::try_get(owner_appid) else {
+        return;
+    };
+    let contents = owner
+        .surface_switcher_snapshot()
+        .items
+        .into_iter()
+        .filter_map(|item| {
+            owner
+                .main_surface_content(&item.surface_id)
+                .map(|content| (item.surface_id, content))
+        })
+        .collect::<HashMap<_, _>>();
+    let execution = owner.perform_shell_surface_menu_intent(intent);
+    if !execution.accepted {
+        return;
+    }
+    for removed in &execution.removed_surface_ids {
+        discard_main_surface_provider(&owner, removed, contents.get(removed));
+    }
+    if !execution.removed_surface_ids.is_empty()
+        && let Some(active) = execution.snapshot.active_surface_id
+        && let Err(error) = present_main_surface(&owner, &active)
+    {
+        log::warn!("failed to present successor main surface {active}: {error}");
+    }
+    sync_shell_layout(owner_appid);
+}
+
 fn present_main_surface(owner: &LxApp, surface_id: &str) -> Result<(), String> {
     let content = owner
         .main_surface_content(surface_id)
@@ -3800,7 +3991,7 @@ fn discard_main_surface_provider(
     }
     if let Some(lingxia_surface::SurfaceContent::Lxapp { app_id, .. }) = content
         && app_id.as_str() != owner.appid.as_str()
-        && let Err(error) = lxapp::close_lxapp(&app_id)
+        && let Err(error) = lxapp::close_lxapp(app_id)
     {
         log::warn!("failed to close lxapp provider {app_id}: {error}");
     }
@@ -4687,16 +4878,14 @@ pub(super) fn owner_window_handle(appid: &str) -> Option<isize> {
         .peek_current_page()
         .unwrap_or_else(|| app.initial_route());
     let webtag = WebTag::new(&app.appid, &path, Some(app.session_id()));
-    let snapshot = Some(lingxia_windows_contract::webview_window_snapshot(&webtag));
-    match snapshot {
-        Some(Ok(snapshot)) => Some(snapshot.window_id as isize),
-        Some(Err(err)) => {
-            log::warn!("no shell window handle for {appid}: {err}");
-            None
-        }
-        None => {
-            log::warn!("no shell window handle for {appid}: WebView handler is not ready");
-            None
+    match lingxia_windows_contract::webview_window_snapshot(&webtag) {
+        Ok(snapshot) => Some(snapshot.window_id as isize),
+        Err(err) => {
+            let fallback = crate::window_host::primary_host_window_handle();
+            if fallback.is_none() {
+                log::warn!("no shell window handle for {appid}: {err}");
+            }
+            fallback
         }
     }
 }
