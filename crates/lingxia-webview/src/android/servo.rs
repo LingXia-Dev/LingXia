@@ -5,7 +5,8 @@ use crate::webview::{
 use crate::{
     ClearSiteDataOptions, ClearSiteDataResult, LogLevel, NavigationPolicy, NavigationRequest,
     NetworkBody, NetworkCaptureSnapshot, NetworkEntry, UserAgentOverride, WebResourceBody,
-    WebViewCookie, WebViewCookieSameSite, WebViewCookieSetRequest, WebViewError,
+    WebResourceResponse, WebViewCookie, WebViewCookieSameSite, WebViewCookieSetRequest,
+    WebViewError,
 };
 use cookie::{Cookie, SameSite};
 use dpi::PhysicalSize;
@@ -25,12 +26,13 @@ use servo::{
     ConsoleLogLevel, CookieSource, EventLoopWaker, InputEvent, LoadStatus, PrefValue, Preferences,
     RenderingContext, Servo, ServoBuilder, StorageType, TouchEvent, TouchEventType, TouchId,
     TouchPointerType, UserContentManager, UserScript, WebView, WebViewBuilder, WebViewDelegate,
-    WheelDelta, WheelEvent, WheelMode, WindowRenderingContext,
+    WebViewId, WheelDelta, WheelEvent, WheelMode, WindowRenderingContext,
 };
 use std::collections::{HashMap, VecDeque};
 use std::future::{self, Future};
 use std::io::Read;
 use std::os::fd::FromRawFd;
+use std::path::PathBuf;
 use std::pin::Pin;
 use std::ptr::NonNull;
 use std::rc::Rc;
@@ -62,7 +64,6 @@ impl Drop for NativeWindow {
 }
 
 struct RuntimeHandle {
-    tx: mpsc::Sender<Command>,
     capture: Arc<Mutex<CaptureState>>,
 }
 
@@ -74,10 +75,50 @@ struct CaptureState {
 }
 
 static RUNTIMES: OnceLock<Mutex<HashMap<String, RuntimeHandle>>> = OnceLock::new();
+static RUNTIME_SENDER: OnceLock<mpsc::Sender<RuntimeCommand>> = OnceLock::new();
+static SERVO_DATA_DIR: OnceLock<PathBuf> = OnceLock::new();
+static WEBVIEW_TAGS: OnceLock<Mutex<HashMap<WebViewId, WebTag>>> = OnceLock::new();
+static DOCUMENTS: OnceLock<Mutex<HashMap<String, Document>>> = OnceLock::new();
 static NEXT_REQUEST_ID: AtomicU64 = AtomicU64::new(1);
+
+struct Document {
+    url: String,
+    html: Vec<u8>,
+}
 
 fn runtimes() -> &'static Mutex<HashMap<String, RuntimeHandle>> {
     RUNTIMES.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn webview_tags() -> &'static Mutex<HashMap<WebViewId, WebTag>> {
+    WEBVIEW_TAGS.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn documents() -> &'static Mutex<HashMap<String, Document>> {
+    DOCUMENTS.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+pub fn set_data_dir(path: PathBuf) {
+    if let Err(path) = SERVO_DATA_DIR.set(path) {
+        log::debug!(
+            "Servo data directory was already configured: {}",
+            path.display()
+        );
+    }
+}
+
+enum RuntimeCommand {
+    Register {
+        webtag: WebTag,
+        capture: Arc<Mutex<CaptureState>>,
+    },
+    Unregister(WebTag),
+    Dispatch {
+        webtag: WebTag,
+        command: Command,
+    },
+    Proxy(Option<ProxyConfig>),
+    Wake,
 }
 
 enum Command {
@@ -89,7 +130,7 @@ enum Command {
     },
     SurfaceDestroyed,
     Resize(u32, u32),
-    Tick,
+    Paint,
     Touch(TouchEventType, i32, f32, f32),
     Wheel(f64, f64),
     Load(String),
@@ -120,12 +161,10 @@ enum Command {
         reply: oneshot::Sender<Result<ClearSiteDataResult, String>>,
     },
     Screenshot(oneshot::Sender<Result<Vec<u8>, String>>),
-    Proxy(Option<ProxyConfig>),
-    Shutdown,
 }
 
 #[derive(Clone)]
-struct SenderWaker(mpsc::Sender<Command>);
+struct SenderWaker(mpsc::Sender<RuntimeCommand>);
 
 impl EventLoopWaker for SenderWaker {
     fn clone_box(&self) -> Box<dyn EventLoopWaker> {
@@ -133,8 +172,20 @@ impl EventLoopWaker for SenderWaker {
     }
 
     fn wake(&self) {
-        let _ = self.0.send(Command::Tick);
+        let _ = self.0.send(RuntimeCommand::Wake);
     }
+}
+
+fn runtime_sender() -> &'static mpsc::Sender<RuntimeCommand> {
+    RUNTIME_SENDER.get_or_init(|| {
+        let (tx, rx) = mpsc::channel();
+        let thread_tx = tx.clone();
+        std::thread::Builder::new()
+            .name("lx-servo".into())
+            .spawn(move || run(thread_tx, rx))
+            .expect("failed to start Servo event thread");
+        tx
+    })
 }
 
 pub(super) fn register(webtag: &WebTag) {
@@ -143,83 +194,125 @@ pub(super) fn register(webtag: &WebTag) {
     if runtimes.contains_key(&key) {
         return;
     }
-    let (tx, rx) = mpsc::channel();
     let capture = Arc::new(Mutex::new(CaptureState::default()));
-    let thread_tag = webtag.clone();
-    let thread_tx = tx.clone();
-    let thread_capture = capture.clone();
-    std::thread::Builder::new()
-        .name(format!("lx-servo-{}", webtag.key()))
-        .spawn(move || run(thread_tag, thread_tx, rx, thread_capture))
-        .expect("failed to start Servo event thread");
-    runtimes.insert(key, RuntimeHandle { tx, capture });
+    runtimes.insert(
+        key,
+        RuntimeHandle {
+            capture: capture.clone(),
+        },
+    );
+    let _ = runtime_sender().send(RuntimeCommand::Register {
+        webtag: webtag.clone(),
+        capture,
+    });
 }
 
 pub(super) fn unregister(webtag: &WebTag) {
-    if let Some(runtime) = runtimes()
+    if runtimes()
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .remove(webtag.as_str())
+        .is_some()
     {
-        let _ = runtime.tx.send(Command::Shutdown);
+        let _ = runtime_sender().send(RuntimeCommand::Unregister(webtag.clone()));
     }
 }
 
 fn send(webtag: &WebTag, command: Command) -> Result<(), WebViewError> {
-    let tx = runtimes()
+    let registered = runtimes()
         .lock()
         .unwrap_or_else(|e| e.into_inner())
-        .get(webtag.as_str())
-        .map(|runtime| runtime.tx.clone())
-        .ok_or_else(|| WebViewError::WebView(format!("Servo backend is not ready for {webtag}")))?;
-    tx.send(command)
+        .contains_key(webtag.as_str());
+    if !registered {
+        return Err(WebViewError::WebView(format!(
+            "Servo backend is not ready for {webtag}"
+        )));
+    }
+    runtime_sender()
+        .send(RuntimeCommand::Dispatch {
+            webtag: webtag.clone(),
+            command,
+        })
         .map_err(|_| WebViewError::WebView(format!("Servo backend stopped for {webtag}")))
 }
 
-fn run(
-    webtag: WebTag,
-    tx: mpsc::Sender<Command>,
-    rx: mpsc::Receiver<Command>,
-    capture: Arc<Mutex<CaptureState>>,
-) {
+fn run(tx: mpsc::Sender<RuntimeCommand>, rx: mpsc::Receiver<RuntimeCommand>) {
+    let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+    let Some(data_dir) = SERVO_DATA_DIR.get().cloned() else {
+        log::error!("Servo data directory must be configured before creating a WebView");
+        return;
+    };
+    if let Err(error) = std::fs::create_dir_all(&data_dir) {
+        log::error!(
+            "Failed to create Servo data directory {}: {error}",
+            data_dir.display()
+        );
+        return;
+    }
+
     let mut protocols = ProtocolRegistry::default();
     protocols
-        .register("lx", LxProtocolHandler(webtag.clone()))
+        .register("lx", LxProtocolHandler)
         .expect("lx protocol should only be registered once");
     protocols
-        .register("lxbridge", BridgeProtocolHandler(webtag.clone()))
+        .register("lxbridge", BridgeProtocolHandler)
         .expect("lxbridge protocol should only be registered once");
 
+    let mut opts = servo::Opts::default();
+    opts.config_dir = Some(data_dir);
     let servo = ServoBuilder::default()
+        .opts(opts)
         .preferences(Preferences::default())
         .protocol_registry(protocols)
         .event_loop_waker(Box::new(SenderWaker(tx)))
         .build();
-    let mut state = EngineState {
-        webtag,
-        servo,
-        view: None,
-        context: None,
-        native_window: None,
-        density: 1.0,
-        size: PhysicalSize::new(1, 1),
-        pending_load: None,
-        capture,
-    };
+    let mut states = HashMap::<String, EngineState>::new();
 
-    while let Ok(command) = rx.recv() {
-        let shutdown = matches!(command, Command::Shutdown);
-        state.handle(command);
-        state.servo.spin_event_loop();
-        if shutdown {
-            break;
+    while let Ok(runtime_command) = rx.recv() {
+        match runtime_command {
+            RuntimeCommand::Register { webtag, capture } => {
+                log::info!("Registering Servo WebView state for {webtag}");
+                states
+                    .entry(webtag.to_string())
+                    .or_insert_with(|| EngineState::new(webtag, capture));
+            }
+            RuntimeCommand::Unregister(webtag) => {
+                if let Some(mut state) = states.remove(webtag.as_str()) {
+                    state.destroy_surface();
+                }
+                documents()
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .remove(webtag.as_str());
+            }
+            RuntimeCommand::Dispatch { webtag, command } => {
+                if let Some(state) = states.get_mut(webtag.as_str()) {
+                    state.handle(&servo, command);
+                } else if let Command::SurfaceCreated { native_window, .. } = command
+                    && let Some(native_window) = NonNull::new(native_window as *mut libc::c_void)
+                {
+                    unsafe { ANativeWindow_release(native_window.as_ptr()) };
+                }
+            }
+            RuntimeCommand::Proxy(config) => {
+                let (http, https, bypass) = config
+                    .map(|config| {
+                        let proxy = format!("http://{}:{}", config.host, config.port);
+                        (proxy.clone(), proxy, config.bypass.join(","))
+                    })
+                    .unwrap_or_default();
+                servo.set_preference("network_http_proxy_uri", PrefValue::Str(http));
+                servo.set_preference("network_https_proxy_uri", PrefValue::Str(https));
+                servo.set_preference("network_http_no_proxy", PrefValue::Str(bypass));
+            }
+            RuntimeCommand::Wake => {}
         }
+        servo.spin_event_loop();
     }
 }
 
 struct EngineState {
     webtag: WebTag,
-    servo: Servo,
     view: Option<WebView>,
     context: Option<Rc<dyn RenderingContext>>,
     native_window: Option<NativeWindow>,
@@ -230,23 +323,46 @@ struct EngineState {
 }
 
 impl EngineState {
-    fn handle(&mut self, command: Command) {
+    fn new(webtag: WebTag, capture: Arc<Mutex<CaptureState>>) -> Self {
+        Self {
+            webtag,
+            view: None,
+            context: None,
+            native_window: None,
+            density: 1.0,
+            size: PhysicalSize::new(1, 1),
+            pending_load: None,
+            capture,
+        }
+    }
+
+    fn destroy_surface(&mut self) {
+        if let Some(view) = self.view.take() {
+            webview_tags()
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .remove(&view.id());
+        }
+        self.context = None;
+        self.native_window = None;
+    }
+
+    fn handle(&mut self, servo: &Servo, command: Command) {
         match command {
             Command::SurfaceCreated {
                 native_window,
                 width,
                 height,
                 density,
-            } => self.create_surface(native_window, width, height, density),
+            } => self.create_surface(servo, native_window, width, height, density),
             Command::SurfaceDestroyed => {
+                log::info!("Destroying Servo surface for {}", self.webtag);
                 self.pending_load = self
                     .view
                     .as_ref()
                     .and_then(|view| view.url())
                     .map(|u| u.to_string());
-                self.view = None;
-                self.context = None;
-                self.native_window = None;
+                self.destroy_surface();
             }
             Command::Resize(width, height) => {
                 self.size = PhysicalSize::new(width.max(1), height.max(1));
@@ -254,7 +370,7 @@ impl EngineState {
                     view.resize(self.size);
                 }
             }
-            Command::Tick => self.paint(),
+            Command::Paint => self.paint(),
             Command::Touch(kind, id, x, y) => {
                 if let Some(view) = &self.view {
                     view.notify_input_event(InputEvent::Touch(TouchEvent::new(
@@ -282,13 +398,37 @@ impl EngineState {
                     )));
                 }
             }
-            Command::Load(url) => self.load(url),
+            Command::Load(url) => {
+                documents()
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .remove(self.webtag.as_str());
+                self.load(url);
+            }
             Command::LoadData { data, base_url } => {
-                let encoded = base64::Engine::encode(
-                    &base64::engine::general_purpose::STANDARD,
-                    data.as_bytes(),
+                log::info!(
+                    "Loading Servo page data for {} ({} bytes, base {base_url})",
+                    self.webtag,
+                    data.len()
                 );
-                let url = format!("data:text/html;charset=utf-8;base64,{encoded}#{base_url}");
+                let Ok(url) = Url::parse(&base_url) else {
+                    log::error!(
+                        "Servo rejected invalid page base URL for {}: {base_url}",
+                        self.webtag
+                    );
+                    return;
+                };
+                let url = url.to_string();
+                documents()
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .insert(
+                        self.webtag.to_string(),
+                        Document {
+                            url: url.clone(),
+                            html: data.into_bytes(),
+                        },
+                    );
                 self.load(url);
             }
             Command::Exec(script) => {
@@ -318,7 +458,7 @@ impl EngineState {
             Command::ClearBrowsingData => {
                 let storage_types =
                     StorageType::Cookies | StorageType::Local | StorageType::Session;
-                let manager = self.servo.site_data_manager();
+                let manager = servo.site_data_manager();
                 let sites = manager
                     .site_data(storage_types)
                     .into_iter()
@@ -329,15 +469,14 @@ impl EngineState {
                 // This also covers cookies whose hosts Servo cannot reduce to
                 // a registered domain (for example localhost and IP hosts).
                 manager.clear_cookies(None);
-                self.servo.network_manager().clear_cache();
+                servo.network_manager().clear_cache();
             }
             Command::SetUserAgent(user_agent) => {
                 let value = match user_agent {
                     UserAgentOverride::Default => String::new(),
                     UserAgentOverride::Custom(value) => value,
                 };
-                self.servo
-                    .set_preference("user_agent", PrefValue::Str(value));
+                servo.set_preference("user_agent", PrefValue::Str(value));
             }
             Command::Reload => {
                 if let Some(view) = &self.view {
@@ -355,10 +494,10 @@ impl EngineState {
                 }
             }
             Command::ListCookies(reply) => {
-                let _ = reply.send(self.list_cookies());
+                let _ = reply.send(self.list_cookies(servo));
             }
             Command::SetCookie(request, reply) => {
-                let _ = reply.send(self.set_cookie(request));
+                let _ = reply.send(self.set_cookie(servo, request));
             }
             Command::DeleteCookie {
                 name,
@@ -366,10 +505,10 @@ impl EngineState {
                 path,
                 reply,
             } => {
-                let _ = reply.send(self.delete_cookie(&name, &domain, &path));
+                let _ = reply.send(self.delete_cookie(servo, &name, &domain, &path));
             }
             Command::ClearCookies(reply) => {
-                self.servo.site_data_manager().clear_cookies(None);
+                servo.site_data_manager().clear_cookies(None);
                 let _ = reply.send(());
             }
             Command::ClearSiteData {
@@ -377,7 +516,7 @@ impl EngineState {
                 options,
                 reply,
             } => {
-                let _ = reply.send(self.clear_site_data(&url, options));
+                let _ = reply.send(self.clear_site_data(servo, &url, options));
             }
             Command::Screenshot(reply) => {
                 if let Some(view) = &self.view {
@@ -391,29 +530,17 @@ impl EngineState {
                     let _ = reply.send(Err("Servo surface is not ready".into()));
                 }
             }
-            Command::Proxy(config) => {
-                let (http, https, bypass) = config
-                    .map(|config| {
-                        let proxy = format!("http://{}:{}", config.host, config.port);
-                        (proxy.clone(), proxy, config.bypass.join(","))
-                    })
-                    .unwrap_or_default();
-                self.servo
-                    .set_preference("network_http_proxy_uri", PrefValue::Str(http));
-                self.servo
-                    .set_preference("network_https_proxy_uri", PrefValue::Str(https));
-                self.servo
-                    .set_preference("network_http_no_proxy", PrefValue::Str(bypass));
-            }
-            Command::Shutdown => {
-                self.view = None;
-                self.context = None;
-                self.native_window = None;
-            }
         }
     }
 
-    fn create_surface(&mut self, native_window: usize, width: u32, height: u32, density: f32) {
+    fn create_surface(
+        &mut self,
+        servo: &Servo,
+        native_window: usize,
+        width: u32,
+        height: u32,
+        density: f32,
+    ) {
         let Some(native_window) = NonNull::new(native_window as *mut libc::c_void) else {
             log::error!("Servo received a null ANativeWindow for {}", self.webtag);
             return;
@@ -422,6 +549,7 @@ impl EngineState {
         self.density = density.max(0.1);
         let raw_display = RawDisplayHandle::Android(AndroidDisplayHandle::new());
         let raw_window = RawWindowHandle::AndroidNdk(AndroidNdkWindowHandle::new(native_window));
+        self.destroy_surface();
         let display = unsafe { DisplayHandle::borrow_raw(raw_display) };
         let window = unsafe { WindowHandle::borrow_raw(raw_window) };
         let context = match WindowRenderingContext::new(display, window, self.size) {
@@ -439,7 +567,7 @@ impl EngineState {
             log::error!("Failed to make Servo EGL context current: {error:?}");
         }
 
-        let content = Rc::new(UserContentManager::new(&self.servo));
+        let content = Rc::new(UserContentManager::new(servo));
         content.add_script(Rc::new(UserScript::from(bridge_script(&self.webtag))));
         let delegate = Rc::new(Delegate {
             webtag: self.webtag.clone(),
@@ -450,12 +578,22 @@ impl EngineState {
             .take()
             .and_then(|url| Url::parse(&url).ok())
             .unwrap_or_else(|| Url::parse("about:blank").unwrap());
-        let view = WebViewBuilder::new(&self.servo, context.clone())
+        let view = WebViewBuilder::new(servo, context.clone())
             .delegate(delegate)
             .user_content_manager(content)
             .hidpi_scale_factor(Scale::new(self.density))
             .url(initial_url)
             .build();
+        webview_tags()
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(view.id(), self.webtag.clone());
+        log::info!(
+            "Created Servo surface for {} at {}x{}",
+            self.webtag,
+            self.size.width,
+            self.size.height
+        );
         self.native_window = Some(NativeWindow(native_window));
         self.context = Some(context);
         self.view = Some(view);
@@ -491,10 +629,9 @@ impl EngineState {
             .ok_or_else(|| "Servo cookie operation requires a current HTTP(S) URL".to_string())
     }
 
-    fn list_cookies(&self) -> Result<Vec<WebViewCookie>, String> {
+    fn list_cookies(&self, servo: &Servo) -> Result<Vec<WebViewCookie>, String> {
         let url = self.current_http_url()?;
-        Ok(self
-            .servo
+        Ok(servo
             .site_data_manager()
             .cookies_for_url(url, CookieSource::HTTP)
             .into_iter()
@@ -502,7 +639,7 @@ impl EngineState {
             .collect())
     }
 
-    fn set_cookie(&self, request: WebViewCookieSetRequest) -> Result<(), String> {
+    fn set_cookie(&self, servo: &Servo, request: WebViewCookieSetRequest) -> Result<(), String> {
         let url = if request.url.trim().is_empty() {
             self.current_http_url()?
         } else {
@@ -525,13 +662,19 @@ impl EngineState {
                 WebViewCookieSameSite::None => SameSite::None,
             });
         }
-        self.servo
+        servo
             .site_data_manager()
             .set_cookie_for_url(url, builder.build().into_owned(), None);
         Ok(())
     }
 
-    fn delete_cookie(&self, name: &str, domain: &str, path: &str) -> Result<(), String> {
+    fn delete_cookie(
+        &self,
+        servo: &Servo,
+        name: &str,
+        domain: &str,
+        path: &str,
+    ) -> Result<(), String> {
         let scheme = if domain.starts_with('.') {
             "https"
         } else {
@@ -546,7 +689,7 @@ impl EngineState {
             .max_age(cookie::time::Duration::seconds(0))
             .build()
             .into_owned();
-        self.servo
+        servo
             .site_data_manager()
             .set_cookie_for_url(url, cookie, None);
         Ok(())
@@ -554,6 +697,7 @@ impl EngineState {
 
     fn clear_site_data(
         &self,
+        servo: &Servo,
         url: &str,
         options: ClearSiteDataOptions,
     ) -> Result<ClearSiteDataResult, String> {
@@ -564,7 +708,7 @@ impl EngineState {
             .ok_or_else(|| "site URL has no host".to_string())?;
         if options.site_data {
             let storage_types = StorageType::Cookies | StorageType::Local | StorageType::Session;
-            let manager = self.servo.site_data_manager();
+            let manager = servo.site_data_manager();
             let mut sites = manager
                 .site_data(storage_types)
                 .into_iter()
@@ -667,9 +811,7 @@ impl WebViewDelegate for Delegate {
         }
     }
 
-    fn notify_new_frame_ready(&self, webview: WebView) {
-        webview.paint();
-    }
+    fn notify_new_frame_ready(&self, _webview: WebView) {}
 
     fn request_navigation(&self, _webview: WebView, request: servo::NavigationRequest) {
         let navigation = NavigationRequest::new(request.url.to_string(), false, true);
@@ -743,7 +885,32 @@ impl WebViewDelegate for Delegate {
     }
 }
 
-struct LxProtocolHandler(WebTag);
+fn request_webtag(request: &Request) -> Option<WebTag> {
+    request.target_webview_id.and_then(|id| {
+        webview_tags()
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(&id)
+            .cloned()
+    })
+}
+
+fn initial_lx_webtag(url: &servo::ServoUrl) -> Option<WebTag> {
+    if url.host_str() != Some("lxapp") {
+        return None;
+    }
+    let mut segments = url.path_segments()?;
+    let appid = segments.next()?;
+    let path = segments.collect::<Vec<_>>().join("/");
+    runtimes()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .keys()
+        .map(|key| WebTag::from(key.as_str()))
+        .find(|webtag| webtag.extract_parts() == (appid.to_string(), path.clone()))
+}
+
+struct LxProtocolHandler;
 
 impl ProtocolHandler for LxProtocolHandler {
     fn load<'a>(
@@ -840,7 +1007,7 @@ fn lingxia_response(
     result
 }
 
-struct BridgeProtocolHandler(WebTag);
+struct BridgeProtocolHandler;
 
 impl ProtocolHandler for BridgeProtocolHandler {
     fn load<'a>(
@@ -911,7 +1078,6 @@ fn bridge_response(request: &Request, url: servo::ServoUrl, webtag: Option<WebTa
     *response.body.lock() = ResponseBody::Done(Vec::new());
     response
 }
-
 fn bridge_script(webtag: &WebTag) -> String {
     let webtag = serde_json::to_string(webtag.as_str()).unwrap_or_else(|_| "\"\"".into());
     format!(
@@ -1068,13 +1234,9 @@ pub(super) async fn take_screenshot(webtag: &WebTag) -> Result<Vec<u8>, WebViewE
 pub(super) fn apply_http_proxy(
     config: Option<&ProxyConfig>,
 ) -> Result<ProxyApplyReport, WebViewError> {
-    let runtimes = runtimes().lock().unwrap_or_else(|e| e.into_inner());
-    for runtime in runtimes.values() {
-        runtime
-            .tx
-            .send(Command::Proxy(config.cloned()))
-            .map_err(|_| WebViewError::WebView("Servo proxy update failed".into()))?;
-    }
+    runtime_sender()
+        .send(RuntimeCommand::Proxy(config.cloned()))
+        .map_err(|_| WebViewError::WebView("Servo proxy update failed".into()))?;
     Ok(if config.is_some() {
         ProxyApplyReport::applied(ProxyActivation::EffectiveNow)
     } else {
@@ -1158,19 +1320,20 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaServoView_nativeSurfaceCr
         let tag = jstring(env, tag)?;
         let tag = WebTag::from(tag.as_str());
         let window = unsafe { ANativeWindow_fromSurface(env.get_raw(), surface.as_raw()) };
-        if let Some(runtime) = runtimes()
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .get(tag.as_str())
-        {
-            let _ = runtime.tx.send(Command::SurfaceCreated {
+        log::info!("Received Servo surface for {tag} at {}x{}", width, height);
+        if let Err(error) = send(
+            &tag,
+            Command::SurfaceCreated {
                 native_window: window as usize,
                 width: width.max(1) as u32,
                 height: height.max(1) as u32,
                 density,
-            });
-        } else if !window.is_null() {
-            unsafe { ANativeWindow_release(window) };
+            },
+        ) {
+            log::error!("Failed to attach Servo surface for {tag}: {error}");
+            if !window.is_null() {
+                unsafe { ANativeWindow_release(window) };
+            }
         }
         Ok(())
     })
@@ -1206,6 +1369,7 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaServoView_nativeSurfaceDe
     env.with_env(|env| -> Result<(), jni::errors::Error> {
         let tag = jstring(env, tag)?;
         let tag = WebTag::from(tag.as_str());
+        log::info!("Received Servo surface destruction for {tag}");
         let _ = send(&tag, Command::SurfaceDestroyed);
         Ok(())
     })
@@ -1221,7 +1385,7 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaServoView_nativeFrame(
     env.with_env(|env| -> Result<(), jni::errors::Error> {
         let tag = jstring(env, tag)?;
         let tag = WebTag::from(tag.as_str());
-        let _ = send(&tag, Command::Tick);
+        let _ = send(&tag, Command::Paint);
         Ok(())
     })
     .resolve::<ThrowRuntimeExAndDefault>()
