@@ -171,6 +171,7 @@ class SidebarGroupView: NSView {
     private let aggregateDot = NSView()
     private let closeButton = NSButton()
     private let menuButton = NSButton()
+    private let trailingControls = NSStackView()
     private let itemsContainer = NSView()
     private var itemViews: [SidebarItemView] = []
 
@@ -350,7 +351,6 @@ class SidebarGroupView: NSView {
         chevronIndicator.target = self
         chevronIndicator.action = #selector(chevronClicked)
         chevronIndicator.isHidden = true
-        headerView.addSubview(chevronIndicator)
         headerView.chevronButton = chevronIndicator
 
         aggregateDot.translatesAutoresizingMaskIntoConstraints = false
@@ -359,12 +359,6 @@ class SidebarGroupView: NSView {
         aggregateDot.layer?.backgroundColor = NSColor.systemRed.cgColor
         aggregateDot.isHidden = true
         headerView.addSubview(aggregateDot)
-        NSLayoutConstraint.activate([
-            aggregateDot.trailingAnchor.constraint(equalTo: chevronIndicator.leadingAnchor, constant: -6),
-            aggregateDot.topAnchor.constraint(equalTo: headerView.topAnchor, constant: 9),
-            aggregateDot.widthAnchor.constraint(equalToConstant: 6),
-            aggregateDot.heightAnchor.constraint(equalToConstant: 6),
-        ])
 
         // Close button (hidden by default, shown on hover)
         closeButton.translatesAutoresizingMaskIntoConstraints = false
@@ -377,7 +371,6 @@ class SidebarGroupView: NSView {
         closeButton.target = self
         closeButton.action = #selector(closeClicked)
         closeButton.isHidden = true
-        headerView.addSubview(closeButton)
         headerView.closeButton = closeButton
 
         menuButton.translatesAutoresizingMaskIntoConstraints = false
@@ -388,8 +381,17 @@ class SidebarGroupView: NSView {
         menuButton.target = self
         menuButton.action = #selector(menuClicked)
         menuButton.isHidden = true
-        headerView.addSubview(menuButton)
         headerView.menuButton = menuButton
+
+        trailingControls.translatesAutoresizingMaskIntoConstraints = false
+        trailingControls.orientation = .horizontal
+        trailingControls.alignment = .centerY
+        trailingControls.spacing = 2
+        trailingControls.detachesHiddenViews = true
+        trailingControls.addArrangedSubview(menuButton)
+        trailingControls.addArrangedSubview(closeButton)
+        trailingControls.addArrangedSubview(chevronIndicator)
+        headerView.addSubview(trailingControls)
 
         // Attribution line binding items to their header
         attributionLine.translatesAutoresizingMaskIntoConstraints = false
@@ -425,24 +427,27 @@ class SidebarGroupView: NSView {
             // App name: right after the icon
             appNameLabel.leadingAnchor.constraint(equalTo: appIconView.trailingAnchor, constant: 6),
             appNameLabel.centerYAnchor.constraint(equalTo: headerView.centerYAnchor),
-            appNameLabel.trailingAnchor.constraint(lessThanOrEqualTo: closeButton.leadingAnchor, constant: -2),
+            appNameLabel.trailingAnchor.constraint(lessThanOrEqualTo: trailingControls.leadingAnchor, constant: -2),
 
-            menuButton.trailingAnchor.constraint(equalTo: closeButton.leadingAnchor, constant: -2),
-            menuButton.centerYAnchor.constraint(equalTo: headerView.centerYAnchor),
             menuButton.widthAnchor.constraint(equalToConstant: Layout.closeButtonSize),
             menuButton.heightAnchor.constraint(equalToConstant: Layout.closeButtonSize),
 
-            // Close button: right of label, left of chevron (only visible on hover)
-            closeButton.trailingAnchor.constraint(equalTo: chevronIndicator.leadingAnchor, constant: -2),
-            closeButton.centerYAnchor.constraint(equalTo: headerView.centerYAnchor),
             closeButton.widthAnchor.constraint(equalToConstant: Layout.closeButtonSize),
             closeButton.heightAnchor.constraint(equalToConstant: Layout.closeButtonSize),
 
-            // Chevron: right side of header
-            chevronIndicator.trailingAnchor.constraint(equalTo: headerView.trailingAnchor, constant: -Layout.headerHPadding),
-            chevronIndicator.centerYAnchor.constraint(equalTo: headerView.centerYAnchor),
             chevronIndicator.widthAnchor.constraint(equalToConstant: Layout.chevronSize),
             chevronIndicator.heightAnchor.constraint(equalToConstant: Layout.chevronSize),
+
+            trailingControls.trailingAnchor.constraint(equalTo: headerView.trailingAnchor, constant: -Layout.headerHPadding),
+            trailingControls.centerYAnchor.constraint(equalTo: headerView.centerYAnchor),
+
+            // Anchored to the stack, not to a control inside it: `detachesHiddenViews`
+            // pulls a hidden control out of the hierarchy, and a constraint across
+            // that boundary throws on activation.
+            aggregateDot.trailingAnchor.constraint(equalTo: trailingControls.leadingAnchor, constant: -6),
+            aggregateDot.topAnchor.constraint(equalTo: headerView.topAnchor, constant: 9),
+            aggregateDot.widthAnchor.constraint(equalToConstant: 6),
+            aggregateDot.heightAnchor.constraint(equalToConstant: 6),
 
             // Items background: below header, same horizontal inset
             itemsBackground.topAnchor.constraint(equalTo: headerView.bottomAnchor),
@@ -665,6 +670,11 @@ class SidebarGroupView: NSView {
     }
 
     @objc private func menuClicked() {
+        if managedLabel != nil, contentAppId == nil {
+            guard let event = NSApp.currentEvent else { return }
+            onManagedContextMenuRequested?(appId, event, headerView)
+            return
+        }
         let menu = buildContextMenu()
         menu.popUp(
             positioning: nil,
