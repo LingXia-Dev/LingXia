@@ -40,6 +40,7 @@ public final class LingXiaServoView extends FrameLayout implements LingXiaWebVie
     private String appId;
     private String currentPath;
     private long sessionId;
+    private boolean strictSecurityProfile = true;
     private boolean attached;
     private boolean frameScheduled;
     private boolean paused;
@@ -63,10 +64,11 @@ public final class LingXiaServoView extends FrameLayout implements LingXiaWebVie
                 ViewGroup.LayoutParams.MATCH_PARENT));
     }
 
-    void initialize(String appId, String path, long sessionId) {
+    void initialize(String appId, String path, long sessionId, boolean strictSecurityProfile) {
         this.appId = appId;
         this.currentPath = path;
         this.sessionId = sessionId;
+        this.strictSecurityProfile = strictSecurityProfile;
         servoWebTag = appId + ":" + path + (sessionId > 0 ? "#" + sessionId : "");
         sViews.put(servoWebTag, new WeakReference<>(this));
         SurfaceTexture texture = servoSurface.getSurfaceTexture();
@@ -183,6 +185,11 @@ public final class LingXiaServoView extends FrameLayout implements LingXiaWebVie
 
     @Override
     public boolean usesStrictSecurityProfile() {
+        return strictSecurityProfile;
+    }
+
+    @Override
+    public boolean retainsSurfaceWhenHidden() {
         return true;
     }
 

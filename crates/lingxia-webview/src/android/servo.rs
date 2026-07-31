@@ -233,9 +233,15 @@ pub fn set_data_dir(path: PathBuf) {
 }
 
 enum RuntimeCommand {
-    Register { webtag: WebTag },
+    Register {
+        webtag: WebTag,
+        strict_profile: bool,
+    },
     Unregister(WebTag),
-    Dispatch { webtag: WebTag, command: Command },
+    Dispatch {
+        webtag: WebTag,
+        command: Command,
+    },
     Proxy(Option<ProxyConfig>),
     Wake,
 }
@@ -322,7 +328,7 @@ fn runtime_sender() -> &'static mpsc::Sender<RuntimeCommand> {
     })
 }
 
-pub(super) fn register(webtag: &WebTag) {
+pub(super) fn register(webtag: &WebTag, strict_profile: bool) {
     let key = webtag.to_string();
     let mut runtimes = runtimes().lock().unwrap_or_else(|e| e.into_inner());
     if runtimes.contains_key(&key) {
@@ -337,6 +343,7 @@ pub(super) fn register(webtag: &WebTag) {
     );
     let _ = runtime_sender().send(RuntimeCommand::Register {
         webtag: webtag.clone(),
+        strict_profile,
     });
 }
 
@@ -403,11 +410,14 @@ fn run(tx: mpsc::Sender<RuntimeCommand>, rx: mpsc::Receiver<RuntimeCommand>) {
 
     while let Ok(runtime_command) = rx.recv() {
         match runtime_command {
-            RuntimeCommand::Register { webtag } => {
+            RuntimeCommand::Register {
+                webtag,
+                strict_profile,
+            } => {
                 log::info!("Registering Servo WebView state for {webtag}");
                 states
                     .entry(webtag.to_string())
-                    .or_insert_with(|| EngineState::new(webtag));
+                    .or_insert_with(|| EngineState::new(webtag, strict_profile));
             }
             RuntimeCommand::Unregister(webtag) => {
                 if let Some(mut state) = states.remove(webtag.as_str()) {
@@ -446,6 +456,7 @@ fn run(tx: mpsc::Sender<RuntimeCommand>, rx: mpsc::Receiver<RuntimeCommand>) {
 
 struct EngineState {
     webtag: WebTag,
+    strict_profile: bool,
     view: Option<WebView>,
     context: Option<Rc<dyn RenderingContext>>,
     native_window: Option<NativeWindow>,
@@ -455,9 +466,10 @@ struct EngineState {
 }
 
 impl EngineState {
-    fn new(webtag: WebTag) -> Self {
+    fn new(webtag: WebTag, strict_profile: bool) -> Self {
         Self {
             webtag,
+            strict_profile,
             view: None,
             context: None,
             native_window: None,
@@ -737,7 +749,10 @@ impl EngineState {
         }
 
         let content = Rc::new(UserContentManager::new(servo));
-        content.add_script(Rc::new(UserScript::from(bridge_script(&self.webtag))));
+        content.add_script(Rc::new(UserScript::from(bridge_script(
+            &self.webtag,
+            self.strict_profile,
+        ))));
         let delegate = Rc::new(Delegate {
             webtag: self.webtag.clone(),
         });
@@ -1447,8 +1462,16 @@ fn bridge_response(request: &Request, url: servo::ServoUrl, webtag: Option<WebTa
     *response.body.lock() = ResponseBody::Done(Vec::new());
     response
 }
-fn bridge_script(webtag: &WebTag) -> String {
+fn bridge_script(webtag: &WebTag, strict_profile: bool) -> String {
     let webtag = serde_json::to_string(webtag.as_str()).unwrap_or_else(|_| "\"\"".into());
+    let native_component_bridge = if strict_profile {
+        r#"
+      globalThis.NativeComponentBridge = {
+        postMessage: message => send('component', { message: String(message) })
+      };"#
+    } else {
+        ""
+    };
     format!(
         r#"(() => {{
       const webtag = {webtag};
@@ -1468,9 +1491,7 @@ fn bridge_script(webtag: &WebTag) -> String {
         postMessage: message => send('post', {{ message: String(message) }}),
         resolveEval: (id, token, result) => send('eval', {{ id, token, result }})
       }};
-      globalThis.NativeComponentBridge = {{
-        postMessage: message => send('component', {{ message: String(message) }})
-      }};
+      {native_component_bridge}
     }})();"#
     )
 }
