@@ -783,7 +783,10 @@ final class BrowserTabCoordinator: NSObject {
         urlObservation = webView.observe(\.url, options: [.initial, .new]) { [weak self] webView, _ in
             Task { @MainActor in
                 guard let self, let activeId = self.activeTabId else { return }
-                let rawURL = webView.url?.absoluteString ?? ""
+                let rawURL = self.logicalURL(
+                    for: activeId,
+                    webViewURL: webView.url?.absoluteString
+                )
                 let previousURL = self.lastObservedURLs[activeId]
                 self.syncAddressField(rawURL)
                 self.updatePageSaveButtons(for: rawURL)
@@ -1057,7 +1060,9 @@ final class BrowserTabCoordinator: NSObject {
             configureInspectorAttachment(webView)
             activeWebView = webView
             observeActiveWebView(webView)
-            addressField.stringValue = displayableURL(webView.url?.absoluteString)
+            addressField.stringValue = displayableURL(
+                logicalURL(for: tabId, webViewURL: webView.url?.absoluteString)
+            )
             updateBackButtonState(canGoBack: webView.canGoBack)
             return
         }
@@ -1106,7 +1111,7 @@ final class BrowserTabCoordinator: NSObject {
     /// The active tab's real page URL (empty for hidden startup pages).
     private func activePageURL() -> String {
         guard let activeId = activeTabId else { return "" }
-        let raw = activeWebView?.url?.absoluteString ?? lastObservedURLs[activeId] ?? ""
+        let raw = logicalURL(for: activeId, webViewURL: activeWebView?.url?.absoluteString)
         return BrowserPageMenu.isPageActionable(raw) ? raw : ""
     }
 
@@ -1161,7 +1166,10 @@ final class BrowserTabCoordinator: NSObject {
     /// manager page, sidebar tile menu) so a stale filled star can't re-add.
     func refreshPageSaveButtons() {
         guard let activeId = activeTabId else { return }
-        updatePageSaveButtons(for: activeWebView?.url?.absoluteString ?? lastObservedURLs[activeId])
+        updatePageSaveButtons(for: logicalURL(
+            for: activeId,
+            webViewURL: activeWebView?.url?.absoluteString
+        ))
     }
 
     func setPageActionsVisible(_ visible: Bool) {
@@ -1576,7 +1584,20 @@ final class BrowserTabCoordinator: NSObject {
         guard let raw else { return "" }
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return "" }
-        return browserUrlIsHidden(trimmed) ? "" : trimmed
+        return browserUrlIsHidden(trimmed) || isBrowserLoadErrorURL(trimmed) ? "" : trimmed
+    }
+
+    private func logicalURL(for tabId: String, webViewURL: String?) -> String {
+        let raw = webViewURL?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if raw.isEmpty || isBrowserLoadErrorURL(raw) {
+            return lastObservedURLs[tabId] ?? ""
+        }
+        return raw
+    }
+
+    private func isBrowserLoadErrorURL(_ raw: String) -> Bool {
+        raw.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+            .caseInsensitiveCompare("lingxia://browser/load-error") == .orderedSame
     }
 
     private func syncAddressField(_ rawURL: String?, force: Bool = false) {
@@ -1585,10 +1606,15 @@ final class BrowserTabCoordinator: NSObject {
     }
 
     private func syncAddressFieldSoon(for webView: WKWebView) {
-        syncAddressField(webView.url?.absoluteString, force: true)
+        guard let activeId = activeTabId else { return }
+        syncAddressField(logicalURL(for: activeId, webViewURL: webView.url?.absoluteString), force: true)
         DispatchQueue.main.async { [weak self, weak webView] in
             guard let self, let webView, webView === self.activeWebView else { return }
-            self.syncAddressField(webView.url?.absoluteString, force: true)
+            guard let activeId = self.activeTabId else { return }
+            self.syncAddressField(
+                self.logicalURL(for: activeId, webViewURL: webView.url?.absoluteString),
+                force: true
+            )
         }
     }
 
