@@ -141,6 +141,10 @@ public class LingXiaWebView extends WebView implements LingXiaWebViewHost {
         LingXiaServoView.hideInputMethod(webTag);
     }
 
+    public static void dispatchServoNativeComponentMessage(String webTag, String message) {
+        LingXiaServoView.dispatchNativeComponentMessage(webTag, message);
+    }
+
     static void cancelServoEvaluations(final String webTag) {
         new Handler(Looper.getMainLooper()).post(new Runnable() {
             @Override

@@ -24,11 +24,18 @@ import android.view.inputmethod.InputMethodManager;
 import android.webkit.ValueCallback;
 import android.widget.FrameLayout;
 import java.lang.ref.WeakReference;
+import java.util.ArrayDeque;
 import java.util.concurrent.ConcurrentHashMap;
 
 /** Android view host for Servo's Rust embedding API. */
 public final class LingXiaServoView extends FrameLayout implements LingXiaWebViewHost,
         TextureView.SurfaceTextureListener, Choreographer.FrameCallback {
+    public interface NativeComponentMessageHandler {
+        void onMessage(String message);
+        void onDestroyed();
+    }
+
+    private static final int MAX_PENDING_COMPONENT_MESSAGES = 128;
     private static final String TAG = "LingXiaServoView";
     private static final ConcurrentHashMap<String, WeakReference<LingXiaServoView>> sViews =
             new ConcurrentHashMap<>();
@@ -48,6 +55,8 @@ public final class LingXiaServoView extends FrameLayout implements LingXiaWebVie
     private String composingText = "";
     private int editorInputType = InputType.TYPE_CLASS_TEXT;
     private int editorImeOptions = EditorInfo.IME_ACTION_DONE;
+    private final ArrayDeque<String> pendingComponentMessages = new ArrayDeque<>();
+    private NativeComponentMessageHandler nativeComponentMessageHandler;
 
     public LingXiaServoView(Context context) {
         super(context);
@@ -284,6 +293,10 @@ public final class LingXiaServoView extends FrameLayout implements LingXiaWebVie
 
     @Override
     public void destroy() {
+        runOnMainThread(this::destroyOnMainThread);
+    }
+
+    private void destroyOnMainThread() {
         android.util.Log.d(TAG, "destroy tag=" + servoWebTag + " attached=" + attached);
         if (frameScheduled) Choreographer.getInstance().removeFrameCallback(this);
         if (attached && servoWebTag != null) nativeSurfaceDestroyed(servoWebTag);
@@ -299,6 +312,46 @@ public final class LingXiaServoView extends FrameLayout implements LingXiaWebVie
             nativeSurface.release();
             nativeSurface = null;
         }
+        NativeComponentMessageHandler handler = nativeComponentMessageHandler;
+        nativeComponentMessageHandler = null;
+        pendingComponentMessages.clear();
+        if (handler != null) handler.onDestroyed();
+        ViewGroup parent = getParent() instanceof ViewGroup ? (ViewGroup) getParent() : null;
+        if (parent != null) {
+            parent.removeView(this);
+            if (parent.getChildCount() == 0 && parent.getParent() instanceof ViewGroup) {
+                ((ViewGroup) parent.getParent()).removeView(parent);
+            }
+        }
+    }
+
+    public void setNativeComponentMessageHandler(NativeComponentMessageHandler handler) {
+        runOnMainThread(() -> {
+            nativeComponentMessageHandler = handler;
+            if (handler == null) {
+                pendingComponentMessages.clear();
+                return;
+            }
+            while (!pendingComponentMessages.isEmpty()) {
+                handler.onMessage(pendingComponentMessages.removeFirst());
+            }
+        });
+    }
+
+    static void dispatchNativeComponentMessage(final String webTag, final String message) {
+        runOnMainThread(() -> {
+            LingXiaServoView view = findView(webTag);
+            if (view == null || !view.strictSecurityProfile) return;
+            NativeComponentMessageHandler handler = view.nativeComponentMessageHandler;
+            if (handler != null) {
+                handler.onMessage(message);
+                return;
+            }
+            if (view.pendingComponentMessages.size() == MAX_PENDING_COMPONENT_MESSAGES) {
+                view.pendingComponentMessages.removeFirst();
+            }
+            view.pendingComponentMessages.addLast(message);
+        });
     }
 
     static void showInputMethod(
