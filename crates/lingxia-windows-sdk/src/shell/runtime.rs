@@ -1017,7 +1017,20 @@ fn on_browser_tabs_changed() {
         && browser_tab_summary(&presented).is_none()
     {
         set_presented_browser_tab(None);
-        if let Err(err) = restore_presented_group_main() {
+        if SELF_BROWSER_HOST.load(Ordering::Acquire) {
+            if let Some(successor) = lingxia_browser::current_tab()
+                .map(|tab| tab.tab_id)
+                .or_else(|| {
+                    self_browser_root_tab().filter(|root| browser_tab_summary(root).is_some())
+                })
+            {
+                // Devtools can close the visible tab without going through the
+                // shell command handler. Rebind the surviving root immediately
+                // so its row and WebView replace the destroyed controller.
+                set_presented_browser_tab(Some(successor.clone()));
+                present_browser_tab_when_ready(lingxia_browser::BUILTIN_BROWSER_APPID, successor);
+            }
+        } else if let Err(err) = restore_presented_group_main() {
             log::warn!("failed to restore main webview after browser tab close: {err}");
         }
     }
