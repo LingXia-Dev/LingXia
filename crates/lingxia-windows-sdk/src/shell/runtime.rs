@@ -99,6 +99,8 @@ static BROWSER_PRESENT_EPOCH: AtomicU64 = AtomicU64::new(0);
 #[cfg(feature = "browser-runtime")]
 static SELF_BROWSER_HOST: AtomicBool = AtomicBool::new(false);
 #[cfg(feature = "browser-runtime")]
+static SELF_BROWSER_ROOT_TAB: OnceLock<Mutex<Option<String>>> = OnceLock::new();
+#[cfg(feature = "browser-runtime")]
 static BROWSER_TAB_MEMORY_STATE: OnceLock<Mutex<BrowserTabMemoryState>> = OnceLock::new();
 #[cfg(feature = "browser-runtime")]
 static LIVE_BROWSER_TAB_LIMIT: OnceLock<usize> = OnceLock::new();
@@ -504,6 +506,12 @@ pub(crate) fn open_self_browser(url: &str) -> Result<(), String> {
         SELF_BROWSER_HOST.store(false, Ordering::Release);
         return Err("built-in browser runtime is not ready".to_string());
     };
+    if let Ok(mut root) = SELF_BROWSER_ROOT_TAB
+        .get_or_init(|| Mutex::new(None))
+        .lock()
+    {
+        *root = Some(tab_id.clone());
+    }
     set_shell_owner_appid(&browser.appid);
     present_browser_tab_when_ready(&browser.appid, tab_id);
     Ok(())
@@ -1259,11 +1267,21 @@ fn build_self_browser_tab_bar_layout() -> Option<WindowsShellTabBarLayout> {
         return None;
     }
     let ui_state = sidebar_ui_state(lingxia_browser::BUILTIN_BROWSER_APPID);
+    let tabs = browser_tabs()
+        .into_iter()
+        .filter(|tab| !lingxia_browser::tab_is_aside(&tab.tab_id))
+        .collect::<Vec<_>>();
+    let root_id = self_browser_root_tab();
+    let root = root_id
+        .as_deref()
+        .and_then(|root_id| tabs.iter().find(|tab| tab.tab_id == root_id));
     Some(WindowsShellTabBarLayout {
         visible: true,
         position,
         dimension: MIN_SIDEBAR_WIDTH,
-        app_name: "Browser".to_string(),
+        app_name: root
+            .map(browser_tab_display_title)
+            .unwrap_or_else(|| "New Tab".to_string()),
         app_icon_path: String::new(),
         group_id: lingxia_browser::BUILTIN_BROWSER_APPID.to_string(),
         group_active: true,
@@ -1284,14 +1302,21 @@ fn build_self_browser_tab_bar_layout() -> Option<WindowsShellTabBarLayout> {
         main_scroll_offset: ui_state.main_scroll_offset,
         footer_action_scroll_row: 0,
         auxiliary_items: build_browser_tab_items(
-            browser_tabs()
-                .into_iter()
-                .filter(|tab| !lingxia_browser::tab_is_aside(&tab.tab_id))
+            tabs.into_iter()
+                .filter(|tab| root_id.as_deref() != Some(tab.tab_id.as_str()))
                 .collect(),
         ),
         show_auxiliary_add: true,
         header_actions: Vec::new(),
     })
+}
+
+#[cfg(feature = "browser-runtime")]
+fn self_browser_root_tab() -> Option<String> {
+    SELF_BROWSER_ROOT_TAB
+        .get()
+        .and_then(|root| root.lock().ok())
+        .and_then(|root| root.clone())
 }
 
 fn shell_owner_app_for(active: &LxApp) -> Option<Arc<LxApp>> {
@@ -2520,7 +2545,9 @@ fn handle_chrome_event(appid: &str, event: WindowsChromeCommand) {
             };
             #[cfg(feature = "browser-runtime")]
             if SELF_BROWSER_HOST.load(Ordering::Acquire) && is_browser_root_group_entry(&tab_id) {
-                if let Some(active) = presented_browser_tab()
+                if let Some(active) = self_browser_root_tab()
+                    .filter(|root| browser_tab_summary(root).is_some())
+                    .or_else(presented_browser_tab)
                     .or_else(|| lingxia_browser::current_tab().map(|tab| tab.tab_id))
                 {
                     handle_browser_tab_click(appid, &active);
