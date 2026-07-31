@@ -1,12 +1,13 @@
 use super::*;
 use lingxia_platform::Platform;
 use lingxia_platform::traits::ui::{
-    ManagedSurfaceRole, SurfaceContent, SurfaceKind, SurfacePosition, SurfacePresenter,
-    SurfaceRequest as PlatformSurfaceRequest, SurfaceRole,
+    ManagedNativeSurface, ManagedSurfaceRole, SurfaceContent, SurfaceKind, SurfacePosition,
+    SurfacePresenter, SurfaceRequest as PlatformSurfaceRequest, SurfaceRole,
 };
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::OnceLock;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 const SURFACE_DISPOSE_TTL_MS: u64 = 30_000;
@@ -33,6 +34,7 @@ pub(crate) struct WindowSurfaceController {
     window_id: String,
     manager: std::sync::Mutex<lingxia_surface::SurfaceManager>,
     runtime: std::sync::Arc<Platform>,
+    next_native_surface_id: AtomicU64,
 }
 
 struct OpenNodeResult {
@@ -65,12 +67,88 @@ pub(crate) fn window_controller(
                 window_id: window_id.to_string(),
                 manager: std::sync::Mutex::new(lingxia_surface::SurfaceManager::new(700.0)),
                 runtime: runtime.clone(),
+                next_native_surface_id: AtomicU64::new(1),
             })
         })
         .clone()
 }
 
 impl WindowSurfaceController {
+    fn open_managed_native_surface(
+        &self,
+        capability: &str,
+        instance_key: Option<&str>,
+    ) -> Result<ManagedNativeSurface, LxAppError> {
+        let capability = capability.trim();
+        let instance_key = instance_key.map(str::trim).filter(|key| !key.is_empty());
+        let (surface, is_existing) = {
+            let manager = self.manager.lock().unwrap();
+            if let Some(existing) = manager.graph().surfaces().iter().find(|surface| {
+                surface.content.native_identity() == Some((capability, instance_key))
+            }) {
+                (existing.clone(), true)
+            } else {
+                let template = manager
+                    .graph()
+                    .surfaces()
+                    .iter()
+                    .find(|surface| surface.content.native_identity() == Some((capability, None)))
+                    .cloned()
+                    .ok_or_else(|| {
+                        LxAppError::InvalidParameter(format!(
+                            "unknown declared native surface: {capability}"
+                        ))
+                    })?;
+                if template.role != lingxia_surface::Role::Main {
+                    return Err(LxAppError::UnsupportedOperation(
+                        "native surface instances currently require a main declaration".to_string(),
+                    ));
+                }
+                let sequence = self.next_native_surface_id.fetch_add(1, Ordering::Relaxed);
+                let mut surface = template;
+                surface.id = format!("native:{capability}:{sequence}");
+                surface.content = lingxia_surface::SurfaceContent::Native {
+                    capability: capability.to_string(),
+                    instance_key: instance_key.map(str::to_string),
+                };
+                (surface, false)
+            }
+        };
+        let role = match surface.role {
+            lingxia_surface::Role::Main => ManagedSurfaceRole::Main,
+            lingxia_surface::Role::Aside => ManagedSurfaceRole::Aside,
+            lingxia_surface::Role::Float => {
+                return Err(LxAppError::UnsupportedOperation(
+                    "native float surfaces do not support instances".to_string(),
+                ));
+            }
+        };
+        let edge = surface.placement.edge.map(surface_edge_name);
+        self.runtime.open_managed_native_surface(
+            &surface.id,
+            capability,
+            instance_key,
+            role,
+            edge,
+        )?;
+        {
+            let mut manager = self.manager.lock().unwrap();
+            if is_existing {
+                manager.show(&surface.id);
+                if surface.role == lingxia_surface::Role::Main {
+                    manager.set_active_main(&surface.id);
+                }
+            } else {
+                manager.open(surface.clone());
+            }
+        }
+        self.commit();
+        Ok(ManagedNativeSurface {
+            surface_id: surface.id,
+            role,
+        })
+    }
+
     /// THE single commit point for this window's graph mutations: re-derive the
     /// `DerivedLayout` and hand it to the platform skin to reconcile. Platforms
     /// without `present_layout` return `NotSupported`, ignored here. The manager
@@ -1281,6 +1359,21 @@ impl LxApp {
             .set_managed_surface_visible(id, visible, role, edge)
     }
 
+    pub fn open_shell_native_surface(
+        &self,
+        capability: &str,
+        instance_key: Option<&str>,
+    ) -> Result<ManagedNativeSurface, LxAppError> {
+        let capability = capability.trim();
+        if capability.is_empty() {
+            return Err(LxAppError::InvalidParameter(
+                "native capability must not be empty".to_string(),
+            ));
+        }
+        window_controller(PRIMARY_WINDOW, &self.runtime)
+            .open_managed_native_surface(capability, instance_key)
+    }
+
     /// Mirror a host-declared aside (e.g. the assistant/terminal attach-panel)
     /// into the window's surface graph so the core's DerivedLayout reflects it
     /// and the derived layout includes host surfaces. Owner is `Host`
@@ -1313,6 +1406,7 @@ impl LxApp {
             surface_id,
             lingxia_surface::SurfaceContent::Native {
                 capability: content_id.to_string(),
+                instance_key: None,
             },
             edge,
             self.root_main_node(),
@@ -1805,6 +1899,15 @@ fn present_params_for_role(
     }
 }
 
+fn surface_edge_name(edge: lingxia_surface::Edge) -> &'static str {
+    match edge {
+        lingxia_surface::Edge::Left => "left",
+        lingxia_surface::Edge::Right => "right",
+        lingxia_surface::Edge::Top => "top",
+        lingxia_surface::Edge::Bottom => "bottom",
+    }
+}
+
 fn parse_surface_edge(edge: &str) -> Result<lingxia_surface::Edge, LxAppError> {
     match edge.trim() {
         "left" | "leading" => Ok(lingxia_surface::Edge::Left),
@@ -2045,6 +2148,7 @@ mod tests {
             "shell:terminal",
             lingxia_surface::SurfaceContent::Native {
                 capability: "terminal".into(),
+                instance_key: None,
             },
             "bottom",
         );

@@ -69,7 +69,7 @@ impl SurfacePresentation {
                 }),
                 capabilities: SurfaceCapabilities::default(),
             },
-            SurfaceContent::Native { capability } => Self {
+            SurfaceContent::Native { capability, .. } => Self {
                 automatic_title: Some(capability.clone()),
                 custom_title: None,
                 icon: Some(SurfaceIcon::BuiltIn {

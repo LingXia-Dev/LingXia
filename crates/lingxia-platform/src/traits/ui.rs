@@ -163,6 +163,22 @@ pub trait SurfacePresenter: Send + Sync + 'static {
         ))
     }
 
+    /// Create or focus one instance of a host-declared native capability.
+    /// `surface_id` is allocated by the shared runtime; platforms only realize
+    /// the provider view. The declaration owns role and placement.
+    fn open_managed_native_surface(
+        &self,
+        _surface_id: &str,
+        _capability: &str,
+        _instance_key: Option<&str>,
+        _role: ManagedSurfaceRole,
+        _edge: Option<&str>,
+    ) -> Result<(), PlatformError> {
+        Err(PlatformError::NotSupported(
+            "managed native surface instances are not supported on this platform".to_string(),
+        ))
+    }
+
     /// Toggle a host-declared top-level surface's visibility. See
     /// [`set_managed_surface_visible`](Self::set_managed_surface_visible).
     fn toggle_managed_surface(&self, _id: &str) -> Result<(), PlatformError> {
@@ -176,6 +192,13 @@ pub trait SurfacePresenter: Send + Sync + 'static {
 pub enum ManagedSurfaceRole {
     Main,
     Aside,
+}
+
+/// Resolved identity and declaration-owned role of a managed native surface.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ManagedNativeSurface {
+    pub surface_id: String,
+    pub role: ManagedSurfaceRole,
 }
 
 impl ManagedSurfaceRole {

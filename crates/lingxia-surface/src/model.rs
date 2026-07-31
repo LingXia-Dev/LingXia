@@ -179,11 +179,21 @@ impl Surface {
     }
 
     pub fn native(id: impl Into<SurfaceId>, role: Role, capability: impl Into<String>) -> Self {
+        Self::native_instance(id, role, capability, None)
+    }
+
+    pub fn native_instance(
+        id: impl Into<SurfaceId>,
+        role: Role,
+        capability: impl Into<String>,
+        instance_key: Option<String>,
+    ) -> Self {
         Self {
             id: id.into(),
             role,
             content: SurfaceContent::Native {
                 capability: capability.into(),
+                instance_key,
             },
             owner: SurfaceOwner::Host,
             placement: Placement::default(),
