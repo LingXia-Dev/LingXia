@@ -6252,6 +6252,10 @@ fn invoke_chrome_command(
         };
         payload.insert("screen_x".to_string(), serde_json::json!(screen.x));
         payload.insert("screen_y".to_string(), serde_json::json!(screen.y));
+        payload.insert(
+            "source_window".to_string(),
+            serde_json::json!(hwnd_handle(hwnd)),
+        );
         command.payload = serde_json::Value::Object(payload);
     }
     if let Some(handler) = webview_chrome_event_handler(webtag_key) {

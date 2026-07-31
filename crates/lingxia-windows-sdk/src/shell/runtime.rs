@@ -2843,7 +2843,13 @@ fn handle_chrome_event(appid: &str, event: WindowsChromeCommand) {
             let screen_x = payload_i32(&event, "screen_x").unwrap_or(0);
             let screen_y = payload_i32(&event, "screen_y").unwrap_or(0);
             if let Some(surface_id) = auxiliary_surface_id(&tab_id) {
-                show_main_surface_context_menu(appid, surface_id, screen_x, screen_y);
+                show_main_surface_context_menu(
+                    appid,
+                    surface_id,
+                    payload_isize(&event, "source_window"),
+                    screen_x,
+                    screen_y,
+                );
             } else if let Some(target_appid) = auxiliary_lxapp_id(&tab_id) {
                 show_lxapp_auxiliary_context_menu(appid, target_appid, screen_x, screen_y);
             } else if tab_id.starts_with(AUX_BOOKMARK_PREFIX) {
@@ -3195,6 +3201,14 @@ fn payload_i32(command: &WindowsChromeCommand, field: &str) -> Option<i32> {
             );
             None
         })
+}
+
+fn payload_isize(command: &WindowsChromeCommand, field: &str) -> Option<isize> {
+    command
+        .payload
+        .get(field)
+        .and_then(serde_json::Value::as_i64)
+        .and_then(|value| isize::try_from(value).ok())
 }
 
 fn payload_bool(command: &WindowsChromeCommand, field: &str) -> bool {
@@ -3722,6 +3736,7 @@ fn handle_main_surface_close(owner_appid: &str, surface_id: &str) {
 fn show_main_surface_context_menu(
     owner_appid: &str,
     surface_id: &str,
+    source_window: Option<isize>,
     screen_x: i32,
     screen_y: i32,
 ) {
@@ -3731,7 +3746,8 @@ fn show_main_surface_context_menu(
     let Some(snapshot) = owner.shell_surface_menu(surface_id) else {
         return;
     };
-    let Some(window) = owner_window_handle(owner_appid) else {
+    let Some(window) = source_window.or_else(|| owner_window_handle(owner_appid)) else {
+        log::warn!("no source window for surface context menu {surface_id}");
         return;
     };
     let mut entries = Vec::new();
