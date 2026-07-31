@@ -122,9 +122,9 @@ pub mod task;
 pub mod terminal {
     pub use lingxia_terminal::{
         BackendStatus, TerminalBackend, TerminalCell, TerminalSnapshot, backend_available,
-        backend_status, backend_status_json, terminal_close, terminal_create, terminal_exited,
-        terminal_read, terminal_resize, terminal_scroll, terminal_snapshot, terminal_snapshot_data,
-        terminal_write,
+        backend_status, backend_status_json, terminal_close, terminal_create, terminal_create_at,
+        terminal_current_directory, terminal_exited, terminal_read, terminal_resize,
+        terminal_scroll, terminal_snapshot, terminal_snapshot_data, terminal_write,
     };
 }
 /// Host app update helpers and update event types.

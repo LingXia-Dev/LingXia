@@ -533,7 +533,10 @@ mod bridge {
         fn get_terminal_backend_status_json() -> String;
 
         #[swift_bridge(swift_name = "terminalSessionCreate")]
-        fn terminal_session_create(cols: u16, rows: u16) -> u64;
+        fn terminal_session_create(cols: u16, rows: u16, cwd: &str) -> u64;
+
+        #[swift_bridge(swift_name = "terminalSessionCurrentDirectory")]
+        fn terminal_session_current_directory(id: u64) -> String;
 
         #[swift_bridge(swift_name = "terminalSessionWrite")]
         fn terminal_session_write(id: u64, input: &str) -> bool;
@@ -1937,16 +1940,32 @@ pub fn get_terminal_backend_status_json() -> String {
     }
 }
 
-pub fn terminal_session_create(cols: u16, rows: u16) -> u64 {
+pub fn terminal_session_create(cols: u16, rows: u16, cwd: &str) -> u64 {
     #[cfg(feature = "terminal-runtime")]
     {
-        return crate::terminal::terminal_create(cols, rows);
+        let cwd = (!cwd.is_empty()).then(|| std::path::Path::new(cwd));
+        return crate::terminal::terminal_create_at(cols, rows, cwd);
     }
 
     #[cfg(not(feature = "terminal-runtime"))]
     {
-        let _ = (cols, rows);
+        let _ = (cols, rows, cwd);
         0
+    }
+}
+
+pub fn terminal_session_current_directory(id: u64) -> String {
+    #[cfg(feature = "terminal-runtime")]
+    {
+        return crate::terminal::terminal_current_directory(id)
+            .and_then(|path| path.into_os_string().into_string().ok())
+            .unwrap_or_default();
+    }
+
+    #[cfg(not(feature = "terminal-runtime"))]
+    {
+        let _ = id;
+        String::new()
     }
 }
 

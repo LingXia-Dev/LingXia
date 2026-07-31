@@ -651,8 +651,11 @@ final class LingXiaTerminalWorkspaceView: NSView {
     }
 
     private func createTabAndActivate() {
+        let inheritedDirectory = activeTab()
+            .flatMap { activePane(in: $0) }
+            .flatMap { $0.currentWorkingDirectory() }
         let tab = TerminalTab(processTitle: "terminal")
-        let firstPane = makePane(for: tab)
+        let firstPane = makePane(for: tab, initialDirectory: inheritedDirectory)
         installRootView(firstPane, into: tab.rootContainer)
         tab.panes[firstPane.paneID] = firstPane
         tab.activePaneID = firstPane.paneID
@@ -720,7 +723,10 @@ final class LingXiaTerminalWorkspaceView: NSView {
         }
         lxTerminalLog("workspace.split start surface=\(surfaceID) direction=\(direction) activePane=\(activePane.paneID.uuidString)")
 
-        let newPane = makePane(for: tab)
+        let newPane = makePane(
+            for: tab,
+            initialDirectory: activePane.currentWorkingDirectory()
+        )
         newPane.translatesAutoresizingMaskIntoConstraints = false
         activePane.translatesAutoresizingMaskIntoConstraints = false
         let split = LingXiaTerminalSplitView()
@@ -857,8 +863,11 @@ final class LingXiaTerminalWorkspaceView: NSView {
         ])
     }
 
-    private func makePane(for tab: TerminalTab) -> LingXiaTerminalPaneView {
-        let pane = LingXiaTerminalPaneView()
+    private func makePane(
+        for tab: TerminalTab,
+        initialDirectory: String? = nil
+    ) -> LingXiaTerminalPaneView {
+        let pane = LingXiaTerminalPaneView(initialDirectory: initialDirectory)
         lxTerminalLog("workspace.makePane surface=\(surfaceID) tab=\(tab.id.uuidString) pane=\(pane.paneID.uuidString)")
         pane.onActivated = { [weak self] paneID in
             guard let self else { return }
