@@ -398,6 +398,24 @@ final class LxApp {
         }
     }
 
+    /// Fire-and-forget counterpart of `executeOnMain` for render-only bridges
+    /// whose caller discards the result. A JS worker must never synchronously
+    /// wait on the main queue: during a synchronous open the main thread is
+    /// itself waiting on that worker, so `DispatchQueue.main.sync` deadlocks.
+    nonisolated static func dispatchOnMain(_ operation: @MainActor @Sendable @escaping () -> Void) {
+        if Thread.isMainThread {
+            MainActor.assumeIsolated {
+                operation()
+            }
+        } else {
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    operation()
+                }
+            }
+        }
+    }
+
     nonisolated(unsafe) internal static var skipAutoOpenWindow: Bool {
         get { LxAppCore.skipAutoOpenWindow }
         set { LxAppCore.skipAutoOpenWindow = newValue }

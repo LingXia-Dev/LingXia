@@ -184,16 +184,18 @@ extension LxApp {
         let windowIdString = window_id.toString()
         let json = layout_json.toString()
         guard !windowIdString.isEmpty, !json.isEmpty else { return false }
-        return executeOnMain {
+        // Render-only: the graph commit discards the result, so hop instead of
+        // blocking the caller (often a JS worker) on the main queue.
+        dispatchOnMain {
             #if os(macOS)
-            return LxAppLayoutReconciler.reconcile(windowId: windowIdString, json: json)
+            _ = LxAppLayoutReconciler.reconcile(windowId: windowIdString, json: json)
             #elseif os(iOS)
-            return LxAppLayoutReconcileriOS.reconcile(windowId: windowIdString, json: json)
+            _ = LxAppLayoutReconcileriOS.reconcile(windowId: windowIdString, json: json)
             #else
             _ = json
-            return false
             #endif
         }
+        return true
     }
 
     /// Show or hide a host-declared top-level surface (e.g. the AI-chat panel or
@@ -301,28 +303,27 @@ extension LxApp {
 
     nonisolated static func setSidebarActions(items_json: RustStr) -> Bool {
         let json = items_json.toString()
-        return executeOnMain {
+        // Render-only (the Rust caller discards the result): hop instead of
+        // blocking a JS worker on the main queue — during a synchronous open
+        // the main thread is itself waiting on that worker, so a synchronous
+        // wait here deadlocks startup.
+        dispatchOnMain {
             #if os(macOS)
-            guard let runtime = LxAppMacAppUIRuntime.active else { return false }
-            runtime.setRuntimeSidebarActions(json)
-            return true
-            #else
-            return true
+            LxAppMacAppUIRuntime.active?.setRuntimeSidebarActions(json)
             #endif
         }
+        return true
     }
 
     nonisolated static func setShellPins(items_json: RustStr) -> Bool {
         let json = items_json.toString()
-        return executeOnMain {
+        // Render-only: same async-hop rationale as setSidebarActions.
+        dispatchOnMain {
             #if os(macOS)
-            guard let runtime = LxAppMacAppUIRuntime.active else { return false }
-            runtime.setShellPins(json)
-            return true
-            #else
-            return true
+            LxAppMacAppUIRuntime.active?.setShellPins(json)
             #endif
         }
+        return true
     }
 
     nonisolated static func setTrayIcon(icon: RustStr) -> Bool {
