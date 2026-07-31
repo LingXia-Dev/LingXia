@@ -1367,7 +1367,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     /// not a panel hide: native acknowledges the session to Rust so the app's
     /// one-region claim is released and a later open may choose another role.
     func closeAsideLxApp(appId: String) {
-        closeSession(appId: appId, notifyRuntime: true)
+        closeSession(appId: appId, notifyRuntime: true, closeWindowWhenEmpty: false)
     }
 
     /// Runtime-driven close on production macOS (active shell, no controller to emit
@@ -1377,7 +1377,11 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         closeSession(appId: appId, notifyRuntime: false)
     }
 
-    private func closeSession(appId: String, notifyRuntime: Bool) {
+    private func closeSession(
+        appId: String,
+        notifyRuntime: Bool,
+        closeWindowWhenEmpty: Bool = true
+    ) {
         guard let sessionId = appSessions[appId], sessionId > 0 else {
             LXLog.error("closeSession missing session for \(appId)", category: "LxAppShell")
             return
@@ -1425,7 +1429,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         if !appidStr.isEmpty && nextSessionId > 0 {
             os_log("Opening next LxApp from stack as tab: %@:%@", log: Self.log, type: .info, appidStr, pathStr)
             macOSLxApp.openLxApp(appId: appidStr, path: pathStr, sessionId: nextSessionId)
-        } else if !tabManager.hasTabs {
+        } else if closeWindowWhenEmpty && !tabManager.hasTabs {
             window?.close()
         }
     }
