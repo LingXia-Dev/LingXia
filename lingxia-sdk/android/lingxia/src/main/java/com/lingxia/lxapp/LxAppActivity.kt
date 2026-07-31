@@ -1001,6 +1001,10 @@ class LxAppActivity : AppCompatActivity() {
                 addView(hostView)
             }
 
+            container.visibility = View.VISIBLE
+            container.alpha = 1f
+            container.translationX = 0f
+
             if (existingWrapper == null) {
                 webViewContainer.addView(container)
             } else {
@@ -1614,16 +1618,24 @@ class LxAppActivity : AppCompatActivity() {
      * Extracted from navigateToPage for reuse in coordinated navigation
      */
     private fun performWebViewTransition(oldWebView: LingXiaWebViewHost?, newContainer: FrameLayout, isBackNavigation: Boolean, shouldAnimate: Boolean = true, navbarState: NavigationBarState? = null) {
-        // Get reference to old container BEFORE adding new one
-        val oldContainer = webViewContainer.findViewWithTag<ViewGroup>("current_webview_container")
+        val oldContainer = (oldWebView?.hostView?.parent as? ViewGroup)
+            ?.takeIf { it.parent === webViewContainer && it !== newContainer }
+            ?: webViewContainer.findViewWithTag<ViewGroup>("current_webview_container")
+                ?.takeIf { it !== newContainer }
         oldContainer?.tag = "previous_webview_container" // Re-tag old container
+        newContainer.tag = "current_webview_container"
+        newContainer.visibility = View.VISIBLE
+        newContainer.alpha = 1f
 
-        try {
-            // Add the new container to the webview container
-            webViewContainer.addView(newContainer)
-        } catch (e: Exception) {
-            LxLog.e(TAG, "Error adding new container to webViewContainer: ${e.message}")
-            return
+        if (newContainer.parent == null) {
+            try {
+                webViewContainer.addView(newContainer)
+            } catch (e: Exception) {
+                LxLog.e(TAG, "Error adding new container to webViewContainer: ${e.message}")
+                return
+            }
+        } else {
+            webViewContainer.bringChildToFront(newContainer)
         }
 
         if (shouldAnimate) {
@@ -1714,7 +1726,21 @@ class LxAppActivity : AppCompatActivity() {
      */
     private fun cleanupOldContainer(container: ViewGroup) {
         try {
-            webViewContainer.removeView(container)
+            val host = (0 until container.childCount)
+                .asSequence()
+                .map { container.getChildAt(it) }
+                .filterIsInstance<LingXiaWebViewHost>()
+                .firstOrNull()
+            if (host?.retainsSurfaceWhenHidden() == true) {
+                host.pause()
+                // TextureView releases its SurfaceTexture when detached. Keep Servo's
+                // wrapper attached and laid out, but make it fully transparent while idle.
+                container.alpha = 0f
+                container.translationX = 0f
+                container.tag = "cached_webview_container"
+            } else {
+                webViewContainer.removeView(container)
+            }
         } catch (e: Exception) {
             LxLog.e(TAG, "Error cleaning up old container: ${e.message}")
         }
@@ -1752,24 +1778,24 @@ class LxAppActivity : AppCompatActivity() {
 
             val navbarState = pageConfig ?: getNavBarState(appId, targetPath)
 
-            // Continue with webview setup...
             val newHostView = newWebView.hostView
-            if (newHostView.parent != null) {
-                (newHostView.parent as? ViewGroup)?.removeView(newHostView)
-            }
+            val existingContainer = (newHostView.parent as? FrameLayout)
+                ?.takeIf { it.parent === webViewContainer }
 
             // IMPORTANT: Make sure the new WebView is fully prepared before animation
             newHostView.visibility = View.VISIBLE
             newWebView.resume()
 
-            // Create a new container for the WebView
-            val newContainer = FrameLayout(this).apply {
+            val newContainer = existingContainer ?: FrameLayout(this).apply {
                 layoutParams = FrameLayout.LayoutParams(
                     FrameLayout.LayoutParams.MATCH_PARENT,
                     FrameLayout.LayoutParams.MATCH_PARENT
                 )
                 tag = "current_webview_container"
 
+                if (newHostView.parent != null) {
+                    (newHostView.parent as? ViewGroup)?.removeView(newHostView)
+                }
                 try {
                     addView(newHostView)
                 } catch (e: Exception) {
@@ -1777,6 +1803,8 @@ class LxAppActivity : AppCompatActivity() {
                     return@apply
                 }
             }
+            newContainer.visibility = View.VISIBLE
+            newContainer.alpha = 1f
 
             NativeBridge.attachIfNeeded(newWebView)
 

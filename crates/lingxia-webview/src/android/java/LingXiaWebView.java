@@ -331,8 +331,13 @@ public class LingXiaWebView extends WebView implements LingXiaWebViewHost {
                     if (sApplicationContext == null) {
                         throw new RuntimeException("Application context not set. Call LingXiaWebView.setApplicationContext() first.");
                     }
+                    CreateOptions options = CreateOptions.fromToken(optionsToken);
                     LingXiaServoView servoView = new LingXiaServoView(sApplicationContext);
-                    servoView.initialize(appId, path, sessionId);
+                    servoView.initialize(
+                            appId,
+                            path,
+                            sessionId,
+                            "strict_default".equals(options.profile));
                     notifyWebViewReady(appId, path, sessionId, servoView);
                 } catch (Throwable e) {
                     Log.e(TAG, "Failed to create Servo WebView: " + e.getMessage(), e);
@@ -366,6 +371,11 @@ public class LingXiaWebView extends WebView implements LingXiaWebViewHost {
 
     public boolean usesStrictSecurityProfile() {
         return createOptions != null && "strict_default".equals(createOptions.profile);
+    }
+
+    @Override
+    public boolean retainsSurfaceWhenHidden() {
+        return false;
     }
 
     private boolean hasDownloadHandler() {

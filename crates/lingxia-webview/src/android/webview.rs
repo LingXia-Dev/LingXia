@@ -5,8 +5,8 @@ use crate::input_helper::{build_async_eval_body, new_eval_token, parse_wrapped_e
 #[cfg(not(feature = "servo"))]
 use crate::webview::ProxyActivation;
 use crate::webview::{
-    EffectiveWebViewCreateOptions, ProxyApplyReport, ProxyConfig, WebTag, WebViewCreateSender,
-    WebViewCreateStage,
+    EffectiveWebViewCreateOptions, ProxyApplyReport, ProxyConfig, SecurityProfile, WebTag,
+    WebViewCreateSender, WebViewCreateStage,
 };
 use crate::{
     ClearSiteDataOptions, ClearSiteDataResult, LoadDataRequest, NetworkCaptureSnapshot,
@@ -236,7 +236,10 @@ impl WebViewInner {
         // Store sender in global map for callback
         let webtag = WebTag::new(appid, path, session_id);
         #[cfg(feature = "servo")]
-        super::servo::register(&webtag);
+        super::servo::register(
+            &webtag,
+            effective_options.profile == SecurityProfile::StrictDefault,
+        );
         let senders = WEBVIEW_SENDERS.get_or_init(|| Arc::new(Mutex::new(HashMap::new())));
 
         if let Ok(mut senders_map) = senders.lock() {
