@@ -8,6 +8,7 @@ use crate::{
     WebResourceResponse, WebViewCookie, WebViewCookieSameSite, WebViewCookieSetRequest,
     WebViewError,
 };
+use base64::Engine as _;
 use cookie::{Cookie, SameSite};
 use dpi::PhysicalSize;
 use euclid::Scale;
@@ -23,10 +24,12 @@ use servo::protocol_handler::{
     Request, ResourceFetchTiming, Response, ResponseBody,
 };
 use servo::{
-    ConsoleLogLevel, CookieSource, EventLoopWaker, InputEvent, LoadStatus, PrefValue, Preferences,
-    RenderingContext, Servo, ServoBuilder, StorageType, TouchEvent, TouchEventType, TouchId,
-    TouchPointerType, UserContentManager, UserScript, WebView, WebViewBuilder, WebViewDelegate,
-    WebViewId, WheelDelta, WheelEvent, WheelMode, WindowRenderingContext,
+    Code, CompositionEvent, CompositionState, ConsoleLogLevel, CookieSource, EmbedderControl,
+    EmbedderControlId, EventLoopWaker, ImeEvent, InputEvent, InputMethodControl, InputMethodType,
+    Key, KeyState, KeyboardEvent, LoadStatus, Location, Modifiers, NamedKey, PrefValue,
+    Preferences, RenderingContext, Servo, ServoBuilder, StorageType, TouchEvent, TouchEventType,
+    TouchId, TouchPointerType, UserContentManager, UserScript, WebView, WebViewBuilder,
+    WebViewDelegate, WebViewId, WheelDelta, WheelEvent, WheelMode, WindowRenderingContext,
 };
 use std::collections::{HashMap, VecDeque};
 use std::future::{self, Future};
@@ -36,7 +39,6 @@ use std::path::PathBuf;
 use std::pin::Pin;
 use std::ptr::NonNull;
 use std::rc::Rc;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock, mpsc};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::oneshot;
@@ -101,7 +103,74 @@ fn complete_java_evaluation(
     }
 }
 
+fn input_method_type_id(input_type: InputMethodType) -> jint {
+    match input_type {
+        InputMethodType::Color => 0,
+        InputMethodType::Date => 1,
+        InputMethodType::DatetimeLocal => 2,
+        InputMethodType::Email => 3,
+        InputMethodType::Month => 4,
+        InputMethodType::Number => 5,
+        InputMethodType::Password => 6,
+        InputMethodType::Search => 7,
+        InputMethodType::Tel => 8,
+        InputMethodType::Text => 9,
+        InputMethodType::Time => 10,
+        InputMethodType::Url => 11,
+        InputMethodType::Week => 12,
+    }
+}
+
+fn show_java_input_method(webtag: &WebTag, control: &InputMethodControl) {
+    if let Err(error) = super::jni_env::with_env(|env| -> Result<(), Box<dyn std::error::Error>> {
+        let class =
+            super::jni_env::get_lingxia_webview_class().ok_or("LingXiaWebView class not cached")?;
+        let webtag = env.new_string(webtag.as_str())?;
+        let text = env.new_string(control.text())?;
+        let insertion_point = control
+            .insertion_point()
+            .and_then(|point| jint::try_from(point).ok())
+            .unwrap_or(-1);
+        let multiline: jboolean = control.multiline();
+        let allow_virtual_keyboard: jboolean = control.allow_virtual_keyboard();
+        env.call_static_method(
+            class,
+            jni_str!("showServoInputMethod"),
+            jni_sig!("(Ljava/lang/String;ILjava/lang/String;IZZ)V"),
+            &[
+                (&webtag).into(),
+                input_method_type_id(control.input_method_type()).into(),
+                (&text).into(),
+                insertion_point.into(),
+                multiline.into(),
+                allow_virtual_keyboard.into(),
+            ],
+        )?;
+        Ok(())
+    }) {
+        log::warn!("Failed to show Android input method for {webtag}: {error}");
+    }
+}
+
+fn hide_java_input_method(webtag: &WebTag) {
+    if let Err(error) = super::jni_env::with_env(|env| -> Result<(), Box<dyn std::error::Error>> {
+        let class =
+            super::jni_env::get_lingxia_webview_class().ok_or("LingXiaWebView class not cached")?;
+        let webtag = env.new_string(webtag.as_str())?;
+        env.call_static_method(
+            class,
+            jni_str!("hideServoInputMethod"),
+            jni_sig!("(Ljava/lang/String;)V"),
+            &[(&webtag).into()],
+        )?;
+        Ok(())
+    }) {
+        log::warn!("Failed to hide Android input method for {webtag}: {error}");
+    }
+}
+
 const CAPTURE_LIMIT: usize = 1_000;
+const CAPTURE_BODY_LIMIT: usize = 8 * 1024 * 1024;
 
 #[link(name = "android")]
 unsafe extern "C" {
@@ -136,7 +205,6 @@ static RUNTIME_SENDER: OnceLock<mpsc::Sender<RuntimeCommand>> = OnceLock::new();
 static SERVO_DATA_DIR: OnceLock<PathBuf> = OnceLock::new();
 static WEBVIEW_TAGS: OnceLock<Mutex<HashMap<WebViewId, WebTag>>> = OnceLock::new();
 static DOCUMENTS: OnceLock<Mutex<HashMap<String, Document>>> = OnceLock::new();
-static NEXT_REQUEST_ID: AtomicU64 = AtomicU64::new(1);
 
 struct Document {
     url: String,
@@ -165,15 +233,9 @@ pub fn set_data_dir(path: PathBuf) {
 }
 
 enum RuntimeCommand {
-    Register {
-        webtag: WebTag,
-        capture: Arc<Mutex<CaptureState>>,
-    },
+    Register { webtag: WebTag },
     Unregister(WebTag),
-    Dispatch {
-        webtag: WebTag,
-        command: Command,
-    },
+    Dispatch { webtag: WebTag, command: Command },
     Proxy(Option<ProxyConfig>),
     Wake,
 }
@@ -190,6 +252,7 @@ enum Command {
     Paint,
     Touch(TouchEventType, i32, f32, f32),
     Wheel(f64, f64),
+    Input(InputEvent),
     Load(String),
     LoadData {
         data: String,
@@ -273,7 +336,6 @@ pub(super) fn register(webtag: &WebTag) {
     );
     let _ = runtime_sender().send(RuntimeCommand::Register {
         webtag: webtag.clone(),
-        capture,
     });
 }
 
@@ -285,6 +347,7 @@ pub(super) fn unregister(webtag: &WebTag) {
         .is_some()
     {
         let _ = runtime_sender().send(RuntimeCommand::Unregister(webtag.clone()));
+        disable_network_observer_if_idle();
     }
 }
 
@@ -319,7 +382,6 @@ fn run(tx: mpsc::Sender<RuntimeCommand>, rx: mpsc::Receiver<RuntimeCommand>) {
         );
         return;
     }
-
     let mut protocols = ProtocolRegistry::default();
     protocols
         .register("lx", LxProtocolHandler)
@@ -340,11 +402,11 @@ fn run(tx: mpsc::Sender<RuntimeCommand>, rx: mpsc::Receiver<RuntimeCommand>) {
 
     while let Ok(runtime_command) = rx.recv() {
         match runtime_command {
-            RuntimeCommand::Register { webtag, capture } => {
+            RuntimeCommand::Register { webtag } => {
                 log::info!("Registering Servo WebView state for {webtag}");
                 states
                     .entry(webtag.to_string())
-                    .or_insert_with(|| EngineState::new(webtag, capture));
+                    .or_insert_with(|| EngineState::new(webtag));
             }
             RuntimeCommand::Unregister(webtag) => {
                 if let Some(mut state) = states.remove(webtag.as_str()) {
@@ -389,11 +451,10 @@ struct EngineState {
     density: f32,
     size: PhysicalSize<u32>,
     pending_load: Option<String>,
-    capture: Arc<Mutex<CaptureState>>,
 }
 
 impl EngineState {
-    fn new(webtag: WebTag, capture: Arc<Mutex<CaptureState>>) -> Self {
+    fn new(webtag: WebTag) -> Self {
         Self {
             webtag,
             view: None,
@@ -402,7 +463,6 @@ impl EngineState {
             density: 1.0,
             size: PhysicalSize::new(1, 1),
             pending_load: None,
-            capture,
         }
     }
 
@@ -443,6 +503,9 @@ impl EngineState {
             Command::Paint => self.paint(),
             Command::Touch(kind, id, x, y) => {
                 if let Some(view) = &self.view {
+                    if matches!(&kind, TouchEventType::Down) {
+                        view.focus();
+                    }
                     view.notify_input_event(InputEvent::Touch(TouchEvent::new(
                         kind,
                         TouchId(id),
@@ -466,6 +529,11 @@ impl EngineState {
                         },
                         center.into(),
                     )));
+                }
+            }
+            Command::Input(event) => {
+                if let Some(view) = &self.view {
+                    view.notify_input_event(event);
                 }
             }
             Command::Load(url) => {
@@ -666,7 +734,6 @@ impl EngineState {
         content.add_script(Rc::new(UserScript::from(bridge_script(&self.webtag))));
         let delegate = Rc::new(Delegate {
             webtag: self.webtag.clone(),
-            capture: self.capture.clone(),
         });
         let initial_url = self
             .pending_load
@@ -859,7 +926,6 @@ fn cookie_from_servo(cookie: Cookie<'static>) -> WebViewCookie {
 
 struct Delegate {
     webtag: WebTag,
-    capture: Arc<Mutex<CaptureState>>,
 }
 
 impl WebViewDelegate for Delegate {
@@ -932,52 +998,246 @@ impl WebViewDelegate for Delegate {
         }
     }
 
-    fn load_web_resource(&self, _webview: WebView, load: servo::WebResourceLoad) {
-        let request = load.request();
-        let mut capture = self.capture.lock().unwrap_or_else(|e| e.into_inner());
+    fn show_embedder_control(&self, _webview: WebView, control: EmbedderControl) {
+        if let EmbedderControl::InputMethod(input_method) = control {
+            show_java_input_method(&self.webtag, &input_method);
+        }
+    }
+
+    fn hide_embedder_control(&self, _webview: WebView, _control_id: EmbedderControlId) {
+        hide_java_input_method(&self.webtag);
+    }
+}
+
+struct ServoNetworkObserver;
+
+impl servo_net::NetworkObserver for ServoNetworkObserver {
+    fn request(
+        &self,
+        request_id: &str,
+        request: &servo_net::ObservedNetworkRequest,
+        _update: bool,
+    ) {
+        let Some(capture) = capture_for_browsing_context(request.browsing_context_id) else {
+            return;
+        };
+        let mut capture = capture.lock().unwrap_or_else(|error| error.into_inner());
         if !capture.enabled {
             return;
         }
-        let request_id = NEXT_REQUEST_ID.fetch_add(1, Ordering::Relaxed).to_string();
-        let now = SystemTime::now()
+
+        let wall_time = request
+            .started_date_time
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs_f64();
-        let entry = NetworkEntry {
-            request_id,
-            url: request.url.to_string(),
+        let url = request.url.to_string();
+        if let Some(entry) = capture
+            .entries
+            .iter_mut()
+            .rev()
+            .find(|entry| entry.request_id == request_id && entry.url == url)
+        {
+            update_network_request(entry, request, wall_time);
+            return;
+        }
+
+        let redirect_count = capture
+            .entries
+            .iter()
+            .filter(|entry| {
+                entry.request_id == request_id
+                    || entry
+                        .request_id
+                        .starts_with(&format!("{request_id}:redirect:"))
+            })
+            .count();
+        if let Some(entry) = capture
+            .entries
+            .iter_mut()
+            .rev()
+            .find(|entry| entry.request_id == request_id)
+        {
+            entry.request_id = format!("{request_id}:redirect:{redirect_count}");
+            entry.finished.get_or_insert(wall_time);
+        }
+
+        let mut entry = NetworkEntry {
+            request_id: request_id.to_string(),
+            url,
             method: request.method.to_string(),
-            resource_type: Some(format!("{:?}", request.destination).to_ascii_lowercase()),
-            request_headers: request
-                .headers
-                .iter()
-                .map(|(name, value)| {
-                    (
-                        name.to_string(),
-                        value.to_str().unwrap_or_default().to_string(),
-                    )
-                })
-                .collect(),
+            resource_type: Some(request.destination.as_str().to_string()),
+            request_headers: Vec::new(),
             request_body: None,
             status: None,
             response_headers: Vec::new(),
             mime_type: None,
-            response_body: NetworkBody::Skipped {
-                reason: "Servo embedding API exposes request interception but no response callback"
-                    .into(),
-            },
+            response_body: NetworkBody::None,
             from_cache: false,
             failed: None,
-            wall_time: Some(now),
-            started: now,
+            wall_time: Some(wall_time),
+            started: wall_time,
             finished: None,
         };
-        if capture.entries.len() == CAPTURE_LIMIT {
-            capture.entries.pop_front();
-            capture.dropped += 1;
-        }
-        capture.entries.push_back(entry);
+        update_network_request(&mut entry, request, wall_time);
+        push_network_entry(&mut capture, entry);
     }
+
+    fn response(
+        &self,
+        request_id: &str,
+        response: &servo_net::ObservedNetworkResponse,
+        completed: bool,
+    ) {
+        let Some(capture) = capture_for_browsing_context(response.browsing_context_id) else {
+            return;
+        };
+        let mut capture = capture.lock().unwrap_or_else(|error| error.into_inner());
+        if !capture.enabled {
+            return;
+        }
+        let Some(entry) = capture
+            .entries
+            .iter_mut()
+            .rev()
+            .find(|entry| entry.request_id == request_id)
+        else {
+            return;
+        };
+
+        entry.status = response.status.try_code().map(|status| status.as_u16());
+        entry.response_headers = response
+            .headers
+            .as_ref()
+            .map(network_headers)
+            .unwrap_or_default();
+        entry.mime_type = response
+            .headers
+            .as_ref()
+            .and_then(|headers| headers.get(http::header::CONTENT_TYPE))
+            .map(|value| String::from_utf8_lossy(value.as_bytes()).to_string());
+        entry.from_cache = response.from_cache;
+        if completed {
+            if response.body.is_some() {
+                entry.response_body =
+                    network_body(response.body.as_ref(), entry.mime_type.as_deref());
+            }
+            entry.finished = Some(now_epoch_seconds());
+        }
+    }
+
+    fn failure(
+        &self,
+        request_id: &str,
+        browsing_context_id: servo_net::ObservedBrowsingContextId,
+        error: &servo_net::ObservedNetworkError,
+    ) {
+        let Some(capture) = capture_for_browsing_context(browsing_context_id) else {
+            return;
+        };
+        let mut capture = capture.lock().unwrap_or_else(|error| error.into_inner());
+        if !capture.enabled {
+            return;
+        }
+        if let Some(entry) = capture
+            .entries
+            .iter_mut()
+            .rev()
+            .find(|entry| entry.request_id == request_id)
+        {
+            entry.failed = Some(format!("{error:?}"));
+            entry.finished = Some(now_epoch_seconds());
+            entry.response_body = NetworkBody::None;
+        }
+    }
+}
+
+fn capture_for_browsing_context(
+    browsing_context_id: servo_net::ObservedBrowsingContextId,
+) -> Option<Arc<Mutex<CaptureState>>> {
+    let webtag = webview_tags()
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .iter()
+        .find(|(webview_id, _)| **webview_id == browsing_context_id)
+        .map(|(_, webtag)| webtag.clone())?;
+    capture(&webtag).ok()
+}
+
+fn update_network_request(
+    entry: &mut NetworkEntry,
+    request: &servo_net::ObservedNetworkRequest,
+    wall_time: f64,
+) {
+    entry.url = request.url.to_string();
+    entry.method = request.method.to_string();
+    entry.resource_type = Some(request.destination.as_str().to_string());
+    entry.request_headers = network_headers(&request.headers);
+    entry.request_body = request
+        .body
+        .as_ref()
+        .map(|body| String::from_utf8_lossy(&body.0).to_string());
+    entry.wall_time = Some(wall_time);
+    entry.started = wall_time;
+}
+
+fn network_headers(headers: &http::HeaderMap) -> Vec<(String, String)> {
+    headers
+        .iter()
+        .map(|(name, value)| {
+            (
+                name.to_string(),
+                String::from_utf8_lossy(value.as_bytes()).to_string(),
+            )
+        })
+        .collect()
+}
+
+fn network_body(body: Option<&servo_net::ObservedNetworkBody>, mime: Option<&str>) -> NetworkBody {
+    let Some(body) = body else {
+        return NetworkBody::None;
+    };
+    if body.0.len() > CAPTURE_BODY_LIMIT {
+        return NetworkBody::Skipped {
+            reason: format!(
+                "response body exceeds {} byte capture limit",
+                CAPTURE_BODY_LIMIT
+            ),
+        };
+    }
+    if is_textual_mime(mime)
+        && let Ok(text) = String::from_utf8(body.0.clone())
+    {
+        return NetworkBody::Text { text };
+    }
+    NetworkBody::Base64 {
+        base64: base64::engine::general_purpose::STANDARD.encode(&body.0),
+    }
+}
+
+fn is_textual_mime(mime: Option<&str>) -> bool {
+    let mime = mime.unwrap_or_default().to_ascii_lowercase();
+    mime.starts_with("text/")
+        || mime.contains("json")
+        || mime.contains("javascript")
+        || mime.contains("xml")
+        || mime.contains("svg")
+        || mime.contains("x-www-form-urlencoded")
+}
+
+fn now_epoch_seconds() -> f64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs_f64()
+}
+
+fn push_network_entry(capture: &mut CaptureState, entry: NetworkEntry) {
+    if capture.entries.len() == CAPTURE_LIMIT {
+        capture.entries.pop_front();
+        capture.dropped += 1;
+    }
+    capture.entries.push_back(entry);
 }
 
 fn request_webtag(request: &Request) -> Option<WebTag> {
@@ -1353,6 +1613,7 @@ pub(super) async fn start_network_capture(webtag: &WebTag) -> Result<(), WebView
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .enabled = true;
+    servo_net::set_network_observer(Some(Arc::new(ServoNetworkObserver)));
     Ok(())
 }
 
@@ -1361,7 +1622,26 @@ pub(super) async fn stop_network_capture(webtag: &WebTag) -> Result<(), WebViewE
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .enabled = false;
+    disable_network_observer_if_idle();
     Ok(())
+}
+
+fn disable_network_observer_if_idle() {
+    let captures = runtimes()
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .values()
+        .map(|runtime| runtime.capture.clone())
+        .collect::<Vec<_>>();
+    let any_enabled = captures.iter().any(|capture| {
+        capture
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .enabled
+    });
+    if !any_enabled {
+        servo_net::set_network_observer(None);
+    }
 }
 
 pub(super) async fn network_entries(
@@ -1402,6 +1682,49 @@ fn touch_kind(action: i32) -> Option<TouchEventType> {
         3 => Some(TouchEventType::Cancel),
         _ => None,
     }
+}
+
+fn android_key(key_code: i32, unicode_code_point: u32) -> (Key, Code) {
+    let named = match key_code {
+        19 => Some((NamedKey::ArrowUp, Code::ArrowUp)),
+        20 => Some((NamedKey::ArrowDown, Code::ArrowDown)),
+        21 => Some((NamedKey::ArrowLeft, Code::ArrowLeft)),
+        22 => Some((NamedKey::ArrowRight, Code::ArrowRight)),
+        61 => Some((NamedKey::Tab, Code::Tab)),
+        66 => Some((NamedKey::Enter, Code::Enter)),
+        67 => Some((NamedKey::Backspace, Code::Backspace)),
+        92 => Some((NamedKey::PageUp, Code::PageUp)),
+        93 => Some((NamedKey::PageDown, Code::PageDown)),
+        111 => Some((NamedKey::Escape, Code::Escape)),
+        112 => Some((NamedKey::Delete, Code::Delete)),
+        122 => Some((NamedKey::Home, Code::Home)),
+        123 => Some((NamedKey::End, Code::End)),
+        _ => None,
+    };
+    if let Some((key, code)) = named {
+        return (Key::Named(key), code);
+    }
+    char::from_u32(unicode_code_point)
+        .filter(|character| *character != '\0')
+        .map(|character| (Key::Character(character.to_string()), Code::Unidentified))
+        .unwrap_or((Key::Named(NamedKey::Unidentified), Code::Unidentified))
+}
+
+fn android_modifiers(meta_state: i32) -> Modifiers {
+    let mut modifiers = Modifiers::empty();
+    if meta_state & 0x1 != 0 {
+        modifiers.insert(Modifiers::SHIFT);
+    }
+    if meta_state & 0x2 != 0 {
+        modifiers.insert(Modifiers::ALT);
+    }
+    if meta_state & 0x1000 != 0 {
+        modifiers.insert(Modifiers::CONTROL);
+    }
+    if meta_state & 0x1_0000 != 0 {
+        modifiers.insert(Modifiers::META);
+    }
+    modifiers
 }
 
 fn jstring(env: &mut jni::Env<'_>, value: JString<'_>) -> Result<String, jni::errors::Error> {
@@ -1639,6 +1962,73 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaServoView_nativeEvaluate(
                 request_id as u64,
                 Err(servo::JavaScriptEvaluationError::WebViewNotReady),
             );
+        }
+        Ok(())
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_webview_LingXiaServoView_nativeIme(
+    mut env: EnvUnowned,
+    _this: JObject,
+    tag: JString,
+    state: jint,
+    text: JString,
+) {
+    env.with_env(|env| -> Result<(), jni::errors::Error> {
+        let tag = WebTag::from(jstring(env, tag)?.as_str());
+        let data = jstring(env, text)?;
+        let state = match state {
+            0 => CompositionState::Start,
+            1 => CompositionState::Update,
+            2 => CompositionState::End,
+            _ => return Ok(()),
+        };
+        if let Err(error) = send(
+            &tag,
+            Command::Input(InputEvent::Ime(ImeEvent::Composition(CompositionEvent {
+                state,
+                data,
+            }))),
+        ) {
+            log::warn!("Servo IME dispatch failed for {tag}: {error}");
+        }
+        Ok(())
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_webview_LingXiaServoView_nativeKey(
+    mut env: EnvUnowned,
+    _this: JObject,
+    tag: JString,
+    action: jint,
+    key_code: jint,
+    unicode_code_point: jint,
+    meta_state: jint,
+    repeat_count: jint,
+) {
+    env.with_env(|env| -> Result<(), jni::errors::Error> {
+        let tag = WebTag::from(jstring(env, tag)?.as_str());
+        let state = match action {
+            0 => KeyState::Down,
+            1 => KeyState::Up,
+            _ => return Ok(()),
+        };
+        let (key, code) = android_key(key_code, unicode_code_point.max(0) as u32);
+        let event = KeyboardEvent::new_without_event(
+            state,
+            key,
+            code,
+            Location::Standard,
+            android_modifiers(meta_state),
+            repeat_count > 0,
+            false,
+        );
+        if let Err(error) = send(&tag, Command::Input(InputEvent::Keyboard(event))) {
+            log::warn!("Servo keyboard dispatch failed for {tag}: {error}");
         }
         Ok(())
     })
