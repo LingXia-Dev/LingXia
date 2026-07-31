@@ -570,6 +570,11 @@ fn surfaces_to_ui_for_target(
                     "surfaces: {platform} cannot combine main surfaces with a tray float root"
                 ));
             }
+            if mains.len() != 1 {
+                return Err(anyhow!(
+                    "surfaces: {platform} requires exactly one declared main surface"
+                ));
+            }
             let explicit = launch_mains.first().map(|(content, _)| *content);
             if explicit.is_none() && !effective.iter().any(|(_, surface)| surface.tray.is_some()) {
                 return Err(anyhow!(
@@ -2060,6 +2065,11 @@ fn validate_macos_ui_config(
     if main_ids.is_empty() && float_ids.len() != 1 {
         return Err(anyhow!(
             "macOS app UI requires at least one main or one tray float root"
+        ));
+    }
+    if main_ids.len() > 1 {
+        return Err(anyhow!(
+            "macOS app UI requires exactly one declared main surface"
         ));
     }
     if !main_ids.is_empty() && !float_ids.is_empty() {
@@ -3934,6 +3944,21 @@ surfaces:
             .unwrap_err()
             .to_string();
         assert!(err.contains("at most one"), "{err}");
+    }
+
+    #[test]
+    fn surfaces_rejects_two_declared_mains_even_with_one_launch() {
+        let surfaces = vec![
+            SurfaceDecl {
+                launch: true,
+                ..lxapp_decl("a", SurfaceRole::Main)
+            },
+            lxapp_decl("b", SurfaceRole::Main),
+        ];
+        let err = surfaces_to_ui(&surfaces, false, false)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("exactly one declared main"), "{err}");
     }
 
     #[test]

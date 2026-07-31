@@ -1723,6 +1723,9 @@ final class LxAppMacAppUIRuntime: NSObject {
         if mainSurfaces.isEmpty && floatSurfaces.count != 1 {
             throw LxAppUIError.unsupported("macOS app UI requires at least one main or one float root")
         }
+        if mainSurfaces.count > 1 {
+            throw LxAppUIError.unsupported("macOS app UI requires exactly one declared main surface")
+        }
         if !mainSurfaces.isEmpty && !floatSurfaces.isEmpty {
             throw LxAppUIError.unsupported("macOS app UI cannot combine main surfaces with a float root")
         }

@@ -332,7 +332,7 @@ There is **no `sidebar:` entry field**: app-owned sidebar actions are declared a
 
 ### Rules (enforced at build)
 
-- macOS admits `lxapp`, `url`, `native: terminal`, and `native: browser` as `main`. Other targets still require the home lxapp as their initial main until their native presenters implement this contract. A pure desktop popover app may instead declare one `role: float` surface with a `tray:` and no main.
+- macOS admits exactly one declared `main`, whose content may be `lxapp`, `url`, `native: terminal`, or `native: browser`. Other targets still require the home lxapp as their initial main until their native presenters implement this contract. A pure desktop popover app may instead declare one `role: float` surface with a `tray:` and no main. Additional browser/terminal main entries are runtime workspace Surfaces, not extra YAML main declarations.
 - After `platforms` filtering, at most one `main` may set `launch: true`; `launch` is invalid on a non-main. macOS allows it on any admitted main content; other targets currently allow it only on their home lxapp main.
 - `edge` and `size` are only valid on `aside`.
 - A `url` surface requires `capabilities.browser: true`; declarative URL main is currently macOS-only.
@@ -528,7 +528,7 @@ If `--skip-native` is used, SwiftPM links an existing Rust static library. That 
 ## Pre-ship checklist
 
 - [ ] `lingxia.yaml` validates: every required platform section present; `homeAppId` resolvable to a `resources.bundles[].appId`.
-- [ ] At least one `main` surface (or a `role: float` tray popover); the initial main is the stable root, every `aside` has an `edge`, and terminal surfaces have `capabilities.terminal: true`.
+- [ ] Exactly one declared `main` surface (or one `role: float` tray popover); it is the stable root, every `aside` has an `edge`, and terminal surfaces have `capabilities.terminal: true`.
 - [ ] `features.appService` matches the embedded lxapp's logic mode.
 - [ ] All native routes return `lingxia::Result<T>` with `Serialize` outputs.
 - [ ] `HostAddon` registers every route and extension; FFI exports present for each target platform.

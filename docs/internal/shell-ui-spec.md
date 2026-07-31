@@ -679,7 +679,8 @@ The build MUST validate:
   all of its entries together;
 - a URL surface requires the browser capability; a native surface is the closed
   set `terminal | browser` and requires its matching capability;
-- a host has at least one main — or is a main-less, tray-float-only app;
+- a host declares exactly one main — or is a main-less, tray-float-only app;
+  additional switcher mains are runtime workspace Surfaces;
 - `controls: content` satisfies the single-main constraint of §4.7.
 
 YAML has **no `sidebar:` entry field**. App-owned sidebar entries come only
