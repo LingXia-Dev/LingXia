@@ -312,6 +312,7 @@ class LxAppActivity : AppCompatActivity() {
     // Tracks the currently visible WebView instance
     private var currentWebView: com.lingxia.lxapp.WebView? = null
     private var systemBottomInset: Int = 0
+    private var imeContentBottomInset: Int = 0
     private var isMediaFullscreen = false
     private var isPageFullscreen = false  // For page-level fullscreen (landscape + custom navbar)
     private var forceHostImmersive = false
@@ -471,28 +472,38 @@ class LxAppActivity : AppCompatActivity() {
         // Setup window insets listener
         ViewCompat.setOnApplyWindowInsetsListener(rootContainer) { view, insets ->
             if (isMediaFullscreen || isPageFullscreen) {
+                imeContentBottomInset = 0
                 view.setPadding(0, 0, 0, 0)
+                updateLayoutMargins()
                 return@setOnApplyWindowInsetsListener WindowInsetsCompat.CONSUMED
             }
             val sysBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
             val imeBottom = insets.getInsets(WindowInsetsCompat.Type.ime()).bottom
+            val keyboardVisible = insets.isVisible(WindowInsetsCompat.Type.ime())
             systemBottomInset = resolveContentBottomInset(insets)
 
             val currentBg = tabBar?.config?.backgroundColor ?: tabBarConfig?.backgroundColor
             val isTabBarTransparent = currentBg == Color.TRANSPARENT ||
                                      (currentBg?.let { Color.alpha(it) < 255 } == true)
 
-            // Edge-to-edge disables adjustResize; consume the IME inset manually.
+            // Keep host chrome anchored while resizing only the WebView around the IME.
+            // Applying the IME inset to rootContainer also lifts the TabBar, unlike the
+            // native iOS and Harmony shells where the keyboard covers fixed chrome.
             val baseBottom = if (isTabBarTransparent) 0 else sysBars.bottom
-            val bottomPad = maxOf(baseBottom, imeBottom)
             val sidePadLeft = if (isTabBarTransparent) 0 else sysBars.left
             val sidePadRight = if (isTabBarTransparent) 0 else sysBars.right
-            view.setPadding(sidePadLeft, 0, sidePadRight, bottomPad)
+            view.setPadding(sidePadLeft, 0, sidePadRight, baseBottom)
+            imeContentBottomInset = if (keyboardVisible) {
+                (imeBottom - baseBottom).coerceAtLeast(0)
+            } else {
+                0
+            }
 
             // Re-apply TabBar layout so bottom margin reflects latest inset when transparent
             tabBar?.config?.let { cfg ->
                 tabBar?.let { tb -> applyTabBarLayoutParams(tb, cfg) }
             }
+            updateLayoutMargins()
             reportSurfaceWidthIfNeeded()
             insets
         }
@@ -926,6 +937,8 @@ class LxAppActivity : AppCompatActivity() {
                 }
             }
 
+            bottomMargin = maxOf(bottomMargin, imeContentBottomInset)
+
             webViewContainer.layoutParams = this
             webViewContainer.requestLayout()
         }
@@ -1065,6 +1078,11 @@ class LxAppActivity : AppCompatActivity() {
             )
             // Use transparent background to respect page configuration
             setBackgroundColor(Color.TRANSPARENT)
+            addOnLayoutChangeListener { _, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom ->
+                if (right - left != oldRight - oldLeft || bottom - top != oldBottom - oldTop) {
+                    reportSurfaceWidthIfNeeded()
+                }
+            }
         }
 
         if (webViewContainer.parent == null) {
@@ -1436,6 +1454,7 @@ class LxAppActivity : AppCompatActivity() {
         )
         pendingTabBarVisibility = null
         pendingNavBarVisibility = null
+        imeContentBottomInset = 0
         isMediaFullscreen = true
         if (overlayHost != null && rootContainer.indexOfChild(overlayHost) != rootContainer.childCount - 1) {
             shouldRestoreOverlayOrder = true
@@ -1991,6 +2010,7 @@ class LxAppActivity : AppCompatActivity() {
      */
     private fun enterImmersiveMode() {
         isPageFullscreen = true
+        imeContentBottomInset = 0
 
         // Allow content to extend into display cutout (notch/punch hole) area
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
@@ -2014,6 +2034,7 @@ class LxAppActivity : AppCompatActivity() {
         applyLegacyImmersiveFlags()
         // Trigger layout update
         rootContainer.setPadding(0, 0, 0, 0)
+        updateLayoutMargins()
         rootContainer.requestApplyInsets()
     }
 
