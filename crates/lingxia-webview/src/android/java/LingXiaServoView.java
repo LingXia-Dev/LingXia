@@ -35,6 +35,12 @@ public final class LingXiaServoView extends FrameLayout implements LingXiaWebVie
         void onDestroyed();
     }
 
+    public interface EmbedderControlHandler {
+        void show(long requestId, String kind, String payload);
+        void hide(long requestId);
+        void onDestroyed();
+    }
+
     private static final int MAX_PENDING_COMPONENT_MESSAGES = 128;
     private static final String TAG = "LingXiaServoView";
     private static final ConcurrentHashMap<String, WeakReference<LingXiaServoView>> sViews =
@@ -57,6 +63,7 @@ public final class LingXiaServoView extends FrameLayout implements LingXiaWebVie
     private int editorImeOptions = EditorInfo.IME_ACTION_DONE;
     private final ArrayDeque<String> pendingComponentMessages = new ArrayDeque<>();
     private NativeComponentMessageHandler nativeComponentMessageHandler;
+    private EmbedderControlHandler embedderControlHandler;
 
     public LingXiaServoView(Context context) {
         super(context);
@@ -316,6 +323,9 @@ public final class LingXiaServoView extends FrameLayout implements LingXiaWebVie
         nativeComponentMessageHandler = null;
         pendingComponentMessages.clear();
         if (handler != null) handler.onDestroyed();
+        EmbedderControlHandler controlHandler = embedderControlHandler;
+        embedderControlHandler = null;
+        if (controlHandler != null) controlHandler.onDestroyed();
         ViewGroup parent = getParent() instanceof ViewGroup ? (ViewGroup) getParent() : null;
         if (parent != null) {
             parent.removeView(this);
@@ -334,6 +344,49 @@ public final class LingXiaServoView extends FrameLayout implements LingXiaWebVie
             }
             while (!pendingComponentMessages.isEmpty()) {
                 handler.onMessage(pendingComponentMessages.removeFirst());
+            }
+        });
+    }
+
+    public void setEmbedderControlHandler(EmbedderControlHandler handler) {
+        runOnMainThread(() -> {
+            EmbedderControlHandler previous = embedderControlHandler;
+            embedderControlHandler = handler;
+            if (previous != null && previous != handler) previous.onDestroyed();
+        });
+    }
+
+    public void completeEmbedderControl(long requestId, boolean confirm, String value) {
+        if (servoWebTag == null) return;
+        boolean queued = nativeCompleteEmbedderControl(
+                servoWebTag,
+                requestId,
+                confirm ? "confirm" : "cancel",
+                value != null ? value : "");
+        if (!queued) {
+            android.util.Log.w(TAG, "Dropped embedder control response request=" + requestId);
+        }
+    }
+
+    static void showEmbedderControl(
+            final String webTag,
+            final long requestId,
+            final String kind,
+            final String payload) {
+        runOnMainThread(() -> {
+            LingXiaServoView view = findView(webTag);
+            if (view == null) return;
+            EmbedderControlHandler handler = view.embedderControlHandler;
+            if (handler != null) handler.show(requestId, kind, payload);
+            else view.completeEmbedderControl(requestId, false, "");
+        });
+    }
+
+    static void hideEmbedderControl(final String webTag, final long requestId) {
+        runOnMainThread(() -> {
+            LingXiaServoView view = findView(webTag);
+            if (view != null && view.embedderControlHandler != null) {
+                view.embedderControlHandler.hide(requestId);
             }
         });
     }
@@ -567,6 +620,8 @@ public final class LingXiaServoView extends FrameLayout implements LingXiaWebVie
             String webTag, Surface surface, int width, int height, float density);
     private native void nativeSurfaceChanged(String webTag, int width, int height);
     private native void nativeSurfaceDestroyed(String webTag);
+    private native boolean nativeCompleteEmbedderControl(
+            String webTag, long requestId, String action, String value);
     private native void nativeFrame(String webTag);
     private native void nativeTouch(String webTag, int action, int pointerId, float x, float y);
     private native void nativeWheel(String webTag, double dx, double dy);
