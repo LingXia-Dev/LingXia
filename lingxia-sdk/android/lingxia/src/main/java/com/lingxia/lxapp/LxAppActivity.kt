@@ -1071,6 +1071,7 @@ class LxAppActivity : AppCompatActivity() {
 
             // Attach native bridge for component overlay
             NativeBridge.attachIfNeeded(view)
+            ServoEmbedderControls.attachIfNeeded(view, this)
 
             ensurePullToRefreshHelper().attachToWebView(hostView)
             updatePullToRefreshEnabledForPath(view.getCurrentPath())
@@ -2015,6 +2016,7 @@ class LxAppActivity : AppCompatActivity() {
             newContainer.alpha = 1f
 
             NativeBridge.attachIfNeeded(newWebView)
+            ServoEmbedderControls.attachIfNeeded(newWebView, this)
 
             ensurePullToRefreshHelper().attachToWebView(newHostView)
             updatePullToRefreshEnabledForPath(targetPath)
