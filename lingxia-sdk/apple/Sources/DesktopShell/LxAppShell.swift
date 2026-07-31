@@ -243,6 +243,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     private var managedMainLxappBySurfaceId: [String: String] = [:]
     private var managedMainActivateHandler: ((String) -> Void)?
     private var managedMainCloseHandler: ((String) -> Void)?
+    private var managedMainAddHandler: (() -> Bool)?
     private var managedMainContextMenuHandler: ((String, NSEvent, NSView) -> Void)?
     private var managedMainRenameHandler: ((String, String) -> Void)?
     private var declaredBrowserSurfaceActivateHandler: ((String) -> Void)?
@@ -475,7 +476,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     /// resolves the sizeClass (with hysteresis). This is what makes macOS
     /// drive the new shared-core model from real window geometry.
     private func reportSurfaceWidth() {
-        guard let appId = currentViewController?.appId,
+        guard let appId = currentViewController?.appId ?? declaredBrowserOwnerAppId,
               let windowWidth = window?.contentView?.frame.width, windowWidth > 0 else { return }
         // Size class uses the complete client area; the live sidebar width is
         // reported separately so physical aside admission uses real workspace.
@@ -516,8 +517,11 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         sidebar.trafficLightClearanceProvider = { [weak self] in
             self?.trafficLightClearance() ?? SidebarView.Layout.railWidth
         }
-        sidebar.onAddBrowserTab = { [weak self] in
-            self?.browserCoordinator.addTab()
+        sidebar.onAddRequested = { [weak self] in
+            guard let self else { return }
+            if self.managedMainAddHandler?() != true {
+                self.browserCoordinator.addTab()
+            }
         }
         sidebar.onBookmarkOpen = { [weak self] url in
             self?.browserCoordinator.openBookmark(url: url)
@@ -1208,6 +1212,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         activeId: String?,
         onActivate: @escaping (String) -> Void,
         onClose: @escaping (String) -> Void,
+        onAdd: @escaping () -> Bool,
         onContextMenu: @escaping (String, NSEvent, NSView) -> Void,
         onRename: @escaping (String, String) -> Void
     ) {
@@ -1221,6 +1226,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         }
         managedMainActivateHandler = onActivate
         managedMainCloseHandler = onClose
+        managedMainAddHandler = onAdd
         managedMainContextMenuHandler = onContextMenu
         managedMainRenameHandler = onRename
         let unmanagedTabs = tabManager.tabs.filter {

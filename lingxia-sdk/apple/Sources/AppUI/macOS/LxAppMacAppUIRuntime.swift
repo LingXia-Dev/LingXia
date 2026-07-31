@@ -55,7 +55,8 @@ final class LxAppMacAppUIRuntime: NSObject {
     let uiConfigURL: URL
 
     private let rootSurface: LxAppUIConfig.Surface
-    private let surfaceById: [String: LxAppUIConfig.Surface]
+    private var surfaceById: [String: LxAppUIConfig.Surface]
+    private let declaredSurfaceIDs: Set<String>
     private let childrenByParentId: [String: [String]]
     private let menuBarActivators: [LxAppUIConfig.Activator]
     private let appActivationActivators: [LxAppUIConfig.Activator]
@@ -68,10 +69,7 @@ final class LxAppMacAppUIRuntime: NSObject {
     /// Runtime edge overrides from `lx.openSurface({surface, edge})`; the
     /// declared `lingxia.yaml` edge applies when absent.
     private var managedEdgeOverrides: [String: LxAppUIConfig.Edge] = [:]
-    /// Runtime presentation overrides for native surfaces. The surface keeps
-    /// one stable id and one provider workspace while moving between the main
-    /// switcher and an aside slot.
-    private var managedRoleOverrides: [String: LxAppUIConfig.Role] = [:]
+    private var nativeInstanceSurfaceIDs: [String: String] = [:]
     private struct RuntimeLxAppPanel {
         let appId: String
         let path: String
@@ -133,6 +131,7 @@ final class LxAppMacAppUIRuntime: NSObject {
         let validation = try Self.validate(bundleConfig: bundleConfig)
         self.rootSurface = validation.rootSurface
         self.surfaceById = validation.surfaceById
+        self.declaredSurfaceIDs = Set(validation.surfaceById.keys)
         self.childrenByParentId = validation.childrenByParentId
         self.menuBarActivators = validation.menuBarActivators
         self.appActivationActivators = validation.appActivationActivators
@@ -200,7 +199,8 @@ final class LxAppMacAppUIRuntime: NSObject {
         guard let ownerAppId = graphOwnerAppId,
               SurfaceSwitcherBridge.replaceDeclaredMains(
                   ownerAppId: ownerAppId,
-                  surfaces: uiConfig.surfaces
+                  surfaces: uiConfig.surfaces,
+                  initialSurfaceID: uiConfig.launch.initialSurface
               )
         else {
             throw LxAppUIError.invalidConfig("failed to register declared main surfaces")
@@ -399,7 +399,11 @@ final class LxAppMacAppUIRuntime: NSObject {
             NSApp.terminate(nil)
             return
         }
-        closeSurface(id: rootSurface.id)
+        // Closing a tray-backed window hides the window; it does not close the
+        // stable root Surface, which is intentionally non-closable.
+        shell.hide()
+        visibleSurfaceIDs.remove(rootSurface.id)
+        refreshChromeActions()
     }
 
     private struct ResolvedRuntimeSidebarAction: Codable {
@@ -520,33 +524,17 @@ final class LxAppMacAppUIRuntime: NSObject {
             return true
         }
         guard let surface = surfaceById[id] else { return false }
-        let previousRole = effectiveRole(for: surface)
-        if let role {
-            guard surface.content.isNativeTerminal,
-                  let requestedRole = LxAppUIConfig.Role(rawValue: role),
-                  requestedRole == .main || requestedRole == .aside
-            else { return false }
-            if requestedRole == .main && edge != nil { return false }
-            if requestedRole == surface.role {
-                managedRoleOverrides.removeValue(forKey: id)
-            } else {
-                managedRoleOverrides[id] = requestedRole
-            }
-        } else {
-            managedRoleOverrides.removeValue(forKey: id)
-        }
-        let nextRole = effectiveRole(for: surface)
-        let roleChanged = previousRole != nextRole
+        guard role == nil else { return false }
         let previous = managedEdgeOverrides[id] ?? surface.edge
         if let edge, let parsed = LxAppUIConfig.Edge(rawValue: edge) {
             managedEdgeOverrides[id] = parsed
         }
         let effective = managedEdgeOverrides[id] ?? surface.edge
-        if visibleSurfaceIDs.contains(id), !roleChanged {
+        if visibleSurfaceIDs.contains(id) {
             if effective != previous {
                 closeManagedSurface(id: id)
                 openSurfaceHandlingError(id: id)
-            } else if nextRole == .main {
+            } else if surface.role == .main {
                 // A visible main can be backgrounded behind another switcher
                 // item. Reopening it focuses the existing provider instance.
                 openSurfaceHandlingError(id: id)
@@ -557,8 +545,59 @@ final class LxAppMacAppUIRuntime: NSObject {
         return true
     }
 
+    @discardableResult
+    func openManagedNativeSurface(
+        id: String,
+        capability: String,
+        instanceKey: String?,
+        role: String,
+        edge: String?
+    ) -> Bool {
+        guard capability == LxAppUIConfig.Content.NativeName.terminal.rawValue,
+              let template = surfaceById.values.first(where: {
+                  declaredSurfaceIDs.contains($0.id)
+                      && $0.content.name?.rawValue == capability
+              }),
+              template.role.rawValue == role,
+              template.role == .main
+        else { return false }
+
+        if let edge, edge != template.edge?.rawValue { return false }
+        if let instanceKey {
+            let identity = "\(capability)\u{0}\(instanceKey)"
+            if let existingID = nativeInstanceSurfaceIDs[identity], existingID != id {
+                return false
+            }
+            if surfaceById[id] == nil {
+                surfaceById[id] = LxAppUIConfig.Surface(
+                    id: id,
+                    role: template.role,
+                    edge: template.edge,
+                    attachTo: template.attachTo,
+                    size: template.size,
+                    anchor: template.anchor,
+                    resizable: template.resizable,
+                    showTrafficLights: template.showTrafficLights,
+                    content: LxAppUIConfig.Content(
+                        kind: template.content.kind,
+                        appId: template.content.appId,
+                        path: template.content.path,
+                        url: template.content.url,
+                        name: template.content.name,
+                        instanceKey: instanceKey
+                    ),
+                    platforms: template.platforms
+                )
+            }
+            nativeInstanceSurfaceIDs[identity] = id
+        } else if id != template.id {
+            return false
+        }
+        return openManagedSurface(id: id)
+    }
+
     private func effectiveRole(for surface: LxAppUIConfig.Surface) -> LxAppUIConfig.Role {
-        managedRoleOverrides[surface.id] ?? surface.role
+        surface.role
     }
 
     /// Hide a host-declared surface (no-op if already hidden). Returns `false`
@@ -578,6 +617,9 @@ final class LxAppMacAppUIRuntime: NSObject {
         }
         guard surfaceById[id] != nil else { return false }
         if visibleSurfaceIDs.contains(id) {
+            if surfaceById[id]?.role == .main {
+                return closeMainSurface(id: id)
+            }
             closeSurface(id: id)
         }
         return true
@@ -705,21 +747,23 @@ final class LxAppMacAppUIRuntime: NSObject {
         refreshChromeActions()
     }
 
-    private func closeMainSurface(id: String) {
+    @discardableResult
+    private func closeMainSurface(id: String) -> Bool {
         guard let ownerAppId = graphOwnerAppId,
               let menu = SurfaceMenuBridge.snapshot(ownerAppId: ownerAppId, surfaceId: id),
               menu.sections.flatMap(\.items).contains(where: {
                   $0.action.owner == "switcher" && $0.action.action == "close"
               })
-        else { return }
+        else { return false }
         let action = SurfaceMenuBridge.builtInAction("close")
         guard let result = SurfaceMenuBridge.perform(
             ownerAppId: ownerAppId,
             revision: menu.revision,
             surfaceId: id,
             action: action
-        ) else { return }
+        ) else { return false }
         applySurfaceMenuExecution(result)
+        return result.accepted && result.removedSurfaceIds.contains(id)
     }
 
     private func openTerminalMainSurface(_ surface: LxAppUIConfig.Surface) {
@@ -1080,7 +1124,7 @@ final class LxAppMacAppUIRuntime: NSObject {
 
         switch effectiveRole(for: surface) {
         case .main:
-            closeMainSurface(id: id)
+            _ = closeMainSurface(id: id)
             return
         case .float:
             if isIndependentPanelSurface(surface) {
@@ -1169,6 +1213,8 @@ final class LxAppMacAppUIRuntime: NSObject {
             self?.openSurfaceHandlingError(id: surfaceID)
         } onClose: { [weak self] surfaceID in
             self?.closeMainSurface(id: surfaceID)
+        } onAdd: { [weak self] in
+            self?.addSurfaceForActiveMain() ?? false
         } onContextMenu: { [weak self] surfaceID, event, view in
             self?.presentSurfaceMenu(surfaceID: surfaceID, event: event, from: view)
         } onRename: { [weak self] surfaceID, title in
@@ -1178,6 +1224,25 @@ final class LxAppMacAppUIRuntime: NSObject {
         shell.setManagedNavigationToolbarVisible(activeContentKind == "lxapp")
         shell.updateToolbarHostActions(toolbarItems)
         shell.updateTitlebarHostActions(titlebarItems)
+    }
+
+    private func addSurfaceForActiveMain() -> Bool {
+        guard let ownerAppId = graphOwnerAppId,
+              let snapshot = SurfaceSwitcherBridge.snapshot(ownerAppId: ownerAppId),
+              let activeID = snapshot.activeSurfaceId,
+              let item = snapshot.items.first(where: { $0.surfaceId == activeID }),
+              item.content.kind == "native",
+              item.content.capability == "terminal",
+              surfaceById[activeID]?.role == .main
+        else { return false }
+        let instanceKey = UUID().uuidString.lowercased()
+        return openManagedNativeSurface(
+            id: "native:terminal:\(instanceKey)",
+            capability: "terminal",
+            instanceKey: instanceKey,
+            role: LxAppUIConfig.Role.main.rawValue,
+            edge: nil
+        )
     }
 
     private func presentSurfaceMenu(surfaceID: String, event: NSEvent, from view: NSView) {
@@ -1258,7 +1323,10 @@ final class LxAppMacAppUIRuntime: NSObject {
         if surface.content.isNativeTerminal {
             terminalWorkspaces[id]?.disarmInput()
             terminalWorkspaces.removeValue(forKey: id)
-            managedRoleOverrides.removeValue(forKey: id)
+            if !declaredSurfaceIDs.contains(id) {
+                nativeInstanceSurfaceIDs = nativeInstanceSurfaceIDs.filter { $0.value != id }
+                surfaceById.removeValue(forKey: id)
+            }
         } else if isBrowserMainSurface(surface) {
             shell.closeDeclaredBrowserMain(surfaceID: id)
         }

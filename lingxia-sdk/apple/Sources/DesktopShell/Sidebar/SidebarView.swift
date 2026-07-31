@@ -531,8 +531,8 @@ class SidebarView: NSView, NSPopoverDelegate {
     var onHideRequested: (() -> Void)?
     /// Called when width changes via drag: (width, animated)
     var onWidthChanged: ((CGFloat, Bool) -> Void)?
-    /// Called when "+" button is clicked to add a browser tab
-    var onAddBrowserTab: (() -> Void)?
+    /// Called when the global "+" button requests content for the active main.
+    var onAddRequested: (() -> Void)?
     /// Called when a browser tab is selected
     var onBrowserTabSelected: ((String) -> Void)?
     /// Called when a browser tab close is requested
@@ -2149,7 +2149,7 @@ class SidebarView: NSView, NSPopoverDelegate {
     }
 
     @objc private func addButtonClicked() {
-        onAddBrowserTab?()
+        onAddRequested?()
     }
 
     @objc private func hideButtonClicked() {

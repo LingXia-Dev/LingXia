@@ -41,6 +41,7 @@ import AppKit
 @MainActor
 enum LxAppLayoutReconciler {
     private static let log = OSLog(subsystem: "LingXia", category: "LayoutReconciler")
+    private static var lastRevisionByWindow: [String: UInt64] = [:]
 
     /// The stable, fully-typed render contract the shared core emits (the same
     /// `LayoutPresentationPlan` JSON returned by `surfaceDerivedLayout`). The
@@ -61,6 +62,7 @@ enum LxAppLayoutReconciler {
     }
 
     private struct MainSwitcher: Decodable {
+        let revision: UInt64
         let items: [MainSwitcherItem]
     }
 
@@ -94,7 +96,7 @@ enum LxAppLayoutReconciler {
     }
 
     static func reconcile(windowId: String, json: String) -> Bool {
-        return reconcile(label: "window=\(windowId)", json: json)
+        return reconcile(windowId: windowId, label: "window=\(windowId)", json: json)
     }
 
     /// Reconcile float popups (modal sheets above the layout). Shell-independent:
@@ -111,27 +113,29 @@ enum LxAppLayoutReconciler {
         }
     }
 
-    private static func reconcile(label: String, json: String) -> Bool {
+    private static func reconcile(windowId: String, label: String, json: String) -> Bool {
+        guard let data = json.data(using: .utf8),
+              let plan = try? JSONDecoder().decode(LayoutPresentationPlan.self, from: data) else {
+            LXLog.error("presentLayout: failed to parse layout json \(label)", category: "LayoutReconciler")
+            return false
+        }
+        if let revision = plan.mainSwitcher?.revision {
+            let last = lastRevisionByWindow[windowId] ?? 0
+            if revision < last { return true }
+            lastRevisionByWindow[windowId] = revision
+        }
         guard let shell = LxAppActiveHost.activeShell else {
             // No desktop shell (the Runner's iPhone shape hosts the lxapp via a
             // controller, not a shell). Asides/windows drill in full-screen over
             // the device screen like a real phone, so — mirroring the iOS
             // reconciler — dismiss any full-screen surface the core dropped.
             // Floats are shell-independent popup windows, so still present them.
-            if let data = json.data(using: .utf8),
-               let plan = try? JSONDecoder().decode(LayoutPresentationPlan.self, from: data) {
-                let desiredFullScreen = Set(plan.asides.map { $0.id }).union(plan.mains)
-                for id in LxAppSurface.presentedFullScreenIds().subtracting(desiredFullScreen) {
-                    LxAppSurface.dismissFullScreen(id: id)
-                }
-                presentFloats(plan.floats.map { $0.id })
+            let desiredFullScreen = Set(plan.asides.map { $0.id }).union(plan.mains)
+            for id in LxAppSurface.presentedFullScreenIds().subtracting(desiredFullScreen) {
+                LxAppSurface.dismissFullScreen(id: id)
             }
+            presentFloats(plan.floats.map { $0.id })
             return true
-        }
-        guard let data = json.data(using: .utf8),
-              let plan = try? JSONDecoder().decode(LayoutPresentationPlan.self, from: data) else {
-            LXLog.error("presentLayout: failed to parse layout json \(label)", category: "LayoutReconciler")
-            return false
         }
 
         let workspace = shell.workspaceManager

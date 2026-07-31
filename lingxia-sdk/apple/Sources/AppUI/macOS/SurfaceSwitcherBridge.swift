@@ -45,10 +45,10 @@ enum SurfaceSwitcherBridge {
     private enum Content: Encodable {
         case lxapp(appId: String, path: String?)
         case browser(initialUrl: String)
-        case native(capability: String)
+        case native(capability: String, instanceKey: String?)
 
         private enum CodingKeys: String, CodingKey {
-            case kind, appId, path, initialUrl, capability
+            case kind, appId, path, initialUrl, capability, instanceKey
         }
 
         func encode(to encoder: Encoder) throws {
@@ -61,9 +61,10 @@ enum SurfaceSwitcherBridge {
             case let .browser(initialUrl):
                 try values.encode("browser", forKey: .kind)
                 try values.encode(initialUrl, forKey: .initialUrl)
-            case let .native(capability):
+            case let .native(capability, instanceKey):
                 try values.encode("native", forKey: .kind)
                 try values.encode(capability, forKey: .capability)
+                try values.encodeIfPresent(instanceKey, forKey: .instanceKey)
             }
         }
     }
@@ -104,12 +105,16 @@ enum SurfaceSwitcherBridge {
 
     static func replaceDeclaredMains(
         ownerAppId: String,
-        surfaces: [LxAppUIConfig.Surface]
+        surfaces: [LxAppUIConfig.Surface],
+        initialSurfaceID: String
     ) -> Bool {
         do {
-            let registrations = try surfaces
-                .filter { $0.role == .main }
-                .map(makeRegistration)
+            var mains = surfaces.filter { $0.role == .main }
+            if let initialIndex = mains.firstIndex(where: { $0.id == initialSurfaceID }),
+               initialIndex != mains.startIndex {
+                mains.insert(mains.remove(at: initialIndex), at: mains.startIndex)
+            }
+            let registrations = try mains.map(makeRegistration)
             let data = try JSONEncoder().encode(registrations)
             guard let json = String(data: data, encoding: .utf8) else { return false }
             return replaceHostMains(ownerAppId, json)
@@ -196,7 +201,10 @@ enum SurfaceSwitcherBridge {
             guard let capability = surface.content.name?.rawValue else {
                 throw LxAppUIError.invalidConfig("main surface \(surface.id) has no native capability")
             }
-            content = .native(capability: capability)
+            content = .native(
+                capability: capability,
+                instanceKey: surface.content.instanceKey
+            )
             presentation = Presentation(
                 automaticTitle: capability == "terminal" ? "Terminal" : "Browser",
                 icon: .builtIn(capability),

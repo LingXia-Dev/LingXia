@@ -235,6 +235,35 @@ extension LxApp {
         }
     }
 
+    nonisolated static func openManagedNativeSurface(
+        id: RustStr,
+        capability: RustStr,
+        instanceKey: RustStr,
+        role: RustStr,
+        edge: RustStr
+    ) -> Bool {
+        let idString = id.toString()
+        let capabilityString = capability.toString()
+        let instanceKeyString = instanceKey.toString()
+        let roleString = role.toString()
+        let edgeString = edge.toString()
+        guard !idString.isEmpty, !capabilityString.isEmpty else { return false }
+        return executeOnMain {
+            #if os(macOS)
+            guard let runtime = LxAppMacAppUIRuntime.active else { return false }
+            return runtime.openManagedNativeSurface(
+                id: idString,
+                capability: capabilityString,
+                instanceKey: instanceKeyString.isEmpty ? nil : instanceKeyString,
+                role: roleString,
+                edge: edgeString.isEmpty ? nil : edgeString
+            )
+            #else
+            return false
+            #endif
+        }
+    }
+
     /// Flip a host-declared top-level surface's visibility. Returns `false` when
     /// there is no host shell, or when `id` is not a declared surface.
     nonisolated static func toggleManagedSurface(id: RustStr) -> Bool {

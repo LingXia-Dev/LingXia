@@ -620,19 +620,20 @@ rong::js_api! {
     query?: never;
 }"###;
 
-        /// Open a host-registered native capability (home lxapp only), e.g.
-        /// the built-in terminal declared in `lingxia.yaml` surfaces. The
-        /// terminal may be moved between the main switcher and an aside; it is
-        /// one workspace, never two simultaneous copies.
+        /// Open or focus an instance of a host-declared native capability (home
+        /// lxapp only). The declaration owns role and placement. Omitting
+        /// `instanceKey` selects its default instance; equal keys reuse one
+        /// surface, while distinct keys create distinct provider workspaces.
         type OpenNativeSurfaceSpec = r###"{
     native: string;
-    /** Defaults to the lingxia.yaml role. */
-    as?: 'main' | 'aside';
-    /** Docking edge override for this open. */
-    edge?: SurfaceEdge;
+    /** Stable caller identity; not the runtime surface id or display title. */
+    instanceKey?: string;
     page?: never;
     url?: never;
     lxapp?: never;
+    surface?: never;
+    as?: never;
+    edge?: never;
     position?: never;
     size?: never;
     query?: never;

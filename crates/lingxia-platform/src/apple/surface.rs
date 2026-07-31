@@ -1,7 +1,7 @@
 use super::app::Platform;
 use super::ffi::{
-    close_surface, hide_surface, present_layout, present_surface, set_managed_surface_visible,
-    show_surface, toggle_managed_surface,
+    close_surface, hide_surface, open_managed_native_surface, present_layout, present_surface,
+    set_managed_surface_visible, show_surface, toggle_managed_surface,
 };
 use crate::error::PlatformError;
 #[cfg(target_os = "ios")]
@@ -122,6 +122,29 @@ impl SurfacePresenter for Platform {
         } else {
             Err(PlatformError::Platform(format!(
                 "cannot manage surface (no host shell or unknown surface): id={id} (visible={visible})"
+            )))
+        }
+    }
+
+    fn open_managed_native_surface(
+        &self,
+        surface_id: &str,
+        capability: &str,
+        instance_key: Option<&str>,
+        role: crate::traits::ui::ManagedSurfaceRole,
+        edge: Option<&str>,
+    ) -> Result<(), PlatformError> {
+        if open_managed_native_surface(
+            surface_id,
+            capability,
+            instance_key.unwrap_or(""),
+            role.as_str(),
+            edge.unwrap_or(""),
+        ) {
+            Ok(())
+        } else {
+            Err(PlatformError::Platform(format!(
+                "cannot open native surface instance: capability={capability} id={surface_id}"
             )))
         }
     }

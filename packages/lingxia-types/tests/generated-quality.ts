@@ -52,17 +52,14 @@ const urlTabResult: Promise<null> = lx.openSurface(urlTab);
 const declaredResult: Promise<SurfaceHandle> = lx.openSurface(declaredSurface);
 const lxappResult: Promise<SurfaceHandle> = lx.openSurface(lxappSurface);
 const nativeResult: Promise<SurfaceHandle> = lx.openSurface(nativeSurface);
-const terminalMainResult: Promise<SurfaceHandle> = lx.openSurface({
+const terminalWorkspaceResult: Promise<SurfaceHandle> = lx.openSurface({
   native: "terminal",
-  as: "main",
+  instanceKey: "project-a",
 });
-const terminalAsideResult: Promise<SurfaceHandle> = lx.openSurface({
-  native: "terminal",
-  as: "aside",
-  edge: "bottom",
-});
-// @ts-expect-error native surfaces do not support float presentation
-lx.openSurface({ native: "terminal", as: "float" });
+// @ts-expect-error native presentation is owned by lingxia.yaml
+lx.openSurface({ native: "terminal", as: "main" });
+// @ts-expect-error native presentation is owned by lingxia.yaml
+lx.openSurface({ native: "terminal", edge: "bottom" });
 const pageResult: Promise<Surface> = lx.openSurface(pageSurface);
 const asideResult: Promise<Surface | null> = lx.openSurface(urlAside);
 const appDownloadResult: DownloadTask<AppDownloadResult> = lx.downloadFile(appDownload);
@@ -87,8 +84,7 @@ export type GeneratedQualityGate = [
   typeof declaredResult,
   typeof lxappResult,
   typeof nativeResult,
-  typeof terminalMainResult,
-  typeof terminalAsideResult,
+  typeof terminalWorkspaceResult,
   typeof pageResult,
   typeof asideResult,
   typeof appDownloadResult,

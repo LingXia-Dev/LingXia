@@ -497,36 +497,33 @@ fn lxapp_open_error(err: LxAppError) -> rong::RongJSError {
     }
 }
 
-/// `{ native, as?, edge? }` branch of `lx.openSurface`. Shows a host-registered
-/// native capability (declared in lingxia.yaml surfaces, e.g. the terminal).
+/// `{ native, instanceKey? }` branch of `lx.openSurface`. The declaration owns
+/// layout; the optional key selects one stable provider instance.
 fn open_native_spec(ctx: &JSContext, spec: &JSObject) -> JSResult<JSObject> {
     let name = read_required_string(spec, "native")?;
-    let edge = read_validated_edge(spec)?;
-    let role = match read_optional_string(spec, "as")?.as_deref().map(str::trim) {
-        None => None,
-        Some("main") => Some(ManagedSurfaceRole::Main),
-        Some("aside") => Some(ManagedSurfaceRole::Aside),
-        Some(other) => {
-            return Err(surface_error(
-                rong::error::E_INVALID_ARG,
-                "invalid_surface_spec",
-                format!("a native surface supports as: 'main' | 'aside'; got {other}"),
-            ));
-        }
-    };
-    if role == Some(ManagedSurfaceRole::Main) && edge.is_some() {
+    if get_property(spec, "as").is_some() || get_property(spec, "edge").is_some() {
         return Err(surface_error(
             rong::error::E_INVALID_ARG,
             "invalid_surface_spec",
-            "edge is only valid with as: 'aside'",
+            "native surface role and edge are owned by lingxia.yaml",
+        ));
+    }
+    let instance_key = read_optional_string(spec, "instanceKey")?.map(|key| key.trim().to_string());
+    if instance_key.as_deref().is_some_and(str::is_empty)
+        || instance_key.as_ref().is_some_and(|key| key.len() > 128)
+    {
+        return Err(surface_error(
+            rong::error::E_INVALID_ARG,
+            "invalid_surface_spec",
+            "instanceKey must contain 1 to 128 UTF-8 bytes",
         ));
     }
     let lxapp = LxApp::from_ctx(ctx)?;
     require_home_caller(&lxapp, "native")?;
-    lxapp
-        .set_shell_surface_visible(name.trim(), true, role, edge.as_deref())
+    let resolved = lxapp
+        .open_shell_native_surface(name.trim(), instance_key.as_deref())
         .map_err(|err| surface_error(rong::error::E_NOT_FOUND, "native_not_found", err))?;
-    managed_surface_handle(ctx, lxapp, name.trim().to_string(), role)
+    managed_surface_handle(ctx, lxapp, resolved.surface_id, Some(resolved.role))
 }
 
 /// Published declaration-id form. It remains available to non-home lxapps;
@@ -986,7 +983,7 @@ fn managed_surface_handle(
         JSFunc::new(ctx, move || -> JSResult<()> {
             ensure_surface_object_open(&show_handle)?;
             show_lxapp
-                .set_shell_surface_visible(&show_id, true, role, None)
+                .set_shell_surface_visible(&show_id, true, None, None)
                 .map_err(|err| {
                     surface_error(rong::error::E_INTERNAL, "shell_surface_failed", err)
                 })?;
@@ -1009,7 +1006,7 @@ fn managed_surface_handle(
                 ));
             }
             hide_lxapp
-                .set_shell_surface_visible(&hide_id, false, role, None)
+                .set_shell_surface_visible(&hide_id, false, None, None)
                 .map_err(|err| {
                     surface_error(rong::error::E_INTERNAL, "shell_surface_failed", err)
                 })?;
@@ -1027,7 +1024,7 @@ fn managed_surface_handle(
                 return Ok(());
             }
             close_lxapp
-                .set_shell_surface_visible(&close_id, false, role, None)
+                .set_shell_surface_visible(&close_id, false, None, None)
                 .map_err(|err| {
                     surface_error(rong::error::E_INTERNAL, "shell_surface_failed", err)
                 })?;
