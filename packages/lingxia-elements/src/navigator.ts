@@ -431,13 +431,13 @@ export class LxNavigatorElement extends HTMLElement {
     }
 
     if (options.openType === 'exit') {
-      await this.callHost('navigator.navigateBackLxApp');
+      await this.callHost('navigator.navigateBackApp');
       return;
     }
 
     if (options.openType === 'navigateBack') {
       if (options.target === 'lxapp') {
-        await this.callHost('navigator.navigateBackLxApp');
+        await this.callHost('navigator.navigateBackApp');
         return;
       }
       if (options.target === 'browser') {
@@ -457,9 +457,9 @@ export class LxNavigatorElement extends HTMLElement {
 
     if (options.target === 'lxapp') {
       if (!options.appId) {
-        throw new Error('navigateToLxApp requires app-id');
+        throw new Error('navigateToApp requires app-id');
       }
-      await this.callHost('navigator.navigateToLxApp', this.buildLxAppTarget(options));
+      await this.callHost('navigator.navigateToApp', this.buildLxAppTarget(options));
       return;
     }
 

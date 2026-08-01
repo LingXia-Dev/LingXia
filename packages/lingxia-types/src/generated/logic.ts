@@ -715,7 +715,7 @@ export type NavigateBackOptions = {
     delta: number;
 };
 
-export type NavigateToLxAppOptions = {
+export type NavigateToAppOptions = {
     appId: string;
     page?: string;
     path?: string;
@@ -2047,8 +2047,8 @@ declare global {
     getVideoInfo(options: GetVideoInfoOptions): Promise<VideoInfo>;
     extractVideoThumbnail(options: ExtractVideoThumbnailOptions): Promise<ExtractVideoThumbnailResult>;
     compressVideo(options: CompressVideoOptions): CompressVideoTask;
-    navigateToLxApp(options: NavigateToLxAppOptions): Promise<void>;
-    navigateBackLxApp(): Promise<void>;
+    navigateToApp(options: NavigateToAppOptions): Promise<void>;
+    navigateBackApp(): Promise<void>;
     share(options: ShareOptions): Promise<ShareResult>;
     /**
      * Open this lxapp's asynchronous persistent key-value store. Values returned

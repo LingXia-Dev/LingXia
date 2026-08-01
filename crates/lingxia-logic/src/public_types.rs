@@ -561,7 +561,7 @@ rong::js_api! {
     delta: number;
 }"###;
 
-        type NavigateToLxAppOptions = r###"{
+        type NavigateToAppOptions = r###"{
     appId: string;
     page?: string;
     path?: string;

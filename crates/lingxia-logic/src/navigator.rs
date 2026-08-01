@@ -2,28 +2,28 @@ use crate::I18nKey;
 use crate::i18n::{js_error_from_lxapp_error, t};
 use crate::update;
 use lingxia_platform::traits::ui::{ToastIcon, ToastOptions, ToastPosition, UserFeedback};
-use lxapp::{self, LxApp, LxAppError, LxAppStartupOptions, ReleaseType, UpdateManager};
+use lxapp::{self, LxApp, LxAppError, LxAppStartupOptions, ReleaseType};
 use rong::{FromJSObject, JSContext, JSObject, JSResult};
 use serde_json::Value;
 use std::sync::Arc;
 
 #[derive(FromJSObject)]
 #[ts_skip]
-struct NavigateToOptions {
+pub(crate) struct NavigateToAppOptions {
     #[js_name = "appId"]
-    appid: String,
-    path: Option<String>,
-    page: Option<String>,
-    query: Option<JSObject>,
+    pub(crate) appid: String,
+    pub(crate) path: Option<String>,
+    pub(crate) page: Option<String>,
+    pub(crate) query: Option<JSObject>,
     #[js_name = "envVersion"]
-    env_version: Option<String>,
+    pub(crate) env_version: Option<String>,
     #[js_name = "targetVersion"]
-    target_version: Option<String>,
+    pub(crate) target_version: Option<String>,
 }
 
 fn build_startup_options(
     target: &LxApp,
-    options: &NavigateToOptions,
+    options: &NavigateToAppOptions,
 ) -> Result<(LxAppStartupOptions, ReleaseType), LxAppError> {
     let path = resolve_page_target(target, options)?;
     let mut startup_options = LxAppStartupOptions::new(&path);
@@ -43,7 +43,7 @@ fn parse_env_version(env_version: Option<&str>) -> Result<ReleaseType, LxAppErro
 
 fn resolve_page_target<'a>(
     target: &'a LxApp,
-    options: &'a NavigateToOptions,
+    options: &'a NavigateToAppOptions,
 ) -> Result<String, LxAppError> {
     let has_page = options
         .page
@@ -89,13 +89,13 @@ fn append_query(path: String, query: Option<&JSObject>) -> Result<String, LxAppE
     lxapp::append_page_query(path, &query).map_err(LxAppError::InvalidParameter)
 }
 
-fn should_navigate_to_lxapp(
+fn should_navigate_to_app(
     lxapp: &LxApp,
-    options: &NavigateToOptions,
+    options: &NavigateToAppOptions,
 ) -> Result<bool, LxAppError> {
     if options.appid.is_empty() {
         return Err(LxAppError::InvalidParameter(
-            "navigateToLxApp requires appId".to_string(),
+            "navigateToApp requires appId".to_string(),
         ));
     }
 
@@ -106,7 +106,10 @@ fn should_navigate_to_lxapp(
     Ok(true)
 }
 
-async fn do_navigate_to_lxapp(lxapp: Arc<LxApp>, options: NavigateToOptions) -> JSResult<()> {
+pub(crate) async fn prepare_app_open(
+    lxapp: &Arc<LxApp>,
+    options: &NavigateToAppOptions,
+) -> JSResult<(LxAppStartupOptions, ReleaseType)> {
     let target_appid = options.appid.clone();
     let release_type = parse_env_version(options.env_version.as_deref())
         .map_err(|e| js_error_from_lxapp_error(&e))?;
@@ -135,11 +138,19 @@ async fn do_navigate_to_lxapp(lxapp: Arc<LxApp>, options: NavigateToOptions) -> 
     let (startup_options, _) =
         build_startup_options(&target_app, &options).map_err(|e| js_error_from_lxapp_error(&e))?;
 
+    Ok((startup_options, release_type))
+}
+
+async fn do_navigate_to_app(lxapp: Arc<LxApp>, options: NavigateToAppOptions) -> JSResult<()> {
+    let target_appid = options.appid.clone();
+    let (startup_options, _) = prepare_app_open(&lxapp, &options).await?;
+    let release_type = startup_options.release_type;
+
     lxapp
         .navigate_to(target_appid.clone(), startup_options)
         .map_err(|e| js_error_from_lxapp_error(&e))?;
 
-    UpdateManager::spawn_release_lxapp_update_check(target_appid);
+    lxapp::schedule_lxapp_update_check(&target_appid, release_type);
     Ok(())
 }
 
@@ -160,10 +171,10 @@ fn do_navigate_back_lxapp(lxapp: &LxApp) -> Result<(), LxAppError> {
     Ok(())
 }
 
-async fn navigate_to_lxapp(ctx: JSContext, options: NavigateToOptions) -> JSResult<()> {
+async fn navigate_to_app(ctx: JSContext, options: NavigateToAppOptions) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
 
-    if !should_navigate_to_lxapp(&lxapp, &options).map_err(|e| js_error_from_lxapp_error(&e))? {
+    if !should_navigate_to_app(&lxapp, &options).map_err(|e| js_error_from_lxapp_error(&e))? {
         return Ok(());
     }
 
@@ -181,11 +192,11 @@ async fn navigate_to_lxapp(ctx: JSContext, options: NavigateToOptions) -> JSResu
         .into());
     }
 
-    do_navigate_to_lxapp(lxapp, options).await?;
+    do_navigate_to_app(lxapp, options).await?;
     Ok(())
 }
 
-async fn navigate_back_lxapp(ctx: JSContext) -> JSResult<()> {
+async fn navigate_back_app(ctx: JSContext) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     do_navigate_back_lxapp(&lxapp).map_err(|e| js_error_from_lxapp_error(&e))?;
     Ok(())
@@ -198,7 +209,7 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
 rong::js_api! {
     fn register_api(ctx) {
         namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
-        fn navigateToLxApp(ts_params = "options: NavigateToLxAppOptions") = navigate_to_lxapp;
-        fn navigateBackLxApp = navigate_back_lxapp;
+        fn navigateToApp(ts_params = "options: NavigateToAppOptions") = navigate_to_app;
+        fn navigateBackApp = navigate_back_app;
     }
 }

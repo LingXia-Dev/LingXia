@@ -1,14 +1,14 @@
 use super::await_or_cancel;
 use crate::LxApp;
+use crate::LxAppError;
 use crate::lxapp::ReleaseType;
 use crate::startup::LxAppStartupOptions;
-use crate::{LxAppError, UpdateManager};
 use serde::Deserialize;
 use serde_json::Value;
 use std::sync::Arc;
 
 #[derive(Deserialize)]
-struct NavigateToLxAppOptions {
+struct NavigateToAppOptions {
     #[serde(rename = "appId")]
     appid: String,
     path: Option<String>,
@@ -22,7 +22,7 @@ struct NavigateToLxAppOptions {
 
 fn build_startup_options(
     target: &LxApp,
-    options: &NavigateToLxAppOptions,
+    options: &NavigateToAppOptions,
 ) -> Result<(LxAppStartupOptions, ReleaseType), LxAppError> {
     let path = resolve_page_target(target, options)?;
     let mut startup_options = LxAppStartupOptions::new(&path);
@@ -42,7 +42,7 @@ fn parse_env_version(env_version: Option<&str>) -> Result<ReleaseType, LxAppErro
 
 fn resolve_page_target(
     target: &LxApp,
-    options: &NavigateToLxAppOptions,
+    options: &NavigateToAppOptions,
 ) -> Result<String, LxAppError> {
     let has_page = options
         .page
@@ -86,13 +86,13 @@ fn append_query(path: String, query: Option<&Value>) -> Result<String, LxAppErro
     crate::append_page_query(path, query).map_err(LxAppError::InvalidParameter)
 }
 
-fn should_navigate_to_lxapp(
+fn should_navigate_to_app(
     lxapp: &LxApp,
-    options: &NavigateToLxAppOptions,
+    options: &NavigateToAppOptions,
 ) -> Result<bool, LxAppError> {
     if options.appid.is_empty() {
         return Err(LxAppError::InvalidParameter(
-            "navigateToLxApp requires appId".to_string(),
+            "navigateToApp requires appId".to_string(),
         ));
     }
 
@@ -103,9 +103,9 @@ fn should_navigate_to_lxapp(
     Ok(true)
 }
 
-async fn do_navigate_to_lxapp(
+async fn do_navigate_to_app(
     lxapp: Arc<LxApp>,
-    options: NavigateToLxAppOptions,
+    options: NavigateToAppOptions,
     cancel: &mut super::HostCancel,
 ) -> Result<(), LxAppError> {
     let target_appid = options.appid.clone();
@@ -142,34 +142,35 @@ async fn do_navigate_to_lxapp(
 
     let target_app = crate::ensure_lxapp(&target_appid, release_type)?;
     let (startup_options, _) = build_startup_options(&target_app, &options)?;
+    let release_type = startup_options.release_type;
 
     lxapp.navigate_to(target_appid.clone(), startup_options)?;
 
-    UpdateManager::spawn_release_lxapp_update_check(target_appid);
+    crate::schedule_lxapp_update_check(&target_appid, release_type);
     Ok(())
 }
 
 host_api_async!(
-    NavigateToLxApp,
-    NavigateToLxAppOptions,
+    NavigateToApp,
+    NavigateToAppOptions,
     (),
     |lxapp, options, cancel| async {
-        if !should_navigate_to_lxapp(&lxapp, &options)? {
+        if !should_navigate_to_app(&lxapp, &options)? {
             return Ok(());
         }
-        do_navigate_to_lxapp(lxapp, options, &mut cancel).await?;
+        do_navigate_to_app(lxapp, options, &mut cancel).await?;
         Ok(())
     }
 );
 
-host_api!(NavigateBackLxApp, (), |lxapp| {
+host_api!(NavigateBackApp, (), |lxapp| {
     lxapp.navigate_back()?;
     Ok(())
 });
 
 pub(crate) fn register_all() {
     register_host_module!("navigator", {
-        "navigateToLxApp" => Arc::new(NavigateToLxApp),
-        "navigateBackLxApp" => Arc::new(NavigateBackLxApp)
+        "navigateToApp" => Arc::new(NavigateToApp),
+        "navigateBackApp" => Arc::new(NavigateBackApp)
     });
 }
