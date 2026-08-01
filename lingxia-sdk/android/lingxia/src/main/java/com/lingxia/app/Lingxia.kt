@@ -68,7 +68,21 @@ object Lingxia {
             }
         }
         initializeRuntime(activity)
+        val existingLxAppActivity = LxApp.getCurrentActivity()?.takeUnless {
+            it.isFinishing || it.isDestroyed
+        }
         LxApp.openHome()
+        val relaunchedInExistingTask =
+            activity.intent?.action == Intent.ACTION_MAIN &&
+                activity.intent?.hasCategory(Intent.CATEGORY_LAUNCHER) == true &&
+                !activity.isTaskRoot &&
+                existingLxAppActivity?.taskId == activity.taskId
+        if (relaunchedInExistingTask) {
+            // Relaunching from the launcher can create another bootstrap Activity above the
+            // existing LxAppActivity. It has no content of its own, so discard it and reveal
+            // the live LxApp surface instead of leaving a blank screen on top of the task.
+            activity.finish()
+        }
     }
 
     @JvmStatic
