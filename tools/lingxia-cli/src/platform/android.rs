@@ -800,30 +800,33 @@ fn android_env_adaptive_icon_xml(background: &str) -> String {
 }
 
 fn android_env_icon_foreground_xml(foreground: &str, accent: &str, badge: &str) -> String {
+    // Adaptive-icon foregrounds use a 108dp canvas but launchers scale and mask
+    // the central 66dp safe zone. Keep the badge relative to that safe zone;
+    // sizing it like a full-canvas overlay makes it dominate the icon on Pixel.
     format!(
         r###"<?xml version="1.0" encoding="utf-8"?>
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:drawable="{foreground}" />
     <item
-        android:width="42dp"
-        android:height="42dp"
+        android:width="20dp"
+        android:height="20dp"
         android:gravity="bottom|end"
-        android:bottom="14dp"
-        android:right="14dp">
+        android:bottom="18dp"
+        android:right="18dp">
         <shape android:shape="oval">
             <solid android:color="{accent}" />
-            <stroke android:width="4dp" android:color="#FFFFFF" />
+            <stroke android:width="2dp" android:color="#FFFFFF" />
         </shape>
     </item>
     <item
-        android:width="42dp"
-        android:height="42dp"
+        android:width="20dp"
+        android:height="20dp"
         android:gravity="bottom|end"
-        android:bottom="14dp"
-        android:right="14dp">
+        android:bottom="18dp"
+        android:right="18dp">
         <vector
-            android:width="42dp"
-            android:height="42dp"
+            android:width="20dp"
+            android:height="20dp"
             android:viewportWidth="42"
             android:viewportHeight="42">
             {badge_path}
@@ -1359,6 +1362,8 @@ mod tests {
             android_env_icon_foreground_xml("@mipmap/ic_launcher_foreground", "#D32F2F", "D");
         assert!(drawable.contains(r#"android:drawable="@mipmap/ic_launcher_foreground""#));
         assert!(drawable.contains(r##"android:color="#D32F2F""##));
+        assert_eq!(drawable.matches("android:width=\"20dp\"").count(), 3);
+        assert_eq!(drawable.matches("android:bottom=\"18dp\"").count(), 2);
         assert!(drawable.contains("android:viewportWidth=\"42\""));
     }
 }
