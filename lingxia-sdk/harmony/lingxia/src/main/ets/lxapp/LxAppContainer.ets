@@ -61,6 +61,7 @@ export struct LxAppContainer {
 
   // Static registry for TabBar updates (simple and direct)
   private static activeContainers: Map<string, LxAppContainer> = new Map()
+  private static appearanceByApp: Map<string, boolean> = new Map()
 
   // Static registry for animation type information
   private static animationTypes: Map<string, AnimationType> = new Map()
@@ -70,6 +71,7 @@ export struct LxAppContainer {
   @State selectedTabIndex: number = 0
   @State tabBarRefreshKey: number = 0  // Force TabBar refresh when data changes
   @State navbarRefreshKey: number = 0  // Force NavigationBar refresh when data changes
+  @State appearanceDark: boolean = false
   @State webViewComponents: Map<string, webview.WebviewController> = new Map() // Store Web components for each WebView
   @State currentWebTag: string = '' // Current active WebView tag
   @State webViewKeys: string[] = [] // Array of WebView keys for ForEach
@@ -162,6 +164,10 @@ export struct LxAppContainer {
 
   aboutToAppear() {
     this.initStatusBarHeight();
+
+    const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
+    const hostDark = context?.config?.colorMode === ConfigurationConstant.ColorMode.COLOR_MODE_DARK;
+    this.appearanceDark = LxAppContainer.appearanceByApp.get(this.appId) ?? hostDark;
 
     this.path = this.initialPath;
     hilog.info(DOMAIN, TAG, `Container creating for ${this.appId}:${this.path}, isHome=${this.isHomeApp()}`);
@@ -418,6 +424,19 @@ export struct LxAppContainer {
     return false;
   }
 
+  public static applyAppearance(appId: string, dark: boolean): boolean {
+    LxAppContainer.appearanceByApp.set(appId, dark);
+    const container = LxAppContainer.activeContainers.get(appId);
+    if (container) {
+      container.appearanceDark = dark;
+      container.pageConfig = getNavigationBarState(appId, container.path);
+      container.navbarRefreshKey++;
+      container.tabBarRefreshKey++;
+      container.applyStatusBarContentColor();
+    }
+    return true;
+  }
+
   /**
    * Static method to update tab selection for a specific appId and path
    */
@@ -600,6 +619,10 @@ export struct LxAppContainer {
                 CapsuleButton({
                   statusBarHeight: this.statusBarHeight,
                   standalone: false,
+                  backgroundColor: this.pageConfig?.capsuleBackgroundColor ?? 0xFFFFFFFF,
+                  foregroundColor: this.pageConfig?.capsuleForegroundColor ?? 0xFF000000,
+                  dividerColor: this.pageConfig?.capsuleDividerColor ?? 0xFFD1D1D6,
+                  interactionColor: this.pageConfig?.capsuleInteractionColor ?? 0xFFE5E5EA,
                   onMorePressed: () => this.handleCapsuleMore(),
                   onClosePressed: () => this.handleCapsuleClose()
                 })
@@ -631,6 +654,10 @@ export struct LxAppContainer {
             CapsuleButton({
               statusBarHeight: this.statusBarHeight,
               standalone: true,
+              backgroundColor: this.pageConfig?.capsuleBackgroundColor ?? 0xFFFFFFFF,
+              foregroundColor: this.pageConfig?.capsuleForegroundColor ?? 0xFF000000,
+              dividerColor: this.pageConfig?.capsuleDividerColor ?? 0xFFD1D1D6,
+              interactionColor: this.pageConfig?.capsuleInteractionColor ?? 0xFFE5E5EA,
               onMorePressed: () => this.handleCapsuleMore(),
               onClosePressed: () => this.handleCapsuleClose()
             })
@@ -1110,8 +1137,7 @@ export struct LxAppContainer {
     } else if (config && config.showNavbar) {
       lightGlyphs = isColorDark(config.navigationBarBackgroundColor || 0xFFFFFFFF);
     } else {
-      const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
-      lightGlyphs = context?.config?.colorMode === ConfigurationConstant.ColorMode.COLOR_MODE_DARK;
+      lightGlyphs = this.appearanceDark;
     }
     this.setStatusBarContentColor(lightGlyphs ? '#FFFFFF' : '#000000');
   }
@@ -1375,6 +1401,7 @@ export struct LxAppContainer {
         LingXiaWebView({
           webTag: webTag,
           controller: controller,
+          appearanceDark: this.appearanceDark,
           renderVisibility: this.getRenderVisibility(webTag),
           renderTranslate: this.getRenderTranslation(webTag),
           renderMargin: this.getRenderMargin(webTag),

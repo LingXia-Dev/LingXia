@@ -18,6 +18,7 @@ final class LxAppViewController: UIViewController, ObservableObject {
 
     // Platform-specific UI constraint only - WebView is managed by WebViewManager
     private var currentWebViewTopConstraint: NSLayoutConstraint?
+    private var currentWebViewBottomConstraint: NSLayoutConstraint?
 
     internal var rootContainer: UIView!
     private var webViewContainer: UIView!
@@ -482,14 +483,36 @@ final class LxAppViewController: UIViewController, ObservableObject {
         // If TabBar doesn't exist, create it with fresh config.
         if currentTabBar == nil {
             guard let tabConfig = lingxia.getTabBar(appId) else {
+                updateWebViewBottomInset(for: appId)
                 return
             }
             currentTabBar = createTabBar(config: tabConfig, appId: appId)
+            updateWebViewBottomInset(for: appId)
             return
         }
 
         // Existing tab bar already matches the current mini app; refresh its state from Rust.
         currentTabBar?.refreshLayout()
+        updateWebViewBottomInset(for: appId)
+    }
+
+    public override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+        super.traitCollectionDidChange(previousTraitCollection)
+        guard previousTraitCollection?.userInterfaceStyle != traitCollection.userInterfaceStyle else {
+            return
+        }
+        onHostAppearanceChanged()
+    }
+
+    private func standardTabBarInset(for appId: String) -> CGFloat {
+        guard let config = lingxia.getTabBar(appId), config.is_visible else { return 0 }
+        let alpha = (config.background_color >> 24) & 0xFF
+        return alpha == 0 ? 0 : CGFloat(config.dimension)
+    }
+
+    private func updateWebViewBottomInset(for appId: String) {
+        currentWebViewBottomConstraint?.constant = -standardTabBarInset(for: appId)
+        getCurrentWebView()?.setNeedsLayout()
     }
 
     private func hideCurrentLxApp() {
@@ -563,11 +586,15 @@ final class LxAppViewController: UIViewController, ObservableObject {
         // Calculate correct top offset based on the target page's NavigationBar state
         // This prevents the timing issue where navigationAreaHeight might not be updated yet
         let topOffset = calculateTopOffset(for: appId, path: path)
+        let bottomConstraint = webView.bottomAnchor.constraint(
+            equalTo: view.bottomAnchor,
+            constant: -standardTabBarInset(for: appId)
+        )
         let constraints = [
             webView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             webView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             webView.topAnchor.constraint(equalTo: rootContainer.topAnchor, constant: topOffset),
-            webView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+            bottomConstraint
         ]
 
         // Use shared WebViewManager logic which will trigger onPageShow
@@ -580,6 +607,7 @@ final class LxAppViewController: UIViewController, ObservableObject {
         if let topConstraint = constraints.first(where: { $0.firstAnchor == webView.topAnchor }) {
             currentWebViewTopConstraint = topConstraint
         }
+        currentWebViewBottomConstraint = bottomConstraint
 
         // Update current app state AFTER successful attach/switch
         LxAppCore.setCurrentPath(path)
@@ -880,6 +908,9 @@ final class LxAppViewController: UIViewController, ObservableObject {
             Task { @MainActor in
                 // The tab bar state has changed, tell the current tab bar to refresh itself.
                 self.currentTabBar?.refreshLayout()
+                if let appId {
+                    self.updateWebViewBottomInset(for: appId)
+                }
 
                 // After refreshing, the bar might have become visible, so we must ensure
                 // it's correctly layered in front of the webview.

@@ -65,7 +65,8 @@ pub use browser_emulation::{
     WindowsBrowserEmulationProfile, set_windows_browser_emulation_profile_for_new_webviews,
 };
 pub use color_scheme::{
-    WindowsPreferredColorScheme, set_windows_preferred_color_scheme_for_new_webviews,
+    WindowsPreferredColorScheme, set_windows_lxapp_preferred_color_scheme,
+    set_windows_preferred_color_scheme_for_new_webviews,
 };
 pub use composition::{set_webview_composition_hosting, webview_composition_hosting_enabled};
 pub use environment::set_windows_context_menu_refresh_provider;

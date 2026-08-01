@@ -6,6 +6,7 @@ import android.content.Context
 import android.graphics.Color
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.StateListDrawable
 import android.view.View
 import android.widget.ImageButton
 import android.widget.ImageView
@@ -23,8 +24,6 @@ internal object LxNavBarUtils {
     object CapsuleConstants {
         const val CORNER_RADIUS_DP = 16f
         const val STROKE_WIDTH_DP = 0.5f
-        const val STROKE_COLOR = 0xFFDDDDDD.toInt()
-        const val BACKGROUND_COLOR = Color.WHITE
     }
 
     private fun dpToPx(context: Context, dp: Float): Float =
@@ -72,7 +71,7 @@ internal object LxNavBarUtils {
         }
     }
 
-    fun applyCapsuleBackground(view: View) {
+    fun applyCapsuleBackground(view: View, backgroundColor: Int, dividerColor: Int) {
         val context = view.context
         val cornerRadiusPx = dpToPx(context, CapsuleConstants.CORNER_RADIUS_DP)
         val strokeWidthPx = dpToPx(context, CapsuleConstants.STROKE_WIDTH_DP)
@@ -80,9 +79,9 @@ internal object LxNavBarUtils {
             .coerceAtLeast(1)
         view.background = GradientDrawable().apply {
             shape = GradientDrawable.RECTANGLE
-            setColor(CapsuleConstants.BACKGROUND_COLOR)
+            setColor(backgroundColor)
             cornerRadius = cornerRadiusPx
-            setStroke(strokeWidthPx, CapsuleConstants.STROKE_COLOR)
+            setStroke(strokeWidthPx, dividerColor)
         }
     }
 
@@ -120,9 +119,21 @@ internal object LxNavBarUtils {
         }
     }
 
-    fun createCapsuleDivider(): Drawable =
+    fun applyCapsuleInteraction(view: View, interactionColor: Int) {
+        fun background(color: Int) = GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            setColor(color)
+            cornerRadius = dpToPx(view.context, CapsuleConstants.CORNER_RADIUS_DP)
+        }
+        view.background = StateListDrawable().apply {
+            addState(intArrayOf(android.R.attr.state_pressed), background(interactionColor))
+            addState(intArrayOf(), background(Color.TRANSPARENT))
+        }
+    }
+
+    fun createCapsuleDivider(color: Int): Drawable =
         GradientDrawable().apply {
             shape = GradientDrawable.RECTANGLE
-            setColor(CapsuleConstants.STROKE_COLOR)
+            setColor(color)
         }
 }

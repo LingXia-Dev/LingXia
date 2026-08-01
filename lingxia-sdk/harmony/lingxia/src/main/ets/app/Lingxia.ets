@@ -1,7 +1,7 @@
 import { window } from '@kit.ArkUI';
 import { webview } from '@kit.ArkWeb';
 import { i18n } from '@kit.LocalizationKit';
-import { Want } from '@kit.AbilityKit';
+import { Want, ConfigurationConstant } from '@kit.AbilityKit';
 import common from '@ohos.app.ability.common';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { LxApp } from '../lxapp/LxApp';
@@ -17,6 +17,7 @@ import {
   getAppCapabilities,
   getDisplayLanguage as getRuntimeDisplayLanguage,
   shouldEnableWebViewDebugging,
+  onHostAppearanceChanged,
   onApplinkReceived,
   CurrentLxApp
 } from 'liblingxia.so';
@@ -53,6 +54,7 @@ export class Lingxia {
   // (file/share/scan/media/push) — lxapp code reads these, never owns them.
   public static context: common.UIAbilityContext | null = null;
   public static windowStage: window.WindowStage | null = null;
+  private static environmentCallback: common.EnvironmentCallback | null = null;
 
   /**
    * Product-app entry point. Initializes the runtime for use with `LxAppNavigation`.
@@ -116,7 +118,16 @@ export class Lingxia {
 
     const locale = Lingxia.getSystemLocale();
 
-    const appId: string | null = lingxiaInit(callbackFunction, dataDir, cacheDir, resourceManager, locale);
+    const hostAppearanceDark = context?.config?.colorMode ===
+      ConfigurationConstant.ColorMode.COLOR_MODE_DARK;
+    const appId: string | null = lingxiaInit(
+      callbackFunction,
+      dataDir,
+      cacheDir,
+      resourceManager,
+      locale,
+      hostAppearanceDark
+    );
 
     if (appId) {
       hilog.info(DOMAIN, TAG, `Lingxia initialized successfully with home app: ${appId}`);
@@ -125,6 +136,7 @@ export class Lingxia {
       if (shouldEnableWebViewDebugging()) {
         webview.WebviewController.setWebDebuggingAccess(true);
       }
+      Lingxia.observeHostAppearance(appContext);
     } else {
       LxLog.e(TAG, 'Failed to get home app details from native init.');
     }
@@ -137,6 +149,21 @@ export class Lingxia {
         LxLog.e(TAG, `Push init error: ${e}`);
       }
     }
+  }
+
+  private static observeHostAppearance(appContext: common.ApplicationContext): void {
+    if (Lingxia.environmentCallback !== null) {
+      return;
+    }
+    const callback: common.EnvironmentCallback = {
+      onConfigurationUpdated: (config): void => {
+        const dark = config.colorMode === ConfigurationConstant.ColorMode.COLOR_MODE_DARK;
+        onHostAppearanceChanged(dark);
+      },
+      onMemoryLevel: (_level: number): void => {}
+    };
+    Lingxia.environmentCallback = callback;
+    appContext.on('environment', callback);
   }
 
   private static getSystemLocale(): string {

@@ -141,6 +141,9 @@ internal object NativeApi {
     @JvmStatic
     external fun onDeviceOrientationChanged(appId: String, sessionId: Long, value: String): Boolean
 
+    @JvmStatic
+    external fun onHostAppearanceChanged()
+
     /**
      * Get LxApp information using typed API
      * @param appId The ID of the app

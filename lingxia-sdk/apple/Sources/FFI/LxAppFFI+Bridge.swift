@@ -612,6 +612,18 @@ extension LxApp {
         }
     }
 
+    nonisolated static func hostAppearanceDark() -> Bool {
+        executeOnMain { LxAppAppearanceRegistry.hostIsDark() }
+    }
+
+    nonisolated static func applyAppearance(appid: RustStr, dark: Bool) -> Bool {
+        let appIdString = appid.toString()
+        return executeOnMain {
+            LxAppAppearanceRegistry.set(appId: appIdString, dark: dark)
+            return true
+        }
+    }
+
     nonisolated static func updateOrientationUI(appid: RustStr) -> Bool {
         let appIdString = appid.toString()
         return executeOnMain {

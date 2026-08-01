@@ -1,9 +1,6 @@
 package com.lingxia.lxapp.chrome
 
-import com.lingxia.lxapp.LxApp
-
 import android.content.Context
-import android.graphics.Color
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup.LayoutParams.MATCH_PARENT
@@ -15,10 +12,17 @@ import android.widget.LinearLayout
  * Capsule button component with menu and close buttons.
  * Used in the top-right corner of LxApp pages.
  */
-internal class CapsuleButton(context: Context) : LinearLayout(context) {
+internal class CapsuleButton(
+    context: Context,
+    backgroundColor: Int,
+    foregroundColor: Int,
+    dividerColor: Int,
+    interactionColor: Int
+) : LinearLayout(context) {
 
     private val menuButton: ImageButton
     private val closeButton: ImageButton
+    private val divider: View
 
     init {
         orientation = HORIZONTAL
@@ -28,8 +32,6 @@ internal class CapsuleButton(context: Context) : LinearLayout(context) {
 
         val density = resources.displayMetrics.density
 
-        LxNavBarUtils.applyCapsuleBackground(this)
-
         setPadding(
             (LxAppTheme.Metrics.CAPSULE_PADDING_HORIZONTAL_DP * density).toInt(),
             0,
@@ -38,16 +40,14 @@ internal class CapsuleButton(context: Context) : LinearLayout(context) {
         )
 
         menuButton = createButton()
-        LxNavBarUtils.configureCapsuleMenuButton(menuButton)
-
-        val divider = createDivider()
+        divider = createDivider()
 
         closeButton = createButton()
-        LxNavBarUtils.configureCapsuleCloseButton(closeButton)
 
         addView(menuButton)
         addView(divider)
         addView(closeButton)
+        applyStyle(backgroundColor, foregroundColor, dividerColor, interactionColor)
     }
 
     private fun createButton(): ImageButton {
@@ -56,7 +56,6 @@ internal class CapsuleButton(context: Context) : LinearLayout(context) {
 
         return ImageButton(context).apply {
             layoutParams = LayoutParams(buttonWidth, MATCH_PARENT)
-            setBackgroundColor(Color.TRANSPARENT)
             scaleType = ImageView.ScaleType.CENTER_INSIDE
         }
     }
@@ -73,8 +72,21 @@ internal class CapsuleButton(context: Context) : LinearLayout(context) {
                 marginStart = horizontalMargin
                 marginEnd = horizontalMargin
             }
-            background = LxNavBarUtils.createCapsuleDivider()
         }
+    }
+
+    fun applyStyle(
+        backgroundColor: Int,
+        foregroundColor: Int,
+        dividerColor: Int,
+        interactionColor: Int
+    ) {
+        LxNavBarUtils.applyCapsuleBackground(this, backgroundColor, dividerColor)
+        LxNavBarUtils.configureCapsuleMenuButton(menuButton, foregroundColor)
+        LxNavBarUtils.configureCapsuleCloseButton(closeButton, foregroundColor)
+        LxNavBarUtils.applyCapsuleInteraction(menuButton, interactionColor)
+        LxNavBarUtils.applyCapsuleInteraction(closeButton, interactionColor)
+        divider.background = LxNavBarUtils.createCapsuleDivider(dividerColor)
     }
 
     fun setOnMenuClickListener(listener: OnClickListener) {

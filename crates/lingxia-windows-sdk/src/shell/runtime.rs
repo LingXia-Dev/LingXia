@@ -971,7 +971,7 @@ pub(super) fn install() {
     lingxia_platform::set_windows_ui_update_handler(Arc::new(|appid| {
         sync_related_shell_layouts(&appid);
     }));
-    // Awaited UI updates (lx.showTabBar/hideTabBar): run the layout sync off
+    // Awaited `lx.tabBar.update()` calls: run the layout sync off
     // the caller's thread and complete the callback once it has applied.
     lingxia_platform::set_windows_ui_update_async_handler(Arc::new(|appid, done| {
         std::mem::drop(lingxia::task::spawn(async move {
@@ -1363,12 +1363,11 @@ fn sync_app_shell_layout(appid: &str) {
             let navbar = app.get_navbar_state(&path);
             let immersive = navbar.is_custom_navigation();
             let (foreground, background) = if immersive {
-                let foreground = match navbar.navigationBarTextStyle.as_str() {
-                    "white" => 0xffffff,
-                    "black" => 0x111111,
-                    _ if super::theme::is_dark() => 0xf2f2f7,
-                    _ => 0x111111,
-                };
+                let foreground = app
+                    .resolved_navigation_bar_style(&path)
+                    .foreground_color
+                    .rgba()
+                    >> 8;
                 (foreground, 0)
             } else {
                 match layout.navigation_bar.as_ref().filter(|nav| nav.visible) {
@@ -1703,9 +1702,9 @@ fn prime_tabbar_selection(app: &LxApp, selected_index: usize) {
 
     let selected_index = selected_index as i32;
     let selected_path = tabbar
-        .list
+        .items
         .get(selected_index as usize)
-        .map(|item| item.pagePath.clone());
+        .map(|item| item.page_path.clone());
     let event_appid = app.appid.clone();
     let handler = Arc::new(move |event| {
         handle_chrome_event(&event_appid, event);
@@ -1861,20 +1860,16 @@ fn browser_url_is_hidden(url: &str) -> bool {
 
 fn build_navigation_bar_layout(app: &LxApp, path: &str) -> WindowsShellNavigationBarLayout {
     let navbar = app.get_navbar_state(path);
-    let background_color = parse_css_color(&navbar.navigationBarBackgroundColor, 0xffffff);
-    let text_color = match navbar.navigationBarTextStyle.as_str() {
-        "white" => 0xffffff,
-        "black" => 0x111111,
-        // Unset / "auto": contrast against the navbar background.
-        _ => contrasting_text_color(background_color),
-    };
+    let style = app.resolved_navigation_bar_style(path);
+    let background_color = style.background_color.rgba() >> 8;
+    let text_color = style.foreground_color.rgba() >> 8;
     WindowsShellNavigationBarLayout {
         visible: navbar.show_navbar,
-        title: navbar.navigationBarTitleText,
+        title: navbar.title().to_string(),
         background_color,
         text_color,
         show_back_button: navbar.show_back_button,
-        show_home_button: navbar.show_home_button,
+        show_home_button: navbar.home_button_visible(),
         height: DEFAULT_NAV_BAR_HEIGHT,
     }
 }
@@ -1919,9 +1914,9 @@ fn build_tab_bar_layout(
     let current_tab_index = tabbar.as_ref().and_then(|tabbar| {
         let target = normalize_tab_path(&current_path);
         tabbar
-            .list
+            .items
             .iter()
-            .position(|item| normalize_tab_path(&item.pagePath) == target)
+            .position(|item| normalize_tab_path(&item.page_path) == target)
     });
     let ui_state = sidebar_ui_state(&app.appid);
     let runtime_info = app.runtime_info();
@@ -1950,13 +1945,13 @@ fn build_tab_bar_layout(
         .filter(|_| root_owns_lxapp_navigation)
         .map(|tabbar| {
             tabbar
-                .list
+                .items
                 .iter()
                 .map(|item| WindowsShellTabBarItemLayout {
-                    page_path: item.pagePath.clone(),
+                    page_path: item.page_path.clone(),
                     text: item.text.clone().unwrap_or_default(),
-                    icon_path: item.iconPath.clone().unwrap_or_default(),
-                    selected_icon_path: item.selectedIconPath.clone().unwrap_or_default(),
+                    icon_path: item.icon_path.clone().unwrap_or_default(),
+                    selected_icon_path: item.selected_icon_path.clone().unwrap_or_default(),
                     badge: item.badge.clone(),
                     has_red_dot: item.has_red_dot,
                 })
@@ -2054,10 +2049,7 @@ fn build_tab_bar_layout(
     // must not re-reserve that height (which would float it up by that much).
     let dimension = match position {
         WindowsShellTabBarPosition::Bottom => BOTTOM_TABBAR_CONTENT_HEIGHT,
-        WindowsShellTabBarPosition::Left | WindowsShellTabBarPosition::Right => tabbar
-            .as_ref()
-            .map(|tabbar| tabbar.dimension.max(MIN_SIDEBAR_WIDTH))
-            .unwrap_or(MIN_SIDEBAR_WIDTH),
+        WindowsShellTabBarPosition::Left | WindowsShellTabBarPosition::Right => MIN_SIDEBAR_WIDTH,
     };
     let desktop_sidebar = matches!(
         position,
@@ -2065,17 +2057,14 @@ fn build_tab_bar_layout(
     );
     // An app without a tabBar declaration inherits the desktop shell surface;
     // an explicit backgroundColor still styles the full sidebar as requested.
-    let tabbar_background = tabbar
-        .as_ref()
-        .map(|tabbar| tabbar.backgroundColor.as_str())
-        .unwrap_or(if desktop_sidebar {
-            "transparent"
-        } else {
-            "#ffffff"
+    let resolved_style = app.resolved_tabbar_style();
+    let tabbar_background_transparent = tabbar.as_ref().is_some_and(|tabbar| {
+        tabbar.presentation == lxapp::page_chrome::TabBarPresentation::Immersive
+    });
+    let items_api_hidden = desktop_sidebar
+        && tabbar.as_ref().is_some_and(|tabbar| {
+            tabbar.visibility == lxapp::page_chrome::VisibilityPreference::Hidden
         });
-    let tabbar_background_transparent = is_transparent_css_color(tabbar_background);
-    let items_api_hidden =
-        desktop_sidebar && tabbar.as_ref().is_some_and(|tabbar| tabbar.api_hidden);
     Some(WindowsShellTabBarLayout {
         // Mobile navigation may flip `is_visible` on detail pages. Desktop
         // sidebar chrome is stable; only an explicit API hide affects its
@@ -2085,7 +2074,7 @@ fn build_tab_bar_layout(
         } else {
             tabbar
                 .as_ref()
-                .map(|tabbar| tabbar.is_visible)
+                .map(|tabbar| tabbar.is_effectively_visible())
                 .unwrap_or(true)
         },
         position,
@@ -2114,31 +2103,23 @@ fn build_tab_bar_layout(
         },
         main_scroll_offset: ui_state.main_scroll_offset,
         footer_action_scroll_row: ui_state.footer_action_scroll_row,
-        color: parse_css_color(
-            tabbar
-                .as_ref()
-                .map(|tabbar| tabbar.color.as_str())
-                .unwrap_or("#666666"),
-            0x666666,
-        ),
-        selected_color: parse_css_color(
-            tabbar
-                .as_ref()
-                .map(|tabbar| tabbar.selectedColor.as_str())
-                .unwrap_or("#1677ff"),
-            0x1677ff,
-        ),
+        color: resolved_style
+            .map(|style| style.foreground_color.rgba() >> 8)
+            .unwrap_or(0x666666),
+        selected_color: resolved_style
+            .map(|style| style.selected_foreground_color.rgba() >> 8)
+            .unwrap_or(0x1677ff),
         // Transparent bottom bars keep the WebView laid out underneath; a
         // small overlay window draws only the tab items above that content.
-        background_color: parse_css_color(tabbar_background, 0xffffff),
+        background_color: resolved_style
+            .and_then(|style| style.background_color)
+            .map(|color| color.rgba() >> 8)
+            .unwrap_or(0),
         background_transparent: tabbar_background_transparent,
-        border_color: parse_css_color(
-            tabbar
-                .as_ref()
-                .map(|tabbar| tabbar.borderStyle.as_str())
-                .unwrap_or("#f0f0f0"),
-            0xf0f0f0,
-        ),
+        border_color: resolved_style
+            .and_then(|style| style.divider_color)
+            .map(|color| color.rgba() >> 8)
+            .unwrap_or(0),
         // A detail page keeps the lxapp group selected but clears every child
         // selection; group and tabbar-item selection are independent levels.
         selected_index: current_tab_index.map(|index| index as i32).unwrap_or(-1),
@@ -6588,41 +6569,6 @@ fn resolve_asset_path(asset_dir: &Path, raw: &str) -> Option<PathBuf> {
     }
 
     Some(asset_dir.join(path))
-}
-
-fn parse_css_color(raw: &str, fallback: u32) -> u32 {
-    let value = raw.trim();
-    if value.is_empty() || is_transparent_css_color(value) {
-        return fallback;
-    }
-    match value.to_ascii_lowercase().as_str() {
-        "black" => return 0x000000,
-        "white" => return 0xffffff,
-        "red" => return 0xff0000,
-        "blue" => return 0x0000ff,
-        "green" => return 0x008000,
-        _ => {}
-    }
-
-    let hex = value.strip_prefix('#').unwrap_or(value);
-    if !hex.is_ascii() {
-        return fallback;
-    }
-    let rgb = match hex.len() {
-        3 => {
-            let expanded = hex.chars().flat_map(|ch| [ch, ch]).collect::<String>();
-            u32::from_str_radix(&expanded, 16).ok()
-        }
-        6 => u32::from_str_radix(hex, 16).ok(),
-        // CSS 8-digit hex is #RRGGBBAA: keep the leading RGB bytes, ignore alpha.
-        8 => u32::from_str_radix(&hex[..6], 16).ok(),
-        _ => None,
-    };
-    rgb.unwrap_or(fallback)
-}
-
-fn is_transparent_css_color(raw: &str) -> bool {
-    raw.trim().eq_ignore_ascii_case("transparent")
 }
 
 #[cfg(test)]

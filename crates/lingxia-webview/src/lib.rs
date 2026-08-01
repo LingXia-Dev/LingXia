@@ -281,7 +281,7 @@ pub mod platform {
             set_webview_composition_hosting, set_webview_devtools_enabled,
             set_webview_native_view_host, set_webview_user_data_dir,
             set_windows_browser_emulation_profile_for_new_webviews,
-            set_windows_context_menu_refresh_provider,
+            set_windows_context_menu_refresh_provider, set_windows_lxapp_preferred_color_scheme,
             set_windows_preferred_color_scheme_for_new_webviews,
             webview_composition_hosting_enabled,
         };

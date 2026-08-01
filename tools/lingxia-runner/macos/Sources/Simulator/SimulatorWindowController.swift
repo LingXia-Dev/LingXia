@@ -192,7 +192,7 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
             }
         }
 
-        // Rust drives navbar updates (page mount, lx.setNavigationBarTitle, …)
+        // Rust drives navbar updates (page mount, lx.navigationBar.update(), …)
         // through updateNavBarUI, which posts this. The initial navbar is applied
         // before the page instance exists, so without this the title never lands.
         navBarStateChangedObserver = NotificationCenter.default.addObserver(

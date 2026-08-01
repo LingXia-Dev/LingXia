@@ -410,6 +410,10 @@ class NativeBridge {
       return LxAppContainer.refreshNavBar(appId);
     });
 
+    this.register('applyLxAppAppearance', (appId: string, dark: string): boolean => {
+      return LxAppContainer.applyAppearance(appId, dark === 'true');
+    });
+
     this.register('updateOrientationUI', (appId: string): boolean => {
       return Lingxia.updateOrientationUI(appId);
     });

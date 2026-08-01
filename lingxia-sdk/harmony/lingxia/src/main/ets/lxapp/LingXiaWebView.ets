@@ -65,6 +65,7 @@ export struct LingXiaWebView {
   @Prop renderClip: boolean = false
   @Prop renderZIndex: number = 0
   @Prop renderHitTest: HitTestMode = HitTestMode.Default
+  @Prop appearanceDark: boolean = false
   controller: webview.WebviewController = new webview.WebviewController()
   onFullscreenChange?: (webTag: string, componentId: string, isFullscreen: boolean) => void
 
@@ -105,6 +106,7 @@ export struct LingXiaWebView {
   @Builder
   private buildManagedWeb(): void {
     Web({ src: '', controller: this.controller, incognitoMode: isEphemeralDataMode(this.webTag) })
+      .darkMode(this.appearanceDark ? WebDarkMode.On : WebDarkMode.Off)
       // Form controls are web-rendered (lx-input is a real <input> in the
       // page); RESIZE_CONTENT lets ArkWeb shrink the page and scroll the
       // focused editable above the IME — engine-owned keyboard avoidance,

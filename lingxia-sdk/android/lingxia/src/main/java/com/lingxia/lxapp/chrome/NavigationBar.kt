@@ -23,16 +23,26 @@ import androidx.annotation.StyleRes
  */
 internal data class NavigationBarState(
     val navigationBarBackgroundColor: Int,         // Background color (e.g., #FFFFFF)
+    val navigationBarForegroundColor: Int,
+    val navigationBarDividerColor: Int,
     val navigationBarTextStyle: String,            // Text style ("black" or "white")
     val navigationBarTitleText: String,            // Navigation bar title text
     val showNavbar: Boolean,                       // Whether to show the navigation bar
     val showBackButton: Boolean,                   // Whether to show the back button
-    val showHomeButton: Boolean                    // Whether to show the home button
+    val showHomeButton: Boolean,                   // Whether to show the home button
+    val capsuleBackgroundColor: Int,
+    val capsuleForegroundColor: Int,
+    val capsuleDividerColor: Int,
+    val capsuleInteractionColor: Int
 ) {
     companion object {
         // Default values
         val DEFAULT_BACKGROUND_COLOR = Color.WHITE
         val DEFAULT_TEXT_COLOR = Color.BLACK
+        val DEFAULT_CAPSULE_BACKGROUND_COLOR = Color.WHITE
+        val DEFAULT_CAPSULE_FOREGROUND_COLOR = Color.BLACK
+        const val DEFAULT_CAPSULE_DIVIDER_COLOR = 0xFFD1D1D6.toInt()
+        const val DEFAULT_CAPSULE_INTERACTION_COLOR = 0xFFE5E5EA.toInt()
         const val DEFAULT_HEIGHT_DP = LxAppActivity.DEFAULT_NAV_BAR_HEIGHT_DP
     }
 }
@@ -81,11 +91,7 @@ internal class NavigationBar @JvmOverloads constructor(
          * Resolve front text/icon color based on navbar text style and background color
          */
         fun resolveNavTextColor(navbarState: NavigationBarState): Int {
-            return when (navbarState.navigationBarTextStyle.lowercase()) {
-                "white" -> Color.WHITE
-                "black" -> Color.BLACK
-                else -> if (isColorDark(navbarState.navigationBarBackgroundColor)) Color.WHITE else Color.BLACK
-            }
+            return navbarState.navigationBarForegroundColor
         }
     }
 
@@ -93,13 +99,20 @@ internal class NavigationBar @JvmOverloads constructor(
     private val loadingIndicator: ProgressBar
     private val backButton: ImageView
     private val homeButton: ImageView
+    private val divider: View
     private var currentConfig: NavigationBarState = NavigationBarState(
         navigationBarBackgroundColor = Color.WHITE,
+        navigationBarForegroundColor = Color.BLACK,
+        navigationBarDividerColor = 0xFFD1D1D6.toInt(),
         navigationBarTextStyle = "black",
         navigationBarTitleText = "",
         showNavbar = true,
         showBackButton = false,
-        showHomeButton = false
+        showHomeButton = false,
+        capsuleBackgroundColor = NavigationBarState.DEFAULT_CAPSULE_BACKGROUND_COLOR,
+        capsuleForegroundColor = NavigationBarState.DEFAULT_CAPSULE_FOREGROUND_COLOR,
+        capsuleDividerColor = NavigationBarState.DEFAULT_CAPSULE_DIVIDER_COLOR,
+        capsuleInteractionColor = NavigationBarState.DEFAULT_CAPSULE_INTERACTION_COLOR
     )
     private var knownStatusBarHeight: Int = 0
 
@@ -177,6 +190,17 @@ internal class NavigationBar @JvmOverloads constructor(
             visibility = View.GONE
         }
         addView(loadingIndicator)
+
+        divider = View(context).apply {
+            layoutParams = LayoutParams(
+                LayoutParams.MATCH_PARENT,
+                density.toInt().coerceAtLeast(1)
+            ).apply {
+                gravity = Gravity.BOTTOM
+            }
+            setBackgroundColor(currentConfig.navigationBarDividerColor)
+        }
+        addView(divider)
     }
 
     // Helper method to update progress indicator color
@@ -372,6 +396,8 @@ internal class NavigationBar @JvmOverloads constructor(
         disableAnimation: Boolean = false
     ) {
         val textColor = ColorUtils.resolveNavTextColor(navbarState)
+        divider.setBackgroundColor(navbarState.navigationBarDividerColor)
+        divider.visibility = if (navbarState.showNavbar) View.VISIBLE else View.GONE
 
         if (navbarState.showNavbar) {
             visibility = View.VISIBLE

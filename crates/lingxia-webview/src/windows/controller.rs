@@ -965,7 +965,8 @@ pub(crate) fn run_ui_thread_inner(
         // Appearance is a dev nicety, not a correctness precondition like UA
         // emulation: skip the neutral value and never let a failure (e.g. a
         // WebView2 runtime without ICoreWebView2_13) abort webview creation.
-        if let Some(scheme) = color_scheme::configured_color_scheme()
+        if let Some(scheme) =
+            color_scheme::lxapp_color_scheme(&webtag).or_else(color_scheme::configured_color_scheme)
             && scheme != WindowsPreferredColorScheme::Auto
             && let Err(err) = color_scheme::apply_color_scheme(&state.webview, scheme)
         {

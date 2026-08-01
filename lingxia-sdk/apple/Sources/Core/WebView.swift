@@ -66,6 +66,7 @@ extension WKWebView {
     func setup(appId: String, path: String) {
         self.appId = appId
         self.currentPath = path
+        LxAppAppearanceRegistry.register(self, appId: appId)
     }
 
     /// Registration state

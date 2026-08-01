@@ -1144,7 +1144,7 @@ class LxAppActivity : AppCompatActivity() {
         }
     }
 
-    private fun addCapsuleButton() {
+    private fun addCapsuleButton(navbarState: NavigationBarState? = null) {
         if (!shouldShowCapsuleButton(appId, currentSessionId)) return
 
         val density = resources.displayMetrics.density
@@ -1152,7 +1152,17 @@ class LxAppActivity : AppCompatActivity() {
         val capsuleHeightPx = (LxAppTheme.Metrics.CAPSULE_HEIGHT_DP * density).toInt()
         val capsuleTopMarginPx = LxAppTheme.Metrics.calculateCapsuleTopMargin(statusBarHeight, density)
 
-        val capsule = CapsuleButton(this).apply {
+        val state = navbarState ?: NativeApi.getNavigationBarState(
+            appId,
+            currentWebView?.getCurrentPath() ?: ""
+        )
+        val capsule = CapsuleButton(
+            this,
+            state?.capsuleBackgroundColor ?: NavigationBarState.DEFAULT_CAPSULE_BACKGROUND_COLOR,
+            state?.capsuleForegroundColor ?: NavigationBarState.DEFAULT_CAPSULE_FOREGROUND_COLOR,
+            state?.capsuleDividerColor ?: NavigationBarState.DEFAULT_CAPSULE_DIVIDER_COLOR,
+            state?.capsuleInteractionColor ?: NavigationBarState.DEFAULT_CAPSULE_INTERACTION_COLOR
+        ).apply {
             layoutParams = FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 capsuleHeightPx
@@ -1930,6 +1940,7 @@ class LxAppActivity : AppCompatActivity() {
         }
 
         updateLayoutMargins()
+        updateCapsuleButton(navbarState)
     }
 
     /**
@@ -2229,15 +2240,25 @@ class LxAppActivity : AppCompatActivity() {
     }
 
     // Update capsule button visibility
-    private fun updateCapsuleButton() {
+    private fun updateCapsuleButton(navbarState: NavigationBarState? = null) {
         rootContainer.post {
-            val capsule = rootContainer.findViewWithTag<View>("capsule_button")
+            val capsule = rootContainer.findViewWithTag<CapsuleButton>("capsule_button")
             if (!shouldShowCapsuleButton(appId, currentSessionId)) {
                 capsule?.visibility = View.GONE
             } else {
                 if (capsule == null) {
-                    addCapsuleButton()
+                    addCapsuleButton(navbarState)
                 } else {
+                    val state = navbarState ?: NativeApi.getNavigationBarState(
+                        appId,
+                        currentWebView?.getCurrentPath() ?: ""
+                    )
+                    capsule.applyStyle(
+                        state?.capsuleBackgroundColor ?: NavigationBarState.DEFAULT_CAPSULE_BACKGROUND_COLOR,
+                        state?.capsuleForegroundColor ?: NavigationBarState.DEFAULT_CAPSULE_FOREGROUND_COLOR,
+                        state?.capsuleDividerColor ?: NavigationBarState.DEFAULT_CAPSULE_DIVIDER_COLOR,
+                        state?.capsuleInteractionColor ?: NavigationBarState.DEFAULT_CAPSULE_INTERACTION_COLOR
+                    )
                     capsule.visibility = View.VISIBLE
                 }
             }
@@ -2254,6 +2275,8 @@ class LxAppActivity : AppCompatActivity() {
     // Handle configuration changes to prevent Activity recreation
     override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
         super.onConfigurationChanged(newConfig)
+
+        NativeApi.onHostAppearanceChanged()
 
         // Update layout to adapt to screen orientation changes
         if (::webViewContainer.isInitialized) {

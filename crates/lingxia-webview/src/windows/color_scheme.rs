@@ -5,6 +5,8 @@
 //! app's own override channel.
 
 use super::*;
+use std::collections::HashMap;
+use std::sync::{OnceLock, RwLock};
 
 /// Color scheme served to WebView2 pages via `prefers-color-scheme`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -16,6 +18,8 @@ pub enum WindowsPreferredColorScheme {
 }
 
 static CONFIGURED_SCHEME: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
+static LXAPP_SCHEMES: OnceLock<RwLock<HashMap<String, WindowsPreferredColorScheme>>> =
+    OnceLock::new();
 
 pub(crate) fn configured_color_scheme() -> Option<WindowsPreferredColorScheme> {
     match CONFIGURED_SCHEME.load(std::sync::atomic::Ordering::Acquire) {
@@ -29,6 +33,24 @@ pub(crate) fn configured_color_scheme() -> Option<WindowsPreferredColorScheme> {
 /// Configures the scheme inherited by WebViews created afterwards.
 pub fn set_windows_preferred_color_scheme_for_new_webviews(scheme: WindowsPreferredColorScheme) {
     CONFIGURED_SCHEME.store(scheme as u8 + 1, std::sync::atomic::Ordering::Release);
+}
+
+/// Configure the scheme for one lxapp without changing browser or shell
+/// WebViews. The registry is also consulted when later page WebViews start.
+pub fn set_windows_lxapp_preferred_color_scheme(appid: &str, scheme: WindowsPreferredColorScheme) {
+    if let Ok(mut schemes) = LXAPP_SCHEMES
+        .get_or_init(|| RwLock::new(HashMap::new()))
+        .write()
+    {
+        schemes.insert(appid.to_string(), scheme);
+    }
+}
+
+pub(crate) fn lxapp_color_scheme(webtag: &WebTag) -> Option<WindowsPreferredColorScheme> {
+    LXAPP_SCHEMES
+        .get()
+        .and_then(|schemes| schemes.read().ok())
+        .and_then(|schemes| schemes.get(&webtag.extract_appid()).copied())
 }
 
 pub(crate) fn apply_color_scheme(

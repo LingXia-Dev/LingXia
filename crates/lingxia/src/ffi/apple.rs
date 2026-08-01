@@ -7,21 +7,6 @@ use lxapp::{
 #[cfg(all(target_os = "macos", feature = "browser-shell"))]
 use std::sync::Arc;
 
-/// Parses a color string (e.g., "#RRGGBB" or "transparent") into a u32 ARGB value.
-fn parse_color_to_u32(color_str: &str, default_color: u32) -> u32 {
-    if color_str.eq_ignore_ascii_case("transparent") {
-        return 0x00000000;
-    }
-
-    if let Some(hex_part) = color_str.strip_prefix('#')
-        && hex_part.len() == 6
-        && let Ok(rgb) = u32::from_str_radix(hex_part, 16)
-    {
-        return 0xFF000000 | rgb; // Add full alpha
-    }
-    default_color
-}
-
 #[swift_bridge::bridge]
 mod bridge {
     // LxApp basic information for Swift
@@ -39,11 +24,17 @@ mod bridge {
     #[swift_bridge(swift_repr = "struct")]
     pub struct NavigationBarState {
         pub background_color: u32,
+        pub foreground_color: u32,
+        pub divider_color: u32,
         pub text_style: String,
         pub title_text: String,
         pub show_navbar: bool,
         pub show_back_button: bool,
         pub show_home_button: bool,
+        pub capsule_background_color: u32,
+        pub capsule_foreground_color: u32,
+        pub capsule_divider_color: u32,
+        pub capsule_interaction_color: u32,
     }
 
     // TabBar state for Swift (without items array)
@@ -57,7 +48,7 @@ mod bridge {
         pub dimension: i32,
         pub items_count: i32,
         pub is_visible: bool,
-        /// Hidden by an explicit lx.hideTabBar() (not navigation-derived) —
+        /// Hidden by an explicit `lx.tabBar.update()` visibility patch (not navigation-derived) —
         /// what desktop skins map to group collapse.
         pub is_api_hidden: bool,
         pub selected_index: i32,
@@ -179,6 +170,9 @@ mod bridge {
 
         #[swift_bridge(swift_name = "onDeviceOrientationChanged")]
         fn on_device_orientation_changed(appid: &str, session_id: u64, value: &str) -> bool;
+
+        #[swift_bridge(swift_name = "onHostAppearanceChanged")]
+        fn on_host_appearance_changed();
 
         #[swift_bridge(swift_name = "getLxAppInfo")]
         fn get_lxapp_info(appid: &str) -> LxAppInfo;
@@ -808,6 +802,10 @@ pub fn on_device_orientation_changed(appid: &str, session_id: u64, value: &str) 
 
     let payload = format!(r#"{{"value":"{}"}}"#, normalized);
     lxapp::publish_app_event(appid, "DeviceOrientationChange", Some(payload))
+}
+
+pub fn on_host_appearance_changed() {
+    lxapp::refresh_auto_appearances();
 }
 
 /// Handle lxapp-scoped UI events from Swift. `appid` must be a real lxapp id.
@@ -1792,24 +1790,45 @@ pub fn get_lxapp_more_actions(appid: &str) -> String {
 pub fn get_navigation_bar_state(appid: &str, path: &str) -> self::bridge::NavigationBarState {
     if let Some(lxapp) = lxapp::try_get(appid) {
         let nav_state = lxapp.get_navbar_state(path);
-        let bg_color = parse_color_to_u32(&nav_state.navigationBarBackgroundColor, 0xFFFFFFFF);
+        let style = lxapp.resolved_navigation_bar_style(path);
+        let capsule = lxapp.resolved_capsule_style();
+        let foreground = style.foreground_color.rgba() >> 8;
+        let text_style =
+            if ((foreground >> 16) & 0xff) + ((foreground >> 8) & 0xff) + (foreground & 0xff) < 384
+            {
+                "black"
+            } else {
+                "white"
+            };
 
         self::bridge::NavigationBarState {
-            background_color: bg_color,
-            text_style: nav_state.navigationBarTextStyle,
-            title_text: nav_state.navigationBarTitleText,
+            background_color: style.background_color.argb(),
+            foreground_color: style.foreground_color.argb(),
+            divider_color: style.divider_color.argb(),
+            text_style: text_style.to_string(),
+            title_text: nav_state.title().to_string(),
             show_navbar: nav_state.show_navbar,
             show_back_button: nav_state.show_back_button,
-            show_home_button: nav_state.show_home_button,
+            show_home_button: nav_state.home_button_visible(),
+            capsule_background_color: capsule.background_color.argb(),
+            capsule_foreground_color: capsule.foreground_color.argb(),
+            capsule_divider_color: capsule.divider_color.argb(),
+            capsule_interaction_color: capsule.interaction_color.argb(),
         }
     } else {
         self::bridge::NavigationBarState {
             background_color: 0,
+            foreground_color: 0xFF000000,
+            divider_color: 0xFFD1D1D6,
             text_style: String::new(),
             title_text: String::new(),
             show_navbar: false,
             show_back_button: false,
             show_home_button: false,
+            capsule_background_color: 0xFFFFFFFF,
+            capsule_foreground_color: 0xFF000000,
+            capsule_divider_color: 0xFFD1D1D6,
+            capsule_interaction_color: 0xFFE5E5EA,
         }
     }
 }
@@ -1838,21 +1857,37 @@ fn orientation_to_value(orientation: OrientationConfig) -> i32 {
 /// Get TabBar state
 pub fn get_tab_bar(appid: &str) -> Option<self::bridge::TabBar> {
     lxapp::try_get(appid).and_then(|lxapp| {
+        let resolved = lxapp.resolved_tabbar_style()?;
         lxapp.get_tabbar().map(|tabbar| self::bridge::TabBar {
-            color: parse_color_to_u32(&tabbar.color, 0xFF666666),
-            selected_color: parse_color_to_u32(&tabbar.selectedColor, 0xFF1677FF),
-            background_color: parse_color_to_u32(&tabbar.backgroundColor, 0xFFFFFFFF),
-            border_style: parse_color_to_u32(&tabbar.borderStyle, 0xFFF0F0F0),
-            position: tabbar.position.to_i32(),
-            dimension: tabbar.dimension,
-            items_count: tabbar.list.len() as i32,
-            is_visible: tabbar.is_visible,
-            is_api_hidden: tabbar.api_hidden,
+            color: resolved.foreground_color.argb(),
+            selected_color: resolved.selected_foreground_color.argb(),
+            background_color: resolved
+                .background_color
+                .map(|color| color.argb())
+                .unwrap_or(0),
+            border_style: resolved
+                .divider_color
+                .map(|color| color.argb())
+                .unwrap_or(0),
+            position: 0,
+            dimension: 64,
+            items_count: tabbar.items.len() as i32,
+            is_visible: tabbar.is_effectively_visible(),
+            is_api_hidden: tabbar.visibility == lxapp::page_chrome::VisibilityPreference::Hidden,
             selected_index: tabbar.selected_index,
-            styled_mask: (!tabbar.color.is_empty() as u32)
-                | ((!tabbar.selectedColor.is_empty() as u32) << 1)
-                | ((!tabbar.backgroundColor.is_empty() as u32) << 2)
-                | ((!tabbar.borderStyle.is_empty() as u32) << 3),
+            styled_mask: (tabbar
+                .runtime_style
+                .foreground_color
+                .or(tabbar.style.foreground_color)
+                .is_some() as u32)
+                | ((tabbar
+                    .runtime_style
+                    .selected_foreground_color
+                    .or(tabbar.style.selected_foreground_color)
+                    .is_some() as u32)
+                    << 1)
+                | ((tabbar.style.background_color.is_some() as u32) << 2)
+                | ((tabbar.style.divider_color.is_some() as u32) << 3),
         })
     })
 }
@@ -1863,11 +1898,11 @@ pub fn get_tab_bar_item(appid: &str, index: i32) -> Option<self::bridge::TabBarI
         .and_then(|lxapp| lxapp.get_tabbar())
         .and_then(|tabbar| {
             tabbar.get_item(index).map(|item| self::bridge::TabBarItem {
-                page_path: item.pagePath.clone(),
+                page_path: item.page_path.clone(),
                 text: item.text.clone().unwrap_or_default(),
-                icon_path: item.iconPath.clone().unwrap_or_default(),
-                selected_icon_path: item.selectedIconPath.clone().unwrap_or_default(),
-                selected: item.selected,
+                icon_path: item.icon_path.clone().unwrap_or_default(),
+                selected_icon_path: item.selected_icon_path.clone().unwrap_or_default(),
+                selected: tabbar.selected_index == index,
                 badge: item.badge.clone().unwrap_or_default(),
                 has_red_dot: item.has_red_dot,
             })

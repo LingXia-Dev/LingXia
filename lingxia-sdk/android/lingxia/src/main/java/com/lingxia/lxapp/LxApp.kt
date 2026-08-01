@@ -6,11 +6,13 @@ import android.content.Intent
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import androidx.appcompat.app.AppCompatDelegate
 import com.lingxia.app.Lingxia
 import com.lingxia.app.LxLog
 import com.lingxia.app.NativeApi
 import com.lingxia.app.UpdateManager
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 
@@ -27,15 +29,42 @@ object LxApp {
         internal set
 
     private var currentActivity: LxAppActivity? = null
+    private val appearanceByApp = ConcurrentHashMap<String, Boolean>()
 
     @JvmStatic
     internal fun setCurrentActivity(activity: LxAppActivity?) {
         currentActivity = activity
         UpdateManager.init(activity)
+        activity?.let { current ->
+            appearanceByApp[current.getAppId()]?.let { dark -> applyAppearance(current.getAppId(), dark) }
+        }
     }
 
     @JvmStatic
     fun getCurrentActivity(): LxAppActivity? = currentActivity
+
+    @JvmStatic
+    fun hostAppearanceDark(): Boolean {
+        val resources = Lingxia.applicationContext()?.resources ?: currentActivity?.resources ?: return false
+        return (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
+            android.content.res.Configuration.UI_MODE_NIGHT_YES
+    }
+
+    @JvmStatic
+    fun applyAppearance(appId: String, dark: Boolean): Boolean {
+        appearanceByApp[appId] = dark
+        val activity = currentActivity?.takeIf { it.getAppId() == appId } ?: return true
+        activity.runOnUiThread {
+            activity.delegate.localNightMode = if (dark) {
+                AppCompatDelegate.MODE_NIGHT_YES
+            } else {
+                AppCompatDelegate.MODE_NIGHT_NO
+            }
+            LxAppActivity.updateNavBarUI(appId)
+            LxAppActivity.updateTabBarUI(appId)
+        }
+        return true
+    }
 
     @JvmStatic
     fun open(appId: String, path: String) {
@@ -134,7 +163,7 @@ object LxApp {
 
     /**
      * Async TabBar update for callers that await the real result
-     * (lx.showTabBar/hideTabBar). Runs on the UI thread and reports
+     * (lx.tabBar.update). Runs on the UI thread and reports
      * completion through NativeApi.onCallback — never blocks the caller.
      */
     @JvmStatic

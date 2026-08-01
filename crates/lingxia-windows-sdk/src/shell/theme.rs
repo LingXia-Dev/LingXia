@@ -51,6 +51,7 @@ pub(super) fn refresh() -> bool {
     .map(|apps_use_light| apps_use_light == 0)
     .unwrap_or(false);
     let high_contrast = read_high_contrast();
+    lingxia_platform::windows::set_windows_host_appearance_dark(dark);
     let colors = read_system_colors();
     let accent = read_dword(w!("Software\\Microsoft\\Windows\\DWM"), w!("AccentColor"))
         .map(accent_abgr_to_rgb)
@@ -73,6 +74,9 @@ pub(super) fn refresh() -> bool {
         || highlight_changed
         || control_changed;
     let was_initialized = INITIALIZED.swap(true, Ordering::Relaxed);
+    if was_initialized && prev_dark != dark {
+        lxapp::refresh_auto_appearances();
+    }
     !was_initialized
         || prev_dark != dark
         || prev_accent != accent

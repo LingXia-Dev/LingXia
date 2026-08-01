@@ -83,11 +83,17 @@ pub struct TabItem {
 #[napi(object)]
 pub struct NavigationBarState {
     pub navigation_bar_background_color: u32,
+    pub navigation_bar_foreground_color: u32,
+    pub navigation_bar_divider_color: u32,
     pub navigation_bar_text_style: String,
     pub navigation_bar_title_text: String,
     pub show_navbar: bool,
     pub show_back_button: bool,
     pub show_home_button: bool,
+    pub capsule_background_color: u32,
+    pub capsule_foreground_color: u32,
+    pub capsule_divider_color: u32,
+    pub capsule_interaction_color: u32,
 }
 
 /// NAPI-compatible current LxApp information
@@ -108,6 +114,7 @@ pub fn lingxia_init(
         Object,
     >,
     locale: String,
+    host_appearance_dark: bool,
 ) -> Option<String> {
     crate::logging::init();
 
@@ -129,6 +136,8 @@ pub fn lingxia_init(
         log::error!("ResourceManager is required but not provided");
         return None;
     }
+
+    lingxia_platform::harmony::set_harmony_host_appearance_dark(host_appearance_dark);
 
     // Create Platform instance
     let platform = match lingxia_platform::Platform::new(
@@ -152,6 +161,12 @@ pub fn lingxia_init(
             None
         }
     }
+}
+
+#[napi]
+pub fn on_host_appearance_changed(dark: bool) {
+    lingxia_platform::harmony::set_harmony_host_appearance_dark(dark);
+    lxapp::refresh_auto_appearances();
 }
 
 /// Return the effective display language selected by the runtime.
@@ -387,33 +402,37 @@ pub fn surface_derived_layout(appid: String) -> String {
 #[napi]
 fn get_tab_bar(appid: String) -> Option<TabBarState> {
     lxapp::try_get(&appid).and_then(|lxapp| {
+        let resolved = lxapp.resolved_tabbar_style()?;
         lxapp.get_tabbar().map(|tabbar| {
             let items: Vec<TabItem> = tabbar
-                .list
+                .items
                 .iter()
-                .map(|item| TabItem {
-                    page_path: item.pagePath.clone(),
+                .enumerate()
+                .map(|(index, item)| TabItem {
+                    page_path: item.page_path.clone(),
                     text: item.text.clone(),
-                    icon_path: item.iconPath.clone(),
-                    selected_icon_path: item.selectedIconPath.clone(),
-                    selected: item.selected,
+                    icon_path: item.icon_path.clone(),
+                    selected_icon_path: item.selected_icon_path.clone(),
+                    selected: tabbar.selected_index == index as i32,
                     badge: item.badge.clone(),
                     has_red_dot: Some(item.has_red_dot),
                 })
                 .collect();
 
             TabBarState {
-                color: parse_color_to_u32(&tabbar.color, 0xFF666666),
-                selected_color: parse_color_to_u32(&tabbar.selectedColor, 0xFF1677FF),
-                background_color: parse_color_to_u32(&tabbar.backgroundColor, 0xFFFFFFFF),
-                border_style: parse_color_to_u32(&tabbar.borderStyle, 0xFFF0F0F0),
-                position: match tabbar.position {
-                    lxapp::tabbar::TabBarPosition::Bottom => TabBarPosition::Bottom,
-                    lxapp::tabbar::TabBarPosition::Left => TabBarPosition::Left,
-                    lxapp::tabbar::TabBarPosition::Right => TabBarPosition::Right,
-                },
-                dimension: tabbar.dimension,
-                is_visible: tabbar.is_visible,
+                color: resolved.foreground_color.argb(),
+                selected_color: resolved.selected_foreground_color.argb(),
+                background_color: resolved
+                    .background_color
+                    .map(|color| color.argb())
+                    .unwrap_or(0),
+                border_style: resolved
+                    .divider_color
+                    .map(|color| color.argb())
+                    .unwrap_or(0),
+                position: TabBarPosition::Bottom,
+                dimension: 72,
+                is_visible: tabbar.is_effectively_visible(),
                 items,
                 selected_index: tabbar.selected_index,
             }
@@ -426,17 +445,30 @@ fn get_tab_bar(appid: String) -> Option<TabBarState> {
 pub fn get_navigation_bar_state(appid: String, path: String) -> Option<NavigationBarState> {
     lxapp::try_get(&appid).map(|lxapp| {
         let rust_state = lxapp.get_navbar_state(&path);
+        let style = lxapp.resolved_navigation_bar_style(&path);
+        let capsule = lxapp.resolved_capsule_style();
+        let foreground = style.foreground_color.rgba() >> 8;
+        let text_style =
+            if ((foreground >> 16) & 0xff) + ((foreground >> 8) & 0xff) + (foreground & 0xff) < 384
+            {
+                "black"
+            } else {
+                "white"
+            };
 
         NavigationBarState {
-            navigation_bar_background_color: parse_color_to_u32(
-                &rust_state.navigationBarBackgroundColor,
-                0xFFFFFFFF,
-            ),
-            navigation_bar_text_style: rust_state.navigationBarTextStyle,
-            navigation_bar_title_text: rust_state.navigationBarTitleText,
+            navigation_bar_background_color: style.background_color.argb(),
+            navigation_bar_foreground_color: style.foreground_color.argb(),
+            navigation_bar_divider_color: style.divider_color.argb(),
+            navigation_bar_text_style: text_style.to_string(),
+            navigation_bar_title_text: rust_state.title().to_string(),
             show_navbar: rust_state.show_navbar,
             show_back_button: rust_state.show_back_button,
-            show_home_button: rust_state.show_home_button,
+            show_home_button: rust_state.home_button_visible(),
+            capsule_background_color: capsule.background_color.argb(),
+            capsule_foreground_color: capsule.foreground_color.argb(),
+            capsule_divider_color: capsule.divider_color.argb(),
+            capsule_interaction_color: capsule.interaction_color.argb(),
         }
     })
 }
