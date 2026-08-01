@@ -756,10 +756,6 @@ final class BrowserTabCoordinator: NSObject {
         webView.needsLayout = true
         webView.layoutSubtreeIfNeeded()
         webView.resumeWebView()
-
-        if let appId = webView.appId, let path = webView.currentPath {
-            lingxia.onPageShow(appId, path)
-        }
     }
 
     private func observeActiveWebView(_ webView: WKWebView) {
