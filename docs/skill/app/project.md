@@ -428,9 +428,9 @@ Pass `null` / empty to clear a badge or title. The tray *shape* is declared in `
 
 ### Terminal surface
 
-The built-in terminal is gated by `capabilities.terminal`. On macOS and Windows its default declaration may be a main surface or an aside (`edge: top | bottom`, default `bottom`). Its default role and edge are fixed by `lingxia.yaml` and cannot be changed by JS.
+The built-in terminal is gated by `capabilities.terminal`. On macOS and Windows its default declaration may be a main surface or an aside (`edge: top | bottom`, default `bottom`). Omitting `as` uses that declared role and edge; an explicit `as` migrates a non-root live workspace without changing the declaration.
 
-When terminal is declared as `main`, its declaration is the default workspace. The sidebar's global `+` creates another terminal workspace as a separate main Surface; the `+` inside a terminal workspace creates another PTY tab in that workspace. Logic can open or reuse a named workspace with `lx.openSurface({ native: 'terminal', instanceKey: 'project-a' })`. Equal keys resolve to the same runtime Surface, distinct keys create distinct sidebar entries, and the returned handle's read-only `id` is the runtime `SurfaceId` — it is not the key. A keyed instance is always a switchable main workspace, even when the declared default terminal is an aside; the unkeyed default keeps its declared placement.
+When terminal is declared as `main`, its declaration is the default workspace. The sidebar's global `+` creates another terminal workspace as a separate main Surface; the `+` inside a terminal workspace creates another PTY tab in that workspace. Logic can open or reuse a named workspace with `lx.openSurface({ surface: 'terminal', key: 'project-a', as: 'main' })`. Equal keys resolve to the same runtime Surface, distinct keys create distinct entries, and the returned handle's read-only `id` is the runtime `SurfaceId` — it is not the key. `as` controls where the same workspace is presented, independently from `key`.
 
 `native: browser` is a macOS or Windows host-owned browser workspace. It starts with an empty tab and uses the managed browser profile and chrome; use a `url:` main when the declaration should open a specific `https://` or authorized `file://` target.
 

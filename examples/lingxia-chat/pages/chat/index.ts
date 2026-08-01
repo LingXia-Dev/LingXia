@@ -211,7 +211,7 @@ Page({
   // Desktop-only (the View gates the affordance): open the host-declared
   // terminal using the placement owned by lingxia.yaml.
   async onOpenTerminal() {
-    await lx.openSurface({ native: 'terminal' });
+    await lx.openSurface({ surface: 'terminal' });
   },
 
   // Open a new in-app browser tab (self browser with an editable address bar).

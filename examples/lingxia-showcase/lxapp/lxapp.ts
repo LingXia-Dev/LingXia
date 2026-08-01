@@ -57,7 +57,7 @@ App({
         label: "chat",
         onActivate: () => {
           void lx
-            .openSurface({ lxapp: "lingxia-chat", as: "aside" })
+            .openSurface({ appId: "lingxia-chat", as: "aside" })
             .catch((error) => console.warn("chat action failed", error));
         },
       },
@@ -71,7 +71,7 @@ App({
         label: "Terminal",
         onActivate: () => {
           void lx
-            .openSurface({ native: "terminal" })
+            .openSurface({ surface: "terminal" })
             .catch((error) => console.warn("terminal action failed", error));
         },
       });
