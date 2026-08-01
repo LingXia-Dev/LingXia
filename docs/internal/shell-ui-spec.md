@@ -1,6 +1,6 @@
 # LingXia Shell UI Specification: Surface Model and Platform Projections
 
-> Status: v1.0 (final) · Platforms: macOS / Windows / iOS / Android / Harmony
+> Status: v1.1 (target) · Platforms: macOS / Windows / iOS / Android / Harmony
 >
 > Scope: the normative UI and runtime contract for the LingXia host shell. This
 > document supersedes the former drafts `shell-ui-spec.md` (v0.19) and
@@ -62,7 +62,8 @@ relationships, or lifecycle semantics defined here.
 | Term | Definition |
 |---|---|
 | **surface** | A shell-managed content instance plus its relationships, state, and presentation |
-| **content key** | The logical key that declares and looks up content; not the runtime instance id |
+| **declaration id** | The stable YAML lookup key of a host-declared surface; currently the value of its `lxapp` / `url` / `native` content field |
+| **surface key** | An optional caller-owned reuse key for an additional instance of a declaration that supports multiple instances |
 | **runtime id** | A read-only id the shell assigns to a live surface, used by handles and events |
 | **main area** | The content region of the main window hosting the currently selected main |
 | **sidebar** | The desktop left navigation region: pins, main tabs, and app-owned header/footer actions |
@@ -79,18 +80,22 @@ relationships, or lifecycle semantics defined here.
 
 ### 1.1 Content
 
-The shell supports four content kinds:
+The shell supports four provider content kinds. These are YAML/runtime model
+details; JS does not select a provider by its implementation kind:
 
-| Content | Declaration/lookup key | Instance policy | Purpose |
+| Content | Provider identity | Instance policy | Purpose |
 |---|---|---|---|
-| `lxapp` | appId | Singleton per appId | A complete lxapp, as main, aside, or float |
-| `page` | owner appId + page name | Multi-instance by default; `instanceKey` reuses | The caller's own page, only as float or standalone window |
+| `lxapp` | appId | Singleton per appId in one window | A complete lxapp, as main, aside, or float |
+| `page` | owner appId + page name | New instance per open | The caller's own page, only as float or standalone window |
 | `url` | Normalized first URL | Main may duplicate; API asides reuse by default | A main tab or aside tab in the built-in browser |
-| `native` | capability name | Singleton per capability | A host-registered native capability, e.g. the terminal |
+| `native` | capability name | Declaration-defined; terminal declarations may create keyed workspace instances | A host-registered provider, e.g. the terminal |
 
-The content key is used for declaration lookup and reuse policy; the runtime id
-is used to address the actual instance. Implementations MUST NOT re-wrap the
-runtime id into a second open-by-id syntax.
+JS uses intent-level selectors instead: `surface` for a YAML declaration,
+`appId` for a dynamic business lxapp, `page` for the caller's own page, and
+`url` for browser content. In particular, JS has no `native` selector: native
+is a provider implementation detail behind a declaration. The runtime id is
+used to address the resulting live instance. Implementations MUST NOT re-wrap
+the runtime id into a second open-by-id syntax.
 
 ### 1.2 Role and presentation
 
@@ -115,19 +120,21 @@ enters the main window's surface graph.
   the home Logic is a host-scoped writer: it starts with the host and lives
   until process exit; closing the home surface destroys only its
   presentation/View, not the home Logic.
-- Opening an already-open lxapp under a different role MUST fail with
-  `E_SURFACE_CONFLICT`; the caller closes first, then reopens. The shell never
-  silently clones or moves an instance.
+- An explicit `as` may migrate an existing non-root Surface between supported
+  roles. Migration preserves provider state and runtime identity; it never
+  clones the Surface. The stable root main cannot migrate away from `main`.
 - `page` content MUST NOT be an aside. For a companion panel, use a separate
   lxapp, a native capability, or a URL; auxiliary UI internal to an app belongs
   in the app's own layout.
 - Page navigation stays per **page instance**: the same route may enter the
   navigation stack multiple times with different queries. Opening a page
   creates a new page instance by default; page names are not global singletons.
-- Native identity is `(capability, instanceKey)`. A missing key addresses the
-  declaration's default instance. Equal keys reuse one Surface; different keys
-  may coexist when the provider and declared role support multiple instances.
-  Provider-private workspace/session ids are not Surface identity.
+- A declaration's default instance is identified by its declaration id. An
+  additional instance is identified by `(declaration id, surface key)`. Equal
+  keys reuse one Surface; different keys may coexist only when that declaration
+  supports multiple instances. `as` is role, not identity: reopening the same
+  tuple with a different `as` migrates the same Surface. Provider-private
+  workspace/session ids are not Surface identity.
 - The URL duplication policy only affects browser-tab reuse; it does not change
   content identity after navigation.
 
@@ -190,21 +197,21 @@ Child surfaces inside an aside slot:
 
 | Content | Default behavior |
 |---|---|
-| lxapp | Singleton per appId; reopening under the same role focuses, a different role conflicts |
-| page | New page instance per open; the same `instanceKey` reuses that instance |
+| declared Surface | The unkeyed declaration is its default instance; `(declaration id, key)` reuses an additional instance when supported |
+| dynamic lxapp Surface | Singleton per appId in one window; reopening focuses it, and an explicit supported `as` migrates it |
+| page | New page instance per open |
 | URL main | Delegated to the browser; duplicate URLs allowed |
 | URL aside | API-opened tabs reuse by normalized first URL; explicit duplication in browser UI may create new instances |
-| native | Singleton per capability name; same role focuses, different role conflicts |
 
 URL normalization MUST at least unify scheme/host case, default ports, and the
 empty path; query and fragment participate in the key. Navigation or redirects
 never rewrite the first-URL key. All platforms MUST share one normalization
 implementation.
 
-When an existing instance is reused, new `query` / `params` do not re-trigger
-the launch lifecycle and do not overwrite the original parameters; callers
-SHOULD pass follow-up data via messaging. For an independent page data context,
-omit `instanceKey` or use a new key.
+When an existing Surface instance is reused, new startup `query` / `params` do
+not re-trigger the launch lifecycle and do not overwrite the original
+parameters; callers SHOULD pass follow-up data via messaging. Page opens are
+independent by default.
 
 ### 2.3 Errors
 
@@ -212,7 +219,7 @@ omit `instanceKey` or use a new key.
 |---|---|
 | `E_INVALID_ARG` | Invalid field, combination, URL, or size |
 | `E_PERMISSION_DENIED` | Caller lacks permission |
-| `E_NOT_FOUND` | lxapp, page, native capability, or declaration does not exist |
+| `E_NOT_FOUND` | appId, page, URL target, or declaration does not exist |
 | `E_NOT_SUPPORTED` | Platform, capability, or current window mode does not support the operation |
 | `E_SURFACE_CONFLICT` | The same logical content is already live under an incompatible role/presentation |
 | `E_SURFACE_CLOSED` | Operation on a destroyed handle |
@@ -221,8 +228,8 @@ omit `instanceKey` or use a new key.
 
 All platforms MUST process an open in the same order:
 
-1. validate caller permission, content key, URL scheme, platforms, and
-   capability;
+1. validate caller permission, selector (`surface` / `appId` / `page` / `url`),
+   URL scheme, platforms, and capability;
 2. merge defaults with priority `runtime spec > YAML declaration > capability
    metadata > shell default`;
 3. run singleton/reuse/conflict arbitration;
@@ -450,7 +457,8 @@ Pins are the user's quick entries for lxapps and websites.
   and web targets; renderers MUST NOT force lxapps before websites.
 - Clicking an unopened pin opens a main tab; if already main, it selects it. If
   the lxapp is live as aside/float, the click focuses the existing instance —
-  changing role requires close-then-reopen.
+  a pin never changes role. Only an explicit `openSurface(..., as: 'main')`
+  intent may migrate an eligible non-root Surface.
 
 ### 4.5 Sidebar actions
 
@@ -471,9 +479,11 @@ Declaration model (owned by the single runtime writer, §7.2):
   URLs, and parent traversal are rejected. The portable asset profile is a
   square, transparent, monochrome SVG or PNG designed for a 16-point visual.
   Hosts may tint it to match shell theme and disabled state.
-- Hosts do not infer target metadata, open lxapps, toggle native capabilities,
-  or render fallback glyphs. A callback explicitly calls APIs such as
-  `lx.openSurface({ lxapp: ... })` or `lx.openSurface({ native: ... })`.
+- Hosts do not infer target metadata, open lxapps, toggle providers, or render
+  fallback glyphs. A callback explicitly opens a declared Surface with
+  `lx.openSurface({ surface: ... })`, a dynamic business app with
+  `lx.openSurface({ appId: ..., as: ... })`, or performs app navigation with
+  `lx.navigateToApp({ appId: ... })`.
 - The declaration is a **full-generation atomic replace**: the shell validates
   the complete generation before touching handlers or chrome — a
   bad item leaves the previous generation intact. Single-item patches may
@@ -540,12 +550,14 @@ The aside region is fixed at three slots, grouped by rendering engine:
 |---|---|---|
 | lxapp | Different appIds | Header tabs; one instance per appId |
 | browser | URL tabs | Title tabs; API URLs reuse by first URL |
-| native | Different capabilities | Header tabs; one instance per capability |
+| native | Different declaration instances | Header tabs; the default instance plus keyed instances when supported |
 
 - Slot tab switching performs hide/show and preserves content state; only an
   explicit close destroys the current content.
-- Multi-session behavior of a native capability is capability-internal state —
-  the terminal manages its own sessions; the shell only switches capabilities.
+- A terminal Surface is one workspace and may contain multiple provider-owned
+  PTY tabs. Multiple keyed terminal Surfaces are separate workspaces and appear
+  as separate slot children or main switcher entries; switching Surfaces never
+  stops their PTYs.
 - Header tabs order by open time, no drag reorder; under pressure they drop
   text before icons, then become a scrollable strip — tabs never shrink into
   unrecognizable slivers.
@@ -650,9 +662,11 @@ surfaces:
       icon: icons/tray.svg
 ```
 
-At most one declaration per content key. Declarations provide build-time
-availability and runtime defaults; they are not a registration gate for
-dynamic content. `lingxia build` compiles them into the internal `ui.json`;
+At most one declaration per declaration id. Declarations provide build-time
+availability, provider selection, and runtime defaults; they are not a
+registration gate for dynamic business apps, pages, or URLs. Native providers
+are declaration-only and cannot be addressed directly by capability name from
+JS. `lingxia build` compiles declarations into the internal `ui.json`;
 generated files are never hand-written.
 
 ### 6.2 Valid combinations
@@ -695,19 +709,36 @@ semantics every language surface MUST share.
 
 ### 7.1 Opening surfaces
 
-- An open spec is keyed by exactly one content key (`lxapp` / `page` / `url` /
-  `native`). Role overrides and presentation hints apply only to content whose
-  generated declaration types admit them; native specs never accept role or
-  edge overrides.
-- Defaults: an lxapp without `as` takes its YAML role, else main. A URL without
-  `as` becomes a main browser tab. An unkeyed native capability takes its YAML
-  role and placement.
-- `lx.openSurface({ native, instanceKey? })` is home-only. Omitting the key
-  opens the declaration's default instance. A non-empty key selects or creates
-  an instance and the returned handle binds the resolved runtime `SurfaceId`,
-  never the key. A keyed native instance is a switchable main workspace even
-  when the capability's default declaration is an aside; this does not move or
-  mutate the declared default Surface.
+- An open spec has exactly one selector: `surface`, `appId`, `page`, or `url`.
+  Provider kinds such as YAML `lxapp` and `native` are not JS selectors.
+- `lx.openSurface({ surface, key?, as? })` opens a YAML declaration. Without
+  `key` it addresses the declaration's default instance. A non-empty `key`
+  selects or creates an additional instance only when that declaration admits
+  multiple instances. The returned handle binds the resolved runtime
+  `SurfaceId`, never the caller key.
+- `as` is orthogonal to identity. Omitting it uses the declaration role;
+  supplying it focuses or migrates the same `(surface, key?)` instance to that
+  supported role. A different `as` never creates a second instance. The stable
+  root main cannot migrate away from main.
+- Terminal follows the generic declaration rule. For example,
+  `{ surface: 'terminal', as: 'main' }` moves/focuses the default terminal in
+  the main switcher, while `{ surface: 'terminal', key: 'project-a', as:
+  'aside' }` opens/reuses a distinct workspace in the native aside slot. The
+  same keyed workspace may later migrate to main without losing PTYs, cwd, or
+  running processes.
+- `lx.openSurface({ appId, as, page?, path?, query?, envVersion?,
+  targetVersion? })` creates or focuses a dynamic business-app Surface and
+  does not require a YAML declaration. `as` is required because the caller is
+  creating shell composition rather than using declaration defaults. `page`,
+  `path`, `query`, `envVersion`, and `targetVersion` are optional startup
+  inputs; `page` and `path` are mutually exclusive, and `envVersion` defaults
+  to `release`.
+- A dynamic App Surface is singleton by appId within the window. Reopening the
+  same appId focuses it; an explicit supported role change migrates it. It
+  returns a lifecycle handle and, when main, owns an independent switcher item.
+- `lx.openSurface({ page, ... })` opens the caller's own page as a float or
+  standalone window. `lx.openSurface({ url, ... })` opens browser content; a
+  URL without `as` becomes a main browser tab.
 - Runtime floats default to centered, non-modal, tap-outside dismissal;
   compact ignores position and presents a bottom sheet. A float without a size
   hint uses 480×360 dp/pt clamped to 90% of the container; a standalone window
@@ -715,9 +746,8 @@ semantics every language surface MUST share.
 - Size values are hints, clamped per §3.3. Non-finite, negative, or malformed
   values fail with `E_INVALID_ARG`; insufficient container space degrades per
   admission rules instead of erroring.
-- An explicit role override never mutates a declaration. Native specs reject
-  role and edge overrides. Keyed native workspaces use their contract-defined
-  main role rather than accepting a caller-selected role.
+- An explicit `as` changes only the live Surface instance. It never mutates the
+  YAML declaration or the default role used by later opens.
 - `interaction.closeButton` adds the standard native circular close control.
   Manual floats require it or an app-owned close path. Modal floats block
   underlying input and restore prior focus on close.
@@ -726,6 +756,29 @@ semantics every language surface MUST share.
   restricted to the home lxapp and `capabilities.browser`; every other
   `lingxia:` value fails with `E_INVALID_ARG`. Handing a URL to the system still
   passes the host scheme allowlist.
+
+#### 7.1.1 App navigation versus App Surfaces
+
+`navigateToApp` and `openSurface` solve different navigation levels:
+
+| Operation | Changes | Main switcher item | Back behavior | Result |
+|---|---|---|---|---|
+| `lx.navigateToApp({ appId, ... })` | Pushes an app onto the current lxapp Surface's app-navigation stack | Reuses the current item | `lx.navigateBackApp()` pops to the previous app | `Promise<void>` |
+| `lx.openSurface({ appId, as: 'main', ... })` | Creates/focuses a dynamic app-owned Surface | Own independent item | Closing destroys that Surface and its app stack | `SurfaceHandle` |
+| `lx.openSurface({ surface, as: 'main' })` where the declaration contains an lxapp | Creates/focuses that host-declared Surface | Own declaration-backed item | Closing destroys the live Surface; reopening uses declaration defaults | `SurfaceHandle` |
+
+Therefore a declared lxapp Surface opened as main is still different from
+`navigateToApp`: the former is a parallel shell workspace with its own runtime
+id, switcher lifecycle, role, and handle; the latter is sequential navigation
+inside the already-selected Surface and never creates or moves a shell item.
+The active app at the top of a navigation stack may change, but the owning
+Surface identity and role do not.
+
+App navigation accepts the same optional startup selectors as a dynamic App
+Surface: `page`, `path`, `query`, `envVersion`, and `targetVersion`; `page` and
+`path` are mutually exclusive and `envVersion` defaults to `release`. If the
+target appId is already owned by another live Surface, navigation fails with
+`E_SURFACE_CONFLICT` rather than stealing or cloning that instance.
 
 ### 7.2 Handles, messaging, and context
 
@@ -792,11 +845,11 @@ Desktop shell persistence:
 
 ## Appendix A: Current state and gaps
 
-As of 2026-07 (post `feat/shell-ui-spec`, PR #126):
+As of 2026-08 (PR #202 follow-up design):
 
 | Area | Status |
 |---|---|
-| Content-key YAML + open specs | Landed. A legacy declared-surface open spec (`{ surface: <name> }`) still ships in the generated types; target is pure content keys with no alias |
+| Declaration-first JS open specs | Target specified in §7.1: `{ surface }`, `{ appId }`, `{ page }`, and `{ url }`; generated types/runtime still need the forward-only migration away from `{ lxapp }` and `{ native }` |
 | Aside slot model, unified slot tab chrome | Landed and live-verified (dual-tab lxapp slot, shared tab metrics, strip visible at n=1, no "+"/"···") |
 | Sidebar actions + pins | `lx.shell.sidebarActions` drives header/footer snapshots on Windows/macOS; accessibility activation is not yet automated |
 | Sidebar action footer overflow scrolling (5-row cap) | Landed on Windows/macOS |
@@ -804,7 +857,7 @@ As of 2026-07 (post `feat/shell-ui-spec`, PR #126):
 | Main surface switcher | Shared ordered/root/capability snapshot and macOS intent routing landed; Windows still needs the same native/browser renderer projection |
 | `hideTabBar`/`showTabBar` ↔ group collapse | Landed |
 | Shell persistence | Window frame, sidebar mode/width, group collapse, aside geometry, and pins landed; main-session lazy restore and the aside geometry-only policy still to be verified against §8 |
-| `E_SURFACE_CONFLICT` | Error path exists in the logic layer; full runtime enforcement across role conflicts pending |
+| `E_SURFACE_CONFLICT` | Error path exists; ownership conflicts such as navigating to an appId already hosted by another live Surface still need full enforcement |
 | Admission | Arbitration module exists; the 45% clamp / slot-cap / overlay-fallback behavior of §3.3 not yet verified end to end |
 | Compact projection | Browser aside/self chrome, group isolation, and browser-owned back/close semantics aligned with §5 on mobile and Runner |
 | Frameless window + `controls:` + writer window controls | Not implemented |
@@ -826,8 +879,11 @@ lowercase keys). Synonyms are not allowed.
 | Spec term | Root | TS / JS | Rust | Banned synonyms |
 |---|---|---|---|---|
 | surface / handle | `surface` | `SurfaceHandle` | `Surface`, `SurfaceHandle` | view, panel |
-| content key | `lxapp / page / url / native` | spec field names verbatim | `ContentKey` enum, same variants | id, render |
+| YAML provider content | `lxapp / page / url / native` | not exposed as provider selectors | `ContentKey` enum | render |
+| open selector | `surface / app_id / page / url` | `surface / appId / page / url` | typed open-spec variants | native, lxapp |
+| surface key | `key` | `key` | `SurfaceKey` | instanceKey, workspaceId |
 | runtime id | `surface_id` | `handle.id` | `SurfaceId` | — |
+| app navigation | `navigate_to_app / navigate_back_app` | `navigateToApp / navigateBackApp` | same roots | navigateToLxApp, openApp |
 | session entry id | `session_entry` | `sessionEntryId` | `SessionEntryId` | never conflated with runtime id |
 | role | `role` | `SurfaceRole` | `SurfaceRole` | mode, kind |
 | presentation | `presentation` | `SurfacePresentation` | `Presentation` | form, style |
