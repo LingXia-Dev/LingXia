@@ -562,46 +562,19 @@ impl crate::traits::ui::SurfacePresenter for Platform {
         surface::hide_surface(app_id, id)
     }
 
-    fn set_managed_surface_visible(
+    fn ensure_managed_surface_provider(
         &self,
-        id: &str,
-        visible: bool,
-        role: Option<crate::traits::ui::ManagedSurfaceRole>,
-        edge: Option<&str>,
-        completion: crate::traits::ui::ManagedSurfaceCompletion,
-    ) -> Result<(), PlatformError> {
-        surface::set_managed_surface_visible(id, visible, role, edge, completion)
+        request: crate::traits::ui::ManagedSurfaceProviderRequest,
+    ) -> crate::traits::ui::ManagedSurfaceFuture {
+        surface::ensure_managed_surface_provider(request)
     }
 
-    fn open_managed_native_surface(
+    fn destroy_managed_surface_provider(
         &self,
-        surface_id: &str,
-        capability: &str,
-        instance_key: Option<&str>,
-        role: crate::traits::ui::ManagedSurfaceRole,
-        edge: Option<&str>,
-        completion: crate::traits::ui::ManagedSurfaceCompletion,
-    ) -> Result<(), PlatformError> {
-        surface::open_managed_native_surface(
-            surface_id,
-            capability,
-            instance_key,
-            role,
-            edge,
-            completion,
-        )
-    }
-
-    fn close_managed_surface(
-        &self,
-        id: &str,
-        role: Option<crate::traits::ui::ManagedSurfaceRole>,
-    ) -> Result<(), PlatformError> {
-        surface::close_managed_surface(id, role)
-    }
-
-    fn toggle_managed_surface(&self, id: &str) -> Result<(), PlatformError> {
-        surface::toggle_managed_surface(id)
+        surface_id: String,
+        role: Option<crate::traits::ui::SurfaceRole>,
+    ) -> crate::traits::ui::ManagedSurfaceFuture {
+        surface::destroy_managed_surface_provider(surface_id, role)
     }
 }
 impl ShareService for Platform {

@@ -1,4 +1,5 @@
 use std::future::Future;
+use std::pin::Pin;
 
 use lingxia_surface::LayoutPresentationPlan;
 
@@ -107,10 +108,29 @@ pub struct SurfaceRequest {
     pub url_callback: bool,
 }
 
-/// Completes an accepted managed-surface request after native presentation.
-/// A presenter either returns `Err` without invoking this callback, or returns
-/// `Ok` and invokes the callback exactly once with the final result.
+/// Callback adapter used by platform SDK handlers that cannot return a Rust
+/// future directly. `SurfacePresenter` exposes only `ManagedSurfaceFuture`.
 pub type ManagedSurfaceCompletion = Box<dyn FnOnce(Result<(), PlatformError>) + Send + 'static>;
+
+pub type ManagedSurfaceFuture =
+    Pin<Box<dyn Future<Output = Result<(), PlatformError>> + Send + 'static>>;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ManagedSurfaceProvider {
+    Declared,
+    Native {
+        capability: String,
+        instance_key: Option<String>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ManagedSurfaceProviderRequest {
+    pub surface_id: String,
+    pub provider: ManagedSurfaceProvider,
+    pub role: Option<SurfaceRole>,
+    pub edge: Option<String>,
+}
 
 pub trait SurfacePresenter: Send + Sync + 'static {
     /// The shared core resolves a `LayoutPresentationPlan` for one window/graph
@@ -150,77 +170,42 @@ pub trait SurfacePresenter: Send + Sync + 'static {
         ))
     }
 
-    /// Show or hide a top-level surface declared by the host (e.g. the AI-chat
-    /// panel or terminal in `ui` config). `edge` overrides the declared edge
-    /// for this show (the panel moves if already visible); `None` keeps the
-    /// current placement. Platforms without a host-managed shell return
-    /// `NotSupported`.
-    fn set_managed_surface_visible(
+    /// Ensure the platform provider exists for a core-owned Surface. Identity,
+    /// role, visibility, focus, and menu policy remain in the shared graph;
+    /// `present_layout` projects that state after this future succeeds.
+    fn ensure_managed_surface_provider(
         &self,
-        _id: &str,
-        _visible: bool,
-        _role: Option<ManagedSurfaceRole>,
-        _edge: Option<&str>,
-        _completion: ManagedSurfaceCompletion,
-    ) -> Result<(), PlatformError> {
-        Err(PlatformError::NotSupported(
-            "managed surfaces are not supported on this platform".to_string(),
-        ))
+        _request: ManagedSurfaceProviderRequest,
+    ) -> ManagedSurfaceFuture {
+        Box::pin(async {
+            Err(PlatformError::NotSupported(
+                "managed surface providers are not supported on this platform".to_string(),
+            ))
+        })
     }
 
-    /// Create or focus one instance of a host-declared native capability.
-    /// `surface_id` is allocated by the shared runtime; platforms only realize
-    /// the provider view. The declaration owns role and placement.
-    fn open_managed_native_surface(
+    /// Destroy provider state after the core removes a non-root Surface.
+    fn destroy_managed_surface_provider(
         &self,
-        _surface_id: &str,
-        _capability: &str,
-        _instance_key: Option<&str>,
-        _role: ManagedSurfaceRole,
-        _edge: Option<&str>,
-        _completion: ManagedSurfaceCompletion,
-    ) -> Result<(), PlatformError> {
-        Err(PlatformError::NotSupported(
-            "managed native surface instances are not supported on this platform".to_string(),
-        ))
+        _surface_id: String,
+        _role: Option<SurfaceRole>,
+    ) -> ManagedSurfaceFuture {
+        Box::pin(async {
+            Err(PlatformError::NotSupported(
+                "managed surface providers are not supported on this platform".to_string(),
+            ))
+        })
     }
-
-    /// Destroy a non-main host-managed provider. Unlike visibility changes,
-    /// this releases provider state so a later open starts a fresh lifecycle.
-    fn close_managed_surface(
-        &self,
-        _id: &str,
-        _role: Option<ManagedSurfaceRole>,
-    ) -> Result<(), PlatformError> {
-        Err(PlatformError::NotSupported(
-            "managed surface close is not supported on this platform".to_string(),
-        ))
-    }
-
-    /// Toggle a host-declared top-level surface's visibility. See
-    /// [`set_managed_surface_visible`](Self::set_managed_surface_visible).
-    fn toggle_managed_surface(&self, _id: &str) -> Result<(), PlatformError> {
-        Err(PlatformError::NotSupported(
-            "managed surfaces are not supported on this platform".to_string(),
-        ))
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ManagedSurfaceRole {
-    Main,
-    Aside,
-    Float,
 }
 
 /// Resolved identity and declaration-owned role of a managed native surface.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ManagedNativeSurface {
     pub surface_id: String,
-    pub role: ManagedSurfaceRole,
+    pub role: SurfaceRole,
 }
 
-impl ManagedSurfaceRole {
+impl SurfaceRole {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Main => "main",

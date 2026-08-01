@@ -21,7 +21,10 @@ use lingxia_windows_contract::{
 use super::request_windows_app_exit;
 use crate::error::PlatformError;
 use crate::traits::app_runtime::{AnimationType, LxAppOpenMode};
-use crate::traits::ui::{SurfaceContent, SurfaceKind, SurfaceRequest, SurfaceRole};
+use crate::traits::ui::{
+    ManagedSurfaceFuture, ManagedSurfaceProvider, ManagedSurfaceProviderRequest, SurfaceContent,
+    SurfaceKind, SurfaceRequest, SurfaceRole,
+};
 
 static WINDOWS_SHOW_SEQUENCE: AtomicU64 = AtomicU64::new(1);
 static WINDOWS_SHOW_REQUESTS: LazyLock<Mutex<HashMap<String, u64>>> =
@@ -429,7 +432,7 @@ pub fn set_windows_managed_surface_close_handler(handler: ManagedSurfaceCloseHan
 
 pub(super) fn close_managed_surface(
     id: &str,
-    role: Option<crate::traits::ui::ManagedSurfaceRole>,
+    role: Option<SurfaceRole>,
 ) -> Result<(), PlatformError> {
     let handler = MANAGED_SURFACE_CLOSE_HANDLER
         .lock()
@@ -440,10 +443,7 @@ pub(super) fn close_managed_surface(
                 "managed surface close is not supported on this Windows host".to_string(),
             )
         })?;
-    if handler(
-        id,
-        role.map_or("", crate::traits::ui::ManagedSurfaceRole::as_str),
-    ) {
+    if handler(id, role.map_or("", SurfaceRole::as_str)) {
         Ok(())
     } else {
         Err(PlatformError::AssetNotFound(format!(
@@ -477,7 +477,7 @@ pub(super) fn open_managed_native_surface(
     surface_id: &str,
     capability: &str,
     instance_key: Option<&str>,
-    role: crate::traits::ui::ManagedSurfaceRole,
+    role: SurfaceRole,
     edge: Option<&str>,
     completion: crate::traits::ui::ManagedSurfaceCompletion,
 ) -> Result<(), PlatformError> {
@@ -509,7 +509,7 @@ pub(super) fn open_managed_native_surface(
 pub(super) fn set_managed_surface_visible(
     id: &str,
     visible: bool,
-    role: Option<crate::traits::ui::ManagedSurfaceRole>,
+    role: Option<SurfaceRole>,
     edge: Option<&str>,
     completion: crate::traits::ui::ManagedSurfaceCompletion,
 ) -> Result<(), PlatformError> {
@@ -525,7 +525,7 @@ pub(super) fn set_managed_surface_visible(
     if handler(
         id,
         visible,
-        role.map_or("", crate::traits::ui::ManagedSurfaceRole::as_str),
+        role.map_or("", SurfaceRole::as_str),
         edge.unwrap_or_default(),
         completion,
     ) {
@@ -535,6 +535,47 @@ pub(super) fn set_managed_surface_visible(
             "unknown managed surface: {id}"
         )))
     }
+}
+
+pub(super) fn ensure_managed_surface_provider(
+    request: ManagedSurfaceProviderRequest,
+) -> ManagedSurfaceFuture {
+    Box::pin(async move {
+        let (sender, receiver) = futures::channel::oneshot::channel();
+        let completion = Box::new(move |result| {
+            let _ = sender.send(result);
+        });
+        match request.provider {
+            ManagedSurfaceProvider::Declared => set_managed_surface_visible(
+                &request.surface_id,
+                true,
+                request.role,
+                request.edge.as_deref(),
+                completion,
+            )?,
+            ManagedSurfaceProvider::Native {
+                capability,
+                instance_key,
+            } => open_managed_native_surface(
+                &request.surface_id,
+                &capability,
+                instance_key.as_deref(),
+                request.role.unwrap_or_default(),
+                request.edge.as_deref(),
+                completion,
+            )?,
+        }
+        receiver.await.map_err(|_| {
+            PlatformError::Platform("managed surface provider completion dropped".to_string())
+        })?
+    })
+}
+
+pub(super) fn destroy_managed_surface_provider(
+    surface_id: String,
+    role: Option<SurfaceRole>,
+) -> ManagedSurfaceFuture {
+    Box::pin(async move { close_managed_surface(&surface_id, role) })
 }
 
 type ManagedSurfaceToggleHandler = Arc<dyn Fn(&str) -> bool + Send + Sync>;

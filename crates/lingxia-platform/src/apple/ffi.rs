@@ -445,8 +445,8 @@ pub use bridge::{
     open_url, present_layout, present_surface, preview_media, review_document, set_app_badge,
     set_managed_surface_visible, set_shell_pins, set_sidebar_actions, set_tray_badge,
     set_tray_click_intercept, set_tray_icon, set_tray_menu, set_tray_title, set_tray_visible,
-    share, show_action_sheet, show_modal, show_surface, show_toast, toggle_managed_surface,
-    update_navbar_ui, update_orientation_ui, update_tabbar_ui, update_tabbar_ui_async,
+    share, show_action_sheet, show_modal, show_surface, show_toast, update_navbar_ui,
+    update_orientation_ui, update_tabbar_ui, update_tabbar_ui_async,
 };
 #[cfg(target_os = "macos")]
 pub use bridge::{notify_app_update_ready, reveal_in_file_manager};

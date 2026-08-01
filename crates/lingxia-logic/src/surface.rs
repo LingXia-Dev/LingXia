@@ -5,7 +5,7 @@ use futures::{
 use lingxia_platform::traits::app_runtime::{
     AppRuntime, BuiltinBrowserPage, OpenUrlRequest, OpenUrlTarget,
 };
-use lingxia_platform::traits::ui::{ManagedSurfaceRole, SurfaceKind, SurfacePosition};
+use lingxia_platform::traits::ui::{SurfaceKind, SurfacePosition, SurfaceRole};
 use lxapp::{
     LxApp, LxAppError, PageQueryInput, PageSurfaceRequest, PageSurfaceTarget, PageTarget,
     publish_app_event, register_app_handler, try_get, unregister_app_handler,
@@ -490,7 +490,7 @@ async fn open_declared_surface_spec(ctx: &JSContext, spec: &JSObject) -> JSResul
         return managed_surface_handle(ctx, lxapp, resolved.surface_id, Some(resolved.role));
     }
     let role = requested_role.or_else(|| lxapp.shell_surface_role(id));
-    if role.is_some_and(|role| role != ManagedSurfaceRole::Aside) && edge.is_some() {
+    if role.is_some_and(|role| role != SurfaceRole::Aside) && edge.is_some() {
         return Err(surface_error(
             rong::error::E_INVALID_ARG,
             "invalid_surface_spec",
@@ -519,12 +519,12 @@ fn declared_lxapp_app_id(lxapp: &LxApp, surface_id: &str) -> Option<String> {
         .map(|item| item.content.app_id.clone())
 }
 
-fn read_optional_managed_role(spec: &JSObject) -> JSResult<Option<ManagedSurfaceRole>> {
+fn read_optional_managed_role(spec: &JSObject) -> JSResult<Option<SurfaceRole>> {
     match read_optional_string(spec, "as")?.as_deref().map(str::trim) {
         None => Ok(None),
-        Some("main") => Ok(Some(ManagedSurfaceRole::Main)),
-        Some("aside") => Ok(Some(ManagedSurfaceRole::Aside)),
-        Some("float") => Ok(Some(ManagedSurfaceRole::Float)),
+        Some("main") => Ok(Some(SurfaceRole::Main)),
+        Some("aside") => Ok(Some(SurfaceRole::Aside)),
+        Some("float") => Ok(Some(SurfaceRole::Float)),
         Some(other) => Err(surface_error(
             rong::error::E_INVALID_ARG,
             "invalid_surface_spec",
@@ -959,7 +959,7 @@ fn managed_surface_handle(
     ctx: &JSContext,
     lxapp: Arc<LxApp>,
     id: String,
-    role: Option<ManagedSurfaceRole>,
+    role: Option<SurfaceRole>,
 ) -> JSResult<JSObject> {
     let cache_key = ManagedHandleKey {
         app_id: lxapp.appid.clone(),
@@ -979,12 +979,12 @@ fn managed_surface_handle(
     {
         return Ok(cached);
     }
-    let is_main = role == Some(ManagedSurfaceRole::Main);
+    let is_main = role == Some(SurfaceRole::Main);
     let kind = if is_main { "window" } else { "overlay" };
     let surface_role = match role {
-        Some(ManagedSurfaceRole::Main) => "main",
-        Some(ManagedSurfaceRole::Float) => "float",
-        Some(ManagedSurfaceRole::Aside) | None => "aside",
+        Some(SurfaceRole::Main) => "main",
+        Some(SurfaceRole::Float) => "float",
+        Some(SurfaceRole::Aside) | None => "aside",
     };
     let visible = lxapp.shell_surface_visible(&id).unwrap_or(true);
     let (message_port, _) = crate::message_port::pair(ctx)?;
@@ -1004,7 +1004,7 @@ fn managed_surface_handle(
         "presentation",
         lxapp.shell_surface_presentation(&id).unwrap_or(if is_main {
             "main"
-        } else if role == Some(ManagedSurfaceRole::Float) {
+        } else if role == Some(SurfaceRole::Float) {
             "popover"
         } else {
             "dock"
@@ -1085,6 +1085,7 @@ fn managed_surface_handle(
                 } else {
                     lxapp
                         .close_shell_managed_surface(&id, role)
+                        .await
                         .map_err(|err| surface_lifecycle_error("close", err))?;
                 }
                 if handle.borrow::<JSSurface>()?.alive.get() {
