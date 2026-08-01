@@ -915,7 +915,6 @@ pub(super) fn install() {
     lingxia_platform::set_windows_managed_native_surface_open_handler(Arc::new(
         open_managed_native_surface_for_api,
     ));
-    lingxia_platform::set_windows_managed_surface_toggle_handler(Arc::new(toggle_managed_surface));
     lingxia_platform::set_windows_sidebar_actions_handler(Arc::new(set_runtime_sidebar_actions));
     lingxia_platform::set_windows_builtin_browser_page_handler(Arc::new(open_builtin_browser_page));
     lingxia_platform::set_windows_shell_pins_handler(Arc::new(set_runtime_shell_pins));

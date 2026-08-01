@@ -578,35 +578,6 @@ pub(super) fn destroy_managed_surface_provider(
     Box::pin(async move { close_managed_surface(&surface_id, role) })
 }
 
-type ManagedSurfaceToggleHandler = Arc<dyn Fn(&str) -> bool + Send + Sync>;
-static MANAGED_SURFACE_TOGGLE_HANDLER: Mutex<Option<ManagedSurfaceToggleHandler>> =
-    Mutex::new(None);
-
-pub fn set_windows_managed_surface_toggle_handler(handler: ManagedSurfaceToggleHandler) {
-    if let Ok(mut slot) = MANAGED_SURFACE_TOGGLE_HANDLER.lock() {
-        *slot = Some(handler);
-    }
-}
-
-pub(super) fn toggle_managed_surface(id: &str) -> Result<(), PlatformError> {
-    let handler = MANAGED_SURFACE_TOGGLE_HANDLER
-        .lock()
-        .ok()
-        .and_then(|slot| slot.clone())
-        .ok_or_else(|| {
-            PlatformError::NotSupported(
-                "managed surfaces are not supported on this Windows host".to_string(),
-            )
-        })?;
-    if handler(id) {
-        Ok(())
-    } else {
-        Err(PlatformError::InvalidParameter(format!(
-            "unknown managed surface: {id}"
-        )))
-    }
-}
-
 #[derive(Clone)]
 pub struct WindowsUrlSurfaceWebTag {
     pub app_id: String,
