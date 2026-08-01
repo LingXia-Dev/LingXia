@@ -541,7 +541,7 @@ pub(super) fn ensure_managed_surface_provider(
     request: ManagedSurfaceProviderRequest,
 ) -> ManagedSurfaceFuture {
     Box::pin(async move {
-        let (sender, receiver) = futures::channel::oneshot::channel();
+        let (sender, receiver) = tokio::sync::oneshot::channel();
         let completion = Box::new(move |result| {
             let _ = sender.send(result);
         });
