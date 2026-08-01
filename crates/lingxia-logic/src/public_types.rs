@@ -143,13 +143,40 @@ rong::js_api! {
 
         type BinaryFileData = r###"ArrayBuffer | ArrayBufferView"###;
 
-        type CapsuleRect = r###"{
-    width: number;
-    height: number;
-    top: number;
-    right: number;
-    bottom: number;
-    left: number;
+        type AppearancePreference = r###"'auto' | 'light' | 'dark'"###;
+        type ResolvedAppearance = r###"'light' | 'dark'"###;
+        type VisibilityPreference = r###"'auto' | 'hidden'"###;
+
+        type NavigationBarStylePatch = r###"{
+    backgroundColor?: string | null;
+    foregroundColor?: string | null;
+    dividerColor?: string | null;
+}"###;
+
+        type NavigationBarPatch = r###"{
+    title?: string | null;
+    homeButton?: VisibilityPreference;
+    style?: NavigationBarStylePatch | null;
+}"###;
+
+        type TabBarStylePatch = r###"{
+    foregroundColor?: string | null;
+    selectedForegroundColor?: string | null;
+}"###;
+
+        type TabBarItemPatch = r###"{
+    index: number;
+    text?: string | null;
+    iconPath?: string | null;
+    selectedIconPath?: string | null;
+    badge?: string | null;
+    redDot?: boolean;
+}"###;
+
+        type TabBarPatch = r###"{
+    visibility?: VisibilityPreference;
+    style?: TabBarStylePatch | null;
+    items?: readonly TabBarItemPatch[];
 }"###;
 
         /// One app-declared action shown in the host-provided More affordance.
@@ -1593,8 +1620,11 @@ true
 
         // Runtime namespaces are emitted as global interfaces. Re-export their
         // public module types without maintaining a second declaration.
+        type AppearanceApi = "globalThis.AppearanceApi";
         type HostAppApi = "globalThis.HostAppApi";
         type LxEnv = "globalThis.LxEnv";
+        type NavigationBarApi = "globalThis.NavigationBarApi";
+        type TabBarApi = "globalThis.TabBarApi";
         type TrayApi = "globalThis.TrayApi";
 
         /// App-owned host-shell chrome. Mutations are available only to the home

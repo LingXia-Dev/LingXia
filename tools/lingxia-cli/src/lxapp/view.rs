@@ -127,7 +127,8 @@ pub(crate) fn page_title(project: &Project, page_path: &str) -> Result<String> {
         let content = fs::read_to_string(&config_path)?;
         let value: Value = serde_json::from_str(&content)?;
         if let Some(title) = value
-            .get("navigationBarTitleText")
+            .get("navigationBar")
+            .and_then(|navigation_bar| navigation_bar.get("title"))
             .and_then(Value::as_str)
             .map(str::trim)
             .filter(|value| !value.is_empty())
@@ -890,8 +891,8 @@ mod tests {
         let actions = extract_action_modes(
             r#"
             Page({
-              setNavigationBarTitle: function (options) {
-                return lx.setNavigationBarTitle(options);
+              updateNavigationBarTitle: function (options) {
+                return lx.navigationBar.update(options);
               },
               chooseToastIcon: async function () {
                 const result = await lx.showActionSheet({ itemList: ["a", "b"] });
@@ -905,7 +906,7 @@ mod tests {
         assert_eq!(
             actions,
             vec![
-                ("setNavigationBarTitle".to_string(), PageActionMode::Call),
+                ("updateNavigationBarTitle".to_string(), PageActionMode::Call),
                 ("chooseToastIcon".to_string(), PageActionMode::Call),
                 ("directArrow".to_string(), PageActionMode::Call),
             ]

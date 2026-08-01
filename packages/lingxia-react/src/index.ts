@@ -14,3 +14,8 @@ export { LxVideo, type LxVideoProps } from "./LxVideo.js";
 export { LxMediaSwiper, type LxMediaSwiperProps } from "./LxMediaSwiper.js";
 export { LxPicker, type LxPickerProps } from "./LxPicker.js";
 export { LxNavigator, type LxNavigatorProps } from "./LxNavigator.js";
+export type {
+  LxPageChrome,
+  PageChromeLayoutSnapshot,
+  PageChromeRect,
+} from "@lingxia/page-runtime";

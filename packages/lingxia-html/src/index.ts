@@ -7,6 +7,11 @@ export {
   type ActionMap,
   type Snapshot,
 } from "@lingxia/page-runtime";
+export type {
+  LxPageChrome,
+  PageChromeLayoutSnapshot,
+  PageChromeRect,
+} from "@lingxia/page-runtime";
 export {
   getDisplayLanguage,
 } from "@lingxia/bridge";

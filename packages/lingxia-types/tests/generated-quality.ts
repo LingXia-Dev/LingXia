@@ -3,7 +3,7 @@ import type {
   AppDownloadOptions,
   AppDownloadResult,
   AppScreenshotResult,
-  CapsuleRect,
+  AppearanceState,
   DownloadTask,
   DownloadsDownloadOptions,
   DownloadsDownloadResult,
@@ -45,7 +45,10 @@ declare const readBinary: ReadBinaryFileOptions;
 declare const app: HostAppApi;
 declare const videoInfo: VideoInfo;
 
-const capsuleRectResult: Promise<CapsuleRect | null> = lx.getCapsuleRect();
+const appearanceState: AppearanceState = lx.appearance.get();
+const appearanceSetResult: Promise<void> = lx.appearance.set("dark");
+const navigationUpdateResult: Promise<void> = lx.navigationBar.update({ title: null });
+const tabBarUpdateResult: Promise<void> = lx.tabBar.update({ visibility: "auto" });
 const urlTabResult: Promise<null> = lx.openSurface(urlTab);
 const declaredResult: Promise<SurfaceHandle> = lx.openSurface(declaredSurface);
 const appResult: Promise<SurfaceHandle> = lx.openSurface(appSurface);
@@ -109,7 +112,10 @@ type DownloadsPathIsBranded = Assert<Not<string extends SystemDownloadsPath ? tr
 type BrandsStayDistinct = Assert<Not<AppDownloadFilePath extends SystemDownloadsPath ? true : false>>;
 
 export type GeneratedQualityGate = [
-  typeof capsuleRectResult,
+  typeof appearanceState,
+  typeof appearanceSetResult,
+  typeof navigationUpdateResult,
+  typeof tabBarUpdateResult,
   typeof urlTabResult,
   typeof declaredResult,
   typeof appResult,

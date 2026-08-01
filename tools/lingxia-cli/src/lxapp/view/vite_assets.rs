@@ -34,7 +34,7 @@ pub(super) fn write_root_manifest(project: &Project) -> Result<()> {
 
             if let Some(list) = value
                 .get_mut("tabBar")
-                .and_then(|value| value.get_mut("list"))
+                .and_then(|value| value.get_mut("items"))
                 .and_then(Value::as_array_mut)
             {
                 for item in list.iter_mut() {
@@ -464,7 +464,7 @@ mod tests {
     { "name": "settings", "path": "pages/settings/index" }
   ],
   "tabBar": {
-    "list": [
+    "items": [
       { "pagePath": "pages/home/index", "text": "Home" }
     ]
   }
@@ -487,7 +487,7 @@ mod tests {
             Some("pages/settings/index.tsx")
         );
         assert_eq!(
-            manifest["tabBar"]["list"][0]["pagePath"].as_str(),
+            manifest["tabBar"]["items"][0]["pagePath"].as_str(),
             Some("pages/home/index.tsx")
         );
     }

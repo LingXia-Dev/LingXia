@@ -21,3 +21,8 @@ export type {
   LxNavigatorProps,
   LxNavigatorEvent,
 } from "./types.js";
+export type {
+  LxPageChrome,
+  PageChromeLayoutSnapshot,
+  PageChromeRect,
+} from "@lingxia/page-runtime";

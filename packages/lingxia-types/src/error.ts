@@ -10,10 +10,38 @@ export interface LxApiError {
 }
 
 export function isLxApiError(error: unknown): error is LxApiError {
-  return parseLxApiError(error) !== null;
+  const parsed = parseLxApiError(error);
+  const target = toRecord(error);
+  if (!parsed || !target) return false;
+
+  if (
+    target.code === parsed.code &&
+    target.key === parsed.key &&
+    target.message === parsed.message &&
+    target.raw === error
+  ) {
+    return true;
+  }
+
+  // Host errors carry their stable business code and actionable detail in
+  // `data`. Normalize the caught object so this type guard is sound and code
+  // inside the guarded branch observes the documented LxApiError shape.
+  try {
+    target.code = parsed.code;
+    target.key = parsed.key;
+    target.message = parsed.message;
+    target.raw = error;
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function readMessage(error: unknown): string {
+  const root = toRecord(error);
+  const data = root && toRecord(root.data);
+  const detail = data?.detail;
+  if (typeof detail === "string" && detail.trim() !== "") return detail;
   if (typeof error === "string") return error;
   if (error instanceof Error && typeof error.message === "string") return error.message;
   if (typeof error === "object" && error !== null) {

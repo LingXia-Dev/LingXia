@@ -1,0 +1,90 @@
+export interface PageChromeRect {
+  readonly width: number;
+  readonly height: number;
+  readonly top: number;
+  readonly right: number;
+  readonly bottom: number;
+  readonly left: number;
+}
+
+export interface PageChromeLayoutSnapshot {
+  readonly revision: number;
+  readonly bottomInset: number;
+  readonly capsuleRect: PageChromeRect | null;
+  readonly capsuleInlineEndInset: number;
+}
+
+export interface LxPageChrome {
+  readonly layout: PageChromeLayoutSnapshot;
+}
+
+declare global {
+  interface Window {
+    readonly lxPageChrome: LxPageChrome;
+  }
+
+  interface WindowEventMap {
+    lxpagechromechange: CustomEvent<PageChromeLayoutSnapshot>;
+  }
+}
+
+const initialLayout = Object.freeze<PageChromeLayoutSnapshot>({
+  revision: 0,
+  bottomInset: 0,
+  capsuleRect: null,
+  capsuleInlineEndInset: 0,
+});
+
+/** Ensure browser previews have the same synchronous contract as native pages. */
+export function installPageChromeRuntime(): LxPageChrome | undefined {
+  if (typeof window === "undefined") return undefined;
+  if (window.lxPageChrome) return window.lxPageChrome;
+
+  let layout = initialLayout;
+  const api = Object.freeze({
+    get layout() {
+      return layout;
+    },
+  });
+  Object.defineProperty(window, "lxPageChrome", {
+    configurable: false,
+    enumerable: true,
+    value: api,
+  });
+
+  Object.defineProperty(window, "__lingxiaApplyPageChrome", {
+    configurable: false,
+    enumerable: false,
+    value(next: PageChromeLayoutSnapshot, scheme: "light" | "dark") {
+      const capsuleRect = next.capsuleRect
+        ? Object.freeze({ ...next.capsuleRect })
+        : null;
+      layout = Object.freeze({ ...next, capsuleRect });
+      const root = document.documentElement;
+      root?.style.setProperty(
+        "--lx-page-chrome-bottom-inset",
+        `${layout.bottomInset}px`,
+      );
+      root?.style.setProperty(
+        "--lx-page-chrome-capsule-inline-end-inset",
+        `${layout.capsuleInlineEndInset}px`,
+      );
+      if (root) root.style.colorScheme = scheme;
+      window.dispatchEvent(
+        new CustomEvent("lxpagechromechange", { detail: layout }),
+      );
+    },
+  });
+  return api;
+}
+
+declare global {
+  interface Window {
+    readonly __lingxiaApplyPageChrome?: (
+      layout: PageChromeLayoutSnapshot,
+      scheme: "light" | "dark",
+    ) => void;
+  }
+}
+
+installPageChromeRuntime();
