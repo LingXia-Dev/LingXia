@@ -1,6 +1,6 @@
 use crate::LxAppError;
 use crate::lxapp::LxApp;
-use crate::lxapp::navbar::{NavigationBarConfig, NavigationBarState};
+use crate::lxapp::navbar::{NavigationBarConfig, NavigationBarState, NavigationStyle};
 use crate::warn;
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
@@ -153,10 +153,12 @@ impl<'de> Deserialize<'de> for OrientationOverride {
 /// PageInstance configuration loaded from page.json (immutable)
 /// This is the single source of truth for page configuration.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct PageConfig {
-    /// Navigation bar configuration
-    #[serde(flatten)]
+    #[serde(default)]
+    pub navigation_style: NavigationStyle,
+
+    #[serde(default)]
     pub navigation_bar: NavigationBarConfig,
 
     /// Enable pull-to-refresh
@@ -231,7 +233,7 @@ impl PageConfig {
     /// Create NavigationBarState from this config
     /// This converts immutable config to mutable runtime state.
     pub fn create_navbar_state(&self) -> NavigationBarState {
-        NavigationBarState::from_config(&self.navigation_bar)
+        NavigationBarState::from_config(self.navigation_style, &self.navigation_bar)
     }
 
     /// Check if pull-to-refresh is enabled

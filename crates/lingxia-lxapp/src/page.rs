@@ -84,6 +84,9 @@ pub(crate) struct PageInstanceInner {
     webview_ready_tx: watch::Sender<Option<Result<(), String>>>,
     webview_ready_rx: WebviewReadyReceiver,
 
+    // Runtime-owned scripts installed at the earliest page-start callback.
+    document_start_scripts: Vec<Arc<str>>,
+
     // Scripts injected on every page load (global + app-level, snapshotted at creation).
     page_scripts: Vec<Arc<str>>,
 
@@ -376,6 +379,7 @@ impl PageInstance {
             bridge: PageBridge::new(lxapp_arc.clone(), lxapp_arc.executor.clone()),
             webview_ready_tx: ready_tx,
             webview_ready_rx: Arc::new(Mutex::new(ready_rx)),
+            document_start_scripts: lxapp.document_start_scripts_snapshot(),
             page_scripts: lxapp.page_scripts_snapshot(),
             loaded_tx,
         });
@@ -502,6 +506,7 @@ impl PageInstance {
             bridge: PageBridge::new(lxapp_arc.clone(), lxapp_arc.executor.clone()),
             webview_ready_tx: ready_tx,
             webview_ready_rx: Arc::new(Mutex::new(ready_rx)),
+            document_start_scripts: lxapp.document_start_scripts_snapshot(),
             page_scripts: lxapp.page_scripts_snapshot(),
             loaded_tx,
         });
@@ -895,6 +900,17 @@ impl PageInstance {
     /// Notify that the page's WebView started loading (mirrors WebViewDelegate::on_page_started).
     /// Used by external delegates to forward events to a shared page.
     pub fn notify_page_started(&self) {
+        if !self.inner.document_start_scripts.is_empty()
+            && let Some(webview) = self.webview()
+        {
+            for js in &self.inner.document_start_scripts {
+                if let Err(error) = webview.exec_js(js) {
+                    crate::error!("document-start script injection failed: {}", error)
+                        .with_appid(self.inner.appid.clone())
+                        .with_path(self.inner.path.clone());
+                }
+            }
+        }
         self.notify_render_started_inner();
     }
 
@@ -1382,7 +1398,8 @@ impl WebViewDelegate for PageInstance {
         progress.apply(&event);
         match &event {
             lingxia_webview::NavigationEvent::Started { .. } => {
-                self.notify_render_started_inner();
+                drop(progress);
+                self.notify_page_started();
             }
             // Only the current attempt's success drives the loaded lifecycle:
             // a stale terminal must not mark a newer load as ready, and a
@@ -1579,7 +1596,7 @@ mod tests {
     #[test]
     fn back_to_tab_page_restores_the_selected_item() {
         let mut tabbar: crate::lxapp::tabbar::TabBar = serde_json::from_value(serde_json::json!({
-            "list": [
+            "items": [
                 { "pagePath": "pages/home/index" },
                 { "pagePath": "pages/api/index" }
             ]
@@ -1589,7 +1606,7 @@ mod tests {
         tabbar.set_visible(false);
 
         assert!(restore_tabbar_after_back(&mut tabbar, "pages/api/index"));
-        assert!(tabbar.is_visible);
+        assert!(tabbar.is_effectively_visible());
         assert_eq!(tabbar.get_selected_index(), 1);
     }
 

@@ -41,6 +41,7 @@ impl Project {
                 None => detect_project_framework(project_root)?,
             };
             let pages = resolve_lxapp_pages(project_root, &manifest, framework)?;
+            validate_page_configs(project_root, &pages)?;
             let logic_entry = resolve_logic_entry(&manifest)?;
             let version = non_empty_str(manifest.get("version"), "version in lxapp.json")?;
             let package_name = read_package_name(project_root)?;
@@ -132,8 +133,237 @@ fn validate_lxapp_manifest(manifest: &Value) -> Result<()> {
         ));
     }
     validate_lxapp_pages(manifest.get("pages"))?;
+    validate_page_chrome_manifest(manifest)?;
     validate_lxapp_security(manifest.get("security"))?;
     Ok(())
+}
+
+fn validate_page_configs(project_root: &Path, pages: &[String]) -> Result<()> {
+    for page in pages {
+        let relative = Path::new(page).with_extension("json");
+        let path = project_root.join(&relative);
+        if !path.exists() {
+            continue;
+        }
+        let value = read_json(&path)?;
+        let object = value
+            .as_object()
+            .ok_or_else(|| anyhow!("{}: page config must be an object", relative.display()))?;
+        for legacy in [
+            "navigationBarTitleText",
+            "navigationBarBackgroundColor",
+            "navigationBarTextStyle",
+        ] {
+            if object.contains_key(legacy) {
+                return Err(anyhow!(
+                    "{} {legacy}: removed; use navigationBar.title or navigationBar.style",
+                    relative.display()
+                ));
+            }
+        }
+        for key in object.keys() {
+            if ![
+                "navigationStyle",
+                "navigationBar",
+                "enablePullDownRefresh",
+                "pageOrientation",
+            ]
+            .contains(&key.as_str())
+            {
+                return Err(anyhow!(
+                    "{} {key}: unknown page config field",
+                    relative.display()
+                ));
+            }
+        }
+        if let Some(style) = object.get("navigationStyle")
+            && !matches!(style.as_str(), Some("default" | "custom"))
+        {
+            return Err(anyhow!(
+                "{} navigationStyle: expected default or custom",
+                relative.display()
+            ));
+        }
+        if let Some(navigation_bar) = object.get("navigationBar") {
+            let navigation_bar = navigation_bar.as_object().ok_or_else(|| {
+                anyhow!("{} navigationBar: expected an object", relative.display())
+            })?;
+            reject_unknown_fields(
+                navigation_bar,
+                &["title", "style"],
+                &format!("{} navigationBar", relative.display()),
+            )?;
+            if let Some(title) = navigation_bar.get("title")
+                && !title.is_string()
+            {
+                return Err(anyhow!(
+                    "{} navigationBar.title: expected a string",
+                    relative.display()
+                ));
+            }
+            if let Some(style) = navigation_bar.get("style") {
+                validate_style_object(
+                    style,
+                    &["backgroundColor", "foregroundColor", "dividerColor"],
+                    &format!("{} navigationBar.style", relative.display()),
+                    &["backgroundColor", "foregroundColor"],
+                )?;
+            }
+        }
+    }
+    Ok(())
+}
+
+fn validate_page_chrome_manifest(manifest: &Value) -> Result<()> {
+    if let Some(value) = manifest.get("appearance") {
+        match value.as_str() {
+            Some("auto" | "light" | "dark") => {}
+            _ => return Err(anyhow!("appearance: expected auto, light, or dark")),
+        }
+    }
+    let Some(tabbar) = manifest.get("tabBar") else {
+        return Ok(());
+    };
+    let tabbar = tabbar
+        .as_object()
+        .ok_or_else(|| anyhow!("tabBar: expected an object"))?;
+    for (legacy, replacement) in [
+        ("list", "tabBar.items"),
+        ("color", "tabBar.style.foregroundColor"),
+        ("selectedColor", "tabBar.style.selectedForegroundColor"),
+        ("backgroundColor", "tabBar.style.backgroundColor"),
+        ("borderStyle", "tabBar.style.dividerColor"),
+        ("position", "tabBar.presentation"),
+        ("dimension", "host-owned layout"),
+    ] {
+        if tabbar.contains_key(legacy) {
+            return Err(anyhow!("tabBar.{legacy}: removed; use {replacement}"));
+        }
+    }
+    if !tabbar.get("items").is_some_and(Value::is_array) {
+        return Err(anyhow!("tabBar.items: expected an array"));
+    }
+    reject_unknown_fields(tabbar, &["presentation", "style", "items"], "tabBar")?;
+    let presentation = tabbar
+        .get("presentation")
+        .map(|value| {
+            value
+                .as_str()
+                .filter(|value| matches!(*value, "standard" | "immersive"))
+                .ok_or_else(|| anyhow!("tabBar.presentation: expected standard or immersive"))
+        })
+        .transpose()?
+        .unwrap_or("standard");
+    if let Some(style) = tabbar.get("style") {
+        let style = validate_style_object(
+            style,
+            &[
+                "foregroundColor",
+                "selectedForegroundColor",
+                "backgroundColor",
+                "dividerColor",
+            ],
+            "tabBar.style",
+            &[
+                "foregroundColor",
+                "selectedForegroundColor",
+                "backgroundColor",
+            ],
+        )?;
+        if presentation == "immersive" {
+            for field in ["backgroundColor", "dividerColor"] {
+                if style.contains_key(field) {
+                    return Err(anyhow!(
+                        "tabBar.style.{field}: must be omitted when tabBar.presentation is immersive"
+                    ));
+                }
+            }
+        }
+    }
+    let items = tabbar["items"].as_array().expect("items checked above");
+    if !(2..=5).contains(&items.len()) {
+        return Err(anyhow!("tabBar.items: expected 2 to 5 items"));
+    }
+    let page_paths: BTreeSet<&str> = manifest
+        .get("pages")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|page| page.get("path").and_then(Value::as_str))
+        .collect();
+    for (index, item) in items.iter().enumerate() {
+        let item = item
+            .as_object()
+            .ok_or_else(|| anyhow!("tabBar.items[{index}]: expected an object"))?;
+        reject_unknown_fields(
+            item,
+            &["pagePath", "text", "iconPath", "selectedIconPath"],
+            &format!("tabBar.items[{index}]"),
+        )?;
+        let page_path = item
+            .get("pagePath")
+            .and_then(Value::as_str)
+            .ok_or_else(|| anyhow!("tabBar.items[{index}].pagePath: expected a string"))?;
+        if !page_paths.contains(page_path) {
+            return Err(anyhow!(
+                "tabBar.items[{index}].pagePath: '{page_path}' is not a registered page"
+            ));
+        }
+        for field in ["text", "iconPath", "selectedIconPath"] {
+            if let Some(value) = item.get(field)
+                && !value.is_string()
+            {
+                return Err(anyhow!("tabBar.items[{index}].{field}: expected a string"));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn reject_unknown_fields(
+    object: &serde_json::Map<String, Value>,
+    allowed: &[&str],
+    path: &str,
+) -> Result<()> {
+    if let Some(field) = object
+        .keys()
+        .find(|field| !allowed.contains(&field.as_str()))
+    {
+        return Err(anyhow!("{path}.{field}: unknown field"));
+    }
+    Ok(())
+}
+
+fn validate_style_object<'a>(
+    value: &'a Value,
+    allowed: &[&str],
+    path: &str,
+    opaque: &[&str],
+) -> Result<&'a serde_json::Map<String, Value>> {
+    let style = value
+        .as_object()
+        .ok_or_else(|| anyhow!("{path}: expected an object"))?;
+    reject_unknown_fields(style, allowed, path)?;
+    for (field, value) in style {
+        let color = value
+            .as_str()
+            .ok_or_else(|| anyhow!("{path}.{field}: expected a CSS hex color"))?;
+        let hex = color
+            .strip_prefix('#')
+            .ok_or_else(|| anyhow!("{path}.{field}: expected #RRGGBB or #RRGGBBAA"))?;
+        let valid_length = hex.len() == 6 || (!opaque.contains(&field.as_str()) && hex.len() == 8);
+        if !valid_length || !hex.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+            return Err(anyhow!(
+                "{path}.{field}: expected {}",
+                if opaque.contains(&field.as_str()) {
+                    "opaque #RRGGBB"
+                } else {
+                    "#RRGGBB or #RRGGBBAA"
+                }
+            ));
+        }
+    }
+    Ok(style)
 }
 
 fn validate_lxapp_pages(pages: Option<&Value>) -> Result<()> {
@@ -966,5 +1196,46 @@ mod tests {
 
         let project = Project::discover(temp.path(), None).unwrap();
         assert_eq!(project.logic_entry, None);
+    }
+
+    #[test]
+    fn rejects_removed_tabbar_fields_with_replacement() {
+        let manifest = serde_json::json!({
+            "appId": "demo",
+            "version": "1.0.0",
+            "security": {"network":{"trustedDomains":[]},"privileges":[]},
+            "pages": [
+                {"name":"home","path":"pages/home/index"},
+                {"name":"profile","path":"pages/profile/index"}
+            ],
+            "tabBar": {"list": []}
+        });
+
+        let error = validate_lxapp_manifest(&manifest).unwrap_err().to_string();
+        assert!(error.contains("tabBar.list: removed; use tabBar.items"));
+    }
+
+    #[test]
+    fn validates_immersive_tabbar_contract() {
+        let manifest = serde_json::json!({
+            "appId": "demo",
+            "version": "1.0.0",
+            "appearance": "dark",
+            "security": {"network":{"trustedDomains":[]},"privileges":[]},
+            "pages": [
+                {"name":"home","path":"pages/home/index"},
+                {"name":"profile","path":"pages/profile/index"}
+            ],
+            "tabBar": {
+                "presentation": "immersive",
+                "style": {"foregroundColor":"#FFFFFF"},
+                "items": [
+                    {"pagePath":"pages/home/index"},
+                    {"pagePath":"pages/profile/index"}
+                ]
+            }
+        });
+
+        validate_lxapp_manifest(&manifest).unwrap();
     }
 }
