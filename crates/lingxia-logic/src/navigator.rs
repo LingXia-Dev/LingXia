@@ -120,15 +120,15 @@ pub(crate) async fn prepare_app_open(
         .filter(|value| !value.is_empty());
 
     if let Some(target_version) = target_version {
-        lxapp::ensure_target_version_ready(&lxapp, &target_appid, release_type, target_version)
+        lxapp::ensure_target_version_ready(lxapp, &target_appid, release_type, target_version)
             .await
             .map_err(|e| js_error_from_lxapp_error(&e))?;
     } else {
-        update::ensure_first_install(&lxapp, &target_appid, release_type).await?;
+        update::ensure_first_install(lxapp, &target_appid, release_type).await?;
         if lxapp::is_force_update_downloading(&target_appid, release_type) {
-            show_force_update_downloading_toast(&lxapp);
+            show_force_update_downloading_toast(lxapp);
         }
-        lxapp::ensure_force_update_for_installed(&lxapp, &target_appid, release_type)
+        lxapp::ensure_force_update_for_installed(lxapp, &target_appid, release_type)
             .await
             .map_err(|e| js_error_from_lxapp_error(&e))?;
     }
@@ -136,7 +136,7 @@ pub(crate) async fn prepare_app_open(
     let target_app = lxapp::ensure_lxapp(&target_appid, release_type)
         .map_err(|e| js_error_from_lxapp_error(&e))?;
     let (startup_options, _) =
-        build_startup_options(&target_app, &options).map_err(|e| js_error_from_lxapp_error(&e))?;
+        build_startup_options(&target_app, options).map_err(|e| js_error_from_lxapp_error(&e))?;
 
     Ok((startup_options, release_type))
 }
