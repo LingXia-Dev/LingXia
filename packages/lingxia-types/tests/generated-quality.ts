@@ -11,8 +11,7 @@ import type {
   HostAppApi,
   Lx,
   OpenDeclaredSurfaceSpec,
-  OpenLxappSurfaceSpec,
-  OpenNativeSurfaceSpec,
+  OpenAppSurfaceSpec,
   OpenPageSurfaceSpec,
   OpenUrlAsideSpec,
   OpenUrlTabSpec,
@@ -34,8 +33,7 @@ type Not<T extends boolean> = T extends true ? false : true;
 declare const lx: Lx;
 declare const urlTab: OpenUrlTabSpec;
 declare const declaredSurface: OpenDeclaredSurfaceSpec;
-declare const lxappSurface: OpenLxappSurfaceSpec;
-declare const nativeSurface: OpenNativeSurfaceSpec;
+declare const appSurface: OpenAppSurfaceSpec;
 declare const pageSurface: OpenPageSurfaceSpec;
 declare const urlAside: OpenUrlAsideSpec;
 declare const appDownload: AppDownloadOptions;
@@ -50,18 +48,21 @@ declare const videoInfo: VideoInfo;
 const capsuleRectResult: Promise<CapsuleRect | null> = lx.getCapsuleRect();
 const urlTabResult: Promise<null> = lx.openSurface(urlTab);
 const declaredResult: Promise<SurfaceHandle> = lx.openSurface(declaredSurface);
-const lxappResult: Promise<SurfaceHandle> = lx.openSurface(lxappSurface);
-const nativeResult: Promise<SurfaceHandle> = lx.openSurface(nativeSurface);
+const appResult: Promise<SurfaceHandle> = lx.openSurface(appSurface);
 const terminalWorkspaceResult: Promise<SurfaceHandle> = lx.openSurface({
-  native: "terminal",
-  instanceKey: "project-a",
+  surface: "terminal",
+  key: "project-a",
+  as: "aside",
 });
-// @ts-expect-error native presentation is owned by lingxia.yaml
-lx.openSurface({ native: "terminal", as: "main" });
-// @ts-expect-error native presentation is owned by lingxia.yaml
-lx.openSurface({ native: "terminal", edge: "bottom" });
-// @ts-expect-error other native capabilities are opened by declaration id
-lx.openSurface({ native: "browser" });
+const dynamicAppResult: Promise<SurfaceHandle> = lx.openSurface({
+  appId: "lingxia-chat",
+  as: "main",
+  page: "chat",
+});
+// @ts-expect-error app Surface composition requires an explicit role
+lx.openSurface({ appId: "lingxia-chat" });
+// @ts-expect-error provider implementation kinds are not public selectors
+lx.openSurface({ native: "terminal" });
 const pageResult: Promise<Surface> = lx.openSurface(pageSurface);
 const asideResult: Promise<Surface | null> = lx.openSurface(urlAside);
 const appDownloadResult: DownloadTask<AppDownloadResult> = lx.downloadFile(appDownload);
@@ -84,8 +85,8 @@ export type GeneratedQualityGate = [
   typeof capsuleRectResult,
   typeof urlTabResult,
   typeof declaredResult,
-  typeof lxappResult,
-  typeof nativeResult,
+  typeof appResult,
+  typeof dynamicAppResult,
   typeof terminalWorkspaceResult,
   typeof pageResult,
   typeof asideResult,

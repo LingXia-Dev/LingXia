@@ -579,17 +579,20 @@ rong::js_api! {
     ipv6: string[];
 }"###;
 
-        /// Show a surface declared by id in the host's `lingxia.yaml`.
-        /// Available to any lxapp granted access to that declaration.
+        /// Open a surface declaration from the host's `lingxia.yaml`.
+        /// `key` identifies an additional reusable instance when supported;
+        /// `as` changes the live instance's role without changing its identity.
         type OpenDeclaredSurfaceSpec = r###"{
     surface: string;
+    /** Stable caller-owned identity for an additional declaration instance. */
+    key?: string;
+    /** Omit to use the declaration's role. */
+    as?: 'main' | 'aside' | 'float';
     /** Docking edge override for this open. */
     edge?: SurfaceEdge;
     page?: never;
     url?: never;
-    lxapp?: never;
-    native?: never;
-    as?: never;
+    appId?: never;
     position?: never;
     size?: never;
     query?: never;
@@ -599,45 +602,29 @@ rong::js_api! {
         ///
         type NetworkType = r###"'none' | 'unknown' | 'wifi' | '2g' | '3g' | '4g' | '5g' | 'ethernet'"###;
 
-        /// Open another lxapp by appId (home lxapp only). A declared surface
-        /// toggles its shell presentation; an undeclared lxapp opens as a main
-        /// tab, or docks as an aside panel with `as: 'aside'`.
-        type OpenLxappSurfaceSpec = r###"{
-    lxapp: string;
-    /** Defaults to the lingxia.yaml role, else 'main'. */
-    as?: 'main' | 'aside' | 'float';
+        /// Compose a dynamic business lxapp as its own shell Surface (home lxapp
+        /// only). Unlike `navigateToApp`, this creates a parallel shell item and
+        /// lifecycle handle. No YAML declaration is required.
+        type OpenAppSurfaceSpec = r###"{
+    appId: string;
+    as: 'main' | 'aside' | 'float';
+    page?: string;
+    path?: string;
+    query?: PageQuery;
+    /** Defaults to 'release'. */
+    envVersion?: LxAppEnvVersion;
+    targetVersion?: string;
     /**
      * Docking edge override for this open. Without it the surface keeps its
      * current placement (initially the `lingxia.yaml` edge); with it the panel
      * opens there — or moves there if already visible.
      */
     edge?: SurfaceEdge;
-    page?: never;
     url?: never;
-    native?: never;
-    position?: never;
-    size?: never;
-    query?: never;
-}"###;
-
-        /// Open or focus a host-declared terminal (home lxapp only). Omitting
-        /// `instanceKey` opens the declaration's default role and placement. A
-        /// key selects a switchable main workspace; equal keys reuse one surface,
-        /// while distinct keys create distinct workspaces. Other declared native
-        /// capabilities are addressed by their declaration id with `{ surface }`.
-        type OpenNativeSurfaceSpec = r###"{
-    native: 'terminal';
-    /** Stable caller identity; not the runtime surface id or display title. */
-    instanceKey?: string;
-    page?: never;
-    url?: never;
-    lxapp?: never;
     surface?: never;
-    as?: never;
-    edge?: never;
+    key?: never;
     position?: never;
     size?: never;
-    query?: never;
 }"###;
 
         /// File system APIs.
@@ -712,6 +699,8 @@ rong::js_api! {
     edge?: never;
     surface?: never;
     url?: never;
+    appId?: never;
+    key?: never;
 } | {
     page: string;
     as: 'window';
@@ -723,6 +712,8 @@ rong::js_api! {
     position?: never;
     surface?: never;
     url?: never;
+    appId?: never;
+    key?: never;
 }"###;
 
         /// Native interaction supplied by the host around page content.
@@ -735,7 +726,7 @@ rong::js_api! {
     modal?: boolean;
 }"###;
 
-        type OpenSurfaceSpec = r###"OpenPageSurfaceSpec | OpenDeclaredSurfaceSpec | OpenLxappSurfaceSpec | OpenNativeSurfaceSpec | OpenBuiltinBrowserSurfaceSpec | OpenUrlTabSpec | OpenUrlAsideSpec"###;
+        type OpenSurfaceSpec = r###"OpenPageSurfaceSpec | OpenDeclaredSurfaceSpec | OpenAppSurfaceSpec | OpenBuiltinBrowserSurfaceSpec | OpenUrlTabSpec | OpenUrlAsideSpec"###;
 
         /// Built-in browser product page. Opening one requires
         /// `capabilities.browser` and is restricted to the home lxapp.
@@ -749,8 +740,8 @@ rong::js_api! {
     position?: never;
     interaction?: never;
     page?: never;
-    lxapp?: never;
-    native?: never;
+    appId?: never;
+    key?: never;
     surface?: never;
     query?: never;
 }"###;
@@ -768,6 +759,8 @@ rong::js_api! {
     size?: OverlaySurfaceSize;
     page?: never;
     surface?: never;
+    appId?: never;
+    key?: never;
     position?: never;
     query?: never;
 }"###;
@@ -777,6 +770,8 @@ rong::js_api! {
     as?: never;
     page?: never;
     surface?: never;
+    appId?: never;
+    key?: never;
     edge?: never;
     position?: never;
     size?: never;

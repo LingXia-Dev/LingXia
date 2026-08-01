@@ -106,33 +106,74 @@ async fn await_managed_operation(
 impl WindowSurfaceController {
     async fn open_managed_native_surface(
         &self,
-        capability: &str,
+        declaration_id: &str,
         instance_key: Option<&str>,
+        requested_role: Option<ManagedSurfaceRole>,
+        requested_edge: Option<&str>,
     ) -> Result<ManagedNativeSurface, LxAppError> {
-        let capability = capability.trim();
+        let declaration_id = declaration_id.trim();
         let instance_key = instance_key.map(str::trim).filter(|key| !key.is_empty());
+        let requested_edge = requested_edge.map(parse_surface_edge).transpose()?;
+        let declaration = self
+            .native_declarations
+            .lock()
+            .unwrap()
+            .get(declaration_id)
+            .cloned()
+            .ok_or_else(|| {
+                LxAppError::ResourceNotFound(format!(
+                    "unknown declared native surface: {declaration_id}"
+                ))
+            })?;
+        let capability = declaration
+            .surface
+            .content
+            .native_identity()
+            .map(|(capability, _)| capability.to_string())
+            .ok_or_else(|| {
+                LxAppError::InvalidParameter(format!(
+                    "surface '{declaration_id}' does not use a native provider"
+                ))
+            })?;
         let (surface, presentation, is_live) = {
             let manager = self.manager.lock().unwrap();
-            if let Some(existing) = manager.graph().surfaces().iter().find(|surface| {
-                surface.content.native_identity() == Some((capability, instance_key))
-            }) {
-                (existing.clone(), None, true)
+            let existing = if instance_key.is_none() {
+                manager.graph().get(declaration_id)
             } else {
-                let declaration = self
-                    .native_declarations
-                    .lock()
-                    .unwrap()
-                    .get(capability)
-                    .cloned()
-                    .ok_or_else(|| {
-                        LxAppError::ResourceNotFound(format!(
-                            "unknown declared native surface: {capability}"
-                        ))
-                    })?;
+                manager.graph().surfaces().iter().find(|surface| {
+                    surface.content.native_identity() == Some((capability.as_str(), instance_key))
+                })
+            };
+            if let Some(existing) = existing {
+                let mut surface = existing.clone();
+                if let Some(role) = requested_role {
+                    let requested = managed_role_to_core(role);
+                    surface.role = if manager.graph().is_root_main(&surface.id) {
+                        lingxia_surface::Role::Main
+                    } else {
+                        requested
+                    };
+                    if surface.role != lingxia_surface::Role::Aside {
+                        surface.placement.edge = None;
+                    }
+                }
+                if surface.role == lingxia_surface::Role::Aside
+                    && let Some(edge) = requested_edge
+                {
+                    surface.placement.edge = Some(edge);
+                }
+                (surface, None, true)
+            } else {
                 let sequence = instance_key
                     .map(|_| self.next_native_surface_id.fetch_add(1, Ordering::Relaxed));
-                let (surface, presentation) =
-                    instantiate_native_declaration(declaration, capability, instance_key, sequence);
+                let (surface, presentation) = instantiate_native_declaration(
+                    declaration,
+                    &capability,
+                    instance_key,
+                    sequence,
+                    requested_role,
+                    requested_edge,
+                );
                 (surface, Some(presentation), false)
             }
         };
@@ -149,7 +190,7 @@ impl WindowSurfaceController {
         await_managed_operation(|completion| {
             self.runtime.open_managed_native_surface(
                 &surface.id,
-                capability,
+                &capability,
                 instance_key,
                 role,
                 edge,
@@ -387,10 +428,24 @@ impl WindowSurfaceController {
         let changed = {
             let mut manager = self.manager.lock().unwrap();
             if visible {
-                if let Some(edge) = parsed_edge
+                if (role.is_some() || parsed_edge.is_some())
                     && let Some(mut surface) = manager.graph().get(id).cloned()
                 {
-                    surface.placement.edge = Some(edge);
+                    if let Some(role) = role {
+                        surface.role = if manager.graph().is_root_main(id) {
+                            lingxia_surface::Role::Main
+                        } else {
+                            managed_role_to_core(role)
+                        };
+                        if surface.role != lingxia_surface::Role::Aside {
+                            surface.placement.edge = None;
+                        }
+                    }
+                    if surface.role == lingxia_surface::Role::Aside
+                        && let Some(edge) = parsed_edge
+                    {
+                        surface.placement.edge = Some(edge);
+                    }
                     manager.open(surface);
                 }
                 manager.show(id)
@@ -478,7 +533,7 @@ impl WindowSurfaceController {
             edge,
         );
         self.native_declarations.lock().unwrap().insert(
-            capability.to_string(),
+            surface_id.to_string(),
             NativeSurfaceDeclaration {
                 presentation: lingxia_surface::SurfacePresentation::for_content(&surface.content),
                 surface,
@@ -520,9 +575,9 @@ impl WindowSurfaceController {
         {
             let mut declarations = self.native_declarations.lock().unwrap();
             for (surface, presentation) in &mains {
-                if let Some((capability, None)) = surface.content.native_identity() {
+                if let Some((_, None)) = surface.content.native_identity() {
                     declarations.insert(
-                        capability.to_string(),
+                        surface.id.clone(),
                         NativeSurfaceDeclaration {
                             surface: surface.clone(),
                             presentation: presentation.clone(),
@@ -546,9 +601,9 @@ impl WindowSurfaceController {
         registration: HostMainSurfaceRegistration,
     ) -> Result<lingxia_surface::SurfaceSwitcherSnapshot, LxAppError> {
         let (surface, presentation) = registration.into_surface()?;
-        if let Some((capability, None)) = surface.content.native_identity() {
+        if let Some((_, None)) = surface.content.native_identity() {
             self.native_declarations.lock().unwrap().insert(
-                capability.to_string(),
+                surface.id.clone(),
                 NativeSurfaceDeclaration {
                     surface: surface.clone(),
                     presentation: presentation.clone(),
@@ -768,6 +823,8 @@ fn instantiate_native_declaration(
     capability: &str,
     instance_key: Option<&str>,
     sequence: Option<u64>,
+    requested_role: Option<ManagedSurfaceRole>,
+    requested_edge: Option<lingxia_surface::Edge>,
 ) -> (
     lingxia_surface::Surface,
     lingxia_surface::SurfacePresentation,
@@ -779,8 +836,17 @@ fn instantiate_native_declaration(
             "native:{capability}:{}",
             sequence.expect("keyed native instances require a sequence")
         );
-        surface.role = lingxia_surface::Role::Main;
-        surface.placement = Default::default();
+        surface.role = requested_role
+            .map(managed_role_to_core)
+            .unwrap_or(surface.role);
+        surface.placement = if surface.role == lingxia_surface::Role::Aside {
+            lingxia_surface::Placement {
+                edge: requested_edge.or(surface.placement.edge),
+                preferred_size: surface.placement.preferred_size,
+            }
+        } else {
+            Default::default()
+        };
         surface.float = None;
         presentation.capabilities.close = true;
         presentation.capabilities.rename = true;
@@ -800,6 +866,14 @@ fn instantiate_native_declaration(
         };
     }
     (surface, presentation)
+}
+
+fn managed_role_to_core(role: ManagedSurfaceRole) -> lingxia_surface::Role {
+    match role {
+        ManagedSurfaceRole::Main => lingxia_surface::Role::Main,
+        ManagedSurfaceRole::Aside => lingxia_surface::Role::Aside,
+        ManagedSurfaceRole::Float => lingxia_surface::Role::Float,
+    }
 }
 
 fn host_aside_node(
@@ -1640,17 +1714,19 @@ impl LxApp {
 
     pub async fn open_shell_native_surface(
         &self,
-        capability: &str,
+        declaration_id: &str,
         instance_key: Option<&str>,
+        role: Option<ManagedSurfaceRole>,
+        edge: Option<&str>,
     ) -> Result<ManagedNativeSurface, LxAppError> {
-        let capability = capability.trim();
-        if capability.is_empty() {
+        let declaration_id = declaration_id.trim();
+        if declaration_id.is_empty() {
             return Err(LxAppError::InvalidParameter(
-                "native capability must not be empty".to_string(),
+                "surface declaration id must not be empty".to_string(),
             ));
         }
         window_controller(PRIMARY_WINDOW, &self.runtime)
-            .open_managed_native_surface(capability, instance_key)
+            .open_managed_native_surface(declaration_id, instance_key, role, edge)
             .await
     }
 
@@ -2563,7 +2639,7 @@ mod tests {
     }
 
     #[test]
-    fn keyed_native_instance_derives_a_switchable_main_from_an_aside_declaration() {
+    fn keyed_native_instance_keeps_identity_separate_from_requested_role() {
         let surface = host_aside_node(
             "terminal",
             lingxia_surface::SurfaceContent::Native {
@@ -2578,15 +2654,21 @@ mod tests {
         };
 
         let (default_surface, _) =
-            instantiate_native_declaration(declaration.clone(), "terminal", None, None);
+            instantiate_native_declaration(declaration.clone(), "terminal", None, None, None, None);
         assert_eq!(default_surface.role, lingxia_surface::Role::Aside);
         assert_eq!(
             default_surface.placement.edge,
             Some(lingxia_surface::Edge::Bottom)
         );
 
-        let (workspace, presentation) =
-            instantiate_native_declaration(declaration, "terminal", Some("project-a"), Some(7));
+        let (workspace, presentation) = instantiate_native_declaration(
+            declaration,
+            "terminal",
+            Some("project-a"),
+            Some(7),
+            Some(ManagedSurfaceRole::Main),
+            None,
+        );
         assert_eq!(workspace.id, "native:terminal:7");
         assert_eq!(workspace.role, lingxia_surface::Role::Main);
         assert_eq!(workspace.placement.edge, None);

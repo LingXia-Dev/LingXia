@@ -147,7 +147,7 @@ declare global {
      * `as: "window"` is desktop-only.
      */
     openSurface(spec: OpenUrlTabSpec): Promise<null>;
-    openSurface(spec: OpenDeclaredSurfaceSpec | OpenLxappSurfaceSpec | OpenNativeSurfaceSpec): Promise<SurfaceHandle>;
+    openSurface(spec: OpenDeclaredSurfaceSpec | OpenAppSurfaceSpec): Promise<SurfaceHandle>;
     openSurface(spec: OpenPageSurfaceSpec): Promise<Surface>;
     openSurface(spec: OpenUrlAsideSpec): Promise<Surface | null>;
     openSurface(spec: OpenSurfaceSpec): Promise<Surface | SurfaceHandle | null>;
@@ -738,6 +738,33 @@ export type NetworkInfo = {
 /** Network status APIs. */
 export type NetworkType = 'none' | 'unknown' | 'wifi' | '2g' | '3g' | '4g' | '5g' | 'ethernet';
 
+/**
+ * Compose a dynamic business lxapp as its own shell Surface (home lxapp
+ * only). Unlike `navigateToApp`, this creates a parallel shell item and
+ * lifecycle handle. No YAML declaration is required.
+ */
+export type OpenAppSurfaceSpec = {
+    appId: string;
+    as: 'main' | 'aside' | 'float';
+    page?: string;
+    path?: string;
+    query?: PageQuery;
+    /** Defaults to 'release'. */
+    envVersion?: LxAppEnvVersion;
+    targetVersion?: string;
+    /**
+     * Docking edge override for this open. Without it the surface keeps its
+     * current placement (initially the `lingxia.yaml` edge); with it the panel
+     * opens there — or moves there if already visible.
+     */
+    edge?: SurfaceEdge;
+    url?: never;
+    surface?: never;
+    key?: never;
+    position?: never;
+    size?: never;
+};
+
 export type OpenBuiltinBrowserSurfaceSpec = {
     url: BuiltinBrowserSurfaceUrl;
     as?: never;
@@ -746,25 +773,28 @@ export type OpenBuiltinBrowserSurfaceSpec = {
     position?: never;
     interaction?: never;
     page?: never;
-    lxapp?: never;
-    native?: never;
+    appId?: never;
+    key?: never;
     surface?: never;
     query?: never;
 };
 
 /**
- * Show a surface declared by id in the host's `lingxia.yaml`.
- * Available to any lxapp granted access to that declaration.
+ * Open a surface declaration from the host's `lingxia.yaml`.
+ * `key` identifies an additional reusable instance when supported;
+ * `as` changes the live instance's role without changing its identity.
  */
 export type OpenDeclaredSurfaceSpec = {
     surface: string;
+    /** Stable caller-owned identity for an additional declaration instance. */
+    key?: string;
+    /** Omit to use the declaration's role. */
+    as?: 'main' | 'aside' | 'float';
     /** Docking edge override for this open. */
     edge?: SurfaceEdge;
     page?: never;
     url?: never;
-    lxapp?: never;
-    native?: never;
-    as?: never;
+    appId?: never;
     position?: never;
     size?: never;
     query?: never;
@@ -784,51 +814,6 @@ export type OpenFileOptions = {
     mode?: 'auto' | 'review' | 'external';
     /** Hint for whether the native review UI should expose its action menu when supported. */
     showMenu?: boolean;
-};
-
-/**
- * Open another lxapp by appId (home lxapp only). A declared surface
- * toggles its shell presentation; an undeclared lxapp opens as a main
- * tab, or docks as an aside panel with `as: 'aside'`.
- */
-export type OpenLxappSurfaceSpec = {
-    lxapp: string;
-    /** Defaults to the lingxia.yaml role, else 'main'. */
-    as?: 'main' | 'aside' | 'float';
-    /**
-     * Docking edge override for this open. Without it the surface keeps its
-     * current placement (initially the `lingxia.yaml` edge); with it the panel
-     * opens there — or moves there if already visible.
-     */
-    edge?: SurfaceEdge;
-    page?: never;
-    url?: never;
-    native?: never;
-    position?: never;
-    size?: never;
-    query?: never;
-};
-
-/**
- * Open or focus a host-declared terminal (home lxapp only). Omitting
- * `instanceKey` opens the declaration's default role and placement. A
- * key selects a switchable main workspace; equal keys reuse one surface,
- * while distinct keys create distinct workspaces. Other declared native
- * capabilities are addressed by their declaration id with `{ surface }`.
- */
-export type OpenNativeSurfaceSpec = {
-    native: 'terminal';
-    /** Stable caller identity; not the runtime surface id or display title. */
-    instanceKey?: string;
-    page?: never;
-    url?: never;
-    lxapp?: never;
-    surface?: never;
-    as?: never;
-    edge?: never;
-    position?: never;
-    size?: never;
-    query?: never;
 };
 
 /**
@@ -883,6 +868,8 @@ export type OpenPageSurfaceSpec = {
     edge?: never;
     surface?: never;
     url?: never;
+    appId?: never;
+    key?: never;
 } | {
     page: string;
     as: 'window';
@@ -894,9 +881,11 @@ export type OpenPageSurfaceSpec = {
     position?: never;
     surface?: never;
     url?: never;
+    appId?: never;
+    key?: never;
 };
 
-export type OpenSurfaceSpec = OpenPageSurfaceSpec | OpenDeclaredSurfaceSpec | OpenLxappSurfaceSpec | OpenNativeSurfaceSpec | OpenBuiltinBrowserSurfaceSpec | OpenUrlTabSpec | OpenUrlAsideSpec;
+export type OpenSurfaceSpec = OpenPageSurfaceSpec | OpenDeclaredSurfaceSpec | OpenAppSurfaceSpec | OpenBuiltinBrowserSurfaceSpec | OpenUrlTabSpec | OpenUrlAsideSpec;
 
 /**
  * Open `url` in the multi-tab browser aside. `url` must be `https://` or
@@ -912,6 +901,8 @@ export type OpenUrlAsideSpec = {
     size?: OverlaySurfaceSize;
     page?: never;
     surface?: never;
+    appId?: never;
+    key?: never;
     position?: never;
     query?: never;
 };
@@ -921,6 +912,8 @@ export type OpenUrlTabSpec = {
     as?: never;
     page?: never;
     surface?: never;
+    appId?: never;
+    key?: never;
     edge?: never;
     position?: never;
     size?: never;
@@ -2058,12 +2051,14 @@ declare global {
     getStorage(): Storage;
     /**
      * `lx.openSurface(spec)` — unified surface entry point. The spec is a
-     * discriminated union keyed by exactly one of `page`, `surface`, or `url`:
+     * discriminated union keyed by exactly one of `page`, `url`, `appId`, or
+     * `surface`:
      * - `{ page, as, position?, size?, query? }` opens one of this lxapp's own
      * pages as a `float` (overlay popup) or a `window` (bare standalone desktop
      * window). Pages cannot be docked as an `aside` — an aside shows external
      * content only.
-     * - `{ surface, edge?, query? }` shows a host-declared surface by its `ui` id.
+     * - `{ appId, as, ... }` composes a dynamic business lxapp as a Surface.
+     * - `{ surface, key?, as?, edge? }` opens a host declaration by id.
      * - `{ url }` opens an authorized HTTPS/file URL in the in-app chromed browser.
      */
     openSurface(spec: never): Promise<never>;

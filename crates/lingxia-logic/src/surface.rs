@@ -240,13 +240,15 @@ struct WebSurfaceOptions {
 }
 
 /// `lx.openSurface(spec)` — unified surface entry point. The spec is a
-/// discriminated union keyed by exactly one of `page`, `surface`, or `url`:
+/// discriminated union keyed by exactly one of `page`, `url`, `appId`, or
+/// `surface`:
 ///
 /// - `{ page, as, position?, size?, query? }` opens one of this lxapp's own
 ///   pages as a `float` (overlay popup) or a `window` (bare standalone desktop
 ///   window). Pages cannot be docked as an `aside` — an aside shows external
 ///   content only.
-/// - `{ surface, edge?, query? }` shows a host-declared surface by its `ui` id.
+/// - `{ appId, as, ... }` composes a dynamic business lxapp as a Surface.
+/// - `{ surface, key?, as?, edge? }` opens a host declaration by id.
 /// - `{ url }` opens an authorized HTTPS/file URL in the in-app chromed browser.
 async fn open_surface_spec(ctx: JSContext, spec: JSValue) -> JSResult<JSValue> {
     let Some(obj) = spec.clone().into_object() else {
@@ -259,26 +261,20 @@ async fn open_surface_spec(ctx: JSContext, spec: JSValue) -> JSResult<JSValue> {
     let keys = [
         get_property(&obj, "page").is_some(),
         get_property(&obj, "url").is_some(),
-        get_property(&obj, "lxapp").is_some(),
-        get_property(&obj, "native").is_some(),
+        get_property(&obj, "appId").is_some(),
         get_property(&obj, "surface").is_some(),
     ];
     if keys.iter().filter(|set| **set).count() != 1 {
         return Err(surface_error(
             rong::error::E_INVALID_ARG,
             "invalid_surface_spec",
-            "spec must contain exactly one content key: lxapp, page, url, native, or surface",
+            "spec must contain exactly one selector: surface, appId, page, or url",
         ));
     }
     match keys {
         [true, ..] => open_page_spec(ctx, &obj).await.map(JSObject::into_js_value),
         [_, true, ..] => open_url_spec(ctx, &obj).await,
-        [_, _, true, ..] => open_lxapp_spec(ctx, &obj)
-            .await
-            .map(JSObject::into_js_value),
-        [_, _, _, true, _] => open_native_spec(&ctx, &obj)
-            .await
-            .map(JSObject::into_js_value),
+        [_, _, true, _] => open_app_spec(ctx, &obj).await.map(JSObject::into_js_value),
         _ => open_declared_surface_spec(&ctx, &obj)
             .await
             .map(JSObject::into_js_value),
@@ -286,7 +282,7 @@ async fn open_surface_spec(ctx: JSContext, spec: JSValue) -> JSResult<JSValue> {
 }
 
 /// Reject callers other than the home lxapp for the privileged content keys
-/// (`lxapp` / `native`) — the same single-writer model as `lx.shell`. Gates on
+/// (`appId`) — the same single-writer model as `lx.shell`. Gates on
 /// the configured home appId (like `ensure_home_lxapp`), not the instance
 /// flag, which a dev-mode reinstall can recreate without.
 fn require_home_caller(lxapp: &LxApp, key: &str) -> JSResult<()> {
@@ -300,107 +296,75 @@ fn require_home_caller(lxapp: &LxApp, key: &str) -> JSResult<()> {
     ))
 }
 
-/// `{ lxapp, as?, edge? }` branch of `lx.openSurface`. Opens another lxapp by
-/// appId — the bundle is ensured first (installed from the configured cloud
-/// when missing); declared surfaces then toggle their shell presentation, and
-/// an undeclared lxapp opens as a main tab, or docks as an aside panel with
-/// `as: 'aside'`.
-async fn open_lxapp_spec(ctx: JSContext, spec: &JSObject) -> JSResult<JSObject> {
-    let app_id = read_required_string(spec, "lxapp")?;
+/// `{ appId, as, ... }` branch of `lx.openSurface`. Opens another lxapp by
+/// appId. The target version is prepared through the same update path as app
+/// navigation, then composed independently from any YAML declaration.
+async fn open_app_spec(ctx: JSContext, spec: &JSObject) -> JSResult<JSObject> {
+    let app_id = read_required_string(spec, "appId")?;
     let app_id = app_id.trim().to_string();
     if app_id.is_empty() {
         return Err(surface_error(
             rong::error::E_INVALID_ARG,
             "invalid_surface_spec",
-            "lxapp must be a non-empty appId",
+            "appId must be non-empty",
         ));
     }
     let edge = read_validated_edge(spec)?;
     let lxapp = LxApp::from_ctx(&ctx)?;
-    require_home_caller(&lxapp, "lxapp")?;
+    require_home_caller(&lxapp, "appId")?;
 
-    let as_role = read_optional_string(spec, "as")?;
-    let as_role = as_role.as_deref().map(str::trim);
-    if let Some(other) = as_role
-        && !matches!(other, "main" | "aside" | "float")
-    {
+    let as_role = read_required_string(spec, "as")?;
+    let as_role = as_role.trim();
+    if !matches!(as_role, "main" | "aside" | "float") {
         return Err(surface_error(
             rong::error::E_INVALID_ARG,
             "invalid_surface_spec",
-            format!("an lxapp surface supports as: 'main' | 'aside' | 'float'; got {other}"),
+            format!("an app surface supports as: 'main' | 'aside' | 'float'; got {as_role}"),
         ));
     }
 
-    // Ensure the bundle exists before any presentation — this is what pulls
-    // the lxapp from the cloud when it is not bundled/installed.
-    lxapp::prepare_lxapp_open(&app_id, lxapp::ReleaseType::Release)
-        .await
-        .map_err(|err| {
-            surface_error(rong::error::E_NOT_FOUND, "lxapp_not_found", err.to_string())
-        })?;
+    let query = match get_property(spec, "query") {
+        Some(value) => Some(value.into_object().ok_or_else(|| {
+            surface_error(
+                rong::error::E_INVALID_ARG,
+                "invalid_surface_spec",
+                "query must be an object",
+            )
+        })?),
+        None => None,
+    };
+    let target = crate::navigator::NavigateToAppOptions {
+        appid: app_id.clone(),
+        path: read_optional_string(spec, "path")?,
+        page: read_optional_string(spec, "page")?,
+        query,
+        env_version: read_optional_string(spec, "envVersion")?,
+        target_version: read_optional_string(spec, "targetVersion")?,
+    };
+    let (startup_options, release_type) =
+        crate::navigator::prepare_app_open(&lxapp, &target).await?;
 
-    let declared_aside = declared_lxapp_aside(&app_id);
     let (region, shell_surface_id) = match as_role {
-        // No override: preserve a live app's current region; otherwise let a
-        // declaration supply its role, falling back to main when undeclared.
-        None => match lxapp::open_region(&app_id) {
-            Some(region) => {
-                let surface_id = if region == lxapp::LxAppOpenRegion::Aside {
-                    declared_aside
-                        .as_ref()
-                        .map(|aside| aside.surface_id.as_str())
-                        .unwrap_or(&app_id)
-                } else {
-                    &app_id
-                };
-                show_lxapp_region(&lxapp, &app_id, surface_id, region, edge.as_deref()).await?;
-                (region, surface_id.to_string())
-            }
-            None => {
-                if let Some(aside) = declared_aside.as_ref() {
-                    open_lxapp_region(
-                        &app_id,
-                        lxapp::LxAppOpenRegion::Aside,
-                        &aside.surface_id,
-                        &aside.path,
-                    )?;
-                    lxapp.register_host_aside(
-                        &aside.surface_id,
-                        edge.as_deref().unwrap_or(&aside.edge),
-                    );
-                    (lxapp::LxAppOpenRegion::Aside, aside.surface_id.clone())
-                } else {
-                    open_lxapp_region(&app_id, lxapp::LxAppOpenRegion::Main, &app_id, "")?;
-                    (lxapp::LxAppOpenRegion::Main, app_id.clone())
-                }
-            }
-        },
-        Some("main") => {
-            open_lxapp_region(&app_id, lxapp::LxAppOpenRegion::Main, &app_id, "")?;
+        "main" => {
+            open_lxapp_region(
+                &app_id,
+                lxapp::LxAppOpenRegion::Main,
+                &app_id,
+                startup_options.clone(),
+            )?;
             (lxapp::LxAppOpenRegion::Main, app_id.clone())
         }
-        Some("aside") => {
-            let surface_id = declared_aside
-                .as_ref()
-                .map(|aside| aside.surface_id.as_str())
-                .unwrap_or(&app_id);
-            let path = declared_aside
-                .as_ref()
-                .map(|aside| aside.path.as_str())
-                .unwrap_or("");
-            let default_edge = declared_aside
-                .as_ref()
-                .map(|aside| aside.edge.as_str())
-                .unwrap_or("right");
-            open_lxapp_region(&app_id, lxapp::LxAppOpenRegion::Aside, surface_id, path)?;
-            // Runtime lxapps have no declaration for the host's managed-
-            // surface lookup. Register the child directly in the shared graph;
-            // declared hosts may already have done so and replacement is
-            // intentionally idempotent.
-            lxapp.register_host_aside(surface_id, edge.as_deref().unwrap_or(default_edge));
-            (lxapp::LxAppOpenRegion::Aside, surface_id.to_string())
+        "aside" => {
+            open_lxapp_region(
+                &app_id,
+                lxapp::LxAppOpenRegion::Aside,
+                &app_id,
+                startup_options.clone(),
+            )?;
+            lxapp.register_host_aside(&app_id, edge.as_deref().unwrap_or("right"));
+            (lxapp::LxAppOpenRegion::Aside, app_id.clone())
         }
-        Some("float") => {
+        "float" => {
             lxapp
                 .set_shell_surface_visible(&app_id, true, None, edge.as_deref())
                 .await
@@ -420,53 +384,22 @@ async fn open_lxapp_spec(ctx: JSContext, spec: &JSObject) -> JSResult<JSObject> 
             })?;
             (region, app_id.clone())
         }
-        Some(_) => unreachable!("validated above"),
+        _ => unreachable!("validated above"),
     };
-    lxapp::schedule_lxapp_update_check(&app_id, lxapp::ReleaseType::Release);
+    lxapp::schedule_lxapp_update_check(&app_id, release_type);
     lxapp_surface_handle(&ctx, lxapp, app_id, shell_surface_id, region)
-}
-
-struct DeclaredLxappAside {
-    surface_id: String,
-    path: String,
-    edge: String,
-}
-
-fn declared_lxapp_aside(app_id: &str) -> Option<DeclaredLxappAside> {
-    let item = lingxia_app_context::app_config()?
-        .panels
-        .as_ref()?
-        .items
-        .iter()
-        .find(|item| item.content.kind.is_lxapp() && item.content.app_id == app_id)?;
-    let edge = match item.position {
-        lingxia_app_context::PanelPosition::Left => "left",
-        lingxia_app_context::PanelPosition::Right => "right",
-        lingxia_app_context::PanelPosition::Top => "top",
-        lingxia_app_context::PanelPosition::Bottom => "bottom",
-    };
-    Some(DeclaredLxappAside {
-        surface_id: item.id.clone(),
-        path: item.content.path.clone().unwrap_or_default(),
-        edge: edge.to_string(),
-    })
 }
 
 fn open_lxapp_region(
     app_id: &str,
     region: lxapp::LxAppOpenRegion,
     shell_surface_id: &str,
-    path: &str,
+    mut options: lxapp::LxAppStartupOptions,
 ) -> JSResult<()> {
-    let options = match region {
-        lxapp::LxAppOpenRegion::Main => lxapp::LxAppStartupOptions::new(path),
-        lxapp::LxAppOpenRegion::Aside => lxapp::LxAppStartupOptions {
-            path: path.to_string(),
-            open_mode: lingxia_platform::traits::app_runtime::LxAppOpenMode::Panel,
-            panel_id: shell_surface_id.to_string(),
-            ..Default::default()
-        },
-    };
+    if region == lxapp::LxAppOpenRegion::Aside {
+        options.open_mode = lingxia_platform::traits::app_runtime::LxAppOpenMode::Panel;
+        options.panel_id = shell_surface_id.to_string();
+    }
     lxapp::open_lxapp(app_id, options)
         .map(|_| ())
         .map_err(lxapp_open_error)
@@ -499,7 +432,12 @@ async fn show_lxapp_region(
             {
                 Ok(())
             } else {
-                open_lxapp_region(app_id, region, shell_surface_id, "")?;
+                open_lxapp_region(
+                    app_id,
+                    region,
+                    shell_surface_id,
+                    lxapp::LxAppStartupOptions::new(""),
+                )?;
                 shell.register_host_aside(shell_surface_id, edge.unwrap_or("right"));
                 Ok(())
             }
@@ -520,52 +458,38 @@ fn lxapp_open_error(err: LxAppError) -> rong::RongJSError {
     }
 }
 
-/// `{ native, instanceKey? }` branch of `lx.openSurface`. The declaration owns
-/// the default layout; a key selects one stable switchable workspace.
-async fn open_native_spec(ctx: &JSContext, spec: &JSObject) -> JSResult<JSObject> {
-    let name = read_required_string(spec, "native")?;
-    if get_property(spec, "as").is_some() || get_property(spec, "edge").is_some() {
-        return Err(surface_error(
-            rong::error::E_INVALID_ARG,
-            "invalid_surface_spec",
-            "native surface role and edge are owned by lingxia.yaml",
-        ));
-    }
-    let instance_key = read_optional_string(spec, "instanceKey")?.map(|key| key.trim().to_string());
-    if name.trim() != "terminal" {
-        return Err(surface_error(
-            rong::error::E_INVALID_ARG,
-            "invalid_surface_spec",
-            "native must be 'terminal'; open other native declarations with { surface }",
-        ));
-    }
-    if instance_key.as_deref().is_some_and(str::is_empty)
-        || instance_key.as_ref().is_some_and(|key| key.len() > 128)
+/// Declaration-id form. Provider kinds stay behind the declaration boundary.
+async fn open_declared_surface_spec(ctx: &JSContext, spec: &JSObject) -> JSResult<JSObject> {
+    let id = read_required_string(spec, "surface")?;
+    let key = read_optional_string(spec, "key")?.map(|key| key.trim().to_string());
+    if key.as_deref().is_some_and(str::is_empty) || key.as_ref().is_some_and(|key| key.len() > 128)
     {
         return Err(surface_error(
             rong::error::E_INVALID_ARG,
             "invalid_surface_spec",
-            "instanceKey must contain 1 to 128 UTF-8 bytes",
+            "key must contain 1 to 128 UTF-8 bytes",
         ));
     }
-    let lxapp = LxApp::from_ctx(ctx)?;
-    require_home_caller(&lxapp, "native")?;
-    let resolved = lxapp
-        .open_shell_native_surface(name.trim(), instance_key.as_deref())
-        .await
-        .map_err(|err| surface_lifecycle_error("open", err))?;
-    managed_surface_handle(ctx, lxapp, resolved.surface_id, Some(resolved.role))
-}
-
-/// Published declaration-id form. It remains available to non-home lxapps;
-/// only the newer product-level `{ lxapp }` and `{ native }` selectors are
-/// restricted to the home app.
-async fn open_declared_surface_spec(ctx: &JSContext, spec: &JSObject) -> JSResult<JSObject> {
-    let id = read_required_string(spec, "surface")?;
     let edge = read_validated_edge(spec)?;
     let lxapp = LxApp::from_ctx(ctx)?;
     let id = id.trim();
-    let role = lxapp.shell_surface_role(id);
+    if let Some(app_id) = declared_lxapp_app_id(&lxapp, id) {
+        lxapp::prepare_lxapp_open(&app_id, lxapp::ReleaseType::Release)
+            .await
+            .map_err(|err| {
+                surface_error(rong::error::E_NOT_FOUND, "lxapp_not_found", err.to_string())
+            })?;
+    }
+    let requested_role = read_optional_managed_role(spec)?;
+    if key.is_some() {
+        require_home_caller(&lxapp, "surface + key")?;
+        let resolved = lxapp
+            .open_shell_native_surface(id, key.as_deref(), requested_role, edge.as_deref())
+            .await
+            .map_err(|err| surface_lifecycle_error("open", err))?;
+        return managed_surface_handle(ctx, lxapp, resolved.surface_id, Some(resolved.role));
+    }
+    let role = requested_role.or_else(|| lxapp.shell_surface_role(id));
     if role.is_some_and(|role| role != ManagedSurfaceRole::Aside) && edge.is_some() {
         return Err(surface_error(
             rong::error::E_INVALID_ARG,
@@ -578,6 +502,35 @@ async fn open_declared_surface_spec(ctx: &JSContext, spec: &JSObject) -> JSResul
         .await
         .map_err(|err| surface_lifecycle_error("open", err))?;
     managed_surface_handle(ctx, lxapp, id.to_string(), role)
+}
+
+fn declared_lxapp_app_id(lxapp: &LxApp, surface_id: &str) -> Option<String> {
+    if let Some(lingxia_surface::SurfaceContent::Lxapp { app_id, .. }) =
+        lxapp.main_surface_content(surface_id)
+    {
+        return Some(app_id);
+    }
+    lingxia_app_context::app_config()?
+        .panels
+        .as_ref()?
+        .items
+        .iter()
+        .find(|item| item.id == surface_id && item.content.kind.is_lxapp())
+        .map(|item| item.content.app_id.clone())
+}
+
+fn read_optional_managed_role(spec: &JSObject) -> JSResult<Option<ManagedSurfaceRole>> {
+    match read_optional_string(spec, "as")?.as_deref().map(str::trim) {
+        None => Ok(None),
+        Some("main") => Ok(Some(ManagedSurfaceRole::Main)),
+        Some("aside") => Ok(Some(ManagedSurfaceRole::Aside)),
+        Some("float") => Ok(Some(ManagedSurfaceRole::Float)),
+        Some(other) => Err(surface_error(
+            rong::error::E_INVALID_ARG,
+            "invalid_surface_spec",
+            format!("as must be main, aside, or float; got {other}"),
+        )),
+    }
 }
 
 fn read_validated_edge(spec: &JSObject) -> JSResult<Option<String>> {
