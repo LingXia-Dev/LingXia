@@ -620,22 +620,29 @@ pub(crate) fn open_declared_terminal(owner_appid: &str, surface_id: &str) -> Res
         .ok_or_else(|| format!("home control lxapp is not active: {owner_appid}"))?;
     let layout = content_agnostic_window_layout(&owner);
     let webtag = WebTag::new(owner_appid, &format!("__native_main/{surface_id}"), None);
-    crate::window_host::show_native_main_window(&webtag, layout)?;
-    if let Ok(mut presented) = PRESENTED_NATIVE_MAIN
-        .get_or_init(|| Mutex::new(None))
-        .lock()
-    {
-        *presented = Some(webtag);
-    }
+    // Seed the complete terminal layout before revealing the native-only host.
+    // Showing the HWND first exposes an empty workspace until the panel is
+    // registered and maximized on the following statements.
     super::terminal_panel::open_windows_terminal_panel(
         surface_id,
         &lingxia_logic::i18n::t(lingxia_logic::I18nKey::TerminalTitle),
         WindowsPanelPosition::Bottom,
     )?;
     if !lingxia_windows_contract::set_host_panel_maximized(surface_id, true) {
+        super::terminal_panel::destroy_windows_terminal_panel(surface_id);
         return Err(format!(
             "failed to maximize native terminal surface '{surface_id}'"
         ));
+    }
+    if let Err(error) = crate::window_host::show_native_main_window(&webtag, layout) {
+        super::terminal_panel::destroy_windows_terminal_panel(surface_id);
+        return Err(error);
+    }
+    if let Ok(mut presented) = PRESENTED_NATIVE_MAIN
+        .get_or_init(|| Mutex::new(None))
+        .lock()
+    {
+        *presented = Some(webtag);
     }
     Ok(())
 }
@@ -5627,16 +5634,40 @@ fn open_managed_native_surface(
     }
     let title = lingxia_logic::i18n::t(lingxia_logic::I18nKey::TerminalTitle);
     let position = panel_position(position);
+    let Some(host_window) = crate::window_host::primary_host_window_handle() else {
+        return false;
+    };
+    let surface_id = surface_id.to_string();
+    let role = role.to_string();
+    match crate::window_host::run_on_window_thread_sync(host_window, move || {
+        commit_terminal_surface_handoff(&owner_appid, &surface_id, &title, position, &role)
+    }) {
+        Ok(opened) => opened,
+        Err(error) => {
+            log::warn!("failed to commit Windows terminal surface handoff: {error}");
+            false
+        }
+    }
+}
+
+#[cfg(feature = "terminal-runtime")]
+fn commit_terminal_surface_handoff(
+    owner_appid: &str,
+    surface_id: &str,
+    title: &str,
+    position: WindowsPanelPosition,
+    role: &str,
+) -> bool {
     crate::window_host::with_host_layout_batch(|| {
         if role == "main" {
             cancel_pending_browser_presentation();
         }
         let opened = match super::terminal_panel::show_existing_windows_terminal_panel(
-            surface_id, &title, position,
+            surface_id, title, position,
         ) {
             Ok(true) => true,
             Ok(false) => {
-                super::terminal_panel::open_windows_terminal_panel(surface_id, &title, position)
+                super::terminal_panel::open_windows_terminal_panel(surface_id, title, position)
                     .is_ok()
             }
             Err(error) => {
@@ -5650,7 +5681,7 @@ fn open_managed_native_surface(
             }
             super::terminal_panel::set_terminal_panel_maximized(surface_id, role == "main");
             if role == "main"
-                && let Some(owner) = lxapp::try_get(&owner_appid)
+                && let Some(owner) = lxapp::try_get(owner_appid)
             {
                 hide_inactive_native_main_panels(&owner, surface_id);
             }

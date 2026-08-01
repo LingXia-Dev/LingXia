@@ -3,6 +3,8 @@
 use std::cell::Cell;
 use std::collections::{HashMap, HashSet};
 use std::ffi::c_void;
+#[cfg(feature = "terminal-runtime")]
+use std::sync::atomic::AtomicU8;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 #[cfg(feature = "components")]
@@ -81,6 +83,7 @@ static FOCUSED_HOST_PANEL: OnceLock<Mutex<Option<String>>> = OnceLock::new();
 thread_local! {
     static HOST_LAYOUT_BATCH_DEPTH: Cell<u32> = const { Cell::new(0) };
     static HOST_LAYOUT_BATCH_PENDING: Cell<bool> = const { Cell::new(false) };
+    static HOST_LAYOUT_BATCH_FOCUS_PENDING: Cell<bool> = const { Cell::new(false) };
 }
 static NATIVE_FRAMED_WINDOWS: OnceLock<Mutex<HashSet<isize>>> = OnceLock::new();
 #[cfg(feature = "shell-chrome")]
@@ -5030,13 +5033,23 @@ pub(crate) fn with_host_layout_batch<T>(operation: impl FnOnce() -> T) -> T {
 
     impl Drop for BatchGuard {
         fn drop(&mut self) {
-            let flush = HOST_LAYOUT_BATCH_DEPTH.with(|depth| {
+            let (flush, focus) = HOST_LAYOUT_BATCH_DEPTH.with(|depth| {
                 let next = depth.get().saturating_sub(1);
                 depth.set(next);
-                next == 0 && HOST_LAYOUT_BATCH_PENDING.with(|pending| pending.replace(false))
+                if next == 0 {
+                    (
+                        HOST_LAYOUT_BATCH_PENDING.with(|pending| pending.replace(false)),
+                        HOST_LAYOUT_BATCH_FOCUS_PENDING.with(|pending| pending.replace(false)),
+                    )
+                } else {
+                    (false, false)
+                }
             });
             if flush {
-                sync_active_host_layout_now();
+                flush_active_host_layout_batch();
+            }
+            if focus {
+                focus_active_host_window();
             }
         }
     }
@@ -5046,6 +5059,19 @@ pub(crate) fn with_host_layout_batch<T>(operation: impl FnOnce() -> T) -> T {
     let result = operation();
     drop(guard);
     result
+}
+
+fn flush_active_host_layout_batch() {
+    let Some(hwnd) = active_host_window() else {
+        return;
+    };
+    let owner_thread = unsafe { WindowsAndMessaging::GetWindowThreadProcessId(hwnd, None) };
+    if owner_thread != 0 && owner_thread == unsafe { GetCurrentThreadId() } {
+        sync_window_layout(hwnd);
+        invalidate_window_chrome(hwnd);
+    } else {
+        request_host_layout_sync(hwnd);
+    }
 }
 
 fn sync_active_host_layout() {
@@ -5403,6 +5429,17 @@ fn focus_host_panel(panel_id: &str) {
 }
 
 fn focus_active_host_window() {
+    let deferred = HOST_LAYOUT_BATCH_DEPTH.with(|depth| {
+        if depth.get() == 0 {
+            false
+        } else {
+            HOST_LAYOUT_BATCH_FOCUS_PENDING.with(|pending| pending.set(true));
+            true
+        }
+    });
+    if deferred {
+        return;
+    }
     if let Some(hwnd) = active_host_window() {
         focus_host_window(hwnd);
     }
@@ -8591,6 +8628,68 @@ pub fn post_to_window_thread(window: isize, callback: Box<dyn FnOnce() + Send>) 
         drop(unsafe { Box::from_raw(raw) });
     }
     posted
+}
+
+/// Runs one state transition on the owner thread of `window` and waits for it
+/// to finish. Keeping multi-step host mutations inside one window callback
+/// prevents `WM_PAINT` from observing their intermediate registry state.
+#[cfg(feature = "terminal-runtime")]
+pub(crate) fn run_on_window_thread_sync<T: Send + 'static>(
+    window: isize,
+    callback: impl FnOnce() -> T + Send + 'static,
+) -> Result<T, String> {
+    if window == 0 {
+        return Err("window handle is unavailable".to_string());
+    }
+    let hwnd = hwnd_from_handle(window);
+    let owner_thread = unsafe { WindowsAndMessaging::GetWindowThreadProcessId(hwnd, None) };
+    if owner_thread == 0 {
+        return Err("window owner thread is unavailable".to_string());
+    }
+    if owner_thread == unsafe { GetCurrentThreadId() } {
+        return Ok(callback());
+    }
+
+    const PENDING: u8 = 0;
+    const RUNNING: u8 = 1;
+    const CANCELLED: u8 = 2;
+
+    let state = Arc::new(AtomicU8::new(PENDING));
+    let callback_state = state.clone();
+    let (done_tx, done_rx) = std::sync::mpsc::sync_channel(1);
+    if !post_to_window_thread(
+        window,
+        Box::new(move || {
+            if callback_state
+                .compare_exchange(PENDING, RUNNING, Ordering::AcqRel, Ordering::Acquire)
+                .is_err()
+            {
+                return;
+            }
+            let _ = done_tx.send(callback());
+        }),
+    ) {
+        return Err("failed to dispatch to the window thread".to_string());
+    }
+    match done_rx.recv_timeout(std::time::Duration::from_secs(5)) {
+        Ok(result) => Ok(result),
+        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+            Err("window-thread callback was dropped".to_string())
+        }
+        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+            if state
+                .compare_exchange(PENDING, CANCELLED, Ordering::AcqRel, Ordering::Acquire)
+                .is_ok()
+            {
+                return Err("window-thread callback timed out before starting".to_string());
+            }
+            // Once the callback has begun mutating host state, returning an
+            // error would let the caller reject while a ghost surface opens.
+            done_rx
+                .recv()
+                .map_err(|_| "running window-thread callback was dropped".to_string())
+        }
+    }
 }
 
 fn run_posted_window_callback(wparam: WPARAM) {
