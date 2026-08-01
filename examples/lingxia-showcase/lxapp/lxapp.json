@@ -113,18 +113,17 @@
     }
   ],
   "tabBar": {
-    "color": "#999999",
-    "selectedColor": "#1677ff",
-    "backgroundColor": "transparent",
-    "borderStyle": "#eeeeee",
-    "position": "bottom",
-    "list": [
+    "presentation": "immersive",
+    "style": {
+      "foregroundColor": "#999999",
+      "selectedForegroundColor": "#1677ff"
+    },
+    "items": [
       {
         "text": "Home",
         "pagePath": "pages/home/index",
         "iconPath": "public/home.png",
-        "selectedIconPath": "public/home_selected.png",
-        "selected": true
+        "selectedIconPath": "public/home_selected.png"
       },
       {
         "text": "API",

@@ -248,7 +248,7 @@
                 <label class="block text-sm font-medium text-gray-700 mb-1">Title</label>
                 <div class="flex space-x-2">
                   <input type="text" v-model="navbarTitle" placeholder="Enter title" class="flex-1 px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500" />
-                  <button @click="setNavigationBarTitle({ title: navbarTitle })" class="px-3 py-1.5 text-sm bg-blue-500 text-white rounded hover:bg-blue-600">Set</button>
+                  <button @click="updateNavigationBarTitle({ title: navbarTitle })" class="px-3 py-1.5 text-sm bg-blue-500 text-white rounded hover:bg-blue-600">Set</button>
                 </div>
               </div>
               <div>
@@ -258,20 +258,20 @@
                     <input type="text" v-model="navbarBgColor" placeholder="Background #ffffff" class="px-2 py-1.5 text-sm border border-gray-300 rounded" />
                     <input type="text" v-model="navbarTextColor" placeholder="Text #000000" class="px-2 py-1.5 text-sm border border-gray-300 rounded" />
                   </div>
-                  <button @click="setNavigationBarColor({ backgroundColor: navbarBgColor || '#ffffff', frontColor: navbarTextColor || '#000000' })"
+                  <button @click="updateNavigationBarColors({ backgroundColor: navbarBgColor || '#ffffff', frontColor: navbarTextColor || '#000000' })"
                     class="w-full px-3 py-1.5 text-sm bg-green-500 text-white rounded hover:bg-green-600">Set Colors</button>
                 </div>
               </div>
               <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">Presets</label>
                 <div class="grid grid-cols-2 gap-1.5">
-                  <button @click="setNavigationBarTitle({ title: 'Dark Theme' }); setNavigationBarColor({ backgroundColor: '#1f2937', frontColor: '#ffffff' })"
+                  <button @click="updateNavigationBarTitle({ title: 'Dark Theme' }); updateNavigationBarColors({ backgroundColor: '#1f2937', frontColor: '#ffffff' })"
                     class="px-2 py-1.5 bg-gray-800 text-white rounded hover:bg-gray-900 text-xs">Dark</button>
-                  <button @click="setNavigationBarTitle({ title: 'Blue Theme' }); setNavigationBarColor({ backgroundColor: '#3b82f6', frontColor: '#ffffff' })"
+                  <button @click="updateNavigationBarTitle({ title: 'Blue Theme' }); updateNavigationBarColors({ backgroundColor: '#3b82f6', frontColor: '#ffffff' })"
                     class="px-2 py-1.5 bg-blue-500 text-white rounded hover:bg-blue-600 text-xs">Blue</button>
-                  <button @click="setNavigationBarTitle({ title: 'Light Theme' }); setNavigationBarColor({ backgroundColor: '#ffffff', frontColor: '#000000' })"
+                  <button @click="updateNavigationBarTitle({ title: 'Light Theme' }); updateNavigationBarColors({ backgroundColor: '#ffffff', frontColor: '#000000' })"
                     class="px-2 py-1.5 bg-white text-black border border-gray-300 rounded hover:bg-gray-50 text-xs">Light</button>
-                  <button @click="setNavigationBarTitle({ title: 'Green Theme' }); setNavigationBarColor({ backgroundColor: '#10b981', frontColor: '#ffffff' })"
+                  <button @click="updateNavigationBarTitle({ title: 'Green Theme' }); updateNavigationBarColors({ backgroundColor: '#10b981', frontColor: '#ffffff' })"
                     class="px-2 py-1.5 bg-green-500 text-white rounded hover:bg-green-600 text-xs">Green</button>
                 </div>
               </div>
@@ -290,14 +290,14 @@
             </div>
             <div class="p-4 space-y-4">
               <div class="flex space-x-3">
-                <button @click="showTabBar()" class="flex-1 bg-green-500 hover:bg-green-600 text-white py-2 px-4 rounded-lg text-sm font-medium">Show TabBar</button>
-                <button @click="hideTabBar()" class="flex-1 bg-red-500 hover:bg-red-600 text-white py-2 px-4 rounded-lg text-sm font-medium">Hide TabBar</button>
+                <button @click="revealTabBar()" class="flex-1 bg-green-500 hover:bg-green-600 text-white py-2 px-4 rounded-lg text-sm font-medium">Show TabBar</button>
+                <button @click="concealTabBar()" class="flex-1 bg-red-500 hover:bg-red-600 text-white py-2 px-4 rounded-lg text-sm font-medium">Hide TabBar</button>
               </div>
               <div class="pt-2 border-t border-gray-100">
                 <label class="block text-sm font-medium text-gray-700 mb-2">Update Tab 1 Text</label>
                 <div class="flex space-x-2">
                   <input type="text" v-model="itemText" class="flex-1 px-3 py-2 border border-gray-300 rounded-lg" placeholder="Enter new text" />
-                  <button @click="setTabBarItem({ index: 1, text: itemText })" class="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600">Update</button>
+                  <button @click="updateTabBarItem({ index: 1, text: itemText })" class="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600">Update</button>
                 </div>
               </div>
             </div>
@@ -310,8 +310,8 @@
             </div>
             <div class="p-4">
               <div class="flex space-x-3">
-                <button @click="showTabBarRedDot({ index: 1 })" class="flex-1 bg-red-500 hover:bg-red-600 text-white py-2 px-4 rounded-lg text-sm font-medium">Show Red Dot</button>
-                <button @click="hideTabBarRedDot({ index: 1 })" class="flex-1 bg-gray-500 hover:bg-gray-600 text-white py-2 px-4 rounded-lg text-sm font-medium">Hide Red Dot</button>
+                <button @click="enableTabBarRedDot({ index: 1 })" class="flex-1 bg-red-500 hover:bg-red-600 text-white py-2 px-4 rounded-lg text-sm font-medium">Show Red Dot</button>
+                <button @click="disableTabBarRedDot({ index: 1 })" class="flex-1 bg-gray-500 hover:bg-gray-600 text-white py-2 px-4 rounded-lg text-sm font-medium">Hide Red Dot</button>
               </div>
             </div>
           </div>
@@ -327,8 +327,8 @@
                 <input type="text" v-model="badgeText" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" placeholder="Enter badge text" />
               </div>
               <div class="flex space-x-3">
-                <button @click="setTabBarBadge({ index: 1, text: badgeText })" class="flex-1 bg-orange-500 hover:bg-orange-600 text-white py-2 px-4 rounded-lg text-sm font-medium">Set Badge</button>
-                <button @click="removeTabBarBadge({ index: 1 })" class="flex-1 bg-gray-500 hover:bg-gray-600 text-white py-2 px-4 rounded-lg text-sm font-medium">Remove Badge</button>
+                <button @click="updateTabBarBadge({ index: 1, text: badgeText })" class="flex-1 bg-orange-500 hover:bg-orange-600 text-white py-2 px-4 rounded-lg text-sm font-medium">Set Badge</button>
+                <button @click="clearTabBarBadge({ index: 1 })" class="flex-1 bg-gray-500 hover:bg-gray-600 text-white py-2 px-4 rounded-lg text-sm font-medium">Remove Badge</button>
               </div>
             </div>
           </div>
@@ -369,7 +369,7 @@
                   </div>
                 </div>
               </div>
-              <button @click="setTabBarStyle({ color: tabColor, selectedColor: tabSelectedColor, backgroundColor: tabBgColor, borderStyle: tabBorderStyle })"
+              <button @click="updateTabBarForegrounds({ color: tabColor, selectedColor: tabSelectedColor, backgroundColor: tabBgColor, borderStyle: tabBorderStyle })"
                 class="w-full bg-blue-500 hover:bg-blue-600 text-white py-2 px-4 rounded-lg text-sm font-medium">Apply Custom Style</button>
               <div class="mt-4">
                 <label class="block text-sm font-medium text-gray-700 mb-2">Preset Themes</label>
@@ -410,16 +410,16 @@ const {
   hideToast,
   showModalWithParams,
   clearModalResult,
-  setNavigationBarTitle,
-  setNavigationBarColor,
-  showTabBarRedDot,
-  hideTabBarRedDot,
-  setTabBarBadge,
-  removeTabBarBadge,
-  showTabBar,
-  hideTabBar,
-  setTabBarStyle,
-  setTabBarItem,
+  updateNavigationBarTitle,
+  updateNavigationBarColors,
+  enableTabBarRedDot,
+  disableTabBarRedDot,
+  updateTabBarBadge,
+  clearTabBarBadge,
+  revealTabBar,
+  concealTabBar,
+  updateTabBarForegrounds,
+  updateTabBarItem,
   chooseToastIcon,
   chooseToastPosition,
   showDemoActionSheet,
@@ -534,6 +534,6 @@ function applyTheme(theme: { color: string; selectedColor: string; backgroundCol
   tabSelectedColor.value = theme.selectedColor;
   tabBgColor.value = theme.backgroundColor;
   tabBorderStyle.value = theme.borderStyle;
-  setTabBarStyle(theme);
+  updateTabBarForegrounds(theme);
 }
 </script>

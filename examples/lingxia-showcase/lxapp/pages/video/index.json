@@ -1,4 +1,4 @@
 {
-  "navigationBarTitleText": "Native Component Video"
+  "navigationBar": { "title": "Native Component Video" }
 }
 

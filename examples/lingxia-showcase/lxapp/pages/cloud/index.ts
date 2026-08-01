@@ -213,7 +213,7 @@ Page({
   },
 
   _applyPageType: async function (pageType: CloudPageType) {
-    lx.setNavigationBarTitle({
+    void lx.navigationBar.update({
       title: getNavigationTitle(pageType),
     });
 

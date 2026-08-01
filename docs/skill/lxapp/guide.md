@@ -172,7 +172,7 @@ Page({
 | `this.setData(patch)` | Merge `patch` into `data` and replicate to View. Triggers re-render. |
 | `onLoad(options)` | Lifecycle — page created. `options` are URL query params. |
 | `onShow()` | Lifecycle — page becomes visible (including back-navigation). |
-| `lx.*` | Global platform APIs (e.g. `lx.setNavigationBarTitle()`, `lx.createVideoContext()`). |
+| `lx.*` | Global platform APIs (e.g. `lx.navigationBar.update()`, `lx.createVideoContext()`). |
 
 ### Private helpers
 
@@ -444,17 +444,18 @@ Add a `tabBar` block alongside `pages`:
     { "name": "profile", "path": "pages/profile/index" }
   ],
   "tabBar": {
-    "color":           "#999999",
-    "selectedColor":   "#1677ff",
-    "backgroundColor": "#ffffff",
-    "position":        "bottom",
-    "list": [
+    "presentation": "standard",
+    "style": {
+      "foregroundColor": "#999999",
+      "selectedForegroundColor": "#1677ff",
+      "backgroundColor": "#ffffff"
+    },
+    "items": [
       {
         "text":             "Home",
         "pagePath":         "pages/home/index",
         "iconPath":         "public/home.png",
-        "selectedIconPath": "public/home_selected.png",
-        "selected":         true
+        "selectedIconPath": "public/home_selected.png"
       },
       {
         "text":     "Profile",
@@ -466,14 +467,16 @@ Add a `tabBar` block alongside `pages`:
 }
 ```
 
-Style keys (`color`, `selectedColor`, `backgroundColor`, `borderStyle`) are all optional.
+All style keys are optional and inherit the host theme. `presentation` is
+`"standard"` (the View ends above the bar) or `"immersive"` (the View extends
+behind it). An immersive bar must omit `backgroundColor` and `dividerColor`.
 
 Rules:
 
-- Every `list[].pagePath` must match a registered page path under `pages[]`.
+- Every `items[].pagePath` must match a registered page path under `pages[]`.
 - `iconPath` / `selectedIconPath` are project-relative — usually under `public/` so they're copied verbatim into `dist/` by the default static-assets rule.
-- `selected: true` on one entry picks the initial tab; if omitted, the first entry is selected.
-- `position`: `"bottom"` (default) or `"top"`.
+- The first item is initially selected. Placement and dimensions are host-owned;
+  desktop hosts project the same items into their sidebar.
 
 ### Switching tabs at runtime
 
@@ -495,22 +498,70 @@ lxdev lxapp nav switch-tab profile
 
 `lx.navigateBack` still works for popping non-tab pages that were pushed on top of the current tab.
 
-### Modifying the tab bar after declaration
+### Modifying Page Chrome after declaration
 
-The `lx.setTabBar*` family **mutates an already-declared tab bar** — none of these create or remove tabs. If the lxapp has no `tabBar` in `lxapp.json`, every call returns `false`.
+`lx.tabBar.update()` **mutates an already-declared tab bar** — it does not create
+or remove tabs. If the lxapp has no `tabBar` in `lxapp.json`, the promise rejects.
 
 ```ts
-lx.setTabBarItem({ index: 1, text: 'Inbox', iconPath: 'public/inbox.png' });
-lx.setTabBarBadge({ index: 1, text: '3' });
-lx.removeTabBarBadge({ index: 1 });
-lx.showTabBarRedDot({ index: 0 });
-lx.hideTabBarRedDot({ index: 0 });
-lx.setTabBarStyle({ selectedColor: '#ff0000' });
-await lx.showTabBar();
-await lx.hideTabBar();
+await lx.tabBar.update({
+  style: { selectedForegroundColor: '#ff0000' },
+  items: [{ index: 1, text: 'Inbox', badge: '3' }],
+});
+await lx.tabBar.update({ items: [{ index: 1, text: null, badge: null }] });
+await lx.tabBar.update({ visibility: 'hidden' });
+await lx.tabBar.update({ visibility: 'auto' });
 ```
 
-Full option shapes: the corresponding `*Options` types in `@lingxia/types`.
+Page configuration uses a nested navigation bar:
+
+```json
+{
+  "navigationStyle": "default",
+  "navigationBar": {
+    "title": "Profile",
+    "style": {
+      "backgroundColor": "#ffffff",
+      "foregroundColor": "#111111"
+    }
+  }
+}
+```
+
+Runtime updates use the matching namespace:
+
+```ts
+await lx.navigationBar.update({ title: 'Account' });
+await lx.navigationBar.update({ style: { backgroundColor: '#111827' } });
+await lx.navigationBar.update({ style: null, homeButton: 'auto' });
+```
+
+Set the lxapp-only palette independently from the shared host shell with
+`await lx.appearance.set('auto' | 'light' | 'dark')`. The saved preference is
+per lxapp; `lx.appearance.get()` synchronously returns its preference and
+resolved light/dark branch.
+
+View code reads realized overlap from `window.lxPageChrome.layout`, listens for
+`lxpagechromechange`, or uses `--lx-page-chrome-bottom-inset` and
+`--lx-page-chrome-capsule-inline-end-inset`. Retained snapshots are frozen and
+revisioned. Geometry is not exposed through Logic.
+
+Full patch shapes are exported by `@lingxia/types`; View snapshot types are
+exported by `@lingxia/page-runtime`, `@lingxia/react`, `@lingxia/vue`, and
+`@lingxia/html`.
+
+### Migrating Page Chrome configuration
+
+This contract is a breaking replacement rather than a compatibility layer.
+Move flat page navigation fields into `navigationBar`, rename `tabBar.list` to
+`tabBar.items`, and move tab colors into `tabBar.style`. Remove app-controlled
+tab placement and dimensions; use `presentation: "immersive"` only when content
+should extend behind the mobile bar.
+
+Replace the flat navigation and tab mutation functions with one transactional
+`lx.navigationBar.update()` or `lx.tabBar.update()` patch. Capsule geometry now
+comes from `window.lxPageChrome.layout` rather than a Logic call. The CLI rejects
+removed configuration fields with the complete field path and its replacement.
 
 ---
 

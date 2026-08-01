@@ -1,5 +1,6 @@
 {
-  "navigationBarTitleText": "User Interface",
-  "navigationBarBackgroundColor": "#ffffff",
-  "navigationBarTextStyle": "black"
+  "navigationBar": {
+    "title": "User Interface",
+    "style": { "backgroundColor": "#ffffff", "foregroundColor": "#000000" }
+  }
 }

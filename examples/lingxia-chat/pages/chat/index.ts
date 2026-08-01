@@ -145,7 +145,7 @@ Page({
 
   onLoad() {
     try {
-      lx.setNavigationBarTitle({ title: 'AI Chat' });
+      void lx.navigationBar.update({ title: 'AI Chat' });
     } catch (_) {}
   },
 

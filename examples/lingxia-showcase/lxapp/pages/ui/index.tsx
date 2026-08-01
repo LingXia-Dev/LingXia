@@ -37,16 +37,16 @@ export default function UIPage() {
     hideToast,
     showModalWithParams,
     clearModalResult,
-    setNavigationBarTitle,
-    setNavigationBarColor,
-    showTabBarRedDot,
-    hideTabBarRedDot,
-    setTabBarBadge,
-    removeTabBarBadge,
-    showTabBar,
-    hideTabBar,
-    setTabBarStyle,
-    setTabBarItem,
+    updateNavigationBarTitle,
+    updateNavigationBarColors,
+    enableTabBarRedDot,
+    disableTabBarRedDot,
+    updateTabBarBadge,
+    clearTabBarBadge,
+    revealTabBar,
+    concealTabBar,
+    updateTabBarForegrounds,
+    updateTabBarItem,
     chooseToastIcon,
     chooseToastPosition,
     showDemoActionSheet,
@@ -653,7 +653,7 @@ export default function UIPage() {
                       onClick={() => {
                         const title = document.getElementById('navbarTitle').value;
                         if (title) {
-                          setNavigationBarTitle({ title });
+                          updateNavigationBarTitle({ title });
                         }
                       }}
                       className="px-3 py-1.5 text-sm bg-blue-500 text-white rounded hover:bg-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-500"
@@ -685,7 +685,7 @@ export default function UIPage() {
                       onClick={() => {
                         const bgColor = document.getElementById('navbarBgColor').value || '#ffffff';
                         const textColor = document.getElementById('navbarTextColor').value || '#000000';
-                        setNavigationBarColor({
+                        updateNavigationBarColors({
                           backgroundColor: bgColor,
                           frontColor: textColor
                         });
@@ -705,8 +705,8 @@ export default function UIPage() {
                   <div className="grid grid-cols-2 gap-1.5">
                     <button
                       onClick={() => {
-                        setNavigationBarTitle({ title: "Dark Theme" });
-                        setNavigationBarColor({ backgroundColor: "#1f2937", frontColor: "#ffffff" });
+                        updateNavigationBarTitle({ title: "Dark Theme" });
+                        updateNavigationBarColors({ backgroundColor: "#1f2937", frontColor: "#ffffff" });
                       }}
                       className="px-2 py-1.5 bg-gray-800 text-white rounded hover:bg-gray-900 text-xs"
                     >
@@ -714,8 +714,8 @@ export default function UIPage() {
                     </button>
                     <button
                       onClick={() => {
-                        setNavigationBarTitle({ title: "Blue Theme" });
-                        setNavigationBarColor({ backgroundColor: "#3b82f6", frontColor: "#ffffff" });
+                        updateNavigationBarTitle({ title: "Blue Theme" });
+                        updateNavigationBarColors({ backgroundColor: "#3b82f6", frontColor: "#ffffff" });
                       }}
                       className="px-2 py-1.5 bg-blue-500 text-white rounded hover:bg-blue-600 text-xs"
                     >
@@ -723,8 +723,8 @@ export default function UIPage() {
                     </button>
                     <button
                       onClick={() => {
-                        setNavigationBarTitle({ title: "Light Theme" });
-                        setNavigationBarColor({ backgroundColor: "#ffffff", frontColor: "#000000" });
+                        updateNavigationBarTitle({ title: "Light Theme" });
+                        updateNavigationBarColors({ backgroundColor: "#ffffff", frontColor: "#000000" });
                       }}
                       className="px-2 py-1.5 bg-white text-black border border-gray-300 rounded hover:bg-gray-50 text-xs"
                     >
@@ -732,8 +732,8 @@ export default function UIPage() {
                     </button>
                     <button
                       onClick={() => {
-                        setNavigationBarTitle({ title: "Green Theme" });
-                        setNavigationBarColor({ backgroundColor: "#10b981", frontColor: "#ffffff" });
+                        updateNavigationBarTitle({ title: "Green Theme" });
+                        updateNavigationBarColors({ backgroundColor: "#10b981", frontColor: "#ffffff" });
                       }}
                       className="px-2 py-1.5 bg-green-500 text-white rounded hover:bg-green-600 text-xs"
                     >
@@ -764,7 +764,7 @@ export default function UIPage() {
                 <div className="flex space-x-3">
                   <button
                     onClick={async () => {
-                      const result = await showTabBar();
+                      const result = await revealTabBar();
                       console.log('Show TabBar:', result);
                       // Toast at resolve time: the bar must already be visible.
                       showToastWithParams({ title: 'shown', icon: 'success', duration: 800 });
@@ -775,7 +775,7 @@ export default function UIPage() {
                   </button>
                   <button
                     onClick={async () => {
-                      const result = await hideTabBar();
+                      const result = await concealTabBar();
                       console.log('Hide TabBar:', result);
                       // Toast at resolve time: the bar must already be gone.
                       showToastWithParams({ title: 'hidden', icon: 'success', duration: 800 });
@@ -801,7 +801,7 @@ export default function UIPage() {
                     />
                     <button
                       onClick={() => {
-                        const result = setTabBarItem({ index: 1, text: itemText });
+                        const result = updateTabBarItem({ index: 1, text: itemText });
                         console.log(`Update tab 1 text to "${itemText}":`, result);
                       }}
                       className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
@@ -825,7 +825,7 @@ export default function UIPage() {
                 <div className="flex space-x-3">
                   <button
                     onClick={() => {
-                      const result = showTabBarRedDot({ index: 1 });
+                      const result = enableTabBarRedDot({ index: 1 });
                       console.log('Show red dot on tab 1:', result);
                     }}
                     className="flex-1 bg-red-500 hover:bg-red-600 text-white py-2 px-4 rounded-lg text-sm font-medium transition-colors"
@@ -834,7 +834,7 @@ export default function UIPage() {
                   </button>
                   <button
                     onClick={() => {
-                      const result = hideTabBarRedDot({ index: 1 });
+                      const result = disableTabBarRedDot({ index: 1 });
                       console.log('Hide red dot on tab 1:', result);
                     }}
                     className="flex-1 bg-gray-500 hover:bg-gray-600 text-white py-2 px-4 rounded-lg text-sm font-medium transition-colors"
@@ -865,7 +865,7 @@ export default function UIPage() {
                 <div className="flex space-x-3">
                   <button
                     onClick={() => {
-                      const result = setTabBarBadge({ index: 1, text: badgeText });
+                      const result = updateTabBarBadge({ index: 1, text: badgeText });
                       console.log(`Set badge "${badgeText}" on tab 1:`, result);
                     }}
                     className="flex-1 bg-orange-500 hover:bg-orange-600 text-white py-2 px-4 rounded-lg text-sm font-medium transition-colors"
@@ -874,7 +874,7 @@ export default function UIPage() {
                   </button>
                   <button
                     onClick={() => {
-                      const result = removeTabBarBadge({ index: 1 });
+                      const result = clearTabBarBadge({ index: 1 });
                       console.log('Remove badge on tab 1:', result);
                     }}
                     className="flex-1 bg-gray-500 hover:bg-gray-600 text-white py-2 px-4 rounded-lg text-sm font-medium transition-colors"
@@ -963,7 +963,7 @@ export default function UIPage() {
 
                 <button
                   onClick={() => {
-                    const result = setTabBarStyle({
+                    const result = updateTabBarForegrounds({
                       color,
                       selectedColor,
                       backgroundColor,
@@ -987,7 +987,7 @@ export default function UIPage() {
                         setSelectedColor(theme.selectedColor);
                         setBackgroundColor(theme.backgroundColor);
                         setBorderStyle(theme.borderStyle);
-                        const result = setTabBarStyle(theme);
+                        const result = updateTabBarForegrounds(theme);
                         console.log('Applied Default theme:', result);
                       }}
                       className="px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium transition-colors"
@@ -1001,7 +1001,7 @@ export default function UIPage() {
                         setSelectedColor(theme.selectedColor);
                         setBackgroundColor(theme.backgroundColor);
                         setBorderStyle(theme.borderStyle);
-                        const result = setTabBarStyle(theme);
+                        const result = updateTabBarForegrounds(theme);
                         console.log('Applied Dark theme:', result);
                       }}
                       className="px-3 py-2 bg-gray-800 hover:bg-gray-900 text-white rounded-lg text-sm font-medium transition-colors"
@@ -1015,7 +1015,7 @@ export default function UIPage() {
                         setSelectedColor(theme.selectedColor);
                         setBackgroundColor(theme.backgroundColor);
                         setBorderStyle(theme.borderStyle);
-                        const result = setTabBarStyle(theme);
+                        const result = updateTabBarForegrounds(theme);
                         console.log('Applied Green theme:', result);
                       }}
                       className="px-3 py-2 bg-green-100 hover:bg-green-200 text-green-700 rounded-lg text-sm font-medium transition-colors"
@@ -1029,7 +1029,7 @@ export default function UIPage() {
                         setSelectedColor(theme.selectedColor);
                         setBackgroundColor(theme.backgroundColor);
                         setBorderStyle(theme.borderStyle);
-                        const result = setTabBarStyle(theme);
+                        const result = updateTabBarForegrounds(theme);
                         console.log('Applied Purple theme:', result);
                       }}
                       className="px-3 py-2 bg-purple-100 hover:bg-purple-200 text-purple-700 rounded-lg text-sm font-medium transition-colors"

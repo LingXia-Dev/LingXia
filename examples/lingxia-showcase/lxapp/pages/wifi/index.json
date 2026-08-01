@@ -1,6 +1,7 @@
 {
-  "navigationBarTitleText": "WiFi",
-  "navigationBarBackgroundColor": "#ffffff",
-  "navigationBarTextStyle": "black",
+  "navigationBar": {
+    "title": "WiFi",
+    "style": { "backgroundColor": "#ffffff", "foregroundColor": "#000000" }
+  },
   "pageOrientation": "landscape"
 }

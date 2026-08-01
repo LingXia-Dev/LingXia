@@ -1,6 +1,7 @@
 {
-  "navigationBarBackgroundColor": "#00ff00",
-  "navigationBarTextStyle": "black",
-  "navigationBarTitleText": "Home",
-  "navigationStyle": "custom"
+  "navigationStyle": "custom",
+  "navigationBar": {
+    "title": "Home",
+    "style": { "backgroundColor": "#00ff00", "foregroundColor": "#000000" }
+  }
 }

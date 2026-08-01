@@ -1,5 +1,6 @@
 {
-  "navigationBarTitleText": "System",
-  "navigationBarBackgroundColor": "#ffffff",
-  "navigationBarTextStyle": "black"
+  "navigationBar": {
+    "title": "System",
+    "style": { "backgroundColor": "#ffffff", "foregroundColor": "#000000" }
+  }
 }

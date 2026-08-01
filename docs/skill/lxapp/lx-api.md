@@ -50,8 +50,10 @@ editor applies the correct environment to each file.
   `node_modules/@lingxia/types/dist/generated/logic.d.ts`.
 
 Most methods are flat on `lx`. Related capabilities use typed namespaces such
-as `lx.env`, `lx.app`, `lx.tray`, and `lx.shell`; editor completion is the
-authoritative namespace map.
+as `lx.env`, `lx.app`, `lx.appearance`, `lx.navigationBar`, `lx.tabBar`,
+`lx.tray`, and `lx.shell`; editor completion is the authoritative namespace
+map. Page Chrome geometry is a View concern exposed through
+`window.lxPageChrome`, not a Logic API.
 
 ---
 
