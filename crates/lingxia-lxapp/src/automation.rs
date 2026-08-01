@@ -225,9 +225,9 @@ fn is_tabbar_page_url(app: &LxApp, url: &str) -> bool {
     };
     let target = normalize_tabbar_path(url);
     tabbar
-        .list
+        .items
         .iter()
-        .any(|item| normalize_tabbar_path(&item.pagePath) == target)
+        .any(|item| normalize_tabbar_path(&item.page_path) == target)
 }
 
 /// Navigate the app's page stack to a configured page by name and return the

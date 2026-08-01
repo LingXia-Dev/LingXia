@@ -75,9 +75,9 @@ fn is_tabbar_page_url(lxapp: &LxApp, url: &str) -> bool {
     };
     let target = normalize_tabbar_path(url);
     tabbar
-        .list
+        .items
         .iter()
-        .any(|item| normalize_tabbar_path(&item.pagePath) == target)
+        .any(|item| normalize_tabbar_path(&item.page_path) == target)
 }
 
 async fn navigate_with_url(

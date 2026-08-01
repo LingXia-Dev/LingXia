@@ -65,6 +65,28 @@ pub fn list_lxapps() -> Vec<LxAppRuntimeInfo> {
     apps
 }
 
+/// Re-resolve every `auto` lxapp after the host's system appearance changes.
+pub fn refresh_auto_appearances() {
+    let Some(manager) = super::runtime_registry::get_lxapps_manager() else {
+        return;
+    };
+    let apps: Vec<_> = manager
+        .lxapps
+        .iter()
+        .filter_map(|entry| {
+            let app = entry.value().clone();
+            (app.appearance_state().preference == AppearancePreference::Auto).then_some(app)
+        })
+        .collect();
+    for app in apps {
+        std::mem::drop(crate::executor::spawn(async move {
+            let _ = app
+                .set_appearance_preference(AppearancePreference::Auto)
+                .await;
+        }));
+    }
+}
+
 pub fn close_lxapp(appid: &str) -> Result<(), LxAppError> {
     let app = super::runtime_registry::try_get(appid)
         .ok_or_else(|| LxAppError::ResourceNotFound(appid.to_string()))?;

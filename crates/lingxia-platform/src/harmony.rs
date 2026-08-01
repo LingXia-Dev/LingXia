@@ -15,3 +15,4 @@ mod user_feedback;
 pub mod video_player;
 mod wifi;
 pub use app::Platform;
+pub use ui_update::set_harmony_host_appearance_dark;

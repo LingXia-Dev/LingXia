@@ -544,13 +544,6 @@ impl AppRuntime for Platform {
         // Sync trait method: launch without waiting so the executor never blocks.
         file::open_with_shell_detached(&req.url)
     }
-
-    fn get_capsule_rect(
-        &self,
-        _appid: &str,
-    ) -> impl Future<Output = Result<String, PlatformError>> + Send {
-        async { Ok("null".to_string()) }
-    }
 }
 
 // lx.surface: the surface's content webview is created by lxapp; the

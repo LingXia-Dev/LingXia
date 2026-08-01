@@ -124,13 +124,22 @@ mod bridge {
         #[swift_bridge(swift_name = "LxApp.updateTabBarUI")]
         fn update_tabbar_ui(appid: &str) -> bool;
 
-        // TabBar UI update with completion callback (lx.showTabBar/hideTabBar)
+        // TabBar UI update with completion callback (`lx.tabBar.update()`)
         #[swift_bridge(swift_name = "LxApp.updateTabBarUIAsync")]
         fn update_tabbar_ui_async(appid: &str, callback_id: u64);
 
         // NavigationBar UI update callback
         #[swift_bridge(swift_name = "LxApp.updateNavBarUI")]
         fn update_navbar_ui(appid: &str) -> bool;
+
+        #[swift_bridge(swift_name = "LxApp.hostAppearanceDark")]
+        fn host_appearance_dark() -> bool;
+
+        #[swift_bridge(swift_name = "LxApp.applyAppearance")]
+        fn apply_appearance(appid: &str, dark: bool) -> bool;
+
+        #[swift_bridge(swift_name = "LxAppCapsuleButtons.getCapsuleRect")]
+        fn get_capsule_rect(appid: &str, callback_id: u64);
 
         // Orientation UI update callback
         #[swift_bridge(swift_name = "LxApp.updateOrientationUI")]
@@ -399,9 +408,6 @@ mod bridge {
         #[swift_bridge(swift_name = "LxApp.stopPullDownRefresh")]
         fn stop_pull_down_refresh(appid: &str, path: &str) -> bool;
 
-        #[swift_bridge(swift_name = "LxAppCapsuleButtons.getCapsuleRect")]
-        fn get_capsule_rect(appid: &str, callback_id: u64);
-
         // WiFi APIs
         #[swift_bridge(swift_name = "LxAppWifi.startWifi")]
         fn start_wifi(callback_id: u64);
@@ -442,10 +448,12 @@ mod bridge {
 // Re-export the bridge functions for use in other modules
 // macOS-only: `notify_app_update_ready` is consumed only by the macOS updater
 // (`install_update_on_macos`); `reveal_in_file_manager` is macOS-only too.
+#[cfg(target_os = "ios")]
+pub use bridge::get_capsule_rect;
 pub use bridge::{
-    ActionSheetOptions, ModalOptions, ToastIcon, ToastOptions, ToastPosition, autostart_is_enabled,
-    autostart_set_enabled, cancel_preview_media, close_lxapp, close_surface,
-    destroy_managed_surface, exit_app, hide_surface, hide_toast, navigate,
+    ActionSheetOptions, ModalOptions, ToastIcon, ToastOptions, ToastPosition, apply_appearance,
+    autostart_is_enabled, autostart_set_enabled, cancel_preview_media, close_lxapp, close_surface,
+    destroy_managed_surface, exit_app, hide_surface, hide_toast, host_appearance_dark, navigate,
     open_builtin_browser_page, open_document_external, open_lxapp, open_managed_native_surface,
     open_url, present_layout, present_surface, preview_media, request_lxapp_main_activation,
     review_document, set_app_badge, set_managed_surface_visible, set_shell_pins,
@@ -461,8 +469,8 @@ pub use bridge::{notify_app_update_ready, reveal_in_file_manager};
 pub use bridge::{
     cancel_compress_video, compress_image, compress_video, configure_stream_audio,
     configure_stream_video, copy_album_media_to_file, create_stream_decoder,
-    extract_video_thumbnail, get_capsule_rect, get_image_info, get_video_info, push_stream_audio,
-    push_stream_video, scan_code, stop_stream_decoder,
+    extract_video_thumbnail, get_image_info, get_video_info, push_stream_audio, push_stream_video,
+    scan_code, stop_stream_decoder,
 };
 #[cfg(target_os = "ios")]
 pub use bridge::{choose_directory, choose_file};

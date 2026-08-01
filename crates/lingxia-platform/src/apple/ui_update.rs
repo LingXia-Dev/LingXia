@@ -4,6 +4,40 @@ use crate::error::PlatformError;
 use crate::traits::ui::UIUpdate;
 
 impl UIUpdate for Platform {
+    fn host_appearance_dark(&self) -> bool {
+        ffi::host_appearance_dark()
+    }
+
+    fn apply_lxapp_appearance(&self, appid: &str, dark: bool) -> Result<(), PlatformError> {
+        if ffi::apply_appearance(appid, dark) {
+            Ok(())
+        } else {
+            Err(PlatformError::Platform(format!(
+                "Failed to apply appearance for appId: {appid}"
+            )))
+        }
+    }
+
+    async fn measure_page_chrome_capsule(
+        &self,
+        appid: String,
+    ) -> Result<Option<String>, PlatformError> {
+        #[cfg(target_os = "ios")]
+        {
+            let payload = crate::rt::native_call(|callback_id| {
+                ffi::get_capsule_rect(&appid, callback_id);
+                Ok(())
+            })
+            .await?;
+            Ok((payload != "null").then_some(payload))
+        }
+        #[cfg(not(target_os = "ios"))]
+        {
+            let _ = appid;
+            Ok(None)
+        }
+    }
+
     fn update_navbar_ui(&self, appid: String) -> Result<(), PlatformError> {
         // Use existing updateNavBarUI API (it will get current path internally)
         let success = ffi::update_navbar_ui(&appid);

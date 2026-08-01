@@ -367,11 +367,4 @@ impl AppRuntime for Platform {
     fn open_url(&self, _req: OpenUrlRequest) -> Result<(), PlatformError> {
         not_supported("open_url")
     }
-
-    fn get_capsule_rect(
-        &self,
-        _appid: &str,
-    ) -> impl Future<Output = Result<String, PlatformError>> + Send {
-        async { Ok("null".to_string()) }
-    }
 }

@@ -583,7 +583,7 @@ impl LxApp {
         let page_count = state.pages.lock().unwrap().len();
 
         let max_allowed = if let Some(ref tabbar) = state.tabbar {
-            tabbar.list.len() + PAGE_STACK_MAX
+            tabbar.items.len() + PAGE_STACK_MAX
         } else {
             PAGE_STACK_MAX
         };

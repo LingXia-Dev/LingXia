@@ -250,6 +250,41 @@ pub trait UIUpdate: Send + Sync + 'static {
             "update_orientation_ui not implemented for this platform".to_string(),
         ))
     }
+
+    /// Effective host/Runner scheme used when an lxapp preference is `auto`.
+    fn host_appearance_dark(&self) -> bool {
+        false
+    }
+
+    /// Apply an lxapp-scoped scheme to native Page Chrome and every matching
+    /// WebView. Shared shell and unrelated browser/lxapp WebViews are excluded.
+    fn apply_lxapp_appearance(&self, _appid: &str, _dark: bool) -> Result<(), PlatformError> {
+        Ok(())
+    }
+
+    /// Measure the visible capsule after native Page Chrome has laid out.
+    /// The JSON payload is an internal transport; app code only sees the
+    /// revisioned View snapshot assembled by `lingxia-lxapp`.
+    fn measure_page_chrome_capsule(
+        &self,
+        _appid: String,
+    ) -> impl Future<Output = Result<Option<String>, PlatformError>> + Send {
+        async { Ok(None) }
+    }
+
+    /// Acknowledge one Page Chrome revision after native layout and visuals
+    /// have been applied. Platforms with an asynchronous UI thread override
+    /// this; the default preserves the existing synchronous update path.
+    fn apply_page_chrome_revision(
+        &self,
+        appid: String,
+        _revision: u64,
+    ) -> impl Future<Output = Result<(), PlatformError>> + Send {
+        async move {
+            self.update_navbar_ui(appid.clone())?;
+            self.update_tabbar_ui_async(appid).await
+        }
+    }
 }
 
 pub trait UserFeedback: Send + Sync + 'static {
