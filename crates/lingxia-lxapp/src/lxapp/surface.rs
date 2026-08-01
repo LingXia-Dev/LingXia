@@ -1,8 +1,9 @@
 use super::*;
 use lingxia_platform::Platform;
 use lingxia_platform::traits::ui::{
-    ManagedNativeSurface, ManagedSurfaceRole, SurfaceContent, SurfaceKind, SurfacePosition,
-    SurfacePresenter, SurfaceRequest as PlatformSurfaceRequest, SurfaceRole,
+    ManagedNativeSurface, ManagedSurfaceCompletion, ManagedSurfaceRole, SurfaceContent,
+    SurfaceKind, SurfacePosition, SurfacePresenter, SurfaceRequest as PlatformSurfaceRequest,
+    SurfaceRole,
 };
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -12,6 +13,10 @@ use std::time::Duration;
 
 const SURFACE_DISPOSE_TTL_MS: u64 = 30_000;
 static SURFACE_CLOSE_OBSERVER: OnceLock<fn(&str, &str) -> bool> = OnceLock::new();
+type SurfaceActiveMainObserver = fn(Option<&str>, Option<&str>) -> bool;
+static SURFACE_ACTIVE_MAIN_OBSERVER: OnceLock<SurfaceActiveMainObserver> = OnceLock::new();
+type SurfaceVisibilityObserver = fn(&str, bool) -> bool;
+static SURFACE_VISIBILITY_OBSERVER: OnceLock<SurfaceVisibilityObserver> = OnceLock::new();
 /// Observer fired when one lxapp presentation's actual viewport changes.
 /// Receives that lxapp's app id.
 static SURFACE_CONTEXT_OBSERVER: OnceLock<fn(&str)> = OnceLock::new();
@@ -36,6 +41,8 @@ pub(crate) struct WindowSurfaceController {
     native_declarations: std::sync::Mutex<HashMap<String, NativeSurfaceDeclaration>>,
     runtime: std::sync::Arc<Platform>,
     next_native_surface_id: AtomicU64,
+    last_published_active_main: std::sync::Mutex<Option<String>>,
+    active_main_publication_blocked: std::sync::Mutex<bool>,
 }
 
 #[derive(Clone)]
@@ -76,13 +83,28 @@ pub(crate) fn window_controller(
                 native_declarations: std::sync::Mutex::new(HashMap::new()),
                 runtime: runtime.clone(),
                 next_native_surface_id: AtomicU64::new(1),
+                last_published_active_main: std::sync::Mutex::new(None),
+                active_main_publication_blocked: std::sync::Mutex::new(false),
             })
         })
         .clone()
 }
 
+async fn await_managed_operation(
+    start: impl FnOnce(ManagedSurfaceCompletion) -> Result<(), lingxia_platform::PlatformError>,
+) -> Result<(), LxAppError> {
+    let (sender, receiver) = futures::channel::oneshot::channel();
+    start(Box::new(move |result| {
+        let _ = sender.send(result);
+    }))?;
+    receiver
+        .await
+        .map_err(|_| LxAppError::ChannelError("managed surface completion dropped".to_string()))?
+        .map_err(Into::into)
+}
+
 impl WindowSurfaceController {
-    fn open_managed_native_surface(
+    async fn open_managed_native_surface(
         &self,
         capability: &str,
         instance_key: Option<&str>,
@@ -103,7 +125,7 @@ impl WindowSurfaceController {
                     .get(capability)
                     .cloned()
                     .ok_or_else(|| {
-                        LxAppError::InvalidParameter(format!(
+                        LxAppError::ResourceNotFound(format!(
                             "unknown declared native surface: {capability}"
                         ))
                     })?;
@@ -124,13 +146,17 @@ impl WindowSurfaceController {
             }
         };
         let edge = surface.placement.edge.map(surface_edge_name);
-        self.runtime.open_managed_native_surface(
-            &surface.id,
-            capability,
-            instance_key,
-            role,
-            edge,
-        )?;
+        await_managed_operation(|completion| {
+            self.runtime.open_managed_native_surface(
+                &surface.id,
+                capability,
+                instance_key,
+                role,
+                edge,
+                completion,
+            )
+        })
+        .await?;
         {
             let mut manager = self.manager.lock().unwrap();
             if is_live {
@@ -148,6 +174,9 @@ impl WindowSurfaceController {
                 }
             }
         }
+        if surface.role == lingxia_surface::Role::Main {
+            *self.active_main_publication_blocked.lock().unwrap() = false;
+        }
         self.commit();
         Ok(ManagedNativeSurface {
             surface_id: surface.id,
@@ -157,12 +186,32 @@ impl WindowSurfaceController {
 
     /// THE single commit point for this window's graph mutations: re-derive the
     /// `DerivedLayout` and hand it to the platform skin to reconcile. Platforms
-    /// without `present_layout` return `NotSupported`, ignored here. The manager
+    /// without `present_layout` return `NotSupported`, treated as a successful
+    /// no-op here. Other presentation failures leave active-main publication
+    /// pending so a later successful commit can reconcile observers. The manager
     /// lock is scoped to the `derive` call and dropped before `present_layout`,
     /// so the lock is never held across the outbound call.
-    fn commit(&self) {
+    fn commit(&self) -> bool {
         let plan = self.manager.lock().unwrap().presentation_plan();
-        let _ = self.runtime.present_layout(&self.window_id, &plan);
+        match self.runtime.present_layout(&self.window_id, &plan) {
+            Ok(()) | Err(lingxia_platform::PlatformError::NotSupported(_)) => {}
+            Err(_) => return false,
+        }
+        if *self.active_main_publication_blocked.lock().unwrap() {
+            return true;
+        }
+        let current = plan.active_main_id.clone();
+        let previous = {
+            let mut published = self.last_published_active_main.lock().unwrap();
+            if *published == current {
+                return true;
+            }
+            std::mem::replace(&mut *published, current.clone())
+        };
+        if let Some(observer) = SURFACE_ACTIVE_MAIN_OBSERVER.get() {
+            let _ = observer(previous.as_deref(), current.as_deref());
+        }
+        true
     }
 
     /// Mirror an opened surface into the core graph and read back the arbitrated
@@ -221,11 +270,27 @@ impl WindowSurfaceController {
     }
 
     fn close(&self, id: &str, reason: &str) -> lingxia_surface::CloseOutcome {
-        let outcome = {
-            let mut manager = self.manager.lock().unwrap();
-            manager.close(id)
-        };
+        let before = self.manager.lock().unwrap().graph().active_main_id.clone();
+        let outcome = self.close_deferred(id, reason);
+        let active_changed = self.manager.lock().unwrap().graph().active_main_id != before;
+        if active_changed {
+            *self.active_main_publication_blocked.lock().unwrap() = false;
+        }
         self.commit();
+        outcome
+    }
+
+    fn close_deferred(&self, id: &str, reason: &str) -> lingxia_surface::CloseOutcome {
+        let (outcome, active_changed) = {
+            let mut manager = self.manager.lock().unwrap();
+            let before = manager.graph().active_main_id.clone();
+            let outcome = manager.close(id);
+            let changed = manager.graph().active_main_id != before;
+            (outcome, changed)
+        };
+        if active_changed {
+            *self.active_main_publication_blocked.lock().unwrap() = true;
+        }
         for removed in outcome.removed() {
             notify_surface_close_observer(removed, reason);
         }
@@ -235,10 +300,10 @@ impl WindowSurfaceController {
     fn close_other_mains(&self, keeping: &str) -> Vec<String> {
         let removed = self.manager.lock().unwrap().close_other_mains(keeping);
         if !removed.is_empty() {
-            self.commit();
             for surface_id in &removed {
                 notify_surface_close_observer(surface_id, "user");
             }
+            self.commit();
         }
         removed
     }
@@ -246,10 +311,10 @@ impl WindowSurfaceController {
     fn close_mains_after(&self, surface_id: &str) -> Vec<String> {
         let removed = self.manager.lock().unwrap().close_mains_after(surface_id);
         if !removed.is_empty() {
-            self.commit();
             for surface_id in &removed {
                 notify_surface_close_observer(surface_id, "user");
             }
+            self.commit();
         }
         removed
     }
@@ -303,7 +368,7 @@ impl WindowSurfaceController {
         Ok(())
     }
 
-    fn set_managed_surface_visible(
+    async fn set_managed_surface_visible(
         &self,
         id: &str,
         visible: bool,
@@ -314,8 +379,11 @@ impl WindowSurfaceController {
         // The host handler owns first presentation and may register a declared
         // surface into this graph. Delegate before mirroring visibility so a
         // declared-but-never-opened surface is not rejected as unknown.
-        self.runtime
-            .set_managed_surface_visible(id, visible, role, edge)?;
+        await_managed_operation(|completion| {
+            self.runtime
+                .set_managed_surface_visible(id, visible, role, edge, completion)
+        })
+        .await?;
         let changed = {
             let mut manager = self.manager.lock().unwrap();
             if visible {
@@ -336,8 +404,24 @@ impl WindowSurfaceController {
         Ok(())
     }
 
+    fn close_managed_surface(
+        &self,
+        id: &str,
+        role: Option<ManagedSurfaceRole>,
+    ) -> Result<(), LxAppError> {
+        self.runtime.close_managed_surface(id, role)?;
+        let outcome = self.close_deferred(id, "programmatic");
+        if !outcome.removed().is_empty() {
+            self.commit();
+        }
+        Ok(())
+    }
+
     fn surface_presentation(&self, id: &str) -> Option<&'static str> {
         let plan = self.manager.lock().unwrap().presentation_plan();
+        if plan.floats.iter().any(|surface| surface.id == id) {
+            return Some("popover");
+        }
         plan.aside_slots
             .iter()
             .find(|slot| slot.children.iter().any(|child| child == id))
@@ -348,8 +432,20 @@ impl WindowSurfaceController {
         match self.manager.lock().unwrap().graph().role_of(id)? {
             lingxia_surface::Role::Main => Some(ManagedSurfaceRole::Main),
             lingxia_surface::Role::Aside => Some(ManagedSurfaceRole::Aside),
-            lingxia_surface::Role::Float => None,
+            lingxia_surface::Role::Float => Some(ManagedSurfaceRole::Float),
         }
+    }
+
+    fn managed_surface_visible(&self, id: &str) -> Option<bool> {
+        let manager = self.manager.lock().unwrap();
+        let graph = manager.graph();
+        let surface = graph.get(id)?;
+        Some(match surface.role {
+            lingxia_surface::Role::Main => graph.active_main_id.as_deref() == Some(id),
+            lingxia_surface::Role::Aside | lingxia_surface::Role::Float => {
+                surface.state == lingxia_surface::SurfaceState::Mounted
+            }
+        })
     }
 
     /// Mirror a host-declared aside into the core graph, seeding the root `main`
@@ -409,6 +505,7 @@ impl WindowSurfaceController {
             }
             manager.set_active_main(app_id);
         }
+        *self.active_main_publication_blocked.lock().unwrap() = false;
         self.commit();
     }
 
@@ -471,6 +568,7 @@ impl WindowSurfaceController {
     fn set_active_main_surface(&self, surface_id: &str) -> bool {
         let active = self.manager.lock().unwrap().set_active_main(surface_id);
         if active {
+            *self.active_main_publication_blocked.lock().unwrap() = false;
             self.commit();
         }
         active
@@ -531,12 +629,33 @@ impl WindowSurfaceController {
         &self,
         intent: lingxia_shell::SurfaceMenuIntent,
     ) -> HostSurfaceMenuExecution {
-        let execution = {
-            let mut manager = self.manager.lock().unwrap();
-            execute_surface_menu_intent(&mut manager, intent)
-        };
+        let before = self.manager.lock().unwrap().graph().active_main_id.clone();
+        let execution = self.perform_surface_menu_intent_deferred(intent);
         if execution.accepted {
+            let active_changed = self.manager.lock().unwrap().graph().active_main_id != before;
+            if active_changed {
+                *self.active_main_publication_blocked.lock().unwrap() = false;
+            }
             self.commit();
+        }
+        execution
+    }
+
+    fn perform_surface_menu_intent_deferred(
+        &self,
+        intent: lingxia_shell::SurfaceMenuIntent,
+    ) -> HostSurfaceMenuExecution {
+        let (execution, active_changed) = {
+            let mut manager = self.manager.lock().unwrap();
+            let before = manager.graph().active_main_id.clone();
+            let execution = execute_surface_menu_intent(&mut manager, intent);
+            let changed = manager.graph().active_main_id != before;
+            (execution, changed)
+        };
+        if active_changed {
+            *self.active_main_publication_blocked.lock().unwrap() = true;
+        }
+        if execution.accepted {
             for surface_id in &execution.removed_surface_ids {
                 notify_surface_close_observer(surface_id, "user");
             }
@@ -566,6 +685,19 @@ impl WindowSurfaceController {
 
     fn unregister_host_aside(&self, surface_id: &str) {
         let _ = self.close(surface_id, "programmatic");
+    }
+
+    /// Mirror a visibility change initiated by the platform shell without
+    /// re-entering the platform presenter.
+    fn mark_surface_hidden_from_shell(&self, surface_id: &str) -> bool {
+        let hidden = self.manager.lock().unwrap().hide(surface_id);
+        if hidden {
+            self.commit();
+            if let Some(observer) = SURFACE_VISIBILITY_OBSERVER.get() {
+                let _ = observer(surface_id, false);
+            }
+        }
+        hidden
     }
 
     /// Focus a surface (any role) and commit. Drives aside-slot tab switches:
@@ -698,6 +830,14 @@ fn host_aside_node(
 
 pub fn register_surface_close_observer(observer: fn(&str, &str) -> bool) {
     let _ = SURFACE_CLOSE_OBSERVER.set(observer);
+}
+
+pub fn register_surface_active_main_observer(observer: fn(Option<&str>, Option<&str>) -> bool) {
+    let _ = SURFACE_ACTIVE_MAIN_OBSERVER.set(observer);
+}
+
+pub fn register_surface_visibility_observer(observer: fn(&str, bool) -> bool) {
+    let _ = SURFACE_VISIBILITY_OBSERVER.set(observer);
 }
 
 fn notify_surface_close_observer(id: &str, reason: &str) {
@@ -1166,9 +1306,13 @@ impl LxApp {
                 let _ = self.close_surface(victim, "programmatic");
             } else {
                 notify_surface_close_observer(victim, "programmatic");
-                let _ = self
-                    .runtime
-                    .set_managed_surface_visible(victim, false, None, None);
+                let _ = self.runtime.set_managed_surface_visible(
+                    victim,
+                    false,
+                    None,
+                    None,
+                    Box::new(|_| {}),
+                );
             }
         }
 
@@ -1462,7 +1606,7 @@ impl LxApp {
     /// or terminal) by its `ui` id. `edge` overrides the declared edge for
     /// this show; `None` keeps the current placement. Delegates to the
     /// platform host shell; platforms without one return an error.
-    pub fn set_shell_surface_visible(
+    pub async fn set_shell_surface_visible(
         &self,
         id: &str,
         visible: bool,
@@ -1477,9 +1621,24 @@ impl LxApp {
         }
         window_controller(PRIMARY_WINDOW, &self.runtime)
             .set_managed_surface_visible(id, visible, role, edge)
+            .await
     }
 
-    pub fn open_shell_native_surface(
+    pub fn close_shell_managed_surface(
+        &self,
+        surface_id: &str,
+        role: Option<ManagedSurfaceRole>,
+    ) -> Result<(), LxAppError> {
+        let surface_id = surface_id.trim();
+        if surface_id.is_empty() {
+            return Err(LxAppError::InvalidParameter(
+                "surface id must not be empty".to_string(),
+            ));
+        }
+        window_controller(PRIMARY_WINDOW, &self.runtime).close_managed_surface(surface_id, role)
+    }
+
+    pub async fn open_shell_native_surface(
         &self,
         capability: &str,
         instance_key: Option<&str>,
@@ -1492,6 +1651,7 @@ impl LxApp {
         }
         window_controller(PRIMARY_WINDOW, &self.runtime)
             .open_managed_native_surface(capability, instance_key)
+            .await
     }
 
     /// Mirror a host-declared aside (e.g. the assistant/terminal attach-panel)
@@ -1737,6 +1897,20 @@ impl LxApp {
         window_controller(PRIMARY_WINDOW, &self.runtime).perform_surface_menu_intent(intent)
     }
 
+    #[doc(hidden)]
+    pub fn perform_shell_surface_menu_intent_deferred(
+        &self,
+        intent: lingxia_shell::SurfaceMenuIntent,
+    ) -> HostSurfaceMenuExecution {
+        window_controller(PRIMARY_WINDOW, &self.runtime)
+            .perform_surface_menu_intent_deferred(intent)
+    }
+
+    #[doc(hidden)]
+    pub fn commit_shell_surface_layout(&self) -> bool {
+        window_controller(PRIMARY_WINDOW, &self.runtime).commit()
+    }
+
     pub fn close_main_surface(
         &self,
         surface_id: &str,
@@ -1747,6 +1921,21 @@ impl LxApp {
             return lingxia_surface::CloseOutcome::NotFound;
         }
         window_controller(PRIMARY_WINDOW, &self.runtime).close(surface_id, reason)
+    }
+
+    /// Remove a main from the graph while the platform presents its successor.
+    /// The caller must finish by activating the successfully presented main.
+    #[doc(hidden)]
+    pub fn close_main_surface_deferred(
+        &self,
+        surface_id: &str,
+        reason: &str,
+    ) -> lingxia_surface::CloseOutcome {
+        let surface_id = surface_id.trim();
+        if surface_id.is_empty() {
+            return lingxia_surface::CloseOutcome::NotFound;
+        }
+        window_controller(PRIMARY_WINDOW, &self.runtime).close_deferred(surface_id, reason)
     }
 
     pub fn close_other_main_surfaces(&self, keeping: &str) -> Vec<String> {
@@ -1791,6 +1980,14 @@ impl LxApp {
         window_controller(PRIMARY_WINDOW, &self.runtime).unregister_host_aside(surface_id);
     }
 
+    /// Mirror a platform-shell visibility change into the shared graph.
+    pub fn mark_shell_surface_hidden(&self, surface_id: &str) -> bool {
+        let surface_id = surface_id.trim();
+        !surface_id.is_empty()
+            && window_controller(PRIMARY_WINDOW, &self.runtime)
+                .mark_surface_hidden_from_shell(surface_id)
+    }
+
     pub fn shell_surface_presentation(&self, surface_id: &str) -> Option<&'static str> {
         window_controller(PRIMARY_WINDOW, &self.runtime).surface_presentation(surface_id)
     }
@@ -1800,6 +1997,15 @@ impl LxApp {
         (!surface_id.is_empty())
             .then(|| {
                 window_controller(PRIMARY_WINDOW, &self.runtime).managed_surface_role(surface_id)
+            })
+            .flatten()
+    }
+
+    pub fn shell_surface_visible(&self, surface_id: &str) -> Option<bool> {
+        let surface_id = surface_id.trim();
+        (!surface_id.is_empty())
+            .then(|| {
+                window_controller(PRIMARY_WINDOW, &self.runtime).managed_surface_visible(surface_id)
             })
             .flatten()
     }
@@ -2313,6 +2519,39 @@ fn close_reason_str(reason: CloseReason) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn managed_operation_waits_for_completion_result() {
+        let result = futures::executor::block_on(await_managed_operation(|completion| {
+            completion(Ok(()));
+            Ok(())
+        }));
+        assert!(result.is_ok());
+
+        let result = futures::executor::block_on(await_managed_operation(|completion| {
+            completion(Err(lingxia_platform::PlatformError::InvalidParameter(
+                "missing provider".to_string(),
+            )));
+            Ok(())
+        }));
+        assert!(matches!(
+            result,
+            Err(LxAppError::InvalidParameter(message)) if message == "missing provider"
+        ));
+    }
+
+    #[test]
+    fn managed_operation_rejects_a_dropped_completion() {
+        let result = futures::executor::block_on(await_managed_operation(|completion| {
+            drop(completion);
+            Ok(())
+        }));
+        assert!(matches!(
+            result,
+            Err(LxAppError::ChannelError(message))
+                if message == "managed surface completion dropped"
+        ));
+    }
 
     #[test]
     fn lxapp_surface_menu_header_includes_channel_badge() {

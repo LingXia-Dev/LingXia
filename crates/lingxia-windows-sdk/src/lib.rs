@@ -535,7 +535,7 @@ fn open_declared_browser(
     surface_id: &str,
     url: &str,
 ) -> std::result::Result<(), String> {
-    shell::open_declared_browser(owner_app_id, surface_id, url)
+    shell::open_declared_browser(owner_app_id, surface_id, url, None)
 }
 
 #[cfg(all(

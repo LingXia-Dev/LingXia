@@ -568,8 +568,9 @@ impl crate::traits::ui::SurfacePresenter for Platform {
         visible: bool,
         role: Option<crate::traits::ui::ManagedSurfaceRole>,
         edge: Option<&str>,
+        completion: crate::traits::ui::ManagedSurfaceCompletion,
     ) -> Result<(), PlatformError> {
-        surface::set_managed_surface_visible(id, visible, role, edge)
+        surface::set_managed_surface_visible(id, visible, role, edge, completion)
     }
 
     fn open_managed_native_surface(
@@ -579,8 +580,24 @@ impl crate::traits::ui::SurfacePresenter for Platform {
         instance_key: Option<&str>,
         role: crate::traits::ui::ManagedSurfaceRole,
         edge: Option<&str>,
+        completion: crate::traits::ui::ManagedSurfaceCompletion,
     ) -> Result<(), PlatformError> {
-        surface::open_managed_native_surface(surface_id, capability, instance_key, role, edge)
+        surface::open_managed_native_surface(
+            surface_id,
+            capability,
+            instance_key,
+            role,
+            edge,
+            completion,
+        )
+    }
+
+    fn close_managed_surface(
+        &self,
+        id: &str,
+        role: Option<crate::traits::ui::ManagedSurfaceRole>,
+    ) -> Result<(), PlatformError> {
+        surface::close_managed_surface(id, role)
     }
 
     fn toggle_managed_surface(&self, id: &str) -> Result<(), PlatformError> {

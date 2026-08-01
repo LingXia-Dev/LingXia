@@ -330,6 +330,9 @@ mod bridge {
         #[swift_bridge(swift_name = "unregisterHostAside")]
         fn unregister_host_aside(appid: &str, surface_id: &str) -> bool;
 
+        #[swift_bridge(swift_name = "markHostSurfaceHidden")]
+        fn mark_host_surface_hidden(appid: &str, surface_id: &str) -> bool;
+
         #[swift_bridge(swift_name = "openBrowserTab")]
         fn open_browser_tab(appid: &str, session_id: u64, url: &str) -> Option<String>;
 
@@ -1225,7 +1228,11 @@ pub fn perform_surface_menu_intent(appid: &str, intent_json: &str) -> String {
         else {
             return String::new();
         };
-        serde_json::to_string(&app.perform_shell_surface_menu_intent(intent)).unwrap_or_default()
+        let execution = app.perform_shell_surface_menu_intent_deferred(intent);
+        if execution.accepted && execution.removed_surface_ids.is_empty() {
+            app.commit_shell_surface_layout();
+        }
+        serde_json::to_string(&execution).unwrap_or_default()
     })
 }
 
@@ -1408,6 +1415,12 @@ pub fn unregister_host_aside(appid: &str, surface_id: &str) -> bool {
         } else {
             false
         }
+    })
+}
+
+pub fn mark_host_surface_hidden(appid: &str, surface_id: &str) -> bool {
+    ffi_catch_unwind!("mark_host_surface_hidden", false, || {
+        lxapp::try_get(appid).is_some_and(|lxapp| lxapp.mark_shell_surface_hidden(surface_id))
     })
 }
 

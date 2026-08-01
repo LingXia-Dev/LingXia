@@ -620,12 +620,13 @@ rong::js_api! {
     query?: never;
 }"###;
 
-        /// Open or focus an instance of a host-declared native capability (home
-        /// lxapp only). Omitting `instanceKey` opens the declaration's default
-        /// role and placement. A key selects a switchable main workspace; equal
-        /// keys reuse one surface, while distinct keys create distinct workspaces.
+        /// Open or focus a host-declared terminal (home lxapp only). Omitting
+        /// `instanceKey` opens the declaration's default role and placement. A
+        /// key selects a switchable main workspace; equal keys reuse one surface,
+        /// while distinct keys create distinct workspaces. Other declared native
+        /// capabilities are addressed by their declaration id with `{ surface }`.
         type OpenNativeSurfaceSpec = r###"{
-    native: string;
+    native: 'terminal';
     /** Stable caller identity; not the runtime surface id or display title. */
     instanceKey?: string;
     page?: never;
@@ -1273,18 +1274,18 @@ true
     readonly visible: boolean;
     readonly alive: boolean;
     /**
-     * Show a host-managed surface. Dynamic page/url surfaces return a Promise;
-     * host-declared surfaces may complete synchronously.
+     * Show a host-managed surface. Resolves only after native presentation
+     * succeeds and the handle's visibility has been updated.
      */
-    show(): void | Promise<void>;
+    show(): Promise<void>;
     /**
      * Hide without destroying user-visible state when the platform supports it.
      */
-    hide(): void | Promise<void>;
+    hide(): Promise<void>;
     /**
      * Destroy the live surface. Repeated close calls are idempotent.
      */
-    close(): void | Promise<void>;
+    close(): Promise<void>;
     onShow(handler: (event: SurfaceVisibilityEvent) => void): () => void;
     onHide(handler: (event: SurfaceVisibilityEvent) => void): () => void;
     onClose(handler: (event: SurfaceClosedEvent) => void): () => void;
@@ -1294,12 +1295,12 @@ true
         /// Surface object initiated the visibility change so observers can
         /// distinguish self-driven transitions from peer-driven ones (e.g. an opener
         /// UI that wants to update its own button state only when the page side
-        /// toggled visibility).
+        /// toggled visibility). `shell` identifies a host-driven main switch.
         ///
         type SurfaceVisibilityEvent = r###"{
     id: string;
     kind: 'overlay' | 'window';
-    source: 'opener' | 'page';
+    source: 'opener' | 'page' | 'shell';
 }"###;
 
         type SwitchTabOptions = r###"PageTargetOptions"###;

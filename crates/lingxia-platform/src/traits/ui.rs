@@ -107,6 +107,11 @@ pub struct SurfaceRequest {
     pub url_callback: bool,
 }
 
+/// Completes an accepted managed-surface request after native presentation.
+/// A presenter either returns `Err` without invoking this callback, or returns
+/// `Ok` and invokes the callback exactly once with the final result.
+pub type ManagedSurfaceCompletion = Box<dyn FnOnce(Result<(), PlatformError>) + Send + 'static>;
+
 pub trait SurfacePresenter: Send + Sync + 'static {
     /// The shared core resolves a `LayoutPresentationPlan` for one window/graph
     /// and the platform skin binds it. The per-surface methods below present a
@@ -148,15 +153,15 @@ pub trait SurfacePresenter: Send + Sync + 'static {
     /// Show or hide a top-level surface declared by the host (e.g. the AI-chat
     /// panel or terminal in `ui` config). `edge` overrides the declared edge
     /// for this show (the panel moves if already visible); `None` keeps the
-    /// current placement. Only platforms with a host shell that manages
-    /// declared surfaces (currently macOS) support it; others have no such
-    /// shell and return `NotSupported`.
+    /// current placement. Platforms without a host-managed shell return
+    /// `NotSupported`.
     fn set_managed_surface_visible(
         &self,
         _id: &str,
         _visible: bool,
         _role: Option<ManagedSurfaceRole>,
         _edge: Option<&str>,
+        _completion: ManagedSurfaceCompletion,
     ) -> Result<(), PlatformError> {
         Err(PlatformError::NotSupported(
             "managed surfaces are not supported on this platform".to_string(),
@@ -173,9 +178,22 @@ pub trait SurfacePresenter: Send + Sync + 'static {
         _instance_key: Option<&str>,
         _role: ManagedSurfaceRole,
         _edge: Option<&str>,
+        _completion: ManagedSurfaceCompletion,
     ) -> Result<(), PlatformError> {
         Err(PlatformError::NotSupported(
             "managed native surface instances are not supported on this platform".to_string(),
+        ))
+    }
+
+    /// Destroy a non-main host-managed provider. Unlike visibility changes,
+    /// this releases provider state so a later open starts a fresh lifecycle.
+    fn close_managed_surface(
+        &self,
+        _id: &str,
+        _role: Option<ManagedSurfaceRole>,
+    ) -> Result<(), PlatformError> {
+        Err(PlatformError::NotSupported(
+            "managed surface close is not supported on this platform".to_string(),
         ))
     }
 
@@ -192,6 +210,7 @@ pub trait SurfacePresenter: Send + Sync + 'static {
 pub enum ManagedSurfaceRole {
     Main,
     Aside,
+    Float,
 }
 
 /// Resolved identity and declaration-owned role of a managed native surface.
@@ -206,6 +225,7 @@ impl ManagedSurfaceRole {
         match self {
             Self::Main => "main",
             Self::Aside => "aside",
+            Self::Float => "float",
         }
     }
 }

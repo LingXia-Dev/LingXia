@@ -17,9 +17,11 @@ use lingxia_browser_shell::{
     BrowserAddressInputContext, BrowserAddressInputRequest, BrowserAddressInputTrigger,
     resolve_input,
 };
+use lingxia_platform::error::PlatformError;
 use lingxia_platform::traits::app_runtime::{
     AppRuntime, BuiltinBrowserPage, LxAppOpenMode, OpenUrlRequest, OpenUrlTarget,
 };
+use lingxia_platform::traits::ui::ManagedSurfaceCompletion;
 use lingxia_shell::{
     ResolvedShellSidebarAction, ShellPin, ShellPinTarget, SidebarActionIntent,
     SidebarActionPlacement,
@@ -71,9 +73,45 @@ const MAX_LIVE_BROWSER_TABS: usize = 16;
 #[cfg(feature = "browser-runtime")]
 const DEFAULT_LIVE_BROWSER_TABS: usize = 8;
 
+struct PresentationCompletion(Option<ManagedSurfaceCompletion>);
+
+impl PresentationCompletion {
+    fn finish(&mut self, result: Result<(), PlatformError>) {
+        if let Some(completion) = self.0.take() {
+            completion(result);
+        }
+    }
+}
+
+impl Drop for PresentationCompletion {
+    fn drop(&mut self) {
+        self.finish(Err(PlatformError::CallbackDropped));
+    }
+}
+
+fn accept_managed_request(
+    completion: ManagedSurfaceCompletion,
+    start: impl FnOnce(ManagedSurfaceCompletion) -> bool,
+    rejected: PlatformError,
+) -> bool {
+    let completion = Arc::new(Mutex::new(PresentationCompletion(Some(completion))));
+    let completion_for_result = completion.clone();
+    let accepted = start(Box::new(move |result| {
+        if let Ok(mut completion) = completion_for_result.lock() {
+            completion.finish(result);
+        }
+    }));
+    if !accepted && let Ok(mut completion) = completion.lock() {
+        completion.finish(Err(rejected));
+    }
+    true
+}
+
 /// Panel ids whose lxapp open is still in flight, used to ignore repeated
 /// footer action clicks until the open completes.
 static PENDING_PANEL_OPENS: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
+static PENDING_PANEL_COMPLETIONS: OnceLock<Mutex<HashMap<String, Vec<ManagedSurfaceCompletion>>>> =
+    OnceLock::new();
 
 /// The lxapp that owns the main shell window (set when the home app opens
 /// and refreshed on every chrome event); browser tab-change notifications
@@ -533,7 +571,9 @@ pub(crate) fn open_declared_browser(
     owner_appid: &str,
     surface_id: &str,
     url: &str,
+    completion: Option<ManagedSurfaceCompletion>,
 ) -> Result<(), String> {
+    let mut completion = completion;
     SELF_BROWSER_HOST.store(false, Ordering::Release);
     set_shell_owner_appid(owner_appid);
     let owner = lxapp::try_get(owner_appid)
@@ -546,7 +586,13 @@ pub(crate) fn open_declared_browser(
         .filter(|tab_id| browser_tab_summary(tab_id).is_some());
     if let Some(tab_id) = existing {
         let _ = lingxia_browser::activate(&tab_id);
-        present_declared_browser_tab_when_ready(owner_appid, surface_id, tab_id, false);
+        present_declared_browser_tab_when_ready(
+            owner_appid,
+            surface_id,
+            tab_id,
+            false,
+            completion.take(),
+        );
         return Ok(());
     }
     let tab_id = lingxia_browser::open_for_app(owner_appid, owner.session_id(), url, None)
@@ -557,7 +603,13 @@ pub(crate) fn open_declared_browser(
     {
         tabs.insert(surface_id.to_string(), tab_id.clone());
     }
-    present_declared_browser_tab_when_ready(owner_appid, surface_id, tab_id, url == "about:blank");
+    present_declared_browser_tab_when_ready(
+        owner_appid,
+        surface_id,
+        tab_id,
+        url == "about:blank",
+        completion.take(),
+    );
     Ok(())
 }
 
@@ -848,10 +900,13 @@ pub(super) fn install() {
     // tabs; unhandled requests fall back to the OS shell handler.
     lingxia_platform::set_windows_open_url_handler(Arc::new(handle_open_url_request));
     lingxia_platform::set_windows_managed_surface_visible_handler(Arc::new(
-        set_managed_surface_visible,
+        set_managed_surface_visible_for_api,
+    ));
+    lingxia_platform::set_windows_managed_surface_close_handler(Arc::new(
+        close_managed_surface_for_api,
     ));
     lingxia_platform::set_windows_managed_native_surface_open_handler(Arc::new(
-        open_managed_native_surface,
+        open_managed_native_surface_for_api,
     ));
     lingxia_platform::set_windows_managed_surface_toggle_handler(Arc::new(toggle_managed_surface));
     lingxia_platform::set_windows_sidebar_actions_handler(Arc::new(set_runtime_sidebar_actions));
@@ -1119,7 +1174,7 @@ fn reconcile_declared_browser_surfaces() {
         {
             tabs.remove(&surface_id);
         }
-        let outcome = owner.close_main_surface(&surface_id, "user");
+        let outcome = owner.close_main_surface_deferred(&surface_id, "user");
         match outcome {
             lingxia_surface::CloseOutcome::RejectedRoot { .. } => {
                 if let Err(error) = present_main_surface(&owner, &surface_id) {
@@ -1130,7 +1185,7 @@ fn reconcile_declared_browser_surfaces() {
             }
             lingxia_surface::CloseOutcome::Closed { .. } => {
                 if let Some(active) = owner.surface_switcher_snapshot().active_surface_id
-                    && let Err(error) = present_main_surface(&owner, &active)
+                    && let Err(error) = present_successor_main(&owner, &active)
                 {
                     log::warn!("failed to present successor after browser close {active}: {error}");
                 }
@@ -3751,7 +3806,7 @@ fn handle_main_surface_close(owner_appid: &str, surface_id: &str) {
 
 fn close_main_surface_and_present(owner: &LxApp, surface_id: &str, reason: &str) -> bool {
     let content = owner.main_surface_content(surface_id);
-    let outcome = owner.close_main_surface(surface_id, reason);
+    let outcome = owner.close_main_surface_deferred(surface_id, reason);
     if outcome.removed().is_empty() {
         return false;
     }
@@ -3759,7 +3814,7 @@ fn close_main_surface_and_present(owner: &LxApp, surface_id: &str, reason: &str)
         discard_main_surface_provider(owner, removed, content.as_ref());
     }
     if let Some(active) = owner.surface_switcher_snapshot().active_surface_id
-        && let Err(error) = present_main_surface(owner, &active)
+        && let Err(error) = present_successor_main(owner, &active)
     {
         log::warn!("failed to present successor main surface {active}: {error}");
     }
@@ -3940,16 +3995,17 @@ fn perform_main_surface_menu_intent(owner_appid: &str, intent: lingxia_shell::Su
                 .map(|content| (item.surface_id, content))
         })
         .collect::<HashMap<_, _>>();
-    let execution = owner.perform_shell_surface_menu_intent(intent);
+    let execution = owner.perform_shell_surface_menu_intent_deferred(intent);
     if !execution.accepted {
         return;
     }
     for removed in &execution.removed_surface_ids {
         discard_main_surface_provider(&owner, removed, contents.get(removed));
     }
-    if !execution.removed_surface_ids.is_empty()
-        && let Some(active) = execution.snapshot.active_surface_id
-        && let Err(error) = present_main_surface(&owner, &active)
+    if execution.removed_surface_ids.is_empty() {
+        owner.commit_shell_surface_layout();
+    } else if let Some(active) = execution.snapshot.active_surface_id
+        && let Err(error) = present_successor_main(&owner, &active)
     {
         log::warn!("failed to present successor main surface {active}: {error}");
     }
@@ -3957,10 +4013,35 @@ fn perform_main_surface_menu_intent(owner_appid: &str, intent: lingxia_shell::Su
 }
 
 fn present_main_surface(owner: &LxApp, surface_id: &str) -> Result<(), String> {
+    present_main_surface_inner(owner, surface_id, None)
+}
+
+fn present_successor_main(owner: &LxApp, surface_id: &str) -> Result<(), String> {
     let content = owner
         .main_surface_content(surface_id)
         .ok_or_else(|| format!("unknown main surface: {surface_id}"))?;
-    crate::window_host::with_host_layout_batch(|| match content {
+    present_main_surface(owner, surface_id)?;
+    let deferred = matches!(content, lingxia_surface::SurfaceContent::Browser { .. })
+        || matches!(
+            content,
+            lingxia_surface::SurfaceContent::Native { capability, .. }
+                if capability == "browser"
+        );
+    if !deferred && !owner.set_active_main_surface(surface_id) {
+        return Err(format!("failed to activate main surface: {surface_id}"));
+    }
+    Ok(())
+}
+
+fn present_main_surface_inner(
+    owner: &LxApp,
+    surface_id: &str,
+    mut completion: Option<ManagedSurfaceCompletion>,
+) -> Result<(), String> {
+    let content = owner
+        .main_surface_content(surface_id)
+        .ok_or_else(|| format!("unknown main surface: {surface_id}"))?;
+    let result = crate::window_host::with_host_layout_batch(|| match content {
         lingxia_surface::SurfaceContent::Lxapp { app_id, path } => {
             clear_browser_presentation();
             let app = lxapp::open_lxapp(
@@ -3976,7 +4057,7 @@ fn present_main_surface(owner: &LxApp, surface_id: &str) -> Result<(), String> {
         }
         #[cfg(feature = "browser-runtime")]
         lingxia_surface::SurfaceContent::Browser { initial_url, .. } => {
-            open_declared_browser(&owner.appid, surface_id, &initial_url)
+            open_declared_browser(&owner.appid, surface_id, &initial_url, completion.take())
         }
         #[cfg(not(feature = "browser-runtime"))]
         lingxia_surface::SurfaceContent::Browser { .. } => {
@@ -3993,14 +4074,24 @@ fn present_main_surface(owner: &LxApp, surface_id: &str) -> Result<(), String> {
         }
         #[cfg(feature = "browser-runtime")]
         lingxia_surface::SurfaceContent::Native { capability, .. } if capability == "browser" => {
-            open_declared_browser(&owner.appid, surface_id, "about:blank")
+            open_declared_browser(&owner.appid, surface_id, "about:blank", completion.take())
         }
         #[cfg(not(feature = "browser-runtime"))]
         lingxia_surface::SurfaceContent::Native { capability, .. } if capability == "browser" => {
             Err("browser runtime is unavailable".to_string())
         }
         other => Err(format!("unsupported Windows main surface: {other:?}")),
-    })
+    });
+    if let Some(completion) = completion {
+        let mut completion = PresentationCompletion(Some(completion));
+        completion.finish(
+            result
+                .as_ref()
+                .map(|_| ())
+                .map_err(|error| PlatformError::Platform(error.clone())),
+        );
+    }
+    result
 }
 
 fn hide_inactive_native_main_panels(owner: &LxApp, active_surface_id: &str) {
@@ -4119,7 +4210,15 @@ fn focus_or_open_lxapp(owner_appid: &str, target_appid: &str) {
                     owner.focus_shell_surface(surface_id);
                 }
             } else if let Some((panel_id, path, position)) = configured {
-                show_lxapp_panel(owner_appid, &panel_id, target_appid, &path, position, false);
+                let _ = show_lxapp_panel(
+                    owner_appid,
+                    &panel_id,
+                    target_appid,
+                    &path,
+                    position,
+                    false,
+                    None,
+                );
             } else if let Err(err) = open_lxapp_panel_now(target_appid, "", target_appid) {
                 log::warn!("failed to focus runtime lxapp aside {target_appid}: {err}");
             } else {
@@ -4491,7 +4590,7 @@ fn present_browser_tab_when_ready_with_policy(
     tab_id: String,
     allow_intentional_blank: bool,
 ) {
-    present_browser_tab_when_ready_inner(appid, tab_id, allow_intentional_blank, None);
+    present_browser_tab_when_ready_inner(appid, tab_id, allow_intentional_blank, None, None);
 }
 
 #[cfg(feature = "browser-runtime")]
@@ -4500,12 +4599,14 @@ fn present_declared_browser_tab_when_ready(
     surface_id: &str,
     tab_id: String,
     allow_intentional_blank: bool,
+    completion: Option<ManagedSurfaceCompletion>,
 ) {
     present_browser_tab_when_ready_inner(
         appid,
         tab_id,
         allow_intentional_blank,
         Some(surface_id.to_string()),
+        completion,
     );
 }
 
@@ -4515,22 +4616,32 @@ fn present_browser_tab_when_ready_inner(
     tab_id: String,
     allow_intentional_blank: bool,
     activate_surface_id: Option<String>,
+    completion: Option<ManagedSurfaceCompletion>,
 ) {
+    let mut completion = PresentationCompletion(completion);
     if let Err(err) = reactivate_browser_tab_if_needed(&tab_id) {
         log::warn!("failed to reactivate browser tab {tab_id}: {err}");
+        completion.finish(Err(PlatformError::Platform(err.to_string())));
         return;
     }
     let owner_appid = appid.to_string();
     let epoch = BROWSER_PRESENT_EPOCH.fetch_add(1, Ordering::Relaxed) + 1;
     std::mem::drop(lingxia::task::spawn(async move {
+        let mut completion = completion;
         let previous_tab = presented_browser_tab();
         let previous_group = presented_browser_group_appid();
         for attempt in 0..PRESENT_BROWSER_TAB_MAX_RETRY {
             if BROWSER_PRESENT_EPOCH.load(Ordering::Relaxed) != epoch {
+                completion.finish(Err(PlatformError::Platform(
+                    "browser presentation was superseded".to_string(),
+                )));
                 return;
             }
             let Some(tab) = browser_tab_summary(&tab_id) else {
                 // Tab was closed while waiting.
+                completion.finish(Err(PlatformError::AssetNotFound(format!(
+                    "browser tab closed before presentation: {tab_id}"
+                ))));
                 return;
             };
             let webtag = WebTag::new(
@@ -4548,6 +4659,9 @@ fn present_browser_tab_when_ready_inner(
             if find_webview_handler(&webtag).is_none() {
                 if attempt + 1 == PRESENT_BROWSER_TAB_MAX_RETRY {
                     log::error!("failed to present browser tab {tab_id}: WebView not ready");
+                    completion.finish(Err(PlatformError::Platform(format!(
+                        "browser WebView was not ready: {tab_id}"
+                    ))));
                     return;
                 }
                 tokio::time::sleep(std::time::Duration::from_millis(
@@ -4570,6 +4684,9 @@ fn present_browser_tab_when_ready_inner(
                 true
             };
             if BROWSER_PRESENT_EPOCH.load(Ordering::Relaxed) != epoch {
+                completion.finish(Err(PlatformError::Platform(
+                    "browser presentation was superseded".to_string(),
+                )));
                 return;
             }
             if !content_ready && attempt + 1 < PRESENT_BROWSER_TAB_MAX_RETRY {
@@ -4585,18 +4702,6 @@ fn present_browser_tab_when_ready_inner(
                 log::warn!("browser tab {tab_id} had no first-content signal before presentation");
             }
 
-            let previous_surface_id = activate_surface_id.as_ref().and_then(|surface_id| {
-                let owner = lxapp::try_get(&owner_appid)?;
-                let previous = owner.surface_switcher_snapshot().active_surface_id;
-                owner
-                    .set_active_main_surface(surface_id)
-                    .then_some(previous)
-            });
-            if activate_surface_id.is_some() && previous_surface_id.is_none() {
-                log::error!("failed to activate declared browser surface for tab {tab_id}");
-                return;
-            }
-
             let group_appid = previous_group
                 .clone()
                 .or_else(active_main_lxapp_id)
@@ -4608,8 +4713,10 @@ fn present_browser_tab_when_ready_inner(
             {
                 set_presented_browser_tab(previous_tab.clone());
                 set_presented_browser_group_appid(previous_group.clone());
-                restore_previous_main_surface(&owner_appid, previous_surface_id.flatten());
                 log::error!("failed to prime shell layout for browser tab {tab_id}");
+                completion.finish(Err(PlatformError::Platform(format!(
+                    "failed to prime browser shell layout: {tab_id}"
+                ))));
                 return;
             }
 
@@ -4623,24 +4730,46 @@ fn present_browser_tab_when_ready_inner(
             };
             match result {
                 Ok(()) => {
-                    if let Some(surface_id) = activate_surface_id.as_deref()
-                        && let Some(owner) = lxapp::try_get(&owner_appid)
-                    {
+                    if let Some(surface_id) = activate_surface_id.as_deref() {
+                        let Some(owner) = lxapp::try_get(&owner_appid) else {
+                            completion.finish(Err(PlatformError::AssetNotFound(format!(
+                                "surface owner closed before presentation: {owner_appid}"
+                            ))));
+                            return;
+                        };
+                        if !owner.set_active_main_surface(surface_id) {
+                            set_presented_browser_tab(previous_tab.clone());
+                            set_presented_browser_group_appid(previous_group.clone());
+                            if let Some(previous_tab) = previous_tab.clone() {
+                                present_browser_tab_when_ready(&owner_appid, previous_tab);
+                            } else if let Err(error) = restore_presented_group_main() {
+                                log::warn!(
+                                    "failed to restore previous main after browser activation race: {error}"
+                                );
+                            }
+                            completion.finish(Err(PlatformError::InvalidParameter(format!(
+                                "unknown declared browser surface: {surface_id}"
+                            ))));
+                            return;
+                        }
                         hide_inactive_native_main_panels(&owner, surface_id);
                     }
                     // The target is visible with the final layout now; this
                     // pass only mirrors that state to hidden lxapp webtags and
                     // refreshes chrome data that changed while it was loading.
                     sync_shell_layout(&owner_appid);
+                    completion.finish(Ok(()));
                     return;
                 }
                 Err(err) => {
                     set_presented_browser_tab(previous_tab.clone());
                     set_presented_browser_group_appid(previous_group.clone());
-                    restore_previous_main_surface(&owner_appid, previous_surface_id.flatten());
                     sync_shell_layout(&owner_appid);
                     if attempt + 1 == PRESENT_BROWSER_TAB_MAX_RETRY {
                         log::error!("failed to present browser tab {tab_id}: {err}");
+                        completion.finish(Err(PlatformError::Platform(format!(
+                            "failed to present browser tab {tab_id}: {err}"
+                        ))));
                         return;
                     }
                 }
@@ -4651,15 +4780,6 @@ fn present_browser_tab_when_ready_inner(
             .await;
         }
     }));
-}
-
-#[cfg(feature = "browser-runtime")]
-fn restore_previous_main_surface(owner_appid: &str, previous_surface_id: Option<String>) {
-    if let Some(previous_surface_id) = previous_surface_id
-        && let Some(owner) = lxapp::try_get(owner_appid)
-    {
-        let _ = owner.set_active_main_surface(&previous_surface_id);
-    }
 }
 
 #[cfg(feature = "browser-runtime")]
@@ -5321,7 +5441,68 @@ fn commit_address_input(appid: &str, tab_id: &str, raw_input: &str) {
     }));
 }
 
+fn set_managed_surface_visible_for_api(
+    panel_id: &str,
+    visible: bool,
+    role: &str,
+    edge: &str,
+    completion: ManagedSurfaceCompletion,
+) -> bool {
+    accept_managed_request(
+        completion,
+        |completion| {
+            set_managed_surface_visible_inner(panel_id, visible, role, edge, Some(completion))
+        },
+        PlatformError::AssetNotFound(format!("managed surface request rejected: {panel_id}")),
+    )
+}
+
+#[cfg(feature = "browser-shell")]
 fn set_managed_surface_visible(panel_id: &str, visible: bool, role: &str, edge: &str) -> bool {
+    set_managed_surface_visible_inner(panel_id, visible, role, edge, None)
+}
+
+fn close_managed_surface_for_api(panel_id: &str, role: &str) -> bool {
+    if !role.is_empty() && role != "aside" && role != "float" {
+        return false;
+    }
+    let Some(owner_appid) = shell_owner_appid() else {
+        return false;
+    };
+    let Some(target) = panel_target_for_id(panel_id) else {
+        return false;
+    };
+    let result = match target {
+        PanelTarget::LxApp { appid, .. } => {
+            lxapp::close_lxapp(&appid).map_err(|error| error.to_string())
+        }
+        PanelTarget::Terminal(_) => {
+            #[cfg(feature = "terminal-runtime")]
+            {
+                super::terminal_panel::destroy_windows_terminal_panel(panel_id);
+                Ok(())
+            }
+            #[cfg(not(feature = "terminal-runtime"))]
+            {
+                hide_host_panel(panel_id).map_err(|error| error.to_string())
+            }
+        }
+    };
+    if let Err(error) = &result {
+        log::warn!("failed to destroy Windows managed surface {panel_id}: {error}");
+    }
+    crate::window_host::set_panel_position_override(panel_id, None);
+    sync_shell_layout(&owner_appid);
+    result.is_ok()
+}
+
+fn set_managed_surface_visible_inner(
+    panel_id: &str,
+    visible: bool,
+    role: &str,
+    edge: &str,
+    completion: Option<ManagedSurfaceCompletion>,
+) -> bool {
     if role == "main" {
         let Some(owner_appid) = shell_owner_appid() else {
             return false;
@@ -5330,9 +5511,18 @@ fn set_managed_surface_visible(panel_id: &str, visible: bool, role: &str, edge: 
             return false;
         };
         return if visible {
-            present_main_surface(&owner, panel_id).is_ok()
+            present_main_surface_inner(&owner, panel_id, completion).is_ok()
         } else {
-            close_main_surface_and_present(&owner, panel_id, "programmatic")
+            let closed = close_main_surface_and_present(&owner, panel_id, "programmatic");
+            let mut completion = PresentationCompletion(completion);
+            completion.finish(if closed {
+                Ok(())
+            } else {
+                Err(PlatformError::Platform(format!(
+                    "failed to close managed main surface '{panel_id}'"
+                )))
+            });
+            closed
         };
     }
     if !role.is_empty() && role != "aside" {
@@ -5353,15 +5543,25 @@ fn set_managed_surface_visible(panel_id: &str, visible: bool, role: &str, edge: 
         return false;
     };
     if !visible {
-        if shell_surface_in_graph(panel_id) {
-            hide_panel_target(&owner_appid, panel_id, target);
+        let result = if shell_surface_in_graph(panel_id) {
+            hide_panel_target(&owner_appid, panel_id, target)
         } else {
             sync_shell_layout(&owner_appid);
-        }
-        return true;
+            Ok(())
+        };
+        let mut completion = PresentationCompletion(completion);
+        completion.finish(
+            result
+                .as_ref()
+                .map(|_| ())
+                .map_err(|error| PlatformError::Platform(error.clone())),
+        );
+        return result.is_ok();
     }
     if shell_surface_is_active(panel_id) && position_override.is_none() {
         sync_shell_layout(&owner_appid);
+        let mut completion = PresentationCompletion(completion);
+        completion.finish(Ok(()));
         return true;
     }
     if shell_surface_in_graph(panel_id) && position_override.is_none() {
@@ -5369,10 +5569,39 @@ fn set_managed_surface_visible(panel_id: &str, visible: bool, role: &str, edge: 
             owner.focus_shell_surface(panel_id);
         }
         sync_shell_layout(&owner_appid);
+        let mut completion = PresentationCompletion(completion);
+        completion.finish(Ok(()));
         return true;
     }
-    show_panel_target(&owner_appid, panel_id, target, position_override);
-    true
+    show_panel_target_inner(
+        &owner_appid,
+        panel_id,
+        target,
+        position_override,
+        completion,
+    )
+}
+
+fn open_managed_native_surface_for_api(
+    surface_id: &str,
+    capability: &str,
+    instance_key: Option<&str>,
+    role: &str,
+    edge: &str,
+    completion: ManagedSurfaceCompletion,
+) -> bool {
+    accept_managed_request(
+        completion,
+        |completion| {
+            let opened =
+                open_managed_native_surface(surface_id, capability, instance_key, role, edge);
+            if opened {
+                completion(Ok(()));
+            }
+            opened
+        },
+        PlatformError::AssetNotFound(format!("unsupported managed native surface: {capability}")),
+    )
 }
 
 #[cfg(feature = "terminal-runtime")]
@@ -5508,7 +5737,11 @@ fn handle_footer_action(appid: &str, panel_id: String) {
     };
 
     if shell_surface_is_active(&panel_id) {
-        hide_panel_target(appid, &panel_id, target);
+        if hide_panel_target(appid, &panel_id, target).is_ok()
+            && let Some(owner) = lxapp::try_get(appid)
+        {
+            owner.mark_shell_surface_hidden(&panel_id);
+        }
         return;
     }
     if shell_surface_in_graph(&panel_id) {
@@ -5528,6 +5761,16 @@ fn show_panel_target(
     target: PanelTarget,
     position_override: Option<lingxia_app_context::PanelPosition>,
 ) {
+    let _ = show_panel_target_inner(appid, panel_id, target, position_override, None);
+}
+
+fn show_panel_target_inner(
+    appid: &str,
+    panel_id: &str,
+    target: PanelTarget,
+    position_override: Option<lingxia_app_context::PanelPosition>,
+    completion: Option<ManagedSurfaceCompletion>,
+) -> bool {
     match target {
         PanelTarget::LxApp {
             appid: panel_appid,
@@ -5540,18 +5783,29 @@ fn show_panel_target(
             &path,
             position_override.unwrap_or(position),
             position_override.is_some(),
+            completion,
         ),
         PanelTarget::Terminal(mut request) => {
             if let Some(position) = position_override {
                 request.position = position;
             }
-            show_terminal_panel(appid, request);
+            let result = show_terminal_panel(appid, request);
+            if let Some(completion) = completion {
+                completion(
+                    result
+                        .as_ref()
+                        .map(|_| ())
+                        .map_err(|error| PlatformError::Platform(error.clone())),
+                );
+            }
+            result.is_ok()
         }
     }
 }
 
-fn hide_panel_target(appid: &str, panel_id: &str, target: PanelTarget) {
+fn hide_panel_target(appid: &str, panel_id: &str, target: PanelTarget) -> Result<(), String> {
     let restore_lxapp_active = matches!(&target, PanelTarget::LxApp { .. });
+    let mut failure = None;
     match target {
         PanelTarget::LxApp {
             appid: panel_appid, ..
@@ -5562,19 +5816,23 @@ fn hide_panel_target(appid: &str, panel_id: &str, target: PanelTarget) {
                     .hide_lxapp(panel_appid.clone(), panel.session_id())
             {
                 log::error!("failed to close Windows panel lxapp {panel_appid}: {err}");
+                failure = Some(err.to_string());
             }
         }
         PanelTarget::Terminal(_) => {}
     }
     if let Err(err) = hide_host_panel(panel_id) {
         log::warn!("failed to hide Windows panel {panel_id}: {err}");
+        if failure.is_none() {
+            failure = Some(err.to_string());
+        }
     }
     crate::window_host::set_panel_position_override(panel_id, None);
-    unregister_managed_aside(appid, panel_id);
     if restore_lxapp_active {
         lxapp::mark_lxapp_active(appid);
     }
     sync_shell_layout(appid);
+    failure.map_or(Ok(()), Err)
 }
 
 fn show_lxapp_panel(
@@ -5584,7 +5842,8 @@ fn show_lxapp_panel(
     path: &str,
     position: lingxia_app_context::PanelPosition,
     has_position_override: bool,
-) {
+    completion: Option<ManagedSurfaceCompletion>,
+) -> bool {
     crate::window_host::set_panel_position_override(
         panel_id,
         has_position_override.then_some(panel_position(position)),
@@ -5594,7 +5853,10 @@ fn show_lxapp_panel(
     if is_panel_visible(panel_id) {
         sync_shell_layout(owner_appid);
         sync_shell_layout(panel_appid);
-        return;
+        if let Some(completion) = completion {
+            completion(Ok(()));
+        }
+        return true;
     }
 
     if lxapp::try_get(panel_appid).is_some() {
@@ -5602,24 +5864,60 @@ fn show_lxapp_panel(
             log::error!("failed to show Windows panel lxapp {panel_appid}: {err}");
             crate::window_host::set_panel_position_override(panel_id, None);
             unregister_managed_aside(owner_appid, panel_id);
-            return;
+            drop(completion);
+            return false;
         }
         sync_shell_layout(owner_appid);
         sync_shell_layout(panel_appid);
-        return;
+        if let Some(completion) = completion {
+            completion(Ok(()));
+        }
+        return true;
     }
 
     let panel_id = panel_id.to_string();
     let panel_appid = panel_appid.to_string();
     let path = path.to_string();
     if !pending_panel_opens().insert(panel_id.clone()) {
-        return;
+        if let Some(completion) = completion
+            && let Ok(mut pending) = PENDING_PANEL_COMPLETIONS
+                .get_or_init(|| Mutex::new(HashMap::new()))
+                .lock()
+        {
+            pending.entry(panel_id).or_default().push(completion);
+        }
+        return true;
+    }
+
+    if let Some(completion) = completion
+        && let Ok(mut pending) = PENDING_PANEL_COMPLETIONS
+            .get_or_init(|| Mutex::new(HashMap::new()))
+            .lock()
+    {
+        pending
+            .entry(panel_id.clone())
+            .or_default()
+            .push(completion);
     }
 
     let owner_appid = owner_appid.to_string();
     std::mem::drop(lingxia::task::spawn(async move {
         let result = open_panel_lxapp(&panel_id, &panel_appid, &path).await;
         pending_panel_opens().remove(&panel_id);
+        let completions = PENDING_PANEL_COMPLETIONS
+            .get_or_init(|| Mutex::new(HashMap::new()))
+            .lock()
+            .ok()
+            .and_then(|mut pending| pending.remove(&panel_id))
+            .unwrap_or_default();
+        for completion in completions {
+            completion(
+                result
+                    .as_ref()
+                    .map(|_| ())
+                    .map_err(|error| PlatformError::Platform(error.to_string())),
+            );
+        }
         if let Err(err) = result {
             log::error!("failed to open Windows panel lxapp {panel_appid}: {err}");
             crate::window_host::set_panel_position_override(&panel_id, None);
@@ -5628,6 +5926,7 @@ fn show_lxapp_panel(
         }
         sync_shell_layout(&owner_appid);
     }));
+    true
 }
 
 fn panel_target_for_id(panel_id: &str) -> Option<PanelTarget> {
@@ -5679,7 +5978,7 @@ fn panel_item_for_lxapp(
         })
 }
 
-fn show_terminal_panel(appid: &str, request: TerminalPanelRequest) {
+fn show_terminal_panel(appid: &str, request: TerminalPanelRequest) -> Result<(), String> {
     let position = panel_position(request.position);
     let title = if request.label.trim().is_empty() {
         "Terminal"
@@ -5694,7 +5993,7 @@ fn show_terminal_panel(appid: &str, request: TerminalPanelRequest) {
         register_managed_native_aside(appid, &request.panel_id, request.position);
         sync_shell_layout(appid);
         sync_shell_owner_host_layout(appid);
-        return;
+        return Ok(());
     }
     if let Err(err) =
         super::terminal_panel::open_windows_terminal_panel(&request.panel_id, title, position)
@@ -5704,11 +6003,12 @@ fn show_terminal_panel(appid: &str, request: TerminalPanelRequest) {
             request.panel_id,
             err
         );
-        return;
+        return Err(err);
     }
     register_managed_native_aside(appid, &request.panel_id, request.position);
     sync_shell_layout(appid);
     sync_shell_owner_host_layout(appid);
+    Ok(())
 }
 
 fn sync_shell_owner_host_layout(appid: &str) {
@@ -5849,8 +6149,8 @@ fn is_transparent_css_color(raw: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        LxappContextMenuAction, browser_internal_page_deep_link, browser_internal_page_key,
-        browser_url_is_hidden, build_lxapp_context_menu, chrome_command,
+        LxappContextMenuAction, PresentationCompletion, browser_internal_page_deep_link,
+        browser_internal_page_key, browser_url_is_hidden, build_lxapp_context_menu, chrome_command,
         chrome_command_is_page_scoped, preferred_sidebar_group_appid,
     };
     #[cfg(feature = "browser-runtime")]
@@ -5860,6 +6160,36 @@ mod tests {
     };
     #[cfg(feature = "browser-runtime")]
     use std::collections::HashSet;
+
+    #[test]
+    fn presentation_completion_finishes_exactly_once() {
+        let calls = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let calls_for_callback = calls.clone();
+        let mut completion = PresentationCompletion(Some(Box::new(move |result| {
+            assert!(result.is_ok());
+            calls_for_callback.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        })));
+        completion.finish(Ok(()));
+        completion.finish(Err(lingxia_platform::error::PlatformError::CallbackDropped));
+        drop(completion);
+        assert_eq!(calls.load(std::sync::atomic::Ordering::Relaxed), 1);
+    }
+
+    #[test]
+    fn dropping_a_pending_presentation_reports_cancellation() {
+        let cancelled = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let cancelled_for_callback = cancelled.clone();
+        drop(PresentationCompletion(Some(Box::new(move |result| {
+            cancelled_for_callback.store(
+                matches!(
+                    result,
+                    Err(lingxia_platform::error::PlatformError::CallbackDropped)
+                ),
+                std::sync::atomic::Ordering::Relaxed,
+            );
+        }))));
+        assert!(cancelled.load(std::sync::atomic::Ordering::Relaxed));
+    }
 
     #[test]
     fn tabbar_clicks_stay_scoped_to_the_visible_lxapp() {

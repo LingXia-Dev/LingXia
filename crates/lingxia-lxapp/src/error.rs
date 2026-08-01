@@ -109,6 +109,8 @@ impl From<PlatformError> for LxAppError {
     fn from(error: PlatformError) -> Self {
         match error {
             PlatformError::NotSupported(message) => LxAppError::UnsupportedOperation(message),
+            PlatformError::InvalidParameter(message) => LxAppError::InvalidParameter(message),
+            PlatformError::AssetNotFound(message) => LxAppError::ResourceNotFound(message),
             other => LxAppError::Runtime(other.to_string()),
         }
     }

@@ -404,7 +404,11 @@ fn dispose_surface_page(page_instance_id: &str, reason: &str) {
     }
 }
 
-type ManagedSurfaceVisibleHandler = Arc<dyn Fn(&str, bool, &str, &str) -> bool + Send + Sync>;
+type ManagedSurfaceVisibleHandler = Arc<
+    dyn Fn(&str, bool, &str, &str, crate::traits::ui::ManagedSurfaceCompletion) -> bool
+        + Send
+        + Sync,
+>;
 static MANAGED_SURFACE_VISIBLE_HANDLER: Mutex<Option<ManagedSurfaceVisibleHandler>> =
     Mutex::new(None);
 
@@ -414,8 +418,52 @@ pub fn set_windows_managed_surface_visible_handler(handler: ManagedSurfaceVisibl
     }
 }
 
-type ManagedNativeSurfaceOpenHandler =
-    Arc<dyn Fn(&str, &str, Option<&str>, &str, &str) -> bool + Send + Sync>;
+type ManagedSurfaceCloseHandler = Arc<dyn Fn(&str, &str) -> bool + Send + Sync>;
+static MANAGED_SURFACE_CLOSE_HANDLER: Mutex<Option<ManagedSurfaceCloseHandler>> = Mutex::new(None);
+
+pub fn set_windows_managed_surface_close_handler(handler: ManagedSurfaceCloseHandler) {
+    if let Ok(mut slot) = MANAGED_SURFACE_CLOSE_HANDLER.lock() {
+        *slot = Some(handler);
+    }
+}
+
+pub(super) fn close_managed_surface(
+    id: &str,
+    role: Option<crate::traits::ui::ManagedSurfaceRole>,
+) -> Result<(), PlatformError> {
+    let handler = MANAGED_SURFACE_CLOSE_HANDLER
+        .lock()
+        .ok()
+        .and_then(|slot| slot.clone())
+        .ok_or_else(|| {
+            PlatformError::NotSupported(
+                "managed surface close is not supported on this Windows host".to_string(),
+            )
+        })?;
+    if handler(
+        id,
+        role.map_or("", crate::traits::ui::ManagedSurfaceRole::as_str),
+    ) {
+        Ok(())
+    } else {
+        Err(PlatformError::AssetNotFound(format!(
+            "unknown managed surface: {id}"
+        )))
+    }
+}
+
+type ManagedNativeSurfaceOpenHandler = Arc<
+    dyn Fn(
+            &str,
+            &str,
+            Option<&str>,
+            &str,
+            &str,
+            crate::traits::ui::ManagedSurfaceCompletion,
+        ) -> bool
+        + Send
+        + Sync,
+>;
 static MANAGED_NATIVE_SURFACE_OPEN_HANDLER: Mutex<Option<ManagedNativeSurfaceOpenHandler>> =
     Mutex::new(None);
 
@@ -431,6 +479,7 @@ pub(super) fn open_managed_native_surface(
     instance_key: Option<&str>,
     role: crate::traits::ui::ManagedSurfaceRole,
     edge: Option<&str>,
+    completion: crate::traits::ui::ManagedSurfaceCompletion,
 ) -> Result<(), PlatformError> {
     let handler = MANAGED_NATIVE_SURFACE_OPEN_HANDLER
         .lock()
@@ -447,10 +496,11 @@ pub(super) fn open_managed_native_surface(
         instance_key,
         role.as_str(),
         edge.unwrap_or_default(),
+        completion,
     ) {
         Ok(())
     } else {
-        Err(PlatformError::InvalidParameter(format!(
+        Err(PlatformError::AssetNotFound(format!(
             "unsupported managed native surface: {capability}"
         )))
     }
@@ -461,6 +511,7 @@ pub(super) fn set_managed_surface_visible(
     visible: bool,
     role: Option<crate::traits::ui::ManagedSurfaceRole>,
     edge: Option<&str>,
+    completion: crate::traits::ui::ManagedSurfaceCompletion,
 ) -> Result<(), PlatformError> {
     let handler = MANAGED_SURFACE_VISIBLE_HANDLER
         .lock()
@@ -476,10 +527,11 @@ pub(super) fn set_managed_surface_visible(
         visible,
         role.map_or("", crate::traits::ui::ManagedSurfaceRole::as_str),
         edge.unwrap_or_default(),
+        completion,
     ) {
         Ok(())
     } else {
-        Err(PlatformError::InvalidParameter(format!(
+        Err(PlatformError::AssetNotFound(format!(
             "unknown managed surface: {id}"
         )))
     }

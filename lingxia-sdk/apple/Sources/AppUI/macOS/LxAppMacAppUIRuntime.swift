@@ -471,7 +471,7 @@ final class LxAppMacAppUIRuntime: NSObject {
             if let surface = surfaceById[activator.action.surface],
                isIndependentPanelSurface(surface),
                independentPanelWindows[surface.id]?.isVisible == true {
-                closeSurface(id: surface.id)
+                _ = hideManagedSurface(id: surface.id, updateGraph: true)
                 return
             }
             toggleSurface(id: activator.action.surface, sourceActivatorID: activator.id)
@@ -482,7 +482,7 @@ final class LxAppMacAppUIRuntime: NSObject {
 
     private func toggleSurface(id: String, sourceActivatorID: String? = nil) {
         if visibleSurfaceIDs.contains(id) {
-            closeSurface(id: id)
+            _ = hideManagedSurface(id: id, updateGraph: true)
         } else {
             openSurfaceHandlingError(id: id, sourceActivatorID: sourceActivatorID)
         }
@@ -494,14 +494,18 @@ final class LxAppMacAppUIRuntime: NSObject {
     func toggleManagedSurface(id: String) -> Bool {
         if runtimeLxAppPanels[id] != nil {
             if visibleSurfaceIDs.contains(id) {
-                _ = closeManagedSurface(id: id)
+                _ = hideManagedSurface(id: id, updateGraph: true)
             } else {
                 _ = openManagedSurface(id: id)
             }
             return true
         }
         guard surfaceById[id] != nil else { return false }
-        toggleSurface(id: id)
+        if visibleSurfaceIDs.contains(id) {
+            _ = hideManagedSurface(id: id, updateGraph: true)
+        } else {
+            _ = openManagedSurface(id: id)
+        }
         return true
     }
 
@@ -537,16 +541,24 @@ final class LxAppMacAppUIRuntime: NSObject {
         if visibleSurfaceIDs.contains(id) {
             if effective != previous {
                 closeManagedSurface(id: id)
-                openSurfaceHandlingError(id: id)
+                if openManagedSurfaceNow(id: id) {
+                    return true
+                }
+                if let previous {
+                    managedEdgeOverrides[id] = previous
+                } else {
+                    managedEdgeOverrides.removeValue(forKey: id)
+                }
+                _ = openManagedSurfaceNow(id: id)
+                return false
             } else if surface.role == .main {
                 // A visible main can be backgrounded behind another switcher
                 // item. Reopening it focuses the existing provider instance.
-                openSurfaceHandlingError(id: id)
+                return openManagedSurfaceNow(id: id)
             }
             return true
         }
-        openSurfaceHandlingError(id: id)
-        return true
+        return openManagedSurfaceNow(id: id)
     }
 
     @discardableResult
@@ -609,24 +621,107 @@ final class LxAppMacAppUIRuntime: NSObject {
     /// for an unknown surface `id`.
     @discardableResult
     func closeManagedSurface(id: String) -> Bool {
+        hideManagedSurface(id: id, updateGraph: false)
+    }
+
+    @discardableResult
+    private func hideManagedSurface(id: String, updateGraph: Bool) -> Bool {
         if runtimeLxAppPanels[id] != nil {
             if visibleSurfaceIDs.contains(id) {
-                if let primaryAppId = graphOwnerAppId {
-                    _ = unregisterHostAside(primaryAppId, id)
-                }
                 shell.hidePanel(id: id)
                 visibleSurfaceIDs.remove(id)
+                if updateGraph, let primaryAppId = graphOwnerAppId {
+                    _ = markHostSurfaceHidden(primaryAppId, id)
+                }
                 refreshChromeActions()
             }
             return true
         }
-        guard surfaceById[id] != nil else { return false }
+        guard let surface = surfaceById[id] else { return false }
         if visibleSurfaceIDs.contains(id) {
-            if surfaceById[id]?.role == .main {
+            if surface.role == .main {
                 return closeMainSurface(id: id)
             }
-            closeSurface(id: id)
+            for childID in childrenByParentId[id] ?? [] {
+                _ = hideManagedSurface(id: childID, updateGraph: updateGraph)
+            }
+            switch effectiveRole(for: surface) {
+            case .main:
+                break
+            case .float:
+                independentPanelOpenTasks[id]?.cancel()
+                independentPanelOpenTasks[id] = nil
+                independentPanelDisplayTasks[id]?.cancel()
+                independentPanelDisplayTasks[id] = nil
+                independentPanelSourceActivatorIDs.removeValue(forKey: id)
+                if let pageInstanceId = surfacePageInstanceIDs[id]
+                    ?? resolveSurfacePageInstanceId(surface)
+                {
+                    _ = notifyPageInstanceHidden(pageInstanceId, "programmatic")
+                }
+                if isIndependentPanelSurface(surface) {
+                    independentPanelWindows[id]?.orderOut(nil)
+                } else {
+                    shell.hide()
+                }
+            case .aside:
+                shell.setPanelFullscreen(id: id, enabled: false)
+                terminalWorkspaces[id]?.setSurfaceZoomEnabled(false, notifyRuntime: false)
+                terminalWorkspaces[id]?.disarmInput()
+                shell.hidePanel(id: id)
+            }
+            visibleSurfaceIDs.remove(id)
+            if updateGraph, let primaryAppId = graphOwnerAppId {
+                _ = markHostSurfaceHidden(primaryAppId, id)
+            }
+            updateIndependentPanelOutsideClickMonitors()
+            refreshChromeActions()
         }
+        return true
+    }
+
+    @discardableResult
+    func destroyManagedSurface(id: String, role: String?) -> Bool {
+        guard role == nil || role == LxAppUIConfig.Role.aside.rawValue
+                || role == LxAppUIConfig.Role.float.rawValue
+        else { return false }
+
+        for childID in childrenByParentId[id] ?? [] {
+            let childRole = surfaceById[childID]?.role.rawValue
+            _ = destroyManagedSurface(id: childID, role: childRole)
+            if let primaryAppId = graphOwnerAppId {
+                _ = unregisterHostAside(primaryAppId, childID)
+            }
+        }
+
+        if let panel = runtimeLxAppPanels[id] {
+            _ = hideManagedSurface(id: id, updateGraph: false)
+            shell.closeAsideLxApp(appId: panel.appId)
+            runtimeLxAppPanels.removeValue(forKey: id)
+            openedSurfaceIDs.remove(id)
+            visibleSurfaceIDs.remove(id)
+            refreshChromeActions()
+            return true
+        }
+
+        guard let surface = surfaceById[id], surface.role != .main else { return false }
+
+        _ = hideManagedSurface(id: id, updateGraph: false)
+        if surface.content.isNativeTerminal {
+            terminalWorkspaces[id]?.setSurfaceZoomEnabled(false, notifyRuntime: false)
+            terminalWorkspaces[id]?.disarmInput()
+            terminalWorkspaces.removeValue(forKey: id)
+        }
+        if surface.content.kind == .lxapp, let appId = surface.content.appId {
+            shell.closeAsideLxApp(appId: appId)
+        }
+        independentPanelWindows[id]?.close()
+        independentPanelWindows.removeValue(forKey: id)
+        runtimeLxAppPanels.removeValue(forKey: id)
+        visibleSurfaceIDs.remove(id)
+        discardOpenedSubtree(rootID: id)
+        shell.hidePanel(id: id)
+        refreshChromeActions()
         return true
     }
 
@@ -640,6 +735,9 @@ final class LxAppMacAppUIRuntime: NSObject {
             ?? surfaceId
         guard !appId.isEmpty else { return false }
         _ = closeManagedSurface(id: surfaceId)
+        if let primaryAppId = graphOwnerAppId {
+            _ = unregisterHostAside(primaryAppId, surfaceId)
+        }
         runtimeLxAppPanels.removeValue(forKey: surfaceId)
         openedSurfaceIDs.remove(surfaceId)
         visibleSurfaceIDs.remove(surfaceId)
@@ -665,6 +763,16 @@ final class LxAppMacAppUIRuntime: NSObject {
             try openSurface(id: id, sourceActivatorID: sourceActivatorID)
         } catch {
             LXLog.error("AppUI failed to open surface=\(id) activator=\(sourceActivatorID ?? "nil")", category: "MacAppUI", error: error)
+        }
+    }
+
+    private func openManagedSurfaceNow(id: String) -> Bool {
+        do {
+            try openSurface(id: id)
+            return true
+        } catch {
+            LXLog.error("AppUI failed to open managed surface=\(id)", category: "MacAppUI", error: error)
+            return false
         }
     }
 
@@ -1314,8 +1422,10 @@ final class LxAppMacAppUIRuntime: NSObject {
             discardMainSurfaceContent(id: surfaceId)
         }
         if !execution.removedSurfaceIds.isEmpty,
-           let activeSurfaceId = execution.snapshot.activeSurfaceId {
-            openSurfaceHandlingError(id: activeSurfaceId)
+           let activeSurfaceId = execution.snapshot.activeSurfaceId,
+           let ownerAppId = graphOwnerAppId,
+           openManagedSurfaceNow(id: activeSurfaceId) {
+            _ = setActiveMainSurface(ownerAppId, activeSurfaceId)
         } else {
             refreshChromeActions()
         }
@@ -1489,7 +1599,7 @@ final class LxAppMacAppUIRuntime: NSObject {
         }
 
         for id in visiblePanels {
-            closeSurface(id: id)
+            _ = hideManagedSurface(id: id, updateGraph: true)
         }
     }
 

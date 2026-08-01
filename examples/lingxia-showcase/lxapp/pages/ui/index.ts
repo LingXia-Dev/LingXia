@@ -231,8 +231,8 @@ Page({
         // chat app joins the lxapp aside slot without a yaml sidebar entry.
         spec = { lxapp: "lingxia-chat", as: "aside", edge: cfg.edge ?? "right" };
       } else if (cfg.verb === "native") {
-        // Show a host capability by name (home-app privilege).
-        spec = { native: "terminal", edge: cfg.edge ?? "bottom" };
+        // Placement belongs to the host declaration in lingxia.yaml.
+        spec = { native: "terminal" };
       } else if (as === "aside") {
         // Multi-tab demo: each click opens the next url as a tab in the one
         // browser aside (deduped by url). Aside is external content only.

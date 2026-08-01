@@ -27,8 +27,12 @@ pub use lxapp::host::{ChannelContext, ChannelMessage, StreamContext};
 /// privilege declaration. For dev/test hosts (the Runner) only — product hosts
 /// must not call this. A `lingxia dev` session already implies auto-grant.
 pub use lxapp::set_automation_auto_grant;
+// Required by expansions of `#[lingxia::native]`; host applications should
+// receive it through macro-generated parameters rather than orchestrate it.
+#[doc(hidden)]
+pub use lxapp::LxApp;
 pub use lxapp::{
-    FloatDismiss, LxApp, LxAppSecurityPrivilege, PageQueryInput, PageSurface, PageSurfaceRequest,
+    FloatDismiss, LxAppSecurityPrivilege, PageQueryInput, PageSurface, PageSurfaceRequest,
     PageSurfaceTarget, SurfaceInteraction, SurfaceKind, SurfacePosition, SurfaceRole,
     UrlCallbackSurface, UrlCallbackWaitError,
 };

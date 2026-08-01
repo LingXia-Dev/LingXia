@@ -60,6 +60,8 @@ const terminalWorkspaceResult: Promise<SurfaceHandle> = lx.openSurface({
 lx.openSurface({ native: "terminal", as: "main" });
 // @ts-expect-error native presentation is owned by lingxia.yaml
 lx.openSurface({ native: "terminal", edge: "bottom" });
+// @ts-expect-error other native capabilities are opened by declaration id
+lx.openSurface({ native: "browser" });
 const pageResult: Promise<Surface> = lx.openSurface(pageSurface);
 const asideResult: Promise<Surface | null> = lx.openSurface(urlAside);
 const appDownloadResult: DownloadTask<AppDownloadResult> = lx.downloadFile(appDownload);

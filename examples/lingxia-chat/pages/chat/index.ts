@@ -208,10 +208,10 @@ Page({
     this.setData({ messages: [] });
   },
 
-  // Desktop-only (the View gates the affordance): dock the host-declared
-  // terminal on the requested edge.
-  async onOpenTerminal(params: { edge: 'left' | 'right' | 'top' | 'bottom' }) {
-    await lx.openSurface({ native: 'terminal', edge: params?.edge ?? 'bottom' });
+  // Desktop-only (the View gates the affordance): open the host-declared
+  // terminal using the placement owned by lingxia.yaml.
+  async onOpenTerminal() {
+    await lx.openSurface({ native: 'terminal' });
   },
 
   // Open a new in-app browser tab (self browser with an editable address bar).

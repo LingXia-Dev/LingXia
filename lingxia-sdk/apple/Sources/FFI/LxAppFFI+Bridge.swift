@@ -264,6 +264,23 @@ extension LxApp {
         }
     }
 
+    nonisolated static func destroyManagedSurface(id: RustStr, role: RustStr) -> Bool {
+        let idString = id.toString()
+        let roleString = role.toString()
+        guard !idString.isEmpty else { return false }
+        return executeOnMain {
+            #if os(macOS)
+            guard let runtime = LxAppMacAppUIRuntime.active else { return false }
+            return runtime.destroyManagedSurface(
+                id: idString,
+                role: roleString.isEmpty ? nil : roleString
+            )
+            #else
+            return false
+            #endif
+        }
+    }
+
     /// Flip a host-declared top-level surface's visibility. Returns `false` when
     /// there is no host shell, or when `id` is not a declared surface.
     nonisolated static func toggleManagedSurface(id: RustStr) -> Bool {
