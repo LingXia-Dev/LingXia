@@ -372,6 +372,11 @@ Each `lxapp` surface needs its assets bundled — list its appId in `resources.b
 
 On desktop the main window is a sidebar plus a main area plus docked asides, and the shell picks the realized form from the window width:
 
+- An lxapp in `main` owns the primary content area and appears in the sidebar's main switcher. The content area itself has no tab strip.
+- An lxapp in `aside` occupies a companion region at the left, right, top, or bottom of the main and switches through that region's tab strip. It never appears in the sidebar's main switcher.
+
+One lxapp has one live role in a window. Opening it under the other role must move or reopen that same logical app according to the entry point's contract; the Host must never project it as both main and aside.
+
 - **Wide**: full sidebar (pins, main tabs, activators) with up to three docked asides beside the main.
 - **Medium**: the sidebar collapses to an icon rail and at most one aside slot is admitted; an explicitly opened slot that cannot preserve the main minimum overlays the content pane.
 - **Narrow** (and mobile): the sidebar disappears, `main` goes full screen, and asides overlay the main full screen.
@@ -389,14 +394,16 @@ URL field and a separate tab group; the field accepts URLs, not search queries.
 
 Two sidebar regions have fixed ownership:
 
-- **Pins are the user's** — quick entries for lxapps and websites (eight at most), added and removed through context menus. An lxapp Pin always opens or focuses a main workspace (and therefore enters the main switcher) in the same content rectangle as the home lxapp, with the previous main hidden and no duplicate host window; it does not inherit a declared aside role. That restriction changes entry role only: a Pin must not add an inset, clip, navigation offset, or alternate content rectangle. Use a sidebar action plus `lx.openSurface({ surface: ... })` for the aside entry. There is no production app API to write Pins.
+- **Pins are the user's** — quick entries for lxapps and websites (eight at most), added and removed through context menus. An lxapp Pin always opens or focuses a main workspace. The Pin tile remains a shortcut while the open lxapp also gets an independent sidebar workspace row for switching and lifecycle controls; hovering the row reveals an explicit ellipsis for its provider-backed menu, and right-click opens the same menu. Unpinning does not close or remove that live row. Its content uses the same rectangle as the home lxapp, with the previous main hidden, no duplicate host window, and no content-area tab strip. It does not inherit a declared aside role. That restriction changes entry role only: a Pin must not add an inset, clip, navigation offset, or alternate content rectangle. Use a sidebar action plus `lx.openSurface({ surface: ... })` for the aside entry. There is no production app API to write Pins.
 - **Sidebar actions are the app's** — runtime entries the home lxapp declares via `lx.shell.sidebarActions` (see the `@lingxia/types` declarations). Header actions are icon-only and limited to two; footer actions use labeled cells and scroll after five visible rows. The shell invokes `onActivate` and performs no built-in navigation; callbacks can call `lx.openSurface(...)` or run any other app logic. Redeclare them each Logic launch.
 
 The initial `main` is admitted first as the window's stable root and cannot be closed. Other
 main surfaces expose only the actions their content provider supports: browser
-and terminal surfaces may be closed or renamed, while lxapp lifecycle stays
-lxapp-owned. Closing an active non-root main selects another remaining main, so
-the product Host never enters a synthetic zero-main or empty-state mode.
+and terminal surfaces may be closed or renamed, while a non-root lxapp
+workspace may be closed or restarted through its provider-backed sidebar menu
+but cannot be renamed. Closing an active non-root main selects another
+remaining main, so the product Host never enters a synthetic zero-main or
+empty-state mode.
 
 The home lxapp remains the control app even when the visible desktop main is a URL or native surface. Its Logic worker still receives `App.onLaunch` once and may register sidebar actions, tray behavior, and other host chrome without creating a hidden WebView.
 

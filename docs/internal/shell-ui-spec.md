@@ -335,6 +335,8 @@ crammed in the moment the window crosses 840.
 
 - **The main switcher projects main surfaces only.** A full desktop shell renders
   it as sidebar tabs; compact/custom shells may use another projection or none.
+  The switcher is shell chrome outside the main content rectangle: a main
+  lxapp MUST NOT gain a content-area tab strip.
   Asides never enter the
   sidebar: opening an aside lxapp MUST NOT append a sidebar entry — its
   switching belongs to its slot's header tabs (§4.6), structurally identical to
@@ -461,9 +463,14 @@ Pins are the user's quick entries for lxapps and websites.
   and web targets; renderers MUST NOT force lxapps before websites.
 - An lxapp Pin is a **workspace launch intent**, not a declared-Surface
   shortcut. Clicking it opens or selects that lxapp as a main workspace and it
-  MUST appear in the main switcher. If the same lxapp is live as an aside, the
-  host closes that one-region presentation and reopens it as main; the Pin does
-  not inherit the app's declared aside default. Sidebar actions and
+  MUST appear as its own row in the sidebar main switcher. The Pin tile remains
+  a launch shortcut; the workspace row is a separate, durable control entry for
+  selecting and closing the lxapp. On pointer hover, the row MUST expose an
+  explicit ellipsis that opens the same provider-backed context menu available
+  from right-click; lifecycle controls must not be discoverable only by a hidden
+  gesture. Removing the Pin MUST NOT remove a live workspace row. If the same lxapp is live as an aside,
+  the host closes that one-region presentation and reopens it as main; the Pin
+  does not inherit the app's declared aside default. Sidebar actions and
   `lx.openSurface({ surface: ... })` continue to honor the declared role.
 - A main opened from a Pin MUST occupy the exact same host content rectangle as
   the stable root main. No edge or pixel of the previously active main may
@@ -471,7 +478,8 @@ Pins are the user's quick entries for lxapps and websites.
   inside that rectangle, but the previous main WebView MUST be hidden and no
   duplicate workspace window may remain visible. The Pin rule restricts entry
   role only; it MUST NOT introduce a Pin-specific inset, clip, card, navigation
-  offset, or alternate content rectangle.
+  offset, content-area tab strip, or alternate content rectangle. Workspace
+  identity and controls belong to the sidebar, not inside the main content.
 - A website Pin opens or selects a main browser tab.
 
 ### 4.5 Sidebar actions

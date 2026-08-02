@@ -601,7 +601,10 @@ rong::js_api! {
      * Omit to use the declaration's role. Overrides must be realizable by the
      * declared provider. `float` does not synthesize a popover contract: the
      * declaration must already provide the required float/tray presentation.
-     * A stable root rejects non-main overrides.
+     * A `main` occupies the primary content area, appears in the main/sidebar
+     * switcher, and has no content-area tab strip. An `aside` occupies a
+     * companion region around the main and uses that region's tab strip; it
+     * never enters the main switcher. A stable root rejects non-main overrides.
      */
     as?: 'main' | 'aside' | 'float';
     interaction?: never;
@@ -657,11 +660,18 @@ rong::js_api! {
     position?: never;
     size?: never;
 } & ({
-    /** A switchable primary shell item. Dynamic floats are not supported. */
+    /**
+     * Occupies the primary content area and appears in the main/sidebar
+     * switcher. Main content has no tab strip of its own. Dynamic floats are
+     * not supported.
+     */
     as: 'main';
     edge?: never;
 } | {
-    /** A companion region beside the current main. */
+    /**
+     * Occupies a companion region around the current main, with switching in
+     * that region's tab strip. It does not appear in the main/sidebar switcher.
+     */
     as: 'aside';
     /**
      * Preferred docking side. `aside` selects the companion region; `edge`
