@@ -2768,6 +2768,17 @@ fn sync_transparent_tabbar_overlay(hwnd: HWND, webtag_key: Option<&str>) {
                 return None;
             }
         }
+        // An adaptive aside overlay owns the entire main content pane. Keeping
+        // the main page's transparent tab bar above it steals pointer input
+        // from controls near the overlay's bottom edge.
+        if attached_layout_for_window(hwnd, webtag_key, client).is_some_and(|attached| {
+            attached
+                .panels
+                .iter()
+                .any(|panel| panel_is_overlay(&panel.panel_id))
+        }) {
+            return None;
+        }
         let layout = current_window_layout(webtag_key);
         crate::shell::transparent_tabbar_overlay_rect(client, &layout).map(|rect| (layout, rect))
     });
