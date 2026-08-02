@@ -2100,6 +2100,13 @@ extension LxAppShell {
         contentView: NSView,
         defaultSize: CGFloat = 320
     ) {
+        if managedMainView === contentView {
+            // Transfer ownership before the core commit activates the successor
+            // main. Otherwise that activation would detach this view from the
+            // aside container it has just moved into.
+            managedMainView = nil
+            contentView.removeFromSuperview()
+        }
         if !workspaceManager.isPanelRegistered(id: id) {
             let config = PanelConfig(id: id, position: position, defaultSize: defaultSize)
             workspaceManager.registerPanel(config)
@@ -2119,6 +2126,12 @@ extension LxAppShell {
             workspaceManager.registerPanel(config)
         }
         attachPanelWebViewWhenReady(panelId: id, appId: appId, path: path, attempt: 0)
+    }
+
+    func unregisterPanel(id: String) {
+        preserveWindowFrameDuringPanelLayout(reason: "unregisterPanel:\(id)") {
+            workspaceManager.unregisterPanel(id: id)
+        }
     }
 
     func hidePanel(id: String, animated: Bool = true, updateCardEdges: Bool = true) {

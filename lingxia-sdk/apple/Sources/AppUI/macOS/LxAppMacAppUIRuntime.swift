@@ -69,6 +69,9 @@ final class LxAppMacAppUIRuntime: NSObject {
     /// Runtime edge overrides from `lx.openSurface({surface, edge})`; the
     /// declared `lingxia.yaml` edge applies when absent.
     private var managedEdgeOverrides: [String: LxAppUIConfig.Edge] = [:]
+    /// Native providers keep one workspace while the core moves their stable
+    /// surface id between the main switcher and an aside slot.
+    private var managedRoleOverrides: [String: LxAppUIConfig.Role] = [:]
     private var nativeInstanceSurfaceIDs: [String: String] = [:]
     private struct RuntimeLxAppPanel {
         let appId: String
@@ -278,7 +281,7 @@ final class LxAppMacAppUIRuntime: NSObject {
         sessionId: UInt64,
         panelId: String
     ) -> Bool {
-        guard let surface = surfaceById[panelId], surface.role == .aside else {
+        guard let surface = surfaceById[panelId], effectiveRole(for: surface) == .aside else {
             // An UNDECLARED lxapp opened with panel presentation (privileged
             // openSurface / activator): dock it as a runtime aside keyed by
             // its appId. Returning false here would fall through to the main
@@ -381,7 +384,7 @@ final class LxAppMacAppUIRuntime: NSObject {
             return true
         }
 
-        guard surface.role == .aside,
+        guard effectiveRole(for: surface) == .aside,
               let position = panelPosition(for: surface) else {
             return false
         }
@@ -509,56 +512,96 @@ final class LxAppMacAppUIRuntime: NSObject {
         return true
     }
 
-    /// Show a host-declared surface (no-op if already visible). `edge`
-    /// overrides the declared edge; an already-visible panel moves by
-    /// re-entering the open path. Returns `false` for an unknown surface `id`.
+    /// Ensure a declared provider is visible with the core-resolved
+    /// presentation. Native terminals may move between main and aside without
+    /// replacing their workspace.
     @discardableResult
     func openManagedSurface(id: String, role: String? = nil, edge: String? = nil) -> Bool {
         if runtimeLxAppPanels[id] != nil {
             guard role == nil || role == LxAppUIConfig.Role.aside.rawValue else { return false }
-            if let edge, let parsed = LxAppUIConfig.Edge(rawValue: edge) {
+            let previousEdge = managedEdgeOverrides[id]
+            if let edge {
+                guard let parsed = LxAppUIConfig.Edge(rawValue: edge) else { return false }
                 managedEdgeOverrides[id] = parsed
             }
-            guard let primaryAppId = graphOwnerAppId else { return false }
+            guard let primaryAppId = graphOwnerAppId else {
+                managedEdgeOverrides[id] = previousEdge
+                return false
+            }
             shell.show()
-            _ = registerHostAside(
+            guard registerHostAside(
                 primaryAppId,
                 id,
                 managedEdgeOverrides[id]?.rawValue ?? "right"
-            )
+            ) else {
+                managedEdgeOverrides[id] = previousEdge
+                return false
+            }
             openedSurfaceIDs.insert(id)
             visibleSurfaceIDs.insert(id)
             refreshChromeActions()
             return true
         }
         guard let surface = surfaceById[id] else { return false }
-        guard role == nil else { return false }
-        let previous = managedEdgeOverrides[id] ?? surface.edge
-        if let edge, let parsed = LxAppUIConfig.Edge(rawValue: edge) {
-            managedEdgeOverrides[id] = parsed
+
+        let previousRoleOverride = managedRoleOverrides[id]
+        let previousEdgeOverride = managedEdgeOverrides[id]
+        let previousRole = effectiveRole(for: surface)
+        let requestedRole: LxAppUIConfig.Role?
+        if let role {
+            guard let parsed = LxAppUIConfig.Role(rawValue: role) else { return false }
+            requestedRole = parsed
+        } else {
+            requestedRole = nil
         }
-        let effective = managedEdgeOverrides[id] ?? surface.edge
-        if visibleSurfaceIDs.contains(id) {
-            if effective != previous {
-                closeManagedSurface(id: id)
-                if openManagedSurfaceNow(id: id) {
-                    return true
-                }
-                if let previous {
-                    managedEdgeOverrides[id] = previous
-                } else {
-                    managedEdgeOverrides.removeValue(forKey: id)
-                }
-                _ = openManagedSurfaceNow(id: id)
-                return false
-            } else if surface.role == .main {
-                // A visible main can be backgrounded behind another switcher
-                // item. Reopening it focuses the existing provider instance.
-                return openManagedSurfaceNow(id: id)
+        let nextRole = requestedRole ?? previousRole
+        if nextRole != previousRole {
+            guard id != rootSurface.id,
+                  surface.content.isNativeTerminal,
+                  nextRole == .main || nextRole == .aside
+            else { return false }
+        }
+
+        let requestedEdge: LxAppUIConfig.Edge?
+        if let edge {
+            guard nextRole == .aside,
+                  let parsed = LxAppUIConfig.Edge(rawValue: edge)
+            else { return false }
+            requestedEdge = parsed
+        } else {
+            requestedEdge = nil
+        }
+
+        if let requestedRole {
+            if requestedRole == surface.role {
+                managedRoleOverrides.removeValue(forKey: id)
+            } else {
+                managedRoleOverrides[id] = requestedRole
             }
+        }
+        if let requestedEdge {
+            managedEdgeOverrides[id] = requestedEdge
+        }
+
+        let nextEdge = managedEdgeOverrides[id] ?? surface.edge
+        let previousEdge = previousEdgeOverride ?? surface.edge
+        let presentationChanged = nextRole != previousRole
+            || (nextRole == .aside && nextEdge != previousEdge)
+        let wasVisible = visibleSurfaceIDs.contains(id)
+        if wasVisible && !presentationChanged && nextRole != .main {
             return true
         }
-        return openManagedSurfaceNow(id: id)
+
+        if openManagedSurfaceNow(id: id) {
+            return true
+        }
+
+        managedRoleOverrides[id] = previousRoleOverride
+        managedEdgeOverrides[id] = previousEdgeOverride
+        if wasVisible && presentationChanged {
+            _ = openManagedSurfaceNow(id: id)
+        }
+        return false
     }
 
     @discardableResult
@@ -569,20 +612,40 @@ final class LxAppMacAppUIRuntime: NSObject {
         role: String,
         edge: String?
     ) -> Bool {
-        guard capability == LxAppUIConfig.Content.NativeName.terminal.rawValue,
-              let template = surfaceById.values.first(where: {
-                  declaredSurfaceIDs.contains($0.id)
-                      && $0.content.name?.rawValue == capability
-              })
-        else { return false }
+        guard capability == LxAppUIConfig.Content.NativeName.terminal.rawValue else { return false }
+        let template: LxAppUIConfig.Surface
+        if instanceKey == nil {
+            guard let declared = surfaceById[id],
+                  declaredSurfaceIDs.contains(id),
+                  declared.content.name?.rawValue == capability
+            else { return false }
+            template = declared
+        } else {
+            guard let declared = surfaceById.values.first(where: {
+                declaredSurfaceIDs.contains($0.id)
+                    && $0.content.name?.rawValue == capability
+            }) else { return false }
+            template = declared
+        }
 
         if let instanceKey {
-            guard role == LxAppUIConfig.Role.main.rawValue, edge == nil else { return false }
+            guard !instanceKey.isEmpty,
+                  let requestedRole = LxAppUIConfig.Role(rawValue: role),
+                  requestedRole == .main || requestedRole == .aside
+            else { return false }
+            if edge != nil && requestedRole != .aside { return false }
+
             let identity = "\(capability)\u{0}\(instanceKey)"
             if let existingID = nativeInstanceSurfaceIDs[identity], existingID != id {
                 return false
             }
-            if surfaceById[id] == nil {
+            let registeredIdentity = nativeInstanceSurfaceIDs[identity] == nil
+            let createdSurface = surfaceById[id] == nil
+            if let existing = surfaceById[id] {
+                guard existing.content.name?.rawValue == capability,
+                      existing.content.instanceKey == instanceKey
+                else { return false }
+            } else {
                 surfaceById[id] = LxAppUIConfig.Surface(
                     id: id,
                     role: .main,
@@ -604,17 +667,22 @@ final class LxAppMacAppUIRuntime: NSObject {
                 )
             }
             nativeInstanceSurfaceIDs[identity] = id
-        } else {
-            guard id == template.id,
-                  template.role.rawValue == role,
-                  edge == template.edge?.rawValue
-            else { return false }
+            if openManagedSurface(id: id, role: role, edge: edge) {
+                return true
+            }
+            if createdSurface {
+                discardTerminalSurfaceContent(id: id)
+            } else if registeredIdentity {
+                nativeInstanceSurfaceIDs.removeValue(forKey: identity)
+            }
+            return false
         }
-        return openManagedSurface(id: id)
+
+        return openManagedSurface(id: id, role: role, edge: edge)
     }
 
     private func effectiveRole(for surface: LxAppUIConfig.Surface) -> LxAppUIConfig.Role {
-        surface.role
+        managedRoleOverrides[surface.id] ?? surface.role
     }
 
     /// Hide a host-declared surface (no-op if already hidden). Returns `false`
@@ -639,7 +707,7 @@ final class LxAppMacAppUIRuntime: NSObject {
         }
         guard let surface = surfaceById[id] else { return false }
         if visibleSurfaceIDs.contains(id) {
-            if surface.role == .main {
+            if effectiveRole(for: surface) == .main {
                 return closeMainSurface(id: id)
             }
             for childID in childrenByParentId[id] ?? [] {
@@ -682,12 +750,16 @@ final class LxAppMacAppUIRuntime: NSObject {
 
     @discardableResult
     func destroyManagedSurface(id: String, role: String?) -> Bool {
-        guard role == nil || role == LxAppUIConfig.Role.aside.rawValue
-                || role == LxAppUIConfig.Role.float.rawValue
-        else { return false }
+        let requestedRole: LxAppUIConfig.Role?
+        if let role {
+            guard let parsed = LxAppUIConfig.Role(rawValue: role) else { return false }
+            requestedRole = parsed
+        } else {
+            requestedRole = nil
+        }
 
         for childID in childrenByParentId[id] ?? [] {
-            let childRole = surfaceById[childID]?.role.rawValue
+            let childRole = surfaceById[childID].map { effectiveRole(for: $0).rawValue }
             _ = destroyManagedSurface(id: childID, role: childRole)
             if let primaryAppId = graphOwnerAppId {
                 _ = unregisterHostAside(primaryAppId, childID)
@@ -700,17 +772,36 @@ final class LxAppMacAppUIRuntime: NSObject {
             runtimeLxAppPanels.removeValue(forKey: id)
             openedSurfaceIDs.remove(id)
             visibleSurfaceIDs.remove(id)
+            shell.unregisterPanel(id: id)
+            managedRoleOverrides.removeValue(forKey: id)
+            managedEdgeOverrides.removeValue(forKey: id)
             refreshChromeActions()
             return true
         }
 
-        guard let surface = surfaceById[id], surface.role != .main else { return false }
+        guard id != rootSurface.id,
+              let surface = surfaceById[id]
+        else { return false }
+        let providerRole = requestedRole ?? effectiveRole(for: surface)
+        guard providerRole == effectiveRole(for: surface) else { return false }
+
+        if providerRole == .main {
+            let wasVisible = visibleSurfaceIDs.contains(id)
+            discardMainSurfaceContent(id: id)
+            if wasVisible,
+               let ownerAppId = graphOwnerAppId,
+               let activeSurfaceID = SurfaceSwitcherBridge.snapshot(ownerAppId: ownerAppId)?.activeSurfaceId,
+               openManagedSurfaceNow(id: activeSurfaceID) {
+                _ = setActiveMainSurface(ownerAppId, activeSurfaceID)
+            } else {
+                refreshChromeActions()
+            }
+            return true
+        }
 
         _ = hideManagedSurface(id: id, updateGraph: false)
         if surface.content.isNativeTerminal {
-            terminalWorkspaces[id]?.setSurfaceZoomEnabled(false, notifyRuntime: false)
-            terminalWorkspaces[id]?.disarmInput()
-            terminalWorkspaces.removeValue(forKey: id)
+            discardTerminalSurfaceContent(id: id)
         }
         if surface.content.kind == .lxapp, let appId = surface.content.appId {
             shell.closeAsideLxApp(appId: appId)
@@ -720,7 +811,9 @@ final class LxAppMacAppUIRuntime: NSObject {
         runtimeLxAppPanels.removeValue(forKey: id)
         visibleSurfaceIDs.remove(id)
         discardOpenedSubtree(rootID: id)
-        shell.hidePanel(id: id)
+        shell.unregisterPanel(id: id)
+        managedRoleOverrides.removeValue(forKey: id)
+        managedEdgeOverrides.removeValue(forKey: id)
         refreshChromeActions()
         return true
     }
@@ -742,6 +835,9 @@ final class LxAppMacAppUIRuntime: NSObject {
         openedSurfaceIDs.remove(surfaceId)
         visibleSurfaceIDs.remove(surfaceId)
         shell.closeAsideLxApp(appId: appId)
+        shell.unregisterPanel(id: surfaceId)
+        managedRoleOverrides.removeValue(forKey: surfaceId)
+        managedEdgeOverrides.removeValue(forKey: surfaceId)
         refreshChromeActions()
         return true
     }
@@ -1058,7 +1154,7 @@ final class LxAppMacAppUIRuntime: NSObject {
     }
 
     private func requestAttachPanelOpenThroughRuntime(_ surface: LxAppUIConfig.Surface) throws {
-        guard surface.role == .aside else {
+        guard effectiveRole(for: surface) == .aside else {
             throw LxAppUIError.invalidConfig("surface \(surface.id) is not an aside")
         }
         switch surface.content.kind {
@@ -1202,7 +1298,7 @@ final class LxAppMacAppUIRuntime: NSObject {
         if let primaryAppId = graphOwnerAppId {
             _ = unregisterHostAside(primaryAppId, id)
         }
-        shell.hidePanel(id: id)
+        shell.unregisterPanel(id: id)
         updateIndependentPanelOutsideClickMonitors()
         refreshChromeActions()
     }
@@ -1346,7 +1442,8 @@ final class LxAppMacAppUIRuntime: NSObject {
               let item = snapshot.items.first(where: { $0.surfaceId == activeID }),
               item.content.kind == "native",
               item.content.capability == "terminal",
-              surfaceById[activeID]?.role == .main
+              let activeSurface = surfaceById[activeID],
+              effectiveRole(for: activeSurface) == .main
         else { return false }
         let instanceKey = UUID().uuidString.lowercased()
         return openManagedNativeSurface(
@@ -1436,14 +1533,25 @@ final class LxAppMacAppUIRuntime: NSObject {
         visibleSurfaceIDs.remove(id)
         guard let surface = surfaceById[id] else { return }
         if surface.content.isNativeTerminal {
-            terminalWorkspaces[id]?.disarmInput()
-            terminalWorkspaces.removeValue(forKey: id)
-            if !declaredSurfaceIDs.contains(id) {
-                nativeInstanceSurfaceIDs = nativeInstanceSurfaceIDs.filter { $0.value != id }
-                surfaceById.removeValue(forKey: id)
-            }
+            discardTerminalSurfaceContent(id: id)
         } else if isBrowserMainSurface(surface) {
             shell.closeDeclaredBrowserMain(surfaceID: id)
+        }
+        managedRoleOverrides.removeValue(forKey: id)
+        managedEdgeOverrides.removeValue(forKey: id)
+    }
+
+    private func discardTerminalSurfaceContent(id: String) {
+        shell.setPanelFullscreen(id: id, enabled: false)
+        terminalWorkspaces[id]?.setSurfaceZoomEnabled(false, notifyRuntime: false)
+        terminalWorkspaces[id]?.disarmInput()
+        terminalWorkspaces.removeValue(forKey: id)
+        shell.unregisterPanel(id: id)
+        managedRoleOverrides.removeValue(forKey: id)
+        managedEdgeOverrides.removeValue(forKey: id)
+        if !declaredSurfaceIDs.contains(id) {
+            nativeInstanceSurfaceIDs = nativeInstanceSurfaceIDs.filter { $0.value != id }
+            surfaceById.removeValue(forKey: id)
         }
     }
 
