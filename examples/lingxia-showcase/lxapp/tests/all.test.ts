@@ -15,3 +15,4 @@ import './pages/system.test.js';
 import './pages/todo.test.js';
 import './pages/ui.test.js';
 import './flows/location.test.js';
+import './flows/surface-switcher.test.js';

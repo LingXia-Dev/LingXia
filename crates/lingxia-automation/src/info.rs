@@ -10,6 +10,31 @@ use rong::{
 use std::sync::{Arc, Weak};
 use std::time::Duration;
 
+fn normalize_surface_layout_keys(value: &mut serde_json::Value) {
+    match value {
+        serde_json::Value::Array(values) => {
+            for value in values {
+                normalize_surface_layout_keys(value);
+            }
+        }
+        serde_json::Value::Object(fields) => {
+            for value in fields.values_mut() {
+                normalize_surface_layout_keys(value);
+            }
+            for (rust, js) in [
+                ("app_id", "appId"),
+                ("surface_id", "surfaceId"),
+                ("active_id", "activeId"),
+            ] {
+                if let Some(value) = fields.remove(rust) {
+                    fields.insert(js.to_string(), value);
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
 #[js_class(clone)]
 pub(crate) struct JSLxAppDriver {
     lxapp: Weak<LxApp>,
@@ -82,6 +107,21 @@ impl JSLxAppDriver {
         Ok(pages)
     }
 
+    /// Read the authoritative surface layout that the host skin reconciles.
+    /// This is intentionally automation-only: app behavior should use the
+    /// public SurfaceHandle contract instead of inspecting host layout state.
+    #[js_method(rename = "surfaceLayout")]
+    async fn surface_layout(&self, ctx: JSContext) -> JSResult<JSValue> {
+        let app = upgrade(&self.lxapp)?;
+        let layout = app
+            .surface_derived_layout()
+            .ok_or_else(|| crate::auto_err("surface layout is unavailable"))?;
+        let mut layout = serde_json::to_value(layout)
+            .map_err(|err| crate::auto_err(format!("serialize surface layout: {err}")))?;
+        normalize_surface_layout_keys(&mut layout);
+        json_to_js(&ctx, &layout)
+    }
+
     /// Evaluate in the selected lxapp's Logic runtime. A driver created by a
     /// session test is safe; evaluating the calling Logic context rejects to
     /// avoid a re-entrant deadlock.
@@ -95,5 +135,28 @@ impl JSLxAppDriver {
             .map_err(|_| crate::auto_err("lxapp eval timed out"))?
             .map_err(|err| crate::auto_err(err.to_string()))?;
         json_to_js(&ctx, &value)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::normalize_surface_layout_keys;
+
+    #[test]
+    fn surface_layout_snapshot_uses_javascript_field_names_recursively() {
+        let mut value = serde_json::json!({
+            "content": { "app_id": "demo" },
+            "tree": {
+                "active_id": "root",
+                "children": [{ "surface_id": "root" }]
+            }
+        });
+
+        normalize_surface_layout_keys(&mut value);
+
+        assert_eq!(value["content"]["appId"], "demo");
+        assert_eq!(value["tree"]["activeId"], "root");
+        assert_eq!(value["tree"]["children"][0]["surfaceId"], "root");
+        assert!(value["content"].get("app_id").is_none());
     }
 }

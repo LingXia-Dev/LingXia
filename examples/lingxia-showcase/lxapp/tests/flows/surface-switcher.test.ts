@@ -1,0 +1,579 @@
+import { expect, test } from '@rongjs/test';
+import type {
+  LxAppDriver,
+  SurfaceLayoutAsideSlot,
+  SurfaceLayoutSnapshot,
+} from 'lingxia-types';
+import { runtimePlatform } from '../helpers/platform.js';
+
+interface VisibilityEvent {
+  id: string;
+  kind: string;
+  source: string;
+}
+
+interface CloseEvent {
+  id: string;
+  kind: string;
+  reason: string;
+}
+
+const targetPlatform = (test.args as Record<string, string>).platform?.toLocaleLowerCase();
+const desktopTest = targetPlatform && !['macos', 'windows'].includes(targetPlatform)
+  ? test.skip
+  : test;
+
+async function desktopApp(): Promise<LxAppDriver> {
+  const app = lx.automation().lxapp();
+  const actual = await runtimePlatform(app);
+  if (!['macos', 'windows'].includes(actual)) {
+    throw new Error(
+      `surface-switcher tests require macOS or Windows; got ${actual || 'unknown'}. `
+      + 'Pass --arg platform=<target> so non-desktop matrix jobs skip explicitly.',
+    );
+  }
+  if (targetPlatform && targetPlatform !== actual) {
+    throw new Error(`requested ${targetPlatform}, but the running showcase reports ${actual}`);
+  }
+  return app;
+}
+
+function switcherIds(layout: SurfaceLayoutSnapshot): string[] {
+  return layout.mainSwitcher.items.map((item) => item.surfaceId);
+}
+
+function nativeSlot(layout: SurfaceLayoutSnapshot): SurfaceLayoutAsideSlot | undefined {
+  return layout.asideSlots.find((slot) => slot.kind === 'native');
+}
+
+function containsSurface(layout: SurfaceLayoutSnapshot, id: string): boolean {
+  return layout.mains.includes(id)
+    || layout.asideSlots.some((slot) => slot.children.includes(id))
+    || layout.floats.some((surface) => surface.id === id);
+}
+
+function topology(layout: SurfaceLayoutSnapshot): unknown {
+  return {
+    sizeClass: layout.sizeClass,
+    switcherForm: layout.switcherForm,
+    splitForm: layout.splitForm,
+    mains: layout.mains,
+    activeMainId: layout.activeMainId,
+    rootSurfaceId: layout.mainSwitcher.rootSurfaceId,
+    activeSurfaceId: layout.mainSwitcher.activeSurfaceId,
+    switcher: layout.mainSwitcher.items.map((item) => ({
+      surfaceId: item.surfaceId,
+      active: item.active,
+      root: item.root,
+      closable: item.closable,
+    })),
+    asides: layout.asides,
+    asideSlots: layout.asideSlots,
+    floats: layout.floats,
+    tree: layout.tree,
+  };
+}
+
+desktopTest('projects the declared terminal aside and restores its baseline state', async () => {
+  const app = await desktopApp();
+  const before = await app.surfaceLayout();
+  const result = await app.eval({
+    timeoutMs: 30_000,
+    script: `
+      const driver = lx.automation().lxapp();
+      const snapshot = () => driver.surfaceLayout();
+      const settle = () => new Promise((resolve) => setTimeout(resolve, 100));
+      const before = await snapshot();
+      const existed = before.asideSlots.some((slot) => slot.children.includes('terminal'));
+      const wasVisible = before.asides.some((surface) => surface.id === 'terminal');
+      const terminal = await lx.openSurface({ surface: 'terminal' });
+      const visibility = { hide: [], show: [] };
+      const off = [
+        terminal.onHide((event) => visibility.hide.push(event)),
+        terminal.onShow((event) => visibility.show.push(event)),
+      ];
+      let output;
+      try {
+        const opened = await snapshot();
+        await terminal.hide();
+        await terminal.hide();
+        const hidden = await snapshot();
+        await terminal.show();
+        await terminal.show();
+        await settle();
+        const shown = await snapshot();
+        output = {
+          id: terminal.id,
+          role: terminal.role,
+          presentation: terminal.presentation,
+          opened,
+          hidden,
+          shown,
+          visibility: {
+            hide: visibility.hide.map((event) => ({ ...event })),
+            show: visibility.show.map((event) => ({ ...event })),
+          },
+        };
+      } finally {
+        for (const unsubscribe of off) unsubscribe();
+        if (existed) {
+          if (wasVisible) await terminal.show();
+          else await terminal.hide();
+        } else if (terminal.alive) {
+          await terminal.close();
+        }
+      }
+      output.afterCleanup = await snapshot();
+      return output;
+    `,
+  }) as {
+    id: string;
+    role: string;
+    presentation: string;
+    opened: SurfaceLayoutSnapshot;
+    hidden: SurfaceLayoutSnapshot;
+    shown: SurfaceLayoutSnapshot;
+    visibility: { hide: VisibilityEvent[]; show: VisibilityEvent[] };
+    afterCleanup: SurfaceLayoutSnapshot;
+  };
+
+  expect(result.id).toBe('terminal');
+  expect(result.role).toBe('aside');
+  expect(['dock', 'overlay']).toContain(result.presentation);
+  expect(result.opened.asides.some((surface) => (
+    surface.id === result.id && surface.edge === 'bottom'
+  ))).toBeTruthy();
+  expect(nativeSlot(result.opened)?.children.includes(result.id)).toBeTruthy();
+  expect(nativeSlot(result.opened)?.activeChild).toBe(result.id);
+  expect(result.hidden.asides.some((surface) => surface.id === result.id)).toBeFalsy();
+  expect(nativeSlot(result.hidden)?.children.includes(result.id)).toBeTruthy();
+  expect(nativeSlot(result.hidden)?.activeChild === result.id).toBeFalsy();
+  expect(result.shown.asides.some((surface) => surface.id === result.id)).toBeTruthy();
+  expect(nativeSlot(result.shown)?.activeChild).toBe(result.id);
+  expect(result.visibility.hide).toEqual([
+    { id: result.id, kind: 'overlay', source: 'opener' },
+  ]);
+  expect(result.visibility.show).toEqual([
+    { id: result.id, kind: 'overlay', source: 'opener' },
+  ]);
+  expect(topology(result.afterCleanup)).toEqual(topology(before));
+});
+
+desktopTest('rejects stable-root mutations without changing the host model', async () => {
+  const app = await desktopApp();
+  const result = await app.eval({
+    timeoutMs: 20_000,
+    script: `
+      const driver = lx.automation().lxapp();
+      const snapshot = () => driver.surfaceLayout();
+      const initial = await snapshot();
+      const rootId = initial.mainSwitcher.rootSurfaceId;
+      if (!rootId) throw new Error('surface graph has no stable root');
+      const root = await lx.openSurface({ surface: rootId, as: 'main' });
+      const beforeRejections = await snapshot();
+      let closeError = '';
+      try { await root.close(); } catch (error) { closeError = String(error); }
+      let roleError = '';
+      try {
+        await lx.openSurface({ surface: rootId, as: 'aside', edge: 'right' });
+      } catch (error) {
+        roleError = String(error);
+      }
+      return {
+        rootId,
+        closeError,
+        roleError,
+        role: root.role,
+        visible: root.visible,
+        alive: root.alive,
+        beforeRejections,
+        afterRejections: await snapshot(),
+      };
+    `,
+  }) as {
+    rootId: string;
+    closeError: string;
+    roleError: string;
+    role: string;
+    visible: boolean;
+    alive: boolean;
+    beforeRejections: SurfaceLayoutSnapshot;
+    afterRejections: SurfaceLayoutSnapshot;
+  };
+
+  expect(result.closeError).toContain('stable root main surface cannot be closed');
+  expect(result.roleError).toContain('stable root main surface cannot change role');
+  expect(result.role).toBe('main');
+  expect(result.visible).toBeTruthy();
+  expect(result.alive).toBeTruthy();
+  expect(result.afterRejections.mainSwitcher.revision)
+    .toBe(result.beforeRejections.mainSwitcher.revision);
+  expect(topology(result.afterRejections)).toEqual(topology(result.beforeRejections));
+  const rootItem = result.afterRejections.mainSwitcher.items.find((item) => (
+    item.surfaceId === result.rootId
+  ));
+  expect(rootItem?.root).toBeTruthy();
+  expect(rootItem?.closable).toBeFalsy();
+});
+
+desktopTest('migrates one keyed workspace across aside edges and main exactly once', async () => {
+  const app = await desktopApp();
+  const before = await app.surfaceLayout();
+  const key = `automation-migrate-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const result = await app.eval({
+    timeoutMs: 45_000,
+    script: `
+      const driver = lx.automation().lxapp();
+      const snapshot = () => driver.surfaceLayout();
+      const settle = () => new Promise((resolve) => setTimeout(resolve, 100));
+      const key = ${JSON.stringify(key)};
+      const visibility = { hide: [], show: [] };
+      const closed = [];
+      let surface;
+      const off = [];
+      let output;
+      try {
+        surface = await lx.openSurface({
+          surface: 'terminal', key, as: 'aside', edge: 'right',
+        });
+        off.push(
+          surface.onHide((event) => visibility.hide.push(event)),
+          surface.onShow((event) => visibility.show.push(event)),
+          surface.onClose((event) => closed.push(event)),
+        );
+        const aside = await snapshot();
+        const main = await lx.openSurface({ surface: 'terminal', key, as: 'main' });
+        const mainLayout = await snapshot();
+        const roleAfterMain = main.role;
+        let hideError = '';
+        try { await main.hide(); } catch (error) { hideError = String(error); }
+        const afterRejectedHide = await snapshot();
+        const docked = await lx.openSurface({
+          surface: 'terminal', key, as: 'aside', edge: 'bottom',
+        });
+        const dockedLayout = await snapshot();
+        await docked.hide();
+        await docked.hide();
+        const hiddenLayout = await snapshot();
+        await docked.show();
+        await docked.show();
+        const shownLayout = await snapshot();
+        await docked.close();
+        await settle();
+        const afterClose = await snapshot();
+        const revisionAfterClose = afterClose.mainSwitcher.revision;
+        await docked.close();
+        await settle();
+        const afterRepeatedClose = await snapshot();
+        output = {
+          id: surface.id,
+          sameMainId: main.id === surface.id,
+          sameMainHandle: main === surface,
+          sameAsideId: docked.id === surface.id,
+          sameAsideHandle: docked === surface,
+          roleAfterMain,
+          roleAfterDock: docked.role,
+          presentationAfterDock: docked.presentation,
+          hideError,
+          aliveAfterClose: docked.alive,
+          visibleAfterClose: docked.visible,
+          aside,
+          mainLayout,
+          afterRejectedHide,
+          dockedLayout,
+          hiddenLayout,
+          shownLayout,
+          afterClose,
+          afterRepeatedClose,
+          revisionAfterClose,
+          visibility: {
+            hide: visibility.hide.map((event) => ({ ...event })),
+            show: visibility.show.map((event) => ({ ...event })),
+          },
+          closed: closed.map((event) => ({ ...event })),
+        };
+      } finally {
+        for (const unsubscribe of off.splice(0)) unsubscribe();
+        if (surface?.alive) await surface.close();
+      }
+      output.afterCleanup = await snapshot();
+      return output;
+    `,
+  }) as {
+    id: string;
+    sameMainId: boolean;
+    sameMainHandle: boolean;
+    sameAsideId: boolean;
+    sameAsideHandle: boolean;
+    roleAfterMain: string;
+    roleAfterDock: string;
+    presentationAfterDock: string;
+    hideError: string;
+    aliveAfterClose: boolean;
+    visibleAfterClose: boolean;
+    aside: SurfaceLayoutSnapshot;
+    mainLayout: SurfaceLayoutSnapshot;
+    afterRejectedHide: SurfaceLayoutSnapshot;
+    dockedLayout: SurfaceLayoutSnapshot;
+    hiddenLayout: SurfaceLayoutSnapshot;
+    shownLayout: SurfaceLayoutSnapshot;
+    afterClose: SurfaceLayoutSnapshot;
+    afterRepeatedClose: SurfaceLayoutSnapshot;
+    afterCleanup: SurfaceLayoutSnapshot;
+    revisionAfterClose: number;
+    visibility: { hide: VisibilityEvent[]; show: VisibilityEvent[] };
+    closed: CloseEvent[];
+  };
+
+  expect(result.sameMainId).toBeTruthy();
+  expect(result.sameMainHandle).toBeTruthy();
+  expect(result.sameAsideId).toBeTruthy();
+  expect(result.sameAsideHandle).toBeTruthy();
+  expect(result.aside.mains.includes(result.id)).toBeFalsy();
+  expect(result.aside.asides.some((surface) => (
+    surface.id === result.id && surface.edge === 'right'
+  ))).toBeTruthy();
+  expect(nativeSlot(result.aside)?.edge).toBe('right');
+  expect(nativeSlot(result.aside)?.activeChild).toBe(result.id);
+  expect(result.mainLayout.mains.includes(result.id)).toBeTruthy();
+  expect(result.mainLayout.asides.some((surface) => surface.id === result.id)).toBeFalsy();
+  expect(result.mainLayout.asideSlots.some((slot) => slot.children.includes(result.id))).toBeFalsy();
+  expect(result.mainLayout.activeMainId).toBe(result.id);
+  expect(result.mainLayout.mainSwitcher.activeSurfaceId).toBe(result.id);
+  const mainItem = result.mainLayout.mainSwitcher.items.find((item) => (
+    item.surfaceId === result.id
+  ));
+  expect(mainItem?.active).toBeTruthy();
+  expect(mainItem?.root).toBeFalsy();
+  expect(mainItem?.closable).toBeTruthy();
+  expect(mainItem?.content).toEqual({ kind: 'native', capability: 'terminal' });
+  expect(result.roleAfterMain).toBe('main');
+  expect(result.hideError).toContain('main surface cannot be hidden');
+  expect(result.afterRejectedHide.mainSwitcher.revision)
+    .toBe(result.mainLayout.mainSwitcher.revision);
+  expect(topology(result.afterRejectedHide)).toEqual(topology(result.mainLayout));
+  expect(result.dockedLayout.mains.includes(result.id)).toBeFalsy();
+  expect(result.dockedLayout.asides.some((surface) => (
+    surface.id === result.id && surface.edge === 'bottom'
+  ))).toBeTruthy();
+  expect(nativeSlot(result.dockedLayout)?.edge).toBe('bottom');
+  expect(nativeSlot(result.dockedLayout)?.activeChild).toBe(result.id);
+  expect(result.roleAfterDock).toBe('aside');
+  expect(['dock', 'overlay']).toContain(result.presentationAfterDock);
+  expect(result.hiddenLayout.asides.some((surface) => surface.id === result.id)).toBeFalsy();
+  expect(nativeSlot(result.hiddenLayout)?.children.includes(result.id)).toBeTruthy();
+  expect(result.shownLayout.asides.some((surface) => surface.id === result.id)).toBeTruthy();
+  expect(result.visibility.hide).toEqual([
+    { id: result.id, kind: 'overlay', source: 'opener' },
+  ]);
+  expect(result.visibility.show).toEqual([
+    { id: result.id, kind: 'overlay', source: 'opener' },
+  ]);
+  expect(result.closed).toEqual([
+    { id: result.id, kind: 'overlay', reason: 'programmatic' },
+  ]);
+  expect(result.aliveAfterClose).toBeFalsy();
+  expect(result.visibleAfterClose).toBeFalsy();
+  expect(containsSurface(result.afterClose, result.id)).toBeFalsy();
+  expect(result.afterRepeatedClose.mainSwitcher.revision).toBe(result.revisionAfterClose);
+  expect(topology(result.afterRepeatedClose)).toEqual(topology(result.afterClose));
+  expect(result.aside.mainSwitcher.revision < result.mainLayout.mainSwitcher.revision).toBeTruthy();
+  expect(result.mainLayout.mainSwitcher.revision < result.dockedLayout.mainSwitcher.revision)
+    .toBeTruthy();
+  expect(topology(result.afterCleanup)).toEqual(topology(before));
+});
+
+desktopTest('switches, deduplicates concurrent opens, and leaves no ghost rows', async () => {
+  const app = await desktopApp();
+  const before = await app.surfaceLayout();
+  const token = `automation-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const keys = {
+    first: `${token}-first`,
+    second: `${token}-second`,
+    concurrent: `${token}-concurrent`,
+  };
+  const result = await app.eval({
+    timeoutMs: 60_000,
+    script: `
+      const driver = lx.automation().lxapp();
+      const snapshot = () => driver.surfaceLayout();
+      const settle = () => new Promise((resolve) => setTimeout(resolve, 100));
+      const waitFor = async (predicate, label) => {
+        const deadline = Date.now() + 5_000;
+        while (Date.now() < deadline) {
+          if (predicate()) return;
+          await new Promise((resolve) => setTimeout(resolve, 20));
+        }
+        throw new Error(label + ' was not observed');
+      };
+      const keys = ${JSON.stringify(keys)};
+      const events = { firstHide: [], firstShow: [], secondHide: [], concurrentClose: [] };
+      const opened = [];
+      const off = [];
+      let output;
+      try {
+        const baseline = await snapshot();
+        const first = await lx.openSurface({
+          surface: 'terminal', key: '  ' + keys.first + '  ', as: 'main',
+        });
+        opened.push(first);
+        off.push(
+          first.onHide((event) => events.firstHide.push(event)),
+          first.onShow((event) => events.firstShow.push(event)),
+        );
+        const afterFirst = await snapshot();
+
+        const second = await lx.openSurface({
+          surface: 'terminal', key: keys.second, as: 'main',
+        });
+        opened.push(second);
+        off.push(second.onHide((event) => events.secondHide.push(event)));
+        await waitFor(() => events.firstHide.length === 1, 'first hide after second open');
+        const afterSecond = await snapshot();
+
+        const reopened = await lx.openSurface({
+          surface: 'terminal', key: keys.first, as: 'main',
+        });
+        opened.push(reopened);
+        await waitFor(
+          () => events.firstShow.length === 1 && events.secondHide.length === 1,
+          'paired show/hide after reopening first',
+        );
+        const afterReopen = await snapshot();
+
+        const [concurrentFirst, concurrentSecond] = await Promise.all([
+          lx.openSurface({ surface: 'terminal', key: keys.concurrent, as: 'main' }),
+          lx.openSurface({ surface: 'terminal', key: keys.concurrent, as: 'main' }),
+        ]);
+        opened.push(concurrentFirst, concurrentSecond);
+        off.push(concurrentFirst.onClose((event) => events.concurrentClose.push(event)));
+        await waitFor(() => events.firstHide.length === 2, 'first hide after concurrent open');
+        const afterConcurrent = await snapshot();
+
+        await concurrentFirst.close();
+        await waitFor(() => events.concurrentClose.length === 1, 'concurrent close');
+        await settle();
+        const afterClose = await snapshot();
+        await concurrentSecond.close();
+        await settle();
+        const afterRepeatedClose = await snapshot();
+
+        output = {
+          baseline,
+          ids: {
+            first: first.id,
+            second: second.id,
+            concurrent: concurrentFirst.id,
+          },
+          firstState: {
+            role: first.role,
+            presentation: first.presentation,
+            alive: first.alive,
+          },
+          distinctIds: first.id !== second.id && second.id !== concurrentFirst.id,
+          reopenedSameId: reopened.id === first.id,
+          reopenedSameHandle: reopened === first,
+          concurrentSameId: concurrentFirst.id === concurrentSecond.id,
+          concurrentSameHandle: concurrentFirst === concurrentSecond,
+          concurrentAliveAfterClose: concurrentFirst.alive,
+          concurrentVisibleAfterClose: concurrentFirst.visible,
+          afterFirst,
+          afterSecond,
+          afterReopen,
+          afterConcurrent,
+          afterClose,
+          afterRepeatedClose,
+          events: {
+            firstHide: events.firstHide.map((event) => ({ ...event })),
+            firstShow: events.firstShow.map((event) => ({ ...event })),
+            secondHide: events.secondHide.map((event) => ({ ...event })),
+            concurrentClose: events.concurrentClose.map((event) => ({ ...event })),
+          },
+        };
+      } finally {
+        for (const unsubscribe of off.splice(0)) unsubscribe();
+        for (const surface of [...new Set(opened)].reverse()) {
+          if (surface.alive) await surface.close();
+        }
+      }
+      output.afterCleanup = await snapshot();
+      return output;
+    `,
+  }) as {
+    baseline: SurfaceLayoutSnapshot;
+    ids: { first: string; second: string; concurrent: string };
+    firstState: { role: string; presentation: string; alive: boolean };
+    distinctIds: boolean;
+    reopenedSameId: boolean;
+    reopenedSameHandle: boolean;
+    concurrentSameId: boolean;
+    concurrentSameHandle: boolean;
+    concurrentAliveAfterClose: boolean;
+    concurrentVisibleAfterClose: boolean;
+    afterFirst: SurfaceLayoutSnapshot;
+    afterSecond: SurfaceLayoutSnapshot;
+    afterReopen: SurfaceLayoutSnapshot;
+    afterConcurrent: SurfaceLayoutSnapshot;
+    afterClose: SurfaceLayoutSnapshot;
+    afterRepeatedClose: SurfaceLayoutSnapshot;
+    afterCleanup: SurfaceLayoutSnapshot;
+    events: {
+      firstHide: VisibilityEvent[];
+      firstShow: VisibilityEvent[];
+      secondHide: VisibilityEvent[];
+      concurrentClose: CloseEvent[];
+    };
+  };
+
+  const baselineIds = switcherIds(result.baseline);
+  expect(topology(result.baseline)).toEqual(topology(before));
+  expect(result.firstState).toEqual({ role: 'main', presentation: 'main', alive: true });
+  expect(result.distinctIds).toBeTruthy();
+  expect(result.reopenedSameId).toBeTruthy();
+  expect(result.reopenedSameHandle).toBeTruthy();
+  expect(result.concurrentSameId).toBeTruthy();
+  expect(result.concurrentSameHandle).toBeTruthy();
+  expect(switcherIds(result.afterFirst)).toEqual([...baselineIds, result.ids.first]);
+  expect(result.afterFirst.activeMainId).toBe(result.ids.first);
+  expect(switcherIds(result.afterSecond)).toEqual([
+    ...baselineIds, result.ids.first, result.ids.second,
+  ]);
+  expect(result.afterSecond.activeMainId).toBe(result.ids.second);
+  expect(result.afterSecond.mainSwitcher.items.find((item) => (
+    item.surfaceId === result.ids.first
+  ))?.active).toBeFalsy();
+  expect(switcherIds(result.afterReopen)).toEqual([
+    ...baselineIds, result.ids.first, result.ids.second,
+  ]);
+  expect(result.afterReopen.activeMainId).toBe(result.ids.first);
+  expect(switcherIds(result.afterConcurrent)).toEqual([
+    ...baselineIds, result.ids.first, result.ids.second, result.ids.concurrent,
+  ]);
+  expect(result.afterConcurrent.mainSwitcher.items.filter((item) => (
+    item.surfaceId === result.ids.concurrent
+  )).length).toBe(1);
+  expect(result.afterConcurrent.activeMainId).toBe(result.ids.concurrent);
+  expect(switcherIds(result.afterClose)).toEqual([
+    ...baselineIds, result.ids.first, result.ids.second,
+  ]);
+  expect(result.afterClose.activeMainId).toBe(result.ids.second);
+  expect(result.concurrentAliveAfterClose).toBeFalsy();
+  expect(result.concurrentVisibleAfterClose).toBeFalsy();
+  expect(result.afterRepeatedClose.mainSwitcher.revision)
+    .toBe(result.afterClose.mainSwitcher.revision);
+  expect(topology(result.afterRepeatedClose)).toEqual(topology(result.afterClose));
+  expect(result.events.firstHide).toEqual([
+    { id: result.ids.first, kind: 'window', source: 'shell' },
+    { id: result.ids.first, kind: 'window', source: 'shell' },
+  ]);
+  expect(result.events.firstShow).toEqual([
+    { id: result.ids.first, kind: 'window', source: 'shell' },
+  ]);
+  expect(result.events.secondHide).toEqual([
+    { id: result.ids.second, kind: 'window', source: 'shell' },
+  ]);
+  expect(result.events.concurrentClose).toEqual([
+    { id: result.ids.concurrent, kind: 'window', reason: 'programmatic' },
+  ]);
+  expect(topology(result.afterCleanup)).toEqual(topology(before));
+});

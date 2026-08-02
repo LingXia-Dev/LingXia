@@ -157,7 +157,7 @@ const VIDEO_CONTEXT_API = [
 ] as const;
 
 const AUTOMATION_API = ['browser', 'desktop', 'device', 'lxapp', 'lxapps'] as const;
-const LXAPP_DRIVER_API = ['eval', 'info', 'nav', 'page', 'pages'] as const;
+const LXAPP_DRIVER_API = ['eval', 'info', 'nav', 'page', 'pages', 'surfaceLayout'] as const;
 const LXAPP_MANAGER_API = [
   'close',
   'current',

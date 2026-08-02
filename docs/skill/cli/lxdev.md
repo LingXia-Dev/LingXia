@@ -69,7 +69,7 @@ Mobile reports one host window. Desktop hosts may report several (for example ma
 
 **`test`** — run bundled JavaScript/TypeScript cases in the session (`lxdev test tests/flows/checkout.test.ts`). Install `@rongjs/test`, import its `describe` / `test` / hooks / `expect`, and keep contracts in `tests/api/`, page behavior in `tests/pages/`, and journeys in `tests/flows/`.
 
-- `const auto = lx.automation()` — select the current app with `auto.lxapp()` or a specific running app with `auto.lxapp(appid)`; the returned driver's `page`, `nav`, and `eval` surfaces all target that app. Cross-app lifecycle operations live on `auto.lxapps`.
+- `const auto = lx.automation()` — select the current app with `auto.lxapp()` or a specific running app with `auto.lxapp(appid)`; the returned driver's `page`, `nav`, `eval`, and read-only `surfaceLayout()` surfaces all target that app. `surfaceLayout()` is the authoritative render plan for end-to-end host assertions, not an app-behavior API. Cross-app lifecycle operations live on `auto.lxapps`.
 - `test.args` — strings from repeatable `--arg key=value`; `test.attach(name, { mimeType, base64 })` — save an artifact, downloaded into `--output-dir` (default `test-results/lxdev/<run-id>`).
 - `console`, timers, and host-device `fetch`
 
@@ -100,7 +100,8 @@ native workspace can be opened directly for host verification, for example
 Use a function body and return a serializable assertion value rather than the
 surface handle itself. For page navigation, prefer `lxapp nav`; when the behavior
 under test is a user interaction, trigger it through `lxapp page click`. The JS
-navigation APIs take `{ page }` or `{ path }`, never `url`.
+navigation APIs take a configured page name in `{ page }`; route paths are not
+accepted.
 
 **`desktop`** — local desktop inspection and automation, independent of a dev
 session. It covers windows, screenshots, accessibility, pixels, clipboard,

@@ -257,6 +257,103 @@ export interface LxAppEvalOptions {
   timeoutMs?: number;
 }
 
+export type SurfaceLayoutSizeClass = 'compact' | 'medium' | 'expanded';
+export type SurfaceLayoutSwitcherForm = 'none' | 'sidebar' | 'rail';
+export type SurfaceLayoutSplitForm = 'none' | 'split' | 'collapsible' | 'fullScreen';
+export type SurfaceLayoutEdge = 'left' | 'right' | 'top' | 'bottom';
+
+export type SurfaceLayoutIcon =
+  | { source: 'builtIn'; name: string }
+  | { source: 'resource'; uri: string }
+  | { source: 'providerAsset'; provider: string; key: string };
+
+/** Resolved content identity carried by one host switcher item. */
+export type SurfaceSwitcherContent =
+  | { kind: 'lxapp'; appId: string }
+  | { kind: 'page'; appId: string }
+  | { kind: 'browser' }
+  | { kind: 'native'; capability: string };
+
+export interface SurfaceSwitcherItem {
+  surfaceId: string;
+  content: SurfaceSwitcherContent;
+  title?: string;
+  icon?: SurfaceLayoutIcon;
+  active: boolean;
+  root: boolean;
+  closable: boolean;
+  renameable: boolean;
+  titleOverridden: boolean;
+}
+
+/** Ordered semantic model behind the host's main-surface switcher. */
+export interface SurfaceSwitcherSnapshot {
+  /** Monotonically changes when the host surface model changes. */
+  revision: number;
+  rootSurfaceId?: string;
+  activeSurfaceId?: string;
+  items: SurfaceSwitcherItem[];
+}
+
+export interface SurfaceLayoutAside {
+  id: string;
+  edge?: SurfaceLayoutEdge;
+  preferredSize?: number;
+}
+
+export interface SurfaceLayoutAsideSlot {
+  kind: 'lxapp' | 'browser' | 'native';
+  edge?: SurfaceLayoutEdge;
+  /** Stable tab order within this content-kind region. */
+  children: string[];
+  activeChild?: string;
+  visible: boolean;
+  overlay: boolean;
+}
+
+export type SurfaceLayoutFloatAnchor =
+  | { to: 'screen' }
+  | { to: 'surface'; surfaceId: string };
+
+export interface SurfaceLayoutFloat {
+  id: string;
+  anchor: SurfaceLayoutFloatAnchor;
+  dismiss: 'tapOutside' | 'manual';
+  modal: boolean;
+  closeButton: boolean;
+}
+
+/** Id-only surface tree emitted by the shared layout core. */
+export type SurfaceLayoutTree =
+  | { kind: 'leaf'; surfaceId: string }
+  | {
+    kind: 'split';
+    axis: 'horizontal' | 'vertical';
+    children: SurfaceLayoutTree[];
+    weights: number[];
+  }
+  | { kind: 'tabs'; activeId: string; children: string[] }
+  | { kind: 'freeform'; surfaceId: string };
+
+/**
+ * Read-only automation snapshot of the exact render plan consumed by the host
+ * skin. Use this for end-to-end assertions; production lxapp behavior should
+ * depend on `SurfaceHandle`, not host layout internals.
+ */
+export interface SurfaceLayoutSnapshot {
+  sizeClass: SurfaceLayoutSizeClass;
+  bottomOwner: 'app';
+  switcherForm: SurfaceLayoutSwitcherForm;
+  splitForm: SurfaceLayoutSplitForm;
+  mains: string[];
+  activeMainId?: string;
+  mainSwitcher: SurfaceSwitcherSnapshot;
+  asides: SurfaceLayoutAside[];
+  asideSlots: SurfaceLayoutAsideSlot[];
+  floats: SurfaceLayoutFloat[];
+  tree?: SurfaceLayoutTree;
+}
+
 /** Capability for one selected running lxapp. */
 export interface LxAppDriver {
   readonly page: PageDriver;
@@ -265,6 +362,8 @@ export interface LxAppDriver {
   info(): Promise<LxAppRuntimeInfo>;
   /** Configured pages of the selected lxapp. */
   pages(): Promise<LxAppPageConfig[]>;
+  /** Authoritative host surface render plan, for end-to-end assertions. */
+  surfaceLayout(): Promise<SurfaceLayoutSnapshot>;
   /** Logic-runtime eval; self-eval from that Logic runtime is rejected. */
   eval(options: LxAppEvalOptions): Promise<unknown>;
 }

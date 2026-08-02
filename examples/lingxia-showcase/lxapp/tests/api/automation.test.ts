@@ -15,4 +15,21 @@ describe('lx automation', () => {
 
     expect(value).toBe(42);
   });
+
+  test('reads the host surface plan with JavaScript-shaped fields', async () => {
+    const layout = await lx.automation().lxapp().surfaceLayout();
+    const rootId = layout.mainSwitcher.rootSurfaceId;
+    const root = layout.mainSwitcher.items.find((item) => item.surfaceId === rootId);
+
+    expect(rootId).toBe('lingxia-showcase');
+    expect(root?.root).toBeTruthy();
+    if (root?.content.kind !== 'lxapp') {
+      throw new Error(`expected an lxapp root, got ${root?.content.kind ?? 'missing'}`);
+    }
+    expect(root.content.appId).toBe('lingxia-showcase');
+    const serialized = JSON.stringify(layout);
+    expect(serialized.includes('"app_id"')).toBeFalsy();
+    expect(serialized.includes('"surface_id"')).toBeFalsy();
+    expect(serialized.includes('"active_id"')).toBeFalsy();
+  });
 });
