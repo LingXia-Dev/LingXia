@@ -748,7 +748,24 @@ fn show_webview_as_attached_panel(
     Ok(())
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum GroupMainPresentation {
+    Replace,
+    Cover,
+}
+
 pub fn present_webview_in_active_group(webtag: &WebTag) -> StdResult<()> {
+    present_webview_in_active_group_with_policy(webtag, GroupMainPresentation::Replace)
+}
+
+pub(crate) fn present_webview_over_active_group(webtag: &WebTag) -> StdResult<()> {
+    present_webview_in_active_group_with_policy(webtag, GroupMainPresentation::Cover)
+}
+
+fn present_webview_in_active_group_with_policy(
+    webtag: &WebTag,
+    presentation: GroupMainPresentation,
+) -> StdResult<()> {
     let handler = find_webview_handler(webtag).ok_or_else(|| handler_not_ready(webtag))?;
     let Some(host) = prefer_visible_workspace(active_host_window()) else {
         handler.set_content_visible(true)?;
@@ -759,18 +776,25 @@ pub fn present_webview_in_active_group(webtag: &WebTag) -> StdResult<()> {
         set_primary_host_window(hwnd);
         mark_active(webtag);
         notify_webtag_visibility(webtag.key(), true);
+        if presentation == GroupMainPresentation::Replace {
+            clear_presented_group_main_for_host(hwnd);
+        }
         return Ok(());
     };
 
     let previous = active_webtag_key_for_window(host);
     let already_active =
         previous.as_deref() == Some(webtag.key()) && webtag_is_visible(webtag.key());
+    log::debug!(
+        "Windows group-main present host={} target={} policy={presentation:?} previous={previous:?} already_active={already_active}",
+        hwnd_handle(host),
+        webtag.key()
+    );
     if already_active {
-        // The visibility registry tracks the *window* (WM_SHOWWINDOW /
-        // WM_WINDOWPOSCHANGED mark the active webtag visible), not the
-        // WebView2 controller. At launch the host window is shown before the
-        // controller ever became visible, so this branch must still show the
-        // controller or the screen stays black until another present.
+        retire_other_group_main_controllers(host, webtag.key(), &[]);
+        // The registry records accepted presentation state, not a query of
+        // WebView2's controller. Reassert visibility so an asynchronous
+        // controller transition cannot leave the active main black.
         handler.set_content_visible(true)?;
         sync_window_layout(host);
         invalidate_window_chrome(host);
@@ -794,6 +818,9 @@ pub fn present_webview_in_active_group(webtag: &WebTag) -> StdResult<()> {
             }
         }
         hide_other_workspace_windows(host);
+        if presentation == GroupMainPresentation::Replace {
+            clear_presented_group_main_for_host(host);
+        }
         return Ok(());
     }
 
@@ -813,7 +840,8 @@ pub fn present_webview_in_active_group(webtag: &WebTag) -> StdResult<()> {
     // restores it. Track the LATEST lxapp page (the user may have navigated
     // since the group first presented) but never a browser tab itself —
     // switching between tabs must not overwrite the restore target.
-    if let Some(previous) = previous.as_ref()
+    if presentation == GroupMainPresentation::Cover
+        && let Some(previous) = previous.as_ref()
         && previous != webtag.key()
         && !webtag_is_registered_panel(previous)
         && group_main_restore_candidate(previous)
@@ -866,23 +894,30 @@ pub fn present_webview_in_active_group(webtag: &WebTag) -> StdResult<()> {
     }
     handler.set_content_visible(true)?;
 
-    if let Some(previous) = previous
-        && previous != webtag.key()
-        && !webtag_is_registered_panel(&previous)
-    {
-        if let Some(previous_webtag) = webtag_for_key(&previous)
-            && let Some(previous_handler) = find_webview_handler(&previous_webtag)
-        {
-            let _ = previous_handler.set_content_visible(false);
-        }
-        notify_webtag_visibility(&previous, false);
-    }
+    let outgoing = previous
+        .as_deref()
+        .filter(|previous| *previous != webtag.key())
+        .and_then(webtag_for_key)
+        .into_iter()
+        .collect::<Vec<_>>();
+    retire_other_group_main_controllers(host, webtag.key(), &outgoing);
 
     mark_active(webtag);
     notify_webtag_visibility(webtag.key(), true);
     repaint_window_now(host);
     hide_other_workspace_windows(host);
+    if presentation == GroupMainPresentation::Replace {
+        clear_presented_group_main_for_host(host);
+    }
     Ok(())
+}
+
+fn clear_presented_group_main_for_host(host: HWND) {
+    if let Some(presented) = PRESENTED_GROUP_MAIN.get()
+        && let Ok(mut presented) = presented.lock()
+    {
+        presented.remove(&hwnd_handle(host));
+    }
 }
 
 pub fn present_webview_as_group_main(webtag: &WebTag, _group_key: String) -> StdResult<()> {
@@ -894,7 +929,7 @@ pub fn present_webview_as_group_main(webtag: &WebTag, _group_key: String) -> Std
 /// first composed frame. DOM readiness alone is insufficient: an invisible
 /// controller can be fully interactive while its first visible frame is still
 /// blank white.
-pub(crate) fn present_webview_in_active_group_with_snapshot_guard(
+pub(crate) fn present_webview_over_active_group_with_snapshot_guard(
     webtag: &WebTag,
     hold_ms: u64,
 ) -> StdResult<()> {
@@ -910,7 +945,8 @@ pub(crate) fn present_webview_in_active_group_with_snapshot_guard(
                 .flatten()
             })
         });
-        let result = present_webview_in_active_group(webtag);
+        let result =
+            present_webview_in_active_group_with_policy(webtag, GroupMainPresentation::Cover);
         if let Some((host, overlay)) = guard {
             if result.is_ok() {
                 schedule_nav_snapshot_guard_release(host, overlay, hold_ms);
@@ -923,7 +959,7 @@ pub(crate) fn present_webview_in_active_group_with_snapshot_guard(
     #[cfg(not(feature = "components"))]
     {
         let _ = hold_ms;
-        present_webview_in_active_group(webtag)
+        present_webview_in_active_group_with_policy(webtag, GroupMainPresentation::Cover)
     }
 }
 
@@ -2264,10 +2300,19 @@ fn restore_presented_group_main_for_host(host: HWND) -> StdResult<()> {
         .and_then(|presented| presented.lock().ok())
         .and_then(|mut presented| presented.remove(&hwnd_handle(host)));
     let Some(main_key) = main_key else {
+        log::debug!(
+            "Windows group-main restore host={} skipped: no covered main",
+            hwnd_handle(host)
+        );
         return Ok(());
     };
 
     let current = active_webtag_key_for_window(host);
+    log::debug!(
+        "Windows group-main restore host={} target={} current={current:?}",
+        hwnd_handle(host),
+        main_key
+    );
     let Some(main_webtag) = webtag_for_key(&main_key) else {
         return Ok(());
     };
@@ -7240,10 +7285,36 @@ fn show_webview_window_replacing(
     }
 
     let previous = active_webtag_key_for_window(target);
+    let mut hide_webtags = hide_webtags;
+    if let Some(previous) = previous.as_deref()
+        && previous != webtag.key()
+        && !webtag_is_registered_panel(previous)
+        && !hide_webtags.iter().any(|hidden| hidden.key() == previous)
+        && let Some(previous) = webtag_for_key(previous)
+    {
+        // A cold lxapp open reaches this replace path asynchronously. Its
+        // caller cannot know which workspace main is still presented, so
+        // always include the target host's outgoing controller explicitly.
+        hide_webtags.push(previous);
+    }
     let already_active =
         previous.as_deref() == Some(webtag.key()) && webtag_is_visible(webtag.key());
+    log::debug!(
+        "Windows replace present host={} target={} previous={previous:?} already_active={already_active}",
+        hwnd_handle(target),
+        webtag.key()
+    );
     if already_active {
         sync_window_layout(target);
+        // Logical visibility is accepted presentation state, not a native
+        // controller query. A delayed WebView2/host transition can therefore
+        // leave an old page exposed even while this page is still registered
+        // active. Converge the physical group before returning from the fast
+        // path, just as the full replacement path does.
+        retire_other_group_main_controllers(target, webtag.key(), &hide_webtags);
+        handler.set_content_visible(true)?;
+        mark_active(webtag);
+        notify_webtag_visibility(webtag.key(), true);
         // The deleted direct-show path unconditionally surfaced and (with
         // activate) foregrounded the window; a re-open of the already-active
         // page must still do both, and still converge stray duplicates.
@@ -7271,21 +7342,6 @@ fn show_webview_window_replacing(
         .map(current_window_layout)
         .filter(|layout| !layout.is_empty());
     let target_has_layout = !current_window_layout(webtag.key()).is_empty();
-    let mut hide_webtags = hide_webtags;
-    if let Some(previous) = previous.as_deref()
-        && previous != webtag.key()
-        && !webtag_is_registered_panel(previous)
-        && !hide_webtags.iter().any(|hidden| hidden.key() == previous)
-        && let Some(previous) = webtag_for_key(previous)
-    {
-        // A cold lxapp open reaches this replace path asynchronously. Its
-        // caller cannot know which workspace main is still presented, so
-        // always include the target host's outgoing controller explicitly.
-        // The visibility registry follows host activation and is not an
-        // authoritative substitute for physically hiding that controller.
-        hide_webtags.push(previous);
-    }
-
     if webtag_is_visible(webtag.key()) {
         handler.set_content_visible(false)?;
     }
@@ -7310,16 +7366,68 @@ fn show_webview_window_replacing(
     repaint_window_now(target);
     handler.set_content_visible(true)?;
 
-    for hidden in &hide_webtags {
-        if let Some(hidden_handler) = find_webview_handler(hidden) {
+    retire_other_group_main_controllers(target, webtag.key(), &hide_webtags);
+
+    if !is_window_visible(target) || activate {
+        unsafe {
+            let mut flags = WindowsAndMessaging::SWP_NOMOVE
+                | WindowsAndMessaging::SWP_NOSIZE
+                | WindowsAndMessaging::SWP_SHOWWINDOW;
+            if !activate {
+                flags |= WindowsAndMessaging::SWP_NOACTIVATE;
+            }
+            WindowsAndMessaging::SetWindowPos(target, None, 0, 0, 0, 0, flags)
+                .map_err(|err| WebViewError::WebView(format!("SetWindowPos failed: {err}")))?;
+            if activate {
+                let _ = WindowsAndMessaging::BringWindowToTop(target);
+                let _ = WindowsAndMessaging::SetForegroundWindow(target);
+            }
+        }
+    }
+
+    mark_active(webtag);
+    notify_webtag_visibility(webtag.key(), true);
+    hide_other_workspace_windows(target);
+    Ok(())
+}
+
+/// Enforces the physical half of the workspace invariant: a shared host has
+/// exactly one non-panel WebView main. Registry state cannot prove controller
+/// visibility, so presentation paths retire every competing controller
+/// unconditionally. Attached asides are deliberately excluded.
+fn retire_other_group_main_controllers(host: HWND, active_key: &str, explicitly_hidden: &[WebTag]) {
+    let mut candidates = explicitly_hidden.to_vec();
+    for candidate in webview_runtime::list_webviews() {
+        if candidate.key() == active_key
+            || webtag_is_registered_panel(candidate.key())
+            || window_handle_for_key(candidate.key()) != Some(host)
+            || candidates
+                .iter()
+                .any(|existing| existing.key() == candidate.key())
+        {
+            continue;
+        }
+        candidates.push(candidate);
+    }
+
+    for hidden in candidates {
+        if hidden.key() == active_key || webtag_is_registered_panel(hidden.key()) {
+            continue;
+        }
+        log::debug!(
+            "retiring competing Windows group-main controller host={} active={} hidden={}",
+            hwnd_handle(host),
+            active_key,
+            hidden.key()
+        );
+        if let Some(hidden_handler) = find_webview_handler(&hidden) {
             let _ = hidden_handler.set_content_visible(false);
             let native = hwnd_from_handle(hidden_handler.native_view().window);
-            if native != target {
-                // The visibility swap reparents the controller into the shared
-                // workspace. Park hidden controllers back under their own
-                // durable parent before that workspace can be destroyed;
-                // DestroyWindow recursively kills composition children and a
-                // WebView2 root target cannot be repaired afterwards.
+            if native != host {
+                // Park hidden controllers under their durable parent before a
+                // shared host can be destroyed. DestroyWindow recursively
+                // tears down composition children, which WebView2 cannot bind
+                // back to another root target afterward.
                 if let Err(err) = hidden_handler.set_parent_window(hwnd_handle(native)) {
                     log::debug!(
                         "Failed to park hidden Windows WebView {}: {err}",
@@ -7346,32 +7454,8 @@ fn show_webview_window_replacing(
                 }
             }
         }
-    }
-
-    if !is_window_visible(target) || activate {
-        unsafe {
-            let mut flags = WindowsAndMessaging::SWP_NOMOVE
-                | WindowsAndMessaging::SWP_NOSIZE
-                | WindowsAndMessaging::SWP_SHOWWINDOW;
-            if !activate {
-                flags |= WindowsAndMessaging::SWP_NOACTIVATE;
-            }
-            WindowsAndMessaging::SetWindowPos(target, None, 0, 0, 0, 0, flags)
-                .map_err(|err| WebViewError::WebView(format!("SetWindowPos failed: {err}")))?;
-            if activate {
-                let _ = WindowsAndMessaging::BringWindowToTop(target);
-                let _ = WindowsAndMessaging::SetForegroundWindow(target);
-            }
-        }
-    }
-
-    mark_active(webtag);
-    notify_webtag_visibility(webtag.key(), true);
-    for hidden in &hide_webtags {
         notify_webtag_visibility(hidden.key(), false);
     }
-    hide_other_workspace_windows(target);
-    Ok(())
 }
 
 pub fn navigate_webview_window(
@@ -8329,8 +8413,16 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                 LRESULT(0)
             }
             WindowsAndMessaging::WM_SHOWWINDOW => {
-                if let Some(webtag_key) = active_webtag_key_for_window(hwnd) {
-                    notify_webtag_visibility(&webtag_key, wparam.0 != 0 && !is_minimized(hwnd));
+                // Host messages can invalidate a visible controller when its
+                // parent disappears, but cannot prove a controller was shown.
+                // Presentation/reconciliation publishes `true` only after its
+                // SetIsVisible call; otherwise resizing beneath an adaptive
+                // overlay resurrects the covered main in the registry while
+                // its controller remains hidden.
+                if wparam.0 == 0
+                    && let Some(webtag_key) = active_webtag_key_for_window(hwnd)
+                {
+                    notify_webtag_visibility(&webtag_key, false);
                 }
                 #[cfg(feature = "shell-chrome")]
                 sync_transparent_tabbar_overlay(
@@ -8354,12 +8446,11 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                 unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
             }
             WindowsAndMessaging::WM_SIZE => {
-                if let Some(webtag_key) = active_webtag_key_for_window(hwnd) {
-                    notify_webtag_visibility(
-                        &webtag_key,
-                        wparam.0 as u32 != WindowsAndMessaging::SIZE_MINIMIZED
-                            && is_window_visible(hwnd),
-                    );
+                if (wparam.0 as u32 == WindowsAndMessaging::SIZE_MINIMIZED
+                    || !is_window_visible(hwnd))
+                    && let Some(webtag_key) = active_webtag_key_for_window(hwnd)
+                {
+                    notify_webtag_visibility(&webtag_key, false);
                 }
                 // Keep the adaptive surface graph's size class tracking the
                 // real window width (see `update_surface_width`).
@@ -8372,11 +8463,10 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                 unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
             }
             WindowsAndMessaging::WM_WINDOWPOSCHANGED => {
-                if let Some(webtag_key) = active_webtag_key_for_window(hwnd) {
-                    notify_webtag_visibility(
-                        &webtag_key,
-                        is_window_visible(hwnd) && !is_minimized(hwnd),
-                    );
+                if (!is_window_visible(hwnd) || is_minimized(hwnd))
+                    && let Some(webtag_key) = active_webtag_key_for_window(hwnd)
+                {
+                    notify_webtag_visibility(&webtag_key, false);
                 }
                 handle_window_position_changed(hwnd, lparam);
                 // First time a main window becomes visible after a post-update

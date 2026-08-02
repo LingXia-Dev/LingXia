@@ -163,6 +163,7 @@ struct BrowserTabMemoryState {
 }
 
 const AUX_LXAPP_PREFIX: &str = "lxapp:";
+const AUX_PINNED_LXAPP_PREFIX: &str = "pin:lxapp:";
 const AUX_BOOKMARK_PREFIX: &str = "bookmark:";
 const AUX_SURFACE_PREFIX: &str = "surface:";
 const SHELL_TERMINAL_SURFACE_ID: &str = "shell:terminal";
@@ -2041,7 +2042,10 @@ fn build_pinned_items(tabs: &[BrowserTabSummary]) -> Vec<WindowsShellAuxiliaryIt
                     .map(|(panel_id, _, _)| panel_id)
                     .unwrap_or_else(|| appid.clone());
                 Some(WindowsShellAuxiliaryItemLayout {
-                    id: format!("{AUX_LXAPP_PREFIX}{appid}"),
+                    // A Pin is a launch shortcut, not the workspace row that
+                    // appears after launch. Keep their identities distinct so
+                    // both remain independently paintable and actionable.
+                    id: format!("{AUX_PINNED_LXAPP_PREFIX}{appid}"),
                     title,
                     active: active_asides.contains(&surface_id)
                         || (presented_browser_tab().is_none()
@@ -2328,7 +2332,8 @@ fn lxapp_auxiliary_icon_path(appid: &str) -> String {
 }
 
 fn auxiliary_lxapp_id(raw: &str) -> Option<&str> {
-    raw.strip_prefix(AUX_LXAPP_PREFIX)
+    raw.strip_prefix(AUX_PINNED_LXAPP_PREFIX)
+        .or_else(|| raw.strip_prefix(AUX_LXAPP_PREFIX))
         .map(str::trim)
         .filter(|appid| !appid.is_empty())
 }
@@ -3402,6 +3407,12 @@ fn present_current_lxapp_main(app: &LxApp) -> bool {
         return false;
     }
     let webtag = WebTag::new(&app.appid, &path, Some(app.session_id()));
+    log::debug!(
+        "presenting current Windows lxapp main appid={} path={} webtag={}",
+        app.appid,
+        path,
+        webtag.key()
+    );
     install_shell_chrome_event_handler(&webtag, &app.appid);
     let _ = set_webview_window_layout(
         &webtag,
@@ -4753,12 +4764,12 @@ fn present_browser_tab_when_ready_inner(
             }
 
             let result = if first_presentation {
-                crate::window_host::present_webview_in_active_group_with_snapshot_guard(
+                crate::window_host::present_webview_over_active_group_with_snapshot_guard(
                     &webtag,
                     BROWSER_FIRST_FRAME_GUARD_MS,
                 )
             } else {
-                present_webview_in_active_group(&webtag)
+                crate::window_host::present_webview_over_active_group(&webtag)
             };
             match result {
                 Ok(()) => {
@@ -5515,6 +5526,12 @@ fn close_managed_surface_for_api(panel_id: &str, capability: &str, role: &str) -
     } else {
         return false;
     };
+    let target_was_lxapp_main = matches!(
+        &target,
+        PanelTarget::LxApp { appid, .. }
+            if lxapp::open_region(appid) == Some(lxapp::LxAppOpenRegion::Main)
+    );
+    let closing_main = role == "main" || (role.is_empty() && target_was_lxapp_main);
     let result = match target {
         PanelTarget::LxApp { appid, .. } => {
             lxapp::close_lxapp(&appid).map_err(|error| error.to_string())
@@ -5535,6 +5552,14 @@ fn close_managed_surface_for_api(panel_id: &str, capability: &str, role: &str) -
         log::warn!("failed to destroy Windows managed surface {panel_id}: {error}");
     }
     crate::window_host::set_panel_position_override(panel_id, None);
+    if result.is_ok()
+        && closing_main
+        && let Some(owner) = lxapp::try_get(&owner_appid)
+        && let Some(active) = owner.surface_switcher_snapshot().active_surface_id
+        && let Err(error) = present_successor_main(&owner, &active)
+    {
+        log::warn!("failed to present successor after managed main close {active}: {error}");
+    }
     sync_shell_layout(&owner_appid);
     result.is_ok()
 }
@@ -6219,7 +6244,7 @@ fn is_transparent_css_color(raw: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        LxappContextMenuAction, LxappShortcutAction, PresentationCompletion,
+        LxappContextMenuAction, LxappShortcutAction, PresentationCompletion, auxiliary_lxapp_id,
         browser_internal_page_deep_link, browser_internal_page_key, browser_url_is_hidden,
         build_lxapp_context_menu, chrome_command, chrome_command_is_page_scoped,
         lxapp_shortcut_action, preferred_sidebar_group_appid,
@@ -6351,6 +6376,14 @@ mod tests {
         assert_eq!(lxapp_shortcut_action(None), Open);
         assert_eq!(lxapp_shortcut_action(Some(Main)), Focus);
         assert_eq!(lxapp_shortcut_action(Some(Aside)), PromoteAside);
+    }
+
+    #[test]
+    fn pin_shortcuts_and_workspace_rows_have_distinct_routable_ids() {
+        assert_eq!(auxiliary_lxapp_id("pin:lxapp:chat"), Some("chat"));
+        assert_eq!(auxiliary_lxapp_id("lxapp:chat"), Some("chat"));
+        assert_ne!("pin:lxapp:chat", "lxapp:chat");
+        assert_eq!(auxiliary_lxapp_id("pin:lxapp:"), None);
     }
 
     #[test]
