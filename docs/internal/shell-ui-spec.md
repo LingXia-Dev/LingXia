@@ -469,7 +469,9 @@ Pins are the user's quick entries for lxapps and websites.
   the stable root main. No edge or pixel of the previously active main may
   remain exposed behind it. A page's native navigation bar may reserve space
   inside that rectangle, but the previous main WebView MUST be hidden and no
-  duplicate workspace window may remain visible.
+  duplicate workspace window may remain visible. The Pin rule restricts entry
+  role only; it MUST NOT introduce a Pin-specific inset, clip, card, navigation
+  offset, or alternate content rectangle.
 - A website Pin opens or selects a main browser tab.
 
 ### 4.5 Sidebar actions
