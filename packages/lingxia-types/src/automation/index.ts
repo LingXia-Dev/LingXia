@@ -137,7 +137,12 @@ export interface PageWaitForOptions extends PageTarget {
   timeoutMs?: number;
 }
 
-/** An element's viewport rectangle (viewport-relative CSS pixels). */
+/**
+ * An element's viewport rectangle (viewport-relative CSS pixels).
+ *  Windows LingXia WebViews use a 1:1 CSS-to-child-window rasterization scale,
+ *  so combine this with that WebView's desktop bounds without multiplying by
+ *  `DesktopWindowInfo.scale`.
+ */
 export interface ElementRect {
   left: number;
   top: number;
@@ -813,6 +818,10 @@ export interface DesktopWindowInfo {
   pid: number;
   bounds: DesktopRect;
   display_id: string;
+  /**
+   * Display DIP-to-physical scale. `bounds` are already backend-native; do not
+   * multiply them by this value.
+   */
   scale: number;
   dpi: number;
   visible: boolean;
