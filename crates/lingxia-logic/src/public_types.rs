@@ -1590,37 +1590,68 @@ true
         type LxEnv = "globalThis.LxEnv";
         type TrayApi = "globalThis.TrayApi";
 
-        /// Shell chrome writer API (home lxapp only).
+        /// App-owned host-shell chrome. Mutations are available only to the home
+        /// lxapp's Logic context; other lxapps receive a permission error.
         type ShellApi = r###"{
+    /**
+     * Declares runtime actions in the desktop shell's sidebar header or footer.
+     * The shell controls layout and only dispatches activation; callbacks own
+     * navigation and all other behavior.
+     */
     sidebarActions: ShellSidebarActionsApi;
 }"###;
 
-        /// Header accepts at most two icon actions. Footer actions are shown as
-        /// rows and the host scrolls overflow.
+        /// Where the host renders a sidebar action on desktop.
+        ///
+        /// - `header`: icon-only, at most two actions; `label` supplies tooltip
+        ///   and accessibility text. Hidden in the compact/collapsed shell.
+        /// - `footer`: icon and label in the expanded sidebar, icon-only in the
+        ///   compact rail. The host wraps cells and scrolls after five visible
+        ///   rows.
+        ///
+        /// Apps cannot configure cell size, row, weight, color, or selected state.
         type ShellSidebarActionPlacement = r###"'header' | 'footer'"###;
 
-        /// One app-declared shell sidebar action. Its `id` remains stable across
-        /// updates and activation. The shell only routes activation to the
-        /// callback; the app owns every resulting action. `icon` can be a bundled
-        /// asset such as `public/settings.svg` or a local path returned by LingXia
-        /// file APIs, including `lx://temp/...`, `lx://usercache/...`, and
-        /// `lx://userdata/...`. Download remote icons before registration. For portable desktop
-        /// rendering, use a square, transparent, monochrome SVG or PNG designed
-        /// for a 16-point visual; the host may tint it to match the current shell
-        /// theme.
+        /// One app-declared shell sidebar action. It is a stateless command, not a
+        /// selectable navigation item: the shell invokes `onActivate` once and
+        /// does not infer a target or active state.
         type ShellSidebarAction = r###"{
+    /** Stable, non-empty id; unique across both header and footer actions. */
     id: string;
+    /** Initial host-owned region. Use `replace` to move an action. */
     placement: ShellSidebarActionPlacement;
+    /**
+     * Local lxapp-accessible icon. Use a bundled relative path such as
+     * `public/settings.svg`, or an `lx://temp`, `lx://usercache`, or
+     * `lx://userdata` path returned by LingXia file APIs. Native absolute paths,
+     * parent traversal, `file:` URLs, and network URLs are rejected; download a
+     * remote icon before registration. For portable rendering, prefer a square,
+     * transparent, monochrome SVG or PNG designed for a 16-point visual.
+     */
     icon: string;
+    /**
+     * Visible footer title and the tooltip/accessibility text for every
+     * placement. Long footer labels are kept on one line and tail-truncated.
+     */
     label: string;
+    /** Visible but non-activatable when true. Defaults to false. */
     disabled?: boolean;
+    /**
+     * Called once for each enabled mouse, keyboard, accessibility, shortcut, or
+     * automation activation. Explicitly open or navigate to the desired content.
+     */
     onActivate: () => void;
 }"###;
 
-        /// Mutable presentation fields for an existing sidebar action.
+        /// Mutable presentation fields for an existing sidebar action. The patch
+        /// must contain at least one field. Use `replace` to change `placement` or
+        /// `onActivate`.
         type ShellSidebarActionUpdate = r###"{
+    /** Replacement local icon, with the same path rules as registration. */
     icon?: string;
+    /** Replacement non-empty visible/accessibility label. */
     label?: string;
+    /** Whether the action remains visible but rejects activation. */
     disabled?: boolean;
 }"###;
 

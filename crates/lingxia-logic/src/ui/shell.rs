@@ -183,10 +183,16 @@ fn parse_sidebar_action(item: &JSObject) -> JSResult<ParsedSidebarAction> {
     Ok(ParsedSidebarAction { item, handler })
 }
 
-/// Atomically replaces the complete desktop sidebar action declaration. Home lxapp
-/// only. Relative icons resolve from the home app bundle. Every entry is bound
-/// to its generation-scoped callback; `replace([])` explicitly clears chrome.
-/// The declaration is process-local, so redeclare it on each Logic launch.
+/// Atomically replaces the complete desktop sidebar action declaration. Only the
+/// home lxapp may call this API. Ids must be non-empty and unique across both
+/// placements; header accepts at most two entries. Icons must be bundled relative
+/// paths or runtime-managed `lx://` paths accessible to the home lxapp.
+///
+/// Every entry is bound to its generation-scoped callback. The shell invokes that
+/// callback but never infers navigation or selected state. Validation or host
+/// projection failure leaves the previous generation active. `replace([])` clears
+/// the chrome explicitly. Declarations are process-local, so call `replace` again
+/// on every Logic launch.
 fn sidebar_actions_replace(ctx: JSContext, items: Vec<JSObject>) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     ensure_home_lxapp(&lxapp, "lx.shell.sidebarActions.replace")?;
@@ -202,7 +208,10 @@ fn sidebar_actions_replace(ctx: JSContext, items: Vec<JSObject>) -> JSResult<()>
     commit_generation(&ctx, |next| next.replace(next_items), next_handlers)
 }
 
-/// Updates presentation fields for one stable id. Home lxapp only.
+/// Atomically updates the icon, label, and/or disabled state of one stable id.
+/// Only the home lxapp may call this API. The patch must be non-empty; unknown
+/// fields are rejected. The callback and placement stay unchanged. Throws
+/// `E_NOT_FOUND` when `id` is not in the current declaration.
 fn sidebar_actions_update(ctx: JSContext, id: String, patch: JSObject) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     ensure_home_lxapp(&lxapp, "lx.shell.sidebarActions.update")?;
@@ -216,7 +225,9 @@ fn sidebar_actions_update(ctx: JSContext, id: String, patch: JSObject) -> JSResu
     commit_generation(&ctx, |next| next.update(&id, patch), handlers)
 }
 
-/// Removes one stable id from the declaration. Home lxapp only.
+/// Atomically removes one stable id and its generation-scoped callback. Only the
+/// home lxapp may call this API. Throws `E_NOT_FOUND` when `id` is not in the
+/// current declaration.
 fn sidebar_actions_remove(ctx: JSContext, id: String) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     ensure_home_lxapp(&lxapp, "lx.shell.sidebarActions.remove")?;
@@ -225,7 +236,9 @@ fn sidebar_actions_remove(ctx: JSContext, id: String) -> JSResult<()> {
     commit_generation(&ctx, |next| next.remove(&id), handlers)
 }
 
-/// Clears the current runtime declaration. Home lxapp only.
+/// Atomically clears every runtime sidebar action and callback. Only the home
+/// lxapp may call this API. Equivalent to `replace([])` and safe when already
+/// empty; the home lxapp must still redeclare actions after the next Logic launch.
 fn sidebar_actions_clear(ctx: JSContext) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     ensure_home_lxapp(&lxapp, "lx.shell.sidebarActions.clear")?;
