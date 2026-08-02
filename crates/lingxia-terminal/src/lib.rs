@@ -87,6 +87,10 @@ pub fn terminal_create(cols: u16, rows: u16) -> u64 {
     terminal_create_at(cols, rows, None)
 }
 
+/// Create a terminal session whose shell starts in `cwd`.
+///
+/// `None` inherits the host process directory. Returns `0` if the PTY, shell,
+/// or session registry cannot be initialized, matching [`terminal_create`].
 pub fn terminal_create_at(cols: u16, rows: u16, cwd: Option<&Path>) -> u64 {
     let cols = cols.max(1);
     let rows = rows.max(1);
@@ -108,6 +112,9 @@ pub fn terminal_create_at(cols: u16, rows: u16, cwd: Option<&Path>) -> u64 {
     }
 }
 
+/// Best-effort current directory of the foreground process, falling back to
+/// the session shell. Returns `None` for a closed session or when the platform
+/// cannot resolve a process directory.
 pub fn terminal_current_directory(id: u64) -> Option<std::path::PathBuf> {
     let session = session(id)?;
     let session = session.lock().ok()?;

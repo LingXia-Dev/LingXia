@@ -1,5 +1,5 @@
 //! `lingxia-surface` — the platform-agnostic core of the Adaptive Surface
-//! Layout model (see `docs/draft/adaptive-surface-layout.md`).
+//! Layout model (see `docs/internal/shell-ui-spec.md`).
 //!
 //! Pure Rust, no UI: the Surface Graph, its invariants and state transitions,
 //! the two-axis derivation into `DerivedLayout`, and the Host arbitration

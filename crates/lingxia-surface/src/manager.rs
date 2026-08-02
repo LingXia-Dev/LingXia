@@ -344,8 +344,19 @@ impl SurfaceManager {
     }
 
     pub fn show(&mut self, id: &str) -> bool {
+        let role = self.graph.role_of(id);
+        let activates_main =
+            role == Some(Role::Main) && self.graph.active_main_id.as_deref() != Some(id);
         let shown = self.graph.show(id);
-        if shown && self.graph.role_of(id) == Some(crate::model::Role::Aside) {
+        if shown && role == Some(Role::Main) {
+            self.overlay_fallback_surface_id = None;
+            if activates_main {
+                // `SurfaceGraph::show` performs the selection. Mirror
+                // `set_active_main`'s observable switcher revision here.
+                self.bump_revision();
+            }
+        }
+        if shown && role == Some(Role::Aside) {
             let admitted = self
                 .graph
                 .aside_slots_admitted(self.size_class, self.workspace_width(), &self.policy)
@@ -527,6 +538,21 @@ mod tests {
         assert!(manager.set_focus("first"));
         let slot = &manager.presentation_plan().aside_slots[0];
         assert_eq!(slot.active_child.as_deref(), Some("first"));
+    }
+
+    #[test]
+    fn showing_an_existing_main_advances_the_switcher_revision() {
+        let mut manager = SurfaceManager::new(1200.0);
+        manager.open(main_s("home"));
+        manager.open(main_s("workspace"));
+        manager.set_active_main("workspace");
+        let before = manager.switcher_snapshot();
+
+        assert!(manager.show("home"));
+        let after = manager.switcher_snapshot();
+
+        assert_eq!(after.active_surface_id.as_deref(), Some("home"));
+        assert!(after.revision > before.revision);
     }
 
     #[test]

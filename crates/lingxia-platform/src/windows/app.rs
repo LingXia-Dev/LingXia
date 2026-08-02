@@ -571,10 +571,9 @@ impl crate::traits::ui::SurfacePresenter for Platform {
 
     fn destroy_managed_surface_provider(
         &self,
-        surface_id: String,
-        role: Option<crate::traits::ui::SurfaceRole>,
+        request: crate::traits::ui::ManagedSurfaceProviderDestroyRequest,
     ) -> crate::traits::ui::ManagedSurfaceFuture {
-        surface::destroy_managed_surface_provider(surface_id, role)
+        surface::destroy_managed_surface_provider(request)
     }
 }
 impl ShareService for Platform {

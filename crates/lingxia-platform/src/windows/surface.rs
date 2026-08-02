@@ -22,8 +22,8 @@ use super::request_windows_app_exit;
 use crate::error::PlatformError;
 use crate::traits::app_runtime::{AnimationType, LxAppOpenMode};
 use crate::traits::ui::{
-    ManagedSurfaceFuture, ManagedSurfaceProvider, ManagedSurfaceProviderRequest, SurfaceContent,
-    SurfaceKind, SurfaceRequest, SurfaceRole,
+    ManagedSurfaceFuture, ManagedSurfaceProvider, ManagedSurfaceProviderDestroyRequest,
+    ManagedSurfaceProviderRequest, SurfaceContent, SurfaceKind, SurfaceRequest, SurfaceRole,
 };
 
 static WINDOWS_SHOW_SEQUENCE: AtomicU64 = AtomicU64::new(1);
@@ -421,7 +421,7 @@ pub fn set_windows_managed_surface_visible_handler(handler: ManagedSurfaceVisibl
     }
 }
 
-type ManagedSurfaceCloseHandler = Arc<dyn Fn(&str, &str) -> bool + Send + Sync>;
+type ManagedSurfaceCloseHandler = Arc<dyn Fn(&str, &str, &str) -> bool + Send + Sync>;
 static MANAGED_SURFACE_CLOSE_HANDLER: Mutex<Option<ManagedSurfaceCloseHandler>> = Mutex::new(None);
 
 pub fn set_windows_managed_surface_close_handler(handler: ManagedSurfaceCloseHandler) {
@@ -432,6 +432,7 @@ pub fn set_windows_managed_surface_close_handler(handler: ManagedSurfaceCloseHan
 
 pub(super) fn close_managed_surface(
     id: &str,
+    provider: &ManagedSurfaceProvider,
     role: Option<SurfaceRole>,
 ) -> Result<(), PlatformError> {
     let handler = MANAGED_SURFACE_CLOSE_HANDLER
@@ -443,7 +444,11 @@ pub(super) fn close_managed_surface(
                 "managed surface close is not supported on this Windows host".to_string(),
             )
         })?;
-    if handler(id, role.map_or("", SurfaceRole::as_str)) {
+    let capability = match provider {
+        ManagedSurfaceProvider::Declared => "",
+        ManagedSurfaceProvider::Native { capability, .. } => capability,
+    };
+    if handler(id, capability, role.map_or("", SurfaceRole::as_str)) {
         Ok(())
     } else {
         Err(PlatformError::AssetNotFound(format!(
@@ -572,10 +577,11 @@ pub(super) fn ensure_managed_surface_provider(
 }
 
 pub(super) fn destroy_managed_surface_provider(
-    surface_id: String,
-    role: Option<SurfaceRole>,
+    request: ManagedSurfaceProviderDestroyRequest,
 ) -> ManagedSurfaceFuture {
-    Box::pin(async move { close_managed_surface(&surface_id, role) })
+    Box::pin(
+        async move { close_managed_surface(&request.surface_id, &request.provider, request.role) },
+    )
 }
 
 #[derive(Clone)]

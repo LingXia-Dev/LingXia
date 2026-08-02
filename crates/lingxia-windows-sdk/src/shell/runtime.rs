@@ -2622,6 +2622,27 @@ fn apply_windows_layout_plan(plan: &LayoutPresentationPlan) {
             position: lingxia_app_context::PanelPosition::Bottom,
         });
     }
+    if let Some(slot) = native_slot {
+        // Keyed terminal ids are runtime-owned and therefore absent from the
+        // YAML panel list; keep them in the renderer's reconciliation set.
+        let position = slot
+            .edge
+            .map(panel_position_from_edge)
+            .unwrap_or(lingxia_app_context::PanelPosition::Bottom);
+        let label = lingxia_logic::i18n::t(lingxia_logic::I18nKey::TerminalTitle);
+        for panel_id in &slot.children {
+            if !native_panels
+                .iter()
+                .any(|request| request.panel_id == *panel_id)
+            {
+                native_panels.push(TerminalPanelRequest {
+                    panel_id: panel_id.clone(),
+                    label: label.clone(),
+                    position,
+                });
+            }
+        }
+    }
 
     for mut request in native_panels {
         if Some(request.panel_id.as_str()) == active {
@@ -5468,14 +5489,25 @@ fn set_managed_surface_visible(panel_id: &str, visible: bool, role: &str, edge: 
     set_managed_surface_visible_inner(panel_id, visible, role, edge, None)
 }
 
-fn close_managed_surface_for_api(panel_id: &str, role: &str) -> bool {
-    if !role.is_empty() && role != "aside" && role != "float" {
+fn close_managed_surface_for_api(panel_id: &str, capability: &str, role: &str) -> bool {
+    if !role.is_empty() && !matches!(role, "main" | "aside" | "float") {
         return false;
     }
     let Some(owner_appid) = shell_owner_appid() else {
         return false;
     };
-    let Some(target) = panel_target_for_id(panel_id) else {
+    let target = if capability == "terminal" {
+        PanelTarget::Terminal(TerminalPanelRequest {
+            panel_id: panel_id.to_string(),
+            label: String::new(),
+            position: lingxia_app_context::PanelPosition::Bottom,
+        })
+    } else if capability.is_empty() {
+        let Some(target) = panel_target_for_id(panel_id) else {
+            return false;
+        };
+        target
+    } else {
         return false;
     };
     let result = match target {
@@ -5700,6 +5732,7 @@ fn open_managed_native_surface(
     false
 }
 
+#[cfg(feature = "browser-shell")]
 fn toggle_managed_surface(panel_id: &str) -> bool {
     let Some(owner_appid) = shell_owner_appid() else {
         return false;
@@ -5760,6 +5793,7 @@ pub(crate) fn handle_menu_bar_surface_action(surface_id: &str, action_kind: &str
     opened
 }
 
+#[cfg(feature = "browser-shell")]
 fn handle_footer_action(appid: &str, panel_id: String) {
     let Some(target) = panel_target_for_id(&panel_id) else {
         log::error!("Windows sidebar footer action was not found: {panel_id}");
@@ -5785,6 +5819,7 @@ fn handle_footer_action(appid: &str, panel_id: String) {
     show_panel_target(appid, &panel_id, target, None);
 }
 
+#[cfg(feature = "browser-shell")]
 fn show_panel_target(
     appid: &str,
     panel_id: &str,

@@ -1,9 +1,9 @@
 use super::*;
 use lingxia_platform::Platform;
 use lingxia_platform::traits::ui::{
-    ManagedNativeSurface, ManagedSurfaceProvider, ManagedSurfaceProviderRequest, SurfaceContent,
-    SurfaceKind, SurfacePosition, SurfacePresenter, SurfaceRequest as PlatformSurfaceRequest,
-    SurfaceRole,
+    ManagedSurfaceProvider, ManagedSurfaceProviderDestroyRequest, ManagedSurfaceProviderRequest,
+    SurfaceContent, SurfaceKind, SurfacePosition, SurfacePresenter,
+    SurfaceRequest as PlatformSurfaceRequest, SurfaceRole as PlatformSurfaceRole,
 };
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -39,6 +39,7 @@ pub(crate) struct WindowSurfaceController {
     window_id: String,
     manager: std::sync::Mutex<lingxia_surface::SurfaceManager>,
     native_declarations: std::sync::Mutex<HashMap<String, NativeSurfaceDeclaration>>,
+    native_open_serializers: NativeOpenSerializers,
     runtime: std::sync::Arc<Platform>,
     next_native_surface_id: AtomicU64,
     last_published_active_main: std::sync::Mutex<Option<String>>,
@@ -51,14 +52,56 @@ struct NativeSurfaceDeclaration {
     presentation: lingxia_surface::SurfacePresentation,
 }
 
+type NativeOpenLock = futures::lock::Mutex<()>;
+type NativeOpenKey = (String, Option<String>);
+
+#[derive(Default)]
+struct NativeOpenSerializers {
+    locks: std::sync::Mutex<HashMap<NativeOpenKey, std::sync::Weak<NativeOpenLock>>>,
+}
+
+impl NativeOpenSerializers {
+    fn lock_for(&self, declaration_id: &str, instance_key: Option<&str>) -> Arc<NativeOpenLock> {
+        let key = (
+            declaration_id.to_string(),
+            instance_key.map(ToString::to_string),
+        );
+        let mut locks = self.locks.lock().unwrap();
+        locks.retain(|_, lock| lock.strong_count() > 0);
+        if let Some(lock) = locks.get(&key).and_then(std::sync::Weak::upgrade) {
+            return lock;
+        }
+        let lock = Arc::new(NativeOpenLock::new(()));
+        locks.insert(key, Arc::downgrade(&lock));
+        lock
+    }
+}
+
 struct OpenNodeResult {
     surface_id: String,
     kind: SurfaceKind,
     position: SurfacePosition,
-    role: SurfaceRole,
+    role: lingxia_surface::Role,
     evicted: Vec<String>,
     reused: bool,
     overlay: bool,
+}
+
+fn previous_main_for_visibility<'a>(
+    plan: &lingxia_surface::LayoutPresentationPlan,
+    previous: Option<&'a str>,
+) -> Option<&'a str> {
+    previous.filter(|id| plan.mains.iter().any(|main| main == id))
+}
+
+fn managed_provider_for_surface(surface: &lingxia_surface::Surface) -> ManagedSurfaceProvider {
+    match surface.content.native_identity() {
+        Some((capability, instance_key)) => ManagedSurfaceProvider::Native {
+            capability: capability.to_string(),
+            instance_key: instance_key.map(str::to_string),
+        },
+        None => ManagedSurfaceProvider::Declared,
+    }
 }
 
 static WINDOW_CONTROLLERS: OnceLock<
@@ -81,6 +124,7 @@ pub(crate) fn window_controller(
                 window_id: window_id.to_string(),
                 manager: std::sync::Mutex::new(lingxia_surface::SurfaceManager::new(700.0)),
                 native_declarations: std::sync::Mutex::new(HashMap::new()),
+                native_open_serializers: NativeOpenSerializers::default(),
                 runtime: runtime.clone(),
                 next_native_surface_id: AtomicU64::new(1),
                 last_published_active_main: std::sync::Mutex::new(None),
@@ -100,6 +144,13 @@ impl WindowSurfaceController {
     ) -> Result<ManagedNativeSurface, LxAppError> {
         let declaration_id = declaration_id.trim();
         let instance_key = instance_key.map(str::trim).filter(|key| !key.is_empty());
+        // Provider creation is asynchronous. Serialize the full
+        // resolve/ensure/register sequence per public declaration identity so
+        // concurrent opens cannot allocate duplicate keyed workspaces.
+        let open_lock = self
+            .native_open_serializers
+            .lock_for(declaration_id, instance_key);
+        let _open_guard = open_lock.lock().await;
         let requested_edge = requested_edge.map(parse_surface_edge).transpose()?;
         let declaration = self
             .native_declarations
@@ -122,7 +173,7 @@ impl WindowSurfaceController {
                     "surface '{declaration_id}' does not use a native provider"
                 ))
             })?;
-        let (surface, presentation, is_live) = {
+        let (surface, presentation) = {
             let manager = self.manager.lock().unwrap();
             let existing = if instance_key.is_none() {
                 manager.graph().get(declaration_id)
@@ -133,13 +184,16 @@ impl WindowSurfaceController {
             };
             if let Some(existing) = existing {
                 let mut surface = existing.clone();
+                surface.state = lingxia_surface::SurfaceState::Mounted;
                 if let Some(role) = requested_role {
-                    let requested = managed_role_to_core(role);
-                    surface.role = if manager.graph().is_root_main(&surface.id) {
-                        lingxia_surface::Role::Main
-                    } else {
-                        requested
-                    };
+                    if manager.graph().is_root_main(&surface.id)
+                        && role != lingxia_surface::Role::Main
+                    {
+                        return Err(LxAppError::UnsupportedOperation(
+                            "the stable root main surface cannot change role".to_string(),
+                        ));
+                    }
+                    surface.role = role;
                     if surface.role != lingxia_surface::Role::Aside {
                         surface.placement.edge = None;
                     }
@@ -149,7 +203,7 @@ impl WindowSurfaceController {
                 {
                     surface.placement.edge = Some(edge);
                 }
-                (surface, None, true)
+                (surface, None)
             } else {
                 let sequence = instance_key
                     .map(|_| self.next_native_surface_id.fetch_add(1, Ordering::Relaxed));
@@ -161,12 +215,17 @@ impl WindowSurfaceController {
                     requested_role,
                     requested_edge,
                 );
-                (surface, Some(presentation), false)
+                (surface, Some(presentation))
             }
         };
-        let role = match surface.role {
-            lingxia_surface::Role::Main => SurfaceRole::Main,
-            lingxia_surface::Role::Aside => SurfaceRole::Aside,
+        if requested_edge.is_some() && surface.role != lingxia_surface::Role::Aside {
+            return Err(LxAppError::InvalidParameter(
+                "edge is only valid for an aside surface".to_string(),
+            ));
+        }
+        let platform_role = match surface.role {
+            lingxia_surface::Role::Main => PlatformSurfaceRole::Main,
+            lingxia_surface::Role::Aside => PlatformSurfaceRole::Aside,
             lingxia_surface::Role::Float => {
                 return Err(LxAppError::UnsupportedOperation(
                     "native float surfaces do not support instances".to_string(),
@@ -181,25 +240,18 @@ impl WindowSurfaceController {
                     capability: capability.clone(),
                     instance_key: instance_key.map(str::to_string),
                 },
-                role: Some(role),
+                role: Some(platform_role),
                 edge: edge.map(str::to_string),
             })
             .await?;
         {
             let mut manager = self.manager.lock().unwrap();
-            if is_live {
-                manager.show(&surface.id);
-                if surface.role == lingxia_surface::Role::Main {
-                    manager.set_active_main(&surface.id);
-                }
-            } else {
-                manager.open(surface.clone());
-                if let Some(presentation) = presentation {
-                    manager.set_presentation(&surface.id, presentation);
-                }
-                if surface.role == lingxia_surface::Role::Main {
-                    manager.set_active_main(&surface.id);
-                }
+            manager.open(surface.clone());
+            if let Some(presentation) = presentation {
+                manager.set_presentation(&surface.id, presentation);
+            }
+            if surface.role == lingxia_surface::Role::Main {
+                manager.set_active_main(&surface.id);
             }
         }
         if surface.role == lingxia_surface::Role::Main {
@@ -208,7 +260,7 @@ impl WindowSurfaceController {
         self.commit();
         Ok(ManagedNativeSurface {
             surface_id: surface.id,
-            role,
+            role: surface.role,
         })
     }
 
@@ -237,7 +289,11 @@ impl WindowSurfaceController {
             std::mem::replace(&mut *published, current.clone())
         };
         if let Some(observer) = SURFACE_ACTIVE_MAIN_OBSERVER.get() {
-            let _ = observer(previous.as_deref(), current.as_deref());
+            // A role migration can remove the previous active id from `mains`
+            // while keeping that same surface mounted as an aside. Do not let
+            // the old main-deactivation notification hide its reused handle.
+            let previous = previous_main_for_visibility(&plan, previous.as_deref());
+            let _ = observer(previous, current.as_deref());
         }
         true
     }
@@ -258,7 +314,7 @@ impl WindowSurfaceController {
             _ => SurfaceKind::Overlay,
         };
         let mut present_position = requested_position;
-        let mut present_role = SurfaceRole::default();
+        let mut present_role = lingxia_surface::Role::Main;
         let mut manager = self.manager.lock().unwrap();
         let before: HashSet<String> = manager
             .graph()
@@ -273,8 +329,9 @@ impl WindowSurfaceController {
                 .graph()
                 .get(&resolved_id)
                 .and_then(|s| s.placement.edge);
-            (present_kind, present_position, present_role) =
+            (present_kind, present_position) =
                 present_params_for_role(role, edge, requested_position);
+            present_role = role;
         }
         let after: HashSet<String> = manager
             .graph()
@@ -404,12 +461,38 @@ impl WindowSurfaceController {
         edge: Option<&str>,
     ) -> Result<(), LxAppError> {
         let parsed_edge = edge.map(parse_surface_edge).transpose()?;
+        let (current_role, is_root_main, provider) = {
+            let manager = self.manager.lock().unwrap();
+            let provider = manager
+                .graph()
+                .get(id)
+                .map(managed_provider_for_surface)
+                .unwrap_or(ManagedSurfaceProvider::Declared);
+            (
+                manager.graph().role_of(id),
+                manager.graph().is_root_main(id),
+                provider,
+            )
+        };
+        if is_root_main && role.is_some_and(|role| role != lingxia_surface::Role::Main) {
+            return Err(LxAppError::UnsupportedOperation(
+                "the stable root main surface cannot change role".to_string(),
+            ));
+        }
+        let effective_role = role.or(current_role);
+        if parsed_edge.is_some()
+            && effective_role.is_some_and(|role| role != lingxia_surface::Role::Aside)
+        {
+            return Err(LxAppError::InvalidParameter(
+                "edge is only valid for an aside surface".to_string(),
+            ));
+        }
         if visible {
             self.runtime
                 .ensure_managed_surface_provider(ManagedSurfaceProviderRequest {
                     surface_id: id.to_string(),
-                    provider: ManagedSurfaceProvider::Declared,
-                    role,
+                    provider,
+                    role: effective_role.map(Into::into),
                     edge: edge.map(str::to_string),
                 })
                 .await?;
@@ -424,7 +507,7 @@ impl WindowSurfaceController {
                         surface.role = if manager.graph().is_root_main(id) {
                             lingxia_surface::Role::Main
                         } else {
-                            managed_role_to_core(role)
+                            role
                         };
                         if surface.role != lingxia_surface::Role::Aside {
                             surface.placement.edge = None;
@@ -453,12 +536,39 @@ impl WindowSurfaceController {
         id: &str,
         role: Option<SurfaceRole>,
     ) -> Result<(), LxAppError> {
+        let (provider, current_role) = {
+            let manager = self.manager.lock().unwrap();
+            let surface = manager.graph().get(id);
+            (
+                surface
+                    .map(managed_provider_for_surface)
+                    .unwrap_or(ManagedSurfaceProvider::Declared),
+                surface.map(|surface| surface.role),
+            )
+        };
+        let role = current_role.or(role);
         let outcome = self.close_deferred(id, "programmatic");
-        if !outcome.removed().is_empty() {
-            self.commit();
+        match outcome {
+            lingxia_surface::CloseOutcome::Closed { .. } => {
+                self.commit();
+            }
+            lingxia_surface::CloseOutcome::RejectedRoot { .. } => {
+                return Err(LxAppError::UnsupportedOperation(
+                    "the stable root main surface cannot be closed".to_string(),
+                ));
+            }
+            lingxia_surface::CloseOutcome::NotFound => {
+                return Err(LxAppError::InvalidParameter(format!(
+                    "unknown surface: {id}"
+                )));
+            }
         }
         self.runtime
-            .destroy_managed_surface_provider(id.to_string(), role)
+            .destroy_managed_surface_provider(ManagedSurfaceProviderDestroyRequest {
+                surface_id: id.to_string(),
+                provider,
+                role: role.map(Into::into),
+            })
             .await?;
         Ok(())
     }
@@ -475,11 +585,7 @@ impl WindowSurfaceController {
     }
 
     fn managed_surface_role(&self, id: &str) -> Option<SurfaceRole> {
-        match self.manager.lock().unwrap().graph().role_of(id)? {
-            lingxia_surface::Role::Main => Some(SurfaceRole::Main),
-            lingxia_surface::Role::Aside => Some(SurfaceRole::Aside),
-            lingxia_surface::Role::Float => Some(SurfaceRole::Float),
-        }
+        self.manager.lock().unwrap().graph().role_of(id)
     }
 
     fn managed_surface_visible(&self, id: &str) -> Option<bool> {
@@ -827,9 +933,7 @@ fn instantiate_native_declaration(
             "native:{capability}:{}",
             sequence.expect("keyed native instances require a sequence")
         );
-        surface.role = requested_role
-            .map(managed_role_to_core)
-            .unwrap_or(surface.role);
+        surface.role = requested_role.unwrap_or(surface.role);
         surface.placement = if surface.role == lingxia_surface::Role::Aside {
             lingxia_surface::Placement {
                 edge: requested_edge.or(surface.placement.edge),
@@ -857,14 +961,6 @@ fn instantiate_native_declaration(
         };
     }
     (surface, presentation)
-}
-
-fn managed_role_to_core(role: SurfaceRole) -> lingxia_surface::Role {
-    match role {
-        SurfaceRole::Main => lingxia_surface::Role::Main,
-        SurfaceRole::Aside => lingxia_surface::Role::Aside,
-        SurfaceRole::Float => lingxia_surface::Role::Float,
-    }
 }
 
 fn host_aside_node(
@@ -952,9 +1048,16 @@ pub struct PageSurface {
     pub page_path: Option<String>,
     pub page_instance_id: Option<String>,
     pub kind: SurfaceKind,
-    pub role: SurfaceRole,
+    pub role: lingxia_surface::Role,
     pub position: SurfacePosition,
     pub presentation: String,
+}
+
+/// Resolved identity and declaration-owned role of a managed native surface.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ManagedNativeSurface {
+    pub surface_id: String,
+    pub role: lingxia_surface::Role,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -1169,7 +1272,7 @@ pub(crate) struct SurfaceRecord {
     pub content: SurfaceContent,
     pub target: String,
     pub kind: SurfaceKind,
-    pub role: SurfaceRole,
+    pub role: lingxia_surface::Role,
     pub url_callback: bool,
     pub ephemeral_web_data: bool,
 }
@@ -1264,7 +1367,7 @@ impl LxApp {
         // arbitrated outcome — the core graph is the single source of truth.
         let mut present_kind = request.kind;
         let mut present_position = request.position;
-        let mut present_role = SurfaceRole::default();
+        let mut present_role = lingxia_surface::Role::Main;
         let mut resolved_id = id.clone();
         let mut reused = false;
         let mut overlay = false;
@@ -1340,7 +1443,7 @@ impl LxApp {
             width_ratio: finite_or_nan(request.width_ratio),
             height_ratio: finite_or_nan(request.height_ratio),
             position: present_position,
-            role: present_role,
+            role: present_role.into(),
             interaction,
             ephemeral_web_data,
             url_callback,
@@ -1445,7 +1548,7 @@ impl LxApp {
                     content,
                     target: path.clone(),
                     kind: SurfaceKind::Window,
-                    role: SurfaceRole::Main,
+                    role: lingxia_surface::Role::Main,
                     url_callback: false,
                     ephemeral_web_data: false,
                 },
@@ -1467,7 +1570,7 @@ impl LxApp {
             width_ratio: finite_or_nan(request.width_ratio),
             height_ratio: finite_or_nan(request.height_ratio),
             position: SurfacePosition::Center,
-            role: SurfaceRole::Main,
+            role: PlatformSurfaceRole::Main,
             interaction,
             // Window surfaces host this lxapp's own pages, never external web.
             ephemeral_web_data: false,
@@ -1489,7 +1592,7 @@ impl LxApp {
             page_path,
             page_instance_id: (!page_instance_id.is_empty()).then_some(page_instance_id),
             kind: SurfaceKind::Window,
-            role: SurfaceRole::Main,
+            role: lingxia_surface::Role::Main,
             position: SurfacePosition::Center,
             presentation: "window".to_string(),
         })
@@ -1681,6 +1784,8 @@ impl LxApp {
             .await
     }
 
+    /// Destroy a managed surface by runtime id. The stable root main rejects
+    /// this operation; providers report unknown ids as errors.
     pub async fn close_shell_managed_surface(
         &self,
         surface_id: &str,
@@ -1697,6 +1802,9 @@ impl LxApp {
             .await
     }
 
+    /// Open or focus a declared native capability. An instance key is trimmed
+    /// and must contain 1 to 128 UTF-8 bytes; equal keys are serialized and
+    /// resolve to the same live surface.
     pub async fn open_shell_native_surface(
         &self,
         declaration_id: &str,
@@ -1708,6 +1816,12 @@ impl LxApp {
         if declaration_id.is_empty() {
             return Err(LxAppError::InvalidParameter(
                 "surface declaration id must not be empty".to_string(),
+            ));
+        }
+        let instance_key = instance_key.map(str::trim);
+        if instance_key.is_some_and(|key| key.is_empty() || key.len() > 128) {
+            return Err(LxAppError::InvalidParameter(
+                "instance key must contain 1 to 128 UTF-8 bytes".to_string(),
             ));
         }
         window_controller(PRIMARY_WINDOW, &self.runtime)
@@ -2437,15 +2551,11 @@ fn present_params_for_role(
     role: lingxia_surface::Role,
     edge: Option<lingxia_surface::Edge>,
     requested_position: SurfacePosition,
-) -> (SurfaceKind, SurfacePosition, SurfaceRole) {
+) -> (SurfaceKind, SurfacePosition) {
     use lingxia_surface::{Edge as LxEdge, Role as LxRole};
     match role {
-        LxRole::Main => (
-            SurfaceKind::Window,
-            SurfacePosition::Center,
-            SurfaceRole::Main,
-        ),
-        LxRole::Float => (SurfaceKind::Overlay, requested_position, SurfaceRole::Float),
+        LxRole::Main => (SurfaceKind::Window, SurfacePosition::Center),
+        LxRole::Float => (SurfaceKind::Overlay, requested_position),
         LxRole::Aside => {
             let position = match edge {
                 Some(LxEdge::Left) => SurfacePosition::Left,
@@ -2454,7 +2564,7 @@ fn present_params_for_role(
                 Some(LxEdge::Bottom) => SurfacePosition::Bottom,
                 None => requested_position,
             };
-            (SurfaceKind::Overlay, position, SurfaceRole::Aside)
+            (SurfaceKind::Overlay, position)
         }
     }
 }
@@ -2480,12 +2590,16 @@ fn parse_surface_edge(edge: &str) -> Result<lingxia_surface::Edge, LxAppError> {
     }
 }
 
-fn surface_presentation(kind: SurfaceKind, role: SurfaceRole, overlay: bool) -> &'static str {
+fn surface_presentation(
+    kind: SurfaceKind,
+    role: lingxia_surface::Role,
+    overlay: bool,
+) -> &'static str {
     match (role, kind, overlay) {
-        (SurfaceRole::Main, _, _) => "main",
-        (SurfaceRole::Aside, _, true) => "overlay",
-        (SurfaceRole::Aside, _, false) => "dock",
-        (SurfaceRole::Float, _, _) => "popover",
+        (lingxia_surface::Role::Main, _, _) => "main",
+        (lingxia_surface::Role::Aside, _, true) => "overlay",
+        (lingxia_surface::Role::Aside, _, false) => "dock",
+        (lingxia_surface::Role::Float, _, _) => "popover",
     }
 }
 
@@ -2532,11 +2646,11 @@ fn surface_kind_str(kind: SurfaceKind) -> &'static str {
     }
 }
 
-fn surface_role_str(role: SurfaceRole) -> &'static str {
+fn surface_role_str(role: lingxia_surface::Role) -> &'static str {
     match role {
-        SurfaceRole::Main => "main",
-        SurfaceRole::Aside => "aside",
-        SurfaceRole::Float => "float",
+        lingxia_surface::Role::Main => "main",
+        lingxia_surface::Role::Aside => "aside",
+        lingxia_surface::Role::Float => "float",
     }
 }
 
@@ -2569,6 +2683,104 @@ fn close_reason_str(reason: CloseReason) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn main_visibility_publication_ignores_a_surface_migrated_to_aside() {
+        let mut manager = lingxia_surface::SurfaceManager::new(1200.0);
+        manager.open(lingxia_surface::Surface::lxapp(
+            "home",
+            lingxia_surface::Role::Main,
+            "home",
+        ));
+        manager.open(lingxia_surface::Surface::native(
+            "terminal",
+            lingxia_surface::Role::Main,
+            "terminal",
+        ));
+        manager.set_active_main("terminal");
+
+        let mut terminal = manager.graph().get("terminal").unwrap().clone();
+        terminal.role = lingxia_surface::Role::Aside;
+        terminal.placement.edge = Some(lingxia_surface::Edge::Bottom);
+        manager.open(terminal);
+        let migrated = manager.presentation_plan();
+
+        assert_eq!(migrated.active_main_id.as_deref(), Some("home"));
+        assert_eq!(
+            previous_main_for_visibility(&migrated, Some("terminal")),
+            None
+        );
+
+        manager.open(lingxia_surface::Surface::native(
+            "workspace",
+            lingxia_surface::Role::Main,
+            "terminal",
+        ));
+        let ordinary_switch = manager.presentation_plan();
+        assert_eq!(
+            previous_main_for_visibility(&ordinary_switch, Some("home")),
+            Some("home")
+        );
+    }
+
+    #[test]
+    fn native_opens_serialize_per_public_identity() {
+        let serializers = NativeOpenSerializers::default();
+        let first = serializers.lock_for("terminal", Some("project-a"));
+        let guard = first.try_lock().expect("first caller acquires the lock");
+        let same = serializers.lock_for("terminal", Some("project-a"));
+        let other = serializers.lock_for("terminal", Some("project-b"));
+
+        assert!(Arc::ptr_eq(&first, &same));
+        assert!(same.try_lock().is_none());
+        assert!(!Arc::ptr_eq(&first, &other));
+        assert!(other.try_lock().is_some());
+
+        drop(guard);
+        assert!(same.try_lock().is_some());
+    }
+
+    #[test]
+    fn page_surface_uses_the_exported_surface_role() {
+        let surface = PageSurface {
+            id: "settings".to_string(),
+            page_path: None,
+            page_instance_id: None,
+            kind: SurfaceKind::Window,
+            role: crate::SurfaceRole::Main,
+            position: SurfacePosition::Center,
+            presentation: "window".to_string(),
+        };
+        let role: crate::SurfaceRole = surface.role;
+        assert_eq!(role, crate::SurfaceRole::Main);
+    }
+
+    #[test]
+    fn managed_provider_preserves_native_instance_identity() {
+        let native = lingxia_surface::Surface::native_instance(
+            "native:terminal:1",
+            lingxia_surface::Role::Main,
+            "terminal",
+            Some("project-a".to_string()),
+        );
+        assert_eq!(
+            managed_provider_for_surface(&native),
+            ManagedSurfaceProvider::Native {
+                capability: "terminal".to_string(),
+                instance_key: Some("project-a".to_string()),
+            }
+        );
+
+        let lxapp = lingxia_surface::Surface::lxapp(
+            "lingxia-chat",
+            lingxia_surface::Role::Aside,
+            "lingxia-chat",
+        );
+        assert_eq!(
+            managed_provider_for_surface(&lxapp),
+            ManagedSurfaceProvider::Declared
+        );
+    }
 
     #[test]
     fn lxapp_surface_menu_header_includes_channel_badge() {
@@ -2629,7 +2841,7 @@ mod tests {
             content: SurfaceContent::Url,
             target: "https://example.com/login".to_string(),
             kind: SurfaceKind::Overlay,
-            role: SurfaceRole::Aside,
+            role: lingxia_surface::Role::Aside,
             url_callback,
             ephemeral_web_data,
         }

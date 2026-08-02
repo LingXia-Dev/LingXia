@@ -61,6 +61,36 @@ pub enum SurfaceRole {
     Float = 2,
 }
 
+impl SurfaceRole {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Main => "main",
+            Self::Aside => "aside",
+            Self::Float => "float",
+        }
+    }
+}
+
+impl From<lingxia_surface::Role> for SurfaceRole {
+    fn from(role: lingxia_surface::Role) -> Self {
+        match role {
+            lingxia_surface::Role::Main => Self::Main,
+            lingxia_surface::Role::Aside => Self::Aside,
+            lingxia_surface::Role::Float => Self::Float,
+        }
+    }
+}
+
+impl From<SurfaceRole> for lingxia_surface::Role {
+    fn from(role: SurfaceRole) -> Self {
+        match role {
+            SurfaceRole::Main => Self::Main,
+            SurfaceRole::Aside => Self::Aside,
+            SurfaceRole::Float => Self::Float,
+        }
+    }
+}
+
 #[repr(i32)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum SurfaceContent {
@@ -132,6 +162,13 @@ pub struct ManagedSurfaceProviderRequest {
     pub edge: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ManagedSurfaceProviderDestroyRequest {
+    pub surface_id: String,
+    pub provider: ManagedSurfaceProvider,
+    pub role: Option<SurfaceRole>,
+}
+
 pub trait SurfacePresenter: Send + Sync + 'static {
     /// The shared core resolves a `LayoutPresentationPlan` for one window/graph
     /// and the platform skin binds it. The per-surface methods below present a
@@ -187,31 +224,13 @@ pub trait SurfacePresenter: Send + Sync + 'static {
     /// Destroy provider state after the core removes a non-root Surface.
     fn destroy_managed_surface_provider(
         &self,
-        _surface_id: String,
-        _role: Option<SurfaceRole>,
+        _request: ManagedSurfaceProviderDestroyRequest,
     ) -> ManagedSurfaceFuture {
         Box::pin(async {
             Err(PlatformError::NotSupported(
                 "managed surface providers are not supported on this platform".to_string(),
             ))
         })
-    }
-}
-
-/// Resolved identity and declaration-owned role of a managed native surface.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ManagedNativeSurface {
-    pub surface_id: String,
-    pub role: SurfaceRole,
-}
-
-impl SurfaceRole {
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Main => "main",
-            Self::Aside => "aside",
-            Self::Float => "float",
-        }
     }
 }
 

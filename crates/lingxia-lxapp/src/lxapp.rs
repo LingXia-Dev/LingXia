@@ -76,9 +76,9 @@ pub use runtime_registry::{
 };
 pub(crate) use surface::SurfaceRecords;
 pub use surface::{
-    HostMainSurfaceRegistration, HostSurfaceMenuExecution, LxAppRuntimeSurfaceInfo, PageSurface,
-    PageSurfaceRequest, PageSurfaceTarget, UrlCallbackSurface, UrlCallbackWaitError,
-    register_surface_active_main_observer, register_surface_close_observer,
+    HostMainSurfaceRegistration, HostSurfaceMenuExecution, LxAppRuntimeSurfaceInfo,
+    ManagedNativeSurface, PageSurface, PageSurfaceRequest, PageSurfaceTarget, UrlCallbackSurface,
+    UrlCallbackWaitError, register_surface_active_main_observer, register_surface_close_observer,
     register_surface_context_observer, register_surface_visibility_observer,
 };
 use version::Version;
@@ -2464,7 +2464,8 @@ pub enum LxAppOpenRegion {
 }
 
 impl LxAppOpenRegion {
-    fn as_str(self) -> &'static str {
+    /// Stable API spelling used in diagnostics and surface metadata.
+    pub const fn as_str(self) -> &'static str {
         match self {
             Self::Main => "main",
             Self::Aside => "aside",

@@ -7,8 +7,8 @@ use crate::error::PlatformError;
 #[cfg(target_os = "ios")]
 use crate::traits::ui::SurfaceKind;
 use crate::traits::ui::{
-    ManagedSurfaceFuture, ManagedSurfaceProvider, ManagedSurfaceProviderRequest, SurfacePosition,
-    SurfacePresenter, SurfaceRequest, SurfaceRole,
+    ManagedSurfaceFuture, ManagedSurfaceProvider, ManagedSurfaceProviderDestroyRequest,
+    ManagedSurfaceProviderRequest, SurfacePosition, SurfacePresenter, SurfaceRequest, SurfaceRole,
 };
 use lingxia_surface::LayoutPresentationPlan;
 
@@ -142,15 +142,18 @@ impl SurfacePresenter for Platform {
 
     fn destroy_managed_surface_provider(
         &self,
-        surface_id: String,
-        role: Option<SurfaceRole>,
+        request: ManagedSurfaceProviderDestroyRequest,
     ) -> ManagedSurfaceFuture {
         Box::pin(async move {
-            if destroy_managed_surface(&surface_id, role.map_or("", SurfaceRole::as_str)) {
+            if destroy_managed_surface(
+                &request.surface_id,
+                request.role.map_or("", SurfaceRole::as_str),
+            ) {
                 Ok(())
             } else {
                 Err(PlatformError::AssetNotFound(format!(
-                    "cannot destroy managed surface provider: id={surface_id}"
+                    "cannot destroy managed surface provider: id={}",
+                    request.surface_id
                 )))
             }
         })

@@ -342,8 +342,8 @@ impl SurfaceGraph {
         }
     }
 
-    /// Show a live surface without changing its identity. Main selection is
-    /// handled separately; aside/float visibility is represented in the graph.
+    /// Show a live surface without changing its identity. A main is selected;
+    /// aside/float visibility is represented by mounted state and focus.
     pub fn show(&mut self, id: &str) -> bool {
         let Some(role) = self.role_of(id) else {
             return false;
