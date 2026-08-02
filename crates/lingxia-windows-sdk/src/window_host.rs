@@ -310,6 +310,7 @@ struct WebViewPanelEntry {
     position: WindowsPanelPosition,
     requested_size: Option<i32>,
     docked: bool,
+    overlay: bool,
     maximized: bool,
 }
 
@@ -421,6 +422,16 @@ impl WindowsHostBackend for WindowsHostBackendImpl {
         preferred_size: Option<i32>,
     ) -> StdResult<()> {
         show_webview_as_adaptive_panel(webtag, title, panel_id, position, preferred_size)
+    }
+
+    fn show_webview_as_overlay_panel(
+        &self,
+        webtag: &WebTag,
+        title: &str,
+        panel_id: &str,
+        position: WindowsPanelPosition,
+    ) -> StdResult<()> {
+        show_webview_as_overlay_panel(webtag, title, panel_id, position)
     }
 
     fn present_webview_in_active_group(&self, webtag: &WebTag) -> StdResult<()> {
@@ -626,6 +637,26 @@ pub fn show_webview_as_adaptive_panel(
     position: WindowsPanelPosition,
     preferred_size: Option<i32>,
 ) -> StdResult<()> {
+    show_webview_as_attached_panel(webtag, title, panel_id, position, preferred_size, false)
+}
+
+pub fn show_webview_as_overlay_panel(
+    webtag: &WebTag,
+    title: &str,
+    panel_id: &str,
+    position: WindowsPanelPosition,
+) -> StdResult<()> {
+    show_webview_as_attached_panel(webtag, title, panel_id, position, None, true)
+}
+
+fn show_webview_as_attached_panel(
+    webtag: &WebTag,
+    title: &str,
+    panel_id: &str,
+    position: WindowsPanelPosition,
+    preferred_size: Option<i32>,
+    overlay: bool,
+) -> StdResult<()> {
     let handler = find_webview_handler(webtag).ok_or_else(|| handler_not_ready(webtag))?;
     // The caller's webtag may be the canonical (instance-less) form; every
     // registry below must use the live webview's own key, or the layout
@@ -640,8 +671,8 @@ pub fn show_webview_as_adaptive_panel(
     };
     let was_group_main = active_webtag_key_for_window(host).as_deref() == Some(webtag.key());
 
-    // A phone-width host has no room for a docked panel: a page aside drills
-    // in full-screen instead, mirroring iOS and the macOS runner's phone
+    // A phone-width host presents an attached aside as a full-screen drill,
+    // mirroring iOS and the macOS runner's phone
     // presentation. URL asides never reach here compact — the shared logic
     // degrades them to browser tabs.
     {
@@ -657,7 +688,7 @@ pub fn show_webview_as_adaptive_panel(
     // Re-presenting the panel already visible in this host with the same
     // registration (a layout-plan recommit, e.g. on a page switch) must not
     // blink the webview: skip the hide/show cycle and refresh the layout.
-    let already_docked = webtag_is_visible(webtag.key())
+    let already_attached = webtag_is_visible(webtag.key())
         && is_panel_visible(panel_id)
         && window_handle_for_key(webtag.key()).is_some_and(|window| window == host)
         && WEBVIEW_PANELS
@@ -668,11 +699,12 @@ pub fn show_webview_as_adaptive_panel(
                     panel.webtag_key == webtag.key()
                         && panel.position == position
                         && panel.requested_size == preferred_size
+                        && panel.overlay == overlay
                 })
             })
             .unwrap_or(false);
-    if already_docked {
-        register_webview_panel(panel_id, webtag, title, position, preferred_size);
+    if already_attached {
+        register_webview_panel(panel_id, webtag, title, position, preferred_size, overlay);
         if was_group_main {
             restore_presented_group_main_for_host(host)?;
         }
@@ -683,12 +715,12 @@ pub fn show_webview_as_adaptive_panel(
 
     handler.set_content_visible(false)?;
     set_window_handle(webtag.key(), host);
-    register_webview_panel(panel_id, webtag, title, position, preferred_size);
+    register_webview_panel(panel_id, webtag, title, position, preferred_size, overlay);
     mark_panel_visible(panel_id, true);
     if was_group_main {
-        // An admitted aside may previously have covered the main as an
-        // adaptive overlay. Reattach the saved main before laying out the now
-        // docked controller, otherwise this webtag remains both the active
+        // An admitted aside may previously have covered the main through the
+        // group-main slot. Reattach the saved main before laying out the now
+        // attached controller, otherwise this webtag remains both the active
         // main and the panel child while the real main stays hidden.
         restore_presented_group_main_for_host(host)?;
     }
@@ -2678,6 +2710,7 @@ fn sync_window_layout(hwnd: HWND) {
         let _ = WindowsAndMessaging::GetClientRect(hwnd, &mut client);
     }
     let mut native_panel_takes_focus = focused_input_host_panel().is_some();
+    let mut overlay_webtags = Vec::new();
     if let Some(attached) = attached_layout_for_window(hwnd, &webtag_key, client) {
         let mut laid_out_panels = HashSet::new();
         for panel in attached
@@ -2688,6 +2721,9 @@ fn sync_window_layout(hwnd: HWND) {
             laid_out_panels.insert(panel.webtag_key.clone());
             visible_webtags.insert(panel.webtag_key.clone());
             sync_webtag_content_bounds(hwnd, &panel.webtag_key);
+            if panel_is_overlay(&panel.panel_id) {
+                overlay_webtags.push(panel.webtag_key.clone());
+            }
         }
         if attached_has_maximized_native_panel(&attached) {
             native_panel_takes_focus = true;
@@ -2695,6 +2731,14 @@ fn sync_window_layout(hwnd: HWND) {
         }
     }
     reconcile_host_webview_visibility(hwnd, &visible_webtags);
+    for overlay_webtag in overlay_webtags {
+        if let Some(webtag) = webtag_for_key(&overlay_webtag)
+            && let Some(handler) = find_webview_handler(&webtag)
+            && let Err(err) = handler.bring_content_to_front()
+        {
+            log::debug!("failed to raise Windows overlay WebView {overlay_webtag}: {err}");
+        }
+    }
     #[cfg(feature = "device-frame")]
     crate::device_frame::set_device_frame_overlays_visible(
         hwnd_handle(hwnd),
@@ -4644,6 +4688,7 @@ fn visible_panel_layout_inputs() -> Vec<WindowsChromePanelLayoutInput> {
                     position: panel.position,
                     requested_size: panel.requested_size,
                     docked: panel.docked,
+                    overlay: panel.overlay,
                     maximized: panel.maximized,
                 });
             }
@@ -4661,6 +4706,7 @@ fn visible_panel_layout_inputs() -> Vec<WindowsChromePanelLayoutInput> {
                     position: panel.position,
                     requested_size: panel.requested_size,
                     docked: panel.docked,
+                    overlay: false,
                     maximized: panel.maximized,
                 });
             }
@@ -5298,6 +5344,7 @@ fn register_webview_panel(
     title: &str,
     position: WindowsPanelPosition,
     requested_size: Option<i32>,
+    overlay: bool,
 ) {
     let panels = WEBVIEW_PANELS.get_or_init(|| Mutex::new(HashMap::new()));
     if let Ok(mut panels) = panels.lock() {
@@ -5308,7 +5355,8 @@ fn register_webview_panel(
                 title: title.to_string(),
                 position,
                 requested_size,
-                docked: panel_position_is_flush_docked(position),
+                docked: !overlay && panel_position_is_flush_docked(position),
+                overlay,
                 maximized: false,
             },
         );
@@ -5322,7 +5370,7 @@ fn update_registered_panel_position(panel_id: &str, position: WindowsPanelPositi
         && let Some(panel) = panels.get_mut(panel_id)
     {
         panel.position = position;
-        panel.docked = panel_position_is_flush_docked(position);
+        panel.docked = !panel.overlay && panel_position_is_flush_docked(position);
     }
     if let Some(panels) = HOST_PANELS.get()
         && let Ok(mut panels) = panels.lock()
@@ -5382,6 +5430,14 @@ fn panel_is_docked(panel_id: &str) -> bool {
         .get()
         .and_then(|panels| panels.lock().ok())
         .and_then(|panels| panels.get(panel_id).map(|panel| panel.docked))
+        .unwrap_or(false)
+}
+
+fn panel_is_overlay(panel_id: &str) -> bool {
+    WEBVIEW_PANELS
+        .get()
+        .and_then(|panels| panels.lock().ok())
+        .and_then(|panels| panels.get(panel_id).map(|panel| panel.overlay))
         .unwrap_or(false)
 }
 

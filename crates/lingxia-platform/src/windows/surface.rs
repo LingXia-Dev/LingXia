@@ -14,8 +14,9 @@ use lingxia_windows_contract::{
     configure_webview_surface_interaction, hide_host_panel, hide_webview_window,
     navigate_webview_window, present_webview_as_overlay, present_webview_in_active_group,
     refresh_aside_panel, set_aside_panel_tabs, set_webview_close_handler,
-    set_windows_aside_panel_event_handler, show_webview_as_adaptive_panel, show_webview_as_panel,
-    show_webview_window, show_webview_window_with_content_size,
+    set_windows_aside_panel_event_handler, show_webview_as_adaptive_panel,
+    show_webview_as_overlay_panel, show_webview_as_panel, show_webview_window,
+    show_webview_window_with_content_size,
 };
 
 use super::request_windows_app_exit;
@@ -660,7 +661,12 @@ struct SurfaceEntry {
 #[derive(Clone, Copy)]
 enum PresentationTarget {
     Stored,
-    Overlay,
+    Overlay {
+        edge: Option<Edge>,
+        /// Reuse the shared browser panel id so its tabs and close lifecycle
+        /// stay attached while the slot covers the workspace.
+        grouped: bool,
+    },
     Aside {
         edge: Option<Edge>,
         preferred_size: Option<f64>,
@@ -690,13 +696,16 @@ fn finite_or_zero(value: f64) -> f64 {
 /// Shows a surface's webview according to the core-arbitrated role.
 fn present_entry(id: &str, entry: &SurfaceEntry, target: PresentationTarget) -> Result<(), String> {
     let result = match (entry.role, target) {
-        // An adaptive aside overlay is still a companion surface. Giving it
-        // the host's single group-main slot makes the next main-tab switch
-        // replace it even though the graph still marks the aside visible.
-        // Keep it in an owned overlay window so main lxapp/browser selection
-        // and aside visibility remain independent projections of the graph.
-        (SurfaceRole::Aside, PresentationTarget::Overlay) => {
-            present_webview_as_overlay(&entry.webtag, 0.0, 0.0, 1.0, 1.0, entry.placement.position)
+        // An adaptive overlay remains an aside in the active workspace. It
+        // must not take the host's group-main slot or create another shell
+        // window: either would break main switching and close restoration.
+        (SurfaceRole::Aside, PresentationTarget::Overlay { edge, grouped }) => {
+            show_webview_as_overlay_panel(
+                &entry.webtag,
+                &entry.title,
+                if grouped { ASIDE_BROWSER_PANEL_ID } else { id },
+                panel_position_for(edge, entry.placement.position),
+            )
         }
         (
             SurfaceRole::Aside,
@@ -845,14 +854,11 @@ fn sync_runtime_lxapp_asides(plan: &LayoutPresentationPlan) -> bool {
         let edge = slot.edge.or_else(|| aside.and_then(|aside| aside.edge));
         let preferred_size = aside.and_then(|aside| aside.preferred_size);
         let result = if slot.overlay {
-            let _ = hide_host_panel(ASIDE_LXAPP_PANEL_ID);
-            present_webview_as_overlay(
+            show_webview_as_overlay_panel(
                 &entry.webtag,
-                0.0,
-                0.0,
-                1.0,
-                1.0,
-                overlay_position_for(edge, 3),
+                &entry.title,
+                ASIDE_LXAPP_PANEL_ID,
+                panel_position_for(edge, 3),
             )
         } else {
             show_webview_as_adaptive_panel(
@@ -967,7 +973,10 @@ fn sync_aside_browser_group() {
         let (edge, preferred_size) = placement.get(id).copied().unwrap_or((None, None));
         let target = if overlay {
             let _ = hide_host_panel(ASIDE_BROWSER_PANEL_ID);
-            PresentationTarget::Overlay
+            PresentationTarget::Overlay {
+                edge,
+                grouped: true,
+            }
         } else {
             PresentationTarget::Aside {
                 edge,
@@ -1272,7 +1281,10 @@ pub(super) fn present_layout(
         }
         let target = if overlay_ids.contains(aside.id.as_str()) {
             let _ = hide_host_panel(&aside.id);
-            PresentationTarget::Overlay
+            PresentationTarget::Overlay {
+                edge: aside.edge,
+                grouped: false,
+            }
         } else {
             PresentationTarget::Aside {
                 edge: aside.edge,

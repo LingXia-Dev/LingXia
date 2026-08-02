@@ -318,6 +318,26 @@ impl CompositionSurface {
         }
     }
 
+    pub(crate) fn bring_to_front(&mut self, base: &ICoreWebView2Controller) -> StdResult<()> {
+        let parent = self.parent;
+        self.ensure_alive(parent, base)?;
+        unsafe {
+            WindowsAndMessaging::SetWindowPos(
+                self.hwnd,
+                Some(WindowsAndMessaging::HWND_TOP),
+                0,
+                0,
+                0,
+                0,
+                WindowsAndMessaging::SWP_NOMOVE
+                    | WindowsAndMessaging::SWP_NOSIZE
+                    | WindowsAndMessaging::SWP_NOACTIVATE
+                    | WindowsAndMessaging::SWP_SHOWWINDOW,
+            )
+            .map_err(|err| WebViewError::WebView(format!("SetWindowPos failed: {err}")))
+        }
+    }
+
     /// Moves the surface window under a new host. WebView2's own parent stays
     /// the surface window, so its composition target survives the move — no
     /// blank frame, unlike the windowed controller's `SetParentWindow`. A

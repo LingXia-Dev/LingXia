@@ -1369,13 +1369,17 @@ fn compute_attached_layout(
     layout: &WindowsShellWindowLayout,
     panels: &[WindowsChromePanelLayoutInput],
 ) -> WindowsChromeAttachedLayout {
-    let mut main_region = compute_chrome_rects(client, layout).workspace;
+    let workspace = compute_chrome_rects(client, layout).workspace;
+    let mut main_region = workspace;
     let mut out = Vec::new();
 
     let mut ordered = panels.iter().collect::<Vec<_>>();
     ordered.sort_by(|left, right| attached_panel_order(left).cmp(&attached_panel_order(right)));
 
-    if let Some(&maximized) = ordered.iter().find(|panel| panel.docked && panel.maximized) {
+    if let Some(&maximized) = ordered
+        .iter()
+        .find(|panel| !panel.overlay && panel.docked && panel.maximized)
+    {
         out.push(WindowsChromePanelLayout {
             panel_id: maximized.panel_id.clone(),
             webtag_key: maximized.webtag_key.clone(),
@@ -1392,6 +1396,23 @@ fn compute_attached_layout(
     }
 
     for panel in ordered {
+        if panel.overlay {
+            let rect = shell_maximized_panel_rect(workspace);
+            let header_rect = (matches!(
+                panel.position,
+                WindowsPanelPosition::Left | WindowsPanelPosition::Right
+            ) && (panel.webtag_key.starts_with("app.lingxia.browser:")
+                || !aside_panel_tabs(&panel.panel_id).is_empty()))
+            .then(|| aside_panel_toolbar_rect(rect));
+            out.push(WindowsChromePanelLayout {
+                panel_id: panel.panel_id.clone(),
+                webtag_key: panel.webtag_key.clone(),
+                rect,
+                header_rect,
+                resize_handle: None,
+            });
+            continue;
+        }
         let (rect, resize_handle) = match panel.position {
             WindowsPanelPosition::Left => {
                 let width = attached_panel_size(panel, main_region, ATTACHED_PANEL_WIDTH);
@@ -1509,8 +1530,9 @@ fn compute_attached_layout(
     }
 }
 
-fn attached_panel_order(panel: &WindowsChromePanelLayoutInput) -> (u8, u8, &str) {
+fn attached_panel_order(panel: &WindowsChromePanelLayoutInput) -> (u8, u8, u8, &str) {
     (
+        u8::from(panel.overlay),
         match panel.position {
             WindowsPanelPosition::Left | WindowsPanelPosition::Right => 0,
             WindowsPanelPosition::Top | WindowsPanelPosition::Bottom => 1,
@@ -2637,6 +2659,7 @@ mod scroll_tests {
             position: WindowsPanelPosition::Right,
             requested_size: Some(320),
             docked: true,
+            overlay: false,
             maximized: false,
         };
 
@@ -2658,6 +2681,33 @@ mod scroll_tests {
             attached.main_region.bottom,
             client.bottom - SHELL_CONTENT_INSET
         );
+    }
+
+    #[test]
+    fn overlay_aside_covers_workspace_without_resizing_main() {
+        let layout = WindowsShellWindowLayout::default();
+        let client = RECT {
+            left: 0,
+            top: 0,
+            right: 720,
+            bottom: 768,
+        };
+        let workspace = compute_chrome_rects(client, &layout).workspace;
+        let panel = WindowsChromePanelLayoutInput {
+            panel_id: "lxapp-aside".to_string(),
+            webtag_key: "lingxia-chat:pages/chat/index".to_string(),
+            position: WindowsPanelPosition::Right,
+            requested_size: None,
+            docked: false,
+            overlay: true,
+            maximized: false,
+        };
+
+        let attached = compute_attached_layout(client, &layout, &[panel]);
+
+        assert_eq!(attached.main_region, workspace);
+        assert_eq!(attached.panels[0].rect, workspace);
+        assert_eq!(attached.panels[0].resize_handle, None);
     }
 
     #[test]
@@ -2802,6 +2852,7 @@ mod corner_tests {
             position,
             requested_size: Some(240),
             docked: true,
+            overlay: false,
             maximized: false,
         }
     }
@@ -2913,6 +2964,7 @@ mod corner_tests {
             position: WindowsPanelPosition::Right,
             requested_size: Some(320),
             docked: true,
+            overlay: false,
             maximized: false,
         };
         let attached = compute_attached_layout(client(), &layout, &[browser]);

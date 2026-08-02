@@ -300,6 +300,10 @@ Arbitration order is fixed:
 5. slots that do not fit stay alive hidden; when the user explicitly opens an
    aside that does not fit, it overlays the main and hides again on return.
 
+An adaptive aside overlay is still the current host's aside slot: it MUST cover
+the main content pane exactly, remain above the selected main, and MUST NOT
+claim the main-switcher slot or create another shell window.
+
 Size classes are an admission ceiling, not a guarantee that three panels are
 crammed in the moment the window crosses 840.
 

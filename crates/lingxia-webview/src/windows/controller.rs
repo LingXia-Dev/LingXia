@@ -127,6 +127,11 @@ pub(crate) enum UiCommand {
         visible: bool,
         resp: Sender<StdResult<()>>,
     },
+    /// Keep an overlapping surface above sibling WebView controllers hosted
+    /// by the same parent window.
+    BringContentToFront {
+        resp: Sender<StdResult<()>>,
+    },
     /// Rebind the WebView2 controller to a parent HWND owned by the Windows UI
     /// layer.
     SetParentWindow {
@@ -413,6 +418,10 @@ impl WebViewInner {
             visible,
             resp,
         })
+    }
+
+    pub(crate) fn bring_content_to_front(&self) -> StdResult<()> {
+        self.dispatch_command_same_thread_safe(|resp| UiCommand::BringContentToFront { resp })
     }
 
     pub(crate) fn set_parent_window(&self, window: isize) -> StdResult<()> {
@@ -1348,6 +1357,10 @@ pub(crate) fn handle_command(state: &mut UiState, command: UiCommand) -> StdResu
             let result = set_controller_visible(state, visible);
             let _ = resp.send(result);
         }
+        UiCommand::BringContentToFront { resp } => {
+            let result = bring_controller_content_to_front(state);
+            let _ = resp.send(result);
+        }
         UiCommand::SetParentWindow { window, resp } => {
             let hwnd = hwnd_from_handle(window);
             // A windowed controller can skip a same-parent request. A
@@ -1442,6 +1455,21 @@ pub(crate) fn set_controller_visible(state: &mut UiState, visible: bool) -> StdR
                 .map_err(|err| WebViewError::WebView(format!("SetIsVisible failed: {err}")))
         },
         HostingMode::Composition(surface) => surface.set_visible(&state.controller, visible),
+    }
+}
+
+fn bring_controller_content_to_front(state: &mut UiState) -> StdResult<()> {
+    match &mut state.hosting {
+        // Windowed WebView2 does not expose its child HWND. Reassert
+        // visibility after overlay layout so it remains the latest presented
+        // sibling controller.
+        HostingMode::Windowed => unsafe {
+            state
+                .controller
+                .SetIsVisible(true)
+                .map_err(|err| WebViewError::WebView(format!("SetIsVisible failed: {err}")))
+        },
+        HostingMode::Composition(surface) => surface.bring_to_front(&state.controller),
     }
 }
 

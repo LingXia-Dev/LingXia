@@ -158,6 +158,16 @@ pub trait WindowsHostBackend: Send + Sync {
         unsupported_operation("show_webview_as_adaptive_panel")
     }
 
+    fn show_webview_as_overlay_panel(
+        &self,
+        _webtag: &WebTag,
+        _title: &str,
+        _panel_id: &str,
+        _position: WindowsPanelPosition,
+    ) -> StdResult<()> {
+        unsupported_operation("show_webview_as_overlay_panel")
+    }
+
     fn present_webview_in_active_group(&self, _webtag: &WebTag) -> StdResult<()> {
         unsupported_operation("present_webview_in_active_group")
     }
@@ -450,6 +460,8 @@ pub struct WindowsChromePanelLayoutInput {
     pub position: WindowsPanelPosition,
     pub requested_size: Option<i32>,
     pub docked: bool,
+    /// Cover the host workspace without consuming main layout space.
+    pub overlay: bool,
     pub maximized: bool,
 }
 
@@ -789,6 +801,15 @@ pub fn show_webview_as_adaptive_panel(
     preferred_size: Option<i32>,
 ) -> StdResult<()> {
     backend()?.show_webview_as_adaptive_panel(webtag, title, panel_id, position, preferred_size)
+}
+
+pub fn show_webview_as_overlay_panel(
+    webtag: &WebTag,
+    title: &str,
+    panel_id: &str,
+    position: WindowsPanelPosition,
+) -> StdResult<()> {
+    backend()?.show_webview_as_overlay_panel(webtag, title, panel_id, position)
 }
 
 pub fn present_webview_in_active_group(webtag: &WebTag) -> StdResult<()> {

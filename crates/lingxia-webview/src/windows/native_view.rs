@@ -127,6 +127,10 @@ impl WindowsWebViewHandler {
         self.webview.inner.set_content_visible(visible)
     }
 
+    pub fn bring_content_to_front(&self) -> StdResult<()> {
+        self.webview.inner.bring_content_to_front()
+    }
+
     pub fn set_parent_window(&self, window: isize) -> StdResult<()> {
         self.webview.inner.set_parent_window(window)
     }
