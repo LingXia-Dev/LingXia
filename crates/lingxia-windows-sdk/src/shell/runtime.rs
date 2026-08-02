@@ -4071,11 +4071,18 @@ fn present_main_surface_inner(
     let result = crate::window_host::with_host_layout_batch(|| match content {
         lingxia_surface::SurfaceContent::Lxapp { app_id, path } => {
             clear_browser_presentation();
-            let app = lxapp::open_lxapp(
-                &app_id,
-                LxAppStartupOptions::new(path.as_deref().unwrap_or_default()),
-            )
-            .map_err(|error| error.to_string())?;
+            // A main switch is a focus operation for a live lxapp. Reopening it
+            // with its declaration path creates an initial-route WebView beside
+            // the retained navigation stack and can leave that stale generation
+            // intercepting the shell after the outgoing workspace closes.
+            let app = match lxapp::try_get(&app_id) {
+                Some(app) => app,
+                None => lxapp::open_lxapp(
+                    &app_id,
+                    LxAppStartupOptions::new(path.as_deref().unwrap_or_default()),
+                )
+                .map_err(|error| error.to_string())?,
+            };
             if !present_current_lxapp_main(&app) {
                 return Err(format!("lxapp main is not ready: {app_id}"));
             }
