@@ -57,7 +57,7 @@ App({
         label: "chat",
         onActivate: () => {
           void lx
-            .openSurface({ appId: "lingxia-chat", as: "aside" })
+            .openSurface({ surface: "lingxia-chat" })
             .catch((error) => console.warn("chat action failed", error));
         },
       },
