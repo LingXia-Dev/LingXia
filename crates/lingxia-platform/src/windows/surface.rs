@@ -756,17 +756,21 @@ fn window_dimension(value: f64) -> Option<i32> {
 }
 
 fn panel_position_for(edge: Option<Edge>, fallback_position: u8) -> WindowsPanelPosition {
+    match overlay_position_for(edge, fallback_position) {
+        2 => WindowsPanelPosition::Left,
+        4 => WindowsPanelPosition::Top,
+        1 => WindowsPanelPosition::Bottom,
+        _ => WindowsPanelPosition::Right,
+    }
+}
+
+fn overlay_position_for(edge: Option<Edge>, fallback_position: u8) -> u8 {
     match edge {
-        Some(Edge::Left) => WindowsPanelPosition::Left,
-        Some(Edge::Right) => WindowsPanelPosition::Right,
-        Some(Edge::Top) => WindowsPanelPosition::Top,
-        Some(Edge::Bottom) => WindowsPanelPosition::Bottom,
-        None => match fallback_position {
-            2 => WindowsPanelPosition::Left,
-            4 => WindowsPanelPosition::Top,
-            1 => WindowsPanelPosition::Bottom,
-            _ => WindowsPanelPosition::Right,
-        },
+        Some(Edge::Left) => 2,
+        Some(Edge::Right) => 3,
+        Some(Edge::Top) => 4,
+        Some(Edge::Bottom) => 1,
+        None => fallback_position,
     }
 }
 
@@ -842,7 +846,14 @@ fn sync_runtime_lxapp_asides(plan: &LayoutPresentationPlan) -> bool {
         let preferred_size = aside.and_then(|aside| aside.preferred_size);
         let result = if slot.overlay {
             let _ = hide_host_panel(ASIDE_LXAPP_PANEL_ID);
-            present_webview_in_active_group(&entry.webtag)
+            present_webview_as_overlay(
+                &entry.webtag,
+                0.0,
+                0.0,
+                1.0,
+                1.0,
+                overlay_position_for(edge, 3),
+            )
         } else {
             show_webview_as_adaptive_panel(
                 &entry.webtag,

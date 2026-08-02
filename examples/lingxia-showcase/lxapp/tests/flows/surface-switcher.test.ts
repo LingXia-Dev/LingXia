@@ -292,6 +292,18 @@ windowsHostTest('docks the footer Chat WebView physically beside the main after 
       slot.children.includes('lingxia-chat')
     ))?.overlay).toBeTruthy();
 
+    await waitForValue(async () => {
+      const windows = await desktop.windows();
+      return windows.find((window) => (
+        window.visible
+        && window.process.toLocaleLowerCase() === 'msedgewebview2'
+        && window.title === 'AI Chat'
+        && windowContains(host!, window)
+        && window.bounds.w > host!.bounds.w * 0.55
+        && window.bounds.h > host!.bounds.h * 0.55
+      ));
+    }, 'Chat WebView in the physical medium overlay');
+
     host = await desktop.window.resize({
       window: host.id,
       width: dockedWidth,
