@@ -998,11 +998,15 @@ export interface DesktopKeyTypeOptions extends DesktopInputTarget {
 }
 
 export interface DesktopKeyPressOptions extends DesktopInputTarget {
+  /** Case-insensitive named key (`Enter`, `ArrowDown`, `Down`, etc.) or one
+   * printable character. */
   key: string;
   modifiers?: KeyModifier[];
 }
 
 export interface DesktopKeyNameOptions extends DesktopInputTarget {
+  /** Case-insensitive named key (`Enter`, `ArrowDown`, `Down`, etc.) or one
+   * printable character. */
   key: string;
 }
 

@@ -229,10 +229,10 @@ fn key_vk(name: &str) -> Result<VIRTUAL_KEY> {
         "win" | "meta" | "cmd" | "command" => VK_LWIN,
         "capslock" => VK_CAPITAL,
         "insert" | "ins" => VK_INSERT,
-        "left" => VK_LEFT,
-        "right" => VK_RIGHT,
-        "up" => VK_UP,
-        "down" => VK_DOWN,
+        "left" | "arrowleft" => VK_LEFT,
+        "right" | "arrowright" => VK_RIGHT,
+        "up" | "arrowup" => VK_UP,
+        "down" | "arrowdown" => VK_DOWN,
         "home" => VK_HOME,
         "end" => VK_END,
         "pageup" => VK_PRIOR,
@@ -298,4 +298,18 @@ pub fn key_press(name: &str, mods: &[Modifier], target: Option<u32>) -> Result<A
     }
     result?;
     Ok(Ack::new("key.press"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::key_vk;
+    use windows::Win32::UI::Input::KeyboardAndMouse::{VK_DOWN, VK_LEFT, VK_RIGHT, VK_UP};
+
+    #[test]
+    fn accepts_dom_arrow_key_names() {
+        assert_eq!(key_vk("ArrowLeft").unwrap(), VK_LEFT);
+        assert_eq!(key_vk("ArrowRight").unwrap(), VK_RIGHT);
+        assert_eq!(key_vk("ArrowUp").unwrap(), VK_UP);
+        assert_eq!(key_vk("ArrowDown").unwrap(), VK_DOWN);
+    }
 }
