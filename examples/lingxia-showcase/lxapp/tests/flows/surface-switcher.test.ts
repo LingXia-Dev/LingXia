@@ -1,5 +1,6 @@
 import { expect, test } from '@rongjs/test';
 import type {
+  DesktopWindowInfo,
   LxAppDriver,
   SurfaceLayoutAsideSlot,
   SurfaceLayoutSnapshot,
@@ -22,6 +23,7 @@ const targetPlatform = (test.args as Record<string, string>).platform?.toLocaleL
 const desktopTest = targetPlatform && !['macos', 'windows'].includes(targetPlatform)
   ? test.skip
   : test;
+const windowsHostTest = targetPlatform === 'windows' ? test : test.skip;
 
 async function desktopApp(): Promise<LxAppDriver> {
   const app = lx.automation().lxapp();
@@ -72,6 +74,40 @@ function topology(layout: SurfaceLayoutSnapshot): unknown {
     floats: layout.floats,
     tree: layout.tree,
   };
+}
+
+function windowContains(outer: DesktopWindowInfo, inner: DesktopWindowInfo): boolean {
+  const tolerance = 8;
+  return inner.bounds.x >= outer.bounds.x - tolerance
+    && inner.bounds.y >= outer.bounds.y - tolerance
+    && inner.bounds.x + inner.bounds.w <= outer.bounds.x + outer.bounds.w + tolerance
+    && inner.bounds.y + inner.bounds.h <= outer.bounds.y + outer.bounds.h + tolerance;
+}
+
+function windowsHost(windows: DesktopWindowInfo[]): DesktopWindowInfo | undefined {
+  return windows
+    .filter((window) => (
+      window.visible
+      && window.title === 'LingXia'
+      && window.process.toLocaleLowerCase() !== 'msedgewebview2'
+    ))
+    .sort((left, right) => (
+      right.bounds.w * right.bounds.h - left.bounds.w * left.bounds.h
+    ))[0];
+}
+
+async function waitForValue<T>(
+  read: () => Promise<T | undefined>,
+  label: string,
+  timeoutMs = 10_000,
+): Promise<T> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const value = await read();
+    if (value !== undefined) return value;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  throw new Error(`${label} was not observed within ${timeoutMs}ms`);
 }
 
 desktopTest('projects the declared terminal aside and restores its baseline state', async () => {
@@ -157,6 +193,103 @@ desktopTest('projects the declared terminal aside and restores its baseline stat
     { id: result.id, kind: 'overlay', source: 'opener' },
   ]);
   expect(topology(result.afterCleanup)).toEqual(topology(before));
+});
+
+windowsHostTest('docks the footer Chat WebView physically beside the main after resize', async () => {
+  const app = await desktopApp();
+  const automation = lx.automation();
+  const desktop = automation.desktop;
+  const doctor = await desktop.doctor();
+  expect(doctor.capabilities.windows).toBeTruthy();
+  expect(doctor.capabilities.pointer).toBeTruthy();
+  expect(doctor.capabilities.window_management).toBeTruthy();
+
+  let host = windowsHost(await desktop.windows());
+  if (!host) throw new Error('visible LingXia host window was not found');
+  const originalBounds = { ...host.bounds };
+  let chatOpened = false;
+  try {
+    host = await desktop.window.resize({ window: host.id, width: 1024, height: 768 });
+    await desktop.window.focus({ window: host.id });
+
+    const baseline = await app.surfaceLayout();
+    expect(containsSurface(baseline, 'lingxia-chat')).toBeFalsy();
+
+    // Exercise the real native footer action. Its first cell is anchored to
+    // the lower-left of the fixed desktop sidebar; use host-relative geometry
+    // so the assertion is independent of monitor origin and DPI.
+    await desktop.pointer.click({
+      at: [host.bounds.x + 50, host.bounds.y + host.bounds.h - 54],
+    });
+    chatOpened = true;
+
+    const overlayLayout = await waitForValue(async () => {
+      const layout = await app.surfaceLayout();
+      return layout.asideSlots.some((slot) => (
+        slot.visible && slot.activeChild === 'lingxia-chat'
+      )) ? layout : undefined;
+    }, 'footer Chat aside');
+    expect(overlayLayout.activeMainId).toBe('lingxia-showcase');
+    expect(overlayLayout.mains.includes('lingxia-chat')).toBeFalsy();
+    expect(switcherIds(overlayLayout).includes('lingxia-chat')).toBeFalsy();
+    expect(overlayLayout.asideSlots.find((slot) => (
+      slot.children.includes('lingxia-chat')
+    ))?.overlay).toBeTruthy();
+
+    host = await desktop.window.resize({ window: host.id, width: 1440, height: 900 });
+    const dockedLayout = await waitForValue(async () => {
+      const layout = await app.surfaceLayout();
+      const slot = layout.asideSlots.find((candidate) => (
+        candidate.children.includes('lingxia-chat')
+      ));
+      return layout.sizeClass === 'expanded' && slot?.visible && !slot.overlay
+        ? layout
+        : undefined;
+    }, 'expanded docked Chat layout');
+    expect(dockedLayout.activeMainId).toBe('lingxia-showcase');
+
+    const chatWindow = await waitForValue(async () => {
+      const windows = await desktop.windows();
+      return windows.find((window) => (
+        window.visible
+        && window.process.toLocaleLowerCase() === 'msedgewebview2'
+        && window.title === 'AI Chat'
+        && windowContains(host!, window)
+        && window.bounds.x > host!.bounds.x + host!.bounds.w * 0.55
+        && window.bounds.w < host!.bounds.w * 0.45
+      ));
+    }, 'Chat WebView in the physical right aside');
+
+    const visibleMain = (await desktop.windows()).find((window) => (
+      window.visible
+      && window.process.toLocaleLowerCase() === 'msedgewebview2'
+      && window.id !== chatWindow.id
+      && windowContains(host!, window)
+      && window.bounds.x < chatWindow.bounds.x
+      && window.bounds.w > 0
+      && window.bounds.h > 0
+    ));
+    expect(Boolean(visibleMain)).toBeTruthy();
+
+    const capture = await automation.lxapps.screenshot();
+    expect(capture.width >= host.bounds.w - 2).toBeTruthy();
+    expect(capture.height >= host.bounds.h - 2).toBeTruthy();
+  } finally {
+    if (chatOpened) {
+      await app.eval({
+        timeoutMs: 20_000,
+        script: `
+          const chat = await lx.openSurface({ surface: 'lingxia-chat' });
+          if (chat.alive) await chat.close();
+        `,
+      });
+    }
+    await desktop.window.resize({
+      window: host.id,
+      width: originalBounds.w,
+      height: originalBounds.h,
+    });
+  }
 });
 
 desktopTest('rejects stable-root mutations without changing the host model', async () => {
