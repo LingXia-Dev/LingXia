@@ -4220,23 +4220,44 @@ fn handle_lxapp_auxiliary_close(owner_appid: &str, target_appid: &str) {
     sync_shell_layout(owner_appid);
 }
 
+fn lxapp_shortcut_region(
+    current: Option<lxapp::LxAppOpenRegion>,
+    has_declared_aside: bool,
+) -> lxapp::LxAppOpenRegion {
+    current.unwrap_or(if has_declared_aside {
+        lxapp::LxAppOpenRegion::Aside
+    } else {
+        lxapp::LxAppOpenRegion::Main
+    })
+}
+
 fn focus_or_open_lxapp(owner_appid: &str, target_appid: &str) {
-    match lxapp::open_region(target_appid) {
-        Some(lxapp::LxAppOpenRegion::Main) => {
+    let current_region = lxapp::open_region(target_appid);
+    let configured_aside = panel_item_for_lxapp(target_appid);
+    match lxapp_shortcut_region(current_region, configured_aside.is_some()) {
+        lxapp::LxAppOpenRegion::Main => {
             clear_browser_presentation();
-            focus_existing_main_lxapp(target_appid);
+            if current_region.is_some() {
+                focus_existing_main_lxapp(target_appid);
+            } else {
+                match lxapp::open_lxapp(target_appid, LxAppStartupOptions::default()) {
+                    Ok(target) => target.set_active_main(),
+                    Err(err) => log::warn!("failed to open pinned lxapp {target_appid}: {err}"),
+                }
+            }
         }
-        Some(lxapp::LxAppOpenRegion::Aside) => {
-            let configured = panel_item_for_lxapp(target_appid);
-            let surface_id = configured
+        lxapp::LxAppOpenRegion::Aside => {
+            let surface_id = configured_aside
                 .as_ref()
                 .map(|(panel_id, _, _)| panel_id.as_str())
                 .unwrap_or(target_appid);
-            if shell_surface_in_graph(surface_id) {
+            if current_region == Some(lxapp::LxAppOpenRegion::Aside)
+                && shell_surface_in_graph(surface_id)
+            {
                 if let Some(owner) = lxapp::try_get(owner_appid) {
                     owner.focus_shell_surface(surface_id);
                 }
-            } else if let Some((panel_id, path, position)) = configured {
+            } else if let Some((panel_id, path, position)) = configured_aside {
                 let _ = show_lxapp_panel(
                     owner_appid,
                     &panel_id,
@@ -4254,13 +4275,6 @@ fn focus_or_open_lxapp(owner_appid: &str, target_appid: &str) {
                     target_appid,
                     lingxia_app_context::PanelPosition::Right,
                 );
-            }
-        }
-        None => {
-            clear_browser_presentation();
-            match lxapp::open_lxapp(target_appid, LxAppStartupOptions::default()) {
-                Ok(target) => target.set_active_main(),
-                Err(err) => log::warn!("failed to open pinned lxapp {target_appid}: {err}"),
             }
         }
     }
@@ -6216,7 +6230,7 @@ mod tests {
     use super::{
         LxappContextMenuAction, PresentationCompletion, browser_internal_page_deep_link,
         browser_internal_page_key, browser_url_is_hidden, build_lxapp_context_menu, chrome_command,
-        chrome_command_is_page_scoped, preferred_sidebar_group_appid,
+        chrome_command_is_page_scoped, lxapp_shortcut_region, preferred_sidebar_group_appid,
     };
     #[cfg(feature = "browser-runtime")]
     use super::{
@@ -6335,6 +6349,16 @@ mod tests {
             preferred_sidebar_group_appid(None, None, Some("app-b".to_string())).as_deref(),
             Some("app-b")
         );
+    }
+
+    #[test]
+    fn unopened_declared_aside_shortcut_does_not_fall_back_to_main() {
+        use lxapp::LxAppOpenRegion::{Aside, Main};
+
+        assert_eq!(lxapp_shortcut_region(None, true), Aside);
+        assert_eq!(lxapp_shortcut_region(None, false), Main);
+        assert_eq!(lxapp_shortcut_region(Some(Main), true), Main);
+        assert_eq!(lxapp_shortcut_region(Some(Aside), false), Aside);
     }
 
     #[test]

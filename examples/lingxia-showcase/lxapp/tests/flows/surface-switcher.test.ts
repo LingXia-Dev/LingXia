@@ -1,5 +1,6 @@
 import { expect, test } from '@rongjs/test';
 import type {
+  AutomationShellPin,
   DesktopWindowInfo,
   LxAppDriver,
   SurfaceLayoutAsideSlot,
@@ -94,6 +95,49 @@ function windowsHost(windows: DesktopWindowInfo[]): DesktopWindowInfo | undefine
     .sort((left, right) => (
       right.bounds.w * right.bounds.h - left.bounds.w * left.bounds.h
     ))[0];
+}
+
+function samePin(left: AutomationShellPin, right: AutomationShellPin): boolean {
+  return left.kind === right.kind && left.key === right.key;
+}
+
+function pinnedShortcutPoint(
+  host: DesktopWindowInfo,
+  index: number,
+): [number, number] {
+  const tile = 36;
+  const gap = 5;
+  const columns = 4;
+  const sidebarWidth = 184;
+  const gridWidth = columns * tile + (columns - 1) * gap;
+  const gridLeft = Math.floor((sidebarWidth - gridWidth) / 2);
+  const row = Math.floor(index / columns);
+  const column = index % columns;
+  return [
+    host.bounds.x + gridLeft + column * (tile + gap) + tile / 2,
+    host.bounds.y + 32 + row * (tile + gap) + tile / 2,
+  ];
+}
+
+function showcaseHomePagePoint(
+  host: DesktopWindowInfo,
+  pinCount: number,
+): [number, number] {
+  const pinRows = Math.ceil(pinCount / 4);
+  const pinnedGridHeight = pinRows * (36 + 5);
+  const topBarHeight = 32;
+  const groupHeight = 36;
+  const parentChildGap = 1;
+  const childHeight = 28;
+  return [
+    host.bounds.x + 84,
+    host.bounds.y
+      + topBarHeight
+      + pinnedGridHeight
+      + groupHeight
+      + parentChildGap
+      + childHeight / 2,
+  ];
 }
 
 async function waitForValue<T>(
@@ -305,6 +349,158 @@ windowsHostTest('docks the footer Chat WebView physically beside the main after 
       width: originalBounds.w,
       height: originalBounds.h,
     });
+  }
+});
+
+windowsHostTest('opens a pinned declared lxapp as a physical aside and keeps its menu live', async () => {
+  const app = await desktopApp();
+  const automation = lx.automation();
+  const desktop = automation.desktop;
+  const shell = automation.shell;
+  const targetPin = { kind: 'lxapp', key: 'lingxia-chat' } as const;
+  const initialPins = await shell.pins();
+  const initiallyPinned = initialPins.some((pin) => samePin(pin, targetPin));
+  if (!initiallyPinned && initialPins.length >= 8) {
+    throw new Error('pinned lxapp gate requires one free Pin slot');
+  }
+
+  let host = windowsHost(await desktop.windows());
+  if (!host) throw new Error('visible LingXia host window was not found');
+  const originalBounds = { ...host.bounds };
+  const originalPage = (await app.info()).current_page;
+  const originalPageName = (await app.pages()).find((page) => (
+    originalPage?.startsWith(page.path)
+  ))?.name;
+  const dockedWidth = Math.round(1_200 * host.scale);
+  let chatOpened = false;
+  try {
+    await app.eval({
+      timeoutMs: 20_000,
+      script: `
+        const driver = lx.automation().lxapp();
+        const layout = await driver.surfaceLayout();
+        const present = layout.mains.includes('lingxia-chat')
+          || layout.asideSlots.some((slot) => slot.children.includes('lingxia-chat'))
+          || layout.floats.some((surface) => surface.id === 'lingxia-chat');
+        if (present) {
+          const chat = await lx.openSurface({ surface: 'lingxia-chat' });
+          if (chat.alive) await chat.close();
+        }
+      `,
+    });
+    await waitForValue(async () => (
+      containsSurface(await app.surfaceLayout(), 'lingxia-chat') ? undefined : true
+    ), 'closed Chat baseline');
+    await app.nav.switchTab({ page: 'todo' });
+
+    const pins = await shell.setPin({ ...targetPin, pinned: true });
+    const pinIndex = pins.findIndex((pin) => samePin(pin, targetPin));
+    expect(pinIndex >= 0).toBeTruthy();
+
+    host = await desktop.window.resize({
+      window: host.id,
+      width: dockedWidth,
+      height: 900,
+    });
+    await desktop.window.focus({ window: host.id });
+    const pinPoint = pinnedShortcutPoint(host, pinIndex);
+    await desktop.pointer.click({ at: pinPoint });
+    chatOpened = true;
+
+    const layout = await waitForValue(async () => {
+      const candidate = await app.surfaceLayout();
+      const slot = candidate.asideSlots.find((item) => (
+        item.activeChild === 'lingxia-chat' && item.visible && !item.overlay
+      ));
+      return candidate.sizeClass === 'expanded' && slot ? candidate : undefined;
+    }, 'pinned Chat declared aside');
+    expect(layout.activeMainId).toBe('lingxia-showcase');
+    expect(layout.mains.includes('lingxia-chat')).toBeFalsy();
+    expect(switcherIds(layout).includes('lingxia-chat')).toBeFalsy();
+
+    await waitForValue(async () => {
+      const windows = await desktop.windows();
+      return windows.find((window) => (
+        window.visible
+        && window.process.toLocaleLowerCase() === 'msedgewebview2'
+        && window.title === 'AI Chat'
+        && windowContains(host!, window)
+        && window.bounds.x > host!.bounds.x + host!.bounds.w * 0.55
+        && window.bounds.w < host!.bounds.w * 0.45
+      ));
+    }, 'pinned Chat WebView in the physical right aside');
+
+    const windowsBeforeMenu = await desktop.windows();
+    const existingWindowIds = new Set(windowsBeforeMenu.map((window) => window.id));
+    await desktop.pointer.click({ at: pinPoint, button: 'right' });
+    const menu = await waitForValue(async () => (
+      (await desktop.windows()).find((window) => (
+        window.visible
+        && !existingWindowIds.has(window.id)
+        && window.process.toLocaleLowerCase() === host!.process.toLocaleLowerCase()
+        && window.title === ''
+        && Math.abs(window.bounds.x - pinPoint[0]) <= 8
+        && Math.abs(window.bounds.y - pinPoint[1]) <= 8
+        && window.bounds.w > 0
+        && window.bounds.w < host!.bounds.w
+        && window.bounds.h > 0
+        && window.bounds.h < host!.bounds.h
+      ))
+    ), 'native pinned Chat context menu');
+    if (initiallyPinned) {
+      await desktop.key.press({ key: 'Escape' });
+    } else {
+      // The informational header is disabled, so ArrowDown selects Unpin
+      // regardless of display language. Enter proves the real native menu
+      // opened and dispatched its command rather than merely hit-testing.
+      await desktop.key.press({ key: 'ArrowDown' });
+      await desktop.key.press({ key: 'Enter' });
+      await waitForValue(async () => (
+        (await shell.pins()).some((pin) => samePin(pin, targetPin)) ? undefined : true
+      ), 'pinned Chat context-menu Unpin');
+    }
+    await waitForValue(async () => (
+      (await desktop.windows()).some((window) => window.id === menu.id) ? undefined : true
+    ), 'dismissed pinned Chat context menu');
+
+    const pinsAfterMenu = await shell.pins();
+    await desktop.pointer.click({
+      at: showcaseHomePagePoint(host, pinsAfterMenu.length),
+    });
+    await waitForValue(async () => (
+      (await app.info()).current_page?.startsWith('pages/home/index') ? true : undefined
+    ), 'responsive sidebar after pinned Chat context menu');
+    const afterSidebarClick = await app.surfaceLayout();
+    expect(afterSidebarClick.activeMainId).toBe('lingxia-showcase');
+    expect(afterSidebarClick.asideSlots.some((slot) => (
+      slot.activeChild === 'lingxia-chat' && slot.visible
+    ))).toBeTruthy();
+  } finally {
+    await desktop.key.press({ key: 'Escape' }).catch(() => undefined);
+    if (chatOpened) {
+      await app.eval({
+        timeoutMs: 20_000,
+        script: `
+          const layout = await lx.automation().lxapp().surfaceLayout();
+          const present = layout.mains.includes('lingxia-chat')
+            || layout.asideSlots.some((slot) => slot.children.includes('lingxia-chat'))
+            || layout.floats.some((surface) => surface.id === 'lingxia-chat');
+          if (present) {
+            const chat = await lx.openSurface({ surface: 'lingxia-chat' });
+            if (chat.alive) await chat.close();
+          }
+        `,
+      });
+    }
+    await shell.setPin({ ...targetPin, pinned: initiallyPinned });
+    await desktop.window.resize({
+      window: host.id,
+      width: originalBounds.w,
+      height: originalBounds.h,
+    });
+    if (originalPageName) {
+      await app.nav.relaunch({ page: originalPageName });
+    }
   }
 });
 
