@@ -31,7 +31,14 @@ struct ClosedRegistration {
 }
 
 static SURFACE_CLOSED: OnceLock<Mutex<HashMap<String, Vec<ClosedRegistration>>>> = OnceLock::new();
-static SURFACE_VISIBILITY: OnceLock<Mutex<HashMap<String, Vec<mpsc::UnboundedSender<bool>>>>> =
+struct VisibilityRegistration {
+    sender: mpsc::UnboundedSender<bool>,
+    // Suppress delayed native echoes that would otherwise replay an older
+    // visibility state after a newer opener-driven transition.
+    last_visible: bool,
+}
+
+static SURFACE_VISIBILITY: OnceLock<Mutex<HashMap<String, Vec<VisibilityRegistration>>>> =
     OnceLock::new();
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -1188,7 +1195,7 @@ fn managed_surface_handle(
     })?;
 
     let (visibility_tx, mut visibility_rx) = mpsc::unbounded();
-    register_visibility_sender(id, visibility_tx);
+    register_visibility_sender(id, visible, visibility_tx);
     let handle_for_visibility = handle.clone();
     Promise::from_future(ctx, None, async move {
         while let Some(visible) = visibility_rx.next().await {
@@ -1758,6 +1765,7 @@ fn mark_visible(surface: &JSObject, visible: bool, source: &str) -> JSResult<()>
         return Ok(());
     }
     surface.set("visible", visible)?;
+    record_surface_visibility(&id, visible);
     emit_visibility(surface, &id, &kind, visible, source)?;
     if let Some(peer_obj) = peer {
         let peer_changed = {
@@ -1880,12 +1888,26 @@ pub(crate) fn notify_surface_visibility(id: &str, visible: bool) -> bool {
     let Some(senders) = registrations.get_mut(id) else {
         return false;
     };
-    senders.retain(|sender| sender.unbounded_send(visible).is_ok());
+    let mut notified = false;
+    senders.retain_mut(|registration| {
+        if registration.sender.is_closed() {
+            return false;
+        }
+        if registration.last_visible == visible {
+            return true;
+        }
+        if registration.sender.unbounded_send(visible).is_err() {
+            return false;
+        }
+        registration.last_visible = visible;
+        notified = true;
+        true
+    });
     if senders.is_empty() {
         registrations.remove(id);
         return false;
     }
-    true
+    notified
 }
 
 fn register_closed_sender(id: String, kind: String, sender: oneshot::Sender<JSSurfaceClosed>) {
@@ -1911,14 +1933,29 @@ fn update_closed_registration_kind(id: &str, kind: &str) {
     }
 }
 
-fn register_visibility_sender(id: String, sender: mpsc::UnboundedSender<bool>) {
+fn register_visibility_sender(id: String, visible: bool, sender: mpsc::UnboundedSender<bool>) {
     if let Ok(mut guard) = SURFACE_VISIBILITY
         .get_or_init(|| Mutex::new(HashMap::new()))
         .lock()
     {
         let registrations = guard.entry(id).or_default();
-        registrations.retain(|registration| !registration.is_closed());
-        registrations.push(sender);
+        registrations.retain(|registration| !registration.sender.is_closed());
+        registrations.push(VisibilityRegistration {
+            sender,
+            last_visible: visible,
+        });
+    }
+}
+
+fn record_surface_visibility(id: &str, visible: bool) {
+    if let Ok(mut guard) = SURFACE_VISIBILITY
+        .get_or_init(|| Mutex::new(HashMap::new()))
+        .lock()
+        && let Some(registrations) = guard.get_mut(id)
+    {
+        for registration in registrations {
+            registration.last_visible = visible;
+        }
     }
 }
 
@@ -2608,8 +2645,8 @@ mod tests {
         let current = "test:managed-main-current";
         let (previous_tx, mut previous_rx) = mpsc::unbounded();
         let (current_tx, mut current_rx) = mpsc::unbounded();
-        register_visibility_sender(previous.to_string(), previous_tx);
-        register_visibility_sender(current.to_string(), current_tx);
+        register_visibility_sender(previous.to_string(), true, previous_tx);
+        register_visibility_sender(current.to_string(), false, current_tx);
 
         assert!(notify_active_main_changed(Some(previous), Some(current)));
         assert_eq!(previous_rx.next().now_or_never().flatten(), Some(false));
@@ -2617,5 +2654,26 @@ mod tests {
 
         let _ = notify_surface_closed(previous, "user");
         let _ = notify_surface_closed(current, "user");
+    }
+
+    #[test]
+    fn visibility_publication_skips_an_already_observed_state() {
+        use futures::FutureExt;
+
+        let surface_id = "test:managed-visibility-dedup";
+        let (tx, mut rx) = mpsc::unbounded();
+        register_visibility_sender(surface_id.to_string(), true, tx);
+
+        assert!(!notify_surface_visibility(surface_id, true));
+        assert_eq!(rx.next().now_or_never(), None);
+
+        assert!(notify_surface_visibility(surface_id, false));
+        assert_eq!(rx.next().now_or_never().flatten(), Some(false));
+
+        record_surface_visibility(surface_id, true);
+        assert!(!notify_surface_visibility(surface_id, true));
+        assert_eq!(rx.next().now_or_never(), None);
+
+        let _ = notify_surface_closed(surface_id, "user");
     }
 }
