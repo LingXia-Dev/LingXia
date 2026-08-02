@@ -2704,7 +2704,7 @@ fn sync_window_layout(hwnd: HWND) {
     };
     sync_webtag_content_bounds(hwnd, &webtag_key);
 
-    let mut visible_webtags = HashSet::from([webtag_key.clone()]);
+    let mut visible_webtags = HashSet::new();
     let mut client = RECT::default();
     unsafe {
         let _ = WindowsAndMessaging::GetClientRect(hwnd, &mut client);
@@ -2729,6 +2729,15 @@ fn sync_window_layout(hwnd: HWND) {
             native_panel_takes_focus = true;
             collapse_obscured_webview_panels(hwnd, &laid_out_panels);
         }
+    }
+    // Adaptive overlays occupy the complete workspace card. Keeping the main
+    // controller visible underneath is unsafe on windowed WebView2: its public
+    // controller API cannot establish sibling HWND z-order, so the visually
+    // covered main can still win hit-testing. Hide it while the overlay is
+    // present; the next docked/no-overlay pass restores it through the same
+    // visibility reconciliation.
+    if overlay_webtags.is_empty() {
+        visible_webtags.insert(webtag_key.clone());
     }
     reconcile_host_webview_visibility(hwnd, &visible_webtags);
     for overlay_webtag in overlay_webtags {
@@ -4546,13 +4555,14 @@ fn reconcile_host_webview_visibility(hwnd: HWND, visible_webtags: &HashSet<Strin
     }
 
     // WebView2 controller visibility changes are not atomic across
-    // controllers. Showing incoming surfaces first avoids exposing the host
-    // background for a frame during host/child surface transitions.
-    for (key, handler) in to_show {
-        show_reconciled_webview(&key, &handler);
-    }
+    // controllers. Retire outgoing content first: a short shell-background
+    // frame is preferable to leaking stale page pixels through the incoming
+    // controller's rounded edges or letting the outgoing HWND intercept input.
     for (key, handler) in to_hide {
         hide_reconciled_webview(&key, &handler);
+    }
+    for (key, handler) in to_show {
+        show_reconciled_webview(&key, &handler);
     }
 }
 
