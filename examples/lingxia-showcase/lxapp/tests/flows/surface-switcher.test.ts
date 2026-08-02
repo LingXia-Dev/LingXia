@@ -263,6 +263,23 @@ async function attachDesktopFailure(
   }
 }
 
+async function surfaceFailureDiagnostics(
+  app: LxAppDriver,
+  desktop: DesktopDriver,
+  host: DesktopWindowInfo,
+): Promise<string> {
+  const [layout, info, lxapps, windows] = await Promise.all([
+    app.surfaceLayout().catch((error) => ({ error: String(error) })),
+    app.info().catch((error) => ({ error: String(error) })),
+    lx.automation().lxapps.list().catch((error) => [{ error: String(error) }]),
+    desktop.windows().catch((error) => [{ error: String(error) }]),
+  ]);
+  const visibleWindows = Array.isArray(windows)
+    ? windows.filter((window) => ('visible' in window ? window.visible : true))
+    : windows;
+  return JSON.stringify({ layout, info, lxapps, visibleWindows, host });
+}
+
 function samePin(left: AutomationShellPin, right: AutomationShellPin): boolean {
   return left.kind === right.kind && left.key === right.key;
 }
@@ -283,6 +300,92 @@ function pinnedShortcutPoint(
     host.bounds.x + gridLeft + column * (tile + gap) + tile / 2,
     host.bounds.y + 32 + row * (tile + gap) + tile / 2,
   ];
+}
+
+function firstLxappWorkspacePoint(
+  host: DesktopWindowInfo,
+  pinCount: number,
+  rootPageCount: number,
+): [number, number] {
+  const pinRows = Math.ceil(pinCount / 4);
+  const pinnedGridHeight = pinRows * (36 + 5);
+  const topBarHeight = 32;
+  const groupHeight = 36;
+  const parentChildGap = 1;
+  const childHeight = 28;
+  const topLevelGap = 4;
+  const rowHeight = 36;
+  return [
+    host.bounds.x + 84,
+    host.bounds.y
+      + topBarHeight
+      + pinnedGridHeight
+      + groupHeight
+      + parentChildGap
+      + rootPageCount * childHeight
+      + topLevelGap
+      + rowHeight / 2,
+  ];
+}
+
+function firstLxappWorkspaceMenuRegion(
+  host: DesktopWindowInfo,
+  pinCount: number,
+  rootPageCount: number,
+): [number, number, number, number] {
+  const sidebarWidth = 184;
+  const itemInset = 8;
+  const trailingControlWidth = 22;
+  const [, centerY] = firstLxappWorkspacePoint(host, pinCount, rootPageCount);
+  return [
+    host.bounds.x + sidebarWidth - itemInset - trailingControlWidth * 2,
+    centerY - 18,
+    trailingControlWidth,
+    36,
+  ];
+}
+
+function regionCenter(region: [number, number, number, number]): [number, number] {
+  return [region[0] + region[2] / 2, region[1] + region[3] / 2];
+}
+
+async function resizeHostOnScreen(
+  desktop: DesktopDriver,
+  host: DesktopWindowInfo,
+  width: number,
+  height: number,
+): Promise<DesktopWindowInfo> {
+  const display = (await desktop.displays()).find((candidate) => (
+    candidate.id === host.display_id
+  ));
+  if (!display) throw new Error(`display ${host.display_id} was not found`);
+  const fittedWidth = Math.min(width, display.work_area.w);
+  const fittedHeight = Math.min(height, display.work_area.h);
+  await desktop.window.moveTo({
+    window: host.id,
+    to: [display.work_area.x, display.work_area.y],
+  });
+  return desktop.window.resize({
+    window: host.id,
+    width: fittedWidth,
+    height: fittedHeight,
+  });
+}
+
+async function restoreHostBounds(
+  desktop: DesktopDriver,
+  window: string,
+  bounds: DesktopWindowInfo['bounds'],
+): Promise<void> {
+  await desktop.window.resize({
+    window,
+    width: bounds.w,
+    height: bounds.h,
+  });
+  await desktop.window.moveTo({
+    window,
+    to: [bounds.x, bounds.y],
+  });
 }
 
 function showcaseHomePagePoint(
@@ -342,6 +445,27 @@ async function waitForDesktopWindow(
     }));
     throw new Error(`${String(error)}; visible windows: ${JSON.stringify(visible)}`);
   }
+}
+
+async function ensureHostForeground(
+  desktop: DesktopDriver,
+  host: DesktopWindowInfo,
+): Promise<DesktopWindowInfo> {
+  const current = (await desktop.windows()).find((window) => window.id === host.id);
+  if (current?.focused) return current;
+
+  // Windows can report a foreground-lock failure even after the requested
+  // window became foreground. Treat the observed desktop state as authority;
+  // never continue with physical input while another app is actually focused.
+  await desktop.window.focus({ window: host.id }).catch(async (error) => {
+    const observed = (await desktop.windows()).find((window) => window.id === host.id);
+    if (!observed?.focused) throw error;
+  });
+  return waitForDesktopWindow(
+    () => desktop.windows(),
+    (windows) => windows.find((window) => window.id === host.id && window.focused),
+    'foreground LingXia host for physical input',
+  );
 }
 
 async function closeChatSurface(app: LxAppDriver): Promise<void> {
@@ -461,24 +585,55 @@ windowsHostTest('docks the footer Chat WebView physically beside the main after 
   const dockedWidth = Math.round(1_200 * host.scale);
   let chatOpened = false;
   try {
+    // Capture the root at the same expanded geometry used after the adaptive
+    // aside closes. Comparing against a medium-width baseline would accept or
+    // reject the wrong content rectangle merely because the sidebar changed
+    // form during the resize.
+    host = await resizeHostOnScreen(desktop, host, dockedWidth, 900);
+    await waitForValue(async () => {
+      const candidate = await app.surfaceLayout();
+      return candidate.sizeClass === 'expanded'
+        && !containsSurface(candidate, 'lingxia-chat')
+        ? candidate
+        : undefined;
+    }, 'expanded root baseline');
+    const expandedBaselineMain = await waitForDesktopWindow(
+      () => desktop.windows(),
+      (windows) => {
+        const visible = visibleHostWebViews(host!, windows);
+        return visible.length === 1 ? visible[0] : undefined;
+      },
+      'expanded physical root baseline',
+    );
+
     // Window bounds are physical pixels while surface breakpoints are DIPs.
     // Target explicit logical widths so this covers the same medium/expanded
     // handoff at every runner DPI.
-    host = await desktop.window.resize({
-      window: host.id,
-      width: overlayWidth,
-      height: 768,
-    });
-    await desktop.window.focus({ window: host.id });
+    host = await resizeHostOnScreen(desktop, host, overlayWidth, 768);
 
-    const baseline = await app.surfaceLayout();
-    expect(containsSurface(baseline, 'lingxia-chat')).toBeFalsy();
-    const baselineWindows = await desktop.windows();
+    await waitForValue(async () => {
+      const candidate = await app.surfaceLayout();
+      return candidate.sizeClass === 'medium'
+        && !containsSurface(candidate, 'lingxia-chat')
+        ? candidate
+        : undefined;
+    }, 'medium root baseline');
+    const baselineWindows = await waitForValue(async () => {
+      const candidate = await desktop.windows();
+      const workspaceHosts = visibleWorkspaceHosts(host!, candidate);
+      const webViews = visibleHostWebViews(host!, candidate);
+      return workspaceHosts.length === 1
+        && workspaceHosts[0].id === host!.id
+        && webViews.length === 1
+        ? candidate
+        : undefined;
+    }, 'medium physical root baseline');
     expectSingleWorkspaceHost(host, baselineWindows);
     const baselineWebViews = visibleHostWebViews(host, baselineWindows);
     expect(baselineWebViews.length).toBe(1);
     const baselineMain = baselineWebViews[0];
     const baselineWebViewIds = new Set(baselineWebViews.map((window) => window.id));
+    host = await ensureHostForeground(desktop, host);
 
     // Exercise the real native footer action. Its first cell is anchored to
     // the lower-left of the fixed desktop sidebar; use host-relative geometry
@@ -554,13 +709,6 @@ windowsHostTest('docks the footer Chat WebView physically beside the main after 
     ];
     const inputMarker = 'physical-overlay-front';
     await desktop.pointer.click({ at: inputPoint });
-    await waitForValue(async () => {
-      const focused = await chatApp.page.eval({
-        page: 'chat',
-        script: `document.activeElement?.matches('textarea[placeholder="Message..."]') === true`,
-      });
-      return focused === true ? true : undefined;
-    }, 'desktop click focused the Chat overlay input');
     await desktop.key.type({ text: inputMarker });
     await waitForValue(async () => {
       const candidate = await chatApp.page.query({
@@ -575,11 +723,7 @@ windowsHostTest('docks the footer Chat WebView physically beside the main after 
       text: '',
     });
 
-    host = await desktop.window.resize({
-      window: host.id,
-      width: dockedWidth,
-      height: 900,
-    });
+    host = await resizeHostOnScreen(desktop, host, dockedWidth, 900);
     const dockedLayout = await waitForValue(async () => {
       const layout = await app.surfaceLayout();
       const slot = layout.asideSlots.find((candidate) => (
@@ -601,12 +745,16 @@ windowsHostTest('docks the footer Chat WebView physically beside the main after 
       'Chat WebView in the physical right aside',
     );
 
+    const visibleMain = await waitForDesktopWindow(
+      () => desktop.windows(),
+      (windows) => visibleHostWebViews(host!, windows).find((window) => (
+        baselineWebViewIds.has(window.id)
+        && window.bounds.x < chatWindow.bounds.x
+      )),
+      'root main physically restored beside docked Chat',
+    );
     const dockedWindows = await desktop.windows();
-    const visibleMain = visibleHostWebViews(host, dockedWindows).find((window) => (
-      baselineWebViewIds.has(window.id)
-      && window.bounds.x < chatWindow.bounds.x
-    ));
-    expect(Boolean(visibleMain)).toBeTruthy();
+    expect(visibleMain.bounds.x < chatWindow.bounds.x).toBeTruthy();
     expectSingleWorkspaceHost(host, dockedWindows);
 
     const capture = await automation.lxapps.screenshot();
@@ -630,13 +778,14 @@ windowsHostTest('docks the footer Chat WebView physically beside the main after 
     );
     await expectExactMainPresentation(
       host,
-      baselineMain,
+      expandedBaselineMain,
       restoredMain,
       () => desktop.windows(),
     );
   } catch (error) {
     await attachDesktopFailure('surface-overlay-failure', desktop, host);
-    throw error;
+    const diagnostics = await surfaceFailureDiagnostics(app, desktop, host);
+    throw new Error(`${String(error)}; diagnostics: ${diagnostics}`);
   } finally {
     if (chatOpened) {
       await app.eval({
@@ -647,15 +796,11 @@ windowsHostTest('docks the footer Chat WebView physically beside the main after 
         `,
       });
     }
-    await desktop.window.resize({
-      window: host.id,
-      width: originalBounds.w,
-      height: originalBounds.h,
-    });
+    await restoreHostBounds(desktop, host.id, originalBounds);
   }
 });
 
-windowsHostTest('opens a pinned lxapp as an exact main workspace and keeps its menu live', async () => {
+windowsHostTest('projects a pinned lxapp into a controllable sidebar workspace without content tabs', async () => {
   const app = await desktopApp();
   const automation = lx.automation();
   const desktop = automation.desktop;
@@ -686,12 +831,7 @@ windowsHostTest('opens a pinned lxapp as an exact main workspace and keeps its m
     const pinIndex = pins.findIndex((pin) => samePin(pin, targetPin));
     expect(pinIndex >= 0).toBeTruthy();
 
-    host = await desktop.window.resize({
-      window: host.id,
-      width: dockedWidth,
-      height: 900,
-    });
-    await desktop.window.focus({ window: host.id });
+    host = await resizeHostOnScreen(desktop, host, dockedWidth, 900);
     await waitForValue(async () => {
       const candidate = await app.surfaceLayout();
       return candidate.sizeClass === 'expanded'
@@ -699,6 +839,7 @@ windowsHostTest('opens a pinned lxapp as an exact main workspace and keeps its m
         ? candidate
         : undefined;
     }, 'expanded main baseline');
+    host = await ensureHostForeground(desktop, host);
 
     const baselineMain = await waitForDesktopWindow(
       () => desktop.windows(),
@@ -796,12 +937,13 @@ windowsHostTest('opens a pinned lxapp as an exact main workspace and keeps its m
       () => desktop.windows(),
       (windows) => {
         const visible = visibleHostWebViews(host!, windows);
-        return visible.length === 1
+        return visible.length === 1 && visible[0].id === baselineMain.id
           ? visible[0]
           : undefined;
       },
-      'root main restored after closing promoted Chat',
+      'exact Todo main restored after closing promoted Chat',
     );
+    expect(restoredAfterClose.id).toBe(baselineMain.id);
     expect((await app.info()).current_page?.startsWith('pages/todo/index')).toBeTruthy();
     await expectExactMainPresentation(
       host,
@@ -814,11 +956,16 @@ windowsHostTest('opens a pinned lxapp as an exact main workspace and keeps its m
         ? true
         : undefined
     ), 'every root edge probe restored after closing promoted Chat');
-    await waitForValue(async () => (
-      (await automation.lxapps.list()).some((candidate) => candidate.appid === 'lingxia-chat')
-        ? undefined
-        : true
-    ), 'promoted Chat runtime fully closed');
+    await waitForValue(async () => {
+      const chat = (await automation.lxapps.list()).find((candidate) => (
+        candidate.appid === 'lingxia-chat'
+      ));
+      return chat?.status === 'closed'
+        && chat.current_page === null
+        && chat.page_stack.length === 0
+        ? true
+        : undefined;
+    }, 'promoted Chat runtime fully closed');
     const coldPins = await shell.pins();
     const coldPinIndex = coldPins.findIndex((pin) => samePin(pin, targetPin));
     expect(coldPinIndex >= 0).toBeTruthy();
@@ -835,6 +982,9 @@ windowsHostTest('opens a pinned lxapp as an exact main workspace and keeps its m
         : undefined;
     }, 'cold pinned Chat main workspace');
     expect(coldLayout.mainSwitcher.activeSurfaceId).toBe('lingxia-chat');
+    expect(coldLayout.mainSwitcher.items.find((item) => (
+      item.surfaceId === 'lingxia-chat'
+    ))?.closable).toBeTruthy();
 
     const coldMain = await waitForDesktopWindow(
       () => desktop.windows(),
@@ -856,6 +1006,71 @@ windowsHostTest('opens a pinned lxapp as an exact main workspace and keeps its m
         ? undefined
         : true
     ), 'every outgoing root edge probe absent below cold Chat');
+
+    // A Pin is only the launch affordance. Once open, Chat must also have an
+    // independently actionable workspace row below the root lxapp's pages.
+    // Hover must visibly reveal the row's explicit ellipsis, and clicking that
+    // affordance must open the native lifecycle menu. This checks both
+    // discoverability and routing instead of relying on an invisible right-click.
+    const workspacePoint = firstLxappWorkspacePoint(host, coldPins.length, 4);
+    const workspaceMenuRegion = firstLxappWorkspaceMenuRegion(host, coldPins.length, 4);
+    const workspaceMenuPoint = regionCenter(workspaceMenuRegion);
+    await desktop.pointer.move({
+      at: [host.bounds.x + host.bounds.w - 24, host.bounds.y + 48],
+    });
+    const hiddenWorkspaceMenu = await desktop.screenshot({ region: workspaceMenuRegion });
+    await desktop.pointer.move({ at: workspacePoint });
+    await waitForValue(async () => {
+      const hovered = await desktop.screenshot({ region: workspaceMenuRegion });
+      return hovered.base64 !== hiddenWorkspaceMenu.base64 ? hovered : undefined;
+    }, 'visible Chat workspace ellipsis on hover');
+    const windowsBeforeWorkspaceMenu = await desktop.windows();
+    const workspaceMenuWindowIds = new Set(
+      windowsBeforeWorkspaceMenu.map((window) => window.id),
+    );
+    await desktop.pointer.click({ at: workspaceMenuPoint });
+    const workspaceMenu = await waitForValue(async () => (
+      (await desktop.windows()).find((window) => (
+        window.visible
+        && !workspaceMenuWindowIds.has(window.id)
+        && window.process.toLocaleLowerCase() === host!.process.toLocaleLowerCase()
+        && window.title === ''
+        && Math.abs(window.bounds.x - workspaceMenuPoint[0]) <= 8
+        && Math.abs(window.bounds.y - workspaceMenuPoint[1]) <= 8
+        && window.bounds.w > 0
+        && window.bounds.w < host!.bounds.w
+        && window.bounds.h > 0
+        && window.bounds.h < host!.bounds.h
+      ))
+    ), 'native Chat workspace context menu');
+    await desktop.key.press({ key: 'Escape' });
+    await waitForValue(async () => (
+      (await desktop.windows()).some((window) => window.id === workspaceMenu.id)
+        ? undefined
+        : true
+    ), 'dismissed Chat workspace context menu');
+
+    await desktop.pointer.click({
+      at: showcaseHomePagePoint(host, coldPins.length),
+    });
+    await waitForValue(async () => {
+      const [info, candidate] = await Promise.all([app.info(), app.surfaceLayout()]);
+      return info.current_page?.startsWith('pages/home/index')
+        && candidate.activeMainId === 'lingxia-showcase'
+        && candidate.mainSwitcher.activeSurfaceId === 'lingxia-showcase'
+        ? candidate
+        : undefined;
+    }, 'root workspace selected from pinned Chat');
+
+    await desktop.pointer.click({ at: workspacePoint });
+    await waitForValue(async () => {
+      const candidate = await app.surfaceLayout();
+      return candidate.activeMainId === 'lingxia-chat'
+        && candidate.mainSwitcher.activeSurfaceId === 'lingxia-chat'
+        && !candidate.asideSlots.some((slot) => slot.children.includes('lingxia-chat'))
+        ? true
+        : undefined;
+    }, 'Chat selected from its sidebar workspace row');
 
     const windowsBeforeMenu = await desktop.windows();
     const existingWindowIds = new Set(windowsBeforeMenu.map((window) => window.id));
@@ -894,10 +1109,14 @@ windowsHostTest('opens a pinned lxapp as an exact main workspace and keeps its m
     await desktop.pointer.click({
       at: showcaseHomePagePoint(host, pinsAfterMenu.length),
     });
-    await waitForValue(async () => (
-      (await app.info()).current_page?.startsWith('pages/home/index') ? true : undefined
-    ), 'responsive sidebar after pinned Chat context menu');
-    const afterSidebarClick = await app.surfaceLayout();
+    const afterSidebarClick = await waitForValue(async () => {
+      const [info, candidate] = await Promise.all([app.info(), app.surfaceLayout()]);
+      return info.current_page?.startsWith('pages/home/index')
+        && candidate.activeMainId === 'lingxia-showcase'
+        && candidate.mainSwitcher.activeSurfaceId === 'lingxia-showcase'
+        ? candidate
+        : undefined;
+    }, 'responsive sidebar after pinned Chat context menu');
     expect(afterSidebarClick.activeMainId).toBe('lingxia-showcase');
     expect(afterSidebarClick.mains.includes('lingxia-chat')).toBeTruthy();
     expect(switcherIds(afterSidebarClick).includes('lingxia-chat')).toBeTruthy();
@@ -920,19 +1139,32 @@ windowsHostTest('opens a pinned lxapp as an exact main workspace and keeps its m
       rootAfterSidebarSwitch,
       () => desktop.windows(),
     );
+
+    // Unpinning removes only the shortcut. The live workspace row remains the
+    // durable control surface until Chat itself is closed.
+    const remainingWorkspacePoint = firstLxappWorkspacePoint(
+      host,
+      pinsAfterMenu.length,
+      4,
+    );
+    await desktop.pointer.click({ at: remainingWorkspacePoint });
+    await waitForValue(async () => {
+      const candidate = await app.surfaceLayout();
+      return candidate.activeMainId === 'lingxia-chat'
+        && candidate.mainSwitcher.activeSurfaceId === 'lingxia-chat'
+        ? true
+        : undefined;
+    }, 'live Chat workspace remains after its Pin is removed');
   } catch (error) {
     await attachDesktopFailure('surface-pin-failure', desktop, host);
-    throw error;
+    const diagnostics = await surfaceFailureDiagnostics(app, desktop, host);
+    throw new Error(`${String(error)}; diagnostics: ${diagnostics}`);
   } finally {
     await desktop.key.press({ key: 'Escape' }).catch(() => undefined);
     await closeChatSurface(app).catch(() => undefined);
     await setRootEdgeMarker(app, false).catch(() => undefined);
     await shell.setPin({ ...targetPin, pinned: initiallyPinned });
-    await desktop.window.resize({
-      window: host.id,
-      width: originalBounds.w,
-      height: originalBounds.h,
-    });
+    await restoreHostBounds(desktop, host.id, originalBounds);
     if (originalPageName) {
       await app.nav.relaunch({ page: originalPageName });
     }
