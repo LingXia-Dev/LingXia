@@ -59,6 +59,10 @@ pub fn list_lxapps() -> Vec<LxAppRuntimeInfo> {
 pub fn close_lxapp(appid: &str) -> Result<(), LxAppError> {
     let app = super::runtime_registry::try_get(appid)
         .ok_or_else(|| LxAppError::ResourceNotFound(appid.to_string()))?;
+    let session_id = app.session_id();
+    if !app.begin_programmatic_close(session_id) {
+        return Ok(());
+    }
     // Leave the navigation stack before the shutdown hides the webview, so
     // the host's hide path restores the previous lxapp (not the closing one)
     // as the visible content.
@@ -66,6 +70,7 @@ pub fn close_lxapp(appid: &str) -> Result<(), LxAppError> {
         manager.remove_from_stack(appid);
     }
     app.shutdown()?;
+    app.complete_programmatic_close(session_id);
     Ok(())
 }
 
@@ -195,6 +200,15 @@ pub fn mark_lxapp_active(appid: &str) -> bool {
 pub fn notify_lxapp_host_visibility(appid: &str, visible: bool) -> Result<(), LxAppError> {
     let app = super::runtime_registry::try_get(appid)
         .ok_or_else(|| LxAppError::ResourceNotFound(appid.to_string()))?;
+    // Destroying a WebView publishes its final host visibility asynchronously.
+    // The close-specific onHide is queued before shutdown, so this late event
+    // must not target an AppService that is already terminating.
+    if matches!(
+        app.status(),
+        LxAppSessionStatus::Closing | LxAppSessionStatus::Closed
+    ) {
+        return Ok(());
+    }
     let args = crate::lifecycle::AppServiceEventArgs {
         source: crate::lifecycle::AppServiceEventSource::Host,
         reason: if visible {
@@ -221,6 +235,12 @@ pub fn notify_page_host_visibility(
 ) -> Result<(), LxAppError> {
     let app = super::runtime_registry::try_get(appid)
         .ok_or_else(|| LxAppError::ResourceNotFound(appid.to_string()))?;
+    if matches!(
+        app.status(),
+        LxAppSessionStatus::Closing | LxAppSessionStatus::Closed
+    ) {
+        return Ok(());
+    }
     let page = app.require_page(path)?;
     page.dispatch_lifecycle_event(if visible {
         crate::lifecycle::PageLifecycleEvent::OnShow

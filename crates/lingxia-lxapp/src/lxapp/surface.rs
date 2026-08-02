@@ -653,7 +653,11 @@ impl WindowSurfaceController {
             // by set_width / register_host_aside). Seed it before switching, else
             // set_active_main silently no-ops on an unknown id.
             if manager.graph().role_of(app_id).is_none() {
-                manager.open(root_main);
+                let presentation = lxapp_workspace_presentation(&root_main.content);
+                // The first main remains the stable, non-closable root by graph
+                // identity. Later lxapps are ordinary workspaces and must expose
+                // lifecycle controls in the platform switcher.
+                let _ = manager.open_main(root_main, presentation);
             }
             manager.set_active_main(app_id);
         }
@@ -913,6 +917,14 @@ impl WindowSurfaceController {
     fn presentation_plan(&self) -> lingxia_surface::LayoutPresentationPlan {
         self.manager.lock().unwrap().presentation_plan()
     }
+}
+
+fn lxapp_workspace_presentation(
+    content: &lingxia_surface::SurfaceContent,
+) -> lingxia_surface::SurfacePresentation {
+    let mut presentation = lingxia_surface::SurfacePresentation::for_content(content);
+    presentation.capabilities.close = true;
+    presentation
 }
 
 fn instantiate_native_declaration(
@@ -2683,6 +2695,26 @@ fn close_reason_str(reason: CloseReason) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_the_stable_lxapp_root_lacks_workspace_close_controls() {
+        let home = lingxia_surface::Surface::lxapp("home", lingxia_surface::Role::Main, "home");
+        let chat = lingxia_surface::Surface::lxapp("chat", lingxia_surface::Role::Main, "chat");
+        let mut manager = lingxia_surface::SurfaceManager::new(1200.0);
+        manager
+            .open_main(home.clone(), lxapp_workspace_presentation(&home.content))
+            .unwrap();
+        manager
+            .open_main(chat.clone(), lxapp_workspace_presentation(&chat.content))
+            .unwrap();
+
+        let snapshot = manager.switcher_snapshot();
+        assert!(snapshot.items[0].root);
+        assert!(!snapshot.items[0].closable);
+        assert!(!snapshot.items[1].root);
+        assert!(snapshot.items[1].closable);
+        assert!(!snapshot.items[1].renameable);
+    }
 
     #[test]
     fn main_visibility_publication_ignores_a_surface_migrated_to_aside() {
