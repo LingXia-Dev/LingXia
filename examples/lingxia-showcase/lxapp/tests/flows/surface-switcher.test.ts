@@ -97,6 +97,38 @@ function windowsHost(windows: DesktopWindowInfo[]): DesktopWindowInfo | undefine
     ))[0];
 }
 
+function visibleHostWebViews(
+  host: DesktopWindowInfo,
+  windows: DesktopWindowInfo[],
+): DesktopWindowInfo[] {
+  return windows.filter((window) => (
+    window.visible
+    && window.process.toLocaleLowerCase() === 'msedgewebview2'
+    && windowContains(host, window)
+    && window.bounds.w > 0
+    && window.bounds.h > 0
+  ));
+}
+
+function visibleWorkspaceHosts(
+  host: DesktopWindowInfo,
+  windows: DesktopWindowInfo[],
+): DesktopWindowInfo[] {
+  return windows.filter((window) => (
+    window.visible
+    && window.pid === host.pid
+    && window.title === 'LingXia'
+    && window.process.toLocaleLowerCase() !== 'msedgewebview2'
+  ));
+}
+
+function expectSingleWorkspaceHost(
+  host: DesktopWindowInfo,
+  windows: DesktopWindowInfo[],
+): void {
+  expect(visibleWorkspaceHosts(host, windows).map((window) => window.id)).toEqual([host.id]);
+}
+
 function expectExactMainPresentation(
   host: DesktopWindowInfo,
   baseline: DesktopWindowInfo,
@@ -112,18 +144,32 @@ function expectExactMainPresentation(
   expect(active.bounds.y + active.bounds.h).toBe(
     baseline.bounds.y + baseline.bounds.h,
   );
-  expect(windows.filter((window) => (
-    window.visible
-    && window.process.toLocaleLowerCase() === 'msedgewebview2'
-    && window.id !== active.id
-    && windowContains(host, window)
+  expect(visibleHostWebViews(host, windows).filter((window) => (
+    window.id !== active.id
   ))).toEqual([]);
-  expect(windows.filter((window) => (
-    window.visible
-    && window.pid === host.pid
-    && window.title === 'LingXia'
-    && window.process.toLocaleLowerCase() !== 'msedgewebview2'
-  )).map((window) => window.id)).toEqual([host.id]);
+  expectSingleWorkspaceHost(host, windows);
+}
+
+function expectOverlayCoversMain(
+  host: DesktopWindowInfo,
+  baseline: DesktopWindowInfo,
+  overlay: DesktopWindowInfo,
+  windows: DesktopWindowInfo[],
+): void {
+  const hostWebViews = visibleHostWebViews(host, windows);
+  const visibleOverlay = hostWebViews.find((window) => window.id === overlay.id);
+  expect(Boolean(visibleOverlay)).toBeTruthy();
+  expect(visibleOverlay!.bounds.x).toBe(baseline.bounds.x);
+  expect(visibleOverlay!.bounds.w).toBe(baseline.bounds.w);
+  expect(visibleOverlay!.bounds.y >= baseline.bounds.y).toBeTruthy();
+  expect(visibleOverlay!.bounds.y + visibleOverlay!.bounds.h).toBe(
+    baseline.bounds.y + baseline.bounds.h,
+  );
+  const visibleMain = hostWebViews.find((window) => (
+    window.id === baseline.id
+  ));
+  expect(Boolean(visibleMain)).toBeTruthy();
+  expectSingleWorkspaceHost(host, windows);
 }
 
 function samePin(left: AutomationShellPin, right: AutomationShellPin): boolean {
@@ -181,6 +227,30 @@ async function waitForValue<T>(
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
   throw new Error(`${label} was not observed within ${timeoutMs}ms`);
+}
+
+async function waitForDesktopWindow(
+  read: () => Promise<DesktopWindowInfo[]>,
+  select: (windows: DesktopWindowInfo[]) => DesktopWindowInfo | undefined,
+  label: string,
+  timeoutMs = 10_000,
+): Promise<DesktopWindowInfo> {
+  let observed: DesktopWindowInfo[] = [];
+  try {
+    return await waitForValue(async () => {
+      observed = await read();
+      return select(observed);
+    }, label, timeoutMs);
+  } catch (error) {
+    const visible = observed.filter((window) => window.visible).map((window) => ({
+      id: window.id,
+      title: window.title,
+      process: window.process,
+      bounds: window.bounds,
+      z: window.z,
+    }));
+    throw new Error(`${String(error)}; visible windows: ${JSON.stringify(visible)}`);
+  }
 }
 
 async function closeChatSurface(app: LxAppDriver): Promise<void> {
@@ -312,6 +382,12 @@ windowsHostTest('docks the footer Chat WebView physically beside the main after 
 
     const baseline = await app.surfaceLayout();
     expect(containsSurface(baseline, 'lingxia-chat')).toBeFalsy();
+    const baselineWindows = await desktop.windows();
+    expectSingleWorkspaceHost(host, baselineWindows);
+    const baselineWebViews = visibleHostWebViews(host, baselineWindows);
+    expect(baselineWebViews.length).toBe(1);
+    const baselineMain = baselineWebViews[0];
+    const baselineWebViewIds = new Set(baselineWebViews.map((window) => window.id));
 
     // Exercise the real native footer action. Its first cell is anchored to
     // the lower-left of the fixed desktop sidebar; use host-relative geometry
@@ -337,17 +413,54 @@ windowsHostTest('docks the footer Chat WebView physically beside the main after 
       slot.children.includes('lingxia-chat')
     ))?.overlay).toBeTruthy();
 
-    await waitForValue(async () => {
-      const windows = await desktop.windows();
-      return windows.find((window) => (
-        window.visible
-        && window.process.toLocaleLowerCase() === 'msedgewebview2'
-        && window.title === 'AI Chat'
-        && windowContains(host!, window)
+    const overlayWindow = await waitForDesktopWindow(
+      () => desktop.windows(),
+      (windows) => visibleHostWebViews(host!, windows).find((window) => (
+        !baselineWebViewIds.has(window.id)
         && window.bounds.w > host!.bounds.w * 0.55
         && window.bounds.h > host!.bounds.h * 0.55
-      ));
-    }, 'Chat WebView in the physical medium overlay');
+      )),
+      'Chat WebView in the physical medium overlay',
+    );
+    expectOverlayCoversMain(
+      host,
+      baselineMain,
+      overlayWindow,
+      await desktop.windows(),
+    );
+
+    // Prove the composed overlay is actually the input target, not merely a
+    // visible controller behind the main. Page automation only discovers the
+    // textarea; the click and typing travel through the real desktop stack.
+    const chatApp = automation.lxapp('lingxia-chat');
+    const chatInput = await waitForValue(async () => {
+      const candidate = await chatApp.page.query({
+        page: 'chat',
+        css: 'textarea[placeholder="Message..."]',
+      });
+      return candidate.exists && candidate.visible && candidate.editable
+        ? candidate
+        : undefined;
+    }, 'Chat overlay input');
+    const inputPoint: [number, number] = [
+      overlayWindow.bounds.x + Math.round(chatInput.rect.center_x * overlayWindow.scale),
+      overlayWindow.bounds.y + Math.round(chatInput.rect.center_y * overlayWindow.scale),
+    ];
+    const inputMarker = 'physical-overlay-front';
+    await desktop.pointer.click({ at: inputPoint });
+    await desktop.key.type({ text: inputMarker });
+    await waitForValue(async () => {
+      const candidate = await chatApp.page.query({
+        page: 'chat',
+        css: 'textarea[placeholder="Message..."]',
+      });
+      return candidate.exists && candidate.value === inputMarker ? true : undefined;
+    }, 'desktop input delivered to Chat overlay');
+    await chatApp.page.fill({
+      page: 'chat',
+      css: 'textarea[placeholder="Message..."]',
+      text: '',
+    });
 
     host = await desktop.window.resize({
       window: host.id,
@@ -365,32 +478,49 @@ windowsHostTest('docks the footer Chat WebView physically beside the main after 
     }, 'expanded docked Chat layout');
     expect(dockedLayout.activeMainId).toBe('lingxia-showcase');
 
-    const chatWindow = await waitForValue(async () => {
-      const windows = await desktop.windows();
-      return windows.find((window) => (
-        window.visible
-        && window.process.toLocaleLowerCase() === 'msedgewebview2'
-        && window.title === 'AI Chat'
-        && windowContains(host!, window)
+    const chatWindow = await waitForDesktopWindow(
+      () => desktop.windows(),
+      (windows) => visibleHostWebViews(host!, windows).find((window) => (
+        window.id === overlayWindow.id
         && window.bounds.x > host!.bounds.x + host!.bounds.w * 0.55
         && window.bounds.w < host!.bounds.w * 0.45
-      ));
-    }, 'Chat WebView in the physical right aside');
+      )),
+      'Chat WebView in the physical right aside',
+    );
 
-    const visibleMain = (await desktop.windows()).find((window) => (
-      window.visible
-      && window.process.toLocaleLowerCase() === 'msedgewebview2'
-      && window.id !== chatWindow.id
-      && windowContains(host!, window)
+    const dockedWindows = await desktop.windows();
+    const visibleMain = visibleHostWebViews(host, dockedWindows).find((window) => (
+      baselineWebViewIds.has(window.id)
       && window.bounds.x < chatWindow.bounds.x
-      && window.bounds.w > 0
-      && window.bounds.h > 0
     ));
     expect(Boolean(visibleMain)).toBeTruthy();
+    expectSingleWorkspaceHost(host, dockedWindows);
 
     const capture = await automation.lxapps.screenshot();
     expect(capture.width >= host.bounds.w - 2).toBeTruthy();
     expect(capture.height >= host.bounds.h - 2).toBeTruthy();
+
+    await closeChatSurface(app);
+    chatOpened = false;
+    await waitForValue(async () => (
+      containsSurface(await app.surfaceLayout(), 'lingxia-chat') ? undefined : true
+    ), 'closed Chat after adaptive handoff');
+    const restoredMain = await waitForDesktopWindow(
+      () => desktop.windows(),
+      (windows) => {
+        const visible = visibleHostWebViews(host!, windows);
+        return visible.length === 1 && visible[0].id === baselineMain.id
+          ? visible[0]
+          : undefined;
+      },
+      'restored main after closing adaptive Chat',
+    );
+    expectExactMainPresentation(
+      host,
+      baselineMain,
+      restoredMain,
+      await desktop.windows(),
+    );
   } finally {
     if (chatOpened) {
       await app.eval({
@@ -454,20 +584,19 @@ windowsHostTest('opens a pinned lxapp as an exact main workspace and keeps its m
         : undefined;
     }, 'expanded main baseline');
 
-    const baselineMain = await waitForValue(async () => (
-      (await desktop.windows())
-        .filter((window) => (
-          window.visible
-          && window.process.toLocaleLowerCase() === 'msedgewebview2'
-          && window.title !== 'AI Chat'
-          && windowContains(host!, window)
-          && window.bounds.w > host!.bounds.w * 0.6
-          && window.bounds.h > host!.bounds.h * 0.6
-        ))
-        .sort((left, right) => (
-          right.bounds.w * right.bounds.h - left.bounds.w * left.bounds.h
-        ))[0]
-    ), 'Showcase physical main bounds');
+    const baselineMain = await waitForDesktopWindow(
+      () => desktop.windows(),
+      (windows) => {
+        const visible = visibleHostWebViews(host!, windows);
+        return visible.length === 1
+          && visible[0].bounds.w > host!.bounds.w * 0.6
+          && visible[0].bounds.h > host!.bounds.h * 0.6
+          ? visible[0]
+          : undefined;
+      },
+      'Showcase physical main bounds',
+    );
+    expectSingleWorkspaceHost(host, await desktop.windows());
 
     // Start from the declared entry so this gate covers the difficult case:
     // a Pin must promote the one live aside instance into a main workspace.
@@ -485,16 +614,17 @@ windowsHostTest('opens a pinned lxapp as an exact main workspace and keeps its m
     expect(declaredAside.activeMainId).toBe('lingxia-showcase');
     expect(switcherIds(declaredAside).includes('lingxia-chat')).toBeFalsy();
 
-    await waitForValue(async () => (
-      (await desktop.windows()).find((window) => (
-        window.visible
-        && window.process.toLocaleLowerCase() === 'msedgewebview2'
-        && window.title === 'AI Chat'
-        && windowContains(host!, window)
+    const declaredAsideWindow = await waitForDesktopWindow(
+      () => desktop.windows(),
+      (windows) => visibleHostWebViews(host!, windows).find((window) => (
+        window.id !== baselineMain.id
         && window.bounds.x > host!.bounds.x + host!.bounds.w * 0.55
         && window.bounds.w < host!.bounds.w * 0.45
-      ))
-    ), 'declared Chat physical right aside');
+      )),
+      'declared Chat physical right aside',
+    );
+    expect(declaredAsideWindow.id === baselineMain.id).toBeFalsy();
+    expectSingleWorkspaceHost(host, await desktop.windows());
 
     const pinPoint = pinnedShortcutPoint(host, pinIndex);
     await desktop.pointer.click({ at: pinPoint });
@@ -509,17 +639,15 @@ windowsHostTest('opens a pinned lxapp as an exact main workspace and keeps its m
     }, 'pinned Chat promoted main workspace');
     expect(promotedLayout.mainSwitcher.activeSurfaceId).toBe('lingxia-chat');
 
-    const promotedMain = await waitForValue(async () => {
-      const windows = await desktop.windows();
-      return windows.find((window) => (
-        window.visible
-        && window.process.toLocaleLowerCase() === 'msedgewebview2'
-        && window.title === 'AI Chat'
-        && windowContains(host!, window)
+    const promotedMain = await waitForDesktopWindow(
+      () => desktop.windows(),
+      (windows) => visibleHostWebViews(host!, windows).find((window) => (
+        window.id !== baselineMain.id
         && window.bounds.w > host!.bounds.w * 0.6
         && window.bounds.h > host!.bounds.h * 0.6
-      ));
-    }, 'promoted Chat physical main');
+      )),
+      'promoted Chat physical main',
+    );
     expectExactMainPresentation(
       host,
       baselineMain,
@@ -537,6 +665,22 @@ windowsHostTest('opens a pinned lxapp as an exact main workspace and keeps its m
         ? candidate
         : undefined;
     }, 'closed promoted Chat workspace');
+    const restoredAfterClose = await waitForDesktopWindow(
+      () => desktop.windows(),
+      (windows) => {
+        const visible = visibleHostWebViews(host!, windows);
+        return visible.length === 1 && visible[0].id === baselineMain.id
+          ? visible[0]
+          : undefined;
+      },
+      'root main restored after closing promoted Chat',
+    );
+    expectExactMainPresentation(
+      host,
+      baselineMain,
+      restoredAfterClose,
+      await desktop.windows(),
+    );
     await desktop.pointer.click({ at: pinPoint });
     const coldLayout = await waitForValue(async () => {
       const candidate = await app.surfaceLayout();
@@ -549,16 +693,15 @@ windowsHostTest('opens a pinned lxapp as an exact main workspace and keeps its m
     }, 'cold pinned Chat main workspace');
     expect(coldLayout.mainSwitcher.activeSurfaceId).toBe('lingxia-chat');
 
-    const coldMain = await waitForValue(async () => (
-      (await desktop.windows()).find((window) => (
-        window.visible
-        && window.process.toLocaleLowerCase() === 'msedgewebview2'
-        && window.title === 'AI Chat'
-        && windowContains(host!, window)
+    const coldMain = await waitForDesktopWindow(
+      () => desktop.windows(),
+      (windows) => visibleHostWebViews(host!, windows).find((window) => (
+        window.id !== baselineMain.id
         && window.bounds.w > host!.bounds.w * 0.6
         && window.bounds.h > host!.bounds.h * 0.6
-      ))
-    ), 'cold pinned Chat physical main');
+      )),
+      'cold pinned Chat physical main',
+    );
     expectExactMainPresentation(
       host,
       baselineMain,
@@ -613,6 +756,22 @@ windowsHostTest('opens a pinned lxapp as an exact main workspace and keeps its m
     expect(afterSidebarClick.asideSlots.some((slot) => (
       slot.children.includes('lingxia-chat')
     ))).toBeFalsy();
+    const rootAfterSidebarSwitch = await waitForDesktopWindow(
+      () => desktop.windows(),
+      (windows) => {
+        const visible = visibleHostWebViews(host!, windows);
+        return visible.length === 1 && visible[0].id === baselineMain.id
+          ? visible[0]
+          : undefined;
+      },
+      'root main after sidebar switch from pinned Chat',
+    );
+    expectExactMainPresentation(
+      host,
+      baselineMain,
+      rootAfterSidebarSwitch,
+      await desktop.windows(),
+    );
   } finally {
     await desktop.key.press({ key: 'Escape' }).catch(() => undefined);
     await closeChatSurface(app).catch(() => undefined);
