@@ -638,6 +638,7 @@ pub fn show_webview_as_adaptive_panel(
         mark_panel_visible(panel_id, true);
         return Ok(());
     };
+    let was_group_main = active_webtag_key_for_window(host).as_deref() == Some(webtag.key());
 
     // A phone-width host has no room for a docked panel: a page aside drills
     // in full-screen instead, mirroring iOS and the macOS runner's phone
@@ -672,6 +673,9 @@ pub fn show_webview_as_adaptive_panel(
             .unwrap_or(false);
     if already_docked {
         register_webview_panel(panel_id, webtag, title, position, preferred_size);
+        if was_group_main {
+            restore_presented_group_main_for_host(host)?;
+        }
         sync_window_layout(host);
         invalidate_window_chrome(host);
         return Ok(());
@@ -681,6 +685,13 @@ pub fn show_webview_as_adaptive_panel(
     set_window_handle(webtag.key(), host);
     register_webview_panel(panel_id, webtag, title, position, preferred_size);
     mark_panel_visible(panel_id, true);
+    if was_group_main {
+        // An admitted aside may previously have covered the main as an
+        // adaptive overlay. Reattach the saved main before laying out the now
+        // docked controller, otherwise this webtag remains both the active
+        // main and the panel child while the real main stays hidden.
+        restore_presented_group_main_for_host(host)?;
+    }
     sync_window_layout(host);
     if excluded != host && is_window_visible(excluded) {
         unsafe {
@@ -2189,6 +2200,14 @@ pub fn resize_host_window_content(webtag: &WebTag, width: i32, height: i32) -> S
 /// qualifies; a browser tab does not (closing the last tab must fall back to
 /// the covered lxapp page, not another tab).
 fn group_main_restore_candidate(webtag_key: &str) -> bool {
+    #[cfg(feature = "components")]
+    if webtag_for_key(webtag_key).is_some_and(|webtag| {
+        lxapp::open_region(&webtag.extract_appid()) == Some(lxapp::LxAppOpenRegion::Aside)
+    }) {
+        // Switching between full-client aside overlays must retain the main
+        // that was covered first, not replace it with the previous aside.
+        return false;
+    }
     #[cfg(feature = "browser-runtime")]
     {
         !webtag_key.starts_with(lingxia_browser::BUILTIN_BROWSER_APPID)
@@ -2204,6 +2223,10 @@ pub fn restore_presented_group_main() -> StdResult<()> {
     let Some(host) = active_host_window() else {
         return Ok(());
     };
+    restore_presented_group_main_for_host(host)
+}
+
+fn restore_presented_group_main_for_host(host: HWND) -> StdResult<()> {
     let main_key = PRESENTED_GROUP_MAIN
         .get()
         .and_then(|presented| presented.lock().ok())
