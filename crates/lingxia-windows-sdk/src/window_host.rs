@@ -5203,6 +5203,14 @@ fn clear_webtag_content_bounds_for_window(window: isize) {
     }
 }
 
+fn clear_webtag_content_bounds(webtag_key: &str) {
+    if let Some(bounds) = WEBTAG_CONTENT_BOUNDS.get()
+        && let Ok(mut bounds) = bounds.lock()
+    {
+        bounds.remove(webtag_key);
+    }
+}
+
 fn repaint_active_host() {
     if let Some(hwnd) = active_host_window() {
         invalidate_window(hwnd);
@@ -7210,8 +7218,9 @@ fn show_webview_window_replacing(
         let _ = WindowsAndMessaging::SetWindowTextW(target, PCWSTR(title.as_ptr()));
     }
 
-    let already_active = active_webtag_key_for_window(target).as_deref() == Some(webtag.key())
-        && webtag_is_visible(webtag.key());
+    let previous = active_webtag_key_for_window(target);
+    let already_active =
+        previous.as_deref() == Some(webtag.key()) && webtag_is_visible(webtag.key());
     if already_active {
         sync_window_layout(target);
         // The deleted direct-show path unconditionally surfaced and (with
@@ -7236,10 +7245,25 @@ fn show_webview_window_replacing(
         return Ok(());
     }
 
-    let inherited_layout = active_webtag_key_for_window(target)
-        .map(|key| current_window_layout(&key))
+    let inherited_layout = previous
+        .as_deref()
+        .map(current_window_layout)
         .filter(|layout| !layout.is_empty());
     let target_has_layout = !current_window_layout(webtag.key()).is_empty();
+    let mut hide_webtags = hide_webtags;
+    if let Some(previous) = previous.as_deref()
+        && previous != webtag.key()
+        && !webtag_is_registered_panel(previous)
+        && !hide_webtags.iter().any(|hidden| hidden.key() == previous)
+        && let Some(previous) = webtag_for_key(previous)
+    {
+        // A cold lxapp open reaches this replace path asynchronously. Its
+        // caller cannot know which workspace main is still presented, so
+        // always include the target host's outgoing controller explicitly.
+        // The visibility registry follows host activation and is not an
+        // authoritative substitute for physically hiding that controller.
+        hide_webtags.push(previous);
+    }
 
     if webtag_is_visible(webtag.key()) {
         handler.set_content_visible(false)?;
@@ -9116,6 +9140,11 @@ fn invoke_host_window_created_handler(hwnd: HWND) {
 }
 
 fn register_window_handle(webtag_key: &str, hwnd: HWND) {
+    // LxApp shutdown/reopen can reuse the same session-scoped WebTag key for a
+    // new WebView2 controller. Its initial bounds belong to the new helper
+    // HWND, so a cache hit from the retired controller must not suppress the
+    // first geometry write after it joins the workspace.
+    clear_webtag_content_bounds(webtag_key);
     set_window_handle(webtag_key, hwnd);
     let visibility = WEBTAG_VISIBILITY.get_or_init(|| Mutex::new(HashMap::new()));
     if let Ok(mut visibility) = visibility.lock() {
@@ -9162,11 +9191,7 @@ fn cleanup_window_state(webtag_key: &str, destroyed_window: HWND) {
     {
         visibility.remove(webtag_key);
     }
-    if let Some(bounds) = WEBTAG_CONTENT_BOUNDS.get()
-        && let Ok(mut bounds) = bounds.lock()
-    {
-        bounds.remove(webtag_key);
-    }
+    clear_webtag_content_bounds(webtag_key);
     cleanup_webview_state(webtag_key);
     if let Some(active) = ACTIVE_WEBTAG.get()
         && let Ok(mut active) = active.lock()
@@ -9403,9 +9428,10 @@ mod tests {
     #[cfg(feature = "shell-chrome")]
     use super::apply_phone_switcher_alpha;
     use super::{
-        ChromeBackBuffer, WindowResizeDrag, WindowResizeEdge, WindowsFrameButton,
-        default_host_parent_window, frame_button_non_client_hit,
+        ChromeBackBuffer, ContentBounds, WindowResizeDrag, WindowResizeEdge, WindowsFrameButton,
+        clear_webtag_content_bounds, default_host_parent_window, frame_button_non_client_hit,
         registered_host_keeps_message_loop, resized_window_rect, same_window_generation,
+        webtag_content_bounds_changed,
     };
     #[cfg(all(feature = "shell-chrome", feature = "device-frame"))]
     use super::{device_frame_surface_corner_radii, per_corner_region_row_span};
@@ -9504,6 +9530,28 @@ mod tests {
         assert!(same_window_generation(Some(42), 42));
         assert!(!same_window_generation(Some(43), 42));
         assert!(!same_window_generation(None, 42));
+    }
+
+    #[test]
+    fn new_controller_generation_reapplies_cached_geometry() {
+        let key = "__window_host_controller_generation_test__";
+        let bounds = ContentBounds {
+            hwnd: 42,
+            left: 184,
+            top: 32,
+            width: 840,
+            height: 736,
+            corner_radii: [0; 4],
+            corner_color: 0,
+            fit_scale_milli: 1_000,
+        };
+        clear_webtag_content_bounds(key);
+        assert!(webtag_content_bounds_changed(key, bounds));
+        assert!(!webtag_content_bounds_changed(key, bounds));
+
+        clear_webtag_content_bounds(key);
+        assert!(webtag_content_bounds_changed(key, bounds));
+        clear_webtag_content_bounds(key);
     }
 
     #[test]
