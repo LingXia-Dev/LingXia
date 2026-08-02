@@ -129,12 +129,12 @@ function expectSingleWorkspaceHost(
   expect(visibleWorkspaceHosts(host, windows).map((window) => window.id)).toEqual([host.id]);
 }
 
-function expectExactMainPresentation(
+async function expectExactMainPresentation(
   host: DesktopWindowInfo,
   baseline: DesktopWindowInfo,
   active: DesktopWindowInfo,
-  windows: DesktopWindowInfo[],
-): void {
+  readWindows: () => Promise<DesktopWindowInfo[]>,
+): Promise<void> {
   // A page-owned native navigation bar may shorten the inner WebView at the
   // top. The host presentation still has to share the root's left, right, and
   // bottom edges, with no outgoing WebView or duplicate workspace left visible.
@@ -144,9 +144,17 @@ function expectExactMainPresentation(
   expect(active.bounds.y + active.bounds.h).toBe(
     baseline.bounds.y + baseline.bounds.h,
   );
-  expect(visibleHostWebViews(host, windows).filter((window) => (
-    window.id !== active.id
-  ))).toEqual([]);
+  // WebView2 commits controller visibility asynchronously even though the
+  // host call is synchronous. Require physical convergence instead of
+  // sampling that commit boundary once; a controller that remains exposed
+  // still fails this production gate at the deadline.
+  const windows = await waitForValue(async () => {
+    const candidate = await readWindows();
+    const visible = visibleHostWebViews(host, candidate);
+    return visible.length === 1 && visible[0].id === active.id
+      ? candidate
+      : undefined;
+  }, 'outgoing main WebView hidden');
   expectSingleWorkspaceHost(host, windows);
 }
 
@@ -434,13 +442,18 @@ windowsHostTest('docks the footer Chat WebView physically beside the main after 
     // textarea; the click and typing travel through the real desktop stack.
     const chatApp = automation.lxapp('lingxia-chat');
     const chatInput = await waitForValue(async () => {
-      const candidate = await chatApp.page.query({
-        page: 'chat',
-        css: 'textarea[placeholder="Message..."]',
-      });
-      return candidate.exists && candidate.visible && candidate.editable
-        ? candidate
-        : undefined;
+      try {
+        const candidate = await chatApp.page.query({
+          page: 'chat',
+          css: 'textarea[placeholder="Message..."]',
+        });
+        return candidate.exists && candidate.visible && candidate.editable
+          ? candidate
+          : undefined;
+      } catch (error) {
+        if (String(error).includes('page WebView is not ready')) return undefined;
+        throw error;
+      }
     }, 'Chat overlay input');
     const inputPoint: [number, number] = [
       overlayWindow.bounds.x + Math.round(chatInput.rect.center_x * overlayWindow.scale),
@@ -515,11 +528,11 @@ windowsHostTest('docks the footer Chat WebView physically beside the main after 
       },
       'restored main after closing adaptive Chat',
     );
-    expectExactMainPresentation(
+    await expectExactMainPresentation(
       host,
       baselineMain,
       restoredMain,
-      await desktop.windows(),
+      () => desktop.windows(),
     );
   } finally {
     if (chatOpened) {
@@ -648,11 +661,11 @@ windowsHostTest('opens a pinned lxapp as an exact main workspace and keeps its m
       )),
       'promoted Chat physical main',
     );
-    expectExactMainPresentation(
+    await expectExactMainPresentation(
       host,
       baselineMain,
       promotedMain,
-      await desktop.windows(),
+      () => desktop.windows(),
     );
 
     // Close and repeat from cold state: the same physical Pin must still
@@ -675,11 +688,11 @@ windowsHostTest('opens a pinned lxapp as an exact main workspace and keeps its m
       },
       'root main restored after closing promoted Chat',
     );
-    expectExactMainPresentation(
+    await expectExactMainPresentation(
       host,
       baselineMain,
       restoredAfterClose,
-      await desktop.windows(),
+      () => desktop.windows(),
     );
     await desktop.pointer.click({ at: pinPoint });
     const coldLayout = await waitForValue(async () => {
@@ -702,11 +715,11 @@ windowsHostTest('opens a pinned lxapp as an exact main workspace and keeps its m
       )),
       'cold pinned Chat physical main',
     );
-    expectExactMainPresentation(
+    await expectExactMainPresentation(
       host,
       baselineMain,
       coldMain,
-      await desktop.windows(),
+      () => desktop.windows(),
     );
 
     const windowsBeforeMenu = await desktop.windows();
@@ -766,11 +779,11 @@ windowsHostTest('opens a pinned lxapp as an exact main workspace and keeps its m
       },
       'root main after sidebar switch from pinned Chat',
     );
-    expectExactMainPresentation(
+    await expectExactMainPresentation(
       host,
       baselineMain,
       rootAfterSidebarSwitch,
-      await desktop.windows(),
+      () => desktop.windows(),
     );
   } finally {
     await desktop.key.press({ key: 'Escape' }).catch(() => undefined);
