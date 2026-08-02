@@ -1,6 +1,8 @@
 import { expect, test } from '@rongjs/test';
 import type {
   AutomationShellPin,
+  DesktopDriver,
+  DesktopPixel,
   DesktopWindowInfo,
   LxAppDriver,
   SurfaceLayoutAsideSlot,
@@ -176,8 +178,89 @@ function expectOverlayCoversMain(
   const visibleMain = hostWebViews.find((window) => (
     window.id === baseline.id
   ));
-  expect(Boolean(visibleMain)).toBeTruthy();
+  // A maximized adaptive overlay owns the complete workspace card. The
+  // outgoing main must be physically hidden so a windowed WebView2 fallback
+  // cannot intercept input below the visually frontmost overlay.
+  expect(Boolean(visibleMain)).toBeFalsy();
+  expect(hostWebViews.map((window) => window.id)).toEqual([overlay.id]);
   expectSingleWorkspaceHost(host, windows);
+}
+
+const ROOT_EDGE_MARKER_ID = 'surface-switcher-root-edge-marker';
+
+async function setRootEdgeMarker(app: LxAppDriver, visible: boolean): Promise<void> {
+  await app.page.eval({
+    page: 'todo',
+    script: `
+      (() => {
+        const id = ${JSON.stringify(ROOT_EDGE_MARKER_ID)};
+        document.getElementById(id)?.remove();
+        if (!${visible}) return;
+        const marker = document.createElement('div');
+        marker.id = id;
+        Object.assign(marker.style, {
+          position: 'fixed',
+          inset: '0',
+          border: '8px solid rgb(255, 0, 255)',
+          boxSizing: 'border-box',
+          pointerEvents: 'none',
+          zIndex: '2147483647',
+        });
+        document.documentElement.append(marker);
+      })()
+    `,
+  });
+}
+
+function rootEdgeProbePoints(webview: DesktopWindowInfo): [number, number][] {
+  const fractions = [0.1, 0.3, 0.5, 0.7, 0.9];
+  const vertical = fractions.map((fraction) => (
+    webview.bounds.y + Math.floor(webview.bounds.h * fraction)
+  ));
+  const horizontal = fractions.map((fraction) => (
+    webview.bounds.x + Math.floor(webview.bounds.w * fraction)
+  ));
+  return [
+    ...vertical.map((y): [number, number] => [webview.bounds.x + 4, y]),
+    ...vertical.map((y): [number, number] => [
+      webview.bounds.x + webview.bounds.w - 5,
+      y,
+    ]),
+    ...horizontal.map((x): [number, number] => [
+      x,
+      webview.bounds.y + webview.bounds.h - 5,
+    ]),
+  ];
+}
+
+function isRootEdgeMarker(pixel: DesktopPixel): boolean {
+  return pixel.r >= 245 && pixel.g <= 10 && pixel.b >= 245;
+}
+
+async function rootEdgeMarkerSamples(
+  desktop: DesktopDriver,
+  webview: DesktopWindowInfo,
+): Promise<boolean[]> {
+  const pixels = await Promise.all(
+    rootEdgeProbePoints(webview).map((at) => desktop.pixel({ at })),
+  );
+  return pixels.map(isRootEdgeMarker);
+}
+
+async function attachDesktopFailure(
+  name: string,
+  desktop: DesktopDriver,
+  host: DesktopWindowInfo,
+): Promise<void> {
+  try {
+    const screenshot = await desktop.screenshot({ window: host.id });
+    await test.attach?.(`${name}.png`, {
+      mimeType: 'image/png',
+      base64: screenshot.base64,
+    });
+  } catch {
+    // Preserve the original gate failure when diagnostic capture also fails.
+  }
 }
 
 function samePin(left: AutomationShellPin, right: AutomationShellPin): boolean {
@@ -430,11 +513,18 @@ windowsHostTest('docks the footer Chat WebView physically beside the main after 
       )),
       'Chat WebView in the physical medium overlay',
     );
+    const convergedOverlayWindows = await waitForValue(async () => {
+      const candidate = await desktop.windows();
+      const visible = visibleHostWebViews(host!, candidate);
+      return visible.length === 1 && visible[0].id === overlayWindow.id
+        ? candidate
+        : undefined;
+    }, 'covered main WebView hidden below Chat overlay');
     expectOverlayCoversMain(
       host,
       baselineMain,
       overlayWindow,
-      await desktop.windows(),
+      convergedOverlayWindows,
     );
 
     // Prove the composed overlay is actually the input target, not merely a
@@ -544,6 +634,9 @@ windowsHostTest('docks the footer Chat WebView physically beside the main after 
       restoredMain,
       () => desktop.windows(),
     );
+  } catch (error) {
+    await attachDesktopFailure('surface-overlay-failure', desktop, host);
+    throw error;
   } finally {
     if (chatOpened) {
       await app.eval({
@@ -620,6 +713,12 @@ windowsHostTest('opens a pinned lxapp as an exact main workspace and keeps its m
       'Showcase physical main bounds',
     );
     expectSingleWorkspaceHost(host, await desktop.windows());
+    await setRootEdgeMarker(app, true);
+    await waitForValue(async () => (
+      (await rootEdgeMarkerSamples(desktop, baselineMain)).every(Boolean)
+        ? true
+        : undefined
+    ), 'root edge marker visible on every probe before Pin promotion');
 
     // Start from the declared entry so this gate covers the difficult case:
     // a Pin must promote the one live aside instance into a main workspace.
@@ -677,6 +776,11 @@ windowsHostTest('opens a pinned lxapp as an exact main workspace and keeps its m
       promotedMain,
       () => desktop.windows(),
     );
+    await waitForValue(async () => (
+      (await rootEdgeMarkerSamples(desktop, baselineMain)).some(Boolean)
+        ? undefined
+        : true
+    ), 'every outgoing root edge probe absent below promoted Chat');
 
     // Close and repeat from cold state: the same physical Pin must still
     // create a switchable main and occupy exactly the root content rectangle.
@@ -705,7 +809,22 @@ windowsHostTest('opens a pinned lxapp as an exact main workspace and keeps its m
       restoredAfterClose,
       () => desktop.windows(),
     );
-    await desktop.pointer.click({ at: pinPoint });
+    await waitForValue(async () => (
+      (await rootEdgeMarkerSamples(desktop, restoredAfterClose)).every(Boolean)
+        ? true
+        : undefined
+    ), 'every root edge probe restored after closing promoted Chat');
+    await waitForValue(async () => (
+      (await automation.lxapps.list()).some((candidate) => candidate.appid === 'lingxia-chat')
+        ? undefined
+        : true
+    ), 'promoted Chat runtime fully closed');
+    const coldPins = await shell.pins();
+    const coldPinIndex = coldPins.findIndex((pin) => samePin(pin, targetPin));
+    expect(coldPinIndex >= 0).toBeTruthy();
+    host = (await desktop.windows()).find((window) => window.id === host!.id) ?? host;
+    const coldPinPoint = pinnedShortcutPoint(host, coldPinIndex);
+    await desktop.pointer.click({ at: coldPinPoint });
     const coldLayout = await waitForValue(async () => {
       const candidate = await app.surfaceLayout();
       return candidate.activeMainId === 'lingxia-chat'
@@ -732,18 +851,23 @@ windowsHostTest('opens a pinned lxapp as an exact main workspace and keeps its m
       coldMain,
       () => desktop.windows(),
     );
+    await waitForValue(async () => (
+      (await rootEdgeMarkerSamples(desktop, baselineMain)).some(Boolean)
+        ? undefined
+        : true
+    ), 'every outgoing root edge probe absent below cold Chat');
 
     const windowsBeforeMenu = await desktop.windows();
     const existingWindowIds = new Set(windowsBeforeMenu.map((window) => window.id));
-    await desktop.pointer.click({ at: pinPoint, button: 'right' });
+    await desktop.pointer.click({ at: coldPinPoint, button: 'right' });
     const menu = await waitForValue(async () => (
       (await desktop.windows()).find((window) => (
         window.visible
         && !existingWindowIds.has(window.id)
         && window.process.toLocaleLowerCase() === host!.process.toLocaleLowerCase()
         && window.title === ''
-        && Math.abs(window.bounds.x - pinPoint[0]) <= 8
-        && Math.abs(window.bounds.y - pinPoint[1]) <= 8
+        && Math.abs(window.bounds.x - coldPinPoint[0]) <= 8
+        && Math.abs(window.bounds.y - coldPinPoint[1]) <= 8
         && window.bounds.w > 0
         && window.bounds.w < host!.bounds.w
         && window.bounds.h > 0
@@ -796,9 +920,13 @@ windowsHostTest('opens a pinned lxapp as an exact main workspace and keeps its m
       rootAfterSidebarSwitch,
       () => desktop.windows(),
     );
+  } catch (error) {
+    await attachDesktopFailure('surface-pin-failure', desktop, host);
+    throw error;
   } finally {
     await desktop.key.press({ key: 'Escape' }).catch(() => undefined);
     await closeChatSurface(app).catch(() => undefined);
+    await setRootEdgeMarker(app, false).catch(() => undefined);
     await shell.setPin({ ...targetPin, pinned: initiallyPinned });
     await desktop.window.resize({
       window: host.id,
