@@ -1148,7 +1148,17 @@ mod worker_assignment_tests {
             free_workers.clone(),
             Duration::from_millis(1),
         ));
-        tokio::time::sleep(Duration::from_millis(10)).await;
+        tokio::time::timeout(Duration::from_secs(1), async {
+            loop {
+                let quarantined = !assignments.lock().unwrap().contains_key(&7);
+                if quarantined {
+                    break;
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("worker assignment should be quarantined after the ACK timeout");
 
         assert!(!assignments.lock().unwrap().contains_key(&7));
         assert!(free_workers.lock().unwrap().is_empty());
