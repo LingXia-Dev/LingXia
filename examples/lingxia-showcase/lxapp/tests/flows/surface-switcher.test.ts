@@ -97,6 +97,35 @@ function windowsHost(windows: DesktopWindowInfo[]): DesktopWindowInfo | undefine
     ))[0];
 }
 
+function expectExactMainPresentation(
+  host: DesktopWindowInfo,
+  baseline: DesktopWindowInfo,
+  active: DesktopWindowInfo,
+  windows: DesktopWindowInfo[],
+): void {
+  // A page-owned native navigation bar may shorten the inner WebView at the
+  // top. The host presentation still has to share the root's left, right, and
+  // bottom edges, with no outgoing WebView or duplicate workspace left visible.
+  expect(active.bounds.x).toBe(baseline.bounds.x);
+  expect(active.bounds.w).toBe(baseline.bounds.w);
+  expect(active.bounds.y >= baseline.bounds.y).toBeTruthy();
+  expect(active.bounds.y + active.bounds.h).toBe(
+    baseline.bounds.y + baseline.bounds.h,
+  );
+  expect(windows.filter((window) => (
+    window.visible
+    && window.process.toLocaleLowerCase() === 'msedgewebview2'
+    && window.id !== active.id
+    && windowContains(host, window)
+  ))).toEqual([]);
+  expect(windows.filter((window) => (
+    window.visible
+    && window.pid === host.pid
+    && window.title === 'LingXia'
+    && window.process.toLocaleLowerCase() !== 'msedgewebview2'
+  )).map((window) => window.id)).toEqual([host.id]);
+}
+
 function samePin(left: AutomationShellPin, right: AutomationShellPin): boolean {
   return left.kind === right.kind && left.key === right.key;
 }
@@ -152,6 +181,22 @@ async function waitForValue<T>(
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
   throw new Error(`${label} was not observed within ${timeoutMs}ms`);
+}
+
+async function closeChatSurface(app: LxAppDriver): Promise<void> {
+  await app.eval({
+    timeoutMs: 20_000,
+    script: `
+      const layout = await lx.automation().lxapp().surfaceLayout();
+      let chat;
+      if (layout.mains.includes('lingxia-chat')) {
+        chat = await lx.openSurface({ surface: 'lingxia-chat', as: 'main' });
+      } else if (layout.asideSlots.some((slot) => slot.children.includes('lingxia-chat'))) {
+        chat = await lx.openSurface({ surface: 'lingxia-chat' });
+      }
+      if (chat?.alive) await chat.close();
+    `,
+  });
 }
 
 desktopTest('projects the declared terminal aside and restores its baseline state', async () => {
@@ -364,7 +409,7 @@ windowsHostTest('docks the footer Chat WebView physically beside the main after 
   }
 });
 
-windowsHostTest('opens a pinned declared lxapp as a physical aside and keeps its menu live', async () => {
+windowsHostTest('opens a pinned lxapp as an exact main workspace and keeps its menu live', async () => {
   const app = await desktopApp();
   const automation = lx.automation();
   const desktop = automation.desktop;
@@ -384,22 +429,8 @@ windowsHostTest('opens a pinned declared lxapp as a physical aside and keeps its
     originalPage?.startsWith(page.path)
   ))?.name;
   const dockedWidth = Math.round(1_200 * host.scale);
-  let chatOpened = false;
   try {
-    await app.eval({
-      timeoutMs: 20_000,
-      script: `
-        const driver = lx.automation().lxapp();
-        const layout = await driver.surfaceLayout();
-        const present = layout.mains.includes('lingxia-chat')
-          || layout.asideSlots.some((slot) => slot.children.includes('lingxia-chat'))
-          || layout.floats.some((surface) => surface.id === 'lingxia-chat');
-        if (present) {
-          const chat = await lx.openSurface({ surface: 'lingxia-chat' });
-          if (chat.alive) await chat.close();
-        }
-      `,
-    });
+    await closeChatSurface(app);
     await waitForValue(async () => (
       containsSurface(await app.surfaceLayout(), 'lingxia-chat') ? undefined : true
     ), 'closed Chat baseline');
@@ -415,32 +446,125 @@ windowsHostTest('opens a pinned declared lxapp as a physical aside and keeps its
       height: 900,
     });
     await desktop.window.focus({ window: host.id });
-    const pinPoint = pinnedShortcutPoint(host, pinIndex);
-    await desktop.pointer.click({ at: pinPoint });
-    chatOpened = true;
+    await waitForValue(async () => {
+      const candidate = await app.surfaceLayout();
+      return candidate.sizeClass === 'expanded'
+        && candidate.activeMainId === 'lingxia-showcase'
+        ? candidate
+        : undefined;
+    }, 'expanded main baseline');
 
-    const layout = await waitForValue(async () => {
+    const baselineMain = await waitForValue(async () => (
+      (await desktop.windows())
+        .filter((window) => (
+          window.visible
+          && window.process.toLocaleLowerCase() === 'msedgewebview2'
+          && window.title !== 'AI Chat'
+          && windowContains(host!, window)
+          && window.bounds.w > host!.bounds.w * 0.6
+          && window.bounds.h > host!.bounds.h * 0.6
+        ))
+        .sort((left, right) => (
+          right.bounds.w * right.bounds.h - left.bounds.w * left.bounds.h
+        ))[0]
+    ), 'Showcase physical main bounds');
+
+    // Start from the declared entry so this gate covers the difficult case:
+    // a Pin must promote the one live aside instance into a main workspace.
+    await app.eval({
+      timeoutMs: 20_000,
+      script: `await lx.openSurface({ surface: 'lingxia-chat' });`,
+    });
+    const declaredAside = await waitForValue(async () => {
       const candidate = await app.surfaceLayout();
       const slot = candidate.asideSlots.find((item) => (
         item.activeChild === 'lingxia-chat' && item.visible && !item.overlay
       ));
       return candidate.sizeClass === 'expanded' && slot ? candidate : undefined;
-    }, 'pinned Chat declared aside');
-    expect(layout.activeMainId).toBe('lingxia-showcase');
-    expect(layout.mains.includes('lingxia-chat')).toBeFalsy();
-    expect(switcherIds(layout).includes('lingxia-chat')).toBeFalsy();
+    }, 'declared Chat right aside');
+    expect(declaredAside.activeMainId).toBe('lingxia-showcase');
+    expect(switcherIds(declaredAside).includes('lingxia-chat')).toBeFalsy();
 
-    await waitForValue(async () => {
-      const windows = await desktop.windows();
-      return windows.find((window) => (
+    await waitForValue(async () => (
+      (await desktop.windows()).find((window) => (
         window.visible
         && window.process.toLocaleLowerCase() === 'msedgewebview2'
         && window.title === 'AI Chat'
         && windowContains(host!, window)
         && window.bounds.x > host!.bounds.x + host!.bounds.w * 0.55
         && window.bounds.w < host!.bounds.w * 0.45
+      ))
+    ), 'declared Chat physical right aside');
+
+    const pinPoint = pinnedShortcutPoint(host, pinIndex);
+    await desktop.pointer.click({ at: pinPoint });
+    const promotedLayout = await waitForValue(async () => {
+      const candidate = await app.surfaceLayout();
+      return candidate.activeMainId === 'lingxia-chat'
+        && candidate.mains.includes('lingxia-chat')
+        && switcherIds(candidate).includes('lingxia-chat')
+        && !candidate.asideSlots.some((slot) => slot.children.includes('lingxia-chat'))
+        ? candidate
+        : undefined;
+    }, 'pinned Chat promoted main workspace');
+    expect(promotedLayout.mainSwitcher.activeSurfaceId).toBe('lingxia-chat');
+
+    const promotedMain = await waitForValue(async () => {
+      const windows = await desktop.windows();
+      return windows.find((window) => (
+        window.visible
+        && window.process.toLocaleLowerCase() === 'msedgewebview2'
+        && window.title === 'AI Chat'
+        && windowContains(host!, window)
+        && window.bounds.w > host!.bounds.w * 0.6
+        && window.bounds.h > host!.bounds.h * 0.6
       ));
-    }, 'pinned Chat WebView in the physical right aside');
+    }, 'promoted Chat physical main');
+    expectExactMainPresentation(
+      host,
+      baselineMain,
+      promotedMain,
+      await desktop.windows(),
+    );
+
+    // Close and repeat from cold state: the same physical Pin must still
+    // create a switchable main and occupy exactly the root content rectangle.
+    await closeChatSurface(app);
+    await waitForValue(async () => {
+      const candidate = await app.surfaceLayout();
+      return !containsSurface(candidate, 'lingxia-chat')
+        && candidate.activeMainId === 'lingxia-showcase'
+        ? candidate
+        : undefined;
+    }, 'closed promoted Chat workspace');
+    await desktop.pointer.click({ at: pinPoint });
+    const coldLayout = await waitForValue(async () => {
+      const candidate = await app.surfaceLayout();
+      return candidate.activeMainId === 'lingxia-chat'
+        && candidate.mains.includes('lingxia-chat')
+        && switcherIds(candidate).includes('lingxia-chat')
+        && !candidate.asideSlots.some((slot) => slot.children.includes('lingxia-chat'))
+        ? candidate
+        : undefined;
+    }, 'cold pinned Chat main workspace');
+    expect(coldLayout.mainSwitcher.activeSurfaceId).toBe('lingxia-chat');
+
+    const coldMain = await waitForValue(async () => (
+      (await desktop.windows()).find((window) => (
+        window.visible
+        && window.process.toLocaleLowerCase() === 'msedgewebview2'
+        && window.title === 'AI Chat'
+        && windowContains(host!, window)
+        && window.bounds.w > host!.bounds.w * 0.6
+        && window.bounds.h > host!.bounds.h * 0.6
+      ))
+    ), 'cold pinned Chat physical main');
+    expectExactMainPresentation(
+      host,
+      baselineMain,
+      coldMain,
+      await desktop.windows(),
+    );
 
     const windowsBeforeMenu = await desktop.windows();
     const existingWindowIds = new Set(windowsBeforeMenu.map((window) => window.id));
@@ -484,26 +608,14 @@ windowsHostTest('opens a pinned declared lxapp as a physical aside and keeps its
     ), 'responsive sidebar after pinned Chat context menu');
     const afterSidebarClick = await app.surfaceLayout();
     expect(afterSidebarClick.activeMainId).toBe('lingxia-showcase');
+    expect(afterSidebarClick.mains.includes('lingxia-chat')).toBeTruthy();
+    expect(switcherIds(afterSidebarClick).includes('lingxia-chat')).toBeTruthy();
     expect(afterSidebarClick.asideSlots.some((slot) => (
-      slot.activeChild === 'lingxia-chat' && slot.visible
-    ))).toBeTruthy();
+      slot.children.includes('lingxia-chat')
+    ))).toBeFalsy();
   } finally {
     await desktop.key.press({ key: 'Escape' }).catch(() => undefined);
-    if (chatOpened) {
-      await app.eval({
-        timeoutMs: 20_000,
-        script: `
-          const layout = await lx.automation().lxapp().surfaceLayout();
-          const present = layout.mains.includes('lingxia-chat')
-            || layout.asideSlots.some((slot) => slot.children.includes('lingxia-chat'))
-            || layout.floats.some((surface) => surface.id === 'lingxia-chat');
-          if (present) {
-            const chat = await lx.openSurface({ surface: 'lingxia-chat' });
-            if (chat.alive) await chat.close();
-          }
-        `,
-      });
-    }
+    await closeChatSurface(app).catch(() => undefined);
     await shell.setPin({ ...targetPin, pinned: initiallyPinned });
     await desktop.window.resize({
       window: host.id,

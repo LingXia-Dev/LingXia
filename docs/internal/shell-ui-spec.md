@@ -455,10 +455,18 @@ Pins are the user's quick entries for lxapps and websites.
   is never render-truncated.
 - One ordered, mixed pin list is persisted so user order survives across lxapp
   and web targets; renderers MUST NOT force lxapps before websites.
-- Clicking an unopened pin opens a main tab; if already main, it selects it. If
-  the lxapp is live as aside/float, the click focuses the existing instance —
-  a pin never changes role. Only an explicit `openSurface(..., as: 'main')`
-  intent may migrate an eligible non-root Surface.
+- An lxapp Pin is a **workspace launch intent**, not a declared-Surface
+  shortcut. Clicking it opens or selects that lxapp as a main workspace and it
+  MUST appear in the main switcher. If the same lxapp is live as an aside, the
+  host closes that one-region presentation and reopens it as main; the Pin does
+  not inherit the app's declared aside default. Sidebar actions and
+  `lx.openSurface({ surface: ... })` continue to honor the declared role.
+- A main opened from a Pin MUST occupy the exact same host content rectangle as
+  the stable root main. No edge or pixel of the previously active main may
+  remain exposed behind it. A page's native navigation bar may reserve space
+  inside that rectangle, but the previous main WebView MUST be hidden and no
+  duplicate workspace window may remain visible.
+- A website Pin opens or selects a main browser tab.
 
 ### 4.5 Sidebar actions
 

@@ -4220,63 +4220,47 @@ fn handle_lxapp_auxiliary_close(owner_appid: &str, target_appid: &str) {
     sync_shell_layout(owner_appid);
 }
 
-fn lxapp_shortcut_region(
-    current: Option<lxapp::LxAppOpenRegion>,
-    has_declared_aside: bool,
-) -> lxapp::LxAppOpenRegion {
-    current.unwrap_or(if has_declared_aside {
-        lxapp::LxAppOpenRegion::Aside
-    } else {
-        lxapp::LxAppOpenRegion::Main
-    })
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum LxappShortcutAction {
+    Open,
+    Focus,
+    PromoteAside,
 }
 
-fn focus_or_open_lxapp(owner_appid: &str, target_appid: &str) {
+fn lxapp_shortcut_action(current: Option<lxapp::LxAppOpenRegion>) -> LxappShortcutAction {
+    match current {
+        None => LxappShortcutAction::Open,
+        Some(lxapp::LxAppOpenRegion::Main) => LxappShortcutAction::Focus,
+        Some(lxapp::LxAppOpenRegion::Aside) => LxappShortcutAction::PromoteAside,
+    }
+}
+
+fn focus_or_open_lxapp(_owner_appid: &str, target_appid: &str) {
     let current_region = lxapp::open_region(target_appid);
-    let configured_aside = panel_item_for_lxapp(target_appid);
-    match lxapp_shortcut_region(current_region, configured_aside.is_some()) {
-        lxapp::LxAppOpenRegion::Main => {
-            clear_browser_presentation();
-            if current_region.is_some() {
-                focus_existing_main_lxapp(target_appid);
-            } else {
-                match lxapp::open_lxapp(target_appid, LxAppStartupOptions::default()) {
-                    Ok(target) => target.set_active_main(),
-                    Err(err) => log::warn!("failed to open pinned lxapp {target_appid}: {err}"),
-                }
-            }
+    clear_browser_presentation();
+    match lxapp_shortcut_action(current_region) {
+        LxappShortcutAction::Focus => focus_existing_main_lxapp(target_appid),
+        LxappShortcutAction::Open => {
+            open_pinned_lxapp_main(target_appid);
         }
-        lxapp::LxAppOpenRegion::Aside => {
-            let surface_id = configured_aside
-                .as_ref()
-                .map(|(panel_id, _, _)| panel_id.as_str())
-                .unwrap_or(target_appid);
-            if current_region == Some(lxapp::LxAppOpenRegion::Aside)
-                && shell_surface_in_graph(surface_id)
-            {
-                if let Some(owner) = lxapp::try_get(owner_appid) {
-                    owner.focus_shell_surface(surface_id);
-                }
-            } else if let Some((panel_id, path, position)) = configured_aside {
-                let _ = show_lxapp_panel(
-                    owner_appid,
-                    &panel_id,
-                    target_appid,
-                    &path,
-                    position,
-                    false,
-                    None,
-                );
-            } else if let Err(err) = open_lxapp_panel_now(target_appid, "", target_appid) {
-                log::warn!("failed to focus runtime lxapp aside {target_appid}: {err}");
-            } else {
-                register_managed_aside(
-                    owner_appid,
-                    target_appid,
-                    lingxia_app_context::PanelPosition::Right,
-                );
+        LxappShortcutAction::PromoteAside => {
+            let surface_id = panel_item_for_lxapp(target_appid)
+                .map(|(panel_id, _, _)| panel_id)
+                .unwrap_or_else(|| target_appid.to_string());
+            close_managed_aside_child(&surface_id);
+            if lxapp::open_region(target_appid).is_some() {
+                log::warn!("failed to close pinned lxapp aside before promotion: {target_appid}");
+                return;
             }
+            open_pinned_lxapp_main(target_appid);
         }
+    }
+}
+
+fn open_pinned_lxapp_main(target_appid: &str) {
+    match lxapp::open_lxapp(target_appid, LxAppStartupOptions::default()) {
+        Ok(_) => focus_existing_main_lxapp(target_appid),
+        Err(err) => log::warn!("failed to open pinned lxapp {target_appid}: {err}"),
     }
 }
 
@@ -6228,9 +6212,10 @@ fn is_transparent_css_color(raw: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        LxappContextMenuAction, PresentationCompletion, browser_internal_page_deep_link,
-        browser_internal_page_key, browser_url_is_hidden, build_lxapp_context_menu, chrome_command,
-        chrome_command_is_page_scoped, lxapp_shortcut_region, preferred_sidebar_group_appid,
+        LxappContextMenuAction, LxappShortcutAction, PresentationCompletion,
+        browser_internal_page_deep_link, browser_internal_page_key, browser_url_is_hidden,
+        build_lxapp_context_menu, chrome_command, chrome_command_is_page_scoped,
+        lxapp_shortcut_action, preferred_sidebar_group_appid,
     };
     #[cfg(feature = "browser-runtime")]
     use super::{
@@ -6352,13 +6337,13 @@ mod tests {
     }
 
     #[test]
-    fn unopened_declared_aside_shortcut_does_not_fall_back_to_main() {
+    fn lxapp_shortcuts_are_workspace_intents() {
+        use LxappShortcutAction::{Focus, Open, PromoteAside};
         use lxapp::LxAppOpenRegion::{Aside, Main};
 
-        assert_eq!(lxapp_shortcut_region(None, true), Aside);
-        assert_eq!(lxapp_shortcut_region(None, false), Main);
-        assert_eq!(lxapp_shortcut_region(Some(Main), true), Main);
-        assert_eq!(lxapp_shortcut_region(Some(Aside), false), Aside);
+        assert_eq!(lxapp_shortcut_action(None), Open);
+        assert_eq!(lxapp_shortcut_action(Some(Main)), Focus);
+        assert_eq!(lxapp_shortcut_action(Some(Aside)), PromoteAside);
     }
 
     #[test]

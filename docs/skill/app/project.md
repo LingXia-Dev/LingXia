@@ -388,7 +388,7 @@ URL field and a separate tab group; the field accepts URLs, not search queries.
 
 Two sidebar regions have fixed ownership:
 
-- **Pins are the user's** — quick entries for lxapps and websites (eight at most), added and removed through context menus. There is no app API to write them.
+- **Pins are the user's** — quick entries for lxapps and websites (eight at most), added and removed through context menus. An lxapp Pin always opens or focuses a main workspace (and therefore enters the main switcher) in the same content rectangle as the home lxapp; it does not inherit a declared aside role. Use a sidebar action plus `lx.openSurface({ surface: ... })` for the aside entry. There is no production app API to write Pins.
 - **Sidebar actions are the app's** — runtime entries the home lxapp declares via `lx.shell.sidebarActions` (see the `@lingxia/types` declarations). Header actions are icon-only and limited to two; footer actions use labeled cells and scroll after five visible rows. The shell invokes `onActivate` and performs no built-in navigation; callbacks can call `lx.openSurface(...)` or run any other app logic. Redeclare them each Logic launch.
 
 The initial `main` is admitted first as the window's stable root and cannot be closed. Other

@@ -37,8 +37,18 @@ export interface Automation {
 
 /** One ordered shortcut in the host shell's persisted Pin collection. */
 export type AutomationShellPin =
-  | { kind: 'lxapp'; key: string }
-  | { kind: 'bookmark'; key: string };
+  | {
+    /** A host workspace shortcut; activation opens/focuses the app as main. */
+    kind: 'lxapp';
+    /** Installed lxapp id. This is not a page name or route. */
+    key: string;
+  }
+  | {
+    /** A website shortcut opened/focused as a main browser tab. */
+    kind: 'bookmark';
+    /** Persisted bookmark id. */
+    key: string;
+  };
 
 export type SetAutomationShellPinOptions = AutomationShellPin & {
   pinned: boolean;
