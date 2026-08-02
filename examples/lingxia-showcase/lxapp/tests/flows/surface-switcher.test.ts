@@ -207,9 +207,18 @@ windowsHostTest('docks the footer Chat WebView physically beside the main after 
   let host = windowsHost(await desktop.windows());
   if (!host) throw new Error('visible LingXia host window was not found');
   const originalBounds = { ...host.bounds };
+  const overlayWidth = Math.round(720 * host.scale);
+  const dockedWidth = Math.round(1_200 * host.scale);
   let chatOpened = false;
   try {
-    host = await desktop.window.resize({ window: host.id, width: 1024, height: 768 });
+    // Window bounds are physical pixels while surface breakpoints are DIPs.
+    // Target explicit logical widths so this covers the same medium/expanded
+    // handoff at every runner DPI.
+    host = await desktop.window.resize({
+      window: host.id,
+      width: overlayWidth,
+      height: 768,
+    });
     await desktop.window.focus({ window: host.id });
 
     const baseline = await app.surfaceLayout();
@@ -225,9 +234,12 @@ windowsHostTest('docks the footer Chat WebView physically beside the main after 
 
     const overlayLayout = await waitForValue(async () => {
       const layout = await app.surfaceLayout();
-      return layout.asideSlots.some((slot) => (
-        slot.visible && slot.activeChild === 'lingxia-chat'
-      )) ? layout : undefined;
+      const slot = layout.asideSlots.find((candidate) => (
+        candidate.activeChild === 'lingxia-chat'
+      ));
+      return layout.sizeClass === 'medium' && slot?.visible && slot.overlay
+        ? layout
+        : undefined;
     }, 'footer Chat aside');
     expect(overlayLayout.activeMainId).toBe('lingxia-showcase');
     expect(overlayLayout.mains.includes('lingxia-chat')).toBeFalsy();
@@ -236,7 +248,11 @@ windowsHostTest('docks the footer Chat WebView physically beside the main after 
       slot.children.includes('lingxia-chat')
     ))?.overlay).toBeTruthy();
 
-    host = await desktop.window.resize({ window: host.id, width: 1440, height: 900 });
+    host = await desktop.window.resize({
+      window: host.id,
+      width: dockedWidth,
+      height: 900,
+    });
     const dockedLayout = await waitForValue(async () => {
       const layout = await app.surfaceLayout();
       const slot = layout.asideSlots.find((candidate) => (
