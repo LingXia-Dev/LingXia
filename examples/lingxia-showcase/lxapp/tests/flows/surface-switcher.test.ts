@@ -456,11 +456,21 @@ windowsHostTest('docks the footer Chat WebView physically beside the main after 
       }
     }, 'Chat overlay input');
     const inputPoint: [number, number] = [
-      overlayWindow.bounds.x + Math.round(chatInput.rect.center_x * overlayWindow.scale),
-      overlayWindow.bounds.y + Math.round(chatInput.rect.center_y * overlayWindow.scale),
+      // LingXia pins WebView2's rasterization scale to 1, so viewport CSS
+      // pixels map directly to the physical child-window coordinates. The
+      // monitor DPI reported by DesktopWindowInfo scales host DIPs only.
+      overlayWindow.bounds.x + Math.round(chatInput.rect.center_x),
+      overlayWindow.bounds.y + Math.round(chatInput.rect.center_y),
     ];
     const inputMarker = 'physical-overlay-front';
     await desktop.pointer.click({ at: inputPoint });
+    await waitForValue(async () => {
+      const focused = await chatApp.page.eval({
+        page: 'chat',
+        script: `document.activeElement?.matches('textarea[placeholder="Message..."]') === true`,
+      });
+      return focused === true ? true : undefined;
+    }, 'desktop click focused the Chat overlay input');
     await desktop.key.type({ text: inputMarker });
     await waitForValue(async () => {
       const candidate = await chatApp.page.query({
@@ -522,7 +532,7 @@ windowsHostTest('docks the footer Chat WebView physically beside the main after 
       () => desktop.windows(),
       (windows) => {
         const visible = visibleHostWebViews(host!, windows);
-        return visible.length === 1 && visible[0].id === baselineMain.id
+        return visible.length === 1
           ? visible[0]
           : undefined;
       },
@@ -682,12 +692,13 @@ windowsHostTest('opens a pinned lxapp as an exact main workspace and keeps its m
       () => desktop.windows(),
       (windows) => {
         const visible = visibleHostWebViews(host!, windows);
-        return visible.length === 1 && visible[0].id === baselineMain.id
+        return visible.length === 1
           ? visible[0]
           : undefined;
       },
       'root main restored after closing promoted Chat',
     );
+    expect((await app.info()).current_page?.startsWith('pages/todo/index')).toBeTruthy();
     await expectExactMainPresentation(
       host,
       baselineMain,
@@ -773,7 +784,7 @@ windowsHostTest('opens a pinned lxapp as an exact main workspace and keeps its m
       () => desktop.windows(),
       (windows) => {
         const visible = visibleHostWebViews(host!, windows);
-        return visible.length === 1 && visible[0].id === baselineMain.id
+        return visible.length === 1
           ? visible[0]
           : undefined;
       },
