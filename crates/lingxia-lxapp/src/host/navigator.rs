@@ -11,6 +11,8 @@ use std::sync::Arc;
 struct NavigateToAppOptions {
     #[serde(rename = "appId")]
     appid: String,
+    // Kept only so callers get a forward-only rejection for the removed
+    // route-based input instead of having it ignored by serde.
     path: Option<String>,
     page: Option<String>,
     query: Option<Value>,
@@ -44,39 +46,33 @@ fn resolve_page_target(
     target: &LxApp,
     options: &NavigateToAppOptions,
 ) -> Result<String, LxAppError> {
-    let has_page = options
-        .page
-        .as_deref()
-        .map(str::trim)
-        .is_some_and(|value| !value.is_empty());
-    let has_path = options
-        .path
-        .as_deref()
-        .map(str::trim)
-        .is_some_and(|value| !value.is_empty());
-    if has_page && has_path {
-        return Err(LxAppError::InvalidParameter(
-            "pass either page or path, not both".to_string(),
-        ));
-    }
-    let path = if let Some(page) = options
-        .page
-        .as_deref()
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-    {
+    validate_page_selector(options)?;
+    let path = if let Some(page) = options.page.as_deref().map(str::trim) {
         target
             .find_page_path_by_name(page)
             .ok_or_else(|| LxAppError::ResourceNotFound(format!("page name: {page}")))?
     } else {
-        options
-            .path
-            .as_deref()
-            .map(str::trim)
-            .unwrap_or_default()
-            .to_string()
+        String::new()
     };
     append_query(path, options.query.as_ref())
+}
+
+fn validate_page_selector(options: &NavigateToAppOptions) -> Result<(), LxAppError> {
+    if options.path.is_some() {
+        return Err(LxAppError::InvalidParameter(
+            "path is not supported; pass the configured page name in page".to_string(),
+        ));
+    }
+    if options
+        .page
+        .as_deref()
+        .is_some_and(|page| page.trim().is_empty())
+    {
+        return Err(LxAppError::InvalidParameter(
+            "page must be a non-empty configured page name".to_string(),
+        ));
+    }
+    Ok(())
 }
 
 fn append_query(path: String, query: Option<&Value>) -> Result<String, LxAppError> {
@@ -90,6 +86,7 @@ fn should_navigate_to_app(
     lxapp: &LxApp,
     options: &NavigateToAppOptions,
 ) -> Result<bool, LxAppError> {
+    validate_page_selector(options)?;
     if options.appid.is_empty() {
         return Err(LxAppError::InvalidParameter(
             "navigateToApp requires appId".to_string(),
@@ -108,6 +105,7 @@ async fn do_navigate_to_app(
     options: NavigateToAppOptions,
     cancel: &mut super::HostCancel,
 ) -> Result<(), LxAppError> {
+    validate_page_selector(&options)?;
     let target_appid = options.appid.clone();
     let release_type = parse_env_version(options.env_version.as_deref())?;
     let target_version = options
@@ -173,4 +171,24 @@ pub(crate) fn register_all() {
         "navigateToApp" => Arc::new(NavigateToApp),
         "navigateBackApp" => Arc::new(NavigateBackApp)
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn component_app_navigation_rejects_route_paths() {
+        let options = NavigateToAppOptions {
+            appid: "target".to_string(),
+            path: Some("/pages/home/index".to_string()),
+            page: None,
+            query: None,
+            env_version: None,
+            target_version: None,
+        };
+
+        let error = validate_page_selector(&options).unwrap_err().to_string();
+        assert!(error.contains("path is not supported"));
+    }
 }

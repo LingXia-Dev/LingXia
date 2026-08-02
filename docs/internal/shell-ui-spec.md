@@ -198,7 +198,7 @@ Child surfaces inside an aside slot:
 | Content | Default behavior |
 |---|---|
 | declared Surface | The unkeyed declaration is its default instance; `(declaration id, key)` reuses an additional instance when supported |
-| dynamic lxapp Surface | Singleton per appId in one window; reopening focuses it, and an explicit supported `as` migrates it |
+| dynamic lxapp Surface | Singleton per appId in one window; reopening the same role focuses it, while an incompatible live role conflicts |
 | page | New page instance per open |
 | URL main | Delegated to the browser; duplicate URLs allowed |
 | URL aside | API-opened tabs reuse by normalized first URL; explicit duplication in browser UI may create new instances |
@@ -714,28 +714,36 @@ semantics every language surface MUST share.
 - `lx.openSurface({ surface, key?, as? })` opens a YAML declaration. Without
   `key` it addresses the declaration's default instance. A non-empty `key`
   selects or creates an additional instance only when that declaration admits
-  multiple instances. The returned handle binds the resolved runtime
+  multiple instances; currently this is supported by instantiable native
+  providers such as terminal. The returned handle binds the resolved runtime
   `SurfaceId`, never the caller key.
 - `as` is orthogonal to identity. Omitting it uses the declaration role;
   supplying it focuses or migrates the same `(surface, key?)` instance to that
   supported role. A different `as` never creates a second instance. The stable
-  root main cannot migrate away from main.
+  root main rejects any request to migrate away from main.
 - Terminal follows the generic declaration rule. For example,
   `{ surface: 'terminal', as: 'main' }` moves/focuses the default terminal in
   the main switcher, while `{ surface: 'terminal', key: 'project-a', as:
   'aside' }` opens/reuses a distinct workspace in the native aside slot. The
   same keyed workspace may later migrate to main without losing PTYs, cwd, or
   running processes.
-- `lx.openSurface({ appId, as, page?, path?, query?, envVersion?,
-  targetVersion? })` creates or focuses a dynamic business-app Surface and
+- `lx.openSurface({ appId, as, page?, query?, envVersion?, targetVersion?,
+  edge? })` creates or focuses a dynamic business-app Surface and
   does not require a YAML declaration. `as` is required because the caller is
-  creating shell composition rather than using declaration defaults. `page`,
-  `path`, `query`, `envVersion`, and `targetVersion` are optional startup
-  inputs; `page` and `path` are mutually exclusive, and `envVersion` defaults
-  to `release`.
+  creating shell composition rather than using declaration defaults; it is
+  `main` or `aside`. A float lxapp must be host-declared and opened with
+  `{ surface }` so its tray anchor, dismissal policy, and presentation contract
+  exist. `page` is the configured page name; full routes are not JS API input.
+  `query`, `envVersion`, and `targetVersion` are optional startup inputs, and
+  `envVersion` defaults to `release`. `edge` is valid only with `as: 'aside'`:
+  `aside` chooses the companion region, while `edge` is its preferred docking
+  side on layouts with room. Omit it for the default; compact hosts may
+  reproject the same aside.
 - A dynamic App Surface is singleton by appId within the window. Reopening the
-  same appId focuses it; an explicit supported role change migrates it. It
-  returns a lifecycle handle and, when main, owns an independent switcher item.
+  same appId under its current role focuses it without restarting its lifecycle
+  or replacing startup parameters. A live main/aside role change currently
+  fails with `E_SURFACE_CONFLICT`; close it before reopening in the other role.
+  It returns a lifecycle handle and, when main, owns an independent switcher item.
 - `lx.openSurface({ page, ... })` opens the caller's own page as a float or
   standalone window. `lx.openSurface({ url, ... })` opens browser content; a
   URL without `as` becomes a main browser tab.
@@ -775,8 +783,8 @@ The active app at the top of a navigation stack may change, but the owning
 Surface identity and role do not.
 
 App navigation accepts the same optional startup selectors as a dynamic App
-Surface: `page`, `path`, `query`, `envVersion`, and `targetVersion`; `page` and
-`path` are mutually exclusive and `envVersion` defaults to `release`. If the
+Surface: `page`, `query`, `envVersion`, and `targetVersion`; `page` is the
+configured page name, full routes are rejected, and `envVersion` defaults to `release`. If the
 target appId is already owned by another live Surface, navigation fails with
 `E_SURFACE_CONFLICT` rather than stealing or cloning that instance.
 
@@ -849,12 +857,12 @@ As of 2026-08 (PR #202 follow-up design):
 
 | Area | Status |
 |---|---|
-| Declaration-first JS open specs | Target specified in §7.1: `{ surface }`, `{ appId }`, `{ page }`, and `{ url }`; generated types/runtime still need the forward-only migration away from `{ lxapp }` and `{ native }` |
+| Declaration-first JS open specs | Landed in generated types and runtime: `{ surface }`, `{ appId }`, `{ page }`, and `{ url }`; legacy `{ lxapp }` and `{ native }` selectors are rejected |
 | Aside slot model, unified slot tab chrome | Landed and live-verified (dual-tab lxapp slot, shared tab metrics, strip visible at n=1, no "+"/"···") |
 | Sidebar actions + pins | `lx.shell.sidebarActions` drives header/footer snapshots on Windows/macOS; accessibility activation is not yet automated |
 | Sidebar action footer overflow scrolling (5-row cap) | Landed on Windows/macOS |
 | Sidebar/tabbar parity | 184 width, 36/4 and 30/2/1 rhythm, two-level selection, style mapping landed on both platforms |
-| Main surface switcher | Shared ordered/root/capability snapshot and macOS intent routing landed; Windows still needs the same native/browser renderer projection |
+| Main surface switcher | Shared ordered/root/capability snapshot plus macOS and Windows projections landed; Windows public-API automation live-verifies switching, keyed reuse, role migration, root protection, and close cleanup |
 | `hideTabBar`/`showTabBar` ↔ group collapse | Landed |
 | Shell persistence | Window frame, sidebar mode/width, group collapse, aside geometry, and pins landed; main-session lazy restore and the aside geometry-only policy still to be verified against §8 |
 | `E_SURFACE_CONFLICT` | Error path exists; ownership conflicts such as navigating to an appId already hosted by another live Surface still need full enforcement |

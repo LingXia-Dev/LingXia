@@ -561,10 +561,17 @@ rong::js_api! {
     delta: number;
 }"###;
 
+        /// Navigate to another lxapp inside the current App Surface. JavaScript
+        /// callers address pages by their configured name; page routes are an
+        /// internal runtime detail and are not accepted as input.
         type NavigateToAppOptions = r###"{
     appId: string;
+    /**
+     * Configured page name from the target lxapp's `lxapp.json`. Omit it to
+     * open the target app's initial page. Full routes such as
+     * `/pages/home/index` are not supported.
+     */
     page?: string;
-    path?: string;
     query?: PageQuery;
     envVersion?: LxAppEnvVersion;
     targetVersion?: string;
@@ -584,19 +591,39 @@ rong::js_api! {
         /// `as` changes the live instance's role without changing its identity.
         type OpenDeclaredSurfaceSpec = r###"{
     surface: string;
-    /** Stable caller-owned identity for an additional declaration instance. */
+    /**
+     * Stable caller-owned identity for an additional native declaration
+     * instance. Leading/trailing whitespace is ignored; use 1 to 128 UTF-8
+     * bytes. Declarations without instantiable native providers reject it.
+     */
     key?: string;
-    /** Omit to use the declaration's role. */
+    /**
+     * Omit to use the declaration's role. Overrides must be realizable by the
+     * declared provider. `float` does not synthesize a popover contract: the
+     * declaration must already provide the required float/tray presentation.
+     * A stable root rejects non-main overrides.
+     */
     as?: 'main' | 'aside' | 'float';
-    /** Docking edge override for this open. */
-    edge?: SurfaceEdge;
+    interaction?: never;
     page?: never;
     url?: never;
     appId?: never;
+    envVersion?: never;
+    targetVersion?: never;
     position?: never;
     size?: never;
     query?: never;
-}"###;
+} & ({
+    edge?: never;
+} | {
+    /**
+     * Preferred docking side when the effective role is `aside`. `aside`
+     * selects the companion region; `edge` selects a side within that region.
+     * Omit it to keep the declaration's edge. Compact hosts may reproject it.
+     */
+    as?: 'aside';
+    edge: SurfaceEdge;
+})"###;
 
         /// Network status APIs.
         ///
@@ -604,28 +631,45 @@ rong::js_api! {
 
         /// Compose a dynamic business lxapp as its own shell Surface (home lxapp
         /// only). Unlike `navigateToApp`, this creates a parallel shell item and
-        /// lifecycle handle. No YAML declaration is required.
+        /// lifecycle handle. No YAML declaration is required. Reopening its
+        /// current role focuses the live instance; changing a live main/aside
+        /// role requires closing it first.
+        ///
+        /// Dynamic App Surfaces intentionally do not support `float`: a shell
+        /// float needs a host-declared tray anchor, dismissal policy, and
+        /// presentation contract that `{ appId }` cannot supply. Declare that
+        /// lxapp as a float in `lingxia.yaml` and open it with `{ surface }`.
         type OpenAppSurfaceSpec = r###"{
     appId: string;
-    as: 'main' | 'aside' | 'float';
+    /**
+     * Configured page name from the target lxapp's `lxapp.json`. Omit it to
+     * open the target app's initial page. Full page routes are not supported.
+     */
     page?: string;
-    path?: string;
     query?: PageQuery;
     /** Defaults to 'release'. */
     envVersion?: LxAppEnvVersion;
     targetVersion?: string;
-    /**
-     * Docking edge override for this open. Without it the surface keeps its
-     * current placement (initially the `lingxia.yaml` edge); with it the panel
-     * opens there — or moves there if already visible.
-     */
-    edge?: SurfaceEdge;
+    interaction?: never;
     url?: never;
     surface?: never;
     key?: never;
     position?: never;
     size?: never;
-}"###;
+} & ({
+    /** A switchable primary shell item. Dynamic floats are not supported. */
+    as: 'main';
+    edge?: never;
+} | {
+    /** A companion region beside the current main. */
+    as: 'aside';
+    /**
+     * Preferred docking side. `aside` selects the companion region; `edge`
+     * selects where that region docks on layouts with room. Omit it for the
+     * default (`right` for dynamic lxapps); compact hosts may reproject it.
+     */
+    edge?: SurfaceEdge;
+})"###;
 
         /// File system APIs.
         ///
@@ -689,6 +733,7 @@ rong::js_api! {
         ///   (large screen only).
         ///
         type OpenPageSurfaceSpec = r###"{
+    /** Configured page name from this lxapp's `lxapp.json`. */
     page: string;
     /** A popup above the main. */
     as: 'float';
@@ -701,7 +746,10 @@ rong::js_api! {
     url?: never;
     appId?: never;
     key?: never;
+    envVersion?: never;
+    targetVersion?: never;
 } | {
+    /** Configured page name from this lxapp's `lxapp.json`. */
     page: string;
     as: 'window';
     size?: WindowSurfaceSize;
@@ -714,6 +762,8 @@ rong::js_api! {
     url?: never;
     appId?: never;
     key?: never;
+    envVersion?: never;
+    targetVersion?: never;
 }"###;
 
         /// Native interaction supplied by the host around page content.
@@ -741,6 +791,8 @@ rong::js_api! {
     interaction?: never;
     page?: never;
     appId?: never;
+    envVersion?: never;
+    targetVersion?: never;
     key?: never;
     surface?: never;
     query?: never;
@@ -757,9 +809,12 @@ rong::js_api! {
     as: 'aside';
     edge?: SurfaceEdge;
     size?: OverlaySurfaceSize;
+    interaction?: never;
     page?: never;
     surface?: never;
     appId?: never;
+    envVersion?: never;
+    targetVersion?: never;
     key?: never;
     position?: never;
     query?: never;
@@ -768,9 +823,12 @@ rong::js_api! {
         type OpenUrlTabSpec = r###"{
     url: string;
     as?: never;
+    interaction?: never;
     page?: never;
     surface?: never;
     appId?: never;
+    envVersion?: never;
+    targetVersion?: never;
     key?: never;
     edge?: never;
     position?: never;
@@ -1251,7 +1309,9 @@ true
     height: number;
 }"###;
 
-        /// Edge an aside docks to; the Host decides the realized form by screen size.
+        /// Preferred docking side for an aside when the Host has room for a docked
+        /// layout. `aside` selects the companion region; `edge` selects a side within
+        /// it. Compact Hosts may reproject the same aside as a full-screen overlay.
         type SurfaceEdge = r###"'left' | 'right' | 'top' | 'bottom'"###;
 
         /// Where a float popup anchors (default `center`).
@@ -1275,10 +1335,13 @@ true
     show(): Promise<void>;
     /**
      * Hide without destroying user-visible state when the platform supports it.
+     * Main surfaces cannot be hidden and reject this operation.
      */
     hide(): Promise<void>;
     /**
-     * Destroy the live surface. Repeated close calls are idempotent.
+     * Destroy the live surface. The stable root main cannot be closed and
+     * rejects this operation. Repeated calls after a successful close are
+     * idempotent.
      */
     close(): Promise<void>;
     onShow(handler: (event: SurfaceVisibilityEvent) => void): () => void;
@@ -1511,18 +1574,11 @@ true
 }"###;
 
         /// Target page for `navigateTo`, `redirectTo`, `switchTab`, and `reLaunch`.
-        ///
-        /// Pass exactly one of `page` or `path`; there is no `url` field. Page
-        /// names and routes are discoverable with `lxdev lxapp pages`.
+        /// JavaScript navigation accepts only the configured page name; full routes
+        /// are internal runtime details. Discover names with `lxdev lxapp pages`.
         type PageTargetOptions = r###"{
     /** Configured page name from `lingxia.yaml` / `lxapp.json`. */
     page: string;
-    path?: never;
-    query?: PageQuery;
-} | {
-    /** Full page route, for example `/pages/home/index`. */
-    path: string;
-    page?: never;
     query?: PageQuery;
 }"###;
 

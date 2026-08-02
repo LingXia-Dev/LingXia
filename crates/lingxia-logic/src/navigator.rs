@@ -12,6 +12,8 @@ use std::sync::Arc;
 pub(crate) struct NavigateToAppOptions {
     #[js_name = "appId"]
     pub(crate) appid: String,
+    // Kept only so the forward-only API rejects legacy route input instead of
+    // silently ignoring an unknown object field.
     pub(crate) path: Option<String>,
     pub(crate) page: Option<String>,
     pub(crate) query: Option<JSObject>,
@@ -45,39 +47,33 @@ fn resolve_page_target<'a>(
     target: &'a LxApp,
     options: &'a NavigateToAppOptions,
 ) -> Result<String, LxAppError> {
-    let has_page = options
-        .page
-        .as_deref()
-        .map(str::trim)
-        .is_some_and(|value| !value.is_empty());
-    let has_path = options
-        .path
-        .as_deref()
-        .map(str::trim)
-        .is_some_and(|value| !value.is_empty());
-    if has_page && has_path {
-        return Err(LxAppError::InvalidParameter(
-            "pass either page or path, not both".to_string(),
-        ));
-    }
-    let path = if let Some(page) = options
-        .page
-        .as_deref()
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-    {
+    validate_page_selector(options)?;
+    let path = if let Some(page) = options.page.as_deref().map(str::trim) {
         target
             .find_page_path_by_name(page)
             .ok_or_else(|| LxAppError::ResourceNotFound(format!("page name: {page}")))?
     } else {
-        options
-            .path
-            .as_deref()
-            .map(str::trim)
-            .unwrap_or_default()
-            .to_string()
+        String::new()
     };
     append_query(path, options.query.as_ref())
+}
+
+fn validate_page_selector(options: &NavigateToAppOptions) -> Result<(), LxAppError> {
+    if options.path.is_some() {
+        return Err(LxAppError::InvalidParameter(
+            "path is not supported; pass the configured page name in page".to_string(),
+        ));
+    }
+    if options
+        .page
+        .as_deref()
+        .is_some_and(|page| page.trim().is_empty())
+    {
+        return Err(LxAppError::InvalidParameter(
+            "page must be a non-empty configured page name".to_string(),
+        ));
+    }
+    Ok(())
 }
 
 fn append_query(path: String, query: Option<&JSObject>) -> Result<String, LxAppError> {
@@ -93,6 +89,7 @@ fn should_navigate_to_app(
     lxapp: &LxApp,
     options: &NavigateToAppOptions,
 ) -> Result<bool, LxAppError> {
+    validate_page_selector(options)?;
     if options.appid.is_empty() {
         return Err(LxAppError::InvalidParameter(
             "navigateToApp requires appId".to_string(),
@@ -110,6 +107,7 @@ pub(crate) async fn prepare_app_open(
     lxapp: &Arc<LxApp>,
     options: &NavigateToAppOptions,
 ) -> JSResult<(LxAppStartupOptions, ReleaseType)> {
+    validate_page_selector(options).map_err(|e| js_error_from_lxapp_error(&e))?;
     let target_appid = options.appid.clone();
     let release_type = parse_env_version(options.env_version.as_deref())
         .map_err(|e| js_error_from_lxapp_error(&e))?;
@@ -211,5 +209,37 @@ rong::js_api! {
         namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
         fn navigateToApp(ts_params = "options: NavigateToAppOptions") = navigate_to_app;
         fn navigateBackApp = navigate_back_app;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn options(page: Option<&str>, path: Option<&str>) -> NavigateToAppOptions {
+        NavigateToAppOptions {
+            appid: "target".to_string(),
+            path: path.map(str::to_string),
+            page: page.map(str::to_string),
+            query: None,
+            env_version: None,
+            target_version: None,
+        }
+    }
+
+    #[test]
+    fn app_navigation_rejects_route_paths() {
+        let error = validate_page_selector(&options(None, Some("/pages/home/index")))
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("path is not supported"));
+    }
+
+    #[test]
+    fn app_navigation_rejects_an_empty_page_name() {
+        let error = validate_page_selector(&options(Some("  "), None))
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("page must be a non-empty configured page name"));
     }
 }

@@ -36,8 +36,7 @@ type LingXiaBridgeCall = {
 export type LxNavigatorAttributes = {
   // Navigation
   url?: string;                    // Browser URL for openUrl/browser target
-  page?: string;                   // Named page in lxapp.json
-  path?: string;                   // Raw page path, supports query string
+  page?: string;                   // Configured page name from lxapp.json; routes are unsupported
   query?: string;                  // JSON-encoded page query params
   'open-type'?: NavigatorOpenType; // Navigation type
   target?: NavigatorTarget;        // Navigation target (auto-inferred if not specified)
@@ -85,7 +84,6 @@ export class LxNavigatorElement extends HTMLElement {
     return [
       "url",
       "page",
-      "path",
       "query",
       "open-type",
       "target",
@@ -257,6 +255,8 @@ export class LxNavigatorElement extends HTMLElement {
 
     const url = this.getAttribute('url') || '';
     const page = this.getAttribute('page');
+    // Read the removed attribute only to provide a forward-only runtime error
+    // for untyped HTML callers instead of silently ignoring it.
     const path = this.getAttribute('path');
     const query = this.getAttribute('query');
     const openType = (this.getAttribute('open-type') || 'navigate') as NavigatorOpenType;
@@ -422,6 +422,10 @@ export class LxNavigatorElement extends HTMLElement {
     const url = options.url || '';
     const delta = Number.isFinite(options.delta) && options.delta > 0 ? options.delta : 1;
 
+    if (options.path !== null && options.path !== undefined) {
+      throw new Error('path is not supported; pass the configured page name in page');
+    }
+
     if (options.openType === 'tel') {
       if (!options.phoneNumber) {
         throw new Error('tel requires phone-number attribute');
@@ -473,7 +477,7 @@ export class LxNavigatorElement extends HTMLElement {
 
     const target = this.buildPageTarget(options);
     if (!target) {
-      throw new Error(`${options.openType} requires page or path`);
+      throw new Error(`${options.openType} requires page`);
     }
 
     switch (options.openType) {
@@ -511,18 +515,13 @@ export class LxNavigatorElement extends HTMLElement {
 
   private buildPageTarget(options: {
     page?: string | null;
-    path?: string | null;
     query?: string | null;
-  }): { page?: string; path?: string; query?: NavigatorQuery } | null {
+  }): { page: string; query?: NavigatorQuery } | null {
     const page = options.page?.trim();
-    const path = options.path?.trim();
-    if (page && path) {
-      throw new Error('pass either page or path, not both');
-    }
-    if (!page && !path) return null;
+    if (!page) return null;
     const query = this.readQuery(options.query);
     return {
-      ...(page ? { page } : { path: path! }),
+      page,
       ...(query ? { query } : {}),
     };
   }
@@ -530,7 +529,6 @@ export class LxNavigatorElement extends HTMLElement {
   private buildLxAppTarget(options: {
     appId?: string | null;
     page?: string | null;
-    path?: string | null;
     query?: string | null;
     envVersion?: NavigatorEnvVersion | null;
     targetVersion?: string | null;

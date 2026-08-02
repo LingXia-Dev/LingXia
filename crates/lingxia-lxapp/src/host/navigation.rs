@@ -8,6 +8,8 @@ use std::sync::Arc;
 #[derive(Deserialize)]
 struct PageTargetOptions {
     page: Option<String>,
+    // Kept only so untyped component callers receive an explicit rejection
+    // for the removed route input instead of having serde ignore it.
     path: Option<String>,
     query: Option<Value>,
 }
@@ -24,48 +26,29 @@ fn current_page_path(lxapp: &LxApp) -> Result<String, LxAppError> {
 }
 
 fn resolve_page_target(lxapp: &LxApp, options: &PageTargetOptions) -> Result<String, LxAppError> {
-    let has_page = options
-        .page
-        .as_deref()
-        .map(str::trim)
-        .is_some_and(|value| !value.is_empty());
-    let has_path = options
-        .path
-        .as_deref()
-        .map(str::trim)
-        .is_some_and(|value| !value.is_empty());
-    match (has_page, has_path) {
-        (true, true) => {
-            return Err(LxAppError::InvalidParameter(
-                "pass either page or path, not both".to_string(),
-            ));
-        }
-        (false, false) => {
-            return Err(LxAppError::InvalidParameter(
-                "page or path is required".to_string(),
-            ));
-        }
-        _ => {}
-    }
-
-    let path = if let Some(page) = options
-        .page
-        .as_deref()
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-    {
-        lxapp
-            .find_page_path_by_name(page)
-            .ok_or_else(|| LxAppError::ResourceNotFound(format!("page name: {page}")))?
-    } else {
-        options
-            .path
-            .as_deref()
-            .map(str::trim)
-            .unwrap_or_default()
-            .to_string()
-    };
+    let page = configured_page_name(options)?;
+    let path = lxapp
+        .find_page_path_by_name(page)
+        .ok_or_else(|| LxAppError::ResourceNotFound(format!("page name: {page}")))?;
     append_query(path, options.query.as_ref())
+}
+
+fn configured_page_name(options: &PageTargetOptions) -> Result<&str, LxAppError> {
+    if options.path.is_some() {
+        return Err(LxAppError::InvalidParameter(
+            "path is not supported; pass the configured page name in page".to_string(),
+        ));
+    }
+    options
+        .page
+        .as_deref()
+        .map(str::trim)
+        .filter(|page| !page.is_empty())
+        .ok_or_else(|| {
+            LxAppError::InvalidParameter(
+                "page must be a non-empty configured page name".to_string(),
+            )
+        })
 }
 
 fn append_query(path: String, query: Option<&Value>) -> Result<String, LxAppError> {
@@ -213,4 +196,21 @@ pub(crate) fn register_all() {
         "switchTab" => Arc::new(SwitchTab),
         "reLaunch" => Arc::new(ReLaunch)
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn component_navigation_rejects_route_paths() {
+        let options = PageTargetOptions {
+            page: None,
+            path: Some("/pages/home/index".to_string()),
+            query: None,
+        };
+
+        let error = configured_page_name(&options).unwrap_err().to_string();
+        assert!(error.contains("path is not supported"));
+    }
 }

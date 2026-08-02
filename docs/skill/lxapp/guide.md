@@ -476,11 +476,12 @@ Rules:
 
 From Logic, use `lx.switchTab(...)`. **`lx.navigateTo` and `lx.redirectTo` do not work on tab pages** — the runtime rejects them with errors like `"redirectTo cannot navigate to a tabBar page"`. Switching is the only way in and out of tabs.
 
-Like the whole navigation family, it takes **exactly one of `page` or `path` — there is no `url` field**: `page` is the page **name** registered in `lxapp.json`, `path` the full route.
+Like the whole JavaScript navigation family, it takes the page **name**
+registered in `lxapp.json`. Full routes are runtime implementation details and
+are not accepted as API input; there is no `path` or `url` selector.
 
 ```ts
-lx.switchTab({ page: 'profile' });                  // page name from lxapp.json
-lx.switchTab({ path: '/pages/profile/index' });     // or the full route
+lx.switchTab({ page: 'profile' }); // page name from lxapp.json
 ```
 
 When driving a running app from `lxdev`, use the page name from `lxapp.json` rather than the path:
