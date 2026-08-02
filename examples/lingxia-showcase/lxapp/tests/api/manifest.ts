@@ -115,7 +115,8 @@ const VIDEO_CONTEXT_API = [
   'stop',
 ] as const;
 
-const AUTOMATION_API = ['browser', 'desktop', 'device', 'lxapp', 'lxapps'] as const;
+const AUTOMATION_API = ['browser', 'desktop', 'device', 'lxapp', 'lxapps', 'shell'] as const;
+const SHELL_DRIVER_API = ['pins', 'setPin'] as const;
 const LXAPP_DRIVER_API = ['eval', 'info', 'nav', 'page', 'pages'] as const;
 const LXAPP_MANAGER_API = [
   'close',
@@ -242,6 +243,7 @@ export const LX_RUNTIME_SURFACES = [
   { name: 'Storage', expression: 'lx.getStorage()', members: STORAGE_API },
   { name: 'UpdateManager', expression: 'lx.getUpdateManager()', members: UPDATE_MANAGER_API },
   { name: 'Automation', expression: 'lx.automation()', members: AUTOMATION_API },
+  { name: 'ShellDriver', expression: 'lx.automation().shell', members: SHELL_DRIVER_API },
   { name: 'LxAppDriver', expression: 'lx.automation().lxapp()', members: LXAPP_DRIVER_API },
   { name: 'PageDriver', expression: 'lx.automation().lxapp().page', members: PAGE_DRIVER_API },
   { name: 'PagePointer', expression: 'lx.automation().lxapp().page.pointer', members: PAGE_POINTER_API },

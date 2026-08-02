@@ -21,6 +21,8 @@ export interface Automation {
   readonly lxapps: LxAppManager;
   /** The host app's browser tabs. */
   readonly browser: BrowserDriver;
+  /** Persisted host-shell shortcuts for deterministic test setup/assertion. */
+  readonly shell: ShellDriver;
   /** Simulated-device selection in a host runner. */
   readonly device: DeviceDriver;
   /**
@@ -29,6 +31,32 @@ export interface Automation {
    * Runner) on top of the `host` privilege. Windows/macOS only.
    */
   readonly desktop: DesktopDriver;
+}
+
+// ============================ shell tier ============================
+
+/** One ordered shortcut in the host shell's persisted Pin collection. */
+export type AutomationShellPin =
+  | { kind: 'lxapp'; key: string }
+  | { kind: 'bookmark'; key: string };
+
+export type SetAutomationShellPinOptions = AutomationShellPin & {
+  pinned: boolean;
+};
+
+/**
+ * Host-shell state for test setup and end-to-end assertions. This does not
+ * customize an lxapp's production shell; use `lx.shell` for app behavior.
+ */
+export interface ShellDriver {
+  /** Ordered shortcuts exactly as projected into the host sidebar. */
+  pins(): Promise<AutomationShellPin[]>;
+  /**
+   * Idempotently persist or remove one shortcut. New Pins append to the
+   * existing order; adding beyond the host limit rejects without mutation.
+   * Returns the resulting complete order.
+   */
+  setPin(options: SetAutomationShellPinOptions): Promise<AutomationShellPin[]>;
 }
 
 // ============================ page tier ============================

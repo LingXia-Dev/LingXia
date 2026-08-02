@@ -3143,6 +3143,7 @@ dependencies = [
  "lingxia-log",
  "lingxia-lxapp",
  "lingxia-platform",
+ "lingxia-shell",
  "lingxia-webview",
  "log",
  "rong",

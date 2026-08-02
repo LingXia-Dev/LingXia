@@ -13,6 +13,7 @@ mod page;
 mod resolve;
 #[cfg(feature = "runtime")]
 pub mod runtime;
+mod shell;
 
 use lxapp::{LxApp, LxAppSecurityPrivilege, lx};
 use rong::{
@@ -143,6 +144,14 @@ impl JSAutomation {
         Ok(Class::lookup::<host::JSBrowserDriver>(&ctx)?.instance(host::JSBrowserDriver::new()))
     }
 
+    /// Persisted host-shell shortcuts. This is automation setup/inspection,
+    /// not an lxapp-facing shell customization API.
+    #[js_method(getter, enumerable)]
+    fn shell(&self, ctx: JSContext) -> JSResult<JSObject> {
+        self.require_host()?;
+        Ok(Class::lookup::<shell::JSShellDriver>(&ctx)?.instance(shell::JSShellDriver::new()))
+    }
+
     /// Session-less local-OS desktop automation (`lxdev desktop`). Beyond the
     /// app sandbox — it drives the whole OS — so it is available only to a
     /// trusted host automation runtime or an explicitly enabled dev host.
@@ -199,6 +208,7 @@ pub fn init_automation_context(ctx: &JSContext) -> JSResult<()> {
     ctx.register_hidden_class::<host::JSDeviceDriver>()?;
     ctx.register_hidden_class::<host::JSBrowserDriver>()?;
     ctx.register_hidden_class::<host::JSBrowserCookies>()?;
+    ctx.register_hidden_class::<shell::JSShellDriver>()?;
     ctx.register_hidden_class::<desktop::JSDesktopDriver>()?;
     ctx.register_hidden_class::<desktop::JSDesktopWindow>()?;
     ctx.register_hidden_class::<desktop::JSDesktopPointer>()?;
