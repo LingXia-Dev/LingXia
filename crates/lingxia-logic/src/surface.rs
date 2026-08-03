@@ -547,8 +547,14 @@ async fn open_declared_surface_spec(ctx: &JSContext, spec: &JSObject) -> JSResul
         ));
     }
     let declared_app_id = declared_lxapp_app_id(&lxapp, id);
+    if has_declared_surface_orchestration_override(key.as_deref(), requested_role, edge.as_deref())
+    {
+        // Every lxapp may consume a declaration exactly as the host authored
+        // it. Instance creation and placement overrides mutate shared shell
+        // composition, so they stay under the home lxapp's single-writer role.
+        require_home_caller(&lxapp, "surface override")?;
+    }
     if key.is_some() {
-        require_home_caller(&lxapp, "surface + key")?;
         if declared_app_id.is_some() {
             return Err(surface_error(
                 rong::error::E_NOT_SUPPORTED,
@@ -576,6 +582,14 @@ async fn open_declared_surface_spec(ctx: &JSContext, spec: &JSObject) -> JSResul
         .await
         .map_err(|err| surface_lifecycle_error("open", err))?;
     managed_surface_handle(ctx, lxapp, id.to_string(), role)
+}
+
+fn has_declared_surface_orchestration_override(
+    key: Option<&str>,
+    role: Option<lingxia_surface::Role>,
+    edge: Option<&str>,
+) -> bool {
+    key.is_some() || role.is_some() || edge.is_some()
 }
 
 fn declared_lxapp_app_id(lxapp: &LxApp, surface_id: &str) -> Option<String> {
@@ -2703,6 +2717,28 @@ mod tests {
         );
         assert_eq!(surface_spec_selector(true, true, true, false), None);
         assert_eq!(surface_spec_selector(true, false, true, true), None);
+    }
+
+    #[test]
+    fn declared_surface_orchestration_overrides_are_explicit() {
+        assert!(!has_declared_surface_orchestration_override(
+            None, None, None
+        ));
+        assert!(has_declared_surface_orchestration_override(
+            Some("project-a"),
+            None,
+            None
+        ));
+        assert!(has_declared_surface_orchestration_override(
+            None,
+            Some(lingxia_surface::Role::Main),
+            None
+        ));
+        assert!(has_declared_surface_orchestration_override(
+            None,
+            None,
+            Some("right")
+        ));
     }
 
     #[test]
