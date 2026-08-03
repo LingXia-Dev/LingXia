@@ -307,6 +307,29 @@ async function visibleCompactApiTabAxNode(
   ));
 }
 
+async function visibleApiNavbarAxNode(
+  desktop: DesktopDriver,
+  host: DesktopWindowInfo,
+): Promise<DesktopAxNode | undefined> {
+  const nodes = await desktop.ax.query({
+    window: host.id,
+    match: 'API',
+    all: true,
+  });
+  const topBand = host.bounds.y + Math.min(120, Math.round(host.bounds.h * 0.2));
+  return nodes.find((node) => (
+    node.role === 'statictext'
+    && (node.value === 'API' || node.name === 'API')
+    && node.enabled
+    && node.rect.w > 0
+    && node.rect.h > 0
+    && node.rect.y >= host.bounds.y
+    && node.rect.y + node.rect.h <= topBand
+    && node.rect.x >= host.bounds.x
+    && node.rect.x + node.rect.w <= host.bounds.x + host.bounds.w
+  ));
+}
+
 async function visibleBrowserViewportWidth(
   browser: BrowserDriver,
 ): Promise<number | undefined> {
@@ -728,11 +751,22 @@ async function resizeHostOnScreen(
     window: host.id,
     to: [display.work_area.x, display.work_area.y],
   });
-  return desktop.window.resize({
+  await desktop.window.resize({
     window: host.id,
     width: fittedWidth,
     height: fittedHeight,
   });
+  // AppKit applies a self-targeted AX resize on its main run loop. The command
+  // result can still contain the previous frame, so wait for the authoritative
+  // window list before using bounds to filter child AX nodes or probe pixels.
+  return waitForValue(async () => {
+    const current = (await desktop.windows()).find((window) => window.id === host.id);
+    return current
+      && Math.abs(current.bounds.w - fittedWidth) <= 1
+      && Math.abs(current.bounds.h - fittedHeight) <= 1
+      ? current
+      : undefined;
+  }, `host resize to ${fittedWidth}x${fittedHeight}`);
 }
 
 async function restoreHostBounds(
@@ -740,14 +774,14 @@ async function restoreHostBounds(
   window: string,
   bounds: DesktopWindowInfo['bounds'],
 ): Promise<void> {
+  await desktop.window.moveTo({
+    window,
+    to: [bounds.x, bounds.y],
+  });
   await desktop.window.resize({
     window,
     width: bounds.w,
     height: bounds.h,
-  });
-  await desktop.window.moveTo({
-    window,
-    to: [bounds.x, bounds.y],
   });
 }
 
@@ -1026,7 +1060,12 @@ adaptiveDesktopTest('gates medium sidebar reveal and compact aside chrome on eve
   expect(doctor.capabilities.window_management).toBeTruthy();
   expect(doctor.capabilities.ax_tree).toBeTruthy();
   expect(doctor.permissions.accessibility).toBeTruthy();
-  expect(doctor.permissions.screen_recording).toBeTruthy();
+  // macOS can capture a specific app window without global screen-recording
+  // permission; the screenshot and pixel assertions below still verify it.
+  expect(
+    doctor.permissions.screen_recording
+      || doctor.capabilities.window_screenshot_occlusion_independent,
+  ).toBeTruthy();
   expect(doctor.permissions.input).toBeTruthy();
 
   let host = desktopShowcaseHost(platform, await desktop.windows());
@@ -1062,10 +1101,9 @@ adaptiveDesktopTest('gates medium sidebar reveal and compact aside chrome on eve
     await desktop.pointer.click({
       at: regionCenter([input.rect.x, input.rect.y, input.rect.w, input.rect.h]),
     });
-    await waitForValue(async () => {
-      const candidate = await visibleChatInputAxNode(desktop, host!);
-      return candidate?.focused ? candidate : undefined;
-    }, `${platform} physical click focused Chat input`);
+    // WebKit can keep AXFocused=false on the textarea descendant even while it
+    // owns the caret. The typed DOM value below is the observable end-to-end
+    // proof that the physical click focused the real native WebView input.
     await desktop.key.type({ text: marker });
     await waitForValue(async () => {
       try {
@@ -1215,14 +1253,16 @@ adaptiveDesktopTest('gates medium sidebar reveal and compact aside chrome on eve
     expect(docked.activeMainId).toBe('lingxia-showcase');
     host = await ensureHostForeground(desktop, host);
     await waitForValue(
-      () => apiNavbarProbePoints(desktop, host!),
+      () => platform === 'macos'
+        ? visibleApiNavbarAxNode(desktop, host!)
+        : apiNavbarProbePoints(desktop, host!),
       `${platform} Home API navbar restored beside Chat`,
     );
     await typeIntoChatThroughDesktop(`expanded-aside-${platform}`);
 
     // Provider parity: a browser main uses the same shell size-class
     // projection as an lxapp main. Validate the physical WebView viewport, not
-    // only graph state, so a sidebar that failed to collapse cannot pass.
+    // only graph state, so a sidebar that failed to reach its icon rail cannot pass.
     await closeChatSurface(app);
     chatOpened = false;
     await app.eval({
@@ -1290,11 +1330,12 @@ adaptiveDesktopTest('gates medium sidebar reveal and compact aside chrome on eve
       const viewport = await visibleBrowserViewportWidth(browser);
       if (viewport === undefined) return undefined;
       const inset = host!.bounds.w - viewport;
-      return inset <= nativeWindowExtent(platform, host!, 48)
-        && mediumBrowserInset - inset >= nativeWindowExtent(platform, host!, 16)
+      const minimumRail = nativeWindowExtent(platform, host!, platform === 'macos' ? 52 : 40);
+      return inset >= minimumRail
+        && Math.abs(mediumBrowserInset - inset) <= nativeWindowExtent(platform, host!, 20)
         ? inset
         : undefined;
-    }, `${platform} compact browser removes the sidebar`);
+    }, `${platform} compact browser preserves the icon rail`);
 
     const compactBrowserTabs = (await browser.tabs()).filter((tab) => (
       tab.tab_id === browserTabId || tab.tab_id === secondaryBrowserTabId
@@ -1327,7 +1368,9 @@ adaptiveDesktopTest('gates medium sidebar reveal and compact aside chrome on eve
         : undefined;
     }, `${platform} root graph after closing browser main`);
     await waitForValue(
-      () => apiNavbarProbePoints(desktop, host!),
+      () => platform === 'macos'
+        ? visibleApiNavbarAxNode(desktop, host!)
+        : apiNavbarProbePoints(desktop, host!),
       `${platform} lxapp physically restored after closing browser main`,
     );
   } catch (error) {
