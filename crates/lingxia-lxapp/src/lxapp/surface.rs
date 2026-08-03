@@ -39,7 +39,7 @@ pub(crate) struct WindowSurfaceController {
     window_id: String,
     manager: std::sync::Mutex<lingxia_surface::SurfaceManager>,
     native_declarations: std::sync::Mutex<HashMap<String, NativeSurfaceDeclaration>>,
-    native_open_serializers: NativeOpenSerializers,
+    managed_surface_serializers: ManagedSurfaceSerializers,
     runtime: std::sync::Arc<Platform>,
     next_native_surface_id: AtomicU64,
     last_published_active_main: std::sync::Mutex<Option<String>>,
@@ -52,16 +52,20 @@ struct NativeSurfaceDeclaration {
     presentation: lingxia_surface::SurfacePresentation,
 }
 
-type NativeOpenLock = futures::lock::Mutex<()>;
-type NativeOpenKey = (String, Option<String>);
+type ManagedSurfaceLock = futures::lock::Mutex<()>;
+type ManagedSurfaceKey = (String, Option<String>);
 
 #[derive(Default)]
-struct NativeOpenSerializers {
-    locks: std::sync::Mutex<HashMap<NativeOpenKey, std::sync::Weak<NativeOpenLock>>>,
+struct ManagedSurfaceSerializers {
+    locks: std::sync::Mutex<HashMap<ManagedSurfaceKey, std::sync::Weak<ManagedSurfaceLock>>>,
 }
 
-impl NativeOpenSerializers {
-    fn lock_for(&self, declaration_id: &str, instance_key: Option<&str>) -> Arc<NativeOpenLock> {
+impl ManagedSurfaceSerializers {
+    fn lock_for(
+        &self,
+        declaration_id: &str,
+        instance_key: Option<&str>,
+    ) -> Arc<ManagedSurfaceLock> {
         let key = (
             declaration_id.to_string(),
             instance_key.map(ToString::to_string),
@@ -71,7 +75,7 @@ impl NativeOpenSerializers {
         if let Some(lock) = locks.get(&key).and_then(std::sync::Weak::upgrade) {
             return lock;
         }
-        let lock = Arc::new(NativeOpenLock::new(()));
+        let lock = Arc::new(ManagedSurfaceLock::new(()));
         locks.insert(key, Arc::downgrade(&lock));
         lock
     }
@@ -124,7 +128,7 @@ pub(crate) fn window_controller(
                 window_id: window_id.to_string(),
                 manager: std::sync::Mutex::new(lingxia_surface::SurfaceManager::new(700.0)),
                 native_declarations: std::sync::Mutex::new(HashMap::new()),
-                native_open_serializers: NativeOpenSerializers::default(),
+                managed_surface_serializers: ManagedSurfaceSerializers::default(),
                 runtime: runtime.clone(),
                 next_native_surface_id: AtomicU64::new(1),
                 last_published_active_main: std::sync::Mutex::new(None),
@@ -148,7 +152,7 @@ impl WindowSurfaceController {
         // resolve/ensure/register sequence per public declaration identity so
         // concurrent opens cannot allocate duplicate keyed workspaces.
         let open_lock = self
-            .native_open_serializers
+            .managed_surface_serializers
             .lock_for(declaration_id, instance_key);
         let _open_guard = open_lock.lock().await;
         let requested_edge = requested_edge.map(parse_surface_edge).transpose()?;
@@ -460,6 +464,11 @@ impl WindowSurfaceController {
         role: Option<SurfaceRole>,
         edge: Option<&str>,
     ) -> Result<(), LxAppError> {
+        // Provider creation is asynchronous. Serialize it with close for this
+        // concrete surface id so close cannot destroy the provider between the
+        // ensure and the graph mutation and leave a mounted dead reference.
+        let lifecycle_lock = self.managed_surface_serializers.lock_for(id, None);
+        let _lifecycle_guard = lifecycle_lock.lock().await;
         let parsed_edge = edge.map(parse_surface_edge).transpose()?;
         let (current_role, is_root_main, provider) = {
             let manager = self.manager.lock().unwrap();
@@ -536,6 +545,8 @@ impl WindowSurfaceController {
         id: &str,
         role: Option<SurfaceRole>,
     ) -> Result<(), LxAppError> {
+        let lifecycle_lock = self.managed_surface_serializers.lock_for(id, None);
+        let _lifecycle_guard = lifecycle_lock.lock().await;
         let (provider, current_role) = {
             let manager = self.manager.lock().unwrap();
             let surface = manager.graph().get(id);
@@ -563,13 +574,26 @@ impl WindowSurfaceController {
                 )));
             }
         }
-        self.runtime
+        let destroy_result = self
+            .runtime
             .destroy_managed_surface_provider(ManagedSurfaceProviderDestroyRequest {
                 surface_id: id.to_string(),
                 provider,
                 role: role.map(Into::into),
             })
-            .await?;
+            .await;
+        // Platforms normally activate the successor during provider teardown
+        // and call set_active_main_surface, which unblocks publication. Treat
+        // provider completion as the fallback barrier so a missing callback or
+        // teardown error cannot suppress the new active main indefinitely.
+        let publication_was_blocked = {
+            let mut blocked = self.active_main_publication_blocked.lock().unwrap();
+            std::mem::replace(&mut *blocked, false)
+        };
+        if publication_was_blocked {
+            self.commit();
+        }
+        destroy_result?;
         Ok(())
     }
 
@@ -2773,8 +2797,8 @@ mod tests {
     }
 
     #[test]
-    fn native_opens_serialize_per_public_identity() {
-        let serializers = NativeOpenSerializers::default();
+    fn managed_operations_serialize_per_surface_identity() {
+        let serializers = ManagedSurfaceSerializers::default();
         let first = serializers.lock_for("terminal", Some("project-a"));
         let guard = first.try_lock().expect("first caller acquires the lock");
         let same = serializers.lock_for("terminal", Some("project-a"));
