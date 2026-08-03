@@ -216,10 +216,11 @@ async function selectFirstCompactBrowserTab(
   }
 
   // The first 40pt row starts below the sheet title on both implementations.
+  // Use the host center because the macOS sheet starts after the sidebar rail.
   // Clicking it must activate the first provider tab, not merely dismiss UI.
   await desktop.pointer.click({
     at: [
-      host.bounds.x + nativeWindowExtent(platform, host, 80),
+      host.bounds.x + Math.round(host.bounds.w * 0.5),
       bottom - nativeWindowExtent(platform, host, 80),
     ],
   });
