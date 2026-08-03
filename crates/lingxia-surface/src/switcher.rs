@@ -11,7 +11,11 @@ use serde::{Deserialize, Serialize};
 use crate::{SurfaceContent, SurfaceGraph, SurfaceIcon, SurfaceId, SurfacePresentation};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "lowercase")]
+#[serde(
+    tag = "kind",
+    rename_all = "lowercase",
+    rename_all_fields = "camelCase"
+)]
 pub enum SwitcherContentKind {
     Lxapp { app_id: String },
     Page { app_id: String },
@@ -167,6 +171,18 @@ mod tests {
             CloseOutcome::RejectedRoot {
                 surface_id: "browser-root".into()
             }
+        );
+    }
+
+    #[test]
+    fn lxapp_content_serializes_provider_identity_for_platform_skins() {
+        let content = SwitcherContentKind::Lxapp {
+            app_id: "lingxia-chat".into(),
+        };
+
+        assert_eq!(
+            serde_json::to_value(content).unwrap(),
+            serde_json::json!({ "kind": "lxapp", "appId": "lingxia-chat" })
         );
     }
 
