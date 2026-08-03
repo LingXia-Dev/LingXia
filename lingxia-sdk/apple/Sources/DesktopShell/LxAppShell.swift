@@ -211,6 +211,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     private var isApplyingSurfaceSizeClass = false
     private var mediumSidebarExpandedByUser = false
     private var compactCoveringAsideActive = false
+    private var panelFramePreservationGeneration: UInt = 0
     private var compactTabBar: LingXiaTabBar?
     private var compactTabBarHeightConstraint: NSLayoutConstraint?
     private let sidebarRevealButton = NSButton()
@@ -478,6 +479,11 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         // AppKit's autosave only fires for user-driven changes; save explicitly
         // so programmatic resizes (automation, AX) persist too.
         window?.saveFrame(usingName: LxAppShellPersistence.windowFrameName)
+    }
+
+    public func windowWillStartLiveResize(_ notification: Notification) {
+        // A real drag supersedes any delayed frame restoration queued by panel layout.
+        panelFramePreservationGeneration &+= 1
     }
 
     public func windowDidMove(_ notification: Notification) {
@@ -1540,7 +1546,12 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     /// not a panel hide: native acknowledges the session to Rust so the app's
     /// one-region claim is released and a later open may choose another role.
     func closeAsideLxApp(appId: String) {
-        closeSession(appId: appId, notifyRuntime: true, closeWindowWhenEmpty: false)
+        closeSession(
+            appId: appId,
+            notifyRuntime: true,
+            closeWindowWhenEmpty: false,
+            revealNext: false
+        )
     }
 
     /// Tear down the lxapp provider after its managed main has already been
@@ -2358,6 +2369,8 @@ extension LxAppShell {
         let minSizeBefore = window.minSize
         let contentMinSizeBefore = window.contentMinSize
         let contentSizeBefore = window.contentView?.bounds.size ?? frameBefore.size
+        panelFramePreservationGeneration &+= 1
+        let generation = panelFramePreservationGeneration
         window.minSize = NSSize(
             width: max(minSizeBefore.width, frameBefore.width),
             height: max(minSizeBefore.height, frameBefore.height)
@@ -2370,21 +2383,25 @@ extension LxAppShell {
         operation()
         lxShellStdoutLog("preserveFrame afterOperation reason=\(reason) frame=\(formatFrame(window.frame)) changed=\(!sameFrame(frameBefore, window.frame))")
         restoreWindowFrameIfNeeded(frameBefore, reason: reason)
+        // The enlarged minima only protect the synchronous constraint pass. Leaving
+        // them installed until the animation settles can permanently capture this
+        // window size when panel operations overlap and blocks live resizing.
+        window.minSize = minSizeBefore
+        window.contentMinSize = contentMinSizeBefore
 
         // Panel animations and AppKit constraint passes may settle on the next ticks.
         DispatchQueue.main.async { [weak self, weak window] in
             guard let self, let window else { return }
+            guard self.panelFramePreservationGeneration == generation,
+                  !window.inLiveResize else { return }
             lxShellStdoutLog("preserveFrame asyncCheck reason=\(reason) frame=\(self.formatFrame(window.frame)) changed=\(!self.sameFrame(frameBefore, window.frame))")
             self.restoreWindowFrameIfNeeded(frameBefore, reason: "\(reason):async")
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.28) { [weak self, weak window] in
                 guard let self, let window else { return }
+                guard self.panelFramePreservationGeneration == generation,
+                      !window.inLiveResize else { return }
                 lxShellStdoutLog("preserveFrame settledCheck reason=\(reason) frame=\(self.formatFrame(window.frame)) changed=\(!self.sameFrame(frameBefore, window.frame))")
                 self.restoreWindowFrameIfNeeded(frameBefore, reason: "\(reason):settled")
-                window.minSize = minSizeBefore
-                window.contentMinSize = contentMinSizeBefore
-                lxShellStdoutLog(
-                    "preserveFrame restoredMinSize reason=\(reason) min=\(String(format: "%.0fx%.0f", minSizeBefore.width, minSizeBefore.height)) contentMin=\(String(format: "%.0fx%.0f", contentMinSizeBefore.width, contentMinSizeBefore.height))"
-                )
             }
         }
     }
