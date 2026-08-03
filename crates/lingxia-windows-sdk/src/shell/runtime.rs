@@ -693,7 +693,8 @@ pub(crate) fn update_surface_width(logical_width: f64) {
             .and_then(|app| app.surface_derived_layout())
             .map(|plan| plan.size_class);
         let sidebar_width = current_sidebar_width(&group_appid);
-        lingxia::windows::set_surface_layout_metrics(&appid, logical_width, sidebar_width);
+        let size_class_changed =
+            lingxia::windows::set_surface_layout_metrics(&appid, logical_width, sidebar_width);
         let resolved_size_class = lxapp::try_get(&appid)
             .and_then(|app| app.surface_derived_layout())
             .map(|plan| plan.size_class);
@@ -710,6 +711,14 @@ pub(crate) fn update_surface_width(logical_width: f64) {
         let resolved_sidebar_width = current_sidebar_width(&group_appid);
         if (resolved_sidebar_width - sidebar_width).abs() > f64::EPSILON {
             lingxia::windows::set_surface_sidebar_width(&appid, resolved_sidebar_width);
+        }
+
+        // WM_SIZE immediately lays out the native host after this returns. If
+        // the width crossed a breakpoint, rebuild its cached chrome first;
+        // otherwise that pass combines the new surface projection with the
+        // previous size class's sidebar/phone bar until another shell event.
+        if size_class_changed {
+            sync_shell_layout(&appid);
         }
     }
 }
@@ -3051,7 +3060,7 @@ fn handle_chrome_event(appid: &str, event: WindowsChromeCommand) {
             return;
         }
         chrome_command::BROWSER_TABS_CYCLE => {
-            handle_browser_tabs_toggle(appid);
+            handle_browser_tabs_toggle(appid, payload_isize(&event, "source_window"));
             return;
         }
         chrome_command::BROWSER_NEW_TAB => {
@@ -3679,7 +3688,7 @@ fn handle_browser_new_tab(_appid: &str, _session_id: u64) {}
 /// Toggles the phone tab-switcher sheet (the macOS runner's in-frame
 /// bottom sheet) listing every open tab.
 #[cfg(feature = "browser-runtime")]
-fn handle_browser_tabs_toggle(appid: &str) {
+fn handle_browser_tabs_toggle(appid: &str, source_window: Option<isize>) {
     let presented = presented_browser_tab();
     let aside = presented
         .as_deref()
@@ -3696,15 +3705,20 @@ fn handle_browser_tabs_toggle(appid: &str) {
     if tabs.is_empty() {
         return;
     }
-    // The compact bar belongs to the presented browser WebView, which may
-    // currently cover a different page (and HWND) than the shell owner's
-    // navigation stack. Anchoring this popup to the owner's current page can
-    // resurrect a stale host after a compact resize.
-    let owner = presented
-        .as_deref()
-        .and_then(browser_tab_window_handle)
-        .or_else(crate::window_host::primary_host_window_handle)
-        .or_else(|| owner_window_handle(appid));
+    // Chrome input already carries the HWND that painted and received the
+    // click. Registry lookups can lag a rapid page replacement and otherwise
+    // mount the popup on a stale, hidden host with obsolete dimensions.
+    let visible = |window: &isize| crate::window_host::host_window_is_visible(*window);
+    let owner = source_window
+        .filter(visible)
+        .or_else(|| crate::window_host::primary_host_window_handle().filter(visible))
+        .or_else(|| owner_window_handle(appid).filter(visible))
+        .or_else(|| {
+            presented
+                .as_deref()
+                .and_then(browser_tab_window_handle)
+                .filter(visible)
+        });
     let Some(owner) = owner else {
         log::warn!("compact browser tab switcher has no owner window for {appid}");
         return;
@@ -3737,7 +3751,7 @@ fn presented_browser_window_handle() -> Option<isize> {
 }
 
 #[cfg(not(feature = "browser-runtime"))]
-fn handle_browser_tabs_toggle(_appid: &str) {}
+fn handle_browser_tabs_toggle(_appid: &str, _source_window: Option<isize>) {}
 
 #[cfg(feature = "browser-runtime")]
 fn handle_browser_tab_click(appid: &str, tab_id: &str) {

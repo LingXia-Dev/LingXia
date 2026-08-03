@@ -3,6 +3,8 @@
 use std::cell::Cell;
 use std::collections::{HashMap, HashSet};
 use std::ffi::c_void;
+#[cfg(feature = "components")]
+use std::sync::MutexGuard;
 #[cfg(feature = "terminal-runtime")]
 use std::sync::atomic::AtomicU8;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -3847,6 +3849,31 @@ fn toggle_phone_tab_switcher_on_thread(owner: isize, tabs: Vec<(String, String, 
     let mut origin = POINT { x: 0, y: 0 };
     unsafe {
         let _ = windows::Win32::Graphics::Gdi::ClientToScreen(owner_hwnd, &mut origin);
+    }
+    upload_phone_tab_switcher(window, &layout, screen_corner_radius);
+    let registered = PHONE_TAB_SWITCHERS
+        .get_or_init(|| Mutex::new(HashMap::new()))
+        .lock()
+        .map(|mut switchers| {
+            switchers.insert(
+                hwnd_handle(owner_hwnd),
+                PhoneTabSwitcher {
+                    window: hwnd_handle(window),
+                    owner: hwnd_handle(owner_hwnd),
+                    layout,
+                },
+            );
+        })
+        .is_ok();
+    if !registered {
+        unsafe {
+            let _ = WindowsAndMessaging::DestroyWindow(window);
+        }
+        return;
+    }
+    // Publish the pixels and hit-test state before making the popup visible.
+    // A fast first click must never observe a window that cannot route input.
+    unsafe {
         let _ = WindowsAndMessaging::SetWindowPos(
             window,
             Some(WindowsAndMessaging::HWND_TOP),
@@ -3855,20 +3882,6 @@ fn toggle_phone_tab_switcher_on_thread(owner: isize, tabs: Vec<(String, String, 
             width,
             height,
             WindowsAndMessaging::SWP_NOACTIVATE | WindowsAndMessaging::SWP_SHOWWINDOW,
-        );
-    }
-    upload_phone_tab_switcher(window, &layout, screen_corner_radius);
-    if let Ok(mut switchers) = PHONE_TAB_SWITCHERS
-        .get_or_init(|| Mutex::new(HashMap::new()))
-        .lock()
-    {
-        switchers.insert(
-            hwnd_handle(owner_hwnd),
-            PhoneTabSwitcher {
-                window: hwnd_handle(window),
-                owner: hwnd_handle(owner_hwnd),
-                layout,
-            },
         );
     }
     log::debug!(
@@ -7669,6 +7682,24 @@ struct NavSnapshotSlide {
     started: Option<Instant>,
 }
 
+#[cfg(feature = "components")]
+fn nav_snapshot_slides() -> &'static Mutex<HashMap<isize, NavSnapshotSlide>> {
+    NAV_SNAPSHOT_SLIDES.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+#[cfg(feature = "components")]
+fn lock_nav_snapshot_slides() -> MutexGuard<'static, HashMap<isize, NavSnapshotSlide>> {
+    let slides = nav_snapshot_slides();
+    match slides.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => {
+            log::error!("nav snapshot slide registry was poisoned; recovering lifecycle state");
+            slides.clear_poison();
+            poisoned.into_inner()
+        }
+    }
+}
+
 /// Captures the outgoing page and mounts it as a layered overlay covering its
 /// on-screen rect. Returns `false` (no overlay, caller falls back to the
 /// instant swap) when the capture or the overlay can't be produced.
@@ -7850,21 +7881,28 @@ fn mount_nav_snapshot_overlay(
         );
     }
 
-    let slides = NAV_SNAPSHOT_SLIDES.get_or_init(|| Mutex::new(HashMap::new()));
-    if let Ok(mut slides) = slides.lock() {
-        slides.insert(
-            hwnd_handle(host),
-            NavSnapshotSlide {
-                overlay: hwnd_handle(overlay),
-                origin,
-                width,
-                height,
-                source_dc,
-                source_bitmap,
-                source_old_bitmap,
-                forward,
-                started: None,
-            },
+    let previous = lock_nav_snapshot_slides().insert(
+        hwnd_handle(host),
+        NavSnapshotSlide {
+            overlay: hwnd_handle(overlay),
+            origin,
+            width,
+            height,
+            source_dc,
+            source_bitmap,
+            source_old_bitmap,
+            forward,
+            started: None,
+        },
+    );
+    if let Some(previous) = previous {
+        unsafe {
+            let _ = WindowsAndMessaging::DestroyWindow(hwnd_from_handle(previous.overlay));
+        }
+        release_nav_snapshot_source(
+            previous.source_dc,
+            previous.source_bitmap,
+            previous.source_old_bitmap,
         );
     }
     true
@@ -8007,13 +8045,12 @@ unsafe extern "system" fn nav_overlay_proc(
 /// refresh. Without DWM (rare) the pacer degrades to an 8ms sleep.
 #[cfg(feature = "components")]
 fn start_nav_snapshot_slide(host: HWND) {
-    let slides = NAV_SNAPSHOT_SLIDES.get_or_init(|| Mutex::new(HashMap::new()));
-    if let Ok(mut slides) = slides.lock() {
-        let Some(slide) = slides.get_mut(&hwnd_handle(host)) else {
-            return;
-        };
-        slide.started = Some(Instant::now());
-    }
+    let mut slides = lock_nav_snapshot_slides();
+    let Some(slide) = slides.get_mut(&hwnd_handle(host)) else {
+        return;
+    };
+    slide.started = Some(Instant::now());
+    drop(slides);
     let host_handle = hwnd_handle(host);
     let _ = std::thread::Builder::new()
         .name("lingxia-nav-slide".to_string())
@@ -8045,18 +8082,14 @@ fn start_nav_snapshot_slide(host: HWND) {
 
 #[cfg(feature = "components")]
 fn nav_snapshot_slide_active(host: isize) -> bool {
-    NAV_SNAPSHOT_SLIDES
-        .get()
-        .and_then(|slides| slides.lock().ok())
-        .is_some_and(|slides| slides.contains_key(&host))
+    lock_nav_snapshot_slides().contains_key(&host)
 }
 
 #[cfg(feature = "components")]
 fn nav_snapshot_overlay(host: HWND) -> Option<isize> {
-    NAV_SNAPSHOT_SLIDES
-        .get()
-        .and_then(|slides| slides.lock().ok())
-        .and_then(|slides| slides.get(&hwnd_handle(host)).map(|slide| slide.overlay))
+    lock_nav_snapshot_slides()
+        .get(&hwnd_handle(host))
+        .map(|slide| slide.overlay)
 }
 
 #[cfg(feature = "components")]
@@ -8071,10 +8104,7 @@ fn finish_nav_snapshot_slide_if_overlay(host: HWND, overlay: isize) {
 /// rightward) and tears the overlay down when the duration elapses.
 #[cfg(feature = "components")]
 fn advance_nav_snapshot_slide(host: HWND) {
-    let slides = NAV_SNAPSHOT_SLIDES.get_or_init(|| Mutex::new(HashMap::new()));
-    let Ok(slides_guard) = slides.lock() else {
-        return;
-    };
+    let slides_guard = lock_nav_snapshot_slides();
     let Some(state) = slides_guard.get(&hwnd_handle(host)) else {
         return;
     };
@@ -8110,34 +8140,28 @@ fn advance_nav_snapshot_slide(host: HWND) {
 /// (`DestroyWindow` only works on the window's owning thread).
 #[cfg(feature = "components")]
 fn finish_nav_snapshot_slide(host: HWND) {
-    let slides = NAV_SNAPSHOT_SLIDES.get_or_init(|| Mutex::new(HashMap::new()));
-    let state = match slides.lock() {
-        Ok(mut slides) => slides.remove(&hwnd_handle(host)),
-        Err(_) => None,
-    };
-    let Some(state) = state else {
-        return;
-    };
-    let teardown = move |_host: HWND| {
-        unsafe {
-            let _ = WindowsAndMessaging::DestroyWindow(hwnd_from_handle(state.overlay));
-        }
-        release_nav_snapshot_source(
-            state.source_dc,
-            state.source_bitmap,
-            state.source_old_bitmap,
-        );
-    };
     let host_handle = hwnd_handle(host);
     let owner_thread = unsafe { WindowsAndMessaging::GetWindowThreadProcessId(host, None) };
     if owner_thread != 0 && owner_thread != unsafe { GetCurrentThreadId() } {
+        // Keep the state registered until the owning thread can destroy the
+        // HWND. Removing it here makes a dropped callback an immortal overlay.
         let _ = post_to_window_thread(
             host_handle,
-            Box::new(move || teardown(hwnd_from_handle(host_handle))),
+            Box::new(move || finish_nav_snapshot_slide(hwnd_from_handle(host_handle))),
         );
         return;
     }
-    teardown(host);
+    let Some(state) = lock_nav_snapshot_slides().remove(&host_handle) else {
+        return;
+    };
+    unsafe {
+        let _ = WindowsAndMessaging::DestroyWindow(hwnd_from_handle(state.overlay));
+    }
+    release_nav_snapshot_source(
+        state.source_dc,
+        state.source_bitmap,
+        state.source_old_bitmap,
+    );
 }
 
 fn normal_group_webtags(active: &WebTag) -> Vec<WebTag> {

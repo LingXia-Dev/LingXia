@@ -1837,7 +1837,11 @@ pub(super) fn chrome_hit_test(
                 return Some(chrome_command(command_id::BROWSER_NEW_TAB, json!({})));
             }
             if rect_contains(&rects.tabs, point) {
-                return Some(chrome_command(command_id::BROWSER_TABS_CYCLE, json!({})));
+                return Some(WindowsChromeHit::Command(
+                    WindowsChromeCommand::new(command_id::BROWSER_TABS_CYCLE)
+                        .with_payload(json!({}))
+                        .with_screen_position(),
+                ));
             }
             if rects
                 .close
@@ -2608,6 +2612,7 @@ mod scroll_tests {
             chrome_hit_test(&state, &layout, center(rects.tabs)),
             Some(WindowsChromeHit::Command(command))
                 if command.id == super::command_id::BROWSER_TABS_CYCLE
+                    && command.include_screen_position
         ));
 
         let mut self_layout = layout.clone();
