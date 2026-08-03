@@ -267,26 +267,55 @@ async fn open_surface_spec(ctx: JSContext, spec: JSValue) -> JSResult<JSValue> {
             "lx.openSurface expects a spec object",
         ));
     };
-    let keys = [
+    let selector = surface_spec_selector(
         get_property(&obj, "page").is_some(),
         get_property(&obj, "url").is_some(),
         get_property(&obj, "appId").is_some(),
         get_property(&obj, "surface").is_some(),
-    ];
-    if keys.iter().filter(|set| **set).count() != 1 {
-        return Err(surface_error(
+    )
+    .ok_or_else(|| {
+        surface_error(
             rong::error::E_INVALID_ARG,
             "invalid_surface_spec",
             "spec must contain exactly one selector: surface, appId, page, or url",
-        ));
-    }
-    match keys {
-        [true, ..] => open_page_spec(ctx, &obj).await.map(JSObject::into_js_value),
-        [_, true, ..] => open_url_spec(ctx, &obj).await,
-        [_, _, true, _] => open_app_spec(ctx, &obj).await.map(JSObject::into_js_value),
-        _ => open_declared_surface_spec(&ctx, &obj)
+        )
+    })?;
+    match selector {
+        SurfaceSpecSelector::Page => open_page_spec(ctx, &obj).await.map(JSObject::into_js_value),
+        SurfaceSpecSelector::Url => open_url_spec(ctx, &obj).await,
+        SurfaceSpecSelector::App => open_app_spec(ctx, &obj).await.map(JSObject::into_js_value),
+        SurfaceSpecSelector::Declared => open_declared_surface_spec(&ctx, &obj)
             .await
             .map(JSObject::into_js_value),
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SurfaceSpecSelector {
+    Page,
+    Url,
+    App,
+    Declared,
+}
+
+fn surface_spec_selector(
+    has_page: bool,
+    has_url: bool,
+    has_app_id: bool,
+    has_surface: bool,
+) -> Option<SurfaceSpecSelector> {
+    // `page` is the selector for a page surface, but an optional startup field
+    // for an app surface. Once `appId` is present it must not be counted as a
+    // second selector; the other top-level selectors remain mutually exclusive.
+    let selectors = [has_page && !has_app_id, has_url, has_app_id, has_surface];
+    if selectors.iter().filter(|selected| **selected).count() != 1 {
+        return None;
+    }
+    match selectors {
+        [true, ..] => Some(SurfaceSpecSelector::Page),
+        [_, true, ..] => Some(SurfaceSpecSelector::Url),
+        [_, _, true, _] => Some(SurfaceSpecSelector::App),
+        _ => Some(SurfaceSpecSelector::Declared),
     }
 }
 
@@ -439,7 +468,7 @@ async fn show_lxapp_region(
                     format!("lxapp is not active: {app_id}"),
                 )
             })?;
-            app.set_active_main();
+            app.activate_main();
             Ok(())
         }
         lxapp::LxAppOpenRegion::Aside => {
@@ -592,7 +621,7 @@ fn read_validated_edge(spec: &JSObject) -> JSResult<Option<String>> {
     Ok(edge.map(|edge| edge.trim().to_string()))
 }
 
-/// `{ page, as, edge?, position?, size?, query? }` branch of `lx.openSurface`.
+/// `{ page, as, position?, size?, query? }` branch of `lx.openSurface`.
 /// Resolves the page name to a path, maps `as` to the underlying open path
 /// (overlay aside/float, or a standalone window on desktop), and returns the
 /// surface handle.
@@ -611,10 +640,17 @@ async fn open_page_spec(ctx: JSContext, spec: &JSObject) -> JSResult<JSObject> {
     let interaction = get_property(spec, "interaction");
     let edge = read_optional_string(spec, "edge")?;
     let position = read_optional_string(spec, "position")?;
+    if edge.is_some() {
+        return Err(surface_error(
+            rong::error::E_INVALID_ARG,
+            "invalid_surface_spec",
+            "edge is not supported for page surfaces; use position with as: 'float'",
+        ));
+    }
 
     let options = match as_role.trim() {
         "float" => {
-            let position = position.or(edge).unwrap_or_else(|| "center".to_string());
+            let position = position.unwrap_or_else(|| "center".to_string());
             build_open_options(
                 &ctx,
                 &path_value,
@@ -794,10 +830,11 @@ fn lxapp_surface_handle(
     let session_id = lxapp::try_get(&app_id)
         .map(|app| app.session_id())
         .unwrap_or_default();
+    let kind = lxapp_surface_kind(region);
     let (message_port, _) = crate::message_port::pair(ctx)?;
     let handle = Class::lookup::<JSSurface>(ctx)?.instance(JSSurface {
         id: app_id.clone(),
-        kind: RefCell::new("overlay".to_string()),
+        kind: RefCell::new(kind.to_string()),
         message_port,
         event_emitter: EventEmitter::default(),
         peer: RefCell::new(None),
@@ -805,7 +842,7 @@ fn lxapp_surface_handle(
         alive: Cell::new(true),
     });
     handle.set("id", app_id.clone())?;
-    handle.set("kind", "overlay")?;
+    handle.set("kind", kind)?;
     handle.set(
         "role",
         match region {
@@ -876,7 +913,7 @@ fn lxapp_surface_handle(
 
     let close_shell = shell;
     let close_id = app_id;
-    let close_surface_id = shell_surface_id;
+    let close_surface_id = shell_surface_id.clone();
     let close_session_id = session_id;
     let close_handle = handle.clone();
     handle.set(
@@ -891,7 +928,7 @@ fn lxapp_surface_handle(
                     return Ok(());
                 }
                 if !lxapp_surface_session_is_current(&id, region, close_session_id) {
-                    return emit_lxapp_handle_close(&handle, &id, "app_closed");
+                    return emit_lxapp_handle_close(&handle, &id, region, "app_closed");
                 }
                 if region == lxapp::LxAppOpenRegion::Main
                     && shell.surface_switcher_snapshot().root_surface_id.as_deref()
@@ -913,7 +950,14 @@ fn lxapp_surface_handle(
                         err.to_string(),
                     )
                 })?;
-                emit_lxapp_handle_close(&handle, &id, "programmatic")
+                // Closing the provider alone leaves a dead main/aside node in
+                // the window graph. Remove that shell identity as part of the
+                // same operation so the successor and every retained handle
+                // converge before the promise resolves.
+                let _ = shell.forget_surface_with_reason(&surface_id, "programmatic");
+                emit_lxapp_handle_close(&handle, &id, region, "programmatic")?;
+                let _ = notify_surface_closed(&surface_id, "programmatic");
+                Ok(())
             })
         })?,
     )?;
@@ -928,6 +972,8 @@ fn lxapp_surface_handle(
         )?;
     }
 
+    attach_host_surface_lifecycle(ctx, &handle, shell_surface_id, kind, true, None)?;
+
     Ok(handle)
 }
 
@@ -941,7 +987,7 @@ fn ensure_lxapp_surface_open(
         return Err(closed_surface_error());
     }
     if !lxapp_surface_session_is_current(app_id, region, session_id) {
-        emit_lxapp_handle_close(handle, app_id, "app_closed")?;
+        emit_lxapp_handle_close(handle, app_id, region, "app_closed")?;
         return Err(closed_surface_error());
     }
     Ok(())
@@ -969,12 +1015,24 @@ fn lxapp_surface_identity_matches(
     current_region == Some(expected_region) && current_session_id == Some(expected_session_id)
 }
 
-fn emit_lxapp_handle_close(handle: &JSObject, app_id: &str, reason: &str) -> JSResult<()> {
+fn lxapp_surface_kind(region: lxapp::LxAppOpenRegion) -> &'static str {
+    match region {
+        lxapp::LxAppOpenRegion::Main => "window",
+        lxapp::LxAppOpenRegion::Aside => "overlay",
+    }
+}
+
+fn emit_lxapp_handle_close(
+    handle: &JSObject,
+    app_id: &str,
+    region: lxapp::LxAppOpenRegion,
+    reason: &str,
+) -> JSResult<()> {
     emit_close(
         handle,
         &JSSurfaceClosed {
             id: app_id.to_string(),
-            kind: "overlay".to_string(),
+            kind: lxapp_surface_kind(region).to_string(),
             reason: reason.to_string(),
         },
     )
@@ -1176,10 +1234,29 @@ fn managed_surface_handle(
         )?;
     }
 
+    attach_host_surface_lifecycle(ctx, &handle, id, kind, visible, Some(cache_key.clone()))?;
+
+    MANAGED_HANDLE_CACHE.with(|cache| {
+        cache.borrow_mut().insert(cache_key, handle.clone());
+    });
+
+    Ok(handle)
+}
+
+/// Mirror authoritative host close/visibility publications into a retained JS
+/// handle. App surfaces and declaration-backed surfaces share this lifecycle;
+/// only managed declarations additionally evict their identity cache on close.
+fn attach_host_surface_lifecycle(
+    ctx: &JSContext,
+    handle: &JSObject,
+    surface_id: String,
+    kind: &str,
+    visible: bool,
+    cache_key: Option<ManagedHandleKey>,
+) -> JSResult<()> {
     let (closed_tx, closed_rx) = oneshot::channel::<JSSurfaceClosed>();
-    register_closed_sender(id.clone(), kind.to_string(), closed_tx);
+    register_closed_sender(surface_id.clone(), kind.to_string(), closed_tx);
     let handle_for_close = handle.clone();
-    let cache_key_for_close = cache_key.clone();
     Promise::from_future(ctx, None, async move {
         if let Ok(event) = closed_rx.await
             && handle_for_close
@@ -1189,13 +1266,15 @@ fn managed_surface_handle(
         {
             let _ = emit_close(&handle_for_close, &event);
         }
-        MANAGED_HANDLE_CACHE.with(|cache| {
-            cache.borrow_mut().remove(&cache_key_for_close);
-        });
+        if let Some(cache_key) = cache_key {
+            MANAGED_HANDLE_CACHE.with(|cache| {
+                cache.borrow_mut().remove(&cache_key);
+            });
+        }
     })?;
 
     let (visibility_tx, mut visibility_rx) = mpsc::unbounded();
-    register_visibility_sender(id, visible, visibility_tx);
+    register_visibility_sender(surface_id, visible, visibility_tx);
     let handle_for_visibility = handle.clone();
     Promise::from_future(ctx, None, async move {
         while let Some(visible) = visibility_rx.next().await {
@@ -1203,11 +1282,7 @@ fn managed_surface_handle(
         }
     })?;
 
-    MANAGED_HANDLE_CACHE.with(|cache| {
-        cache.borrow_mut().insert(cache_key, handle.clone());
-    });
-
-    Ok(handle)
+    Ok(())
 }
 
 /// Validate a `{ url }` target for the in-app browser surface policy.
@@ -2614,6 +2689,20 @@ mod tests {
             Some(Main),
             Some(8)
         ));
+    }
+
+    #[test]
+    fn app_surface_page_is_a_startup_field_not_a_second_selector() {
+        assert_eq!(
+            surface_spec_selector(true, false, true, false),
+            Some(SurfaceSpecSelector::App)
+        );
+        assert_eq!(
+            surface_spec_selector(true, false, false, false),
+            Some(SurfaceSpecSelector::Page)
+        );
+        assert_eq!(surface_spec_selector(true, true, true, false), None);
+        assert_eq!(surface_spec_selector(true, false, true, true), None);
     }
 
     #[test]

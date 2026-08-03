@@ -212,6 +212,18 @@ impl CompositionSurface {
         // with every recovery.
         surface_window::detach_input(&self.controller, base, self.input_tokens);
         self.input_tokens = surface_window::InputSubscriptions::default();
+        // The composition controller still references the visual target owned
+        // by the dead child window. WebView2 rejects a replacement target until
+        // that stale tree is explicitly disconnected.
+        unsafe {
+            self.controller
+                .SetRootVisualTarget(None::<&windows::core::IUnknown>)
+                .map_err(|err| {
+                    WebViewError::WebView(format!(
+                        "disconnecting stale RootVisualTarget failed: {err}"
+                    ))
+                })?;
+        }
         let hwnd = surface_window::create_surface_window(parent, self.bounds)?;
         let rebuilt = (|| {
             let dcomp = DcompTree::new(hwnd)?;

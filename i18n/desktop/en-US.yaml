@@ -6,6 +6,7 @@ browser:
   label: "Browser"
   address_placeholder: "Enter address"
   new_tab: "New Tab"
+  tabs: "Tabs"
   close_other_tabs: "Close Other Tabs"
   close_tabs_below: "Close Tabs Below"
   bookmarks: "Bookmarks"

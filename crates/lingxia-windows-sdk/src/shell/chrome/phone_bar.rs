@@ -1,15 +1,11 @@
-//! Phone-width browser chrome: the bottom browser bar and the tab-switcher
-//! sheet, active when a device-framed screen presents a browser tab at a
-//! compact width.
+//! Compact browser chrome: the bottom browser bar and tab-switcher sheet used
+//! by both ordinary desktop windows and device-framed browser surfaces. The
+//! historical `phone_*` identifiers remain internal implementation names.
 
 use super::*;
 
-/// Compact (phone-width) breakpoint, matching the surface arbiter's Compact
-/// size class.
-const PHONE_BROWSER_MAX_WIDTH: i32 = 600;
-/// Bottom browser-bar metrics: an edge-to-edge strip, clipped by the device
-/// screen itself, with an address-pill row (self tabs only) above the action
-/// row.
+/// Bottom browser-bar metrics: an edge-to-edge strip with an address-pill row
+/// (main/Runner tabs only) above the action row.
 const PHONE_BAR_HEIGHT_SELF: i32 = 96;
 const PHONE_BAR_HEIGHT_ASIDE: i32 = 56;
 const PHONE_BAR_MARGIN: i32 = 0;
@@ -19,12 +15,11 @@ const PHONE_BAR_BUTTON_GAP: i32 = 4;
 const PHONE_BAR_EDGE: i32 = 6;
 const PHONE_ADDRESS_HEIGHT: i32 = 34;
 
-/// Whether the presented browser tab renders the phone bottom bar: a
-/// device-framed screen at a compact width.
-pub(super) fn phone_browser_bar_active(client: RECT, layout: &WindowsShellWindowLayout) -> bool {
-    layout.suppress_window_controls
-        && address_bar_visible(layout)
-        && rect_width(&client) < PHONE_BROWSER_MAX_WIDTH
+/// Whether the presented browser tab renders compact bottom chrome. The
+/// surface graph owns breakpoints and hysteresis; window chrome only projects
+/// that resolved state.
+pub(super) fn phone_browser_bar_active(_client: RECT, layout: &WindowsShellWindowLayout) -> bool {
+    layout.compact_browser_chrome && address_bar_visible(layout)
 }
 
 pub(super) fn phone_bar_is_aside(layout: &WindowsShellWindowLayout) -> bool {
@@ -34,9 +29,9 @@ pub(super) fn phone_bar_is_aside(layout: &WindowsShellWindowLayout) -> bool {
         .is_some_and(|address_bar| address_bar.aside)
 }
 
-/// Interactive geometry of the phone browser bar. Self tabs get the address
-/// pill row and a new-tab button; API-driven asides drop both and put the
-/// reload into the action row.
+/// Interactive geometry of the compact browser bar. Main/Runner tabs get the
+/// address pill and a new-tab button; API-driven asides drop both and put
+/// reload in the action row.
 pub(super) struct PhoneBarRects {
     pub(super) bar: RECT,
     pub(super) address: Option<RECT>,
@@ -120,8 +115,8 @@ pub(super) fn phone_browser_bar_rects(
     }
 }
 
-/// Paints the phone browser bar: a bottom strip with the address pill (self
-/// tabs only), the nav cluster, and new-tab/tabs/close.
+/// Paints the compact browser bar: a bottom strip with the address pill
+/// (main/Runner tabs only), the nav cluster, and new-tab/tabs/close.
 pub(super) fn draw_phone_browser_bar(
     hdc: HDC,
     state: &WindowsChromeState,
@@ -239,8 +234,8 @@ pub(super) fn draw_phone_browser_bar(
     }
 }
 
-/// The phone tab-switcher bottom sheet (the macOS runner's in-frame sheet):
-/// a dimmed backdrop with a rounded-top panel listing every open tab.
+/// Compact tab-switcher bottom sheet: a dimmed backdrop with a rounded-top
+/// panel listing every open provider tab.
 pub(crate) struct PhoneTabSwitcherLayout {
     pub(crate) width: i32,
     pub(crate) height: i32,

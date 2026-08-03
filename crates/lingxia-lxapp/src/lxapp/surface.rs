@@ -1906,6 +1906,14 @@ impl LxApp {
             .set_active_main(&self.appid, self.root_main_node());
     }
 
+    /// Explicitly bring this main provider to the front. Unlike the startup
+    /// publication above, this one-shot intent may replace a browser that is
+    /// physically covering an already-active lxapp graph node.
+    pub fn activate_main(&self) {
+        self.runtime.request_lxapp_main_activation(&self.appid);
+        self.set_active_main();
+    }
+
     pub fn replace_host_mains(
         &self,
         registrations: Vec<HostMainSurfaceRegistration>,
@@ -2209,6 +2217,12 @@ impl LxApp {
     }
 
     pub fn forget_surface(&self, id: &str) -> bool {
+        self.forget_surface_with_reason(id, "user")
+    }
+
+    /// Remove a non-root shell Surface while preserving the initiating close
+    /// reason for retained JS handles.
+    pub fn forget_surface_with_reason(&self, id: &str, reason: &str) -> bool {
         let id = id.trim();
         if id.is_empty() {
             return false;
@@ -2225,8 +2239,11 @@ impl LxApp {
             .is_some();
         // Keep the Adaptive Surface Layout core in sync with removals; the
         // controller re-derives and reconciles aside docking.
-        let _ = controller.close(id, "user");
-        removed
+        let closed = matches!(
+            controller.close(id, reason),
+            lingxia_surface::CloseOutcome::Closed { .. }
+        );
+        removed || closed
     }
 
     /// Report the container width so the core resolves the right `sizeClass`

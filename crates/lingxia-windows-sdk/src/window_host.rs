@@ -77,7 +77,7 @@ static WEBTAG_WINDOWS: OnceLock<Mutex<HashMap<String, isize>>> = OnceLock::new()
 static WEBTAG_VISIBILITY: OnceLock<Mutex<HashMap<String, bool>>> = OnceLock::new();
 static WEBTAG_CONTENT_BOUNDS: OnceLock<Mutex<HashMap<String, ContentBounds>>> = OnceLock::new();
 static HOST_ACTIVE_WEBTAG: OnceLock<Mutex<HashMap<isize, String>>> = OnceLock::new();
-static PRESENTED_GROUP_MAIN: OnceLock<Mutex<HashMap<isize, String>>> = OnceLock::new();
+static PRESENTED_GROUP_MAIN: OnceLock<Mutex<HashMap<isize, PresentedGroupMain>>> = OnceLock::new();
 static PRIMARY_HOST_WINDOW: OnceLock<Mutex<Option<isize>>> = OnceLock::new();
 static FOCUSED_HOST_PANEL: OnceLock<Mutex<Option<String>>> = OnceLock::new();
 thread_local! {
@@ -96,6 +96,12 @@ static ATTACHED_PANEL_RESIZE_DRAG: OnceLock<Mutex<Option<AttachedPanelResizeDrag
     OnceLock::new();
 static PULL_REFRESH_WEBTAGS: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
 static PULL_REFRESH_TICKS: OnceLock<Mutex<HashMap<isize, u32>>> = OnceLock::new();
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct PresentedGroupMain {
+    covered_key: String,
+    covering_key: String,
+}
 #[cfg(feature = "shell-chrome")]
 static TRANSPARENT_TABBAR_OVERLAYS: OnceLock<Mutex<HashMap<isize, TransparentTabbarOverlay>>> =
     OnceLock::new();
@@ -140,6 +146,8 @@ const OVERLAY_MIN_HEIGHT: i32 = 220;
 const OVERLAY_DEFAULT_WIDTH: i32 = 460;
 const OVERLAY_DEFAULT_HEIGHT: i32 = 560;
 const RESIZE_BORDER: i32 = 8;
+const MAIN_WINDOW_MIN_WIDTH: i32 = 480;
+const MAIN_WINDOW_MIN_HEIGHT: i32 = 480;
 
 pub(crate) fn set_default_host_headless(headless: bool) {
     DEFAULT_HOST_HEADLESS.store(headless, Ordering::Release);
@@ -671,11 +679,14 @@ fn show_webview_as_attached_panel(
     };
     let was_group_main = active_webtag_key_for_window(host).as_deref() == Some(webtag.key());
 
-    // A phone-width host presents an attached aside as a full-screen drill,
-    // mirroring iOS and the macOS runner's phone
-    // presentation. URL asides never reach here compact — the shared logic
-    // degrades them to browser tabs.
-    {
+    // Explicit adaptive overlays already describe the compact presentation
+    // chosen by the shared surface graph. They must stay in the workspace's
+    // attached-panel path: the legacy drill path shows the WebView's durable
+    // parent as a separate owned popup, which can be dragged away from the
+    // workspace and leaves the covered main physically exposed. Keep the
+    // drill fallback only for older adaptive-panel callers that did not make
+    // an overlay decision themselves.
+    if !overlay {
         let mut client = RECT::default();
         unsafe {
             let _ = WindowsAndMessaging::GetClientRect(host, &mut client);
@@ -840,17 +851,44 @@ fn present_webview_in_active_group_with_policy(
     // restores it. Track the LATEST lxapp page (the user may have navigated
     // since the group first presented) but never a browser tab itself —
     // switching between tabs must not overwrite the restore target.
-    if presentation == GroupMainPresentation::Cover
-        && let Some(previous) = previous.as_ref()
-        && previous != webtag.key()
-        && !webtag_is_registered_panel(previous)
-        && group_main_restore_candidate(previous)
-    {
+    if presentation == GroupMainPresentation::Cover {
         let presented = PRESENTED_GROUP_MAIN.get_or_init(|| Mutex::new(HashMap::new()));
         if let Ok(mut presented) = presented.lock() {
-            presented.insert(hwnd_handle(host), previous.clone());
+            let host = hwnd_handle(host);
+            if let Some(previous) = previous.as_ref().filter(|previous| {
+                previous.as_str() != webtag.key()
+                    && !webtag_is_registered_panel(previous)
+                    && group_main_restore_candidate(previous)
+            }) {
+                presented.insert(
+                    host,
+                    PresentedGroupMain {
+                        covered_key: previous.clone(),
+                        covering_key: webtag.key().to_string(),
+                    },
+                );
+            } else if let Some(entry) = presented.get_mut(&host) {
+                // Switching between browser tabs (or between full-client
+                // asides) keeps the original lxapp restore target, while the
+                // newest covering controller becomes the only one allowed to
+                // restore it.
+                entry.covering_key = webtag.key().to_string();
+            }
         }
     }
+
+    let outgoing = previous
+        .as_deref()
+        .filter(|previous| *previous != webtag.key())
+        .and_then(webtag_for_key)
+        .into_iter()
+        .collect::<Vec<_>>();
+    // Retire the outgoing controller before the host-thread layout pass. If
+    // the caller is that outgoing WebView's UI thread, letting the host thread
+    // synchronously hide it during reconciliation creates a circular wait
+    // (caller waits for host; host waits for caller) and destroys the shared
+    // workspace when the five-second marshal timeout unwinds.
+    retire_other_group_main_controllers(host, webtag.key(), &outgoing);
 
     if webtag_is_visible(webtag.key()) {
         handler.set_content_visible(false)?;
@@ -894,13 +932,9 @@ fn present_webview_in_active_group_with_policy(
     }
     handler.set_content_visible(true)?;
 
-    let outgoing = previous
-        .as_deref()
-        .filter(|previous| *previous != webtag.key())
-        .and_then(webtag_for_key)
-        .into_iter()
-        .collect::<Vec<_>>();
-    retire_other_group_main_controllers(host, webtag.key(), &outgoing);
+    // Re-run without explicit candidates to converge a controller registered
+    // into the host while the incoming main was being laid out.
+    retire_other_group_main_controllers(host, webtag.key(), &[]);
 
     mark_active(webtag);
     notify_webtag_visibility(webtag.key(), true);
@@ -2288,38 +2322,66 @@ fn group_main_restore_candidate(webtag_key: &str) -> bool {
 }
 
 pub fn restore_presented_group_main() -> StdResult<()> {
+    try_restore_presented_group_main().map(|_| ())
+}
+
+pub(crate) fn try_restore_presented_group_main() -> StdResult<bool> {
     let Some(host) = active_host_window() else {
-        return Ok(());
+        return Ok(false);
     };
     restore_presented_group_main_for_host(host)
 }
 
-fn restore_presented_group_main_for_host(host: HWND) -> StdResult<()> {
-    let main_key = PRESENTED_GROUP_MAIN
+fn restore_presented_group_main_for_host(host: HWND) -> StdResult<bool> {
+    let presented = PRESENTED_GROUP_MAIN
         .get()
         .and_then(|presented| presented.lock().ok())
         .and_then(|mut presented| presented.remove(&hwnd_handle(host)));
-    let Some(main_key) = main_key else {
+    let Some(presented) = presented else {
         log::debug!(
             "Windows group-main restore host={} skipped: no covered main",
             hwnd_handle(host)
         );
-        return Ok(());
+        return Ok(false);
     };
 
     let current = active_webtag_key_for_window(host);
+    if current.as_deref().is_some_and(|current| {
+        current != presented.covering_key && current != presented.covered_key
+    }) {
+        // A newer main won the race while a browser close notification was
+        // debounced. Never let the stale covered page overwrite that explicit
+        // navigation. The covering controller is still retired below by its
+        // own destroy path.
+        log::debug!(
+            "Windows group-main restore host={} skipped: covering={} was replaced by current={current:?}",
+            hwnd_handle(host),
+            presented.covering_key
+        );
+        return Ok(false);
+    }
     log::debug!(
         "Windows group-main restore host={} target={} current={current:?}",
         hwnd_handle(host),
-        main_key
+        presented.covered_key
     );
-    let Some(main_webtag) = webtag_for_key(&main_key) else {
-        return Ok(());
+    let Some(main_webtag) = webtag_for_key(&presented.covered_key) else {
+        return Ok(false);
     };
     let Some(main_handler) = find_webview_handler(&main_webtag) else {
-        return Ok(());
+        return Ok(false);
     };
 
+    if presented.covering_key != main_webtag.key()
+        && !webtag_is_registered_panel(&presented.covering_key)
+    {
+        if let Some(covering_webtag) = webtag_for_key(&presented.covering_key)
+            && let Some(covering_handler) = find_webview_handler(&covering_webtag)
+        {
+            let _ = covering_handler.set_content_visible(false);
+        }
+        notify_webtag_visibility(&presented.covering_key, false);
+    }
     if webtag_is_visible(main_webtag.key()) {
         main_handler.set_content_visible(false)?;
     }
@@ -2328,21 +2390,10 @@ fn restore_presented_group_main_for_host(host: HWND) -> StdResult<()> {
     sync_window_layout(host);
     main_handler.set_content_visible(true)?;
 
-    if let Some(current) = current
-        && current != main_webtag.key()
-        && !webtag_is_registered_panel(&current)
-    {
-        if let Some(current_webtag) = webtag_for_key(&current)
-            && let Some(current_handler) = find_webview_handler(&current_webtag)
-        {
-            let _ = current_handler.set_content_visible(false);
-        }
-        notify_webtag_visibility(&current, false);
-    }
     mark_active(&main_webtag);
     notify_webtag_visibility(main_webtag.key(), true);
     repaint_window_now(host);
-    Ok(())
+    Ok(true)
 }
 
 pub fn show_interactive_host_panel(
@@ -3730,16 +3781,20 @@ fn phone_tab_switcher_for_owner(owner: HWND) -> Option<isize> {
 /// thread: the popup window must be owned by a pumping thread.
 #[cfg(feature = "shell-chrome")]
 pub fn toggle_phone_tab_switcher(owner: isize, tabs: Vec<(String, String, bool)>) {
-    post_to_window_thread(
+    let tab_count = tabs.len();
+    if !post_to_window_thread(
         owner,
         Box::new(move || toggle_phone_tab_switcher_on_thread(owner, tabs)),
-    );
+    ) {
+        log::warn!("failed to post compact browser tab switcher to owner={owner} tabs={tab_count}");
+    }
 }
 
 #[cfg(feature = "shell-chrome")]
 fn toggle_phone_tab_switcher_on_thread(owner: isize, tabs: Vec<(String, String, bool)>) {
     let owner_hwnd = hwnd_from_handle(owner);
     if phone_tab_switcher_for_owner(owner_hwnd).is_some() {
+        log::debug!("closing existing compact browser tab switcher owner={owner}");
         destroy_phone_tab_switcher(owner_hwnd);
         return;
     }
@@ -3816,6 +3871,13 @@ fn toggle_phone_tab_switcher_on_thread(owner: isize, tabs: Vec<(String, String, 
             },
         );
     }
+    log::debug!(
+        "created compact browser tab switcher owner={owner} window={} size={}x{} tabs={}",
+        hwnd_handle(window),
+        width,
+        height,
+        tabs.len()
+    );
 }
 
 #[cfg(feature = "shell-chrome")]
@@ -4717,6 +4779,7 @@ fn attached_state_for_window(
                 resize_handle: panel.resize_handle,
                 host_content: host_panel_content(&panel_id),
                 docked: panel_is_docked(&panel_id),
+                overlay: panel.overlay,
             }
         })
         .collect();
@@ -5600,9 +5663,47 @@ fn focus_active_host_window() {
 
 #[cfg(all(feature = "shell-chrome", feature = "browser-runtime"))]
 pub(crate) fn dismiss_phone_tab_switcher(owner: isize) {
+    let owner_hwnd = hwnd_from_handle(owner);
+    let Some(expected) = phone_tab_switcher_for_owner(owner_hwnd) else {
+        return;
+    };
     let _ = post_to_window_thread(
         owner,
-        Box::new(move || destroy_phone_tab_switcher(hwnd_from_handle(owner))),
+        Box::new(move || {
+            let owner = hwnd_from_handle(owner);
+            if phone_tab_switcher_for_owner(owner) == Some(expected) {
+                destroy_phone_tab_switcher(owner);
+            }
+        }),
+    );
+}
+
+/// Dismisses a switcher because a non-compact layout was observed, but only
+/// if that layout is still current when the owner-thread callback runs. A
+/// rapid medium -> compact resize can otherwise let the stale asynchronous
+/// dismiss destroy a switcher the user opened after compact won.
+#[cfg(all(feature = "shell-chrome", feature = "browser-runtime"))]
+pub(crate) fn dismiss_phone_tab_switcher_if_not_compact(owner: isize) {
+    let owner_hwnd = hwnd_from_handle(owner);
+    let Some(expected) = phone_tab_switcher_for_owner(owner_hwnd) else {
+        return;
+    };
+    let _ = post_to_window_thread(
+        owner,
+        Box::new(move || {
+            let owner = hwnd_from_handle(owner);
+            let compact = active_webtag_key_for_window(owner)
+                .map(|key| current_window_layout(&key))
+                .and_then(|layout| {
+                    layout
+                        .downcast_ref::<crate::shell::WindowsShellWindowLayout>()
+                        .map(|layout| layout.compact_browser_chrome)
+                })
+                .unwrap_or(false);
+            if !compact && phone_tab_switcher_for_owner(owner) == Some(expected) {
+                destroy_phone_tab_switcher(owner);
+            }
+        }),
     );
 }
 
@@ -6402,8 +6503,8 @@ fn resized_window_rect(drag: WindowResizeDrag, cursor: POINT, dpi: i32) -> RECT 
     }
 
     let dpi = dpi.max(96);
-    let min_width = 640 * dpi / 96;
-    let min_height = 480 * dpi / 96;
+    let min_width = MAIN_WINDOW_MIN_WIDTH * dpi / 96;
+    let min_height = MAIN_WINDOW_MIN_HEIGHT * dpi / 96;
     if rect.right - rect.left < min_width {
         if moves_left {
             rect.left = rect.right - min_width;
@@ -7305,13 +7406,13 @@ fn show_webview_window_replacing(
         webtag.key()
     );
     if already_active {
-        sync_window_layout(target);
         // Logical visibility is accepted presentation state, not a native
         // controller query. A delayed WebView2/host transition can therefore
         // leave an old page exposed even while this page is still registered
         // active. Converge the physical group before returning from the fast
         // path, just as the full replacement path does.
         retire_other_group_main_controllers(target, webtag.key(), &hide_webtags);
+        sync_window_layout(target);
         handler.set_content_visible(true)?;
         mark_active(webtag);
         notify_webtag_visibility(webtag.key(), true);
@@ -7345,6 +7446,10 @@ fn show_webview_window_replacing(
     if webtag_is_visible(webtag.key()) {
         handler.set_content_visible(false)?;
     }
+    // See the matching group-main path above: outgoing visibility must be
+    // resolved by the caller before a cross-thread host layout can ask that
+    // same caller's controller to hide synchronously.
+    retire_other_group_main_controllers(target, webtag.key(), &hide_webtags);
     set_window_handle(webtag.key(), target);
     set_host_active_webtag(target, webtag.key());
     set_primary_host_window(target);
@@ -7366,7 +7471,7 @@ fn show_webview_window_replacing(
     repaint_window_now(target);
     handler.set_content_visible(true)?;
 
-    retire_other_group_main_controllers(target, webtag.key(), &hide_webtags);
+    retire_other_group_main_controllers(target, webtag.key(), &[]);
 
     if !is_window_visible(target) || activate {
         unsafe {
@@ -8086,9 +8191,18 @@ pub fn hide_webview_window(webtag: &WebTag) -> StdResult<()> {
         return Ok(());
     }
     handler.set_content_visible(false)?;
+    let native_parent = hwnd_from_handle(handler.native_view().window);
+    if current_host.is_some_and(|host| host != native_parent) {
+        // A shared workspace outlives a dynamic lxapp main. Detach its
+        // composition child before provider teardown; otherwise closing that
+        // provider can strand a foreign-thread child under the live workspace
+        // while the root layout is being restored.
+        handler.set_parent_window(hwnd_handle(native_parent))?;
+        set_window_handle(webtag.key(), native_parent);
+    }
     unsafe {
         WindowsAndMessaging::SetWindowPos(
-            hwnd_from_handle(handler.native_view().window),
+            native_parent,
             None,
             0,
             0,
@@ -8116,9 +8230,17 @@ pub fn hide_webview_window(webtag: &WebTag) -> StdResult<()> {
 /// bare host-api build has no lxapp stack to restore from.
 #[cfg(feature = "components")]
 fn restore_previous_lxapp_after_hide(host: Option<HWND>, hidden: &WebTag) {
-    let Some(host) = host else {
+    let Some(mut host) = host else {
         return;
     };
+    if window_webtag_key(host).as_deref() == Some(hidden.key()) {
+        let Some(durable_host) = primary_host_window_except(Some(host))
+            .or_else(|| first_visible_registered_host_window_except(Some(host)))
+        else {
+            return;
+        };
+        host = durable_host;
+    }
     if active_webtag_key_for_window(host).as_deref() != Some(hidden.key()) {
         return;
     }
@@ -8956,7 +9078,11 @@ fn invoke_window_close_handler(hwnd: HWND) -> bool {
     if let Some(main_key) = PRESENTED_GROUP_MAIN
         .get()
         .and_then(|presented| presented.lock().ok())
-        .and_then(|presented| presented.get(&hwnd_handle(hwnd)).cloned())
+        .and_then(|presented| {
+            presented
+                .get(&hwnd_handle(hwnd))
+                .map(|entry| entry.covered_key.clone())
+        })
     {
         candidates.push(main_key);
     }
@@ -9539,8 +9665,9 @@ mod tests {
     #[cfg(feature = "shell-chrome")]
     use super::apply_phone_switcher_alpha;
     use super::{
-        ChromeBackBuffer, ContentBounds, WindowResizeDrag, WindowResizeEdge, WindowsFrameButton,
-        clear_webtag_content_bounds, default_host_parent_window, frame_button_non_client_hit,
+        ChromeBackBuffer, ContentBounds, MAIN_WINDOW_MIN_HEIGHT, MAIN_WINDOW_MIN_WIDTH,
+        WindowResizeDrag, WindowResizeEdge, WindowsFrameButton, clear_webtag_content_bounds,
+        default_host_parent_window, frame_button_non_client_hit,
         registered_host_keeps_message_loop, resized_window_rect, same_window_generation,
         webtag_content_bounds_changed,
     };
@@ -9630,10 +9757,36 @@ mod tests {
             POINT { x: 500, y: 500 },
             144,
         );
-        assert_eq!(clamped.right - clamped.left, 960);
-        assert_eq!(clamped.bottom - clamped.top, 720);
+        assert_eq!(
+            clamped.right - clamped.left,
+            MAIN_WINDOW_MIN_WIDTH * 144 / 96
+        );
+        assert_eq!(
+            clamped.bottom - clamped.top,
+            MAIN_WINDOW_MIN_HEIGHT * 144 / 96
+        );
         assert_eq!(clamped.right, base.right);
         assert_eq!(clamped.bottom, base.bottom);
+
+        let clamped_at_100_percent = resized_window_rect(
+            WindowResizeDrag {
+                edge: WindowResizeEdge::TopLeft,
+                cursor: POINT { x: 100, y: 100 },
+                window: base,
+            },
+            POINT { x: 800, y: 700 },
+            96,
+        );
+        assert_eq!(
+            clamped_at_100_percent.right - clamped_at_100_percent.left,
+            MAIN_WINDOW_MIN_WIDTH
+        );
+        assert_eq!(
+            clamped_at_100_percent.bottom - clamped_at_100_percent.top,
+            MAIN_WINDOW_MIN_HEIGHT
+        );
+        assert_eq!(clamped_at_100_percent.right, base.right);
+        assert_eq!(clamped_at_100_percent.bottom, base.bottom);
     }
 
     #[test]

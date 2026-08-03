@@ -154,6 +154,10 @@ pub struct WindowsShellWindowLayout {
     pub address_bar: Option<WindowsShellAddressBarLayout>,
     pub tab_bar: Option<WindowsShellTabBarLayout>,
     pub footer_actions: Vec<WindowsShellFooterActionLayout>,
+    /// The shared surface graph resolved the shell to Compact, so a presented
+    /// browser projects its mobile browser controls at the bottom. This is
+    /// explicit instead of re-deriving a breakpoint from physical pixels.
+    pub compact_browser_chrome: bool,
     /// Hide the window caption buttons and app-menu icon. Set when the window
     /// is wrapped in a simulator device frame (the runner), whose own toolbar
     /// owns the window controls — the framed screen stays chrome-free.

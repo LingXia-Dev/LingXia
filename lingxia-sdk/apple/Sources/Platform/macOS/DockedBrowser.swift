@@ -99,6 +99,11 @@ final class DockedBrowser: NSObject {
     private let tabStrip = NSStackView()
     private let separator = LxAppHostThemeLayerView(role: .separator)
     private let webContainer = NSView()
+    private var compactProjection = false
+    private var compactBrowserBar: CompactBrowserBar?
+    private var toolbarHeightConstraint: NSLayoutConstraint?
+    private var separatorHeightConstraint: NSLayoutConstraint?
+    private var compactBrowserBarHeightConstraint: NSLayoutConstraint?
 
     private var tabs: [Tab] = []
     private var activeSurfaceId: String?
@@ -159,6 +164,24 @@ final class DockedBrowser: NSObject {
 
     /// Surface ids of every open tab (front = anchor).
     var tabSurfaceIds: [String] { tabs.map { $0.surfaceId } }
+
+    func setCompactProjection(_ compact: Bool) {
+        compactProjection = compact
+        guard let compactBrowserBar else { return }
+        if !compact {
+            compactBrowserBar.dismissTabSwitcher()
+        }
+        toolbar.isHidden = compact
+        separator.isHidden = compact
+        toolbarHeightConstraint?.constant = compact ? 0 : Layout.toolbarHeight
+        separatorHeightConstraint?.constant = compact ? 0 : 1
+        compactBrowserBar.isHidden = !compact
+        compactBrowserBarHeightConstraint?.constant = compact
+            ? CompactBrowserBar.asideHeight
+            : 0
+        refreshCompactBrowserBar()
+        containerView.layoutSubtreeIfNeeded()
+    }
 
     func contains(surfaceId: String) -> Bool {
         tabs.contains { $0.surfaceId == surfaceId }
@@ -230,6 +253,7 @@ final class DockedBrowser: NSObject {
     func tearDown() {
         guard !torn else { return }
         torn = true
+        compactBrowserBar?.dismissTabSwitcher()
         if let monitor = interactionMonitor {
             NSEvent.removeMonitor(monitor)
             interactionMonitor = nil
@@ -380,6 +404,26 @@ final class DockedBrowser: NSObject {
         let interacted = activeTab()?.userInteracted ?? false
         NavButtonState.apply(backButton, enabled: canGoBack && interacted)
         NavButtonState.apply(forwardButton, enabled: canGoForward && interacted)
+        refreshCompactBrowserBar()
+    }
+
+    private func refreshCompactBrowserBar() {
+        guard let compactBrowserBar else { return }
+        let webView = activeTab()?.webView
+        let interacted = activeTab()?.userInteracted ?? false
+        compactBrowserBar.update(
+            address: "",
+            canGoBack: interacted && (webView?.canGoBack ?? false),
+            canGoForward: interacted && (webView?.canGoForward ?? false),
+            canReload: webView != nil,
+            tabs: tabs.map { tab in
+                CompactBrowserBar.TabItem(
+                    id: tab.surfaceId,
+                    title: tab.title,
+                    active: tab.surfaceId == activeSurfaceId
+                )
+            }
+        )
     }
 
     // MARK: - Chrome
@@ -429,11 +473,27 @@ final class DockedBrowser: NSObject {
         webContainer.wantsLayer = true
         containerView.addSubview(webContainer)
 
+        let compactBar = CompactBrowserBar(mode: .aside)
+        compactBar.onBack = { [weak self] in self?.backClicked() }
+        compactBar.onForward = { [weak self] in self?.forwardClicked() }
+        compactBar.onReload = { [weak self] in self?.refreshClicked() }
+        compactBar.onSelectTab = { [weak self] id in self?.activate(id) }
+        compactBar.onCloseTab = { [weak self] id in self?.onCloseTab(id) }
+        compactBar.onDismiss = { [weak self] in self?.onCloseAside() }
+        compactBar.isHidden = true
+        containerView.addSubview(compactBar)
+
+        let toolbarHeight = toolbar.heightAnchor.constraint(equalToConstant: Layout.toolbarHeight)
+        toolbarHeightConstraint = toolbarHeight
+        let separatorHeight = separator.heightAnchor.constraint(equalToConstant: 1)
+        separatorHeightConstraint = separatorHeight
+        let compactBarHeight = compactBar.heightAnchor.constraint(equalToConstant: 0)
+        compactBrowserBarHeightConstraint = compactBarHeight
         NSLayoutConstraint.activate([
             toolbar.topAnchor.constraint(equalTo: containerView.topAnchor),
             toolbar.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
             toolbar.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
-            toolbar.heightAnchor.constraint(equalToConstant: Layout.toolbarHeight),
+            toolbarHeight,
 
             backButton.leadingAnchor.constraint(equalTo: toolbar.leadingAnchor, constant: Layout.edge),
             backButton.centerYAnchor.constraint(equalTo: toolbar.centerYAnchor),
@@ -465,15 +525,22 @@ final class DockedBrowser: NSObject {
             separator.topAnchor.constraint(equalTo: toolbar.bottomAnchor),
             separator.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
             separator.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
-            separator.heightAnchor.constraint(equalToConstant: 1),
+            separatorHeight,
 
             webContainer.topAnchor.constraint(equalTo: separator.bottomAnchor),
             webContainer.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
             webContainer.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
-            webContainer.bottomAnchor.constraint(equalTo: containerView.bottomAnchor),
+            webContainer.bottomAnchor.constraint(equalTo: compactBar.topAnchor),
+
+            compactBar.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
+            compactBar.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
+            compactBar.bottomAnchor.constraint(equalTo: containerView.bottomAnchor),
+            compactBarHeight,
         ])
 
+        compactBrowserBar = compactBar
         updateBackForward(canGoBack: false, canGoForward: false)
+        setCompactProjection(compactProjection)
     }
 
     private func configureToolButton(_ button: NSButton, iconName: String, action: Selector) {
@@ -561,6 +628,7 @@ final class DockedBrowser: NSObject {
 
     private func updateTabButtonTitle(_ tab: Tab) {
         tab.button.title = tab.title
+        refreshCompactBrowserBar()
     }
 
     private func updateTabStripSelection() {
@@ -585,6 +653,7 @@ final class DockedBrowser: NSObject {
             tab.row.suppressTrailingSeparator = selected || nextSelected
         }
         tabStrip.isHidden = tabs.isEmpty
+        refreshCompactBrowserBar()
     }
 
     private enum AssociatedKeys { nonisolated(unsafe) static var surfaceId = 0 }

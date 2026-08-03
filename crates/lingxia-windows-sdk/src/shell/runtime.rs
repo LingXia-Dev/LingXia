@@ -27,7 +27,8 @@ use lingxia_shell::{
     SidebarActionPlacement,
 };
 use lingxia_surface::{
-    Edge, LayoutPresentationPlan, SlotKind, SurfaceIcon, SurfaceSwitcherItem, SwitcherContentKind,
+    Edge, LayoutPresentationPlan, SizeClass, SlotKind, SurfaceIcon, SurfaceSwitcherItem,
+    SwitcherContentKind,
 };
 use lingxia_webview::WebTag;
 #[cfg(feature = "browser-runtime")]
@@ -125,6 +126,10 @@ static RUNTIME_SHELL_PINS: OnceLock<Mutex<Vec<ShellPin>>> = OnceLock::new();
 
 /// Browser tab currently presented over the main content card, if any.
 static PRESENTED_BROWSER_TAB: OnceLock<Mutex<Option<String>>> = OnceLock::new();
+/// One-shot intent published before an explicit lxapp main activation. The
+/// layout plan itself intentionally does not encode browser-cover state, so
+/// this distinguishes a user/API switch from unrelated adaptive commits.
+static REQUESTED_LXAPP_MAIN_ACTIVATION: OnceLock<Mutex<Option<String>>> = OnceLock::new();
 /// LxApp group that was expanded under the presented browser tab. Browser
 /// selection must not silently replace/collapse that navigation group.
 static PRESENTED_BROWSER_GROUP_APPID: OnceLock<Mutex<Option<String>>> = OnceLock::new();
@@ -471,6 +476,9 @@ struct SidebarUiState {
     collapsed: bool,
     /// Sidebar shown as an icon-only rail (the macOS first-collapse state).
     icon_rail: bool,
+    /// Explicit reveal while the adaptive medium projection would otherwise
+    /// cap the sidebar at an icon rail. Reset on the next size-class crossing.
+    medium_expanded: bool,
     items_collapsed: bool,
     main_scroll_offset: i32,
     footer_action_scroll_row: usize,
@@ -655,6 +663,15 @@ fn shell_owner_appid() -> Option<String> {
         .and_then(|slot| slot.clone())
 }
 
+fn resolved_shell_size_class(fallback: Option<&LxApp>) -> SizeClass {
+    shell_owner_appid()
+        .and_then(|appid| lxapp::try_get(&appid))
+        .and_then(|owner| owner.surface_derived_layout())
+        .or_else(|| fallback.and_then(LxApp::surface_derived_layout))
+        .map(|plan| plan.size_class)
+        .unwrap_or(SizeClass::Expanded)
+}
+
 /// Push the host window's logical (DIP) content width into the shell-owner
 /// app's adaptive surface graph so the size class - and therefore the aside
 /// projection (Compact overlay / Medium 1 / Expanded 3) - tracks the real window. Without
@@ -672,11 +689,28 @@ pub(crate) fn update_surface_width(logical_width: f64) {
             active_main_lxapp_id(),
         )
         .unwrap_or_else(|| appid.clone());
-        lingxia::windows::set_surface_layout_metrics(
-            &appid,
-            logical_width,
-            current_sidebar_width(&group_appid),
-        );
+        let previous_size_class = lxapp::try_get(&appid)
+            .and_then(|app| app.surface_derived_layout())
+            .map(|plan| plan.size_class);
+        let sidebar_width = current_sidebar_width(&group_appid);
+        lingxia::windows::set_surface_layout_metrics(&appid, logical_width, sidebar_width);
+        let resolved_size_class = lxapp::try_get(&appid)
+            .and_then(|app| app.surface_derived_layout())
+            .map(|plan| plan.size_class);
+        if previous_size_class != resolved_size_class {
+            update_sidebar_ui_state(&group_appid, |state| {
+                state.medium_expanded = false;
+            });
+        }
+
+        // The width update can cross a size-class boundary, changing the
+        // sidebar projection itself (full -> rail -> hidden). Feed that newly
+        // resolved width back into admission so the same resize converges
+        // without waiting for another WM_SIZE.
+        let resolved_sidebar_width = current_sidebar_width(&group_appid);
+        if (resolved_sidebar_width - sidebar_width).abs() > f64::EPSILON {
+            lingxia::windows::set_surface_sidebar_width(&appid, resolved_sidebar_width);
+        }
     }
 }
 
@@ -778,6 +812,30 @@ fn set_presented_browser_tab(tab_id: Option<String>) {
     if let Ok(mut slot) = slot.lock() {
         *slot = tab_id;
     }
+}
+
+fn request_lxapp_main_activation(appid: &str) {
+    if let Ok(mut requested) = REQUESTED_LXAPP_MAIN_ACTIVATION
+        .get_or_init(|| Mutex::new(None))
+        .lock()
+    {
+        *requested = Some(appid.to_string());
+    }
+}
+
+fn take_lxapp_main_activation(appid: &str) -> bool {
+    let Some(mut requested) = REQUESTED_LXAPP_MAIN_ACTIVATION
+        .get_or_init(|| Mutex::new(None))
+        .lock()
+        .ok()
+    else {
+        return false;
+    };
+    if requested.as_deref() != Some(appid) {
+        return false;
+    }
+    requested.take();
+    true
 }
 
 fn presented_browser_group_appid() -> Option<String> {
@@ -919,6 +977,9 @@ pub(super) fn install() {
     lingxia_platform::set_windows_sidebar_actions_handler(Arc::new(set_runtime_sidebar_actions));
     lingxia_platform::set_windows_builtin_browser_page_handler(Arc::new(open_builtin_browser_page));
     lingxia_platform::set_windows_shell_pins_handler(Arc::new(set_runtime_shell_pins));
+    lingxia_platform::set_windows_lxapp_main_activation_handler(Arc::new(
+        request_lxapp_main_activation,
+    ));
     lingxia_platform::set_windows_layout_plan_handler(Arc::new(apply_windows_layout_plan));
     lingxia_platform::set_windows_managed_aside_event_handler(Arc::new(handle_managed_aside_event));
     if lingxia_shell::manager().is_ok_and(|manager| manager.snapshot().sidebar_actions.declared()) {
@@ -1101,6 +1162,15 @@ fn open_browser_tab_for_open_url(owner_appid: &str, url: &str, present: bool, as
 
 #[cfg(feature = "browser-runtime")]
 fn schedule_browser_tabs_changed_sync() {
+    if let Some(owner) = presented_browser_window_handle()
+        .or_else(crate::window_host::primary_host_window_handle)
+        .or_else(|| shell_owner_appid().and_then(|appid| owner_window_handle(&appid)))
+    {
+        // Snapshot-dismiss an already open switcher at mutation time. Doing
+        // this in the debounced observer can close a newer switcher that the
+        // user opened after the mutation but before the observer ran.
+        crate::window_host::dismiss_phone_tab_switcher(owner);
+    }
     let epoch = BROWSER_TAB_SYNC_EPOCH.fetch_add(1, Ordering::Relaxed) + 1;
     std::mem::drop(lingxia::task::spawn(async move {
         tokio::time::sleep(std::time::Duration::from_millis(
@@ -1138,8 +1208,8 @@ fn on_browser_tabs_changed() {
                 set_presented_browser_tab(Some(successor.clone()));
                 present_browser_tab_when_ready(lingxia_browser::BUILTIN_BROWSER_APPID, successor);
             }
-        } else if let Err(err) = restore_presented_group_main() {
-            log::warn!("failed to restore main webview after browser tab close: {err}");
+        } else {
+            restore_lxapp_main_after_browser(shell_owner_appid().as_deref());
         }
     }
     refresh_aside_panel_nav_state();
@@ -1216,6 +1286,7 @@ fn sync_app_shell_layout(appid: &str) {
         let webtag = WebTag::new(&app.appid, &path, Some(app.session_id()));
         let is_active_content = active_host_window_webtag_key().as_deref() == Some(webtag.key());
         let layout = build_window_layout(&app, &path);
+        let dismiss_compact_switcher = is_active_content && !layout.compact_browser_chrome;
         install_shell_chrome_event_handler(&webtag, &app.appid);
 
         // Drive the device frame's status bar to match the active page: a visible
@@ -1252,6 +1323,9 @@ fn sync_app_shell_layout(appid: &str) {
                 err
             );
         }
+        if dismiss_compact_switcher && let Some(owner) = owner_window_handle(appid) {
+            crate::window_host::dismiss_phone_tab_switcher_if_not_compact(owner);
+        }
     }
 
     #[cfg(feature = "terminal-runtime")]
@@ -1283,6 +1357,7 @@ fn sync_app_shell_layout(appid: &str) {
             Some(path) if !path.is_empty() => build_window_layout(&app, &path),
             _ => content_agnostic_window_layout(&app),
         };
+        let dismiss_compact_switcher = !layout.compact_browser_chrome;
         if let Err(err) =
             set_webview_window_layout(&browser_webtag, WindowsWindowLayout::new(layout))
         {
@@ -1291,6 +1366,13 @@ fn sync_app_shell_layout(appid: &str) {
                 browser_webtag.extract_appid(),
                 tab.path,
                 err
+            );
+        }
+        if dismiss_compact_switcher
+            && let Ok(snapshot) = lingxia_windows_contract::webview_window_snapshot(&browser_webtag)
+        {
+            crate::window_host::dismiss_phone_tab_switcher_if_not_compact(
+                snapshot.window_id as isize,
             );
         }
     }
@@ -1318,7 +1400,7 @@ fn sync_self_browser_layout() {
     if dismiss_compact_switcher
         && let Ok(snapshot) = lingxia_windows_contract::webview_window_snapshot(&webtag)
     {
-        crate::window_host::dismiss_phone_tab_switcher(snapshot.window_id as isize);
+        crate::window_host::dismiss_phone_tab_switcher_if_not_compact(snapshot.window_id as isize);
     }
 }
 
@@ -1380,11 +1462,14 @@ fn build_window_layout(app: &LxApp, path: &str) -> WindowsShellWindowLayout {
     let tab_bar = build_tab_bar_layout(tab_bar_app, &footer_actions).filter(|tabbar| {
         address_bar.is_none() || !matches!(tabbar.position, WindowsShellTabBarPosition::Bottom)
     });
+    let compact_browser_chrome =
+        address_bar.is_some() && resolved_shell_size_class(Some(shell_app)) == SizeClass::Compact;
     WindowsShellWindowLayout {
         navigation_bar,
         address_bar,
         tab_bar,
         footer_actions,
+        compact_browser_chrome,
         top_inset,
         suppress_window_controls,
     }
@@ -1418,6 +1503,7 @@ fn build_self_browser_window_layout(webtag: &WebTag) -> WindowsShellWindowLayout
     WindowsShellWindowLayout {
         address_bar,
         tab_bar: build_self_browser_tab_bar_layout(),
+        compact_browser_chrome: resolved_shell_size_class(None) == SizeClass::Compact,
         suppress_window_controls: window
             .map(device_frame_owns_window_controls)
             .unwrap_or(false),
@@ -1763,6 +1849,7 @@ fn build_tab_bar_layout(
     let runtime_info = app.runtime_info();
     let switcher_owner = shell_owner_appid().and_then(|appid| lxapp::try_get(&appid));
     let switcher_app = switcher_owner.as_deref().unwrap_or(app);
+    let size_class = resolved_shell_size_class(Some(switcher_app));
     let switcher = switcher_app.surface_switcher_snapshot();
     let root = switcher.root_surface_id.as_deref().and_then(|root_id| {
         switcher
@@ -1834,8 +1921,8 @@ fn build_tab_bar_layout(
     let frame_status_bar_height = owner_window
         .map(device_frame_status_bar_height)
         .unwrap_or(0);
-    let show_auxiliary_add = browser_runtime_enabled() && !device_framed;
-    let header_actions = build_sidebar_header_actions(app);
+    let mut show_auxiliary_add = browser_runtime_enabled() && !device_framed;
+    let mut header_actions = build_sidebar_header_actions(app);
     let sidebar_has_content = !items.is_empty()
         || !auxiliary_items.is_empty()
         || !footer_actions.is_empty()
@@ -1855,14 +1942,20 @@ fn build_tab_bar_layout(
             .into_owned(),
     );
     let requested_position = tabbar_position(&app.appid);
-    let position = if requested_position == WindowsShellTabBarPosition::Bottom
-        && device_framed
-        && frame_status_bar_height > 0
-    {
-        WindowsShellTabBarPosition::Bottom
-    } else {
-        requested_position
-    };
+    let (position, force_icon_rail, show_shell_entries) = adaptive_tabbar_projection(
+        requested_position,
+        size_class,
+        device_framed && frame_status_bar_height > 0,
+        ui_state.medium_expanded,
+    );
+    if !show_shell_entries {
+        // Compact projects only the active lxapp's own tabbar at the bottom.
+        // Pins, main-switcher rows and app-owned shell actions have no compact
+        // projection and must not leak into that bar.
+        auxiliary_items.clear();
+        show_auxiliary_add = false;
+        header_actions.clear();
+    }
     // The bottom bar persists across pages, driven by `is_visible` like the
     // sidebar. Only an item-less bar is dropped on a sub-page, so a stray
     // auxiliary row (open lxapps / browser tabs) can't pop a bottom bar onto
@@ -1930,7 +2023,7 @@ fn build_tab_bar_layout(
             .unwrap_or_else(|| main_lxapp_closable(&app.appid)),
         group_order_index,
         collapsed: ui_state.collapsed,
-        icon_rail: ui_state.icon_rail,
+        icon_rail: ui_state.icon_rail || force_icon_rail,
         items_api_hidden,
         items_collapsed: items_api_hidden || ui_state.items_collapsed,
         footer_action_height: if desktop_sidebar {
@@ -1973,6 +2066,40 @@ fn build_tab_bar_layout(
         show_auxiliary_add,
         header_actions,
     })
+}
+
+fn adaptive_tabbar_projection(
+    requested: WindowsShellTabBarPosition,
+    size_class: SizeClass,
+    device_framed: bool,
+    medium_expanded: bool,
+) -> (WindowsShellTabBarPosition, bool, bool) {
+    match size_class {
+        SizeClass::Compact => (WindowsShellTabBarPosition::Bottom, false, false),
+        SizeClass::Medium
+            if !device_framed
+                && !medium_expanded
+                && matches!(
+                    requested,
+                    WindowsShellTabBarPosition::Left | WindowsShellTabBarPosition::Right
+                ) =>
+        {
+            (requested, true, true)
+        }
+        SizeClass::Medium | SizeClass::Expanded => (requested, false, true),
+    }
+}
+
+fn toggle_sidebar_projection(state: &mut SidebarUiState, size_class: SizeClass) {
+    state.collapsed = false;
+    if size_class == SizeClass::Medium {
+        let currently_expanded = state.medium_expanded && !state.icon_rail;
+        state.medium_expanded = !currently_expanded;
+        state.icon_rail = false;
+    } else {
+        state.medium_expanded = false;
+        state.icon_rail = !state.icon_rail;
+    }
 }
 
 fn active_main_lxapp_id() -> Option<String> {
@@ -2588,6 +2715,8 @@ fn shell_surface_in_graph(surface_id: &str) -> bool {
 /// native main is hidden. Hiding mains from this plan callback would expose an
 /// empty content card while a WebView is still becoming ready.
 fn apply_windows_layout_plan(plan: &LayoutPresentationPlan) {
+    reconcile_lxapp_main_from_layout(plan);
+
     let native_slot = plan
         .aside_slots
         .iter()
@@ -2666,6 +2795,55 @@ fn apply_windows_layout_plan(plan: &LayoutPresentationPlan) {
     }
     if let Some(owner_appid) = shell_owner_appid() {
         sync_shell_layout(&owner_appid);
+    }
+}
+
+/// Lxapp mains are runtime-owned, so the generic Windows surface presenter
+/// cannot look them up in its page/native provider registry. Reconcile them
+/// from the same authoritative plan here, just as native asides are reconciled
+/// below; otherwise `Surface.show()` changes the switcher graph while leaving
+/// the old controller in the physical workspace.
+fn reconcile_lxapp_main_from_layout(plan: &LayoutPresentationPlan) {
+    let Some(active_id) = plan.active_main_id.as_deref() else {
+        return;
+    };
+    let Some(app_id) = plan
+        .main_switcher
+        .items
+        .iter()
+        .find_map(|item| (item.surface_id == active_id).then_some(&item.content))
+        .and_then(|content| match content {
+            SwitcherContentKind::Lxapp { app_id } => Some(app_id.as_str()),
+            SwitcherContentKind::Page { .. }
+            | SwitcherContentKind::Browser
+            | SwitcherContentKind::Native { .. } => None,
+        })
+    else {
+        return;
+    };
+    let explicitly_requested = take_lxapp_main_activation(app_id);
+    #[cfg(not(feature = "browser-runtime"))]
+    let _ = explicitly_requested;
+    let physical_app_id = active_host_window_webtag_key()
+        .and_then(|key| key.split_once(':').map(|(appid, _)| appid.to_string()));
+    if physical_app_id.as_deref() == Some(app_id) {
+        return;
+    }
+    // A browser tab intentionally covers the graph's lxapp main until its own
+    // close/back action restores it. An explicit lxapp activation is the one
+    // exception: it replaces that cover; resize/aside commits preserve it.
+    #[cfg(feature = "browser-runtime")]
+    if presented_browser_tab().is_some() {
+        if !explicitly_requested {
+            return;
+        }
+        clear_browser_presentation();
+    }
+    let Some(app) = lxapp::try_get(app_id) else {
+        return;
+    };
+    if !present_current_lxapp_main(&app) {
+        log::warn!("failed to reconcile Windows lxapp main from layout: {app_id}");
     }
 }
 
@@ -3168,9 +3346,13 @@ fn handle_chrome_event(appid: &str, event: WindowsChromeCommand) {
         chrome_command::SIDEBAR_TOGGLE => {
             // User toggle is two-state: expanded <-> icon rail. Fully hidden
             // sidebars are controlled by content-driven auto-hide only.
+            let size_class = shell_owner_appid()
+                .and_then(|owner| lxapp::try_get(&owner))
+                .and_then(|app| app.surface_derived_layout())
+                .map(|plan| plan.size_class)
+                .unwrap_or(SizeClass::Expanded);
             update_sidebar_ui_state(appid, |state| {
-                state.collapsed = false;
-                state.icon_rail = !state.icon_rail;
+                toggle_sidebar_projection(state, size_class);
             });
             sync_shell_layout(appid);
             return;
@@ -3357,12 +3539,41 @@ fn return_to_lxapp_from_browser(appid: &str) {
     if !clear_browser_presentation() {
         return;
     }
-    let restored_current = lxapp::try_get(appid)
+    restore_lxapp_main_after_browser(Some(appid));
+}
+
+/// Restores the graph's current lxapp main before consulting the physical
+/// cover stack. Browser tab-close notifications are debounced, so their saved
+/// target may have closed or stopped being active before this callback runs.
+fn restore_lxapp_main_after_browser(fallback_appid: Option<&str>) {
+    let active_appid = active_main_lxapp_id();
+    if active_appid
         .as_deref()
-        .is_some_and(present_current_lxapp_main);
-    if !restored_current && let Err(err) = restore_presented_group_main() {
-        log::warn!("failed to restore lxapp webview for {appid}: {err}");
+        .and_then(lxapp::try_get)
+        .as_deref()
+        .is_some_and(present_current_lxapp_main)
+    {
+        return;
     }
+
+    match crate::window_host::try_restore_presented_group_main() {
+        Ok(true) => return,
+        Ok(false) => {}
+        Err(err) => log::warn!("failed to restore covered main after browser exit: {err}"),
+    }
+
+    let fallback = fallback_appid.filter(|appid| Some(*appid) != active_appid.as_deref());
+    if fallback
+        .and_then(lxapp::try_get)
+        .as_deref()
+        .is_some_and(present_current_lxapp_main)
+    {
+        return;
+    }
+
+    log::warn!(
+        "browser exit had no live lxapp main to restore (active={active_appid:?}, fallback={fallback_appid:?})"
+    );
 }
 
 /// Clears only the browser chrome-selection state. Callers that immediately
@@ -3483,27 +3694,44 @@ fn handle_browser_tabs_toggle(appid: &str) {
     if tabs.is_empty() {
         return;
     }
-    let owner = if SELF_BROWSER_HOST.load(Ordering::Acquire) {
-        presented
-            .as_deref()
-            .and_then(browser_tab_summary)
-            .and_then(|tab| {
-                let webtag = WebTag::new(
-                    lingxia_browser::BUILTIN_BROWSER_APPID,
-                    &tab.path,
-                    Some(tab.session_id),
-                );
-                lingxia_windows_contract::webview_window_snapshot(&webtag)
-                    .ok()
-                    .map(|snapshot| snapshot.window_id as isize)
-            })
-    } else {
-        owner_window_handle(appid)
-    };
+    // The compact bar belongs to the presented browser WebView, which may
+    // currently cover a different page (and HWND) than the shell owner's
+    // navigation stack. Anchoring this popup to the owner's current page can
+    // resurrect a stale host after a compact resize.
+    let owner = presented
+        .as_deref()
+        .and_then(browser_tab_window_handle)
+        .or_else(crate::window_host::primary_host_window_handle)
+        .or_else(|| owner_window_handle(appid));
     let Some(owner) = owner else {
+        log::warn!("compact browser tab switcher has no owner window for {appid}");
         return;
     };
+    log::debug!(
+        "toggling compact browser tab switcher owner={owner} appid={appid} presented={presented:?} tabs={}",
+        tabs.len()
+    );
     crate::window_host::toggle_phone_tab_switcher(owner, tabs);
+}
+
+#[cfg(feature = "browser-runtime")]
+fn browser_tab_window_handle(tab_id: &str) -> Option<isize> {
+    let tab = browser_tab_summary(tab_id)?;
+    let webtag = WebTag::new(
+        lingxia_browser::BUILTIN_BROWSER_APPID,
+        &tab.path,
+        Some(tab.session_id),
+    );
+    lingxia_windows_contract::webview_window_snapshot(&webtag)
+        .ok()
+        .map(|snapshot| snapshot.window_id as isize)
+}
+
+#[cfg(feature = "browser-runtime")]
+fn presented_browser_window_handle() -> Option<isize> {
+    presented_browser_tab()
+        .as_deref()
+        .and_then(browser_tab_window_handle)
 }
 
 #[cfg(not(feature = "browser-runtime"))]
@@ -6244,16 +6472,19 @@ fn is_transparent_css_color(raw: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        LxappContextMenuAction, LxappShortcutAction, PresentationCompletion, auxiliary_lxapp_id,
-        browser_internal_page_deep_link, browser_internal_page_key, browser_url_is_hidden,
-        build_lxapp_context_menu, chrome_command, chrome_command_is_page_scoped,
-        lxapp_shortcut_action, preferred_sidebar_group_appid,
+        LxappContextMenuAction, LxappShortcutAction, PresentationCompletion, SidebarUiState,
+        adaptive_tabbar_projection, auxiliary_lxapp_id, browser_internal_page_deep_link,
+        browser_internal_page_key, browser_url_is_hidden, build_lxapp_context_menu, chrome_command,
+        chrome_command_is_page_scoped, lxapp_shortcut_action, preferred_sidebar_group_appid,
+        toggle_sidebar_projection,
     };
     #[cfg(feature = "browser-runtime")]
     use super::{
         browser_tab_discard_candidates, is_browser_root_group_entry,
         live_browser_tab_limit_for_memory, touch_browser_tab_recency,
     };
+    use crate::shell::WindowsShellTabBarPosition;
+    use lingxia_surface::SizeClass;
     #[cfg(feature = "browser-runtime")]
     use std::collections::HashSet;
 
@@ -6296,6 +6527,40 @@ mod tests {
         assert!(!chrome_command_is_page_scoped(
             chrome_command::BROWSER_TAB_CLICK
         ));
+    }
+
+    #[test]
+    fn desktop_tabbar_projection_tracks_the_core_size_class() {
+        use WindowsShellTabBarPosition::{Bottom, Left, Right};
+
+        assert_eq!(
+            adaptive_tabbar_projection(Left, SizeClass::Expanded, false, false),
+            (Left, false, true)
+        );
+        assert_eq!(
+            adaptive_tabbar_projection(Right, SizeClass::Medium, false, false),
+            (Right, true, true)
+        );
+        assert_eq!(
+            adaptive_tabbar_projection(Left, SizeClass::Compact, false, false),
+            (Bottom, false, false)
+        );
+        assert_eq!(
+            adaptive_tabbar_projection(Bottom, SizeClass::Medium, true, false),
+            (Bottom, false, true)
+        );
+        assert_eq!(
+            adaptive_tabbar_projection(Left, SizeClass::Medium, false, true),
+            (Left, false, true)
+        );
+
+        let mut state = SidebarUiState::default();
+        toggle_sidebar_projection(&mut state, SizeClass::Medium);
+        assert!(state.medium_expanded);
+        assert!(!state.icon_rail);
+        toggle_sidebar_projection(&mut state, SizeClass::Medium);
+        assert!(!state.medium_expanded);
+        assert!(!state.icon_rail);
     }
 
     #[cfg(feature = "browser-runtime")]

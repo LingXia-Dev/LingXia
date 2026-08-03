@@ -451,6 +451,8 @@ pub struct WindowsChromePanel {
     pub resize_handle: Option<RECT>,
     pub host_content: Option<WindowsHostPanelContent>,
     pub docked: bool,
+    /// Covers the main workspace without reserving split space.
+    pub overlay: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -474,6 +476,8 @@ pub struct WindowsChromePanelLayout {
     /// [`WindowsChromePanel::header_rect`]); `None` when the panel has none.
     pub header_rect: Option<RECT>,
     pub resize_handle: Option<RECT>,
+    /// Covers the main workspace without reserving split space.
+    pub overlay: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]

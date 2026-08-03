@@ -5,6 +5,7 @@ common:
   ok: "确定"
   loading: "加载中"
   back: "返回"
+  forward: "前进"
   delete: "删除"
   done: "完成"
   close: "关闭"

@@ -138,6 +138,19 @@ enum LxAppLayoutReconciler {
             return true
         }
 
+        let slots = plan.asideSlots ?? []
+        let coveringAside = if slots.isEmpty {
+            plan.splitForm == "fullScreen" && !plan.asides.isEmpty
+        } else {
+            slots.contains { slot in
+                slot.visible && (slot.overlay || plan.splitForm == "fullScreen")
+            }
+        }
+
+        // The core already resolved breakpoints and hysteresis. Bind shell
+        // chrome and covering-aside state to that same plan so macOS cannot
+        // drift from Windows or leave the main tab bar above a compact aside.
+        shell.applySurfaceLayoutProjection(plan.sizeClass, coveringAside: coveringAside)
         let workspace = shell.workspaceManager
 
         // Desired docked aside set from the core (id -> edge). `plan.asides`
@@ -150,7 +163,6 @@ enum LxAppLayoutReconciler {
         // registered-but-hidden and switch via the slot's header tab strip.
         var desired: [String: PanelPosition] = [:]
         var overlayIds = Set<String>()
-        let slots = plan.asideSlots ?? []
         if slots.isEmpty {
             if plan.splitForm != "fullScreen" {
                 for aside in plan.asides {

@@ -959,6 +959,7 @@ final class LxAppMacAppUIRuntime: NSObject {
     @discardableResult
     private func closeMainSurface(id: String) -> Bool {
         guard let ownerAppId = graphOwnerAppId,
+              let previousSwitcher = SurfaceSwitcherBridge.snapshot(ownerAppId: ownerAppId),
               let menu = SurfaceMenuBridge.snapshot(ownerAppId: ownerAppId, surfaceId: id),
               menu.sections.flatMap(\.items).contains(where: {
                   $0.action.owner == "switcher" && $0.action.action == "close"
@@ -971,7 +972,7 @@ final class LxAppMacAppUIRuntime: NSObject {
             surfaceId: id,
             action: action
         ) else { return false }
-        applySurfaceMenuExecution(result)
+        applySurfaceMenuExecution(result, previousSwitcher: previousSwitcher)
         return result.accepted && result.removedSurfaceIds.contains(id)
     }
 
@@ -1416,7 +1417,7 @@ final class LxAppMacAppUIRuntime: NSObject {
         shell.updateSidebarHostActions(runtimeSidebarActionItems(placement: "footer"))
         let switcher = graphOwnerAppId.flatMap(SurfaceSwitcherBridge.snapshot)
         shell.updateManagedMainSurfaces(
-            declaredMainSidebarItems(from: switcher),
+            mainSidebarItems(from: switcher),
             activeId: switcher?.activeSurfaceId
         ) { [weak self] surfaceID in
             self?.openSurfaceHandlingError(id: surfaceID)
@@ -1476,6 +1477,7 @@ final class LxAppMacAppUIRuntime: NSObject {
             return
         }
         guard let ownerAppId = graphOwnerAppId,
+              let previousSwitcher = SurfaceSwitcherBridge.snapshot(ownerAppId: ownerAppId),
               let result = SurfaceMenuBridge.perform(
                   ownerAppId: ownerAppId,
                   revision: revision,
@@ -1484,7 +1486,7 @@ final class LxAppMacAppUIRuntime: NSObject {
                   value: value
               )
         else { return }
-        applySurfaceMenuExecution(result)
+        applySurfaceMenuExecution(result, previousSwitcher: previousSwitcher)
     }
 
     private func commitSurfaceRename(surfaceID: String, title: String) {
@@ -1510,32 +1512,61 @@ final class LxAppMacAppUIRuntime: NSObject {
         applySurfaceMenuExecution(result)
     }
 
-    private func applySurfaceMenuExecution(_ execution: SurfaceMenuExecution) {
+    private func applySurfaceMenuExecution(
+        _ execution: SurfaceMenuExecution,
+        previousSwitcher: SurfaceSwitcherSnapshot? = nil
+    ) {
         guard execution.accepted else {
             refreshChromeActions()
             return
         }
         for surfaceId in execution.removedSurfaceIds {
-            discardMainSurfaceContent(id: surfaceId)
+            let previousContent = previousSwitcher?.items.first(where: {
+                $0.surfaceId == surfaceId
+            })?.content
+            discardMainSurfaceContent(id: surfaceId, previousContent: previousContent)
         }
         if !execution.removedSurfaceIds.isEmpty,
            let activeSurfaceId = execution.snapshot.activeSurfaceId,
-           let ownerAppId = graphOwnerAppId,
-           openManagedSurfaceNow(id: activeSurfaceId) {
+           let ownerAppId = graphOwnerAppId {
+            if surfaceById[activeSurfaceId] != nil,
+               !openManagedSurfaceNow(id: activeSurfaceId) {
+                refreshChromeActions()
+                return
+            }
             _ = setActiveMainSurface(ownerAppId, activeSurfaceId)
-        } else {
-            refreshChromeActions()
+            if surfaceById[activeSurfaceId] == nil,
+               let active = execution.snapshot.items.first(where: {
+                   $0.surfaceId == activeSurfaceId
+               }),
+               active.content.kind == "lxapp",
+               let appId = active.content.appId {
+                // Closing an active ordinary tab makes the legacy tab manager
+                // choose its first remaining item, while the graph chooses the
+                // adjacent main. Align the provider and sidebar highlight with
+                // the graph's authoritative successor.
+                shell.activateMainLxAppProvider(appId: appId)
+            }
         }
+        refreshChromeActions()
     }
 
-    private func discardMainSurfaceContent(id: String) {
+    private func discardMainSurfaceContent(
+        id: String,
+        previousContent: SurfaceSwitcherSnapshot.Item.Content? = nil
+    ) {
         openedSurfaceIDs.remove(id)
         visibleSurfaceIDs.remove(id)
-        guard let surface = surfaceById[id] else { return }
-        if surface.content.isNativeTerminal {
-            discardTerminalSurfaceContent(id: id)
-        } else if isBrowserMainSurface(surface) {
-            shell.closeDeclaredBrowserMain(surfaceID: id)
+        if let surface = surfaceById[id] {
+            if surface.content.isNativeTerminal {
+                discardTerminalSurfaceContent(id: id)
+            } else if isBrowserMainSurface(surface) {
+                shell.closeDeclaredBrowserMain(surfaceID: id)
+            } else if surface.content.kind == .lxapp, let appId = surface.content.appId {
+                shell.closeManagedMainLxApp(appId: appId)
+            }
+        } else if previousContent?.kind == "lxapp", let appId = previousContent?.appId {
+            shell.closeManagedMainLxApp(appId: appId)
         }
         managedRoleOverrides.removeValue(forKey: id)
         managedEdgeOverrides.removeValue(forKey: id)
@@ -1555,11 +1586,17 @@ final class LxAppMacAppUIRuntime: NSObject {
         }
     }
 
-    private func declaredMainSidebarItems(
+    /// Project every graph-owned main provider through one sidebar path. A
+    /// dynamic lxapp has no YAML entry in `surfaceById`, but it still owns the
+    /// same switcher lifecycle as a declared main and must never fall back to
+    /// the legacy ordinary-tab close path.
+    private func mainSidebarItems(
         from snapshot: SurfaceSwitcherSnapshot?
     ) -> [LxAppUIActionItem] {
         snapshot?.items.compactMap { item in
-            guard let surface = surfaceById[item.surfaceId] else { return nil }
+            guard surfaceById[item.surfaceId] != nil || item.content.kind == "lxapp" else {
+                return nil
+            }
             let icon = SurfaceSwitcherBridge.resolvedIcon(item.icon)
             return LxAppUIActionItem(
                 id: item.surfaceId,
@@ -1567,7 +1604,7 @@ final class LxAppMacAppUIRuntime: NSObject {
                 iconURL: icon.url,
                 contentAppId: item.content.appId,
                 builtInIcon: icon.builtIn,
-                showsLxappTabBar: surface.content.kind == .lxapp,
+                showsLxappTabBar: item.content.kind == "lxapp",
                 active: item.active,
                 closable: item.closable,
                 renameable: item.renameable,

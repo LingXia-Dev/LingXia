@@ -5,6 +5,7 @@ common:
   ok: "OK"
   loading: "Loading..."
   back: "Back"
+  forward: "Forward"
   delete: "Delete"
   done: "Done"
   close: "Close"

@@ -136,6 +136,10 @@ final class BrowserTabCoordinator: NSObject {
     private let menuButton = NSButton()
     private var pageActionsVisible = true
     private let webContainer = NSView()
+    private var compactProjection = false
+    private var compactBrowserBar: CompactBrowserBar?
+    private var toolbarHeightConstraint: NSLayoutConstraint?
+    private var compactBrowserBarHeightConstraint: NSLayoutConstraint?
     nonisolated(unsafe) private var shortcutMonitor: Any?
     private var activeWebView: WKWebView?
     private var backButtonLeadingConstraint: NSLayoutConstraint?
@@ -217,6 +221,7 @@ final class BrowserTabCoordinator: NSObject {
     /// Deactivate browser UI (called when switching to an lxapp tab). Idempotent.
     func deactivate() {
         let previous = activeTabId
+        compactBrowserBar?.dismissTabSwitcher()
         clearWebViewAttachment()
         hideBrowserView()
         guard let previous else {
@@ -232,6 +237,7 @@ final class BrowserTabCoordinator: NSObject {
         browserTabDeactivate()
         activeTabId = nil
         host?.forceHideNavigationToolbar(false)
+        refreshCompactBrowserBar()
     }
 
     func syncToolbarCenterY(_ centerY: CGFloat) {
@@ -245,6 +251,14 @@ final class BrowserTabCoordinator: NSObject {
         } else {
             backButtonLeadingConstraint?.constant = targetLeading
         }
+    }
+
+    /// Project browser chrome from the shared shell size class. Main Web tabs
+    /// use the two-row compact browser bar; an aside uses its one-row variant.
+    func setCompactProjection(_ compact: Bool) {
+        compactProjection = compact
+        dockedBrowser?.setCompactProjection(compact)
+        applyCompactProjection()
     }
 
     // MARK: - Public Tab Operations
@@ -321,6 +335,7 @@ final class BrowserTabCoordinator: NSObject {
 
     func closeTab(id: String, notifyDeclaredSurfaceClose: Bool = true) {
         guard let index = tabIds.firstIndex(of: id) else { return }
+        defer { refreshCompactBrowserBar() }
         let declaredSurfaceID = declaredSurfaceIds[id]
 
         // A direct web Runner has no workspace once its target tab closes.
@@ -430,6 +445,7 @@ final class BrowserTabCoordinator: NSObject {
         activeTabId = nil
         hideBrowserView()
         host?.updateSidebarBrowserItems([], activeId: nil)
+        refreshCompactBrowserBar()
     }
 
     func presentInternalBrowserTab(id: String) {
@@ -490,6 +506,7 @@ final class BrowserTabCoordinator: NSObject {
             onCloseTab: onCloseTab,
             onCloseAside: onCloseAside
         ) else { return nil }
+        browser.setCompactProjection(compactProjection)
         dockedBrowser = browser
         return (browser, true)
     }
@@ -901,6 +918,7 @@ final class BrowserTabCoordinator: NSObject {
         guard tabIds.contains(id) else { return }
         if activeTabId == id {
             host?.updateSidebarBrowserItems(sidebarItems(), activeId: id)
+            refreshCompactBrowserBar()
             return
         }
 
@@ -955,6 +973,7 @@ final class BrowserTabCoordinator: NSObject {
         updateBackButtonState(canGoBack: false)
 
         attachWebView(for: id, attempt: 0)
+        refreshCompactBrowserBar()
     }
 
     /// Move `id` to the most-recently-used position.
@@ -1266,8 +1285,12 @@ final class BrowserTabCoordinator: NSObject {
     }
 
     @objc private func addressSubmitted(_ sender: NSTextField) {
+        submitAddress(sender.stringValue)
+    }
+
+    private func submitAddress(_ rawInput: String) {
         guard let result = handleBrowserAddressSubmission(
-            rawInput: sender.stringValue,
+            rawInput: rawInput,
             currentURL: activeWebView?.url?.absoluteString,
             tabId: activeTabId
         ) else { return }
@@ -1412,6 +1435,20 @@ final class BrowserTabCoordinator: NSObject {
         webContainer.wantsLayer = true
         bv.addSubview(webContainer)
 
+        let compactBar = CompactBrowserBar(
+            mode: .main(dismissible: host?.hasOpenTabs == true)
+        )
+        compactBar.onBack = { [weak self] in self?.backClicked() }
+        compactBar.onForward = { [weak self] in self?.forwardClicked() }
+        compactBar.onReload = { [weak self] in self?.refreshClicked() }
+        compactBar.onNewTab = { [weak self] in self?.addTab() }
+        compactBar.onSelectTab = { [weak self] id in self?.selectTab(id: id) }
+        compactBar.onCloseTab = { [weak self] id in self?.closeTab(id: id) }
+        compactBar.onDismiss = { [weak self] in self?.dismissCompactBrowser() }
+        compactBar.onSubmitAddress = { [weak self] raw in self?.submitAddress(raw) }
+        compactBar.isHidden = true
+        bv.addSubview(compactBar)
+
         let backCenterY = backButton.centerYAnchor.constraint(equalTo: toolbar.topAnchor, constant: Layout.toolbarCenterY)
         let forwardCenterY = forwardButton.centerYAnchor.constraint(equalTo: toolbar.topAnchor, constant: Layout.toolbarCenterY)
         let refreshCenterY = refreshButton.centerYAnchor.constraint(equalTo: toolbar.topAnchor, constant: Layout.toolbarCenterY)
@@ -1423,11 +1460,15 @@ final class BrowserTabCoordinator: NSObject {
             bookmarksCenterY, menuCenterY,
         ]
 
+        let toolbarHeight = toolbar.heightAnchor.constraint(equalToConstant: Layout.toolbarHeight)
+        toolbarHeightConstraint = toolbarHeight
+        let compactBarHeight = compactBar.heightAnchor.constraint(equalToConstant: 0)
+        compactBrowserBarHeightConstraint = compactBarHeight
         NSLayoutConstraint.activate([
             toolbar.topAnchor.constraint(equalTo: bv.topAnchor),
             toolbar.leadingAnchor.constraint(equalTo: bv.leadingAnchor),
             toolbar.trailingAnchor.constraint(equalTo: bv.trailingAnchor),
-            toolbar.heightAnchor.constraint(equalToConstant: Layout.toolbarHeight),
+            toolbarHeight,
 
             {
                 let c = backButton.leadingAnchor.constraint(equalTo: toolbar.leadingAnchor, constant: currentButtonLeading())
@@ -1493,11 +1534,18 @@ final class BrowserTabCoordinator: NSObject {
             webContainer.topAnchor.constraint(equalTo: toolbar.bottomAnchor),
             webContainer.leadingAnchor.constraint(equalTo: bv.leadingAnchor),
             webContainer.trailingAnchor.constraint(equalTo: bv.trailingAnchor),
-            webContainer.bottomAnchor.constraint(equalTo: bv.bottomAnchor),
+            webContainer.bottomAnchor.constraint(equalTo: compactBar.topAnchor),
+
+            compactBar.leadingAnchor.constraint(equalTo: bv.leadingAnchor),
+            compactBar.trailingAnchor.constraint(equalTo: bv.trailingAnchor),
+            compactBar.bottomAnchor.constraint(equalTo: bv.bottomAnchor),
+            compactBarHeight,
         ])
 
         browserView = bv
+        compactBrowserBar = compactBar
         updateBackButtonState(canGoBack: false)
+        applyCompactProjection()
     }
 
     private func showBrowserView() {
@@ -1518,17 +1566,63 @@ final class BrowserTabCoordinator: NSObject {
     }
 
     private func hideBrowserView() {
+        compactBrowserBar?.dismissTabSwitcher()
         browserView?.removeFromSuperview()
     }
 
     // MARK: - UI Helpers
 
+    private func applyCompactProjection() {
+        guard let compactBrowserBar else { return }
+        if !compactProjection {
+            compactBrowserBar.dismissTabSwitcher()
+        }
+        toolbar.isHidden = compactProjection
+        toolbarHeightConstraint?.constant = compactProjection ? 0 : Layout.toolbarHeight
+        compactBrowserBar.setMode(.main(dismissible: host?.hasOpenTabs == true))
+        compactBrowserBar.isHidden = !compactProjection
+        compactBrowserBarHeightConstraint?.constant = compactProjection
+            ? compactBrowserBar.preferredHeight
+            : 0
+        refreshCompactBrowserBar()
+        browserView?.layoutSubtreeIfNeeded()
+    }
+
+    private func refreshCompactBrowserBar() {
+        guard let compactBrowserBar else { return }
+        compactBrowserBar.setMode(.main(dismissible: host?.hasOpenTabs == true))
+        let interacted = activeTabInteracted()
+        let rawURL = activeTabId.map { id in
+            logicalURL(for: id, webViewURL: activeWebView?.url?.absoluteString)
+        }
+        compactBrowserBar.update(
+            address: displayableURL(rawURL),
+            canGoBack: interacted && (activeWebView?.canGoBack ?? false),
+            canGoForward: interacted && (activeWebView?.canGoForward ?? false),
+            canReload: activeWebView != nil,
+            tabs: tabIds.map { id in
+                CompactBrowserBar.TabItem(
+                    id: id,
+                    title: tabTitles[id] ?? L10n.string("lx_browser_new_tab"),
+                    active: id == activeTabId
+                )
+            }
+        )
+    }
+
+    private func dismissCompactBrowser() {
+        guard let appId = host?.activeAppTabId() else { return }
+        host?.switchToLxAppTab(appId)
+    }
+
     private func updateBackButtonState(canGoBack: Bool) {
         NavButtonState.apply(backButton, enabled: canGoBack && activeTabInteracted())
+        refreshCompactBrowserBar()
     }
 
     private func updateForwardButtonState(canGoForward: Bool) {
         NavButtonState.apply(forwardButton, enabled: canGoForward && activeTabInteracted())
+        refreshCompactBrowserBar()
     }
 
     /// Chrome-style history intervention: until the user interacts with a
@@ -1599,6 +1693,7 @@ final class BrowserTabCoordinator: NSObject {
     private func syncAddressField(_ rawURL: String?, force: Bool = false) {
         guard force || addressField.currentEditor() == nil else { return }
         addressField.stringValue = displayableURL(rawURL)
+        refreshCompactBrowserBar()
     }
 
     private func syncAddressFieldSoon(for webView: WKWebView) {
@@ -1638,6 +1733,7 @@ final class BrowserTabCoordinator: NSObject {
         }
         tabTitles[id] = title
         host?.updateSidebarBrowserItems(sidebarItems(), activeId: activeTabId)
+        refreshCompactBrowserBar()
     }
 
     private func faviconRequestOrigin(for url: URL) -> String? {

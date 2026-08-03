@@ -2370,6 +2370,8 @@ pub(crate) fn destroy_webview_if_matches(webtag: &WebTag, expected: &Arc<WebView
         None
     };
     if let Some(webview) = removed {
+        #[cfg(target_os = "windows")]
+        let _ = webview.inner.set_content_visible(false);
         webview.remove_delegate();
         true
     } else {
@@ -2398,6 +2400,11 @@ pub(crate) fn destroy_webview(webtag: &WebTag) {
         None
     };
     if let Some(webview) = removed {
+        // Windows composition teardown is asynchronous. Hide the controller
+        // synchronously while it is still callable so a closed browser tab or
+        // surface cannot leave its last composed frame over the replacement.
+        #[cfg(target_os = "windows")]
+        let _ = webview.inner.set_content_visible(false);
         webview.remove_delegate();
     }
     clear_pending_callbacks(webtag);
