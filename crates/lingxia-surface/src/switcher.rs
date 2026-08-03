@@ -330,6 +330,29 @@ mod tests {
     }
 
     #[test]
+    fn opening_browser_main_never_reuses_an_aside_with_the_same_url() {
+        let mut manager = SurfaceManager::new(1200.0);
+        manager.open(Surface::lxapp("home", Role::Main, "home"));
+        manager.open(Surface::browser(
+            "browser-aside",
+            Role::Aside,
+            "https://example.com",
+        ));
+        let browser_main = Surface::browser("browser-main", Role::Main, "https://example.com");
+
+        let snapshot = manager
+            .open_main(
+                browser_main.clone(),
+                SurfacePresentation::for_content(&browser_main.content),
+            )
+            .unwrap();
+
+        assert_eq!(snapshot.active_surface_id.as_deref(), Some("browser-main"));
+        assert_eq!(manager.graph().role_of("browser-main"), Some(Role::Main));
+        assert_eq!(manager.graph().role_of("browser-aside"), Some(Role::Aside));
+    }
+
+    #[test]
     fn native_surface_moves_between_aside_and_main_without_replacing_root() {
         let mut manager = SurfaceManager::new(1200.0);
         manager.open(Surface::lxapp("home", Role::Main, "home"));

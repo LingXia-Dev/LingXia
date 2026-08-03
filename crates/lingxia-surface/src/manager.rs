@@ -224,8 +224,15 @@ impl SurfaceManager {
             });
         }
         let surface_id = surface.id.clone();
-        self.open(surface);
+        // Main registration has a stricter contract than a general open: the
+        // requested identity must become that exact main. Bypass aside reuse
+        // and role arbitration so a future policy change cannot redirect the
+        // request while we publish presentation metadata under the old id.
+        self.graph.insert(surface);
         self.presentations.insert(surface_id.clone(), presentation);
+        self.presentations
+            .retain(|id, _| self.graph.get(id).is_some());
+        self.bump_revision();
         self.set_active_main(&surface_id);
         Ok(self.switcher_snapshot())
     }

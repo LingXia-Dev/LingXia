@@ -617,7 +617,7 @@ impl SurfaceGraph {
     /// preferred size), floats, and the full tree. `width` is the container
     /// workspace width and `policy` the admission tokens, so slot visibility
     /// respects both the size-class ceiling and the physical fit (§3.3).
-    pub fn presentation_plan(
+    pub(crate) fn presentation_plan(
         &self,
         size_class: SizeClass,
         width: f64,
