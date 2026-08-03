@@ -332,9 +332,10 @@ fn enumerate(query: &WindowQuery, only_onscreen: bool) -> Result<Vec<Window>> {
             }
 
             let (display_id, dpi, scale) = display_for_rect(&displays, &rect);
-            // First window (frontmost, since the list is front-to-back) owned by
-            // the frontmost app is the focused one.
-            let focused = !focused_taken && front == Some(pid as i32);
+            // First normal window owned by the frontmost app is the focused
+            // one. Status items and other elevated helper windows can precede
+            // the key window in this list, but they do not own keyboard focus.
+            let focused = layer == 0 && !focused_taken && front == Some(pid as i32);
             if focused {
                 focused_taken = true;
             }

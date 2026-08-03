@@ -82,10 +82,68 @@ pub fn status(target: &WindowTarget) -> Result<Window> {
     resolve(target)
 }
 
+fn focus_self_window(window_id: &str) -> Result<()> {
+    let window_number = parse_window_id(window_id)? as isize;
+    let operation = move || -> Result<()> {
+        use objc2::runtime::AnyObject;
+        use objc2::{class, msg_send};
+
+        unsafe {
+            let app: *mut AnyObject = msg_send![class!(NSApplication), sharedApplication];
+            if app.is_null() {
+                return Err(Error::Unavailable(
+                    "NSApplication.sharedApplication is unavailable".into(),
+                ));
+            }
+            let windows: *mut AnyObject = msg_send![app, windows];
+            let count: usize = msg_send![windows, count];
+            for index in 0..count {
+                let window: *mut AnyObject = msg_send![windows, objectAtIndex: index];
+                let candidate: isize = msg_send![window, windowNumber];
+                if candidate != window_number {
+                    continue;
+                }
+                let _: () = msg_send![app, activateIgnoringOtherApps: true];
+                let _: () = msg_send![window, makeMainWindow];
+                let _: () =
+                    msg_send![window, makeKeyAndOrderFront: std::ptr::null_mut::<AnyObject>()];
+                return Ok(());
+            }
+        }
+        Err(Error::Stale(format!(
+            "window {window_number} no longer exists"
+        )))
+    };
+
+    if unsafe { libc::pthread_main_np() } != 0 {
+        return operation();
+    }
+    let mut result = Err(Error::Failed(
+        "main-queue window activation did not run".into(),
+    ));
+    dispatch2::DispatchQueue::main().exec_sync(|| {
+        result = operation();
+    });
+    result
+}
+
 pub fn focus(target: &WindowTarget) -> Result<Window> {
     use objc2_app_kit::{NSApplicationActivationOptions, NSRunningApplication};
     let w = resolve(target)?;
     require_trusted()?;
+    if w.pid == std::process::id() {
+        focus_self_window(&w.id)?;
+        // AppKit activation is cooperative on current macOS releases. The
+        // trusted AX path supplies the same force-front semantics used for a
+        // foreign process; AxEl routes these self mutations to the main queue.
+        let _ = AxEl::for_app(w.pid as i32)?.set_bool("AXFrontmost", true);
+        let ax = ax_window_for_id(&w.id)?;
+        let _ = ax.perform("AXRaise");
+        let _ = ax.set_bool("AXMain", true);
+        let mut focused = with_ax_geometry(&ax, w);
+        focused.focused = true;
+        return Ok(focused);
+    }
     // Activate the owning app: setting AXFrontmost alone does not steal the
     // foreground from another process, so keyboard input would go elsewhere.
     // NSRunningApplication.activate is the reliable cross-process path.
