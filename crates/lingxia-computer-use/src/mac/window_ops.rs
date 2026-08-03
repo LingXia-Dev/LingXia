@@ -200,7 +200,35 @@ pub fn resize(target: &WindowTarget, width: i32, height: i32) -> Result<Window> 
     let w = resolve(target)?;
     let ax = ax_window_for_id(&w.id)?;
     ax.set_size("AXSize", width as f64, height as f64)?;
+    notify_self_window_mutation(w.pid);
     Ok(with_ax_geometry(&ax, w))
+}
+
+/// Tell in-process shells that automation mutated a window frame, so pending
+/// panel-layout frame restorations must not fight the new geometry. Cross-
+/// process targets have no such machinery; only the self-process case posts.
+fn notify_self_window_mutation(pid: u32) {
+    if pid != std::process::id() {
+        return;
+    }
+    let post = || unsafe {
+        use objc2::runtime::AnyObject;
+        use objc2::{class, msg_send};
+        use objc2_foundation::NSString;
+
+        let center: *mut AnyObject = msg_send![class!(NSNotificationCenter), defaultCenter];
+        if center.is_null() {
+            return;
+        }
+        let name = NSString::from_str("LingXiaAutomationWindowMutation");
+        let _: () =
+            msg_send![center, postNotificationName: &*name, object: std::ptr::null::<AnyObject>()];
+    };
+    if unsafe { libc::pthread_main_np() } != 0 {
+        post();
+    } else {
+        dispatch2::DispatchQueue::main().exec_sync(post);
+    }
 }
 
 pub fn minimize(target: &WindowTarget) -> Result<Window> {

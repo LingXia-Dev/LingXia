@@ -179,6 +179,20 @@ extension LxApp {
         }
     }
 
+    /// One-shot intent published before an explicit lxapp main activation.
+    /// The main-queue hop precedes the activation's own layout commit, so the
+    /// reconciler observes the flag before deciding whether a covering
+    /// browser tab may be replaced.
+    nonisolated static func requestLxappMainActivation(appid: RustStr) {
+        let appId = appid.toString()
+        guard !appId.isEmpty else { return }
+        dispatchOnMain {
+            #if os(macOS)
+            LxAppLayoutReconciler.requestLxappMainActivation(appId: appId)
+            #endif
+        }
+    }
+
     /// Adaptive Surface Layout: the shared core derived a new window layout.
     nonisolated static func presentLayout(window_id: RustStr, layout_json: RustStr) -> Bool {
         let windowIdString = window_id.toString()

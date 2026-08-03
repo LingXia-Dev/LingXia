@@ -193,6 +193,10 @@ impl AppRuntime for Platform {
         Ok(())
     }
 
+    fn request_lxapp_main_activation(&self, appid: &str) {
+        ffi::request_lxapp_main_activation(appid);
+    }
+
     fn set_shell_pins(&self, items: &[lingxia_shell::ShellPin]) -> Result<(), PlatformError> {
         let json = serde_json::to_string(items)
             .map_err(|error| PlatformError::Platform(error.to_string()))?;

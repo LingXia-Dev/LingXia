@@ -42,6 +42,20 @@ import AppKit
 enum LxAppLayoutReconciler {
     private static let log = OSLog(subsystem: "LingXia", category: "LayoutReconciler")
     private static var lastRevisionByWindow: [String: UInt64] = [:]
+    /// One-shot explicit lxapp activation intent (`lx` API / switcher). A
+    /// presented browser tab covers the lxapp main across unrelated layout
+    /// commits (resize, aside changes); only this intent may replace it.
+    private static var requestedLxappMainActivation: String?
+
+    static func requestLxappMainActivation(appId: String) {
+        requestedLxappMainActivation = appId
+    }
+
+    /// A newly-presented browser/native cover invalidates any older intent —
+    /// it must not be consumed later by an unrelated commit.
+    static func clearLxappMainActivation() {
+        requestedLxappMainActivation = nil
+    }
 
     /// The stable, fully-typed render contract the shared core emits (the same
     /// `LayoutPresentationPlan` JSON returned by `surfaceDerivedLayout`). The
@@ -306,7 +320,15 @@ enum LxAppLayoutReconciler {
            item.content.kind == "lxapp",
            let appId = item.content.appId,
            appId != shell.attachedMainAppId {
-            shell.reconcileActiveMain(appId: appId)
+            let explicitlyRequested = requestedLxappMainActivation == appId
+            if explicitlyRequested { requestedLxappMainActivation = nil }
+            // An undeclared browser tab covers the lxapp main until its own
+            // close/back flow restores it. Explicit activation is the one
+            // exception; unrelated commits must not evict the cover (mirrors
+            // the Windows reconciler).
+            if !shell.browserIsCoveringMain || explicitlyRequested {
+                shell.reconcileActiveMain(appId: appId)
+            }
         }
         LxAppMacAppUIRuntime.refreshSurfaceSwitcherProjection()
 

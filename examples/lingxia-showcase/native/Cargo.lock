@@ -2013,6 +2013,7 @@ dependencies = [
  "lingxia-platform",
  "lingxia-provider",
  "lingxia-service",
+ "lingxia-shell",
  "lingxia-surface",
  "lingxia-terminal",
  "lingxia-transfer",

@@ -371,7 +371,11 @@ final class BrowserTabCoordinator: NSObject {
             } else {
                 hideBrowserView()
                 host?.forceHideNavigationToolbar(false)
-                if let appId = host?.activeAppTabId() {
+                // Restore through the graph-aware provider path first (same as
+                // the out-of-band close reconciler): the graph's active main —
+                // not the legacy lxapp tab — owns the uncovered workspace.
+                if host?.browserDidLoseAllTabs() != true,
+                   let appId = host?.activeAppTabId() {
                     host?.switchToLxAppTab(appId)
                 }
             }

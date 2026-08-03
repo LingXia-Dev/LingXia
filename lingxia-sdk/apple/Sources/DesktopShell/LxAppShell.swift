@@ -226,6 +226,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     internal let workspaceManager = WorkspaceManager()
     nonisolated(unsafe) private var sidebarRefreshObserver: NSObjectProtocol?
     nonisolated(unsafe) private var tabBarStateObserver: NSObjectProtocol?
+    nonisolated(unsafe) private var automationWindowMutationObserver: NSObjectProtocol?
     private var controllerEventsTask: Task<Void, Never>?
     private var didRequestHomeOpen = false
     private let startupBehavior: LxAppShellStartupBehavior
@@ -350,6 +351,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     deinit {
         sidebarRefreshObserver.map(NotificationCenter.default.removeObserver)
         tabBarStateObserver.map(NotificationCenter.default.removeObserver)
+        automationWindowMutationObserver.map(NotificationCenter.default.removeObserver)
         controllerEventsTask?.cancel()
         browserCoordinator.cleanup()
     }
@@ -797,6 +799,18 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     }
 
     private func setupNotificationObservers() {
+        // Automation mutated a window frame directly. Like a user drag, that
+        // supersedes any delayed panel-layout frame restoration — restoring
+        // the pre-panel frame afterwards would fight the requested geometry.
+        automationWindowMutationObserver = NotificationCenter.default.addObserver(
+            forName: Notification.Name("LingXiaAutomationWindowMutation"),
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.panelFramePreservationGeneration &+= 1
+            }
+        }
         sidebarRefreshObserver = NotificationCenter.default.addObserver(
             forName: .sidebarNeedsRefresh,
             object: nil,
@@ -1280,6 +1294,12 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         // is the single source of truth for the active-main switch. The reconcile
         // is idempotent, so a redundant plan never re-attaches.
         if managedMainSurfaceByLxappId[appId] == nil {
+            // This selection is an explicit activation: publish the one-shot
+            // intent so the reconciler may replace a covering browser tab.
+            // Managed switcher rows are activated by the runtime before it
+            // calls back into this attach primitive; re-entering the runtime
+            // here would recurse.
+            LxAppLayoutReconciler.requestLxappMainActivation(appId: appId)
             _ = setActiveMain(appId)
         }
         // The sidebar highlight stays imperative: it is not part of the surface
@@ -1299,6 +1319,11 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     /// The lxapp id currently attached to the primary content area, or `nil`
     /// when another provider owns it. The reconciler resolves the active
     /// Surface's provider identity before comparing it with this value.
+    /// True while a presented browser tab occupies the primary content area.
+    /// The layout reconciler must not replace that cover with the graph's
+    /// active lxapp main on unrelated commits.
+    var browserIsCoveringMain: Bool { browserCoordinator.isActive }
+
     var attachedMainAppId: String? {
         // "Attached" = the current VC's view is actually mounted, not just same app
         // id — after a restart the rebuilt VC shares the id but the old view is gone.
@@ -1364,6 +1389,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
             // The browser view is attached by BrowserTabCoordinator.showBrowserView;
             // here we only detach the lxapp and drop its nav toolbar so the
             // toolbar can't sit on top of the browser view.
+            LxAppLayoutReconciler.clearLxappMainActivation()
             detachCurrentLxApp()
             detachManagedMain()
             navigationToolbar?.forceHide(true)
