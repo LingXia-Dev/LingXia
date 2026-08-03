@@ -626,6 +626,11 @@ The aside region is fixed at three slots, grouped by rendering engine:
 ## 5. Compact projection
 
 - Main is full screen; the active lxapp's tabbar returns to the bottom.
+- A compact browser main uses the same provider chrome on Windows and macOS:
+  an editable address row above an action row with page Back/Forward, Reload,
+  user New Tab, browser-workspace tab switcher/count, and Dismiss when an
+  lxapp main can be restored. The desktop top address bar and sidebar MUST NOT
+  remain visible behind or beside this projection.
 - Asides overlay the main full screen. System Back and edge-swipe Back hide the
   **entire active slot** and restore the main; slot tabs are not destroyed.
 - Lxapp and native slots MAY use a compact header Back to perform that slot
@@ -637,9 +642,9 @@ The aside region is fixed at three slots, grouped by rendering engine:
 - The explicit page Back/Forward buttons navigate session history. System Back,
   edge-swipe Back, and Dismiss exit the entire browser-aside slot even when page
   history exists, preserving its tabs for the next show.
-- The self browser remains a separate two-row projection with an editable URL
-  field, user-new-tab and overflow actions. The field accepts URLs, not search
-  queries. Self and aside tab counts,
+- A browser-only Runner uses the same two-row main projection but has no
+  Dismiss action because there is no covered lxapp main. The field accepts
+  URLs, not search queries. Main/Runner and aside tab counts,
   switchers, activation, and close-successor selection MUST remain isolated;
   neither group may surface a tab from the other group.
 - Closing a browser tab happens in its current group's switcher. Closing the
