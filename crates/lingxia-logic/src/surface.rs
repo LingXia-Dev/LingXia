@@ -11,7 +11,8 @@ use lxapp::{
     publish_app_event, register_app_handler, try_get, unregister_app_handler,
 };
 use rong::{
-    Class, HostError, IntoJSObject, JSContext, JSFunc, JSObject, JSResult, JSValue, Promise,
+    Class, HostError, IntoJSObject, JSContext, JSContextService, JSFunc, JSObject, JSResult,
+    JSValue, Promise,
     function::{Rest, This},
     js_class, js_method,
 };
@@ -51,6 +52,32 @@ struct ManagedHandleKey {
 thread_local! {
     static MANAGED_HANDLE_CACHE: RefCell<HashMap<ManagedHandleKey, JSObject>> =
         RefCell::new(HashMap::new());
+}
+
+#[derive(Clone)]
+struct ManagedHandleCacheScope {
+    app_id: String,
+    session_id: u64,
+}
+
+impl JSContextService for ManagedHandleCacheScope {
+    fn on_shutdown(&self) {
+        MANAGED_HANDLE_CACHE.with(|cache| {
+            remove_managed_handles_for_session(
+                &mut cache.borrow_mut(),
+                &self.app_id,
+                self.session_id,
+            );
+        });
+    }
+}
+
+fn remove_managed_handles_for_session<T>(
+    cache: &mut HashMap<ManagedHandleKey, T>,
+    app_id: &str,
+    session_id: u64,
+) {
+    cache.retain(|key, _| key.app_id != app_id || key.session_id != session_id);
 }
 
 #[derive(Debug, Clone, IntoJSObject)]
@@ -1088,6 +1115,12 @@ fn managed_surface_handle(
     id: String,
     role: Option<lingxia_surface::Role>,
 ) -> JSResult<JSObject> {
+    if ctx.get_service::<ManagedHandleCacheScope>().is_none() {
+        ctx.set_service(ManagedHandleCacheScope {
+            app_id: lxapp.appid.clone(),
+            session_id: lxapp.session_id(),
+        });
+    }
     let role = role.or_else(|| lxapp.shell_surface_role(&id));
     let is_main = role == Some(lingxia_surface::Role::Main);
     let kind = if is_main { "window" } else { "overlay" };
@@ -2760,6 +2793,32 @@ mod tests {
             assert_eq!(event.reason, "user");
         }
         assert!(!notify_surface_closed(surface_id, "user"));
+    }
+
+    #[test]
+    fn managed_handle_cache_shutdown_removes_only_its_context() {
+        let key = |app_id: &str, session_id: u64, surface_id: &str| ManagedHandleKey {
+            app_id: app_id.to_string(),
+            session_id,
+            surface_id: surface_id.to_string(),
+        };
+        let current = key("home", 7, "terminal:a");
+        let sibling = key("home", 7, "terminal:b");
+        let restarted = key("home", 8, "terminal:a");
+        let other_app = key("chat", 2, "chat");
+        let mut cache = HashMap::from([
+            (current.clone(), ()),
+            (sibling.clone(), ()),
+            (restarted.clone(), ()),
+            (other_app.clone(), ()),
+        ]);
+
+        remove_managed_handles_for_session(&mut cache, "home", 7);
+
+        assert!(!cache.contains_key(&current));
+        assert!(!cache.contains_key(&sibling));
+        assert!(cache.contains_key(&restarted));
+        assert!(cache.contains_key(&other_app));
     }
 
     #[test]
