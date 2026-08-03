@@ -2086,6 +2086,15 @@ fn adaptive_tabbar_projection(
     medium_expanded: bool,
 ) -> (WindowsShellTabBarPosition, bool, bool) {
     match size_class {
+        SizeClass::Compact
+            if !device_framed
+                && matches!(
+                    requested,
+                    WindowsShellTabBarPosition::Left | WindowsShellTabBarPosition::Right
+                ) =>
+        {
+            (requested, true, true)
+        }
         SizeClass::Compact => (WindowsShellTabBarPosition::Bottom, false, false),
         SizeClass::Medium
             if !device_framed
@@ -6561,6 +6570,10 @@ mod tests {
         );
         assert_eq!(
             adaptive_tabbar_projection(Left, SizeClass::Compact, false, false),
+            (Left, true, true)
+        );
+        assert_eq!(
+            adaptive_tabbar_projection(Left, SizeClass::Compact, true, false),
             (Bottom, false, false)
         );
         assert_eq!(
