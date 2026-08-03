@@ -836,7 +836,7 @@ jobs:
         shell: bash
         run: |
           ../../target/debug/lingxia${{ matrix.exe }} dev status --json || true
-          ../../target/debug/lxdev${{ matrix.exe }} logs --wide || true
+          ../../target/debug/lxdev${{ matrix.exe }} logs --limit 1000 || true
 
       - name: Stop showcase session
         if: always()
