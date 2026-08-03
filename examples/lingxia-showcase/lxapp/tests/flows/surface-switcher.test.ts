@@ -1,6 +1,8 @@
 import { expect, test } from '@rongjs/test';
 import type {
   AutomationShellPin,
+  BrowserDriver,
+  DesktopAxNode,
   DesktopDriver,
   DesktopPixel,
   DesktopWindowInfo,
@@ -22,11 +24,37 @@ interface CloseEvent {
   reason: string;
 }
 
-const targetPlatform = (test.args as Record<string, string>).platform?.toLocaleLowerCase();
-const desktopTest = targetPlatform && !['macos', 'windows'].includes(targetPlatform)
+interface RetainedAppSurfaceState {
+  id: string;
+  visible: boolean;
+  alive: boolean;
+  events: Array<{
+    type: 'show' | 'hide' | 'close';
+    id: string;
+    kind: string;
+    source?: string;
+    reason?: string;
+  }>;
+}
+
+const testArgs = test.args as Record<string, string>;
+const targetPlatform = testArgs.platform?.toLocaleLowerCase();
+const selectedGate = testArgs.gate?.toLocaleLowerCase();
+const desktopCapableTest = targetPlatform && !['macos', 'windows'].includes(targetPlatform)
   ? test.skip
   : test;
-const windowsHostTest = targetPlatform === 'windows' ? test : test.skip;
+const desktopTest = selectedGate ? test.skip : desktopCapableTest;
+const adaptiveDesktopTest = !selectedGate || selectedGate === 'adaptive-compact'
+  ? desktopCapableTest
+  : test.skip;
+const dynamicMainDesktopTest = !selectedGate || selectedGate === 'dynamic-main'
+  ? desktopCapableTest
+  : test.skip;
+const windowsHostTest = targetPlatform === 'windows' && !selectedGate ? test : test.skip;
+const pinnedWindowsHostTest = targetPlatform === 'windows'
+  && (!selectedGate || selectedGate === 'pinned-main')
+  ? test
+  : test.skip;
 
 async function desktopApp(): Promise<LxAppDriver> {
   const app = lx.automation().lxapp();
@@ -99,6 +127,259 @@ function windowsHost(windows: DesktopWindowInfo[]): DesktopWindowInfo | undefine
     ))[0];
 }
 
+function desktopShowcaseHost(
+  platform: string,
+  windows: DesktopWindowInfo[],
+): DesktopWindowInfo | undefined {
+  if (platform === 'windows') return windowsHost(windows);
+  return windows
+    .filter((window) => {
+      const title = window.title.toLocaleLowerCase();
+      const process = window.process.toLocaleLowerCase();
+      return window.visible
+        && window.bounds.w >= 320
+        && window.bounds.h >= 320
+        && (title.includes('lingxia') || process.includes('lingxiademo'));
+    })
+    .sort((left, right) => (
+      right.bounds.w * right.bounds.h - left.bounds.w * left.bounds.h
+    ))[0];
+}
+
+function nativeWindowExtent(
+  platform: string,
+  host: DesktopWindowInfo,
+  logicalPoints: number,
+): number {
+  // Windows desktop bounds are physical pixels while the surface controller
+  // consumes DIPs. macOS desktop bounds and surface widths are both points.
+  return platform === 'windows'
+    ? Math.round(logicalPoints * host.scale)
+    : logicalPoints;
+}
+
+function isApiNavbarBlue(pixel: DesktopPixel): boolean {
+  return Math.abs(pixel.r - 59) <= 24
+    && Math.abs(pixel.g - 130) <= 24
+    && Math.abs(pixel.b - 246) <= 24;
+}
+
+function pixelDistance(left: DesktopPixel, right: DesktopPixel): number {
+  return Math.abs(left.r - right.r)
+    + Math.abs(left.g - right.g)
+    + Math.abs(left.b - right.b);
+}
+
+async function selectFirstCompactBrowserTab(
+  desktop: DesktopDriver,
+  platform: string,
+  host: DesktopWindowInfo,
+): Promise<void> {
+  const bottom = host.bounds.y + host.bounds.h;
+  const right = host.bounds.x + host.bounds.w;
+  const dimProbe: [number, number] = [
+    host.bounds.x + Math.round(host.bounds.w * 0.5),
+    host.bounds.y + Math.round(host.bounds.h * 0.42),
+  ];
+  const before = await desktop.pixel({ at: dimProbe });
+  const windowsBefore = platform === 'windows'
+    ? new Set((await desktop.windows()).map((window) => window.id))
+    : undefined;
+
+  // Both desktop skins use the same compact main-browser geometry: the tabs
+  // button is the second trailing action before Dismiss.
+  await ensureHostForeground(desktop, host);
+  await desktop.pointer.click({
+    at: [
+      right - nativeWindowExtent(platform, host, 67),
+      bottom - nativeWindowExtent(platform, host, 31),
+    ],
+  });
+  const windowsSwitcher = platform === 'windows'
+    ? await waitForValue(async () => (
+      (await desktop.windows()).find((window) => (
+        !windowsBefore!.has(window.id)
+        && window.visible
+        && window.pid === host.pid
+        && window.title === ''
+        && Math.abs(window.bounds.x - host.bounds.x) <= 1
+        && Math.abs(window.bounds.y - host.bounds.y) <= 1
+        && Math.abs(window.bounds.w - host.bounds.w) <= 1
+        && Math.abs(window.bounds.h - host.bounds.h) <= 1
+      ))
+    ), 'windows compact browser creates a physical tab switcher window')
+    : undefined;
+  if (platform !== 'windows') {
+    await waitForValue(async () => {
+      const dimmed = await desktop.pixel({ at: dimProbe });
+      return pixelDistance(before, dimmed) >= 24 ? true : undefined;
+    }, `${platform} compact browser tab switcher backdrop`);
+  }
+
+  // The first 40pt row starts below the sheet title on both implementations.
+  // Clicking it must activate the first provider tab, not merely dismiss UI.
+  await desktop.pointer.click({
+    at: [
+      host.bounds.x + nativeWindowExtent(platform, host, 80),
+      bottom - nativeWindowExtent(platform, host, 80),
+    ],
+  });
+  if (windowsSwitcher) {
+    await waitForValue(async () => (
+      (await desktop.windows()).some((window) => window.id === windowsSwitcher.id)
+        ? undefined
+        : true
+    ), 'windows compact browser destroys the tab switcher after selection');
+  }
+}
+
+async function apiNavbarProbePoints(
+  desktop: DesktopDriver,
+  host: DesktopWindowInfo,
+): Promise<[number, number][] | undefined> {
+  const centerX = host.bounds.x + Math.round(host.bounds.w * 0.5);
+  const top = host.bounds.y + 20;
+  const bottom = Math.min(host.bounds.y + 160, host.bounds.y + host.bounds.h - 1);
+  const centerPoints: [number, number][] = [];
+  for (let y = top; y <= bottom; y += 4) centerPoints.push([centerX, y]);
+  const centerPixels = await Promise.all(
+    centerPoints.map((at) => desktop.pixel({ at })),
+  );
+  for (let index = 0; index < centerPoints.length; index += 1) {
+    if (!isApiNavbarBlue(centerPixels[index])) continue;
+    const y = centerPoints[index][1];
+    // Keep the probes inside the main pane's center band. Once a right aside
+    // is docked, the 75% point belongs to that aside and cannot prove whether
+    // the main navbar was restored.
+    const row: [number, number][] = [0.35, 0.45, 0.55].map((fraction) => [
+      host.bounds.x + Math.round(host.bounds.w * fraction),
+      y,
+    ]);
+    const rowPixels = await Promise.all(row.map((at) => desktop.pixel({ at })));
+    if (rowPixels.every(isApiNavbarBlue)) return row;
+  }
+  return undefined;
+}
+
+async function visibleChatInputAxNode(
+  desktop: DesktopDriver,
+  host: DesktopWindowInfo,
+): Promise<DesktopAxNode | undefined> {
+  const nodes = await desktop.ax.query({
+    window: host.id,
+    match: 'Message',
+    all: true,
+  });
+  return nodes
+    .filter((node) => (
+      node.enabled
+      && node.rect.w > 0
+      && node.rect.h > 0
+      && node.rect.x >= host.bounds.x
+      && node.rect.y >= host.bounds.y
+      && node.rect.x + node.rect.w <= host.bounds.x + host.bounds.w
+      && node.rect.y + node.rect.h <= host.bounds.y + host.bounds.h
+    ))
+    .sort((left, right) => right.rect.w * right.rect.h - left.rect.w * left.rect.h)[0];
+}
+
+async function visibleCompactApiTabAxNode(
+  desktop: DesktopDriver,
+  host: DesktopWindowInfo,
+): Promise<DesktopAxNode | undefined> {
+  const buttons = await desktop.ax.query({
+    window: host.id,
+    match: 'role:button',
+    all: true,
+  });
+  const bottomBand = host.bounds.y + Math.round(host.bounds.h * 0.72);
+  return buttons.find((node) => (
+    node.name.trim() === 'API'
+    && node.enabled
+    && node.rect.w > 0
+    && node.rect.h > 0
+    && node.rect.y >= bottomBand
+    && node.rect.x >= host.bounds.x
+    && node.rect.x + node.rect.w <= host.bounds.x + host.bounds.w
+    && node.rect.y + node.rect.h <= host.bounds.y + host.bounds.h
+  ));
+}
+
+async function visibleBrowserViewportWidth(
+  browser: BrowserDriver,
+): Promise<number | undefined> {
+  try {
+    const body = await browser.query({ css: 'body', maxText: 1 });
+    return body.exists && body.visible && body.rect.viewport_width > 0
+      ? body.rect.viewport_width
+      : undefined;
+  } catch (error) {
+    if (String(error).includes('browser tab is not ready')) return undefined;
+    throw error;
+  }
+}
+
+async function apiNavbarLeftEdge(
+  desktop: DesktopDriver,
+  platform: string,
+  host: DesktopWindowInfo,
+  y: number,
+): Promise<number | undefined> {
+  const step = Math.max(2, nativeWindowExtent(platform, host, 4));
+  const scanWidth = Math.min(
+    Math.round(host.bounds.w * 0.45),
+    nativeWindowExtent(platform, host, 320),
+  );
+  const points: [number, number][] = [];
+  for (let x = host.bounds.x + 2; x <= host.bounds.x + scanWidth; x += step) {
+    points.push([x, y]);
+  }
+  const pixels = await Promise.all(points.map((at) => desktop.pixel({ at })));
+  let run = 0;
+  for (let index = 0; index < pixels.length; index += 1) {
+    run = isApiNavbarBlue(pixels[index]) ? run + 1 : 0;
+    // A contiguous run distinguishes the navbar fill from a blue sidebar
+    // glyph that happens to intersect the sampled row.
+    if (run >= 5) return points[index - run + 1][0];
+  }
+  return undefined;
+}
+
+async function expandMediumSidebar(
+  desktop: DesktopDriver,
+  platform: string,
+  host: DesktopWindowInfo,
+): Promise<void> {
+  if (platform === 'macos') {
+    const button = await waitForValue(async () => {
+      const nodes = await desktop.ax.query({
+        window: host.id,
+        match: 'name:Expand sidebar',
+        all: true,
+      });
+      return nodes.find((node) => (
+        node.enabled && node.rect.w > 0 && node.rect.h > 0
+      ));
+    }, 'macOS medium sidebar expand control');
+    await desktop.pointer.click({ at: regionCenter([
+      button.rect.x,
+      button.rect.y,
+      button.rect.w,
+      button.rect.h,
+    ]) });
+    return;
+  }
+
+  const inset = nativeWindowExtent(platform, host, 14);
+  await ensureHostForeground(desktop, host);
+  await desktop.pointer.click({
+    at: [
+      host.bounds.x + inset,
+      host.bounds.y + host.bounds.h - inset,
+    ],
+  });
+}
+
 function visibleHostWebViews(
   host: DesktopWindowInfo,
   windows: DesktopWindowInfo[],
@@ -137,12 +418,14 @@ async function expectExactMainPresentation(
   active: DesktopWindowInfo,
   readWindows: () => Promise<DesktopWindowInfo[]>,
 ): Promise<void> {
-  // A page-owned native navigation bar may shorten the inner WebView at the
-  // top. The host presentation still has to share the root's left, right, and
-  // bottom edges, with no outgoing WebView or duplicate workspace left visible.
+  // Page navigation and browser address chrome may move the inner WebView's
+  // top in either direction. It still has to share the root's left, right, and
+  // bottom edges, stay within one chrome band, and leave no outgoing WebView
+  // or duplicate workspace visible.
   expect(active.bounds.x).toBe(baseline.bounds.x);
   expect(active.bounds.w).toBe(baseline.bounds.w);
-  expect(active.bounds.y >= baseline.bounds.y).toBeTruthy();
+  expect(active.bounds.y >= host.bounds.y).toBeTruthy();
+  expect(Math.abs(active.bounds.y - baseline.bounds.y) <= 64 * host.scale).toBeTruthy();
   expect(active.bounds.y + active.bounds.h).toBe(
     baseline.bounds.y + baseline.bounds.h,
   );
@@ -302,6 +585,25 @@ function pinnedShortcutPoint(
   ];
 }
 
+function firstRailFooterActionPoint(
+  host: DesktopWindowInfo,
+  footerActionCount: number,
+): [number, number] {
+  const railWidth = nativeWindowExtent('windows', host, 44);
+  const expandCell = nativeWindowExtent('windows', host, 34);
+  const cell = nativeWindowExtent('windows', host, 30);
+  const gap = nativeWindowExtent('windows', host, 4);
+  const margin = nativeWindowExtent('windows', host, 6);
+  const topBar = nativeWindowExtent('windows', host, 32);
+  const total = footerActionCount * cell + Math.max(0, footerActionCount - 1) * gap;
+  const expandTop = host.bounds.h - gap - expandCell;
+  const firstTop = Math.max(expandTop - margin - total, topBar);
+  return [
+    host.bounds.x + Math.round(railWidth / 2),
+    host.bounds.y + firstTop + Math.round(cell / 2),
+  ];
+}
+
 function firstLxappWorkspacePoint(
   host: DesktopWindowInfo,
   pinCount: number,
@@ -345,8 +647,32 @@ function firstLxappWorkspaceMenuRegion(
   ];
 }
 
+function firstLxappWorkspaceClosePoint(
+  host: DesktopWindowInfo,
+  pinCount: number,
+  rootPageCount: number,
+): [number, number] {
+  const menu = firstLxappWorkspaceMenuRegion(host, pinCount, rootPageCount);
+  return [menu[0] + menu[2] * 1.5, menu[1] + menu[3] / 2];
+}
+
 function regionCenter(region: [number, number, number, number]): [number, number] {
   return [region[0] + region[2] / 2, region[1] + region[3] / 2];
+}
+
+async function firstEnabledNativeMenuItem(
+  desktop: DesktopDriver,
+  menu: DesktopWindowInfo,
+): Promise<DesktopAxNode> {
+  const items = (await desktop.ax.query({
+    window: menu.id,
+    match: 'role:menuitem',
+    all: true,
+  }))
+    .filter((item) => item.enabled && item.rect.w > 0 && item.rect.h > 0)
+    .sort((left, right) => left.rect.y - right.rect.y || left.rect.x - right.rect.x);
+  if (!items[0]) throw new Error('native context menu has no enabled menu item');
+  return items[0];
 }
 
 async function resizeHostOnScreen(
@@ -454,32 +780,112 @@ async function ensureHostForeground(
   const current = (await desktop.windows()).find((window) => window.id === host.id);
   if (current?.focused) return current;
 
-  // Windows can report a foreground-lock failure even after the requested
-  // window became foreground. Treat the observed desktop state as authority;
-  // never continue with physical input while another app is actually focused.
-  await desktop.window.focus({ window: host.id }).catch(async (error) => {
-    const observed = (await desktop.windows()).find((window) => window.id === host.id);
-    if (!observed?.focused) throw error;
-  });
-  return waitForDesktopWindow(
-    () => desktop.windows(),
-    (windows) => windows.find((window) => window.id === host.id && window.focused),
-    'foreground LingXia host for physical input',
-  );
+  // SetForegroundWindow is advisory on Windows and can reject a background
+  // devtools process even though SendInput can still perform the real user
+  // click. Raise the host so global pixel/input coordinates are unoccluded;
+  // the subsequent click must prove delivery through observable product state.
+  await desktop.window.focus({ window: host.id }).catch(() => undefined);
+  const focused = (await desktop.windows()).find((window) => (
+    window.id === host.id && window.focused
+  ));
+  if (focused) return focused;
+  await desktop.window.raise({ window: host.id });
+  return (await desktop.windows()).find((window) => window.id === host.id) ?? host;
 }
 
 async function closeChatSurface(app: LxAppDriver): Promise<void> {
+  const layout = await app.surfaceLayout();
+  const presentation = layout.mains.includes('lingxia-chat')
+    ? 'main'
+    : layout.asideSlots.some((slot) => slot.children.includes('lingxia-chat'))
+      ? 'aside'
+      : undefined;
+  try {
+    if (presentation) {
+      await app.eval({
+        timeoutMs: 20_000,
+        script: `
+          const chat = await lx.openSurface({
+            surface: 'lingxia-chat',
+            ${presentation === 'main' ? "as: 'main'," : ''}
+          });
+          if (chat.alive) await chat.close();
+        `,
+      });
+    }
+  } catch (error) {
+    // Cleanup is intentionally idempotent across test boundaries. A provider
+    // may finish closing between the layout snapshot and handle lookup; accept
+    // that race only when the authoritative graph has already converged.
+    if (containsSurface(await app.surfaceLayout(), 'lingxia-chat')) throw error;
+  }
+  await waitForValue(async () => (
+    containsSurface(await app.surfaceLayout(), 'lingxia-chat') ? undefined : true
+  ), 'Chat surface cleanup convergence');
+}
+
+function automationFailureDetail(error: unknown): string {
+  const candidate = error as { code?: unknown; message?: unknown; data?: { detail?: unknown } };
+  const parts = [
+    candidate?.code && `code=${String(candidate.code)}`,
+    candidate?.message && `message=${String(candidate.message)}`,
+    candidate?.data?.detail && `detail=${String(candidate.data.detail)}`,
+  ].filter(Boolean);
+  return parts.length > 0 ? parts.join(', ') : String(error);
+}
+
+async function automationPhase<T>(phase: string, operation: () => Promise<T>): Promise<T> {
+  try {
+    return await operation();
+  } catch (error) {
+    throw new Error(`${phase}: ${automationFailureDetail(error)}`);
+  }
+}
+
+async function retainDynamicChatHandle(app: LxAppDriver): Promise<RetainedAppSurfaceState> {
+  return app.eval({
+    timeoutMs: 20_000,
+    script: `
+      const previous = globalThis.__surfaceSwitcherDynamicHandleGate;
+      for (const unsubscribe of previous?.unsubscribe ?? []) unsubscribe();
+      const handle = await lx.openSurface({ appId: 'lingxia-chat', as: 'main' });
+      const events = [];
+      const unsubscribe = [
+        handle.onHide((event) => events.push({ type: 'hide', ...event })),
+        handle.onShow((event) => events.push({ type: 'show', ...event })),
+        handle.onClose((event) => events.push({ type: 'close', ...event })),
+      ];
+      globalThis.__surfaceSwitcherDynamicHandleGate = { handle, events, unsubscribe };
+      return { id: handle.id, visible: handle.visible, alive: handle.alive, events };
+    `,
+  }) as Promise<RetainedAppSurfaceState>;
+}
+
+async function readRetainedDynamicChatHandle(
+  app: LxAppDriver,
+): Promise<RetainedAppSurfaceState> {
+  return app.eval({
+    timeoutMs: 20_000,
+    script: `
+      const gate = globalThis.__surfaceSwitcherDynamicHandleGate;
+      if (!gate) throw new Error('dynamic Chat handle gate is not installed');
+      return {
+        id: gate.handle.id,
+        visible: gate.handle.visible,
+        alive: gate.handle.alive,
+        events: gate.events.map((event) => ({ ...event })),
+      };
+    `,
+  }) as Promise<RetainedAppSurfaceState>;
+}
+
+async function clearRetainedDynamicChatHandle(app: LxAppDriver): Promise<void> {
   await app.eval({
     timeoutMs: 20_000,
     script: `
-      const layout = await lx.automation().lxapp().surfaceLayout();
-      let chat;
-      if (layout.mains.includes('lingxia-chat')) {
-        chat = await lx.openSurface({ surface: 'lingxia-chat', as: 'main' });
-      } else if (layout.asideSlots.some((slot) => slot.children.includes('lingxia-chat'))) {
-        chat = await lx.openSurface({ surface: 'lingxia-chat' });
-      }
-      if (chat?.alive) await chat.close();
+      const gate = globalThis.__surfaceSwitcherDynamicHandleGate;
+      for (const unsubscribe of gate?.unsubscribe ?? []) unsubscribe();
+      delete globalThis.__surfaceSwitcherDynamicHandleGate;
     `,
   });
 }
@@ -569,6 +975,328 @@ desktopTest('projects the declared terminal aside and restores its baseline stat
   expect(topology(result.afterCleanup)).toEqual(topology(before));
 });
 
+adaptiveDesktopTest('gates medium sidebar reveal and compact aside chrome on every desktop', async () => {
+  const app = await desktopApp();
+  const platform = await runtimePlatform(app);
+  const automation = lx.automation();
+  const desktop = automation.desktop;
+  const doctor = await desktop.doctor();
+  expect(doctor.capabilities.windows).toBeTruthy();
+  expect(doctor.capabilities.screenshot).toBeTruthy();
+  expect(doctor.capabilities.pixel).toBeTruthy();
+  expect(doctor.capabilities.pointer).toBeTruthy();
+  expect(doctor.capabilities.key).toBeTruthy();
+  expect(doctor.capabilities.window_management).toBeTruthy();
+  expect(doctor.capabilities.ax_tree).toBeTruthy();
+  expect(doctor.permissions.accessibility).toBeTruthy();
+  expect(doctor.permissions.screen_recording).toBeTruthy();
+  expect(doctor.permissions.input).toBeTruthy();
+
+  let host = desktopShowcaseHost(platform, await desktop.windows());
+  if (!host) throw new Error(`visible ${platform} showcase host window was not found`);
+  const originalBounds = { ...host.bounds };
+  const originalPage = await app.nav.current();
+  const browser = automation.browser;
+  const browserTabsBefore = new Set((await browser.tabs()).map((tab) => tab.tab_id));
+  const mediumWidth = nativeWindowExtent(platform, host, 800);
+  const compactWidth = nativeWindowExtent(platform, host, 520);
+  const expandedWidth = nativeWindowExtent(platform, host, 1_000);
+  const testHeight = nativeWindowExtent(platform, host, 640);
+  let chatOpened = false;
+  let browserTabId: string | undefined;
+  let secondaryBrowserTabId: string | undefined;
+
+  const typeIntoChatThroughDesktop = async (marker: string): Promise<void> => {
+    const chatApp = automation.lxapp('lingxia-chat');
+    let input = await waitForValue(
+      () => visibleChatInputAxNode(desktop, host!),
+      `${platform} Chat input in native accessibility tree`,
+    );
+    await chatApp.page.fill({
+      page: 'chat',
+      css: 'textarea[placeholder="Message..."]',
+      text: '',
+    });
+    host = await ensureHostForeground(desktop, host!);
+    input = await waitForValue(
+      () => visibleChatInputAxNode(desktop, host!),
+      `${platform} foreground Chat input`,
+    );
+    await desktop.pointer.click({
+      at: regionCenter([input.rect.x, input.rect.y, input.rect.w, input.rect.h]),
+    });
+    await waitForValue(async () => {
+      const candidate = await visibleChatInputAxNode(desktop, host!);
+      return candidate?.focused ? candidate : undefined;
+    }, `${platform} physical click focused Chat input`);
+    await desktop.key.type({ text: marker });
+    await waitForValue(async () => {
+      try {
+        const candidate = await chatApp.page.query({
+          page: 'chat',
+          css: 'textarea[placeholder="Message..."]',
+        });
+        return candidate.exists && candidate.value === marker ? true : undefined;
+      } catch (error) {
+        if (String(error).includes('page WebView is not ready')) return undefined;
+        throw error;
+      }
+    }, `${platform} physical input delivered to Chat`);
+    await chatApp.page.fill({
+      page: 'chat',
+      css: 'textarea[placeholder="Message..."]',
+      text: '',
+    });
+  };
+
+  try {
+    await closeChatSurface(app);
+    host = await resizeHostOnScreen(desktop, host, expandedWidth, testHeight);
+    await waitForValue(async () => {
+      const layout = await app.surfaceLayout();
+      return layout.sizeClass === 'expanded' && !containsSurface(layout, 'lingxia-chat')
+        ? layout
+        : undefined;
+    }, `${platform} expanded root baseline`);
+
+    await app.nav.switchTab({ page: 'api' });
+    await app.page.waitFor({ page: 'api', css: 'body', timeoutMs: 10_000 });
+
+    // Cross from expanded into medium so the adaptive rail is freshly
+    // projected. Then use the real native expand control and prove the
+    // content edge moves by a sidebar width; a state-only toggle cannot pass.
+    host = await resizeHostOnScreen(desktop, host, mediumWidth, testHeight);
+    await waitForValue(async () => {
+      const layout = await app.surfaceLayout();
+      return layout.sizeClass === 'medium' && !containsSurface(layout, 'lingxia-chat')
+        ? layout
+        : undefined;
+    }, `${platform} medium adaptive rail`);
+    host = await ensureHostForeground(desktop, host);
+    const mediumNavbar = await waitForValue(
+      () => apiNavbarProbePoints(desktop, host!),
+      `${platform} API navbar before sidebar reveal`,
+    );
+    const navbarY = mediumNavbar[0][1];
+    const railNavbarLeft = await waitForValue(
+      () => apiNavbarLeftEdge(desktop, platform, host!, navbarY),
+      `${platform} API navbar edge beside medium rail`,
+    );
+    await expandMediumSidebar(desktop, platform, host);
+    const expandedSidebarNavbarLeft = await waitForValue(async () => {
+      const edge = await apiNavbarLeftEdge(desktop, platform, host!, navbarY);
+      return edge !== undefined
+        && edge - railNavbarLeft >= nativeWindowExtent(platform, host!, 80)
+        ? edge
+        : undefined;
+    }, `${platform} explicit medium sidebar reveal`);
+    expect(expandedSidebarNavbarLeft > railNavbarLeft).toBeTruthy();
+    expect((await app.surfaceLayout()).sizeClass).toBe('medium');
+
+    host = await resizeHostOnScreen(desktop, host, compactWidth, testHeight);
+    const compactRoot = await waitForValue(async () => {
+      const layout = await app.surfaceLayout();
+      return layout.sizeClass === 'compact'
+        && layout.switcherForm === 'none'
+        && !containsSurface(layout, 'lingxia-chat')
+        ? layout
+        : undefined;
+    }, `${platform} compact API root`);
+    expect(compactRoot.activeMainId).toBe(compactRoot.mainSwitcher.rootSurfaceId);
+    host = await ensureHostForeground(desktop, host);
+    const compactNavbar = await waitForValue(
+      () => apiNavbarProbePoints(desktop, host!),
+      `${platform} compact API navbar baseline`,
+    );
+    if (platform === 'macos') {
+      await waitForValue(
+        () => visibleCompactApiTabAxNode(desktop, host!),
+        'macOS compact main tab bar baseline',
+      );
+    }
+
+    const opened = await app.eval({
+      timeoutMs: 20_000,
+      script: `
+        const handle = await lx.openSurface({ surface: 'lingxia-chat' });
+        return { id: handle.id, visible: handle.visible, alive: handle.alive };
+      `,
+    }) as { id: string; visible: boolean; alive: boolean };
+    chatOpened = true;
+    expect(opened).toEqual({ id: 'lingxia-chat', visible: true, alive: true });
+
+    const compactOverlay = await waitForValue(async () => {
+      const layout = await app.surfaceLayout();
+      const slot = layout.asideSlots.find((candidate) => (
+        candidate.activeChild === 'lingxia-chat'
+      ));
+      return layout.sizeClass === 'compact'
+        && layout.splitForm === 'fullScreen'
+        && slot?.visible
+        && slot.overlay
+        ? layout
+        : undefined;
+    }, `${platform} compact Chat overlay`);
+    expect(compactOverlay.activeMainId).toBe('lingxia-showcase');
+    expect(compactOverlay.mains.includes('lingxia-chat')).toBeFalsy();
+    expect(switcherIds(compactOverlay).includes('lingxia-chat')).toBeFalsy();
+
+    if (platform === 'windows') {
+      const visibleWorkspaces = (await desktop.windows()).filter((window) => (
+        window.visible
+        && window.pid === host!.pid
+        && window.title === 'LingXia'
+      ));
+      expect(visibleWorkspaces.map((window) => window.id)).toEqual([host.id]);
+    }
+
+    // This is the exact visual regression gate: every pixel sampled from the
+    // Home/API navbar must be covered once Chat owns the compact workspace.
+    await waitForValue(async () => {
+      const pixels = await Promise.all(
+        compactNavbar.map((at) => desktop.pixel({ at })),
+      );
+      return pixels.every((pixel) => !isApiNavbarBlue(pixel)) ? true : undefined;
+    }, `${platform} compact Chat covers the Home API navbar`);
+    if (platform === 'macos') {
+      await waitForValue(async () => (
+        await visibleCompactApiTabAxNode(desktop, host!) ? undefined : true
+      ), 'macOS compact Chat covers the main tab bar');
+    }
+    await typeIntoChatThroughDesktop(`compact-overlay-${platform}`);
+
+    host = await resizeHostOnScreen(desktop, host, expandedWidth, testHeight);
+    const docked = await waitForValue(async () => {
+      const layout = await app.surfaceLayout();
+      const slot = layout.asideSlots.find((candidate) => (
+        candidate.activeChild === 'lingxia-chat'
+      ));
+      return layout.sizeClass === 'expanded' && slot?.visible && !slot.overlay
+        ? layout
+        : undefined;
+    }, `${platform} expanded Chat aside`);
+    expect(docked.activeMainId).toBe('lingxia-showcase');
+    host = await ensureHostForeground(desktop, host);
+    await waitForValue(
+      () => apiNavbarProbePoints(desktop, host!),
+      `${platform} Home API navbar restored beside Chat`,
+    );
+    await typeIntoChatThroughDesktop(`expanded-aside-${platform}`);
+
+    // Provider parity: a browser main uses the same shell size-class
+    // projection as an lxapp main. Validate the physical WebView viewport, not
+    // only graph state, so a sidebar that failed to collapse cannot pass.
+    await closeChatSurface(app);
+    chatOpened = false;
+    await app.eval({
+      timeoutMs: 20_000,
+      script: `await lx.openSurface({ url: 'lingxia://settings' });`,
+    });
+    const settingsTab = await waitForValue(async () => {
+      const current = await browser.current();
+      return current?.current_url?.startsWith('lingxia://settings') ? current : undefined;
+    }, `${platform} settings browser main`);
+    browserTabId = settingsTab.tab_id;
+    await app.eval({
+      timeoutMs: 20_000,
+      script: `await lx.openSurface({ url: 'lingxia://downloads' });`,
+    });
+    const downloadsTab = await waitForValue(async () => {
+      const current = await browser.current();
+      return current?.current_url?.startsWith('lingxia://downloads') ? current : undefined;
+    }, `${platform} second browser main`);
+    secondaryBrowserTabId = downloadsTab.tab_id;
+
+    const expandedBrowserInset = await waitForValue(async () => {
+      const viewport = await visibleBrowserViewportWidth(browser);
+      if (viewport === undefined) return undefined;
+      const inset = host!.bounds.w - viewport;
+      return inset >= nativeWindowExtent(platform, host!, 120) ? inset : undefined;
+    }, `${platform} expanded browser keeps the full sidebar`);
+
+    host = await resizeHostOnScreen(desktop, host, mediumWidth, testHeight);
+    await waitForValue(async () => (
+      (await app.surfaceLayout()).sizeClass === 'medium' ? true : undefined
+    ), `${platform} medium browser shell`);
+    const mediumBrowserInset = await waitForValue(async () => {
+      const viewport = await visibleBrowserViewportWidth(browser);
+      if (viewport === undefined) return undefined;
+      const inset = host!.bounds.w - viewport;
+      return inset >= nativeWindowExtent(platform, host!, 40)
+        && expandedBrowserInset - inset >= nativeWindowExtent(platform, host!, 60)
+        ? inset
+        : undefined;
+    }, `${platform} medium browser uses the icon rail`);
+
+    host = await resizeHostOnScreen(desktop, host, compactWidth, testHeight);
+    await waitForValue(async () => {
+      const layout = await app.surfaceLayout();
+      return layout.sizeClass === 'compact' && layout.switcherForm === 'none'
+        ? true
+        : undefined;
+    }, `${platform} compact browser shell`);
+    await waitForValue(async () => {
+      const viewport = await visibleBrowserViewportWidth(browser);
+      if (viewport === undefined) return undefined;
+      const inset = host!.bounds.w - viewport;
+      return inset <= nativeWindowExtent(platform, host!, 48)
+        && mediumBrowserInset - inset >= nativeWindowExtent(platform, host!, 16)
+        ? inset
+        : undefined;
+    }, `${platform} compact browser removes the sidebar`);
+
+    const compactBrowserTabs = (await browser.tabs()).filter((tab) => (
+      tab.tab_id === browserTabId || tab.tab_id === secondaryBrowserTabId
+    ));
+    expect(compactBrowserTabs.map((tab) => tab.tab_id)).toEqual([
+      browserTabId,
+      secondaryBrowserTabId,
+    ]);
+    await selectFirstCompactBrowserTab(desktop, platform, host);
+    await waitForValue(async () => {
+      const current = await browser.current();
+      return current?.tab_id === browserTabId ? current : undefined;
+    }, `${platform} compact browser switcher activates the first Web tab`);
+
+    // Leave one browser main so closing it below must reveal the lxapp root.
+    await browser.close({ tab: secondaryBrowserTabId });
+    secondaryBrowserTabId = undefined;
+
+    // Closing a provider main must atomically reveal the covered lxapp again.
+    // This catches a delayed browser-close observer resurrecting stale chrome
+    // after a newer lxapp page has already won the workspace.
+    await browser.close({ tab: browserTabId });
+    browserTabId = undefined;
+    await waitForValue(async () => {
+      const layout = await app.surfaceLayout();
+      return layout.activeMainId === layout.mainSwitcher.rootSurfaceId
+        && layout.sizeClass === 'compact'
+        && !containsSurface(layout, 'lingxia-chat')
+        ? layout
+        : undefined;
+    }, `${platform} root graph after closing browser main`);
+    await waitForValue(
+      () => apiNavbarProbePoints(desktop, host!),
+      `${platform} lxapp physically restored after closing browser main`,
+    );
+  } catch (error) {
+    await attachDesktopFailure(`surface-compact-${platform}-failure`, desktop, host);
+    const diagnostics = await surfaceFailureDiagnostics(app, desktop, host);
+    throw new Error(`${String(error)}; diagnostics: ${diagnostics}`);
+  } finally {
+    if (chatOpened) await closeChatSurface(app).catch(() => undefined);
+    for (const tab of await browser.tabs().catch(() => [])) {
+      if (!browserTabsBefore.has(tab.tab_id)) {
+        await browser.close({ tab: tab.tab_id }).catch(() => undefined);
+      }
+    }
+    if (originalPage.name && (originalPage.name !== 'api' || browserTabId)) {
+      await app.nav.switchTab({ page: originalPage.name }).catch(() => undefined);
+    }
+    await restoreHostBounds(desktop, host.id, originalBounds);
+  }
+});
+
 windowsHostTest('docks the footer Chat WebView physically beside the main after resize', async () => {
   const app = await desktopApp();
   const automation = lx.automation();
@@ -581,10 +1309,13 @@ windowsHostTest('docks the footer Chat WebView physically beside the main after 
   let host = windowsHost(await desktop.windows());
   if (!host) throw new Error('visible LingXia host window was not found');
   const originalBounds = { ...host.bounds };
-  const overlayWidth = Math.round(720 * host.scale);
+  // Medium begins above 600 DIP, while one horizontal aside needs 360 DIP for
+  // main + 240 DIP for aside after the rail allocation. 620 stays medium but
+  // leaves too little workspace, so the explicit Chat open must overlay.
+  const overlayWidth = Math.round(620 * host.scale);
   const dockedWidth = Math.round(1_200 * host.scale);
-  let chatOpened = false;
   try {
+    await closeChatSurface(app);
     // Capture the root at the same expanded geometry used after the adaptive
     // aside closes. Comparing against a medium-width baseline would accept or
     // reject the wrong content rectangle merely because the sidebar changed
@@ -622,12 +1353,20 @@ windowsHostTest('docks the footer Chat WebView physically beside the main after 
       const candidate = await desktop.windows();
       const workspaceHosts = visibleWorkspaceHosts(host!, candidate);
       const webViews = visibleHostWebViews(host!, candidate);
+      const root = webViews.length === 1 ? webViews[0] : undefined;
+      const leftInset = root ? root.bounds.x - host!.bounds.x : 0;
+      const rightInset = root
+        ? host!.bounds.x + host!.bounds.w - root.bounds.x - root.bounds.w
+        : Number.POSITIVE_INFINITY;
       return workspaceHosts.length === 1
         && workspaceHosts[0].id === host!.id
-        && webViews.length === 1
+        && root
+        && leftInset >= nativeWindowExtent('windows', host!, 40)
+        && leftInset <= nativeWindowExtent('windows', host!, 96)
+        && rightInset <= nativeWindowExtent('windows', host!, 24)
         ? candidate
         : undefined;
-    }, 'medium physical root baseline');
+    }, 'medium icon-rail physical root baseline');
     expectSingleWorkspaceHost(host, baselineWindows);
     const baselineWebViews = visibleHostWebViews(host, baselineWindows);
     expect(baselineWebViews.length).toBe(1);
@@ -635,13 +1374,13 @@ windowsHostTest('docks the footer Chat WebView physically beside the main after 
     const baselineWebViewIds = new Set(baselineWebViews.map((window) => window.id));
     host = await ensureHostForeground(desktop, host);
 
-    // Exercise the real native footer action. Its first cell is anchored to
-    // the lower-left of the fixed desktop sidebar; use host-relative geometry
-    // so the assertion is independent of monitor origin and DPI.
+    // Exercise the real native footer action. Medium projects three fixture
+    // actions (Chat, Terminal, Ping) into the icon rail above its expand cell.
+    // Derive Chat's first-cell center from that production geometry so this
+    // cannot accidentally click the expand control or a main-page item.
     await desktop.pointer.click({
-      at: [host.bounds.x + 50, host.bounds.y + host.bounds.h - 54],
+      at: firstRailFooterActionPoint(host, 3),
     });
-    chatOpened = true;
 
     const overlayLayout = await waitForValue(async () => {
       const layout = await app.surfaceLayout();
@@ -708,7 +1447,16 @@ windowsHostTest('docks the footer Chat WebView physically beside the main after 
       overlayWindow.bounds.y + Math.round(chatInput.rect.center_y),
     ];
     const inputMarker = 'physical-overlay-front';
+    await chatApp.page.fill({
+      page: 'chat',
+      css: 'textarea[placeholder="Message..."]',
+      text: '',
+    });
     await desktop.pointer.click({ at: inputPoint });
+    await waitForValue(async () => {
+      const candidate = await visibleChatInputAxNode(desktop, host!);
+      return candidate?.focused ? candidate : undefined;
+    }, 'desktop click focused the Chat overlay input');
     await desktop.key.type({ text: inputMarker });
     await waitForValue(async () => {
       const candidate = await chatApp.page.query({
@@ -762,7 +1510,6 @@ windowsHostTest('docks the footer Chat WebView physically beside the main after 
     expect(capture.height >= host.bounds.h - 2).toBeTruthy();
 
     await closeChatSurface(app);
-    chatOpened = false;
     await waitForValue(async () => (
       containsSurface(await app.surfaceLayout(), 'lingxia-chat') ? undefined : true
     ), 'closed Chat after adaptive handoff');
@@ -787,20 +1534,421 @@ windowsHostTest('docks the footer Chat WebView physically beside the main after 
     const diagnostics = await surfaceFailureDiagnostics(app, desktop, host);
     throw new Error(`${String(error)}; diagnostics: ${diagnostics}`);
   } finally {
-    if (chatOpened) {
-      await app.eval({
-        timeoutMs: 20_000,
-        script: `
-          const chat = await lx.openSurface({ surface: 'lingxia-chat' });
-          if (chat.alive) await chat.close();
-        `,
-      });
-    }
+    await closeChatSurface(app).catch(() => undefined);
     await restoreHostBounds(desktop, host.id, originalBounds);
   }
 });
 
-windowsHostTest('projects a pinned lxapp into a controllable sidebar workspace without content tabs', async () => {
+dynamicMainDesktopTest('keeps a dynamic app handle synchronized and closes its workspace atomically', async () => {
+  const app = await automationPhase('resolve showcase driver', desktopApp);
+  const platform = await automationPhase('read runtime platform', () => runtimePlatform(app));
+  const automation = lx.automation();
+  const desktop = automation.desktop;
+  const browser = automation.browser;
+  const browserTabsBefore = new Set((await automationPhase(
+    'snapshot browser tabs',
+    () => browser.tabs(),
+  )).map((tab) => tab.tab_id));
+  await automationPhase('remove prior Chat presentation', () => closeChatSurface(app));
+  const before = await automationPhase('snapshot clean surface layout', () => app.surfaceLayout());
+  const initialWindows = await automationPhase('snapshot desktop windows', () => desktop.windows());
+  let host = desktopShowcaseHost(platform, initialWindows);
+  if (!host) throw new Error(`visible ${platform} workspace was not found before dynamic main gate`);
+  const baselineWindows = platform === 'windows'
+    ? await waitForValue(async () => {
+      const candidate = await desktop.windows();
+      const currentHost = candidate.find((window) => window.id === host!.id);
+      return currentHost && visibleHostWebViews(currentHost, candidate).length === 1
+        ? candidate
+        : undefined;
+    }, 'single physical root before dynamic main gate')
+    : initialWindows;
+  host = baselineWindows.find((window) => window.id === host!.id) ?? host;
+  const baselineMain = platform === 'windows'
+    ? visibleHostWebViews(host, baselineWindows)[0]
+    : undefined;
+
+  type DynamicSetup = {
+    id: string;
+    rejected: Record<'path' | 'navigatePath' | 'float' | 'mainEdge' | 'pageEdge', {
+      code: string;
+      detail: string;
+    }>;
+    afterRejected: SurfaceLayoutSnapshot;
+    opened: SurfaceLayoutSnapshot;
+  };
+  type DynamicClose = {
+    closed: RetainedAppSurfaceState;
+    afterClose: SurfaceLayoutSnapshot;
+    afterRepeatedClose: SurfaceLayoutSnapshot;
+    revisionAfterClose: number;
+  };
+
+  let setup: DynamicSetup | undefined;
+  let hidden: RetainedAppSurfaceState | undefined;
+  let shown: RetainedAppSurfaceState | undefined;
+  let shownOverBrowser: RetainedAppSurfaceState | undefined;
+  let closed: DynamicClose | undefined;
+  let chatMain: DesktopWindowInfo | undefined;
+  let browserTabId: string | undefined;
+  try {
+    const rejected = await automationPhase('validate dynamic app surface contract', () => app.eval({
+      timeoutMs: 30_000,
+      script: `
+        const rejection = (error) => ({
+          code: error?.code ?? '',
+          detail: error?.data?.detail ?? error?.message ?? String(error),
+        });
+        const rejected = {};
+        try {
+          await lx.openSurface({
+            appId: 'lingxia-chat', as: 'main', path: 'pages/chat/index.tsx',
+          });
+        } catch (error) {
+          rejected.path = rejection(error);
+        }
+        try {
+          await lx.navigateToApp({
+            appId: 'lingxia-chat', path: 'pages/chat/index.tsx',
+          });
+        } catch (error) {
+          rejected.navigatePath = rejection(error);
+        }
+        try {
+          await lx.openSurface({ appId: 'lingxia-chat', as: 'float' });
+        } catch (error) {
+          rejected.float = rejection(error);
+        }
+        try {
+          await lx.openSurface({ appId: 'lingxia-chat', as: 'main', edge: 'left' });
+        } catch (error) {
+          rejected.mainEdge = rejection(error);
+        }
+        try {
+          await lx.openSurface({ page: 'todo', as: 'float', edge: 'right' });
+        } catch (error) {
+          rejected.pageEdge = rejection(error);
+        }
+        return rejected;
+      `,
+    })) as DynamicSetup['rejected'];
+    const afterRejected = await automationPhase(
+      'snapshot graph after rejected app surface specs',
+      () => app.surfaceLayout(),
+    );
+    const openedHandle = await automationPhase('open dynamic Chat main', () => app.eval({
+      timeoutMs: 30_000,
+      script: `
+        const handle = await lx.openSurface({
+          appId: 'lingxia-chat', as: 'main', page: 'chat',
+        });
+        const events = [];
+        const unsubscribe = [
+          handle.onHide((event) => events.push({ type: 'hide', ...event })),
+          handle.onShow((event) => events.push({ type: 'show', ...event })),
+          handle.onClose((event) => events.push({ type: 'close', ...event })),
+        ];
+        globalThis.__surfaceSwitcherDynamicHandleGate = { handle, events, unsubscribe };
+        return { id: handle.id };
+      `,
+    })) as Pick<DynamicSetup, 'id'>;
+    const opened = await automationPhase(
+      'snapshot graph after dynamic Chat main open',
+      () => app.surfaceLayout(),
+    );
+    setup = { id: openedHandle.id, rejected, afterRejected, opened };
+
+    await waitForValue(
+      () => visibleChatInputAxNode(desktop, host!),
+      'dynamic Chat physical main after open',
+    );
+    if (baselineMain) {
+      chatMain = await waitForDesktopWindow(
+        () => desktop.windows(),
+        (windows) => visibleHostWebViews(host!, windows).find((window) => (
+          window.id !== baselineMain.id
+          && window.bounds.w > host!.bounds.w * 0.6
+          && window.bounds.h > host!.bounds.h * 0.6
+        )),
+        'dynamic Chat WebView physically replaced the root',
+      );
+      await expectExactMainPresentation(host, baselineMain, chatMain, () => desktop.windows());
+    }
+
+    hidden = await app.eval({
+      timeoutMs: 20_000,
+      script: `
+        const gate = globalThis.__surfaceSwitcherDynamicHandleGate;
+        const rootId = ${JSON.stringify(before.mainSwitcher.rootSurfaceId)};
+        if (!gate || !rootId) throw new Error('dynamic main gate lost its root or handle');
+        await lx.openSurface({ surface: rootId, as: 'main' });
+        const deadline = Date.now() + 5_000;
+        while (Date.now() < deadline) {
+          if (!gate.handle.visible
+            && gate.events.filter((event) => event.type === 'hide').length === 1) break;
+          await new Promise((resolve) => setTimeout(resolve, 25));
+        }
+        return {
+          id: gate.handle.id,
+          visible: gate.handle.visible,
+          alive: gate.handle.alive,
+          events: gate.events.map((event) => ({ ...event })),
+        };
+      `,
+    }) as RetainedAppSurfaceState;
+    if (baselineMain) {
+      const restoredMain = await waitForDesktopWindow(
+        () => desktop.windows(),
+        (windows) => visibleHostWebViews(host!, windows).find((window) => (
+          window.id === baselineMain.id
+        )),
+        'root WebView physically restored after dynamic hide',
+      );
+      await expectExactMainPresentation(
+        host,
+        baselineMain,
+        restoredMain,
+        () => desktop.windows(),
+      );
+    } else {
+      await waitForValue(async () => (
+        await visibleChatInputAxNode(desktop, host!) ? undefined : true
+      ), 'dynamic Chat physical main hidden by root switch');
+    }
+
+    shown = await app.eval({
+      timeoutMs: 20_000,
+      script: `
+        const gate = globalThis.__surfaceSwitcherDynamicHandleGate;
+        if (!gate) throw new Error('dynamic Chat handle gate is not installed');
+        await gate.handle.show();
+        const deadline = Date.now() + 5_000;
+        while (Date.now() < deadline) {
+          if (gate.handle.visible
+            && gate.events.filter((event) => event.type === 'show').length === 1) break;
+          await new Promise((resolve) => setTimeout(resolve, 25));
+        }
+        return {
+          id: gate.handle.id,
+          visible: gate.handle.visible,
+          alive: gate.handle.alive,
+          events: gate.events.map((event) => ({ ...event })),
+        };
+      `,
+    }) as RetainedAppSurfaceState;
+    await waitForValue(
+      () => visibleChatInputAxNode(desktop, host!),
+      'dynamic Chat physical main restored by handle.show()',
+    );
+    if (baselineMain && chatMain) {
+      const reshownMain = await waitForDesktopWindow(
+        () => desktop.windows(),
+        (windows) => visibleHostWebViews(host!, windows).find((window) => (
+          window.id === chatMain!.id
+        )),
+        'same dynamic Chat WebView physically restored by handle.show()',
+      );
+      await expectExactMainPresentation(host, baselineMain, reshownMain, () => desktop.windows());
+    }
+
+    // A browser main intentionally covers the graph's active lxapp without
+    // changing its lifecycle visibility. A retained handle.show() is an
+    // explicit product-level activation request: it must replace that cover,
+    // restore the same physical Chat WebView, and emit no duplicate show event.
+    await app.eval({
+      timeoutMs: 20_000,
+      script: `await lx.openSurface({ url: 'lingxia://settings' });`,
+    });
+    const browserMain = await waitForValue(async () => {
+      const current = await browser.current();
+      return current?.current_url?.startsWith('lingxia://settings') ? current : undefined;
+    }, `${platform} browser physically covers dynamic Chat`);
+    browserTabId = browserMain.tab_id;
+    let browserCoverMain: DesktopWindowInfo | undefined;
+    if (baselineMain && chatMain) {
+      browserCoverMain = await waitForDesktopWindow(
+        () => desktop.windows(),
+        (windows) => visibleHostWebViews(host!, windows).find((window) => (
+          window.id !== chatMain!.id
+          && window.id !== baselineMain.id
+          && window.bounds.w > host!.bounds.w * 0.6
+          && window.bounds.h > host!.bounds.h * 0.6
+        )),
+        'browser WebView physically covers dynamic Chat',
+      );
+      await expectExactMainPresentation(
+        host,
+        baselineMain,
+        browserCoverMain,
+        () => desktop.windows(),
+      );
+    } else {
+      await waitForValue(async () => (
+        await visibleChatInputAxNode(desktop, host!) ? undefined : true
+      ), 'dynamic Chat is physically hidden by browser cover');
+    }
+
+    shownOverBrowser = await app.eval({
+      timeoutMs: 20_000,
+      script: `
+        const gate = globalThis.__surfaceSwitcherDynamicHandleGate;
+        if (!gate) throw new Error('dynamic Chat handle gate is not installed');
+        await gate.handle.show();
+        return {
+          id: gate.handle.id,
+          visible: gate.handle.visible,
+          alive: gate.handle.alive,
+          events: gate.events.map((event) => ({ ...event })),
+        };
+      `,
+    }) as RetainedAppSurfaceState;
+    if (baselineMain && chatMain) {
+      const restoredFromBrowser = await waitForDesktopWindow(
+        () => desktop.windows(),
+        (windows) => visibleHostWebViews(host!, windows).find((window) => (
+          window.id === chatMain!.id
+        )),
+        'same dynamic Chat WebView restored over browser main',
+      );
+      await expectExactMainPresentation(
+        host,
+        baselineMain,
+        restoredFromBrowser,
+        () => desktop.windows(),
+      );
+    } else {
+      await waitForValue(
+        () => visibleChatInputAxNode(desktop, host!),
+        'dynamic Chat physically replaces its browser cover through handle.show()',
+      );
+    }
+    await browser.close({ tab: browserTabId });
+    browserTabId = undefined;
+
+    const closedState = await app.eval({
+      timeoutMs: 20_000,
+      script: `
+        const gate = globalThis.__surfaceSwitcherDynamicHandleGate;
+        if (!gate) throw new Error('dynamic Chat handle gate is not installed');
+        await gate.handle.close();
+        const deadline = Date.now() + 5_000;
+        while (Date.now() < deadline) {
+          if (!gate.handle.alive && !gate.handle.visible
+            && gate.events.filter((event) => event.type === 'close').length === 1) break;
+          await new Promise((resolve) => setTimeout(resolve, 25));
+        }
+        return {
+          id: gate.handle.id,
+          visible: gate.handle.visible,
+          alive: gate.handle.alive,
+          events: gate.events.map((event) => ({ ...event })),
+        };
+      `,
+    }) as RetainedAppSurfaceState;
+    const afterClose = await app.surfaceLayout();
+    const revisionAfterClose = afterClose.mainSwitcher.revision;
+    await app.eval({
+      timeoutMs: 20_000,
+      script: `
+        const gate = globalThis.__surfaceSwitcherDynamicHandleGate;
+        if (!gate) throw new Error('dynamic Chat handle gate is not installed');
+        await gate.handle.close();
+      `,
+    });
+    closed = {
+      closed: closedState,
+      afterClose,
+      afterRepeatedClose: await app.surfaceLayout(),
+      revisionAfterClose,
+    };
+  } finally {
+    if (browserTabId) {
+      await browser.close({ tab: browserTabId }).catch(() => undefined);
+    }
+    for (const tab of await browser.tabs().catch(() => [])) {
+      if (!browserTabsBefore.has(tab.tab_id)) {
+        await browser.close({ tab: tab.tab_id }).catch(() => undefined);
+      }
+    }
+    await app.eval({
+      timeoutMs: 20_000,
+      script: `
+        const gate = globalThis.__surfaceSwitcherDynamicHandleGate;
+        try {
+          if (gate?.handle?.alive) await gate.handle.close();
+        } finally {
+          for (const off of gate?.unsubscribe ?? []) off();
+          delete globalThis.__surfaceSwitcherDynamicHandleGate;
+        }
+      `,
+    }).catch(() => undefined);
+  }
+
+  if (!setup || !hidden || !shown || !shownOverBrowser || !closed) {
+    throw new Error('dynamic main gate did not complete every lifecycle stage');
+  }
+
+  expect(setup.id).toBe('lingxia-chat');
+  expect(Object.values(setup.rejected).every((error) => (
+    error.code === 'E_INVALID_ARG'
+  ))).toBeTruthy();
+  expect(setup.rejected.path.detail).toContain('path is not supported');
+  expect(setup.rejected.navigatePath.detail).toContain('path is not supported');
+  expect(setup.rejected.float.detail).toContain("supports as: 'main' | 'aside'");
+  expect(setup.rejected.mainEdge.detail).toContain("edge is only valid with as: 'aside'");
+  expect(setup.rejected.pageEdge.detail).toContain("use position with as: 'float'");
+  expect(topology(setup.afterRejected)).toEqual(topology(before));
+  expect(setup.afterRejected.mainSwitcher.revision).toBe(before.mainSwitcher.revision);
+  expect(setup.opened.activeMainId).toBe('lingxia-chat');
+  expect(switcherIds(setup.opened).filter((id) => id === 'lingxia-chat').length).toBe(1);
+  expect(hidden.visible).toBeFalsy();
+  expect(hidden.alive).toBeTruthy();
+  expect(hidden.events).toEqual([
+    { type: 'hide', id: 'lingxia-chat', kind: 'window', source: 'shell' },
+  ]);
+  expect(shown.visible).toBeTruthy();
+  expect(shown.alive).toBeTruthy();
+  expect(shown.events).toEqual([
+    { type: 'hide', id: 'lingxia-chat', kind: 'window', source: 'shell' },
+    { type: 'show', id: 'lingxia-chat', kind: 'window', source: 'opener' },
+  ]);
+  expect(shownOverBrowser.visible).toBeTruthy();
+  expect(shownOverBrowser.alive).toBeTruthy();
+  expect(shownOverBrowser.events).toEqual(shown.events);
+  expect(closed.closed.visible).toBeFalsy();
+  expect(closed.closed.alive).toBeFalsy();
+  expect(closed.closed.events).toEqual([
+    { type: 'hide', id: 'lingxia-chat', kind: 'window', source: 'shell' },
+    { type: 'show', id: 'lingxia-chat', kind: 'window', source: 'opener' },
+    { type: 'close', id: 'lingxia-chat', kind: 'window', reason: 'programmatic' },
+  ]);
+  expect(containsSurface(closed.afterClose, 'lingxia-chat')).toBeFalsy();
+  expect(closed.afterClose.activeMainId).toBe(closed.afterClose.mainSwitcher.rootSurfaceId);
+  expect(topology(closed.afterClose)).toEqual(topology(before));
+  expect(closed.afterRepeatedClose.mainSwitcher.revision).toBe(closed.revisionAfterClose);
+  expect(topology(closed.afterRepeatedClose)).toEqual(topology(closed.afterClose));
+  if (baselineMain) {
+    const restoredWindows = await waitForValue(async () => {
+      const candidate = await desktop.windows();
+      const sameHost = candidate.find((window) => (
+        window.visible && window.id === host!.id
+      ));
+      const webViews = visibleHostWebViews(host!, candidate);
+      return sameHost
+        && sameHost.bounds.x === host!.bounds.x
+        && sameHost.bounds.y === host!.bounds.y
+        && sameHost.bounds.w === host!.bounds.w
+        && sameHost.bounds.h === host!.bounds.h
+        && webViews.length === 1
+        && webViews[0].id === baselineMain.id
+        ? candidate
+        : undefined;
+    }, 'same physical workspace and root WebView after dynamic main close');
+    expectSingleWorkspaceHost(host, restoredWindows);
+  }
+});
+
+pinnedWindowsHostTest('projects a pinned lxapp into a controllable sidebar workspace without content tabs', async () => {
   const app = await desktopApp();
   const automation = lx.automation();
   const desktop = automation.desktop;
@@ -890,6 +2038,8 @@ windowsHostTest('projects a pinned lxapp into a controllable sidebar workspace w
     expectSingleWorkspaceHost(host, await desktop.windows());
 
     const pinPoint = pinnedShortcutPoint(host, pinIndex);
+    host = await ensureHostForeground(desktop, host);
+    await desktop.pointer.move({ at: pinPoint });
     await desktop.pointer.click({ at: pinPoint });
     const promotedLayout = await waitForValue(async () => {
       const candidate = await app.surfaceLayout();
@@ -971,6 +2121,8 @@ windowsHostTest('projects a pinned lxapp into a controllable sidebar workspace w
     expect(coldPinIndex >= 0).toBeTruthy();
     host = (await desktop.windows()).find((window) => window.id === host!.id) ?? host;
     const coldPinPoint = pinnedShortcutPoint(host, coldPinIndex);
+    host = await ensureHostForeground(desktop, host);
+    await desktop.pointer.move({ at: coldPinPoint });
     await desktop.pointer.click({ at: coldPinPoint });
     const coldLayout = await waitForValue(async () => {
       const candidate = await app.surfaceLayout();
@@ -1015,12 +2167,19 @@ windowsHostTest('projects a pinned lxapp into a controllable sidebar workspace w
     const workspacePoint = firstLxappWorkspacePoint(host, coldPins.length, 4);
     const workspaceMenuRegion = firstLxappWorkspaceMenuRegion(host, coldPins.length, 4);
     const workspaceMenuPoint = regionCenter(workspaceMenuRegion);
+    // Clear the native sidebar hover through another host-painted point.
+    // Moving into the main WebView does not deliver WM_MOUSEMOVE to the host
+    // chrome and can leave its previous hover state cached.
     await desktop.pointer.move({
-      at: [host.bounds.x + host.bounds.w - 24, host.bounds.y + 48],
+      at: [host.bounds.x + 12, host.bounds.y + Math.round(host.bounds.h * 0.55)],
     });
     const hiddenWorkspaceMenu = await desktop.screenshot({ region: workspaceMenuRegion });
-    await desktop.pointer.move({ at: workspacePoint });
     await waitForValue(async () => {
+      // Re-drive WM_MOUSEMOVE while waiting. A single instantaneous move can
+      // be coalesced behind WebView traffic on a full-suite run, leaving a
+      // screenshot-only poll unable to make progress.
+      await desktop.pointer.move({ at: [workspacePoint[0] - 1, workspacePoint[1]] });
+      await desktop.pointer.move({ at: workspacePoint });
       const hovered = await desktop.screenshot({ region: workspaceMenuRegion });
       return hovered.base64 !== hiddenWorkspaceMenu.base64 ? hovered : undefined;
     }, 'visible Chat workspace ellipsis on hover');
@@ -1050,6 +2209,16 @@ windowsHostTest('projects a pinned lxapp into a controllable sidebar workspace w
         : true
     ), 'dismissed Chat workspace context menu');
 
+    // Retain the public dynamic-app handle while all subsequent transitions
+    // are initiated by native sidebar controls. This gates the product API,
+    // not only the automation layout snapshot: shell switches must update
+    // visible/onHide/onShow and the native close control must update
+    // alive/visible/onClose without leaving a ghost workspace.
+    const retainedInitial = await retainDynamicChatHandle(app);
+    expect(retainedInitial).toEqual({
+      id: 'lingxia-chat', visible: true, alive: true, events: [],
+    });
+
     await desktop.pointer.click({
       at: showcaseHomePagePoint(host, coldPins.length),
     });
@@ -1061,6 +2230,14 @@ windowsHostTest('projects a pinned lxapp into a controllable sidebar workspace w
         ? candidate
         : undefined;
     }, 'root workspace selected from pinned Chat');
+    const retainedHidden = await waitForValue(async () => {
+      const state = await readRetainedDynamicChatHandle(app);
+      return !state.visible && state.events.length === 1 ? state : undefined;
+    }, 'dynamic Chat handle hidden by native root switch');
+    expect(retainedHidden.alive).toBeTruthy();
+    expect(retainedHidden.events).toEqual([
+      { type: 'hide', id: 'lingxia-chat', kind: 'window', source: 'shell' },
+    ]);
 
     await desktop.pointer.click({ at: workspacePoint });
     await waitForValue(async () => {
@@ -1071,6 +2248,61 @@ windowsHostTest('projects a pinned lxapp into a controllable sidebar workspace w
         ? true
         : undefined;
     }, 'Chat selected from its sidebar workspace row');
+    const retainedShown = await waitForValue(async () => {
+      const state = await readRetainedDynamicChatHandle(app);
+      return state.visible && state.events.length === 2 ? state : undefined;
+    }, 'dynamic Chat handle shown by native workspace switch');
+    expect(retainedShown.alive).toBeTruthy();
+    expect(retainedShown.events).toEqual([
+      { type: 'hide', id: 'lingxia-chat', kind: 'window', source: 'shell' },
+      { type: 'show', id: 'lingxia-chat', kind: 'window', source: 'shell' },
+    ]);
+
+    const workspaceClosePoint = firstLxappWorkspaceClosePoint(host, coldPins.length, 4);
+    await desktop.pointer.move({ at: workspaceClosePoint });
+    await desktop.pointer.click({ at: workspaceClosePoint });
+    await waitForValue(async () => {
+      const candidate = await app.surfaceLayout();
+      return !containsSurface(candidate, 'lingxia-chat')
+        && candidate.activeMainId === 'lingxia-showcase'
+        && candidate.mainSwitcher.activeSurfaceId === 'lingxia-showcase'
+        ? candidate
+        : undefined;
+    }, 'native Chat close removed its workspace and selected root');
+    const retainedClosed = await waitForValue(async () => {
+      const state = await readRetainedDynamicChatHandle(app);
+      return !state.alive && !state.visible && state.events.length === 3
+        ? state
+        : undefined;
+    }, 'dynamic Chat handle closed by native workspace control');
+    expect(retainedClosed.events).toEqual([
+      { type: 'hide', id: 'lingxia-chat', kind: 'window', source: 'shell' },
+      { type: 'show', id: 'lingxia-chat', kind: 'window', source: 'shell' },
+      { type: 'close', id: 'lingxia-chat', kind: 'window', reason: 'user' },
+    ]);
+    await waitForValue(async () => {
+      const chat = (await automation.lxapps.list()).find((candidate) => (
+        candidate.appid === 'lingxia-chat'
+      ));
+      return chat?.status === 'closed'
+        && chat.current_page === null
+        && chat.page_stack.length === 0
+        ? true
+        : undefined;
+    }, 'native Chat close fully terminated its runtime');
+    await clearRetainedDynamicChatHandle(app);
+
+    // Reopen through the same Pin so the remaining assertions continue to
+    // prove that shortcut removal does not destroy a live workspace.
+    await desktop.pointer.click({ at: coldPinPoint });
+    await waitForValue(async () => {
+      const candidate = await app.surfaceLayout();
+      return candidate.activeMainId === 'lingxia-chat'
+        && candidate.mainSwitcher.activeSurfaceId === 'lingxia-chat'
+        && switcherIds(candidate).filter((id) => id === 'lingxia-chat').length === 1
+        ? true
+        : undefined;
+    }, 'pinned Chat reopened without a ghost workspace');
 
     const windowsBeforeMenu = await desktop.windows();
     const existingWindowIds = new Set(windowsBeforeMenu.map((window) => window.id));
@@ -1092,11 +2324,18 @@ windowsHostTest('projects a pinned lxapp into a controllable sidebar workspace w
     if (initiallyPinned) {
       await desktop.key.press({ key: 'Escape' });
     } else {
-      // The informational header is disabled, so ArrowDown selects Unpin
-      // regardless of display language. Enter proves the real native menu
-      // opened and dispatched its command rather than merely hit-testing.
-      await desktop.key.press({ key: 'ArrowDown' });
-      await desktop.key.press({ key: 'Enter' });
+      // Select by native menu order instead of keyboard focus: Win32 may open
+      // with the first action already highlighted, in which case ArrowDown
+      // invokes Restart rather than Unpin. UIA identifies the first enabled
+      // item without depending on display language; the pointer still performs
+      // the real user action against the native menu.
+      const unpinItem = await firstEnabledNativeMenuItem(desktop, menu);
+      await desktop.pointer.click({ at: regionCenter([
+        unpinItem.rect.x,
+        unpinItem.rect.y,
+        unpinItem.rect.w,
+        unpinItem.rect.h,
+      ]) });
       await waitForValue(async () => (
         (await shell.pins()).some((pin) => samePin(pin, targetPin)) ? undefined : true
       ), 'pinned Chat context-menu Unpin');
@@ -1161,6 +2400,7 @@ windowsHostTest('projects a pinned lxapp into a controllable sidebar workspace w
     throw new Error(`${String(error)}; diagnostics: ${diagnostics}`);
   } finally {
     await desktop.key.press({ key: 'Escape' }).catch(() => undefined);
+    await clearRetainedDynamicChatHandle(app).catch(() => undefined);
     await closeChatSurface(app).catch(() => undefined);
     await setRootEdgeMarker(app, false).catch(() => undefined);
     await shell.setPin({ ...targetPin, pinned: initiallyPinned });
