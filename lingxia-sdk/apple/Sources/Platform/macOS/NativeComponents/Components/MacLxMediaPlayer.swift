@@ -1063,8 +1063,12 @@ private final class ThinSliderCell: NSSliderCell {
     private let trackHeight: CGFloat = 4
     private let knobDiameter: CGFloat = 10
 
-    override func barRect(flipped: Bool) -> NSRect {
-        let bounds = controlView?.bounds ?? super.barRect(flipped: flipped)
+    // Accessibility queries geometry through barRect/knobRect from a non-main
+    // thread; overriding those MainActor methods makes the @objc thunk's
+    // dynamic isolation assert fatal there. Keep AppKit's geometry and apply
+    // the thin appearance inside the draw overrides, which AX never calls.
+    private func thinBarRect() -> NSRect {
+        let bounds = controlView?.bounds ?? .zero
         let horizontalInset = knobDiameter / 2
         let width = Swift.max(0, bounds.width - horizontalInset * 2)
         return NSRect(
@@ -1075,36 +1079,37 @@ private final class ThinSliderCell: NSSliderCell {
         )
     }
 
-    override func knobRect(flipped: Bool) -> NSRect {
-        let bar = barRect(flipped: flipped)
+    private func playedFraction() -> CGFloat {
         let range = Swift.max(0.000_1, maxValue - minValue)
-        let fraction = CGFloat((doubleValue - minValue) / range).clamped(to: 0...1)
-        let usable = bar.width - knobDiameter
-        let x = bar.origin.x + usable * fraction
-        let y = bar.midY - knobDiameter / 2
-        return NSRect(x: x, y: y, width: knobDiameter, height: knobDiameter)
+        return CGFloat((doubleValue - minValue) / range).clamped(to: 0...1)
     }
 
     override func drawBar(inside rect: NSRect, flipped: Bool) {
-        let bar = barRect(flipped: flipped)
+        let bar = thinBarRect()
         let radius = bar.height / 2
 
         let bgPath = NSBezierPath(roundedRect: bar, xRadius: radius, yRadius: radius)
         NSColor.white.withAlphaComponent(0.3).setFill()
         bgPath.fill()
 
-        let range = Swift.max(0.000_1, maxValue - minValue)
-        let fraction = CGFloat((doubleValue - minValue) / range).clamped(to: 0...1)
         var playedRect = bar
-        playedRect.size.width = bar.width * fraction
+        playedRect.size.width = bar.width * playedFraction()
         let playedPath = NSBezierPath(roundedRect: playedRect, xRadius: radius, yRadius: radius)
         NSColor.white.setFill()
         playedPath.fill()
     }
 
     override func drawKnob(_ knobRect: NSRect) {
-        let inset = knobRect.insetBy(dx: 1, dy: 1)
-        let path = NSBezierPath(ovalIn: inset)
+        let bar = thinBarRect()
+        let usable = bar.width - knobDiameter
+        let x = bar.origin.x + usable * playedFraction()
+        let thinKnob = NSRect(
+            x: x,
+            y: bar.midY - knobDiameter / 2,
+            width: knobDiameter,
+            height: knobDiameter
+        )
+        let path = NSBezierPath(ovalIn: thinKnob.insetBy(dx: 1, dy: 1))
         NSColor.white.setFill()
         path.fill()
     }
