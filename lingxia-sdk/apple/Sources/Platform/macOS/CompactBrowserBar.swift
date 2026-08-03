@@ -436,6 +436,11 @@ final class CompactBrowserBar: NSView {
 private final class CompactBrowserTabSwitcherRow: NSView {
     var onSelect: (() -> Void)?
 
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        guard let hit = super.hitTest(point) else { return nil }
+        return hit is NSButton ? hit : self
+    }
+
     override func mouseDown(with event: NSEvent) {
         onSelect?()
     }
