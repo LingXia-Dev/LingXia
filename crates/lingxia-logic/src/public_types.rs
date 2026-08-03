@@ -1237,7 +1237,6 @@ true
 }"###;
 
         type Surface = r###"SurfaceHandle & {
-    readonly kind: 'overlay' | 'window';
     /**
      * Last-known visibility, kept in sync with the native side via show/hide
      * events. False once the surface has been closed. Safe to bind into
@@ -1291,7 +1290,6 @@ true
 
         type SurfaceClosedEvent = r###"{
     id: string;
-    kind: 'overlay' | 'window';
     reason: SurfaceCloseReason;
 }"###;
 
@@ -1367,7 +1365,6 @@ true
         ///
         type SurfaceVisibilityEvent = r###"{
     id: string;
-    kind: 'overlay' | 'window';
     source: 'opener' | 'page' | 'shell';
 }"###;
 

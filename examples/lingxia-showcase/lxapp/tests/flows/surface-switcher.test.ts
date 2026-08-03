@@ -14,13 +14,11 @@ import { runtimePlatform } from '../helpers/platform.js';
 
 interface VisibilityEvent {
   id: string;
-  kind: string;
   source: string;
 }
 
 interface CloseEvent {
   id: string;
-  kind: string;
   reason: string;
 }
 
@@ -31,7 +29,6 @@ interface RetainedAppSurfaceState {
   events: Array<{
     type: 'show' | 'hide' | 'close';
     id: string;
-    kind: string;
     source?: string;
     reason?: string;
   }>;
@@ -1038,10 +1035,10 @@ desktopTest('projects the declared terminal aside and restores its baseline stat
   expect(result.shown.asides.some((surface) => surface.id === result.id)).toBeTruthy();
   expect(nativeSlot(result.shown)?.activeChild).toBe(result.id);
   expect(result.visibility.hide).toEqual([
-    { id: result.id, kind: 'overlay', source: 'opener' },
+    { id: result.id, source: 'opener' },
   ]);
   expect(result.visibility.show).toEqual([
-    { id: result.id, kind: 'overlay', source: 'opener' },
+    { id: result.id, source: 'opener' },
   ]);
   expect(topology(result.afterCleanup)).toEqual(topology(before));
 });
@@ -1999,13 +1996,13 @@ dynamicMainDesktopTest('keeps a dynamic app handle synchronized and closes its w
   expect(hidden.visible).toBeFalsy();
   expect(hidden.alive).toBeTruthy();
   expect(hidden.events).toEqual([
-    { type: 'hide', id: 'lingxia-chat', kind: 'window', source: 'shell' },
+    { type: 'hide', id: 'lingxia-chat', source: 'shell' },
   ]);
   expect(shown.visible).toBeTruthy();
   expect(shown.alive).toBeTruthy();
   expect(shown.events).toEqual([
-    { type: 'hide', id: 'lingxia-chat', kind: 'window', source: 'shell' },
-    { type: 'show', id: 'lingxia-chat', kind: 'window', source: 'opener' },
+    { type: 'hide', id: 'lingxia-chat', source: 'shell' },
+    { type: 'show', id: 'lingxia-chat', source: 'opener' },
   ]);
   expect(shownOverBrowser.visible).toBeTruthy();
   expect(shownOverBrowser.alive).toBeTruthy();
@@ -2013,9 +2010,9 @@ dynamicMainDesktopTest('keeps a dynamic app handle synchronized and closes its w
   expect(closed.closed.visible).toBeFalsy();
   expect(closed.closed.alive).toBeFalsy();
   expect(closed.closed.events).toEqual([
-    { type: 'hide', id: 'lingxia-chat', kind: 'window', source: 'shell' },
-    { type: 'show', id: 'lingxia-chat', kind: 'window', source: 'opener' },
-    { type: 'close', id: 'lingxia-chat', kind: 'window', reason: 'programmatic' },
+    { type: 'hide', id: 'lingxia-chat', source: 'shell' },
+    { type: 'show', id: 'lingxia-chat', source: 'opener' },
+    { type: 'close', id: 'lingxia-chat', reason: 'programmatic' },
   ]);
   expect(containsSurface(closed.afterClose, 'lingxia-chat')).toBeFalsy();
   expect(closed.afterClose.activeMainId).toBe(closed.afterClose.mainSwitcher.rootSurfaceId);
@@ -2324,7 +2321,7 @@ pinnedWindowsHostTest('projects a pinned lxapp into a controllable sidebar works
     }, 'dynamic Chat handle hidden by native root switch');
     expect(retainedHidden.alive).toBeTruthy();
     expect(retainedHidden.events).toEqual([
-      { type: 'hide', id: 'lingxia-chat', kind: 'window', source: 'shell' },
+      { type: 'hide', id: 'lingxia-chat', source: 'shell' },
     ]);
 
     host = await ensureHostForeground(desktop, host);
@@ -2350,8 +2347,8 @@ pinnedWindowsHostTest('projects a pinned lxapp into a controllable sidebar works
     }, 'dynamic Chat handle shown by native workspace switch');
     expect(retainedShown.alive).toBeTruthy();
     expect(retainedShown.events).toEqual([
-      { type: 'hide', id: 'lingxia-chat', kind: 'window', source: 'shell' },
-      { type: 'show', id: 'lingxia-chat', kind: 'window', source: 'shell' },
+      { type: 'hide', id: 'lingxia-chat', source: 'shell' },
+      { type: 'show', id: 'lingxia-chat', source: 'shell' },
     ]);
 
     const workspaceClosePoint = firstLxappWorkspaceClosePoint(host, coldPins.length, 4);
@@ -2373,9 +2370,9 @@ pinnedWindowsHostTest('projects a pinned lxapp into a controllable sidebar works
         : undefined;
     }, 'dynamic Chat handle closed by native workspace control');
     expect(retainedClosed.events).toEqual([
-      { type: 'hide', id: 'lingxia-chat', kind: 'window', source: 'shell' },
-      { type: 'show', id: 'lingxia-chat', kind: 'window', source: 'shell' },
-      { type: 'close', id: 'lingxia-chat', kind: 'window', reason: 'user' },
+      { type: 'hide', id: 'lingxia-chat', source: 'shell' },
+      { type: 'show', id: 'lingxia-chat', source: 'shell' },
+      { type: 'close', id: 'lingxia-chat', reason: 'user' },
     ]);
     await waitForValue(async () => {
       const chat = (await automation.lxapps.list()).find((candidate) => (
@@ -2726,13 +2723,13 @@ desktopTest('migrates one keyed workspace across aside edges and main exactly on
   expect(nativeSlot(result.hiddenLayout)?.children.includes(result.id)).toBeTruthy();
   expect(result.shownLayout.asides.some((surface) => surface.id === result.id)).toBeTruthy();
   expect(result.visibility.hide).toEqual([
-    { id: result.id, kind: 'overlay', source: 'opener' },
+    { id: result.id, source: 'opener' },
   ]);
   expect(result.visibility.show).toEqual([
-    { id: result.id, kind: 'overlay', source: 'opener' },
+    { id: result.id, source: 'opener' },
   ]);
   expect(result.closed).toEqual([
-    { id: result.id, kind: 'overlay', reason: 'programmatic' },
+    { id: result.id, reason: 'programmatic' },
   ]);
   expect(result.aliveAfterClose).toBeFalsy();
   expect(result.visibleAfterClose).toBeFalsy();
@@ -2925,17 +2922,17 @@ desktopTest('switches, deduplicates concurrent opens, and leaves no ghost rows',
     .toBe(result.afterClose.mainSwitcher.revision);
   expect(topology(result.afterRepeatedClose)).toEqual(topology(result.afterClose));
   expect(result.events.firstHide).toEqual([
-    { id: result.ids.first, kind: 'window', source: 'shell' },
-    { id: result.ids.first, kind: 'window', source: 'shell' },
+    { id: result.ids.first, source: 'shell' },
+    { id: result.ids.first, source: 'shell' },
   ]);
   expect(result.events.firstShow).toEqual([
-    { id: result.ids.first, kind: 'window', source: 'shell' },
+    { id: result.ids.first, source: 'shell' },
   ]);
   expect(result.events.secondHide).toEqual([
-    { id: result.ids.second, kind: 'window', source: 'shell' },
+    { id: result.ids.second, source: 'shell' },
   ]);
   expect(result.events.concurrentClose).toEqual([
-    { id: result.ids.concurrent, kind: 'window', reason: 'programmatic' },
+    { id: result.ids.concurrent, reason: 'programmatic' },
   ]);
   expect(topology(result.afterCleanup)).toEqual(topology(before));
 });

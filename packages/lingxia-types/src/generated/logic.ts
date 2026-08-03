@@ -1458,7 +1458,6 @@ export type StreamSourceOptions = {
 };
 
 export type Surface = SurfaceHandle & {
-    readonly kind: 'overlay' | 'window';
     /**
      * Last-known visibility, kept in sync with the native side via show/hide
      * events. False once the surface has been closed. Safe to bind into
@@ -1525,7 +1524,6 @@ export type SurfaceCloseReason = 'user' | 'programmatic' | 'owner_closed' | 'app
 
 export type SurfaceClosedEvent = {
     id: string;
-    kind: 'overlay' | 'window';
     reason: SurfaceCloseReason;
 };
 
@@ -1603,7 +1601,6 @@ export type SurfaceRole = 'main' | 'aside' | 'float';
  */
 export type SurfaceVisibilityEvent = {
     id: string;
-    kind: 'overlay' | 'window';
     source: 'opener' | 'page' | 'shell';
 };
 

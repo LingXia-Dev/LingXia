@@ -341,7 +341,6 @@ const SURFACE_API = [
   'close',
   'hide',
   'id',
-  'kind',
   'onClose',
   'onHide',
   'onMessage',
