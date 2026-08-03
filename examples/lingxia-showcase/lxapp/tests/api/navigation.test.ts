@@ -15,6 +15,20 @@ async function waitForCurrent(app: LxAppDriver, name: string): Promise<PageInfo>
 
 test('preserves navigation stack, query, redirect, back, and tab semantics', async () => {
   const app = lx.automation().lxapp();
+  const platform = (test.args as Record<string, string>).platform?.toLocaleLowerCase();
+  const desktop = platform === 'windows' ? lx.automation().desktop : undefined;
+  const host = desktop
+    ? (await desktop.windows()).find((window) => (
+      window.visible
+      && window.process.toLocaleLowerCase().includes('lingxiademo')
+      && window.title === 'LingXia'
+    ))
+    : undefined;
+  const visibleWindowsBefore = host
+    ? new Set((await desktop!.windows())
+      .filter((window) => window.visible && window.pid === host.pid)
+      .map((window) => window.id))
+    : undefined;
 
   await app.nav.relaunch({ page: 'home' });
   expect((await app.nav.stack()).map((page) => page.name)).toEqual(['home']);
@@ -67,4 +81,20 @@ test('preserves navigation stack, query, redirect, back, and tab semantics', asy
   });
   expect(defaultMode).toBe('device');
   expect((await app.nav.stack()).map((page) => page.name)).toEqual(['device']);
+
+  if (desktop && host && visibleWindowsBefore) {
+    const deadline = Date.now() + 3_000;
+    let leaked = [] as Awaited<ReturnType<typeof desktop.windows>>;
+    do {
+      leaked = (await desktop.windows()).filter((window) => (
+        window.visible
+        && window.pid === host.pid
+        && window.title === ''
+        && !visibleWindowsBefore.has(window.id)
+      ));
+      if (leaked.length === 0) return;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    } while (Date.now() < deadline);
+    throw new Error(`navigation left visible native overlays: ${JSON.stringify(leaked)}`);
+  }
 });

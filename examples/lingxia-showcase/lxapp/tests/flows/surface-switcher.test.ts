@@ -182,8 +182,10 @@ async function selectFirstCompactBrowserTab(
     host.bounds.y + Math.round(host.bounds.h * 0.42),
   ];
   const before = await desktop.pixel({ at: dimProbe });
-  const windowsBefore = platform === 'windows'
-    ? new Set((await desktop.windows()).map((window) => window.id))
+  const visibleWindowsBefore = platform === 'windows'
+    ? new Set((await desktop.windows())
+      .filter((window) => window.visible)
+      .map((window) => window.id))
     : undefined;
 
   // Both desktop skins use the same compact main-browser geometry: the tabs
@@ -198,7 +200,7 @@ async function selectFirstCompactBrowserTab(
   const windowsSwitcher = platform === 'windows'
     ? await waitForValue(async () => (
       (await desktop.windows()).find((window) => (
-        !windowsBefore!.has(window.id)
+        !visibleWindowsBefore!.has(window.id)
         && window.visible
         && window.pid === host.pid
         && window.title === ''
@@ -645,6 +647,41 @@ function firstLxappWorkspaceMenuRegion(
     trailingControlWidth,
     36,
   ];
+}
+
+function firstLxappWorkspaceRegion(
+  host: DesktopWindowInfo,
+  pinCount: number,
+  rootPageCount: number,
+): [number, number, number, number] {
+  const sidebarWidth = 184;
+  const itemInset = 8;
+  const [, centerY] = firstLxappWorkspacePoint(host, pinCount, rootPageCount);
+  return [
+    host.bounds.x + itemInset,
+    centerY - 18,
+    sidebarWidth - itemInset * 2,
+    36,
+  ];
+}
+
+async function waitForNativeHover(
+  desktop: DesktopDriver,
+  host: DesktopWindowInfo,
+  point: [number, number],
+  region: [number, number, number, number],
+  description: string,
+): Promise<void> {
+  await desktop.pointer.move({
+    at: [host.bounds.x + 12, host.bounds.y + Math.round(host.bounds.h * 0.55)],
+  });
+  const baseline = await desktop.screenshot({ region });
+  await waitForValue(async () => {
+    await desktop.pointer.move({ at: [point[0] - 1, point[1]] });
+    await desktop.pointer.move({ at: point });
+    const hovered = await desktop.screenshot({ region });
+    return hovered.base64 !== baseline.base64 ? true : undefined;
+  }, description);
 }
 
 function firstLxappWorkspaceClosePoint(
@@ -1218,15 +1255,29 @@ adaptiveDesktopTest('gates medium sidebar reveal and compact aside chrome on eve
     await waitForValue(async () => (
       (await app.surfaceLayout()).sizeClass === 'medium' ? true : undefined
     ), `${platform} medium browser shell`);
-    const mediumBrowserInset = await waitForValue(async () => {
-      const viewport = await visibleBrowserViewportWidth(browser);
-      if (viewport === undefined) return undefined;
-      const inset = host!.bounds.w - viewport;
-      return inset >= nativeWindowExtent(platform, host!, 40)
-        && expandedBrowserInset - inset >= nativeWindowExtent(platform, host!, 60)
-        ? inset
-        : undefined;
-    }, `${platform} medium browser uses the icon rail`);
+    let mediumBrowserSample: Record<string, number | undefined> = {};
+    let mediumBrowserInset: number;
+    try {
+      mediumBrowserInset = await waitForValue(async () => {
+        const viewport = await visibleBrowserViewportWidth(browser);
+        const inset = viewport === undefined ? undefined : host!.bounds.w - viewport;
+        mediumBrowserSample = {
+          hostWidth: host!.bounds.w,
+          viewport,
+          inset,
+          expandedInset: expandedBrowserInset,
+          insetDelta: inset === undefined ? undefined : expandedBrowserInset - inset,
+          scale: host!.scale,
+        };
+        return inset !== undefined
+          && inset >= nativeWindowExtent(platform, host!, 40)
+          && expandedBrowserInset - inset >= nativeWindowExtent(platform, host!, 60)
+          ? inset
+          : undefined;
+      }, `${platform} medium browser uses the icon rail`);
+    } catch (error) {
+      throw new Error(`${String(error)}; last viewport sample: ${JSON.stringify(mediumBrowserSample)}`);
+    }
 
     host = await resizeHostOnScreen(desktop, host, compactWidth, testHeight);
     await waitForValue(async () => {
@@ -2167,31 +2218,23 @@ pinnedWindowsHostTest('projects a pinned lxapp into a controllable sidebar works
     const workspacePoint = firstLxappWorkspacePoint(host, coldPins.length, 4);
     const workspaceMenuRegion = firstLxappWorkspaceMenuRegion(host, coldPins.length, 4);
     const workspaceMenuPoint = regionCenter(workspaceMenuRegion);
-    // Clear the native sidebar hover through another host-painted point.
-    // Moving into the main WebView does not deliver WM_MOUSEMOVE to the host
-    // chrome and can leave its previous hover state cached.
-    await desktop.pointer.move({
-      at: [host.bounds.x + 12, host.bounds.y + Math.round(host.bounds.h * 0.55)],
-    });
-    const hiddenWorkspaceMenu = await desktop.screenshot({ region: workspaceMenuRegion });
-    await waitForValue(async () => {
-      // Re-drive WM_MOUSEMOVE while waiting. A single instantaneous move can
-      // be coalesced behind WebView traffic on a full-suite run, leaving a
-      // screenshot-only poll unable to make progress.
-      await desktop.pointer.move({ at: [workspacePoint[0] - 1, workspacePoint[1]] });
-      await desktop.pointer.move({ at: workspacePoint });
-      const hovered = await desktop.screenshot({ region: workspaceMenuRegion });
-      return hovered.base64 !== hiddenWorkspaceMenu.base64 ? hovered : undefined;
-    }, 'visible Chat workspace ellipsis on hover');
-    const windowsBeforeWorkspaceMenu = await desktop.windows();
-    const workspaceMenuWindowIds = new Set(
-      windowsBeforeWorkspaceMenu.map((window) => window.id),
+    await waitForNativeHover(
+      desktop,
+      host,
+      workspacePoint,
+      workspaceMenuRegion,
+      'visible Chat workspace ellipsis on hover',
     );
+    const windowsBeforeWorkspaceMenu = await desktop.windows();
+    const visibleWorkspaceMenuWindowIds = new Set(windowsBeforeWorkspaceMenu
+      .filter((window) => window.visible)
+      .map((window) => window.id));
+    host = await ensureHostForeground(desktop, host);
     await desktop.pointer.click({ at: workspaceMenuPoint });
     const workspaceMenu = await waitForValue(async () => (
       (await desktop.windows()).find((window) => (
         window.visible
-        && !workspaceMenuWindowIds.has(window.id)
+        && !visibleWorkspaceMenuWindowIds.has(window.id)
         && window.process.toLocaleLowerCase() === host!.process.toLocaleLowerCase()
         && window.title === ''
         && Math.abs(window.bounds.x - workspaceMenuPoint[0]) <= 8
@@ -2219,9 +2262,10 @@ pinnedWindowsHostTest('projects a pinned lxapp into a controllable sidebar works
       id: 'lingxia-chat', visible: true, alive: true, events: [],
     });
 
-    await desktop.pointer.click({
-      at: showcaseHomePagePoint(host, coldPins.length),
-    });
+    const homePagePoint = showcaseHomePagePoint(host, coldPins.length);
+    host = await ensureHostForeground(desktop, host);
+    await desktop.pointer.move({ at: homePagePoint });
+    await desktop.pointer.click({ at: homePagePoint });
     await waitForValue(async () => {
       const [info, candidate] = await Promise.all([app.info(), app.surfaceLayout()]);
       return info.current_page?.startsWith('pages/home/index')
@@ -2239,6 +2283,14 @@ pinnedWindowsHostTest('projects a pinned lxapp into a controllable sidebar works
       { type: 'hide', id: 'lingxia-chat', kind: 'window', source: 'shell' },
     ]);
 
+    host = await ensureHostForeground(desktop, host);
+    await waitForNativeHover(
+      desktop,
+      host,
+      workspacePoint,
+      firstLxappWorkspaceRegion(host, coldPins.length, 4),
+      'hovered Chat workspace before selection',
+    );
     await desktop.pointer.click({ at: workspacePoint });
     await waitForValue(async () => {
       const candidate = await app.surfaceLayout();
@@ -2259,6 +2311,7 @@ pinnedWindowsHostTest('projects a pinned lxapp into a controllable sidebar works
     ]);
 
     const workspaceClosePoint = firstLxappWorkspaceClosePoint(host, coldPins.length, 4);
+    host = await ensureHostForeground(desktop, host);
     await desktop.pointer.move({ at: workspaceClosePoint });
     await desktop.pointer.click({ at: workspaceClosePoint });
     await waitForValue(async () => {
@@ -2294,6 +2347,8 @@ pinnedWindowsHostTest('projects a pinned lxapp into a controllable sidebar works
 
     // Reopen through the same Pin so the remaining assertions continue to
     // prove that shortcut removal does not destroy a live workspace.
+    host = await ensureHostForeground(desktop, host);
+    await desktop.pointer.move({ at: coldPinPoint });
     await desktop.pointer.click({ at: coldPinPoint });
     await waitForValue(async () => {
       const candidate = await app.surfaceLayout();
@@ -2305,12 +2360,15 @@ pinnedWindowsHostTest('projects a pinned lxapp into a controllable sidebar works
     }, 'pinned Chat reopened without a ghost workspace');
 
     const windowsBeforeMenu = await desktop.windows();
-    const existingWindowIds = new Set(windowsBeforeMenu.map((window) => window.id));
+    const visibleWindowIdsBeforeMenu = new Set(windowsBeforeMenu
+      .filter((window) => window.visible)
+      .map((window) => window.id));
+    host = await ensureHostForeground(desktop, host);
     await desktop.pointer.click({ at: coldPinPoint, button: 'right' });
     const menu = await waitForValue(async () => (
       (await desktop.windows()).find((window) => (
         window.visible
-        && !existingWindowIds.has(window.id)
+        && !visibleWindowIdsBeforeMenu.has(window.id)
         && window.process.toLocaleLowerCase() === host!.process.toLocaleLowerCase()
         && window.title === ''
         && Math.abs(window.bounds.x - coldPinPoint[0]) <= 8
@@ -2385,6 +2443,14 @@ pinnedWindowsHostTest('projects a pinned lxapp into a controllable sidebar works
       host,
       pinsAfterMenu.length,
       4,
+    );
+    host = await ensureHostForeground(desktop, host);
+    await waitForNativeHover(
+      desktop,
+      host,
+      remainingWorkspacePoint,
+      firstLxappWorkspaceRegion(host, pinsAfterMenu.length, 4),
+      'hovered remaining Chat workspace before selection',
     );
     await desktop.pointer.click({ at: remainingWorkspacePoint });
     await waitForValue(async () => {
