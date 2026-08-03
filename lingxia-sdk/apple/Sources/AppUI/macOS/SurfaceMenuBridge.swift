@@ -87,6 +87,7 @@ final class SurfaceMenuPresenter: NSObject {
 
     func present(_ snapshot: SurfaceMenuSnapshot, event: NSEvent, from view: NSView) {
         let menu = NSMenu()
+        menu.autoenablesItems = false
         for (sectionIndex, section) in snapshot.sections.enumerated() {
             if sectionIndex > 0 { menu.addItem(.separator()) }
             for item in section.items {
