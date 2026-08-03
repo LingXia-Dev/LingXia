@@ -22,8 +22,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-pub(crate) use self::lxapp::ensure_first_install;
-pub use self::lxapp::ensure_target_version_ready;
+pub use self::lxapp::{ensure_first_install, ensure_target_version_ready};
 pub use self::lxapp::{
     ensure_force_update_for_installed, prepare_lxapp_open, schedule_lxapp_update_check,
 };

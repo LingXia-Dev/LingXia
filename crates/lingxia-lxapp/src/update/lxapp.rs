@@ -451,10 +451,11 @@ impl UpdateManager {
 
 /// Ensure the target app is installed at least once (first-launch preparation).
 ///
-/// If the target lxapp is not installed, this checks for an available package and downloads it.
-/// Downloaded archives are recorded in metadata and applied when creating/opening the app
-/// (see `LxApps::get_or_init_lxapp`).
-pub(crate) async fn ensure_first_install(
+/// A bundled target is registered directly. Otherwise this checks for an
+/// available package and downloads it. Downloaded archives are recorded in
+/// metadata and applied when creating/opening the app (see
+/// `LxApps::get_or_init_lxapp`).
+pub async fn ensure_first_install(
     current_lxapp: &Arc<lxapp_runtime::LxApp>,
     target_appid: &str,
     release_type: ReleaseType,

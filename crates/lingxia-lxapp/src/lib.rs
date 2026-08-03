@@ -93,9 +93,9 @@ pub use startup::{
     parse_optional_env_release_type,
 };
 pub use update::{
-    DownloadedUpdateInfo, OtaUpdateTarget, UpdateManager, ensure_force_update_for_installed,
-    ensure_target_version_ready, is_force_update_downloading, prepare_lxapp_open,
-    schedule_lxapp_update_check,
+    DownloadedUpdateInfo, OtaUpdateTarget, UpdateManager, ensure_first_install,
+    ensure_force_update_for_installed, ensure_target_version_ready, is_force_update_downloading,
+    prepare_lxapp_open, schedule_lxapp_update_check,
 };
 
 // Re-export for internal crate usage
