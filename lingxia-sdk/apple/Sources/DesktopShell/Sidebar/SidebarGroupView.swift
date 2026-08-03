@@ -567,6 +567,10 @@ class SidebarGroupView: NSView, NSTextFieldDelegate {
         guard managedLabel != nil else { return }
         managedLabel = label
         managedIcon = icon
+        // An lxapp-backed managed main owns its group contents and appearance.
+        // Applying the native/browser header projection here would clear the
+        // provider's tabbar items after refreshFromRust populated them.
+        guard contentAppId == nil || !showsLxappTabBar else { return }
         configureManagedMain()
     }
 

@@ -29,6 +29,8 @@ protocol BrowserCoordinatorHost: AnyObject {
     func browserDidActivateSurface(_ surfaceID: String)
     /// Reports that the last tab owned by a declared main surface closed.
     func browserDidCloseSurface(_ surfaceID: String)
+    /// Re-present the graph's active main after an out-of-band browser close.
+    func browserDidLoseAllTabs() -> Bool
     /// Switch display to the lxapp tab with this appId.
     func switchToLxAppTab(_ appId: String)
     /// Currently active lxapp tab appId (if any).
@@ -334,9 +336,8 @@ final class BrowserTabCoordinator: NSObject {
     }
 
     func closeTab(id: String, notifyDeclaredSurfaceClose: Bool = true) {
-        guard let index = tabIds.firstIndex(of: id) else { return }
+        guard tabIds.contains(id) else { return }
         defer { refreshCompactBrowserBar() }
-        let declaredSurfaceID = declaredSurfaceIds[id]
 
         // A direct web Runner has no workspace once its target tab closes.
         // Window teardown owns the tab cleanup through the Runner close hook.
@@ -348,31 +349,8 @@ final class BrowserTabCoordinator: NSObject {
             return
         }
 
-        // Detach WebView from UI BEFORE Rust destroy to prevent ObjC exceptions
-        // during WebViewInner::Drop (removeFromSuperview/release on attached view).
-        if activeTabId == id {
-            clearWebViewAttachment()
-        }
-
-        tabTitleObservations.removeValue(forKey: id)?.invalidate()
-        tabTitles.removeValue(forKey: id)
-        tabFavicons.removeValue(forKey: id)
-        tabFaviconRequestOrigins.removeValue(forKey: id)
-        lastObservedURLs.removeValue(forKey: id)
-        stableTabIds = stableTabIds.filter { $0.value != id }
-        declaredSurfaceIds.removeValue(forKey: id)
-        interactedTabs.remove(id)
-        discardedTabs.remove(id)
-        tabRecency.removeAll { $0 == id }
-        backgroundedAt.removeValue(forKey: id)
-        tabIds.remove(at: index)
-
-        // Destroy Rust state (triggers WebView Drop — safe now that UI is detached)
-        _ = browserTabClose(tabIdString(id))
-
-        if activeTabId == id {
-            activeTabId = nil
-        }
+        guard let removed = removeTabState(id: id, closeCoreTab: true) else { return }
+        let declaredSurfaceID = removed.declaredSurfaceID
 
         if let declaredSurfaceID,
            !declaredSurfaceIds.values.contains(declaredSurfaceID) {
@@ -400,6 +378,91 @@ final class BrowserTabCoordinator: NSObject {
         }
 
         host?.updateSidebarBrowserItems(sidebarItems(), activeId: activeTabId)
+    }
+
+    /// Reconcile shell-owned browser chrome after the Rust tab registry changes
+    /// through another control path (for example lxdev automation). Shell-originated
+    /// mutations also emit this callback, but arrive after local state was updated
+    /// and therefore collapse to a no-op.
+    func synchronizeTabsFromCore() {
+        let data = Data(browserTabIdsJson().toString().utf8)
+        guard let coreTabIDs = try? JSONDecoder().decode([String].self, from: data) else {
+            return
+        }
+        let coreTabSet = Set(coreTabIDs)
+        let removedTabIDs = tabIds.filter { !coreTabSet.contains($0) }
+        guard !removedTabIDs.isEmpty else { return }
+
+        let removedTabSet = Set(removedTabIDs)
+        let removedActiveTab = activeTabId.map(removedTabSet.contains) ?? false
+        var removedSurfaceIDs = Set<String>()
+        for id in removedTabIDs {
+            if let surfaceID = removeTabState(id: id, closeCoreTab: false)?.declaredSurfaceID {
+                removedSurfaceIDs.insert(surfaceID)
+            }
+        }
+
+        for surfaceID in removedSurfaceIDs
+            where !declaredSurfaceIds.values.contains(surfaceID) {
+            if declaredWorkspaceSurfaceID == surfaceID {
+                declaredWorkspaceSurfaceID = nil
+            }
+            host?.browserDidCloseSurface(surfaceID)
+        }
+
+        if removedActiveTab {
+            let currentID = browserCurrentTabId().toString()
+            if !currentID.isEmpty, tabIds.contains(currentID) {
+                switchToTab(id: currentID)
+            } else {
+                hideBrowserView()
+                host?.forceHideNavigationToolbar(false)
+                if host?.browserDidLoseAllTabs() != true,
+                   let appId = host?.activeAppTabId() {
+                    host?.switchToLxAppTab(appId)
+                }
+            }
+        }
+
+        host?.updateSidebarBrowserItems(sidebarItems(), activeId: activeTabId)
+        refreshCompactBrowserBar()
+    }
+
+    /// Forget one tab from native projection. Core-owned close notifications use
+    /// the same teardown as shell clicks but skip the already-completed Rust close.
+    private func removeTabState(
+        id: String,
+        closeCoreTab: Bool
+    ) -> (declaredSurfaceID: String?, wasActive: Bool)? {
+        guard let index = tabIds.firstIndex(of: id) else { return nil }
+        let wasActive = activeTabId == id
+        let declaredSurfaceID = declaredSurfaceIds[id]
+
+        // Detach before Rust destroys its WebView to avoid releasing an attached
+        // AppKit view. Out-of-band closes have already destroyed core state, but
+        // clearing the stale native reference is still required.
+        if wasActive {
+            clearWebViewAttachment()
+        }
+        tabTitleObservations.removeValue(forKey: id)?.invalidate()
+        tabTitles.removeValue(forKey: id)
+        tabFavicons.removeValue(forKey: id)
+        tabFaviconRequestOrigins.removeValue(forKey: id)
+        lastObservedURLs.removeValue(forKey: id)
+        stableTabIds = stableTabIds.filter { $0.value != id }
+        declaredSurfaceIds.removeValue(forKey: id)
+        interactedTabs.remove(id)
+        discardedTabs.remove(id)
+        tabRecency.removeAll { $0 == id }
+        backgroundedAt.removeValue(forKey: id)
+        tabIds.remove(at: index)
+        if closeCoreTab {
+            _ = browserTabClose(tabIdString(id))
+        }
+        if wasActive {
+            activeTabId = nil
+        }
+        return (declaredSurfaceID, wasActive)
     }
 
     func closeDeclaredSurface(_ surfaceID: String) {

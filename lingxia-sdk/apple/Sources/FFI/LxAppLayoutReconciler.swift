@@ -308,6 +308,7 @@ enum LxAppLayoutReconciler {
            appId != shell.attachedMainAppId {
             shell.reconcileActiveMain(appId: appId)
         }
+        LxAppMacAppUIRuntime.refreshSurfaceSwitcherProjection()
 
         return true
     }

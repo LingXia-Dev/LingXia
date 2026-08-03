@@ -179,6 +179,9 @@ final class LxAppMacAppUIRuntime: NSObject {
             },
             onSurfaceClose: { [weak self] surfaceID in
                 self?.closeMainSurface(id: surfaceID)
+            },
+            onRestoreActiveMain: { [weak self] in
+                self?.restoreActiveMainProvider() ?? false
             }
         )
         // A float root never shows the sidebar; for other roots, content drives
@@ -264,6 +267,10 @@ final class LxAppMacAppUIRuntime: NSObject {
     static func handleAsideSlotClose(surfaceId: String) -> Bool {
         guard let active else { return false }
         return active.closeAsideSlotChild(surfaceId: surfaceId)
+    }
+
+    static func refreshSurfaceSwitcherProjection() {
+        active?.refreshChromeActions()
     }
 
     // MARK: - Tray runtime updates (lx.tray.*)
@@ -870,6 +877,27 @@ final class LxAppMacAppUIRuntime: NSObject {
             LXLog.error("AppUI failed to open managed surface=\(id)", category: "MacAppUI", error: error)
             return false
         }
+    }
+
+    /// Browser automation can remove the core tab before native chrome observes
+    /// it. Re-query the graph here instead of guessing that the legacy lxapp tab
+    /// is the successor; terminal and browser mains use the same arbitration.
+    private func restoreActiveMainProvider() -> Bool {
+        guard let ownerAppId = graphOwnerAppId,
+              let snapshot = SurfaceSwitcherBridge.snapshot(ownerAppId: ownerAppId),
+              let activeID = snapshot.activeSurfaceId
+        else { return false }
+
+        if surfaceById[activeID] != nil {
+            guard openManagedSurfaceNow(id: activeID) else { return false }
+        } else if let active = snapshot.items.first(where: { $0.surfaceId == activeID }),
+                  active.content.kind == "lxapp",
+                  let appId = active.content.appId {
+            shell.activateMainLxAppProvider(appId: appId)
+        } else {
+            return false
+        }
+        return setActiveMainSurface(ownerAppId, activeID)
     }
 
     private func openSurface(id: String, sourceActivatorID: String? = nil) throws {

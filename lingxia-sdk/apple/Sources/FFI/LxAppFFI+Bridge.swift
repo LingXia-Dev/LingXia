@@ -740,6 +740,14 @@ extension LxApp {
         #endif
     }
 
+    nonisolated static func browserTabsChanged() {
+        #if os(macOS)
+        DispatchQueue.main.async {
+            macOSLxApp.browserTabsChanged()
+        }
+        #endif
+    }
+
     nonisolated static func share(
         title: RustStr,
         text: RustStr,

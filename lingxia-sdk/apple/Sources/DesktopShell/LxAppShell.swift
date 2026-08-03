@@ -262,6 +262,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     private var managedMainRenameHandler: ((String, String) -> Void)?
     private var declaredBrowserSurfaceActivateHandler: ((String) -> Void)?
     private var declaredBrowserSurfaceCloseHandler: ((String) -> Void)?
+    private var browserRestoreActiveMainHandler: (() -> Bool)?
     private weak var managedMainView: NSView?
 
     var onManagedWindowCloseRequested: (() -> Void)?
@@ -2065,11 +2066,13 @@ extension LxAppShell {
     func configureDeclaredBrowser(
         ownerAppId: String?,
         onSurfaceActivate: @escaping (String) -> Void,
-        onSurfaceClose: @escaping (String) -> Void
+        onSurfaceClose: @escaping (String) -> Void,
+        onRestoreActiveMain: @escaping () -> Bool
     ) {
         declaredBrowserOwnerAppId = ownerAppId
         declaredBrowserSurfaceActivateHandler = onSurfaceActivate
         declaredBrowserSurfaceCloseHandler = onSurfaceClose
+        browserRestoreActiveMainHandler = onRestoreActiveMain
     }
 
     @discardableResult
@@ -2099,6 +2102,10 @@ extension LxAppShell {
         sidebarView?.reloadBookmarks()
         reconcileSidebarAutoHide()
         browserCoordinator.refreshPageSaveButtons()
+    }
+
+    func synchronizeBrowserTabsFromCore() {
+        browserCoordinator.synchronizeTabsFromCore()
     }
 
     func presentInternalBrowserTab(id: String) {
@@ -2164,6 +2171,10 @@ extension LxAppShell: BrowserCoordinatorHost {
 
     func browserDidCloseSurface(_ surfaceID: String) {
         declaredBrowserSurfaceCloseHandler?(surfaceID)
+    }
+
+    func browserDidLoseAllTabs() -> Bool {
+        browserRestoreActiveMainHandler?() ?? false
     }
 
     func switchToLxAppTab(_ appId: String) {

@@ -588,6 +588,11 @@ mod bridge {
         #[swift_bridge(swift_name = "LxApp.browserBookmarksChanged")]
         fn browser_bookmarks_changed();
 
+        // Browser core changed outside the shell (for example lxdev closed a
+        // tab). Reconcile native chrome with the authoritative tab registry.
+        #[swift_bridge(swift_name = "LxApp.browserTabsChanged")]
+        fn browser_tabs_changed();
+
         // Display language changed — host-owned native chrome re-localizes.
         #[swift_bridge(swift_name = "LxApp.displayLanguageChanged")]
         fn display_language_changed();
@@ -615,6 +620,9 @@ fn install_browser_native_input_host() {
     // action, webui manager page) notifies the Swift shell.
     lingxia_browser_shell::set_bookmarks_change_listener(Box::new(|| {
         self::bridge::browser_bookmarks_changed();
+    }));
+    lingxia_browser::set_tabs_changed_handler(Arc::new(|| {
+        self::bridge::browser_tabs_changed();
     }));
     lingxia_browser_shell::set_display_language_change_listener(Box::new(|| {
         self::bridge::display_language_changed();
