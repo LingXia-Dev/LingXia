@@ -5,6 +5,8 @@ import CLingXiaRustAPI
 
 /// NSWindow class for LxApp Tab mode
 class LxAppWindow: NSWindow {
+    private static let trafficLightLeading: CGFloat = 6
+    private static let trafficLightCenterSpacing: CGFloat = 19
     nonisolated(unsafe) private var titlebarObserver: Any?
     private var lastTrafficLightContainerHeight: CGFloat?
     var trafficLightsHidden: Bool = false {
@@ -95,11 +97,16 @@ class LxAppWindow: NSWindow {
         let containerHeight = container.frame.height
         lastTrafficLightContainerHeight = containerHeight
         let targetCenterY = effectiveTrafficLightCenterYFromTop()
-        for type: NSWindow.ButtonType in [.closeButton, .miniaturizeButton, .zoomButton] {
+        for (index, type) in [
+            NSWindow.ButtonType.closeButton,
+            .miniaturizeButton,
+            .zoomButton,
+        ].enumerated() {
             guard let button = standardWindowButton(type), button.frame.height > 0 else { continue }
             let y = max(0, containerHeight - targetCenterY - button.frame.height / 2)
-            if abs(button.frame.origin.y - y) > 0.5 {
-                button.setFrameOrigin(NSPoint(x: button.frame.origin.x, y: y))
+            let x = Self.trafficLightLeading + CGFloat(index) * Self.trafficLightCenterSpacing
+            if abs(button.frame.origin.x - x) > 0.5 || abs(button.frame.origin.y - y) > 0.5 {
+                button.setFrameOrigin(NSPoint(x: x, y: y))
             }
         }
     }

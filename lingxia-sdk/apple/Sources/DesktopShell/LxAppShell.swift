@@ -507,8 +507,9 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     }
 
     /// Apply the shared core's hysteresis-resolved shell size class. Compact
-    /// has no sidebar projection; medium starts as a rail but still honors an
-    /// explicit user reveal until the next size-class crossing.
+    /// and medium preserve the icon rail so workspace switching never becomes
+    /// unreachable; medium still honors an explicit user reveal until the next
+    /// size-class crossing.
     func applySurfaceLayoutProjection(_ rawValue: String, coveringAside: Bool) {
         guard let next = ShellSizeClass(rawValue: rawValue) else { return }
         browserCoordinator.setCompactProjection(next == .compact)
@@ -754,14 +755,22 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
             lastExpandedSidebarWidth = min(
                 max(width, SidebarView.Layout.expandedWidth), SidebarView.Layout.maxWidth)
         }
-        userSidebarMode = LxAppShellPersistence.sidebarMode
+        let persistedMode = LxAppShellPersistence.sidebarMode
+        // Older builds let a resize gesture persist a fully hidden sidebar.
+        // Dragging now bottoms out at the rail, so migrate that stale user state;
+        // an explicit host `.hidden` configuration is reapplied after startup.
+        userSidebarMode = persistedMode == .hidden ? .rail : persistedMode
+        if persistedMode == .hidden {
+            LxAppShellPersistence.sidebarMode = .rail
+        }
         let targetWidth: CGFloat
         switch userSidebarMode {
         case .rail:
             sidebarView.setCompactMode(true)
             targetWidth = sidebarView.compactWidth
         case .hidden:
-            targetWidth = 0
+            sidebarView.setCompactMode(true)
+            targetWidth = sidebarView.compactWidth
         case .expanded, nil:
             targetWidth = lastExpandedSidebarWidth
         }
@@ -941,10 +950,11 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
 
         let targetWidth: CGFloat
         let iconRail: Bool
-        if !sidebarChromeEnabled || surfaceSizeClass == .compact || userSidebarMode == .hidden {
+        if !sidebarChromeEnabled || userSidebarMode == .hidden {
             targetWidth = 0
             iconRail = false
-        } else if surfaceSizeClass == .medium && !mediumSidebarExpandedByUser {
+        } else if surfaceSizeClass == .compact
+                    || (surfaceSizeClass == .medium && !mediumSidebarExpandedByUser) {
             targetWidth = sidebarView?.compactWidth ?? Layout.sidebarWidth
             iconRail = true
         } else if userSidebarMode == .rail && surfaceSizeClass != .medium {
