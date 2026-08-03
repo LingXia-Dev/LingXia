@@ -214,9 +214,7 @@ fn bridge_loop(
                     handle_incoming_message(websocket, wire)?;
                 }
             }
-            Err(WsError::Io(err))
-                if err.kind() == std::io::ErrorKind::WouldBlock
-                    || err.kind() == std::io::ErrorKind::TimedOut => {}
+            Err(WsError::Io(err)) if is_retryable_read_error(&err) => {}
             Err(WsError::ConnectionClosed) | Err(WsError::AlreadyClosed) => {
                 return Err("websocket closed".to_string());
             }
@@ -225,6 +223,24 @@ fn bridge_loop(
 
         thread::sleep(Duration::from_millis(50));
     }
+}
+
+fn is_retryable_read_error(err: &std::io::Error) -> bool {
+    if matches!(
+        err.kind(),
+        std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
+    ) {
+        return true;
+    }
+
+    // A timed socket read can surface as ERROR_IO_PENDING instead of
+    // WouldBlock on Windows. The overlapped read is still healthy.
+    #[cfg(windows)]
+    if err.raw_os_error() == Some(997) {
+        return true;
+    }
+
+    false
 }
 
 fn handle_incoming_message(
@@ -344,5 +360,28 @@ fn parse_wire_message(message: Message) -> Result<Option<DevSessionMessage>, Str
 fn configure_read_timeout(websocket: &mut WebSocket<MaybeTlsStream<std::net::TcpStream>>) {
     if let MaybeTlsStream::Plain(stream) = websocket.get_mut() {
         let _ = stream.set_read_timeout(Some(Duration::from_millis(100)));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_retryable_read_error;
+
+    #[test]
+    fn retries_nonblocking_socket_reads() {
+        for kind in [std::io::ErrorKind::WouldBlock, std::io::ErrorKind::TimedOut] {
+            assert!(is_retryable_read_error(&std::io::Error::from(kind)));
+        }
+        assert!(!is_retryable_read_error(&std::io::Error::from(
+            std::io::ErrorKind::ConnectionReset
+        )));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn retries_pending_windows_overlapped_reads() {
+        assert!(is_retryable_read_error(&std::io::Error::from_raw_os_error(
+            997
+        )));
     }
 }
