@@ -1253,9 +1253,9 @@ adaptiveDesktopTest('gates medium sidebar reveal and compact aside chrome on eve
     expect(docked.activeMainId).toBe('lingxia-showcase');
     host = await ensureHostForeground(desktop, host);
     await waitForValue(
-      () => platform === 'macos'
-        ? visibleApiNavbarAxNode(desktop, host!)
-        : apiNavbarProbePoints(desktop, host!),
+      async () => platform === 'macos'
+        ? await visibleApiNavbarAxNode(desktop, host!)
+        : await apiNavbarProbePoints(desktop, host!),
       `${platform} Home API navbar restored beside Chat`,
     );
     await typeIntoChatThroughDesktop(`expanded-aside-${platform}`);
@@ -1368,9 +1368,9 @@ adaptiveDesktopTest('gates medium sidebar reveal and compact aside chrome on eve
         : undefined;
     }, `${platform} root graph after closing browser main`);
     await waitForValue(
-      () => platform === 'macos'
-        ? visibleApiNavbarAxNode(desktop, host!)
-        : apiNavbarProbePoints(desktop, host!),
+      async () => platform === 'macos'
+        ? await visibleApiNavbarAxNode(desktop, host!)
+        : await apiNavbarProbePoints(desktop, host!),
       `${platform} lxapp physically restored after closing browser main`,
     );
   } catch (error) {
