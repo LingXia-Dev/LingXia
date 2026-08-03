@@ -227,7 +227,10 @@ fn notify_self_window_mutation(pid: u32) {
     if unsafe { libc::pthread_main_np() } != 0 {
         post();
     } else {
-        dispatch2::DispatchQueue::main().exec_sync(post);
+        // Async is sufficient (the consumer races only +0.28s delayed
+        // closures) and cannot deadlock a main thread that is itself
+        // waiting on this automation thread.
+        dispatch2::DispatchQueue::main().exec_async(post);
     }
 }
 
