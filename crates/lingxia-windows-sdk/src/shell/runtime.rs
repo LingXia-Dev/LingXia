@@ -1286,6 +1286,7 @@ fn sync_app_shell_layout(appid: &str) {
         let webtag = WebTag::new(&app.appid, &path, Some(app.session_id()));
         let is_active_content = active_host_window_webtag_key().as_deref() == Some(webtag.key());
         let layout = build_window_layout(&app, &path);
+        #[cfg(feature = "browser-runtime")]
         let dismiss_compact_switcher = is_active_content && !layout.compact_browser_chrome;
         install_shell_chrome_event_handler(&webtag, &app.appid);
 
@@ -1323,6 +1324,7 @@ fn sync_app_shell_layout(appid: &str) {
                 err
             );
         }
+        #[cfg(feature = "browser-runtime")]
         if dismiss_compact_switcher && let Some(owner) = owner_window_handle(appid) {
             crate::window_host::dismiss_phone_tab_switcher_if_not_compact(owner);
         }
@@ -4302,8 +4304,10 @@ fn present_successor_main(owner: &LxApp, surface_id: &str) -> Result<(), String>
 fn present_main_surface_inner(
     owner: &LxApp,
     surface_id: &str,
-    mut completion: Option<ManagedSurfaceCompletion>,
+    completion: Option<ManagedSurfaceCompletion>,
 ) -> Result<(), String> {
+    #[cfg(feature = "browser-runtime")]
+    let mut completion = completion;
     let content = owner
         .main_surface_content(surface_id)
         .ok_or_else(|| format!("unknown main surface: {surface_id}"))?;
