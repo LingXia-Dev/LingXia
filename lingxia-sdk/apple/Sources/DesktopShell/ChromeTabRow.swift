@@ -49,7 +49,7 @@ final class ChromeTabRowView: NSStackView {
         fatalError("init(coder:) has not been implemented")
     }
 
-    override var isFlipped: Bool { true }
+    nonisolated override var isFlipped: Bool { true }
 
     /// Suppresses this tab's trailing hairline divider when the seam is
     /// shared with the active tab (Chrome hides the divider by the selection).

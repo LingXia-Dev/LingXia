@@ -141,6 +141,12 @@ pub trait AppRuntime:
         panel_id: String,
     ) -> Result<(), PlatformError>;
 
+    /// Notify the desktop skin that the next layout publication is an explicit
+    /// request to put this lxapp in front. Most skins reconcile directly from
+    /// the layout plan; Windows uses the intent to replace a browser cover
+    /// without treating unrelated resize/aside publications as activations.
+    fn request_lxapp_main_activation(&self, _appid: &str) {}
+
     /// Hide the UI container for the given LxApp (does not destroy its runtime state).
     fn hide_lxapp(&self, appid: String, session_id: u64) -> Result<(), PlatformError>;
 
@@ -168,12 +174,6 @@ pub trait AppRuntime:
         &self,
         _items: &[lingxia_shell::ResolvedShellSidebarAction],
     ) -> Result<(), PlatformError> {
-        Ok(())
-    }
-
-    /// Replace the host window's zero-main placeholder. Desktop skins may
-    /// render it when no main surface is active.
-    fn set_shell_empty_state(&self, _state_json: &str) -> Result<(), PlatformError> {
         Ok(())
     }
 

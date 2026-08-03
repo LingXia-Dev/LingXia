@@ -185,8 +185,6 @@ pub(super) fn draw_sidebar_tab_bar(
     } else {
         tabbar.app_name.clone()
     };
-    let group_top = sidebar_group_top(rect, tabbar, scroll_offset);
-    let group_bottom = sidebar_group_bottom(rect, tabbar, scroll_offset);
     let group_rect = sidebar_group_rect(rect, tabbar, scroll_offset);
     let chevron_rect = sidebar_group_chevron_rect(rect, tabbar, scroll_offset);
     let close_rect = sidebar_group_close_rect(rect, tabbar, scroll_offset);
@@ -208,18 +206,7 @@ pub(super) fn draw_sidebar_tab_bar(
         SIDEBAR_ICON_SIZE as u32,
     );
     let show_chevron = !tabbar.items_api_hidden && !tabbar.items.is_empty();
-    let header_rect = RECT {
-        left: icon_rect.right + 8,
-        top: group_top,
-        right: if tabbar.group_closable {
-            close_rect.left - 4
-        } else if show_chevron {
-            chevron_rect.left - 4
-        } else {
-            rect.right - SIDEBAR_ITEM_INSET
-        },
-        bottom: group_bottom,
-    };
+    let header_rect = sidebar_group_title_rect(rect, tabbar, scroll_offset);
     draw_text(
         hdc,
         &title,
@@ -586,6 +573,29 @@ pub(super) fn sidebar_group_rect(
         top: sidebar_group_top(rect, tabbar, scroll_offset),
         right: rect.right - SIDEBAR_ITEM_INSET,
         bottom: sidebar_group_bottom(rect, tabbar, scroll_offset),
+    })
+}
+
+pub(in crate::shell::chrome) fn sidebar_group_title_rect(
+    rect: RECT,
+    tabbar: &WindowsShellTabBarLayout,
+    scroll_offset: i32,
+) -> RECT {
+    let group_rect = sidebar_group_rect(rect, tabbar, scroll_offset);
+    let icon_rect = sidebar_top_level_icon_rect(group_rect, SIDEBAR_ICON_SIZE);
+    let show_chevron = !tabbar.items_api_hidden && !tabbar.items.is_empty();
+    let right = if tabbar.group_closable {
+        sidebar_group_close_rect(rect, tabbar, scroll_offset).left - 4
+    } else if show_chevron {
+        sidebar_group_chevron_rect(rect, tabbar, scroll_offset).left - 4
+    } else {
+        rect.right - SIDEBAR_ITEM_INSET
+    };
+    normalize_rect(RECT {
+        left: icon_rect.right + 8,
+        top: group_rect.top,
+        right,
+        bottom: group_rect.bottom,
     })
 }
 

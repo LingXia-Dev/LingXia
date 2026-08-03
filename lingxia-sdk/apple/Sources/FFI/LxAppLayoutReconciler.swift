@@ -41,6 +41,21 @@ import AppKit
 @MainActor
 enum LxAppLayoutReconciler {
     private static let log = OSLog(subsystem: "LingXia", category: "LayoutReconciler")
+    private static var lastRevisionByWindow: [String: UInt64] = [:]
+    /// One-shot explicit lxapp activation intent (`lx` API / switcher). A
+    /// presented browser tab covers the lxapp main across unrelated layout
+    /// commits (resize, aside changes); only this intent may replace it.
+    private static var requestedLxappMainActivation: String?
+
+    static func requestLxappMainActivation(appId: String) {
+        requestedLxappMainActivation = appId
+    }
+
+    /// A newly-presented browser/native cover invalidates any older intent —
+    /// it must not be consumed later by an unrelated commit.
+    static func clearLxappMainActivation() {
+        requestedLxappMainActivation = nil
+    }
 
     /// The stable, fully-typed render contract the shared core emits (the same
     /// `LayoutPresentationPlan` JSON returned by `surfaceDerivedLayout`). The
@@ -57,6 +72,22 @@ enum LxAppLayoutReconciler {
         let asideSlots: [PlanAsideSlot]?
         let floats: [PlanFloat]
         let tree: LxAppJSONValue?
+        let mainSwitcher: MainSwitcher?
+    }
+
+    private struct MainSwitcher: Decodable {
+        let revision: UInt64
+        let items: [MainSwitcherItem]
+    }
+
+    private struct MainSwitcherItem: Decodable {
+        struct Content: Decodable {
+            let kind: String
+            let appId: String?
+        }
+
+        let surfaceId: String
+        let content: Content
     }
 
     private struct PlanAside: Decodable {
@@ -79,7 +110,7 @@ enum LxAppLayoutReconciler {
     }
 
     static func reconcile(windowId: String, json: String) -> Bool {
-        return reconcile(label: "window=\(windowId)", json: json)
+        return reconcile(windowId: windowId, label: "window=\(windowId)", json: json)
     }
 
     /// Reconcile float popups (modal sheets above the layout). Shell-independent:
@@ -96,29 +127,44 @@ enum LxAppLayoutReconciler {
         }
     }
 
-    private static func reconcile(label: String, json: String) -> Bool {
+    private static func reconcile(windowId: String, label: String, json: String) -> Bool {
+        guard let data = json.data(using: .utf8),
+              let plan = try? JSONDecoder().decode(LayoutPresentationPlan.self, from: data) else {
+            LXLog.error("presentLayout: failed to parse layout json \(label)", category: "LayoutReconciler")
+            return false
+        }
+        if let revision = plan.mainSwitcher?.revision {
+            let last = lastRevisionByWindow[windowId] ?? 0
+            if revision < last { return true }
+            lastRevisionByWindow[windowId] = revision
+        }
         guard let shell = LxAppActiveHost.activeShell else {
             // No desktop shell (the Runner's iPhone shape hosts the lxapp via a
             // controller, not a shell). Asides/windows drill in full-screen over
             // the device screen like a real phone, so — mirroring the iOS
             // reconciler — dismiss any full-screen surface the core dropped.
             // Floats are shell-independent popup windows, so still present them.
-            if let data = json.data(using: .utf8),
-               let plan = try? JSONDecoder().decode(LayoutPresentationPlan.self, from: data) {
-                let desiredFullScreen = Set(plan.asides.map { $0.id }).union(plan.mains)
-                for id in LxAppSurface.presentedFullScreenIds().subtracting(desiredFullScreen) {
-                    LxAppSurface.dismissFullScreen(id: id)
-                }
-                presentFloats(plan.floats.map { $0.id })
+            let desiredFullScreen = Set(plan.asides.map { $0.id }).union(plan.mains)
+            for id in LxAppSurface.presentedFullScreenIds().subtracting(desiredFullScreen) {
+                LxAppSurface.dismissFullScreen(id: id)
             }
+            presentFloats(plan.floats.map { $0.id })
             return true
         }
-        guard let data = json.data(using: .utf8),
-              let plan = try? JSONDecoder().decode(LayoutPresentationPlan.self, from: data) else {
-            LXLog.error("presentLayout: failed to parse layout json \(label)", category: "LayoutReconciler")
-            return false
+
+        let slots = plan.asideSlots ?? []
+        let coveringAside = if slots.isEmpty {
+            plan.splitForm == "fullScreen" && !plan.asides.isEmpty
+        } else {
+            slots.contains { slot in
+                slot.visible && (slot.overlay || plan.splitForm == "fullScreen")
+            }
         }
 
+        // The core already resolved breakpoints and hysteresis. Bind shell
+        // chrome and covering-aside state to that same plan so macOS cannot
+        // drift from Windows or leave the main tab bar above a compact aside.
+        shell.applySurfaceLayoutProjection(plan.sizeClass, coveringAside: coveringAside)
         let workspace = shell.workspaceManager
 
         // Desired docked aside set from the core (id -> edge). `plan.asides`
@@ -131,7 +177,6 @@ enum LxAppLayoutReconciler {
         // registered-but-hidden and switch via the slot's header tab strip.
         var desired: [String: PanelPosition] = [:]
         var overlayIds = Set<String>()
-        let slots = plan.asideSlots ?? []
         if slots.isEmpty {
             if plan.splitForm != "fullScreen" {
                 for aside in plan.asides {
@@ -267,16 +312,25 @@ enum LxAppLayoutReconciler {
         //     float whose popup is not yet registered is skipped defensively.
         presentFloats(plan.floats.map { $0.id })
 
-        // Main pass — the active-main switch. The core's activeMainId is the
-        // single source of truth for which lxapp occupies the primary content
-        // area; when it differs from what the shell currently has attached, drive
-        // the switch through the shell. reconcileActiveMain reuses the existing
-        // attach machinery and is itself idempotent, and the browser is not a
-        // graph main (attachedMainAppId is nil while the browser is active), so a
-        // plan whose activeMainId already matches the on-screen main is a no-op.
-        if let activeMainId = plan.activeMainId, activeMainId != shell.attachedMainAppId {
-            shell.reconcileActiveMain(appId: activeMainId)
+        // Main provider pass. `activeMainId` is a Surface id, never a provider
+        // app id. Only lxapp content is attached here; browser/native providers
+        // already rendered their content before committing this plan.
+        if let activeMainId = plan.activeMainId,
+           let item = plan.mainSwitcher?.items.first(where: { $0.surfaceId == activeMainId }),
+           item.content.kind == "lxapp",
+           let appId = item.content.appId,
+           appId != shell.attachedMainAppId {
+            let explicitlyRequested = requestedLxappMainActivation == appId
+            if explicitlyRequested { requestedLxappMainActivation = nil }
+            // An undeclared browser tab covers the lxapp main until its own
+            // close/back flow restores it. Explicit activation is the one
+            // exception; unrelated commits must not evict the cover (mirrors
+            // the Windows reconciler).
+            if !shell.browserIsCoveringMain || explicitlyRequested {
+                shell.reconcileActiveMain(appId: appId)
+            }
         }
+        LxAppMacAppUIRuntime.refreshSurfaceSwitcherProjection()
 
         return true
     }

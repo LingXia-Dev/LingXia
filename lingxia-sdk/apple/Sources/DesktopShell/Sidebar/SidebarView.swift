@@ -303,7 +303,9 @@ private struct SidebarModel {
         let asideSurfaceId: String?
         let managedLabel: String?
         let managedIcon: NSImage?
+        let contentAppId: String?
         let showsLxappTabBar: Bool
+        let closable: Bool
 
         var isManagedMain: Bool { managedLabel != nil }
     }
@@ -342,7 +344,7 @@ extension PanelIconItem: Equatable {
 // MARK: - SidebarView
 
 /// The main sidebar container view, modeled after Chrome vertical tab groups.
-/// Supports drag-to-resize and a fully hidden state.
+/// Supports drag-to-resize and an icon-only rail.
 @MainActor
 class SidebarView: NSView, NSPopoverDelegate {
     private static let log = OSLog(subsystem: "LingXia", category: "Sidebar")
@@ -355,10 +357,7 @@ class SidebarView: NSView, NSPopoverDelegate {
         /// grows to clear the macOS traffic lights when they're wider (see
         /// `effectiveRailWidth`).
         static let railWidth: CGFloat = 60
-        /// Drag-end below this snaps to fully hidden (0).
-        static let railHideThreshold: CGFloat = 32
-        /// Drag-end below this (but at/above `railHideThreshold`) snaps to the icon rail;
-        /// at/above it the sidebar expands.
+        /// Drag-end below this snaps to the icon rail; at/above it the sidebar expands.
         static let railExpandThreshold: CGFloat = 128
         /// Square icon button in the rail.
         static let railButtonSize: CGFloat = 34
@@ -436,6 +435,10 @@ class SidebarView: NSView, NSPopoverDelegate {
     /// Container hosting the rail; shown only in compact mode.
     private let railScrollView = SidebarScrollView()
     private let railStack = NSStackView()
+    /// Footer actions stay anchored above the rail expand control, matching the
+    /// expanded footer and the Windows rail instead of joining navigation.
+    private let railFooterScrollView = SidebarScrollView()
+    private let railFooterStack = NSStackView()
     /// Rail buttons keyed by a composite id ("app:<appId>" / "web:<tabId>").
     private var railButtons: [String: NSButton] = [:]
     private var railTabPopover: NSPopover?
@@ -523,12 +526,14 @@ class SidebarView: NSView, NSPopoverDelegate {
     var onAppSelected: ((String) -> Void)?
     /// Called when user requests to close an app: (appId)
     var onAppCloseRequested: ((String) -> Void)?
+    var onManagedMainContextMenuRequested: ((String, NSEvent, NSView) -> Void)?
+    var onManagedMainRenameCommitted: ((String, String) -> Void)?
     /// Called when the bottom hide button is clicked
     var onHideRequested: (() -> Void)?
     /// Called when width changes via drag: (width, animated)
     var onWidthChanged: ((CGFloat, Bool) -> Void)?
-    /// Called when "+" button is clicked to add a browser tab
-    var onAddBrowserTab: (() -> Void)?
+    /// Called when the global "+" button requests content for the active main.
+    var onAddRequested: (() -> Void)?
     /// Called when a browser tab is selected
     var onBrowserTabSelected: ((String) -> Void)?
     /// Called when a browser tab close is requested
@@ -669,6 +674,32 @@ class SidebarView: NSView, NSPopoverDelegate {
             railStack.bottomAnchor.constraint(equalTo: railDoc.bottomAnchor, constant: -6),
         ])
 
+        railFooterScrollView.translatesAutoresizingMaskIntoConstraints = false
+        railFooterScrollView.contentView = SidebarClipView()
+        railFooterScrollView.hasVerticalScroller = false
+        railFooterScrollView.hasHorizontalScroller = false
+        railFooterScrollView.verticalScrollElasticity = .none
+        railFooterScrollView.drawsBackground = false
+        railFooterScrollView.borderType = .noBorder
+        footerView.addSubview(railFooterScrollView)
+
+        let railFooterDoc = FlippedView()
+        railFooterDoc.translatesAutoresizingMaskIntoConstraints = false
+        railFooterScrollView.documentView = railFooterDoc
+        railFooterStack.translatesAutoresizingMaskIntoConstraints = false
+        railFooterStack.orientation = .vertical
+        railFooterStack.alignment = .centerX
+        railFooterStack.spacing = 6
+        railFooterDoc.addSubview(railFooterStack)
+        NSLayoutConstraint.activate([
+            railFooterDoc.leadingAnchor.constraint(equalTo: railFooterScrollView.contentView.leadingAnchor),
+            railFooterDoc.trailingAnchor.constraint(equalTo: railFooterScrollView.contentView.trailingAnchor),
+            railFooterDoc.topAnchor.constraint(equalTo: railFooterScrollView.contentView.topAnchor),
+            railFooterStack.topAnchor.constraint(equalTo: railFooterDoc.topAnchor),
+            railFooterStack.centerXAnchor.constraint(equalTo: railFooterDoc.centerXAnchor),
+            railFooterStack.bottomAnchor.constraint(equalTo: railFooterDoc.bottomAnchor),
+        ])
+
         // Footer dock — bottom toolbar row for icon buttons
         footerView.translatesAutoresizingMaskIntoConstraints = false
         footerView.wantsLayer = true
@@ -745,14 +776,16 @@ class SidebarView: NSView, NSPopoverDelegate {
             size: NSSize(width: Layout.railIconSize, height: Layout.railIconSize))
         railExpandButton.target = self
         railExpandButton.action = #selector(railExpandClicked)
-        addSubview(railExpandButton)
+        footerView.addSubview(railExpandButton)
         NSLayoutConstraint.activate([
             railExpandButton.widthAnchor.constraint(equalToConstant: Layout.railButtonSize),
             railExpandButton.heightAnchor.constraint(equalToConstant: Layout.railButtonSize),
-            railExpandButton.centerXAnchor.constraint(equalTo: railScrollView.centerXAnchor),
-            // Pin to the sidebar's true bottom (the footer is hidden in compact),
-            // not railScrollView.bottom which stops a footerHeight above it.
-            railExpandButton.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -10),
+            railExpandButton.centerXAnchor.constraint(equalTo: footerView.centerXAnchor),
+            railExpandButton.bottomAnchor.constraint(equalTo: footerView.bottomAnchor, constant: -6),
+            railFooterScrollView.topAnchor.constraint(equalTo: footerSeparator.bottomAnchor, constant: 6),
+            railFooterScrollView.leadingAnchor.constraint(equalTo: footerView.leadingAnchor),
+            railFooterScrollView.trailingAnchor.constraint(equalTo: footerView.trailingAnchor),
+            railFooterScrollView.bottomAnchor.constraint(equalTo: railExpandButton.topAnchor, constant: -6),
         ])
 
         // Resize handle on right edge
@@ -864,18 +897,15 @@ class SidebarView: NSView, NSPopoverDelegate {
     private func handleDrag(proposedWidth: CGFloat) {
         let clamped = min(max(proposedWidth, 0), Layout.maxWidth)
         // Live feedback: show the icon rail while in the rail zone so the
-        // expanded layout never has to render squished at narrow widths.
-        let compact = clamped >= Layout.railHideThreshold && clamped < Layout.railExpandThreshold
+        // expanded layout never has to render squished at narrow widths. A drag
+        // cannot hide the rail; full hiding is an explicit host/user mode.
+        let compact = clamped < Layout.railExpandThreshold
         setCompactMode(compact)
-        onWidthChanged?(clamped, false)
+        onWidthChanged?(compact ? max(clamped, effectiveRailWidth) : clamped, false)
     }
 
     private func handleDragEnd(proposedWidth: CGFloat) {
-        if proposedWidth < Layout.railHideThreshold {
-            // Fully hidden — restore the expanded layout for the next reveal.
-            setCompactMode(false)
-            onWidthChanged?(0, true)
-        } else if proposedWidth < Layout.railExpandThreshold {
+        if proposedWidth < Layout.railExpandThreshold {
             setCompactMode(true)
             onWidthChanged?(effectiveRailWidth, true)
         } else {
@@ -902,6 +932,7 @@ class SidebarView: NSView, NSPopoverDelegate {
         } else {
             closeRailTabPopover()
         }
+        updateSidebarActionFooterHeight()
         updateVisibilityState()
     }
 
@@ -924,6 +955,55 @@ class SidebarView: NSView, NSPopoverDelegate {
         }
         railButtons.removeAll()
 
+        for pin in shellPinItems {
+            switch pin.kind {
+            case "lxapp":
+                let info = getLxAppInfo(pin.key)
+                let iconPath = info.icon.toString()
+                let image = (iconPath.isEmpty ? nil : NSImage(contentsOfFile: iconPath))
+                    ?? Self.defaultAppIcon
+                let name = info.app_name.toString()
+                let key = "pin-lxapp:\(pin.key)"
+                let button = makeRailButton(
+                    key: key,
+                    tooltip: name.isEmpty ? pin.key : name,
+                    image: image,
+                    isTemplate: false
+                )
+                button.action = #selector(railPinnedLxappClicked(_:))
+                railStack.addArrangedSubview(button)
+                railButtons[key] = button
+            case "bookmark":
+                guard let entry = bookmarksSnapshot.entries.first(where: { $0.id == pin.key }) else {
+                    continue
+                }
+                let key = "pin-bookmark:\(pin.key)"
+                let button = makeRailButton(
+                    key: key,
+                    tooltip: entry.title.isEmpty ? entry.url : entry.title,
+                    image: LxIcon.image(
+                        named: "icon_globe",
+                        size: CGSize(width: Layout.railIconSize, height: Layout.railIconSize)
+                    ),
+                    isTemplate: true
+                )
+                button.action = #selector(railPinnedBookmarkClicked(_:))
+                railStack.addArrangedSubview(button)
+                railButtons[key] = button
+                SidebarFaviconLoader.load(urlString: entry.url) { [weak self, weak button] image in
+                    guard let self, let button,
+                          self.railButtons[key] === button else { return }
+                    let copy = image.copy() as? NSImage ?? image
+                    copy.size = NSSize(width: Layout.railIconSize, height: Layout.railIconSize)
+                    copy.isTemplate = false
+                    button.image = copy
+                    button.contentTintColor = nil
+                }
+            default:
+                continue
+            }
+        }
+
         for group in model.appGroups {
             let tooltip: String
             let image: NSImage?
@@ -945,7 +1025,10 @@ class SidebarView: NSView, NSPopoverDelegate {
                 key: key,
                 tooltip: tooltip,
                 image: image,
-                isTemplate: group.isManagedMain
+                // Native/browser glyphs are tintable. Lxapp provider assets are
+                // full-color artwork; treating their opaque tile as a template
+                // turns the entire icon into a flat white/gray square.
+                isTemplate: group.isManagedMain && group.contentAppId == nil
             )
             btn.action = #selector(railAppClicked(_:))
             if let railButton = btn as? SidebarRailButton {
@@ -1004,8 +1087,12 @@ class SidebarView: NSView, NSPopoverDelegate {
             railStack.addArrangedSubview(addRailButton)
         }
 
-        // In the icon rail, an sidebar action keeps only its icon; its single-line
-        // title moves to the tooltip and the click target stays identical.
+        railFooterStack.arrangedSubviews.forEach {
+            railFooterStack.removeArrangedSubview($0)
+            $0.removeFromSuperview()
+        }
+        // Footer actions keep their bottom ownership in the rail. Only their
+        // icon remains; the label moves to the tooltip.
         for item in model.panelItems {
             let image = item.iconURL.flatMap { NSImage(contentsOf: $0) }
             let key = "sidebar-action:\(item.id)"
@@ -1017,7 +1104,7 @@ class SidebarView: NSView, NSPopoverDelegate {
             )
             button.action = #selector(railSidebarActionClicked(_:))
             button.isEnabled = !item.disabled
-            railStack.addArrangedSubview(button)
+            railFooterStack.addArrangedSubview(button)
             railButtons[key] = button
         }
 
@@ -1039,6 +1126,7 @@ class SidebarView: NSView, NSPopoverDelegate {
         btn.layer?.cornerRadius = 8
         btn.layer?.backgroundColor = NSColor.clear.cgColor
         btn.toolTip = tooltip
+        btn.setAccessibilityLabel(tooltip)
         btn.target = self
         btn.identifier = NSUserInterfaceItemIdentifier(key)
         if let image {
@@ -1062,7 +1150,17 @@ class SidebarView: NSView, NSPopoverDelegate {
                 && model.panelItems.contains {
                     key == "sidebar-action:\($0.id)" && $0.active && !$0.disabled
                 }
-            let selected = key == activeRailKey || activeSidebarAction
+            let activePinnedLxapp = key.hasPrefix("pin-lxapp:")
+                && activeRailKey == "app:\(key.dropFirst("pin-lxapp:".count))"
+            let activePinnedBookmark = key.hasPrefix("pin-bookmark:")
+                && pinnedBookmarkEntries.contains { entry in
+                    key == "pin-bookmark:\(entry.id)"
+                        && openTabId(for: entry).map { "web:\($0)" == activeRailKey } == true
+                }
+            let selected = key == activeRailKey
+                || activeSidebarAction
+                || activePinnedLxapp
+                || activePinnedBookmark
             btn.layer?.backgroundColor = selected
                 ? LxAppHostTheme.selectionBackground.cgColor
                 : NSColor.clear.cgColor
@@ -1074,6 +1172,24 @@ class SidebarView: NSView, NSPopoverDelegate {
         let appId = String(key.dropFirst(4))
         let index = getTabBar(appId).map { Int($0.selected_index) } ?? 0
         onAppPageSelected?(appId, index)
+    }
+
+    @objc private func railPinnedLxappClicked(_ sender: NSButton) {
+        guard let key = sender.identifier?.rawValue,
+              key.hasPrefix("pin-lxapp:") else { return }
+        _ = shellOpenLxappMain(String(key.dropFirst("pin-lxapp:".count)))
+    }
+
+    @objc private func railPinnedBookmarkClicked(_ sender: NSButton) {
+        guard let key = sender.identifier?.rawValue,
+              key.hasPrefix("pin-bookmark:") else { return }
+        let id = String(key.dropFirst("pin-bookmark:".count))
+        guard let entry = pinnedBookmarkEntries.first(where: { $0.id == id }) else { return }
+        if let tabId = openTabId(for: entry) {
+            onBrowserTabSelected?(tabId)
+        } else {
+            onBookmarkOpen?(entry.url)
+        }
     }
 
     @objc private func railBrowserClicked(_ sender: NSButton) {
@@ -1307,18 +1423,23 @@ class SidebarView: NSView, NSPopoverDelegate {
         let compact = isCompact && !hidden && !appUIOnlyMode
         scrollView.isHidden = hidden || appUIOnlyMode || compact
         railScrollView.isHidden = hidden || appUIOnlyMode || !compact
-        // The rail's bottom-pinned expand toggle lives outside the scroll view, so
-        // toggle it with the rail.
+        // Footer actions and the expand toggle retain their bottom ownership in
+        // the rail instead of entering the navigation scroll region.
         railExpandButton.isHidden = hidden || appUIOnlyMode || !compact
+        railFooterScrollView.isHidden = hidden
+            || appUIOnlyMode
+            || !compact
+            || model.panelItems.isEmpty
+        footerSeparator.isHidden = compact
         // Header actions and footer cells don't fit the rail.
         updateHeaderActionVisibility()
         // The header collapse toggle shows only in the expanded layout; the rail
         // carries its own expand toggle anchored at the bottom when compact.
         hideButton.isHidden = hidden || appUIOnlyMode || compact
         panelScroll.isHidden = compact
-        // The footer only carries panel icons now; collapse it when empty so an
-        // expanded sidebar with no panel actions has no dangling bottom bar.
-        footerView.isHidden = hidden || compact || model.panelItems.isEmpty
+        // The compact footer always keeps the expand affordance; expanded mode
+        // needs a footer only when app-owned actions exist.
+        footerView.isHidden = hidden || (compact ? false : model.panelItems.isEmpty)
         resizeHandle.isHidden = hidden
     }
 
@@ -1458,6 +1579,19 @@ class SidebarView: NSView, NSPopoverDelegate {
     }
 
     private func updateSidebarActionFooterHeight() {
+        if isCompact {
+            let visibleActions = min(CGFloat(model.panelItems.count), Layout.footerMaxRows)
+            let actionHeight = visibleActions > 0
+                ? visibleActions * Layout.railButtonSize
+                    + max(0, visibleActions - 1) * railFooterStack.spacing
+                    + 6
+                : 0
+            footerHeightConstraint?.constant = 6
+                + Layout.railButtonSize
+                + actionHeight
+                + (visibleActions > 0 ? 6 : 0)
+            return
+        }
         guard !model.panelItems.isEmpty else {
             footerHeightConstraint?.constant = 0
             return
@@ -1513,6 +1647,13 @@ class SidebarView: NSView, NSPopoverDelegate {
               let url = URL(string: iconFileUrl),
               let image = NSImage(contentsOf: url) else { return }
         panelButtons[index].setIcon(image)
+        if let railButton = railButtons["sidebar-action:\(panelId)"] {
+            let copy = image.copy() as? NSImage ?? image
+            copy.size = NSSize(width: Layout.railIconSize, height: Layout.railIconSize)
+            copy.isTemplate = false
+            railButton.image = copy
+            railButton.contentTintColor = nil
+        }
     }
 
     // MARK: - Public API (thin model mutators)
@@ -1528,7 +1669,9 @@ class SidebarView: NSView, NSPopoverDelegate {
                 asideSurfaceId: $0.asideSurfaceId,
                 managedLabel: nil,
                 managedIcon: nil,
-                showsLxappTabBar: true
+                contentAppId: nil,
+                showsLxappTabBar: true,
+                closable: true
             )
         }
         rebuildAppGroups()
@@ -1543,7 +1686,7 @@ class SidebarView: NSView, NSPopoverDelegate {
     func updateManagedMainItems(_ items: [LxAppUIActionItem], activeId: String?) {
         managedMainGroups = items.map { item in
             let fallbackIcon: NSImage?
-            switch item.id {
+            switch item.builtInIcon {
             case "terminal":
                 fallbackIcon = NSImage(
                     systemSymbolName: "terminal",
@@ -1559,7 +1702,9 @@ class SidebarView: NSView, NSPopoverDelegate {
                 asideSurfaceId: nil,
                 managedLabel: item.label,
                 managedIcon: item.iconURL.flatMap(NSImage.init(contentsOf:)) ?? fallbackIcon,
-                showsLxappTabBar: item.showsLxappTabBar
+                contentAppId: item.contentAppId,
+                showsLxappTabBar: item.showsLxappTabBar,
+                closable: item.closable
             )
         }
         rebuildAppGroups()
@@ -1567,6 +1712,10 @@ class SidebarView: NSView, NSPopoverDelegate {
             model.selection = .app(appId: activeId, pageIndex: nil)
         }
         render()
+    }
+
+    func beginManagedMainRename(surfaceId: String) {
+        groupViews[surfaceId]?.beginManagedRename()
     }
 
     private func rebuildAppGroups() {
@@ -1668,7 +1817,9 @@ class SidebarView: NSView, NSPopoverDelegate {
             let groupView: SidebarGroupView
             if let existing = groupViews[appId],
                existing.isManagedMain == group.isManagedMain,
-               existing.showsLxappTabBar == group.showsLxappTabBar {
+               existing.showsLxappTabBar == group.showsLxappTabBar,
+               existing.contentAppId == group.contentAppId,
+               existing.closable == group.closable {
                 groupView = existing
             } else {
                 if let existing = groupViews.removeValue(forKey: appId) {
@@ -1679,7 +1830,9 @@ class SidebarView: NSView, NSPopoverDelegate {
                     appId: appId,
                     managedLabel: group.managedLabel,
                     managedIcon: group.managedIcon,
-                    showsLxappTabBar: group.showsLxappTabBar
+                    contentAppId: group.contentAppId,
+                    showsLxappTabBar: group.showsLxappTabBar,
+                    closable: group.closable
                 )
                 groupView.onPageSelected = { [weak self] appId, itemIndex in
                     self?.onAppPageSelected?(appId, itemIndex)
@@ -1689,6 +1842,12 @@ class SidebarView: NSView, NSPopoverDelegate {
                 }
                 groupView.onCloseRequested = { [weak self] appId in
                     self?.onAppCloseRequested?(appId)
+                }
+                groupView.onManagedContextMenuRequested = { [weak self] surfaceId, event, view in
+                    self?.onManagedMainContextMenuRequested?(surfaceId, event, view)
+                }
+                groupView.onManagedRenameCommitted = { [weak self] surfaceId, title in
+                    self?.onManagedMainRenameCommitted?(surfaceId, title)
                 }
                 groupView.onLayoutChanged = { [weak self] in
                     self?.relayoutAfterGroupToggle()
@@ -1700,6 +1859,12 @@ class SidebarView: NSView, NSPopoverDelegate {
             }
 
             groupView.setColorIndex(index)
+            if group.isManagedMain {
+                groupView.updateManagedPresentation(
+                    label: group.managedLabel,
+                    icon: group.managedIcon
+                )
+            }
 
             if groupView.superview !== docView {
                 groupView.removeFromSuperview()
@@ -2121,7 +2286,7 @@ class SidebarView: NSView, NSPopoverDelegate {
     }
 
     @objc private func addButtonClicked() {
-        onAddBrowserTab?()
+        onAddRequested?()
     }
 
     @objc private func hideButtonClicked() {
@@ -2215,7 +2380,7 @@ class SidebarView: NSView, NSPopoverDelegate {
 /// NSView subclass with flipped coordinate system (top-left origin)
 @MainActor
 private class FlippedView: NSView {
-    override var isFlipped: Bool { true }
+    nonisolated override var isFlipped: Bool { true }
     override var mouseDownCanMoveWindow: Bool { false }
 }
 
@@ -2223,7 +2388,7 @@ private class FlippedView: NSView {
 /// in non-flipped coordinates).
 @MainActor
 private final class FlippedClipView: NSView {
-    override var isFlipped: Bool { true }
+    nonisolated override var isFlipped: Bool { true }
 }
 
 /// Wraps whole icon+title cells while keeping each title single-line.
@@ -2236,7 +2401,7 @@ private final class SidebarActionFlowView: NSView {
     private var entries: [SidebarActionRowView] = []
     private var lastLayoutWidth: CGFloat = 0
 
-    override var isFlipped: Bool { true }
+    nonisolated override var isFlipped: Bool { true }
 
     func setEntries(_ entries: [SidebarActionRowView]) {
         self.entries.forEach { $0.removeFromSuperview() }

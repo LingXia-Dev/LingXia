@@ -1182,6 +1182,79 @@ impl Drop for GridFonts {
     }
 }
 
+/// Terminal mono font: prefer modern terminal faces, then Windows' built-ins.
+/// Faces are verified via `GetTextFaceW` (the GDI font mapper silently
+/// substitutes missing faces); when none resolves, the empty face name
+/// lets the mapper pick any fixed-pitch font via the pitch/family hint.
+fn create_terminal_font(hdc: HDC, height: i32, bold: bool, italic: bool, underline: bool) -> HFONT {
+    let weight = if bold { 700 } else { 400 };
+    for face in [
+        "Cascadia Mono",
+        "Cascadia Code",
+        "JetBrains Mono",
+        "Sarasa Mono SC",
+        "Consolas",
+        "Courier New",
+        "",
+    ] {
+        let face_wide: Vec<u16> = face.encode_utf16().chain(std::iter::once(0)).collect();
+        unsafe {
+            let font = CreateFontW(
+                -height,
+                0,
+                0,
+                0,
+                weight,
+                u32::from(italic),
+                u32::from(underline),
+                0,
+                DEFAULT_CHARSET,
+                OUT_DEFAULT_PRECIS,
+                CLIP_DEFAULT_PRECIS,
+                CLEARTYPE_QUALITY,
+                FIXED_PITCH.0 as u32 | FF_MODERN.0 as u32,
+                PCWSTR(face_wide.as_ptr()),
+            );
+            if font.is_invalid() {
+                continue;
+            }
+            if face.is_empty() {
+                return font;
+            }
+            let old_font = SelectObject(hdc, HGDIOBJ(font.0));
+            let mut resolved = [0u16; 64];
+            let copied = GetTextFaceW(hdc, Some(&mut resolved)).max(0) as usize;
+            if !old_font.is_invalid() {
+                let _ = SelectObject(hdc, old_font);
+            }
+            let resolved_len = resolved
+                .iter()
+                .position(|&unit| unit == 0)
+                .unwrap_or(copied.min(resolved.len()));
+            let resolved = String::from_utf16_lossy(&resolved[..resolved_len]);
+            if resolved.eq_ignore_ascii_case(face) {
+                return font;
+            }
+            let _ = DeleteObject(HGDIOBJ(font.0));
+        }
+    }
+    HFONT::default()
+}
+
+/// Parses the `#rrggbb` color tokens produced by `lingxia-terminal`.
+fn parse_hex_color(token: &str) -> Option<u32> {
+    let hex = token.strip_prefix('#')?;
+    if hex.len() != 6 {
+        return None;
+    }
+    u32::from_str_radix(hex, 16).ok()
+}
+
+/// Fades `color` toward `background` for an unfocused split pane.
+fn dim_unfocused(color: u32, background: u32) -> u32 {
+    blend_rgb(color, background, UNFOCUSED_KEEP_PERCENT)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1327,77 +1400,4 @@ mod tests {
         );
         assert_eq!(scrollbar_thumb_rect(track, 20, 0, 20), None);
     }
-}
-
-/// Terminal mono font: prefer modern terminal faces, then Windows' built-ins.
-/// Faces are verified via `GetTextFaceW` (the GDI font mapper silently
-/// substitutes missing faces); when none resolves, the empty face name
-/// lets the mapper pick any fixed-pitch font via the pitch/family hint.
-fn create_terminal_font(hdc: HDC, height: i32, bold: bool, italic: bool, underline: bool) -> HFONT {
-    let weight = if bold { 700 } else { 400 };
-    for face in [
-        "Cascadia Mono",
-        "Cascadia Code",
-        "JetBrains Mono",
-        "Sarasa Mono SC",
-        "Consolas",
-        "Courier New",
-        "",
-    ] {
-        let face_wide: Vec<u16> = face.encode_utf16().chain(std::iter::once(0)).collect();
-        unsafe {
-            let font = CreateFontW(
-                -height,
-                0,
-                0,
-                0,
-                weight,
-                u32::from(italic),
-                u32::from(underline),
-                0,
-                DEFAULT_CHARSET,
-                OUT_DEFAULT_PRECIS,
-                CLIP_DEFAULT_PRECIS,
-                CLEARTYPE_QUALITY,
-                FIXED_PITCH.0 as u32 | FF_MODERN.0 as u32,
-                PCWSTR(face_wide.as_ptr()),
-            );
-            if font.is_invalid() {
-                continue;
-            }
-            if face.is_empty() {
-                return font;
-            }
-            let old_font = SelectObject(hdc, HGDIOBJ(font.0));
-            let mut resolved = [0u16; 64];
-            let copied = GetTextFaceW(hdc, Some(&mut resolved)).max(0) as usize;
-            if !old_font.is_invalid() {
-                let _ = SelectObject(hdc, old_font);
-            }
-            let resolved_len = resolved
-                .iter()
-                .position(|&unit| unit == 0)
-                .unwrap_or(copied.min(resolved.len()));
-            let resolved = String::from_utf16_lossy(&resolved[..resolved_len]);
-            if resolved.eq_ignore_ascii_case(face) {
-                return font;
-            }
-            let _ = DeleteObject(HGDIOBJ(font.0));
-        }
-    }
-    HFONT::default()
-}
-
-/// Parses the `#rrggbb` color tokens produced by `lingxia-terminal`.
-fn parse_hex_color(token: &str) -> Option<u32> {
-    let hex = token.strip_prefix('#')?;
-    if hex.len() != 6 {
-        return None;
-    }
-    u32::from_str_radix(hex, 16).ok()
-}
-
-/// Fades `color` toward `background` for an unfocused split pane.
-fn dim_unfocused(color: u32, background: u32) -> u32 {
-    blend_rgb(color, background, UNFOCUSED_KEEP_PERCENT)
 }

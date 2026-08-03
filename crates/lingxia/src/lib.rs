@@ -27,8 +27,12 @@ pub use lxapp::host::{ChannelContext, ChannelMessage, StreamContext};
 /// privilege declaration. For dev/test hosts (the Runner) only — product hosts
 /// must not call this. A `lingxia dev` session already implies auto-grant.
 pub use lxapp::set_automation_auto_grant;
+// Required by expansions of `#[lingxia::native]`; host applications should
+// receive it through macro-generated parameters rather than orchestrate it.
+#[doc(hidden)]
+pub use lxapp::LxApp;
 pub use lxapp::{
-    FloatDismiss, LxApp, LxAppSecurityPrivilege, PageQueryInput, PageSurface, PageSurfaceRequest,
+    FloatDismiss, LxAppSecurityPrivilege, PageQueryInput, PageSurface, PageSurfaceRequest,
     PageSurfaceTarget, SurfaceInteraction, SurfaceKind, SurfacePosition, SurfaceRole,
     UrlCallbackSurface, UrlCallbackWaitError,
 };
@@ -122,9 +126,9 @@ pub mod task;
 pub mod terminal {
     pub use lingxia_terminal::{
         BackendStatus, TerminalBackend, TerminalCell, TerminalSnapshot, backend_available,
-        backend_status, backend_status_json, terminal_close, terminal_create, terminal_exited,
-        terminal_read, terminal_resize, terminal_scroll, terminal_snapshot, terminal_snapshot_data,
-        terminal_write,
+        backend_status, backend_status_json, terminal_close, terminal_create, terminal_create_at,
+        terminal_current_directory, terminal_exited, terminal_read, terminal_resize,
+        terminal_scroll, terminal_snapshot, terminal_snapshot_data, terminal_write,
     };
 }
 /// Host app update helpers and update event types.

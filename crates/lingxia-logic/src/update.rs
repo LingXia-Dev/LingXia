@@ -1,10 +1,5 @@
-use crate::i18n::{
-    err_code_message, js_error_from_business_code_with_detail, js_error_from_lxapp_error,
-    js_internal_error,
-};
-use lxapp::{
-    LxApp, LxAppUpdateQuery, ReleaseType, UpdateManager, register_app_handler, try_get, warn,
-};
+use crate::i18n::{err_code_message, js_error_from_lxapp_error};
+use lxapp::{LxApp, ReleaseType, register_app_handler, try_get, warn};
 use rong::{
     Class, HostError, JSContext, JSContextService, JSFunc, JSObject, JSResult, JSValue, js_class,
     js_method,
@@ -270,54 +265,9 @@ pub async fn ensure_first_install(
     target_appid: &str,
     release_type: ReleaseType,
 ) -> JSResult<()> {
-    let manager = UpdateManager::new(current_lxapp.clone());
-
-    if manager
-        .is_installed(target_appid, release_type)
-        .map_err(|e| js_internal_error(format!("first-install check failed: {}", e)))?
-    {
-        return Ok(());
-    }
-
-    let pkg = manager
-        .check_update(
-            target_appid,
-            release_type,
-            LxAppUpdateQuery::Latest {
-                current_version: None,
-            },
-        )
+    lxapp::ensure_first_install(current_lxapp, target_appid, release_type)
         .await
-        .map_err(|e| {
-            js_error_from_business_code_with_detail(
-                5001,
-                format!("failed to query first-install package: {}", e),
-            )
-        })?
-        .ok_or_else(|| {
-            js_error_from_business_code_with_detail(
-                1003,
-                format!("No package available for first install of {}", target_appid),
-            )
-        })?;
-
-    manager
-        .download_archive_with_checksum(
-            target_appid,
-            release_type,
-            &pkg.url,
-            &pkg.checksum_sha256,
-            &pkg.version,
-        )
-        .await
-        .map_err(|e| {
-            js_error_from_business_code_with_detail(
-                5001,
-                format!("failed to download first-install package: {}", e),
-            )
-        })?;
-
-    Ok(())
+        .map_err(|error| js_error_from_lxapp_error(&error))
 }
 
 #[cfg(test)]

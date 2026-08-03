@@ -84,9 +84,17 @@ pub fn backend_status_json() -> String {
 /// the stable display contract and keep native code focused on
 /// view/input/UX.
 pub fn terminal_create(cols: u16, rows: u16) -> u64 {
+    terminal_create_at(cols, rows, None)
+}
+
+/// Create a terminal session whose shell starts in `cwd`.
+///
+/// `None` inherits the host process directory. Returns `0` if the PTY, shell,
+/// or session registry cannot be initialized, matching [`terminal_create`].
+pub fn terminal_create_at(cols: u16, rows: u16, cwd: Option<&Path>) -> u64 {
     let cols = cols.max(1);
     let rows = rows.max(1);
-    let result = TerminalSession::spawn(cols, rows).and_then(|session| {
+    let result = TerminalSession::spawn(cols, rows, cwd).and_then(|session| {
         let mut sessions = SESSIONS
             .lock()
             .map_err(|_| "session registry lock poisoned".to_string())?;
@@ -102,6 +110,18 @@ pub fn terminal_create(cols: u16, rows: u16) -> u64 {
             0
         }
     }
+}
+
+/// Best-effort current directory of the foreground process, falling back to
+/// the session shell. Returns `None` for a closed session or when the platform
+/// cannot resolve a process directory.
+pub fn terminal_current_directory(id: u64) -> Option<std::path::PathBuf> {
+    let session = session(id)?;
+    let session = session.lock().ok()?;
+    session
+        .foreground_process_pid()
+        .and_then(process_cwd)
+        .or_else(|| session.title_state.shell_pid.and_then(process_cwd))
 }
 
 pub fn terminal_write(id: u64, input: &str) -> bool {
@@ -480,7 +500,7 @@ pub struct TerminalCell {
 }
 
 impl TerminalSession {
-    fn spawn(cols: u16, rows: u16) -> Result<Self, String> {
+    fn spawn(cols: u16, rows: u16, cwd: Option<&Path>) -> Result<Self, String> {
         let pty_system = native_pty_system();
         let pair = pty_system
             .openpty(PtySize {
@@ -496,6 +516,9 @@ impl TerminalSession {
         let mut command = CommandBuilder::new(shell.path);
         for arg in shell.args {
             command.arg(arg);
+        }
+        if let Some(cwd) = cwd {
+            command.cwd(cwd);
         }
         command.env("TERM", "xterm-256color");
         command.env("COLORTERM", "truecolor");
@@ -1434,5 +1457,25 @@ mod tests {
         let snapshot = terminal_snapshot(id);
         terminal_close(id);
         panic!("terminal snapshot did not contain shell output: {snapshot}");
+    }
+
+    #[test]
+    fn session_can_start_in_an_explicit_directory() {
+        let expected = std::env::temp_dir().canonicalize().unwrap();
+        let id = terminal_create_at(80, 24, Some(&expected));
+        assert_ne!(id, 0);
+
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while Instant::now() < deadline {
+            if terminal_current_directory(id).as_deref() == Some(expected.as_path()) {
+                terminal_close(id);
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(25));
+        }
+
+        let actual = terminal_current_directory(id);
+        terminal_close(id);
+        panic!("terminal cwd mismatch: expected={expected:?} actual={actual:?}");
     }
 }

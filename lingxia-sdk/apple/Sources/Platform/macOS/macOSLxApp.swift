@@ -204,6 +204,11 @@ extension macOSLxApp {
     }
 
     @MainActor
+    internal static func browserTabsChanged() {
+        activeShell()?.synchronizeBrowserTabsFromCore()
+    }
+
+    @MainActor
     internal static func presentInternalBrowserTab(tabId: String) -> Bool {
         let normalized = tabId.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalized.isEmpty else {

@@ -207,8 +207,8 @@ final class LingXiaTerminalPaneView: NSView, NSDraggingSource {
     private let font = LingXiaTerminalFont.regular()
     private var dropDirection: LingXiaTerminalSplitDirection?
 
-    init() {
-        self.session = LingXiaPTYTerminalSession()
+    init(initialDirectory: String? = nil) {
+        self.session = LingXiaPTYTerminalSession(initialDirectory: initialDirectory)
         super.init(frame: .zero)
         lxTerminalLog("pane.init pane=\(paneID.uuidString)")
         translatesAutoresizingMaskIntoConstraints = false
@@ -332,6 +332,10 @@ final class LingXiaTerminalPaneView: NSView, NSDraggingSource {
             )
         }
         onActivated?(paneID)
+    }
+
+    func currentWorkingDirectory() -> String? {
+        session.currentWorkingDirectory()
     }
 
     func sendInput(_ input: String) {
@@ -1659,6 +1663,11 @@ private final class LingXiaPTYTerminalSession: @unchecked Sendable {
     private var readTimer: DispatchSourceTimer?
     private var pendingInput = ""
     private var lastSnapshotJSON = ""
+    private let initialDirectory: String?
+
+    init(initialDirectory: String? = nil) {
+        self.initialDirectory = initialDirectory
+    }
 
     func start() {
         ioQueue.async { [weak self] in
@@ -1677,7 +1686,7 @@ private final class LingXiaPTYTerminalSession: @unchecked Sendable {
 
     private func startOnIOQueue() {
         lxTerminalLogAsync("pty.start create cols=120 rows=32")
-        let id = terminalSessionCreate(120, 32)
+        let id = terminalSessionCreate(120, 32, initialDirectory ?? "")
         guard id != 0 else {
             lxTerminalLogAsync("pty.start failed create", type: .error)
             emitError("terminal runtime failed to start")
@@ -1708,6 +1717,14 @@ private final class LingXiaPTYTerminalSession: @unchecked Sendable {
             if !ok {
                 LXLog.error("terminal write failed session=\(self.sessionID)", category: "MacTerminalPTY")
             }
+        }
+    }
+
+    func currentWorkingDirectory() -> String? {
+        ioQueue.sync {
+            guard sessionID != 0 else { return initialDirectory }
+            let path = terminalSessionCurrentDirectory(sessionID).toString()
+            return path.isEmpty ? initialDirectory : path
         }
     }
 

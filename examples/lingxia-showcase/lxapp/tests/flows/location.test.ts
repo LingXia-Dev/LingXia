@@ -3,16 +3,8 @@ import type {
   DesktopAxNode,
   DesktopDriver,
   DesktopWindowInfo,
-  LxAppDriver,
 } from 'lingxia-types';
-
-async function platform(app: LxAppDriver): Promise<string> {
-  const args = test.args as Record<string, string>;
-  if (args.platform) return args.platform.toLocaleLowerCase();
-  return app.eval({
-    script: 'return String(lx.app.getBaseInfo().os || "").toLowerCase()',
-  }) as Promise<string>;
-}
+import { runtimePlatform } from '../helpers/platform.js';
 
 function locationPrompt(windows: DesktopWindowInfo[]): DesktopWindowInfo | undefined {
   return windows.find((window) => (
@@ -89,7 +81,7 @@ const locationTest = targetPlatform && targetPlatform !== 'macos' ? test.skip : 
 locationTest('handles the macOS location permission sheet when it appears', async () => {
   const auto = lx.automation();
   const app = auto.lxapp();
-  if (await platform(app) !== 'macos') return;
+  if (await runtimePlatform(app) !== 'macos') return;
   const doctor = await auto.desktop.doctor();
   const { permissions } = doctor;
 

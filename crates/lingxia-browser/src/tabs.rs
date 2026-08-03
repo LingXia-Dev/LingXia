@@ -25,6 +25,10 @@ pub(crate) const INTERNAL_TAB_PATH_PREFIX: &str = "/tabs/";
 #[derive(Clone)]
 pub(crate) struct BrowserTabState {
     pub(crate) session_id: u64,
+    /// Stable creation sequence of the tab entry. Listing APIs order by this
+    /// value so `tabs()` reflects creation order regardless of id naming;
+    /// unlike `create_token` it never changes when a WebView is recreated.
+    pub(crate) created_order: u64,
     /// Monotonic token to identify the current create lifecycle of this tab.
     /// Used to ignore stale async callbacks when tab gets recreated quickly.
     pub(crate) create_token: u64,
@@ -85,6 +89,7 @@ pub(crate) struct BrowserState {
 static BROWSER_STATE: OnceLock<Mutex<BrowserState>> = OnceLock::new();
 static BROWSER_TAB_COUNTER: AtomicU64 = AtomicU64::new(1);
 static BROWSER_CREATE_TOKEN: AtomicU64 = AtomicU64::new(1);
+static BROWSER_CREATED_ORDER: AtomicU64 = AtomicU64::new(1);
 static BROWSER_LOAD_MUTEX: OnceLock<Mutex<()>> = OnceLock::new();
 static BROWSER_ACTIVE_TAB_ID: OnceLock<Mutex<Option<String>>> = OnceLock::new();
 static BROWSER_AUTOMATION_TAB_ID: OnceLock<Mutex<Option<String>>> = OnceLock::new();
@@ -372,6 +377,10 @@ fn next_browser_create_token() -> u64 {
     BROWSER_CREATE_TOKEN.fetch_add(1, Ordering::Relaxed)
 }
 
+fn next_browser_created_order() -> u64 {
+    BROWSER_CREATED_ORDER.fetch_add(1, Ordering::Relaxed)
+}
+
 // ---------------------------------------------------------------------------
 // Owner resolution (used by FFI bridge layer)
 // ---------------------------------------------------------------------------
@@ -463,15 +472,17 @@ pub fn browser_tab_info(tab_id: &str) -> Option<BrowserTabInfo> {
         .map(|tab| build_tab_info(&normalized, tab))
 }
 
+/// Tabs in creation order — the listing contract for automation and shells;
+/// id ordering is an accident of stable-key naming and must not leak out.
 pub fn browser_tabs() -> Vec<BrowserTabInfo> {
     let state = lock_state();
-    let mut tabs: Vec<BrowserTabInfo> = state
+    let mut tabs: Vec<(u64, BrowserTabInfo)> = state
         .tabs
         .iter()
-        .map(|(tab_id, tab)| build_tab_info(tab_id, tab))
+        .map(|(tab_id, tab)| (tab.created_order, build_tab_info(tab_id, tab)))
         .collect();
-    tabs.sort_by(|a, b| a.tab_id.cmp(&b.tab_id));
-    tabs
+    tabs.sort_by_key(|(created_order, _)| *created_order);
+    tabs.into_iter().map(|(_, tab)| tab).collect()
 }
 
 pub fn browser_current_tab() -> Option<BrowserTabInfo> {
@@ -483,14 +494,13 @@ pub fn browser_current_tab() -> Option<BrowserTabInfo> {
     {
         return Some(build_tab_info(&tab_id, tab));
     }
-    let mut product_tabs = state
+    // Fall back to the earliest-created product tab (the stable "first" tab).
+    state
         .tabs
         .iter()
         .filter(|(_, tab)| !tab.standalone)
+        .min_by_key(|(_, tab)| tab.created_order)
         .map(|(tab_id, tab)| build_tab_info(tab_id, tab))
-        .collect::<Vec<_>>();
-    product_tabs.sort_by(|a, b| a.tab_id.cmp(&b.tab_id));
-    product_tabs.into_iter().next()
 }
 
 pub fn browser_automation_current_tab() -> Option<BrowserTabInfo> {
@@ -829,6 +839,7 @@ fn open_internal_browser_tab_with_scope(
                 tab_id.clone(),
                 BrowserTabState {
                     session_id,
+                    created_order: next_browser_created_order(),
                     create_token: token,
                     create_in_flight: true,
                     pending_url: if has_target_url {
@@ -1291,6 +1302,7 @@ mod tests {
             tab_id.to_string(),
             BrowserTabState {
                 session_id: 1,
+                created_order: next_browser_created_order(),
                 create_token: 1,
                 create_in_flight: false,
                 pending_url: None,
@@ -1406,6 +1418,7 @@ mod tests {
     fn stable_tab_reuse_rejects_privacy_policy_changes() {
         let tab = BrowserTabState {
             session_id: 1,
+            created_order: next_browser_created_order(),
             create_token: 1,
             create_in_flight: false,
             pending_url: None,
@@ -1450,6 +1463,7 @@ mod tests {
             tab_id.clone(),
             BrowserTabState {
                 session_id: 7,
+                created_order: next_browser_created_order(),
                 create_token: 1,
                 create_in_flight: false,
                 pending_url: None,
@@ -1487,6 +1501,7 @@ mod tests {
         let standalone_tab_id = generate_tab_id();
         let make_tab = |standalone| BrowserTabState {
             session_id: 7,
+            created_order: next_browser_created_order(),
             create_token: 1,
             create_in_flight: false,
             pending_url: None,

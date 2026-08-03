@@ -5,9 +5,9 @@
 //! file is pure product policy registered through the
 //! [`WindowsChromeRenderer`] seam.
 
-use std::sync::{Arc, OnceLock};
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex, OnceLock};
 
-#[cfg(feature = "browser-runtime")]
 use lingxia_windows_contract::post_to_window_thread;
 use lingxia_windows_contract::{
     WindowsAsidePanelTab, WindowsChromeAttachedLayout, WindowsChromeCommand, WindowsChromeHit,
@@ -291,7 +291,10 @@ impl WindowsChromeRenderer for ShellChromeRenderer {
         let saved = unsafe { SaveDC(hdc) };
         super::text_input::exclude_active_inline_edit(hdc, state.hwnd);
         if let Some(layout) = shell_layout(&state.layout) {
+            sync_sidebar_surface_title_rects(state.hwnd, state.client, layout);
             draw_window_chrome(hdc, state, layout);
+        } else {
+            clear_sidebar_surface_title_rects(state.hwnd);
         }
         unsafe {
             let _ = RestoreDC(hdc, saved);
@@ -373,6 +376,8 @@ fn chrome_mouse_wheel(
     if delta == 0 {
         return None;
     }
+    let covered_layout = covering_overlay_layout(state, layout);
+    let layout = covered_layout.as_ref().unwrap_or(layout);
     let rects = chrome_rects_for_state(state, layout);
     let tabbar_rect = rects.tab_bar?;
     let tabbar = layout.tab_bar.as_ref()?;
@@ -436,6 +441,8 @@ fn chrome_hover_rect(
     layout: &WindowsShellWindowLayout,
     point: (i32, i32),
 ) -> Option<RECT> {
+    let covered_layout = covering_overlay_layout(state, layout);
+    let layout = covered_layout.as_ref().unwrap_or(layout);
     let client = state.client;
     let rects = chrome_rects_for_state(state, layout);
 
@@ -459,7 +466,7 @@ fn chrome_hover_rect(
         }
     }
 
-    // Phone browser bar: every button lights up on hover.
+    // Compact browser bar: every button lights up on hover.
     if phone_browser_bar_active(client, layout)
         && let Some(address_bar) = &layout.address_bar
     {
@@ -628,6 +635,99 @@ pub(super) fn install() {
 
 fn shell_layout(layout: &WindowsWindowLayout) -> Option<&WindowsShellWindowLayout> {
     layout.downcast_ref::<WindowsShellWindowLayout>()
+}
+
+type SidebarSurfaceTitleRects = HashMap<isize, HashMap<String, RECT>>;
+static SIDEBAR_SURFACE_TITLE_RECTS: OnceLock<Mutex<SidebarSurfaceTitleRects>> = OnceLock::new();
+
+fn sidebar_surface_title_rects() -> std::sync::MutexGuard<'static, SidebarSurfaceTitleRects> {
+    SIDEBAR_SURFACE_TITLE_RECTS
+        .get_or_init(|| Mutex::new(HashMap::new()))
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+fn clear_sidebar_surface_title_rects(hwnd: HWND) {
+    sidebar_surface_title_rects().remove(&(hwnd.0 as isize));
+}
+
+fn sync_sidebar_surface_title_rects(hwnd: HWND, client: RECT, layout: &WindowsShellWindowLayout) {
+    let Some(tabbar) = layout.tab_bar.as_ref().filter(|tabbar| {
+        tabbar.visible
+            && !tabbar.collapsed
+            && !tabbar.icon_rail
+            && matches!(
+                tabbar.position,
+                WindowsShellTabBarPosition::Left | WindowsShellTabBarPosition::Right
+            )
+    }) else {
+        clear_sidebar_surface_title_rects(hwnd);
+        return;
+    };
+    let rects = compute_chrome_rects(client, layout);
+    let Some(tabbar_rect) = rects.tab_bar else {
+        clear_sidebar_surface_title_rects(hwnd);
+        return;
+    };
+    let (scroll_offset, _, viewport_bottom) =
+        sidebar_scroll_metrics(tabbar_rect, layout).unwrap_or((0, 0, tabbar_rect.bottom));
+    let mut titles = HashMap::new();
+    titles.insert(
+        tabbar.group_target_id.clone(),
+        sidebar_group_title_rect(tabbar_rect, tabbar, scroll_offset),
+    );
+    if let Some(auxiliary) =
+        sidebar_auxiliary_rects(tabbar_rect, tabbar, scroll_offset, viewport_bottom)
+    {
+        for (index, item_rect) in auxiliary.items {
+            let Some(item) = tabbar
+                .auxiliary_items
+                .get(index)
+                .filter(|item| !item.pinned)
+            else {
+                continue;
+            };
+            let icon_rect = sidebar_top_level_icon_rect(item_rect, SIDEBAR_FAVICON_SIZE);
+            titles.insert(
+                item.id.clone(),
+                sidebar_auxiliary_title_rect(
+                    item_rect,
+                    item,
+                    icon_rect.right + SIDEBAR_FAVICON_TEXT_GAP,
+                ),
+            );
+        }
+    }
+    sidebar_surface_title_rects().insert(hwnd.0 as isize, titles);
+}
+
+pub(crate) fn begin_sidebar_surface_rename(
+    window: isize,
+    target_id: &str,
+    initial_text: &str,
+    on_commit: super::text_input::InlineEditCommit,
+) -> bool {
+    let rect = sidebar_surface_title_rects()
+        .get(&window)
+        .and_then(|rects| rects.get(target_id))
+        .copied();
+    let Some(mut rect) = rect else {
+        return false;
+    };
+    rect.top += 7;
+    rect.bottom -= 7;
+    let initial = initial_text.to_string();
+    post_to_window_thread(
+        window,
+        Box::new(move || {
+            super::text_input::begin_inline_edit(
+                HWND(window as *mut core::ffi::c_void),
+                rect,
+                &initial,
+                on_commit,
+            );
+        }),
+    )
 }
 
 pub(crate) fn shell_chrome_dirty_rects(
@@ -1268,24 +1368,61 @@ pub(crate) fn paint_transparent_tabbar_overlay(
     text_runs
 }
 
+fn layout_without_covered_main_chrome(
+    layout: &WindowsShellWindowLayout,
+) -> WindowsShellWindowLayout {
+    let mut layout = layout.clone();
+    layout.navigation_bar = None;
+    layout.address_bar = None;
+    if layout
+        .tab_bar
+        .as_ref()
+        .is_some_and(|tabbar| matches!(tabbar.position, WindowsShellTabBarPosition::Bottom))
+    {
+        layout.tab_bar = None;
+    }
+    layout
+}
+
+fn covering_overlay_layout(
+    state: &WindowsChromeState,
+    layout: &WindowsShellWindowLayout,
+) -> Option<WindowsShellWindowLayout> {
+    state
+        .attached
+        .as_ref()
+        .is_some_and(|attached| attached.panels.iter().any(|panel| panel.overlay))
+        .then(|| layout_without_covered_main_chrome(layout))
+}
+
 fn compute_attached_layout(
     client: RECT,
     layout: &WindowsShellWindowLayout,
     panels: &[WindowsChromePanelLayoutInput],
 ) -> WindowsChromeAttachedLayout {
-    let mut main_region = compute_chrome_rects(client, layout).workspace;
+    let covered_layout = panels
+        .iter()
+        .any(|panel| panel.overlay)
+        .then(|| layout_without_covered_main_chrome(layout));
+    let layout = covered_layout.as_ref().unwrap_or(layout);
+    let workspace = compute_chrome_rects(client, layout).workspace;
+    let mut main_region = workspace;
     let mut out = Vec::new();
 
     let mut ordered = panels.iter().collect::<Vec<_>>();
     ordered.sort_by(|left, right| attached_panel_order(left).cmp(&attached_panel_order(right)));
 
-    if let Some(&maximized) = ordered.iter().find(|panel| panel.docked && panel.maximized) {
+    if let Some(&maximized) = ordered
+        .iter()
+        .find(|panel| !panel.overlay && panel.docked && panel.maximized)
+    {
         out.push(WindowsChromePanelLayout {
             panel_id: maximized.panel_id.clone(),
             webtag_key: maximized.webtag_key.clone(),
             rect: shell_maximized_panel_rect(main_region),
             header_rect: None,
             resize_handle: None,
+            overlay: maximized.overlay,
         });
         main_region.bottom = main_region.top;
         return WindowsChromeAttachedLayout {
@@ -1296,6 +1433,24 @@ fn compute_attached_layout(
     }
 
     for panel in ordered {
+        if panel.overlay {
+            let rect = shell_maximized_panel_rect(workspace);
+            let header_rect = (matches!(
+                panel.position,
+                WindowsPanelPosition::Left | WindowsPanelPosition::Right
+            ) && (panel.webtag_key.starts_with("app.lingxia.browser:")
+                || !aside_panel_tabs(&panel.panel_id).is_empty()))
+            .then(|| aside_panel_toolbar_rect(rect));
+            out.push(WindowsChromePanelLayout {
+                panel_id: panel.panel_id.clone(),
+                webtag_key: panel.webtag_key.clone(),
+                rect,
+                header_rect,
+                resize_handle: None,
+                overlay: panel.overlay,
+            });
+            continue;
+        }
         let (rect, resize_handle) = match panel.position {
             WindowsPanelPosition::Left => {
                 let width = attached_panel_size(panel, main_region, ATTACHED_PANEL_WIDTH);
@@ -1401,6 +1556,7 @@ fn compute_attached_layout(
             rect: normalize_rect(rect),
             header_rect,
             resize_handle,
+            overlay: panel.overlay,
         });
     }
 
@@ -1413,8 +1569,9 @@ fn compute_attached_layout(
     }
 }
 
-fn attached_panel_order(panel: &WindowsChromePanelLayoutInput) -> (u8, u8, &str) {
+fn attached_panel_order(panel: &WindowsChromePanelLayoutInput) -> (u8, u8, u8, &str) {
     (
+        u8::from(panel.overlay),
         match panel.position {
             WindowsPanelPosition::Left | WindowsPanelPosition::Right => 0,
             WindowsPanelPosition::Top | WindowsPanelPosition::Bottom => 1,
@@ -1475,10 +1632,22 @@ pub(super) fn chrome_rects_for_state(
     layout: &WindowsShellWindowLayout,
 ) -> ChromeRects {
     let mut rects = compute_chrome_rects(state.client, layout);
-    if rects.navigation_bar.is_some()
-        && let Some(attached) = &state.attached
-    {
-        rects.navigation_bar = split_main_navigation_bar(attached.main_region, layout).0;
+    if let Some(attached) = &state.attached {
+        if attached.panels.iter().any(|panel| panel.overlay) {
+            // A covering aside owns the complete workspace, including the
+            // header band. Leaving the hidden main's navbar here overwrites the
+            // aside tab strip and routes input back to the covered page.
+            rects.navigation_bar = None;
+            if layout
+                .tab_bar
+                .as_ref()
+                .is_some_and(|tabbar| matches!(tabbar.position, WindowsShellTabBarPosition::Bottom))
+            {
+                rects.tab_bar = None;
+            }
+        } else if rects.navigation_bar.is_some() {
+            rects.navigation_bar = split_main_navigation_bar(attached.main_region, layout).0;
+        }
     }
     rects
 }
@@ -1488,6 +1657,8 @@ pub(super) fn draw_window_chrome(
     state: &WindowsChromeState,
     layout: &WindowsShellWindowLayout,
 ) {
+    let covered_layout = covering_overlay_layout(state, layout);
+    let layout = covered_layout.as_ref().unwrap_or(layout);
     let client = state.client;
     let rects = chrome_rects_for_state(state, layout);
 
@@ -1604,6 +1775,8 @@ pub(super) fn chrome_hit_test(
     layout: &WindowsShellWindowLayout,
     point: (i32, i32),
 ) -> Option<WindowsChromeHit> {
+    let covered_layout = covering_overlay_layout(state, layout);
+    let layout = covered_layout.as_ref().unwrap_or(layout);
     let client = state.client;
     let rects = chrome_rects_for_state(state, layout);
 
@@ -1664,7 +1837,11 @@ pub(super) fn chrome_hit_test(
                 return Some(chrome_command(command_id::BROWSER_NEW_TAB, json!({})));
             }
             if rect_contains(&rects.tabs, point) {
-                return Some(chrome_command(command_id::BROWSER_TABS_CYCLE, json!({})));
+                return Some(WindowsChromeHit::Command(
+                    WindowsChromeCommand::new(command_id::BROWSER_TABS_CYCLE)
+                        .with_payload(json!({}))
+                        .with_screen_position(),
+                ));
             }
             if rects
                 .close
@@ -1830,7 +2007,7 @@ pub(super) fn chrome_hit_test(
                     point,
                 )
             {
-                let payload = json!({ "tab_id": format!("lxapp:{}", tabbar.group_id) });
+                let payload = json!({ "tab_id": tabbar.group_target_id.clone() });
                 return Some(chrome_command_with_context(
                     command_id::BROWSER_TAB_CLICK,
                     payload.clone(),
@@ -1876,7 +2053,7 @@ pub(super) fn chrome_hit_test(
                     point,
                 )
             {
-                let payload = json!({ "tab_id": format!("lxapp:{}", tabbar.group_id) });
+                let payload = json!({ "tab_id": tabbar.group_target_id.clone() });
                 return Some(WindowsChromeHit::Command(
                     WindowsChromeCommand::new(command_id::SIDEBAR_AUXILIARY_CONTEXT_MENU)
                         .with_payload(payload)
@@ -1892,7 +2069,7 @@ pub(super) fn chrome_hit_test(
             {
                 return Some(chrome_command(
                     command_id::BROWSER_TAB_CLOSE,
-                    json!({ "tab_id": format!("lxapp:{}", tabbar.group_id) }),
+                    json!({ "tab_id": tabbar.group_target_id.clone() }),
                 ));
             }
             if in_sidebar_viewport
@@ -1914,7 +2091,7 @@ pub(super) fn chrome_hit_test(
                     point,
                 )
             {
-                let payload = json!({ "tab_id": format!("lxapp:{}", tabbar.group_id) });
+                let payload = json!({ "tab_id": tabbar.group_target_id.clone() });
                 return Some(chrome_command_with_context(
                     command_id::BROWSER_TAB_CLICK,
                     payload.clone(),
@@ -2252,12 +2429,15 @@ mod scroll_tests {
         WindowsPanelPosition, WindowsShellAddressBarLayout, WindowsShellAuxiliaryItemLayout,
         WindowsShellNavigationBarLayout, WindowsShellTabBarItemLayout, WindowsShellTabBarLayout,
         WindowsShellTabBarPosition, WindowsShellWindowLayout, chrome_hit_test,
-        clamp_sidebar_scroll, collapsed_sidebar_tabbar_click_command, compute_attached_layout,
-        compute_chrome_rects, phone_browser_bar_rects, sidebar_auxiliary_rects,
+        chrome_rects_for_state, clamp_sidebar_scroll, collapsed_sidebar_tabbar_click_command,
+        compute_attached_layout, compute_chrome_rects, layout_without_covered_main_chrome,
+        phone_browser_bar_active, phone_browser_bar_rects, rect_height, sidebar_auxiliary_rects,
         sidebar_caption_contains, sidebar_group_rect, sidebar_top_level_icon_rect,
         tabbar_requires_full_repaint, top_bar_controls,
     };
-    use lingxia_windows_contract::WindowsWindowLayout;
+    use lingxia_windows_contract::{
+        WindowsChromeAttachedState, WindowsChromePanel, WindowsWindowLayout,
+    };
     use windows::Win32::Foundation::{HWND, RECT};
 
     fn bottom_tabbar(visible: bool, background_transparent: bool) -> WindowsShellTabBarLayout {
@@ -2268,6 +2448,7 @@ mod scroll_tests {
             app_name: "App".to_string(),
             app_icon_path: String::new(),
             group_id: "app".to_string(),
+            group_target_id: "lxapp:app".to_string(),
             group_active: true,
             group_closable: false,
             group_order_index: 0,
@@ -2409,6 +2590,7 @@ mod scroll_tests {
                 aside: true,
                 ..Default::default()
             }),
+            compact_browser_chrome: true,
             suppress_window_controls: true,
             ..Default::default()
         };
@@ -2430,6 +2612,7 @@ mod scroll_tests {
             chrome_hit_test(&state, &layout, center(rects.tabs)),
             Some(WindowsChromeHit::Command(command))
                 if command.id == super::command_id::BROWSER_TABS_CYCLE
+                    && command.include_screen_position
         ));
 
         let mut self_layout = layout.clone();
@@ -2437,6 +2620,35 @@ mod scroll_tests {
         assert!(
             compute_chrome_rects(client, &layout).content.bottom
                 > compute_chrome_rects(client, &self_layout).content.bottom
+        );
+    }
+
+    #[test]
+    fn compact_desktop_browser_uses_bottom_chrome_without_dropping_caption() {
+        let client = RECT {
+            left: 0,
+            top: 0,
+            right: 560,
+            bottom: 700,
+        };
+        let layout = WindowsShellWindowLayout {
+            address_bar: Some(WindowsShellAddressBarLayout {
+                visible: true,
+                dismissible: true,
+                tab_count: 2,
+                ..Default::default()
+            }),
+            compact_browser_chrome: true,
+            suppress_window_controls: false,
+            ..Default::default()
+        };
+        let rects = compute_chrome_rects(client, &layout);
+
+        assert!(phone_browser_bar_active(client, &layout));
+        assert_eq!(rect_height(&rects.top_bar), SHELL_TOP_BAR_HEIGHT);
+        assert_eq!(
+            rects.content.bottom,
+            phone_browser_bar_rects(client, false, true).bar.top
         );
     }
 
@@ -2461,6 +2673,7 @@ mod scroll_tests {
             app_name: "App".to_string(),
             app_icon_path: String::new(),
             group_id: "app".to_string(),
+            group_target_id: "lxapp:app".to_string(),
             group_active: true,
             group_closable: false,
             group_order_index: 0,
@@ -2539,6 +2752,7 @@ mod scroll_tests {
             position: WindowsPanelPosition::Right,
             requested_size: Some(320),
             docked: true,
+            overlay: false,
             maximized: false,
         };
 
@@ -2563,6 +2777,85 @@ mod scroll_tests {
     }
 
     #[test]
+    fn overlay_aside_covers_workspace_without_resizing_main() {
+        let layout = WindowsShellWindowLayout {
+            navigation_bar: Some(WindowsShellNavigationBarLayout {
+                visible: true,
+                title: "API".to_string(),
+                background_color: 0,
+                text_color: 0,
+                show_back_button: false,
+                show_home_button: false,
+                height: 38,
+            }),
+            tab_bar: Some(bottom_tabbar(true, false)),
+            ..Default::default()
+        };
+        let client = RECT {
+            left: 0,
+            top: 0,
+            right: 720,
+            bottom: 768,
+        };
+        let main_workspace = compute_chrome_rects(client, &layout).workspace;
+        let overlay_workspace =
+            compute_chrome_rects(client, &layout_without_covered_main_chrome(&layout)).workspace;
+        let panel = WindowsChromePanelLayoutInput {
+            panel_id: "lxapp-aside".to_string(),
+            webtag_key: "lingxia-chat:pages/chat/index".to_string(),
+            position: WindowsPanelPosition::Right,
+            requested_size: None,
+            docked: false,
+            overlay: true,
+            maximized: false,
+        };
+
+        let attached = compute_attached_layout(client, &layout, &[panel]);
+
+        assert!(overlay_workspace.bottom > main_workspace.bottom);
+        assert_eq!(attached.main_region, overlay_workspace);
+        assert_eq!(attached.panels[0].rect, overlay_workspace);
+        assert_eq!(attached.panels[0].resize_handle, None);
+        assert!(attached.panels[0].overlay);
+
+        let overlay = attached.panels[0].clone();
+        let state = WindowsChromeState {
+            hwnd: HWND::default(),
+            client,
+            layout: WindowsWindowLayout::new(layout.clone()),
+            attached: Some(WindowsChromeAttachedState {
+                main_region: attached.main_region,
+                main: attached.main,
+                panels: vec![WindowsChromePanel {
+                    panel_id: overlay.panel_id,
+                    webtag_key: overlay.webtag_key,
+                    title: "Chat".to_string(),
+                    rect: overlay.rect,
+                    header_rect: overlay.header_rect,
+                    resize_handle: overlay.resize_handle,
+                    host_content: None,
+                    docked: false,
+                    overlay: overlay.overlay,
+                }],
+            }),
+            frame_button_hover: None,
+            frame_button_pressed: None,
+            cursor: None,
+        };
+        assert!(
+            compute_chrome_rects(client, &layout)
+                .navigation_bar
+                .is_some()
+        );
+        assert!(
+            chrome_rects_for_state(&state, &layout)
+                .navigation_bar
+                .is_none()
+        );
+        assert!(chrome_rects_for_state(&state, &layout).tab_bar.is_none());
+    }
+
+    #[test]
     fn lxapp_and_web_tabs_share_top_level_geometry() {
         let tabbar = WindowsShellTabBarLayout {
             visible: true,
@@ -2571,6 +2864,7 @@ mod scroll_tests {
             app_name: "App".to_string(),
             app_icon_path: String::new(),
             group_id: "app".to_string(),
+            group_target_id: "lxapp:app".to_string(),
             group_active: true,
             group_closable: false,
             group_order_index: 0,
@@ -2630,6 +2924,7 @@ mod scroll_tests {
             app_name: "App".to_string(),
             app_icon_path: String::new(),
             group_id: "app".to_string(),
+            group_target_id: "lxapp:app".to_string(),
             group_active: true,
             group_closable: false,
             group_order_index: 0,
@@ -2702,6 +2997,7 @@ mod corner_tests {
             position,
             requested_size: Some(240),
             docked: true,
+            overlay: false,
             maximized: false,
         }
     }
@@ -2813,6 +3109,7 @@ mod corner_tests {
             position: WindowsPanelPosition::Right,
             requested_size: Some(320),
             docked: true,
+            overlay: false,
             maximized: false,
         };
         let attached = compute_attached_layout(client(), &layout, &[browser]);

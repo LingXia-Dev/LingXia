@@ -498,6 +498,7 @@ jobs:
           cargo check -p lingxia-windows-sdk --no-default-features --features host-api
           cargo check -p lingxia-windows-sdk --no-default-features --features components
           cargo check -p lingxia-windows-sdk --no-default-features --features browser-shell
+          cargo check -p lingxia-windows-sdk --no-default-features --features terminal-runtime
           cargo build --example advanced_host -p lingxia-windows-sdk --no-default-features --features host-api
           cargo build --example advanced_host -p lingxia-windows-sdk --no-default-features --features runtime
 
@@ -835,7 +836,7 @@ jobs:
         shell: bash
         run: |
           ../../target/debug/lingxia${{ matrix.exe }} dev status --json || true
-          ../../target/debug/lxdev${{ matrix.exe }} logs --wide || true
+          ../../target/debug/lxdev${{ matrix.exe }} logs --limit 1000 || true
 
       - name: Stop showcase session
         if: always()

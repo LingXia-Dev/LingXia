@@ -28,6 +28,7 @@ import type {
   PagePointer,
   PreviewMediaHandle,
   ShellApi,
+  ShellDriver,
   Storage,
   Surface,
   SurfaceHandle,
@@ -70,9 +71,9 @@ export const LX_API_NAMES = [
   'hideToast',
   'makePhoneCall',
   'navigateBack',
-  'navigateBackLxApp',
+  'navigateBackApp',
   'navigateTo',
-  'navigateToLxApp',
+  'navigateToApp',
   'offDeviceOrientationChange',
   'offKeyDown',
   'offKeyUp',
@@ -130,8 +131,7 @@ const HOST_APP_API = [
 ] as const;
 const AUTOSTART_API = ['isEnabled', 'setEnabled'] as const;
 const ENV_API = ['USER_CACHE_PATH', 'USER_DATA_PATH'] as const;
-const SHELL_API = ['emptyState', 'sidebarActions'] as const;
-const SHELL_EMPTY_STATE_API = ['clear', 'set'] as const;
+const SHELL_API = ['sidebarActions'] as const;
 const SHELL_SIDEBAR_ACTIONS_API = ['clear', 'remove', 'replace', 'update'] as const;
 const TRAY_API = ['hide', 'onClick', 'setBadge', 'setIcon', 'setMenu', 'setTitle', 'show'] as const;
 const FILE_MANAGER_API = [
@@ -157,8 +157,9 @@ const VIDEO_CONTEXT_API = [
   'stop',
 ] as const;
 
-const AUTOMATION_API = ['browser', 'desktop', 'device', 'lxapp', 'lxapps'] as const;
-const LXAPP_DRIVER_API = ['eval', 'info', 'nav', 'page', 'pages'] as const;
+const AUTOMATION_API = ['browser', 'desktop', 'device', 'lxapp', 'lxapps', 'shell'] as const;
+const SHELL_DRIVER_API = ['pins', 'setPin'] as const;
+const LXAPP_DRIVER_API = ['eval', 'info', 'nav', 'page', 'pages', 'surfaceLayout'] as const;
 const LXAPP_MANAGER_API = [
   'close',
   'current',
@@ -275,11 +276,6 @@ export const LX_RUNTIME_SURFACES = [
   { name: 'lx.env', expression: 'lx.env', members: ENV_API },
   { name: 'lx.shell', expression: 'lx.shell', members: SHELL_API },
   {
-    name: 'lx.shell.emptyState',
-    expression: 'lx.shell.emptyState',
-    members: SHELL_EMPTY_STATE_API,
-  },
-  {
     name: 'lx.shell.sidebarActions',
     expression: 'lx.shell.sidebarActions',
     members: SHELL_SIDEBAR_ACTIONS_API,
@@ -289,6 +285,7 @@ export const LX_RUNTIME_SURFACES = [
   { name: 'Storage', expression: 'lx.getStorage()', members: STORAGE_API },
   { name: 'UpdateManager', expression: 'lx.getUpdateManager()', members: UPDATE_MANAGER_API },
   { name: 'Automation', expression: 'lx.automation()', members: AUTOMATION_API },
+  { name: 'ShellDriver', expression: 'lx.automation().shell', members: SHELL_DRIVER_API },
   { name: 'LxAppDriver', expression: 'lx.automation().lxapp()', members: LXAPP_DRIVER_API },
   { name: 'PageDriver', expression: 'lx.automation().lxapp().page', members: PAGE_DRIVER_API },
   { name: 'PagePointer', expression: 'lx.automation().lxapp().page.pointer', members: PAGE_POINTER_API },
@@ -344,7 +341,6 @@ const SURFACE_API = [
   'close',
   'hide',
   'id',
-  'kind',
   'onClose',
   'onHide',
   'onMessage',
@@ -373,7 +369,6 @@ export type LxApiManifestGate = [
   AssertTrue<Exact<AutostartApi, typeof AUTOSTART_API>>,
   AssertTrue<Exact<LxEnv, typeof ENV_API>>,
   AssertTrue<Exact<ShellApi, typeof SHELL_API>>,
-  AssertTrue<Exact<ShellApi['emptyState'], typeof SHELL_EMPTY_STATE_API>>,
   AssertTrue<Exact<ShellApi['sidebarActions'], typeof SHELL_SIDEBAR_ACTIONS_API>>,
   AssertTrue<Exact<TrayApi, typeof TRAY_API>>,
   AssertTrue<Exact<FileManager, typeof FILE_MANAGER_API>>,
@@ -381,6 +376,7 @@ export type LxApiManifestGate = [
   AssertTrue<Exact<UpdateManager, typeof UPDATE_MANAGER_API>>,
   AssertTrue<Exact<VideoContext, typeof VIDEO_CONTEXT_API>>,
   AssertTrue<Exact<Automation, typeof AUTOMATION_API>>,
+  AssertTrue<Exact<ShellDriver, typeof SHELL_DRIVER_API>>,
   AssertTrue<Exact<LxAppDriver, typeof LXAPP_DRIVER_API>>,
   AssertTrue<Exact<LxAppManager, typeof LXAPP_MANAGER_API>>,
   AssertTrue<Exact<PageDriver, typeof PAGE_DRIVER_API>>,

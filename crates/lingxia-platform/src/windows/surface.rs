@@ -14,14 +14,18 @@ use lingxia_windows_contract::{
     configure_webview_surface_interaction, hide_host_panel, hide_webview_window,
     navigate_webview_window, present_webview_as_overlay, present_webview_in_active_group,
     refresh_aside_panel, set_aside_panel_tabs, set_webview_close_handler,
-    set_windows_aside_panel_event_handler, show_webview_as_adaptive_panel, show_webview_as_panel,
-    show_webview_window, show_webview_window_with_content_size,
+    set_windows_aside_panel_event_handler, show_webview_as_adaptive_panel,
+    show_webview_as_overlay_panel, show_webview_as_panel, show_webview_window,
+    show_webview_window_with_content_size,
 };
 
 use super::request_windows_app_exit;
 use crate::error::PlatformError;
 use crate::traits::app_runtime::{AnimationType, LxAppOpenMode};
-use crate::traits::ui::{SurfaceContent, SurfaceKind, SurfaceRequest, SurfaceRole};
+use crate::traits::ui::{
+    ManagedSurfaceFuture, ManagedSurfaceProvider, ManagedSurfaceProviderDestroyRequest,
+    ManagedSurfaceProviderRequest, SurfaceContent, SurfaceKind, SurfaceRequest, SurfaceRole,
+};
 
 static WINDOWS_SHOW_SEQUENCE: AtomicU64 = AtomicU64::new(1);
 static WINDOWS_SHOW_REQUESTS: LazyLock<Mutex<HashMap<String, u64>>> =
@@ -404,7 +408,11 @@ fn dispose_surface_page(page_instance_id: &str, reason: &str) {
     }
 }
 
-type ManagedSurfaceVisibleHandler = Arc<dyn Fn(&str, bool, &str) -> bool + Send + Sync>;
+type ManagedSurfaceVisibleHandler = Arc<
+    dyn Fn(&str, bool, &str, &str, crate::traits::ui::ManagedSurfaceCompletion) -> bool
+        + Send
+        + Sync,
+>;
 static MANAGED_SURFACE_VISIBLE_HANDLER: Mutex<Option<ManagedSurfaceVisibleHandler>> =
     Mutex::new(None);
 
@@ -414,10 +422,102 @@ pub fn set_windows_managed_surface_visible_handler(handler: ManagedSurfaceVisibl
     }
 }
 
+type ManagedSurfaceCloseHandler = Arc<dyn Fn(&str, &str, &str) -> bool + Send + Sync>;
+static MANAGED_SURFACE_CLOSE_HANDLER: Mutex<Option<ManagedSurfaceCloseHandler>> = Mutex::new(None);
+
+pub fn set_windows_managed_surface_close_handler(handler: ManagedSurfaceCloseHandler) {
+    if let Ok(mut slot) = MANAGED_SURFACE_CLOSE_HANDLER.lock() {
+        *slot = Some(handler);
+    }
+}
+
+pub(super) fn close_managed_surface(
+    id: &str,
+    provider: &ManagedSurfaceProvider,
+    role: Option<SurfaceRole>,
+) -> Result<(), PlatformError> {
+    let handler = MANAGED_SURFACE_CLOSE_HANDLER
+        .lock()
+        .ok()
+        .and_then(|slot| slot.clone())
+        .ok_or_else(|| {
+            PlatformError::NotSupported(
+                "managed surface close is not supported on this Windows host".to_string(),
+            )
+        })?;
+    let capability = match provider {
+        ManagedSurfaceProvider::Declared => "",
+        ManagedSurfaceProvider::Native { capability, .. } => capability,
+    };
+    if handler(id, capability, role.map_or("", SurfaceRole::as_str)) {
+        Ok(())
+    } else {
+        Err(PlatformError::AssetNotFound(format!(
+            "unknown managed surface: {id}"
+        )))
+    }
+}
+
+type ManagedNativeSurfaceOpenHandler = Arc<
+    dyn Fn(
+            &str,
+            &str,
+            Option<&str>,
+            &str,
+            &str,
+            crate::traits::ui::ManagedSurfaceCompletion,
+        ) -> bool
+        + Send
+        + Sync,
+>;
+static MANAGED_NATIVE_SURFACE_OPEN_HANDLER: Mutex<Option<ManagedNativeSurfaceOpenHandler>> =
+    Mutex::new(None);
+
+pub fn set_windows_managed_native_surface_open_handler(handler: ManagedNativeSurfaceOpenHandler) {
+    if let Ok(mut slot) = MANAGED_NATIVE_SURFACE_OPEN_HANDLER.lock() {
+        *slot = Some(handler);
+    }
+}
+
+pub(super) fn open_managed_native_surface(
+    surface_id: &str,
+    capability: &str,
+    instance_key: Option<&str>,
+    role: SurfaceRole,
+    edge: Option<&str>,
+    completion: crate::traits::ui::ManagedSurfaceCompletion,
+) -> Result<(), PlatformError> {
+    let handler = MANAGED_NATIVE_SURFACE_OPEN_HANDLER
+        .lock()
+        .ok()
+        .and_then(|slot| slot.clone())
+        .ok_or_else(|| {
+            PlatformError::NotSupported(
+                "managed native surfaces are not supported on this Windows host".to_string(),
+            )
+        })?;
+    if handler(
+        surface_id,
+        capability,
+        instance_key,
+        role.as_str(),
+        edge.unwrap_or_default(),
+        completion,
+    ) {
+        Ok(())
+    } else {
+        Err(PlatformError::AssetNotFound(format!(
+            "unsupported managed native surface: {capability}"
+        )))
+    }
+}
+
 pub(super) fn set_managed_surface_visible(
     id: &str,
     visible: bool,
+    role: Option<SurfaceRole>,
     edge: Option<&str>,
+    completion: crate::traits::ui::ManagedSurfaceCompletion,
 ) -> Result<(), PlatformError> {
     let handler = MANAGED_SURFACE_VISIBLE_HANDLER
         .lock()
@@ -428,42 +528,61 @@ pub(super) fn set_managed_surface_visible(
                 "managed surfaces are not supported on this Windows host".to_string(),
             )
         })?;
-    if handler(id, visible, edge.unwrap_or_default()) {
+    if handler(
+        id,
+        visible,
+        role.map_or("", SurfaceRole::as_str),
+        edge.unwrap_or_default(),
+        completion,
+    ) {
         Ok(())
     } else {
-        Err(PlatformError::InvalidParameter(format!(
+        Err(PlatformError::AssetNotFound(format!(
             "unknown managed surface: {id}"
         )))
     }
 }
 
-type ManagedSurfaceToggleHandler = Arc<dyn Fn(&str) -> bool + Send + Sync>;
-static MANAGED_SURFACE_TOGGLE_HANDLER: Mutex<Option<ManagedSurfaceToggleHandler>> =
-    Mutex::new(None);
-
-pub fn set_windows_managed_surface_toggle_handler(handler: ManagedSurfaceToggleHandler) {
-    if let Ok(mut slot) = MANAGED_SURFACE_TOGGLE_HANDLER.lock() {
-        *slot = Some(handler);
-    }
+pub(super) fn ensure_managed_surface_provider(
+    request: ManagedSurfaceProviderRequest,
+) -> ManagedSurfaceFuture {
+    Box::pin(async move {
+        let (sender, receiver) = tokio::sync::oneshot::channel();
+        let completion = Box::new(move |result| {
+            let _ = sender.send(result);
+        });
+        match request.provider {
+            ManagedSurfaceProvider::Declared => set_managed_surface_visible(
+                &request.surface_id,
+                true,
+                request.role,
+                request.edge.as_deref(),
+                completion,
+            )?,
+            ManagedSurfaceProvider::Native {
+                capability,
+                instance_key,
+            } => open_managed_native_surface(
+                &request.surface_id,
+                &capability,
+                instance_key.as_deref(),
+                request.role.unwrap_or_default(),
+                request.edge.as_deref(),
+                completion,
+            )?,
+        }
+        receiver.await.map_err(|_| {
+            PlatformError::Platform("managed surface provider completion dropped".to_string())
+        })?
+    })
 }
 
-pub(super) fn toggle_managed_surface(id: &str) -> Result<(), PlatformError> {
-    let handler = MANAGED_SURFACE_TOGGLE_HANDLER
-        .lock()
-        .ok()
-        .and_then(|slot| slot.clone())
-        .ok_or_else(|| {
-            PlatformError::NotSupported(
-                "managed surfaces are not supported on this Windows host".to_string(),
-            )
-        })?;
-    if handler(id) {
-        Ok(())
-    } else {
-        Err(PlatformError::InvalidParameter(format!(
-            "unknown managed surface: {id}"
-        )))
-    }
+pub(super) fn destroy_managed_surface_provider(
+    request: ManagedSurfaceProviderDestroyRequest,
+) -> ManagedSurfaceFuture {
+    Box::pin(
+        async move { close_managed_surface(&request.surface_id, &request.provider, request.role) },
+    )
 }
 
 #[derive(Clone)]
@@ -542,7 +661,12 @@ struct SurfaceEntry {
 #[derive(Clone, Copy)]
 enum PresentationTarget {
     Stored,
-    Overlay,
+    Overlay {
+        edge: Option<Edge>,
+        /// Reuse the shared browser panel id so its tabs and close lifecycle
+        /// stay attached while the slot covers the workspace.
+        grouped: bool,
+    },
     Aside {
         edge: Option<Edge>,
         preferred_size: Option<f64>,
@@ -572,13 +696,16 @@ fn finite_or_zero(value: f64) -> f64 {
 /// Shows a surface's webview according to the core-arbitrated role.
 fn present_entry(id: &str, entry: &SurfaceEntry, target: PresentationTarget) -> Result<(), String> {
     let result = match (entry.role, target) {
-        // An adaptive aside overlay is still a companion surface. Giving it
-        // the host's single group-main slot makes the next main-tab switch
-        // replace it even though the graph still marks the aside visible.
-        // Keep it in an owned overlay window so main lxapp/browser selection
-        // and aside visibility remain independent projections of the graph.
-        (SurfaceRole::Aside, PresentationTarget::Overlay) => {
-            present_webview_as_overlay(&entry.webtag, 0.0, 0.0, 1.0, 1.0, entry.placement.position)
+        // An adaptive overlay remains an aside in the active workspace. It
+        // must not take the host's group-main slot or create another shell
+        // window: either would break main switching and close restoration.
+        (SurfaceRole::Aside, PresentationTarget::Overlay { edge, grouped }) => {
+            show_webview_as_overlay_panel(
+                &entry.webtag,
+                &entry.title,
+                if grouped { ASIDE_BROWSER_PANEL_ID } else { id },
+                panel_position_for(edge, entry.placement.position),
+            )
         }
         (
             SurfaceRole::Aside,
@@ -638,17 +765,21 @@ fn window_dimension(value: f64) -> Option<i32> {
 }
 
 fn panel_position_for(edge: Option<Edge>, fallback_position: u8) -> WindowsPanelPosition {
+    match overlay_position_for(edge, fallback_position) {
+        2 => WindowsPanelPosition::Left,
+        4 => WindowsPanelPosition::Top,
+        1 => WindowsPanelPosition::Bottom,
+        _ => WindowsPanelPosition::Right,
+    }
+}
+
+fn overlay_position_for(edge: Option<Edge>, fallback_position: u8) -> u8 {
     match edge {
-        Some(Edge::Left) => WindowsPanelPosition::Left,
-        Some(Edge::Right) => WindowsPanelPosition::Right,
-        Some(Edge::Top) => WindowsPanelPosition::Top,
-        Some(Edge::Bottom) => WindowsPanelPosition::Bottom,
-        None => match fallback_position {
-            2 => WindowsPanelPosition::Left,
-            4 => WindowsPanelPosition::Top,
-            1 => WindowsPanelPosition::Bottom,
-            _ => WindowsPanelPosition::Right,
-        },
+        Some(Edge::Left) => 2,
+        Some(Edge::Right) => 3,
+        Some(Edge::Top) => 4,
+        Some(Edge::Bottom) => 1,
+        None => fallback_position,
     }
 }
 
@@ -723,8 +854,12 @@ fn sync_runtime_lxapp_asides(plan: &LayoutPresentationPlan) -> bool {
         let edge = slot.edge.or_else(|| aside.and_then(|aside| aside.edge));
         let preferred_size = aside.and_then(|aside| aside.preferred_size);
         let result = if slot.overlay {
-            let _ = hide_host_panel(ASIDE_LXAPP_PANEL_ID);
-            present_webview_in_active_group(&entry.webtag)
+            show_webview_as_overlay_panel(
+                &entry.webtag,
+                &entry.title,
+                ASIDE_LXAPP_PANEL_ID,
+                panel_position_for(edge, 3),
+            )
         } else {
             show_webview_as_adaptive_panel(
                 &entry.webtag,
@@ -838,7 +973,10 @@ fn sync_aside_browser_group() {
         let (edge, preferred_size) = placement.get(id).copied().unwrap_or((None, None));
         let target = if overlay {
             let _ = hide_host_panel(ASIDE_BROWSER_PANEL_ID);
-            PresentationTarget::Overlay
+            PresentationTarget::Overlay {
+                edge,
+                grouped: true,
+            }
         } else {
             PresentationTarget::Aside {
                 edge,
@@ -1143,7 +1281,10 @@ pub(super) fn present_layout(
         }
         let target = if overlay_ids.contains(aside.id.as_str()) {
             let _ = hide_host_panel(&aside.id);
-            PresentationTarget::Overlay
+            PresentationTarget::Overlay {
+                edge: aside.edge,
+                grouped: false,
+            }
         } else {
             PresentationTarget::Aside {
                 edge: aside.edge,

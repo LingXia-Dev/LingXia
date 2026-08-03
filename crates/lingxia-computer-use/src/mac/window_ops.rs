@@ -82,10 +82,68 @@ pub fn status(target: &WindowTarget) -> Result<Window> {
     resolve(target)
 }
 
+fn focus_self_window(window_id: &str) -> Result<()> {
+    let window_number = parse_window_id(window_id)? as isize;
+    let operation = move || -> Result<()> {
+        use objc2::runtime::AnyObject;
+        use objc2::{class, msg_send};
+
+        unsafe {
+            let app: *mut AnyObject = msg_send![class!(NSApplication), sharedApplication];
+            if app.is_null() {
+                return Err(Error::Unavailable(
+                    "NSApplication.sharedApplication is unavailable".into(),
+                ));
+            }
+            let windows: *mut AnyObject = msg_send![app, windows];
+            let count: usize = msg_send![windows, count];
+            for index in 0..count {
+                let window: *mut AnyObject = msg_send![windows, objectAtIndex: index];
+                let candidate: isize = msg_send![window, windowNumber];
+                if candidate != window_number {
+                    continue;
+                }
+                let _: () = msg_send![app, activateIgnoringOtherApps: true];
+                let _: () = msg_send![window, makeMainWindow];
+                let _: () =
+                    msg_send![window, makeKeyAndOrderFront: std::ptr::null_mut::<AnyObject>()];
+                return Ok(());
+            }
+        }
+        Err(Error::Stale(format!(
+            "window {window_number} no longer exists"
+        )))
+    };
+
+    if unsafe { libc::pthread_main_np() } != 0 {
+        return operation();
+    }
+    let mut result = Err(Error::Failed(
+        "main-queue window activation did not run".into(),
+    ));
+    dispatch2::DispatchQueue::main().exec_sync(|| {
+        result = operation();
+    });
+    result
+}
+
 pub fn focus(target: &WindowTarget) -> Result<Window> {
     use objc2_app_kit::{NSApplicationActivationOptions, NSRunningApplication};
     let w = resolve(target)?;
     require_trusted()?;
+    if w.pid == std::process::id() {
+        focus_self_window(&w.id)?;
+        // AppKit activation is cooperative on current macOS releases. The
+        // trusted AX path supplies the same force-front semantics used for a
+        // foreign process; AxEl routes these self mutations to the main queue.
+        let _ = AxEl::for_app(w.pid as i32)?.set_bool("AXFrontmost", true);
+        let ax = ax_window_for_id(&w.id)?;
+        let _ = ax.perform("AXRaise");
+        let _ = ax.set_bool("AXMain", true);
+        let mut focused = with_ax_geometry(&ax, w);
+        focused.focused = true;
+        return Ok(focused);
+    }
     // Activate the owning app: setting AXFrontmost alone does not steal the
     // foreground from another process, so keyboard input would go elsewhere.
     // NSRunningApplication.activate is the reliable cross-process path.
@@ -142,7 +200,38 @@ pub fn resize(target: &WindowTarget, width: i32, height: i32) -> Result<Window> 
     let w = resolve(target)?;
     let ax = ax_window_for_id(&w.id)?;
     ax.set_size("AXSize", width as f64, height as f64)?;
+    notify_self_window_mutation(w.pid);
     Ok(with_ax_geometry(&ax, w))
+}
+
+/// Tell in-process shells that automation mutated a window frame, so pending
+/// panel-layout frame restorations must not fight the new geometry. Cross-
+/// process targets have no such machinery; only the self-process case posts.
+fn notify_self_window_mutation(pid: u32) {
+    if pid != std::process::id() {
+        return;
+    }
+    let post = || unsafe {
+        use objc2::runtime::AnyObject;
+        use objc2::{class, msg_send};
+        use objc2_foundation::NSString;
+
+        let center: *mut AnyObject = msg_send![class!(NSNotificationCenter), defaultCenter];
+        if center.is_null() {
+            return;
+        }
+        let name = NSString::from_str("LingXiaAutomationWindowMutation");
+        let _: () =
+            msg_send![center, postNotificationName: &*name, object: std::ptr::null::<AnyObject>()];
+    };
+    if unsafe { libc::pthread_main_np() } != 0 {
+        post();
+    } else {
+        // Async is sufficient (the consumer races only +0.28s delayed
+        // closures) and cannot deadlock a main thread that is itself
+        // waiting on this automation thread.
+        dispatch2::DispatchQueue::main().exec_async(post);
+    }
 }
 
 pub fn minimize(target: &WindowTarget) -> Result<Window> {

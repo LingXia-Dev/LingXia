@@ -87,6 +87,7 @@ struct LxAppUIConfig: Decodable, Sendable {
         let path: String?
         let url: String?
         let name: NativeName?
+        let instanceKey: String?
 
         enum Kind: String, Decodable, Sendable {
             case lxapp

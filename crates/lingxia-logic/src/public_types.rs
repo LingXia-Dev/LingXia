@@ -561,10 +561,17 @@ rong::js_api! {
     delta: number;
 }"###;
 
-        type NavigateToLxAppOptions = r###"{
+        /// Navigate to another lxapp inside the current App Surface. JavaScript
+        /// callers address pages by their configured name; page routes are an
+        /// internal runtime detail and are not accepted as input.
+        type NavigateToAppOptions = r###"{
     appId: string;
+    /**
+     * Configured page name from the target lxapp's `lxapp.json`. Omit it to
+     * open the target app's initial page. Full routes such as
+     * `/pages/home/index` are not supported.
+     */
     page?: string;
-    path?: string;
     query?: PageQuery;
     envVersion?: LxAppEnvVersion;
     targetVersion?: string;
@@ -579,61 +586,100 @@ rong::js_api! {
     ipv6: string[];
 }"###;
 
-        /// Show a surface declared by id in the host's `lingxia.yaml`.
-        /// Available to any lxapp granted access to that declaration.
+        /// Open a surface declaration from the host's `lingxia.yaml`.
+        /// `key` identifies an additional reusable instance when supported;
+        /// `as` changes the live instance's role without changing its identity.
         type OpenDeclaredSurfaceSpec = r###"{
     surface: string;
-    /** Docking edge override for this open. */
-    edge?: SurfaceEdge;
+    /**
+     * Stable caller-owned identity for an additional native declaration
+     * instance. Leading/trailing whitespace is ignored; use 1 to 128 UTF-8
+     * bytes. Declarations without instantiable native providers reject it.
+     */
+    key?: string;
+    /**
+     * Omit to use the declaration's role. Overrides must be realizable by the
+     * declared provider. `float` does not synthesize a popover contract: the
+     * declaration must already provide the required float/tray presentation.
+     * A `main` occupies the primary content area, appears in the main/sidebar
+     * switcher, and has no content-area tab strip. An `aside` occupies a
+     * companion region around the main and uses that region's tab strip; it
+     * never enters the main switcher. A stable root rejects non-main overrides.
+     */
+    as?: 'main' | 'aside' | 'float';
+    interaction?: never;
     page?: never;
     url?: never;
-    lxapp?: never;
-    native?: never;
-    as?: never;
+    appId?: never;
+    envVersion?: never;
+    targetVersion?: never;
     position?: never;
     size?: never;
     query?: never;
-}"###;
+} & ({
+    edge?: never;
+} | {
+    /**
+     * Preferred docking side when the effective role is `aside`. `aside`
+     * selects the companion region; `edge` selects a side within that region.
+     * Omit it to keep the declaration's edge. Compact hosts may reproject it.
+     */
+    as?: 'aside';
+    edge: SurfaceEdge;
+})"###;
 
         /// Network status APIs.
         ///
         type NetworkType = r###"'none' | 'unknown' | 'wifi' | '2g' | '3g' | '4g' | '5g' | 'ethernet'"###;
 
-        /// Open another lxapp by appId (home lxapp only). A declared surface
-        /// toggles its shell presentation; an undeclared lxapp opens as a main
-        /// tab, or docks as an aside panel with `as: 'aside'`.
-        type OpenLxappSurfaceSpec = r###"{
-    lxapp: string;
-    /** Defaults to the lingxia.yaml role, else 'main'. */
-    as?: 'main' | 'aside' | 'float';
+        /// Compose a dynamic business lxapp as its own shell Surface (home lxapp
+        /// only). Unlike `navigateToApp`, this creates a parallel shell item and
+        /// lifecycle handle. No YAML declaration is required. Reopening its
+        /// current role focuses the live instance; changing a live main/aside
+        /// role requires closing it first.
+        ///
+        /// Dynamic App Surfaces intentionally do not support `float`: a shell
+        /// float needs a host-declared tray anchor, dismissal policy, and
+        /// presentation contract that `{ appId }` cannot supply. Declare that
+        /// lxapp as a float in `lingxia.yaml` and open it with `{ surface }`.
+        type OpenAppSurfaceSpec = r###"{
+    appId: string;
     /**
-     * Docking edge override for this open. Without it the surface keeps its
-     * current placement (initially the `lingxia.yaml` edge); with it the panel
-     * opens there — or moves there if already visible.
+     * Configured page name from the target lxapp's `lxapp.json`. Omit it to
+     * open the target app's initial page. Full page routes are not supported.
+     */
+    page?: string;
+    query?: PageQuery;
+    /** Defaults to 'release'. */
+    envVersion?: LxAppEnvVersion;
+    targetVersion?: string;
+    interaction?: never;
+    url?: never;
+    surface?: never;
+    key?: never;
+    position?: never;
+    size?: never;
+} & ({
+    /**
+     * Occupies the primary content area and appears in the main/sidebar
+     * switcher. Main content has no tab strip of its own. Dynamic floats are
+     * not supported.
+     */
+    as: 'main';
+    edge?: never;
+} | {
+    /**
+     * Occupies a companion region around the current main, with switching in
+     * that region's tab strip. It does not appear in the main/sidebar switcher.
+     */
+    as: 'aside';
+    /**
+     * Preferred docking side. `aside` selects the companion region; `edge`
+     * selects where that region docks on layouts with room. Omit it for the
+     * default (`right` for dynamic lxapps); compact hosts may reproject it.
      */
     edge?: SurfaceEdge;
-    page?: never;
-    url?: never;
-    native?: never;
-    position?: never;
-    size?: never;
-    query?: never;
-}"###;
-
-        /// Open a host-registered native capability (home lxapp only), e.g.
-        /// the built-in terminal declared in `lingxia.yaml` surfaces.
-        type OpenNativeSurfaceSpec = r###"{
-    native: string;
-    /** Docking edge override for this open. */
-    edge?: SurfaceEdge;
-    page?: never;
-    url?: never;
-    lxapp?: never;
-    as?: never;
-    position?: never;
-    size?: never;
-    query?: never;
-}"###;
+})"###;
 
         /// File system APIs.
         ///
@@ -697,6 +743,7 @@ rong::js_api! {
         ///   (large screen only).
         ///
         type OpenPageSurfaceSpec = r###"{
+    /** Configured page name from this lxapp's `lxapp.json`. */
     page: string;
     /** A popup above the main. */
     as: 'float';
@@ -707,7 +754,12 @@ rong::js_api! {
     edge?: never;
     surface?: never;
     url?: never;
+    appId?: never;
+    key?: never;
+    envVersion?: never;
+    targetVersion?: never;
 } | {
+    /** Configured page name from this lxapp's `lxapp.json`. */
     page: string;
     as: 'window';
     size?: WindowSurfaceSize;
@@ -718,6 +770,10 @@ rong::js_api! {
     position?: never;
     surface?: never;
     url?: never;
+    appId?: never;
+    key?: never;
+    envVersion?: never;
+    targetVersion?: never;
 }"###;
 
         /// Native interaction supplied by the host around page content.
@@ -730,7 +786,7 @@ rong::js_api! {
     modal?: boolean;
 }"###;
 
-        type OpenSurfaceSpec = r###"OpenPageSurfaceSpec | OpenDeclaredSurfaceSpec | OpenLxappSurfaceSpec | OpenNativeSurfaceSpec | OpenBuiltinBrowserSurfaceSpec | OpenUrlTabSpec | OpenUrlAsideSpec"###;
+        type OpenSurfaceSpec = r###"OpenPageSurfaceSpec | OpenDeclaredSurfaceSpec | OpenAppSurfaceSpec | OpenBuiltinBrowserSurfaceSpec | OpenUrlTabSpec | OpenUrlAsideSpec"###;
 
         /// Built-in browser product page. Opening one requires
         /// `capabilities.browser` and is restricted to the home lxapp.
@@ -744,8 +800,10 @@ rong::js_api! {
     position?: never;
     interaction?: never;
     page?: never;
-    lxapp?: never;
-    native?: never;
+    appId?: never;
+    envVersion?: never;
+    targetVersion?: never;
+    key?: never;
     surface?: never;
     query?: never;
 }"###;
@@ -761,8 +819,13 @@ rong::js_api! {
     as: 'aside';
     edge?: SurfaceEdge;
     size?: OverlaySurfaceSize;
+    interaction?: never;
     page?: never;
     surface?: never;
+    appId?: never;
+    envVersion?: never;
+    targetVersion?: never;
+    key?: never;
     position?: never;
     query?: never;
 }"###;
@@ -770,8 +833,13 @@ rong::js_api! {
         type OpenUrlTabSpec = r###"{
     url: string;
     as?: never;
+    interaction?: never;
     page?: never;
     surface?: never;
+    appId?: never;
+    envVersion?: never;
+    targetVersion?: never;
+    key?: never;
     edge?: never;
     position?: never;
     size?: never;
@@ -1169,7 +1237,6 @@ true
 }"###;
 
         type Surface = r###"SurfaceHandle & {
-    readonly kind: 'overlay' | 'window';
     /**
      * Last-known visibility, kept in sync with the native side via show/hide
      * events. False once the surface has been closed. Safe to bind into
@@ -1223,7 +1290,6 @@ true
 
         type SurfaceClosedEvent = r###"{
     id: string;
-    kind: 'overlay' | 'window';
     reason: SurfaceCloseReason;
 }"###;
 
@@ -1251,7 +1317,9 @@ true
     height: number;
 }"###;
 
-        /// Edge an aside docks to; the Host decides the realized form by screen size.
+        /// Preferred docking side for an aside when the Host has room for a docked
+        /// layout. `aside` selects the companion region; `edge` selects a side within
+        /// it. Compact Hosts may reproject the same aside as a full-screen overlay.
         type SurfaceEdge = r###"'left' | 'right' | 'top' | 'bottom'"###;
 
         /// Where a float popup anchors (default `center`).
@@ -1269,18 +1337,21 @@ true
     readonly visible: boolean;
     readonly alive: boolean;
     /**
-     * Show a host-managed surface. Dynamic page/url surfaces return a Promise;
-     * host-declared surfaces may complete synchronously.
+     * Show a host-managed surface. Resolves only after native presentation
+     * succeeds and the handle's visibility has been updated.
      */
-    show(): void | Promise<void>;
+    show(): Promise<void>;
     /**
      * Hide without destroying user-visible state when the platform supports it.
+     * Main surfaces cannot be hidden and reject this operation.
      */
-    hide(): void | Promise<void>;
+    hide(): Promise<void>;
     /**
-     * Destroy the live surface. Repeated close calls are idempotent.
+     * Destroy the live surface. The stable root main cannot be closed and
+     * rejects this operation. Repeated calls after a successful close are
+     * idempotent.
      */
-    close(): void | Promise<void>;
+    close(): Promise<void>;
     onShow(handler: (event: SurfaceVisibilityEvent) => void): () => void;
     onHide(handler: (event: SurfaceVisibilityEvent) => void): () => void;
     onClose(handler: (event: SurfaceClosedEvent) => void): () => void;
@@ -1290,12 +1361,11 @@ true
         /// Surface object initiated the visibility change so observers can
         /// distinguish self-driven transitions from peer-driven ones (e.g. an opener
         /// UI that wants to update its own button state only when the page side
-        /// toggled visibility).
+        /// toggled visibility). `shell` identifies a host-driven main switch.
         ///
         type SurfaceVisibilityEvent = r###"{
     id: string;
-    kind: 'overlay' | 'window';
-    source: 'opener' | 'page';
+    source: 'opener' | 'page' | 'shell';
 }"###;
 
         type SwitchTabOptions = r###"PageTargetOptions"###;
@@ -1511,18 +1581,11 @@ true
 }"###;
 
         /// Target page for `navigateTo`, `redirectTo`, `switchTab`, and `reLaunch`.
-        ///
-        /// Pass exactly one of `page` or `path`; there is no `url` field. Page
-        /// names and routes are discoverable with `lxdev lxapp pages`.
+        /// JavaScript navigation accepts only the configured page name; full routes
+        /// are internal runtime details. Discover names with `lxdev lxapp pages`.
         type PageTargetOptions = r###"{
     /** Configured page name from `lingxia.yaml` / `lxapp.json`. */
     page: string;
-    path?: never;
-    query?: PageQuery;
-} | {
-    /** Full page route, for example `/pages/home/index`. */
-    path: string;
-    page?: never;
     query?: PageQuery;
 }"###;
 
@@ -1534,55 +1597,68 @@ true
         type LxEnv = "globalThis.LxEnv";
         type TrayApi = "globalThis.TrayApi";
 
-        /// Shell chrome writer API (home lxapp only).
+        /// App-owned host-shell chrome. Mutations are available only to the home
+        /// lxapp's Logic context; other lxapps receive a permission error.
         type ShellApi = r###"{
+    /**
+     * Declares runtime actions in the desktop shell's sidebar header or footer.
+     * The shell controls layout and only dispatches activation; callbacks own
+     * navigation and all other behavior.
+     */
     sidebarActions: ShellSidebarActionsApi;
-    emptyState: ShellEmptyStateApi;
 }"###;
 
-        /// Content for the desktop shell placeholder shown only while no main
-        /// surface is active. It creates no surface, WebView, or sidebar entry.
-        type ShellEmptyStateOptions = r###"{
-    /** Non-empty placeholder title. */
-    title: string;
-    /** Optional supporting text. */
-    message?: string;
-    /** Bundled asset or lxapp-accessible local path. */
-    icon?: string;
-    /** Optional app-owned action; the callback decides what to open or run. */
-    action?: {
-        id: string;
-        label: string;
-        onActivate: () => void;
-    };
-}"###;
-
-        /// Header accepts at most two icon actions. Footer actions are shown as
-        /// rows and the host scrolls overflow.
+        /// Where the host renders a sidebar action on desktop.
+        ///
+        /// - `header`: icon-only, at most two actions; `label` supplies tooltip
+        ///   and accessibility text. Hidden in the compact/collapsed shell.
+        /// - `footer`: icon and label in the expanded sidebar, icon-only in the
+        ///   compact rail. The host wraps cells and scrolls after five visible
+        ///   rows.
+        ///
+        /// Apps cannot configure cell size, row, weight, color, or selected state.
         type ShellSidebarActionPlacement = r###"'header' | 'footer'"###;
 
-        /// One app-declared shell sidebar action. Its `id` remains stable across
-        /// updates and activation. The shell only routes activation to the
-        /// callback; the app owns every resulting action. `icon` can be a bundled
-        /// asset such as `public/settings.svg` or a local path returned by LingXia
-        /// file APIs, including `lx://temp/...`, `lx://usercache/...`, and
-        /// `lx://userdata/...`. Download remote icons before registration. For portable desktop
-        /// rendering, use a square, transparent, monochrome SVG or PNG designed
-        /// for a 16-point visual; the host may tint it to match the current shell
-        /// theme.
+        /// One app-declared shell sidebar action. It is a stateless command, not a
+        /// selectable navigation item: the shell invokes `onActivate` once and
+        /// does not infer a target or active state.
         type ShellSidebarAction = r###"{
+    /** Stable, non-empty id; unique across both header and footer actions. */
     id: string;
+    /** Initial host-owned region. Use `replace` to move an action. */
     placement: ShellSidebarActionPlacement;
+    /**
+     * Local lxapp-accessible icon. Use a bundled relative path such as
+     * `public/settings.svg`, or an `lx://temp`, `lx://usercache`, or
+     * `lx://userdata` path returned by LingXia file APIs. Native absolute paths,
+     * parent traversal, `file:` URLs, and network URLs are rejected; download a
+     * remote icon before registration. For portable rendering, prefer a square,
+     * transparent, monochrome SVG or PNG designed for a 16-point visual.
+     */
     icon: string;
+    /**
+     * Visible footer title and the tooltip/accessibility text for every
+     * placement. Long footer labels are kept on one line and tail-truncated.
+     */
     label: string;
+    /** Visible but non-activatable when true. Defaults to false. */
     disabled?: boolean;
+    /**
+     * Called once for each enabled mouse, keyboard, accessibility, shortcut, or
+     * automation activation. Explicitly open or navigate to the desired content.
+     */
     onActivate: () => void;
 }"###;
 
-        /// Mutable presentation fields for an existing sidebar action.
+        /// Mutable presentation fields for an existing sidebar action. The patch
+        /// must contain at least one field. Use `replace` to change `placement` or
+        /// `onActivate`.
         type ShellSidebarActionUpdate = r###"{
+    /** Replacement local icon, with the same path rules as registration. */
     icon?: string;
+    /** Replacement non-empty visible/accessibility label. */
     label?: string;
+    /** Whether the action remains visible but rejects activation. */
     disabled?: boolean;
 }"###;
 

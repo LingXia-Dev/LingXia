@@ -8,9 +8,10 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::content::SurfaceContent;
 use crate::graph::SurfaceGraph;
 use crate::layout::SizeClass;
-use crate::model::{Role, Surface, SurfaceContent};
+use crate::model::{Role, Surface};
 
 /// Structured outcome of a request (§3.1).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -113,6 +114,18 @@ pub fn arbitrate(
     let mut next = graph.clone();
     let request_id = request.id.clone();
 
+    // The first main is the window's stable navigation root. Opening the same
+    // identity with another role must not silently replace that root or leave
+    // the graph without a primary; resolve the request back to its main role.
+    if graph.is_root_main(&request_id) && request.role != Role::Main {
+        next.set_active_main(&request_id);
+        next.set_focus(&request_id);
+        return (
+            next,
+            OpenOutcome::new(Decision::DowngradedRole, request_id, Role::Main, false),
+        );
+    }
+
     match request.role {
         // main / float are not bound by the split limit.
         Role::Main | Role::Float => {
@@ -184,7 +197,7 @@ pub fn arbitrate(
             }
 
             let slot = request.content.slot_kind();
-            let open_kinds: std::collections::HashSet<crate::model::SlotKind> = next
+            let open_kinds: std::collections::HashSet<crate::SlotKind> = next
                 .asides()
                 .iter()
                 .map(|s| s.content.slot_kind())
@@ -222,10 +235,10 @@ fn promote_to_main(mut request: Surface) -> Surface {
 /// The web URL of a surface, if it is web content.
 fn web_url(surface: &Surface) -> Option<&str> {
     match &surface.content {
-        SurfaceContent::Web {
-            url,
+        SurfaceContent::Browser {
+            initial_url,
             reuse_by_url: true,
-        } => Some(url.as_str()),
+        } => Some(initial_url.as_str()),
         _ => None,
     }
 }

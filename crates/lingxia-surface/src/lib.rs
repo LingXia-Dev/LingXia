@@ -1,17 +1,21 @@
 //! `lingxia-surface` — the platform-agnostic core of the Adaptive Surface
-//! Layout model (see `docs/draft/adaptive-surface-layout.md`).
+//! Layout model (see `docs/internal/shell-ui-spec.md`).
 //!
 //! Pure Rust, no UI: the Surface Graph, its invariants and state transitions,
 //! the two-axis derivation into `DerivedLayout`, and the Host arbitration
 //! pure function. Each platform skin binds the `DerivedLayout` output.
 
 mod arbitrate;
+mod content;
 mod graph;
 mod layout;
 mod manager;
 mod model;
+mod presentation;
+mod switcher;
 
 pub use arbitrate::{Decision, OpenOutcome, Policy, arbitrate, normalize_initial_url};
+pub use content::{SlotKind, SurfaceContent};
 pub use graph::SurfaceGraph;
 pub use layout::PlanAsideSlot;
 pub use layout::{
@@ -20,8 +24,13 @@ pub use layout::{
 };
 pub use manager::SurfaceManager;
 pub use model::{
-    Edge, FloatAnchor, FloatDismiss, FloatSpec, Placement, Role, SlotKind, Surface, SurfaceContent,
-    SurfaceId, SurfaceInteraction, SurfaceOwner, SurfaceState,
+    Edge, FloatAnchor, FloatDismiss, FloatSpec, Placement, Role, Surface, SurfaceId,
+    SurfaceInteraction, SurfaceOwner, SurfaceState,
+};
+pub use presentation::{SurfaceCapabilities, SurfaceIcon, SurfacePresentation};
+pub use switcher::{
+    CloseOutcome, ReplaceMainsError, SurfaceSwitcherItem, SurfaceSwitcherSnapshot,
+    SwitcherContentKind,
 };
 
 #[cfg(test)]
@@ -29,17 +38,17 @@ mod tests {
     use super::*;
 
     fn main_s(id: &str) -> Surface {
-        Surface::entry(id, Role::Main, id)
+        Surface::lxapp(id, Role::Main, id)
     }
     fn aside_s(id: &str, edge: Edge) -> Surface {
-        let mut s = Surface::entry(id, Role::Aside, id);
+        let mut s = Surface::lxapp(id, Role::Aside, id);
         s.placement.edge = Some(edge);
         s
     }
     fn web_aside_s(id: &str, url: &str, edge: Edge) -> Surface {
         let mut s = aside_s(id, edge);
-        s.content = SurfaceContent::Web {
-            url: url.to_string(),
+        s.content = SurfaceContent::Browser {
+            initial_url: url.to_string(),
             reuse_by_url: true,
         };
         s
@@ -47,13 +56,13 @@ mod tests {
 
     fn non_reusable_web_aside_s(id: &str, url: &str, edge: Edge) -> Surface {
         let mut surface = web_aside_s(id, url, edge);
-        if let SurfaceContent::Web { reuse_by_url, .. } = &mut surface.content {
+        if let SurfaceContent::Browser { reuse_by_url, .. } = &mut surface.content {
             *reuse_by_url = false;
         }
         surface
     }
     fn terminal_aside_s(id: &str, edge: Edge) -> Surface {
-        let mut s = Surface::entry(id, Role::Aside, "terminal");
+        let mut s = Surface::native(id, Role::Aside, "terminal");
         s.placement.edge = Some(edge);
         s
     }
@@ -78,17 +87,22 @@ mod tests {
     }
 
     #[test]
-    fn aside_requires_a_main_invariant() {
+    fn root_main_keeps_companion_graph_anchored() {
         // Construct an illegal graph directly and assert the checker catches it.
         let mut g = SurfaceGraph::new();
         g.insert(main_s("home"));
         g.insert(aside_s("assistant", Edge::Right));
         assert!(g.is_valid());
-        // Removing the only main cascades the aside closed (§1.5).
-        let removed = g.remove("home");
-        assert!(removed.contains(&"assistant".to_string()));
-        assert!(g.asides().is_empty());
-        assert_eq!(g.active_main_id, None);
+        // The first main is the stable root; ordinary close cannot remove it
+        // or cascade its companions.
+        assert_eq!(
+            g.close("home"),
+            CloseOutcome::RejectedRoot {
+                surface_id: "home".into()
+            }
+        );
+        assert_eq!(g.asides().len(), 1);
+        assert_eq!(g.active_main_id.as_deref(), Some("home"));
         assert!(g.is_valid());
     }
 
@@ -99,7 +113,7 @@ mod tests {
         g.insert(main_s("b"));
         g.insert(main_s("c"));
         g.set_active_main("b");
-        g.remove("b");
+        g.close("b");
         // prefer the next main after the removed position.
         assert_eq!(g.active_main_id.as_deref(), Some("c"));
         assert!(g.is_valid());
@@ -110,14 +124,14 @@ mod tests {
         let mut g = SurfaceGraph::new();
         g.insert(main_s("home"));
         assert_eq!(g.focused_surface_id.as_deref(), Some("home"));
-        let mut modal = Surface::entry("dialog", Role::Float, "confirm");
+        let mut modal = Surface::native("dialog", Role::Float, "confirm");
         modal.float = Some(FloatSpec {
             modal: true,
             ..Default::default()
         });
         g.insert(modal);
         g.set_focus("dialog");
-        g.remove("dialog");
+        g.close("dialog");
         assert_eq!(g.focused_surface_id.as_deref(), Some("home"));
         assert!(g.is_valid());
     }
@@ -210,7 +224,7 @@ mod tests {
         let tree = g.canonical_layout(SizeClass::Expanded).unwrap();
         tree.validate().expect("canonical tree must be valid");
         // floats never appear in the tree.
-        g.insert(Surface::entry("toast", Role::Float, "toast"));
+        g.insert(Surface::native("toast", Role::Float, "toast"));
         let ids = g
             .canonical_layout(SizeClass::Expanded)
             .unwrap()
@@ -451,7 +465,7 @@ mod tests {
         assert_eq!(
             next.asides()
                 .iter()
-                .filter(|s| matches!(s.content, SurfaceContent::Web { .. }))
+                .filter(|s| matches!(s.content, SurfaceContent::Browser { .. }))
                 .count(),
             2
         );
@@ -493,7 +507,12 @@ mod tests {
         graph.set_focus("first");
         graph.set_focus("second");
 
-        assert_eq!(graph.remove("second"), vec!["second"]);
+        assert_eq!(
+            graph.close("second"),
+            CloseOutcome::Closed {
+                removed: vec!["second".into()]
+            }
+        );
         assert_eq!(graph.focused_surface_id.as_deref(), Some("first"));
         assert_eq!(
             graph.aside_slots(SizeClass::Expanded)[0]
@@ -524,7 +543,7 @@ mod tests {
         assert_eq!(
             next.asides()
                 .iter()
-                .filter(|s| matches!(s.content, SurfaceContent::Web { .. }))
+                .filter(|s| matches!(s.content, SurfaceContent::Browser { .. }))
                 .count(),
             1
         );
@@ -626,7 +645,7 @@ mod tests {
         assert_eq!(
             next.asides()
                 .iter()
-                .filter(|s| matches!(s.content, SurfaceContent::Web { .. }))
+                .filter(|s| matches!(s.content, SurfaceContent::Browser { .. }))
                 .count(),
             3
         );
@@ -723,10 +742,10 @@ mod tests {
     }
 
     #[test]
-    fn web_surface_json_preserves_reuse_policy_and_legacy_default() {
+    fn browser_surface_json_preserves_reuse_policy_default() {
         let ordinary = web_aside_s("ordinary", "https://a.example", Edge::Right);
         let ordinary_json = serde_json::to_string(&ordinary).unwrap();
-        assert!(!ordinary_json.contains("reuse_by_url"));
+        assert!(!ordinary_json.contains("reuseByUrl"));
         assert_eq!(
             serde_json::from_str::<Surface>(&ordinary_json).unwrap(),
             ordinary
@@ -734,7 +753,7 @@ mod tests {
 
         let callback = non_reusable_web_aside_s("callback", "https://a.example", Edge::Right);
         let callback_json = serde_json::to_string(&callback).unwrap();
-        assert!(callback_json.contains("\"reuse_by_url\":false"));
+        assert!(callback_json.contains("\"reuseByUrl\":false"));
         assert_eq!(
             serde_json::from_str::<Surface>(&callback_json).unwrap(),
             callback

@@ -1,4 +1,5 @@
 use std::future::Future;
+use std::pin::Pin;
 
 use lingxia_surface::LayoutPresentationPlan;
 
@@ -60,6 +61,36 @@ pub enum SurfaceRole {
     Float = 2,
 }
 
+impl SurfaceRole {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Main => "main",
+            Self::Aside => "aside",
+            Self::Float => "float",
+        }
+    }
+}
+
+impl From<lingxia_surface::Role> for SurfaceRole {
+    fn from(role: lingxia_surface::Role) -> Self {
+        match role {
+            lingxia_surface::Role::Main => Self::Main,
+            lingxia_surface::Role::Aside => Self::Aside,
+            lingxia_surface::Role::Float => Self::Float,
+        }
+    }
+}
+
+impl From<SurfaceRole> for lingxia_surface::Role {
+    fn from(role: SurfaceRole) -> Self {
+        match role {
+            SurfaceRole::Main => Self::Main,
+            SurfaceRole::Aside => Self::Aside,
+            SurfaceRole::Float => Self::Float,
+        }
+    }
+}
+
 #[repr(i32)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum SurfaceContent {
@@ -107,6 +138,37 @@ pub struct SurfaceRequest {
     pub url_callback: bool,
 }
 
+/// Callback adapter used by platform SDK handlers that cannot return a Rust
+/// future directly. `SurfacePresenter` exposes only `ManagedSurfaceFuture`.
+pub type ManagedSurfaceCompletion = Box<dyn FnOnce(Result<(), PlatformError>) + Send + 'static>;
+
+pub type ManagedSurfaceFuture =
+    Pin<Box<dyn Future<Output = Result<(), PlatformError>> + Send + 'static>>;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ManagedSurfaceProvider {
+    Declared,
+    Native {
+        capability: String,
+        instance_key: Option<String>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ManagedSurfaceProviderRequest {
+    pub surface_id: String,
+    pub provider: ManagedSurfaceProvider,
+    pub role: Option<SurfaceRole>,
+    pub edge: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ManagedSurfaceProviderDestroyRequest {
+    pub surface_id: String,
+    pub provider: ManagedSurfaceProvider,
+    pub role: Option<SurfaceRole>,
+}
+
 pub trait SurfacePresenter: Send + Sync + 'static {
     /// The shared core resolves a `LayoutPresentationPlan` for one window/graph
     /// and the platform skin binds it. The per-surface methods below present a
@@ -145,29 +207,30 @@ pub trait SurfacePresenter: Send + Sync + 'static {
         ))
     }
 
-    /// Show or hide a top-level surface declared by the host (e.g. the AI-chat
-    /// panel or terminal in `ui` config). `edge` overrides the declared edge
-    /// for this show (the panel moves if already visible); `None` keeps the
-    /// current placement. Only platforms with a host shell that manages
-    /// declared surfaces (currently macOS) support it; others have no such
-    /// shell and return `NotSupported`.
-    fn set_managed_surface_visible(
+    /// Ensure the platform provider exists for a core-owned Surface. Identity,
+    /// role, visibility, focus, and menu policy remain in the shared graph;
+    /// `present_layout` projects that state after this future succeeds.
+    fn ensure_managed_surface_provider(
         &self,
-        _id: &str,
-        _visible: bool,
-        _edge: Option<&str>,
-    ) -> Result<(), PlatformError> {
-        Err(PlatformError::NotSupported(
-            "managed surfaces are not supported on this platform".to_string(),
-        ))
+        _request: ManagedSurfaceProviderRequest,
+    ) -> ManagedSurfaceFuture {
+        Box::pin(async {
+            Err(PlatformError::NotSupported(
+                "managed surface providers are not supported on this platform".to_string(),
+            ))
+        })
     }
 
-    /// Toggle a host-declared top-level surface's visibility. See
-    /// [`set_managed_surface_visible`](Self::set_managed_surface_visible).
-    fn toggle_managed_surface(&self, _id: &str) -> Result<(), PlatformError> {
-        Err(PlatformError::NotSupported(
-            "managed surfaces are not supported on this platform".to_string(),
-        ))
+    /// Destroy provider state after the core removes a non-root Surface.
+    fn destroy_managed_surface_provider(
+        &self,
+        _request: ManagedSurfaceProviderDestroyRequest,
+    ) -> ManagedSurfaceFuture {
+        Box::pin(async {
+            Err(PlatformError::NotSupported(
+                "managed surface providers are not supported on this platform".to_string(),
+            ))
+        })
     }
 }
 

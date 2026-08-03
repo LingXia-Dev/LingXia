@@ -260,6 +260,30 @@ mod bridge {
         #[swift_bridge(swift_name = "setActiveMain")]
         fn set_active_main(appid: &str) -> bool;
 
+        #[swift_bridge(swift_name = "replaceHostMains")]
+        fn replace_host_mains(appid: &str, registrations_json: &str) -> bool;
+
+        #[swift_bridge(swift_name = "openHostMain")]
+        fn open_host_main(appid: &str, registration_json: &str) -> bool;
+
+        #[swift_bridge(swift_name = "surfaceSwitcher")]
+        fn surface_switcher(appid: &str) -> String;
+
+        #[swift_bridge(swift_name = "surfaceMenu")]
+        fn surface_menu(appid: &str, surface_id: &str) -> String;
+
+        #[swift_bridge(swift_name = "performSurfaceMenuIntent")]
+        fn perform_surface_menu_intent(appid: &str, intent_json: &str) -> String;
+
+        #[swift_bridge(swift_name = "setActiveMainSurface")]
+        fn set_active_main_surface(appid: &str, surface_id: &str) -> bool;
+
+        #[swift_bridge(swift_name = "setSurfaceAutomaticTitle")]
+        fn set_surface_automatic_title(appid: &str, surface_id: &str, title: &str) -> bool;
+
+        #[swift_bridge(swift_name = "renameSurface")]
+        fn rename_surface(appid: &str, surface_id: &str, title: &str) -> bool;
+
         // Focus a surface in the window graph (aside-slot tab switch): the
         // committed plan's slot `activeChild` follows the focus and the skin
         // reconciler swaps the slot's visible child.
@@ -270,9 +294,6 @@ mod bridge {
         // callback. The callback owns any resulting surface operation.
         #[swift_bridge(swift_name = "shellActivate")]
         fn shell_activate(generation: u64, item_id: &str) -> bool;
-
-        #[swift_bridge(swift_name = "shellEmptyStateActivate")]
-        fn shell_empty_state_activate(generation: u64, item_id: &str) -> bool;
 
         // Open (or focus) an lxapp as a MAIN — the pinned-lxapp tile's click.
         #[swift_bridge(swift_name = "shellOpenLxappMain")]
@@ -298,8 +319,19 @@ mod bridge {
             edge: &str,
         ) -> bool;
 
+        #[swift_bridge(swift_name = "registerHostNativeAsideDeclaration")]
+        fn register_host_native_aside_declaration(
+            appid: &str,
+            surface_id: &str,
+            capability: &str,
+            edge: &str,
+        ) -> bool;
+
         #[swift_bridge(swift_name = "unregisterHostAside")]
         fn unregister_host_aside(appid: &str, surface_id: &str) -> bool;
+
+        #[swift_bridge(swift_name = "markHostSurfaceHidden")]
+        fn mark_host_surface_hidden(appid: &str, surface_id: &str) -> bool;
 
         #[swift_bridge(swift_name = "openBrowserTab")]
         fn open_browser_tab(appid: &str, session_id: u64, url: &str) -> Option<String>;
@@ -512,7 +544,10 @@ mod bridge {
         fn get_terminal_backend_status_json() -> String;
 
         #[swift_bridge(swift_name = "terminalSessionCreate")]
-        fn terminal_session_create(cols: u16, rows: u16) -> u64;
+        fn terminal_session_create(cols: u16, rows: u16, cwd: &str) -> u64;
+
+        #[swift_bridge(swift_name = "terminalSessionCurrentDirectory")]
+        fn terminal_session_current_directory(id: u64) -> String;
 
         #[swift_bridge(swift_name = "terminalSessionWrite")]
         fn terminal_session_write(id: u64, input: &str) -> bool;
@@ -553,6 +588,11 @@ mod bridge {
         #[swift_bridge(swift_name = "LxApp.browserBookmarksChanged")]
         fn browser_bookmarks_changed();
 
+        // Browser core changed outside the shell (for example lxdev closed a
+        // tab). Reconcile native chrome with the authoritative tab registry.
+        #[swift_bridge(swift_name = "LxApp.browserTabsChanged")]
+        fn browser_tabs_changed();
+
         // Display language changed — host-owned native chrome re-localizes.
         #[swift_bridge(swift_name = "LxApp.displayLanguageChanged")]
         fn display_language_changed();
@@ -580,6 +620,9 @@ fn install_browser_native_input_host() {
     // action, webui manager page) notifies the Swift shell.
     lingxia_browser_shell::set_bookmarks_change_listener(Box::new(|| {
         self::bridge::browser_bookmarks_changed();
+    }));
+    lingxia_browser::set_tabs_changed_handler(Arc::new(|| {
+        self::bridge::browser_tabs_changed();
     }));
     lingxia_browser_shell::set_display_language_change_listener(Box::new(|| {
         self::bridge::display_language_changed();
@@ -1145,6 +1188,83 @@ pub fn set_active_main(appid: &str) -> bool {
     })
 }
 
+pub fn replace_host_mains(appid: &str, registrations_json: &str) -> bool {
+    ffi_catch_unwind!("replace_host_mains", false, || {
+        let Ok(registrations) =
+            serde_json::from_str::<Vec<lxapp::HostMainSurfaceRegistration>>(registrations_json)
+        else {
+            return false;
+        };
+        lxapp::try_get(appid).is_some_and(|app| app.replace_host_mains(registrations).is_ok())
+    })
+}
+
+pub fn open_host_main(appid: &str, registration_json: &str) -> bool {
+    ffi_catch_unwind!("open_host_main", false, || {
+        let Ok(registration) =
+            serde_json::from_str::<lxapp::HostMainSurfaceRegistration>(registration_json)
+        else {
+            return false;
+        };
+        lxapp::try_get(appid).is_some_and(|app| app.open_host_main(registration).is_ok())
+    })
+}
+
+pub fn surface_switcher(appid: &str) -> String {
+    ffi_catch_unwind!("surface_switcher", String::new(), || {
+        lxapp::try_get(appid)
+            .and_then(|app| serde_json::to_string(&app.surface_switcher_snapshot()).ok())
+            .unwrap_or_default()
+    })
+}
+
+pub fn surface_menu(appid: &str, surface_id: &str) -> String {
+    ffi_catch_unwind!("surface_menu", String::new(), || {
+        lxapp::try_get(appid)
+            .and_then(|app| app.shell_surface_menu(surface_id))
+            .and_then(|menu| serde_json::to_string(&menu).ok())
+            .unwrap_or_default()
+    })
+}
+
+pub fn perform_surface_menu_intent(appid: &str, intent_json: &str) -> String {
+    ffi_catch_unwind!("perform_surface_menu_intent", String::new(), || {
+        let Some(app) = lxapp::try_get(appid) else {
+            return String::new();
+        };
+        let Ok(intent) = serde_json::from_str::<lingxia_shell::SurfaceMenuIntent>(intent_json)
+        else {
+            return String::new();
+        };
+        let execution = app.perform_shell_surface_menu_intent_deferred(intent);
+        if execution.accepted && execution.removed_surface_ids.is_empty() {
+            app.commit_shell_surface_layout();
+        }
+        serde_json::to_string(&execution).unwrap_or_default()
+    })
+}
+
+pub fn set_active_main_surface(appid: &str, surface_id: &str) -> bool {
+    ffi_catch_unwind!("set_active_main_surface", false, || {
+        lxapp::try_get(appid).is_some_and(|app| app.set_active_main_surface(surface_id))
+    })
+}
+
+pub fn set_surface_automatic_title(appid: &str, surface_id: &str, title: &str) -> bool {
+    ffi_catch_unwind!("set_surface_automatic_title", false, || {
+        let title = (!title.trim().is_empty()).then_some(title);
+        lxapp::try_get(appid)
+            .is_some_and(|app| app.update_shell_surface_automatic_title(surface_id, title))
+    })
+}
+
+pub fn rename_surface(appid: &str, surface_id: &str, title: &str) -> bool {
+    ffi_catch_unwind!("rename_surface", false, || {
+        let title = (!title.trim().is_empty()).then_some(title);
+        lxapp::try_get(appid).is_some_and(|app| app.rename_shell_surface(surface_id, title))
+    })
+}
+
 pub fn shell_activate(generation: u64, item_id: &str) -> bool {
     ffi_catch_unwind!("shell_activate", false, || {
         lingxia_shell::activate_sidebar_action(lingxia_shell::SidebarActionIntent {
@@ -1152,17 +1272,6 @@ pub fn shell_activate(generation: u64, item_id: &str) -> bool {
             id: item_id.to_string(),
         })
         .is_ok()
-    })
-}
-
-pub fn shell_empty_state_activate(generation: u64, item_id: &str) -> bool {
-    ffi_catch_unwind!("shell_empty_state_activate", false, || {
-        let Some(owner) = lingxia_app_context::home_app_id() else {
-            return false;
-        };
-        let event = format!("lx.shell.emptyState:{generation}:{item_id}");
-        lxapp::publish_app_event(owner, &event, None);
-        true
     })
 }
 
@@ -1290,6 +1399,22 @@ pub fn register_host_aside_content(
     })
 }
 
+pub fn register_host_native_aside_declaration(
+    appid: &str,
+    surface_id: &str,
+    capability: &str,
+    edge: &str,
+) -> bool {
+    ffi_catch_unwind!("register_host_native_aside_declaration", false, || {
+        if let Some(lxapp) = lxapp::try_get(appid) {
+            lxapp.register_host_native_aside_declaration(surface_id, capability, edge);
+            true
+        } else {
+            false
+        }
+    })
+}
+
 pub fn unregister_host_aside(appid: &str, surface_id: &str) -> bool {
     ffi_catch_unwind!("unregister_host_aside", false, || {
         if let Some(lxapp) = lxapp::try_get(appid) {
@@ -1298,6 +1423,12 @@ pub fn unregister_host_aside(appid: &str, surface_id: &str) -> bool {
         } else {
             false
         }
+    })
+}
+
+pub fn mark_host_surface_hidden(appid: &str, surface_id: &str) -> bool {
+    ffi_catch_unwind!("mark_host_surface_hidden", false, || {
+        lxapp::try_get(appid).is_some_and(|lxapp| lxapp.mark_shell_surface_hidden(surface_id))
     })
 }
 
@@ -1854,16 +1985,32 @@ pub fn get_terminal_backend_status_json() -> String {
     }
 }
 
-pub fn terminal_session_create(cols: u16, rows: u16) -> u64 {
+pub fn terminal_session_create(cols: u16, rows: u16, cwd: &str) -> u64 {
     #[cfg(feature = "terminal-runtime")]
     {
-        return crate::terminal::terminal_create(cols, rows);
+        let cwd = (!cwd.is_empty()).then(|| std::path::Path::new(cwd));
+        return crate::terminal::terminal_create_at(cols, rows, cwd);
     }
 
     #[cfg(not(feature = "terminal-runtime"))]
     {
-        let _ = (cols, rows);
+        let _ = (cols, rows, cwd);
         0
+    }
+}
+
+pub fn terminal_session_current_directory(id: u64) -> String {
+    #[cfg(feature = "terminal-runtime")]
+    {
+        return crate::terminal::terminal_current_directory(id)
+            .and_then(|path| path.into_os_string().into_string().ok())
+            .unwrap_or_default();
+    }
+
+    #[cfg(not(feature = "terminal-runtime"))]
+    {
+        let _ = id;
+        String::new()
     }
 }
 

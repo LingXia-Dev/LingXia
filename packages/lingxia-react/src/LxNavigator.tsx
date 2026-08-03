@@ -23,7 +23,6 @@ export interface LxNavigatorProps extends Omit<LxNavigatorAttributes, 'onSuccess
 
   // Open external lxapp
   appId?: string;
-  path?: string; // Supports query string
   envVersion?: NavigatorEnvVersion;
   targetVersion?: string;
 
@@ -59,7 +58,6 @@ export const LxNavigator = React.forwardRef<HTMLElement, LxNavigatorProps>(
       delta = 1,
       query,
       appId,
-      path,
       envVersion,
       targetVersion,
       phoneNumber,
@@ -124,7 +122,6 @@ export const LxNavigator = React.forwardRef<HTMLElement, LxNavigatorProps>(
       delta,
       query,
       appId,
-      path,
       envVersion,
       targetVersion,
       phoneNumber,

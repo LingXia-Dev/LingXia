@@ -1,16 +1,18 @@
 use super::await_or_cancel;
 use crate::LxApp;
+use crate::LxAppError;
 use crate::lxapp::ReleaseType;
 use crate::startup::LxAppStartupOptions;
-use crate::{LxAppError, UpdateManager};
 use serde::Deserialize;
 use serde_json::Value;
 use std::sync::Arc;
 
 #[derive(Deserialize)]
-struct NavigateToLxAppOptions {
+struct NavigateToAppOptions {
     #[serde(rename = "appId")]
     appid: String,
+    // Kept only so callers get a forward-only rejection for the removed
+    // route-based input instead of having it ignored by serde.
     path: Option<String>,
     page: Option<String>,
     query: Option<Value>,
@@ -22,7 +24,7 @@ struct NavigateToLxAppOptions {
 
 fn build_startup_options(
     target: &LxApp,
-    options: &NavigateToLxAppOptions,
+    options: &NavigateToAppOptions,
 ) -> Result<(LxAppStartupOptions, ReleaseType), LxAppError> {
     let path = resolve_page_target(target, options)?;
     let mut startup_options = LxAppStartupOptions::new(&path);
@@ -42,41 +44,35 @@ fn parse_env_version(env_version: Option<&str>) -> Result<ReleaseType, LxAppErro
 
 fn resolve_page_target(
     target: &LxApp,
-    options: &NavigateToLxAppOptions,
+    options: &NavigateToAppOptions,
 ) -> Result<String, LxAppError> {
-    let has_page = options
-        .page
-        .as_deref()
-        .map(str::trim)
-        .is_some_and(|value| !value.is_empty());
-    let has_path = options
-        .path
-        .as_deref()
-        .map(str::trim)
-        .is_some_and(|value| !value.is_empty());
-    if has_page && has_path {
-        return Err(LxAppError::InvalidParameter(
-            "pass either page or path, not both".to_string(),
-        ));
-    }
-    let path = if let Some(page) = options
-        .page
-        .as_deref()
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-    {
+    validate_page_selector(options)?;
+    let path = if let Some(page) = options.page.as_deref().map(str::trim) {
         target
             .find_page_path_by_name(page)
             .ok_or_else(|| LxAppError::ResourceNotFound(format!("page name: {page}")))?
     } else {
-        options
-            .path
-            .as_deref()
-            .map(str::trim)
-            .unwrap_or_default()
-            .to_string()
+        String::new()
     };
     append_query(path, options.query.as_ref())
+}
+
+fn validate_page_selector(options: &NavigateToAppOptions) -> Result<(), LxAppError> {
+    if options.path.is_some() {
+        return Err(LxAppError::InvalidParameter(
+            "path is not supported; pass the configured page name in page".to_string(),
+        ));
+    }
+    if options
+        .page
+        .as_deref()
+        .is_some_and(|page| page.trim().is_empty())
+    {
+        return Err(LxAppError::InvalidParameter(
+            "page must be a non-empty configured page name".to_string(),
+        ));
+    }
+    Ok(())
 }
 
 fn append_query(path: String, query: Option<&Value>) -> Result<String, LxAppError> {
@@ -86,13 +82,14 @@ fn append_query(path: String, query: Option<&Value>) -> Result<String, LxAppErro
     crate::append_page_query(path, query).map_err(LxAppError::InvalidParameter)
 }
 
-fn should_navigate_to_lxapp(
+fn should_navigate_to_app(
     lxapp: &LxApp,
-    options: &NavigateToLxAppOptions,
+    options: &NavigateToAppOptions,
 ) -> Result<bool, LxAppError> {
+    validate_page_selector(options)?;
     if options.appid.is_empty() {
         return Err(LxAppError::InvalidParameter(
-            "navigateToLxApp requires appId".to_string(),
+            "navigateToApp requires appId".to_string(),
         ));
     }
 
@@ -103,11 +100,12 @@ fn should_navigate_to_lxapp(
     Ok(true)
 }
 
-async fn do_navigate_to_lxapp(
+async fn do_navigate_to_app(
     lxapp: Arc<LxApp>,
-    options: NavigateToLxAppOptions,
+    options: NavigateToAppOptions,
     cancel: &mut super::HostCancel,
 ) -> Result<(), LxAppError> {
+    validate_page_selector(&options)?;
     let target_appid = options.appid.clone();
     let release_type = parse_env_version(options.env_version.as_deref())?;
     let target_version = options
@@ -142,34 +140,55 @@ async fn do_navigate_to_lxapp(
 
     let target_app = crate::ensure_lxapp(&target_appid, release_type)?;
     let (startup_options, _) = build_startup_options(&target_app, &options)?;
+    let release_type = startup_options.release_type;
 
     lxapp.navigate_to(target_appid.clone(), startup_options)?;
 
-    UpdateManager::spawn_release_lxapp_update_check(target_appid);
+    crate::schedule_lxapp_update_check(&target_appid, release_type);
     Ok(())
 }
 
 host_api_async!(
-    NavigateToLxApp,
-    NavigateToLxAppOptions,
+    NavigateToApp,
+    NavigateToAppOptions,
     (),
     |lxapp, options, cancel| async {
-        if !should_navigate_to_lxapp(&lxapp, &options)? {
+        if !should_navigate_to_app(&lxapp, &options)? {
             return Ok(());
         }
-        do_navigate_to_lxapp(lxapp, options, &mut cancel).await?;
+        do_navigate_to_app(lxapp, options, &mut cancel).await?;
         Ok(())
     }
 );
 
-host_api!(NavigateBackLxApp, (), |lxapp| {
+host_api!(NavigateBackApp, (), |lxapp| {
     lxapp.navigate_back()?;
     Ok(())
 });
 
 pub(crate) fn register_all() {
     register_host_module!("navigator", {
-        "navigateToLxApp" => Arc::new(NavigateToLxApp),
-        "navigateBackLxApp" => Arc::new(NavigateBackLxApp)
+        "navigateToApp" => Arc::new(NavigateToApp),
+        "navigateBackApp" => Arc::new(NavigateBackApp)
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn component_app_navigation_rejects_route_paths() {
+        let options = NavigateToAppOptions {
+            appid: "target".to_string(),
+            path: Some("/pages/home/index".to_string()),
+            page: None,
+            query: None,
+            env_version: None,
+            target_version: None,
+        };
+
+        let error = validate_page_selector(&options).unwrap_err().to_string();
+        assert!(error.contains("path is not supported"));
+    }
 }

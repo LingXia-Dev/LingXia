@@ -106,10 +106,11 @@ fn ephemeral_user_data_dir(
         hash ^= *byte as u64;
         hash = hash.wrapping_mul(0x100000001b3);
     }
-    let base_dir = configured_webview_user_data_dir()
+    let ephemeral_root = configured_webview_user_data_dir()
         .unwrap_or_else(|| std::env::temp_dir().join("lingxia-webview"))
-        .join("ephemeral")
-        .join(format!("{}-{hash:016x}", std::process::id()));
+        .join("ephemeral");
+    cleanup_orphaned_ephemeral_profiles_once(&ephemeral_root);
+    let base_dir = ephemeral_root.join(format!("{}-{hash:016x}", std::process::id()));
     let mut dir = base_dir.clone();
     if dir.exists() {
         match std::fs::remove_dir_all(&dir) {
@@ -128,6 +129,81 @@ fn ephemeral_user_data_dir(
         ))
     })?;
     Ok(Some(dir))
+}
+
+fn cleanup_orphaned_ephemeral_profiles_once(root: &std::path::Path) {
+    static CLEANED: std::sync::OnceLock<()> = std::sync::OnceLock::new();
+    CLEANED.get_or_init(|| {
+        let root = root.to_path_buf();
+        if let Err(err) = std::thread::Builder::new()
+            .name("lingxia-webview-orphan-cleanup".to_string())
+            .spawn(move || cleanup_orphaned_ephemeral_profiles(&root))
+        {
+            log::warn!("failed to start orphaned WebView2 profile cleanup: {err}");
+        }
+    });
+}
+
+fn cleanup_orphaned_ephemeral_profiles(root: &std::path::Path) {
+    let Ok(entries) = std::fs::read_dir(root) else {
+        return;
+    };
+    let current_pid = std::process::id();
+    let mut removed = 0usize;
+    for entry in entries.flatten() {
+        let Ok(file_type) = entry.file_type() else {
+            continue;
+        };
+        if !file_type.is_dir() {
+            continue;
+        }
+        let Some(owner_pid) = ephemeral_profile_owner_pid(&entry.file_name()) else {
+            continue;
+        };
+        if owner_pid == current_pid || windows_process_is_running(owner_pid) {
+            continue;
+        }
+        match std::fs::remove_dir_all(entry.path()) {
+            Ok(()) => removed += 1,
+            Err(err) => log::warn!(
+                "failed to remove orphaned ephemeral WebView2 profile {:?}: {err}",
+                entry.path()
+            ),
+        }
+    }
+    if removed > 0 {
+        log::info!("removed {removed} orphaned ephemeral WebView2 profiles");
+    }
+}
+
+fn ephemeral_profile_owner_pid(name: &std::ffi::OsStr) -> Option<u32> {
+    let mut parts = name.to_str()?.split('-');
+    let pid = parts.next()?.parse().ok().filter(|pid| *pid > 0)?;
+    let hash = parts.next()?;
+    if hash.len() != 16 || !hash.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return None;
+    }
+    if !parts.all(|part| !part.is_empty() && part.bytes().all(|byte| byte.is_ascii_hexdigit())) {
+        return None;
+    }
+    Some(pid)
+}
+
+fn windows_process_is_running(pid: u32) -> bool {
+    use windows::Win32::Foundation::{CloseHandle, ERROR_INVALID_PARAMETER};
+    use windows::Win32::System::Threading::{OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION};
+
+    unsafe {
+        match OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) {
+            Ok(handle) => {
+                let _ = CloseHandle(handle);
+                true
+            }
+            // Access denied still means that a process owns the PID. Only the
+            // invalid-parameter result proves that no such process exists.
+            Err(err) => err.code() != ERROR_INVALID_PARAMETER.to_hresult(),
+        }
+    }
 }
 
 fn ephemeral_fallback_user_data_dir(base_dir: &std::path::Path) -> PathBuf {
@@ -158,4 +234,57 @@ pub(crate) fn webview2_custom_schemes(registered_schemes: &[String]) -> Vec<Stri
         .into_iter()
         .filter(|scheme| scheme != "http" && scheme != "https")
         .collect()
+}
+
+#[cfg(test)]
+mod ephemeral_profile_tests {
+    use super::{cleanup_orphaned_ephemeral_profiles, ephemeral_profile_owner_pid};
+    use std::ffi::OsStr;
+
+    #[test]
+    fn parses_base_and_fallback_profile_owners() {
+        assert_eq!(
+            ephemeral_profile_owner_pid(OsStr::new("420-0123456789abcdef")),
+            Some(420)
+        );
+        assert_eq!(
+            ephemeral_profile_owner_pid(OsStr::new("420-0123456789abcdef-fedcba")),
+            Some(420)
+        );
+    }
+
+    #[test]
+    fn ignores_directories_outside_the_managed_profile_shape() {
+        for name in [
+            "0-0123456789abcdef",
+            "profile-0123456789abcdef",
+            "420-short",
+            "420-0123456789abcdeg",
+            "420-0123456789abcdef-not-hex",
+        ] {
+            assert_eq!(ephemeral_profile_owner_pid(OsStr::new(name)), None);
+        }
+    }
+
+    #[test]
+    fn removes_exited_process_profiles_and_preserves_the_current_process() {
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "lingxia-webview-orphan-test-{}-{nonce:x}",
+            std::process::id()
+        ));
+        let current = root.join(format!("{}-0123456789abcdef", std::process::id()));
+        let orphan = root.join(format!("{}-fedcba9876543210", u32::MAX));
+        std::fs::create_dir_all(&current).unwrap();
+        std::fs::create_dir_all(&orphan).unwrap();
+
+        cleanup_orphaned_ephemeral_profiles(&root);
+
+        assert!(current.exists());
+        assert!(!orphan.exists());
+        std::fs::remove_dir_all(root).unwrap();
+    }
 }

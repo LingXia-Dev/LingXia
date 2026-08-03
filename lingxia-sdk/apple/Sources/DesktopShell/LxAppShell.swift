@@ -149,6 +149,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     struct Layout {
         static let sidebarWidth: CGFloat = 184
         static let sidebarHiddenThreshold: CGFloat = 1
+        static let mainWindowMinimumSize = CGSize(width: 480, height: 480)
         static let toolbarCenterY: CGFloat = 19
         static let trafficLightClearanceFallback: CGFloat = 80
         static let contentPanelPadding: CGFloat = 6
@@ -187,6 +188,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     private var cardTrailingConstraint: NSLayoutConstraint?
     private var cardBottomConstraint: NSLayoutConstraint?
     private var cardTopConstraint: NSLayoutConstraint?
+    private var workspaceBottomConstraint: NSLayoutConstraint?
     /// Optional full-width strip above all shell content (sidebar + card). Used by
     /// the runner to mount a device-selector toolbar like the iPhone simulator's;
     /// height 0 by default, so the shipping desktop product is unaffected.
@@ -200,6 +202,18 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     /// re-enables chrome through this, so a restored rail/hidden state isn't
     /// forced back to expanded when content arrives.
     private var userSidebarMode: LxAppShellPersistence.SidebarMode?
+    private enum ShellSizeClass: String {
+        case compact
+        case medium
+        case expanded
+    }
+    private var surfaceSizeClass: ShellSizeClass = .expanded
+    private var isApplyingSurfaceSizeClass = false
+    private var mediumSidebarExpandedByUser = false
+    private var compactCoveringAsideActive = false
+    private var panelFramePreservationGeneration: UInt = 0
+    private var compactTabBar: LingXiaTabBar?
+    private var compactTabBarHeightConstraint: NSLayoutConstraint?
     private let sidebarRevealButton = NSButton()
     private var currentViewController: macOSLxAppViewController?
     private var viewControllers: [String: macOSLxAppViewController] = [:]
@@ -212,6 +226,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     internal let workspaceManager = WorkspaceManager()
     nonisolated(unsafe) private var sidebarRefreshObserver: NSObjectProtocol?
     nonisolated(unsafe) private var tabBarStateObserver: NSObjectProtocol?
+    nonisolated(unsafe) private var automationWindowMutationObserver: NSObjectProtocol?
     private var controllerEventsTask: Task<Void, Never>?
     private var didRequestHomeOpen = false
     private let startupBehavior: LxAppShellStartupBehavior
@@ -239,15 +254,19 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     private var browserClosesWindowOnLastTab = false
     private var declaredBrowserOwnerAppId: String?
     private var managedMainSurfaceIDs = Set<String>()
+    private var managedMainSurfaceByLxappId: [String: String] = [:]
+    private var managedMainLxappBySurfaceId: [String: String] = [:]
     private var managedMainActivateHandler: ((String) -> Void)?
     private var managedMainCloseHandler: ((String) -> Void)?
+    private var managedMainAddHandler: (() -> Bool)?
+    private var managedMainContextMenuHandler: ((String, NSEvent, NSView) -> Void)?
+    private var managedMainRenameHandler: ((String, String) -> Void)?
     private var declaredBrowserSurfaceActivateHandler: ((String) -> Void)?
     private var declaredBrowserSurfaceCloseHandler: ((String) -> Void)?
+    private var browserRestoreActiveMainHandler: (() -> Bool)?
     private weak var managedMainView: NSView?
-    private lazy var mainEmptyStateView = MainEmptyStateView()
 
     var onManagedWindowCloseRequested: (() -> Void)?
-
     private(set) var contentPanelView: NSView?
 
     func getViewController(for appId: String) -> macOSLxAppViewController? {
@@ -332,6 +351,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     deinit {
         sidebarRefreshObserver.map(NotificationCenter.default.removeObserver)
         tabBarStateObserver.map(NotificationCenter.default.removeObserver)
+        automationWindowMutationObserver.map(NotificationCenter.default.removeObserver)
         controllerEventsTask?.cancel()
         browserCoordinator.cleanup()
     }
@@ -382,8 +402,8 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
             backing: .buffered,
             defer: false
         )
-        window.contentMinSize = CGSize(width: 720, height: 480)
-        window.minSize = CGSize(width: 720, height: 480)
+        window.contentMinSize = Layout.mainWindowMinimumSize
+        window.minSize = Layout.mainWindowMinimumSize
         window.configureForTabStyle()
         window.center()
         // After center() so first launch centers; a saved frame overrides it
@@ -409,7 +429,13 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
 
         tabManager.onTabsChanged = { [weak self] tabs in
             guard let self else { return }
-            self.sidebarView?.updateForTabs(tabs, activeTab: self.tabManager.activeTab)
+            let unmanagedTabs = tabs.filter {
+                self.managedMainSurfaceByLxappId[$0.appId] == nil
+            }
+            let activeTab = self.tabManager.activeTab.flatMap { active in
+                self.managedMainSurfaceByLxappId[active.appId] == nil ? active : nil
+            }
+            self.sidebarView?.updateForTabs(unmanagedTabs, activeTab: activeTab)
             self.reconcileSidebarAutoHide()
         }
 
@@ -458,6 +484,11 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         window?.saveFrame(usingName: LxAppShellPersistence.windowFrameName)
     }
 
+    public func windowWillStartLiveResize(_ notification: Notification) {
+        // A real drag supersedes any delayed frame restoration queued by panel layout.
+        panelFramePreservationGeneration &+= 1
+    }
+
     public func windowDidMove(_ notification: Notification) {
         window?.saveFrame(usingName: LxAppShellPersistence.windowFrameName)
     }
@@ -466,7 +497,8 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     /// resolves the sizeClass (with hysteresis). This is what makes macOS
     /// drive the new shared-core model from real window geometry.
     private func reportSurfaceWidth() {
-        guard let appId = currentViewController?.appId,
+        guard !isApplyingSurfaceSizeClass else { return }
+        guard let appId = currentViewController?.appId ?? declaredBrowserOwnerAppId,
               let windowWidth = window?.contentView?.frame.width, windowWidth > 0 else { return }
         // Size class uses the complete client area; the live sidebar width is
         // reported separately so physical aside admission uses real workspace.
@@ -474,6 +506,39 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
             ? max(0, sidebarWidthConstraint?.constant ?? Layout.sidebarWidth)
             : 0
         _ = setSurfaceLayoutMetrics(appId, Double(windowWidth), Double(sidebarWidth))
+    }
+
+    /// Apply the shared core's hysteresis-resolved shell size class. Compact
+    /// and medium preserve the icon rail so workspace switching never becomes
+    /// unreachable; medium still honors an explicit user reveal until the next
+    /// size-class crossing.
+    func applySurfaceLayoutProjection(_ rawValue: String, coveringAside: Bool) {
+        guard let next = ShellSizeClass(rawValue: rawValue) else { return }
+        browserCoordinator.setCompactProjection(next == .compact)
+        let sizeClassChanged = next != surfaceSizeClass
+        let coveringAsideChanged = coveringAside != compactCoveringAsideActive
+        guard sizeClassChanged || coveringAsideChanged else {
+            refreshCompactTabBar()
+            return
+        }
+        if sizeClassChanged {
+            mediumSidebarExpandedByUser = false
+        }
+        surfaceSizeClass = next
+        compactCoveringAsideActive = coveringAside
+        isApplyingSurfaceSizeClass = true
+        if sizeClassChanged {
+            applyEffectiveSidebarProjection()
+        }
+        refreshCompactTabBar()
+        isApplyingSurfaceSizeClass = false
+
+        // Sidebar width participates in physical aside admission. Re-report
+        // once after the adaptive projection changes it; the repeated plan has
+        // the same size class and therefore terminates here without recursion.
+        if sizeClassChanged {
+            reportSurfaceWidth()
+        }
     }
 
     // MARK: - Sidebar Interface Setup
@@ -492,6 +557,12 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         sidebar.onAppCloseRequested = { [weak self] appId in
             self?.closeTab(appId)
         }
+        sidebar.onManagedMainContextMenuRequested = { [weak self] surfaceId, event, view in
+            self?.managedMainContextMenuHandler?(surfaceId, event, view)
+        }
+        sidebar.onManagedMainRenameCommitted = { [weak self] surfaceId, title in
+            self?.managedMainRenameHandler?(surfaceId, title)
+        }
         sidebar.onHideRequested = { [weak self] in
             self?.hideSidebar()
         }
@@ -501,8 +572,11 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         sidebar.trafficLightClearanceProvider = { [weak self] in
             self?.trafficLightClearance() ?? SidebarView.Layout.railWidth
         }
-        sidebar.onAddBrowserTab = { [weak self] in
-            self?.browserCoordinator.addTab()
+        sidebar.onAddRequested = { [weak self] in
+            guard let self else { return }
+            if self.managedMainAddHandler?() != true {
+                self.browserCoordinator.addTab()
+            }
         }
         sidebar.onBookmarkOpen = { [weak self] url in
             self?.browserCoordinator.openBookmark(url: url)
@@ -617,6 +691,8 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         cardBottomConstraint = cardBottom
         let cardTop = shadowWrapper.topAnchor.constraint(equalTo: topAccessoryContainer.bottomAnchor, constant: p)
         cardTopConstraint = cardTop
+        let workspaceBottom = workspaceRoot.bottomAnchor.constraint(equalTo: right.bottomAnchor)
+        workspaceBottomConstraint = workspaceBottom
 
         // Full-width accessory strip above everything (height 0 unless a host sets
         // one). Added last so it sits on top in z-order.
@@ -658,7 +734,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
             workspaceRoot.topAnchor.constraint(equalTo: right.topAnchor),
             workspaceRoot.leadingAnchor.constraint(equalTo: right.leadingAnchor),
             workspaceRoot.trailingAnchor.constraint(equalTo: right.trailingAnchor),
-            workspaceRoot.bottomAnchor.constraint(equalTo: right.bottomAnchor),
+            workspaceBottom,
 
             sidebarRevealButton.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Layout.sidebarRevealButtonLeadingInset),
             sidebarRevealButton.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -Layout.sidebarRevealButtonBottomInset),
@@ -681,14 +757,22 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
             lastExpandedSidebarWidth = min(
                 max(width, SidebarView.Layout.expandedWidth), SidebarView.Layout.maxWidth)
         }
-        userSidebarMode = LxAppShellPersistence.sidebarMode
+        let persistedMode = LxAppShellPersistence.sidebarMode
+        // Older builds let a resize gesture persist a fully hidden sidebar.
+        // Dragging now bottoms out at the rail, so migrate that stale user state;
+        // an explicit host `.hidden` configuration is reapplied after startup.
+        userSidebarMode = persistedMode == .hidden ? .rail : persistedMode
+        if persistedMode == .hidden {
+            LxAppShellPersistence.sidebarMode = .rail
+        }
         let targetWidth: CGFloat
         switch userSidebarMode {
         case .rail:
             sidebarView.setCompactMode(true)
             targetWidth = sidebarView.compactWidth
         case .hidden:
-            targetWidth = 0
+            sidebarView.setCompactMode(true)
+            targetWidth = sidebarView.compactWidth
         case .expanded, nil:
             targetWidth = lastExpandedSidebarWidth
         }
@@ -715,6 +799,18 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     }
 
     private func setupNotificationObservers() {
+        // Automation mutated a window frame directly. Like a user drag, that
+        // supersedes any delayed panel-layout frame restoration — restoring
+        // the pre-panel frame afterwards would fight the requested geometry.
+        automationWindowMutationObserver = NotificationCenter.default.addObserver(
+            forName: Notification.Name("LingXiaAutomationWindowMutation"),
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.panelFramePreservationGeneration &+= 1
+            }
+        }
         sidebarRefreshObserver = NotificationCenter.default.addObserver(
             forName: .sidebarNeedsRefresh,
             object: nil,
@@ -747,6 +843,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
                 if let activeAppId = self.tabManager.activeTab?.appId, activeAppId == appId {
                     self.sidebarView?.setActiveHighlight(appId: appId)
                 }
+                self.refreshCompactTabBar()
                 self.reconcileSidebarAutoHide()
             }
         }
@@ -807,23 +904,28 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     }
 
     func handleSidebarPageSelection(appId: String, itemIndex: Int) {
+        let providerAppId = managedMainLxappBySurfaceId[appId] ?? appId
         if managedMainSurfaceIDs.contains(appId) {
             managedMainActivateHandler?(appId)
         } else if browserCoordinator.isActive {
-            switchToTab(appId)
-        } else if tabManager.activeTab?.appId != appId {
-            tabManager.selectTab(appId: appId)
+            switchToTab(providerAppId)
+        } else if tabManager.activeTab?.appId != providerAppId {
+            tabManager.selectTab(appId: providerAppId)
         }
 
-        if let tabItem = getTabBarItem(appId, Int32(itemIndex)) {
+        if let tabItem = getTabBarItem(providerAppId, Int32(itemIndex)) {
             let path = tabItem.page_path.toString()
             if !path.isEmpty {
-                getViewController(for: appId)?.navigate(appId: appId, to: path, with: .none)
+                getViewController(for: providerAppId)?.navigate(
+                    appId: providerAppId,
+                    to: path,
+                    with: .none
+                )
             }
         }
 
         sidebarView?.setActiveHighlight(appId: appId, pageIndex: itemIndex)
-        let _ = onLxappEvent(appId, LxAppEvent.tabBarClick, String(itemIndex))
+        let _ = onLxappEvent(providerAppId, LxAppEvent.tabBarClick, String(itemIndex))
     }
 
     private func currentTrafficLightClearance() -> CGFloat {
@@ -854,15 +956,120 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         return base + cardLeadingPanelInset
     }
 
+    private func applyEffectiveSidebarProjection() {
+        guard let constraint = sidebarWidthConstraint else {
+            refreshSidebarVisibilityUI()
+            return
+        }
+
+        let targetWidth: CGFloat
+        let iconRail: Bool
+        if !sidebarChromeEnabled || userSidebarMode == .hidden {
+            targetWidth = 0
+            iconRail = false
+        } else if surfaceSizeClass == .compact
+                    || (surfaceSizeClass == .medium && !mediumSidebarExpandedByUser) {
+            targetWidth = sidebarView?.compactWidth ?? Layout.sidebarWidth
+            iconRail = true
+        } else if userSidebarMode == .rail && surfaceSizeClass != .medium {
+            targetWidth = sidebarView?.compactWidth ?? Layout.sidebarWidth
+            iconRail = true
+        } else {
+            targetWidth = lastExpandedSidebarWidth
+            iconRail = false
+        }
+
+        sidebarView?.setCompactMode(iconRail)
+        constraint.constant = targetWidth
+        contentLeadingConstraint?.constant = contentLeading(forSidebarWidth: targetWidth)
+        browserCoordinator.syncToolbarLeading(
+            collapsed: targetWidth < Layout.sidebarHiddenThreshold,
+            animated: false
+        )
+        refreshSidebarVisibilityUI()
+    }
+
+    private func refreshCompactTabBar() {
+        guard surfaceSizeClass == .compact,
+              !compactCoveringAsideActive,
+              let appId = currentViewController?.appId,
+              let config = getTabBar(appId),
+              config.items_count > 0,
+              config.is_visible,
+              let contentPanelView else {
+            hideCompactTabBar()
+            return
+        }
+
+        let tabBar: LingXiaTabBar
+        if let existing = compactTabBar {
+            tabBar = existing
+        } else {
+            let created = LingXiaTabBar()
+            created.translatesAutoresizingMaskIntoConstraints = false
+            created.setOnTabSelectedListener { [weak self] index, _ in
+                guard let self, let activeAppId = self.currentViewController?.appId else { return }
+                self.handleSidebarPageSelection(appId: activeAppId, itemIndex: index)
+            }
+            contentPanelView.addSubview(
+                created,
+                positioned: .above,
+                relativeTo: workspaceManager.rootView
+            )
+            let height = created.heightAnchor.constraint(equalToConstant: 0)
+            compactTabBarHeightConstraint = height
+            NSLayoutConstraint.activate([
+                created.leadingAnchor.constraint(equalTo: contentPanelView.leadingAnchor),
+                created.trailingAnchor.constraint(equalTo: contentPanelView.trailingAnchor),
+                created.bottomAnchor.constraint(equalTo: contentPanelView.bottomAnchor),
+                height,
+            ])
+            compactTabBar = created
+            tabBar = created
+        }
+
+        tabBar.initialize(config: config, appId: appId)
+        tabBar.setSelectedIndex(Int(config.selected_index), notifyListener: false)
+        let height = config.dimensionPoints
+        compactTabBarHeightConstraint?.constant = height
+        workspaceBottomConstraint?.constant = TabBarHelper.isTransparent(config.background_color)
+            ? 0
+            : -height
+        tabBar.isHidden = false
+        tabBar.alphaValue = 1
+        contentPanelView.layoutSubtreeIfNeeded()
+    }
+
+    private func hideCompactTabBar() {
+        compactTabBar?.isHidden = true
+        compactTabBar?.alphaValue = 0
+        compactTabBarHeightConstraint?.constant = 0
+        workspaceBottomConstraint?.constant = 0
+    }
+
     private func hideSidebar() {
+        guard surfaceSizeClass != .compact else { return }
+        mediumSidebarExpandedByUser = false
         collapseSidebarToRail(animated: true)
     }
 
     private func showSidebar() {
+        guard surfaceSizeClass != .compact else { return }
+        if surfaceSizeClass == .medium {
+            mediumSidebarExpandedByUser = true
+            sidebarView?.setCompactMode(false)
+            updateSidebarWidth(lastExpandedSidebarWidth, animated: true)
+            return
+        }
         setSidebarVisible(true, animated: true)
     }
 
     private func collapseSidebarToRail(animated: Bool) {
+        guard surfaceSizeClass != .compact else {
+            applyEffectiveSidebarProjection()
+            return
+        }
+        mediumSidebarExpandedByUser = false
         guard sidebarChromeEnabled, let sidebarView else {
             setSidebarVisible(false, animated: animated)
             return
@@ -893,7 +1100,10 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
             // Expanding an already-visible rail is a user reveal gesture only;
             // configuration passes (applySidebarMode at startup) must leave a
             // user-chosen rail alone.
-            if visible, sidebarView?.isCompact == true, userSidebarMode != .rail {
+            if visible,
+               surfaceSizeClass == .expanded,
+               sidebarView?.isCompact == true,
+               userSidebarMode != .rail {
                 sidebarView?.setCompactMode(false)
                 updateSidebarWidth(lastExpandedSidebarWidth, animated: animated)
             } else {
@@ -910,10 +1120,14 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         // Revealing always returns to the expanded layout. Reset while still
         // hidden (width 0) so the switch is invisible.
         if visible {
-            sidebarView?.setCompactMode(false)
+            sidebarView?.setCompactMode(surfaceSizeClass == .medium)
         }
 
-        let targetWidth: CGFloat = visible ? lastExpandedSidebarWidth : 0
+        let targetWidth: CGFloat = visible
+            ? (surfaceSizeClass == .medium
+                ? sidebarView?.compactWidth ?? Layout.sidebarWidth
+                : lastExpandedSidebarWidth)
+            : 0
         let sidebarHidden = !visible
         let targetContentLeading = contentLeading(forSidebarWidth: targetWidth)
 
@@ -939,6 +1153,13 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
 
     func updateSidebarWidth(_ width: CGFloat, animated: Bool) {
         guard let constraint = sidebarWidthConstraint else { return }
+
+        if surfaceSizeClass == .medium,
+           animated,
+           width >= SidebarView.Layout.expandedWidth,
+           sidebarView?.isCompact == false {
+            mediumSidebarExpandedByUser = true
+        }
 
         // Remember only settled, genuinely-expanded widths — never the icon
         // rail or transient live-drag widths — so expanding always restores the
@@ -980,12 +1201,16 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         contentLeadingConstraint?.constant = sidebarChromeEnabled
             ? contentLeading(forSidebarWidth: max(0, sidebarWidthConstraint?.constant ?? Layout.sidebarWidth))
             : contentLeading(forSidebarWidth: 0)
-        sidebarRevealButton.isHidden = !sidebarChromeEnabled || !sidebarHidden
+        sidebarRevealButton.isHidden = surfaceSizeClass == .compact
+            || !sidebarChromeEnabled
+            || !sidebarHidden
         browserCoordinator.syncToolbarLeading(collapsed: sidebarHidden, animated: false)
         syncSidebarHeaderButtonAlignment()
         window?.contentView?.layoutSubtreeIfNeeded()
         workspaceManager.relayoutPanels()
-        persistSidebarState()
+        if surfaceSizeClass == .expanded && !isApplyingSurfaceSizeClass {
+            persistSidebarState()
+        }
         reportSurfaceWidth()
     }
 
@@ -1062,17 +1287,25 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         }
 
         // The VC + page instance are ready; drive the actual main attach through
-        // the surface graph: setActiveMain makes this lxapp the active main, then
-        // commits a present_layout whose activeMainId is this appId. That fires
+        // the surface graph: setActiveMain makes this lxapp's Surface active, then
+        // commits a present_layout carrying that Surface id. That fires
         // the layout reconciler synchronously, which calls reconcileActiveMain to
         // attach this VC. We no longer call presentMain(.lxapp:) here — the graph
         // is the single source of truth for the active-main switch. The reconcile
         // is idempotent, so a redundant plan never re-attaches.
-        _ = setActiveMain(appId)
+        if managedMainSurfaceByLxappId[appId] == nil {
+            // This selection is an explicit activation: publish the one-shot
+            // intent so the reconciler may replace a covering browser tab.
+            // Managed switcher rows are activated by the runtime before it
+            // calls back into this attach primitive; re-entering the runtime
+            // here would recurse.
+            LxAppLayoutReconciler.requestLxappMainActivation(appId: appId)
+            _ = setActiveMain(appId)
+        }
         // The sidebar highlight stays imperative: it is not part of the surface
         // graph, and the selection that originated this switch is the source of
         // truth for what to highlight.
-        sidebarView?.setActiveHighlight(appId: appId)
+        sidebarView?.setActiveHighlight(appId: managedMainSurfaceByLxappId[appId] ?? appId)
     }
 
     /// Attach `appId`'s lxapp as the active main, driven by the layout
@@ -1081,12 +1314,16 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     /// but never calls back into `tabManager` — the tab/sidebar selection that
     /// originated the switch already ran; routing through the tab manager here
     /// would loop. Idempotent: a no-op when this lxapp is already the attached
-    /// main and the browser is not occupying the content area (mirrors the aside
+    /// main and no other provider occupies the content area (mirrors the aside
     /// reconciler's idempotent fast path — no detach/re-attach, no flicker).
     /// The lxapp id currently attached to the primary content area, or `nil`
-    /// when the browser occupies it (the browser is not a graph main). The layout
-    /// reconciler reads this to decide whether the core's `activeMainId` differs
-    /// from what is on screen.
+    /// when another provider owns it. The reconciler resolves the active
+    /// Surface's provider identity before comparing it with this value.
+    /// True while a presented browser tab occupies the primary content area.
+    /// The layout reconciler must not replace that cover with the graph's
+    /// active lxapp main on unrelated commits.
+    var browserIsCoveringMain: Bool { browserCoordinator.isActive }
+
     var attachedMainAppId: String? {
         // "Attached" = the current VC's view is actually mounted, not just same app
         // id — after a restart the rebuilt VC shares the id but the old view is gone.
@@ -1105,6 +1342,15 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         if attachedMainAppId == appId {
             return
         }
+        mountLxAppMainProvider(appId: appId)
+    }
+
+    /// Mount the selected lxapp provider after the Surface graph has accepted
+    /// it. Unlike reconciliation this intentionally reattaches an existing VC:
+    /// initial declaration registration can publish the active root before its
+    /// first page WebView is ready, so provider mount must converge again after
+    /// `openSync` completes.
+    func mountLxAppMainProvider(appId: String) {
         // Attach via the shared presentMain machinery. switchToTab created the VC
         // (and its page instance) before driving setActiveMain, so the common
         // case finds it ready; fall back to ensureViewController for any
@@ -1138,14 +1384,17 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
             browserCoordinator.deactivate()
             detachManagedMain()
             attachLxAppToMain(viewController)
+            refreshCompactTabBar()
         case .browser:
             // The browser view is attached by BrowserTabCoordinator.showBrowserView;
             // here we only detach the lxapp and drop its nav toolbar so the
             // toolbar can't sit on top of the browser view.
+            LxAppLayoutReconciler.clearLxappMainActivation()
             detachCurrentLxApp()
             detachManagedMain()
             navigationToolbar?.forceHide(true)
             navigationToolbar?.isHidden = true
+            hideCompactTabBar()
         case .native(let view):
             browserCoordinator.deactivate()
             detachCurrentLxApp()
@@ -1161,6 +1410,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
                 view.trailingAnchor.constraint(equalTo: workspaceManager.contentContainer.trailingAnchor),
                 view.bottomAnchor.constraint(equalTo: workspaceManager.contentContainer.bottomAnchor),
             ])
+            hideCompactTabBar()
         }
     }
 
@@ -1177,34 +1427,37 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         _ items: [LxAppUIActionItem],
         activeId: String?,
         onActivate: @escaping (String) -> Void,
-        onClose: @escaping (String) -> Void
+        onClose: @escaping (String) -> Void,
+        onAdd: @escaping () -> Bool,
+        onContextMenu: @escaping (String, NSEvent, NSView) -> Void,
+        onRename: @escaping (String, String) -> Void
     ) {
         managedMainSurfaceIDs = Set(items.map(\.id))
+        managedMainSurfaceByLxappId.removeAll(keepingCapacity: true)
+        managedMainLxappBySurfaceId.removeAll(keepingCapacity: true)
+        for item in items {
+            guard let appId = item.contentAppId else { continue }
+            managedMainSurfaceByLxappId[appId] = item.id
+            managedMainLxappBySurfaceId[item.id] = appId
+        }
         managedMainActivateHandler = onActivate
         managedMainCloseHandler = onClose
+        managedMainAddHandler = onAdd
+        managedMainContextMenuHandler = onContextMenu
+        managedMainRenameHandler = onRename
+        let unmanagedTabs = tabManager.tabs.filter {
+            managedMainSurfaceByLxappId[$0.appId] == nil
+        }
+        let activeTab = tabManager.activeTab.flatMap { active in
+            managedMainSurfaceByLxappId[active.appId] == nil ? active : nil
+        }
+        sidebarView?.updateForTabs(unmanagedTabs, activeTab: activeTab)
         sidebarView?.updateManagedMainItems(items, activeId: activeId)
         reconcileSidebarAutoHide()
     }
 
-    func presentMainEmptyState() {
-        presentMain(.native(mainEmptyStateView))
-        sidebarView?.clearAllHighlights()
-    }
-
-    func configureMainEmptyState(
-        title: String,
-        message: String?,
-        icon: NSImage?,
-        actionLabel: String?,
-        onAction: (() -> Void)?
-    ) {
-        mainEmptyStateView.configure(
-            title: title,
-            message: message,
-            icon: icon,
-            actionLabel: actionLabel,
-            onAction: onAction
-        )
+    func beginManagedMainRename(surfaceId: String) {
+        sidebarView?.beginManagedMainRename(surfaceId: surfaceId)
     }
 
     /// Remove the current lxapp view controller from the main area (pause + detach).
@@ -1330,7 +1583,32 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     /// not a panel hide: native acknowledges the session to Rust so the app's
     /// one-region claim is released and a later open may choose another role.
     func closeAsideLxApp(appId: String) {
-        closeSession(appId: appId, notifyRuntime: true)
+        closeSession(
+            appId: appId,
+            notifyRuntime: true,
+            closeWindowWhenEmpty: false,
+            revealNext: false
+        )
+    }
+
+    /// Tear down the lxapp provider after its managed main has already been
+    /// removed from the surface graph.
+    func closeManagedMainLxApp(appId: String) {
+        closeSession(
+            appId: appId,
+            notifyRuntime: true,
+            closeWindowWhenEmpty: false,
+            revealNext: false
+        )
+    }
+
+    /// Align an ordinary lxapp tab with the main selected by the surface graph.
+    func activateMainLxAppProvider(appId: String) {
+        if tabManager.hasTab(for: appId) {
+            tabManager.selectTab(appId: appId)
+        } else {
+            mountLxAppMainProvider(appId: appId)
+        }
     }
 
     /// Runtime-driven close on production macOS (active shell, no controller to emit
@@ -1340,7 +1618,12 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         closeSession(appId: appId, notifyRuntime: false)
     }
 
-    private func closeSession(appId: String, notifyRuntime: Bool) {
+    private func closeSession(
+        appId: String,
+        notifyRuntime: Bool,
+        closeWindowWhenEmpty: Bool = true,
+        revealNext: Bool = true
+    ) {
         guard let sessionId = appSessions[appId], sessionId > 0 else {
             LXLog.error("closeSession missing session for \(appId)", category: "LxAppShell")
             return
@@ -1379,7 +1662,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         LxAppCore.removeSessionId(for: appId)
 
         // A restart drives its own reopen; everything else reveals the next app.
-        guard !suppressAutoReopen, autoRevealOnClose else { return }
+        guard revealNext, !suppressAutoReopen, autoRevealOnClose else { return }
 
         let currentLxApp = getCurrentLxApp()
         let appidStr = currentLxApp.appid.toString()
@@ -1388,7 +1671,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         if !appidStr.isEmpty && nextSessionId > 0 {
             os_log("Opening next LxApp from stack as tab: %@:%@", log: Self.log, type: .info, appidStr, pathStr)
             macOSLxApp.openLxApp(appId: appidStr, path: pathStr, sessionId: nextSessionId)
-        } else if !tabManager.hasTabs {
+        } else if closeWindowWhenEmpty && !tabManager.hasTabs {
             window?.close()
         }
     }
@@ -1690,7 +1973,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     }
 
     private func minimumManagedWindowSize(for requestedSize: CGSize?) -> CGSize {
-        let defaultMinimum = CGSize(width: 720, height: 480)
+        let defaultMinimum = Layout.mainWindowMinimumSize
         guard let requestedSize else {
             return defaultMinimum
         }
@@ -1726,7 +2009,11 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
             return
         }
 
-        let mainIDs = Set(tabManager.tabs.filter { $0.isMain }.map(\.appId))
+        let mainIDs = Set(
+            tabManager.tabs
+                .filter { $0.isMain && managedMainSurfaceByLxappId[$0.appId] == nil }
+                .map(\.appId)
+        )
             .union(managedMainSurfaceIDs)
         let hasSwitcher = mainIDs.count > 1
 
@@ -1751,38 +2038,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
 
     func setSidebarChromeEnabled(_ enabled: Bool) {
         sidebarChromeEnabled = enabled
-        guard let constraint = sidebarWidthConstraint else {
-            refreshSidebarVisibilityUI()
-            return
-        }
-        if enabled {
-            if constraint.constant < Layout.sidebarHiddenThreshold {
-                // Re-enable INTO the user's chosen mode — auto-hide churn at
-                // startup must not force a restored rail/hidden sidebar to
-                // expanded.
-                let targetWidth: CGFloat
-                switch userSidebarMode {
-                case .rail:
-                    sidebarView?.setCompactMode(true)
-                    targetWidth = sidebarView?.compactWidth ?? lastExpandedSidebarWidth
-                case .hidden:
-                    targetWidth = 0
-                case .expanded, nil:
-                    sidebarView?.setCompactMode(false)
-                    targetWidth = lastExpandedSidebarWidth
-                }
-                constraint.constant = targetWidth
-                contentLeadingConstraint?.constant = contentLeading(forSidebarWidth: targetWidth)
-                browserCoordinator.syncToolbarLeading(
-                    collapsed: targetWidth < Layout.sidebarHiddenThreshold, animated: false)
-            }
-        } else {
-            sidebarView?.setCompactMode(false)
-            constraint.constant = 0
-            contentLeadingConstraint?.constant = contentLeading(forSidebarWidth: 0)
-            browserCoordinator.syncToolbarLeading(collapsed: true, animated: false)
-        }
-        refreshSidebarVisibilityUI()
+        applyEffectiveSidebarProjection()
     }
 
     private func updateTitlebarAccessoryActions(_ items: [LxAppUIActionItem]) {
@@ -1846,11 +2102,13 @@ extension LxAppShell {
     func configureDeclaredBrowser(
         ownerAppId: String?,
         onSurfaceActivate: @escaping (String) -> Void,
-        onSurfaceClose: @escaping (String) -> Void
+        onSurfaceClose: @escaping (String) -> Void,
+        onRestoreActiveMain: @escaping () -> Bool
     ) {
         declaredBrowserOwnerAppId = ownerAppId
         declaredBrowserSurfaceActivateHandler = onSurfaceActivate
         declaredBrowserSurfaceCloseHandler = onSurfaceClose
+        browserRestoreActiveMainHandler = onRestoreActiveMain
     }
 
     @discardableResult
@@ -1859,6 +2117,10 @@ extension LxAppShell {
         mode: BrowserTabCoordinator.DeclaredInitialMode
     ) -> Bool {
         browserCoordinator.openDeclaredMain(surfaceID: surfaceID, mode: mode)
+    }
+
+    func closeDeclaredBrowserMain(surfaceID: String) {
+        browserCoordinator.closeDeclaredSurface(surfaceID)
     }
 
     func setBrowserPageActionsVisible(_ visible: Bool) {
@@ -1876,6 +2138,10 @@ extension LxAppShell {
         sidebarView?.reloadBookmarks()
         reconcileSidebarAutoHide()
         browserCoordinator.refreshPageSaveButtons()
+    }
+
+    func synchronizeBrowserTabsFromCore() {
+        browserCoordinator.synchronizeTabsFromCore()
     }
 
     func presentInternalBrowserTab(id: String) {
@@ -1941,6 +2207,10 @@ extension LxAppShell: BrowserCoordinatorHost {
 
     func browserDidCloseSurface(_ surfaceID: String) {
         declaredBrowserSurfaceCloseHandler?(surfaceID)
+    }
+
+    func browserDidLoseAllTabs() -> Bool {
+        browserRestoreActiveMainHandler?() ?? false
     }
 
     func switchToLxAppTab(_ appId: String) {
@@ -2051,6 +2321,13 @@ extension LxAppShell {
         contentView: NSView,
         defaultSize: CGFloat = 320
     ) {
+        if managedMainView === contentView {
+            // Transfer ownership before the core commit activates the successor
+            // main. Otherwise that activation would detach this view from the
+            // aside container it has just moved into.
+            managedMainView = nil
+            contentView.removeFromSuperview()
+        }
         if !workspaceManager.isPanelRegistered(id: id) {
             let config = PanelConfig(id: id, position: position, defaultSize: defaultSize)
             workspaceManager.registerPanel(config)
@@ -2070,6 +2347,12 @@ extension LxAppShell {
             workspaceManager.registerPanel(config)
         }
         attachPanelWebViewWhenReady(panelId: id, appId: appId, path: path, attempt: 0)
+    }
+
+    func unregisterPanel(id: String) {
+        preserveWindowFrameDuringPanelLayout(reason: "unregisterPanel:\(id)") {
+            workspaceManager.unregisterPanel(id: id)
+        }
     }
 
     func hidePanel(id: String, animated: Bool = true, updateCardEdges: Bool = true) {
@@ -2133,6 +2416,8 @@ extension LxAppShell {
         let minSizeBefore = window.minSize
         let contentMinSizeBefore = window.contentMinSize
         let contentSizeBefore = window.contentView?.bounds.size ?? frameBefore.size
+        panelFramePreservationGeneration &+= 1
+        let generation = panelFramePreservationGeneration
         window.minSize = NSSize(
             width: max(minSizeBefore.width, frameBefore.width),
             height: max(minSizeBefore.height, frameBefore.height)
@@ -2145,21 +2430,25 @@ extension LxAppShell {
         operation()
         lxShellStdoutLog("preserveFrame afterOperation reason=\(reason) frame=\(formatFrame(window.frame)) changed=\(!sameFrame(frameBefore, window.frame))")
         restoreWindowFrameIfNeeded(frameBefore, reason: reason)
+        // The enlarged minima only protect the synchronous constraint pass. Leaving
+        // them installed until the animation settles can permanently capture this
+        // window size when panel operations overlap and blocks live resizing.
+        window.minSize = minSizeBefore
+        window.contentMinSize = contentMinSizeBefore
 
         // Panel animations and AppKit constraint passes may settle on the next ticks.
         DispatchQueue.main.async { [weak self, weak window] in
             guard let self, let window else { return }
+            guard self.panelFramePreservationGeneration == generation,
+                  !window.inLiveResize else { return }
             lxShellStdoutLog("preserveFrame asyncCheck reason=\(reason) frame=\(self.formatFrame(window.frame)) changed=\(!self.sameFrame(frameBefore, window.frame))")
             self.restoreWindowFrameIfNeeded(frameBefore, reason: "\(reason):async")
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.28) { [weak self, weak window] in
                 guard let self, let window else { return }
+                guard self.panelFramePreservationGeneration == generation,
+                      !window.inLiveResize else { return }
                 lxShellStdoutLog("preserveFrame settledCheck reason=\(reason) frame=\(self.formatFrame(window.frame)) changed=\(!self.sameFrame(frameBefore, window.frame))")
                 self.restoreWindowFrameIfNeeded(frameBefore, reason: "\(reason):settled")
-                window.minSize = minSizeBefore
-                window.contentMinSize = contentMinSizeBefore
-                lxShellStdoutLog(
-                    "preserveFrame restoredMinSize reason=\(reason) min=\(String(format: "%.0fx%.0f", minSizeBefore.width, minSizeBefore.height)) contentMin=\(String(format: "%.0fx%.0f", contentMinSizeBefore.width, contentMinSizeBefore.height))"
-                )
             }
         }
     }
@@ -2258,97 +2547,6 @@ extension LxAppToolbarMode: Equatable {
         default:
             return false
         }
-    }
-}
-
-@MainActor
-private final class MainEmptyStateView: NSView {
-    private let symbolView = NSImageView()
-    private let titleLabel = NSTextField(labelWithString: "Nothing open")
-    private let messageLabel = NSTextField(labelWithString: "")
-    private let actionButton = NSButton(title: "", target: nil, action: nil)
-    private var actionHandler: (() -> Void)?
-
-    override init(frame frameRect: NSRect) {
-        super.init(frame: frameRect)
-        translatesAutoresizingMaskIntoConstraints = false
-        wantsLayer = true
-
-        symbolView.translatesAutoresizingMaskIntoConstraints = false
-        symbolView.image = NSImage(
-            systemSymbolName: "rectangle.stack",
-            accessibilityDescription: "Nothing open"
-        )
-        symbolView.contentTintColor = .tertiaryLabelColor
-        symbolView.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 30, weight: .regular)
-
-        titleLabel.translatesAutoresizingMaskIntoConstraints = false
-        titleLabel.font = .systemFont(ofSize: 13, weight: .medium)
-        titleLabel.textColor = .secondaryLabelColor
-        titleLabel.alignment = .center
-
-        messageLabel.translatesAutoresizingMaskIntoConstraints = false
-        messageLabel.font = .systemFont(ofSize: 12)
-        messageLabel.textColor = .tertiaryLabelColor
-        messageLabel.alignment = .center
-        messageLabel.lineBreakMode = .byWordWrapping
-        messageLabel.maximumNumberOfLines = 3
-        messageLabel.isHidden = true
-
-        actionButton.translatesAutoresizingMaskIntoConstraints = false
-        actionButton.bezelStyle = .rounded
-        actionButton.controlSize = .regular
-        actionButton.target = self
-        actionButton.action = #selector(actionButtonClicked)
-        actionButton.isHidden = true
-
-        let stack = NSStackView(views: [symbolView, titleLabel, messageLabel, actionButton])
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        stack.orientation = .vertical
-        stack.alignment = .centerX
-        stack.spacing = 10
-        stack.setCustomSpacing(14, after: symbolView)
-        stack.setCustomSpacing(16, after: messageLabel)
-        addSubview(stack)
-
-        NSLayoutConstraint.activate([
-            symbolView.widthAnchor.constraint(equalToConstant: 42),
-            symbolView.heightAnchor.constraint(equalToConstant: 42),
-            stack.centerXAnchor.constraint(equalTo: centerXAnchor),
-            stack.centerYAnchor.constraint(equalTo: centerYAnchor),
-            stack.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor, constant: 24),
-            stack.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -24),
-        ])
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
-    }
-
-    func configure(
-        title: String,
-        message: String?,
-        icon: NSImage?,
-        actionLabel: String?,
-        onAction: (() -> Void)?
-    ) {
-        titleLabel.stringValue = title
-        symbolView.image = icon ?? NSImage(
-            systemSymbolName: "rectangle.stack",
-            accessibilityDescription: title
-        )
-        let message = message?.trimmingCharacters(in: .whitespacesAndNewlines)
-        messageLabel.stringValue = message ?? ""
-        messageLabel.isHidden = message?.isEmpty != false
-        let actionLabel = actionLabel?.trimmingCharacters(in: .whitespacesAndNewlines)
-        actionButton.title = actionLabel ?? ""
-        actionButton.isHidden = actionLabel?.isEmpty != false || onAction == nil
-        actionHandler = onAction
-    }
-
-    @objc private func actionButtonClicked() {
-        actionHandler?()
     }
 }
 

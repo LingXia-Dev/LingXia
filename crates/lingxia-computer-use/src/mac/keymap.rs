@@ -18,10 +18,10 @@ pub(super) fn keycode(name: &str) -> Option<u16> {
         "ctrl" | "control" => 0x3B,
         "alt" | "option" => 0x3A,
         "cmd" | "command" | "meta" | "win" => 0x37,
-        "left" => 0x7B,
-        "right" => 0x7C,
-        "down" => 0x7D,
-        "up" => 0x7E,
+        "left" | "arrowleft" => 0x7B,
+        "right" | "arrowright" => 0x7C,
+        "down" | "arrowdown" => 0x7D,
+        "up" | "arrowup" => 0x7E,
         "home" => 0x73,
         "end" => 0x77,
         "pageup" => 0x74,
@@ -100,4 +100,17 @@ fn single_char_keycode(s: &str) -> Option<u16> {
         _ => return None,
     };
     Some(code)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::keycode;
+
+    #[test]
+    fn accepts_dom_arrow_key_names() {
+        assert_eq!(keycode("ArrowLeft"), keycode("left"));
+        assert_eq!(keycode("ArrowRight"), keycode("right"));
+        assert_eq!(keycode("ArrowUp"), keycode("up"));
+        assert_eq!(keycode("ArrowDown"), keycode("down"));
+    }
 }

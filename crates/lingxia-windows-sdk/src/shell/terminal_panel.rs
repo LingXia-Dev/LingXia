@@ -705,21 +705,17 @@ pub(super) fn toggle_terminal_panel_maximized(panel_id: &str) {
 pub(super) fn set_terminal_panel_maximized(panel_id: &str, maximized: bool) {
     #[cfg(feature = "terminal-runtime")]
     {
-        let changed = {
+        {
             let mut panels = windows_terminal_panels();
             let Some(panel) = panels.get_mut(panel_id) else {
                 return;
             };
-            if panel.maximized == maximized {
-                false
-            } else {
-                panel.maximized = maximized;
-                true
-            }
-        };
-        if changed {
-            lingxia_windows_contract::set_host_panel_maximized(panel_id, maximized);
+            panel.maximized = maximized;
         }
+        // Showing an existing panel recreates its host entry with the default
+        // docked state. Reapply the projection even when the terminal registry
+        // already held the requested value.
+        lingxia_windows_contract::set_host_panel_maximized(panel_id, maximized);
     }
     #[cfg(not(feature = "terminal-runtime"))]
     let _ = (panel_id, maximized);
@@ -1344,6 +1340,48 @@ fn pane_count(panel_id: &str) -> usize {
 /// Returns `true` when the whole panel was closed.
 #[cfg(feature = "terminal-runtime")]
 fn close_pane_session(panel_id: &str, session_id: u64) -> bool {
+    let is_last_session = windows_terminal_panels()
+        .get(panel_id)
+        .is_some_and(|panel| {
+            panel.tabs.len() == 1 && panel.tabs[0].sessions().as_slice() == [session_id]
+        });
+    if is_last_session && super::runtime::terminal_surface_is_protected_root(panel_id) {
+        let replacement = create_panel_session(panel_id);
+        if replacement == 0 {
+            log::warn!("failed to preserve root terminal session for {panel_id}");
+            return false;
+        }
+        let replaced = {
+            let mut panels = windows_terminal_panels();
+            panels.get_mut(panel_id).is_some_and(|panel| {
+                if panel.tabs.len() != 1 || panel.tabs[0].sessions().as_slice() != [session_id] {
+                    return false;
+                }
+                panel.tabs = vec![TerminalTab::new(replacement)];
+                panel.active = 0;
+                true
+            })
+        };
+        if !replaced {
+            lingxia_terminal::terminal_close(replacement);
+            return false;
+        } else {
+            lingxia_terminal::terminal_close(session_id);
+            #[cfg(feature = "shell-chrome")]
+            super::terminal_grid::clear_session(session_id);
+            #[cfg(feature = "shell-chrome")]
+            if let Some(remainders) = TERMINAL_WHEEL_REMAINDERS.get() {
+                remainders
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .remove(&session_id);
+            }
+            publish_tab_strip(panel_id);
+            publish_active_snapshot(panel_id);
+            return false;
+        }
+    }
+
     lingxia_terminal::terminal_close(session_id);
     #[cfg(feature = "shell-chrome")]
     super::terminal_grid::clear_session(session_id);
@@ -1397,16 +1435,7 @@ fn close_pane_session(panel_id: &str, session_id: u64) -> bool {
     };
 
     match outcome {
-        CloseOutcome::Panel => {
-            shutdown_windows_terminal_panel_state(panel_id);
-            if let Err(err) =
-                lingxia_windows_contract::hide_host_panel(panel_id).map_err(|err| err.to_string())
-            {
-                log::warn!("failed to close Windows terminal panel {panel_id}: {err}");
-            }
-            super::runtime::unregister_owner_managed_aside(panel_id);
-            true
-        }
+        CloseOutcome::Panel => super::runtime::close_exhausted_terminal_surface(panel_id),
         CloseOutcome::Tab | CloseOutcome::Pane => {
             publish_tab_strip(panel_id);
             publish_active_snapshot(panel_id);
@@ -1462,6 +1491,12 @@ fn shutdown_windows_terminal_panel_state(panel_id: &str) {
             }
         }
     }
+}
+
+#[cfg(feature = "terminal-runtime")]
+pub(super) fn destroy_windows_terminal_panel(panel_id: &str) {
+    shutdown_windows_terminal_panel_state(panel_id);
+    crate::window_host::remove_interactive_host_panel(panel_id);
 }
 
 // ---- Pane layout query (used by the grid painter) ----

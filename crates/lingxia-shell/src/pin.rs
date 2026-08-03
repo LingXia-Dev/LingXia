@@ -7,7 +7,11 @@ pub(crate) const PIN_STATE_VERSION: u32 = 1;
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub enum ShellPinTarget {
+    /// An lxapp workspace shortcut. Host activation opens or focuses it in the
+    /// host's exact main content rectangle, independently of declared aside
+    /// surfaces for that app.
     Lxapp { key: String },
+    /// A saved website shortcut opened through the host's main browser tabs.
     Bookmark { key: String },
 }
 

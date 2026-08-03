@@ -23,20 +23,20 @@ fn footer_action_rows(
     footer_actions: &[WindowsShellFooterActionLayout],
 ) -> Vec<Range<usize>> {
     let available = (width - 2 * FOOTER_ACTION_MARGIN).max(1);
+    let minimum = FOOTER_ACTION_CELL_MIN_WIDTH.min(available);
     let mut rows = Vec::new();
     let mut row_start = 0;
     let mut used = 0;
-    for (index, footer_action) in footer_actions.iter().enumerate() {
-        let preferred = preferred_cell_width(&footer_action.label, available);
+    for index in 0..footer_actions.len() {
         let next = if index == row_start {
-            preferred
+            minimum
         } else {
-            used + FOOTER_ACTION_GAP + preferred
+            used + FOOTER_ACTION_GAP + minimum
         };
         if index > row_start && next > available {
             rows.push(row_start..index);
             row_start = index;
-            used = preferred;
+            used = minimum;
         } else {
             used = next;
         }
@@ -45,6 +45,50 @@ fn footer_action_rows(
         rows.push(row_start..footer_actions.len());
     }
     rows
+}
+
+fn fitted_cell_widths(preferred: &[i32], available: i32) -> Vec<i32> {
+    if preferred.is_empty() {
+        return Vec::new();
+    }
+
+    let count = preferred.len() as i32;
+    let gaps = (count - 1) * FOOTER_ACTION_GAP;
+    let target = (available - gaps).max(count);
+    let minimum = FOOTER_ACTION_CELL_MIN_WIDTH.min(target / count).max(1);
+    let mut widths = preferred
+        .iter()
+        .map(|width| (*width).clamp(minimum, target))
+        .collect::<Vec<_>>();
+    let mut delta = target - widths.iter().sum::<i32>();
+
+    while delta < 0 {
+        let shrinkable = widths.iter().filter(|width| **width > minimum).count() as i32;
+        debug_assert!(shrinkable > 0, "row minimums must fit the available width");
+        if shrinkable == 0 {
+            break;
+        }
+        let share = ((-delta) + shrinkable - 1) / shrinkable;
+        for width in &mut widths {
+            let shrink = (*width - minimum).max(0).min(share).min(-delta);
+            *width -= shrink;
+            delta += shrink;
+            if delta == 0 {
+                break;
+            }
+        }
+    }
+
+    if delta > 0 {
+        let share = delta / count;
+        let remainder = delta % count;
+        for (index, width) in widths.iter_mut().enumerate() {
+            *width += share + i32::from((index as i32) < remainder);
+        }
+    }
+
+    debug_assert_eq!(widths.iter().sum::<i32>(), target);
+    widths
 }
 
 fn capped_row_window(total: usize, requested_start: usize) -> Range<usize> {
@@ -72,41 +116,32 @@ pub(in crate::shell::chrome) fn panel_footer_action_height_for_width(
 
 fn expanded_footer_action_rects(
     tabbar_rect: RECT,
-    tabbar: &WindowsShellTabBarLayout,
+    footer_action_height: i32,
+    footer_action_scroll_row: usize,
     footer_actions: &[WindowsShellFooterActionLayout],
 ) -> Vec<(String, RECT)> {
     let rows = footer_action_rows(rect_width(&tabbar_rect), footer_actions);
-    let footer_top = tabbar_rect.bottom - tabbar.footer_action_height;
+    let footer_top = tabbar_rect.bottom - footer_action_height;
     let available = (rect_width(&tabbar_rect) - 2 * FOOTER_ACTION_MARGIN).max(1);
     let mut top = footer_top + FOOTER_ACTION_SEPARATOR_HEIGHT + FOOTER_ACTION_MARGIN;
     let mut out = Vec::with_capacity(footer_actions.len());
 
-    let visible_rows = capped_row_window(rows.len(), tabbar.footer_action_scroll_row);
+    let visible_rows = capped_row_window(rows.len(), footer_action_scroll_row);
     for row in &rows[visible_rows] {
         let items = &footer_actions[row.clone()];
         let preferred = items
             .iter()
             .map(|item| preferred_cell_width(&item.label, available))
             .collect::<Vec<_>>();
-        let gaps = (items.len().saturating_sub(1) as i32) * FOOTER_ACTION_GAP;
-        let preferred_total = preferred.iter().sum::<i32>() + gaps;
-        let extra = (available - preferred_total).max(0);
+        let widths = fitted_cell_widths(&preferred, available);
         let mut left = tabbar_rect.left + FOOTER_ACTION_MARGIN;
         let row_right = tabbar_rect.right - FOOTER_ACTION_MARGIN;
-        let mut allocated_extra = 0;
         for (offset, item) in items.iter().enumerate() {
             let is_last = offset + 1 == items.len();
-            let item_extra = if is_last {
-                extra - allocated_extra
-            } else {
-                let share = extra / items.len() as i32;
-                allocated_extra += share;
-                share
-            };
             let right = if is_last {
                 row_right
             } else {
-                (left + preferred[offset] + item_extra).min(row_right)
+                (left + widths[offset]).min(row_right)
             };
             out.push((
                 item.id.clone(),
@@ -175,7 +210,12 @@ pub(in crate::shell::chrome) fn footer_action_rects(
         if tabbar.collapsed || tabbar.icon_rail {
             return rail_footer_action_rects(tabbar_rect, tabbar, &layout.footer_actions);
         }
-        return expanded_footer_action_rects(tabbar_rect, tabbar, &layout.footer_actions);
+        return expanded_footer_action_rects(
+            tabbar_rect,
+            tabbar.footer_action_height,
+            tabbar.footer_action_scroll_row,
+            &layout.footer_actions,
+        );
     }
 
     let bottom_limit = rects
@@ -313,12 +353,67 @@ mod tests {
     }
 
     #[test]
-    fn long_footer_actions_wrap_as_whole_cells() {
+    fn label_metrics_do_not_change_row_topology() {
         let items = vec![
             item("first", "A deliberately long footer_action"),
-            item("second", "Another deliberately long footer_action"),
+            item("second", "这是一个会被截断的很长标签"),
         ];
-        assert_eq!(footer_action_rows(184, &items), vec![0..1, 1..2]);
+        assert_eq!(footer_action_rows(184, &items), vec![0..2]);
+    }
+
+    #[test]
+    fn fitted_widths_preserve_minimums_across_font_metric_ranges() {
+        let available = 184 - 2 * FOOTER_ACTION_MARGIN;
+        for preferred in [vec![72, 86], vec![92, 126], vec![available, available]] {
+            let widths = fitted_cell_widths(&preferred, available);
+            assert_eq!(widths.len(), 2);
+            assert!(widths.iter().all(|width| *width >= 72));
+            assert_eq!(widths.iter().sum::<i32>() + FOOTER_ACTION_GAP, available);
+        }
+    }
+
+    #[test]
+    fn showcase_footer_fixture_gates_render_and_hit_test_rects() {
+        let items = vec![
+            item("chat", "chat"),
+            item("terminal", "Terminal"),
+            item("ping", "Ping"),
+        ];
+        let tabbar_rect = RECT {
+            left: 0,
+            top: 0,
+            right: 184,
+            bottom: 600,
+        };
+        let height = panel_footer_action_height_for_width(184, &items);
+        let rects = expanded_footer_action_rects(tabbar_rect, height, 0, &items);
+
+        assert_eq!(footer_action_rows(184, &items), vec![0..2, 2..3]);
+        assert_eq!(
+            height,
+            FOOTER_ACTION_SEPARATOR_HEIGHT
+                + 2 * FOOTER_ACTION_MARGIN
+                + 2 * FOOTER_ACTION_SIZE
+                + FOOTER_ACTION_GAP
+        );
+        assert_eq!(
+            rects.iter().map(|(id, _)| id.as_str()).collect::<Vec<_>>(),
+            vec!["chat", "terminal", "ping"]
+        );
+
+        let chat = rects[0].1;
+        let terminal = rects[1].1;
+        let ping = rects[2].1;
+        assert_eq!(chat.top, terminal.top);
+        assert_eq!(chat.right + FOOTER_ACTION_GAP, terminal.left);
+        assert!(rect_width(&chat) >= FOOTER_ACTION_CELL_MIN_WIDTH);
+        assert!(rect_width(&terminal) >= FOOTER_ACTION_CELL_MIN_WIDTH);
+        assert_eq!(chat.left, tabbar_rect.left + FOOTER_ACTION_MARGIN);
+        assert_eq!(terminal.right, tabbar_rect.right - FOOTER_ACTION_MARGIN);
+        assert_eq!(ping.top, chat.bottom + FOOTER_ACTION_GAP);
+        assert_eq!(ping.left, tabbar_rect.left + FOOTER_ACTION_MARGIN);
+        assert_eq!(ping.right, tabbar_rect.right - FOOTER_ACTION_MARGIN);
+        assert_eq!(ping.bottom, tabbar_rect.bottom - FOOTER_ACTION_MARGIN);
     }
 
     #[test]

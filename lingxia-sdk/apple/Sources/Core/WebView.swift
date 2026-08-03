@@ -151,10 +151,7 @@ final class WebViewManager {
     }
 
     static func resolveWebView(appId: String, path: String, sessionId: UInt64) -> WKWebView? {
-        guard let binding = lookupBinding(appId: appId, path: path, sessionId: sessionId) else {
-            LXLog.error("resolveWebView missing binding for \(appId):\(path)", category: "WebView")
-            return nil
-        }
+        guard let binding = lookupBinding(appId: appId, path: path, sessionId: sessionId) else { return nil }
         let webViewPtr = binding.webViewPtr
         guard webViewPtr != 0 else { return nil }
         guard let rawPointer = UnsafeRawPointer(bitPattern: webViewPtr) else {

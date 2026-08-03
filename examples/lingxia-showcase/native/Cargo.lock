@@ -2056,6 +2056,7 @@ dependencies = [
  "lingxia-log",
  "lingxia-lxapp",
  "lingxia-platform",
+ "lingxia-shell",
  "lingxia-webview",
  "log",
  "rong",
@@ -2116,6 +2117,7 @@ dependencies = [
 name = "lingxia-computer-use"
 version = "0.11.2"
 dependencies = [
+ "dispatch2",
  "image",
  "libc",
  "log",
@@ -2217,6 +2219,7 @@ dependencies = [
  "lingxia-provider",
  "lingxia-service",
  "lingxia-settings",
+ "lingxia-shell",
  "lingxia-surface",
  "lingxia-transfer",
  "lingxia-update",

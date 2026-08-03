@@ -229,10 +229,7 @@ Page({
       if (cfg.verb === "lxapp") {
         // Open another lxapp docked as an aside (home-app privilege): the
         // chat app joins the lxapp aside slot without a yaml sidebar entry.
-        spec = { lxapp: "lingxia-chat", as: "aside", edge: cfg.edge ?? "right" };
-      } else if (cfg.verb === "native") {
-        // Show a host capability by name (home-app privilege).
-        spec = { native: "terminal", edge: cfg.edge ?? "bottom" };
+        spec = { appId: "lingxia-chat", as: "aside", edge: cfg.edge ?? "right" };
       } else if (as === "aside") {
         // Multi-tab demo: each click opens the next url as a tab in the one
         // browser aside (deduped by url). Aside is external content only.
@@ -269,7 +266,7 @@ Page({
         "surfaceDemo.visible": as !== "aside",
       });
       if (!surface) return;
-      // Declared-surface handles (lxapp / native) are lightweight: no
+      // Dynamic app-surface handles are lightweight: no
       // messaging or lifecycle events unless the capability declares them.
       if (typeof surface.onMessage !== "function") return;
       surface.onMessage((payload) => {

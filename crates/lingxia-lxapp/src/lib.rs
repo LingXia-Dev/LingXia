@@ -55,9 +55,10 @@ pub use lingxia_update::{
 pub use lingxia_webview::url_callback;
 pub use lxapp::set_num_workers;
 pub use lxapp::{
-    CloseReason, CreatePageInstanceRequest, CreatedPageInstance, LXAPP_MORE_ACTION_LIMIT, LxApp,
-    LxAppMoreAction, LxAppMoreActions, LxAppOpenRegion, LxAppRuntimeInfo, LxAppRuntimePageInfo,
-    LxAppRuntimeSurfaceInfo, LxAppSecurityPrivilege, PageDefinition, PageInstanceEvent,
+    CloseReason, CreatePageInstanceRequest, CreatedPageInstance, HostMainSurfaceRegistration,
+    HostSurfaceMenuExecution, LXAPP_MORE_ACTION_LIMIT, LxApp, LxAppMoreAction, LxAppMoreActions,
+    LxAppOpenRegion, LxAppRuntimeInfo, LxAppRuntimePageInfo, LxAppRuntimeSurfaceInfo,
+    LxAppSecurityPrivilege, ManagedNativeSurface, PageDefinition, PageInstanceEvent,
     PageInstanceRuntimeInfo, PageOwner, PageQueryInput, PageSurface, PageSurfaceRequest,
     PageSurfaceTarget, PageTarget, PresentationKind, ResolvedPage, SceneId, SurfaceKind,
     SurfacePosition, SurfaceRole, UrlCallbackSurface, UrlCallbackWaitError, automation_auto_grant,
@@ -67,10 +68,11 @@ pub use lxapp::{
     is_dev_session, is_public_network_address, is_pull_down_refresh_enabled, list_lxapps,
     mark_lxapp_active, notify_lxapp_host_visibility, notify_page_host_visibility,
     notify_page_instance, notify_page_instance_by_id, on_low_memory, open_lxapp, open_region,
-    register_builtin_asset_bundle, register_dev_bundle_source, register_surface_close_observer,
-    register_surface_context_observer, register_synthetic_lxapp, restart_lxapp,
-    set_automation_auto_grant, set_display_language, tabbar, touch_page_instance_by_id, try_get,
-    uninstall_lxapp,
+    register_builtin_asset_bundle, register_dev_bundle_source,
+    register_surface_active_main_observer, register_surface_close_observer,
+    register_surface_context_observer, register_surface_visibility_observer,
+    register_synthetic_lxapp, restart_lxapp, set_automation_auto_grant, set_display_language,
+    tabbar, touch_page_instance_by_id, try_get, uninstall_lxapp,
 };
 pub use native_component::{
     NativeComponentHost, on_native_component_event, register_native_component_host,
@@ -91,9 +93,9 @@ pub use startup::{
     parse_optional_env_release_type,
 };
 pub use update::{
-    DownloadedUpdateInfo, OtaUpdateTarget, UpdateManager, ensure_force_update_for_installed,
-    ensure_target_version_ready, is_force_update_downloading, prepare_lxapp_open,
-    schedule_lxapp_update_check,
+    DownloadedUpdateInfo, OtaUpdateTarget, UpdateManager, ensure_first_install,
+    ensure_force_update_for_installed, ensure_target_version_ready, is_force_update_downloading,
+    prepare_lxapp_open, schedule_lxapp_update_check,
 };
 
 // Re-export for internal crate usage

@@ -30,6 +30,7 @@ log = { workspace = true }
 lxapp = { workspace = true, default-features = false, features = ["standard", "automation"] }
 lingxia-webview = { workspace = true }
 lingxia-platform = { workspace = true }
+lingxia-shell = { workspace = true }
 lingxia-browser = { workspace = true }
 lingxia-computer-use = { workspace = true }
 futures = { workspace = true }

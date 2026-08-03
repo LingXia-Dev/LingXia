@@ -101,12 +101,12 @@ Page({
 
   navigateToTestMiniApp: async function() {
     try {
-      await lx.navigateToLxApp({
+      await lx.navigateToApp({
         appId: "lingxia-chat",
         page: "chat",
       });
     } catch (err) {
-      console.error("navigateToLxApp failed", err);
+      console.error("navigateToApp failed", err);
       lx.showToast({ title: err.message, icon: "none" });
     }
   },

@@ -29,9 +29,9 @@ mod wifi;
 pub(crate) use app::request_windows_app_exit;
 pub use app::{
     Platform, set_windows_app_exit_handler, set_windows_builtin_browser_page_handler,
-    set_windows_open_url_handler, set_windows_shell_pins_handler,
-    set_windows_sidebar_actions_handler, set_windows_tray_click_intercept_handler,
-    set_windows_tray_menu_handler,
+    set_windows_lxapp_main_activation_handler, set_windows_open_url_handler,
+    set_windows_shell_pins_handler, set_windows_sidebar_actions_handler,
+    set_windows_tray_click_intercept_handler, set_windows_tray_menu_handler,
 };
 pub use media_preview::{
     WindowsMediaPreviewCancel, WindowsMediaPreviewOpen, register_windows_media_preview_host,
@@ -39,10 +39,10 @@ pub use media_preview::{
 pub use pull_to_refresh::set_windows_pull_to_refresh_handler;
 pub use surface::{
     WindowsUrlSurfaceWebTag, install_windows_aside_panel_bridge, set_windows_layout_plan_handler,
-    set_windows_managed_aside_event_handler, set_windows_managed_surface_toggle_handler,
-    set_windows_managed_surface_visible_handler, set_windows_page_visibility_handler,
-    set_windows_surface_closed_handler, set_windows_surface_dispose_handler,
-    set_windows_url_surface_handler,
+    set_windows_managed_aside_event_handler, set_windows_managed_native_surface_open_handler,
+    set_windows_managed_surface_close_handler, set_windows_managed_surface_visible_handler,
+    set_windows_page_visibility_handler, set_windows_surface_closed_handler,
+    set_windows_surface_dispose_handler, set_windows_url_surface_handler,
 };
 pub use ui_update::{
     set_windows_ui_update_async_handler, set_windows_ui_update_handler, sync_windows_ui,

@@ -31,6 +31,9 @@ static WINDOWS_BUILTIN_BROWSER_PAGE_HANDLER: Mutex<Option<WindowsBuiltinBrowserP
     Mutex::new(None);
 pub type WindowsShellPinsHandler = Arc<dyn Fn(&[ShellPin]) -> bool + Send + Sync>;
 static WINDOWS_SHELL_PINS_HANDLER: Mutex<Option<WindowsShellPinsHandler>> = Mutex::new(None);
+pub type WindowsLxAppMainActivationHandler = Arc<dyn Fn(&str) + Send + Sync>;
+static WINDOWS_LXAPP_MAIN_ACTIVATION_HANDLER: Mutex<Option<WindowsLxAppMainActivationHandler>> =
+    Mutex::new(None);
 pub fn set_windows_app_exit_handler(handler: WindowsAppExitHandler) {
     if let Ok(mut slot) = WINDOWS_APP_EXIT_HANDLER.lock() {
         *slot = Some(handler);
@@ -51,6 +54,12 @@ pub fn set_windows_builtin_browser_page_handler(handler: WindowsBuiltinBrowserPa
 
 pub fn set_windows_shell_pins_handler(handler: WindowsShellPinsHandler) {
     if let Ok(mut slot) = WINDOWS_SHELL_PINS_HANDLER.lock() {
+        *slot = Some(handler);
+    }
+}
+
+pub fn set_windows_lxapp_main_activation_handler(handler: WindowsLxAppMainActivationHandler) {
+    if let Ok(mut slot) = WINDOWS_LXAPP_MAIN_ACTIVATION_HANDLER.lock() {
         *slot = Some(handler);
     }
 }
@@ -77,6 +86,16 @@ fn invoke_windows_shell_pins_handler(items: &[ShellPin]) -> bool {
         .ok()
         .and_then(|slot| slot.clone())
         .is_none_or(|handler| handler(items))
+}
+
+fn invoke_windows_lxapp_main_activation_handler(appid: &str) {
+    if let Some(handler) = WINDOWS_LXAPP_MAIN_ACTIVATION_HANDLER
+        .lock()
+        .ok()
+        .and_then(|slot| slot.clone())
+    {
+        handler(appid);
+    }
 }
 
 pub(crate) fn request_windows_app_exit() {
@@ -415,6 +434,10 @@ impl AppRuntime for Platform {
         Ok(())
     }
 
+    fn request_lxapp_main_activation(&self, appid: &str) {
+        invoke_windows_lxapp_main_activation_handler(appid);
+    }
+
     fn hide_lxapp(&self, appid: String, session_id: u64) -> Result<(), PlatformError> {
         surface::hide_lxapp_window(&appid, session_id);
         Ok(())
@@ -562,17 +585,18 @@ impl crate::traits::ui::SurfacePresenter for Platform {
         surface::hide_surface(app_id, id)
     }
 
-    fn set_managed_surface_visible(
+    fn ensure_managed_surface_provider(
         &self,
-        id: &str,
-        visible: bool,
-        edge: Option<&str>,
-    ) -> Result<(), PlatformError> {
-        surface::set_managed_surface_visible(id, visible, edge)
+        request: crate::traits::ui::ManagedSurfaceProviderRequest,
+    ) -> crate::traits::ui::ManagedSurfaceFuture {
+        surface::ensure_managed_surface_provider(request)
     }
 
-    fn toggle_managed_surface(&self, id: &str) -> Result<(), PlatformError> {
-        surface::toggle_managed_surface(id)
+    fn destroy_managed_surface_provider(
+        &self,
+        request: crate::traits::ui::ManagedSurfaceProviderDestroyRequest,
+    ) -> crate::traits::ui::ManagedSurfaceFuture {
+        surface::destroy_managed_surface_provider(request)
     }
 }
 impl ShareService for Platform {

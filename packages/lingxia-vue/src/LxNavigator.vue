@@ -62,7 +62,6 @@ const render = () => h(
       delta: props.delta,
       query: props.query,
       appId: props.appId,
-      path: props.path,
       envVersion: props.envVersion,
       targetVersion: props.targetVersion,
       phoneNumber: props.phoneNumber,

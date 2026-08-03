@@ -5,6 +5,7 @@ common:
   ok: "OK"
   loading: "Loading..."
   back: "Back"
+  forward: "Forward"
   delete: "Delete"
   done: "Done"
   close: "Close"
@@ -98,3 +99,11 @@ update:
 shell:
   pin_limit_title: "Sidebar Pins"
   pin_limit_message: "You can keep up to 8 items pinned. Unpin one before adding another."
+
+# Main surface switcher
+surface:
+  rename: "Rename Tab"
+  reset_title: "Reset Tab Name"
+  close: "Close Tab"
+  close_others: "Close Other Tabs"
+  close_after: "Close Tabs After"

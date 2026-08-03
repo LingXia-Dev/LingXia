@@ -6,6 +6,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::content::SurfaceContent;
+
 /// Stable identifier of a surface within a graph.
 pub type SurfaceId = String;
 
@@ -30,66 +32,6 @@ pub enum Edge {
     Right,
     Top,
     Bottom,
-}
-
-/// What a surface shows. Only two kinds: a declared catalog `entry`
-/// (resolved by the host from `lingxia.toml`) or an ad-hoc `web` page.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "lowercase")]
-pub enum SurfaceContent {
-    /// A `lingxia.toml`-declared app / system feature, opened by id.
-    Entry {
-        id: String,
-        /// Initial route only; subsequent navigation goes through `lx.navigator`.
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        path: Option<String>,
-    },
-    /// An ad-hoc web page / PDF rendered by the in-app chromed browser. Whether
-    /// it presents as a main browser tab or a docked browser aside is decided by
-    /// `role`, not by the content — the browser always carries its own chrome.
-    Web {
-        url: String,
-        /// Reopening the same URL normally focuses the existing browser aside.
-        /// Callback surfaces opt out because their navigation and data-store
-        /// policy must never inherit an ordinary tab's WebView.
-        #[serde(
-            default = "default_reuse_by_url",
-            skip_serializing_if = "is_reuse_by_url"
-        )]
-        reuse_by_url: bool,
-    },
-}
-
-const fn default_reuse_by_url() -> bool {
-    true
-}
-
-fn is_reuse_by_url(value: &bool) -> bool {
-    *value
-}
-
-/// Aside slot grouping: the aside area holds at most one region per render
-/// engine — lxapp, browser, native — and multiple contents of one kind live
-/// inside that region as tabs.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum SlotKind {
-    Lxapp,
-    Browser,
-    Native,
-}
-
-impl SurfaceContent {
-    /// The aside slot this content belongs to. The built-in terminal is the
-    /// only native capability today; native contents get a first-class marker
-    /// when a second capability lands.
-    pub fn slot_kind(&self) -> SlotKind {
-        match self {
-            SurfaceContent::Web { .. } => SlotKind::Browser,
-            SurfaceContent::Entry { id, .. } if id == "terminal" => SlotKind::Native,
-            SurfaceContent::Entry { .. } => SlotKind::Lxapp,
-        }
-    }
 }
 
 /// Owner scope: decides when the surface is closed (§5).
@@ -217,13 +159,12 @@ pub struct Surface {
 }
 
 impl Surface {
-    /// Convenience constructor for an entry-backed surface.
-    pub fn entry(id: impl Into<SurfaceId>, role: Role, entry_id: impl Into<String>) -> Self {
+    pub fn lxapp(id: impl Into<SurfaceId>, role: Role, app_id: impl Into<String>) -> Self {
         Self {
             id: id.into(),
             role,
-            content: SurfaceContent::Entry {
-                id: entry_id.into(),
+            content: SurfaceContent::Lxapp {
+                app_id: app_id.into(),
                 path: None,
             },
             owner: SurfaceOwner::Host,
@@ -234,6 +175,45 @@ impl Surface {
             } else {
                 None
             },
+        }
+    }
+
+    pub fn native(id: impl Into<SurfaceId>, role: Role, capability: impl Into<String>) -> Self {
+        Self::native_instance(id, role, capability, None)
+    }
+
+    pub fn native_instance(
+        id: impl Into<SurfaceId>,
+        role: Role,
+        capability: impl Into<String>,
+        instance_key: Option<String>,
+    ) -> Self {
+        Self {
+            id: id.into(),
+            role,
+            content: SurfaceContent::Native {
+                capability: capability.into(),
+                instance_key,
+            },
+            owner: SurfaceOwner::Host,
+            placement: Placement::default(),
+            state: SurfaceState::Mounted,
+            float: (role == Role::Float).then(FloatSpec::default),
+        }
+    }
+
+    pub fn browser(id: impl Into<SurfaceId>, role: Role, initial_url: impl Into<String>) -> Self {
+        Self {
+            id: id.into(),
+            role,
+            content: SurfaceContent::Browser {
+                initial_url: initial_url.into(),
+                reuse_by_url: true,
+            },
+            owner: SurfaceOwner::Host,
+            placement: Placement::default(),
+            state: SurfaceState::Mounted,
+            float: (role == Role::Float).then(FloatSpec::default),
         }
     }
 

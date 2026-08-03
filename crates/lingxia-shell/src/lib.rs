@@ -12,6 +12,7 @@ mod pin;
 mod runtime;
 mod sidebar_action;
 mod store;
+mod surface_menu;
 
 pub use error::{ShellError, ShellResult};
 pub use manager::{ShellManager, ShellSnapshot};
@@ -26,3 +27,8 @@ pub use sidebar_action::{
     ShellSidebarActionUpdate, SidebarActionCollection, SidebarActionPlacement,
 };
 pub use store::{PIN_STORE_FILE, ShellStore};
+pub use surface_menu::{
+    LxappSurfaceMenuAction, SurfaceMenuAction, SurfaceMenuBuiltinAction, SurfaceMenuContext,
+    SurfaceMenuIntent, SurfaceMenuItem, SurfaceMenuItemRole, SurfaceMenuSection,
+    SurfaceMenuSectionKind, SurfaceMenuSnapshot, compose_surface_menu,
+};

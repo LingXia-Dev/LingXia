@@ -6,15 +6,20 @@
 //! skin renders. All layout decisions stay in the shared core; the platform
 //! only maps legacy primitives in and binds the output.
 
+use std::collections::HashMap;
+
 use crate::arbitrate::{OpenOutcome, Policy, arbitrate};
 use crate::graph::SurfaceGraph;
 use crate::layout::{DEFAULT_HYSTERESIS, DerivedLayout, LayoutPresentationPlan, SizeClass};
 use crate::model::{Surface, SurfaceId};
+use crate::{CloseOutcome, ReplaceMainsError, Role, SurfacePresentation, SurfaceSwitcherSnapshot};
 
 /// One window's stateful surface driver.
 #[derive(Debug, Clone)]
 pub struct SurfaceManager {
     graph: SurfaceGraph,
+    presentations: HashMap<SurfaceId, SurfacePresentation>,
+    revision: u64,
     policy: Policy,
     width: f64,
     sidebar_width: f64,
@@ -34,6 +39,8 @@ impl SurfaceManager {
     pub fn with_policy(width: f64, policy: Policy) -> Self {
         Self {
             graph: SurfaceGraph::new(),
+            presentations: HashMap::new(),
+            revision: 0,
             policy,
             width,
             sidebar_width: 0.0,
@@ -106,8 +113,27 @@ impl SurfaceManager {
     /// Open (or replace by id) a surface through the arbiter at the current size.
     /// Always leaves the graph valid; returns the structured decision.
     pub fn open(&mut self, request: Surface) -> OpenOutcome {
+        let requested_id = request.id.clone();
+        let default_presentation = SurfacePresentation::for_content(&request.content);
+        let content_changed = self
+            .graph
+            .get(&requested_id)
+            .is_some_and(|surface| surface.content != request.content);
         let (next, mut outcome) = arbitrate(&self.graph, request, &self.policy, self.size_class);
         self.graph = next;
+        if outcome.resolved_surface_id == requested_id {
+            if content_changed {
+                self.presentations
+                    .insert(requested_id, default_presentation);
+            } else {
+                self.presentations
+                    .entry(requested_id)
+                    .or_insert(default_presentation);
+            }
+        }
+        self.presentations
+            .retain(|id, _| self.graph.get(id).is_some());
+        self.bump_revision();
         if outcome.resolved_role == crate::model::Role::Aside {
             let admitted = self
                 .graph
@@ -125,9 +151,9 @@ impl SurfaceManager {
         outcome
     }
 
-    /// Close a surface; returns the ids actually removed (target + cascades).
-    pub fn close(&mut self, id: &str) -> Vec<SurfaceId> {
-        let removed = self.graph.remove(id);
+    pub fn close(&mut self, id: &str) -> CloseOutcome {
+        let outcome = self.graph.close(id);
+        let removed = outcome.removed();
         if self
             .overlay_fallback_surface_id
             .as_ref()
@@ -142,13 +168,177 @@ impl SurfaceManager {
             self.overlay_fallback_surface_id =
                 focused.filter(|focused| self.needs_overlay(focused));
         }
+        for id in removed {
+            self.presentations.remove(id);
+        }
+        if matches!(outcome, CloseOutcome::Closed { .. }) {
+            self.bump_revision();
+        }
+        outcome
+    }
+
+    pub fn replace_mains(
+        &mut self,
+        mains: Vec<(Surface, SurfacePresentation)>,
+    ) -> Result<SurfaceSwitcherSnapshot, ReplaceMainsError> {
+        let mut ids = std::collections::HashSet::with_capacity(mains.len());
+        for (surface, _) in &mains {
+            if surface.role != Role::Main {
+                return Err(ReplaceMainsError::InvalidRole {
+                    surface_id: surface.id.clone(),
+                });
+            }
+            if !ids.insert(surface.id.clone()) {
+                return Err(ReplaceMainsError::DuplicateId {
+                    surface_id: surface.id.clone(),
+                });
+            }
+        }
+        let old_main_ids: Vec<_> = self
+            .graph
+            .mains()
+            .into_iter()
+            .map(|surface| surface.id.clone())
+            .collect();
+        self.remove_presentations(&old_main_ids);
+
+        let (surfaces, presentations): (Vec<_>, Vec<_>) = mains.into_iter().unzip();
+        self.graph.replace_mains(surfaces);
+        for (surface, presentation) in self.graph.mains().into_iter().zip(presentations) {
+            self.presentations.insert(surface.id.clone(), presentation);
+        }
+        self.presentations
+            .retain(|id, _| self.graph.get(id).is_some());
+        self.bump_revision();
+        Ok(self.switcher_snapshot())
+    }
+
+    pub fn open_main(
+        &mut self,
+        surface: Surface,
+        presentation: SurfacePresentation,
+    ) -> Result<SurfaceSwitcherSnapshot, ReplaceMainsError> {
+        if surface.role != Role::Main {
+            return Err(ReplaceMainsError::InvalidRole {
+                surface_id: surface.id,
+            });
+        }
+        let surface_id = surface.id.clone();
+        // Main registration has a stricter contract than a general open: the
+        // requested identity must become that exact main. Bypass aside reuse
+        // and role arbitration so a future policy change cannot redirect the
+        // request while we publish presentation metadata under the old id.
+        self.graph.insert(surface);
+        self.presentations.insert(surface_id.clone(), presentation);
+        self.presentations
+            .retain(|id, _| self.graph.get(id).is_some());
+        self.bump_revision();
+        self.set_active_main(&surface_id);
+        Ok(self.switcher_snapshot())
+    }
+
+    pub fn close_other_mains(&mut self, keeping: &str) -> Vec<SurfaceId> {
+        if self.graph.role_of(keeping) != Some(Role::Main) {
+            return Vec::new();
+        }
+        let targets: Vec<_> = self
+            .switcher_snapshot()
+            .items
+            .into_iter()
+            .filter(|item| item.surface_id != keeping && item.closable)
+            .map(|item| item.surface_id)
+            .collect();
+        let removed = targets
+            .into_iter()
+            .flat_map(|id| self.graph.close(&id).into_removed())
+            .collect::<Vec<_>>();
+        self.remove_presentations(&removed);
+        if !removed.is_empty() {
+            self.bump_revision();
+        }
         removed
     }
 
+    pub fn close_mains_after(&mut self, id: &str) -> Vec<SurfaceId> {
+        let snapshot = self.switcher_snapshot();
+        let Some(index) = snapshot.items.iter().position(|item| item.surface_id == id) else {
+            return Vec::new();
+        };
+        let removed = snapshot
+            .items
+            .into_iter()
+            .skip(index + 1)
+            .filter(|item| item.closable)
+            .flat_map(|item| self.graph.close(&item.surface_id).into_removed())
+            .collect::<Vec<_>>();
+        self.remove_presentations(&removed);
+        if !removed.is_empty() {
+            self.bump_revision();
+        }
+        removed
+    }
+
+    fn remove_presentations(&mut self, ids: &[SurfaceId]) {
+        for id in ids {
+            self.presentations.remove(id);
+        }
+    }
+
+    pub fn set_presentation(&mut self, id: &str, presentation: SurfacePresentation) -> bool {
+        if self.graph.get(id).is_none() {
+            return false;
+        }
+        self.presentations.insert(id.to_string(), presentation);
+        self.bump_revision();
+        true
+    }
+
+    pub fn update_automatic_title(&mut self, id: &str, title: Option<&str>) -> bool {
+        let Some(presentation) = self.presentations.get_mut(id) else {
+            return false;
+        };
+        let title = title
+            .map(str::trim)
+            .filter(|title| !title.is_empty())
+            .map(str::to_string);
+        if presentation.automatic_title == title {
+            return false;
+        }
+        presentation.automatic_title = title;
+        self.bump_revision();
+        true
+    }
+
+    pub fn rename(&mut self, id: &str, title: Option<&str>) -> bool {
+        let Some(presentation) = self.presentations.get_mut(id) else {
+            return false;
+        };
+        if !presentation.capabilities.rename {
+            return false;
+        }
+        presentation.set_custom_title(title);
+        self.bump_revision();
+        true
+    }
+
+    pub fn switcher_snapshot(&self) -> SurfaceSwitcherSnapshot {
+        let mut snapshot = SurfaceSwitcherSnapshot::derive(&self.graph, &self.presentations);
+        snapshot.revision = self.revision;
+        snapshot
+    }
+
+    fn bump_revision(&mut self) {
+        self.revision = self.revision.wrapping_add(1);
+    }
+
     pub fn set_active_main(&mut self, id: &str) -> bool {
+        let changed = self.graph.active_main_id.as_deref() != Some(id);
         let active = self.graph.set_active_main(id);
         if active {
             self.overlay_fallback_surface_id = None;
+            if changed {
+                self.bump_revision();
+            }
         }
         active
     }
@@ -161,8 +351,19 @@ impl SurfaceManager {
     }
 
     pub fn show(&mut self, id: &str) -> bool {
+        let role = self.graph.role_of(id);
+        let activates_main =
+            role == Some(Role::Main) && self.graph.active_main_id.as_deref() != Some(id);
         let shown = self.graph.show(id);
-        if shown && self.graph.role_of(id) == Some(crate::model::Role::Aside) {
+        if shown && role == Some(Role::Main) {
+            self.overlay_fallback_surface_id = None;
+            if activates_main {
+                // `SurfaceGraph::show` performs the selection. Mirror
+                // `set_active_main`'s observable switcher revision here.
+                self.bump_revision();
+            }
+        }
+        if shown && role == Some(Role::Aside) {
             let admitted = self
                 .graph
                 .aside_slots_admitted(self.size_class, self.workspace_width(), &self.policy)
@@ -206,6 +407,7 @@ impl SurfaceManager {
         let mut plan =
             self.graph
                 .presentation_plan(self.size_class, self.workspace_width(), &self.policy);
+        plan.main_switcher = self.switcher_snapshot();
         if self.size_class == SizeClass::Compact {
             for slot in plan.aside_slots.iter_mut().filter(|slot| slot.visible) {
                 slot.overlay = true;
@@ -231,13 +433,13 @@ mod tests {
     use super::*;
     use crate::Decision;
     use crate::layout::{SplitForm, SwitcherForm};
-    use crate::model::{Edge, Role, Surface};
+    use crate::{Edge, Role, Surface, SurfaceContent};
 
     fn main_s(id: &str) -> Surface {
-        Surface::entry(id, Role::Main, id)
+        Surface::lxapp(id, Role::Main, id)
     }
     fn aside_s(id: &str, edge: Edge) -> Surface {
-        let mut s = Surface::entry(id, Role::Aside, id);
+        let mut s = Surface::lxapp(id, Role::Aside, id);
         s.placement.edge = Some(edge);
         s
     }
@@ -282,14 +484,14 @@ mod tests {
         manager.set_sidebar_width(184.0);
         manager.open(main_s("home"));
         manager.open(aside_s("lxapp", Edge::Right));
-        let mut browser = Surface::entry("browser", Role::Aside, "browser");
-        browser.content = crate::model::SurfaceContent::Web {
-            url: "https://example.com".to_string(),
+        let mut browser = Surface::lxapp("browser", Role::Aside, "browser");
+        browser.content = SurfaceContent::Browser {
+            initial_url: "https://example.com".to_string(),
             reuse_by_url: true,
         };
         browser.placement.edge = Some(Edge::Right);
         manager.open(browser);
-        let mut native = Surface::entry("terminal", Role::Aside, "terminal");
+        let mut native = Surface::native("terminal", Role::Aside, "terminal");
         native.placement.edge = Some(Edge::Right);
         manager.open(native);
         assert_eq!(
@@ -346,6 +548,21 @@ mod tests {
     }
 
     #[test]
+    fn showing_an_existing_main_advances_the_switcher_revision() {
+        let mut manager = SurfaceManager::new(1200.0);
+        manager.open(main_s("home"));
+        manager.open(main_s("workspace"));
+        manager.set_active_main("workspace");
+        let before = manager.switcher_snapshot();
+
+        assert!(manager.show("home"));
+        let after = manager.switcher_snapshot();
+
+        assert_eq!(after.active_surface_id.as_deref(), Some("home"));
+        assert!(after.revision > before.revision);
+    }
+
+    #[test]
     fn docked_fallback_does_not_reappear_after_later_resize() {
         let policy = Policy {
             main_min_width: 400.0,
@@ -354,9 +571,9 @@ mod tests {
         };
         let mut manager = SurfaceManager::with_policy(620.0, policy);
         manager.open(main_s("home"));
-        let mut browser = Surface::entry("browser", Role::Aside, "browser");
-        browser.content = crate::model::SurfaceContent::Web {
-            url: "https://example.com".to_string(),
+        let mut browser = Surface::lxapp("browser", Role::Aside, "browser");
+        browser.content = SurfaceContent::Browser {
+            initial_url: "https://example.com".to_string(),
             reuse_by_url: true,
         };
         browser.placement.edge = Some(Edge::Right);
@@ -374,7 +591,7 @@ mod tests {
             .filter(|slot| slot.visible)
             .map(|slot| slot.kind)
             .collect();
-        assert_eq!(visible, vec![crate::model::SlotKind::Lxapp]);
+        assert_eq!(visible, vec![crate::SlotKind::Lxapp]);
     }
 
     #[test]
@@ -382,9 +599,9 @@ mod tests {
         let mut manager = SurfaceManager::new(900.0);
         manager.open(main_s("home"));
         manager.open(aside_s("chat", Edge::Right));
-        let mut browser = Surface::entry("browser", Role::Aside, "browser");
-        browser.content = crate::model::SurfaceContent::Web {
-            url: "https://example.com".to_string(),
+        let mut browser = Surface::lxapp("browser", Role::Aside, "browser");
+        browser.content = SurfaceContent::Browser {
+            initial_url: "https://example.com".to_string(),
             reuse_by_url: true,
         };
         browser.placement.edge = Some(Edge::Right);

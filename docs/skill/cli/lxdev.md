@@ -69,7 +69,8 @@ Mobile reports one host window. Desktop hosts may report several (for example ma
 
 **`test`** — run bundled JavaScript/TypeScript cases in the session (`lxdev test tests/flows/checkout.test.ts`). Install `@rongjs/test`, import its `describe` / `test` / hooks / `expect`, and keep contracts in `tests/api/`, page behavior in `tests/pages/`, and journeys in `tests/flows/`.
 
-- `const auto = lx.automation()` — select the current app with `auto.lxapp()` or a specific running app with `auto.lxapp(appid)`; the returned driver's `page`, `nav`, and `eval` surfaces all target that app. Cross-app lifecycle operations live on `auto.lxapps`.
+- `const auto = lx.automation()` — select the current app with `auto.lxapp()` or a specific running app with `auto.lxapp(appid)`; the returned driver's `page`, `nav`, `eval`, and read-only `surfaceLayout()` surfaces all target that app. `surfaceLayout()` is the authoritative render plan for end-to-end host assertions, not an app-behavior API. Cross-app lifecycle operations live on `auto.lxapps`.
+- `auto.shell.pins()` reads the host sidebar's ordered persisted shortcuts. `auto.shell.setPin({ kind: 'lxapp' | 'bookmark', key, pinned })` idempotently mutates one shortcut and returns the resulting full order; new Pins append, while a host-limit error leaves the old order intact. This host-privileged surface exists for deterministic test setup and cleanup; production lxapp behavior still uses `lx.shell`, and tests must restore any pre-existing Pin state in `finally`.
 - `test.args` — strings from repeatable `--arg key=value`; `test.attach(name, { mimeType, base64 })` — save an artifact, downloaded into `--output-dir` (default `test-results/lxdev/<run-id>`).
 - `console`, timers, and host-device `fetch`
 
@@ -94,7 +95,14 @@ than stopping it through `lxdev`.
 | `lxapp page eval` | page WebView | rendered DOM, `window` — no app state |
 | `browser eval` | a browser tab | that tab's DOM |
 
-Scripts may be an expression or a function body using `return` / `await`. Surface-opening calls (`lx.surface.*`, `navigateTo`) deadlock from `lxapp eval` — trigger those via a real page interaction (`lxapp page click`) instead. To navigate, prefer `lxapp nav`; the JS APIs take `{ page }` or `{ path }`, never `url`.
+Scripts may be an expression or a function body using `return` / `await`. A
+native workspace can be opened directly for host verification, for example
+`await lx.openSurface({ surface: 'terminal', key: 'project-a', as: 'main' })`.
+Use a function body and return a serializable assertion value rather than the
+surface handle itself. For page navigation, prefer `lxapp nav`; when the behavior
+under test is a user interaction, trigger it through `lxapp page click`. The JS
+navigation APIs take a configured page name in `{ page }`; route paths are not
+accepted.
 
 **`desktop`** — local desktop inspection and automation, independent of a dev
 session. It covers windows, screenshots, accessibility, pixels, clipboard,

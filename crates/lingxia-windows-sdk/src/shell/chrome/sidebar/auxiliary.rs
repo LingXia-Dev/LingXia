@@ -191,6 +191,14 @@ pub(in crate::shell::chrome) fn sidebar_auxiliary_hit_test(
     for (index, item_rect) in &auxiliary.items {
         let item = tabbar.auxiliary_items.get(*index)?;
         if rect_contains(item_rect, point) {
+            if !item.pinned && rect_contains(&sidebar_auxiliary_menu_rect(*item_rect, item), point)
+            {
+                return Some(WindowsChromeHit::Command(
+                    WindowsChromeCommand::new(command_id::SIDEBAR_AUXILIARY_CONTEXT_MENU)
+                        .with_payload(serde_json::json!({ "tab_id": item.id.clone() }))
+                        .with_screen_position(),
+                ));
+            }
             if item.closable && rect_contains(&sidebar_auxiliary_close_rect(*item_rect), point) {
                 return Some(chrome_command(
                     command_id::BROWSER_TAB_CLOSE,
@@ -222,6 +230,23 @@ pub(in crate::shell::chrome) fn sidebar_auxiliary_close_rect(item_rect: RECT) ->
         left: item_rect.right - SIDEBAR_BROWSER_CLOSE_SIZE,
         top: item_rect.top,
         right: item_rect.right,
+        bottom: item_rect.bottom,
+    })
+}
+
+pub(in crate::shell::chrome) fn sidebar_auxiliary_menu_rect(
+    item_rect: RECT,
+    item: &WindowsShellAuxiliaryItemLayout,
+) -> RECT {
+    let trailing = if item.closable {
+        sidebar_auxiliary_close_rect(item_rect).left
+    } else {
+        item_rect.right
+    };
+    normalize_rect(RECT {
+        left: trailing - SIDEBAR_BROWSER_CLOSE_SIZE,
+        top: item_rect.top,
+        right: trailing,
         bottom: item_rect.bottom,
     })
 }
@@ -274,7 +299,7 @@ pub(in crate::shell::chrome) fn draw_sidebar_auxiliary_section(
                         PINNED_SHORTCUT_ICON_SIZE as u32,
                     ));
             if !drawn {
-                if item.id.starts_with("lxapp:") {
+                if item.id.starts_with("lxapp:") || item.id.starts_with("pin:lxapp:") {
                     draw_default_app_icon(hdc, icon_rect);
                 } else {
                     draw_design_icon_button(
@@ -295,6 +320,7 @@ pub(in crate::shell::chrome) fn draw_sidebar_auxiliary_section(
         }
 
         let close_rect = sidebar_auxiliary_close_rect(item_rect);
+        let menu_rect = sidebar_auxiliary_menu_rect(item_rect, item);
         // 16px icon left of the title: the page favicon when supplied, else
         // the default LingXia mark (internal pages like Downloads/Settings
         // report no favicon, mirroring the macOS bundled fallback).
@@ -314,23 +340,25 @@ pub(in crate::shell::chrome) fn draw_sidebar_auxiliary_section(
         if icon_drawn {
             label_left = icon_rect.right + SIDEBAR_FAVICON_TEXT_GAP;
         }
-        let label_rect = normalize_rect(RECT {
-            left: label_left,
-            top: item_rect.top,
-            right: if item.closable {
-                close_rect.left - 2
-            } else {
-                item_rect.right - 8
-            },
-            bottom: item_rect.bottom,
-        });
+        let label_rect = sidebar_auxiliary_title_rect(item_rect, item, label_left);
         let text_color = if item.active {
             shell_palette().text_primary
         } else {
             shell_palette().text_muted
         };
         draw_text(hdc, &item.title, label_rect, text_color, DT_LEFT);
-        if item.closable {
+        if rect_contains(&item_rect, cursor.unwrap_or((-1, -1))) {
+            draw_hover_wash(hdc, menu_rect, 4, cursor);
+            draw_design_icon_button(
+                hdc,
+                menu_rect,
+                WindowsDesignIcon::PageMenu,
+                shell_palette().text_muted,
+                16,
+            );
+        }
+        if item.closable && rect_contains(&item_rect, cursor.unwrap_or((-1, -1))) {
+            draw_hover_wash(hdc, close_rect, 4, cursor);
             draw_text(
                 hdc,
                 GLYPH_TAB_CLOSE,
@@ -348,14 +376,127 @@ pub(in crate::shell::chrome) fn draw_sidebar_auxiliary_section(
     }
 }
 
+pub(in crate::shell::chrome) fn sidebar_auxiliary_title_rect(
+    item_rect: RECT,
+    item: &WindowsShellAuxiliaryItemLayout,
+    label_left: i32,
+) -> RECT {
+    normalize_rect(RECT {
+        left: label_left,
+        top: item_rect.top,
+        right: if item.pinned {
+            item_rect.right - 8
+        } else {
+            sidebar_auxiliary_menu_rect(item_rect, item).left - 2
+        },
+        bottom: item_rect.bottom,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn tabbar_with_auxiliary_item(
+        item: WindowsShellAuxiliaryItemLayout,
+    ) -> WindowsShellTabBarLayout {
+        WindowsShellTabBarLayout {
+            visible: true,
+            position: WindowsShellTabBarPosition::Left,
+            dimension: 184,
+            app_name: "Home".to_string(),
+            app_icon_path: String::new(),
+            group_id: "home".to_string(),
+            group_target_id: "surface:home".to_string(),
+            group_active: false,
+            group_closable: false,
+            group_order_index: 0,
+            color: 0,
+            selected_color: 0,
+            background_color: 0,
+            background_transparent: true,
+            border_color: 0,
+            selected_index: -1,
+            items: Vec::new(),
+            collapsed: false,
+            icon_rail: false,
+            items_api_hidden: false,
+            items_collapsed: false,
+            footer_action_height: 0,
+            main_scroll_offset: 0,
+            footer_action_scroll_row: 0,
+            auxiliary_items: vec![item],
+            show_auxiliary_add: false,
+            header_actions: Vec::new(),
+        }
+    }
 
     #[test]
     fn fixed_pin_grid_has_four_columns_and_two_bounded_rows() {
         assert_eq!(pinned_grid_height(1), 41);
         assert_eq!(pinned_grid_height(4), 41);
         assert_eq!(pinned_grid_height(8), 82);
+    }
+
+    #[test]
+    fn workspace_menu_sits_before_close_without_overlapping_it() {
+        let item_rect = RECT {
+            left: 8,
+            top: 100,
+            right: 176,
+            bottom: 136,
+        };
+        let item = WindowsShellAuxiliaryItemLayout {
+            id: "surface:chat".to_string(),
+            title: "Chat".to_string(),
+            active: true,
+            pinned: false,
+            closable: true,
+            icon_png: None,
+            icon_path: String::new(),
+        };
+
+        let menu = sidebar_auxiliary_menu_rect(item_rect, &item);
+        let close = sidebar_auxiliary_close_rect(item_rect);
+        let title = sidebar_auxiliary_title_rect(item_rect, &item, 40);
+        assert_eq!(menu.right, close.left);
+        assert_eq!(title.right, menu.left - 2);
+        assert_eq!(menu.right - menu.left, SIDEBAR_BROWSER_CLOSE_SIZE);
+        assert_eq!(close.right - close.left, SIDEBAR_BROWSER_CLOSE_SIZE);
+    }
+
+    #[test]
+    fn workspace_ellipsis_opens_its_context_menu_on_left_click() {
+        let tabbar = tabbar_with_auxiliary_item(WindowsShellAuxiliaryItemLayout {
+            id: "surface:chat".to_string(),
+            title: "Chat".to_string(),
+            active: true,
+            pinned: false,
+            closable: true,
+            icon_png: None,
+            icon_path: String::new(),
+        });
+        let sidebar = RECT {
+            left: 0,
+            top: 0,
+            right: 184,
+            bottom: 500,
+        };
+        let rows = sidebar_auxiliary_rects(sidebar, &tabbar, 0, sidebar.bottom).unwrap();
+        let row = rows.items[0].1;
+        let menu = sidebar_auxiliary_menu_rect(row, &tabbar.auxiliary_items[0]);
+        let point = ((menu.left + menu.right) / 2, (menu.top + menu.bottom) / 2);
+
+        let Some(WindowsChromeHit::Command(command)) =
+            sidebar_auxiliary_hit_test(sidebar, &tabbar, point, 0, sidebar.bottom)
+        else {
+            panic!("workspace ellipsis did not produce a direct menu command");
+        };
+        assert_eq!(command.id, command_id::SIDEBAR_AUXILIARY_CONTEXT_MENU);
+        assert_eq!(
+            command.payload,
+            serde_json::json!({ "tab_id": "surface:chat" })
+        );
+        assert!(command.include_screen_position);
     }
 }

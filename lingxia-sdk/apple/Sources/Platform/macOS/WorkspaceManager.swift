@@ -351,6 +351,22 @@ class WorkspaceManager: NSObject {
 
     func isPanelRegistered(id: String) -> Bool { panels[id] != nil }
 
+    /// Remove a panel provider after its surface has left the core graph.
+    /// A destroyed provider must not remain in the registry because the layout
+    /// reconciler treats that registry as the host's provider inventory.
+    func unregisterPanel(id: String) {
+        guard let slot = panels[id] else { return }
+        if slot.isVisible {
+            hidePanelInternal(id: id, duration: 0, updateCardEdges: true)
+        }
+        slot.containerView.subviews.forEach { $0.removeFromSuperview() }
+        slot.shadowWrapper.removeFromSuperview()
+        slot.resizeHandle.removeFromSuperview()
+        panels.removeValue(forKey: id)
+        visibleOrder[slot.config.position]?.removeAll { $0 == id }
+        relayoutSideChain(slot.config.position)
+    }
+
     /// Register a panel. Creates the card view and positions it off-screen.
     /// Returns the container view where WebViews should be attached.
     @discardableResult

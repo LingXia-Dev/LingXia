@@ -40,6 +40,64 @@ pub trait LxAppDelegate {
     fn on_lxapp_event(self: &Arc<Self>, event_type: LxAppUiEventType, data: String) -> bool;
 }
 
+fn finalize_lxapp_close(app: &Arc<LxApp>, session_id: u64) -> bool {
+    if session_id != app.session_id() || app.status() == LxAppSessionStatus::Closed {
+        return false;
+    }
+
+    app.set_status(LxAppSessionStatus::Closed);
+    app.clear_open_region();
+    app.clear_transient_files();
+    app.state
+        .lock()
+        .unwrap_or_else(|error| {
+            warn!("Recovered poisoned lxapp state mutex during close")
+                .with_appid(app.appid.clone());
+            error.into_inner()
+        })
+        .last_active_time = Instant::now();
+
+    if let Some(manager) = lxapp::get_lxapps_manager() {
+        manager.remove_from_stack(&app.appid);
+        manager.schedule_delayed_destroy(app.appid.clone());
+    }
+    true
+}
+
+fn notify_lxapp_close(app: &Arc<LxApp>) {
+    let args = crate::lifecycle::AppServiceEventArgs {
+        source: crate::lifecycle::AppServiceEventSource::Lxapp,
+        reason: crate::lifecycle::AppServiceEventReason::Close,
+    }
+    .to_json_string();
+    if let Err(error) = app.appservice_notify(AppServiceEvent::OnHide, Some(args)) {
+        error!("Failed to trigger onHide service: {}", error).with_appid(app.appid.clone());
+    }
+}
+
+impl LxApp {
+    /// Queue the close lifecycle before programmatic shutdown terminates Logic.
+    pub(crate) fn begin_programmatic_close(self: &Arc<Self>, session_id: u64) -> bool {
+        if session_id != self.session_id()
+            || matches!(
+                self.status(),
+                LxAppSessionStatus::Closing | LxAppSessionStatus::Closed
+            )
+        {
+            return false;
+        }
+        notify_lxapp_close(self);
+        true
+    }
+
+    /// Finish close bookkeeping after AppService shutdown has already begun.
+    pub(crate) fn complete_programmatic_close(self: &Arc<Self>, session_id: u64) {
+        if finalize_lxapp_close(self, session_id) {
+            self.sync_host_ui();
+        }
+    }
+}
+
 impl LxAppDelegate for LxApp {
     fn on_lxapp_opened(self: Arc<Self>, path: String, session_id: u64) -> String {
         let current_session = self.session_id();
@@ -180,41 +238,12 @@ impl LxAppDelegate for LxApp {
     }
 
     fn on_lxapp_closed(self: &Arc<Self>, session_id: u64) {
-        let current_session = self.session_id();
-        if session_id != current_session {
+        if !finalize_lxapp_close(self, session_id) {
             return;
         }
 
-        self.set_status(LxAppSessionStatus::Closed);
-        self.clear_open_region();
-        self.clear_transient_files();
-
-        // Update last active time. Recover from poisoned mutex instead of panicking.
-        self.state
-            .lock()
-            .unwrap_or_else(|e| {
-                warn!("Recovered poisoned lxapp state mutex during close")
-                    .with_appid(self.appid.clone());
-                e.into_inner()
-            })
-            .last_active_time = Instant::now();
-
-        // Remove this LxApp from the navigation stack
-        if let Some(manager) = lxapp::get_lxapps_manager() {
-            manager.remove_from_stack(&self.appid);
-            manager.schedule_delayed_destroy(self.appid.clone());
-        }
-
-        // Trigger onHide with reason so JS can distinguish lxapp close vs host background.
-        let args = crate::lifecycle::AppServiceEventArgs {
-            source: crate::lifecycle::AppServiceEventSource::Lxapp,
-            reason: crate::lifecycle::AppServiceEventReason::Close,
-        }
-        .to_json_string();
-        if let Err(e) = self.appservice_notify(AppServiceEvent::OnHide, Some(args)) {
-            error!("Failed to trigger onHide service: {}", e).with_appid(self.appid.clone());
-        }
-
+        // Native close callbacks arrive while Logic is still alive.
+        notify_lxapp_close(self);
         self.sync_host_ui();
     }
 

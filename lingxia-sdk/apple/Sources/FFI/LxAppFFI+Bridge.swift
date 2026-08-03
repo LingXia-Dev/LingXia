@@ -179,30 +179,51 @@ extension LxApp {
         }
     }
 
+    /// One-shot intent published before an explicit lxapp main activation.
+    /// The main-queue hop precedes the activation's own layout commit, so the
+    /// reconciler observes the flag before deciding whether a covering
+    /// browser tab may be replaced.
+    nonisolated static func requestLxappMainActivation(appid: RustStr) {
+        let appId = appid.toString()
+        guard !appId.isEmpty else { return }
+        dispatchOnMain {
+            #if os(macOS)
+            LxAppLayoutReconciler.requestLxappMainActivation(appId: appId)
+            #endif
+        }
+    }
+
     /// Adaptive Surface Layout: the shared core derived a new window layout.
     nonisolated static func presentLayout(window_id: RustStr, layout_json: RustStr) -> Bool {
         let windowIdString = window_id.toString()
         let json = layout_json.toString()
         guard !windowIdString.isEmpty, !json.isEmpty else { return false }
-        return executeOnMain {
+        // Render-only: the graph commit discards the result, so hop instead of
+        // blocking the caller (often a JS worker) on the main queue.
+        dispatchOnMain {
             #if os(macOS)
-            return LxAppLayoutReconciler.reconcile(windowId: windowIdString, json: json)
+            _ = LxAppLayoutReconciler.reconcile(windowId: windowIdString, json: json)
             #elseif os(iOS)
-            return LxAppLayoutReconcileriOS.reconcile(windowId: windowIdString, json: json)
+            _ = LxAppLayoutReconcileriOS.reconcile(windowId: windowIdString, json: json)
             #else
             _ = json
-            return false
             #endif
         }
+        return true
     }
 
     /// Show or hide a host-declared top-level surface (e.g. the AI-chat panel or
-    /// terminal). An empty `edge` keeps the current placement; otherwise it
-    /// overrides the declared edge for this show. Returns `false` when there is
-    /// no host shell to manage the surface, or when `id` is not a declared
-    /// surface.
-    nonisolated static func setManagedSurfaceVisible(id: RustStr, visible: Bool, edge: RustStr) -> Bool {
+    /// terminal). Empty `role` / `edge` values keep declaration defaults;
+    /// otherwise they override this presentation. Returns `false` when there
+    /// is no host shell to manage the surface, or when the request is invalid.
+    nonisolated static func setManagedSurfaceVisible(
+        id: RustStr,
+        visible: Bool,
+        role: RustStr,
+        edge: RustStr
+    ) -> Bool {
         let idString = id.toString()
+        let roleString = role.toString()
         let edgeString = edge.toString()
         guard !idString.isEmpty else { return false }
         return executeOnMain {
@@ -211,7 +232,11 @@ extension LxApp {
             if visible {
                 // Declared surfaces first; else fall back to built-in browser
                 // routes (downloads/settings) opened as main browser tabs.
-                if runtime.openManagedSurface(id: idString, edge: edgeString.isEmpty ? nil : edgeString) {
+                if runtime.openManagedSurface(
+                    id: idString,
+                    role: roleString.isEmpty ? nil : roleString,
+                    edge: edgeString.isEmpty ? nil : edgeString
+                ) {
                     return true
                 }
                 return runtime.shell.openBuiltinShellSurface(id: idString)
@@ -219,6 +244,52 @@ extension LxApp {
             return runtime.closeManagedSurface(id: idString)
             #else
             _ = visible
+            return false
+            #endif
+        }
+    }
+
+    nonisolated static func openManagedNativeSurface(
+        id: RustStr,
+        capability: RustStr,
+        instance_key: RustStr,
+        role: RustStr,
+        edge: RustStr
+    ) -> Bool {
+        let idString = id.toString()
+        let capabilityString = capability.toString()
+        let instanceKeyString = instance_key.toString()
+        let roleString = role.toString()
+        let edgeString = edge.toString()
+        guard !idString.isEmpty, !capabilityString.isEmpty else { return false }
+        return executeOnMain {
+            #if os(macOS)
+            guard let runtime = LxAppMacAppUIRuntime.active else { return false }
+            return runtime.openManagedNativeSurface(
+                id: idString,
+                capability: capabilityString,
+                instanceKey: instanceKeyString.isEmpty ? nil : instanceKeyString,
+                role: roleString,
+                edge: edgeString.isEmpty ? nil : edgeString
+            )
+            #else
+            return false
+            #endif
+        }
+    }
+
+    nonisolated static func destroyManagedSurface(id: RustStr, role: RustStr) -> Bool {
+        let idString = id.toString()
+        let roleString = role.toString()
+        guard !idString.isEmpty else { return false }
+        return executeOnMain {
+            #if os(macOS)
+            guard let runtime = LxAppMacAppUIRuntime.active else { return false }
+            return runtime.destroyManagedSurface(
+                id: idString,
+                role: roleString.isEmpty ? nil : roleString
+            )
+            #else
             return false
             #endif
         }
@@ -301,41 +372,27 @@ extension LxApp {
 
     nonisolated static func setSidebarActions(items_json: RustStr) -> Bool {
         let json = items_json.toString()
-        return executeOnMain {
+        // Render-only (the Rust caller discards the result): hop instead of
+        // blocking a JS worker on the main queue — during a synchronous open
+        // the main thread is itself waiting on that worker, so a synchronous
+        // wait here deadlocks startup.
+        dispatchOnMain {
             #if os(macOS)
-            guard let runtime = LxAppMacAppUIRuntime.active else { return false }
-            runtime.setRuntimeSidebarActions(json)
-            return true
-            #else
-            return true
+            LxAppMacAppUIRuntime.active?.setRuntimeSidebarActions(json)
             #endif
         }
-    }
-
-    nonisolated static func setShellEmptyState(state_json: RustStr) -> Bool {
-        let json = state_json.toString()
-        return executeOnMain {
-            #if os(macOS)
-            guard let runtime = LxAppMacAppUIRuntime.active else { return false }
-            runtime.setRuntimeEmptyState(json)
-            return true
-            #else
-            return true
-            #endif
-        }
+        return true
     }
 
     nonisolated static func setShellPins(items_json: RustStr) -> Bool {
         let json = items_json.toString()
-        return executeOnMain {
+        // Render-only: same async-hop rationale as setSidebarActions.
+        dispatchOnMain {
             #if os(macOS)
-            guard let runtime = LxAppMacAppUIRuntime.active else { return false }
-            runtime.setShellPins(json)
-            return true
-            #else
-            return true
+            LxAppMacAppUIRuntime.active?.setShellPins(json)
             #endif
         }
+        return true
     }
 
     nonisolated static func setTrayIcon(icon: RustStr) -> Bool {
@@ -693,6 +750,14 @@ extension LxApp {
         #if os(macOS)
         DispatchQueue.main.async {
             macOSLxApp.browserBookmarksChanged()
+        }
+        #endif
+    }
+
+    nonisolated static func browserTabsChanged() {
+        #if os(macOS)
+        DispatchQueue.main.async {
+            macOSLxApp.browserTabsChanged()
         }
         #endif
     }

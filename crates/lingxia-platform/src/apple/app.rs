@@ -193,9 +193,8 @@ impl AppRuntime for Platform {
         Ok(())
     }
 
-    fn set_shell_empty_state(&self, state_json: &str) -> Result<(), PlatformError> {
-        let _ = ffi::set_shell_empty_state(state_json);
-        Ok(())
+    fn request_lxapp_main_activation(&self, appid: &str) {
+        ffi::request_lxapp_main_activation(appid);
     }
 
     fn set_shell_pins(&self, items: &[lingxia_shell::ShellPin]) -> Result<(), PlatformError> {

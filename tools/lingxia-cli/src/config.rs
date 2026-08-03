@@ -11,7 +11,7 @@ pub const HOST_CONFIG_FILE: &str = "lingxia.yaml";
 pub const LXAPP_BUILD_CONFIG_FILE: &str = "lxapp.config.ts";
 const AUTHORING_PLATFORMS: &[&str] = &["macos", "windows", "ios", "android", "harmony"];
 const DESKTOP_SURFACE_PLATFORMS: &[&str] = &["macos", "windows"];
-const CONTENT_AGNOSTIC_MAIN_PLATFORMS: &[&str] = &["macos"];
+const CONTENT_AGNOSTIC_MAIN_PLATFORMS: &[&str] = &["macos", "windows"];
 
 /// Host project configuration (native app project)
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -477,7 +477,7 @@ fn surfaces_to_ui_for_target(
             }
             (SurfaceContent::Url(_), SurfaceRole::Main) if !content_agnostic_main => {
                 return Err(anyhow!(
-                    "surface '{name}': url main surfaces are currently supported only on macOS"
+                    "surface '{name}': url main surfaces are currently supported only on macOS and Windows"
                 ));
             }
             (SurfaceContent::Url(_), SurfaceRole::Aside) if platform == "macos" => {
@@ -500,7 +500,7 @@ fn surfaces_to_ui_for_target(
             (SurfaceContent::Native(native), SurfaceRole::Main) => {
                 if !content_agnostic_main {
                     return Err(anyhow!(
-                        "surface '{name}': native main surfaces are currently supported only on macOS"
+                        "surface '{name}': native main surfaces are currently supported only on macOS and Windows"
                     ));
                 }
                 match NativeSurfaceName::parse(native)? {
@@ -568,6 +568,11 @@ fn surfaces_to_ui_for_target(
             if !floats.is_empty() {
                 return Err(anyhow!(
                     "surfaces: {platform} cannot combine main surfaces with a tray float root"
+                ));
+            }
+            if mains.len() != 1 {
+                return Err(anyhow!(
+                    "surfaces: {platform} requires exactly one declared main surface"
                 ));
             }
             let explicit = launch_mains.first().map(|(content, _)| *content);
@@ -2060,6 +2065,11 @@ fn validate_macos_ui_config(
     if main_ids.is_empty() && float_ids.len() != 1 {
         return Err(anyhow!(
             "macOS app UI requires at least one main or one tray float root"
+        ));
+    }
+    if main_ids.len() > 1 {
+        return Err(anyhow!(
+            "macOS app UI requires exactly one declared main surface"
         ));
     }
     if !main_ids.is_empty() && !float_ids.is_empty() {
@@ -3773,7 +3783,7 @@ surfaces:
     }
 
     #[test]
-    fn surfaces_rejects_native_main_on_windows_until_presenter_supports_it() {
+    fn surfaces_accepts_native_terminal_main_on_windows() {
         let yaml = r#"
 app:
   projectName: demo
@@ -3789,11 +3799,37 @@ surfaces:
     launch: true
 "#;
 
-        let err = load_config_yaml(yaml).unwrap_err().to_string();
-        assert!(
-            err.contains("native main surfaces are currently supported only on macOS"),
-            "{err}"
+        let config = load_config_yaml(yaml).unwrap();
+        let windows = config.resolved_ui_for_platform("windows").unwrap().unwrap();
+        assert_eq!(windows["launch"]["initialSurface"], "terminal");
+        assert_eq!(windows["surfaces"][0]["content"]["kind"], "native");
+        assert_eq!(windows["surfaces"][0]["content"]["name"], "terminal");
+    }
+
+    #[test]
+    fn surfaces_accepts_url_main_on_windows() {
+        let yaml = r#"
+app:
+  projectName: demo
+  productName: Demo
+  productVersion: 0.1.0
+  platforms: [windows]
+  homeAppId: home
+capabilities:
+  browser: true
+surfaces:
+  - url: https://example.com/windows
+    role: main
+    launch: true
+"#;
+
+        let config = load_config_yaml(yaml).unwrap();
+        let windows = config.resolved_ui_for_platform("windows").unwrap().unwrap();
+        assert_eq!(
+            windows["launch"]["initialSurface"],
+            "https://example.com/windows"
         );
+        assert_eq!(windows["surfaces"][0]["content"]["kind"], "url");
     }
 
     #[test]
@@ -3934,6 +3970,21 @@ surfaces:
             .unwrap_err()
             .to_string();
         assert!(err.contains("at most one"), "{err}");
+    }
+
+    #[test]
+    fn surfaces_rejects_two_declared_mains_even_with_one_launch() {
+        let surfaces = vec![
+            SurfaceDecl {
+                launch: true,
+                ..lxapp_decl("a", SurfaceRole::Main)
+            },
+            lxapp_decl("b", SurfaceRole::Main),
+        ];
+        let err = surfaces_to_ui(&surfaces, false, false)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("exactly one declared main"), "{err}");
     }
 
     #[test]

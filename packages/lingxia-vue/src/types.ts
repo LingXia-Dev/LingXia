@@ -46,7 +46,6 @@ export interface LxNavigatorProps {
   delta?: number;
   query?: NavigatorQuery;
   appId?: string;
-  path?: string;
   envVersion?: NavigatorEnvVersion;
   targetVersion?: string;
   phoneNumber?: string;

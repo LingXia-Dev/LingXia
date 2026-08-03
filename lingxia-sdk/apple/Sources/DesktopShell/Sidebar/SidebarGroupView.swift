@@ -81,6 +81,7 @@ private class SidebarGroupHeaderView: NSView {
     /// its own clicks — otherwise the header swallows them and the chevron can
     /// never toggle the group.
     var chevronButton: NSButton?
+    var renameField: NSTextField?
     var onHeaderClicked: (() -> Void)?
     var onRightClick: ((NSEvent) -> Void)?
 
@@ -103,6 +104,12 @@ private class SidebarGroupHeaderView: NSView {
             let chevronPoint = convert(localPoint, to: chevron)
             if chevron.bounds.contains(chevronPoint) {
                 return chevron
+            }
+        }
+        if let renameField, renameField.isEditable {
+            let fieldPoint = convert(localPoint, to: renameField)
+            if renameField.bounds.contains(fieldPoint) {
+                return renameField
             }
         }
         return self
@@ -129,7 +136,7 @@ private class SidebarGroupHeaderView: NSView {
 /// Chrome-style: colored header pill with app name + chevron on right,
 /// tinted items area with vertical connector line.
 @MainActor
-class SidebarGroupView: NSView {
+class SidebarGroupView: NSView, NSTextFieldDelegate {
 
     struct Layout {
         static let headerHeight: CGFloat = 36
@@ -142,9 +149,12 @@ class SidebarGroupView: NSView {
     }
 
     let appId: String
-    private let managedLabel: String?
-    private let managedIcon: NSImage?
+    let contentAppId: String?
+    private var providerAppId: String { contentAppId ?? appId }
+    private var managedLabel: String?
+    private var managedIcon: NSImage?
     let showsLxappTabBar: Bool
+    let closable: Bool
     var isManagedMain: Bool { managedLabel != nil }
     private(set) var colorIndex: Int = 0
     private var palette: SidebarGroupColor.Palette = SidebarGroupColor.palette(for: 0)
@@ -168,6 +178,7 @@ class SidebarGroupView: NSView {
     private let aggregateDot = NSView()
     private let closeButton = NSButton()
     private let menuButton = NSButton()
+    private let trailingControls = NSStackView()
     private let itemsContainer = NSView()
     private var itemViews: [SidebarItemView] = []
 
@@ -205,24 +216,31 @@ class SidebarGroupView: NSView {
     private var closeButtonTrackingArea: NSTrackingArea?
     private var isHeaderHovered = false
     private var isCloseHovered = false
+    private var isRenaming = false
 
     var onPageSelected: ((String, Int) -> Void)?
     /// Fired when the group header (the lxapp's name) is clicked — switches the
     /// main to this lxapp, so an lxapp with no tabBar items is still switchable.
     var onAppSelected: ((String) -> Void)?
     var onCloseRequested: ((String) -> Void)?
+    var onManagedContextMenuRequested: ((String, NSEvent, NSView) -> Void)?
+    var onManagedRenameCommitted: ((String, String) -> Void)?
     var onLayoutChanged: (() -> Void)?
 
     init(
         appId: String,
         managedLabel: String? = nil,
         managedIcon: NSImage? = nil,
-        showsLxappTabBar: Bool = true
+        contentAppId: String? = nil,
+        showsLxappTabBar: Bool = true,
+        closable: Bool = true
     ) {
         self.appId = appId
         self.managedLabel = managedLabel
         self.managedIcon = managedIcon
+        self.contentAppId = contentAppId
         self.showsLxappTabBar = showsLxappTabBar
+        self.closable = closable
         super.init(frame: .zero)
         setupViews()
         if managedLabel != nil && !showsLxappTabBar {
@@ -303,9 +321,14 @@ class SidebarGroupView: NSView {
                 if !self.isExpanded { self.toggleExpanded() }
             }
         }
-        if managedLabel == nil {
+        if managedLabel == nil || contentAppId != nil {
             headerView.onRightClick = { [weak self] event in
                 self?.showContextMenu(with: event)
+            }
+        } else {
+            headerView.onRightClick = { [weak self] event in
+                guard let self else { return }
+                self.onManagedContextMenuRequested?(self.appId, event, self.headerView)
             }
         }
         addSubview(headerView)
@@ -323,6 +346,8 @@ class SidebarGroupView: NSView {
         appNameLabel.font = NSFont.systemFont(ofSize: 11, weight: .semibold)
         appNameLabel.lineBreakMode = .byTruncatingTail
         appNameLabel.maximumNumberOfLines = 1
+        appNameLabel.delegate = self
+        headerView.renameField = appNameLabel
         headerView.addSubview(appNameLabel)
 
         // Chevron on right side of header — a real collapse/expand toggle
@@ -337,7 +362,6 @@ class SidebarGroupView: NSView {
         chevronIndicator.target = self
         chevronIndicator.action = #selector(chevronClicked)
         chevronIndicator.isHidden = true
-        headerView.addSubview(chevronIndicator)
         headerView.chevronButton = chevronIndicator
 
         aggregateDot.translatesAutoresizingMaskIntoConstraints = false
@@ -346,12 +370,6 @@ class SidebarGroupView: NSView {
         aggregateDot.layer?.backgroundColor = NSColor.systemRed.cgColor
         aggregateDot.isHidden = true
         headerView.addSubview(aggregateDot)
-        NSLayoutConstraint.activate([
-            aggregateDot.trailingAnchor.constraint(equalTo: chevronIndicator.leadingAnchor, constant: -6),
-            aggregateDot.topAnchor.constraint(equalTo: headerView.topAnchor, constant: 9),
-            aggregateDot.widthAnchor.constraint(equalToConstant: 6),
-            aggregateDot.heightAnchor.constraint(equalToConstant: 6),
-        ])
 
         // Close button (hidden by default, shown on hover)
         closeButton.translatesAutoresizingMaskIntoConstraints = false
@@ -364,7 +382,6 @@ class SidebarGroupView: NSView {
         closeButton.target = self
         closeButton.action = #selector(closeClicked)
         closeButton.isHidden = true
-        headerView.addSubview(closeButton)
         headerView.closeButton = closeButton
 
         menuButton.translatesAutoresizingMaskIntoConstraints = false
@@ -375,8 +392,17 @@ class SidebarGroupView: NSView {
         menuButton.target = self
         menuButton.action = #selector(menuClicked)
         menuButton.isHidden = true
-        headerView.addSubview(menuButton)
         headerView.menuButton = menuButton
+
+        trailingControls.translatesAutoresizingMaskIntoConstraints = false
+        trailingControls.orientation = .horizontal
+        trailingControls.alignment = .centerY
+        trailingControls.spacing = 2
+        trailingControls.detachesHiddenViews = true
+        trailingControls.addArrangedSubview(menuButton)
+        trailingControls.addArrangedSubview(closeButton)
+        trailingControls.addArrangedSubview(chevronIndicator)
+        headerView.addSubview(trailingControls)
 
         // Attribution line binding items to their header
         attributionLine.translatesAutoresizingMaskIntoConstraints = false
@@ -412,24 +438,27 @@ class SidebarGroupView: NSView {
             // App name: right after the icon
             appNameLabel.leadingAnchor.constraint(equalTo: appIconView.trailingAnchor, constant: 6),
             appNameLabel.centerYAnchor.constraint(equalTo: headerView.centerYAnchor),
-            appNameLabel.trailingAnchor.constraint(lessThanOrEqualTo: closeButton.leadingAnchor, constant: -2),
+            appNameLabel.trailingAnchor.constraint(lessThanOrEqualTo: trailingControls.leadingAnchor, constant: -2),
 
-            menuButton.trailingAnchor.constraint(equalTo: closeButton.leadingAnchor, constant: -2),
-            menuButton.centerYAnchor.constraint(equalTo: headerView.centerYAnchor),
             menuButton.widthAnchor.constraint(equalToConstant: Layout.closeButtonSize),
             menuButton.heightAnchor.constraint(equalToConstant: Layout.closeButtonSize),
 
-            // Close button: right of label, left of chevron (only visible on hover)
-            closeButton.trailingAnchor.constraint(equalTo: chevronIndicator.leadingAnchor, constant: -2),
-            closeButton.centerYAnchor.constraint(equalTo: headerView.centerYAnchor),
             closeButton.widthAnchor.constraint(equalToConstant: Layout.closeButtonSize),
             closeButton.heightAnchor.constraint(equalToConstant: Layout.closeButtonSize),
 
-            // Chevron: right side of header
-            chevronIndicator.trailingAnchor.constraint(equalTo: headerView.trailingAnchor, constant: -Layout.headerHPadding),
-            chevronIndicator.centerYAnchor.constraint(equalTo: headerView.centerYAnchor),
             chevronIndicator.widthAnchor.constraint(equalToConstant: Layout.chevronSize),
             chevronIndicator.heightAnchor.constraint(equalToConstant: Layout.chevronSize),
+
+            trailingControls.trailingAnchor.constraint(equalTo: headerView.trailingAnchor, constant: -Layout.headerHPadding),
+            trailingControls.centerYAnchor.constraint(equalTo: headerView.centerYAnchor),
+
+            // Anchored to the stack, not to a control inside it: `detachesHiddenViews`
+            // pulls a hidden control out of the hierarchy, and a constraint across
+            // that boundary throws on activation.
+            aggregateDot.trailingAnchor.constraint(equalTo: trailingControls.leadingAnchor, constant: -6),
+            aggregateDot.topAnchor.constraint(equalTo: headerView.topAnchor, constant: 9),
+            aggregateDot.widthAnchor.constraint(equalToConstant: 6),
+            aggregateDot.heightAnchor.constraint(equalToConstant: 6),
 
             // Items background: below header, same horizontal inset
             itemsBackground.topAnchor.constraint(equalTo: headerView.bottomAnchor),
@@ -471,16 +500,16 @@ class SidebarGroupView: NSView {
             configureManagedMain()
             return
         }
-        let info = getLxAppInfo(appId)
+        let info = getLxAppInfo(providerAppId)
         appNameLabel.stringValue = info.app_name.toString().uppercased()
         loadAppIcon(path: info.icon.toString())
 
         // Hide close button for home lxapp
-        let isHome = LxAppCore.isHomeLxApp(appId)
-        closeButton.isHidden = isHome || !isHeaderHovered
+        let isHome = LxAppCore.isHomeLxApp(providerAppId)
+        closeButton.isHidden = isHome || !closable || !isHeaderHovered
 
         // Get tabbar config
-        guard let tabBar = getTabBar(appId) else {
+        guard let tabBar = getTabBar(providerAppId) else {
             rebuildItems(items: [])
             return
         }
@@ -498,7 +527,7 @@ class SidebarGroupView: NSView {
             : LxAppHostTheme.separator
         applyColors()
 
-        let items = tabBar.getItems(appId: appId)
+        let items = tabBar.getItems(appId: providerAppId)
         rebuildItems(items: items)
 
         // Only an EXPLICIT lx.hideTabBar/showTabBar collapses/expands this
@@ -518,7 +547,7 @@ class SidebarGroupView: NSView {
         // sync above, so a launch-time hideTabBar wins over the stored value).
         if !didRestoreCollapsedState, !itemViews.isEmpty {
             didRestoreCollapsedState = true
-            if let collapsed = LxAppShellPersistence.groupCollapsed(appId: appId),
+            if let collapsed = LxAppShellPersistence.groupCollapsed(appId: providerAppId),
                collapsed == isExpanded {
                 toggleExpanded(persist: false)
             }
@@ -526,10 +555,77 @@ class SidebarGroupView: NSView {
     }
 
     private func configureManagedMain() {
-        appNameLabel.stringValue = (managedLabel ?? appId).uppercased()
+        if !isRenaming {
+            appNameLabel.stringValue = (managedLabel ?? appId).uppercased()
+        }
         appIconView.image = managedIcon ?? Self.defaultAppIcon
         closeButton.isHidden = true
         rebuildItems(items: [])
+    }
+
+    func updateManagedPresentation(label: String?, icon: NSImage?) {
+        guard managedLabel != nil else { return }
+        managedLabel = label
+        managedIcon = icon
+        // An lxapp-backed managed main owns its group contents and appearance.
+        // Applying the native/browser header projection here would clear the
+        // provider's tabbar items after refreshFromRust populated them.
+        guard contentAppId == nil || !showsLxappTabBar else { return }
+        configureManagedMain()
+    }
+
+    func beginManagedRename() {
+        guard managedLabel != nil, !isRenaming else { return }
+        isRenaming = true
+        appNameLabel.stringValue = managedLabel ?? appId
+        appNameLabel.isEditable = true
+        appNameLabel.isSelectable = true
+        appNameLabel.isBordered = true
+        appNameLabel.drawsBackground = true
+        appNameLabel.backgroundColor = .controlBackgroundColor
+        appNameLabel.focusRingType = .none
+        menuButton.isHidden = true
+        closeButton.isHidden = true
+        window?.makeFirstResponder(appNameLabel)
+        appNameLabel.currentEditor()?.selectAll(nil)
+    }
+
+    func control(
+        _ control: NSControl,
+        textView: NSTextView,
+        doCommandBy commandSelector: Selector
+    ) -> Bool {
+        guard control === appNameLabel, isRenaming else { return false }
+        if commandSelector == #selector(NSResponder.insertNewline(_:)) {
+            finishManagedRename(commit: true)
+            return true
+        }
+        if commandSelector == #selector(NSResponder.cancelOperation(_:)) {
+            finishManagedRename(commit: false)
+            return true
+        }
+        return false
+    }
+
+    func controlTextDidEndEditing(_ notification: Notification) {
+        guard isRenaming else { return }
+        finishManagedRename(commit: true)
+    }
+
+    private func finishManagedRename(commit: Bool) {
+        guard isRenaming else { return }
+        let title = appNameLabel.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        isRenaming = false
+        appNameLabel.isEditable = false
+        appNameLabel.isSelectable = false
+        appNameLabel.isBordered = false
+        appNameLabel.drawsBackground = false
+        if commit, !title.isEmpty {
+            managedLabel = title
+            onManagedRenameCommitted?(appId, title)
+        }
+        appNameLabel.stringValue = (managedLabel ?? appId).uppercased()
+        window?.makeFirstResponder(nil)
     }
 
     private func rebuildItems(items: [TabBarItem]) {
@@ -538,7 +634,7 @@ class SidebarGroupView: NSView {
 
         var yOffset: CGFloat = Layout.itemTopPadding
         for (index, item) in items.enumerated() {
-            let itemView = SidebarItemView(appId: appId, itemIndex: index)
+            let itemView = SidebarItemView(appId: providerAppId, itemIndex: index)
             itemView.translatesAutoresizingMaskIntoConstraints = false
             itemView.selectedTint = tabBarTint
             itemView.unselectedTint = itemTint
@@ -594,7 +690,7 @@ class SidebarGroupView: NSView {
     private func toggleExpanded(persist: Bool = true) {
         isExpanded.toggle()
         if persist {
-            LxAppShellPersistence.setGroupCollapsed(!isExpanded, appId: appId)
+            LxAppShellPersistence.setGroupCollapsed(!isExpanded, appId: providerAppId)
         }
         // Re-evaluate the collapsed aggregate against the current items.
         let hasNotifications = itemViews.contains { $0.hasNotification }
@@ -652,6 +748,11 @@ class SidebarGroupView: NSView {
     }
 
     @objc private func menuClicked() {
+        if managedLabel != nil, contentAppId == nil {
+            guard let event = NSApp.currentEvent else { return }
+            onManagedContextMenuRequested?(appId, event, headerView)
+            return
+        }
         let menu = buildContextMenu()
         menu.popUp(
             positioning: nil,
@@ -694,8 +795,8 @@ class SidebarGroupView: NSView {
         if zone == "header" {
             isHeaderHovered = true
             menuButton.isHidden = false
-            let isHome = LxAppCore.isHomeLxApp(appId)
-            if !isHome {
+            let isHome = LxAppCore.isHomeLxApp(providerAppId)
+            if closable && !isHome {
                 closeButton.isHidden = false
             }
         } else if zone == "close" {
@@ -723,12 +824,12 @@ class SidebarGroupView: NSView {
     private func buildContextMenu() -> NSMenu {
         let menu = NSMenu()
 
-        let info = getLxAppInfo(appId)
+        let info = getLxAppInfo(providerAppId)
         let resolvedName = info.app_name.toString().trimmingCharacters(in: .whitespacesAndNewlines)
-        let appName = resolvedName.isEmpty ? appId : resolvedName
+        let appName = resolvedName.isEmpty ? providerAppId : resolvedName
         let version = info.version.toString().trimmingCharacters(in: .whitespacesAndNewlines)
         let releaseType = info.release_type.toString()
-        let isHome = LxAppCore.isHomeLxApp(appId)
+        let isHome = LxAppCore.isHomeLxApp(providerAppId)
 
         // App info header (disabled item)
         var headerTitle = appName
@@ -748,7 +849,7 @@ class SidebarGroupView: NSView {
         // Home already owns a permanent sidebar group, so duplicating it in
         // the Pin grid has no navigation value and creates two identities.
         if !isHome {
-            let pinned = shellIsPinned("lxapp", appId)
+            let pinned = shellIsPinned("lxapp", providerAppId)
             let pinItem = NSMenuItem(
                 title: L10n.string(pinned ? "lx_browser_unpin" : "lx_browser_pin_to_sidebar"),
                 action: #selector(contextMenuTogglePin),
@@ -777,7 +878,7 @@ class SidebarGroupView: NSView {
         cleanItem.target = self
         menu.addItem(cleanItem)
 
-        let snapshot = LxAppMoreActionSnapshot.load(appId: appId)
+        let snapshot = LxAppMoreActionSnapshot.load(appId: providerAppId)
         if !snapshot.items.isEmpty {
             menu.addItem(NSMenuItem.separator())
             for (index, item) in snapshot.items.enumerated() {
@@ -801,24 +902,25 @@ class SidebarGroupView: NSView {
     }
 
     @objc private func contextMenuTogglePin() {
-        guard !LxAppCore.isHomeLxApp(appId) else { return }
-        let pinned = shellIsPinned("lxapp", appId)
-        if shellSetPinned("lxapp", appId, !pinned) == -1 {
+        guard !LxAppCore.isHomeLxApp(providerAppId) else { return }
+        let pinned = shellIsPinned("lxapp", providerAppId)
+        if shellSetPinned("lxapp", providerAppId, !pinned) == -1 {
             showShellPinLimitAlert()
         }
         onPinChanged?()
     }
 
     @objc private func contextMenuRestart() {
-        _ = onLxappEvent(appId, LxAppEvent.capsuleClick, "restart_in_place")
+        _ = onLxappEvent(providerAppId, LxAppEvent.capsuleClick, "restart_in_place")
     }
 
     @objc private func contextMenuCleanCache() {
-        _ = onLxappEvent(appId, LxAppEvent.capsuleClick, "clean_cache_restart_in_place")
+        _ = onLxappEvent(providerAppId, LxAppEvent.capsuleClick, "clean_cache_restart_in_place")
     }
 
     @objc private func contextMenuMoreAction(_ sender: NSMenuItem) {
         guard let token = sender.representedObject as? String else { return }
+        let appId = providerAppId
         DispatchQueue.main.async { [appId] in
             _ = onLxappEvent(appId, LxAppEvent.capsuleClick, token)
         }

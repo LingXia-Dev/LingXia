@@ -260,7 +260,7 @@ func lxTerminalLogAsync(_ message: String, type: OSLogType = .info) {
 
 @MainActor
 final class LingXiaTerminalWorkspaceView: NSView {
-    enum Presentation {
+    enum Presentation: Equatable {
         case main
         case aside
     }
@@ -302,10 +302,13 @@ final class LingXiaTerminalWorkspaceView: NSView {
     }
 
     private let surfaceID: String
-    private let presentation: Presentation
+    private var presentation: Presentation
 
     var onRequestClosePanel: (() -> Void)?
     var onToggleSurfaceZoom: ((Bool) -> Void)?
+    var onActiveTitleChanged: ((String) -> Void)?
+
+    var activeTitle: String? { activeTab()?.displayTitle }
 
     private let toolbarStack = NSView()
     private let tabRailView = LingXiaTerminalTabRailView()
@@ -317,7 +320,7 @@ final class LingXiaTerminalWorkspaceView: NSView {
     nonisolated(unsafe) private var keyEventMonitor: Any?
     private var inputArmed = false
 
-    override var isFlipped: Bool { true }
+    nonisolated override var isFlipped: Bool { true }
 
     init(surfaceID: String, presentation: Presentation = .aside) {
         self.surfaceID = surfaceID
@@ -331,6 +334,16 @@ final class LingXiaTerminalWorkspaceView: NSView {
 
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
+    }
+
+    func setPresentation(_ presentation: Presentation) {
+        guard self.presentation != presentation else { return }
+        if presentation == .main {
+            setSurfaceZoomEnabled(false, notifyRuntime: false)
+        }
+        self.presentation = presentation
+        tabRailView.showsSurfaceZoomControl = presentation == .aside
+        needsLayout = true
     }
 
     deinit {
@@ -638,8 +651,11 @@ final class LingXiaTerminalWorkspaceView: NSView {
     }
 
     private func createTabAndActivate() {
+        let inheritedDirectory = activeTab()
+            .flatMap { activePane(in: $0) }
+            .flatMap { $0.currentWorkingDirectory() }
         let tab = TerminalTab(processTitle: "terminal")
-        let firstPane = makePane(for: tab)
+        let firstPane = makePane(for: tab, initialDirectory: inheritedDirectory)
         installRootView(firstPane, into: tab.rootContainer)
         tab.panes[firstPane.paneID] = firstPane
         tab.activePaneID = firstPane.paneID
@@ -656,6 +672,9 @@ final class LingXiaTerminalWorkspaceView: NSView {
                 subtitle: $0.displaySubtitle,
                 active: $0.id == activeTabID
             )
+        }
+        if let title = activeTitle {
+            onActiveTitleChanged?(title)
         }
     }
 
@@ -704,7 +723,10 @@ final class LingXiaTerminalWorkspaceView: NSView {
         }
         lxTerminalLog("workspace.split start surface=\(surfaceID) direction=\(direction) activePane=\(activePane.paneID.uuidString)")
 
-        let newPane = makePane(for: tab)
+        let newPane = makePane(
+            for: tab,
+            initialDirectory: activePane.currentWorkingDirectory()
+        )
         newPane.translatesAutoresizingMaskIntoConstraints = false
         activePane.translatesAutoresizingMaskIntoConstraints = false
         let split = LingXiaTerminalSplitView()
@@ -841,8 +863,11 @@ final class LingXiaTerminalWorkspaceView: NSView {
         ])
     }
 
-    private func makePane(for tab: TerminalTab) -> LingXiaTerminalPaneView {
-        let pane = LingXiaTerminalPaneView()
+    private func makePane(
+        for tab: TerminalTab,
+        initialDirectory: String? = nil
+    ) -> LingXiaTerminalPaneView {
+        let pane = LingXiaTerminalPaneView(initialDirectory: initialDirectory)
         lxTerminalLog("workspace.makePane surface=\(surfaceID) tab=\(tab.id.uuidString) pane=\(pane.paneID.uuidString)")
         pane.onActivated = { [weak self] paneID in
             guard let self else { return }

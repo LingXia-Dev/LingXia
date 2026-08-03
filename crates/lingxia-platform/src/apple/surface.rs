@@ -1,12 +1,15 @@
 use super::app::Platform;
 use super::ffi::{
-    close_surface, hide_surface, present_layout, present_surface, set_managed_surface_visible,
-    show_surface, toggle_managed_surface,
+    close_surface, destroy_managed_surface, hide_surface, open_managed_native_surface,
+    present_layout, present_surface, set_managed_surface_visible, show_surface,
 };
 use crate::error::PlatformError;
 #[cfg(target_os = "ios")]
 use crate::traits::ui::SurfaceKind;
-use crate::traits::ui::{SurfacePosition, SurfacePresenter, SurfaceRequest};
+use crate::traits::ui::{
+    ManagedSurfaceFuture, ManagedSurfaceProvider, ManagedSurfaceProviderDestroyRequest,
+    ManagedSurfaceProviderRequest, SurfacePosition, SurfacePresenter, SurfaceRequest, SurfaceRole,
+};
 use lingxia_surface::LayoutPresentationPlan;
 
 impl SurfacePresenter for Platform {
@@ -105,28 +108,54 @@ impl SurfacePresenter for Platform {
         }
     }
 
-    fn set_managed_surface_visible(
+    fn ensure_managed_surface_provider(
         &self,
-        id: &str,
-        visible: bool,
-        edge: Option<&str>,
-    ) -> Result<(), PlatformError> {
-        if set_managed_surface_visible(id, visible, edge.unwrap_or("")) {
-            Ok(())
-        } else {
-            Err(PlatformError::Platform(format!(
-                "cannot manage surface (no host shell or unknown surface): id={id} (visible={visible})"
-            )))
-        }
+        request: ManagedSurfaceProviderRequest,
+    ) -> ManagedSurfaceFuture {
+        Box::pin(async move {
+            let accepted = match request.provider {
+                ManagedSurfaceProvider::Declared => set_managed_surface_visible(
+                    &request.surface_id,
+                    true,
+                    request.role.map_or("", SurfaceRole::as_str),
+                    request.edge.as_deref().unwrap_or(""),
+                ),
+                ManagedSurfaceProvider::Native {
+                    capability,
+                    instance_key,
+                } => open_managed_native_surface(
+                    &request.surface_id,
+                    &capability,
+                    instance_key.as_deref().unwrap_or(""),
+                    request.role.map_or("", SurfaceRole::as_str),
+                    request.edge.as_deref().unwrap_or(""),
+                ),
+            };
+            accepted.then_some(()).ok_or_else(|| {
+                PlatformError::AssetNotFound(format!(
+                    "cannot ensure managed surface provider: id={}",
+                    request.surface_id
+                ))
+            })
+        })
     }
 
-    fn toggle_managed_surface(&self, id: &str) -> Result<(), PlatformError> {
-        if toggle_managed_surface(id) {
-            Ok(())
-        } else {
-            Err(PlatformError::Platform(format!(
-                "cannot manage surface (no host shell or unknown surface): id={id}"
-            )))
-        }
+    fn destroy_managed_surface_provider(
+        &self,
+        request: ManagedSurfaceProviderDestroyRequest,
+    ) -> ManagedSurfaceFuture {
+        Box::pin(async move {
+            if destroy_managed_surface(
+                &request.surface_id,
+                request.role.map_or("", SurfaceRole::as_str),
+            ) {
+                Ok(())
+            } else {
+                Err(PlatformError::AssetNotFound(format!(
+                    "cannot destroy managed surface provider: id={}",
+                    request.surface_id
+                )))
+            }
+        })
     }
 }

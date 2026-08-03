@@ -35,6 +35,7 @@ unsafe extern "C" {
         value: *const c_void,
     ) -> i32;
     fn AXUIElementPerformAction(element: *mut c_void, action: *const c_void) -> i32;
+    fn AXUIElementGetPid(element: *mut c_void, pid: *mut libc::pid_t) -> i32;
     fn AXUIElementCopyElementAtPosition(
         application: *mut c_void,
         x: f32,
@@ -140,6 +141,28 @@ fn name_ptr(s: &CFRetained<CFString>) -> *const c_void {
 }
 
 impl AxEl {
+    /// AppKit services self-targeted AX mutations on the calling thread. Route
+    /// those writes through the main queue; foreign-process AX calls remain
+    /// safe and synchronous on the caller.
+    fn mutate<F>(&self, operation: F) -> Result<i32>
+    where
+        F: FnOnce(*mut c_void) -> Result<i32> + Send,
+    {
+        let mut pid: libc::pid_t = 0;
+        let targets_self = unsafe { AXUIElementGetPid(self.0, &mut pid) } == AX_SUCCESS
+            && pid == std::process::id() as libc::pid_t;
+        if !targets_self || unsafe { libc::pthread_main_np() } != 0 {
+            return operation(self.0);
+        }
+
+        let element = self.0 as usize;
+        let mut result = Err(Error::Failed("main-queue AX mutation did not run".into()));
+        dispatch2::DispatchQueue::main().exec_sync(|| {
+            result = operation(element as *mut c_void);
+        });
+        result
+    }
+
     /// The AX element for an application by pid.
     pub(super) fn for_app(pid: i32) -> Result<AxEl> {
         let raw = unsafe { AXUIElementCreateApplication(pid) };
@@ -279,76 +302,105 @@ impl AxEl {
     }
 
     pub(super) fn perform(&self, action: &str) -> Result<()> {
-        let a = name(action);
-        let rc = unsafe { AXUIElementPerformAction(self.0, name_ptr(&a)) };
+        let what = action.to_string();
+        let action = what.clone();
+        let rc = self.mutate(move |element| {
+            let action = name(&action);
+            Ok(unsafe { AXUIElementPerformAction(element, name_ptr(&action)) })
+        })?;
         if rc == AX_SUCCESS {
             Ok(())
         } else {
-            Err(ax_err(rc, action))
+            Err(ax_err(rc, &what))
         }
     }
 
     pub(super) fn set_bool(&self, attr: &str, value: bool) -> Result<()> {
-        // Use a CFBoolean via objc2's CFBoolean singleton.
-        let b = objc2_core_foundation::CFBoolean::new(value);
-        let key = name(attr);
-        let rc = unsafe {
-            AXUIElementSetAttributeValue(
-                self.0,
-                name_ptr(&key),
-                (b as *const objc2_core_foundation::CFBoolean).cast(),
-            )
-        };
+        let what = attr.to_string();
+        let attr = what.clone();
+        let rc = self.mutate(move |element| {
+            // Use a CFBoolean via objc2's CFBoolean singleton.
+            let value = objc2_core_foundation::CFBoolean::new(value);
+            let key = name(&attr);
+            Ok(unsafe {
+                AXUIElementSetAttributeValue(
+                    element,
+                    name_ptr(&key),
+                    (value as *const objc2_core_foundation::CFBoolean).cast(),
+                )
+            })
+        })?;
         if rc == AX_SUCCESS {
             Ok(())
         } else {
-            Err(ax_err(rc, attr))
+            Err(ax_err(rc, &what))
         }
     }
 
     pub(super) fn set_string(&self, attr: &str, value: &str) -> Result<()> {
-        let s = CFString::from_str(value);
-        let key = name(attr);
-        let rc = unsafe {
-            AXUIElementSetAttributeValue(self.0, name_ptr(&key), (&*s as *const CFString).cast())
-        };
+        let what = attr.to_string();
+        let attr = what.clone();
+        let value = value.to_string();
+        let rc = self.mutate(move |element| {
+            let value = CFString::from_str(&value);
+            let key = name(&attr);
+            Ok(unsafe {
+                AXUIElementSetAttributeValue(
+                    element,
+                    name_ptr(&key),
+                    (&*value as *const CFString).cast(),
+                )
+            })
+        })?;
         if rc == AX_SUCCESS {
             Ok(())
         } else {
-            Err(ax_err(rc, attr))
+            Err(ax_err(rc, &what))
         }
     }
 
     pub(super) fn set_point(&self, attr: &str, x: f64, y: f64) -> Result<()> {
-        let p = CGPoint::new(x, y);
-        let value =
-            unsafe { AXValueCreate(AX_VALUE_CGPOINT, &p as *const CGPoint as *const c_void) };
-        if value.is_null() {
-            return Err(Error::Failed("could not create AXValue point".into()));
-        }
-        let key = name(attr);
-        let rc = unsafe { AXUIElementSetAttributeValue(self.0, name_ptr(&key), value) };
-        unsafe { CFRelease(value) };
+        let what = attr.to_string();
+        let attr = what.clone();
+        let rc = self.mutate(move |element| {
+            let point = CGPoint::new(x, y);
+            let value = unsafe {
+                AXValueCreate(AX_VALUE_CGPOINT, &point as *const CGPoint as *const c_void)
+            };
+            if value.is_null() {
+                return Err(Error::Failed("could not create AXValue point".into()));
+            }
+            let key = name(&attr);
+            let result = unsafe { AXUIElementSetAttributeValue(element, name_ptr(&key), value) };
+            unsafe { CFRelease(value) };
+            Ok(result)
+        })?;
         if rc == AX_SUCCESS {
             Ok(())
         } else {
-            Err(ax_err(rc, attr))
+            Err(ax_err(rc, &what))
         }
     }
 
     pub(super) fn set_size(&self, attr: &str, w: f64, h: f64) -> Result<()> {
-        let s = CGSize::new(w, h);
-        let value = unsafe { AXValueCreate(AX_VALUE_CGSIZE, &s as *const CGSize as *const c_void) };
-        if value.is_null() {
-            return Err(Error::Failed("could not create AXValue size".into()));
-        }
-        let key = name(attr);
-        let rc = unsafe { AXUIElementSetAttributeValue(self.0, name_ptr(&key), value) };
-        unsafe { CFRelease(value) };
+        let what = attr.to_string();
+        let attr = what.clone();
+        let rc = self.mutate(move |element| {
+            let size = CGSize::new(w, h);
+            let value =
+                unsafe { AXValueCreate(AX_VALUE_CGSIZE, &size as *const CGSize as *const c_void) };
+            if value.is_null() {
+                return Err(Error::Failed("could not create AXValue size".into()));
+            }
+            let key = name(&attr);
+            let result = unsafe { AXUIElementSetAttributeValue(element, name_ptr(&key), value) };
+            unsafe { CFRelease(value) };
+            Ok(result)
+        })?;
         if rc == AX_SUCCESS {
             Ok(())
         } else {
-            Err(ax_err(rc, attr))
+            Err(ax_err(rc, &what))
         }
     }
 }
