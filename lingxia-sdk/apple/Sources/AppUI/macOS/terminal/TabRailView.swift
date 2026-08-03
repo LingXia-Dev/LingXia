@@ -371,7 +371,7 @@ private final class LingXiaTerminalTabChromeView: NSView {
         fatalError("init(coder:) has not been implemented")
     }
 
-    override var isFlipped: Bool { true }
+    nonisolated override var isFlipped: Bool { true }
 
     override var intrinsicContentSize: NSSize {
         NSSize(width: 188, height: 28)

@@ -317,7 +317,7 @@ final class MacNativeBridge: NSObject, WKScriptMessageHandler {
 }
 
 private final class MacNativeComponentOverlayHost: NSView {
-    override var isFlipped: Bool { true }
+    nonisolated override var isFlipped: Bool { true }
 
     override func hitTest(_ point: NSPoint) -> NSView? {
         let hit = super.hitTest(point)

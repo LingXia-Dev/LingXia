@@ -320,7 +320,7 @@ final class LingXiaTerminalWorkspaceView: NSView {
     nonisolated(unsafe) private var keyEventMonitor: Any?
     private var inputArmed = false
 
-    override var isFlipped: Bool { true }
+    nonisolated override var isFlipped: Bool { true }
 
     init(surfaceID: String, presentation: Presentation = .aside) {
         self.surfaceID = surfaceID

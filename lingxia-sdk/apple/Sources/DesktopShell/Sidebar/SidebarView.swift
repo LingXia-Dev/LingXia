@@ -2243,7 +2243,7 @@ class SidebarView: NSView, NSPopoverDelegate {
 /// NSView subclass with flipped coordinate system (top-left origin)
 @MainActor
 private class FlippedView: NSView {
-    override var isFlipped: Bool { true }
+    nonisolated override var isFlipped: Bool { true }
     override var mouseDownCanMoveWindow: Bool { false }
 }
 
@@ -2251,7 +2251,7 @@ private class FlippedView: NSView {
 /// in non-flipped coordinates).
 @MainActor
 private final class FlippedClipView: NSView {
-    override var isFlipped: Bool { true }
+    nonisolated override var isFlipped: Bool { true }
 }
 
 /// Wraps whole icon+title cells while keeping each title single-line.
@@ -2264,7 +2264,7 @@ private final class SidebarActionFlowView: NSView {
     private var entries: [SidebarActionRowView] = []
     private var lastLayoutWidth: CGFloat = 0
 
-    override var isFlipped: Bool { true }
+    nonisolated override var isFlipped: Bool { true }
 
     func setEntries(_ entries: [SidebarActionRowView]) {
         self.entries.forEach { $0.removeFromSuperview() }

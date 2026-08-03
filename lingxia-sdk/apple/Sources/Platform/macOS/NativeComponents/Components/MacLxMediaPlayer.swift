@@ -1049,7 +1049,7 @@ final class MacLxMediaPlayer: NSObject {
 }
 
 private final class MacPlayerContainerView: NSView {
-    override var isFlipped: Bool { true }
+    nonisolated override var isFlipped: Bool { true }
 }
 
 final class ThinSlider: NSSlider {
