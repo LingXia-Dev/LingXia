@@ -57,7 +57,7 @@ use windows::Win32::UI::Input::Ime::{
 use windows::Win32::UI::Input::KeyboardAndMouse::VK_ESCAPE;
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     EnableWindow, GetKeyState, IsWindowEnabled, ReleaseCapture, SetCapture, SetFocus, TME_LEAVE,
-    TRACKMOUSEEVENT, TrackMouseEvent, VK_CONTROL, VK_MENU, VK_SHIFT,
+    TME_NONCLIENT, TRACKMOUSEEVENT, TrackMouseEvent, VK_CONTROL, VK_MENU, VK_SHIFT,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     self, WINDOW_EX_STYLE, WINDOW_STYLE, WNDCLASSW, WS_MAXIMIZEBOX, WS_MINIMIZEBOX,
@@ -6958,6 +6958,18 @@ fn frame_button_non_client_hit(button: WindowsFrameButton) -> Option<isize> {
     (button == WindowsFrameButton::Maximize).then_some(WindowsAndMessaging::HTMAXBUTTON as isize)
 }
 
+fn frame_button_from_non_client_hit(hit: usize) -> Option<WindowsFrameButton> {
+    (hit == WindowsAndMessaging::HTMAXBUTTON as usize).then_some(WindowsFrameButton::Maximize)
+}
+
+fn non_client_lparam_client_point(hwnd: HWND, lparam: LPARAM) -> (i32, i32) {
+    let mut point = lparam_screen_point(lparam);
+    unsafe {
+        let _ = ScreenToClient(hwnd, &mut point);
+    }
+    (point.x, point.y)
+}
+
 fn handle_chrome_mouse_wheel(hwnd: HWND, wparam: WPARAM, lparam: LPARAM) -> bool {
     let mut point = lparam_screen_point(lparam);
     if unsafe { !ScreenToClient(hwnd, &mut point).as_bool() } {
@@ -8727,17 +8739,52 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                 }
                 unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
             }
+            WindowsAndMessaging::WM_NCMOUSEMOVE => {
+                if windows_chrome_renderer().is_some() && !is_native_framed_window(hwnd) {
+                    let _ = handle_chrome_mouse_move(
+                        hwnd,
+                        non_client_lparam_client_point(hwnd, lparam),
+                        false,
+                    );
+                    let mut track = TRACKMOUSEEVENT {
+                        cbSize: std::mem::size_of::<TRACKMOUSEEVENT>() as u32,
+                        dwFlags: TME_LEAVE | TME_NONCLIENT,
+                        hwndTrack: hwnd,
+                        dwHoverTime: 0,
+                    };
+                    unsafe {
+                        let _ = TrackMouseEvent(&mut track);
+                    }
+                }
+                // DefWindowProc owns the Win11 Snap Layout hover timer for
+                // HTMAXBUTTON; custom painting only mirrors the hover state.
+                unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
+            }
             WindowsAndMessaging::WM_NCLBUTTONDOWN => {
-                if windows_chrome_renderer().is_some()
-                    && !is_native_framed_window(hwnd)
-                    && begin_window_resize_drag(hwnd, wparam.0)
-                {
-                    return LRESULT(0);
+                if windows_chrome_renderer().is_some() && !is_native_framed_window(hwnd) {
+                    if frame_button_from_non_client_hit(wparam.0).is_some()
+                        && handle_chrome_left_down(
+                            hwnd,
+                            non_client_lparam_client_point(hwnd, lparam),
+                        )
+                    {
+                        return LRESULT(0);
+                    }
+                    if begin_window_resize_drag(hwnd, wparam.0) {
+                        return LRESULT(0);
+                    }
                 }
                 unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
             }
             WindowsAndMessaging::WM_NCLBUTTONUP => {
                 if end_window_resize_drag(hwnd, true) {
+                    return LRESULT(0);
+                }
+                if windows_chrome_renderer().is_some()
+                    && !is_native_framed_window(hwnd)
+                    && frame_button_from_non_client_hit(wparam.0).is_some()
+                    && handle_chrome_left_up(hwnd, non_client_lparam_client_point(hwnd, lparam))
+                {
                     return LRESULT(0);
                 }
                 unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
@@ -8779,7 +8826,7 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                 }
                 unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
             }
-            WM_MOUSELEAVE => {
+            WM_MOUSELEAVE | WindowsAndMessaging::WM_NCMOUSELEAVE => {
                 clear_chrome_hover(hwnd);
                 if chrome_interaction(hwnd).frame_button_hover.is_some() {
                     update_chrome_interaction(hwnd, |state| state.frame_button_hover = None);
@@ -9723,7 +9770,7 @@ mod tests {
     use super::{
         ChromeBackBuffer, ContentBounds, MAIN_WINDOW_MIN_HEIGHT, MAIN_WINDOW_MIN_WIDTH,
         WindowResizeDrag, WindowResizeEdge, WindowsFrameButton, clear_webtag_content_bounds,
-        default_host_parent_window, frame_button_non_client_hit,
+        default_host_parent_window, frame_button_from_non_client_hit, frame_button_non_client_hit,
         registered_host_keeps_message_loop, resized_window_rect, same_window_generation,
         shell_window_style, webtag_content_bounds_changed,
     };
@@ -9778,10 +9825,22 @@ mod tests {
             Some(WindowsAndMessaging::HTMAXBUTTON as isize)
         );
         assert_eq!(
+            frame_button_from_non_client_hit(WindowsAndMessaging::HTMAXBUTTON as usize),
+            Some(WindowsFrameButton::Maximize)
+        );
+        assert_eq!(
             frame_button_non_client_hit(WindowsFrameButton::Minimize),
             None
         );
         assert_eq!(frame_button_non_client_hit(WindowsFrameButton::Close), None);
+        assert_eq!(
+            frame_button_from_non_client_hit(WindowsAndMessaging::HTMINBUTTON as usize),
+            None
+        );
+        assert_eq!(
+            frame_button_from_non_client_hit(WindowsAndMessaging::HTCLOSE as usize),
+            None
+        );
     }
 
     #[test]
