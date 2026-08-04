@@ -78,6 +78,7 @@ object LxApp {
             activity.window.decorView.dispatchConfigurationChanged(
                 activity.resources.configuration
             )
+            activity.applyCanvasBackground()
             LxAppActivity.updateNavBarUI(appId)
             LxAppActivity.updateTabBarUI(appId)
         }

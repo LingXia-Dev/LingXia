@@ -447,8 +447,8 @@ class LxAppActivity : AppCompatActivity() {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
-            setBackgroundColor(Color.TRANSPARENT)
         }
+        applyCanvasBackground()
 
         setContentView(rootContainer)
 
@@ -1878,6 +1878,23 @@ class LxAppActivity : AppCompatActivity() {
         if (isMediaFullscreen) {
             pendingNavBarVisibility = View.VISIBLE
             navigationBar?.visibility = View.GONE
+        }
+    }
+
+    /**
+     * Navigation transitions pre-apply the target page's top offset, and the
+     * webview/navbar layers animate independently; whatever strip of this
+     * container they expose must carry the resolved scheme, not white.
+     */
+    internal fun applyCanvasBackground() {
+        val value = android.util.TypedValue()
+        if (theme.resolveAttribute(android.R.attr.colorBackground, value, true)) {
+            val color = if (value.resourceId != 0) {
+                androidx.core.content.ContextCompat.getColor(this, value.resourceId)
+            } else {
+                value.data
+            }
+            rootContainer.setBackgroundColor(color)
         }
     }
 

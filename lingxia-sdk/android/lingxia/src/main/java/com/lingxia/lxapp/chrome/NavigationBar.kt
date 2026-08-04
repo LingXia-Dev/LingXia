@@ -115,9 +115,25 @@ internal class NavigationBar @JvmOverloads constructor(
     )
     private var knownStatusBarHeight: Int = 0
 
-    // Store current colors
-    private var currentBackgroundColor = DEFAULT_BACKGROUND_COLOR
-    private var currentFrontColor = DEFAULT_FRONT_COLOR
+    // Initial colors resolve from the DayNight activity theme: the resolved
+    // navbar state arrives asynchronously after the bar becomes visible, and
+    // a fixed light default flashes white on every dark-mode navigation.
+    private var currentBackgroundColor = resolveThemeColor(
+        android.R.attr.colorBackground, DEFAULT_BACKGROUND_COLOR
+    )
+    private var currentFrontColor = resolveThemeColor(
+        android.R.attr.textColorPrimary, DEFAULT_FRONT_COLOR
+    )
+
+    private fun resolveThemeColor(attr: Int, fallback: Int): Int {
+        val value = android.util.TypedValue()
+        if (!context.theme.resolveAttribute(attr, value, true)) return fallback
+        return if (value.resourceId != 0) {
+            androidx.core.content.ContextCompat.getColor(context, value.resourceId)
+        } else {
+            value.data
+        }
+    }
 
     // Callbacks
     private var onBackClickListener: (() -> Unit)? = null
