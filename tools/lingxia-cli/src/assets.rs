@@ -11,7 +11,7 @@ pub(crate) use clean::clean_configured_host_assets;
 use colored::Colorize;
 use destinations::{
     prepare_android_assets_root, prepare_apple_resources_root, prepare_harmony_rawfile_root,
-    prepare_windows_assets_root,
+    prepare_windows_assets_root, stage_windows_host_icon,
 };
 use hash::sha256_hex;
 #[cfg(test)]
@@ -368,6 +368,13 @@ pub(crate) fn prepare_configured_host_assets(
                     prepared_runtime_es2020.as_ref(),
                     &mut cache,
                 )?;
+                if config
+                    .app
+                    .as_ref()
+                    .is_some_and(|app| app.home_app_id.is_none())
+                {
+                    stage_windows_host_icon(project_root, &assets_root)?;
+                }
             }
         }
     }

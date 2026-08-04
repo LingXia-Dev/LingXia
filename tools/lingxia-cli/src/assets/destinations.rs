@@ -302,3 +302,44 @@ fn sync_windows_lingxia_icon(assets_root: &Path) -> Result<bool> {
     }
     Ok(wrote)
 }
+
+/// A host without a home lxapp has no served lxapp icon for the runtime
+/// launcher-icon fallback, so the scaffold-seeded project icon must ship at
+/// the assets root.
+pub(super) fn stage_windows_host_icon(project_root: &Path, assets_root: &Path) -> Result<()> {
+    let source = project_root.join("AppIcon.png");
+    if !source.is_file() {
+        return Err(anyhow::anyhow!(
+            "AppIcon.png not found in the project root; a host without app.homeAppId ships it as \
+             the Windows launcher icon (`lingxia new` seeds a default)"
+        ));
+    }
+    let bytes = fs::read(&source)?;
+    let dest = assets_root.join("AppIcon.png");
+    if write_if_changed(&dest, &bytes)? {
+        println!("  {} AppIcon.png -> {}", "ok".green(), dest.display());
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod host_icon_tests {
+    use super::stage_windows_host_icon;
+
+    #[test]
+    fn stages_project_icon_and_rejects_a_missing_one() {
+        let temp = tempfile::tempdir().unwrap();
+        let assets = temp.path().join("assets");
+        std::fs::create_dir_all(&assets).unwrap();
+
+        let error = stage_windows_host_icon(temp.path(), &assets).unwrap_err();
+        assert!(error.to_string().contains("AppIcon.png not found"));
+
+        std::fs::write(temp.path().join("AppIcon.png"), b"png-bytes").unwrap();
+        stage_windows_host_icon(temp.path(), &assets).unwrap();
+        assert_eq!(
+            std::fs::read(assets.join("AppIcon.png")).unwrap(),
+            b"png-bytes"
+        );
+    }
+}
