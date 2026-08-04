@@ -5,7 +5,9 @@ import CLingXiaRustAPI
 
 /// NSWindow class for LxApp Tab mode
 class LxAppWindow: NSWindow {
-    private static let trafficLightLeading: CGFloat = 6
+    /// Leading inset chosen so the close button's center sits on the sidebar's
+    /// first-column icon axis (SidebarView.Layout.iconAxis); the button is 14pt.
+    private static let trafficLightLeading: CGFloat = SidebarView.Layout.iconAxis - 7
     private static let trafficLightCenterSpacing: CGFloat = 19
     nonisolated(unsafe) private var titlebarObserver: Any?
     private var lastTrafficLightContainerHeight: CGFloat?

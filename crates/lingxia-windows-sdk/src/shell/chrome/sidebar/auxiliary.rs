@@ -6,8 +6,6 @@ const PINNED_SHORTCUT_SIZE: i32 = 36;
 const PINNED_SHORTCUT_ICON_SIZE: i32 = 20;
 const PINNED_SHORTCUT_GAP: i32 = 5;
 const PINNED_SHORTCUT_COLUMNS: usize = 4;
-const PINNED_GRID_WIDTH: i32 = PINNED_SHORTCUT_COLUMNS as i32 * PINNED_SHORTCUT_SIZE
-    + (PINNED_SHORTCUT_COLUMNS as i32 - 1) * PINNED_SHORTCUT_GAP;
 
 pub(in crate::shell::chrome) fn sidebar_pinned_count(tabbar: &WindowsShellTabBarLayout) -> usize {
     tabbar
@@ -76,7 +74,10 @@ pub(in crate::shell::chrome) fn sidebar_auxiliary_rects(
     let mut items = Vec::with_capacity(tabbar.auxiliary_items.len());
     let pinned_count = sidebar_pinned_count(tabbar);
     if pinned_count > 0 {
-        let grid_left = rect.left + (rect_width(&rect) - PINNED_GRID_WIDTH) / 2;
+        // Leading-aligned on the shared icon axis (not centered): the first
+        // tile's icon lines up with the top-level rows, and the grid no
+        // longer drifts when the sidebar is resized.
+        let grid_left = rect.left + SIDEBAR_ICON_AXIS - PINNED_SHORTCUT_SIZE / 2;
         // Pins are global shortcuts, not children of the current
         // lxapp group. They sit immediately below the caption controls and
         // above the lxapp header/navigation, matching macOS.

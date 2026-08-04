@@ -144,6 +144,12 @@ pub(super) const GLYPH_TAB_CLOSE: &str = "\u{2715}";
 
 pub(super) const SIDEBAR_ICON_SIZE: i32 = 16;
 
+/// One leading axis for every first-column icon in the sidebar: top-level
+/// rows center their icon at item inset + icon inset + half the icon, and the
+/// pinned grid and footer actions align to the same line.
+pub(super) const SIDEBAR_ICON_AXIS: i32 =
+    SIDEBAR_ITEM_INSET + SIDEBAR_TOP_LEVEL_ICON_INSET + SIDEBAR_ICON_SIZE / 2;
+
 pub(super) const SIDEBAR_RAIL_ITEM_SIZE: i32 = 34;
 
 pub(super) const SIDEBAR_RAIL_ICON_SIZE: i32 = 18;
@@ -166,7 +172,9 @@ pub(super) const FOOTER_ACTION_ICON_SIZE: i32 = 16;
 
 pub(super) const FOOTER_ACTION_GAP: i32 = 4;
 
-pub(super) const FOOTER_ACTION_MARGIN: i32 = 6;
+/// SIDEBAR_ICON_AXIS − cell padding (8) − half icon: footer action icons
+/// center on the shared first-column axis.
+pub(super) const FOOTER_ACTION_MARGIN: i32 = 8;
 
 pub(super) const FOOTER_ACTION_MAX_ROWS: usize = 5;
 
