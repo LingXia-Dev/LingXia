@@ -9,6 +9,8 @@
 //!   surfaced to the chrome is the tab's focused session id.
 //! - Split: the focused pane splits left/right/up/down into two panes
 //!   (a fresh PTY session), mirroring the macOS surface context menu.
+//! - New tab/split sessions inherit the focused pane's current directory,
+//!   matching the macOS terminal workspace rather than the host process cwd.
 //! - `exit` closes: a pane whose session exited is removed and its sibling
 //!   takes its place; the last pane of a tab closes the tab; closing the
 //!   last tab closes the whole panel.
@@ -436,7 +438,7 @@ pub(super) fn close_terminal_tab(panel_id: &str, tab_id: u64) {
 pub(super) fn open_terminal_tab(panel_id: &str) {
     #[cfg(feature = "terminal-runtime")]
     {
-        let session_id = create_panel_session(panel_id);
+        let session_id = create_panel_session(panel_id, active_session_id(panel_id));
         if session_id == 0 {
             log::warn!("failed to create terminal session for new tab in {panel_id}");
             return;
@@ -466,7 +468,7 @@ pub(super) fn open_terminal_tab(panel_id: &str) {
 pub(super) fn split_focused_pane(panel_id: &str, dir: SplitDir) {
     #[cfg(all(feature = "terminal-runtime", feature = "shell-chrome"))]
     {
-        let session_id = create_panel_session(panel_id);
+        let session_id = create_panel_session(panel_id, active_session_id(panel_id));
         if session_id == 0 {
             log::warn!("failed to create terminal session to split pane in {panel_id}");
             return;
@@ -919,7 +921,7 @@ fn reset_focused_pane(panel_id: &str) {
     let Some(old) = old else {
         return;
     };
-    let fresh = create_panel_session(panel_id);
+    let fresh = create_panel_session(panel_id, None);
     if fresh == 0 {
         log::warn!("failed to create replacement session resetting pane in {panel_id}");
         return;
@@ -1027,16 +1029,18 @@ fn set_terminal_tab_custom_title(panel_id: &str, tab_id: u64, text: &str) {
 
 // ---- Session lifecycle ----
 
-/// Creates a PTY session sized to the panel's current grid (falls back to
-/// 100x24 before the first paint or without the shell grid store).
+/// Creates a PTY session sized to the panel's current grid. When
+/// `inherit_from` names a live session, its current directory becomes the
+/// new shell's initial directory.
 #[cfg(feature = "terminal-runtime")]
-fn create_panel_session(panel_id: &str) -> u64 {
+fn create_panel_session(panel_id: &str, inherit_from: Option<u64>) -> u64 {
     let _ = panel_id;
     #[cfg(feature = "shell-chrome")]
     let (cols, rows) = super::terminal_grid::desired_panel_grid_size(panel_id).unwrap_or((100, 24));
     #[cfg(not(feature = "shell-chrome"))]
     let (cols, rows) = (100, 24);
-    lingxia_terminal::terminal_create(cols, rows)
+    let cwd = inherit_from.and_then(lingxia_terminal::terminal_current_directory);
+    lingxia_terminal::terminal_create_at(cols, rows, cwd.as_deref())
 }
 
 #[cfg(feature = "terminal-runtime")]
@@ -1046,7 +1050,7 @@ fn open_windows_terminal_session_panel(
     position: WindowsPanelPosition,
 ) -> Result<(), String> {
     shutdown_windows_terminal_panel_state(panel_id);
-    let session_id = create_panel_session(panel_id);
+    let session_id = create_panel_session(panel_id, None);
     if session_id == 0 {
         return lingxia_windows_contract::show_interactive_host_panel(
             panel_id,
@@ -1346,7 +1350,7 @@ fn close_pane_session(panel_id: &str, session_id: u64) -> bool {
             panel.tabs.len() == 1 && panel.tabs[0].sessions().as_slice() == [session_id]
         });
     if is_last_session && super::runtime::terminal_surface_is_protected_root(panel_id) {
-        let replacement = create_panel_session(panel_id);
+        let replacement = create_panel_session(panel_id, None);
         if replacement == 0 {
             log::warn!("failed to preserve root terminal session for {panel_id}");
             return false;
@@ -2091,9 +2095,13 @@ fn windows_terminal_snapshot_body(snapshot: &TerminalSnapshot) -> String {
 
 #[cfg(all(test, feature = "terminal-runtime"))]
 mod tests {
+    #[cfg(windows)]
+    use super::create_panel_session;
     use super::stable_tab_title;
     #[cfg(feature = "shell-chrome")]
     use super::{PaneNode, PaneOrientation, SplitDir, pane_drop_direction};
+    #[cfg(windows)]
+    use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
     #[cfg(feature = "shell-chrome")]
     use windows::Win32::Foundation::RECT;
 
@@ -2108,6 +2116,54 @@ mod tests {
         assert_eq!(stable_tab_title(None, Some("vim")), "vim");
         assert_eq!(stable_tab_title(Some("  "), Some("vim")), "vim");
         assert_eq!(stable_tab_title(Some("  "), Some("  ")), "terminal");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn panel_sessions_can_inherit_an_active_terminal_directory() {
+        let fixture_id = format!(
+            "terminal-cwd-inheritance-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos()
+        );
+        let directory = std::env::temp_dir().join(&fixture_id);
+        std::fs::create_dir_all(&directory).unwrap();
+        let expected = directory.canonicalize().unwrap();
+        let source = lingxia_terminal::terminal_create_at(80, 24, Some(&expected));
+        if source == 0 {
+            let _ = std::fs::remove_dir_all(&directory);
+            panic!("source terminal failed to start");
+        }
+
+        let inherited = create_panel_session(&fixture_id, Some(source));
+        let directory_inherited = inherited != 0 && wait_for_directory(inherited, &expected);
+
+        lingxia_terminal::terminal_close(source);
+        if inherited != 0 {
+            lingxia_terminal::terminal_close(inherited);
+        }
+        let _ = std::fs::remove_dir_all(&directory);
+        assert!(
+            directory_inherited,
+            "new session did not inherit {expected:?}"
+        );
+    }
+
+    #[cfg(windows)]
+    fn wait_for_directory(session_id: u64, expected: &std::path::Path) -> bool {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while Instant::now() < deadline {
+            let current = lingxia_terminal::terminal_current_directory(session_id)
+                .and_then(|path| path.canonicalize().ok());
+            if current.as_deref() == Some(expected) {
+                return true;
+            }
+            std::thread::sleep(Duration::from_millis(25));
+        }
+        false
     }
 
     #[cfg(feature = "shell-chrome")]
