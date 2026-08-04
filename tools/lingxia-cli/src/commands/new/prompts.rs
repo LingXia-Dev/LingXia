@@ -1,6 +1,9 @@
 use super::DEFAULT_LXAPP_DIR_NAME;
 use super::lxapp_scaffold;
-use super::types::{AppServiceMode, DEFAULT_PACKAGE_PREFIX, Platform, ProjectConfig, ProjectType};
+use super::types::{
+    AppServiceMode, ControlMode, DEFAULT_PACKAGE_PREFIX, MainSurface, Platform, ProjectConfig,
+    ProjectType,
+};
 use super::validation::{
     validate_lxapp_id, validate_package_id, validate_product_name, validate_project_name,
 };
@@ -244,6 +247,89 @@ pub(super) fn gather_native_app_service_mode(yes: bool) -> Result<AppServiceMode
     } else {
         AppServiceMode::Disabled
     })
+}
+
+pub(super) fn gather_main_surface(value: Option<String>, yes: bool) -> Result<MainSurface> {
+    if let Some(value) = value {
+        return MainSurface::from_str(&value).ok_or_else(|| {
+            anyhow!("Unknown main surface '{value}'; expected lxapp, terminal, or browser")
+        });
+    }
+    if yes {
+        return Ok(MainSurface::LxApp);
+    }
+
+    let choices = ["LxApp", "Terminal", "Browser"];
+    let selection = Select::with_theme(&ColorfulTheme::default())
+        .with_prompt("Main experience")
+        .items(choices)
+        .default(0)
+        .interact()?;
+    Ok(match selection {
+        0 => MainSurface::LxApp,
+        1 => MainSurface::Terminal,
+        2 => MainSurface::Browser,
+        _ => unreachable!(),
+    })
+}
+
+pub(super) fn gather_control_mode(
+    value: Option<String>,
+    main: MainSurface,
+    yes: bool,
+) -> Result<ControlMode> {
+    if let Some(value) = value {
+        let control = ControlMode::from_str(&value)
+            .ok_or_else(|| anyhow!("Unknown control mode '{value}'; expected lxapp or native"))?;
+        if main == MainSurface::LxApp && control == ControlMode::Native {
+            return Err(anyhow!(
+                "--control native cannot be used with --main lxapp; the main lxapp is also the host's control lxapp"
+            ));
+        }
+        return Ok(control);
+    }
+
+    if main == MainSurface::LxApp {
+        return Ok(ControlMode::LxApp);
+    }
+    if yes {
+        return Ok(ControlMode::Native);
+    }
+
+    let choices = ["Native Rust (no bundled lxapp)", "Embedded control lxapp"];
+    let selection = Select::with_theme(&ColorfulTheme::default())
+        .with_prompt("Host control")
+        .items(choices)
+        .default(0)
+        .interact()?;
+    Ok(if selection == 0 {
+        ControlMode::Native
+    } else {
+        ControlMode::LxApp
+    })
+}
+
+pub(super) fn validate_native_main_platforms(
+    main: MainSurface,
+    platforms: &[Platform],
+) -> Result<()> {
+    if !main.is_native() {
+        return Ok(());
+    }
+    let unsupported = platforms
+        .iter()
+        .filter(|platform| !matches!(platform, Platform::Macos | Platform::Windows))
+        .map(|platform| platform.as_str())
+        .collect::<Vec<_>>();
+    if unsupported.is_empty() {
+        Ok(())
+    } else {
+        Err(anyhow!(
+            "Native {} main is currently supported only on macOS and Windows; remove: {}",
+            main.as_str(),
+            unsupported.join(", ")
+        ))
+    }
 }
 
 fn normalize_platforms(input: Vec<String>) -> Result<Vec<Platform>> {

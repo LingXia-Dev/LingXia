@@ -207,6 +207,14 @@ enum Commands {
         #[arg(long)]
         package_id: Option<String>,
 
+        /// Main experience for a native host: lxapp, terminal, browser
+        #[arg(long, value_name = "SURFACE")]
+        main: Option<String>,
+
+        /// Host control implementation: lxapp, native
+        #[arg(long, value_name = "MODE")]
+        control: Option<String>,
+
         /// Path to app icon (PNG, recommended 1024x1024)
         #[arg(long)]
         icon: Option<String>,
@@ -660,6 +668,8 @@ fn main() -> Result<()> {
             project_type,
             platform,
             package_id,
+            main,
+            control,
             icon,
             template,
             yes,
@@ -671,6 +681,8 @@ fn main() -> Result<()> {
                 project_type,
                 platform,
                 package_id,
+                main,
+                control,
                 icon,
                 template,
                 template_args,
@@ -944,6 +956,25 @@ mod cli_tests {
             panic!("expected new command");
         };
         assert!(no_git);
+    }
+
+    #[test]
+    fn new_accepts_native_main_and_control() {
+        let cli = Cli::try_parse_from([
+            "lingxia",
+            "new",
+            "demo",
+            "--main",
+            "terminal",
+            "--control",
+            "native",
+        ])
+        .unwrap();
+        let Commands::New { main, control, .. } = cli.command else {
+            panic!("expected new command");
+        };
+        assert_eq!(main.as_deref(), Some("terminal"));
+        assert_eq!(control.as_deref(), Some("native"));
     }
 
     #[test]

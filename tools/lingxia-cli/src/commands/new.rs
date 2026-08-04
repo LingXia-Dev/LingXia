@@ -29,10 +29,11 @@ use self::lxapp_scaffold::{
 };
 use self::native::{create_project, create_rust_library};
 use self::prompts::{
-    gather_lxapp_dir_name, gather_lxapp_framework, gather_lxapp_id, gather_native_app_service_mode,
-    gather_native_project_info, gather_product_name, gather_project_name, gather_project_type,
+    gather_control_mode, gather_lxapp_dir_name, gather_lxapp_framework, gather_lxapp_id,
+    gather_main_surface, gather_native_app_service_mode, gather_native_project_info,
+    gather_product_name, gather_project_name, gather_project_type, validate_native_main_platforms,
 };
-use self::types::{AppServiceMode, ProjectType};
+use self::types::{AppServiceMode, ControlMode, ProjectType};
 use crate::commands::template_provider::{self, InstalledTemplate};
 
 /// Directory name for the native Rust library crate scaffolded by `lingxia new`.
@@ -57,6 +58,8 @@ pub fn execute(
     project_type: Option<String>,
     platforms: Vec<String>,
     package_id: Option<String>,
+    main: Option<String>,
+    control: Option<String>,
     icon: Option<String>,
     template: Option<String>,
     template_args: Vec<String>,
@@ -87,6 +90,9 @@ pub fn execute(
 
     if !matches!(project_type, ProjectType::LxApp) && template.is_some() {
         bail!("--template is only supported for standalone lxapp projects");
+    }
+    if matches!(project_type, ProjectType::LxApp) && (main.is_some() || control.is_some()) {
+        bail!("--main and --control are only supported for native-app projects");
     }
 
     let provider = if matches!(project_type, ProjectType::LxApp) {
@@ -178,13 +184,28 @@ pub fn execute(
     }
 
     let product_name = gather_product_name(&name, yes)?;
+    let main = gather_main_surface(main, yes)?;
+    let platforms = if yes && platforms.is_empty() && main.is_native() {
+        vec!["macos".to_string(), "windows".to_string()]
+    } else {
+        platforms
+    };
     let config =
         gather_native_project_info(name, product_name, project_type, platforms, package_id, yes)?;
+    validate_native_main_platforms(main, &config.platforms)?;
+    let control = gather_control_mode(control, main, yes)?;
     let theme = ColorfulTheme::default();
 
-    let lxapp_dir_name = gather_lxapp_dir_name(yes)?;
-    let lxapp_framework = gather_lxapp_framework(yes)?;
-    let app_service = gather_native_app_service_mode(yes)?;
+    let lxapp_options = if control == ControlMode::LxApp {
+        Some((gather_lxapp_dir_name(yes)?, gather_lxapp_framework(yes)?))
+    } else {
+        None
+    };
+    let app_service = if control == ControlMode::LxApp {
+        gather_native_app_service_mode(yes)?
+    } else {
+        AppServiceMode::Disabled
+    };
 
     println!();
     println!("{}", "Project Configuration:".bold());
@@ -201,8 +222,12 @@ pub fn execute(
         .join(", ");
     println!("  Platforms:     {}", platform_list.cyan());
     println!("  Package ID:    {}", config.package_id.cyan());
-    println!("  LxApp Name:    {}", lxapp_dir_name.cyan());
-    println!("  LxApp View:    {}", lxapp_framework.cyan());
+    println!("  Main:          {}", main.as_str().cyan());
+    println!("  Control:       {}", control.as_str().cyan());
+    if let Some((lxapp_dir_name, lxapp_framework)) = &lxapp_options {
+        println!("  LxApp Name:    {}", lxapp_dir_name.cyan());
+        println!("  LxApp View:    {}", lxapp_framework.cyan());
+    }
     println!("  AppService:    {}", app_service.label().cyan());
     println!(
         "  Directory:     {}",
@@ -225,16 +250,20 @@ pub fn execute(
     create_project(&config, &versions)?;
     create_rust_library(&config, &versions, app_service)?;
     icons::configure_and_apply_icons(&config, icon, yes, &theme)?;
-    let lxapp_info = create_lxapp_project(
-        &config,
-        &lxapp_dir_name,
-        &lxapp_framework,
-        app_service,
-        &versions,
-        &scaffold_versions.bridge,
-        &scaffold_versions.types,
-    )?;
-    generate_config_file(&config, &lxapp_info, app_service)?;
+    let lxapp_info = if let Some((lxapp_dir_name, lxapp_framework)) = &lxapp_options {
+        Some(create_lxapp_project(
+            &config,
+            lxapp_dir_name,
+            lxapp_framework,
+            app_service,
+            &versions,
+            &scaffold_versions.bridge,
+            &scaffold_versions.types,
+        )?)
+    } else {
+        None
+    };
+    generate_config_file(&config, lxapp_info.as_ref(), main, app_service)?;
     setup_ai_tooling(&config.target_dir, yes);
     setup_git_repository(&config.target_dir, no_git);
 
@@ -379,3 +408,84 @@ fn print_manual_skill_hint() {
 }
 
 // Platform-specific helpers are in `commands/new/*`.
+
+#[cfg(test)]
+mod native_main_scaffold_tests {
+    use super::types::{LxAppInfo, MainSurface, Platform, ProjectConfig};
+    use super::*;
+    use crate::config::{EnvVersion, LingXiaConfig, ResolvedEnv};
+    use crate::platform::BuildProfile;
+    use crate::platform::detector::PlatformType;
+
+    #[test]
+    fn windows_native_terminal_scaffold_reaches_runtime_assets_without_lxapp() {
+        let temp = tempfile::tempdir().unwrap();
+        let target_dir = temp.path().join("terminal-host");
+        let config = ProjectConfig {
+            name: "terminal-host".to_string(),
+            product_name: "Terminal Host".to_string(),
+            project_type: ProjectType::NativeApp,
+            platforms: vec![Platform::Windows],
+            package_id: "com.example.terminal".to_string(),
+            app_link_hosts: Vec::new(),
+            target_dir: target_dir.clone(),
+        };
+        let versions = current_versions();
+
+        create_project(&config, &versions).unwrap();
+        create_rust_library(&config, &versions, AppServiceMode::Disabled).unwrap();
+        generate_config_file(
+            &config,
+            Option::<&LxAppInfo>::None,
+            MainSurface::Terminal,
+            AppServiceMode::Disabled,
+        )
+        .unwrap();
+
+        assert!(!target_dir.join(DEFAULT_LXAPP_DIR_NAME).exists());
+        let host_config = LingXiaConfig::load(&target_dir).unwrap();
+        crate::host_assets::prepare_configured_host_assets(
+            &target_dir,
+            &host_config,
+            BuildProfile::Debug,
+            None,
+            None,
+            false,
+            &[PlatformType::Windows],
+            &[],
+            true,
+            None,
+            &ResolvedEnv {
+                version: EnvVersion::Developer,
+                lingxia_server: "https://api.example.com".to_string(),
+                package_id_suffix: Some(".dev".to_string()),
+            },
+        )
+        .unwrap();
+
+        let assets_dir = crate::platform::windows::resolve_windows_assets_dir(&target_dir).unwrap();
+        let app_json: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(assets_dir.join("app.json")).unwrap()).unwrap();
+        assert!(app_json.get("homeAppId").is_none());
+        assert!(app_json.get("homeAppVersion").is_none());
+
+        let ui_json: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(assets_dir.join("ui.json")).unwrap()).unwrap();
+        assert_eq!(ui_json["launch"]["initialSurface"], "terminal");
+        let surfaces = ui_json["surfaces"].as_array().unwrap();
+        assert_eq!(surfaces.len(), 1);
+        assert_eq!(surfaces[0]["role"], "main");
+        assert_eq!(surfaces[0]["content"]["kind"], "native");
+        assert_eq!(surfaces[0]["content"]["name"], "terminal");
+
+        let mut asset_names = std::fs::read_dir(&assets_dir)
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+            .collect::<Vec<_>>();
+        asset_names.sort();
+        assert_eq!(
+            asset_names,
+            ["app.json", "bridge-runtime.js", "icons", "ui.json"]
+        );
+    }
+}
