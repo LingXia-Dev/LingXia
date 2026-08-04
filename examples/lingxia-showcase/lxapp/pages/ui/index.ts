@@ -66,6 +66,7 @@ Page({
       active: false,
       visible: false,
     },
+    chromeError: "",
   },
 
   _activeSurface: null,
@@ -399,60 +400,89 @@ Page({
   },
 
   // NavigationBar API functions
+  _runChromeUpdate: async function (label, update) {
+    try {
+      const result = await update();
+      this.setData({ chromeError: "" });
+      return result;
+    } catch (error) {
+      const message = surfaceErrorMessage(error);
+      this.setData({ chromeError: `${label}: ${message}` });
+      console.error(`${label} failed:`, error);
+      return undefined;
+    }
+  },
+
   updateNavigationBarTitle: function (options) {
-    return lx.navigationBar.update({ title: options.title });
+    return this._runChromeUpdate("Navigation bar update", () =>
+      lx.navigationBar.update({ title: options.title }),
+    );
   },
 
   updateNavigationBarColors: function (options) {
-    return lx.navigationBar.update({
-      style: {
-        backgroundColor: options.backgroundColor,
-        foregroundColor: options.frontColor,
-      },
-    });
+    return this._runChromeUpdate("Navigation bar update", () =>
+      lx.navigationBar.update({
+        style: {
+          backgroundColor: options.backgroundColor,
+          foregroundColor: options.frontColor,
+        },
+      }),
+    );
   },
 
   // TabBar API functions
   enableTabBarRedDot: function (options) {
-    return lx.tabBar.update({ items: [{ index: options.index, redDot: true }] });
+    return this._runChromeUpdate("Tab bar update", () =>
+      lx.tabBar.update({ items: [{ index: options.index, redDot: true }] }),
+    );
   },
 
   disableTabBarRedDot: function (options) {
-    return lx.tabBar.update({ items: [{ index: options.index, redDot: false }] });
+    return this._runChromeUpdate("Tab bar update", () =>
+      lx.tabBar.update({ items: [{ index: options.index, redDot: false }] }),
+    );
   },
 
   updateTabBarBadge: function (options) {
-    return lx.tabBar.update({ items: [{ index: options.index, badge: options.text }] });
+    return this._runChromeUpdate("Tab bar update", () =>
+      lx.tabBar.update({ items: [{ index: options.index, badge: options.text }] }),
+    );
   },
 
   clearTabBarBadge: function (options) {
-    return lx.tabBar.update({ items: [{ index: options.index, badge: null }] });
+    return this._runChromeUpdate("Tab bar update", () =>
+      lx.tabBar.update({ items: [{ index: options.index, badge: null }] }),
+    );
   },
 
   revealTabBar: function () {
-    return lx.tabBar.update({ visibility: "auto" });
+    return this._runChromeUpdate("Tab bar update", () =>
+      lx.tabBar.update({ visibility: "auto" }),
+    );
   },
 
   concealTabBar: function () {
-    return lx.tabBar.update({ visibility: "hidden" });
+    return this._runChromeUpdate("Tab bar update", () =>
+      lx.tabBar.update({ visibility: "hidden" }),
+    );
   },
 
   updateTabBarForegrounds: function (options) {
     console.log("updateTabBarForegrounds called with:", options);
-    const result = lx.tabBar.update({
-      style: {
-        foregroundColor: options.color,
-        selectedForegroundColor: options.selectedColor,
-      },
-    });
-    console.log("updateTabBarForegrounds result:", result);
-    return result;
+    return this._runChromeUpdate("Tab bar update", () =>
+      lx.tabBar.update({
+        style: {
+          foregroundColor: options.color,
+          selectedForegroundColor: options.selectedColor,
+        },
+      }),
+    );
   },
 
   updateTabBarItem: function (options) {
     console.log("updateTabBarItem called with:", options);
-    const result = lx.tabBar.update({ items: [options] });
-    console.log("updateTabBarItem result:", result);
-    return result;
+    return this._runChromeUpdate("Tab bar update", () =>
+      lx.tabBar.update({ items: [options] }),
+    );
   },
 });

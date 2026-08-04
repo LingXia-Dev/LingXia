@@ -66,6 +66,7 @@ export default function UIPage() {
     toastPositionLabel = 'Center',
     toastPositionOptions = [],
     surfaceDemo = {},
+    chromeError = '',
   } = data;
 
   const toastIconDisplay = React.useMemo(() => {
@@ -117,14 +118,17 @@ export default function UIPage() {
   const [selectedIcon, setSelectedIcon] = React.useState('');
   const [color, setColor] = React.useState('#666666');
   const [selectedColor, setSelectedColor] = React.useState('#007AFF');
-  const [backgroundColor, setBackgroundColor] = React.useState('#FFFFFF');
-  const [borderStyle, setBorderStyle] = React.useState('#EEEEEE');
 
 
   return (
     <div className="h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex flex-col overflow-y-auto">
       <div className="flex-1 overflow-y-auto">
         <div className="pb-6 px-4 pt-6">
+        {chromeError && (
+          <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+            {chromeError}
+          </div>
+        )}
 
         {/* Navigation Demo Section */}
         {currentType === 'navigation' && (
@@ -927,47 +931,13 @@ export default function UIPage() {
                       />
                     </div>
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Background</label>
-                    <div className="flex items-center space-x-2">
-                      <div
-                        className="w-8 h-8 border border-gray-300 rounded cursor-pointer"
-                        style={{ backgroundColor: backgroundColor }}
-                      ></div>
-                      <input
-                        type="text"
-                        value={backgroundColor}
-                        onChange={(e) => setBackgroundColor(e.target.value)}
-                        className="flex-1 px-2 py-1 border border-gray-300 rounded text-sm"
-                        placeholder="#FFFFFF"
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Border</label>
-                    <div className="flex items-center space-x-2">
-                      <div
-                        className="w-8 h-8 border border-gray-300 rounded cursor-pointer"
-                        style={{ backgroundColor: borderStyle }}
-                      ></div>
-                      <input
-                        type="text"
-                        value={borderStyle}
-                        onChange={(e) => setBorderStyle(e.target.value)}
-                        className="flex-1 px-2 py-1 border border-gray-300 rounded text-sm"
-                        placeholder="#EEEEEE"
-                      />
-                    </div>
-                  </div>
                 </div>
 
                 <button
                   onClick={() => {
                     const result = updateTabBarForegrounds({
                       color,
-                      selectedColor,
-                      backgroundColor,
-                      borderStyle
+                      selectedColor
                     });
                     console.log('Set TabBar style:', result);
                   }}
@@ -982,11 +952,9 @@ export default function UIPage() {
                   <div className="grid grid-cols-2 gap-2">
                     <button
                       onClick={() => {
-                        const theme = { color: '#666666', selectedColor: '#007AFF', backgroundColor: '#FFFFFF', borderStyle: '#EEEEEE' };
+                        const theme = { color: '#666666', selectedColor: '#007AFF' };
                         setColor(theme.color);
                         setSelectedColor(theme.selectedColor);
-                        setBackgroundColor(theme.backgroundColor);
-                        setBorderStyle(theme.borderStyle);
                         const result = updateTabBarForegrounds(theme);
                         console.log('Applied Default theme:', result);
                       }}
@@ -996,11 +964,9 @@ export default function UIPage() {
                     </button>
                     <button
                       onClick={() => {
-                        const theme = { color: '#CCCCCC', selectedColor: '#0A84FF', backgroundColor: '#1C1C1E', borderStyle: '#38383A' };
+                        const theme = { color: '#CCCCCC', selectedColor: '#0A84FF' };
                         setColor(theme.color);
                         setSelectedColor(theme.selectedColor);
-                        setBackgroundColor(theme.backgroundColor);
-                        setBorderStyle(theme.borderStyle);
                         const result = updateTabBarForegrounds(theme);
                         console.log('Applied Dark theme:', result);
                       }}
@@ -1010,11 +976,9 @@ export default function UIPage() {
                     </button>
                     <button
                       onClick={() => {
-                        const theme = { color: '#8E8E93', selectedColor: '#34C759', backgroundColor: '#F2F2F7', borderStyle: '#C6C6C8' };
+                        const theme = { color: '#8E8E93', selectedColor: '#34C759' };
                         setColor(theme.color);
                         setSelectedColor(theme.selectedColor);
-                        setBackgroundColor(theme.backgroundColor);
-                        setBorderStyle(theme.borderStyle);
                         const result = updateTabBarForegrounds(theme);
                         console.log('Applied Green theme:', result);
                       }}
@@ -1024,11 +988,9 @@ export default function UIPage() {
                     </button>
                     <button
                       onClick={() => {
-                        const theme = { color: '#8E8E93', selectedColor: '#AF52DE', backgroundColor: '#F2F2F7', borderStyle: '#C6C6C8' };
+                        const theme = { color: '#8E8E93', selectedColor: '#AF52DE' };
                         setColor(theme.color);
                         setSelectedColor(theme.selectedColor);
-                        setBackgroundColor(theme.backgroundColor);
-                        setBorderStyle(theme.borderStyle);
                         const result = updateTabBarForegrounds(theme);
                         console.log('Applied Purple theme:', result);
                       }}

@@ -2,6 +2,9 @@
   <div class="h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex flex-col overflow-y-auto">
     <div class="flex-1 overflow-y-auto">
       <div class="pb-6 px-4 pt-6">
+        <div v-if="chromeError" class="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          {{ chromeError }}
+        </div>
 
         <!-- Navigation Demo -->
         <template v-if="currentType === 'navigation'">
@@ -354,33 +357,19 @@
                     <input type="text" v-model="tabSelectedColor" class="flex-1 px-2 py-1 border border-gray-300 rounded text-sm" />
                   </div>
                 </div>
-                <div>
-                  <label class="block text-sm font-medium text-gray-700 mb-1">Background</label>
-                  <div class="flex items-center space-x-2">
-                    <div class="w-8 h-8 border border-gray-300 rounded" :style="{ backgroundColor: tabBgColor }"></div>
-                    <input type="text" v-model="tabBgColor" class="flex-1 px-2 py-1 border border-gray-300 rounded text-sm" />
-                  </div>
-                </div>
-                <div>
-                  <label class="block text-sm font-medium text-gray-700 mb-1">Border</label>
-                  <div class="flex items-center space-x-2">
-                    <div class="w-8 h-8 border border-gray-300 rounded" :style="{ backgroundColor: tabBorderStyle }"></div>
-                    <input type="text" v-model="tabBorderStyle" class="flex-1 px-2 py-1 border border-gray-300 rounded text-sm" />
-                  </div>
-                </div>
               </div>
-              <button @click="updateTabBarForegrounds({ color: tabColor, selectedColor: tabSelectedColor, backgroundColor: tabBgColor, borderStyle: tabBorderStyle })"
+              <button @click="updateTabBarForegrounds({ color: tabColor, selectedColor: tabSelectedColor })"
                 class="w-full bg-blue-500 hover:bg-blue-600 text-white py-2 px-4 rounded-lg text-sm font-medium">Apply Custom Style</button>
               <div class="mt-4">
                 <label class="block text-sm font-medium text-gray-700 mb-2">Preset Themes</label>
                 <div class="grid grid-cols-2 gap-2">
-                  <button @click="applyTheme({ color: '#666666', selectedColor: '#007AFF', backgroundColor: '#FFFFFF', borderStyle: '#EEEEEE' })"
+                  <button @click="applyTheme({ color: '#666666', selectedColor: '#007AFF' })"
                     class="px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium">Default</button>
-                  <button @click="applyTheme({ color: '#CCCCCC', selectedColor: '#0A84FF', backgroundColor: '#1C1C1E', borderStyle: '#38383A' })"
+                  <button @click="applyTheme({ color: '#CCCCCC', selectedColor: '#0A84FF' })"
                     class="px-3 py-2 bg-gray-800 hover:bg-gray-900 text-white rounded-lg text-sm font-medium">Dark</button>
-                  <button @click="applyTheme({ color: '#8E8E93', selectedColor: '#34C759', backgroundColor: '#F2F2F7', borderStyle: '#C6C6C8' })"
+                  <button @click="applyTheme({ color: '#8E8E93', selectedColor: '#34C759' })"
                     class="px-3 py-2 bg-green-100 hover:bg-green-200 text-green-700 rounded-lg text-sm font-medium">Green</button>
-                  <button @click="applyTheme({ color: '#8E8E93', selectedColor: '#AF52DE', backgroundColor: '#F2F2F7', borderStyle: '#C6C6C8' })"
+                  <button @click="applyTheme({ color: '#8E8E93', selectedColor: '#AF52DE' })"
                     class="px-3 py-2 bg-purple-100 hover:bg-purple-200 text-purple-700 rounded-lg text-sm font-medium">Purple</button>
                 </div>
               </div>
@@ -441,6 +430,7 @@ const toastPositionOptions = computed(() => data.toastPositionOptions ?? []);
 const surfaceMessage = computed(() => data.surfaceDemo?.message ?? '');
 const surfaceActive = computed(() => data.surfaceDemo?.active === true);
 const surfaceVisible = computed(() => data.surfaceDemo?.visible === true);
+const chromeError = computed(() => data.chromeError ?? '');
 
 const toastIconDisplay = computed(() => {
   const match = toastIconOptions.value.find((o: any) => o.value === toastIcon.value);
@@ -468,8 +458,6 @@ const badgeText = ref('99');
 const itemText = ref('New Tab');
 const tabColor = ref('#666666');
 const tabSelectedColor = ref('#007AFF');
-const tabBgColor = ref('#FFFFFF');
-const tabBorderStyle = ref('#EEEEEE');
 const surfaceKind = ref<'aside' | 'float' | 'window'>('aside');
 const surfaceKinds = [
   { id: 'aside', label: 'Aside', hint: 'Docks beside the main and splits it; a compact window folds it into a switchable tab.' },
@@ -529,11 +517,9 @@ function handleOpenSurface() {
   });
 }
 
-function applyTheme(theme: { color: string; selectedColor: string; backgroundColor: string; borderStyle: string }) {
+function applyTheme(theme: { color: string; selectedColor: string }) {
   tabColor.value = theme.color;
   tabSelectedColor.value = theme.selectedColor;
-  tabBgColor.value = theme.backgroundColor;
-  tabBorderStyle.value = theme.borderStyle;
   updateTabBarForegrounds(theme);
 }
 </script>
