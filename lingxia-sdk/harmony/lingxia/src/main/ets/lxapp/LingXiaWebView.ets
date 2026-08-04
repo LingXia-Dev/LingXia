@@ -229,7 +229,9 @@ export struct LingXiaWebView {
       .fileAccess(false)
       .databaseAccess(this.isBrowserRelaxed())
       .mixedMode(MixedMode.None)
-      .backgroundColor(Color.Transparent)
+      // Transparent keeps the light-container behavior; a dark lxapp must
+      // paint its own canvas or the container bleeds white before first paint.
+      .backgroundColor(this.appearanceDark ? '#1C1C1E' : Color.Transparent)
       .visibility(this.renderVisibility)
       .margin(this.renderMargin)
       .width(this.renderWidth)

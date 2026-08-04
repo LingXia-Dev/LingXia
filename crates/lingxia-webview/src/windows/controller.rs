@@ -968,7 +968,8 @@ pub(crate) fn run_ui_thread_inner(
         if let Some(scheme) =
             color_scheme::lxapp_color_scheme(&webtag).or_else(color_scheme::configured_color_scheme)
             && scheme != WindowsPreferredColorScheme::Auto
-            && let Err(err) = color_scheme::apply_color_scheme(&state.webview, scheme)
+            && let Err(err) =
+                color_scheme::apply_color_scheme(&state.webview, &state.controller, scheme)
         {
             log::warn!("Failed to apply preferred color scheme at startup: {err}");
         }
@@ -1214,7 +1215,11 @@ pub(crate) fn handle_command(state: &mut UiState, command: UiCommand) -> StdResu
             let _ = resp.send(result);
         }
         UiCommand::SetPreferredColorScheme { scheme, resp } => {
-            let _ = resp.send(color_scheme::apply_color_scheme(&state.webview, scheme));
+            let _ = resp.send(color_scheme::apply_color_scheme(
+                &state.webview,
+                &state.controller,
+                scheme,
+            ));
         }
         UiCommand::SetBrowserEmulationProfile { profile, resp } => {
             if state.browser_emulation_configured {

@@ -49,8 +49,28 @@ enum LxAppAppearanceRegistry {
     private static func apply(_ dark: Bool, to webView: WKWebView) {
         #if os(iOS)
         webView.overrideUserInterfaceStyle = dark ? .dark : .light
+        // Setup froze light-resolved cgColors on the webview/scroll layers,
+        // and the overscroll canvas never follows page CSS — re-resolve both
+        // so rubber-banding shows the scheme's background, not white.
+        guard webView.isOpaque else { return }
+        let traits = UITraitCollection(userInterfaceStyle: dark ? .dark : .light)
+        let background = UIColor.systemBackground.resolvedColor(with: traits)
+        webView.underPageBackgroundColor = background
+        webView.backgroundColor = background
+        webView.layer.backgroundColor = background.cgColor
+        webView.scrollView.backgroundColor = background
+        webView.scrollView.layer.backgroundColor = background.cgColor
         #else
         webView.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
+        // Setup pre-paints fixed white (light-first); once a scheme resolves,
+        // the canvas must follow it or dark pages flash white on load/resize.
+        if (webView.value(forKey: "drawsTransparentBackground") as? Bool) != true {
+            let background =
+                dark
+                ? NSColor(srgbRed: 0x1C / 255.0, green: 0x1C / 255.0, blue: 0x1E / 255.0, alpha: 1)
+                : NSColor.white
+            webView.layer?.backgroundColor = background.cgColor
+        }
         #endif
     }
 }

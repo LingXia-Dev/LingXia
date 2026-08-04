@@ -64,6 +64,7 @@ pub(crate) fn lxapp_color_scheme(webtag: &WebTag) -> Option<WindowsPreferredColo
 
 pub(crate) fn apply_color_scheme(
     webview: &ICoreWebView2,
+    controller: &ICoreWebView2Controller,
     scheme: WindowsPreferredColorScheme,
 ) -> StdResult<()> {
     let webview13: ICoreWebView2_13 = webview
@@ -80,8 +81,29 @@ pub(crate) fn apply_color_scheme(
         WindowsPreferredColorScheme::Dark => COREWEBVIEW2_PREFERRED_COLOR_SCHEME_DARK,
     };
     unsafe {
-        profile
-            .SetPreferredColorScheme(value)
-            .map_err(|err| WebViewError::WebView(format!("SetPreferredColorScheme failed: {err}")))
+        profile.SetPreferredColorScheme(value).map_err(|err| {
+            WebViewError::WebView(format!("SetPreferredColorScheme failed: {err}"))
+        })?;
     }
+    // The canvas behind resize/navigation repaints must match the scheme, or
+    // dark lxapps flash the fixed light creation default. Best-effort like the
+    // creation-time paint: older runtimes lack Controller2.
+    if scheme != WindowsPreferredColorScheme::Auto
+        && let Ok(controller2) = controller.cast::<ICoreWebView2Controller2>()
+    {
+        let (r, g, b) = if scheme == WindowsPreferredColorScheme::Dark {
+            (0x1C, 0x1C, 0x1E)
+        } else {
+            (255, 255, 255)
+        };
+        let _ = unsafe {
+            controller2.SetDefaultBackgroundColor(COREWEBVIEW2_COLOR {
+                A: 255,
+                R: r,
+                G: g,
+                B: b,
+            })
+        };
+    }
+    Ok(())
 }

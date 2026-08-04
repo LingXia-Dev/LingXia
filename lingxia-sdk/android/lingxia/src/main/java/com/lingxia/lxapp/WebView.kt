@@ -36,6 +36,12 @@ internal class WebView(context: Context) : LingXiaWebView(context) {
         if (WebViewFeature.isFeatureSupported(WebViewFeature.ALGORITHMIC_DARKENING)) {
             WebSettingsCompat.setAlgorithmicDarkeningAllowed(settings, true)
         }
+        // Pre-first-paint canvas follows the resolved DayNight theme instead
+        // of stock white, so dark lxapps don't flash on load.
+        val background = android.util.TypedValue()
+        if (context.theme.resolveAttribute(android.R.attr.colorBackground, background, true)) {
+            setBackgroundColor(background.data)
+        }
     }
 
     var pullToRefreshCallback: ((MotionEvent) -> Boolean)? = null
