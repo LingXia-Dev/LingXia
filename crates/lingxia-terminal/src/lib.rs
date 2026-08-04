@@ -9,6 +9,7 @@ mod links;
 mod osc;
 #[cfg(windows)]
 mod process_windows;
+mod restore;
 mod search;
 mod shell_integration;
 
@@ -19,7 +20,12 @@ use alacritty_vt::{
 pub use alacritty_vt::{
     CommandBlock, TerminalEvent, TerminalEventBatch, TerminalEventKind, TerminalProgressState,
 };
+pub use links::{DetectedLink, LinkSource as TerminalLinkSource};
 use portable_pty::{Child, CommandBuilder, MasterPty, PtySize, native_pty_system};
+pub use restore::{
+    DEFAULT_RESTORE_SCROLLBACK_LIMIT, TERMINAL_RESTORE_VERSION, TerminalRestoreError,
+    TerminalRestoreState,
+};
 pub use search::{
     SearchMatch as TerminalSearchMatch, SearchMode as TerminalSearchMode,
     SearchResults as TerminalSearchResults,
@@ -325,7 +331,7 @@ pub struct TerminalLink {
     pub end_col: u16,
     /// URL verbatim or the cwd-resolved normalized path.
     pub target: String,
-    pub source: links::LinkSource,
+    pub source: TerminalLinkSource,
     /// `:line[:column]` suffix parsed from a path target, when present.
     pub target_line: Option<u32>,
     pub target_column: Option<u32>,
@@ -377,7 +383,7 @@ pub fn terminal_links_data(id: u64) -> Option<Vec<TerminalLink>> {
                 start_col,
                 end_col,
                 target: detected.target,
-                source: links::LinkSource::Heuristic,
+                source: TerminalLinkSource::Heuristic,
                 target_line: detected.line,
                 target_column: detected.column,
             });
@@ -392,19 +398,95 @@ pub fn terminal_links_data(id: u64) -> Option<Vec<TerminalLink>> {
             start_col,
             end_col,
             target: uri,
-            source: links::LinkSource::Osc8,
+            source: TerminalLinkSource::Osc8,
             target_line: None,
             target_column: None,
         });
     }
     result.retain(|link| {
-        link.source == links::LinkSource::Osc8
+        link.source == TerminalLinkSource::Osc8
             || !osc8_ranges.iter().any(|&(line, start, end)| {
                 line == link.line && start < link.end_col && link.start_col < end
             })
     });
     result.sort_by_key(|link| (link.line, link.start_col));
     Some(result)
+}
+
+/// Export the session's restorable state: cwd, title, a host-supplied
+/// profile reference, and plain-text scrollback clipped to
+/// `max_scrollback_bytes` (`0` selects the default budget).
+pub fn terminal_export_restore_state(
+    id: u64,
+    profile_id: Option<&str>,
+    max_scrollback_bytes: usize,
+) -> Option<TerminalRestoreState> {
+    let session = session(id)?;
+    let mut session = session.lock().ok()?;
+    let bytes = session.drain_bytes();
+    if !bytes.is_empty() {
+        session.vt.feed(&bytes);
+    }
+    let budget = if max_scrollback_bytes == 0 {
+        DEFAULT_RESTORE_SCROLLBACK_LIMIT
+    } else {
+        max_scrollback_bytes
+    };
+    let (scrollback, truncated) = restore::clip_scrollback(
+        session
+            .vt
+            .grid_text()
+            .into_iter()
+            .map(|row| row.text)
+            .collect(),
+        budget,
+    );
+    let cwd = session
+        .vt
+        .cwd()
+        .or_else(|| session.foreground_process_pid().and_then(process_cwd))
+        .or_else(|| session.title_state.shell_pid.and_then(process_cwd));
+    let title = session.vt.snapshot().title;
+    Some(TerminalRestoreState {
+        version: TERMINAL_RESTORE_VERSION,
+        cwd,
+        title,
+        profile_id: profile_id.map(str::to_string),
+        scrollback,
+        truncated,
+    })
+}
+
+/// Create a session from a spec and replay a validated restore state
+/// into it. The shell starts fresh from a clean emulator state; the
+/// restored scrollback precedes its output, and a `Restored` event
+/// marks the content boundary. Unknown schema versions fail with
+/// [`TerminalRestoreError::UnknownVersion`] instead of being misread.
+pub fn terminal_create_with_restore(
+    cols: u16,
+    rows: u16,
+    spec: TerminalSessionSpec,
+    restore: &TerminalRestoreState,
+) -> Result<u64, TerminalRestoreError> {
+    restore.validate()?;
+    let id = terminal_create_with_spec(cols, rows, spec);
+    if id == 0 {
+        return Err(TerminalRestoreError::Invalid(
+            "session spawn failed".to_string(),
+        ));
+    }
+    if !restore.scrollback.is_empty()
+        && let Some(session) = session(id)
+        && let Ok(session) = session.lock()
+    {
+        let mut replay = restore.scrollback.join("\r\n");
+        replay.push_str("\r\n");
+        session.vt.feed(replay.as_bytes());
+        session.vt.push_event(TerminalEventKind::Restored {
+            lines: restore.scrollback.len(),
+        });
+    }
+    Ok(id)
 }
 
 pub fn terminal_exited(id: u64) -> bool {
@@ -1907,6 +1989,93 @@ mod tests {
                 .any(|kind| matches!(kind, TerminalEventKind::Exited { exit_code: Some(7) })),
             "exit event surfaced: {events:?}"
         );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn restore_state_exports_and_replays_into_a_fresh_shell() {
+        let id = terminal_create_with_spec(
+            60,
+            6,
+            TerminalSessionSpec {
+                program: Some("/bin/sh".to_string()),
+                args: Some(vec![
+                    "-c".to_string(),
+                    "i=0; while [ $i -lt 20 ]; do echo \"restore-line-$i\"; i=$((i+1)); done; sleep 30".to_string(),
+                ]),
+                scrollback_limit: Some(100),
+                ..TerminalSessionSpec::default()
+            },
+        );
+        assert_ne!(id, 0);
+
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let mut state = None;
+        while Instant::now() < deadline {
+            let exported = terminal_export_restore_state(id, Some("profile-a"), 0);
+            if exported.as_ref().is_some_and(|state| {
+                state
+                    .scrollback
+                    .iter()
+                    .any(|line| line.contains("restore-line-19"))
+            }) {
+                state = exported;
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(25));
+        }
+        let state = state.expect("export captured all lines");
+        terminal_close(id);
+        assert_eq!(state.version, TERMINAL_RESTORE_VERSION);
+        assert_eq!(state.profile_id.as_deref(), Some("profile-a"));
+        assert!(state.cwd.is_some());
+
+        // Replay into a fresh shell; restored content stays searchable.
+        let restored_id = terminal_create_with_restore(
+            60,
+            6,
+            TerminalSessionSpec {
+                program: Some("/bin/sh".to_string()),
+                args: Some(vec!["-c".to_string(), "sleep 30".to_string()]),
+                ..TerminalSessionSpec::default()
+            },
+            &state,
+        )
+        .expect("restore creates session");
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let mut marks = (false, false);
+        while Instant::now() < deadline {
+            let batch = terminal_events_drain_data(restored_id).expect("live session");
+            for event in batch.events {
+                if let TerminalEventKind::Restored { lines } = event.kind {
+                    marks.0 = lines == state.scrollback.len();
+                }
+            }
+            let results = terminal_search_data(
+                restored_id,
+                "restore-line-19",
+                TerminalSearchMode::Plain,
+                10,
+            );
+            if results.as_ref().is_some_and(|r| r.total == 1) {
+                marks.1 = true;
+            }
+            if marks.0 && marks.1 {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(25));
+        }
+        terminal_close(restored_id);
+        assert!(marks.0, "Restored event with replayed line count");
+        assert!(marks.1, "restored scrollback searchable in fresh shell");
+
+        // Unknown versions are rejected, not misread.
+        let mut future = state.clone();
+        future.version = TERMINAL_RESTORE_VERSION + 1;
+        assert!(matches!(
+            terminal_create_with_restore(60, 6, TerminalSessionSpec::default(), &future),
+            Err(TerminalRestoreError::UnknownVersion(_))
+        ));
     }
 
     #[test]
