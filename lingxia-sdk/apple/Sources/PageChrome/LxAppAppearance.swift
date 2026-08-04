@@ -69,7 +69,7 @@ enum LxAppAppearanceRegistry {
         webView.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
         // Setup pre-paints fixed white (light-first); once a scheme resolves,
         // the canvas must follow it or dark pages flash white on load/resize.
-        if (webView.value(forKey: "drawsTransparentBackground") as? Bool) != true {
+        if !webView.drawsTransparentCanvas {
             let background =
                 dark
                 ? NSColor(srgbRed: 0x1C / 255.0, green: 0x1C / 255.0, blue: 0x1E / 255.0, alpha: 1)

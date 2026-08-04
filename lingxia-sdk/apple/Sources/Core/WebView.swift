@@ -78,11 +78,25 @@ extension WKWebView {
             objc_setAssociatedObject(self, &AssociatedKeys.isRegistered, newValue, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
         }
     }
+
+    /// Whether the canvas was configured transparent, so appearance changes
+    /// leave it alone. Tracked here because the private key the transparency
+    /// setter writes has no matching getter: reading it back throws
+    /// NSUnknownKeyException.
+    var drawsTransparentCanvas: Bool {
+        get {
+            return objc_getAssociatedObject(self, &AssociatedKeys.drawsTransparentCanvas) as? Bool ?? false
+        }
+        set {
+            objc_setAssociatedObject(self, &AssociatedKeys.drawsTransparentCanvas, newValue, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+        }
+    }
 }
 
 /// Associated object keys
 private struct AssociatedKeys {
     nonisolated(unsafe) static var isRegistered: UInt8 = 0
+    nonisolated(unsafe) static var drawsTransparentCanvas: UInt8 = 0
 }
 
 /// Shared WebView manager
@@ -227,6 +241,7 @@ final class WebViewManager {
 
     /// Configure WebView transparency - shared logic with platform-specific optimizations
     static func configureWebViewTransparency(_ webView: WKWebView, transparent: Bool) {
+        webView.drawsTransparentCanvas = transparent
         #if os(iOS)
         // Resolve from the appearance registry, not the webview's traits: this
         // path runs before the webview joins the hierarchy, where its trait
