@@ -1,5 +1,7 @@
-import { expect, test } from '@rongjs/test';
-import type { LxAppDriver } from 'lingxia-types';
+import { expect } from '@rongjs/test';
+import type { LxAppDriver } from 'lingxia-types/automation';
+import { waitForElementText } from '../helpers/page.js';
+import { contract, eventually } from '../support/contract.js';
 
 interface RefreshState {
   count: number;
@@ -19,34 +21,31 @@ async function waitForRefreshState(
   app: LxAppDriver,
   predicate: (state: RefreshState) => boolean,
 ): Promise<RefreshState> {
-  const deadline = Date.now() + 30_000;
-  let state = await refreshState(app);
-  while (Date.now() < deadline) {
-    if (predicate(state)) return state;
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    state = await refreshState(app);
-  }
-  throw new Error(`Timed out waiting for pull-to-refresh state: ${JSON.stringify(state)}`);
+  return eventually(refreshState.bind(null, app), predicate, {
+    describe: 'pull-to-refresh Logic state',
+    timeoutMs: 30_000,
+  });
 }
 
 async function waitForStatus(app: LxAppDriver, expected: string): Promise<string> {
-  const deadline = Date.now() + 30_000;
-  let text = '';
-  while (Date.now() < deadline) {
-    const status = await app.page.query({
-      page: 'pullToRefresh',
-      css: '[data-testid="pull-refresh-status"]',
-      full: true,
-    });
-    text = status.exists ? status.text : '';
-    if (text.includes(expected)) return text;
-    await new Promise((resolve) => setTimeout(resolve, 50));
-  }
-  throw new Error(`Timed out waiting for pull-to-refresh status '${expected}', received '${text}'`);
+  return waitForElementText(
+    app,
+    'pullToRefresh',
+    '[data-testid="pull-refresh-status"]',
+    (text) => text.includes(expected),
+    30_000,
+  );
 }
 
-test('starts, receives, renders, and stops the native pull-to-refresh lifecycle', async () => {
-  const app = lx.automation().lxapp();
+contract({
+  id: 'PULL-001',
+  title: 'start, render, and stop the native pull-to-refresh lifecycle',
+  covers: ['lx.startPullDownRefresh', 'lx.stopPullDownRefresh'],
+  layer: 'native',
+  levels: ['semantic', 'lifecycle'],
+  scope: 'portable',
+  expectedOutcome: 'supported',
+}, async ({ app }) => {
   await app.nav.relaunch({ page: 'pullToRefresh' });
   await app.page.waitFor({ page: 'pullToRefresh', css: '[data-testid="pull-refresh-page"]' });
 

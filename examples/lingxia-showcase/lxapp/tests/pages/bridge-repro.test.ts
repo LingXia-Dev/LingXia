@@ -1,23 +1,15 @@
 import { expect, test } from '@rongjs/test';
-import type { LxAppDriver } from 'lingxia-types';
+import { showcaseApp } from '../helpers/app.js';
+import { waitForCurrentPage, waitForElementText } from '../helpers/page.js';
 
-async function waitForText(
-  app: LxAppDriver,
+const waitForText = (
+  app: Parameters<typeof waitForElementText>[0],
   css: string,
   predicate: (text: string) => boolean,
-  timeoutMs = 30_000,
-): Promise<string> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    const element = await app.page.query({ page: 'bridge-repro', css, full: true });
-    if (element.exists && predicate(element.text)) return element.text;
-    await new Promise((resolve) => setTimeout(resolve, 50));
-  }
-  throw new Error(`Timed out waiting for ${css}`);
-}
+) => waitForElementText(app, 'bridge-repro', css, predicate, 30_000);
 
 test('keeps bootstrap, calls, and streams healthy across the page bridge', async () => {
-  const app = lx.automation().lxapp();
+  const app = showcaseApp();
   try {
     await app.nav.relaunch({ page: 'bridge-repro' });
     await app.page.waitFor({
@@ -40,7 +32,7 @@ test('keeps bootstrap, calls, and streams healthy across the page bridge', async
     expect(await waitForText(app, '#stat-gaps', (text) => text.includes('none'))).toContain('none');
     expect(await waitForText(app, '#stat-error', (text) => text.includes('none'))).toContain('none');
     await app.page.click({ page: 'bridge-repro', css: '#btn-stop' });
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await new Promise<void>((resolve) => setTimeout(() => resolve(), 100));
   } catch (error) {
     try {
       const screenshot = await app.page.screenshot({ page: 'bridge-repro' });
@@ -55,6 +47,7 @@ test('keeps bootstrap, calls, and streams healthy across the page bridge', async
   } finally {
     try {
       await app.nav.relaunch({ page: 'home' });
+      await waitForCurrentPage(app, 'home');
     } catch {
       // Keep a cleanup failure from hiding the original bridge assertion.
     }

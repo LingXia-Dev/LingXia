@@ -1,4 +1,4 @@
-import type { LxAppDriver } from 'lingxia-types';
+import type { LxAppDriver } from 'lingxia-types/automation';
 
 export async function runtimePlatform(app: LxAppDriver): Promise<string> {
   return app.eval({

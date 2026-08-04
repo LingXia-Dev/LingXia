@@ -1,5 +1,6 @@
-import { expect, test } from '@rongjs/test';
-import type { LxAppDriver } from 'lingxia-types';
+import { expect } from '@rongjs/test';
+import type { LxAppDriver } from 'lingxia-types/automation';
+import { contract, eventually } from '../support/contract.js';
 
 interface SystemPageState {
   appBaseInfo: { os?: string; productName?: string } | null;
@@ -22,18 +23,21 @@ async function waitForSystemState(
   app: LxAppDriver,
   predicate: (state: SystemPageState) => boolean,
 ): Promise<SystemPageState> {
-  const deadline = Date.now() + 30_000;
-  let state = await systemState(app);
-  while (Date.now() < deadline) {
-    if (predicate(state)) return state;
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    state = await systemState(app);
-  }
-  throw new Error(`Timed out waiting for system page state: ${JSON.stringify(state)}`);
+  return eventually(systemState.bind(null, app), predicate, {
+    describe: 'system page state',
+    timeoutMs: 30_000,
+  });
 }
 
-test('renders app and system information through page actions', async () => {
-  const app = lx.automation().lxapp();
+contract({
+  id: 'SYSTEM-001',
+  title: 'render host app and system information through page actions',
+  covers: ['lx.app.getBaseInfo', 'lx.getSystemSetting'],
+  layer: 'logic',
+  levels: ['semantic', 'boundary'],
+  scope: 'portable',
+  expectedOutcome: 'supported',
+}, async ({ app }) => {
 
   await app.nav.relaunch({ page: 'system', query: { type: 'appBaseInfo' } });
   await app.page.waitFor({ page: 'system', css: '[data-testid="system-base-info"]' });

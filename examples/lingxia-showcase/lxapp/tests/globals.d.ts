@@ -1,1 +1,1 @@
-import "lingxia-types";
+import 'lingxia-types/automation-test-globals';

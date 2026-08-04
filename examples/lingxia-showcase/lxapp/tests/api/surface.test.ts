@@ -1,23 +1,90 @@
-import { expect, test } from '@rongjs/test';
+import { expect } from '@rongjs/test';
+import { SHOWCASE_APP_ID } from '../helpers/app.js';
+import { contract } from '../support/contract.js';
 import { LX_RUNTIME_SURFACES } from './manifest.js';
 
-for (const surface of LX_RUNTIME_SURFACES) {
-  test(`publishes every ${surface.name} member`, async () => {
-    const members = JSON.stringify(surface.members);
-    const result = await lx.automation().lxapp().eval({
-      script: `
-        const target = ${surface.expression};
-        return {
-          available: target !== null && typeof target !== 'undefined',
-          missing: target == null
-            ? ${members}
-            : ${members}.filter((name) => typeof target[name] === 'undefined'),
-        };
-      `,
-    }) as { available: boolean; missing: string[] };
+function automationSurface(name: string): unknown {
+  const automation = lx.automation();
+  switch (name) {
+    case 'Automation': return automation;
+    case 'ShellDriver': return automation.shell;
+    case 'LxAppDriver': return automation.lxapp(SHOWCASE_APP_ID);
+    case 'PageDriver': return automation.lxapp(SHOWCASE_APP_ID).page;
+    case 'PagePointer': return automation.lxapp(SHOWCASE_APP_ID).page.pointer;
+    case 'PageKey': return automation.lxapp(SHOWCASE_APP_ID).page.key;
+    case 'NavDriver': return automation.lxapp(SHOWCASE_APP_ID).nav;
+    case 'LxAppManager': return automation.lxapps;
+    case 'DeviceDriver': return automation.device;
+    case 'BrowserDriver': return automation.browser;
+    case 'BrowserCookies': return automation.browser.cookies;
+    case 'DesktopDriver': return automation.desktop;
+    case 'DesktopPointer': return automation.desktop.pointer;
+    case 'DesktopKey': return automation.desktop.key;
+    case 'DesktopWindow': return automation.desktop.window;
+    case 'DesktopClipboard': return automation.desktop.clipboard;
+    case 'DesktopAx': return automation.desktop.ax;
+    case 'DesktopWait': return automation.desktop.wait;
+    case 'DesktopApp': return automation.desktop.app;
+    case 'DesktopProcess': return automation.desktop.process;
+    default: throw new Error(`No host automation resolver for ${name}`);
+  }
+}
+
+function inspectSurface(
+  target: unknown,
+  members: readonly string[],
+  properties: readonly string[],
+): { available: boolean; missing: string[]; wrongKinds: string[] } {
+  const available = target !== null && typeof target !== 'undefined';
+  const record = target as Record<string, unknown>;
+  return {
+    available,
+    missing: available ? members.filter((name) => typeof record[name] === 'undefined') : [...members],
+    wrongKinds: available
+      ? members.filter((name) => properties.includes(name)
+        ? record[name] === null
+        : typeof record[name] !== 'function')
+      : [],
+  };
+}
+
+LX_RUNTIME_SURFACES.forEach((surface) => {
+  contract({
+    id: `SHAPE-${surface.name.replace(/[^a-zA-Z0-9]+/g, '-').toLocaleUpperCase()}`,
+    title: `publish every ${surface.name} member`,
+    covers: surface.members.map((member) => `shape:${surface.name}.${member}`),
+    layer: surface.layer,
+    levels: ['shape'],
+    scope: 'portable',
+    expectedOutcome: 'optional' in surface && surface.optional
+      ? 'supported-or-absent'
+      : 'supported',
+  }, async ({ app }) => {
+    const propertyNames = 'properties' in surface ? surface.properties : [];
+    const result = surface.layer === 'automation'
+      ? inspectSurface(automationSurface(surface.name), surface.members, propertyNames)
+      : await app.eval({
+        script: `
+          const target = ${surface.expression};
+          const members = ${JSON.stringify(surface.members)};
+          const properties = ${JSON.stringify(propertyNames)};
+          return {
+            available: target !== null && typeof target !== 'undefined',
+            missing: target == null
+              ? members
+              : members.filter((name) => typeof target[name] === 'undefined'),
+            wrongKinds: target == null
+              ? []
+              : members.filter((name) => properties.includes(name)
+                ? target[name] === null
+                : typeof target[name] !== 'function'),
+          };
+        `,
+      }) as { available: boolean; missing: string[]; wrongKinds: string[] };
 
     if ('optional' in surface && surface.optional && !result.available) return;
     expect(result.available).toBeTruthy();
     expect(result.missing).toEqual([]);
+    expect(result.wrongKinds).toEqual([]);
   });
-}
+});

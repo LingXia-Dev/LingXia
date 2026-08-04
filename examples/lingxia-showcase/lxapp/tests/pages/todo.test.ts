@@ -1,21 +1,22 @@
 import { expect, test } from '@rongjs/test';
-import type { LxAppDriver } from 'lingxia-types';
+import type { LxAppDriver } from 'lingxia-types/automation';
 import { waitForElementAttribute } from '../helpers/page.js';
+import { contract, eventually } from '../support/contract.js';
 
 async function waitForTodo(app: LxAppDriver, text: string, present: boolean): Promise<number> {
-  const deadline = Date.now() + 30_000;
-  while (Date.now() < deadline) {
-    const labels = await app.page.query({
+  return eventually(
+    async () => {
+      const labels = await app.page.query({
       page: 'todo',
       css: '[data-testid="todo-label"]',
       all: true,
       full: true,
-    });
-    const index = labels.items.findIndex((label) => label.text === text);
-    if ((index >= 0) === present) return index;
-    await new Promise((resolve) => setTimeout(resolve, 50));
-  }
-  throw new Error(`Timed out waiting for todo to be ${present ? 'present' : 'removed'}: ${text}`);
+      });
+      return labels.items.findIndex((label) => label.text === text);
+    },
+    (index) => (index >= 0) === present,
+    { describe: `todo to be ${present ? 'present' : 'removed'}: ${text}`, timeoutMs: 30_000 },
+  );
 }
 
 async function waitForStoredTodo(
@@ -23,18 +24,16 @@ async function waitForStoredTodo(
   text: string,
   present: boolean,
 ): Promise<void> {
-  const deadline = Date.now() + 30_000;
-  while (Date.now() < deadline) {
-    const stored = await app.eval({
+  await eventually(
+    () => app.eval({
       script: `
         const todos = await lx.getStorage().get('todo:todos');
         return Array.isArray(todos) && todos.some((todo) => todo.text === ${JSON.stringify(text)});
       `,
-    });
-    if (stored === present) return;
-    await new Promise((resolve) => setTimeout(resolve, 50));
-  }
-  throw new Error(`Timed out waiting for persisted todo to be ${present ? 'present' : 'removed'}: ${text}`);
+    }),
+    (stored) => stored === present,
+    { describe: `persisted todo to be ${present ? 'present' : 'removed'}: ${text}`, timeoutMs: 30_000 },
+  );
 }
 
 async function waitForStoredCompleted(
@@ -42,19 +41,17 @@ async function waitForStoredCompleted(
   text: string,
   completed: boolean,
 ): Promise<void> {
-  const deadline = Date.now() + 30_000;
-  while (Date.now() < deadline) {
-    const stored = await app.eval({
+  await eventually(
+    () => app.eval({
       script: `
         const todos = await lx.getStorage().get('todo:todos');
         const todo = Array.isArray(todos) && todos.find((item) => item.text === ${JSON.stringify(text)});
         return todo ? todo.completed === ${completed} : false;
       `,
-    });
-    if (stored === true) return;
-    await new Promise((resolve) => setTimeout(resolve, 50));
-  }
-  throw new Error(`Timed out waiting for persisted todo completion=${completed}: ${text}`);
+    }),
+    (stored) => stored === true,
+    { describe: `persisted todo completion=${completed}: ${text}`, timeoutMs: 30_000 },
+  );
 }
 
 async function cleanupStoredTodo(app: LxAppDriver, text: string): Promise<void> {
@@ -77,8 +74,15 @@ async function clickTodoToggle(app: LxAppDriver, index: number): Promise<void> {
   });
 }
 
-test('adds and removes a todo through the rendered page', async () => {
-  const app = lx.automation().lxapp();
+contract({
+  id: 'TODO-001',
+  title: 'persist todo edits made through the rendered page',
+  covers: ['lx.getStorage', 'Storage.get', 'Storage.set'],
+  layer: 'logic',
+  levels: ['semantic', 'boundary', 'lifecycle'],
+  scope: 'portable',
+  expectedOutcome: 'supported',
+}, async ({ app }) => {
   await app.nav.relaunch({ page: 'todo' });
   await app.page.waitFor({ page: 'todo', css: '[data-testid="todo-page"]' });
 

@@ -10,7 +10,14 @@
   "author": "LingXia Team",
   "license": "MIT",
   "scripts": {
-    "test:automation": "lxdev test tests/all.test.ts",
+    "test:automation": "npm run test:automation:portable",
+    "test:automation:portable": "lxdev test tests/all.test.ts",
+    "test:automation:windows:react": "lxdev test tests/entries/windows.test.ts --arg platform=windows --arg framework=react",
+    "test:automation:windows:vue": "lxdev test tests/entries/windows.test.ts --arg platform=windows --arg framework=vue",
+    "test:automation:macos:react": "lxdev test tests/entries/macos.test.ts --arg platform=macos --arg framework=react",
+    "test:automation:macos:vue": "lxdev test tests/entries/macos.test.ts --arg platform=macos --arg framework=vue",
+    "test:automation:android:react": "lxdev test tests/entries/android.test.ts --arg platform=android --arg framework=react",
+    "test:automation:android:vue": "lxdev test tests/entries/android.test.ts --arg platform=android --arg framework=vue",
     "test:automation:types": "tsc -p tests/tsconfig.json"
   },
   "dependencies": {

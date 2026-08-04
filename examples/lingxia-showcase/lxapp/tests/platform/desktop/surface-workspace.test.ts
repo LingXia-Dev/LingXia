@@ -9,8 +9,9 @@ import type {
   LxAppDriver,
   SurfaceLayoutAsideSlot,
   SurfaceLayoutSnapshot,
-} from 'lingxia-types';
-import { runtimePlatform } from '../helpers/platform.js';
+} from 'lingxia-types/automation';
+import { showcaseApp } from '../../helpers/app.js';
+import { runtimePlatform } from '../../helpers/platform.js';
 
 interface VisibilityEvent {
   id: string;
@@ -54,7 +55,7 @@ const pinnedWindowsHostTest = targetPlatform === 'windows'
   : test.skip;
 
 async function desktopApp(): Promise<LxAppDriver> {
-  const app = lx.automation().lxapp();
+  const app = showcaseApp();
   const actual = await runtimePlatform(app);
   if (!['macos', 'windows'].includes(actual)) {
     throw new Error(
@@ -397,35 +398,55 @@ async function expandMediumSidebar(
   desktop: DesktopDriver,
   platform: string,
   host: DesktopWindowInfo,
-): Promise<void> {
-  if (platform === 'macos') {
-    const button = await waitForValue(async () => {
-      const nodes = await desktop.ax.query({
-        window: host.id,
-        match: 'name:Expand sidebar',
-        all: true,
-      });
-      return nodes.find((node) => (
-        node.enabled && node.rect.w > 0 && node.rect.h > 0
-      ));
-    }, 'macOS medium sidebar expand control');
-    await desktop.pointer.click({ at: regionCenter([
-      button.rect.x,
-      button.rect.y,
-      button.rect.w,
-      button.rect.h,
-    ]) });
-    return;
-  }
+  readExpanded: () => Promise<number | undefined>,
+): Promise<number> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    const alreadyExpanded = await readExpanded();
+    if (alreadyExpanded !== undefined) return alreadyExpanded;
 
-  const inset = nativeWindowExtent(platform, host, 14);
-  await ensureHostForeground(desktop, host);
-  await desktop.pointer.click({
-    at: [
-      host.bounds.x + inset,
-      host.bounds.y + host.bounds.h - inset,
-    ],
-  });
+    const current = (await desktop.windows()).find((window) => window.id === host.id) ?? host;
+    const foreground = await ensureHostForeground(desktop, current);
+    try {
+      if (platform === 'macos') {
+        const button = await waitForValue(async () => {
+          const nodes = await desktop.ax.query({
+            window: foreground.id,
+            match: 'name:Expand sidebar',
+            all: true,
+          });
+          return nodes.find((node) => (
+            node.enabled && node.rect.w > 0 && node.rect.h > 0
+          ));
+        }, 'macOS medium sidebar expand control', 3_000);
+        await desktop.pointer.click({ at: regionCenter([
+          button.rect.x,
+          button.rect.y,
+          button.rect.w,
+          button.rect.h,
+        ]) });
+      } else {
+        // The Windows control is custom-drawn and absent from UI Automation.
+        // Target the center of its bottom cell instead of a fragile edge hit.
+        const point: [number, number] = [
+          foreground.bounds.x + nativeWindowExtent(platform, foreground, 22),
+          foreground.bounds.y + foreground.bounds.h
+            - nativeWindowExtent(platform, foreground, 21),
+        ];
+        await desktop.pointer.move({ at: point });
+        await desktop.pointer.click({ at: point });
+      }
+
+      return await waitForValue(
+        readExpanded,
+        `${platform} medium sidebar reveal attempt ${attempt}`,
+        3_000,
+      );
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError ?? new Error(`${platform} medium sidebar reveal failed`);
 }
 
 function visibleHostWebViews(
@@ -852,7 +873,7 @@ async function waitForValue<T>(
   while (Date.now() < deadline) {
     const value = await read();
     if (value !== undefined) return value;
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await new Promise<void>((resolve) => setTimeout(() => resolve(), 50));
   }
   throw new Error(`${label} was not observed within ${timeoutMs}ms`);
 }
@@ -902,24 +923,26 @@ async function ensureHostForeground(
 }
 
 async function closeChatSurface(app: LxAppDriver): Promise<void> {
-  const layout = await app.surfaceLayout();
-  const presentation = layout.mains.includes('lingxia-chat')
-    ? 'main'
-    : layout.asideSlots.some((slot) => slot.children.includes('lingxia-chat'))
-      ? 'aside'
-      : undefined;
-  try {
-    if (presentation) {
+  const manager = lx.automation().lxapps;
+  let surfaceCloseError: unknown;
+  if (containsSurface(await app.surfaceLayout(), 'lingxia-chat')) {
+    try {
       await app.eval({
         timeoutMs: 20_000,
         script: `
-          const chat = await lx.openSurface({
-            surface: 'lingxia-chat',
-            ${presentation === 'main' ? "as: 'main'," : ''}
-          });
-          if (chat.alive) await chat.close();
+          const handle = await lx.openSurface({ surface: 'lingxia-chat' });
+          await handle.close();
         `,
       });
+    } catch (error) {
+      surfaceCloseError = error;
+    }
+  }
+
+  try {
+    const chat = (await manager.list()).find((candidate) => candidate.appid === 'lingxia-chat');
+    if (chat && chat.status !== 'closed') {
+      await manager.close({ app: 'lingxia-chat' });
     }
   } catch (error) {
     // Cleanup is intentionally idempotent across test boundaries. A provider
@@ -927,9 +950,16 @@ async function closeChatSurface(app: LxAppDriver): Promise<void> {
     // that race only when the authoritative graph has already converged.
     if (containsSurface(await app.surfaceLayout(), 'lingxia-chat')) throw error;
   }
-  await waitForValue(async () => (
-    containsSurface(await app.surfaceLayout(), 'lingxia-chat') ? undefined : true
-  ), 'Chat surface cleanup convergence');
+  try {
+    await waitForValue(async () => (
+      containsSurface(await app.surfaceLayout(), 'lingxia-chat') ? undefined : true
+    ), 'Chat surface cleanup convergence');
+  } catch (error) {
+    if (surfaceCloseError) {
+      throw new Error(`${String(error)}; Surface handle close failed: ${automationFailureDetail(surfaceCloseError)}`);
+    }
+    throw error;
+  }
 }
 
 function automationFailureDetail(error: unknown): string {
@@ -1006,7 +1036,7 @@ desktopTest('projects the declared terminal aside and restores its baseline stat
     script: `
       const driver = lx.automation().lxapp();
       const snapshot = () => driver.surfaceLayout();
-      const settle = () => new Promise((resolve) => setTimeout(resolve, 100));
+      const settle = () => new Promise((resolve) => setTimeout(() => resolve(), 100));
       const before = await snapshot();
       const existed = before.asideSlots.some((slot) => slot.children.includes('terminal'));
       const wasVisible = before.asides.some((surface) => surface.id === 'terminal');
@@ -1195,14 +1225,18 @@ adaptiveDesktopTest('gates medium sidebar reveal and compact aside chrome on eve
       () => apiNavbarLeftEdge(desktop, platform, host!, navbarY),
       `${platform} API navbar edge beside medium rail`,
     );
-    await expandMediumSidebar(desktop, platform, host);
-    const expandedSidebarNavbarLeft = await waitForValue(async () => {
-      const edge = await apiNavbarLeftEdge(desktop, platform, host!, navbarY);
-      return edge !== undefined
-        && edge - railNavbarLeft >= nativeWindowExtent(platform, host!, 80)
-        ? edge
-        : undefined;
-    }, `${platform} explicit medium sidebar reveal`);
+    const expandedSidebarNavbarLeft = await expandMediumSidebar(
+      desktop,
+      platform,
+      host,
+      async () => {
+        const edge = await apiNavbarLeftEdge(desktop, platform, host!, navbarY);
+        return edge !== undefined
+          && edge - railNavbarLeft >= nativeWindowExtent(platform, host!, 80)
+          ? edge
+          : undefined;
+      },
+    );
     expect(expandedSidebarNavbarLeft > railNavbarLeft).toBeTruthy();
     expect((await app.surfaceLayout()).sizeClass).toBe('medium');
 
@@ -1816,7 +1850,7 @@ dynamicMainDesktopTest('keeps a dynamic app handle synchronized and closes its w
         while (Date.now() < deadline) {
           if (!gate.handle.visible
             && gate.events.filter((event) => event.type === 'hide').length === 1) break;
-          await new Promise((resolve) => setTimeout(resolve, 25));
+          await new Promise((resolve) => setTimeout(() => resolve(), 25));
         }
         return {
           id: gate.handle.id,
@@ -1856,7 +1890,7 @@ dynamicMainDesktopTest('keeps a dynamic app handle synchronized and closes its w
         while (Date.now() < deadline) {
           if (gate.handle.visible
             && gate.events.filter((event) => event.type === 'show').length === 1) break;
-          await new Promise((resolve) => setTimeout(resolve, 25));
+          await new Promise((resolve) => setTimeout(() => resolve(), 25));
         }
         return {
           id: gate.handle.id,
@@ -1965,7 +1999,7 @@ dynamicMainDesktopTest('keeps a dynamic app handle synchronized and closes its w
         while (Date.now() < deadline) {
           if (!gate.handle.alive && !gate.handle.visible
             && gate.events.filter((event) => event.type === 'close').length === 1) break;
-          await new Promise((resolve) => setTimeout(resolve, 25));
+          await new Promise((resolve) => setTimeout(() => resolve(), 25));
         }
         return {
           id: gate.handle.id,
@@ -2012,6 +2046,7 @@ dynamicMainDesktopTest('keeps a dynamic app handle synchronized and closes its w
         }
       `,
     }).catch(() => undefined);
+    await closeChatSurface(app).catch(() => undefined);
   }
 
   if (!setup || !hidden || !shown || !shownOverBrowser || !closed) {
@@ -2622,7 +2657,7 @@ desktopTest('migrates one keyed workspace across aside edges and main exactly on
     script: `
       const driver = lx.automation().lxapp();
       const snapshot = () => driver.surfaceLayout();
-      const settle = () => new Promise((resolve) => setTimeout(resolve, 100));
+      const settle = () => new Promise((resolve) => setTimeout(() => resolve(), 100));
       const key = ${JSON.stringify(key)};
       const visibility = { hide: [], show: [] };
       const closed = [];
@@ -2794,12 +2829,12 @@ desktopTest('switches, deduplicates concurrent opens, and leaves no ghost rows',
     script: `
       const driver = lx.automation().lxapp();
       const snapshot = () => driver.surfaceLayout();
-      const settle = () => new Promise((resolve) => setTimeout(resolve, 100));
+      const settle = () => new Promise((resolve) => setTimeout(() => resolve(), 100));
       const waitFor = async (predicate, label) => {
         const deadline = Date.now() + 5_000;
         while (Date.now() < deadline) {
           if (predicate()) return;
-          await new Promise((resolve) => setTimeout(resolve, 20));
+          await new Promise((resolve) => setTimeout(() => resolve(), 20));
         }
         throw new Error(label + ' was not observed');
       };

@@ -1,8 +1,9 @@
 import { expect, test } from '@rongjs/test';
+import { showcaseApp } from '../helpers/app.js';
 import { waitForElementAttribute } from '../helpers/page.js';
 
 test('rejects invalid native-surface dimensions before opening a host surface', async () => {
-  const app = lx.automation().lxapp();
+  const app = showcaseApp();
   await app.nav.relaunch({ page: 'ui', query: { type: 'surface' } });
   await app.page.waitFor({ page: 'ui', css: '[data-testid="open-surface"]' });
 

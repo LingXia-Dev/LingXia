@@ -1,36 +1,36 @@
-import { expect, test } from '@rongjs/test';
-import type { LxAppDriver, PageInfo } from 'lingxia-types';
-import { waitForElementAttribute } from '../helpers/page.js';
+import { expect } from '@rongjs/test';
+import type { LxAppDriver, PageInfo } from 'lingxia-types/automation';
+import { currentPageOrNull, waitForElementAttribute } from '../helpers/page.js';
+import { contract, eventually } from '../support/contract.js';
 
 async function waitForCurrent(app: LxAppDriver, name: string): Promise<PageInfo> {
-  const deadline = Date.now() + 30_000;
-  let current = await app.nav.current();
-  while (Date.now() < deadline) {
-    if (current.name === name && current.ready) return current;
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    current = await app.nav.current();
-  }
-  throw new Error(`Timed out waiting for current page '${name}': ${JSON.stringify(current)}`);
+  return eventually(
+    () => app.nav.current(),
+    (current) => current.name === name && current.ready,
+    { describe: `current page '${name}' to become ready`, timeoutMs: 30_000 },
+  );
 }
 
-test('preserves navigation stack, query, redirect, back, and tab semantics', async () => {
-  const app = lx.automation().lxapp();
-  const platform = (test.args as Record<string, string>).platform?.toLocaleLowerCase();
-  const desktop = platform === 'windows' ? lx.automation().desktop : undefined;
-  const host = desktop
-    ? (await desktop.windows()).find((window) => (
-      window.visible
-      && window.process.toLocaleLowerCase().includes('lingxiademo')
-      && window.title === 'LingXia'
-    ))
-    : undefined;
-  const visibleWindowsBefore = host
-    ? new Set((await desktop!.windows())
-      .filter((window) => window.visible && window.pid === host.pid)
-      .map((window) => window.id))
-    : undefined;
-
-  await app.nav.relaunch({ page: 'home' });
+contract({
+  id: 'NAV-001',
+  title: 'preserve stack, query, redirect, back, and tab semantics',
+  covers: [
+    'NavDriver.relaunch',
+    'NavDriver.to',
+    'NavDriver.current',
+    'NavDriver.stack',
+    'NavDriver.back',
+    'NavDriver.redirect',
+    'NavDriver.switchTab',
+  ],
+  layer: 'view',
+  levels: ['semantic', 'boundary', 'lifecycle'],
+  scope: 'portable',
+  expectedOutcome: 'supported',
+}, async ({ app }) => {
+  const initial = await currentPageOrNull(app);
+  if (initial?.name !== 'home') await app.nav.relaunch({ page: 'home' });
+  await waitForCurrent(app, 'home');
   expect((await app.nav.stack()).map((page) => page.name)).toEqual(['home']);
 
   await app.nav.to({ page: 'device', query: { type: 'screen' } });
@@ -81,20 +81,4 @@ test('preserves navigation stack, query, redirect, back, and tab semantics', asy
   });
   expect(defaultMode).toBe('device');
   expect((await app.nav.stack()).map((page) => page.name)).toEqual(['device']);
-
-  if (desktop && host && visibleWindowsBefore) {
-    const deadline = Date.now() + 3_000;
-    let leaked = [] as Awaited<ReturnType<typeof desktop.windows>>;
-    do {
-      leaked = (await desktop.windows()).filter((window) => (
-        window.visible
-        && window.pid === host.pid
-        && window.title === ''
-        && !visibleWindowsBefore.has(window.id)
-      ));
-      if (leaked.length === 0) return;
-      await new Promise((resolve) => setTimeout(resolve, 50));
-    } while (Date.now() < deadline);
-    throw new Error(`navigation left visible native overlays: ${JSON.stringify(leaked)}`);
-  }
 });

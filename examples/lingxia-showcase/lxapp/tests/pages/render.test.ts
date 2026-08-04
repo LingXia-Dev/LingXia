@@ -1,5 +1,8 @@
 import { expect, test } from '@rongjs/test';
-import type { LxAppDriver, PageInfo } from 'lingxia-types';
+import type { LxAppDriver } from 'lingxia-types/automation';
+import { showcaseApp } from '../helpers/app.js';
+import { waitForCurrentPage } from '../helpers/page.js';
+import { eventually } from '../support/contract.js';
 import {
   SHOWCASE_PAGE_EXPECTATIONS,
   SHOWCASE_PAGE_TITLES,
@@ -12,20 +15,12 @@ interface DocumentState {
   isNotFound: boolean;
 }
 
-async function waitForCurrentPageReady(
-  app: LxAppDriver,
-  page: string,
-): Promise<PageInfo> {
-  const deadline = Date.now() + 30_000;
-  let current = await app.nav.current();
-  while (Date.now() < deadline) {
-    if (current.name === page && current.ready) return current;
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    current = await app.nav.current();
-  }
-  throw new Error(
-    `Timed out waiting for rendered page '${page}' lifecycle readiness: ${JSON.stringify(current)}`,
-  );
+function isTransientPageReadinessError(error: unknown): boolean {
+  const message = String(error).toLocaleLowerCase();
+  return message.includes('page is not active:')
+    || message.includes('page webview is not ready')
+    || message.includes('no current page')
+    || message.includes('0x8007139f');
 }
 
 async function waitForRenderedFeature(
@@ -34,12 +29,9 @@ async function waitForRenderedFeature(
   expectedTitle: string,
   expectedText: string | readonly string[],
 ): Promise<DocumentState> {
-  const deadline = Date.now() + 30_000;
   const expectedTexts = typeof expectedText === 'string' ? [expectedText] : expectedText;
-  let lastState: DocumentState | null = null;
-  while (Date.now() < deadline) {
-    try {
-      lastState = await app.page.eval({
+  const state = await eventually(
+    () => app.page.eval({
         page,
         script: `({
           title: document.title,
@@ -48,29 +40,27 @@ async function waitForRenderedFeature(
             || document.body.innerText.includes('Page Not Found')
             || document.body.innerText.includes('not_found'),
         })`,
-      }) as DocumentState;
-      if (
-        lastState.title === expectedTitle
+      }) as Promise<DocumentState | null>,
+    (candidate) => (
+        candidate !== null
+        && candidate.title === expectedTitle
         && expectedTexts.some((text) => (
-          lastState?.text.toLocaleLowerCase().includes(text.toLocaleLowerCase())
+          candidate.text.toLocaleLowerCase().includes(text.toLocaleLowerCase())
         ))
-        && !lastState.isNotFound
-      ) {
-        return lastState;
-      }
-    } catch {
-      // The WebView can be attached just before its first document is ready.
-    }
-    await new Promise((resolve) => setTimeout(resolve, 50));
-  }
-  throw new Error(
-    `Expected rendered page '${page}' with title '${expectedTitle}' and text `
-      + `${JSON.stringify(expectedTexts)}, received: ${JSON.stringify(lastState)}`,
+        && !candidate.isNotFound
+    ),
+    {
+      describe: `rendered page '${page}' with title '${expectedTitle}' and text ${JSON.stringify(expectedTexts)}`,
+      retryIf: isTransientPageReadinessError,
+      timeoutMs: 30_000,
+    },
   );
+  if (state === null) throw new Error(`page eval stayed null while rendering '${page}'`);
+  return state;
 }
 
 test('page manifest matches the running lxapp', async () => {
-  const pages = await lx.automation().lxapp().pages();
+  const pages = await showcaseApp().pages();
   expect(pages.map((page) => page.name)).toEqual([...SHOWCASE_PAGES]);
   expect(pages.every((page) => (
     page.path.toLowerCase().includes(`pages/${page.name.toLowerCase()}/index.`)
@@ -79,7 +69,7 @@ test('page manifest matches the running lxapp', async () => {
 
 for (const expectation of SHOWCASE_PAGE_EXPECTATIONS) {
   test(`renders showcase feature: ${expectation.page}`, async () => {
-    const app = lx.automation().lxapp();
+    const app = showcaseApp();
     try {
       const landed = await app.nav.relaunch({ page: expectation.page });
       expect(landed.name).toBe(expectation.page);
@@ -106,7 +96,7 @@ for (const expectation of SHOWCASE_PAGE_EXPECTATIONS) {
       expect(documentState.title).toBe(SHOWCASE_PAGE_TITLES[expectation.page]);
       expect(documentState.text.length > 0).toBeTruthy();
       expect(documentState.isNotFound).toBeFalsy();
-      const ready = await waitForCurrentPageReady(app, expectation.page);
+      const ready = await waitForCurrentPage(app, expectation.page, 30_000);
       expect(ready.name).toBe(expectation.page);
       expect(ready.ready).toBeTruthy();
     } catch (error) {
