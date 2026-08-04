@@ -1,7 +1,6 @@
 {
   "navigationStyle": "default",
   "navigationBar": {
-    "title": "Cloud",
-    "style": { "backgroundColor": "#f9fafb", "foregroundColor": "#000000" }
+    "title": "Cloud"
   }
 }

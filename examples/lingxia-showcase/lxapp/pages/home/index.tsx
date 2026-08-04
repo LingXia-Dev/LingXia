@@ -2,20 +2,26 @@ import React from 'react';
 import { useLxPage } from '@lingxia/react';
 import '../../tailwind.css';
 
+type AppearancePreference = 'auto' | 'light' | 'dark';
+
 type PageData = {
   greeting?: string;
   imageUrl?: string;
   ipAddr?: string;
   appVersion?: string;
+  appearance?: { preference: AppearancePreference; resolved: 'light' | 'dark' };
 };
 
 type PageActions = {
   greet(payload: { name: string }): void;
+  setAppearance(payload: { preference: AppearancePreference }): void;
 };
+
+const APPEARANCE_OPTIONS: AppearancePreference[] = ['auto', 'light', 'dark'];
 
 export default function HomePage() {
   const { data, actions } = useLxPage<PageData, PageActions>();
-  const { greet } = actions;
+  const { greet, setAppearance } = actions;
   const [name, setName] = React.useState('');
   const [isSending, setIsSending] = React.useState(false);
 
@@ -23,6 +29,8 @@ export default function HomePage() {
   const ipAddress = typeof data?.ipAddr === 'string' ? data.ipAddr : '';
   const imageUrl = typeof data?.imageUrl === 'string' ? data.imageUrl : '';
   const appVersion = typeof data?.appVersion === 'string' ? data.appVersion : '';
+  const preference = data?.appearance?.preference ?? 'auto';
+  const resolvedAppearance = data?.appearance?.resolved ?? 'light';
 
   React.useEffect(() => {
     if (isSending && greetingMessage) {
@@ -85,7 +93,7 @@ export default function HomePage() {
               type="button"
               onClick={handleGreet}
               disabled={!name.trim() || isSending}
-              className="w-full h-[50px] bg-[#007AFF] hover:bg-[#0066CC] active:bg-[#0055B3] disabled:bg-[#007AFF]/50 disabled:cursor-not-allowed rounded-[12px] text-[17px] text-white font-semibold transition-colors"
+              className="w-full h-[50px] bg-primary hover:bg-primary-dark active:bg-primary-dark disabled:bg-primary/50 disabled:cursor-not-allowed rounded-[12px] text-[17px] text-white font-semibold transition-colors"
             >
               {isSending ? 'Sending...' : 'Say Hello'}
             </button>
@@ -106,6 +114,34 @@ export default function HomePage() {
               </div>
             </div>
           )}
+
+          {/* lxapp-owned light/dark branch — `auto` follows the host shell. */}
+          <div className="mt-4" data-testid="home-appearance">
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-[11px] font-medium text-gray-500">Appearance</span>
+              <span className="text-[11px] text-gray-400" data-testid="home-appearance-resolved">
+                {resolvedAppearance}
+              </span>
+            </div>
+            <div className="flex gap-1 p-1 bg-gray-100 rounded-[10px]">
+              {APPEARANCE_OPTIONS.map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  data-testid={`home-appearance-${option}`}
+                  data-selected={preference === option}
+                  onClick={() => setAppearance({ preference: option })}
+                  className={`flex-1 h-8 rounded-[8px] text-[13px] font-medium capitalize transition-colors ${
+                    preference === option
+                      ? 'bg-white text-gray-900 shadow-sm'
+                      : 'text-gray-500'
+                  }`}
+                >
+                  {option}
+                </button>
+              ))}
+            </div>
+          </div>
 
           {appVersion && (
             <div className="mt-1 text-left leading-none">

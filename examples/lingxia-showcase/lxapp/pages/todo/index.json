@@ -1,7 +1,6 @@
 {
   "navigationStyle": "custom",
   "navigationBar": {
-    "title": "ToDo",
-    "style": { "backgroundColor": "#ffffff", "foregroundColor": "#000000" }
+    "title": "ToDo"
   }
 }

@@ -1,6 +1,5 @@
 {
   "navigationBar": {
-    "title": "Channel",
-    "style": { "backgroundColor": "#FFFFFF", "foregroundColor": "#000000" }
+    "title": "Channel"
   }
 }

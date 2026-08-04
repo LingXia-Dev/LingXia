@@ -1,39 +1,34 @@
+import plugin from 'tailwindcss/plugin';
+import {
+  backgroundPalette,
+  baseStyles,
+  borderPalette,
+  boxShadow,
+  textPalette,
+} from './theme/tokens.js';
+
 /** @type {import('tailwindcss').Config} */
 const config = {
   content: [
-    "./pages/**/*.{ts,tsx,js,jsx}",
-    "./shared/**/*.{ts,tsx,js,jsx}",
+    "./pages/**/*.{ts,tsx,js,jsx,vue}",
+    "./shared/**/*.{ts,tsx,js,jsx,vue}",
     "./lxapp.{ts,tsx,js,jsx}",
   ],
+  // The runtime stamps the resolved appearance on <html>; platform media queries
+  // can lag an in-place switch, so `dark:` keys off the attribute too.
+  darkMode: ['selector', '[data-theme="dark"]'],
   theme: {
     extend: {
-      colors: {
-        // Primary colors - iOS-inspired
-        primary: {
-          DEFAULT: '#007AFF',
-          light: '#5AC8FA',
-          dark: '#0066CC',
-        },
-        // Semantic colors
-        success: '#34C759',
-        warning: '#FF9500',
-        error: '#FF3B30',
-        danger: '#FF3B30',
-        info: '#5AC8FA',
-        // Gray scale - matching iOS system grays
-        gray: {
-          50: '#F2F2F7',
-          100: '#E5E5EA',
-          200: '#D1D1D6',
-          300: '#C7C7CC',
-          400: '#AEAEB2',
-          500: '#8E8E93',
-          600: '#636366',
-          700: '#48484A',
-          800: '#3A3A3C',
-          900: '#2C2C2E',
-        },
-      },
+      // Every palette entry is a `rgb(var(--lx-…) / <alpha-value>)` reference, so
+      // the existing utilities (`bg-white`, `text-gray-500`, `from-blue-50/50`)
+      // follow the theme — including their alpha modifiers. See theme/tokens.js
+      // for why background, text, and border resolve separately.
+      colors: backgroundPalette,
+      textColor: textPalette,
+      borderColor: borderPalette,
+      divideColor: borderPalette,
+      placeholderColor: textPalette,
+      boxShadow,
       fontFamily: {
         sans: [
           '-apple-system',
@@ -65,14 +60,6 @@ const config = {
         'xl': '16px',
         '2xl': '20px',
         '3xl': '24px',
-      },
-      boxShadow: {
-        // iOS-style shadows
-        'sm': '0 1px 2px 0 rgba(0, 0, 0, 0.05)',
-        'DEFAULT': '0 2px 8px 0 rgba(0, 0, 0, 0.1)',
-        'md': '0 4px 12px 0 rgba(0, 0, 0, 0.15)',
-        'lg': '0 8px 16px 0 rgba(0, 0, 0, 0.2)',
-        'xl': '0 12px 24px 0 rgba(0, 0, 0, 0.25)',
       },
       spacing: {
         // Safe area insets for mobile devices
@@ -113,7 +100,11 @@ const config = {
       },
     },
   },
-  plugins: [],
+  plugins: [
+    plugin(({ addBase }) => {
+      addBase(baseStyles);
+    }),
+  ],
 };
 
 export default config;

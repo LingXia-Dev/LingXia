@@ -282,6 +282,56 @@
           </div>
         </template>
 
+        <!-- Appearance Demo -->
+        <template v-if="currentType === 'appearance'">
+          <div class="mt-4 mb-3 px-4 text-sm text-gray-500 font-medium">Appearance APIs</div>
+          <div class="mx-1 mb-4 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+            <div class="px-4 py-3 border-b border-gray-100">
+              <h3 class="text-base font-medium text-gray-900">Light / Dark</h3>
+              <p class="text-sm text-gray-500 mt-1">
+                <code class="text-xs">lx.appearance.set()</code> picks this lxapp&apos;s branch
+                independently of the host shell; the preference persists per lxapp.
+              </p>
+            </div>
+            <div class="p-4 space-y-4">
+              <div class="grid grid-cols-3 gap-1.5" data-testid="ui-appearance">
+                <button
+                  v-for="option in APPEARANCE_OPTIONS"
+                  :key="option"
+                  type="button"
+                  :data-testid="`ui-appearance-${option}`"
+                  :data-selected="appearance.preference === option"
+                  @click="setAppearance({ preference: option })"
+                  class="px-2 py-1.5 rounded text-xs font-medium capitalize border transition-colors"
+                  :class="appearance.preference === option
+                    ? 'bg-blue-500 text-white border-blue-500'
+                    : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'"
+                >
+                  {{ option }}
+                </button>
+              </div>
+
+              <div class="rounded-lg bg-gray-50 border border-gray-100 divide-y divide-gray-100">
+                <div class="flex items-center justify-between px-3 py-2">
+                  <span class="text-sm text-gray-500">Preference</span>
+                  <span class="text-sm font-medium text-gray-900" data-testid="ui-appearance-preference">{{ appearance.preference }}</span>
+                </div>
+                <div class="flex items-center justify-between px-3 py-2">
+                  <span class="text-sm text-gray-500">Resolved</span>
+                  <span class="text-sm font-medium text-gray-900" data-testid="ui-appearance-resolved">{{ appearance.resolved }}</span>
+                </div>
+              </div>
+
+              <p class="text-xs text-gray-400 leading-relaxed">
+                The runtime projects the resolved branch into every page as <code>color-scheme</code>
+                plus <code>data-theme</code> on <code>&lt;html&gt;</code>. This app&apos;s Tailwind palette
+                is bound to CSS variables keyed off that attribute, so pages need no per-element dark
+                variants.
+              </p>
+            </div>
+          </div>
+        </template>
+
         <!-- TabBar Demo -->
         <template v-if="currentType === 'tabbar'">
           <div class="mt-4 mb-3 px-4 text-sm text-gray-500 font-medium">TabBar APIs</div>
@@ -409,6 +459,7 @@ const {
   concealTabBar,
   updateTabBarForegrounds,
   updateTabBarItem,
+  setAppearance,
   chooseToastIcon,
   chooseToastPosition,
   showDemoActionSheet,
@@ -431,6 +482,8 @@ const surfaceMessage = computed(() => data.surfaceDemo?.message ?? '');
 const surfaceActive = computed(() => data.surfaceDemo?.active === true);
 const surfaceVisible = computed(() => data.surfaceDemo?.visible === true);
 const chromeError = computed(() => data.chromeError ?? '');
+const appearance = computed(() => data.appearance ?? { preference: 'auto', resolved: 'light' });
+const APPEARANCE_OPTIONS = ['auto', 'light', 'dark'] as const;
 
 const toastIconDisplay = computed(() => {
   const match = toastIconOptions.value.find((o: any) => o.value === toastIcon.value);

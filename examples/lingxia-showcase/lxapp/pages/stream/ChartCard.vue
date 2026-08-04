@@ -11,6 +11,7 @@
 import * as echarts from 'echarts';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import type { ChartData } from './index';
+import { getResolvedTheme, subscribeTheme, type ResolvedTheme } from '../../shared/lib/theme';
 
 const props = defineProps<{
   data: ChartData;
@@ -18,7 +19,15 @@ const props = defineProps<{
 
 const PALETTE = ['#3b82f6', '#8b5cf6', '#10b981', '#f59e0b', '#ef4444', '#06b6d4'];
 
-function buildOption(data: ChartData): echarts.EChartsOption {
+// ECharts paints into SVG it owns, so the theme has to be passed in as values
+// rather than inherited from CSS.
+const AXIS = {
+  light: { label: '#6b7280', line: '#e5e7eb', split: '#f3f4f6' },
+  dark: { label: '#98989f', line: '#3a3a40', split: '#2e2e33' },
+} as const;
+
+function buildOption(data: ChartData, theme: ResolvedTheme): echarts.EChartsOption {
+  const axis = AXIS[theme];
   const labels = data.series.map((item) => item.label);
   const values = data.series.map((item) => item.value);
 
@@ -28,7 +37,7 @@ function buildOption(data: ChartData): echarts.EChartsOption {
       tooltip: { trigger: 'item', formatter: '{b}: {d}%' },
       legend: {
         bottom: 0,
-        textStyle: { fontSize: 11, color: '#6b7280' },
+        textStyle: { fontSize: 11, color: axis.label },
         icon: 'circle',
         itemWidth: 8,
         itemHeight: 8,
@@ -61,14 +70,14 @@ function buildOption(data: ChartData): echarts.EChartsOption {
     xAxis: {
       type: 'category',
       data: labels,
-      axisLine: { lineStyle: { color: '#e5e7eb' } },
+      axisLine: { lineStyle: { color: axis.line } },
       axisTick: { show: false },
-      axisLabel: { fontSize: 11, color: '#6b7280' },
+      axisLabel: { fontSize: 11, color: axis.label },
     },
     yAxis: {
       type: 'value',
-      splitLine: { lineStyle: { color: '#f3f4f6', type: 'dashed' } },
-      axisLabel: { fontSize: 11, color: '#6b7280' },
+      splitLine: { lineStyle: { color: axis.split, type: 'dashed' } },
+      axisLabel: { fontSize: 11, color: axis.label },
       axisLine: { show: false },
       axisTick: { show: false },
     },
@@ -96,23 +105,31 @@ function buildOption(data: ChartData): echarts.EChartsOption {
 
 const containerRef = ref<HTMLDivElement | null>(null);
 const height = computed(() => (props.data.kind === 'pie' ? 210 : 180));
+const theme = ref<ResolvedTheme>(getResolvedTheme());
 let chart: echarts.ECharts | null = null;
+let unsubscribeTheme: (() => void) | null = null;
 
 function renderChart() {
   if (!containerRef.value) return;
   if (!chart) {
     chart = echarts.init(containerRef.value, null, { renderer: 'svg' });
   }
-  chart.setOption(buildOption(props.data));
+  chart.setOption(buildOption(props.data, theme.value));
 }
 
 onMounted(() => {
   renderChart();
+  unsubscribeTheme = subscribeTheme((next) => {
+    theme.value = next;
+  });
 });
 
 watch(() => props.data, renderChart, { deep: true });
+watch(theme, renderChart);
 
 onBeforeUnmount(() => {
+  unsubscribeTheme?.();
+  unsubscribeTheme = null;
   chart?.dispose();
   chart = null;
 });

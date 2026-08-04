@@ -12,6 +12,30 @@ Page({
     ipAddr: globalData.ipAddr,
     greetCount: 0,
     appVersion: "",
+    appearance: { preference: "auto", resolved: "light" },
+  },
+
+  // The lxapp's own light/dark branch, independent of the host shell. The
+  // preference persists per lxapp, so it is re-read on every show rather than
+  // tracked locally. Guarded because this also runs from onLoad on the app's
+  // first screen: a host that predates lx.appearance must not take it down.
+  _syncAppearance: function () {
+    try {
+      this.setData({ appearance: lx.appearance.get() });
+    } catch (error) {
+      console.warn("[Home] Appearance unavailable:", error);
+    }
+  },
+
+  setAppearance: async function (options: { preference?: "auto" | "light" | "dark" } = {}) {
+    const preference = options.preference || "auto";
+    try {
+      await lx.appearance.set(preference);
+    } catch (error) {
+      console.warn("[Home] Failed to set appearance:", error);
+      lx.showToast({ title: "Appearance unavailable", icon: "none" });
+    }
+    this._syncAppearance();
   },
 
   onReady: function() {
@@ -47,6 +71,7 @@ Page({
 
   onLoad: async function() {
     console.log("[Home] Page loaded");
+    this._syncAppearance();
     try {
       const info = lx.getLxAppInfo();
       const suffix =
@@ -83,6 +108,7 @@ Page({
   onShow: function() {
     console.log("[Home] Page shown");
     console.log("[Home] App data:", app.globalData);
+    this._syncAppearance();
   },
 
   greet: function(option = {}) {

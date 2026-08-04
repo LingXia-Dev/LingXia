@@ -1,6 +1,5 @@
 {
   "navigationBar": {
-    "title": "Location",
-    "style": { "backgroundColor": "#ffffff", "foregroundColor": "#000000" }
+    "title": "Location"
   }
 }

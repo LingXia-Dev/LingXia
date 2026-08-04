@@ -1,6 +1,5 @@
 {
   "navigationBar": {
-    "title": "Bridge Repro",
-    "style": { "backgroundColor": "#FFFFFF", "foregroundColor": "#000000" }
+    "title": "Bridge Repro"
   }
 }

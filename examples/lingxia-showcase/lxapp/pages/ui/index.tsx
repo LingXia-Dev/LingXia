@@ -47,6 +47,7 @@ export default function UIPage() {
     concealTabBar,
     updateTabBarForegrounds,
     updateTabBarItem,
+    setAppearance,
     chooseToastIcon,
     chooseToastPosition,
     showDemoActionSheet,
@@ -67,6 +68,7 @@ export default function UIPage() {
     toastPositionOptions = [],
     surfaceDemo = {},
     chromeError = '',
+    appearance = { preference: 'auto', resolved: 'light' },
   } = data;
 
   const toastIconDisplay = React.useMemo(() => {
@@ -750,6 +752,66 @@ export default function UIPage() {
             </div>
 
 
+          </>
+        )}
+
+        {/* Appearance Demo Section */}
+        {currentType === 'appearance' && (
+          <>
+            <div className="mt-4 mb-3 px-4 text-sm text-gray-500 font-medium">Appearance APIs</div>
+
+            <div className="mx-1 mb-4 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+              <div className="px-4 py-3 border-b border-gray-100">
+                <h3 className="text-base font-medium text-gray-900">Light / Dark</h3>
+                <p className="text-sm text-gray-500 mt-1">
+                  <code className="text-xs">lx.appearance.set()</code> picks this lxapp&apos;s branch
+                  independently of the host shell; the preference persists per lxapp.
+                </p>
+              </div>
+
+              <div className="p-4 space-y-4">
+                <div className="grid grid-cols-3 gap-1.5" data-testid="ui-appearance">
+                  {(['auto', 'light', 'dark'] as const).map((option) => (
+                    <button
+                      key={option}
+                      type="button"
+                      data-testid={`ui-appearance-${option}`}
+                      data-selected={appearance.preference === option}
+                      onClick={() => setAppearance({ preference: option })}
+                      className={`px-2 py-1.5 rounded text-xs font-medium capitalize border transition-colors ${
+                        appearance.preference === option
+                          ? 'bg-blue-500 text-white border-blue-500'
+                          : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                      }`}
+                    >
+                      {option}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="rounded-lg bg-gray-50 border border-gray-100 divide-y divide-gray-100">
+                  <div className="flex items-center justify-between px-3 py-2">
+                    <span className="text-sm text-gray-500">Preference</span>
+                    <span className="text-sm font-medium text-gray-900" data-testid="ui-appearance-preference">
+                      {appearance.preference}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between px-3 py-2">
+                    <span className="text-sm text-gray-500">Resolved</span>
+                    <span className="text-sm font-medium text-gray-900" data-testid="ui-appearance-resolved">
+                      {appearance.resolved}
+                    </span>
+                  </div>
+                </div>
+
+                <p className="text-xs text-gray-400 leading-relaxed">
+                  The runtime projects the resolved branch into every page as{' '}
+                  <code>color-scheme</code> plus <code>data-theme</code> on{' '}
+                  <code>&lt;html&gt;</code>. This app&apos;s Tailwind palette is bound to CSS
+                  variables keyed off that attribute, so pages need no per-element dark variants.
+                </p>
+              </div>
+            </div>
           </>
         )}
 

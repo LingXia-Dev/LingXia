@@ -1,7 +1,6 @@
 {
   "navigationStyle": "default",
   "navigationBar": {
-    "title": "Components",
-    "style": { "backgroundColor": "#ffffff", "foregroundColor": "#000000" }
+    "title": "Components"
   }
 }

@@ -1,6 +1,5 @@
 {
   "navigationBar": {
-    "title": "Stream",
-    "style": { "backgroundColor": "#FFFFFF", "foregroundColor": "#000000" }
+    "title": "Stream"
   }
 }

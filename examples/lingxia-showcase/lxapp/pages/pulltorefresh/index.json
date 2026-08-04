@@ -1,7 +1,6 @@
 {
   "navigationBar": {
-    "title": "Pull Down Refresh",
-    "style": { "backgroundColor": "#ffffff", "foregroundColor": "#000000" }
+    "title": "Pull Down Refresh"
   },
   "enablePullDownRefresh": true
 }

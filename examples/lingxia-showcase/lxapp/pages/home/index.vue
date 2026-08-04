@@ -37,7 +37,7 @@
             type="button"
             @click="handleGreet"
             :disabled="!name.trim() || isSending"
-            class="w-full h-[50px] bg-[#007AFF] hover:bg-[#0066CC] active:bg-[#0055B3] disabled:bg-[#007AFF]/50 disabled:cursor-not-allowed rounded-[12px] text-[17px] text-white font-semibold transition-colors"
+            class="w-full h-[50px] bg-primary hover:bg-primary-dark active:bg-primary-dark disabled:bg-primary/50 disabled:cursor-not-allowed rounded-[12px] text-[17px] text-white font-semibold transition-colors"
           >
             {{ isSending ? 'Sending...' : 'Say Hello' }}
           </button>
@@ -54,6 +54,30 @@
             <p class="text-sm text-green-700 leading-relaxed" data-testid="home-greeting">
               {{ greetingMessage }}
             </p>
+          </div>
+        </div>
+
+        <!-- lxapp-owned light/dark branch — `auto` follows the host shell. -->
+        <div class="mt-4" data-testid="home-appearance">
+          <div class="flex items-center justify-between mb-1.5">
+            <span class="text-[11px] font-medium text-gray-500">Appearance</span>
+            <span class="text-[11px] text-gray-400" data-testid="home-appearance-resolved">
+              {{ resolvedAppearance }}
+            </span>
+          </div>
+          <div class="flex gap-1 p-1 bg-gray-100 rounded-[10px]">
+            <button
+              v-for="option in APPEARANCE_OPTIONS"
+              :key="option"
+              type="button"
+              :data-testid="`home-appearance-${option}`"
+              :data-selected="preference === option"
+              @click="setAppearance({ preference: option })"
+              class="flex-1 h-8 rounded-[8px] text-[13px] font-medium capitalize transition-colors"
+              :class="preference === option ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'"
+            >
+              {{ option }}
+            </button>
           </div>
         </div>
 
@@ -80,20 +104,26 @@ import { ref, computed, watch } from 'vue';
 import { useLxPage } from '@lingxia/vue';
 import '../../tailwind.css';
 
+type AppearancePreference = 'auto' | 'light' | 'dark';
+
 type PageData = {
   greeting?: string;
   imageUrl?: string;
   ipAddr?: string;
   appVersion?: string;
+  appearance?: { preference: AppearancePreference; resolved: 'light' | 'dark' };
 };
 
 type PageActions = {
   data: PageData;
   greet(payload: { name: string }): void;
+  setAppearance(payload: { preference: AppearancePreference }): void;
 };
 
+const APPEARANCE_OPTIONS: AppearancePreference[] = ['auto', 'light', 'dark'];
+
 const { data, actions } = useLxPage();
-const { greet } = actions;
+const { greet, setAppearance } = actions;
 const name = ref('');
 const isSending = ref(false);
 
@@ -101,6 +131,8 @@ const greetingMessage = computed(() => typeof data?.greeting === 'string' ? data
 const ipAddress = computed(() => typeof data?.ipAddr === 'string' ? data.ipAddr : '');
 const imageUrl = computed(() => typeof data?.imageUrl === 'string' ? data.imageUrl : '');
 const appVersion = computed(() => typeof data?.appVersion === 'string' ? data.appVersion : '');
+const preference = computed<AppearancePreference>(() => data?.appearance?.preference ?? 'auto');
+const resolvedAppearance = computed(() => data?.appearance?.resolved ?? 'light');
 
 watch(greetingMessage, (newVal) => {
   if (isSending.value && newVal) {

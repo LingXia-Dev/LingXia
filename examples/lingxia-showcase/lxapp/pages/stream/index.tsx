@@ -3,11 +3,20 @@ import * as echarts from 'echarts';
 import { useLxPage, useLxStream } from '@lingxia/react';
 import type { LxStream } from '@lingxia/bridge';
 import type { Message, ChatChunk, ChartData } from './index';
+import { getResolvedTheme, subscribeTheme, type ResolvedTheme } from '../../shared/lib/theme';
 import '../../tailwind.css';
 
 const PALETTE = ['#3b82f6', '#8b5cf6', '#10b981', '#f59e0b', '#ef4444', '#06b6d4'];
 
-function buildOption(data: ChartData): echarts.EChartsOption {
+// ECharts paints into SVG it owns, so the theme has to be passed in as values
+// rather than inherited from CSS.
+const AXIS = {
+  light: { label: '#6b7280', line: '#e5e7eb', split: '#f3f4f6' },
+  dark: { label: '#98989f', line: '#3a3a40', split: '#2e2e33' },
+} as const;
+
+function buildOption(data: ChartData, theme: ResolvedTheme): echarts.EChartsOption {
+  const axis = AXIS[theme];
   const labels = data.series.map((s) => s.label);
   const values = data.series.map((s) => s.value);
 
@@ -17,7 +26,7 @@ function buildOption(data: ChartData): echarts.EChartsOption {
       tooltip: { trigger: 'item', formatter: '{b}: {d}%' },
       legend: {
         bottom: 0,
-        textStyle: { fontSize: 11, color: '#6b7280' },
+        textStyle: { fontSize: 11, color: axis.label },
         icon: 'circle',
         itemWidth: 8,
         itemHeight: 8,
@@ -50,14 +59,14 @@ function buildOption(data: ChartData): echarts.EChartsOption {
     xAxis: {
       type: 'category',
       data: labels,
-      axisLine: { lineStyle: { color: '#e5e7eb' } },
+      axisLine: { lineStyle: { color: axis.line } },
       axisTick: { show: false },
-      axisLabel: { fontSize: 11, color: '#6b7280' },
+      axisLabel: { fontSize: 11, color: axis.label },
     },
     yAxis: {
       type: 'value',
-      splitLine: { lineStyle: { color: '#f3f4f6', type: 'dashed' } },
-      axisLabel: { fontSize: 11, color: '#6b7280' },
+      splitLine: { lineStyle: { color: axis.split, type: 'dashed' } },
+      axisLabel: { fontSize: 11, color: axis.label },
       axisLine: { show: false },
       axisTick: { show: false },
     },
@@ -85,14 +94,17 @@ function buildOption(data: ChartData): echarts.EChartsOption {
 
 function ChartCard({ data }: { data: ChartData }) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const [theme, setTheme] = useState<ResolvedTheme>(getResolvedTheme);
+
+  useEffect(() => subscribeTheme(setTheme), []);
 
   useEffect(() => {
     if (!containerRef.current) return;
     const chart = echarts.init(containerRef.current, null, { renderer: 'svg' });
-    chart.setOption(buildOption(data));
+    chart.setOption(buildOption(data, theme));
     return () => chart.dispose();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [theme]);
 
   const height = data.kind === 'pie' ? 210 : 180;
 
@@ -121,7 +133,7 @@ function EmptyState() {
   return (
     <div className="flex-1 flex flex-col items-center justify-center gap-3 px-8 text-center">
       <div className="w-16 h-16 rounded-2xl bg-white shadow flex items-center justify-center">
-        <svg viewBox="0 0 24 24" fill="none" className="w-8 h-8" stroke="#2563EB" strokeWidth="1.5">
+        <svg viewBox="0 0 24 24" fill="none" className="w-8 h-8 text-blue-600" stroke="currentColor" strokeWidth="1.5">
           <path
             strokeLinecap="round"
             strokeLinejoin="round"

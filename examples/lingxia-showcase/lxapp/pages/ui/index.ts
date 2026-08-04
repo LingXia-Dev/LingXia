@@ -7,6 +7,7 @@ const NAV_TITLE_MAP = {
   modal: "Modal Demo",
   navbar: "Navigation Bar Demo",
   tabbar: "Tab Bar Demo",
+  appearance: "Appearance Demo",
   surface: "Surface Demo",
 };
 
@@ -67,6 +68,7 @@ Page({
       visible: false,
     },
     chromeError: "",
+    appearance: { preference: "auto", resolved: "light" },
   },
 
   _activeSurface: null,
@@ -85,12 +87,35 @@ Page({
 
     // Update page stack immediately
     this._updatePageStack();
+    this._syncAppearance();
   },
 
   onShow: function () {
     console.log("UI page onShow");
     // Update page stack every time page shows
     this._updatePageStack();
+    this._syncAppearance();
+  },
+
+  // Appearance is part of Page Chrome: the lxapp picks its own light/dark branch
+  // and the runtime projects the resolved one into every page as `color-scheme`
+  // plus `data-theme` on <html>. The preference persists per lxapp, so it is
+  // re-read from the runtime instead of being mirrored in page state.
+  _syncAppearance: function () {
+    try {
+      this.setData({ appearance: lx.appearance.get() });
+    } catch (error) {
+      this.setData({ chromeError: `Appearance unavailable: ${surfaceErrorMessage(error)}` });
+    }
+  },
+
+  setAppearance: async function (options: { preference?: "auto" | "light" | "dark" } = {}) {
+    const preference = options.preference || "auto";
+    const applied = await this._runChromeUpdate("Appearance update", () =>
+      lx.appearance.set(preference),
+    );
+    this._syncAppearance();
+    return applied;
   },
 
   // Update current page stack

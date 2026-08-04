@@ -1,6 +1,5 @@
 {
   "navigationBar": {
-    "title": "Device",
-    "style": { "backgroundColor": "#ffffff", "foregroundColor": "#000000" }
+    "title": "Device"
   }
 }

@@ -1,6 +1,5 @@
 {
   "navigationBar": {
-    "title": "System",
-    "style": { "backgroundColor": "#ffffff", "foregroundColor": "#000000" }
+    "title": "System"
   }
 }

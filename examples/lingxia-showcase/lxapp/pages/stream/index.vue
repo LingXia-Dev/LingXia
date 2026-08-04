@@ -13,7 +13,7 @@
     <div ref="scrollRef" class="flex-1 overflow-y-auto px-4 py-4">
       <div v-if="messages.length === 0 && !chat.streaming.value" class="flex h-full flex-col items-center justify-center gap-3 px-8 text-center">
         <div class="flex h-16 w-16 items-center justify-center rounded-2xl bg-white shadow">
-          <svg viewBox="0 0 24 24" fill="none" class="h-8 w-8" stroke="#2563EB" stroke-width="1.5">
+          <svg viewBox="0 0 24 24" fill="none" class="h-8 w-8 text-blue-600" stroke="currentColor" stroke-width="1.5">
             <path
               stroke-linecap="round"
               stroke-linejoin="round"
