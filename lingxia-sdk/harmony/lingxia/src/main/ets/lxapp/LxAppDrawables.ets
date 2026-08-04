@@ -120,10 +120,10 @@ export struct CapsuleButton {
   onClosePressed?: () => void
   @Prop statusBarHeight: number = SYSTEM_STATUS_BAR_HEIGHT
   @Prop standalone: boolean = false
-  @Prop backgroundColor: number = 0xFFFFFFFF
-  @Prop foregroundColor: number = 0xFF000000
-  @Prop dividerColor: number = 0xFFD1D1D6
-  @Prop interactionColor: number = 0xFFE5E5EA
+  @Prop capsuleBackgroundColor: number = 0xFFFFFFFF
+  @Prop capsuleForegroundColor: number = 0xFF000000
+  @Prop capsuleDividerColor: number = 0xFFD1D1D6
+  @Prop capsuleInteractionColor: number = 0xFFE5E5EA
   @State morePressed: boolean = false
   @State closePressed: boolean = false
 
@@ -165,12 +165,12 @@ export struct CapsuleButton {
   buildCapsuleRow(marginTop: number = 0, marginRight: number = 0): void {
     Row() {
       Button() {
-        ThreeDotsIcon({ color: this.foregroundColor })
+        ThreeDotsIcon({ color: this.capsuleForegroundColor })
       }
       .width(CAPSULE_BUTTON_BUTTON_WIDTH)
       .height(CAPSULE_BUTTON_HEIGHT)
       .padding(0)
-      .backgroundColor(this.morePressed ? argbColor(this.interactionColor) : COLOR_TRANSPARENT)
+      .backgroundColor(this.morePressed ? argbColor(this.capsuleInteractionColor) : COLOR_TRANSPARENT)
       .onTouch((event: TouchEvent) => {
         this.morePressed = event.type === TouchType.Down
       })
@@ -183,15 +183,15 @@ export struct CapsuleButton {
       Column()
         .width(CAPSULE_BUTTON_DIVIDER_WIDTH)
         .height(CAPSULE_BUTTON_DIVIDER_HEIGHT)
-        .backgroundColor(argbColor(this.dividerColor))
+        .backgroundColor(argbColor(this.capsuleDividerColor))
 
       Button() {
-        CloseIcon({ color: this.foregroundColor })
+        CloseIcon({ color: this.capsuleForegroundColor })
       }
       .width(CAPSULE_BUTTON_BUTTON_WIDTH)
       .height(CAPSULE_BUTTON_HEIGHT)
       .padding(0)
-      .backgroundColor(this.closePressed ? argbColor(this.interactionColor) : COLOR_TRANSPARENT)
+      .backgroundColor(this.closePressed ? argbColor(this.capsuleInteractionColor) : COLOR_TRANSPARENT)
       .onTouch((event: TouchEvent) => {
         this.closePressed = event.type === TouchType.Down
       })
@@ -205,11 +205,11 @@ export struct CapsuleButton {
       left: CAPSULE_BUTTON_EDGE_PADDING,
       right: CAPSULE_BUTTON_EDGE_PADDING
     })
-    .backgroundColor(argbColor(this.backgroundColor))
+    .backgroundColor(argbColor(this.capsuleBackgroundColor))
     .borderRadius(CAPSULE_BUTTON_BORDER_RADIUS)
     .border({
       width: CAPSULE_BUTTON_BORDER_WIDTH,
-      color: argbColor(this.dividerColor)
+      color: argbColor(this.capsuleDividerColor)
     })
     .margin({
       top: marginTop,

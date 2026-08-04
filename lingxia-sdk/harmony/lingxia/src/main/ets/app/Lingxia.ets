@@ -1,7 +1,7 @@
 import { window } from '@kit.ArkUI';
 import { webview } from '@kit.ArkWeb';
 import { i18n } from '@kit.LocalizationKit';
-import { Want, ConfigurationConstant } from '@kit.AbilityKit';
+import { Want, Configuration, ConfigurationConstant, EnvironmentCallback } from '@kit.AbilityKit';
 import common from '@ohos.app.ability.common';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { LxApp } from '../lxapp/LxApp';
@@ -54,7 +54,7 @@ export class Lingxia {
   // (file/share/scan/media/push) — lxapp code reads these, never owns them.
   public static context: common.UIAbilityContext | null = null;
   public static windowStage: window.WindowStage | null = null;
-  private static environmentCallback: common.EnvironmentCallback | null = null;
+  private static environmentCallback: EnvironmentCallback | null = null;
 
   /**
    * Product-app entry point. Initializes the runtime for use with `LxAppNavigation`.
@@ -155,8 +155,8 @@ export class Lingxia {
     if (Lingxia.environmentCallback !== null) {
       return;
     }
-    const callback: common.EnvironmentCallback = {
-      onConfigurationUpdated: (config): void => {
+    const callback: EnvironmentCallback = {
+      onConfigurationUpdated: (config: Configuration): void => {
         const dark = config.colorMode === ConfigurationConstant.ColorMode.COLOR_MODE_DARK;
         onHostAppearanceChanged(dark);
       },
