@@ -150,6 +150,9 @@ mod bridge {
         #[swift_bridge(swift_name = "launchHomeControlLogic")]
         fn launch_home_control_logic() -> bool;
 
+        #[swift_bridge(swift_name = "ensureHostSurfaceOwner")]
+        fn ensure_host_surface_owner() -> String;
+
         #[swift_bridge(swift_name = "getDisplayLanguage")]
         fn get_display_language() -> String;
 
@@ -756,6 +759,18 @@ pub fn launch_home_control_logic() -> bool {
             Err(error) => {
                 log::error!("Failed to launch home control Logic: {error}");
                 false
+            }
+        }
+    })
+}
+
+pub fn ensure_host_surface_owner() -> String {
+    ffi_catch_unwind!("ensure_host_surface_owner", String::new(), || {
+        match lxapp::ensure_host_surface_owner() {
+            Ok(owner) => owner.appid.clone(),
+            Err(error) => {
+                log::error!("Failed to initialize host surface owner: {error}");
+                String::new()
             }
         }
     })

@@ -42,12 +42,15 @@ pub(super) fn prepare_home_app_bundle(
     progress_override: Option<&str>,
     dev: bool,
     cache: &mut HostAssetsCache,
-) -> Result<PreparedResourceBundle> {
+) -> Result<Option<PreparedResourceBundle>> {
     let app = config
         .app
         .as_ref()
         .ok_or_else(|| anyhow!("Missing app settings in {}", HOST_CONFIG_FILE))?;
-    if let Some(bundle) = resource_bundle_for_app_id(config, &app.home_app_id)
+    let Some(home_app_id) = app.home_app_id.as_deref() else {
+        return Ok(None);
+    };
+    if let Some(bundle) = resource_bundle_for_app_id(config, home_app_id)
         && resource_bundle_has_source(bundle)
     {
         println!("{}", "Preparing home LxApp bundle...".bold());
@@ -60,12 +63,13 @@ pub(super) fn prepare_home_app_bundle(
             progress_override,
             dev,
             cache,
-        );
+        )
+        .map(Some);
     }
 
     Err(anyhow!(
         "app.homeAppId '{}' requires a matching resources.bundles entry with path or package",
-        app.home_app_id
+        home_app_id
     ))
 }
 
@@ -81,7 +85,7 @@ pub(super) fn prepare_resource_lxapp_bundles(
     let home_app_id = config
         .app
         .as_ref()
-        .map(|app| app.home_app_id.as_str())
+        .and_then(|app| app.home_app_id.as_deref())
         .unwrap_or_default();
     let Some(resources) = config.resources.as_ref() else {
         return Ok(Vec::new());

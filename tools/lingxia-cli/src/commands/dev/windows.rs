@@ -58,7 +58,10 @@ pub(super) fn execute_windows(ctx: DevContext) -> Result<()> {
         let windows_build_dir = platform::windows::resolve_windows_build_dir(&ctx.project_root)?;
         let staged_icon = crate::platform::windows::env_icon::stage_dev_badged_icon(
             &platform::windows::resolve_windows_assets_dir(&ctx.project_root)?,
-            ctx.config.app.as_ref().map(|app| app.home_app_id.as_str()),
+            ctx.config
+                .app
+                .as_ref()
+                .and_then(|app| app.home_app_id.as_deref()),
             &windows_build_dir
                 .join("overlay")
                 .join(ctx.resolved_env.version.as_str()),

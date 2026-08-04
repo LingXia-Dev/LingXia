@@ -384,9 +384,9 @@ pub fn install_default_windows_host() {
 fn present_default_host(lxapp_id: Option<&str>, asset_dir: &Path) -> Result<()> {
     #[cfg(feature = "shell-chrome")]
     if let Some(lxapp_id) = lxapp_id {
-        shell::set_home_app_id(lxapp_id);
+        shell::set_shell_owner_app_id(lxapp_id);
     }
-    if let Some(icon_path) = lxapp_id.and_then(|app_id| resolve_app_icon_path(asset_dir, app_id)) {
+    if let Some(icon_path) = resolve_app_icon_path(asset_dir, lxapp_id) {
         app_icon::set_app_icon_from_path(&icon_path).map_err(|message| {
             WindowsHostError::AppIcon {
                 path: icon_path,
@@ -434,49 +434,64 @@ pub fn start_default_host(app: WindowsApp) -> Result<WindowsHost> {
     let runtime = init_runtime(app)?;
     let configured_lxapp = runtime.lxapp_id();
     present_default_host(configured_lxapp, &asset_dir)?;
-    if let Some(owner) = configured_lxapp {
-        register_generated_native_asides(&asset_dir, owner)?;
-    }
     let content =
         match content {
             WindowsContent::LxApp => {
                 let mains = generated_main_surfaces(&asset_dir, configured_lxapp)?;
-                if let Some(owner) = configured_lxapp {
-                    register_generated_mains(owner, &mains.items)?;
-                }
+                let owner = match configured_lxapp {
+                    Some(owner) => owner.to_string(),
+                    None => lxapp::ensure_host_surface_owner()
+                        .map_err(|error| WindowsHostError::InvalidUi(error.to_string()))?
+                        .appid
+                        .clone(),
+                };
+                #[cfg(feature = "shell-chrome")]
+                shell::set_shell_owner_app_id(&owner);
+                register_generated_native_asides(&asset_dir, &owner)?;
+                register_generated_mains(&owner, &mains.items)?;
                 match mains.initial_surface_id.as_deref().and_then(|initial_id| {
                     mains.items.iter().find(|surface| surface.id == initial_id)
                 }) {
                     Some(main) => {
-                        let owner = configured_lxapp.ok_or(WindowsHostError::MissingLxApp)?;
                         let mounted = match &main.content {
                             lingxia_surface::SurfaceContent::Lxapp { app_id, .. } => {
+                                if configured_lxapp.is_none() {
+                                    return Err(WindowsHostError::InvalidUi(
+                                        "an lxapp main requires app.homeAppId".to_string(),
+                                    ));
+                                }
                                 open_home_app(app_id).map_err(WindowsHostError::OpenLxApp)?;
-                                if app_id != owner {
+                                if configured_lxapp.is_some_and(|home| app_id != home) {
                                     lingxia::windows::launch_home_control_logic()?;
                                 }
                                 MountedContent::LxApp(app_id.clone())
                             }
                             lingxia_surface::SurfaceContent::Browser { initial_url, .. } => {
-                                open_declared_browser(owner, &main.id, initial_url)
+                                open_declared_browser(&owner, &main.id, initial_url)
                                     .map_err(WindowsHostError::OpenBrowser)?;
-                                lingxia::windows::launch_home_control_logic()?;
+                                if configured_lxapp.is_some() {
+                                    lingxia::windows::launch_home_control_logic()?;
+                                }
                                 MountedContent::Browser
                             }
                             lingxia_surface::SurfaceContent::Native { capability, .. }
                                 if capability == "terminal" =>
                             {
-                                open_declared_terminal(owner, &main.id)
+                                open_declared_terminal(&owner, &main.id)
                                     .map_err(WindowsHostError::OpenTerminal)?;
-                                lingxia::windows::launch_home_control_logic()?;
+                                if configured_lxapp.is_some() {
+                                    lingxia::windows::launch_home_control_logic()?;
+                                }
                                 MountedContent::Terminal
                             }
                             lingxia_surface::SurfaceContent::Native { capability, .. }
                                 if capability == "browser" =>
                             {
-                                open_declared_browser(owner, &main.id, "about:blank")
+                                open_declared_browser(&owner, &main.id, "about:blank")
                                     .map_err(WindowsHostError::OpenBrowser)?;
-                                lingxia::windows::launch_home_control_logic()?;
+                                if configured_lxapp.is_some() {
+                                    lingxia::windows::launch_home_control_logic()?;
+                                }
                                 MountedContent::Browser
                             }
                             other => {
@@ -488,7 +503,9 @@ pub fn start_default_host(app: WindowsApp) -> Result<WindowsHost> {
                         Some(mounted)
                     }
                     None => {
-                        lingxia::windows::launch_home_control_logic()?;
+                        if configured_lxapp.is_some() {
+                            lingxia::windows::launch_home_control_logic()?;
+                        }
                         None
                     }
                 }
@@ -661,7 +678,7 @@ pub fn quick_start() -> Result<i32> {
 }
 
 #[cfg(all(target_os = "windows", feature = "runtime"))]
-fn resolve_app_icon_path(asset_dir: &Path, home_app_id: &str) -> Option<PathBuf> {
+fn resolve_app_icon_path(asset_dir: &Path, home_app_id: Option<&str>) -> Option<PathBuf> {
     // `lingxia dev` stages a badged copy of the launcher icon and points this
     // env var at it, so dev/preview builds show the env badge without the CLI
     // mutating the prepared assets dir. Takes priority over the asset lookup.
@@ -670,18 +687,18 @@ fn resolve_app_icon_path(asset_dir: &Path, home_app_id: &str) -> Option<PathBuf>
     {
         return Some(path);
     }
-    [
-        // Host-owned icon: the CLI stages a badged copy here for dev/preview
-        // builds. Preferred over the lxapp's served public asset so env badges
-        // never leak into the app's own UI (the home page renders that asset).
-        asset_dir.join("AppIcon.png"),
-        asset_dir
-            .join(home_app_id)
-            .join("public")
-            .join("AppIcon.png"),
-    ]
-    .into_iter()
-    .find(|path| path.is_file())
+    let host_icon = asset_dir.join("AppIcon.png");
+    if host_icon.is_file() {
+        return Some(host_icon);
+    }
+    home_app_id
+        .map(|home_app_id| {
+            asset_dir
+                .join(home_app_id)
+                .join("public")
+                .join("AppIcon.png")
+        })
+        .filter(|path| path.is_file())
 }
 
 #[cfg(all(target_os = "windows", feature = "runtime"))]

@@ -516,7 +516,7 @@ fn set_shell_owner_appid(appid: &str) {
     }
 }
 
-pub(crate) fn set_home_app_id(appid: &str) {
+pub(crate) fn set_shell_owner_app_id(appid: &str) {
     set_shell_owner_appid(appid);
 }
 

@@ -65,10 +65,11 @@ pub use runtime_bootstrap::runner_active as is_runner;
 pub use runtime_bootstrap::{automation_auto_grant, set_automation_auto_grant};
 pub use runtime_ops::{
     close_lxapp, create_page_instance, dispose_page_instance, dispose_page_instance_by_id,
-    ensure_builtin_lxapp, ensure_lxapp, get_current_lxapp, installed_lxapp_path, is_lxapp_open,
-    is_pull_down_refresh_enabled, list_lxapps, mark_lxapp_active, notify_lxapp_host_visibility,
-    notify_page_host_visibility, notify_page_instance, notify_page_instance_by_id, on_low_memory,
-    open_lxapp, restart_lxapp, touch_page_instance_by_id, uninstall_lxapp,
+    ensure_builtin_lxapp, ensure_host_surface_owner, ensure_lxapp, get_current_lxapp,
+    installed_lxapp_path, is_lxapp_open, is_pull_down_refresh_enabled, list_lxapps,
+    mark_lxapp_active, notify_lxapp_host_visibility, notify_page_host_visibility,
+    notify_page_instance, notify_page_instance_by_id, on_low_memory, open_lxapp, restart_lxapp,
+    touch_page_instance_by_id, uninstall_lxapp,
 };
 pub(crate) use runtime_registry::get_lxapps_manager;
 pub use runtime_registry::{
@@ -177,6 +178,10 @@ pub fn register_builtin_asset_bundle(appid: impl Into<String>) {
 pub fn register_synthetic_lxapp(appid: impl Into<String>) {
     register_lxapp_bundle_source(appid, LxAppBundleSource::Synthetic);
 }
+
+/// SDK-internal, content-less owner for a desktop host surface graph when the
+/// product does not configure a home lxapp.
+pub const HOST_SURFACE_OWNER_APP_ID: &str = "app.lingxia.host-surface-owner";
 
 pub fn register_dev_bundle_source(appid: impl Into<String>, root: impl Into<PathBuf>) {
     register_lxapp_bundle_source(appid, LxAppBundleSource::DevPath { root: root.into() });

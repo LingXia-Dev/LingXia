@@ -31,7 +31,7 @@ fn lingxia_id_is_not_suffixed_by_env() {
             lingxia_id: Some("app.lingxia.demo".into()),
             package_id_suffix: None,
             platforms: vec!["macos".into()],
-            home_app_id: "demo-home".into(),
+            home_app_id: Some("demo-home".into()),
         }),
         android: None,
         ios: None,
@@ -74,7 +74,7 @@ fn generated_app_json_excludes_ui_fields() {
             lingxia_id: Some("demo".into()),
             package_id_suffix: None,
             platforms: vec!["macos".into()],
-            home_app_id: "demo-home".into(),
+            home_app_id: Some("demo-home".into()),
         }),
         android: None,
         ios: None,
@@ -104,6 +104,20 @@ fn generated_app_json_excludes_ui_fields() {
 }
 
 #[test]
+fn generated_app_json_omits_home_identity_for_native_host() {
+    let mut config = LingXiaConfig::new_android("demo", "com.example.demo", "demo-home");
+    let app = config.app.as_mut().unwrap();
+    app.platforms = vec!["windows".into()];
+    app.home_app_id = None;
+
+    let app_json = build_app_json_from_config(&config, None, None, &test_resolved_env()).unwrap();
+    let value: serde_json::Value = serde_json::from_str(&app_json).unwrap();
+
+    assert!(value.get("homeAppId").is_none());
+    assert!(value.get("homeAppVersion").is_none());
+}
+
+#[test]
 fn generated_app_json_includes_dev_ws_url_when_configured() {
     let config = LingXiaConfig {
         app: Some(HostAppConfig {
@@ -115,7 +129,7 @@ fn generated_app_json_includes_dev_ws_url_when_configured() {
             lingxia_id: None,
             package_id_suffix: None,
             platforms: vec!["android".into()],
-            home_app_id: "demo-home".into(),
+            home_app_id: Some("demo-home".into()),
         }),
         android: None,
         ios: None,
@@ -161,7 +175,7 @@ fn generated_app_json_includes_app_link_hosts() {
             lingxia_id: None,
             package_id_suffix: None,
             platforms: vec!["android".into()],
-            home_app_id: "demo-home".into(),
+            home_app_id: Some("demo-home".into()),
         }),
         android: None,
         ios: None,
@@ -199,7 +213,7 @@ fn generated_app_json_includes_capabilities() {
             lingxia_id: None,
             package_id_suffix: None,
             platforms: vec!["android".into()],
-            home_app_id: "demo-home".into(),
+            home_app_id: Some("demo-home".into()),
         }),
         android: None,
         ios: None,

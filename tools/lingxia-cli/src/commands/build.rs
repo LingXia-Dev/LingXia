@@ -641,7 +641,10 @@ fn assemble_windows_dist(
         // build distinguishably. The badge goes on a host-owned icon at the
         // asset root, NOT the lxapp's served `<home>/public/AppIcon.png` (that
         // is app content the home page renders).
-        let home_app_id = config.app.as_ref().map(|app| app.home_app_id.as_str());
+        let home_app_id = config
+            .app
+            .as_ref()
+            .and_then(|app| app.home_app_id.as_deref());
         let host_icon_badged = crate::platform::windows::env_icon::stage_dist_host_icon(
             &dist_assets,
             home_app_id,
