@@ -841,8 +841,14 @@ fn resolve_lxapp_dir(project_root: &Path) -> Result<PathBuf> {
     let home_app_id = config
         .app
         .as_ref()
-        .map(|app| app.home_app_id.as_str())
-        .ok_or_else(|| anyhow!("Missing app settings in lingxia.yaml"))?;
+        .ok_or_else(|| anyhow!("Missing app settings in lingxia.yaml"))?
+        .home_app_id
+        .as_deref()
+        .ok_or_else(|| {
+            anyhow!(
+                "this host has no local control lxapp; `lxdev lxapp reload` requires app.homeAppId"
+            )
+        })?;
     let path = config
         .resources
         .as_ref()

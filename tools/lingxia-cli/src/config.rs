@@ -885,6 +885,50 @@ fn validate_app_platforms(app: &HostAppConfig) -> Result<Vec<String>> {
     Ok(platforms)
 }
 
+fn validate_host_without_home_lxapp(
+    config: &LingXiaConfig,
+    app_platforms: &[String],
+) -> Result<()> {
+    if let Some(platform) = app_platforms
+        .iter()
+        .find(|platform| !DESKTOP_SURFACE_PLATFORMS.contains(&platform.as_str()))
+    {
+        return Err(anyhow!(
+            "app.homeAppId is required for {platform}; hosts without a home lxapp are currently supported only on macOS and Windows"
+        ));
+    }
+    if config.app_service_enabled() {
+        return Err(anyhow!(
+            "features.appService must be false when app.homeAppId is omitted"
+        ));
+    }
+    let surfaces = config.surfaces.as_deref().ok_or_else(|| {
+        anyhow!(
+            "surfaces is required when app.homeAppId is omitted; declare native: terminal or native: browser as the main surface"
+        )
+    })?;
+    for platform in app_platforms {
+        let mains = surfaces
+            .iter()
+            .filter(|surface| {
+                surface.role == SurfaceRole::Main && surface_available_for_target(surface, platform)
+            })
+            .collect::<Vec<_>>();
+        if mains.len() != 1 {
+            return Err(anyhow!(
+                "surfaces: {platform} requires exactly one native main when app.homeAppId is omitted"
+            ));
+        }
+        let SurfaceContent::Native(name) = mains[0].content()? else {
+            return Err(anyhow!(
+                "surfaces: {platform} main must be native: terminal or native: browser when app.homeAppId is omitted"
+            ));
+        };
+        NativeSurfaceName::parse(name)?;
+    }
+    Ok(())
+}
+
 fn validate_surface_platforms(surfaces: &[SurfaceDecl], app_platforms: &[String]) -> Result<()> {
     let app_platform_set: HashSet<&str> = app_platforms.iter().map(String::as_str).collect();
 
@@ -994,8 +1038,12 @@ pub struct HostAppConfig {
     /// Platforms to build for this app (e.g. ["android"]).
     pub platforms: Vec<String>,
 
+    /// Product control lxapp. Desktop hosts whose main surface is fully native
+    /// may omit it; mobile hosts still require one.
+    #[serde(default)]
     #[serde(rename = "homeAppId")]
-    pub home_app_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub home_app_id: Option<String>,
 }
 
 /// Cloud server config. `Single("...")` applies the same URL to every env;
@@ -1520,7 +1568,7 @@ impl LingXiaConfig {
                 lingxia_id: None,
                 package_id_suffix: None,
                 platforms: vec!["android".to_string()],
-                home_app_id: home_app_id.to_string(),
+                home_app_id: Some(home_app_id.to_string()),
             }),
             android: Some(AndroidConfig {
                 package_id: package_id.to_string(),
@@ -1579,7 +1627,7 @@ impl LingXiaConfig {
             .map(|capabilities| capabilities.terminal)
             .unwrap_or(false);
         let browser_enabled = self.browser_enabled();
-        let home_app_id = app.home_app_id.trim();
+        let home_app_id = app.home_app_id.as_deref().unwrap_or_default().trim();
         let first_platform = app_platforms
             .first()
             .ok_or_else(|| anyhow!("app.platforms must not be empty"))?;
@@ -1600,13 +1648,13 @@ impl LingXiaConfig {
         let app = self
             .app
             .as_ref()
-            .ok_or_else(|| anyhow!("surfaces requires app.homeAppId"))?;
+            .ok_or_else(|| anyhow!("surfaces requires app.platforms"))?;
         surfaces_to_ui_for_target(
             surfaces,
             self.terminal_enabled(platform),
             self.browser_enabled(),
             platform,
-            app.home_app_id.trim(),
+            app.home_app_id.as_deref().unwrap_or_default().trim(),
         )
         .map(Some)
     }
@@ -1641,16 +1689,20 @@ impl LingXiaConfig {
                     "capabilities.process is supported only by macOS and Windows hosts"
                 ));
             }
-            let home_app_id = app.home_app_id.trim();
-            if home_app_id.is_empty() {
-                return Err(anyhow!("app.homeAppId must not be empty"));
+            let home_app_id = app.home_app_id.as_deref().map(str::trim);
+            if home_app_id.is_some_and(str::is_empty) {
+                return Err(anyhow!("app.homeAppId must not be empty when set"));
             }
-            if is_sdk_reserved_app_id(home_app_id) {
+            if let Some(home_app_id) = home_app_id
+                && is_sdk_reserved_app_id(home_app_id)
+            {
                 return Err(anyhow!(
-                    "app.homeAppId '{}' is an SDK-reserved appId. Pick a different id \
-                     for your home app (e.g. the project's reverse-domain identifier).",
-                    app.home_app_id
+                    "app.homeAppId '{home_app_id}' is an SDK-reserved appId. Pick a different id \
+                     for your home app (e.g. the project's reverse-domain identifier)."
                 ));
+            }
+            if home_app_id.is_none() {
+                validate_host_without_home_lxapp(self, &app_platforms)?;
             }
             if let Some(server) = app.lingxia_server.as_ref() {
                 validate_lingxia_server(server)?;
@@ -1836,7 +1888,10 @@ fn optional_non_empty_str(value: Option<&Value>) -> Option<String> {
 /// Source of truth for each entry (kept in sync manually to avoid pulling the
 /// full browser runtime into the CLI build):
 /// - `crate::host_assets::BROWSER_SHELL_WEBUI_APP_ID` mirrors `lingxia_browser::BUILTIN_BROWSER_APPID`.
-const SDK_RESERVED_APP_IDS: &[&str] = &[crate::host_assets::BROWSER_SHELL_WEBUI_APP_ID];
+const SDK_RESERVED_APP_IDS: &[&str] = &[
+    crate::host_assets::BROWSER_SHELL_WEBUI_APP_ID,
+    "app.lingxia.host-surface-owner",
+];
 
 fn is_sdk_reserved_app_id(app_id: &str) -> bool {
     SDK_RESERVED_APP_IDS.contains(&app_id)
@@ -2420,7 +2475,7 @@ mod tests {
         let parsed: LingXiaConfig = yaml::from_str(&yaml).unwrap();
         let app = parsed.app.unwrap();
         assert_eq!(app.product_name, "my-app");
-        assert_eq!(app.home_app_id, "my-app");
+        assert_eq!(app.home_app_id.as_deref(), Some("my-app"));
         assert_eq!(parsed.android.unwrap().package_id, "com.example.myapp");
         let resources = parsed.resources.unwrap();
         assert_eq!(resources.bundles[0].app_id, "my-app");
@@ -3804,6 +3859,99 @@ surfaces:
         assert_eq!(windows["launch"]["initialSurface"], "terminal");
         assert_eq!(windows["surfaces"][0]["content"]["kind"], "native");
         assert_eq!(windows["surfaces"][0]["content"]["name"], "terminal");
+    }
+
+    #[test]
+    fn desktop_native_main_accepts_omitted_home_lxapp() {
+        let yaml = r#"
+app:
+  projectName: demo
+  productName: Demo
+  productVersion: 0.1.0
+  platforms: [macos, windows]
+features:
+  appService: false
+capabilities:
+  terminal: true
+surfaces:
+  - native: terminal
+    role: main
+    launch: true
+"#;
+
+        let config = load_config_yaml(yaml).unwrap();
+        assert!(config.app.unwrap().home_app_id.is_none());
+    }
+
+    #[test]
+    fn host_without_home_rejects_mobile_targets() {
+        let yaml = r#"
+app:
+  projectName: demo
+  productName: Demo
+  productVersion: 0.1.0
+  platforms: [windows, android]
+features:
+  appService: false
+capabilities:
+  terminal: true
+surfaces:
+  - native: terminal
+    role: main
+    launch: true
+    platforms: [windows]
+"#;
+
+        let error = load_config_yaml(yaml).unwrap_err().to_string();
+        assert!(
+            error.contains("homeAppId is required for android"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn host_without_home_rejects_app_service() {
+        let yaml = r#"
+app:
+  projectName: demo
+  productName: Demo
+  productVersion: 0.1.0
+  platforms: [windows]
+capabilities:
+  browser: true
+surfaces:
+  - native: browser
+    role: main
+    launch: true
+"#;
+
+        let error = load_config_yaml(yaml).unwrap_err().to_string();
+        assert!(
+            error.contains("features.appService must be false"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn host_without_home_rejects_non_native_main() {
+        let yaml = r#"
+app:
+  projectName: demo
+  productName: Demo
+  productVersion: 0.1.0
+  platforms: [windows]
+features:
+  appService: false
+capabilities:
+  browser: true
+surfaces:
+  - url: https://example.com
+    role: main
+    launch: true
+"#;
+
+        let error = load_config_yaml(yaml).unwrap_err().to_string();
+        assert!(error.contains("main must be native"), "{error}");
     }
 
     #[test]

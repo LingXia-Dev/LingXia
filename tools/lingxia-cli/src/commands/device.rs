@@ -191,7 +191,7 @@ mod tests {
                     "harmony".into(),
                     "windows".into(),
                 ],
-                home_app_id: "demo-home".into(),
+                home_app_id: Some("demo-home".into()),
             }),
             android: Some(AndroidConfig {
                 package_id: "com.example.demo".into(),

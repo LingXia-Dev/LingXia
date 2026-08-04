@@ -34,6 +34,14 @@ pub fn ensure_builtin_lxapp(appid: &str) -> Result<Arc<LxApp>, LxAppError> {
     Ok(app)
 }
 
+/// Ensure the SDK's content-less desktop surface owner exists. It provides a
+/// runtime/session identity for the shared surface graph and managed providers;
+/// it is not a product lxapp and never opens a page or Logic worker.
+pub fn ensure_host_surface_owner() -> Result<Arc<LxApp>, LxAppError> {
+    register_synthetic_lxapp(HOST_SURFACE_OWNER_APP_ID);
+    ensure_builtin_lxapp(HOST_SURFACE_OWNER_APP_ID)
+}
+
 pub fn open_lxapp(appid: &str, options: LxAppStartupOptions) -> Result<Arc<LxApp>, LxAppError> {
     let manager = super::runtime_registry::get_lxapps_manager()
         .ok_or_else(|| LxAppError::Runtime("LxApps manager not initialized".to_string()))?;
@@ -50,6 +58,7 @@ pub fn list_lxapps() -> Vec<LxAppRuntimeInfo> {
     let mut apps: Vec<LxAppRuntimeInfo> = manager
         .lxapps
         .iter()
+        .filter(|entry| entry.key().as_str() != HOST_SURFACE_OWNER_APP_ID)
         .map(|entry| entry.value().runtime_info())
         .collect();
     apps.sort_by(|a, b| a.appid.cmp(&b.appid));

@@ -115,10 +115,7 @@ final class LxAppMacAppUIRuntime: NSObject {
     nonisolated(unsafe) private var appActivationObserver: NSObjectProtocol?
     private var handlingAppActivation = false
 
-    private var graphOwnerAppId: String? {
-        let appId = rootSurface.content.appId ?? appConfig.homeAppId
-        return appId?.isEmpty == false ? appId : nil
-    }
+    private let graphOwnerAppId: String?
 
     init(
         bundleConfig: LxAppGeneratedBundleConfig,
@@ -141,6 +138,13 @@ final class LxAppMacAppUIRuntime: NSObject {
         self.sidebarActivators = validation.sidebarActivators
         self.toolbarActivators = validation.toolbarActivators
         self.titlebarActivators = validation.titlebarActivators
+        if let appId = validation.rootSurface.content.appId ?? bundleConfig.app.homeAppId,
+           !appId.isEmpty {
+            self.graphOwnerAppId = appId
+        } else {
+            let ownerAppId = ensureHostSurfaceOwner().toString()
+            self.graphOwnerAppId = ownerAppId.isEmpty ? nil : ownerAppId
+        }
 
         super.init()
 
@@ -224,7 +228,9 @@ final class LxAppMacAppUIRuntime: NSObject {
         // Opening an lxapp already starts its worker and dispatches App.onLaunch.
         // Starting it again here races the asynchronous page-stack setup and can
         // expose a Logic-ready app with no current page to automation clients.
-        if !opensLxAppOnLaunch && !launchHomeControlLogic() {
+        if !opensLxAppOnLaunch,
+           appConfig.homeAppId?.isEmpty == false,
+           !launchHomeControlLogic() {
             LXLog.error("Home control Logic failed to launch", category: "MacAppUI")
         }
     }

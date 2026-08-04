@@ -110,7 +110,9 @@ pub(crate) use runtime::handle_menu_bar_surface_action;
 pub(crate) use runtime::open_declared_browser;
 #[cfg(feature = "terminal-runtime")]
 pub(crate) use runtime::open_declared_terminal;
-pub(crate) use runtime::{open_home_app, open_self_browser, set_home_app_id, update_surface_width};
+pub(crate) use runtime::{
+    open_home_app, open_self_browser, set_shell_owner_app_id, update_surface_width,
+};
 
 pub fn set_windows_default_shell_tabbar_position(position: WindowsShellTabBarPosition) {
     runtime::set_default_tabbar_position(position);

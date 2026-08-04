@@ -173,7 +173,7 @@ mod tests {
         let lingxia: LingXiaConfig = serde_yaml_ng::from_str(&yaml).unwrap();
         let app = lingxia.app.as_ref().expect("app config should exist");
         assert_eq!(app.product_name, "Demo: App");
-        assert_eq!(app.home_app_id, "lingxia.lxapp.demo");
+        assert_eq!(app.home_app_id.as_deref(), Some("lingxia.lxapp.demo"));
         // lingxiaId defaults to the namespaced host publish id.
         assert_eq!(app.lingxia_id.as_deref(), Some("lingxia.app.demo"));
         let storage = lingxia

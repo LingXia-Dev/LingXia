@@ -65,7 +65,10 @@ pub(super) fn build_app_json_from_config(
     );
 
     if let Some(home_bundle) = home_bundle {
-        obj.insert("homeAppId".to_string(), serde_json::json!(app.home_app_id));
+        let home_app_id = app.home_app_id.as_deref().ok_or_else(|| {
+            anyhow!("prepared a home lxapp bundle but app.homeAppId is not configured")
+        })?;
+        obj.insert("homeAppId".to_string(), serde_json::json!(home_app_id));
         obj.insert(
             "homeAppVersion".to_string(),
             serde_json::json!(home_bundle.version.as_str()),

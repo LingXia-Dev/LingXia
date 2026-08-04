@@ -58,7 +58,7 @@ pub(crate) fn native_client_out_for_host_project(
     let Some(bundle) = resources
         .bundles
         .iter()
-        .find(|bundle| bundle.app_id == app.home_app_id)
+        .find(|bundle| app.home_app_id.as_deref() == Some(bundle.app_id.as_str()))
     else {
         return Ok(None);
     };

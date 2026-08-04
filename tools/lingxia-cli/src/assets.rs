@@ -190,7 +190,10 @@ pub(crate) fn prepare_configured_host_assets(
         dev,
         &mut cache,
     )?;
-    let mut prepared_bundles = vec![home_bundle];
+    let app_json =
+        build_app_json_from_config(config, home_bundle.as_ref(), dev_ws_url, resolved_env)?;
+    let app_json_hash = sha256_hex(app_json.as_bytes());
+    let mut prepared_bundles = home_bundle.into_iter().collect::<Vec<_>>();
     prepared_bundles.extend(prepare_resource_lxapp_bundles(
         project_root,
         config,
@@ -209,9 +212,6 @@ pub(crate) fn prepare_configured_host_assets(
             &mut cache,
         )?);
     }
-    let app_json =
-        build_app_json_from_config(config, prepared_bundles.first(), dev_ws_url, resolved_env)?;
-    let app_json_hash = sha256_hex(app_json.as_bytes());
     let prepared_app_ui_icons = prepare_app_ui_icons(project_root, config)?;
 
     let has_android = platforms
