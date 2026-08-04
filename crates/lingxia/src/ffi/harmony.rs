@@ -10,22 +10,6 @@ use napi_derive_ohos::napi;
 use napi_ohos::bindgen_prelude::Object;
 use napi_ohos::bindgen_prelude::*;
 
-/// Parses a color string (e.g., "#RRGGBB" or "transparent") into a u32 ARGB value for Harmony.
-fn parse_color_to_u32(color_str: &str, default_color: u32) -> u32 {
-    if color_str.eq_ignore_ascii_case("transparent") {
-        return 0x00000000;
-    }
-
-    if color_str.starts_with('#')
-        && color_str.len() == 7
-        && let Ok(rgb) = u32::from_str_radix(&color_str[1..], 16)
-    {
-        return 0xFF000000 | rgb; // Add full alpha
-    }
-
-    default_color
-}
-
 /// NAPI-compatible LxApp information
 #[napi(object)]
 pub struct LxAppInfo {
@@ -447,14 +431,7 @@ pub fn get_navigation_bar_state(appid: String, path: String) -> Option<Navigatio
         let rust_state = lxapp.get_navbar_state(&path);
         let style = lxapp.resolved_navigation_bar_style(&path);
         let capsule = lxapp.resolved_capsule_style();
-        let foreground = style.foreground_color.rgba() >> 8;
-        let text_style =
-            if ((foreground >> 16) & 0xff) + ((foreground >> 8) & 0xff) + (foreground & 0xff) < 384
-            {
-                "black"
-            } else {
-                "white"
-            };
+        let text_style = style.foreground_text_style();
 
         NavigationBarState {
             navigation_bar_background_color: style.background_color.argb(),

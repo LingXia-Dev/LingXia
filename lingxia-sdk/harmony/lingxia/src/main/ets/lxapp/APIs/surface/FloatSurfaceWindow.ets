@@ -19,7 +19,7 @@ import { display } from '@kit.ArkUI';
 import { webview } from '@kit.ArkWeb';
 import { Lingxia } from '../../../app/Lingxia';
 import { LingXiaWebView } from '../../LingXiaWebView';
-import { addWebViewUiCallback, removeWebViewUiCallback, WebViewInfo, WebViewManager, toWebTag } from '../../WebViewBridge';
+import { addWebViewUiCallback, extractWebTag, removeWebViewUiCallback, WebViewInfo, WebViewManager, toWebTag } from '../../WebViewBridge';
 import { browserTabPathForId, getBuiltinBrowserAppId, notifyPageInstanceMounted, notifyPageInstanceVisible, urlCallbackDispatch, webviewLoadErrorDocument } from 'liblingxia.so';
 import type { SurfaceLayoutConfig } from './SurfaceModel';
 import { isFileUrl, isHttpUrl } from './SurfaceUrlPolicy';
@@ -40,10 +40,13 @@ interface FloatSurfaceWindowEntry {
 
 /** Close request raised from float chrome (mask tap / back). */
 type FloatSurfaceCloseHandler = (id: string, appId: string, reason: string) => void;
+type FloatSurfaceAppearanceHandler = (appId: string, dark: boolean) => void;
 
 export class FloatSurfaceWindowManager {
   private static entries: Map<string, FloatSurfaceWindowEntry> = new Map();
   private static closeHandler: FloatSurfaceCloseHandler | null = null;
+  private static appearanceByApp: Map<string, boolean> = new Map();
+  private static appearanceHandlers: Set<FloatSurfaceAppearanceHandler> = new Set();
   /**
    * Key handoff to the content page: `@Entry({ routeName })` does not receive
    * the LocalStorage passed to loadContentByName, so the page reads the key
@@ -60,6 +63,26 @@ export class FloatSurfaceWindowManager {
 
   public static setCloseHandler(handler: FloatSurfaceCloseHandler): void {
     FloatSurfaceWindowManager.closeHandler = handler;
+  }
+
+  public static applyAppearance(appId: string, dark: boolean): void {
+    FloatSurfaceWindowManager.appearanceByApp.set(appId, dark);
+    FloatSurfaceWindowManager.appearanceHandlers.forEach((handler: FloatSurfaceAppearanceHandler) => {
+      handler(appId, dark);
+    });
+  }
+
+  public static appearanceDarkForWebTag(webTag: string): boolean {
+    const appId = extractWebTag(webTag)?.appId ?? '';
+    return FloatSurfaceWindowManager.appearanceByApp.get(appId) ?? false;
+  }
+
+  public static addAppearanceHandler(handler: FloatSurfaceAppearanceHandler): void {
+    FloatSurfaceWindowManager.appearanceHandlers.add(handler);
+  }
+
+  public static removeAppearanceHandler(handler: FloatSurfaceAppearanceHandler): void {
+    FloatSurfaceWindowManager.appearanceHandlers.delete(handler);
   }
 
   public static requestClose(key: string, reason: string): void {
@@ -171,6 +194,7 @@ struct LingXiaFloatSurfacePage {
   @State lxFloatKey: string = '';
   @State private pageWebTag: string = '';
   @State private layout: SurfaceLayoutConfig | null = null;
+  @State private appearanceDark: boolean = false;
   private pageController: webview.WebviewController = new webview.WebviewController();
   private urlController: webview.WebviewController = new webview.WebviewController();
   private webViewUiCallback = (action: string, info: WebViewInfo): void => {
@@ -178,6 +202,10 @@ struct LingXiaFloatSurfacePage {
       this.tryAttachPage();
       this.tryAttachUrl();
     }
+  };
+  private appearanceHandler = (appId: string, dark: boolean): void => {
+    const webTagAppId = extractWebTag(this.pageWebTag)?.appId ?? '';
+    if (webTagAppId === appId) this.appearanceDark = dark;
   };
 
   aboutToAppear() {
@@ -187,12 +215,14 @@ struct LingXiaFloatSurfacePage {
       LxLog.e(TAG, `float page has no layout key=${this.lxFloatKey}`);
     }
     addWebViewUiCallback(this.webViewUiCallback);
+    FloatSurfaceWindowManager.addAppearanceHandler(this.appearanceHandler);
     this.tryAttachPage();
     this.tryAttachUrl();
   }
 
   aboutToDisappear() {
     removeWebViewUiCallback(this.webViewUiCallback);
+    FloatSurfaceWindowManager.removeAppearanceHandler(this.appearanceHandler);
   }
 
   onBackPress(): boolean {
@@ -212,6 +242,7 @@ struct LingXiaFloatSurfacePage {
       if (info.webtag === exactTag || info.webtag.startsWith(`${exactTag}#`)) {
         this.pageController = info.controller;
         this.pageWebTag = info.webtag;
+        this.appearanceDark = FloatSurfaceWindowManager.appearanceDarkForWebTag(info.webtag);
         notifyPageInstanceMounted(layout.pageInstanceId);
         notifyPageInstanceVisible(layout.pageInstanceId);
         hilog.info(DOMAIN, TAG, `attached float page webtag=${info.webtag}`);
@@ -235,6 +266,7 @@ struct LingXiaFloatSurfacePage {
       if (infos[i].controller === controller) {
         this.urlController = controller;
         this.pageWebTag = infos[i].webtag;
+        this.appearanceDark = FloatSurfaceWindowManager.appearanceDarkForWebTag(infos[i].webtag);
         return;
       }
     }
@@ -263,6 +295,7 @@ struct LingXiaFloatSurfacePage {
             LingXiaWebView({
               webTag: this.pageWebTag,
               controller: this.urlController,
+              appearanceDark: this.appearanceDark,
               renderVisibility: Visibility.Visible,
               renderWidth: '100%',
               renderHeight: '100%',
@@ -301,6 +334,7 @@ struct LingXiaFloatSurfacePage {
             LingXiaWebView({
               webTag: this.pageWebTag,
               controller: this.pageController,
+              appearanceDark: this.appearanceDark,
               renderVisibility: Visibility.Visible,
               renderWidth: '100%',
               renderHeight: '100%',

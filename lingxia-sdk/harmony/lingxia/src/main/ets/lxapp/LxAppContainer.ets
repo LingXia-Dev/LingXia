@@ -379,7 +379,7 @@ export struct LxAppContainer {
   }
 
   /**
-   * TabBar update with a real completion signal, for lx.showTabBar/hideTabBar.
+   * TabBar update with a real completion signal for lx.tabBar.update().
    * The @State change renders on the next frame, so `done` is chained through
    * two frame callbacks: the second fires at the start of the frame after the
    * one that applied the state, i.e. once the hide/show has actually committed.
@@ -426,6 +426,7 @@ export struct LxAppContainer {
 
   public static applyAppearance(appId: string, dark: boolean): boolean {
     LxAppContainer.appearanceByApp.set(appId, dark);
+    LxAppSurface.applyAppearance(appId, dark);
     const container = LxAppContainer.activeContainers.get(appId);
     if (container) {
       container.appearanceDark = dark;
@@ -1119,23 +1120,12 @@ export struct LxAppContainer {
     this.applyStatusBarContentColor();
   }
 
-  /**
-   * Keep the system status bar glyphs (clock, signal, battery) legible for
-   * the current page: explicit navigationBarTextStyle wins; a shown navbar
-   * contrasts against its background color; a custom (hidden-navbar) page
-   * follows the system theme, matching pages whose background adapts via
-   * prefers-color-scheme.
-   */
+  /** Keep status bar glyphs legible against native chrome or custom content. */
   private applyStatusBarContentColor(): void {
     const config = this.pageConfig;
-    const style = config?.navigationBarTextStyle ?? '';
     let lightGlyphs: boolean;
-    if (style === 'white') {
-      lightGlyphs = true;
-    } else if (style === 'black') {
-      lightGlyphs = false;
-    } else if (config && config.showNavbar) {
-      lightGlyphs = isColorDark(config.navigationBarBackgroundColor || 0xFFFFFFFF);
+    if (config && config.showNavbar) {
+      lightGlyphs = !isColorDark(config.navigationBarForegroundColor || 0xFF000000);
     } else {
       lightGlyphs = this.appearanceDark;
     }
