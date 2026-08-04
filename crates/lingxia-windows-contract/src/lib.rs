@@ -435,6 +435,10 @@ pub struct WindowsHostPanelContent {
     pub body: Option<String>,
     pub tabs: Vec<WindowsHostPanelTab>,
     pub maximized: bool,
+    /// Whether the panel header exposes its expand/restore control. Native
+    /// main workspaces fill the workspace by definition, so only asides show
+    /// this affordance.
+    pub show_maximize: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]

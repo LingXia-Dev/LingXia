@@ -105,7 +105,8 @@ pub(super) fn terminal_header_rects(
     };
 
     let maximize_left = header.right - TERMINAL_HEADER_PADDING - TERMINAL_HEADER_BUTTON_SIZE;
-    let maximize = (maximize_left > header.left).then(|| square_button(maximize_left));
+    let maximize =
+        (native.show_maximize && maximize_left > header.left).then(|| square_button(maximize_left));
     let tabs_right_limit = maximize
         .map(|rect| rect.left - TERMINAL_TAB_GAP)
         .unwrap_or(header.right - TERMINAL_HEADER_PADDING);
@@ -514,5 +515,41 @@ pub(super) fn draw_terminal_panel_content(
         if !old_font.is_invalid() {
             let _ = SelectObject(hdc, old_font);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn terminal_content(show_maximize: bool) -> WindowsHostPanelContent {
+        WindowsHostPanelContent {
+            title: Some("Terminal".to_string()),
+            body: None,
+            tabs: Vec::new(),
+            maximized: true,
+            show_maximize,
+        }
+    }
+
+    #[test]
+    fn main_workspace_omits_panel_zoom_control() {
+        let rect = RECT {
+            left: 0,
+            top: 0,
+            right: 800,
+            bottom: 600,
+        };
+
+        assert!(
+            terminal_header_rects(rect, &terminal_content(true))
+                .maximize
+                .is_some()
+        );
+        assert!(
+            terminal_header_rects(rect, &terminal_content(false))
+                .maximize
+                .is_none()
+        );
     }
 }

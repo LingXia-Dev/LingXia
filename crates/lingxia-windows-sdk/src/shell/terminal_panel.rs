@@ -1985,7 +1985,7 @@ pub(crate) fn end_divider_drag() {}
 /// the chrome is the tab's focused session id.
 #[cfg(feature = "terminal-runtime")]
 fn publish_tab_strip(panel_id: &str) {
-    let strip = {
+    let (strip, active_title) = {
         let mut panels = windows_terminal_panels();
         let Some(panel) = panels.get_mut(panel_id) else {
             return;
@@ -2005,9 +2005,16 @@ fn publish_tab_strip(panel_id: &str) {
             return;
         }
         panel.published_tabs = strip.clone();
-        strip
+        let active_title = strip
+            .iter()
+            .find(|tab| tab.active)
+            .map(|tab| tab.title.clone());
+        (strip, active_title)
     };
     lingxia_windows_contract::set_host_panel_tabs(panel_id, strip);
+    if let Some(title) = active_title {
+        super::runtime::on_terminal_panel_active_title_changed(panel_id, &title);
+    }
 }
 
 /// Publishes the active tab's pane snapshots immediately (tab switches and

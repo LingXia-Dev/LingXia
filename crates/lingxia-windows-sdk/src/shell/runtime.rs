@@ -1,8 +1,11 @@
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-// Atomics here back browser tab-sync debounce and presentation generations.
+// Atomics here back browser tab-sync debounce/presentation generations and
+// shell-created terminal workspace identities.
 #[cfg(feature = "browser-runtime")]
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::AtomicBool;
+#[cfg(any(feature = "browser-runtime", feature = "terminal-runtime"))]
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 
 use super::{
@@ -28,7 +31,7 @@ use lingxia_shell::{
 };
 use lingxia_surface::{
     Edge, LayoutPresentationPlan, SizeClass, SlotKind, SurfaceIcon, SurfaceSwitcherItem,
-    SwitcherContentKind,
+    SurfaceSwitcherSnapshot, SwitcherContentKind,
 };
 use lingxia_webview::WebTag;
 #[cfg(feature = "browser-runtime")]
@@ -135,6 +138,8 @@ static REQUESTED_LXAPP_MAIN_ACTIVATION: OnceLock<Mutex<Option<String>>> = OnceLo
 static PRESENTED_BROWSER_GROUP_APPID: OnceLock<Mutex<Option<String>>> = OnceLock::new();
 #[cfg(feature = "terminal-runtime")]
 static PRESENTED_NATIVE_MAIN: OnceLock<Mutex<Option<WebTag>>> = OnceLock::new();
+#[cfg(feature = "terminal-runtime")]
+static NEXT_SHELL_TERMINAL_WORKSPACE_KEY: AtomicU64 = AtomicU64::new(1);
 #[cfg(feature = "browser-runtime")]
 static SUPPRESSED_BROWSER_TAB_SYNCS: OnceLock<Mutex<u32>> = OnceLock::new();
 #[cfg(feature = "browser-runtime")]
@@ -190,6 +195,55 @@ struct BrowserTabSummary {
 
 fn browser_runtime_enabled() -> bool {
     cfg!(feature = "browser-runtime")
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum MainWorkspaceAddTarget {
+    Browser,
+    Terminal { declaration_id: String },
+}
+
+fn main_workspace_add_target(switcher: &SurfaceSwitcherSnapshot) -> Option<MainWorkspaceAddTarget> {
+    main_workspace_add_target_for_capabilities(
+        switcher,
+        browser_runtime_enabled(),
+        cfg!(feature = "terminal-runtime") && lingxia_app_context::terminal_enabled(),
+    )
+}
+
+fn main_workspace_add_target_for_capabilities(
+    switcher: &SurfaceSwitcherSnapshot,
+    browser_enabled: bool,
+    terminal_enabled: bool,
+) -> Option<MainWorkspaceAddTarget> {
+    let active = switcher.active_surface_id.as_deref().and_then(|active_id| {
+        switcher
+            .items
+            .iter()
+            .find(|item| item.surface_id == active_id)
+    });
+    if terminal_enabled
+        && active.is_some_and(|item| {
+            matches!(
+                &item.content,
+                SwitcherContentKind::Native { capability } if capability == "terminal"
+            )
+        })
+        && let Some(declaration_id) = switcher.root_surface_id.as_deref().filter(|root_id| {
+            switcher.items.iter().any(|item| {
+                item.surface_id == *root_id
+                    && matches!(
+                        &item.content,
+                        SwitcherContentKind::Native { capability } if capability == "terminal"
+                    )
+            })
+        })
+    {
+        return Some(MainWorkspaceAddTarget::Terminal {
+            declaration_id: declaration_id.to_string(),
+        });
+    }
+    browser_enabled.then_some(MainWorkspaceAddTarget::Browser)
 }
 
 #[cfg(feature = "browser-runtime")]
@@ -431,6 +485,7 @@ mod chrome_command {
     pub(super) const NAVIGATION_BACK: &str = "navigation.back";
     pub(super) const NAVIGATION_HOME: &str = "navigation.home";
     pub(super) const BROWSER_NEW_TAB: &str = "browser.new-tab";
+    pub(super) const MAIN_WORKSPACE_ADD: &str = "main-workspace.add";
     pub(super) const BROWSER_TAB_CLICK: &str = "browser.tab.click";
     pub(super) const BROWSER_TAB_CLOSE: &str = "browser.tab.close";
     pub(super) const SIDEBAR_AUXILIARY_CONTEXT_MENU: &str = "sidebar.auxiliary.context-menu";
@@ -637,12 +692,14 @@ pub(crate) fn open_declared_terminal(owner_appid: &str, surface_id: &str) -> Res
         &lingxia_logic::i18n::t(lingxia_logic::I18nKey::TerminalTitle),
         WindowsPanelPosition::Bottom,
     )?;
+    crate::window_host::set_host_panel_zoom_control_visible(surface_id, false);
     if !lingxia_windows_contract::set_host_panel_maximized(surface_id, true) {
         super::terminal_panel::destroy_windows_terminal_panel(surface_id);
         return Err(format!(
             "failed to maximize native terminal surface '{surface_id}'"
         ));
     }
+    install_shell_chrome_event_handler(&webtag, &owner.appid);
     if let Err(error) = crate::window_host::show_native_main_window(&webtag, layout) {
         super::terminal_panel::destroy_windows_terminal_panel(surface_id);
         return Err(error);
@@ -1389,6 +1446,16 @@ fn sync_app_shell_layout(appid: &str) {
     }
 }
 
+#[cfg(feature = "terminal-runtime")]
+pub(super) fn on_terminal_panel_active_title_changed(surface_id: &str, title: &str) {
+    let Some(owner) = shell_owner_appid().and_then(|appid| lxapp::try_get(&appid)) else {
+        return;
+    };
+    if owner.update_shell_surface_automatic_title(surface_id, Some(title)) {
+        sync_shell_layout(&owner.appid);
+    }
+}
+
 #[cfg(feature = "browser-runtime")]
 fn sync_self_browser_layout() {
     let Some(tab_id) = presented_browser_tab() else {
@@ -1924,20 +1991,23 @@ fn build_tab_bar_layout(
         .unwrap_or_else(|| format!("{AUX_LXAPP_PREFIX}{}", app.appid));
     let (group_order_index, main_rows) = order_main_tab_rows(&group_target_id, main_rows);
     auxiliary_items.extend(main_rows);
-    // The "+" opens a new browser tab, so it belongs to the full browser
-    // environment only — not the device-framed dev runner, which hosts a
-    // single lxapp with no browser.
+    // The global "+" follows the active main provider: browser opens a tab,
+    // while a terminal root opens another main workspace. A device-framed
+    // runner hosts a single app and never exposes desktop workspace creation.
     let owner_window = owner_window_handle(&app.appid);
     let device_framed = owner_window.map(window_has_device_frame).unwrap_or(false);
     let frame_status_bar_height = owner_window
         .map(device_frame_status_bar_height)
         .unwrap_or(0);
-    let mut show_auxiliary_add = browser_runtime_enabled() && !device_framed;
+    let mut show_auxiliary_add = main_workspace_add_target(&switcher).is_some() && !device_framed;
     let mut header_actions = build_sidebar_header_actions(app);
-    let sidebar_has_content = !items.is_empty()
-        || !auxiliary_items.is_empty()
-        || !footer_actions.is_empty()
-        || !header_actions.is_empty();
+    let sidebar_has_content = sidebar_content_available(
+        !items.is_empty(),
+        !auxiliary_items.is_empty(),
+        !footer_actions.is_empty(),
+        !header_actions.is_empty(),
+        show_auxiliary_add,
+    );
     if !sidebar_has_content {
         return None;
     }
@@ -2077,6 +2147,20 @@ fn build_tab_bar_layout(
         show_auxiliary_add,
         header_actions,
     })
+}
+
+fn sidebar_content_available(
+    has_page_items: bool,
+    has_workspace_items: bool,
+    has_footer_actions: bool,
+    has_header_actions: bool,
+    can_add_workspace: bool,
+) -> bool {
+    has_page_items
+        || has_workspace_items
+        || has_footer_actions
+        || has_header_actions
+        || can_add_workspace
 }
 
 fn adaptive_tabbar_projection(
@@ -3083,6 +3167,10 @@ fn handle_chrome_event(appid: &str, event: WindowsChromeCommand) {
             handle_browser_new_tab(appid, app.session_id());
             return;
         }
+        chrome_command::MAIN_WORKSPACE_ADD => {
+            handle_main_workspace_add(app.clone());
+            return;
+        }
         chrome_command::BROWSER_TAB_CLICK => {
             let Some(tab_id) = payload_string(&event, "tab_id") else {
                 return;
@@ -3693,6 +3781,42 @@ fn handle_browser_new_tab(appid: &str, session_id: u64) {
 
 #[cfg(not(feature = "browser-runtime"))]
 fn handle_browser_new_tab(_appid: &str, _session_id: u64) {}
+
+fn handle_main_workspace_add(app: Arc<LxApp>) {
+    match main_workspace_add_target(&app.surface_switcher_snapshot()) {
+        Some(MainWorkspaceAddTarget::Browser) => {
+            handle_browser_new_tab(&app.appid, app.session_id());
+        }
+        Some(MainWorkspaceAddTarget::Terminal { declaration_id }) => {
+            handle_terminal_workspace_add(app, declaration_id);
+        }
+        None => {}
+    }
+}
+
+#[cfg(feature = "terminal-runtime")]
+fn handle_terminal_workspace_add(app: Arc<LxApp>, declaration_id: String) {
+    let key = format!(
+        "windows-shell-{}",
+        NEXT_SHELL_TERMINAL_WORKSPACE_KEY.fetch_add(1, Ordering::Relaxed)
+    );
+    std::mem::drop(lingxia::task::spawn(async move {
+        if let Err(error) = app
+            .open_shell_native_surface(
+                &declaration_id,
+                Some(&key),
+                Some(lxapp::SurfaceRole::Main),
+                None,
+            )
+            .await
+        {
+            log::error!("failed to open terminal workspace from Windows sidebar: {error}");
+        }
+    }));
+}
+
+#[cfg(not(feature = "terminal-runtime"))]
+fn handle_terminal_workspace_add(_app: Arc<LxApp>, _declaration_id: String) {}
 
 /// Toggles the phone tab-switcher sheet (the macOS runner's in-frame
 /// bottom sheet) listing every open tab.
@@ -5431,7 +5555,11 @@ pub(super) fn owner_window_handle(appid: &str) -> Option<isize> {
         Err(err) => {
             let fallback = crate::window_host::primary_host_window_handle();
             if fallback.is_none() {
-                log::warn!("no shell window handle for {appid}: {err}");
+                if appid == lxapp::HOST_SURFACE_OWNER_APP_ID {
+                    log::debug!("native host shell window is not ready: {err}");
+                } else {
+                    log::warn!("no shell window handle for {appid}: {err}");
+                }
             }
             fallback
         }
@@ -5995,6 +6123,7 @@ fn commit_terminal_surface_handoff(
             if role == "main" {
                 clear_browser_presentation();
             }
+            crate::window_host::set_host_panel_zoom_control_visible(surface_id, role != "main");
             super::terminal_panel::set_terminal_panel_maximized(surface_id, role == "main");
             if role == "main"
                 && let Some(owner) = lxapp::try_get(owner_appid)
@@ -6499,11 +6628,12 @@ fn is_transparent_css_color(raw: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        LxappContextMenuAction, LxappShortcutAction, PresentationCompletion, SidebarUiState,
-        adaptive_tabbar_projection, auxiliary_lxapp_id, browser_internal_page_deep_link,
-        browser_internal_page_key, browser_url_is_hidden, build_lxapp_context_menu, chrome_command,
-        chrome_command_is_page_scoped, lxapp_shortcut_action, preferred_sidebar_group_appid,
-        toggle_sidebar_projection,
+        LxappContextMenuAction, LxappShortcutAction, MainWorkspaceAddTarget,
+        PresentationCompletion, SidebarUiState, adaptive_tabbar_projection, auxiliary_lxapp_id,
+        browser_internal_page_deep_link, browser_internal_page_key, browser_url_is_hidden,
+        build_lxapp_context_menu, chrome_command, chrome_command_is_page_scoped,
+        lxapp_shortcut_action, main_workspace_add_target_for_capabilities,
+        preferred_sidebar_group_appid, sidebar_content_available, toggle_sidebar_projection,
     };
     #[cfg(feature = "browser-runtime")]
     use super::{
@@ -6511,7 +6641,7 @@ mod tests {
         live_browser_tab_limit_for_memory, touch_browser_tab_recency,
     };
     use crate::shell::WindowsShellTabBarPosition;
-    use lingxia_surface::SizeClass;
+    use lingxia_surface::{Role, SizeClass, Surface, SurfaceManager};
     #[cfg(feature = "browser-runtime")]
     use std::collections::HashSet;
 
@@ -6592,6 +6722,53 @@ mod tests {
         toggle_sidebar_projection(&mut state, SizeClass::Medium);
         assert!(!state.medium_expanded);
         assert!(!state.icon_rail);
+    }
+
+    #[test]
+    fn terminal_root_exposes_a_terminal_workspace_add_target() {
+        let mut manager = SurfaceManager::new(1024.0);
+        manager.open(Surface::native("terminal", Role::Main, "terminal"));
+        let snapshot = manager.switcher_snapshot();
+
+        let target = main_workspace_add_target_for_capabilities(&snapshot, false, true);
+        assert_eq!(
+            target,
+            Some(MainWorkspaceAddTarget::Terminal {
+                declaration_id: "terminal".to_string()
+            })
+        );
+        assert!(sidebar_content_available(
+            false,
+            false,
+            false,
+            false,
+            target.is_some()
+        ));
+        assert!(!sidebar_content_available(
+            false, false, false, false, false
+        ));
+        assert_eq!(
+            main_workspace_add_target_for_capabilities(&snapshot, true, true),
+            Some(MainWorkspaceAddTarget::Terminal {
+                declaration_id: "terminal".to_string()
+            })
+        );
+    }
+
+    #[test]
+    fn non_terminal_main_falls_back_to_browser_workspace_add() {
+        let mut manager = SurfaceManager::new(1024.0);
+        manager.open(Surface::lxapp("home", Role::Main, "home"));
+        let snapshot = manager.switcher_snapshot();
+
+        assert_eq!(
+            main_workspace_add_target_for_capabilities(&snapshot, true, true),
+            Some(MainWorkspaceAddTarget::Browser)
+        );
+        assert_eq!(
+            main_workspace_add_target_for_capabilities(&snapshot, false, true),
+            None
+        );
     }
 
     #[cfg(feature = "browser-runtime")]
