@@ -252,6 +252,19 @@ pub fn reload(tab_id: &str) -> Result<(), BrowserAutomationError> {
     automation::browser_reload(tab_id)
 }
 
+/// Return the complete browser-session user-agent override. `None` means the
+/// platform WebView default is in use.
+pub fn configured_user_agent() -> Option<String> {
+    automation::browser_configured_user_agent()
+}
+
+/// Configure a complete user-agent string for all browser tabs, or pass `None`
+/// to restore the platform WebView default. The setting also applies to future
+/// and recreated browser WebViews for the lifetime of the process.
+pub fn set_user_agent_override(user_agent: Option<String>) -> Result<(), BrowserAutomationError> {
+    automation::browser_set_user_agent_override(user_agent)
+}
+
 pub fn go_back(tab_id: &str) -> Result<(), BrowserAutomationError> {
     automation::browser_go_back(tab_id)
 }

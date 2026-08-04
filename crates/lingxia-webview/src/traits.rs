@@ -72,13 +72,19 @@ pub enum UserAgentOverride {
 }
 
 impl UserAgentOverride {
-    pub(crate) fn validate(&self) -> Result<(), WebViewError> {
-        if let Self::Custom(value) = self
-            && value.trim().is_empty()
-        {
-            return Err(WebViewError::WebView(
-                "custom user-agent override must not be empty".to_string(),
-            ));
+    /// Validate a complete override before applying or persisting it.
+    pub fn validate(&self) -> Result<(), WebViewError> {
+        if let Self::Custom(value) = self {
+            if value.trim().is_empty() {
+                return Err(WebViewError::WebView(
+                    "custom user-agent override must not be empty".to_string(),
+                ));
+            }
+            if value.contains(['\r', '\n', '\0']) {
+                return Err(WebViewError::WebView(
+                    "custom user-agent override must not contain CR, LF, or NUL".to_string(),
+                ));
+            }
         }
         Ok(())
     }
@@ -97,6 +103,17 @@ mod user_agent_override_tests {
                 .validate()
                 .is_ok()
         );
+        for invalid in [
+            "Mozilla/5.0\rInjected",
+            "Mozilla/5.0\nInjected",
+            "Mozilla\0/5.0",
+        ] {
+            assert!(
+                UserAgentOverride::Custom(invalid.into())
+                    .validate()
+                    .is_err()
+            );
+        }
         assert!(UserAgentOverride::Default.validate().is_ok());
     }
 }

@@ -12,7 +12,7 @@ use crate::types::{
 };
 use lingxia_webview::runtime::find_webview as find_managed_webview;
 use lingxia_webview::{
-    NetworkCaptureSnapshot, WebTag, WebView, WebViewController, WebViewCookie,
+    NetworkCaptureSnapshot, UserAgentOverride, WebTag, WebView, WebViewController, WebViewCookie,
     WebViewCookieSetRequest,
 };
 use std::sync::{Arc, OnceLock};
@@ -346,6 +346,69 @@ pub async fn browser_take_screenshot(tab_id: &str) -> Result<Vec<u8>, BrowserAut
 
 pub fn browser_reload(tab_id: &str) -> Result<(), BrowserAutomationError> {
     browser_tab_webview(tab_id)?.reload()?;
+    Ok(())
+}
+
+pub fn browser_configured_user_agent() -> Option<String> {
+    lock_state().user_agent_override.clone()
+}
+
+pub fn browser_set_user_agent_override(
+    user_agent: Option<String>,
+) -> Result<(), BrowserAutomationError> {
+    let override_value = match &user_agent {
+        Some(value) => UserAgentOverride::Custom(value.clone()),
+        None => UserAgentOverride::Default,
+    };
+    override_value.validate()?;
+
+    // Keep creation serialized with the update. A WebView that is currently
+    // being created blocks in `browser_tab_create_state` and therefore sees
+    // either the previous setting or the fully applied new setting.
+    let mut state = lock_state();
+    let previous_value = state.user_agent_override.clone();
+    let previous_override = match &previous_value {
+        Some(value) => UserAgentOverride::Custom(value.clone()),
+        None => UserAgentOverride::Default,
+    };
+    let webviews = state
+        .tabs
+        .iter()
+        .filter_map(|(tab_id, tab)| {
+            let path = browser_tab_path_for_runtime_id(tab_id);
+            let webtag = WebTag::new(BUILTIN_BROWSER_APPID, &path, Some(tab.session_id));
+            find_managed_webview(&webtag).map(|webview| (tab_id.clone(), webview))
+        })
+        .collect::<Vec<_>>();
+
+    let mut applied: Vec<(String, Arc<WebView>)> = Vec::with_capacity(webviews.len());
+    for (tab_id, webview) in &webviews {
+        if let Err(error) = webview.set_user_agent_override(override_value.clone()) {
+            let mut rollback_failures = Vec::new();
+            if let Err(rollback_error) = webview.set_user_agent_override(previous_override.clone())
+            {
+                rollback_failures.push(format!("{tab_id}: {rollback_error}"));
+            }
+            rollback_failures.extend(applied.iter().filter_map(
+                |(applied_tab_id, applied_webview)| {
+                    applied_webview
+                        .set_user_agent_override(previous_override.clone())
+                        .err()
+                        .map(|rollback_error| format!("{applied_tab_id}: {rollback_error}"))
+                },
+            ));
+            if rollback_failures.is_empty() {
+                return Err(error.into());
+            }
+            return Err(BrowserAutomationError::NativeInput(format!(
+                "failed to set browser user agent for {tab_id}: {error}; rollback failed for {}",
+                rollback_failures.join(", ")
+            )));
+        }
+        applied.push((tab_id.clone(), Arc::clone(webview)));
+    }
+
+    state.user_agent_override = user_agent;
     Ok(())
 }
 

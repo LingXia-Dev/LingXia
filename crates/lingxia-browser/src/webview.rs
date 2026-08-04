@@ -28,8 +28,9 @@ use lingxia_webview::runtime::{
 };
 use lingxia_webview::{
     LoadDataRequest, LoadError, LoadErrorPage, LogLevel, NavigationEvent, NavigationPolicy,
-    NavigationProgress, NewWindowPolicy, WebTag, WebView, WebViewBuilder, WebViewController,
-    WebViewDataMode, WebViewDelegate, WebViewSession, WebViewStateChange, render_load_error_page,
+    NavigationProgress, NewWindowPolicy, UserAgentOverride, WebTag, WebView, WebViewBuilder,
+    WebViewController, WebViewDataMode, WebViewDelegate, WebViewSession, WebViewStateChange,
+    render_load_error_page,
 };
 use lxapp::LxAppError;
 use serde_json::Value;
@@ -609,7 +610,20 @@ async fn browser_on_webview_ready(
             // Destroy the orphaned webview from this old create cycle.
             browser_destroy_webview_if_matches(&path, session_id, &webview);
         }
-        TabCreateState::Active { pending_url } => {
+        TabCreateState::Active {
+            pending_url,
+            user_agent_override,
+        } => {
+            if let Some(user_agent) = user_agent_override
+                && let Err(e) =
+                    webview.set_user_agent_override(UserAgentOverride::Custom(user_agent))
+            {
+                lxapp::warn!(
+                    "[InternalBrowser] Failed to restore user agent for tab {}: {}",
+                    tab_id,
+                    e
+                );
+            }
             if let Some(url) = pending_url {
                 // Internal browser pages (`lingxia://X`) need the startup bridge attached
                 // so they can communicate with the JS app service worker.

@@ -84,6 +84,9 @@ pub(crate) struct BrowserTabState {
 pub(crate) struct BrowserState {
     // tab_id -> tab lifecycle state (single WebView lifecycle per tab_id)
     pub(crate) tabs: HashMap<String, BrowserTabState>,
+    /// Complete browser-session user-agent override. WebView creation reads it
+    /// before the first load, including for tabs created or restored later.
+    pub(crate) user_agent_override: Option<String>,
 }
 
 static BROWSER_STATE: OnceLock<Mutex<BrowserState>> = OnceLock::new();
@@ -242,6 +245,7 @@ pub(crate) fn lock_state() -> MutexGuard<'static, BrowserState> {
         .get_or_init(|| {
             Mutex::new(BrowserState {
                 tabs: HashMap::new(),
+                user_agent_override: None,
             })
         })
         .lock()
@@ -687,7 +691,10 @@ pub(crate) fn browser_tab_favicon(tab_id: &str) -> Option<Arc<Vec<u8>>> {
 
 #[derive(Debug)]
 pub(crate) enum TabCreateState {
-    Active { pending_url: Option<String> },
+    Active {
+        pending_url: Option<String>,
+        user_agent_override: Option<String>,
+    },
     Missing,
     Stale,
 }
@@ -698,6 +705,7 @@ pub(crate) fn browser_tab_create_state(
     create_token: u64,
 ) -> TabCreateState {
     let mut state = lock_state();
+    let user_agent_override = state.user_agent_override.clone();
     match state.tabs.get_mut(tab_id) {
         Some(tab) if tab.session_id == session_id && tab.create_token == create_token => {
             // This create cycle now owns a live WebView; clear the in-flight
@@ -705,6 +713,7 @@ pub(crate) fn browser_tab_create_state(
             tab.create_in_flight = false;
             TabCreateState::Active {
                 pending_url: tab.pending_url.clone(),
+                user_agent_override,
             }
         }
         Some(_) => TabCreateState::Stale,
@@ -1261,6 +1270,55 @@ pub(crate) fn reactivate_browser_tab(tab_id: &str) -> Result<(), LxAppError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn webview_creation_receives_the_browser_user_agent_override() {
+        let tab_id = generate_tab_id();
+        let previous_user_agent = {
+            let mut state = lock_state();
+            let previous = state
+                .user_agent_override
+                .replace("TestAgent/1.0".to_string());
+            state.tabs.insert(
+                tab_id.clone(),
+                BrowserTabState {
+                    session_id: 42,
+                    created_order: next_browser_created_order(),
+                    create_token: 7,
+                    create_in_flight: true,
+                    pending_url: Some("https://example.test/".to_string()),
+                    initial_url: Some("https://example.test/".to_string()),
+                    current_url: None,
+                    title: None,
+                    title_url: None,
+                    favicon_png: None,
+                    can_go_back: false,
+                    can_go_forward: false,
+                    discarded: false,
+                    data_mode: WebViewDataMode::ProfileDefault,
+                    url_callback: Arc::new(AtomicBool::new(false)),
+                    standalone: false,
+                    aside: false,
+                    owner_appid: None,
+                    owner_session_id: None,
+                },
+            );
+            previous
+        };
+
+        let state = browser_tab_create_state(&tab_id, 42, 7);
+        assert!(matches!(
+            state,
+            TabCreateState::Active {
+                pending_url: Some(url),
+                user_agent_override: Some(user_agent),
+            } if url == "https://example.test/" && user_agent == "TestAgent/1.0"
+        ));
+        assert!(!lock_state().tabs[&tab_id].create_in_flight);
+        let mut state = lock_state();
+        state.tabs.remove(&tab_id);
+        state.user_agent_override = previous_user_agent;
+    }
 
     #[test]
     fn stable_browser_tab_ids_are_deterministic_per_scope() {
