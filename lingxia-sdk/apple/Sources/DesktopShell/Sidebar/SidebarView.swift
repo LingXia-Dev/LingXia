@@ -350,6 +350,12 @@ class SidebarView: NSView, NSPopoverDelegate {
     private static let log = OSLog(subsystem: "LingXia", category: "Sidebar")
 
     struct Layout {
+        /// One leading axis for every first-column icon in the sidebar — group
+        /// headers place an 18pt icon at groupInset + headerHPadding, and the
+        /// traffic lights, pin grid, and footer buttons center on the same line.
+        static let iconAxis: CGFloat =
+            SidebarGroupView.Layout.groupInset + SidebarGroupView.Layout.headerHPadding + 9
+
         static let expandedWidth: CGFloat = 184
         static let maxWidth: CGFloat = 400
         static let fullyHiddenThreshold: CGFloat = 1
@@ -377,6 +383,11 @@ class SidebarView: NSView, NSPopoverDelegate {
         /// Shared outer inset for the sidebar action flow. Windows uses the same
         /// 6pt margin, leaving 172pt of flow width in the standard 184pt rail.
         static let footerInset: CGFloat = 6
+        /// iconAxis − row internal padding (7) − half icon (9): footer button
+        /// icons center on the shared first-column axis. Horizontal only —
+        /// the vertical insets keep `footerInset` so rows still fit the
+        /// fixed `footerHeight`.
+        static let footerHInset: CGFloat = iconAxis - 16
         /// Rows shown before the sidebar action area caps and scrolls internally.
         static let footerMaxRows: CGFloat = 5
     }
@@ -837,8 +848,8 @@ class SidebarView: NSView, NSPopoverDelegate {
             hideButton.heightAnchor.constraint(equalToConstant: Layout.actionButtonSize),
 
             panelScroll.leadingAnchor.constraint(
-                equalTo: footerView.leadingAnchor, constant: Layout.footerInset),
-            panelScroll.trailingAnchor.constraint(equalTo: footerView.trailingAnchor, constant: -Layout.footerInset),
+                equalTo: footerView.leadingAnchor, constant: Layout.footerHInset),
+            panelScroll.trailingAnchor.constraint(equalTo: footerView.trailingAnchor, constant: -Layout.footerHInset),
             panelScroll.topAnchor.constraint(equalTo: footerView.topAnchor, constant: Layout.footerInset + 1),
             panelScroll.bottomAnchor.constraint(equalTo: footerView.bottomAnchor, constant: -Layout.footerInset),
 
@@ -1600,7 +1611,7 @@ class SidebarView: NSView, NSPopoverDelegate {
             1,
             panelScroll.contentView.bounds.width > 1
                 ? panelScroll.contentView.bounds.width
-                : bounds.width - 2 * Layout.footerInset
+                : bounds.width - 2 * Layout.footerHInset
         )
         let rows = min(CGFloat(panelFlow.visualRowCount(for: width)), Layout.footerMaxRows)
         let height = Layout.footerInset * 2 + 1
@@ -2233,8 +2244,10 @@ class SidebarView: NSView, NSPopoverDelegate {
         let size = SidebarPinTileView.Layout.size
         let gap = SidebarPinTileView.Layout.gap
         let columns = SidebarPinTileView.Layout.columns
-        let gridWidth = CGFloat(columns) * size + CGFloat(columns - 1) * gap
-        let gridLeft = max(0, (docView.bounds.width - gridWidth) / 2)
+        // Leading-aligned on the shared icon axis (not centered): the first
+        // tile's icon lines up with the group headers and traffic lights, and
+        // the grid no longer drifts when the sidebar is resized.
+        let gridLeft = Layout.iconAxis - size / 2
         var yOffset = startY
 
         for (index, cell) in cells.enumerated() {
