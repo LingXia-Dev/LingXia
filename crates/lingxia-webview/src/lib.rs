@@ -277,7 +277,8 @@ pub mod platform {
     pub mod windows {
         pub use crate::windows::{
             WindowsBrowserEmulationProfile, WindowsPreferredColorScheme, WindowsWebViewHandler,
-            WindowsWebViewNativeView, WindowsWebViewNativeViewHost, find_webview_handler,
+            WindowsWebViewNativeView, WindowsWebViewNativeViewHost,
+            clear_windows_lxapp_preferred_color_scheme, find_webview_handler,
             set_webview_composition_hosting, set_webview_devtools_enabled,
             set_webview_native_view_host, set_webview_user_data_dir,
             set_windows_browser_emulation_profile_for_new_webviews,

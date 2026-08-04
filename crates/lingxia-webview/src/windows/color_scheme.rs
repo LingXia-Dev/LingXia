@@ -46,6 +46,15 @@ pub fn set_windows_lxapp_preferred_color_scheme(appid: &str, scheme: WindowsPref
     }
 }
 
+/// Remove a closed lxapp's retained scheme so a future install/session starts cleanly.
+pub fn clear_windows_lxapp_preferred_color_scheme(appid: &str) {
+    if let Some(schemes) = LXAPP_SCHEMES.get()
+        && let Ok(mut schemes) = schemes.write()
+    {
+        schemes.remove(appid);
+    }
+}
+
 pub(crate) fn lxapp_color_scheme(webtag: &WebTag) -> Option<WindowsPreferredColorScheme> {
     LXAPP_SCHEMES
         .get()

@@ -80,6 +80,8 @@ impl UIUpdate for Platform {
     }
 
     fn host_appearance_dark(&self) -> bool {
+        // Standard-tier hosts do not wire shell appearance notifications;
+        // appearance:auto therefore remains light until shell chrome is enabled.
         WINDOWS_HOST_APPEARANCE_DARK.load(Ordering::Acquire)
     }
 
@@ -95,15 +97,23 @@ impl UIUpdate for Platform {
         };
         set_windows_lxapp_preferred_color_scheme(appid, scheme);
         for webtag in lingxia_webview::runtime::list_webviews() {
-            if webtag.session_id().is_none() || webtag.extract_appid() != appid {
+            if webtag.extract_appid() != appid {
                 continue;
             }
-            if let Some(handler) = find_webview_handler(&webtag) {
-                handler
-                    .set_preferred_color_scheme(scheme)
-                    .map_err(|error| PlatformError::Platform(error.to_string()))?;
+            if let Some(handler) = find_webview_handler(&webtag)
+                && let Err(error) = handler.set_preferred_color_scheme(scheme)
+            {
+                log::warn!(
+                    "failed to apply lxapp appearance to WebView {}: {}",
+                    webtag,
+                    error
+                );
             }
         }
         Ok(())
+    }
+
+    fn clear_lxapp_appearance(&self, appid: &str) {
+        lingxia_webview::platform::windows::clear_windows_lxapp_preferred_color_scheme(appid);
     }
 }

@@ -262,6 +262,9 @@ pub trait UIUpdate: Send + Sync + 'static {
         Ok(())
     }
 
+    /// Clear platform state retained for a closed lxapp session.
+    fn clear_lxapp_appearance(&self, _appid: &str) {}
+
     /// Measure the visible capsule after native Page Chrome has laid out.
     /// The JSON payload is an internal transport; app code only sees the
     /// revisioned View snapshot assembled by `lingxia-lxapp`.
