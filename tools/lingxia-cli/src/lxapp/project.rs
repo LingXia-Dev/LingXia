@@ -149,17 +149,29 @@ fn validate_page_configs(project_root: &Path, pages: &[String]) -> Result<()> {
         let object = value
             .as_object()
             .ok_or_else(|| anyhow!("{}: page config must be an object", relative.display()))?;
-        for legacy in [
-            "navigationBarTitleText",
-            "navigationBarBackgroundColor",
-            "navigationBarTextStyle",
+        for (legacy, replacement) in [
+            ("navigationBarTitleText", "navigationBar.title"),
+            (
+                "navigationBarBackgroundColor",
+                "navigationBar.style.backgroundColor",
+            ),
+            (
+                "navigationBarTextStyle",
+                "navigationBar.style.foregroundColor",
+            ),
         ] {
             if object.contains_key(legacy) {
                 return Err(anyhow!(
-                    "{} {legacy}: removed; use navigationBar.title or navigationBar.style",
+                    "{} {legacy}: removed; use {replacement}",
                     relative.display()
                 ));
             }
+        }
+        if object.contains_key("backgroundColor") {
+            return Err(anyhow!(
+                "{} backgroundColor: removed; page background is host-owned",
+                relative.display()
+            ));
         }
         for key in object.keys() {
             if ![
@@ -295,6 +307,9 @@ fn validate_page_chrome_manifest(manifest: &Value) -> Result<()> {
         let item = item
             .as_object()
             .ok_or_else(|| anyhow!("tabBar.items[{index}]: expected an object"))?;
+        if item.contains_key("selected") {
+            return Err(anyhow!("tabBar.items[{index}].selected: removed"));
+        }
         reject_unknown_fields(
             item,
             &["pagePath", "text", "iconPath", "selectedIconPath"],
@@ -1213,6 +1228,44 @@ mod tests {
 
         let error = validate_lxapp_manifest(&manifest).unwrap_err().to_string();
         assert!(error.contains("tabBar.list: removed; use tabBar.items"));
+    }
+
+    #[test]
+    fn rejects_removed_page_background_with_actionable_message() {
+        let temp = tempdir().unwrap();
+        write_file(
+            temp.path(),
+            "pages/home/index.json",
+            r##"{"backgroundColor":"#FFFFFF"}"##,
+        );
+
+        let error = validate_page_configs(temp.path(), &["pages/home/index".to_string()])
+            .unwrap_err()
+            .to_string();
+
+        assert!(error.contains("backgroundColor: removed; page background is host-owned"));
+    }
+
+    #[test]
+    fn rejects_removed_tab_item_selected_with_actionable_message() {
+        let manifest = serde_json::json!({
+            "appId": "demo",
+            "version": "1.0.0",
+            "security": {"network":{"trustedDomains":[]},"privileges":[]},
+            "pages": [
+                {"name":"home","path":"pages/home/index"},
+                {"name":"profile","path":"pages/profile/index"}
+            ],
+            "tabBar": {
+                "items": [
+                    {"pagePath":"pages/home/index", "selected": true},
+                    {"pagePath":"pages/profile/index"}
+                ]
+            }
+        });
+
+        let error = validate_lxapp_manifest(&manifest).unwrap_err().to_string();
+        assert!(error.contains("tabBar.items[0].selected: removed"));
     }
 
     #[test]
