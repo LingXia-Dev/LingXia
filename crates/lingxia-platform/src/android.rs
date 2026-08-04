@@ -20,7 +20,7 @@ mod ui_update;
 mod user_feedback;
 mod video_player;
 mod wifi;
-pub use app::Platform;
+pub use app::{Platform, present_browser_tab};
 pub use device::{
     get_android_id, get_api_level, get_system_property, has_telephony_feature,
     read_external_storage_text, write_external_storage_text,
