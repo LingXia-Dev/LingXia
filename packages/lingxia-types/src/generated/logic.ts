@@ -301,15 +301,6 @@ export type BinaryFileData = ArrayBuffer | ArrayBufferView;
  */
 export type BuiltinBrowserSurfaceUrl = 'lingxia://settings' | 'lingxia://downloads';
 
-export type CapsuleRect = {
-    width: number;
-    height: number;
-    top: number;
-    right: number;
-    bottom: number;
-    left: number;
-};
-
 export type ChooseDirectoryOptions = {
     /** Initial directory the dialog opens in. Platform default if omitted. */
     defaultPath?: string;
@@ -2188,12 +2179,6 @@ declare global {
     /** Show action sheet function for JavaScript */
     showActionSheet(options: ShowActionSheetOptions): Promise<ActionSheetResult>;
     readonly appearance: AppearanceApi;
-    /**
-     * Get the visible capsule button's bounding rect. Returns `null` for the home
-     * lxapp, an inactive lxapp, or a host that does not expose a capsule; rejection
-     * indicates an actual platform failure rather than hidden chrome.
-     */
-    getCapsuleRect(): Promise<CapsuleRect | null>;
     /** Show modal function (async) */
     showModal(options: ShowModalOptions): Promise<ModalResult>;
     /**

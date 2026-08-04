@@ -143,15 +143,6 @@ rong::js_api! {
 
         type BinaryFileData = r###"ArrayBuffer | ArrayBufferView"###;
 
-        type CapsuleRect = r###"{
-    width: number;
-    height: number;
-    top: number;
-    right: number;
-    bottom: number;
-    left: number;
-}"###;
-
         type AppearancePreference = r###"'auto' | 'light' | 'dark'"###;
         type ResolvedAppearance = r###"'light' | 'dark'"###;
         type VisibilityPreference = r###"'auto' | 'hidden'"###;

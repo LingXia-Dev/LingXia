@@ -598,9 +598,7 @@ const unsubscribe = subscribePageChromeLayout((next) => {
 Snapshots are frozen and revisioned. `window.lxPageChrome.layout` and the
 `lxpagechromechange` event remain the low-level View contract; framework code
 should prefer the helpers so subscriptions are cleaned up with the component.
-Logic can continue to call `await lx.getCapsuleRect()` when it needs a
-point-in-time capsule measurement; View collision avoidance should use the
-reactive snapshot instead.
+Capsule geometry is View-owned; Logic has no capsule measurement API.
 
 Full Logic patch shapes are exported by `@lingxia/types`; View snapshot types
 are exported by `@lingxia/react`, `@lingxia/vue`, and `@lingxia/html`.
@@ -614,10 +612,10 @@ tab placement and dimensions; use `presentation: "immersive"` only when content
 should extend behind the mobile bar.
 
 Replace the flat navigation and tab mutation functions with one transactional
-`lx.navigationBar.update()` or `lx.tabBar.update()` patch. `lx.getCapsuleRect()`
-is unchanged; View code that needs reactive chrome geometry should use the
-framework page-chrome helper. The CLI rejects removed configuration fields with
-the complete field path and its replacement.
+`lx.navigationBar.update()` or `lx.tabBar.update()` patch. View code that needs
+reactive chrome geometry should use the framework page-chrome helper. The CLI
+rejects removed configuration fields with the complete field path and its
+replacement.
 
 ---
 

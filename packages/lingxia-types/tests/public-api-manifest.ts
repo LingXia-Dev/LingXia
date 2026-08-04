@@ -52,7 +52,6 @@ export const LX_API_NAMES = [
   'downloadFile',
   'env',
   'extractVideoThumbnail',
-  'getCapsuleRect',
   'getConnectedWifi',
   'getDeviceInfo',
   'getFileManager',

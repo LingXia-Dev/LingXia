@@ -54,9 +54,7 @@ as `lx.env`, `lx.app`, `lx.appearance`, `lx.navigationBar`, `lx.tabBar`,
 `lx.tray`, and `lx.shell`; editor completion is the authoritative namespace
 map. Page Chrome geometry is a View concern exposed through
 the framework page-chrome helpers and their low-level `window.lxPageChrome`
-snapshot. The existing `lx.getCapsuleRect()` Logic API remains available for a
-point-in-time capsule measurement; use editor completion and its generated
-JSDoc for the exact contract.
+snapshot.
 
 ---
 
