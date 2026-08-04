@@ -76,6 +76,9 @@ pub enum BrowserCommand {
         #[arg(long)]
         json: bool,
     },
+    /// Inspect or override the browser session's complete user-agent string
+    #[command(name = "ua", visible_alias = "user-agent")]
+    UserAgent(UserAgentOptions),
     /// Evaluate JavaScript in a browser tab
     Eval {
         #[arg(long, default_value = "current")]
@@ -273,6 +276,39 @@ pub enum BrowserCommand {
         /// Print the JSON envelope (tab_id, size_bytes, data_base64) instead of writing a file
         #[arg(long)]
         json: bool,
+    },
+}
+
+#[derive(Args, Clone)]
+pub struct UserAgentOptions {
+    /// Print compact JSON output
+    #[arg(long, global = true, conflicts_with = "pretty")]
+    pub json: bool,
+    /// Print pretty JSON output
+    #[arg(long, global = true, conflicts_with = "json")]
+    pub pretty: bool,
+    #[command(subcommand)]
+    pub command: UserAgentCommand,
+}
+
+#[derive(Subcommand, Clone)]
+pub enum UserAgentCommand {
+    /// Show the configured override and effective navigator.userAgent
+    Show,
+    /// Set the complete user agent for current and future browser tabs
+    Set {
+        /// Complete user-agent string; this does not emulate browser features
+        #[arg(allow_hyphen_values = true)]
+        user_agent: String,
+        /// Reload all open browser tabs after applying the override
+        #[arg(long)]
+        reload: bool,
+    },
+    /// Restore the platform WebView's default user agent
+    Reset {
+        /// Reload all open browser tabs after restoring the default
+        #[arg(long)]
+        reload: bool,
     },
 }
 
@@ -486,6 +522,7 @@ pub fn execute(info: &SessionInfo, options: BrowserOptions) -> Result<()> {
             )?;
             print_optional_json(data, json)?;
         }
+        BrowserCommand::UserAgent(options) => execute_user_agent(ws_url, options)?,
         BrowserCommand::Eval {
             tab,
             js,
@@ -706,6 +743,56 @@ pub fn execute(info: &SessionInfo, options: BrowserOptions) -> Result<()> {
         }
     }
 
+    Ok(())
+}
+
+fn execute_user_agent(ws_url: &str, options: UserAgentOptions) -> Result<()> {
+    let (handler, args, show_human_output) = match options.command {
+        UserAgentCommand::Show => (handlers::browser::UA_SHOW, json!({}), true),
+        UserAgentCommand::Set { user_agent, reload } => (
+            handlers::browser::UA_SET,
+            json!({
+                "user_agent": user_agent,
+                "reload": reload,
+            }),
+            false,
+        ),
+        UserAgentCommand::Reset { reload } => (
+            handlers::browser::UA_RESET,
+            json!({ "reload": reload }),
+            false,
+        ),
+    };
+    let data = client::execute_command(ws_url, handler, Some(args))?.unwrap_or(Value::Null);
+    if options.json || options.pretty {
+        print_json(&data, options.pretty)?;
+    } else if show_human_output {
+        print_user_agent_state(&data)?;
+    }
+    Ok(())
+}
+
+fn print_user_agent_state(data: &Value) -> Result<()> {
+    let configured = match data.get("configured") {
+        Some(Value::String(value)) => value.as_str(),
+        Some(Value::Null) => "platform default",
+        _ => {
+            return Err(anyhow!(
+                "browser user-agent response had invalid configured state"
+            ));
+        }
+    };
+    let effective = match data.get("effective") {
+        Some(Value::String(value)) => value.as_str(),
+        Some(Value::Null) => "unavailable (no open browser tab)",
+        _ => {
+            return Err(anyhow!(
+                "browser user-agent response had invalid effective state"
+            ));
+        }
+    };
+    println!("configured: {configured}");
+    println!("effective: {effective}");
     Ok(())
 }
 

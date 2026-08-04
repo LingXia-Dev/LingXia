@@ -72,6 +72,9 @@ pub mod handlers {
         pub const RELOAD: &str = "browser.reload";
         pub const BACK: &str = "browser.back";
         pub const FORWARD: &str = "browser.forward";
+        pub const UA_SHOW: &str = "browser.ua.show";
+        pub const UA_SET: &str = "browser.ua.set";
+        pub const UA_RESET: &str = "browser.ua.reset";
         pub const EVAL: &str = "browser.eval";
         pub const QUERY: &str = "browser.query";
         pub const WAIT: &str = "browser.wait";
