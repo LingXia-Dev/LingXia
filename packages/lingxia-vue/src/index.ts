@@ -1,5 +1,6 @@
 export {
   useLxPage,
+  useLxPageChrome,
   useLxStream,
   useLxChannel,
   usePlatform,
@@ -23,6 +24,7 @@ export type {
 } from "./types.js";
 export type {
   LxPageChrome,
+  PageChromeLayoutListener,
   PageChromeLayoutSnapshot,
   PageChromeRect,
 } from "@lingxia/page-runtime";

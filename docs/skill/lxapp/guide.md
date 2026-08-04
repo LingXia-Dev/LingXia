@@ -541,14 +541,69 @@ Set the lxapp-only palette independently from the shared host shell with
 per lxapp; `lx.appearance.get()` synchronously returns its preference and
 resolved light/dark branch.
 
-View code reads realized overlap from `window.lxPageChrome.layout`, listens for
-`lxpagechromechange`, or uses `--lx-page-chrome-bottom-inset` and
-`--lx-page-chrome-capsule-inline-end-inset`. Retained snapshots are frozen and
-revisioned. Geometry is not exposed through Logic.
+### Avoiding an immersive tab bar and capsule
 
-Full patch shapes are exported by `@lingxia/types`; View snapshot types are
-exported by `@lingxia/page-runtime`, `@lingxia/react`, `@lingxia/vue`, and
-`@lingxia/html`.
+A `standard` tab bar shortens the View, so page CSS needs no tab-bar inset. An
+`immersive` tab bar overlaps the View. Never hard-code its platform height; use
+the page-chrome CSS variables for ordinary layout:
+
+```css
+.page-scroll {
+  padding-bottom: var(--lx-page-chrome-bottom-inset);
+}
+
+.floating-action {
+  bottom: calc(16px + var(--lx-page-chrome-bottom-inset));
+}
+
+/* Apply this only to controls in the capsule's top band, not the whole page. */
+.page-header {
+  padding-inline-end: var(--lx-page-chrome-capsule-inline-end-inset);
+}
+```
+
+Use the framework helper when placement needs the exact capsule rectangle or
+must react in JavaScript:
+
+```tsx
+// React
+import { useLxPageChrome } from '@lingxia/react';
+
+const chrome = useLxPageChrome();
+const capsule = chrome.capsuleRect;
+```
+
+```ts
+// Vue
+import { computed } from 'vue';
+import { useLxPageChrome } from '@lingxia/vue';
+
+const chrome = useLxPageChrome(); // Readonly<Ref<PageChromeLayoutSnapshot>>
+const capsule = computed(() => chrome.value.capsuleRect);
+```
+
+```ts
+// HTML
+import {
+  getPageChromeLayout,
+  subscribePageChromeLayout,
+} from '@lingxia/html';
+
+const initial = getPageChromeLayout();
+const unsubscribe = subscribePageChromeLayout((next) => {
+  // Reposition geometry-dependent UI from next.bottomInset/capsuleRect.
+});
+```
+
+Snapshots are frozen and revisioned. `window.lxPageChrome.layout` and the
+`lxpagechromechange` event remain the low-level View contract; framework code
+should prefer the helpers so subscriptions are cleaned up with the component.
+Logic can continue to call `await lx.getCapsuleRect()` when it needs a
+point-in-time capsule measurement; View collision avoidance should use the
+reactive snapshot instead.
+
+Full Logic patch shapes are exported by `@lingxia/types`; View snapshot types
+are exported by `@lingxia/react`, `@lingxia/vue`, and `@lingxia/html`.
 
 ### Migrating Page Chrome configuration
 
@@ -559,9 +614,10 @@ tab placement and dimensions; use `presentation: "immersive"` only when content
 should extend behind the mobile bar.
 
 Replace the flat navigation and tab mutation functions with one transactional
-`lx.navigationBar.update()` or `lx.tabBar.update()` patch. Capsule geometry now
-comes from `window.lxPageChrome.layout` rather than a Logic call. The CLI rejects
-removed configuration fields with the complete field path and its replacement.
+`lx.navigationBar.update()` or `lx.tabBar.update()` patch. `lx.getCapsuleRect()`
+is unchanged; View code that needs reactive chrome geometry should use the
+framework page-chrome helper. The CLI rejects removed configuration fields with
+the complete field path and its replacement.
 
 ---
 

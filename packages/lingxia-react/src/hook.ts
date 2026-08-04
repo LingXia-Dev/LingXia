@@ -20,10 +20,13 @@ import {
 } from "@lingxia/bridge/invocation";
 import {
   ensurePageBridgeSubscription,
+  getPageChromeLayout,
   getPageActions,
   getPageSnapshot,
+  subscribePageChromeLayout,
   subscribePageSnapshot,
   type ActionMap,
+  type PageChromeLayoutSnapshot,
   type Snapshot,
 } from "@lingxia/page-runtime";
 
@@ -44,6 +47,15 @@ export function useLxPage<
 
   const actions = React.useMemo(() => getPageActions<TActions>(), []);
   return { data: getPageSnapshot<TData>(), actions };
+}
+
+/** Reactive native page-chrome geometry for View layout. */
+export function useLxPageChrome(): PageChromeLayoutSnapshot {
+  return React.useSyncExternalStore(
+    subscribePageChromeLayout,
+    getPageChromeLayout,
+    getPageChromeLayout,
+  );
 }
 
 export interface LxStreamOptions<TData, TReduced> {

@@ -2,6 +2,7 @@ import {
   onUnmounted,
   reactive,
   ref,
+  shallowRef,
   unref,
   watch,
   type Ref,
@@ -28,8 +29,11 @@ import {
 import {
   ensurePageBridgeSubscription,
   getPageActions,
+  getPageChromeLayout,
+  subscribePageChromeLayout,
   subscribePageData,
   type ActionMap,
+  type PageChromeLayoutSnapshot,
   type Snapshot,
 } from "@lingxia/page-runtime";
 
@@ -65,6 +69,16 @@ export function useLxPage<
   ensurePageBridgeSubscription();
   ensureReactiveSnapshot();
   return { data: reactiveSnapshot as TData, actions: getPageActions<TActions>() };
+}
+
+/** Reactive native page-chrome geometry for View layout. */
+export function useLxPageChrome(): Readonly<Ref<PageChromeLayoutSnapshot>> {
+  const layout = shallowRef(getPageChromeLayout());
+  const unsubscribe = subscribePageChromeLayout((next) => {
+    layout.value = next;
+  });
+  onUnmounted(unsubscribe);
+  return layout;
 }
 
 export interface LxStreamOptions<TData, TReduced> {

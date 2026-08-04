@@ -53,7 +53,10 @@ Most methods are flat on `lx`. Related capabilities use typed namespaces such
 as `lx.env`, `lx.app`, `lx.appearance`, `lx.navigationBar`, `lx.tabBar`,
 `lx.tray`, and `lx.shell`; editor completion is the authoritative namespace
 map. Page Chrome geometry is a View concern exposed through
-`window.lxPageChrome`, not a Logic API.
+the framework page-chrome helpers and their low-level `window.lxPageChrome`
+snapshot. The existing `lx.getCapsuleRect()` Logic API remains available for a
+point-in-time capsule measurement; use editor completion and its generated
+JSDoc for the exact contract.
 
 ---
 

@@ -18,6 +18,10 @@ export interface LxPageChrome {
   readonly layout: PageChromeLayoutSnapshot;
 }
 
+export type PageChromeLayoutListener = (
+  layout: PageChromeLayoutSnapshot,
+) => void;
+
 declare global {
   interface Window {
     readonly lxPageChrome: LxPageChrome;
@@ -34,6 +38,37 @@ const initialLayout = Object.freeze<PageChromeLayoutSnapshot>({
   capsuleRect: null,
   capsuleInlineEndInset: 0,
 });
+
+function projectPageChromeLayout(layout: PageChromeLayoutSnapshot): void {
+  const root = document.documentElement;
+  root?.style.setProperty(
+    "--lx-page-chrome-bottom-inset",
+    `${layout.bottomInset}px`,
+  );
+  root?.style.setProperty(
+    "--lx-page-chrome-capsule-inline-end-inset",
+    `${layout.capsuleInlineEndInset}px`,
+  );
+}
+
+/** Read the latest realized page-chrome layout synchronously. */
+export function getPageChromeLayout(): PageChromeLayoutSnapshot {
+  if (typeof window === "undefined") return initialLayout;
+  return installPageChromeRuntime()?.layout ?? initialLayout;
+}
+
+/** Subscribe to realized page-chrome layout changes. */
+export function subscribePageChromeLayout(
+  listener: PageChromeLayoutListener,
+): () => void {
+  if (typeof window === "undefined") return () => {};
+  installPageChromeRuntime();
+  const handleChange = (event: CustomEvent<PageChromeLayoutSnapshot>) => {
+    listener(event.detail);
+  };
+  window.addEventListener("lxpagechromechange", handleChange);
+  return () => window.removeEventListener("lxpagechromechange", handleChange);
+}
 
 /** Ensure browser previews have the same synchronous contract as native pages. */
 export function installPageChromeRuntime(): LxPageChrome | undefined {
@@ -60,21 +95,15 @@ export function installPageChromeRuntime(): LxPageChrome | undefined {
         ? Object.freeze({ ...next.capsuleRect })
         : null;
       layout = Object.freeze({ ...next, capsuleRect });
+      projectPageChromeLayout(layout);
       const root = document.documentElement;
-      root?.style.setProperty(
-        "--lx-page-chrome-bottom-inset",
-        `${layout.bottomInset}px`,
-      );
-      root?.style.setProperty(
-        "--lx-page-chrome-capsule-inline-end-inset",
-        `${layout.capsuleInlineEndInset}px`,
-      );
       if (root) root.style.colorScheme = scheme;
       window.dispatchEvent(
         new CustomEvent("lxpagechromechange", { detail: layout }),
       );
     },
   });
+  projectPageChromeLayout(initialLayout);
   return api;
 }
 
