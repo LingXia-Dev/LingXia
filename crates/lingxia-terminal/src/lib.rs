@@ -5,12 +5,16 @@
 //! emulation.
 
 mod alacritty_vt;
+mod osc;
 #[cfg(windows)]
 mod process_windows;
 
 use alacritty_vt::{
     ATTR_BOLD, ATTR_DIM, ATTR_INVERSE, ATTR_ITALIC, ATTR_UNDERLINE, CursorVisualStyle,
     PtyWriteCallback, ThemeColors, VtScreen,
+};
+pub use alacritty_vt::{
+    TerminalEvent, TerminalEventBatch, TerminalEventKind, TerminalProgressState,
 };
 use portable_pty::{Child, CommandBuilder, MasterPty, PtySize, native_pty_system};
 use serde::Serialize;
@@ -204,6 +208,25 @@ pub fn terminal_snapshot_data(session_id: u64) -> Option<TerminalSnapshot> {
     Some(session.drain_snapshot())
 }
 
+/// Drain pending semantic events (cwd, title, bell, progress,
+/// notification, clipboard, command marks, exit) as JSON.
+///
+/// Events are monotonically sequenced per session; `dropped` reports
+/// queue overflows so hosts know when they fell behind.
+pub fn terminal_events_drain(id: u64) -> String {
+    terminal_events_drain_data(id)
+        .map(|batch| serde_json::to_string(&batch).unwrap_or_else(|_| "{}".to_string()))
+        .unwrap_or_else(|| "{}".to_string())
+}
+
+/// Structured variant of [`terminal_events_drain`]. `None` when the
+/// session does not exist.
+pub fn terminal_events_drain_data(id: u64) -> Option<TerminalEventBatch> {
+    let session = session(id)?;
+    let mut session = session.lock().ok()?;
+    Some(session.drain_events())
+}
+
 pub fn terminal_exited(id: u64) -> bool {
     let Some(session) = session(id) else {
         return true;
@@ -310,6 +333,7 @@ struct TerminalSession {
     output: Receiver<Vec<u8>>,
     vt: VtScreen,
     title_state: TerminalTitleState,
+    exit_event_sent: bool,
     _reader: thread::JoinHandle<()>,
     _writer: thread::JoinHandle<()>,
 }
@@ -655,9 +679,28 @@ impl TerminalSession {
             output: rx,
             vt,
             title_state,
+            exit_event_sent: false,
             _reader: reader_thread,
             _writer: writer_thread,
         })
+    }
+
+    /// Feed pending PTY output into the VT, surface the child exit once,
+    /// then drain the semantic event queue.
+    fn drain_events(&mut self) -> TerminalEventBatch {
+        let bytes = self.drain_bytes();
+        if !bytes.is_empty() {
+            self.vt.feed(&bytes);
+        }
+        if !self.exit_event_sent
+            && let Ok(Some(status)) = self.child.try_wait()
+        {
+            self.exit_event_sent = true;
+            self.vt.push_event(TerminalEventKind::Exited {
+                exit_code: Some(status.exit_code() as i32),
+            });
+        }
+        self.vt.drain_events()
     }
 
     fn drain_text(&mut self) -> String {
@@ -1556,6 +1599,53 @@ mod tests {
             "scrollback capped at 5 lines + 5 rows: {scrollbar:?}"
         );
         terminal_close(id);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn session_surfaces_cwd_and_exit_events() {
+        let id = terminal_create_with_spec(
+            80,
+            24,
+            TerminalSessionSpec {
+                program: Some("/bin/sh".to_string()),
+                args: Some(vec![
+                    "-c".to_string(),
+                    "printf '\\033]7;file:///tmp\\a'; sleep 0.1; exit 7".to_string(),
+                ]),
+                ..TerminalSessionSpec::default()
+            },
+        );
+        assert_ne!(id, 0);
+
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let mut events = Vec::new();
+        while Instant::now() < deadline {
+            let batch = terminal_events_drain_data(id).expect("live session");
+            events.extend(batch.events.into_iter().map(|event| event.kind));
+            if events
+                .iter()
+                .any(|kind| matches!(kind, TerminalEventKind::Exited { .. }))
+            {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(25));
+        }
+        terminal_close(id);
+
+        assert!(
+            events.iter().any(|kind| matches!(
+                kind,
+                TerminalEventKind::Cwd { path } if path == "/tmp"
+            )),
+            "cwd event surfaced: {events:?}"
+        );
+        assert!(
+            events
+                .iter()
+                .any(|kind| matches!(kind, TerminalEventKind::Exited { exit_code: Some(7) })),
+            "exit event surfaced: {events:?}"
+        );
     }
 
     #[test]
