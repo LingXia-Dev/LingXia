@@ -544,7 +544,49 @@ impl LxApp {
                 .await;
             return Err(error);
         }
+        self.publish_appearance_to_background_pages(&page, revision, resolved);
         Ok(())
+    }
+
+    /// Stamp the live scheme onto a page about to be (re)shown: a cached
+    /// document may hold the palette from before an appearance change, and
+    /// it must not enter the transition stale.
+    pub fn republish_page_scheme(&self, page: &PageInstance) {
+        let appearance = self.appearance_state().resolved;
+        let revision = self
+            .state
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .page_chrome_revision;
+        let _ = self.publish_page_chrome(page, revision, appearance);
+    }
+
+    /// The commit publishes the realized layout to the current page only;
+    /// every other live page still carries the scheme in its own document
+    /// (colorScheme/data-theme), so re-stamp them or platforms that cannot
+    /// flip prefers-color-scheme in place (Android) keep stale palettes.
+    fn publish_appearance_to_background_pages(
+        &self,
+        current: &PageInstance,
+        revision: u64,
+        appearance: ResolvedAppearance,
+    ) {
+        let current_id = current.instance_id_string();
+        let others: Vec<PageInstance> = {
+            let state = self.state.lock().unwrap_or_else(|error| error.into_inner());
+            let pages = state
+                .pages
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
+            pages
+                .values()
+                .filter(|page| page.instance_id_string() != current_id)
+                .cloned()
+                .collect()
+        };
+        for page in others {
+            let _ = self.publish_page_chrome(&page, revision, appearance);
+        }
     }
 }
 

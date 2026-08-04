@@ -329,6 +329,12 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_findWebView<'a>(
             return Ok(JObject::null());
         };
 
+        // A cached page re-enters the transition immediately; stamp the live
+        // scheme before it becomes visible, not after the show animation.
+        if let Some(app) = lxapp::try_get(&page.appid()) {
+            app.republish_page_scheme(&page);
+        }
+
         match env.new_local_ref(webview.get_java_webview()) {
             Ok(local_ref) => Ok(unsafe { JObject::from_raw(env, local_ref.into_raw()) }),
             Err(e) => {
@@ -359,6 +365,12 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_findWebViewByPageInstanceI
         let Some(webview) = page.webview() else {
             return Ok(JObject::null());
         };
+
+        // A cached page re-enters the transition immediately; stamp the live
+        // scheme before it becomes visible, not after the show animation.
+        if let Some(app) = lxapp::try_get(&page.appid()) {
+            app.republish_page_scheme(&page);
+        }
 
         match env.new_local_ref(webview.get_java_webview()) {
             Ok(local_ref) => Ok(unsafe { JObject::from_raw(env, local_ref.into_raw()) }),

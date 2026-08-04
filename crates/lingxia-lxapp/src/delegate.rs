@@ -266,6 +266,10 @@ impl LxAppDelegate for LxApp {
         // Mark the page as active for LRU tracking
         page.mark_active();
 
+        // Re-stamp the resolved scheme: a backgrounded (paused) webview can
+        // drop the broadcast publication of an appearance change.
+        self.republish_page_scheme(&page);
+
         self.sync_host_ui();
     }
 
