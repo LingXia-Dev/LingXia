@@ -436,9 +436,10 @@ allowed.
 - **Styling adapts to the tabbar config**: the attribution line's base color
   follows `dividerColor`; the selected item shows a left-edge accent bar
   colored by `selectedForegroundColor`; selected item text/icon colors are
-  same-sourced. All of it is runtime-mutable via `lx.tabBar.update()`; the
-  shell injects no accent of its own and inherits the Page Chrome theme when
-  fields are unset.
+  same-sourced. Only `foregroundColor` and `selectedForegroundColor` are
+  runtime-mutable via `lx.tabBar.update()`; background and divider remain
+  manifest-owned. The shell injects no accent of its own and inherits the Page
+  Chrome theme when fields are unset.
 
 ### 4.4 Pins
 
