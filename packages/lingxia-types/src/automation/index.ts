@@ -127,7 +127,17 @@ export interface PageScrollToOptions extends PageTarget {
   css: string;
 }
 
-export type PageWaitState = 'exists' | 'visible' | 'gone';
+export type PageWaitState =
+  | 'attached'
+  | 'detached'
+  | 'visible'
+  | 'hidden'
+  | 'enabled'
+  | 'editable'
+  /** @deprecated Use `attached`. */
+  | 'exists'
+  /** @deprecated Use `detached`. */
+  | 'gone';
 
 export interface PageWaitForOptions extends PageTarget {
   css: string;
