@@ -9,32 +9,20 @@ export interface LxApiError {
   readonly raw: unknown;
 }
 
+/** Check an already-normalized error without modifying the caught value. */
 export function isLxApiError(error: unknown): error is LxApiError {
-  const parsed = parseLxApiError(error);
   const target = toRecord(error);
-  if (!parsed || !target) return false;
-
-  if (
-    target.code === parsed.code &&
-    target.key === parsed.key &&
-    target.message === parsed.message &&
-    target.raw === error
-  ) {
-    return true;
-  }
-
-  // Host errors carry their stable business code and actionable detail in
-  // `data`. Normalize the caught object so this type guard is sound and code
-  // inside the guarded branch observes the documented LxApiError shape.
-  try {
-    target.code = parsed.code;
-    target.key = parsed.key;
-    target.message = parsed.message;
-    target.raw = error;
-    return true;
-  } catch {
-    return false;
-  }
+  if (!target) return false;
+  const code = parseIntegerCode(target.code);
+  if (code === null) return false;
+  const info = infoForLxErrorCode(code);
+  return Boolean(
+    info &&
+      target.code === code &&
+      target.key === info.key &&
+      typeof target.message === "string" &&
+      Object.prototype.hasOwnProperty.call(target, "raw"),
+  );
 }
 
 function readMessage(error: unknown): string {
