@@ -388,9 +388,8 @@ crammed in the moment the window crosses 840.
   into mis-tap territory.
 - `lx.tabBar.update({ visibility: 'hidden' })` hides the expanded region and
   disables the chevron; `visibility: 'auto'` clears the API-hidden state and
-  expands. The user chevron only
-  changes `userCollapsed` while API-visible; it MUST NOT override the
-  API-hidden state.
+  expands. The user chevron only changes `userCollapsed` while API-visible; it
+  MUST NOT override the API-hidden state.
 - **Only explicit API calls map to collapse/expand.** The mobile implicit
   behavior "navigating to a non-tab page auto-hides the tabbar" does not
   propagate to desktop: the sidebar is a persistent navigation region, so

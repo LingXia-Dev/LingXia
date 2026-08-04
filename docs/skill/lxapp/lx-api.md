@@ -52,9 +52,8 @@ editor applies the correct environment to each file.
 Most methods are flat on `lx`. Related capabilities use typed namespaces such
 as `lx.env`, `lx.app`, `lx.appearance`, `lx.navigationBar`, `lx.tabBar`,
 `lx.tray`, and `lx.shell`; editor completion is the authoritative namespace
-map. Page Chrome geometry is a View concern exposed through
-the framework page-chrome helpers and their low-level `window.lxPageChrome`
-snapshot.
+map. Page Chrome geometry is a View concern exposed through the framework
+page-chrome helpers and the low-level `window.lxPageChrome` snapshot.
 
 ---
 

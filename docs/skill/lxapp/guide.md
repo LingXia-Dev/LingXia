@@ -425,7 +425,9 @@ Notes:
 
 ---
 
-## Tab bar navigation
+## Tab bar & Page Chrome
+
+**Page Chrome** is the native UI the host renders around a page's View: the navigation bar with its capsule buttons, the tab bar, and the lxapp's light/dark appearance. It is declared in JSON and mutated at runtime through the `lx.*` namespaces below.
 
 A **tab bar** is a persistent navigation strip — typically at the bottom of the screen — that shows the lxapp's primary pages. Tapping a tab switches the active page **without** push/pop semantics: the tab bar stays visible across all tab pages, and tab pages do not stack on each other.
 
@@ -498,22 +500,9 @@ lxdev lxapp nav switch-tab profile
 
 `lx.navigateBack` still works for popping non-tab pages that were pushed on top of the current tab.
 
-### Modifying Page Chrome after declaration
+### Declaring the navigation bar in page JSON
 
-`lx.tabBar.update()` **mutates an already-declared tab bar** — it does not create
-or remove tabs. If the lxapp has no `tabBar` in `lxapp.json`, the promise rejects.
-
-```ts
-await lx.tabBar.update({
-  style: { selectedForegroundColor: '#ff0000' },
-  items: [{ index: 1, text: 'Inbox', badge: '3' }],
-});
-await lx.tabBar.update({ items: [{ index: 1, text: null, badge: null }] });
-await lx.tabBar.update({ visibility: 'hidden' });
-await lx.tabBar.update({ visibility: 'auto' });
-```
-
-Page configuration uses a nested navigation bar:
+Each page's `index.json` declares its navigation bar:
 
 ```json
 {
@@ -528,7 +517,26 @@ Page configuration uses a nested navigation bar:
 }
 ```
 
-Runtime updates use the matching namespace:
+`title` and all `style` keys are optional and inherit the host theme.
+`navigationStyle: "custom"` renders no native bar; on mobile the floating
+capsule buttons remain over the page's own header.
+
+### Updating Page Chrome at runtime
+
+`lx.tabBar.update()` **mutates an already-declared tab bar** — it does not create
+or remove tabs. If the lxapp has no `tabBar` in `lxapp.json`, the promise rejects.
+
+```ts
+await lx.tabBar.update({
+  style: { selectedForegroundColor: '#ff0000' },
+  items: [{ index: 1, text: 'Inbox', badge: '3' }],
+});
+await lx.tabBar.update({ items: [{ index: 1, text: null, badge: null }] });
+await lx.tabBar.update({ visibility: 'hidden' });
+await lx.tabBar.update({ visibility: 'auto' });
+```
+
+`lx.navigationBar.update()` patches the current page's bar the same way:
 
 ```ts
 await lx.navigationBar.update({ title: 'Account' });
@@ -536,12 +544,16 @@ await lx.navigationBar.update({ style: { backgroundColor: '#111827' } });
 await lx.navigationBar.update({ style: null, homeButton: 'auto' });
 ```
 
-Set the lxapp-only palette independently from the shared host shell with
-`await lx.appearance.set('auto' | 'light' | 'dark')`. The saved preference is
-per lxapp; `lx.appearance.get()` synchronously returns its preference and
-resolved light/dark branch.
+Each `update()` is one transaction: `null` resets a field to its declared
+value, omitted fields keep their current state, and an invalid patch rejects
+without applying anything.
 
-### Avoiding an immersive tab bar and capsule
+`await lx.appearance.set('auto' | 'light' | 'dark')` sets the lxapp's own
+light/dark branch independently of the host shell; the preference persists per
+lxapp, and `lx.appearance.get()` synchronously returns it alongside the
+resolved branch.
+
+### Laying out under immersive chrome
 
 A `standard` tab bar shortens the View, so page CSS needs no tab-bar inset. An
 `immersive` tab bar overlaps the View. Never hard-code its platform height; use
@@ -607,15 +619,10 @@ are exported by `@lingxia/react`, `@lingxia/vue`, and `@lingxia/html`.
 
 This contract is a breaking replacement rather than a compatibility layer.
 Move flat page navigation fields into `navigationBar`, rename `tabBar.list` to
-`tabBar.items`, and move tab colors into `tabBar.style`. Remove app-controlled
-tab placement and dimensions; use `presentation: "immersive"` only when content
-should extend behind the mobile bar.
-
-Replace the flat navigation and tab mutation functions with one transactional
-`lx.navigationBar.update()` or `lx.tabBar.update()` patch. View code that needs
-reactive chrome geometry should use the framework page-chrome helper. The CLI
-rejects removed configuration fields with the complete field path and its
-replacement.
+`tabBar.items`, and move tab colors into `tabBar.style`; app-controlled tab
+placement and dimensions are gone. Replace the flat mutation functions with a
+`lx.navigationBar.update()` or `lx.tabBar.update()` patch. The CLI rejects
+removed configuration fields with the complete field path and its replacement.
 
 ---
 
