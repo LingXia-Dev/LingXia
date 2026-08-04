@@ -6,6 +6,8 @@ use anyhow::{Result, anyhow};
 use std::collections::HashMap;
 use std::fs;
 
+pub(super) const WINDOWS_RS_REV: &str = "a1e9fce43c026221f62f0a149267cb6d7d3c607b";
+
 pub(super) fn create_windows_project(
     config: &ProjectConfig,
     versions: &LingXiaVersions,
@@ -39,6 +41,7 @@ pub(super) fn create_windows_project(
         "LINGXIA_WINDOWS_SDK_GIT_REF".to_string(),
         lingxia_windows_sdk_git_ref(&versions.lingxia_crate),
     );
+    vars.insert("WINDOWS_RS_REV".to_string(), WINDOWS_RS_REV.to_string());
 
     process_template_dir(&template_dir, &windows_dir, &vars)?;
     println!("  Created Windows host project: windows/");
@@ -56,7 +59,7 @@ fn lingxia_windows_sdk_git_ref(version: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::lingxia_windows_sdk_git_ref;
+    use super::{WINDOWS_RS_REV, lingxia_windows_sdk_git_ref};
 
     #[test]
     fn windows_sdk_git_ref_is_valid_inline_table_fragment() {
@@ -64,6 +67,25 @@ mod tests {
         assert!(
             fragment.starts_with("rev = \"") || fragment == "tag = \"lingxia-crates-v0.10.0\"",
             "{fragment}"
+        );
+    }
+
+    #[test]
+    fn windows_rs_patch_matches_the_sdk_revision() {
+        let sdk_manifest = include_str!("../../../../../crates/lingxia-windows-sdk/Cargo.toml");
+        let expected = format!("rev = \"{WINDOWS_RS_REV}\"");
+        assert!(sdk_manifest.contains(&expected));
+
+        let template = include_str!("../../../templates/windows/Cargo.toml.template");
+        let patch_lines = template
+            .lines()
+            .filter(|line| line.contains("microsoft/windows-rs.git"))
+            .collect::<Vec<_>>();
+        assert!(!patch_lines.is_empty());
+        assert!(
+            patch_lines
+                .iter()
+                .all(|line| line.contains("{{WINDOWS_RS_REV}}"))
         );
     }
 }

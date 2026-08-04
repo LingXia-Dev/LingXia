@@ -433,6 +433,10 @@ mod native_main_scaffold_tests {
         let versions = current_versions();
 
         create_project(&config, &versions).unwrap();
+        let windows_manifest =
+            std::fs::read_to_string(target_dir.join("windows").join("Cargo.toml")).unwrap();
+        assert!(!windows_manifest.contains("{{WINDOWS_RS_REV}}"));
+        assert!(windows_manifest.contains(&format!("rev = \"{}\"", windows::WINDOWS_RS_REV)));
         create_rust_library(&config, &versions, AppServiceMode::Disabled).unwrap();
         generate_config_file(
             &config,
