@@ -34,6 +34,59 @@ pub(super) enum ProjectType {
     LxApp,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum MainSurface {
+    LxApp,
+    Terminal,
+    Browser,
+}
+
+impl MainSurface {
+    pub(super) fn as_str(self) -> &'static str {
+        match self {
+            Self::LxApp => "lxapp",
+            Self::Terminal => "terminal",
+            Self::Browser => "browser",
+        }
+    }
+
+    pub(super) fn from_str(value: &str) -> Option<Self> {
+        match value.to_ascii_lowercase().as_str() {
+            "lxapp" => Some(Self::LxApp),
+            "terminal" => Some(Self::Terminal),
+            "browser" => Some(Self::Browser),
+            _ => None,
+        }
+    }
+
+    pub(super) fn is_native(self) -> bool {
+        !matches!(self, Self::LxApp)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum ControlMode {
+    LxApp,
+    Native,
+}
+
+impl ControlMode {
+    pub(super) fn as_str(self) -> &'static str {
+        match self {
+            Self::LxApp => "lxapp",
+            Self::Native => "native",
+        }
+    }
+
+    pub(super) fn from_str(value: &str) -> Option<Self> {
+        match value.to_ascii_lowercase().as_str() {
+            "lxapp" => Some(Self::LxApp),
+            "native" => Some(Self::Native),
+            _ => None,
+        }
+    }
+}
+
 impl ProjectType {
     pub(super) fn as_str(&self) -> &str {
         match self {
@@ -114,7 +167,7 @@ impl AppServiceMode {
 
 #[cfg(test)]
 mod tests {
-    use super::AppServiceMode;
+    use super::{AppServiceMode, ControlMode, MainSurface};
 
     #[test]
     fn default_logic_mode_keeps_appservice_enabled() {
@@ -125,5 +178,17 @@ mod tests {
     fn app_service_labels_are_clear() {
         assert_eq!(AppServiceMode::Enabled.label(), "enabled");
         assert_eq!(AppServiceMode::Disabled.label(), "disabled");
+    }
+
+    #[test]
+    fn scaffold_surface_options_are_strict() {
+        assert_eq!(
+            MainSurface::from_str("terminal"),
+            Some(MainSurface::Terminal)
+        );
+        assert_eq!(MainSurface::from_str("Browser"), Some(MainSurface::Browser));
+        assert_eq!(MainSurface::from_str("url"), None);
+        assert_eq!(ControlMode::from_str("native"), Some(ControlMode::Native));
+        assert_eq!(ControlMode::from_str("remote"), None);
     }
 }

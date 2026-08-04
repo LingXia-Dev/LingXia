@@ -6,7 +6,7 @@
 # Each entry starts with its content key (exactly one):
 #   lxapp   an lxapp, by appId          roles: main | aside | float
 #   url     an in-app browser page      roles: main | aside (requires capabilities.browser: true)
-#   native  a host capability           roles: aside (e.g. the built-in terminal)
+#   native  a host capability           roles: main | aside (terminal or browser)
 # Other fields:
 #   role    main (switchable primary) | aside (docked companion) | float (popup)
 #   edge    aside dock edge: left | right | top | bottom (default right;
@@ -15,7 +15,7 @@
 #   launch  open on start; at most one main has launch (none = launch from tray)
 #   tray    menu bar (macOS) / system tray (Windows) entry; required on float
 surfaces:
-  - lxapp: {{HOME_APP_ID}}   # main screen: your lxapp
+  - {{MAIN_SURFACE_CONTENT}}
     role: main
     launch: true
     # tray:                  # off by default; uncomment for a menu-bar / tray app

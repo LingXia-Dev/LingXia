@@ -41,8 +41,7 @@ app:
   # Native platforms included in this project: android, ios, macos, harmony, windows.
   platforms:
 {{PLATFORMS}}
-  # Home app opened by default. Resource source is declared in resources.bundles.
-  homeAppId: {{HOME_APP_ID}}
+{{HOME_APP_FIELD}}
 
 # Optional application-wide native UI colors. Omitted roles keep each
 # platform's semantic defaults. Values must use opaque #RRGGBB syntax.
@@ -83,10 +82,10 @@ capabilities:
   # When true, iOS/Harmony SDK initialization may request notification permission and fetch a push token.
   notifications: false
   # Enable the built-in browser (newtab/settings/downloads webui and browser runtime).
-  browser: false
+  browser: {{BROWSER_CAPABILITY}}
   # Enable the built-in terminal runtime. Declare a native terminal surface under `surfaces:`
   # when you want it to appear in host UI.
-  terminal: false
+  terminal: {{TERMINAL_CAPABILITY}}
   # Enable the in-app browser's HTTP proxy (desktop). Requires browser: true.
   proxy: false
   # Allow the trusted home lxapp to launch and manage OS processes (desktop).
@@ -97,20 +96,7 @@ capabilities:
   # via the API, typically a settings-page toggle.
   autostart: false
 
-# Resource bundle sources copied into native app assets.
-# app.homeAppId and ui surfaces reference appId; resources.bundles says where local/package
-# assets come from. SDK-reserved appIds (e.g. `app.lingxia.browser`) are not allowed here —
-# use the dedicated `browser.webui.*` keys below instead.
-resources:
-  bundles:
-    # Home lxapp bundled with the native app.
-    - type: lxapp
-      appId: {{HOME_APP_ID}}
-      path: {{HOME_APP_PATH}}
-    # Optional product lxapp bundled for an App UI surface, for example an assistant panel.
-    # - type: lxapp
-    #   appId: assistant-lxapp
-    #   path: assistant-lxapp
+{{RESOURCES_SECTION}}
 
 # Optional: override the SDK's default in-app browser webui (used only when
 # capabilities.browser is true). Omit to use the npm-published default
