@@ -20,7 +20,7 @@ import {
 import { LingXiaWebView } from './LingXiaWebView';
 import { NavigationBar, NavigationBarState, NAVBAR_TOTAL_HEIGHT, isColorDark } from './NavigationBar';
 import { NavigationButton, CapsuleButton } from './LxAppDrawables';
-import { TabBar } from './TabBar';
+import { TabBar, tabBarExtraBottomHeight } from './TabBar';
 import { TabBarPosition, TabBarItem, UiEventType } from 'liblingxia.so';
 import liblingxia, { TabBarState, getNavigationBarState, isPullDownRefreshEnabled, onPageShow, onLxappEvent, setSurfaceViewport, setSurfaceWidth } from 'liblingxia.so';
 import { NAVIGATION_ACTION_BACK, NAVIGATION_ACTION_HOME, CAPSULE_ACTION_CLOSE } from '../app/NativeBridge';
@@ -89,6 +89,9 @@ export struct LxAppContainer {
   @State private keepAliveTags: string[] = [] // Keep WebViews hidden (not removed) to avoid destroy
   private pageShowTriggered: Set<string> = new Set() // Track which pages have triggered onPageShow
   @State private statusBarHeight: number = SYSTEM_STATUS_BAR_HEIGHT // Default status bar height
+  // Screen-space Y of the container root (vp); >0 when the window manager
+  // already shifted the page below the system bar.
+  @State private containerTopVp: number = 0
   // Home-indicator gesture inset (vp); lifts TabBar items out of the zone
   @State private bottomIndicatorInset: number = 0
 
@@ -248,8 +251,30 @@ export struct LxAppContainer {
       }
       this.keyboardWindow = mainWindow;
 
+      // Re-assert full-screen layout: the quickStart-time call runs before
+      // loadContent and can be silently dropped, which shifts the whole page
+      // root below the status bar (a status-bar-height white band).
+      try {
+        await mainWindow.setWindowLayoutFullScreen(true);
+      } catch (error) {
+        LxLog.e(TAG, `setWindowLayoutFullScreen failed: ${error}`);
+      }
+      // Some window managers honor only the immersive-state API; harmless
+      // where setWindowLayoutFullScreen already worked.
+      try {
+        mainWindow.setImmersiveModeEnabledState(true);
+      } catch (error) {
+        LxLog.e(TAG, `setImmersiveModeEnabledState failed: ${error}`);
+      }
+
       const safeArea = await mainWindow.getWindowAvoidArea(window.AvoidAreaType.TYPE_SYSTEM);
-      this.statusBarHeight = safeArea.topRect.height || SYSTEM_STATUS_BAR_HEIGHT; // Ensure fallback value
+      const cutout = await mainWindow.getWindowAvoidArea(window.AvoidAreaType.TYPE_CUTOUT);
+      // Avoid-area rects are in PX; layout runs in vp. The chrome inset must
+      // clear both the system bar and the camera cutout.
+      const topPx = Math.max(safeArea.topRect.height, cutout.topRect.height);
+      hilog.info(DOMAIN, TAG,
+        `Avoid areas: system=${safeArea.topRect.height}px cutout=${cutout.topRect.height}px -> ${Math.round(px2vp(topPx))}vp`);
+      this.statusBarHeight = Math.round(px2vp(topPx)) || SYSTEM_STATUS_BAR_HEIGHT;
 
       const indicator = await mainWindow.getWindowAvoidArea(
         window.AvoidAreaType.TYPE_NAVIGATION_INDICATOR);
@@ -618,12 +643,12 @@ export struct LxAppContainer {
             Column() {
               if (this.shouldShowCapsuleButton()) {
                 CapsuleButton({
-                  statusBarHeight: this.statusBarHeight,
+                  statusBarHeight: this.getChromeStatusInset(),
                   standalone: false,
-                  backgroundColor: this.pageConfig?.capsuleBackgroundColor ?? 0xFFFFFFFF,
-                  foregroundColor: this.pageConfig?.capsuleForegroundColor ?? 0xFF000000,
-                  dividerColor: this.pageConfig?.capsuleDividerColor ?? 0xFFD1D1D6,
-                  interactionColor: this.pageConfig?.capsuleInteractionColor ?? 0xFFE5E5EA,
+                  capsuleBackgroundColor: this.pageConfig?.capsuleBackgroundColor ?? 0xFFFFFFFF,
+                  capsuleForegroundColor: this.pageConfig?.capsuleForegroundColor ?? 0xFF000000,
+                  capsuleDividerColor: this.pageConfig?.capsuleDividerColor ?? 0xFFD1D1D6,
+                  capsuleInteractionColor: this.pageConfig?.capsuleInteractionColor ?? 0xFFE5E5EA,
                   onMorePressed: () => this.handleCapsuleMore(),
                   onClosePressed: () => this.handleCapsuleClose()
                 })
@@ -653,12 +678,12 @@ export struct LxAppContainer {
 
           if (this.shouldShowCapsuleButton()) {
             CapsuleButton({
-              statusBarHeight: this.statusBarHeight,
+              statusBarHeight: this.getChromeStatusInset(),
               standalone: true,
-              backgroundColor: this.pageConfig?.capsuleBackgroundColor ?? 0xFFFFFFFF,
-              foregroundColor: this.pageConfig?.capsuleForegroundColor ?? 0xFF000000,
-              dividerColor: this.pageConfig?.capsuleDividerColor ?? 0xFFD1D1D6,
-              interactionColor: this.pageConfig?.capsuleInteractionColor ?? 0xFFE5E5EA,
+              capsuleBackgroundColor: this.pageConfig?.capsuleBackgroundColor ?? 0xFFFFFFFF,
+              capsuleForegroundColor: this.pageConfig?.capsuleForegroundColor ?? 0xFF000000,
+              capsuleDividerColor: this.pageConfig?.capsuleDividerColor ?? 0xFFD1D1D6,
+              capsuleInteractionColor: this.pageConfig?.capsuleInteractionColor ?? 0xFFE5E5EA,
               onMorePressed: () => this.handleCapsuleMore(),
               onClosePressed: () => this.handleCapsuleClose()
             })
@@ -689,8 +714,13 @@ export struct LxAppContainer {
 	    .height('100%')
     .onAreaChange((_, newValue) => {
       this.reportShellWidth(Number(newValue.width) || 0);
+      // Track where the container actually sits: when the window manager
+      // already insets the page root below the system bar, the chrome must
+      // not add its own status spacer on top of that.
+      const globalY = Number((newValue.globalPosition?.y as number) ?? 0);
+      this.containerTopVp = Math.max(0, Math.round(globalY));
     })
-	    .expandSafeArea(this.shouldExpandSafeAreaForContainer() || this.fullscreenComponentId.length > 0 ? [SafeAreaType.SYSTEM] : [], this.shouldExpandSafeAreaForContainer() || this.fullscreenComponentId.length > 0 ? [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM] : [])
+	    .expandSafeArea(this.shouldExpandSafeAreaForContainer() || this.fullscreenComponentId.length > 0 ? [SafeAreaType.SYSTEM, SafeAreaType.CUTOUT] : [], this.shouldExpandSafeAreaForContainer() || this.fullscreenComponentId.length > 0 ? [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM] : [])
 	  }
 
   private isHomeApp(): boolean {
@@ -825,7 +855,7 @@ export struct LxAppContainer {
       appId: this.appId,
       currentPath: this.path,
       translateX: this.navbarTranslateX,
-      statusBarHeight: this.statusBarHeight,
+      statusBarHeight: this.getChromeStatusInset(),
       onNavigationClick: (appId: string, isHomeButton: boolean): boolean => {
         this.handleNavigationBack(isHomeButton);
         return true;
@@ -847,9 +877,18 @@ export struct LxAppContainer {
       .zIndex(10003)
   }
 
+  /**
+   * Status inset the chrome still has to cover itself: the measured system
+   * avoid area minus whatever part the window manager already applied by
+   * shifting the page root down.
+   */
+  private getChromeStatusInset(): number {
+    return Math.max(0, this.statusBarHeight - this.containerTopVp);
+  }
+
   private getNavigationBarHeight(): number {
     const contentHeight = NAVBAR_TOTAL_HEIGHT - SYSTEM_STATUS_BAR_HEIGHT;
-    return this.statusBarHeight + contentHeight;
+    return this.getChromeStatusInset() + contentHeight;
   }
 
   private shouldRenderOverlayMask(): boolean {
@@ -988,7 +1027,9 @@ export struct LxAppContainer {
     })
     .hitTestBehavior(HitTestMode.Transparent)
     .zIndex(this.shouldRenderOverlayMask() ? 10004 : 0)
-    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
+    // CUTOUT included so the web area reaches y=0 on cutout devices like the
+    // other mobile hosts; the camera zone is covered by the status-bar inset.
+    .expandSafeArea([SafeAreaType.SYSTEM, SafeAreaType.CUTOUT], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
   }
   
   /**
@@ -1062,9 +1103,10 @@ export struct LxAppContainer {
    * - Only reserve it when the TabBar is opaque to avoid white gaps while the bar is transparent.
    */
   private getWebViewAreaPadding(): Padding {
-    // Only reserve NAVBAR_TOTAL_HEIGHT when the navigation bar is visible; otherwise, there would be a 44vp blank at the top
+    // Reserve exactly the navbar's rendered height (real status bar inset +
+    // content); a constant here drifts from the bar and opens a visible gap.
     const showNavbar = this.pageConfig?.showNavbar === true;
-    const top = showNavbar ? NAVBAR_TOTAL_HEIGHT : 0;
+    const top = showNavbar ? this.getNavigationBarHeight() : 0;
     return { top: top, bottom: 0, left: 0, right: 0 } as Padding;
   }
 
@@ -1077,29 +1119,22 @@ export struct LxAppContainer {
     return this.getWebViewAreaPadding();
   }
 
-  /**
-   * Compute WebView padding centrally to keep the layout fixed and prevent overlap.
-   * - Top: reserve the status or navigation bar height when needed.
-   * - Bottom/sides: always reserve space for an opaque TabBar so content never jumps.
-   */
-  private getWebViewPadding(): Padding {
-    // The container handles the top reservation; the bottom is fixed here so opaque TabBars never hide content or trigger flicker when transparency changes
-    const bottomPad = this.getWebBottomPadding();
-    return { top: 0, bottom: bottomPad, left: 0, right: 0 } as Padding;
-  }
-
   private getWebBottomPadding(): number {
     const hasTabBar = (this.tabBarState?.items?.length ?? 0) > 0;
     if (!hasTabBar) return 0;
+    // Pushed (non-tab) pages hide the tabbar; reserving there opens a gap
+    // between the navbar and the web area.
+    if (this.tabBarState?.isVisible !== true) return 0;
     if (this.isTabBarVertical()) return 0; // Side TabBars do not affect vertical spacing
     // A transparent TabBar overlays the WebView, so allow content underneath (padding = 0)
     const transparent = this.isTabBarTransparent();
     if (transparent) {
       return 0;
     }
-    // Reserve the TabBar height when it is opaque to avoid covering content
+    // Reserve the TabBar's RENDERED height: configured dimension plus the
+    // home-indicator growth the bar itself applies.
     const tabBarSize: number = (this.tabBarState?.dimension as number) ?? TAB_BAR_HORIZONTAL_HEIGHT;
-    return tabBarSize;
+    return tabBarSize + tabBarExtraBottomHeight(this.bottomIndicatorInset, transparent);
   }
 
   private shouldRenderNavigationBar(): boolean {
@@ -1409,6 +1444,7 @@ export struct LxAppContainer {
       }
       .width(this.getStackWidth(webTag))
       .height(this.getStackHeight(webTag))
+      .alignContent(this.getRenderAlignment(webTag))
     }
     .width('100%')
     .height('100%')
@@ -1670,10 +1706,9 @@ export struct LxAppContainer {
   }
 
   private getRenderPadding(webTag: string): Padding {
-    if (this.isOverlayWebView(webTag)) {
-      return { top: 0, bottom: 0, left: 0, right: 0 } as Padding;
-    }
-    return this.getWebViewPadding();
+    // ArkWeb ignores component padding; the tabbar reservation is applied
+    // through getWebContentHeight instead.
+    return { top: 0, bottom: 0, left: 0, right: 0 } as Padding;
   }
 
   private getRenderAlignment(webTag: string): Alignment {
@@ -1719,8 +1754,11 @@ export struct LxAppContainer {
   }
 
   private getWebContentHeight(): string {
-    // Web content always 100% height of the area allocated to it
-    return '100%';
+    // ArkWeb fills its border box and ignores component padding, so an
+    // opaque visible tabbar must shrink the web height or it covers the
+    // page's bottom content.
+    const bottom = this.getWebBottomPadding();
+    return bottom > 0 ? `calc(100% - ${bottom}vp)` : '100%';
   }
 
   private getWebViewVisibility(webTag: string): Visibility {
@@ -1728,20 +1766,26 @@ export struct LxAppContainer {
     if (this.animationInProgress) {
       if (webTag === this.currentWebTag) return Visibility.Visible;
       if (webTag === this.previousWebTag) return Visibility.Visible;
-      return Visibility.None;
+      return this.getHiddenVisibility(webTag);
     }
 
     // Standard visibility
     return webTag === this.currentWebTag ? Visibility.Visible : this.getHiddenVisibility(webTag);
   }
 
+  private isParkedOffscreen(webTag: string): boolean {
+    if (webTag === this.currentWebTag) return false;
+    // The page behind a presentation overlay must stay in place so it shows
+    // through the semi-transparent mask.
+    if (this.overlayActive && webTag === this.presentationPreviousWebTag) return false;
+    return true;
+  }
+
   private getHiddenVisibility(webTag: string): Visibility {
-    // Keep alive logic
-    if (this.keepAliveTags.includes(webTag)) {
-      return Visibility.Visible;
-    }
-    // Pre-render logic could go here
-    return Visibility.None;
+    // Hidden/None blank the ArkWeb surface (and Hidden also blocks the
+    // first paint of a page loaded before reveal), so inactive pages stay
+    // Visible and are parked offscreen via translate instead.
+    return this.isParkedOffscreen(webTag) ? Visibility.Visible : Visibility.Hidden;
   }
 
   private getWebViewTranslation(webTag: string): TranslateOptions {
@@ -1749,7 +1793,7 @@ export struct LxAppContainer {
     if (!this.animationInProgress) {
       // Ensure active WebView is at 0, others are moved out if kept alive
       if (webTag === this.currentWebTag) return { x: 0, y: keyboardTranslateY };
-      if (this.keepAliveTags.includes(webTag)) return { x: '100%', y: 0 };
+      if (this.isParkedOffscreen(webTag)) return { x: '100%', y: 0 };
       return { x: 0, y: 0 };
     }
 
@@ -1759,6 +1803,7 @@ export struct LxAppContainer {
     if (webTag === this.previousWebTag) {
       return { x: `${this.previousWebViewTranslateX}%`, y: 0 };
     }
+    if (this.isParkedOffscreen(webTag)) return { x: '100%', y: 0 };
     return { x: 0, y: 0 };
   }
 
@@ -1782,6 +1827,11 @@ export struct LxAppContainer {
   private getRenderableWebEntries(): RenderableWebEntry[] {
     const entries: RenderableWebEntry[] = [];
     this.webViewComponents.forEach((controller, tag) => {
+      // Mount every webview: the runtime blocks page creation on the Web
+      // component's onAppear ack, so an unmounted webview deadlocks
+      // navigateTo. Inactive pages are parked offscreen, never unmounted —
+      // remounting binds the controller to a fresh empty browser (src '')
+      // that the runtime won't reload.
       entries.push({ webTag: tag, controller: controller });
     });
     return entries;

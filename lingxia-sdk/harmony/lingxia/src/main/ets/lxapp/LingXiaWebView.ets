@@ -92,6 +92,10 @@ export struct LingXiaWebView {
     }
     .width('100%')
     .height('100%')
+    // A height-shrunk Web (tabbar reservation) must anchor to the top;
+    // Stack's default Center alignment splits the reserved space across
+    // top and bottom, opening a band under the navbar.
+    .alignContent(Alignment.TopStart)
     .translate(this.renderTranslate)
   }
 

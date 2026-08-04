@@ -86,9 +86,13 @@ export class Lingxia {
     }
     if (windowStage) {
       Lingxia.windowStage = windowStage;
-      // Set window to full screen layout
+      // Set window to full screen layout. This runs before loadContent and can
+      // be dropped by the window manager; LxAppContainer re-asserts it once
+      // content is up, so here we only log the failure.
       const mainWindow = windowStage.getMainWindowSync();
-      mainWindow.setWindowLayoutFullScreen(true);
+      mainWindow.setWindowLayoutFullScreen(true).catch((error: Error) => {
+        hilog.warn(DOMAIN, TAG, `setWindowLayoutFullScreen failed: ${error}`);
+      });
     }
 
     // Initialize native bridge

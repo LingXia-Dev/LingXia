@@ -167,15 +167,24 @@ export struct NavigationBar {
           .width('100%')
           .height(1)
           .backgroundColor(toResourceColor(this.config.navigationBarDividerColor))
-          .position({ x: 0, y: NAVIGATION_BAR_TOTAL_HEIGHT - 1 })
+          .position({ x: 0, y: this.getTotalHeight() - 1 })
       }
     }
     .width('100%')
-    .height(NAVIGATION_BAR_TOTAL_HEIGHT)
+    .height(this.getTotalHeight())
     .alignContent(Alignment.Bottom)
     .translate({ x: `${this.translateX}%`, y: 0 })
     .visibility(this.shouldShowNavBar() ? Visibility.Visible : Visibility.Hidden)
     .hitTestBehavior(HitTestMode.Transparent)
+  }
+
+  /**
+   * Rendered bar height: REAL status bar inset plus the content row. The
+   * 88vp constant assumes a 44vp status bar and drifts on devices where the
+   * real inset differs, opening a gap between the bar and the web area.
+   */
+  private getTotalHeight(): number {
+    return this.statusBarHeight + NAVIGATION_BAR_CONTENT_HEIGHT;
   }
 
   /**
