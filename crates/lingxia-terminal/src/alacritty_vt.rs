@@ -208,7 +208,7 @@ impl Dimensions for GridSize {
 
 fn default_theme() -> ThemeColors {
     // Base16-ish defaults; hosts push their real theme via
-    // `new_with_write_pty`.
+    // `new_with_options`.
     ThemeColors::from_ansi16(
         [0xff, 0xff, 0xff],
         [0x28, 0x2c, 0x34],
@@ -234,11 +234,12 @@ fn default_theme() -> ThemeColors {
 }
 
 impl VtScreen {
-    pub fn new_with_write_pty(
+    pub fn new_with_options(
         cols: u16,
         rows: u16,
         theme: Option<&ThemeColors>,
         write_pty: Option<PtyWriteCallback>,
+        scrollback_limit: Option<usize>,
     ) -> Self {
         let cols = cols.max(1);
         let rows = rows.max(1);
@@ -249,7 +250,7 @@ impl VtScreen {
             pending,
         });
         let config = Config {
-            scrolling_history: SCROLLBACK_LINES,
+            scrolling_history: scrollback_limit.unwrap_or(SCROLLBACK_LINES),
             ..Config::default()
         };
         let size = GridSize {
@@ -577,7 +578,7 @@ mod tests {
 
     #[test]
     fn renders_fed_bytes() {
-        let screen = VtScreen::new_with_write_pty(20, 3, None, None);
+        let screen = VtScreen::new_with_options(20, 3, None, None, None);
         screen.feed(b"hello \x1b[1mworld\x1b[0m");
         let snapshot = screen.snapshot();
         let text = snapshot_text(&snapshot);
@@ -593,7 +594,7 @@ mod tests {
 
     #[test]
     fn scroll_viewport_reveals_scrollback() {
-        let screen = VtScreen::new_with_write_pty(12, 3, None, None);
+        let screen = VtScreen::new_with_options(12, 3, None, None, None);
         screen.feed(b"one\r\ntwo\r\nthree\r\nfour\r\nfive");
 
         let bottom = snapshot_text(&screen.snapshot());
@@ -616,7 +617,7 @@ mod tests {
 
     #[test]
     fn tracks_modes_and_title() {
-        let screen = VtScreen::new_with_write_pty(10, 2, None, None);
+        let screen = VtScreen::new_with_options(10, 2, None, None, None);
         assert!(!screen.is_bracketed_paste());
         screen.feed(b"\x1b[?2004h\x1b[?1h\x1b[?1049h\x1b[?1000h\x1b[?1006h");
         assert!(screen.is_bracketed_paste());
@@ -636,7 +637,7 @@ mod tests {
         let write_pty: PtyWriteCallback = Arc::new(move |bytes: &[u8]| {
             sink.lock().extend_from_slice(bytes);
         });
-        let screen = VtScreen::new_with_write_pty(8, 2, None, Some(write_pty));
+        let screen = VtScreen::new_with_options(8, 2, None, Some(write_pty), None);
         screen.feed(b"\x1b[6n");
         let response = written.lock().clone();
         assert_eq!(response, b"\x1b[1;1R");
@@ -644,7 +645,7 @@ mod tests {
 
     #[test]
     fn default_background_cells_carry_alpha_zero_sentinel() {
-        let screen = VtScreen::new_with_write_pty(8, 2, None, None);
+        let screen = VtScreen::new_with_options(8, 2, None, None, None);
         screen.feed(b"a\x1b[41mb\x1b[0m");
         let snapshot = screen.snapshot();
         let plain = snapshot
@@ -663,7 +664,7 @@ mod tests {
 
     #[test]
     fn wide_characters_flag_and_spacer() {
-        let screen = VtScreen::new_with_write_pty(8, 2, None, None);
+        let screen = VtScreen::new_with_options(8, 2, None, None, None);
         screen.feed("中".as_bytes());
         let snapshot = screen.snapshot();
         let wide = snapshot

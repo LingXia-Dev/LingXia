@@ -18,7 +18,7 @@ use std::collections::{HashMap, VecDeque};
 #[cfg(any(target_os = "macos", target_os = "ios"))]
 use std::ffi::CStr;
 use std::io::{Read, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, TrySendError};
 use std::sync::{Arc, Condvar, LazyLock, Mutex, OnceLock};
@@ -82,6 +82,29 @@ pub fn backend_status_json() -> String {
         .unwrap_or_else(|_| r#"{"backend":"alacritty","available":true}"#.to_string())
 }
 
+/// Options describing how a terminal session should be created.
+///
+/// Hosts resolve their own profiles into this spec; the crate never
+/// reads user configuration files. `None`/empty fields fall back to the
+/// engine defaults: the user's shell in the host process directory with
+/// the default scrollback limit.
+#[derive(Debug, Clone, Default)]
+pub struct TerminalSessionSpec {
+    /// Working directory for the spawned program. `None` inherits the
+    /// host process directory.
+    pub cwd: Option<PathBuf>,
+    /// Program to run. `None` resolves the user's shell.
+    pub program: Option<String>,
+    /// Arguments for `program`. `None` uses the engine defaults for the
+    /// resolved program (e.g. `-i` for POSIX shells); `Some(vec![])`
+    /// runs the program with no arguments.
+    pub args: Option<Vec<String>>,
+    /// Environment overlay applied on top of the engine defaults.
+    pub env: Vec<(String, String)>,
+    /// Scrollback line cap. `None` uses the engine default.
+    pub scrollback_limit: Option<usize>,
+}
+
 /// Create a cross-platform terminal engine session.
 ///
 /// The engine owns PTY/conpty transport plus alacritty terminal
@@ -97,9 +120,23 @@ pub fn terminal_create(cols: u16, rows: u16) -> u64 {
 /// `None` inherits the host process directory. Returns `0` if the PTY, shell,
 /// or session registry cannot be initialized, matching [`terminal_create`].
 pub fn terminal_create_at(cols: u16, rows: u16, cwd: Option<&Path>) -> u64 {
+    terminal_create_with_spec(
+        cols,
+        rows,
+        TerminalSessionSpec {
+            cwd: cwd.map(Path::to_path_buf),
+            ..TerminalSessionSpec::default()
+        },
+    )
+}
+
+/// Create a terminal session from a full [`TerminalSessionSpec`].
+///
+/// Returns `0` on failure, matching [`terminal_create`].
+pub fn terminal_create_with_spec(cols: u16, rows: u16, spec: TerminalSessionSpec) -> u64 {
     let cols = cols.max(1);
     let rows = rows.max(1);
-    let result = TerminalSession::spawn(cols, rows, cwd).and_then(|session| {
+    let result = TerminalSession::spawn(cols, rows, &spec).and_then(|session| {
         let mut sessions = SESSIONS
             .lock()
             .map_err(|_| "session registry lock poisoned".to_string())?;
@@ -505,7 +542,7 @@ pub struct TerminalCell {
 }
 
 impl TerminalSession {
-    fn spawn(cols: u16, rows: u16, cwd: Option<&Path>) -> Result<Self, String> {
+    fn spawn(cols: u16, rows: u16, spec: &TerminalSessionSpec) -> Result<Self, String> {
         let pty_system = native_pty_system();
         let pair = pty_system
             .openpty(PtySize {
@@ -516,13 +553,27 @@ impl TerminalSession {
             })
             .map_err(|err| format!("open pty failed: {err}"))?;
 
-        let shell = resolved_shell();
+        let shell = spec
+            .program
+            .as_ref()
+            .filter(|program| !program.trim().is_empty())
+            .map(|program| TerminalShell {
+                path: program.clone(),
+                args: spec.args.clone().unwrap_or_default(),
+            })
+            .unwrap_or_else(|| {
+                let shell = resolved_shell();
+                TerminalShell {
+                    path: shell.path,
+                    args: spec.args.clone().unwrap_or(shell.args),
+                }
+            });
         let shell_title = process_name_from_path(&shell.path);
         let mut command = CommandBuilder::new(shell.path);
         for arg in shell.args {
             command.arg(arg);
         }
-        if let Some(cwd) = cwd {
+        if let Some(cwd) = spec.cwd.as_deref() {
             command.cwd(cwd);
         }
         command.env("TERM", "xterm-256color");
@@ -531,6 +582,9 @@ impl TerminalSession {
         command.env("TERM_PROGRAM_VERSION", env!("CARGO_PKG_VERSION"));
         if std::env::var_os("LANG").is_none() {
             command.env("LANG", "en_US.UTF-8");
+        }
+        for (key, value) in &spec.env {
+            command.env(key, value);
         }
 
         let child = pair
@@ -558,7 +612,13 @@ impl TerminalSession {
             }
         });
         let theme = terminal_theme();
-        let vt = VtScreen::new_with_write_pty(cols, rows, Some(&theme), Some(write_pty));
+        let vt = VtScreen::new_with_options(
+            cols,
+            rows,
+            Some(&theme),
+            Some(write_pty),
+            spec.scrollback_limit,
+        );
 
         // Bounded so a consumer that stops polling can't buffer PTY
         // output without limit. When the channel fills the reader
@@ -1454,6 +1514,48 @@ mod tests {
             },
         ];
         assert_eq!(deepest_process_name(&members).as_deref(), Some("cli-tool"));
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn session_spec_runs_program_with_args_env_and_scrollback_limit() {
+        let id = terminal_create_with_spec(
+            80,
+            5,
+            TerminalSessionSpec {
+                program: Some("/bin/sh".to_string()),
+                args: Some(vec![
+                    "-c".to_string(),
+                    "i=0; while [ $i -lt 40 ]; do echo line$i; i=$((i+1)); done; echo \"var=$LINGXIA_SPEC_TEST_VAR\"; sleep 30".to_string(),
+                ]),
+                env: vec![("LINGXIA_SPEC_TEST_VAR".to_string(), "spec-ok".to_string())],
+                scrollback_limit: Some(5),
+                ..TerminalSessionSpec::default()
+            },
+        );
+        assert_ne!(id, 0);
+
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let mut snapshot = terminal_snapshot_data(id);
+        while Instant::now() < deadline {
+            snapshot = terminal_snapshot_data(id);
+            if snapshot
+                .as_ref()
+                .is_some_and(|snapshot| snapshot.lines.iter().any(|line| line.contains("var=")))
+            {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(25));
+        }
+        let snapshot = snapshot.expect("snapshot for live session");
+        let text = snapshot.lines.join("\n");
+        assert!(text.contains("var=spec-ok"), "spec env visible: {text}");
+        let scrollbar = snapshot.scrollbar.expect("scrollbar present");
+        assert!(
+            scrollbar.total <= 5 + 5,
+            "scrollback capped at 5 lines + 5 rows: {scrollbar:?}"
+        );
+        terminal_close(id);
     }
 
     #[test]
