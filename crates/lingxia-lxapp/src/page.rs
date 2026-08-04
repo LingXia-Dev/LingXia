@@ -119,6 +119,9 @@ pub struct PageState {
     on_ready_fired: bool,
     // Navigation bar state
     pub(crate) navbar_state: NavigationBarState,
+    // A malformed page config owns this page's load outcome; it must not
+    // silently fall back to chrome defaults.
+    config_load_error: Option<String>,
     // Pull-to-refresh enabled flag
     pub(crate) enable_pull_down_refresh: bool,
     // PageInstance orientation overrides
@@ -300,12 +303,20 @@ impl PageInstance {
     /// Build PageState from JSON config
     /// PageConfig is the single source of truth for configuration.
     fn build_page_state(lxapp: &lxapp::LxApp, path: &str) -> PageState {
-        let page_config = if lxapp.logic_enabled() {
-            PageConfig::from_json(lxapp, path)
+        let (page_config, config_load_error) = if lxapp.logic_enabled() {
+            match PageConfig::from_json(lxapp, path) {
+                Ok(config) => (config, None),
+                Err(error) => {
+                    error!("Page config load failed for {}: {}", path, error)
+                        .with_appid(lxapp.appid.clone())
+                        .with_path(path.to_string());
+                    (PageConfig::default(), Some(error.to_string()))
+                }
+            }
         } else {
             // When logic is disabled, page.json is intentionally ignored.
             // In this mode pages talk directly to Rust without JS/page config.
-            PageConfig::default()
+            (PageConfig::default(), None)
         };
         PageState {
             event: PageLifecycleEvent::Unknown,
@@ -318,6 +329,7 @@ impl PageInstance {
             on_show_fired: false,
             on_ready_fired: false,
             navbar_state: page_config.create_navbar_state(),
+            config_load_error,
             enable_pull_down_refresh: page_config.is_pull_down_refresh_enabled(),
             orientation_override: page_config.get_orientation_override(),
             query: serde_json::json!({}),
@@ -1002,9 +1014,26 @@ impl PageInstance {
     pub(crate) fn load_html(&self) -> Result<(), LxAppError> {
         let lxapp = self.owning_lxapp();
         let path = self.path();
-        let html_data = lxapp.generate_page_html(&path, self.bridge_nonce().as_deref());
+        let config_load_error = self
+            .inner
+            .state
+            .lock()
+            .ok()
+            .and_then(|state| state.config_load_error.clone());
+        let html_string = if let Some(message) = config_load_error {
+            lingxia_webview::render_load_error_page(lingxia_webview::LoadErrorPage {
+                title: "Page configuration error",
+                message: &message,
+                retry_label: "Retry",
+                retry_url: &self.base_url(),
+            })
+        } else {
+            String::from_utf8_lossy(
+                &lxapp.generate_page_html(&path, self.bridge_nonce().as_deref()),
+            )
+            .into_owned()
+        };
         let base_url = self.base_url();
-        let html_string = String::from_utf8_lossy(&html_data).into_owned();
 
         if let Some(controller) = self.webview_controller() {
             controller
@@ -1553,6 +1582,7 @@ mod tests {
             on_show_fired: false,
             on_ready_fired: false,
             navbar_state: NavigationBarState::default(),
+            config_load_error: None,
             enable_pull_down_refresh: false,
             orientation_override: OrientationOverride::default(),
             query: serde_json::json!({}),

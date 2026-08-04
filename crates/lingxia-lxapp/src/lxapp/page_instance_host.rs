@@ -133,7 +133,7 @@ impl LxApp {
         };
 
         let config = if self.logic_enabled() {
-            PageConfig::from_json(self, &config_path)
+            PageConfig::from_json(self, &config_path).unwrap_or_default()
         } else {
             PageConfig::default()
         };

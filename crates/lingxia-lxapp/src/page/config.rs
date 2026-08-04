@@ -2,6 +2,7 @@ use crate::LxAppError;
 use crate::lxapp::LxApp;
 use crate::lxapp::navbar::{NavigationBarConfig, NavigationBarState, NavigationStyle};
 use crate::warn;
+use serde::de::Error as _;
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
 
@@ -171,6 +172,35 @@ pub struct PageConfig {
 }
 
 impl PageConfig {
+    fn validate_removed_fields(path: &str, value: &Value) -> Result<(), serde_json::Error> {
+        let Some(object) = value.as_object() else {
+            return Ok(());
+        };
+        for (field, replacement) in [
+            ("navigationBarTitleText", "navigationBar.title"),
+            (
+                "navigationBarBackgroundColor",
+                "navigationBar.style.backgroundColor",
+            ),
+            (
+                "navigationBarTextStyle",
+                "navigationBar.style.foregroundColor",
+            ),
+        ] {
+            if object.contains_key(field) {
+                return Err(serde_json::Error::custom(format!(
+                    "{path}.{field}: removed; use {replacement}"
+                )));
+            }
+        }
+        if object.contains_key("backgroundColor") {
+            return Err(serde_json::Error::custom(format!(
+                "{path}.backgroundColor: removed; page background is host-owned"
+            )));
+        }
+        Ok(())
+    }
+
     fn parse_page_orientation_value(value: &Value) -> Option<PageOrientation> {
         let raw = value.as_str()?;
         match raw.trim().to_ascii_lowercase().as_str() {
@@ -199,34 +229,38 @@ impl PageConfig {
         }
     }
 
-    /// Create PageConfig from JSON config file path
-    /// This is the single entry point for loading page configuration.
-    pub fn from_json(lxapp: &LxApp, path: &str) -> Self {
+    pub(crate) fn from_value(path: &str, mut value: Value) -> Result<Self, serde_json::Error> {
+        Self::validate_removed_fields(path, &value)?;
+        Self::sanitize_page_orientation(path, &mut value);
+        let config = serde_json::from_value::<PageConfig>(value)?;
+        config
+            .navigation_bar
+            .style
+            .validate(&format!("{path}.navigationBar"))
+            .map_err(serde_json::Error::custom)?;
+        Ok(config)
+    }
+
+    /// Create PageConfig from JSON config file path.
+    /// Missing files use defaults; malformed files are hard page-load errors.
+    pub fn from_json(lxapp: &LxApp, path: &str) -> Result<Self, LxAppError> {
         if path.trim().is_empty() {
-            return Self::default();
+            return Ok(Self::default());
         }
 
         let json_path = path_to_json_path(path);
         match lxapp.read_json(&json_path) {
-            Ok(mut json_value) => {
-                Self::sanitize_page_orientation(path, &mut json_value);
-                match serde_json::from_value::<PageConfig>(json_value) {
-                    Ok(config) => config,
-                    Err(e) => {
-                        warn!("Failed to parse page config for {}: {}", path, e);
-                        Self::default()
-                    }
-                }
-            }
-            Err(LxAppError::ResourceNotFound(_)) => Self::default(),
-            Err(e) => {
-                warn!(
-                    "PageInstance config read failed for {} ({}); falling back to default",
-                    path, e
-                );
-                // No page config file or read error - use default (navbar enabled, no pull-to-refresh)
-                Self::default()
-            }
+            Ok(value) => Self::from_value(&json_path, value).map_err(|error| {
+                let detail = error.to_string();
+                let detail = if detail.starts_with(&json_path) {
+                    detail
+                } else {
+                    format!("{json_path}: {detail}")
+                };
+                LxAppError::InvalidJsonFile(detail)
+            }),
+            Err(LxAppError::ResourceNotFound(_)) => Ok(Self::default()),
+            Err(error) => Err(error),
         }
     }
 
@@ -250,6 +284,60 @@ impl PageConfig {
             },
             None => OrientationOverride::default(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rejects_removed_page_fields_with_actionable_diagnostics() {
+        let value = serde_json::json!({
+            "navigationStyle": "custom",
+            "navigationBarTitleText": "Legacy"
+        });
+        let error = PageConfig::from_value("pages/home/index.json", value).unwrap_err();
+        assert!(error.to_string().contains(
+            "pages/home/index.json.navigationBarTitleText: removed; use navigationBar.title"
+        ));
+
+        let error = PageConfig::from_value(
+            "pages/home/index.json",
+            serde_json::json!({"backgroundColor": "#FFFFFF"}),
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains(
+            "pages/home/index.json.backgroundColor: removed; page background is host-owned"
+        ));
+    }
+
+    #[test]
+    fn rejects_translucent_manifest_navigation_colors() {
+        let error = PageConfig::from_value(
+            "pages/home/index.json",
+            serde_json::json!({
+                "navigationBar": {"style": {"backgroundColor": "#FFFFFF80"}}
+            }),
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains(
+            "pages/home/index.json.navigationBar.style.backgroundColor: expected opaque #RRGGBB"
+        ));
+    }
+
+    #[test]
+    fn keeps_custom_navigation_when_valid() {
+        let config = PageConfig::from_value(
+            "pages/home/index.json",
+            serde_json::json!({
+                "navigationStyle": "custom",
+                "navigationBar": {"title": "Home"}
+            }),
+        )
+        .unwrap();
+        assert_eq!(config.navigation_style, NavigationStyle::Custom);
+        assert_eq!(config.navigation_bar.title, "Home");
     }
 }
 
