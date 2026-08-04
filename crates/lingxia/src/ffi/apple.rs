@@ -45,6 +45,8 @@ mod bridge {
         pub background_color: u32,
         pub border_style: u32,
         pub position: i32,
+        /// 0 = standard, 1 = immersive.
+        pub presentation: i32,
         pub dimension: i32,
         pub items_count: i32,
         pub is_visible: bool,
@@ -1792,14 +1794,7 @@ pub fn get_navigation_bar_state(appid: &str, path: &str) -> self::bridge::Naviga
         let nav_state = lxapp.get_navbar_state(path);
         let style = lxapp.resolved_navigation_bar_style(path);
         let capsule = lxapp.resolved_capsule_style();
-        let foreground = style.foreground_color.rgba() >> 8;
-        let text_style =
-            if ((foreground >> 16) & 0xff) + ((foreground >> 8) & 0xff) + (foreground & 0xff) < 384
-            {
-                "black"
-            } else {
-                "white"
-            };
+        let text_style = style.foreground_text_style();
 
         self::bridge::NavigationBarState {
             background_color: style.background_color.argb(),
@@ -1870,6 +1865,9 @@ pub fn get_tab_bar(appid: &str) -> Option<self::bridge::TabBar> {
                 .map(|color| color.argb())
                 .unwrap_or(0),
             position: 0,
+            presentation: i32::from(
+                tabbar.presentation == lxapp::page_chrome::TabBarPresentation::Immersive,
+            ),
             dimension: 64,
             items_count: tabbar.items.len() as i32,
             is_visible: tabbar.is_effectively_visible(),

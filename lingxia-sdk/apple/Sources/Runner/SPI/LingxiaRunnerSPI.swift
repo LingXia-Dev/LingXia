@@ -177,7 +177,7 @@ import WebKit
         }
 
         /// Signal that the runner chrome finished applying a tabbar state
-        /// change; resolves any awaited lx.showTabBar/hideTabBar.
+        /// change; resolves any awaited tabbar update.
         @MainActor
         public static func updateApplied(appId: String) {
             TabBarUpdateWaiters.complete(appId)

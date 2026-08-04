@@ -94,8 +94,8 @@ final class LxAppViewController: UIViewController, ObservableObject {
 
         setupUI()
 
-        // Auto status bar glyphs (unset navigationBarTextStyle) follow the
-        // system theme; refresh them when it flips.
+        // Custom-page status bar glyphs follow resolved appearance; refresh
+        // them when the host trait flips.
         registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (self: Self, _: UITraitCollection) in
             self.setNeedsStatusBarAppearanceUpdate()
         }
@@ -506,8 +506,7 @@ final class LxAppViewController: UIViewController, ObservableObject {
 
     private func standardTabBarInset(for appId: String) -> CGFloat {
         guard let config = lingxia.getTabBar(appId), config.is_visible else { return 0 }
-        let alpha = (config.background_color >> 24) & 0xFF
-        return alpha == 0 ? 0 : CGFloat(config.dimension)
+        return config.presentation == 1 ? 0 : CGFloat(config.dimension)
     }
 
     private func updateWebViewBottomInset(for appId: String) {
@@ -906,17 +905,11 @@ final class LxAppViewController: UIViewController, ObservableObject {
             guard let self = self else { return }
 
             Task { @MainActor in
-                // The tab bar state has changed, tell the current tab bar to refresh itself.
-                self.currentTabBar?.refreshLayout()
-                if let appId {
+                if let appId, appId == LxAppCore.currentAppId {
+                    self.currentTabBar?.refreshLayout()
                     self.updateWebViewBottomInset(for: appId)
+                    self.bringUIElementsToFront()
                 }
-
-                // After refreshing, the bar might have become visible, so we must ensure
-                // it's correctly layered in front of the webview.
-                self.bringUIElementsToFront()
-
-                // Applied: resolve any awaited lx.showTabBar/hideTabBar.
                 if let appId {
                     TabBarUpdateWaiters.complete(appId)
                 }
@@ -939,8 +932,8 @@ final class LxAppViewController: UIViewController, ObservableObject {
         let transparent = shouldUseTransparentMode(for: LxAppCore.currentAppId ?? "", path: currentPath)
         let navState = NavigationBarStateManager.shared.currentState
 
-        // When navbar is hidden (custom navigation) the page's declared
-        // navigationBarTextStyle governs the glyphs.
+        // When navbar is hidden, the resolved page-chrome foreground governs
+        // the glyphs.
         if transparent {
             switch navState?.text_style.toString() ?? "" {
             case "black", "dark":
