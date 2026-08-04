@@ -32,16 +32,16 @@ lingxia-windows-build = { version = "{{LINGXIA_VERSION}}" }
 # whole app resolves a single windows-core instead of mixing it with the
 # published `windows`. Generated automatically; you should not need to edit it.
 [patch.crates-io]
-windows = { git = "https://github.com/microsoft/windows-rs.git", rev = "cf58d5cfe7deccb73a55aeb4aa6799dc1b06544c", package = "windows" }
-windows-collections = { git = "https://github.com/microsoft/windows-rs.git", rev = "cf58d5cfe7deccb73a55aeb4aa6799dc1b06544c", package = "windows-collections" }
-windows-core = { git = "https://github.com/microsoft/windows-rs.git", rev = "cf58d5cfe7deccb73a55aeb4aa6799dc1b06544c", package = "windows-core" }
-windows-future = { git = "https://github.com/microsoft/windows-rs.git", rev = "cf58d5cfe7deccb73a55aeb4aa6799dc1b06544c", package = "windows-future" }
-windows-implement = { git = "https://github.com/microsoft/windows-rs.git", rev = "cf58d5cfe7deccb73a55aeb4aa6799dc1b06544c", package = "windows-implement" }
-windows-interface = { git = "https://github.com/microsoft/windows-rs.git", rev = "cf58d5cfe7deccb73a55aeb4aa6799dc1b06544c", package = "windows-interface" }
-windows-link = { git = "https://github.com/microsoft/windows-rs.git", rev = "cf58d5cfe7deccb73a55aeb4aa6799dc1b06544c", package = "windows-link" }
-windows-numerics = { git = "https://github.com/microsoft/windows-rs.git", rev = "cf58d5cfe7deccb73a55aeb4aa6799dc1b06544c", package = "windows-numerics" }
-windows-reference = { git = "https://github.com/microsoft/windows-rs.git", rev = "cf58d5cfe7deccb73a55aeb4aa6799dc1b06544c", package = "windows-reference" }
-windows-result = { git = "https://github.com/microsoft/windows-rs.git", rev = "cf58d5cfe7deccb73a55aeb4aa6799dc1b06544c", package = "windows-result" }
-windows-strings = { git = "https://github.com/microsoft/windows-rs.git", rev = "cf58d5cfe7deccb73a55aeb4aa6799dc1b06544c", package = "windows-strings" }
-windows-threading = { git = "https://github.com/microsoft/windows-rs.git", rev = "cf58d5cfe7deccb73a55aeb4aa6799dc1b06544c", package = "windows-threading" }
-windows-time = { git = "https://github.com/microsoft/windows-rs.git", rev = "cf58d5cfe7deccb73a55aeb4aa6799dc1b06544c", package = "windows-time" }
+windows = { git = "https://github.com/microsoft/windows-rs.git", rev = "{{WINDOWS_RS_REV}}", package = "windows" }
+windows-collections = { git = "https://github.com/microsoft/windows-rs.git", rev = "{{WINDOWS_RS_REV}}", package = "windows-collections" }
+windows-core = { git = "https://github.com/microsoft/windows-rs.git", rev = "{{WINDOWS_RS_REV}}", package = "windows-core" }
+windows-future = { git = "https://github.com/microsoft/windows-rs.git", rev = "{{WINDOWS_RS_REV}}", package = "windows-future" }
+windows-implement = { git = "https://github.com/microsoft/windows-rs.git", rev = "{{WINDOWS_RS_REV}}", package = "windows-implement" }
+windows-interface = { git = "https://github.com/microsoft/windows-rs.git", rev = "{{WINDOWS_RS_REV}}", package = "windows-interface" }
+windows-link = { git = "https://github.com/microsoft/windows-rs.git", rev = "{{WINDOWS_RS_REV}}", package = "windows-link" }
+windows-numerics = { git = "https://github.com/microsoft/windows-rs.git", rev = "{{WINDOWS_RS_REV}}", package = "windows-numerics" }
+windows-reference = { git = "https://github.com/microsoft/windows-rs.git", rev = "{{WINDOWS_RS_REV}}", package = "windows-reference" }
+windows-result = { git = "https://github.com/microsoft/windows-rs.git", rev = "{{WINDOWS_RS_REV}}", package = "windows-result" }
+windows-strings = { git = "https://github.com/microsoft/windows-rs.git", rev = "{{WINDOWS_RS_REV}}", package = "windows-strings" }
+windows-threading = { git = "https://github.com/microsoft/windows-rs.git", rev = "{{WINDOWS_RS_REV}}", package = "windows-threading" }
+windows-time = { git = "https://github.com/microsoft/windows-rs.git", rev = "{{WINDOWS_RS_REV}}", package = "windows-time" }
