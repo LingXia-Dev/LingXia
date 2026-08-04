@@ -1,5 +1,6 @@
 import {
   onUnmounted,
+  getCurrentInstance,
   reactive,
   ref,
   shallowRef,
@@ -74,6 +75,10 @@ export function useLxPage<
 /** Reactive native page-chrome geometry for View layout. */
 export function useLxPageChrome(): Readonly<Ref<PageChromeLayoutSnapshot>> {
   const layout = shallowRef(getPageChromeLayout());
+  if (!getCurrentInstance()) {
+    console.warn("useLxPageChrome() must be called during component setup");
+    return layout;
+  }
   const unsubscribe = subscribePageChromeLayout((next) => {
     layout.value = next;
   });

@@ -39,6 +39,13 @@ const initialLayout = Object.freeze<PageChromeLayoutSnapshot>({
   capsuleInlineEndInset: 0,
 });
 
+export function shouldApplyPageChromeRevision(
+  currentRevision: number,
+  nextRevision: number,
+): boolean {
+  return nextRevision >= currentRevision;
+}
+
 function projectPageChromeLayout(layout: PageChromeLayoutSnapshot): void {
   const root = document.documentElement;
   root?.style.setProperty(
@@ -91,6 +98,7 @@ export function installPageChromeRuntime(): LxPageChrome | undefined {
     configurable: false,
     enumerable: false,
     value(next: PageChromeLayoutSnapshot, scheme: "light" | "dark") {
+      if (!shouldApplyPageChromeRevision(layout.revision, next.revision)) return;
       const capsuleRect = next.capsuleRect
         ? Object.freeze({ ...next.capsuleRect })
         : null;
