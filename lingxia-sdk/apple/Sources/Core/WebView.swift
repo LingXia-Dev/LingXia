@@ -228,13 +228,27 @@ final class WebViewManager {
     /// Configure WebView transparency - shared logic with platform-specific optimizations
     static func configureWebViewTransparency(_ webView: WKWebView, transparent: Bool) {
         #if os(iOS)
-        let backgroundColor = transparent ? PlatformColor.clear : PlatformColor.systemBackground
+        // Resolve from the appearance registry, not the webview's traits: this
+        // path runs before the webview joins the hierarchy, where its trait
+        // collection still reports the ambient (light) style, and it re-runs
+        // on page display, so an ambient cgColor would re-freeze light.
+        let dark =
+            webView.appId
+            .flatMap { LxAppAppearanceRegistry.resolvedDark(appId: $0) } ?? false
+        let backgroundColor =
+            transparent
+            ? PlatformColor.clear
+            : PlatformColor.systemBackground.resolvedColor(
+                with: UITraitCollection(userInterfaceStyle: dark ? .dark : .light))
         let isOpaque = !transparent
 
         // Configure WebView
         webView.backgroundColor = backgroundColor
         webView.isOpaque = isOpaque
         webView.layer.backgroundColor = backgroundColor.cgColor
+        if !transparent {
+            webView.underPageBackgroundColor = backgroundColor
+        }
 
         // Configure ScrollView (iOS-specific)
         webView.scrollView.backgroundColor = backgroundColor

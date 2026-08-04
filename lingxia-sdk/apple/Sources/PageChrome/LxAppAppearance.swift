@@ -28,6 +28,11 @@ enum LxAppAppearanceRegistry {
         #endif
     }
 
+    /// The lxapp's applied scheme, if one has been resolved yet.
+    static func resolvedDark(appId: String) -> Bool? {
+        schemes[appId]
+    }
+
     static func register(_ webView: WKWebView, appId: String) {
         let table = webViews[appId] ?? NSHashTable<WKWebView>.weakObjects()
         table.add(webView)

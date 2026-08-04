@@ -162,9 +162,19 @@ final class LxAppViewController: UIViewController, ObservableObject {
         setupBackGestureRecognizer()
     }
 
+    /// The canvas transparent-mode pages rubber-band against; it must carry
+    /// the lxapp's resolved scheme because the webview above it is clear.
+    private func resolvedCanvasColor() -> UIColor {
+        let dark =
+            LxAppCore.currentAppId
+            .flatMap { LxAppAppearanceRegistry.resolvedDark(appId: $0) } ?? false
+        return UIColor.systemBackground.resolvedColor(
+            with: UITraitCollection(userInterfaceStyle: dark ? .dark : .light))
+    }
+
     private func setupRootContainer() {
         rootContainer = UIView()
-        rootContainer.backgroundColor = UIColor.white
+        rootContainer.backgroundColor = resolvedCanvasColor()
         rootContainer.translatesAutoresizingMaskIntoConstraints = false
         rootContainer.clipsToBounds = false  // 🎬 Allow animation to extend beyond bounds
         view.addSubview(rootContainer)
@@ -788,9 +798,10 @@ final class LxAppViewController: UIViewController, ObservableObject {
     }
 
     private func setOpaqueBackgrounds() {
-        view.backgroundColor = UIColor.white
-        rootContainer?.backgroundColor = UIColor.white
-        webViewContainer?.backgroundColor = UIColor.white
+        let canvas = resolvedCanvasColor()
+        view.backgroundColor = canvas
+        rootContainer?.backgroundColor = canvas
+        webViewContainer?.backgroundColor = canvas
 
         // Configure current WebView only - no need to iterate all apps
         if LxAppCore.currentAppId != nil,
@@ -800,9 +811,10 @@ final class LxAppViewController: UIViewController, ObservableObject {
     }
 
     private func configureWebView(_ webView: WKWebView, transparent: Bool) {
-        // Use fixed white to prevent dark mode from turning background black (mismatch with web content)
-        // Also force opaque white even for "transparent" mode (Custom Nav), to prevent black system background from showing
-        let backgroundColor = UIColor(white: 1.0, alpha: 1.0)
+        // Opaque scheme-resolved canvas, even for "transparent" (Custom Nav)
+        // pages: opacity prevents the system background from showing through,
+        // and resolving the color keeps dark lxapps off the old fixed white.
+        let backgroundColor = resolvedCanvasColor()
         let isOpaque = true
 
         // Configure WebView
@@ -909,6 +921,11 @@ final class LxAppViewController: UIViewController, ObservableObject {
                     self.currentTabBar?.refreshLayout()
                     self.updateWebViewBottomInset(for: appId)
                     self.bringUIElementsToFront()
+                    // Appearance changes arrive through this notification too;
+                    // restyle so every canvas follows the resolved scheme.
+                    if self.isViewLoaded {
+                        self.applyAppStyling(for: appId)
+                    }
                 }
                 if let appId {
                     TabBarUpdateWaiters.complete(appId)
@@ -1148,20 +1165,21 @@ final class LxAppViewController: UIViewController, ObservableObject {
             preSnapshot = rootContainer.snapshotView(afterScreenUpdates: false)
             if let s = preSnapshot {
                 s.frame = rootContainer.bounds
-                s.backgroundColor = .white
+                s.backgroundColor = resolvedCanvasColor()
             }
         }
 
         // Ensure WebView is visible and active, and backgrounds are correct
-        rootContainer.backgroundColor = .white
-        view.backgroundColor = .white
-        webView.backgroundColor = .white
+        let canvas = resolvedCanvasColor()
+        rootContainer.backgroundColor = canvas
+        view.backgroundColor = canvas
+        webView.backgroundColor = canvas
         webView.isHidden = false
         webView.alpha = 1.0
         webView.resumeWebView()
 
         if let navigationBar = globalNavigationBar {
-            navigationBar.backgroundColor = .white
+            navigationBar.backgroundColor = canvas
             navigationBar.isHidden = false
             navigationBar.alpha = 1.0
         }
@@ -1178,11 +1196,11 @@ final class LxAppViewController: UIViewController, ObservableObject {
             if let s = preSnapshot { return s }
             let v = rootContainer.snapshotView(afterScreenUpdates: true) ?? UIView()
             v.frame = rootContainer.bounds
-            v.backgroundColor = .white
+            v.backgroundColor = canvas
             return v
         }()
         containerSnapshot.frame = rootContainer.bounds
-        containerSnapshot.backgroundColor = .white
+        containerSnapshot.backgroundColor = canvas
         rootContainer.addSubview(containerSnapshot)
 
         // Robust width fallback to avoid zero-distance animations
@@ -1251,10 +1269,12 @@ final class LxAppViewController: UIViewController, ObservableObject {
             targetWebView.isHidden = false
             targetWebView.alpha = 1.0
 
-            // Force white background during animation to prevent black screen
-            targetWebView.backgroundColor = UIColor.white
-            targetWebView.scrollView.backgroundColor = UIColor.white
-            targetWebView.layer.backgroundColor = UIColor.white.cgColor
+            // Scheme canvas during the slide: a fresh webview has no paint
+            // yet, and fixed white flashed on every first dark navigation.
+            let canvas = resolvedCanvasColor()
+            targetWebView.backgroundColor = canvas
+            targetWebView.scrollView.backgroundColor = canvas
+            targetWebView.layer.backgroundColor = canvas.cgColor
 
             // Set initial position for target WebView
             targetWebView.transform = CGAffineTransform(translationX: slideInTranslation, y: 0)
