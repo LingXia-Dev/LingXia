@@ -1,14 +1,14 @@
 <template>
-  <div class="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
+  <div class="min-h-screen bg-linear-to-br from-surface-50 to-surface-100">
     <div class="px-4 py-6 pb-16 space-y-5">
       <!-- Page Header -->
-      <div class="w-full bg-white rounded-2xl shadow-sm border border-gray-100 p-6 text-center">
+      <div class="w-full bg-surface rounded-2xl shadow-sm border border-line-100 p-6 text-center">
         <div class="space-y-3">
           <h1 class="text-xl font-semibold text-gray-800">{{ pageInfo.title }}</h1>
           <div v-if="pageInfo.subtitle" class="flex items-center justify-center gap-2">
-            <div class="h-px w-8 bg-gradient-to-r from-transparent via-blue-400 to-transparent"></div>
-            <p class="text-sm font-medium text-blue-600">{{ pageInfo.subtitle }}</p>
-            <div class="h-px w-8 bg-gradient-to-r from-transparent via-blue-400 to-transparent"></div>
+            <div class="h-px w-8 bg-linear-to-r from-transparent via-blue-400 to-transparent"></div>
+            <p class="text-sm font-medium text-blue-600 dark:text-blue-400">{{ pageInfo.subtitle }}</p>
+            <div class="h-px w-8 bg-linear-to-r from-transparent via-blue-400 to-transparent"></div>
           </div>
           <p v-if="pageInfo.description" class="text-sm text-gray-500 max-w-md mx-auto leading-relaxed">
             {{ pageInfo.description }}
@@ -19,28 +19,28 @@
       <!-- Scan Code Mode -->
       <template v-if="isScanMode">
         <!-- Settings -->
-        <div class="w-full bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-          <div class="divide-y divide-gray-100">
+        <div class="w-full bg-surface rounded-2xl shadow-sm border border-line-100 overflow-hidden">
+          <div class="divide-y divide-line-100">
             <button
               type="button"
-              class="group flex w-full items-center gap-4 px-6 py-4 text-sm transition-all hover:bg-gradient-to-r hover:from-blue-50/50 hover:to-transparent active:scale-[0.99]"
+              class="group flex w-full items-center gap-4 px-6 py-4 text-sm transition-all hover:bg-linear-to-r hover:from-blue-50/50 hover:to-transparent active:scale-[0.99]"
               @click="openScanSourcePicker"
             >
-              <span class="text-gray-600 font-medium flex-shrink-0">Source</span>
-              <div class="flex-1 border-b border-dashed border-gray-200"></div>
-              <span class="font-semibold text-gray-800 transition-colors group-hover:text-blue-600">
+              <span class="text-gray-600 font-medium shrink-0">Source</span>
+              <div class="flex-1 border-b border-dashed border-line-200"></div>
+              <span class="font-semibold text-gray-800 transition-colors group-hover:text-blue-600 dark:group-hover:text-blue-400">
                 {{ scanOnlyCamera ? 'Camera' : 'Camera & Album' }}
               </span>
               <span class="text-gray-400 text-lg transition-transform group-hover:translate-x-0.5">›</span>
             </button>
             <button
               type="button"
-              class="group flex w-full items-center gap-4 px-6 py-4 text-sm transition-all hover:bg-gradient-to-r hover:from-blue-50/50 hover:to-transparent active:scale-[0.99]"
+              class="group flex w-full items-center gap-4 px-6 py-4 text-sm transition-all hover:bg-linear-to-r hover:from-blue-50/50 hover:to-transparent active:scale-[0.99]"
               @click="openScanTypePicker"
             >
-              <span class="text-gray-600 font-medium flex-shrink-0">Scan Type</span>
-              <div class="flex-1 border-b border-dashed border-gray-200"></div>
-              <span class="font-semibold text-gray-800 transition-colors group-hover:text-blue-600">
+              <span class="text-gray-600 font-medium shrink-0">Scan Type</span>
+              <div class="flex-1 border-b border-dashed border-line-200"></div>
+              <span class="font-semibold text-gray-800 transition-colors group-hover:text-blue-600 dark:group-hover:text-blue-400">
                 {{ scanTypeKey }}
               </span>
               <span class="text-gray-400 text-lg transition-transform group-hover:translate-x-0.5">›</span>
@@ -49,20 +49,20 @@
         </div>
 
         <!-- Scan Result -->
-        <div class="w-full bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+        <div class="w-full bg-surface rounded-2xl shadow-sm border border-line-100 p-6">
           <div class="space-y-4">
             <div class="space-y-2">
               <h3 class="text-sm font-semibold text-gray-700 flex items-center gap-2">
                 <span class="w-1 h-4 bg-blue-500 rounded-full"></span>
                 Scan Result
               </h3>
-              <div class="min-h-[8rem] w-full rounded-xl bg-gradient-to-br from-gray-50 to-gray-100 px-5 py-4 text-base text-gray-900 break-words border border-gray-200 font-mono">
+              <div class="min-h-[8rem] w-full rounded-xl bg-linear-to-br from-surface-50 to-surface-100 px-5 py-4 text-base text-gray-900 break-words border border-line-200 font-mono">
                 <span v-if="scanResult">{{ scanResult }}</span>
                 <span v-else class="text-gray-400 italic">No result yet</span>
               </div>
               <div class="text-xs text-gray-500 flex items-center gap-2">
                 <span class="font-medium">Type:</span>
-                <span class="px-2 py-1 bg-gray-100 rounded-md">{{ scanType || '--' }}</span>
+                <span class="px-2 py-1 bg-surface-100 rounded-md">{{ scanType || '--' }}</span>
               </div>
             </div>
 
@@ -71,7 +71,7 @@
               :disabled="scanBusy"
               :class="[
                 'w-full px-5 py-3 text-sm font-medium rounded-xl shadow-sm transition-all duration-200 active:scale-[0.98]',
-                scanBusy ? 'bg-gray-400 text-white cursor-not-allowed' : 'bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-600 text-white'
+                scanBusy ? 'bg-surface-400 text-white cursor-not-allowed' : 'bg-linear-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-600 text-white'
               ]"
             >
               {{ scanBusy ? 'Scanning...' : 'Start Scan' }}
@@ -83,25 +83,25 @@
       <!-- Image/Video Mode -->
       <template v-else>
         <!-- Settings Row (for image/video) -->
-        <div v-if="settingRows.length > 0" class="w-full bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-          <div class="divide-y divide-gray-100">
+        <div v-if="settingRows.length > 0" class="w-full bg-surface rounded-2xl shadow-sm border border-line-100 overflow-hidden">
+          <div class="divide-y divide-line-100">
             <button
               v-for="row in settingRows"
               :key="row.label"
               type="button"
-              class="group flex w-full items-center gap-4 px-6 py-4 text-sm transition-all hover:bg-gradient-to-r hover:from-blue-50/50 hover:to-transparent active:scale-[0.99]"
+              class="group flex w-full items-center gap-4 px-6 py-4 text-sm transition-all hover:bg-linear-to-r hover:from-blue-50/50 hover:to-transparent active:scale-[0.99]"
               @click="row.action"
             >
-              <span class="text-gray-600 font-medium flex-shrink-0">{{ row.label }}</span>
-              <div class="flex-1 border-b border-dashed border-gray-200"></div>
-              <span class="font-semibold text-gray-800 transition-colors group-hover:text-blue-600">{{ row.value }}</span>
+              <span class="text-gray-600 font-medium shrink-0">{{ row.label }}</span>
+              <div class="flex-1 border-b border-dashed border-line-200"></div>
+              <span class="font-semibold text-gray-800 transition-colors group-hover:text-blue-600 dark:group-hover:text-blue-400">{{ row.value }}</span>
               <span class="text-gray-400 text-lg transition-transform group-hover:translate-x-0.5">›</span>
             </button>
           </div>
         </div>
 
         <!-- Main Content Card -->
-        <div class="w-full bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+        <div class="w-full bg-surface rounded-2xl shadow-sm border border-line-100 p-6">
           <!-- Image Info Mode -->
           <template v-if="isImageInfoMode">
             <div class="space-y-5">
@@ -110,19 +110,19 @@
                 :disabled="imageInfoBusy"
                 :class="[
                   'w-full px-5 py-3 text-sm font-medium rounded-xl shadow-sm transition-all duration-200 active:scale-[0.98]',
-                  imageInfoBusy ? 'bg-gray-400 text-white cursor-not-allowed' : 'bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-600 text-white'
+                  imageInfoBusy ? 'bg-surface-400 text-white cursor-not-allowed' : 'bg-linear-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-600 text-white'
                 ]"
               >
                 {{ imageInfoBusy ? 'Getting Info…' : 'Pick Image' }}
               </button>
 
-              <div v-if="imageInfoError" class="flex items-center gap-2 text-sm text-red-600 bg-red-50 px-4 py-3 rounded-xl">
+              <div v-if="imageInfoError" class="flex items-center gap-2 text-sm text-red-600 dark:text-red-400 bg-red-50 px-4 py-3 rounded-xl">
                 <span>⚠️</span>
                 <span>{{ imageInfoError }}</span>
               </div>
 
               <div v-if="imageInfoResult" class="space-y-4">
-                <div class="rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50 to-white p-5 space-y-4">
+                <div class="rounded-xl border border-line-200 bg-linear-to-br from-surface-50 to-surface p-5 space-y-4">
                   <h3 class="text-sm font-semibold text-gray-700 flex items-center gap-2">
                     <span class="w-1 h-4 bg-blue-500 rounded-full"></span>
                     Source Image
@@ -141,9 +141,9 @@
                       <span class="font-semibold text-gray-800">{{ formatFileSize(imageInfoResult.size || 0) }}</span>
                     </div>
                   </div>
-                  <div v-if="imageInfoResult.path" class="pt-4 border-t border-gray-200 space-y-1">
+                  <div v-if="imageInfoResult.path" class="pt-4 border-t border-line-200 space-y-1">
                     <div class="text-xs font-medium text-gray-700">Path</div>
-                    <div class="text-[11px] text-gray-500 break-all bg-gray-100 px-3 py-2 rounded-lg">
+                    <div class="text-[11px] text-gray-500 break-all bg-surface-100 px-3 py-2 rounded-lg">
                       {{ imageInfoResult.path }}
                     </div>
                   </div>
@@ -157,7 +157,7 @@
                       min="0"
                       max="100"
                       :value="compressQuality"
-                      class="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-200"
+                      class="w-full rounded-lg border border-line-200 bg-surface px-3 py-2 text-sm text-gray-800 focus:border-blue-400 focus:outline-hidden focus:ring-1 focus:ring-blue-200"
                       @input="onCompressQualityInput"
                     />
                   </label>
@@ -168,7 +168,7 @@
                       min="0"
                       :value="compressedWidth"
                       :placeholder="String(imageInfoResult.width || '')"
-                      class="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-200"
+                      class="w-full rounded-lg border border-line-200 bg-surface px-3 py-2 text-sm text-gray-800 focus:border-blue-400 focus:outline-hidden focus:ring-1 focus:ring-blue-200"
                       @input="onCompressedWidthInput"
                     />
                   </label>
@@ -179,7 +179,7 @@
                       min="0"
                       :value="compressedHeight"
                       :placeholder="String(imageInfoResult.height || '')"
-                      class="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-200"
+                      class="w-full rounded-lg border border-line-200 bg-surface px-3 py-2 text-sm text-gray-800 focus:border-blue-400 focus:outline-hidden focus:ring-1 focus:ring-blue-200"
                       @input="onCompressedHeightInput"
                     />
                   </label>
@@ -190,19 +190,19 @@
                   :disabled="compressing"
                   :class="[
                     'w-full px-5 py-3 text-sm font-medium rounded-xl shadow-sm transition-all duration-200 active:scale-[0.98]',
-                    compressing ? 'bg-gray-400 text-white cursor-not-allowed' : 'bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-600 text-white'
+                    compressing ? 'bg-surface-400 text-white cursor-not-allowed' : 'bg-linear-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-600 text-white'
                   ]"
                 >
                   {{ compressing ? 'Compressing…' : 'Compress Image' }}
                 </button>
 
-                <div v-if="compressError" class="flex items-center gap-2 text-sm text-red-600 bg-red-50 px-4 py-3 rounded-xl">
+                <div v-if="compressError" class="flex items-center gap-2 text-sm text-red-600 dark:text-red-400 bg-red-50 px-4 py-3 rounded-xl">
                   <span>⚠️</span>
                   <span>{{ compressError }}</span>
                 </div>
 
                 <div v-if="compressResult" class="space-y-4">
-                  <div class="rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50 to-white p-5 space-y-4">
+                  <div class="rounded-xl border border-line-200 bg-linear-to-br from-surface-50 to-surface p-5 space-y-4">
                     <h3 class="text-sm font-semibold text-gray-700 flex items-center gap-2">
                       <span class="w-1 h-4 bg-blue-500 rounded-full"></span>
                       Compressed Image
@@ -221,9 +221,9 @@
                         <span class="font-semibold text-gray-800">{{ formatFileSize(compressResult.size || 0) }}</span>
                       </div>
                     </div>
-                    <div v-if="compressResult.path" class="pt-4 border-t border-gray-200 space-y-1">
+                    <div v-if="compressResult.path" class="pt-4 border-t border-line-200 space-y-1">
                       <div class="text-xs font-medium text-gray-700">Path</div>
-                      <div class="text-[11px] text-gray-500 break-all bg-gray-100 px-3 py-2 rounded-lg">
+                      <div class="text-[11px] text-gray-500 break-all bg-surface-100 px-3 py-2 rounded-lg">
                         {{ compressResult.path }}
                       </div>
                     </div>
@@ -231,7 +231,7 @@
 
                   <button
                     @click="previewCompressedImage"
-                    class="w-full px-5 py-3 text-sm font-medium rounded-xl shadow-sm transition-all duration-200 active:scale-[0.98] bg-gradient-to-r from-gray-600 to-gray-500 hover:from-gray-500 hover:to-gray-600 text-white"
+                    class="w-full px-5 py-3 text-sm font-medium rounded-xl shadow-sm transition-all duration-200 active:scale-[0.98] bg-linear-to-r from-surface-600 to-surface-500 hover:from-surface-500 hover:to-surface-600 text-white"
                   >
                     Preview Image
                   </button>
@@ -248,22 +248,22 @@
                 :disabled="thumbnailBusy || videoInfoBusy"
                 :class="[
                   'w-full px-5 py-3 text-sm font-medium rounded-xl shadow-sm transition-all duration-200 active:scale-[0.98]',
-                  (thumbnailBusy || videoInfoBusy) ? 'bg-gray-400 text-white cursor-not-allowed' : 'bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-600 text-white'
+                  (thumbnailBusy || videoInfoBusy) ? 'bg-surface-400 text-white cursor-not-allowed' : 'bg-linear-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-600 text-white'
                 ]"
               >
                 {{ (thumbnailBusy || videoInfoBusy) ? 'Loading…' : (thumbnailVideoPath ? 'Pick Another Video' : 'Pick Video') }}
               </button>
 
-              <div v-if="thumbnailVideoPath" class="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-xs text-gray-600 break-all">
+              <div v-if="thumbnailVideoPath" class="rounded-xl border border-line-200 bg-surface-50 px-4 py-3 text-xs text-gray-600 break-all">
                 {{ thumbnailVideoPath }}
               </div>
 
-              <div v-if="videoInfoError" class="flex items-center gap-2 text-sm text-red-600 bg-red-50 px-4 py-3 rounded-xl">
+              <div v-if="videoInfoError" class="flex items-center gap-2 text-sm text-red-600 dark:text-red-400 bg-red-50 px-4 py-3 rounded-xl">
                 <span>⚠️</span>
                 <span>{{ videoInfoError }}</span>
               </div>
 
-              <div v-if="videoInfoResult" class="rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50 to-white p-5 space-y-4">
+              <div v-if="videoInfoResult" class="rounded-xl border border-line-200 bg-linear-to-br from-surface-50 to-surface p-5 space-y-4">
                 <h3 class="text-sm font-semibold text-gray-700 flex items-center gap-2">
                   <span class="w-1 h-4 bg-blue-500 rounded-full"></span>
                   Upload Preflight Metadata
@@ -310,20 +310,20 @@
                     <span class="font-semibold text-gray-800">{{ videoInfoResult.hasAudio === false ? 'N/A' : (videoInfoResult.audioCodec || 'Not reported') }}</span>
                   </div>
                 </div>
-                <div class="pt-4 border-t border-gray-200 space-y-3">
+                <div class="pt-4 border-t border-line-200 space-y-3">
                   <div class="text-[11px] text-gray-500">
                     Track metadata is best-effort. The receiving service must validate uploaded bytes.
                   </div>
                   <div class="space-y-1">
                     <div class="text-xs font-medium text-gray-700">Path</div>
-                    <div class="text-[11px] text-gray-500 break-all bg-gray-100 px-3 py-2 rounded-lg">
+                    <div class="text-[11px] text-gray-500 break-all bg-surface-100 px-3 py-2 rounded-lg">
                       {{ videoInfoResult.path }}
                     </div>
                   </div>
                 </div>
               </div>
 
-              <div v-if="thumbnailSourceInfo" class="rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50 to-white p-5 space-y-4">
+              <div v-if="thumbnailSourceInfo" class="rounded-xl border border-line-200 bg-linear-to-br from-surface-50 to-surface p-5 space-y-4">
                 <h3 class="text-sm font-semibold text-gray-700 flex items-center gap-2">
                   <span class="w-1 h-4 bg-blue-500 rounded-full"></span>
                   Source Video
@@ -362,7 +362,7 @@
                     max="100"
                     placeholder="80"
                     :value="thumbnailQuality"
-                    class="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-200"
+                    class="w-full rounded-lg border border-line-200 bg-surface px-3 py-2 text-sm text-gray-800 focus:border-blue-400 focus:outline-hidden focus:ring-1 focus:ring-blue-200"
                     @input="onThumbnailQualityInput"
                   />
                 </label>
@@ -372,7 +372,7 @@
                     type="text"
                     placeholder="0"
                     :value="thumbnailTimeMs"
-                    class="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-200"
+                    class="w-full rounded-lg border border-line-200 bg-surface px-3 py-2 text-sm text-gray-800 focus:border-blue-400 focus:outline-hidden focus:ring-1 focus:ring-blue-200"
                     @input="onThumbnailTimeInput"
                   />
                 </label>
@@ -382,7 +382,7 @@
                     type="text"
                     :placeholder="thumbnailSourceInfo?.width ? `e.g. ${thumbnailSourceInfo.width}` : 'leave empty'"
                     :value="thumbnailMaxWidth"
-                    class="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-200"
+                    class="w-full rounded-lg border border-line-200 bg-surface px-3 py-2 text-sm text-gray-800 focus:border-blue-400 focus:outline-hidden focus:ring-1 focus:ring-blue-200"
                     @input="onThumbnailMaxWidthInput"
                   />
                 </label>
@@ -392,7 +392,7 @@
                     type="text"
                     :placeholder="thumbnailSourceInfo?.height ? `e.g. ${thumbnailSourceInfo.height}` : 'leave empty'"
                     :value="thumbnailMaxHeight"
-                    class="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-200"
+                    class="w-full rounded-lg border border-line-200 bg-surface px-3 py-2 text-sm text-gray-800 focus:border-blue-400 focus:outline-hidden focus:ring-1 focus:ring-blue-200"
                     @input="onThumbnailMaxHeightInput"
                   />
                 </label>
@@ -403,19 +403,19 @@
                 :disabled="thumbnailBusy"
                 :class="[
                   'w-full px-5 py-3 text-sm font-medium rounded-xl shadow-sm transition-all duration-200 active:scale-[0.98]',
-                  thumbnailBusy ? 'bg-gray-400 text-white cursor-not-allowed' : 'bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-600 text-white'
+                  thumbnailBusy ? 'bg-surface-400 text-white cursor-not-allowed' : 'bg-linear-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-600 text-white'
                 ]"
               >
                 {{ thumbnailBusy ? 'Generating…' : 'Generate Thumbnail' }}
               </button>
 
-              <div v-if="thumbnailError" class="flex items-center gap-2 text-sm text-red-600 bg-red-50 px-4 py-3 rounded-xl">
+              <div v-if="thumbnailError" class="flex items-center gap-2 text-sm text-red-600 dark:text-red-400 bg-red-50 px-4 py-3 rounded-xl">
                 <span>⚠️</span>
                 <span>{{ thumbnailError }}</span>
               </div>
 
               <div v-if="thumbnailResult?.tempFilePath" class="space-y-4">
-                <div class="rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50 to-white p-5 space-y-4">
+                <div class="rounded-xl border border-line-200 bg-linear-to-br from-surface-50 to-surface p-5 space-y-4">
                   <h3 class="text-sm font-semibold text-gray-700 flex items-center gap-2">
                     <span class="w-1 h-4 bg-blue-500 rounded-full"></span>
                     Thumbnail Result
@@ -438,9 +438,9 @@
                     <img
                       :src="thumbnailResult.tempFilePath"
                       alt="thumbnail"
-                      class="w-full rounded-lg border border-gray-200 bg-gray-100"
+                      class="w-full rounded-lg border border-line-200 bg-surface-100"
                     />
-                    <div class="text-[11px] text-gray-500 break-all bg-gray-100 px-3 py-2 rounded-lg">
+                    <div class="text-[11px] text-gray-500 break-all bg-surface-100 px-3 py-2 rounded-lg">
                       {{ thumbnailResult.tempFilePath }}
                     </div>
                   </div>
@@ -448,13 +448,13 @@
 
                 <button
                   @click="previewVideoThumbnail"
-                  class="w-full px-5 py-3 text-sm font-medium rounded-xl shadow-sm transition-all duration-200 active:scale-[0.98] bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-600 text-white"
+                  class="w-full px-5 py-3 text-sm font-medium rounded-xl shadow-sm transition-all duration-200 active:scale-[0.98] bg-linear-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-600 text-white"
                 >
                   Preview Thumbnail
                 </button>
               </div>
 
-              <div class="rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50 to-white p-5 space-y-4">
+              <div class="rounded-xl border border-line-200 bg-linear-to-br from-surface-50 to-surface p-5 space-y-4">
                 <h3 class="text-sm font-semibold text-gray-700 flex items-center gap-2">
                   <span class="w-1 h-4 bg-indigo-500 rounded-full"></span>
                   Compress Video
@@ -473,7 +473,7 @@
                       type="text"
                       placeholder="medium"
                       :value="videoCompressQuality"
-                      class="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-200"
+                      class="w-full rounded-lg border border-line-200 bg-surface px-3 py-2 text-sm text-gray-800 focus:border-blue-400 focus:outline-hidden focus:ring-1 focus:ring-blue-200"
                       @input="onVideoCompressQualityInput"
                     />
                   </label>
@@ -484,7 +484,7 @@
                       min="1"
                       placeholder="1200"
                       :value="videoCompressBitrate"
-                      class="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-200"
+                      class="w-full rounded-lg border border-line-200 bg-surface px-3 py-2 text-sm text-gray-800 focus:border-blue-400 focus:outline-hidden focus:ring-1 focus:ring-blue-200"
                       @input="onVideoCompressBitrateInput"
                     />
                   </label>
@@ -495,7 +495,7 @@
                       min="1"
                       placeholder="30"
                       :value="videoCompressFps"
-                      class="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-200"
+                      class="w-full rounded-lg border border-line-200 bg-surface px-3 py-2 text-sm text-gray-800 focus:border-blue-400 focus:outline-hidden focus:ring-1 focus:ring-blue-200"
                       @input="onVideoCompressFpsInput"
                     />
                   </label>
@@ -505,7 +505,7 @@
                       type="text"
                       placeholder="0.8"
                       :value="videoCompressResolution"
-                      class="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-200"
+                      class="w-full rounded-lg border border-line-200 bg-surface px-3 py-2 text-sm text-gray-800 focus:border-blue-400 focus:outline-hidden focus:ring-1 focus:ring-blue-200"
                       @input="onVideoCompressResolutionInput"
                     />
                   </label>
@@ -516,14 +516,14 @@
                   :disabled="videoCompressBusy"
                   :class="[
                     'w-full px-5 py-3 text-sm font-medium rounded-xl shadow-sm transition-all duration-200 active:scale-[0.98]',
-                    videoCompressBusy ? 'bg-gray-400 text-white cursor-not-allowed' : 'bg-gradient-to-r from-green-600 to-green-500 hover:from-green-500 hover:to-green-600 text-white'
+                    videoCompressBusy ? 'bg-surface-400 text-white cursor-not-allowed' : 'bg-linear-to-r from-green-600 to-green-500 hover:from-green-500 hover:to-green-600 text-white'
                   ]"
                 >
                   {{ videoCompressBusy ? `Compressing…${videoCompressProgress !== null ? ` ${videoCompressProgress}%` : ''}` : 'Compress Video' }}
                 </button>
 
                 <template v-if="videoCompressBusy">
-                  <div class="h-2 w-full overflow-hidden rounded-full bg-gray-200">
+                  <div class="h-2 w-full overflow-hidden rounded-full bg-surface-200">
                     <div
                       class="h-full rounded-full bg-green-500 transition-all duration-200"
                       :style="{ width: `${videoCompressProgress ?? 0}%` }"
@@ -531,19 +531,19 @@
                   </div>
                   <button
                     @click="cancelVideoCompress"
-                    class="w-full px-5 py-3 text-sm font-medium rounded-xl shadow-sm transition-all duration-200 active:scale-[0.98] bg-gray-100 hover:bg-gray-200 text-gray-700"
+                    class="w-full px-5 py-3 text-sm font-medium rounded-xl shadow-sm transition-all duration-200 active:scale-[0.98] bg-surface-100 hover:bg-surface-200 text-gray-700"
                   >
                     Cancel
                   </button>
                 </template>
 
-                <div v-if="videoCompressError" class="flex items-center gap-2 text-sm text-red-600 bg-red-50 px-4 py-3 rounded-xl">
+                <div v-if="videoCompressError" class="flex items-center gap-2 text-sm text-red-600 dark:text-red-400 bg-red-50 px-4 py-3 rounded-xl">
                   <span>⚠️</span>
                   <span>{{ videoCompressError }}</span>
                 </div>
 
                 <div v-if="videoCompressResult?.tempFilePath" class="space-y-3">
-                  <div class="rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50 to-white p-5 space-y-4">
+                  <div class="rounded-xl border border-line-200 bg-linear-to-br from-surface-50 to-surface p-5 space-y-4">
                     <h3 class="text-sm font-semibold text-gray-700 flex items-center gap-2">
                       <span class="w-1 h-4 bg-green-500 rounded-full"></span>
                       Compressed Video
@@ -566,14 +566,14 @@
                         <span class="font-semibold text-gray-800">{{ formatFileSize(videoCompressResult.size || 0) }}</span>
                       </div>
                     </div>
-                    <div class="text-[11px] text-gray-500 break-all bg-gray-100 px-3 py-2 rounded-lg">
+                    <div class="text-[11px] text-gray-500 break-all bg-surface-100 px-3 py-2 rounded-lg">
                       {{ videoCompressResult.tempFilePath }}
                     </div>
                   </div>
 
                   <button
                     @click="previewCompressedVideo"
-                    class="w-full px-5 py-3 text-sm font-medium rounded-xl shadow-sm transition-all duration-200 active:scale-[0.98] bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-600 text-white"
+                    class="w-full px-5 py-3 text-sm font-medium rounded-xl shadow-sm transition-all duration-200 active:scale-[0.98] bg-linear-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-600 text-white"
                   >
                     Preview Compressed Video
                   </button>
@@ -595,7 +595,7 @@
                   :disabled="saveToAlbumBusy"
                   :class="[
                     'w-full px-5 py-3 text-sm font-medium rounded-xl shadow-sm transition-all duration-200 active:scale-[0.98]',
-                    saveToAlbumBusy ? 'bg-gray-400 text-white cursor-not-allowed' : 'bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-600 text-white'
+                    saveToAlbumBusy ? 'bg-surface-400 text-white cursor-not-allowed' : 'bg-linear-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-600 text-white'
                   ]"
                 >
                   {{ saveToAlbumBusy ? 'Saving...' : 'Capture Image' }}
@@ -605,7 +605,7 @@
                   :disabled="saveToAlbumBusy"
                   :class="[
                     'w-full px-5 py-3 text-sm font-medium rounded-xl shadow-sm transition-all duration-200 active:scale-[0.98]',
-                    saveToAlbumBusy ? 'bg-gray-400 text-white cursor-not-allowed' : 'bg-gradient-to-r from-green-600 to-green-500 hover:from-green-500 hover:to-green-600 text-white'
+                    saveToAlbumBusy ? 'bg-surface-400 text-white cursor-not-allowed' : 'bg-linear-to-r from-green-600 to-green-500 hover:from-green-500 hover:to-green-600 text-white'
                   ]"
                 >
                   {{ saveToAlbumBusy ? 'Saving...' : 'Capture Video' }}
@@ -621,7 +621,7 @@
                 <div class="text-sm text-gray-600">
                   {{ selectedMedia.length ? previewHint : emptyHint }}
                 </div>
-                <div v-if="effectiveCountLimit > 0" class="px-3 py-1 bg-blue-50 text-blue-600 text-xs font-semibold rounded-full">
+                <div v-if="effectiveCountLimit > 0" class="px-3 py-1 bg-blue-50 text-blue-600 dark:text-blue-400 text-xs font-semibold rounded-full">
                   {{ counterText }}
                 </div>
               </div>
@@ -629,28 +629,28 @@
               <div class="grid grid-cols-2 gap-2">
                 <button
                   type="button"
-                  class="rounded-xl border border-gray-200 bg-white px-3 py-2 text-left text-xs font-medium text-gray-700 transition-colors hover:border-blue-300 hover:text-blue-600"
+                  class="rounded-xl border border-line-200 bg-surface px-3 py-2 text-left text-xs font-medium text-gray-700 transition-colors hover:border-blue-300 hover:text-blue-600 dark:hover:text-blue-400"
                   @click="openPreviewBehaviorPicker"
                 >
                   Preview Flow: {{ previewBehaviorLabel }}
                 </button>
                 <button
                   type="button"
-                  class="rounded-xl border border-gray-200 bg-white px-3 py-2 text-left text-xs font-medium text-gray-700 transition-colors hover:border-blue-300 hover:text-blue-600"
+                  class="rounded-xl border border-line-200 bg-surface px-3 py-2 text-left text-xs font-medium text-gray-700 transition-colors hover:border-blue-300 hover:text-blue-600 dark:hover:text-blue-400"
                   @click="openPreviewRotatePicker"
                 >
                   Preview Rotate: {{ previewRotateLabel }}
                 </button>
                 <button
                   type="button"
-                  class="rounded-xl border border-gray-200 bg-white px-3 py-2 text-left text-xs font-medium text-gray-700 transition-colors hover:border-blue-300 hover:text-blue-600"
+                  class="rounded-xl border border-line-200 bg-surface px-3 py-2 text-left text-xs font-medium text-gray-700 transition-colors hover:border-blue-300 hover:text-blue-600 dark:hover:text-blue-400"
                   @click="openPreviewObjectFitPicker"
                 >
                   Preview Fit: {{ previewObjectFitLabel }}
                 </button>
                 <button
                   type="button"
-                  class="rounded-xl border border-gray-200 bg-white px-3 py-2 text-left text-xs font-medium text-gray-700 transition-colors hover:border-blue-300 hover:text-blue-600"
+                  class="rounded-xl border border-line-200 bg-surface px-3 py-2 text-left text-xs font-medium text-gray-700 transition-colors hover:border-blue-300 hover:text-blue-600 dark:hover:text-blue-400"
                   @click="togglePreviewIndexIndicator"
                 >
                   Index Indicator: {{ previewIndicatorLabel }}
@@ -658,7 +658,7 @@
                 <button
                   v-if="!isPictureMode"
                   type="button"
-                  class="rounded-xl border border-gray-200 bg-white px-3 py-2 text-left text-xs font-medium text-gray-700 transition-colors hover:border-blue-300 hover:text-blue-600"
+                  class="rounded-xl border border-line-200 bg-surface px-3 py-2 text-left text-xs font-medium text-gray-700 transition-colors hover:border-blue-300 hover:text-blue-600 dark:hover:text-blue-400"
                   @click="openComponentRotatePicker"
                 >
                   Video Rotate: {{ componentRotateLabel }}
@@ -666,7 +666,7 @@
                 <button
                   v-if="!isPictureMode"
                   type="button"
-                  class="rounded-xl border border-gray-200 bg-white px-3 py-2 text-left text-xs font-medium text-gray-700 transition-colors hover:border-blue-300 hover:text-blue-600"
+                  class="rounded-xl border border-line-200 bg-surface px-3 py-2 text-left text-xs font-medium text-gray-700 transition-colors hover:border-blue-300 hover:text-blue-600 dark:hover:text-blue-400"
                   @click="openComponentObjectFitPicker"
                 >
                   Video Fit: {{ componentObjectFitLabel }}
@@ -682,7 +682,7 @@
                     inputmode="numeric"
                     pattern="[0-9]*"
                     :value="previewImageDurationMs"
-                    class="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-200"
+                    class="w-full rounded-lg border border-line-200 bg-surface px-3 py-2 text-sm text-gray-800 focus:border-blue-400 focus:outline-hidden focus:ring-1 focus:ring-blue-200"
                     @input="onPreviewImageDurationInput({ detail: { value: ($event?.target && 'value' in $event.target) ? $event.target.value : '' } })"
                   />
               </label>
@@ -691,7 +691,7 @@
                 :disabled="!selectedMedia.length || previewSessionBusy"
                 :class="[
                   'w-full px-5 py-3 text-sm font-medium rounded-xl shadow-sm transition-all duration-200 active:scale-[0.98]',
-                  (!selectedMedia.length || previewSessionBusy) ? 'bg-gray-400 text-white cursor-not-allowed' : 'bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-600 text-white'
+                  (!selectedMedia.length || previewSessionBusy) ? 'bg-surface-400 text-white cursor-not-allowed' : 'bg-linear-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-600 text-white'
                 ]"
                 @click="previewSelectedMedia()"
               >
@@ -706,12 +706,12 @@
               <button
                 v-if="previewSessionBusy"
                 type="button"
-                class="w-full px-5 py-3 text-sm font-medium rounded-xl shadow-sm transition-all duration-200 active:scale-[0.98] bg-gradient-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-red-600 text-white"
+                class="w-full px-5 py-3 text-sm font-medium rounded-xl shadow-sm transition-all duration-200 active:scale-[0.98] bg-linear-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-red-600 text-white"
                 @click="cancelPreviewSession"
               >
                 Cancel Active Preview
               </button>
-              <div v-if="previewSessionResult" class="rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50 to-white p-5 space-y-4">
+              <div v-if="previewSessionResult" class="rounded-xl border border-line-200 bg-linear-to-br from-surface-50 to-surface p-5 space-y-4">
                 <h3 class="text-sm font-semibold text-gray-700 flex items-center gap-2">
                   <span class="w-1 h-4 bg-blue-500 rounded-full"></span>
                   Last Preview Result
@@ -731,7 +731,7 @@
                   </div>
                 </div>
               </div>
-              <div v-if="previewSessionError" class="flex items-center gap-2 text-sm text-red-600 bg-red-50 px-4 py-3 rounded-xl">
+              <div v-if="previewSessionError" class="flex items-center gap-2 text-sm text-red-600 dark:text-red-400 bg-red-50 px-4 py-3 rounded-xl">
                 <span>⚠️</span>
                 <span>{{ previewSessionError }}</span>
               </div>
@@ -741,12 +741,12 @@
                 <div
                   v-for="(item, index) in selectedMedia"
                   :key="`${item.path}-${index}`"
-                  class="w-full bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden"
+                  class="w-full bg-surface rounded-2xl shadow-sm border border-line-100 overflow-hidden"
                 >
-                  <div class="h-32 bg-gray-50">
+                  <div class="h-32 bg-surface-50">
                     <img :src="item.path" alt="" class="h-full w-full object-cover" />
                   </div>
-                  <div class="px-3 py-3 bg-gradient-to-br from-gray-50 to-white">
+                  <div class="px-3 py-3 bg-linear-to-br from-surface-50 to-surface">
                     <div class="text-xs font-medium text-gray-700">Image {{ index + 1 }}</div>
                   </div>
                 </div>
@@ -757,23 +757,23 @@
                   :disabled="isRunning"
                   :class="[
                     'group flex w-full flex-col items-center justify-center rounded-2xl border-2 border-dashed transition-all h-24',
-                    isRunning ? 'cursor-not-allowed opacity-40 border-gray-200 bg-gray-50' : 'border-blue-300 bg-gradient-to-br from-blue-50 to-indigo-50 hover:border-blue-400 hover:from-blue-100 hover:to-indigo-100 active:scale-[0.98]'
+                    isRunning ? 'cursor-not-allowed opacity-40 border-line-200 bg-surface-50' : 'border-blue-300 bg-linear-to-br from-blue-50 to-indigo-50 hover:border-blue-400 hover:from-blue-100 hover:to-indigo-100 active:scale-[0.98]'
                   ]"
                   @click="launchMediaDemo"
                 >
-                  <span :class="['text-5xl leading-none transition-transform group-hover:scale-110', isRunning ? 'text-gray-400' : 'text-blue-500']">+</span>
-                  <span :class="['mt-3 text-xs font-medium uppercase tracking-wider', isRunning ? 'text-gray-400' : 'text-blue-600']">{{ addLabel }}</span>
+                  <span :class="['text-5xl leading-none transition-transform group-hover:scale-110', isRunning ? 'text-gray-400' : 'text-blue-500 dark:text-blue-400']">+</span>
+                  <span :class="['mt-3 text-xs font-medium uppercase tracking-wider', isRunning ? 'text-gray-400' : 'text-blue-600 dark:text-blue-400']">{{ addLabel }}</span>
                 </button>
               </div>
 
               <!-- Video Tiles -->
               <div v-if="selectedMedia.length > 0 && !isPictureMode" class="space-y-4">
-                <div v-for="(item, index) in selectedMedia" :key="`video-${index}`" class="w-full bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-                  <div class="px-5 py-4 bg-gradient-to-br from-gray-50 to-white">
+                <div v-for="(item, index) in selectedMedia" :key="`video-${index}`" class="w-full bg-surface rounded-2xl shadow-sm border border-line-100 overflow-hidden">
+                  <div class="px-5 py-4 bg-linear-to-br from-surface-50 to-surface">
                     <div class="flex flex-col gap-3">
                       <div class="flex items-center gap-3 flex-1">
-                        <div class="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-blue-50 to-indigo-50">
-                          <svg class="w-5 h-5 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
+                        <div class="flex items-center justify-center w-10 h-10 rounded-xl bg-linear-to-br from-blue-50 to-indigo-50">
+                          <svg class="w-5 h-5 text-blue-600 dark:text-blue-400" fill="currentColor" viewBox="0 0 20 20">
                             <path d="M2 6a2 2 0 012-2h6a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2V6zm12.553 1.106A1 1 0 0014 8v4a1 1 0 00.553.894l2 1A1 1 0 0018 13V7a1 1 0 00-1.447-.894l-2 1z" />
                           </svg>
                         </div>
@@ -816,12 +816,12 @@
                   :disabled="isRunning"
                   :class="[
                     'group flex w-full flex-col items-center justify-center rounded-2xl border-2 border-dashed transition-all h-28',
-                    isRunning ? 'cursor-not-allowed opacity-40 border-gray-200 bg-gray-50' : 'border-blue-300 bg-gradient-to-br from-blue-50 to-indigo-50 hover:border-blue-400 hover:from-blue-100 hover:to-indigo-100 active:scale-[0.98]'
+                    isRunning ? 'cursor-not-allowed opacity-40 border-line-200 bg-surface-50' : 'border-blue-300 bg-linear-to-br from-blue-50 to-indigo-50 hover:border-blue-400 hover:from-blue-100 hover:to-indigo-100 active:scale-[0.98]'
                   ]"
                   @click="launchMediaDemo"
                 >
-                  <span :class="['text-5xl leading-none transition-transform group-hover:scale-110', isRunning ? 'text-gray-400' : 'text-blue-500']">+</span>
-                  <span :class="['mt-3 text-xs font-medium uppercase tracking-wider', isRunning ? 'text-gray-400' : 'text-blue-600']">{{ addLabel }}</span>
+                  <span :class="['text-5xl leading-none transition-transform group-hover:scale-110', isRunning ? 'text-gray-400' : 'text-blue-500 dark:text-blue-400']">+</span>
+                  <span :class="['mt-3 text-xs font-medium uppercase tracking-wider', isRunning ? 'text-gray-400' : 'text-blue-600 dark:text-blue-400']">{{ addLabel }}</span>
                 </button>
               </div>
 
@@ -833,12 +833,12 @@
                 :class="[
                   'group flex w-full flex-col items-center justify-center rounded-2xl border-2 border-dashed transition-all',
                   isPictureMode ? 'h-24' : 'h-28',
-                  isRunning ? 'cursor-not-allowed opacity-40 border-gray-200 bg-gray-50' : 'border-blue-300 bg-gradient-to-br from-blue-50 to-indigo-50 hover:border-blue-400 hover:from-blue-100 hover:to-indigo-100 active:scale-[0.98]'
+                  isRunning ? 'cursor-not-allowed opacity-40 border-line-200 bg-surface-50' : 'border-blue-300 bg-linear-to-br from-blue-50 to-indigo-50 hover:border-blue-400 hover:from-blue-100 hover:to-indigo-100 active:scale-[0.98]'
                 ]"
                 @click="launchMediaDemo"
               >
-                <span :class="['text-5xl leading-none transition-transform group-hover:scale-110', isRunning ? 'text-gray-400' : 'text-blue-500']">+</span>
-                <span :class="['mt-3 text-xs font-medium uppercase tracking-wider', isRunning ? 'text-gray-400' : 'text-blue-600']">{{ addLabel }}</span>
+                <span :class="['text-5xl leading-none transition-transform group-hover:scale-110', isRunning ? 'text-gray-400' : 'text-blue-500 dark:text-blue-400']">+</span>
+                <span :class="['mt-3 text-xs font-medium uppercase tracking-wider', isRunning ? 'text-gray-400' : 'text-blue-600 dark:text-blue-400']">{{ addLabel }}</span>
               </button>
             </div>
           </template>

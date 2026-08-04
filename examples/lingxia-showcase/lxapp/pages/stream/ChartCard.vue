@@ -1,5 +1,5 @@
 <template>
-  <div class="mt-3 overflow-hidden rounded-2xl border border-gray-200 bg-gray-50 shadow-sm chart-in">
+  <div class="mt-3 overflow-hidden rounded-2xl border border-line-200 bg-surface-50 shadow-sm chart-in">
     <p class="px-3.5 pb-0.5 pt-3 text-[10px] font-semibold uppercase tracking-widest text-gray-400">
       {{ data.title }}
     </p>
@@ -11,7 +11,13 @@
 import * as echarts from 'echarts';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import type { ChartData } from './index';
-import { getResolvedTheme, subscribeTheme, type ResolvedTheme } from '../../shared/lib/theme';
+import {
+  chartAxisColors,
+  getResolvedTheme,
+  subscribeTheme,
+  type ChartAxisColors,
+  type ResolvedTheme,
+} from '../../shared/lib/theme';
 
 const props = defineProps<{
   data: ChartData;
@@ -19,15 +25,8 @@ const props = defineProps<{
 
 const PALETTE = ['#3b82f6', '#8b5cf6', '#10b981', '#f59e0b', '#ef4444', '#06b6d4'];
 
-// ECharts paints into SVG it owns, so the theme has to be passed in as values
-// rather than inherited from CSS.
-const AXIS = {
-  light: { label: '#6b7280', line: '#e5e7eb', split: '#f3f4f6' },
-  dark: { label: '#98989f', line: '#3a3a40', split: '#2e2e33' },
-} as const;
-
-function buildOption(data: ChartData, theme: ResolvedTheme): echarts.EChartsOption {
-  const axis = AXIS[theme];
+// ECharts paints into SVG it owns, so the theme is passed in as resolved values.
+function buildOption(data: ChartData, axis: ChartAxisColors): echarts.EChartsOption {
   const labels = data.series.map((item) => item.label);
   const values = data.series.map((item) => item.value);
 
@@ -114,7 +113,7 @@ function renderChart() {
   if (!chart) {
     chart = echarts.init(containerRef.value, null, { renderer: 'svg' });
   }
-  chart.setOption(buildOption(props.data, theme.value));
+  chart.setOption(buildOption(props.data, chartAxisColors()));
 }
 
 onMounted(() => {

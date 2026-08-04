@@ -3,20 +3,19 @@ import * as echarts from 'echarts';
 import { useLxPage, useLxStream } from '@lingxia/react';
 import type { LxStream } from '@lingxia/bridge';
 import type { Message, ChatChunk, ChartData } from './index';
-import { getResolvedTheme, subscribeTheme, type ResolvedTheme } from '../../shared/lib/theme';
+import {
+  chartAxisColors,
+  getResolvedTheme,
+  subscribeTheme,
+  type ChartAxisColors,
+  type ResolvedTheme,
+} from '../../shared/lib/theme';
 import '../../tailwind.css';
 
 const PALETTE = ['#3b82f6', '#8b5cf6', '#10b981', '#f59e0b', '#ef4444', '#06b6d4'];
 
-// ECharts paints into SVG it owns, so the theme has to be passed in as values
-// rather than inherited from CSS.
-const AXIS = {
-  light: { label: '#6b7280', line: '#e5e7eb', split: '#f3f4f6' },
-  dark: { label: '#98989f', line: '#3a3a40', split: '#2e2e33' },
-} as const;
-
-function buildOption(data: ChartData, theme: ResolvedTheme): echarts.EChartsOption {
-  const axis = AXIS[theme];
+// ECharts paints into SVG it owns, so the theme is passed in as resolved values.
+function buildOption(data: ChartData, axis: ChartAxisColors): echarts.EChartsOption {
   const labels = data.series.map((s) => s.label);
   const values = data.series.map((s) => s.value);
 
@@ -101,7 +100,7 @@ function ChartCard({ data }: { data: ChartData }) {
   useEffect(() => {
     if (!containerRef.current) return;
     const chart = echarts.init(containerRef.current, null, { renderer: 'svg' });
-    chart.setOption(buildOption(data, theme));
+    chart.setOption(buildOption(data, chartAxisColors()));
     return () => chart.dispose();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [theme]);
@@ -109,7 +108,7 @@ function ChartCard({ data }: { data: ChartData }) {
   const height = data.kind === 'pie' ? 210 : 180;
 
   return (
-    <div className="mt-3 rounded-2xl overflow-hidden bg-gray-50 border border-gray-200 shadow-sm animate-chart-in">
+    <div className="mt-3 rounded-2xl overflow-hidden bg-surface-50 border border-line-200 shadow-sm animate-chart-in">
       <p className="text-[10px] font-semibold tracking-widest uppercase text-gray-400 px-3.5 pt-3 pb-0.5">
         {data.title}
       </p>
@@ -132,8 +131,8 @@ const HINTS = [
 function EmptyState() {
   return (
     <div className="flex-1 flex flex-col items-center justify-center gap-3 px-8 text-center">
-      <div className="w-16 h-16 rounded-2xl bg-white shadow flex items-center justify-center">
-        <svg viewBox="0 0 24 24" fill="none" className="w-8 h-8 text-blue-600" stroke="currentColor" strokeWidth="1.5">
+      <div className="w-16 h-16 rounded-2xl bg-surface shadow flex items-center justify-center">
+        <svg viewBox="0 0 24 24" fill="none" className="w-8 h-8 text-blue-600 dark:text-blue-400" stroke="currentColor" strokeWidth="1.5">
           <path
             strokeLinecap="round"
             strokeLinejoin="round"
@@ -151,7 +150,7 @@ function EmptyState() {
         {HINTS.map((hint) => (
           <div
             key={hint}
-            className="text-sm text-blue-600 bg-blue-50 rounded-xl px-4 py-2.5 text-left"
+            className="text-sm text-blue-600 dark:text-blue-400 bg-blue-50 rounded-xl px-4 py-2.5 text-left"
           >
             {hint}
           </div>
@@ -163,7 +162,7 @@ function EmptyState() {
 
 function AIAvatar() {
   return (
-    <div className="w-7 h-7 rounded-full bg-gradient-to-br from-violet-500 to-blue-600 flex-shrink-0 flex items-center justify-center mt-0.5">
+    <div className="w-7 h-7 rounded-full bg-linear-to-br from-violet-500 to-blue-600 shrink-0 flex items-center justify-center mt-0.5">
       <svg viewBox="0 0 24 24" fill="white" className="w-3.5 h-3.5">
         <path d="M12 2a10 10 0 110 20A10 10 0 0112 2zm0 2a8 8 0 100 16A8 8 0 0012 4zm-1 5h2v2h-2V9zm0 4h2v6h-2v-6z" />
       </svg>
@@ -190,7 +189,7 @@ function MessageBubble({ message }: { message: Message }) {
       <div className="flex items-start gap-2 max-w-[90%]">
         <AIAvatar />
         <div
-          className="px-4 py-2.5 rounded-3xl rounded-bl-md bg-white border border-gray-200 text-gray-800 text-sm leading-relaxed shadow-sm"
+          className="px-4 py-2.5 rounded-3xl rounded-bl-md bg-surface border border-line-200 text-gray-800 text-sm leading-relaxed shadow-sm"
           style={{ wordBreak: 'break-word' }}
         >
           {message.content || <span className="text-gray-400 italic">...</span>}
@@ -209,7 +208,7 @@ function StreamingBubble({ state }: { state: StreamState }) {
       <div className="flex items-start gap-2 max-w-[90%]">
         <AIAvatar />
         <div
-          className="px-4 py-2.5 rounded-3xl rounded-bl-md bg-white border border-gray-200 text-gray-800 text-sm leading-relaxed shadow-sm"
+          className="px-4 py-2.5 rounded-3xl rounded-bl-md bg-surface border border-line-200 text-gray-800 text-sm leading-relaxed shadow-sm"
           style={{ wordBreak: 'break-word' }}
         >
           {state.text ? (
@@ -263,10 +262,10 @@ function InputBar({
 
   return (
     <div
-      className="bg-white border-t border-gray-200 px-3 py-3 flex items-end gap-2"
+      className="bg-surface border-t border-line-200 px-3 py-3 flex items-end gap-2"
       style={{ paddingBottom: 'max(12px, env(safe-area-inset-bottom))' }}
     >
-      <div className="flex-1 bg-gray-100 rounded-2xl px-3.5 py-2.5 flex items-end gap-2">
+      <div className="flex-1 bg-surface-100 rounded-2xl px-3.5 py-2.5 flex items-end gap-2">
         <textarea
           data-testid="stream-input"
           data-controlled-value={value}
@@ -277,7 +276,7 @@ function InputBar({
           placeholder="Message..."
           rows={1}
           disabled={streaming}
-          className="flex-1 bg-transparent text-sm text-gray-800 placeholder-gray-400 outline-none resize-none leading-relaxed"
+          className="flex-1 bg-transparent text-sm text-gray-800 placeholder:text-gray-400 outline-hidden resize-none leading-relaxed"
           style={{ maxHeight: '120px', minHeight: '22px' }}
         />
       </div>
@@ -286,16 +285,16 @@ function InputBar({
         <button
           data-testid="stream-stop"
           onClick={onStop}
-          className="w-9 h-9 flex-shrink-0 rounded-full bg-gray-800 flex items-center justify-center active:opacity-70"
+          className="w-9 h-9 shrink-0 rounded-full bg-surface-800 flex items-center justify-center active:opacity-70"
         >
-          <div className="w-3 h-3 bg-white rounded-sm" />
+          <div className="w-3 h-3 bg-surface rounded-sm" />
         </button>
       ) : (
         <button
           data-testid="stream-send"
           onClick={onSend}
           disabled={!value.trim()}
-          className="w-9 h-9 flex-shrink-0 rounded-full bg-blue-600 flex items-center justify-center active:opacity-70 disabled:opacity-30 disabled:cursor-not-allowed"
+          className="w-9 h-9 shrink-0 rounded-full bg-blue-600 flex items-center justify-center active:opacity-70 disabled:opacity-30 disabled:cursor-not-allowed"
         >
           <svg viewBox="0 0 24 24" fill="white" className="w-4 h-4" style={{ marginBottom: '1px' }}>
             <path d="M12 4l8 8H14v8h-4v-8H4l8-8z" />
@@ -348,12 +347,12 @@ export default function StreamPage() {
   const streamState = chat.data ?? { text: '' };
 
   return (
-    <div className="flex flex-col bg-gray-100" style={{ height: '100vh' }} data-testid="stream-page">
+    <div className="flex flex-col bg-surface-100" style={{ height: '100vh' }} data-testid="stream-page">
       {messages.length > 0 && !chat.streaming && (
         <div className="absolute top-3 right-4 z-10">
           <button
             onClick={() => actions.onClear()}
-            className="text-xs text-blue-600 px-3 py-1 bg-white rounded-full shadow-sm active:opacity-70"
+            className="text-xs text-blue-600 dark:text-blue-400 px-3 py-1 bg-surface rounded-full shadow-sm active:opacity-70"
           >
             Clear
           </button>

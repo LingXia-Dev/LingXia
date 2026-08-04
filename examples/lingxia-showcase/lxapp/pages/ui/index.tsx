@@ -123,11 +123,11 @@ export default function UIPage() {
 
 
   return (
-    <div className="h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex flex-col overflow-y-auto">
+    <div className="h-screen bg-linear-to-br from-surface-50 to-surface-100 flex flex-col overflow-y-auto">
       <div className="flex-1 overflow-y-auto">
         <div className="pb-6 px-4 pt-6">
         {chromeError && (
-          <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:text-red-400">
             {chromeError}
           </div>
         )}
@@ -137,30 +137,30 @@ export default function UIPage() {
           <>
             <div className="mb-4 text-sm text-gray-600 font-semibold">navigateTo/Back, redirectTo</div>
 
-        <div className="mb-5 bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+        <div className="mb-5 bg-surface rounded-2xl shadow-sm border border-line-100 overflow-hidden">
           <div
-            className="flex items-center justify-between px-5 py-4 hover:bg-gradient-to-r hover:from-blue-50/50 hover:to-transparent cursor-pointer border-b border-gray-100 transition-all active:scale-[0.99]"
+            className="flex items-center justify-between px-5 py-4 hover:bg-linear-to-r hover:from-blue-50/50 hover:to-transparent cursor-pointer border-b border-line-100 transition-all active:scale-[0.99]"
             onClick={demoNavigateTo}
           >
             <div className="text-sm text-gray-800 font-medium">Navigate to new page</div>
             <span className="text-gray-400 text-lg">›</span>
           </div>
           <div
-            className="flex items-center justify-between px-5 py-4 hover:bg-gradient-to-r hover:from-blue-50/50 hover:to-transparent cursor-pointer border-b border-gray-100 transition-all active:scale-[0.99]"
+            className="flex items-center justify-between px-5 py-4 hover:bg-linear-to-r hover:from-blue-50/50 hover:to-transparent cursor-pointer border-b border-line-100 transition-all active:scale-[0.99]"
             onClick={demoNavigateBack}
           >
             <div className="text-sm text-gray-800 font-medium">Back to previous page</div>
             <span className="text-gray-400 text-lg">›</span>
           </div>
           <div
-            className="flex items-center justify-between px-5 py-4 hover:bg-gradient-to-r hover:from-blue-50/50 hover:to-transparent cursor-pointer border-b border-gray-100 transition-all active:scale-[0.99]"
+            className="flex items-center justify-between px-5 py-4 hover:bg-linear-to-r hover:from-blue-50/50 hover:to-transparent cursor-pointer border-b border-line-100 transition-all active:scale-[0.99]"
             onClick={demoRedirectTo}
           >
             <div className="text-sm text-gray-800 font-medium">Open in current page</div>
             <span className="text-gray-400 text-lg">›</span>
           </div>
           <div
-            className="flex items-center justify-between px-5 py-4 hover:bg-gradient-to-r hover:from-blue-50/50 hover:to-transparent cursor-pointer transition-all active:scale-[0.99]"
+            className="flex items-center justify-between px-5 py-4 hover:bg-linear-to-r hover:from-blue-50/50 hover:to-transparent cursor-pointer transition-all active:scale-[0.99]"
             onClick={demoSwitchTab}
           >
             <div className="text-sm text-gray-800 font-medium">Jump to Tab page</div>
@@ -175,10 +175,10 @@ export default function UIPage() {
           <>
             <div className="mt-4 mb-6 px-4 text-center">
               <h1 className="text-2xl font-light text-gray-800 mb-2">lx.surface</h1>
-              <div className="w-16 h-0.5 bg-gray-400 mx-auto"></div>
+              <div className="w-16 h-0.5 bg-surface-400 mx-auto"></div>
             </div>
 
-            <div className="mx-1 mb-4 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+            <div className="mx-1 mb-4 bg-surface rounded-xl shadow-sm border border-line-200 overflow-hidden">
               <div className="px-4 py-4 space-y-4">
                 <div className="space-y-3">
                   {/* Pick the surface kind first; the relevant placement
@@ -190,8 +190,8 @@ export default function UIPage() {
                         const active = surfaceKind === kind.id;
                         const baseClass = 'py-2 text-sm rounded-lg transition-colors border';
                         const className = active
-                          ? `${baseClass} bg-gray-800 border-gray-800 text-white`
-                          : `${baseClass} bg-white border-gray-200 text-gray-600 hover:bg-gray-50`;
+                          ? `${baseClass} bg-surface-800 border-line-800 text-white`
+                          : `${baseClass} bg-surface border-line-200 text-gray-600 hover:bg-surface-50`;
                         return (
                           <button
                             key={kind.id}
@@ -205,7 +205,7 @@ export default function UIPage() {
                         );
                       })}
                     </div>
-                    <div className="mt-2 text-xs text-gray-500 leading-5 bg-gray-50 rounded-lg px-3 py-2">
+                    <div className="mt-2 text-xs text-gray-500 leading-5 bg-surface-50 rounded-lg px-3 py-2">
                       {surfaceKinds.find((k) => k.id === surfaceKind)?.hint}
                     </div>
                   </div>
@@ -220,7 +220,7 @@ export default function UIPage() {
                           const baseClass = 'py-2 text-sm rounded-lg transition-colors border';
                           const className = active
                             ? `${baseClass} bg-blue-500 border-blue-500 text-white`
-                            : `${baseClass} bg-white border-gray-200 text-gray-600 hover:bg-gray-50`;
+                            : `${baseClass} bg-surface border-line-200 text-gray-600 hover:bg-surface-50`;
                           return (
                             <button
                               key={edge}
@@ -246,7 +246,7 @@ export default function UIPage() {
                           const baseClass = 'py-2 text-sm rounded-lg transition-colors border';
                           const className = active
                             ? `${baseClass} bg-indigo-500 border-indigo-500 text-white`
-                            : `${baseClass} bg-white border-gray-200 text-gray-600 hover:bg-gray-50`;
+                            : `${baseClass} bg-surface border-line-200 text-gray-600 hover:bg-surface-50`;
                           return (
                             <button
                               key={position}
@@ -276,7 +276,7 @@ export default function UIPage() {
                           setSurfaceWidth(e.target.value);
                           setSizeError('');
                         }}
-                        className="py-2 px-3 text-sm rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-400"
+                        className="py-2 px-3 text-sm rounded-lg border border-line-200 focus:outline-hidden focus:ring-2 focus:ring-surface-400"
                       />
                       <input
                         type="text"
@@ -287,11 +287,11 @@ export default function UIPage() {
                           setSurfaceHeight(e.target.value);
                           setSizeError('');
                         }}
-                        className="py-2 px-3 text-sm rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-400"
+                        className="py-2 px-3 text-sm rounded-lg border border-line-200 focus:outline-hidden focus:ring-2 focus:ring-surface-400"
                       />
                     </div>
                     {sizeError && (
-                      <div data-testid="size-error" className="mt-2 text-xs text-rose-600">
+                      <div data-testid="size-error" className="mt-2 text-xs text-rose-600 dark:text-rose-400">
                         {sizeError}
                       </div>
                     )}
@@ -323,7 +323,7 @@ export default function UIPage() {
                       height,
                     });
                   }}
-                  className="w-full bg-gray-800 hover:bg-gray-900 disabled:bg-gray-300 disabled:cursor-not-allowed text-white py-2 px-4 rounded-lg text-sm font-medium transition-colors"
+                  className="w-full bg-surface-800 hover:bg-surface-900 disabled:bg-surface-300 disabled:cursor-not-allowed text-white py-2 px-4 rounded-lg text-sm font-medium transition-colors"
                 >
                   {surfaceActive
                     ? `Open ${surfaceKind} (already open)`
@@ -342,7 +342,7 @@ export default function UIPage() {
                       type="button"
                       disabled={surfaceVisible}
                       onClick={() => showActiveSurface()}
-                      className="bg-emerald-500 hover:bg-emerald-600 disabled:bg-gray-200 disabled:text-gray-500 text-white py-2 px-3 rounded-lg text-sm font-medium transition-colors"
+                      className="bg-emerald-500 hover:bg-emerald-600 disabled:bg-surface-200 disabled:text-gray-500 text-white py-2 px-3 rounded-lg text-sm font-medium transition-colors"
                     >
                       Show
                     </button>
@@ -350,7 +350,7 @@ export default function UIPage() {
                       type="button"
                       disabled={!surfaceVisible}
                       onClick={() => hideActiveSurface()}
-                      className="bg-amber-500 hover:bg-amber-600 disabled:bg-gray-200 disabled:text-gray-500 text-white py-2 px-3 rounded-lg text-sm font-medium transition-colors"
+                      className="bg-amber-500 hover:bg-amber-600 disabled:bg-surface-200 disabled:text-gray-500 text-white py-2 px-3 rounded-lg text-sm font-medium transition-colors"
                     >
                       Hide
                     </button>
@@ -365,7 +365,7 @@ export default function UIPage() {
                 )}
 
                 <div className="text-xs text-gray-500 uppercase tracking-wide">Surface status</div>
-                <div className="text-sm text-gray-800 bg-gray-50 rounded-lg px-3 py-2 font-mono break-words">
+                <div className="text-sm text-gray-800 bg-surface-50 rounded-lg px-3 py-2 font-mono break-words">
                   {surfaceMessage || 'No message received yet.'}
                 </div>
               </div>
@@ -379,7 +379,7 @@ export default function UIPage() {
             <div className="mt-4 mb-3 px-4 text-sm text-gray-500 font-medium">Toast Parameters</div>
 
             {/* Toast Parameters */}
-            <div className="mx-1 mb-4 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+            <div className="mx-1 mb-4 bg-surface rounded-xl shadow-sm border border-line-200 overflow-hidden">
               <div className="px-3 py-3 space-y-3">
 
                 {/* Title Input */}
@@ -389,7 +389,7 @@ export default function UIPage() {
                     type="text"
                     value={toastTitle}
                     onChange={(e) => setToastTitle(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 border border-line-300 rounded-md focus:outline-hidden focus:ring-2 focus:ring-blue-500"
                     placeholder="Enter toast title"
                   />
                 </div>
@@ -400,10 +400,10 @@ export default function UIPage() {
                   <button
                     type="button"
                     onClick={chooseToastIcon}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md flex items-center justify-between text-left text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 border border-line-300 rounded-md flex items-center justify-between text-left text-gray-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500"
                   >
                     <span>{toastIconDisplay}</span>
-                    <span className="text-xs text-blue-500">Change</span>
+                    <span className="text-xs text-blue-500 dark:text-blue-400">Change</span>
                   </button>
                 </div>
 
@@ -414,7 +414,7 @@ export default function UIPage() {
                     type="number"
                     value={toastDuration}
                     onChange={(e) => setToastDuration(parseInt(e.target.value) || 2000)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 border border-line-300 rounded-md focus:outline-hidden focus:ring-2 focus:ring-blue-500"
                     min="500"
                     max="10000"
                     step="500"
@@ -427,10 +427,10 @@ export default function UIPage() {
                   <button
                     type="button"
                     onClick={chooseToastPosition}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md flex items-center justify-between text-left text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 border border-line-300 rounded-md flex items-center justify-between text-left text-gray-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500"
                   >
                     <span>{toastPositionDisplay}</span>
-                    <span className="text-xs text-blue-500">Change</span>
+                    <span className="text-xs text-blue-500 dark:text-blue-400">Change</span>
                   </button>
                 </div>
 
@@ -441,7 +441,7 @@ export default function UIPage() {
                     id="toastMask"
                     checked={toastMask}
                     onChange={(e) => setToastMask(e.target.checked)}
-                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                    className="h-4 w-4 text-blue-600 dark:text-blue-400 focus:ring-blue-500 border-line-300 rounded"
                   />
                   <label htmlFor="toastMask" className="ml-2 block text-sm text-gray-700">
                     Show mask (prevents interaction)
@@ -451,9 +451,9 @@ export default function UIPage() {
             </div>
 
             {/* Action Buttons */}
-            <div className="mx-1 mb-4 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+            <div className="mx-1 mb-4 bg-surface rounded-xl shadow-sm border border-line-200 overflow-hidden">
               <div
-                className="flex items-center justify-center px-4 py-4 hover:bg-gray-50 cursor-pointer border-b border-gray-100"
+                className="flex items-center justify-center px-4 py-4 hover:bg-surface-50 cursor-pointer border-b border-line-100"
                 onClick={() => showToastWithParams({
                   title: toastTitle,
                   icon: toastIcon,
@@ -462,13 +462,13 @@ export default function UIPage() {
                   mask: toastMask
                 })}
               >
-                <div className="text-base text-blue-600 font-medium">Show Toast</div>
+                <div className="text-base text-blue-600 dark:text-blue-400 font-medium">Show Toast</div>
               </div>
               <div
-                className="flex items-center justify-center px-4 py-4 hover:bg-gray-50 cursor-pointer"
+                className="flex items-center justify-center px-4 py-4 hover:bg-surface-50 cursor-pointer"
                 onClick={hideToast}
               >
-                <div className="text-base text-red-600 font-medium">Hide Toast</div>
+                <div className="text-base text-red-600 dark:text-red-400 font-medium">Hide Toast</div>
               </div>
             </div>
           </>
@@ -476,9 +476,9 @@ export default function UIPage() {
 
         {/* ActionSheet Demo Section */}
         {currentType === 'actionsheet' && (
-          <div className="mx-1 mt-8 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+          <div className="mx-1 mt-8 bg-surface rounded-xl shadow-sm border border-line-200 overflow-hidden">
             <div
-              className="px-4 py-10 text-base text-blue-600 font-medium text-center cursor-pointer hover:bg-blue-50"
+              className="px-4 py-10 text-base text-blue-600 dark:text-blue-400 font-medium text-center cursor-pointer hover:bg-blue-50"
               onClick={showDemoActionSheet}
             >
               Show Action Sheet
@@ -492,7 +492,7 @@ export default function UIPage() {
             <div className="mt-4 mb-3 px-4 text-sm text-gray-500 font-medium">Modal Parameters</div>
 
             {/* Modal Parameters */}
-            <div className="mx-1 mb-4 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+            <div className="mx-1 mb-4 bg-surface rounded-xl shadow-sm border border-line-200 overflow-hidden">
               <div className="px-3 py-3 space-y-3">
 
                 {/* Title Input */}
@@ -502,7 +502,7 @@ export default function UIPage() {
                     type="text"
                     value={modalTitle}
                     onChange={(e) => setModalTitle(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 border border-line-300 rounded-md focus:outline-hidden focus:ring-2 focus:ring-blue-500"
                     placeholder="Leave empty for no title"
                   />
                 </div>
@@ -515,7 +515,7 @@ export default function UIPage() {
                   <textarea
                     value={modalContent}
                     onChange={(e) => setModalContent(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 border border-line-300 rounded-md focus:outline-hidden focus:ring-2 focus:ring-blue-500"
                     placeholder="Enter modal content"
                     rows={3}
                   />
@@ -528,7 +528,7 @@ export default function UIPage() {
                     id="modalShowCancel"
                     checked={modalShowCancel}
                     onChange={(e) => setModalShowCancel(e.target.checked)}
-                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                    className="h-4 w-4 text-blue-600 dark:text-blue-400 focus:ring-blue-500 border-line-300 rounded"
                   />
                   <label htmlFor="modalShowCancel" className="ml-2 block text-sm text-gray-700">
                     Show cancel button
@@ -542,7 +542,7 @@ export default function UIPage() {
                     type="text"
                     value={modalCancelText}
                     onChange={(e) => setModalCancelText(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 border border-line-300 rounded-md focus:outline-hidden focus:ring-2 focus:ring-blue-500"
                     placeholder="Cancel button text"
                   />
                 </div>
@@ -554,7 +554,7 @@ export default function UIPage() {
                     type="text"
                     value={modalConfirmText}
                     onChange={(e) => setModalConfirmText(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 border border-line-300 rounded-md focus:outline-hidden focus:ring-2 focus:ring-blue-500"
                     placeholder="Confirm button text"
                   />
                 </div>
@@ -564,9 +564,9 @@ export default function UIPage() {
             </div>
 
             {/* Action Button */}
-            <div className="mx-1 mb-4 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+            <div className="mx-1 mb-4 bg-surface rounded-xl shadow-sm border border-line-200 overflow-hidden">
               <div
-                className="flex items-center justify-center px-4 py-4 hover:bg-gray-50 cursor-pointer"
+                className="flex items-center justify-center px-4 py-4 hover:bg-surface-50 cursor-pointer"
                 onClick={() => showModalWithParams({
                   title: modalTitle,
                   content: modalContent,
@@ -575,22 +575,22 @@ export default function UIPage() {
                   confirmText: modalConfirmText
                 })}
               >
-                <div className="text-base text-blue-600 font-medium">Show Modal</div>
+                <div className="text-base text-blue-600 dark:text-blue-400 font-medium">Show Modal</div>
               </div>
             </div>
 
             {/* Result Display */}
             {modalResult && (
-              <div className="mx-1 mb-4 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+              <div className="mx-1 mb-4 bg-surface rounded-xl shadow-sm border border-line-200 overflow-hidden">
                 <div className="px-3 py-3">
                   <div className="text-sm font-medium text-gray-700 mb-3">Modal Result</div>
-                  <div className="bg-gray-50 rounded-lg p-3">
+                  <div className="bg-surface-50 rounded-lg p-3">
                     <pre className="text-xs text-gray-600 whitespace-pre-wrap">
                       {JSON.stringify(modalResult, null, 2)}
                     </pre>
                   </div>
                   <div
-                    className="mt-3 text-center text-sm text-red-600 cursor-pointer hover:text-red-800"
+                    className="mt-3 text-center text-sm text-red-600 dark:text-red-400 cursor-pointer hover:text-red-800 dark:hover:text-red-400"
                     onClick={clearModalResult}
                   >
                     Clear Result
@@ -603,26 +603,26 @@ export default function UIPage() {
 
         {/* Page Stack Info - Only show for navigation */}
         {currentType === 'navigation' && (
-          <div className="mb-5 bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="mb-5 bg-surface rounded-2xl shadow-sm border border-line-100 overflow-hidden">
             <div className="px-5 py-4">
               <div className="flex items-center gap-2 mb-4">
                 <span className="w-1 h-5 bg-blue-500 rounded-full"></span>
                 <div className="text-sm font-semibold text-gray-700">Current Page Stack</div>
-                <span className="ml-auto px-2 py-1 bg-blue-50 text-blue-600 text-xs font-semibold rounded-full">
+                <span className="ml-auto px-2 py-1 bg-blue-50 text-blue-600 dark:text-blue-400 text-xs font-semibold rounded-full">
                   {pageStack.length}
                 </span>
               </div>
               <div className="space-y-2">
                 {pageStack.map((page, index) => (
-                  <div key={index} className="flex flex-col gap-2 py-3 px-4 bg-gradient-to-r from-gray-50 to-white rounded-xl border border-gray-100">
+                  <div key={index} className="flex flex-col gap-2 py-3 px-4 bg-linear-to-r from-surface-50 to-surface rounded-xl border border-line-100">
                     <div className="flex items-center gap-3">
-                      <span className="flex items-center justify-center w-6 h-6 rounded-full bg-blue-100 text-blue-600 text-xs font-bold">
+                      <span className="flex items-center justify-center w-6 h-6 rounded-full bg-blue-100 text-blue-600 dark:text-blue-400 text-xs font-bold">
                         {page.index + 1}
                       </span>
                       <span className="text-sm text-gray-800 font-medium flex-1 truncate">{page.route}</span>
                     </div>
                     {Object.keys(page.options).length > 0 && (
-                      <div className="ml-9 text-xs text-gray-500 font-mono bg-gray-50 px-3 py-2 rounded-lg break-all">
+                      <div className="ml-9 text-xs text-gray-500 font-mono bg-surface-50 px-3 py-2 rounded-lg break-all">
                         {JSON.stringify(page.options, null, 2)}
                       </div>
                     )}
@@ -642,7 +642,7 @@ export default function UIPage() {
             <div className="mt-4 mb-3 px-4 text-sm text-gray-500 font-medium">NavigationBar APIs</div>
 
             {/* NavigationBar Controls */}
-            <div className="mx-1 mb-4 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+            <div className="mx-1 mb-4 bg-surface rounded-xl shadow-sm border border-line-200 overflow-hidden">
               <div className="p-4 space-y-4">
 
                 {/* Set Title */}
@@ -653,7 +653,7 @@ export default function UIPage() {
                       type="text"
                       id="navbarTitle"
                       placeholder="Enter title"
-                      className="flex-1 px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      className="flex-1 px-2 py-1.5 text-sm border border-line-300 rounded focus:outline-hidden focus:ring-1 focus:ring-blue-500"
                     />
                     <button
                       onClick={() => {
@@ -662,7 +662,7 @@ export default function UIPage() {
                           updateNavigationBarTitle({ title });
                         }
                       }}
-                      className="px-3 py-1.5 text-sm bg-blue-500 text-white rounded hover:bg-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      className="px-3 py-1.5 text-sm bg-blue-500 text-white rounded hover:bg-blue-600 focus:outline-hidden focus:ring-1 focus:ring-blue-500"
                     >
                       Set
                     </button>
@@ -678,13 +678,13 @@ export default function UIPage() {
                         type="text"
                         id="navbarBgColor"
                         placeholder="Background #ffffff"
-                        className="px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        className="px-2 py-1.5 text-sm border border-line-300 rounded focus:outline-hidden focus:ring-1 focus:ring-blue-500"
                       />
                       <input
                         type="text"
                         id="navbarTextColor"
                         placeholder="Text #000000"
-                        className="px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        className="px-2 py-1.5 text-sm border border-line-300 rounded focus:outline-hidden focus:ring-1 focus:ring-blue-500"
                       />
                     </div>
                     <button
@@ -696,7 +696,7 @@ export default function UIPage() {
                           frontColor: textColor
                         });
                       }}
-                      className="w-full px-3 py-1.5 text-sm bg-green-500 text-white rounded hover:bg-green-600 focus:outline-none focus:ring-1 focus:ring-green-500"
+                      className="w-full px-3 py-1.5 text-sm bg-green-500 text-white rounded hover:bg-green-600 focus:outline-hidden focus:ring-1 focus:ring-green-500"
                     >
                       Set Colors
                     </button>
@@ -714,7 +714,7 @@ export default function UIPage() {
                         updateNavigationBarTitle({ title: "Dark Theme" });
                         updateNavigationBarColors({ backgroundColor: "#1f2937", frontColor: "#ffffff" });
                       }}
-                      className="px-2 py-1.5 bg-gray-800 text-white rounded hover:bg-gray-900 text-xs"
+                      className="px-2 py-1.5 bg-surface-800 text-white rounded hover:bg-surface-900 text-xs"
                     >
                       Dark
                     </button>
@@ -732,7 +732,7 @@ export default function UIPage() {
                         updateNavigationBarTitle({ title: "Light Theme" });
                         updateNavigationBarColors({ backgroundColor: "#ffffff", frontColor: "#000000" });
                       }}
-                      className="px-2 py-1.5 bg-white text-black border border-gray-300 rounded hover:bg-gray-50 text-xs"
+                      className="px-2 py-1.5 bg-surface text-foreground border border-line-300 rounded hover:bg-surface-50 text-xs"
                     >
                       Light
                     </button>
@@ -760,8 +760,8 @@ export default function UIPage() {
           <>
             <div className="mt-4 mb-3 px-4 text-sm text-gray-500 font-medium">Appearance APIs</div>
 
-            <div className="mx-1 mb-4 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-              <div className="px-4 py-3 border-b border-gray-100">
+            <div className="mx-1 mb-4 bg-surface rounded-xl shadow-sm border border-line-200 overflow-hidden">
+              <div className="px-4 py-3 border-b border-line-100">
                 <h3 className="text-base font-medium text-gray-900">Light / Dark</h3>
                 <p className="text-sm text-gray-500 mt-1">
                   <code className="text-xs">lx.appearance.set()</code> picks this lxapp&apos;s branch
@@ -781,7 +781,7 @@ export default function UIPage() {
                       className={`px-2 py-1.5 rounded text-xs font-medium capitalize border transition-colors ${
                         appearance.preference === option
                           ? 'bg-blue-500 text-white border-blue-500'
-                          : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                          : 'bg-surface text-gray-700 border-line-300 hover:bg-surface-50'
                       }`}
                     >
                       {option}
@@ -789,7 +789,7 @@ export default function UIPage() {
                   ))}
                 </div>
 
-                <div className="rounded-lg bg-gray-50 border border-gray-100 divide-y divide-gray-100">
+                <div className="rounded-lg bg-surface-50 border border-line-100 divide-y divide-line-100">
                   <div className="flex items-center justify-between px-3 py-2">
                     <span className="text-sm text-gray-500">Preference</span>
                     <span className="text-sm font-medium text-gray-900" data-testid="ui-appearance-preference">
@@ -821,8 +821,8 @@ export default function UIPage() {
             <div className="mt-4 mb-3 px-4 text-sm text-gray-500 font-medium">TabBar APIs</div>
 
             {/* Visibility Controls */}
-            <div className="mx-1 mb-4 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-              <div className="px-4 py-3 border-b border-gray-100">
+            <div className="mx-1 mb-4 bg-surface rounded-xl shadow-sm border border-line-200 overflow-hidden">
+              <div className="px-4 py-3 border-b border-line-100">
                 <h3 className="text-base font-medium text-gray-900">Visibility Controls</h3>
                 <p className="text-sm text-gray-500 mt-1">Show/hide TabBar and update item text</p>
               </div>
@@ -853,7 +853,7 @@ export default function UIPage() {
                 </div>
 
                 {/* Item Text Control */}
-                <div className="pt-2 border-t border-gray-100">
+                <div className="pt-2 border-t border-line-100">
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Update Tab 1 Text
                   </label>
@@ -862,7 +862,7 @@ export default function UIPage() {
                       type="text"
                       value={itemText}
                       onChange={(e) => setItemText(e.target.value)}
-                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="flex-1 px-3 py-2 border border-line-300 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-blue-500"
                       placeholder="Enter new text"
                     />
                     <button
@@ -882,8 +882,8 @@ export default function UIPage() {
 
 
             {/* Red Dot Controls */}
-            <div className="mx-1 mb-4 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-              <div className="px-4 py-3 border-b border-gray-100">
+            <div className="mx-1 mb-4 bg-surface rounded-xl shadow-sm border border-line-200 overflow-hidden">
+              <div className="px-4 py-3 border-b border-line-100">
                 <h3 className="text-base font-medium text-gray-900">Red Dot Controls</h3>
                 <p className="text-sm text-gray-500 mt-1">Show/hide red dot on tab 1</p>
               </div>
@@ -903,7 +903,7 @@ export default function UIPage() {
                       const result = disableTabBarRedDot({ index: 1 });
                       console.log('Hide red dot on tab 1:', result);
                     }}
-                    className="flex-1 bg-gray-500 hover:bg-gray-600 text-white py-2 px-4 rounded-lg text-sm font-medium transition-colors"
+                    className="flex-1 bg-surface-500 hover:bg-surface-600 text-white py-2 px-4 rounded-lg text-sm font-medium transition-colors"
                   >
                     Hide Red Dot
                   </button>
@@ -912,8 +912,8 @@ export default function UIPage() {
             </div>
 
             {/* Badge Controls */}
-            <div className="mx-1 mb-4 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-              <div className="px-4 py-3 border-b border-gray-100">
+            <div className="mx-1 mb-4 bg-surface rounded-xl shadow-sm border border-line-200 overflow-hidden">
+              <div className="px-4 py-3 border-b border-line-100">
                 <h3 className="text-base font-medium text-gray-900">Badge Controls</h3>
                 <p className="text-sm text-gray-500 mt-1">Set/remove badge on tab 1</p>
               </div>
@@ -924,7 +924,7 @@ export default function UIPage() {
                     type="text"
                     value={badgeText}
                     onChange={(e) => setBadgeText(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 border border-line-300 rounded-lg text-sm focus:outline-hidden focus:ring-2 focus:ring-blue-500"
                     placeholder="Enter badge text"
                   />
                 </div>
@@ -943,7 +943,7 @@ export default function UIPage() {
                       const result = clearTabBarBadge({ index: 1 });
                       console.log('Remove badge on tab 1:', result);
                     }}
-                    className="flex-1 bg-gray-500 hover:bg-gray-600 text-white py-2 px-4 rounded-lg text-sm font-medium transition-colors"
+                    className="flex-1 bg-surface-500 hover:bg-surface-600 text-white py-2 px-4 rounded-lg text-sm font-medium transition-colors"
                   >
                     Remove Badge
                   </button>
@@ -954,8 +954,8 @@ export default function UIPage() {
 
 
             {/* Style Controls */}
-            <div className="mx-1 mb-4 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-              <div className="px-4 py-3 border-b border-gray-100">
+            <div className="mx-1 mb-4 bg-surface rounded-xl shadow-sm border border-line-200 overflow-hidden">
+              <div className="px-4 py-3 border-b border-line-100">
                 <h3 className="text-base font-medium text-gray-900">Style Controls</h3>
                 <p className="text-sm text-gray-500 mt-1">Customize TabBar appearance</p>
               </div>
@@ -965,14 +965,14 @@ export default function UIPage() {
                     <label className="block text-sm font-medium text-gray-700 mb-1">Text Color</label>
                     <div className="flex items-center space-x-2">
                       <div
-                        className="w-8 h-8 border border-gray-300 rounded cursor-pointer"
+                        className="w-8 h-8 border border-line-300 rounded cursor-pointer"
                         style={{ backgroundColor: color }}
                       ></div>
                       <input
                         type="text"
                         value={color}
                         onChange={(e) => setColor(e.target.value)}
-                        className="flex-1 px-2 py-1 border border-gray-300 rounded text-sm"
+                        className="flex-1 px-2 py-1 border border-line-300 rounded text-sm"
                         placeholder="#666666"
                       />
                     </div>
@@ -981,14 +981,14 @@ export default function UIPage() {
                     <label className="block text-sm font-medium text-gray-700 mb-1">Selected Color</label>
                     <div className="flex items-center space-x-2">
                       <div
-                        className="w-8 h-8 border border-gray-300 rounded cursor-pointer"
+                        className="w-8 h-8 border border-line-300 rounded cursor-pointer"
                         style={{ backgroundColor: selectedColor }}
                       ></div>
                       <input
                         type="text"
                         value={selectedColor}
                         onChange={(e) => setSelectedColor(e.target.value)}
-                        className="flex-1 px-2 py-1 border border-gray-300 rounded text-sm"
+                        className="flex-1 px-2 py-1 border border-line-300 rounded text-sm"
                         placeholder="#007AFF"
                       />
                     </div>
@@ -1020,7 +1020,7 @@ export default function UIPage() {
                         const result = updateTabBarForegrounds(theme);
                         console.log('Applied Default theme:', result);
                       }}
-                      className="px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium transition-colors"
+                      className="px-3 py-2 bg-surface-100 hover:bg-surface-200 text-gray-700 rounded-lg text-sm font-medium transition-colors"
                     >
                       Default
                     </button>
@@ -1032,7 +1032,7 @@ export default function UIPage() {
                         const result = updateTabBarForegrounds(theme);
                         console.log('Applied Dark theme:', result);
                       }}
-                      className="px-3 py-2 bg-gray-800 hover:bg-gray-900 text-white rounded-lg text-sm font-medium transition-colors"
+                      className="px-3 py-2 bg-surface-800 hover:bg-surface-900 text-white rounded-lg text-sm font-medium transition-colors"
                     >
                       Dark
                     </button>
@@ -1044,7 +1044,7 @@ export default function UIPage() {
                         const result = updateTabBarForegrounds(theme);
                         console.log('Applied Green theme:', result);
                       }}
-                      className="px-3 py-2 bg-green-100 hover:bg-green-200 text-green-700 rounded-lg text-sm font-medium transition-colors"
+                      className="px-3 py-2 bg-green-100 hover:bg-green-200 text-green-700 dark:text-green-400 rounded-lg text-sm font-medium transition-colors"
                     >
                       Green
                     </button>
@@ -1056,7 +1056,7 @@ export default function UIPage() {
                         const result = updateTabBarForegrounds(theme);
                         console.log('Applied Purple theme:', result);
                       }}
-                      className="px-3 py-2 bg-purple-100 hover:bg-purple-200 text-purple-700 rounded-lg text-sm font-medium transition-colors"
+                      className="px-3 py-2 bg-purple-100 hover:bg-purple-200 text-purple-700 dark:text-purple-400 rounded-lg text-sm font-medium transition-colors"
                     >
                       Purple
                     </button>

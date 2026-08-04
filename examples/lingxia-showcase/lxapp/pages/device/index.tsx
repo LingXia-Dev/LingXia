@@ -56,12 +56,12 @@ export default function DevicePage() {
     <>
       <div className="mb-6 text-center">
         <h1 className="text-2xl font-light text-gray-800 mb-2">Device Information</h1>
-        <div className="w-16 h-0.5 bg-gray-400 mx-auto"></div>
+        <div className="w-16 h-0.5 bg-surface-400 mx-auto"></div>
       </div>
 
-      <div className="mb-5 bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-        <div className="flex items-center gap-4 px-5 py-5 border-b border-gray-100">
-          <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-gradient-to-br from-blue-50 to-indigo-50">
+      <div className="mb-5 bg-surface rounded-2xl shadow-sm border border-line-100 overflow-hidden">
+        <div className="flex items-center gap-4 px-5 py-5 border-b border-line-100">
+          <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-linear-to-br from-blue-50 to-indigo-50">
             <span className="text-2xl">📱</span>
           </div>
           <div className="flex-1">
@@ -71,7 +71,7 @@ export default function DevicePage() {
           <button
             data-testid="device-get-info"
             onClick={getDeviceInfo}
-            className="px-5 py-2.5 text-sm font-medium transition-all duration-200 bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-600 text-white rounded-xl shadow-sm active:scale-[0.98]"
+            className="px-5 py-2.5 text-sm font-medium transition-all duration-200 bg-linear-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-600 text-white rounded-xl shadow-sm active:scale-[0.98]"
           >
             Get Info
           </button>
@@ -79,7 +79,7 @@ export default function DevicePage() {
 
         {deviceInfo && (
           <div className="p-5" data-testid="device-info-result">
-            <div className="rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50 to-white p-4">
+            <div className="rounded-xl border border-line-200 bg-linear-to-br from-surface-50 to-surface p-4">
               <div className="flex items-center gap-2 mb-4">
                 <span className="w-1 h-4 bg-blue-500 rounded-full"></span>
                 <h4 className="text-sm font-semibold text-gray-700">Device Information</h4>
@@ -102,12 +102,12 @@ export default function DevicePage() {
     <>
       <div className="mb-6 text-center">
         <h1 className="text-2xl font-light text-gray-800 mb-2">Screen Information</h1>
-        <div className="w-16 h-0.5 bg-gray-400 mx-auto"></div>
+        <div className="w-16 h-0.5 bg-surface-400 mx-auto"></div>
       </div>
 
-      <div className="mb-5 bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-        <div className="flex items-center gap-4 px-5 py-5 border-b border-gray-100">
-          <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-gradient-to-br from-purple-50 to-pink-50">
+      <div className="mb-5 bg-surface rounded-2xl shadow-sm border border-line-100 overflow-hidden">
+        <div className="flex items-center gap-4 px-5 py-5 border-b border-line-100">
+          <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-linear-to-br from-purple-50 to-pink-50">
             <span className="text-2xl">🖥️</span>
           </div>
           <div className="flex-1">
@@ -117,7 +117,7 @@ export default function DevicePage() {
           <button
             data-testid="device-screen-get-info"
             onClick={getScreenInfo}
-            className="px-5 py-2.5 text-sm font-medium transition-all duration-200 bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-600 text-white rounded-xl shadow-sm active:scale-[0.98]"
+            className="px-5 py-2.5 text-sm font-medium transition-all duration-200 bg-linear-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-600 text-white rounded-xl shadow-sm active:scale-[0.98]"
           >
             Get Info
           </button>
@@ -125,7 +125,7 @@ export default function DevicePage() {
 
         {screenInfo && (
           <div className="p-5" data-testid="device-screen-result">
-            <div className="rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50 to-white p-4">
+            <div className="rounded-xl border border-line-200 bg-linear-to-br from-surface-50 to-surface p-4">
               <div className="flex items-center gap-2 mb-4">
                 <span className="w-1 h-4 bg-purple-500 rounded-full"></span>
                 <h4 className="text-sm font-semibold text-gray-700">Screen Information</h4>
@@ -146,13 +146,13 @@ export default function DevicePage() {
     <>
       <div className="mb-6 text-center">
         <h1 className="text-2xl font-light text-gray-800 mb-2">Device Vibration</h1>
-        <div className="w-16 h-0.5 bg-gray-400 mx-auto"></div>
+        <div className="w-16 h-0.5 bg-surface-400 mx-auto"></div>
       </div>
 
-      <div className="mb-5 bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+      <div className="mb-5 bg-surface rounded-2xl shadow-sm border border-line-100 overflow-hidden">
         <div className="p-6">
           <div className="flex items-center gap-3 mb-4">
-            <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-green-50 to-emerald-50">
+            <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-linear-to-br from-green-50 to-emerald-50">
               <span className="text-xl">📳</span>
             </div>
             <div>
@@ -163,13 +163,13 @@ export default function DevicePage() {
           <div className="grid grid-cols-2 gap-3">
             <button
               onClick={vibrateShort}
-              className="py-3 text-sm font-medium transition-all duration-200 bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-600 text-white rounded-xl shadow-sm active:scale-[0.98]"
+              className="py-3 text-sm font-medium transition-all duration-200 bg-linear-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-600 text-white rounded-xl shadow-sm active:scale-[0.98]"
             >
               Short
             </button>
             <button
               onClick={vibrateLong}
-              className="py-3 text-sm font-medium transition-all duration-200 bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-600 text-white rounded-xl shadow-sm active:scale-[0.98]"
+              className="py-3 text-sm font-medium transition-all duration-200 bg-linear-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-600 text-white rounded-xl shadow-sm active:scale-[0.98]"
             >
               Long
             </button>
@@ -183,13 +183,13 @@ export default function DevicePage() {
     <>
       <div className="mb-6 text-center">
         <h1 className="text-2xl font-light text-gray-800 mb-2">Phone Call</h1>
-        <div className="w-16 h-0.5 bg-gray-400 mx-auto"></div>
+        <div className="w-16 h-0.5 bg-surface-400 mx-auto"></div>
       </div>
 
-      <div className="mb-5 bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+      <div className="mb-5 bg-surface rounded-2xl shadow-sm border border-line-100 overflow-hidden">
         <div className="p-6">
           <div className="flex items-center gap-3 mb-5">
-            <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-orange-50 to-red-50">
+            <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-linear-to-br from-orange-50 to-red-50">
               <span className="text-xl">📞</span>
             </div>
             <div>
@@ -203,12 +203,12 @@ export default function DevicePage() {
               inputMode="tel"
               value={phoneNumber}
               onChange={(event) => setPhoneNumber(event.target.value)}
-              className="w-full px-4 py-3 text-sm border border-gray-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+              className="w-full px-4 py-3 text-sm border border-line-200 rounded-xl bg-surface focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
               placeholder="Enter phone number"
             />
             <button
               onClick={handleDial}
-              className="w-full py-3 text-sm font-medium transition-all duration-200 bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-600 text-white rounded-xl shadow-sm active:scale-[0.98]"
+              className="w-full py-3 text-sm font-medium transition-all duration-200 bg-linear-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-600 text-white rounded-xl shadow-sm active:scale-[0.98]"
             >
               Call
             </button>
@@ -222,12 +222,12 @@ export default function DevicePage() {
     <>
       <div className="mb-6 text-center">
         <h1 className="text-2xl font-light text-gray-800 mb-2">Network Type</h1>
-        <div className="w-16 h-0.5 bg-gray-400 mx-auto"></div>
+        <div className="w-16 h-0.5 bg-surface-400 mx-auto"></div>
       </div>
 
-      <div className="mb-5 bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-        <div className="flex items-center gap-4 px-5 py-5 border-b border-gray-100">
-          <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-gradient-to-br from-cyan-50 to-sky-50">
+      <div className="mb-5 bg-surface rounded-2xl shadow-sm border border-line-100 overflow-hidden">
+        <div className="flex items-center gap-4 px-5 py-5 border-b border-line-100">
+          <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-linear-to-br from-cyan-50 to-sky-50">
             <span className="text-2xl">🌐</span>
           </div>
           <div className="flex-1">
@@ -237,14 +237,14 @@ export default function DevicePage() {
           <button
             data-testid="device-network-get-info"
             onClick={getNetworkInfo}
-            className="px-5 py-2.5 text-sm font-medium transition-all duration-200 bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-600 text-white rounded-xl shadow-sm active:scale-[0.98]"
+            className="px-5 py-2.5 text-sm font-medium transition-all duration-200 bg-linear-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-600 text-white rounded-xl shadow-sm active:scale-[0.98]"
           >
             Get Info
           </button>
         </div>
 
         <div className="p-5" data-testid="device-network-result">
-          <div className="rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50 to-white p-4">
+          <div className="rounded-xl border border-line-200 bg-linear-to-br from-surface-50 to-surface p-4">
             <InfoRow label="Connected" value={networkInfo?.isConnected === undefined ? '--' : (networkInfo.isConnected ? 'Yes' : 'No')} />
             <InfoRow label="Network Type" value={networkInfo?.networkType || '--'} />
           </div>
@@ -257,12 +257,12 @@ export default function DevicePage() {
     <>
       <div className="mb-6 text-center">
         <h1 className="text-2xl font-light text-gray-800 mb-2">Local IP Addresses</h1>
-        <div className="w-16 h-0.5 bg-gray-400 mx-auto"></div>
+        <div className="w-16 h-0.5 bg-surface-400 mx-auto"></div>
       </div>
 
-      <div className="mb-5 bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-        <div className="flex items-center gap-4 px-5 py-5 border-b border-gray-100">
-          <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-gradient-to-br from-teal-50 to-emerald-50">
+      <div className="mb-5 bg-surface rounded-2xl shadow-sm border border-line-100 overflow-hidden">
+        <div className="flex items-center gap-4 px-5 py-5 border-b border-line-100">
+          <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-linear-to-br from-teal-50 to-emerald-50">
             <span className="text-2xl">📡</span>
           </div>
           <div className="flex-1">
@@ -272,14 +272,14 @@ export default function DevicePage() {
           <button
             data-testid="device-network-get-info"
             onClick={getNetworkInfo}
-            className="px-5 py-2.5 text-sm font-medium transition-all duration-200 bg-gradient-to-r from-teal-600 to-teal-500 hover:from-teal-500 hover:to-teal-600 text-white rounded-xl shadow-sm active:scale-[0.98]"
+            className="px-5 py-2.5 text-sm font-medium transition-all duration-200 bg-linear-to-r from-teal-600 to-teal-500 hover:from-teal-500 hover:to-teal-600 text-white rounded-xl shadow-sm active:scale-[0.98]"
           >
             Get IP
           </button>
         </div>
 
         <div className="p-5" data-testid="device-network-result">
-          <div className="rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50 to-white p-4">
+          <div className="rounded-xl border border-line-200 bg-linear-to-br from-surface-50 to-surface p-4">
             <InfoRow label="IPv4" value={networkInfo?.ipv4?.length ? networkInfo.ipv4 : '--'} />
             <InfoRow label="IPv6" value={networkInfo?.ipv6?.length ? networkInfo.ipv6 : '--'} />
           </div>
@@ -292,29 +292,29 @@ export default function DevicePage() {
     <>
       <div className="mb-6 text-center">
         <h1 className="text-2xl font-light text-gray-800 mb-2">Network Status Listener</h1>
-        <div className="w-16 h-0.5 bg-gray-400 mx-auto"></div>
+        <div className="w-16 h-0.5 bg-surface-400 mx-auto"></div>
       </div>
 
-      <div className="mb-5 bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+      <div className="mb-5 bg-surface rounded-2xl shadow-sm border border-line-100 overflow-hidden">
         <div className="p-6 space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <button
               data-testid="device-network-listen-start"
               onClick={startNetworkChangeListen}
-              className="py-3 text-sm font-medium transition-all duration-200 bg-gradient-to-r from-green-600 to-green-500 hover:from-green-500 hover:to-green-600 text-white rounded-xl shadow-sm active:scale-[0.98]"
+              className="py-3 text-sm font-medium transition-all duration-200 bg-linear-to-r from-green-600 to-green-500 hover:from-green-500 hover:to-green-600 text-white rounded-xl shadow-sm active:scale-[0.98]"
             >
               Start Listen
             </button>
             <button
               data-testid="device-network-listen-stop"
               onClick={stopNetworkChangeListen}
-              className="py-3 text-sm font-medium transition-all duration-200 bg-gradient-to-r from-gray-600 to-gray-500 hover:from-gray-500 hover:to-gray-600 text-white rounded-xl shadow-sm active:scale-[0.98]"
+              className="py-3 text-sm font-medium transition-all duration-200 bg-linear-to-r from-surface-600 to-surface-500 hover:from-surface-500 hover:to-surface-600 text-white rounded-xl shadow-sm active:scale-[0.98]"
             >
               Stop Listen
             </button>
           </div>
 
-          <div className="rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50 to-white p-4" data-testid="device-network-status">
+          <div className="rounded-xl border border-line-200 bg-linear-to-br from-surface-50 to-surface p-4" data-testid="device-network-status">
             <InfoRow label="Listening" value={networkListening ? 'Yes' : 'No'} />
             <InfoRow label="Connected" value={networkChange?.isConnected === undefined ? '--' : (networkChange.isConnected ? 'Yes' : 'No')} />
             <InfoRow label="Network Type" value={networkChange?.networkType || '--'} />
@@ -330,13 +330,13 @@ export default function DevicePage() {
     <>
       <div className="mb-6 text-center">
         <h1 className="text-2xl font-light text-gray-800 mb-2">Device Orientation</h1>
-        <div className="w-16 h-0.5 bg-gray-400 mx-auto"></div>
+        <div className="w-16 h-0.5 bg-surface-400 mx-auto"></div>
       </div>
 
-      <div className="mb-5 bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+      <div className="mb-5 bg-surface rounded-2xl shadow-sm border border-line-100 overflow-hidden">
         <div className="p-6 space-y-4">
           <div className="flex items-center gap-3">
-            <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-violet-50 to-indigo-50">
+            <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-linear-to-br from-violet-50 to-indigo-50">
               <span className="text-xl">🧭</span>
             </div>
             <div>
@@ -348,13 +348,13 @@ export default function DevicePage() {
           <div className="grid grid-cols-2 gap-3">
             <button
               onClick={setOrientationPortrait}
-              className="py-3 text-sm font-medium transition-all duration-200 bg-gradient-to-r from-violet-600 to-violet-500 hover:from-violet-500 hover:to-violet-600 text-white rounded-xl shadow-sm active:scale-[0.98]"
+              className="py-3 text-sm font-medium transition-all duration-200 bg-linear-to-r from-violet-600 to-violet-500 hover:from-violet-500 hover:to-violet-600 text-white rounded-xl shadow-sm active:scale-[0.98]"
             >
               Lock Portrait
             </button>
             <button
               onClick={setOrientationLandscape}
-              className="py-3 text-sm font-medium transition-all duration-200 bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-600 text-white rounded-xl shadow-sm active:scale-[0.98]"
+              className="py-3 text-sm font-medium transition-all duration-200 bg-linear-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-600 text-white rounded-xl shadow-sm active:scale-[0.98]"
             >
               Lock Landscape
             </button>
@@ -363,35 +363,35 @@ export default function DevicePage() {
           <div className="grid grid-cols-2 gap-3">
             <button
               onClick={startDeviceOrientationListen}
-              className="py-3 text-sm font-medium transition-all duration-200 bg-gradient-to-r from-green-600 to-green-500 hover:from-green-500 hover:to-green-600 text-white rounded-xl shadow-sm active:scale-[0.98]"
+              className="py-3 text-sm font-medium transition-all duration-200 bg-linear-to-r from-green-600 to-green-500 hover:from-green-500 hover:to-green-600 text-white rounded-xl shadow-sm active:scale-[0.98]"
             >
               Start Listen
             </button>
             <button
               onClick={stopDeviceOrientationListen}
-              className="py-3 text-sm font-medium transition-all duration-200 bg-gradient-to-r from-gray-600 to-gray-500 hover:from-gray-500 hover:to-gray-600 text-white rounded-xl shadow-sm active:scale-[0.98]"
+              className="py-3 text-sm font-medium transition-all duration-200 bg-linear-to-r from-surface-600 to-surface-500 hover:from-surface-500 hover:to-surface-600 text-white rounded-xl shadow-sm active:scale-[0.98]"
             >
               Stop Listen
             </button>
           </div>
 
-          <div className="rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50 to-white p-4">
+          <div className="rounded-xl border border-line-200 bg-linear-to-br from-surface-50 to-surface p-4">
             <InfoRow label="Listening" value={orientationListening ? 'Yes' : 'No'} />
             <InfoRow label="Lock Target" value={orientationLock || '--'} />
             <InfoRow label="Current Value" value={deviceOrientationValue || '--'} />
           </div>
 
-          <div className="rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50 to-white p-4">
+          <div className="rounded-xl border border-line-200 bg-linear-to-br from-surface-50 to-surface p-4">
             <div className="flex items-center justify-between mb-3">
               <h4 className="text-sm font-semibold text-gray-700">Orientation Events</h4>
               <button
                 onClick={clearOrientationEvents}
-                className="px-3 py-1.5 text-xs font-medium transition-all duration-200 bg-gradient-to-r from-gray-600 to-gray-500 hover:from-gray-500 hover:to-gray-600 text-white rounded-lg shadow-sm active:scale-[0.98]"
+                className="px-3 py-1.5 text-xs font-medium transition-all duration-200 bg-linear-to-r from-surface-600 to-surface-500 hover:from-surface-500 hover:to-surface-600 text-white rounded-lg shadow-sm active:scale-[0.98]"
               >
                 Clear Logs
               </button>
             </div>
-            <div className="text-xs text-gray-700 bg-white border border-gray-200 rounded-lg p-3 max-h-56 overflow-auto whitespace-pre-wrap break-all">
+            <div className="text-xs text-gray-700 bg-surface border border-line-200 rounded-lg p-3 max-h-56 overflow-auto whitespace-pre-wrap break-all">
               {orientationEventLines.length ? orientationEventLines.join('\n') : '--'}
             </div>
           </div>
@@ -401,7 +401,7 @@ export default function DevicePage() {
   );
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100" data-testid="device-page" data-mode={currentType}>
+    <div className="min-h-screen bg-linear-to-br from-surface-50 to-surface-100" data-testid="device-page" data-mode={currentType}>
       <div className="px-4 py-6">
         {currentType === 'device' && renderDeviceInfoSection()}
         {currentType === 'screen' && renderScreenInfoSection()}
@@ -429,7 +429,7 @@ function InfoRow({ label, value, suffix }: InfoRowProps) {
   const text = suffix && display !== '--' ? `${display}${suffix}` : display;
   const textContent = Array.isArray(text) ? text.join('\n') : String(text);
   return (
-    <div className="flex justify-between items-start gap-3 py-3 border-b border-gray-200 last:border-b-0">
+    <div className="flex justify-between items-start gap-3 py-3 border-b border-line-200 last:border-b-0">
       <span className="text-sm text-gray-600 shrink-0">{label}</span>
       <span className="text-sm font-semibold text-gray-800 px-3 py-1 bg-blue-50 rounded-lg text-right max-w-[72%] whitespace-pre-wrap break-all">
         {textContent}

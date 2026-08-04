@@ -1,15 +1,15 @@
 <template>
-  <div class="min-h-screen bg-gray-100">
+  <div class="min-h-screen bg-surface-100">
     <div class="px-4 py-6">
 
       <!-- Header -->
       <div class="text-center mb-8">
         <h1 class="text-2xl font-light text-gray-800 mb-2">getLocation</h1>
-        <div class="w-16 h-0.5 bg-gray-400 mx-auto"></div>
+        <div class="w-16 h-0.5 bg-surface-400 mx-auto"></div>
       </div>
 
       <!-- Location Display -->
-      <div class="bg-white rounded-lg shadow-sm p-6 mb-8">
+      <div class="bg-surface rounded-lg shadow-sm p-6 mb-8">
         <div class="text-center">
           <div class="text-gray-600 mb-4">Current Location</div>
 
@@ -54,7 +54,7 @@
           </template>
 
           <template v-else>
-            <div :class="['py-8', locationError ? 'text-red-500' : 'text-gray-500']">
+            <div :class="['py-8', locationError ? 'text-red-500 dark:text-red-400' : 'text-gray-500']">
               {{ locationError || 'No location data available' }}
             </div>
           </template>
@@ -66,14 +66,14 @@
         <button
           @click="getLocation"
           :disabled="isLoading"
-          class="w-full bg-blue-500 hover:bg-blue-600 disabled:bg-gray-400 text-white font-medium py-4 px-6 rounded-lg transition-colors"
+          class="w-full bg-blue-500 hover:bg-blue-600 disabled:bg-surface-400 text-white font-medium py-4 px-6 rounded-lg transition-colors"
         >
           {{ isLoading ? 'Getting Location...' : 'Get Location' }}
         </button>
 
         <button
           @click="clearLocation"
-          class="w-full bg-white hover:bg-gray-50 text-gray-700 font-medium py-4 px-6 rounded-lg border border-gray-300 transition-colors"
+          class="w-full bg-surface hover:bg-surface-50 text-gray-700 font-medium py-4 px-6 rounded-lg border border-line-300 transition-colors"
         >
           Clear
         </button>

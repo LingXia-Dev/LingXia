@@ -223,7 +223,7 @@ const Card: React.FC<{ children: React.ReactNode; className?: string; noPadding?
   className = '',
   noPadding = false
 }) => (
-  <div className={`w-full bg-white rounded-2xl shadow-sm border border-gray-100 ${noPadding ? '' : 'p-6'} ${className}`}>
+  <div className={`w-full bg-surface rounded-2xl shadow-sm border border-line-100 ${noPadding ? '' : 'p-6'} ${className}`}>
     {children}
   </div>
 );
@@ -238,9 +238,9 @@ const PageHeader: React.FC<{
       <h1 className="text-xl font-semibold text-gray-800">{title}</h1>
       {subtitle && (
         <div className="flex items-center justify-center gap-2">
-          <div className="h-px w-8 bg-gradient-to-r from-transparent via-blue-400 to-transparent" />
-          <p className="text-sm font-medium text-blue-600">{subtitle}</p>
-          <div className="h-px w-8 bg-gradient-to-r from-transparent via-blue-400 to-transparent" />
+          <div className="h-px w-8 bg-linear-to-r from-transparent via-blue-400 to-transparent" />
+          <p className="text-sm font-medium text-blue-600 dark:text-blue-400">{subtitle}</p>
+          <div className="h-px w-8 bg-linear-to-r from-transparent via-blue-400 to-transparent" />
         </div>
       )}
       {description && (
@@ -264,15 +264,15 @@ const SettingRow: React.FC<{
       type="button"
       className={`group flex w-full items-center gap-4 px-6 py-4 text-sm transition-all ${
         clickable
-          ? 'hover:bg-gradient-to-r hover:from-blue-50/50 hover:to-transparent active:scale-[0.99]'
+          ? 'hover:bg-linear-to-r hover:from-blue-50/50 hover:to-transparent active:scale-[0.99]'
           : 'cursor-default'
       }`}
       onClick={clickable ? onPress : undefined}
       disabled={!clickable}
     >
-      <span className="text-gray-600 font-medium flex-shrink-0">{label}</span>
-      <div className="flex-1 border-b border-dashed border-gray-200" />
-      <span className="font-semibold text-gray-800 transition-colors group-hover:text-blue-600">
+      <span className="text-gray-600 font-medium shrink-0">{label}</span>
+      <div className="flex-1 border-b border-dashed border-line-200" />
+      <span className="font-semibold text-gray-800 transition-colors group-hover:text-blue-600 dark:group-hover:text-blue-400">
         {value}
       </span>
       {clickable && (
@@ -310,10 +310,10 @@ const Button: React.FC<{
   };
 
   const variantClasses = {
-    primary: 'bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-600 text-white shadow-blue-200',
-    secondary: 'bg-gradient-to-r from-gray-600 to-gray-500 hover:from-gray-500 hover:to-gray-600 text-white shadow-gray-200',
-    success: 'bg-gradient-to-r from-green-600 to-green-500 hover:from-green-500 hover:to-green-600 text-white shadow-green-200',
-    danger: 'bg-gradient-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-red-600 text-white shadow-red-200',
+    primary: 'bg-linear-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-600 text-white shadow-blue-200',
+    secondary: 'bg-linear-to-r from-surface-600 to-surface-500 hover:from-surface-500 hover:to-surface-600 text-white shadow-gray-200',
+    success: 'bg-linear-to-r from-green-600 to-green-500 hover:from-green-500 hover:to-green-600 text-white shadow-green-200',
+    danger: 'bg-linear-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-red-600 text-white shadow-red-200',
   };
 
   return (
@@ -341,7 +341,7 @@ const InfoCard: React.FC<{
   items: { label: string; value: string | number }[];
   footer?: React.ReactNode;
 }> = ({ title, items, footer }) => (
-  <div className="rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50 to-white p-5 space-y-4">
+  <div className="rounded-xl border border-line-200 bg-linear-to-br from-surface-50 to-surface p-5 space-y-4">
     <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
       <span className="w-1 h-4 bg-blue-500 rounded-full" />
       {title}
@@ -354,7 +354,7 @@ const InfoCard: React.FC<{
         </div>
       ))}
     </div>
-    {footer && <div className="pt-4 border-t border-gray-200">{footer}</div>}
+    {footer && <div className="pt-4 border-t border-line-200">{footer}</div>}
   </div>
 );
 
@@ -376,7 +376,7 @@ const Input: React.FC<{
       placeholder={placeholder}
       min={min}
       max={max}
-      className="w-full px-4 py-2.5 text-sm border border-gray-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+      className="w-full px-4 py-2.5 text-sm border border-line-200 rounded-xl bg-surface focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
     />
   </div>
 );
@@ -574,15 +574,15 @@ export default function MediaPage() {
         type="button"
         className={`group flex w-full flex-col items-center justify-center rounded-2xl border-2 border-dashed transition-all ${baseClass} ${
           disabled
-            ? 'cursor-not-allowed opacity-40 border-gray-200 bg-gray-50'
-            : 'border-blue-300 bg-gradient-to-br from-blue-50 to-indigo-50 hover:border-blue-400 hover:from-blue-100 hover:to-indigo-100 active:scale-[0.98]'
+            ? 'cursor-not-allowed opacity-40 border-line-200 bg-surface-50'
+            : 'border-blue-300 bg-linear-to-br from-blue-50 to-indigo-50 hover:border-blue-400 hover:from-blue-100 hover:to-indigo-100 active:scale-[0.98]'
         }`}
         onClick={handleChoose}
         disabled={disabled}
       >
-        <span className={`text-5xl leading-none transition-transform group-hover:scale-110 ${disabled ? 'text-gray-400' : 'text-blue-500'}`}>+</span>
+        <span className={`text-5xl leading-none transition-transform group-hover:scale-110 ${disabled ? 'text-gray-400' : 'text-blue-500 dark:text-blue-400'}`}>+</span>
         <span className={`mt-3 text-xs font-medium uppercase tracking-wider ${
-          disabled ? 'text-gray-400' : 'text-blue-600'
+          disabled ? 'text-gray-400' : 'text-blue-600 dark:text-blue-400'
         }`}>
           {addLabel}
         </span>
@@ -593,14 +593,14 @@ export default function MediaPage() {
   const renderPictureTiles = () => {
     const tiles: React.ReactNode[] = selectedMedia.map((item, index) => (
       <Card key={`${item.path}-${index}`} noPadding className="overflow-hidden">
-        <div className="h-32 bg-gray-50">
+        <div className="h-32 bg-surface-50">
           <img
             src={item.path}
             alt=""
             className="h-full w-full object-cover"
           />
         </div>
-        <div className="px-3 py-3 bg-gradient-to-br from-gray-50 to-white">
+        <div className="px-3 py-3 bg-linear-to-br from-surface-50 to-surface">
           <div className="text-xs font-medium text-gray-700">Image {index + 1}</div>
         </div>
       </Card>
@@ -618,11 +618,11 @@ export default function MediaPage() {
       <div className="space-y-4">
         {selectedMedia.map((item, index) => (
           <Card key={`video-${index}`} noPadding className="overflow-hidden">
-            <div className="px-5 py-4 bg-gradient-to-br from-gray-50 to-white">
+            <div className="px-5 py-4 bg-linear-to-br from-surface-50 to-surface">
               <div className="flex flex-col gap-3">
                 <div className="flex items-center gap-3 flex-1">
-                  <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-blue-50 to-indigo-50">
-                    <svg className="w-5 h-5 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
+                  <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-linear-to-br from-blue-50 to-indigo-50">
+                    <svg className="w-5 h-5 text-blue-600 dark:text-blue-400" fill="currentColor" viewBox="0 0 20 20">
                       <path d="M2 6a2 2 0 012-2h6a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2V6zm12.553 1.106A1 1 0 0014 8v4a1 1 0 00.553.894l2 1A1 1 0 0018 13V7a1 1 0 00-1.447-.894l-2 1z" />
                     </svg>
                   </div>
@@ -686,13 +686,13 @@ export default function MediaPage() {
         </Button>
 
         {thumbnailVideoPath && (
-          <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-xs text-gray-600 break-all">
+          <div className="rounded-xl border border-line-200 bg-surface-50 px-4 py-3 text-xs text-gray-600 break-all">
             {thumbnailVideoPath}
           </div>
         )}
 
         {videoInfoError && (
-          <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 px-4 py-3 rounded-xl">
+          <div className="flex items-center gap-2 text-sm text-red-600 dark:text-red-400 bg-red-50 px-4 py-3 rounded-xl">
             <span>⚠️</span>
             <span>{videoInfoError}</span>
           </div>
@@ -726,7 +726,7 @@ export default function MediaPage() {
                 </div>
                 <div className="space-y-1">
                   <div className="text-xs font-medium text-gray-700">Path</div>
-                  <div className="text-[11px] text-gray-500 break-all bg-gray-100 px-3 py-2 rounded-lg">
+                  <div className="text-[11px] text-gray-500 break-all bg-surface-100 px-3 py-2 rounded-lg">
                     {videoInfoResult.path}
                   </div>
                 </div>
@@ -798,7 +798,7 @@ export default function MediaPage() {
         </Button>
 
         {thumbnailError && (
-          <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 px-4 py-3 rounded-xl">
+          <div className="flex items-center gap-2 text-sm text-red-600 dark:text-red-400 bg-red-50 px-4 py-3 rounded-xl">
             <span>⚠️</span>
             <span>{thumbnailError}</span>
           </div>
@@ -818,9 +818,9 @@ export default function MediaPage() {
                   <img
                     src={thumbnailResult.tempFilePath}
                     alt="thumbnail"
-                    className="w-full rounded-lg border border-gray-200 bg-black/5"
+                    className="w-full rounded-lg border border-line-200 bg-black/5"
                   />
-                  <div className="text-[11px] text-gray-500 break-all bg-gray-100 px-3 py-2 rounded-lg">
+                  <div className="text-[11px] text-gray-500 break-all bg-surface-100 px-3 py-2 rounded-lg">
                     {thumbnailResult.tempFilePath}
                   </div>
                 </div>
@@ -837,7 +837,7 @@ export default function MediaPage() {
           </div>
         )}
 
-        <div className="rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50 to-white p-5 space-y-4">
+        <div className="rounded-xl border border-line-200 bg-linear-to-br from-surface-50 to-surface p-5 space-y-4">
           <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
             <span className="w-1 h-4 bg-indigo-500 rounded-full" />
             Compress Video
@@ -896,7 +896,7 @@ export default function MediaPage() {
 
           {videoCompressBusy && (
             <>
-              <div className="h-2 w-full overflow-hidden rounded-full bg-gray-200">
+              <div className="h-2 w-full overflow-hidden rounded-full bg-surface-200">
                 <div
                   className="h-full rounded-full bg-green-500 transition-all duration-200"
                   style={{ width: `${typeof videoCompressProgress === 'number' ? videoCompressProgress : 0}%` }}
@@ -909,7 +909,7 @@ export default function MediaPage() {
           )}
 
           {videoCompressError && (
-            <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 px-4 py-3 rounded-xl">
+            <div className="flex items-center gap-2 text-sm text-red-600 dark:text-red-400 bg-red-50 px-4 py-3 rounded-xl">
               <span>⚠️</span>
               <span>{videoCompressError}</span>
             </div>
@@ -926,7 +926,7 @@ export default function MediaPage() {
                   { label: 'File Size', value: formatFileSize(videoCompressResult.size || 0) },
                 ]}
                 footer={
-                  <div className="text-[11px] text-gray-500 break-all bg-gray-100 px-3 py-2 rounded-lg">
+                  <div className="text-[11px] text-gray-500 break-all bg-surface-100 px-3 py-2 rounded-lg">
                     {videoCompressResult.tempFilePath}
                   </div>
                 }
@@ -958,7 +958,7 @@ export default function MediaPage() {
         </Button>
 
         {imageInfoError && (
-          <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 px-4 py-3 rounded-xl">
+          <div className="flex items-center gap-2 text-sm text-red-600 dark:text-red-400 bg-red-50 px-4 py-3 rounded-xl">
             <span>⚠️</span>
             <span>{imageInfoError}</span>
           </div>
@@ -977,7 +977,7 @@ export default function MediaPage() {
                 imageInfoResult.path ? (
                   <div className="space-y-1">
                     <div className="text-xs font-medium text-gray-700">Path</div>
-                    <div className="text-[11px] text-gray-500 break-all bg-gray-100 px-3 py-2 rounded-lg">
+                    <div className="text-[11px] text-gray-500 break-all bg-surface-100 px-3 py-2 rounded-lg">
                       {imageInfoResult.path}
                     </div>
                   </div>
@@ -1022,7 +1022,7 @@ export default function MediaPage() {
             </Button>
 
             {compressError && (
-              <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 px-4 py-3 rounded-xl">
+              <div className="flex items-center gap-2 text-sm text-red-600 dark:text-red-400 bg-red-50 px-4 py-3 rounded-xl">
                 <span>⚠️</span>
                 <span>{compressError}</span>
               </div>
@@ -1041,7 +1041,7 @@ export default function MediaPage() {
                     compressResult.path ? (
                       <div className="space-y-1">
                         <div className="text-xs font-medium text-gray-700">Path</div>
-                        <div className="text-[11px] text-gray-500 break-all bg-gray-100 px-3 py-2 rounded-lg">
+                        <div className="text-[11px] text-gray-500 break-all bg-surface-100 px-3 py-2 rounded-lg">
                           {compressResult.path}
                         </div>
                       </div>
@@ -1101,7 +1101,7 @@ export default function MediaPage() {
     return (
       <>
         <Card noPadding>
-          <div className="divide-y divide-gray-100">
+          <div className="divide-y divide-line-100">
             <SettingRow label="Source" value={scanSourceLabel} onPress={openScanSourcePicker} />
             <SettingRow label="Scan Type" value={scanTypeLabel} onPress={openScanTypePicker} />
           </div>
@@ -1114,12 +1114,12 @@ export default function MediaPage() {
                 <span className="w-1 h-4 bg-blue-500 rounded-full" />
                 Scan Result
               </h3>
-              <div className="min-h-[8rem] w-full rounded-xl bg-gradient-to-br from-gray-50 to-gray-100 px-5 py-4 text-base text-gray-900 break-words border border-gray-200 font-mono">
+              <div className="min-h-[8rem] w-full rounded-xl bg-linear-to-br from-surface-50 to-surface-100 px-5 py-4 text-base text-gray-900 break-words border border-line-200 font-mono">
                 {scanResult || <span className="text-gray-400 italic">No result yet</span>}
               </div>
               <div className="text-xs text-gray-500 flex items-center gap-2">
                 <span className="font-medium">Type:</span>
-                <span className="px-2 py-1 bg-gray-100 rounded-md">{typeof data?.scanType === 'string' && data?.scanType ? data.scanType : '--'}</span>
+                <span className="px-2 py-1 bg-surface-100 rounded-md">{typeof data?.scanType === 'string' && data?.scanType ? data.scanType : '--'}</span>
               </div>
             </div>
 
@@ -1192,7 +1192,7 @@ export default function MediaPage() {
   const pageInfo = getPageInfo();
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
+    <div className="min-h-screen bg-linear-to-br from-surface-50 to-surface-100">
       <div className="px-4 py-6 pb-16 space-y-5">
         <PageHeader
           title={pageInfo.title}
@@ -1206,7 +1206,7 @@ export default function MediaPage() {
           <>
             {settingRows.length > 0 && (
               <Card noPadding>
-                <div className="divide-y divide-gray-100">
+                <div className="divide-y divide-line-100">
                   {settingRows.map(({ label, value, action }) => (
                     <SettingRow key={label} label={label} value={value} onPress={action} />
                   ))}
@@ -1228,7 +1228,7 @@ export default function MediaPage() {
                       {selectedMedia.length ? previewHint : emptyHint}
                     </div>
                     {effectiveCountLimit > 0 && (
-                      <div className="px-3 py-1 bg-blue-50 text-blue-600 text-xs font-semibold rounded-full">
+                      <div className="px-3 py-1 bg-blue-50 text-blue-600 dark:text-blue-400 text-xs font-semibold rounded-full">
                         {counterText}
                       </div>
                     )}
@@ -1237,28 +1237,28 @@ export default function MediaPage() {
                   <div className="grid grid-cols-2 gap-2">
                     <button
                       type="button"
-                      className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-left text-xs font-medium text-gray-700 transition-colors hover:border-blue-300 hover:text-blue-600"
+                      className="rounded-xl border border-line-200 bg-surface px-3 py-2 text-left text-xs font-medium text-gray-700 transition-colors hover:border-blue-300 hover:text-blue-600 dark:hover:text-blue-400"
                       onClick={() => openPreviewBehaviorPicker?.()}
                     >
                       Preview Flow: {previewBehaviorOption.label}
                     </button>
                     <button
                       type="button"
-                      className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-left text-xs font-medium text-gray-700 transition-colors hover:border-blue-300 hover:text-blue-600"
+                      className="rounded-xl border border-line-200 bg-surface px-3 py-2 text-left text-xs font-medium text-gray-700 transition-colors hover:border-blue-300 hover:text-blue-600 dark:hover:text-blue-400"
                       onClick={() => openPreviewRotatePicker?.()}
                     >
                       Preview Rotate: {previewRotateOption.label}
                     </button>
                     <button
                       type="button"
-                      className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-left text-xs font-medium text-gray-700 transition-colors hover:border-blue-300 hover:text-blue-600"
+                      className="rounded-xl border border-line-200 bg-surface px-3 py-2 text-left text-xs font-medium text-gray-700 transition-colors hover:border-blue-300 hover:text-blue-600 dark:hover:text-blue-400"
                       onClick={() => openPreviewObjectFitPicker?.()}
                     >
                       Preview Fit: {previewObjectFitOption.label}
                     </button>
                     <button
                       type="button"
-                      className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-left text-xs font-medium text-gray-700 transition-colors hover:border-blue-300 hover:text-blue-600"
+                      className="rounded-xl border border-line-200 bg-surface px-3 py-2 text-left text-xs font-medium text-gray-700 transition-colors hover:border-blue-300 hover:text-blue-600 dark:hover:text-blue-400"
                       onClick={() => togglePreviewIndexIndicator?.()}
                     >
                       Index Indicator: {previewIndicatorLabel}
@@ -1266,7 +1266,7 @@ export default function MediaPage() {
                     {!isPictureMode && (
                       <button
                         type="button"
-                        className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-left text-xs font-medium text-gray-700 transition-colors hover:border-blue-300 hover:text-blue-600"
+                        className="rounded-xl border border-line-200 bg-surface px-3 py-2 text-left text-xs font-medium text-gray-700 transition-colors hover:border-blue-300 hover:text-blue-600 dark:hover:text-blue-400"
                         onClick={() => openComponentRotatePicker?.()}
                       >
                         Video Rotate: {componentRotateOption.label}
@@ -1275,7 +1275,7 @@ export default function MediaPage() {
                     {!isPictureMode && (
                       <button
                         type="button"
-                        className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-left text-xs font-medium text-gray-700 transition-colors hover:border-blue-300 hover:text-blue-600"
+                        className="rounded-xl border border-line-200 bg-surface px-3 py-2 text-left text-xs font-medium text-gray-700 transition-colors hover:border-blue-300 hover:text-blue-600 dark:hover:text-blue-400"
                         onClick={() => openComponentObjectFitPicker?.()}
                       >
                         Video Fit: {componentObjectFitOption.label}
@@ -1293,7 +1293,7 @@ export default function MediaPage() {
                         inputMode="numeric"
                         pattern="[0-9]*"
                         value={previewImageDurationMs}
-                        className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-200"
+                        className="w-full rounded-lg border border-line-200 bg-surface px-3 py-2 text-sm text-gray-800 focus:border-blue-400 focus:outline-hidden focus:ring-1 focus:ring-blue-200"
                         onInput={(event) =>
                           onPreviewImageDurationInput?.({
                             detail: {
@@ -1341,7 +1341,7 @@ export default function MediaPage() {
                     />
                   )}
                   {previewSessionError && (
-                    <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 px-4 py-3 rounded-xl">
+                    <div className="flex items-center gap-2 text-sm text-red-600 dark:text-red-400 bg-red-50 px-4 py-3 rounded-xl">
                       <span>⚠️</span>
                       <span>{previewSessionError}</span>
                     </div>

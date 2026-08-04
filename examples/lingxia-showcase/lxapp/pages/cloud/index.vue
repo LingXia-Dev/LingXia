@@ -1,9 +1,9 @@
 <template>
-  <div class="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
+  <div class="min-h-screen bg-linear-to-br from-surface-50 to-surface-100">
     <div class="px-4 py-6">
       <template v-if="type === 'mqtt'">
-        <div class="mb-5 bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-          <div class="px-5 py-5 border-b border-gray-100">
+        <div class="mb-5 bg-surface rounded-2xl shadow-sm border border-line-100 overflow-hidden">
+          <div class="px-5 py-5 border-b border-line-100">
             <div class="text-sm text-gray-800 font-semibold">Runtime Connection</div>
             <div class="text-xs text-gray-500 mt-0.5">
               MQTT runtime status for the shared cloud session.
@@ -20,29 +20,29 @@
               </div>
               <div class="flex items-center justify-between gap-3">
                 <span>Last error</span>
-                <span class="font-mono text-right" :class="mqttLastError ? 'text-red-600' : 'text-gray-800'">{{ mqttLastError || '-' }}</span>
+                <span class="font-mono text-right" :class="mqttLastError ? 'text-red-600 dark:text-red-400' : 'text-gray-800'">{{ mqttLastError || '-' }}</span>
               </div>
             </div>
           </div>
         </div>
 
-        <div class="mb-5 bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-          <div class="px-5 py-5 border-b border-gray-100">
+        <div class="mb-5 bg-surface rounded-2xl shadow-sm border border-line-100 overflow-hidden">
+          <div class="px-5 py-5 border-b border-line-100">
             <div class="text-sm text-gray-800 font-semibold">Topic Subscription</div>
             <div class="text-xs text-gray-500 mt-0.5">
               Manage the demo topic subscription and inspect how many messages this page has received.
             </div>
           </div>
           <div class="p-5 space-y-4">
-            <div class="rounded-xl border border-gray-200 bg-emerald-50/60 p-4">
+            <div class="rounded-xl border border-line-200 bg-emerald-50/60 p-4">
               <div class="flex items-start justify-between gap-3">
                 <div>
-                  <div class="text-xs uppercase tracking-wide text-emerald-700">Topic</div>
+                  <div class="text-xs uppercase tracking-wide text-emerald-700 dark:text-emerald-400">Topic</div>
                   <div class="mt-2 font-mono text-sm text-gray-900 break-all">{{ mqttTopicFilter }}</div>
                 </div>
                 <span
                   class="shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold"
-                  :class="mqttSubscribed ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'"
+                  :class="mqttSubscribed ? 'bg-emerald-100 text-emerald-700 dark:text-emerald-400' : 'bg-surface-100 text-gray-500'"
                 >
                   {{ mqttSubscribed ? 'active' : 'inactive' }}
                 </span>
@@ -55,8 +55,8 @@
                   class="py-3 text-sm font-medium rounded-xl transition-all duration-200 shadow-sm active:scale-[0.98]"
                   :class="
                     mqttSubscribed
-                      ? 'bg-gray-100 text-gray-400'
-                      : 'bg-gradient-to-r from-emerald-600 to-emerald-500 text-white'
+                      ? 'bg-surface-100 text-gray-400'
+                      : 'bg-linear-to-r from-emerald-600 to-emerald-500 text-white'
                   "
                 >
                   Subscribe
@@ -67,8 +67,8 @@
                   class="py-3 text-sm font-medium rounded-xl transition-all duration-200 shadow-sm active:scale-[0.98]"
                   :class="
                     mqttSubscribed
-                      ? 'bg-gradient-to-r from-rose-600 to-rose-500 text-white'
-                      : 'bg-gray-100 text-gray-400'
+                      ? 'bg-linear-to-r from-rose-600 to-rose-500 text-white'
+                      : 'bg-surface-100 text-gray-400'
                   "
                 >
                   Unsubscribe
@@ -76,10 +76,10 @@
               </div>
             </div>
 
-            <div class="grid gap-2 rounded-xl bg-white p-4 text-xs text-gray-600 border border-gray-200">
+            <div class="grid gap-2 rounded-xl bg-surface p-4 text-xs text-gray-600 border border-line-200">
               <div class="flex items-center justify-between gap-3">
                 <span>Subscription state</span>
-                <span class="font-mono font-semibold" :class="mqttSubscribed ? 'text-emerald-600' : 'text-gray-500'">
+                <span class="font-mono font-semibold" :class="mqttSubscribed ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-500'">
                   {{ mqttSubscribed ? 'active' : 'inactive' }}
                 </span>
               </div>
@@ -91,19 +91,19 @@
           </div>
         </div>
 
-        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-          <div class="px-5 py-5 border-b border-gray-100">
+        <div class="bg-surface rounded-2xl shadow-sm border border-line-100 overflow-hidden">
+          <div class="px-5 py-5 border-b border-line-100">
             <div class="text-sm text-gray-800 font-semibold">Latest Message</div>
             <div class="text-xs text-gray-500 mt-0.5">Incoming message data is written back through setData.</div>
           </div>
           <div class="p-5">
             <div
               v-if="mqttMessageCount === 0"
-              class="rounded-xl border border-dashed border-gray-300 bg-gray-50 p-6 text-sm text-gray-500"
+              class="rounded-xl border border-dashed border-line-300 bg-surface-50 p-6 text-sm text-gray-500"
             >
               No message yet. Publish one to the topic above.
             </div>
-            <div v-else class="rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50 to-white p-4">
+            <div v-else class="rounded-xl border border-line-200 bg-linear-to-br from-surface-50 to-surface p-4">
               <div class="grid gap-3 text-sm">
                 <div>
                   <div class="text-xs uppercase tracking-wide text-gray-500">Topic</div>
@@ -124,15 +124,15 @@
       </template>
 
       <template v-else-if="type === 'functions'">
-        <div class="mb-5 bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-          <div class="px-5 py-5 border-b border-gray-100">
+        <div class="mb-5 bg-surface rounded-2xl shadow-sm border border-line-100 overflow-hidden">
+          <div class="px-5 py-5 border-b border-line-100">
             <div class="text-sm text-gray-800 font-semibold">Cloud Functions</div>
             <div class="text-xs text-gray-500 mt-0.5">
               Invoke demo cloud functions for the current lxapp.
             </div>
           </div>
           <div class="p-5 space-y-4">
-            <div class="rounded-xl border border-gray-200 bg-gray-50 p-4 text-sm text-gray-700">
+            <div class="rounded-xl border border-line-200 bg-surface-50 p-4 text-sm text-gray-700">
               {{ functionsStatus }}
             </div>
             <div class="grid grid-cols-3 gap-3">
@@ -140,12 +140,12 @@
                 v-for="name in functionsAvailable"
                 :key="name"
                 @click="callNamedFunction({ name })"
-                class="rounded-xl bg-gradient-to-r from-indigo-600 to-indigo-500 px-3 py-3 text-sm font-medium text-white shadow-sm active:scale-[0.98]"
+                class="rounded-xl bg-linear-to-r from-indigo-600 to-indigo-500 px-3 py-3 text-sm font-medium text-white shadow-sm active:scale-[0.98]"
               >
                 {{ name }}
               </button>
             </div>
-            <div v-if="functionsLastCall || functionsLastResult" class="rounded-xl border border-gray-200 bg-white p-4">
+            <div v-if="functionsLastCall || functionsLastResult" class="rounded-xl border border-line-200 bg-surface p-4">
               <div class="text-xs uppercase tracking-wide text-gray-500">Last call</div>
               <div class="mt-1 font-mono text-sm text-gray-800">{{ functionsLastCall || '-' }}</div>
               <div class="mt-3 text-xs uppercase tracking-wide text-gray-500">Result</div>
@@ -156,10 +156,10 @@
       </template>
 
       <template v-else>
-        <div class="mb-5 bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+        <div class="mb-5 bg-surface rounded-2xl shadow-sm border border-line-100 overflow-hidden">
           <div class="p-6">
             <div class="flex items-center gap-3 mb-4">
-              <div class="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-sky-50 to-cyan-50">
+              <div class="flex items-center justify-center w-10 h-10 rounded-xl bg-linear-to-br from-sky-50 to-cyan-50">
                 <span class="text-xl">C</span>
               </div>
               <div>
@@ -175,19 +175,19 @@
               <button
                 v-if="!tenant"
                 @click="loginInteractive"
-                class="py-3 text-sm font-medium transition-all duration-200 rounded-xl shadow-sm active:scale-[0.98] bg-gradient-to-r from-sky-600 to-sky-500 hover:from-sky-500 hover:to-sky-600 text-white"
+                class="py-3 text-sm font-medium transition-all duration-200 rounded-xl shadow-sm active:scale-[0.98] bg-linear-to-r from-sky-600 to-sky-500 hover:from-sky-500 hover:to-sky-600 text-white"
               >
                 Interactive Login
               </button>
               <button
                 @click="addTenant"
-                class="py-3 text-sm font-medium transition-all duration-200 rounded-xl shadow-sm active:scale-[0.98] bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-600 text-white"
+                class="py-3 text-sm font-medium transition-all duration-200 rounded-xl shadow-sm active:scale-[0.98] bg-linear-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-600 text-white"
               >
                 Add Identity
               </button>
               <button
                 @click="logoutCurrentTenant"
-                class="py-3 text-sm font-medium transition-all duration-200 rounded-xl shadow-sm active:scale-[0.98] bg-gradient-to-r from-rose-600 to-rose-500 hover:from-rose-500 hover:to-rose-600 text-white"
+                class="py-3 text-sm font-medium transition-all duration-200 rounded-xl shadow-sm active:scale-[0.98] bg-linear-to-r from-rose-600 to-rose-500 hover:from-rose-500 hover:to-rose-600 text-white"
               >
                 Logout Current Tenant
               </button>
@@ -195,9 +195,9 @@
           </div>
         </div>
 
-        <div class="mb-5 bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-          <div class="flex items-center gap-4 px-5 py-5 border-b border-gray-100">
-            <div class="flex items-center justify-center w-12 h-12 rounded-xl bg-gradient-to-br from-blue-50 to-indigo-50">
+        <div class="mb-5 bg-surface rounded-2xl shadow-sm border border-line-100 overflow-hidden">
+          <div class="flex items-center gap-4 px-5 py-5 border-b border-line-100">
+            <div class="flex items-center justify-center w-12 h-12 rounded-xl bg-linear-to-br from-blue-50 to-indigo-50">
               <span class="text-2xl">S</span>
             </div>
             <div class="flex-1">
@@ -206,50 +206,50 @@
             </div>
           </div>
           <div class="p-5">
-            <div class="rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50 to-white p-4">
+            <div class="rounded-xl border border-line-200 bg-linear-to-br from-surface-50 to-surface p-4">
               <div class="flex items-center gap-2 mb-4">
                 <span class="w-1 h-4 bg-blue-500 rounded-full"></span>
                 <h4 class="text-sm font-semibold text-gray-700">Status</h4>
               </div>
-              <div class="flex justify-between items-center py-3 border-b border-gray-200 gap-4">
+              <div class="flex justify-between items-center py-3 border-b border-line-200 gap-4">
                 <span class="text-sm text-gray-600">Status</span>
                 <span class="text-sm font-semibold px-3 py-1 rounded-lg text-right" :class="authStatusColorClass">{{ status }}</span>
               </div>
-              <div class="flex justify-between items-center py-3 border-b border-gray-200 gap-4">
+              <div class="flex justify-between items-center py-3 border-b border-line-200 gap-4">
                 <span class="text-sm text-gray-600">Active Tenant</span>
                 <div class="flex items-center gap-3 px-3 py-2 bg-blue-50 rounded-lg">
                   <img
                     v-if="getTenantLogoUrl(tenant)"
                     :src="getTenantLogoUrl(tenant)"
                     :alt="getTenantName(tenant)"
-                    class="w-8 h-8 rounded-full border border-white shadow-sm bg-white object-cover"
+                    class="w-8 h-8 rounded-full border border-white shadow-sm bg-surface object-cover"
                   />
                   <span class="text-sm font-semibold text-gray-800 text-right">
                     {{ tenant ? getTenantName(tenant) : 'No active tenant' }}
                   </span>
                   <span
                     v-if="getTenantShortName(tenant)"
-                    class="text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700"
+                    class="text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:text-blue-400"
                   >
                     {{ getTenantShortName(tenant) }}
                   </span>
                 </div>
               </div>
-              <div class="flex justify-between items-center py-3 border-b border-gray-200 gap-4">
+              <div class="flex justify-between items-center py-3 border-b border-line-200 gap-4">
                 <span class="text-sm text-gray-600">Active User</span>
                 <div class="flex items-center gap-3 px-3 py-2 bg-emerald-50 rounded-lg">
                   <img
                     v-if="user && user.avatar"
                     :src="user.avatar"
                     :alt="user.name"
-                    class="w-8 h-8 rounded-full border border-white shadow-sm bg-white object-cover"
+                    class="w-8 h-8 rounded-full border border-white shadow-sm bg-surface object-cover"
                   />
                   <span class="text-sm font-semibold text-gray-800 text-right">
                     {{ user && user.name ? user.name : 'Not signed in' }}
                   </span>
                   <span
                     v-if="user && user.id"
-                    class="text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700"
+                    class="text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:text-emerald-400"
                   >
                     {{ user.id }}
                   </span>
@@ -261,9 +261,9 @@
           </div>
         </div>
 
-        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-          <div class="flex items-center gap-4 px-5 py-5 border-b border-gray-100">
-            <div class="flex items-center justify-center w-12 h-12 rounded-xl bg-gradient-to-br from-purple-50 to-pink-50">
+        <div class="bg-surface rounded-2xl shadow-sm border border-line-100 overflow-hidden">
+          <div class="flex items-center gap-4 px-5 py-5 border-b border-line-100">
+            <div class="flex items-center justify-center w-12 h-12 rounded-xl bg-linear-to-br from-purple-50 to-pink-50">
               <span class="text-2xl">T</span>
             </div>
             <div class="flex-1">
@@ -286,7 +286,7 @@
                 :class="
                   getTenantId(item) !== '' && getTenantId(item) === activeTenantId
                     ? 'border-sky-200 bg-sky-50'
-                    : 'border-gray-200 bg-white hover:border-emerald-200 hover:bg-emerald-50/30'
+                    : 'border-line-200 bg-surface hover:border-emerald-200 hover:bg-emerald-50/30'
                 "
               >
                 <div class="flex items-center justify-between gap-3">
@@ -295,14 +295,14 @@
                       v-if="getTenantLogoUrl(item)"
                       :src="getTenantLogoUrl(item)"
                       :alt="getTenantName(item)"
-                      class="w-10 h-10 rounded-full border border-gray-200 bg-white object-cover shrink-0"
+                      class="w-10 h-10 rounded-full border border-line-200 bg-surface object-cover shrink-0"
                     />
                     <div class="min-w-0">
                       <div class="flex items-center gap-2">
                         <span class="text-sm font-semibold text-gray-800">{{ getTenantName(item) }}</span>
                         <span
                           v-if="getTenantShortName(item)"
-                          class="text-xs font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-600"
+                          class="text-xs font-semibold px-2 py-0.5 rounded-full bg-surface-100 text-gray-600"
                         >
                           {{ getTenantShortName(item) }}
                         </span>
@@ -310,7 +310,7 @@
                       <div class="mt-1 text-xs text-gray-500 break-all">{{ getTenantId(item) || 'Missing tenantId' }}</div>
                     </div>
                   </div>
-                  <div class="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-600">
+                  <div class="text-xs px-2 py-1 rounded-full bg-surface-100 text-gray-600">
                     {{ getTenantId(item) !== '' && getTenantId(item) === activeTenantId ? 'Active' : getTenantId(item) ? 'Switch' : 'Unavailable' }}
                   </div>
                 </div>
@@ -408,11 +408,11 @@ const activeTenantId = computed(() => getTenantId(tenant.value));
 
 const mqttStateColorClass = computed(() => {
   switch (mqttRuntimeState.value) {
-    case 'connected': return 'text-emerald-600';
+    case 'connected': return 'text-emerald-600 dark:text-emerald-400';
     case 'connecting':
-    case 'reconnecting': return 'text-amber-600';
+    case 'reconnecting': return 'text-amber-600 dark:text-amber-400';
     case 'disconnected':
-    case 'error': return 'text-red-600';
+    case 'error': return 'text-red-600 dark:text-red-400';
     default: return 'text-gray-600';
   }
 });
@@ -424,15 +424,15 @@ const mqttStateDotClass = computed(() => {
     case 'reconnecting': return 'bg-amber-500';
     case 'disconnected':
     case 'error': return 'bg-red-500';
-    default: return 'bg-gray-400';
+    default: return 'bg-surface-400';
   }
 });
 
 const authStatusColorClass = computed(() => {
   const s = status.value.toLowerCase();
-  if (s.includes('failed') || s.includes('error')) return 'text-red-600 bg-red-50';
-  if (s.includes('succeeded') || s === 'ready') return 'text-emerald-700 bg-emerald-50';
-  if (s.includes('...') || s.includes('starting') || s.includes('switching') || s.includes('logging')) return 'text-amber-700 bg-amber-50';
+  if (s.includes('failed') || s.includes('error')) return 'text-red-600 dark:text-red-400 bg-red-50';
+  if (s.includes('succeeded') || s === 'ready') return 'text-emerald-700 dark:text-emerald-400 bg-emerald-50';
+  if (s.includes('...') || s.includes('starting') || s.includes('switching') || s.includes('logging')) return 'text-amber-700 dark:text-amber-400 bg-amber-50';
   return 'text-gray-800 bg-blue-50';
 });
 

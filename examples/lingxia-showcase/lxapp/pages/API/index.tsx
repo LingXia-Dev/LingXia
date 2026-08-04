@@ -42,13 +42,13 @@ export default function APIPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-100 overflow-y-auto">
+    <div className="min-h-screen bg-surface-100 overflow-y-auto">
       <div className="px-3 py-2 pb-12 space-y-2">
 
         {/* Header Card - Description */}
-        <div className="bg-white rounded-lg shadow-sm">
+        <div className="bg-surface rounded-lg shadow-sm">
           <div className="px-4 py-6 text-center">
-            <div className="w-12 h-12 mx-auto mb-3 text-blue-500">
+            <div className="w-12 h-12 mx-auto mb-3 text-blue-500 dark:text-blue-400">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
                 <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
               </svg>
@@ -61,9 +61,9 @@ export default function APIPage() {
 
         {/* Cloud - Dropdown (only when the host ships the cloud provider) */}
         {data.cloudAvailable && (
-        <div className="bg-white rounded-lg shadow-sm">
+        <div className="bg-surface rounded-lg shadow-sm">
           <div
-            className="px-4 py-4 flex items-center justify-between cursor-pointer hover:bg-gray-50"
+            className="px-4 py-4 flex items-center justify-between cursor-pointer hover:bg-surface-50"
             onClick={() => toggleSection({ section: 'cloud' })}
           >
             <div className="text-base text-gray-900">Cloud</div>
@@ -75,9 +75,9 @@ export default function APIPage() {
           </div>
 
           {expandedSections.cloud && (
-            <div className="border-t border-gray-100 bg-gray-50">
+            <div className="border-t border-line-100 bg-surface-50">
               <div
-                className="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between"
+                className="px-4 py-3 hover:bg-surface-100 cursor-pointer flex items-center justify-between"
                 onClick={navigateToTestMiniApp}
               >
                 <div className="text-sm text-gray-700">Open Other LxApp</div>
@@ -88,7 +88,7 @@ export default function APIPage() {
                 </div>
               </div>
               <div
-                className="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between border-t border-gray-200"
+                className="px-4 py-3 hover:bg-surface-100 cursor-pointer flex items-center justify-between border-t border-line-200"
                 onClick={() => navigateToCloudPage({ type: 'auth' })}
               >
                 <div className="text-sm text-gray-700">Cloud Auth Demo</div>
@@ -99,7 +99,7 @@ export default function APIPage() {
                 </div>
               </div>
               <div
-                className="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between border-t border-gray-200"
+                className="px-4 py-3 hover:bg-surface-100 cursor-pointer flex items-center justify-between border-t border-line-200"
                 onClick={() => navigateToCloudPage({ type: 'mqtt' })}
               >
                 <div className="text-sm text-gray-700">Cloud MQTT Demo</div>
@@ -110,7 +110,7 @@ export default function APIPage() {
                 </div>
               </div>
               <div
-                className="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between border-t border-gray-200"
+                className="px-4 py-3 hover:bg-surface-100 cursor-pointer flex items-center justify-between border-t border-line-200"
                 onClick={() => navigateToCloudPage({ type: 'functions' })}
               >
                 <div className="text-sm text-gray-700">Cloud Functions Demo</div>
@@ -126,9 +126,9 @@ export default function APIPage() {
         )}
 
         {/* Bridge - Dropdown */}
-        <div className="bg-white rounded-lg shadow-sm">
+        <div className="bg-surface rounded-lg shadow-sm">
           <div
-            className="px-4 py-4 flex items-center justify-between cursor-pointer hover:bg-gray-50"
+            className="px-4 py-4 flex items-center justify-between cursor-pointer hover:bg-surface-50"
             onClick={() => toggleSection({ section: 'bridge' })}
           >
             <div className="text-base text-gray-900">Bridge</div>
@@ -140,9 +140,9 @@ export default function APIPage() {
           </div>
 
           {expandedSections.bridge && (
-            <div className="border-t border-gray-100 bg-gray-50">
+            <div className="border-t border-line-100 bg-surface-50">
               <div
-                className="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between"
+                className="px-4 py-3 hover:bg-surface-100 cursor-pointer flex items-center justify-between"
                 onClick={navigateToStreamPage}
               >
                 <div>
@@ -156,7 +156,7 @@ export default function APIPage() {
                 </div>
               </div>
               <div
-                className="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between border-t border-gray-200"
+                className="px-4 py-3 hover:bg-surface-100 cursor-pointer flex items-center justify-between border-t border-line-200"
                 onClick={navigateToChannelPage}
               >
                 <div>
@@ -170,7 +170,7 @@ export default function APIPage() {
                 </div>
               </div>
               <div
-                className="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between border-t border-gray-200"
+                className="px-4 py-3 hover:bg-surface-100 cursor-pointer flex items-center justify-between border-t border-line-200"
                 onClick={navigateToBridgeReproPage}
               >
                 <div>
@@ -188,9 +188,9 @@ export default function APIPage() {
         </div>
 
         {/* Navigation - Dropdown */}
-        <div className="bg-white rounded-lg shadow-sm">
+        <div className="bg-surface rounded-lg shadow-sm">
           <div
-            className="px-4 py-4 flex items-center justify-between cursor-pointer hover:bg-gray-50"
+            className="px-4 py-4 flex items-center justify-between cursor-pointer hover:bg-surface-50"
             onClick={() => toggleSection({ section: 'navigation' })}
           >
             <div className="text-base text-gray-900">Navigation</div>
@@ -202,9 +202,9 @@ export default function APIPage() {
           </div>
 
           {expandedSections.navigation && (
-            <div className="border-t border-gray-100 bg-gray-50">
+            <div className="border-t border-line-100 bg-surface-50">
               <div
-                className="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between"
+                className="px-4 py-3 hover:bg-surface-100 cursor-pointer flex items-center justify-between"
                 onClick={openDeepSeek}
               >
                 <div className="text-sm text-gray-700">Open DeepSeek</div>
@@ -215,7 +215,7 @@ export default function APIPage() {
                 </div>
               </div>
               <div
-                className="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between border-t border-gray-200"
+                className="px-4 py-3 hover:bg-surface-100 cursor-pointer flex items-center justify-between border-t border-line-200"
                 onClick={navigateToSharePage}
               >
                 <div>
@@ -233,9 +233,9 @@ export default function APIPage() {
         </div>
 
         {/* User Interface - Dropdown */}
-        <div className="bg-white rounded-lg shadow-sm">
+        <div className="bg-surface rounded-lg shadow-sm">
           <div
-            className="px-4 py-4 flex items-center justify-between cursor-pointer hover:bg-gray-50"
+            className="px-4 py-4 flex items-center justify-between cursor-pointer hover:bg-surface-50"
             onClick={() => toggleSection({ section: 'interface' })}
           >
             <div className="text-base text-gray-900">User Interface</div>
@@ -248,9 +248,9 @@ export default function APIPage() {
           </div>
 
           {expandedSections.interface && (
-            <div className="border-t border-gray-100 bg-gray-50">
+            <div className="border-t border-line-100 bg-surface-50">
               <div
-                className="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between"
+                className="px-4 py-3 hover:bg-surface-100 cursor-pointer flex items-center justify-between"
                 onClick={() => navigateToUIPage({ type: 'navigation' })}
               >
                 <div className="text-sm text-gray-700">Page Navigation</div>
@@ -261,7 +261,7 @@ export default function APIPage() {
                 </div>
               </div>
               <div
-                className="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between border-t border-gray-200"
+                className="px-4 py-3 hover:bg-surface-100 cursor-pointer flex items-center justify-between border-t border-line-200"
                 onClick={() => navigateToUIPage({ type: 'toast' })}
               >
                 <div className="text-sm text-gray-700">Toast</div>
@@ -272,7 +272,7 @@ export default function APIPage() {
                 </div>
               </div>
               <div
-                className="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between border-t border-gray-200"
+                className="px-4 py-3 hover:bg-surface-100 cursor-pointer flex items-center justify-between border-t border-line-200"
                 onClick={() => navigateToUIPage({ type: 'modal' })}
               >
                 <div className="text-sm text-gray-700">Modal</div>
@@ -283,7 +283,7 @@ export default function APIPage() {
                 </div>
               </div>
               <div
-                className="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between border-t border-gray-200"
+                className="px-4 py-3 hover:bg-surface-100 cursor-pointer flex items-center justify-between border-t border-line-200"
                 onClick={() => navigateToUIPage({ type: 'navbar' })}
               >
                 <div className="text-sm text-gray-700">NavigationBar</div>
@@ -294,7 +294,7 @@ export default function APIPage() {
                 </div>
               </div>
               <div
-                className="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between border-t border-gray-200"
+                className="px-4 py-3 hover:bg-surface-100 cursor-pointer flex items-center justify-between border-t border-line-200"
                 onClick={() => navigateToUIPage({ type: 'tabbar' })}
               >
                 <div className="text-sm text-gray-700">TabBar</div>
@@ -305,7 +305,7 @@ export default function APIPage() {
                 </div>
               </div>
               <div
-                className="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between border-t border-gray-200"
+                className="px-4 py-3 hover:bg-surface-100 cursor-pointer flex items-center justify-between border-t border-line-200"
                 onClick={() => navigateToUIPage({ type: 'appearance' })}
               >
                 <div className="text-sm text-gray-700">Appearance</div>
@@ -316,7 +316,7 @@ export default function APIPage() {
                 </div>
               </div>
               <div
-                className="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between border-t border-gray-200"
+                className="px-4 py-3 hover:bg-surface-100 cursor-pointer flex items-center justify-between border-t border-line-200"
                 onClick={() => navigateToUIPage({ type: 'actionsheet' })}
               >
                 <div className="text-sm text-gray-700">Action Sheet</div>
@@ -327,7 +327,7 @@ export default function APIPage() {
                 </div>
               </div>
               <div
-                className="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between border-t border-gray-200"
+                className="px-4 py-3 hover:bg-surface-100 cursor-pointer flex items-center justify-between border-t border-line-200"
                 onClick={() => navigateToUIPage({ type: 'surface' })}
               >
                 <div>
@@ -340,7 +340,7 @@ export default function APIPage() {
                 </div>
               </div>
               <div
-                className="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between border-t border-gray-200"
+                className="px-4 py-3 hover:bg-surface-100 cursor-pointer flex items-center justify-between border-t border-line-200"
                 onClick={navigateToPullDownRefreshPage}
               >
                 <div className="text-sm text-gray-700">Pull Down Refresh</div>
@@ -355,9 +355,9 @@ export default function APIPage() {
         </div>
 
         {/* System - Dropdown */}
-        <div className="bg-white rounded-lg shadow-sm">
+        <div className="bg-surface rounded-lg shadow-sm">
           <div
-            className="px-4 py-4 flex items-center justify-between cursor-pointer hover:bg-gray-50"
+            className="px-4 py-4 flex items-center justify-between cursor-pointer hover:bg-surface-50"
             onClick={() => toggleSection({ section: 'system' })}
           >
             <div className="text-base text-gray-900">System</div>
@@ -369,9 +369,9 @@ export default function APIPage() {
           </div>
 
           {expandedSections.system && (
-            <div className="border-t border-gray-100 bg-gray-50">
+            <div className="border-t border-line-100 bg-surface-50">
               <div
-                className="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between"
+                className="px-4 py-3 hover:bg-surface-100 cursor-pointer flex items-center justify-between"
                 onClick={() => navigateToSystemPage({ type: 'appBaseInfo' })}
               >
                 <div className="text-sm text-gray-700">App Base Info</div>
@@ -382,7 +382,7 @@ export default function APIPage() {
                 </div>
               </div>
               <div
-                className="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between border-t border-gray-200"
+                className="px-4 py-3 hover:bg-surface-100 cursor-pointer flex items-center justify-between border-t border-line-200"
                 onClick={() => navigateToSystemPage({ type: 'systemSetting' })}
               >
                 <div className="text-sm text-gray-700">System Setting</div>
@@ -393,7 +393,7 @@ export default function APIPage() {
                 </div>
               </div>
               <div
-                className="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between border-t border-gray-200"
+                className="px-4 py-3 hover:bg-surface-100 cursor-pointer flex items-center justify-between border-t border-line-200"
                 onClick={() => navigateToSystemPage({ type: 'autostart' })}
               >
                 <div>
@@ -407,7 +407,7 @@ export default function APIPage() {
                 </div>
               </div>
               <div
-                className="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between border-t border-gray-200"
+                className="px-4 py-3 hover:bg-surface-100 cursor-pointer flex items-center justify-between border-t border-line-200"
                 onClick={exitApp}
               >
                 <div>
@@ -427,10 +427,10 @@ export default function APIPage() {
         </div>
 
         {/* Device - Dropdown */}
-        <div className="bg-white rounded-lg shadow-sm">
+        <div className="bg-surface rounded-lg shadow-sm">
           <div
             data-testid="api-device-section"
-            className="px-4 py-4 flex items-center justify-between cursor-pointer hover:bg-gray-50"
+            className="px-4 py-4 flex items-center justify-between cursor-pointer hover:bg-surface-50"
             onClick={() => toggleSection({ section: 'device' })}
           >
             <div className="text-base text-gray-900">Device</div>
@@ -443,9 +443,9 @@ export default function APIPage() {
           </div>
 
           {expandedSections.device && (
-            <div className="border-t border-gray-100 bg-gray-50">
+            <div className="border-t border-line-100 bg-surface-50">
               <div
-                className="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between"
+                className="px-4 py-3 hover:bg-surface-100 cursor-pointer flex items-center justify-between"
                 onClick={() => navigateToDevicePage({ type: 'device' })}
               >
                 <div className="text-sm text-gray-700">Device Info</div>
@@ -456,7 +456,7 @@ export default function APIPage() {
                 </div>
               </div>
               <div
-                className="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between border-t border-gray-200"
+                className="px-4 py-3 hover:bg-surface-100 cursor-pointer flex items-center justify-between border-t border-line-200"
                 onClick={() => navigateToDevicePage({ type: 'screen' })}
               >
                 <div className="text-sm text-gray-700">Screen Info</div>
@@ -467,7 +467,7 @@ export default function APIPage() {
                 </div>
               </div>
               <div
-                className="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between border-t border-gray-200"
+                className="px-4 py-3 hover:bg-surface-100 cursor-pointer flex items-center justify-between border-t border-line-200"
                 onClick={() => navigateToDevicePage({ type: 'vibrate' })}
               >
                 <div className="text-sm text-gray-700">Vibration</div>
@@ -478,7 +478,7 @@ export default function APIPage() {
                 </div>
               </div>
               <div
-                className="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between border-t border-gray-200"
+                className="px-4 py-3 hover:bg-surface-100 cursor-pointer flex items-center justify-between border-t border-line-200"
                 onClick={() => navigateToDevicePage({ type: 'dial' })}
               >
                 <div className="text-sm text-gray-700">Phone Call</div>
@@ -489,7 +489,7 @@ export default function APIPage() {
                 </div>
               </div>
               <div
-                className="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between border-t border-gray-200"
+                className="px-4 py-3 hover:bg-surface-100 cursor-pointer flex items-center justify-between border-t border-line-200"
                 onClick={() => navigateToDevicePage({ type: 'orientation' })}
               >
                 <div className="text-sm text-gray-700">Device Orientation</div>
@@ -500,7 +500,7 @@ export default function APIPage() {
                 </div>
               </div>
               <div
-                className="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between border-t border-gray-200"
+                className="px-4 py-3 hover:bg-surface-100 cursor-pointer flex items-center justify-between border-t border-line-200"
                 onClick={() => navigateToDevicePage({ type: 'networkType' })}
               >
                 <div className="text-sm text-gray-700">Network Type</div>
@@ -511,7 +511,7 @@ export default function APIPage() {
                 </div>
               </div>
               <div
-                className="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between border-t border-gray-200"
+                className="px-4 py-3 hover:bg-surface-100 cursor-pointer flex items-center justify-between border-t border-line-200"
                 onClick={() => navigateToDevicePage({ type: 'localIP' })}
               >
                 <div className="text-sm text-gray-700">Local IP Address</div>
@@ -522,7 +522,7 @@ export default function APIPage() {
                 </div>
               </div>
               <div
-                className="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between border-t border-gray-200"
+                className="px-4 py-3 hover:bg-surface-100 cursor-pointer flex items-center justify-between border-t border-line-200"
                 onClick={() => navigateToDevicePage({ type: 'networkStatus' })}
               >
                 <div className="text-sm text-gray-700">Network Status Listener</div>
@@ -533,7 +533,7 @@ export default function APIPage() {
                 </div>
               </div>
               <div
-                className="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between border-t border-gray-200"
+                className="px-4 py-3 hover:bg-surface-100 cursor-pointer flex items-center justify-between border-t border-line-200"
                 onClick={navigateToWifiPage}
               >
                 <div className="text-sm text-gray-700">WiFi</div>
@@ -548,9 +548,9 @@ export default function APIPage() {
         </div>
 
         {/* Media - Dropdown */}
-        <div className="bg-white rounded-lg shadow-sm">
+        <div className="bg-surface rounded-lg shadow-sm">
           <div
-            className="px-4 py-4 flex items-center justify-between cursor-pointer hover:bg-gray-50"
+            className="px-4 py-4 flex items-center justify-between cursor-pointer hover:bg-surface-50"
             onClick={() => toggleSection({ section: 'media' })}
           >
             <div className="text-base text-gray-900">Media & Camera</div>
@@ -562,9 +562,9 @@ export default function APIPage() {
           </div>
 
           {expandedSections.media && (
-            <div className="border-t border-gray-100 bg-gray-50">
+            <div className="border-t border-line-100 bg-surface-50">
               <div
-                className="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between"
+                className="px-4 py-3 hover:bg-surface-100 cursor-pointer flex items-center justify-between"
                 onClick={() => navigateToMediaPage({ type: 'Pictures' })}
               >
                 <div className="text-sm text-gray-700">Pictures</div>
@@ -575,7 +575,7 @@ export default function APIPage() {
                 </div>
               </div>
               <div
-                className="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between border-t border-gray-200"
+                className="px-4 py-3 hover:bg-surface-100 cursor-pointer flex items-center justify-between border-t border-line-200"
                 onClick={() => navigateToMediaPage({ type: 'Videos' })}
               >
                 <div className="text-sm text-gray-700">Videos</div>
@@ -586,7 +586,7 @@ export default function APIPage() {
                 </div>
               </div>
               <div
-                className="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between border-t border-gray-200"
+                className="px-4 py-3 hover:bg-surface-100 cursor-pointer flex items-center justify-between border-t border-line-200"
                 onClick={() => navigateToMediaPage({ type: 'scanCode' })}
               >
                 <div className="text-sm text-gray-700">ScanCode</div>
@@ -597,7 +597,7 @@ export default function APIPage() {
                 </div>
               </div>
               <div
-                className="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between border-t border-gray-200"
+                className="px-4 py-3 hover:bg-surface-100 cursor-pointer flex items-center justify-between border-t border-line-200"
                 onClick={() => navigateToMediaPage({ type: 'imageInfo' })}
               >
                 <div>
@@ -610,7 +610,7 @@ export default function APIPage() {
                 </div>
               </div>
               <div
-                className="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between border-t border-gray-200"
+                className="px-4 py-3 hover:bg-surface-100 cursor-pointer flex items-center justify-between border-t border-line-200"
                 onClick={() => navigateToMediaPage({ type: 'videoTools' })}
               >
                 <div className="text-sm text-gray-700">Video Tools</div>
@@ -621,7 +621,7 @@ export default function APIPage() {
                 </div>
               </div>
               <div
-                className="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between border-t border-gray-200"
+                className="px-4 py-3 hover:bg-surface-100 cursor-pointer flex items-center justify-between border-t border-line-200"
                 onClick={() => navigateToMediaPage({ type: 'saveToAlbum' })}
               >
                 <div className="text-sm text-gray-700">Save to Album</div>
@@ -636,9 +636,9 @@ export default function APIPage() {
         </div>
 
         {/* File - Dropdown */}
-        <div className="bg-white rounded-lg shadow-sm">
+        <div className="bg-surface rounded-lg shadow-sm">
           <div
-            className="px-4 py-4 flex items-center justify-between cursor-pointer hover:bg-gray-50"
+            className="px-4 py-4 flex items-center justify-between cursor-pointer hover:bg-surface-50"
             onClick={() => toggleSection({ section: 'file' })}
           >
             <div className="text-base text-gray-900">File</div>
@@ -650,9 +650,9 @@ export default function APIPage() {
             </div>
           </div>
           {expandedSections.file && (
-            <div className="border-t border-gray-100 bg-gray-50">
+            <div className="border-t border-line-100 bg-surface-50">
               <div
-                className="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between"
+                className="px-4 py-3 hover:bg-surface-100 cursor-pointer flex items-center justify-between"
                 onClick={navigateToOpenFilePage}
               >
                 <div className="text-sm text-gray-700">Open File</div>
@@ -663,7 +663,7 @@ export default function APIPage() {
                 </div>
               </div>
               <div
-                className="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between border-t border-gray-200"
+                className="px-4 py-3 hover:bg-surface-100 cursor-pointer flex items-center justify-between border-t border-line-200"
                 onClick={navigateToChooseFilePage}
               >
                 <div className="text-sm text-gray-700">Choose File</div>
@@ -678,9 +678,9 @@ export default function APIPage() {
         </div>
 
         {/* Location - Clickable */}
-        <div className="bg-white rounded-lg shadow-sm">
+        <div className="bg-surface rounded-lg shadow-sm">
           <div
-            className="px-4 py-4 flex items-center justify-between cursor-pointer hover:bg-gray-50"
+            className="px-4 py-4 flex items-center justify-between cursor-pointer hover:bg-surface-50"
             onClick={navigateToLocationPage}
           >
             <div className="text-base text-gray-900">Location</div>

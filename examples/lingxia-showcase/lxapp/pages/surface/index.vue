@@ -1,5 +1,5 @@
 <template>
-  <div class="min-h-screen bg-gray-100 text-gray-900 flex flex-col items-center px-4 py-6">
+  <div class="min-h-screen bg-surface-100 text-gray-900 flex flex-col items-center px-4 py-6">
     <div class="w-full max-w-md space-y-6">
       <header>
         <h1 class="text-lg font-semibold tracking-wide text-gray-900">Surface Page</h1>
@@ -8,21 +8,21 @@
         </p>
       </header>
 
-      <section class="bg-white rounded-xl border border-gray-200 p-4 space-y-2 shadow-sm">
+      <section class="bg-surface rounded-xl border border-line-200 p-4 space-y-2 shadow-sm">
         <div class="text-xs uppercase text-gray-500 tracking-wide">Query String</div>
         <div class="font-mono text-sm text-gray-800 break-words">
           {{ queryString || '(none)' }}
         </div>
       </section>
 
-      <section class="bg-white rounded-xl border border-gray-200 p-4 space-y-3 shadow-sm">
+      <section class="bg-surface rounded-xl border border-line-200 p-4 space-y-3 shadow-sm">
         <div class="text-xs uppercase text-gray-500 tracking-wide">Page lifecycle</div>
         <div class="grid grid-cols-2 gap-2 text-sm">
-          <div class="bg-gray-50 rounded-md px-3 py-2">
+          <div class="bg-surface-50 rounded-md px-3 py-2">
             <div class="text-xs text-gray-500">onShow</div>
             <div class="font-mono text-base text-gray-900">{{ showCount }}</div>
           </div>
-          <div class="bg-gray-50 rounded-md px-3 py-2">
+          <div class="bg-surface-50 rounded-md px-3 py-2">
             <div class="text-xs text-gray-500">onHide</div>
             <div class="font-mono text-base text-gray-900">{{ hideCount }}</div>
           </div>
@@ -32,22 +32,22 @@
         </div>
       </section>
 
-      <section class="bg-white rounded-xl border border-gray-200 p-4 space-y-3 shadow-sm">
+      <section class="bg-surface rounded-xl border border-line-200 p-4 space-y-3 shadow-sm">
         <div class="text-xs uppercase text-gray-500 tracking-wide">In-page counter</div>
         <div class="font-mono text-2xl text-gray-900">{{ counter }}</div>
         <div class="text-xs text-gray-500">
           Hide preserves this counter; close resets it on re-open.
         </div>
         <button type="button" @click="counter++"
-          class="w-full h-10 text-sm font-medium rounded-md bg-gray-200 hover:bg-gray-300 text-gray-900 transition-colors">
+          class="w-full h-10 text-sm font-medium rounded-md bg-surface-200 hover:bg-surface-300 text-gray-900 transition-colors">
           Increment
         </button>
       </section>
 
-      <section class="bg-white rounded-xl border border-gray-200 p-4 space-y-3 shadow-sm">
+      <section class="bg-surface rounded-xl border border-line-200 p-4 space-y-3 shadow-sm">
         <div class="text-xs uppercase text-gray-500 tracking-wide">Message</div>
         <input
-          class="w-full px-3 py-2 rounded-md bg-white border border-gray-300 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          class="w-full px-3 py-2 rounded-md bg-surface border border-line-300 text-sm text-gray-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500"
           placeholder="Message to parent page"
           ref="inputRef"
         />
@@ -60,7 +60,7 @@
         </button>
       </section>
 
-      <section class="bg-white rounded-xl border border-gray-200 p-4 space-y-3 shadow-sm">
+      <section class="bg-surface rounded-xl border border-line-200 p-4 space-y-3 shadow-sm">
         <div class="text-xs uppercase text-gray-500 tracking-wide">Self actions</div>
         <button type="button" @click="hideSelf?.()"
           class="w-full h-10 text-sm font-medium rounded-md bg-amber-500 hover:bg-amber-600 text-white transition-colors">

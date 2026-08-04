@@ -1,8 +1,8 @@
 /* Apple-inspired Todo App Styles */
 
-/* This page is hand-written CSS rather than utilities, so it carries its own
-   token set. Same contract as the Tailwind layer: [data-theme] is authoritative,
-   prefers-color-scheme only covers first paint. */
+/* Hand-written CSS, so it carries its own token set. The runtime stamps
+   [data-theme] at document start; the media query only covers the pre-stamp
+   first paint. */
 :root {
   --todo-page-bg: linear-gradient(to bottom,
     rgba(255, 250, 250, 1) 0%,
@@ -40,45 +40,6 @@
   --todo-toggle: url('data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%22%3E%3Ccircle%20cx%3D%2212%22%20cy%3D%2212%22%20r%3D%2210%22%20fill%3D%22none%22%20stroke%3D%22rgba(0%2C0%2C0%2C0.1)%22%20stroke-width%3D%221.5%22/%3E%3C/svg%3E');
 }
 
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --todo-page-bg: linear-gradient(to bottom,
-      rgba(28, 26, 28, 1) 0%,
-      rgba(23, 23, 26, 1) 50%,
-      rgba(28, 26, 28, 1) 100%);
-    --todo-wordmark: rgba(255, 120, 120, 0.14);
-    --todo-surface: rgba(31, 31, 34, 0.92);
-    --todo-label: #F2F2F7;
-    --todo-label-strong: rgba(235, 235, 245, 0.85);
-    --todo-label-secondary: rgba(235, 235, 245, 0.6);
-    --todo-label-tertiary: rgba(235, 235, 245, 0.3);
-    --todo-strike: rgba(235, 235, 245, 0.2);
-    --todo-hairline: rgba(255, 255, 255, 0.1);
-    --todo-hairline-soft: rgba(255, 255, 255, 0.07);
-    --todo-fill: rgba(255, 255, 255, 0.05);
-    --todo-fill-hover: rgba(255, 255, 255, 0.08);
-    --todo-row-hover: rgba(255, 255, 255, 0.03);
-    --todo-chevron: rgba(255, 255, 255, 0.3);
-    --todo-chip: rgba(255, 255, 255, 0.12);
-    --todo-accent: #0A84FF;
-    --todo-destructive: #FF453A;
-    --todo-destructive-soft: rgba(255, 69, 58, 0.85);
-    --todo-destructive-fill: rgba(255, 69, 58, 0.14);
-    --todo-shadow:
-      0 0 0 0.5px rgba(255, 255, 255, 0.06),
-      0 2px 4px rgba(0, 0, 0, 0.4),
-      0 8px 24px rgba(0, 0, 0, 0.5);
-    --todo-shadow-hover:
-      0 0 0 0.5px rgba(255, 255, 255, 0.1),
-      0 4px 8px rgba(0, 0, 0, 0.45),
-      0 12px 32px rgba(0, 0, 0, 0.55);
-    --todo-chip-shadow:
-      0 0 0 0.5px rgba(255, 255, 255, 0.08),
-      0 1px 2px rgba(0, 0, 0, 0.4);
-    --todo-toggle: url('data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%22%3E%3Ccircle%20cx%3D%2212%22%20cy%3D%2212%22%20r%3D%2210%22%20fill%3D%22none%22%20stroke%3D%22rgba(255%2C255%2C255%2C0.28)%22%20stroke-width%3D%221.5%22/%3E%3C/svg%3E');
-  }
-}
-
 [data-theme="dark"] {
   --todo-page-bg: linear-gradient(to bottom,
     rgba(28, 26, 28, 1) 0%,
@@ -114,6 +75,17 @@
     0 0 0 0.5px rgba(255, 255, 255, 0.08),
     0 1px 2px rgba(0, 0, 0, 0.4);
   --todo-toggle: url('data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%22%3E%3Ccircle%20cx%3D%2212%22%20cy%3D%2212%22%20r%3D%2210%22%20fill%3D%22none%22%20stroke%3D%22rgba(255%2C255%2C255%2C0.28)%22%20stroke-width%3D%221.5%22/%3E%3C/svg%3E');
+}
+
+/* Pre-stamp first paint only: keep the canvas from flashing light. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    --todo-page-bg: linear-gradient(to bottom,
+      rgba(28, 26, 28, 1) 0%,
+      rgba(23, 23, 26, 1) 50%,
+      rgba(28, 26, 28, 1) 100%);
+    --todo-label: #F2F2F7;
+  }
 }
 
 .todo-page {

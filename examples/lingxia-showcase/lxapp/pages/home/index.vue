@@ -9,12 +9,12 @@
     />
 
     <!-- Gradient Overlay -->
-    <div class="absolute inset-0 bg-gradient-to-b from-black/10 via-transparent to-black/40" />
+    <div class="absolute inset-0 bg-linear-to-b from-black/10 via-transparent to-black/40" />
 
     <!-- Content Container - Centered -->
     <div class="relative z-10 w-full h-full flex flex-col justify-center items-center px-5 py-16">
       <!-- Main Card - Apple Style Frosted Glass -->
-      <div class="bg-white/80 backdrop-blur-xl rounded-2xl shadow-lg border border-white/20 p-6">
+      <div class="bg-surface/80 backdrop-blur-xl rounded-2xl shadow-lg border border-white/20 p-6">
         <div class="text-center mb-6">
           <img src="/public/AppIcon.png" alt="Logo" class="w-16 h-16 mx-auto mb-3 rounded-[16px]" />
           <div class="text-[17px] font-semibold text-gray-900">LingXia</div>
@@ -29,7 +29,7 @@
             placeholder="Enter your name"
             v-model="name"
             @keydown.enter="handleGreet"
-            class="w-full h-[44px] px-4 bg-gray-100/80 border-0 rounded-[10px] text-[17px] text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30 transition-all"
+            class="w-full h-[44px] px-4 bg-surface-100/80 border-0 rounded-[10px] text-[17px] text-gray-900 placeholder:text-gray-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500/30 transition-all"
           />
 
           <button
@@ -46,12 +46,12 @@
         <!-- Result Message -->
         <div v-if="greetingMessage" class="mt-4 p-4 bg-green-50 border border-green-200 rounded-xl">
           <div class="flex items-start gap-3">
-            <div class="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5">
+            <div class="w-5 h-5 text-green-500 dark:text-green-400 shrink-0 mt-0.5">
               <svg viewBox="0 0 24 24" fill="currentColor">
                 <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" />
               </svg>
             </div>
-            <p class="text-sm text-green-700 leading-relaxed" data-testid="home-greeting">
+            <p class="text-sm text-green-700 dark:text-green-400 leading-relaxed" data-testid="home-greeting">
               {{ greetingMessage }}
             </p>
           </div>
@@ -65,7 +65,7 @@
               {{ resolvedAppearance }}
             </span>
           </div>
-          <div class="flex gap-1 p-1 bg-gray-100 rounded-[10px]">
+          <div class="flex gap-1 p-1 bg-surface-100 rounded-[10px]">
             <button
               v-for="option in APPEARANCE_OPTIONS"
               :key="option"
@@ -74,7 +74,7 @@
               :data-selected="preference === option"
               @click="setAppearance({ preference: option })"
               class="flex-1 h-8 rounded-[8px] text-[13px] font-medium capitalize transition-colors"
-              :class="preference === option ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'"
+              :class="preference === option ? 'bg-surface text-gray-900 shadow-sm' : 'text-gray-500'"
             >
               {{ option }}
             </button>

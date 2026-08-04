@@ -64,21 +64,21 @@ export default function ChannelPage() {
 
   const changeColor = latest
     ? latest.change > 0
-      ? 'text-green-600'
+      ? 'text-green-600 dark:text-green-400'
       : latest.change < 0
-        ? 'text-red-500'
+        ? 'text-red-500 dark:text-red-400'
         : 'text-gray-600'
     : 'text-gray-600';
 
   const changePrefix = latest && latest.change > 0 ? '+' : '';
 
   return (
-    <div className="min-h-screen bg-gray-50 px-4 py-6" data-testid="channel-page">
+    <div className="min-h-screen bg-surface-50 px-4 py-6" data-testid="channel-page">
       {/* Connection status */}
       <div className="flex items-center gap-2 mb-4">
         <div
           className={`w-2 h-2 rounded-full ${
-            session.connected ? 'bg-green-500' : session.connecting ? 'bg-yellow-400' : 'bg-gray-300'
+            session.connected ? 'bg-green-500' : session.connecting ? 'bg-yellow-400' : 'bg-surface-300'
           }`}
         />
         <span className="text-xs text-gray-500" data-testid="channel-status">
@@ -97,7 +97,7 @@ export default function ChannelPage() {
             className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
               sym === active
                 ? 'bg-blue-600 text-white'
-                : 'bg-white text-gray-700 border border-gray-200'
+                : 'bg-surface text-gray-700 border border-line-200'
             }`}
           >
             {sym}
@@ -106,7 +106,7 @@ export default function ChannelPage() {
       </div>
 
       {/* Price card */}
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 mb-6">
+      <div className="bg-surface rounded-2xl shadow-sm border border-line-200 p-6 mb-6">
         <p className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-1" data-testid="channel-active">{active || '---'}</p>
         <div className="flex items-baseline gap-3">
           <span className="text-4xl font-bold text-gray-900" data-testid="channel-price">
@@ -126,18 +126,18 @@ export default function ChannelPage() {
       </div>
 
       {/* Tick history */}
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-        <div className="px-4 py-3 border-b border-gray-100">
+      <div className="bg-surface rounded-2xl shadow-sm border border-line-200 overflow-hidden">
+        <div className="px-4 py-3 border-b border-line-100">
           <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Recent Ticks</p>
         </div>
         <div className="max-h-64 overflow-y-auto">
           {history.length === 0 ? (
             <p className="px-4 py-6 text-sm text-gray-400 text-center">Waiting for data...</p>
           ) : (
-            <div className="divide-y divide-gray-50">
+            <div className="divide-y divide-line-50">
               {[...history].reverse().map((tick, i) => {
                 const color =
-                  tick.change > 0 ? 'text-green-600' : tick.change < 0 ? 'text-red-500' : 'text-gray-500';
+                  tick.change > 0 ? 'text-green-600 dark:text-green-400' : tick.change < 0 ? 'text-red-500 dark:text-red-400' : 'text-gray-500';
                 const prefix = tick.change > 0 ? '+' : '';
                 return (
                   <div key={i} className="px-4 py-2.5 flex items-center justify-between">
@@ -164,7 +164,7 @@ export default function ChannelPage() {
           data-testid="channel-disconnect"
           onClick={() => session.close()}
           disabled={!session.connected}
-          className="flex-1 py-3 rounded-xl text-sm font-medium bg-gray-200 text-gray-700 disabled:opacity-40"
+          className="flex-1 py-3 rounded-xl text-sm font-medium bg-surface-200 text-gray-700 disabled:opacity-40"
         >
           Disconnect
         </button>
@@ -179,7 +179,7 @@ export default function ChannelPage() {
       </div>
 
       {session.error && (
-        <p className="mt-3 text-xs text-red-500 text-center">
+        <p className="mt-3 text-xs text-red-500 dark:text-red-400 text-center">
           Error: {session.error.code} {session.error.message && `\u2014 ${session.error.message}`}
         </p>
       )}

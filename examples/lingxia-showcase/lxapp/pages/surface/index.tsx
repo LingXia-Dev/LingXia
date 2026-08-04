@@ -31,7 +31,7 @@ export default function SurfacePage() {
   }, [message, logSurfaceMessage, closeSelf]);
 
   return (
-    <div className="min-h-screen bg-gray-100 text-gray-900 flex flex-col items-center px-4 py-6">
+    <div className="min-h-screen bg-surface-100 text-gray-900 flex flex-col items-center px-4 py-6">
       <div className="w-full max-w-md space-y-6">
         <header>
           <h1 className="text-lg font-semibold tracking-wide text-gray-900">Surface Page</h1>
@@ -40,21 +40,21 @@ export default function SurfacePage() {
           </p>
         </header>
 
-        <section className="bg-white rounded-xl border border-gray-200 p-4 space-y-2 shadow-sm">
+        <section className="bg-surface rounded-xl border border-line-200 p-4 space-y-2 shadow-sm">
           <div className="text-xs uppercase text-gray-500 tracking-wide">Query String</div>
           <div className="font-mono text-sm text-gray-800 break-words">
             {queryString || '(none)'}
           </div>
         </section>
 
-        <section className="bg-white rounded-xl border border-gray-200 p-4 space-y-3 shadow-sm">
+        <section className="bg-surface rounded-xl border border-line-200 p-4 space-y-3 shadow-sm">
           <div className="text-xs uppercase text-gray-500 tracking-wide">Page lifecycle</div>
           <div className="grid grid-cols-2 gap-2 text-sm">
-            <div className="bg-gray-50 rounded-md px-3 py-2">
+            <div className="bg-surface-50 rounded-md px-3 py-2">
               <div className="text-xs text-gray-500">onShow</div>
               <div className="font-mono text-base text-gray-900">{showCount}</div>
             </div>
-            <div className="bg-gray-50 rounded-md px-3 py-2">
+            <div className="bg-surface-50 rounded-md px-3 py-2">
               <div className="text-xs text-gray-500">onHide</div>
               <div className="font-mono text-base text-gray-900">{hideCount}</div>
             </div>
@@ -64,7 +64,7 @@ export default function SurfacePage() {
           </div>
         </section>
 
-        <section className="bg-white rounded-xl border border-gray-200 p-4 space-y-3 shadow-sm">
+        <section className="bg-surface rounded-xl border border-line-200 p-4 space-y-3 shadow-sm">
           <div className="text-xs uppercase text-gray-500 tracking-wide">In-page counter</div>
           <div className="font-mono text-2xl text-gray-900">{counter}</div>
           <div className="text-xs text-gray-500">
@@ -73,16 +73,16 @@ export default function SurfacePage() {
           <button
             type="button"
             onClick={() => setCounter((value) => value + 1)}
-            className="w-full h-10 text-sm font-medium rounded-md bg-gray-200 hover:bg-gray-300 text-gray-900 transition-colors"
+            className="w-full h-10 text-sm font-medium rounded-md bg-surface-200 hover:bg-surface-300 text-gray-900 transition-colors"
           >
             Increment
           </button>
         </section>
 
-        <section className="bg-white rounded-xl border border-gray-200 p-4 space-y-3 shadow-sm">
+        <section className="bg-surface rounded-xl border border-line-200 p-4 space-y-3 shadow-sm">
           <div className="text-xs uppercase text-gray-500 tracking-wide">Message</div>
           <input
-            className="w-full px-3 py-2 rounded-md bg-white border border-gray-300 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full px-3 py-2 rounded-md bg-surface border border-line-300 text-sm text-gray-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500"
             placeholder="Message to parent page"
             value={message}
             onChange={(event) => setMessage(event.target.value)}
@@ -96,7 +96,7 @@ export default function SurfacePage() {
           </button>
         </section>
 
-        <section className="bg-white rounded-xl border border-gray-200 p-4 space-y-3 shadow-sm">
+        <section className="bg-surface rounded-xl border border-line-200 p-4 space-y-3 shadow-sm">
           <div className="text-xs uppercase text-gray-500 tracking-wide">Self actions</div>
           <button
             type="button"

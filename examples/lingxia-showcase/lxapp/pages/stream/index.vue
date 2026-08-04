@@ -1,10 +1,10 @@
 <template>
-  <div class="flex h-screen flex-col bg-gray-100" data-testid="stream-page">
+  <div class="flex h-screen flex-col bg-surface-100" data-testid="stream-page">
     <div v-if="messages.length > 0 && !chat.streaming.value" class="absolute right-4 top-3 z-10">
       <button
         type="button"
         @click="actions.onClear()"
-        class="rounded-full bg-white px-3 py-1 text-xs text-blue-600 shadow-sm active:opacity-70"
+        class="rounded-full bg-surface px-3 py-1 text-xs text-blue-600 dark:text-blue-400 shadow-sm active:opacity-70"
       >
         Clear
       </button>
@@ -12,8 +12,8 @@
 
     <div ref="scrollRef" class="flex-1 overflow-y-auto px-4 py-4">
       <div v-if="messages.length === 0 && !chat.streaming.value" class="flex h-full flex-col items-center justify-center gap-3 px-8 text-center">
-        <div class="flex h-16 w-16 items-center justify-center rounded-2xl bg-white shadow">
-          <svg viewBox="0 0 24 24" fill="none" class="h-8 w-8 text-blue-600" stroke="currentColor" stroke-width="1.5">
+        <div class="flex h-16 w-16 items-center justify-center rounded-2xl bg-surface shadow">
+          <svg viewBox="0 0 24 24" fill="none" class="h-8 w-8 text-blue-600 dark:text-blue-400" stroke="currentColor" stroke-width="1.5">
             <path
               stroke-linecap="round"
               stroke-linejoin="round"
@@ -31,7 +31,7 @@
           <div
             v-for="hint in hints"
             :key="hint"
-            class="rounded-xl bg-blue-50 px-4 py-2.5 text-left text-sm text-blue-600"
+            class="rounded-xl bg-blue-50 px-4 py-2.5 text-left text-sm text-blue-600 dark:text-blue-400"
           >
             {{ hint }}
           </div>
@@ -52,12 +52,12 @@
           </div>
 
           <div v-else class="flex max-w-[90%] items-start gap-2">
-            <div class="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-violet-500 to-blue-600">
+            <div class="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-linear-to-br from-violet-500 to-blue-600">
               <svg viewBox="0 0 24 24" fill="white" class="h-3.5 w-3.5">
                 <path d="M12 2a10 10 0 110 20A10 10 0 0112 2zm0 2a8 8 0 100 16A8 8 0 0012 4zm-1 5h2v2h-2V9zm0 4h2v6h-2v-6z" />
               </svg>
             </div>
-            <div class="break-words rounded-3xl rounded-bl-md border border-gray-200 bg-white px-4 py-2.5 text-sm leading-relaxed text-gray-800 shadow-sm">
+            <div class="break-words rounded-3xl rounded-bl-md border border-line-200 bg-surface px-4 py-2.5 text-sm leading-relaxed text-gray-800 shadow-sm">
               <span v-if="message.content">{{ message.content }}</span>
               <span v-else class="italic text-gray-400">...</span>
               <ChartCard v-if="message.chart" :data="message.chart" />
@@ -67,12 +67,12 @@
 
         <div v-if="chat.streaming.value" class="flex justify-start" data-testid="stream-live">
           <div class="flex max-w-[90%] items-start gap-2">
-            <div class="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-violet-500 to-blue-600">
+            <div class="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-linear-to-br from-violet-500 to-blue-600">
               <svg viewBox="0 0 24 24" fill="white" class="h-3.5 w-3.5">
                 <path d="M12 2a10 10 0 110 20A10 10 0 0112 2zm0 2a8 8 0 100 16A8 8 0 0012 4zm-1 5h2v2h-2V9zm0 4h2v6h-2v-6z" />
               </svg>
             </div>
-            <div class="break-words rounded-3xl rounded-bl-md border border-gray-200 bg-white px-4 py-2.5 text-sm leading-relaxed text-gray-800 shadow-sm">
+            <div class="break-words rounded-3xl rounded-bl-md border border-line-200 bg-surface px-4 py-2.5 text-sm leading-relaxed text-gray-800 shadow-sm">
               <template v-if="streamState.text">
                 {{ streamState.text }}
                 <span
@@ -92,10 +92,10 @@
     </div>
 
     <div
-      class="flex items-end gap-2 border-t border-gray-200 bg-white px-3 py-3"
+      class="flex items-end gap-2 border-t border-line-200 bg-surface px-3 py-3"
       style="padding-bottom: max(12px, env(safe-area-inset-bottom));"
     >
-      <div class="flex flex-1 items-end gap-2 rounded-2xl bg-gray-100 px-3.5 py-2.5">
+      <div class="flex flex-1 items-end gap-2 rounded-2xl bg-surface-100 px-3.5 py-2.5">
         <textarea
           data-testid="stream-input"
           :data-controlled-value="inputText"
@@ -104,7 +104,7 @@
           rows="1"
           placeholder="Message..."
           :disabled="chat.streaming.value"
-          class="max-h-[120px] min-h-[22px] flex-1 resize-none bg-transparent text-sm leading-relaxed text-gray-800 outline-none placeholder:text-gray-400"
+          class="max-h-[120px] min-h-[22px] flex-1 resize-none bg-transparent text-sm leading-relaxed text-gray-800 outline-hidden placeholder:text-gray-400"
           @input="autoResize"
           @keydown.enter.exact.prevent="handleSend"
         />
@@ -115,9 +115,9 @@
         data-testid="stream-stop"
         type="button"
         @click="chat.cancel()"
-        class="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-gray-800 active:opacity-70"
+        class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-surface-800 active:opacity-70"
       >
-        <div class="h-3 w-3 rounded-sm bg-white" />
+        <div class="h-3 w-3 rounded-sm bg-surface" />
       </button>
 
       <button
@@ -125,7 +125,7 @@
         data-testid="stream-send"
         type="button"
         :disabled="!inputText.trim()"
-        class="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-blue-600 active:opacity-70 disabled:cursor-not-allowed disabled:opacity-30"
+        class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-600 active:opacity-70 disabled:cursor-not-allowed disabled:opacity-30"
         @click="handleSend"
       >
         <svg viewBox="0 0 24 24" fill="white" class="h-4 w-4" style="margin-bottom: 1px;">

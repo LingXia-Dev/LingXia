@@ -34,17 +34,17 @@ export default function LocationPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-100">
+    <div className="min-h-screen bg-surface-100">
       <div className="px-4 py-6">
         
         {/* Header */}
         <div className="text-center mb-8">
           <h1 className="text-2xl font-light text-gray-800 mb-2">getLocation</h1>
-          <div className="w-16 h-0.5 bg-gray-400 mx-auto"></div>
+          <div className="w-16 h-0.5 bg-surface-400 mx-auto"></div>
         </div>
 
         {/* Location Display */}
-        <div className="bg-white rounded-lg shadow-sm p-6 mb-8">
+        <div className="bg-surface rounded-lg shadow-sm p-6 mb-8">
           <div className="text-center">
             <div className="text-gray-600 mb-4">Current Location</div>
             
@@ -85,7 +85,7 @@ export default function LocationPage() {
                 </div>
               </div>
             ) : (
-              <div className={`py-8 ${locationError ? 'text-red-500' : 'text-gray-500'}`}>
+              <div className={`py-8 ${locationError ? 'text-red-500 dark:text-red-400' : 'text-gray-500'}`}>
                 {locationError || 'No location data available'}
               </div>
             )}
@@ -97,14 +97,14 @@ export default function LocationPage() {
           <button
             onClick={getLocation}
             disabled={isLoading}
-            className="w-full bg-blue-500 hover:bg-blue-600 disabled:bg-gray-400 text-white font-medium py-4 px-6 rounded-lg transition-colors"
+            className="w-full bg-blue-500 hover:bg-blue-600 disabled:bg-surface-400 text-white font-medium py-4 px-6 rounded-lg transition-colors"
           >
             {isLoading ? 'Getting Location...' : 'Get Location'}
           </button>
           
           <button
             onClick={clearLocation}
-            className="w-full bg-white hover:bg-gray-50 text-gray-700 font-medium py-4 px-6 rounded-lg border border-gray-300 transition-colors"
+            className="w-full bg-surface hover:bg-surface-50 text-gray-700 font-medium py-4 px-6 rounded-lg border border-line-300 transition-colors"
           >
             Clear
           </button>

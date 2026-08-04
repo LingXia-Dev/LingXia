@@ -67,11 +67,11 @@ function getTenantShortName(tenant: TenantLike | null | undefined): string {
 
 function mqttStateColor(state: string): string {
   switch (state) {
-    case 'connected': return 'text-emerald-600';
+    case 'connected': return 'text-emerald-600 dark:text-emerald-400';
     case 'connecting':
-    case 'reconnecting': return 'text-amber-600';
+    case 'reconnecting': return 'text-amber-600 dark:text-amber-400';
     case 'disconnected':
-    case 'error': return 'text-red-600';
+    case 'error': return 'text-red-600 dark:text-red-400';
     default: return 'text-gray-600';
   }
 }
@@ -83,15 +83,15 @@ function mqttStateDot(state: string): string {
     case 'reconnecting': return 'bg-amber-500';
     case 'disconnected':
     case 'error': return 'bg-red-500';
-    default: return 'bg-gray-400';
+    default: return 'bg-surface-400';
   }
 }
 
 function authStatusColor(status: string): string {
   const lower = status.toLowerCase();
-  if (lower.includes('failed') || lower.includes('error')) return 'text-red-600 bg-red-50';
-  if (lower.includes('succeeded') || lower === 'ready') return 'text-emerald-700 bg-emerald-50';
-  if (lower.includes('...') || lower.includes('starting') || lower.includes('switching') || lower.includes('logging')) return 'text-amber-700 bg-amber-50';
+  if (lower.includes('failed') || lower.includes('error')) return 'text-red-600 dark:text-red-400 bg-red-50';
+  if (lower.includes('succeeded') || lower === 'ready') return 'text-emerald-700 dark:text-emerald-400 bg-emerald-50';
+  if (lower.includes('...') || lower.includes('starting') || lower.includes('switching') || lower.includes('logging')) return 'text-amber-700 dark:text-amber-400 bg-amber-50';
   return 'text-gray-800 bg-blue-50';
 }
 
@@ -118,10 +118,10 @@ function CloudAuthView({
 
   return (
     <>
-      <div className="mb-5 bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+      <div className="mb-5 bg-surface rounded-2xl shadow-sm border border-line-100 overflow-hidden">
         <div className="p-6">
           <div className="flex items-center gap-3 mb-4">
-            <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-sky-50 to-cyan-50">
+            <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-linear-to-br from-sky-50 to-cyan-50">
               <span className="text-xl">C</span>
             </div>
             <div>
@@ -137,20 +137,20 @@ function CloudAuthView({
             {!tenant ? (
               <button
                 onClick={loginInteractive}
-                className="py-3 text-sm font-medium transition-all duration-200 rounded-xl shadow-sm active:scale-[0.98] bg-gradient-to-r from-sky-600 to-sky-500 hover:from-sky-500 hover:to-sky-600 text-white"
+                className="py-3 text-sm font-medium transition-all duration-200 rounded-xl shadow-sm active:scale-[0.98] bg-linear-to-r from-sky-600 to-sky-500 hover:from-sky-500 hover:to-sky-600 text-white"
               >
                 Interactive Login
               </button>
             ) : null}
             <button
               onClick={addTenant}
-              className="py-3 text-sm font-medium transition-all duration-200 rounded-xl shadow-sm active:scale-[0.98] bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-600 text-white"
+              className="py-3 text-sm font-medium transition-all duration-200 rounded-xl shadow-sm active:scale-[0.98] bg-linear-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-600 text-white"
             >
               Add Identity
             </button>
             <button
               onClick={logoutCurrentTenant}
-              className="py-3 text-sm font-medium transition-all duration-200 rounded-xl shadow-sm active:scale-[0.98] bg-gradient-to-r from-rose-600 to-rose-500 hover:from-rose-500 hover:to-rose-600 text-white"
+              className="py-3 text-sm font-medium transition-all duration-200 rounded-xl shadow-sm active:scale-[0.98] bg-linear-to-r from-rose-600 to-rose-500 hover:from-rose-500 hover:to-rose-600 text-white"
             >
               Logout Current Tenant
             </button>
@@ -158,9 +158,9 @@ function CloudAuthView({
         </div>
       </div>
 
-      <div className="mb-5 bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-        <div className="flex items-center gap-4 px-5 py-5 border-b border-gray-100">
-          <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-gradient-to-br from-blue-50 to-indigo-50">
+      <div className="mb-5 bg-surface rounded-2xl shadow-sm border border-line-100 overflow-hidden">
+        <div className="flex items-center gap-4 px-5 py-5 border-b border-line-100">
+          <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-linear-to-br from-blue-50 to-indigo-50">
             <span className="text-2xl">S</span>
           </div>
           <div className="flex-1">
@@ -169,50 +169,50 @@ function CloudAuthView({
           </div>
         </div>
         <div className="p-5">
-          <div className="rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50 to-white p-4">
+          <div className="rounded-xl border border-line-200 bg-linear-to-br from-surface-50 to-surface p-4">
             <div className="flex items-center gap-2 mb-4">
               <span className="w-1 h-4 bg-blue-500 rounded-full"></span>
               <h4 className="text-sm font-semibold text-gray-700">Status</h4>
             </div>
-            <div className="flex justify-between items-center py-3 border-b border-gray-200 gap-4">
+            <div className="flex justify-between items-center py-3 border-b border-line-200 gap-4">
               <span className="text-sm text-gray-600">Status</span>
               <span className={`text-sm font-semibold px-3 py-1 rounded-lg text-right ${authStatusColor(status)}`}>{status}</span>
             </div>
-            <div className="flex justify-between items-center py-3 border-b border-gray-200 gap-4">
+            <div className="flex justify-between items-center py-3 border-b border-line-200 gap-4">
               <span className="text-sm text-gray-600">Active Tenant</span>
               <div className="flex items-center gap-3 px-3 py-2 bg-blue-50 rounded-lg">
                 {getTenantLogoUrl(tenant) ? (
                   <img
                     src={getTenantLogoUrl(tenant)}
                     alt={getTenantName(tenant)}
-                    className="w-8 h-8 rounded-full border border-white shadow-sm bg-white object-cover"
+                    className="w-8 h-8 rounded-full border border-white shadow-sm bg-surface object-cover"
                   />
                 ) : null}
                 <span className="text-sm font-semibold text-gray-800 text-right">
                   {tenant ? getTenantName(tenant) : 'No active tenant'}
                 </span>
                 {getTenantShortName(tenant) ? (
-                  <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">
+                  <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:text-blue-400">
                     {getTenantShortName(tenant)}
                   </span>
                 ) : null}
               </div>
             </div>
-            <div className="flex justify-between items-center py-3 border-b border-gray-200 gap-4">
+            <div className="flex justify-between items-center py-3 border-b border-line-200 gap-4">
               <span className="text-sm text-gray-600">Active User</span>
               <div className="flex items-center gap-3 px-3 py-2 bg-emerald-50 rounded-lg">
                 {user?.avatar ? (
                   <img
                     src={user.avatar}
                     alt={user.name || ''}
-                    className="w-8 h-8 rounded-full border border-white shadow-sm bg-white object-cover"
+                    className="w-8 h-8 rounded-full border border-white shadow-sm bg-surface object-cover"
                   />
                 ) : null}
                 <span className="text-sm font-semibold text-gray-800 text-right">
                   {user?.name || 'Not signed in'}
                 </span>
                 {user?.id ? (
-                  <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">
+                  <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:text-emerald-400">
                     {user.id}
                   </span>
                 ) : null}
@@ -222,9 +222,9 @@ function CloudAuthView({
         </div>
       </div>
 
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-        <div className="flex items-center gap-4 px-5 py-5 border-b border-gray-100">
-          <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-gradient-to-br from-purple-50 to-pink-50">
+      <div className="bg-surface rounded-2xl shadow-sm border border-line-100 overflow-hidden">
+        <div className="flex items-center gap-4 px-5 py-5 border-b border-line-100">
+          <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-linear-to-br from-purple-50 to-pink-50">
             <span className="text-2xl">T</span>
           </div>
           <div className="flex-1">
@@ -249,7 +249,7 @@ function CloudAuthView({
                     className={`w-full p-4 rounded-xl border text-left transition-colors ${
                       isActive
                         ? 'border-sky-200 bg-sky-50'
-                        : 'border-gray-200 bg-white hover:border-emerald-200 hover:bg-emerald-50/30'
+                        : 'border-line-200 bg-surface hover:border-emerald-200 hover:bg-emerald-50/30'
                     }`}
                   >
                     <div className="flex items-center justify-between gap-3">
@@ -258,14 +258,14 @@ function CloudAuthView({
                           <img
                             src={getTenantLogoUrl(item)}
                             alt={getTenantName(item)}
-                            className="w-10 h-10 rounded-full border border-gray-200 bg-white object-cover shrink-0"
+                            className="w-10 h-10 rounded-full border border-line-200 bg-surface object-cover shrink-0"
                           />
                         ) : null}
                         <div className="min-w-0">
                           <div className="flex items-center gap-2">
                             <span className="text-sm font-semibold text-gray-800">{getTenantName(item)}</span>
                             {getTenantShortName(item) ? (
-                              <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
+                              <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-surface-100 text-gray-600">
                                 {getTenantShortName(item)}
                               </span>
                             ) : null}
@@ -273,7 +273,7 @@ function CloudAuthView({
                           <div className="mt-1 text-xs text-gray-500 break-all">{tenantId || 'Missing tenantId'}</div>
                         </div>
                       </div>
-                      <div className="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-600">
+                      <div className="text-xs px-2 py-1 rounded-full bg-surface-100 text-gray-600">
                         {isActive ? 'Active' : tenantId ? 'Switch' : 'Unavailable'}
                       </div>
                     </div>
@@ -315,8 +315,8 @@ function CloudMqttView({
 }) {
   return (
     <>
-      <div className="mb-5 bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-        <div className="px-5 py-5 border-b border-gray-100">
+      <div className="mb-5 bg-surface rounded-2xl shadow-sm border border-line-100 overflow-hidden">
+        <div className="px-5 py-5 border-b border-line-100">
           <div className="text-sm text-gray-800 font-semibold">Runtime Connection</div>
           <div className="text-xs text-gray-500 mt-0.5">
             MQTT runtime status for the shared cloud session.
@@ -333,27 +333,27 @@ function CloudMqttView({
             </div>
             <div className="flex items-center justify-between gap-3">
               <span>Last error</span>
-              <span className={`font-mono text-right ${mqttLastError ? 'text-red-600' : 'text-gray-800'}`}>{mqttLastError || '-'}</span>
+              <span className={`font-mono text-right ${mqttLastError ? 'text-red-600 dark:text-red-400' : 'text-gray-800'}`}>{mqttLastError || '-'}</span>
             </div>
           </div>
         </div>
       </div>
 
-      <div className="mb-5 bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-        <div className="px-5 py-5 border-b border-gray-100">
+      <div className="mb-5 bg-surface rounded-2xl shadow-sm border border-line-100 overflow-hidden">
+        <div className="px-5 py-5 border-b border-line-100">
           <div className="text-sm text-gray-800 font-semibold">Topic Subscription</div>
           <div className="text-xs text-gray-500 mt-0.5">
             Manage the demo topic subscription and inspect how many messages this page has received.
           </div>
         </div>
         <div className="p-5 space-y-4">
-          <div className="rounded-xl border border-gray-200 bg-emerald-50/60 p-4">
+          <div className="rounded-xl border border-line-200 bg-emerald-50/60 p-4">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <div className="text-xs uppercase tracking-wide text-emerald-700">Topic</div>
+                <div className="text-xs uppercase tracking-wide text-emerald-700 dark:text-emerald-400">Topic</div>
                 <div className="mt-2 font-mono text-sm text-gray-900 break-all">{mqttTopicFilter}</div>
               </div>
-              <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${mqttSubscribed ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>
+              <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${mqttSubscribed ? 'bg-emerald-100 text-emerald-700 dark:text-emerald-400' : 'bg-surface-100 text-gray-500'}`}>
                 {mqttSubscribed ? 'active' : 'inactive'}
               </span>
             </div>
@@ -364,8 +364,8 @@ function CloudMqttView({
                 disabled={mqttSubscribed}
                 className={`py-3 text-sm font-medium rounded-xl transition-all duration-200 shadow-sm active:scale-[0.98] ${
                   mqttSubscribed
-                    ? 'bg-gray-100 text-gray-400'
-                    : 'bg-gradient-to-r from-emerald-600 to-emerald-500 text-white'
+                    ? 'bg-surface-100 text-gray-400'
+                    : 'bg-linear-to-r from-emerald-600 to-emerald-500 text-white'
                 }`}
               >
                 Subscribe
@@ -375,8 +375,8 @@ function CloudMqttView({
                 disabled={!mqttSubscribed}
                 className={`py-3 text-sm font-medium rounded-xl transition-all duration-200 shadow-sm active:scale-[0.98] ${
                   mqttSubscribed
-                    ? 'bg-gradient-to-r from-rose-600 to-rose-500 text-white'
-                    : 'bg-gray-100 text-gray-400'
+                    ? 'bg-linear-to-r from-rose-600 to-rose-500 text-white'
+                    : 'bg-surface-100 text-gray-400'
                 }`}
               >
                 Unsubscribe
@@ -384,10 +384,10 @@ function CloudMqttView({
             </div>
           </div>
 
-          <div className="grid gap-2 rounded-xl bg-white p-4 text-xs text-gray-600 border border-gray-200">
+          <div className="grid gap-2 rounded-xl bg-surface p-4 text-xs text-gray-600 border border-line-200">
             <div className="flex items-center justify-between gap-3">
               <span>Subscription state</span>
-              <span className={`font-mono font-semibold ${mqttSubscribed ? 'text-emerald-600' : 'text-gray-500'}`}>
+              <span className={`font-mono font-semibold ${mqttSubscribed ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-500'}`}>
                 {mqttSubscribed ? 'active' : 'inactive'}
               </span>
             </div>
@@ -399,18 +399,18 @@ function CloudMqttView({
         </div>
       </div>
 
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-        <div className="px-5 py-5 border-b border-gray-100">
+      <div className="bg-surface rounded-2xl shadow-sm border border-line-100 overflow-hidden">
+        <div className="px-5 py-5 border-b border-line-100">
           <div className="text-sm text-gray-800 font-semibold">Latest Message</div>
           <div className="text-xs text-gray-500 mt-0.5">Incoming message data is written back through setData.</div>
         </div>
         <div className="p-5">
           {mqttMessageCount === 0 ? (
-            <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50 p-6 text-sm text-gray-500">
+            <div className="rounded-xl border border-dashed border-line-300 bg-surface-50 p-6 text-sm text-gray-500">
               No message yet. Publish one to the topic above.
             </div>
           ) : (
-            <div className="rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50 to-white p-4">
+            <div className="rounded-xl border border-line-200 bg-linear-to-br from-surface-50 to-surface p-4">
               <div className="grid gap-3 text-sm">
                 <div>
                   <div className="text-xs uppercase tracking-wide text-gray-500">Topic</div>
@@ -450,16 +450,16 @@ function CloudFunctionsView({
 }) {
   return (
     <>
-      <div className="mb-5 bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-        <div className="px-5 py-5 border-b border-gray-100">
+      <div className="mb-5 bg-surface rounded-2xl shadow-sm border border-line-100 overflow-hidden">
+        <div className="px-5 py-5 border-b border-line-100">
           <div className="text-sm text-gray-800 font-semibold">Current LxApp Functions</div>
           <div className="text-xs text-gray-500 mt-0.5">
             These sample calls use `lx.cloud.invoke(...)` for the current lxapp. They are demo actions, not a runtime-discovered manifest list.
           </div>
         </div>
         <div className="p-5 space-y-4">
-          <div className="rounded-xl border border-gray-200 bg-indigo-50/60 p-4">
-            <div className="text-xs uppercase tracking-wide text-indigo-700">Status</div>
+          <div className="rounded-xl border border-line-200 bg-indigo-50/60 p-4">
+            <div className="text-xs uppercase tracking-wide text-indigo-700 dark:text-indigo-400">Status</div>
             <div className="mt-2 text-sm font-semibold text-gray-800">{functionsStatus}</div>
             {functionsAvailable.length === 0 ? null : (
               <div className="mt-4 flex flex-wrap gap-2">
@@ -467,7 +467,7 @@ function CloudFunctionsView({
                   <button
                     key={name}
                     onClick={() => callNamedFunction({ name })}
-                    className="px-4 py-2 rounded-xl text-sm font-medium bg-gradient-to-r from-sky-600 to-sky-500 text-white"
+                    className="px-4 py-2 rounded-xl text-sm font-medium bg-linear-to-r from-sky-600 to-sky-500 text-white"
                   >
                     Call {name}
                   </button>
@@ -475,7 +475,7 @@ function CloudFunctionsView({
               </div>
             )}
           </div>
-          <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+          <div className="rounded-xl border border-line-200 bg-surface-50 p-4">
             <div className="text-xs uppercase tracking-wide text-gray-500">Demo Functions</div>
             {functionsAvailable.length === 0 ? (
               <div className="mt-2 text-sm text-gray-500">
@@ -486,7 +486,7 @@ function CloudFunctionsView({
                 {functionsAvailable.map((name) => (
                   <span
                     key={name}
-                    className="inline-flex items-center rounded-full bg-white border border-gray-200 px-3 py-1 text-xs font-mono text-gray-700"
+                    className="inline-flex items-center rounded-full bg-surface border border-line-200 px-3 py-1 text-xs font-mono text-gray-700"
                   >
                     {name}
                   </span>
@@ -497,13 +497,13 @@ function CloudFunctionsView({
         </div>
       </div>
 
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-        <div className="px-5 py-5 border-b border-gray-100">
+      <div className="bg-surface rounded-2xl shadow-sm border border-line-100 overflow-hidden">
+        <div className="px-5 py-5 border-b border-line-100">
           <div className="text-sm text-gray-800 font-semibold">Last Result</div>
           <div className="text-xs text-gray-500 mt-0.5">Most recent cloud function invocation output.</div>
         </div>
         <div className="p-5">
-          <div className="rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50 to-white p-4">
+          <div className="rounded-xl border border-line-200 bg-linear-to-br from-surface-50 to-surface p-4">
             <div className="text-xs uppercase tracking-wide text-gray-500">Function</div>
             <div className="mt-2 text-sm font-semibold text-gray-800">{functionsLastCall || '-'}</div>
             <div className="mt-4 text-xs uppercase tracking-wide text-gray-500">Result</div>
@@ -550,7 +550,7 @@ export default function CloudPage() {
   } = data;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
+    <div className="min-h-screen bg-linear-to-br from-surface-50 to-surface-100">
       <div className="px-4 py-6">
         {type === 'mqtt' ? (
           <CloudMqttView

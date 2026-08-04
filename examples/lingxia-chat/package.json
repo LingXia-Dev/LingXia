@@ -18,20 +18,21 @@
     "@lingxia/bridge": "file:../../packages/lingxia-bridge",
     "@lingxia/react": "file:../../packages/lingxia-react",
     "@lingxia/vue": "file:../../packages/lingxia-vue",
-    "vue": "^3.5.0",
-    "lingxia-types": "file:../../packages/lingxia-types",
+    "@tailwindcss/postcss": "^4.3.3",
     "echarts": "^6.1.0",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
-    "tailwindcss": "^3.4.13"
+    "lingxia-types": "file:../../packages/lingxia-types",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "tailwindcss": "^4.3.3",
+    "vue": "^3.5.40"
   },
   "devDependencies": {
-    "@types/react": "^19.0.0",
-    "@types/react-dom": "^19.0.0",
-    "@vitejs/plugin-react": "^6.0.2",
-    "@vitejs/plugin-vue": "^6.0.7",
-    "autoprefixer": "^10.4.20",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "@vitejs/plugin-react": "^6.0.5",
+    "@vitejs/plugin-vue": "^6.0.8",
+    "autoprefixer": "^10.5.4",
     "postcss": "^8.5.25",
-    "typescript": "^5.7.2"
+    "typescript": "^5.9.3"
   }
 }

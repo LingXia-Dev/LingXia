@@ -1,5 +1,5 @@
 <template>
-  <main class="min-h-screen bg-gray-50 px-5 py-6 text-gray-900">
+  <main class="min-h-screen bg-surface-50 px-5 py-6 text-gray-900">
     <div class="mx-auto flex w-full max-w-lg flex-col gap-6">
       <header>
         <div class="mb-3 flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-100 text-xl">
@@ -22,8 +22,8 @@
             :class="[
               'h-10 rounded-xl border text-sm font-medium transition-colors',
               category === item
-                ? 'border-emerald-500 bg-emerald-50 text-emerald-700'
-                : 'border-gray-200 bg-white text-gray-600'
+                ? 'border-emerald-500 bg-emerald-50 text-emerald-700 dark:text-emerald-400'
+                : 'border-line-200 bg-surface text-gray-600'
             ]"
           >
             {{ item }}
@@ -37,7 +37,7 @@
           v-model="message"
           placeholder="What happened, and what would you prefer?"
           rows="6"
-          class="w-full resize-none rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm leading-6 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+          class="w-full resize-none rounded-2xl border border-line-200 bg-surface px-4 py-3 text-sm leading-6 outline-hidden transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
         />
       </label>
 
@@ -47,7 +47,7 @@
           v-model="email"
           type="email"
           placeholder="you@example.com"
-          class="h-11 w-full rounded-xl border border-gray-200 bg-white px-4 text-sm outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+          class="h-11 w-full rounded-xl border border-line-200 bg-surface px-4 text-sm outline-hidden transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
         />
       </label>
 
@@ -55,7 +55,7 @@
         type="button"
         :disabled="!message.trim() || submitting"
         @click="submit"
-        class="h-12 rounded-2xl bg-gray-900 text-sm font-semibold text-white transition disabled:cursor-not-allowed disabled:opacity-35"
+        class="h-12 rounded-2xl bg-surface-900 text-sm font-semibold text-white transition disabled:cursor-not-allowed disabled:opacity-35"
       >
         {{ submitting ? 'Sending…' : 'Send feedback' }}
       </button>

@@ -1,8 +1,8 @@
 <template>
-  <div class="min-h-screen bg-gray-100">
+  <div class="min-h-screen bg-surface-100">
     <div class="px-3 pt-6 pb-12 space-y-3">
-      <div class="bg-white rounded-lg shadow-sm">
-        <div class="px-4 py-3 border-b border-gray-100">
+      <div class="bg-surface rounded-lg shadow-sm">
+        <div class="px-4 py-3 border-b border-line-100">
           <div class="text-base text-gray-900 font-medium">Options</div>
         </div>
         <div class="px-4 py-3">
@@ -11,7 +11,7 @@
               type="checkbox"
               :checked="showMenu"
               @change="toggleShowMenu"
-              class="w-5 h-5 text-blue-500 border-gray-300 rounded focus:ring-2 focus:ring-blue-500 mt-0.5"
+              class="w-5 h-5 text-blue-500 dark:text-blue-400 border-line-300 rounded focus:ring-2 focus:ring-blue-500 mt-0.5"
             />
             <div class="ml-3 flex-1">
               <div class="text-sm text-gray-900 font-medium">Show Share Button</div>
@@ -24,8 +24,8 @@
       </div>
 
       <template v-if="activeDemo === 'openFile'">
-        <div class="bg-white rounded-lg shadow-sm">
-          <div class="px-4 py-4 border-b border-gray-100">
+        <div class="bg-surface rounded-lg shadow-sm">
+          <div class="px-4 py-4 border-b border-line-100">
             <div class="text-base text-gray-900 font-medium">PDF via lx.downloadFile()</div>
             <div class="text-xs text-gray-500 mt-1">Download to a temporary file with progress and pause/continue, then open with the native PDF viewer.</div>
           </div>
@@ -37,7 +37,7 @@
                 :value="pdfUrl"
                 @input="onPdfUrlInput({ detail: { value: ($event.target as HTMLInputElement).value } })"
                 placeholder="Enter PDF URL"
-                class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                class="w-full px-3 py-2 border border-line-300 rounded-lg text-sm focus:outline-hidden focus:ring-2 focus:ring-blue-500"
               />
             </div>
             <button
@@ -45,13 +45,13 @@
               :disabled="isPdfDownloading"
               :class="[
                 'w-full py-3 rounded-lg text-white font-medium',
-                isPdfDownloading ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-500 hover:bg-blue-600 active:bg-blue-700'
+                isPdfDownloading ? 'bg-surface-400 cursor-not-allowed' : 'bg-blue-500 hover:bg-blue-600 active:bg-blue-700'
               ]"
             >
               {{ pdfPrimaryButtonText }}
             </button>
             <div v-if="showPdfProgress" class="rounded-xl border border-blue-100 bg-blue-50/70 p-3">
-              <div class="flex items-center justify-between text-xs text-blue-700">
+              <div class="flex items-center justify-between text-xs text-blue-700 dark:text-blue-400">
                 <span>PDF Transfer</span>
                 <span>{{ pdfProgressKnown ? `${Math.round(pdfDownloadProgress)}%` : 'Streaming' }}</span>
               </div>
@@ -61,11 +61,11 @@
                   :style="{ width: `${pdfDownloadProgress}%` }"
                 ></div>
               </div>
-              <div v-else class="mt-2 flex items-center gap-2 text-[11px] text-blue-700">
+              <div v-else class="mt-2 flex items-center gap-2 text-[11px] text-blue-700 dark:text-blue-400">
                 <span class="inline-flex h-2.5 w-2.5 rounded-full bg-blue-500 animate-pulse"></span>
                 <span>Waiting for precise progress from runtime…</span>
               </div>
-              <div class="mt-2 text-xs text-blue-900">{{ pdfProgressText }}</div>
+              <div class="mt-2 text-xs text-blue-900 dark:text-blue-400">{{ pdfProgressText }}</div>
               <button
                 @click="togglePdfTransfer"
                 :disabled="!canTogglePdfTransfer"
@@ -73,7 +73,7 @@
                   'mt-3 w-full rounded-lg py-2 text-sm font-medium',
                   canTogglePdfTransfer
                     ? 'bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800'
-                    : 'bg-blue-100 text-blue-300 cursor-not-allowed'
+                    : 'bg-blue-100 text-blue-400 cursor-not-allowed'
                 ]"
               >
                 {{ pdfTransferButtonText }}
@@ -82,8 +82,8 @@
           </div>
         </div>
 
-        <div class="bg-white rounded-lg shadow-sm">
-          <div class="px-4 py-4 border-b border-gray-100">
+        <div class="bg-surface rounded-lg shadow-sm">
+          <div class="px-4 py-4 border-b border-line-100">
             <div class="text-base text-gray-900 font-medium">Office via fetch()</div>
             <div class="text-xs text-gray-500 mt-1">Use web-standard fetch in page logic, save into usercache, then open with the native file API.</div>
           </div>
@@ -95,7 +95,7 @@
                 :value="officeUrl"
                 @input="onOfficeUrlInput({ detail: { value: ($event.target as HTMLInputElement).value } })"
                 placeholder="Enter file URL"
-                class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                class="w-full px-3 py-2 border border-line-300 rounded-lg text-sm focus:outline-hidden focus:ring-2 focus:ring-blue-500"
               />
             </div>
             <div>
@@ -105,7 +105,7 @@
                 :value="officeFileType"
                 @input="onOfficeFileTypeInput({ detail: { value: ($event.target as HTMLInputElement).value } })"
                 placeholder="e.g., docx, xlsx, pptx"
-                class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                class="w-full px-3 py-2 border border-line-300 rounded-lg text-sm focus:outline-hidden focus:ring-2 focus:ring-blue-500"
               />
               <div class="text-xs text-gray-500 mt-1">Auto-detected from URL or enter manually</div>
             </div>
@@ -114,26 +114,26 @@
               :disabled="isOfficeFetching"
               :class="[
                 'w-full py-3 rounded-lg text-white font-medium',
-                isOfficeFetching ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-500 hover:bg-blue-600 active:bg-blue-700'
+                isOfficeFetching ? 'bg-surface-400 cursor-not-allowed' : 'bg-blue-500 hover:bg-blue-600 active:bg-blue-700'
               ]"
             >
               {{ officePrimaryButtonText }}
             </button>
-            <div v-if="officeStatusText" class="rounded-xl border border-blue-100 bg-blue-50/70 p-3 text-xs text-blue-900">
+            <div v-if="officeStatusText" class="rounded-xl border border-blue-100 bg-blue-50/70 p-3 text-xs text-blue-900 dark:text-blue-400">
               {{ officeStatusText }}
             </div>
           </div>
         </div>
       </template>
 
-      <div v-else class="bg-white rounded-lg shadow-sm">
-        <div class="px-4 py-4 border-b border-gray-100">
+      <div v-else class="bg-surface rounded-lg shadow-sm">
+        <div class="px-4 py-4 border-b border-line-100">
           <div class="text-base text-gray-900 font-medium">Choose File</div>
           <div class="text-xs text-gray-500 mt-1">Open the host chooser in a predefined folder instead of the system recent-files picker.</div>
         </div>
         <div class="px-4 py-4 space-y-3">
           <div class="text-sm text-gray-600">Default folder:</div>
-          <div class="rounded-lg bg-gray-50 border border-gray-200 px-3 py-2 text-xs text-gray-700 break-all">
+          <div class="rounded-lg bg-surface-50 border border-line-200 px-3 py-2 text-xs text-gray-700 break-all">
             {{ chooseFileDefaultPath }}
           </div>
           <button
@@ -142,7 +142,7 @@
           >
             Open File Chooser
           </button>
-          <div class="rounded-xl border border-gray-200 bg-gray-50 p-3 space-y-2">
+          <div class="rounded-xl border border-line-200 bg-surface-50 p-3 space-y-2">
             <div class="text-xs text-gray-500">Status</div>
             <div class="text-sm text-gray-900">{{ chooseFileStatusText }}</div>
             <div class="text-xs text-gray-500">Selected Path</div>
@@ -156,8 +156,8 @@
             :class="[
               'w-full py-3 rounded-lg text-white font-medium',
               chooseFileSelectedPath
-                ? 'bg-gray-900 hover:bg-black active:bg-gray-800'
-                : 'bg-gray-400 cursor-not-allowed'
+                ? 'bg-surface-900 hover:bg-black active:bg-surface-800'
+                : 'bg-surface-400 cursor-not-allowed'
             ]"
           >
             Open Selected File

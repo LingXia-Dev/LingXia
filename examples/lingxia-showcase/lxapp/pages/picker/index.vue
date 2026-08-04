@@ -1,26 +1,26 @@
 <template>
-  <div class="min-h-screen bg-gray-100">
+  <div class="min-h-screen bg-surface-100">
     <div class="px-4 py-5 space-y-4">
-      <div class="bg-gradient-to-r from-purple-500 to-pink-600 rounded-xl px-4 py-4">
+      <div class="bg-linear-to-r from-purple-500 to-pink-600 rounded-xl px-4 py-4">
         <div class="text-lg text-white font-bold">LxPicker</div>
         <div class="text-xs text-white/80 mt-1">Component like input, tap to show picker</div>
       </div>
 
-      <div class="grid grid-cols-4 gap-1 bg-white rounded-xl p-1">
+      <div class="grid grid-cols-4 gap-1 bg-surface rounded-xl p-1">
         <button
           v-for="tab in tabs"
           :key="tab"
           @click="setTab(tab)"
           :class="[
             'py-2 px-1 rounded-lg font-medium text-xs',
-            activeTab === tab ? 'bg-purple-500 text-white' : 'bg-gray-100 text-gray-600'
+            activeTab === tab ? 'bg-purple-500 text-white' : 'bg-surface-100 text-gray-600'
           ]"
         >
           {{ tab }}
         </button>
       </div>
 
-      <div v-if="activeTab === 'selector'" class="bg-white rounded-xl p-4 space-y-3">
+      <div v-if="activeTab === 'selector'" class="bg-surface rounded-xl p-4 space-y-3">
         <div class="text-sm font-medium text-gray-900">Single Column Selector</div>
         <LxPicker
           :columns="[coffees]"
@@ -32,7 +32,7 @@
       </div>
 
       <template v-if="activeTab === 'multiSelector'">
-        <div class="bg-white rounded-xl p-4 space-y-3">
+        <div class="bg-surface rounded-xl p-4 space-y-3">
           <div class="text-sm font-medium text-gray-900">Cascading (Custom Colors)</div>
           <LxPicker
             :columns="[continents, cities]"
@@ -49,7 +49,7 @@
           />
         </div>
 
-        <div class="bg-white rounded-xl p-4 space-y-3">
+        <div class="bg-surface rounded-xl p-4 space-y-3">
           <div class="text-sm font-medium text-gray-900">Multi Column + Custom UI Trigger</div>
           <div class="text-xs text-gray-500 mb-2">Use children prop to customize trigger appearance</div>
           <LxPicker
@@ -58,14 +58,14 @@
             @confirm="(value: string | string[]) => onPickerConfirm?.({ field: 'multiTime', value })"
             @column-change="(value: string | string[]) => onPickerScroll?.({ field: 'multiTime', value })"
           >
-            <div class="p-3 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg text-center">
+            <div class="p-3 bg-linear-to-r from-purple-500 to-pink-500 text-white rounded-lg text-center">
               {{ multiTimeLabel }}
             </div>
           </LxPicker>
         </div>
       </template>
 
-      <div v-if="activeTab === 'time'" class="bg-white rounded-xl p-4 space-y-3">
+      <div v-if="activeTab === 'time'" class="bg-surface rounded-xl p-4 space-y-3">
         <div class="text-sm font-medium text-gray-900">Time Picker (mode=time)</div>
         <LxPicker
           mode="time"
@@ -79,7 +79,7 @@
       </div>
 
       <template v-if="activeTab === 'date'">
-        <div class="bg-white rounded-xl p-4 space-y-3">
+        <div class="bg-surface rounded-xl p-4 space-y-3">
           <div class="text-sm font-medium text-gray-900">Year Picker (fields=year)</div>
           <LxPicker
             mode="date"
@@ -93,7 +93,7 @@
           />
         </div>
 
-        <div class="bg-white rounded-xl p-4 space-y-3">
+        <div class="bg-surface rounded-xl p-4 space-y-3">
           <div class="text-sm font-medium text-gray-900">Month Picker (fields=month)</div>
           <LxPicker
             mode="date"
@@ -107,7 +107,7 @@
           />
         </div>
 
-        <div class="bg-white rounded-xl p-4 space-y-3">
+        <div class="bg-surface rounded-xl p-4 space-y-3">
           <div class="text-sm font-medium text-gray-900">Day Picker (fields=day)</div>
           <LxPicker
             mode="date"
@@ -121,7 +121,7 @@
           />
         </div>
 
-        <div class="bg-white rounded-xl p-4 space-y-3">
+        <div class="bg-surface rounded-xl p-4 space-y-3">
           <div class="text-sm font-medium text-gray-900">Date Range (fields=range)</div>
           <LxPicker
             mode="date"

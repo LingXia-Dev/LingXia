@@ -1,13 +1,43 @@
-/* Base styles first */
-@import './app.css';
+@import 'tailwindcss' source(none);
+@import './theme/tokens.css';
 
-/* Tailwind */
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@source './pages';
+@source './shared';
+@source './lxapp.ts';
+
+/* The runtime stamps the resolved appearance on <html>; platform media
+   queries can lag an in-place switch, so `dark:` keys off the attribute. */
+@custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
 
 @layer base {
+  /* Tailwind 3 behavior: borders default to the hairline color, not currentColor. */
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-line-200);
+  }
+
+  html,
   body {
+    width: 100%;
+    min-height: 100%;
+    background-color: var(--lx-page);
+  }
+  body {
+    -webkit-font-smoothing: antialiased;
+    color: var(--lx-text);
     overflow-x: hidden;
   }
+  #app {
+    min-height: 100%;
+  }
+  button:disabled {
+    opacity: 0.5;
+  }
+
+  /* Text selection / copy policy is provided by the LingXia runtime per
+     platform: selectable on desktop, native-app no-select on touch.
+     Override with .no-select (desktop) or .selectable (touch). */
 }

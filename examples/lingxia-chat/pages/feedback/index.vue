@@ -37,7 +37,7 @@
           v-model="message"
           placeholder="What happened, and what would you prefer?"
           rows="6"
-          class="w-full resize-none rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm leading-6 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+          class="w-full resize-none rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm leading-6 outline-hidden transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
         />
       </label>
 
@@ -47,7 +47,7 @@
           v-model="email"
           type="email"
           placeholder="you@example.com"
-          class="h-11 w-full rounded-xl border border-gray-200 bg-white px-4 text-sm outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+          class="h-11 w-full rounded-xl border border-gray-200 bg-white px-4 text-sm outline-hidden transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
         />
       </label>
 

@@ -131,7 +131,7 @@ export default function BridgeReproPage() {
       ? 'bg-green-600'
       : bootstrapVerdict === 'FAIL'
         ? 'bg-red-600'
-        : 'bg-gray-400';
+        : 'bg-surface-400';
 
   const streamFailed = audit.gaps.length > 0 || streamError !== null;
   const streamVerdict = audit.received === 0 ? 'WAITING' : streamFailed ? 'FAIL' : 'PASS';
@@ -140,7 +140,7 @@ export default function BridgeReproPage() {
       ? 'bg-green-600'
       : streamVerdict === 'FAIL'
         ? 'bg-red-600'
-        : 'bg-gray-400';
+        : 'bg-surface-400';
 
   return (
     <div
@@ -155,7 +155,7 @@ export default function BridgeReproPage() {
         Bootstrap: {bootstrapVerdict}
       </div>
 
-      <div className="bg-white rounded-lg p-4 space-y-1">
+      <div className="bg-surface rounded-lg p-4 space-y-1">
         <div id="bootstrap-ready">bridge ready: {bridgeReady ? 'yes' : 'no'}</div>
         <div id="bootstrap-snapshot">initial snapshot: {snapshotReady ? 'yes' : 'no'}</div>
         <div id="bootstrap-probe">
@@ -180,14 +180,14 @@ export default function BridgeReproPage() {
         Stream: {streamVerdict}
       </div>
 
-      <div className="bg-white rounded-lg p-4 space-y-1">
+      <div className="bg-surface rounded-lg p-4 space-y-1">
         <div id="stat-received">received: {audit.received}</div>
         <div id="stat-last">last seq: {audit.last}</div>
         <div id="stat-first">first tick after: {audit.firstAtMs ?? '-'} ms</div>
-        <div id="stat-gaps" className={audit.gaps.length ? 'text-red-600 font-semibold' : ''}>
+        <div id="stat-gaps" className={audit.gaps.length ? 'text-red-600 dark:text-red-400 font-semibold' : ''}>
           gaps: {audit.gaps.length ? audit.gaps.join(', ') : 'none'}
         </div>
-        <div id="stat-error" className={streamError ? 'text-red-600 font-semibold' : ''}>
+        <div id="stat-error" className={streamError ? 'text-red-600 dark:text-red-400 font-semibold' : ''}>
           stream error: {streamError ?? 'none'}
         </div>
         <div id="stat-reconnects">reconnects: {reconnects}</div>
@@ -218,14 +218,14 @@ export default function BridgeReproPage() {
             setStreamError(null);
             ticks.start();
           }}
-          className="flex-1 bg-gray-700 text-white rounded-lg py-3 font-semibold active:opacity-70"
+          className="flex-1 bg-surface-700 text-white rounded-lg py-3 font-semibold active:opacity-70"
         >
           {audit.received === 0 ? 'Start stream' : 'Restart stream'}
         </button>
         <button
           id="btn-stop"
           onClick={() => ticks.cancel()}
-          className="bg-gray-500 px-5 text-white rounded-lg py-3 font-semibold active:opacity-70"
+          className="bg-surface-500 px-5 text-white rounded-lg py-3 font-semibold active:opacity-70"
         >
           Stop
         </button>

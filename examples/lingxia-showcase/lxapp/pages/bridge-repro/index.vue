@@ -12,7 +12,7 @@
       Bootstrap: {{ bootstrapVerdict }}
     </div>
 
-    <div class="space-y-1 rounded-lg bg-white p-4">
+    <div class="space-y-1 rounded-lg bg-surface p-4">
       <div id="bootstrap-ready">bridge ready: {{ bridgeReady ? 'yes' : 'no' }}</div>
       <div id="bootstrap-snapshot">initial snapshot: {{ snapshotReady ? 'yes' : 'no' }}</div>
       <div id="bootstrap-probe">
@@ -40,14 +40,14 @@
       Stream: {{ streamVerdict }}
     </div>
 
-    <div class="space-y-1 rounded-lg bg-white p-4">
+    <div class="space-y-1 rounded-lg bg-surface p-4">
       <div id="stat-received">received: {{ audit.received }}</div>
       <div id="stat-last">last seq: {{ audit.last }}</div>
       <div id="stat-first">first tick after: {{ audit.firstAtMs ?? '-' }} ms</div>
-      <div id="stat-gaps" :class="audit.gaps.length ? 'font-semibold text-red-600' : ''">
+      <div id="stat-gaps" :class="audit.gaps.length ? 'font-semibold text-red-600 dark:text-red-400' : ''">
         gaps: {{ audit.gaps.length ? audit.gaps.join(', ') : 'none' }}
       </div>
-      <div id="stat-error" :class="streamError ? 'font-semibold text-red-600' : ''">
+      <div id="stat-error" :class="streamError ? 'font-semibold text-red-600 dark:text-red-400' : ''">
         stream error: {{ streamError ?? 'none' }}
       </div>
       <div id="stat-reconnects">reconnects: {{ reconnects }}</div>
@@ -74,14 +74,14 @@
     <div class="flex gap-2">
       <button
         id="btn-restart"
-        class="flex-1 rounded-lg bg-gray-700 py-3 font-semibold text-white active:opacity-70"
+        class="flex-1 rounded-lg bg-surface-700 py-3 font-semibold text-white active:opacity-70"
         @click="restartStream"
       >
         {{ audit.received === 0 ? 'Start stream' : 'Restart stream' }}
       </button>
       <button
         id="btn-stop"
-        class="rounded-lg bg-gray-500 px-5 py-3 font-semibold text-white active:opacity-70"
+        class="rounded-lg bg-surface-500 px-5 py-3 font-semibold text-white active:opacity-70"
         @click="stopStream"
       >
         Stop
@@ -181,7 +181,7 @@ const bootstrapColor = computed(() => (
     ? 'bg-green-600'
     : bootstrapVerdict.value === 'FAIL'
       ? 'bg-red-600'
-      : 'bg-gray-400'
+      : 'bg-surface-400'
 ));
 const streamFailed = computed(() => audit.value.gaps.length > 0 || streamError.value !== null);
 const streamVerdict = computed(() => (
@@ -192,7 +192,7 @@ const streamColor = computed(() => (
     ? 'bg-green-600'
     : streamVerdict.value === 'FAIL'
       ? 'bg-red-600'
-      : 'bg-gray-400'
+      : 'bg-surface-400'
 ));
 
 onMounted(() => {

@@ -50,3 +50,19 @@ export function subscribeTheme(listener: (theme: ResolvedTheme) => void): () => 
     media?.removeEventListener("change", notify);
   };
 }
+
+export type ChartAxisColors = { label: string; line: string; split: string };
+
+/**
+ * Axis colors for JS-drawn charts, resolved from the live token variables so
+ * theme/tokens.css stays the single source. Re-read after a theme change.
+ */
+export function chartAxisColors(): ChartAxisColors {
+  const style = getComputedStyle(document.documentElement);
+  const read = (name: string) => style.getPropertyValue(name).trim();
+  return {
+    label: read("--lx-text-secondary"),
+    line: read("--lx-border"),
+    split: read("--lx-border-subtle"),
+  };
+}

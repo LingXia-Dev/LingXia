@@ -252,7 +252,7 @@ function autoResize(e: Event) {
           <!-- Assistant bubble -->
           <div v-else class="flex justify-start">
             <div class="flex items-start gap-2 max-w-[90%]">
-              <div class="w-7 h-7 rounded-full bg-gradient-to-br from-violet-500 to-blue-600 flex-shrink-0 flex items-center justify-center mt-0.5">
+              <div class="w-7 h-7 rounded-full bg-linear-to-br from-violet-500 to-blue-600 shrink-0 flex items-center justify-center mt-0.5">
                 <svg viewBox="0 0 24 24" fill="white" class="w-3.5 h-3.5">
                   <path d="M12 2a10 10 0 110 20A10 10 0 0112 2zm0 2a8 8 0 100 16A8 8 0 0012 4zm-1 5h2v2h-2V9zm0 4h2v6h-2v-6z" />
                 </svg>
@@ -272,7 +272,7 @@ function autoResize(e: Event) {
         <!-- Streaming bubble -->
         <div v-if="chat.streaming.value" class="flex justify-start">
           <div class="flex items-start gap-2 max-w-[90%]">
-            <div class="w-7 h-7 rounded-full bg-gradient-to-br from-violet-500 to-blue-600 flex-shrink-0 flex items-center justify-center mt-0.5">
+            <div class="w-7 h-7 rounded-full bg-linear-to-br from-violet-500 to-blue-600 shrink-0 flex items-center justify-center mt-0.5">
               <svg viewBox="0 0 24 24" fill="white" class="w-3.5 h-3.5">
                 <path d="M12 2a10 10 0 110 20A10 10 0 0112 2zm0 2a8 8 0 100 16A8 8 0 0012 4zm-1 5h2v2h-2V9zm0 4h2v6h-2v-6z" />
               </svg>
@@ -310,7 +310,7 @@ function autoResize(e: Event) {
           :disabled="chat.streaming.value"
           rows="1"
           placeholder="Message..."
-          class="flex-1 bg-transparent text-sm text-gray-800 placeholder-gray-400 outline-none resize-none leading-relaxed"
+          class="flex-1 bg-transparent text-sm text-gray-800 placeholder:text-gray-400 outline-hidden resize-none leading-relaxed"
           style="max-height: 120px; min-height: 22px"
           @input="inputText = ($event.target as HTMLTextAreaElement).value; autoResize($event)"
           @keydown="handleKeyDown"
@@ -319,7 +319,7 @@ function autoResize(e: Event) {
 
       <button
         v-if="chat.streaming.value"
-        class="w-9 h-9 flex-shrink-0 rounded-full bg-gray-800 flex items-center justify-center active:opacity-70"
+        class="w-9 h-9 shrink-0 rounded-full bg-gray-800 flex items-center justify-center active:opacity-70"
         @click="chat.cancel()"
       >
         <div class="w-3 h-3 bg-white rounded-sm" />
@@ -328,7 +328,7 @@ function autoResize(e: Event) {
       <button
         v-else
         :disabled="!inputText.trim()"
-        class="w-9 h-9 flex-shrink-0 rounded-full bg-blue-600 flex items-center justify-center active:opacity-70 disabled:opacity-30 disabled:cursor-not-allowed"
+        class="w-9 h-9 shrink-0 rounded-full bg-blue-600 flex items-center justify-center active:opacity-70 disabled:opacity-30 disabled:cursor-not-allowed"
         @click="handleSend"
       >
         <svg viewBox="0 0 24 24" fill="white" class="w-4 h-4" style="margin-bottom: 1px">

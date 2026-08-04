@@ -58,20 +58,20 @@ export default function PickerPage() {
   );
 
   return (
-    <div className="min-h-screen bg-gray-100">
+    <div className="min-h-screen bg-surface-100">
       <div className="px-4 py-5 space-y-4">
-        <div className="bg-gradient-to-r from-purple-500 to-pink-600 rounded-xl px-4 py-4">
+        <div className="bg-linear-to-r from-purple-500 to-pink-600 rounded-xl px-4 py-4">
           <div className="text-lg text-white font-bold">LxPicker</div>
           <div className="text-xs text-white/80 mt-1">Component like input, tap to show picker</div>
         </div>
 
-        <div className="grid grid-cols-4 gap-1 bg-white rounded-xl p-1">
+        <div className="grid grid-cols-4 gap-1 bg-surface rounded-xl p-1">
           {tabs.map((tab) => (
             <button
               key={tab}
               onClick={() => changeTab(tab)}
               className={`py-2 px-1 rounded-lg font-medium text-xs ${
-                activeTab === tab ? 'bg-purple-500 text-white' : 'bg-gray-100 text-gray-600'
+                activeTab === tab ? 'bg-purple-500 text-white' : 'bg-surface-100 text-gray-600'
               }`}
             >
               {tab}
@@ -80,7 +80,7 @@ export default function PickerPage() {
         </div>
 
         {activeTab === 'selector' && (
-          <div className="bg-white rounded-xl p-4 space-y-3">
+          <div className="bg-surface rounded-xl p-4 space-y-3">
             <div className="text-sm font-medium text-gray-900">Single Column Selector</div>
             <LxPicker
               columns={[coffees]}
@@ -94,7 +94,7 @@ export default function PickerPage() {
 
         {activeTab === 'multiSelector' && (
           <>
-            <div className="bg-white rounded-xl p-4 space-y-3">
+            <div className="bg-surface rounded-xl p-4 space-y-3">
               <div className="text-sm font-medium text-gray-900">Cascading (Custom Colors)</div>
               <LxPicker
                 columns={[continents, cities]}
@@ -111,7 +111,7 @@ export default function PickerPage() {
               />
             </div>
 
-            <div className="bg-white rounded-xl p-4 space-y-3">
+            <div className="bg-surface rounded-xl p-4 space-y-3">
               <div className="text-sm font-medium text-gray-900">Multi Column + Custom UI Trigger</div>
               <div className="text-xs text-gray-500 mb-2">Use children prop to customize trigger appearance</div>
               <LxPicker
@@ -120,7 +120,7 @@ export default function PickerPage() {
                 onConfirm={(value) => onPickerConfirm?.({ field: 'multiTime', value })}
                 onColumnChange={(value) => onPickerScroll?.({ field: 'multiTime', value })}
               >
-                <div className="p-3 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg text-center">
+                <div className="p-3 bg-linear-to-r from-purple-500 to-pink-500 text-white rounded-lg text-center">
                   {multiTime.join(':')}
                 </div>
               </LxPicker>
@@ -129,7 +129,7 @@ export default function PickerPage() {
         )}
 
         {activeTab === 'time' && (
-          <div className="bg-white rounded-xl p-4 space-y-3">
+          <div className="bg-surface rounded-xl p-4 space-y-3">
             <div className="text-sm font-medium text-gray-900">Time Picker (mode=time)</div>
             <LxPicker
               mode="time"
@@ -145,7 +145,7 @@ export default function PickerPage() {
 
         {activeTab === 'date' && (
           <>
-            <div className="bg-white rounded-xl p-4 space-y-3">
+            <div className="bg-surface rounded-xl p-4 space-y-3">
               <div className="text-sm font-medium text-gray-900">Year Picker (fields=year)</div>
               <LxPicker
                 mode="date"
@@ -159,7 +159,7 @@ export default function PickerPage() {
               />
             </div>
 
-            <div className="bg-white rounded-xl p-4 space-y-3">
+            <div className="bg-surface rounded-xl p-4 space-y-3">
               <div className="text-sm font-medium text-gray-900">Month Picker (fields=month)</div>
               <LxPicker
                 mode="date"
@@ -173,7 +173,7 @@ export default function PickerPage() {
               />
             </div>
 
-            <div className="bg-white rounded-xl p-4 space-y-3">
+            <div className="bg-surface rounded-xl p-4 space-y-3">
               <div className="text-sm font-medium text-gray-900">Day Picker (fields=day)</div>
               <LxPicker
                 mode="date"
@@ -187,7 +187,7 @@ export default function PickerPage() {
               />
             </div>
 
-            <div className="bg-white rounded-xl p-4 space-y-3">
+            <div className="bg-surface rounded-xl p-4 space-y-3">
               <div className="text-sm font-medium text-gray-900">Date Range (fields=range)</div>
               <LxPicker
                 mode="date"

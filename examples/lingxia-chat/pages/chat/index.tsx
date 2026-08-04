@@ -269,7 +269,7 @@ function ToolsMenu({
 
 function AIAvatar() {
   return (
-    <div className="w-7 h-7 rounded-full bg-gradient-to-br from-violet-500 to-blue-600 flex-shrink-0 flex items-center justify-center mt-0.5">
+    <div className="w-7 h-7 rounded-full bg-linear-to-br from-violet-500 to-blue-600 shrink-0 flex items-center justify-center mt-0.5">
       <svg viewBox="0 0 24 24" fill="white" className="w-3.5 h-3.5">
         <path d="M12 2a10 10 0 110 20A10 10 0 0112 2zm0 2a8 8 0 100 16A8 8 0 0012 4zm-1 5h2v2h-2V9zm0 4h2v6h-2v-6z" />
       </svg>
@@ -381,7 +381,7 @@ function InputBar({
           placeholder="Message..."
           rows={1}
           disabled={streaming}
-          className="flex-1 bg-transparent text-sm text-gray-800 placeholder-gray-400 outline-none resize-none leading-relaxed"
+          className="flex-1 bg-transparent text-sm text-gray-800 placeholder:text-gray-400 outline-hidden resize-none leading-relaxed"
           style={{ maxHeight: '120px', minHeight: '22px' }}
         />
       </div>
@@ -389,7 +389,7 @@ function InputBar({
       {streaming ? (
         <button
           onClick={onStop}
-          className="w-9 h-9 flex-shrink-0 rounded-full bg-gray-800 flex items-center justify-center active:opacity-70"
+          className="w-9 h-9 shrink-0 rounded-full bg-gray-800 flex items-center justify-center active:opacity-70"
         >
           <div className="w-3 h-3 bg-white rounded-sm" />
         </button>
@@ -397,7 +397,7 @@ function InputBar({
         <button
           onClick={onSend}
           disabled={!value.trim()}
-          className="w-9 h-9 flex-shrink-0 rounded-full bg-blue-600 flex items-center justify-center active:opacity-70 disabled:opacity-30 disabled:cursor-not-allowed"
+          className="w-9 h-9 shrink-0 rounded-full bg-blue-600 flex items-center justify-center active:opacity-70 disabled:opacity-30 disabled:cursor-not-allowed"
         >
           <svg viewBox="0 0 24 24" fill="white" className="w-4 h-4" style={{ marginBottom: '1px' }}>
             <path d="M12 4l8 8H14v8h-4v-8H4l8-8z" />

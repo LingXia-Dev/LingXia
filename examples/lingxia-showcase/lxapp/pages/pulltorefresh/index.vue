@@ -1,11 +1,11 @@
 <template>
-  <div class="min-h-screen bg-gray-100" data-testid="pull-refresh-page">
+  <div class="min-h-screen bg-surface-100" data-testid="pull-refresh-page">
     <div class="px-4 py-6 pb-12 space-y-4">
 
       <!-- Header Info Card -->
-      <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+      <div class="bg-surface rounded-xl shadow-sm border border-line-200 overflow-hidden">
         <div class="px-4 py-5 text-center">
-          <div class="w-12 h-12 mx-auto mb-3 text-blue-500">
+          <div class="w-12 h-12 mx-auto mb-3 text-blue-500 dark:text-blue-400">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
               <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
             </svg>
@@ -18,14 +18,14 @@
       </div>
 
       <!-- Status Card -->
-      <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-        <div class="px-4 py-3 border-b border-gray-100">
+      <div class="bg-surface rounded-xl shadow-sm border border-line-200 overflow-hidden">
+        <div class="px-4 py-3 border-b border-line-100">
           <h3 class="text-base font-medium text-gray-900">Refresh Status</h3>
         </div>
         <div class="px-4 py-4 space-y-3">
           <div class="flex items-center justify-between">
             <span class="text-sm text-gray-600">Status</span>
-            <span data-testid="pull-refresh-status" :class="['text-sm font-medium', isRefreshing ? 'text-blue-600' : 'text-green-600']">
+            <span data-testid="pull-refresh-status" :class="['text-sm font-medium', isRefreshing ? 'text-blue-600 dark:text-blue-400' : 'text-green-600 dark:text-green-400']">
               {{ isRefreshing ? 'Refreshing...' : 'Idle' }}
             </span>
           </div>
@@ -41,8 +41,8 @@
       </div>
 
       <!-- API Controls -->
-      <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-        <div class="px-4 py-3 border-b border-gray-100">
+      <div class="bg-surface rounded-xl shadow-sm border border-line-200 overflow-hidden">
+        <div class="px-4 py-3 border-b border-line-100">
           <h3 class="text-base font-medium text-gray-900">API Controls</h3>
           <p class="text-sm text-gray-500 mt-1">Control refresh programmatically</p>
         </div>
@@ -53,7 +53,7 @@
             :disabled="isRefreshing"
             :class="[
               'w-full py-3 px-4 rounded-lg text-sm font-medium transition-colors',
-              isRefreshing ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-blue-500 hover:bg-blue-600 text-white'
+              isRefreshing ? 'bg-surface-100 text-gray-400 cursor-not-allowed' : 'bg-blue-500 hover:bg-blue-600 text-white'
             ]"
           >
             lx.startPullDownRefresh()
@@ -61,7 +61,7 @@
           <button
             data-testid="pull-refresh-stop"
             @click="stopRefresh"
-            class="w-full bg-gray-500 hover:bg-gray-600 text-white py-3 px-4 rounded-lg text-sm font-medium transition-colors"
+            class="w-full bg-surface-500 hover:bg-surface-600 text-white py-3 px-4 rounded-lg text-sm font-medium transition-colors"
           >
             lx.stopPullDownRefresh()
           </button>

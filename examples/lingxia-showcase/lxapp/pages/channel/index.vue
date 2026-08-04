@@ -1,9 +1,9 @@
 <template>
-  <div class="min-h-screen bg-gray-50 px-4 py-6" data-testid="channel-page">
+  <div class="min-h-screen bg-surface-50 px-4 py-6" data-testid="channel-page">
     <div class="mb-4 flex items-center gap-2">
       <div
         class="h-2 w-2 rounded-full"
-        :class="session.connected.value ? 'bg-green-500' : session.connecting.value ? 'bg-yellow-400' : 'bg-gray-300'"
+        :class="session.connected.value ? 'bg-green-500' : session.connecting.value ? 'bg-yellow-400' : 'bg-surface-300'"
       />
       <span class="text-xs text-gray-500" data-testid="channel-status">
         {{ session.connected.value ? 'Connected' : session.connecting.value ? 'Connecting...' : 'Disconnected' }}
@@ -19,13 +19,13 @@
         type="button"
         @click="switchSymbol(symbol)"
         class="rounded-full px-4 py-2 text-sm font-medium transition-colors"
-        :class="symbol === active ? 'bg-blue-600 text-white' : 'border border-gray-200 bg-white text-gray-700'"
+        :class="symbol === active ? 'bg-blue-600 text-white' : 'border border-line-200 bg-surface text-gray-700'"
       >
         {{ symbol }}
       </button>
     </div>
 
-    <div class="mb-6 rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+    <div class="mb-6 rounded-2xl border border-line-200 bg-surface p-6 shadow-sm">
       <p class="mb-1 text-xs font-medium uppercase tracking-wider text-gray-400" data-testid="channel-active">
         {{ active || '---' }}
       </p>
@@ -46,15 +46,15 @@
       </p>
     </div>
 
-    <div class="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
-      <div class="border-b border-gray-100 px-4 py-3">
+    <div class="overflow-hidden rounded-2xl border border-line-200 bg-surface shadow-sm">
+      <div class="border-b border-line-100 px-4 py-3">
         <p class="text-xs font-semibold uppercase tracking-wider text-gray-500">Recent Ticks</p>
       </div>
       <div class="max-h-64 overflow-y-auto">
         <p v-if="history.length === 0" class="px-4 py-6 text-center text-sm text-gray-400">
           Waiting for data...
         </p>
-        <div v-else class="divide-y divide-gray-50">
+        <div v-else class="divide-y divide-line-50">
           <div
             v-for="(tick, index) in reversedHistory"
             :key="`${tick.timestamp}-${index}`"
@@ -64,7 +64,7 @@
             <div class="flex items-center gap-3">
               <span
                 class="text-sm font-medium"
-                :class="tick.change > 0 ? 'text-green-600' : tick.change < 0 ? 'text-red-500' : 'text-gray-500'"
+                :class="tick.change > 0 ? 'text-green-600 dark:text-green-400' : tick.change < 0 ? 'text-red-500 dark:text-red-400' : 'text-gray-500'"
               >
                 {{ tick.change > 0 ? '+' : '' }}{{ tick.change.toFixed(2) }}
               </span>
@@ -81,7 +81,7 @@
         type="button"
         @click="session.close()"
         :disabled="!session.connected.value"
-        class="flex-1 rounded-xl bg-gray-200 py-3 text-sm font-medium text-gray-700 disabled:opacity-40"
+        class="flex-1 rounded-xl bg-surface-200 py-3 text-sm font-medium text-gray-700 disabled:opacity-40"
       >
         Disconnect
       </button>
@@ -96,7 +96,7 @@
       </button>
     </div>
 
-    <p v-if="session.error.value" class="mt-3 text-center text-xs text-red-500">
+    <p v-if="session.error.value" class="mt-3 text-center text-xs text-red-500 dark:text-red-400">
       Error: {{ session.error.value.code }}{{ session.error.value.message ? ` - ${session.error.value.message}` : '' }}
     </p>
   </div>
@@ -168,8 +168,8 @@ watch(
 const reversedHistory = computed(() => [...history.value].reverse());
 const changeColor = computed(() => {
   if (!latest.value) return 'text-gray-600';
-  if (latest.value.change > 0) return 'text-green-600';
-  if (latest.value.change < 0) return 'text-red-500';
+  if (latest.value.change > 0) return 'text-green-600 dark:text-green-400';
+  if (latest.value.change < 0) return 'text-red-500 dark:text-red-400';
   return 'text-gray-600';
 });
 const changePrefix = computed(() => (latest.value && latest.value.change > 0 ? '+' : ''));

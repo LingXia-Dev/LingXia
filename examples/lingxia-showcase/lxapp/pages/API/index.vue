@@ -1,11 +1,11 @@
 <template>
-  <div class="min-h-screen bg-gray-100 overflow-y-auto">
+  <div class="min-h-screen bg-surface-100 overflow-y-auto">
     <div class="px-3 py-2 pb-12 space-y-2">
 
       <!-- Header Card - Description -->
-      <div class="bg-white rounded-lg shadow-sm">
+      <div class="bg-surface rounded-lg shadow-sm">
         <div class="px-4 py-6 text-center">
-          <div class="w-12 h-12 mx-auto mb-3 text-blue-500">
+          <div class="w-12 h-12 mx-auto mb-3 text-blue-500 dark:text-blue-400">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
               <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
             </svg>
@@ -17,9 +17,9 @@
       </div>
 
       <!-- Cloud - Dropdown (only when the host ships the cloud provider) -->
-      <div v-if="data.cloudAvailable" class="bg-white rounded-lg shadow-sm">
+      <div v-if="data.cloudAvailable" class="bg-surface rounded-lg shadow-sm">
         <div
-          class="px-4 py-4 flex items-center justify-between cursor-pointer hover:bg-gray-50"
+          class="px-4 py-4 flex items-center justify-between cursor-pointer hover:bg-surface-50"
           @click="toggleSection({ section: 'cloud' })"
         >
           <div class="text-base text-gray-900">Cloud</div>
@@ -30,9 +30,9 @@
           </div>
         </div>
 
-        <div v-if="expandedSections.cloud" class="border-t border-gray-100 bg-gray-50">
+        <div v-if="expandedSections.cloud" class="border-t border-line-100 bg-surface-50">
           <div
-            class="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between"
+            class="px-4 py-3 hover:bg-surface-100 cursor-pointer flex items-center justify-between"
             @click="navigateToTestMiniApp"
           >
             <div class="text-sm text-gray-700">Open Other LxApp</div>
@@ -43,7 +43,7 @@
             </div>
           </div>
           <div
-            class="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between border-t border-gray-200"
+            class="px-4 py-3 hover:bg-surface-100 cursor-pointer flex items-center justify-between border-t border-line-200"
             @click="navigateToCloudPage({ type: 'auth' })"
           >
             <div class="text-sm text-gray-700">Cloud Auth Demo</div>
@@ -54,7 +54,7 @@
             </div>
           </div>
           <div
-            class="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between border-t border-gray-200"
+            class="px-4 py-3 hover:bg-surface-100 cursor-pointer flex items-center justify-between border-t border-line-200"
             @click="navigateToCloudPage({ type: 'mqtt' })"
           >
             <div class="text-sm text-gray-700">Cloud MQTT Demo</div>
@@ -65,7 +65,7 @@
             </div>
           </div>
           <div
-            class="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between border-t border-gray-200"
+            class="px-4 py-3 hover:bg-surface-100 cursor-pointer flex items-center justify-between border-t border-line-200"
             @click="navigateToCloudPage({ type: 'functions' })"
           >
             <div class="text-sm text-gray-700">Cloud Functions Demo</div>
@@ -79,9 +79,9 @@
       </div>
 
       <!-- Bridge - Dropdown -->
-      <div class="bg-white rounded-lg shadow-sm">
+      <div class="bg-surface rounded-lg shadow-sm">
         <div
-          class="px-4 py-4 flex items-center justify-between cursor-pointer hover:bg-gray-50"
+          class="px-4 py-4 flex items-center justify-between cursor-pointer hover:bg-surface-50"
           @click="toggleSection({ section: 'bridge' })"
         >
           <div class="text-base text-gray-900">Bridge</div>
@@ -92,9 +92,9 @@
           </div>
         </div>
 
-        <div v-if="expandedSections.bridge" class="border-t border-gray-100 bg-gray-50">
+        <div v-if="expandedSections.bridge" class="border-t border-line-100 bg-surface-50">
           <div
-            class="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between"
+            class="px-4 py-3 hover:bg-surface-100 cursor-pointer flex items-center justify-between"
             @click="navigateToStreamPage"
           >
             <div>
@@ -108,7 +108,7 @@
             </div>
           </div>
           <div
-            class="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between border-t border-gray-200"
+            class="px-4 py-3 hover:bg-surface-100 cursor-pointer flex items-center justify-between border-t border-line-200"
             @click="navigateToChannelPage"
           >
             <div>
@@ -125,9 +125,9 @@
       </div>
 
       <!-- Navigation - Dropdown -->
-      <div class="bg-white rounded-lg shadow-sm">
+      <div class="bg-surface rounded-lg shadow-sm">
         <div
-          class="px-4 py-4 flex items-center justify-between cursor-pointer hover:bg-gray-50"
+          class="px-4 py-4 flex items-center justify-between cursor-pointer hover:bg-surface-50"
           @click="toggleSection({ section: 'navigation' })"
         >
           <div class="text-base text-gray-900">Navigation</div>
@@ -138,9 +138,9 @@
           </div>
         </div>
 
-        <div v-if="expandedSections.navigation" class="border-t border-gray-100 bg-gray-50">
+        <div v-if="expandedSections.navigation" class="border-t border-line-100 bg-surface-50">
           <div
-            class="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between"
+            class="px-4 py-3 hover:bg-surface-100 cursor-pointer flex items-center justify-between"
             @click="openDeepSeek"
           >
             <div class="text-sm text-gray-700">Open DeepSeek</div>
@@ -151,7 +151,7 @@
             </div>
           </div>
           <div
-            class="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between border-t border-gray-200"
+            class="px-4 py-3 hover:bg-surface-100 cursor-pointer flex items-center justify-between border-t border-line-200"
             @click="navigateToSharePage"
           >
             <div>
@@ -168,9 +168,9 @@
       </div>
 
       <!-- User Interface - Dropdown -->
-      <div class="bg-white rounded-lg shadow-sm">
+      <div class="bg-surface rounded-lg shadow-sm">
         <div
-          class="px-4 py-4 flex items-center justify-between cursor-pointer hover:bg-gray-50"
+          class="px-4 py-4 flex items-center justify-between cursor-pointer hover:bg-surface-50"
           @click="toggleSection({ section: 'interface' })"
         >
           <div class="text-base text-gray-900">User Interface</div>
@@ -182,9 +182,9 @@
           </div>
         </div>
 
-        <div v-if="expandedSections.interface" class="border-t border-gray-100 bg-gray-50">
+        <div v-if="expandedSections.interface" class="border-t border-line-100 bg-surface-50">
           <div
-            class="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between"
+            class="px-4 py-3 hover:bg-surface-100 cursor-pointer flex items-center justify-between"
             @click="navigateToUIPage({ type: 'navigation' })"
           >
             <div class="text-sm text-gray-700">Page Navigation</div>
@@ -195,7 +195,7 @@
             </div>
           </div>
           <div
-            class="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between border-t border-gray-200"
+            class="px-4 py-3 hover:bg-surface-100 cursor-pointer flex items-center justify-between border-t border-line-200"
             @click="navigateToUIPage({ type: 'toast' })"
           >
             <div class="text-sm text-gray-700">Toast</div>
@@ -206,7 +206,7 @@
             </div>
           </div>
           <div
-            class="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between border-t border-gray-200"
+            class="px-4 py-3 hover:bg-surface-100 cursor-pointer flex items-center justify-between border-t border-line-200"
             @click="navigateToUIPage({ type: 'modal' })"
           >
             <div class="text-sm text-gray-700">Modal</div>
@@ -217,7 +217,7 @@
             </div>
           </div>
           <div
-            class="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between border-t border-gray-200"
+            class="px-4 py-3 hover:bg-surface-100 cursor-pointer flex items-center justify-between border-t border-line-200"
             @click="navigateToUIPage({ type: 'navbar' })"
           >
             <div class="text-sm text-gray-700">NavigationBar</div>
@@ -228,7 +228,7 @@
             </div>
           </div>
           <div
-            class="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between border-t border-gray-200"
+            class="px-4 py-3 hover:bg-surface-100 cursor-pointer flex items-center justify-between border-t border-line-200"
             @click="navigateToUIPage({ type: 'tabbar' })"
           >
             <div class="text-sm text-gray-700">TabBar</div>
@@ -239,7 +239,7 @@
             </div>
           </div>
           <div
-            class="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between border-t border-gray-200"
+            class="px-4 py-3 hover:bg-surface-100 cursor-pointer flex items-center justify-between border-t border-line-200"
             @click="navigateToUIPage({ type: 'appearance' })"
           >
             <div class="text-sm text-gray-700">Appearance</div>
@@ -250,7 +250,7 @@
             </div>
           </div>
           <div
-            class="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between border-t border-gray-200"
+            class="px-4 py-3 hover:bg-surface-100 cursor-pointer flex items-center justify-between border-t border-line-200"
             @click="navigateToUIPage({ type: 'actionsheet' })"
           >
             <div class="text-sm text-gray-700">Action Sheet</div>
@@ -261,7 +261,7 @@
             </div>
           </div>
           <div
-            class="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between border-t border-gray-200"
+            class="px-4 py-3 hover:bg-surface-100 cursor-pointer flex items-center justify-between border-t border-line-200"
             @click="navigateToUIPage({ type: 'surface' })"
           >
             <div class="text-sm text-gray-700">Surface</div>
@@ -272,7 +272,7 @@
             </div>
           </div>
           <div
-            class="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between border-t border-gray-200"
+            class="px-4 py-3 hover:bg-surface-100 cursor-pointer flex items-center justify-between border-t border-line-200"
             @click="navigateToPullDownRefreshPage"
           >
             <div class="text-sm text-gray-700">Pull Down Refresh</div>
@@ -286,9 +286,9 @@
       </div>
 
       <!-- System - Dropdown -->
-      <div class="bg-white rounded-lg shadow-sm">
+      <div class="bg-surface rounded-lg shadow-sm">
         <div
-          class="px-4 py-4 flex items-center justify-between cursor-pointer hover:bg-gray-50"
+          class="px-4 py-4 flex items-center justify-between cursor-pointer hover:bg-surface-50"
           @click="toggleSection({ section: 'system' })"
         >
           <div class="text-base text-gray-900">System</div>
@@ -299,9 +299,9 @@
           </div>
         </div>
 
-        <div v-if="expandedSections.system" class="border-t border-gray-100 bg-gray-50">
+        <div v-if="expandedSections.system" class="border-t border-line-100 bg-surface-50">
           <div
-            class="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between"
+            class="px-4 py-3 hover:bg-surface-100 cursor-pointer flex items-center justify-between"
             @click="navigateToSystemPage({ type: 'appBaseInfo' })"
           >
             <div class="text-sm text-gray-700">App Base Info</div>
@@ -312,7 +312,7 @@
             </div>
           </div>
           <div
-            class="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between border-t border-gray-200"
+            class="px-4 py-3 hover:bg-surface-100 cursor-pointer flex items-center justify-between border-t border-line-200"
             @click="navigateToSystemPage({ type: 'systemSetting' })"
           >
             <div class="text-sm text-gray-700">System Setting</div>
@@ -323,7 +323,7 @@
             </div>
           </div>
           <div
-            class="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between border-t border-gray-200"
+            class="px-4 py-3 hover:bg-surface-100 cursor-pointer flex items-center justify-between border-t border-line-200"
             @click="navigateToSystemPage({ type: 'autostart' })"
           >
             <div>
@@ -337,7 +337,7 @@
             </div>
           </div>
           <div
-            class="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between border-t border-gray-200"
+            class="px-4 py-3 hover:bg-surface-100 cursor-pointer flex items-center justify-between border-t border-line-200"
             @click="exitApp"
           >
             <div>
@@ -356,10 +356,10 @@
       </div>
 
       <!-- Device - Dropdown -->
-      <div class="bg-white rounded-lg shadow-sm">
+      <div class="bg-surface rounded-lg shadow-sm">
         <div
           data-testid="api-device-section"
-          class="px-4 py-4 flex items-center justify-between cursor-pointer hover:bg-gray-50"
+          class="px-4 py-4 flex items-center justify-between cursor-pointer hover:bg-surface-50"
           @click="toggleSection({ section: 'device' })"
         >
           <div class="text-base text-gray-900">Device</div>
@@ -371,9 +371,9 @@
           </div>
         </div>
 
-        <div v-if="expandedSections.device" class="border-t border-gray-100 bg-gray-50">
+        <div v-if="expandedSections.device" class="border-t border-line-100 bg-surface-50">
           <div
-            class="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between"
+            class="px-4 py-3 hover:bg-surface-100 cursor-pointer flex items-center justify-between"
             @click="navigateToDevicePage({ type: 'device' })"
           >
             <div class="text-sm text-gray-700">Device Info</div>
@@ -384,7 +384,7 @@
             </div>
           </div>
           <div
-            class="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between border-t border-gray-200"
+            class="px-4 py-3 hover:bg-surface-100 cursor-pointer flex items-center justify-between border-t border-line-200"
             @click="navigateToDevicePage({ type: 'screen' })"
           >
             <div class="text-sm text-gray-700">Screen Info</div>
@@ -395,7 +395,7 @@
             </div>
           </div>
           <div
-            class="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between border-t border-gray-200"
+            class="px-4 py-3 hover:bg-surface-100 cursor-pointer flex items-center justify-between border-t border-line-200"
             @click="navigateToDevicePage({ type: 'vibrate' })"
           >
             <div class="text-sm text-gray-700">Vibration</div>
@@ -406,7 +406,7 @@
             </div>
           </div>
           <div
-            class="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between border-t border-gray-200"
+            class="px-4 py-3 hover:bg-surface-100 cursor-pointer flex items-center justify-between border-t border-line-200"
             @click="navigateToDevicePage({ type: 'dial' })"
           >
             <div class="text-sm text-gray-700">Phone Call</div>
@@ -417,7 +417,7 @@
             </div>
           </div>
           <div
-            class="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between border-t border-gray-200"
+            class="px-4 py-3 hover:bg-surface-100 cursor-pointer flex items-center justify-between border-t border-line-200"
             @click="navigateToDevicePage({ type: 'orientation' })"
           >
             <div class="text-sm text-gray-700">Device Orientation</div>
@@ -428,7 +428,7 @@
             </div>
           </div>
           <div
-            class="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between border-t border-gray-200"
+            class="px-4 py-3 hover:bg-surface-100 cursor-pointer flex items-center justify-between border-t border-line-200"
             @click="navigateToDevicePage({ type: 'networkType' })"
           >
             <div class="text-sm text-gray-700">Network Type</div>
@@ -439,7 +439,7 @@
             </div>
           </div>
           <div
-            class="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between border-t border-gray-200"
+            class="px-4 py-3 hover:bg-surface-100 cursor-pointer flex items-center justify-between border-t border-line-200"
             @click="navigateToDevicePage({ type: 'localIP' })"
           >
             <div class="text-sm text-gray-700">Local IP Address</div>
@@ -450,7 +450,7 @@
             </div>
           </div>
           <div
-            class="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between border-t border-gray-200"
+            class="px-4 py-3 hover:bg-surface-100 cursor-pointer flex items-center justify-between border-t border-line-200"
             @click="navigateToDevicePage({ type: 'networkStatus' })"
           >
             <div class="text-sm text-gray-700">Network Status Listener</div>
@@ -461,7 +461,7 @@
             </div>
           </div>
           <div
-            class="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between border-t border-gray-200"
+            class="px-4 py-3 hover:bg-surface-100 cursor-pointer flex items-center justify-between border-t border-line-200"
             @click="navigateToWifiPage"
           >
             <div class="text-sm text-gray-700">WiFi</div>
@@ -475,9 +475,9 @@
       </div>
 
       <!-- Media - Dropdown -->
-      <div class="bg-white rounded-lg shadow-sm">
+      <div class="bg-surface rounded-lg shadow-sm">
         <div
-          class="px-4 py-4 flex items-center justify-between cursor-pointer hover:bg-gray-50"
+          class="px-4 py-4 flex items-center justify-between cursor-pointer hover:bg-surface-50"
           @click="toggleSection({ section: 'media' })"
         >
           <div class="text-base text-gray-900">Media & Camera</div>
@@ -488,9 +488,9 @@
           </div>
         </div>
 
-        <div v-if="expandedSections.media" class="border-t border-gray-100 bg-gray-50">
+        <div v-if="expandedSections.media" class="border-t border-line-100 bg-surface-50">
           <div
-            class="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between"
+            class="px-4 py-3 hover:bg-surface-100 cursor-pointer flex items-center justify-between"
             @click="navigateToMediaPage({ type: 'Pictures' })"
           >
             <div class="text-sm text-gray-700">Pictures</div>
@@ -501,7 +501,7 @@
             </div>
           </div>
           <div
-            class="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between border-t border-gray-200"
+            class="px-4 py-3 hover:bg-surface-100 cursor-pointer flex items-center justify-between border-t border-line-200"
             @click="navigateToMediaPage({ type: 'Videos' })"
           >
             <div class="text-sm text-gray-700">Videos</div>
@@ -512,7 +512,7 @@
             </div>
           </div>
           <div
-            class="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between border-t border-gray-200"
+            class="px-4 py-3 hover:bg-surface-100 cursor-pointer flex items-center justify-between border-t border-line-200"
             @click="navigateToMediaPage({ type: 'scanCode' })"
           >
             <div class="text-sm text-gray-700">ScanCode</div>
@@ -523,7 +523,7 @@
             </div>
           </div>
           <div
-            class="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between border-t border-gray-200"
+            class="px-4 py-3 hover:bg-surface-100 cursor-pointer flex items-center justify-between border-t border-line-200"
             @click="navigateToMediaPage({ type: 'imageInfo' })"
           >
             <div class="text-sm text-gray-700">Image Tools</div>
@@ -534,7 +534,7 @@
             </div>
           </div>
           <div
-            class="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between border-t border-gray-200"
+            class="px-4 py-3 hover:bg-surface-100 cursor-pointer flex items-center justify-between border-t border-line-200"
             @click="navigateToMediaPage({ type: 'videoTools' })"
           >
             <div class="text-sm text-gray-700">Video Tools</div>
@@ -545,7 +545,7 @@
             </div>
           </div>
           <div
-            class="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between border-t border-gray-200"
+            class="px-4 py-3 hover:bg-surface-100 cursor-pointer flex items-center justify-between border-t border-line-200"
             @click="navigateToMediaPage({ type: 'saveToAlbum' })"
           >
             <div class="text-sm text-gray-700">Save to Album</div>
@@ -559,9 +559,9 @@
       </div>
 
       <!-- File - Dropdown -->
-      <div class="bg-white rounded-lg shadow-sm">
+      <div class="bg-surface rounded-lg shadow-sm">
         <div
-          class="px-4 py-4 flex items-center justify-between cursor-pointer hover:bg-gray-50"
+          class="px-4 py-4 flex items-center justify-between cursor-pointer hover:bg-surface-50"
           @click="toggleSection({ section: 'file' })"
         >
           <div class="text-base text-gray-900">File</div>
@@ -572,9 +572,9 @@
             </svg>
           </div>
         </div>
-        <div v-if="expandedSections.file" class="border-t border-gray-100 bg-gray-50">
+        <div v-if="expandedSections.file" class="border-t border-line-100 bg-surface-50">
           <div
-            class="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between"
+            class="px-4 py-3 hover:bg-surface-100 cursor-pointer flex items-center justify-between"
             @click="navigateToOpenFilePage"
           >
             <div class="text-sm text-gray-700">Open File</div>
@@ -585,7 +585,7 @@
             </div>
           </div>
           <div
-            class="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between border-t border-gray-200"
+            class="px-4 py-3 hover:bg-surface-100 cursor-pointer flex items-center justify-between border-t border-line-200"
             @click="navigateToChooseFilePage"
           >
             <div class="text-sm text-gray-700">Choose File</div>
@@ -599,9 +599,9 @@
       </div>
 
       <!-- Location - Clickable -->
-      <div class="bg-white rounded-lg shadow-sm">
+      <div class="bg-surface rounded-lg shadow-sm">
         <div
-          class="px-4 py-4 flex items-center justify-between cursor-pointer hover:bg-gray-50"
+          class="px-4 py-4 flex items-center justify-between cursor-pointer hover:bg-surface-50"
           @click="navigateToLocationPage"
         >
           <div class="text-base text-gray-900">Location</div>

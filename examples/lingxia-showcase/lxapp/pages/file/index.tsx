@@ -85,10 +85,10 @@ export default function FilePage() {
     : 'Fetch and Open File';
 
   return (
-    <div className="min-h-screen bg-gray-100">
+    <div className="min-h-screen bg-surface-100">
       <div className="px-3 pt-6 pb-12 space-y-3">
-        <div className="bg-white rounded-lg shadow-sm">
-          <div className="px-4 py-3 border-b border-gray-100">
+        <div className="bg-surface rounded-lg shadow-sm">
+          <div className="px-4 py-3 border-b border-line-100">
             <div className="text-base text-gray-900 font-medium">Options</div>
           </div>
           <div className="px-4 py-3">
@@ -97,7 +97,7 @@ export default function FilePage() {
                 type="checkbox"
                 checked={showMenu}
                 onChange={() => toggleShowMenu()}
-                className="w-5 h-5 text-blue-500 border-gray-300 rounded focus:ring-2 focus:ring-blue-500 mt-0.5"
+                className="w-5 h-5 text-blue-500 dark:text-blue-400 border-line-300 rounded focus:ring-2 focus:ring-blue-500 mt-0.5"
               />
               <div className="ml-3 flex-1">
                 <div className="text-sm text-gray-900 font-medium">Show Share Button</div>
@@ -111,8 +111,8 @@ export default function FilePage() {
 
         {activeDemo === 'openFile' ? (
           <>
-            <div className="bg-white rounded-lg shadow-sm">
-              <div className="px-4 py-4 border-b border-gray-100">
+            <div className="bg-surface rounded-lg shadow-sm">
+              <div className="px-4 py-4 border-b border-line-100">
                 <div className="text-base text-gray-900 font-medium">PDF via lx.downloadFile()</div>
                 <div className="text-xs text-gray-500 mt-1">Download to a temporary file with progress and pause/continue, then open with the native PDF viewer.</div>
               </div>
@@ -124,7 +124,7 @@ export default function FilePage() {
                     value={pdfUrl}
                     onChange={(e) => onPdfUrlInput({ detail: { value: e.target.value } })}
                     placeholder="Enter PDF URL"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 border border-line-300 rounded-lg text-sm focus:outline-hidden focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
                 <button
@@ -132,7 +132,7 @@ export default function FilePage() {
                   disabled={isPdfDownloading}
                   className={`w-full py-3 rounded-lg text-white font-medium ${
                     isPdfDownloading
-                      ? 'bg-gray-400 cursor-not-allowed'
+                      ? 'bg-surface-400 cursor-not-allowed'
                       : 'bg-blue-500 hover:bg-blue-600 active:bg-blue-700'
                   }`}
                 >
@@ -140,7 +140,7 @@ export default function FilePage() {
                 </button>
                 {showPdfProgress ? (
                   <div className="rounded-xl border border-blue-100 bg-blue-50/70 p-3">
-                    <div className="flex items-center justify-between text-xs text-blue-700">
+                    <div className="flex items-center justify-between text-xs text-blue-700 dark:text-blue-400">
                       <span>PDF Transfer</span>
                       <span>{pdfProgressKnown ? `${Math.round(pdfDownloadProgress)}%` : 'Streaming'}</span>
                     </div>
@@ -152,19 +152,19 @@ export default function FilePage() {
                         />
                       </div>
                     ) : (
-                      <div className="mt-2 flex items-center gap-2 text-[11px] text-blue-700">
+                      <div className="mt-2 flex items-center gap-2 text-[11px] text-blue-700 dark:text-blue-400">
                         <span className="inline-flex h-2.5 w-2.5 rounded-full bg-blue-500 animate-pulse" />
                         <span>Waiting for precise progress from runtime…</span>
                       </div>
                     )}
-                    <div className="mt-2 text-xs text-blue-900">{pdfProgressText}</div>
+                    <div className="mt-2 text-xs text-blue-900 dark:text-blue-400">{pdfProgressText}</div>
                     <button
                       onClick={togglePdfTransfer}
                       disabled={!canTogglePdfTransfer}
                       className={`mt-3 w-full rounded-lg py-2 text-sm font-medium ${
                         canTogglePdfTransfer
                           ? 'bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800'
-                          : 'bg-blue-100 text-blue-300 cursor-not-allowed'
+                          : 'bg-blue-100 text-blue-400 cursor-not-allowed'
                       }`}
                     >
                       {pdfTransferButtonText}
@@ -174,8 +174,8 @@ export default function FilePage() {
               </div>
             </div>
 
-            <div className="bg-white rounded-lg shadow-sm">
-              <div className="px-4 py-4 border-b border-gray-100">
+            <div className="bg-surface rounded-lg shadow-sm">
+              <div className="px-4 py-4 border-b border-line-100">
                 <div className="text-base text-gray-900 font-medium">Office via fetch()</div>
                 <div className="text-xs text-gray-500 mt-1">Use web-standard fetch in page logic, save into usercache, then open with the native file API.</div>
               </div>
@@ -187,7 +187,7 @@ export default function FilePage() {
                     value={officeUrl}
                     onChange={(e) => onOfficeUrlInput({ detail: { value: e.target.value } })}
                     placeholder="Enter file URL"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 border border-line-300 rounded-lg text-sm focus:outline-hidden focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
                 <div>
@@ -197,7 +197,7 @@ export default function FilePage() {
                     value={officeFileType}
                     onChange={(e) => onOfficeFileTypeInput({ detail: { value: e.target.value } })}
                     placeholder="e.g., docx, xlsx, pptx"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 border border-line-300 rounded-lg text-sm focus:outline-hidden focus:ring-2 focus:ring-blue-500"
                   />
                   <div className="text-xs text-gray-500 mt-1">Auto-detected from URL or enter manually</div>
                 </div>
@@ -206,14 +206,14 @@ export default function FilePage() {
                   disabled={isOfficeFetching}
                   className={`w-full py-3 rounded-lg text-white font-medium ${
                     isOfficeFetching
-                      ? 'bg-gray-400 cursor-not-allowed'
+                      ? 'bg-surface-400 cursor-not-allowed'
                       : 'bg-blue-500 hover:bg-blue-600 active:bg-blue-700'
                   }`}
                 >
                   {officePrimaryButtonText}
                 </button>
                 {officeStatusText ? (
-                  <div className="rounded-xl border border-blue-100 bg-blue-50/70 p-3 text-xs text-blue-900">
+                  <div className="rounded-xl border border-blue-100 bg-blue-50/70 p-3 text-xs text-blue-900 dark:text-blue-400">
                     {officeStatusText}
                   </div>
                 ) : null}
@@ -221,14 +221,14 @@ export default function FilePage() {
             </div>
           </>
         ) : (
-          <div className="bg-white rounded-lg shadow-sm">
-            <div className="px-4 py-4 border-b border-gray-100">
+          <div className="bg-surface rounded-lg shadow-sm">
+            <div className="px-4 py-4 border-b border-line-100">
               <div className="text-base text-gray-900 font-medium">Choose File</div>
               <div className="text-xs text-gray-500 mt-1">Open the host chooser in a predefined folder instead of the system recent-files picker.</div>
             </div>
             <div className="px-4 py-4 space-y-3">
               <div className="text-sm text-gray-600">Default folder:</div>
-              <div className="rounded-lg bg-gray-50 border border-gray-200 px-3 py-2 text-xs text-gray-700 break-all">
+              <div className="rounded-lg bg-surface-50 border border-line-200 px-3 py-2 text-xs text-gray-700 break-all">
                 {chooseFileDefaultPath}
               </div>
               <button
@@ -237,7 +237,7 @@ export default function FilePage() {
               >
                 Open File Chooser
               </button>
-              <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 space-y-2">
+              <div className="rounded-xl border border-line-200 bg-surface-50 p-3 space-y-2">
                 <div className="text-xs text-gray-500">Status</div>
                 <div className="text-sm text-gray-900">{chooseFileStatusText}</div>
                 <div className="text-xs text-gray-500">Selected Path</div>
@@ -250,8 +250,8 @@ export default function FilePage() {
                 disabled={!chooseFileSelectedPath}
                 className={`w-full py-3 rounded-lg text-white font-medium ${
                   chooseFileSelectedPath
-                    ? 'bg-gray-900 hover:bg-black active:bg-gray-800'
-                    : 'bg-gray-400 cursor-not-allowed'
+                    ? 'bg-surface-900 hover:bg-black active:bg-surface-800'
+                    : 'bg-surface-400 cursor-not-allowed'
                 }`}
               >
                 Open Selected File

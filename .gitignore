@@ -28,3 +28,4 @@ lingxia-sdk/harmony/oh-package-lock.json5
 
 # lxdev test artifact output
 test-results/
+*.tsbuildinfo
