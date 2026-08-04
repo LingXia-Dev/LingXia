@@ -7,6 +7,7 @@
 mod alacritty_vt;
 mod links;
 mod osc;
+mod paste;
 #[cfg(windows)]
 mod process_windows;
 mod restore;
@@ -21,6 +22,7 @@ pub use alacritty_vt::{
     CommandBlock, TerminalEvent, TerminalEventBatch, TerminalEventKind, TerminalProgressState,
 };
 pub use links::{DetectedLink, LinkSource as TerminalLinkSource};
+pub use paste::{PasteRisk as TerminalPasteRisk, classify_paste, classify_paste_json};
 use portable_pty::{Child, CommandBuilder, MasterPty, PtySize, native_pty_system};
 pub use restore::{
     DEFAULT_RESTORE_SCROLLBACK_LIMIT, TERMINAL_RESTORE_VERSION, TerminalRestoreError,
