@@ -17,6 +17,7 @@ use std::time::Instant;
 
 use alacritty_terminal::event::{Event, EventListener, WindowSize};
 use alacritty_terminal::grid::{Dimensions, Scroll};
+use alacritty_terminal::index::{Column, Line};
 use alacritty_terminal::term::cell::Flags;
 use alacritty_terminal::term::{ClipboardType, Config, Term, TermMode};
 use alacritty_terminal::vte::ansi::{
@@ -26,6 +27,7 @@ use parking_lot::Mutex;
 use serde::Serialize;
 
 use crate::osc::{OscProgress, OscSemantic, OscTap, parse_osc};
+use crate::search::SearchRow;
 
 // Attr bits packed into `Cell.attrs`. Kept in sync with the HLSL
 // pixel shader's interpretation (bit 0 = bold, 1 = italic, 2 =
@@ -545,6 +547,63 @@ impl VtScreen {
     /// Completed command blocks plus the open one, oldest first.
     pub fn command_blocks(&self) -> Vec<CommandBlock> {
         self.inner.lock().blocks.blocks()
+    }
+
+    /// Copy the full scrollback + screen text for searching/export.
+    ///
+    /// Cell columns and wide-char widths are preserved per character so
+    /// offsets map back to highlightable cell ranges; absolute lines
+    /// count from the oldest scrollback line.
+    pub fn grid_text(&self) -> Vec<SearchRow> {
+        let inner = self.inner.lock();
+        let grid = inner.term.grid();
+        let history = grid.history_size() as i64;
+        let screen_lines = grid.screen_lines() as i64;
+        let mut rows = Vec::with_capacity((history + screen_lines).max(0) as usize);
+        for offset in -history..screen_lines {
+            let row = &grid[Line(offset as i32)];
+            let columns = row.len();
+            let mut text = String::new();
+            let mut cells: Vec<(u16, u8)> = Vec::new();
+            let mut occupied = 0_usize;
+            for col in 0..columns {
+                let cell = &row[Column(col)];
+                if cell
+                    .flags
+                    .intersects(Flags::WIDE_CHAR_SPACER | Flags::LEADING_WIDE_CHAR_SPACER)
+                {
+                    continue;
+                }
+                let width = if cell.flags.contains(Flags::WIDE_CHAR) {
+                    2
+                } else {
+                    1
+                };
+                text.push(cell.c);
+                cells.push((col as u16, width));
+                if let Some(zerowidth) = cell.zerowidth() {
+                    for ch in zerowidth {
+                        text.push(*ch);
+                        cells.push((col as u16, width));
+                    }
+                }
+                let non_blank =
+                    cell.c != ' ' || cell.zerowidth().is_some_and(|extra| !extra.is_empty());
+                if non_blank {
+                    occupied = text.chars().count();
+                }
+            }
+            let text: String = text.chars().take(occupied).collect();
+            cells.truncate(occupied);
+            let wraps = columns > 0 && row[Column(columns - 1)].flags.contains(Flags::WRAPLINE);
+            rows.push(SearchRow {
+                line: history + offset,
+                text,
+                cells,
+                wraps,
+            });
+        }
+        rows
     }
 
     pub fn resize(

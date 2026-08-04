@@ -8,6 +8,7 @@ mod alacritty_vt;
 mod osc;
 #[cfg(windows)]
 mod process_windows;
+mod search;
 mod shell_integration;
 
 use alacritty_vt::{
@@ -18,13 +19,17 @@ pub use alacritty_vt::{
     CommandBlock, TerminalEvent, TerminalEventBatch, TerminalEventKind, TerminalProgressState,
 };
 use portable_pty::{Child, CommandBuilder, MasterPty, PtySize, native_pty_system};
+pub use search::{
+    SearchMatch as TerminalSearchMatch, SearchMode as TerminalSearchMode,
+    SearchResults as TerminalSearchResults,
+};
 use serde::Serialize;
 use std::collections::{HashMap, VecDeque};
 #[cfg(any(target_os = "macos", target_os = "ios"))]
 use std::ffi::CStr;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, TrySendError};
 use std::sync::{Arc, Condvar, LazyLock, Mutex, OnceLock};
 use std::thread;
@@ -253,6 +258,60 @@ pub fn terminal_command_blocks_data(id: u64) -> Option<Vec<CommandBlock>> {
     Some(session.vt.command_blocks())
 }
 
+/// Search the complete logical scrollback as JSON.
+///
+/// `mode` is `"plain"` (case-insensitive), `"case"`, or `"regex"`.
+/// Match ranges are absolute (line, cell column) coordinates. The grid
+/// is copied under a short session lock and matching happens after it
+/// is released, so search never stalls PTY processing or other
+/// sessions.
+pub fn terminal_search(id: u64, pattern: &str, mode: &str, max_matches: usize) -> String {
+    let mode = match mode {
+        "case" => TerminalSearchMode::CaseSensitive,
+        "regex" => TerminalSearchMode::Regex,
+        _ => TerminalSearchMode::Plain,
+    };
+    terminal_search_data(id, pattern, mode, max_matches)
+        .map(|results| serde_json::to_string(&results).unwrap_or_else(|_| "{}".to_string()))
+        .unwrap_or_else(|| "{}".to_string())
+}
+
+/// Structured variant of [`terminal_search`].
+pub fn terminal_search_data(
+    id: u64,
+    pattern: &str,
+    mode: TerminalSearchMode,
+    max_matches: usize,
+) -> Option<TerminalSearchResults> {
+    let session = session(id)?;
+    let (rows, cancel) = {
+        let mut session = session.lock().ok()?;
+        let bytes = session.drain_bytes();
+        if !bytes.is_empty() {
+            session.vt.feed(&bytes);
+        }
+        session.search_cancel.store(false, Ordering::Relaxed);
+        (session.vt.grid_text(), Arc::clone(&session.search_cancel))
+    };
+    Some(search::search_rows(
+        &rows,
+        pattern,
+        mode,
+        max_matches.max(1),
+        &cancel,
+    ))
+}
+
+/// Cancel a running search on the session; the search returns promptly
+/// with `cancelled: true` and the matches gathered so far.
+pub fn terminal_search_cancel(id: u64) {
+    if let Some(session) = session(id)
+        && let Ok(session) = session.lock()
+    {
+        session.search_cancel.store(true, Ordering::Relaxed);
+    }
+}
+
 pub fn terminal_exited(id: u64) -> bool {
     let Some(session) = session(id) else {
         return true;
@@ -360,6 +419,7 @@ struct TerminalSession {
     vt: VtScreen,
     title_state: TerminalTitleState,
     exit_event_sent: bool,
+    search_cancel: Arc<AtomicBool>,
     _reader: thread::JoinHandle<()>,
     _writer: thread::JoinHandle<()>,
 }
@@ -724,6 +784,7 @@ impl TerminalSession {
             vt,
             title_state,
             exit_event_sent: false,
+            search_cancel: Arc::new(AtomicBool::new(false)),
             _reader: reader_thread,
             _writer: writer_thread,
         })
@@ -1747,6 +1808,47 @@ mod tests {
                 .any(|kind| matches!(kind, TerminalEventKind::Exited { exit_code: Some(7) })),
             "exit event surfaced: {events:?}"
         );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn session_search_finds_matches_across_scrollback() {
+        let id = terminal_create_with_spec(
+            40,
+            4,
+            TerminalSessionSpec {
+                program: Some("/bin/sh".to_string()),
+                args: Some(vec![
+                    "-c".to_string(),
+                    "i=0; while [ $i -lt 30 ]; do echo \"row $i needle here\"; i=$((i+1)); done; sleep 30".to_string(),
+                ]),
+                scrollback_limit: Some(100),
+                ..TerminalSessionSpec::default()
+            },
+        );
+        assert_ne!(id, 0);
+
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let mut results = None;
+        while Instant::now() < deadline {
+            let found = terminal_search_data(id, "needle", TerminalSearchMode::Plain, 100);
+            if found.as_ref().is_some_and(|r| r.total >= 30) {
+                results = found;
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(25));
+        }
+        let results = results.expect("all 30 rows searchable");
+        assert_eq!(results.total, 30);
+        // Matches span scrollback and screen: first rows scrolled out
+        // of the 4-row viewport but stay searchable.
+        let lines: Vec<i64> = results.matches.iter().map(|m| m.start_line).collect();
+        assert_eq!(lines.first(), Some(&0));
+        assert_eq!(lines.last(), Some(&29));
+        let regex = terminal_search_data(id, r"row 1\d", TerminalSearchMode::Regex, 100)
+            .expect("regex search");
+        assert_eq!(regex.total, 10, "rows 10-19: {regex:?}");
+        terminal_close(id);
     }
 
     #[test]
