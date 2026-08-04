@@ -6,6 +6,7 @@ mod capsule;
 mod modal;
 mod more_actions;
 mod navbar;
+mod page_chrome_patch;
 mod pull_to_refresh;
 mod router;
 mod shell;

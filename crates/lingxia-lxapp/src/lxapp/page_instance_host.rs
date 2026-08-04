@@ -441,7 +441,7 @@ impl LxApp {
             "PageInstance disposed while waiting for view response",
         );
 
-        if let Ok(state) = self.state.lock() {
+        if let Ok(mut state) = self.state.lock() {
             let mut pages = state.pages.lock().unwrap();
             let canonical_instance_id = pages
                 .get(&path)
@@ -464,6 +464,8 @@ impl LxApp {
                     .unwrap()
                     .retain(|stack_path| stack_path != &path);
             }
+            drop(pages);
+            state.page_chrome_layouts.remove(id.as_str());
         }
 
         destroy_webview(&page.webtag());

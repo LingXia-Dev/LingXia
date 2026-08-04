@@ -1,4 +1,4 @@
-use super::page_chrome::{PageChromeColor, VisibilityPreference};
+use super::page_chrome::{PageChromeColor, PatchField, ValuePatchField, VisibilityPreference};
 use lingxia_app_context::ThemeStyle;
 use serde::{Deserialize, Serialize};
 
@@ -48,11 +48,106 @@ pub struct NavigationBarConfig {
     pub style: NavigationBarStyle,
 }
 
+#[derive(Debug, Clone, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NavigationBarStylePatch {
+    #[serde(default)]
+    pub background_color: PatchField<PageChromeColor>,
+    #[serde(default)]
+    pub foreground_color: PatchField<PageChromeColor>,
+    #[serde(default)]
+    pub divider_color: PatchField<PageChromeColor>,
+}
+
+impl NavigationBarStylePatch {
+    fn apply(&self, style: &mut NavigationBarStyle) -> Result<(), String> {
+        for (path, field) in [
+            (
+                "navigationBar.style.backgroundColor",
+                &self.background_color,
+            ),
+            (
+                "navigationBar.style.foregroundColor",
+                &self.foreground_color,
+            ),
+        ] {
+            if let PatchField::Value(color) = field
+                && !color.is_opaque()
+            {
+                return Err(format!("{path}: expected opaque #RRGGBB"));
+            }
+        }
+        apply_color_patch(&self.background_color, &mut style.background_color);
+        apply_color_patch(&self.foreground_color, &mut style.foreground_color);
+        apply_color_patch(&self.divider_color, &mut style.divider_color);
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NavigationBarPatch {
+    #[serde(default)]
+    pub title: PatchField<String>,
+    #[serde(default)]
+    pub home_button: ValuePatchField<VisibilityPreference>,
+    #[serde(default)]
+    pub style: PatchField<NavigationBarStylePatch>,
+}
+
+impl NavigationBarPatch {
+    pub fn apply(&self, state: &mut NavigationBarState) -> Result<(), String> {
+        match &self.title {
+            PatchField::Missing => {}
+            PatchField::Null => state.set_runtime_title(None),
+            PatchField::Value(title) => state.set_runtime_title(Some(title.clone())),
+        }
+        if let ValuePatchField::Value(home_button) = self.home_button {
+            state.set_home_button_preference(home_button);
+        }
+        match &self.style {
+            PatchField::Missing => {}
+            PatchField::Null => state.clear_runtime_style(),
+            PatchField::Value(style) => style.apply(&mut state.runtime_style)?,
+        }
+        Ok(())
+    }
+
+    pub fn apply_transactionally(&self, state: &mut NavigationBarState) -> Result<bool, String> {
+        let mut candidate = state.clone();
+        self.apply(&mut candidate)?;
+        let changed = candidate != *state;
+        if changed {
+            state.restore_patchable_from(&candidate);
+        }
+        Ok(changed)
+    }
+}
+
+fn apply_color_patch(field: &PatchField<PageChromeColor>, target: &mut Option<PageChromeColor>) {
+    match field {
+        PatchField::Missing => {}
+        PatchField::Null => *target = None,
+        PatchField::Value(color) => *target = Some(*color),
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ResolvedNavigationBarStyle {
     pub background_color: PageChromeColor,
     pub foreground_color: PageChromeColor,
     pub divider_color: PageChromeColor,
+}
+
+impl ResolvedNavigationBarStyle {
+    pub const fn foreground_text_style(self) -> &'static str {
+        let rgb = self.foreground_color.rgba() >> 8;
+        if ((rgb >> 16) & 0xff) + ((rgb >> 8) & 0xff) + (rgb & 0xff) < 384 {
+            "black"
+        } else {
+            "white"
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -191,6 +286,90 @@ impl NavigationBarState {
 
     pub fn clear_runtime_style(&mut self) {
         self.runtime_style = NavigationBarStyle::default();
+    }
+
+    pub(crate) fn restore_patchable_from(&mut self, original: &Self) {
+        self.runtime_title.clone_from(&original.runtime_title);
+        self.runtime_style = original.runtime_style;
+        self.home_button = original.home_button;
+    }
+}
+
+#[cfg(test)]
+mod patch_tests {
+    use super::*;
+
+    #[test]
+    fn patch_rejects_unknown_fields_and_preserves_null_tristate() {
+        let error =
+            serde_json::from_value::<NavigationBarPatch>(serde_json::json!({"unknown": true}))
+                .unwrap_err();
+        assert!(error.to_string().contains("unknown field"));
+
+        let patch: NavigationBarPatch = serde_json::from_value(serde_json::json!({
+            "title": null,
+            "style": {"dividerColor": null}
+        }))
+        .unwrap();
+        assert_eq!(patch.title, PatchField::Null);
+        assert!(matches!(
+            patch.style,
+            PatchField::Value(NavigationBarStylePatch {
+                divider_color: PatchField::Null,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn style_patch_rejects_translucent_opaque_fields() {
+        let patch: NavigationBarPatch = serde_json::from_value(serde_json::json!({
+            "style": {"backgroundColor": "#FFFFFF80"}
+        }))
+        .unwrap();
+        let error = patch.apply(&mut NavigationBarState::default()).unwrap_err();
+        assert!(error.contains("navigationBar.style.backgroundColor"));
+    }
+
+    #[test]
+    fn validation_failure_does_not_apply_earlier_patch_fields() {
+        let mut state = NavigationBarState::default();
+        let patch: NavigationBarPatch = serde_json::from_value(serde_json::json!({
+            "title": "Changed",
+            "style": {"backgroundColor": "#FFFFFF80"}
+        }))
+        .unwrap();
+
+        assert!(patch.apply_transactionally(&mut state).is_err());
+        assert_eq!(state.runtime_title, None);
+    }
+
+    #[test]
+    fn patch_and_rollback_preserve_navigation_owned_visibility() {
+        let mut state = NavigationBarState::default();
+        state.show_navbar = false;
+        state.show_back_button = true;
+        state.navigation_home_button = true;
+        let original = state.clone();
+        let patch: NavigationBarPatch = serde_json::from_value(serde_json::json!({
+            "title": "Changed",
+            "homeButton": "hidden"
+        }))
+        .unwrap();
+
+        patch.apply(&mut state).unwrap();
+        assert!(!state.show_navbar);
+        assert!(state.show_back_button);
+        assert!(state.navigation_home_button);
+
+        state.show_navbar = true;
+        state.show_back_button = false;
+        state.navigation_home_button = false;
+        state.restore_patchable_from(&original);
+        assert_eq!(state.title(), original.title());
+        assert!(state.show_navbar);
+        assert!(!state.show_back_button);
+        assert!(!state.navigation_home_button);
     }
 }
 

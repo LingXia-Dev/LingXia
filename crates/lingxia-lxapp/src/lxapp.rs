@@ -1209,10 +1209,11 @@ impl LxApp {
         for page in pages {
             page.detach_webview();
         }
-        if let Ok(state) = self.state.lock() {
+        if let Ok(mut state) = self.state.lock() {
             state.pages.lock().unwrap().clear();
             state.pages_by_id.lock().unwrap().clear();
             state.page_instance_runtime.lock().unwrap().clear();
+            state.page_chrome_layouts.clear();
         }
         for webtag in &page_webtags {
             destroy_webview(webtag);

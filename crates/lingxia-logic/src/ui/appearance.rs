@@ -1,4 +1,4 @@
-use crate::i18n::{js_internal_error, js_invalid_parameter_error};
+use crate::i18n::{js_internal_error, js_invalid_parameter_error, js_service_unavailable_error};
 use lxapp::LxApp;
 use lxapp::page_chrome::AppearancePreference;
 use rong::{IntoJSObject, JSContext, JSObject, JSResult};
@@ -38,7 +38,12 @@ async fn set(ctx: JSContext, preference: String) -> JSResult<()> {
     LxApp::from_ctx(&ctx)?
         .set_appearance_preference(preference)
         .await
-        .map_err(|error| js_internal_error(error.to_string()))
+        .map_err(|error| match error {
+            lxapp::LxAppError::ResourceNotFound(_) => {
+                js_service_unavailable_error(error.to_string())
+            }
+            _ => js_internal_error(error.to_string()),
+        })
 }
 
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {

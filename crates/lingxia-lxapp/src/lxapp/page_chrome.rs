@@ -1,8 +1,8 @@
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::str::FromStr;
 
-use super::navbar::NavigationBarState;
-use super::tabbar::TabBar;
+use super::navbar::NavigationBarPatch;
+use super::tabbar::TabBarPatch;
 use crate::{LxApp, LxAppError, PageInstance};
 use lingxia_platform::traits::app_runtime::AppRuntime;
 use lingxia_platform::traits::ui::UIUpdate;
@@ -77,6 +77,53 @@ pub enum TabBarPresentation {
     #[default]
     Standard,
     Immersive,
+}
+
+/// A JSON patch field that distinguishes omission, explicit null, and a value.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub enum PatchField<T> {
+    #[default]
+    Missing,
+    Null,
+    Value(T),
+}
+
+/// A non-null JSON patch field that still distinguishes omission from a value.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub enum ValuePatchField<T> {
+    #[default]
+    Missing,
+    Value(T),
+}
+
+impl<'de, T> Deserialize<'de> for ValuePatchField<T>
+where
+    T: Deserialize<'de>,
+{
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        T::deserialize(deserializer).map(Self::Value)
+    }
+}
+
+impl<'de, T> Deserialize<'de> for PatchField<T>
+where
+    T: Deserialize<'de>,
+{
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = serde_json::Value::deserialize(deserializer)?;
+        if value.is_null() {
+            return Ok(Self::Null);
+        }
+        T::deserialize(value)
+            .map(Self::Value)
+            .map_err(serde::de::Error::custom)
+    }
 }
 
 /// A CSS-order RGBA color (`#RRGGBB` or `#RRGGBBAA`) parsed once by core.
@@ -199,6 +246,8 @@ pub(crate) fn bootstrap_script(
     format!(
         r#"(() => {{
   const publish = (raw, scheme) => {{
+    const current = globalThis.__lingxiaPageChromeLayout;
+    if (current && raw.revision < current.revision) return;
     const rect = raw.capsuleRect == null ? null : Object.freeze({{ ...raw.capsuleRect }});
     const layout = Object.freeze({{ ...raw, capsuleRect: rect }});
     const root = document.documentElement;
@@ -235,7 +284,7 @@ fn publication_script(
 ) -> String {
     let layout = serde_json::to_string(layout).unwrap_or_else(|_| "{}".to_string());
     format!(
-        "globalThis.__lingxiaApplyPageChrome?.({layout}, {});",
+        "var f = globalThis.__lingxiaApplyPageChrome; if (f) f({layout}, {});",
         serde_json::to_string(&appearance).unwrap_or_else(|_| "\"light\"".to_string())
     )
 }
@@ -254,11 +303,10 @@ impl LxApp {
         state.page_chrome_revision
     }
 
-    fn restore_page_chrome_revision(&self, revision: u64) {
+    fn restore_page_chrome_revision(&self, revision: u64) -> u64 {
         let mut state = self.state.lock().unwrap_or_else(|error| error.into_inner());
-        if state.page_chrome_revision == revision {
-            state.page_chrome_revision = revision.saturating_sub(1);
-        }
+        state.page_chrome_revision = rollback_revision(state.page_chrome_revision, revision);
+        state.page_chrome_revision
     }
 
     pub(crate) fn publish_page_chrome(
@@ -344,52 +392,83 @@ impl LxApp {
             .await
     }
 
+    fn current_page_for_chrome(&self) -> Result<PageInstance, LxAppError> {
+        self.current_page().map_err(|error| match error {
+            LxAppError::WebView(_) => LxAppError::ResourceNotFound("active page".to_string()),
+            error => error,
+        })
+    }
+
+    async fn compensate_page_chrome_rollback(
+        &self,
+        page: &PageInstance,
+        failed_revision: u64,
+        appearance: ResolvedAppearance,
+    ) {
+        let restored_revision = self.restore_page_chrome_revision(failed_revision);
+        let _ = self
+            .apply_page_chrome_commit(page, restored_revision, appearance)
+            .await;
+    }
+
     pub async fn commit_navigation_bar(
         &self,
         page: PageInstance,
-        candidate: NavigationBarState,
+        patch: NavigationBarPatch,
     ) -> Result<(), LxAppError> {
         let _guard = self.page_chrome_mutation_lock.lock().await;
         let original = page
             .get_navbar_state()
             .ok_or_else(|| LxAppError::ResourceNotFound("active page".to_string()))?;
-        if original == candidate {
+        let changed = page
+            .get_navbar_state_mut(|state| patch.apply_transactionally(state))
+            .ok_or_else(|| LxAppError::ResourceNotFound("active page".to_string()))?
+            .map_err(LxAppError::InvalidParameter)?;
+        if !changed {
             return Ok(());
         }
-        page.get_navbar_state_mut(|state| *state = candidate)
-            .ok_or_else(|| LxAppError::ResourceNotFound("active page".to_string()))?;
         let revision = self.next_page_chrome_revision();
         let appearance = self.appearance_state().resolved;
         if let Err(error) = self
             .apply_page_chrome_commit(&page, revision, appearance)
             .await
         {
-            let _ = page.get_navbar_state_mut(|state| *state = original);
-            self.restore_page_chrome_revision(revision);
+            let _ = page.get_navbar_state_mut(|state| state.restore_patchable_from(&original));
+            self.compensate_page_chrome_rollback(&page, revision, appearance)
+                .await;
             return Err(error);
         }
         Ok(())
     }
 
-    pub async fn commit_tabbar(&self, candidate: TabBar) -> Result<(), LxAppError> {
+    pub async fn commit_tabbar(&self, patch: TabBarPatch) -> Result<(), LxAppError> {
         let _guard = self.page_chrome_mutation_lock.lock().await;
+        let page = self.current_page_for_chrome()?;
         let original = self
             .get_tabbar()
             .ok_or_else(|| LxAppError::ResourceNotFound("declared tabbar".to_string()))?;
-        if original == candidate {
+        let changed = self
+            .with_tabbar_mut(|tabbar| {
+                tabbar.apply_patch_transactionally(&patch, |value, path| {
+                    self.resolve_accessible_path(value)
+                        .map(|path| path.to_string_lossy().into_owned())
+                        .map_err(|_| format!("{path}: path must stay within the lxapp package"))
+                })
+            })
+            .ok_or_else(|| LxAppError::ResourceNotFound("declared tabbar".to_string()))?
+            .map_err(LxAppError::InvalidParameter)?;
+        if !changed {
             return Ok(());
         }
-        let page = self.current_page()?;
-        self.with_tabbar_mut(|tabbar| *tabbar = candidate)
-            .ok_or_else(|| LxAppError::ResourceNotFound("declared tabbar".to_string()))?;
         let revision = self.next_page_chrome_revision();
         let appearance = self.appearance_state().resolved;
         if let Err(error) = self
             .apply_page_chrome_commit(&page, revision, appearance)
             .await
         {
-            let _ = self.with_tabbar_mut(|tabbar| *tabbar = original);
-            self.restore_page_chrome_revision(revision);
+            let _ = self.with_tabbar_mut(|tabbar| tabbar.restore_patchable_from(&original));
+            self.compensate_page_chrome_rollback(&page, revision, appearance)
+                .await;
             return Err(error);
         }
         Ok(())
@@ -412,10 +491,16 @@ impl LxApp {
                 }
             }
         };
+        let page = self.current_page_for_chrome()?;
         if original.preference == preference && original.resolved == resolved {
+            lingxia_service::settings::set_lxapp_appearance(
+                &self.runtime.app_data_dir(),
+                &self.appid,
+                preference.as_str(),
+            )
+            .map_err(|error| LxAppError::Runtime(error.to_string()))?;
             return Ok(());
         }
-        let page = self.current_page()?;
         let revision = self.next_page_chrome_revision();
         {
             let mut state = self.state.lock().unwrap_or_else(|error| error.into_inner());
@@ -449,21 +534,29 @@ impl LxApp {
         if let Err(error) = apply.and(stored) {
             {
                 let mut state = self.state.lock().unwrap_or_else(|error| error.into_inner());
-                state.appearance = original;
+                restore_appearance_state(&mut state.appearance, original);
             }
-            self.restore_page_chrome_revision(revision);
             let _ = self
                 .runtime
                 .apply_lxapp_appearance(&self.appid, original.resolved.is_dark());
-            let _ = self
-                .runtime
-                .apply_page_chrome_revision(self.appid.clone(), original.revision)
+            self.compensate_page_chrome_rollback(&page, revision, original.resolved)
                 .await;
-            let _ = self.publish_page_chrome(&page, original.revision, original.resolved);
             return Err(error);
         }
         Ok(())
     }
+}
+
+const fn rollback_revision(current: u64, failed: u64) -> u64 {
+    if current == failed {
+        failed.saturating_sub(1)
+    } else {
+        current
+    }
+}
+
+fn restore_appearance_state(current: &mut LxAppAppearanceState, original: LxAppAppearanceState) {
+    *current = original;
 }
 
 const fn immersive_tabbar_inset() -> f64 {
@@ -473,6 +566,8 @@ const fn immersive_tabbar_inset() -> f64 {
     }
     #[cfg(target_os = "ios")]
     {
+        // This fixed contract includes the common home-indicator safe area;
+        // native measurement is intentionally deferred until the host exposes it.
         return 64.0;
     }
     #[cfg(target_env = "ohos")]
@@ -480,6 +575,7 @@ const fn immersive_tabbar_inset() -> f64 {
         return 72.0;
     }
     #[allow(unreachable_code)]
+    // Desktop has no mobile overlay bar, so immersive content needs no inset.
     0.0
 }
 
@@ -515,5 +611,53 @@ mod tests {
         assert!("system".parse::<AppearancePreference>().is_err());
         assert!("DARK".parse::<AppearancePreference>().is_err());
         assert!(" dark ".parse::<AppearancePreference>().is_err());
+    }
+
+    #[test]
+    fn scripts_reject_stale_revisions_without_optional_chaining() {
+        let bootstrap = bootstrap_script(
+            &EffectivePageChromeLayout {
+                revision: 4,
+                ..Default::default()
+            },
+            ResolvedAppearance::Dark,
+        );
+        assert!(bootstrap.contains("raw.revision < current.revision"));
+
+        let publication = publication_script(
+            &EffectivePageChromeLayout {
+                revision: 5,
+                ..Default::default()
+            },
+            ResolvedAppearance::Light,
+        );
+        assert!(publication.contains("var f = globalThis.__lingxiaApplyPageChrome"));
+        assert!(!publication.contains("?."));
+    }
+
+    #[test]
+    fn rollback_republishes_the_restored_current_revision() {
+        assert_eq!(rollback_revision(5, 5), 4);
+        assert_eq!(rollback_revision(6, 5), 6);
+        assert_eq!(rollback_revision(0, 0), 0);
+    }
+
+    #[test]
+    fn appearance_rollback_restores_preference_resolution_and_revision() {
+        let original = LxAppAppearanceState {
+            preference: AppearancePreference::Auto,
+            resolved: ResolvedAppearance::Light,
+            revision: 4,
+        };
+        let mut current = LxAppAppearanceState {
+            preference: AppearancePreference::Dark,
+            resolved: ResolvedAppearance::Dark,
+            revision: 5,
+        };
+
+        restore_appearance_state(&mut current, original);
+
+        assert_eq!(current, original);
+        assert_eq!(rollback_revision(5, 5), current.revision);
     }
 }
