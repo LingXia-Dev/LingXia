@@ -5,6 +5,7 @@
 //! emulation.
 
 mod alacritty_vt;
+mod links;
 mod osc;
 #[cfg(windows)]
 mod process_windows;
@@ -310,6 +311,100 @@ pub fn terminal_search_cancel(id: u64) {
     {
         session.search_cancel.store(true, Ordering::Relaxed);
     }
+}
+
+/// A clickable link on the live screen: explicit OSC 8 hyperlinks and
+/// heuristic URL/path detections with cwd-resolved targets.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalLink {
+    /// Absolute line (oldest scrollback line = 0).
+    pub line: i64,
+    pub start_col: u16,
+    /// Exclusive end cell column.
+    pub end_col: u16,
+    /// URL verbatim or the cwd-resolved normalized path.
+    pub target: String,
+    pub source: links::LinkSource,
+    /// `:line[:column]` suffix parsed from a path target, when present.
+    pub target_line: Option<u32>,
+    pub target_column: Option<u32>,
+}
+
+/// Links visible on the session's live screen as JSON.
+pub fn terminal_links(id: u64) -> String {
+    terminal_links_data(id)
+        .map(|links| serde_json::to_string(&links).unwrap_or_else(|_| "[]".to_string()))
+        .unwrap_or_else(|| "[]".to_string())
+}
+
+/// Structured variant of [`terminal_links`].
+///
+/// Heuristic path targets resolve against the OSC 7-reported cwd,
+/// falling back to the foreground process directory. OSC 8 ranges are
+/// authoritative: heuristic matches overlapping them are dropped.
+pub fn terminal_links_data(id: u64) -> Option<Vec<TerminalLink>> {
+    let session = session(id)?;
+    let mut session = session.lock().ok()?;
+    let bytes = session.drain_bytes();
+    if !bytes.is_empty() {
+        session.vt.feed(&bytes);
+    }
+    let cwd = session
+        .vt
+        .cwd()
+        .or_else(|| session.foreground_process_pid().and_then(process_cwd))
+        .or_else(|| session.title_state.shell_pid.and_then(process_cwd));
+
+    let mut result: Vec<TerminalLink> = Vec::new();
+    for row in session.vt.screen_text() {
+        for detected in links::detect_links(&row.text, cwd.as_deref()) {
+            let start_col = row
+                .cells
+                .get(detected.start)
+                .map(|&(col, _)| col)
+                .unwrap_or(0);
+            let end_col = if detected.end > detected.start {
+                row.cells
+                    .get(detected.end - 1)
+                    .map(|&(col, width)| col.saturating_add(u16::from(width)))
+                    .unwrap_or(start_col)
+            } else {
+                start_col
+            };
+            result.push(TerminalLink {
+                line: row.line,
+                start_col,
+                end_col,
+                target: detected.target,
+                source: links::LinkSource::Heuristic,
+                target_line: detected.line,
+                target_column: detected.column,
+            });
+        }
+    }
+
+    let mut osc8_ranges: Vec<(i64, u16, u16)> = Vec::new();
+    for (line, start_col, end_col, uri) in session.vt.screen_hyperlinks() {
+        osc8_ranges.push((line, start_col, end_col));
+        result.push(TerminalLink {
+            line,
+            start_col,
+            end_col,
+            target: uri,
+            source: links::LinkSource::Osc8,
+            target_line: None,
+            target_column: None,
+        });
+    }
+    result.retain(|link| {
+        link.source == links::LinkSource::Osc8
+            || !osc8_ranges.iter().any(|&(line, start, end)| {
+                line == link.line && start < link.end_col && link.start_col < end
+            })
+    });
+    result.sort_by_key(|link| (link.line, link.start_col));
+    Some(result)
 }
 
 pub fn terminal_exited(id: u64) -> bool {
@@ -649,6 +744,9 @@ pub struct TerminalCell {
     pub underline: bool,
     pub inverse: bool,
     pub wide: bool,
+    /// OSC 8 hyperlink URI attached to the cell, when any.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hyperlink: Option<String>,
 }
 
 impl TerminalSession {
@@ -966,6 +1064,7 @@ impl TerminalSession {
                     underline: cell.attrs & ATTR_UNDERLINE != 0,
                     inverse: cell.attrs & ATTR_INVERSE != 0,
                     wide: cell.wide,
+                    hyperlink: cell.hyperlink.clone(),
                 });
             }
             if let Some(slot) = lines.get_mut(row as usize) {
@@ -1808,6 +1907,47 @@ mod tests {
                 .any(|kind| matches!(kind, TerminalEventKind::Exited { exit_code: Some(7) })),
             "exit event surfaced: {events:?}"
         );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn session_links_detect_urls_and_resolve_paths() {
+        let cwd = std::env::temp_dir().canonicalize().unwrap();
+        let id = terminal_create_with_spec(
+            80,
+            24,
+            TerminalSessionSpec {
+                cwd: Some(cwd.clone()),
+                program: Some("/bin/sh".to_string()),
+                args: Some(vec![
+                    "-c".to_string(),
+                    "echo 'see https://example.com/docs'; echo 'edit src/main.rs:3'; sleep 30"
+                        .to_string(),
+                ]),
+                ..TerminalSessionSpec::default()
+            },
+        );
+        assert_ne!(id, 0);
+
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let mut found = Vec::new();
+        while Instant::now() < deadline {
+            found = terminal_links_data(id).unwrap_or_default();
+            if found.len() >= 2 {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(25));
+        }
+        terminal_close(id);
+
+        let url = found
+            .iter()
+            .find(|link| link.target == "https://example.com/docs");
+        assert!(url.is_some(), "url detected: {found:?}");
+        let path = found.iter().find(|link| link.target_line == Some(3));
+        let path = path.expect("path with line suffix detected");
+        let expected = cwd.join("src/main.rs");
+        assert_eq!(path.target, expected.to_string_lossy());
     }
 
     #[test]
