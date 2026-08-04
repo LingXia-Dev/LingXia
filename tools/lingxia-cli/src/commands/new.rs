@@ -447,6 +447,9 @@ mod native_main_scaffold_tests {
         .unwrap();
 
         assert!(!target_dir.join(DEFAULT_LXAPP_DIR_NAME).exists());
+        // `lingxia new` always seeds the project-root icon; the interactive
+        // icon step is bypassed here.
+        std::fs::write(target_dir.join("AppIcon.png"), b"png-bytes").unwrap();
         let host_config = LingXiaConfig::load(&target_dir).unwrap();
         crate::host_assets::prepare_configured_host_assets(
             &target_dir,
@@ -489,7 +492,17 @@ mod native_main_scaffold_tests {
         asset_names.sort();
         assert_eq!(
             asset_names,
-            ["app.json", "bridge-runtime.js", "icons", "ui.json"]
+            [
+                "AppIcon.png",
+                "app.json",
+                "bridge-runtime.js",
+                "icons",
+                "ui.json"
+            ]
+        );
+        assert_eq!(
+            std::fs::read(assets_dir.join("AppIcon.png")).unwrap(),
+            b"png-bytes"
         );
     }
 }

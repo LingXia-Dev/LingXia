@@ -393,6 +393,13 @@ fn present_default_host(lxapp_id: Option<&str>, asset_dir: &Path) -> Result<()> 
                 message,
             }
         })?;
+    } else {
+        // The CLI stages a root AppIcon.png (or a home lxapp ships its public
+        // icon), so a miss means broken assets rather than an optional icon.
+        log::warn!(
+            "no host launcher icon found under {}; windows fall back to the executable icon",
+            asset_dir.display()
+        );
     }
     // Tray-exclusive apps live only in the system tray, so their windows
     // must be created without a taskbar button. Apply before any window opens.
