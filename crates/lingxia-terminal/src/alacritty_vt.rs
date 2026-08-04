@@ -194,6 +194,12 @@ pub enum TerminalEventKind {
     Exited {
         exit_code: Option<i32>,
     },
+    /// Restored scrollback was replayed into this session; `lines` is
+    /// the number of replayed lines, which also marks the boundary
+    /// between restored content and fresh shell output.
+    Restored {
+        lines: usize,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
