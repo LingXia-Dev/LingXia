@@ -19,7 +19,10 @@ Companion pages in this skill:
 lingxia new my-lxapp -t lxapp -y
 ```
 
-This creates a standalone lxapp project. To create a host app (which contains an embedded home lxapp), use `-t native-app` instead (see [App Project](../app/project.md)).
+This creates a standalone lxapp project. To create a native host app, use
+`-t native-app` instead. Hosts normally embed a control lxapp, while a desktop
+terminal/browser main may use native control with no bundled lxapp (see [App
+Project](../app/project.md)).
 
 ---
 

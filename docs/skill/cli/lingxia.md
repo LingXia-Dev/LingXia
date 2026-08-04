@@ -39,6 +39,28 @@ Scaffold a new LingXia project. Run it interactively to be prompted for project
 type (a native host **app** or a standalone **lxapp**), target platforms, and
 package id, or pass those up front to script it. Can also seed an app icon.
 
+For a native host, `--main lxapp|terminal|browser` selects the product's main
+experience. The default remains `lxapp`. `--control lxapp|native` selects where
+host control logic lives: lxapp main defaults to lxapp control, while terminal
+and browser main default to native Rust control with no bundled lxapp. Native
+main is currently supported on macOS and Windows; when `--yes` is used without
+`--platform`, those two desktop targets are selected automatically.
+
+```bash
+# Existing product shape: embedded lxapp is both main UI and control app.
+lingxia new my-app -t native-app -p macos,windows -y
+
+# Native terminal product: no homeAppId, resources bundle, or lxapp/ directory.
+lingxia new my-terminal -t native-app --main terminal --control native -y
+
+# Browser is main, but an embedded lxapp supplies host control logic.
+lingxia new my-browser -t native-app -p windows --main browser --control lxapp -y
+```
+
+`--main` and `--control` describe a native host; they are rejected for
+standalone `-t lxapp` projects. Native control with lxapp main is also rejected,
+because the visible main lxapp necessarily remains the host's control lxapp.
+
 Custom React template precedence is explicit `--template <path>`, then
 `~/.lingxia/templates/lxapp` when present, then the embedded template. The flag
 implies `--project-type lxapp`. A custom root must contain `package.json` and

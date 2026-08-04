@@ -30,8 +30,10 @@ If none match, you're about to scaffold a new project — continue to 0b. If one
 
 1. **Standalone lxapp or host app?** (A vs B/C below)
 2. **If host app:** which platforms? `android`, `ios`, `macos`, `windows`, `harmony`, any combination.
-3. **If host app:** JS Logic for the home lxapp, or native-only Rust? (B vs C)
-4. **View framework:** React, Vue, or HTML — chosen once at scaffold; a project has exactly one.
+3. **If host app:** lxapp or terminal/browser as the main experience, and lxapp
+   or native Rust as host control? (B vs C)
+4. **View framework:** React, Vue, or HTML when an lxapp is scaffolded — chosen
+   once; a project has exactly one.
 
 Then scaffold:
 
@@ -99,9 +101,13 @@ Command details: [`lingxia` CLI](./cli/lingxia.md) · [`lxdev`](./cli/lxdev.md).
 |---|---|---|
 | **A. Standalone lxapp** | Page-based mini-app that runs in any LingXia host (e.g. macOS Runner). | UI/page work, no native shell. |
 | **B. Host app + JS lxapp** | Native installable app (Android/iOS/macOS/Windows/Harmony) embedding a home lxapp whose Logic is JS. | Most product apps. |
-| **C. Host app + native Rust logic** | Same shell, but the home lxapp's Logic is in Rust. The lxapp is HTML-only with `logic: false`. | Native-only hosts (e.g. menu-bar utilities), or when the heavy lifting belongs in Rust. |
+| **C. Host app + native Rust control** | Either an HTML control lxapp with `logic: false`, or a macOS/Windows terminal/browser main with no bundled lxapp. | Rust-controlled utilities and products whose main experience is a built-in native capability. |
 
-C is just B with `features.appService: false` and Rust replacing the JS Logic. You can also mix: a JS-Logic lxapp that **calls** Rust routes via `#[lingxia::native]` — that is still B, with native Rust as an *API surface* rather than the Logic layer.
+C sets `features.appService: false` and puts control in Rust. It may retain a
+`logic: false` HTML view, or omit the control lxapp for a desktop native main.
+You can also mix: a JS-Logic lxapp that **calls** Rust routes via
+`#[lingxia::native]` is still B, with native Rust as an API surface rather than
+the control layer.
 
 ---
 
@@ -154,7 +160,7 @@ The output is the authoritative layout for the `lingxia` on your `PATH`; it can'
 
 - **A — standalone lxapp** (JS). `pages/home/`: `index.ts` is **Logic** (`Page({ data, …actions })`, runs in the JS runtime), `index.tsx` is **View** (React + `useLxPage`, runs in the WebView), `index.json` is page config. Type View `PageData`/`PageActions` fields as **required**. A `_`-prefixed method stays private to Logic. `lxapp.json` `security.network.trustedDomains` starts `[]` (all `fetch` denied) — set real hostnames before networking.
 - **B — host + JS lxapp** (most product apps). Adds a `lingxia.yaml` with `features.appService: true`. Three ids must line up or the wrong app launches: `app.homeAppId` = a `resources.bundles[].appId` = that bundle's `lxapp.json.appId`. The launch `main` surface's `lxapp:` content key is the appId it renders, so point it at that same home app. View talks to Logic via `actions.foo()` from `useLxPage()`.
-- **C — host + Rust Logic.** Same host shell as B, opposite Logic side: `features.appService: false` (JS runtime not compiled in), `lxapp.json` `"logic": false`, an HTML-only view calling `window.native.*` (CLI-generated browser global), and `#[lingxia::native]` routes in the Rust crate. Flip `appService` and `logic` together — a logic-enabled lxapp under `appService: false` is rejected at startup. Don't add `@lingxia/react|vue|html` (they assume the `Page({})` bridge).
+- **C — host + Rust control.** With an embedded HTML control lxapp, use `features.appService: false`, `lxapp.json` `"logic": false`, `window.native.*`, and `#[lingxia::native]` routes. A macOS/Windows `native: terminal|browser` main may instead omit the control lxapp, `homeAppId`, and resources entirely: `lingxia new … --main terminal|browser --control native`. Runtime/downloaded lxapps remain guest workspaces, not the trusted control app. Flip `appService` and embedded `logic` together; don't add `@lingxia/react|vue|html` to a logic-disabled view.
 
 Run any shape with `lingxia dev`. Full recipes: [LxApp page](./lxapp/guide.md#logic-layer--page) · [host `lingxia.yaml`](./app/project.md#minimal-macos-example) · [Rust route](./native/development.md#native-routes).
 
@@ -166,7 +172,7 @@ Jump straight here when the user reports a concrete failure:
 
 | Symptom | Where to look |
 |---|---|
-| `homeAppId` doesn't match any bundle / wrong app launches | [`./app/project.md`](./app/project.md) → `resources.bundles` |
+| A configured `homeAppId` doesn't match a bundle / wrong control app launches | [`./app/project.md`](./app/project.md) → `resources.bundles` |
 | `fetch()` silently fails from an lxapp | [`./lxapp/guide.md`](./lxapp/guide.md) → "Security Policy" (`trustedDomains`) |
 | "Is `fetch` / `setTimeout` / `URL` available in Logic?" | [`./lxapp/lx-api.md`](./lxapp/lx-api.md#standard-web-apis-built-in-globals) — yes, full Rong runtime |
 | Need to read/write files (not just `lx.downloadFile`) | `lx.getFileManager()` — paths & lifecycle in [`./reference/file-lifecycle.md`](./reference/file-lifecycle.md) |
@@ -209,7 +215,8 @@ Jump straight here when the user reports a concrete failure:
 **Host app** — see [`./app/project.md` → Common Pitfalls](./app/project.md#common-pitfalls):
 
 - Editing generated `app.json` / `ui.json` instead of `lingxia.yaml`. They're regenerated every build.
-- `homeAppId` not matching any `resources.bundles[].appId` — build fails or the wrong app launches.
+- A configured `homeAppId` not matching any `resources.bundles[].appId` — build
+  fails or the wrong control app launches.
 
 **Native Rust** — see [`./native/development.md`](./native/development.md):
 
