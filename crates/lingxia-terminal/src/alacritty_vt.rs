@@ -94,6 +94,8 @@ pub struct Cell {
     pub bg: u32,
     pub attrs: u8,
     pub wide: bool,
+    /// OSC 8 hyperlink URI attached to the cell.
+    pub hyperlink: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -408,6 +410,8 @@ struct VtInner {
     cell_height_px: u16,
     generation: u64,
     blocks: CommandBlockTracker,
+    /// Last working directory reported via OSC 7.
+    cwd: Option<std::path::PathBuf>,
 }
 
 /// Viewport dimensions handed to `Term::new` / `Term::resize`.
@@ -495,6 +499,7 @@ impl VtScreen {
                 cell_height_px: 1,
                 generation: 0,
                 blocks: CommandBlockTracker::default(),
+                cwd: None,
             }),
         }
     }
@@ -547,6 +552,53 @@ impl VtScreen {
     /// Completed command blocks plus the open one, oldest first.
     pub fn command_blocks(&self) -> Vec<CommandBlock> {
         self.inner.lock().blocks.blocks()
+    }
+
+    /// The last working directory reported via OSC 7.
+    pub fn cwd(&self) -> Option<std::path::PathBuf> {
+        self.inner.lock().cwd.clone()
+    }
+
+    /// Text of the live screen rows only (the tail of [`Self::grid_text`]).
+    pub fn screen_text(&self) -> Vec<SearchRow> {
+        let rows = self.grid_text();
+        let screen_lines = self.inner.lock().term.grid().screen_lines();
+        let skip = rows.len().saturating_sub(screen_lines);
+        rows.into_iter().skip(skip).collect()
+    }
+
+    /// OSC 8 hyperlink ranges on the live screen: (absolute line,
+    /// start column, end column exclusive, URI).
+    pub fn screen_hyperlinks(&self) -> Vec<(i64, u16, u16, String)> {
+        let inner = self.inner.lock();
+        let grid = inner.term.grid();
+        let history = grid.history_size() as i64;
+        let screen_lines = grid.screen_lines() as i64;
+        let mut links = Vec::new();
+        for offset in 0..screen_lines {
+            let row = &grid[Line(offset as i32)];
+            let mut active: Option<(u16, String)> = None;
+            for col in 0..row.len() {
+                let cell = &row[Column(col)];
+                if cell.flags.contains(Flags::WIDE_CHAR_SPACER) {
+                    continue;
+                }
+                let uri = cell.hyperlink().map(|link| link.uri().to_owned());
+                match (&active, uri) {
+                    (Some((_, active_uri)), Some(uri)) if uri == *active_uri => {}
+                    (Some(_), uri) => {
+                        let (start, active_uri) = active.take().expect("matched Some");
+                        links.push((history + offset, start, col as u16, active_uri));
+                        active = uri.map(|uri| (col as u16, uri));
+                    }
+                    (None, uri) => active = uri.map(|uri| (col as u16, uri)),
+                }
+            }
+            if let Some((start, uri)) = active {
+                links.push((history + offset, start, row.len() as u16, uri));
+            }
+        }
+        links
     }
 
     /// Copy the full scrollback + screen text for searching/export.
@@ -803,7 +855,10 @@ impl VtInner {
             grid.history_size() as i64 + i64::from(grid.cursor.point.line.0)
         };
         let kind = match semantic {
-            OscSemantic::Cwd(path) => TerminalEventKind::Cwd { path },
+            OscSemantic::Cwd(path) => {
+                self.cwd = Some(std::path::PathBuf::from(&path));
+                TerminalEventKind::Cwd { path }
+            }
             OscSemantic::Progress(progress) => {
                 let (state, percent) = match progress {
                     OscProgress::Idle => (TerminalProgressState::Idle, None),
@@ -925,6 +980,7 @@ fn convert_cell(
         bg: pack_rgb(bg, if bg_is_default { 0 } else { 0xFF }),
         attrs,
         wide: flags.contains(Flags::WIDE_CHAR),
+        hyperlink: cell.hyperlink().map(|link| link.uri().to_owned()),
     }
 }
 
@@ -1140,6 +1196,26 @@ mod tests {
             second.prompt_line >= first.end_line.unwrap_or(0),
             "next prompt follows the completed block: {blocks:?}"
         );
+    }
+
+    #[test]
+    fn osc8_hyperlinks_reach_cells_and_ranges() {
+        let screen = VtScreen::new_with_options(20, 2, None, None, None);
+        screen.feed(b"\x1b]8;;https://example.com\x07link text\x1b]8;;\x07 plain");
+        let snapshot = screen.snapshot();
+        let linked: Vec<&Cell> = snapshot
+            .cells
+            .iter()
+            .filter(|cell| cell.hyperlink.is_some())
+            .collect();
+        assert_eq!(linked.len(), 9, "'link text' cells carry the URI");
+        assert_eq!(linked[0].hyperlink.as_deref(), Some("https://example.com"));
+
+        let ranges = screen.screen_hyperlinks();
+        assert_eq!(ranges.len(), 1);
+        assert_eq!(ranges[0].0, 0, "screen row 0 as absolute line");
+        assert_eq!((ranges[0].1, ranges[0].2), (0, 9));
+        assert_eq!(ranges[0].3, "https://example.com");
     }
 
     #[test]
