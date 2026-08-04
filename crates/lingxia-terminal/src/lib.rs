@@ -5,6 +5,8 @@
 //! emulation.
 
 mod alacritty_vt;
+#[cfg(windows)]
+mod process_windows;
 
 use alacritty_vt::{
     ATTR_BOLD, ATTR_DIM, ATTR_INVERSE, ATTR_ITALIC, ATTR_UNDERLINE, CursorVisualStyle,
@@ -22,6 +24,9 @@ use std::sync::mpsc::{self, Receiver, TrySendError};
 use std::sync::{Arc, Condvar, LazyLock, Mutex, OnceLock};
 use std::thread;
 use std::time::{Duration, Instant};
+
+#[cfg(windows)]
+use process_windows::process_cwd;
 
 static NEXT_SESSION_ID: AtomicU64 = AtomicU64::new(1);
 static SESSIONS: LazyLock<Mutex<HashMap<u64, Arc<Mutex<TerminalSession>>>>> =
@@ -874,6 +879,21 @@ struct TerminalShell {
     args: Vec<String>,
 }
 
+#[cfg(windows)]
+const POWERSHELL_CWD_INTEGRATION: &str = r#"
+$global:__LingXiaOriginalPrompt = $function:prompt
+function global:prompt {
+    try {
+        [Environment]::CurrentDirectory = $executionContext.SessionState.Path.CurrentFileSystemLocation.Path
+    } catch {}
+    if ($global:__LingXiaOriginalPrompt) {
+        & $global:__LingXiaOriginalPrompt
+    } else {
+        "PS $($executionContext.SessionState.Path.CurrentLocation)> "
+    }
+}
+"#;
+
 fn resolved_shell() -> TerminalShell {
     static RESOLVED_SHELL: OnceLock<TerminalShell> = OnceLock::new();
 
@@ -893,13 +913,13 @@ fn resolve_shell_uncached() -> TerminalShell {
         if command_available("pwsh.exe") {
             return TerminalShell {
                 path: "pwsh.exe".to_string(),
-                args: vec!["-NoLogo".to_string()],
+                args: powershell_terminal_args(),
             };
         }
         if command_available("powershell.exe") {
             return TerminalShell {
                 path: "powershell.exe".to_string(),
-                args: vec!["-NoLogo".to_string()],
+                args: powershell_terminal_args(),
             };
         }
         TerminalShell {
@@ -915,6 +935,16 @@ fn resolve_shell_uncached() -> TerminalShell {
             args: vec!["-i".to_string()],
         }
     }
+}
+
+#[cfg(windows)]
+fn powershell_terminal_args() -> Vec<String> {
+    vec![
+        "-NoLogo".to_string(),
+        "-NoExit".to_string(),
+        "-Command".to_string(),
+        POWERSHELL_CWD_INTEGRATION.to_string(),
+    ]
 }
 
 fn env_non_empty(key: &str) -> Option<String> {
@@ -1032,7 +1062,7 @@ fn process_cwd(pid: u32) -> Option<std::path::PathBuf> {
     std::fs::read_link(format!("/proc/{pid}/cwd")).ok()
 }
 
-#[cfg(not(any(target_os = "macos", target_os = "ios", target_os = "linux")))]
+#[cfg(not(any(target_os = "macos", target_os = "ios", target_os = "linux", windows)))]
 fn process_cwd(_pid: u32) -> Option<std::path::PathBuf> {
     None
 }
@@ -1477,5 +1507,98 @@ mod tests {
         let actual = terminal_current_directory(id);
         terminal_close(id);
         panic!("terminal cwd mismatch: expected={expected:?} actual={actual:?}");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_process_cwd_follows_directory_changes() {
+        let root = std::env::temp_dir().join(format!(
+            "lingxia-terminal-cwd-{}-{}",
+            std::process::id(),
+            NEXT_SESSION_ID.load(Ordering::Relaxed)
+        ));
+        let destination = root.join("destination");
+        std::fs::create_dir_all(&destination).unwrap();
+        let expected = destination.canonicalize().unwrap();
+        let command = format!(
+            "Set-Location -LiteralPath '{0}'; [Environment]::CurrentDirectory = '{0}'; Start-Sleep -Seconds 10",
+            destination.to_string_lossy().replace('\'', "''")
+        );
+        let mut child = std::process::Command::new("powershell.exe")
+            .args(["-NoLogo", "-NoProfile", "-Command", &command])
+            .current_dir(&root)
+            .spawn()
+            .unwrap();
+
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while Instant::now() < deadline {
+            let actual = process_cwd(child.id()).and_then(|path| path.canonicalize().ok());
+            if actual.as_deref() == Some(expected.as_path()) {
+                let _ = child.kill();
+                let _ = child.wait();
+                let _ = std::fs::remove_dir_all(&root);
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(25));
+        }
+
+        let actual = process_cwd(child.id());
+        let _ = child.kill();
+        let _ = child.wait();
+        let _ = std::fs::remove_dir_all(&root);
+        panic!("process cwd did not follow cd: expected={expected:?} actual={actual:?}");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_terminal_title_tracks_cd() {
+        let root = std::env::temp_dir().join(format!(
+            "lingxia-terminal-title-{}-{}",
+            std::process::id(),
+            NEXT_SESSION_ID.load(Ordering::Relaxed)
+        ));
+        let destination = root.join("destination");
+        std::fs::create_dir_all(&destination).unwrap();
+        let expected = destination.canonicalize().unwrap();
+        let expected_title = compact_path_title(&destination);
+        let id = terminal_create_at(80, 24, Some(&root));
+        assert_ne!(id, 0);
+
+        std::thread::sleep(Duration::from_millis(250));
+        let shell = resolved_shell().path.to_ascii_lowercase();
+        let command = if shell.contains("powershell") || shell.contains("pwsh") {
+            format!(
+                "Set-Location -LiteralPath '{}'\r",
+                destination.to_string_lossy().replace('\'', "''")
+            )
+        } else {
+            format!("cd /d \"{}\"\r", destination.display())
+        };
+        assert!(terminal_write(id, &command));
+
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while Instant::now() < deadline {
+            let snapshot = terminal_snapshot_data(id);
+            let cwd = terminal_current_directory(id).and_then(|path| path.canonicalize().ok());
+            if cwd.as_deref() == Some(expected.as_path())
+                && snapshot
+                    .as_ref()
+                    .and_then(|snapshot| snapshot.process_title.as_deref())
+                    == Some(expected_title.as_str())
+            {
+                terminal_close(id);
+                let _ = std::fs::remove_dir_all(&root);
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(25));
+        }
+
+        let actual_cwd = terminal_current_directory(id);
+        let actual_title = terminal_snapshot_data(id).and_then(|snapshot| snapshot.process_title);
+        terminal_close(id);
+        let _ = std::fs::remove_dir_all(&root);
+        panic!(
+            "terminal title did not follow cd: expected={expected:?} cwd={actual_cwd:?} title={actual_title:?}"
+        );
     }
 }
