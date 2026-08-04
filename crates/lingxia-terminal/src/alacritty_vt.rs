@@ -10,6 +10,7 @@
 //! resolution against the host theme happens here at snapshot time so
 //! OSC 4/10/11 overrides tracked by the terminal still win.
 
+use std::collections::VecDeque;
 use std::sync::Arc;
 use std::sync::mpsc::{Receiver, Sender, channel};
 use std::time::Instant;
@@ -17,11 +18,14 @@ use std::time::Instant;
 use alacritty_terminal::event::{Event, EventListener, WindowSize};
 use alacritty_terminal::grid::{Dimensions, Scroll};
 use alacritty_terminal::term::cell::Flags;
-use alacritty_terminal::term::{Config, Term, TermMode};
+use alacritty_terminal::term::{ClipboardType, Config, Term, TermMode};
 use alacritty_terminal::vte::ansi::{
     Color as AnsiColor, CursorShape, NamedColor, Processor, Rgb as AnsiRgb, StdSyncHandler,
 };
 use parking_lot::Mutex;
+use serde::Serialize;
+
+use crate::osc::{OscProgress, OscSemantic, OscTap, parse_osc};
 
 // Attr bits packed into `Cell.attrs`. Kept in sync with the HLSL
 // pixel shader's interpretation (bit 0 = bold, 1 = italic, 2 =
@@ -119,6 +123,120 @@ pub struct ViewportScrollbar {
 
 pub type PtyWriteCallback = Arc<dyn Fn(&[u8]) + Send + Sync + 'static>;
 
+// ── Semantic events (host state/recovery view) ─────────────────────────
+
+/// Maximum queued semantic events per session; oldest are dropped and
+/// counted so hosts can detect the gap.
+const EVENT_QUEUE_CAPACITY: usize = 4096;
+/// Maximum clipboard text surfaced by an OSC 52 store event.
+const CLIPBOARD_EVENT_LIMIT: usize = 64 * 1024;
+
+/// Progress/task state carried by OSC 9;4.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum TerminalProgressState {
+    Idle,
+    Running,
+    Paused,
+    Failed,
+}
+
+/// A typed semantic event extracted from the terminal byte stream.
+///
+/// These mirror what the bytes *mean* (cwd change, command boundary,
+/// progress, notification…) so hosts never re-parse escape sequences.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum TerminalEventKind {
+    Title {
+        title: Option<String>,
+    },
+    /// OSC 7 working-directory report.
+    Cwd {
+        path: String,
+    },
+    Bell,
+    /// OSC 9;4 progress update.
+    Progress {
+        state: TerminalProgressState,
+        percent: Option<u8>,
+    },
+    /// OSC 9/99/777 notification, payload sanitized and capped.
+    Notification {
+        title: Option<String>,
+        body: String,
+    },
+    /// OSC 52 clipboard write request, decoded and length-capped.
+    ClipboardStore {
+        clipboard: String,
+        text: String,
+    },
+    /// OSC 133 marks; `line` is the absolute grid line (scrollback
+    /// lines + screen lines counted from the oldest scrollback line).
+    PromptStart {
+        line: i64,
+    },
+    InputStart {
+        line: i64,
+    },
+    OutputStart {
+        line: i64,
+    },
+    CommandFinished {
+        line: i64,
+        exit_code: Option<i32>,
+    },
+    /// The session's child process exited.
+    Exited {
+        exit_code: Option<i32>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct TerminalEvent {
+    pub seq: u64,
+    #[serde(flatten)]
+    pub kind: TerminalEventKind,
+}
+
+/// Result of draining the semantic event queue.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalEventBatch {
+    /// Sequence number the next produced event will carry.
+    pub next_seq: u64,
+    /// Events dropped because the queue overflowed since the last drain.
+    pub dropped: u64,
+    pub events: Vec<TerminalEvent>,
+}
+
+#[derive(Default)]
+struct EventQueue {
+    events: VecDeque<TerminalEvent>,
+    next_seq: u64,
+    dropped: u64,
+}
+
+impl EventQueue {
+    fn push(&mut self, kind: TerminalEventKind) {
+        if self.events.len() >= EVENT_QUEUE_CAPACITY {
+            self.events.pop_front();
+            self.dropped += 1;
+        }
+        let seq = self.next_seq;
+        self.next_seq = self.next_seq.wrapping_add(1);
+        self.events.push_back(TerminalEvent { seq, kind });
+    }
+
+    fn drain(&mut self) -> TerminalEventBatch {
+        TerminalEventBatch {
+            next_seq: self.next_seq,
+            dropped: std::mem::take(&mut self.dropped),
+            events: self.events.drain(..).collect(),
+        }
+    }
+}
+
 // ── Event listener ─────────────────────────────────────────────────────
 
 /// Requests the terminal raises mid-`advance` that need `Term` state to
@@ -132,6 +250,7 @@ enum PendingReply {
 struct Listener {
     write_pty: Option<PtyWriteCallback>,
     title: Mutex<Option<String>>,
+    events: Mutex<EventQueue>,
     pending: Sender<PendingReply>,
 }
 
@@ -156,8 +275,30 @@ impl EventListener for ListenerHandle {
                     write_pty(text.as_bytes());
                 }
             }
-            Event::Title(title) => *self.title.lock() = Some(title),
-            Event::ResetTitle => *self.title.lock() = None,
+            Event::Title(title) => {
+                *self.title.lock() = Some(title.clone());
+                self.events
+                    .lock()
+                    .push(TerminalEventKind::Title { title: Some(title) });
+            }
+            Event::ResetTitle => {
+                *self.title.lock() = None;
+                self.events
+                    .lock()
+                    .push(TerminalEventKind::Title { title: None });
+            }
+            Event::Bell => self.events.lock().push(TerminalEventKind::Bell),
+            Event::ClipboardStore(clipboard, text) => {
+                let clipboard = match clipboard {
+                    ClipboardType::Clipboard => "clipboard",
+                    ClipboardType::Selection => "selection",
+                }
+                .to_string();
+                let text: String = text.chars().take(CLIPBOARD_EVENT_LIMIT).collect();
+                self.events
+                    .lock()
+                    .push(TerminalEventKind::ClipboardStore { clipboard, text });
+            }
             Event::ColorRequest(index, format) => {
                 let _ = self.pending.send(PendingReply::Color(index, format));
             }
@@ -178,6 +319,7 @@ pub struct VtScreen {
 struct VtInner {
     term: Term<ListenerHandle>,
     parser: Processor<StdSyncHandler>,
+    tap: OscTap,
     listener: Arc<Listener>,
     replies: Receiver<PendingReply>,
     theme: ThemeColors,
@@ -247,6 +389,7 @@ impl VtScreen {
         let listener = Arc::new(Listener {
             write_pty,
             title: Mutex::new(None),
+            events: Mutex::new(EventQueue::default()),
             pending,
         });
         let config = Config {
@@ -262,6 +405,7 @@ impl VtScreen {
             inner: Mutex::new(VtInner {
                 term,
                 parser: Processor::new(),
+                tap: OscTap::default(),
                 listener,
                 replies,
                 theme: theme.cloned().unwrap_or_else(default_theme),
@@ -273,12 +417,48 @@ impl VtScreen {
     }
 
     /// Feed bytes from the PTY into the parser.
+    ///
+    /// The OSC tap runs alongside the parser so semantic sequences the
+    /// emulator drops (OSC 7/9/99/133/777) still produce typed events.
+    /// Bytes are advanced up to each tapped sequence before the event is
+    /// recorded, giving marks an exact grid position; the tapped bytes
+    /// are then fed through the parser as usual so sequences the
+    /// emulator does handle (title, hyperlink, clipboard) keep working.
     pub fn feed(&self, bytes: &[u8]) {
         let mut inner = self.inner.lock();
         let inner = &mut *inner;
-        inner.parser.advance(&mut inner.term, bytes);
+        let tapped = inner.tap.feed(bytes);
+        let mut last = 0;
+        for osc in tapped {
+            if osc.start < last {
+                // The sequence started in an earlier feed call and its
+                // bytes were already parsed; only record its semantics.
+                inner.record_osc(&osc.body);
+                continue;
+            }
+            inner
+                .parser
+                .advance(&mut inner.term, &bytes[last..osc.start]);
+            inner.record_osc(&osc.body);
+            inner
+                .parser
+                .advance(&mut inner.term, &bytes[osc.start..osc.end]);
+            last = osc.end;
+        }
+        inner.parser.advance(&mut inner.term, &bytes[last..]);
         inner.answer_pending_replies();
         inner.generation = inner.generation.wrapping_add(1);
+    }
+
+    /// Push an externally-sourced event (e.g. process exit) into the
+    /// session's semantic event queue.
+    pub fn push_event(&self, kind: TerminalEventKind) {
+        self.inner.lock().listener.events.lock().push(kind);
+    }
+
+    /// Drain all pending semantic events.
+    pub fn drain_events(&self) -> TerminalEventBatch {
+        self.inner.lock().listener.events.lock().drain()
     }
 
     pub fn resize(
@@ -466,6 +646,48 @@ impl VtScreen {
 }
 
 impl VtInner {
+    /// Record the semantics of a tapped OSC sequence, positioned at the
+    /// current grid state (the parser has already consumed all
+    /// preceding bytes).
+    fn record_osc(&mut self, body: &[u8]) {
+        let Some(semantic) = parse_osc(body) else {
+            return;
+        };
+        let absolute_line = || {
+            let grid = self.term.grid();
+            grid.history_size() as i64 + i64::from(grid.cursor.point.line.0)
+        };
+        let kind = match semantic {
+            OscSemantic::Cwd(path) => TerminalEventKind::Cwd { path },
+            OscSemantic::Progress(progress) => {
+                let (state, percent) = match progress {
+                    OscProgress::Idle => (TerminalProgressState::Idle, None),
+                    OscProgress::Running { percent } => (TerminalProgressState::Running, percent),
+                    OscProgress::Paused { percent } => (TerminalProgressState::Paused, percent),
+                    OscProgress::Failed => (TerminalProgressState::Failed, None),
+                };
+                TerminalEventKind::Progress { state, percent }
+            }
+            OscSemantic::Notification { title, body } => {
+                TerminalEventKind::Notification { title, body }
+            }
+            OscSemantic::PromptStart => TerminalEventKind::PromptStart {
+                line: absolute_line(),
+            },
+            OscSemantic::InputStart => TerminalEventKind::InputStart {
+                line: absolute_line(),
+            },
+            OscSemantic::OutputStart => TerminalEventKind::OutputStart {
+                line: absolute_line(),
+            },
+            OscSemantic::CommandFinished { exit_code } => TerminalEventKind::CommandFinished {
+                line: absolute_line(),
+                exit_code,
+            },
+        };
+        self.listener.events.lock().push(kind);
+    }
+
     /// Answer queued OSC color / size queries. Runs after
     /// `parser.advance` returns so `Term` state is readable again.
     fn answer_pending_replies(&mut self) {
@@ -660,6 +882,88 @@ mod tests {
             .find(|cell| cell.text == "b")
             .expect("styled cell");
         assert_eq!(red.bg & 0xff, 0xff, "explicit bg is opaque");
+    }
+
+    #[test]
+    fn semantic_events_flow_from_osc_sequences() {
+        let screen = VtScreen::new_with_options(20, 3, None, None, None);
+        screen.feed(b"pwd \x1b]7;file:///tmp/work\x07");
+        screen.feed(b"\x1b]9;4;1;40\x07");
+        screen.feed(b"\x1b]9;build finished\x07");
+        screen.feed(b"\x1b]133;A\x1b\\\x1b]133;D;3\x07");
+        screen.feed(b"\x1b]0;new title\x07");
+        screen.feed(b"\x07"); // bell
+        screen.feed(b"\x1b]52;c;aGVsbG8=\x07");
+
+        let batch = screen.drain_events();
+        let kinds: Vec<&TerminalEventKind> = batch.events.iter().map(|event| &event.kind).collect();
+        assert!(
+            kinds.contains(&&TerminalEventKind::Cwd {
+                path: "/tmp/work".to_string()
+            }),
+            "cwd event: {kinds:?}"
+        );
+        assert!(
+            kinds.contains(&&TerminalEventKind::Progress {
+                state: TerminalProgressState::Running,
+                percent: Some(40)
+            }),
+            "progress event: {kinds:?}"
+        );
+        assert!(
+            kinds.contains(&&TerminalEventKind::Notification {
+                title: None,
+                body: "build finished".to_string()
+            }),
+            "notification event: {kinds:?}"
+        );
+        assert!(
+            kinds.contains(&&TerminalEventKind::CommandFinished {
+                line: 0,
+                exit_code: Some(3)
+            }),
+            "command finished with grid line: {kinds:?}"
+        );
+        assert!(
+            kinds.contains(&&TerminalEventKind::Title {
+                title: Some("new title".to_string())
+            }),
+            "title event: {kinds:?}"
+        );
+        assert!(kinds.contains(&&TerminalEventKind::Bell), "bell: {kinds:?}");
+        assert!(
+            kinds.contains(&&TerminalEventKind::ClipboardStore {
+                clipboard: "clipboard".to_string(),
+                text: "hello".to_string()
+            }),
+            "clipboard store decoded: {kinds:?}"
+        );
+
+        // Sequences are monotonic and the queue is empty after drain.
+        let seqs: Vec<u64> = batch.events.iter().map(|event| event.seq).collect();
+        assert!(seqs.windows(2).all(|pair| pair[1] > pair[0]));
+        assert_eq!(batch.next_seq as usize, batch.events.len());
+        assert!(screen.drain_events().events.is_empty());
+    }
+
+    #[test]
+    fn semantic_marks_track_absolute_grid_lines() {
+        let screen = VtScreen::new_with_options(10, 2, None, None, None);
+        // Push two lines into scrollback, then mark the prompt.
+        screen.feed(b"one\r\ntwo\r\nthree\r\n");
+        screen.feed(b"\x1b]133;A\x07");
+        let batch = screen.drain_events();
+        let mark = batch
+            .events
+            .iter()
+            .find_map(|event| match event.kind {
+                TerminalEventKind::PromptStart { line } => Some(line),
+                _ => None,
+            })
+            .expect("prompt mark");
+        // Two lines scrolled into history; the cursor sits on screen
+        // row 1, so the prompt line is absolute line 3.
+        assert_eq!(mark, 3);
     }
 
     #[test]
