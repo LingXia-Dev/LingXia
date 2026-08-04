@@ -93,6 +93,29 @@ fn handle_browser_command_impl(
             lingxia_browser::go_forward(&tab_id).map_err(|err| err.to_string())?;
             Ok(Some(browser_action_response("forward", &tab_id, None)))
         }
+        handlers::browser::UA_SHOW => {
+            let _args: EmptyArgs = parse_args(handler, args)?;
+            run_async(browser_user_agent_state()).map(Some)
+        }
+        handlers::browser::UA_SET => {
+            let args: UserAgentSetArgs = parse_args(handler, args)?;
+            lingxia_browser::set_user_agent_override(Some(args.user_agent))
+                .map_err(|err| err.to_string())?;
+            let state = run_async(browser_user_agent_state())?;
+            if args.reload {
+                reload_live_browser_tabs()?;
+            }
+            Ok(Some(state))
+        }
+        handlers::browser::UA_RESET => {
+            let args: UserAgentResetArgs = parse_args(handler, args)?;
+            lingxia_browser::set_user_agent_override(None).map_err(|err| err.to_string())?;
+            let state = run_async(browser_user_agent_state())?;
+            if args.reload {
+                reload_live_browser_tabs()?;
+            }
+            Ok(Some(state))
+        }
         handlers::browser::EVAL => {
             let args: EvalArgs = parse_args(handler, args)?;
             let tab_id = resolve_tab_id(&args.tab_id)?;
@@ -421,6 +444,48 @@ fn wait_timeout(timeout_ms: Option<u64>) -> Duration {
 }
 
 #[cfg(feature = "browser")]
+async fn browser_user_agent_state() -> Result<Value, String> {
+    let configured = lingxia_browser::configured_user_agent();
+    let mut effective = None;
+    for tab in lingxia_browser::tabs() {
+        let Ok(value) =
+            lingxia_browser::evaluate_javascript(&tab.tab_id, "navigator.userAgent").await
+        else {
+            continue;
+        };
+        if let Some(value) = value.as_str() {
+            effective = Some(value.to_string());
+            break;
+        }
+    }
+    Ok(json!({
+        "configured": configured,
+        "effective": effective,
+    }))
+}
+
+#[cfg(feature = "browser")]
+fn reload_live_browser_tabs() -> Result<(), String> {
+    let mut failures = Vec::new();
+    for tab in lingxia_browser::tabs() {
+        match lingxia_browser::reload(&tab.tab_id) {
+            Ok(())
+            | Err(lingxia_browser::BrowserAutomationError::TabNotFound(_))
+            | Err(lingxia_browser::BrowserAutomationError::WebViewNotFound(_)) => {}
+            Err(error) => failures.push(format!("{}: {error}", tab.tab_id)),
+        }
+    }
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        Err(format!(
+            "failed to reload browser tabs: {}",
+            failures.join("; ")
+        ))
+    }
+}
+
+#[cfg(feature = "browser")]
 fn resolve_tab_id(raw: &str) -> Result<String, String> {
     let trimmed = raw.trim();
     if trimmed.eq_ignore_ascii_case("current") {
@@ -537,6 +602,21 @@ struct OpenArgs {
 #[derive(Deserialize)]
 struct TabArgs {
     tab_id: String,
+}
+
+#[cfg(feature = "browser")]
+#[derive(Deserialize)]
+struct UserAgentSetArgs {
+    user_agent: String,
+    #[serde(default)]
+    reload: bool,
+}
+
+#[cfg(feature = "browser")]
+#[derive(Deserialize)]
+struct UserAgentResetArgs {
+    #[serde(default)]
+    reload: bool,
 }
 
 #[cfg(feature = "browser")]
@@ -660,3 +740,8 @@ struct CookieDeleteArgs {
 fn default_cookie_path() -> String {
     "/".to_string()
 }
+
+// No unit tests: any test rooting handle_browser_command_impl links the apple
+// Swift-bridge symbols, which `cargo test --workspace` cannot resolve. UA
+// validation and override plumbing are tested in lingxia-webview/src/traits.rs
+// and lingxia-browser/src/tabs.rs.

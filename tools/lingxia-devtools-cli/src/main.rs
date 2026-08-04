@@ -205,4 +205,51 @@ mod tests {
         assert!(Cli::try_parse_from(["lxdev", "logs", "--source", "native"]).is_err());
         assert!(Cli::try_parse_from(["lxdev", "logs", "--wide"]).is_err());
     }
+
+    #[test]
+    fn browser_user_agent_commands_have_stable_cli_shapes() {
+        let cli = Cli::try_parse_from([
+            "lxdev",
+            "browser",
+            "ua",
+            "set",
+            "TestAgent/1.0",
+            "--reload",
+            "--json",
+        ])
+        .unwrap();
+        let Commands::Browser(options) = cli.command else {
+            panic!("expected browser command");
+        };
+        let browser::BrowserCommand::UserAgent(options) = options.command else {
+            panic!("expected user-agent command");
+        };
+        assert!(options.json);
+        assert!(!options.pretty);
+        assert!(matches!(
+            options.command,
+            browser::UserAgentCommand::Set {
+                user_agent,
+                reload: true,
+            } if user_agent == "TestAgent/1.0"
+        ));
+
+        assert!(
+            Cli::try_parse_from([
+                "lxdev",
+                "browser",
+                "user-agent",
+                "show",
+                "--json",
+                "--pretty",
+            ])
+            .is_err()
+        );
+        assert!(Cli::try_parse_from(["lxdev", "browser", "ua", "reset", "--reload"]).is_ok());
+        assert!(Cli::try_parse_from(["lxdev", "browser", "user-agent", "show"]).is_ok());
+        assert!(Cli::try_parse_from(["lxdev", "browser", "ua", "show", "--tab", "docs"]).is_err());
+        assert!(
+            Cli::try_parse_from(["lxdev", "browser", "ua", "configure", "TestAgent/1.0"]).is_err()
+        );
+    }
 }

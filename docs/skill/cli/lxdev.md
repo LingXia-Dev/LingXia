@@ -64,6 +64,7 @@ Mobile reports one host window. Desktop hosts may report several (for example ma
 - `eval` / `query` — JS and element inspection in a tab
 - `wait` / `wait-url` / `wait-away` — block until a condition holds
 - `click` / `type` / `fill` / `press` / `scroll` / `scroll-to`
+- `ua show|set|reset` (alias `user-agent`) — browser-session UA; `--reload` refreshes open tabs
 - `cookies list|set|delete|clear`
 - `screenshot` — PNG of the tab's web content only
 
