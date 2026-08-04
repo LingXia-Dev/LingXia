@@ -12,6 +12,7 @@ portable-pty = "0.9"
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 parking_lot = "0.12"
+regex = "1"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
