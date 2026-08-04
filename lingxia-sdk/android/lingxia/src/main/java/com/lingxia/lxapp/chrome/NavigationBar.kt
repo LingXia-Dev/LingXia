@@ -38,7 +38,6 @@ internal data class NavigationBarState(
     companion object {
         // Default values
         val DEFAULT_BACKGROUND_COLOR = Color.WHITE
-        val DEFAULT_TEXT_COLOR = Color.BLACK
         val DEFAULT_CAPSULE_BACKGROUND_COLOR = Color.WHITE
         val DEFAULT_CAPSULE_FOREGROUND_COLOR = Color.BLACK
         const val DEFAULT_CAPSULE_DIVIDER_COLOR = 0xFFD1D1D6.toInt()

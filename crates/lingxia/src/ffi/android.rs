@@ -36,22 +36,6 @@ where
     vm.attach_current_thread(f)
 }
 
-/// Parses a color string (e.g., "#RRGGBB" or "transparent") into an i32 ARGB value for Android.
-fn parse_color_to_i32(color_str: &str, default_color: i32) -> i32 {
-    if color_str.eq_ignore_ascii_case("transparent") {
-        return 0x00000000;
-    }
-
-    if color_str.starts_with('#')
-        && color_str.len() == 7
-        && let Ok(rgb) = i32::from_str_radix(&color_str[1..], 16)
-    {
-        return (0xFF000000u32 as i32) | rgb; // Add full alpha
-    }
-
-    default_color
-}
-
 fn normalize_lookup_path(path: &str) -> &str {
     let path = path.split('?').next().unwrap_or(path);
     path.split('#').next().unwrap_or(path)
@@ -539,14 +523,7 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_getNavigationBarState<'a>(
         let bg_color_int = style.background_color.argb() as i32;
         let foreground_color_int = style.foreground_color.argb() as i32;
         let divider_color_int = style.divider_color.argb() as i32;
-        let foreground = style.foreground_color.rgba() >> 8;
-        let text_style_value =
-            if ((foreground >> 16) & 0xff) + ((foreground >> 8) & 0xff) + (foreground & 0xff) < 384
-            {
-                "black"
-            } else {
-                "white"
-            };
+        let text_style_value = style.foreground_text_style();
 
         // Create Java strings
         let title_text = env.new_string(nav_state.title())?;
@@ -877,29 +854,21 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_getTabBarState<'a>(
         // Find the TabBarState class
         let tab_bar_class = env.find_class(jni_str!("com/lingxia/lxapp/chrome/TabBarState"))?;
 
-        // Convert background color using unified function
         let background_color = resolved_style
             .background_color
             .map(|color| color.argb() as i32)
             .unwrap_or(0);
 
-        // Convert selected color using unified function
         let selected_color = resolved_style.selected_foreground_color.argb() as i32;
 
-        // Convert unselected color using unified function
         let color = resolved_style.foreground_color.argb() as i32;
 
-        // Convert border style using unified function
         let border_style = resolved_style
             .divider_color
             .map(|color| color.argb() as i32)
             .unwrap_or(0);
 
-        // Convert dimension (height for top/bottom, width for left/right)
         let dimension = 64;
-
-        // Use int for position (0=Bottom, 1=Top, 2=Left, 3=Right)
-        let position_int = 0;
 
         // Create TabBarItem list
         let array_list_class = env.find_class(jni_str!("java/util/ArrayList"))?;
@@ -928,23 +897,11 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_getTabBarState<'a>(
         let position_class =
             env.find_class(jni_str!("com/lingxia/lxapp/chrome/TabBarState$Position"))?;
 
-        let position_enum = match position_int {
-            1 => env.get_static_field(
-                position_class,
-                jni_str!("LEFT"),
-                jni_sig!("Lcom/lingxia/lxapp/chrome/TabBarState$Position;"),
-            )?,
-            2 => env.get_static_field(
-                position_class,
-                jni_str!("RIGHT"),
-                jni_sig!("Lcom/lingxia/lxapp/chrome/TabBarState$Position;"),
-            )?,
-            _ => env.get_static_field(
-                position_class,
-                jni_str!("BOTTOM"),
-                jni_sig!("Lcom/lingxia/lxapp/chrome/TabBarState$Position;"),
-            )?,
-        };
+        let position_enum = env.get_static_field(
+            position_class,
+            jni_str!("BOTTOM"),
+            jni_sig!("Lcom/lingxia/lxapp/chrome/TabBarState$Position;"),
+        )?;
 
         // Create TabBarState object (all parameters non-nullable)
         let obj = env.new_object(

@@ -1806,23 +1806,13 @@ class LxAppActivity : AppCompatActivity() {
         }
     }
 
-    /**
-     * Keep the system status bar glyphs (clock, signal, battery) legible for
-     * the current page. Explicit navigationBarTextStyle wins; otherwise a
-     * shown navbar contrasts against its background color, and a custom
-     * (hidden-navbar) page follows the system theme, matching pages whose
-     * background adapts via prefers-color-scheme.
-     */
+    /** Keep status bar glyphs legible against native chrome or custom content. */
     private fun applyStatusBarGlyphs(navbarState: NavigationBarState?) {
-        val lightGlyphs = when (navbarState?.navigationBarTextStyle?.lowercase()) {
-            "white" -> true
-            "black" -> false
-            else -> if (navbarState?.showNavbar == true) {
-                NavigationBar.ColorUtils.isColorDark(navbarState.navigationBarBackgroundColor)
-            } else {
-                (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
-                    Configuration.UI_MODE_NIGHT_YES
-            }
+        val lightGlyphs = if (navbarState?.showNavbar == true) {
+            !NavigationBar.ColorUtils.isColorDark(navbarState.navigationBarForegroundColor)
+        } else {
+            (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
+                Configuration.UI_MODE_NIGHT_YES
         }
         WindowCompat.getInsetsController(window, window.decorView)
             .isAppearanceLightStatusBars = !lightGlyphs

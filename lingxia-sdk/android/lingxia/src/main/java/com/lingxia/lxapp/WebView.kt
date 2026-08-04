@@ -8,6 +8,8 @@ import android.os.Looper
 import android.util.Log
 import android.view.MotionEvent
 import android.webkit.WebView as AndroidWebView
+import androidx.webkit.WebSettingsCompat
+import androidx.webkit.WebViewFeature
 import com.lingxia.lxapp.NativeComponents.NativeBridge
 import com.lingxia.webview.LingXiaWebView
 
@@ -27,6 +29,12 @@ internal class WebView(context: Context) : LingXiaWebView(context) {
         fun enableDebugging() {
             AndroidWebView.setWebContentsDebuggingEnabled(true)
             Log.d(TAG, "WebView debugging enabled globally")
+        }
+    }
+
+    init {
+        if (WebViewFeature.isFeatureSupported(WebViewFeature.ALGORITHMIC_DARKENING)) {
+            WebSettingsCompat.setAlgorithmicDarkeningAllowed(settings, true)
         }
     }
 

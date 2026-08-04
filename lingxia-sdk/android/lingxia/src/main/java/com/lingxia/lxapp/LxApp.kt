@@ -45,7 +45,8 @@ object LxApp {
 
     @JvmStatic
     fun hostAppearanceDark(): Boolean {
-        val resources = Lingxia.applicationContext()?.resources ?: currentActivity?.resources ?: return false
+        // Activity resources may already carry an lxapp-local night override.
+        val resources = Lingxia.applicationContext()?.resources ?: return false
         return (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
             android.content.res.Configuration.UI_MODE_NIGHT_YES
     }
