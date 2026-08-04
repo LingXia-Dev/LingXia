@@ -131,8 +131,11 @@ declare module 'liblingxia.so' {
     dataDir: string,
     cacheDir: string,
     resourceManager: resourceManager.ResourceManager | null,
-    locale: string
+    locale: string,
+    hostAppearanceDark: boolean
   ): string | null;
+
+  export function onHostAppearanceChanged(dark: boolean): void;
 
   /**
    * Effective display language. A saved user choice takes precedence over

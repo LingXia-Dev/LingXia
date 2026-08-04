@@ -93,7 +93,7 @@ pub struct WindowsShellTabBarLayout {
     pub icon_rail: bool,
     /// The lxapp explicitly hid its tabbar. Desktop keeps the group and the
     /// surrounding sidebar visible, but removes the child rows and disables
-    /// the chevron until `showTabBar()` clears this state.
+    /// the chevron until `visibility: 'auto'` clears this state.
     pub items_api_hidden: bool,
     pub items_collapsed: bool,
     /// Height reserved at the sidebar bottom for adaptive footer-action rows.

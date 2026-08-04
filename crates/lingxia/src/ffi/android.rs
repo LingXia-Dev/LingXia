@@ -36,22 +36,6 @@ where
     vm.attach_current_thread(f)
 }
 
-/// Parses a color string (e.g., "#RRGGBB" or "transparent") into an i32 ARGB value for Android.
-fn parse_color_to_i32(color_str: &str, default_color: i32) -> i32 {
-    if color_str.eq_ignore_ascii_case("transparent") {
-        return 0x00000000;
-    }
-
-    if color_str.starts_with('#')
-        && color_str.len() == 7
-        && let Ok(rgb) = i32::from_str_radix(&color_str[1..], 16)
-    {
-        return (0xFF000000u32 as i32) | rgb; // Add full alpha
-    }
-
-    default_color
-}
-
 fn normalize_lookup_path(path: &str) -> &str {
     let path = path.split('?').next().unwrap_or(path);
     path.split('#').next().unwrap_or(path)
@@ -345,6 +329,12 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_findWebView<'a>(
             return Ok(JObject::null());
         };
 
+        // A cached page re-enters the transition immediately; stamp the live
+        // scheme before it becomes visible, not after the show animation.
+        if let Some(app) = lxapp::try_get(&page.appid()) {
+            app.republish_page_scheme(&page);
+        }
+
         match env.new_local_ref(webview.get_java_webview()) {
             Ok(local_ref) => Ok(unsafe { JObject::from_raw(env, local_ref.into_raw()) }),
             Err(e) => {
@@ -376,6 +366,12 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_findWebViewByPageInstanceI
             return Ok(JObject::null());
         };
 
+        // A cached page re-enters the transition immediately; stamp the live
+        // scheme before it becomes visible, not after the show animation.
+        if let Some(app) = lxapp::try_get(&page.appid()) {
+            app.republish_page_scheme(&page);
+        }
+
         match env.new_local_ref(webview.get_java_webview()) {
             Ok(local_ref) => Ok(unsafe { JObject::from_raw(env, local_ref.into_raw()) }),
             Err(e) => {
@@ -394,6 +390,14 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_notifyPageInstanceMounted(
     page_instance_id: JString,
 ) -> jboolean {
     notify_page_instance_event(&mut env, page_instance_id, PageInstanceEvent::Mounted)
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_app_NativeApi_onHostAppearanceChanged(
+    _env: EnvUnowned,
+    _class: JClass,
+) {
+    lxapp::refresh_auto_appearances();
 }
 
 #[unsafe(no_mangle)]
@@ -526,29 +530,33 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_getNavigationBarState<'a>(
         let nav_bar_class =
             env.find_class(jni_str!("com/lingxia/lxapp/chrome/NavigationBarState"))?;
 
-        // Parse background color using unified function
-        let bg_color_int = parse_color_to_i32(
-            &nav_state.navigationBarBackgroundColor,
-            0xFFFFFFFFu32 as i32,
-        );
+        let style = lxapp.resolved_navigation_bar_style(&path);
+        let capsule = lxapp.resolved_capsule_style();
+        let bg_color_int = style.background_color.argb() as i32;
+        let foreground_color_int = style.foreground_color.argb() as i32;
+        let divider_color_int = style.divider_color.argb() as i32;
+        let text_style_value = style.foreground_text_style();
 
         // Create Java strings
-        let title_text = env.new_string(&nav_state.navigationBarTitleText)?;
-        let text_style = env.new_string(&nav_state.navigationBarTextStyle)?;
+        let title_text = env.new_string(nav_state.title())?;
+        let text_style = env.new_string(text_style_value)?;
 
-        // Create NavigationBarState object with new boolean fields
-        // Constructor signature: (ILjava/lang/String;Ljava/lang/String;ZZZ)V
-        // Parameters: backgroundColor, textStyle, titleText, showNavbar, showBackButton, showHomeButton
         let obj = env.new_object(
             nav_bar_class,
-            jni_sig!("(ILjava/lang/String;Ljava/lang/String;ZZZ)V"),
+            jni_sig!("(IIILjava/lang/String;Ljava/lang/String;ZZZIIII)V"),
             &[
                 (bg_color_int as jint).into(),
+                (foreground_color_int as jint).into(),
+                (divider_color_int as jint).into(),
                 (&text_style).into(),
                 (&title_text).into(),
                 (nav_state.show_navbar as jboolean).into(),
                 (nav_state.show_back_button as jboolean).into(),
-                (nav_state.show_home_button as jboolean).into(),
+                (nav_state.home_button_visible() as jboolean).into(),
+                (capsule.background_color.argb() as jint).into(),
+                (capsule.foreground_color.argb() as jint).into(),
+                (capsule.divider_color.argb() as jint).into(),
+                (capsule.interaction_color.argb() as jint).into(),
             ],
         )?;
         Ok(obj)
@@ -845,43 +853,44 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_getTabBarState<'a>(
     env.with_env(|env| -> Result<JObject, jni::errors::Error> {
         let appid: String = appid.try_to_string(env)?;
 
-        let tab_bar_config = match lxapp::try_get(&appid).and_then(|lxapp| lxapp.get_tabbar()) {
-            Some(config) => config,
-            None => {
-                return Ok(JObject::null());
-            }
+        let Some(lxapp) = lxapp::try_get(&appid) else {
+            return Ok(JObject::null());
+        };
+        let Some(tab_bar_config) = lxapp.get_tabbar() else {
+            return Ok(JObject::null());
+        };
+        let Some(resolved_style) = lxapp.resolved_tabbar_style() else {
+            return Ok(JObject::null());
         };
 
         // Find the TabBarState class
         let tab_bar_class = env.find_class(jni_str!("com/lingxia/lxapp/chrome/TabBarState"))?;
 
-        // Convert background color using unified function
-        let background_color =
-            parse_color_to_i32(&tab_bar_config.backgroundColor, 0xFFFFFFFFu32 as i32);
+        let background_color = resolved_style
+            .background_color
+            .map(|color| color.argb() as i32)
+            .unwrap_or(0);
 
-        // Convert selected color using unified function
-        let selected_color =
-            parse_color_to_i32(&tab_bar_config.selectedColor, 0xFF1677FFu32 as i32);
+        let selected_color = resolved_style.selected_foreground_color.argb() as i32;
 
-        // Convert unselected color using unified function
-        let color = parse_color_to_i32(&tab_bar_config.color, 0xFF666666u32 as i32);
+        let color = resolved_style.foreground_color.argb() as i32;
 
-        // Convert border style using unified function
-        let border_style = parse_color_to_i32(&tab_bar_config.borderStyle, 0xFFF0F0F0u32 as i32);
+        let border_style = resolved_style
+            .divider_color
+            .map(|color| color.argb() as i32)
+            .unwrap_or(0);
 
-        // Convert dimension (height for top/bottom, width for left/right)
-        let dimension = tab_bar_config.dimension;
-
-        // Use int for position (0=Bottom, 1=Top, 2=Left, 3=Right)
-        let position_int = tab_bar_config.position.to_i32();
+        let dimension = 64;
 
         // Create TabBarItem list
         let array_list_class = env.find_class(jni_str!("java/util/ArrayList"))?;
 
         let tab_items_list = env.new_object(array_list_class, jni_sig!("()V"), &[])?;
 
-        for item in tab_bar_config.list.iter() {
-            if let Some(tab_item) = create_tab_bar_item(env, item) {
+        for (index, item) in tab_bar_config.items.iter().enumerate() {
+            if let Some(tab_item) =
+                create_tab_bar_item(env, item, tab_bar_config.selected_index == index as i32)
+            {
                 let _ = env.call_method(
                     &tab_items_list,
                     jni_str!("add"),
@@ -891,7 +900,7 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_getTabBarState<'a>(
             } else {
                 log::warn!(
                     "[Android] Failed to create TabBar item in getTabBarState for {}",
-                    &item.pagePath
+                    &item.page_path
                 );
             }
         }
@@ -900,23 +909,11 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_getTabBarState<'a>(
         let position_class =
             env.find_class(jni_str!("com/lingxia/lxapp/chrome/TabBarState$Position"))?;
 
-        let position_enum = match position_int {
-            1 => env.get_static_field(
-                position_class,
-                jni_str!("LEFT"),
-                jni_sig!("Lcom/lingxia/lxapp/chrome/TabBarState$Position;"),
-            )?,
-            2 => env.get_static_field(
-                position_class,
-                jni_str!("RIGHT"),
-                jni_sig!("Lcom/lingxia/lxapp/chrome/TabBarState$Position;"),
-            )?,
-            _ => env.get_static_field(
-                position_class,
-                jni_str!("BOTTOM"),
-                jni_sig!("Lcom/lingxia/lxapp/chrome/TabBarState$Position;"),
-            )?,
-        };
+        let position_enum = env.get_static_field(
+            position_class,
+            jni_str!("BOTTOM"),
+            jni_sig!("Lcom/lingxia/lxapp/chrome/TabBarState$Position;"),
+        )?;
 
         // Create TabBarState object (all parameters non-nullable)
         let obj = env.new_object(
@@ -930,7 +927,7 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_getTabBarState<'a>(
                 dimension.into(),
                 (&position_enum).into(),
                 (&tab_items_list).into(),
-                tab_bar_config.is_visible.into(),
+                tab_bar_config.is_effectively_visible().into(),
                 tab_bar_config.selected_index.into(),
             ],
         )?;
@@ -943,6 +940,7 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_getTabBarState<'a>(
 fn create_tab_bar_item<'a>(
     env: &mut Env<'a>,
     item: &lxapp::tabbar::TabBarItem,
+    selected: bool,
 ) -> Option<JObject<'a>> {
     // Find TabBarItem class
     let tab_item_class = match env.find_class(jni_str!("com/lingxia/lxapp/chrome/TabBarItem")) {
@@ -951,7 +949,7 @@ fn create_tab_bar_item<'a>(
     };
 
     // Create strings
-    let page_path = match env.new_string(&item.pagePath) {
+    let page_path = match env.new_string(&item.page_path) {
         Ok(s) => s,
         Err(_) => return None,
     };
@@ -959,11 +957,12 @@ fn create_tab_bar_item<'a>(
         Ok(s) => s,
         Err(_) => return None,
     };
-    let icon_path = match env.new_string(item.iconPath.as_deref().unwrap_or("")) {
+    let icon_path = match env.new_string(item.icon_path.as_deref().unwrap_or("")) {
         Ok(s) => s,
         Err(_) => return None,
     };
-    let selected_icon_path = match env.new_string(item.selectedIconPath.as_deref().unwrap_or("")) {
+    let selected_icon_path = match env.new_string(item.selected_icon_path.as_deref().unwrap_or(""))
+    {
         Ok(s) => s,
         Err(_) => return None,
     };
@@ -987,7 +986,7 @@ fn create_tab_bar_item<'a>(
                 (&text).into(),
                 (&icon_path).into(),
                 (&selected_icon_path).into(),
-                item.selected.into(),
+                selected.into(),
                 (&badge_jstring).into(),
                 item.has_red_dot.into(), // Use actual red dot data from Rust
             ],

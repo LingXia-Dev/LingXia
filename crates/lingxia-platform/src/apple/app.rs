@@ -321,22 +321,6 @@ impl AppRuntime for Platform {
             ))
         }
     }
-
-    async fn get_capsule_rect(&self, appid: &str) -> Result<String, PlatformError> {
-        #[cfg(target_os = "ios")]
-        {
-            crate::rt::native_call(|callback_id| {
-                ffi::get_capsule_rect(appid, callback_id);
-                Ok(())
-            })
-            .await
-        }
-        #[cfg(not(target_os = "ios"))]
-        {
-            let _ = appid;
-            Ok("null".to_string())
-        }
-    }
 }
 
 impl ShareService for Platform {

@@ -21,6 +21,9 @@ use tokio::time;
 use uuid::Uuid;
 
 use self::navbar::NavigationBarState;
+use self::page_chrome::{
+    AppearancePreference, EffectivePageChromeLayout, LxAppAppearanceState, ResolvedAppearance,
+};
 use crate::appservice::LxAppWorkers;
 use crate::error::LxAppError;
 use crate::page::config::{OrientationConfig, PageConfig};
@@ -35,6 +38,7 @@ use config::{LxAppConfig, LxAppLogicEntry, LxAppPageEntry};
 mod content;
 pub(crate) mod metadata;
 pub mod navbar;
+pub mod page_chrome;
 mod page_instance_host;
 mod runtime_bootstrap;
 mod runtime_ops;
@@ -68,8 +72,8 @@ pub use runtime_ops::{
     ensure_builtin_lxapp, ensure_host_surface_owner, ensure_lxapp, get_current_lxapp,
     installed_lxapp_path, is_lxapp_open, is_pull_down_refresh_enabled, list_lxapps,
     mark_lxapp_active, notify_lxapp_host_visibility, notify_page_host_visibility,
-    notify_page_instance, notify_page_instance_by_id, on_low_memory, open_lxapp, restart_lxapp,
-    touch_page_instance_by_id, uninstall_lxapp,
+    notify_page_instance, notify_page_instance_by_id, on_low_memory, open_lxapp,
+    refresh_auto_appearances, restart_lxapp, touch_page_instance_by_id, uninstall_lxapp,
 };
 pub(crate) use runtime_registry::get_lxapps_manager;
 pub use runtime_registry::{
@@ -514,6 +518,11 @@ pub(crate) struct LxAppState {
     /// Contains TabBar configuration and dynamic state (badges, red dots, visibility)
     pub tabbar: Option<tabbar::TabBar>,
 
+    /// Lxapp-scoped appearance and the latest committed Page Chrome revision.
+    pub(crate) appearance: LxAppAppearanceState,
+    pub(crate) page_chrome_revision: u64,
+    pub(crate) page_chrome_layouts: HashMap<String, EffectivePageChromeLayout>,
+
     /// Startup options for the app
     pub(crate) startup_options: LxAppStartupOptions,
 
@@ -543,6 +552,9 @@ impl LxAppState {
             last_active_time: Instant::now(),
             network_security: NetworkSecurity::new(),
             tabbar: None,
+            appearance: LxAppAppearanceState::default(),
+            page_chrome_revision: 0,
+            page_chrome_layouts: HashMap::new(),
             startup_options: LxAppStartupOptions::default(),
             open_region: None,
             surfaces: Mutex::new(SurfaceRecords::new()),
@@ -600,7 +612,13 @@ pub struct LxApp {
 
     page_creation_lock: Mutex<()>,
 
+    /// Serializes public appearance/navbar/tabbar mutations per lxapp.
+    pub(crate) page_chrome_mutation_lock: tokio::sync::Mutex<()>,
+
     self_weak: OnceLock<Weak<LxApp>>,
+
+    // Scripts injected as soon as a page document starts loading.
+    document_start_scripts: Mutex<Vec<Arc<str>>>,
 
     // Scripts injected into every page owned by this LxApp on page load.
     page_scripts: Mutex<Vec<Arc<str>>>,
@@ -751,11 +769,25 @@ impl LxApp {
     }
 
     pub(crate) fn sync_host_ui(&self) {
+        let revision = self.next_page_chrome_revision();
         if let Err(err) = self.runtime.update_navbar_ui(self.appid.clone()) {
             warn!("Failed to update host NavigationBar UI: {}", err).with_appid(self.appid.clone());
         }
         if let Err(err) = self.runtime.update_tabbar_ui(self.appid.clone()) {
             warn!("Failed to update host TabBar UI: {}", err).with_appid(self.appid.clone());
+        }
+        if let Ok(page) = self.current_page() {
+            let appearance = self.appearance_state().resolved;
+            let app = self.clone_arc();
+            std::mem::drop(crate::executor::spawn(async move {
+                if let Err(err) = app
+                    .publish_realized_page_chrome(&page, revision, appearance)
+                    .await
+                {
+                    warn!("Failed to publish Page Chrome View snapshot: {}", err)
+                        .with_appid(app.appid.clone());
+                }
+            }));
         }
     }
 
@@ -1177,10 +1209,11 @@ impl LxApp {
         for page in pages {
             page.detach_webview();
         }
-        if let Ok(state) = self.state.lock() {
+        if let Ok(mut state) = self.state.lock() {
             state.pages.lock().unwrap().clear();
             state.pages_by_id.lock().unwrap().clear();
             state.page_instance_runtime.lock().unwrap().clear();
+            state.page_chrome_layouts.clear();
         }
         for webtag in &page_webtags {
             destroy_webview(webtag);
@@ -1235,7 +1268,9 @@ impl LxApp {
             state: Mutex::new(LxAppState::new()),
             presentation_open_lock: Mutex::new(()),
             page_creation_lock: Mutex::new(()),
+            page_chrome_mutation_lock: tokio::sync::Mutex::new(()),
             self_weak: OnceLock::new(),
+            document_start_scripts: Mutex::new(Vec::new()),
             page_scripts: Mutex::new(Vec::new()),
         }
     }
@@ -1407,6 +1442,36 @@ impl LxApp {
                 // Convert icon paths to absolute paths using the lxapp directory as base
                 state.tabbar = Some(tabbar_config.with_absolute_paths(&self.lxapp_dir));
             }
+
+            let manifest_preference = self.config.appearance;
+            let saved_preference = lingxia_service::settings::lxapp_appearance(
+                &self.runtime.app_data_dir(),
+                &self.appid,
+            )
+            .map_err(|error| LxAppError::IoError(error.to_string()))?
+            .and_then(|value| value.parse::<AppearancePreference>().ok());
+            let preference = saved_preference.unwrap_or(manifest_preference);
+            let resolved = match preference {
+                AppearancePreference::Light => ResolvedAppearance::Light,
+                AppearancePreference::Dark => ResolvedAppearance::Dark,
+                AppearancePreference::Auto => {
+                    if self.runtime.host_appearance_dark() {
+                        ResolvedAppearance::Dark
+                    } else {
+                        ResolvedAppearance::Light
+                    }
+                }
+            };
+            self.state.lock().unwrap().appearance = LxAppAppearanceState {
+                preference,
+                resolved,
+                revision: 0,
+            };
+            self.runtime
+                .apply_lxapp_appearance(&self.appid, resolved.is_dark())?;
+            self.document_start_scripts.lock().unwrap().push(Arc::from(
+                page_chrome::bootstrap_script(&EffectivePageChromeLayout::default(), resolved),
+            ));
 
             Ok(())
         })?
@@ -1778,6 +1843,13 @@ impl LxApp {
         if let Ok(mut scripts) = self.page_scripts.lock() {
             scripts.push(Arc::from(js.into()));
         }
+    }
+
+    pub(crate) fn document_start_scripts_snapshot(&self) -> Vec<Arc<str>> {
+        self.document_start_scripts
+            .lock()
+            .map(|scripts| scripts.clone())
+            .unwrap_or_default()
     }
 
     /// Snapshot page scripts for a new PageInstance: global scripts + this app's scripts.

@@ -133,7 +133,7 @@ impl LxApp {
         };
 
         let config = if self.logic_enabled() {
-            PageConfig::from_json(self, &config_path)
+            PageConfig::from_json(self, &config_path).unwrap_or_default()
         } else {
             PageConfig::default()
         };
@@ -441,7 +441,7 @@ impl LxApp {
             "PageInstance disposed while waiting for view response",
         );
 
-        if let Ok(state) = self.state.lock() {
+        if let Ok(mut state) = self.state.lock() {
             let mut pages = state.pages.lock().unwrap();
             let canonical_instance_id = pages
                 .get(&path)
@@ -464,6 +464,8 @@ impl LxApp {
                     .unwrap()
                     .retain(|stack_path| stack_path != &path);
             }
+            drop(pages);
+            state.page_chrome_layouts.remove(id.as_str());
         }
 
         destroy_webview(&page.webtag());
@@ -583,7 +585,7 @@ impl LxApp {
         let page_count = state.pages.lock().unwrap().len();
 
         let max_allowed = if let Some(ref tabbar) = state.tabbar {
-            tabbar.list.len() + PAGE_STACK_MAX
+            tabbar.items.len() + PAGE_STACK_MAX
         } else {
             PAGE_STACK_MAX
         };

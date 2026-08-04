@@ -386,28 +386,28 @@ crammed in the moment the window crosses 840.
 - From the last item back to the next top-level tab the gap returns to
   **4 dp/pt**. Children are tighter to express attribution but MUST NOT shrink
   into mis-tap territory.
-- `hideTabBar()` hides the expanded region and disables the chevron;
-  `showTabBar()` clears the API-hidden state and expands. The user chevron only
-  changes `userCollapsed` while API-visible; it MUST NOT override the
-  API-hidden state.
+- `lx.tabBar.update({ visibility: 'hidden' })` hides the expanded region and
+  disables the chevron; `visibility: 'auto'` clears the API-hidden state and
+  expands. The user chevron only changes `userCollapsed` while API-visible; it
+  MUST NOT override the API-hidden state.
 - **Only explicit API calls map to collapse/expand.** The mobile implicit
   behavior "navigating to a non-tab page auto-hides the tabbar" does not
   propagate to desktop: the sidebar is a persistent navigation region, so
   drilling into a detail page keeps the group expanded and merely clears item
   selection (see two-level selection below) — otherwise every navigation would
   bounce the group and lose the waypoint.
-- Desktop MUST fully support `setTabBarBadge`, `removeTabBarBadge`,
-  `showTabBarRedDot`, `hideTabBarRedDot`, `setTabBarItem`, `setTabBarStyle`.
-  While collapsed, badges/red dots aggregate onto the parent lxapp tab.
-- **Mapping of the four style keys onto the sidebar** (one-to-one with mobile
-  semantics; unset keys fall back to a neutral theme):
+- Desktop MUST fully support `lx.tabBar.update()` item, badge, red-dot,
+  visibility, and style patches. While collapsed, badges/red dots aggregate
+  onto the parent lxapp tab.
+- **Mapping of tabbar style keys onto the sidebar** (one-to-one with mobile
+  semantics; unset keys inherit the resolved Page Chrome theme):
 
   | tabbar style | Mobile | Desktop sidebar |
   |---|---|---|
-  | `color` | Unselected item text | Unselected item title color |
-  | `selectedColor` | Selected item text | Selected item title color + left-edge accent bar |
+  | `foregroundColor` | Unselected item text | Unselected item title color |
+  | `selectedForegroundColor` | Selected item text | Selected item title color + left-edge accent bar |
   | `backgroundColor` | Bar background | Expanded group (items container) background |
-  | `borderStyle` | Bar border | Attribution line base color |
+  | `dividerColor` | Bar divider | Attribution line base color |
 
   Colors apply to text and structural elements only; icons switch via
   `iconPath`/`selectedIconPath` pairs exactly as on mobile, with no tinting.
@@ -433,10 +433,12 @@ allowed.
   visually binding children to the group header; the thin-line treatment is the
   baseline for both platforms.
 - **Styling adapts to the tabbar config**: the attribution line's base color
-  follows `borderStyle` (black/white); the selected item shows a left-edge
-  accent bar colored by `selectedColor`; selected item text/icon colors are
-  same-sourced. All of it is runtime-mutable via `setTabBarStyle`; the shell
-  injects no accent of its own and uses neutral system colors when unset.
+  follows `dividerColor`; the selected item shows a left-edge accent bar
+  colored by `selectedForegroundColor`; selected item text/icon colors are
+  same-sourced. Only `foregroundColor` and `selectedForegroundColor` are
+  runtime-mutable via `lx.tabBar.update()`; background and divider remain
+  manifest-owned. The shell injects no accent of its own and inherits the Page
+  Chrome theme when fields are unset.
 
 ### 4.4 Pins
 
@@ -890,7 +892,7 @@ As of 2026-08 (PR #202 follow-up design):
 | Sidebar action footer overflow scrolling (5-row cap) | Landed on Windows/macOS |
 | Sidebar/tabbar parity | 184 width, 36/4 and 30/2/1 rhythm, two-level selection, style mapping landed on both platforms |
 | Main surface switcher | Shared ordered/root/capability snapshot plus macOS and Windows projections landed; Windows public-API automation live-verifies switching, keyed reuse, role migration, root protection, and close cleanup |
-| `hideTabBar`/`showTabBar` ↔ group collapse | Landed |
+| `lx.tabBar.update({ visibility })` ↔ group collapse | Landed |
 | Shell persistence | Window frame, sidebar mode/width, group collapse, aside geometry, and pins landed; main-session lazy restore and the aside geometry-only policy still to be verified against §8 |
 | `E_SURFACE_CONFLICT` | Error path exists; ownership conflicts such as navigating to an appId already hosted by another live Surface still need full enforcement |
 | Admission | Arbitration module exists; the 45% clamp / slot-cap / overlay-fallback behavior of §3.3 not yet verified end to end |

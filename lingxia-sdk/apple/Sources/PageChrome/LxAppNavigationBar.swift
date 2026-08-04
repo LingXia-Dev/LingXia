@@ -186,6 +186,11 @@ struct macOSNavigationBarView: View {
                 navigationBarContent
                     .frame(height: NavigationBarState.DEFAULT_HEIGHT)
                     .background(bgColor)
+                    .overlay(alignment: .bottom) {
+                        Rectangle()
+                            .fill(dividerColor)
+                            .frame(height: 0.5)
+                    }
             }
             .background(bgColor)
             .ignoresSafeArea(.container, edges: .top)
@@ -275,8 +280,12 @@ struct macOSNavigationBarView: View {
 
     private var textColor: Color {
         guard let state = state else { return Color.primary }
-        let textStyle = state.text_style.toString()
-        return textStyle == "white" ? Color.white : Color.black
+        return Color(PlatformColor(argb: state.foreground_color))
+    }
+
+    private var dividerColor: Color {
+        guard let state = state else { return Color.clear }
+        return Color(PlatformColor(argb: state.divider_color))
     }
 }
 

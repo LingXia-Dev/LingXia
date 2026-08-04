@@ -1,8 +1,41 @@
 use super::app::Platform;
 use crate::error::PlatformError;
 use crate::traits::ui::UIUpdate;
+use std::sync::atomic::{AtomicBool, Ordering};
+
+static HOST_APPEARANCE_DARK: AtomicBool = AtomicBool::new(false);
+
+pub fn set_harmony_host_appearance_dark(dark: bool) {
+    HOST_APPEARANCE_DARK.store(dark, Ordering::Release);
+}
 
 impl UIUpdate for Platform {
+    fn host_appearance_dark(&self) -> bool {
+        HOST_APPEARANCE_DARK.load(Ordering::Acquire)
+    }
+
+    fn apply_lxapp_appearance(&self, appid: &str, dark: bool) -> Result<(), PlatformError> {
+        let dark = if dark { "true" } else { "false" };
+        lingxia_webview::platform::harmony::tsfn::call_arkts("applyLxAppAppearance", &[appid, dark])
+            .map_err(|error| PlatformError::Platform(error.to_string()))
+    }
+
+    async fn measure_page_chrome_capsule(
+        &self,
+        appid: String,
+    ) -> Result<Option<String>, PlatformError> {
+        let payload = crate::rt::native_call(|callback_id| {
+            let callback_id = callback_id.to_string();
+            lingxia_webview::platform::harmony::tsfn::call_arkts(
+                "getCapsuleRect",
+                &[&callback_id, &appid],
+            )
+            .map_err(|error| PlatformError::Platform(error.to_string()))
+        })
+        .await?;
+        Ok((payload != "null").then_some(payload))
+    }
+
     fn update_navbar_ui(&self, appid: String) -> Result<(), PlatformError> {
         // Use existing refreshNavBar function via TSFN (it will get current path internally)
         lingxia_webview::platform::harmony::tsfn::call_arkts("refreshNavBar", &[&appid]).map_err(

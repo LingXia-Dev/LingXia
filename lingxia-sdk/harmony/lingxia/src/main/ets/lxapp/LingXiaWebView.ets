@@ -65,6 +65,7 @@ export struct LingXiaWebView {
   @Prop renderClip: boolean = false
   @Prop renderZIndex: number = 0
   @Prop renderHitTest: HitTestMode = HitTestMode.Default
+  @Prop appearanceDark: boolean = false
   controller: webview.WebviewController = new webview.WebviewController()
   onFullscreenChange?: (webTag: string, componentId: string, isFullscreen: boolean) => void
 
@@ -91,6 +92,10 @@ export struct LingXiaWebView {
     }
     .width('100%')
     .height('100%')
+    // A height-shrunk Web (tabbar reservation) must anchor to the top;
+    // Stack's default Center alignment splits the reserved space across
+    // top and bottom, opening a band under the navbar.
+    .alignContent(Alignment.TopStart)
     .translate(this.renderTranslate)
   }
 
@@ -105,6 +110,7 @@ export struct LingXiaWebView {
   @Builder
   private buildManagedWeb(): void {
     Web({ src: '', controller: this.controller, incognitoMode: isEphemeralDataMode(this.webTag) })
+      .darkMode(this.appearanceDark ? WebDarkMode.On : WebDarkMode.Off)
       // Form controls are web-rendered (lx-input is a real <input> in the
       // page); RESIZE_CONTENT lets ArkWeb shrink the page and scroll the
       // focused editable above the IME — engine-owned keyboard avoidance,
@@ -227,7 +233,9 @@ export struct LingXiaWebView {
       .fileAccess(false)
       .databaseAccess(this.isBrowserRelaxed())
       .mixedMode(MixedMode.None)
-      .backgroundColor(Color.Transparent)
+      // Transparent keeps the light-container behavior; a dark lxapp must
+      // paint its own canvas or the container bleeds white before first paint.
+      .backgroundColor(this.appearanceDark ? '#1C1C1E' : Color.Transparent)
       .visibility(this.renderVisibility)
       .margin(this.renderMargin)
       .width(this.renderWidth)

@@ -1,5 +1,6 @@
 {
-  "navigationBarTitleText": "Device",
-  "navigationBarBackgroundColor": "#ffffff",
-  "navigationBarTextStyle": "black"
+  "navigationBar": {
+    "title": "Device",
+    "style": { "backgroundColor": "#ffffff", "foregroundColor": "#000000" }
+  }
 }

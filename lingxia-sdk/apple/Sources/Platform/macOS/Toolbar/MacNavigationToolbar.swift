@@ -176,12 +176,11 @@ class MacNavigationToolbar: NSView {
 
         titleLabel.stringValue = state.title_text.toString()
 
-        // Foreground color from text_style (same logic as iOS NavigationBar)
-        let textStyle = state.text_style.toString()
-        let foregroundColor: NSColor = textStyle == "white" ? .white : .black
+        let foregroundColor = PlatformColor(argb: state.foreground_color)
         backButton.contentTintColor = foregroundColor
         homeButton.contentTintColor = foregroundColor
         titleLabel.textColor = foregroundColor
+        separator.layer?.backgroundColor = PlatformColor(argb: state.divider_color).cgColor
 
         // Background color from state
         let bgColor = PlatformColor(argb: state.background_color)

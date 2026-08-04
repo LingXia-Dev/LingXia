@@ -1,5 +1,6 @@
 use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 use thiserror::Error;
@@ -27,6 +28,10 @@ pub struct Settings {
         skip_serializing_if = "Option::is_none"
     )]
     pub display_language: Option<String>,
+    /// Persisted lxapp-scoped appearance preferences. Values are validated by
+    /// `lingxia-lxapp`; unknown historical values fall back to the manifest.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub lxapp_appearances: BTreeMap<String, String>,
 }
 
 static SETTINGS_CACHE: OnceLock<DashMap<String, Settings>> = OnceLock::new();
@@ -150,6 +155,28 @@ pub fn set_display_language(
     save(app_data_dir, &settings)
 }
 
+pub fn get_lxapp_appearance(
+    app_data_dir: &Path,
+    app_id: &str,
+) -> Result<Option<String>, SettingsError> {
+    Ok(load(app_data_dir)?.lxapp_appearances.get(app_id).cloned())
+}
+
+pub fn set_lxapp_appearance(
+    app_data_dir: &Path,
+    app_id: &str,
+    preference: &str,
+) -> Result<(), SettingsError> {
+    let _guard = store_lock()
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+    let mut settings = load(app_data_dir)?;
+    settings
+        .lxapp_appearances
+        .insert(app_id.to_string(), preference.to_string());
+    save(app_data_dir, &settings)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -167,6 +194,24 @@ mod tests {
         assert_eq!(
             get_download_dir(dir.path()).unwrap(),
             Some(dir.path().join("downloads"))
+        );
+    }
+
+    #[test]
+    fn lxapp_appearance_is_isolated_by_app_id() {
+        let dir = tempfile::tempdir().unwrap();
+        set_lxapp_appearance(dir.path(), "alpha", "dark").unwrap();
+        set_lxapp_appearance(dir.path(), "beta", "light").unwrap();
+
+        assert_eq!(
+            get_lxapp_appearance(dir.path(), "alpha")
+                .unwrap()
+                .as_deref(),
+            Some("dark")
+        );
+        assert_eq!(
+            get_lxapp_appearance(dir.path(), "beta").unwrap().as_deref(),
+            Some("light")
         );
     }
 

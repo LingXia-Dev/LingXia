@@ -1,6 +1,7 @@
 {
-  "navigationBarBackgroundColor": "#3b82f6",
-  "navigationBarTextStyle": "black",
-  "navigationBarTitleText": "File",
-  "navigationStyle": "default"
+  "navigationStyle": "default",
+  "navigationBar": {
+    "title": "File",
+    "style": { "backgroundColor": "#3b82f6", "foregroundColor": "#000000" }
+  }
 }

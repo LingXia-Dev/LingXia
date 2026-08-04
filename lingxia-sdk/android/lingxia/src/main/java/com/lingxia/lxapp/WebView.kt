@@ -8,6 +8,8 @@ import android.os.Looper
 import android.util.Log
 import android.view.MotionEvent
 import android.webkit.WebView as AndroidWebView
+import androidx.webkit.WebSettingsCompat
+import androidx.webkit.WebViewFeature
 import com.lingxia.lxapp.NativeComponents.NativeBridge
 import com.lingxia.webview.LingXiaWebView
 
@@ -27,6 +29,19 @@ internal class WebView(context: Context) : LingXiaWebView(context) {
         fun enableDebugging() {
             AndroidWebView.setWebContentsDebuggingEnabled(true)
             Log.d(TAG, "WebView debugging enabled globally")
+        }
+    }
+
+    init {
+        // No algorithmic darkening: the runtime owns page theming through the
+        // data-theme/colorScheme stamp, and Chromium's inversion fights it —
+        // a page explicitly rendering light under a dark-created webview gets
+        // force-inverted into a fake dark palette.
+        // Pre-first-paint canvas follows the resolved DayNight theme instead
+        // of stock white, so dark lxapps don't flash on load.
+        val background = android.util.TypedValue()
+        if (context.theme.resolveAttribute(android.R.attr.colorBackground, background, true)) {
+            setBackgroundColor(background.data)
         }
     }
 

@@ -241,13 +241,6 @@ pub trait AppRuntime:
             "built-in browser pages".to_string(),
         ))
     }
-
-    /// Gets the caller's visible capsule button rect in screen coordinates.
-    /// Returns JSON `null` when the caller has no visible capsule.
-    fn get_capsule_rect(
-        &self,
-        appid: &str,
-    ) -> impl std::future::Future<Output = Result<String, PlatformError>> + Send;
 }
 
 #[cfg(test)]

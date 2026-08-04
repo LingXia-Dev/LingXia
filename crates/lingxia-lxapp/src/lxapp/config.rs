@@ -1,6 +1,7 @@
 use super::security::{
     LxAppSecurityPrivilege, normalize_security_privilege_id, normalize_trusted_domain,
 };
+use crate::lxapp::page_chrome::AppearancePreference;
 use crate::lxapp::tabbar::TabBar;
 use crate::lxapp::version::Version;
 use serde::de::Error as DeError;
@@ -118,6 +119,11 @@ pub(crate) struct LxAppConfig {
     /// Tab bar configuration
     pub(crate) tabBar: Option<TabBar>,
 
+    /// Lxapp-scoped palette preference. A saved user preference takes
+    /// precedence over this manifest default.
+    #[serde(default)]
+    pub(crate) appearance: AppearancePreference,
+
     /// Plugin definitions.
     #[serde(default)]
     pub(crate) plugins: BTreeMap<String, LxPlugin>,
@@ -137,6 +143,7 @@ impl LxAppConfig {
                 ));
             }
             validate_security_shape(object)?;
+            validate_removed_tabbar_fields(object)?;
         }
 
         let mut config: Self = serde_json::from_value(value)?;
@@ -269,8 +276,39 @@ impl LxAppConfig {
 
         validate_security_config(&mut self.security)?;
 
+        let page_paths = self.page_paths();
+        if let Some(tabbar) = &mut self.tabBar {
+            tabbar
+                .validate(&page_paths)
+                .map_err(serde_json::Error::custom)?;
+        }
+
         Ok(())
     }
+}
+
+fn validate_removed_tabbar_fields(
+    object: &serde_json::Map<String, Value>,
+) -> Result<(), serde_json::Error> {
+    let Some(tabbar) = object.get("tabBar").and_then(Value::as_object) else {
+        return Ok(());
+    };
+    for (field, replacement) in [
+        ("list", "tabBar.items"),
+        ("color", "tabBar.style.foregroundColor"),
+        ("selectedColor", "tabBar.style.selectedForegroundColor"),
+        ("backgroundColor", "tabBar.style.backgroundColor"),
+        ("borderStyle", "tabBar.style.dividerColor"),
+        ("position", "remove it; the host owns tabbar placement"),
+        ("dimension", "remove it; the host owns tabbar size"),
+    ] {
+        if tabbar.contains_key(field) {
+            return Err(serde_json::Error::custom(format!(
+                "tabBar.{field}: removed; use {replacement}"
+            )));
+        }
+    }
+    Ok(())
 }
 
 fn is_valid_page_name(name: &str) -> bool {

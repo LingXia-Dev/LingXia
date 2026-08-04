@@ -530,7 +530,7 @@ class SidebarGroupView: NSView, NSTextFieldDelegate {
         let items = tabBar.getItems(appId: providerAppId)
         rebuildItems(items: items)
 
-        // Only an EXPLICIT lx.hideTabBar/showTabBar collapses/expands this
+        // Only an explicit lx.tabBar.update() visibility patch collapses/expands this
         // group. `is_visible` also flips on every navigation to a non-tab page
         // (mobile auto-hide) — on desktop the sidebar stays put for that; the
         // item selection clearing already covers it. Not persisted — the app

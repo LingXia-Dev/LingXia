@@ -397,15 +397,14 @@ class LxAppActivity : AppCompatActivity() {
         configureTransparentSystemBars(this)
         forceHostImmersive = isHostImmersiveEnabled()
 
-        // Set reference to this activity in LxApp
-        LxApp.setCurrentActivity(this)
-
         // Initialize appId from intent FIRST (check for null)
         appId = intent.getStringExtra(EXTRA_APP_ID) ?: run {
             LxLog.e(TAG, "Missing required parameter: appId")
             finish()
             return
         }
+        // Set reference to this activity in LxApp
+        LxApp.setCurrentActivity(this)
         var initialPath = intent.getStringExtra(EXTRA_PATH) ?: ""
         val requestedSessionId = intent.getLongExtra(EXTRA_SESSION_ID, 0L)
         val resolvedEntry = ensureRuntimeReady(appId, initialPath, requestedSessionId) ?: run {
@@ -448,8 +447,8 @@ class LxAppActivity : AppCompatActivity() {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
-            setBackgroundColor(Color.TRANSPARENT)
         }
+        applyCanvasBackground()
 
         setContentView(rootContainer)
 
@@ -462,6 +461,9 @@ class LxAppActivity : AppCompatActivity() {
 
         // Create global NavigationBar (always present, controlled by visibility)
         createNavBar()
+
+        // Chrome views exist now; a persisted non-default scheme can apply.
+        LxApp.replayStoredAppearance(this)
 
         // Defer capsule button creation to post-layout
         rootContainer.post {
@@ -1005,6 +1007,12 @@ class LxAppActivity : AppCompatActivity() {
                 container.tag = "current_webview_container"
             }
 
+            // WebViews are created on the application context, so the lxapp's
+            // localNightMode override never reaches their theme resolution;
+            // feed them the activity configuration once they join the tree so
+            // prefers-color-scheme matches the resolved appearance.
+            view.dispatchConfigurationChanged(resources.configuration)
+
             // Attach native bridge for component overlay
             NativeBridge.attachIfNeeded(view)
 
@@ -1144,7 +1152,7 @@ class LxAppActivity : AppCompatActivity() {
         }
     }
 
-    private fun addCapsuleButton() {
+    private fun addCapsuleButton(navbarState: NavigationBarState? = null) {
         if (!shouldShowCapsuleButton(appId, currentSessionId)) return
 
         val density = resources.displayMetrics.density
@@ -1152,7 +1160,17 @@ class LxAppActivity : AppCompatActivity() {
         val capsuleHeightPx = (LxAppTheme.Metrics.CAPSULE_HEIGHT_DP * density).toInt()
         val capsuleTopMarginPx = LxAppTheme.Metrics.calculateCapsuleTopMargin(statusBarHeight, density)
 
-        val capsule = CapsuleButton(this).apply {
+        val state = navbarState ?: NativeApi.getNavigationBarState(
+            appId,
+            currentWebView?.getCurrentPath() ?: ""
+        )
+        val capsule = CapsuleButton(
+            this,
+            state?.capsuleBackgroundColor ?: NavigationBarState.DEFAULT_CAPSULE_BACKGROUND_COLOR,
+            state?.capsuleForegroundColor ?: NavigationBarState.DEFAULT_CAPSULE_FOREGROUND_COLOR,
+            state?.capsuleDividerColor ?: NavigationBarState.DEFAULT_CAPSULE_DIVIDER_COLOR,
+            state?.capsuleInteractionColor ?: NavigationBarState.DEFAULT_CAPSULE_INTERACTION_COLOR
+        ).apply {
             layoutParams = FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 capsuleHeightPx
@@ -1622,6 +1640,9 @@ class LxAppActivity : AppCompatActivity() {
             LxLog.e(TAG, "Error adding new container to webViewContainer: ${e.message}")
             return
         }
+        // App-context webviews miss the activity's night override; sync the
+        // freshly attached tree (see setupWebViewContentWithExisting).
+        newContainer.dispatchConfigurationChanged(resources.configuration)
 
         if (shouldAnimate) {
             // Set up animation based on navigation direction
@@ -1796,23 +1817,13 @@ class LxAppActivity : AppCompatActivity() {
         }
     }
 
-    /**
-     * Keep the system status bar glyphs (clock, signal, battery) legible for
-     * the current page. Explicit navigationBarTextStyle wins; otherwise a
-     * shown navbar contrasts against its background color, and a custom
-     * (hidden-navbar) page follows the system theme, matching pages whose
-     * background adapts via prefers-color-scheme.
-     */
+    /** Keep status bar glyphs legible against native chrome or custom content. */
     private fun applyStatusBarGlyphs(navbarState: NavigationBarState?) {
-        val lightGlyphs = when (navbarState?.navigationBarTextStyle?.lowercase()) {
-            "white" -> true
-            "black" -> false
-            else -> if (navbarState?.showNavbar == true) {
-                NavigationBar.ColorUtils.isColorDark(navbarState.navigationBarBackgroundColor)
-            } else {
-                (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
-                    Configuration.UI_MODE_NIGHT_YES
-            }
+        val lightGlyphs = if (navbarState?.showNavbar == true) {
+            !NavigationBar.ColorUtils.isColorDark(navbarState.navigationBarForegroundColor)
+        } else {
+            (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
+                Configuration.UI_MODE_NIGHT_YES
         }
         WindowCompat.getInsetsController(window, window.decorView)
             .isAppearanceLightStatusBars = !lightGlyphs
@@ -1867,6 +1878,23 @@ class LxAppActivity : AppCompatActivity() {
         if (isMediaFullscreen) {
             pendingNavBarVisibility = View.VISIBLE
             navigationBar?.visibility = View.GONE
+        }
+    }
+
+    /**
+     * Navigation transitions pre-apply the target page's top offset, and the
+     * webview/navbar layers animate independently; whatever strip of this
+     * container they expose must carry the resolved scheme, not white.
+     */
+    internal fun applyCanvasBackground() {
+        val value = android.util.TypedValue()
+        if (theme.resolveAttribute(android.R.attr.colorBackground, value, true)) {
+            val color = if (value.resourceId != 0) {
+                androidx.core.content.ContextCompat.getColor(this, value.resourceId)
+            } else {
+                value.data
+            }
+            rootContainer.setBackgroundColor(color)
         }
     }
 
@@ -1930,6 +1958,7 @@ class LxAppActivity : AppCompatActivity() {
         }
 
         updateLayoutMargins()
+        updateCapsuleButton(navbarState)
     }
 
     /**
@@ -2229,15 +2258,25 @@ class LxAppActivity : AppCompatActivity() {
     }
 
     // Update capsule button visibility
-    private fun updateCapsuleButton() {
+    private fun updateCapsuleButton(navbarState: NavigationBarState? = null) {
         rootContainer.post {
-            val capsule = rootContainer.findViewWithTag<View>("capsule_button")
+            val capsule = rootContainer.findViewWithTag<CapsuleButton>("capsule_button")
             if (!shouldShowCapsuleButton(appId, currentSessionId)) {
                 capsule?.visibility = View.GONE
             } else {
                 if (capsule == null) {
-                    addCapsuleButton()
+                    addCapsuleButton(navbarState)
                 } else {
+                    val state = navbarState ?: NativeApi.getNavigationBarState(
+                        appId,
+                        currentWebView?.getCurrentPath() ?: ""
+                    )
+                    capsule.applyStyle(
+                        state?.capsuleBackgroundColor ?: NavigationBarState.DEFAULT_CAPSULE_BACKGROUND_COLOR,
+                        state?.capsuleForegroundColor ?: NavigationBarState.DEFAULT_CAPSULE_FOREGROUND_COLOR,
+                        state?.capsuleDividerColor ?: NavigationBarState.DEFAULT_CAPSULE_DIVIDER_COLOR,
+                        state?.capsuleInteractionColor ?: NavigationBarState.DEFAULT_CAPSULE_INTERACTION_COLOR
+                    )
                     capsule.visibility = View.VISIBLE
                 }
             }
@@ -2254,6 +2293,8 @@ class LxAppActivity : AppCompatActivity() {
     // Handle configuration changes to prevent Activity recreation
     override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
         super.onConfigurationChanged(newConfig)
+
+        NativeApi.onHostAppearanceChanged()
 
         // Update layout to adapt to screen orientation changes
         if (::webViewContainer.isInitialized) {

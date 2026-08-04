@@ -585,10 +585,7 @@ extension LxApp {
         }
     }
 
-    /// Async variant for lx.showTabBar/hideTabBar: registers a completion
-    /// waiter, then posts the state change. The observers deliver on the
-    /// main queue asynchronously, so completion is signaled by the observer
-    /// that applies the change (TabBarUpdateWaiters.complete), not here.
+    /// Registers a completion waiter before posting the asynchronous update.
     nonisolated static func updateTabBarUIAsync(appid: RustStr, callback_id: UInt64) {
         let appIdString = appid.toString()
         DispatchQueue.main.async {
@@ -608,6 +605,18 @@ extension LxApp {
             // stays on its stale init state — the page instance (and thus the
             // real title) doesn't exist yet when the navbar is first applied.
             NotificationCenter.default.post(name: .navBarStateChanged, object: appIdString)
+            return true
+        }
+    }
+
+    nonisolated static func hostAppearanceDark() -> Bool {
+        executeOnMain { LxAppAppearanceRegistry.hostIsDark() }
+    }
+
+    nonisolated static func applyAppearance(appid: RustStr, dark: Bool) -> Bool {
+        let appIdString = appid.toString()
+        return executeOnMain {
+            LxAppAppearanceRegistry.set(appId: appIdString, dark: dark)
             return true
         }
     }

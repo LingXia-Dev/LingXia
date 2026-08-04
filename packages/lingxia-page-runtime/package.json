@@ -16,6 +16,7 @@
   "scripts": {
     "build": "npm run clean && npm --prefix ../lingxia-bridge run build:types && tsc -p tsconfig.json",
     "clean": "rm -rf dist",
+    "test:runtime": "npm run build && node tests/page-chrome-revision.mjs",
     "prepublishOnly": "npm run build"
   },
   "dependencies": {

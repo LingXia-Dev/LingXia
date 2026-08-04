@@ -253,6 +253,10 @@ export type AppScreenshotResult = {
     height?: number;
 };
 
+export type AppearanceApi = globalThis.AppearanceApi;
+
+export type AppearancePreference = 'auto' | 'light' | 'dark';
+
 /**
  * Launch-at-startup control for the host app.
  * **macOS 13+ / Windows only.** Everywhere else — other platforms, or a
@@ -296,15 +300,6 @@ export type BinaryFileData = ArrayBuffer | ArrayBufferView;
  * `capabilities.browser` and is restricted to the home lxapp.
  */
 export type BuiltinBrowserSurfaceUrl = 'lingxia://settings' | 'lingxia://downloads';
-
-export type CapsuleRect = {
-    width: number;
-    height: number;
-    top: number;
-    right: number;
-    bottom: number;
-    left: number;
-};
 
 export type ChooseDirectoryOptions = {
     /** Initial directory the dialog opens in. Platform default if omitted. */
@@ -734,6 +729,20 @@ export type NavigateToAppOptions = {
 };
 
 export type NavigateToOptions = PageTargetOptions;
+
+export type NavigationBarApi = globalThis.NavigationBarApi;
+
+export type NavigationBarPatch = {
+    title?: string | null;
+    homeButton?: VisibilityPreference;
+    style?: NavigationBarStylePatch | null;
+};
+
+export type NavigationBarStylePatch = {
+    backgroundColor?: string | null;
+    foregroundColor?: string | null;
+    dividerColor?: string | null;
+};
 
 export type NetworkChangeCallback = (info: NetworkInfo) => void;
 
@@ -1225,6 +1234,8 @@ export type RenameOptions = {
     overwrite?: boolean;
 };
 
+export type ResolvedAppearance = 'light' | 'dark';
+
 export type SaveMediaOptions = {
     filePath: string;
 };
@@ -1611,8 +1622,26 @@ export type SystemDownloadsPath = string & {
     readonly [systemDownloadsPathBrand]: 'system-downloads-path';
 };
 
-export type TabBarRedDotOptions = {
+export type TabBarApi = globalThis.TabBarApi;
+
+export type TabBarItemPatch = {
     index: number;
+    text?: string | null;
+    iconPath?: string | null;
+    selectedIconPath?: string | null;
+    badge?: string | null;
+    redDot?: boolean;
+};
+
+export type TabBarPatch = {
+    visibility?: VisibilityPreference;
+    style?: TabBarStylePatch | null;
+    items?: readonly TabBarItemPatch[];
+};
+
+export type TabBarStylePatch = {
+    foregroundColor?: string | null;
+    selectedForegroundColor?: string | null;
 };
 
 export type TrayApi = globalThis.TrayApi;
@@ -1788,6 +1817,8 @@ export type VideoInfo = {
     path: string;
 };
 
+export type VisibilityPreference = 'auto' | 'hidden';
+
 export type WifiConnectedCallback = (info: WifiConnectedInfo) => void;
 
 export type WifiConnectedInfo = WifiInfo & {
@@ -1843,6 +1874,11 @@ export interface AppBaseInfo {
   SDKVersion: string;
 }
 
+export interface AppearanceState {
+  preference: AppearancePreference;
+  resolved: ResolvedAppearance;
+}
+
 /** Device info APIs. */
 export interface DeviceInfo {
   brand: string;
@@ -1894,54 +1930,10 @@ export interface LxAppInfo {
   releaseType: LxAppReleaseType;
 }
 
-/** Options for removing TabBar badge */
-export interface RemoveTabBarBadgeOptions {
-  index: number;
-}
-
 export interface ScreenInfo {
   width: number;
   height: number;
   scale: number;
-}
-
-/** Options for setNavigationBarColor */
-export interface SetNavigationBarColorOptions {
-  frontColor: string;
-  backgroundColor: string;
-}
-
-/** Options for setNavigationBarTitle */
-export interface SetNavigationBarTitleOptions {
-  title: string;
-}
-
-/** Options for setting TabBar badge */
-export interface SetTabBarBadgeOptions {
-  index: number;
-  text: string;
-}
-
-/**
- * Runtime item overrides for a TabBar declared in `lxapp.json`. These options
- * do not create a TabBar.
- */
-export interface SetTabBarItemOptions {
-  index: number;
-  text?: string;
-  iconPath?: string;
-  selectedIconPath?: string;
-}
-
-/**
- * Runtime style overrides for a TabBar declared in `lxapp.json`. These options
- * do not create a TabBar.
- */
-export interface SetTabBarStyleOptions {
-  color?: string;
-  selectedColor?: string;
-  backgroundColor?: string;
-  borderStyle?: string;
 }
 
 /** System setting status */
@@ -2017,6 +2009,13 @@ export declare class JSVideoContext {
   requestFullScreen(): void;
   exitFullScreen(): void;
   setStreamSource(options: StreamSourceOptions): void;
+}
+
+declare global {
+  interface AppearanceApi {
+    get(): AppearanceState;
+    set(preference: AppearancePreference): Promise<void>;
+  }
 }
 
 declare global {
@@ -2175,12 +2174,7 @@ declare global {
     getSystemSetting(): SystemSettingInfo;
     /** Show action sheet function for JavaScript */
     showActionSheet(options: ShowActionSheetOptions): Promise<ActionSheetResult>;
-    /**
-     * Get the visible capsule button's bounding rect. Returns `null` for the home
-     * lxapp, an inactive lxapp, or a host that does not expose a capsule; rejection
-     * indicates an actual platform failure rather than hidden chrome.
-     */
-    getCapsuleRect(): Promise<CapsuleRect | null>;
+    readonly appearance: AppearanceApi;
     /** Show modal function (async) */
     showModal(options: ShowModalOptions): Promise<ModalResult>;
     /**
@@ -2189,12 +2183,7 @@ declare global {
      * entries after their own lifecycle actions.
      */
     setMoreActions(items: MoreAction[]): void;
-    /** Set navigation bar title */
-    setNavigationBarTitle(options: SetNavigationBarTitleOptions): boolean;
-    /** Set navigation bar color */
-    setNavigationBarColor(options: SetNavigationBarColorOptions): boolean;
-    /** Hide home button */
-    hideHomeButton(): boolean;
+    readonly navigationBar: NavigationBarApi;
     /**
      * lx.startPullDownRefresh()
      * Programmatically start the pull-to-refresh animation.
@@ -2218,46 +2207,7 @@ declare global {
     /** Relaunch to a new page (clear page stack) */
     reLaunch(options: ReLaunchOptions): Promise<void>;
     readonly shell: ShellApi;
-    /**
-     * Show a red dot on a statically declared TabBar item. Returns `false` when
-     * this lxapp has no TabBar or the item does not exist.
-     */
-    showTabBarRedDot(options: TabBarRedDotOptions): boolean;
-    /**
-     * Hide a red dot on a statically declared TabBar item. Returns `false` when
-     * this lxapp has no TabBar or the item does not exist.
-     */
-    hideTabBarRedDot(options: TabBarRedDotOptions): boolean;
-    /**
-     * Set a badge on a statically declared TabBar item. Returns `false` when this
-     * lxapp has no TabBar or the item does not exist.
-     */
-    setTabBarBadge(options: SetTabBarBadgeOptions): boolean;
-    /**
-     * Remove a badge from a statically declared TabBar item. Returns `false` when
-     * this lxapp has no TabBar or the item does not exist.
-     */
-    removeTabBarBadge(options: RemoveTabBarBadgeOptions): boolean;
-    /**
-     * Show the TabBar declared in `lxapp.json`. Returns `false` when none is
-     * declared.
-     */
-    showTabBar(): Promise<boolean>;
-    /**
-     * Hide the TabBar declared in `lxapp.json`. Returns `false` when none is
-     * declared.
-     */
-    hideTabBar(): Promise<boolean>;
-    /**
-     * Override the style of the TabBar declared in `lxapp.json`. Returns `false`
-     * when none is declared.
-     */
-    setTabBarStyle(options: SetTabBarStyleOptions): boolean;
-    /**
-     * Override an item in the TabBar declared in `lxapp.json`. Returns `false`
-     * when no TabBar is declared.
-     */
-    setTabBarItem(options: SetTabBarItemOptions): boolean;
+    readonly tabBar: TabBarApi;
     /** Show toast function */
     showToast(options: ShowToastOptions): Promise<void>;
     /** Hide toast function */
@@ -2276,6 +2226,12 @@ declare global {
   interface LxEnv {
     readonly USER_DATA_PATH: 'lx://userdata';
     readonly USER_CACHE_PATH: 'lx://usercache';
+  }
+}
+
+declare global {
+  interface NavigationBarApi {
+    update(patch: NavigationBarPatch): Promise<void>;
   }
 }
 
@@ -2312,6 +2268,12 @@ declare global {
      * empty; the home lxapp must still redeclare actions after the next Logic launch.
      */
     clear(): void;
+  }
+}
+
+declare global {
+  interface TabBarApi {
+    update(patch: TabBarPatch): Promise<void>;
   }
 }
 

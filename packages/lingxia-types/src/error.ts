@@ -9,11 +9,27 @@ export interface LxApiError {
   readonly raw: unknown;
 }
 
+/** Check an already-normalized error without modifying the caught value. */
 export function isLxApiError(error: unknown): error is LxApiError {
-  return parseLxApiError(error) !== null;
+  const target = toRecord(error);
+  if (!target) return false;
+  const code = parseIntegerCode(target.code);
+  if (code === null) return false;
+  const info = infoForLxErrorCode(code);
+  return Boolean(
+    info &&
+      target.code === code &&
+      target.key === info.key &&
+      typeof target.message === "string" &&
+      Object.prototype.hasOwnProperty.call(target, "raw"),
+  );
 }
 
 function readMessage(error: unknown): string {
+  const root = toRecord(error);
+  const data = root && toRecord(root.data);
+  const detail = data?.detail;
+  if (typeof detail === "string" && detail.trim() !== "") return detail;
   if (typeof error === "string") return error;
   if (error instanceof Error && typeof error.message === "string") return error.message;
   if (typeof error === "object" && error !== null) {

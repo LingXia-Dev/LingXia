@@ -402,7 +402,7 @@ Page({
     this.setData(state);
 
     const title = getModeTitle(state.mediaType);
-    lx.setNavigationBarTitle({ title });
+    void lx.navigationBar.update({ title });
   },
 
   openSourcePicker: async function () {

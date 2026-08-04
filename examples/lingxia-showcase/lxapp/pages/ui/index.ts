@@ -66,6 +66,7 @@ Page({
       active: false,
       visible: false,
     },
+    chromeError: "",
   },
 
   _activeSurface: null,
@@ -80,7 +81,7 @@ Page({
     }
 
     const title = NAV_TITLE_MAP[type] || "User Interface";
-    this.setNavigationBarTitle({ title });
+    this.updateNavigationBarTitle({ title });
 
     // Update page stack immediately
     this._updatePageStack();
@@ -399,50 +400,89 @@ Page({
   },
 
   // NavigationBar API functions
-  setNavigationBarTitle: function (options) {
-    return lx.setNavigationBarTitle(options);
+  _runChromeUpdate: async function (label, update) {
+    try {
+      const result = await update();
+      this.setData({ chromeError: "" });
+      return result;
+    } catch (error) {
+      const message = surfaceErrorMessage(error);
+      this.setData({ chromeError: `${label}: ${message}` });
+      console.error(`${label} failed:`, error);
+      return undefined;
+    }
   },
 
-  setNavigationBarColor: function (options) {
-    return lx.setNavigationBarColor(options);
+  updateNavigationBarTitle: function (options) {
+    return this._runChromeUpdate("Navigation bar update", () =>
+      lx.navigationBar.update({ title: options.title }),
+    );
+  },
+
+  updateNavigationBarColors: function (options) {
+    return this._runChromeUpdate("Navigation bar update", () =>
+      lx.navigationBar.update({
+        style: {
+          backgroundColor: options.backgroundColor,
+          foregroundColor: options.frontColor,
+        },
+      }),
+    );
   },
 
   // TabBar API functions
-  showTabBarRedDot: function (options) {
-    return lx.showTabBarRedDot(options);
+  enableTabBarRedDot: function (options) {
+    return this._runChromeUpdate("Tab bar update", () =>
+      lx.tabBar.update({ items: [{ index: options.index, redDot: true }] }),
+    );
   },
 
-  hideTabBarRedDot: function (options) {
-    return lx.hideTabBarRedDot(options);
+  disableTabBarRedDot: function (options) {
+    return this._runChromeUpdate("Tab bar update", () =>
+      lx.tabBar.update({ items: [{ index: options.index, redDot: false }] }),
+    );
   },
 
-  setTabBarBadge: function (options) {
-    return lx.setTabBarBadge(options);
+  updateTabBarBadge: function (options) {
+    return this._runChromeUpdate("Tab bar update", () =>
+      lx.tabBar.update({ items: [{ index: options.index, badge: options.text }] }),
+    );
   },
 
-  removeTabBarBadge: function (options) {
-    return lx.removeTabBarBadge(options);
+  clearTabBarBadge: function (options) {
+    return this._runChromeUpdate("Tab bar update", () =>
+      lx.tabBar.update({ items: [{ index: options.index, badge: null }] }),
+    );
   },
 
-  showTabBar: function () {
-    return lx.showTabBar();
+  revealTabBar: function () {
+    return this._runChromeUpdate("Tab bar update", () =>
+      lx.tabBar.update({ visibility: "auto" }),
+    );
   },
 
-  hideTabBar: function () {
-    return lx.hideTabBar();
+  concealTabBar: function () {
+    return this._runChromeUpdate("Tab bar update", () =>
+      lx.tabBar.update({ visibility: "hidden" }),
+    );
   },
 
-  setTabBarStyle: function (options) {
-    console.log("setTabBarStyle called with:", options);
-    const result = lx.setTabBarStyle(options);
-    console.log("setTabBarStyle result:", result);
-    return result;
+  updateTabBarForegrounds: function (options) {
+    console.log("updateTabBarForegrounds called with:", options);
+    return this._runChromeUpdate("Tab bar update", () =>
+      lx.tabBar.update({
+        style: {
+          foregroundColor: options.color,
+          selectedForegroundColor: options.selectedColor,
+        },
+      }),
+    );
   },
 
-  setTabBarItem: function (options) {
-    console.log("setTabBarItem called with:", options);
-    const result = lx.setTabBarItem(options);
-    console.log("setTabBarItem result:", result);
-    return result;
+  updateTabBarItem: function (options) {
+    console.log("updateTabBarItem called with:", options);
+    return this._runChromeUpdate("Tab bar update", () =>
+      lx.tabBar.update({ items: [options] }),
+    );
   },
 });

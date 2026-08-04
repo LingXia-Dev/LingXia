@@ -6,11 +6,13 @@ import android.content.Intent
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import androidx.appcompat.app.AppCompatDelegate
 import com.lingxia.app.Lingxia
 import com.lingxia.app.LxLog
 import com.lingxia.app.NativeApi
 import com.lingxia.app.UpdateManager
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 
@@ -27,6 +29,7 @@ object LxApp {
         internal set
 
     private var currentActivity: LxAppActivity? = null
+    private val appearanceByApp = ConcurrentHashMap<String, Boolean>()
 
     @JvmStatic
     internal fun setCurrentActivity(activity: LxAppActivity?) {
@@ -34,8 +37,53 @@ object LxApp {
         UpdateManager.init(activity)
     }
 
+    /**
+     * Replay the stored scheme for a (re)created activity. Must run after the
+     * activity's chrome views exist: applying runs synchronously on the main
+     * thread and drives navbar/tabbar updates.
+     */
+    @JvmStatic
+    internal fun replayStoredAppearance(activity: LxAppActivity) {
+        appearanceByApp[activity.appId]?.let { dark -> applyAppearance(activity.appId, dark) }
+    }
+
     @JvmStatic
     fun getCurrentActivity(): LxAppActivity? = currentActivity
+
+    /** The lxapp's applied scheme, or null before one resolves. */
+    @JvmStatic
+    fun appearanceDarkFor(appId: String): Boolean? = appearanceByApp[appId]
+
+    @JvmStatic
+    fun hostAppearanceDark(): Boolean {
+        // Activity resources may already carry an lxapp-local night override.
+        val resources = Lingxia.applicationContext()?.resources ?: return false
+        return (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
+            android.content.res.Configuration.UI_MODE_NIGHT_YES
+    }
+
+    @JvmStatic
+    fun applyAppearance(appId: String, dark: Boolean): Boolean {
+        appearanceByApp[appId] = dark
+        val activity = currentActivity?.takeIf { it.getAppId() == appId } ?: return true
+        activity.runOnUiThread {
+            activity.delegate.localNightMode = if (dark) {
+                AppCompatDelegate.MODE_NIGHT_YES
+            } else {
+                AppCompatDelegate.MODE_NIGHT_NO
+            }
+            // uiMode is a declared configChange, so nothing re-dispatches the
+            // updated configuration to attached views; WebViews re-evaluate
+            // prefers-color-scheme only when it reaches them.
+            activity.window.decorView.dispatchConfigurationChanged(
+                activity.resources.configuration
+            )
+            activity.applyCanvasBackground()
+            LxAppActivity.updateNavBarUI(appId)
+            LxAppActivity.updateTabBarUI(appId)
+        }
+        return true
+    }
 
     @JvmStatic
     fun open(appId: String, path: String) {
@@ -134,7 +182,7 @@ object LxApp {
 
     /**
      * Async TabBar update for callers that await the real result
-     * (lx.showTabBar/hideTabBar). Runs on the UI thread and reports
+     * (lx.tabBar.update). Runs on the UI thread and reports
      * completion through NativeApi.onCallback — never blocks the caller.
      */
     @JvmStatic

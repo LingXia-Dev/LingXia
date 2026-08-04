@@ -84,6 +84,9 @@ pub(crate) struct PageInstanceInner {
     webview_ready_tx: watch::Sender<Option<Result<(), String>>>,
     webview_ready_rx: WebviewReadyReceiver,
 
+    // Runtime-owned scripts installed at the earliest page-start callback.
+    document_start_scripts: Vec<Arc<str>>,
+
     // Scripts injected on every page load (global + app-level, snapshotted at creation).
     page_scripts: Vec<Arc<str>>,
 
@@ -116,6 +119,9 @@ pub struct PageState {
     on_ready_fired: bool,
     // Navigation bar state
     pub(crate) navbar_state: NavigationBarState,
+    // A malformed page config owns this page's load outcome; it must not
+    // silently fall back to chrome defaults.
+    config_load_error: Option<String>,
     // Pull-to-refresh enabled flag
     pub(crate) enable_pull_down_refresh: bool,
     // PageInstance orientation overrides
@@ -297,12 +303,20 @@ impl PageInstance {
     /// Build PageState from JSON config
     /// PageConfig is the single source of truth for configuration.
     fn build_page_state(lxapp: &lxapp::LxApp, path: &str) -> PageState {
-        let page_config = if lxapp.logic_enabled() {
-            PageConfig::from_json(lxapp, path)
+        let (page_config, config_load_error) = if lxapp.logic_enabled() {
+            match PageConfig::from_json(lxapp, path) {
+                Ok(config) => (config, None),
+                Err(error) => {
+                    error!("Page config load failed for {}: {}", path, error)
+                        .with_appid(lxapp.appid.clone())
+                        .with_path(path.to_string());
+                    (PageConfig::default(), Some(error.to_string()))
+                }
+            }
         } else {
             // When logic is disabled, page.json is intentionally ignored.
             // In this mode pages talk directly to Rust without JS/page config.
-            PageConfig::default()
+            (PageConfig::default(), None)
         };
         PageState {
             event: PageLifecycleEvent::Unknown,
@@ -315,6 +329,7 @@ impl PageInstance {
             on_show_fired: false,
             on_ready_fired: false,
             navbar_state: page_config.create_navbar_state(),
+            config_load_error,
             enable_pull_down_refresh: page_config.is_pull_down_refresh_enabled(),
             orientation_override: page_config.get_orientation_override(),
             query: serde_json::json!({}),
@@ -376,6 +391,7 @@ impl PageInstance {
             bridge: PageBridge::new(lxapp_arc.clone(), lxapp_arc.executor.clone()),
             webview_ready_tx: ready_tx,
             webview_ready_rx: Arc::new(Mutex::new(ready_rx)),
+            document_start_scripts: lxapp.document_start_scripts_snapshot(),
             page_scripts: lxapp.page_scripts_snapshot(),
             loaded_tx,
         });
@@ -502,6 +518,7 @@ impl PageInstance {
             bridge: PageBridge::new(lxapp_arc.clone(), lxapp_arc.executor.clone()),
             webview_ready_tx: ready_tx,
             webview_ready_rx: Arc::new(Mutex::new(ready_rx)),
+            document_start_scripts: lxapp.document_start_scripts_snapshot(),
             page_scripts: lxapp.page_scripts_snapshot(),
             loaded_tx,
         });
@@ -895,6 +912,17 @@ impl PageInstance {
     /// Notify that the page's WebView started loading (mirrors WebViewDelegate::on_page_started).
     /// Used by external delegates to forward events to a shared page.
     pub fn notify_page_started(&self) {
+        if !self.inner.document_start_scripts.is_empty()
+            && let Some(webview) = self.webview()
+        {
+            for js in &self.inner.document_start_scripts {
+                if let Err(error) = webview.exec_js(js) {
+                    crate::error!("document-start script injection failed: {}", error)
+                        .with_appid(self.inner.appid.clone())
+                        .with_path(self.inner.path.clone());
+                }
+            }
+        }
         self.notify_render_started_inner();
     }
 
@@ -986,9 +1014,26 @@ impl PageInstance {
     pub(crate) fn load_html(&self) -> Result<(), LxAppError> {
         let lxapp = self.owning_lxapp();
         let path = self.path();
-        let html_data = lxapp.generate_page_html(&path, self.bridge_nonce().as_deref());
+        let config_load_error = self
+            .inner
+            .state
+            .lock()
+            .ok()
+            .and_then(|state| state.config_load_error.clone());
+        let html_string = if let Some(message) = config_load_error {
+            lingxia_webview::render_load_error_page(lingxia_webview::LoadErrorPage {
+                title: "Page configuration error",
+                message: &message,
+                retry_label: "Retry",
+                retry_url: &self.base_url(),
+            })
+        } else {
+            String::from_utf8_lossy(
+                &lxapp.generate_page_html(&path, self.bridge_nonce().as_deref()),
+            )
+            .into_owned()
+        };
         let base_url = self.base_url();
-        let html_string = String::from_utf8_lossy(&html_data).into_owned();
 
         if let Some(controller) = self.webview_controller() {
             controller
@@ -1382,7 +1427,8 @@ impl WebViewDelegate for PageInstance {
         progress.apply(&event);
         match &event {
             lingxia_webview::NavigationEvent::Started { .. } => {
-                self.notify_render_started_inner();
+                drop(progress);
+                self.notify_page_started();
             }
             // Only the current attempt's success drives the loaded lifecycle:
             // a stale terminal must not mark a newer load as ready, and a
@@ -1536,6 +1582,7 @@ mod tests {
             on_show_fired: false,
             on_ready_fired: false,
             navbar_state: NavigationBarState::default(),
+            config_load_error: None,
             enable_pull_down_refresh: false,
             orientation_override: OrientationOverride::default(),
             query: serde_json::json!({}),
@@ -1579,7 +1626,7 @@ mod tests {
     #[test]
     fn back_to_tab_page_restores_the_selected_item() {
         let mut tabbar: crate::lxapp::tabbar::TabBar = serde_json::from_value(serde_json::json!({
-            "list": [
+            "items": [
                 { "pagePath": "pages/home/index" },
                 { "pagePath": "pages/api/index" }
             ]
@@ -1589,7 +1636,7 @@ mod tests {
         tabbar.set_visible(false);
 
         assert!(restore_tabbar_after_back(&mut tabbar, "pages/api/index"));
-        assert!(tabbar.is_visible);
+        assert!(tabbar.is_effectively_visible());
         assert_eq!(tabbar.get_selected_index(), 1);
     }
 

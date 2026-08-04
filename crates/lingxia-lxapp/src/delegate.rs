@@ -6,6 +6,7 @@ use crate::update::UpdateManager;
 use crate::{LxApp, error, info, lxapp, warn};
 use lingxia_platform::traits::app_runtime::AppRuntime;
 use lingxia_platform::traits::pull_to_refresh::PullToRefresh;
+use lingxia_platform::traits::ui::UIUpdate;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -48,6 +49,7 @@ fn finalize_lxapp_close(app: &Arc<LxApp>, session_id: u64) -> bool {
     app.set_status(LxAppSessionStatus::Closed);
     app.clear_open_region();
     app.clear_transient_files();
+    app.runtime.clear_lxapp_appearance(&app.appid);
     app.state
         .lock()
         .unwrap_or_else(|error| {
@@ -263,6 +265,10 @@ impl LxAppDelegate for LxApp {
 
         // Mark the page as active for LRU tracking
         page.mark_active();
+
+        // Re-stamp the resolved scheme: a backgrounded (paused) webview can
+        // drop the broadcast publication of an appearance change.
+        self.republish_page_scheme(&page);
 
         self.sync_host_ui();
     }

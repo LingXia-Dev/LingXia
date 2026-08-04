@@ -1,3 +1,3 @@
 {
-  "navigationBarTitleText": "Media APIs"
+  "navigationBar": { "title": "Media APIs" }
 }

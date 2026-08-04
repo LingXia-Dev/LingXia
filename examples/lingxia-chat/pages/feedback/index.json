@@ -1,5 +1,6 @@
 {
-  "navigationBarBackgroundColor": "#ffffff",
-  "navigationBarTextStyle": "black",
-  "navigationBarTitleText": "Feedback"
+  "navigationBar": {
+    "title": "Feedback",
+    "style": { "backgroundColor": "#ffffff", "foregroundColor": "#000000" }
+  }
 }

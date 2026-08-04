@@ -65,6 +65,28 @@ const SYSTEM_SAFE_AREA_BOTTOM = 24;  // Safe area bottom extra spacing
 // is safe and keeps the bar visually snug to the screen bottom.
 const TAB_BAR_GESTURE_ZONE_OVERLAP = 6;
 
+/**
+ * Bottom padding of a horizontal TabBar. The home-indicator inset keeps
+ * icons/labels above the gesture zone (which eats taps) and REPLACES the
+ * regular bottom padding rather than adding to it, so the bar grows only by
+ * what the gesture zone actually requires.
+ */
+export function tabBarBottomPadding(bottomInset: number, transparent: boolean): number {
+  // The gesture zone only eats taps in its lower part; overlapping it a
+  // little keeps the items visually anchored to the bottom.
+  const inset = Math.max(0, bottomInset - TAB_BAR_GESTURE_ZONE_OVERLAP);
+  if (transparent) {
+    return inset;
+  }
+  return Math.max(TAB_BAR_PADDING_HORIZONTAL_BOTTOM, inset);
+}
+
+/** Height a horizontal TabBar grows beyond its configured dimension. */
+export function tabBarExtraBottomHeight(bottomInset: number, transparent: boolean): number {
+  const base = transparent ? 0 : TAB_BAR_PADDING_HORIZONTAL_BOTTOM;
+  return Math.max(0, tabBarBottomPadding(bottomInset, transparent) - base);
+}
+
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.TabBar';
 
@@ -327,18 +349,11 @@ export struct TabBar {
    * zone actually requires.
    */
   private getBottomPadding(): number {
-    // The gesture zone only eats taps in its lower part; overlapping it a
-    // little keeps the items visually anchored to the bottom.
-    const inset = Math.max(0, this.bottomInset - TAB_BAR_GESTURE_ZONE_OVERLAP);
-    if (this.isTransparent()) {
-      return inset;
-    }
-    return Math.max(TAB_BAR_PADDING_HORIZONTAL_BOTTOM, inset);
+    return tabBarBottomPadding(this.bottomInset, this.isTransparent());
   }
 
   private extraBottomHeight(): number {
-    const base = this.isTransparent() ? 0 : TAB_BAR_PADDING_HORIZONTAL_BOTTOM;
-    return Math.max(0, this.getBottomPadding() - base);
+    return tabBarExtraBottomHeight(this.bottomInset, this.isTransparent());
   }
 
   private getHorizontalPadding(): Padding {

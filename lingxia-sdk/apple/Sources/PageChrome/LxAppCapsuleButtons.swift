@@ -147,23 +147,35 @@ private enum CapsuleMetrics {
 
 private struct CapsuleIcon: View {
     let name: String
+    let foregroundColor: Color
 
     var body: some View {
         if let image = LxIcon.image(named: name) {
-            Image(uiImage: image)
+            Image(uiImage: image.withRenderingMode(.alwaysTemplate))
                 .resizable()
                 .aspectRatio(contentMode: .fit)
                 .frame(
                     maxWidth: CapsuleMetrics.iconMaxWidth,
                     maxHeight: CapsuleMetrics.iconMaxHeight
                 )
+                .foregroundColor(foregroundColor)
         }
+    }
+}
+
+private struct CapsuleInteractionButtonStyle: ButtonStyle {
+    let interactionColor: Color
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .background(configuration.isPressed ? interactionColor : Color.clear)
     }
 }
 
 struct LxAppUnifiedCapsuleView: View {
     let onMoreTapped: () -> Void
     let onCloseTapped: () -> Void
+    @ObservedObject private var stateManager = NavigationBarStateManager.shared
 
     init(onMoreTapped: @escaping () -> Void, onCloseTapped: @escaping () -> Void) {
         self.onMoreTapped = onMoreTapped
@@ -174,36 +186,51 @@ struct LxAppUnifiedCapsuleView: View {
         HStack(spacing: 0) {
             // More button
             Button(action: onMoreTapped) {
-                CapsuleIcon(name: "icon_capsule_menu")
+                CapsuleIcon(name: "icon_capsule_menu", foregroundColor: foregroundColor)
             }
             .frame(width: CapsuleMetrics.buttonWidth, height: CapsuleMetrics.height)
             .contentShape(Rectangle())
-            .buttonStyle(PlainButtonStyle())
+            .buttonStyle(CapsuleInteractionButtonStyle(interactionColor: interactionColor))
 
             // Separator
             Rectangle()
-                .fill(Color.gray.opacity(0.3))
+                .fill(dividerColor)
                 .frame(width: CapsuleMetrics.dividerWidth, height: CapsuleMetrics.dividerHeight)
 
             // Close button
             Button(action: onCloseTapped) {
-                CapsuleIcon(name: "icon_capsule_close")
+                CapsuleIcon(name: "icon_capsule_close", foregroundColor: foregroundColor)
             }
             .frame(width: CapsuleMetrics.buttonWidth, height: CapsuleMetrics.height)
             .contentShape(Rectangle())
-            .buttonStyle(PlainButtonStyle())
+            .buttonStyle(CapsuleInteractionButtonStyle(interactionColor: interactionColor))
         }
         .padding(.horizontal, CapsuleMetrics.edgePadding)
         .frame(width: CapsuleMetrics.totalWidth, height: CapsuleMetrics.height)
         .background(
-            Capsule().fill(Color.white.opacity(0.9))
-                .background(.ultraThinMaterial)
+            Capsule().fill(backgroundColor)
         )
         .clipShape(Capsule())
         .overlay(
-            Capsule().stroke(Color.gray.opacity(0.3), lineWidth: 0.5)
+            Capsule().stroke(dividerColor, lineWidth: 0.5)
         )
         .shadow(color: .black.opacity(0.1), radius: 2, x: 0, y: 1)
+    }
+
+    private var backgroundColor: Color {
+        Color(PlatformColor(argb: stateManager.currentState?.capsule_background_color ?? 0xFFFFFFFF))
+    }
+
+    private var foregroundColor: Color {
+        Color(PlatformColor(argb: stateManager.currentState?.capsule_foreground_color ?? 0xFF000000))
+    }
+
+    private var dividerColor: Color {
+        Color(PlatformColor(argb: stateManager.currentState?.capsule_divider_color ?? 0xFFD1D1D6))
+    }
+
+    private var interactionColor: Color {
+        Color(PlatformColor(argb: stateManager.currentState?.capsule_interaction_color ?? 0xFFE5E5EA))
     }
 }
 #endif

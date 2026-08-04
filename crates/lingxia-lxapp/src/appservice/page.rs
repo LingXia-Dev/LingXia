@@ -42,7 +42,8 @@ struct PageSvcState {
     callback: HashMap<String, JSFunc>,
     state_callback: HashMap<u64, JSFunc>,
     state_rev: u64,
-    init_data: Option<JSObject>,
+    /// True until the first bridge-ready snapshot of live page data is sent.
+    initial_snapshot_pending: bool,
     channels: HashMap<String, ChannelState>,
     next_channel_token: u64,
 }
@@ -672,14 +673,6 @@ impl PageSvc {
             })?,
         };
 
-        let init_data = JSObject::new(&ctx);
-
-        if let Ok(original_data) = config.get::<_, JSObject>("data") {
-            init_data.set("data", original_data)?;
-        } else {
-            init_data.set("data", JSObject::new(&ctx))?;
-        }
-
         // Cache capabilities
         let mut page_svc = PageSvc {
             functions: HashMap::new(),
@@ -691,18 +684,13 @@ impl PageSvc {
                 callback: HashMap::new(),
                 state_callback: HashMap::new(),
                 state_rev: 0,
-                init_data: None,
+                initial_snapshot_pending: true,
                 channels: HashMap::new(),
                 next_channel_token: 0,
             })),
         };
 
         page_svc.register_functions(&config, meta_json.0.as_deref())?;
-
-        {
-            let mut state = page_svc.state.try_lock().unwrap();
-            state.init_data = Some(init_data);
-        }
 
         let class = Class::lookup::<PageSvc>(&ctx).unwrap();
         let instance = class.instance(page_svc);
@@ -729,17 +717,14 @@ impl PageSvc {
         let bridge = self.bridge();
 
         if !bridge.is_ready() {
-            if self.page.is_unloaded() {
-                drop(state);
-                if let Some(callback) = callback.0 {
-                    let _ = callback.call::<_, ()>(None, ());
-                }
-                return Ok(());
+            // Pre-ready writes already landed in `this.data` JS-side and the
+            // bridge-ready snapshot serializes live data, so dropping the ops
+            // loses nothing; erroring here would discard them permanently.
+            drop(state);
+            if let Some(callback) = callback.0 {
+                let _ = callback.call::<_, ()>(None, ());
             }
-            return Err(RongJSError::from(HostError::new(
-                rong::error::E_INTERNAL,
-                format!("Bridge of {} is not ready", self.page.path()),
-            )));
+            return Ok(());
         }
 
         let base_rev = state.state_rev;
@@ -1149,18 +1134,22 @@ impl PageSvc {
     async fn handle_bridge_ready_internal(&mut self) -> JSResult<()> {
         let mut state = self.state.lock().await;
 
-        if let Some(init_data) = state.init_data.take() {
-            // Extract the "data" field - this is the actual page data
-            let page_data = init_data
+        if std::mem::take(&mut state.initial_snapshot_pending) {
+            // Serialize the LIVE page data: onLoad may have called setData
+            // before the bridge was ready, and the construction-time snapshot
+            // would silently miss those writes.
+            let page_data = self
+                .this
                 .get::<_, JSObject>("data")
                 .unwrap_or_else(|_| JSObject::new(&self.this.context()));
             let data_json = page_data.to_json_string()?;
 
-            state.state_rev = 1;
+            let new_rev = state.state_rev + 1;
+            state.state_rev = new_rev;
             drop(state);
 
             self.bridge()
-                .send_state_snapshot(self, None, 1, data_json)
+                .send_state_snapshot(self, None, new_rev, data_json)
                 .map_err(|e| {
                     RongJSError::from(HostError::new(rong::error::E_INTERNAL, e.to_string()))
                 })?;

@@ -5,7 +5,7 @@ import { common } from '@kit.AbilityKit';
 import { display, window } from '@kit.ArkUI';
 import { webview } from '@kit.ArkWeb';
 import { LingXiaWebView } from '../LingXiaWebView';
-import { addWebViewUiCallback, removeWebViewUiCallback, WebViewInfo, WebViewManager, toWebTag } from '../WebViewBridge';
+import { addWebViewUiCallback, extractWebTag, removeWebViewUiCallback, WebViewInfo, WebViewManager, toWebTag } from '../WebViewBridge';
 import { browserTabClose, browserTabPathForId, disposePageInstance, getBuiltinBrowserAppId, getLxappSessionId, notifyPageInstanceHidden, notifyPageInstanceMounted, notifyPageInstanceVisible, onSurfaceClosed, openStandaloneBrowserTab, urlCallbackDispatch, webviewLoadErrorDocument } from 'liblingxia.so';
 import { FloatSurfaceWindowManager } from './surface/FloatSurfaceWindow';
 import { SurfaceCloseButton } from './surface/SurfaceChrome';
@@ -64,6 +64,18 @@ export class LxAppSurface {
   private static managerRef: SurfaceManager | null = null;
   private static layouts: Map<string, SurfaceLayoutConfig> = new Map();
   private static visibleSurfaceKeys: Set<string> = new Set();
+  private static appearanceByApp: Map<string, boolean> = new Map();
+
+  public static applyAppearance(appId: string, dark: boolean): void {
+    LxAppSurface.appearanceByApp.set(appId, dark);
+    LxAppSurface.managerRef?.applyAppearance(appId, dark);
+    FloatSurfaceWindowManager.applyAppearance(appId, dark);
+  }
+
+  public static appearanceDarkForWebTag(webTag: string): boolean {
+    const appId = extractWebTag(webTag)?.appId ?? '';
+    return LxAppSurface.appearanceByApp.get(appId) ?? false;
+  }
 
   public static setManagerRef(manager: SurfaceManager): void {
     LxAppSurface.managerRef = manager;
@@ -673,6 +685,7 @@ struct SurfaceCornerMask {
 interface SurfaceRenderState extends SurfaceLayoutConfig {
   isVisible: boolean;
   pageWebTag: string;
+  appearanceDark: boolean;
 }
 
 function surfaceRenderState(layout: SurfaceLayoutConfig, isVisible: boolean, pageWebTag: string): SurfaceRenderState {
@@ -701,7 +714,8 @@ function surfaceRenderState(layout: SurfaceLayoutConfig, isVisible: boolean, pag
     urlCallback: layout.urlCallback,
     browserTabId: layout.browserTabId,
     isVisible,
-    pageWebTag
+    pageWebTag,
+    appearanceDark: LxAppSurface.appearanceDarkForWebTag(pageWebTag)
   };
 }
 
@@ -738,6 +752,16 @@ export struct SurfaceManager {
     this.pageControllers.clear();
     this.webControllers.clear();
     this.exitFullscreenMode();
+  }
+
+  public applyAppearance(appId: string, dark: boolean): void {
+    const next: SurfaceRenderState[] = [];
+    this.surfaces.forEach((surface: SurfaceRenderState) => {
+      const webTagAppId = extractWebTag(surface.pageWebTag)?.appId ?? '';
+      if (webTagAppId === appId) surface.appearanceDark = dark;
+      next.push(surface);
+    });
+    this.surfaces = next;
   }
 
   public present(state: SurfaceLayoutConfig): boolean {
@@ -892,6 +916,7 @@ export struct SurfaceManager {
             LingXiaWebView({
               webTag: surface.pageWebTag,
               controller: this.getWebController(surface),
+              appearanceDark: surface.appearanceDark,
               renderVisibility: Visibility.Visible,
               renderWidth: '100%',
               renderHeight: '100%',
@@ -990,6 +1015,7 @@ export struct SurfaceManager {
             LingXiaWebView({
               webTag: surface.pageWebTag,
               controller: this.getPageController(surface),
+              appearanceDark: surface.appearanceDark,
               renderVisibility: Visibility.Visible,
               renderWidth: '100%',
               renderHeight: '100%',

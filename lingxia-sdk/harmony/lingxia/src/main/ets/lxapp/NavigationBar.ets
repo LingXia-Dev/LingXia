@@ -13,8 +13,6 @@ const NAVIGATION_BAR_TITLE_FONT_SIZE = 18;     // Navigation bar title font size
 const NAVIGATION_BUTTON_SIZE = 44;                // Navigation button width/height - large touch target
 
 // Common colors
-const COLOR_WHITE = '#ffffff';
-const COLOR_BLACK = '#000000';
 const COLOR_TRANSPARENT = Color.Transparent;
 
 
@@ -24,10 +22,16 @@ const COLOR_TRANSPARENT = Color.Transparent;
 export interface NavigationBarState {
   navigationBarTitleText: string;
   navigationBarBackgroundColor: number;
+  navigationBarForegroundColor: number;
+  navigationBarDividerColor: number;
   navigationBarTextStyle: string;  // "black" | "white"
   showNavbar: boolean;             // Whether to show navbar
   showBackButton: boolean;         // Whether to show back button
   showHomeButton: boolean;         // Whether to show home button
+  capsuleBackgroundColor: number;
+  capsuleForegroundColor: number;
+  capsuleDividerColor: number;
+  capsuleInteractionColor: number;
 }
 
 const DOMAIN = 0x0000;
@@ -112,6 +116,7 @@ export struct NavigationBar {
         if (this.shouldShowButtons()) {
           NavigationButton({
             isBackButton: this.config.showBackButton,
+            color: this.config.navigationBarForegroundColor,
             onPressed: () => {
               const isBackButton = this.config.showBackButton;
               const isHomeButton = !isBackButton;
@@ -156,13 +161,30 @@ export struct NavigationBar {
         left: NAVIGATION_BAR_LEFT_PADDING,
         right: NAVIGATION_BAR_RIGHT_PADDING
       })
+
+      if (this.config.showNavbar) {
+        Column()
+          .width('100%')
+          .height(1)
+          .backgroundColor(toResourceColor(this.config.navigationBarDividerColor))
+          .position({ x: 0, y: this.getTotalHeight() - 1 })
+      }
     }
     .width('100%')
-    .height(NAVIGATION_BAR_TOTAL_HEIGHT)
+    .height(this.getTotalHeight())
     .alignContent(Alignment.Bottom)
     .translate({ x: `${this.translateX}%`, y: 0 })
     .visibility(this.shouldShowNavBar() ? Visibility.Visible : Visibility.Hidden)
     .hitTestBehavior(HitTestMode.Transparent)
+  }
+
+  /**
+   * Rendered bar height: REAL status bar inset plus the content row. The
+   * 88vp constant assumes a 44vp status bar and drifts on devices where the
+   * real inset differs, opening a gap between the bar and the web area.
+   */
+  private getTotalHeight(): number {
+    return this.statusBarHeight + NAVIGATION_BAR_CONTENT_HEIGHT;
   }
 
   /**
@@ -203,14 +225,7 @@ export struct NavigationBar {
    * Get text color: explicit style wins, unset contrasts with the background
    */
   private getTextColor(): ResourceColor {
-    if (this.config.navigationBarTextStyle === 'white') {
-      return COLOR_WHITE;
-    }
-    if (this.config.navigationBarTextStyle === 'black') {
-      return COLOR_BLACK;
-    }
-    return isColorDark(this.config.navigationBarBackgroundColor || 0xFFFFFFFF)
-      ? COLOR_WHITE : COLOR_BLACK;
+    return toResourceColor(this.config.navigationBarForegroundColor);
   }
 }
 

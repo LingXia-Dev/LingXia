@@ -14,13 +14,21 @@ const CAPSULE_BUTTON_BORDER_WIDTH = 0.5;
 const CAPSULE_BUTTON_Z_INDEX = 9999;
 
 // Common colors
-const COLOR_BLACK = '#000000';
 const COLOR_TRANSPARENT = Color.Transparent;
-const COLOR_LIGHT_BORDER = '#DDDDDD';
-const COLOR_CAPSULE_BACKGROUND = 'rgba(255,255,255,0.9)';
 
 // System constants
 const SYSTEM_STATUS_BAR_HEIGHT = 44;
+
+function argbColor(colorValue: number): ResourceColor {
+  const alpha = (colorValue >>> 24) & 0xFF;
+  const red = (colorValue >>> 16) & 0xFF;
+  const green = (colorValue >>> 8) & 0xFF;
+  const blue = colorValue & 0xFF;
+  if (alpha === 255) {
+    return `#${red.toString(16).padStart(2, '0')}${green.toString(16).padStart(2, '0')}${blue.toString(16).padStart(2, '0')}`;
+  }
+  return `rgba(${red}, ${green}, ${blue}, ${alpha / 255})`;
+}
 
 
 /**
@@ -29,6 +37,7 @@ const SYSTEM_STATUS_BAR_HEIGHT = 44;
 @Component
 export struct NavigationButton {
   @Prop isBackButton: boolean = true
+  @Prop color: number = 0xFF000000
   onPressed?: () => void
   @State isPressed: boolean = false
 
@@ -38,6 +47,7 @@ export struct NavigationButton {
         .width(20)
         .height(20)
         .objectFit(ImageFit.Contain)
+        .fillColor(argbColor(this.color))
     }
     .width('100%')
     .height('100%')
@@ -73,11 +83,14 @@ export struct NavigationButton {
  */
 @Component
 export struct ThreeDotsIcon {
+  @Prop color: number = 0xFF000000
+
   build() {
     Image($rawfile('icons/icon_capsule_menu.svg'))
       .width(28)
       .height(20)
       .objectFit(ImageFit.Contain)
+      .fillColor(argbColor(this.color))
   }
 }
 
@@ -86,11 +99,14 @@ export struct ThreeDotsIcon {
  */
 @Component
 export struct CloseIcon {
+  @Prop color: number = 0xFF000000
+
   build() {
     Image($rawfile('icons/icon_capsule_close.svg'))
       .width(28)
       .height(20)
       .objectFit(ImageFit.Contain)
+      .fillColor(argbColor(this.color))
   }
 }
 
@@ -104,6 +120,12 @@ export struct CapsuleButton {
   onClosePressed?: () => void
   @Prop statusBarHeight: number = SYSTEM_STATUS_BAR_HEIGHT
   @Prop standalone: boolean = false
+  @Prop capsuleBackgroundColor: number = 0xFFFFFFFF
+  @Prop capsuleForegroundColor: number = 0xFF000000
+  @Prop capsuleDividerColor: number = 0xFFD1D1D6
+  @Prop capsuleInteractionColor: number = 0xFFE5E5EA
+  @State morePressed: boolean = false
+  @State closePressed: boolean = false
 
   build() {
     if (this.standalone) {
@@ -143,12 +165,15 @@ export struct CapsuleButton {
   buildCapsuleRow(marginTop: number = 0, marginRight: number = 0): void {
     Row() {
       Button() {
-        ThreeDotsIcon()
+        ThreeDotsIcon({ color: this.capsuleForegroundColor })
       }
       .width(CAPSULE_BUTTON_BUTTON_WIDTH)
       .height(CAPSULE_BUTTON_HEIGHT)
       .padding(0)
-      .backgroundColor(COLOR_TRANSPARENT)
+      .backgroundColor(this.morePressed ? argbColor(this.capsuleInteractionColor) : COLOR_TRANSPARENT)
+      .onTouch((event: TouchEvent) => {
+        this.morePressed = event.type === TouchType.Down
+      })
       .onClick(() => {
         if (this.onMorePressed) {
           this.onMorePressed()
@@ -158,15 +183,18 @@ export struct CapsuleButton {
       Column()
         .width(CAPSULE_BUTTON_DIVIDER_WIDTH)
         .height(CAPSULE_BUTTON_DIVIDER_HEIGHT)
-        .backgroundColor(COLOR_LIGHT_BORDER)
+        .backgroundColor(argbColor(this.capsuleDividerColor))
 
       Button() {
-        CloseIcon()
+        CloseIcon({ color: this.capsuleForegroundColor })
       }
       .width(CAPSULE_BUTTON_BUTTON_WIDTH)
       .height(CAPSULE_BUTTON_HEIGHT)
       .padding(0)
-      .backgroundColor(COLOR_TRANSPARENT)
+      .backgroundColor(this.closePressed ? argbColor(this.capsuleInteractionColor) : COLOR_TRANSPARENT)
+      .onTouch((event: TouchEvent) => {
+        this.closePressed = event.type === TouchType.Down
+      })
       .onClick(() => {
         if (this.onClosePressed) {
           this.onClosePressed()
@@ -177,11 +205,11 @@ export struct CapsuleButton {
       left: CAPSULE_BUTTON_EDGE_PADDING,
       right: CAPSULE_BUTTON_EDGE_PADDING
     })
-    .backgroundColor(COLOR_CAPSULE_BACKGROUND)
+    .backgroundColor(argbColor(this.capsuleBackgroundColor))
     .borderRadius(CAPSULE_BUTTON_BORDER_RADIUS)
     .border({
       width: CAPSULE_BUTTON_BORDER_WIDTH,
-      color: COLOR_LIGHT_BORDER
+      color: argbColor(this.capsuleDividerColor)
     })
     .margin({
       top: marginTop,

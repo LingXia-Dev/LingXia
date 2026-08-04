@@ -1,6 +1,6 @@
 {
-  "navigationBarTitleText": "AI Chat",
-  "navigationBarBackgroundColor": "#FFFFFF",
-  "navigationBarTextStyle": "black",
-  "backgroundColor": "#F2F2F7"
+  "navigationBar": {
+    "title": "AI Chat",
+    "style": { "backgroundColor": "#FFFFFF", "foregroundColor": "#000000" }
+  }
 }

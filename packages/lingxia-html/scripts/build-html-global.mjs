@@ -37,9 +37,11 @@ async function writeEntryFile() {
   const source = [
     'export {',
     '  getPageActions as getActions,',
+    '  getPageChromeLayout,',
     '  getPageSnapshot as getSnapshot,',
     '  getPageStateInfo as getStateInfo,',
     '  subscribePageData as subscribe,',
+    '  subscribePageChromeLayout,',
     '  subscribePageSnapshot as subscribeSnapshot,',
     `} from "${importPath}";`,
     "",
@@ -49,11 +51,13 @@ async function writeEntryFile() {
 
 async function writeRuntimeShimFile() {
   const pageRuntimeFile = path.join(pageRuntimeDir, "dist", "shared", "runtime.js");
+  const pageChromeFile = path.join(pageRuntimeDir, "dist", "page-chrome.js");
   const bridgeModuleFile = path.join(bridgeDir, "dist", "es2020", "index.js");
   const bridgeImportPath = normalizeImportPath(path.relative(distDir, bridgeModuleFile));
   const source = await fs.readFile(pageRuntimeFile, "utf8");
+  const pageChromeSource = await fs.readFile(pageChromeFile, "utf8");
   const rewritten = source.replaceAll('"@lingxia/bridge"', `"${bridgeImportPath}"`);
-  await fs.writeFile(runtimeShimFile, rewritten, "utf8");
+  await fs.writeFile(runtimeShimFile, `${rewritten}\n${pageChromeSource}`, "utf8");
 }
 
 function runRolldown(inputFile, outputFile, format, globalName) {

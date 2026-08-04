@@ -5,6 +5,8 @@
 //! app's own override channel.
 
 use super::*;
+use std::collections::HashMap;
+use std::sync::{OnceLock, RwLock};
 
 /// Color scheme served to WebView2 pages via `prefers-color-scheme`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -16,6 +18,8 @@ pub enum WindowsPreferredColorScheme {
 }
 
 static CONFIGURED_SCHEME: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
+static LXAPP_SCHEMES: OnceLock<RwLock<HashMap<String, WindowsPreferredColorScheme>>> =
+    OnceLock::new();
 
 pub(crate) fn configured_color_scheme() -> Option<WindowsPreferredColorScheme> {
     match CONFIGURED_SCHEME.load(std::sync::atomic::Ordering::Acquire) {
@@ -31,8 +35,36 @@ pub fn set_windows_preferred_color_scheme_for_new_webviews(scheme: WindowsPrefer
     CONFIGURED_SCHEME.store(scheme as u8 + 1, std::sync::atomic::Ordering::Release);
 }
 
+/// Configure the scheme for one lxapp without changing browser or shell
+/// WebViews. The registry is also consulted when later page WebViews start.
+pub fn set_windows_lxapp_preferred_color_scheme(appid: &str, scheme: WindowsPreferredColorScheme) {
+    if let Ok(mut schemes) = LXAPP_SCHEMES
+        .get_or_init(|| RwLock::new(HashMap::new()))
+        .write()
+    {
+        schemes.insert(appid.to_string(), scheme);
+    }
+}
+
+/// Remove a closed lxapp's retained scheme so a future install/session starts cleanly.
+pub fn clear_windows_lxapp_preferred_color_scheme(appid: &str) {
+    if let Some(schemes) = LXAPP_SCHEMES.get()
+        && let Ok(mut schemes) = schemes.write()
+    {
+        schemes.remove(appid);
+    }
+}
+
+pub(crate) fn lxapp_color_scheme(webtag: &WebTag) -> Option<WindowsPreferredColorScheme> {
+    LXAPP_SCHEMES
+        .get()
+        .and_then(|schemes| schemes.read().ok())
+        .and_then(|schemes| schemes.get(&webtag.extract_appid()).copied())
+}
+
 pub(crate) fn apply_color_scheme(
     webview: &ICoreWebView2,
+    controller: &ICoreWebView2Controller,
     scheme: WindowsPreferredColorScheme,
 ) -> StdResult<()> {
     let webview13: ICoreWebView2_13 = webview
@@ -49,8 +81,29 @@ pub(crate) fn apply_color_scheme(
         WindowsPreferredColorScheme::Dark => COREWEBVIEW2_PREFERRED_COLOR_SCHEME_DARK,
     };
     unsafe {
-        profile
-            .SetPreferredColorScheme(value)
-            .map_err(|err| WebViewError::WebView(format!("SetPreferredColorScheme failed: {err}")))
+        profile.SetPreferredColorScheme(value).map_err(|err| {
+            WebViewError::WebView(format!("SetPreferredColorScheme failed: {err}"))
+        })?;
     }
+    // The canvas behind resize/navigation repaints must match the scheme, or
+    // dark lxapps flash the fixed light creation default. Best-effort like the
+    // creation-time paint: older runtimes lack Controller2.
+    if scheme != WindowsPreferredColorScheme::Auto
+        && let Ok(controller2) = controller.cast::<ICoreWebView2Controller2>()
+    {
+        let (r, g, b) = if scheme == WindowsPreferredColorScheme::Dark {
+            (0x1C, 0x1C, 0x1E)
+        } else {
+            (255, 255, 255)
+        };
+        let _ = unsafe {
+            controller2.SetDefaultBackgroundColor(COREWEBVIEW2_COLOR {
+                A: 255,
+                R: r,
+                G: g,
+                B: b,
+            })
+        };
+    }
+    Ok(())
 }

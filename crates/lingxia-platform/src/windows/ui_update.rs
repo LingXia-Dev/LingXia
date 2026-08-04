@@ -1,3 +1,4 @@
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use super::Platform;
@@ -12,6 +13,11 @@ static WINDOWS_UI_UPDATE_HANDLER: Mutex<Option<WindowsUiUpdateHandler>> = Mutex:
 type WindowsUiUpdateAsyncHandler = Arc<dyn Fn(String, Box<dyn FnOnce(bool) + Send>) + Send + Sync>;
 static WINDOWS_UI_UPDATE_ASYNC_HANDLER: Mutex<Option<WindowsUiUpdateAsyncHandler>> =
     Mutex::new(None);
+static WINDOWS_HOST_APPEARANCE_DARK: AtomicBool = AtomicBool::new(false);
+
+pub fn set_windows_host_appearance_dark(dark: bool) {
+    WINDOWS_HOST_APPEARANCE_DARK.store(dark, Ordering::Release);
+}
 
 pub fn set_windows_ui_update_handler(handler: WindowsUiUpdateHandler) {
     if let Ok(mut slot) = WINDOWS_UI_UPDATE_HANDLER.lock() {
@@ -71,5 +77,43 @@ impl UIUpdate for Platform {
             Ok(())
         })
         .await
+    }
+
+    fn host_appearance_dark(&self) -> bool {
+        // Standard-tier hosts do not wire shell appearance notifications;
+        // appearance:auto therefore remains light until shell chrome is enabled.
+        WINDOWS_HOST_APPEARANCE_DARK.load(Ordering::Acquire)
+    }
+
+    fn apply_lxapp_appearance(&self, appid: &str, dark: bool) -> Result<(), PlatformError> {
+        use lingxia_webview::platform::windows::{
+            WindowsPreferredColorScheme, find_webview_handler,
+            set_windows_lxapp_preferred_color_scheme,
+        };
+        let scheme = if dark {
+            WindowsPreferredColorScheme::Dark
+        } else {
+            WindowsPreferredColorScheme::Light
+        };
+        set_windows_lxapp_preferred_color_scheme(appid, scheme);
+        for webtag in lingxia_webview::runtime::list_webviews() {
+            if webtag.extract_appid() != appid {
+                continue;
+            }
+            if let Some(handler) = find_webview_handler(&webtag)
+                && let Err(error) = handler.set_preferred_color_scheme(scheme)
+            {
+                log::warn!(
+                    "failed to apply lxapp appearance to WebView {}: {}",
+                    webtag,
+                    error
+                );
+            }
+        }
+        Ok(())
+    }
+
+    fn clear_lxapp_appearance(&self, appid: &str) {
+        lingxia_webview::platform::windows::clear_windows_lxapp_preferred_color_scheme(appid);
     }
 }
