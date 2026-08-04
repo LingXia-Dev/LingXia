@@ -255,6 +255,7 @@ pub(crate) fn bootstrap_script(
       root.style.setProperty('--lx-page-chrome-bottom-inset', `${{layout.bottomInset}}px`);
       root.style.setProperty('--lx-page-chrome-capsule-inline-end-inset', `${{layout.capsuleInlineEndInset}}px`);
       root.style.colorScheme = scheme;
+      root.setAttribute('data-theme', scheme);
     }}
     globalThis.__lingxiaPageChromeLayout = layout;
     globalThis.dispatchEvent(new CustomEvent('lxpagechromechange', {{ detail: layout }}));

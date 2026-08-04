@@ -551,7 +551,10 @@ without applying anything.
 `await lx.appearance.set('auto' | 'light' | 'dark')` sets the lxapp's own
 light/dark branch independently of the host shell; the preference persists per
 lxapp, and `lx.appearance.get()` synchronously returns it alongside the
-resolved branch.
+resolved branch. The runtime projects the resolved branch into every page as
+`color-scheme` plus a `data-theme="light|dark"` attribute on `<html>` — key
+theme CSS off `[data-theme]` (with a `prefers-color-scheme` fallback for
+no-JS first paint), since platform media queries may lag an in-place switch.
 
 ### Laying out under immersive chrome
 

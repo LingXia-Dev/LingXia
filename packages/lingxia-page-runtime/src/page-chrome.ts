@@ -105,7 +105,13 @@ export function installPageChromeRuntime(): LxPageChrome | undefined {
       layout = Object.freeze({ ...next, capsuleRect });
       projectPageChromeLayout(layout);
       const root = document.documentElement;
-      if (root) root.style.colorScheme = scheme;
+      if (root) {
+        root.style.colorScheme = scheme;
+        // Authoritative theme signal: platform media queries can lag an
+        // in-place appearance switch (Android locks them at webview
+        // creation); [data-theme] CSS keys off this instead.
+        root.setAttribute('data-theme', scheme);
+      }
       window.dispatchEvent(
         new CustomEvent("lxpagechromechange", { detail: layout }),
       );
