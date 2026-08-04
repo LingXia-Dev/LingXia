@@ -408,9 +408,10 @@ pub(crate) fn show_native_main_window(
     layout: crate::shell::WindowsShellWindowLayout,
 ) -> Result<(), String> {
     let view = create_webview_parent_window(webtag).map_err(|error| error.to_string())?;
+    let hwnd = hwnd_from_handle(view.window);
+    prepare_shell_window_for_presentation(hwnd).map_err(|error| error.to_string())?;
     set_webview_window_layout(webtag, WindowsWindowLayout::new(layout))
         .map_err(|error| error.to_string())?;
-    let hwnd = hwnd_from_handle(view.window);
     set_host_active_webtag(hwnd, webtag.key());
     set_primary_host_window(hwnd);
     mark_active(webtag);
@@ -782,9 +783,11 @@ fn present_webview_in_active_group_with_policy(
 ) -> StdResult<()> {
     let handler = find_webview_handler(webtag).ok_or_else(|| handler_not_ready(webtag))?;
     let Some(host) = prefer_visible_workspace(active_host_window()) else {
+        let view = handler.native_view();
+        let hwnd = hwnd_from_handle(view.window);
+        prepare_shell_window_for_presentation(hwnd)?;
         handler.set_content_visible(true)?;
-        show_native_view(handler.native_view(), "", true)?;
-        let hwnd = hwnd_from_handle(handler.native_view().window);
+        show_native_view(view, "", true)?;
         set_window_handle(webtag.key(), hwnd);
         set_host_active_webtag(hwnd, webtag.key());
         set_primary_host_window(hwnd);
@@ -5887,19 +5890,29 @@ fn apply_shell_window_frame(hwnd: HWND) -> StdResult<()> {
     // A device frame owns a fixed-size borderless silhouette: drop WS_SIZEBOX
     // and WS_MAXIMIZEBOX so it cannot be drag-resized or maximized. Otherwise a
     // normal shell window stays resizable.
-    let style = if window_is_device_framed(hwnd) {
+    let device_framed = window_is_device_framed(hwnd);
+    let style = shell_window_style(device_framed);
+    apply_window_style(hwnd, style)?;
+    if !device_framed {
+        apply_shell_window_dressing(hwnd);
+    }
+    Ok(())
+}
+
+fn shell_window_style(device_framed: bool) -> WINDOW_STYLE {
+    WINDOW_STYLE(if device_framed {
         WS_POPUP.0 | WS_SYSMENU.0 | WS_MINIMIZEBOX.0
     } else {
         // WS_SIZEBOX reserves an 8px DWM-owned strip inside every edge even
         // after WM_NCCALCSIZE makes the client full-window. Edge resize and
         // snap are handled by the custom hit-test/drag path instead.
         WS_POPUP.0 | WS_SYSMENU.0 | WS_MINIMIZEBOX.0 | WS_MAXIMIZEBOX.0
-    };
-    apply_window_style(hwnd, WINDOW_STYLE(style))?;
-    if !window_is_device_framed(hwnd) {
-        apply_shell_window_dressing(hwnd);
-    }
-    Ok(())
+    })
+}
+
+fn prepare_shell_window_for_presentation(hwnd: HWND) -> StdResult<()> {
+    set_native_framed_window(hwnd, false);
+    apply_shell_window_frame(hwnd)
 }
 
 /// Last main shell host selected by a presentation. Unlike a page-derived
@@ -7411,8 +7424,7 @@ fn show_webview_window_replacing(
     // surface). Only reuse a host while its owning WebView is still live.
     .filter(|candidate| host_window_owner_is_live(*candidate))
     .unwrap_or(native_parent);
-    set_native_framed_window(target, false);
-    apply_shell_window_frame(target)?;
+    prepare_shell_window_for_presentation(target)?;
     let title = to_wide(title);
     unsafe {
         let _ = WindowsAndMessaging::SetWindowTextW(target, PCWSTR(title.as_ptr()));
@@ -9713,7 +9725,7 @@ mod tests {
         WindowResizeDrag, WindowResizeEdge, WindowsFrameButton, clear_webtag_content_bounds,
         default_host_parent_window, frame_button_non_client_hit,
         registered_host_keeps_message_loop, resized_window_rect, same_window_generation,
-        webtag_content_bounds_changed,
+        shell_window_style, webtag_content_bounds_changed,
     };
     #[cfg(all(feature = "shell-chrome", feature = "device-frame"))]
     use super::{device_frame_surface_corner_radii, per_corner_region_row_span};
@@ -9770,6 +9782,17 @@ mod tests {
             None
         );
         assert_eq!(frame_button_non_client_hit(WindowsFrameButton::Close), None);
+    }
+
+    #[test]
+    fn shell_presentation_style_leaves_no_system_resize_border() {
+        let regular = shell_window_style(false);
+        assert_eq!(regular.0 & WindowsAndMessaging::WS_SIZEBOX.0, 0);
+        assert_ne!(regular.0 & WindowsAndMessaging::WS_MAXIMIZEBOX.0, 0);
+
+        let device_framed = shell_window_style(true);
+        assert_eq!(device_framed.0 & WindowsAndMessaging::WS_SIZEBOX.0, 0);
+        assert_eq!(device_framed.0 & WindowsAndMessaging::WS_MAXIMIZEBOX.0, 0);
     }
 
     #[test]
