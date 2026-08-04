@@ -8,13 +8,14 @@ mod alacritty_vt;
 mod osc;
 #[cfg(windows)]
 mod process_windows;
+mod shell_integration;
 
 use alacritty_vt::{
     ATTR_BOLD, ATTR_DIM, ATTR_INVERSE, ATTR_ITALIC, ATTR_UNDERLINE, CursorVisualStyle,
     PtyWriteCallback, ThemeColors, VtScreen,
 };
 pub use alacritty_vt::{
-    TerminalEvent, TerminalEventBatch, TerminalEventKind, TerminalProgressState,
+    CommandBlock, TerminalEvent, TerminalEventBatch, TerminalEventKind, TerminalProgressState,
 };
 use portable_pty::{Child, CommandBuilder, MasterPty, PtySize, native_pty_system};
 use serde::Serialize;
@@ -107,6 +108,11 @@ pub struct TerminalSessionSpec {
     pub env: Vec<(String, String)>,
     /// Scrollback line cap. `None` uses the engine default.
     pub scrollback_limit: Option<usize>,
+    /// Enable shell integration: known interactive shells are spawned
+    /// so they emit OSC 133 command marks and OSC 7 cwd reports. Only
+    /// applies to the engine-default invocation (no explicit `args`);
+    /// user rc files are never modified.
+    pub shell_integration: bool,
 }
 
 /// Create a cross-platform terminal engine session.
@@ -225,6 +231,26 @@ pub fn terminal_events_drain_data(id: u64) -> Option<TerminalEventBatch> {
     let session = session(id)?;
     let mut session = session.lock().ok()?;
     Some(session.drain_events())
+}
+
+/// Recent command blocks (OSC 133 prompt/input/output extents with
+/// exit codes) as a JSON array, oldest first.
+pub fn terminal_command_blocks(id: u64) -> String {
+    terminal_command_blocks_data(id)
+        .map(|blocks| serde_json::to_string(&blocks).unwrap_or_else(|_| "[]".to_string()))
+        .unwrap_or_else(|| "[]".to_string())
+}
+
+/// Structured variant of [`terminal_command_blocks`].
+pub fn terminal_command_blocks_data(id: u64) -> Option<Vec<CommandBlock>> {
+    let session = session(id)?;
+    let mut session = session.lock().ok()?;
+    // Marks arrive with PTY output; flush pending bytes first.
+    let bytes = session.drain_bytes();
+    if !bytes.is_empty() {
+        session.vt.feed(&bytes);
+    }
+    Some(session.vt.command_blocks())
 }
 
 pub fn terminal_exited(id: u64) -> bool {
@@ -577,7 +603,7 @@ impl TerminalSession {
             })
             .map_err(|err| format!("open pty failed: {err}"))?;
 
-        let shell = spec
+        let mut shell = spec
             .program
             .as_ref()
             .filter(|program| !program.trim().is_empty())
@@ -592,6 +618,21 @@ impl TerminalSession {
                     args: spec.args.clone().unwrap_or(shell.args),
                 }
             });
+        // Shell integration rewrites only the engine-default invocation;
+        // explicit args mean the caller drives the shell itself.
+        let integration_env = if spec.shell_integration && spec.args.is_none() {
+            match shell_integration::plan_for(&shell.path) {
+                Some(plan) => {
+                    if let Some(args) = plan.args {
+                        shell.args = args;
+                    }
+                    plan.env
+                }
+                None => Vec::new(),
+            }
+        } else {
+            Vec::new()
+        };
         let shell_title = process_name_from_path(&shell.path);
         let mut command = CommandBuilder::new(shell.path);
         for arg in shell.args {
@@ -606,6 +647,9 @@ impl TerminalSession {
         command.env("TERM_PROGRAM_VERSION", env!("CARGO_PKG_VERSION"));
         if std::env::var_os("LANG").is_none() {
             command.env("LANG", "en_US.UTF-8");
+        }
+        for (key, value) in &integration_env {
+            command.env(key, value);
         }
         for (key, value) in &spec.env {
             command.env(key, value);
@@ -1599,6 +1643,63 @@ mod tests {
             "scrollback capped at 5 lines + 5 rows: {scrollbar:?}"
         );
         terminal_close(id);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn shell_integration_marks_commands_in_bash() {
+        if !Path::new("/bin/bash").exists() {
+            return;
+        }
+        let id = terminal_create_with_spec(
+            80,
+            24,
+            TerminalSessionSpec {
+                program: Some("/bin/bash".to_string()),
+                shell_integration: true,
+                ..TerminalSessionSpec::default()
+            },
+        );
+        assert_ne!(id, 0);
+
+        // Wait for the first prompt mark, then run a command.
+        let deadline = Instant::now() + Duration::from_secs(10);
+        let mut saw_prompt = false;
+        while Instant::now() < deadline && !saw_prompt {
+            let batch = terminal_events_drain_data(id).expect("live session");
+            saw_prompt = batch
+                .events
+                .iter()
+                .any(|event| matches!(event.kind, TerminalEventKind::PromptStart { .. }));
+            std::thread::sleep(Duration::from_millis(25));
+        }
+        assert!(saw_prompt, "bash integration emits prompt marks");
+        // A subshell keeps the shell alive so the next prompt reports
+        // the command's exit code via OSC 133 D.
+        assert!(terminal_write(id, "( exit 3 )\n"));
+
+        let deadline = Instant::now() + Duration::from_secs(10);
+        let mut exit_code = None;
+        while Instant::now() < deadline {
+            let batch = terminal_events_drain_data(id).expect("live session");
+            for event in batch.events {
+                if let TerminalEventKind::CommandFinished {
+                    exit_code: code, ..
+                } = event.kind
+                {
+                    exit_code = code;
+                }
+                if matches!(event.kind, TerminalEventKind::Exited { .. }) {
+                    break;
+                }
+            }
+            if exit_code.is_some() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(25));
+        }
+        terminal_close(id);
+        assert_eq!(exit_code, Some(3), "command exit code from OSC 133 D");
     }
 
     #[test]

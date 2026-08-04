@@ -217,6 +217,85 @@ struct EventQueue {
     dropped: u64,
 }
 
+// ── Command blocks (OSC 133) ───────────────────────────────────────────
+
+/// Maximum completed command blocks retained per session.
+const MAX_COMMAND_BLOCKS: usize = 512;
+
+/// One shell command's extent in the scrollback, built from OSC 133
+/// marks. Lines are absolute grid coordinates (see
+/// [`TerminalEventKind`]); blocks without shell integration simply
+/// never appear.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CommandBlock {
+    pub prompt_line: i64,
+    pub input_line: Option<i64>,
+    pub output_line: Option<i64>,
+    pub end_line: Option<i64>,
+    pub exit_code: Option<i32>,
+}
+
+#[derive(Default)]
+struct CommandBlockTracker {
+    completed: VecDeque<CommandBlock>,
+    current: Option<CommandBlock>,
+}
+
+impl CommandBlockTracker {
+    fn record(&mut self, kind: &TerminalEventKind) {
+        match *kind {
+            TerminalEventKind::PromptStart { line } => {
+                if let Some(block) = self.current.take() {
+                    self.push_completed(block);
+                }
+                self.current = Some(CommandBlock {
+                    prompt_line: line,
+                    ..CommandBlock::default()
+                });
+            }
+            TerminalEventKind::InputStart { line } => {
+                self.block_at(line).input_line = Some(line);
+            }
+            TerminalEventKind::OutputStart { line } => {
+                self.block_at(line).output_line = Some(line);
+            }
+            TerminalEventKind::CommandFinished { line, exit_code } => {
+                let mut block = self.current.take().unwrap_or_else(|| CommandBlock {
+                    prompt_line: line,
+                    ..CommandBlock::default()
+                });
+                block.end_line = Some(line);
+                block.exit_code = exit_code;
+                self.push_completed(block);
+            }
+            _ => {}
+        }
+    }
+
+    /// The open block, creating a loose one when a mark arrives without
+    /// a preceding prompt start (e.g. partial integration).
+    fn block_at(&mut self, line: i64) -> &mut CommandBlock {
+        self.current.get_or_insert_with(|| CommandBlock {
+            prompt_line: line,
+            ..CommandBlock::default()
+        })
+    }
+
+    fn push_completed(&mut self, block: CommandBlock) {
+        if self.completed.len() >= MAX_COMMAND_BLOCKS {
+            self.completed.pop_front();
+        }
+        self.completed.push_back(block);
+    }
+
+    fn blocks(&self) -> Vec<CommandBlock> {
+        let mut blocks: Vec<CommandBlock> = self.completed.iter().cloned().collect();
+        blocks.extend(self.current.iter().cloned());
+        blocks
+    }
+}
+
 impl EventQueue {
     fn push(&mut self, kind: TerminalEventKind) {
         if self.events.len() >= EVENT_QUEUE_CAPACITY {
@@ -326,6 +405,7 @@ struct VtInner {
     cell_width_px: u16,
     cell_height_px: u16,
     generation: u64,
+    blocks: CommandBlockTracker,
 }
 
 /// Viewport dimensions handed to `Term::new` / `Term::resize`.
@@ -412,6 +492,7 @@ impl VtScreen {
                 cell_width_px: 1,
                 cell_height_px: 1,
                 generation: 0,
+                blocks: CommandBlockTracker::default(),
             }),
         }
     }
@@ -459,6 +540,11 @@ impl VtScreen {
     /// Drain all pending semantic events.
     pub fn drain_events(&self) -> TerminalEventBatch {
         self.inner.lock().listener.events.lock().drain()
+    }
+
+    /// Completed command blocks plus the open one, oldest first.
+    pub fn command_blocks(&self) -> Vec<CommandBlock> {
+        self.inner.lock().blocks.blocks()
     }
 
     pub fn resize(
@@ -685,6 +771,7 @@ impl VtInner {
                 exit_code,
             },
         };
+        self.blocks.record(&kind);
         self.listener.events.lock().push(kind);
     }
 
@@ -964,6 +1051,36 @@ mod tests {
         // Two lines scrolled into history; the cursor sits on screen
         // row 1, so the prompt line is absolute line 3.
         assert_eq!(mark, 3);
+    }
+
+    #[test]
+    fn command_blocks_follow_semantic_marks() {
+        let screen = VtScreen::new_with_options(10, 3, None, None, None);
+        screen.feed(b"\x1b]133;A\x07prompt$ \x1b]133;B\x07ls\r\n");
+        screen.feed(b"\x1b]133;C\x07file1 file2\r\n");
+        screen.feed(b"\x1b]133;D;2\x07");
+        screen.feed(b"\x1b]133;A\x07prompt$ ");
+
+        let blocks = screen.command_blocks();
+        assert_eq!(blocks.len(), 2, "one completed + one open: {blocks:?}");
+        let first = &blocks[0];
+        assert_eq!(first.prompt_line, 0);
+        assert_eq!(first.input_line, Some(0));
+        assert!(
+            first.output_line >= first.input_line,
+            "output follows input: {first:?}"
+        );
+        assert!(
+            first.end_line >= first.output_line,
+            "block ends after output: {first:?}"
+        );
+        assert_eq!(first.exit_code, Some(2));
+        let second = &blocks[1];
+        assert!(second.end_line.is_none(), "second block still open");
+        assert!(
+            second.prompt_line >= first.end_line.unwrap_or(0),
+            "next prompt follows the completed block: {blocks:?}"
+        );
     }
 
     #[test]
