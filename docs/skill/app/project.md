@@ -1,6 +1,9 @@
 # App Project Configuration
 
-A LingXia app project is a native host app that embeds one home lxapp and can open bundled or runtime lxapps. Its build-time config lives in `lingxia.yaml`.
+A LingXia app project is a native host app. It may embed a control lxapp, or on
+macOS/Windows it may be a native-only terminal/browser product with no bundled
+lxapp. Either shape can open bundled or runtime-provided lxapps. Its build-time
+config lives in `lingxia.yaml`.
 
 The UI is described by a flat, adaptive `surfaces:` list (see [Surfaces](#surfaces-adaptive-ui)) — you declare *what* each surface is and the Host derives the realized platform form (window / panel / sidebar / tab / tray) by screen size. macOS is the most complete runtime today; the same `surfaces:` schema feeds every platform.
 
@@ -15,7 +18,21 @@ For CLI commands, see [CLI Command Reference](../cli/lingxia.md).
 lingxia new my-app -t native-app -p macos --package-id com.example.myapp -y
 ```
 
-This creates a host app project, not a standalone lxapp. A host app owns native platform directories, a `lingxia.yaml`, and one embedded home lxapp.
+This creates a host app project, not a standalone lxapp. By default it includes
+an embedded lxapp that is both the main experience and control app.
+
+To make a desktop native capability the product main, select it explicitly:
+
+```bash
+lingxia new my-terminal -t native-app --main terminal --control native -y
+lingxia new my-browser -t native-app -p windows --main browser --control native -y
+```
+
+Native main defaults to native control, omits `lxapp/`, `app.homeAppId`, and
+`resources`, enables the matching capability, and sets
+`features.appService: false`. Pass `--control lxapp` only when a non-visible embedded lxapp is actually
+needed for host control logic. Runtime/network lxapps are product workspaces or
+guest content; they do not become the host's trusted control app.
 
 To create a standalone lxapp instead, use `-t lxapp`.
 
@@ -34,11 +51,13 @@ The CLI emits the authoritative layout for the `lingxia` on your `PATH`; a hand-
 - `lingxia.yaml` — the build-time host project config and source of truth for metadata + UI.
 - a native Rust crate in `native/` — the host library (routes, addons); `lingxia.yaml` records its directory as `app.rustLibDir`.
 - one per-platform host directory for each enabled platform — `macos/`, `windows/`, `android/`, `ios/`, `harmony/`.
-- the embedded home lxapp source (scaffold default `lxapp/`, and its directory name doubles as the home `appId`).
+- optionally, an embedded control lxapp source (scaffold default `lxapp/`).
 
 - `lingxia build` generates runtime `app.json` and `ui.json` from `lingxia.yaml`.
 - Do not edit generated `app.json` or `ui.json` directly.
-- `app.homeAppId` controls the home app opened by default; `resources.bundles` controls bundled asset sources.
+- When present, `app.homeAppId` identifies the trusted embedded control lxapp;
+  `resources.bundles` resolves its assets. The launch `main` surface determines
+  the visible initial experience.
 
 ---
 
@@ -53,8 +72,8 @@ Use the product-app startup entry on each platform:
 | Harmony | `Lingxia.quickStart(context, windowStage)` |
 
 `quickStart` means the native app is a LingXia host product. It initializes the
-runtime and opens the configured home lxapp through the platform host shell or
-navigation container.
+runtime and opens the configured launch surface through the platform host shell
+or navigation container.
 
 Android and Harmony intentionally expose only `quickStart` as the public startup
 API today. Advanced embedding into an existing native app should stay internal
@@ -86,9 +105,10 @@ surfaces:
     launch: true
 ```
 
-For a native-only menu-bar app, omit `launch: true` and give the main surface a
-`tray:` entry, set `features.appService: false`, and use a `logic: false` HTML
-home lxapp.
+For a Rust-controlled menu-bar app, omit `launch: true` and give the main
+surface a `tray:` entry, set `features.appService: false`, and use a
+`logic: false` HTML control lxapp. The no-lxapp scaffold is intentionally narrower: its
+launch main must be the built-in terminal or browser.
 
 ---
 
@@ -105,7 +125,7 @@ The authoritative, version-matched field list is a freshly scaffolded `lingxia.y
 | `features` | Recommended | Native Rust compile-time feature switches |
 | `capabilities` | Recommended | Platform/runtime integrations that may initialize SDK capability flows |
 | `theme` | Optional | Application-wide semantic colors for host-owned native UI |
-| `resources` | Recommended | Bundle asset sources copied into native app resources |
+| `resources` | Conditional | Bundle asset sources; omit when no control/product lxapp is bundled |
 | `browser` | Optional | Override the in-app browser webui (only used when `capabilities.browser: true`) |
 | `appLinks` | Optional | Universal-link / app-link hosts (see [App Links](./applinks.md)) |
 | `storage` | Recommended | Explicit host temp/cache/data size limits |
@@ -116,10 +136,16 @@ The authoritative, version-matched field list is a freshly scaffolded `lingxia.y
 
 `app` carries host metadata that generates the runtime `app.json`: `projectName` (technical identifier behind native build paths and the Rust host library name), `productName` (user-facing), `productVersion` (a semver string — the build rejects non-semver), and `platforms` (the enabled set, drawn from `macos`, `windows`, `ios`, `android`, `harmony`). Optional `lingxiaId` / `lingxiaServer` / `packageIdSuffix` drive publishing and per-env builds (see [Environment versions](#environment-versions)).
 
-**The id-alignment rule (the one that bites).** Three ids must line up or the wrong app launches, and the build enforces it:
+`homeAppId` is optional only for a macOS/Windows native-main host with
+`features.appService: false`. Such a host still declares exactly one launch
+main (`native: terminal` or `native: browser`) and enables its capability.
+
+**The id-alignment rule (the one that bites).** When a control lxapp is present,
+three ids must line up or the wrong app launches, and the build enforces it:
 
 - `app.homeAppId` = a `resources.bundles[].appId` = that bundle's `lxapp.json.appId`.
-- The launch `main` surface's `lxapp:` key is the appId it renders — point it at the same home app.
+- If the launch `main` is an lxapp, its `lxapp:` key points at that same ID. A
+  native launch main remains independent from the embedded control lxapp.
 
 `homeAppVersion` is not configured here; the CLI derives it from the matching `resources.bundles` source. The full, current field set is in a freshly scaffolded `lingxia.yaml`.
 
@@ -234,7 +260,12 @@ The build-time plumbing per platform (Android Gradle properties, iOS bundle id r
 
 `features` controls native Rust compile-time features. `appService` (default on) enables the JS/TS AppService runtime: when it is `false` the CLI builds the host Rust library with `--no-default-features`; when `true`, Cargo default features stay enabled and the CLI adds the derived features. `devtools` (default off) compiles in devtools hooks — `lingxia dev` may enable it transiently without editing YAML.
 
-**Flip `appService` and the home lxapp's `logic` together.** A native-only host sets `features.appService: false` *and* the home lxapp's `lxapp.json` `"logic": false` (Shape C). A logic-enabled lxapp under `appService: false` is rejected at startup. `-t lxapp` projects always require an AppService-capable host; `-t native-app` projects may opt out when they only need native-hosted UI and host APIs.
+**Flip `appService` and an embedded control lxapp's `logic` together.** With an
+embedded control lxapp, `features.appService: false` requires its `lxapp.json`
+to use `"logic": false` (Shape C). A logic-enabled lxapp under
+`appService: false` is rejected at startup. A native-main/native-control desktop host has no
+control lxapp at all and also sets `appService: false`. `-t lxapp` projects
+always require an AppService-capable host.
 
 The browser, terminal, and HTTP-proxy runtime features are **not** set here — they are derived from the [`capabilities`](#capabilities-section) below.
 
@@ -257,13 +288,16 @@ The browser, terminal, and HTTP-proxy runtime features are **not** set here — 
 
 `browser` overrides the in-app browser webui, used only when `capabilities.browser: true`. Normal apps omit it and use the SDK default. Set exactly one source under `webui`: a project-relative `path:` to a browser-shell webui lxapp source tree (the CLI builds it — for developing a custom webui alongside the app), or a `package:` npm name shipping a prebuilt `lxapp.json` + `dist/` (with an optional `version:`; the CLI version is used when omitted). Setting both is rejected.
 
-Do not use `app.homeAppId` for browser internals. `app.homeAppId` is the product home app; `browser.webui` is the browser UI asset.
+Do not use `app.homeAppId` for browser internals. When present, `homeAppId` is
+the trusted product control app; `browser.webui` is the browser UI asset.
 
 ---
 
 ## `resources` Section
 
-`resources.bundles` declares lxapp asset sources bundled into the native host. It does not decide what the app opens; `app.homeAppId` and the `surfaces[]` ids do that.
+`resources.bundles` declares lxapp asset sources bundled into the native host.
+It is optional for a native-main/native-control desktop host. It does not decide
+what the app opens; `app.homeAppId` and the `surfaces[]` ids do that.
 
 Each bundle entry has a `type` (currently `lxapp`) and an `appId` that **must match** the bundle's `lxapp.json.appId` (the id-alignment rule again). Its asset source is exactly one of: a project-relative `path:` (the CLI builds and bundles it) or a `package:` npm name shipping a prebuilt `lxapp.json` + `dist/` (optional `version:`; CLI version when omitted). Setting both is rejected, and appIds must be unique across bundles.
 
@@ -395,7 +429,13 @@ URL field and a separate tab group; the field accepts URLs, not search queries.
 Two sidebar regions have fixed ownership:
 
 - **Pins are the user's** — quick entries for lxapps and websites (eight at most), added and removed through context menus. An lxapp Pin always opens or focuses a main workspace. The Pin tile remains a shortcut while the open lxapp also gets an independent sidebar workspace row for switching and lifecycle controls; hovering the row reveals an explicit ellipsis for its provider-backed menu, and right-click opens the same menu. Unpinning does not close or remove that live row. Its content uses the same rectangle as the home lxapp, with the previous main hidden, no duplicate host window, and no content-area tab strip. It does not inherit a declared aside role. That restriction changes entry role only: a Pin must not add an inset, clip, navigation offset, or alternate content rectangle. Use a sidebar action plus `lx.openSurface({ surface: ... })` for the aside entry. There is no production app API to write Pins.
-- **Sidebar actions are the app's** — runtime entries the home lxapp declares via `lx.shell.sidebarActions` (see the `@lingxia/types` declarations). Header actions are icon-only and limited to two; footer actions use labeled cells and scroll after five visible rows. The shell invokes `onActivate` and performs no built-in navigation; callbacks can call `lx.openSurface(...)` or run any other app logic. Redeclare them each Logic launch.
+- **Sidebar actions are the control lxapp's** — when one is configured, it may
+  declare runtime entries via `lx.shell.sidebarActions` (see the
+  `@lingxia/types` declarations). Header actions are icon-only and limited to
+  two; footer actions use labeled cells and scroll after five visible rows. The
+  shell invokes `onActivate` and performs no built-in navigation; callbacks can
+  call `lx.openSurface(...)` or run any other app logic. Redeclare them each
+  Logic launch.
 
 The initial `main` is admitted first as the window's stable root and cannot be closed. Other
 main surfaces expose only the actions their content provider supports: browser
@@ -405,7 +445,11 @@ but cannot be renamed. Closing an active non-root main selects another
 remaining main, so the product Host never enters a synthetic zero-main or
 empty-state mode.
 
-The home lxapp remains the control app even when the visible desktop main is a URL or native surface. Its Logic worker still receives `App.onLaunch` once and may register sidebar actions, tray behavior, and other host chrome without creating a hidden WebView.
+When `homeAppId` is configured, that lxapp remains the trusted control app even
+when the visible desktop main is a URL or native surface. Its Logic worker still
+receives `App.onLaunch` once and may register sidebar actions and other host
+chrome without creating a hidden WebView. A native-control scaffold has no such
+worker or hidden lxapp identity.
 
 ### Menu-bar / system-tray apps
 
@@ -500,7 +544,7 @@ lingxia build --platform macos
 
 The macOS host build does the following:
 
-- Builds the configured home lxapp resource bundle.
+- Builds the configured control lxapp resource bundle when one is present.
 - Generates `app.json` and `ui.json` from `surfaces:`.
 - Builds the Rust host static library with the native features derived from `features` + `capabilities` (e.g. `capabilities.browser` adds the browser/shell runtime, `capabilities.terminal` the terminal runtime).
 - Builds the SwiftPM macOS app.
@@ -519,7 +563,11 @@ If `--skip-native` is used, SwiftPM links an existing Rust static library. That 
 ## Common Pitfalls
 
 - Hand-writing `ui.json` or editing generated `app.json` / `ui.json` — author `surfaces:` in `lingxia.yaml`; they are regenerated every build.
-- `homeAppId` not matching any `resources.bundles[].appId` — build fails or the wrong app launches.
+- A present `homeAppId` not matching any `resources.bundles[].appId` — build
+  fails or the wrong control app launches.
+- Omitting `homeAppId` while targeting mobile, enabling AppService, or declaring
+  a non-native launch main — native-only hosts are desktop terminal/browser
+  products, not a way to bypass the control-app contract.
 - Declaring more than one `main` with `launch: true`, or `launch: true` on an `aside`.
 - An `aside` without an `edge`, or an `edge` on a `main`.
 - `native:` on anything but `terminal`, or a terminal surface without `capabilities.terminal: true`, or a terminal `edge` other than `top`/`bottom`.
@@ -535,9 +583,12 @@ If `--skip-native` is used, SwiftPM links an existing Rust static library. That 
 
 ## Pre-ship checklist
 
-- [ ] `lingxia.yaml` validates: every required platform section present; `homeAppId` resolvable to a `resources.bundles[].appId`.
+- [ ] `lingxia.yaml` validates: every required platform section is present; when
+  `homeAppId` exists it resolves to a `resources.bundles[].appId`; when omitted,
+  all targets and the launch main satisfy the native-only desktop contract.
 - [ ] Exactly one declared `main` surface (or one `role: float` tray popover); it is the stable root, every `aside` has an `edge`, and terminal surfaces have `capabilities.terminal: true`.
-- [ ] `features.appService` matches the embedded lxapp's logic mode.
+- [ ] `features.appService` matches the embedded control lxapp's logic mode, or
+  is false when no control lxapp is bundled.
 - [ ] All native routes return `lingxia::Result<T>` with `Serialize` outputs.
 - [ ] `HostAddon` registers every route and extension; FFI exports present for each target platform.
 - [ ] `lingxia doctor` passes; `lingxia dev` boots on a real/simulated device.
