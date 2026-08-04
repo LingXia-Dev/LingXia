@@ -224,6 +224,7 @@ public class LingXiaWebView extends WebView {
                     }
 
                     LingXiaWebView webView;
+                    android.content.Context creationContext = creationContextFor(appId);
 
                     // Try to create com.lingxia.lxapp.WebView (which extends LingXiaWebView)
                     // This allows the SDK to provide a customized WebView subclass
@@ -231,10 +232,10 @@ public class LingXiaWebView extends WebView {
                         Class<?> uiWebViewClass = Class.forName("com.lingxia.lxapp.WebView");
                         webView = (LingXiaWebView) uiWebViewClass
                             .getConstructor(android.content.Context.class)
-                            .newInstance(sApplicationContext);
+                            .newInstance(creationContext);
                     } catch (Throwable e) {
                         // Fallback to base LingXiaWebView if SDK class not available
-                        webView = new LingXiaWebView(sApplicationContext);
+                        webView = new LingXiaWebView(creationContext);
                     }
 
                     final LingXiaWebView createdWebView = webView;
@@ -248,6 +249,39 @@ public class LingXiaWebView extends WebView {
                 }
             }
         });
+    }
+
+    /**
+     * The application context carries the system uiMode, but WebView derives
+     * prefers-color-scheme from its own context configuration; bake in the
+     * lxapp's resolved appearance so per-app dark works without an activity
+     * theme override reaching this context.
+     */
+    private static android.content.Context creationContextFor(String appId) {
+        android.content.Context base = sApplicationContext;
+        try {
+            Class<?> lxApp = Class.forName("com.lingxia.lxapp.LxApp");
+            Object dark = lxApp.getMethod("appearanceDarkFor", String.class).invoke(null, appId);
+            Log.i(TAG, "WebView creation context for " + appId + ": dark=" + dark);
+            if (dark instanceof Boolean) {
+                android.content.res.Configuration config = new android.content.res.Configuration(
+                    base.getResources().getConfiguration());
+                config.uiMode = (config.uiMode
+                        & ~android.content.res.Configuration.UI_MODE_NIGHT_MASK)
+                    | (((Boolean) dark)
+                        ? android.content.res.Configuration.UI_MODE_NIGHT_YES
+                        : android.content.res.Configuration.UI_MODE_NIGHT_NO);
+                base = base.createConfigurationContext(config);
+                // Chromium keys prefers-color-scheme off the theme's
+                // isLightTheme attribute, not the raw uiMode bit; a DayNight
+                // theme resolves that attribute against the night bit above.
+                base = new android.view.ContextThemeWrapper(
+                    base, androidx.appcompat.R.style.Theme_AppCompat_DayNight);
+            }
+        } catch (Throwable e) {
+            Log.w(TAG, "Falling back to application context for WebView: " + e.getMessage());
+        }
+        return base;
     }
 
     private void ensureMainThread(Runnable action) {

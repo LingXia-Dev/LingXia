@@ -362,6 +362,23 @@ object Lingxia {
             Log.w(TAG, "Failed to register ActivityLifecycleCallbacks: Application not found")
             return false
         }
+        // Application-level hook: an lxapp's localNightMode override pins the
+        // activity's uiMode, so system dark toggles never reach the activity's
+        // onConfigurationChanged. The application configuration is unaffected
+        // by that override.
+        var nightBit = application.resources.configuration.uiMode and
+            android.content.res.Configuration.UI_MODE_NIGHT_MASK
+        application.registerComponentCallbacks(object : android.content.ComponentCallbacks {
+            override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+                val newNightBit = newConfig.uiMode and
+                    android.content.res.Configuration.UI_MODE_NIGHT_MASK
+                if (newNightBit != nightBit) {
+                    nightBit = newNightBit
+                    NativeApi.onHostAppearanceChanged()
+                }
+            }
+            override fun onLowMemory() {}
+        })
         return true
     }
 }

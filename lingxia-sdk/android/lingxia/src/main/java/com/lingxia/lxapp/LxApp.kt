@@ -35,13 +35,24 @@ object LxApp {
     internal fun setCurrentActivity(activity: LxAppActivity?) {
         currentActivity = activity
         UpdateManager.init(activity)
-        activity?.let { current ->
-            appearanceByApp[current.getAppId()]?.let { dark -> applyAppearance(current.getAppId(), dark) }
-        }
+    }
+
+    /**
+     * Replay the stored scheme for a (re)created activity. Must run after the
+     * activity's chrome views exist: applying runs synchronously on the main
+     * thread and drives navbar/tabbar updates.
+     */
+    @JvmStatic
+    internal fun replayStoredAppearance(activity: LxAppActivity) {
+        appearanceByApp[activity.appId]?.let { dark -> applyAppearance(activity.appId, dark) }
     }
 
     @JvmStatic
     fun getCurrentActivity(): LxAppActivity? = currentActivity
+
+    /** The lxapp's applied scheme, or null before one resolves. */
+    @JvmStatic
+    fun appearanceDarkFor(appId: String): Boolean? = appearanceByApp[appId]
 
     @JvmStatic
     fun hostAppearanceDark(): Boolean {
@@ -61,6 +72,12 @@ object LxApp {
             } else {
                 AppCompatDelegate.MODE_NIGHT_NO
             }
+            // uiMode is a declared configChange, so nothing re-dispatches the
+            // updated configuration to attached views; WebViews re-evaluate
+            // prefers-color-scheme only when it reaches them.
+            activity.window.decorView.dispatchConfigurationChanged(
+                activity.resources.configuration
+            )
             LxAppActivity.updateNavBarUI(appId)
             LxAppActivity.updateTabBarUI(appId)
         }

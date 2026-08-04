@@ -397,15 +397,14 @@ class LxAppActivity : AppCompatActivity() {
         configureTransparentSystemBars(this)
         forceHostImmersive = isHostImmersiveEnabled()
 
-        // Set reference to this activity in LxApp
-        LxApp.setCurrentActivity(this)
-
         // Initialize appId from intent FIRST (check for null)
         appId = intent.getStringExtra(EXTRA_APP_ID) ?: run {
             LxLog.e(TAG, "Missing required parameter: appId")
             finish()
             return
         }
+        // Set reference to this activity in LxApp
+        LxApp.setCurrentActivity(this)
         var initialPath = intent.getStringExtra(EXTRA_PATH) ?: ""
         val requestedSessionId = intent.getLongExtra(EXTRA_SESSION_ID, 0L)
         val resolvedEntry = ensureRuntimeReady(appId, initialPath, requestedSessionId) ?: run {
@@ -462,6 +461,9 @@ class LxAppActivity : AppCompatActivity() {
 
         // Create global NavigationBar (always present, controlled by visibility)
         createNavBar()
+
+        // Chrome views exist now; a persisted non-default scheme can apply.
+        LxApp.replayStoredAppearance(this)
 
         // Defer capsule button creation to post-layout
         rootContainer.post {
@@ -1004,6 +1006,12 @@ class LxAppActivity : AppCompatActivity() {
                 webViewContainer.bringChildToFront(container)
                 container.tag = "current_webview_container"
             }
+
+            // WebViews are created on the application context, so the lxapp's
+            // localNightMode override never reaches their theme resolution;
+            // feed them the activity configuration once they join the tree so
+            // prefers-color-scheme matches the resolved appearance.
+            view.dispatchConfigurationChanged(resources.configuration)
 
             // Attach native bridge for component overlay
             NativeBridge.attachIfNeeded(view)
@@ -1632,6 +1640,9 @@ class LxAppActivity : AppCompatActivity() {
             LxLog.e(TAG, "Error adding new container to webViewContainer: ${e.message}")
             return
         }
+        // App-context webviews miss the activity's night override; sync the
+        // freshly attached tree (see setupWebViewContentWithExisting).
+        newContainer.dispatchConfigurationChanged(resources.configuration)
 
         if (shouldAnimate) {
             // Set up animation based on navigation direction
