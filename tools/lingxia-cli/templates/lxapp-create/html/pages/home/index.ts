@@ -8,7 +8,7 @@ Page({
     const count = this.data.greetCount + 1;
     this.setData({
       greetCount: count,
-      greeting: `Hello, ${payload.name}! 👋 (#${count})`
+      greeting: `Hello, ${payload.name}! (#${count})`
     });
   }
 });
