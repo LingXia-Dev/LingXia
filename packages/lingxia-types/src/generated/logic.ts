@@ -1639,10 +1639,6 @@ export type TabBarPatch = {
     items?: readonly TabBarItemPatch[];
 };
 
-export type TabBarRedDotOptions = {
-    index: number;
-};
-
 export type TabBarStylePatch = {
     foregroundColor?: string | null;
     selectedForegroundColor?: string | null;

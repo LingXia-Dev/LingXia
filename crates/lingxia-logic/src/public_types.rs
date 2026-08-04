@@ -1402,10 +1402,6 @@ true
     readonly [systemDownloadsPathBrand]: 'system-downloads-path';
 }"###;
 
-        type TabBarRedDotOptions = r###"{
-    index: number;
-}"###;
-
         /// Runtime control of the menu-bar (macOS) / system-tray (Windows) status item.
         /// The tray is declared in `lingxia.yaml` (`tray:`); these update its dynamic
         /// content at runtime.
