@@ -833,6 +833,13 @@ fn loopback_ws_url(port: u16) -> String {
 }
 
 fn lan_ws_url(port: u16) -> Result<String> {
+    // Explicit override beats every heuristic below; LAN detection can only
+    // guess when VPNs or container bridges hold the default route.
+    if let Ok(host) = std::env::var("LINGXIA_DEV_HOST")
+        && !host.trim().is_empty()
+    {
+        return Ok(format!("ws://{}:{port}", host.trim()));
+    }
     match detect_lan_ip() {
         Some(ip) => Ok(format!("ws://{ip}:{port}")),
         None => {
@@ -849,7 +856,7 @@ fn lan_ws_url(port: u16) -> Result<String> {
 /// default-route probe follows VPN/proxy tunnels whose address LAN peers
 /// cannot reach, so a non-private result only wins when nothing private
 /// exists. Among private candidates, real-LAN ranges beat the 172.16/12
-/// block that virtual adapters (WSL, Docker) commonly squat on.
+/// block that VPN and virtual adapters (WSL, Docker) commonly squat on.
 fn detect_lan_ip() -> Option<std::net::IpAddr> {
     let default_route_ip = std::net::UdpSocket::bind("0.0.0.0:0")
         .ok()
@@ -859,19 +866,27 @@ fn detect_lan_ip() -> Option<std::net::IpAddr> {
         });
     if let Some(ip) = default_route_ip
         && is_private_v4(&ip)
+        && !is_virtual_prone_v4(&ip)
     {
         return Some(ip);
     }
 
+    // COMPUTERNAME/HOSTNAME cover Windows and bash; macOS shells export
+    // neither, so fall back to the hostname binary.
     let hostname = std::env::var("COMPUTERNAME")
         .or_else(|_| std::env::var("HOSTNAME"))
-        .ok()?;
-    let candidates: Vec<std::net::IpAddr> =
-        std::net::ToSocketAddrs::to_socket_addrs(&(hostname.as_str(), 0u16))
-            .ok()?
-            .map(|addr| addr.ip())
-            .filter(is_private_v4)
-            .collect();
+        .ok()
+        .or_else(|| {
+            let output = std::process::Command::new("hostname").output().ok()?;
+            let name = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            (!name.is_empty()).then_some(name)
+        });
+    let candidates: Vec<std::net::IpAddr> = hostname
+        .and_then(|hostname| {
+            std::net::ToSocketAddrs::to_socket_addrs(&(hostname.as_str(), 0u16)).ok()
+        })
+        .map(|addrs| addrs.map(|addr| addr.ip()).filter(is_private_v4).collect())
+        .unwrap_or_default();
     let preferred = |prefix: fn(&std::net::Ipv4Addr) -> bool| {
         candidates.iter().copied().find(|ip| match ip {
             std::net::IpAddr::V4(v4) => prefix(v4),
@@ -887,6 +902,15 @@ fn detect_lan_ip() -> Option<std::net::IpAddr> {
 fn is_private_v4(ip: &std::net::IpAddr) -> bool {
     match ip {
         std::net::IpAddr::V4(v4) => v4.is_private(),
+        std::net::IpAddr::V6(_) => false,
+    }
+}
+
+/// The 172.16/12 private block, which on dev machines usually belongs to a
+/// VPN or container bridge rather than the physical LAN.
+fn is_virtual_prone_v4(ip: &std::net::IpAddr) -> bool {
+    match ip {
+        std::net::IpAddr::V4(v4) => v4.octets()[0] == 172 && (16..=31).contains(&v4.octets()[1]),
         std::net::IpAddr::V6(_) => false,
     }
 }

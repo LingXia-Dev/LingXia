@@ -120,7 +120,8 @@ drives. In a standalone lxapp project it builds the lxapp and launches LingXia
 Runner on macOS/Windows. Networking is handled per platform: Android and
 Harmony get reverse port forwarding so the device reaches the local dev server;
 iOS embeds a LAN dev websocket URL, so the iOS device must be able to reach the
-host Mac over the local network.
+host Mac over the local network. The LAN address is auto-detected (VPN and
+container ranges are skipped); set `LINGXIA_DEV_HOST` to override it.
 
 `dev` also accepts an explicit Runner target, so the current directory remains
 the owner of session state while the launched content lives elsewhere:
