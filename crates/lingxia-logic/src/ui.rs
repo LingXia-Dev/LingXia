@@ -2,6 +2,7 @@ use rong::{JSContext, JSResult};
 
 mod action_sheet;
 mod appearance;
+mod capsule;
 mod modal;
 mod more_actions;
 mod navbar;
@@ -19,6 +20,7 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     modal::init(ctx)?;
     action_sheet::init(ctx)?;
     appearance::init(ctx)?;
+    capsule::init(ctx)?;
     navbar::init(ctx)?;
     tabbar::init(ctx)?;
     router::init(ctx)?;

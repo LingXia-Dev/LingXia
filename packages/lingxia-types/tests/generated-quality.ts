@@ -4,6 +4,7 @@ import type {
   AppDownloadResult,
   AppScreenshotResult,
   AppearanceState,
+  CapsuleRect,
   DownloadTask,
   DownloadsDownloadOptions,
   DownloadsDownloadResult,
@@ -49,6 +50,7 @@ const appearanceState: AppearanceState = lx.appearance.get();
 const appearanceSetResult: Promise<void> = lx.appearance.set("dark");
 const navigationUpdateResult: Promise<void> = lx.navigationBar.update({ title: null });
 const tabBarUpdateResult: Promise<void> = lx.tabBar.update({ visibility: "auto" });
+const capsuleRectResult: Promise<CapsuleRect | null> = lx.getCapsuleRect();
 const urlTabResult: Promise<null> = lx.openSurface(urlTab);
 const declaredResult: Promise<SurfaceHandle> = lx.openSurface(declaredSurface);
 const appResult: Promise<SurfaceHandle> = lx.openSurface(appSurface);
@@ -116,6 +118,7 @@ export type GeneratedQualityGate = [
   typeof appearanceSetResult,
   typeof navigationUpdateResult,
   typeof tabBarUpdateResult,
+  typeof capsuleRectResult,
   typeof urlTabResult,
   typeof declaredResult,
   typeof appResult,
