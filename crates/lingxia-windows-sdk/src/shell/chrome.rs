@@ -198,6 +198,7 @@ pub(super) mod command_id {
     pub(super) const NAVIGATION_BACK: &str = "navigation.back";
     pub(super) const NAVIGATION_HOME: &str = "navigation.home";
     pub(super) const BROWSER_NEW_TAB: &str = "browser.new-tab";
+    pub(super) const MAIN_WORKSPACE_ADD: &str = "main-workspace.add";
     pub(super) const BROWSER_TABS_CYCLE: &str = "browser.tabs.cycle";
     pub(super) const BROWSER_TAB_CLICK: &str = "browser.tab.click";
     pub(super) const BROWSER_TAB_CLOSE: &str = "browser.tab.close";
@@ -2042,7 +2043,7 @@ pub(super) fn chrome_hit_test(
                     point,
                 )
             {
-                return Some(chrome_command(command_id::BROWSER_NEW_TAB, json!({})));
+                return Some(chrome_command(command_id::MAIN_WORKSPACE_ADD, json!({})));
             }
             return Some(WindowsChromeHit::Chrome);
         }

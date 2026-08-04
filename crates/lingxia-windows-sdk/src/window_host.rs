@@ -332,6 +332,7 @@ struct HostPanelEntry {
     requested_size: Option<i32>,
     docked: bool,
     maximized: bool,
+    show_maximize: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -2415,6 +2416,7 @@ pub fn show_interactive_host_panel(
                 requested_size: None,
                 docked: panel_position_is_flush_docked(position),
                 maximized: false,
+                show_maximize: true,
             },
         );
     }
@@ -2513,6 +2515,23 @@ pub fn set_host_panel_maximized(panel_id: &str, maximized: bool) -> bool {
     }
     if updated {
         sync_active_host_layout();
+    }
+    updated
+}
+
+#[cfg(feature = "terminal-runtime")]
+pub(crate) fn set_host_panel_zoom_control_visible(panel_id: &str, visible: bool) -> bool {
+    let updated = HOST_PANELS
+        .get()
+        .and_then(|panels| panels.lock().ok())
+        .and_then(|mut panels| {
+            let panel = panels.get_mut(panel_id)?;
+            panel.show_maximize = visible;
+            Some(())
+        })
+        .is_some();
+    if updated {
+        repaint_active_host();
     }
     updated
 }
@@ -4873,6 +4892,7 @@ fn host_panel_content(panel_id: &str) -> Option<WindowsHostPanelContent> {
         body: Some(entry.body),
         tabs,
         maximized: entry.maximized,
+        show_maximize: entry.show_maximize,
     })
 }
 

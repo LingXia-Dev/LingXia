@@ -218,7 +218,7 @@ pub(in crate::shell::chrome) fn sidebar_auxiliary_hit_test(
         && rect_contains(&add_rect, point)
     {
         return Some(chrome_command(
-            command_id::BROWSER_NEW_TAB,
+            command_id::MAIN_WORKSPACE_ADD,
             serde_json::json!({}),
         ));
     }
@@ -498,5 +498,35 @@ mod tests {
             serde_json::json!({ "tab_id": "surface:chat" })
         );
         assert!(command.include_screen_position);
+    }
+
+    #[test]
+    fn sidebar_add_uses_the_active_main_workspace_command() {
+        let mut tabbar = tabbar_with_auxiliary_item(WindowsShellAuxiliaryItemLayout {
+            id: "surface:chat".to_string(),
+            title: "Chat".to_string(),
+            active: true,
+            pinned: false,
+            closable: true,
+            icon_png: None,
+            icon_path: String::new(),
+        });
+        tabbar.show_auxiliary_add = true;
+        let sidebar = RECT {
+            left: 0,
+            top: 0,
+            right: 184,
+            bottom: 500,
+        };
+        let rows = sidebar_auxiliary_rects(sidebar, &tabbar, 0, sidebar.bottom).unwrap();
+        let add = rows.add.expect("workspace add row should be visible");
+        let point = ((add.left + add.right) / 2, (add.top + add.bottom) / 2);
+
+        let Some(WindowsChromeHit::Command(command)) =
+            sidebar_auxiliary_hit_test(sidebar, &tabbar, point, 0, sidebar.bottom)
+        else {
+            panic!("workspace add row did not produce a command");
+        };
+        assert_eq!(command.id, command_id::MAIN_WORKSPACE_ADD);
     }
 }
