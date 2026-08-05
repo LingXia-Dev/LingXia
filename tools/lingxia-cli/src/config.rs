@@ -1632,6 +1632,7 @@ impl LingXiaConfig {
                     version: None,
                 }],
             }),
+            splash: None,
         }
     }
 

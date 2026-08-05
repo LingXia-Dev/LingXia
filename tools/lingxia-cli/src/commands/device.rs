@@ -234,6 +234,7 @@ mod tests {
             app_links: None,
             storage: None,
             resources: None,
+            splash: None,
         }
     }
 
