@@ -2452,6 +2452,7 @@ dependencies = [
 name = "lingxia-terminal-config"
 version = "0.11.2"
 dependencies = [
+ "libc",
  "lingxia-app-context",
  "lingxia-terminal",
  "log",

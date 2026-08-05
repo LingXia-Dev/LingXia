@@ -109,7 +109,11 @@ public enum Lingxia {
         LingXiaTerminalSettings.registerInstalledFonts()
         #endif
         let directories = LxAppDirectoryFactory.createDirectoryConfig()
-        let code = terminalRunCliIfInvoked(directories.dataPath)
+        // Foundation, not AppKit: the appearance decides which of the two
+        // configured schemes an unqualified theme change writes, and reading
+        // it must not initialize an app.
+        let dark = UserDefaults.standard.string(forKey: "AppleInterfaceStyle") == "Dark"
+        let code = terminalRunCliIfInvoked(directories.dataPath, dark)
         if code >= 0 {
             exit(code)
         }

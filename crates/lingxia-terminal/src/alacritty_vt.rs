@@ -2244,6 +2244,7 @@ mod tests {
         assert_eq!(resized.cols, 20);
     }
 
+
     #[test]
     fn theme_swap_repaints_without_reflow() {
         let screen = VtScreen::new_with_options(10, 2, None, None, None);
