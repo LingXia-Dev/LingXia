@@ -155,6 +155,9 @@ mod runtime;
 pub(crate) mod shell;
 /// Shared async task helpers backed by LingXia's global executor.
 pub mod task;
+#[cfg(feature = "terminal-runtime")]
+#[path = "terminal_config.rs"]
+mod terminal_config_impl;
 
 /// Runs a future on LingXia's runtime, from any phase of the process.
 ///
@@ -169,9 +172,13 @@ where
 {
     task::spawn_or_defer(future);
 }
+
 /// Terminal backend status and integration helpers.
 #[cfg(feature = "terminal-runtime")]
 pub mod terminal {
+    pub use crate::terminal_config_impl::{
+        apply_theme, current_json as config_json, load as load_config,
+    };
     pub use lingxia_terminal::{
         BackendStatus, FrameCell, RowDamage, TerminalBackend, TerminalCell, TerminalFrame,
         TerminalFrameView, TerminalSnapshot, TerminalTheme, backend_available, backend_status,
@@ -179,6 +186,10 @@ pub mod terminal {
         terminal_current_directory, terminal_exited, terminal_frame_view, terminal_read,
         terminal_resize, terminal_scroll, terminal_set_theme, terminal_set_theme_all,
         terminal_snapshot, terminal_snapshot_data, terminal_title_state_json, terminal_write,
+    };
+    pub use lingxia_terminal_config::{
+        BoldStyle, FontConfig, InstalledFont, ResolvedFont, TerminalConfig, ThemeConfig, ThemeMode,
+        ThemeStore, resolve_font,
     };
 }
 /// Host app update helpers and update event types.
