@@ -86,16 +86,17 @@ coordinate units and native window topology genuinely differ there.
 
 ## Running on Windows
 
-From `examples/lingxia-showcase`:
+From the repository root:
 
 ```powershell
-lingxia dev --background --platform windows --framework react
-cd lxapp
-npm run test:automation:windows:react
+./scripts/automation/run-windows-showcase.ps1 -Framework all
 ```
 
-Stop the owning session from the Showcase directory with `lingxia dev stop`.
-Use `vue` and `test:automation:windows:vue` for the frontend-adapter suite.
+The runner builds `lingxia` and `lxdev` from the current checkout, installs
+both executables into `~/.local/bin`, then starts and tests React and Vue in
+separate Windows dev sessions. Pass `-Framework react` or `-Framework vue` to
+run one renderer. Artifacts and session logs are retained under
+`lxapp/test-results/automation/windows-<framework>`.
 
 ## Running on Android locally
 

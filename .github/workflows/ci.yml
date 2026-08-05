@@ -732,14 +732,19 @@ jobs:
       - name: Parse Android automation runner
         shell: pwsh
         run: |
-          $tokens = $null
-          $errors = $null
-          [System.Management.Automation.Language.Parser]::ParseFile(
-            (Resolve-Path 'scripts/automation/run-android-showcase.ps1'),
-            [ref]$tokens,
-            [ref]$errors
-          ) | Out-Null
-          if ($errors.Count -gt 0) { throw ($errors | Out-String) }
+          foreach ($runner in @(
+            'scripts/automation/run-android-showcase.ps1',
+            'scripts/automation/run-windows-showcase.ps1'
+          )) {
+            $tokens = $null
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile(
+              (Resolve-Path $runner),
+              [ref]$tokens,
+              [ref]$errors
+            ) | Out-Null
+            if ($errors.Count -gt 0) { throw "$runner`n$($errors | Out-String)" }
+          }
 
   showcase-automation:
     needs: changes
@@ -769,56 +774,13 @@ jobs:
         shell: bash
         run: npm ci
 
-      - name: Build automation CLIs
-        shell: bash
-        run: cargo build -p lingxia-cli -p lingxia-devtools-cli
-
       - name: Run showcase automation
         working-directory: examples/lingxia-showcase
-        shell: bash
-        env:
-          PLATFORM: ${{ matrix.platform }}
-          EXE: ${{ matrix.exe }}
-          FRAMEWORK: ${{ matrix.framework }}
-        run: |
-          set -euo pipefail
-          cli="$(pwd)/../../target/debug/lingxia${EXE}"
-          lxdev="$(pwd)/../../target/debug/lxdev${EXE}"
-          test_timeout=300
-          result_dir="lxapp/test-results/automation/${PLATFORM}-${FRAMEWORK}"
-          cleanup() { "$cli" dev stop >/dev/null 2>&1 || true; }
-          trap cleanup EXIT
-
-          echo "::group::Start ${PLATFORM}/${FRAMEWORK}"
-          "$cli" dev --background --platform "$PLATFORM" --framework "$FRAMEWORK"
-          "$cli" dev status --json
-          echo "::endgroup::"
-
-          echo "::group::Test ${PLATFORM}/${FRAMEWORK}"
-          set +e
-          (
-            cd lxapp
-            "$lxdev" test tests/entries/windows.test.ts \
-              --timeout "$test_timeout" \
-              --arg "platform=${PLATFORM}" \
-              --arg "framework=${FRAMEWORK}" \
-              --output-dir "test-results/automation/${PLATFORM}-${FRAMEWORK}"
-          )
-          test_status=$?
-          set -e
-          echo "::endgroup::"
-
-          mkdir -p "$result_dir"
-          "$lxdev" logs --json --limit 5000 > "$result_dir/session.jsonl"
-          errors=$("$lxdev" logs --level error --json --limit 1000)
-          if [ -n "$errors" ]; then
-            echo "::error::Unexpected error-level session logs"
-            echo "$errors"
-            exit 1
-          fi
-          if [ "$test_status" -ne 0 ]; then
-            exit "$test_status"
-          fi
+        shell: pwsh
+        run: >-
+          ../../scripts/automation/run-windows-showcase.ps1
+          -Framework '${{ matrix.framework }}'
+          -TimeoutSeconds 300
 
       - name: Show session diagnostics
         if: always()
