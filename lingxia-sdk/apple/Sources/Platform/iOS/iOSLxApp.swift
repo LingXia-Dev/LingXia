@@ -211,6 +211,11 @@ class iOSLxApp {
             return
         }
 
+        // Home cold start: keep the launch screen up until first render (or timeout).
+        if appId == LxAppCore.getHomeLxAppId() {
+            LingXiaSplashOverlay.attachIfNeeded(to: window)
+        }
+
         // Use the provided path directly since we now have centralized state management
         let actualPath = path
 

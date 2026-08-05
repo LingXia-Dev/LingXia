@@ -613,6 +613,16 @@ extension LxApp {
         executeOnMain { LxAppAppearanceRegistry.hostIsDark() }
     }
 
+    /// Runtime signal: the home page finished its first render — dismiss the
+    /// startup splash overlay.
+    nonisolated static func onHomeFirstReady() {
+        DispatchQueue.main.async {
+            MainActor.assumeIsolated {
+                LingXiaSplashOverlay.notifyHomeReady()
+            }
+        }
+    }
+
     nonisolated static func applyAppearance(appid: RustStr, dark: Bool) -> Bool {
         let appIdString = appid.toString()
         return executeOnMain {
