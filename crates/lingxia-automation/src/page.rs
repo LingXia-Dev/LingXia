@@ -16,7 +16,9 @@ use std::time::{Duration, Instant};
 const DEFAULT_MAX_TEXT: usize = 4096;
 const EVAL_DEFAULT_MS: u64 = 5_000;
 const WAIT_POLL_MS: u64 = 100;
-const WAIT_DEFAULT_MS: u64 = 10_000;
+// Loaded CI runners stall WebView2/WKWebView first render past 10s (observed
+// 10.8-11.5s on Windows), so the default page-readiness budget is 30s.
+const WAIT_DEFAULT_MS: u64 = 30_000;
 const WAIT_MAX_MS: u64 = 60_000;
 
 fn is_transient_page_error(error: &str) -> bool {
