@@ -185,9 +185,15 @@ private final class LingXiaTerminalShaper {
 
     private var cache: [Key: [LingXiaTerminalShapedGlyph]] = [:]
     private var fonts: [UInt8: NSFont] = [:]
+    /// Same faces with contextual alternates disabled. Ligatures cannot be
+    /// switched off through the `ligature` attribute — it only reaches `liga`,
+    /// while programming ligatures are `calt`, which CoreText applies by
+    /// default — so the off state needs its own font instances.
+    private var plainFonts: [UInt8: NSFont] = [:]
 
     func reset(regular: NSFont, bold: NSFont, italic: NSFont, boldItalic: NSFont) {
         fonts = [0: regular, 1: bold, 2: italic, 3: boldItalic]
+        plainFonts = fonts.mapValues(LingXiaTerminalFontVariant.withoutLigatures)
         cache.removeAll(keepingCapacity: true)
     }
 
@@ -198,7 +204,8 @@ private final class LingXiaTerminalShaper {
         style: UInt8,
         ligatures: Bool
     ) -> [LingXiaTerminalShapedGlyph] {
-        guard !text.isEmpty, let font = fonts[style & 0x3] else { return [] }
+        let faces = ligatures ? fonts : plainFonts
+        guard !text.isEmpty, let font = faces[style & 0x3] else { return [] }
         let key = Key(text: text, style: style & 0x3, ligatures: ligatures)
         if let cached = cache[key] {
             return remap(cached, columns: columns)
@@ -209,10 +216,7 @@ private final class LingXiaTerminalShaper {
         if let first = columns.first {
             zeroed = columns.map { $0 - first }
         }
-        let attributes: [NSAttributedString.Key: Any] = [
-            .font: font,
-            .ligature: ligatures ? 1 : 0,
-        ]
+        let attributes: [NSAttributedString.Key: Any] = [.font: font]
         let line = CTLineCreateWithAttributedString(
             NSAttributedString(string: text, attributes: attributes)
         )
@@ -617,6 +621,71 @@ final class LingXiaTerminalMetalRenderer {
     }
 
     func render(frame: LingXiaTerminalGPUFrame, context: LingXiaTerminalRenderContext, in layer: CAMetalLayer) {
+        let (atlas, clear) = build(frame: frame, context: context)
+        draw(layer: layer, clear: clear, atlas: atlas)
+    }
+
+    /// Render one frame into an image instead of onto the screen.
+    ///
+    /// Screenshot automation captures a window by replaying the view tree
+    /// through CoreGraphics, which by construction cannot see a Metal layer —
+    /// the terminal would come out blank. Rendering the same quads into an
+    /// offscreen texture on demand keeps automation working without asking
+    /// for the Screen Recording permission a window-server capture needs, and
+    /// costs nothing on the normal path.
+    func image(frame: LingXiaTerminalGPUFrame, context: LingXiaTerminalRenderContext) -> CGImage? {
+        let width = Int((context.viewSize.width * context.scale).rounded())
+        let height = Int((context.viewSize.height * context.scale).rounded())
+        guard width > 0, height > 0 else { return nil }
+
+        let descriptor = MTLTextureDescriptor.texture2DDescriptor(
+            pixelFormat: .bgra8Unorm,
+            width: width,
+            height: height,
+            mipmapped: false
+        )
+        descriptor.usage = [.renderTarget, .shaderRead]
+        descriptor.storageMode = .managed
+        guard let target = device.makeTexture(descriptor: descriptor) else { return nil }
+
+        let (atlas, clear) = build(frame: frame, context: context)
+        guard encode(into: target, clear: clear, atlas: atlas, viewSize: context.viewSize, synchronize: true) else {
+            return nil
+        }
+
+        let bytesPerRow = width * 4
+        var pixels = [UInt8](repeating: 0, count: bytesPerRow * height)
+        target.getBytes(
+            &pixels,
+            bytesPerRow: bytesPerRow,
+            from: MTLRegionMake2D(0, 0, width, height),
+            mipmapLevel: 0
+        )
+        guard let provider = CGDataProvider(data: Data(pixels) as CFData) else { return nil }
+        return CGImage(
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bitsPerPixel: 32,
+            bytesPerRow: bytesPerRow,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGBitmapInfo(
+                rawValue: CGImageAlphaInfo.premultipliedFirst.rawValue
+                    | CGBitmapInfo.byteOrder32Little.rawValue
+            ),
+            provider: provider,
+            decode: nil,
+            shouldInterpolate: false,
+            intent: .defaultIntent
+        )
+    }
+
+    /// Build the frame's quads. Returns the atlas they reference and the
+    /// clear color, which is the terminal's own background.
+    private func build(
+        frame: LingXiaTerminalGPUFrame,
+        context: LingXiaTerminalRenderContext
+    ) -> (LingXiaTerminalGlyphAtlas, SIMD4<Float>) {
         let atlas = ensureAtlas(context: context)
         quads.removeAll(keepingCapacity: true)
 
@@ -634,8 +703,7 @@ final class LingXiaTerminalMetalRenderer {
         appendCursor(frame: frame, context: context, defaultBackground: defaultBackground)
         appendMarkedText(context: context, atlas: atlas)
         appendScrollbar(frame: frame, context: context)
-
-        draw(layer: layer, clear: defaultBackground, atlas: atlas)
+        return (atlas, defaultBackground)
     }
 
     // MARK: Quad building
@@ -1047,15 +1115,42 @@ final class LingXiaTerminalMetalRenderer {
         // The clear color alone is a valid frame (an empty grid), so this
         // runs even with no quads.
         guard let drawable = layer.nextDrawable() else { return }
+        let viewSize = CGSize(
+            width: CGFloat(drawable.texture.width) / layer.contentsScale,
+            height: CGFloat(drawable.texture.height) / layer.contentsScale
+        )
+        _ = encode(
+            into: drawable.texture,
+            clear: clear,
+            atlas: atlas,
+            viewSize: viewSize,
+            synchronize: false,
+            present: drawable
+        )
+    }
+
+    /// Encode the current quads into a texture. Shared by the on-screen path
+    /// and the offscreen capture, so a screenshot renders exactly what the
+    /// screen shows.
+    private func encode(
+        into target: MTLTexture,
+        clear: SIMD4<Float>,
+        atlas: LingXiaTerminalGlyphAtlas,
+        viewSize: CGSize,
+        synchronize: Bool,
+        present: (any MTLDrawable)? = nil
+    ) -> Bool {
         let descriptor = MTLRenderPassDescriptor()
-        descriptor.colorAttachments[0].texture = drawable.texture
+        descriptor.colorAttachments[0].texture = target
         descriptor.colorAttachments[0].loadAction = .clear
         descriptor.colorAttachments[0].storeAction = .store
         descriptor.colorAttachments[0].clearColor = MTLClearColor(
             red: Double(clear.x), green: Double(clear.y), blue: Double(clear.z), alpha: 1
         )
         guard let commands = queue.makeCommandBuffer(),
-              let encoder = commands.makeRenderCommandEncoder(descriptor: descriptor) else { return }
+              let encoder = commands.makeRenderCommandEncoder(descriptor: descriptor) else {
+            return false
+        }
 
         if !quads.isEmpty {
             let length = MemoryLayout<LingXiaTerminalQuad>.stride * quads.count
@@ -1064,10 +1159,7 @@ final class LingXiaTerminalMetalRenderer {
             }
             if let buffer = instanceBuffer {
                 buffer.contents().copyMemory(from: quads, byteCount: length)
-                var viewport = SIMD2<Float>(
-                    Float(drawable.texture.width) / Float(layer.contentsScale),
-                    Float(drawable.texture.height) / Float(layer.contentsScale)
-                )
+                var viewport = SIMD2<Float>(Float(viewSize.width), Float(viewSize.height))
                 encoder.setRenderPipelineState(pipeline)
                 encoder.setVertexBuffer(buffer, offset: 0, index: 0)
                 encoder.setVertexBytes(&viewport, length: MemoryLayout<SIMD2<Float>>.size, index: 1)
@@ -1082,8 +1174,23 @@ final class LingXiaTerminalMetalRenderer {
             }
         }
         encoder.endEncoding()
-        commands.present(drawable)
+
+        if synchronize {
+            // A managed texture has to be blitted back before the CPU may
+            // read it.
+            if let blit = commands.makeBlitCommandEncoder() {
+                blit.synchronize(resource: target)
+                blit.endEncoding()
+            }
+        }
+        if let present {
+            commands.present(present)
+        }
         commands.commit()
+        if synchronize {
+            commands.waitUntilCompleted()
+        }
+        return true
     }
 
     private func ensureAtlas(context: LingXiaTerminalRenderContext) -> LingXiaTerminalGlyphAtlas {
