@@ -1276,6 +1276,25 @@ final class LxAppViewController: UIViewController, ObservableObject {
             targetWebView.scrollView.backgroundColor = canvas
             targetWebView.layer.backgroundColor = canvas.cgColor
 
+            // navigate() already applied the TARGET page's styling; for a
+            // navbar-hidden target that cleared view/rootContainer/window, so
+            // the strip the departing bar vacates would show the black window
+            // for the whole slide. Paint the canvas for the animation;
+            // finalizeWebViewAttachment re-applies transparency afterwards.
+            view.backgroundColor = canvas
+            rootContainer.backgroundColor = canvas
+
+            // The content swap below moves (or hides) the shared bar for the
+            // incoming page, baring the outgoing page's strip mid-slide — let
+            // a snapshot of the old bar ride out with the old webview instead.
+            var outgoingBarSnapshot: UIView?
+            if let navigationBar = globalNavigationBar, !navigationBar.isHidden,
+               let snapshot = navigationBar.snapshotView(afterScreenUpdates: false) {
+                snapshot.frame = navigationBar.frame
+                rootContainer.addSubview(snapshot)
+                outgoingBarSnapshot = snapshot
+            }
+
             // Set initial position for target WebView
             targetWebView.transform = CGAffineTransform(translationX: slideInTranslation, y: 0)
 
@@ -1301,6 +1320,7 @@ final class LxAppViewController: UIViewController, ObservableObject {
 
                 // Slide current WebView out
                 currentWebView.transform = CGAffineTransform(translationX: slideOutTranslation, y: 0)
+                outgoingBarSnapshot?.transform = CGAffineTransform(translationX: slideOutTranslation, y: 0)
 
                 // Animate navbar with WebViews
                 if let navigationBar = self.globalNavigationBar {
@@ -1308,6 +1328,7 @@ final class LxAppViewController: UIViewController, ObservableObject {
                 }
             }, completion: { _ in
                 // Clean up after animation
+                outgoingBarSnapshot?.removeFromSuperview()
                 currentWebView.isHidden = true
                 currentWebView.pauseWebView()
                 currentWebView.transform = .identity
