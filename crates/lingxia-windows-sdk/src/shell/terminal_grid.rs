@@ -1264,14 +1264,7 @@ mod tests {
             row,
             col,
             text: text.to_string(),
-            fg: None,
-            bg: None,
-            bold: false,
-            dim: false,
-            italic: false,
-            underline: false,
-            inverse: false,
-            wide: false,
+            ..TerminalCell::default()
         }
     }
 

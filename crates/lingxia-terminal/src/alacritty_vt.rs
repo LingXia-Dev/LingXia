@@ -32,13 +32,15 @@ use crate::search::SearchRow;
 
 // Attr bits packed into `Cell.attrs`. Kept in sync with the HLSL
 // pixel shader's interpretation (bit 0 = bold, 1 = italic, 2 =
-// underline, 3 = strike, 4 = inverse, 5 = dim/faint).
+// underline, 3 = strike, 4 = inverse, 5 = dim/faint, 6 = hidden).
 pub const ATTR_BOLD: u8 = 1 << 0;
 pub const ATTR_ITALIC: u8 = 1 << 1;
 pub const ATTR_UNDERLINE: u8 = 1 << 2;
 pub const ATTR_STRIKE: u8 = 1 << 3;
 pub const ATTR_INVERSE: u8 = 1 << 4;
 pub const ATTR_DIM: u8 = 1 << 5;
+/// SGR 8: the cell keeps its styling but renders no text.
+pub const ATTR_HIDDEN: u8 = 1 << 6;
 
 const SCROLLBACK_LINES: usize = 10_000;
 
@@ -84,7 +86,7 @@ impl ThemeColors {
 
 // ── Snapshot (renderer's view) ─────────────────────────────────────────
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Cell {
     pub text: String,
     /// Foreground RGBA (0xRRGGBBAA).
@@ -94,9 +96,82 @@ pub struct Cell {
     /// opaque.
     pub bg: u32,
     pub attrs: u8,
+    /// Which underline SGR is active; `ATTR_UNDERLINE` stays set for any
+    /// of them so renderers that only draw one style keep working.
+    pub underline: UnderlineStyle,
+    /// SGR 58 underline color as RGBA, when it differs from the text
+    /// color.
+    pub underline_color: Option<u32>,
+    /// Grid columns this cell's text occupies: 1 normally, 2 for a wide
+    /// char, more for a joined cluster, and 0 for a continuation column
+    /// covered by the cell that precedes it. A row's spans sum to the
+    /// column count.
+    pub columns: u8,
     pub wide: bool,
     /// OSC 8 hyperlink URI attached to the cell.
     pub hyperlink: Option<String>,
+}
+
+impl Default for Cell {
+    fn default() -> Self {
+        Self {
+            text: String::new(),
+            fg: 0,
+            bg: 0,
+            attrs: 0,
+            underline: UnderlineStyle::None,
+            underline_color: None,
+            // An untouched grid slot is still one empty column.
+            columns: 1,
+            wide: false,
+            hyperlink: None,
+        }
+    }
+}
+
+/// Underline shape carried by SGR 4:x.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum UnderlineStyle {
+    #[default]
+    None,
+    Single,
+    Double,
+    Curly,
+    Dotted,
+    Dashed,
+}
+
+impl UnderlineStyle {
+    fn from_flags(flags: Flags) -> Self {
+        // Order matters: alacritty keeps only one underline flag set,
+        // but check the specific shapes before the plain one.
+        if flags.contains(Flags::DOUBLE_UNDERLINE) {
+            Self::Double
+        } else if flags.contains(Flags::UNDERCURL) {
+            Self::Curly
+        } else if flags.contains(Flags::DOTTED_UNDERLINE) {
+            Self::Dotted
+        } else if flags.contains(Flags::DASHED_UNDERLINE) {
+            Self::Dashed
+        } else if flags.contains(Flags::UNDERLINE) {
+            Self::Single
+        } else {
+            Self::None
+        }
+    }
+
+    /// Stable wire name for the host-facing snapshot.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::None => "none",
+            Self::Single => "single",
+            Self::Double => "double",
+            Self::Curly => "curly",
+            Self::Dotted => "dotted",
+            Self::Dashed => "dashed",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -811,6 +886,9 @@ impl VtScreen {
             cells[viewport_row as usize * cols as usize + col] =
                 convert_cell(indexed.cell, &resolve, default_fg, default_bg);
         }
+        for row in cells.chunks_mut(cols as usize) {
+            join_zwj_clusters(row);
+        }
 
         // Cursor in viewport coordinates; scrolled-back history must
         // not show the live cursor.
@@ -1058,6 +1136,9 @@ fn convert_cell(
     if flags.contains(Flags::INVERSE) {
         attrs |= ATTR_INVERSE;
     }
+    if flags.contains(Flags::HIDDEN) {
+        attrs |= ATTR_HIDDEN;
+    }
 
     // Untouched grid cells surface as plain spaces on the default
     // colors; report them as empty text so hosts can keep skipping
@@ -1083,8 +1164,55 @@ fn convert_cell(
         fg: pack_rgb(fg, 0xFF),
         bg: pack_rgb(bg, if bg_is_default { 0 } else { 0xFF }),
         attrs,
+        underline: UnderlineStyle::from_flags(flags),
+        underline_color: cell
+            .underline_color()
+            .map(|color| pack_rgb(resolve(color, fg), 0xFF)),
+        columns: if is_spacer {
+            0
+        } else if flags.contains(Flags::WIDE_CHAR) {
+            2
+        } else {
+            1
+        },
         wide: flags.contains(Flags::WIDE_CHAR),
         hyperlink: cell.hyperlink().map(|link| link.uri().to_owned()),
+    }
+}
+
+/// Merge ZWJ-joined emoji into one cell.
+///
+/// The emulator stores each emoji of a ZWJ sequence in its own cell,
+/// with the joiner trailing the cell before it. Renderers need the whole
+/// cluster in one text run to shape a single glyph, so the leading cell
+/// takes the joined text and the columns it swallowed, and the followers
+/// become continuation columns.
+fn join_zwj_clusters(row: &mut [Cell]) {
+    const ZWJ: char = '\u{200D}';
+    let mut lead = 0;
+    while lead < row.len() {
+        if !row[lead].text.ends_with(ZWJ) {
+            lead += 1;
+            continue;
+        }
+        let mut next = lead + 1;
+        while row[lead].text.ends_with(ZWJ) && next < row.len() {
+            if row[next].columns == 0 {
+                // Wide-char spacer: still part of the cluster's span.
+                next += 1;
+                continue;
+            }
+            let joined = std::mem::take(&mut row[next].text);
+            if joined.is_empty() {
+                // A dangling joiner before empty space: nothing to join.
+                break;
+            }
+            row[lead].text.push_str(&joined);
+            let columns = std::mem::replace(&mut row[next].columns, 0);
+            row[lead].columns = row[lead].columns.saturating_add(columns);
+            next += 1;
+        }
+        lead = next.max(lead + 1);
     }
 }
 
@@ -1323,6 +1451,56 @@ mod tests {
     }
 
     #[test]
+    fn cell_styles_cover_the_sgr_surface() {
+        let screen = VtScreen::new_with_options(20, 2, None, None, None);
+        // Curly underline in red, strike, then a concealed run.
+        screen.feed(b"\x1b[4:3m\x1b[58;2;255;0;0mU\x1b[m\x1b[9mS\x1b[m\x1b[8mhide\x1b[m");
+        let snapshot = screen.snapshot();
+
+        let underlined = &snapshot.cells[0];
+        assert_eq!(underlined.text, "U");
+        assert_eq!(underlined.underline, UnderlineStyle::Curly);
+        assert_ne!(underlined.attrs & ATTR_UNDERLINE, 0, "style-agnostic bit");
+        assert_eq!(underlined.underline_color, Some(0xFF0000FF));
+
+        let struck = &snapshot.cells[1];
+        assert_eq!(struck.text, "S");
+        assert_ne!(struck.attrs & ATTR_STRIKE, 0);
+        assert_eq!(struck.underline, UnderlineStyle::None);
+
+        // Concealed cells keep their columns and styling but no text.
+        let hidden: Vec<&Cell> = snapshot.cells[2..6].iter().collect();
+        assert_eq!(hidden.len(), 4);
+        assert!(
+            hidden
+                .iter()
+                .all(|cell| cell.text.is_empty() && cell.attrs & ATTR_HIDDEN != 0),
+            "hidden run: {hidden:?}"
+        );
+    }
+
+    #[test]
+    fn underline_styles_map_to_their_sgr() {
+        for (sgr, expected) in [
+            ("\x1b[4m", UnderlineStyle::Single),
+            // SGR 21 is cancel-bold in this stack, not double underline.
+            ("\x1b[4:2m", UnderlineStyle::Double),
+            ("\x1b[4:3m", UnderlineStyle::Curly),
+            ("\x1b[4:4m", UnderlineStyle::Dotted),
+            ("\x1b[4:5m", UnderlineStyle::Dashed),
+            ("\x1b[24m", UnderlineStyle::None),
+        ] {
+            let screen = VtScreen::new_with_options(4, 1, None, None, None);
+            screen.feed(format!("{sgr}x").as_bytes());
+            assert_eq!(
+                screen.snapshot().cells[0].underline,
+                expected,
+                "underline style for {sgr:?}"
+            );
+        }
+    }
+
+    #[test]
     fn progress_follows_osc94_reports() {
         let screen = VtScreen::new_with_options(20, 3, None, None, None);
         assert_eq!(screen.activity().progress, TerminalProgress::default());
@@ -1428,6 +1606,44 @@ mod tests {
         // Counters are monotonic: draining events does not reset them.
         screen.drain_events();
         assert_eq!(screen.activity().bells, 2);
+    }
+
+    #[test]
+    fn clusters_stay_in_one_cell() {
+        let screen = VtScreen::new_with_options(20, 2, None, None, None);
+        // Combining acute, a ZWJ family emoji, and a variation selector.
+        screen
+            .feed("e\u{301}\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}\u{2764}\u{FE0F}".as_bytes());
+        let snapshot = screen.snapshot();
+        let texts: Vec<&str> = snapshot
+            .cells
+            .iter()
+            .filter(|cell| !cell.text.is_empty())
+            .map(|cell| cell.text.as_str())
+            .collect();
+        assert_eq!(
+            texts,
+            vec![
+                "e\u{301}",
+                "\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}",
+                "\u{2764}\u{FE0F}"
+            ],
+            "each cluster arrives as one cell's text"
+        );
+
+        let spans: Vec<u8> = snapshot.cells[..8]
+            .iter()
+            .map(|cell| cell.columns)
+            .collect();
+        assert_eq!(
+            spans,
+            vec![1, 6, 0, 0, 0, 0, 0, 1],
+            "the family emoji spans the six columns it swallowed"
+        );
+        for row in snapshot.cells.chunks(snapshot.cols as usize) {
+            let total: u32 = row.iter().map(|cell| u32::from(cell.columns)).sum();
+            assert_eq!(total, u32::from(snapshot.cols), "row spans cover the row");
+        }
     }
 
     #[test]
