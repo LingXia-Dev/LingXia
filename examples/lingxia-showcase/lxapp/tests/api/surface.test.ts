@@ -1,7 +1,7 @@
 import { expect } from '@rongjs/test';
 import { SHOWCASE_APP_ID } from '../helpers/app.js';
 import { contract } from '../support/contract.js';
-import { LX_RUNTIME_SURFACES } from './manifest.js';
+import { LX_RETURNED_OBJECT_SURFACES, LX_RUNTIME_SURFACES } from './manifest.js';
 
 function automationSurface(name: string): unknown {
   const automation = lx.automation();
@@ -83,6 +83,60 @@ LX_RUNTIME_SURFACES.forEach((surface) => {
       }) as { available: boolean; missing: string[]; wrongKinds: string[] };
 
     if ('optional' in surface && surface.optional && !result.available) return;
+    expect(result.available).toBeTruthy();
+    expect(result.missing).toEqual([]);
+    expect(result.wrongKinds).toEqual([]);
+  });
+});
+
+LX_RETURNED_OBJECT_SURFACES.forEach((surface) => {
+  if (surface.fixture !== 'runtime-safe') return;
+
+  contract({
+    id: `SHAPE-${surface.name.replace(/[^a-zA-Z0-9]+/g, '-').toLocaleUpperCase()}`,
+    title: `publish every ${surface.name} member on a real runtime instance`,
+    covers: surface.members.map((member) => `shape:${surface.name}.${member}`),
+    layer: 'logic',
+    levels: ['shape'],
+    scope: 'portable',
+    expectedOutcome: 'supported',
+  }, async ({ app, defer }) => {
+    const fixtureName: string = surface.name;
+    if (fixtureName !== 'VideoContext') {
+      throw new Error(`No runtime-safe fixture resolver for ${fixtureName}`);
+    }
+    await app.nav.relaunch({
+      page: 'video',
+      query: { automationFixture: 'video-context-shape' },
+    });
+    defer(async () => {
+      await app.nav.relaunch({ page: 'home' });
+    });
+    await app.page.waitFor({ page: 'video', css: '#lx-video-shape-fixture', state: 'attached' });
+
+    const result = await app.eval({
+      script: `
+        const target = lx.createVideoContext('lx-video-shape-fixture');
+        const members = ${JSON.stringify(surface.members)};
+        const properties = ${JSON.stringify(surface.properties)};
+        const optionalProperties = ${JSON.stringify(surface.optionalProperties)};
+        return {
+          available: target !== null && typeof target !== 'undefined',
+          missing: target == null
+            ? members
+            : members.filter((name) => (
+              typeof target[name] === 'undefined' && !optionalProperties.includes(name)
+            )),
+          wrongKinds: target == null
+            ? []
+            : members.filter((name) => properties.includes(name)
+              ? target[name] === null
+                || (typeof target[name] === 'undefined' && !optionalProperties.includes(name))
+              : typeof target[name] !== 'function'),
+        };
+      `,
+    }) as { available: boolean; missing: string[]; wrongKinds: string[] };
+
     expect(result.available).toBeTruthy();
     expect(result.missing).toEqual([]);
     expect(result.wrongKinds).toEqual([]);

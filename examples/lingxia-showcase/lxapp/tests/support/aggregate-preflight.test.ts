@@ -6,7 +6,7 @@ const args = test.args as Record<string, string>;
 contract({
   id: 'TARGET-001',
   title: 'match the aggregate entry to the running platform and framework',
-  covers: ['aggregate target identity'],
+  covers: ['lx.app.getBaseInfo', 'LxAppDriver.pages'],
   layer: 'host',
   levels: ['semantic'],
   scope: 'target',

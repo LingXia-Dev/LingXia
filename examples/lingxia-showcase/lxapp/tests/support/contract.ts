@@ -1,7 +1,18 @@
 import { expect, test } from '@rongjs/test';
 import type { LxAppDriver } from 'lingxia-types/automation';
-import { LX_RUNTIME_SURFACES } from '../api/manifest.js';
+import {
+  LX_REQUIRED_RUNTIME_SHAPE_NAMES,
+  LX_RETURNED_OBJECT_SHAPE_NAMES,
+  LX_RETURNED_OBJECT_SURFACES,
+  LX_RUNTIME_CAPABILITY_NAMES,
+  LX_RUNTIME_SHAPE_NAMES,
+} from '../api/manifest.js';
 import { showcaseApp } from '../helpers/app.js';
+import {
+  capabilityLedgerIssues,
+  LX_CAPABILITY_LEDGER,
+  type CoverageTarget,
+} from './capability-ledger.js';
 
 export type ContractLayer = 'automation' | 'logic' | 'view' | 'host' | 'native';
 export type CoverageLevel = 'shape' | 'semantic' | 'failure' | 'boundary' | 'lifecycle';
@@ -44,6 +55,24 @@ export interface EventuallyOptions<T> {
 
 const contracts: ContractMeta[] = [];
 let sequence = 0;
+
+const PUBLIC_CAPABILITIES = new Set<string>(LX_RUNTIME_CAPABILITY_NAMES);
+const PUBLIC_SHAPES = new Set<string>([
+  ...LX_RUNTIME_SHAPE_NAMES,
+  ...LX_RETURNED_OBJECT_SHAPE_NAMES,
+]);
+
+interface CapabilityCoverage {
+  capability: string;
+  shape: string[];
+  behavioral: Array<{
+    caseId: string;
+    levels: readonly CoverageLevel[];
+    outcome: CapabilityOutcome;
+    scope: ContractScope;
+  }>;
+  coveredLevels: CoverageLevel[];
+}
 
 function utf8Base64(value: string): string {
   const bytes = new TextEncoder().encode(value);
@@ -181,18 +210,88 @@ export function registerContractAudit(options: { requireCanonicalShape?: boolean
     )))
       .toBeTruthy();
 
+    const knownCoverage = new Set([...PUBLIC_CAPABILITIES, ...PUBLIC_SHAPES]);
+    const unknownCoverage = contracts.flatMap(({ covers, id }) => (
+      covers
+        .filter((capability) => !knownCoverage.has(capability))
+        .map((capability) => ({ capability, id }))
+    ));
+    expect(unknownCoverage).toEqual([]);
+
+    expect(capabilityLedgerIssues()).toEqual({ duplicates: [], missing: [], unknown: [] });
+
+    const args = test.args as Record<string, string>;
+    const target = ['windows', 'macos', 'android'].includes(args.platform)
+      ? args.platform as CoverageTarget
+      : undefined;
+    const missingRequiredCoverage = LX_CAPABILITY_LEDGER.flatMap((requirement) => {
+      if (requirement.mode !== 'automated' || !requirement.ownerCaseId) return [];
+      if (requirement.requiredTargets && (!target || !requirement.requiredTargets.includes(target))) return [];
+      const owner = contracts.find(({ id }) => id === requirement.ownerCaseId);
+      if (!owner || !owner.covers.includes(requirement.capability)) {
+        return [{
+          capability: requirement.capability,
+          missing: requirement.requiredLevels ?? [],
+          ownerCaseId: requirement.ownerCaseId,
+        }];
+      }
+      const missing = (requirement.requiredLevels ?? []).filter((level) => !owner.levels.includes(level));
+      return missing.length > 0
+        ? [{ capability: requirement.capability, missing, ownerCaseId: requirement.ownerCaseId }]
+        : [];
+    });
+    expect(missingRequiredCoverage).toEqual([]);
+
     if (options.requireCanonicalShape) {
-      const expected = LX_RUNTIME_SURFACES.flatMap(({ name, members }) => (
-        members.map((member) => `shape:${name}.${member}`)
-      ));
       const covered = new Set(contracts.flatMap(({ covers }) => covers));
-      expect(expected.filter((capability) => !covered.has(capability))).toEqual([]);
+      expect(LX_REQUIRED_RUNTIME_SHAPE_NAMES.filter((capability) => !covered.has(capability))).toEqual([]);
     }
 
     if (test.attach) {
+      const coverage: CapabilityCoverage[] = LX_RUNTIME_CAPABILITY_NAMES.map((capability) => {
+        const shapeName = `shape:${capability}`;
+        const shape = contracts
+          .filter(({ covers }) => covers.includes(shapeName))
+          .map(({ id }) => id);
+        const behavioral = contracts
+          .filter(({ covers, levels }) => covers.includes(capability) && levels.some((level) => level !== 'shape'))
+          .map(({ expectedOutcome, id, levels, scope }) => ({
+            caseId: id,
+            levels,
+            outcome: expectedOutcome,
+            scope,
+          }));
+        const coveredLevels = Array.from(new Set([
+          ...(shape.length > 0 ? ['shape' as const] : []),
+          ...behavioral.flatMap(({ levels }) => levels),
+        ]));
+        return { behavioral, capability, coveredLevels, shape };
+      });
       await test.attach('contract-coverage.json', {
         mimeType: 'application/json',
-        base64: utf8Base64(JSON.stringify({ contracts }, null, 2)),
+        base64: utf8Base64(JSON.stringify({
+          target: {
+            framework: args.framework ?? null,
+            platform: args.platform ?? null,
+          },
+          summary: {
+            capabilities: coverage.length,
+            capabilitiesWithBehavior: coverage.filter(({ behavioral }) => behavioral.length > 0).length,
+            contracts: contracts.length,
+          },
+          ledger: LX_CAPABILITY_LEDGER,
+          returnedObjects: LX_RETURNED_OBJECT_SURFACES.map((surface) => ({
+            factory: surface.factory,
+            fixture: surface.fixture,
+            name: surface.name,
+            optionalProperties: surface.optionalProperties,
+            runtimeShapeCaseIds: contracts
+              .filter(({ covers }) => surface.members.some((member) => covers.includes(`shape:${surface.name}.${member}`)))
+              .map(({ id }) => id),
+          })),
+          coverage,
+          contracts,
+        }, null, 2)),
       });
     }
   });

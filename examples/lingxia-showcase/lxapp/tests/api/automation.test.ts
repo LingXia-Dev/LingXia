@@ -6,11 +6,11 @@ contract(
   {
     id: 'AUT-000',
     title: 'expose only host automation authority in the test runtime',
-    covers: ['automation runtime isolation'],
+    covers: ['lx.automation'],
     layer: 'automation',
-    levels: ['failure', 'boundary'],
+    levels: ['shape', 'failure', 'boundary'],
     scope: 'portable',
-    expectedOutcome: 'absent',
+    expectedOutcome: 'mixed',
   },
   () => {
     const testLx = lx as unknown as Record<string, unknown>;
@@ -52,7 +52,7 @@ contract(
   {
     id: 'AUT-005',
     title: 'reject re-entrant self-eval from the app Logic runtime',
-    covers: ['LxAppDriver.eval authorization'],
+    covers: ['LxAppDriver.eval'],
     layer: 'automation',
     levels: ['failure'],
     scope: 'portable',

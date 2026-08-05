@@ -385,6 +385,14 @@ export const LX_RUNTIME_SURFACES = [
   { name: 'DesktopProcess', layer: 'automation', expression: 'lx.automation().desktop.process', members: DESKTOP_PROCESS_API },
 ] as const;
 
+/** Canonical identifiers used by behavioral automation coverage. */
+export const LX_RUNTIME_CAPABILITY_NAMES = LX_RUNTIME_SURFACES.flatMap(({ name, members }) => (
+  members.map((member) => `${name}.${member}`)
+));
+
+/** Canonical identifiers used by runtime shape automation coverage. */
+export const LX_RUNTIME_SHAPE_NAMES = LX_RUNTIME_CAPABILITY_NAMES.map((name) => `shape:${name}`);
+
 const DOWNLOAD_TASK_API = [
   'abort',
   'cancel',
@@ -431,6 +439,100 @@ const SURFACE_API = [
   'visible',
 ] as const;
 const PAGE_MESSAGE_PORT_API = ['onMessage', 'postMessage'] as const;
+
+export const LX_RETURNED_OBJECT_SURFACES = [
+  {
+    name: 'VideoContext',
+    members: VIDEO_CONTEXT_API,
+    properties: [],
+    optionalProperties: [],
+    fixture: 'runtime-safe',
+    factory: 'lx.createVideoContext',
+  },
+  {
+    name: 'DownloadTask',
+    members: DOWNLOAD_TASK_API,
+    properties: [],
+    optionalProperties: [],
+    fixture: 'external-service',
+    factory: 'lx.downloadFile',
+  },
+  {
+    name: 'UploadTask',
+    members: UPLOAD_TASK_API,
+    properties: [],
+    optionalProperties: [],
+    fixture: 'external-service',
+    factory: 'lx.uploadFile',
+  },
+  {
+    name: 'CompressVideoTask',
+    members: COMPRESS_VIDEO_TASK_API,
+    properties: [],
+    optionalProperties: [],
+    fixture: 'external-media',
+    factory: 'lx.compressVideo',
+  },
+  {
+    name: 'HostAppUpdateInfo',
+    members: HOST_UPDATE_INFO_API,
+    properties: ['isForceUpdate', 'releaseNotes', 'size', 'version'],
+    optionalProperties: ['releaseNotes', 'size'],
+    fixture: 'external-service',
+    factory: 'lx.app.checkUpdate().update',
+  },
+  {
+    name: 'HostAppUpdateTask',
+    members: HOST_UPDATE_TASK_API,
+    properties: [],
+    optionalProperties: [],
+    fixture: 'external-service',
+    factory: 'HostAppUpdateInfo.apply',
+  },
+  {
+    name: 'PreviewMediaHandle',
+    members: PREVIEW_MEDIA_API,
+    properties: ['completed', 'current', 'presented'],
+    optionalProperties: [],
+    fixture: 'external-ui',
+    factory: 'lx.previewMedia',
+  },
+  {
+    name: 'SurfaceHandle',
+    members: SURFACE_HANDLE_API,
+    properties: ['alive', 'id', 'presentation', 'role', 'visible'],
+    optionalProperties: ['role'],
+    fixture: 'surface',
+    factory: 'lx.openSurface',
+  },
+  {
+    name: 'Surface',
+    members: SURFACE_API,
+    properties: ['alive', 'id', 'presentation', 'role', 'visible'],
+    optionalProperties: ['role'],
+    fixture: 'surface',
+    factory: 'lx.openSurface',
+  },
+  {
+    name: 'PageMessagePort',
+    members: PAGE_MESSAGE_PORT_API,
+    properties: [],
+    optionalProperties: [],
+    fixture: 'navigation',
+    factory: 'lx.navigateTo',
+  },
+] as const;
+
+export const LX_RETURNED_OBJECT_SHAPE_NAMES = LX_RETURNED_OBJECT_SURFACES.flatMap(({ name, members }) => (
+  members.map((member) => `shape:${name}.${member}`)
+));
+
+export const LX_REQUIRED_RUNTIME_SHAPE_NAMES = [
+  ...LX_RUNTIME_SHAPE_NAMES,
+  ...LX_RETURNED_OBJECT_SURFACES
+    .filter(({ fixture }) => fixture === 'runtime-safe')
+    .flatMap(({ name, members }) => members.map((member) => `shape:${name}.${member}`)),
+];
 
 type StringKey<T> = Extract<keyof T, string>;
 type Members<T extends readonly string[]> = T[number];
