@@ -177,7 +177,8 @@ where
 #[cfg(feature = "terminal-runtime")]
 pub mod terminal {
     pub use crate::terminal_config_impl::{
-        apply_theme, current_json as config_json, load as load_config,
+        apply_theme, current_json as config_json, load as load_config, register_font_lister,
+        run_cli_if_invoked,
     };
     pub use lingxia_terminal::{
         BackendStatus, FrameCell, RowDamage, TerminalBackend, TerminalCell, TerminalFrame,
@@ -187,6 +188,7 @@ pub mod terminal {
         terminal_resize, terminal_scroll, terminal_set_theme, terminal_set_theme_all,
         terminal_snapshot, terminal_snapshot_data, terminal_title_state_json, terminal_write,
     };
+    pub use lingxia_terminal_config::cli::FontLister;
     pub use lingxia_terminal_config::{
         BoldStyle, FontConfig, InstalledFont, ResolvedFont, TerminalConfig, ThemeConfig, ThemeMode,
         ThemeStore, resolve_font,

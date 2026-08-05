@@ -70,3 +70,36 @@ pub fn current_json() -> String {
         .and_then(|config| serde_json::to_string(&*config).ok())
         .unwrap_or_else(|| "{}".to_string())
 }
+
+/// Run the `term` CLI if this process was invoked as one.
+///
+/// Hosts call this from `main` **before** touching any UI framework: the
+/// product's executable doubles as its command line, and a configuration
+/// command must not open a window. Returns the exit code when it handled the
+/// invocation, `None` when the process should carry on and become the app.
+pub fn run_cli_if_invoked(app_data_dir: PathBuf) -> Option<i32> {
+    let mut args = std::env::args();
+    let executable = args.next().unwrap_or_default();
+    let command = std::path::Path::new(&executable)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("app")
+        .to_string();
+    if args.next().as_deref() != Some("term") {
+        return None;
+    }
+    let rest: Vec<String> = std::env::args().skip(2).collect();
+    let output = lingxia_terminal_config::cli::run(&app_data_dir, &command, &rest);
+    if output.code == 0 {
+        println!("{}", output.text);
+    } else {
+        eprintln!("{}", output.text);
+    }
+    Some(output.code)
+}
+
+/// Register how this platform lists installed fonts, so `term font --list`
+/// can report what is really available.
+pub fn register_font_lister(lister: lingxia_terminal_config::cli::FontLister) {
+    lingxia_terminal_config::cli::register_font_lister(lister);
+}

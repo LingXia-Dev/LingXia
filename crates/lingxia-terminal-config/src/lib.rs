@@ -14,13 +14,14 @@
 //! 2. product defaults (`lingxia.yaml`, compiled into the app),
 //! 3. user overrides (`terminal.json` in the app's state directory).
 
+pub mod cli;
 mod font;
 mod theme;
 
 pub use font::{BoldStyle, FontConfig, InstalledFont, ResolvedFont, resolve as resolve_font};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
-pub use theme::{CursorConfig, CursorStyle, ThemeConfig, ThemeMode, ThemeStore};
+pub use theme::{CursorConfig, CursorStyle, ThemeConfig, ThemeMode, ThemeSource, ThemeStore};
 
 /// File name inside the app's state directory.
 const CONFIG_FILE: &str = "terminal.json";
