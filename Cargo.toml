@@ -9,6 +9,7 @@ members = [
     "crates/lingxia-service",
     "crates/lingxia-transfer",
     "crates/lingxia-terminal",
+    "crates/lingxia-terminal-config",
     "crates/lingxia-settings",
     "crates/lingxia-native-macros",
     "crates/lingxia-lxapp",
@@ -96,6 +97,7 @@ lingxia-browser = { path = "crates/lingxia-browser", version = "0.11.2" }
 lingxia-service = { path = "crates/lingxia-service", version = "0.11.2" }
 lingxia-transfer = { path = "crates/lingxia-transfer", version = "0.11.2" }
 lingxia-terminal = { path = "crates/lingxia-terminal", version = "0.11.2" }
+lingxia-terminal-config = { path = "crates/lingxia-terminal-config", version = "0.11.2" }
 lingxia-settings = { path = "crates/lingxia-settings", version = "0.11.2" }
 lingxia-browser-shell = { path = "crates/lingxia-browser-shell", version = "0.11.2" }
 lingxia-runner-config = { path = "tools/lingxia-runner/config", version = "0.11.2" }
