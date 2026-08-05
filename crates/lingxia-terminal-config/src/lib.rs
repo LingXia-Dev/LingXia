@@ -17,11 +17,13 @@
 pub mod cli;
 mod font;
 mod theme;
+mod watch;
 
 pub use font::{BoldStyle, FontConfig, InstalledFont, ResolvedFont, resolve as resolve_font};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 pub use theme::{CursorConfig, CursorStyle, ThemeConfig, ThemeMode, ThemeSource, ThemeStore};
+pub use watch::{ConfigWatcher, watch};
 
 /// File name inside the app's state directory.
 const CONFIG_FILE: &str = "terminal.json";

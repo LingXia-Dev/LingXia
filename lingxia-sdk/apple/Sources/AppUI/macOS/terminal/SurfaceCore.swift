@@ -210,6 +210,11 @@ final class LingXiaTerminalPaneView: NSView, NSDraggingSource {
                 self?.terminalView.applyFrame(frame)
             }
         }
+        session.onConfigChanged = { [weak self] in
+            Task { @MainActor [weak self] in
+                self?.applySettings(LingXiaTerminalSettings.load())
+            }
+        }
         session.onTitles = { [weak self] processTitle, title in
             Task { @MainActor [weak self] in
                 guard let self else { return }
@@ -344,9 +349,12 @@ final class LingXiaTerminalPaneView: NSView, NSDraggingSource {
 
     private func setupTerminalView() {
         terminalView.translatesAutoresizingMaskIntoConstraints = false
-        // Configuration decides the face and whether ligatures shape; the
-        // engine has already applied the theme by the time this returns.
-        let settings = LingXiaTerminalSettings.load()
+        applySettings(LingXiaTerminalSettings.load())
+    }
+
+    /// Adopt a configuration. The theme is already in effect — the engine
+    /// applies it — so only what the platform draws is set here.
+    private func applySettings(_ settings: LingXiaTerminalSettings) {
         font = settings.makeFont()
         terminalView.font = font
         terminalView.lineHeightScale = settings.font.lineHeight
@@ -1300,6 +1308,7 @@ private final class LingXiaPTYTerminalSession: @unchecked Sendable {
 
     var onFrame: ((LingXiaTerminalGPUFrame) -> Void)?
     var onTitles: ((String, String?) -> Void)?
+    var onConfigChanged: (() -> Void)?
     var onError: ((String) -> Void)?
     var onExit: (() -> Void)?
 
@@ -1311,6 +1320,7 @@ private final class LingXiaPTYTerminalSession: @unchecked Sendable {
     private var frameGeneration: UInt64 = 0
     private var lastTitlePoll = DispatchTime.now()
     private var lastTitleState = ""
+    private var lastConfigGeneration: UInt64 = 0
     private let initialDirectory: String?
 
     init(initialDirectory: String? = nil) {
@@ -1448,10 +1458,23 @@ private final class LingXiaPTYTerminalSession: @unchecked Sendable {
 
     /// Titles resolve the foreground process, which costs syscalls — far too
     /// expensive for the frame cadence, and they change at human speed anyway.
+    ///
+    /// The configuration generation rides along: the engine watches the file
+    /// and applies the theme itself, so all that is left is noticing that the
+    /// font may have changed — one atomic read on a poll that already runs,
+    /// rather than a watch implemented again per platform.
     private func pollTitlesOnIOQueue(_ id: UInt64) {
         let now = DispatchTime.now()
         guard now.uptimeNanoseconds &- lastTitlePoll.uptimeNanoseconds >= 250_000_000 else { return }
         lastTitlePoll = now
+
+        let generation = terminalConfigGeneration()
+        if generation != lastConfigGeneration {
+            lastConfigGeneration = generation
+            DispatchQueue.main.async { [onConfigChanged] in
+                onConfigChanged?()
+            }
+        }
         let json = terminalSessionTitleState(id).toString()
         guard json != lastTitleState, let data = json.data(using: .utf8) else { return }
         lastTitleState = json

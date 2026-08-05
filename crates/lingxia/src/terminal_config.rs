@@ -6,9 +6,19 @@
 //! settings are handed to the platform renderer, which is the only side that
 //! knows what is installed and how to measure it.
 
-use lingxia_terminal_config::{TerminalConfig, ThemeStore};
+use lingxia_terminal_config::{ConfigWatcher, TerminalConfig, ThemeStore};
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
+
+/// Bumped whenever the configuration in effect changes, so hosts can notice
+/// with one atomic read on a poll they already run.
+static GENERATION: AtomicU64 = AtomicU64::new(0);
+
+/// The generation of the configuration in effect.
+pub fn generation() -> u64 {
+    GENERATION.load(Ordering::Relaxed)
+}
 
 /// The configuration in effect, so hosts can read it after startup without
 /// touching the filesystem again.
@@ -40,11 +50,56 @@ pub fn load(app_data_dir: PathBuf, product_defaults: &str, system_is_dark: bool)
         config.theme.mode
     );
     apply_theme(&app_data_dir, &config, system_is_dark);
-    if let Ok(mut slot) = current().lock() {
-        *slot = config.clone();
-    }
+    publish(config.clone());
+    start_watching(app_data_dir, defaults, config.clone(), system_is_dark);
     config
 }
+
+/// Adopt saved changes as they happen.
+///
+/// Watching the file rather than having the CLI announce its own writes covers
+/// every way it can change — an editor, a dotfile manager, the CLI — with one
+/// mechanism, and leaves the CLI as nothing more than a validating editor of
+/// the file.
+fn start_watching(
+    app_data_dir: PathBuf,
+    product_defaults: serde_json::Value,
+    current: TerminalConfig,
+    system_is_dark: bool,
+) {
+    if WATCHED.set(app_data_dir.clone()).is_err() {
+        return;
+    }
+    let directory = app_data_dir.clone();
+    let watcher = ConfigWatcher::new(app_data_dir, product_defaults, current);
+    let result = lingxia_terminal_config::watch(watcher, move |config| {
+        log::info!(
+            "terminal config reloaded: font {:?} {}pt, theme mode {:?}",
+            config.font.family,
+            config.font.size,
+            config.theme.mode
+        );
+        apply_theme(&directory, &config, system_is_dark);
+        publish(config);
+    });
+    if let Err(error) = result {
+        log::warn!("terminal config changes will not be picked up: {error}");
+    }
+}
+
+fn publish(config: TerminalConfig) {
+    if let Ok(mut slot) = current().lock() {
+        *slot = config;
+    }
+    GENERATION.fetch_add(1, Ordering::Relaxed);
+}
+
+/// The directory whose changes are watched, for diagnostics.
+pub fn watched_directory() -> Option<PathBuf> {
+    WATCHED.get().cloned()
+}
+
+static WATCHED: OnceLock<PathBuf> = OnceLock::new();
 
 /// Push the configured theme into the engine. Cell colors are resolved when a
 /// frame is built, so this is a repaint of every live session — no reflow and

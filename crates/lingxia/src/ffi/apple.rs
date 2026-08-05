@@ -615,6 +615,12 @@ mod bridge {
         #[swift_bridge(swift_name = "terminalRegisterFonts")]
         fn terminal_register_fonts(fonts_json: &str);
 
+        #[swift_bridge(swift_name = "terminalConfigGeneration")]
+        fn terminal_config_generation() -> u64;
+
+        #[swift_bridge(swift_name = "terminalConfigDirectory")]
+        fn terminal_config_directory() -> String;
+
         #[swift_bridge(swift_name = "terminalSessionExited")]
         fn terminal_session_exited(id: u64) -> bool;
 
@@ -2291,6 +2297,31 @@ fn app_data_dir_for_cli() -> crate::Result<std::path::PathBuf> {
 /// Hand the platform's installed-font list to the config layer, so
 /// `term font --list` reports what is really available. Enumerating families
 /// is platform work the shared layer cannot do.
+/// Bumped whenever the configuration in effect changes. Hosts read it on a
+/// poll they already run and reload only when it moved.
+/// The directory the host should watch for configuration changes.
+pub fn terminal_config_directory() -> String {
+    #[cfg(feature = "terminal-runtime")]
+    {
+        return crate::terminal::watched_directory()
+            .map(|path| path.to_string_lossy().into_owned())
+            .unwrap_or_default();
+    }
+
+    #[cfg(not(feature = "terminal-runtime"))]
+    String::new()
+}
+
+pub fn terminal_config_generation() -> u64 {
+    #[cfg(feature = "terminal-runtime")]
+    {
+        return crate::terminal::config_generation();
+    }
+
+    #[cfg(not(feature = "terminal-runtime"))]
+    0
+}
+
 pub fn terminal_register_fonts(fonts_json: &str) {
     #[cfg(feature = "terminal-runtime")]
     {

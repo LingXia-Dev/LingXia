@@ -234,32 +234,19 @@ fn config(app_data_dir: &Path, args: &[String], json: bool) -> Output {
     Output::ok(path.display().to_string())
 }
 
-/// Persist a change and report it, including whether it is live.
+/// Persist a change and report it.
 ///
-/// The file is written first and is the source of truth; telling the running
-/// app is a notification. So the command succeeds whether or not an app is
-/// running — only `live` differs.
+/// Writing the file is the whole operation: a running app watches it and
+/// adopts the change, so there is nothing to notify and no claim to make
+/// about whether one is running.
 fn apply(app_data_dir: &Path, config: &TerminalConfig, json: bool, summary: &str) -> Output {
     if let Err(error) = config.save(app_data_dir) {
         return Output::error(error.to_string());
     }
-    let live = notify(app_data_dir);
     if json {
-        return Output::ok(
-            serde_json::json!({ "applied": "file", "live": live, "change": summary }).to_string(),
-        );
+        return Output::ok(serde_json::json!({ "applied": "file", "change": summary }).to_string());
     }
-    Output::ok(if live {
-        summary.to_string()
-    } else {
-        format!("{summary} — takes effect at next launch (no running app to notify)")
-    })
-}
-
-/// Tell a running instance to reload. Not yet implemented; the file is
-/// already written, so callers correctly report "next launch".
-fn notify(_app_data_dir: &Path) -> bool {
-    false
+    Output::ok(summary.to_string())
 }
 
 fn value_of(args: &[String], flag: &str) -> Option<String> {
@@ -395,7 +382,7 @@ mod tests {
     }
 
     #[test]
-    fn a_change_reports_that_it_is_not_live_without_a_running_app() {
+    fn a_change_reports_what_it_wrote() {
         let dir = tempfile::tempdir().expect("temp dir");
         let output = run(
             dir.path(),
@@ -404,9 +391,13 @@ mod tests {
         );
         let payload: serde_json::Value = serde_json::from_str(&output.text).expect("json output");
         assert_eq!(payload["applied"], "file");
-        assert_eq!(
-            payload["live"], false,
-            "the file is written either way; only liveness differs"
+        assert!(
+            payload["change"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("14"),
+            "the change is named: {}",
+            output.text
         );
     }
 
