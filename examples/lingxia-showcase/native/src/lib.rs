@@ -22,6 +22,16 @@ impl lingxia::HostAddon for ExampleHostAddon {
         }
     }
 
+    /// Demo of the runtime cover hook: a cover dropped into the managed cache
+    /// as `alt.png` (e.g. pushed there while testing, or written by a
+    /// campaign download) wins over the bundled one.
+    fn select_splash(&self, ctx: &lingxia::splash::SplashContext) -> lingxia::splash::SplashChoice {
+        if ctx.cached("alt").is_some() {
+            return lingxia::splash::SplashChoice::cached("alt");
+        }
+        lingxia::splash::SplashChoice::bundled()
+    }
+
     fn start_services(&self) {
         #[cfg(feature = "devtools")]
         lingxia_devtool::start_devtool_bridge_from_env();
