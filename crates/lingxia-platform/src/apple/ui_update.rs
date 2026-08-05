@@ -8,6 +8,10 @@ impl UIUpdate for Platform {
         ffi::host_appearance_dark()
     }
 
+    fn notify_home_first_ready(&self) {
+        ffi::on_home_first_ready();
+    }
+
     fn apply_lxapp_appearance(&self, appid: &str, dark: bool) -> Result<(), PlatformError> {
         if ffi::apply_appearance(appid, dark) {
             Ok(())

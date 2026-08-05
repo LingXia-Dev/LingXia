@@ -55,6 +55,24 @@ pub(crate) fn global_page_scripts_snapshot() -> Vec<Arc<str>> {
         .unwrap_or_default()
 }
 
+/// Fired at most once per process: the home lxapp delivered its first
+/// `OnReady` (first render finished). Hosts dismiss the startup splash
+/// overlay on this signal.
+static HOME_FIRST_READY: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+fn notify_home_first_ready_once(appid: &str) {
+    if lingxia_app_context::home_app_id() != Some(appid) {
+        return;
+    }
+    if HOME_FIRST_READY.swap(true, std::sync::atomic::Ordering::Relaxed) {
+        return;
+    }
+    if let Some(platform) = lxapp::runtime_registry::get_platform() {
+        use lingxia_platform::traits::ui::UIUpdate;
+        platform.notify_home_first_ready();
+    }
+}
+
 type WebviewReadyReceiver = Arc<Mutex<watch::Receiver<Option<Result<(), String>>>>>;
 
 const DEFAULT_VIEW_CALL_TIMEOUT: Duration = Duration::from_secs(15);
@@ -679,6 +697,13 @@ impl PageInstance {
         let lxapp = self.owning_lxapp();
         let appid = self.appid();
         let path = self.path();
+
+        if events_to_fire
+            .iter()
+            .any(|(event, _)| *event == PageLifecycleEvent::OnReady)
+        {
+            notify_home_first_ready_once(&appid);
+        }
 
         for (event, query) in events_to_fire {
             // Keep the in-process native-component host in sync with
