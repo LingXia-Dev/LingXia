@@ -43,6 +43,11 @@ pub(crate) async fn shutdown_app_context(ctx: &JSContext) {
     context_lifecycle::shutdown(ctx).await;
     console::clear_trace_context(ctx);
     remove_app_ctx(ctx);
+    // Drain VM-resident jobs while the context still owns its CTX_OPAQUE
+    // entry: the pooled worker reuses this JS runtime for the next app, and a
+    // leftover engine callback firing after the last owner drops panics in
+    // `from_borrowed_raw_ptr` and aborts across the FFI boundary.
+    let _ = ctx.runtime().run_pending_jobs();
 }
 
 /// Rong modules initialized in every Logic worker. Every name must be backed
@@ -599,6 +604,22 @@ pub(crate) async fn lxapp_service_handler(
             ack_tx,
         } => {
             let result = if let Some(ctx) = current_ctx.as_ref() {
+                // A CreatePage for an older session can land on the recycled
+                // worker after its app context was replaced; like TerminatePage,
+                // drop it quietly instead of failing against the new context.
+                let same_app = LxApp::from_ctx(ctx)
+                    .map(|ctx_app| ctx_app.session.id == lxapp.session.id)
+                    .unwrap_or(false);
+                if !same_app {
+                    info!(
+                        "[Worker {}] Ignored CreatePage for different LxApp instance",
+                        worker_id
+                    )
+                    .with_appid(lxapp.appid.clone())
+                    .with_path(path.clone());
+                    let _ = ack_tx.send(Ok(()));
+                    return;
+                }
                 match PageSvc::create_in_ctx(ctx, &path, page_instance_id.as_deref()).await {
                     Ok(()) => Ok(()),
                     Err(e) => {
