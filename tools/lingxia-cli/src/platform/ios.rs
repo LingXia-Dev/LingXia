@@ -197,10 +197,16 @@ impl IosPlatform {
             executable_name,
             deployment_target,
             info_plist_path: info_plist,
-            has_splash_assets: config
+            splash_backgrounds: config
                 .lingxia_config
                 .as_ref()
-                .is_some_and(|c| c.splash.is_some()),
+                .and_then(|c| c.splash.as_ref())
+                .map(|splash| -> Result<_> {
+                    let resolved =
+                        crate::splash::ResolvedSplash::resolve(&config.project_root, splash)?;
+                    Ok((resolved.light_background, resolved.dark_background))
+                })
+                .transpose()?,
         };
 
         AppBundler::create_app_bundle(
@@ -358,6 +364,10 @@ impl Platform for IosPlatform {
             Some(splash_config) => {
                 let resolved =
                     crate::splash::ResolvedSplash::resolve(&config.project_root, splash_config)?;
+                // Also install the images as plain bundle resources: the
+                // runtime overlay reads those, so it survives an actool
+                // failure that would leave the compiled catalog missing.
+                crate::splash::install_apple_bundle_images(&app_path, &resolved)?;
                 crate::splash::stage_apple_splash_resources(
                     &staging_base,
                     &resources_dir,

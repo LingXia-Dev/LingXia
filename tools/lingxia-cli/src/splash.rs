@@ -258,6 +258,25 @@ pub fn stage_apple_splash_resources(
     Ok(resources_dir)
 }
 
+/// Loose splash image names in the app bundle. The runtime overlay prefers
+/// these over the asset catalog: `actool` is an external tool that can fail
+/// (it needs an installed simulator runtime even for device builds), and the
+/// overlay must not go missing when it does.
+pub const APPLE_BUNDLE_IMAGE: &str = "LingXiaSplash.png";
+pub const APPLE_BUNDLE_IMAGE_DARK: &str = "LingXiaSplash~dark.png";
+
+/// Copy the splash images into a built `.app` as plain bundle resources.
+pub fn install_apple_bundle_images(app_bundle: &Path, splash: &ResolvedSplash) -> Result<()> {
+    save_png(
+        &fit_splash(&splash.light_image),
+        &app_bundle.join(APPLE_BUNDLE_IMAGE),
+    )?;
+    if let Some(dark) = &splash.dark_image {
+        save_png(&fit_splash(dark), &app_bundle.join(APPLE_BUNDLE_IMAGE_DARK))?;
+    }
+    Ok(())
+}
+
 fn inject_apple_splash_assets(xcassets_dir: &Path, splash: &ResolvedSplash) -> Result<()> {
     // Image set: one single-scale universal image (the overlay aspect-fills
     // it), plus a dark-appearance variant when configured.

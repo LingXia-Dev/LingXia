@@ -868,6 +868,11 @@ image); the SDK then covers the home cold start with `image` full-screen
   Apple `LingXiaSplash` / `LingXiaSplashBackground`, Harmony
   `$media:lingxia_splash` / `$color:lingxia_splash_background`. Missing
   resources disable the overlay; a host without `splash:` is unchanged.
+- On Apple the overlay MUST NOT depend on the compiled asset catalog: the
+  image also ships as a plain bundle resource and the colors as Info.plist
+  keys, because `actool` is an external tool that can fail (it requires an
+  installed simulator runtime even for device builds). The catalog entries
+  remain for `UILaunchScreen`, which has no non-catalog equivalent.
 - Dark appearance resolves through OS resource mechanisms only; an image under
   the platform data dir (`lingxia/splash/{light,dark}.png`) overrides the
   bundled one on the next launch (delivery is a cloud concern outside this

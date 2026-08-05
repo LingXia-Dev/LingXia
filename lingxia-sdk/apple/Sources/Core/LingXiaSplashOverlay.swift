@@ -27,7 +27,7 @@ enum LingXiaSplashOverlay {
     /// Attach over `window` on the home app's cold start when splash assets exist.
     static func attachIfNeeded(to window: UIWindow) {
         guard !shownThisProcess, !homeReadySeen else { return }
-        guard let background = UIColor(named: "LingXiaSplashBackground") else { return }
+        guard let background = resolveBackground(for: window.traitCollection) else { return }
 
         let view = UIView(frame: window.bounds)
         view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
@@ -81,7 +81,49 @@ enum LingXiaSplashOverlay {
                 }
             }
         }
+        // Plain bundle resources first: `actool` can fail and leave the
+        // compiled catalog out of the app entirely.
+        let names = dark
+            ? ["LingXiaSplash~dark", "LingXiaSplash"]
+            : ["LingXiaSplash"]
+        for name in names {
+            if let url = Bundle.main.url(forResource: name, withExtension: "png"),
+               let image = UIImage(contentsOfFile: url.path) {
+                return image
+            }
+        }
         return UIImage(named: "LingXiaSplash")
+    }
+
+    /// Background color from Info.plist (always written when `splash:` is
+    /// configured), falling back to the asset-catalog color.
+    private static func resolveBackground(for traits: UITraitCollection) -> UIColor? {
+        let dark = traits.userInterfaceStyle == .dark
+        let keys = dark
+            ? ["LingXiaSplashBackgroundDark", "LingXiaSplashBackground"]
+            : ["LingXiaSplashBackground"]
+        for key in keys {
+            if let hex = Bundle.main.object(forInfoDictionaryKey: key) as? String,
+               let color = UIColor(lingXiaHex: hex) {
+                return color
+            }
+        }
+        return UIColor(named: "LingXiaSplashBackground")
+    }
+}
+
+private extension UIColor {
+    /// Parse `#RRGGBB` as written into Info.plist by the CLI.
+    convenience init?(lingXiaHex hex: String) {
+        var value = hex.trimmingCharacters(in: .whitespacesAndNewlines)
+        if value.hasPrefix("#") { value.removeFirst() }
+        guard value.count == 6, let rgb = UInt32(value, radix: 16) else { return nil }
+        self.init(
+            red: CGFloat((rgb >> 16) & 0xFF) / 255,
+            green: CGFloat((rgb >> 8) & 0xFF) / 255,
+            blue: CGFloat(rgb & 0xFF) / 255,
+            alpha: 1
+        )
     }
 }
 

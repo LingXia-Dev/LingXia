@@ -24,9 +24,11 @@ pub struct AppBundleConfig {
     pub deployment_target: String,
     /// Path to custom Info.plist (merged with generated one)
     pub info_plist_path: Option<PathBuf>,
-    /// Splash assets are staged into the asset catalog — point `UILaunchScreen`
-    /// at them instead of the blank default.
-    pub has_splash_assets: bool,
+    /// Splash background colors (`#RRGGBB`, light and optional dark). Present
+    /// when `splash:` is configured: `UILaunchScreen` points at the catalog
+    /// color, and the raw values are also written to Info.plist so the runtime
+    /// overlay never depends on the catalog being compiled.
+    pub splash_backgrounds: Option<(String, Option<String>)>,
 }
 
 /// App bundle packager
@@ -359,11 +361,15 @@ let package = Package(
         // overlay brings the full-screen image (UILaunchScreen can only
         // center an image at intrinsic size, which can't aspect-fill).
         let mut launch_screen = plist::Dictionary::new();
-        if config.has_splash_assets {
+        if let Some((light, dark)) = &config.splash_backgrounds {
             launch_screen.insert(
                 "UIColorName".into(),
                 crate::splash::APPLE_COLOR_ASSET.into(),
             );
+            info.insert("LingXiaSplashBackground".into(), light.clone().into());
+            if let Some(dark) = dark {
+                info.insert("LingXiaSplashBackgroundDark".into(), dark.clone().into());
+            }
         }
         info.insert(
             "UILaunchScreen".into(),
