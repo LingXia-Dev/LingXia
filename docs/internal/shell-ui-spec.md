@@ -853,16 +853,35 @@ Shell chrome always has exactly one writer:
 
 ### 7.4 Launch screen (splash)
 
-`splash:` in `lingxia.yaml` (`image`, `background`, optional `dark` variant)
-drives the whole launch screen; hosts build none of it by hand. The OS static
-launch frame shows `background` (plus the system icon where the OS mandates
-one — Android 12+ and Harmony start windows cannot render a full-screen
-image); the SDK then covers the home cold start with `image` full-screen
-(aspect-fill) until the page's first render.
+`splash:` in `lingxia.yaml` (`background`, optional `image` and
+`minDuration`) drives the baseline launch screen; hosts build none of it by
+hand. The OS static launch frame shows `background` (plus the system icon
+where the OS mandates one — Android 12+ and Harmony start windows cannot
+render a full-screen image); the SDK then covers the home cold start with
+`image` full-screen (aspect-fill) until the page's first render.
 
+- **One image, one color, deliberately.** With a full-screen cover the color
+  is only visible in the launch frame, so it MUST match the cover rather than
+  the system theme: a dark color under a light cover adds a second transition
+  instead of removing one. Theme- and time-dependent art belongs to the
+  runtime hook below, which build-time config cannot express.
+- `background` is the only required field. An app whose cover comes from the
+  hook still needs it — nothing runs before the OS launch frame, so no code
+  can brand it.
 - Dismissal: a once-per-process home-first-render signal (the home page's
-  first `OnReady`) fades the overlay out (≤300 ms); a 6 s timeout MUST
-  dismiss it regardless. While visible it swallows input.
+  first `OnReady`) fades the overlay out (≤300 ms), held until `minDuration`
+  (default 600 ms) so a fast render does not flash the cover. The core, not
+  the platforms, applies that minimum. A 6 s timeout MUST dismiss regardless;
+  it is a framework constant and MUST NOT be configurable — a splash that can
+  be configured never to leave is a failure mode. While visible it swallows
+  input.
+- **Runtime hook.** A host MAY register one Rust function (`HostAddon::
+  select_splash`) that picks the cover for this launch. Selection is
+  synchronous, may only choose among assets already on disk, and runs under a
+  budget after which the configured cover wins; acquisition for future
+  launches is spawned and MUST NOT block it. The hook cannot choose the
+  background: that is baked into the launch frame at build time, so a runtime
+  override could only disagree with the frame already on screen.
 - Generated resource names are the CLI↔SDK contract: Android
   `lingxia_splash_image` / `lingxia_splash_background` / `Theme.LingXia.Splash`,
   Apple `LingXiaSplash` / `LingXiaSplashBackground`, Harmony
@@ -873,10 +892,7 @@ image); the SDK then covers the home cold start with `image` full-screen
   keys, because `actool` is an external tool that can fail (it requires an
   installed simulator runtime even for device builds). The catalog entries
   remain for `UILaunchScreen`, which has no non-catalog equivalent.
-- Dark appearance resolves through OS resource mechanisms only; an image under
-  the platform data dir (`lingxia/splash/{light,dark}.png`) overrides the
-  bundled one on the next launch (delivery is a cloud concern outside this
-  spec). Desktop shells take no overlay; the ready signal is a no-op there.
+- Desktop shells take no overlay; the ready signal is a no-op there.
 
 ---
 

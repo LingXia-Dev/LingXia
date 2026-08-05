@@ -9,6 +9,16 @@ pub trait HostAddon: Send + Sync {
     fn install_logic_extensions(&self) {}
     /// Registers native host APIs before the runtime starts serving requests.
     fn install_host_apis(&self) {}
+    /// Picks the launch cover for this cold start.
+    ///
+    /// Must return quickly — it runs on the startup path under a budget, and
+    /// the configured cover wins if it overruns. Choose only among assets
+    /// already on disk; use [`crate::splash::SplashContext::spawn`] for any
+    /// downloading, which lands in time for the *next* launch.
+    fn select_splash(&self, _ctx: &crate::splash::SplashContext) -> crate::splash::SplashChoice {
+        crate::splash::SplashChoice::default()
+    }
+
     /// Runs after LingXia initialization succeeds.
     fn after_init(&self) {}
     /// Starts long-lived services after the host runtime is warmed up.
@@ -58,6 +68,20 @@ pub(crate) fn run_install_host_apis() {
     for addon in installed.iter() {
         addon.install_host_apis();
     }
+}
+
+/// First addon that returns a non-default choice wins; ties go to the
+/// configured cover. Splash has one writer by construction — a second opinion
+/// would just be a race for the same pixels.
+pub(crate) fn run_select_splash(ctx: &crate::splash::SplashContext) -> crate::splash::SplashChoice {
+    let installed = snapshot_host_addons();
+    for addon in installed.iter() {
+        let choice = addon.select_splash(ctx);
+        if choice != crate::splash::SplashChoice::default() {
+            return choice;
+        }
+    }
+    crate::splash::SplashChoice::default()
 }
 
 pub(crate) fn run_after_init() {

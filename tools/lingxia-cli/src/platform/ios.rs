@@ -197,14 +197,15 @@ impl IosPlatform {
             executable_name,
             deployment_target,
             info_plist_path: info_plist,
-            splash_backgrounds: config
+            splash_background: config
                 .lingxia_config
                 .as_ref()
                 .and_then(|c| c.splash.as_ref())
                 .map(|splash| -> Result<_> {
-                    let resolved =
-                        crate::splash::ResolvedSplash::resolve(&config.project_root, splash)?;
-                    Ok((resolved.light_background, resolved.dark_background))
+                    Ok(
+                        crate::splash::ResolvedSplash::resolve(&config.project_root, splash)?
+                            .background,
+                    )
                 })
                 .transpose()?,
         };

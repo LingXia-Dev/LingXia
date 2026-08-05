@@ -66,33 +66,27 @@ pub struct SplashConfig {
     /// shows behind/before the image. The only required field: an app whose
     /// cover comes from the runtime hook still needs this so the first frame
     /// is branded (no code runs before it).
+    ///
+    /// Deliberately one color, not a light/dark pair: with a full-screen
+    /// cover the color is only visible in the launch frame, so it must match
+    /// the *cover*, not the system theme. A dark color under a light cover
+    /// would add a second transition instead of removing one.
     pub background: String,
     /// Splash image (PNG), path relative to the project root. Rendered
     /// full-screen (aspect-fill) by the runtime overlay. Optional — omit it
     /// to get a color-only launch, or to let the runtime hook supply the art.
     /// Keep it as the guaranteed fallback when a hook is present.
+    ///
+    /// Also one image: theme- and time-dependent art belongs to the runtime
+    /// hook, which can see both and is not baked at build time.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub image: Option<String>,
-    /// Dark-appearance variant. When omitted the light splash is used in dark
-    /// mode too.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub dark: Option<SplashDarkConfig>,
     /// Minimum time the cover stays up, in milliseconds (default 600). Keeps
     /// a fast first render from flashing the cover. The hard upper bound is a
     /// framework constant and deliberately not configurable — a splash that
     /// can be configured to never leave is a failure mode, not a feature.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub min_duration: Option<u32>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct SplashDarkConfig {
-    /// Dark-mode logo; falls back to the light `image` when omitted.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub image: Option<String>,
-    /// Dark-mode background color, `#RRGGBB`.
-    pub background: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

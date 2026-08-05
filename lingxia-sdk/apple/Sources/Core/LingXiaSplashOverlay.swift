@@ -18,14 +18,11 @@ private let splashLog = OSLog(subsystem: "LingXia", category: "Splash")
 ///
 /// Assets are looked up by the names the CLI generates (`LingXiaSplash` image,
 /// `LingXiaSplashBackground` color); when the color is absent the overlay is
-/// disabled entirely. An online-updated image dropped under
-/// `<Application Support>/lingxia/splash/{light,dark}.png` takes precedence
-/// over the bundled image on the next launch.
+/// disabled entirely.
 @MainActor
 enum LingXiaSplashOverlay {
     private static let timeoutSeconds: TimeInterval = 6
     private static let fadeSeconds: TimeInterval = 0.25
-    private static let cacheSubpath = "lingxia/splash"
 
     private static var splashWindow: UIWindow?
     private static var shownThisProcess = false
@@ -55,14 +52,14 @@ enum LingXiaSplashOverlay {
             os_log("splash skipped: no window scene", log: splashLog, type: .info)
             return
         }
-        guard let background = resolveBackground(for: window.traitCollection) else {
+        guard let background = resolveBackground() else {
             os_log("splash skipped: no background configured", log: splashLog, type: .info)
             return
         }
 
         let host = UIViewController()
         host.view.backgroundColor = background
-        let image = resolveImage(for: window.traitCollection)
+        let image = resolveImage()
         if let image {
             let imageView = UIImageView(image: image)
             imageView.frame = host.view.bounds
@@ -109,45 +106,23 @@ enum LingXiaSplashOverlay {
         )
     }
 
-    private static func resolveImage(for traits: UITraitCollection) -> UIImage? {
-        let dark = traits.userInterfaceStyle == .dark
-        if let support = FileManager.default.urls(
-            for: .applicationSupportDirectory, in: .userDomainMask
-        ).first {
-            let cacheDir = support.appendingPathComponent(cacheSubpath)
-            for name in dark ? ["dark.png", "light.png"] : ["light.png"] {
-                let url = cacheDir.appendingPathComponent(name)
-                if let image = UIImage(contentsOfFile: url.path) {
-                    return image
-                }
-            }
-        }
-        // Plain bundle resources first: `actool` can fail and leave the
-        // compiled catalog out of the app entirely.
-        let names = dark
-            ? ["LingXiaSplash~dark", "LingXiaSplash"]
-            : ["LingXiaSplash"]
-        for name in names {
-            if let url = Bundle.main.url(forResource: name, withExtension: "png"),
-               let image = UIImage(contentsOfFile: url.path) {
-                return image
-            }
+    /// Plain bundle resource first: `actool` can fail and leave the compiled
+    /// catalog out of the app entirely. Theme- and time-dependent art is the
+    /// runtime hook's job, not something resolved from traits here.
+    private static func resolveImage() -> UIImage? {
+        if let url = Bundle.main.url(forResource: "LingXiaSplash", withExtension: "png"),
+           let image = UIImage(contentsOfFile: url.path) {
+            return image
         }
         return UIImage(named: "LingXiaSplash")
     }
 
     /// Background color from Info.plist (always written when `splash:` is
     /// configured), falling back to the asset-catalog color.
-    private static func resolveBackground(for traits: UITraitCollection) -> UIColor? {
-        let dark = traits.userInterfaceStyle == .dark
-        let keys = dark
-            ? ["LingXiaSplashBackgroundDark", "LingXiaSplashBackground"]
-            : ["LingXiaSplashBackground"]
-        for key in keys {
-            if let hex = Bundle.main.object(forInfoDictionaryKey: key) as? String,
-               let color = UIColor(lingXiaHex: hex) {
-                return color
-            }
+    private static func resolveBackground() -> UIColor? {
+        if let hex = Bundle.main.object(forInfoDictionaryKey: "LingXiaSplashBackground") as? String,
+           let color = UIColor(lingXiaHex: hex) {
+            return color
         }
         return UIColor(named: "LingXiaSplashBackground")
     }

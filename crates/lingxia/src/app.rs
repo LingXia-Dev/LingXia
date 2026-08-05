@@ -67,7 +67,7 @@ pub fn display_language() -> String {
     lxapp::get_display_language()
 }
 
-fn data_dir() -> crate::Result<PathBuf> {
+pub(crate) fn data_dir() -> crate::Result<PathBuf> {
     APP_DATA_DIR
         .get()
         .cloned()

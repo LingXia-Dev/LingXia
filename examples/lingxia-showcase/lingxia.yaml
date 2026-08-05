@@ -88,10 +88,7 @@ appLinks:
 
 splash:
   background: "#F2F7F4"
-  image: design/splash-light.png
-  dark:
-    background: "#141A21"
-    image: design/splash-dark.png
+  image: design/splash.png
 
 storage:
   tempMaxSizeMB: 1024

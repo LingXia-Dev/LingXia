@@ -74,6 +74,7 @@ pub use app::{home_app_id, lingxia_id, product_version};
 mod applink;
 mod bootstrap;
 mod capabilities;
+pub mod splash;
 /// LxApp devtool helpers for host-side inspection and automation.
 #[cfg(feature = "devtool")]
 pub mod dev {
