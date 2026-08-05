@@ -35,4 +35,17 @@ export class SplashResources {
     }
     return null;
   }
+
+  /** A cover the host's splash hook picked at runtime — a plain file path. */
+  public static async loadImageFile(path: string): Promise<image.PixelMap | null> {
+    try {
+      const source = image.createImageSource(path);
+      if (source) {
+        return await source.createPixelMap();
+      }
+    } catch (_error) {
+      // unreadable cover file; keep the bundled one
+    }
+    return null;
+  }
 }

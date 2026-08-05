@@ -144,28 +144,42 @@ fn select(dark: bool, data_dir: PathBuf) -> SplashChoice {
     }
 }
 
-/// Resolve the cover for this launch into something a platform can render.
+/// Resolve this launch's cover and hand the platform overlay the result.
 ///
-/// Returns JSON: `{"image": <absolute path or null>, "minDuration": <ms>}`.
-/// A null image means "use the cover you already have as a platform resource",
-/// which is what every fallback path collapses to.
-pub fn resolve_for_platform(dark: bool) -> String {
-    let data_dir = crate::app::data_dir().unwrap_or_default();
-    let choice = select(dark, data_dir.clone());
+/// Runs right after initialization — selection needs the data dir and the
+/// registered addons, both of which exist only then. The overlay has been
+/// showing the bundled cover since before init (the first beat); when the
+/// host picks something else, the platform crossfades to it (the second).
+/// The bundled choice sends nothing: the platform already shows it.
+///
+/// Spawned onto its own thread: selection blocks up to its budget, and this
+/// runs on the cold-start path it must not lengthen.
+pub(crate) fn dispatch(platform: std::sync::Arc<lingxia_platform::Platform>) {
+    if !crate::host_addon::any_registered() {
+        return;
+    }
+    std::thread::spawn(move || {
+        use lingxia_platform::traits::ui::UIUpdate;
+        let Ok(data_dir) = crate::app::data_dir() else {
+            return;
+        };
+        let choice = select(platform.host_appearance_dark(), data_dir.clone());
 
-    let image = match &choice.image {
-        SplashImage::Bundled => None,
-        SplashImage::Cached(key) => {
-            let path = data_dir.join(CACHE_SUBDIR).join(format!("{key}.png"));
-            path.is_file().then(|| path.to_string_lossy().into_owned())
+        if let Some(ms) = choice.min_duration_ms {
+            lingxia_app_context::set_splash_min_duration_override(ms);
         }
-        SplashImage::Path(path) => path.is_file().then(|| path.to_string_lossy().into_owned()),
-    };
 
-    let min_duration = choice
-        .min_duration_ms
-        .map(u64::from)
-        .unwrap_or_else(|| lingxia_app_context::splash_min_duration().as_millis() as u64);
-
-    serde_json::json!({ "image": image, "minDuration": min_duration }).to_string()
+        let image = match &choice.image {
+            SplashImage::Bundled => None,
+            SplashImage::Cached(key) => {
+                let path = data_dir.join(CACHE_SUBDIR).join(format!("{key}.png"));
+                path.is_file().then_some(path)
+            }
+            SplashImage::Path(path) => path.is_file().then(|| path.clone()),
+        };
+        if let Some(path) = image {
+            log::info!("splash cover selected: {}", path.display());
+            platform.apply_splash_cover(&path.to_string_lossy());
+        }
+    });
 }

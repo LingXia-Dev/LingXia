@@ -410,6 +410,28 @@ export struct LxAppContainer {
   }
 
   /**
+   * Second beat of the cover (via NativeBridge): the host's Rust hook picked
+   * a different image for this launch. Selection needs the initialized
+   * runtime, so it necessarily lands after the bundled cover is already up.
+   * Ignored once dismissal has begun.
+   */
+  public static applySplashCover(path: string): void {
+    const homeAppId = LxApp.getInstance().getHomeAppId();
+    if (!homeAppId) {
+      return;
+    }
+    const container = LxAppContainer.activeContainers.get(homeAppId);
+    if (!container || !container.splashVisible) {
+      return;
+    }
+    SplashResources.loadImageFile(path).then((cover) => {
+      if (cover && container.splashVisible) {
+        container.splashImage = cover;
+      }
+    });
+  }
+
+  /**
    * Cover the home app's cold start until its page first renders. Skipped
    * entirely when the generated splash resources are absent.
    */

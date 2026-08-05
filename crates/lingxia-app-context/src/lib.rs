@@ -438,8 +438,27 @@ pub fn since_startup() -> std::time::Duration {
     STARTUP.elapsed()
 }
 
+/// A host's per-launch override of the minimum hold (`u32::MAX` = unset).
+/// Bounded by the platforms' 6s dismissal timeout, which stays absolute.
+static SPLASH_MIN_DURATION_OVERRIDE: std::sync::atomic::AtomicU32 =
+    std::sync::atomic::AtomicU32::new(u32::MAX);
+const SPLASH_HOLD_CAP_MS: u32 = 6_000;
+
+/// Override the configured minimum hold for this launch, from the host's
+/// splash selection hook.
+pub fn set_splash_min_duration_override(ms: u32) {
+    SPLASH_MIN_DURATION_OVERRIDE.store(
+        ms.min(SPLASH_HOLD_CAP_MS),
+        std::sync::atomic::Ordering::Relaxed,
+    );
+}
+
 /// How long the splash must stay up before a ready signal may dismiss it.
 pub fn splash_min_duration() -> std::time::Duration {
+    let overridden = SPLASH_MIN_DURATION_OVERRIDE.load(std::sync::atomic::Ordering::Relaxed);
+    if overridden != u32::MAX {
+        return std::time::Duration::from_millis(u64::from(overridden));
+    }
     let ms = APP_CONFIG
         .get()
         .and_then(|config| config.splash.as_ref())

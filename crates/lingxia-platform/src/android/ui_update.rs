@@ -37,6 +37,22 @@ impl UIUpdate for Platform {
         });
     }
 
+    fn apply_splash_cover(&self, path: &str) {
+        let Ok(lxapp_class) = super::get_cached_class(super::CachedClass::LxApp) else {
+            return;
+        };
+        let _ = super::with_env(|env| {
+            let path = env.new_string(path)?;
+            env.call_static_method(
+                lxapp_class,
+                jni_str!("applySplashCover"),
+                jni_sig!("(Ljava/lang/String;)V"),
+                &[JValue::Object(&path)],
+            )
+            .map(|_| ())
+        });
+    }
+
     fn apply_lxapp_appearance(&self, appid: &str, dark: bool) -> Result<(), PlatformError> {
         let lxapp_class: &JClass = super::get_cached_class(super::CachedClass::LxApp)
             .map_err(|error| PlatformError::Platform(error.to_string()))?;

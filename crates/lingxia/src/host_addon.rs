@@ -73,6 +73,11 @@ pub(crate) fn run_install_host_apis() {
 /// First addon that returns a non-default choice wins; ties go to the
 /// configured cover. Splash has one writer by construction — a second opinion
 /// would just be a race for the same pixels.
+/// Whether any addon is installed — lets startup-path work skip entirely.
+pub(crate) fn any_registered() -> bool {
+    !snapshot_host_addons().is_empty()
+}
+
 pub(crate) fn run_select_splash(ctx: &crate::splash::SplashContext) -> crate::splash::SplashChoice {
     let installed = snapshot_host_addons();
     for addon in installed.iter() {

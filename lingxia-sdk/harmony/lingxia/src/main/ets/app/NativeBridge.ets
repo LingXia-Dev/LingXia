@@ -375,6 +375,12 @@ class NativeBridge {
       return true;
     });
 
+    // Host splash hook picked a cover — swap the splash layer's image
+    this.register('applySplashCover', (path: string): boolean => {
+      LxAppContainer.applySplashCover(path);
+      return true;
+    });
+
     // Update TabBar APIs
     this.register('updateTabBarUI', (appId: string): boolean => {
       try {

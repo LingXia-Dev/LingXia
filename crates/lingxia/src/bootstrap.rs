@@ -270,6 +270,7 @@ pub(crate) fn init_with_platform(
     crate::update::install_auto_trigger(runtime.clone());
     crate::browser::register_builtin_assets();
     crate::host_addon::run_after_init();
+    crate::splash::dispatch(runtime.clone());
     crate::browser::warmup();
     crate::host_addon::run_start_services();
     Ok(crate::RuntimeInfo::new(home_app_id))

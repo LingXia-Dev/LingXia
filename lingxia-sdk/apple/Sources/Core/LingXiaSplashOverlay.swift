@@ -25,6 +25,7 @@ enum LingXiaSplashOverlay {
     private static let fadeSeconds: TimeInterval = 0.25
 
     private static var splashWindow: UIWindow?
+    private static var imageView: UIImageView?
     private static var shownThisProcess = false
     private static var homeReadySeen = false
     private static var shownAt: CFAbsoluteTime = 0
@@ -61,12 +62,9 @@ enum LingXiaSplashOverlay {
         host.view.backgroundColor = background
         let image = resolveImage()
         if let image {
-            let imageView = UIImageView(image: image)
-            imageView.frame = host.view.bounds
-            imageView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-            imageView.contentMode = .scaleAspectFill
-            imageView.clipsToBounds = true
-            host.view.addSubview(imageView)
+            let cover = coverView(image: image, in: host.view.bounds)
+            host.view.addSubview(cover)
+            imageView = cover
         }
 
         // Paint the app's own window too. Anything that shows through before
@@ -94,6 +92,43 @@ enum LingXiaSplashOverlay {
         }
     }
 
+    /// Second beat of the cover (via `LxApp.applySplashCover`): the host's
+    /// Rust hook picked a different image for this launch. Selection needs the
+    /// initialized runtime, so it necessarily lands after the bundled cover is
+    /// already up — crossfade so the swap reads as intentional. Ignored once
+    /// dismissal has begun.
+    static func apply(imagePath: String) {
+        guard let host = splashWindow?.rootViewController else { return }
+        guard let image = UIImage(contentsOfFile: imagePath) else {
+            os_log("splash cover unreadable: %{public}@", log: splashLog, type: .error, imagePath)
+            return
+        }
+        os_log("splash cover selected by host", log: splashLog, type: .info)
+        if let cover = imageView {
+            UIView.transition(
+                with: cover,
+                duration: fadeSeconds,
+                options: .transitionCrossDissolve,
+                animations: { cover.image = image }
+            )
+        } else {
+            let cover = coverView(image: image, in: host.view.bounds)
+            cover.alpha = 0
+            host.view.addSubview(cover)
+            imageView = cover
+            UIView.animate(withDuration: fadeSeconds) { cover.alpha = 1 }
+        }
+    }
+
+    private static func coverView(image: UIImage, in bounds: CGRect) -> UIImageView {
+        let cover = UIImageView(image: image)
+        cover.frame = bounds
+        cover.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        cover.contentMode = .scaleAspectFill
+        cover.clipsToBounds = true
+        return cover
+    }
+
     /// Runtime signal (via `LxApp.onHomeFirstReady`): home page rendered its first frame.
     static func notifyHomeReady() {
         homeReadySeen = true
@@ -103,6 +138,7 @@ enum LingXiaSplashOverlay {
     private static func dismiss() {
         guard let splash = splashWindow else { return }
         splashWindow = nil
+        imageView = nil
         os_log("splash dismissed after %{public}.2fs", log: splashLog, type: .info,
                CFAbsoluteTimeGetCurrent() - shownAt)
         UIView.animate(
@@ -152,10 +188,11 @@ private extension UIColor {
 #else
 
 /// The splash overlay is a mobile concern — desktop shells present native
-/// chrome immediately, so the ready signal is a no-op here.
+/// chrome immediately, so the runtime signals are no-ops here.
 @MainActor
 enum LingXiaSplashOverlay {
     static func notifyHomeReady() {}
+    static func apply(imagePath: String) {}
 }
 
 #endif

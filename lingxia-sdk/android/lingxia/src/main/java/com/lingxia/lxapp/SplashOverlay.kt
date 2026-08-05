@@ -67,6 +67,36 @@ internal object SplashOverlay {
         mainHandler.postDelayed({ dismiss() }, TIMEOUT_MS)
     }
 
+    /**
+     * Second beat of the cover (via [LxApp.applySplashCover]): the host's Rust
+     * hook picked a different image for this launch. Selection needs the
+     * initialized runtime, so it necessarily lands after the bundled cover is
+     * already up — crossfade so the swap reads as intentional. Ignored once
+     * dismissal has begun.
+     */
+    fun applyCover(path: String) {
+        mainHandler.post {
+            val container = overlay as? FrameLayout ?: return@post
+            val drawable = Drawable.createFromPath(path) ?: run {
+                android.util.Log.w("SplashOverlay", "splash cover unreadable: $path")
+                return@post
+            }
+            val incoming = ImageView(container.context).apply {
+                setImageDrawable(drawable)
+                scaleType = ImageView.ScaleType.CENTER_CROP
+                alpha = 0f
+            }
+            container.addView(
+                incoming,
+                FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                )
+            )
+            incoming.animate().alpha(1f).setDuration(FADE_MS).start()
+        }
+    }
+
     /** Runtime signal (via [LxApp.onHomeFirstReady]): home page rendered its first frame. */
     fun notifyHomeReady() {
         homeReadySeen = true

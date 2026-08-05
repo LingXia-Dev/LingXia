@@ -269,6 +269,11 @@ pub trait UIUpdate: Send + Sync + 'static {
     /// once per process). Hosts dismiss the startup splash overlay on it.
     fn notify_home_first_ready(&self) {}
 
+    /// The host's splash hook picked a cover for this launch: crossfade the
+    /// startup overlay to the image file at `path`, if it is still up.
+    /// Desktop shells show no overlay and ignore it.
+    fn apply_splash_cover(&self, _path: &str) {}
+
     /// Measure the visible capsule after native Page Chrome has laid out.
     /// The JSON payload is an internal transport; app code only sees the
     /// revisioned View snapshot assembled by `lingxia-lxapp`.

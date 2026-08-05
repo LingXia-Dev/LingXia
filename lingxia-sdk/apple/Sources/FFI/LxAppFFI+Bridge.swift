@@ -623,6 +623,16 @@ extension LxApp {
         }
     }
 
+    /// Runtime signal: the host's splash hook picked a cover for this launch.
+    nonisolated static func applySplashCover(path: RustStr) {
+        let filePath = path.toString()
+        DispatchQueue.main.async {
+            MainActor.assumeIsolated {
+                LingXiaSplashOverlay.apply(imagePath: filePath)
+            }
+        }
+    }
+
     nonisolated static func applyAppearance(appid: RustStr, dark: Bool) -> Bool {
         let appIdString = appid.toString()
         return executeOnMain {
