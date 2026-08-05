@@ -53,6 +53,35 @@ pub struct LingXiaConfig {
     pub storage: Option<StorageConfig>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub resources: Option<ResourcesConfig>,
+    /// Launch screen: a static platform splash generated at build time plus a
+    /// runtime overlay the SDK keeps up until the home page's first render.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub splash: Option<SplashConfig>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SplashConfig {
+    /// Splash image (PNG), path relative to the project root. Rendered
+    /// full-screen (aspect-fill) by the runtime overlay.
+    pub image: String,
+    /// Background color, `#RRGGBB` — the OS static launch frame, and what
+    /// shows behind/before the image.
+    pub background: String,
+    /// Dark-appearance variant. When omitted the light splash is used in dark
+    /// mode too.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dark: Option<SplashDarkConfig>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SplashDarkConfig {
+    /// Dark-mode logo; falls back to the light `image` when omitted.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub image: Option<String>,
+    /// Dark-mode background color, `#RRGGBB`.
+    pub background: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
