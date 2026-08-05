@@ -48,7 +48,7 @@ export default {
     { "api": "lx.chooseMedia", "mode": "external-ui", "owner": "os-media-picker-fixture" },
     { "api": "lx.scanCode", "mode": "external-ui", "owner": "camera-qr-fixture" },
     { "api": "lx.previewMedia", "mode": "external-ui", "owner": "native-media-preview-fixture" },
-    { "api": "lx.getImageInfo", "mode": "external-fixture", "owner": "media-fixture" },
+    { "api": "lx.getImageInfo", "mode": "automated", "owner": "MEDIA-INFO-001" },
     { "api": "lx.extractVideoThumbnail", "mode": "external-fixture", "owner": "media-fixture" },
     { "api": "lx.compressVideo", "mode": "external-fixture", "owner": "media-fixture" },
     { "api": "lx.compressImage", "mode": "external-fixture", "owner": "media-fixture" },
