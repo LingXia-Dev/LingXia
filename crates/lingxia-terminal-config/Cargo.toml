@@ -10,6 +10,7 @@ repository.workspace = true
 lingxia-app-context = { workspace = true }
 lingxia-terminal = { workspace = true }
 log = { workspace = true }
+notify = { version = "8", default-features = false, features = ["macos_fsevent"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 

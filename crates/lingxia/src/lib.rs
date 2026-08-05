@@ -146,8 +146,9 @@ where
 #[cfg(feature = "terminal-runtime")]
 pub mod terminal {
     pub use crate::terminal_config_impl::{
-        apply_theme, current_json as config_json, load as load_config, run_cli_if_invoked,
-        session_environment, set_installed_fonts,
+        apply_theme, current_json as config_json, generation as config_generation,
+        load as load_config, run_cli_if_invoked, session_environment, set_installed_fonts,
+        watched_directory,
     };
     pub use lingxia_terminal::{
         BackendStatus, FrameCell, RowDamage, TerminalBackend, TerminalCell, TerminalFrame,
