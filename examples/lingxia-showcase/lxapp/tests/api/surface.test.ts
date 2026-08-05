@@ -1,6 +1,7 @@
 import { expect } from '@rongjs/test';
 import { SHOWCASE_APP_ID } from '../helpers/app.js';
-import { contract } from '../support/contract.js';
+import { waitForCurrentPageVisible } from '../helpers/page.js';
+import { contract, eventually } from '../support/contract.js';
 import { LX_RETURNED_OBJECT_SURFACES, LX_RUNTIME_SURFACES } from './manifest.js';
 
 function automationSurface(name: string): unknown {
@@ -111,9 +112,33 @@ LX_RETURNED_OBJECT_SURFACES.forEach((surface) => {
     });
     defer(async () => {
       await app.nav.relaunch({ page: 'home' });
+      await waitForCurrentPageVisible(app, 'home', '[data-testid="home-page"]');
     });
     await app.page.waitFor({ page: 'video', css: '#lx-video-shape-fixture', state: 'attached' });
-
+    let stableRectSamples = 0;
+    let previousRect = '';
+    await eventually(
+      () => app.page.eval({
+        page: 'video',
+        script: `(() => {
+          const rect = document.querySelector('#lx-video-shape-fixture')?.getBoundingClientRect();
+          return rect && rect.width > 1 && rect.height > 1
+            ? [rect.x, rect.y, rect.width, rect.height].map(Math.round).join(',')
+            : '';
+        })()`,
+      }),
+      (rect) => {
+        if (typeof rect !== 'string' || rect.length === 0) {
+          previousRect = '';
+          stableRectSamples = 0;
+          return false;
+        }
+        stableRectSamples = rect === previousRect ? stableRectSamples + 1 : 1;
+        previousRect = rect;
+        return stableRectSamples >= 2;
+      },
+      { timeoutMs: 5_000, describe: 'native video fixture layout to settle' },
+    );
     const result = await app.eval({
       script: `
         const target = lx.createVideoContext('lx-video-shape-fixture');

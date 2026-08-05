@@ -7,6 +7,7 @@ import '../pages/bridge-repro.test.js';
 import '../pages/stream.test.js';
 import '../pages/channel.test.js';
 import '../pages/components.test.js';
+import '../pages/native-components.test.js';
 import '../pages/device.test.js';
 import '../pages/home.test.js';
 import '../pages/pull-to-refresh.test.js';

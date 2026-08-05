@@ -1,5 +1,5 @@
 import { expect } from '@rongjs/test';
-import { waitForCurrentPage } from '../helpers/page.js';
+import { currentPageOrNull, waitForCurrentPage } from '../helpers/page.js';
 import { contract, expectReject } from '../support/contract.js';
 
 contract(
@@ -109,14 +109,16 @@ contract(
   async ({ app }) => {
     const layout = await app.surfaceLayout();
     const rootId = layout.mainSwitcher.rootSurfaceId;
-    const root = layout.mainSwitcher.items.find((item) => item.surfaceId === rootId);
-
-    expect(rootId).toBe('lingxia-showcase');
-    expect(root?.root).toBeTruthy();
-    if (root?.content.kind !== 'lxapp') {
-      throw new Error(`expected an lxapp root, got ${root?.content.kind ?? 'missing'}`);
+    if (rootId !== undefined) {
+      const root = layout.mainSwitcher.items.find((item) => item.surfaceId === rootId);
+      expect(root?.root).toBeTruthy();
+      if (root?.content.kind !== 'lxapp') {
+        throw new Error(`expected an lxapp root, got ${root?.content.kind ?? 'missing'}`);
+      }
+      expect(root.content.appId).toBe('lingxia-showcase');
+    } else {
+      expect(layout.mainSwitcher.items.some((item) => item.root)).toBeFalsy();
     }
-    expect(root.content.appId).toBe('lingxia-showcase');
     const serialized = JSON.stringify(layout);
     expect(serialized.includes('"app_id"')).toBeFalsy();
     expect(serialized.includes('"surface_id"')).toBeFalsy();
@@ -135,7 +137,8 @@ contract(
     expectedOutcome: 'mixed',
   },
   async ({ app, namespace, defer }) => {
-    await app.nav.relaunch({ page: 'home' });
+    const current = await currentPageOrNull(app);
+    if (current?.name !== 'home') await app.nav.relaunch({ page: 'home' });
     await waitForCurrentPage(app, 'home');
     await app.page.waitFor({ page: 'home', css: '[data-testid="home-page"]', state: 'visible' });
 

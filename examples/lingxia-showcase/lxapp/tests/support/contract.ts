@@ -2,6 +2,7 @@ import { expect, test } from '@rongjs/test';
 import type { LxAppDriver } from 'lingxia-types/automation';
 import {
   LX_REQUIRED_RUNTIME_SHAPE_NAMES,
+  LX_RETURNED_OBJECT_CAPABILITY_NAMES,
   LX_RETURNED_OBJECT_SHAPE_NAMES,
   LX_RETURNED_OBJECT_SURFACES,
   LX_RUNTIME_CAPABILITY_NAMES,
@@ -13,6 +14,7 @@ import {
   LX_CAPABILITY_LEDGER,
   type CoverageTarget,
 } from './capability-ledger.js';
+import logicApiCoverage from '../logic-api-coverage.mjs';
 
 export type ContractLayer = 'automation' | 'logic' | 'view' | 'host' | 'native';
 export type CoverageLevel = 'shape' | 'semantic' | 'failure' | 'boundary' | 'lifecycle';
@@ -56,7 +58,10 @@ export interface EventuallyOptions<T> {
 const contracts: ContractMeta[] = [];
 let sequence = 0;
 
-const PUBLIC_CAPABILITIES = new Set<string>(LX_RUNTIME_CAPABILITY_NAMES);
+const PUBLIC_CAPABILITIES = new Set<string>([
+  ...LX_RUNTIME_CAPABILITY_NAMES,
+  ...LX_RETURNED_OBJECT_CAPABILITY_NAMES,
+]);
 const PUBLIC_SHAPES = new Set<string>([
   ...LX_RUNTIME_SHAPE_NAMES,
   ...LX_RETURNED_OBJECT_SHAPE_NAMES,
@@ -224,6 +229,17 @@ export function registerContractAudit(options: { requireCanonicalShape?: boolean
     const target = ['windows', 'macos', 'android'].includes(args.platform)
       ? args.platform as CoverageTarget
       : undefined;
+    const missingLogicOwners = logicApiCoverage.apis.flatMap((requirement) => {
+      if (requirement.mode !== 'automated') return [];
+      if ('targets' in requirement
+        && requirement.targets
+        && (!target || !requirement.targets.includes(target))) return [];
+      const owner = contracts.find(({ id }) => id === requirement.owner);
+      return owner?.covers.includes(requirement.api)
+        ? []
+        : [{ api: requirement.api, owner: requirement.owner, target: target ?? null }];
+    });
+    expect(missingLogicOwners).toEqual([]);
     const missingRequiredCoverage = LX_CAPABILITY_LEDGER.flatMap((requirement) => {
       if (requirement.mode !== 'automated' || !requirement.ownerCaseId) return [];
       if (requirement.requiredTargets && (!target || !requirement.requiredTargets.includes(target))) return [];
@@ -278,6 +294,16 @@ export function registerContractAudit(options: { requireCanonicalShape?: boolean
             capabilities: coverage.length,
             capabilitiesWithBehavior: coverage.filter(({ behavioral }) => behavioral.length > 0).length,
             contracts: contracts.length,
+          },
+          logicUsage: {
+            summary: Object.fromEntries(
+              ['automated', 'external-fixture', 'external-ui', 'optional-provider', 'destructive']
+                .map((mode) => [
+                  mode,
+                  logicApiCoverage.apis.filter((entry) => entry.mode === mode).length,
+                ]),
+            ),
+            apis: logicApiCoverage.apis,
           },
           ledger: LX_CAPABILITY_LEDGER,
           returnedObjects: LX_RETURNED_OBJECT_SURFACES.map((surface) => ({

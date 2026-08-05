@@ -523,9 +523,12 @@ export const LX_RETURNED_OBJECT_SURFACES = [
   },
 ] as const;
 
-export const LX_RETURNED_OBJECT_SHAPE_NAMES = LX_RETURNED_OBJECT_SURFACES.flatMap(({ name, members }) => (
-  members.map((member) => `shape:${name}.${member}`)
+/** Canonical identifiers for behavior exercised through objects returned by lx APIs. */
+export const LX_RETURNED_OBJECT_CAPABILITY_NAMES = LX_RETURNED_OBJECT_SURFACES.flatMap(({ name, members }) => (
+  members.map((member) => `${name}.${member}`)
 ));
+
+export const LX_RETURNED_OBJECT_SHAPE_NAMES = LX_RETURNED_OBJECT_CAPABILITY_NAMES.map((name) => `shape:${name}`);
 
 export const LX_REQUIRED_RUNTIME_SHAPE_NAMES = [
   ...LX_RUNTIME_SHAPE_NAMES,

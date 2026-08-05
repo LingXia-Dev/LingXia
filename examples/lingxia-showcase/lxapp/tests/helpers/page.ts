@@ -50,6 +50,20 @@ export async function waitForElementText(
   return text;
 }
 
+function isCurrentPageTransition(error: unknown): boolean {
+  return String(error).includes('current page');
+}
+
+/** Current page lookup that treats an empty relaunch-transition stack as absent. */
+export async function currentPageOrNull(app: LxAppDriver): Promise<PageInfo | null> {
+  try {
+    return await app.nav.current();
+  } catch (error) {
+    if (isCurrentPageTransition(error)) return null;
+    throw error;
+  }
+}
+
 export async function waitForCurrentPage(
   app: LxAppDriver,
   page: string,
@@ -58,6 +72,29 @@ export async function waitForCurrentPage(
   return eventually(
     () => app.nav.current(),
     (current) => current.name === page && current.ready,
-    { timeoutMs, describe: `current page '${page}' to become ready` },
+    {
+      timeoutMs,
+      describe: `current page '${page}' to become ready`,
+      retryIf: isCurrentPageTransition,
+    },
   );
+}
+
+export async function waitForCurrentPageVisible(
+  app: LxAppDriver,
+  page: string,
+  css: string,
+  timeoutMs = 10_000,
+): Promise<PageInfo> {
+  const current = await eventually(
+    () => app.nav.current(),
+    (candidate) => candidate.name === page && candidate.current,
+    {
+      timeoutMs,
+      describe: `current page '${page}' to become active`,
+      retryIf: isCurrentPageTransition,
+    },
+  );
+  await app.page.waitFor({ page, css, state: 'visible', timeoutMs });
+  return current;
 }

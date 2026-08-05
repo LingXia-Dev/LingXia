@@ -145,6 +145,7 @@ contract({
   covers: [
     'lx.getFileManager',
     'lx.env.USER_CACHE_PATH',
+    'lx.env.USER_DATA_PATH',
     'FileManager.mkdir',
     'FileManager.writeFile',
     'FileManager.readFile',
@@ -163,6 +164,7 @@ contract({
     script: `
       const files = lx.getFileManager();
       const root = lx.env.USER_CACHE_PATH + '/' + ${JSON.stringify(namespace)};
+      const dataPathAvailable = typeof lx.env.USER_DATA_PATH === 'string' && lx.env.USER_DATA_PATH.length > 0;
       const source = root + '/source.txt';
       const renamed = root + '/renamed.txt';
       const copied = root + '/copied.txt';
@@ -178,6 +180,7 @@ contract({
           isFile: stat.isFile,
           renamed: await files.exists({ path: renamed }),
           copied: await files.exists({ path: copied }),
+          dataPathAvailable,
         };
       } finally {
         await files.remove({ path: root, recursive: true });
@@ -189,10 +192,12 @@ contract({
     isFile: boolean;
     renamed: boolean;
     copied: boolean;
+    dataPathAvailable: boolean;
   };
 
   expect(result.text).toBe('hello automation');
   expect(result.isFile).toBeTruthy();
   expect(result.renamed).toBeTruthy();
   expect(result.copied).toBeTruthy();
+  expect(result.dataPathAvailable).toBeTruthy();
 });
