@@ -213,7 +213,7 @@ public class LingXiaWebView extends WebView {
      * Request WebView creation for Rust layer
      * Creates WebView asynchronously and notifies Rust via notifyWebViewReady callback
      */
-    public static void requestWebView(final String appId, final String path, final long sessionId, final String optionsToken) {
+    public static void requestWebView(final String appId, final String path, final long sessionId, final long requestId, final String optionsToken) {
         // WebView creation must happen on the main thread
         ensureMainThreadStatic(new Runnable() {
             @Override
@@ -242,7 +242,7 @@ public class LingXiaWebView extends WebView {
                     createdWebView.applyCreateOptionsToken(optionsToken);
                     createdWebView.prepareDataMode(() -> {
                         createdWebView.initializeWebView(appId, path, sessionId);
-                        notifyWebViewReady(appId, path, sessionId, createdWebView);
+                        notifyWebViewReady(appId, path, sessionId, requestId, createdWebView);
                     });
                 } catch (Throwable e) {
                     Log.e(TAG, "Failed to create WebView: " + e.getMessage(), e);
@@ -1472,5 +1472,5 @@ public class LingXiaWebView extends WebView {
         return null;
     }
     native int handlePostMessage(String appId, String path, long sessionId, String message);
-    native static void notifyWebViewReady(String appId, String path, long sessionId, Object webView);
+    native static void notifyWebViewReady(String appId, String path, long sessionId, long requestId, Object webView);
 }

@@ -35,7 +35,7 @@ pub(crate) struct PendingWebViewCreation {
     pub effective_options: EffectiveWebViewCreateOptions,
 }
 
-type WebViewSendersMap = Arc<Mutex<HashMap<String, PendingWebViewCreation>>>;
+type WebViewSendersMap = Arc<Mutex<HashMap<u64, PendingWebViewCreation>>>;
 type PendingEvalRequests = Arc<Mutex<HashMap<u64, PendingEvalEntry>>>;
 type PendingScreenshotRequests = Arc<Mutex<HashMap<u64, PendingScreenshotEntry>>>;
 
@@ -64,6 +64,7 @@ struct PendingScreenshotEntry {
 
 // Global map to store senders for WebView creation
 pub(crate) static WEBVIEW_SENDERS: OnceLock<WebViewSendersMap> = OnceLock::new();
+static NEXT_CREATE_REQUEST_ID: AtomicU64 = AtomicU64::new(1);
 static PENDING_EVAL_REQUESTS: OnceLock<PendingEvalRequests> = OnceLock::new();
 static PENDING_SCREENSHOT_REQUESTS: OnceLock<PendingScreenshotRequests> = OnceLock::new();
 static NEXT_EVAL_REQUEST_ID: AtomicU64 = AtomicU64::new(1);
@@ -217,12 +218,12 @@ impl WebViewInner {
         sender: WebViewCreateSender,
     ) {
         // Store sender in global map for callback
-        let webtag = WebTag::new(appid, path, session_id);
+        let request_id = NEXT_CREATE_REQUEST_ID.fetch_add(1, Ordering::Relaxed);
         let senders = WEBVIEW_SENDERS.get_or_init(|| Arc::new(Mutex::new(HashMap::new())));
 
         if let Ok(mut senders_map) = senders.lock() {
             senders_map.insert(
-                webtag.to_string(),
+                request_id,
                 PendingWebViewCreation {
                     sender,
                     effective_options: effective_options.clone(),
@@ -233,7 +234,7 @@ impl WebViewInner {
         // Helper function to remove sender and send error
         let remove_and_send_error = |error_msg: String| {
             if let Ok(mut senders_map) = senders.lock()
-                && let Some(pending) = senders_map.remove(&webtag.to_string())
+                && let Some(pending) = senders_map.remove(&request_id)
             {
                 pending.sender.fail(
                     WebViewCreateStage::Requested,
@@ -269,11 +270,12 @@ impl WebViewInner {
             env.call_static_method(
                 webview_class,
                 jni_str!("requestWebView"),
-                jni_sig!("(Ljava/lang/String;Ljava/lang/String;JLjava/lang/String;)V"),
+                jni_sig!("(Ljava/lang/String;Ljava/lang/String;JJLjava/lang/String;)V"),
                 &[
                     (&appid_jstring).into(),
                     (&path_jstring).into(),
                     session.into(),
+                    (request_id as i64).into(),
                     (&options_jstring).into(),
                 ],
             )?;

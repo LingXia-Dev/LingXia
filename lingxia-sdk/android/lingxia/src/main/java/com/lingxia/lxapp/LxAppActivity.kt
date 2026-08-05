@@ -1760,7 +1760,19 @@ class LxAppActivity : AppCompatActivity() {
             // Find WebView for the target page
             val newWebView = findWebView(appId, targetPath)
             if (newWebView == null) {
-                LxLog.e(TAG, "Failed to find WebView for path: $targetPath")
+                val current = NativeApi.getCurrentLxApp()
+                val currentPath = current?.path?.substringBefore('?')?.substringBefore('#')
+                val normalizedTarget = targetPath.substringBefore('?').substringBefore('#')
+                if (current != null &&
+                    current.isValid() &&
+                    current.appId == appId &&
+                    current.sessionId == currentSessionId &&
+                    currentPath == normalizedTarget
+                ) {
+                    LxLog.e(TAG, "Failed to find WebView for current path: $targetPath")
+                } else {
+                    Log.d(TAG, "Ignoring stale navigation to $targetPath")
+                }
                 return
             }
 
