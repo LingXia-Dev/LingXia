@@ -3,6 +3,7 @@ import { LxLog } from '../app/LxLog';
 import { webview } from '@kit.ArkWeb';
 import { window, display, FrameCallback } from '@kit.ArkUI';
 import { common, ConfigurationConstant } from '@kit.AbilityKit';
+import { image } from '@kit.ImageKit';
 import { LxApp } from './LxApp';
 import { Lingxia } from '../app/Lingxia';
 import { LxAppSurface } from './APIs/LxAppSurface';
@@ -29,6 +30,7 @@ import { LxNativeVideoPlayer } from './APIs/media/player/LxNativeVideoPlayer';
 import { LxFullscreenVideoOverlay } from './APIs/media/player/LxFullscreenVideoOverlay';
 import { RefreshHeader } from './RefreshHeader';
 import { CapsuleMenuManager, CapsuleMenuBottomSheetComponent } from './CapsuleMenuBottomSheet';
+import { SplashResources } from './SplashOverlay';
 
 // Container-specific constants
 const SYSTEM_STATUS_BAR_HEIGHT = 44;     // Default status bar height
@@ -106,6 +108,12 @@ export struct LxAppContainer {
   @State private fullscreenWebTag: string = ''
   @State private fullscreenComponentId: string = ''
   
+  // Splash layer (home cold start until first render, timeout fallback)
+  @State private splashVisible: boolean = false
+  @State private splashOpacity: number = 1
+  @State private splashBackground: number = 0xFFFFFFFF
+  @State private splashImage: image.PixelMap | null = null
+
   // Pull-to-refresh state
   @State private isRefreshing: boolean = false
   @State private enablePullDownRefresh: boolean = false
@@ -178,6 +186,8 @@ export struct LxAppContainer {
 
     // Register this container for TabBar updates
     LxAppContainer.activeContainers.set(this.appId, this);
+
+    this.maybeShowSplash(context);
 
     // Initialize animation type from static registry
     const storedAnimationType: AnimationType | undefined = LxAppContainer.animationTypes.get(this.appId);
@@ -384,6 +394,61 @@ export struct LxAppContainer {
     const pos: TabBarPosition | undefined = this.tabBarState?.position;
     const items: number = this.tabBarState?.items?.length ?? 0;
     const alpha: number = bg !== undefined ? ((bg >>> 24) & 0xFF) : -1;
+  }
+
+  /**
+   * Runtime signal (via NativeBridge): the home page finished its first
+   * render — fade the splash layer out.
+   */
+  public static dismissSplash(): void {
+    SplashResources.homeReadySeen = true;
+    const homeAppId = LxApp.getInstance().getHomeAppId();
+    if (!homeAppId) {
+      return;
+    }
+    LxAppContainer.activeContainers.get(homeAppId)?.hideSplash();
+  }
+
+  /**
+   * Cover the home app's cold start until its page first renders. Skipped
+   * entirely when the generated splash resources are absent.
+   */
+  private maybeShowSplash(context: common.UIAbilityContext): void {
+    if (SplashResources.shownThisProcess || SplashResources.homeReadySeen) {
+      return;
+    }
+    if (!this.isHomeApp()) {
+      return;
+    }
+    const background = SplashResources.resolveBackground(context);
+    if (background === null) {
+      return;
+    }
+    SplashResources.shownThisProcess = true;
+    this.splashBackground = background;
+    this.splashVisible = true;
+    SplashResources.loadImage(context).then((splash) => {
+      if (this.splashVisible) {
+        this.splashImage = splash;
+      }
+    });
+    // Timeout fallback: a broken page must never leave the splash stuck.
+    setTimeout(() => this.hideSplash(), 6000);
+  }
+
+  private hideSplash(): void {
+    if (!this.splashVisible || this.splashOpacity === 0) {
+      return;
+    }
+    animateTo({
+      duration: 250,
+      onFinish: () => {
+        this.splashVisible = false;
+        this.splashImage = null;
+      }
+    }, () => {
+      this.splashOpacity = 0;
+    });
   }
 
   /**
@@ -709,6 +774,25 @@ export struct LxAppContainer {
 
       // Capsule menu bottom sheet - renders on top of everything
       CapsuleMenuBottomSheetComponent()
+
+      // Splash layer: full-screen image over the start-window color, kept up
+      // over the home cold start until first render (or timeout), then fades.
+      if (this.splashVisible) {
+        Stack() {
+          if (this.splashImage) {
+            Image(this.splashImage)
+              .width('100%')
+              .height('100%')
+              .objectFit(ImageFit.Cover)
+          }
+        }
+        .width('100%')
+        .height('100%')
+        .backgroundColor(this.splashBackground)
+        .opacity(this.splashOpacity)
+        .hitTestBehavior(HitTestMode.Block)
+        .expandSafeArea([SafeAreaType.SYSTEM, SafeAreaType.CUTOUT], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
+      }
 	    }
 	    .width('100%')
 	    .height('100%')

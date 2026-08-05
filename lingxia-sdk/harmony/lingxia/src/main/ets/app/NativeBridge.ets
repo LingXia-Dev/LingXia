@@ -369,6 +369,12 @@ class NativeBridge {
       return LxAppSurface.hide(id, appId);
     });
 
+    // Home page first render — dismiss the startup splash layer
+    this.register('onHomeFirstReady', (): boolean => {
+      LxAppContainer.dismissSplash();
+      return true;
+    });
+
     // Update TabBar APIs
     this.register('updateTabBarUI', (appId: string): boolean => {
       try {
