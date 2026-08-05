@@ -11,7 +11,13 @@ class LingXiaAppDelegate: NSObject, NSApplicationDelegate {
         do {
             _ = try Lingxia.quickStart()
         } catch {
-            fatalError("Lingxia.quickStart failed: \(error)")
+            // A second copy cannot share the first's databases. Say so and
+            // leave, rather than trapping with a hardware exception.
+            FileHandle.standardError.write(
+                "\(ProcessInfo.processInfo.processName): cannot start — \(error)\n"
+                    .data(using: .utf8) ?? Data()
+            )
+            exit(1)
         }
     }
 
