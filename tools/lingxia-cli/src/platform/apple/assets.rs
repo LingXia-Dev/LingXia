@@ -1,6 +1,7 @@
 //! Apple asset catalog compilation utilities.
 
 use anyhow::{Context, Result};
+use colored::Colorize;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -114,10 +115,30 @@ pub fn compile_asset_catalog(
         .output()
         .context("Failed to execute xcrun actool")?;
 
-    if !output.status.success() {
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        let details = sanitize_actool_output(&format!("{stdout}\n{stderr}"));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let combined = format!("{stdout}\n{stderr}");
+    // actool exits 0 even when it fails, so trust its errors section over
+    // the exit status.
+    if !output.status.success() || combined.contains("com.apple.actool.errors") {
+        // actool delegates iOS-family compiles to an agent that must run
+        // inside a locally installed iOS runtime; on machines that only
+        // build for real devices there is none. That is an environment
+        // gap, not a catalog mistake — degrade instead of failing the
+        // build: the splash cover overlay reads loose resources, so only
+        // the OS launch frame loses its background color.
+        if matches!(platform, AssetPlatform::Ios) && is_missing_ios_runtime(&combined) {
+            println!(
+                "  {} Skipped the asset catalog: actool needs the iOS platform installed \n     \
+                 and this machine does not have it. The splash cover still shows, but \n     \
+                 the launch frame before it stays white. \n     \
+                 Fix with: xcodebuild -downloadPlatform iOS",
+                "Warning:".yellow()
+            );
+            return Ok(());
+        }
+
+        let details = sanitize_actool_output(&combined);
         if details.is_empty() {
             anyhow::bail!("Asset catalog compilation failed");
         }
@@ -126,6 +147,13 @@ pub fn compile_asset_catalog(
 
     println!("  Compiled asset catalog to Assets.car");
     Ok(())
+}
+
+/// The signature actool prints when the iOS platform (simulator runtime)
+/// is not installed — distinct from genuine catalog errors.
+fn is_missing_ios_runtime(actool_output: &str) -> bool {
+    actool_output.contains("No available simulator runtimes")
+        || actool_output.contains("Platform Not Installed")
 }
 
 fn sanitize_actool_output(raw: &str) -> String {
