@@ -86,6 +86,13 @@ appLinks:
   hosts:
     - applink.lingxia.app
 
+splash:
+  image: design/splash-light.png
+  background: "#F5F7FA"
+  dark:
+    image: design/splash-dark.png
+    background: "#1A1D22"
+
 storage:
   tempMaxSizeMB: 1024
   cacheMaxSizeMB: 2048
