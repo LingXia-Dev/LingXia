@@ -441,6 +441,7 @@ impl LxApp {
             "PageInstance disposed while waiting for view response",
         );
 
+        let mut owns_canonical_path = false;
         if let Ok(mut state) = self.state.lock() {
             let mut pages = state.pages.lock().unwrap();
             let canonical_instance_id = pages
@@ -448,6 +449,7 @@ impl LxApp {
                 .map(|existing| existing.instance_id_string());
             let remove_stack_path =
                 disposed_instance_owns_stack_path(canonical_instance_id.as_deref(), id.as_str());
+            owns_canonical_path = remove_stack_path;
             if remove_stack_path {
                 pages.remove(&path);
             }
@@ -468,7 +470,12 @@ impl LxApp {
             state.page_chrome_layouts.remove(id.as_str());
         }
 
-        destroy_webview(&page.webtag());
+        // Page service disposal is asynchronous. A same-route relaunch may
+        // already have installed a newer PageInstance under this path, so an
+        // old instance must not destroy the replacement WebView by tag.
+        if owns_canonical_path {
+            destroy_webview(&page.webtag());
+        }
 
         if let Err(e) =
             self.executor

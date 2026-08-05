@@ -482,9 +482,15 @@ impl PageInstance {
                     page_for_task.mark_webview_ready(result);
                 }
                 Err(e) => {
-                    error!("Failed to create WebView: {}", e)
-                        .with_appid(appid_clone)
-                        .with_path(path_clone);
+                    if page_for_task.is_unloaded() {
+                        info!("Cancelled WebView creation for unloaded page: {}", e)
+                            .with_appid(appid_clone)
+                            .with_path(path_clone);
+                    } else {
+                        error!("Failed to create WebView: {}", e)
+                            .with_appid(appid_clone)
+                            .with_path(path_clone);
+                    }
                     page_for_task.mark_webview_ready(Err(e.to_string()));
                 }
             }
