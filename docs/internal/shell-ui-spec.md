@@ -851,6 +851,28 @@ Shell chrome always has exactly one writer:
 - Process/app-level capabilities (update, exit, badge, autostart, screenshot)
   stay on `lx.app`; they never migrate into `lx.shell`.
 
+### 7.4 Launch screen (splash)
+
+`splash:` in `lingxia.yaml` (`image`, `background`, optional `dark` variant)
+drives the whole launch screen; hosts build none of it by hand. The OS static
+launch frame shows `background` (plus the system icon where the OS mandates
+one — Android 12+ and Harmony start windows cannot render a full-screen
+image); the SDK then covers the home cold start with `image` full-screen
+(aspect-fill) until the page's first render.
+
+- Dismissal: a once-per-process home-first-render signal (the home page's
+  first `OnReady`) fades the overlay out (≤300 ms); a 6 s timeout MUST
+  dismiss it regardless. While visible it swallows input.
+- Generated resource names are the CLI↔SDK contract: Android
+  `lingxia_splash_image` / `lingxia_splash_background` / `Theme.LingXia.Splash`,
+  Apple `LingXiaSplash` / `LingXiaSplashBackground`, Harmony
+  `$media:lingxia_splash` / `$color:lingxia_splash_background`. Missing
+  resources disable the overlay; a host without `splash:` is unchanged.
+- Dark appearance resolves through OS resource mechanisms only; an image under
+  the platform data dir (`lingxia/splash/{light,dark}.png`) overrides the
+  bundled one on the next launch (delivery is a cloud concern outside this
+  spec). Desktop shells take no overlay; the ready signal is a no-op there.
+
 ---
 
 ## 8. Persistence
@@ -899,6 +921,7 @@ As of 2026-08 (PR #202 follow-up design):
 | Compact projection | Browser aside/self chrome, group isolation, and browser-owned back/close semantics aligned with §5 on mobile and Runner |
 | Frameless window + `controls:` + writer window controls | Not implemented |
 | Declared page floats; native floats | Parsed but rejected by the CLI pending runtime support |
+| Launch screen (splash, §7.4) | CLI generation and Android/iOS/Harmony overlays implemented, not yet build- or device-verified; online-update delivery channel and a Windows overlay not implemented |
 | Naming migration (Appendix C ledger) | Pending — `DockedBrowser` and `open_panel_lxapp` word roots still present |
 
 ## Appendix B: Pending visual decisions
