@@ -2,7 +2,7 @@ app:
   projectName: lingxia
   rustLibDir: native
   lingxiaId: lingxia-showcase
-  productName: LingXia
+  productName: LingXia Showcase
   productVersion: 0.2.7
   platforms:
     - android

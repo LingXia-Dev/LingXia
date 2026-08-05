@@ -610,7 +610,10 @@ mod bridge {
         fn terminal_load_config(system_is_dark: bool) -> String;
 
         #[swift_bridge(swift_name = "terminalRunCliIfInvoked")]
-        fn terminal_run_cli_if_invoked() -> i32;
+        fn terminal_run_cli_if_invoked(app_data_dir: &str) -> i32;
+
+        #[swift_bridge(swift_name = "terminalRegisterFonts")]
+        fn terminal_register_fonts(fonts_json: &str);
 
         #[swift_bridge(swift_name = "terminalSessionExited")]
         fn terminal_session_exited(id: u64) -> bool;
@@ -2120,7 +2123,18 @@ pub fn terminal_session_create(cols: u16, rows: u16, cwd: &str) -> u64 {
     #[cfg(feature = "terminal-runtime")]
     {
         let cwd = (!cwd.is_empty()).then(|| std::path::Path::new(cwd));
-        return crate::terminal::terminal_create_at(cols, rows, cwd);
+        let environment = app_data_dir_for_cli()
+            .map(|dir| crate::terminal::session_environment(&dir))
+            .unwrap_or_default();
+        return crate::terminal::terminal_create_with_spec(
+            cols,
+            rows,
+            crate::terminal::TerminalSessionSpec {
+                cwd: cwd.map(std::path::Path::to_path_buf),
+                env: environment,
+                ..crate::terminal::TerminalSessionSpec::default()
+            },
+        );
     }
 
     #[cfg(not(feature = "terminal-runtime"))]
@@ -2247,16 +2261,21 @@ pub fn terminal_session_frame(id: u64, since_generation: u64) -> bridge::Termina
 /// Hosts must call this before initializing AppKit: the product's executable
 /// doubles as its command line, and a configuration command must not open a
 /// window.
-pub fn terminal_run_cli_if_invoked() -> i32 {
+pub fn terminal_run_cli_if_invoked(app_data_dir: &str) -> i32 {
     #[cfg(feature = "terminal-runtime")]
     {
-        let Ok(data_dir) = app_data_dir_for_cli() else {
-            return -1;
-        };
-        if let Some(code) = crate::terminal::run_cli_if_invoked(data_dir) {
+        // The directory is passed in rather than read from the runtime: this
+        // runs before initialization, which would open the app's databases and
+        // collide with an instance already running.
+        if let Some(code) =
+            crate::terminal::run_cli_if_invoked(std::path::PathBuf::from(app_data_dir))
+        {
             return code;
         }
     }
+
+    #[cfg(not(feature = "terminal-runtime"))]
+    let _ = app_data_dir;
     -1
 }
 
@@ -2267,6 +2286,21 @@ fn app_data_dir_for_cli() -> crate::Result<std::path::PathBuf> {
             .map(std::path::Path::to_path_buf)
             .ok_or_else(|| crate::Error::internal("state dir has no parent"))
     })
+}
+
+/// Hand the platform's installed-font list to the config layer, so
+/// `term font --list` reports what is really available. Enumerating families
+/// is platform work the shared layer cannot do.
+pub fn terminal_register_fonts(fonts_json: &str) {
+    #[cfg(feature = "terminal-runtime")]
+    {
+        if let Ok(fonts) = serde_json::from_str::<Vec<crate::terminal::InstalledFont>>(fonts_json) {
+            crate::terminal::set_installed_fonts(fonts);
+        }
+    }
+
+    #[cfg(not(feature = "terminal-runtime"))]
+    let _ = fonts_json;
 }
 
 pub fn terminal_load_config(system_is_dark: bool) -> String {

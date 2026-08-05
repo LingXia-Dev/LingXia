@@ -18,9 +18,17 @@ struct LingXiaTerminalSettings: Decodable {
 
     var font = Font()
 
+    /// Publish the installed families so `term font --list` and `term status`
+    /// report what is really available. Enumerating them is platform work the
+    /// shared configuration layer cannot do.
+    static func registerInstalledFonts() {
+        terminalRegisterFonts(LingXiaTerminalFontCatalog.installedJSON())
+    }
+
     /// Load from the engine, which merges product defaults with the user's
     /// `terminal.json` and applies the theme on the way through.
     static func load() -> LingXiaTerminalSettings {
+        registerInstalledFonts()
         let dark = NSApp?.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
         let json = terminalLoadConfig(dark).toString()
         guard let data = json.data(using: .utf8),
