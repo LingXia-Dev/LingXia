@@ -63,8 +63,19 @@ pub fn run(app_data_dir: &Path, command: &str, args: &[String]) -> Output {
         Some("theme") => theme(app_data_dir, &args[1..], json),
         Some("font") => font(app_data_dir, &args[1..], json),
         Some("config") => config(app_data_dir, &args[1..], json),
+        Some("reset") => reset(app_data_dir, &args[1..], json),
         Some(other) => Output::error(format!("unknown command '{other}'\n\n{}", help(command))),
     }
+}
+
+/// Report an invocation this binary does not recognize.
+///
+/// Separate from `run` because it must answer without a configuration
+/// directory: it is reached before the app exists, when someone typed
+/// something wrong.
+pub fn unknown(command: &str, arguments: &[String]) -> Output {
+    let first = arguments.first().map(String::as_str).unwrap_or("");
+    Output::error(format!("unknown command '{first}'\n\n{}", help(command)))
 }
 
 fn help(command: &str) -> String {
@@ -78,6 +89,7 @@ fn help(command: &str) -> String {
   font --size <points>  set the font size
   font --list           installed monospace families
   config --path         configuration file location
+  reset [font|theme]    back to defaults
   status                what is in effect
 
   --json                machine-readable output"
@@ -195,6 +207,11 @@ fn font(app_data_dir: &Path, args: &[String], json: bool) -> Output {
         config.font.family = vec![family.clone()];
         changed.push(format!("family = {family}"));
     }
+    for flag in ["--family", "--size", "--ligatures"] {
+        if args.iter().any(|arg| arg == flag) && value_of(args, flag).is_none() {
+            return Output::error(format!("{flag} needs a value"));
+        }
+    }
     if let Some(size) = value_of(args, "--size") {
         match size.parse::<f32>() {
             Ok(size) if (4.0..=96.0).contains(&size) => {
@@ -221,6 +238,30 @@ fn font(app_data_dir: &Path, args: &[String], json: bool) -> Output {
         return Output::error("nothing to change; see `term font --help`");
     }
     apply(app_data_dir, &config, json, &changed.join(", "))
+}
+
+/// Back to defaults — the way out when a change made the terminal unusable,
+/// which a font size can do all by itself.
+fn reset(app_data_dir: &Path, args: &[String], json: bool) -> Output {
+    let (mut config, _) = TerminalConfig::load(app_data_dir, &serde_json::Value::Null);
+    let summary = match args.first().map(String::as_str) {
+        None | Some("--json") => {
+            config = TerminalConfig::default();
+            "everything"
+        }
+        Some("font") => {
+            config.font = crate::FontConfig::default();
+            "font"
+        }
+        Some("theme") => {
+            config.theme = crate::ThemeConfig::default();
+            "theme"
+        }
+        Some(other) => {
+            return Output::error(format!("reset takes font or theme, got '{other}'"));
+        }
+    };
+    apply(app_data_dir, &config, json, &format!("reset {summary}"))
 }
 
 fn config(app_data_dir: &Path, args: &[String], json: bool) -> Output {
@@ -437,6 +478,51 @@ mod tests {
             let mode = std::fs::metadata(&path).expect("stat").permissions().mode();
             assert_eq!(mode & 0o111, 0o111, "the launcher must be executable");
         }
+    }
+
+    #[test]
+    fn reset_restores_defaults() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        run(dir.path(), "myapp", &args(&["font", "--size", "72"]));
+        run(dir.path(), "myapp", &args(&["theme", "lingxia-light"]));
+
+        let output = run(dir.path(), "myapp", &args(&["reset", "font"]));
+        assert_eq!(output.code, 0, "{}", output.text);
+        let (config, _) = TerminalConfig::load(dir.path(), &serde_json::Value::Null);
+        assert_eq!(
+            config.font.size,
+            crate::FontConfig::default().size,
+            "an unreadable font size needs a way out"
+        );
+        assert_eq!(
+            config.theme.light, "lingxia-light",
+            "only the font was reset"
+        );
+
+        run(dir.path(), "myapp", &args(&["reset"]));
+        let (config, _) = TerminalConfig::load(dir.path(), &serde_json::Value::Null);
+        assert_eq!(config, TerminalConfig::default());
+    }
+
+    #[test]
+    fn a_flag_without_its_value_is_an_error() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let output = run(dir.path(), "myapp", &args(&["font", "--size"]));
+        assert_eq!(output.code, 1);
+        assert!(output.text.contains("needs a value"), "{}", output.text);
+        assert!(!TerminalConfig::path(dir.path()).exists());
+    }
+
+    #[test]
+    fn an_unrecognized_invocation_says_so() {
+        let output = unknown("myapp", &args(&["font", "--size"]));
+        assert_eq!(output.code, 1);
+        assert!(
+            output.text.starts_with("unknown command 'font'"),
+            "{}",
+            output.text
+        );
+        assert!(output.text.contains("myapp term"), "{}", output.text);
     }
 
     #[test]
