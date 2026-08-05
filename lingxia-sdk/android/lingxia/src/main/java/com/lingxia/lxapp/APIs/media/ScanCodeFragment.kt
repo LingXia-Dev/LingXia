@@ -5,6 +5,8 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.animation.ObjectAnimator
 import android.animation.ValueAnimator
 import android.view.Gravity
@@ -15,6 +17,7 @@ import android.widget.FrameLayout
 import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
@@ -51,6 +54,20 @@ internal class ScanCodeFragment : Fragment() {
         const val TYPE_DATA_MATRIX = 3
         const val TYPE_PDF_417 = 4
 
+        // Fast camera starts should show no spinner at all; only surface it past this delay.
+        private const val LOADING_APPEAR_DELAY_MS = 300L
+        private const val LOADING_FADE_MS = 180L
+        private const val STREAM_WATCHDOG_MS = 8_000L
+
+        fun warmUpCameraProvider(context: Context) {
+            try {
+                ProcessCameraProvider.getInstance(context.applicationContext)
+            } catch (error: RuntimeException) {
+                // Warm-up is best effort; scanCode reports a concrete failure if binding later fails.
+                LxLog.w(TAG, "Unable to warm up camera provider", error)
+            }
+        }
+
         fun start(
             activity: AppCompatActivity,
             scanTypes: IntArray,
@@ -82,11 +99,27 @@ internal class ScanCodeFragment : Fragment() {
     private var galleryButton: View? = null
     private var overlayLayer: FrameLayout? = null
     private var scanLine: View? = null
+    private var loadingView: View? = null
     private var lineAnimator: ValueAnimator? = null
 
     private var cameraExecutor: ExecutorService? = null
     private var barcodeScanner: BarcodeScanner? = null
     private var hasReportedResult = false
+    private var hasStreamed = false
+
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private val showLoadingRunnable = Runnable {
+        loadingView?.apply {
+            alpha = 0f
+            visibility = View.VISIBLE
+            animate().alpha(1f).setDuration(LOADING_FADE_MS).start()
+        }
+    }
+    private val streamWatchdogRunnable = Runnable {
+        if (!hasStreamed) {
+            deliverFailure(1001, "Camera preview did not start")
+        }
+    }
 
     private val permissionLauncher =
         registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) { granted ->
@@ -155,8 +188,41 @@ internal class ScanCodeFragment : Fragment() {
                     Color.parseColor("#001677FF")  // fade out
                 )
             ).apply { shape = GradientDrawable.RECTANGLE }
+            visibility = View.INVISIBLE
         }
         overlayLayer?.addView(scanLine)
+
+        loadingView = LinearLayout(ctx).apply {
+            visibility = View.GONE
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setPadding(dp(24f), dp(16f), dp(24f), dp(16f))
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = dp(12f).toFloat()
+                setColor(Color.parseColor("#99000000"))
+            }
+            addView(ProgressBar(ctx), LinearLayout.LayoutParams(dp(36f), dp(36f)).apply {
+                gravity = Gravity.CENTER_HORIZONTAL
+            })
+            addView(TextView(ctx).apply {
+                text = ctx.getString(R.string.lx_camera_preparing)
+                setTextColor(Color.WHITE)
+                textSize = 16f
+                gravity = Gravity.CENTER
+            }, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                gravity = Gravity.CENTER_HORIZONTAL
+                topMargin = dp(12f)
+            })
+        }
+        root.addView(loadingView, FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.WRAP_CONTENT,
+            FrameLayout.LayoutParams.WRAP_CONTENT,
+            Gravity.CENTER
+        ))
 
         closeButton = ImageButton(ctx).apply {
             // Close icon from SVG (background included in SVG)
@@ -236,23 +302,37 @@ internal class ScanCodeFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+        previewView?.previewStreamState?.observe(viewLifecycleOwner) { state ->
+            updatePreviewStreamState(state)
+        }
         ensurePermissionAndStart()
-        // Start scan line animation when layout is ready
-        overlayLayer?.viewTreeObserver?.addOnGlobalLayoutListener(object : android.view.ViewTreeObserver.OnGlobalLayoutListener {
-            override fun onGlobalLayout() {
-                overlayLayer?.viewTreeObserver?.removeOnGlobalLayoutListener(this)
-                startScanLineAnimation()
-            }
-        })
+    }
+
+    // The watchdog only guards the first-ever frame: binding can "succeed" yet never stream
+    // (e.g. camera held by another app on some devices). Paused while backgrounded so a
+    // startup interrupted by Home doesn't count the time away against the deadline.
+    override fun onStart() {
+        super.onStart()
+        if (!hasStreamed) {
+            mainHandler.postDelayed(streamWatchdogRunnable, STREAM_WATCHDOG_MS)
+        }
+    }
+
+    override fun onStop() {
+        super.onStop()
+        mainHandler.removeCallbacks(streamWatchdogRunnable)
     }
 
     override fun onDestroyView() {
         super.onDestroyView()
         stopScanLineAnimation()
+        mainHandler.removeCallbacks(showLoadingRunnable)
+        mainHandler.removeCallbacks(streamWatchdogRunnable)
         previewView = null
         closeButton = null
         galleryButton = null
         scanLine = null
+        loadingView = null
         overlayLayer = null
     }
 
@@ -282,7 +362,7 @@ internal class ScanCodeFragment : Fragment() {
 
     private fun buildScanner(): BarcodeScanner {
         if (scanTypes.isEmpty()) {
-            BarcodeScanning.getClient()
+            return BarcodeScanning.getClient()
         }
         val formats = mutableListOf<Int>()
         scanTypes.forEach { code ->
@@ -480,6 +560,37 @@ internal class ScanCodeFragment : Fragment() {
             parentFragmentManager.beginTransaction()
                 .remove(this)
                 .commitAllowingStateLoss()
+        }
+    }
+
+    private fun updatePreviewStreamState(state: PreviewView.StreamState) {
+        if (state == PreviewView.StreamState.STREAMING) {
+            hasStreamed = true
+            mainHandler.removeCallbacks(showLoadingRunnable)
+            mainHandler.removeCallbacks(streamWatchdogRunnable)
+            loadingView?.let { card ->
+                if (card.visibility == View.VISIBLE) {
+                    card.animate().alpha(0f).setDuration(LOADING_FADE_MS).withEndAction {
+                        card.visibility = View.GONE
+                        card.alpha = 1f
+                    }.start()
+                } else {
+                    card.visibility = View.GONE
+                }
+            }
+            scanLine?.let { line ->
+                if (line.visibility != View.VISIBLE) {
+                    line.alpha = 0f
+                    line.visibility = View.VISIBLE
+                    line.animate().alpha(1f).setDuration(LOADING_FADE_MS).start()
+                }
+            }
+            overlayLayer?.post { startScanLineAnimation() }
+        } else {
+            mainHandler.removeCallbacks(showLoadingRunnable)
+            mainHandler.postDelayed(showLoadingRunnable, LOADING_APPEAR_DELAY_MS)
+            scanLine?.visibility = View.INVISIBLE
+            stopScanLineAnimation()
         }
     }
 

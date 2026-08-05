@@ -15,6 +15,7 @@ import androidx.appcompat.app.AppCompatActivity
 import com.lingxia.lxapp.LxAppActivity
 import com.lingxia.lxapp.LxApp
 import com.lingxia.lxapp.LxAppBrowser
+import com.lingxia.lxapp.APIs.media.ScanCodeFragment
 import java.net.URISyntaxException
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -106,6 +107,7 @@ object Lingxia {
             }
 
             com.lingxia.webview.LingXiaWebView.setApplicationContext(ctx)
+            ScanCodeFragment.warmUpCameraProvider(ctx)
 
             val initResultString = NativeApi.lingxiaInit(
                 ctx.filesDir.absolutePath,
