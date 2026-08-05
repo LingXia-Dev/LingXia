@@ -12,6 +12,7 @@
 
 use std::collections::VecDeque;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{Receiver, Sender, channel};
 use std::time::Instant;
 
@@ -135,14 +136,46 @@ const EVENT_QUEUE_CAPACITY: usize = 4096;
 /// Maximum clipboard text surfaced by an OSC 52 store event.
 const CLIPBOARD_EVENT_LIMIT: usize = 64 * 1024;
 
-/// Progress/task state carried by OSC 9;4.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+/// Progress/task state carried by OSC 9;4, unified with command
+/// completion into one machine:
+/// `idle | running(indeterminate|percent) | paused | succeeded | failed`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum TerminalProgressState {
+    #[default]
     Idle,
     Running,
     Paused,
+    Succeeded,
     Failed,
+}
+
+/// The session's current progress state, with a percentage when the
+/// source reported one (`Running` without a percent is indeterminate).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalProgress {
+    pub state: TerminalProgressState,
+    pub percent: Option<u8>,
+}
+
+/// Everything a host needs to render tab badges and attention state
+/// without inspecting output text: the unified progress machine plus
+/// monotonic attention counters.
+///
+/// Counters never reset, so a host that stores the last values it
+/// displayed derives "unread" by comparison — and stays correct across
+/// dropped events or a re-attach that missed the event stream.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalActivity {
+    pub progress: TerminalProgress,
+    /// Exit code of the most recent OSC 133 D mark, when it carried one.
+    pub last_exit_code: Option<i32>,
+    /// BELs received since session start.
+    pub bells: u64,
+    /// OSC 9/99/777 notifications received since session start.
+    pub notifications: u64,
 }
 
 /// A typed semantic event extracted from the terminal byte stream.
@@ -341,6 +374,10 @@ struct Listener {
     title: Mutex<Option<String>>,
     events: Mutex<EventQueue>,
     pending: Sender<PendingReply>,
+    /// Attention counters; bells arrive here rather than through the OSC
+    /// tap, so both live outside the `VtInner` lock.
+    bells: AtomicU64,
+    notifications: AtomicU64,
 }
 
 /// Newtype so the foreign `EventListener` trait can be implemented for
@@ -376,7 +413,10 @@ impl EventListener for ListenerHandle {
                     .lock()
                     .push(TerminalEventKind::Title { title: None });
             }
-            Event::Bell => self.events.lock().push(TerminalEventKind::Bell),
+            Event::Bell => {
+                self.bells.fetch_add(1, Ordering::Relaxed);
+                self.events.lock().push(TerminalEventKind::Bell);
+            }
             Event::ClipboardStore(clipboard, text) => {
                 let clipboard = match clipboard {
                     ClipboardType::Clipboard => "clipboard",
@@ -418,6 +458,14 @@ struct VtInner {
     blocks: CommandBlockTracker,
     /// Last working directory reported via OSC 7.
     cwd: Option<std::path::PathBuf>,
+    /// Unified progress state: OSC 9;4 when the program reports it,
+    /// otherwise inferred from OSC 133 command boundaries.
+    progress: TerminalProgress,
+    /// The running command reported OSC 9;4, so command boundaries must
+    /// not overwrite its state mid-command.
+    progress_reported: bool,
+    /// Exit code from the most recent OSC 133 D mark.
+    last_exit_code: Option<i32>,
 }
 
 /// Viewport dimensions handed to `Term::new` / `Term::resize`.
@@ -483,6 +531,8 @@ impl VtScreen {
             title: Mutex::new(None),
             events: Mutex::new(EventQueue::default()),
             pending,
+            bells: AtomicU64::new(0),
+            notifications: AtomicU64::new(0),
         });
         let config = Config {
             scrolling_history: scrollback_limit.unwrap_or(SCROLLBACK_LINES),
@@ -506,6 +556,9 @@ impl VtScreen {
                 generation: 0,
                 blocks: CommandBlockTracker::default(),
                 cwd: None,
+                progress: TerminalProgress::default(),
+                progress_reported: false,
+                last_exit_code: None,
             }),
         }
     }
@@ -563,6 +616,17 @@ impl VtScreen {
     /// The last working directory reported via OSC 7.
     pub fn cwd(&self) -> Option<std::path::PathBuf> {
         self.inner.lock().cwd.clone()
+    }
+
+    /// Current progress and attention counters.
+    pub fn activity(&self) -> TerminalActivity {
+        let inner = self.inner.lock();
+        TerminalActivity {
+            progress: inner.progress,
+            last_exit_code: inner.last_exit_code,
+            bells: inner.listener.bells.load(Ordering::Relaxed),
+            notifications: inner.listener.notifications.load(Ordering::Relaxed),
+        }
     }
 
     /// Text of the live screen rows only (the tail of [`Self::grid_text`]).
@@ -868,13 +932,22 @@ impl VtInner {
             OscSemantic::Progress(progress) => {
                 let (state, percent) = match progress {
                     OscProgress::Idle => (TerminalProgressState::Idle, None),
+                    // OSC 9;4 has no explicit completion state; a set
+                    // value reaching 100% is the protocol's completion
+                    // signal.
+                    OscProgress::Running { percent: Some(100) } => {
+                        (TerminalProgressState::Succeeded, Some(100))
+                    }
                     OscProgress::Running { percent } => (TerminalProgressState::Running, percent),
                     OscProgress::Paused { percent } => (TerminalProgressState::Paused, percent),
                     OscProgress::Failed => (TerminalProgressState::Failed, None),
                 };
+                self.progress = TerminalProgress { state, percent };
+                self.progress_reported = state != TerminalProgressState::Idle;
                 TerminalEventKind::Progress { state, percent }
             }
             OscSemantic::Notification { title, body } => {
+                self.listener.notifications.fetch_add(1, Ordering::Relaxed);
                 TerminalEventKind::Notification { title, body }
             }
             OscSemantic::PromptStart => TerminalEventKind::PromptStart {
@@ -883,13 +956,38 @@ impl VtInner {
             OscSemantic::InputStart => TerminalEventKind::InputStart {
                 line: absolute_line(),
             },
-            OscSemantic::OutputStart => TerminalEventKind::OutputStart {
-                line: absolute_line(),
-            },
-            OscSemantic::CommandFinished { exit_code } => TerminalEventKind::CommandFinished {
-                line: absolute_line(),
-                exit_code,
-            },
+            OscSemantic::OutputStart => {
+                // A command starts: indeterminate until it reports its
+                // own progress, and the previous command's OSC 9;4 state
+                // no longer applies.
+                self.progress_reported = false;
+                self.progress = TerminalProgress {
+                    state: TerminalProgressState::Running,
+                    percent: None,
+                };
+                TerminalEventKind::OutputStart {
+                    line: absolute_line(),
+                }
+            }
+            OscSemantic::CommandFinished { exit_code } => {
+                self.last_exit_code = exit_code;
+                self.progress_reported = false;
+                // Completion outranks any progress the command reported.
+                // An absent exit code says "finished, outcome unknown",
+                // which is idle rather than a success badge.
+                self.progress = TerminalProgress {
+                    state: match exit_code {
+                        Some(0) => TerminalProgressState::Succeeded,
+                        Some(_) => TerminalProgressState::Failed,
+                        None => TerminalProgressState::Idle,
+                    },
+                    percent: None,
+                };
+                TerminalEventKind::CommandFinished {
+                    line: absolute_line(),
+                    exit_code,
+                }
+            }
         };
         self.blocks.record(&kind);
         self.listener.events.lock().push(kind);
@@ -1222,6 +1320,114 @@ mod tests {
         assert_eq!(ranges[0].0, 0, "screen row 0 as absolute line");
         assert_eq!((ranges[0].1, ranges[0].2), (0, 9));
         assert_eq!(ranges[0].3, "https://example.com");
+    }
+
+    #[test]
+    fn progress_follows_osc94_reports() {
+        let screen = VtScreen::new_with_options(20, 3, None, None, None);
+        assert_eq!(screen.activity().progress, TerminalProgress::default());
+
+        screen.feed(b"\x1b]9;4;1;40\x07");
+        assert_eq!(
+            screen.activity().progress,
+            TerminalProgress {
+                state: TerminalProgressState::Running,
+                percent: Some(40),
+            }
+        );
+
+        screen.feed(b"\x1b]9;4;4;60\x07");
+        assert_eq!(
+            screen.activity().progress,
+            TerminalProgress {
+                state: TerminalProgressState::Paused,
+                percent: Some(60),
+            }
+        );
+
+        screen.feed(b"\x1b]9;4;1;100\x07");
+        assert_eq!(
+            screen.activity().progress.state,
+            TerminalProgressState::Succeeded,
+            "a full progress bar is the protocol's completion signal"
+        );
+
+        screen.feed(b"\x1b]9;4;2;\x07");
+        assert_eq!(
+            screen.activity().progress.state,
+            TerminalProgressState::Failed
+        );
+
+        screen.feed(b"\x1b]9;4;0;\x07");
+        assert_eq!(screen.activity().progress, TerminalProgress::default());
+    }
+
+    #[test]
+    fn progress_falls_back_to_command_boundaries() {
+        let screen = VtScreen::new_with_options(20, 3, None, None, None);
+        screen.feed(b"\x1b]133;A\x07$ \x1b]133;B\x07build\r\n");
+        assert_eq!(
+            screen.activity().progress.state,
+            TerminalProgressState::Idle,
+            "typing at the prompt is not a running command"
+        );
+
+        screen.feed(b"\x1b]133;C\x07working\r\n");
+        assert_eq!(
+            screen.activity().progress,
+            TerminalProgress {
+                state: TerminalProgressState::Running,
+                percent: None,
+            },
+            "a command with no progress reports is indeterminate"
+        );
+
+        // A command that reports OSC 9;4 keeps ownership of the state...
+        screen.feed(b"\x1b]9;4;1;30\x07");
+        assert_eq!(screen.activity().progress.percent, Some(30));
+        // ...until it finishes, where the exit code wins.
+        screen.feed(b"\x1b]133;D;1\x07");
+        assert_eq!(
+            screen.activity(),
+            TerminalActivity {
+                progress: TerminalProgress {
+                    state: TerminalProgressState::Failed,
+                    percent: None,
+                },
+                last_exit_code: Some(1),
+                bells: 0,
+                notifications: 0,
+            }
+        );
+
+        // The next command starts clean rather than inheriting state.
+        screen.feed(b"\x1b]133;A\x07$ \x1b]133;C\x07\x1b]133;D;0\x07");
+        assert_eq!(
+            screen.activity().progress.state,
+            TerminalProgressState::Succeeded
+        );
+
+        // Without an exit code the command finished with an unknown
+        // outcome; that is idle, not success.
+        screen.feed(b"\x1b]133;C\x07\x1b]133;D\x07");
+        assert_eq!(
+            screen.activity().progress.state,
+            TerminalProgressState::Idle
+        );
+    }
+
+    #[test]
+    fn attention_counters_accumulate() {
+        let screen = VtScreen::new_with_options(20, 3, None, None, None);
+        // The BELs terminating the OSC sequences are not rung.
+        screen.feed(b"\x07\x1b]9;build done\x07\x07");
+        screen.feed(b"\x1b]777;notify;title;body\x07");
+        let activity = screen.activity();
+        assert_eq!(activity.bells, 2);
+        assert_eq!(activity.notifications, 2);
+        // Counters are monotonic: draining events does not reset them.
+        screen.drain_events();
+        assert_eq!(screen.activity().bells, 2);
     }
 
     #[test]

@@ -19,7 +19,8 @@ use alacritty_vt::{
     PtyWriteCallback, ThemeColors, VtScreen,
 };
 pub use alacritty_vt::{
-    CommandBlock, TerminalEvent, TerminalEventBatch, TerminalEventKind, TerminalProgressState,
+    CommandBlock, TerminalActivity, TerminalEvent, TerminalEventBatch, TerminalEventKind,
+    TerminalProgress, TerminalProgressState,
 };
 pub use links::{DetectedLink, LinkSource as TerminalLinkSource};
 pub use paste::{PasteRisk as TerminalPasteRisk, classify_paste, classify_paste_json};
@@ -265,6 +266,50 @@ pub fn terminal_command_blocks_data(id: u64) -> Option<Vec<CommandBlock>> {
         session.vt.feed(&bytes);
     }
     Some(session.vt.command_blocks())
+}
+
+/// Progress, attention and lifecycle state of a session, in the form
+/// hosts render as tab badges.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalStatus {
+    #[serde(flatten)]
+    pub activity: TerminalActivity,
+    pub exited: bool,
+    /// The child's exit code, once it has exited.
+    pub exit_code: Option<i32>,
+}
+
+/// Session status (progress state, bell/notification counters, exit) as
+/// JSON.
+///
+/// This is the resync path for badges: the event stream carries the
+/// same information incrementally, but a host that missed events —
+/// dropped queue, re-attach — reads current truth here instead of
+/// guessing from output text.
+pub fn terminal_status(id: u64) -> String {
+    terminal_status_data(id)
+        .map(|status| serde_json::to_string(&status).unwrap_or_else(|_| "{}".to_string()))
+        .unwrap_or_else(|| "{}".to_string())
+}
+
+/// Structured variant of [`terminal_status`]. `None` when the session
+/// does not exist.
+pub fn terminal_status_data(id: u64) -> Option<TerminalStatus> {
+    let session = session(id)?;
+    let mut session = session.lock().ok()?;
+    // Progress marks arrive with PTY output; flush pending bytes first.
+    let bytes = session.drain_bytes();
+    if !bytes.is_empty() {
+        session.vt.feed(&bytes);
+    }
+    let activity = session.vt.activity();
+    let status = session.poll_child();
+    Some(TerminalStatus {
+        activity,
+        exited: status.is_some(),
+        exit_code: status.flatten(),
+    })
 }
 
 /// Search the complete logical scrollback as JSON.
@@ -598,6 +643,10 @@ struct TerminalSession {
     vt: VtScreen,
     title_state: TerminalTitleState,
     exit_event_sent: bool,
+    /// Cached child status: `try_wait` reaps the child, so the outcome
+    /// is kept here for every later reader. `Some(None)` means exited
+    /// with no readable code.
+    child_status: Option<Option<i32>>,
     search_cancel: Arc<AtomicBool>,
     _reader: thread::JoinHandle<()>,
     _writer: thread::JoinHandle<()>,
@@ -966,6 +1015,7 @@ impl TerminalSession {
             vt,
             title_state,
             exit_event_sent: false,
+            child_status: None,
             search_cancel: Arc::new(AtomicBool::new(false)),
             _reader: reader_thread,
             _writer: writer_thread,
@@ -979,15 +1029,28 @@ impl TerminalSession {
         if !bytes.is_empty() {
             self.vt.feed(&bytes);
         }
-        if !self.exit_event_sent
-            && let Ok(Some(status)) = self.child.try_wait()
+        if let Some(exit_code) = self.poll_child()
+            && !self.exit_event_sent
         {
             self.exit_event_sent = true;
-            self.vt.push_event(TerminalEventKind::Exited {
-                exit_code: Some(status.exit_code() as i32),
-            });
+            self.vt.push_event(TerminalEventKind::Exited { exit_code });
         }
         self.vt.drain_events()
+    }
+
+    /// `Some(code)` once the child has exited, cached across calls.
+    /// A `try_wait` error counts as exited: the child is no longer
+    /// observable, and reporting a live session forever is worse than
+    /// reporting an unknown exit code.
+    fn poll_child(&mut self) -> Option<Option<i32>> {
+        if self.child_status.is_none() {
+            match self.child.try_wait() {
+                Ok(Some(status)) => self.child_status = Some(Some(status.exit_code() as i32)),
+                Ok(None) => {}
+                Err(_) => self.child_status = Some(None),
+            }
+        }
+        self.child_status
     }
 
     fn drain_text(&mut self) -> String {
@@ -1010,10 +1073,7 @@ impl TerminalSession {
     }
 
     fn exited(&mut self) -> bool {
-        self.child
-            .try_wait()
-            .map(|status| status.is_some())
-            .unwrap_or(true)
+        self.poll_child().is_some()
     }
 
     fn resize(&mut self, cols: u16, rows: u16) -> Result<(), String> {
@@ -1991,6 +2051,63 @@ mod tests {
                 .any(|kind| matches!(kind, TerminalEventKind::Exited { exit_code: Some(7) })),
             "exit event surfaced: {events:?}"
         );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn session_status_reports_progress_and_exit() {
+        let id = terminal_create_with_spec(
+            80,
+            24,
+            TerminalSessionSpec {
+                program: Some("/bin/sh".to_string()),
+                args: Some(vec![
+                    "-c".to_string(),
+                    "printf '\\033]9;4;1;70\\a\\a'; sleep 0.1; exit 5".to_string(),
+                ]),
+                ..TerminalSessionSpec::default()
+            },
+        );
+        assert_ne!(id, 0);
+
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let mut running = None;
+        while Instant::now() < deadline {
+            let status = terminal_status_data(id).expect("live session");
+            if status.activity.progress.state == TerminalProgressState::Running {
+                running = Some(status);
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(25));
+        }
+        let running = running.expect("progress report reaches status");
+        assert_eq!(running.activity.progress.percent, Some(70));
+        assert_eq!(running.activity.bells, 1);
+        assert!(!running.exited);
+
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let mut exited = None;
+        while Instant::now() < deadline {
+            let status = terminal_status_data(id).expect("live session");
+            if status.exited {
+                exited = Some(status);
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(25));
+        }
+        let exited = exited.expect("child exit reaches status");
+        assert_eq!(exited.exit_code, Some(5));
+        // The event stream still reports the exit after status observed
+        // it: reading status must not consume the child's status.
+        let events = terminal_events_drain_data(id).expect("live session");
+        assert!(
+            events.events.iter().any(|event| matches!(
+                event.kind,
+                TerminalEventKind::Exited { exit_code: Some(5) }
+            )),
+            "exit event survives a status read: {events:?}"
+        );
+        terminal_close(id);
     }
 
     #[test]
