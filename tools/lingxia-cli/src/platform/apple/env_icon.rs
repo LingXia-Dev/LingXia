@@ -1,6 +1,6 @@
 //! Apple env-version launcher-icon overlay.
 //!
-//! Mirrors the Android `prepare_launcher_icon_overlay` flow: when the active
+//! Mirrors the Android `prepare_res_overlay` flow: when the active
 //! env is developer/preview, build a parallel `Assets.xcassets` under
 //! `<target>/lingxia/<platform>/overlay/<env>/Resources/` whose `AppIcon.appiconset`
 //! has each PNG composited with a small accent badge (filled circle + bitmap

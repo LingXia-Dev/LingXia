@@ -358,7 +358,7 @@ gradle.settingsEvaluated {{ settings ->
         &self,
         project_root: &Path,
         config: &BuildConfig,
-        icon_overlay: Option<&LauncherIconOverlay>,
+        res_overlay: Option<&ResOverlay>,
         sdk_maven_repo: Option<&Path>,
     ) -> Result<PathBuf> {
         let artifact_kind = if config.android_aab { "AAB" } else { "APK" };
@@ -432,24 +432,32 @@ gradle.settingsEvaluated {{ settings ->
                 crate::sdk_cache::sdk_version()
             ));
         }
-        if let Some(overlay) = icon_overlay {
+        if let Some(overlay) = res_overlay {
             command.arg(format!(
                 "-Plingxia.resOverlayDir={}",
                 overlay.res_overlay_dir.to_string_lossy()
             ));
-            // Manifest placeholders need both icon and roundIcon resolved.
-            // For projects without a round icon, fall back to the standard
-            // icon so the placeholder still resolves to something valid.
-            let round_resource = if overlay.has_round_icon {
-                format!("{}_round", overlay.icon_resource_name)
-            } else {
-                overlay.icon_resource_name.clone()
-            };
-            command.arg(format!(
-                "-Plingxia.appIcon=@mipmap/{}",
-                overlay.icon_resource_name
-            ));
-            command.arg(format!("-Plingxia.appRoundIcon=@mipmap/{round_resource}"));
+            if let Some(icons) = &overlay.icons {
+                // Manifest placeholders need both icon and roundIcon resolved.
+                // For projects without a round icon, fall back to the standard
+                // icon so the placeholder still resolves to something valid.
+                let round_resource = if icons.has_round_icon {
+                    format!("{}_round", icons.icon_resource_name)
+                } else {
+                    icons.icon_resource_name.clone()
+                };
+                command.arg(format!(
+                    "-Plingxia.appIcon=@mipmap/{}",
+                    icons.icon_resource_name
+                ));
+                command.arg(format!("-Plingxia.appRoundIcon=@mipmap/{round_resource}"));
+            }
+            if overlay.has_splash {
+                command.arg(format!(
+                    "-Plingxia.splashTheme=@style/{}",
+                    crate::splash::ANDROID_SPLASH_THEME
+                ));
+            }
         }
         let status = command.status().context("Failed to execute gradlew")?;
 
@@ -530,10 +538,10 @@ impl Platform for AndroidPlatform {
             self.do_build_rust_library(&config.project_root, config)?;
         }
 
-        // Stage env-version overlay resources outside the source tree and let
-        // Gradle merge them via sourceSets.main.res.srcDirs. No source-tree
-        // mutation, no Drop-based rollback to fail on SIGKILL.
-        let icon_overlay = prepare_launcher_icon_overlay(&android_root, config)?;
+        // Stage build-time overlay resources (env icons, splash) outside the
+        // source tree and let Gradle merge them via sourceSets.main.res.srcDirs.
+        // No source-tree mutation, no Drop-based rollback to fail on SIGKILL.
+        let res_overlay = prepare_res_overlay(&android_root, config)?;
 
         // External user projects don't have the SDK in their source tree, so
         // fetch the published Maven artifact (verified, cached) and inject it
@@ -553,7 +561,7 @@ impl Platform for AndroidPlatform {
         let apk_path = self.build_gradle(
             &android_root,
             config,
-            icon_overlay.as_ref(),
+            res_overlay.as_ref(),
             sdk_maven_repo.as_deref(),
         )?;
 
@@ -680,35 +688,87 @@ impl Platform for AndroidPlatform {
     }
 }
 
-/// Result of staging launcher-icon overlay resources. The Gradle template
-/// reads both fields:
+/// Result of staging build-time res overlay resources. The Gradle template
+/// reads all of it:
 /// - `res_overlay_dir` is added to `sourceSets.main.res.srcDirs` so AGP picks
-///   up the new (uniquely-named) drawables/mipmaps.
-/// - `icon_resource_name` (e.g. `ic_launcher_lingxia_env`) flows into the
-///   manifest via `manifestPlaceholders`, swapping which icon the launcher
+///   up the new (uniquely-named) resources.
+/// - `icons.icon_resource_name` (e.g. `ic_launcher_lingxia_env`) flows into
+///   the manifest via `manifestPlaceholders`, swapping which icon the launcher
 ///   shows. We deliberately *don't* override the existing `ic_launcher.xml`
 ///   in place — Gradle's resource merger treats duplicate qualified names as
 ///   build errors, not silent overrides.
-struct LauncherIconOverlay {
+/// - `has_splash` swaps the launcher activity's theme to the generated splash
+///   theme through the `lxSplashTheme` manifest placeholder.
+struct ResOverlay {
     res_overlay_dir: PathBuf,
+    icons: Option<LauncherIconNames>,
+    has_splash: bool,
+}
+
+struct LauncherIconNames {
     icon_resource_name: String,
     has_round_icon: bool,
 }
 
-/// Generate the env-version launcher-icon overlay resources to a staging
-/// directory outside the source tree. Returns the overlay descriptor if an
-/// overlay was produced, or `None` when no badge applies (release env, no
-/// adaptive icon to badge, etc.).
+/// Stage the build-time res overlay (env-version launcher icons and/or splash
+/// resources) to a directory outside the source tree. Returns `None` when
+/// nothing applies (release env with no splash configured, etc.).
 ///
 /// Nothing under the user's git tree is modified, so SIGKILL/abort can never
 /// leave the project dirty.
-fn prepare_launcher_icon_overlay(
-    android_root: &Path,
-    config: &BuildConfig,
-) -> Result<Option<LauncherIconOverlay>> {
-    let Some((badge, accent)) = android_env_icon_badge(config.resolved_env.version) else {
+fn prepare_res_overlay(android_root: &Path, config: &BuildConfig) -> Result<Option<ResOverlay>> {
+    let splash_config = config
+        .lingxia_config
+        .as_ref()
+        .and_then(|c| c.splash.as_ref());
+    let badge = android_env_icon_badge(config.resolved_env.version);
+    if splash_config.is_none() && badge.is_none() {
         return Ok(None);
+    }
+
+    // Stage under target/lingxia/android/overlay/<env>/res. Gradle's `clean`
+    // won't touch this, but we wipe per-env on every build so stale resources
+    // never leak.
+    let staging_root = resolve_lingxia_target_dir(&config.project_root)
+        .join("android")
+        .join("overlay")
+        .join(config.resolved_env.version.as_str());
+    let staging_res = staging_root.join("res");
+    if staging_root.exists() {
+        fs::remove_dir_all(&staging_root)
+            .with_context(|| format!("Failed to clean {}", staging_root.display()))?;
+    }
+
+    let icons = match badge {
+        Some((badge, accent)) => stage_env_icon_overlay(android_root, &staging_res, badge, accent)?,
+        None => None,
     };
+
+    let mut has_splash = false;
+    if let Some(splash_config) = splash_config {
+        let resolved = crate::splash::ResolvedSplash::resolve(&config.project_root, splash_config)?;
+        crate::splash::stage_android_res(&resolved, &staging_res)?;
+        has_splash = true;
+    }
+
+    if icons.is_none() && !has_splash {
+        return Ok(None);
+    }
+    Ok(Some(ResOverlay {
+        res_overlay_dir: staging_res,
+        icons,
+        has_splash,
+    }))
+}
+
+/// Write the badged env-version launcher icons into the staging res dir.
+/// Returns `None` when the project has no badgeable adaptive icon.
+fn stage_env_icon_overlay(
+    android_root: &Path,
+    staging_res: &Path,
+    badge: &str,
+    accent: &str,
+) -> Result<Option<LauncherIconNames>> {
     let res_dir = android_root.join("app/src/main/res");
     let icon_path = res_dir.join("mipmap-anydpi-v26/ic_launcher.xml");
     let round_icon_path = res_dir.join("mipmap-anydpi-v26/ic_launcher_round.xml");
@@ -724,19 +784,6 @@ fn prepare_launcher_icon_overlay(
         .unwrap_or_else(|| "@color/ic_launcher_background".to_string());
     if !mipmap_resource_exists(&res_dir, &foreground) {
         return Ok(None);
-    }
-
-    // Stage under target/lingxia/android/overlay/<env>/res. Gradle's `clean`
-    // won't touch this, but we wipe per-env on every build so stale resources
-    // never leak.
-    let staging_root = resolve_lingxia_target_dir(&config.project_root)
-        .join("android")
-        .join("overlay")
-        .join(config.resolved_env.version.as_str());
-    let staging_res = staging_root.join("res");
-    if staging_root.exists() {
-        fs::remove_dir_all(&staging_root)
-            .with_context(|| format!("Failed to clean {}", staging_root.display()))?;
     }
 
     let icon_resource_name = "ic_launcher_lingxia_env".to_string();
@@ -758,8 +805,7 @@ fn prepare_launcher_icon_overlay(
         android_env_icon_foreground_xml(&foreground, accent, badge).as_bytes(),
     )?;
 
-    Ok(Some(LauncherIconOverlay {
-        res_overlay_dir: staging_res,
+    Ok(Some(LauncherIconNames {
         icon_resource_name,
         has_round_icon,
     }))
