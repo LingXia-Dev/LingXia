@@ -140,6 +140,8 @@ public enum Lingxia {
         try hostRuntime.start()
         return shell
         #else
+        // Cover the cold start before the runtime and the first WebView exist.
+        LingXiaSplashOverlay.attachIfNeeded()
         return try quickStart(configuration: LxAppShellConfiguration())
         #endif
     }

@@ -1,13 +1,20 @@
 import Foundation
+import OSLog
 
 #if os(iOS)
 import UIKit
 
-/// Runtime half of the launch screen: covers the window from the home app's
+private let splashLog = OSLog(subsystem: "LingXia", category: "Splash")
+
+/// Runtime half of the launch screen: covers the screen from the home app's
 /// cold start until its page first renders, showing the full-screen splash
 /// image (aspect-fill) over the background color the static `UILaunchScreen`
 /// used. Dismissed by the runtime's onHomeFirstReady signal, with a timeout
 /// fallback so a broken page never leaves it stuck.
+///
+/// It lives in its own window above the app's: the host swaps the app
+/// window's `rootViewController` (and may present the lxapp manager modally)
+/// right after startup, either of which would bury a plain subview overlay.
 ///
 /// Assets are looked up by the names the CLI generates (`LingXiaSplash` image,
 /// `LingXiaSplashBackground` color); when the color is absent the overlay is
@@ -20,34 +27,66 @@ enum LingXiaSplashOverlay {
     private static let fadeSeconds: TimeInterval = 0.25
     private static let cacheSubpath = "lingxia/splash"
 
-    private static var overlay: UIView?
+    private static var splashWindow: UIWindow?
     private static var shownThisProcess = false
     private static var homeReadySeen = false
+    private static var shownAt: CFAbsoluteTime = 0
 
-    /// Attach over `window` on the home app's cold start when splash assets exist.
+    /// Cover the screen at host startup, resolving the active scene's window.
+    /// Idempotent — safe to call from every plausible cold-start entry point.
+    static func attachIfNeeded() {
+        guard !shownThisProcess, !homeReadySeen else { return }
+        let window = UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .first?
+            .windows
+            .first
+        guard let window else {
+            os_log("splash skipped: no window yet", log: splashLog, type: .info)
+            return
+        }
+        attachIfNeeded(to: window)
+    }
+
+    /// Cover the screen on the home app's cold start when splash assets exist.
     static func attachIfNeeded(to window: UIWindow) {
         guard !shownThisProcess, !homeReadySeen else { return }
-        guard let background = resolveBackground(for: window.traitCollection) else { return }
+        guard let scene = window.windowScene else {
+            os_log("splash skipped: no window scene", log: splashLog, type: .info)
+            return
+        }
+        guard let background = resolveBackground(for: window.traitCollection) else {
+            os_log("splash skipped: no background configured", log: splashLog, type: .info)
+            return
+        }
 
-        let view = UIView(frame: window.bounds)
-        view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-        view.backgroundColor = background
-        // Swallow touches so nothing underneath is tappable while visible.
-        view.isUserInteractionEnabled = true
-
-        if let splash = resolveImage(for: window.traitCollection) {
-            let imageView = UIImageView(image: splash)
-            imageView.frame = view.bounds
+        let host = UIViewController()
+        host.view.backgroundColor = background
+        let image = resolveImage(for: window.traitCollection)
+        if let image {
+            let imageView = UIImageView(image: image)
+            imageView.frame = host.view.bounds
             imageView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
             imageView.contentMode = .scaleAspectFill
             imageView.clipsToBounds = true
-            view.addSubview(imageView)
+            host.view.addSubview(imageView)
         }
 
-        window.addSubview(view)
-        overlay = view
+        let splash = UIWindow(windowScene: scene)
+        splash.windowLevel = .normal + 100
+        splash.rootViewController = host
+        splash.isHidden = false
+
+        splashWindow = splash
         shownThisProcess = true
+        shownAt = CFAbsoluteTimeGetCurrent()
+        os_log("splash shown (image: %{public}@)", log: splashLog, type: .info,
+               image == nil ? "none" : "yes")
+
         DispatchQueue.main.asyncAfter(deadline: .now() + timeoutSeconds) {
+            if splashWindow != nil {
+                os_log("splash dismissed by timeout", log: splashLog, type: .error)
+            }
             dismiss()
         }
     }
@@ -59,12 +98,14 @@ enum LingXiaSplashOverlay {
     }
 
     private static func dismiss() {
-        guard let view = overlay else { return }
-        overlay = nil
+        guard let splash = splashWindow else { return }
+        splashWindow = nil
+        os_log("splash dismissed after %{public}.2fs", log: splashLog, type: .info,
+               CFAbsoluteTimeGetCurrent() - shownAt)
         UIView.animate(
             withDuration: fadeSeconds,
-            animations: { view.alpha = 0 },
-            completion: { _ in view.removeFromSuperview() }
+            animations: { splash.alpha = 0 },
+            completion: { _ in splash.isHidden = true }
         )
     }
 
