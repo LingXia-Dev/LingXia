@@ -129,6 +129,43 @@ mod bridge {
         pub webview_ptr: usize,
     }
 
+    // One terminal frame, addressed by pointer so the render path copies
+    // no per-cell data and builds no JSON. The buffers belong to the
+    // session and stay valid until the next `terminalSessionFrame` call
+    // for it, or until it closes. `cells` is `cellsLen` records of
+    // `FrameCell` layout (three `UInt32` colors, a `UInt32` text offset,
+    // then four `UInt8`s: text length, attrs, underline style, columns);
+    // `text` is the UTF-8 cluster blob those offsets index; `damage` is
+    // `damageLen` `(row, startCol, endCol)` `UInt16` triples.
+    #[swift_bridge(swift_repr = "struct")]
+    pub struct TerminalFrameHandle {
+        pub changed: bool,
+        pub full_damage: bool,
+        pub generation: u64,
+        pub cols: u16,
+        pub rows: u16,
+        pub cells: usize,
+        pub cells_len: usize,
+        pub text: usize,
+        pub text_len: usize,
+        pub damage: usize,
+        pub damage_len: usize,
+        pub default_fg: u32,
+        pub default_bg: u32,
+        pub cursor_col: u16,
+        pub cursor_row: u16,
+        pub cursor_visible: bool,
+        // 0 block, 1 bar, 2 underline, 3 hollow block.
+        pub cursor_style: u8,
+        pub application_cursor: bool,
+        pub bracketed_paste: bool,
+        pub alternate_screen: bool,
+        pub scrollbar_total: u64,
+        pub scrollbar_offset: u64,
+        pub scrollbar_len: u64,
+        pub exited: bool,
+    }
+
     #[swift_bridge(swift_repr = "struct")]
     pub struct LingxiaInitResult {
         pub ok: bool,
@@ -559,6 +596,12 @@ mod bridge {
 
         #[swift_bridge(swift_name = "terminalSessionSnapshot")]
         fn terminal_session_snapshot(id: u64) -> String;
+
+        #[swift_bridge(swift_name = "terminalSessionFrame")]
+        fn terminal_session_frame(id: u64, since_generation: u64) -> TerminalFrameHandle;
+
+        #[swift_bridge(swift_name = "terminalSessionTitleState")]
+        fn terminal_session_title_state(id: u64) -> String;
 
         #[swift_bridge(swift_name = "terminalSessionExited")]
         fn terminal_session_exited(id: u64) -> bool;
@@ -2097,6 +2140,85 @@ pub fn terminal_session_read(id: u64) -> String {
     {
         let _ = id;
         String::new()
+    }
+}
+
+pub fn terminal_session_frame(id: u64, since_generation: u64) -> bridge::TerminalFrameHandle {
+    #[cfg(feature = "terminal-runtime")]
+    {
+        if let Some(view) = crate::terminal::terminal_frame_view(id, since_generation) {
+            return bridge::TerminalFrameHandle {
+                changed: view.changed,
+                full_damage: view.full_damage,
+                generation: view.generation,
+                cols: view.cols,
+                rows: view.rows,
+                cells: view.cells as usize,
+                cells_len: view.cells_len,
+                text: view.text as usize,
+                text_len: view.text_len,
+                damage: view.damage as usize,
+                damage_len: view.damage_len,
+                default_fg: view.default_fg,
+                default_bg: view.default_bg,
+                cursor_col: view.cursor_col,
+                cursor_row: view.cursor_row,
+                cursor_visible: view.cursor_visible,
+                cursor_style: view.cursor_style,
+                application_cursor: view.application_cursor,
+                bracketed_paste: view.bracketed_paste,
+                alternate_screen: view.alternate_screen,
+                scrollbar_total: view.scrollbar_total,
+                scrollbar_offset: view.scrollbar_offset,
+                scrollbar_len: view.scrollbar_len,
+                exited: view.exited,
+            };
+        }
+    }
+
+    #[cfg(not(feature = "terminal-runtime"))]
+    let _ = since_generation;
+    // A closed or unknown session: nothing to draw, and `exited` tells
+    // the pane to tear down.
+    let _ = id;
+    bridge::TerminalFrameHandle {
+        changed: false,
+        full_damage: false,
+        generation: 0,
+        cols: 0,
+        rows: 0,
+        cells: 0,
+        cells_len: 0,
+        text: 0,
+        text_len: 0,
+        damage: 0,
+        damage_len: 0,
+        default_fg: 0,
+        default_bg: 0,
+        cursor_col: 0,
+        cursor_row: 0,
+        cursor_visible: false,
+        cursor_style: 0,
+        application_cursor: false,
+        bracketed_paste: false,
+        alternate_screen: false,
+        scrollbar_total: 0,
+        scrollbar_offset: 0,
+        scrollbar_len: 0,
+        exited: true,
+    }
+}
+
+pub fn terminal_session_title_state(id: u64) -> String {
+    #[cfg(feature = "terminal-runtime")]
+    {
+        return crate::terminal::terminal_title_state_json(id);
+    }
+
+    #[cfg(not(feature = "terminal-runtime"))]
+    {
+        let _ = id;
+        "{}".to_string()
     }
 }
 

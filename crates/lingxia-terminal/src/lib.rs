@@ -295,6 +295,171 @@ pub fn terminal_frame_data(id: u64, since_generation: u64) -> Option<TerminalFra
     Some(session.vt.frame(since_generation))
 }
 
+/// A session's retained frame, described by raw pointers for hosts that
+/// read it across an FFI boundary.
+///
+/// The buffers belong to the session and stay valid until the next
+/// [`terminal_frame_view`] call for the same session or until it closes,
+/// whichever comes first — copy what you keep before either happens.
+/// Titles are deliberately absent: computing them costs process lookups,
+/// which have no place on a render-rate poll (see
+/// [`terminal_title_state_json`]).
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct TerminalFrameView {
+    /// False when nothing changed since `since_generation`; every other
+    /// field is then stale and the renderer should keep its last frame.
+    pub changed: bool,
+    pub full_damage: bool,
+    pub generation: u64,
+    pub cols: u16,
+    pub rows: u16,
+    pub cells: *const FrameCell,
+    pub cells_len: usize,
+    /// UTF-8 cluster blob addressed by `FrameCell::text_offset/len`.
+    pub text: *const u8,
+    pub text_len: usize,
+    pub damage: *const RowDamage,
+    pub damage_len: usize,
+    pub default_fg: u32,
+    pub default_bg: u32,
+    pub cursor_col: u16,
+    pub cursor_row: u16,
+    pub cursor_visible: bool,
+    /// 0 block, 1 bar, 2 underline, 3 hollow block.
+    pub cursor_style: u8,
+    pub application_cursor: bool,
+    pub bracketed_paste: bool,
+    pub alternate_screen: bool,
+    pub scrollbar_total: u64,
+    pub scrollbar_offset: u64,
+    pub scrollbar_len: u64,
+    pub exited: bool,
+}
+
+impl TerminalFrameView {
+    fn unchanged(generation: u64, exited: bool) -> Self {
+        Self {
+            changed: false,
+            full_damage: false,
+            generation,
+            cols: 0,
+            rows: 0,
+            cells: std::ptr::null(),
+            cells_len: 0,
+            text: std::ptr::null(),
+            text_len: 0,
+            damage: std::ptr::null(),
+            damage_len: 0,
+            default_fg: 0,
+            default_bg: 0,
+            cursor_col: 0,
+            cursor_row: 0,
+            cursor_visible: false,
+            cursor_style: 0,
+            application_cursor: false,
+            bracketed_paste: false,
+            alternate_screen: false,
+            scrollbar_total: 0,
+            scrollbar_offset: 0,
+            scrollbar_len: 0,
+            // A shell that exits without writing leaves the grid
+            // untouched, so this has to be answered even when there is
+            // no new frame — otherwise the pane never tears down.
+            exited,
+        }
+    }
+}
+
+/// Produce the next frame and retain it, returning pointers into its
+/// buffers. This is [`terminal_frame_data`] for FFI hosts: nothing is
+/// copied, serialized, or allocated per cell.
+pub fn terminal_frame_view(id: u64, since_generation: u64) -> Option<TerminalFrameView> {
+    let session = session(id)?;
+    let mut session = session.lock().ok()?;
+    let bytes = session.drain_bytes();
+    if !bytes.is_empty() {
+        session.vt.feed(&bytes);
+    }
+    match session.vt.frame(since_generation) {
+        TerminalFrameUpdate::Unchanged { generation } => Some(TerminalFrameView::unchanged(
+            generation,
+            session.poll_child().is_some(),
+        )),
+        TerminalFrameUpdate::Changed(frame) => {
+            let scrollbar = session.vt.scrollbar().unwrap_or_default();
+            let view = TerminalFrameView {
+                changed: true,
+                full_damage: frame.full_damage,
+                generation: frame.generation,
+                cols: frame.cols,
+                rows: frame.rows,
+                cells: frame.cells.as_ptr(),
+                cells_len: frame.cells.len(),
+                text: frame.text.as_ptr(),
+                text_len: frame.text.len(),
+                damage: frame.damage.as_ptr(),
+                damage_len: frame.damage.len(),
+                default_fg: frame.default_fg,
+                default_bg: frame.default_bg,
+                cursor_col: frame.cursor.col,
+                cursor_row: frame.cursor.row,
+                cursor_visible: frame.cursor.visible,
+                cursor_style: match frame.cursor.style {
+                    CursorVisualStyle::Block => 0,
+                    CursorVisualStyle::Bar => 1,
+                    CursorVisualStyle::Underline => 2,
+                    CursorVisualStyle::BlockHollow => 3,
+                },
+                application_cursor: session.vt.is_decckm(),
+                bracketed_paste: session.vt.is_bracketed_paste(),
+                alternate_screen: session.vt.is_alternate_screen(),
+                scrollbar_total: scrollbar.total,
+                scrollbar_offset: scrollbar.offset,
+                scrollbar_len: scrollbar.len,
+                exited: session.poll_child().is_some(),
+            };
+            // Retain the buffers the pointers address; the previous
+            // frame is dropped here, which is what bounds their life.
+            session.last_frame = Some(frame);
+            Some(view)
+        }
+    }
+}
+
+/// Process/window title state as JSON, for hosts polling it at a lower
+/// rate than frames: resolving it walks the foreground process, so it
+/// must not sit on the render path.
+pub fn terminal_title_state_json(id: u64) -> String {
+    let Some(session) = session(id) else {
+        return "{}".to_string();
+    };
+    let Ok(mut session) = session.lock() else {
+        return "{}".to_string();
+    };
+    let foreground_pid = session.foreground_process_pid();
+    let alternate_screen = session.vt.is_alternate_screen();
+    let process_title = session.title_state.title(foreground_pid, alternate_screen);
+    let state = TerminalTitleStateJson {
+        process_title,
+        title: session
+            .vt
+            .osc_title()
+            .map(|title| title.trim().to_string())
+            .filter(|title| !title.is_empty()),
+        title_generation: session.title_state.generation(),
+    };
+    serde_json::to_string(&state).unwrap_or_else(|_| "{}".to_string())
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct TerminalTitleStateJson {
+    process_title: String,
+    title: Option<String>,
+    title_generation: u64,
+}
+
 /// Set the theme new sessions inherit when their spec carries none.
 ///
 /// Existing sessions keep their theme; use [`terminal_set_theme_all`]
@@ -794,6 +959,9 @@ struct TerminalSession {
     /// is kept here for every later reader. `Some(None)` means exited
     /// with no readable code.
     child_status: Option<Option<i32>>,
+    /// Frame retained so a host can read its buffers by pointer until
+    /// its next frame call.
+    last_frame: Option<Box<TerminalFrame>>,
     search_cancel: Arc<AtomicBool>,
     _reader: thread::JoinHandle<()>,
     _writer: thread::JoinHandle<()>,
@@ -1203,6 +1371,7 @@ impl TerminalSession {
             title_state,
             exit_event_sent: false,
             child_status: None,
+            last_frame: None,
             search_cancel: Arc::new(AtomicBool::new(false)),
             _reader: reader_thread,
             _writer: writer_thread,
@@ -2214,6 +2383,72 @@ mod tests {
                 .any(|kind| matches!(kind, TerminalEventKind::Exited { exit_code: Some(7) })),
             "exit event surfaced: {events:?}"
         );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn frame_view_exposes_retained_buffers() {
+        let id = terminal_create_with_spec(
+            20,
+            4,
+            TerminalSessionSpec {
+                program: Some("/bin/sh".to_string()),
+                args: Some(vec![
+                    "-c".to_string(),
+                    "printf 'frame-view'; sleep 30".to_string(),
+                ]),
+                ..TerminalSessionSpec::default()
+            },
+        );
+        assert_ne!(id, 0);
+
+        // Read the buffers exactly as a host would: through the pointers,
+        // before the next frame call invalidates them.
+        let read = |view: &TerminalFrameView| -> String {
+            let cells = unsafe { std::slice::from_raw_parts(view.cells, view.cells_len) };
+            let text = unsafe {
+                std::str::from_utf8_unchecked(std::slice::from_raw_parts(view.text, view.text_len))
+            };
+            cells[..view.cols as usize]
+                .iter()
+                .map(|cell| {
+                    let start = cell.text_offset as usize;
+                    &text[start..start + cell.text_len as usize]
+                })
+                .collect()
+        };
+
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let mut generation = 0;
+        let mut row = String::new();
+        while Instant::now() < deadline && !row.contains("frame-view") {
+            let view = terminal_frame_view(id, generation).expect("live session");
+            if view.changed {
+                generation = view.generation;
+                assert_eq!(view.cols, 20);
+                assert_eq!(view.cells_len, 20 * 4);
+                row = read(&view);
+            }
+            std::thread::sleep(Duration::from_millis(25));
+        }
+        assert!(row.starts_with("frame-view"), "row from pointers: {row:?}");
+
+        // A quiet poll reports no change and hands out no buffers.
+        let quiet = terminal_frame_view(id, generation).expect("live session");
+        assert!(!quiet.changed);
+        assert!(quiet.cells.is_null());
+        assert_eq!(quiet.generation, generation);
+        assert!(
+            !quiet.exited,
+            "a quiet poll still answers the lifecycle question"
+        );
+
+        // Titles stay off the frame path but remain reachable.
+        let titles = terminal_title_state_json(id);
+        assert!(titles.contains("processTitle"), "titles: {titles}");
+
+        terminal_close(id);
+        assert!(terminal_frame_view(id, generation).is_none());
     }
 
     #[test]

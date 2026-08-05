@@ -866,6 +866,12 @@ impl VtScreen {
         self.inner.lock().blocks.blocks()
     }
 
+    /// The title the application set via OSC 0/2, without building a
+    /// snapshot.
+    pub fn osc_title(&self) -> Option<String> {
+        self.inner.lock().listener.title.lock().clone()
+    }
+
     /// The last working directory reported via OSC 7.
     pub fn cwd(&self) -> Option<std::path::PathBuf> {
         self.inner.lock().cwd.clone()
