@@ -126,7 +126,8 @@ enum LingXiaTerminalFont {
         return withCascade(fallback)
     }
 
-    private static func withCascade(_ font: NSFont) -> NSFont {
+    /// Attach the symbol/emoji fallback chain to a face.
+    static func withCascade(_ font: NSFont) -> NSFont {
         let cascade = cascadeNames.compactMap { NSFontDescriptor(name: $0, size: font.pointSize) }
         guard !cascade.isEmpty else { return font }
         let descriptor = font.fontDescriptor.addingAttributes([

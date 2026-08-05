@@ -144,7 +144,7 @@ final class LingXiaTerminalPaneView: NSView, NSDraggingSource {
     private let dragHandle = LingXiaTerminalPaneDragHandleView()
     private let dropOverlay = LingXiaTerminalPaneDropOverlay()
     private let session: LingXiaPTYTerminalSession
-    private let font = LingXiaTerminalFont.regular()
+    private var font = LingXiaTerminalFont.regular()
     private var dropDirection: LingXiaTerminalSplitDirection?
 
     init(initialDirectory: String? = nil) {
@@ -344,7 +344,13 @@ final class LingXiaTerminalPaneView: NSView, NSDraggingSource {
 
     private func setupTerminalView() {
         terminalView.translatesAutoresizingMaskIntoConstraints = false
+        // Configuration decides the face and whether ligatures shape; the
+        // engine has already applied the theme by the time this returns.
+        let settings = LingXiaTerminalSettings.load()
+        font = settings.makeFont()
         terminalView.font = font
+        terminalView.lineHeightScale = settings.font.lineHeight
+        terminalView.ligatures = settings.font.ligatures
     }
 
     func showContextMenu(fromWindowEvent event: NSEvent) {
@@ -548,6 +554,14 @@ private final class LingXiaTerminalCanvasView: NSView, @MainActor NSTextInputCli
     var zoomed = false
 
     var font = LingXiaTerminalFont.regular() {
+        didSet {
+            recalculateGridSize()
+            setNeedsRender()
+        }
+    }
+
+    /// Multiplier on the font's natural line height, from configuration.
+    var lineHeightScale: CGFloat = 1 {
         didSet {
             recalculateGridSize()
             setNeedsRender()
@@ -1182,7 +1196,7 @@ private final class LingXiaTerminalCanvasView: NSView, @MainActor NSTextInputCli
             // CoreText keeps the font's fractional advance when drawing a run.
             // Rounding the grid width accumulates visible drift on long boxes.
             width: max(1, measured.width),
-            height: max(1, pixelCeil(font.ascender - font.descender + max(2, font.leading)))
+            height: max(1, pixelCeil((font.ascender - font.descender + max(2, font.leading)) * lineHeightScale))
         )
         let horizontalInset: CGFloat = 0
         let verticalInset: CGFloat = 4

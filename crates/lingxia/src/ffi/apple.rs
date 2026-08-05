@@ -603,6 +603,9 @@ mod bridge {
         #[swift_bridge(swift_name = "terminalSessionTitleState")]
         fn terminal_session_title_state(id: u64) -> String;
 
+        #[swift_bridge(swift_name = "terminalLoadConfig")]
+        fn terminal_load_config(system_is_dark: bool) -> String;
+
         #[swift_bridge(swift_name = "terminalSessionExited")]
         fn terminal_session_exited(id: u64) -> bool;
 
@@ -2206,6 +2209,33 @@ pub fn terminal_session_frame(id: u64, since_generation: u64) -> bridge::Termina
         scrollbar_offset: 0,
         scrollbar_len: 0,
         exited: true,
+    }
+}
+
+/// Load the terminal configuration and apply what the engine owns (the
+/// theme). Returns the resolved configuration so the host can apply the rest —
+/// font selection needs to know what is installed, which only the platform
+/// does.
+pub fn terminal_load_config(system_is_dark: bool) -> String {
+    #[cfg(feature = "terminal-runtime")]
+    {
+        let Ok(data_dir) = crate::app::state_dir().and_then(|dir| {
+            dir.parent()
+                .map(std::path::Path::to_path_buf)
+                .ok_or_else(|| crate::Error::internal("state dir has no parent"))
+        }) else {
+            return "{}".to_string();
+        };
+        // Product defaults from `lingxia.yaml` are not wired yet; the
+        // framework defaults stand in until they are.
+        let config = crate::terminal::load_config(data_dir, "{}", system_is_dark);
+        return serde_json::to_string(&config).unwrap_or_else(|_| "{}".to_string());
+    }
+
+    #[cfg(not(feature = "terminal-runtime"))]
+    {
+        let _ = system_is_dark;
+        "{}".to_string()
     }
 }
 

@@ -3102,6 +3102,7 @@ dependencies = [
  "lingxia-shell",
  "lingxia-surface",
  "lingxia-terminal",
+ "lingxia-terminal-config",
  "lingxia-transfer",
  "lingxia-update",
  "lingxia-webview",
