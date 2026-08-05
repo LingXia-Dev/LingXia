@@ -69,6 +69,12 @@ enum LingXiaSplashOverlay {
             host.view.addSubview(imageView)
         }
 
+        // Paint the app's own window too. Anything that shows through before
+        // or behind the cover — the host's first SwiftUI frame, the gap while
+        // the lxapp manager is being presented — is then the brand color
+        // instead of the system default white.
+        window.backgroundColor = background
+
         let splash = UIWindow(windowScene: scene)
         splash.windowLevel = .normal + 100
         splash.rootViewController = host

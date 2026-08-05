@@ -389,6 +389,18 @@ impl Platform for IosPlatform {
                 "Warning:".yellow(),
                 err
             );
+            // Without a compiled catalog the app icon is missing and
+            // UILaunchScreen's color cannot resolve, so iOS paints the launch
+            // frame white. Say so: the build still "succeeds", and a silent
+            // white first frame is exactly what splash exists to prevent.
+            if splash_config.is_some() {
+                eprintln!(
+                    "  {} No Assets.car: the launch frame will be white, not the configured\n     \
+                     splash background. `actool` needs the iOS platform installed —\n     \
+                     run `xcodebuild -downloadPlatform iOS` to restore it.",
+                    "Warning:".yellow()
+                );
+            }
         }
         if let Err(err) = apple::assets::merge_assetcatalog_plist_with_platform(
             &app_path,
