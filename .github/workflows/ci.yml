@@ -844,6 +844,31 @@ jobs:
         shell: bash
         run: ../../target/debug/lingxia${{ matrix.exe }} dev stop || true
 
+      # A crashed host exits the dev session silently (the jsonl just stops);
+      # the runner's crash report is the only stack we get. ReportCrash writes
+      # the .ips asynchronously from the corpse, so give it a moment before
+      # collecting. Copy every recent report regardless of process name (the
+      # VM is fresh, so any report is suspicious) and keep ReportCrash's own
+      # unified-log trail so a missing report is itself diagnosable.
+      - name: Collect macOS crash reports
+        if: always() && runner.os == 'macOS'
+        working-directory: examples/lingxia-showcase
+        shell: bash
+        run: |
+          mkdir -p .lingxia/crash-reports
+          sleep 45
+          find "$HOME/Library/Logs/DiagnosticReports" /Library/Logs/DiagnosticReports \
+            -name '*.ips' -mmin -90 \
+            -exec cp {} .lingxia/crash-reports/ \; 2>/dev/null || true
+          ls -la "$HOME/Library/Logs/DiagnosticReports" \
+            > .lingxia/crash-reports/diagnostic-reports-ls.txt 2>&1 || true
+          log show --last 30m --style compact \
+            --predicate 'process == "ReportCrash"' \
+            > .lingxia/crash-reports/reportcrash.log 2>&1 || true
+          log show --last 15m --style compact \
+            --predicate 'eventMessage CONTAINS[c] "LingXiaDemo"' \
+            > .lingxia/crash-reports/lingxiademo-unified.log 2>&1 || true
+
       - name: Upload automation diagnostics
         if: always()
         uses: actions/upload-artifact@v4
@@ -853,6 +878,7 @@ jobs:
             examples/lingxia-showcase/.lingxia/dev/**
             examples/lingxia-showcase/.lingxia/background/**
             examples/lingxia-showcase/.lingxia/logs/**
+            examples/lingxia-showcase/.lingxia/crash-reports/**
             examples/lingxia-showcase/lxapp/test-results/**
           if-no-files-found: warn
 

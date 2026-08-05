@@ -57,6 +57,7 @@ public enum Lingxia {
     @MainActor
     @discardableResult
     public static func initializeRuntime() throws -> LxAppRuntimeInfo {
+        CrashBacktrace.install()
         do {
             return try LxAppRuntime.shared.initialize()
         } catch LxAppRuntimeError.alreadyInitialized {

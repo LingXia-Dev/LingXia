@@ -796,7 +796,18 @@ fn wait_for_child_or_interrupt(
             println!();
             println!("{}", format!("{} exited.", label).yellow().bold());
             if !status.success() {
-                return Err(anyhow!("{} exited with non-zero status", label));
+                #[cfg(unix)]
+                {
+                    use std::os::unix::process::ExitStatusExt;
+                    if let Some(signal) = status.signal() {
+                        return Err(anyhow!("{} terminated by signal {}", label, signal));
+                    }
+                }
+                return Err(anyhow!(
+                    "{} exited with non-zero status {:?}",
+                    label,
+                    status.code()
+                ));
             }
             return Ok(());
         }
