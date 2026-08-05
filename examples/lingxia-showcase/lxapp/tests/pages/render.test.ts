@@ -16,7 +16,7 @@ async function waitForCurrentPageReady(
   app: LxAppDriver,
   page: string,
 ): Promise<PageInfo> {
-  const deadline = Date.now() + 10_000;
+  const deadline = Date.now() + 30_000;
   let current = await app.nav.current();
   while (Date.now() < deadline) {
     if (current.name === page && current.ready) return current;
@@ -34,7 +34,7 @@ async function waitForRenderedFeature(
   expectedTitle: string,
   expectedText: string | readonly string[],
 ): Promise<DocumentState> {
-  const deadline = Date.now() + 10_000;
+  const deadline = Date.now() + 30_000;
   const expectedTexts = typeof expectedText === 'string' ? [expectedText] : expectedText;
   let lastState: DocumentState | null = null;
   while (Date.now() < deadline) {

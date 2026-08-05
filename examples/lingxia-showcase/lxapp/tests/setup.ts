@@ -1,6 +1,9 @@
 export {};
 
-const deadline = Date.now() + 30_000;
+// The first WebView creation can stall well past 30s on a loaded shared CI
+// runner (run 30960425260 hung ~40s in WebView2 startup on Windows); a host
+// that never becomes ready still fails at the deadline.
+const deadline = Date.now() + 90_000;
 let lastError: unknown = null;
 let ready = false;
 

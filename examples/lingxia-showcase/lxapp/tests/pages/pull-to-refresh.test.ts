@@ -19,7 +19,7 @@ async function waitForRefreshState(
   app: LxAppDriver,
   predicate: (state: RefreshState) => boolean,
 ): Promise<RefreshState> {
-  const deadline = Date.now() + 10_000;
+  const deadline = Date.now() + 30_000;
   let state = await refreshState(app);
   while (Date.now() < deadline) {
     if (predicate(state)) return state;
@@ -30,7 +30,7 @@ async function waitForRefreshState(
 }
 
 async function waitForStatus(app: LxAppDriver, expected: string): Promise<string> {
-  const deadline = Date.now() + 10_000;
+  const deadline = Date.now() + 30_000;
   let text = '';
   while (Date.now() < deadline) {
     const status = await app.page.query({

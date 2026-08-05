@@ -3,7 +3,7 @@ import type { LxAppDriver } from 'lingxia-types';
 import { waitForElementAttribute } from '../helpers/page.js';
 
 async function waitForTodo(app: LxAppDriver, text: string, present: boolean): Promise<number> {
-  const deadline = Date.now() + 10_000;
+  const deadline = Date.now() + 30_000;
   while (Date.now() < deadline) {
     const labels = await app.page.query({
       page: 'todo',
@@ -23,7 +23,7 @@ async function waitForStoredTodo(
   text: string,
   present: boolean,
 ): Promise<void> {
-  const deadline = Date.now() + 10_000;
+  const deadline = Date.now() + 30_000;
   while (Date.now() < deadline) {
     const stored = await app.eval({
       script: `
@@ -42,7 +42,7 @@ async function waitForStoredCompleted(
   text: string,
   completed: boolean,
 ): Promise<void> {
-  const deadline = Date.now() + 10_000;
+  const deadline = Date.now() + 30_000;
   while (Date.now() < deadline) {
     const stored = await app.eval({
       script: `

@@ -18,7 +18,7 @@ test('greets through real page input and the Logic bridge', async () => {
   await waitForElementEnabled(app, 'home', '[data-testid="home-greet"]');
   await app.page.click({ page: 'home', css: '[data-testid="home-greet"]' });
 
-  const deadline = Date.now() + 10_000;
+  const deadline = Date.now() + 30_000;
   while (Date.now() < deadline) {
     const greeting = await app.page.query({
       page: 'home',
