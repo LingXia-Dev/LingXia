@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="2048" viewBox="0 0 1024 2048">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0.35" y2="1">
+      <stop offset="0" stop-color="#FAFAF7"/>
+      <stop offset="0.55" stop-color="#F2F7F4"/>
+      <stop offset="1" stop-color="#E4F4EC"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.42" r="0.55">
+      <stop offset="0" stop-color="#14CF95" stop-opacity="0.16"/>
+      <stop offset="1" stop-color="#14CF95" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="1024" height="2048" fill="url(#bg)"/>
+  <rect width="1024" height="2048" fill="url(#glow)"/>
+
+  <!-- Brand mark, centered in the crop-safe zone -->
+  <g transform="translate(512 820) scale(4.5) translate(-50 -50)">
+    <path d="M 28.1 44 L 28.1 57.4 Q 28.1 67.6 38.3 67.6 L 61.7 67.6 Q 71.9 67.6 71.9 57.4 L 71.9 44"
+          fill="none" stroke="#1B1F26" stroke-width="9.4" stroke-linecap="round"/>
+    <circle cx="50" cy="41.5" r="10" fill="#14CF95"/>
+  </g>
+
+  <text x="512" y="1150" text-anchor="middle"
+        font-family="PingFang SC, -apple-system, Helvetica Neue, sans-serif"
+        font-size="92" font-weight="600" letter-spacing="6" fill="#1B1F26">LingXia</text>
+
+  <text x="512" y="1230" text-anchor="middle"
+        font-family="PingFang SC, -apple-system, Helvetica Neue, sans-serif"
+        font-size="36" letter-spacing="10" fill="#1B1F26" fill-opacity="0.45">跨平台应用运行时</text>
+
+  <!-- Footer wordmark, sits above the home indicator on tall screens -->
+  <text x="512" y="1900" text-anchor="middle"
+        font-family="PingFang SC, -apple-system, Helvetica Neue, sans-serif"
+        font-size="28" letter-spacing="4" fill="#1B1F26" fill-opacity="0.3">lingxia.app</text>
+</svg>
