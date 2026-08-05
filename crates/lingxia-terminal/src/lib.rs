@@ -15,12 +15,12 @@ mod search;
 mod shell_integration;
 
 use alacritty_vt::{
-    ATTR_BOLD, ATTR_DIM, ATTR_INVERSE, ATTR_ITALIC, ATTR_UNDERLINE, CursorVisualStyle,
-    PtyWriteCallback, ThemeColors, VtScreen,
+    ATTR_BOLD, ATTR_DIM, ATTR_HIDDEN, ATTR_INVERSE, ATTR_ITALIC, ATTR_STRIKE, ATTR_UNDERLINE,
+    CursorVisualStyle, PtyWriteCallback, ThemeColors, VtScreen,
 };
 pub use alacritty_vt::{
     CommandBlock, TerminalActivity, TerminalEvent, TerminalEventBatch, TerminalEventKind,
-    TerminalProgress, TerminalProgressState,
+    TerminalProgress, TerminalProgressState, UnderlineStyle as TerminalUnderlineStyle,
 };
 pub use links::{DetectedLink, LinkSource as TerminalLinkSource};
 pub use paste::{PasteRisk as TerminalPasteRisk, classify_paste, classify_paste_json};
@@ -874,12 +874,49 @@ pub struct TerminalCell {
     pub bold: bool,
     pub dim: bool,
     pub italic: bool,
+    /// True for every underline style; `underline_style` names which.
     pub underline: bool,
+    /// `none` | `single` | `double` | `curly` | `dotted` | `dashed`.
+    pub underline_style: &'static str,
+    /// SGR 58 underline color, when the cell sets one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub underline_color: Option<String>,
+    pub strike: bool,
     pub inverse: bool,
+    /// SGR 8: `text` is empty but the cell keeps its colors, and the
+    /// concealed run still occupies its columns.
+    pub hidden: bool,
+    /// Grid columns this cell's text occupies; 0 marks a continuation
+    /// column covered by an earlier wide char or joined cluster.
+    pub columns: u8,
     pub wide: bool,
     /// OSC 8 hyperlink URI attached to the cell, when any.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub hyperlink: Option<String>,
+}
+
+impl Default for TerminalCell {
+    fn default() -> Self {
+        Self {
+            row: 0,
+            col: 0,
+            text: String::new(),
+            fg: None,
+            bg: None,
+            bold: false,
+            dim: false,
+            italic: false,
+            underline: false,
+            underline_style: TerminalUnderlineStyle::None.as_str(),
+            underline_color: None,
+            strike: false,
+            inverse: false,
+            hidden: false,
+            columns: 1,
+            wide: false,
+            hyperlink: None,
+        }
+    }
 }
 
 impl TerminalSession {
@@ -1206,7 +1243,14 @@ impl TerminalSession {
                     dim: cell.attrs & ATTR_DIM != 0,
                     italic: cell.attrs & ATTR_ITALIC != 0,
                     underline: cell.attrs & ATTR_UNDERLINE != 0,
+                    underline_style: cell.underline.as_str(),
+                    underline_color: cell
+                        .underline_color
+                        .and_then(|color| color_from_rgba(color, true)),
+                    strike: cell.attrs & ATTR_STRIKE != 0,
                     inverse: cell.attrs & ATTR_INVERSE != 0,
+                    hidden: cell.attrs & ATTR_HIDDEN != 0,
+                    columns: cell.columns,
                     wide: cell.wide,
                     hyperlink: cell.hyperlink.clone(),
                 });
