@@ -452,6 +452,9 @@ class LxAppActivity : AppCompatActivity() {
 
         setContentView(rootContainer)
 
+        // Cover the home cold start until its page first renders (or times out).
+        SplashOverlay.attachIfNeeded(this, appId)
+
         // Get TabBar config and setup UI in parallel
         val tabBarConfig = NativeApi.getTabBarState(appId)
 
