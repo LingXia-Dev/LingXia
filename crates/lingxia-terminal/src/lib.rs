@@ -20,8 +20,9 @@ use alacritty_vt::{
     CursorVisualStyle, PtyWriteCallback, ThemeColors, VtScreen,
 };
 pub use alacritty_vt::{
-    CommandBlock, LogicalLine as TerminalLogicalLine, TerminalActivity, TerminalEvent,
-    TerminalEventBatch, TerminalEventKind, TerminalProgress, TerminalProgressState,
+    CommandBlock, FrameCell, FrameUpdate as TerminalFrameUpdate,
+    LogicalLine as TerminalLogicalLine, RowDamage, TerminalActivity, TerminalEvent,
+    TerminalEventBatch, TerminalEventKind, TerminalFrame, TerminalProgress, TerminalProgressState,
     TextView as TerminalTextView, UnderlineStyle as TerminalUnderlineStyle,
 };
 pub use links::{DetectedLink, LinkSource as TerminalLinkSource};
@@ -273,6 +274,25 @@ pub fn terminal_command_blocks_data(id: u64) -> Option<Vec<CommandBlock>> {
         session.vt.feed(&bytes);
     }
     Some(session.vt.command_blocks())
+}
+
+/// The renderer's frame for a session, diffed against the frame the
+/// caller last drew.
+///
+/// This is the path a GPU renderer should take instead of
+/// [`terminal_snapshot`]: cells are fixed-size records over one text
+/// blob (no per-cell allocation, no JSON), and `damage` names the rows
+/// that actually changed, so a quiet poll costs nothing and a busy one
+/// uploads only what moved. Pass `0` for the first frame; afterwards
+/// pass the `generation` of the frame you last drew.
+pub fn terminal_frame_data(id: u64, since_generation: u64) -> Option<TerminalFrameUpdate> {
+    let session = session(id)?;
+    let mut session = session.lock().ok()?;
+    let bytes = session.drain_bytes();
+    if !bytes.is_empty() {
+        session.vt.feed(&bytes);
+    }
+    Some(session.vt.frame(since_generation))
 }
 
 /// Set the theme new sessions inherit when their spec carries none.
