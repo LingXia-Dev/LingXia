@@ -283,6 +283,31 @@ async function visibleChatInputAxNode(
     .sort((left, right) => right.rect.w * right.rect.h - left.rect.w * left.rect.h)[0];
 }
 
+// Cold-opened Chat surfaces render their input asynchronously, and the shared
+// CI runner can stall a fresh WebView render for tens of seconds (runs
+// 30946930173, 30959379536, 30960425260). Keep the budget at 60s — a render
+// that never lands still fails — and carry the last AX observation into the
+// failure so a missing node can be told apart from a query error.
+async function waitForChatInput(
+  desktop: DesktopDriver,
+  host: DesktopWindowInfo,
+  label: string,
+): Promise<DesktopAxNode> {
+  let observation = 'no completed observation';
+  return waitForValue(async () => {
+    const node = await visibleChatInputAxNode(desktop, host).catch((error: unknown) => {
+      observation = `AX query failed: ${String(error)}`;
+      return undefined;
+    });
+    observation = node
+      ? `input at ${JSON.stringify(node.rect)}`
+      : 'no enabled in-bounds Message node';
+    return node;
+  }, label, 60_000).catch((error) => {
+    throw new Error(`${String(error)}; last AX observation: ${observation}`);
+  });
+}
+
 async function visibleCompactApiTabAxNode(
   desktop: DesktopDriver,
   host: DesktopWindowInfo,
@@ -455,14 +480,28 @@ async function expectExactMainPresentation(
   // WebView2 commits controller visibility asynchronously even though the
   // host call is synchronous. Require physical convergence instead of
   // sampling that commit boundary once; a controller that remains exposed
-  // still fails this production gate at the deadline.
+  // still fails this production gate at the deadline. The budget is generous
+  // because the shared CI runner can stall the WebView2 commit well past the
+  // default 10s — run 30950279331 stalled ~31s on an otherwise idle app, on
+  // both frameworks across attempts; a controller that never hides still
+  // fails. The failure carries the last physical observation so a lingering
+  // outgoing window can be told apart from a recreated incoming one (or
+  // from polls that never returned).
+  let lastObserved = 'no completed observation';
   const windows = await waitForValue(async () => {
     const candidate = await readWindows();
     const visible = visibleHostWebViews(host, candidate);
+    lastObserved = JSON.stringify(visible.map((window) => ({
+      id: window.id,
+      bounds: window.bounds,
+      z: window.z,
+    })));
     return visible.length === 1 && visible[0].id === active.id
       ? candidate
       : undefined;
-  }, 'outgoing main WebView hidden');
+  }, 'outgoing main WebView hidden', 60_000).catch((error) => {
+    throw new Error(`${String(error)}; last observed host WebViews: ${lastObserved}`);
+  });
   expectSingleWorkspaceHost(host, windows);
 }
 
@@ -807,7 +846,7 @@ function showcaseHomePagePoint(
 async function waitForValue<T>(
   read: () => Promise<T | undefined>,
   label: string,
-  timeoutMs = 10_000,
+  timeoutMs = 30_000,
 ): Promise<T> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
@@ -822,7 +861,7 @@ async function waitForDesktopWindow(
   read: () => Promise<DesktopWindowInfo[]>,
   select: (windows: DesktopWindowInfo[]) => DesktopWindowInfo | undefined,
   label: string,
-  timeoutMs = 10_000,
+  timeoutMs = 30_000,
 ): Promise<DesktopWindowInfo> {
   let observed: DesktopWindowInfo[] = [];
   try {
@@ -1082,8 +1121,9 @@ adaptiveDesktopTest('gates medium sidebar reveal and compact aside chrome on eve
 
   const typeIntoChatThroughDesktop = async (marker: string): Promise<void> => {
     const chatApp = automation.lxapp('lingxia-chat');
-    let input = await waitForValue(
-      () => visibleChatInputAxNode(desktop, host!),
+    let input = await waitForChatInput(
+      desktop,
+      host!,
       `${platform} Chat input in native accessibility tree`,
     );
     await chatApp.page.fill({
@@ -1133,7 +1173,7 @@ adaptiveDesktopTest('gates medium sidebar reveal and compact aside chrome on eve
     }, `${platform} expanded root baseline`);
 
     await app.nav.switchTab({ page: 'api' });
-    await app.page.waitFor({ page: 'api', css: 'body', timeoutMs: 10_000 });
+    await app.page.waitFor({ page: 'api', css: 'body', timeoutMs: 30_000 });
 
     // Cross from expanded into medium so the adaptive rail is freshly
     // projected. Then use the real native expand control and prove the
@@ -1751,10 +1791,7 @@ dynamicMainDesktopTest('keeps a dynamic app handle synchronized and closes its w
     );
     setup = { id: openedHandle.id, rejected, afterRejected, opened };
 
-    await waitForValue(
-      () => visibleChatInputAxNode(desktop, host!),
-      'dynamic Chat physical main after open',
-    );
+    await waitForChatInput(desktop, host!, 'dynamic Chat physical main after open');
     if (baselineMain) {
       chatMain = await waitForDesktopWindow(
         () => desktop.windows(),

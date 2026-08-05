@@ -22,7 +22,7 @@ async function waitForSystemState(
   app: LxAppDriver,
   predicate: (state: SystemPageState) => boolean,
 ): Promise<SystemPageState> {
-  const deadline = Date.now() + 10_000;
+  const deadline = Date.now() + 30_000;
   let state = await systemState(app);
   while (Date.now() < deadline) {
     if (predicate(state)) return state;

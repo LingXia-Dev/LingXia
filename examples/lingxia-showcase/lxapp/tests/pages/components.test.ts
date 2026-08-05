@@ -2,7 +2,7 @@ import { expect, test } from '@rongjs/test';
 import type { LxAppDriver } from 'lingxia-types';
 
 async function waitForCurrent(app: LxAppDriver, page: string): Promise<void> {
-  const deadline = Date.now() + 10_000;
+  const deadline = Date.now() + 30_000;
   while (Date.now() < deadline) {
     const current = await app.nav.current();
     if (current.name === page && current.ready) return;

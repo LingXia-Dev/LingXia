@@ -5,7 +5,7 @@ async function waitForText(
   app: LxAppDriver,
   css: string,
   predicate: (text: string) => boolean,
-  timeoutMs = 10_000,
+  timeoutMs = 30_000,
 ): Promise<string> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {

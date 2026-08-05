@@ -3,7 +3,7 @@ import type { LxAppDriver, PageInfo } from 'lingxia-types';
 import { waitForElementAttribute } from '../helpers/page.js';
 
 async function waitForCurrent(app: LxAppDriver, name: string): Promise<PageInfo> {
-  const deadline = Date.now() + 10_000;
+  const deadline = Date.now() + 30_000;
   let current = await app.nav.current();
   while (Date.now() < deadline) {
     if (current.name === name && current.ready) return current;

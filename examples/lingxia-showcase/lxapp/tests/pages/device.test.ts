@@ -31,7 +31,7 @@ async function waitForState(
   app: LxAppDriver,
   predicate: (state: DevicePageState) => boolean,
 ): Promise<DevicePageState> {
-  const deadline = Date.now() + 10_000;
+  const deadline = Date.now() + 30_000;
   let state = await deviceState(app);
   while (Date.now() < deadline) {
     if (predicate(state)) return state;
@@ -46,7 +46,7 @@ async function waitForElementText(
   css: string,
   text: string,
 ): Promise<void> {
-  const deadline = Date.now() + 10_000;
+  const deadline = Date.now() + 30_000;
   while (Date.now() < deadline) {
     const element = await app.page.query({ page: 'device', css, full: true });
     if (element.exists && element.text.includes(text)) return;
