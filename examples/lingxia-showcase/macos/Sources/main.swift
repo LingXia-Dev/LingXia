@@ -2,6 +2,9 @@ import AppKit
 import OSLog
 import lingxia
 
+// Before anything else: this executable is also the product's command line.
+Lingxia.runTerminalCommandIfInvoked()
+
 class LingXiaAppDelegate: NSObject, NSApplicationDelegate {
     private static let log = OSLog(subsystem: "LingXia", category: "ExampleApp")
 

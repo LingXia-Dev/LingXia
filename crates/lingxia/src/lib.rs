@@ -146,18 +146,18 @@ where
 #[cfg(feature = "terminal-runtime")]
 pub mod terminal {
     pub use crate::terminal_config_impl::{
-        apply_theme, current_json as config_json, load as load_config, register_font_lister,
-        run_cli_if_invoked,
+        apply_theme, current_json as config_json, load as load_config, run_cli_if_invoked,
+        session_environment, set_installed_fonts,
     };
     pub use lingxia_terminal::{
         BackendStatus, FrameCell, RowDamage, TerminalBackend, TerminalCell, TerminalFrame,
-        TerminalFrameView, TerminalSnapshot, TerminalTheme, backend_available, backend_status,
-        backend_status_json, terminal_close, terminal_create, terminal_create_at,
-        terminal_current_directory, terminal_exited, terminal_frame_view, terminal_read,
-        terminal_resize, terminal_scroll, terminal_set_theme, terminal_set_theme_all,
-        terminal_snapshot, terminal_snapshot_data, terminal_title_state_json, terminal_write,
+        TerminalFrameView, TerminalSessionSpec, TerminalSnapshot, TerminalTheme, backend_available,
+        backend_status, backend_status_json, terminal_close, terminal_create, terminal_create_at,
+        terminal_create_with_spec, terminal_current_directory, terminal_exited,
+        terminal_frame_view, terminal_read, terminal_resize, terminal_scroll, terminal_set_theme,
+        terminal_set_theme_all, terminal_snapshot, terminal_snapshot_data,
+        terminal_title_state_json, terminal_write,
     };
-    pub use lingxia_terminal_config::cli::FontLister;
     pub use lingxia_terminal_config::{
         BoldStyle, FontConfig, InstalledFont, ResolvedFont, TerminalConfig, ThemeConfig, ThemeMode,
         ThemeStore, resolve_font,

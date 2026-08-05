@@ -98,8 +98,37 @@ pub fn run_cli_if_invoked(app_data_dir: PathBuf) -> Option<i32> {
     Some(output.code)
 }
 
-/// Register how this platform lists installed fonts, so `term font --list`
-/// can report what is really available.
-pub fn register_font_lister(lister: lingxia_terminal_config::cli::FontLister) {
-    lingxia_terminal_config::cli::register_font_lister(lister);
+/// Make the product's command typable: write the launcher and return the
+/// environment a spawned session needs to find it.
+///
+/// The executable lives inside an application bundle, which is neither on
+/// `PATH` nor pleasant to type, so sessions we spawn get a launcher directory
+/// prepended and the executable's own path, which is what tells a program
+/// running inside the terminal that it has one to talk to.
+pub fn session_environment(app_data_dir: &std::path::Path) -> Vec<(String, String)> {
+    let product = lingxia_app_context::product_name().unwrap_or("app");
+    let mut environment = Vec::new();
+    match lingxia_terminal_config::cli::install_launcher(app_data_dir, product) {
+        Ok(launcher) => {
+            log::info!("terminal command: {}", launcher.display());
+            environment.push((
+                "LINGXIA_TERMINAL_CLI".to_string(),
+                launcher.to_string_lossy().into_owned(),
+            ));
+            let directory = lingxia_terminal_config::cli::bin_dir(app_data_dir);
+            let path = std::env::var("PATH").unwrap_or_default();
+            environment.push((
+                "PATH".to_string(),
+                format!("{}:{path}", directory.to_string_lossy()),
+            ));
+        }
+        Err(error) => log::warn!("terminal command launcher not installed: {error}"),
+    }
+    environment
+}
+
+/// Publish the platform's installed families, so `term font --list` and
+/// `term status` report what is really available.
+pub fn set_installed_fonts(fonts: Vec<lingxia_terminal_config::InstalledFont>) {
+    lingxia_terminal_config::cli::set_installed_fonts(fonts);
 }

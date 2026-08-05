@@ -2,6 +2,9 @@ import AppKit
 // Add the LingXia Swift package dependency in Package.swift before building.
 import lingxia
 
+// Before anything else: this executable is also the product's command line.
+Lingxia.runTerminalCommandIfInvoked()
+
 class LingXiaAppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
