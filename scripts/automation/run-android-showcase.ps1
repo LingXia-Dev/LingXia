@@ -35,6 +35,70 @@ function Invoke-Checked {
   }
 }
 
+function Get-AndroidUiHierarchy {
+  param([string]$Destination)
+
+  & $adb @adbTarget shell uiautomator dump /sdcard/lingxia-automation-window.xml | Out-Null
+  if ($LASTEXITCODE -ne 0) { throw 'Android UIAutomator could not dump the window hierarchy.' }
+  $xmlText = (& $adb @adbTarget exec-out cat /sdcard/lingxia-automation-window.xml | Out-String).Trim()
+  if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($xmlText)) {
+    throw 'Android UIAutomator hierarchy was empty.'
+  }
+  Set-Content -LiteralPath $Destination -Value $xmlText -Encoding utf8
+  return [xml]$xmlText
+}
+
+function Invoke-NativeVideoLifecycleProbe {
+  param([string]$ResultDirectory)
+
+  Invoke-Checked $lxdev @('lxapp', 'nav', 'relaunch', 'components', '--json')
+  Invoke-Checked $lxdev @(
+    'lxapp', 'nav', 'to', 'video',
+    '--query', 'automationFixture=video-context-shape',
+    '--json'
+  )
+  Invoke-Checked $lxdev @(
+    'lxapp', 'page', 'wait', '--page', 'video',
+    '--css', '#lx-video-shape-fixture', '--state', 'visible', '--timeout-ms', '10000'
+  )
+
+  $description = 'LingXia native component video.native lx-video-shape-fixture'
+  $beforePath = Join-Path $ResultDirectory 'native-video-before-back.xml'
+  $before = Get-AndroidUiHierarchy $beforePath
+  if ($before.SelectNodes("//node[@content-desc='$description']").Count -lt 1) {
+    throw "Android native video was not visible in the OS view hierarchy: $description"
+  }
+
+  & $adb @adbTarget shell input keyevent 4
+  if ($LASTEXITCODE -ne 0) { throw 'Could not send a physical Android Back key event.' }
+  Invoke-Checked $lxdev @(
+    'lxapp', 'page', 'wait', '--page', 'components',
+    '--css', '[data-testid="components-page"]', '--state', 'visible', '--timeout-ms', '5000'
+  )
+
+  $deadline = [DateTime]::UtcNow.AddSeconds(5)
+  $afterPath = Join-Path $ResultDirectory 'native-video-after-back.xml'
+  do {
+    $after = Get-AndroidUiHierarchy $afterPath
+    if ($after.SelectNodes("//node[@content-desc='$description']").Count -eq 0) {
+      return
+    }
+    Start-Sleep -Milliseconds 100
+  } while ([DateTime]::UtcNow -lt $deadline)
+
+  throw 'Android native video remained visible in the OS view hierarchy for more than 5 seconds after Back.'
+}
+
+function Invoke-SameRouteRelaunchStress {
+  for ($iteration = 1; $iteration -le 10; $iteration += 1) {
+    Invoke-Checked $lxdev @('lxapp', 'nav', 'relaunch', 'home', '--json')
+    Invoke-Checked $lxdev @(
+      'lxapp', 'page', 'wait', '--page', 'home',
+      '--css', '[data-testid="home-page"]', '--state', 'visible', '--timeout-ms', '10000'
+    )
+  }
+}
+
 $lingxia = Resolve-LingXiaTool 'lingxia'
 $lxdev = Resolve-LingXiaTool 'lxdev'
 $adb = (Get-Command adb -ErrorAction SilentlyContinue).Source
@@ -96,6 +160,10 @@ try {
         $testExitCode = $LASTEXITCODE
 
         New-Item -ItemType Directory -Force -Path $resultDirectory | Out-Null
+        if ($testExitCode -eq 0) {
+          Invoke-SameRouteRelaunchStress
+          Invoke-NativeVideoLifecycleProbe $resultDirectory
+        }
         & $lxdev logs --json --limit 5000 |
           Set-Content -LiteralPath (Join-Path $resultDirectory 'session.jsonl') -Encoding utf8
         if ($LASTEXITCODE -ne 0) { throw 'Failed to collect Android session logs.' }
@@ -121,4 +189,4 @@ try {
   Pop-Location
 }
 
-Write-Host 'Portable Android automation passed. System permission dialogs require the external UIAutomator suite.'
+Write-Host 'Portable Android automation and the OS-level native video lifecycle probe passed.'

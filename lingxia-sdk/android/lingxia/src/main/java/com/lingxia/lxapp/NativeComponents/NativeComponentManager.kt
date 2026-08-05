@@ -166,6 +166,9 @@ internal class NativeComponentManager(
         component.mount(host)
         component.setFrame(screenRect)
         component.update(props)
+        if (component.view.contentDescription.isNullOrBlank()) {
+            component.view.contentDescription = "LingXia native component $type $id"
+        }
         applyCornerRadius(component.view, cornerRadius)
         component.view.translationZ = zIndex
     }
