@@ -75,8 +75,13 @@ enum LingXiaTerminalFont {
         "Monaco",
     ]
 
+    // JetBrains Mono first, for its programming ligatures and its wider
+    // coverage of the symbols shells actually print; Menlo, which ships with
+    // macOS, is the guaranteed fallback. Once the font is bundled with the
+    // SDK the default stops depending on what the machine happens to have.
     static func regular(size: CGFloat = defaultSize) -> NSFont {
-        withCascade(NSFont(name: "Menlo-Regular", size: size)
+        withCascade(NSFont(name: "JetBrainsMono-Regular", size: size)
+            ?? NSFont(name: "Menlo-Regular", size: size)
             ?? NSFont(name: "Menlo", size: size)
             ?? NSFont(name: "SFMono-Regular", size: size)
             ?? NSFont(name: "Monaco", size: size)
@@ -84,18 +89,21 @@ enum LingXiaTerminalFont {
     }
 
     static func bold(size: CGFloat = defaultSize) -> NSFont {
-        withCascade(NSFont(name: "Menlo-Bold", size: size)
+        withCascade(NSFont(name: "JetBrainsMono-Bold", size: size)
+            ?? NSFont(name: "Menlo-Bold", size: size)
             ?? NSFont(name: "SFMono-Semibold", size: size)
             ?? NSFont.monospacedSystemFont(ofSize: size, weight: .semibold))
     }
 
     static func italic(size: CGFloat = defaultSize) -> NSFont {
-        withCascade(NSFont(name: "Menlo-Italic", size: size)
+        withCascade(NSFont(name: "JetBrainsMono-Italic", size: size)
+            ?? NSFont(name: "Menlo-Italic", size: size)
             ?? NSFontManager.shared.convert(regular(size: size), toHaveTrait: .italicFontMask))
     }
 
     static func boldItalic(size: CGFloat = defaultSize) -> NSFont {
-        withCascade(NSFont(name: "Menlo-BoldItalic", size: size)
+        withCascade(NSFont(name: "JetBrainsMono-BoldItalic", size: size)
+            ?? NSFont(name: "Menlo-BoldItalic", size: size)
             ?? NSFontManager.shared.convert(bold(size: size), toHaveTrait: .italicFontMask))
     }
 

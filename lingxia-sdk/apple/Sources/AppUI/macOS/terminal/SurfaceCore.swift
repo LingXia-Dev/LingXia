@@ -578,6 +578,10 @@ private final class LingXiaTerminalCanvasView: NSView, @MainActor NSTextInputCli
     private let renderer = LingXiaTerminalMetalRenderer()
     private var frame_: LingXiaTerminalGPUFrame?
     private var renderScheduled = false
+    /// Shape runs with the font's ligatures; comes from configuration.
+    var ligatures = true {
+        didSet { setNeedsRender() }
+    }
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -609,6 +613,20 @@ private final class LingXiaTerminalCanvasView: NSView, @MainActor NSTextInputCli
             self.renderScheduled = false
             self.renderGPUFrame()
         }
+    }
+
+    /// AppKit never calls this while the view is on screen — a layer-hosting
+    /// view draws through its own layer. It runs only when something replays
+    /// the view tree through CoreGraphics, which is exactly what window
+    /// screenshot automation does, and which cannot see a Metal layer. Render
+    /// the same frame offscreen so captures show the terminal rather than a
+    /// blank rectangle.
+    override func draw(_ dirtyRect: NSRect) {
+        guard let renderer, let context = NSGraphicsContext.current?.cgContext else { return }
+        guard let image = renderer.image(frame: frame_ ?? LingXiaTerminalGPUFrame(), context: renderContext()) else {
+            return
+        }
+        context.draw(image, in: bounds)
     }
 
     override func viewDidChangeBackingProperties() {
@@ -658,13 +676,17 @@ private final class LingXiaTerminalCanvasView: NSView, @MainActor NSTextInputCli
         let size = bounds.size
         guard size.width > 0, size.height > 0 else { return }
         metalLayer.drawableSize = CGSize(width: size.width * scale, height: size.height * scale)
+        renderer.render(frame: frame_ ?? LingXiaTerminalGPUFrame(), context: renderContext(), in: metalLayer)
+    }
 
+    private func renderContext() -> LingXiaTerminalRenderContext {
+        let scale = backingScale
         var context = LingXiaTerminalRenderContext(
             cellSize: charSize,
             baseline: terminalBaselineOffset(),
             font: font,
             scale: scale,
-            viewSize: size
+            viewSize: bounds.size
         )
         context.selection = selectionSpans()
         context.cursorColor = NSColor.lxTerminalForeground
@@ -674,7 +696,8 @@ private final class LingXiaTerminalCanvasView: NSView, @MainActor NSTextInputCli
         context.scrollbarColor = scrollbarVisible
             ? NSColor.white.withAlphaComponent(0.28)
             : NSColor.clear
-        renderer.render(frame: frame_ ?? LingXiaTerminalGPUFrame(), context: context, in: metalLayer)
+        context.ligatures = ligatures
+        return context
     }
 
     /// Selection as row spans, the form the renderer draws.
