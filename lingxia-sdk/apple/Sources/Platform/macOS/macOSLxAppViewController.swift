@@ -128,6 +128,16 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
     private func loadWebViewContent() {
         if let webView = findManagedWebView(path: currentPath) {
             showWebViewToUser(webView, path: currentPath)
+        } else {
+            // The first mount can race the page's WebView creation; converge
+            // like navigate() does instead of silently staying blank.
+            retryShowWebView(
+                appId: appId,
+                path: currentPath,
+                sessionId: sessionId,
+                animationType: .none,
+                remainingAttempts: Self.navigationRetryCount
+            )
         }
     }
 

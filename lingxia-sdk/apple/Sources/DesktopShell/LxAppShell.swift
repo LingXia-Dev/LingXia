@@ -1357,10 +1357,39 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         // reconcile that reaches an appId whose VC was not yet created.
         if let viewController = viewControllers[appId] {
             presentMain(.lxapp(viewController))
-        } else {
-            let path = LxAppCore.getCurrentPath()
+        } else if let path = resolveMainProviderPath(for: appId) {
             _ = ensureViewController(for: appId, path: path)
         }
+    }
+
+    /// Resolve the page path to pin a freshly-created main VC to. A dynamic
+    /// open commits its layout before the runtime finishes pushing the target
+    /// app onto the navigation stack, so the global current path can still
+    /// belong to the previous app at reconcile time; a VC pinned to another
+    /// app's path never finds its WebView and stays blank. Resolve within the
+    /// target app instead: its own stack-top page when it already leads the
+    /// stack, else Rust's page-instance resolution for its current route.
+    private func resolveMainProviderPath(for appId: String) -> String? {
+        let current = getCurrentLxApp()
+        if current.appid.toString() == appId {
+            let path = current.path.toString()
+            if !path.isEmpty { return path }
+        }
+        guard let sessionId = resolvedSessionId(for: appId) else { return nil }
+        let created = createPageInstance(appId, "", sessionId, 0, "")
+        let resolvedPath = created.resolved_path.toString()
+        guard created.ok, !resolvedPath.isEmpty else {
+            os_log(
+                "mountLxAppMainProvider could not resolve a page for %@ error=%{public}@",
+                log: Self.log,
+                type: .info,
+                appId,
+                created.error.toString()
+            )
+            return nil
+        }
+        storeSession(sessionId, for: appId)
+        return resolvedPath
     }
 
     /// What can fill the single main content area (`workspaceManager.contentContainer`).
