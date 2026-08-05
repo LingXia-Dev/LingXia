@@ -653,6 +653,7 @@ mod tests {
             home_app_version: "1.0.0".to_string(),
             cache_max_size_mb: 1024,
             storage: None,
+            splash: None,
             dev_ws_url: None,
             dev_bundle_base_url: None,
             app_links: None,
