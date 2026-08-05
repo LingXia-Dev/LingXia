@@ -606,6 +606,9 @@ mod bridge {
         #[swift_bridge(swift_name = "terminalLoadConfig")]
         fn terminal_load_config(system_is_dark: bool) -> String;
 
+        #[swift_bridge(swift_name = "terminalRunCliIfInvoked")]
+        fn terminal_run_cli_if_invoked() -> i32;
+
         #[swift_bridge(swift_name = "terminalSessionExited")]
         fn terminal_session_exited(id: u64) -> bool;
 
@@ -2216,14 +2219,38 @@ pub fn terminal_session_frame(id: u64, since_generation: u64) -> bridge::Termina
 /// theme). Returns the resolved configuration so the host can apply the rest —
 /// font selection needs to know what is installed, which only the platform
 /// does.
+/// Run the `term` CLI when this process was invoked as one, returning the exit
+/// code, or `-1` to carry on and become the app.
+///
+/// Hosts must call this before initializing AppKit: the product's executable
+/// doubles as its command line, and a configuration command must not open a
+/// window.
+pub fn terminal_run_cli_if_invoked() -> i32 {
+    #[cfg(feature = "terminal-runtime")]
+    {
+        let Ok(data_dir) = app_data_dir_for_cli() else {
+            return -1;
+        };
+        if let Some(code) = crate::terminal::run_cli_if_invoked(data_dir) {
+            return code;
+        }
+    }
+    -1
+}
+
+#[cfg(feature = "terminal-runtime")]
+fn app_data_dir_for_cli() -> crate::Result<std::path::PathBuf> {
+    crate::app::state_dir().and_then(|dir| {
+        dir.parent()
+            .map(std::path::Path::to_path_buf)
+            .ok_or_else(|| crate::Error::internal("state dir has no parent"))
+    })
+}
+
 pub fn terminal_load_config(system_is_dark: bool) -> String {
     #[cfg(feature = "terminal-runtime")]
     {
-        let Ok(data_dir) = crate::app::state_dir().and_then(|dir| {
-            dir.parent()
-                .map(std::path::Path::to_path_buf)
-                .ok_or_else(|| crate::Error::internal("state dir has no parent"))
-        }) else {
+        let Ok(data_dir) = app_data_dir_for_cli() else {
             return "{}".to_string();
         };
         // Product defaults from `lingxia.yaml` are not wired yet; the
