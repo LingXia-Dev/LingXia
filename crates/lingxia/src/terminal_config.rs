@@ -144,19 +144,19 @@ pub fn run_cli_if_invoked(app_data_dir: PathBuf) -> Option<i32> {
         .to_string();
 
     let first = args.next();
-    // No arguments from a terminal means someone typed the command and wants
-    // to know what it does. No arguments without one means the OS launched the
-    // bundle, which is the app starting normally.
+    // Invoked from a terminal, this process is a command line — never an app.
+    // Anything else means the OS launched the bundle, which is the app
+    // starting normally. Without this rule an unrecognized argument falls
+    // through to startup and dies against a running instance's databases.
     let from_terminal = std::io::stdout().is_terminal() || std::io::stdin().is_terminal();
-    if first.is_none() && from_terminal {
-        println!(
-            "{}",
-            lingxia_terminal_config::cli::run(&app_data_dir, &command, &[]).text
-        );
-        return Some(0);
+    if !from_terminal && first.as_deref() != Some("term") {
+        return None;
     }
     if first.as_deref() != Some("term") {
-        return None;
+        let arguments: Vec<String> = std::env::args().skip(1).collect();
+        let output = lingxia_terminal_config::cli::unknown(&command, &arguments);
+        eprintln!("{}", output.text);
+        return Some(output.code);
     }
 
     let rest: Vec<String> = std::env::args().skip(2).collect();
