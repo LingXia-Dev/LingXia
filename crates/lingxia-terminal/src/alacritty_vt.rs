@@ -30,8 +30,7 @@ use serde::Serialize;
 use crate::osc::{OscProgress, OscSemantic, OscTap, parse_osc};
 use crate::search::SearchRow;
 
-// Attr bits packed into `Cell.attrs`. Kept in sync with the HLSL
-// pixel shader's interpretation (bit 0 = bold, 1 = italic, 2 =
+// Attr bits packed into `Cell.attrs` (bit 0 = bold, 1 = italic, 2 =
 // underline, 3 = strike, 4 = inverse, 5 = dim/faint, 6 = hidden).
 pub const ATTR_BOLD: u8 = 1 << 0;
 pub const ATTR_ITALIC: u8 = 1 << 1;
@@ -719,6 +718,15 @@ impl VtScreen {
     /// The last working directory reported via OSC 7.
     pub fn cwd(&self) -> Option<std::path::PathBuf> {
         self.inner.lock().cwd.clone()
+    }
+
+    /// Replace the palette cell colors resolve against. Cheap by
+    /// construction: the grid stores colors symbolically, so a theme
+    /// change is a repaint and never a reflow.
+    pub fn set_theme(&self, theme: ThemeColors) {
+        let mut inner = self.inner.lock();
+        inner.theme = theme;
+        inner.generation = inner.generation.wrapping_add(1);
     }
 
     /// Current progress and attention counters.
@@ -1701,6 +1709,35 @@ mod tests {
         // Counters are monotonic: draining events does not reset them.
         screen.drain_events();
         assert_eq!(screen.activity().bells, 2);
+    }
+
+    #[test]
+    fn theme_swap_repaints_without_reflow() {
+        let screen = VtScreen::new_with_options(10, 2, None, None, None);
+        screen.feed(b"\x1b[31mRED");
+        let before = screen.snapshot();
+        assert_eq!(before.cells[0].text, "R");
+
+        let mut ansi = [[0u8; 3]; 16];
+        ansi[1] = [0x12, 0x34, 0x56];
+        screen.set_theme(ThemeColors::from_ansi16(
+            [0xaa, 0xaa, 0xaa],
+            [0x01, 0x02, 0x03],
+            ansi,
+        ));
+        let after = screen.snapshot();
+
+        assert_eq!(after.cells[0].text, "R", "grid content untouched");
+        assert_ne!(
+            after.cells[0].fg, before.cells[0].fg,
+            "ANSI red re-resolved"
+        );
+        assert_eq!(after.cells[0].fg, 0x123456ff);
+        assert_eq!(after.default_bg, 0x010203ff);
+        assert!(
+            after.generation > before.generation,
+            "generation bumps so a polling host repaints"
+        );
     }
 
     #[test]

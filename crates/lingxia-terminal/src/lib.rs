@@ -13,6 +13,7 @@ mod process_windows;
 mod restore;
 mod search;
 mod shell_integration;
+mod theme;
 
 use alacritty_vt::{
     ATTR_BOLD, ATTR_DIM, ATTR_HIDDEN, ATTR_INVERSE, ATTR_ITALIC, ATTR_STRIKE, ATTR_UNDERLINE,
@@ -45,6 +46,7 @@ use std::sync::mpsc::{self, Receiver, TrySendError};
 use std::sync::{Arc, Condvar, LazyLock, Mutex, OnceLock};
 use std::thread;
 use std::time::{Duration, Instant};
+pub use theme::{TerminalTheme, TerminalThemeError, parse_hex_rgb};
 
 #[cfg(windows)]
 use process_windows::process_cwd;
@@ -129,6 +131,10 @@ pub struct TerminalSessionSpec {
     /// applies to the engine-default invocation (no explicit `args`);
     /// user rc files are never modified.
     pub shell_integration: bool,
+    /// Color scheme for this session. `None` uses the theme set by
+    /// [`terminal_set_default_theme`]. Themes are live-swappable
+    /// afterwards via [`terminal_set_theme`].
+    pub theme: Option<TerminalTheme>,
 }
 
 /// Create a cross-platform terminal engine session.
@@ -267,6 +273,95 @@ pub fn terminal_command_blocks_data(id: u64) -> Option<Vec<CommandBlock>> {
         session.vt.feed(&bytes);
     }
     Some(session.vt.command_blocks())
+}
+
+/// Set the theme new sessions inherit when their spec carries none.
+///
+/// Existing sessions keep their theme; use [`terminal_set_theme_all`]
+/// to switch everything at once.
+pub fn terminal_set_default_theme(theme: &TerminalTheme) -> Result<(), TerminalThemeError> {
+    let colors = theme.to_colors()?;
+    if let Ok(mut default) = DEFAULT_THEME.lock() {
+        *default = colors;
+    }
+    Ok(())
+}
+
+/// Swap one session's theme in place.
+///
+/// Colors are resolved at snapshot time, so this is a repaint — the
+/// grid, scrollback and running program are untouched, which is what
+/// makes live theme preview free. The session's generation bumps so a
+/// polling host picks the new colors up on its next frame.
+pub fn terminal_set_theme(id: u64, theme: &TerminalTheme) -> Result<bool, TerminalThemeError> {
+    let colors = theme.to_colors()?;
+    let Some(session) = session(id) else {
+        return Ok(false);
+    };
+    let Ok(session) = session.lock() else {
+        return Ok(false);
+    };
+    session.vt.set_theme(colors);
+    Ok(true)
+}
+
+/// Swap the theme of every live session and of sessions created later.
+/// Returns how many live sessions were updated.
+pub fn terminal_set_theme_all(theme: &TerminalTheme) -> Result<usize, TerminalThemeError> {
+    let colors = theme.to_colors()?;
+    if let Ok(mut default) = DEFAULT_THEME.lock() {
+        *default = colors.clone();
+    }
+    // Copy the handles out before touching per-session locks; holding
+    // the registry lock while each session repaints would serialize
+    // them behind one another.
+    let sessions: Vec<Arc<Mutex<TerminalSession>>> = SESSIONS
+        .lock()
+        .map(|sessions| sessions.values().cloned().collect())
+        .unwrap_or_default();
+    let mut updated = 0;
+    for session in sessions {
+        if let Ok(session) = session.lock() {
+            session.vt.set_theme(colors.clone());
+            updated += 1;
+        }
+    }
+    Ok(updated)
+}
+
+/// [`terminal_set_theme`] from a scheme JSON document, for hosts that
+/// cross an FFI boundary. Returns `false` for an unparsable scheme,
+/// an invalid color, or an unknown session.
+pub fn terminal_set_theme_json(id: u64, scheme_json: &str) -> bool {
+    match TerminalTheme::from_json(scheme_json) {
+        Ok(theme) => terminal_set_theme(id, &theme).unwrap_or_else(|err| {
+            eprintln!("lingxia terminal theme rejected: {err}");
+            false
+        }),
+        Err(err) => {
+            eprintln!("lingxia terminal theme rejected: {err}");
+            false
+        }
+    }
+}
+
+/// [`terminal_set_theme_all`] from a scheme JSON document. Returns
+/// `false` for an unparsable scheme or an invalid color.
+pub fn terminal_set_theme_all_json(scheme_json: &str) -> bool {
+    let theme = match TerminalTheme::from_json(scheme_json) {
+        Ok(theme) => theme,
+        Err(err) => {
+            eprintln!("lingxia terminal theme rejected: {err}");
+            return false;
+        }
+    };
+    match terminal_set_theme_all(&theme) {
+        Ok(_) => true,
+        Err(err) => {
+            eprintln!("lingxia terminal theme rejected: {err}");
+            false
+        }
+    }
 }
 
 /// Logical lines, cursor position and visible range as JSON, for
@@ -1039,7 +1134,10 @@ impl TerminalSession {
                 let _ = writer.enqueue(bytes);
             }
         });
-        let theme = terminal_theme();
+        let theme = match spec.theme.as_ref() {
+            Some(theme) => theme.to_colors().map_err(|err| err.to_string())?,
+            None => default_theme(),
+        };
         let vt = VtScreen::new_with_options(
             cols,
             rows,
@@ -1730,52 +1828,21 @@ fn color_from_rgba(value: u32, include_transparent: bool) -> Option<String> {
     ))
 }
 
-fn terminal_theme() -> ThemeColors {
-    let fg = env_rgb("LINGXIA_TERMINAL_FOREGROUND").unwrap_or([0xff, 0xff, 0xff]);
-    let bg = env_rgb("LINGXIA_TERMINAL_BACKGROUND").unwrap_or([0x28, 0x2c, 0x34]);
-    let mut ansi16 = [
-        [0x1d, 0x1f, 0x21],
-        [0xcc, 0x66, 0x66],
-        [0xb5, 0xbd, 0x68],
-        [0xf0, 0xc6, 0x74],
-        [0x81, 0xa2, 0xbe],
-        [0xb2, 0x94, 0xbb],
-        [0x8a, 0xbe, 0xb7],
-        [0xc5, 0xc8, 0xc6],
-        [0x66, 0x66, 0x66],
-        [0xd5, 0x4e, 0x53],
-        [0xb9, 0xca, 0x4a],
-        [0xe7, 0xc5, 0x47],
-        [0x7a, 0xa6, 0xda],
-        [0xc3, 0x97, 0xd8],
-        [0x70, 0xc0, 0xb1],
-        [0xea, 0xea, 0xea],
-    ];
-    for (index, color) in ansi16.iter_mut().enumerate() {
-        if let Some(value) = env_rgb(&format!("LINGXIA_TERMINAL_ANSI_{index}")) {
-            *color = value;
-        }
-    }
-    ThemeColors::from_ansi16(fg, bg, ansi16)
+/// Theme new sessions inherit when their spec carries none.
+static DEFAULT_THEME: LazyLock<Mutex<ThemeColors>> =
+    LazyLock::new(|| Mutex::new(default_theme_colors()));
+
+fn default_theme_colors() -> ThemeColors {
+    TerminalTheme::default()
+        .to_colors()
+        .expect("built-in theme is valid")
 }
 
-fn env_rgb(key: &str) -> Option<[u8; 3]> {
-    std::env::var(key)
-        .ok()
-        .and_then(|value| parse_hex_rgb(value.trim()))
-}
-
-fn parse_hex_rgb(value: &str) -> Option<[u8; 3]> {
-    let hex = value.strip_prefix('#').unwrap_or(value);
-    if hex.len() != 6 {
-        return None;
-    }
-    let rgb = u32::from_str_radix(hex, 16).ok()?;
-    Some([
-        ((rgb >> 16) & 0xff) as u8,
-        ((rgb >> 8) & 0xff) as u8,
-        (rgb & 0xff) as u8,
-    ])
+fn default_theme() -> ThemeColors {
+    DEFAULT_THEME
+        .lock()
+        .map(|theme| theme.clone())
+        .unwrap_or_else(|_| default_theme_colors())
 }
 
 #[cfg(test)]
@@ -2127,6 +2194,94 @@ mod tests {
                 .any(|kind| matches!(kind, TerminalEventKind::Exited { exit_code: Some(7) })),
             "exit event surfaced: {events:?}"
         );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn theme_applies_at_spawn_and_swaps_live() {
+        let spawn_theme = TerminalTheme {
+            background: "#101112".to_string(),
+            red: "#ff0001".to_string(),
+            ..TerminalTheme::default()
+        };
+        let id = terminal_create_with_spec(
+            40,
+            4,
+            TerminalSessionSpec {
+                program: Some("/bin/sh".to_string()),
+                args: Some(vec![
+                    "-c".to_string(),
+                    "printf '\\033[31mRED\\033[m'; sleep 30".to_string(),
+                ]),
+                theme: Some(spawn_theme),
+                ..TerminalSessionSpec::default()
+            },
+        );
+        assert_ne!(id, 0);
+
+        let red_cell = |id: u64| -> Option<TerminalCell> {
+            let snapshot = terminal_snapshot_data(id)?;
+            snapshot.cells.into_iter().find(|cell| cell.text == "R")
+        };
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let mut cell = None;
+        while Instant::now() < deadline && cell.is_none() {
+            cell = red_cell(id);
+            std::thread::sleep(Duration::from_millis(25));
+        }
+        let cell = cell.expect("colored output rendered");
+        assert_eq!(cell.fg.as_deref(), Some("#ff0001"), "spec theme at spawn");
+        assert_eq!(
+            terminal_snapshot_data(id)
+                .unwrap()
+                .default_background
+                .as_deref(),
+            Some("#101112")
+        );
+
+        // Live swap: same session, same grid, new colors.
+        let updated = terminal_set_theme_all(&TerminalTheme {
+            background: "#202122".to_string(),
+            red: "#0000ff".to_string(),
+            ..TerminalTheme::default()
+        })
+        .expect("valid theme");
+        assert!(updated >= 1, "live sessions repainted");
+
+        let snapshot = terminal_snapshot_data(id).expect("live session");
+        let cell = snapshot
+            .cells
+            .iter()
+            .find(|cell| cell.text == "R")
+            .expect("text survives a theme swap");
+        assert_eq!(cell.fg.as_deref(), Some("#0000ff"));
+        assert_eq!(snapshot.default_background.as_deref(), Some("#202122"));
+
+        // An invalid color is rejected before anything is applied.
+        let bad = terminal_set_theme(
+            id,
+            &TerminalTheme {
+                red: "nope".to_string(),
+                ..TerminalTheme::default()
+            },
+        );
+        assert_eq!(bad.unwrap_err().field, "red");
+        assert_eq!(
+            terminal_snapshot_data(id)
+                .unwrap()
+                .cells
+                .iter()
+                .find(|cell| cell.text == "R")
+                .unwrap()
+                .fg
+                .as_deref(),
+            Some("#0000ff"),
+            "rejected theme left the session untouched"
+        );
+        terminal_close(id);
+        // The swap above moved the process-wide default; put it back so
+        // sessions spawned by other tests keep the built-in palette.
+        terminal_set_default_theme(&TerminalTheme::default()).expect("built-in theme");
     }
 
     #[test]
