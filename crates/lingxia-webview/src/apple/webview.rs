@@ -2439,11 +2439,11 @@ impl WebViewInner {
         body: &str,
     ) -> Result<String, WebViewScriptError> {
         let (tx, rx) = oneshot::channel::<Result<String, String>>();
-        let webview_ptr_addr = self.webview as usize;
+        let webview_retained_addr = self.retain_webview_for_dispatch();
         let body_clone = body.to_string();
 
         DispatchQueue::main().exec_async(move || unsafe {
-            let webview_ptr = webview_ptr_addr as *mut AnyObject;
+            let (_webview_retained, webview_ptr) = dispatched_webview(webview_retained_addr);
             let body_nsstring = NSString::from_str(&body_clone);
             let tx_state = Arc::new(Mutex::new(Some(tx)));
             let tx_state_for_block = Arc::clone(&tx_state);
@@ -2523,11 +2523,11 @@ impl WebViewInner {
     #[cfg(all(feature = "webview-input", target_os = "macos"))]
     async fn eval_js_raw_string(&self, js: &str) -> Result<String, WebViewScriptError> {
         let (tx, rx) = oneshot::channel::<Result<String, String>>();
-        let webview_ptr_addr = self.webview as usize;
+        let webview_retained_addr = self.retain_webview_for_dispatch();
         let js_clone = js.to_string();
 
         DispatchQueue::main().exec_async(move || unsafe {
-            let webview_ptr = webview_ptr_addr as *mut AnyObject;
+            let (_webview_retained, webview_ptr) = dispatched_webview(webview_retained_addr);
             let js_nsstring = NSString::from_str(&js_clone);
             let tx_state = Arc::new(Mutex::new(Some(tx)));
             let tx_state_for_block = Arc::clone(&tx_state);
@@ -2592,10 +2592,10 @@ impl WebViewInner {
         const NS_BITMAP_PNG: u64 = 4;
 
         let (tx, rx) = oneshot::channel::<Result<Vec<u8>, String>>();
-        let webview_ptr_addr = self.webview as usize;
+        let webview_retained_addr = self.retain_webview_for_dispatch();
 
         DispatchQueue::main().exec_async(move || unsafe {
-            let webview_ptr = webview_ptr_addr as *mut AnyObject;
+            let (_webview_retained, webview_ptr) = dispatched_webview(webview_retained_addr);
             let tx_state = Arc::new(Mutex::new(Some(tx)));
             let tx_state_for_block = Arc::clone(&tx_state);
 
@@ -2706,10 +2706,10 @@ impl WebViewInner {
         }
 
         let (tx, rx) = oneshot::channel::<Result<Vec<u8>, String>>();
-        let webview_ptr_addr = self.webview as usize;
+        let webview_retained_addr = self.retain_webview_for_dispatch();
 
         DispatchQueue::main().exec_async(move || unsafe {
-            let webview_ptr = webview_ptr_addr as *mut AnyObject;
+            let (_webview_retained, webview_ptr) = dispatched_webview(webview_retained_addr);
             let tx_state = Arc::new(Mutex::new(Some(tx)));
             let tx_state_for_block = Arc::clone(&tx_state);
 
@@ -2838,11 +2838,12 @@ impl WebViewController for WebViewInner {
             self.load_url_on_main_thread(url)
         } else {
             // Not on main thread, dispatch to main thread using GCD
-            let webview_ptr_addr = self.webview as usize;
+            let webview_retained_addr = self.retain_webview_for_dispatch();
             let url_clone = url.to_string();
 
             DispatchQueue::main().exec_async(move || {
-                let webview_ptr = webview_ptr_addr as *mut AnyObject;
+                let (_webview_retained, webview_ptr) =
+                    unsafe { dispatched_webview(webview_retained_addr) };
                 let url_nsstring = NSString::from_str(&url_clone);
                 let url = NSURL::URLWithString(&url_nsstring);
                 if let Some(url) = url {
@@ -2860,12 +2861,12 @@ impl WebViewController for WebViewInner {
             self.load_data_on_main_thread(request)
         } else {
             // Not on main thread, dispatch to main thread using GCD
-            let webview_ptr_addr = self.webview as usize;
+            let webview_retained_addr = self.retain_webview_for_dispatch();
             let data_clone = request.data.to_string();
             let base_url_clone = request.base_url.to_string();
 
             DispatchQueue::main().exec_async(move || unsafe {
-                let webview_ptr = webview_ptr_addr as *mut AnyObject;
+                let (_webview_retained, webview_ptr) = dispatched_webview(webview_retained_addr);
                 let data_nsstring = NSString::from_str(&data_clone);
                 let base_url_nsstring = NSString::from_str(&base_url_clone);
                 let base_url = NSURL::URLWithString(&base_url_nsstring);
@@ -2894,11 +2895,11 @@ impl WebViewController for WebViewInner {
                 Ok(())
             }
         } else {
-            let webview_ptr_addr = self.webview as usize;
+            let webview_retained_addr = self.retain_webview_for_dispatch();
             let js_clone = js.to_string();
 
             DispatchQueue::main().exec_async(move || unsafe {
-                let webview_ptr = webview_ptr_addr as *mut AnyObject;
+                let (_webview_retained, webview_ptr) = dispatched_webview(webview_retained_addr);
                 let js_nsstring = NSString::from_str(&js_clone);
                 let completion =
                     StackBlock::new(|_result: *mut AnyObject, _error: *mut NSError| {}).copy();
@@ -2929,10 +2930,10 @@ impl WebViewController for WebViewInner {
             self.clear_browsing_data_on_main_thread()
         } else {
             // Not on main thread, dispatch to main thread using GCD
-            let webview_ptr_addr = self.webview as usize;
+            let webview_retained_addr = self.retain_webview_for_dispatch();
 
             DispatchQueue::main().exec_async(move || unsafe {
-                let webview_ptr = webview_ptr_addr as *mut AnyObject;
+                let (_webview_retained, webview_ptr) = dispatched_webview(webview_retained_addr);
                 let Some(mtm) = MainThreadMarker::new() else {
                     return;
                 };
@@ -2961,10 +2962,10 @@ impl WebViewController for WebViewInner {
             self.set_user_agent_override_on_main_thread(&user_agent)
         } else {
             // Not on main thread, dispatch to main thread using GCD
-            let webview_ptr_addr = self.webview as usize;
+            let webview_retained_addr = self.retain_webview_for_dispatch();
 
             DispatchQueue::main().exec_async(move || unsafe {
-                let webview_ptr = webview_ptr_addr as *mut AnyObject;
+                let (_webview_retained, webview_ptr) = dispatched_webview(webview_retained_addr);
                 match user_agent {
                     UserAgentOverride::Default => {
                         let _: () = msg_send![webview_ptr, setCustomUserAgent: std::ptr::null::<NSString>()];
@@ -2981,11 +2982,12 @@ impl WebViewController for WebViewInner {
     }
 
     async fn current_url(&self) -> Result<Option<String>, WebViewError> {
-        let webview_ptr_addr = self.webview as usize;
+        let webview_retained_addr = self.retain_webview_for_dispatch();
         let (tx, rx) = oneshot::channel::<Option<String>>();
 
         DispatchQueue::main().exec_async(move || {
-            let webview_ptr = webview_ptr_addr as *mut AnyObject;
+            let (_webview_retained, webview_ptr) =
+                unsafe { dispatched_webview(webview_retained_addr) };
             let _ = tx.send(source_page_url_from_webview(webview_ptr));
         });
 
@@ -2994,37 +2996,37 @@ impl WebViewController for WebViewInner {
     }
 
     fn reload(&self) -> Result<(), WebViewError> {
-        let webview_ptr_addr = self.webview as usize;
+        let webview_retained_addr = self.retain_webview_for_dispatch();
         DispatchQueue::main().exec_async(move || unsafe {
-            let webview = webview_ptr_addr as *mut AnyObject;
+            let (_webview_retained, webview) = dispatched_webview(webview_retained_addr);
             let _: *mut AnyObject = msg_send![webview, reload];
         });
         Ok(())
     }
 
     fn go_back(&self) -> Result<(), WebViewError> {
-        let webview_ptr_addr = self.webview as usize;
+        let webview_retained_addr = self.retain_webview_for_dispatch();
         DispatchQueue::main().exec_async(move || unsafe {
-            let webview = webview_ptr_addr as *mut AnyObject;
+            let (_webview_retained, webview) = dispatched_webview(webview_retained_addr);
             let _: *mut AnyObject = msg_send![webview, goBack];
         });
         Ok(())
     }
 
     fn go_forward(&self) -> Result<(), WebViewError> {
-        let webview_ptr_addr = self.webview as usize;
+        let webview_retained_addr = self.retain_webview_for_dispatch();
         DispatchQueue::main().exec_async(move || unsafe {
-            let webview = webview_ptr_addr as *mut AnyObject;
+            let (_webview_retained, webview) = dispatched_webview(webview_retained_addr);
             let _: *mut AnyObject = msg_send![webview, goForward];
         });
         Ok(())
     }
 
     async fn list_cookies(&self) -> Result<Vec<WebViewCookie>, WebViewError> {
-        let webview_ptr_addr = self.webview as usize;
+        let webview_retained_addr = self.retain_webview_for_dispatch();
         let (tx, rx) = oneshot::channel::<Result<Vec<WebViewCookie>, WebViewError>>();
         DispatchQueue::main().exec_async(move || unsafe {
-            let webview = webview_ptr_addr as *mut AnyObject;
+            let (_webview_retained, webview) = dispatched_webview(webview_retained_addr);
             let configuration: *mut AnyObject = msg_send![webview, configuration];
             if configuration.is_null() {
                 let _ = tx.send(Err(WebViewError::WebView(
@@ -3064,10 +3066,10 @@ impl WebViewController for WebViewInner {
     }
 
     async fn set_cookie(&self, request: WebViewCookieSetRequest) -> Result<(), WebViewError> {
-        let webview_ptr_addr = self.webview as usize;
+        let webview_retained_addr = self.retain_webview_for_dispatch();
         let (tx, rx) = oneshot::channel::<Result<(), WebViewError>>();
         DispatchQueue::main().exec_async(move || unsafe {
-            let webview = webview_ptr_addr as *mut AnyObject;
+            let (_webview_retained, webview) = dispatched_webview(webview_retained_addr);
             let configuration: *mut AnyObject = msg_send![webview, configuration];
             if configuration.is_null() {
                 let _ = tx.send(Err(WebViewError::WebView(
@@ -3110,7 +3112,7 @@ impl WebViewController for WebViewInner {
         domain: &str,
         path: &str,
     ) -> Result<(), WebViewError> {
-        let webview_ptr_addr = self.webview as usize;
+        let webview_retained_addr = self.retain_webview_for_dispatch();
         let name = name.to_string();
         let domain = domain.to_string();
         let path = if path.trim().is_empty() {
@@ -3120,7 +3122,7 @@ impl WebViewController for WebViewInner {
         };
         let (tx, rx) = oneshot::channel::<Result<(), WebViewError>>();
         DispatchQueue::main().exec_async(move || unsafe {
-            let webview = webview_ptr_addr as *mut AnyObject;
+            let (_webview_retained, webview) = dispatched_webview(webview_retained_addr);
             let configuration: *mut AnyObject = msg_send![webview, configuration];
             if configuration.is_null() {
                 let _ = tx.send(Err(WebViewError::WebView(
@@ -3199,10 +3201,10 @@ impl WebViewController for WebViewInner {
     }
 
     async fn clear_cookies(&self) -> Result<(), WebViewError> {
-        let webview_ptr_addr = self.webview as usize;
+        let webview_retained_addr = self.retain_webview_for_dispatch();
         let (tx, rx) = oneshot::channel::<Result<(), WebViewError>>();
         DispatchQueue::main().exec_async(move || unsafe {
-            let webview = webview_ptr_addr as *mut AnyObject;
+            let (_webview_retained, webview) = dispatched_webview(webview_retained_addr);
             let configuration: *mut AnyObject = msg_send![webview, configuration];
             if configuration.is_null() {
                 let _ = tx.send(Err(WebViewError::WebView(
@@ -3297,14 +3299,16 @@ impl WebViewInner {
         T: Send + 'static,
         F: FnOnce(usize) -> Result<T, WebViewInputError> + Send + 'static,
     {
-        let webview_ptr = self.webview as usize;
         if MainThreadMarker::new().is_some() {
-            return f(webview_ptr);
+            return f(self.webview as usize);
         }
 
+        let webview_retained_addr = self.retain_webview_for_dispatch();
         let (tx, rx) = oneshot::channel();
         DispatchQueue::main().exec_async(move || {
-            let _ = tx.send(f(webview_ptr));
+            let (_webview_retained, webview_ptr) =
+                unsafe { dispatched_webview(webview_retained_addr) };
+            let _ = tx.send(f(webview_ptr as usize));
         });
         rx.await.map_err(|_| WebViewInputError::Destroyed)?
     }
@@ -3428,10 +3432,10 @@ impl WebViewInner {
     }
 
     async fn wait_presentation_update(&self) -> Result<(), WebViewInputError> {
-        let webview_ptr = self.webview as usize;
+        let webview_retained_addr = self.retain_webview_for_dispatch();
         let (tx, rx) = oneshot::channel::<Result<(), WebViewInputError>>();
         DispatchQueue::main().exec_async(move || unsafe {
-            let webview = webview_ptr as *mut AnyObject;
+            let (_webview_retained, webview) = dispatched_webview(webview_retained_addr);
             let responds: objc2::runtime::Bool =
                 msg_send![webview, respondsToSelector: objc2::sel!(_doAfterNextPresentationUpdate:)];
             if !responds.as_bool() {
@@ -3464,10 +3468,10 @@ impl WebViewInner {
     }
 
     async fn wait_pending_mouse_events(&self) -> Result<(), WebViewInputError> {
-        let webview_ptr = self.webview as usize;
+        let webview_retained_addr = self.retain_webview_for_dispatch();
         let (tx, rx) = oneshot::channel::<Result<(), WebViewInputError>>();
         DispatchQueue::main().exec_async(move || unsafe {
-            let webview = webview_ptr as *mut AnyObject;
+            let (_webview_retained, webview) = dispatched_webview(webview_retained_addr);
             let responds: objc2::runtime::Bool =
                 msg_send![webview, respondsToSelector: objc2::sel!(_doAfterProcessingAllPendingMouseEvents:)];
             if !responds.as_bool() {
@@ -3504,10 +3508,10 @@ impl WebViewInner {
         command: &'static str,
         argument: String,
     ) -> Result<(), WebViewInputError> {
-        let webview_ptr = self.webview as usize;
+        let webview_retained_addr = self.retain_webview_for_dispatch();
         let (tx, rx) = oneshot::channel::<Result<(), WebViewInputError>>();
         DispatchQueue::main().exec_async(move || unsafe {
-            let webview = webview_ptr as *mut AnyObject;
+            let (_webview_retained, webview) = dispatched_webview(webview_retained_addr);
             let responds: objc2::runtime::Bool =
                 msg_send![webview, respondsToSelector: objc2::sel!(_executeEditCommand:argument:completion:)];
             if !responds.as_bool() {
@@ -3986,7 +3990,30 @@ impl Drop for WebViewInner {
     }
 }
 
+/// Reconstruct the retained WKWebView handed to a main-queue closure by
+/// [`WebViewInner::retain_webview_for_dispatch`]. The returned guard keeps the
+/// object alive until the closure ends; the pointer is valid for messaging
+/// while the guard is in scope.
+unsafe fn dispatched_webview(addr: usize) -> (Retained<AnyObject>, *mut AnyObject) {
+    let retained = unsafe { Retained::from_raw(addr as *mut AnyObject) }
+        .expect("dispatched WKWebView must be non-null");
+    let ptr = &*retained as *const AnyObject as *mut AnyObject;
+    (retained, ptr)
+}
+
 impl WebViewInner {
+    /// Retain the WKWebView for a queued main-queue closure, handed over as a
+    /// raw address. `drop` releases its own reference through another queued
+    /// closure; without this retain a queued msg_send can race that release
+    /// and fire on a dangling pointer (SIGTRAP under rapid WebView churn).
+    fn retain_webview_for_dispatch(&self) -> usize {
+        unsafe {
+            let retained =
+                Retained::retain(self.webview).expect("WKWebView pointer must be non-null");
+            Retained::into_raw(retained) as usize
+        }
+    }
+
     /// Cleanup WebView resources on main thread and properly release the WebView
     fn cleanup_webview(&self) {
         unsafe {
