@@ -47,7 +47,7 @@ const HARMONY_COLOR_RES: &str = "lingxia_splash_background";
 /// Splash config resolved against the project root: images loaded, colors
 /// normalized to `#RRGGBB`.
 pub struct ResolvedSplash {
-    light_image: DynamicImage,
+    light_image: Option<DynamicImage>,
     dark_image: Option<DynamicImage>,
     pub light_background: String,
     pub dark_background: Option<String>,
@@ -55,9 +55,16 @@ pub struct ResolvedSplash {
 
 impl ResolvedSplash {
     pub fn resolve(project_root: &Path, config: &SplashConfig) -> Result<Self> {
-        let light_path = project_root.join(&config.image);
-        let light_image = image::open(&light_path)
-            .with_context(|| format!("Failed to open splash image {}", light_path.display()))?;
+        let light_image =
+            match &config.image {
+                Some(rel) => {
+                    let path = project_root.join(rel);
+                    Some(image::open(&path).with_context(|| {
+                        format!("Failed to open splash image {}", path.display())
+                    })?)
+                }
+                None => None,
+            };
         let light_background = normalize_hex_rgb(&config.background)
             .with_context(|| "Invalid splash.background".to_string())?;
 
@@ -158,10 +165,12 @@ fn write_if_changed(dest: &Path, content: &[u8]) -> Result<bool> {
 /// an OS window background can't aspect-fill a bitmap without distortion —
 /// and the runtime overlay brings the full-screen image.
 pub fn stage_android_res(splash: &ResolvedSplash, res_dir: &Path) -> Result<()> {
-    save_png(
-        &fit_splash(&splash.light_image),
-        &res_dir.join(format!("drawable-nodpi/{ANDROID_IMAGE_RES}.png")),
-    )?;
+    if let Some(light) = &splash.light_image {
+        save_png(
+            &fit_splash(light),
+            &res_dir.join(format!("drawable-nodpi/{ANDROID_IMAGE_RES}.png")),
+        )?;
+    }
     if let Some(dark) = &splash.dark_image {
         save_png(
             &fit_splash(dark),
@@ -267,10 +276,9 @@ pub const APPLE_BUNDLE_IMAGE_DARK: &str = "LingXiaSplash~dark.png";
 
 /// Copy the splash images into a built `.app` as plain bundle resources.
 pub fn install_apple_bundle_images(app_bundle: &Path, splash: &ResolvedSplash) -> Result<()> {
-    save_png(
-        &fit_splash(&splash.light_image),
-        &app_bundle.join(APPLE_BUNDLE_IMAGE),
-    )?;
+    if let Some(light) = &splash.light_image {
+        save_png(&fit_splash(light), &app_bundle.join(APPLE_BUNDLE_IMAGE))?;
+    }
     if let Some(dark) = &splash.dark_image {
         save_png(&fit_splash(dark), &app_bundle.join(APPLE_BUNDLE_IMAGE_DARK))?;
     }
@@ -280,33 +288,32 @@ pub fn install_apple_bundle_images(app_bundle: &Path, splash: &ResolvedSplash) -
 fn inject_apple_splash_assets(xcassets_dir: &Path, splash: &ResolvedSplash) -> Result<()> {
     // Image set: one single-scale universal image (the overlay aspect-fills
     // it), plus a dark-appearance variant when configured.
-    let imageset_dir = xcassets_dir.join(format!("{APPLE_IMAGE_ASSET}.imageset"));
-    fs::create_dir_all(&imageset_dir)?;
+    if let Some(light) = &splash.light_image {
+        let imageset_dir = xcassets_dir.join(format!("{APPLE_IMAGE_ASSET}.imageset"));
+        fs::create_dir_all(&imageset_dir)?;
 
-    save_png(
-        &fit_splash(&splash.light_image),
-        &imageset_dir.join("splash.png"),
-    )?;
-    let mut images = vec![json!({
-        "idiom": "universal",
-        "filename": "splash.png",
-    })];
-    if let Some(dark) = &splash.dark_image {
-        save_png(&fit_splash(dark), &imageset_dir.join("splash-dark.png"))?;
-        images.push(json!({
+        save_png(&fit_splash(light), &imageset_dir.join("splash.png"))?;
+        let mut images = vec![json!({
             "idiom": "universal",
-            "appearances": [{"appearance": "luminosity", "value": "dark"}],
-            "filename": "splash-dark.png",
-        }));
+            "filename": "splash.png",
+        })];
+        if let Some(dark) = &splash.dark_image {
+            save_png(&fit_splash(dark), &imageset_dir.join("splash-dark.png"))?;
+            images.push(json!({
+                "idiom": "universal",
+                "appearances": [{"appearance": "luminosity", "value": "dark"}],
+                "filename": "splash-dark.png",
+            }));
+        }
+        let imageset_contents = json!({
+            "images": images,
+            "info": {"author": "lingxia", "version": 1},
+        });
+        fs::write(
+            imageset_dir.join("Contents.json"),
+            serde_json::to_string_pretty(&imageset_contents)?,
+        )?;
     }
-    let imageset_contents = json!({
-        "images": images,
-        "info": {"author": "lingxia", "version": 1},
-    });
-    fs::write(
-        imageset_dir.join("Contents.json"),
-        serde_json::to_string_pretty(&imageset_contents)?,
-    )?;
 
     // Color set: light color, plus a dark-appearance color when configured.
     let colorset_dir = xcassets_dir.join(format!("{APPLE_COLOR_ASSET}.colorset"));
@@ -378,10 +385,12 @@ pub fn sync_harmony_splash(splash: &ResolvedSplash, harmony_dir: &Path) -> Resul
     let resources_dir = harmony_dir.join("entry/src/main/resources");
     let mut changed = false;
 
-    changed |= write_if_changed(
-        &resources_dir.join(format!("base/media/{HARMONY_MEDIA_RES}.png")),
-        &png_bytes(&fit_splash(&splash.light_image))?,
-    )?;
+    if let Some(light) = &splash.light_image {
+        changed |= write_if_changed(
+            &resources_dir.join(format!("base/media/{HARMONY_MEDIA_RES}.png")),
+            &png_bytes(&fit_splash(light))?,
+        )?;
+    }
     if let Some(dark) = &splash.dark_image {
         changed |= write_if_changed(
             &resources_dir.join(format!("dark/media/{HARMONY_MEDIA_RES}.png")),

@@ -67,6 +67,23 @@ fn notify_home_first_ready_once(appid: &str) {
     if HOME_FIRST_READY.swap(true, std::sync::atomic::Ordering::Relaxed) {
         return;
     }
+
+    // Hold the signal until the cover has been up long enough. A page that
+    // renders in 200ms would otherwise flash the splash, which reads worse
+    // than not having one. The platform-side timeout still caps the wait.
+    let remaining = lingxia_app_context::splash_min_duration()
+        .saturating_sub(lingxia_app_context::since_startup());
+    if remaining.is_zero() {
+        signal_home_first_ready();
+        return;
+    }
+    std::mem::drop(crate::executor::spawn(async move {
+        tokio::time::sleep(remaining).await;
+        signal_home_first_ready();
+    }));
+}
+
+fn signal_home_first_ready() {
     if let Some(platform) = lxapp::runtime_registry::get_platform() {
         use lingxia_platform::traits::ui::UIUpdate;
         platform.notify_home_first_ready();

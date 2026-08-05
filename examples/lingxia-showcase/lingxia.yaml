@@ -87,11 +87,11 @@ appLinks:
     - applink.lingxia.app
 
 splash:
-  image: design/splash-light.png
   background: "#F2F7F4"
+  image: design/splash-light.png
   dark:
-    image: design/splash-dark.png
     background: "#141A21"
+    image: design/splash-dark.png
 
 storage:
   tempMaxSizeMB: 1024

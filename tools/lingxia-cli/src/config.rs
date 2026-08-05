@@ -62,16 +62,27 @@ pub struct LingXiaConfig {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SplashConfig {
-    /// Splash image (PNG), path relative to the project root. Rendered
-    /// full-screen (aspect-fill) by the runtime overlay.
-    pub image: String,
     /// Background color, `#RRGGBB` — the OS static launch frame, and what
-    /// shows behind/before the image.
+    /// shows behind/before the image. The only required field: an app whose
+    /// cover comes from the runtime hook still needs this so the first frame
+    /// is branded (no code runs before it).
     pub background: String,
+    /// Splash image (PNG), path relative to the project root. Rendered
+    /// full-screen (aspect-fill) by the runtime overlay. Optional — omit it
+    /// to get a color-only launch, or to let the runtime hook supply the art.
+    /// Keep it as the guaranteed fallback when a hook is present.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub image: Option<String>,
     /// Dark-appearance variant. When omitted the light splash is used in dark
     /// mode too.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub dark: Option<SplashDarkConfig>,
+    /// Minimum time the cover stays up, in milliseconds (default 600). Keeps
+    /// a fast first render from flashing the cover. The hard upper bound is a
+    /// framework constant and deliberately not configurable — a splash that
+    /// can be configured to never leave is a failure mode, not a feature.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min_duration: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

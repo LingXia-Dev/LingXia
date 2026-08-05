@@ -186,6 +186,9 @@ pub struct AppConfig {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub storage: Option<StorageConfig>,
 
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub splash: Option<SplashConfig>,
+
     #[serde(rename = "devWsUrl", default, skip_serializing_if = "Option::is_none")]
     pub dev_ws_url: Option<String>,
 
@@ -244,6 +247,20 @@ pub struct AppLinksConfig {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub hosts: Vec<String>,
 }
+
+/// Runtime half of `splash:`. Images and colors are platform resources; only
+/// the minimum hold time is a runtime decision, and the upper bound is a
+/// framework constant that hosts deliberately cannot configure.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct SplashConfig {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min_duration: Option<u32>,
+}
+
+/// Default minimum hold, in milliseconds. Long enough that a fast first render
+/// does not flash the cover, short enough not to feel like a delay.
+pub const DEFAULT_SPLASH_MIN_DURATION_MS: u32 = 600;
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -405,6 +422,30 @@ pub fn app_config() -> Option<&'static AppConfig> {
 
 pub fn theme() -> Option<&'static ThemeConfig> {
     APP_CONFIG.get().and_then(|config| config.theme.as_ref())
+}
+
+/// Wall-clock origin for cold-start timing. First touched while the runtime
+/// loads `app.json`, which is early enough to stand in for process start.
+static STARTUP: std::sync::LazyLock<std::time::Instant> =
+    std::sync::LazyLock::new(std::time::Instant::now);
+
+/// Start the cold-start clock. Idempotent; call as early as possible.
+pub fn mark_startup() {
+    let _ = *STARTUP;
+}
+
+pub fn since_startup() -> std::time::Duration {
+    STARTUP.elapsed()
+}
+
+/// How long the splash must stay up before a ready signal may dismiss it.
+pub fn splash_min_duration() -> std::time::Duration {
+    let ms = APP_CONFIG
+        .get()
+        .and_then(|config| config.splash.as_ref())
+        .and_then(|splash| splash.min_duration)
+        .unwrap_or(DEFAULT_SPLASH_MIN_DURATION_MS);
+    std::time::Duration::from_millis(u64::from(ms))
 }
 
 pub fn product_name() -> Option<&'static str> {

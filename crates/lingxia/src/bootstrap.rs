@@ -228,6 +228,9 @@ pub(crate) fn init_with_platform(
 ) -> crate::Result<crate::RuntimeInfo> {
     use lingxia_platform::traits::app_runtime::AppRuntime;
 
+    // Origin for cold-start timing (the splash minimum hold measures from here).
+    lingxia_app_context::mark_startup();
+
     crate::host_addon::run_before_init();
 
     let runtime = std::sync::Arc::new(platform.clone());

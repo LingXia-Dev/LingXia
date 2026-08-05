@@ -103,6 +103,14 @@ pub(super) fn build_app_json_from_config(
     if let Some(theme) = config.theme.as_ref() {
         obj.insert("theme".to_string(), serde_json::to_value(theme)?);
     }
+    // Only the minimum-hold time reaches the runtime: the images and colors are
+    // platform resources, and the upper bound is a framework constant.
+    if let Some(splash) = config.splash.as_ref() {
+        obj.insert(
+            "splash".to_string(),
+            serde_json::json!({ "minDuration": splash.min_duration }),
+        );
+    }
 
     Ok(serde_json::to_string_pretty(&serde_json::Value::Object(
         obj,
