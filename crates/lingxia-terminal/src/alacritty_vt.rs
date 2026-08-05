@@ -20,7 +20,7 @@ use alacritty_terminal::event::{Event, EventListener, WindowSize};
 use alacritty_terminal::grid::{Dimensions, Scroll};
 use alacritty_terminal::index::{Column, Line};
 use alacritty_terminal::term::cell::Flags;
-use alacritty_terminal::term::{ClipboardType, Config, Term, TermMode};
+use alacritty_terminal::term::{ClipboardType, Config, Term, TermDamage, TermMode};
 use alacritty_terminal::vte::ansi::{
     Color as AnsiColor, CursorShape, NamedColor, Processor, Rgb as AnsiRgb, StdSyncHandler,
 };
@@ -568,6 +568,149 @@ struct VtInner {
     progress_reported: bool,
     /// Exit code from the most recent OSC 133 D mark.
     last_exit_code: Option<i32>,
+    /// Rows touched since the last frame a renderer consumed.
+    damage: DamageSet,
+    /// Generation of the last frame handed out, so a renderer that asks
+    /// from a different point gets a full redraw instead of a diff
+    /// against a frame it never saw.
+    last_frame_generation: u64,
+}
+
+// ── Renderer frame (damage-tracked, allocation-free cells) ─────────────
+
+/// Per-screen-row damage bounds, in cell columns.
+#[derive(Debug, Clone, Default)]
+struct DamageSet {
+    /// `(left, right_inclusive)` per row; `left > right` means clean.
+    rows: Vec<(u16, u16)>,
+    full: bool,
+    /// Cursor row of the previous frame, redrawn so the old cursor is
+    /// erased even when nothing else on that row changed.
+    cursor_row: u16,
+}
+
+impl DamageSet {
+    fn mark_full(&mut self) {
+        self.full = true;
+    }
+
+    fn expand(&mut self, row: usize, left: usize, right: usize, rows: usize) {
+        if row >= rows {
+            return;
+        }
+        if self.rows.len() < rows {
+            self.rows.resize(rows, (u16::MAX, 0));
+        }
+        let entry = &mut self.rows[row];
+        entry.0 = entry.0.min(left.min(u16::MAX as usize) as u16);
+        entry.1 = entry.1.max(right.min(u16::MAX as usize) as u16);
+    }
+
+    fn is_dirty(&self) -> bool {
+        self.full || self.rows.iter().any(|(left, right)| left <= right)
+    }
+
+    /// Drain into renderer-facing rows and reset to clean.
+    fn take(&mut self, rows: u16, cols: u16) -> (Vec<RowDamage>, bool) {
+        let full = self.full || self.rows.len() < rows as usize;
+        let damage = if full {
+            (0..rows)
+                .map(|row| RowDamage {
+                    row,
+                    start_col: 0,
+                    end_col: cols,
+                })
+                .collect()
+        } else {
+            self.rows
+                .iter()
+                .enumerate()
+                .filter(|(_, (left, right))| left <= right)
+                .map(|(row, (left, right))| RowDamage {
+                    row: row as u16,
+                    start_col: *left,
+                    end_col: right.saturating_add(1).min(cols),
+                })
+                .collect()
+        };
+        self.full = false;
+        self.rows.clear();
+        self.rows.resize(rows as usize, (u16::MAX, 0));
+        (damage, full)
+    }
+}
+
+/// A damaged span of one screen row; `end_col` is exclusive.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RowDamage {
+    pub row: u16,
+    pub start_col: u16,
+    pub end_col: u16,
+}
+
+/// One cell of a [`TerminalFrame`]: fixed size and allocation-free, so a
+/// whole frame is two buffers a renderer can upload directly.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct FrameCell {
+    /// Foreground RGBA (0xRRGGBBAA).
+    pub fg: u32,
+    /// Background RGBA; alpha 0 marks the default background.
+    pub bg: u32,
+    /// SGR 58 underline color; alpha 0 means "use the foreground".
+    pub underline_color: u32,
+    /// Byte offset of this cell's cluster in [`TerminalFrame::text`].
+    pub text_offset: u32,
+    /// Byte length of the cluster; 0 for a blank cell.
+    pub text_len: u8,
+    /// `ATTR_*` bits.
+    pub attrs: u8,
+    /// [`UnderlineStyle`] as an index.
+    pub underline: u8,
+    /// Grid columns covered; 0 marks a continuation column.
+    pub columns: u8,
+}
+
+/// A renderer-ready frame: the full grid plus the rows that changed
+/// since the caller's last frame.
+///
+/// Cell text lives in one `text` blob addressed by offset/length, so a
+/// frame costs two allocations instead of one per cell, and a glyph
+/// cache can key directly on the returned `&str`.
+#[derive(Debug, Clone, Default)]
+pub struct TerminalFrame {
+    pub cols: u16,
+    pub rows: u16,
+    pub generation: u64,
+    /// `rows * cols` cells, row-major.
+    pub cells: Vec<FrameCell>,
+    pub text: String,
+    /// Rows to repaint. Covers the whole grid when `full_damage`.
+    pub damage: Vec<RowDamage>,
+    pub full_damage: bool,
+    pub cursor: Cursor,
+    pub default_fg: u32,
+    pub default_bg: u32,
+}
+
+impl TerminalFrame {
+    /// Cluster text of a cell, empty for blanks and continuation cells.
+    pub fn cell_text(&self, cell: &FrameCell) -> &str {
+        let start = cell.text_offset as usize;
+        let end = start + cell.text_len as usize;
+        self.text.get(start..end).unwrap_or("")
+    }
+}
+
+/// Result of asking a session for the frame after a given generation.
+#[derive(Debug, Clone)]
+pub enum FrameUpdate {
+    /// Nothing changed; the renderer keeps its last frame.
+    Unchanged {
+        generation: u64,
+    },
+    Changed(Box<TerminalFrame>),
 }
 
 /// Viewport dimensions handed to `Term::new` / `Term::resize`.
@@ -661,6 +804,13 @@ impl VtScreen {
                 progress: TerminalProgress::default(),
                 progress_reported: false,
                 last_exit_code: None,
+                // A renderer that has drawn nothing needs a full frame,
+                // even before any output arrives.
+                damage: DamageSet {
+                    full: true,
+                    ..DamageSet::default()
+                },
+                last_frame_generation: 0,
             }),
         }
     }
@@ -696,6 +846,7 @@ impl VtScreen {
         }
         inner.parser.advance(&mut inner.term, &bytes[last..]);
         inner.answer_pending_replies();
+        inner.collect_damage();
         inner.generation = inner.generation.wrapping_add(1);
     }
 
@@ -726,6 +877,8 @@ impl VtScreen {
     pub fn set_theme(&self, theme: ThemeColors) {
         let mut inner = self.inner.lock();
         inner.theme = theme;
+        // Every resolved color changes, so nothing on screen is reusable.
+        inner.damage.mark_full();
         inner.generation = inner.generation.wrapping_add(1);
     }
 
@@ -876,24 +1029,97 @@ impl VtScreen {
         });
         inner.cell_width_px = cell_width_px.clamp(1, u16::MAX as u32) as u16;
         inner.cell_height_px = cell_height_px.clamp(1, u16::MAX as u32) as u16;
+        inner.damage.mark_full();
         inner.generation = inner.generation.wrapping_add(1);
         Ok(())
+    }
+
+    /// The renderer's view of the grid, diffed against the frame the
+    /// caller last drew.
+    ///
+    /// Returns [`FrameUpdate::Unchanged`] when nothing moved since
+    /// `since_generation`, so a polling renderer does no work on a quiet
+    /// frame. A `since_generation` other than the last frame handed out
+    /// forces a full repaint — a renderer that lost its state, or a new
+    /// one attaching, must not receive a diff against a frame it never
+    /// saw.
+    pub fn frame(&self, since_generation: u64) -> FrameUpdate {
+        let mut inner = self.inner.lock();
+        let inner = &mut *inner;
+        inner.flush_expired_sync();
+
+        let resumed = since_generation != inner.last_frame_generation;
+        if !resumed && since_generation == inner.generation && !inner.damage.is_dirty() {
+            return FrameUpdate::Unchanged {
+                generation: inner.generation,
+            };
+        }
+        if resumed {
+            inner.damage.mark_full();
+        }
+
+        let cols = inner.term.columns().min(u16::MAX as usize) as u16;
+        let rows = inner.term.screen_lines().min(u16::MAX as usize) as u16;
+        let total = cols as usize * rows as usize;
+
+        let content = inner.term.renderable_content();
+        let display_offset = content.display_offset;
+        let colors = content.colors;
+        let theme = &inner.theme;
+        let default_fg = colors[NamedColor::Foreground]
+            .map(|rgb| [rgb.r, rgb.g, rgb.b])
+            .unwrap_or(theme.fg);
+        let default_bg = colors[NamedColor::Background]
+            .map(|rgb| [rgb.r, rgb.g, rgb.b])
+            .unwrap_or(theme.bg);
+        let resolve = resolver(colors, theme);
+
+        // The blob is filled in column order, which is what lets a
+        // joined cluster be described by widening the leader's length.
+        let mut text = String::with_capacity(total);
+        let mut cells = vec![FrameCell::default(); total];
+        let mut ordered: Vec<(usize, &alacritty_terminal::term::cell::Cell)> = Vec::new();
+        for indexed in content.display_iter {
+            let viewport_row = indexed.point.line.0 + display_offset as i32;
+            if viewport_row < 0 || viewport_row >= rows as i32 {
+                continue;
+            }
+            let col = indexed.point.column.0;
+            if col >= cols as usize {
+                continue;
+            }
+            ordered.push((viewport_row as usize * cols as usize + col, indexed.cell));
+        }
+        ordered.sort_unstable_by_key(|(index, _)| *index);
+        for (index, cell) in ordered {
+            cells[index] = convert_frame_cell(cell, &resolve, default_fg, default_bg, &mut text);
+        }
+        for row in cells.chunks_mut(cols as usize) {
+            join_zwj_frame_cells(row, &text);
+        }
+
+        let cursor = frame_cursor(content.cursor, content.mode, display_offset, rows);
+        let (damage, full_damage) = inner.damage.take(rows, cols);
+        inner.last_frame_generation = inner.generation;
+
+        FrameUpdate::Changed(Box::new(TerminalFrame {
+            cols,
+            rows,
+            generation: inner.generation,
+            cells,
+            text,
+            damage,
+            full_damage,
+            cursor,
+            default_fg: pack_rgb(default_fg, 0xFF),
+            default_bg: pack_rgb(default_bg, 0xFF),
+        }))
     }
 
     pub fn snapshot(&self) -> ScreenSnapshot {
         let mut inner = self.inner.lock();
         let inner = &mut *inner;
-
-        // An application that enters synchronized output (DEC 2026) and
-        // never leaves keeps bytes buffered inside the parser. Flush
-        // once vte's own deadline passes so the frame can't freeze.
-        if let Some(deadline) = inner.parser.sync_timeout().sync_timeout()
-            && Instant::now() >= deadline
-        {
-            inner.parser.stop_sync(&mut inner.term);
-            inner.answer_pending_replies();
-            inner.generation = inner.generation.wrapping_add(1);
-        }
+        inner.flush_expired_sync();
 
         let cols = inner.term.columns().min(u16::MAX as usize) as u16;
         let rows = inner.term.screen_lines().min(u16::MAX as usize) as u16;
@@ -1042,6 +1268,8 @@ impl VtScreen {
         let delta =
             i32::try_from(-delta_rows).unwrap_or(if delta_rows < 0 { i32::MAX } else { i32::MIN });
         inner.term.scroll_display(Scroll::Delta(delta));
+        // The viewport moved over the grid: every row shows new content.
+        inner.damage.mark_full();
         inner.generation = inner.generation.wrapping_add(1);
         true
     }
@@ -1128,6 +1356,47 @@ impl VtInner {
         self.listener.events.lock().push(kind);
     }
 
+    /// An application that enters synchronized output (DEC 2026) and
+    /// never leaves keeps bytes buffered inside the parser. Flush once
+    /// vte's own deadline passes so the screen can't freeze.
+    fn flush_expired_sync(&mut self) {
+        if let Some(deadline) = self.parser.sync_timeout().sync_timeout()
+            && Instant::now() >= deadline
+        {
+            self.parser.stop_sync(&mut self.term);
+            self.answer_pending_replies();
+            self.collect_damage();
+            self.generation = self.generation.wrapping_add(1);
+        }
+    }
+
+    /// Fold the terminal's per-line damage into our own set.
+    ///
+    /// `Term` clears its damage on read, so it is accumulated here
+    /// instead: a renderer polls on its own cadence and must not lose
+    /// the rows that changed between two of its frames.
+    fn collect_damage(&mut self) {
+        let rows = self.term.screen_lines();
+        let cursor_row = self.term.grid().cursor.point.line.0.max(0) as usize;
+        match self.term.damage() {
+            TermDamage::Full => self.damage.mark_full(),
+            TermDamage::Partial(lines) => {
+                let lines: Vec<_> = lines.collect();
+                for line in lines {
+                    self.damage.expand(line.line, line.left, line.right, rows);
+                }
+            }
+        }
+        self.term.reset_damage();
+        // Repaint where the cursor was and where it is, so it is erased
+        // from its old row even when that row's text did not change.
+        let columns = self.term.columns().saturating_sub(1);
+        let previous = self.damage.cursor_row as usize;
+        self.damage.expand(previous, 0, columns, rows);
+        self.damage.expand(cursor_row, 0, columns, rows);
+        self.damage.cursor_row = cursor_row.min(u16::MAX as usize) as u16;
+    }
+
     /// Answer queued OSC color / size queries. Runs after
     /// `parser.advance` returns so `Term` state is readable again.
     fn answer_pending_replies(&mut self) {
@@ -1160,6 +1429,123 @@ impl VtInner {
 }
 
 type ResolveColor<'a> = dyn Fn(AnsiColor, [u8; 3]) -> [u8; 3] + 'a;
+
+/// Resolve a symbolic cell color against OSC overrides, then the theme.
+fn resolver<'a>(
+    colors: &'a alacritty_terminal::term::color::Colors,
+    theme: &'a ThemeColors,
+) -> impl Fn(AnsiColor, [u8; 3]) -> [u8; 3] + 'a {
+    move |color: AnsiColor, base: [u8; 3]| match color {
+        AnsiColor::Spec(rgb) => [rgb.r, rgb.g, rgb.b],
+        AnsiColor::Indexed(index) => colors[index as usize]
+            .map(|rgb| [rgb.r, rgb.g, rgb.b])
+            .unwrap_or(theme.palette[index as usize]),
+        AnsiColor::Named(named) => {
+            let index = named as usize;
+            if index < 256 {
+                colors[index]
+                    .map(|rgb| [rgb.r, rgb.g, rgb.b])
+                    .unwrap_or(theme.palette[index])
+            } else {
+                base
+            }
+        }
+    }
+}
+
+/// Cursor in viewport coordinates; scrolled-back history must not show
+/// the live cursor.
+fn frame_cursor(
+    cursor: alacritty_terminal::term::RenderableCursor,
+    mode: TermMode,
+    display_offset: usize,
+    rows: u16,
+) -> Cursor {
+    let row = cursor.point.line.0 + display_offset as i32;
+    Cursor {
+        col: cursor.point.column.0.min(u16::MAX as usize) as u16,
+        row: row.clamp(0, rows.saturating_sub(1) as i32) as u16,
+        visible: cursor.shape != CursorShape::Hidden
+            && mode.contains(TermMode::SHOW_CURSOR)
+            && (0..rows as i32).contains(&row),
+        style: match cursor.shape {
+            CursorShape::Beam => CursorVisualStyle::Bar,
+            CursorShape::Underline => CursorVisualStyle::Underline,
+            CursorShape::HollowBlock => CursorVisualStyle::BlockHollow,
+            CursorShape::Block | CursorShape::Hidden => CursorVisualStyle::Block,
+        },
+    }
+}
+
+/// Longest cluster a [`FrameCell`] can address; longer ones are cut at a
+/// char boundary rather than corrupting the blob's offsets.
+const MAX_CLUSTER_BYTES: usize = u8::MAX as usize;
+
+/// Convert one grid cell, appending its cluster to the frame's blob.
+fn convert_frame_cell(
+    cell: &alacritty_terminal::term::cell::Cell,
+    resolve: &impl Fn(AnsiColor, [u8; 3]) -> [u8; 3],
+    default_fg: [u8; 3],
+    default_bg: [u8; 3],
+    text: &mut String,
+) -> FrameCell {
+    let converted = convert_cell(cell, resolve, default_fg, default_bg);
+    let offset = text.len().min(u32::MAX as usize) as u32;
+    let mut len = converted.text.len();
+    if len > MAX_CLUSTER_BYTES {
+        len = MAX_CLUSTER_BYTES;
+        while len > 0 && !converted.text.is_char_boundary(len) {
+            len -= 1;
+        }
+    }
+    text.push_str(&converted.text[..len]);
+    FrameCell {
+        fg: converted.fg,
+        bg: converted.bg,
+        underline_color: converted.underline_color.unwrap_or(0),
+        text_offset: offset,
+        text_len: len as u8,
+        attrs: converted.attrs,
+        underline: converted.underline as u8,
+        columns: converted.columns,
+    }
+}
+
+/// The [`join_zwj_clusters`] pass for frame cells. Clusters are already
+/// contiguous in the blob (cells are filled in column order), so joining
+/// is only widening the leader's length.
+fn join_zwj_frame_cells(row: &mut [FrameCell], text: &str) {
+    let ends_with_zwj = |cell: &FrameCell| {
+        let start = cell.text_offset as usize;
+        let end = start + cell.text_len as usize;
+        text.get(start..end)
+            .is_some_and(|s| s.ends_with('\u{200D}'))
+    };
+    let mut lead = 0;
+    while lead < row.len() {
+        if !ends_with_zwj(&row[lead]) {
+            lead += 1;
+            continue;
+        }
+        let mut next = lead + 1;
+        while ends_with_zwj(&row[lead]) && next < row.len() {
+            if row[next].columns == 0 && row[next].text_len == 0 {
+                // Wide-char spacer: part of the cluster's span.
+                next += 1;
+                continue;
+            }
+            if row[next].text_len == 0 {
+                break;
+            }
+            let joined = std::mem::take(&mut row[next].text_len);
+            row[lead].text_len = row[lead].text_len.saturating_add(joined);
+            let columns = std::mem::replace(&mut row[next].columns, 0);
+            row[lead].columns = row[lead].columns.saturating_add(columns);
+            next += 1;
+        }
+        lead = next.max(lead + 1);
+    }
+}
 
 fn convert_cell(
     cell: &alacritty_terminal::term::cell::Cell,
@@ -1709,6 +2095,147 @@ mod tests {
         // Counters are monotonic: draining events does not reset them.
         screen.drain_events();
         assert_eq!(screen.activity().bells, 2);
+    }
+
+    /// Row text rebuilt from a frame's cells and blob.
+    fn frame_row(frame: &TerminalFrame, row: u16) -> String {
+        let start = row as usize * frame.cols as usize;
+        frame.cells[start..start + frame.cols as usize]
+            .iter()
+            .map(|cell| frame.cell_text(cell))
+            .collect::<String>()
+    }
+
+    fn changed(update: FrameUpdate) -> Box<TerminalFrame> {
+        match update {
+            FrameUpdate::Changed(frame) => frame,
+            FrameUpdate::Unchanged { generation } => {
+                panic!("expected a frame, got unchanged at generation {generation}")
+            }
+        }
+    }
+
+    #[test]
+    fn frame_reports_only_damaged_rows() {
+        let screen = VtScreen::new_with_options(10, 4, None, None, None);
+        screen.feed(b"one\r\ntwo\r\nthree\r\n");
+
+        // First frame: nothing drawn yet, so everything is damaged.
+        let first = changed(screen.frame(0));
+        assert!(first.full_damage);
+        assert_eq!(first.damage.len(), 4, "every row: {:?}", first.damage);
+        assert_eq!(frame_row(&first, 0).trim_end(), "one");
+        assert_eq!(frame_row(&first, 2).trim_end(), "three");
+
+        // A quiet poll does no work.
+        match screen.frame(first.generation) {
+            FrameUpdate::Unchanged { generation } => assert_eq!(generation, first.generation),
+            FrameUpdate::Changed(_) => panic!("nothing changed since the last frame"),
+        }
+
+        // Writing one row damages that row (plus the cursor's).
+        screen.feed(b"four");
+        let second = changed(screen.frame(first.generation));
+        assert!(!second.full_damage, "a single row changed");
+        let rows: Vec<u16> = second.damage.iter().map(|damage| damage.row).collect();
+        assert_eq!(rows, vec![3], "only the written row: {:?}", second.damage);
+        assert_eq!(second.damage[0].start_col, 0);
+        assert!(second.damage[0].end_col <= second.cols);
+        assert_eq!(frame_row(&second, 3).trim_end(), "four");
+
+        // A renderer asking from a generation it never saw gets a full
+        // repaint rather than a diff against a frame it does not have.
+        let resumed = changed(screen.frame(second.generation.wrapping_sub(5)));
+        assert!(resumed.full_damage);
+    }
+
+    #[test]
+    fn first_frame_of_an_idle_session_is_full() {
+        let screen = VtScreen::new_with_options(8, 2, None, None, None);
+        let first = changed(screen.frame(0));
+        assert!(first.full_damage, "a renderer with nothing drawn gets all");
+        assert_eq!(first.cells.len(), 16);
+        assert!(matches!(
+            screen.frame(first.generation),
+            FrameUpdate::Unchanged { .. }
+        ));
+    }
+
+    #[test]
+    fn frame_cells_are_allocation_free_and_carry_style() {
+        let screen = VtScreen::new_with_options(12, 2, None, None, None);
+        screen.feed("\x1b[31mR\x1b[m中\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}".as_bytes());
+        let frame = changed(screen.frame(0));
+
+        assert_eq!(
+            frame_row(&frame, 0),
+            "R中\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}"
+        );
+        assert_eq!(frame.cells[0].columns, 1);
+        assert_ne!(frame.cells[0].fg, frame.default_fg, "ANSI red resolved");
+        assert_eq!(frame.cells[1].columns, 2, "wide char spans two columns");
+        assert_eq!(frame.cells[2].columns, 0, "wide-char spacer");
+        assert_eq!(frame.cells[3].columns, 6, "joined family emoji");
+        // The blob holds every cluster exactly once, in column order.
+        assert_eq!(frame.cells[1].text_offset as usize, "R".len());
+        assert!(frame.text.starts_with("R中"));
+
+        // A row's spans still cover the row.
+        let total: u32 = frame.cells[..frame.cols as usize]
+            .iter()
+            .map(|cell| u32::from(cell.columns))
+            .sum();
+        assert_eq!(total, u32::from(frame.cols));
+    }
+
+    #[test]
+    fn frame_and_snapshot_agree_on_content() {
+        let screen = VtScreen::new_with_options(12, 2, None, None, None);
+        screen.feed("ab\u{1F468}\u{200D}\u{1F469}中\x1b[4:3mU".as_bytes());
+        let frame = changed(screen.frame(0));
+        let snapshot = screen.snapshot();
+
+        let snapshot_row: String = snapshot.cells[..snapshot.cols as usize]
+            .iter()
+            .map(|cell| cell.text.as_str())
+            .collect();
+        assert_eq!(frame_row(&frame, 0), snapshot_row, "same clusters");
+        for (index, (cell, expected)) in frame
+            .cells
+            .iter()
+            .zip(snapshot.cells.iter())
+            .enumerate()
+            .take(snapshot.cols as usize)
+        {
+            assert_eq!(cell.columns, expected.columns, "columns at {index}");
+            assert_eq!(cell.fg, expected.fg, "fg at {index}");
+            assert_eq!(cell.attrs, expected.attrs, "attrs at {index}");
+            assert_eq!(
+                cell.underline, expected.underline as u8,
+                "underline at {index}"
+            );
+        }
+    }
+
+    #[test]
+    fn theme_and_resize_damage_everything() {
+        let screen = VtScreen::new_with_options(10, 3, None, None, None);
+        screen.feed(b"hello");
+        let first = changed(screen.frame(0));
+
+        screen.set_theme(ThemeColors::from_ansi16(
+            [0x11, 0x22, 0x33],
+            [0x44, 0x55, 0x66],
+            [[0u8; 3]; 16],
+        ));
+        let themed = changed(screen.frame(first.generation));
+        assert!(themed.full_damage, "every resolved color changed");
+        assert_eq!(themed.default_bg, 0x445566ff);
+
+        screen.resize(20, 3, 1, 1).expect("resize");
+        let resized = changed(screen.frame(themed.generation));
+        assert!(resized.full_damage);
+        assert_eq!(resized.cols, 20);
     }
 
     #[test]
