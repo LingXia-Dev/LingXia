@@ -1,16 +1,21 @@
 //! The `term` subcommand.
 //!
-//! Configuration's primary entry point is a CLI, not a settings window:
-//! terminal users can drive one, it scripts, it goes in dotfiles, and its
-//! interactive mode previews inside the terminal itself without any window
+//! Configuration's primary entry point is a command, not a settings window:
+//! terminal users can drive one, it scripts, it lives in dotfiles, and its
+//! interactive mode previews inside the terminal itself with no window
 //! management. The product's own executable carries it (`myapp term …`), so
-//! the command always knows which app it belongs to.
+//! the command always knows which app it configures.
+//!
+//! The grammar is uniform — a noun, an optional sub-noun, then a value — and
+//! every value is positional. Mixing flags into it (`--family x`, `--list`)
+//! made three idioms out of one small surface.
 //!
 //! Arguments are parsed by hand rather than with a parser crate: the surface
-//! is a handful of flags, and a runtime crate should not carry an argument
+//! is a handful of words, and a runtime crate should not carry an argument
 //! parser for it.
 
 use crate::{TerminalConfig, ThemeStore};
+use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 
 /// Installed families, supplied by the platform: enumerating them is platform
@@ -18,7 +23,7 @@ use std::path::{Path, PathBuf};
 static INSTALLED_FONTS: std::sync::Mutex<Vec<crate::InstalledFont>> =
     std::sync::Mutex::new(Vec::new());
 
-/// Publish what is installed, so `font --list` and `status` report reality.
+/// Publish what is installed, so `font list` and `status` report reality.
 pub fn set_installed_fonts(fonts: Vec<crate::InstalledFont>) {
     if let Ok(mut slot) = INSTALLED_FONTS.lock() {
         *slot = fonts;
@@ -32,7 +37,7 @@ fn installed_fonts() -> Vec<crate::InstalledFont> {
         .unwrap_or_default()
 }
 
-/// What the CLI produced: text for a human, and the process exit code.
+/// What the command produced: text for a person, and the process exit code.
 pub struct Output {
     pub text: String,
     pub code: i32,
@@ -55,24 +60,31 @@ impl Output {
 }
 
 /// Run `term …`. `args` excludes the executable and the `term` word itself.
-pub fn run(app_data_dir: &Path, command: &str, args: &[String]) -> Output {
-    let json = args.iter().any(|arg| arg == "--json");
-    match args.first().map(String::as_str) {
-        None | Some("--help") | Some("-h") => Output::ok(help(command)),
-        Some("status") => status(app_data_dir, json),
-        Some("theme") => theme(app_data_dir, &args[1..], json),
-        Some("font") => font(app_data_dir, &args[1..], json),
-        Some("config") => config(app_data_dir, &args[1..], json),
-        Some("reset") => reset(app_data_dir, &args[1..], json),
+///
+/// `system_is_dark` decides which slot an unqualified theme change writes:
+/// configuration keeps a scheme per appearance, so "use this theme" means the
+/// one in effect right now, not both.
+pub fn run(app_data_dir: &Path, command: &str, args: &[String], system_is_dark: bool) -> Output {
+    let words: Vec<&str> = args
+        .iter()
+        .map(String::as_str)
+        .filter(|arg| !arg.starts_with("--"))
+        .collect();
+    match words.first().copied() {
+        None | Some("help") => Output::ok(help(command)),
+        Some("status") => status(app_data_dir, system_is_dark),
+        Some("path") => Output::ok(TerminalConfig::path(app_data_dir).display().to_string()),
+        Some("theme") => theme(app_data_dir, &words[1..], args, system_is_dark),
+        Some("font") => font(app_data_dir, &words[1..]),
+        Some("reset") => reset(app_data_dir, &words[1..]),
         Some(other) => Output::error(format!("unknown command '{other}'\n\n{}", help(command))),
     }
 }
 
 /// Report an invocation this binary does not recognize.
 ///
-/// Separate from `run` because it must answer without a configuration
-/// directory: it is reached before the app exists, when someone typed
-/// something wrong.
+/// Separate from `run` because it answers without a configuration directory:
+/// it is reached before the app exists, when someone typed something wrong.
 pub fn unknown(command: &str, arguments: &[String]) -> Output {
     let first = arguments.first().map(String::as_str).unwrap_or("");
     Output::error(format!("unknown command '{first}'\n\n{}", help(command)))
@@ -83,41 +95,36 @@ fn help(command: &str) -> String {
         "\
 {command} term — terminal configuration
 
-  theme <name>          use a color scheme
-  theme --list          available schemes
-  font --family <name>  set the font
-  font --size <points>  set the font size
-  font --list           installed monospace families
-  config --path         configuration file location
-  reset [font|theme]    back to defaults
-  status                what is in effect
+  status                 what is in effect
+  path                   where the configuration lives
 
-  --json                machine-readable output"
+  theme                  choose one, previewing as you go
+  theme <name>           use it for the current appearance
+  theme <name> --light   ... or for a named one (--light, --dark)
+  theme mode <mode>      system, light or dark
+  theme list             schemes available
+  theme show <name>      print a scheme — also what its file looks like
+  theme import <file>    add a scheme, optionally `as <name>`
+
+  font                   the font in effect
+  font <family>          use it, or the next installed candidate
+  font size <points>
+  font ligatures on|off
+  font list              installed monospace families
+
+  reset [font|theme]     back to defaults"
     )
 }
 
-fn status(app_data_dir: &Path, json: bool) -> Output {
+fn status(app_data_dir: &Path, system_is_dark: bool) -> Output {
     let (config, error) = TerminalConfig::load(app_data_dir, &serde_json::Value::Null);
-    let path = TerminalConfig::path(app_data_dir);
     let resolved = crate::resolve_font(&config.font, &installed_fonts());
-
-    if json {
-        let payload = serde_json::json!({
-            "path": path,
-            "exists": path.exists(),
-            "config": config,
-            "font": resolved,
-            "error": error.map(|error| error.to_string()),
-        });
-        return Output::ok(payload.to_string());
-    }
-
-    let mut text = format!("config    {}\n", path.display());
+    let mut text = String::new();
     if let Some(error) = error {
-        text.push_str(&format!("          {error}\n"));
+        text.push_str(&format!("{error}\n\n"));
     }
     text.push_str(&format!(
-        "font      {} {}pt{}\n",
+        "font    {} {}pt{}\n",
         if resolved.family.is_empty() {
             "(none resolved)"
         } else {
@@ -125,127 +132,276 @@ fn status(app_data_dir: &Path, json: bool) -> Output {
         },
         config.font.size,
         if resolved.fell_back {
-            " — none of the configured families is installed"
+            "  (none of the configured families is installed)"
         } else {
             ""
         }
     ));
     if !resolved.missing.is_empty() {
         text.push_str(&format!(
-            "          not installed: {}\n",
+            "        not installed: {}\n",
             resolved.missing.join(", ")
         ));
     }
     text.push_str(&format!(
-        "theme     {:?}, light={} dark={}\n",
-        config.theme.mode, config.theme.light, config.theme.dark
+        "theme   {} ({:?}: light={} dark={})\n",
+        config.theme.selected(system_is_dark),
+        config.theme.mode,
+        config.theme.light,
+        config.theme.dark
+    ));
+    text.push_str(&format!(
+        "config  {}",
+        TerminalConfig::path(app_data_dir).display()
     ));
     Output::ok(text)
 }
 
-fn theme(app_data_dir: &Path, args: &[String], json: bool) -> Output {
+fn theme(app_data_dir: &Path, words: &[&str], args: &[String], system_is_dark: bool) -> Output {
     let store = ThemeStore::new(app_data_dir);
-    if args.iter().any(|arg| arg == "--list") || args.is_empty() {
-        let entries = store.list();
-        if json {
+    let (mut config, _) = TerminalConfig::load(app_data_dir, &serde_json::Value::Null);
+
+    match words.first().copied() {
+        // No name on a terminal means choosing one, with the terminal itself
+        // as the preview. Off a terminal it is a scripted call missing its
+        // argument.
+        None => {
+            return if std::io::stdout().is_terminal() && std::io::stdin().is_terminal() {
+                choose(app_data_dir, &config, system_is_dark)
+            } else {
+                Output::error("name a theme, or use `theme list`")
+            };
+        }
+        Some("list") => {
+            let text = store
+                .list()
+                .iter()
+                .map(|entry| {
+                    let mark = if entry.name == config.theme.selected(system_is_dark) {
+                        "*"
+                    } else {
+                        " "
+                    };
+                    format!("{mark} {:<22} {:?}", entry.name, entry.source)
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+            return Output::ok(text);
+        }
+        Some("show") => {
+            let Some(name) = words.get(1) else {
+                return Output::error("name the scheme to show");
+            };
+            let Some(theme) = store.get(name) else {
+                return Output::error(format!("no theme named '{name}'"));
+            };
             return Output::ok(
-                serde_json::to_string(&entries).unwrap_or_else(|_| "[]".to_string()),
+                serde_json::to_string_pretty(&theme).unwrap_or_else(|_| "{}".to_string()),
             );
         }
-        let text = entries
-            .iter()
-            .map(|entry| format!("{:<24} {:?}", entry.name, entry.source))
-            .collect::<Vec<_>>()
-            .join("\n");
-        return Output::ok(text);
+        Some("import") => return import(app_data_dir, &words[1..]),
+        Some("mode") => {
+            let Some(mode) = words.get(1) else {
+                return Output::error("mode takes system, light or dark");
+            };
+            config.theme.mode = match *mode {
+                "system" => crate::ThemeMode::System,
+                "light" => crate::ThemeMode::Light,
+                "dark" => crate::ThemeMode::Dark,
+                other => {
+                    return Output::error(format!(
+                        "mode takes system, light or dark, got '{other}'"
+                    ));
+                }
+            };
+            return apply(app_data_dir, &config, &format!("theme mode = {mode}"));
+        }
+        _ => {}
     }
 
-    let name = &args[0];
+    let name = words[0];
     if store.get(name).is_none() {
         return Output::error(format!(
-            "no theme named '{name}'; `term theme --list` shows what is available"
+            "no theme named '{name}'; `theme list` shows what is available"
         ));
     }
 
-    let (mut config, _) = TerminalConfig::load(app_data_dir, &serde_json::Value::Null);
-    // Pin both appearances: choosing a scheme by name means wanting that
-    // scheme, not one of two depending on the time of day.
-    config.theme.light = name.clone();
-    config.theme.dark = name.clone();
-    apply(app_data_dir, &config, json, &format!("theme = {name}"))
+    // Configuration keeps a scheme per appearance. Writing both would discard
+    // the choice made for the other one, so an unqualified change targets the
+    // appearance in effect.
+    let light = args.iter().any(|arg| arg == "--light");
+    let dark = args.iter().any(|arg| arg == "--dark");
+    if light && dark {
+        config.theme.light = name.to_string();
+        config.theme.dark = name.to_string();
+        return apply(app_data_dir, &config, &format!("theme = {name} (both)"));
+    }
+    let target_dark = if light || dark {
+        dark
+    } else {
+        appearance_is_dark(&config, system_is_dark)
+    };
+    if target_dark {
+        config.theme.dark = name.to_string();
+    } else {
+        config.theme.light = name.to_string();
+    }
+    let appearance = if target_dark { "dark" } else { "light" };
+    apply(
+        app_data_dir,
+        &config,
+        &format!("{appearance} theme = {name}"),
+    )
 }
 
-fn font(app_data_dir: &Path, args: &[String], json: bool) -> Output {
-    if args.iter().any(|arg| arg == "--list") {
-        let installed = installed_fonts();
-        if json {
-            return Output::ok(
-                serde_json::to_string(&installed).unwrap_or_else(|_| "[]".to_string()),
-            );
-        }
-        if installed.is_empty() {
-            return Output::error("font listing is unavailable in this context");
-        }
-        let text = installed
-            .iter()
-            .map(|font| {
-                format!(
-                    "{:<32} {:<12} {}",
-                    font.family,
-                    if font.ligatures { "ligatures" } else { "" },
-                    if font.nerd_icons { "nerd icons" } else { "" }
-                )
-            })
-            .collect::<Vec<_>>()
-            .join("\n");
-        return Output::ok(text);
+/// Which of the two configured schemes is in effect.
+fn appearance_is_dark(config: &TerminalConfig, system_is_dark: bool) -> bool {
+    match config.theme.mode {
+        crate::ThemeMode::Light => false,
+        crate::ThemeMode::Dark => true,
+        crate::ThemeMode::System => system_is_dark,
     }
+}
 
+/// Choose a theme interactively, previewing each in this session.
+fn choose(app_data_dir: &Path, config: &TerminalConfig, system_is_dark: bool) -> Output {
+    let store = ThemeStore::new(app_data_dir);
+    let names: Vec<String> = store.list().into_iter().map(|entry| entry.name).collect();
+    let selected = config.theme.selected(system_is_dark).to_string();
+    let Some(current) = store.get(&selected) else {
+        return Output::error(format!("current theme '{selected}' is missing"));
+    };
+    match crate::picker::pick_theme(&store, &names, &current, &selected) {
+        Ok(crate::Choice::Selected(name)) => {
+            let mut config = config.clone();
+            let target_dark = appearance_is_dark(&config, system_is_dark);
+            if target_dark {
+                config.theme.dark = name.clone();
+            } else {
+                config.theme.light = name.clone();
+            }
+            let appearance = if target_dark { "dark" } else { "light" };
+            apply(
+                app_data_dir,
+                &config,
+                &format!("{appearance} theme = {name}"),
+            )
+        }
+        Ok(crate::Choice::Cancelled) => Output::ok("unchanged"),
+        Err(error) => Output::error(error.to_string()),
+    }
+}
+
+/// Add a scheme from a file.
+///
+/// Three shapes cover what people actually have: this crate's own JSON, which
+/// is the Windows Terminal scheme shape every collection publishes, and the
+/// `name: value` text of Xresources and kitty. Anything else is reported
+/// rather than guessed at.
+fn import(app_data_dir: &Path, words: &[&str]) -> Output {
+    let Some(source) = words.first() else {
+        return Output::error("name the file to import");
+    };
+    let text = match std::fs::read_to_string(source) {
+        Ok(text) => text,
+        Err(error) => return Output::error(format!("cannot read {source}: {error}")),
+    };
+    let stem = Path::new(source)
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .unwrap_or("imported");
+    // `import <file> as <name>` reads the way it is spoken.
+    let name = match words.get(1).copied() {
+        Some("as") => words.get(2).copied().unwrap_or(stem),
+        _ => stem,
+    };
+
+    let theme = match crate::parse_scheme(&text) {
+        Ok(theme) => theme,
+        Err(reason) => {
+            return Output::error(format!(
+                "{source} is not a scheme this understands: {reason}\n\
+                 Accepted: the JSON `theme show` prints, or the `name: value`\n\
+                 text of Xresources and kitty."
+            ));
+        }
+    };
+    match ThemeStore::new(app_data_dir).import(name, &theme) {
+        Ok(_) => Output::ok(format!("imported {name}")),
+        Err(error) => Output::error(error.to_string()),
+    }
+}
+
+fn font(app_data_dir: &Path, words: &[&str]) -> Output {
     let (mut config, _) = TerminalConfig::load(app_data_dir, &serde_json::Value::Null);
-    let mut changed = Vec::new();
-    if let Some(family) = value_of(args, "--family") {
-        config.font.family = vec![family.clone()];
-        changed.push(format!("family = {family}"));
-    }
-    for flag in ["--family", "--size", "--ligatures"] {
-        if args.iter().any(|arg| arg == flag) && value_of(args, flag).is_none() {
-            return Output::error(format!("{flag} needs a value"));
+    match words.first().copied() {
+        None => {
+            let resolved = crate::resolve_font(&config.font, &installed_fonts());
+            Output::ok(format!(
+                "{} {}pt",
+                if resolved.family.is_empty() {
+                    "(none resolved)"
+                } else {
+                    &resolved.family
+                },
+                config.font.size
+            ))
         }
-    }
-    if let Some(size) = value_of(args, "--size") {
-        match size.parse::<f32>() {
-            Ok(size) if (4.0..=96.0).contains(&size) => {
-                config.font.size = size;
-                changed.push(format!("size = {size}"));
+        Some("list") => {
+            let installed = installed_fonts();
+            if installed.is_empty() {
+                return Output::error("font listing is unavailable in this context");
             }
-            _ => return Output::error(format!("font size '{size}' is not between 4 and 96")),
+            let text = installed
+                .iter()
+                .map(|font| {
+                    format!(
+                        "{:<32} {:<11} {}",
+                        font.family,
+                        if font.ligatures { "ligatures" } else { "" },
+                        if font.nerd_icons { "nerd icons" } else { "" }
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+            Output::ok(text)
         }
-    }
-    if let Some(value) = value_of(args, "--ligatures") {
-        match value.as_str() {
-            "on" | "true" => {
+        Some("size") => {
+            let Some(value) = words.get(1) else {
+                return Output::error("size takes a number of points");
+            };
+            match value.parse::<f32>() {
+                Ok(size) if (4.0..=96.0).contains(&size) => {
+                    config.font.size = size;
+                    apply(app_data_dir, &config, &format!("font size = {size}"))
+                }
+                _ => Output::error(format!("font size '{value}' is not between 4 and 96")),
+            }
+        }
+        Some("ligatures") => match words.get(1).copied() {
+            Some("on") => {
                 config.font.ligatures = true;
-                changed.push("ligatures = on".to_string());
+                apply(app_data_dir, &config, "ligatures = on")
             }
-            "off" | "false" => {
+            Some("off") => {
                 config.font.ligatures = false;
-                changed.push("ligatures = off".to_string());
+                apply(app_data_dir, &config, "ligatures = off")
             }
-            other => return Output::error(format!("--ligatures takes on or off, got '{other}'")),
+            _ => Output::error("ligatures takes on or off"),
+        },
+        Some(family) => {
+            config.font.family = vec![family.to_string()];
+            apply(app_data_dir, &config, &format!("font = {family}"))
         }
     }
-    if changed.is_empty() {
-        return Output::error("nothing to change; see `term font --help`");
-    }
-    apply(app_data_dir, &config, json, &changed.join(", "))
 }
 
 /// Back to defaults — the way out when a change made the terminal unusable,
 /// which a font size can do all by itself.
-fn reset(app_data_dir: &Path, args: &[String], json: bool) -> Output {
+fn reset(app_data_dir: &Path, words: &[&str]) -> Output {
     let (mut config, _) = TerminalConfig::load(app_data_dir, &serde_json::Value::Null);
-    let summary = match args.first().map(String::as_str) {
-        None | Some("--json") => {
+    let summary = match words.first().copied() {
+        None => {
             config = TerminalConfig::default();
             "everything"
         }
@@ -257,22 +413,9 @@ fn reset(app_data_dir: &Path, args: &[String], json: bool) -> Output {
             config.theme = crate::ThemeConfig::default();
             "theme"
         }
-        Some(other) => {
-            return Output::error(format!("reset takes font or theme, got '{other}'"));
-        }
+        Some(other) => return Output::error(format!("reset takes font or theme, got '{other}'")),
     };
-    apply(app_data_dir, &config, json, &format!("reset {summary}"))
-}
-
-fn config(app_data_dir: &Path, args: &[String], json: bool) -> Output {
-    let path = TerminalConfig::path(app_data_dir);
-    if json {
-        return Output::ok(
-            serde_json::json!({ "path": path, "exists": path.exists() }).to_string(),
-        );
-    }
-    let _ = args;
-    Output::ok(path.display().to_string())
+    apply(app_data_dir, &config, &format!("reset {summary}"))
 }
 
 /// Persist a change and report it.
@@ -280,21 +423,11 @@ fn config(app_data_dir: &Path, args: &[String], json: bool) -> Output {
 /// Writing the file is the whole operation: a running app watches it and
 /// adopts the change, so there is nothing to notify and no claim to make
 /// about whether one is running.
-fn apply(app_data_dir: &Path, config: &TerminalConfig, json: bool, summary: &str) -> Output {
-    if let Err(error) = config.save(app_data_dir) {
-        return Output::error(error.to_string());
+fn apply(app_data_dir: &Path, config: &TerminalConfig, summary: &str) -> Output {
+    match config.save(app_data_dir) {
+        Ok(()) => Output::ok(summary.to_string()),
+        Err(error) => Output::error(error.to_string()),
     }
-    if json {
-        return Output::ok(serde_json::json!({ "applied": "file", "change": summary }).to_string());
-    }
-    Output::ok(summary.to_string())
-}
-
-fn value_of(args: &[String], flag: &str) -> Option<String> {
-    let index = args.iter().position(|arg| arg == flag)?;
-    args.get(index + 1)
-        .filter(|value| !value.starts_with("--"))
-        .cloned()
 }
 
 /// Where a host should look for the configuration when running as a CLI.
@@ -377,27 +510,53 @@ mod tests {
         values.iter().map(|value| value.to_string()).collect()
     }
 
-    #[test]
-    fn setting_a_theme_writes_it_and_pins_both_appearances() {
-        let dir = tempfile::tempdir().expect("temp dir");
-        let output = run(dir.path(), "myapp", &args(&["theme", "lingxia-light"]));
-        assert_eq!(output.code, 0, "{}", output.text);
+    fn go(dir: &Path, values: &[&str]) -> Output {
+        run(dir, "myapp", &args(values), true)
+    }
 
-        let (config, error) = TerminalConfig::load(dir.path(), &serde_json::Value::Null);
-        assert!(error.is_none());
-        assert_eq!(config.theme.light, "lingxia-light");
+    fn loaded(dir: &Path) -> TerminalConfig {
+        TerminalConfig::load(dir, &serde_json::Value::Null).0
+    }
+
+    #[test]
+    fn a_theme_change_targets_the_appearance_in_effect() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        // Following the system, under a dark appearance.
+        let output = go(dir.path(), &["theme", "lingxia-light"]);
+        assert_eq!(output.code, 0, "{}", output.text);
+        let config = loaded(dir.path());
+        assert_eq!(config.theme.dark, "lingxia-light", "the slot in effect");
         assert_eq!(
-            config.theme.dark, "lingxia-light",
-            "naming a scheme means that scheme, not one of two"
+            config.theme.light,
+            crate::ThemeConfig::default().light,
+            "the other appearance keeps its own choice"
         );
+
+        go(dir.path(), &["theme", "lingxia-dark", "--light"]);
+        let config = loaded(dir.path());
+        assert_eq!(config.theme.light, "lingxia-dark");
+        assert_eq!(config.theme.dark, "lingxia-light", "unchanged");
+    }
+
+    #[test]
+    fn a_pinned_mode_decides_the_slot_instead_of_the_system() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        go(dir.path(), &["theme", "mode", "light"]);
+        go(dir.path(), &["theme", "lingxia-dark"]);
+        let config = loaded(dir.path());
+        assert_eq!(
+            config.theme.light, "lingxia-dark",
+            "pinned to light, so that is the slot in effect"
+        );
+        assert_eq!(config.theme.dark, crate::ThemeConfig::default().dark);
     }
 
     #[test]
     fn an_unknown_theme_fails_without_writing() {
         let dir = tempfile::tempdir().expect("temp dir");
-        let output = run(dir.path(), "myapp", &args(&["theme", "no-such-scheme"]));
+        let output = go(dir.path(), &["theme", "no-such-scheme"]);
         assert_eq!(output.code, 1);
-        assert!(output.text.contains("--list"), "{}", output.text);
+        assert!(output.text.contains("theme list"), "{}", output.text);
         assert!(
             !TerminalConfig::path(dir.path()).exists(),
             "a rejected command writes nothing"
@@ -405,53 +564,70 @@ mod tests {
     }
 
     #[test]
-    fn font_changes_are_validated_before_they_are_written() {
+    fn font_values_are_positional_and_validated() {
         let dir = tempfile::tempdir().expect("temp dir");
-        let rejected = run(dir.path(), "myapp", &args(&["font", "--size", "900"]));
-        assert_eq!(rejected.code, 1);
+        assert_eq!(go(dir.path(), &["font", "size", "900"]).code, 1);
+        assert_eq!(go(dir.path(), &["font", "size"]).code, 1);
         assert!(!TerminalConfig::path(dir.path()).exists());
 
-        let accepted = run(
-            dir.path(),
-            "myapp",
-            &args(&["font", "--family", "Iosevka", "--size", "15"]),
-        );
-        assert_eq!(accepted.code, 0, "{}", accepted.text);
-        let (config, _) = TerminalConfig::load(dir.path(), &serde_json::Value::Null);
+        assert_eq!(go(dir.path(), &["font", "Iosevka"]).code, 0);
+        assert_eq!(go(dir.path(), &["font", "size", "15"]).code, 0);
+        assert_eq!(go(dir.path(), &["font", "ligatures", "off"]).code, 0);
+        let config = loaded(dir.path());
         assert_eq!(config.font.family, vec!["Iosevka".to_string()]);
         assert_eq!(config.font.size, 15.0);
+        assert!(!config.font.ligatures);
     }
 
     #[test]
-    fn a_change_reports_what_it_wrote() {
+    fn reset_restores_defaults() {
         let dir = tempfile::tempdir().expect("temp dir");
-        let output = run(
-            dir.path(),
-            "myapp",
-            &args(&["font", "--size", "14", "--json"]),
-        );
-        let payload: serde_json::Value = serde_json::from_str(&output.text).expect("json output");
-        assert_eq!(payload["applied"], "file");
-        assert!(
-            payload["change"]
-                .as_str()
-                .unwrap_or_default()
-                .contains("14"),
-            "the change is named: {}",
-            output.text
-        );
-    }
+        go(dir.path(), &["font", "size", "72"]);
+        go(dir.path(), &["theme", "lingxia-light"]);
 
-    #[test]
-    fn status_reports_the_path_and_that_no_font_resolved() {
-        let dir = tempfile::tempdir().expect("temp dir");
-        let output = run(dir.path(), "myapp", &args(&["status", "--json"]));
-        let payload: serde_json::Value = serde_json::from_str(&output.text).expect("json output");
-        assert_eq!(payload["exists"], false);
+        go(dir.path(), &["reset", "font"]);
+        let config = loaded(dir.path());
         assert_eq!(
-            payload["font"]["fellBack"], true,
-            "no platform lister is registered in a test process"
+            config.font.size,
+            crate::FontConfig::default().size,
+            "an unreadable font size needs a way out"
         );
+        assert_eq!(
+            config.theme.dark, "lingxia-light",
+            "only the font was reset"
+        );
+
+        go(dir.path(), &["reset"]);
+        assert_eq!(loaded(dir.path()), TerminalConfig::default());
+    }
+
+    #[test]
+    fn show_prints_a_scheme_in_the_shape_import_accepts() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let printed = go(dir.path(), &["theme", "show", "lingxia-dark"]);
+        assert_eq!(printed.code, 0, "{}", printed.text);
+
+        let file = dir.path().join("copy.json");
+        std::fs::write(&file, &printed.text).expect("write");
+        let imported = go(
+            dir.path(),
+            &["theme", "import", file.to_str().unwrap(), "as", "copy"],
+        );
+        assert_eq!(imported.code, 0, "{}", imported.text);
+        assert!(
+            ThemeStore::new(dir.path()).get("copy").is_some(),
+            "what `show` prints is what `import` takes"
+        );
+    }
+
+    #[test]
+    fn an_unimportable_file_names_the_shapes_that_work() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let file = dir.path().join("nope.txt");
+        std::fs::write(&file, "this is not a color scheme").expect("write");
+        let output = go(dir.path(), &["theme", "import", file.to_str().unwrap()]);
+        assert_eq!(output.code, 1);
+        assert!(output.text.contains("Xresources"), "{}", output.text);
     }
 
     #[test]
@@ -465,8 +641,8 @@ mod tests {
     #[test]
     fn the_launcher_is_executable_and_keeps_the_typed_name() {
         let dir = tempfile::tempdir().expect("temp dir");
-        let path = install_launcher(dir.path()).expect("install");
-        let script = std::fs::read_to_string(&path).expect("read");
+        let path = install_launcher(dir.path()).expect("launcher");
+        let script = std::fs::read_to_string(&path).expect("script");
         assert!(script.starts_with("#!/bin/sh"), "{script}");
         assert!(
             script.contains("exec -a"),
@@ -475,47 +651,17 @@ mod tests {
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            let mode = std::fs::metadata(&path).expect("stat").permissions().mode();
+            let mode = std::fs::metadata(&path)
+                .expect("metadata")
+                .permissions()
+                .mode();
             assert_eq!(mode & 0o111, 0o111, "the launcher must be executable");
         }
     }
 
     #[test]
-    fn reset_restores_defaults() {
-        let dir = tempfile::tempdir().expect("temp dir");
-        run(dir.path(), "myapp", &args(&["font", "--size", "72"]));
-        run(dir.path(), "myapp", &args(&["theme", "lingxia-light"]));
-
-        let output = run(dir.path(), "myapp", &args(&["reset", "font"]));
-        assert_eq!(output.code, 0, "{}", output.text);
-        let (config, _) = TerminalConfig::load(dir.path(), &serde_json::Value::Null);
-        assert_eq!(
-            config.font.size,
-            crate::FontConfig::default().size,
-            "an unreadable font size needs a way out"
-        );
-        assert_eq!(
-            config.theme.light, "lingxia-light",
-            "only the font was reset"
-        );
-
-        run(dir.path(), "myapp", &args(&["reset"]));
-        let (config, _) = TerminalConfig::load(dir.path(), &serde_json::Value::Null);
-        assert_eq!(config, TerminalConfig::default());
-    }
-
-    #[test]
-    fn a_flag_without_its_value_is_an_error() {
-        let dir = tempfile::tempdir().expect("temp dir");
-        let output = run(dir.path(), "myapp", &args(&["font", "--size"]));
-        assert_eq!(output.code, 1);
-        assert!(output.text.contains("needs a value"), "{}", output.text);
-        assert!(!TerminalConfig::path(dir.path()).exists());
-    }
-
-    #[test]
     fn an_unrecognized_invocation_says_so() {
-        let output = unknown("myapp", &args(&["font", "--size"]));
+        let output = unknown("myapp", &args(&["font", "size"]));
         assert_eq!(output.code, 1);
         assert!(
             output.text.starts_with("unknown command 'font'"),
@@ -528,43 +674,11 @@ mod tests {
     #[test]
     fn help_names_the_products_own_command() {
         let dir = tempfile::tempdir().expect("temp dir");
-        let output = run(dir.path(), "myterm", &[]);
+        let output = go(dir.path(), &[]);
         assert!(
-            output.text.starts_with("myterm term"),
+            output.text.starts_with("myapp term"),
             "help must be copy-pasteable: {}",
             output.text
         );
-    }
-
-    #[test]
-    fn command_names_are_typable_without_quoting() {
-        assert_eq!(command_name("LingXia Showcase"), "lingxia-showcase");
-        assert_eq!(command_name("My  Term! 2"), "my-term-2");
-        assert_eq!(
-            command_name("  漢字  "),
-            "app",
-            "nothing typable falls back"
-        );
-    }
-
-    #[test]
-    fn the_launcher_points_at_the_current_executable_and_is_executable() {
-        let dir = tempfile::tempdir().expect("temp dir");
-        let path = install_launcher(dir.path()).expect("launcher");
-        let script = std::fs::read_to_string(&path).expect("script");
-        let executable = std::env::current_exe().expect("current exe");
-        assert!(
-            script.contains(&executable.to_string_lossy().into_owned()),
-            "launcher must exec the running binary: {script}"
-        );
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let mode = std::fs::metadata(&path)
-                .expect("metadata")
-                .permissions()
-                .mode();
-            assert_eq!(mode & 0o111, 0o111, "launcher must be executable");
-        }
     }
 }

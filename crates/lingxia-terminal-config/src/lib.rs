@@ -16,13 +16,17 @@
 
 pub mod cli;
 mod font;
+mod picker;
 mod theme;
 mod watch;
 
 pub use font::{BoldStyle, FontConfig, InstalledFont, ResolvedFont, resolve as resolve_font};
+pub use picker::Choice;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
-pub use theme::{CursorConfig, CursorStyle, ThemeConfig, ThemeMode, ThemeSource, ThemeStore};
+pub use theme::{
+    CursorConfig, CursorStyle, ThemeConfig, ThemeMode, ThemeSource, ThemeStore, parse_scheme,
+};
 pub use watch::{ConfigWatcher, watch};
 
 /// File name inside the app's state directory.

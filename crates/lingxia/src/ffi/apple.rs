@@ -610,7 +610,7 @@ mod bridge {
         fn terminal_load_config(system_is_dark: bool) -> String;
 
         #[swift_bridge(swift_name = "terminalRunCliIfInvoked")]
-        fn terminal_run_cli_if_invoked(app_data_dir: &str) -> i32;
+        fn terminal_run_cli_if_invoked(app_data_dir: &str, system_is_dark: bool) -> i32;
 
         #[swift_bridge(swift_name = "terminalRegisterFonts")]
         fn terminal_register_fonts(fonts_json: &str);
@@ -2267,21 +2267,22 @@ pub fn terminal_session_frame(id: u64, since_generation: u64) -> bridge::Termina
 /// Hosts must call this before initializing AppKit: the product's executable
 /// doubles as its command line, and a configuration command must not open a
 /// window.
-pub fn terminal_run_cli_if_invoked(app_data_dir: &str) -> i32 {
+pub fn terminal_run_cli_if_invoked(app_data_dir: &str, system_is_dark: bool) -> i32 {
     #[cfg(feature = "terminal-runtime")]
     {
         // The directory is passed in rather than read from the runtime: this
         // runs before initialization, which would open the app's databases and
         // collide with an instance already running.
-        if let Some(code) =
-            crate::terminal::run_cli_if_invoked(std::path::PathBuf::from(app_data_dir))
-        {
+        if let Some(code) = crate::terminal::run_cli_if_invoked(
+            std::path::PathBuf::from(app_data_dir),
+            system_is_dark,
+        ) {
             return code;
         }
     }
 
     #[cfg(not(feature = "terminal-runtime"))]
-    let _ = app_data_dir;
+    let _ = (app_data_dir, system_is_dark);
     -1
 }
 

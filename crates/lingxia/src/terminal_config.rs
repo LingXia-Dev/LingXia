@@ -132,7 +132,7 @@ pub fn current_json() -> String {
 /// product's executable doubles as its command line, and a configuration
 /// command must not open a window. Returns the exit code when it handled the
 /// invocation, `None` when the process should carry on and become the app.
-pub fn run_cli_if_invoked(app_data_dir: PathBuf) -> Option<i32> {
+pub fn run_cli_if_invoked(app_data_dir: PathBuf, system_is_dark: bool) -> Option<i32> {
     use std::io::IsTerminal;
 
     let mut args = std::env::args();
@@ -160,7 +160,7 @@ pub fn run_cli_if_invoked(app_data_dir: PathBuf) -> Option<i32> {
     }
 
     let rest: Vec<String> = std::env::args().skip(2).collect();
-    let output = lingxia_terminal_config::cli::run(&app_data_dir, &command, &rest);
+    let output = lingxia_terminal_config::cli::run(&app_data_dir, &command, &rest, system_is_dark);
     if output.code == 0 {
         println!("{}", output.text);
     } else {
