@@ -19,8 +19,9 @@ use alacritty_vt::{
     CursorVisualStyle, PtyWriteCallback, ThemeColors, VtScreen,
 };
 pub use alacritty_vt::{
-    CommandBlock, TerminalActivity, TerminalEvent, TerminalEventBatch, TerminalEventKind,
-    TerminalProgress, TerminalProgressState, UnderlineStyle as TerminalUnderlineStyle,
+    CommandBlock, LogicalLine as TerminalLogicalLine, TerminalActivity, TerminalEvent,
+    TerminalEventBatch, TerminalEventKind, TerminalProgress, TerminalProgressState,
+    TextView as TerminalTextView, UnderlineStyle as TerminalUnderlineStyle,
 };
 pub use links::{DetectedLink, LinkSource as TerminalLinkSource};
 pub use paste::{PasteRisk as TerminalPasteRisk, classify_paste, classify_paste_json};
@@ -266,6 +267,37 @@ pub fn terminal_command_blocks_data(id: u64) -> Option<Vec<CommandBlock>> {
         session.vt.feed(&bytes);
     }
     Some(session.vt.command_blocks())
+}
+
+/// Logical lines, cursor position and visible range as JSON, for
+/// accessibility trees.
+///
+/// `start_line` is an absolute line (oldest scrollback line = 0);
+/// negative means "from the first visible line". At most `max_lines`
+/// logical lines are returned, so a screen reader never pulls the whole
+/// scrollback. Selection stays with the host — it owns the gesture and
+/// the mapping to screen geometry.
+pub fn terminal_text_view(id: u64, start_line: i64, max_lines: usize) -> String {
+    let start = (start_line >= 0).then_some(start_line);
+    terminal_text_view_data(id, start, max_lines)
+        .map(|view| serde_json::to_string(&view).unwrap_or_else(|_| "{}".to_string()))
+        .unwrap_or_else(|| "{}".to_string())
+}
+
+/// Structured variant of [`terminal_text_view`]. `start_line` of `None`
+/// starts at the first visible line.
+pub fn terminal_text_view_data(
+    id: u64,
+    start_line: Option<i64>,
+    max_lines: usize,
+) -> Option<TerminalTextView> {
+    let session = session(id)?;
+    let mut session = session.lock().ok()?;
+    let bytes = session.drain_bytes();
+    if !bytes.is_empty() {
+        session.vt.feed(&bytes);
+    }
+    Some(session.vt.text_view(start_line, max_lines.max(1)))
 }
 
 /// Progress, attention and lifecycle state of a session, in the form

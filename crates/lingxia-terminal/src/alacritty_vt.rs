@@ -194,6 +194,34 @@ pub struct ScreenSnapshot {
     pub generation: u64,
 }
 
+/// One logical line: a shell line as typed, with the rows it wrapped
+/// across joined back together.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LogicalLine {
+    /// Absolute line where it starts (oldest scrollback line = 0).
+    pub line: i64,
+    /// Grid rows it spans.
+    pub rows: u16,
+    pub text: String,
+}
+
+/// Read-only text view of a session, the shape an accessibility tree
+/// needs: logical lines, where the cursor sits, and what is on screen.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TextView {
+    pub lines: Vec<LogicalLine>,
+    /// Absolute line and cell column of the cursor.
+    pub cursor_line: i64,
+    pub cursor_column: u16,
+    /// Absolute lines currently on screen, inclusive.
+    pub viewport_first_line: i64,
+    pub viewport_last_line: i64,
+    /// Scrollback rows plus screen rows.
+    pub total_lines: i64,
+}
+
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct ViewportScrollbar {
     pub total: u64,
@@ -758,49 +786,70 @@ impl VtScreen {
         let screen_lines = grid.screen_lines() as i64;
         let mut rows = Vec::with_capacity((history + screen_lines).max(0) as usize);
         for offset in -history..screen_lines {
-            let row = &grid[Line(offset as i32)];
-            let columns = row.len();
-            let mut text = String::new();
-            let mut cells: Vec<(u16, u8)> = Vec::new();
-            let mut occupied = 0_usize;
-            for col in 0..columns {
-                let cell = &row[Column(col)];
-                if cell
-                    .flags
-                    .intersects(Flags::WIDE_CHAR_SPACER | Flags::LEADING_WIDE_CHAR_SPACER)
-                {
-                    continue;
-                }
-                let width = if cell.flags.contains(Flags::WIDE_CHAR) {
-                    2
-                } else {
-                    1
-                };
-                text.push(cell.c);
-                cells.push((col as u16, width));
-                if let Some(zerowidth) = cell.zerowidth() {
-                    for ch in zerowidth {
-                        text.push(*ch);
-                        cells.push((col as u16, width));
-                    }
-                }
-                let non_blank =
-                    cell.c != ' ' || cell.zerowidth().is_some_and(|extra| !extra.is_empty());
-                if non_blank {
-                    occupied = text.chars().count();
-                }
-            }
-            let text: String = text.chars().take(occupied).collect();
-            cells.truncate(occupied);
-            let wraps = columns > 0 && row[Column(columns - 1)].flags.contains(Flags::WRAPLINE);
-            rows.push(SearchRow {
-                line: history + offset,
-                text,
-                cells,
-                wraps,
-            });
+            rows.push(row_search_text(
+                &grid[Line(offset as i32)],
+                history + offset,
+            ));
         }
         rows
+    }
+
+    /// Logical lines around `start_line` for an accessibility tree,
+    /// with the cursor and the visible range.
+    ///
+    /// `start_line` defaults to the first visible line; wrapped rows are
+    /// joined into the logical line they belong to, so the walk starts
+    /// at that line's real beginning. At most `max_lines` logical lines
+    /// are returned, which keeps a query off the full scrollback.
+    pub fn text_view(&self, start_line: Option<i64>, max_lines: usize) -> TextView {
+        let inner = self.inner.lock();
+        let grid = inner.term.grid();
+        let history = grid.history_size() as i64;
+        let screen_lines = grid.screen_lines() as i64;
+        let total_lines = history + screen_lines;
+        let viewport_first_line = history - grid.display_offset() as i64;
+        let row_at = |line: i64| &grid[Line((line - history) as i32)];
+
+        let mut start = start_line
+            .unwrap_or(viewport_first_line)
+            .clamp(0, total_lines.saturating_sub(1).max(0));
+        // Wrapped rows belong to the logical line that started earlier.
+        while start > 0
+            && row_at(start - 1)
+                .last()
+                .is_some_and(|cell| cell.flags.contains(Flags::WRAPLINE))
+        {
+            start -= 1;
+        }
+
+        let mut lines: Vec<LogicalLine> = Vec::new();
+        let mut line = start;
+        while line < total_lines && lines.len() < max_lines {
+            let mut logical = LogicalLine {
+                line,
+                rows: 0,
+                text: String::new(),
+            };
+            loop {
+                let row = row_search_text(row_at(line), line);
+                logical.text.push_str(&row.text);
+                logical.rows += 1;
+                line += 1;
+                if !row.wraps || line >= total_lines {
+                    break;
+                }
+            }
+            lines.push(logical);
+        }
+
+        TextView {
+            lines,
+            cursor_line: history + grid.cursor.point.line.0 as i64,
+            cursor_column: grid.cursor.point.column.0.min(u16::MAX as usize) as u16,
+            viewport_first_line,
+            viewport_last_line: viewport_first_line + screen_lines - 1,
+            total_lines,
+        }
     }
 
     pub fn resize(
@@ -1216,6 +1265,52 @@ fn join_zwj_clusters(row: &mut [Cell]) {
     }
 }
 
+/// Text of one grid row, with each character's cell column and width so
+/// offsets map back to highlightable ranges. Trailing blanks are cut.
+fn row_search_text(
+    row: &alacritty_terminal::grid::Row<alacritty_terminal::term::cell::Cell>,
+    line: i64,
+) -> SearchRow {
+    let columns = row.len();
+    let mut text = String::new();
+    let mut cells: Vec<(u16, u8)> = Vec::new();
+    let mut occupied = 0_usize;
+    for col in 0..columns {
+        let cell = &row[Column(col)];
+        if cell
+            .flags
+            .intersects(Flags::WIDE_CHAR_SPACER | Flags::LEADING_WIDE_CHAR_SPACER)
+        {
+            continue;
+        }
+        let width = if cell.flags.contains(Flags::WIDE_CHAR) {
+            2
+        } else {
+            1
+        };
+        text.push(cell.c);
+        cells.push((col as u16, width));
+        if let Some(zerowidth) = cell.zerowidth() {
+            for ch in zerowidth {
+                text.push(*ch);
+                cells.push((col as u16, width));
+            }
+        }
+        let non_blank = cell.c != ' ' || cell.zerowidth().is_some_and(|extra| !extra.is_empty());
+        if non_blank {
+            occupied = text.chars().count();
+        }
+    }
+    let text: String = text.chars().take(occupied).collect();
+    cells.truncate(occupied);
+    SearchRow {
+        line,
+        text,
+        cells,
+        wraps: columns > 0 && row[Column(columns - 1)].flags.contains(Flags::WRAPLINE),
+    }
+}
+
 fn pack_rgb(rgb: [u8; 3], alpha: u8) -> u32 {
     ((rgb[0] as u32) << 24) | ((rgb[1] as u32) << 16) | ((rgb[2] as u32) << 8) | (alpha as u32)
 }
@@ -1606,6 +1701,46 @@ mod tests {
         // Counters are monotonic: draining events does not reset them.
         screen.drain_events();
         assert_eq!(screen.activity().bells, 2);
+    }
+
+    #[test]
+    fn text_view_joins_wrapped_rows_and_locates_the_cursor() {
+        let screen = VtScreen::new_with_options(10, 3, None, None, None);
+        screen.feed(b"short\r\n");
+        // 14 columns of text wrap across two 10-column rows.
+        screen.feed(b"wrapped-line-x\r\n");
+        screen.feed(b"tail");
+
+        let view = screen.text_view(Some(0), 10);
+        assert_eq!(
+            view.lines
+                .iter()
+                .map(|line| line.text.as_str())
+                .collect::<Vec<_>>(),
+            vec!["short", "wrapped-line-x", "tail"]
+        );
+        assert_eq!(view.lines[1].rows, 2, "the wrapped line spans two rows");
+        assert_eq!(view.lines[2].line, 3, "absolute line after the wrap");
+        assert_eq!(view.total_lines, 4, "one scrolled row + three screen rows");
+        assert_eq!(
+            (view.cursor_line, view.cursor_column),
+            (3, 4),
+            "cursor sits after 'tail'"
+        );
+        assert_eq!(
+            (view.viewport_first_line, view.viewport_last_line),
+            (1, 3),
+            "the live screen is the last three lines"
+        );
+
+        // Starting mid-wrap rewinds to the logical line's beginning.
+        let view = screen.text_view(Some(2), 1);
+        assert_eq!(view.lines.len(), 1);
+        assert_eq!(view.lines[0].line, 1);
+        assert_eq!(view.lines[0].text, "wrapped-line-x");
+
+        // Default start is the first visible line.
+        assert_eq!(screen.text_view(None, 1).lines[0].line, 1);
     }
 
     #[test]
