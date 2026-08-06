@@ -95,11 +95,9 @@ public enum Lingxia {
         #endif
     }
 
-    /// Default product entry point on Apple platforms.
-    ///
-    /// On macOS this loads bundled `app.json` plus `macos-ui.json` / `ui.json`
-    /// and uses them to build the host shell. On iOS this keeps the legacy
-    /// home-app startup behavior for now.
+    #if os(macOS)
+    /// Default product entry point: loads bundled `app.json` plus
+    /// `macos-ui.json` / `ui.json` and uses them to build the host shell.
     ///
     /// ```swift
     /// @main struct MyApp: App {
@@ -111,7 +109,6 @@ public enum Lingxia {
     @MainActor
     @discardableResult
     public static func quickStart() throws -> LxAppShell {
-        #if os(macOS)
         if let currentShell = LxAppActiveHost.activeShell {
             currentShell.show()
             return currentShell
@@ -139,12 +136,33 @@ public enum Lingxia {
         shell.retainAppUIRuntime(hostRuntime)
         try hostRuntime.start()
         return shell
-        #else
-        // Cover the cold start before the runtime and the first WebView exist.
-        LingXiaSplashOverlay.attachIfNeeded()
-        return try quickStart(configuration: LxAppShellConfiguration())
-        #endif
     }
+    #else
+    /// Default product entry point: puts the launch cover on screen first,
+    /// then boots the runtime underneath it. The boot blocks the main
+    /// thread, so running it before the cover's frame would keep the launch
+    /// screen up through the entire initialization; deferred two frames, the
+    /// cover is already what the user is looking at while the runtime boots.
+    ///
+    /// ```swift
+    /// @main struct MyApp: App {
+    ///     init() {
+    ///         try! Lingxia.quickStart()
+    ///     }
+    /// }
+    /// ```
+    @MainActor
+    public static func quickStart() throws {
+        LingXiaSplashOverlay.attachIfNeeded()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.032) {
+            do {
+                _ = try quickStart(configuration: LxAppShellConfiguration())
+            } catch {
+                NSLog("Lingxia.quickStart failed: \(error)")
+            }
+        }
+    }
+    #endif
 
     /// Legacy shell override path. Product UI should be configured in `lingxia.yaml`
     /// and started with `quickStart()`.
