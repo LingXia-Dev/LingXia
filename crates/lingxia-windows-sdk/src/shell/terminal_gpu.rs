@@ -11,6 +11,7 @@
 //! so a whole frame is a single instanced draw.
 
 mod pipeline;
+mod sprites;
 mod text;
 
 use std::collections::HashMap;
@@ -52,6 +53,25 @@ use super::terminal_grid::{
 };
 use pipeline::{Pipeline, Quad};
 use text::{BOLD, BOLD_ITALIC, Fonts, ITALIC, Metrics, REGULAR};
+
+/// Atlas key namespace for drawn sprites, which have no font style. Chosen
+/// past the four face indices so it can never collide with a glyph.
+const SPRITE_STYLE: usize = 4;
+
+/// The codepoint of a run that is exactly one drawn character.
+///
+/// Runs break on style, not on content, so a border is usually a run of the
+/// same sprite; each cell still draws its own, because a sprite is defined by
+/// the cell it fills.
+fn sole_sprite(run: &str) -> Option<u32> {
+    let mut chars = run.chars();
+    let first = chars.next()?;
+    if chars.next().is_some() {
+        return None;
+    }
+    let scalar = u32::from(first);
+    sprites::handles(scalar).then_some(scalar)
+}
 
 /// Render a panel's terminal body.
 pub(super) fn present(parent: HWND, panel_id: &str, body: RECT, radii: [i32; 4]) {
@@ -792,7 +812,9 @@ impl Builder<'_> {
         let y = origin.1 + f32::from(at.0) * self.metrics.line_height;
         let width = f32::from(columns) * self.metrics.cell_width;
 
-        if !run.trim().is_empty() {
+        if let Some(scalar) = sole_sprite(run) {
+            self.sprite(scalar, x, y, style.color);
+        } else if !run.trim().is_empty() {
             let glyphs: Vec<_> = self.fonts.shape(run, style.face).to_vec();
             for glyph in glyphs {
                 let sprite = match self.pipeline.sprite(glyph.index, style.face) {
@@ -815,6 +837,7 @@ impl Builder<'_> {
                     ],
                     color: linear(style.color),
                     uv: sprite.uv,
+                    params: [f32::from(u8::from(sprite.colored)), 0.0, 0.0, 0.0],
                 });
             }
         }
@@ -842,6 +865,36 @@ impl Builder<'_> {
                 style.color,
             );
         }
+    }
+
+    /// Box art drawn to the cell rather than taken from the font, so borders
+    /// meet exactly at any size and in any face.
+    fn sprite(&mut self, scalar: u32, x: f32, y: f32, color: u32) {
+        let sprite = match self.pipeline.sprite(scalar as u16, SPRITE_STYLE) {
+            Some(sprite) => sprite,
+            None => {
+                let drawn = sprites::draw(
+                    scalar,
+                    self.metrics.cell_width,
+                    self.metrics.line_height,
+                    self.metrics.baseline,
+                );
+                self.pipeline
+                    .insert_sprite(scalar as u16, SPRITE_STYLE, drawn.as_ref())
+            }
+        };
+        let Some(sprite) = sprite else { return };
+        self.quads.push(Quad {
+            rect: [
+                (x + sprite.left).round(),
+                (y + self.metrics.baseline + sprite.top).round(),
+                sprite.width,
+                sprite.height,
+            ],
+            color: linear(color),
+            uv: sprite.uv,
+            params: [0.0; 4],
+        });
     }
 
     fn scrollbar(
@@ -898,6 +951,7 @@ impl Builder<'_> {
             ],
             color: linear(color),
             uv: self.pipeline.solid_uv,
+            params: [0.0; 4],
         });
     }
 }
