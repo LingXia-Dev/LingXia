@@ -76,6 +76,7 @@ browser-shell = [
 terminal-runtime = [
     "shell-chrome",
     "dep:lingxia-terminal",
+    "dep:lingxia-terminal-config",
     "lingxia/terminal-runtime",
 ]
 webview-input = ["host-api", "lingxia?/webview-input"]
@@ -89,6 +90,7 @@ lingxia-shell = { workspace = true, optional = true }
 lingxia-surface = { workspace = true, optional = true }
 lingxia-browser-shell = { workspace = true, optional = true }
 lingxia-terminal = { workspace = true, optional = true }
+lingxia-terminal-config = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
 thiserror = { workspace = true, optional = true }
 tokio = { workspace = true, optional = true }

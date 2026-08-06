@@ -1140,6 +1140,31 @@ fn draw_cursor(
 /// Lazily created terminal font variants for one paint pass, keyed by
 /// (bold, italic, underline). Deleted on drop; the caller must restore the
 /// DC's original font selection (`RestoreDC`) before the cache drops.
+/// The families configured for this app, most preferred first.
+fn configured_font_families() -> Vec<String> {
+    #[cfg(feature = "terminal-runtime")]
+    {
+        return lingxia_terminal_config::runtime::current_config()
+            .font
+            .family;
+    }
+
+    #[cfg(not(feature = "terminal-runtime"))]
+    Vec::new()
+}
+
+/// The configured point size, or the built-in default.
+fn configured_font_points() -> i32 {
+    #[cfg(feature = "terminal-runtime")]
+    {
+        let size = lingxia_terminal_config::runtime::current_config().font.size;
+        if (4.0..=96.0).contains(&size) {
+            return size.round() as i32;
+        }
+    }
+    GRID_FONT_POINT_SIZE
+}
+
 struct GridFonts {
     height: i32,
     fonts: [Option<HFONT>; 8],
@@ -1148,7 +1173,7 @@ struct GridFonts {
 impl GridFonts {
     fn new(hdc: HDC) -> Self {
         Self {
-            height: logical_font_height(hdc, GRID_FONT_POINT_SIZE),
+            height: logical_font_height(hdc, configured_font_points()),
             fonts: [None; 8],
         }
     }
@@ -1182,13 +1207,18 @@ impl Drop for GridFonts {
     }
 }
 
-/// Terminal mono font: prefer modern terminal faces, then Windows' built-ins.
-/// Faces are verified via `GetTextFaceW` (the GDI font mapper silently
-/// substitutes missing faces); when none resolves, the empty face name
-/// lets the mapper pick any fixed-pitch font via the pitch/family hint.
+/// Terminal mono font: the configured candidates first, then modern terminal
+/// faces, then Windows' built-ins.
+///
+/// Faces are verified via `GetTextFaceW` — the GDI font mapper silently
+/// substitutes a missing face rather than failing — so a configured family
+/// that is not installed falls through to the next candidate instead of
+/// quietly rendering as something else. When none resolves, the empty face
+/// name lets the mapper pick any fixed-pitch font via the pitch/family hint.
 fn create_terminal_font(hdc: HDC, height: i32, bold: bool, italic: bool, underline: bool) -> HFONT {
     let weight = if bold { 700 } else { 400 };
-    for face in [
+    let configured = configured_font_families();
+    let fallbacks = [
         "Cascadia Mono",
         "Cascadia Code",
         "JetBrains Mono",
@@ -1196,7 +1226,12 @@ fn create_terminal_font(hdc: HDC, height: i32, bold: bool, italic: bool, underli
         "Consolas",
         "Courier New",
         "",
-    ] {
+    ];
+    for face in configured
+        .iter()
+        .map(String::as_str)
+        .chain(fallbacks.into_iter())
+    {
         let face_wide: Vec<u16> = face.encode_utf16().chain(std::iter::once(0)).collect();
         unsafe {
             let font = CreateFontW(
