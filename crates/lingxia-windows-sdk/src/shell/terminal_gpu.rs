@@ -409,6 +409,7 @@ impl Surface {
             D3D11_BIND_RENDER_TARGET, D3D11_CPU_ACCESS_READ, D3D11_MAP_READ, D3D11_TEXTURE2D_DESC,
             D3D11_USAGE_STAGING,
         };
+        use windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT_B8G8R8A8_TYPELESS;
 
         let width = (self.bounds.right - self.bounds.left).max(0) as u32;
         let height = (self.bounds.bottom - self.bounds.top).max(0) as u32;
@@ -425,7 +426,10 @@ impl Surface {
                 Height: height,
                 MipLevels: 1,
                 ArraySize: 1,
-                Format: DXGI_FORMAT_B8G8R8A8_UNORM,
+                // Typeless, because the `_SRGB` view below is only legal over
+                // a typeless texture. A swapchain back buffer is the exception
+                // DXGI makes for the flip model, not the rule.
+                Format: DXGI_FORMAT_B8G8R8A8_TYPELESS,
                 SampleDesc: DXGI_SAMPLE_DESC {
                     Count: 1,
                     Quality: 0,
@@ -435,6 +439,7 @@ impl Surface {
                 ..Default::default()
             };
             let staging = D3D11_TEXTURE2D_DESC {
+                Format: DXGI_FORMAT_B8G8R8A8_UNORM,
                 Usage: D3D11_USAGE_STAGING,
                 BindFlags: 0,
                 CPUAccessFlags: D3D11_CPU_ACCESS_READ.0 as u32,
@@ -442,13 +447,15 @@ impl Surface {
             };
             unsafe {
                 let mut target = None;
-                self.device
-                    .CreateTexture2D(&desc, None, Some(&mut target))
-                    .ok()?;
+                report(
+                    "capture target",
+                    self.device.CreateTexture2D(&desc, None, Some(&mut target)),
+                )?;
                 let target = target?;
                 let mut view = None;
-                self.device
-                    .CreateRenderTargetView(
+                report(
+                    "capture view",
+                    self.device.CreateRenderTargetView(
                         &target,
                         Some(&D3D11_RENDER_TARGET_VIEW_DESC {
                             Format: DXGI_FORMAT_B8G8R8A8_UNORM_SRGB,
@@ -458,12 +465,14 @@ impl Surface {
                             },
                         }),
                         Some(&mut view),
-                    )
-                    .ok()?;
+                    ),
+                )?;
                 let mut readback_staging = None;
-                self.device
-                    .CreateTexture2D(&staging, None, Some(&mut readback_staging))
-                    .ok()?;
+                report(
+                    "capture staging",
+                    self.device
+                        .CreateTexture2D(&staging, None, Some(&mut readback_staging)),
+                )?;
                 self.readback = Some(Readback {
                     target,
                     view: view?,
@@ -478,25 +487,28 @@ impl Surface {
             self.context
                 .ClearRenderTargetView(&readback.view, &linear(self.background));
         }
-        self.pipeline
-            .draw(
+        report(
+            "capture draw",
+            self.pipeline.draw(
                 &self.device,
                 &self.context,
                 &readback.view,
                 width as f32,
                 height as f32,
                 &self.quads,
-            )
-            .ok()?;
+            ),
+        )?;
 
         let mut pixels = vec![0u8; (width * height * 4) as usize];
         unsafe {
             self.context
                 .CopyResource(&readback.staging, &readback.target);
             let mut mapped = Default::default();
-            self.context
-                .Map(&readback.staging, 0, D3D11_MAP_READ, 0, Some(&mut mapped))
-                .ok()?;
+            report(
+                "capture map",
+                self.context
+                    .Map(&readback.staging, 0, D3D11_MAP_READ, 0, Some(&mut mapped)),
+            )?;
             for row in 0..height {
                 let source = (mapped.pData as *const u8).add((row * mapped.RowPitch) as usize);
                 let target = (row * width * 4) as usize;
@@ -1027,6 +1039,19 @@ unsafe extern "system" fn surface_proc(
         // Nothing to erase: the compositor owns every pixel.
         WM_ERASEBKGND => LRESULT(1),
         _ => unsafe { DefWindowProcW(hwnd, message, wparam, lparam) },
+    }
+}
+
+/// Report a failed capture step instead of losing it to `?`. A screenshot that
+/// silently drops the terminal looks exactly like a renderer that draws
+/// nothing, which cost an afternoon once.
+fn report<T>(what: &str, result: Result<T>) -> Option<T> {
+    match result {
+        Ok(value) => Some(value),
+        Err(error) => {
+            log::warn!("terminal {what} failed: {error}");
+            None
+        }
     }
 }
 
