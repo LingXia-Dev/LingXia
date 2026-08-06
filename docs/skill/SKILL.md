@@ -142,6 +142,7 @@ Every published package and what to import from each. Don't guess imports from t
 | **Logic runtime globals and typing setup** | [`./lxapp/lx-api.md`](./lxapp/lx-api.md) |
 | Bridge mechanics: `setData`, stream, channel | [`./lxapp/bridge.md`](./lxapp/bridge.md) |
 | Host project: `lingxia.yaml` reference, adaptive `surfaces` | [`./app/project.md`](./app/project.md) |
+| Built-in terminal configuration: `terminal.json`, font candidates, themes, the `term` command | [`./app/terminal.md`](./app/terminal.md) |
 | Native Rust: `HostAddon`, `#[lingxia::native]`, facades, JS extensions | [`./native/development.md`](./native/development.md) |
 | Launch screen (`splash:`) and the per-launch cover hook | [`./native/splash.md`](./native/splash.md) |
 | iOS/macOS SDK embedding, public startup APIs | [`./app/apple-sdk.md`](./app/apple-sdk.md) |
