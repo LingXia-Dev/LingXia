@@ -442,97 +442,15 @@ pub(super) fn draw_terminal_panel_content(
         return;
     }
 
-    // The GPU path, when it is switched on, owns the body: a composited
-    // surface covers whatever GDI drew underneath it, so the two cannot both
-    // paint. Only the card's bottom corners are its to round — the header
-    // above it keeps the top two.
-    if super::super::terminal_gpu::present(
+    // The body is the renderer's: a composited surface covers whatever GDI
+    // drew underneath it, so the two cannot both paint it. Only the card's
+    // bottom corners are its to round — the header above keeps the top two.
+    super::super::terminal_gpu::present(
         hwnd,
         &panel.panel_id,
         body,
         [0, 0, SHELL_CONTENT_RADIUS, SHELL_CONTENT_RADIUS],
-        surface,
-    ) {
-        return;
-    }
-
-    // Live sessions are drawn as a cell grid from the snapshot store; the
-    // body-text path below remains for pre-session states ("Starting
-    // terminal...", runtime-unavailable, failures).
-    if super::super::terminal_grid::draw_panel_panes(hdc, &panel.panel_id, body) {
-        return;
-    }
-
-    let text_rect = inset_rect(body, 12, 10);
-    // Line advance with leading: the glyph cell alone clips descenders
-    // when DrawText clamps to the per-line rect.
-    let line_height = (logical_font_height(hdc, 10).max(13) * 4 + 2) / 3;
-    let max_lines = (rect_height(&text_rect) / line_height).max(1) as usize;
-    let snapshot_body = super::super::terminal_grid::panel_snapshot_text(&panel.panel_id);
-    let body = snapshot_body
-        .as_deref()
-        .filter(|body| !body.trim().is_empty())
-        .or_else(|| {
-            native
-                .body
-                .as_deref()
-                .filter(|body| !body.trim().is_empty())
-        })
-        .unwrap_or("Terminal session is waiting for output");
-
-    unsafe {
-        let height = logical_font_height(hdc, 10);
-        let font = cached_font_with("Cascadia Mono", height, 400, CLEARTYPE_QUALITY, || {
-            CreateFontW(
-                -height,
-                0,
-                0,
-                0,
-                400,
-                0,
-                0,
-                0,
-                DEFAULT_CHARSET,
-                OUT_DEFAULT_PRECIS,
-                CLIP_DEFAULT_PRECIS,
-                CLEARTYPE_QUALITY,
-                DEFAULT_PITCH.0 as u32 | FF_SWISS.0 as u32,
-                w!("Cascadia Mono"),
-            )
-        });
-        let old_font = if font.is_invalid() {
-            HGDIOBJ::default()
-        } else {
-            SelectObject(hdc, HGDIOBJ(font.0))
-        };
-        let _ = SetBkMode(hdc, TRANSPARENT);
-        let _ = SetTextColor(
-            hdc,
-            rgb_to_colorref(lingxia_terminal_config::runtime::current_chrome().text),
-        );
-        for (line_index, line) in body.lines().take(max_lines).enumerate() {
-            let top = text_rect.top + (line_index as i32 * line_height);
-            let mut line_rect = RECT {
-                left: text_rect.left,
-                top,
-                right: text_rect.right,
-                bottom: (top + line_height).min(text_rect.bottom),
-            };
-            if rect_height(&line_rect) <= 0 {
-                break;
-            }
-            let mut wide: Vec<u16> = line.encode_utf16().collect();
-            let _ = DrawTextW(
-                hdc,
-                &mut wide,
-                &mut line_rect,
-                DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS,
-            );
-        }
-        if !old_font.is_invalid() {
-            let _ = SelectObject(hdc, old_font);
-        }
-    }
+    );
 }
 
 #[cfg(test)]
