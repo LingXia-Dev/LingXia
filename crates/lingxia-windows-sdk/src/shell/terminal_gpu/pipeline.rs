@@ -25,34 +25,40 @@ use windows::Win32::Graphics::Direct3D11::{
     ID3D11SamplerState, ID3D11ShaderResourceView, ID3D11Texture2D, ID3D11VertexShader,
 };
 use windows::Win32::Graphics::Dxgi::Common::{
-    DXGI_FORMAT_R8_UNORM, DXGI_FORMAT_R32G32B32A32_FLOAT, DXGI_SAMPLE_DESC,
+    DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_FORMAT_R32G32B32A32_FLOAT, DXGI_SAMPLE_DESC,
 };
 use windows::core::{Result, s};
 
 /// One rectangle: position and size in pixels, linear premultiplied color,
-/// and the atlas region to modulate it by.
+/// the atlas region to modulate it by, and how to combine the two.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub(super) struct Quad {
     pub(super) rect: [f32; 4],
     pub(super) color: [f32; 4],
     pub(super) uv: [f32; 4],
+    /// `x`: 1 for a sprite that carries its own color — an emoji — which is
+    /// drawn as it is rather than tinted. The rest is padding the instance
+    /// stride wants anyway.
+    pub(super) params: [f32; 4],
 }
 
 const SHADER: &str = r#"
 cbuffer Frame : register(b0) { float2 viewport; float2 _pad; };
-Texture2D<float> atlas : register(t0);
+Texture2D<float4> atlas : register(t0);
 SamplerState atlas_sampler : register(s0);
 
 struct Instance {
-    float4 rect  : RECT;
-    float4 color : COLOR;
-    float4 uv    : UV;
+    float4 rect   : RECT;
+    float4 color  : COLOR;
+    float4 uv     : UV;
+    float4 params : PARAMS;
 };
 struct Fragment {
     float4 position : SV_POSITION;
     float4 color    : COLOR;
     float2 uv       : TEXCOORD;
+    float  colored  : COLORED;
 };
 
 Fragment vs_main(Instance instance, uint vertex : SV_VertexID) {
@@ -63,12 +69,15 @@ Fragment vs_main(Instance instance, uint vertex : SV_VertexID) {
                                1.0 - vertex_position.y / viewport.y * 2.0, 0.0, 1.0);
     fragment.color = instance.color;
     fragment.uv = lerp(instance.uv.xy, instance.uv.zw, corner);
+    fragment.colored = instance.params.x;
     return fragment;
 }
 
 float4 ps_main(Fragment fragment) : SV_TARGET {
-    float coverage = atlas.Sample(atlas_sampler, fragment.uv);
-    return fragment.color * coverage;
+    float4 texel = atlas.Sample(atlas_sampler, fragment.uv);
+    // A colored sprite is already premultiplied and keeps its own color; a
+    // coverage sprite carries only alpha and takes the run's.
+    return lerp(fragment.color * texel.a, texel, fragment.colored);
 }
 "#;
 
@@ -80,6 +89,8 @@ const ATLAS_SIDE: u32 = 1024;
 /// Where a rasterized glyph landed, and how to place it against the pen.
 #[derive(Clone, Copy)]
 pub(super) struct Sprite {
+    /// The sprite carries its own color and must not be tinted.
+    pub(super) colored: bool,
     pub(super) uv: [f32; 4],
     pub(super) left: f32,
     pub(super) top: f32,
@@ -103,7 +114,7 @@ pub(super) struct Pipeline {
     atlas_view: ID3D11ShaderResourceView,
     /// The atlas is kept CPU-side and uploaded whole when it changes: glyphs
     /// stop arriving once the set is warm, and one upload has none of the
-    /// row-pitch subtleties a partial one does.
+    /// row-pitch subtleties a partial one does. BGRA, premultiplied.
     pixels: Vec<u8>,
     dirty: bool,
     /// Shelf packing: the current row's origin and the tallest sprite in it.
@@ -130,6 +141,7 @@ impl Pipeline {
                 instance_element(s!("RECT"), 0),
                 instance_element(s!("COLOR"), 0),
                 instance_element(s!("UV"), 0),
+                instance_element(s!("PARAMS"), 0),
             ];
             let mut layout = None;
             device.CreateInputLayout(&elements, vertex_bytes, Some(&mut layout))?;
@@ -175,7 +187,7 @@ impl Pipeline {
                 capacity: 4096,
                 atlas,
                 atlas_view,
-                pixels: vec![0; (ATLAS_SIDE * ATLAS_SIDE) as usize],
+                pixels: vec![0; (ATLAS_SIDE * ATLAS_SIDE * 4) as usize],
                 dirty: false,
                 shelf_x: 0,
                 shelf_y: 0,
@@ -201,7 +213,7 @@ impl Pipeline {
     /// A single opaque texel at the atlas origin, so a solid rectangle is the
     /// same draw as a glyph with its coverage forced to 1.
     fn reserve_solid(&mut self) {
-        self.upload(0, 0, 1, 1, &[0xff]);
+        self.upload(0, 0, 1, 1, &[0xff, 0xff, 0xff, 0xff]);
         // Sample the texel's center; its edges would pick up the neighbours.
         let half = 0.5 / ATLAS_SIDE as f32;
         self.solid_uv = [half, half, half, half];
@@ -234,12 +246,13 @@ impl Pipeline {
             self.reset_glyphs();
         }
         let (x, y) = (self.shelf_x, self.shelf_y);
-        self.upload(x, y, raster.width, raster.height, &raster.coverage);
+        self.upload(x, y, raster.width, raster.height, &raster.pixels);
         self.shelf_x += raster.width + 1;
         self.shelf_height = self.shelf_height.max(raster.height + 1);
 
         let side = ATLAS_SIDE as f32;
         let sprite = Sprite {
+            colored: raster.colored,
             uv: [
                 x as f32 / side,
                 y as f32 / side,
@@ -255,12 +268,13 @@ impl Pipeline {
         Some(sprite)
     }
 
-    fn upload(&mut self, x: u32, y: u32, width: u32, height: u32, coverage: &[u8]) {
+    /// `pixels` is BGRA, premultiplied, `width * height * 4` bytes.
+    fn upload(&mut self, x: u32, y: u32, width: u32, height: u32, pixels: &[u8]) {
+        let stride = width as usize * 4;
         for row in 0..height {
-            let source = (row * width) as usize;
-            let target = ((y + row) * ATLAS_SIDE + x) as usize;
-            self.pixels[target..target + width as usize]
-                .copy_from_slice(&coverage[source..source + width as usize]);
+            let source = row as usize * stride;
+            let target = (((y + row) * ATLAS_SIDE + x) * 4) as usize;
+            self.pixels[target..target + stride].copy_from_slice(&pixels[source..source + stride]);
         }
         self.dirty = true;
     }
@@ -275,7 +289,7 @@ impl Pipeline {
                 0,
                 None,
                 self.pixels.as_ptr().cast(),
-                ATLAS_SIDE,
+                ATLAS_SIDE * 4,
                 0,
             );
         }
@@ -417,7 +431,7 @@ fn create_atlas(device: &ID3D11Device) -> Result<(ID3D11Texture2D, ID3D11ShaderR
         Height: ATLAS_SIDE,
         MipLevels: 1,
         ArraySize: 1,
-        Format: DXGI_FORMAT_R8_UNORM,
+        Format: DXGI_FORMAT_B8G8R8A8_UNORM,
         SampleDesc: DXGI_SAMPLE_DESC {
             Count: 1,
             Quality: 0,
@@ -426,10 +440,10 @@ fn create_atlas(device: &ID3D11Device) -> Result<(ID3D11Texture2D, ID3D11ShaderR
         BindFlags: D3D11_BIND_SHADER_RESOURCE.0 as u32,
         ..Default::default()
     };
-    let blank = vec![0u8; (ATLAS_SIDE * ATLAS_SIDE) as usize];
+    let blank = vec![0u8; (ATLAS_SIDE * ATLAS_SIDE * 4) as usize];
     let initial = D3D11_SUBRESOURCE_DATA {
         pSysMem: blank.as_ptr().cast(),
-        SysMemPitch: ATLAS_SIDE,
+        SysMemPitch: ATLAS_SIDE * 4,
         SysMemSlicePitch: 0,
     };
     unsafe {

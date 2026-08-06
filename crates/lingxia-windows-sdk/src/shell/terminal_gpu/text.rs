@@ -11,19 +11,21 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 
+use windows::Win32::Foundation::RECT;
 use windows::Win32::Graphics::DirectWrite::{
-    DWRITE_FACTORY_TYPE_SHARED, DWRITE_FONT_FEATURE, DWRITE_FONT_FEATURE_TAG_CONTEXTUAL_ALTERNATES,
-    DWRITE_FONT_FEATURE_TAG_STANDARD_LIGATURES, DWRITE_FONT_STRETCH_NORMAL, DWRITE_FONT_STYLE,
-    DWRITE_FONT_STYLE_ITALIC, DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_WEIGHT,
-    DWRITE_FONT_WEIGHT_BOLD, DWRITE_FONT_WEIGHT_NORMAL, DWRITE_GLYPH_OFFSET, DWRITE_GLYPH_RUN,
-    DWRITE_GLYPH_RUN_DESCRIPTION, DWRITE_MATRIX, DWRITE_MEASURING_MODE,
-    DWRITE_MEASURING_MODE_NATURAL, DWRITE_RENDERING_MODE_NATURAL, DWRITE_STRIKETHROUGH,
-    DWRITE_TEXT_RANGE, DWRITE_TEXTURE_CLEARTYPE_3x1, DWRITE_UNDERLINE, DWriteCreateFactory,
-    IDWriteFactory, IDWriteFontCollection, IDWriteFontFace, IDWriteInlineObject,
-    IDWritePixelSnapping_Impl, IDWriteTextFormat, IDWriteTextRenderer, IDWriteTextRenderer_Impl,
-    IDWriteTypography,
+    DWRITE_COLOR_GLYPH_RUN, DWRITE_FACTORY_TYPE_SHARED, DWRITE_FONT_FEATURE,
+    DWRITE_FONT_FEATURE_TAG_CONTEXTUAL_ALTERNATES, DWRITE_FONT_FEATURE_TAG_STANDARD_LIGATURES,
+    DWRITE_FONT_STRETCH_NORMAL, DWRITE_FONT_STYLE, DWRITE_FONT_STYLE_ITALIC,
+    DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_WEIGHT, DWRITE_FONT_WEIGHT_BOLD,
+    DWRITE_FONT_WEIGHT_NORMAL, DWRITE_GLYPH_OFFSET, DWRITE_GLYPH_RUN, DWRITE_GLYPH_RUN_DESCRIPTION,
+    DWRITE_MATRIX, DWRITE_MEASURING_MODE, DWRITE_MEASURING_MODE_NATURAL,
+    DWRITE_RENDERING_MODE_NATURAL, DWRITE_STRIKETHROUGH, DWRITE_TEXT_RANGE,
+    DWRITE_TEXTURE_CLEARTYPE_3x1, DWRITE_UNDERLINE, DWRITE_WORD_WRAPPING_NO_WRAP,
+    DWriteCreateFactory, IDWriteColorGlyphRunEnumerator, IDWriteFactory, IDWriteFactory2,
+    IDWriteFontCollection, IDWriteFontFace, IDWriteInlineObject, IDWritePixelSnapping_Impl,
+    IDWriteTextFormat, IDWriteTextRenderer, IDWriteTextRenderer_Impl, IDWriteTypography,
 };
-use windows::core::{BOOL, HSTRING, IUnknown, PCWSTR, Ref, Result, implement, w};
+use windows::core::{BOOL, HSTRING, IUnknown, Interface, PCWSTR, Ref, Result, implement, w};
 
 /// Style variants a cell can ask for, as an index into the face table.
 pub(super) const REGULAR: usize = 0;
@@ -38,14 +40,18 @@ pub(super) struct ShapedGlyph {
     pub(super) x: f32,
 }
 
-/// A glyph bitmap waiting to be uploaded: 8-bit coverage, tightly packed.
+/// A glyph bitmap waiting to be uploaded: premultiplied BGRA, tightly packed.
+///
+/// A plain glyph fills only the alpha channel and takes the run's color at
+/// draw time; a color glyph — an emoji — carries its own and is drawn as it is.
 pub(super) struct Rasterized {
     pub(super) width: u32,
     pub(super) height: u32,
     /// Offset from the pen position to the sprite's top-left, in pixels.
     pub(super) left: i32,
     pub(super) top: i32,
-    pub(super) coverage: Vec<u8>,
+    pub(super) colored: bool,
+    pub(super) pixels: Vec<u8>,
 }
 
 /// Cell metrics the grid is laid out on.
@@ -181,6 +187,10 @@ impl Fonts {
                 width.max(1.0),
                 self.metrics.line_height.max(1.0),
             )?;
+            // A terminal run is one line by definition. Left to wrap, the
+            // layout restarts the pen at x=0 on the next line and the run
+            // draws on top of itself.
+            layout.SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP)?;
             if let Some(plain) = &self.plain {
                 layout.SetTypography(
                     plain,
@@ -202,22 +212,55 @@ impl Fonts {
     }
 
     /// Rasterize one glyph to 8-bit coverage, with its offset from the pen.
+    /// Rasterize one glyph, with its offset from the pen.
+    ///
+    /// A color glyph — an emoji — is a stack of colored layers rather than one
+    /// coverage mask, so it is composited here and drawn untinted.
     pub(super) fn rasterize(&self, glyph: u16, style: usize) -> Result<Option<Rasterized>> {
-        let advance = 0.0f32;
-        let offset = DWRITE_GLYPH_OFFSET::default();
+        let run = self.glyph_run(glyph, style);
+        if let Some(colored) = self.rasterize_color(&run)? {
+            return Ok(Some(colored));
+        }
+        let Some((bounds, coverage)) = self.coverage(&run)? else {
+            return Ok(None);
+        };
+        let width = (bounds.right - bounds.left) as u32;
+        let height = (bounds.bottom - bounds.top) as u32;
+        // Alpha only: the run's color arrives at draw time.
+        let mut pixels = vec![0u8; (width * height * 4) as usize];
+        for (texel, alpha) in pixels.chunks_exact_mut(4).zip(coverage) {
+            texel[3] = alpha;
+        }
+        Ok(Some(Rasterized {
+            width,
+            height,
+            left: bounds.left,
+            top: bounds.top,
+            colored: false,
+            pixels,
+        }))
+    }
+
+    fn glyph_run(&self, glyph: u16, style: usize) -> GlyphRun {
+        GlyphRun {
+            glyph,
+            advance: 0.0,
+            offset: DWRITE_GLYPH_OFFSET::default(),
+            face: self.faces[style].clone(),
+            size: self.size,
+        }
+    }
+
+    /// Grayscale coverage for a run, and the bounds it occupies.
+    ///
+    /// ClearType, not aliased: `ALIASED_1x1` is only valid for the aliased
+    /// rendering mode and reports empty bounds otherwise. The three subpixel
+    /// channels collapse to one value, since the grid is drawn with grayscale
+    /// antialiasing.
+    fn coverage(&self, run: &GlyphRun) -> Result<Option<(RECT, Vec<u8>)>> {
         unsafe {
-            let run = DWRITE_GLYPH_RUN {
-                fontFace: std::mem::transmute_copy(&self.faces[style]),
-                fontEmSize: self.size,
-                glyphCount: 1,
-                glyphIndices: &glyph,
-                glyphAdvances: &advance,
-                glyphOffsets: &offset,
-                isSideways: false.into(),
-                bidiLevel: 0,
-            };
             let analysis = self.factory.CreateGlyphRunAnalysis(
-                &run,
+                &run.as_dwrite(),
                 1.0,
                 None,
                 DWRITE_RENDERING_MODE_NATURAL,
@@ -225,10 +268,6 @@ impl Fonts {
                 0.0,
                 0.0,
             )?;
-            // ClearType, not aliased: `ALIASED_1x1` is only valid for the
-            // aliased rendering mode and reports empty bounds otherwise. The
-            // three subpixel channels collapse to one coverage value, since
-            // the grid is drawn with grayscale antialiasing.
             let bounds = analysis.GetAlphaTextureBounds(DWRITE_TEXTURE_CLEARTYPE_3x1)?;
             let width = (bounds.right - bounds.left).max(0) as u32;
             let height = (bounds.bottom - bounds.top).max(0) as u32;
@@ -241,14 +280,151 @@ impl Fonts {
                 .chunks_exact(3)
                 .map(|rgb| ((u32::from(rgb[0]) + u32::from(rgb[1]) + u32::from(rgb[2])) / 3) as u8)
                 .collect();
-            Ok(Some(Rasterized {
-                width,
-                height,
-                left: bounds.left,
-                top: bounds.top,
-                coverage,
-            }))
+            Ok(Some((bounds, coverage)))
         }
+    }
+
+    /// Composite a color glyph's layers, or `None` when the glyph has none.
+    fn rasterize_color(&self, run: &GlyphRun) -> Result<Option<Rasterized>> {
+        let Some(factory) = self.factory.cast::<IDWriteFactory2>().ok() else {
+            return Ok(None);
+        };
+        let layers = unsafe {
+            match factory.TranslateColorGlyphRun(
+                0.0,
+                0.0,
+                &run.as_dwrite(),
+                None,
+                DWRITE_MEASURING_MODE_NATURAL,
+                None,
+                0,
+            ) {
+                Ok(layers) => layers,
+                // The documented "this glyph is not colored" answer.
+                Err(_) => return Ok(None),
+            }
+        };
+
+        // Two passes: the first finds the union of the layers' bounds, the
+        // second draws into a buffer that size. A layer's extent is not known
+        // until it is analyzed, and they do not all share one.
+        let mut rendered: Vec<(RECT, Vec<u8>, [f32; 3])> = Vec::new();
+        let mut union: Option<RECT> = None;
+        loop {
+            let color = unsafe { &*factory_current_run(&layers)? };
+            let tint = [color.runColor.r, color.runColor.g, color.runColor.b];
+            let layer = GlyphRun::from_dwrite(&color.glyphRun, run);
+            if let Some((bounds, coverage)) = self.coverage(&layer)? {
+                union = Some(match union {
+                    Some(previous) => RECT {
+                        left: previous.left.min(bounds.left),
+                        top: previous.top.min(bounds.top),
+                        right: previous.right.max(bounds.right),
+                        bottom: previous.bottom.max(bounds.bottom),
+                    },
+                    None => bounds,
+                });
+                rendered.push((bounds, coverage, tint));
+            }
+            if !unsafe { layers.MoveNext()?.as_bool() } {
+                break;
+            }
+        }
+
+        let Some(union) = union else {
+            return Ok(None);
+        };
+        let width = (union.right - union.left) as u32;
+        let height = (union.bottom - union.top) as u32;
+        let mut pixels = vec![0u8; (width * height * 4) as usize];
+        for (bounds, coverage, tint) in rendered {
+            let layer_width = (bounds.right - bounds.left) as u32;
+            for (index, alpha) in coverage.into_iter().enumerate() {
+                if alpha == 0 {
+                    continue;
+                }
+                let x = (bounds.left - union.left) as u32 + index as u32 % layer_width;
+                let y = (bounds.top - union.top) as u32 + index as u32 / layer_width;
+                let target = ((y * width + x) * 4) as usize;
+                let alpha = f32::from(alpha) / 255.0;
+                // Premultiplied source-over, so layers stack the way the font
+                // intends without a second blend at draw time.
+                let texel = &mut pixels[target..target + 4];
+                for (channel, value) in [tint[2], tint[1], tint[0]].into_iter().enumerate() {
+                    texel[channel] = blend_channel(texel[channel], value * alpha, alpha);
+                }
+                texel[3] = blend_channel(texel[3], alpha, alpha);
+            }
+        }
+        Ok(Some(Rasterized {
+            width,
+            height,
+            left: union.left,
+            top: union.top,
+            colored: true,
+            pixels,
+        }))
+    }
+}
+
+/// A glyph run owned by us, so it can be handed to DirectWrite twice — once
+/// to ask whether it is colored, once to rasterize each layer.
+struct GlyphRun {
+    glyph: u16,
+    advance: f32,
+    offset: DWRITE_GLYPH_OFFSET,
+    face: IDWriteFontFace,
+    size: f32,
+}
+
+impl GlyphRun {
+    fn as_dwrite(&self) -> DWRITE_GLYPH_RUN {
+        DWRITE_GLYPH_RUN {
+            fontFace: unsafe { std::mem::transmute_copy(&self.face) },
+            fontEmSize: self.size,
+            glyphCount: 1,
+            glyphIndices: &self.glyph,
+            glyphAdvances: &self.advance,
+            glyphOffsets: &self.offset,
+            isSideways: false.into(),
+            bidiLevel: 0,
+        }
+    }
+
+    /// One glyph of a color layer, keeping the face the layer names.
+    fn from_dwrite(run: &DWRITE_GLYPH_RUN, fallback: &GlyphRun) -> Self {
+        let glyph = if run.glyphIndices.is_null() || run.glyphCount == 0 {
+            fallback.glyph
+        } else {
+            unsafe { *run.glyphIndices }
+        };
+        let face = unsafe { (*run.fontFace).clone() }.unwrap_or_else(|| fallback.face.clone());
+        Self {
+            glyph,
+            advance: 0.0,
+            offset: DWRITE_GLYPH_OFFSET::default(),
+            face,
+            size: run.fontEmSize,
+        }
+    }
+}
+
+/// Source-over on one premultiplied channel, in 8-bit.
+fn blend_channel(destination: u8, source: f32, alpha: f32) -> u8 {
+    let destination = f32::from(destination) / 255.0;
+    ((source + destination * (1.0 - alpha)).clamp(0.0, 1.0) * 255.0).round() as u8
+}
+
+/// The enumerator's current layer. Wrapped because the raw call is the only
+/// place a null would reach the compositing loop.
+fn factory_current_run(
+    layers: &IDWriteColorGlyphRunEnumerator,
+) -> Result<*const DWRITE_COLOR_GLYPH_RUN> {
+    let run = unsafe { layers.GetCurrentRun()? };
+    if run.is_null() {
+        Err(missing())
+    } else {
+        Ok(run)
     }
 }
 

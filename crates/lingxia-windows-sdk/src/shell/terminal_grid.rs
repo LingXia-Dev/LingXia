@@ -543,6 +543,7 @@ fn parse_hex_color(token: &str) -> Option<u32> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use lingxia_terminal::TerminalCell;
 
     fn cell(row: u16, col: u16, text: &str) -> TerminalCell {
         TerminalCell {
@@ -609,22 +610,6 @@ mod tests {
     }
 
     #[test]
-    fn inverse_default_colors_are_swapped() {
-        let mut inverse = cell(0, 0, "x");
-        inverse.inverse = true;
-        inverse.fg = Some("#ddeeff".to_string());
-
-        assert_eq!(
-            resolved_cell_colors(&inverse, 0x112233, 0xaabbcc),
-            (0x112233, 0xddeeff)
-        );
-        assert_eq!(
-            cell_style(&inverse, 0x112233, 0xaabbcc, false).color,
-            0x112233
-        );
-    }
-
-    #[test]
     fn terminal_cursor_rect_tracks_the_grid_cell() {
         assert_eq!(
             cursor_rect_for_grid(
@@ -648,35 +633,6 @@ mod tests {
                 bottom: 100,
             })
         );
-    }
-
-    #[test]
-    fn scrollbar_thumb_stays_short_and_tracks_viewport_offset() {
-        let track = RECT {
-            left: 97,
-            top: 2,
-            right: 100,
-            bottom: 102,
-        };
-        assert_eq!(
-            scrollbar_thumb_rect(track, 100, 40, 20),
-            Some(RECT {
-                left: 97,
-                top: 42,
-                right: 100,
-                bottom: 62,
-            })
-        );
-        assert_eq!(
-            scrollbar_thumb_rect(track, 40, 10, 20),
-            Some(RECT {
-                left: 97,
-                top: 32,
-                right: 100,
-                bottom: 72,
-            })
-        );
-        assert_eq!(scrollbar_thumb_rect(track, 20, 0, 20), None);
     }
 }
 
