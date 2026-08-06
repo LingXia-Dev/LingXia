@@ -17,7 +17,7 @@
 
 use crate::ThemeStore;
 use lingxia_terminal::TerminalTheme;
-use std::io::{Read, Write};
+use std::io::Write;
 
 /// What the picker returned.
 pub enum Choice {
@@ -170,6 +170,8 @@ impl RawTerminal {
     }
 
     fn key(&mut self) -> std::io::Result<Key> {
+        use std::io::Read;
+
         let mut byte = [0u8; 1];
         let mut input = std::io::stdin();
         if input.read(&mut byte)? == 0 {
@@ -205,6 +207,8 @@ impl RawTerminal {
             timed.c_cc[libc::VTIME] = 1;
             libc::tcsetattr(libc::STDIN_FILENO, libc::TCSANOW, &timed);
         }
+        use std::io::Read;
+
         let mut buffer = vec![0u8; count];
         let read = std::io::stdin().read(&mut buffer).unwrap_or(0);
         buffer.truncate(read);
