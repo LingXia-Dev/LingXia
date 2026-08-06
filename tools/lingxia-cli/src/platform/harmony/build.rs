@@ -86,6 +86,16 @@ impl HarmonyPlatform {
             let so_path = self.build_rust_library(&config.project_root, config)?;
             self.stage_native_library(&so_path, &staging)?;
         } else {
+            // A hap without the native library installs fine and then crashes
+            // on launch, so "use existing" must mean one actually exists.
+            let staged = staging.join("entry/libs/arm64-v8a/liblingxia.so");
+            if !staged.is_file() {
+                anyhow::bail!(
+                    "--skip-native, but no staged native library at {} — run once without \
+                     --skip-native first",
+                    staged.display()
+                );
+            }
             println!(
                 "  {} Skipping native compilation (using existing .so)",
                 "⏭️".dimmed()
