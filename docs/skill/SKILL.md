@@ -143,6 +143,7 @@ Every published package and what to import from each. Don't guess imports from t
 | Bridge mechanics: `setData`, stream, channel | [`./lxapp/bridge.md`](./lxapp/bridge.md) |
 | Host project: `lingxia.yaml` reference, adaptive `surfaces` | [`./app/project.md`](./app/project.md) |
 | Native Rust: `HostAddon`, `#[lingxia::native]`, facades, JS extensions | [`./native/development.md`](./native/development.md) |
+| Launch screen (`splash:`) and the per-launch cover hook | [`./native/splash.md`](./native/splash.md) |
 | iOS/macOS SDK embedding, public startup APIs | [`./app/apple-sdk.md`](./app/apple-sdk.md) |
 | Universal links / app links setup | [`./app/applinks.md`](./app/applinks.md) |
 | File API lifecycle (storage classes, downloadFile, FileManager) | [`./reference/file-lifecycle.md`](./reference/file-lifecycle.md) |

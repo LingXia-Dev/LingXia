@@ -53,6 +53,55 @@ pub struct LingXiaConfig {
     pub storage: Option<StorageConfig>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub resources: Option<ResourcesConfig>,
+    /// Launch screen: a static platform splash generated at build time plus a
+    /// runtime overlay the SDK keeps up until the home page's first render.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub splash: Option<SplashConfig>,
+    /// Directory of host assets (relative to the project root), packaged
+    /// into every platform build and readable at runtime through
+    /// `lingxia::assets`. Rides each platform's asset pipeline — store
+    /// thinning, lazy loading — where bytes embedded in the native library
+    /// cannot.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub assets: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SplashConfig {
+    /// Background color, `#RRGGBB` — the ground of the OS launch placeholder,
+    /// and what shows behind a hook-picked cover. The only required field: no
+    /// code runs before the launch frame, so only build-time config can brand
+    /// it. A dark color keeps the placeholder from ever reading as a white
+    /// flash.
+    ///
+    /// Deliberately one color, not a light/dark pair: the launch frame and
+    /// the first app frame must be the same color, and a pair would let them
+    /// disagree.
+    pub background: String,
+    /// The launch cover (PNG), path relative to the project root. Rendered
+    /// full-screen (aspect-fill) as the app's first frame on every cold
+    /// start — the OS placeholder's exit reveals it, so the launch reads as
+    /// "tap the icon, see the cover". Omit for a placeholder-only launch.
+    /// The runtime hook can substitute a different file per launch.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub image: Option<String>,
+    /// The brand mark (PNG) shown centered on the launch placeholder, at the
+    /// pixel size it should occupy on screen, path relative to the project
+    /// root. OS launch frames draw small images unscaled — the one form
+    /// their compositors keep sharp, where any full-bleed bitmap goes soft.
+    /// Used where the frame accepts a custom image (HarmonyOS
+    /// `startWindowIcon`, iOS `UILaunchScreen`); Android 12+ keeps the real
+    /// app icon, whose launcher-zoom morph must not be broken.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mark: Option<String>,
+    /// Minimum time the launch face (placeholder or cover) stays up, in
+    /// milliseconds (default 600). Keeps a fast first render from flashing
+    /// it. The hard upper bound is a framework constant and deliberately not
+    /// configurable — a splash that can be configured to never leave is a
+    /// failure mode, not a feature.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min_duration: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -1603,6 +1652,8 @@ impl LingXiaConfig {
                     version: None,
                 }],
             }),
+            splash: None,
+            assets: None,
         }
     }
 
@@ -1762,6 +1813,14 @@ impl LingXiaConfig {
                          To customize the in-app browser webui, use `browser.webui.path` \
                          (or `browser.webui.package`) instead of declaring \
                          `{app_id}` as a resource bundle."
+                    ));
+                }
+                // Bundles land in the asset root as a directory named by
+                // appId, where `hostassets/` is the `assets:` namespace.
+                if app_id == "hostassets" {
+                    return Err(anyhow!(
+                        "resources.bundles appId 'hostassets' collides with the \
+                         host-assets namespace (`assets:` in lingxia.yaml)"
                     ));
                 }
                 if !app_ids.insert(app_id.to_string()) {

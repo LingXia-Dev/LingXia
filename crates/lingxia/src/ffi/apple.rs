@@ -149,6 +149,9 @@ mod bridge {
         #[swift_bridge(swift_name = "getDisplayLanguage")]
         fn get_display_language() -> String;
 
+        #[swift_bridge(swift_name = "splashSelectCover")]
+        fn splash_select_cover(data_dir: &str, dark: bool) -> String;
+
         #[swift_bridge(swift_name = "forwardHostLog")]
         fn forward_host_log(
             level: i32,
@@ -675,6 +678,15 @@ pub fn lingxia_init(data_dir: &str, cache_dir: &str, locale: &str) -> bridge::Li
 /// Return the effective display language selected by the runtime.
 pub fn get_display_language() -> String {
     crate::app::display_language()
+}
+
+/// Resolve this launch's cover before the overlay attaches. Runs before
+/// runtime initialization on iOS, so the host passes the data dir. An empty
+/// string means the bundled cover.
+pub fn splash_select_cover(data_dir: &str, dark: bool) -> String {
+    crate::splash::select_cover(std::path::PathBuf::from(data_dir), dark)
+        .map(|path| path.to_string_lossy().into_owned())
+        .unwrap_or_default()
 }
 
 pub fn forward_host_log(

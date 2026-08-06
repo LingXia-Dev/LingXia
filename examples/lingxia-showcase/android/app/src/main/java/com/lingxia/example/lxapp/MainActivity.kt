@@ -12,7 +12,8 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        Lingxia.enableWebViewDebugging()
+        // No work before quickStart: everything here runs ahead of the first
+        // frame, and the first frame is the launch cover.
         Lingxia.quickStart(this) {
             nativeRegisterHostAddon()
         }

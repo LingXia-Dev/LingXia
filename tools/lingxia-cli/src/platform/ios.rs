@@ -190,6 +190,12 @@ impl IosPlatform {
             None
         };
 
+        let splash = config
+            .lingxia_config
+            .as_ref()
+            .and_then(|c| c.splash.as_ref())
+            .map(|splash| crate::splash::ResolvedSplash::resolve(&config.project_root, splash))
+            .transpose()?;
         let bundle_config = AppBundleConfig {
             bundle_id,
             app_name,
@@ -197,6 +203,8 @@ impl IosPlatform {
             executable_name,
             deployment_target,
             info_plist_path: info_plist,
+            splash_background: splash.as_ref().map(|s| s.background.clone()),
+            splash_mark: splash.as_ref().is_some_and(|s| s.has_mark()),
         };
 
         AppBundler::create_app_bundle(
@@ -327,22 +335,45 @@ impl Platform for IosPlatform {
         // Assets.xcassets whose AppIcon.appiconset has each PNG composited
         // with a circular D/P badge — same visual language as the Android
         // launcher overlay. Source xcassets is never mutated.
-        let resources_for_compile = match apple::env_icon::prepare_overlay_resources_dir(
-            &resolve_lingxia_target_dir(&config.project_root).join("ios"),
+        let staging_base = resolve_lingxia_target_dir(&config.project_root).join("ios");
+        let env_staged = match apple::env_icon::prepare_overlay_resources_dir(
+            &staging_base,
             &resources_dir,
             config.resolved_env.version,
             0.0,
         ) {
-            Ok(Some(staging)) => staging,
-            Ok(None) => resources_dir.clone(),
+            Ok(staged) => staged,
             Err(err) => {
                 eprintln!(
                     "  {} Skipping env app-icon overlay: {}",
                     "Warning:".yellow(),
                     err
                 );
-                resources_dir.clone()
+                None
             }
+        };
+        // Splash assets go into a staged catalog copy too (reusing the env
+        // staging when it exists), keeping the source xcassets untouched.
+        let splash_config = config
+            .lingxia_config
+            .as_ref()
+            .and_then(|c| c.splash.as_ref());
+        let resources_for_compile = match splash_config {
+            Some(splash_config) => {
+                let resolved =
+                    crate::splash::ResolvedSplash::resolve(&config.project_root, splash_config)?;
+                // Also install the images as plain bundle resources: the
+                // runtime overlay reads those, so it survives an actool
+                // failure that would leave the compiled catalog missing.
+                crate::splash::install_apple_bundle_images(&app_path, &resolved)?;
+                crate::splash::stage_apple_splash_resources(
+                    &staging_base,
+                    &resources_dir,
+                    env_staged,
+                    &resolved,
+                )?
+            }
+            None => env_staged.unwrap_or_else(|| resources_dir.clone()),
         };
         if let Err(err) = apple::assets::compile_asset_catalog(
             &resources_for_compile,
@@ -355,6 +386,18 @@ impl Platform for IosPlatform {
                 "Warning:".yellow(),
                 err
             );
+            // Without a compiled catalog the app icon is missing and
+            // UILaunchScreen's color cannot resolve, so iOS paints the launch
+            // frame white. Say so: the build still "succeeds", and a silent
+            // white first frame is exactly what splash exists to prevent.
+            if splash_config.is_some() {
+                eprintln!(
+                    "  {} No Assets.car: the launch frame will be white, not the configured\n     \
+                     splash background. `actool` needs the iOS platform installed —\n     \
+                     run `xcodebuild -downloadPlatform iOS` to restore it.",
+                    "Warning:".yellow()
+                );
+            }
         }
         if let Err(err) = apple::assets::merge_assetcatalog_plist_with_platform(
             &app_path,

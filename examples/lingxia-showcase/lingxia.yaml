@@ -3,7 +3,7 @@ app:
   rustLibDir: native
   lingxiaId: lingxia-showcase
   productName: LingXia
-  productVersion: 0.2.6
+  productVersion: 0.2.7
   platforms:
     - android
     - ios
@@ -85,6 +85,13 @@ surfaces:
 appLinks:
   hosts:
     - applink.lingxia.app
+
+splash:
+  background: "#171C22"
+  image: design/splash.png
+  mark: design/splash-mark.png
+
+assets: assets
 
 storage:
   tempMaxSizeMB: 1024

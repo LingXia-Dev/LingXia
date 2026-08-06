@@ -74,6 +74,9 @@ pub fn lingxia_register_host_addon() {
 
 Generated host templates already contain this wiring.
 
+Besides the hooks above, an addon can also swap the launch cover per cold
+start — see [Launch cover](./splash.md).
+
 ## Native Routes
 
 Native routes expose Rust functions to the View layer. Define them with

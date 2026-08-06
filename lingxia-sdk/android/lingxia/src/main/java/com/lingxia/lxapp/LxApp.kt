@@ -169,6 +169,12 @@ object LxApp {
         }
     }
 
+    /** Runtime signal (JNI): the home page finished its first render. */
+    @JvmStatic
+    fun onHomeFirstReady() {
+        SplashOverlay.notifyHomeReady()
+    }
+
     @JvmStatic
     fun updateTabBarUI(appId: String): Boolean {
         val activity = currentActivity?.takeIf { it.getAppId() == appId }

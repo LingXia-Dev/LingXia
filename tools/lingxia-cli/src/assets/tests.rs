@@ -47,6 +47,8 @@ fn lingxia_id_is_not_suffixed_by_env() {
         app_links: None,
         storage: None,
         resources: None,
+        splash: None,
+        assets: None,
     };
     // An active package-id suffix must not leak into lingxiaId.
     let dev_env = ResolvedEnv {
@@ -94,6 +96,8 @@ fn generated_app_json_excludes_ui_fields() {
         app_links: None,
         storage: None,
         resources: None,
+        splash: None,
+        assets: None,
     };
 
     let app_json = build_app_json_from_config(&config, None, None, &test_resolved_env()).unwrap();
@@ -145,6 +149,8 @@ fn generated_app_json_includes_dev_ws_url_when_configured() {
         app_links: None,
         storage: None,
         resources: None,
+        splash: None,
+        assets: None,
     };
 
     let app_json = build_app_json_from_config(
@@ -193,6 +199,8 @@ fn generated_app_json_includes_app_link_hosts() {
         }),
         storage: None,
         resources: None,
+        splash: None,
+        assets: None,
     };
 
     let app_json = build_app_json_from_config(&config, None, None, &test_resolved_env()).unwrap();
@@ -236,6 +244,8 @@ fn generated_app_json_includes_capabilities() {
         app_links: None,
         storage: None,
         resources: None,
+        splash: None,
+        assets: None,
     };
 
     let app_json = build_app_json_from_config(&config, None, None, &test_resolved_env()).unwrap();
@@ -294,6 +304,8 @@ fn generated_ui_json_preserves_generated_ui_config() {
         app_links: None,
         storage: None,
         resources: None,
+        splash: None,
+        assets: None,
     };
 
     let temp = TempDir::new().unwrap();
@@ -338,6 +350,8 @@ fn generated_ui_json_rewrites_app_ui_icons() {
         app_links: None,
         storage: None,
         resources: None,
+        splash: None,
+        assets: None,
     };
     let icons = vec![super::PreparedAppUiIcon {
         relative_path: "icons/browser-deadbeef.pdf".to_string(),
@@ -388,6 +402,8 @@ fn generated_windows_ui_json_rewrites_app_ui_icons_to_png() {
         app_links: None,
         storage: None,
         resources: None,
+        splash: None,
+        assets: None,
     };
     let icons = vec![super::PreparedAppUiIcon {
         relative_path: "icons/browser-deadbeef.pdf".to_string(),
@@ -538,6 +554,8 @@ fn generated_ui_json_rejects_terminal_when_capability_disabled() {
         app_links: None,
         storage: None,
         resources: None,
+        splash: None,
+        assets: None,
     };
 
     let err = build_ui_json_from_config(&config, &[], "macos")
@@ -585,6 +603,8 @@ fn generated_ui_json_prunes_surfaces_for_target_platform() {
         app_links: None,
         storage: None,
         resources: None,
+        splash: None,
+        assets: None,
     };
 
     let temp = TempDir::new().unwrap();
@@ -642,6 +662,8 @@ fn app_ui_icon_preparation_requires_svg() {
         app_links: None,
         storage: None,
         resources: None,
+        splash: None,
+        assets: None,
     };
 
     let err = prepare_app_ui_icons(temp.path(), &config)

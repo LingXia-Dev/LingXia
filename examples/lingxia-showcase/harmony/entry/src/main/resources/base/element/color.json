@@ -3,6 +3,10 @@
     {
       "name": "start_window_background",
       "value": "#FFFFFF"
+    },
+    {
+      "name": "lingxia_splash_background",
+      "value": "#171C22"
     }
   ]
 }

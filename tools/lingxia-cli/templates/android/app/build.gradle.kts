@@ -32,6 +32,13 @@ val lingxiaAppRoundIcon = providers
     .gradleProperty("lingxia.appRoundIcon")
     .orElse("@mipmap/ic_launcher_round")
     .get()
+// Launcher activity theme. `lingxia build` passes the generated splash theme
+// when `splash:` is configured in lingxia.yaml; otherwise the manifest's
+// `${lxSplashTheme}` placeholder resolves to the regular app theme.
+val lingxiaSplashTheme = providers
+    .gradleProperty("lingxia.splashTheme")
+    .orElse("@style/Theme.AppCompat.Light.DarkActionBar")
+    .get()
 
 // Release signing — values come from keystore.properties (local) or matching
 // env vars (CI). When none are set the build falls back to the debug keystore
@@ -93,6 +100,7 @@ android {
         manifestPlaceholders["lxAppName"] = lingxiaAppName
         manifestPlaceholders["lxAppIcon"] = lingxiaAppIcon
         manifestPlaceholders["lxAppRoundIcon"] = lingxiaAppRoundIcon
+        manifestPlaceholders["lxSplashTheme"] = lingxiaSplashTheme
         minSdk = {{MIN_SDK}}
         targetSdk = {{TARGET_SDK}}
         versionCode = 1

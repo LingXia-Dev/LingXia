@@ -105,7 +105,6 @@ export struct LxAppContainer {
   // Fullscreen state - when set, only the fullscreen component is rendered
   @State private fullscreenWebTag: string = ''
   @State private fullscreenComponentId: string = ''
-  
   // Pull-to-refresh state
   @State private isRefreshing: boolean = false
   @State private enablePullDownRefresh: boolean = false
@@ -709,6 +708,7 @@ export struct LxAppContainer {
 
       // Capsule menu bottom sheet - renders on top of everything
       CapsuleMenuBottomSheetComponent()
+
 	    }
 	    .width('100%')
 	    .height('100%')

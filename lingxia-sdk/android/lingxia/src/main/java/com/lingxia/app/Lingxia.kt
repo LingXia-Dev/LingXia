@@ -15,6 +15,7 @@ import androidx.appcompat.app.AppCompatActivity
 import com.lingxia.lxapp.LxAppActivity
 import com.lingxia.lxapp.LxApp
 import com.lingxia.lxapp.LxAppBrowser
+import com.lingxia.lxapp.SplashOverlay
 import com.lingxia.lxapp.APIs.media.ScanCodeFragment
 import java.net.URISyntaxException
 import java.util.concurrent.atomic.AtomicBoolean
@@ -57,22 +58,46 @@ object Lingxia {
      */
     @JvmStatic
     fun quickStart(activity: AppCompatActivity, registerHostAddon: (() -> Unit)?) {
-        if (!NativeApi.ensureLoaded()) {
-            throw IllegalStateException("Failed to load native library 'lingxia'")
+        if (LxApp.homeAppId != null) {
+            // Warm relaunch: the runtime is up, go straight home.
+            openHomeFrom(activity)
+            return
         }
-        if (registerHostAddon != null && hostAddonInstalled.compareAndSet(false, true)) {
-            try {
-                registerHostAddon()
-            } catch (error: Throwable) {
-                hostAddonInstalled.set(false)
-                throw error
+        // Cold start: put the cover on screen first — as this activity's own
+        // content, built from resources alone, so the system splash exits
+        // onto it. Everything else is deferred two frames and runs under the
+        // cover: even loading the native library belongs there, because all
+        // of it blocks the main thread, and every blocked millisecond before
+        // the first frame is the system splash lingering on screen.
+        SplashOverlay.attachBootstrap(activity)
+        activity.window.decorView.postDelayed({
+            if (!NativeApi.ensureLoaded()) {
+                throw IllegalStateException("Failed to load native library 'lingxia'")
             }
-        }
-        initializeRuntime(activity)
+            if (registerHostAddon != null && hostAddonInstalled.compareAndSet(false, true)) {
+                try {
+                    registerHostAddon()
+                } catch (error: Throwable) {
+                    hostAddonInstalled.set(false)
+                    throw error
+                }
+            }
+            SplashOverlay.applyHookSelection(activity)
+            initializeRuntime(activity)
+            openHomeFrom(activity)
+        }, 32L)
+    }
+
+    private fun openHomeFrom(activity: AppCompatActivity) {
         val existingLxAppActivity = LxApp.getCurrentActivity()?.takeUnless {
             it.isFinishing || it.isDestroyed
         }
         LxApp.openHome()
+        if (SplashOverlay.coverActive()) {
+            // Both activities show the same full-bleed cover; any transition
+            // animation between them would read as the cover flickering.
+            activity.overridePendingTransition(0, 0)
+        }
         val relaunchedInExistingTask =
             activity.intent?.action == Intent.ACTION_MAIN &&
                 activity.intent?.hasCategory(Intent.CATEGORY_LAUNCHER) == true &&

@@ -42,7 +42,7 @@ pub mod page_chrome;
 mod page_instance_host;
 mod runtime_bootstrap;
 mod runtime_ops;
-mod runtime_registry;
+pub(crate) mod runtime_registry;
 mod scheme;
 mod security;
 mod surface;

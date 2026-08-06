@@ -20,6 +20,10 @@ impl UIUpdate for Platform {
             .map_err(|error| PlatformError::Platform(error.to_string()))
     }
 
+    fn notify_home_first_ready(&self) {
+        let _ = lingxia_webview::platform::harmony::tsfn::call_arkts("onHomeFirstReady", &[]);
+    }
+
     async fn measure_page_chrome_capsule(
         &self,
         appid: String,

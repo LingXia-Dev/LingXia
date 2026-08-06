@@ -93,6 +93,14 @@ internal object NativeApi {
     external fun getDisplayLanguage(): String
 
     /**
+     * Resolve this launch's splash cover via the host's Rust hook, before the
+     * overlay attaches and before runtime initialization. Empty means the
+     * bundled cover.
+     */
+    @JvmStatic
+    external fun splashSelectCover(dataDir: String, dark: Boolean): String
+
+    /**
      * Notify native layer that an LxApp has been opened
      * @param appId The ID of the opened app
      * @param path The initial path/route of the app

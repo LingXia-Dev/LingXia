@@ -265,6 +265,10 @@ pub trait UIUpdate: Send + Sync + 'static {
     /// Clear platform state retained for a closed lxapp session.
     fn clear_lxapp_appearance(&self, _appid: &str) {}
 
+    /// The home lxapp's entry page finished its first render (fired at most
+    /// once per process). Hosts dismiss the startup splash overlay on it.
+    fn notify_home_first_ready(&self) {}
+
     /// Measure the visible capsule after native Page Chrome has laid out.
     /// The JSON payload is an internal transport; app code only sees the
     /// revisioned View snapshot assembled by `lingxia-lxapp`.

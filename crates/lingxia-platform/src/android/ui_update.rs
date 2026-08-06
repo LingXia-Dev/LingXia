@@ -22,6 +22,21 @@ impl UIUpdate for Platform {
         .unwrap_or(false)
     }
 
+    fn notify_home_first_ready(&self) {
+        let Ok(lxapp_class) = super::get_cached_class(super::CachedClass::LxApp) else {
+            return;
+        };
+        let _ = super::with_env(|env| {
+            env.call_static_method(
+                lxapp_class,
+                jni_str!("onHomeFirstReady"),
+                jni_sig!("()V"),
+                &[],
+            )
+            .map(|_| ())
+        });
+    }
+
     fn apply_lxapp_appearance(&self, appid: &str, dark: bool) -> Result<(), PlatformError> {
         let lxapp_class: &JClass = super::get_cached_class(super::CachedClass::LxApp)
             .map_err(|error| PlatformError::Platform(error.to_string()))?;

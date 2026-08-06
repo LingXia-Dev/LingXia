@@ -24,6 +24,15 @@ pub struct AppBundleConfig {
     pub deployment_target: String,
     /// Path to custom Info.plist (merged with generated one)
     pub info_plist_path: Option<PathBuf>,
+    /// Splash background color (`#RRGGBB`). Present when `splash:` is
+    /// configured: `UILaunchScreen` points at the catalog color, and the raw
+    /// value is also written to Info.plist so the runtime overlay never
+    /// depends on the catalog being compiled.
+    pub splash_background: Option<String>,
+    /// Whether `splash.mark` is configured: `UILaunchScreen` then also
+    /// centers the catalog mark, completing the OS placeholder (color +
+    /// mark) before any app code runs.
+    pub splash_mark: bool,
 }
 
 /// App bundle packager
@@ -352,9 +361,24 @@ let package = Package(
             "UISupportedInterfaceOrientations".into(),
             plist::Value::Array(vec!["UIInterfaceOrientationPortrait".into()]),
         );
+        // Splash: the OS launch frame is the placeholder — background color
+        // plus the centered mark. Both resolve from the compiled catalog; the
+        // raw color also lands in Info.plist so the runtime overlay never
+        // depends on `actool` having succeeded.
+        let mut launch_screen = plist::Dictionary::new();
+        if let Some(background) = &config.splash_background {
+            launch_screen.insert(
+                "UIColorName".into(),
+                crate::splash::APPLE_COLOR_ASSET.into(),
+            );
+            info.insert("LingXiaSplashBackground".into(), background.clone().into());
+        }
+        if config.splash_mark {
+            launch_screen.insert("UIImageName".into(), crate::splash::APPLE_MARK_ASSET.into());
+        }
         info.insert(
             "UILaunchScreen".into(),
-            plist::Value::Dictionary(plist::Dictionary::new()),
+            plist::Value::Dictionary(launch_screen),
         );
 
         // Merge with custom Info.plist if provided

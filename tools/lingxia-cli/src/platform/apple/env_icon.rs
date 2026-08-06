@@ -1,6 +1,6 @@
 //! Apple env-version launcher-icon overlay.
 //!
-//! Mirrors the Android `prepare_launcher_icon_overlay` flow: when the active
+//! Mirrors the Android `prepare_res_overlay` flow: when the active
 //! env is developer/preview, build a parallel `Assets.xcassets` under
 //! `<target>/lingxia/<platform>/overlay/<env>/Resources/` whose `AppIcon.appiconset`
 //! has each PNG composited with a small accent badge (filled circle + bitmap
@@ -87,7 +87,11 @@ fn badge_appiconset(dir: &Path, letter: char, accent: [u8; 4], margin_frac: f32)
             continue;
         }
         composite_badge_inset(&mut rgba, letter, accent, margin_frac);
-        rgba.save_with_format(&path, ImageFormat::Png)
+        // iOS app icons must be opaque: an alpha channel — even a fully
+        // opaque one — makes the home screen composite the icon over black,
+        // which reads as a ghosted tile. Flatten after badging.
+        let rgb = image::DynamicImage::ImageRgba8(rgba).to_rgb8();
+        rgb.save_with_format(&path, ImageFormat::Png)
             .with_context(|| format!("Failed to write {}", path.display()))?;
     }
     Ok(())

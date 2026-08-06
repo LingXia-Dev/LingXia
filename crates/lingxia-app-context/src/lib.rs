@@ -186,6 +186,9 @@ pub struct AppConfig {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub storage: Option<StorageConfig>,
 
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub splash: Option<SplashConfig>,
+
     #[serde(rename = "devWsUrl", default, skip_serializing_if = "Option::is_none")]
     pub dev_ws_url: Option<String>,
 
@@ -244,6 +247,20 @@ pub struct AppLinksConfig {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub hosts: Vec<String>,
 }
+
+/// Runtime half of `splash:`. Images and colors are platform resources; only
+/// the minimum hold time is a runtime decision, and the upper bound is a
+/// framework constant that hosts deliberately cannot configure.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct SplashConfig {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min_duration: Option<u32>,
+}
+
+/// Default minimum hold, in milliseconds. Long enough that a fast first render
+/// does not flash the cover, short enough not to feel like a delay.
+pub const DEFAULT_SPLASH_MIN_DURATION_MS: u32 = 600;
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -405,6 +422,49 @@ pub fn app_config() -> Option<&'static AppConfig> {
 
 pub fn theme() -> Option<&'static ThemeConfig> {
     APP_CONFIG.get().and_then(|config| config.theme.as_ref())
+}
+
+/// Wall-clock origin for cold-start timing. First touched while the runtime
+/// loads `app.json`, which is early enough to stand in for process start.
+static STARTUP: std::sync::LazyLock<std::time::Instant> =
+    std::sync::LazyLock::new(std::time::Instant::now);
+
+/// Start the cold-start clock. Idempotent; call as early as possible.
+pub fn mark_startup() {
+    let _ = *STARTUP;
+}
+
+pub fn since_startup() -> std::time::Duration {
+    STARTUP.elapsed()
+}
+
+/// A host's per-launch override of the minimum hold (`u32::MAX` = unset).
+/// Bounded by the platforms' 6s dismissal timeout, which stays absolute.
+static SPLASH_MIN_DURATION_OVERRIDE: std::sync::atomic::AtomicU32 =
+    std::sync::atomic::AtomicU32::new(u32::MAX);
+const SPLASH_HOLD_CAP_MS: u32 = 6_000;
+
+/// Override the configured minimum hold for this launch, from the host's
+/// splash selection hook.
+pub fn set_splash_min_duration_override(ms: u32) {
+    SPLASH_MIN_DURATION_OVERRIDE.store(
+        ms.min(SPLASH_HOLD_CAP_MS),
+        std::sync::atomic::Ordering::Relaxed,
+    );
+}
+
+/// How long the splash must stay up before a ready signal may dismiss it.
+pub fn splash_min_duration() -> std::time::Duration {
+    let overridden = SPLASH_MIN_DURATION_OVERRIDE.load(std::sync::atomic::Ordering::Relaxed);
+    if overridden != u32::MAX {
+        return std::time::Duration::from_millis(u64::from(overridden));
+    }
+    let ms = APP_CONFIG
+        .get()
+        .and_then(|config| config.splash.as_ref())
+        .and_then(|splash| splash.min_duration)
+        .unwrap_or(DEFAULT_SPLASH_MIN_DURATION_MS);
+    std::time::Duration::from_millis(u64::from(ms))
 }
 
 pub fn product_name() -> Option<&'static str> {
@@ -612,6 +672,7 @@ mod tests {
             home_app_version: "1.0.0".to_string(),
             cache_max_size_mb: 1024,
             storage: None,
+            splash: None,
             dev_ws_url: None,
             dev_bundle_base_url: None,
             app_links: None,

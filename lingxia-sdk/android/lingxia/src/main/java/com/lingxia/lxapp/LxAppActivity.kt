@@ -393,6 +393,13 @@ class LxAppActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        if (SplashOverlay.coverActive()) {
+            // The bootstrap activity underneath shows the same full-bleed
+            // cover; an enter animation would read as the cover flickering.
+            @Suppress("DEPRECATION")
+            overridePendingTransition(0, 0)
+        }
+
         // Configure transparent system bars for edge-to-edge experience
         configureTransparentSystemBars(this)
         forceHostImmersive = isHostImmersiveEnabled()
@@ -451,6 +458,9 @@ class LxAppActivity : AppCompatActivity() {
         applyCanvasBackground()
 
         setContentView(rootContainer)
+
+        // Cover the home cold start until its page first renders (or times out).
+        SplashOverlay.attachIfNeeded(this, appId)
 
         // Get TabBar config and setup UI in parallel
         val tabBarConfig = NativeApi.getTabBarState(appId)
