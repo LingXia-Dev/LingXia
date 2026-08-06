@@ -215,6 +215,26 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_getDisplayLanguage<'a>(
         .resolve::<LogErrorAndDefault>()
 }
 
+/// Resolve this launch's cover before the overlay attaches. Runs before
+/// runtime initialization — the splash must never wait on the runtime — so
+/// the host passes the data dir. Empty means the bundled cover.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_app_NativeApi_splashSelectCover<'a>(
+    mut env: EnvUnowned<'a>,
+    _class: JClass<'a>,
+    data_dir: JString<'a>,
+    dark: jboolean,
+) -> JString<'a> {
+    env.with_env(|env| {
+        let data_dir: String = data_dir.try_to_string(env)?;
+        let path = crate::splash::select_cover(std::path::PathBuf::from(data_dir), dark)
+            .map(|path| path.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        env.new_string(path)
+    })
+    .resolve::<LogErrorAndDefault>()
+}
+
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_com_lingxia_app_NativeApi_forwardHostLog(
     mut env: EnvUnowned,

@@ -139,10 +139,6 @@ mod bridge {
         #[swift_bridge(swift_name = "LxApp.onHomeFirstReady")]
         fn on_home_first_ready();
 
-        // Host splash hook picked a cover — crossfade the overlay to it
-        #[swift_bridge(swift_name = "LxApp.applySplashCover")]
-        fn apply_splash_cover(path: &str);
-
         #[swift_bridge(swift_name = "LxApp.applyAppearance")]
         fn apply_appearance(appid: &str, dark: bool) -> bool;
 
@@ -460,15 +456,15 @@ mod bridge {
 pub use bridge::get_capsule_rect;
 pub use bridge::{
     ActionSheetOptions, ModalOptions, ToastIcon, ToastOptions, ToastPosition, apply_appearance,
-    apply_splash_cover, autostart_is_enabled, autostart_set_enabled, cancel_preview_media,
-    close_lxapp, close_surface, destroy_managed_surface, exit_app, hide_surface, hide_toast,
-    host_appearance_dark, navigate, on_home_first_ready, open_builtin_browser_page,
-    open_document_external, open_lxapp, open_managed_native_surface, open_url, present_layout,
-    present_surface, preview_media, request_lxapp_main_activation, review_document, set_app_badge,
-    set_managed_surface_visible, set_shell_pins, set_sidebar_actions, set_tray_badge,
-    set_tray_click_intercept, set_tray_icon, set_tray_menu, set_tray_title, set_tray_visible,
-    share, show_action_sheet, show_modal, show_surface, show_toast, update_navbar_ui,
-    update_orientation_ui, update_tabbar_ui, update_tabbar_ui_async,
+    autostart_is_enabled, autostart_set_enabled, cancel_preview_media, close_lxapp, close_surface,
+    destroy_managed_surface, exit_app, hide_surface, hide_toast, host_appearance_dark, navigate,
+    on_home_first_ready, open_builtin_browser_page, open_document_external, open_lxapp,
+    open_managed_native_surface, open_url, present_layout, present_surface, preview_media,
+    request_lxapp_main_activation, review_document, set_app_badge, set_managed_surface_visible,
+    set_shell_pins, set_sidebar_actions, set_tray_badge, set_tray_click_intercept, set_tray_icon,
+    set_tray_menu, set_tray_title, set_tray_visible, share, show_action_sheet, show_modal,
+    show_surface, show_toast, update_navbar_ui, update_orientation_ui, update_tabbar_ui,
+    update_tabbar_ui_async,
 };
 #[cfg(target_os = "macos")]
 pub use bridge::{notify_app_update_ready, reveal_in_file_manager};

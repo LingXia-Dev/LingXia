@@ -159,6 +159,16 @@ pub fn get_display_language() -> String {
     crate::app::display_language()
 }
 
+/// Resolve this launch's cover before the splash layer attaches. Runs before
+/// runtime initialization — the splash must never wait on the runtime — so
+/// the host passes the data dir. Empty means the bundled cover.
+#[napi]
+pub fn splash_select_cover(data_dir: String, dark: bool) -> String {
+    crate::splash::select_cover(std::path::PathBuf::from(data_dir), dark)
+        .map(|path| path.to_string_lossy().into_owned())
+        .unwrap_or_default()
+}
+
 #[napi]
 pub fn forward_host_log(
     level: i32,

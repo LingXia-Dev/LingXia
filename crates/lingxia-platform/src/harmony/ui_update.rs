@@ -24,10 +24,6 @@ impl UIUpdate for Platform {
         let _ = lingxia_webview::platform::harmony::tsfn::call_arkts("onHomeFirstReady", &[]);
     }
 
-    fn apply_splash_cover(&self, path: &str) {
-        let _ = lingxia_webview::platform::harmony::tsfn::call_arkts("applySplashCover", &[path]);
-    }
-
     async fn measure_page_chrome_capsule(
         &self,
         appid: String,

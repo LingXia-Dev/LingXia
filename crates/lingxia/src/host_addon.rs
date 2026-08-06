@@ -13,9 +13,9 @@ pub trait HostAddon: Send + Sync {
     ///
     /// Must return quickly — it runs on the startup path under a budget, and
     /// the configured cover wins if it overruns. Choose only among assets
-    /// already on disk; use [`crate::splash::SplashContext::spawn`] for any
-    /// downloading, which lands in time for the *next* launch.
-    fn select_splash(&self, _ctx: &crate::splash::SplashContext) -> crate::splash::SplashChoice {
+    /// already on disk; hand any downloading to [`crate::spawn`], which
+    /// lands it in time for the *next* launch.
+    fn select_splash(&self, _launch: &crate::splash::Launch) -> crate::splash::SplashChoice {
         crate::splash::SplashChoice::default()
     }
 
@@ -78,10 +78,10 @@ pub(crate) fn any_registered() -> bool {
     !snapshot_host_addons().is_empty()
 }
 
-pub(crate) fn run_select_splash(ctx: &crate::splash::SplashContext) -> crate::splash::SplashChoice {
+pub(crate) fn run_select_splash(launch: &crate::splash::Launch) -> crate::splash::SplashChoice {
     let installed = snapshot_host_addons();
     for addon in installed.iter() {
-        let choice = addon.select_splash(ctx);
+        let choice = addon.select_splash(launch);
         if choice != crate::splash::SplashChoice::default() {
             return choice;
         }
