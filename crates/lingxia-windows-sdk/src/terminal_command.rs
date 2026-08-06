@@ -22,9 +22,10 @@ pub fn run_if_invoked() {
     // and nowhere to print. Borrow the launcher's — but only when the launcher
     // says this is a command line, because a host started by any console tool
     // also has a parent console and must not be mistaken for one.
-    if std::env::var_os(lingxia_terminal_config::cli::INVOCATION_MARKER).is_some() {
-        attach_parent_console();
-    }
+    let restore = std::env::var_os(lingxia_terminal_config::cli::INVOCATION_MARKER)
+        .is_some()
+        .then(attach_parent_console)
+        .flatten();
     let Ok(platform) = lingxia::windows::Platform::from_env() else {
         return;
     };
@@ -34,6 +35,11 @@ pub fn run_if_invoked() {
     if let Some(code) =
         lingxia::terminal::run_if_invoked(&platform.app_data_dir(), system_prefers_dark())
     {
+        if let Some(code_page) = restore {
+            unsafe {
+                let _ = windows::Win32::System::Console::SetConsoleOutputCP(code_page);
+            }
+        }
         std::process::exit(code);
     }
 }
@@ -194,24 +200,25 @@ fn has_powerline_glyphs(hdc: HDC, family: &str) -> bool {
 /// Without this a command line invoked from a terminal writes into handles
 /// that do not exist: no help, no status, no error — the failure looks like
 /// the command silently doing nothing.
-fn attach_parent_console() {
+fn attach_parent_console() -> Option<u32> {
     use windows::Win32::Foundation::{GENERIC_READ, GENERIC_WRITE};
+    use windows::Win32::Globalization::CP_UTF8;
     use windows::Win32::Storage::FileSystem::{
         CreateFileW, FILE_ATTRIBUTE_NORMAL, FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_EXISTING,
     };
     use windows::Win32::System::Console::{
-        ATTACH_PARENT_PROCESS, AttachConsole, GetConsoleWindow, STD_ERROR_HANDLE, STD_INPUT_HANDLE,
-        STD_OUTPUT_HANDLE, SetStdHandle,
+        ATTACH_PARENT_PROCESS, AttachConsole, GetConsoleOutputCP, GetConsoleWindow,
+        STD_ERROR_HANDLE, STD_INPUT_HANDLE, STD_OUTPUT_HANDLE, SetConsoleOutputCP, SetStdHandle,
     };
     use windows::core::w;
 
     unsafe {
         // Already have one (a console build, or a previous attach): nothing to do.
         if !GetConsoleWindow().is_invalid() {
-            return;
+            return None;
         }
         if AttachConsole(ATTACH_PARENT_PROCESS).is_err() {
-            return;
+            return None;
         }
         let reopen = |name, access, id| {
             let handle = CreateFileW(
@@ -232,5 +239,12 @@ fn attach_parent_console() {
         reopen(w!("CONOUT$"), GENERIC_WRITE.0, STD_OUTPUT_HANDLE);
         reopen(w!("CONOUT$"), GENERIC_WRITE.0, STD_ERROR_HANDLE);
         reopen(w!("CONIN$"), GENERIC_READ.0, STD_INPUT_HANDLE);
+
+        // Our output is UTF-8 and the console decodes by its code page, so
+        // without this every em dash in the help arrives as mojibake. The
+        // previous page goes back before exit, since the console outlives us.
+        let previous = GetConsoleOutputCP();
+        let _ = SetConsoleOutputCP(CP_UTF8);
+        Some(previous)
     }
 }
