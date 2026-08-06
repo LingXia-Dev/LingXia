@@ -18,6 +18,13 @@ use windows::Win32::Graphics::Gdi::{
 /// Call this as the first statement of `main`. It returns normally when the
 /// process should carry on and become the app.
 pub fn run_if_invoked() {
+    // The product links as `/SUBSYSTEM:WINDOWS`, so it starts with no console
+    // and nowhere to print. Borrow the launcher's — but only when the launcher
+    // says this is a command line, because a host started by any console tool
+    // also has a parent console and must not be mistaken for one.
+    if std::env::var_os(lingxia_terminal_config::cli::INVOCATION_MARKER).is_some() {
+        attach_parent_console();
+    }
     let Ok(platform) = lingxia::windows::Platform::from_env() else {
         return;
     };
@@ -180,4 +187,50 @@ fn has_powerline_glyphs(hdc: HDC, family: &str) -> bool {
         let _ = DeleteObject(font.into());
     }
     found
+}
+
+/// Adopt the parent's console and put the standard streams back on it.
+///
+/// Without this a command line invoked from a terminal writes into handles
+/// that do not exist: no help, no status, no error — the failure looks like
+/// the command silently doing nothing.
+fn attach_parent_console() {
+    use windows::Win32::Foundation::{GENERIC_READ, GENERIC_WRITE};
+    use windows::Win32::Storage::FileSystem::{
+        CreateFileW, FILE_ATTRIBUTE_NORMAL, FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_EXISTING,
+    };
+    use windows::Win32::System::Console::{
+        ATTACH_PARENT_PROCESS, AttachConsole, GetConsoleWindow, STD_ERROR_HANDLE, STD_INPUT_HANDLE,
+        STD_OUTPUT_HANDLE, SetStdHandle,
+    };
+    use windows::core::w;
+
+    unsafe {
+        // Already have one (a console build, or a previous attach): nothing to do.
+        if !GetConsoleWindow().is_invalid() {
+            return;
+        }
+        if AttachConsole(ATTACH_PARENT_PROCESS).is_err() {
+            return;
+        }
+        let reopen = |name, access, id| {
+            let handle = CreateFileW(
+                name,
+                access,
+                FILE_SHARE_READ | FILE_SHARE_WRITE,
+                None,
+                OPEN_EXISTING,
+                FILE_ATTRIBUTE_NORMAL,
+                None,
+            );
+            if let Ok(handle) = handle
+                && !handle.is_invalid()
+            {
+                let _ = SetStdHandle(id, handle);
+            }
+        };
+        reopen(w!("CONOUT$"), GENERIC_WRITE.0, STD_OUTPUT_HANDLE);
+        reopen(w!("CONOUT$"), GENERIC_WRITE.0, STD_ERROR_HANDLE);
+        reopen(w!("CONIN$"), GENERIC_READ.0, STD_INPUT_HANDLE);
+    }
 }
