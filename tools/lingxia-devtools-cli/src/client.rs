@@ -102,3 +102,21 @@ fn command_id() -> String {
         .unwrap_or_default();
     format!("lxdev-{nanos}")
 }
+
+/// The dev websocket as a [`Transport`], so the shared command tables can run
+/// over a session without knowing one exists.
+pub struct DevSession<'a> {
+    ws_url: &'a str,
+}
+
+impl<'a> DevSession<'a> {
+    pub fn new(ws_url: &'a str) -> Self {
+        Self { ws_url }
+    }
+}
+
+impl lingxia_control_cli::transport::Transport for DevSession<'_> {
+    fn request(&self, method: &str, params: Option<Value>) -> Result<Option<Value>> {
+        execute_command(self.ws_url, method, params)
+    }
+}

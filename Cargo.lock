@@ -3298,6 +3298,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "lingxia-control-cli"
+version = "0.11.2"
+dependencies = [
+ "anyhow",
+ "base64",
+ "chrono",
+ "clap",
+ "lingxia-computer-use",
+ "lingxia-devtool-protocol",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "lingxia-devtool"
 version = "0.11.2"
 dependencies = [
@@ -3339,6 +3353,7 @@ dependencies = [
  "ctrlc",
  "libc",
  "lingxia-computer-use",
+ "lingxia-control-cli",
  "lingxia-devtool-protocol",
  "owo-colors",
  "oxc_allocator",

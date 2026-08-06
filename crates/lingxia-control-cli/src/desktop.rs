@@ -1322,7 +1322,7 @@ fn run_screenshot(
     }
 
     let ts = chrono::Local::now().format("%Y%m%d-%H%M%S");
-    match crate::screenshot::write_png(output, format!("desktop-{ts}.png"), &capture.png) {
+    match crate::output::write_png(output, format!("desktop-{ts}.png"), &capture.png) {
         Ok(()) => std::process::exit(0),
         Err(e) => {
             eprintln!("Error: {e}");
@@ -1438,7 +1438,7 @@ fn print_permissions(p: &cu::Permissions) {
     print_permission_lines(p);
     if !(p.accessibility && p.screen_recording && p.input) {
         println!(
-            "\nSome permissions are missing. Run `lxdev desktop permissions --request` to prompt,\nthen grant them in System Settings › Privacy & Security and relaunch."
+            "\nSome permissions are missing. Run `desktop permissions --request` to prompt,\nthen grant them in System Settings › Privacy & Security and relaunch."
         );
     }
 }

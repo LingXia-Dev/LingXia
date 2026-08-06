@@ -1,10 +1,8 @@
 use anyhow::Result;
 use clap::{Args, Parser, Subcommand};
 
-mod app;
 mod browser;
 mod client;
-mod desktop;
 mod logs;
 mod lxapp;
 mod lxapp_build;
@@ -47,9 +45,9 @@ enum Commands {
     #[command(alias = "sessions")]
     Session(SessionCmd),
     /// Automate the local desktop OS (no dev session required)
-    Desktop(desktop::DesktopOptions),
+    Desktop(lingxia_control_cli::desktop::DesktopOptions),
     /// Automate the host app surface in the current dev session
-    App(app::AppOptions),
+    App(lingxia_control_cli::app::AppOptions),
     /// Run JavaScript/TypeScript test cases in the current dev session
     Test(test::TestOptions),
 }
@@ -164,10 +162,16 @@ fn run() -> Result<()> {
             None => sessions::execute_list(cmd.json),
         },
         // Local OS automation: no dev session; the handler owns process exit.
-        Commands::Desktop(options) => desktop::execute(options),
+        Commands::Desktop(options) => lingxia_control_cli::desktop::execute(options),
         Commands::App(options) => {
             let info = resolve(&selector)?;
-            app::execute(&info, options)
+            let transport = client::DevSession::new(&info.ws_url);
+            let context = lingxia_control_cli::app::AppContext {
+                transport: &transport,
+                target: info.target.clone(),
+                session: Some(info.session_id.clone()),
+            };
+            lingxia_control_cli::app::execute(&context, options)
         }
         // Session test runner: the handler owns process exit (run state
         // becomes the exit code).

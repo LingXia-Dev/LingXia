@@ -1,0 +1,52 @@
+//! What a shipped product's command line looks like.
+//!
+//! A product binary mounts these subcommands the same way `lxdev` does, but
+//! reaches its own running instance over the local control socket instead of a
+//! dev session. Run it against a live app:
+//!
+//! ```text
+//! cargo run -p lingxia-control-cli --example product -- \
+//!     --endpoint "$HOME/Library/Application Support/<app-id>/app_state/control.sock" \
+//!     app doctor
+//! ```
+
+use clap::{Parser, Subcommand};
+use lingxia_control_cli::{app, desktop, transport::ControlSocket};
+
+#[derive(Parser)]
+#[command(name = "product", about = "A product's own command line")]
+struct Cli {
+    /// The control socket, as the product's `control::endpoint_name` reports
+    /// it. A real product computes this itself rather than taking a flag.
+    #[arg(long, global = true)]
+    endpoint: Option<String>,
+    #[command(subcommand)]
+    command: Command,
+}
+
+#[derive(Subcommand)]
+enum Command {
+    /// Automate the local desktop OS. Needs no running app.
+    Desktop(desktop::DesktopOptions),
+    /// Drive this product's own windows.
+    App(app::AppOptions),
+}
+
+fn main() -> anyhow::Result<()> {
+    let cli = Cli::parse();
+    match cli.command {
+        Command::Desktop(options) => desktop::execute(options),
+        Command::App(options) => {
+            let endpoint = cli
+                .endpoint
+                .ok_or_else(|| anyhow::anyhow!("--endpoint is required for app commands"))?;
+            let transport = ControlSocket::at(endpoint);
+            let context = app::AppContext {
+                transport: &transport,
+                target: std::env::consts::OS.to_string(),
+                session: None,
+            };
+            app::execute(&context, options)
+        }
+    }
+}
