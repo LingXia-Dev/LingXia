@@ -501,6 +501,7 @@ impl Platform for MacosPlatform {
             &resources_dir,
             config.resolved_env.version,
             0.10,
+            false,
         ) {
             Ok(Some(staging)) => staging,
             Ok(None) => resources_dir.clone(),

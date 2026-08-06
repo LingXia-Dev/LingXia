@@ -341,6 +341,7 @@ impl Platform for IosPlatform {
             &resources_dir,
             config.resolved_env.version,
             0.0,
+            true,
         ) {
             Ok(staged) => staged,
             Err(err) => {
