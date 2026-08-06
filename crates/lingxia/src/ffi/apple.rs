@@ -2129,7 +2129,7 @@ pub fn terminal_session_create(cols: u16, rows: u16, cwd: &str) -> u64 {
     #[cfg(feature = "terminal-runtime")]
     {
         let cwd = (!cwd.is_empty()).then(|| std::path::Path::new(cwd));
-        let environment = app_data_dir_for_cli()
+        let environment = crate::terminal::app_data_dir()
             .map(|dir| crate::terminal::session_environment(&dir))
             .unwrap_or_default();
         return crate::terminal::terminal_create_with_spec(
@@ -2273,10 +2273,9 @@ pub fn terminal_run_cli_if_invoked(app_data_dir: &str, system_is_dark: bool) -> 
         // The directory is passed in rather than read from the runtime: this
         // runs before initialization, which would open the app's databases and
         // collide with an instance already running.
-        if let Some(code) = crate::terminal::run_cli_if_invoked(
-            std::path::PathBuf::from(app_data_dir),
-            system_is_dark,
-        ) {
+        if let Some(code) =
+            crate::terminal::run_if_invoked(std::path::Path::new(app_data_dir), system_is_dark)
+        {
             return code;
         }
     }
@@ -2284,15 +2283,6 @@ pub fn terminal_run_cli_if_invoked(app_data_dir: &str, system_is_dark: bool) -> 
     #[cfg(not(feature = "terminal-runtime"))]
     let _ = (app_data_dir, system_is_dark);
     -1
-}
-
-#[cfg(feature = "terminal-runtime")]
-fn app_data_dir_for_cli() -> crate::Result<std::path::PathBuf> {
-    crate::app::state_dir().and_then(|dir| {
-        dir.parent()
-            .map(std::path::Path::to_path_buf)
-            .ok_or_else(|| crate::Error::internal("state dir has no parent"))
-    })
 }
 
 /// Hand the platform's installed-font list to the config layer, so
@@ -2338,7 +2328,7 @@ pub fn terminal_register_fonts(fonts_json: &str) {
 pub fn terminal_load_config(system_is_dark: bool) -> String {
     #[cfg(feature = "terminal-runtime")]
     {
-        let Ok(data_dir) = app_data_dir_for_cli() else {
+        let Some(data_dir) = crate::terminal::app_data_dir() else {
             return "{}".to_string();
         };
         // Product defaults from `lingxia.yaml` are not wired yet; the

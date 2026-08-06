@@ -141,8 +141,8 @@ enum Key {
 
 /// Raw mode for the duration of the picker, restored on drop so a panic or an
 /// early return cannot leave the shell without echo.
+#[cfg(unix)]
 struct RawTerminal {
-    #[cfg(unix)]
     saved: libc::termios,
 }
 
@@ -235,7 +235,126 @@ impl Drop for RawTerminal {
     }
 }
 
-#[cfg(not(unix))]
+/// `windows::core::Error` is not a `std::error::Error` in this build, so carry
+/// its message across rather than the type.
+#[cfg(windows)]
+fn io_error(error: windows::core::Error) -> std::io::Error {
+    std::io::Error::other(error.to_string())
+}
+
+/// The console's own modes, restored on drop for the same reason.
+#[cfg(windows)]
+struct RawTerminal {
+    input: windows::Win32::Foundation::HANDLE,
+    output: windows::Win32::Foundation::HANDLE,
+    saved_input: windows::Win32::System::Console::CONSOLE_MODE,
+    saved_output: windows::Win32::System::Console::CONSOLE_MODE,
+}
+
+#[cfg(windows)]
+impl RawTerminal {
+    fn enter() -> std::io::Result<Self> {
+        use windows::Win32::System::Console::{
+            CONSOLE_MODE, ENABLE_ECHO_INPUT, ENABLE_LINE_INPUT, ENABLE_PROCESSED_INPUT,
+            ENABLE_VIRTUAL_TERMINAL_PROCESSING, GetConsoleMode, GetStdHandle, STD_INPUT_HANDLE,
+            STD_OUTPUT_HANDLE, SetConsoleMode,
+        };
+
+        unsafe {
+            let input = GetStdHandle(STD_INPUT_HANDLE).map_err(io_error)?;
+            let output = GetStdHandle(STD_OUTPUT_HANDLE).map_err(io_error)?;
+            let mut saved_input = CONSOLE_MODE::default();
+            let mut saved_output = CONSOLE_MODE::default();
+            GetConsoleMode(input, &mut saved_input).map_err(io_error)?;
+            GetConsoleMode(output, &mut saved_output).map_err(io_error)?;
+            // Keys one at a time, unechoed, and Ctrl-C delivered rather than
+            // turned into a signal — the picker has its own cancel.
+            SetConsoleMode(
+                input,
+                saved_input & !(ENABLE_LINE_INPUT | ENABLE_ECHO_INPUT | ENABLE_PROCESSED_INPUT),
+            )
+            .map_err(io_error)?;
+            // Windows Terminal interprets our escapes already; the classic
+            // console does not until asked.
+            let _ = SetConsoleMode(output, saved_output | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
+            let mut out = std::io::stdout();
+            let _ = write!(out, "\x1b[?25l");
+            let _ = out.flush();
+            Ok(Self {
+                input,
+                output,
+                saved_input,
+                saved_output,
+            })
+        }
+    }
+
+    /// Read key *events*, not bytes.
+    ///
+    /// A console event carries the virtual key directly, so Escape arrives as
+    /// itself — none of the ambiguity that makes a Unix tty need a timeout to
+    /// tell Escape from the start of an arrow sequence.
+    fn key(&mut self) -> std::io::Result<Key> {
+        use windows::Win32::System::Console::{INPUT_RECORD, KEY_EVENT, ReadConsoleInputW};
+        use windows::Win32::UI::Input::KeyboardAndMouse::{VK_DOWN, VK_ESCAPE, VK_RETURN, VK_UP};
+
+        loop {
+            let mut record = INPUT_RECORD::default();
+            let mut read = 0u32;
+            unsafe {
+                ReadConsoleInputW(self.input, std::slice::from_mut(&mut record), &mut read)
+                    .map_err(io_error)?
+            };
+            if read == 0 || record.EventType != KEY_EVENT as u16 {
+                continue;
+            }
+            let event = unsafe { record.Event.KeyEvent };
+            if !event.bKeyDown.as_bool() {
+                continue;
+            }
+            let virtual_key =
+                windows::Win32::UI::Input::KeyboardAndMouse::VIRTUAL_KEY(event.wVirtualKeyCode);
+            if virtual_key == VK_UP {
+                return Ok(Key::Up);
+            }
+            if virtual_key == VK_DOWN {
+                return Ok(Key::Down);
+            }
+            if virtual_key == VK_RETURN {
+                return Ok(Key::Enter);
+            }
+            if virtual_key == VK_ESCAPE {
+                return Ok(Key::Cancel);
+            }
+            return Ok(match unsafe { event.uChar.UnicodeChar } {
+                0x71 | 0x03 => Key::Cancel, // q, Ctrl-C
+                0x6b => Key::Up,            // k
+                0x6a => Key::Down,          // j
+                _ => Key::Other,
+            });
+        }
+    }
+}
+
+#[cfg(windows)]
+impl Drop for RawTerminal {
+    fn drop(&mut self) {
+        use windows::Win32::System::Console::SetConsoleMode;
+
+        unsafe {
+            let _ = SetConsoleMode(self.input, self.saved_input);
+            let _ = SetConsoleMode(self.output, self.saved_output);
+        }
+        let mut out = std::io::stdout();
+        let _ = write!(out, "\x1b[?25h");
+        let _ = out.flush();
+    }
+}
+
+#[cfg(not(any(unix, windows)))]
+struct RawTerminal;
+
+#[cfg(not(any(unix, windows)))]
 impl RawTerminal {
     fn enter() -> std::io::Result<Self> {
         Err(std::io::Error::other(
