@@ -57,10 +57,26 @@ export class Lingxia {
   private static environmentCallback: EnvironmentCallback | null = null;
 
   /**
-   * Product-app entry point. Initializes the runtime for use with `LxAppNavigation`.
+   * Product-app entry point, paired with `LxAppNavigation`. Only stages the
+   * cheap, frame-independent pieces here; the heavy runtime boot is driven
+   * by `LxAppNavigation` after its first frame — the splash cover — is on
+   * screen, so the OS start window hands off to the cover in one beat
+   * instead of sitting through initialization.
    */
   public static quickStart(context: common.UIAbilityContext, windowStage: window.WindowStage): void {
-    Lingxia.initializeRuntime(context, windowStage);
+    if (LxApp.getInstance().getHomeAppId() !== null) {
+      return;
+    }
+    Lingxia.context = context;
+    PermissionManager.initialize(context);
+    Lingxia.windowStage = windowStage;
+    // Set window to full screen layout. This runs before loadContent and can
+    // be dropped by the window manager; LxAppContainer re-asserts it once
+    // content is up, so here we only log the failure.
+    windowStage.getMainWindowSync().setWindowLayoutFullScreen(true).catch((error: Error) => {
+      hilog.warn(DOMAIN, TAG, `setWindowLayoutFullScreen failed: ${error}`);
+    });
+    initNativeBridge();
   }
 
   /**
@@ -77,18 +93,19 @@ export class Lingxia {
 
     hilog.info(DOMAIN, TAG, `Lingxia.initializeRuntime called with context: ${context ? 'provided' : 'null'}, windowStage: ${windowStage ? 'provided' : 'null'}`);
 
-    // Store context and windowStage for window/host operations
-    if (context) {
+    // Store context and windowStage for window/host operations. quickStart
+    // may already have staged them; only take what is newly provided.
+    if (context && context !== Lingxia.context) {
       Lingxia.context = context;
       PermissionManager.initialize(context);
-    } else {
-      hilog.warn(DOMAIN, TAG, 'No context provided, skipping permission request');
     }
-    if (windowStage) {
+    context = context ?? Lingxia.context ?? undefined;
+    if (!context) {
+      LxLog.e(TAG, 'initializeRuntime requires a context (directly or via quickStart)');
+      return;
+    }
+    if (windowStage && windowStage !== Lingxia.windowStage) {
       Lingxia.windowStage = windowStage;
-      // Set window to full screen layout. This runs before loadContent and can
-      // be dropped by the window manager; LxAppContainer re-asserts it once
-      // content is up, so here we only log the failure.
       const mainWindow = windowStage.getMainWindowSync();
       mainWindow.setWindowLayoutFullScreen(true).catch((error: Error) => {
         hilog.warn(DOMAIN, TAG, `setWindowLayoutFullScreen failed: ${error}`);

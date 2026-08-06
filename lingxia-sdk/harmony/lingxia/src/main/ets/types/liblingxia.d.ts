@@ -144,6 +144,13 @@ declare module 'liblingxia.so' {
   export function getDisplayLanguage(): string;
 
   /**
+   * Resolve this launch's splash cover via the host's Rust hook, before the
+   * splash layer attaches and before runtime initialization. Empty means the
+   * bundled cover.
+   */
+  export function splashSelectCover(dataDir: string, dark: boolean): string;
+
+  /**
    * Get LxApp information for a specific app
    * @param appid - LxApp ID
    * @returns LxApp information or null if not found

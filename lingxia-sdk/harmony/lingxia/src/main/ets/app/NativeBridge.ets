@@ -11,6 +11,7 @@ import { LxAppDevice } from '../lxapp/APIs/LxAppDevice';
 import { LxAppMedia } from '../lxapp/APIs/LxAppMedia';
 import { LxAppScan } from '../lxapp/APIs/LxAppScan';
 import { LxAppContainer } from '../lxapp/LxAppContainer';
+import { LxAppNavigation } from '../lxapp/LxAppNavigation';
 import { LxAppSurface } from '../lxapp/APIs/LxAppSurface';
 import { LxAppBrowserManager } from '../lxapp/LxAppBrowser';
 import { LxAppFile } from '../lxapp/APIs/LxAppFile';
@@ -371,13 +372,7 @@ class NativeBridge {
 
     // Home page first render — dismiss the startup splash layer
     this.register('onHomeFirstReady', (): boolean => {
-      LxAppContainer.dismissSplash();
-      return true;
-    });
-
-    // Host splash hook picked a cover — swap the splash layer's image
-    this.register('applySplashCover', (path: string): boolean => {
-      LxAppContainer.applySplashCover(path);
+      LxAppNavigation.dismissSplash();
       return true;
     });
 

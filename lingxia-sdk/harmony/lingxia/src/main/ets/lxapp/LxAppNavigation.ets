@@ -1,9 +1,13 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
+import { common, ConfigurationConstant } from '@kit.AbilityKit';
+import { image } from '@kit.ImageKit';
 import { LxLog } from '../app/LxLog';
+import { Lingxia } from '../app/Lingxia';
 import { LxApp } from './LxApp';
 import { LxAppContainer } from './LxAppContainer';
+import { SplashResources } from './SplashOverlay';
 import { pauseAllComponentsByAppId } from './WebViewBridge';
-import { onLxappOpened, onLxappClosed, getTabBar, TabBarItem, TabBarState, getCurrentLxapp, CurrentLxApp, onLxappEvent, UiEventType } from 'liblingxia.so';
+import { onLxappOpened, onLxappClosed, getTabBar, TabBarItem, TabBarState, getCurrentLxapp, CurrentLxApp, onLxappEvent, UiEventType, splashSelectCover } from 'liblingxia.so';
 import { ToastManager } from './APIs/LxAppToast';
 import { ModalManager } from './APIs/LxAppModal';
 import { PickerManager } from './APIs/LxAppPicker';
@@ -52,6 +56,17 @@ export struct LxAppNavigation {
   @State homeAppPath: string = ''
   @State errorMessage: string = ''
 
+  // Splash: the launch face. Rendered as this component's very first frame —
+  // before the runtime boots — so the OS start window exits straight onto
+  // the cover.
+  @State private splashVisible: boolean = false
+  @State private splashOpacity: number = 1
+  @State private splashScale: number = 1
+  @State private splashBackground: number = 0xFFFFFFFF
+  @State private splashImage: image.PixelMap | null = null
+  @State private splashIsMark: boolean = false
+  private static current: LxAppNavigation | null = null
+
   // Current modal LxApp state (only one modal app can be shown at a time)
   @State private currentModalAppId: string = ''
   @State private currentModalAppPath: string = ''
@@ -77,7 +92,22 @@ export struct LxAppNavigation {
   aboutToAppear() {
     hilog.info(DOMAIN, TAG, 'LxAppNavigation starting with WebView preservation');
     LxApp.setNavigationInstance(this);
-    this.initializeLxApp();
+    LxAppNavigation.current = this;
+
+    if (LxApp.getInstance().getHomeAppId() !== null) {
+      this.initializeLxApp();
+      return;
+    }
+
+    // Cold start: put the cover on screen first, boot the runtime under it.
+    this.showSplash();
+    // The boot blocks this thread, so anything earlier would block the very
+    // frame the start window is waiting to reveal; two frames give the
+    // cover time to reach the screen.
+    setTimeout(() => {
+      Lingxia.initializeRuntime();
+      this.initializeLxApp();
+    }, 32);
   }
 
   private closeActiveOverlayIfAny(): boolean {
@@ -598,6 +628,36 @@ export struct LxAppNavigation {
 
       // Custom edge-swipe back gesture zone
       this.buildEdgeBackSwipeZone()
+
+      // Splash layer: the launch face, above everything until the home page
+      // first renders (or the timeout), then fades.
+      if (this.splashVisible) {
+        Stack() {
+          if (this.splashImage && this.splashIsMark) {
+            // No cover configured: the start window's own mark, unscaled and
+            // centered — pixel-identical to the frame it replaces.
+            Image(this.splashImage)
+              .width(this.getUIContext().px2vp(this.splashImage.getImageInfoSync().size.width))
+              .height(this.getUIContext().px2vp(this.splashImage.getImageInfoSync().size.height))
+              .objectFit(ImageFit.Contain)
+          } else if (this.splashImage) {
+            // The cover: full bleed, opaque from the first frame — the start
+            // window's exit is the transition onto it.
+            Image(this.splashImage)
+              .width('100%')
+              .height('100%')
+              .objectFit(ImageFit.Cover)
+          }
+        }
+        .width('100%')
+        .height('100%')
+        .backgroundColor(this.splashBackground)
+        .opacity(this.splashOpacity)
+        .scale({ x: this.splashScale, y: this.splashScale })
+        .hitTestBehavior(HitTestMode.Block)
+        .expandSafeArea([SafeAreaType.SYSTEM, SafeAreaType.CUTOUT], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
+        .zIndex(20000)
+      }
     }
     .width('100%')
     .height('100%')
@@ -692,6 +752,79 @@ export struct LxAppNavigation {
     .alignItems(HorizontalAlign.Center)
     .width('100%')
     .height('100%')
+  }
+
+  /**
+   * Cover the cold start until the home page first renders. Skipped entirely
+   * when the generated splash resources are absent. Needs no runtime: the
+   * cover decodes from module resources, and the hook selection runs on the
+   * host-provided data dir.
+   */
+  private showSplash(): void {
+    if (SplashResources.shownThisProcess || SplashResources.homeReadySeen) {
+      return;
+    }
+    const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
+    if (!context) {
+      return;
+    }
+    const background = SplashResources.resolveBackground(context);
+    if (background === null) {
+      return;
+    }
+    SplashResources.shownThisProcess = true;
+    this.splashBackground = background;
+    // The host's Rust hook picks this launch's cover; empty means the
+    // bundled one. The cover is full bleed and opaque in the very first
+    // frame — the start window's own exit is the only transition onto it,
+    // so the launch reads "tap the icon, see the cover". With no cover
+    // configured, the layer instead reproduces the start window exactly —
+    // the same mark, centered at its own pixels — and the only transition
+    // is into the home page.
+    const dark: boolean =
+      context.config?.colorMode === ConfigurationConstant.ColorMode.COLOR_MODE_DARK;
+    const dataDir: string = context.getApplicationContext().filesDir;
+    const picked: string = splashSelectCover(dataDir, dark);
+    const cover: image.PixelMap | null =
+      (picked ? SplashResources.loadImageFile(picked) : null) ?? SplashResources.loadImage(context);
+    if (cover) {
+      this.splashImage = cover;
+      this.splashIsMark = false;
+    } else {
+      this.splashImage = SplashResources.loadMark(context);
+      this.splashIsMark = true;
+    }
+    this.splashVisible = true;
+    // Timeout fallback: a broken page must never leave the splash stuck.
+    setTimeout(() => this.hideSplash(), 6000);
+  }
+
+  /**
+   * Runtime signal (via NativeBridge): the home page finished its first
+   * render — fade the splash layer out.
+   */
+  public static dismissSplash(): void {
+    SplashResources.homeReadySeen = true;
+    LxAppNavigation.current?.hideSplash();
+  }
+
+  private hideSplash(): void {
+    if (!this.splashVisible || this.splashOpacity === 0) {
+      return;
+    }
+    // The cover lifts away: a slight zoom under the fade reads as depth —
+    // the home page is beneath it, not after it.
+    animateTo({
+      duration: 300,
+      curve: Curve.EaseOut,
+      onFinish: () => {
+        this.splashVisible = false;
+        this.splashImage = null;
+      }
+    }, () => {
+      this.splashOpacity = 0;
+      this.splashScale = 1.06;
+    });
   }
 
   /**
