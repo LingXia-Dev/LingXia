@@ -1045,8 +1045,10 @@ fn create_panel_session(panel_id: &str, inherit_from: Option<u64>) -> u64 {
         cols,
         rows,
         lingxia_terminal::TerminalSessionSpec {
-            cwd: cwd.map(std::path::Path::to_path_buf),
-            env: session_environment(),
+            cwd,
+            env: lingxia::terminal::app_data_dir()
+                .map(|dir| lingxia::terminal::session_environment(&dir))
+                .unwrap_or_default(),
             ..lingxia_terminal::TerminalSessionSpec::default()
         },
     )
@@ -1061,56 +1063,11 @@ fn ensure_configuration_loaded() {
     if LOADED.set(()).is_err() {
         return;
     }
-    let Some(data_dir) = app_data_dir() else {
+    let Some(data_dir) = lingxia::terminal::app_data_dir() else {
         return;
     };
     // Product defaults are not wired yet; the framework defaults stand in.
     lingxia_terminal_config::runtime::load(data_dir, "{}", system_prefers_dark());
-}
-
-/// Environment a spawned session needs to find the product's command line.
-#[cfg(feature = "terminal-runtime")]
-fn session_environment() -> Vec<(String, String)> {
-    let Some(data_dir) = app_data_dir() else {
-        return Vec::new();
-    };
-    let mut environment = Vec::new();
-    match lingxia_terminal_config::cli::install_launcher(&data_dir) {
-        Ok(launcher) => {
-            environment.push((
-                "LINGXIA_TERMINAL_CLI".to_string(),
-                launcher.to_string_lossy().into_owned(),
-            ));
-            let directory = lingxia_terminal_config::cli::bin_dir(&data_dir);
-            let path = std::env::var("PATH").unwrap_or_default();
-            environment.push((
-                "PATH".to_string(),
-                format!("{};{path}", directory.to_string_lossy()),
-            ));
-        }
-        Err(error) => log::warn!("terminal command launcher not installed: {error}"),
-    }
-    environment
-}
-
-/// The app's data directory, supplied by the host at startup.
-///
-/// Deliberately not derived here: the platform decides this path, and a second
-/// guess at it would have the command line writing a file the app never reads.
-#[cfg(feature = "terminal-runtime")]
-static APP_DATA_DIR: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
-
-/// Tell the terminal where this app keeps its data. Call once during startup,
-/// with the same path handed to the runtime; without it, terminal
-/// configuration is left at its defaults.
-#[cfg(feature = "terminal-runtime")]
-pub fn set_app_data_dir(path: std::path::PathBuf) {
-    let _ = APP_DATA_DIR.set(path);
-}
-
-#[cfg(feature = "terminal-runtime")]
-fn app_data_dir() -> Option<std::path::PathBuf> {
-    APP_DATA_DIR.get().cloned()
 }
 
 /// Windows' light/dark preference, as the shell chrome already reads it.

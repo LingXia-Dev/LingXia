@@ -50,10 +50,15 @@ pub struct FontConfig {
 impl Default for FontConfig {
     fn default() -> Self {
         Self {
+            // One list, not one per platform: the first installed candidate
+            // wins, so the same order lands on the coding font when it is
+            // there and on each system's own default when it is not.
             family: vec![
                 "JetBrains Mono".to_string(),
                 "SF Mono".to_string(),
+                "Cascadia Code".to_string(),
                 "Menlo".to_string(),
+                "Consolas".to_string(),
             ],
             size: 13.0,
             line_height: 1.0,

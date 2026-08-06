@@ -1,4 +1,7 @@
 fn main() -> lingxia_windows_sdk::Result<()> {
+    // Before anything else: this executable doubles as the terminal's command
+    // line, and a configuration command must not start the app.
+    lingxia_windows_sdk::run_terminal_command_if_invoked();
     host::lingxia_register_host_addon();
     let app = debug_asset_dir()
         .map(|asset_dir| lingxia_windows_sdk::WindowsApp::from_env().with_asset_dir(asset_dir))
