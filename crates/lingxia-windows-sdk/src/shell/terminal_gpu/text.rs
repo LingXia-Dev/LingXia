@@ -33,11 +33,16 @@ pub(super) const BOLD: usize = 1;
 pub(super) const ITALIC: usize = 2;
 pub(super) const BOLD_ITALIC: usize = 3;
 
-/// One glyph as the shaper placed it, in pixels from the run's origin.
+/// One glyph and the cell it belongs to, counted from the run's first.
+///
+/// The cell, not the shaper's advance: a terminal's columns are fixed, and a
+/// font whose advance for some character disagrees with the cell — an em dash,
+/// anything CJK — would otherwise shift every glyph after it. A ligature maps
+/// several characters to one glyph, which lands on the first of their cells.
 #[derive(Clone, Copy)]
 pub(super) struct ShapedGlyph {
     pub(super) index: u16,
-    pub(super) x: f32,
+    pub(super) cell: u16,
 }
 
 /// A glyph bitmap waiting to be uploaded: premultiplied BGRA, tightly packed.
@@ -207,11 +212,10 @@ impl Fonts {
                 0.0,
                 0.0,
             )?;
-            Ok(collector.collected())
+            Ok(to_cells(&collector.collected(), text))
         }
     }
 
-    /// Rasterize one glyph to 8-bit coverage, with its offset from the pen.
     /// Rasterize one glyph, with its offset from the pen.
     ///
     /// A color glyph — an emoji — is a stack of colored layers rather than one
@@ -540,13 +544,41 @@ fn plain_typography(factory: &IDWriteFactory) -> Result<IDWriteTypography> {
 #[implement(IDWriteTextRenderer)]
 #[derive(Default)]
 struct GlyphCollector {
-    glyphs: RefCell<Vec<ShapedGlyph>>,
+    glyphs: RefCell<Vec<PlacedGlyph>>,
 }
 
 impl GlyphCollector {
-    fn collected(&self) -> Vec<ShapedGlyph> {
+    fn collected(&self) -> Vec<PlacedGlyph> {
         std::mem::take(&mut self.glyphs.borrow_mut())
     }
+}
+
+/// A glyph and the UTF-16 offset of the first character it came from.
+#[derive(Clone, Copy)]
+struct PlacedGlyph {
+    index: u16,
+    utf16: u32,
+}
+
+/// Convert UTF-16 offsets to cells. A terminal cell is one `char`, so the two
+/// only differ where a character is a surrogate pair — every emoji.
+fn to_cells(glyphs: &[PlacedGlyph], text: &str) -> Vec<ShapedGlyph> {
+    let mut cell_of = Vec::with_capacity(text.len());
+    for (cell, character) in text.chars().enumerate() {
+        for _ in 0..character.len_utf16() {
+            cell_of.push(cell as u16);
+        }
+    }
+    glyphs
+        .iter()
+        .map(|glyph| ShapedGlyph {
+            index: glyph.index,
+            cell: cell_of
+                .get(glyph.utf16 as usize)
+                .copied()
+                .unwrap_or_else(|| cell_of.last().copied().unwrap_or(0)),
+        })
+        .collect()
 }
 
 impl IDWritePixelSnapping_Impl for GlyphCollector_Impl {
@@ -578,11 +610,11 @@ impl IDWriteTextRenderer_Impl for GlyphCollector_Impl {
     fn DrawGlyphRun(
         &self,
         _context: *const core::ffi::c_void,
-        origin_x: f32,
+        _origin_x: f32,
         _origin_y: f32,
         _measuring: DWRITE_MEASURING_MODE,
         run: *const DWRITE_GLYPH_RUN,
-        _description: *const DWRITE_GLYPH_RUN_DESCRIPTION,
+        description: *const DWRITE_GLYPH_RUN_DESCRIPTION,
         _effect: Ref<'_, IUnknown>,
     ) -> Result<()> {
         let run = unsafe { &*run };
@@ -591,16 +623,40 @@ impl IDWriteTextRenderer_Impl for GlyphCollector_Impl {
             return Ok(());
         }
         let indices = unsafe { std::slice::from_raw_parts(run.glyphIndices, count) };
-        let advances = (!run.glyphAdvances.is_null())
-            .then(|| unsafe { std::slice::from_raw_parts(run.glyphAdvances, count) });
-        let mut pen = origin_x;
+
+        // The cluster map runs the other way — text position to glyph — so
+        // invert it. Without a description every glyph is its own cluster,
+        // which is what a run of plain text is anyway.
+        let mut first_utf16 = vec![u32::MAX; count];
+        if !description.is_null() {
+            let description = unsafe { &*description };
+            if !description.clusterMap.is_null() {
+                let map = unsafe {
+                    std::slice::from_raw_parts(
+                        description.clusterMap,
+                        description.stringLength as usize,
+                    )
+                };
+                for (position, glyph) in map.iter().enumerate() {
+                    let glyph = usize::from(*glyph);
+                    if let Some(slot) = first_utf16.get_mut(glyph) {
+                        let position = description.textPosition + position as u32;
+                        *slot = (*slot).min(position);
+                    }
+                }
+            }
+        }
+
         let mut glyphs = self.glyphs.borrow_mut();
         for (position, index) in indices.iter().enumerate() {
-            glyphs.push(ShapedGlyph {
+            let utf16 = match first_utf16[position] {
+                u32::MAX => position as u32,
+                mapped => mapped,
+            };
+            glyphs.push(PlacedGlyph {
                 index: *index,
-                x: pen,
+                utf16,
             });
-            pen += advances.map_or(0.0, |advances| advances[position]);
         }
         Ok(())
     }
