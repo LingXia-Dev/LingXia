@@ -1,7 +1,24 @@
-import { expect, test } from '@rongjs/test';
+import { expect } from '@rongjs/test';
+import { contract } from '../support/contract.js';
 
-test('reads core app, device, screen, network, and system state', async () => {
-  const result = await lx.automation().lxapp().eval({
+contract({
+  id: 'LOGIC-001',
+  title: 'read core app, device, screen, network, and system state',
+  covers: [
+    'lx.getLxAppInfo',
+    'lx.getDeviceInfo',
+    'lx.getScreenInfo',
+    'lx.getNetworkInfo',
+    'lx.getSystemSetting',
+    'lx.app.getBaseInfo',
+    'lx.app.envVersion',
+  ],
+  layer: 'logic',
+  levels: ['semantic', 'boundary'],
+  scope: 'portable',
+  expectedOutcome: 'supported',
+}, async ({ app }) => {
+  const result = await app.eval({
     script: `
       const app = lx.getLxAppInfo();
       const device = lx.getDeviceInfo();
@@ -38,8 +55,27 @@ test('reads core app, device, screen, network, and system state', async () => {
   expect(['developer', 'preview', 'release']).toContain(result.envVersion);
 });
 
-test('registers and removes portable runtime listeners', async () => {
-  const result = await lx.automation().lxapp().eval({
+contract({
+  id: 'LOGIC-002',
+  title: 'register and remove portable runtime listeners',
+  covers: [
+    'lx.onNetworkChange',
+    'lx.offNetworkChange',
+    'lx.onDeviceOrientationChange',
+    'lx.offDeviceOrientationChange',
+    'lx.onKeyDown',
+    'lx.offKeyDown',
+    'lx.onKeyUp',
+    'lx.offKeyUp',
+    'lx.onWifiConnected',
+    'lx.offWifiConnected',
+  ],
+  layer: 'logic',
+  levels: ['semantic', 'lifecycle'],
+  scope: 'portable',
+  expectedOutcome: 'supported',
+}, async ({ app }) => {
+  const result = await app.eval({
     script: `
       const callback = () => {};
       lx.onNetworkChange(callback);
@@ -59,16 +95,29 @@ test('registers and removes portable runtime listeners', async () => {
   expect(result).toBeTruthy();
 });
 
-test('round-trips isolated key-value storage', async () => {
-  const result = await lx.automation().lxapp().eval({
+contract({
+  id: 'LOGIC-003',
+  title: 'round-trip isolated key-value storage',
+  covers: ['lx.getStorage', 'Storage.info', 'Storage.set', 'Storage.get', 'Storage.list', 'Storage.delete'],
+  layer: 'logic',
+  levels: ['semantic', 'boundary', 'lifecycle'],
+  scope: 'portable',
+  expectedOutcome: 'supported',
+}, async ({ app, namespace }) => {
+  const result = await app.eval({
     script: `
       const storage = lx.getStorage();
-      const key = 'automation:' + Date.now();
+      const key = ${JSON.stringify(namespace)};
       const before = await storage.info();
-      await storage.set(key, { ok: true, count: 2 });
-      const value = await storage.get(key);
-      const present = Array.from(await storage.list()).includes(key);
-      await storage.delete(key);
+      let value;
+      let present = false;
+      try {
+        await storage.set(key, { ok: true, count: 2 });
+        value = await storage.get(key);
+        present = Array.from(await storage.list()).includes(key);
+      } finally {
+        await storage.delete(key);
+      }
       const after = await storage.info();
       return {
         value,
@@ -90,11 +139,32 @@ test('round-trips isolated key-value storage', async () => {
   expect(result.sizeRestored).toBeTruthy();
 });
 
-test('round-trips files under lx user cache', async () => {
-  const result = await lx.automation().lxapp().eval({
+contract({
+  id: 'LOGIC-004',
+  title: 'round-trip files under lx user cache',
+  covers: [
+    'lx.getFileManager',
+    'lx.env.USER_CACHE_PATH',
+    'lx.env.USER_DATA_PATH',
+    'FileManager.mkdir',
+    'FileManager.writeFile',
+    'FileManager.readFile',
+    'FileManager.stat',
+    'FileManager.rename',
+    'FileManager.copyFile',
+    'FileManager.exists',
+    'FileManager.remove',
+  ],
+  layer: 'logic',
+  levels: ['semantic', 'boundary', 'lifecycle'],
+  scope: 'portable',
+  expectedOutcome: 'supported',
+}, async ({ app, namespace }) => {
+  const result = await app.eval({
     script: `
       const files = lx.getFileManager();
-      const root = lx.env.USER_CACHE_PATH + '/automation-' + Date.now();
+      const root = lx.env.USER_CACHE_PATH + '/' + ${JSON.stringify(namespace)};
+      const dataPathAvailable = typeof lx.env.USER_DATA_PATH === 'string' && lx.env.USER_DATA_PATH.length > 0;
       const source = root + '/source.txt';
       const renamed = root + '/renamed.txt';
       const copied = root + '/copied.txt';
@@ -110,6 +180,7 @@ test('round-trips files under lx user cache', async () => {
           isFile: stat.isFile,
           renamed: await files.exists({ path: renamed }),
           copied: await files.exists({ path: copied }),
+          dataPathAvailable,
         };
       } finally {
         await files.remove({ path: root, recursive: true });
@@ -121,10 +192,12 @@ test('round-trips files under lx user cache', async () => {
     isFile: boolean;
     renamed: boolean;
     copied: boolean;
+    dataPathAvailable: boolean;
   };
 
   expect(result.text).toBe('hello automation');
   expect(result.isFile).toBeTruthy();
   expect(result.renamed).toBeTruthy();
   expect(result.copied).toBeTruthy();
+  expect(result.dataPathAvailable).toBeTruthy();
 });

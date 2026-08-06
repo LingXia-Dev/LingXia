@@ -139,6 +139,7 @@ export default function UIPage() {
 
         <div className="mb-5 bg-surface rounded-2xl shadow-sm border border-line-100 overflow-hidden">
           <div
+            data-testid="ui-navigate-to"
             className="flex items-center justify-between px-5 py-4 hover:bg-linear-to-r hover:from-blue-50/50 hover:to-transparent cursor-pointer border-b border-line-100 transition-all active:scale-[0.99]"
             onClick={demoNavigateTo}
           >
@@ -146,6 +147,7 @@ export default function UIPage() {
             <span className="text-gray-400 text-lg">›</span>
           </div>
           <div
+            data-testid="ui-navigate-back"
             className="flex items-center justify-between px-5 py-4 hover:bg-linear-to-r hover:from-blue-50/50 hover:to-transparent cursor-pointer border-b border-line-100 transition-all active:scale-[0.99]"
             onClick={demoNavigateBack}
           >
@@ -153,6 +155,7 @@ export default function UIPage() {
             <span className="text-gray-400 text-lg">›</span>
           </div>
           <div
+            data-testid="ui-redirect-to"
             className="flex items-center justify-between px-5 py-4 hover:bg-linear-to-r hover:from-blue-50/50 hover:to-transparent cursor-pointer border-b border-line-100 transition-all active:scale-[0.99]"
             onClick={demoRedirectTo}
           >
@@ -160,6 +163,7 @@ export default function UIPage() {
             <span className="text-gray-400 text-lg">›</span>
           </div>
           <div
+            data-testid="ui-switch-tab"
             className="flex items-center justify-between px-5 py-4 hover:bg-linear-to-r hover:from-blue-50/50 hover:to-transparent cursor-pointer transition-all active:scale-[0.99]"
             onClick={demoSwitchTab}
           >

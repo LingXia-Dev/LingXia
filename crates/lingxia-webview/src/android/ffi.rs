@@ -4,7 +4,8 @@ use crate::traits::{
     NewWindowPolicy,
 };
 use crate::webview::{
-    WebTag, WebViewCreateStage, find_webview, find_webview_delegate, register_webview,
+    WebTag, WebViewCreateStage, find_webview, find_webview_delegate,
+    register_android_webview_if_current,
 };
 use crate::{DownloadRequest, LogLevel, WebResourceBody, WebResourceResponse, WebViewError};
 use http::header::{HeaderMap, HeaderName, HeaderValue};
@@ -872,6 +873,7 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_notifyWebViewRead
     appid: JString,
     path: JString,
     session_id: jlong,
+    request_id: jlong,
     webview_obj: JObject,
 ) {
     env.with_env(|env| -> Result<(), jni::errors::Error> {
@@ -889,7 +891,7 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_notifyWebViewRead
             let mut matched_pending = false;
 
             if let Ok(mut senders_map) = senders.lock()
-                && let Some(pending) = senders_map.remove(&webtag.to_string())
+                && let Some(pending) = senders_map.remove(&(request_id as u64))
             {
                 matched_pending = true;
                 // Create global reference to the passed WebView object
@@ -905,8 +907,37 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_notifyWebViewRead
                             pending.effective_options.clone(),
                         ));
 
-                        // Register the WebView instance for future lookups
-                        register_webview(webview.clone());
+                        // A same-route relaunch can destroy generation N while
+                        // Android is still preparing it, then request N+1. The
+                        // request id keeps the callbacks distinct; discard N
+                        // instead of registering a zombie under N+1's tag.
+                        if pending.sender.is_destroyed() {
+                            log::info!(
+                                "Android WebView request {} for {} was destroyed during creation; discarding",
+                                request_id,
+                                webtag.as_str()
+                            );
+                            drop(webview);
+                            return Ok(());
+                        }
+
+                        if !register_android_webview_if_current(webview.clone(), &pending.sender) {
+                            log::info!(
+                                "Android WebView request {} for {} is no longer current; discarding",
+                                request_id,
+                                webtag.as_str()
+                            );
+                            pending.sender.cancel_superseded();
+                            drop(webview);
+                            return Ok(());
+                        }
+
+                        // Destruction can race registry insertion. Re-check so
+                        // this generation cannot block the next same-tag create.
+                        if pending.sender.is_destroyed() {
+                            crate::webview::destroy_webview_if_matches(&webtag, &webview);
+                            return Ok(());
+                        }
 
                         // Send the WebView instance through the channel
                         pending.sender.succeed(webview);
@@ -922,8 +953,9 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_notifyWebViewRead
 
             if !matched_pending {
                 log::warn!(
-                    "notifyWebViewReady without pending sender for {}",
-                    webtag.as_str()
+                    "notifyWebViewReady without pending sender for {} request={}",
+                    webtag.as_str(),
+                    request_id
                 );
             }
         } else {

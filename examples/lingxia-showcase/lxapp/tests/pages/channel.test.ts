@@ -1,23 +1,15 @@
 import { expect, test } from '@rongjs/test';
-import type { LxAppDriver } from 'lingxia-types';
+import { showcaseApp } from '../helpers/app.js';
+import { waitForElementText } from '../helpers/page.js';
 
-async function waitForText(
-  app: LxAppDriver,
+const waitForText = (
+  app: Parameters<typeof waitForElementText>[0],
   css: string,
   predicate: (text: string) => boolean,
-  timeoutMs = 30_000,
-): Promise<string> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    const element = await app.page.query({ page: 'channel', css, full: true });
-    if (element.exists && predicate(element.text)) return element.text;
-    await new Promise((resolve) => setTimeout(resolve, 50));
-  }
-  throw new Error(`Timed out waiting for channel ${css}`);
-}
+) => waitForElementText(app, 'channel', css, predicate, 30_000);
 
 test('receives channel ticks, switches symbols, and reconnects', async () => {
-  const app = lx.automation().lxapp();
+  const app = showcaseApp();
   await app.nav.relaunch({ page: 'channel' });
   await app.page.waitFor({ page: 'channel', css: '[data-testid="channel-page"]' });
 

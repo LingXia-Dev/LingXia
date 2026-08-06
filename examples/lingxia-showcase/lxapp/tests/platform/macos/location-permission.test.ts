@@ -3,8 +3,8 @@ import type {
   DesktopAxNode,
   DesktopDriver,
   DesktopWindowInfo,
-} from 'lingxia-types';
-import { runtimePlatform } from '../helpers/platform.js';
+} from 'lingxia-types/automation';
+import { runtimePlatform } from '../../helpers/platform.js';
 
 function locationPrompt(windows: DesktopWindowInfo[]): DesktopWindowInfo | undefined {
   return windows.find((window) => (
@@ -25,7 +25,7 @@ async function waitForPromptToClose(desktop: DesktopDriver, timeoutMs = 5_000): 
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     if (!locationPrompt(await desktop.windows())) return true;
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await new Promise<void>((resolve) => setTimeout(() => resolve(), 100));
   }
   return false;
 }
@@ -124,7 +124,7 @@ locationTest('handles the macOS location permission sheet when it appears', asyn
       }
       return;
     }
-    await new Promise((resolve) => setTimeout(resolve, 250));
+    await new Promise<void>((resolve) => setTimeout(() => resolve(), 250));
   }
   throw new Error(
     requestStarted

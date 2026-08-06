@@ -1,8 +1,13 @@
 import { expect, test } from '@rongjs/test';
-import { waitForElementAttribute, waitForElementEnabled } from '../helpers/page.js';
+import { showcaseApp } from '../helpers/app.js';
+import {
+  waitForElementAttribute,
+  waitForElementEnabled,
+  waitForElementText,
+} from '../helpers/page.js';
 
 test('greets through real page input and the Logic bridge', async () => {
-  const app = lx.automation().lxapp();
+  const app = showcaseApp();
   await app.nav.relaunch({ page: 'home' });
   await app.page.waitFor({ page: 'home', css: '[data-testid="home-page"]' });
 
@@ -18,18 +23,11 @@ test('greets through real page input and the Logic bridge', async () => {
   await waitForElementEnabled(app, 'home', '[data-testid="home-greet"]');
   await app.page.click({ page: 'home', css: '[data-testid="home-greet"]' });
 
-  const deadline = Date.now() + 30_000;
-  while (Date.now() < deadline) {
-    const greeting = await app.page.query({
-      page: 'home',
-      css: '[data-testid="home-greeting"]',
-      full: true,
-    });
-    if (greeting.exists && greeting.text.includes(name)) {
-      expect(greeting.text).toContain(name);
-      return;
-    }
-    await new Promise((resolve) => setTimeout(resolve, 50));
-  }
-  throw new Error(`Timed out waiting for greeting: ${name}`);
+  expect(await waitForElementText(
+    app,
+    'home',
+    '[data-testid="home-greeting"]',
+    (text) => text.includes(name),
+    30_000,
+  )).toContain(name);
 });

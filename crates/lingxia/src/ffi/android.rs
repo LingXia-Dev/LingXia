@@ -312,10 +312,21 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_findWebView<'a>(
                     }
                 };
             }
-            error!(
-                "WebView resolve failed for {}:{} (session={})",
-                appid, path, session_id
-            );
+            let (current_appid, current_path, current_session_id) = lxapp::get_current_lxapp();
+            if current_appid == appid
+                && current_session_id == session_id as u64
+                && normalize_lookup_path(&current_path) == normalize_lookup_path(&path)
+            {
+                error!(
+                    "WebView resolve failed for current page {}:{} (session={})",
+                    appid, path, session_id
+                );
+            } else {
+                info!(
+                    "Ignoring stale WebView lookup for {}:{} (session={})",
+                    appid, path, session_id
+                );
+            }
             return Ok(JObject::null());
         };
         let Some(page) = lxapp::find_page_by_instance_id(&page_instance_id) else {

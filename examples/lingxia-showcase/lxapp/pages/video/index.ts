@@ -7,7 +7,20 @@ Page({
   },
   videoContext: null,
 
-  onLoad: function () {
+  onLoad: function (options = {}) {
+    if (options.automationFixture === "video-context-shape") {
+      this.setData({
+        videos: [{
+          id: "lx-video-shape-fixture",
+          src: "",
+          poster: "",
+          qualities: [],
+          playbackRates: [1.0],
+        }],
+      });
+      return;
+    }
+
     this.setData({
       videos: [
         {

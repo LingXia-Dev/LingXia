@@ -10,19 +10,19 @@
         <template v-if="currentType === 'navigation'">
           <div class="mb-4 text-sm text-gray-600 font-semibold">navigateTo/Back, redirectTo</div>
           <div class="mb-5 bg-surface rounded-2xl shadow-sm border border-line-100 overflow-hidden">
-            <div class="flex items-center justify-between px-5 py-4 hover:bg-surface-50 cursor-pointer border-b border-line-100" @click="demoNavigateTo">
+            <div data-testid="ui-navigate-to" class="flex items-center justify-between px-5 py-4 hover:bg-surface-50 cursor-pointer border-b border-line-100" @click="demoNavigateTo">
               <div class="text-sm text-gray-800 font-medium">Navigate to new page</div>
               <span class="text-gray-400 text-lg">›</span>
             </div>
-            <div class="flex items-center justify-between px-5 py-4 hover:bg-surface-50 cursor-pointer border-b border-line-100" @click="demoNavigateBack">
+            <div data-testid="ui-navigate-back" class="flex items-center justify-between px-5 py-4 hover:bg-surface-50 cursor-pointer border-b border-line-100" @click="demoNavigateBack">
               <div class="text-sm text-gray-800 font-medium">Back to previous page</div>
               <span class="text-gray-400 text-lg">›</span>
             </div>
-            <div class="flex items-center justify-between px-5 py-4 hover:bg-surface-50 cursor-pointer border-b border-line-100" @click="demoRedirectTo">
+            <div data-testid="ui-redirect-to" class="flex items-center justify-between px-5 py-4 hover:bg-surface-50 cursor-pointer border-b border-line-100" @click="demoRedirectTo">
               <div class="text-sm text-gray-800 font-medium">Open in current page</div>
               <span class="text-gray-400 text-lg">›</span>
             </div>
-            <div class="flex items-center justify-between px-5 py-4 hover:bg-surface-50 cursor-pointer" @click="demoSwitchTab">
+            <div data-testid="ui-switch-tab" class="flex items-center justify-between px-5 py-4 hover:bg-surface-50 cursor-pointer" @click="demoSwitchTab">
               <div class="text-sm text-gray-800 font-medium">Jump to Tab page</div>
               <span class="text-gray-400 text-lg">›</span>
             </div>

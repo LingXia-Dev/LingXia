@@ -15,7 +15,6 @@ on:
         options:
           - auto
           - automation-full
-          - automation-macos
           - automation-windows
 
 concurrency:
@@ -176,9 +175,8 @@ jobs:
               - 'packages/lingxia-react/**'
             automation_vue:
               - 'packages/lingxia-vue/**'
-            # The Showcase ships both frameworks on both desktop hosts, so
-            # changes to its shared app, lxapp, or native contract keep the
-            # complete matrix. Platform host folders remain scoped above.
+            # Shared Showcase changes run both frontend adapters on the Windows
+            # host. macOS physical suites remain available as local entries.
             automation_showcase:
               - 'examples/lingxia-showcase/lingxia.yaml'
               - 'examples/lingxia-showcase/lxapp/**'
@@ -187,6 +185,7 @@ jobs:
               - '.github/workflows/ci.yml'
               - 'scripts/ci/automation-matrix.sh'
               - 'scripts/ci/test-automation-matrix.sh'
+              - 'scripts/automation/**'
             ci:
               - '.github/**'
       - name: Test automation matrix selection
@@ -264,7 +263,7 @@ jobs:
           i18n="$I18N"
 
           automation_full=$(any "$rel" "$IS_MAIN_PUSH" "$AUTOMATION_SHOWCASE" "$AUTOMATION_CI")
-          automation_cross_platform="$AUTOMATION_CROSS_PLATFORM"
+          automation_cross_platform=$(any "$AUTOMATION_CROSS_PLATFORM" "$AUTOMATION_TYPES")
           automation_macos="$AUTOMATION_MACOS"
           automation_windows="$AUTOMATION_WINDOWS"
           automation_frontend_shared="$AUTOMATION_FRONTEND_SHARED"
@@ -278,10 +277,6 @@ jobs:
           case "$FOCUS" in
             automation-full)
               automation_full=true
-              ;;
-            automation-macos)
-              automation_full=false
-              automation_macos_all=true
               ;;
             automation-windows)
               automation_full=false
@@ -697,6 +692,8 @@ jobs:
           prefix-key: example-macos
       - uses: ./.github/actions/build-web-packages
       - uses: ./.github/actions/bootstrap-apple-sdk
+      - name: Test Apple bridge transport
+        run: cargo test -p lingxia-webview apple::bridge_transport --lib
       # Inject the private cloud provider when its secrets are present (same-repo
       # only); a no-op on forks, so the showcase still builds without it.
       - uses: ./.github/actions/cloud-provider-env
@@ -732,9 +729,26 @@ jobs:
         working-directory: examples/lingxia-showcase/lxapp
         run: npm run test:automation:types
 
+      - name: Parse Android automation runner
+        shell: pwsh
+        run: |
+          foreach ($runner in @(
+            'scripts/automation/run-android-showcase.ps1',
+            'scripts/automation/run-windows-showcase.ps1'
+          )) {
+            $tokens = $null
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile(
+              (Resolve-Path $runner),
+              [ref]$tokens,
+              [ref]$errors
+            ) | Out-Null
+            if ($errors.Count -gt 0) { throw "$runner`n$($errors | Out-String)" }
+          }
+
   showcase-automation:
     needs: changes
-    name: automation-${{ matrix.platform }}-${{ matrix.profile }}
+    name: automation-windows-${{ matrix.profile }}
     if: ${{ needs.changes.outputs.automation == 'true' }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 75
@@ -744,91 +758,29 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: maxim-lobanov/setup-xcode@v1
-        if: runner.os == 'macOS'
-        with:
-          xcode-version: "26.0"
-
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
 
       - uses: Swatinem/rust-cache@v2
         with:
-          prefix-key: showcase-automation-${{ matrix.platform }}
+          prefix-key: showcase-automation-${{ matrix.platform }}-${{ matrix.framework }}
           cache-on-failure: true
 
       - uses: ./.github/actions/build-web-packages
-
-      - uses: ./.github/actions/bootstrap-apple-sdk
-        if: runner.os == 'macOS'
-
-      - name: Test Apple bridge transport
-        if: runner.os == 'macOS'
-        shell: bash
-        run: cargo test -p lingxia-webview apple::bridge_transport --lib
 
       - name: Install showcase test dependencies
         working-directory: examples/lingxia-showcase/lxapp
         shell: bash
         run: npm ci
 
-      - name: Build automation CLIs
-        shell: bash
-        run: cargo build -p lingxia-cli -p lingxia-devtools-cli
-
-      - name: Run showcase automation (React and Vue)
+      - name: Run showcase automation
         working-directory: examples/lingxia-showcase
-        shell: bash
-        env:
-          PLATFORM: ${{ matrix.platform }}
-          EXE: ${{ matrix.exe }}
-          FRAMEWORKS: ${{ matrix.frameworks }}
-        run: |
-          set -euo pipefail
-          cli="$(pwd)/../../target/debug/lingxia${EXE}"
-          lxdev="$(pwd)/../../target/debug/lxdev${EXE}"
-          test_timeout=180
-          if [ "$PLATFORM" = "windows" ]; then
-            test_timeout=300
-          fi
-          cleanup() { "$cli" dev stop >/dev/null 2>&1 || true; }
-          trap cleanup EXIT
-
-          for framework in $FRAMEWORKS; do
-            echo "::group::Start ${PLATFORM}/${framework}"
-            "$cli" dev --background --platform "$PLATFORM" --framework "$framework"
-            "$cli" dev status --json
-            echo "::endgroup::"
-
-            echo "::group::Test ${PLATFORM}/${framework}"
-            set +e
-            (
-              cd lxapp
-              "$lxdev" test tests/all.test.ts \
-                --timeout "$test_timeout" \
-                --arg "platform=${PLATFORM}" \
-                --output-dir "test-results/automation/${PLATFORM}-${framework}"
-            )
-            test_status=$?
-            set -e
-            echo "::endgroup::"
-
-            mkdir -p "lxapp/test-results/automation/${PLATFORM}-${framework}"
-            "$lxdev" logs --json --limit 5000 \
-              > "lxapp/test-results/automation/${PLATFORM}-${framework}/session.jsonl"
-            errors=$("$lxdev" logs --level error --json --limit 1000)
-            if [ -n "$errors" ]; then
-              echo "::error::Unexpected error-level session logs"
-              echo "$errors"
-              exit 1
-            fi
-            if [ "$test_status" -ne 0 ]; then
-              exit "$test_status"
-            fi
-
-            cleanup
-          done
+        shell: pwsh
+        run: >-
+          ../../scripts/automation/run-windows-showcase.ps1
+          -Framework '${{ matrix.framework }}'
+          -TimeoutSeconds 300
 
       - name: Show session diagnostics
         if: always()
@@ -873,7 +825,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: showcase-automation-${{ matrix.platform }}
+          name: showcase-automation-${{ matrix.platform }}-${{ matrix.profile }}
           path: |
             examples/lingxia-showcase/.lingxia/dev/**
             examples/lingxia-showcase/.lingxia/background/**

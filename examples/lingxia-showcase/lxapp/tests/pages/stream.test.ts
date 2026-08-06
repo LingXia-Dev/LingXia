@@ -1,25 +1,13 @@
 import { expect, test } from '@rongjs/test';
-import type { LxAppDriver } from 'lingxia-types';
-import { waitForElementAttribute, waitForElementEnabled } from '../helpers/page.js';
-
-async function waitForElementText(
-  app: LxAppDriver,
-  page: string,
-  css: string,
-  predicate: (text: string) => boolean,
-  timeoutMs = 15_000,
-): Promise<string> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    const element = await app.page.query({ page, css, full: true });
-    if (element.exists && predicate(element.text)) return element.text;
-    await new Promise((resolve) => setTimeout(resolve, 50));
-  }
-  throw new Error(`Timed out waiting for ${page} ${css}`);
-}
+import { showcaseApp } from '../helpers/app.js';
+import {
+  waitForElementAttribute,
+  waitForElementEnabled,
+  waitForElementText,
+} from '../helpers/page.js';
 
 test('streams a complete response from real page input', async () => {
-  const app = lx.automation().lxapp();
+  const app = showcaseApp();
   await app.nav.relaunch({ page: 'stream' });
   await app.page.waitFor({ page: 'stream', css: '[data-testid="stream-page"]' });
 
@@ -40,6 +28,7 @@ test('streams a complete response from real page input', async () => {
     'stream',
     '[data-testid="stream-message"][data-role="user"]',
     (text) => text.includes(prompt),
+    15_000,
   )).toContain(prompt);
   await app.page.waitFor({ page: 'stream', css: '[data-testid="stream-live"]' });
   await app.page.waitFor({
@@ -54,6 +43,7 @@ test('streams a complete response from real page input', async () => {
     'stream',
     '[data-testid="stream-message"][data-role="assistant"]',
     (text) => text.trim().length > 10,
+    15_000,
   );
   expect(response.trim().length > 10).toBeTruthy();
 });

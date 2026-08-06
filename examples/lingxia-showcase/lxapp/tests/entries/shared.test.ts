@@ -1,0 +1,21 @@
+import '../setup.js';
+import '../api/automation.test.js';
+import '../api/surface.test.js';
+import '../api/runtime.test.js';
+import '../api/navigation.test.js';
+import '../api/io-contracts.test.js';
+import '../pages/bridge-repro.test.js';
+import '../pages/stream.test.js';
+import '../pages/channel.test.js';
+import '../pages/components.test.js';
+import '../pages/native-components.test.js';
+import '../pages/device.test.js';
+import '../pages/home.test.js';
+import '../pages/lifecycle.test.js';
+import '../pages/pull-to-refresh.test.js';
+import '../pages/system.test.js';
+import '../pages/todo.test.js';
+import '../pages/ui.test.js';
+import '../pages/render.test.js';
+
+export {};

@@ -24,7 +24,9 @@ const WAIT_MAX_MS: u64 = 60_000;
 fn is_transient_page_error(error: &str) -> bool {
     error.starts_with("page is not active:")
         || error == "page WebView is not ready"
-        || error == "no current page"
+        // The query path surfaces LxAppError's Display form ("WebView error:
+        // No current page"), not the bare lowercase string navigate() emits.
+        || error.to_ascii_lowercase().contains("no current page")
         || error.to_ascii_lowercase().contains("0x8007139f")
 }
 
@@ -111,12 +113,28 @@ struct JSScreenshotOptions {
     page: Option<String>,
 }
 
-/// The two fields `waitFor` reads off the shared query payload.
+/// The fields `waitFor` reads off the shared query payload.
 #[derive(serde::Deserialize)]
 struct WaitProbe {
     exists: bool,
     #[serde(default)]
     visible: bool,
+    #[serde(default)]
+    enabled: bool,
+    #[serde(default)]
+    editable: bool,
+}
+
+fn wait_state_satisfied(state: &str, probe: &WaitProbe) -> bool {
+    match state {
+        "attached" | "exists" => probe.exists,
+        "detached" | "gone" => !probe.exists,
+        "visible" => probe.exists && probe.visible,
+        "hidden" => probe.exists && !probe.visible,
+        "enabled" => probe.exists && probe.enabled,
+        "editable" => probe.exists && probe.editable,
+        _ => false,
+    }
 }
 
 #[derive(Debug, Clone, IntoJSObject)]
@@ -267,7 +285,17 @@ impl JSPageDriver {
     async fn wait_for(&self, _ctx: JSContext, options: JSWaitForOptions) -> JSResult<()> {
         let app = upgrade(&self.lxapp)?;
         let state = options.state.as_deref().unwrap_or("visible");
-        if !matches!(state, "exists" | "visible" | "gone") {
+        if !matches!(
+            state,
+            "attached"
+                | "detached"
+                | "visible"
+                | "hidden"
+                | "enabled"
+                | "editable"
+                | "exists"
+                | "gone"
+        ) {
             return Err(auto_err(format!("waitFor: unknown state '{state}'")));
         }
         // Reject a page name that isn't in the config up front, so a typo'd
@@ -302,7 +330,7 @@ impl JSPageDriver {
                 Ok(value) => serde_json::from_value::<WaitProbe>(value)
                     .map_err(|err| auto_err(format!("waitFor decode: {err}")))?,
                 Err(err) if is_transient_page_error(&err) => {
-                    if state == "gone" {
+                    if matches!(state, "detached" | "gone") {
                         return Ok(());
                     }
                     if started.elapsed() >= timeout {
@@ -316,11 +344,7 @@ impl JSPageDriver {
                 }
                 Err(err) => return Err(auto_err(err)),
             };
-            let satisfied = match state {
-                "exists" => probe.exists,
-                "gone" => !probe.exists,
-                _ => probe.exists && probe.visible,
-            };
+            let satisfied = wait_state_satisfied(state, &probe);
             if satisfied {
                 return Ok(());
             }
@@ -367,7 +391,7 @@ pub(crate) fn png_dimensions(bytes: &[u8]) -> Option<(u32, u32)> {
 
 #[cfg(test)]
 mod tests {
-    use super::is_transient_page_error;
+    use super::{WaitProbe, is_transient_page_error, wait_state_satisfied};
 
     #[test]
     fn wait_retries_only_page_readiness_errors() {
@@ -377,5 +401,40 @@ mod tests {
             "The group or resource is not in the correct state (0x8007139F)"
         ));
         assert!(!is_transient_page_error("SyntaxError: invalid selector"));
+    }
+
+    #[test]
+    fn wait_states_match_the_devtool_element_contract() {
+        let visible = WaitProbe {
+            exists: true,
+            visible: true,
+            enabled: true,
+            editable: false,
+        };
+        assert!(wait_state_satisfied("attached", &visible));
+        assert!(wait_state_satisfied("exists", &visible));
+        assert!(wait_state_satisfied("visible", &visible));
+        assert!(wait_state_satisfied("enabled", &visible));
+        assert!(!wait_state_satisfied("editable", &visible));
+        assert!(!wait_state_satisfied("hidden", &visible));
+
+        let hidden = WaitProbe {
+            exists: true,
+            visible: false,
+            enabled: false,
+            editable: false,
+        };
+        assert!(wait_state_satisfied("hidden", &hidden));
+        assert!(!wait_state_satisfied("detached", &hidden));
+
+        let missing = WaitProbe {
+            exists: false,
+            visible: false,
+            enabled: false,
+            editable: false,
+        };
+        assert!(wait_state_satisfied("detached", &missing));
+        assert!(wait_state_satisfied("gone", &missing));
+        assert!(!wait_state_satisfied("hidden", &missing));
     }
 }

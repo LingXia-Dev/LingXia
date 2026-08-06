@@ -27,8 +27,7 @@ assert_case() {
   local actual_automation
   actual_automation=$(sed -n 's/^automation=//p' <<<"$output")
   local actual_matrix
-  actual_matrix=$(sed -n 's/^automation_matrix=//p' <<<"$output" | jq -S -c .)
-  expected_matrix=$(jq -S -c . <<<"$expected_matrix")
+  actual_matrix=$(sed -n 's/^automation_matrix=//p' <<<"$output")
 
   if [[ "$actual_automation" != "$expected_automation" || "$actual_matrix" != "$expected_matrix" ]]; then
     echo "matrix case failed: $name" >&2
@@ -38,25 +37,17 @@ assert_case() {
   fi
 }
 
+windows_react='{"include":[{"platform":"windows","os":"windows-latest","exe":".exe","framework":"react","profile":"react"}]}'
+windows_vue='{"include":[{"platform":"windows","os":"windows-latest","exe":".exe","framework":"vue","profile":"vue"}]}'
+windows_both='{"include":[{"platform":"windows","os":"windows-latest","exe":".exe","framework":"react","profile":"react"},{"platform":"windows","os":"windows-latest","exe":".exe","framework":"vue","profile":"vue"}]}'
+
 assert_case none false \
-  '{"include":[{"platform":"macos","os":"macos-latest","exe":"","frameworks":"react","profile":"skipped"}]}'
-assert_case cross-platform true \
-  '{"include":[{"platform":"macos","os":"macos-latest","exe":"","frameworks":"react","profile":"react"},{"platform":"windows","os":"windows-latest","exe":".exe","frameworks":"react","profile":"react"}]}' \
-  CROSS_PLATFORM=true
-assert_case macos true \
-  '{"include":[{"platform":"macos","os":"macos-latest","exe":"","frameworks":"react","profile":"react"}]}' \
-  MACOS=true
-assert_case windows-all true \
-  '{"include":[{"platform":"windows","os":"windows-latest","exe":".exe","frameworks":"react vue","profile":"react-vue"}]}' \
-  WINDOWS_ALL=true
-assert_case shared-frontend true \
-  '{"include":[{"platform":"macos","os":"macos-latest","exe":"","frameworks":"react vue","profile":"react-vue"}]}' \
-  FRONTEND_SHARED=true
-assert_case vue true \
-  '{"include":[{"platform":"macos","os":"macos-latest","exe":"","frameworks":"vue","profile":"vue"}]}' \
-  VUE=true
-assert_case full true \
-  '{"include":[{"platform":"macos","os":"macos-latest","exe":"","frameworks":"react vue","profile":"react-vue"},{"platform":"windows","os":"windows-latest","exe":".exe","frameworks":"react vue","profile":"react-vue"}]}' \
-  FULL=true
+  '{"include":[{"platform":"windows","os":"windows-latest","exe":".exe","framework":"react","profile":"skipped"}]}'
+assert_case cross-platform true "$windows_react" CROSS_PLATFORM=true
+assert_case macos-contract-change true "$windows_react" MACOS=true
+assert_case windows-all true "$windows_both" WINDOWS_ALL=true
+assert_case shared-frontend true "$windows_both" FRONTEND_SHARED=true
+assert_case vue true "$windows_vue" VUE=true
+assert_case full true "$windows_both" FULL=true
 
 echo "automation matrix cases passed"

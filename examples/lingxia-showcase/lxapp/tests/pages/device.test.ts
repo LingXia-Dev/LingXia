@@ -1,5 +1,8 @@
 import { expect, test } from '@rongjs/test';
-import type { LxAppDriver } from 'lingxia-types';
+import type { LxAppDriver } from 'lingxia-types/automation';
+import { showcaseApp } from '../helpers/app.js';
+import { waitForElementText } from '../helpers/page.js';
+import { contract, eventually } from '../support/contract.js';
 
 interface DevicePageState {
   deviceInfo: { osName?: string } | null;
@@ -31,32 +34,21 @@ async function waitForState(
   app: LxAppDriver,
   predicate: (state: DevicePageState) => boolean,
 ): Promise<DevicePageState> {
-  const deadline = Date.now() + 30_000;
-  let state = await deviceState(app);
-  while (Date.now() < deadline) {
-    if (predicate(state)) return state;
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    state = await deviceState(app);
-  }
-  throw new Error(`Timed out waiting for device page state: ${JSON.stringify(state)}`);
+  return eventually(deviceState.bind(null, app), predicate, {
+    describe: 'device page state',
+    timeoutMs: 30_000,
+  });
 }
 
-async function waitForElementText(
-  app: LxAppDriver,
-  css: string,
-  text: string,
-): Promise<void> {
-  const deadline = Date.now() + 30_000;
-  while (Date.now() < deadline) {
-    const element = await app.page.query({ page: 'device', css, full: true });
-    if (element.exists && element.text.includes(text)) return;
-    await new Promise((resolve) => setTimeout(resolve, 50));
-  }
-  throw new Error(`Timed out waiting for '${css}' to contain '${text}'`);
-}
-
-test('renders device and screen API results after real UI actions', async () => {
-  const app = lx.automation().lxapp();
+contract({
+  id: 'DEVICE-001',
+  title: 'render device and screen API results after real UI actions',
+  covers: ['lx.getDeviceInfo', 'lx.getScreenInfo'],
+  layer: 'logic',
+  levels: ['semantic', 'boundary'],
+  scope: 'portable',
+  expectedOutcome: 'supported',
+}, async ({ app }) => {
 
   await app.nav.relaunch({ page: 'device', query: { type: 'device' } });
   await app.page.waitFor({ page: 'device', css: '[data-testid="device-get-info"]' });
@@ -84,8 +76,15 @@ test('renders device and screen API results after real UI actions', async () => 
   expect(Number(screen.screenInfo?.width) > 0).toBeTruthy();
 });
 
-test('keeps React and Vue network modes behaviorally equivalent', async () => {
-  const app = lx.automation().lxapp();
+contract({
+  id: 'DEVICE-002',
+  title: 'keep network query and listener behavior equivalent across renderers',
+  covers: ['lx.getNetworkInfo', 'lx.onNetworkChange', 'lx.offNetworkChange'],
+  layer: 'logic',
+  levels: ['semantic', 'boundary', 'lifecycle'],
+  scope: 'portable',
+  expectedOutcome: 'supported',
+}, async ({ app }) => {
 
   for (const type of ['networkType', 'localIP'] as const) {
     await app.nav.relaunch({ page: 'device', query: { type } });
@@ -110,15 +109,27 @@ test('keeps React and Vue network modes behaviorally equivalent', async () => {
   await app.page.waitFor({ page: 'device', css: '[data-testid="device-network-listen-start"]' });
   await app.page.click({ page: 'device', css: '[data-testid="device-network-listen-start"]' });
   await waitForState(app, (state) => state.networkListening);
-  await waitForElementText(app, '[data-testid="device-network-status"]', 'Yes');
+  await waitForElementText(
+    app,
+    'device',
+    '[data-testid="device-network-status"]',
+    (text) => text.includes('Yes'),
+    30_000,
+  );
 
   await app.page.click({ page: 'device', css: '[data-testid="device-network-listen-stop"]' });
   await waitForState(app, (state) => !state.networkListening);
-  await waitForElementText(app, '[data-testid="device-network-status"]', 'No');
+  await waitForElementText(
+    app,
+    'device',
+    '[data-testid="device-network-status"]',
+    (text) => text.includes('No'),
+    30_000,
+  );
 });
 
 test('publishes every device mode in the rendered API menu', async () => {
-  const app = lx.automation().lxapp();
+  const app = showcaseApp();
   await app.nav.relaunch({ page: 'api' });
   await app.page.waitFor({ page: 'api', css: '[data-testid="api-device-section"]' });
   await app.page.click({ page: 'api', css: '[data-testid="api-device-section"]' });

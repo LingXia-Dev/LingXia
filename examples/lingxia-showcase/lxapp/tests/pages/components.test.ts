@@ -1,18 +1,16 @@
-import { expect, test } from '@rongjs/test';
-import type { LxAppDriver } from 'lingxia-types';
+import { expect } from '@rongjs/test';
+import { waitForCurrentPage } from '../helpers/page.js';
+import { contract } from '../support/contract.js';
 
-async function waitForCurrent(app: LxAppDriver, page: string): Promise<void> {
-  const deadline = Date.now() + 30_000;
-  while (Date.now() < deadline) {
-    const current = await app.nav.current();
-    if (current.name === page && current.ready) return;
-    await new Promise((resolve) => setTimeout(resolve, 50));
-  }
-  throw new Error(`Timed out waiting for component destination '${page}'`);
-}
-
-test('opens every component demo through rendered UI and the Logic bridge', async () => {
-  const app = lx.automation().lxapp();
+contract({
+  id: 'COMPONENTS-001',
+  title: 'open every component demo through rendered UI and the Logic bridge',
+  covers: ['lx.navigateTo'],
+  layer: 'logic',
+  levels: ['semantic', 'boundary', 'lifecycle'],
+  scope: 'portable',
+  expectedOutcome: 'supported',
+}, async ({ app }) => {
   const destinations = [
     ['components-video', 'video'],
     ['components-swiper', 'swiper'],
@@ -25,11 +23,11 @@ test('opens every component demo through rendered UI and the Logic bridge', asyn
 
   for (const [testId, destination] of destinations) {
     await app.page.click({ page: 'components', css: `[data-testid="${testId}"]` });
-    await waitForCurrent(app, destination);
+    await waitForCurrentPage(app, destination, 30_000);
     expect((await app.nav.current()).name).toBe(destination);
 
     await app.nav.back();
-    await waitForCurrent(app, 'components');
+    await waitForCurrentPage(app, 'components', 30_000);
     await app.page.waitFor({ page: 'components', css: `[data-testid="${testId}"]` });
   }
 });

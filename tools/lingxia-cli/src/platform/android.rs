@@ -237,6 +237,41 @@ gradle.settingsEvaluated {{ settings ->
         let target_dir = resolve_cargo_target_dir(project_root);
         let native_client_out =
             native_client_out_for_host_project(project_root, lingxia_config, config.framework)?;
+        let bin_dir = toolchain_base.join("bin");
+        let clang = bin_dir.join(if cfg!(windows) { "clang.exe" } else { "clang" });
+        let resource_output = Command::new(&clang)
+            .arg("--print-resource-dir")
+            .output()
+            .with_context(|| format!("Failed to inspect NDK clang at {}", clang.display()))?;
+        if !resource_output.status.success() {
+            return Err(anyhow!(
+                "NDK clang --print-resource-dir failed: {}",
+                String::from_utf8_lossy(&resource_output.stderr).trim()
+            ));
+        }
+        let resource_include = PathBuf::from(
+            String::from_utf8(resource_output.stdout)
+                .context("NDK clang resource directory was not UTF-8")?
+                .trim(),
+        )
+        .join("include");
+        let sysroot_include = toolchain_base.join("sysroot/usr/include");
+        let target_include = sysroot_include.join(match target {
+            "aarch64-linux-android" => "aarch64-linux-android",
+            "armv7-linux-androideabi" => "arm-linux-androideabi",
+            _ => unreachable!("target was normalized above"),
+        });
+        let bindgen_include_args = [&resource_include, &sysroot_include, &target_include]
+            .iter()
+            .map(|dir| format!("-I{}", dir.display()))
+            .collect::<Vec<_>>()
+            .join(" ");
+        let bindgen_extra_clang_args = match env::var("BINDGEN_EXTRA_CLANG_ARGS") {
+            Ok(existing) if !existing.trim().is_empty() => {
+                format!("{} {}", existing.trim(), bindgen_include_args)
+            }
+            _ => bindgen_include_args,
+        };
         run_cargo_build_for_target(
             &rust_manifest,
             &rust_lib_dir,
@@ -262,7 +297,6 @@ gradle.settingsEvaluated {{ settings ->
                 cmd.env_remove("MACOSX_DEPLOYMENT_TARGET");
 
                 // Set target-specific toolchain
-                let bin_dir = toolchain_base.join("bin");
                 let ar_path = bin_dir.join("llvm-ar");
                 let cc_path = bin_dir.join(&cc_bin);
                 let cxx_path = bin_dir.join(&cxx_bin);
@@ -273,6 +307,14 @@ gradle.settingsEvaluated {{ settings ->
                 cmd.env(format!("CARGO_TARGET_{}_LINKER", target_upper), &cc_path);
                 cmd.env(format!("CC_{}", target_env), &cc_path);
                 cmd.env(format!("CXX_{}", target_env), &cxx_path);
+                // NDK r28's sysroot omits Clang builtin headers such as
+                // stdbool.h. Bindgen uses the host libclang, so give it both
+                // the NDK resource headers and target sysroot explicitly.
+                // Scope the extra includes to bindgen only: a global CPATH
+                // would also reach every cc invocation in this build and can
+                // reorder NDK header resolution (seen as rong_quickjs_sys
+                // failing on NDK r27 with unknown fixed-width int types).
+                cmd.env("BINDGEN_EXTRA_CLANG_ARGS", &bindgen_extra_clang_args);
 
                 // Old Android (API < 23) requires DT_HASH, not just DT_GNU_HASH
                 if target == "armv7-linux-androideabi" {

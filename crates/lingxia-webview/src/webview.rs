@@ -1884,6 +1884,17 @@ impl WebViewCreateSender {
         self.signals.publish_result(Err(error), stage);
     }
 
+    /// Complete only this create generation after a newer same-tag session
+    /// replaced it. The current generation's registry and callbacks belong to
+    /// a different signals identity and must remain untouched.
+    #[cfg_attr(not(target_os = "android"), allow(dead_code))]
+    pub(crate) fn cancel_superseded(self) {
+        if remove_session_signals_if_matches(&self.webtag, &self.signals) {
+            crate::events::normalizer::destroy(&self.webtag);
+        }
+        self.signals.publish_destroyed();
+    }
+
     /// True if the session was destroyed (e.g. the tab was closed/discarded)
     /// while the native WebView was still being built. The platform create
     /// path checks this before registering, to avoid leaving a zombie in the
@@ -1902,7 +1913,13 @@ static WEBVIEW_INSTANCES: OnceLock<WebViewInstancesMap> = OnceLock::new();
 
 /// Pending callbacks: keyed by webtag string -> callbacks struct.
 /// Stored here between builder-based session creation and `register_webview`.
-static PENDING_CALLBACKS: OnceLock<Mutex<HashMap<String, PendingCallbacks>>> = OnceLock::new();
+struct PendingCallbacksEntry {
+    #[cfg(target_os = "android")]
+    signals: Arc<WebViewSessionSignals>,
+    callbacks: PendingCallbacks,
+}
+
+static PENDING_CALLBACKS: OnceLock<Mutex<HashMap<String, PendingCallbacksEntry>>> = OnceLock::new();
 static WEBVIEW_SESSIONS: OnceLock<Mutex<HashMap<String, Arc<WebViewSessionSignals>>>> =
     OnceLock::new();
 #[cfg(target_os = "windows")]
@@ -2228,7 +2245,14 @@ fn request_create_webview(
     if pending_callbacks.has_any() {
         let pending = PENDING_CALLBACKS.get_or_init(|| Mutex::new(HashMap::new()));
         if let Ok(mut map) = pending.lock() {
-            map.insert(webtag.key().to_string(), pending_callbacks);
+            map.insert(
+                webtag.key().to_string(),
+                PendingCallbacksEntry {
+                    #[cfg(target_os = "android")]
+                    signals: Arc::clone(&sender.signals),
+                    callbacks: pending_callbacks,
+                },
+            );
         }
     }
 
@@ -2274,14 +2298,16 @@ fn windows_webview_create_lock(webtag_key: &str) -> Arc<Mutex<()>> {
     lock
 }
 
+#[cfg_attr(target_os = "android", allow(dead_code))]
 pub(crate) fn register_webview(webview: Arc<WebView>) {
     let webtag = webview.webtag();
 
     // Install any pending callbacks
     if let Some(pending) = PENDING_CALLBACKS.get()
         && let Ok(mut map) = pending.lock()
-        && let Some(callbacks) = map.remove(webtag.key())
+        && let Some(entry) = map.remove(webtag.key())
     {
+        let callbacks = entry.callbacks;
         log::info!(
             "Installing callbacks for {} (schemes={}, nav={}, new_window={}, download={}, file_chooser={}, delegate={})",
             webtag.key(),
@@ -2301,6 +2327,37 @@ pub(crate) fn register_webview(webview: Arc<WebView>) {
         webviews.insert(webtag.key().to_string(), webview.clone());
         log::info!("WebView created and stored: {}", webtag.key());
     }
+}
+
+#[cfg(target_os = "android")]
+pub(crate) fn register_android_webview_if_current(
+    webview: Arc<WebView>,
+    sender: &WebViewCreateSender,
+) -> bool {
+    let webtag = webview.webtag();
+    let sessions = WEBVIEW_SESSIONS.get_or_init(|| Mutex::new(HashMap::new()));
+    let session_guard = lock_or_recover(sessions, "webview_sessions.register_android");
+    if !session_guard
+        .get(webtag.key())
+        .is_some_and(|current| Arc::ptr_eq(current, &sender.signals))
+    {
+        return false;
+    }
+
+    if let Some(pending) = PENDING_CALLBACKS.get()
+        && let Ok(mut map) = pending.lock()
+        && map
+            .get(webtag.key())
+            .is_some_and(|entry| Arc::ptr_eq(&entry.signals, &sender.signals))
+        && let Some(entry) = map.remove(webtag.key())
+    {
+        webview.install_callbacks(entry.callbacks);
+    }
+
+    let instances = WEBVIEW_INSTANCES.get_or_init(|| Arc::new(Mutex::new(HashMap::new())));
+    let mut webviews = lock_or_recover(instances, "webview_instances.register_android");
+    webviews.insert(webtag.key().to_string(), webview);
+    true
 }
 
 /// Find WebView by WebTag.
@@ -2412,7 +2469,10 @@ pub(crate) fn destroy_webview(webtag: &WebTag) {
 
 #[cfg(test)]
 mod tests {
-    use super::remove_arc_if_matches;
+    use super::{
+        WEBVIEW_SESSIONS, WebTag, WebViewCreateSender, WebViewSessionSignals,
+        remove_arc_if_matches, remove_session_signals_if_matches, replace_session_signals,
+    };
     use std::collections::HashMap;
     use std::sync::Arc;
 
@@ -2430,5 +2490,30 @@ mod tests {
         let removed = remove_arc_if_matches(&mut entries, "tab", &current).unwrap();
         assert!(Arc::ptr_eq(&removed, &current));
         assert!(!entries.contains_key("tab"));
+    }
+
+    #[test]
+    fn superseded_sender_completes_without_removing_current_generation() {
+        let webtag = WebTag::from("test:pages/superseded#9173");
+        let superseded = WebViewSessionSignals::new();
+        let current = WebViewSessionSignals::new();
+        replace_session_signals(&webtag, current.clone());
+
+        WebViewCreateSender::new(webtag.clone(), superseded.clone()).cancel_superseded();
+
+        assert!(
+            superseded
+                .terminal_result()
+                .is_some_and(|result| result.is_err())
+        );
+        assert!(current.terminal_result().is_none());
+        let sessions = WEBVIEW_SESSIONS.get().unwrap().lock().unwrap();
+        assert!(
+            sessions
+                .get(webtag.key())
+                .is_some_and(|signals| Arc::ptr_eq(signals, &current))
+        );
+        drop(sessions);
+        assert!(remove_session_signals_if_matches(&webtag, &current));
     }
 }

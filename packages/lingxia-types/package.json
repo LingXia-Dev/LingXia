@@ -112,6 +112,14 @@
       "import": "./dist/automation/index.js",
       "require": "./dist/automation/index.js"
     },
+    "./automation-test-globals": {
+      "types": "./dist/automation-test-globals.d.ts"
+    },
+    "./testing": {
+      "types": "./dist/testing/public-api.d.ts",
+      "import": "./dist/testing/public-api.mjs",
+      "require": "./dist/testing/public-api.js"
+    },
     "./error": {
       "types": "./dist/error.d.ts",
       "import": "./dist/error.js",
@@ -130,8 +138,8 @@
     "check:quality": "node scripts/check-generated-quality.mjs",
     "test:types": "tsc -p tests/tsconfig.json",
     "test:runtime": "npm run build && node tests/error-runtime.mjs",
-    "build": "tsc && mkdir -p dist/generated && cp src/logic-globals.d.ts dist/logic-globals.d.ts && cp src/generated/logic-web.d.ts dist/generated/logic-web.d.ts",
-    "clean": "rm -rf dist",
+    "build": "tsc && node scripts/copy-static-types.mjs",
+    "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
     "prepublishOnly": "npm run clean && npm run build"
   },
   "publishConfig": {

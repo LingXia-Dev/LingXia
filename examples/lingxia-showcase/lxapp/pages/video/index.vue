@@ -4,7 +4,7 @@
       <div class="text-gray-500">Loading video...</div>
     </div>
 
-    <div v-else class="px-4 py-4 space-y-3 pb-6">
+    <div v-else class="px-4 py-4 space-y-3 pb-6" data-testid="video-page">
       <!-- Header -->
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-2">
@@ -17,7 +17,7 @@
             <div class="text-base font-semibold text-gray-900">Native Video</div>
           </div>
         </div>
-        <div class="bg-surface-900 text-green-400 font-mono text-xs px-3 py-1.5 rounded-lg w-[180px] truncate">
+        <div data-testid="video-event" class="bg-surface-900 text-green-400 font-mono text-xs px-3 py-1.5 rounded-lg w-[180px] truncate">
           {{ eventLog }}
         </div>
       </div>
@@ -25,11 +25,12 @@
       <div class="bg-black rounded-xl overflow-hidden">
         <LxVideo
           :id="video.id"
+          data-testid="native-video"
           :src="video.src"
           :poster="video.poster"
           :qualities="video.qualities"
           :playback-rates="video.playbackRates"
-          autoplay
+          :autoplay="Boolean(video.src)"
           controls
           volume="0.8"
           class="block w-full rounded-lg bg-black"
@@ -62,6 +63,7 @@
           </button>
 
           <button
+            data-testid="video-play"
             @click="play()"
             class="w-16 h-16 rounded-full bg-linear-to-b from-green-400 to-green-600 hover:from-green-500 hover:to-green-700 active:scale-95 transition-all flex items-center justify-center shadow-lg shadow-green-500/30"
           >
@@ -71,6 +73,7 @@
           </button>
 
           <button
+            data-testid="video-pause"
             @click="pause()"
             class="w-14 h-14 rounded-full bg-linear-to-b from-surface-700 to-surface-900 hover:from-surface-600 hover:to-surface-800 active:scale-95 transition-all flex items-center justify-center shadow-lg shadow-gray-900/30"
           >
@@ -93,6 +96,7 @@
 
         <div class="flex items-center justify-center gap-3">
           <button
+            data-testid="video-stop"
             @click="stop()"
             class="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-red-50 hover:bg-red-100 active:scale-98 transition-all"
           >

@@ -1,7 +1,10 @@
 {
   "extends": "../tsconfig.json",
   "compilerOptions": {
+    "lib": ["ES2020"],
+    "types": [],
     "noEmit": true
   },
-  "include": ["**/*.ts"]
+  "include": ["**/*.ts", "globals.d.ts"],
+  "exclude": []
 }
