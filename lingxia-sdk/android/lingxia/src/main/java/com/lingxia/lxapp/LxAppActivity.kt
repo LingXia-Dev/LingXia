@@ -393,6 +393,13 @@ class LxAppActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        if (SplashOverlay.coverActive()) {
+            // The bootstrap activity underneath shows the same full-bleed
+            // cover; an enter animation would read as the cover flickering.
+            @Suppress("DEPRECATION")
+            overridePendingTransition(0, 0)
+        }
+
         // Configure transparent system bars for edge-to-edge experience
         configureTransparentSystemBars(this)
         forceHostImmersive = isHostImmersiveEnabled()

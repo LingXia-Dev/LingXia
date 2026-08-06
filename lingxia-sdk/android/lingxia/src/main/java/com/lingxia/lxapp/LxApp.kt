@@ -175,12 +175,6 @@ object LxApp {
         SplashOverlay.notifyHomeReady()
     }
 
-    /** Runtime signal (JNI): the host's splash hook picked a cover for this launch. */
-    @JvmStatic
-    fun applySplashCover(path: String) {
-        SplashOverlay.applyCover(path)
-    }
-
     @JvmStatic
     fun updateTabBarUI(appId: String): Boolean {
         val activity = currentActivity?.takeIf { it.getAppId() == appId }
