@@ -18,8 +18,11 @@ the app watches:
 
 ```
 macOS     ~/Library/Application Support/<bundle-id>/app_state/terminal.json
-Windows   %APPDATA%\<bundle-id>\app_state\terminal.json
+Windows   %LOCALAPPDATA%\<productName>\data\app_state\terminal.json
 ```
+
+`<productName>` is the one from `lingxia.yaml`. Rather than reconstruct either
+path, run `<exe> term path` — it prints the file the app actually reads.
 
 Every field is optional — write only what changes. A file that does not parse
 is reported and ignored; whatever was in effect stays, so a half-written save
