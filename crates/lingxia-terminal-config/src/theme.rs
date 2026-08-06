@@ -291,15 +291,18 @@ const LINGXIA_DARK: &str = r##"{
   "brightCyan": "#70c0b1", "brightWhite": "#eaeaea"
 }"##;
 
+/// On a light background "bright" has to mean *deeper*, not lighter. The
+/// obvious light scheme takes a dark scheme's bright ramp as-is, and then
+/// every error a shell prints — bright red — arrives as pale salmon on white.
 const LINGXIA_LIGHT: &str = r##"{
   "name": "LingXia Light",
-  "background": "#fafafa", "foreground": "#383a42",
-  "cursorColor": "#383a42", "selectionBackground": "#d0d0d0",
-  "black": "#383a42", "red": "#e45649", "green": "#50a14f", "yellow": "#c18401",
-  "blue": "#0184bc", "purple": "#a626a4", "cyan": "#0997b3", "white": "#fafafa",
-  "brightBlack": "#4f525e", "brightRed": "#e06c75", "brightGreen": "#98c379",
-  "brightYellow": "#e5c07b", "brightBlue": "#61afef", "brightPurple": "#c678dd",
-  "brightCyan": "#56b6c2", "brightWhite": "#ffffff"
+  "background": "#fafafa", "foreground": "#2b2d33",
+  "cursorColor": "#2b2d33", "selectionBackground": "#cfd6e4",
+  "black": "#383a42", "red": "#c02128", "green": "#1f7a3d", "yellow": "#8a6100",
+  "blue": "#0060b0", "purple": "#8b1a89", "cyan": "#00707f", "white": "#f0f0f0",
+  "brightBlack": "#5c6370", "brightRed": "#961218", "brightGreen": "#155c2c",
+  "brightYellow": "#6b4b00", "brightBlue": "#004a89", "brightPurple": "#6b1069",
+  "brightCyan": "#005661", "brightWhite": "#ffffff"
 }"##;
 
 /// Muted, for long sessions and dim rooms: the same hues as the dark scheme
@@ -450,4 +453,64 @@ mod tests {
         let store = ThemeStore::new(Path::new("/nonexistent"));
         assert!(store.get("no-such-theme").is_none());
     }
+
+    /// WCAG relative luminance, which is what a contrast ratio is built from.
+    fn relative_luminance(color: &str) -> f32 {
+        let rgb = lingxia_terminal::parse_hex_rgb(color).expect("hex");
+        let channel = |value: u8| {
+            let value = f32::from(value) / 255.0;
+            if value <= 0.03928 {
+                value / 12.92
+            } else {
+                ((value + 0.055) / 1.055).powf(2.4)
+            }
+        };
+        0.2126 * channel(rgb[0]) + 0.7152 * channel(rgb[1]) + 0.0722 * channel(rgb[2])
+    }
+
+    fn contrast(a: &str, b: &str) -> f32 {
+        let (a, b) = (relative_luminance(a), relative_luminance(b));
+        (a.max(b) + 0.05) / (a.min(b) + 0.05)
+    }
+
+    /// Every color a program actually prints text in has to be legible against
+    /// the scheme's own background.
+    ///
+    /// The light scheme shipped with a dark scheme's bright ramp, so every
+    /// error a shell printed — bright red — arrived as pale salmon on white.
+    /// `black`/`white` and their bright forms are exempt: sitting at the
+    /// background's own end of the ramp is their job.
+    #[test]
+    fn every_built_in_color_is_legible_on_its_own_background() {
+        let chromatic = [
+            "red",
+            "green",
+            "yellow",
+            "blue",
+            "purple",
+            "cyan",
+            "brightRed",
+            "brightGreen",
+            "brightYellow",
+            "brightBlue",
+            "brightPurple",
+            "brightCyan",
+            "foreground",
+        ];
+        for (name, source) in BUILT_IN {
+            let theme: serde_json::Value = serde_json::from_str(source).expect(name);
+            let background = theme["background"].as_str().expect("background");
+            for key in chromatic {
+                let color = theme[key]
+                    .as_str()
+                    .unwrap_or_else(|| panic!("{name}.{key}"));
+                let ratio = contrast(color, background);
+                assert!(
+                    ratio >= 3.2,
+                    "{name}.{key} ({color}) is {ratio:.2}:1 on {background}"
+                );
+            }
+        }
+    }
+
 }
