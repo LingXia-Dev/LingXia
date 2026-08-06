@@ -297,7 +297,8 @@ the trusted product control app; `browser.webui` is the browser UI asset.
 
 `resources.bundles` declares lxapp asset sources bundled into the native host.
 It is optional for a native-main/native-control desktop host. It does not decide
-what the app opens; `app.homeAppId` and the `surfaces[]` ids do that.
+what the app opens; `app.homeAppId` and the `surfaces[]` ids do that. (Raw host
+files with no lxapp identity belong in the `assets` section instead.)
 
 Each bundle entry has a `type` (currently `lxapp`) and an `appId` that **must match** the bundle's `lxapp.json.appId` (the id-alignment rule again). Its asset source is exactly one of: a project-relative `path:` (the CLI builds and bundles it) or a `package:` npm name shipping a prebuilt `lxapp.json` + `dist/` (optional `version:`; CLI version when omitted). Setting both is rejected, and appIds must be unique across bundles.
 
@@ -333,6 +334,20 @@ Optional launch screen, generated per platform from a few fields — no hand-bui
 The cover deliberately never goes into the OS launch frame itself: launch-frame compositors render full-bleed art soft or hide app-drawn content until the app's first frame, so the SDK rides the first frame instead — the one place the cover is both sharp and immediate. `mark` (PNG, authored at the pixels it should occupy on screen) is what the placeholder centers where the OS accepts a custom image (HarmonyOS start window, iOS launch screen); Android 12+ keeps the real app icon in its splash slot, preserving the launcher's zoom morph. Omit `image` for a placeholder-only launch that holds until the home page is ready.
 
 A host's Rust addon can implement `select_splash` to substitute the cover file for a given cold start (e.g. a downloaded campaign cover) — same first-frame timing, different art; see [Launch Cover](../native/splash.md). `minDuration` (ms, default 600) is the minimum the cover stays up; the maximum is a framework constant.
+
+---
+
+## `assets` Section
+
+`assets: <dir>` packages a project directory into every platform build
+through the platform's own asset pipeline; native Rust reads the files back
+with `lingxia::assets::read("relative/path")` once the runtime is up. Use it
+for host files that should ship with the app — extra launch covers, fonts,
+data — instead of embedding bytes in the native library, which bypasses
+store optimizations and weighs down library load.
+
+Not for lxapp packages: those are `resources.bundles` — built, appId-addressed,
+and served by the runtime, none of which applies to these raw files.
 
 ---
 

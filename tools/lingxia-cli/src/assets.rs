@@ -11,7 +11,7 @@ pub(crate) use clean::clean_configured_host_assets;
 use colored::Colorize;
 use destinations::{
     prepare_android_assets_root, prepare_apple_resources_root, prepare_harmony_rawfile_root,
-    prepare_windows_assets_root, stage_windows_host_icon,
+    prepare_windows_assets_root, stage_windows_host_icon, sync_host_assets,
 };
 use hash::sha256_hex;
 #[cfg(test)]
@@ -255,6 +255,8 @@ pub(crate) fn prepare_configured_host_assets(
     // Deduplicate resource destinations (iOS/macOS can share the same Swift package dir).
     let mut prepared_resource_roots: HashSet<PathBuf> = HashSet::new();
 
+    let host_assets = config.assets.as_ref().map(|dir| project_root.join(dir));
+
     for platform in platforms {
         match platform {
             platform::detector::PlatformType::Android => {
@@ -275,6 +277,7 @@ pub(crate) fn prepare_configured_host_assets(
                     prepared_polyfills_es5.as_ref(),
                     &mut cache,
                 )?;
+                sync_host_assets(&assets_root, host_assets.as_deref())?;
             }
             platform::detector::PlatformType::Ios => {
                 if !crate::platform::apple::is_macos() {
@@ -303,6 +306,7 @@ pub(crate) fn prepare_configured_host_assets(
                     &mut prepared_resource_roots,
                     &mut cache,
                 )?;
+                sync_host_assets(&resources_dir, host_assets.as_deref())?;
             }
             platform::detector::PlatformType::MacOs => {
                 if !crate::platform::apple::is_macos() {
@@ -331,6 +335,7 @@ pub(crate) fn prepare_configured_host_assets(
                     &mut prepared_resource_roots,
                     &mut cache,
                 )?;
+                sync_host_assets(&resources_dir, host_assets.as_deref())?;
             }
             platform::detector::PlatformType::Harmony => {
                 let ui_json =
@@ -348,6 +353,7 @@ pub(crate) fn prepare_configured_host_assets(
                     prepared_runtime_es2020.as_ref(),
                     &mut cache,
                 )?;
+                sync_host_assets(&rawfile_root, host_assets.as_deref())?;
             }
             platform::detector::PlatformType::Windows => {
                 let windows_ui_json =
@@ -368,6 +374,7 @@ pub(crate) fn prepare_configured_host_assets(
                     prepared_runtime_es2020.as_ref(),
                     &mut cache,
                 )?;
+                sync_host_assets(&assets_root, host_assets.as_deref())?;
                 if config
                     .app
                     .as_ref()

@@ -91,6 +91,8 @@ splash:
   image: design/splash.png
   mark: design/splash-mark.png
 
+assets: assets
+
 storage:
   tempMaxSizeMB: 1024
   cacheMaxSizeMB: 2048

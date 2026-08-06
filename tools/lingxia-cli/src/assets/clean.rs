@@ -24,6 +24,8 @@ pub(crate) fn clean_configured_host_assets(project_root: &Path) -> Result<Vec<Pa
             remove_generated_file(&target_root.join(file), &mut removed)?;
         }
 
+        remove_generated_dir(&target_root.join("hostassets"), &mut removed)?;
+
         for bundle_name in stamp.bundle_hashes.keys() {
             remove_generated_dir(&target_root.join(bundle_name), &mut removed)?;
         }

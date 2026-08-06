@@ -235,6 +235,7 @@ mod tests {
             storage: None,
             resources: None,
             splash: None,
+            assets: None,
         }
     }
 

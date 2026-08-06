@@ -286,6 +286,68 @@ pub(super) fn prepare_windows_assets_root(
     Ok(())
 }
 
+/// Mirror the host project's `assets:` directory into `<root>/hostassets`,
+/// where `lingxia::assets` reads it back at runtime. Files sync by content
+/// and stale ones are pruned; without a configured directory the namespace
+/// is removed entirely. Dotfiles are skipped.
+pub(super) fn sync_host_assets(root: &Path, source: Option<&Path>) -> Result<()> {
+    let dest = root.join("hostassets");
+    let Some(source) = source else {
+        if dest.exists() {
+            fs::remove_dir_all(&dest)?;
+        }
+        return Ok(());
+    };
+    if !source.is_dir() {
+        anyhow::bail!(
+            "assets directory {} (from `assets:` in lingxia.yaml) does not exist",
+            source.display()
+        );
+    }
+    let mut wanted: HashSet<PathBuf> = HashSet::new();
+    sync_host_assets_dir(source, &dest, &mut wanted)?;
+    prune_host_assets_dir(&dest, &wanted)?;
+    Ok(())
+}
+
+fn sync_host_assets_dir(source: &Path, dest: &Path, wanted: &mut HashSet<PathBuf>) -> Result<()> {
+    fs::create_dir_all(dest)?;
+    for entry in fs::read_dir(source)? {
+        let entry = entry?;
+        let name = entry.file_name();
+        if name.to_string_lossy().starts_with('.') {
+            continue;
+        }
+        let target = dest.join(&name);
+        if entry.path().is_dir() {
+            sync_host_assets_dir(&entry.path(), &target, wanted)?;
+        } else {
+            write_if_changed(&target, &fs::read(entry.path())?)?;
+            wanted.insert(target);
+        }
+    }
+    Ok(())
+}
+
+fn prune_host_assets_dir(dir: &Path, wanted: &HashSet<PathBuf>) -> Result<()> {
+    if !dir.exists() {
+        return Ok(());
+    }
+    for entry in fs::read_dir(dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.is_dir() {
+            prune_host_assets_dir(&path, wanted)?;
+            if fs::read_dir(&path)?.next().is_none() {
+                fs::remove_dir(&path)?;
+            }
+        } else if !wanted.contains(&path) {
+            fs::remove_file(&path)?;
+        }
+    }
+    Ok(())
+}
+
 /// The LingXia mark (single design source), copied next to the Windows app as
 /// `icons/lingxia.png`. The shell loads it as the default sidebar icon for
 /// lxapp items / browser tabs that have no icon of their own.

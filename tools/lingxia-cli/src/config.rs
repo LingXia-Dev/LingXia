@@ -57,6 +57,13 @@ pub struct LingXiaConfig {
     /// runtime overlay the SDK keeps up until the home page's first render.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub splash: Option<SplashConfig>,
+    /// Directory of host assets (relative to the project root), packaged
+    /// into every platform build and readable at runtime through
+    /// `lingxia::assets`. Rides each platform's asset pipeline — store
+    /// thinning, lazy loading — where bytes embedded in the native library
+    /// cannot.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub assets: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -1646,6 +1653,7 @@ impl LingXiaConfig {
                 }],
             }),
             splash: None,
+            assets: None,
         }
     }
 
@@ -1805,6 +1813,14 @@ impl LingXiaConfig {
                          To customize the in-app browser webui, use `browser.webui.path` \
                          (or `browser.webui.package`) instead of declaring \
                          `{app_id}` as a resource bundle."
+                    ));
+                }
+                // Bundles land in the asset root as a directory named by
+                // appId, where `hostassets/` is the `assets:` namespace.
+                if app_id == "hostassets" {
+                    return Err(anyhow!(
+                        "resources.bundles appId 'hostassets' collides with the \
+                         host-assets namespace (`assets:` in lingxia.yaml)"
                     ));
                 }
                 if !app_ids.insert(app_id.to_string()) {

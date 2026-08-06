@@ -72,6 +72,8 @@ pub mod automation_runtime {
 pub mod app;
 pub use app::{home_app_id, lingxia_id, product_version};
 mod applink;
+/// Host assets packaged by the CLI (`assets:` in `lingxia.yaml`).
+pub mod assets;
 mod bootstrap;
 mod capabilities;
 pub mod splash;

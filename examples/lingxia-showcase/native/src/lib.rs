@@ -23,16 +23,18 @@ impl lingxia::HostAddon for ExampleHostAddon {
     }
 
     /// Demo of the runtime cover hook, exercising both halves of the design:
-    /// acquisition refreshes the campaign cover in the managed cache on every
-    /// launch (a real host would download here whenever its campaign
-    /// changes — a stale cache must lose to fresh art), and selection
-    /// strictly alternates it with the bundled one, so back-to-back cold
-    /// starts show the hook swapping the cover.
+    /// acquisition refreshes the campaign cover in the store on every launch
+    /// (from the packaged host assets here; a real host would download
+    /// whenever its campaign changes — stale art must lose to fresh art),
+    /// and selection strictly alternates it with the bundled one, so
+    /// back-to-back cold starts show the hook swapping the cover.
     fn select_splash(&self, launch: &lingxia::splash::Launch) -> lingxia::splash::SplashChoice {
         // One retained key bounds the store no matter what past builds wrote.
         lingxia::splash::retain(["alt"]);
         lingxia::spawn(async {
-            let _ = lingxia::splash::store("alt", include_bytes!("../assets/splash-alt.png"));
+            if let Ok(bytes) = lingxia::assets::read("splash-alt.png") {
+                let _ = lingxia::splash::store("alt", &bytes);
+            }
         });
 
         let counter = launch.cache_dir().join("launch-count");

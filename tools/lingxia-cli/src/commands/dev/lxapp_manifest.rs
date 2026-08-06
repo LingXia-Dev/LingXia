@@ -308,6 +308,7 @@ mod tests {
                 }],
             }),
             splash: None,
+            assets: None,
         };
 
         let manifests = write_configured_manifests(project, &config).unwrap();
