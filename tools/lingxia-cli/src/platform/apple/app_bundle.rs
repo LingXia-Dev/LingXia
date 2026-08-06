@@ -29,6 +29,10 @@ pub struct AppBundleConfig {
     /// value is also written to Info.plist so the runtime overlay never
     /// depends on the catalog being compiled.
     pub splash_background: Option<String>,
+    /// Whether `splash.mark` is configured: `UILaunchScreen` then also
+    /// centers the catalog mark, completing the OS placeholder (color +
+    /// mark) before any app code runs.
+    pub splash_mark: bool,
 }
 
 /// App bundle packager
@@ -357,9 +361,10 @@ let package = Package(
             "UISupportedInterfaceOrientations".into(),
             plist::Value::Array(vec!["UIInterfaceOrientationPortrait".into()]),
         );
-        // Splash: the OS launch frame shows the background color; the SDK
-        // overlay brings the full-screen image (UILaunchScreen can only
-        // center an image at intrinsic size, which can't aspect-fill).
+        // Splash: the OS launch frame is the placeholder — background color
+        // plus the centered mark. Both resolve from the compiled catalog; the
+        // raw color also lands in Info.plist so the runtime overlay never
+        // depends on `actool` having succeeded.
         let mut launch_screen = plist::Dictionary::new();
         if let Some(background) = &config.splash_background {
             launch_screen.insert(
@@ -367,6 +372,9 @@ let package = Package(
                 crate::splash::APPLE_COLOR_ASSET.into(),
             );
             info.insert("LingXiaSplashBackground".into(), background.clone().into());
+        }
+        if config.splash_mark {
+            launch_screen.insert("UIImageName".into(), crate::splash::APPLE_MARK_ASSET.into());
         }
         info.insert(
             "UILaunchScreen".into(),

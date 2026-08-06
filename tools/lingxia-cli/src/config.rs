@@ -62,29 +62,37 @@ pub struct LingXiaConfig {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SplashConfig {
-    /// Background color, `#RRGGBB` — the OS static launch frame, and what
-    /// shows behind/before the image. The only required field: an app whose
-    /// cover comes from the runtime hook still needs this so the first frame
-    /// is branded (no code runs before it).
+    /// Background color, `#RRGGBB` — the ground of the OS launch placeholder,
+    /// and what shows behind a hook-picked cover. The only required field: no
+    /// code runs before the launch frame, so only build-time config can brand
+    /// it. A dark color keeps the placeholder from ever reading as a white
+    /// flash.
     ///
-    /// Deliberately one color, not a light/dark pair: with a full-screen
-    /// cover the color is only visible in the launch frame, so it must match
-    /// the *cover*, not the system theme. A dark color under a light cover
-    /// would add a second transition instead of removing one.
+    /// Deliberately one color, not a light/dark pair: the launch frame and
+    /// the first app frame must be the same color, and a pair would let them
+    /// disagree.
     pub background: String,
-    /// Splash image (PNG), path relative to the project root. Rendered
-    /// full-screen (aspect-fill) by the runtime overlay. Optional — omit it
-    /// to get a color-only launch, or to let the runtime hook supply the art.
-    /// Keep it as the guaranteed fallback when a hook is present.
-    ///
-    /// Also one image: theme- and time-dependent art belongs to the runtime
-    /// hook, which can see both and is not baked at build time.
+    /// The launch cover (PNG), path relative to the project root. Rendered
+    /// full-screen (aspect-fill) as the app's first frame on every cold
+    /// start — the OS placeholder's exit reveals it, so the launch reads as
+    /// "tap the icon, see the cover". Omit for a placeholder-only launch.
+    /// The runtime hook can substitute a different file per launch.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub image: Option<String>,
-    /// Minimum time the cover stays up, in milliseconds (default 600). Keeps
-    /// a fast first render from flashing the cover. The hard upper bound is a
-    /// framework constant and deliberately not configurable — a splash that
-    /// can be configured to never leave is a failure mode, not a feature.
+    /// The brand mark (PNG) shown centered on the launch placeholder, at the
+    /// pixel size it should occupy on screen, path relative to the project
+    /// root. OS launch frames draw small images unscaled — the one form
+    /// their compositors keep sharp, where any full-bleed bitmap goes soft.
+    /// Used where the frame accepts a custom image (HarmonyOS
+    /// `startWindowIcon`, iOS `UILaunchScreen`); Android 12+ keeps the real
+    /// app icon, whose launcher-zoom morph must not be broken.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mark: Option<String>,
+    /// Minimum time the launch face (placeholder or cover) stays up, in
+    /// milliseconds (default 600). Keeps a fast first render from flashing
+    /// it. The hard upper bound is a framework constant and deliberately not
+    /// configurable — a splash that can be configured to never leave is a
+    /// failure mode, not a feature.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub min_duration: Option<u32>,
 }

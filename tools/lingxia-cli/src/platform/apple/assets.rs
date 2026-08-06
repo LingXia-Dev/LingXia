@@ -125,13 +125,13 @@ pub fn compile_asset_catalog(
         // inside a locally installed iOS runtime; on machines that only
         // build for real devices there is none. That is an environment
         // gap, not a catalog mistake — degrade instead of failing the
-        // build: the splash cover overlay reads loose resources, so only
-        // the OS launch frame loses its background color.
+        // build: the splash overlay reads loose resources, so only the OS
+        // launch frame loses its background color and mark.
         if matches!(platform, AssetPlatform::Ios) && is_missing_ios_runtime(&combined) {
             println!(
                 "  {} Skipped the asset catalog: actool needs the iOS platform installed \n     \
-                 and this machine does not have it. The splash cover still shows, but \n     \
-                 the launch frame before it stays white. \n     \
+                 and this machine does not have it. The app's own frames are unaffected, \n     \
+                 but the OS launch frame stays white instead of the splash background. \n     \
                  Fix with: xcodebuild -downloadPlatform iOS",
                 "Warning:".yellow()
             );

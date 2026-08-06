@@ -190,6 +190,12 @@ impl IosPlatform {
             None
         };
 
+        let splash = config
+            .lingxia_config
+            .as_ref()
+            .and_then(|c| c.splash.as_ref())
+            .map(|splash| crate::splash::ResolvedSplash::resolve(&config.project_root, splash))
+            .transpose()?;
         let bundle_config = AppBundleConfig {
             bundle_id,
             app_name,
@@ -197,17 +203,8 @@ impl IosPlatform {
             executable_name,
             deployment_target,
             info_plist_path: info_plist,
-            splash_background: config
-                .lingxia_config
-                .as_ref()
-                .and_then(|c| c.splash.as_ref())
-                .map(|splash| -> Result<_> {
-                    Ok(
-                        crate::splash::ResolvedSplash::resolve(&config.project_root, splash)?
-                            .background,
-                    )
-                })
-                .transpose()?,
+            splash_background: splash.as_ref().map(|s| s.background.clone()),
+            splash_mark: splash.as_ref().is_some_and(|s| s.has_mark()),
         };
 
         AppBundler::create_app_bundle(
