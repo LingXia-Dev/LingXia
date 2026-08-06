@@ -264,33 +264,46 @@ mod tests {
         );
     }
 
+    /// Detected targets as paths rather than strings.
+    ///
+    /// Resolution goes through `Path`, so a target is spelled the way the
+    /// platform spells paths. Comparing as `Path` compares components, and
+    /// both slashes are separators on Windows, so one POSIX-spelled
+    /// expectation holds everywhere.
+    fn target_paths(text: &str, cwd: Option<&Path>) -> Vec<PathBuf> {
+        targets(text, cwd).into_iter().map(PathBuf::from).collect()
+    }
+
     #[test]
     fn detects_absolute_and_home_paths() {
         assert_eq!(
-            targets("open /etc/hosts please", None),
-            vec!["/etc/hosts".to_string()]
+            target_paths("open /etc/hosts please", None),
+            vec![PathBuf::from("/etc/hosts")]
         );
-        let home = std::env::var_os("HOME").expect("HOME set");
-        let found = targets("cat ~/work/file.txt", None);
+        let Some(home) = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE"))
+        else {
+            return;
+        };
+        let found = target_paths("cat ~/work/file.txt", None);
         assert_eq!(found.len(), 1);
-        assert!(found[0].ends_with("/work/file.txt"), "resolved: {found:?}");
-        assert!(found[0].starts_with(&home.to_string_lossy().to_string()));
+        assert!(found[0].ends_with("work/file.txt"), "resolved: {found:?}");
+        assert!(found[0].starts_with(PathBuf::from(&home)));
     }
 
     #[test]
     fn resolves_relative_paths_against_cwd_lexically() {
         let cwd = Path::new("/repo/project");
         assert_eq!(
-            targets("./src/main.rs", Some(cwd)),
-            vec!["/repo/project/src/main.rs".to_string()]
+            target_paths("./src/main.rs", Some(cwd)),
+            vec![PathBuf::from("/repo/project/src/main.rs")]
         );
         assert_eq!(
-            targets("../shared/lib.ts", Some(cwd)),
-            vec!["/repo/shared/lib.ts".to_string()]
+            target_paths("../shared/lib.ts", Some(cwd)),
+            vec![PathBuf::from("/repo/shared/lib.ts")]
         );
         assert_eq!(
-            targets("src/main.rs", Some(cwd)),
-            vec!["/repo/project/src/main.rs".to_string()]
+            target_paths("src/main.rs", Some(cwd)),
+            vec![PathBuf::from("/repo/project/src/main.rs")]
         );
         // Without a cwd, bare relative candidates are skipped.
         assert!(targets("src/main.rs", None).is_empty());
@@ -301,7 +314,10 @@ mod tests {
         let cwd = Path::new("/repo");
         let links = detect_links("src/main.rs:42:10 failed", Some(cwd));
         assert_eq!(links.len(), 1);
-        assert_eq!(links[0].target, "/repo/src/main.rs");
+        assert_eq!(
+            PathBuf::from(&links[0].target),
+            PathBuf::from("/repo/src/main.rs")
+        );
         assert_eq!(links[0].line, Some(42));
         assert_eq!(links[0].column, Some(10));
 
