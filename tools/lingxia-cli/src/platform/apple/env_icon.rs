@@ -87,7 +87,11 @@ fn badge_appiconset(dir: &Path, letter: char, accent: [u8; 4], margin_frac: f32)
             continue;
         }
         composite_badge_inset(&mut rgba, letter, accent, margin_frac);
-        rgba.save_with_format(&path, ImageFormat::Png)
+        // iOS app icons must be opaque: an alpha channel — even a fully
+        // opaque one — makes the home screen composite the icon over black,
+        // which reads as a ghosted tile. Flatten after badging.
+        let rgb = image::DynamicImage::ImageRgba8(rgba).to_rgb8();
+        rgb.save_with_format(&path, ImageFormat::Png)
             .with_context(|| format!("Failed to write {}", path.display()))?;
     }
     Ok(())
