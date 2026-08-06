@@ -1203,6 +1203,7 @@ fn run_terminal_panel_poll_loop(panel_key: &str, stop: &AtomicBool) {
     let mut last_generations: HashMap<u64, (u64, u64)> = HashMap::new();
     let mut last_active_set: Vec<u64> = Vec::new();
     let mut refresh_tick: u32 = 0;
+    let mut last_config = lingxia_terminal_config::runtime::generation();
     #[cfg(feature = "shell-chrome")]
     let mut pending_resize: HashMap<u64, (u16, u16)> = HashMap::new();
     loop {
@@ -1303,8 +1304,15 @@ fn run_terminal_panel_poll_loop(panel_key: &str, stop: &AtomicBool) {
             break;
         }
 
+        // A font or theme change moves nothing in the snapshot, so without
+        // this the card keeps its old colors and metrics until something else
+        // happens to dirty it — up to two seconds of looking broken.
+        let config = lingxia_terminal_config::runtime::generation();
+        let config_changed = config != last_config;
+        last_config = config;
+
         refresh_tick = refresh_tick.wrapping_add(1);
-        if any_change || refresh_tick.is_multiple_of(25) {
+        if any_change || config_changed || refresh_tick.is_multiple_of(25) {
             invalidate_panel(panel_key);
         }
         last_active_set = active_sessions;

@@ -333,6 +333,76 @@ const LINGXIA_CONTRAST: &str = r##"{
   "brightCyan": "#87ffff", "brightWhite": "#ffffff"
 }"##;
 
+/// Colors for the chrome around a terminal, derived from the terminal's own.
+///
+/// The tab strip belongs to the terminal, not to the app: the `+` on it opens
+/// another PTY, and every terminal that has one tints it with the active
+/// scheme. Deriving it here rather than fixing it per platform means a theme
+/// change moves the whole pane, instead of leaving a hardcoded stripe
+/// attached to a repainted grid.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SurfaceChrome {
+    /// The pane body — the terminal's own background.
+    pub surface: u32,
+    /// The tab strip behind it.
+    pub header: u32,
+    /// Hairline between the two.
+    pub separator: u32,
+    pub text: u32,
+    pub text_muted: u32,
+}
+
+impl Default for SurfaceChrome {
+    fn default() -> Self {
+        Self::derive(&TerminalTheme::default())
+    }
+}
+
+impl SurfaceChrome {
+    pub fn derive(theme: &TerminalTheme) -> Self {
+        let surface = rgb(&theme.background).unwrap_or(0x282c34);
+        let text = rgb(&theme.foreground).unwrap_or(0xffffff);
+        // The strip reads as further back than the body, which means darker —
+        // under a light scheme too, where a slightly grey bar is what every
+        // light terminal theme does. A background with nothing left to darken
+        // lifts instead, so pure black still shows an edge.
+        let header = if luminance(surface) < 0.06 {
+            mix(surface, 0xffffff, 0.10)
+        } else {
+            mix(surface, 0x000000, 0.22)
+        };
+        Self {
+            surface,
+            header,
+            separator: mix(header, text, 0.12),
+            text,
+            text_muted: mix(text, header, 0.45),
+        }
+    }
+}
+
+fn rgb(color: &str) -> Option<u32> {
+    let [r, g, b] = lingxia_terminal::parse_hex_rgb(color)?;
+    Some((u32::from(r) << 16) | (u32::from(g) << 8) | u32::from(b))
+}
+
+/// Perceived brightness, 0..1 — the sRGB luma weights, which is what decides
+/// whether a scheme reads as light or dark.
+fn luminance(color: u32) -> f32 {
+    let channel = |shift: u32| ((color >> shift) & 0xff) as f32 / 255.0;
+    0.2126 * channel(16) + 0.7152 * channel(8) + 0.0722 * channel(0)
+}
+
+fn mix(color: u32, towards: u32, amount: f32) -> u32 {
+    let amount = amount.clamp(0.0, 1.0);
+    let blend = |shift: u32| {
+        let from = ((color >> shift) & 0xff) as f32;
+        let to = ((towards >> shift) & 0xff) as f32;
+        ((from + (to - from) * amount).round() as u32).min(0xff) << shift
+    };
+    blend(16) | blend(8) | blend(0)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -513,4 +583,48 @@ mod tests {
         }
     }
 
+    fn chrome(background: &str, foreground: &str) -> SurfaceChrome {
+        SurfaceChrome::derive(&TerminalTheme {
+            background: background.to_string(),
+            foreground: foreground.to_string(),
+            ..TerminalTheme::default()
+        })
+    }
+
+    /// The whole point: chrome tracks the scheme, so a light theme cannot end
+    /// up with a dark strip stapled to it.
+    #[test]
+    fn chrome_follows_the_scheme_into_the_light() {
+        let dark = chrome("#282c34", "#ffffff");
+        let light = chrome("#fafafa", "#383a42");
+        assert!(luminance(dark.header) < 0.5, "dark scheme, dark strip");
+        assert!(luminance(light.header) > 0.5, "light scheme, light strip");
+        assert_eq!(dark.surface, 0x282c34);
+        assert_eq!(light.surface, 0xfafafa);
+    }
+
+    /// The strip must be distinguishable from the body at both extremes —
+    /// darkening pure black would leave no edge at all.
+    #[test]
+    fn the_strip_is_always_visible_against_the_body() {
+        for (background, foreground) in [
+            ("#000000", "#ffffff"),
+            ("#282c34", "#ffffff"),
+            ("#fafafa", "#383a42"),
+            ("#ffffff", "#000000"),
+        ] {
+            let chrome = chrome(background, foreground);
+            assert_ne!(
+                chrome.header, chrome.surface,
+                "{background} left no edge between strip and body"
+            );
+            assert_ne!(chrome.text_muted, chrome.text, "{background}");
+        }
+    }
+
+    #[test]
+    fn an_unparseable_color_falls_back_rather_than_panicking() {
+        let chrome = chrome("not a color", "#ffffff");
+        assert_eq!(chrome.surface, 0x282c34);
+    }
 }

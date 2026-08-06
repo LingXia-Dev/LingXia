@@ -19,8 +19,8 @@ private final class LingXiaTerminalInlineTitleTextView: NSTextView {
     private func configure() {
         drawsBackground = true
         backgroundColor = .lxTerminalBackground
-        insertionPointColor = NSColor.white.withAlphaComponent(0.95)
-        textColor = NSColor.white.withAlphaComponent(0.96)
+        insertionPointColor = NSColor.lxTerminalForeground.withAlphaComponent(0.95)
+        textColor = NSColor.lxTerminalForeground.withAlphaComponent(0.96)
         font = NSFont.systemFont(ofSize: 12, weight: .semibold)
         isRichText = false
         isAutomaticQuoteSubstitutionEnabled = false
@@ -462,7 +462,7 @@ private final class LingXiaTerminalTabChromeView: NSView {
             NSColor.lxTerminalBackground.setFill()
             activePath.fill()
 
-            NSColor.white.withAlphaComponent(0.07).setFill()
+            NSColor.lxTerminalForeground.withAlphaComponent(0.07).setFill()
             NSRect(x: 10, y: 3, width: max(0, bounds.width - 20), height: pixel).fill()
 
             // Active tabs visually connect into the terminal body, like iTerm tab strips.
@@ -471,12 +471,12 @@ private final class LingXiaTerminalTabChromeView: NSView {
         } else {
             if isHovered {
                 let inactivePath = NSBezierPath(roundedRect: rect.insetBy(dx: 2, dy: 5), xRadius: 7, yRadius: 7)
-                NSColor.white.withAlphaComponent(0.045).setFill()
+                NSColor.lxTerminalForeground.withAlphaComponent(0.045).setFill()
                 inactivePath.fill()
             }
 
             if !isHovered {
-                NSColor.white.withAlphaComponent(0.055).setFill()
+                NSColor.lxTerminalForeground.withAlphaComponent(0.055).setFill()
                 NSRect(x: bounds.width - pixel, y: 9, width: pixel, height: max(0, bounds.height - 18)).fill()
             }
         }
@@ -488,7 +488,7 @@ private final class LingXiaTerminalTabChromeView: NSView {
 
         let markerColor = isActive
             ? NSColor(red: 0.682, green: 0.812, blue: 0.735, alpha: 1)
-            : NSColor.white.withAlphaComponent(isHovered ? 0.58 : 0.40)
+            : NSColor.lxTerminalForeground.withAlphaComponent(isHovered ? 0.58 : 0.40)
         markerColor.setFill()
         NSBezierPath(ovalIn: markerRect).fill()
 
@@ -497,8 +497,8 @@ private final class LingXiaTerminalTabChromeView: NSView {
         paragraph.lineBreakMode = .byTruncatingTail
         paragraph.alignment = .left
         let titleColor = isActive
-            ? NSColor.white.withAlphaComponent(0.97)
-            : NSColor.white.withAlphaComponent(isHovered ? 0.78 : 0.66)
+            ? NSColor.lxTerminalForeground.withAlphaComponent(0.97)
+            : NSColor.lxTerminalForeground.withAlphaComponent(isHovered ? 0.78 : 0.66)
         (titleValue as NSString).draw(
             in: titleRect,
             withAttributes: [
@@ -532,7 +532,7 @@ private final class LingXiaTerminalTabChromeView: NSView {
 
     private func updateChrome() {
         closeButton.alphaValue = isActive || isHovered ? 1 : 0.48
-        closeButton.contentTintColor = NSColor.white.withAlphaComponent(isActive ? 0.62 : 0.40)
+        closeButton.contentTintColor = NSColor.lxTerminalForeground.withAlphaComponent(isActive ? 0.62 : 0.40)
         needsDisplay = true
     }
 }
@@ -622,11 +622,11 @@ private class LingXiaTerminalRailIconButton: NSButton {
 
     private func updateAppearance() {
         layer?.backgroundColor = hovered
-            ? NSColor.white.withAlphaComponent(0.065).cgColor
+            ? NSColor.lxTerminalForeground.withAlphaComponent(0.065).cgColor
             : NSColor.clear.cgColor
         layer?.borderWidth = 0
         layer?.borderColor = NSColor.clear.cgColor
-        contentTintColor = NSColor.white.withAlphaComponent(hovered ? 0.92 : 0.68)
+        contentTintColor = NSColor.lxTerminalForeground.withAlphaComponent(hovered ? 0.92 : 0.68)
     }
 }
 

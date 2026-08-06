@@ -618,6 +618,9 @@ mod bridge {
         #[swift_bridge(swift_name = "terminalConfigDirectory")]
         fn terminal_config_directory() -> String;
 
+        #[swift_bridge(swift_name = "terminalSurfaceChrome")]
+        fn terminal_surface_chrome() -> String;
+
         #[swift_bridge(swift_name = "terminalSessionExited")]
         fn terminal_session_exited(id: u64) -> bool;
 
@@ -2275,6 +2278,21 @@ pub fn terminal_config_directory() -> String {
         return crate::terminal::watched_directory()
             .map(|path| path.to_string_lossy().into_owned())
             .unwrap_or_default();
+    }
+
+    #[cfg(not(feature = "terminal-runtime"))]
+    String::new()
+}
+
+/// Colors for the chrome around a terminal, from the scheme in effect.
+///
+/// Derived in the shared configuration layer so the Windows host draws its
+/// card from the same rule; the tab strip belongs to the terminal, not to the
+/// app, so a theme change has to move it too.
+pub fn terminal_surface_chrome() -> String {
+    #[cfg(feature = "terminal-runtime")]
+    {
+        return lingxia_terminal_config::runtime::current_chrome_json();
     }
 
     #[cfg(not(feature = "terminal-runtime"))]

@@ -31,6 +31,10 @@ struct LingXiaTerminalSettings: Decodable {
         registerInstalledFonts()
         let dark = NSApp?.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
         let json = terminalLoadConfig(dark).toString()
+        // The load applied the theme, so the chrome derived from it is now
+        // current — read it here rather than leaving the first paint on the
+        // built-in fallback.
+        LingXiaTerminalChrome.reload()
         guard let data = json.data(using: .utf8),
               let settings = try? JSONDecoder().decode(LingXiaTerminalSettings.self, from: data)
         else {

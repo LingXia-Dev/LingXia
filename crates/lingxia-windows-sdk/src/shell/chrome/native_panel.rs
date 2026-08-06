@@ -256,9 +256,13 @@ pub(super) fn draw_terminal_panel_content(
         return;
     }
     let _ = client;
+    // The strip is the terminal's own — its `+` opens another PTY — so it is
+    // tinted from the scheme in effect rather than fixed. One rule, shared
+    // with the Apple host, so a theme change moves the whole card.
+    let chrome = lingxia_terminal_config::runtime::current_chrome();
     let surface = super::super::terminal_panel::focused_session(&panel.panel_id)
         .and_then(super::super::terminal_grid::session_surface_background)
-        .unwrap_or(TERMINAL_SURFACE_BACKGROUND);
+        .unwrap_or(chrome.surface);
 
     // Card: ONE rounded path, filled in two colors split at the header's
     // bottom edge. Each fill is clipped by a plain horizontal band (straight
@@ -277,7 +281,7 @@ pub(super) fn draw_terminal_panel_content(
         hdc,
         rect,
         SHELL_CONTENT_RADIUS,
-        TERMINAL_HEADER_BACKGROUND,
+        chrome.header,
         rect.top,
         header.bottom,
     );
@@ -305,7 +309,7 @@ pub(super) fn draw_terminal_panel_content(
             right: rect.right,
             bottom: header.bottom,
         },
-        blend_rgb(0xffffff, TERMINAL_HEADER_BACKGROUND, 6),
+        chrome.separator,
     );
 
     for tab in &header_rects.tabs {
@@ -328,7 +332,7 @@ pub(super) fn draw_terminal_panel_content(
                     right: tab.rect.right - TERMINAL_TAB_RADIUS - 2,
                     bottom: tab.rect.top + 2,
                 },
-                blend_rgb(0xffffff, surface, 8),
+                blend_rgb(chrome.text, surface, 8),
             );
         } else {
             // Hairline separator at the trailing edge of inactive tabs.
@@ -341,7 +345,7 @@ pub(super) fn draw_terminal_panel_content(
                     right: tab.rect.right + TERMINAL_TAB_GAP / 2 + 1,
                     bottom: tab.rect.bottom - inset,
                 },
-                blend_rgb(0xffffff, TERMINAL_HEADER_BACKGROUND, 8),
+                blend_rgb(chrome.text, chrome.header, 8),
             );
         }
         if rect_width(&tab.rect) >= TERMINAL_TAB_DOT_MIN_WIDTH {
@@ -352,15 +356,11 @@ pub(super) fn draw_terminal_panel_content(
                 right: tab.rect.left + 14 + TERMINAL_TAB_DOT_SIZE,
                 bottom: dot_top + TERMINAL_TAB_DOT_SIZE,
             };
-            let dot_background = if tab.active {
-                surface
-            } else {
-                TERMINAL_HEADER_BACKGROUND
-            };
+            let dot_background = if tab.active { surface } else { chrome.header };
             let color = if tab.active {
                 TERMINAL_TAB_ACCENT
             } else {
-                blend_rgb(0xffffff, dot_background, 40)
+                blend_rgb(chrome.text, dot_background, 40)
             };
             fill_round_rect_aa(hdc, dot, TERMINAL_TAB_DOT_SIZE / 2, color);
         }
@@ -371,18 +371,18 @@ pub(super) fn draw_terminal_panel_content(
             .map(|item| item.title.as_str())
             .unwrap_or_default();
         let color = if tab.active {
-            TERMINAL_HEADER_TEXT
+            chrome.text
         } else {
-            TERMINAL_HEADER_TEXT_MUTED
+            chrome.text_muted
         };
         // Grayscale AA throughout the header: ClearType subpixel rendering
-        // fringes light text on this dark chrome.
+        // fringes text against a chrome color it knows nothing about.
         draw_text_antialiased(hdc, title, tab.title, color, DT_LEFT);
         if let Some(close) = tab.close {
             let close_color = if tab.active {
-                TERMINAL_HEADER_TEXT_MUTED
+                chrome.text_muted
             } else {
-                blend_rgb(TERMINAL_HEADER_TEXT_MUTED, TERMINAL_HEADER_BACKGROUND, 55)
+                blend_rgb(chrome.text_muted, chrome.header, 55)
             };
             draw_text_antialiased(hdc, GLYPH_TAB_CLOSE, close, close_color, DT_CENTER);
         }
@@ -403,12 +403,12 @@ pub(super) fn draw_terminal_panel_content(
             hdc,
             native.title.as_deref().unwrap_or(&fallback_title),
             title_rect,
-            TERMINAL_HEADER_TEXT,
+            chrome.text,
             DT_LEFT,
         );
     }
     if let Some(new_tab) = header_rects.new_tab {
-        draw_frame_button_glyph_grayscale(hdc, GLYPH_ADD, new_tab, TERMINAL_HEADER_TEXT_MUTED);
+        draw_frame_button_glyph_grayscale(hdc, GLYPH_ADD, new_tab, chrome.text_muted);
     }
     if let Some(maximize) = header_rects.maximize {
         let glyph = if native.maximized {
@@ -416,7 +416,7 @@ pub(super) fn draw_terminal_panel_content(
         } else {
             GLYPH_PANEL_EXPAND
         };
-        draw_frame_button_glyph_grayscale(hdc, glyph, maximize, TERMINAL_HEADER_TEXT_MUTED);
+        draw_frame_button_glyph_grayscale(hdc, glyph, maximize, chrome.text_muted);
     }
 
     // Record the painted tab-title rects so the facade can start an inline
@@ -492,7 +492,10 @@ pub(super) fn draw_terminal_panel_content(
             SelectObject(hdc, HGDIOBJ(font.0))
         };
         let _ = SetBkMode(hdc, TRANSPARENT);
-        let _ = SetTextColor(hdc, rgb_to_colorref(SHELL_TERMINAL_TEXT));
+        let _ = SetTextColor(
+            hdc,
+            rgb_to_colorref(lingxia_terminal_config::runtime::current_chrome().text),
+        );
         for (line_index, line) in body.lines().take(max_lines).enumerate() {
             let top = text_rect.top + (line_index as i32 * line_height);
             let mut line_rect = RECT {

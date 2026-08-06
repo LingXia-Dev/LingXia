@@ -26,7 +26,8 @@ pub use picker::Choice;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 pub use theme::{
-    CursorConfig, CursorStyle, ThemeConfig, ThemeMode, ThemeSource, ThemeStore, parse_scheme,
+    CursorConfig, CursorStyle, SurfaceChrome, ThemeConfig, ThemeMode, ThemeSource, ThemeStore,
+    parse_scheme,
 };
 pub use watch::{ConfigWatcher, watch};
 
