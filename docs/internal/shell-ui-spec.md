@@ -853,45 +853,47 @@ Shell chrome always has exactly one writer:
 
 ### 7.4 Launch screen (splash)
 
-`splash:` in `lingxia.yaml` (`background`, optional `image` and
-`minDuration`) drives the baseline launch screen; hosts build none of it by
-hand. The OS static launch frame shows `background` (plus the system icon
-where the OS mandates one — Android 12+ and Harmony start windows cannot
-render a full-screen image); the SDK then covers the home cold start with
-`image` full-screen (aspect-fill) until the page's first render.
+`splash:` in `lingxia.yaml` (`background`, optional `image`, `mark`,
+`minDuration`) drives the launch screen; hosts build none of it by hand. Two
+OS-composed beats: the launch frame — `background` with a small centered
+image — then the app's first frame, which is the cover (`image`, aspect-fill
+over the same `background`), held until the home page first renders. One
+shared `background` makes the frame read as the cover's entrance.
 
-- **One image, one color, deliberately.** With a full-screen cover the color
-  is only visible in the launch frame, so it MUST match the cover rather than
-  the system theme: a dark color under a light cover adds a second transition
-  instead of removing one. Theme- and time-dependent art belongs to the
-  runtime hook below, which build-time config cannot express.
-- `background` is the only required field. An app whose cover comes from the
-  hook still needs it — nothing runs before the OS launch frame, so no code
-  can brand it.
-- Dismissal: a once-per-process home-first-render signal (the home page's
-  first `OnReady`) fades the overlay out (≤300 ms), held until `minDuration`
-  (default 600 ms) so a fast render does not flash the cover. The core, not
-  the platforms, applies that minimum. A 6 s timeout MUST dismiss regardless;
-  it is a framework constant and MUST NOT be configurable — a splash that can
-  be configured never to leave is a failure mode. While visible it swallows
+- **The cover rides the first app frame, never the launch frame** — launch
+  frames render full-bleed bitmaps soft (Harmony) or hide app-drawn content
+  until first frame (Android 12+). The SDK renders it fully opaque; the
+  frame's own exit is the one transition onto it. Nothing heavier than
+  building that frame may run before it: runtime initialization happens
+  under the cover, never in front of it.
+- **The launch frame carries only `background` plus a small centered image**
+  — the one composition it renders sharp and on time. Harmony
+  (`startWindowIcon`) and iOS (`UILaunchScreen`) center `mark`, unscaled;
+  Android 12+ blanks its icon slot so the mandatory splash beat is a plain
+  brand-color frame. `background` is the only required field.
+- **Without `image`, hold instead**: Android suspends the first draw so the
+  system splash persists until home is ready; Harmony and iOS render a first
+  frame reproducing the launch frame exactly.
+- Dismissal: the once-per-process home-first-render signal, held by the core
+  until `minDuration` (default 600 ms). A 6 s timeout MUST dismiss
+  regardless and MUST NOT be configurable. While up, the cover swallows
   input.
-- **Runtime hook.** A host MAY register one Rust function (`HostAddon::
-  select_splash`) that picks the cover for this launch. Selection is
-  synchronous, may only choose among assets already on disk, and runs under a
-  budget after which the configured cover wins; acquisition for future
-  launches is spawned and MUST NOT block it. The hook cannot choose the
-  background: that is baked into the launch frame at build time, so a runtime
-  override could only disagree with the frame already on screen.
+- **Runtime hook.** A host MAY implement `HostAddon::select_splash` to
+  substitute this launch's cover file. Selection is synchronous, picks only
+  from files already on disk, and runs under a budget after which the
+  bundled cover wins; acquisition for future launches goes through
+  `lingxia::spawn` and MUST NOT block it. The hook cannot choose the
+  background — that is baked into the launch frame at build time.
 - Generated resource names are the CLI↔SDK contract: Android
-  `lingxia_splash_image` / `lingxia_splash_background` / `Theme.LingXia.Splash`,
-  Apple `LingXiaSplash` / `LingXiaSplashBackground`, Harmony
-  `$media:lingxia_splash` / `$color:lingxia_splash_background`. Missing
-  resources disable the overlay; a host without `splash:` is unchanged.
-- On Apple the overlay MUST NOT depend on the compiled asset catalog: the
-  image also ships as a plain bundle resource and the colors as Info.plist
-  keys, because `actool` is an external tool that can fail (it requires an
-  installed simulator runtime even for device builds). The catalog entries
-  remain for `UILaunchScreen`, which has no non-catalog equivalent.
+  `lingxia_splash_background` / `lingxia_splash_image` /
+  `Theme.LingXia.Splash`, Apple `LingXiaSplashBackground` / `LingXiaSplash`
+  / `LingXiaSplashMark`, Harmony `$color:lingxia_splash_background` /
+  `$media:lingxia_splash` / `$media:lingxia_splash_mark`. Missing resources
+  disable the runtime half; a host without `splash:` is unchanged.
+- On Apple the runtime half MUST NOT depend on the compiled asset catalog
+  (`actool` can fail): the cover and mark also ship as plain bundle
+  resources and the color as an Info.plist key. The catalog entries remain
+  for `UILaunchScreen`, which has no non-catalog equivalent.
 - Desktop shells take no overlay; the ready signal is a no-op there.
 
 ---
@@ -942,7 +944,7 @@ As of 2026-08 (PR #202 follow-up design):
 | Compact projection | Browser aside/self chrome, group isolation, and browser-owned back/close semantics aligned with §5 on mobile and Runner |
 | Frameless window + `controls:` + writer window controls | Not implemented |
 | Declared page floats; native floats | Parsed but rejected by the CLI pending runtime support |
-| Launch screen (splash, §7.4) | CLI generation and Android/iOS/Harmony overlays implemented, not yet build- or device-verified; online-update delivery channel and a Windows overlay not implemented |
+| Launch screen (splash, §7.4) | CLI generation and Android/iOS/Harmony runtime halves implemented; iOS device-verified, Android/Harmony pending; campaign download channel and Windows not implemented |
 | Naming migration (Appendix C ledger) | Pending — `DockedBrowser` and `open_panel_lxapp` word roots still present |
 
 ## Appendix B: Pending visual decisions

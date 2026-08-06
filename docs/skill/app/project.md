@@ -326,6 +326,16 @@ The cache cap has the one non-obvious behavior worth knowing: cleanup triggers a
 
 ---
 
+## `splash` Section
+
+Optional launch screen, generated per platform from a few fields — no hand-built launch UI. The launch experience is "tap the icon, see the cover": `image` (PNG, full-screen aspect-fill) is rendered as the app's first frame on every cold start and held until the home page first renders, then fades into real content. The OS launch frame before it is the placeholder — `background` (required, `#RRGGBB`) with a small centered image — and sharing one background color makes that instant read as the cover's entrance. Pick a dark background so it never reads as a white flash.
+
+The cover deliberately never goes into the OS launch frame itself: launch-frame compositors render full-bleed art soft or hide app-drawn content until the app's first frame, so the SDK rides the first frame instead — the one place the cover is both sharp and immediate. `mark` (PNG, authored at the pixels it should occupy on screen) is what the placeholder centers where the OS accepts a custom image (HarmonyOS start window, iOS launch screen); Android 12+ keeps the real app icon in its splash slot, preserving the launcher's zoom morph. Omit `image` for a placeholder-only launch that holds until the home page is ready.
+
+A host's Rust addon can implement `select_splash` to substitute the cover file for a given cold start (e.g. a downloaded campaign cover) — same first-frame timing, different art. `minDuration` (ms, default 600) is the minimum the cover stays up; the maximum is a framework constant.
+
+---
+
 ## `macos` Section
 
 `macos` sets the macOS bundle id, deployment target, and the SwiftPM `targetName` (resource lookup) / `executableName` (product binary). All are optional — the CLI tries reasonable defaults and falls back to inference — but explicit names give reproducible builds. An optional `store:` block holds the App Store Connect identity (`bundleId` / `appId`) used by `lingxia store`. The scaffold writes a starting `macos:` for you; read it for the exact keys.
@@ -597,7 +607,6 @@ If `--skip-native` is used, SwiftPM links an existing Rust static library. That 
 
 The surface model intentionally does not yet define:
 
-- splash / launch screens — LingXia does not provide them; host apps own their launch UX
 - multiple `main` surfaces open as separate top-level windows simultaneously
 - asides nested under other asides
 - reusing one lxapp `appId` across multiple surfaces
