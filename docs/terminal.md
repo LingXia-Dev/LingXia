@@ -187,11 +187,10 @@ be re-launched under a new command.
 
 ## Rendering
 
-macOS renders on the GPU. Glyphs are rasterized once into an atlas and drawn as
-instanced quads, and only changed rows are uploaded, so a busy `tail -f` costs
-about as much as an idle prompt. Text is shaped per run rather than per cell,
-which is what makes ligatures possible while every glyph still lands on the
-terminal grid.
+Both desktops render on the GPU. Glyphs are rasterized once into an atlas and
+drawn as instanced quads, so a busy `tail -f` costs about as much as an idle
+prompt. Text is shaped per run rather than per cell, which is what makes
+ligatures possible while every glyph still lands on the terminal grid.
 
-Windows currently renders through GDI, which cannot do ligatures, color emoji
-or complex shaping. Those follow its GPU renderer.
+macOS goes through CoreText and Metal, Windows through DirectWrite and D3D11
+composited by DirectComposition. There is no software fallback on either.
