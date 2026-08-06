@@ -45,10 +45,11 @@ mod terminal_gpu;
 mod terminal_gpu {
     use windows::Win32::Foundation::{HWND, RECT};
 
-    pub(super) fn present(_: HWND, _: &str, _: RECT, _: [i32; 4], _: u32) -> bool {
-        false
-    }
+    pub(super) fn present(_: HWND, _: &str, _: RECT, _: [i32; 4]) {}
     pub(super) fn drop_panel(_: &str) {}
+    pub(super) fn cell_size() -> Option<(i32, i32)> {
+        None
+    }
 }
 mod terminal_panel;
 pub mod text_input;
