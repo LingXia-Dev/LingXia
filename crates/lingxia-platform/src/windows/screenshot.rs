@@ -207,7 +207,34 @@ async fn capture_window_png(window_id: usize) -> Result<Vec<u8>, PlatformError> 
         overlay_webview_screenshot(&mut image, &snapshot, &webview_png)?;
     }
     overlay_window_screenshots(&mut image, hwnd_from_usize(window_id))?;
+    overlay_surface_captures(&mut image, window_id);
     encode_rgba_png(width, height, image)
+}
+
+/// Paint in the rectangles the compositor owns. `BitBlt` cannot see them, so
+/// without this the terminal grid is missing from every capture.
+fn overlay_surface_captures(image: &mut image::RgbaImage, window_id: usize) {
+    for capture in lingxia_windows_contract::surface_captures(window_id) {
+        let expected = capture.width as usize * capture.height as usize * 4;
+        if capture.pixels.len() < expected {
+            continue;
+        }
+        for row in 0..capture.height {
+            for column in 0..capture.width {
+                let source = ((row * capture.width + column) * 4) as usize;
+                let (x, y) = (capture.x + column as i32, capture.y + row as i32);
+                if x < 0 || y < 0 || x as u32 >= image.width() || y as u32 >= image.height() {
+                    continue;
+                }
+                let bgra = &capture.pixels[source..source + 4];
+                image.put_pixel(
+                    x as u32,
+                    y as u32,
+                    image::Rgba([bgra[2], bgra[1], bgra[0], 0xff]),
+                );
+            }
+        }
+    }
 }
 
 fn hwnd_from_usize(window_id: usize) -> windows::Win32::Foundation::HWND {
