@@ -830,7 +830,7 @@ impl Builder<'_> {
                     // Sprites are placed at whole pixels: a fractional origin
                     // resamples a bitmap that is already the right size.
                     rect: [
-                        (x + glyph.x + sprite.left).round(),
+                        (x + f32::from(glyph.cell) * self.metrics.cell_width + sprite.left).round(),
                         (y + self.metrics.baseline + sprite.top).round(),
                         sprite.width,
                         sprite.height,
