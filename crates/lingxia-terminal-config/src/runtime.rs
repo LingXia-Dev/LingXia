@@ -93,10 +93,20 @@ fn start_watching(
     }
 }
 
+/// A generation means "this changed", not "this was read".
+///
+/// Hosts re-read on a moved generation, and re-reading goes through `load`,
+/// which publishes — so bumping unconditionally makes the two chase each
+/// other: the Apple host reloaded the file and re-enumerated every installed
+/// font four times a second, forever.
 fn publish(config: TerminalConfig) {
-    if let Ok(mut slot) = current().lock() {
-        *slot = config;
+    let Ok(mut slot) = current().lock() else {
+        return;
+    };
+    if *slot == config {
+        return;
     }
+    *slot = config;
     GENERATION.fetch_add(1, Ordering::Relaxed);
 }
 
