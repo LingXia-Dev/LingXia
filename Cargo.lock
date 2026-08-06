@@ -3833,6 +3833,7 @@ dependencies = [
  "lingxia-shell",
  "lingxia-surface",
  "lingxia-terminal",
+ "lingxia-terminal-config",
  "lingxia-webview",
  "lingxia-windows-contract",
  "log",

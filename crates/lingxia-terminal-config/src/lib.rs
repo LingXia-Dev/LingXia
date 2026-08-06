@@ -17,6 +17,7 @@
 pub mod cli;
 mod font;
 mod picker;
+pub mod runtime;
 mod theme;
 mod watch;
 
