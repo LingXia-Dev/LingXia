@@ -294,15 +294,20 @@ const LINGXIA_DARK: &str = r##"{
 /// On a light background "bright" has to mean *deeper*, not lighter. The
 /// obvious light scheme takes a dark scheme's bright ramp as-is, and then
 /// every error a shell prints — bright red — arrives as pale salmon on white.
+///
+/// `white` and `brightWhite` are greys here rather than white. Programs assume
+/// a dark terminal, so ANSI 7 and 15 are what they reach for when they mean
+/// "ordinary text" — PowerShell colors every command *argument* with ANSI 7.
+/// Spelling them literally on a light scheme makes that text disappear.
 const LINGXIA_LIGHT: &str = r##"{
   "name": "LingXia Light",
   "background": "#fafafa", "foreground": "#2b2d33",
   "cursorColor": "#2b2d33", "selectionBackground": "#cfd6e4",
   "black": "#383a42", "red": "#c02128", "green": "#1f7a3d", "yellow": "#8a6100",
-  "blue": "#0060b0", "purple": "#8b1a89", "cyan": "#00707f", "white": "#f0f0f0",
+  "blue": "#0060b0", "purple": "#8b1a89", "cyan": "#00707f", "white": "#5a636e",
   "brightBlack": "#5c6370", "brightRed": "#961218", "brightGreen": "#155c2c",
   "brightYellow": "#6b4b00", "brightBlue": "#004a89", "brightPurple": "#6b1069",
-  "brightCyan": "#005661", "brightWhite": "#ffffff"
+  "brightCyan": "#005661", "brightWhite": "#3f4650"
 }"##;
 
 /// Muted, for long sessions and dim rooms: the same hues as the dark scheme
@@ -548,8 +553,11 @@ mod tests {
     ///
     /// The light scheme shipped with a dark scheme's bright ramp, so every
     /// error a shell printed — bright red — arrived as pale salmon on white.
-    /// `black`/`white` and their bright forms are exempt: sitting at the
-    /// background's own end of the ramp is their job.
+    /// `white`/`brightWhite` are in the set on *every* scheme, light ones
+    /// included: programs assume a dark terminal, so ANSI 7 and 15 are what
+    /// they reach for when they mean "ordinary text". Only `black` and
+    /// `brightBlack` are exempt — being the dim end of the ramp is their job,
+    /// and nothing prints body text in them.
     #[test]
     fn every_built_in_color_is_legible_on_its_own_background() {
         let chromatic = [
@@ -565,6 +573,8 @@ mod tests {
             "brightBlue",
             "brightPurple",
             "brightCyan",
+            "white",
+            "brightWhite",
             "foreground",
         ];
         for (name, source) in BUILT_IN {
