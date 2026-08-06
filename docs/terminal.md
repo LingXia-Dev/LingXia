@@ -50,10 +50,11 @@ The file behind them:
 
 ```
 macOS     ~/Library/Application Support/<bundle-id>/app_state/terminal.json
-Windows   %APPDATA%\<bundle-id>\app_state\terminal.json
+Windows   %LOCALAPPDATA%\<product name>\data\app_state\terminal.json
 ```
 
-`term path` prints it. Every field is optional, so writing only what you
+`term path` prints it, which beats reconstructing either of those. Every field
+is optional, so writing only what you
 change is the normal way to keep one. Editing it by hand is equally supported —
 the file is watched, and a dotfile repository that syncs it works without any
 further ceremony. A file that does not parse is reported and ignored, and

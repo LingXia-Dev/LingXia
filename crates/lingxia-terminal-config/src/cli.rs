@@ -424,7 +424,7 @@ fn reset(app_data_dir: &Path, words: &[&str]) -> Output {
 /// adopts the change, so there is nothing to notify and no claim to make
 /// about whether one is running.
 fn apply(app_data_dir: &Path, config: &TerminalConfig, summary: &str) -> Output {
-    match config.save(app_data_dir) {
+    match config.save(app_data_dir, &serde_json::Value::Null) {
         Ok(()) => Output::ok(summary.to_string()),
         Err(error) => Output::error(error.to_string()),
     }
