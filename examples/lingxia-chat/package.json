@@ -4,7 +4,7 @@
   "description": "LLM chatbox demo using LingXia streaming bridge",
   "type": "module",
   "scripts": {
-    "build": "bash ../scripts/run-lingxia-cli.sh build"
+    "build": "lingxia build --framework react"
   },
   "keywords": [
     "lingxia",
