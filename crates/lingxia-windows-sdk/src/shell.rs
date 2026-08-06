@@ -37,6 +37,19 @@ pub mod terminal_grid {
         false
     }
 }
+#[cfg(feature = "terminal-runtime")]
+mod terminal_gpu;
+/// Without the terminal runtime there is no grid to composite, so the panel
+/// painter's call compiles away to "GDI keeps it".
+#[cfg(not(feature = "terminal-runtime"))]
+mod terminal_gpu {
+    use windows::Win32::Foundation::{HWND, RECT};
+
+    pub(super) fn present(_: HWND, _: &str, _: RECT, _: [i32; 4], _: u32) -> bool {
+        false
+    }
+    pub(super) fn drop_panel(_: &str) {}
+}
 mod terminal_panel;
 pub mod text_input;
 mod theme;

@@ -1518,6 +1518,8 @@ fn close_terminal_tab_by_sessions(panel_id: &str, session_ids: &[u64]) {
 fn shutdown_windows_terminal_panel_state(panel_id: &str) {
     lingxia_windows_contract::clear_host_panel_input_handler(panel_id);
     #[cfg(feature = "shell-chrome")]
+    super::terminal_gpu::drop_panel(panel_id);
+    #[cfg(feature = "shell-chrome")]
     super::terminal_grid::clear_panel(panel_id);
     if let Some(panel) = windows_terminal_panels().remove(panel_id) {
         panel.stop.store(true, Ordering::Release);

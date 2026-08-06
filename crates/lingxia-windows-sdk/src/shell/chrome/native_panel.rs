@@ -442,6 +442,20 @@ pub(super) fn draw_terminal_panel_content(
         return;
     }
 
+    // The GPU path, when it is switched on, owns the body: a composited
+    // surface covers whatever GDI drew underneath it, so the two cannot both
+    // paint. Only the card's bottom corners are its to round — the header
+    // above it keeps the top two.
+    if super::super::terminal_gpu::present(
+        hwnd,
+        &panel.panel_id,
+        body,
+        [0, 0, SHELL_CONTENT_RADIUS, SHELL_CONTENT_RADIUS],
+        surface,
+    ) {
+        return;
+    }
+
     // Live sessions are drawn as a cell grid from the snapshot store; the
     // body-text path below remains for pre-session states ("Starting
     // terminal...", runtime-unavailable, failures).
