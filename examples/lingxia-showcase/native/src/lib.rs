@@ -29,12 +29,10 @@ impl lingxia::HostAddon for ExampleHostAddon {
     /// strictly alternates it with the bundled one, so back-to-back cold
     /// starts show the hook swapping the cover.
     fn select_splash(&self, launch: &lingxia::splash::Launch) -> lingxia::splash::SplashChoice {
-        let path = launch.cache_dir().join("alt.png");
-        lingxia::spawn(async move {
-            if let Some(parent) = path.parent() {
-                let _ = std::fs::create_dir_all(parent);
-            }
-            let _ = std::fs::write(&path, include_bytes!("../assets/splash-alt.png"));
+        // One retained key bounds the store no matter what past builds wrote.
+        lingxia::splash::retain(["alt"]);
+        lingxia::spawn(async {
+            let _ = lingxia::splash::store("alt", include_bytes!("../assets/splash-alt.png"));
         });
 
         let counter = launch.cache_dir().join("launch-count");

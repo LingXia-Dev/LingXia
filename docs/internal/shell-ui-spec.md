@@ -879,11 +879,13 @@ shared `background` makes the frame read as the cover's entrance.
   regardless and MUST NOT be configurable. While up, the cover swallows
   input.
 - **Runtime hook.** A host MAY implement `HostAddon::select_splash` to
-  substitute this launch's cover file. Selection is synchronous, picks only
-  from files already on disk, and runs under a budget after which the
-  bundled cover wins; acquisition for future launches goes through
-  `lingxia::spawn` and MUST NOT block it. The hook cannot choose the
-  background — that is baked into the launch frame at build time.
+  substitute this launch's cover file. Selection is synchronous, on-disk
+  only, and budgeted — the bundled cover wins on overrun; acquisition goes
+  through `lingxia::spawn` and MUST NOT block it. The cover store sits
+  under app data, exempt from OS and framework eviction; `splash::store`
+  writes it atomically and `splash::retain` bounds it. The hook cannot
+  choose the background — that is baked into the launch frame at build
+  time.
 - Generated resource names are the CLI↔SDK contract: Android
   `lingxia_splash_background` / `lingxia_splash_image` /
   `Theme.LingXia.Splash`, Apple `LingXiaSplashBackground` / `LingXiaSplash`

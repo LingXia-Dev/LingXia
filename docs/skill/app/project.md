@@ -332,7 +332,7 @@ Optional launch screen, generated per platform from a few fields — no hand-bui
 
 The cover deliberately never goes into the OS launch frame itself: launch-frame compositors render full-bleed art soft or hide app-drawn content until the app's first frame, so the SDK rides the first frame instead — the one place the cover is both sharp and immediate. `mark` (PNG, authored at the pixels it should occupy on screen) is what the placeholder centers where the OS accepts a custom image (HarmonyOS start window, iOS launch screen); Android 12+ keeps the real app icon in its splash slot, preserving the launcher's zoom morph. Omit `image` for a placeholder-only launch that holds until the home page is ready.
 
-A host's Rust addon can implement `select_splash` to substitute the cover file for a given cold start (e.g. a downloaded campaign cover) — same first-frame timing, different art. `minDuration` (ms, default 600) is the minimum the cover stays up; the maximum is a framework constant.
+A host's Rust addon can implement `select_splash` to substitute the cover file for a given cold start (e.g. a downloaded campaign cover) — same first-frame timing, different art; see [Launch Cover](../native/splash.md). `minDuration` (ms, default 600) is the minimum the cover stays up; the maximum is a framework constant.
 
 ---
 

@@ -26,15 +26,19 @@ use std::time::Duration;
 /// here would be delaying the very screen it is trying to decorate.
 const SELECTION_BUDGET: Duration = Duration::from_millis(50);
 
-/// Directory holding covers acquired at runtime, under the app data dir.
+/// Directory holding covers acquired at runtime — deliberately under the app
+/// *data* dir, not the OS cache dir: the next cold start must find the cover
+/// on disk before any code or network runs, and OS caches can be purged at
+/// any time. Nothing evicts it automatically; files are key-addressed and
+/// overwritten in place, so the footprint is the set of keys the host uses.
 const CACHE_SUBDIR: &str = "lingxia/splash";
 
 /// A substitute cover for one cold start.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SplashCover {
-    /// A cover in the managed cache, addressed by the key it was stored under.
-    /// Falls back to the bundled cover when the file is gone (evicted, never
-    /// downloaded, cleared).
+    /// A cover in the managed store, addressed by the key it was stored
+    /// under. Falls back to the bundled cover when the file is gone (never
+    /// downloaded, or removed by the host).
     Cached(String),
     /// An app-owned absolute path, for hosts that manage their own storage.
     Path(PathBuf),
@@ -99,6 +103,11 @@ impl Launch {
     /// Where runtime-acquired covers live. Acquisition work (spawned with
     /// [`crate::spawn`]) writes here; the file becomes selectable on the
     /// next launch.
+    ///
+    /// Backed by app data, not the OS cache: nothing — neither the OS nor
+    /// the framework — evicts it, so a downloaded cover is reliably there
+    /// at the next cold start. Overwrite a key to replace its art; remove
+    /// files to reclaim space. Both belong to the host.
     pub fn cache_dir(&self) -> PathBuf {
         self.data_dir.join(CACHE_SUBDIR)
     }
@@ -108,6 +117,53 @@ impl Launch {
         let path = self.cache_dir().join(format!("{key}.png"));
         path.is_file().then_some(path)
     }
+}
+
+/// Write a cover into the store, atomically: temp file then rename, so
+/// [`Launch::cached`] only ever sees absent or complete — a launch can
+/// never select a half-downloaded cover. Call from acquisition work.
+pub fn store(key: &str, bytes: &[u8]) -> std::io::Result<PathBuf> {
+    let dir = crate::app::data_dir()
+        .map_err(|e| std::io::Error::other(e.to_string()))?
+        .join(CACHE_SUBDIR);
+    std::fs::create_dir_all(&dir)?;
+    // One temp name per key: a crashed write is overwritten by the retry.
+    let tmp = dir.join(format!(".{key}.png.tmp"));
+    let dest = dir.join(format!("{key}.png"));
+    std::fs::write(&tmp, bytes)?;
+    std::fs::rename(&tmp, &dest)?;
+    Ok(dest)
+}
+
+/// Keep only these keys in the cover store; every other cover is deleted in
+/// the background. One call bounds a store fed by rotating keys — list what
+/// future launches may still select, including what acquisition is about to
+/// write. Callable from any phase, `select_splash` included; only
+/// `<key>.png` cover files are touched.
+pub fn retain<I, S>(keys: I)
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<str>,
+{
+    let keep: Vec<String> = keys
+        .into_iter()
+        .map(|key| format!("{}.png", key.as_ref()))
+        .collect();
+    crate::spawn(async move {
+        let Ok(data_dir) = crate::app::data_dir() else {
+            return;
+        };
+        let Ok(entries) = std::fs::read_dir(data_dir.join(CACHE_SUBDIR)) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let name = entry.file_name();
+            let Some(name) = name.to_str() else { continue };
+            if name.ends_with(".png") && !keep.iter().any(|kept| kept == name) {
+                let _ = std::fs::remove_file(entry.path());
+            }
+        }
+    });
 }
 
 /// Ask the registered host addons which cover to show.
