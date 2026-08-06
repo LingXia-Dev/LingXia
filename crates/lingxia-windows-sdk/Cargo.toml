@@ -76,6 +76,7 @@ browser-shell = [
 terminal-runtime = [
     "shell-chrome",
     "dep:lingxia-terminal",
+    "dep:lingxia-terminal-config",
     "lingxia/terminal-runtime",
 ]
 webview-input = ["host-api", "lingxia?/webview-input"]
@@ -89,6 +90,7 @@ lingxia-shell = { workspace = true, optional = true }
 lingxia-surface = { workspace = true, optional = true }
 lingxia-browser-shell = { workspace = true, optional = true }
 lingxia-terminal = { workspace = true, optional = true }
+lingxia-terminal-config = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
 thiserror = { workspace = true, optional = true }
 tokio = { workspace = true, optional = true }
@@ -117,8 +119,17 @@ lingxia-windows-contract = { workspace = true, optional = true }
 windows-core = { git = "https://github.com/microsoft/windows-rs.git", rev = "a1e9fce43c026221f62f0a149267cb6d7d3c607b", package = "windows-core", features = ["proc-macros"], optional = true }
 windows = { git = "https://github.com/microsoft/windows-rs.git", rev = "a1e9fce43c026221f62f0a149267cb6d7d3c607b", package = "windows", features = [
     "Win32_Foundation",
+    "Win32_Graphics_Direct3D",
+    "Win32_Graphics_Direct3D11",
+    "Win32_Graphics_Direct3D_Fxc",
+    "Win32_Graphics_DirectComposition",
+    "Win32_Graphics_DirectWrite",
     "Win32_Graphics_Dwm",
+    "Win32_Graphics_Dxgi",
+    "Win32_Graphics_Dxgi_Common",
     "Win32_Globalization",
+    "Win32_Storage_FileSystem",
+    "Win32_System_Console",
     "Win32_Graphics_Gdi",
     "Win32_Graphics_GdiPlus",
     "Win32_Media_MediaFoundation",

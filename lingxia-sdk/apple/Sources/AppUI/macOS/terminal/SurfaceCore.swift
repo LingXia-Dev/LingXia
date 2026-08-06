@@ -3,46 +3,10 @@ import AppKit
 import CLingXiaRustAPI
 import OSLog
 
-private struct LingXiaTerminalSnapshot: Decodable {
-    let cols: UInt16
-    let rows: UInt16
-    let lines: [String]
-    let cells: [LingXiaTerminalCell]
-    let defaultForeground: String?
-    let defaultBackground: String?
-    let cursorRow: UInt16
-    let cursorCol: UInt16
-    let cursorVisible: Bool
-    let cursorStyle: String?
-    let applicationCursor: Bool
-    let bracketedPaste: Bool
-    let alternateScreen: Bool
-    let scrollbar: LingXiaTerminalScrollbar?
-    let processTitle: String?
+private struct LingXiaTerminalTitleState: Decodable {
+    let processTitle: String
     let title: String?
-    let generation: UInt64
-    let exited: Bool
-
-    enum CodingKeys: String, CodingKey {
-        case cols
-        case rows
-        case lines
-        case cells
-        case defaultForeground = "default_foreground"
-        case defaultBackground = "default_background"
-        case cursorRow = "cursor_row"
-        case cursorCol = "cursor_col"
-        case cursorVisible = "cursor_visible"
-        case cursorStyle = "cursor_style"
-        case applicationCursor = "application_cursor"
-        case bracketedPaste = "bracketed_paste"
-        case alternateScreen = "alternate_screen"
-        case scrollbar
-        case processTitle = "process_title"
-        case title
-        case generation
-        case exited
-    }
+    let titleGeneration: UInt64
 }
 
 private struct LingXiaTerminalScrollbar: Decodable {
@@ -51,31 +15,7 @@ private struct LingXiaTerminalScrollbar: Decodable {
     let len: UInt64
 }
 
-private struct LingXiaTerminalCell: Decodable {
-    let row: UInt16
-    let col: UInt16
-    let text: String
-    let fg: String?
-    let bg: String?
-    let bold: Bool
-    let dim: Bool
-    let italic: Bool
-    let underline: Bool
-    let inverse: Bool
-    let wide: Bool
-}
-
-private struct LingXiaTerminalRenderStyle: Equatable {
-    let fg: String?
-    let bg: String?
-    let bold: Bool
-    let dim: Bool
-    let italic: Bool
-    let underline: Bool
-    let inverse: Bool
-}
-
-private struct LingXiaTerminalGridPoint: Equatable {
+struct LingXiaTerminalGridPoint: Equatable {
     var row: Int
     var col: Int
 }
@@ -204,7 +144,7 @@ final class LingXiaTerminalPaneView: NSView, NSDraggingSource {
     private let dragHandle = LingXiaTerminalPaneDragHandleView()
     private let dropOverlay = LingXiaTerminalPaneDropOverlay()
     private let session: LingXiaPTYTerminalSession
-    private let font = LingXiaTerminalFont.regular()
+    private var font = LingXiaTerminalFont.regular()
     private var dropDirection: LingXiaTerminalSplitDirection?
 
     init(initialDirectory: String? = nil) {
@@ -265,12 +205,23 @@ final class LingXiaTerminalPaneView: NSView, NSDraggingSource {
             self.onTitleEditRequested?(self.paneID)
         }
 
-        session.onSnapshot = { [weak self] snapshot in
+        session.onFrame = { [weak self] frame in
             Task { @MainActor [weak self] in
-                if let self {
-                    lxTerminalLog("pane.snapshot pane=\(self.paneID.uuidString) generation=\(snapshot.generation) cols=\(snapshot.cols) rows=\(snapshot.rows)")
-                }
-                self?.applySnapshot(snapshot)
+                self?.terminalView.applyFrame(frame)
+            }
+        }
+        session.onConfigChanged = { [weak self] in
+            Task { @MainActor [weak self] in
+                // Chrome first: the rail is tinted from the same scheme, so a
+                // theme change has to move it as well as the grid.
+                LingXiaTerminalChrome.reload()
+                self?.applySettings(LingXiaTerminalSettings.load())
+            }
+        }
+        session.onTitles = { [weak self] processTitle, title in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.onTitleChanged?(self.paneID, processTitle, title)
             }
         }
         session.onError = { [weak self] error in
@@ -399,9 +350,27 @@ final class LingXiaTerminalPaneView: NSView, NSDraggingSource {
         }
     }
 
+    /// Re-apply the chrome colors this view's layers are holding a copy of.
+    /// Layer colors are snapshots, so a scheme change has to walk them.
+    func refreshChromeColors() {
+        layer?.backgroundColor = NSColor.lxTerminalBackground.cgColor
+        terminalView.layer?.backgroundColor = NSColor.lxTerminalBackground.cgColor
+        terminalView.needsDisplay = true
+        needsDisplay = true
+    }
+
     private func setupTerminalView() {
         terminalView.translatesAutoresizingMaskIntoConstraints = false
+        applySettings(LingXiaTerminalSettings.load())
+    }
+
+    /// Adopt a configuration. The theme is already in effect — the engine
+    /// applies it — so only what the platform draws is set here.
+    private func applySettings(_ settings: LingXiaTerminalSettings) {
+        font = settings.makeFont()
         terminalView.font = font
+        terminalView.lineHeightScale = settings.font.lineHeight
+        terminalView.ligatures = settings.font.ligatures
     }
 
     func showContextMenu(fromWindowEvent event: NSEvent) {
@@ -589,10 +558,6 @@ final class LingXiaTerminalPaneView: NSView, NSDraggingSource {
         terminalView.append(output)
     }
 
-    private func applySnapshot(_ snapshot: LingXiaTerminalSnapshot) {
-        onTitleChanged?(paneID, snapshot.processTitle, snapshot.title)
-        terminalView.applySnapshot(snapshot)
-    }
 
 }
 
@@ -611,16 +576,20 @@ private final class LingXiaTerminalCanvasView: NSView, @MainActor NSTextInputCli
     var font = LingXiaTerminalFont.regular() {
         didSet {
             recalculateGridSize()
-            needsDisplay = true
+            setNeedsRender()
+        }
+    }
+
+    /// Multiplier on the font's natural line height, from configuration.
+    var lineHeightScale: CGFloat = 1 {
+        didSet {
+            recalculateGridSize()
+            setNeedsRender()
         }
     }
 
     private var cols = 120
     private var rows = 32
-    private var lines: [String] = Array(repeating: "", count: 32)
-    private var cells: [LingXiaTerminalCell] = []
-    private var defaultForeground = NSColor.lxTerminalForeground
-    private var defaultBackground = NSColor.lxTerminalBackground
     private var cursorRow = 0
     private var cursorCol = 0
     private var cursorVisible = true
@@ -640,12 +609,143 @@ private final class LingXiaTerminalCanvasView: NSView, @MainActor NSTextInputCli
     private var markedText = NSMutableAttributedString()
     private var markedTextSelection = NSRange(location: 0, length: 0)
     private var keyTextAccumulator: [String]?
+    private let renderer = LingXiaTerminalMetalRenderer()
+    private var frame_: LingXiaTerminalGPUFrame?
+    private var renderScheduled = false
+    /// Shape runs with the font's ligatures; comes from configuration.
+    var ligatures = true {
+        didSet { setNeedsRender() }
+    }
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         wantsLayer = true
-        layer?.backgroundColor = NSColor.lxTerminalBackground.cgColor
         layerContentsRedrawPolicy = .onSetNeedsDisplay
+        if renderer == nil {
+            LXLog.error("terminal GPU renderer unavailable", category: "MacTerminal")
+            layer?.backgroundColor = NSColor.lxTerminalBackground.cgColor
+        }
+    }
+
+    /// The grid is drawn by Metal, so the view's backing store *is* the
+    /// drawable — there is no CoreGraphics pass over the cells at all.
+    override func makeBackingLayer() -> CALayer {
+        guard let renderer else { return super.makeBackingLayer() }
+        let layer = renderer.makeLayer()
+        layer.contentsScale = backingScale
+        return layer
+    }
+
+    /// A custom backing layer makes this view *layer-hosting*: AppKit never
+    /// calls `draw(_:)` or `updateLayer()` for it, so redraws are scheduled
+    /// here instead of through `needsDisplay`.
+    private func setNeedsRender() {
+        guard !renderScheduled else { return }
+        renderScheduled = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.renderScheduled = false
+            self.renderGPUFrame()
+        }
+    }
+
+    /// AppKit never calls this while the view is on screen — a layer-hosting
+    /// view draws through its own layer. It runs only when something replays
+    /// the view tree through CoreGraphics, which is exactly what window
+    /// screenshot automation does, and which cannot see a Metal layer. Render
+    /// the same frame offscreen so captures show the terminal rather than a
+    /// blank rectangle.
+    override func draw(_ dirtyRect: NSRect) {
+        guard let renderer, let context = NSGraphicsContext.current?.cgContext else { return }
+        guard let image = renderer.image(frame: frame_ ?? LingXiaTerminalGPUFrame(), context: renderContext()) else {
+            return
+        }
+        context.draw(image, in: bounds)
+    }
+
+    override func viewDidChangeBackingProperties() {
+        super.viewDidChangeBackingProperties()
+        setNeedsRender()
+    }
+
+    override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
+        setNeedsRender()
+    }
+
+    private var metalLayer: CAMetalLayer? { layer as? CAMetalLayer }
+
+    /// Hand the engine's frame to the GPU. Nothing is converted per cell:
+    /// the renderer walks the same buffers the engine produced.
+    func applyFrame(_ frame: LingXiaTerminalGPUFrame) {
+        cols = max(1, frame.cols)
+        rows = max(1, frame.rows)
+        cursorRow = frame.cursorRow
+        cursorCol = frame.cursorCol
+        cursorVisible = frame.cursorVisible
+        cursorStyle = ["block", "bar", "underline", "block-hollow"][Int(min(frame.cursorStyle, 3))]
+        applicationCursor = frame.applicationCursor
+        bracketedPaste = frame.bracketedPaste
+        alternateScreen = frame.alternateScreen
+        if frame.scrollbarTotal > 0 {
+            scrollbar = LingXiaTerminalScrollbar(
+                total: frame.scrollbarTotal,
+                offset: frame.scrollbarOffset,
+                len: frame.scrollbarLen
+            )
+        } else {
+            scrollbar = nil
+        }
+        frame_ = frame
+        if hasMarkedText() {
+            inputContext?.invalidateCharacterCoordinates()
+        }
+        setNeedsRender()
+    }
+
+    private func renderGPUFrame() {
+        guard let renderer, let metalLayer else { return }
+        let scale = backingScale
+        metalLayer.contentsScale = scale
+        let size = bounds.size
+        guard size.width > 0, size.height > 0 else { return }
+        metalLayer.drawableSize = CGSize(width: size.width * scale, height: size.height * scale)
+        renderer.render(frame: frame_ ?? LingXiaTerminalGPUFrame(), context: renderContext(), in: metalLayer)
+    }
+
+    private func renderContext() -> LingXiaTerminalRenderContext {
+        let scale = backingScale
+        var context = LingXiaTerminalRenderContext(
+            cellSize: charSize,
+            baseline: terminalBaselineOffset(),
+            font: font,
+            scale: scale,
+            viewSize: bounds.size
+        )
+        context.selection = selectionSpans()
+        context.cursorColor = NSColor.lxTerminalForeground
+        context.drawCursor = window?.firstResponder === self && !hasMarkedText()
+        context.markedText = markedText.string.isEmpty ? nil : markedText.string
+        context.markedTextOrigin = LingXiaTerminalGridPoint(row: cursorRow, col: cursorCol)
+        context.scrollbarColor = scrollbarVisible
+            ? NSColor.lxTerminalForeground.withAlphaComponent(0.28)
+            : NSColor.clear
+        context.ligatures = ligatures
+        return context
+    }
+
+    /// Selection as row spans, the form the renderer draws.
+    private func selectionSpans() -> [(row: Int, startCol: Int, endCol: Int)] {
+        guard let selection = normalizedSelection() else { return [] }
+        var spans: [(row: Int, startCol: Int, endCol: Int)] = []
+        for row in selection.start.row...selection.end.row where row >= 0 && row < rows {
+            let startCol = row == selection.start.row ? selection.start.col : 0
+            let endCol = row == selection.end.row ? selection.end.col : cols
+            if endCol > startCol {
+                spans.append((row: row, startCol: startCol, endCol: min(endCol, cols)))
+            }
+        }
+        return spans
     }
 
     required init?(coder: NSCoder) {
@@ -662,13 +762,13 @@ private final class LingXiaTerminalCanvasView: NSView, @MainActor NSTextInputCli
     override func becomeFirstResponder() -> Bool {
         lxTerminalLog("canvas.becomeFirstResponder bounds=\(String(format: "%.0fx%.0f", bounds.width, bounds.height)) cols=\(cols) rows=\(rows)")
         onActivated?()
-        needsDisplay = true
+        setNeedsRender()
         return true
     }
 
     override func resignFirstResponder() -> Bool {
         lxTerminalLog("canvas.resignFirstResponder")
-        needsDisplay = true
+        setNeedsRender()
         return super.resignFirstResponder()
     }
 
@@ -686,19 +786,19 @@ private final class LingXiaTerminalCanvasView: NSView, @MainActor NSTextInputCli
         let point = gridPoint(for: convert(event.locationInWindow, from: nil))
         selectionAnchor = point
         selectionFocus = point
-        needsDisplay = true
+        setNeedsRender()
     }
 
     override func mouseDragged(with event: NSEvent) {
         selectionFocus = gridPoint(for: convert(event.locationInWindow, from: nil))
-        needsDisplay = true
+        setNeedsRender()
     }
 
     override func mouseUp(with event: NSEvent) {
         guard selectionAnchor == selectionFocus else { return }
         selectionAnchor = nil
         selectionFocus = nil
-        needsDisplay = true
+        setNeedsRender()
     }
 
     override func rightMouseDown(with event: NSEvent) {
@@ -719,7 +819,7 @@ private final class LingXiaTerminalCanvasView: NSView, @MainActor NSTextInputCli
         revealScrollbar()
         selectionAnchor = nil
         selectionFocus = nil
-        needsDisplay = true
+        setNeedsRender()
         let point = gridPoint(for: convert(event.locationInWindow, from: nil))
         // gridPoint allows col == cols (selection end-of-line); mouse
         // reports need an in-range column.
@@ -858,7 +958,7 @@ private final class LingXiaTerminalCanvasView: NSView, @MainActor NSTextInputCli
             "canvas.ime marked chars=\(markedText.string.count) selected=\(markedTextSelection.location):\(markedTextSelection.length)"
         )
         inputContext?.invalidateCharacterCoordinates()
-        needsDisplay = true
+        setNeedsRender()
     }
 
     func unmarkText() {
@@ -867,7 +967,7 @@ private final class LingXiaTerminalCanvasView: NSView, @MainActor NSTextInputCli
         markedTextSelection = NSRange(location: 0, length: 0)
         lxTerminalLog("canvas.ime unmark")
         inputContext?.invalidateCharacterCoordinates()
-        needsDisplay = true
+        setNeedsRender()
     }
 
     func validAttributesForMarkedText() -> [NSAttributedString.Key] {
@@ -931,151 +1031,9 @@ private final class LingXiaTerminalCanvasView: NSView, @MainActor NSTextInputCli
         // callback intentionally absorbs AppKit's command to avoid an NSBeep.
     }
 
-    override func draw(_ dirtyRect: NSRect) {
-        defaultBackground.setFill()
-        dirtyRect.fill()
-        configureTextRendering()
-
-        let attributes = textAttributes(bold: false, italic: false, underline: false, foreground: defaultForeground)
-        let insetX: CGFloat = 0
-        let insetTop: CGFloat = 0
-        let baselineOffset = terminalBaselineOffset()
-        if cells.isEmpty {
-            for row in 0..<rows {
-                let line = row < lines.count ? lines[row] : ""
-                guard !line.isEmpty else { continue }
-                let y = bounds.height - insetTop - CGFloat(row + 1) * charSize.height + baselineOffset
-                drawTerminalText(line, at: NSPoint(x: insetX, y: y), attributes: attributes)
-            }
-        }
-
-        // Draw all backgrounds first. Otherwise a following cell background can
-        // cover the right half of a wide CJK glyph drawn by the previous cell.
-        let orderedCells = cells.sorted {
-            if $0.row == $1.row {
-                return $0.col < $1.col
-            }
-            return $0.row < $1.row
-        }
-
-        for cell in orderedCells {
-            let bg = cell.inverse
-                ? terminalColor(cell.fg, fallback: defaultForeground)
-                : terminalColor(cell.bg, fallback: nil)
-            let x = pixelFloor(insetX + CGFloat(cell.col) * charSize.width)
-            let y = pixelFloor(bounds.height - insetTop - CGFloat(cell.row + 1) * charSize.height)
-            if let bg {
-                bg.setFill()
-                pixelAlignedRect(x: x, y: y, width: charSize.width * (cell.wide ? 2 : 1), height: charSize.height).fill()
-            }
-        }
-
-        drawSelectionOverlay()
-
-        var runText = ""
-        var runRow = -1
-        var runStartCol = 0
-        var runNextCol = 0
-        var runStyle: LingXiaTerminalRenderStyle?
-
-        func flushRun() {
-            guard !runText.isEmpty, let style = runStyle else { return }
-            let defaultColor = style.inverse ? defaultBackground : defaultForeground
-            let fg = terminalColor(
-                style.inverse ? style.bg : style.fg,
-                fallback: defaultColor
-            )?.withAlphaComponent(style.dim ? 0.58 : 1) ?? defaultColor
-            let attrs = textAttributes(bold: style.bold, italic: style.italic, underline: style.underline, foreground: fg)
-            let x = pixelFloor(insetX + CGFloat(runStartCol) * charSize.width)
-            let y = pixelFloor(bounds.height - insetTop - CGFloat(runRow + 1) * charSize.height)
-            drawTerminalText(runText, at: NSPoint(x: x, y: y + baselineOffset), attributes: attrs)
-            runText.removeAll(keepingCapacity: true)
-            runStyle = nil
-        }
-
-        for cell in orderedCells {
-            if !cell.text.isEmpty {
-                let style = LingXiaTerminalRenderStyle(
-                    fg: cell.fg,
-                    bg: cell.bg,
-                    bold: cell.bold,
-                    dim: cell.dim,
-                    italic: cell.italic,
-                    underline: cell.underline,
-                    inverse: cell.inverse
-                )
-                let cellCol = Int(cell.col)
-                if !style.italic,
-                   !style.underline,
-                   isSupportedBoxDrawing(cell.text) {
-                    flushRun()
-                    _ = drawBoxDrawing(
-                       cell.text,
-                       col: cellCol,
-                       row: Int(cell.row),
-                       color: terminalColor(
-                           style.inverse ? style.bg : style.fg,
-                           fallback: style.inverse ? defaultBackground : defaultForeground
-                       )?.withAlphaComponent(style.dim ? 0.58 : 1) ?? defaultForeground,
-                       bold: style.bold
-                    )
-                    continue
-                }
-                if runStyle != style || runRow != Int(cell.row) || runNextCol != cellCol {
-                    flushRun()
-                    runStyle = style
-                    runRow = Int(cell.row)
-                    runStartCol = cellCol
-                    runNextCol = cellCol
-                }
-                runText += cell.text
-                runNextCol = cellCol + (cell.wide ? 2 : 1)
-            }
-        }
-        flushRun()
-
-        drawMarkedText()
-        // Only the focused pane paints the cursor (matches the Windows grid):
-        // hollow cursors in every split make cursor-heavy TUIs appear to
-        // flicker at several positions at once.
-        if window?.firstResponder === self, cursorVisible, !hasMarkedText() {
-            let x = pixelFloor(insetX + CGFloat(cursorCol) * charSize.width)
-            let y = pixelFloor(bounds.height - insetTop - CGFloat(cursorRow + 1) * charSize.height)
-            drawCursor(at: NSPoint(x: x, y: y))
-        }
-        drawScrollbar()
-    }
-
     func append(_ output: String) {
-        if !output.isEmpty {
-            lines.append(contentsOf: output.components(separatedBy: .newlines))
-            if lines.count > rows {
-                lines = Array(lines.suffix(rows))
-            }
-        }
-        needsDisplay = true
-    }
-
-    func applySnapshot(_ snapshot: LingXiaTerminalSnapshot) {
-        cols = max(1, Int(snapshot.cols))
-        rows = max(1, Int(snapshot.rows))
-        lines = snapshot.lines
-        cells = snapshot.cells
-        defaultForeground = terminalColor(snapshot.defaultForeground, fallback: .lxTerminalForeground) ?? .lxTerminalForeground
-        defaultBackground = terminalColor(snapshot.defaultBackground, fallback: .lxTerminalBackground) ?? .lxTerminalBackground
-        layer?.backgroundColor = defaultBackground.cgColor
-        cursorRow = Int(snapshot.cursorRow)
-        cursorCol = Int(snapshot.cursorCol)
-        cursorVisible = snapshot.cursorVisible
-        cursorStyle = snapshot.cursorStyle ?? "block"
-        applicationCursor = snapshot.applicationCursor
-        bracketedPaste = snapshot.bracketedPaste
-        alternateScreen = snapshot.alternateScreen
-        scrollbar = snapshot.scrollbar
-        if hasMarkedText() {
-            inputContext?.invalidateCharacterCoordinates()
-        }
-        needsDisplay = true
+        guard !output.isEmpty else { return }
+        LXLog.error("terminal pane message: \(output.trimmingCharacters(in: .whitespacesAndNewlines))", category: "MacTerminal")
     }
 
     override func menu(for event: NSEvent) -> NSMenu? {
@@ -1183,28 +1141,6 @@ private final class LingXiaTerminalCanvasView: NSView, @MainActor NSTextInputCli
         return prefix.size(withAttributes: [.font: font]).width
     }
 
-    private func drawMarkedText() {
-        guard hasMarkedText() else { return }
-        let rendered = NSMutableAttributedString(attributedString: markedText)
-        var attributes = textAttributes(
-            bold: false,
-            italic: false,
-            underline: true,
-            foreground: defaultForeground
-        )
-        attributes[.backgroundColor] = defaultBackground
-        rendered.addAttributes(
-            attributes,
-            range: NSRange(location: 0, length: rendered.length)
-        )
-        let x = pixelFloor(CGFloat(cursorCol) * charSize.width)
-        let y = pixelFloor(bounds.height - CGFloat(cursorRow + 1) * charSize.height)
-        drawTerminalAttributedText(
-            rendered,
-            at: NSPoint(x: x, y: y + terminalBaselineOffset())
-        )
-    }
-
     private func gridPoint(for point: NSPoint) -> LingXiaTerminalGridPoint {
         let row = Int((bounds.height - point.y) / max(1, charSize.height))
         let col = Int(point.x / max(1, charSize.width))
@@ -1226,71 +1162,16 @@ private final class LingXiaTerminalCanvasView: NSView, @MainActor NSTextInputCli
         return (start, end)
     }
 
-    private func drawSelectionOverlay() {
-        guard let selection = normalizedSelection() else { return }
-        NSColor.selectedContentBackgroundColor.withAlphaComponent(0.46).setFill()
-        for row in selection.start.row...selection.end.row {
-            let startCol = row == selection.start.row ? selection.start.col : 0
-            let endCol = row == selection.end.row ? selection.end.col : cols
-            guard endCol > startCol else { continue }
-            let x = pixelFloor(CGFloat(startCol) * charSize.width)
-            let y = pixelFloor(bounds.height - CGFloat(row + 1) * charSize.height)
-            pixelAlignedRect(
-                x: x,
-                y: y,
-                width: CGFloat(endCol - startCol) * charSize.width,
-                height: charSize.height
-            ).fill()
-        }
-    }
-
     private func revealScrollbar() {
         scrollbarVisibilityToken &+= 1
         let token = scrollbarVisibilityToken
         scrollbarVisible = true
-        needsDisplay = true
+        setNeedsRender()
         DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(900)) { [weak self] in
             guard let self, self.scrollbarVisibilityToken == token else { return }
             self.scrollbarVisible = false
-            self.needsDisplay = true
+            self.setNeedsRender()
         }
-    }
-
-    private func drawScrollbar() {
-        guard scrollbarVisible,
-              let scrollbar,
-              scrollbar.total > scrollbar.len,
-              scrollbar.len > 0 else {
-            return
-        }
-        let margin: CGFloat = 2
-        let width: CGFloat = 3
-        let trackHeight = bounds.height - margin * 2
-        guard trackHeight > 0 else { return }
-
-        let visibleRows = min(scrollbar.len, scrollbar.total)
-        let thumbHeight = min(
-            trackHeight,
-            max(
-                12,
-                min(40, trackHeight * CGFloat(visibleRows) / CGFloat(scrollbar.total))
-            )
-        )
-        let maxOffset = scrollbar.total - visibleRows
-        let offset = min(scrollbar.offset, maxOffset)
-        let available = trackHeight - thumbHeight
-        let topOffset = maxOffset == 0
-            ? 0
-            : available * CGFloat(offset) / CGFloat(maxOffset)
-        let y = bounds.height - margin - topOffset - thumbHeight
-
-        defaultForeground.withAlphaComponent(0.38).setFill()
-        pixelAlignedRect(
-            x: bounds.width - margin - width,
-            y: y,
-            width: width,
-            height: thumbHeight
-        ).fill()
     }
 
     private func selectedText() -> String? {
@@ -1309,19 +1190,21 @@ private final class LingXiaTerminalCanvasView: NSView, @MainActor NSTextInputCli
     }
 
     private func textInRow(_ row: Int, startCol: Int, endCol: Int) -> String {
-        // Extract from the cell grid, not the flattened line string: wide
-        // (CJK) glyphs occupy one character but two columns, so slicing the
-        // string by column index shears mixed-width rows.
+        // Walk cells, not a flattened line: wide (CJK) glyphs are one
+        // cluster over two columns, so slicing a string by column shears
+        // mixed-width rows.
+        guard let frame = frame_ else { return "" }
         var text = ""
-        var nextCol = startCol
-        for cell in cells where Int(cell.row) == row && !cell.text.isEmpty {
-            let col = Int(cell.col)
-            guard col >= startCol, col < endCol else { continue }
-            if col > nextCol {
-                text += String(repeating: " ", count: col - nextCol)
+        var col = startCol
+        while col < min(endCol, frame.cols) {
+            guard let cell = frame.cell(row: row, col: col) else { break }
+            let span = max(Int(cell.columns), 1)
+            if cell.textLen > 0 {
+                text += frame.clusterString(cell)
+            } else if cell.columns > 0 {
+                text += " "
             }
-            text += cell.text
-            nextCol = col + (cell.wide ? 2 : 1)
+            col += span
         }
         return text.trimmingCharacters(in: .whitespaces)
     }
@@ -1333,7 +1216,7 @@ private final class LingXiaTerminalCanvasView: NSView, @MainActor NSTextInputCli
             // CoreText keeps the font's fractional advance when drawing a run.
             // Rounding the grid width accumulates visible drift on long boxes.
             width: max(1, measured.width),
-            height: max(1, pixelCeil(font.ascender - font.descender + max(2, font.leading)))
+            height: max(1, pixelCeil((font.ascender - font.descender + max(2, font.leading)) * lineHeightScale))
         )
         let horizontalInset: CGFloat = 0
         let verticalInset: CGFloat = 4
@@ -1348,26 +1231,7 @@ private final class LingXiaTerminalCanvasView: NSView, @MainActor NSTextInputCli
             lastSentSize = (safeCols, safeRows)
             onResize?(safeCols, safeRows)
         }
-        needsDisplay = true
-    }
-
-    private func textAttributes(
-        bold: Bool,
-        italic: Bool,
-        underline: Bool,
-        foreground: NSColor
-    ) -> [NSAttributedString.Key: Any] {
-        let resolvedFont = LingXiaTerminalFont.make(size: font.pointSize, bold: bold, italic: italic)
-        var attrs: [NSAttributedString.Key: Any] = [
-            .font: resolvedFont,
-            .foregroundColor: foreground,
-            .kern: 0,
-            .ligature: 0,
-        ]
-        if underline {
-            attrs[.underlineStyle] = NSUnderlineStyle.single.rawValue
-        }
-        return attrs
+        setNeedsRender()
     }
 
     private var backingScale: CGFloat {
@@ -1382,157 +1246,10 @@ private final class LingXiaTerminalCanvasView: NSView, @MainActor NSTextInputCli
         ceil(value * backingScale) / backingScale
     }
 
-    private func pixelAlignedRect(x: CGFloat, y: CGFloat, width: CGFloat, height: CGFloat) -> NSRect {
-        NSRect(
-            x: pixelFloor(x),
-            y: pixelFloor(y),
-            width: max(1 / backingScale, pixelCeil(width)),
-            height: max(1 / backingScale, pixelCeil(height))
-        )
-    }
-
     private func terminalBaselineOffset() -> CGFloat {
         let glyphHeight = font.ascender - font.descender
         let centeredTopPadding = max(0, (charSize.height - glyphHeight) / 2)
         return pixelFloor(centeredTopPadding - font.descender)
-    }
-
-    private func configureTextRendering() {
-        guard let context = NSGraphicsContext.current?.cgContext else { return }
-        context.setShouldAntialias(true)
-        context.setShouldSmoothFonts(true)
-        context.setShouldSubpixelPositionFonts(true)
-        context.setShouldSubpixelQuantizeFonts(true)
-        context.textMatrix = .identity
-    }
-
-    private func drawTerminalText(
-        _ text: String,
-        at point: NSPoint,
-        attributes: [NSAttributedString.Key: Any]
-    ) {
-        guard let context = NSGraphicsContext.current?.cgContext else {
-            text.draw(at: point, withAttributes: attributes)
-            return
-        }
-        context.saveGState()
-        context.textMatrix = .identity
-        context.textPosition = CGPoint(x: pixelFloor(point.x), y: pixelFloor(point.y))
-        let line = CTLineCreateWithAttributedString(NSAttributedString(string: text, attributes: attributes))
-        CTLineDraw(line, context)
-        context.restoreGState()
-    }
-
-    private func drawTerminalAttributedText(
-        _ text: NSAttributedString,
-        at point: NSPoint
-    ) {
-        guard let context = NSGraphicsContext.current?.cgContext else {
-            text.draw(at: point)
-            return
-        }
-        context.saveGState()
-        context.textMatrix = .identity
-        context.textPosition = CGPoint(x: pixelFloor(point.x), y: pixelFloor(point.y))
-        CTLineDraw(CTLineCreateWithAttributedString(text), context)
-        context.restoreGState()
-    }
-
-    private func isSupportedBoxDrawing(_ text: String) -> Bool {
-        guard text.unicodeScalars.count == 1,
-              let value = text.unicodeScalars.first?.value else {
-            return false
-        }
-        switch value {
-        case 0x2500, 0x2502, 0x250C, 0x2510, 0x2514, 0x2518,
-             0x251C, 0x2524, 0x252C, 0x2534, 0x253C,
-             0x256D, 0x256E, 0x256F, 0x2570:
-            return true
-        default:
-            return false
-        }
-    }
-
-    private func drawBoxDrawing(
-        _ text: String,
-        col: Int,
-        row: Int,
-        color: NSColor,
-        bold: Bool
-    ) -> Bool {
-        guard text.unicodeScalars.count == 1,
-              let scalar = text.unicodeScalars.first else {
-            return false
-        }
-
-        let connections: (left: Bool, right: Bool, up: Bool, down: Bool)
-        let rounded: UInt32?
-        switch scalar.value {
-        case 0x2500: connections = (true, true, false, false); rounded = nil // ─
-        case 0x2502: connections = (false, false, true, true); rounded = nil // │
-        case 0x250C: connections = (false, true, false, true); rounded = nil // ┌
-        case 0x2510: connections = (true, false, false, true); rounded = nil // ┐
-        case 0x2514: connections = (false, true, true, false); rounded = nil // └
-        case 0x2518: connections = (true, false, true, false); rounded = nil // ┘
-        case 0x251C: connections = (false, true, true, true); rounded = nil // ├
-        case 0x2524: connections = (true, false, true, true); rounded = nil // ┤
-        case 0x252C: connections = (true, true, false, true); rounded = nil // ┬
-        case 0x2534: connections = (true, true, true, false); rounded = nil // ┴
-        case 0x253C: connections = (true, true, true, true); rounded = nil // ┼
-        case 0x256D: connections = (false, true, false, true); rounded = scalar.value // ╭
-        case 0x256E: connections = (true, false, false, true); rounded = scalar.value // ╮
-        case 0x256F: connections = (true, false, true, false); rounded = scalar.value // ╯
-        case 0x2570: connections = (false, true, true, false); rounded = scalar.value // ╰
-        default: return false
-        }
-
-        let left = pixelFloor(CGFloat(col) * charSize.width)
-        let right = pixelFloor(CGFloat(col + 1) * charSize.width)
-        let bottom = pixelFloor(bounds.height - CGFloat(row + 1) * charSize.height)
-        let top = pixelFloor(bounds.height - CGFloat(row) * charSize.height)
-        let centerX = pixelFloor((left + right) / 2)
-        let centerY = pixelFloor((bottom + top) / 2)
-        let path = NSBezierPath()
-        path.lineWidth = bold ? 1.5 : 1
-        path.lineCapStyle = .butt
-        path.lineJoinStyle = .miter
-
-        if let rounded {
-            appendRoundedCorner(
-                rounded,
-                to: path,
-                left: left,
-                right: right,
-                bottom: bottom,
-                top: top,
-                centerX: centerX,
-                centerY: centerY
-            )
-            color.setStroke()
-            path.stroke()
-            return true
-        }
-
-        if connections.left {
-            path.move(to: NSPoint(x: left, y: centerY))
-            path.line(to: NSPoint(x: centerX, y: centerY))
-        }
-        if connections.right {
-            path.move(to: NSPoint(x: centerX, y: centerY))
-            path.line(to: NSPoint(x: right, y: centerY))
-        }
-        if connections.up {
-            path.move(to: NSPoint(x: centerX, y: centerY))
-            path.line(to: NSPoint(x: centerX, y: top))
-        }
-        if connections.down {
-            path.move(to: NSPoint(x: centerX, y: bottom))
-            path.line(to: NSPoint(x: centerX, y: centerY))
-        }
-
-        color.setStroke()
-        path.stroke()
-        return true
     }
 
     private func appendRoundedCorner(
@@ -1596,64 +1313,14 @@ private final class LingXiaTerminalCanvasView: NSView, @MainActor NSTextInputCli
         }
     }
 
-    private func drawCursor(at origin: NSPoint) {
-        let rect = pixelAlignedRect(x: origin.x, y: origin.y, width: charSize.width, height: charSize.height)
-        let strokeHollow = {
-            self.defaultForeground.withAlphaComponent(0.62).setStroke()
-            let path = NSBezierPath(rect: rect.insetBy(dx: 0.5, dy: 0.5))
-            path.lineWidth = max(1 / self.backingScale, 1)
-            path.stroke()
-        }
-        defaultForeground.withAlphaComponent(0.62).setFill()
-        switch cursorStyle {
-        case "bar":
-            pixelAlignedRect(x: origin.x, y: origin.y, width: 1.5, height: charSize.height).fill()
-        case "underline":
-            pixelAlignedRect(x: origin.x, y: origin.y, width: charSize.width, height: 1.5).fill()
-        case "hollow":
-            strokeHollow()
-        default:
-            // "block" and anything unrecognised: filled cell with the covered
-            // glyph redrawn in the background color (inverse video), matching
-            // the Windows grid renderer.
-            rect.fill()
-            if let covered = cells.first(where: { Int($0.row) == cursorRow && Int($0.col) == cursorCol }),
-               !covered.text.isEmpty {
-                let attrs = textAttributes(
-                    bold: covered.bold,
-                    italic: covered.italic,
-                    underline: covered.underline,
-                    foreground: defaultBackground
-                )
-                drawTerminalText(
-                    covered.text,
-                    at: NSPoint(x: origin.x, y: origin.y + terminalBaselineOffset()),
-                    attributes: attrs
-                )
-            }
-        }
-    }
-
-    private func terminalColor(_ token: String?, fallback: NSColor?) -> NSColor? {
-        guard let token else { return fallback }
-        if token.hasPrefix("#"), token.count == 7 {
-            let hex = String(token.dropFirst())
-            guard let value = UInt32(hex, radix: 16) else { return fallback }
-            return NSColor(
-                red: CGFloat((value >> 16) & 0xff) / 255.0,
-                green: CGFloat((value >> 8) & 0xff) / 255.0,
-                blue: CGFloat(value & 0xff) / 255.0,
-                alpha: 1
-            )
-        }
-        return fallback
-    }
 }
 
 private final class LingXiaPTYTerminalSession: @unchecked Sendable {
     private static let log = OSLog(subsystem: "LingXia", category: "MacTerminalPTY")
 
-    var onSnapshot: ((LingXiaTerminalSnapshot) -> Void)?
+    var onFrame: ((LingXiaTerminalGPUFrame) -> Void)?
+    var onTitles: ((String, String?) -> Void)?
+    var onConfigChanged: (() -> Void)?
     var onError: ((String) -> Void)?
     var onExit: (() -> Void)?
 
@@ -1662,7 +1329,10 @@ private final class LingXiaPTYTerminalSession: @unchecked Sendable {
     private var sessionID: UInt64 = 0
     private var readTimer: DispatchSourceTimer?
     private var pendingInput = ""
-    private var lastSnapshotJSON = ""
+    private var frameGeneration: UInt64 = 0
+    private var lastTitlePoll = DispatchTime.now()
+    private var lastTitleState = ""
+    private var lastConfigGeneration: UInt64 = 0
     private let initialDirectory: String?
 
     init(initialDirectory: String? = nil) {
@@ -1766,7 +1436,8 @@ private final class LingXiaPTYTerminalSession: @unchecked Sendable {
         readTimer?.cancel()
         readTimer = nil
         pendingInput.removeAll(keepingCapacity: false)
-        lastSnapshotJSON = ""
+        frameGeneration = 0
+        lastTitleState = ""
         if sessionID != 0 {
             lxTerminalLogAsync("pty.stop close session=\(sessionID)")
             terminalSessionClose(sessionID)
@@ -1777,33 +1448,58 @@ private final class LingXiaPTYTerminalSession: @unchecked Sendable {
     private func drainOutputOnIOQueue() {
         guard sessionID != 0 else { return }
         let id = sessionID
-        let json = terminalSessionSnapshot(id).toString()
-        // The 16ms poll mostly returns an unchanged frame (generation, titles,
-        // and exit state are all part of the JSON); skip the decode and the
-        // main-thread redraw entirely until something actually changed.
-        guard json != lastSnapshotJSON else { return }
-        lastSnapshotJSON = json
-        guard let data = json.data(using: .utf8) else {
-            lxTerminalLogAsync("pty.snapshot invalid-utf8 session=\(id)", type: .error)
-            return
-        }
-        do {
-            let snapshot = try decoder.decode(LingXiaTerminalSnapshot.self, from: data)
-            emit(snapshot)
-            if snapshot.exited {
+        // Frames come back as pointers into the engine's retained buffers:
+        // no JSON, and a quiet poll allocates nothing at all.
+        if let frame = LingXiaTerminalFrameSource.poll(sessionID: id, since: frameGeneration) {
+            frameGeneration = frame.generation
+            emit(frame)
+            if frame.exited {
                 lxTerminalLogAsync("pty.exited session=\(id)")
                 stopOnIOQueue()
                 emitExit()
+                return
             }
-        } catch {
-            lxTerminalLogAsync("pty.snapshot decode-failed session=\(id) error=\(error)", type: .error)
-            emitError("terminal snapshot decode failed: \(error.localizedDescription)")
+        } else if LingXiaTerminalFrameSource.hasExited(sessionID: id, since: frameGeneration) {
+            lxTerminalLogAsync("pty.exited session=\(id)")
+            stopOnIOQueue()
+            emitExit()
+            return
+        }
+        pollTitlesOnIOQueue(id)
+    }
+
+    /// Titles resolve the foreground process, which costs syscalls — far too
+    /// expensive for the frame cadence, and they change at human speed anyway.
+    ///
+    /// The configuration generation rides along: the engine watches the file
+    /// and applies the theme itself, so all that is left is noticing that the
+    /// font may have changed — one atomic read on a poll that already runs,
+    /// rather than a watch implemented again per platform.
+    private func pollTitlesOnIOQueue(_ id: UInt64) {
+        let now = DispatchTime.now()
+        guard now.uptimeNanoseconds &- lastTitlePoll.uptimeNanoseconds >= 250_000_000 else { return }
+        lastTitlePoll = now
+
+        let generation = terminalConfigGeneration()
+        if generation != lastConfigGeneration {
+            lastConfigGeneration = generation
+            DispatchQueue.main.async { [onConfigChanged] in
+                onConfigChanged?()
+            }
+        }
+        let json = terminalSessionTitleState(id).toString()
+        guard json != lastTitleState, let data = json.data(using: .utf8) else { return }
+        lastTitleState = json
+        guard let state = try? decoder.decode(LingXiaTerminalTitleState.self, from: data) else { return }
+        let titles = (state.processTitle, state.title)
+        DispatchQueue.main.async { [onTitles] in
+            onTitles?(titles.0, titles.1)
         }
     }
 
-    private func emit(_ snapshot: LingXiaTerminalSnapshot) {
-        DispatchQueue.main.async { [onSnapshot] in
-            onSnapshot?(snapshot)
+    private func emit(_ frame: LingXiaTerminalGPUFrame) {
+        DispatchQueue.main.async { [onFrame] in
+            onFrame?(frame)
         }
     }
 

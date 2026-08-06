@@ -333,6 +333,48 @@ fn backend() -> StdResult<&'static Arc<dyn WindowsHostBackend>> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// A rectangle of a host window whose pixels the compositor owns, not GDI.
+///
+/// `BitBlt` cannot see DirectComposition content, so anything drawn that way —
+/// WebView2 surfaces, the terminal grid — has to hand its pixels to the
+/// screenshot path or it is simply missing from every capture.
+pub struct WindowsSurfaceCapture {
+    /// Top-left in the host window's client coordinates.
+    pub x: i32,
+    pub y: i32,
+    pub width: u32,
+    pub height: u32,
+    /// Row-major BGRA, `width * height * 4` bytes.
+    pub pixels: Vec<u8>,
+}
+
+type SurfaceCaptureProvider = fn(usize) -> Vec<WindowsSurfaceCapture>;
+
+static SURFACE_CAPTURE_PROVIDERS: OnceLock<Mutex<Vec<SurfaceCaptureProvider>>> = OnceLock::new();
+
+fn surface_capture_providers() -> &'static Mutex<Vec<SurfaceCaptureProvider>> {
+    SURFACE_CAPTURE_PROVIDERS.get_or_init(|| Mutex::new(Vec::new()))
+}
+
+/// Offer composited pixels to screenshots. Called once per renderer.
+pub fn register_surface_capture_provider(provider: SurfaceCaptureProvider) {
+    if let Ok(mut providers) = surface_capture_providers().lock() {
+        providers.push(provider);
+    }
+}
+
+/// Every composited rectangle in `window_id`, for the screenshot path.
+pub fn surface_captures(window_id: usize) -> Vec<WindowsSurfaceCapture> {
+    let providers = match surface_capture_providers().lock() {
+        Ok(providers) => providers.clone(),
+        Err(_) => return Vec::new(),
+    };
+    providers
+        .into_iter()
+        .flat_map(|provider| provider(window_id))
+        .collect()
+}
+
 pub struct WindowsWebViewWindowSnapshot {
     pub window_id: usize,
     pub webtag_key: String,

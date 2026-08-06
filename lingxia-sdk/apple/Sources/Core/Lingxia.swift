@@ -95,6 +95,30 @@ public enum Lingxia {
         #endif
     }
 
+    /// Run the product's `term` command line and exit, when this process was
+    /// invoked as one.
+    ///
+    /// Call this at the very top of `main`, before AppKit: the product's
+    /// executable doubles as its command line, and a configuration command
+    /// must neither open a window nor initialize the runtime — initialization
+    /// opens the app's databases and would collide with a running instance.
+    public static func runTerminalCommandIfInvoked() {
+        #if os(macOS)
+        // Font enumeration is CoreText, not AppKit, so the command line can
+        // report what is installed without becoming an app.
+        LingXiaTerminalSettings.registerInstalledFonts()
+        #endif
+        let directories = LxAppDirectoryFactory.createDirectoryConfig()
+        // Foundation, not AppKit: the appearance decides which of the two
+        // configured schemes an unqualified theme change writes, and reading
+        // it must not initialize an app.
+        let dark = UserDefaults.standard.string(forKey: "AppleInterfaceStyle") == "Dark"
+        let code = terminalRunCliIfInvoked(directories.dataPath, dark)
+        if code >= 0 {
+            exit(code)
+        }
+    }
+
     #if os(macOS)
     /// Default product entry point: loads bundled `app.json` plus
     /// `macos-ui.json` / `ui.json` and uses them to build the host shell.

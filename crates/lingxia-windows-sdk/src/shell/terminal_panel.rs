@@ -1040,7 +1040,40 @@ fn create_panel_session(panel_id: &str, inherit_from: Option<u64>) -> u64 {
     #[cfg(not(feature = "shell-chrome"))]
     let (cols, rows) = (100, 24);
     let cwd = inherit_from.and_then(lingxia_terminal::terminal_current_directory);
-    lingxia_terminal::terminal_create_at(cols, rows, cwd.as_deref())
+    ensure_configuration_loaded();
+    lingxia_terminal::terminal_create_with_spec(
+        cols,
+        rows,
+        lingxia_terminal::TerminalSessionSpec {
+            cwd,
+            env: lingxia::terminal::app_data_dir()
+                .map(|dir| lingxia::terminal::session_environment(&dir))
+                .unwrap_or_default(),
+            ..lingxia_terminal::TerminalSessionSpec::default()
+        },
+    )
+}
+
+/// Load `terminal.json` once, applying the theme and starting the watch that
+/// adopts later edits. Shared with the Apple host, so both behave the same.
+#[cfg(feature = "terminal-runtime")]
+fn ensure_configuration_loaded() {
+    use std::sync::OnceLock;
+    static LOADED: OnceLock<()> = OnceLock::new();
+    if LOADED.set(()).is_err() {
+        return;
+    }
+    let Some(data_dir) = lingxia::terminal::app_data_dir() else {
+        return;
+    };
+    // Product defaults are not wired yet; the framework defaults stand in.
+    lingxia_terminal_config::runtime::load(data_dir, "{}", system_prefers_dark());
+}
+
+/// Windows' light/dark preference, as the shell chrome already reads it.
+#[cfg(feature = "terminal-runtime")]
+fn system_prefers_dark() -> bool {
+    super::theme::is_dark()
 }
 
 #[cfg(feature = "terminal-runtime")]
@@ -1170,6 +1203,7 @@ fn run_terminal_panel_poll_loop(panel_key: &str, stop: &AtomicBool) {
     let mut last_generations: HashMap<u64, (u64, u64)> = HashMap::new();
     let mut last_active_set: Vec<u64> = Vec::new();
     let mut refresh_tick: u32 = 0;
+    let mut last_config = lingxia_terminal_config::runtime::generation();
     #[cfg(feature = "shell-chrome")]
     let mut pending_resize: HashMap<u64, (u16, u16)> = HashMap::new();
     loop {
@@ -1270,8 +1304,15 @@ fn run_terminal_panel_poll_loop(panel_key: &str, stop: &AtomicBool) {
             break;
         }
 
+        // A font or theme change moves nothing in the snapshot, so without
+        // this the card keeps its old colors and metrics until something else
+        // happens to dirty it — up to two seconds of looking broken.
+        let config = lingxia_terminal_config::runtime::generation();
+        let config_changed = config != last_config;
+        last_config = config;
+
         refresh_tick = refresh_tick.wrapping_add(1);
-        if any_change || refresh_tick.is_multiple_of(25) {
+        if any_change || config_changed || refresh_tick.is_multiple_of(25) {
             invalidate_panel(panel_key);
         }
         last_active_set = active_sessions;
@@ -1476,6 +1517,8 @@ fn close_terminal_tab_by_sessions(panel_id: &str, session_ids: &[u64]) {
 #[cfg(feature = "terminal-runtime")]
 fn shutdown_windows_terminal_panel_state(panel_id: &str) {
     lingxia_windows_contract::clear_host_panel_input_handler(panel_id);
+    #[cfg(feature = "shell-chrome")]
+    super::terminal_gpu::drop_panel(panel_id);
     #[cfg(feature = "shell-chrome")]
     super::terminal_grid::clear_panel(panel_id);
     if let Some(panel) = windows_terminal_panels().remove(panel_id) {

@@ -10,28 +10,36 @@
 //! resolution against the host theme happens here at snapshot time so
 //! OSC 4/10/11 overrides tracked by the terminal still win.
 
+use std::collections::VecDeque;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{Receiver, Sender, channel};
 use std::time::Instant;
 
 use alacritty_terminal::event::{Event, EventListener, WindowSize};
 use alacritty_terminal::grid::{Dimensions, Scroll};
+use alacritty_terminal::index::{Column, Line};
 use alacritty_terminal::term::cell::Flags;
-use alacritty_terminal::term::{Config, Term, TermMode};
+use alacritty_terminal::term::{ClipboardType, Config, Term, TermDamage, TermMode};
 use alacritty_terminal::vte::ansi::{
     Color as AnsiColor, CursorShape, NamedColor, Processor, Rgb as AnsiRgb, StdSyncHandler,
 };
 use parking_lot::Mutex;
+use serde::Serialize;
 
-// Attr bits packed into `Cell.attrs`. Kept in sync with the HLSL
-// pixel shader's interpretation (bit 0 = bold, 1 = italic, 2 =
-// underline, 3 = strike, 4 = inverse, 5 = dim/faint).
+use crate::osc::{OscProgress, OscSemantic, OscTap, parse_osc};
+use crate::search::SearchRow;
+
+// Attr bits packed into `Cell.attrs` (bit 0 = bold, 1 = italic, 2 =
+// underline, 3 = strike, 4 = inverse, 5 = dim/faint, 6 = hidden).
 pub const ATTR_BOLD: u8 = 1 << 0;
 pub const ATTR_ITALIC: u8 = 1 << 1;
 pub const ATTR_UNDERLINE: u8 = 1 << 2;
 pub const ATTR_STRIKE: u8 = 1 << 3;
 pub const ATTR_INVERSE: u8 = 1 << 4;
 pub const ATTR_DIM: u8 = 1 << 5;
+/// SGR 8: the cell keeps its styling but renders no text.
+pub const ATTR_HIDDEN: u8 = 1 << 6;
 
 const SCROLLBACK_LINES: usize = 10_000;
 
@@ -77,7 +85,7 @@ impl ThemeColors {
 
 // ── Snapshot (renderer's view) ─────────────────────────────────────────
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Cell {
     pub text: String,
     /// Foreground RGBA (0xRRGGBBAA).
@@ -87,7 +95,82 @@ pub struct Cell {
     /// opaque.
     pub bg: u32,
     pub attrs: u8,
+    /// Which underline SGR is active; `ATTR_UNDERLINE` stays set for any
+    /// of them so renderers that only draw one style keep working.
+    pub underline: UnderlineStyle,
+    /// SGR 58 underline color as RGBA, when it differs from the text
+    /// color.
+    pub underline_color: Option<u32>,
+    /// Grid columns this cell's text occupies: 1 normally, 2 for a wide
+    /// char, more for a joined cluster, and 0 for a continuation column
+    /// covered by the cell that precedes it. A row's spans sum to the
+    /// column count.
+    pub columns: u8,
     pub wide: bool,
+    /// OSC 8 hyperlink URI attached to the cell.
+    pub hyperlink: Option<String>,
+}
+
+impl Default for Cell {
+    fn default() -> Self {
+        Self {
+            text: String::new(),
+            fg: 0,
+            bg: 0,
+            attrs: 0,
+            underline: UnderlineStyle::None,
+            underline_color: None,
+            // An untouched grid slot is still one empty column.
+            columns: 1,
+            wide: false,
+            hyperlink: None,
+        }
+    }
+}
+
+/// Underline shape carried by SGR 4:x.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum UnderlineStyle {
+    #[default]
+    None,
+    Single,
+    Double,
+    Curly,
+    Dotted,
+    Dashed,
+}
+
+impl UnderlineStyle {
+    fn from_flags(flags: Flags) -> Self {
+        // Order matters: alacritty keeps only one underline flag set,
+        // but check the specific shapes before the plain one.
+        if flags.contains(Flags::DOUBLE_UNDERLINE) {
+            Self::Double
+        } else if flags.contains(Flags::UNDERCURL) {
+            Self::Curly
+        } else if flags.contains(Flags::DOTTED_UNDERLINE) {
+            Self::Dotted
+        } else if flags.contains(Flags::DASHED_UNDERLINE) {
+            Self::Dashed
+        } else if flags.contains(Flags::UNDERLINE) {
+            Self::Single
+        } else {
+            Self::None
+        }
+    }
+
+    /// Stable wire name for the host-facing snapshot.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::None => "none",
+            Self::Single => "single",
+            Self::Double => "double",
+            Self::Curly => "curly",
+            Self::Dotted => "dotted",
+            Self::Dashed => "dashed",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -110,6 +193,34 @@ pub struct ScreenSnapshot {
     pub generation: u64,
 }
 
+/// One logical line: a shell line as typed, with the rows it wrapped
+/// across joined back together.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LogicalLine {
+    /// Absolute line where it starts (oldest scrollback line = 0).
+    pub line: i64,
+    /// Grid rows it spans.
+    pub rows: u16,
+    pub text: String,
+}
+
+/// Read-only text view of a session, the shape an accessibility tree
+/// needs: logical lines, where the cursor sits, and what is on screen.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TextView {
+    pub lines: Vec<LogicalLine>,
+    /// Absolute line and cell column of the cursor.
+    pub cursor_line: i64,
+    pub cursor_column: u16,
+    /// Absolute lines currently on screen, inclusive.
+    pub viewport_first_line: i64,
+    pub viewport_last_line: i64,
+    /// Scrollback rows plus screen rows.
+    pub total_lines: i64,
+}
+
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct ViewportScrollbar {
     pub total: u64,
@@ -118,6 +229,237 @@ pub struct ViewportScrollbar {
 }
 
 pub type PtyWriteCallback = Arc<dyn Fn(&[u8]) + Send + Sync + 'static>;
+
+// ── Semantic events (host state/recovery view) ─────────────────────────
+
+/// Maximum queued semantic events per session; oldest are dropped and
+/// counted so hosts can detect the gap.
+const EVENT_QUEUE_CAPACITY: usize = 4096;
+/// Maximum clipboard text surfaced by an OSC 52 store event.
+const CLIPBOARD_EVENT_LIMIT: usize = 64 * 1024;
+
+/// Progress/task state carried by OSC 9;4, unified with command
+/// completion into one machine:
+/// `idle | running(indeterminate|percent) | paused | succeeded | failed`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum TerminalProgressState {
+    #[default]
+    Idle,
+    Running,
+    Paused,
+    Succeeded,
+    Failed,
+}
+
+/// The session's current progress state, with a percentage when the
+/// source reported one (`Running` without a percent is indeterminate).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalProgress {
+    pub state: TerminalProgressState,
+    pub percent: Option<u8>,
+}
+
+/// Everything a host needs to render tab badges and attention state
+/// without inspecting output text: the unified progress machine plus
+/// monotonic attention counters.
+///
+/// Counters never reset, so a host that stores the last values it
+/// displayed derives "unread" by comparison — and stays correct across
+/// dropped events or a re-attach that missed the event stream.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalActivity {
+    pub progress: TerminalProgress,
+    /// Exit code of the most recent OSC 133 D mark, when it carried one.
+    pub last_exit_code: Option<i32>,
+    /// BELs received since session start.
+    pub bells: u64,
+    /// OSC 9/99/777 notifications received since session start.
+    pub notifications: u64,
+}
+
+/// A typed semantic event extracted from the terminal byte stream.
+///
+/// These mirror what the bytes *mean* (cwd change, command boundary,
+/// progress, notification…) so hosts never re-parse escape sequences.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum TerminalEventKind {
+    Title {
+        title: Option<String>,
+    },
+    /// OSC 7 working-directory report.
+    Cwd {
+        path: String,
+    },
+    Bell,
+    /// OSC 9;4 progress update.
+    Progress {
+        state: TerminalProgressState,
+        percent: Option<u8>,
+    },
+    /// OSC 9/99/777 notification, payload sanitized and capped.
+    Notification {
+        title: Option<String>,
+        body: String,
+    },
+    /// OSC 52 clipboard write request, decoded and length-capped.
+    ClipboardStore {
+        clipboard: String,
+        text: String,
+    },
+    /// OSC 133 marks; `line` is the absolute grid line (scrollback
+    /// lines + screen lines counted from the oldest scrollback line).
+    PromptStart {
+        line: i64,
+    },
+    InputStart {
+        line: i64,
+    },
+    OutputStart {
+        line: i64,
+    },
+    CommandFinished {
+        line: i64,
+        exit_code: Option<i32>,
+    },
+    /// The session's child process exited.
+    Exited {
+        exit_code: Option<i32>,
+    },
+    /// Restored scrollback was replayed into this session; `lines` is
+    /// the number of replayed lines, which also marks the boundary
+    /// between restored content and fresh shell output.
+    Restored {
+        lines: usize,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct TerminalEvent {
+    pub seq: u64,
+    #[serde(flatten)]
+    pub kind: TerminalEventKind,
+}
+
+/// Result of draining the semantic event queue.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalEventBatch {
+    /// Sequence number the next produced event will carry.
+    pub next_seq: u64,
+    /// Events dropped because the queue overflowed since the last drain.
+    pub dropped: u64,
+    pub events: Vec<TerminalEvent>,
+}
+
+#[derive(Default)]
+struct EventQueue {
+    events: VecDeque<TerminalEvent>,
+    next_seq: u64,
+    dropped: u64,
+}
+
+// ── Command blocks (OSC 133) ───────────────────────────────────────────
+
+/// Maximum completed command blocks retained per session.
+const MAX_COMMAND_BLOCKS: usize = 512;
+
+/// One shell command's extent in the scrollback, built from OSC 133
+/// marks. Lines are absolute grid coordinates (see
+/// [`TerminalEventKind`]); blocks without shell integration simply
+/// never appear.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CommandBlock {
+    pub prompt_line: i64,
+    pub input_line: Option<i64>,
+    pub output_line: Option<i64>,
+    pub end_line: Option<i64>,
+    pub exit_code: Option<i32>,
+}
+
+#[derive(Default)]
+struct CommandBlockTracker {
+    completed: VecDeque<CommandBlock>,
+    current: Option<CommandBlock>,
+}
+
+impl CommandBlockTracker {
+    fn record(&mut self, kind: &TerminalEventKind) {
+        match *kind {
+            TerminalEventKind::PromptStart { line } => {
+                if let Some(block) = self.current.take() {
+                    self.push_completed(block);
+                }
+                self.current = Some(CommandBlock {
+                    prompt_line: line,
+                    ..CommandBlock::default()
+                });
+            }
+            TerminalEventKind::InputStart { line } => {
+                self.block_at(line).input_line = Some(line);
+            }
+            TerminalEventKind::OutputStart { line } => {
+                self.block_at(line).output_line = Some(line);
+            }
+            TerminalEventKind::CommandFinished { line, exit_code } => {
+                let mut block = self.current.take().unwrap_or_else(|| CommandBlock {
+                    prompt_line: line,
+                    ..CommandBlock::default()
+                });
+                block.end_line = Some(line);
+                block.exit_code = exit_code;
+                self.push_completed(block);
+            }
+            _ => {}
+        }
+    }
+
+    /// The open block, creating a loose one when a mark arrives without
+    /// a preceding prompt start (e.g. partial integration).
+    fn block_at(&mut self, line: i64) -> &mut CommandBlock {
+        self.current.get_or_insert_with(|| CommandBlock {
+            prompt_line: line,
+            ..CommandBlock::default()
+        })
+    }
+
+    fn push_completed(&mut self, block: CommandBlock) {
+        if self.completed.len() >= MAX_COMMAND_BLOCKS {
+            self.completed.pop_front();
+        }
+        self.completed.push_back(block);
+    }
+
+    fn blocks(&self) -> Vec<CommandBlock> {
+        let mut blocks: Vec<CommandBlock> = self.completed.iter().cloned().collect();
+        blocks.extend(self.current.iter().cloned());
+        blocks
+    }
+}
+
+impl EventQueue {
+    fn push(&mut self, kind: TerminalEventKind) {
+        if self.events.len() >= EVENT_QUEUE_CAPACITY {
+            self.events.pop_front();
+            self.dropped += 1;
+        }
+        let seq = self.next_seq;
+        self.next_seq = self.next_seq.wrapping_add(1);
+        self.events.push_back(TerminalEvent { seq, kind });
+    }
+
+    fn drain(&mut self) -> TerminalEventBatch {
+        TerminalEventBatch {
+            next_seq: self.next_seq,
+            dropped: std::mem::take(&mut self.dropped),
+            events: self.events.drain(..).collect(),
+        }
+    }
+}
 
 // ── Event listener ─────────────────────────────────────────────────────
 
@@ -132,7 +474,12 @@ enum PendingReply {
 struct Listener {
     write_pty: Option<PtyWriteCallback>,
     title: Mutex<Option<String>>,
+    events: Mutex<EventQueue>,
     pending: Sender<PendingReply>,
+    /// Attention counters; bells arrive here rather than through the OSC
+    /// tap, so both live outside the `VtInner` lock.
+    bells: AtomicU64,
+    notifications: AtomicU64,
 }
 
 /// Newtype so the foreign `EventListener` trait can be implemented for
@@ -156,8 +503,33 @@ impl EventListener for ListenerHandle {
                     write_pty(text.as_bytes());
                 }
             }
-            Event::Title(title) => *self.title.lock() = Some(title),
-            Event::ResetTitle => *self.title.lock() = None,
+            Event::Title(title) => {
+                *self.title.lock() = Some(title.clone());
+                self.events
+                    .lock()
+                    .push(TerminalEventKind::Title { title: Some(title) });
+            }
+            Event::ResetTitle => {
+                *self.title.lock() = None;
+                self.events
+                    .lock()
+                    .push(TerminalEventKind::Title { title: None });
+            }
+            Event::Bell => {
+                self.bells.fetch_add(1, Ordering::Relaxed);
+                self.events.lock().push(TerminalEventKind::Bell);
+            }
+            Event::ClipboardStore(clipboard, text) => {
+                let clipboard = match clipboard {
+                    ClipboardType::Clipboard => "clipboard",
+                    ClipboardType::Selection => "selection",
+                }
+                .to_string();
+                let text: String = text.chars().take(CLIPBOARD_EVENT_LIMIT).collect();
+                self.events
+                    .lock()
+                    .push(TerminalEventKind::ClipboardStore { clipboard, text });
+            }
             Event::ColorRequest(index, format) => {
                 let _ = self.pending.send(PendingReply::Color(index, format));
             }
@@ -178,12 +550,167 @@ pub struct VtScreen {
 struct VtInner {
     term: Term<ListenerHandle>,
     parser: Processor<StdSyncHandler>,
+    tap: OscTap,
     listener: Arc<Listener>,
     replies: Receiver<PendingReply>,
     theme: ThemeColors,
     cell_width_px: u16,
     cell_height_px: u16,
     generation: u64,
+    blocks: CommandBlockTracker,
+    /// Last working directory reported via OSC 7.
+    cwd: Option<std::path::PathBuf>,
+    /// Unified progress state: OSC 9;4 when the program reports it,
+    /// otherwise inferred from OSC 133 command boundaries.
+    progress: TerminalProgress,
+    /// The running command reported OSC 9;4, so command boundaries must
+    /// not overwrite its state mid-command.
+    progress_reported: bool,
+    /// Exit code from the most recent OSC 133 D mark.
+    last_exit_code: Option<i32>,
+    /// Rows touched since the last frame a renderer consumed.
+    damage: DamageSet,
+    /// Generation of the last frame handed out, so a renderer that asks
+    /// from a different point gets a full redraw instead of a diff
+    /// against a frame it never saw.
+    last_frame_generation: u64,
+}
+
+// ── Renderer frame (damage-tracked, allocation-free cells) ─────────────
+
+/// Per-screen-row damage bounds, in cell columns.
+#[derive(Debug, Clone, Default)]
+struct DamageSet {
+    /// `(left, right_inclusive)` per row; `left > right` means clean.
+    rows: Vec<(u16, u16)>,
+    full: bool,
+    /// Cursor row of the previous frame, redrawn so the old cursor is
+    /// erased even when nothing else on that row changed.
+    cursor_row: u16,
+}
+
+impl DamageSet {
+    fn mark_full(&mut self) {
+        self.full = true;
+    }
+
+    fn expand(&mut self, row: usize, left: usize, right: usize, rows: usize) {
+        if row >= rows {
+            return;
+        }
+        if self.rows.len() < rows {
+            self.rows.resize(rows, (u16::MAX, 0));
+        }
+        let entry = &mut self.rows[row];
+        entry.0 = entry.0.min(left.min(u16::MAX as usize) as u16);
+        entry.1 = entry.1.max(right.min(u16::MAX as usize) as u16);
+    }
+
+    fn is_dirty(&self) -> bool {
+        self.full || self.rows.iter().any(|(left, right)| left <= right)
+    }
+
+    /// Drain into renderer-facing rows and reset to clean.
+    fn take(&mut self, rows: u16, cols: u16) -> (Vec<RowDamage>, bool) {
+        let full = self.full || self.rows.len() < rows as usize;
+        let damage = if full {
+            (0..rows)
+                .map(|row| RowDamage {
+                    row,
+                    start_col: 0,
+                    end_col: cols,
+                })
+                .collect()
+        } else {
+            self.rows
+                .iter()
+                .enumerate()
+                .filter(|(_, (left, right))| left <= right)
+                .map(|(row, (left, right))| RowDamage {
+                    row: row as u16,
+                    start_col: *left,
+                    end_col: right.saturating_add(1).min(cols),
+                })
+                .collect()
+        };
+        self.full = false;
+        self.rows.clear();
+        self.rows.resize(rows as usize, (u16::MAX, 0));
+        (damage, full)
+    }
+}
+
+/// A damaged span of one screen row; `end_col` is exclusive.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RowDamage {
+    pub row: u16,
+    pub start_col: u16,
+    pub end_col: u16,
+}
+
+/// One cell of a [`TerminalFrame`]: fixed size and allocation-free, so a
+/// whole frame is two buffers a renderer can upload directly.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct FrameCell {
+    /// Foreground RGBA (0xRRGGBBAA).
+    pub fg: u32,
+    /// Background RGBA; alpha 0 marks the default background.
+    pub bg: u32,
+    /// SGR 58 underline color; alpha 0 means "use the foreground".
+    pub underline_color: u32,
+    /// Byte offset of this cell's cluster in [`TerminalFrame::text`].
+    pub text_offset: u32,
+    /// Byte length of the cluster; 0 for a blank cell.
+    pub text_len: u8,
+    /// `ATTR_*` bits.
+    pub attrs: u8,
+    /// [`UnderlineStyle`] as an index.
+    pub underline: u8,
+    /// Grid columns covered; 0 marks a continuation column.
+    pub columns: u8,
+}
+
+/// A renderer-ready frame: the full grid plus the rows that changed
+/// since the caller's last frame.
+///
+/// Cell text lives in one `text` blob addressed by offset/length, so a
+/// frame costs two allocations instead of one per cell, and a glyph
+/// cache can key directly on the returned `&str`.
+#[derive(Debug, Clone, Default)]
+pub struct TerminalFrame {
+    pub cols: u16,
+    pub rows: u16,
+    pub generation: u64,
+    /// `rows * cols` cells, row-major.
+    pub cells: Vec<FrameCell>,
+    pub text: String,
+    /// Rows to repaint. Covers the whole grid when `full_damage`.
+    pub damage: Vec<RowDamage>,
+    pub full_damage: bool,
+    pub cursor: Cursor,
+    pub default_fg: u32,
+    pub default_bg: u32,
+}
+
+impl TerminalFrame {
+    /// Cluster text of a cell, empty for blanks and continuation cells.
+    pub fn cell_text(&self, cell: &FrameCell) -> &str {
+        let start = cell.text_offset as usize;
+        let end = start + cell.text_len as usize;
+        self.text.get(start..end).unwrap_or("")
+    }
+}
+
+/// Result of asking a session for the frame after a given generation.
+#[derive(Debug, Clone)]
+pub enum FrameUpdate {
+    /// Nothing changed; the renderer keeps its last frame.
+    Unchanged {
+        generation: u64,
+    },
+    Changed(Box<TerminalFrame>),
 }
 
 /// Viewport dimensions handed to `Term::new` / `Term::resize`.
@@ -208,7 +735,7 @@ impl Dimensions for GridSize {
 
 fn default_theme() -> ThemeColors {
     // Base16-ish defaults; hosts push their real theme via
-    // `new_with_write_pty`.
+    // `new_with_options`.
     ThemeColors::from_ansi16(
         [0xff, 0xff, 0xff],
         [0x28, 0x2c, 0x34],
@@ -234,11 +761,12 @@ fn default_theme() -> ThemeColors {
 }
 
 impl VtScreen {
-    pub fn new_with_write_pty(
+    pub fn new_with_options(
         cols: u16,
         rows: u16,
         theme: Option<&ThemeColors>,
         write_pty: Option<PtyWriteCallback>,
+        scrollback_limit: Option<usize>,
     ) -> Self {
         let cols = cols.max(1);
         let rows = rows.max(1);
@@ -246,10 +774,13 @@ impl VtScreen {
         let listener = Arc::new(Listener {
             write_pty,
             title: Mutex::new(None),
+            events: Mutex::new(EventQueue::default()),
             pending,
+            bells: AtomicU64::new(0),
+            notifications: AtomicU64::new(0),
         });
         let config = Config {
-            scrolling_history: SCROLLBACK_LINES,
+            scrolling_history: scrollback_limit.unwrap_or(SCROLLBACK_LINES),
             ..Config::default()
         };
         let size = GridSize {
@@ -261,23 +792,231 @@ impl VtScreen {
             inner: Mutex::new(VtInner {
                 term,
                 parser: Processor::new(),
+                tap: OscTap::default(),
                 listener,
                 replies,
                 theme: theme.cloned().unwrap_or_else(default_theme),
                 cell_width_px: 1,
                 cell_height_px: 1,
                 generation: 0,
+                blocks: CommandBlockTracker::default(),
+                cwd: None,
+                progress: TerminalProgress::default(),
+                progress_reported: false,
+                last_exit_code: None,
+                // A renderer that has drawn nothing needs a full frame,
+                // even before any output arrives.
+                damage: DamageSet {
+                    full: true,
+                    ..DamageSet::default()
+                },
+                last_frame_generation: 0,
             }),
         }
     }
 
     /// Feed bytes from the PTY into the parser.
+    ///
+    /// The OSC tap runs alongside the parser so semantic sequences the
+    /// emulator drops (OSC 7/9/99/133/777) still produce typed events.
+    /// Bytes are advanced up to each tapped sequence before the event is
+    /// recorded, giving marks an exact grid position; the tapped bytes
+    /// are then fed through the parser as usual so sequences the
+    /// emulator does handle (title, hyperlink, clipboard) keep working.
     pub fn feed(&self, bytes: &[u8]) {
         let mut inner = self.inner.lock();
         let inner = &mut *inner;
-        inner.parser.advance(&mut inner.term, bytes);
+        let tapped = inner.tap.feed(bytes);
+        let mut last = 0;
+        for osc in tapped {
+            if osc.start < last {
+                // The sequence started in an earlier feed call and its
+                // bytes were already parsed; only record its semantics.
+                inner.record_osc(&osc.body);
+                continue;
+            }
+            inner
+                .parser
+                .advance(&mut inner.term, &bytes[last..osc.start]);
+            inner.record_osc(&osc.body);
+            inner
+                .parser
+                .advance(&mut inner.term, &bytes[osc.start..osc.end]);
+            last = osc.end;
+        }
+        inner.parser.advance(&mut inner.term, &bytes[last..]);
         inner.answer_pending_replies();
+        inner.collect_damage();
         inner.generation = inner.generation.wrapping_add(1);
+    }
+
+    /// Push an externally-sourced event (e.g. process exit) into the
+    /// session's semantic event queue.
+    pub fn push_event(&self, kind: TerminalEventKind) {
+        self.inner.lock().listener.events.lock().push(kind);
+    }
+
+    /// Drain all pending semantic events.
+    pub fn drain_events(&self) -> TerminalEventBatch {
+        self.inner.lock().listener.events.lock().drain()
+    }
+
+    /// Completed command blocks plus the open one, oldest first.
+    pub fn command_blocks(&self) -> Vec<CommandBlock> {
+        self.inner.lock().blocks.blocks()
+    }
+
+    /// The title the application set via OSC 0/2, without building a
+    /// snapshot.
+    pub fn osc_title(&self) -> Option<String> {
+        self.inner.lock().listener.title.lock().clone()
+    }
+
+    /// The last working directory reported via OSC 7.
+    pub fn cwd(&self) -> Option<std::path::PathBuf> {
+        self.inner.lock().cwd.clone()
+    }
+
+    /// Replace the palette cell colors resolve against. Cheap by
+    /// construction: the grid stores colors symbolically, so a theme
+    /// change is a repaint and never a reflow.
+    pub fn set_theme(&self, theme: ThemeColors) {
+        let mut inner = self.inner.lock();
+        inner.theme = theme;
+        // Every resolved color changes, so nothing on screen is reusable.
+        inner.damage.mark_full();
+        inner.generation = inner.generation.wrapping_add(1);
+    }
+
+    /// Current progress and attention counters.
+    pub fn activity(&self) -> TerminalActivity {
+        let inner = self.inner.lock();
+        TerminalActivity {
+            progress: inner.progress,
+            last_exit_code: inner.last_exit_code,
+            bells: inner.listener.bells.load(Ordering::Relaxed),
+            notifications: inner.listener.notifications.load(Ordering::Relaxed),
+        }
+    }
+
+    /// Text of the live screen rows only (the tail of [`Self::grid_text`]).
+    pub fn screen_text(&self) -> Vec<SearchRow> {
+        let rows = self.grid_text();
+        let screen_lines = self.inner.lock().term.grid().screen_lines();
+        let skip = rows.len().saturating_sub(screen_lines);
+        rows.into_iter().skip(skip).collect()
+    }
+
+    /// OSC 8 hyperlink ranges on the live screen: (absolute line,
+    /// start column, end column exclusive, URI).
+    pub fn screen_hyperlinks(&self) -> Vec<(i64, u16, u16, String)> {
+        let inner = self.inner.lock();
+        let grid = inner.term.grid();
+        let history = grid.history_size() as i64;
+        let screen_lines = grid.screen_lines() as i64;
+        let mut links = Vec::new();
+        for offset in 0..screen_lines {
+            let row = &grid[Line(offset as i32)];
+            let mut active: Option<(u16, String)> = None;
+            for col in 0..row.len() {
+                let cell = &row[Column(col)];
+                if cell.flags.contains(Flags::WIDE_CHAR_SPACER) {
+                    continue;
+                }
+                let uri = cell.hyperlink().map(|link| link.uri().to_owned());
+                match (&active, uri) {
+                    (Some((_, active_uri)), Some(uri)) if uri == *active_uri => {}
+                    (Some(_), uri) => {
+                        let (start, active_uri) = active.take().expect("matched Some");
+                        links.push((history + offset, start, col as u16, active_uri));
+                        active = uri.map(|uri| (col as u16, uri));
+                    }
+                    (None, uri) => active = uri.map(|uri| (col as u16, uri)),
+                }
+            }
+            if let Some((start, uri)) = active {
+                links.push((history + offset, start, row.len() as u16, uri));
+            }
+        }
+        links
+    }
+
+    /// Copy the full scrollback + screen text for searching/export.
+    ///
+    /// Cell columns and wide-char widths are preserved per character so
+    /// offsets map back to highlightable cell ranges; absolute lines
+    /// count from the oldest scrollback line.
+    pub fn grid_text(&self) -> Vec<SearchRow> {
+        let inner = self.inner.lock();
+        let grid = inner.term.grid();
+        let history = grid.history_size() as i64;
+        let screen_lines = grid.screen_lines() as i64;
+        let mut rows = Vec::with_capacity((history + screen_lines).max(0) as usize);
+        for offset in -history..screen_lines {
+            rows.push(row_search_text(
+                &grid[Line(offset as i32)],
+                history + offset,
+            ));
+        }
+        rows
+    }
+
+    /// Logical lines around `start_line` for an accessibility tree,
+    /// with the cursor and the visible range.
+    ///
+    /// `start_line` defaults to the first visible line; wrapped rows are
+    /// joined into the logical line they belong to, so the walk starts
+    /// at that line's real beginning. At most `max_lines` logical lines
+    /// are returned, which keeps a query off the full scrollback.
+    pub fn text_view(&self, start_line: Option<i64>, max_lines: usize) -> TextView {
+        let inner = self.inner.lock();
+        let grid = inner.term.grid();
+        let history = grid.history_size() as i64;
+        let screen_lines = grid.screen_lines() as i64;
+        let total_lines = history + screen_lines;
+        let viewport_first_line = history - grid.display_offset() as i64;
+        let row_at = |line: i64| &grid[Line((line - history) as i32)];
+
+        let mut start = start_line
+            .unwrap_or(viewport_first_line)
+            .clamp(0, total_lines.saturating_sub(1).max(0));
+        // Wrapped rows belong to the logical line that started earlier.
+        while start > 0
+            && row_at(start - 1)
+                .last()
+                .is_some_and(|cell| cell.flags.contains(Flags::WRAPLINE))
+        {
+            start -= 1;
+        }
+
+        let mut lines: Vec<LogicalLine> = Vec::new();
+        let mut line = start;
+        while line < total_lines && lines.len() < max_lines {
+            let mut logical = LogicalLine {
+                line,
+                rows: 0,
+                text: String::new(),
+            };
+            loop {
+                let row = row_search_text(row_at(line), line);
+                logical.text.push_str(&row.text);
+                logical.rows += 1;
+                line += 1;
+                if !row.wraps || line >= total_lines {
+                    break;
+                }
+            }
+            lines.push(logical);
+        }
+
+        TextView {
+            lines,
+            cursor_line: history + grid.cursor.point.line.0 as i64,
+            cursor_column: grid.cursor.point.column.0.min(u16::MAX as usize) as u16,
+            viewport_first_line,
+            viewport_last_line: viewport_first_line + screen_lines - 1,
+            total_lines,
+        }
     }
 
     pub fn resize(
@@ -296,24 +1035,97 @@ impl VtScreen {
         });
         inner.cell_width_px = cell_width_px.clamp(1, u16::MAX as u32) as u16;
         inner.cell_height_px = cell_height_px.clamp(1, u16::MAX as u32) as u16;
+        inner.damage.mark_full();
         inner.generation = inner.generation.wrapping_add(1);
         Ok(())
+    }
+
+    /// The renderer's view of the grid, diffed against the frame the
+    /// caller last drew.
+    ///
+    /// Returns [`FrameUpdate::Unchanged`] when nothing moved since
+    /// `since_generation`, so a polling renderer does no work on a quiet
+    /// frame. A `since_generation` other than the last frame handed out
+    /// forces a full repaint — a renderer that lost its state, or a new
+    /// one attaching, must not receive a diff against a frame it never
+    /// saw.
+    pub fn frame(&self, since_generation: u64) -> FrameUpdate {
+        let mut inner = self.inner.lock();
+        let inner = &mut *inner;
+        inner.flush_expired_sync();
+
+        let resumed = since_generation != inner.last_frame_generation;
+        if !resumed && since_generation == inner.generation && !inner.damage.is_dirty() {
+            return FrameUpdate::Unchanged {
+                generation: inner.generation,
+            };
+        }
+        if resumed {
+            inner.damage.mark_full();
+        }
+
+        let cols = inner.term.columns().min(u16::MAX as usize) as u16;
+        let rows = inner.term.screen_lines().min(u16::MAX as usize) as u16;
+        let total = cols as usize * rows as usize;
+
+        let content = inner.term.renderable_content();
+        let display_offset = content.display_offset;
+        let colors = content.colors;
+        let theme = &inner.theme;
+        let default_fg = colors[NamedColor::Foreground]
+            .map(|rgb| [rgb.r, rgb.g, rgb.b])
+            .unwrap_or(theme.fg);
+        let default_bg = colors[NamedColor::Background]
+            .map(|rgb| [rgb.r, rgb.g, rgb.b])
+            .unwrap_or(theme.bg);
+        let resolve = resolver(colors, theme);
+
+        // The blob is filled in column order, which is what lets a
+        // joined cluster be described by widening the leader's length.
+        let mut text = String::with_capacity(total);
+        let mut cells = vec![FrameCell::default(); total];
+        let mut ordered: Vec<(usize, &alacritty_terminal::term::cell::Cell)> = Vec::new();
+        for indexed in content.display_iter {
+            let viewport_row = indexed.point.line.0 + display_offset as i32;
+            if viewport_row < 0 || viewport_row >= rows as i32 {
+                continue;
+            }
+            let col = indexed.point.column.0;
+            if col >= cols as usize {
+                continue;
+            }
+            ordered.push((viewport_row as usize * cols as usize + col, indexed.cell));
+        }
+        ordered.sort_unstable_by_key(|(index, _)| *index);
+        for (index, cell) in ordered {
+            cells[index] = convert_frame_cell(cell, &resolve, default_fg, default_bg, &mut text);
+        }
+        for row in cells.chunks_mut(cols as usize) {
+            join_zwj_frame_cells(row, &text);
+        }
+
+        let cursor = frame_cursor(content.cursor, content.mode, display_offset, rows);
+        let (damage, full_damage) = inner.damage.take(rows, cols);
+        inner.last_frame_generation = inner.generation;
+
+        FrameUpdate::Changed(Box::new(TerminalFrame {
+            cols,
+            rows,
+            generation: inner.generation,
+            cells,
+            text,
+            damage,
+            full_damage,
+            cursor,
+            default_fg: pack_rgb(default_fg, 0xFF),
+            default_bg: pack_rgb(default_bg, 0xFF),
+        }))
     }
 
     pub fn snapshot(&self) -> ScreenSnapshot {
         let mut inner = self.inner.lock();
         let inner = &mut *inner;
-
-        // An application that enters synchronized output (DEC 2026) and
-        // never leaves keeps bytes buffered inside the parser. Flush
-        // once vte's own deadline passes so the frame can't freeze.
-        if let Some(deadline) = inner.parser.sync_timeout().sync_timeout()
-            && Instant::now() >= deadline
-        {
-            inner.parser.stop_sync(&mut inner.term);
-            inner.answer_pending_replies();
-            inner.generation = inner.generation.wrapping_add(1);
-        }
+        inner.flush_expired_sync();
 
         let cols = inner.term.columns().min(u16::MAX as usize) as u16;
         let rows = inner.term.screen_lines().min(u16::MAX as usize) as u16;
@@ -362,6 +1174,9 @@ impl VtScreen {
             }
             cells[viewport_row as usize * cols as usize + col] =
                 convert_cell(indexed.cell, &resolve, default_fg, default_bg);
+        }
+        for row in cells.chunks_mut(cols as usize) {
+            join_zwj_clusters(row);
         }
 
         // Cursor in viewport coordinates; scrolled-back history must
@@ -459,12 +1274,135 @@ impl VtScreen {
         let delta =
             i32::try_from(-delta_rows).unwrap_or(if delta_rows < 0 { i32::MAX } else { i32::MIN });
         inner.term.scroll_display(Scroll::Delta(delta));
+        // The viewport moved over the grid: every row shows new content.
+        inner.damage.mark_full();
         inner.generation = inner.generation.wrapping_add(1);
         true
     }
 }
 
 impl VtInner {
+    /// Record the semantics of a tapped OSC sequence, positioned at the
+    /// current grid state (the parser has already consumed all
+    /// preceding bytes).
+    fn record_osc(&mut self, body: &[u8]) {
+        let Some(semantic) = parse_osc(body) else {
+            return;
+        };
+        let absolute_line = || {
+            let grid = self.term.grid();
+            grid.history_size() as i64 + i64::from(grid.cursor.point.line.0)
+        };
+        let kind = match semantic {
+            OscSemantic::Cwd(path) => {
+                self.cwd = Some(std::path::PathBuf::from(&path));
+                TerminalEventKind::Cwd { path }
+            }
+            OscSemantic::Progress(progress) => {
+                let (state, percent) = match progress {
+                    OscProgress::Idle => (TerminalProgressState::Idle, None),
+                    // OSC 9;4 has no explicit completion state; a set
+                    // value reaching 100% is the protocol's completion
+                    // signal.
+                    OscProgress::Running { percent: Some(100) } => {
+                        (TerminalProgressState::Succeeded, Some(100))
+                    }
+                    OscProgress::Running { percent } => (TerminalProgressState::Running, percent),
+                    OscProgress::Paused { percent } => (TerminalProgressState::Paused, percent),
+                    OscProgress::Failed => (TerminalProgressState::Failed, None),
+                };
+                self.progress = TerminalProgress { state, percent };
+                self.progress_reported = state != TerminalProgressState::Idle;
+                TerminalEventKind::Progress { state, percent }
+            }
+            OscSemantic::Notification { title, body } => {
+                self.listener.notifications.fetch_add(1, Ordering::Relaxed);
+                TerminalEventKind::Notification { title, body }
+            }
+            OscSemantic::PromptStart => TerminalEventKind::PromptStart {
+                line: absolute_line(),
+            },
+            OscSemantic::InputStart => TerminalEventKind::InputStart {
+                line: absolute_line(),
+            },
+            OscSemantic::OutputStart => {
+                // A command starts: indeterminate until it reports its
+                // own progress, and the previous command's OSC 9;4 state
+                // no longer applies.
+                self.progress_reported = false;
+                self.progress = TerminalProgress {
+                    state: TerminalProgressState::Running,
+                    percent: None,
+                };
+                TerminalEventKind::OutputStart {
+                    line: absolute_line(),
+                }
+            }
+            OscSemantic::CommandFinished { exit_code } => {
+                self.last_exit_code = exit_code;
+                self.progress_reported = false;
+                // Completion outranks any progress the command reported.
+                // An absent exit code says "finished, outcome unknown",
+                // which is idle rather than a success badge.
+                self.progress = TerminalProgress {
+                    state: match exit_code {
+                        Some(0) => TerminalProgressState::Succeeded,
+                        Some(_) => TerminalProgressState::Failed,
+                        None => TerminalProgressState::Idle,
+                    },
+                    percent: None,
+                };
+                TerminalEventKind::CommandFinished {
+                    line: absolute_line(),
+                    exit_code,
+                }
+            }
+        };
+        self.blocks.record(&kind);
+        self.listener.events.lock().push(kind);
+    }
+
+    /// An application that enters synchronized output (DEC 2026) and
+    /// never leaves keeps bytes buffered inside the parser. Flush once
+    /// vte's own deadline passes so the screen can't freeze.
+    fn flush_expired_sync(&mut self) {
+        if let Some(deadline) = self.parser.sync_timeout().sync_timeout()
+            && Instant::now() >= deadline
+        {
+            self.parser.stop_sync(&mut self.term);
+            self.answer_pending_replies();
+            self.collect_damage();
+            self.generation = self.generation.wrapping_add(1);
+        }
+    }
+
+    /// Fold the terminal's per-line damage into our own set.
+    ///
+    /// `Term` clears its damage on read, so it is accumulated here
+    /// instead: a renderer polls on its own cadence and must not lose
+    /// the rows that changed between two of its frames.
+    fn collect_damage(&mut self) {
+        let rows = self.term.screen_lines();
+        let cursor_row = self.term.grid().cursor.point.line.0.max(0) as usize;
+        match self.term.damage() {
+            TermDamage::Full => self.damage.mark_full(),
+            TermDamage::Partial(lines) => {
+                let lines: Vec<_> = lines.collect();
+                for line in lines {
+                    self.damage.expand(line.line, line.left, line.right, rows);
+                }
+            }
+        }
+        self.term.reset_damage();
+        // Repaint where the cursor was and where it is, so it is erased
+        // from its old row even when that row's text did not change.
+        let columns = self.term.columns().saturating_sub(1);
+        let previous = self.damage.cursor_row as usize;
+        self.damage.expand(previous, 0, columns, rows);
+        self.damage.expand(cursor_row, 0, columns, rows);
+        self.damage.cursor_row = cursor_row.min(u16::MAX as usize) as u16;
+    }
+
     /// Answer queued OSC color / size queries. Runs after
     /// `parser.advance` returns so `Term` state is readable again.
     fn answer_pending_replies(&mut self) {
@@ -498,6 +1436,123 @@ impl VtInner {
 
 type ResolveColor<'a> = dyn Fn(AnsiColor, [u8; 3]) -> [u8; 3] + 'a;
 
+/// Resolve a symbolic cell color against OSC overrides, then the theme.
+fn resolver<'a>(
+    colors: &'a alacritty_terminal::term::color::Colors,
+    theme: &'a ThemeColors,
+) -> impl Fn(AnsiColor, [u8; 3]) -> [u8; 3] + 'a {
+    move |color: AnsiColor, base: [u8; 3]| match color {
+        AnsiColor::Spec(rgb) => [rgb.r, rgb.g, rgb.b],
+        AnsiColor::Indexed(index) => colors[index as usize]
+            .map(|rgb| [rgb.r, rgb.g, rgb.b])
+            .unwrap_or(theme.palette[index as usize]),
+        AnsiColor::Named(named) => {
+            let index = named as usize;
+            if index < 256 {
+                colors[index]
+                    .map(|rgb| [rgb.r, rgb.g, rgb.b])
+                    .unwrap_or(theme.palette[index])
+            } else {
+                base
+            }
+        }
+    }
+}
+
+/// Cursor in viewport coordinates; scrolled-back history must not show
+/// the live cursor.
+fn frame_cursor(
+    cursor: alacritty_terminal::term::RenderableCursor,
+    mode: TermMode,
+    display_offset: usize,
+    rows: u16,
+) -> Cursor {
+    let row = cursor.point.line.0 + display_offset as i32;
+    Cursor {
+        col: cursor.point.column.0.min(u16::MAX as usize) as u16,
+        row: row.clamp(0, rows.saturating_sub(1) as i32) as u16,
+        visible: cursor.shape != CursorShape::Hidden
+            && mode.contains(TermMode::SHOW_CURSOR)
+            && (0..rows as i32).contains(&row),
+        style: match cursor.shape {
+            CursorShape::Beam => CursorVisualStyle::Bar,
+            CursorShape::Underline => CursorVisualStyle::Underline,
+            CursorShape::HollowBlock => CursorVisualStyle::BlockHollow,
+            CursorShape::Block | CursorShape::Hidden => CursorVisualStyle::Block,
+        },
+    }
+}
+
+/// Longest cluster a [`FrameCell`] can address; longer ones are cut at a
+/// char boundary rather than corrupting the blob's offsets.
+const MAX_CLUSTER_BYTES: usize = u8::MAX as usize;
+
+/// Convert one grid cell, appending its cluster to the frame's blob.
+fn convert_frame_cell(
+    cell: &alacritty_terminal::term::cell::Cell,
+    resolve: &impl Fn(AnsiColor, [u8; 3]) -> [u8; 3],
+    default_fg: [u8; 3],
+    default_bg: [u8; 3],
+    text: &mut String,
+) -> FrameCell {
+    let converted = convert_cell(cell, resolve, default_fg, default_bg);
+    let offset = text.len().min(u32::MAX as usize) as u32;
+    let mut len = converted.text.len();
+    if len > MAX_CLUSTER_BYTES {
+        len = MAX_CLUSTER_BYTES;
+        while len > 0 && !converted.text.is_char_boundary(len) {
+            len -= 1;
+        }
+    }
+    text.push_str(&converted.text[..len]);
+    FrameCell {
+        fg: converted.fg,
+        bg: converted.bg,
+        underline_color: converted.underline_color.unwrap_or(0),
+        text_offset: offset,
+        text_len: len as u8,
+        attrs: converted.attrs,
+        underline: converted.underline as u8,
+        columns: converted.columns,
+    }
+}
+
+/// The [`join_zwj_clusters`] pass for frame cells. Clusters are already
+/// contiguous in the blob (cells are filled in column order), so joining
+/// is only widening the leader's length.
+fn join_zwj_frame_cells(row: &mut [FrameCell], text: &str) {
+    let ends_with_zwj = |cell: &FrameCell| {
+        let start = cell.text_offset as usize;
+        let end = start + cell.text_len as usize;
+        text.get(start..end)
+            .is_some_and(|s| s.ends_with('\u{200D}'))
+    };
+    let mut lead = 0;
+    while lead < row.len() {
+        if !ends_with_zwj(&row[lead]) {
+            lead += 1;
+            continue;
+        }
+        let mut next = lead + 1;
+        while ends_with_zwj(&row[lead]) && next < row.len() {
+            if row[next].columns == 0 && row[next].text_len == 0 {
+                // Wide-char spacer: part of the cluster's span.
+                next += 1;
+                continue;
+            }
+            if row[next].text_len == 0 {
+                break;
+            }
+            let joined = std::mem::take(&mut row[next].text_len);
+            row[lead].text_len = row[lead].text_len.saturating_add(joined);
+            let columns = std::mem::replace(&mut row[next].columns, 0);
+            row[lead].columns = row[lead].columns.saturating_add(columns);
+            next += 1;
+        }
+        lead = next.max(lead + 1);
+    }
+}
+
 fn convert_cell(
     cell: &alacritty_terminal::term::cell::Cell,
     resolve: &ResolveColor<'_>,
@@ -530,6 +1585,9 @@ fn convert_cell(
     if flags.contains(Flags::INVERSE) {
         attrs |= ATTR_INVERSE;
     }
+    if flags.contains(Flags::HIDDEN) {
+        attrs |= ATTR_HIDDEN;
+    }
 
     // Untouched grid cells surface as plain spaces on the default
     // colors; report them as empty text so hosts can keep skipping
@@ -555,7 +1613,101 @@ fn convert_cell(
         fg: pack_rgb(fg, 0xFF),
         bg: pack_rgb(bg, if bg_is_default { 0 } else { 0xFF }),
         attrs,
+        underline: UnderlineStyle::from_flags(flags),
+        underline_color: cell
+            .underline_color()
+            .map(|color| pack_rgb(resolve(color, fg), 0xFF)),
+        columns: if is_spacer {
+            0
+        } else if flags.contains(Flags::WIDE_CHAR) {
+            2
+        } else {
+            1
+        },
         wide: flags.contains(Flags::WIDE_CHAR),
+        hyperlink: cell.hyperlink().map(|link| link.uri().to_owned()),
+    }
+}
+
+/// Merge ZWJ-joined emoji into one cell.
+///
+/// The emulator stores each emoji of a ZWJ sequence in its own cell,
+/// with the joiner trailing the cell before it. Renderers need the whole
+/// cluster in one text run to shape a single glyph, so the leading cell
+/// takes the joined text and the columns it swallowed, and the followers
+/// become continuation columns.
+fn join_zwj_clusters(row: &mut [Cell]) {
+    const ZWJ: char = '\u{200D}';
+    let mut lead = 0;
+    while lead < row.len() {
+        if !row[lead].text.ends_with(ZWJ) {
+            lead += 1;
+            continue;
+        }
+        let mut next = lead + 1;
+        while row[lead].text.ends_with(ZWJ) && next < row.len() {
+            if row[next].columns == 0 {
+                // Wide-char spacer: still part of the cluster's span.
+                next += 1;
+                continue;
+            }
+            let joined = std::mem::take(&mut row[next].text);
+            if joined.is_empty() {
+                // A dangling joiner before empty space: nothing to join.
+                break;
+            }
+            row[lead].text.push_str(&joined);
+            let columns = std::mem::replace(&mut row[next].columns, 0);
+            row[lead].columns = row[lead].columns.saturating_add(columns);
+            next += 1;
+        }
+        lead = next.max(lead + 1);
+    }
+}
+
+/// Text of one grid row, with each character's cell column and width so
+/// offsets map back to highlightable ranges. Trailing blanks are cut.
+fn row_search_text(
+    row: &alacritty_terminal::grid::Row<alacritty_terminal::term::cell::Cell>,
+    line: i64,
+) -> SearchRow {
+    let columns = row.len();
+    let mut text = String::new();
+    let mut cells: Vec<(u16, u8)> = Vec::new();
+    let mut occupied = 0_usize;
+    for col in 0..columns {
+        let cell = &row[Column(col)];
+        if cell
+            .flags
+            .intersects(Flags::WIDE_CHAR_SPACER | Flags::LEADING_WIDE_CHAR_SPACER)
+        {
+            continue;
+        }
+        let width = if cell.flags.contains(Flags::WIDE_CHAR) {
+            2
+        } else {
+            1
+        };
+        text.push(cell.c);
+        cells.push((col as u16, width));
+        if let Some(zerowidth) = cell.zerowidth() {
+            for ch in zerowidth {
+                text.push(*ch);
+                cells.push((col as u16, width));
+            }
+        }
+        let non_blank = cell.c != ' ' || cell.zerowidth().is_some_and(|extra| !extra.is_empty());
+        if non_blank {
+            occupied = text.chars().count();
+        }
+    }
+    let text: String = text.chars().take(occupied).collect();
+    cells.truncate(occupied);
+    SearchRow {
+        line,
+        text,
+        cells,
+        wraps: columns > 0 && row[Column(columns - 1)].flags.contains(Flags::WRAPLINE),
     }
 }
 
@@ -577,7 +1729,7 @@ mod tests {
 
     #[test]
     fn renders_fed_bytes() {
-        let screen = VtScreen::new_with_write_pty(20, 3, None, None);
+        let screen = VtScreen::new_with_options(20, 3, None, None, None);
         screen.feed(b"hello \x1b[1mworld\x1b[0m");
         let snapshot = screen.snapshot();
         let text = snapshot_text(&snapshot);
@@ -593,7 +1745,7 @@ mod tests {
 
     #[test]
     fn scroll_viewport_reveals_scrollback() {
-        let screen = VtScreen::new_with_write_pty(12, 3, None, None);
+        let screen = VtScreen::new_with_options(12, 3, None, None, None);
         screen.feed(b"one\r\ntwo\r\nthree\r\nfour\r\nfive");
 
         let bottom = snapshot_text(&screen.snapshot());
@@ -616,7 +1768,7 @@ mod tests {
 
     #[test]
     fn tracks_modes_and_title() {
-        let screen = VtScreen::new_with_write_pty(10, 2, None, None);
+        let screen = VtScreen::new_with_options(10, 2, None, None, None);
         assert!(!screen.is_bracketed_paste());
         screen.feed(b"\x1b[?2004h\x1b[?1h\x1b[?1049h\x1b[?1000h\x1b[?1006h");
         assert!(screen.is_bracketed_paste());
@@ -636,7 +1788,7 @@ mod tests {
         let write_pty: PtyWriteCallback = Arc::new(move |bytes: &[u8]| {
             sink.lock().extend_from_slice(bytes);
         });
-        let screen = VtScreen::new_with_write_pty(8, 2, None, Some(write_pty));
+        let screen = VtScreen::new_with_options(8, 2, None, Some(write_pty), None);
         screen.feed(b"\x1b[6n");
         let response = written.lock().clone();
         assert_eq!(response, b"\x1b[1;1R");
@@ -644,7 +1796,7 @@ mod tests {
 
     #[test]
     fn default_background_cells_carry_alpha_zero_sentinel() {
-        let screen = VtScreen::new_with_write_pty(8, 2, None, None);
+        let screen = VtScreen::new_with_options(8, 2, None, None, None);
         screen.feed(b"a\x1b[41mb\x1b[0m");
         let snapshot = screen.snapshot();
         let plain = snapshot
@@ -662,8 +1814,546 @@ mod tests {
     }
 
     #[test]
+    fn semantic_events_flow_from_osc_sequences() {
+        let screen = VtScreen::new_with_options(20, 3, None, None, None);
+        screen.feed(b"pwd \x1b]7;file:///tmp/work\x07");
+        screen.feed(b"\x1b]9;4;1;40\x07");
+        screen.feed(b"\x1b]9;build finished\x07");
+        screen.feed(b"\x1b]133;A\x1b\\\x1b]133;D;3\x07");
+        screen.feed(b"\x1b]0;new title\x07");
+        screen.feed(b"\x07"); // bell
+        screen.feed(b"\x1b]52;c;aGVsbG8=\x07");
+
+        let batch = screen.drain_events();
+        let kinds: Vec<&TerminalEventKind> = batch.events.iter().map(|event| &event.kind).collect();
+        assert!(
+            kinds.contains(&&TerminalEventKind::Cwd {
+                path: "/tmp/work".to_string()
+            }),
+            "cwd event: {kinds:?}"
+        );
+        assert!(
+            kinds.contains(&&TerminalEventKind::Progress {
+                state: TerminalProgressState::Running,
+                percent: Some(40)
+            }),
+            "progress event: {kinds:?}"
+        );
+        assert!(
+            kinds.contains(&&TerminalEventKind::Notification {
+                title: None,
+                body: "build finished".to_string()
+            }),
+            "notification event: {kinds:?}"
+        );
+        assert!(
+            kinds.contains(&&TerminalEventKind::CommandFinished {
+                line: 0,
+                exit_code: Some(3)
+            }),
+            "command finished with grid line: {kinds:?}"
+        );
+        assert!(
+            kinds.contains(&&TerminalEventKind::Title {
+                title: Some("new title".to_string())
+            }),
+            "title event: {kinds:?}"
+        );
+        assert!(kinds.contains(&&TerminalEventKind::Bell), "bell: {kinds:?}");
+        assert!(
+            kinds.contains(&&TerminalEventKind::ClipboardStore {
+                clipboard: "clipboard".to_string(),
+                text: "hello".to_string()
+            }),
+            "clipboard store decoded: {kinds:?}"
+        );
+
+        // Sequences are monotonic and the queue is empty after drain.
+        let seqs: Vec<u64> = batch.events.iter().map(|event| event.seq).collect();
+        assert!(seqs.windows(2).all(|pair| pair[1] > pair[0]));
+        assert_eq!(batch.next_seq as usize, batch.events.len());
+        assert!(screen.drain_events().events.is_empty());
+    }
+
+    #[test]
+    fn semantic_marks_track_absolute_grid_lines() {
+        let screen = VtScreen::new_with_options(10, 2, None, None, None);
+        // Push two lines into scrollback, then mark the prompt.
+        screen.feed(b"one\r\ntwo\r\nthree\r\n");
+        screen.feed(b"\x1b]133;A\x07");
+        let batch = screen.drain_events();
+        let mark = batch
+            .events
+            .iter()
+            .find_map(|event| match event.kind {
+                TerminalEventKind::PromptStart { line } => Some(line),
+                _ => None,
+            })
+            .expect("prompt mark");
+        // Two lines scrolled into history; the cursor sits on screen
+        // row 1, so the prompt line is absolute line 3.
+        assert_eq!(mark, 3);
+    }
+
+    #[test]
+    fn command_blocks_follow_semantic_marks() {
+        let screen = VtScreen::new_with_options(10, 3, None, None, None);
+        screen.feed(b"\x1b]133;A\x07prompt$ \x1b]133;B\x07ls\r\n");
+        screen.feed(b"\x1b]133;C\x07file1 file2\r\n");
+        screen.feed(b"\x1b]133;D;2\x07");
+        screen.feed(b"\x1b]133;A\x07prompt$ ");
+
+        let blocks = screen.command_blocks();
+        assert_eq!(blocks.len(), 2, "one completed + one open: {blocks:?}");
+        let first = &blocks[0];
+        assert_eq!(first.prompt_line, 0);
+        assert_eq!(first.input_line, Some(0));
+        assert!(
+            first.output_line >= first.input_line,
+            "output follows input: {first:?}"
+        );
+        assert!(
+            first.end_line >= first.output_line,
+            "block ends after output: {first:?}"
+        );
+        assert_eq!(first.exit_code, Some(2));
+        let second = &blocks[1];
+        assert!(second.end_line.is_none(), "second block still open");
+        assert!(
+            second.prompt_line >= first.end_line.unwrap_or(0),
+            "next prompt follows the completed block: {blocks:?}"
+        );
+    }
+
+    #[test]
+    fn osc8_hyperlinks_reach_cells_and_ranges() {
+        let screen = VtScreen::new_with_options(20, 2, None, None, None);
+        screen.feed(b"\x1b]8;;https://example.com\x07link text\x1b]8;;\x07 plain");
+        let snapshot = screen.snapshot();
+        let linked: Vec<&Cell> = snapshot
+            .cells
+            .iter()
+            .filter(|cell| cell.hyperlink.is_some())
+            .collect();
+        assert_eq!(linked.len(), 9, "'link text' cells carry the URI");
+        assert_eq!(linked[0].hyperlink.as_deref(), Some("https://example.com"));
+
+        let ranges = screen.screen_hyperlinks();
+        assert_eq!(ranges.len(), 1);
+        assert_eq!(ranges[0].0, 0, "screen row 0 as absolute line");
+        assert_eq!((ranges[0].1, ranges[0].2), (0, 9));
+        assert_eq!(ranges[0].3, "https://example.com");
+    }
+
+    #[test]
+    fn cell_styles_cover_the_sgr_surface() {
+        let screen = VtScreen::new_with_options(20, 2, None, None, None);
+        // Curly underline in red, strike, then a concealed run.
+        screen.feed(b"\x1b[4:3m\x1b[58;2;255;0;0mU\x1b[m\x1b[9mS\x1b[m\x1b[8mhide\x1b[m");
+        let snapshot = screen.snapshot();
+
+        let underlined = &snapshot.cells[0];
+        assert_eq!(underlined.text, "U");
+        assert_eq!(underlined.underline, UnderlineStyle::Curly);
+        assert_ne!(underlined.attrs & ATTR_UNDERLINE, 0, "style-agnostic bit");
+        assert_eq!(underlined.underline_color, Some(0xFF0000FF));
+
+        let struck = &snapshot.cells[1];
+        assert_eq!(struck.text, "S");
+        assert_ne!(struck.attrs & ATTR_STRIKE, 0);
+        assert_eq!(struck.underline, UnderlineStyle::None);
+
+        // Concealed cells keep their columns and styling but no text.
+        let hidden: Vec<&Cell> = snapshot.cells[2..6].iter().collect();
+        assert_eq!(hidden.len(), 4);
+        assert!(
+            hidden
+                .iter()
+                .all(|cell| cell.text.is_empty() && cell.attrs & ATTR_HIDDEN != 0),
+            "hidden run: {hidden:?}"
+        );
+    }
+
+    #[test]
+    fn underline_styles_map_to_their_sgr() {
+        for (sgr, expected) in [
+            ("\x1b[4m", UnderlineStyle::Single),
+            // SGR 21 is cancel-bold in this stack, not double underline.
+            ("\x1b[4:2m", UnderlineStyle::Double),
+            ("\x1b[4:3m", UnderlineStyle::Curly),
+            ("\x1b[4:4m", UnderlineStyle::Dotted),
+            ("\x1b[4:5m", UnderlineStyle::Dashed),
+            ("\x1b[24m", UnderlineStyle::None),
+        ] {
+            let screen = VtScreen::new_with_options(4, 1, None, None, None);
+            screen.feed(format!("{sgr}x").as_bytes());
+            assert_eq!(
+                screen.snapshot().cells[0].underline,
+                expected,
+                "underline style for {sgr:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn progress_follows_osc94_reports() {
+        let screen = VtScreen::new_with_options(20, 3, None, None, None);
+        assert_eq!(screen.activity().progress, TerminalProgress::default());
+
+        screen.feed(b"\x1b]9;4;1;40\x07");
+        assert_eq!(
+            screen.activity().progress,
+            TerminalProgress {
+                state: TerminalProgressState::Running,
+                percent: Some(40),
+            }
+        );
+
+        screen.feed(b"\x1b]9;4;4;60\x07");
+        assert_eq!(
+            screen.activity().progress,
+            TerminalProgress {
+                state: TerminalProgressState::Paused,
+                percent: Some(60),
+            }
+        );
+
+        screen.feed(b"\x1b]9;4;1;100\x07");
+        assert_eq!(
+            screen.activity().progress.state,
+            TerminalProgressState::Succeeded,
+            "a full progress bar is the protocol's completion signal"
+        );
+
+        screen.feed(b"\x1b]9;4;2;\x07");
+        assert_eq!(
+            screen.activity().progress.state,
+            TerminalProgressState::Failed
+        );
+
+        screen.feed(b"\x1b]9;4;0;\x07");
+        assert_eq!(screen.activity().progress, TerminalProgress::default());
+    }
+
+    #[test]
+    fn progress_falls_back_to_command_boundaries() {
+        let screen = VtScreen::new_with_options(20, 3, None, None, None);
+        screen.feed(b"\x1b]133;A\x07$ \x1b]133;B\x07build\r\n");
+        assert_eq!(
+            screen.activity().progress.state,
+            TerminalProgressState::Idle,
+            "typing at the prompt is not a running command"
+        );
+
+        screen.feed(b"\x1b]133;C\x07working\r\n");
+        assert_eq!(
+            screen.activity().progress,
+            TerminalProgress {
+                state: TerminalProgressState::Running,
+                percent: None,
+            },
+            "a command with no progress reports is indeterminate"
+        );
+
+        // A command that reports OSC 9;4 keeps ownership of the state...
+        screen.feed(b"\x1b]9;4;1;30\x07");
+        assert_eq!(screen.activity().progress.percent, Some(30));
+        // ...until it finishes, where the exit code wins.
+        screen.feed(b"\x1b]133;D;1\x07");
+        assert_eq!(
+            screen.activity(),
+            TerminalActivity {
+                progress: TerminalProgress {
+                    state: TerminalProgressState::Failed,
+                    percent: None,
+                },
+                last_exit_code: Some(1),
+                bells: 0,
+                notifications: 0,
+            }
+        );
+
+        // The next command starts clean rather than inheriting state.
+        screen.feed(b"\x1b]133;A\x07$ \x1b]133;C\x07\x1b]133;D;0\x07");
+        assert_eq!(
+            screen.activity().progress.state,
+            TerminalProgressState::Succeeded
+        );
+
+        // Without an exit code the command finished with an unknown
+        // outcome; that is idle, not success.
+        screen.feed(b"\x1b]133;C\x07\x1b]133;D\x07");
+        assert_eq!(
+            screen.activity().progress.state,
+            TerminalProgressState::Idle
+        );
+    }
+
+    #[test]
+    fn attention_counters_accumulate() {
+        let screen = VtScreen::new_with_options(20, 3, None, None, None);
+        // The BELs terminating the OSC sequences are not rung.
+        screen.feed(b"\x07\x1b]9;build done\x07\x07");
+        screen.feed(b"\x1b]777;notify;title;body\x07");
+        let activity = screen.activity();
+        assert_eq!(activity.bells, 2);
+        assert_eq!(activity.notifications, 2);
+        // Counters are monotonic: draining events does not reset them.
+        screen.drain_events();
+        assert_eq!(screen.activity().bells, 2);
+    }
+
+    /// Row text rebuilt from a frame's cells and blob.
+    fn frame_row(frame: &TerminalFrame, row: u16) -> String {
+        let start = row as usize * frame.cols as usize;
+        frame.cells[start..start + frame.cols as usize]
+            .iter()
+            .map(|cell| frame.cell_text(cell))
+            .collect::<String>()
+    }
+
+    fn changed(update: FrameUpdate) -> Box<TerminalFrame> {
+        match update {
+            FrameUpdate::Changed(frame) => frame,
+            FrameUpdate::Unchanged { generation } => {
+                panic!("expected a frame, got unchanged at generation {generation}")
+            }
+        }
+    }
+
+    #[test]
+    fn frame_reports_only_damaged_rows() {
+        let screen = VtScreen::new_with_options(10, 4, None, None, None);
+        screen.feed(b"one\r\ntwo\r\nthree\r\n");
+
+        // First frame: nothing drawn yet, so everything is damaged.
+        let first = changed(screen.frame(0));
+        assert!(first.full_damage);
+        assert_eq!(first.damage.len(), 4, "every row: {:?}", first.damage);
+        assert_eq!(frame_row(&first, 0).trim_end(), "one");
+        assert_eq!(frame_row(&first, 2).trim_end(), "three");
+
+        // A quiet poll does no work.
+        match screen.frame(first.generation) {
+            FrameUpdate::Unchanged { generation } => assert_eq!(generation, first.generation),
+            FrameUpdate::Changed(_) => panic!("nothing changed since the last frame"),
+        }
+
+        // Writing one row damages that row (plus the cursor's).
+        screen.feed(b"four");
+        let second = changed(screen.frame(first.generation));
+        assert!(!second.full_damage, "a single row changed");
+        let rows: Vec<u16> = second.damage.iter().map(|damage| damage.row).collect();
+        assert_eq!(rows, vec![3], "only the written row: {:?}", second.damage);
+        assert_eq!(second.damage[0].start_col, 0);
+        assert!(second.damage[0].end_col <= second.cols);
+        assert_eq!(frame_row(&second, 3).trim_end(), "four");
+
+        // A renderer asking from a generation it never saw gets a full
+        // repaint rather than a diff against a frame it does not have.
+        let resumed = changed(screen.frame(second.generation.wrapping_sub(5)));
+        assert!(resumed.full_damage);
+    }
+
+    #[test]
+    fn first_frame_of_an_idle_session_is_full() {
+        let screen = VtScreen::new_with_options(8, 2, None, None, None);
+        let first = changed(screen.frame(0));
+        assert!(first.full_damage, "a renderer with nothing drawn gets all");
+        assert_eq!(first.cells.len(), 16);
+        assert!(matches!(
+            screen.frame(first.generation),
+            FrameUpdate::Unchanged { .. }
+        ));
+    }
+
+    #[test]
+    fn frame_cells_are_allocation_free_and_carry_style() {
+        let screen = VtScreen::new_with_options(12, 2, None, None, None);
+        screen.feed("\x1b[31mR\x1b[m中\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}".as_bytes());
+        let frame = changed(screen.frame(0));
+
+        assert_eq!(
+            frame_row(&frame, 0),
+            "R中\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}"
+        );
+        assert_eq!(frame.cells[0].columns, 1);
+        assert_ne!(frame.cells[0].fg, frame.default_fg, "ANSI red resolved");
+        assert_eq!(frame.cells[1].columns, 2, "wide char spans two columns");
+        assert_eq!(frame.cells[2].columns, 0, "wide-char spacer");
+        assert_eq!(frame.cells[3].columns, 6, "joined family emoji");
+        // The blob holds every cluster exactly once, in column order.
+        assert_eq!(frame.cells[1].text_offset as usize, "R".len());
+        assert!(frame.text.starts_with("R中"));
+
+        // A row's spans still cover the row.
+        let total: u32 = frame.cells[..frame.cols as usize]
+            .iter()
+            .map(|cell| u32::from(cell.columns))
+            .sum();
+        assert_eq!(total, u32::from(frame.cols));
+    }
+
+    #[test]
+    fn frame_and_snapshot_agree_on_content() {
+        let screen = VtScreen::new_with_options(12, 2, None, None, None);
+        screen.feed("ab\u{1F468}\u{200D}\u{1F469}中\x1b[4:3mU".as_bytes());
+        let frame = changed(screen.frame(0));
+        let snapshot = screen.snapshot();
+
+        let snapshot_row: String = snapshot.cells[..snapshot.cols as usize]
+            .iter()
+            .map(|cell| cell.text.as_str())
+            .collect();
+        assert_eq!(frame_row(&frame, 0), snapshot_row, "same clusters");
+        for (index, (cell, expected)) in frame
+            .cells
+            .iter()
+            .zip(snapshot.cells.iter())
+            .enumerate()
+            .take(snapshot.cols as usize)
+        {
+            assert_eq!(cell.columns, expected.columns, "columns at {index}");
+            assert_eq!(cell.fg, expected.fg, "fg at {index}");
+            assert_eq!(cell.attrs, expected.attrs, "attrs at {index}");
+            assert_eq!(
+                cell.underline, expected.underline as u8,
+                "underline at {index}"
+            );
+        }
+    }
+
+    #[test]
+    fn theme_and_resize_damage_everything() {
+        let screen = VtScreen::new_with_options(10, 3, None, None, None);
+        screen.feed(b"hello");
+        let first = changed(screen.frame(0));
+
+        screen.set_theme(ThemeColors::from_ansi16(
+            [0x11, 0x22, 0x33],
+            [0x44, 0x55, 0x66],
+            [[0u8; 3]; 16],
+        ));
+        let themed = changed(screen.frame(first.generation));
+        assert!(themed.full_damage, "every resolved color changed");
+        assert_eq!(themed.default_bg, 0x445566ff);
+
+        screen.resize(20, 3, 1, 1).expect("resize");
+        let resized = changed(screen.frame(themed.generation));
+        assert!(resized.full_damage);
+        assert_eq!(resized.cols, 20);
+    }
+
+    #[test]
+    fn theme_swap_repaints_without_reflow() {
+        let screen = VtScreen::new_with_options(10, 2, None, None, None);
+        screen.feed(b"\x1b[31mRED");
+        let before = screen.snapshot();
+        assert_eq!(before.cells[0].text, "R");
+
+        let mut ansi = [[0u8; 3]; 16];
+        ansi[1] = [0x12, 0x34, 0x56];
+        screen.set_theme(ThemeColors::from_ansi16(
+            [0xaa, 0xaa, 0xaa],
+            [0x01, 0x02, 0x03],
+            ansi,
+        ));
+        let after = screen.snapshot();
+
+        assert_eq!(after.cells[0].text, "R", "grid content untouched");
+        assert_ne!(
+            after.cells[0].fg, before.cells[0].fg,
+            "ANSI red re-resolved"
+        );
+        assert_eq!(after.cells[0].fg, 0x123456ff);
+        assert_eq!(after.default_bg, 0x010203ff);
+        assert!(
+            after.generation > before.generation,
+            "generation bumps so a polling host repaints"
+        );
+    }
+
+    #[test]
+    fn text_view_joins_wrapped_rows_and_locates_the_cursor() {
+        let screen = VtScreen::new_with_options(10, 3, None, None, None);
+        screen.feed(b"short\r\n");
+        // 14 columns of text wrap across two 10-column rows.
+        screen.feed(b"wrapped-line-x\r\n");
+        screen.feed(b"tail");
+
+        let view = screen.text_view(Some(0), 10);
+        assert_eq!(
+            view.lines
+                .iter()
+                .map(|line| line.text.as_str())
+                .collect::<Vec<_>>(),
+            vec!["short", "wrapped-line-x", "tail"]
+        );
+        assert_eq!(view.lines[1].rows, 2, "the wrapped line spans two rows");
+        assert_eq!(view.lines[2].line, 3, "absolute line after the wrap");
+        assert_eq!(view.total_lines, 4, "one scrolled row + three screen rows");
+        assert_eq!(
+            (view.cursor_line, view.cursor_column),
+            (3, 4),
+            "cursor sits after 'tail'"
+        );
+        assert_eq!(
+            (view.viewport_first_line, view.viewport_last_line),
+            (1, 3),
+            "the live screen is the last three lines"
+        );
+
+        // Starting mid-wrap rewinds to the logical line's beginning.
+        let view = screen.text_view(Some(2), 1);
+        assert_eq!(view.lines.len(), 1);
+        assert_eq!(view.lines[0].line, 1);
+        assert_eq!(view.lines[0].text, "wrapped-line-x");
+
+        // Default start is the first visible line.
+        assert_eq!(screen.text_view(None, 1).lines[0].line, 1);
+    }
+
+    #[test]
+    fn clusters_stay_in_one_cell() {
+        let screen = VtScreen::new_with_options(20, 2, None, None, None);
+        // Combining acute, a ZWJ family emoji, and a variation selector.
+        screen
+            .feed("e\u{301}\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}\u{2764}\u{FE0F}".as_bytes());
+        let snapshot = screen.snapshot();
+        let texts: Vec<&str> = snapshot
+            .cells
+            .iter()
+            .filter(|cell| !cell.text.is_empty())
+            .map(|cell| cell.text.as_str())
+            .collect();
+        assert_eq!(
+            texts,
+            vec![
+                "e\u{301}",
+                "\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}",
+                "\u{2764}\u{FE0F}"
+            ],
+            "each cluster arrives as one cell's text"
+        );
+
+        let spans: Vec<u8> = snapshot.cells[..8]
+            .iter()
+            .map(|cell| cell.columns)
+            .collect();
+        assert_eq!(
+            spans,
+            vec![1, 6, 0, 0, 0, 0, 0, 1],
+            "the family emoji spans the six columns it swallowed"
+        );
+        for row in snapshot.cells.chunks(snapshot.cols as usize) {
+            let total: u32 = row.iter().map(|cell| u32::from(cell.columns)).sum();
+            assert_eq!(total, u32::from(snapshot.cols), "row spans cover the row");
+        }
+    }
+
+    #[test]
     fn wide_characters_flag_and_spacer() {
-        let screen = VtScreen::new_with_write_pty(8, 2, None, None);
+        let screen = VtScreen::new_with_options(8, 2, None, None, None);
         screen.feed("中".as_bytes());
         let snapshot = screen.snapshot();
         let wide = snapshot
