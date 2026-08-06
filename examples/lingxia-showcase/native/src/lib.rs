@@ -22,11 +22,29 @@ impl lingxia::HostAddon for ExampleHostAddon {
         }
     }
 
-    /// Demo of the runtime cover hook: a cover dropped into the managed cache
-    /// as `alt.png` (e.g. pushed there while testing, or written by a
-    /// campaign download) wins over the bundled one.
-    fn select_splash(&self, ctx: &lingxia::splash::SplashContext) -> lingxia::splash::SplashChoice {
-        if ctx.cached("alt").is_some() {
+    /// Demo of the runtime cover hook, exercising both halves of the design:
+    /// acquisition refreshes the campaign cover in the managed cache on every
+    /// launch (a real host would download here whenever its campaign
+    /// changes — a stale cache must lose to fresh art), and selection
+    /// strictly alternates it with the bundled one, so back-to-back cold
+    /// starts show the hook swapping the cover.
+    fn select_splash(&self, launch: &lingxia::splash::Launch) -> lingxia::splash::SplashChoice {
+        let path = launch.cache_dir().join("alt.png");
+        lingxia::spawn(async move {
+            if let Some(parent) = path.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            let _ = std::fs::write(&path, include_bytes!("../assets/splash-alt.png"));
+        });
+
+        let counter = launch.cache_dir().join("launch-count");
+        let count: u64 = std::fs::read_to_string(&counter)
+            .ok()
+            .and_then(|s| s.trim().parse().ok())
+            .unwrap_or(0);
+        let _ = std::fs::create_dir_all(launch.cache_dir());
+        let _ = std::fs::write(&counter, (count + 1).to_string());
+        if count % 2 == 1 && launch.cached("alt").is_some() {
             return lingxia::splash::SplashChoice::cached("alt");
         }
         lingxia::splash::SplashChoice::bundled()

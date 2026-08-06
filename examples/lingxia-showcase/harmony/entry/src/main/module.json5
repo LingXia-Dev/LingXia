@@ -18,8 +18,8 @@
         "description": "$string:EntryAbility_desc",
         "icon": "$media:layered_image",
         "label": "$string:EntryAbility_label",
-        "startWindowIcon": "$media:startIcon",
-        "startWindowBackground": "$color:start_window_background",
+        "startWindowIcon": "$media:lingxia_splash_mark",
+        "startWindowBackground": "$color:lingxia_splash_background",
         "orientation": "auto_rotation",
         "exported": true,
         "skills": [
@@ -45,7 +45,8 @@
               }
             ]
           }
-        ]
+        ],
+        "startWindow": "$profile:start_window"
       }
     ]
   }
