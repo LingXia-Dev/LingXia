@@ -546,11 +546,11 @@ struct LingXiaTerminalRenderContext {
     var dimOpacity: CGFloat = 0.58
     /// Shape runs with the font's ligatures (`!=`, `=>` in coding fonts).
     var ligatures = true
-    var scrollbarColor: NSColor = NSColor.white.withAlphaComponent(0.25)
+    var scrollbarColor: NSColor = NSColor.lxTerminalForeground.withAlphaComponent(0.25)
     /// IME pre-edit, drawn over the grid at the cursor with an underline.
     var markedText: String?
     var markedTextOrigin = LingXiaTerminalGridPoint(row: 0, col: 0)
-    var markedTextColor: NSColor = .white
+    var markedTextColor: NSColor = .lxTerminalForeground
     var markedTextBackground: NSColor = NSColor.black.withAlphaComponent(0.85)
 }
 

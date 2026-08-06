@@ -212,6 +212,9 @@ final class LingXiaTerminalPaneView: NSView, NSDraggingSource {
         }
         session.onConfigChanged = { [weak self] in
             Task { @MainActor [weak self] in
+                // Chrome first: the rail is tinted from the same scheme, so a
+                // theme change has to move it as well as the grid.
+                LingXiaTerminalChrome.reload()
                 self?.applySettings(LingXiaTerminalSettings.load())
             }
         }
@@ -345,6 +348,15 @@ final class LingXiaTerminalPaneView: NSView, NSDraggingSource {
             lxTerminalLog("pane.keyDown pass pane=\(paneID.uuidString) keyCode=\(event.keyCode)")
             super.keyDown(with: event)
         }
+    }
+
+    /// Re-apply the chrome colors this view's layers are holding a copy of.
+    /// Layer colors are snapshots, so a scheme change has to walk them.
+    func refreshChromeColors() {
+        layer?.backgroundColor = NSColor.lxTerminalBackground.cgColor
+        terminalView.layer?.backgroundColor = NSColor.lxTerminalBackground.cgColor
+        terminalView.needsDisplay = true
+        needsDisplay = true
     }
 
     private func setupTerminalView() {
@@ -716,7 +728,7 @@ private final class LingXiaTerminalCanvasView: NSView, @MainActor NSTextInputCli
         context.markedText = markedText.string.isEmpty ? nil : markedText.string
         context.markedTextOrigin = LingXiaTerminalGridPoint(row: cursorRow, col: cursorCol)
         context.scrollbarColor = scrollbarVisible
-            ? NSColor.white.withAlphaComponent(0.28)
+            ? NSColor.lxTerminalForeground.withAlphaComponent(0.28)
             : NSColor.clear
         context.ligatures = ligatures
         return context

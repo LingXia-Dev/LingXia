@@ -4,16 +4,84 @@ import CLingXiaRustAPI
 import CoreText
 import OSLog
 
+/// Chrome colors for a terminal surface, from the scheme in effect.
+///
+/// The tab rail belongs to the terminal, not to the app — its `+` opens
+/// another PTY — so it is tinted from the scheme rather than fixed. The rule
+/// lives in the shared configuration layer, which the Windows host reads too;
+/// fixed colors here meant a theme change moved the grid and left a dark rail
+/// bolted to a light terminal.
+enum LingXiaTerminalChrome {
+    private struct Palette: Decodable {
+        var surface: String
+        var header: String
+        var separator: String
+        var text: String
+        var textMuted: String
+    }
+
+    nonisolated(unsafe) private(set) static var surface = NSColor(
+        red: 0.157, green: 0.173, blue: 0.204, alpha: 1)
+    nonisolated(unsafe) private(set) static var header = NSColor(
+        red: 0.129, green: 0.145, blue: 0.169, alpha: 1)
+    nonisolated(unsafe) private(set) static var separator = NSColor(
+        red: 0.243, green: 0.267, blue: 0.318, alpha: 1)
+    nonisolated(unsafe) private(set) static var text = NSColor.white
+    nonisolated(unsafe) private(set) static var textMuted = NSColor.white.withAlphaComponent(0.66)
+
+    /// Posted when the scheme moved, so views holding a chrome color re-apply it.
+    static let didChangeNotification = Notification.Name("LingXiaTerminalChromeDidChange")
+
+    /// Re-read after the configuration generation moves. Cheap enough to call
+    /// on every change; the values only move at human speed.
+    static func reload() {
+        let json = terminalSurfaceChrome().toString()
+        guard let data = json.data(using: .utf8),
+            let palette = try? JSONDecoder().decode(Palette.self, from: data),
+            let surface = NSColor(lxHex: palette.surface),
+            let header = NSColor(lxHex: palette.header),
+            let separator = NSColor(lxHex: palette.separator),
+            let text = NSColor(lxHex: palette.text),
+            let textMuted = NSColor(lxHex: palette.textMuted)
+        else { return }
+        guard surface != Self.surface || header != Self.header || text != Self.text else { return }
+        Self.surface = surface
+        Self.header = header
+        Self.separator = separator
+        Self.text = text
+        Self.textMuted = textMuted
+        NotificationCenter.default.post(name: Self.didChangeNotification, object: nil)
+    }
+}
+
 extension NSColor {
-    static let lxTerminalBackground = NSColor(red: 0.157, green: 0.173, blue: 0.204, alpha: 1)
-    static let lxTerminalForeground = NSColor.white
-    static let lxTerminalChrome = NSColor(red: 0.129, green: 0.145, blue: 0.169, alpha: 1)
-    static let lxTerminalChromeRaised = NSColor(red: 0.173, green: 0.192, blue: 0.227, alpha: 1)
-    static let lxTerminalBorder = NSColor(red: 0.243, green: 0.267, blue: 0.318, alpha: 1)
+    /// `#rrggbb`, which is how the shared layer spells a color.
+    convenience init?(lxHex: String) {
+        let hex = lxHex.hasPrefix("#") ? String(lxHex.dropFirst()) : lxHex
+        guard hex.count == 6, let value = UInt32(hex, radix: 16) else { return nil }
+        self.init(
+            srgbRed: CGFloat((value >> 16) & 0xff) / 255,
+            green: CGFloat((value >> 8) & 0xff) / 255,
+            blue: CGFloat(value & 0xff) / 255,
+            alpha: 1)
+    }
+
+    static var lxTerminalBackground: NSColor { LingXiaTerminalChrome.surface }
+    static var lxTerminalForeground: NSColor { LingXiaTerminalChrome.text }
+    static var lxTerminalChrome: NSColor { LingXiaTerminalChrome.header }
+    /// One step off the rail, for a control that has to sit on it.
+    static var lxTerminalChromeRaised: NSColor {
+        LingXiaTerminalChrome.header.blended(
+            withFraction: 0.08, of: LingXiaTerminalChrome.text) ?? LingXiaTerminalChrome.header
+    }
+    static var lxTerminalBorder: NSColor { LingXiaTerminalChrome.separator }
     static let lxTerminalAccent = NSColor(red: 0.773, green: 0.784, blue: 0.776, alpha: 1)
-    /// Split divider — deliberately lighter than the pane background so it reads
-    /// clearly between two dark terminal panes.
-    static let lxTerminalDivider = NSColor(red: 0.36, green: 0.39, blue: 0.44, alpha: 1)
+    /// Split divider — deliberately further from the pane background than the
+    /// rail's separator, so it reads clearly between two panes of the same color.
+    static var lxTerminalDivider: NSColor {
+        LingXiaTerminalChrome.surface.blended(
+            withFraction: 0.30, of: LingXiaTerminalChrome.text) ?? LingXiaTerminalChrome.separator
+    }
 }
 
 /// Container for a terminal pane split: a visible, draggable divider between the
@@ -491,6 +559,32 @@ final class LingXiaTerminalWorkspaceView: NSView {
 
         addSubview(contentHost)
         addSubview(toolbarStack, positioned: .above, relativeTo: contentHost)
+
+        NotificationCenter.default.addObserver(
+            forName: LingXiaTerminalChrome.didChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.applyChromeColors() }
+        }
+    }
+
+    /// Re-apply every chrome color a layer is holding a copy of. Layer colors
+    /// are snapshots, so a scheme change has to walk them; anything drawn in
+    /// `draw(_:)` only needs the redraw below.
+    private func applyChromeColors() {
+        layer?.backgroundColor = NSColor.lxTerminalBackground.cgColor
+        toolbarStack.layer?.backgroundColor = NSColor.lxTerminalChrome.cgColor
+        contentHost.layer?.backgroundColor = NSColor.lxTerminalBackground.cgColor
+        tabRailView.layer?.backgroundColor = NSColor.lxTerminalChrome.cgColor
+        for tab in tabs {
+            tab.rootContainer.layer?.backgroundColor = NSColor.lxTerminalBackground.cgColor
+            for pane in tab.panes.values {
+                pane.refreshChromeColors()
+            }
+        }
+        tabRailView.needsDisplay = true
+        needsDisplay = true
     }
 
     private func updateEventMonitors() {

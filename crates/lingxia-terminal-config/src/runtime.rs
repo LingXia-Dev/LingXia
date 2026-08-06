@@ -6,7 +6,7 @@
 //! is drawn, so a theme change is a repaint — and the host is told to re-read
 //! the font, which only it can resolve against what is installed.
 
-use crate::{ConfigWatcher, TerminalConfig, ThemeStore};
+use crate::{ConfigWatcher, SurfaceChrome, TerminalConfig, ThemeStore};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
@@ -130,7 +130,41 @@ pub fn apply_theme(app_data_dir: &std::path::Path, config: &TerminalConfig, syst
     };
     if let Err(error) = lingxia_terminal::terminal_set_theme_all(&theme) {
         log::warn!("terminal theme '{name}' rejected: {error}");
+        return;
     }
+    if let Ok(mut slot) = chrome().lock() {
+        *slot = SurfaceChrome::derive(&theme);
+    }
+}
+
+fn chrome() -> &'static Mutex<SurfaceChrome> {
+    static CHROME: OnceLock<Mutex<SurfaceChrome>> = OnceLock::new();
+    CHROME.get_or_init(|| Mutex::new(SurfaceChrome::default()))
+}
+
+/// Chrome colors for the surface hosting a terminal, from the theme in effect.
+///
+/// Resolved once here rather than in each platform SDK: the rule is the same
+/// on both, and a second copy of it drifts the moment one is edited.
+pub fn current_chrome() -> SurfaceChrome {
+    chrome()
+        .lock()
+        .map(|chrome| *chrome)
+        .unwrap_or_else(|_| SurfaceChrome::default())
+}
+
+/// `current_chrome` as `#rrggbb` strings, for hosts reached over FFI.
+pub fn current_chrome_json() -> String {
+    let chrome = current_chrome();
+    let hex = |color: u32| format!("#{color:06x}");
+    serde_json::json!({
+        "surface": hex(chrome.surface),
+        "header": hex(chrome.header),
+        "separator": hex(chrome.separator),
+        "text": hex(chrome.text),
+        "textMuted": hex(chrome.text_muted),
+    })
+    .to_string()
 }
 
 /// The configuration in effect.
