@@ -162,7 +162,12 @@ fn run() -> Result<()> {
             None => sessions::execute_list(cmd.json),
         },
         // Local OS automation: no dev session; the handler owns process exit.
-        Commands::Desktop(options) => lingxia_control_cli::desktop::execute(options),
+        // A development tool runs these itself: a developer grants lxdev
+        // Accessibility once, and there is no product process to route to.
+        Commands::Desktop(options) => lingxia_control_cli::desktop::execute(
+            &lingxia_control_cli::desktop::Backend::Local,
+            options,
+        ),
         Commands::App(options) => {
             let info = resolve(&selector)?;
             let transport = client::DevSession::new(&info.ws_url);

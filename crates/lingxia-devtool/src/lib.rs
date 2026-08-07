@@ -47,8 +47,8 @@ pub fn dispatch(
     }
 
     #[cfg(feature = "computer-use")]
-    if let Some(result) = desktop::handle_desktop_command(&method, params.clone()) {
-        return command_result(id, result);
+    if let Some(message) = desktop::handle(id.clone(), &method, params.clone()) {
+        return message;
     }
 
     if let Some(result) = app::handle_app_command(&method, params.clone()) {

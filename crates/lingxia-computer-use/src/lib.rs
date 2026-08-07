@@ -8,6 +8,7 @@
 
 pub mod error;
 pub mod model;
+pub mod wire;
 
 pub use error::{Error, ErrorCode, Result};
 pub use model::{
@@ -15,6 +16,23 @@ pub use model::{
     LaunchResult, Modifier, MouseButton, Permissions, Pixel, ProcessInfo, QuitTarget, Rect, Window,
     WindowQuery, WindowTarget,
 };
+
+/// Who the user must grant permission to, by the name they will look for.
+///
+/// macOS records these grants against the responsible process: the app bundle
+/// when a product answers these commands, and the terminal when a development
+/// tool runs them in its own process. Saying "this terminal" to someone whose
+/// *app* was refused sends them to the wrong row in System Settings, and
+/// naming the binary of a bare CLI sends them to a row that does not exist.
+pub fn responsible_app() -> String {
+    #[cfg(target_os = "macos")]
+    {
+        if let Some(name) = backend::responsible_app_name() {
+            return name;
+        }
+    }
+    "this terminal".to_string()
+}
 
 /// App lifecycle (`desktop app ...`).
 pub mod app {

@@ -192,6 +192,130 @@ pub mod handlers {
         pub const DOCTOR: &str = "desktop.doctor";
         pub const PERMISSIONS: &str = "desktop.permissions";
         pub const REQUEST_PERMISSIONS: &str = "desktop.permissions.request";
+        pub const DISPLAYS: &str = "desktop.displays";
+        pub const WINDOWS: &str = "desktop.windows";
+        pub const SCREENSHOT: &str = "desktop.screenshot";
+        pub const PIXEL: &str = "desktop.pixel";
+        pub const WAIT_WINDOW: &str = "desktop.wait.window";
+        pub const WAIT_PIXEL: &str = "desktop.wait.pixel";
+
+        pub mod window {
+            pub const STATUS: &str = "desktop.window.status";
+            pub const FOCUS: &str = "desktop.window.focus";
+            pub const ACTIVATE: &str = "desktop.window.activate";
+            pub const RAISE: &str = "desktop.window.raise";
+            pub const MOVE: &str = "desktop.window.move";
+            pub const MOVE_DISPLAY: &str = "desktop.window.move_display";
+            pub const RESIZE: &str = "desktop.window.resize";
+            pub const MINIMIZE: &str = "desktop.window.minimize";
+            pub const RESTORE: &str = "desktop.window.restore";
+            pub const MAXIMIZE: &str = "desktop.window.maximize";
+            pub const CLOSE: &str = "desktop.window.close";
+            pub const SET_ALWAYS_ON_TOP: &str = "desktop.window.always_on_top";
+        }
+
+        pub mod pointer {
+            pub const MOVE: &str = "desktop.pointer.move";
+            pub const DOWN: &str = "desktop.pointer.down";
+            pub const UP: &str = "desktop.pointer.up";
+            pub const CLICK: &str = "desktop.pointer.click";
+            pub const SCROLL: &str = "desktop.pointer.scroll";
+            pub const DRAG: &str = "desktop.pointer.drag";
+        }
+
+        pub mod key {
+            pub const TYPE: &str = "desktop.key.type";
+            pub const DOWN: &str = "desktop.key.down";
+            pub const UP: &str = "desktop.key.up";
+            pub const PRESS: &str = "desktop.key.press";
+        }
+
+        pub mod ax {
+            pub const TREE: &str = "desktop.ax.tree";
+            pub const HIT_TEST: &str = "desktop.ax.hit_test";
+            pub const QUERY: &str = "desktop.ax.query";
+            pub const INVOKE: &str = "desktop.ax.invoke";
+            pub const FOCUS: &str = "desktop.ax.focus";
+            pub const SET_VALUE: &str = "desktop.ax.set_value";
+            pub const SELECT: &str = "desktop.ax.select";
+            pub const EXPAND: &str = "desktop.ax.expand";
+            pub const COLLAPSE: &str = "desktop.ax.collapse";
+            pub const SCROLL_INTO_VIEW: &str = "desktop.ax.scroll_into_view";
+            pub const WAIT: &str = "desktop.ax.wait";
+        }
+
+        pub mod clipboard {
+            pub const GET: &str = "desktop.clipboard.get";
+            pub const SET: &str = "desktop.clipboard.set";
+            pub const CLEAR: &str = "desktop.clipboard.clear";
+            pub const PASTE: &str = "desktop.clipboard.paste";
+        }
+
+        pub mod app {
+            pub const LAUNCH: &str = "desktop.app.launch";
+            pub const QUIT: &str = "desktop.app.quit";
+        }
+
+        pub mod process {
+            pub const LIST: &str = "desktop.process.list";
+            pub const KILL: &str = "desktop.process.kill";
+        }
+
+        /// Every method in this namespace. A host matches on these one by one,
+        /// so two constants sharing a string would quietly route two commands
+        /// to whichever arm came first.
+        pub const ALL: &[&str] = &[
+            DOCTOR,
+            PERMISSIONS,
+            REQUEST_PERMISSIONS,
+            DISPLAYS,
+            WINDOWS,
+            SCREENSHOT,
+            PIXEL,
+            WAIT_WINDOW,
+            WAIT_PIXEL,
+            window::STATUS,
+            window::FOCUS,
+            window::ACTIVATE,
+            window::RAISE,
+            window::MOVE,
+            window::MOVE_DISPLAY,
+            window::RESIZE,
+            window::MINIMIZE,
+            window::RESTORE,
+            window::MAXIMIZE,
+            window::CLOSE,
+            window::SET_ALWAYS_ON_TOP,
+            pointer::MOVE,
+            pointer::DOWN,
+            pointer::UP,
+            pointer::CLICK,
+            pointer::SCROLL,
+            pointer::DRAG,
+            key::TYPE,
+            key::DOWN,
+            key::UP,
+            key::PRESS,
+            ax::TREE,
+            ax::HIT_TEST,
+            ax::QUERY,
+            ax::INVOKE,
+            ax::FOCUS,
+            ax::SET_VALUE,
+            ax::SELECT,
+            ax::EXPAND,
+            ax::COLLAPSE,
+            ax::SCROLL_INTO_VIEW,
+            ax::WAIT,
+            clipboard::GET,
+            clipboard::SET,
+            clipboard::CLEAR,
+            clipboard::PASTE,
+            app::LAUNCH,
+            app::QUIT,
+            process::LIST,
+            process::KILL,
+        ];
     }
 }
 
@@ -408,5 +532,22 @@ mod tests {
         assert_eq!(encoded["id"], "7");
         assert_eq!(encoded["error"]["code"], "unknown_method");
         assert!(encoded.get("result").is_none());
+    }
+}
+
+#[cfg(test)]
+mod desktop_method_tests {
+    use super::handlers::desktop;
+
+    #[test]
+    fn method_names_are_unique_and_namespaced() {
+        let mut seen = std::collections::HashSet::new();
+        for name in desktop::ALL {
+            assert!(
+                name.starts_with("desktop."),
+                "{name} is dispatched by prefix and would never be reached"
+            );
+            assert!(seen.insert(*name), "{name} is declared twice");
+        }
     }
 }

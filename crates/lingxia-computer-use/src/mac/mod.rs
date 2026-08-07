@@ -94,6 +94,24 @@ fn os_version() -> String {
 }
 
 /// Live permission grants for this process (no prompt).
+/// The bundle or executable the OS will attribute a grant to. `NSRunningApplication`
+/// names a bundled app; a bare binary has only its own file name.
+pub(crate) fn responsible_app_name() -> Option<String> {
+    use objc2_app_kit::NSRunningApplication;
+
+    let name = NSRunningApplication::currentApplication().localizedName();
+    if let Some(name) = name {
+        let name = name.to_string();
+        if !name.is_empty() {
+            return Some(name);
+        }
+    }
+    std::env::current_exe().ok().and_then(|path| {
+        path.file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+    })
+}
+
 pub fn permissions() -> Permissions {
     Permissions {
         accessibility: axui::is_trusted(),

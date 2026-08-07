@@ -26,7 +26,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Automate the local desktop OS. Needs no running app.
+    /// Automate the machine. Runs inside the product, not here.
     Desktop(desktop::DesktopOptions),
     /// Drive this product's own windows.
     App(app::AppOptions),
@@ -34,13 +34,16 @@ enum Command {
 
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
+    let endpoint = cli
+        .endpoint
+        .ok_or_else(|| anyhow::anyhow!("--endpoint is required"))?;
+    let transport = ControlSocket::at(endpoint);
     match cli.command {
-        Command::Desktop(options) => desktop::execute(options),
+        // Sent to the product rather than run here: macOS attributes
+        // Accessibility and Screen Recording to the responsible process, so
+        // running them in this process would borrow the terminal's grants.
+        Command::Desktop(options) => desktop::execute(&desktop::Backend::App(&transport), options),
         Command::App(options) => {
-            let endpoint = cli
-                .endpoint
-                .ok_or_else(|| anyhow::anyhow!("--endpoint is required for app commands"))?;
-            let transport = ControlSocket::at(endpoint);
             let context = app::AppContext {
                 transport: &transport,
                 target: std::env::consts::OS.to_string(),

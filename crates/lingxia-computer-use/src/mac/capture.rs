@@ -41,7 +41,8 @@ fn capture_error(what: &str) -> Error {
         Error::Failed(format!("could not capture {what}"))
     } else {
         Error::Permission(format!(
-            "screen capture denied: grant Screen Recording to this terminal in System Settings › Privacy & Security (needed to capture {what})"
+            "screen capture denied: grant Screen Recording to {} in System Settings › Privacy & Security (needed to capture {what})",
+            crate::responsible_app()
         ))
     }
 }
