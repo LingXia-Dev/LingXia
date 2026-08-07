@@ -9,6 +9,19 @@ pub mod clipboard;
 pub mod context_menu;
 mod runtime;
 mod style;
+
+/// The panel card's colors. The terminal owns them — its scheme decides what
+/// the card around it looks like — so both the real grid module and its stub
+/// hand back the same shape and the painter never reaches past them.
+#[derive(Clone, Copy)]
+pub(crate) struct PanelChrome {
+    pub surface: u32,
+    pub header: u32,
+    pub separator: u32,
+    pub text: u32,
+    pub text_muted: u32,
+}
+
 #[cfg(feature = "terminal-runtime")]
 pub mod terminal_grid;
 /// Terminal pane rendering lives behind `terminal-runtime` because it pulls
@@ -23,6 +36,16 @@ pub mod terminal_grid {
 
     pub(super) fn session_surface_background(_session_id: u64) -> Option<u32> {
         None
+    }
+    /// Never drawn without a terminal, but the painter is compiled either way.
+    pub(crate) fn surface_chrome() -> super::PanelChrome {
+        super::PanelChrome {
+            surface: 0x1e1e1e,
+            header: 0x252526,
+            separator: 0x333333,
+            text: 0xcccccc,
+            text_muted: 0x8a8a8a,
+        }
     }
     pub(super) fn panel_snapshot_text(_panel_id: &str) -> Option<String> {
         None

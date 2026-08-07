@@ -259,7 +259,7 @@ pub(super) fn draw_terminal_panel_content(
     // The strip is the terminal's own — its `+` opens another PTY — so it is
     // tinted from the scheme in effect rather than fixed. One rule, shared
     // with the Apple host, so a theme change moves the whole card.
-    let chrome = lingxia_terminal_config::runtime::current_chrome();
+    let chrome = super::super::terminal_grid::surface_chrome();
     let surface = super::super::terminal_panel::focused_session(&panel.panel_id)
         .and_then(super::super::terminal_grid::session_surface_background)
         .unwrap_or(chrome.surface);

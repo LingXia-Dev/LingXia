@@ -189,6 +189,19 @@ pub fn clear_panel(panel_id: &str) {
 /// background reported by the terminal), or `None` before its first
 /// snapshot. The chrome painter fills the dock card with the focused pane's
 /// color so the header, card corners, and cell grid agree.
+/// The card's colors, from the scheme in effect. One rule shared with the
+/// Apple host, so a theme change moves the whole card.
+pub(crate) fn surface_chrome() -> super::PanelChrome {
+    let chrome = lingxia_terminal_config::runtime::current_chrome();
+    super::PanelChrome {
+        surface: chrome.surface,
+        header: chrome.header,
+        separator: chrome.separator,
+        text: chrome.text,
+        text_muted: chrome.text_muted,
+    }
+}
+
 pub(super) fn session_surface_background(session_id: u64) -> Option<u32> {
     session_grids()
         .get(&session_id)?
