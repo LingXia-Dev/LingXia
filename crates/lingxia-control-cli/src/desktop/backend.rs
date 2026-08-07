@@ -72,6 +72,40 @@ impl Backend<'_> {
         }
     }
 
+    /// The viewer draws in an AppKit window, so it only exists where there is
+    /// an app running one. `lxdev` has no run loop to put a panel on, and a
+    /// panel that silently never appears is worse than being told so.
+    pub fn pip_show(
+        &self,
+        watch: cu::PipWatch,
+        corner: Option<cu::PipCorner>,
+    ) -> cu::Result<cu::Pip> {
+        match self {
+            Self::Local => Err(Self::viewer_needs_an_app()),
+            Self::App(_) => self.call(method::pip::SHOW, cu::wire::PipShow { watch, corner }),
+        }
+    }
+
+    pub fn pip_hide(&self) -> cu::Result<cu::Pip> {
+        match self {
+            Self::Local => Err(Self::viewer_needs_an_app()),
+            Self::App(_) => self.call(method::pip::HIDE, ()),
+        }
+    }
+
+    pub fn pip_status(&self) -> cu::Result<cu::Pip> {
+        match self {
+            Self::Local => Err(Self::viewer_needs_an_app()),
+            Self::App(_) => self.call(method::pip::STATUS, ()),
+        }
+    }
+
+    fn viewer_needs_an_app() -> cu::Error {
+        cu::Error::Unsupported(
+            "the viewer belongs to a running app; this tool has no window of its own".into(),
+        )
+    }
+
     pub fn pixel(&self, x: i32, y: i32) -> cu::Result<cu::Pixel> {
         match self {
             Self::Local => cu::pixel(x, y),

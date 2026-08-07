@@ -12,9 +12,9 @@ pub mod wire;
 
 pub use error::{Error, ErrorCode, Result};
 pub use model::{
-    Ack, AxNode, AxQuery, Capabilities, Capture, CaptureTarget, Clipboard, Display, Doctor,
-    LaunchResult, Modifier, MouseButton, Permissions, Pixel, ProcessInfo, QuitTarget, Rect, Window,
-    WindowQuery, WindowTarget,
+    Ack, Acted, AxNode, AxQuery, Capabilities, Capture, CaptureTarget, Clipboard, Display, Doctor,
+    LaunchResult, Modifier, MouseButton, Permissions, Pip, PipCorner, PipWatch, Pixel, ProcessInfo,
+    QuitTarget, Rect, Window, WindowQuery, WindowTarget,
 };
 
 /// Who the user must grant permission to, by the name they will look for.
@@ -77,6 +77,50 @@ pub mod input {
         key_down, key_press, key_type, key_up, pointer_click, pointer_down, pointer_drag,
         pointer_move, pointer_scroll, pointer_up,
     };
+}
+
+/// The picture-in-picture viewer (`desktop pip ...`).
+///
+/// Implemented on macOS. Elsewhere it answers that it is not, rather than
+/// silently doing nothing: an agent told the viewer is up when it is not has
+/// been given a false assurance about what the person watching can see.
+pub mod pip {
+    #[cfg(target_os = "macos")]
+    pub use crate::backend::{
+        pip_hide as hide, pip_note_activity as note_activity, pip_show as show,
+        pip_status as status,
+    };
+
+    #[cfg(not(target_os = "macos"))]
+    mod elsewhere {
+        use crate::error::{Error, Result};
+        use crate::model::{Acted, Pip, PipCorner, PipWatch};
+
+        pub fn status() -> Pip {
+            Pip {
+                visible: false,
+                watching: None,
+                dismissed: false,
+                fps: 0,
+                supported: false,
+            }
+        }
+
+        pub fn show(_watch: PipWatch, _corner: Option<PipCorner>) -> Result<Pip> {
+            Err(Error::Unsupported(
+                "the picture-in-picture viewer is macOS-only for now".into(),
+            ))
+        }
+
+        pub fn hide() -> Result<Pip> {
+            Ok(status())
+        }
+
+        pub fn note_activity(_acted: Acted) {}
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    pub use elsewhere::{hide, note_activity, show, status};
 }
 
 /// Window management (`desktop window ...`). All mutating.

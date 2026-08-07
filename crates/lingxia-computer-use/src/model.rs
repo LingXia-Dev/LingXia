@@ -498,6 +498,79 @@ mod tests {
     }
 }
 
+/// What the picture-in-picture viewer should mirror.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum PipWatch {
+    /// A monitor by 1-based index, as listed by `desktop displays`.
+    Display(usize),
+    /// A window by id ("0x..."), followed as it moves.
+    Window(String),
+}
+
+/// What a command just acted on, as far as the viewer needs to know.
+///
+/// Points arrive in two spaces: a pointer command with no `target` is in global
+/// desktop coordinates, and one with a target is relative to that window. Both
+/// are kept apart here rather than flattened, because a window-relative point
+/// drawn as a global one lands somewhere else entirely and a marker in the
+/// wrong place is worse than no marker.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum Acted {
+    /// A point in global desktop coordinates.
+    At { x: i32, y: i32 },
+    /// A point relative to a window's top-left.
+    InWindow { id: String, x: i32, y: i32 },
+    /// A window, with nothing to mark inside it.
+    Window(String),
+    /// Something changed, but nothing said where.
+    Somewhere,
+}
+
+/// Which corner of the main screen the viewer sits in.
+///
+/// It is placed rather than dragged: the viewer ignores the mouse so it can
+/// never swallow a click meant for what is being driven, and a window nobody
+/// can grab needs another way to be moved.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum PipCorner {
+    TopLeft,
+    TopRight,
+    BottomLeft,
+    BottomRight,
+}
+
+impl PipCorner {
+    pub fn parse(name: &str) -> Option<Self> {
+        Some(match name {
+            "tl" | "top-left" => PipCorner::TopLeft,
+            "tr" | "top-right" => PipCorner::TopRight,
+            "bl" | "bottom-left" => PipCorner::BottomLeft,
+            "br" | "bottom-right" => PipCorner::BottomRight,
+            _ => return None,
+        })
+    }
+}
+
+/// The picture-in-picture viewer's state.
+///
+/// The viewer is for a person: it exists so someone can watch their own machine
+/// being driven instead of reading a log about it afterwards. Nothing here
+/// actuates anything, and nothing reads pixels back out of it — a client that
+/// wants the screen asks for a screenshot.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Pip {
+    pub visible: bool,
+    /// What it is mirroring, named the way a person reads it ("display 1",
+    /// "window 0x42"), or `None` when it is not up.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub watching: Option<String>,
+    /// The person closed it, so it will not open itself again this run. Asking
+    /// for it by name clears this.
+    pub dismissed: bool,
+    pub fps: u32,
+    pub supported: bool,
+}
+
 /// PNG bytes as base64, so a capture crossing the control socket costs its own
 /// size rather than triple.
 mod png_base64 {

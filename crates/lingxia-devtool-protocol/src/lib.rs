@@ -216,6 +216,14 @@ pub mod handlers {
         pub const WAIT_WINDOW: &str = "desktop.wait.window";
         pub const WAIT_PIXEL: &str = "desktop.wait.pixel";
 
+        /// The picture-in-picture viewer. Read-only by design: it shows a
+        /// person what is being driven and cannot drive anything itself.
+        pub mod pip {
+            pub const SHOW: &str = "desktop.pip.show";
+            pub const HIDE: &str = "desktop.pip.hide";
+            pub const STATUS: &str = "desktop.pip.status";
+        }
+
         pub mod window {
             pub const STATUS: &str = "desktop.window.status";
             pub const FOCUS: &str = "desktop.window.focus";

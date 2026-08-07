@@ -27,6 +27,7 @@ mod cf;
 mod clipboard;
 mod input;
 mod keymap;
+mod pip;
 mod process;
 mod window_ops;
 
@@ -42,6 +43,9 @@ pub use clipboard::{
 pub use input::{
     key_down, key_press, key_type, key_up, pointer_click, pointer_down, pointer_drag, pointer_move,
     pointer_scroll, pointer_up,
+};
+pub use pip::{
+    hide as pip_hide, note_activity as pip_note_activity, show as pip_show, status as pip_status,
 };
 pub use process::{app_launch, app_quit, process_kill, process_list};
 pub use window_ops::{

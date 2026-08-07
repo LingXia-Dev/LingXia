@@ -164,6 +164,11 @@ pub enum DesktopCommand {
         #[command(subcommand)]
         action: WindowAction,
     },
+    /// Watch what is being driven, in a small window that stays on top
+    Pip {
+        #[command(subcommand)]
+        action: PipAction,
+    },
     /// Synthesize physical mouse input at screen coordinates
     Pointer {
         /// Target this window (Windows activates it; other backends may deliver in background).
@@ -587,6 +592,39 @@ impl KeyAction {
     }
 }
 
+/// The viewer is opened, moved and closed — never asked to do anything to what
+/// it is showing. Everything that acts lives in the other namespaces.
+#[derive(Subcommand, Clone)]
+pub enum PipAction {
+    /// Open the viewer, or re-point one already open
+    Show {
+        /// Watch a monitor by 1-based index (from `desktop displays`)
+        #[arg(long)]
+        display: Option<usize>,
+        /// Watch a window by id, following it as it moves
+        #[arg(long)]
+        window: Option<String>,
+        /// Where it sits: tl, tr, bl, br
+        #[arg(long)]
+        corner: Option<String>,
+        /// Print JSON output
+        #[arg(long)]
+        json: bool,
+    },
+    /// Close the viewer
+    Hide {
+        /// Print JSON output
+        #[arg(long)]
+        json: bool,
+    },
+    /// Report whether the viewer is up, and what it is showing
+    Status {
+        /// Print JSON output
+        #[arg(long)]
+        json: bool,
+    },
+}
+
 #[derive(Subcommand, Clone)]
 pub enum WindowAction {
     /// Report a window's current state (read-only)
@@ -672,6 +710,7 @@ pub fn execute(backend: &Backend, options: DesktopOptions) -> i32 {
         DesktopCommand::Window { action } => {
             run_window(backend, action, allow_control, allow_destructive)
         }
+        DesktopCommand::Pip { action } => run_pip(backend, action),
         DesktopCommand::Pointer {
             window,
             pid,
@@ -1426,6 +1465,55 @@ fn print_pixel(p: &cu::Pixel) {
 
 /// Emit the result and exit with the contract's exit code. `desktop` commands
 /// run locally (no dev session), so they own their process exit directly.
+/// Opening a viewer changes nothing about the machine, so none of this is
+/// behind `--allow-control`: the flag exists to gate acting, and asking for it
+/// here would train people to pass it for something that cannot act.
+fn run_pip(backend: &Backend, action: PipAction) -> i32 {
+    match action {
+        PipAction::Show {
+            display,
+            window,
+            corner,
+            json,
+        } => {
+            let watch = match (display, window) {
+                (Some(_), Some(_)) => {
+                    eprintln!("Error: pass --display or --window, not both");
+                    return 2;
+                }
+                (Some(n), None) => cu::PipWatch::Display(n),
+                (None, Some(id)) => cu::PipWatch::Window(id),
+                // What an agent drives is usually the whole screen, and asking
+                // someone to name a display to watch their own machine is a
+                // question with one sensible answer.
+                (None, None) => cu::PipWatch::Display(1),
+            };
+            let corner = match corner.as_deref().map(cu::PipCorner::parse) {
+                Some(None) => {
+                    eprintln!("Error: unknown corner (tl, tr, bl, br)");
+                    return 2;
+                }
+                other => other.flatten(),
+            };
+            finish(json, backend.pip_show(watch, corner), print_pip)
+        }
+        PipAction::Hide { json } => finish(json, backend.pip_hide(), print_pip),
+        PipAction::Status { json } => finish(json, backend.pip_status(), print_pip),
+    }
+}
+
+fn print_pip(pip: &cu::Pip) {
+    if !pip.supported {
+        println!("viewer: unsupported on this platform");
+        return;
+    }
+    match (&pip.watching, pip.dismissed) {
+        (Some(watching), _) => println!("viewer: showing {watching} at {}fps", pip.fps),
+        (None, true) => println!("viewer: closed (it will not reopen itself)"),
+        (None, false) => println!("viewer: off"),
+    }
+}
+
 fn finish<T: Serialize>(json: bool, result: cu::Result<T>, human: impl Fn(&T)) -> i32 {
     match result {
         Ok(value) => {

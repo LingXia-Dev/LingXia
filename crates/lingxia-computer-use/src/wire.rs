@@ -12,7 +12,8 @@
 use serde::{Deserialize, Serialize};
 
 use crate::model::{
-    AxQuery, CaptureTarget, Modifier, MouseButton, QuitTarget, WindowQuery, WindowTarget,
+    AxQuery, CaptureTarget, Modifier, MouseButton, PipCorner, PipWatch, QuitTarget, WindowQuery,
+    WindowTarget,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -23,6 +24,13 @@ pub struct Windows {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Screenshot {
     pub target: CaptureTarget,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PipShow {
+    pub watch: PipWatch,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub corner: Option<PipCorner>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

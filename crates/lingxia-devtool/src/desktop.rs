@@ -22,9 +22,87 @@ pub fn handle(id: String, name: &str, params: Option<Value>) -> Option<DevSessio
     if !name.starts_with("desktop.") {
         return None;
     }
-    Some(match dispatch(name, params) {
+    let outcome = dispatch(name, params.clone());
+    // Only after it worked, and only for the commands that change the machine.
+    // A person watching wants to see what happened, not what was attempted.
+    if outcome.is_ok()
+        && let Some(acted) = actuation(name, params.as_ref())
+    {
+        cu::pip::note_activity(acted);
+    }
+    Some(match outcome {
         Ok(result) => DevSessionMessage::success(id, result),
         Err(Failure { code, message }) => DevSessionMessage::error(id, code, message),
+    })
+}
+
+/// What a method just did to the machine, or `None` when it only looked.
+///
+/// Read off the raw parameters rather than the typed structs: this needs the
+/// same two fields from a dozen different call shapes, and decoding each one
+/// again to reach them would put a second copy of every argument list here to
+/// drift against the first.
+fn actuation(name: &str, params: Option<&Value>) -> Option<cu::Acted> {
+    const ACTUATES: &[&str] = &[
+        "desktop.pointer.",
+        "desktop.key.",
+        "desktop.window.",
+        "desktop.ax.",
+        "desktop.app.",
+    ];
+    // Prefix families whose members all change something, minus the readers
+    // that happen to share their prefix.
+    const READS: &[&str] = &[
+        "desktop.window.status",
+        "desktop.ax.tree",
+        "desktop.ax.hit_test",
+        "desktop.ax.query",
+        "desktop.ax.wait",
+    ];
+    let named = matches!(
+        name,
+        "desktop.clipboard.set"
+            | "desktop.clipboard.paste"
+            | "desktop.clipboard.clear"
+            | "desktop.process.kill"
+    );
+    if READS.contains(&name) || (!named && !ACTUATES.iter().any(|prefix| name.starts_with(prefix)))
+    {
+        return None;
+    }
+
+    let params = params?;
+    let number = |key: &str| params.get(key).and_then(Value::as_i64).map(|n| n as i32);
+    // A pointer command's `target` makes its coordinates window-relative; the
+    // window commands carry a `WindowTarget`, and the accessibility ones an id.
+    let pointer_window = params
+        .get("target")
+        .and_then(Value::as_u64)
+        .map(|id| format!("{id:#x}"));
+    let window = pointer_window.clone().or_else(|| {
+        params
+            .get("window_id")
+            .and_then(Value::as_str)
+            .map(str::to_string)
+            .or_else(|| {
+                serde_json::from_value::<cu::WindowTarget>(params.get("target")?.clone())
+                    .ok()
+                    .and_then(|target| match target {
+                        cu::WindowTarget::Id(id) => Some(id),
+                        cu::WindowTarget::Match(_) => None,
+                    })
+            })
+    });
+
+    let point = number("x")
+        .zip(number("y"))
+        .or_else(|| number("to_x").zip(number("to_y")));
+
+    Some(match (point, window) {
+        (Some((x, y)), Some(id)) if pointer_window.is_some() => cu::Acted::InWindow { id, x, y },
+        (Some((x, y)), _) => cu::Acted::At { x, y },
+        (None, Some(id)) => cu::Acted::Window(id),
+        (None, None) => cu::Acted::Somewhere,
     })
 }
 
@@ -79,6 +157,13 @@ fn dispatch(name: &str, params: Option<Value>) -> Answer {
                 args.timeout_ms,
             ))
         }
+
+        method::pip::SHOW => {
+            let args: cu::wire::PipShow = decode(params)?;
+            report(cu::pip::show(args.watch, args.corner))
+        }
+        method::pip::HIDE => report(cu::pip::hide()),
+        method::pip::STATUS => report(Ok(cu::pip::status())),
 
         method::window::STATUS => window(params, cu::window::status),
         method::window::FOCUS => window(params, cu::window::focus),
@@ -309,5 +394,89 @@ mod tests {
             handle("1".into(), "browser.open", None).is_none(),
             "another namespace's method must pass through"
         );
+    }
+
+    /// The viewer opens itself off this classification, so a method landing on
+    /// the wrong side of it either pops a window up at someone who only asked
+    /// what their screen looked like, or leaves them watching nothing while
+    /// their machine is driven.
+    #[test]
+    fn only_the_commands_that_change_something_wake_the_viewer() {
+        for name in [
+            "desktop.screenshot",
+            "desktop.windows",
+            "desktop.displays",
+            "desktop.pixel",
+            "desktop.doctor",
+            "desktop.clipboard.get",
+            "desktop.process.list",
+            "desktop.wait.window",
+            "desktop.window.status",
+            "desktop.ax.tree",
+            "desktop.ax.query",
+            // The viewer's own commands, or it would reopen what was closed.
+            "desktop.pip.hide",
+            "desktop.pip.status",
+        ] {
+            assert!(
+                actuation(name, Some(&serde_json::json!({"x": 1, "y": 2}))).is_none(),
+                "{name} only looks at the machine"
+            );
+        }
+
+        for name in [
+            "desktop.pointer.click",
+            "desktop.key.type",
+            "desktop.window.focus",
+            "desktop.window.close",
+            "desktop.ax.invoke",
+            "desktop.ax.set_value",
+            "desktop.app.launch",
+            "desktop.clipboard.set",
+            "desktop.process.kill",
+        ] {
+            assert!(
+                actuation(name, Some(&serde_json::json!({}))).is_some(),
+                "{name} changes the machine"
+            );
+        }
+    }
+
+    /// A pointer command carrying a window makes its coordinates relative to
+    /// that window. Marking those as global puts the ring somewhere the click
+    /// never happened.
+    #[test]
+    fn a_point_keeps_the_space_it_arrived_in() {
+        let global = actuation(
+            "desktop.pointer.click",
+            Some(&serde_json::json!({"x": 40, "y": 90})),
+        );
+        assert!(matches!(global, Some(cu::Acted::At { x: 40, y: 90 })));
+
+        let relative = actuation(
+            "desktop.pointer.click",
+            Some(&serde_json::json!({"x": 40, "y": 90, "target": 291})),
+        );
+        let Some(cu::Acted::InWindow { id, x, y }) = relative else {
+            panic!("a pointer target makes the point window-relative");
+        };
+        assert_eq!((id.as_str(), x, y), ("0x123", 40, 90));
+
+        // A drag ends where it ends; that is the point worth marking.
+        let drag = actuation(
+            "desktop.pointer.drag",
+            Some(&serde_json::json!({"from_x": 1, "from_y": 2, "to_x": 30, "to_y": 40})),
+        );
+        assert!(matches!(drag, Some(cu::Acted::At { x: 30, y: 40 })));
+
+        // A window command names a window and no point inside it.
+        let window = actuation(
+            "desktop.window.focus",
+            Some(&serde_json::json!({"target": {"Id": "0x7f"}})),
+        );
+        let Some(cu::Acted::Window(id)) = window else {
+            panic!("a window command names its window");
+        };
+        assert_eq!(id, "0x7f");
     }
 }

@@ -103,6 +103,50 @@ pub fn screenshot(target: CaptureTarget) -> Result<Capture> {
     }
 }
 
+/// Capture a screen rect as raw top-down RGBA, leaving out the viewer's own
+/// window and anything stacked above it.
+///
+/// Without the exclusion the viewer photographs itself every frame and shows a
+/// tunnel of its own past frames, which is both useless to look at and a
+/// feedback loop that never settles.
+pub(super) fn rgba_below_window(
+    rect: CGRect,
+    below: u32,
+    max_width: u32,
+) -> Result<(u32, u32, Vec<u8>)> {
+    let (option, relative) = if below == 0 {
+        (CGWindowListOption::OptionOnScreenOnly, 0)
+    } else {
+        (CGWindowListOption::OptionOnScreenBelowWindow, below)
+    };
+    // Nominal resolution: the window server composites at point size instead of
+    // backing size, which is a quarter of the pixels on a Retina display and
+    // still four times what a 360-point panel can show.
+    let img = CGWindowListCreateImage(
+        rect,
+        option,
+        relative,
+        CGWindowImageOption::NominalResolution,
+    )
+    .ok_or_else(|| capture_error("screen"))?;
+    image_to_rgba_within(&img, max_width)
+}
+
+/// Capture a window's own backing store as raw top-down RGBA, so the viewer
+/// keeps showing it while it is occluded.
+pub(super) fn rgba_of_window(id: u32, max_width: u32) -> Result<(u32, u32, Vec<u8>)> {
+    let img = unsafe {
+        CGWindowListCreateImage(
+            CGRectNull,
+            CGWindowListOption::OptionIncludingWindow,
+            id,
+            CGWindowImageOption::BoundsIgnoreFraming | CGWindowImageOption::NominalResolution,
+        )
+    }
+    .ok_or_else(|| capture_error(&format!("window {id:#x}")))?;
+    image_to_rgba_within(&img, max_width)
+}
+
 fn capture_screen_rect(rect: CGRect) -> Result<Capture> {
     let img = CGWindowListCreateImage(
         rect,
@@ -227,11 +271,28 @@ fn encode(img: &CGImage) -> Result<(u32, u32, Vec<u8>)> {
 
 /// Redraw a `CGImage` into a device-RGB bitmap we own and read it back top-down.
 fn image_to_rgba(img: &CGImage) -> Result<(u32, u32, Vec<u8>)> {
-    let w = CGImage::width(Some(img));
-    let h = CGImage::height(Some(img));
-    if w == 0 || h == 0 {
+    image_to_rgba_within(img, 0)
+}
+
+/// The same, but no wider than `max_width` (0 means full size).
+///
+/// The scaling is done by the redraw rather than afterwards. A viewer refreshing
+/// several times a second wants a small image, and asking Core Graphics for one
+/// costs a fraction of allocating twenty megabytes of screen and averaging it
+/// down by hand — the difference between a viewer that keeps up and one that
+/// shows a frame every half second.
+fn image_to_rgba_within(img: &CGImage, max_width: u32) -> Result<(u32, u32, Vec<u8>)> {
+    let full_w = CGImage::width(Some(img));
+    let full_h = CGImage::height(Some(img));
+    if full_w == 0 || full_h == 0 {
         return Err(Error::Failed("captured image has zero size".into()));
     }
+    let (w, h) = if max_width == 0 || full_w <= max_width as usize {
+        (full_w, full_h)
+    } else {
+        let scaled = full_h * max_width as usize / full_w;
+        (max_width as usize, scaled.max(1))
+    };
     let space = CGColorSpace::new_device_rgb()
         .ok_or_else(|| Error::Failed("could not create RGB color space".into()))?;
     let bytes_per_row = w * 4;
