@@ -1,6 +1,5 @@
-use crate::client;
-use crate::project::SessionInfo;
-use crate::screenshot;
+use crate::output;
+use crate::transport::Transport;
 use anyhow::{Context, Result, anyhow};
 use clap::{Args, Subcommand};
 use lingxia_devtool_protocol::handlers;
@@ -439,14 +438,21 @@ pub enum NetworkCommand {
     Clear,
 }
 
-pub fn execute(info: &SessionInfo, options: BrowserOptions) -> Result<()> {
-    let ws_url = info.ws_url.as_str();
+/// What these commands need beyond the transport. `lxdev` fills it from a dev
+/// session; a product fills it from itself.
+pub struct BrowserContext<'a> {
+    pub transport: &'a dyn Transport,
+    /// Platform the app runs on, as `app.doctor` reports it.
+    pub target: String,
+}
+
+pub fn execute(context: &BrowserContext, options: BrowserOptions) -> Result<()> {
+    let transport = context.transport;
 
     match options.command {
         BrowserCommand::Open { url, tab, json } => {
-            let url = normalize_open_url_for_target(&url, &info.target);
-            let data = client::execute_command(
-                ws_url,
+            let url = normalize_open_url_for_target(&url, &context.target);
+            let data = transport.request(
                 handlers::browser::OPEN,
                 Some(json!({
                     "url": url,
@@ -465,7 +471,7 @@ pub fn execute(info: &SessionInfo, options: BrowserOptions) -> Result<()> {
             }
         }
         BrowserCommand::Tabs { json } => {
-            let data = client::execute_command(ws_url, handlers::browser::TABS, None)?;
+            let data = transport.request(handlers::browser::TABS, None)?;
             let data = data.unwrap_or_else(|| json!([]));
             if json {
                 print_json(&data, false)?;
@@ -474,7 +480,8 @@ pub fn execute(info: &SessionInfo, options: BrowserOptions) -> Result<()> {
             }
         }
         BrowserCommand::Current { json } => {
-            let data = client::execute_command(ws_url, handlers::browser::CURRENT, None)?
+            let data = transport
+                .request(handlers::browser::CURRENT, None)?
                 .unwrap_or(Value::Null);
             if json {
                 print_json(&data, false)?;
@@ -483,46 +490,31 @@ pub fn execute(info: &SessionInfo, options: BrowserOptions) -> Result<()> {
             }
         }
         BrowserCommand::Activate { tab, json } => {
-            let data = client::execute_command(
-                ws_url,
-                handlers::browser::ACTIVATE,
-                Some(json!({ "tab_id": tab })),
-            )?;
+            let data =
+                transport.request(handlers::browser::ACTIVATE, Some(json!({ "tab_id": tab })))?;
             print_optional_json(data, json)?;
         }
         BrowserCommand::Close { tab, json } => {
-            let data = client::execute_command(
-                ws_url,
-                handlers::browser::CLOSE,
-                Some(json!({ "tab_id": tab })),
-            )?;
+            let data =
+                transport.request(handlers::browser::CLOSE, Some(json!({ "tab_id": tab })))?;
             print_optional_json(data, json)?;
         }
         BrowserCommand::Reload { tab, json } => {
-            let data = client::execute_command(
-                ws_url,
-                handlers::browser::RELOAD,
-                Some(json!({ "tab_id": tab })),
-            )?;
+            let data =
+                transport.request(handlers::browser::RELOAD, Some(json!({ "tab_id": tab })))?;
             print_optional_json(data, json)?;
         }
         BrowserCommand::Back { tab, json } => {
-            let data = client::execute_command(
-                ws_url,
-                handlers::browser::BACK,
-                Some(json!({ "tab_id": tab })),
-            )?;
+            let data =
+                transport.request(handlers::browser::BACK, Some(json!({ "tab_id": tab })))?;
             print_optional_json(data, json)?;
         }
         BrowserCommand::Forward { tab, json } => {
-            let data = client::execute_command(
-                ws_url,
-                handlers::browser::FORWARD,
-                Some(json!({ "tab_id": tab })),
-            )?;
+            let data =
+                transport.request(handlers::browser::FORWARD, Some(json!({ "tab_id": tab })))?;
             print_optional_json(data, json)?;
         }
-        BrowserCommand::UserAgent(options) => execute_user_agent(ws_url, options)?,
+        BrowserCommand::UserAgent(options) => execute_user_agent(transport, options)?,
         BrowserCommand::Eval {
             tab,
             js,
@@ -531,8 +523,7 @@ pub fn execute(info: &SessionInfo, options: BrowserOptions) -> Result<()> {
             timeout_ms,
             json,
         } => {
-            let data = client::execute_command(
-                ws_url,
+            let data = transport.request(
                 handlers::browser::EVAL,
                 Some(json!({
                     "tab_id": tab,
@@ -552,17 +543,17 @@ pub fn execute(info: &SessionInfo, options: BrowserOptions) -> Result<()> {
             max_text,
             json: _,
         } => {
-            let data = client::execute_command(
-                ws_url,
-                handlers::browser::QUERY,
-                Some(json!({
-                    "tab_id": tab,
-                    "selector": selector,
-                    "full": full,
-                    "max_text": max_text,
-                })),
-            )?
-            .unwrap_or(Value::Null);
+            let data = transport
+                .request(
+                    handlers::browser::QUERY,
+                    Some(json!({
+                        "tab_id": tab,
+                        "selector": selector,
+                        "full": full,
+                        "max_text": max_text,
+                    })),
+                )?
+                .unwrap_or(Value::Null);
             // This command always emits JSON regardless of --json.
             print_json(&data, false)?;
         }
@@ -578,16 +569,16 @@ pub fn execute(info: &SessionInfo, options: BrowserOptions) -> Result<()> {
             json,
         } => {
             let condition = wait_condition(loaded, exists, visible, hidden, editable, js)?;
-            let data = client::execute_command(
-                ws_url,
-                handlers::browser::WAIT,
-                Some(json!({
-                    "tab_id": tab,
-                    "condition": condition,
-                    "timeout_ms": timeout_ms,
-                })),
-            )?
-            .unwrap_or(Value::Null);
+            let data = transport
+                .request(
+                    handlers::browser::WAIT,
+                    Some(json!({
+                        "tab_id": tab,
+                        "condition": condition,
+                        "timeout_ms": timeout_ms,
+                    })),
+                )?
+                .unwrap_or(Value::Null);
             print_wait_result(data, json)?;
         }
         BrowserCommand::WaitUrl {
@@ -600,17 +591,17 @@ pub fn execute(info: &SessionInfo, options: BrowserOptions) -> Result<()> {
             if url.is_some() == contains.is_some() {
                 return Err(anyhow!("pass exactly one of --url or --contains"));
             }
-            let data = client::execute_command(
-                ws_url,
-                handlers::browser::WAIT_URL,
-                Some(json!({
-                    "tab_id": tab,
-                    "url": url,
-                    "contains": contains,
-                    "timeout_ms": timeout_ms,
-                })),
-            )?
-            .unwrap_or(Value::Null);
+            let data = transport
+                .request(
+                    handlers::browser::WAIT_URL,
+                    Some(json!({
+                        "tab_id": tab,
+                        "url": url,
+                        "contains": contains,
+                        "timeout_ms": timeout_ms,
+                    })),
+                )?
+                .unwrap_or(Value::Null);
             print_wait_result(data, json)?;
         }
         BrowserCommand::WaitNavigation {
@@ -620,17 +611,17 @@ pub fn execute(info: &SessionInfo, options: BrowserOptions) -> Result<()> {
             timeout_ms,
             json,
         } => {
-            let data = client::execute_command(
-                ws_url,
-                handlers::browser::WAIT_NAVIGATION,
-                Some(json!({
-                    "tab_id": tab,
-                    "from_url": from_url,
-                    "complete": complete,
-                    "timeout_ms": timeout_ms,
-                })),
-            )?
-            .unwrap_or(Value::Null);
+            let data = transport
+                .request(
+                    handlers::browser::WAIT_NAVIGATION,
+                    Some(json!({
+                        "tab_id": tab,
+                        "from_url": from_url,
+                        "complete": complete,
+                        "timeout_ms": timeout_ms,
+                    })),
+                )?
+                .unwrap_or(Value::Null);
             print_wait_result(data, json)?;
         }
         BrowserCommand::Click {
@@ -641,8 +632,7 @@ pub fn execute(info: &SessionInfo, options: BrowserOptions) -> Result<()> {
             timeout_ms,
             json,
         } => {
-            let data = client::execute_command(
-                ws_url,
+            let data = transport.request(
                 handlers::browser::CLICK,
                 Some(json!({
                     "tab_id": tab,
@@ -660,8 +650,7 @@ pub fn execute(info: &SessionInfo, options: BrowserOptions) -> Result<()> {
             text,
             json,
         } => {
-            let data = client::execute_command(
-                ws_url,
+            let data = transport.request(
                 handlers::browser::TYPE,
                 Some(json!({
                     "tab_id": tab,
@@ -677,8 +666,7 @@ pub fn execute(info: &SessionInfo, options: BrowserOptions) -> Result<()> {
             text,
             json,
         } => {
-            let data = client::execute_command(
-                ws_url,
+            let data = transport.request(
                 handlers::browser::FILL,
                 Some(json!({
                     "tab_id": tab,
@@ -696,8 +684,7 @@ pub fn execute(info: &SessionInfo, options: BrowserOptions) -> Result<()> {
             timeout_ms,
             json,
         } => {
-            let data = client::execute_command(
-                ws_url,
+            let data = transport.request(
                 handlers::browser::PRESS,
                 Some(json!({
                     "tab_id": tab,
@@ -710,8 +697,7 @@ pub fn execute(info: &SessionInfo, options: BrowserOptions) -> Result<()> {
             print_optional_json(data, json)?;
         }
         BrowserCommand::Scroll { tab, dx, dy, json } => {
-            let data = client::execute_command(
-                ws_url,
+            let data = transport.request(
                 handlers::browser::SCROLL,
                 Some(json!({
                     "tab_id": tab,
@@ -726,8 +712,7 @@ pub fn execute(info: &SessionInfo, options: BrowserOptions) -> Result<()> {
             selector,
             json,
         } => {
-            let data = client::execute_command(
-                ws_url,
+            let data = transport.request(
                 handlers::browser::SCROLL_TO,
                 Some(json!({
                     "tab_id": tab,
@@ -736,17 +721,17 @@ pub fn execute(info: &SessionInfo, options: BrowserOptions) -> Result<()> {
             )?;
             print_optional_json(data, json)?;
         }
-        BrowserCommand::Cookies(options) => execute_cookies(ws_url, options)?,
-        BrowserCommand::Network(options) => execute_network(info, options)?,
+        BrowserCommand::Cookies(options) => execute_cookies(transport, options)?,
+        BrowserCommand::Network(options) => execute_network(context, options)?,
         BrowserCommand::Screenshot { tab, output, json } => {
-            execute_screenshot(ws_url, tab, output, json)?
+            execute_screenshot(transport, tab, output, json)?
         }
     }
 
     Ok(())
 }
 
-fn execute_user_agent(ws_url: &str, options: UserAgentOptions) -> Result<()> {
+fn execute_user_agent(transport: &dyn Transport, options: UserAgentOptions) -> Result<()> {
     let (handler, args, show_human_output) = match options.command {
         UserAgentCommand::Show => (handlers::browser::UA_SHOW, json!({}), true),
         UserAgentCommand::Set { user_agent, reload } => (
@@ -763,7 +748,9 @@ fn execute_user_agent(ws_url: &str, options: UserAgentOptions) -> Result<()> {
             false,
         ),
     };
-    let data = client::execute_command(ws_url, handler, Some(args))?.unwrap_or(Value::Null);
+    let data = transport
+        .request(handler, Some(args))?
+        .unwrap_or(Value::Null);
     if options.json || options.pretty {
         print_json(&data, options.pretty)?;
     } else if show_human_output {
@@ -796,37 +783,34 @@ fn print_user_agent_state(data: &Value) -> Result<()> {
     Ok(())
 }
 
-fn execute_network(info: &SessionInfo, options: NetworkOptions) -> Result<()> {
+fn execute_network(context: &BrowserContext, options: NetworkOptions) -> Result<()> {
     // Runner is platform-neutral session metadata; its compiled runtime
     // handler is the authority on whether WebView2 capture is available.
-    let platform = info.target.as_str();
+    let platform = context.target.as_str();
     if !network_capture_may_be_supported(platform) {
         return Err(anyhow!(
             "browser network capture needs a Windows WebView2 session (this session is '{platform}')",
         ));
     }
-    let ws_url = info.ws_url.as_str();
+    let transport = context.transport;
     let tab = options.tab;
     match options.command {
         NetworkCommand::Enable => {
-            client::execute_command(
-                ws_url,
+            transport.request(
                 handlers::browser::NETWORK_ENABLE,
                 Some(json!({ "tab_id": tab })),
             )?;
             println!("network capture enabled for {tab}");
         }
         NetworkCommand::Disable => {
-            client::execute_command(
-                ws_url,
+            transport.request(
                 handlers::browser::NETWORK_DISABLE,
                 Some(json!({ "tab_id": tab })),
             )?;
             println!("network capture disabled for {tab}");
         }
         NetworkCommand::Clear => {
-            client::execute_command(
-                ws_url,
+            transport.request(
                 handlers::browser::NETWORK_CLEAR,
                 Some(json!({ "tab_id": tab })),
             )?;
@@ -841,7 +825,7 @@ fn execute_network(info: &SessionInfo, options: NetworkOptions) -> Result<()> {
             limit,
             json,
         } => {
-            let snapshot = network_snapshot(ws_url, &tab)?;
+            let snapshot = network_snapshot(transport, &tab)?;
             let filter = NetworkFilter {
                 url: url.as_deref(),
                 method: method.as_deref(),
@@ -852,7 +836,7 @@ fn execute_network(info: &SessionInfo, options: NetworkOptions) -> Result<()> {
             print_network_list(&snapshot, &filter, limit, json)?;
         }
         NetworkCommand::Get { id, json } => {
-            let snapshot = network_snapshot(ws_url, &tab)?;
+            let snapshot = network_snapshot(transport, &tab)?;
             let entry = snapshot
                 .get("entries")
                 .and_then(Value::as_array)
@@ -877,13 +861,13 @@ fn network_capture_may_be_supported(target: &str) -> bool {
     )
 }
 
-fn network_snapshot(ws_url: &str, tab: &str) -> Result<Value> {
-    Ok(client::execute_command(
-        ws_url,
-        handlers::browser::NETWORK_LIST,
-        Some(json!({ "tab_id": tab })),
-    )?
-    .unwrap_or(Value::Null))
+fn network_snapshot(transport: &dyn Transport, tab: &str) -> Result<Value> {
+    Ok(transport
+        .request(
+            handlers::browser::NETWORK_LIST,
+            Some(json!({ "tab_id": tab })),
+        )?
+        .unwrap_or(Value::Null))
 }
 
 struct NetworkFilter<'a> {
@@ -1030,39 +1014,44 @@ fn network_body_label(body: Option<&Value>) -> String {
     }
 }
 
-fn execute_screenshot(ws_url: &str, tab: String, output: Option<String>, json: bool) -> Result<()> {
-    let data = client::execute_command(
-        ws_url,
-        handlers::browser::SCREENSHOT,
-        Some(json!({ "tab_id": tab })),
-    )?
-    .unwrap_or(Value::Null);
+fn execute_screenshot(
+    transport: &dyn Transport,
+    tab: String,
+    output: Option<String>,
+    json: bool,
+) -> Result<()> {
+    let data = transport
+        .request(
+            handlers::browser::SCREENSHOT,
+            Some(json!({ "tab_id": tab })),
+        )?
+        .unwrap_or(Value::Null);
 
     if json {
         return print_json(&data, false);
     }
 
-    let bytes = screenshot::decode_png_payload(&data, handlers::browser::SCREENSHOT)?;
+    let bytes = output::decode_png_payload(&data, handlers::browser::SCREENSHOT)?;
     let resolved_tab = data
         .get("tab_id")
         .and_then(Value::as_str)
         .unwrap_or(tab.as_str())
         .to_string();
     let ts = chrono::Local::now().format("%Y%m%d-%H%M%S");
-    let tab = screenshot::safe_component(&resolved_tab);
-    screenshot::write_png(output, format!("{tab}-{ts}.png"), &bytes)
+    let tab = output::safe_component(&resolved_tab);
+    output::write_png(output, format!("{tab}-{ts}.png"), &bytes)
 }
 
-fn execute_cookies(ws_url: &str, options: CookiesOptions) -> Result<()> {
+fn execute_cookies(transport: &dyn Transport, options: CookiesOptions) -> Result<()> {
     let tab = options.tab;
     match options.command {
         CookiesCommand::List { visible, pretty } => {
-            let data = client::execute_command(
-                ws_url,
-                handlers::browser::COOKIES_LIST,
-                Some(json!({ "tab_id": tab, "visible": visible })),
-            )?
-            .unwrap_or_else(|| json!([]));
+            let data = transport
+                .request(
+                    handlers::browser::COOKIES_LIST,
+                    Some(json!({ "tab_id": tab, "visible": visible })),
+                )?
+                .unwrap_or_else(|| json!([]));
             print_json(&data, pretty)?;
         }
         CookiesCommand::Set {
@@ -1077,8 +1066,7 @@ fn execute_cookies(ws_url: &str, options: CookiesOptions) -> Result<()> {
             same_site,
             json,
         } => {
-            let data = client::execute_command(
-                ws_url,
+            let data = transport.request(
                 handlers::browser::COOKIES_SET,
                 Some(json!({
                     "tab_id": tab,
@@ -1103,8 +1091,7 @@ fn execute_cookies(ws_url: &str, options: CookiesOptions) -> Result<()> {
             path,
             json,
         } => {
-            let data = client::execute_command(
-                ws_url,
+            let data = transport.request(
                 handlers::browser::COOKIES_DELETE,
                 Some(json!({
                     "tab_id": tab,
@@ -1116,8 +1103,7 @@ fn execute_cookies(ws_url: &str, options: CookiesOptions) -> Result<()> {
             print_optional_json(data, json)?;
         }
         CookiesCommand::Clear { json } => {
-            let data = client::execute_command(
-                ws_url,
+            let data = transport.request(
                 handlers::browser::COOKIES_CLEAR,
                 Some(json!({ "tab_id": tab })),
             )?;

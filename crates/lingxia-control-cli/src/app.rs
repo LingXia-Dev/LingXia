@@ -1,6 +1,6 @@
 use crate::output;
 use crate::transport::Transport;
-use anyhow::{Context, Result, bail};
+use anyhow::{Result, bail};
 use clap::{Args, Subcommand, ValueEnum};
 use lingxia_devtool_protocol::handlers;
 use serde_json::{Map, Value, json};
@@ -390,7 +390,7 @@ fn execute_screenshot(
         return Ok(());
     }
 
-    let bytes = decode_png_payload(&data, handlers::app::SCREENSHOT)?;
+    let bytes = output::decode_png_payload(&data, handlers::app::SCREENSHOT)?;
     let ts = chrono::Local::now().format("%Y%m%d-%H%M%S");
     let target = output::safe_component(&context.target);
     output::write_png(output, format!("app-{target}-{ts}.png"), &bytes)
@@ -529,23 +529,6 @@ fn action_payload(window: Option<String>, action: Value) -> Value {
 
 fn encode_machine_json(value: &Value) -> Result<String> {
     serde_json::to_string(value).map_err(Into::into)
-}
-
-/// Pull PNG bytes out of a handler response.
-fn decode_png_payload(data: &Value, handler: &str) -> Result<Vec<u8>> {
-    use base64::Engine as _;
-
-    // Unified envelope nests the payload under image.data; fall back to the
-    // legacy top-level data_base64 for older runners.
-    let b64 = data
-        .get("image")
-        .and_then(|image| image.get("data"))
-        .and_then(Value::as_str)
-        .or_else(|| data.get("data_base64").and_then(Value::as_str))
-        .with_context(|| format!("{handler} response missing image.data"))?;
-    base64::engine::general_purpose::STANDARD
-        .decode(b64)
-        .context("failed to base64-decode screenshot payload")
 }
 
 #[cfg(test)]

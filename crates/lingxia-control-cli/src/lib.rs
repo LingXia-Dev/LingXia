@@ -13,6 +13,7 @@
 //! control socket in a shipped binary.
 
 pub mod app;
+pub mod browser;
 pub mod desktop;
 pub mod entry;
 pub mod output;

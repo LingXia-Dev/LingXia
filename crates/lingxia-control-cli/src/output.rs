@@ -7,6 +7,7 @@
 use std::path::PathBuf;
 
 use anyhow::{Context, Result};
+use serde_json::Value;
 
 /// Reduce a title or app name to something safe in a filename.
 pub fn safe_component(value: &str) -> String {
@@ -50,4 +51,22 @@ pub fn write_png(output: Option<String>, default_filename: String, bytes: &[u8])
     fs::write(&path, bytes).with_context(|| format!("failed to write {}", path.display()))?;
     println!("{}  ({} bytes)", path.display(), bytes.len());
     Ok(())
+}
+
+/// Pull PNG bytes out of a handler response. Every namespace that captures
+/// returns the same envelope, so this decodes once rather than per namespace.
+pub fn decode_png_payload(data: &Value, handler: &str) -> Result<Vec<u8>> {
+    use base64::Engine as _;
+
+    // Unified envelope nests the payload under image.data; fall back to the
+    // legacy top-level data_base64 for older runners.
+    let b64 = data
+        .get("image")
+        .and_then(|image| image.get("data"))
+        .and_then(Value::as_str)
+        .or_else(|| data.get("data_base64").and_then(Value::as_str))
+        .with_context(|| format!("{handler} response missing image.data"))?;
+    base64::engine::general_purpose::STANDARD
+        .decode(b64)
+        .context("failed to base64-decode screenshot payload")
 }

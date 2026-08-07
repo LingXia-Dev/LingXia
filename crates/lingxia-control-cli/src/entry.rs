@@ -16,7 +16,7 @@ use clap::Parser;
 use lingxia_devtool_protocol::invocation;
 
 use crate::transport::ControlSocket;
-use crate::{app, desktop, skills};
+use crate::{app, browser, desktop, skills};
 
 #[derive(Parser)]
 #[command(
@@ -37,6 +37,8 @@ enum Command {
     /// This product's own windows: screenshot, windows, mouse, key
     #[command(flatten)]
     Own(app::AppCommand),
+    /// Drive the in-app browser: tabs, navigation, page content
+    Browser(browser::BrowserOptions),
     /// Automate the machine: windows, capture, input, accessibility, clipboard
     Computer(desktop::DesktopOptions),
     /// Write an agent skill describing these commands
@@ -64,6 +66,19 @@ pub fn run_if_invoked(state_dir: &Path) -> Option<i32> {
         }
     };
     Some(match cli.command {
+        Command::Browser(options) => {
+            let context = browser::BrowserContext {
+                transport: &transport,
+                target: std::env::consts::OS.to_string(),
+            };
+            match browser::execute(&context, options) {
+                Ok(()) => 0,
+                Err(error) => {
+                    eprintln!("Error: {error}");
+                    1
+                }
+            }
+        }
         Command::Computer(options) => desktop::execute(&desktop::Backend::App(&transport), options),
         Command::Skills(options) => skills::execute::<Cli>(&manifest(&transport), options),
         Command::Own(command) => {
@@ -89,6 +104,7 @@ pub fn run_if_invoked(state_dir: &Path) -> Option<i32> {
 /// someone running the executable inside the bundle directly, which is what a
 /// developer does and what a `--help` in a bug report looks like.
 const COMMANDS: &[&str] = &[
+    "browser",
     "computer",
     "skills",
     "doctor",

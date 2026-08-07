@@ -1,7 +1,6 @@
 use anyhow::Result;
 use clap::{Args, Parser, Subcommand};
 
-mod browser;
 mod client;
 mod logs;
 mod lxapp;
@@ -33,7 +32,7 @@ struct Cli {
 #[derive(Subcommand)]
 enum Commands {
     /// Control browser tabs in the current dev session
-    Browser(browser::BrowserOptions),
+    Browser(lingxia_control_cli::browser::BrowserOptions),
     /// Manage lxapps in the current dev session
     Lxapp(lxapp::LxAppOptions),
     /// Control the simulated environment (device, orientation, appearance);
@@ -139,7 +138,12 @@ fn run() -> Result<()> {
     match cli.command {
         Commands::Browser(options) => {
             let info = resolve(&selector)?;
-            browser::execute(&info, options)
+            let transport = client::DevSession::new(&info.ws_url);
+            let context = lingxia_control_cli::browser::BrowserContext {
+                transport: &transport,
+                target: info.target.clone(),
+            };
+            lingxia_control_cli::browser::execute(&context, options)
         }
         Commands::Lxapp(options) => {
             if lxapp::handle_pre_session(&std::env::current_dir()?, &options)? {
@@ -230,14 +234,15 @@ mod tests {
         let Commands::Browser(options) = cli.command else {
             panic!("expected browser command");
         };
-        let browser::BrowserCommand::UserAgent(options) = options.command else {
+        let lingxia_control_cli::browser::BrowserCommand::UserAgent(options) = options.command
+        else {
             panic!("expected user-agent command");
         };
         assert!(options.json);
         assert!(!options.pretty);
         assert!(matches!(
             options.command,
-            browser::UserAgentCommand::Set {
+            lingxia_control_cli::browser::UserAgentCommand::Set {
                 user_agent,
                 reload: true,
             } if user_agent == "TestAgent/1.0"
