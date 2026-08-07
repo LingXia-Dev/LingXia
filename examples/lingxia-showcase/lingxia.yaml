@@ -57,6 +57,7 @@ capabilities:
   terminal: true
   autostart: true
   control: true
+  computerUse: true
 
 resources:
   bundles:

@@ -246,6 +246,13 @@ pub struct CapabilitiesConfig {
     /// devtool protocol exposes, which is why it is never a default.
     #[serde(default)]
     pub control: bool,
+    /// Automating the machine, not just this app: screenshots of any window,
+    /// synthetic input, the accessibility tree. Requires `control`, since the
+    /// commands arrive over that socket. Named for what the user is granting —
+    /// macOS will ask them for Accessibility and Screen Recording, and the
+    /// entry they see in System Settings is this product.
+    #[serde(default)]
+    pub computer_use: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]

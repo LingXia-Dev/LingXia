@@ -15,6 +15,8 @@ mod bridge;
 mod browser;
 #[cfg(feature = "control-socket")]
 pub mod control;
+#[cfg(feature = "computer-use")]
+mod desktop;
 mod lxapp;
 mod lxapp_nav;
 mod lxapp_page;
@@ -41,6 +43,11 @@ pub fn dispatch(
 ) -> DevSessionMessage {
     #[cfg(feature = "test-runtime")]
     if let Some(result) = session_test::handle_session_test_command(&method, params.clone()) {
+        return command_result(id, result);
+    }
+
+    #[cfg(feature = "computer-use")]
+    if let Some(result) = desktop::handle_desktop_command(&method, params.clone()) {
         return command_result(id, result);
     }
 

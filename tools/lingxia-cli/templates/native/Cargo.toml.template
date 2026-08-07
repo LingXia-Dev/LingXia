@@ -20,6 +20,7 @@ process = ["lingxia/process", "standard"]
 # from `devtools` on purpose: a shipped product gets the handlers without
 # the dev websocket and its TLS stack.
 control = ["dep:lingxia_devtool", "lingxia/devtool", "lingxia_devtool/control-socket"]
+computer-use = ["control", "lingxia_devtool/computer-use"]
 devtools = ["dep:lingxia_devtool", "lingxia/devtool", "lingxia_devtool/dev-bridge", "lingxia_devtool/browser", "lingxia_devtool/test-runtime"]
 webview-input = ["lingxia/webview-input"]
 cloud = []  # activated by `--with-provider cloud`

@@ -3320,6 +3320,7 @@ dependencies = [
  "lingxia-app-context",
  "lingxia-automation",
  "lingxia-browser",
+ "lingxia-computer-use",
  "lingxia-devtool-protocol",
  "lingxia-log",
  "lingxia-lxapp",

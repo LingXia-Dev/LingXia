@@ -1530,6 +1530,17 @@ impl LingXiaConfig {
         control_requested && matches!(platform, "macos" | "windows")
     }
 
+    /// Machine-wide automation. Rides the control socket, so it is off unless
+    /// that is on too — the commands have no other way in.
+    pub fn computer_use_enabled(&self, platform: &str) -> bool {
+        let requested = self
+            .capabilities
+            .as_ref()
+            .map(|capabilities| capabilities.computer_use)
+            .unwrap_or(false);
+        requested && self.control_enabled(platform)
+    }
+
     pub fn devtools_enabled(&self) -> bool {
         self.features
             .as_ref()
@@ -1561,6 +1572,9 @@ impl LingXiaConfig {
         }
         if self.control_enabled(platform) {
             features.push("control".to_string());
+        }
+        if self.computer_use_enabled(platform) {
+            features.push("computer-use".to_string());
         }
         if self.devtools_enabled() {
             features.push("devtools".to_string());

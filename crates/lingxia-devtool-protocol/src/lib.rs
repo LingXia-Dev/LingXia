@@ -177,6 +177,22 @@ pub mod handlers {
         pub const BACK: &str = "lxapp.page.back";
         pub const SCREENSHOT: &str = "lxapp.page.screenshot";
     }
+
+    /// Automating the machine rather than the app, unlocked by
+    /// `capabilities.computerUse`.
+    ///
+    /// A host runs these itself rather than the client running them in its own
+    /// process, even though the work is local either way. macOS attributes
+    /// Accessibility and Screen Recording to the responsible process, so a
+    /// client invoked from a terminal would borrow that terminal's grants —
+    /// different answers from different terminals, and a product name the user
+    /// never sees in System Settings. Routed here, the grant belongs to the
+    /// product, which is the only thing a user can meaningfully allow or revoke.
+    pub mod desktop {
+        pub const DOCTOR: &str = "desktop.doctor";
+        pub const PERMISSIONS: &str = "desktop.permissions";
+        pub const REQUEST_PERMISSIONS: &str = "desktop.permissions.request";
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

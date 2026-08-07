@@ -282,6 +282,7 @@ The browser, terminal, and HTTP-proxy runtime features are **not** set here — 
 - `process` — OS process launch/management for trusted Agent-style products (macOS/Windows). Available only to the home lxapp, which must also declare `security.privileges: [process]`; adds `Rong.spawn`, `Rong.spawnSync`, and `Rong.$` plus the opt-in `@lingxia/types/process` declarations.
 - `autostart` — unlocks `lx.app.autostart` (launch at system startup; macOS/Windows, home lxapp only). Declaring it never registers the app by itself — enabling is a runtime user decision via the API.
 - `control` — a local control socket (macOS/Windows) that lets a command line or agent skill on the same machine drive the running product. Reachable only by the user who launched the app, and never over a network. Declaring it ships the ability, not the decision: the socket stays closed until the user turns it on, because it exposes the whole devtool surface. Like `autostart`, enabling is always a runtime choice.
+- `computerUse` — extends the control socket from driving this app to driving the machine: screenshots of any window, synthetic input, the accessibility tree. Requires `control`. Named for what the user grants, because they will be asked: macOS prompts for Accessibility and Screen Recording, and the entry in System Settings is this product. Commands run inside the app rather than in the calling process, so that grant stays attached to the product no matter which terminal invoked it.
 
 ---
 
