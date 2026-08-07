@@ -607,15 +607,6 @@ fn grid_size_from_geometry(geometry: GridGeometry) -> Option<(u16, u16)> {
     ))
 }
 
-/// Parses the `#rrggbb` color tokens produced by `lingxia-terminal`.
-fn parse_hex_color(token: &str) -> Option<u32> {
-    let hex = token.strip_prefix('#')?;
-    if hex.len() != 6 {
-        return None;
-    }
-    u32::from_str_radix(hex, 16).ok()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

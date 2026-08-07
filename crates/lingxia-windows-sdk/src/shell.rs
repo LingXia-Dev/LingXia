@@ -32,7 +32,6 @@ pub mod terminal_grid;
 #[cfg(not(feature = "terminal-runtime"))]
 pub mod terminal_grid {
     use windows::Win32::Foundation::RECT;
-    use windows::Win32::Graphics::Gdi::HDC;
 
     pub(super) fn session_surface_background(_session_id: u64) -> Option<u32> {
         None
@@ -47,17 +46,11 @@ pub mod terminal_grid {
             text_muted: 0x8a8a8a,
         }
     }
-    pub(super) fn panel_snapshot_text(_panel_id: &str) -> Option<String> {
-        None
-    }
     pub(super) fn set_panel_tab_title_rects(
         _panel_id: &str,
         _hwnd: isize,
         _titles: Vec<(u64, RECT)>,
     ) {
-    }
-    pub(super) fn draw_panel_panes(_hdc: HDC, _panel_id: &str, _body: RECT) -> bool {
-        false
     }
 }
 #[cfg(feature = "terminal-runtime")]
@@ -69,10 +62,6 @@ mod terminal_gpu {
     use windows::Win32::Foundation::{HWND, RECT};
 
     pub(super) fn present(_: HWND, _: &str, _: RECT, _: [i32; 4]) {}
-    pub(super) fn drop_panel(_: &str) {}
-    pub(super) fn cell_size() -> Option<(i32, i32)> {
-        None
-    }
 }
 mod terminal_panel;
 pub mod text_input;

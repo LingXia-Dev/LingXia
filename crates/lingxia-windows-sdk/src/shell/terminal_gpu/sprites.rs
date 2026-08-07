@@ -18,7 +18,6 @@ pub(super) fn handles(scalar: u32) -> bool {
 /// Line weight of one arm of a box-drawing character.
 #[derive(Clone, Copy, PartialEq)]
 enum Weight {
-    None,
     Light,
     Heavy,
     Double,
@@ -27,7 +26,6 @@ enum Weight {
 impl Weight {
     fn thickness(self, light: f32) -> f32 {
         match self {
-            Self::None => 0.0,
             Self::Light | Self::Double => light,
             Self::Heavy => (light * 2.0).round().max(light + 1.0),
         }
@@ -368,8 +366,22 @@ fn arms(scalar: u32) -> Option<Arms> {
         0x2552..=0x256C => double_joint(scalar)?,
         // Dashes fall back to their solid form rather than to the font, so a
         // dashed border still meets a solid one.
-        0x2504..=0x250B => both(if scalar % 2 == 0 { Light } else { Heavy }, scalar < 0x2508),
-        0x254C..=0x254F => both(if scalar % 2 == 0 { Light } else { Heavy }, scalar < 0x254E),
+        0x2504..=0x250B => both(
+            if scalar.is_multiple_of(2) {
+                Light
+            } else {
+                Heavy
+            },
+            scalar < 0x2508,
+        ),
+        0x254C..=0x254F => both(
+            if scalar.is_multiple_of(2) {
+                Light
+            } else {
+                Heavy
+            },
+            scalar < 0x254E,
+        ),
         // Half lines.
         0x2574 => Arms {
             left: Some(Light),

@@ -402,7 +402,9 @@ impl GlyphRun {
         } else {
             unsafe { *run.glyphIndices }
         };
-        let face = unsafe { (*run.fontFace).clone() }.unwrap_or_else(|| fallback.face.clone());
+        let face = (*run.fontFace)
+            .clone()
+            .unwrap_or_else(|| fallback.face.clone());
         Self {
             glyph,
             advance: 0.0,

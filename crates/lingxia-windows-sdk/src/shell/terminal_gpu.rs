@@ -44,10 +44,10 @@ use windows::Win32::Graphics::Dxgi::{
     DXGI_USAGE_RENDER_TARGET_OUTPUT, IDXGIDevice, IDXGIFactory2, IDXGISwapChain1,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    CreateWindowExW, DefWindowProcW, DestroyWindow, HTTRANSPARENT, HWND_TOP, RegisterClassW,
-    SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_NOZORDER, SetParent, SetWindowPos, ShowWindow,
-    WM_ERASEBKGND, WM_NCHITTEST, WNDCLASSW, WS_CHILD, WS_CLIPSIBLINGS, WS_EX_NOREDIRECTIONBITMAP,
-    WS_VISIBLE,
+    CreateWindowExW, DefWindowProcW, DestroyWindow, HTTRANSPARENT, HWND_TOP, PostMessageW,
+    RegisterClassW, SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_NOZORDER, SetParent, SetWindowPos,
+    ShowWindow, WM_CLOSE, WM_ERASEBKGND, WM_NCHITTEST, WNDCLASSW, WS_CHILD, WS_CLIPSIBLINGS,
+    WS_EX_NOREDIRECTIONBITMAP, WS_VISIBLE,
 };
 use windows::core::{Interface, PCWSTR, Result, w};
 
@@ -554,7 +554,15 @@ impl Surface {
 impl Drop for Surface {
     fn drop(&mut self) {
         unsafe {
-            let _ = DestroyWindow(self.hwnd);
+            // Panels are torn down from chrome-command and poll threads too,
+            // and DestroyWindow refuses to work across threads. A leaked
+            // surface window stays in the sibling z-order and occludes every
+            // surface created for the panel afterwards, so hand the close to
+            // the owning thread instead: DefWindowProc turns WM_CLOSE into
+            // DestroyWindow there.
+            if DestroyWindow(self.hwnd).is_err() {
+                let _ = PostMessageW(Some(self.hwnd), WM_CLOSE, WPARAM(0), LPARAM(0));
+            }
         }
     }
 }
@@ -972,13 +980,6 @@ fn underline_name(index: u8) -> &'static str {
         5 => "dashed",
         _ => "none",
     }
-}
-
-fn parse_hex(token: &str) -> Option<u32> {
-    let hex = token.strip_prefix('#').unwrap_or(token);
-    (hex.len() == 6)
-        .then(|| u32::from_str_radix(hex, 16).ok())
-        .flatten()
 }
 
 fn blend(color: u32, towards: u32, percent: u32) -> u32 {
