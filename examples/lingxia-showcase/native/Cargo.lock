@@ -2150,6 +2150,7 @@ dependencies = [
  "serde_json",
  "tokio",
  "tungstenite",
+ "windows 0.62.2",
 ]
 
 [[package]]

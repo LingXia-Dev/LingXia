@@ -281,6 +281,7 @@ The browser, terminal, and HTTP-proxy runtime features are **not** set here — 
 - `proxy` — the in-app browser's HTTP proxy (desktop). Requires `browser`.
 - `process` — OS process launch/management for trusted Agent-style products (macOS/Windows). Available only to the home lxapp, which must also declare `security.privileges: [process]`; adds `Rong.spawn`, `Rong.spawnSync`, and `Rong.$` plus the opt-in `@lingxia/types/process` declarations.
 - `autostart` — unlocks `lx.app.autostart` (launch at system startup; macOS/Windows, home lxapp only). Declaring it never registers the app by itself — enabling is a runtime user decision via the API.
+- `control` — a local control socket (macOS/Windows) that lets a command line or agent skill on the same machine drive the running product. Reachable only by the user who launched the app, and never over a network. Declaring it ships the ability, not the decision: the socket stays closed until the user turns it on, because it exposes the whole devtool surface. Like `autostart`, enabling is always a runtime choice.
 
 ---
 

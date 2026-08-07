@@ -53,6 +53,10 @@ impl lingxia::HostAddon for ExampleHostAddon {
     fn start_services(&self) {
         #[cfg(feature = "devtools")]
         lingxia_devtool::start_devtool_bridge_from_env();
+        #[cfg(feature = "control")]
+        if let Err(error) = lingxia_devtool::control::install() {
+            log::warn!("control socket unavailable: {error}");
+        }
     }
 }
 

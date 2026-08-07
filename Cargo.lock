@@ -3309,12 +3309,14 @@ dependencies = [
  "lingxia-devtool-protocol",
  "lingxia-log",
  "lingxia-lxapp",
+ "lingxia-settings",
  "log",
  "rustls",
  "serde",
  "serde_json",
  "tokio",
  "tungstenite",
+ "windows 0.62.2",
 ]
 
 [[package]]

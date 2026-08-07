@@ -240,6 +240,12 @@ pub struct CapabilitiesConfig {
     /// only; enabling is always a runtime user decision, never automatic.
     #[serde(default)]
     pub autostart: bool,
+    /// The local control socket, which lets a command line or agent skill on
+    /// the same machine drive this product. Desktop only, and off unless the
+    /// product means to ship that surface — what it reaches is everything the
+    /// devtool protocol exposes, which is why it is never a default.
+    #[serde(default)]
+    pub control: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]

@@ -1,0 +1,295 @@
+//! The product's local control socket.
+//!
+//! This is not the development websocket. That one exists so `lingxia dev` can
+//! drive an app across a network to a phone; this one exists so a *shipped*
+//! product can offer a command line and agent skills that drive it — the same
+//! handlers, reached without a dev session, over an IPC that never leaves the
+//! machine.
+//!
+//! Each platform gets its native mechanism rather than one forced everywhere.
+//! Windows has supported `AF_UNIX` since 1803, but a named pipe carries a real
+//! security descriptor and can name the process on the other end, and neither
+//! is true of `AF_UNIX` there — and the two things this endpoint must get
+//! right are exactly "only this user" and "who is asking". A pipe also cannot
+//! be left behind by a crash the way a socket file can.
+//!
+//! The wire is newline-delimited JSON of the same [`DevSessionMessage`] the
+//! websocket carries. Requests are small and strictly request/response, so
+//! nothing here needs framing beyond a line.
+
+use std::io::{BufRead, BufReader, Write};
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, OnceLock};
+
+use lingxia_devtool_protocol::DevSessionMessage;
+
+#[cfg_attr(unix, path = "unix.rs")]
+#[cfg_attr(windows, path = "windows.rs")]
+mod platform;
+
+pub use platform::endpoint_name;
+
+/// Where this product's endpoint lives, once [`install`] has run.
+static STATE_DIR: OnceLock<PathBuf> = OnceLock::new();
+static RUNNING: Mutex<Option<Running>> = Mutex::new(None);
+
+struct Running {
+    endpoint: String,
+    listening: Arc<AtomicBool>,
+}
+
+/// Make the control socket available, and start it if the user has said yes.
+///
+/// A host calls this from `start_services` when it ships the capability.
+/// Shipping the capability is not the same as switching it on: this endpoint
+/// hands any local process the product's whole automation surface, so the
+/// build decides whether the ability exists and the user decides whether it
+/// listens. It is off until they say otherwise, and [`set_enabled`] flips it
+/// while the app runs — no restart, because a settings toggle that needs one
+/// is a toggle people stop trusting.
+pub fn install() -> std::io::Result<()> {
+    let state_dir =
+        lingxia::app::state_dir().map_err(|error| std::io::Error::other(error.to_string()))?;
+    let enabled = lingxia_settings::control_enabled(
+        state_dir
+            .parent()
+            .ok_or_else(|| std::io::Error::other("app state directory has no parent"))?,
+    );
+    let _ = STATE_DIR.set(state_dir);
+    if enabled {
+        set_enabled(true)?;
+    } else {
+        log::info!("control socket available but switched off");
+    }
+    Ok(())
+}
+
+/// Start or stop listening. Persisting the choice is the caller's job — the
+/// settings surface owns that, and this stays callable from a test.
+pub fn set_enabled(enabled: bool) -> std::io::Result<()> {
+    let state_dir = STATE_DIR
+        .get()
+        .ok_or_else(|| std::io::Error::other("control socket is not installed"))?;
+    let mut running = RUNNING.lock().unwrap_or_else(|error| error.into_inner());
+    match (enabled, running.take()) {
+        (true, Some(existing)) => {
+            *running = Some(existing);
+            Ok(())
+        }
+        (true, None) => {
+            *running = Some(start(state_dir, crate::dispatch_line)?);
+            Ok(())
+        }
+        (false, Some(existing)) => {
+            existing.listening.store(false, Ordering::SeqCst);
+            // The accept call is blocking, so it has to be woken to notice.
+            // Connecting to ourselves is the wake-up; the loop then sees the
+            // flag and drops the listener, which is what actually closes the
+            // door.
+            platform::poke(&existing.endpoint);
+            log::info!("control socket switched off");
+            Ok(())
+        }
+        (false, None) => Ok(()),
+    }
+}
+
+/// Whether the endpoint is listening right now.
+pub fn is_listening() -> bool {
+    RUNNING
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .is_some()
+}
+
+fn start(state_dir: &Path, handle: Handler) -> std::io::Result<Running> {
+    let listener = platform::Listener::bind(state_dir)?;
+    let endpoint = listener.name();
+    log::info!("control socket listening on {endpoint}");
+    let listening = Arc::new(AtomicBool::new(true));
+    let flag = Arc::clone(&listening);
+    std::thread::Builder::new()
+        .name("lingxia-control".to_string())
+        .spawn(move || {
+            let mut consecutive_failures = 0u32;
+            while flag.load(Ordering::SeqCst) {
+                match listener.accept() {
+                    Ok(stream) => {
+                        consecutive_failures = 0;
+                        if !flag.load(Ordering::SeqCst) {
+                            break;
+                        }
+                        std::thread::Builder::new()
+                            .name("lingxia-control-conn".to_string())
+                            .spawn(move || serve_connection(stream, handle))
+                            .ok();
+                    }
+                    Err(error) => {
+                        consecutive_failures += 1;
+                        log::warn!("control socket accept failed: {error}");
+                        // A single failed accept is usually transient, but a
+                        // listener that is really gone fails every time, and
+                        // spinning on it would burn a core in silence.
+                        if consecutive_failures >= 16 {
+                            log::error!("control socket giving up after repeated accept failures");
+                            break;
+                        }
+                        std::thread::sleep(std::time::Duration::from_millis(200));
+                    }
+                }
+            }
+            drop(listener);
+        })?;
+    Ok(Running {
+        endpoint,
+        listening,
+    })
+}
+
+/// Turns one request line into one reply line. A function pointer rather than
+/// a direct call so the accept loop can be exercised without [`crate::dispatch`],
+/// which drags the whole platform runtime into the link.
+type Handler = fn(&str) -> DevSessionMessage;
+
+/// One client, one request at a time, until it hangs up.
+fn serve_connection(stream: platform::Stream, handle: Handler) {
+    let mut writer = match platform::split_writer(&stream) {
+        Ok(writer) => writer,
+        Err(error) => {
+            log::warn!("control connection unusable: {error}");
+            return;
+        }
+    };
+    for line in BufReader::new(stream).lines() {
+        let line = match line {
+            Ok(line) => line,
+            Err(error) => {
+                log::debug!("control connection closed: {error}");
+                return;
+            }
+        };
+        if line.trim().is_empty() {
+            continue;
+        }
+        let reply = handle(&line);
+        let Ok(mut encoded) = serde_json::to_vec(&reply) else {
+            continue;
+        };
+        encoded.push(b'\n');
+        if writer.write_all(&encoded).is_err() || writer.flush().is_err() {
+            return;
+        }
+    }
+}
+
+/// The framing half, kept apart from the handler chain so it can be tested
+/// without one — reaching `dispatch` pulls in the whole platform runtime.
+pub(crate) fn reply_with(
+    line: &str,
+    dispatch: impl FnOnce(String, String, Option<serde_json::Value>) -> DevSessionMessage,
+) -> DevSessionMessage {
+    match serde_json::from_str::<DevSessionMessage>(line) {
+        Ok(DevSessionMessage::Request { id, method, params }) => dispatch(id, method, params),
+        // Anything else on this transport is a client mistake, and saying so
+        // beats closing the connection on it.
+        Ok(_) => DevSessionMessage::error(
+            String::new(),
+            "unsupported",
+            "the control socket takes requests".to_string(),
+        ),
+        Err(error) => DevSessionMessage::error(String::new(), "bad_request", error.to_string()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn stub(id: String, method: String, params: Option<serde_json::Value>) -> DevSessionMessage {
+        DevSessionMessage::success(
+            id,
+            Some(serde_json::json!({"method": method, "params": params})),
+        )
+    }
+
+    #[test]
+    fn routes_a_request_to_the_handler_chain() {
+        let replied = reply_with(
+            r#"{"type":"request","id":"1","method":"echo","params":{"a":1}}"#,
+            stub,
+        );
+        let DevSessionMessage::Response { id, result, error } = replied else {
+            panic!("expected a response");
+        };
+        assert_eq!(id, "1");
+        assert!(error.is_none());
+        assert_eq!(
+            result,
+            Some(serde_json::json!({"method": "echo", "params": {"a": 1}}))
+        );
+    }
+
+    #[test]
+    fn answers_rather_than_hangs_up_on_bad_input() {
+        for (line, code) in [
+            ("not json", "bad_request"),
+            (r#"{"type":"response","id":"1"}"#, "unsupported"),
+        ] {
+            let DevSessionMessage::Response { error, .. } =
+                reply_with(line, |_, _, _| panic!("must not dispatch"))
+            else {
+                panic!("expected a response");
+            };
+            assert_eq!(error.map(|error| error.code).as_deref(), Some(code));
+        }
+    }
+
+    fn stub_line(line: &str) -> DevSessionMessage {
+        reply_with(line, stub)
+    }
+
+    /// The real listener, over a real socket, switched off the way the
+    /// settings toggle switches it off — the part that a framing test cannot
+    /// reach and the part a user's decision depends on.
+    #[cfg(unix)]
+    #[test]
+    fn stops_listening_when_switched_off() {
+        use std::io::BufRead;
+
+        let state_dir = std::env::temp_dir().join(format!(
+            "lingxia-control-test-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        std::fs::create_dir_all(&state_dir).unwrap();
+        let running = start(&state_dir, stub_line).expect("listener starts");
+        let endpoint = running.endpoint.clone();
+
+        let mut client = std::os::unix::net::UnixStream::connect(&endpoint).expect("connects");
+        client
+            .write_all(b"{\"type\":\"request\",\"id\":\"1\",\"method\":\"echo\"}\n")
+            .unwrap();
+        let mut reply = String::new();
+        BufReader::new(client.try_clone().unwrap())
+            .read_line(&mut reply)
+            .unwrap();
+        assert!(reply.contains("\"id\":\"1\""), "answered while on: {reply}");
+
+        running.listening.store(false, Ordering::SeqCst);
+        platform::poke(&endpoint);
+
+        // The accept thread drops the listener on its way out, which unlinks
+        // the socket; until it does, a connect may still succeed.
+        let mut refused = false;
+        for _ in 0..100 {
+            if std::os::unix::net::UnixStream::connect(&endpoint).is_err() {
+                refused = true;
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        assert!(refused, "endpoint still accepts after being switched off");
+        let _ = std::fs::remove_dir_all(&state_dir);
+    }
+}

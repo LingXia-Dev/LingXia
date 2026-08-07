@@ -1519,6 +1519,17 @@ impl LingXiaConfig {
         proxy_requested && self.browser_enabled() && matches!(platform, "macos" | "windows")
     }
 
+    /// The local control socket. Desktop only — a phone has no command line
+    /// to drive the product from, and no per-user IPC namespace to scope it to.
+    pub fn control_enabled(&self, platform: &str) -> bool {
+        let control_requested = self
+            .capabilities
+            .as_ref()
+            .map(|capabilities| capabilities.control)
+            .unwrap_or(false);
+        control_requested && matches!(platform, "macos" | "windows")
+    }
+
     pub fn devtools_enabled(&self) -> bool {
         self.features
             .as_ref()
@@ -1547,6 +1558,9 @@ impl LingXiaConfig {
         }
         if self.proxy_enabled(platform) {
             features.push("proxy".to_string());
+        }
+        if self.control_enabled(platform) {
+            features.push("control".to_string());
         }
         if self.devtools_enabled() {
             features.push("devtools".to_string());
