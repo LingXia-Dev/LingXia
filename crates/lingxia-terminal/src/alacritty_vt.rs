@@ -53,6 +53,18 @@ pub enum CursorVisualStyle {
     BlockHollow,
 }
 
+impl CursorVisualStyle {
+    /// The name a renderer branches on, and the one the JSON snapshot carries.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Bar => "bar",
+            Self::Block => "block",
+            Self::Underline => "underline",
+            Self::BlockHollow => "block_hollow",
+        }
+    }
+}
+
 /// Default colors resolved against cells at snapshot time.
 ///
 /// Indices 0–15 are the user's ANSI theme; 16–231 form the standard
@@ -695,6 +707,13 @@ pub struct TerminalFrame {
 }
 
 impl TerminalFrame {
+    /// Grid position of the cell at `index`. Cells are row-major, so this is
+    /// arithmetic rather than something a cell has to carry.
+    pub fn position(&self, index: usize) -> (u16, u16) {
+        let cols = usize::from(self.cols).max(1);
+        ((index / cols) as u16, (index % cols) as u16)
+    }
+
     /// Cluster text of a cell, empty for blanks and continuation cells.
     pub fn cell_text(&self, cell: &FrameCell) -> &str {
         let start = cell.text_offset as usize;

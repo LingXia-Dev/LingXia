@@ -15,9 +15,10 @@ mod search;
 mod shell_integration;
 mod theme;
 
-use alacritty_vt::{
+use alacritty_vt::{CursorVisualStyle, PtyWriteCallback, ThemeColors, VtScreen};
+// A renderer reads `FrameCell::attrs`, so the bits are part of the contract.
+pub use alacritty_vt::{
     ATTR_BOLD, ATTR_DIM, ATTR_HIDDEN, ATTR_INVERSE, ATTR_ITALIC, ATTR_STRIKE, ATTR_UNDERLINE,
-    CursorVisualStyle, PtyWriteCallback, ThemeColors, VtScreen,
 };
 pub use alacritty_vt::{
     CommandBlock, FrameCell, FrameUpdate as TerminalFrameUpdate,
@@ -374,6 +375,24 @@ impl TerminalFrameView {
 /// Produce the next frame and retain it, returning pointers into its
 /// buffers. This is [`terminal_frame_data`] for FFI hosts: nothing is
 /// copied, serialized, or allocated per cell.
+/// Scroll position and the child's exit state — the two things a renderer
+/// needs that a frame deliberately leaves out.
+///
+/// A frame describes the grid; neither of these is part of it, and both change
+/// on their own schedule. Kept out of [`terminal_frame_data`] so asking for a
+/// frame stays "what changed on screen".
+pub fn terminal_view_state(id: u64) -> Option<(Option<TerminalScrollbar>, bool)> {
+    let session = session(id)?;
+    let mut session = session.lock().ok()?;
+    let exited = session.poll_child().is_some();
+    let scrollbar = session.vt.scrollbar().map(|bar| TerminalScrollbar {
+        total: bar.total,
+        offset: bar.offset,
+        len: bar.len,
+    });
+    Some((scrollbar, exited))
+}
+
 pub fn terminal_frame_view(id: u64, since_generation: u64) -> Option<TerminalFrameView> {
     let session = session(id)?;
     let mut session = session.lock().ok()?;
@@ -427,9 +446,35 @@ pub fn terminal_frame_view(id: u64, since_generation: u64) -> Option<TerminalFra
     }
 }
 
-/// Process/window title state as JSON, for hosts polling it at a lower
-/// rate than frames: resolving it walks the foreground process, so it
-/// must not sit on the render path.
+/// Process/window title state, for hosts polling it at a lower rate than
+/// frames: resolving it walks the foreground process, so it must not sit on
+/// the render path.
+pub fn terminal_title_state_data(id: u64) -> Option<TerminalTitleView> {
+    let session = session(id)?;
+    let mut session = session.lock().ok()?;
+    let foreground_pid = session.foreground_process_pid();
+    let alternate_screen = session.vt.is_alternate_screen();
+    Some(TerminalTitleView {
+        process_title: session.title_state.title(foreground_pid, alternate_screen),
+        title: session
+            .vt
+            .osc_title()
+            .map(|title| title.trim().to_string())
+            .filter(|title| !title.is_empty()),
+        generation: session.title_state.generation(),
+    })
+}
+
+/// What a tab shows for a session, and the generation that says whether it
+/// moved since the caller last looked.
+#[derive(Debug, Clone, Default)]
+pub struct TerminalTitleView {
+    pub process_title: String,
+    pub title: Option<String>,
+    pub generation: u64,
+}
+
+/// [`terminal_title_state_data`] as JSON, for hosts reached over FFI.
 pub fn terminal_title_state_json(id: u64) -> String {
     let Some(session) = session(id) else {
         return "{}".to_string();

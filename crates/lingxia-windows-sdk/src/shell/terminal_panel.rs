@@ -624,9 +624,7 @@ pub(crate) fn scroll_pane_at(
         }
         super::terminal_grid::reveal_scrollbar(session_id);
         super::terminal_grid::clear_selection(session_id);
-        if let Some(snapshot) = lingxia_terminal::terminal_snapshot_data(session_id) {
-            store_session_snapshot(panel_id, session_id, snapshot);
-        }
+        publish_session_frame(panel_id, session_id);
         invalidate_panel(panel_id);
         true
     }
@@ -1183,11 +1181,15 @@ fn open_windows_terminal_session_panel(
         },
     );
     publish_tab_strip(&panel_key);
+    // The plain-text body wants the snapshot it was handed; the grid store
+    // asks the engine for a frame either way.
+    #[cfg(not(feature = "shell-chrome"))]
     if let Some(snapshot) = initial_snapshot {
         publish_windows_terminal_snapshot(&panel_key, session_id, snapshot);
-    } else {
-        publish_active_snapshot(&panel_key);
     }
+    #[cfg(feature = "shell-chrome")]
+    let _ = initial_snapshot;
+    publish_active_snapshot(&panel_key);
 
     thread::spawn(move || run_terminal_panel_poll_loop(&panel_key, &stop));
     Ok(())
@@ -1252,18 +1254,38 @@ fn run_terminal_panel_poll_loop(panel_key: &str, stop: &AtomicBool) {
             if super::terminal_grid::expire_scrollbar(session_id) {
                 any_change = true;
             }
-            let Some(snapshot) = lingxia_terminal::terminal_snapshot_data(session_id) else {
+            // Frame first, then the two things a frame leaves out. None of it
+            // walks the grid cell by cell, so an idle pane costs a generation
+            // comparison rather than a copy of the screen.
+            let Some((scrollbar, exited)) = lingxia_terminal::terminal_view_state(session_id)
+            else {
                 if close_pane_session(panel_key, session_id) {
                     panel_closed = true;
                 }
                 break;
             };
-            if snapshot.exited {
+            if exited {
                 if close_pane_session(panel_key, session_id) {
                     panel_closed = true;
                 }
                 break;
             }
+            let title = lingxia_terminal::terminal_title_state_data(session_id).unwrap_or_default();
+            let since = super::terminal_grid::session_generation(session_id);
+            let update = lingxia_terminal::terminal_frame_data(session_id, since);
+            let (grid_generation, frame) = match update {
+                Some(lingxia_terminal::TerminalFrameUpdate::Changed(frame)) => {
+                    (frame.generation, Some(frame))
+                }
+                Some(lingxia_terminal::TerminalFrameUpdate::Unchanged { generation }) => {
+                    (generation, None)
+                }
+                None => (since, None),
+            };
+            let grid_size = frame
+                .as_ref()
+                .map(|frame| (frame.cols, frame.rows))
+                .or_else(|| super::terminal_grid::session_grid_size(session_id));
 
             #[cfg(feature = "shell-chrome")]
             {
@@ -1271,7 +1293,7 @@ fn run_terminal_panel_poll_loop(panel_key: &str, stop: &AtomicBool) {
                     pending_resize.remove(&session_id);
                 }
                 let desired = super::terminal_grid::desired_session_grid_size(session_id)
-                    .filter(|&(cols, rows)| (cols, rows) != (snapshot.cols, snapshot.rows));
+                    .filter(|&size| Some(size) != grid_size);
                 // Resize the PTY only once the desired grid held for two
                 // consecutive ticks, so divider/grow drags don't cause
                 // resize storms (converges within two ticks).
@@ -1291,12 +1313,15 @@ fn run_terminal_panel_poll_loop(panel_key: &str, stop: &AtomicBool) {
                 }
             }
 
-            update_focused_auto_title(panel_key, session_id, &snapshot);
+            update_focused_auto_title(panel_key, session_id, &title);
+            super::terminal_grid::set_session_view_state(session_id, scrollbar, exited);
 
-            let generations = (snapshot.generation, snapshot.title_generation);
+            let generations = (grid_generation, title.generation);
             if last_generations.get(&session_id) != Some(&generations) {
                 any_change = true;
-                store_session_snapshot(panel_key, session_id, snapshot);
+                if let Some(frame) = frame {
+                    store_session_frame(panel_key, session_id, *frame);
+                }
                 last_generations.insert(session_id, generations);
             }
         }
@@ -1324,9 +1349,13 @@ fn run_terminal_panel_poll_loop(panel_key: &str, stop: &AtomicBool) {
 /// republishes the strip when it changed (no-op while a custom title
 /// overrides it or the session is not the focused pane).
 #[cfg(feature = "terminal-runtime")]
-fn update_focused_auto_title(panel_id: &str, session_id: u64, snapshot: &TerminalSnapshot) {
-    let auto_title =
-        stable_tab_title(snapshot.process_title.as_deref(), snapshot.title.as_deref()).to_string();
+fn update_focused_auto_title(
+    panel_id: &str,
+    session_id: u64,
+    title: &lingxia_terminal::TerminalTitleView,
+) {
+    let process_title = (!title.process_title.is_empty()).then_some(title.process_title.as_str());
+    let auto_title = stable_tab_title(process_title, title.title.as_deref()).to_string();
     let changed = {
         let mut panels = windows_terminal_panels();
         let Some(tab) = panels
@@ -2075,32 +2104,50 @@ fn publish_active_snapshot(panel_id: &str) {
         };
         tab.sessions()
     };
+    let mut changed = false;
     for session_id in sessions {
-        if let Some(snapshot) = lingxia_terminal::terminal_snapshot_data(session_id) {
-            store_session_snapshot(panel_id, session_id, snapshot);
-        }
+        changed |= publish_session_frame(panel_id, session_id);
     }
-    invalidate_panel(panel_id);
+    // An idle session hands back "unchanged" and there is nothing to repaint;
+    // invalidating anyway would put the whole grid through the GPU for output
+    // that never arrived.
+    if changed {
+        invalidate_panel(panel_id);
+    }
+}
+
+/// Pulls whatever changed since the store's generation. Returns whether the
+/// pane needs repainting.
+#[cfg(feature = "terminal-runtime")]
+fn publish_session_frame(panel_id: &str, session_id: u64) -> bool {
+    let since = super::terminal_grid::session_generation(session_id);
+    let update = lingxia_terminal::terminal_frame_data(session_id, since);
+    let (scrollbar, exited) =
+        lingxia_terminal::terminal_view_state(session_id).unwrap_or((None, false));
+    let view_changed = super::terminal_grid::set_session_view_state(session_id, scrollbar, exited);
+    match update {
+        Some(lingxia_terminal::TerminalFrameUpdate::Changed(frame)) => {
+            store_session_frame(panel_id, session_id, *frame);
+            true
+        }
+        // The grid is untouched, but the scrollbar or the child's exit still
+        // has to reach the screen.
+        _ => view_changed,
+    }
 }
 
 /// Stores `session_id`'s snapshot in the grid store and (without the shell
 /// chrome) flattens it to the panel's plain body text.
 #[cfg(feature = "terminal-runtime")]
-fn store_session_snapshot(panel_id: &str, session_id: u64, snapshot: TerminalSnapshot) {
-    publish_windows_terminal_snapshot(panel_id, session_id, snapshot);
+fn store_session_frame(panel_id: &str, session_id: u64, frame: lingxia_terminal::TerminalFrame) {
+    let _ = panel_id;
+    super::terminal_grid::set_session_frame(session_id, frame);
 }
 
 /// Repaints the panel window (the chrome redraws every active pane).
 #[cfg(feature = "terminal-runtime")]
 fn invalidate_panel(panel_id: &str) {
     lingxia_windows_contract::invalidate_host_panel(panel_id);
-}
-
-/// Hands the snapshot to the shell chrome's grid store (keyed by session).
-#[cfg(all(feature = "terminal-runtime", feature = "shell-chrome"))]
-fn publish_windows_terminal_snapshot(panel_id: &str, session_id: u64, snapshot: TerminalSnapshot) {
-    let _ = panel_id;
-    super::terminal_grid::set_session_snapshot(session_id, snapshot);
 }
 
 /// Without the shell chrome there is no grid painter; flatten the focused

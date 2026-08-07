@@ -1,11 +1,16 @@
-//! Terminal panel state: the snapshot store, the grid geometry, and
-//! everything the shell hit-tests against.
+//! Terminal panel state: the frame store, the grid geometry, and everything
+//! the shell hit-tests against.
 //!
-//! The facade's poll thread pushes full [`TerminalSnapshot`]s through
-//! [`set_session_snapshot`] and reads [`desired_session_grid_size`] to keep
-//! each pane's PTY sized to its rect. Drawing belongs to the renderer, which
-//! takes a pane's snapshot through [`with_pane`] and records the geometry it
-//! drew at, so hit-testing and PTY sizing agree with what is on screen.
+//! The facade's poll thread pushes renderer-ready frames through
+//! [`set_session_frame`] and reads [`desired_session_grid_size`] to keep each
+//! pane's PTY sized to its rect. Drawing belongs to the renderer, which takes
+//! a pane's frame through [`with_pane`] and records the geometry it drew at,
+//! so hit-testing and PTY sizing agree with what is on screen.
+//!
+//! A frame is two buffers and a damage list, not a cell tree: colors arrive as
+//! packed RGBA and every cluster lives in one text blob. The store keeps the
+//! generation it last accepted so an idle session costs nothing — the engine
+//! answers `Unchanged` and there is no repaint at all.
 #![cfg_attr(not(feature = "terminal-runtime"), allow(dead_code))]
 
 use std::collections::HashMap;
@@ -14,17 +19,16 @@ use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 use std::time::{Duration, Instant};
 
 use super::chrome::{inset_rect, rect_height, rect_width};
-use lingxia_terminal::TerminalSnapshot;
+use lingxia_terminal::{TerminalFrame, TerminalScrollbar};
 use windows::Win32::Foundation::{HWND, RECT};
 
 /// Inner padding between the terminal card edge and the cell grid.
 pub(super) const GRID_PADDING: i32 = 8;
 
-/// Fallback surface colors, for a pane whose snapshot has not reported the
-/// scheme's own yet.
+/// Fallback surface color, for a pane that has no frame yet. Once one
+/// arrives it carries the scheme's own defaults, so there is nothing to fall
+/// back to for the foreground.
 pub(super) const GRID_DEFAULT_BACKGROUND: u32 = 0x282c34;
-
-pub(super) const GRID_DEFAULT_FOREGROUND: u32 = 0xffffff;
 
 /// Dim cells blend the foreground this far toward the background (the
 /// macOS surface draws dim text at 0.58 alpha).
@@ -87,11 +91,25 @@ struct GridGeometry {
     grid_height: i32,
 }
 
-/// Per-session state: the latest snapshot and the geometry it last painted
-/// into (so the facade can keep each pane's PTY grid sized to its rect).
+/// What a pane shows beyond its grid.
+#[derive(Clone, Copy, Default)]
+pub(super) struct PaneView {
+    pub scrollbar: Option<TerminalScrollbar>,
+    pub exited: bool,
+}
+
+/// Per-session state: the latest frame and the geometry it last painted into
+/// (so the facade can keep each pane's PTY grid sized to its rect).
 #[derive(Default)]
 struct SessionGridState {
-    snapshot: Option<TerminalSnapshot>,
+    frame: Option<TerminalFrame>,
+    /// Generation of `frame`; handed back to the engine so it can answer
+    /// "nothing changed" instead of building a frame nobody needs.
+    generation: u64,
+    /// The child is gone — the renderer stops drawing a cursor for it.
+    exited: bool,
+    /// Scroll position. Not part of a frame: it moves on its own schedule.
+    scrollbar: Option<TerminalScrollbar>,
     geometry: Option<GridGeometry>,
     selection: Option<GridSelection>,
     scrollbar_visible_until: Option<Instant>,
@@ -138,8 +156,47 @@ fn panel_grids() -> MutexGuard<'static, HashMap<String, PanelGridState>> {
 
 /// Stores the latest snapshot for `session_id`; the chrome painter renders
 /// it on the next repaint of the host window.
-pub fn set_session_snapshot(session_id: u64, snapshot: TerminalSnapshot) {
-    session_grids().entry(session_id).or_default().snapshot = Some(snapshot);
+pub fn set_session_frame(session_id: u64, frame: TerminalFrame) {
+    let mut grids = session_grids();
+    let state = grids.entry(session_id).or_default();
+    state.generation = frame.generation;
+    state.frame = Some(frame);
+}
+
+/// The parts of a pane that move without the grid changing, so an exit or a
+/// scroll still reaches the renderer on a generation it already has.
+/// Returns whether anything moved, so a caller can skip a repaint the grid
+/// did not ask for.
+pub fn set_session_view_state(
+    session_id: u64,
+    scrollbar: Option<TerminalScrollbar>,
+    exited: bool,
+) -> bool {
+    let mut grids = session_grids();
+    let state = grids.entry(session_id).or_default();
+    let moved = state.exited != exited
+        || state.scrollbar.map(|bar| (bar.total, bar.offset, bar.len))
+            != scrollbar.map(|bar| (bar.total, bar.offset, bar.len));
+    state.scrollbar = scrollbar;
+    state.exited = exited;
+    moved
+}
+
+/// The grid size the store last painted, for callers deciding whether the PTY
+/// needs resizing when no new frame arrived.
+pub fn session_grid_size(session_id: u64) -> Option<(u16, u16)> {
+    let grids = session_grids();
+    let frame = grids.get(&session_id)?.frame.as_ref()?;
+    Some((frame.cols, frame.rows))
+}
+
+/// The generation the store already holds, so the caller can ask the engine
+/// only for what changed since.
+pub fn session_generation(session_id: u64) -> u64 {
+    session_grids()
+        .get(&session_id)
+        .map(|state| state.generation)
+        .unwrap_or(0)
 }
 
 /// Reveals the lightweight scrollbar for one pane after a scroll gesture.
@@ -203,21 +260,22 @@ pub(crate) fn surface_chrome() -> super::PanelChrome {
 }
 
 pub(super) fn session_surface_background(session_id: u64) -> Option<u32> {
-    session_grids()
-        .get(&session_id)?
-        .snapshot
-        .as_ref()?
-        .default_background
-        .as_deref()
-        .and_then(parse_hex_color)
+    let grids = session_grids();
+    let frame = grids.get(&session_id)?.frame.as_ref()?;
+    // Frame colors are packed 0xRRGGBBAA; the painter wants 0xRRGGBB. The
+    // frame's defaults always carry alpha — only a *cell* uses alpha 0 to mean
+    // "inherit the default".
+    Some(frame.default_bg >> 8)
 }
 
 /// Plain-text fallback for the focused pane's snapshot. Used only when the
 /// cell-grid painter cannot draw with the current DC/font state.
 pub(super) fn panel_snapshot_text(panel_id: &str) -> Option<String> {
     let session_id = super::terminal_panel::focused_session(panel_id)?;
-    let grids = session_grids();
-    let snapshot = grids.get(&session_id)?.snapshot.as_ref()?;
+    // Asked for once, when a panel is shown — not on the render path. Paying
+    // for a full snapshot here costs nothing and keeps the frame store free of
+    // the line text and process title only this needs.
+    let snapshot = lingxia_terminal::terminal_snapshot_data(session_id)?;
     let mut lines: Vec<&str> = snapshot.lines.iter().map(|line| line.trim_end()).collect();
     while lines.last().is_some_and(|line| line.is_empty()) {
         lines.pop();
@@ -251,14 +309,14 @@ pub(crate) fn focused_cursor_rect(panel_id: &str) -> Option<RECT> {
         .find(|frame| frame.focused)?;
     let grids = session_grids();
     let state = grids.get(&frame.session_id)?;
-    let snapshot = state.snapshot.as_ref()?;
+    let painted = state.frame.as_ref()?;
     let geometry = state.geometry?;
     cursor_rect_for_grid(
         inset_rect(frame.rect, GRID_PADDING, GRID_PADDING),
-        snapshot.cursor_col,
-        snapshot.cursor_row,
-        snapshot.cols,
-        snapshot.rows,
+        painted.cursor.col,
+        painted.cursor.row,
+        painted.cols,
+        painted.rows,
         geometry.cell_width,
         geometry.line_height,
     )
@@ -317,15 +375,15 @@ fn selection_point(
     };
     let grid = inset_rect(frame.rect, GRID_PADDING, GRID_PADDING);
     let grids = session_grids();
-    let snapshot = grids.get(&frame.session_id)?.snapshot.as_ref()?;
+    let painted = grids.get(&frame.session_id)?.frame.as_ref()?;
     let relative_x = (client_x - grid.left).clamp(0, rect_width(&grid).max(0));
     let relative_y = (client_y - grid.top).clamp(0, rect_height(&grid).saturating_sub(1));
     Some((
         frame.session_id,
         GridPoint {
-            row: (relative_y / line_height).clamp(0, i32::from(snapshot.rows.saturating_sub(1)))
+            row: (relative_y / line_height).clamp(0, i32::from(painted.rows.saturating_sub(1)))
                 as u16,
-            col: (relative_x / cell_width).clamp(0, i32::from(snapshot.cols)) as u16,
+            col: (relative_x / cell_width).clamp(0, i32::from(painted.cols)) as u16,
         },
     ))
 }
@@ -423,14 +481,11 @@ pub(crate) fn clear_selection(session_id: u64) {
 pub(crate) fn selected_text(session_id: u64) -> Option<String> {
     let grids = session_grids();
     let state = grids.get(&session_id)?;
-    let snapshot = state.snapshot.as_ref()?;
-    selected_text_from_snapshot(snapshot, state.selection?)
+    let frame = state.frame.as_ref()?;
+    selected_text_from_frame(frame, state.selection?)
 }
 
-fn selected_text_from_snapshot(
-    snapshot: &TerminalSnapshot,
-    selection: GridSelection,
-) -> Option<String> {
+fn selected_text_from_frame(snapshot: &TerminalFrame, selection: GridSelection) -> Option<String> {
     let (start, end) = selection.normalized()?;
     let mut lines = Vec::new();
     for row in start.row..=end.row {
@@ -446,17 +501,25 @@ fn selected_text_from_snapshot(
     (!text.is_empty()).then_some(text)
 }
 
-fn text_in_row(snapshot: &TerminalSnapshot, row: u16, start_col: u16, end_col: u16) -> String {
+fn text_in_row(frame: &TerminalFrame, row: u16, start_col: u16, end_col: u16) -> String {
     let mut text = String::new();
     let mut next_col = start_col;
-    for cell in snapshot.cells.iter().filter(|cell| {
-        cell.row == row && cell.col >= start_col && cell.col < end_col && !cell.text.is_empty()
-    }) {
-        if cell.col > next_col {
-            text.extend(std::iter::repeat_n(' ', usize::from(cell.col - next_col)));
+    let cols = usize::from(frame.cols);
+    let base = usize::from(row) * cols;
+    for col in start_col..end_col.min(frame.cols) {
+        let Some(cell) = frame.cells.get(base + usize::from(col)) else {
+            break;
+        };
+        // A continuation column carries no cluster of its own.
+        let cluster = frame.cell_text(cell);
+        if cluster.is_empty() {
+            continue;
         }
-        text.push_str(&cell.text);
-        next_col = cell.col.saturating_add(if cell.wide { 2 } else { 1 });
+        if col > next_col {
+            text.extend(std::iter::repeat_n(' ', usize::from(col - next_col)));
+        }
+        text.push_str(cluster);
+        next_col = col.saturating_add(u16::from(cell.columns.max(1)));
     }
     text.trim_end().to_string()
 }
@@ -556,38 +619,29 @@ fn parse_hex_color(token: &str) -> Option<u32> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lingxia_terminal::TerminalCell;
+    use lingxia_terminal::FrameCell;
 
-    fn cell(row: u16, col: u16, text: &str) -> TerminalCell {
-        TerminalCell {
-            row,
-            col,
-            text: text.to_string(),
-            ..TerminalCell::default()
+    /// A frame is row-major and its clusters live in one blob, so a fixture
+    /// places text by index rather than carrying a coordinate per cell.
+    fn frame(cols: u16, rows: u16, placed: &[(u16, u16, &str)]) -> TerminalFrame {
+        let mut cells = vec![FrameCell::default(); usize::from(cols) * usize::from(rows)];
+        let mut text = String::new();
+        for (row, col, cluster) in placed {
+            let index = usize::from(*row) * usize::from(cols) + usize::from(*col);
+            cells[index] = FrameCell {
+                text_offset: text.len() as u32,
+                text_len: cluster.len() as u8,
+                columns: 1,
+                ..FrameCell::default()
+            };
+            text.push_str(cluster);
         }
-    }
-
-    fn snapshot(cells: Vec<TerminalCell>) -> TerminalSnapshot {
-        TerminalSnapshot {
-            cols: 8,
-            rows: 2,
-            lines: Vec::new(),
+        TerminalFrame {
+            cols,
+            rows,
             cells,
-            default_foreground: None,
-            default_background: None,
-            cursor_row: 0,
-            cursor_col: 0,
-            cursor_visible: false,
-            cursor_style: "block",
-            application_cursor: false,
-            bracketed_paste: false,
-            alternate_screen: false,
-            scrollbar: None,
-            process_title: None,
-            title: None,
-            generation: 0,
-            title_generation: 0,
-            exited: false,
+            text,
+            ..TerminalFrame::default()
         }
     }
 
@@ -605,15 +659,19 @@ mod tests {
 
     #[test]
     fn extracts_selected_cells_with_spaces_and_lines() {
-        let snapshot = snapshot(vec![
-            cell(0, 1, "a"),
-            cell(0, 2, "b"),
-            cell(0, 5, "c"),
-            cell(1, 0, "d"),
-            cell(1, 1, "e"),
-        ]);
-        let text = selected_text_from_snapshot(
-            &snapshot,
+        let painted = frame(
+            8,
+            2,
+            &[
+                (0, 1, "a"),
+                (0, 2, "b"),
+                (0, 5, "c"),
+                (1, 0, "d"),
+                (1, 1, "e"),
+            ],
+        );
+        let text = selected_text_from_frame(
+            &painted,
             GridSelection {
                 anchor: GridPoint { row: 0, col: 1 },
                 focus: GridPoint { row: 1, col: 2 },
@@ -661,7 +719,7 @@ pub(super) fn with_pane(
     session_id: u64,
     rect: RECT,
     cell: (i32, i32),
-    draw: impl FnOnce(&TerminalSnapshot, Option<(GridPoint, GridPoint)>),
+    draw: impl FnOnce(&TerminalFrame, PaneView, Option<(GridPoint, GridPoint)>),
 ) {
     let mut grids = session_grids();
     let state = grids.entry(session_id).or_default();
@@ -672,7 +730,11 @@ pub(super) fn with_pane(
         grid_height: (rect.bottom - rect.top) - 2 * GRID_PADDING,
     });
     let selection = state.selection.and_then(GridSelection::normalized);
-    if let Some(snapshot) = state.snapshot.as_ref() {
-        draw(snapshot, selection);
+    let view = PaneView {
+        scrollbar: state.scrollbar,
+        exited: state.exited,
+    };
+    if let Some(frame) = state.frame.as_ref() {
+        draw(frame, view, selection);
     }
 }

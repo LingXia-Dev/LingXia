@@ -17,7 +17,12 @@ mod text;
 use std::collections::HashMap;
 use std::sync::{Mutex, MutexGuard, OnceLock};
 
-use lingxia_terminal::{TerminalCell, TerminalScrollbar, TerminalSnapshot};
+use lingxia_terminal::{
+    ATTR_BOLD, ATTR_DIM, ATTR_HIDDEN, ATTR_INVERSE, ATTR_ITALIC, ATTR_STRIKE, FrameCell,
+    TerminalFrame, TerminalScrollbar,
+};
+
+use super::terminal_grid::PaneView;
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, RECT, WPARAM};
 use windows::Win32::Graphics::Direct3D::{D3D_DRIVER_TYPE_HARDWARE, D3D_DRIVER_TYPE_WARP};
 use windows::Win32::Graphics::Direct3D11::{
@@ -47,8 +52,8 @@ use windows::Win32::UI::WindowsAndMessaging::{
 use windows::core::{Interface, PCWSTR, Result, w};
 
 use super::terminal_grid::{
-    GRID_DEFAULT_BACKGROUND, GRID_DEFAULT_FOREGROUND, GRID_DIM_FOREGROUND_PERCENT, GRID_PADDING,
-    GridPoint, PANE_DROP_TARGET_COLOR, SCROLLBAR_MARGIN, SCROLLBAR_MAX_THUMB, SCROLLBAR_MIN_THUMB,
+    GRID_DEFAULT_BACKGROUND, GRID_DIM_FOREGROUND_PERCENT, GRID_PADDING, GridPoint,
+    PANE_DROP_TARGET_COLOR, SCROLLBAR_MARGIN, SCROLLBAR_MAX_THUMB, SCROLLBAR_MIN_THUMB,
     SCROLLBAR_WIDTH, SELECTION_ACCENT, SELECTION_ACCENT_PERCENT,
 };
 use pipeline::{Pipeline, Quad};
@@ -271,13 +276,9 @@ impl Surface {
                 pane.session_id,
                 rect,
                 (metrics.cell_width as i32, metrics.line_height as i32),
-                |snapshot, selection| {
+                |frame, view, selection| {
                     if pane.focused || !multi {
-                        background = snapshot
-                            .default_background
-                            .as_deref()
-                            .and_then(parse_hex)
-                            .unwrap_or(GRID_DEFAULT_BACKGROUND);
+                        background = frame.default_bg >> 8;
                     }
                     Builder {
                         quads,
@@ -285,7 +286,7 @@ impl Surface {
                         pipeline,
                         metrics,
                     }
-                    .pane(snapshot, selection, rect, dim);
+                    .pane(frame, view, selection, rect, dim);
                 },
             );
         }
@@ -598,7 +599,7 @@ struct RunStyle {
     underline_color: u32,
 }
 
-/// Turns one pane's snapshot into quads.
+/// Turns one pane's frame into quads.
 struct Builder<'a> {
     quads: &'a mut Vec<Quad>,
     fonts: &'a mut Fonts,
@@ -609,7 +610,8 @@ struct Builder<'a> {
 impl Builder<'_> {
     fn pane(
         &mut self,
-        snapshot: &TerminalSnapshot,
+        frame: &TerminalFrame,
+        view: PaneView,
         selection: Option<(GridPoint, GridPoint)>,
         rect: RECT,
         dim: bool,
@@ -618,16 +620,9 @@ impl Builder<'_> {
             (rect.left + GRID_PADDING) as f32,
             (rect.top + GRID_PADDING) as f32,
         );
-        let background = snapshot
-            .default_background
-            .as_deref()
-            .and_then(parse_hex)
-            .unwrap_or(GRID_DEFAULT_BACKGROUND);
-        let foreground = snapshot
-            .default_foreground
-            .as_deref()
-            .and_then(parse_hex)
-            .unwrap_or(GRID_DEFAULT_FOREGROUND);
+        // Frame colors are packed 0xRRGGBBAA; every quad wants 0xRRGGBB.
+        let background = frame.default_bg >> 8;
+        let foreground = frame.default_fg >> 8;
 
         // The pane's own background, so panes with different schemes and the
         // divider gaps between them stay right.
@@ -641,19 +636,21 @@ impl Builder<'_> {
 
         // Backgrounds first: a later cell's background must not cover the
         // right half of a wide glyph the previous cell drew.
-        for cell in &snapshot.cells {
-            if !cell.inverse && cell.bg.is_none() {
+        for (index, cell) in frame.cells.iter().enumerate() {
+            // Alpha 0 means "inherit the default", so such a cell needs no fill
+            // of its own unless inverse video swaps it in.
+            if cell.attrs & ATTR_INVERSE == 0 && cell.bg & 0xff == 0 {
                 continue;
             }
             let (_, mut fill) = resolve(cell, background, foreground);
             if dim {
                 fill = blend(fill, background, GRID_DIM_FOREGROUND_PERCENT);
             }
-            let span = if cell.wide { 2.0 } else { 1.0 };
+            let (row, col) = frame.position(index);
             self.solid(
-                origin.0 + f32::from(cell.col) * self.metrics.cell_width,
-                origin.1 + f32::from(cell.row) * self.metrics.line_height,
-                self.metrics.cell_width * span,
+                origin.0 + f32::from(col) * self.metrics.cell_width,
+                origin.1 + f32::from(row) * self.metrics.line_height,
+                self.metrics.cell_width * f32::from(cell.columns.max(1)),
                 self.metrics.line_height,
                 fill,
             );
@@ -663,11 +660,7 @@ impl Builder<'_> {
             let highlight = blend(SELECTION_ACCENT, background, SELECTION_ACCENT_PERCENT);
             for row in start.row..=end.row {
                 let first = if row == start.row { start.col } else { 0 };
-                let last = if row == end.row {
-                    end.col
-                } else {
-                    snapshot.cols
-                };
+                let last = if row == end.row { end.col } else { frame.cols };
                 if last <= first {
                     continue;
                 }
@@ -681,25 +674,26 @@ impl Builder<'_> {
             }
         }
 
-        self.text(snapshot, origin, background, foreground, dim);
+        self.text(frame, origin, background, foreground, dim);
 
         // Only the focused pane paints a cursor: hollow cursors in every split
         // make cursor-heavy TUIs look like they flicker in several places.
-        if !dim && !snapshot.exited && snapshot.cursor_visible {
-            let (width, height) = match snapshot.cursor_style {
+        if !dim && !view.exited && frame.cursor.visible {
+            let style = frame.cursor.style.as_str();
+            let (width, height) = match style {
                 "bar" => (2.0, self.metrics.line_height),
                 "underline" => (self.metrics.cell_width, 2.0),
                 _ => (self.metrics.cell_width, self.metrics.line_height),
             };
             let top = origin.1
-                + f32::from(snapshot.cursor_row) * self.metrics.line_height
-                + if snapshot.cursor_style == "underline" {
+                + f32::from(frame.cursor.row) * self.metrics.line_height
+                + if style == "underline" {
                     self.metrics.line_height - height
                 } else {
                     0.0
                 };
             self.solid(
-                origin.0 + f32::from(snapshot.cursor_col) * self.metrics.cell_width,
+                origin.0 + f32::from(frame.cursor.col) * self.metrics.cell_width,
                 top,
                 width,
                 height,
@@ -707,7 +701,7 @@ impl Builder<'_> {
             );
         }
 
-        if let Some(scrollbar) = snapshot.scrollbar {
+        if let Some(scrollbar) = view.scrollbar {
             self.scrollbar(scrollbar, rect, background, foreground);
         }
     }
@@ -716,7 +710,7 @@ impl Builder<'_> {
     /// is what lets the font's `calt` turn `!=` into one glyph.
     fn text(
         &mut self,
-        snapshot: &TerminalSnapshot,
+        frame: &TerminalFrame,
         origin: (f32, f32),
         background: u32,
         foreground: u32,
@@ -733,67 +727,59 @@ impl Builder<'_> {
             underline_color: foreground,
         };
 
-        for cell in &snapshot.cells {
+        for (index, cell) in frame.cells.iter().enumerate() {
+            // A continuation column belongs to the wide glyph before it.
             if cell.columns == 0 {
                 continue;
             }
+            let (row, col) = frame.position(index);
             let cell_style = self.style_of(cell, background, foreground, dim);
-            let contiguous = !run.is_empty()
-                && cell.row == at.0
-                && cell.col == at.1 + columns
-                && cell_style == style;
+            let contiguous =
+                !run.is_empty() && row == at.0 && col == at.1 + columns && cell_style == style;
             if !contiguous {
                 self.flush(&run, at, columns, style, origin);
                 run.clear();
                 columns = 0;
-                at = (cell.row, cell.col);
+                at = (row, col);
                 style = cell_style;
             }
-            if cell.hidden || cell.text.is_empty() {
+            let cluster = frame.cell_text(cell);
+            if cell.attrs & ATTR_HIDDEN != 0 || cluster.is_empty() {
                 // Concealed text still occupies its columns, so keep the run
                 // aligned rather than closing it.
                 run.push(' ');
             } else {
-                run.push_str(&cell.text);
+                run.push_str(cluster);
             }
             columns += u16::from(cell.columns);
         }
         self.flush(&run, at, columns, style, origin);
     }
 
-    fn style_of(
-        &self,
-        cell: &TerminalCell,
-        background: u32,
-        foreground: u32,
-        dim: bool,
-    ) -> RunStyle {
+    fn style_of(&self, cell: &FrameCell, background: u32, foreground: u32, dim: bool) -> RunStyle {
         let (mut color, cell_background) = resolve(cell, background, foreground);
-        if cell.dim {
+        if cell.attrs & ATTR_DIM != 0 {
             color = blend(color, cell_background, GRID_DIM_FOREGROUND_PERCENT);
         }
         if dim {
             color = blend(color, background, GRID_DIM_FOREGROUND_PERCENT);
         }
         RunStyle {
-            face: match (cell.bold, cell.italic) {
+            face: match (cell.attrs & ATTR_BOLD != 0, cell.attrs & ATTR_ITALIC != 0) {
                 (true, true) => BOLD_ITALIC,
                 (true, false) => BOLD,
                 (false, true) => ITALIC,
                 (false, false) => REGULAR,
             },
             color,
-            strike: cell.strike,
-            underline: if cell.underline {
-                cell.underline_style
+            strike: cell.attrs & ATTR_STRIKE != 0,
+            underline: underline_name(cell.underline),
+            // Alpha 0 is SGR 58's "no explicit color" — follow the text.
+            underline_color: if cell.underline_color & 0xff == 0 {
+                color
             } else {
-                "none"
+                cell.underline_color >> 8
             },
-            underline_color: cell
-                .underline_color
-                .as_deref()
-                .and_then(parse_hex)
-                .unwrap_or(color),
         }
     }
 
@@ -956,10 +942,36 @@ impl Builder<'_> {
     }
 }
 
-fn resolve(cell: &TerminalCell, background: u32, foreground: u32) -> (u32, u32) {
-    let fg = cell.fg.as_deref().and_then(parse_hex).unwrap_or(foreground);
-    let bg = cell.bg.as_deref().and_then(parse_hex).unwrap_or(background);
-    if cell.inverse { (bg, fg) } else { (fg, bg) }
+/// A cell's colors, with alpha 0 meaning "inherit the frame's default".
+fn resolve(cell: &FrameCell, background: u32, foreground: u32) -> (u32, u32) {
+    let fg = if cell.fg & 0xff == 0 {
+        foreground
+    } else {
+        cell.fg >> 8
+    };
+    let bg = if cell.bg & 0xff == 0 {
+        background
+    } else {
+        cell.bg >> 8
+    };
+    if cell.attrs & ATTR_INVERSE != 0 {
+        (bg, fg)
+    } else {
+        (fg, bg)
+    }
+}
+
+/// `FrameCell::underline` is [`UnderlineStyle`] as an index; the run style
+/// names it, because that is what the glyph pass branches on.
+fn underline_name(index: u8) -> &'static str {
+    match index {
+        1 => "single",
+        2 => "double",
+        3 => "curly",
+        4 => "dotted",
+        5 => "dashed",
+        _ => "none",
+    }
 }
 
 fn parse_hex(token: &str) -> Option<u32> {
