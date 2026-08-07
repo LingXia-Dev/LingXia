@@ -130,6 +130,10 @@ pub(super) fn split_writer(stream: &Stream) -> std::io::Result<Stream> {
     })
 }
 
+/// Nothing to clear: a pipe lives in the kernel namespace and disappears with
+/// the process that made it, which is half of why it is a pipe here.
+pub(super) fn clear_stale(_state_dir: &Path) {}
+
 /// Unblock a pending `ConnectNamedPipe` by opening the pipe once.
 pub(super) fn poke(endpoint: &str) {
     let _ = std::fs::OpenOptions::new()

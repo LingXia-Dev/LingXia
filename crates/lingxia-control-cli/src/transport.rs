@@ -31,10 +31,6 @@ pub struct ControlSocket {
     endpoint: String,
 }
 
-/// Names the endpoint the launcher wrote into the environment, for the
-/// platform where the client cannot work it out alone.
-pub const ENDPOINT_ENV: &str = "LINGXIA_CONTROL_ENDPOINT";
-
 /// Where the product's endpoint lives.
 ///
 /// The command line runs before the runtime initializes, so it cannot ask a
@@ -43,7 +39,7 @@ pub const ENDPOINT_ENV: &str = "LINGXIA_CONTROL_ENDPOINT";
 /// id, which is not readable this early — so the launcher, written by the app
 /// that already opened it, carries the name.
 pub fn endpoint_in(state_dir: &std::path::Path) -> String {
-    if let Ok(endpoint) = std::env::var(ENDPOINT_ENV) {
+    if let Ok(endpoint) = std::env::var(lingxia_devtool_protocol::invocation::ENDPOINT) {
         return endpoint;
     }
     state_dir.join("control.sock").display().to_string()

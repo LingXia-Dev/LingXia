@@ -24,6 +24,8 @@ use std::sync::{Arc, Mutex, OnceLock};
 
 use lingxia_devtool_protocol::DevSessionMessage;
 
+pub mod launcher;
+
 #[cfg_attr(unix, path = "unix.rs")]
 #[cfg_attr(windows, path = "windows.rs")]
 mod platform;
@@ -60,6 +62,14 @@ pub fn install() -> std::io::Result<()> {
     if enabled {
         set_enabled(true)?;
     } else {
+        // Not just "do not start": a launcher left from a previous run would
+        // still be on `PATH`, pointing at an endpoint nobody is listening on.
+        // Turning the capability off between runs has to clean up too.
+        let state_dir = STATE_DIR.get().expect("just set");
+        if let Err(error) = launcher::remove(state_dir) {
+            log::warn!("stale product command not removed: {error}");
+        }
+        platform::clear_stale(state_dir);
         log::info!("control socket available but switched off");
     }
     Ok(())
@@ -78,7 +88,14 @@ pub fn set_enabled(enabled: bool) -> std::io::Result<()> {
             Ok(())
         }
         (true, None) => {
-            *running = Some(start(state_dir, crate::dispatch_line)?);
+            let started = start(state_dir, crate::dispatch_line)?;
+            // Opening the endpoint and making the command typable are the same
+            // decision; splitting them would leave a product that answers but
+            // that nobody can address.
+            if let Err(error) = launcher::install(state_dir, &started.endpoint) {
+                log::warn!("product command not installed: {error}");
+            }
+            *running = Some(started);
             Ok(())
         }
         (false, Some(existing)) => {
@@ -88,6 +105,9 @@ pub fn set_enabled(enabled: bool) -> std::io::Result<()> {
             // flag and drops the listener, which is what actually closes the
             // door.
             platform::poke(&existing.endpoint);
+            if let Err(error) = launcher::remove(state_dir) {
+                log::warn!("product command not removed: {error}");
+            }
             log::info!("control socket switched off");
             Ok(())
         }

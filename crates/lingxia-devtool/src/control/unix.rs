@@ -21,6 +21,12 @@ pub(super) fn split_writer(stream: &Stream) -> std::io::Result<Stream> {
     stream.try_clone()
 }
 
+/// Remove a socket file left by a process that was killed. Turning the
+/// capability off should leave nothing that looks like it is still on.
+pub(super) fn clear_stale(state_dir: &Path) {
+    let _ = std::fs::remove_file(socket_path(state_dir));
+}
+
 /// Unblock a pending `accept` by connecting to it once.
 pub(super) fn poke(endpoint: &str) {
     let _ = UnixStream::connect(endpoint);

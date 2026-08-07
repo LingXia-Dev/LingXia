@@ -119,8 +119,30 @@ fn build_app_doctor() -> Value {
         },
         "coordinate_spaces": {
             "window": app_window_coordinate_space(),
-        }
+        },
+        // What this build declared an agent may drive. A generated skill reads
+        // it so it cannot describe a namespace the socket would refuse.
+        "declared": declared_capabilities(),
     })
+}
+
+fn declared_capabilities() -> Vec<&'static str> {
+    let Some(capabilities) =
+        lingxia_app_context::app_config().and_then(|c| c.capabilities.as_ref())
+    else {
+        return Vec::new();
+    };
+    let mut declared = Vec::new();
+    if capabilities.app_use_effective() {
+        declared.push("appUse");
+    }
+    if capabilities.computer_use {
+        declared.push("computerUse");
+    }
+    if capabilities.browser_use {
+        declared.push("browserUse");
+    }
+    declared
 }
 
 #[cfg(target_os = "windows")]
