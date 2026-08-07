@@ -42,7 +42,10 @@ fn main() -> anyhow::Result<()> {
         // Sent to the product rather than run here: macOS attributes
         // Accessibility and Screen Recording to the responsible process, so
         // running them in this process would borrow the terminal's grants.
-        Command::Desktop(options) => desktop::execute(&desktop::Backend::App(&transport), options),
+        Command::Desktop(options) => std::process::exit(desktop::execute(
+            &desktop::Backend::App(&transport),
+            options,
+        )),
         Command::App(options) => {
             let context = app::AppContext {
                 transport: &transport,

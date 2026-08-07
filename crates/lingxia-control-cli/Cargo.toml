@@ -10,6 +10,7 @@ repository.workspace = true
 lingxia-computer-use = { workspace = true }
 lingxia-devtool-protocol = { workspace = true }
 anyhow = "1.0"
+log = { workspace = true }
 clap = { version = "4.5", features = ["derive"] }
 serde = { workspace = true }
 # `preserve_order` keeps machine JSON in the order a handler reported it.

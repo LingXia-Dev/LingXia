@@ -240,19 +240,46 @@ pub struct CapabilitiesConfig {
     /// only; enabling is always a runtime user decision, never automatic.
     #[serde(default)]
     pub autostart: bool,
-    /// The local control socket, which lets a command line or agent skill on
-    /// the same machine drive this product. Desktop only, and off unless the
-    /// product means to ship that surface — what it reaches is everything the
-    /// devtool protocol exposes, which is why it is never a default.
+    /// Lets a command line or agent skill on the same machine drive this
+    /// product's own windows, and unlocks the product's command line. Desktop
+    /// only. The local socket it needs is derived, not declared: which IPC
+    /// carries this is plumbing, and a capability list says what a product can
+    /// do.
     #[serde(default)]
-    pub control: bool,
-    /// Automating the machine, not just this app: screenshots of any window,
-    /// synthetic input, the accessibility tree. Requires `control`, since the
-    /// commands arrive over that socket. Named for what the user is granting —
-    /// macOS will ask them for Accessibility and Screen Recording, and the
-    /// entry they see in System Settings is this product.
+    pub app_use: bool,
+    /// Extends that to the whole machine: screenshots of any window, synthetic
+    /// input, the accessibility tree. Named for what the user is granting,
+    /// because they will be asked — macOS prompts for Accessibility and Screen
+    /// Recording, and the entry they see in System Settings is this product.
     #[serde(default)]
     pub computer_use: bool,
+    /// Extends it to the in-app browser. Requires `browser`.
+    #[serde(default)]
+    pub browser_use: bool,
+}
+
+impl CapabilitiesConfig {
+    /// Whether anything needs the local control socket. Derived rather than
+    /// declared: no product should have to know the transport's name to say
+    /// what it wants.
+    pub fn needs_control_socket(&self) -> bool {
+        self.app_use_effective() || self.browser_use
+    }
+
+    /// Whether this product's own windows may be driven.
+    ///
+    /// `computerUse` implies it. Not for symmetry — because it already
+    /// contains it: an agent that may screenshot any window and post input to
+    /// any window can reach this product's through the wider door. Requiring
+    /// both would add no protection and one failure mode, where a product
+    /// declares `computerUse`, forgets `appUse`, and `myapp computer
+    /// screenshot` works while `myapp screenshot` is refused.
+    ///
+    /// `browserUse` does not imply it: driving browser tabs reaches no native
+    /// window, and "open pages, don't touch my chrome" is a real choice.
+    pub fn app_use_effective(&self) -> bool {
+        self.app_use || self.computer_use
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]

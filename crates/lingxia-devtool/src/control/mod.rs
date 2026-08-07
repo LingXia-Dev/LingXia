@@ -190,7 +190,12 @@ pub(crate) fn reply_with(
     dispatch: impl FnOnce(String, String, Option<serde_json::Value>) -> DevSessionMessage,
 ) -> DevSessionMessage {
     match serde_json::from_str::<DevSessionMessage>(line) {
-        Ok(DevSessionMessage::Request { id, method, params }) => dispatch(id, method, params),
+        Ok(DevSessionMessage::Request { id, method, params }) => {
+            match refuse_unless_declared(&method) {
+                Some(reason) => DevSessionMessage::error(id, "not_declared", reason),
+                None => dispatch(id, method, params),
+            }
+        }
         // Anything else on this transport is a client mistake, and saying so
         // beats closing the connection on it.
         Ok(_) => DevSessionMessage::error(
@@ -200,6 +205,34 @@ pub(crate) fn reply_with(
         ),
         Err(error) => DevSessionMessage::error(String::new(), "bad_request", error.to_string()),
     }
+}
+
+/// Why a method is closed on this transport, or `None` when it is open.
+///
+/// The development websocket is deliberately not filtered — a developer
+/// driving their own session should see everything the runtime can do. This
+/// endpoint is different: a product declared what it exposes, and the names
+/// it declared are what a user consented to. A namespace that is merely
+/// compiled in must not therefore be reachable.
+fn refuse_unless_declared(method: &str) -> Option<String> {
+    let capabilities = lingxia_app_context::app_config()?.capabilities.as_ref()?;
+    let namespace = method
+        .split_once('.')
+        .map(|(head, _)| head)
+        .unwrap_or(method);
+    let (declared_as, declared) = match namespace {
+        "desktop" => ("computerUse", capabilities.computer_use),
+        "browser" => ("browserUse", capabilities.browser_use),
+        // An lxapp page is this product's own surface, so it rides with
+        // `appUse` rather than having a row of its own. Splitting it out is one
+        // line here and one field there, the day a product wants to expose its
+        // native windows without its pages.
+        "app" | "lxapp" => ("appUse", capabilities.app_use_effective()),
+        // The liveness probe. A client has to be able to ask whether anyone is
+        // home before it knows what it may ask for.
+        _ => return None,
+    };
+    (!declared).then(|| format!("{declared_as} is not declared by this product"))
 }
 
 #[cfg(test)]

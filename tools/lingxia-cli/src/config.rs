@@ -1519,26 +1519,27 @@ impl LingXiaConfig {
         proxy_requested && self.browser_enabled() && matches!(platform, "macos" | "windows")
     }
 
-    /// The local control socket. Desktop only — a phone has no command line
-    /// to drive the product from, and no per-user IPC namespace to scope it to.
+    /// The local control socket, derived from whatever the product actually
+    /// asked for. Desktop only — a phone has no command line to drive the
+    /// product from, and no per-user IPC namespace to scope it to.
     pub fn control_enabled(&self, platform: &str) -> bool {
-        let control_requested = self
+        let requested = self
             .capabilities
             .as_ref()
-            .map(|capabilities| capabilities.control)
+            .map(CapabilitiesConfig::needs_control_socket)
             .unwrap_or(false);
-        control_requested && matches!(platform, "macos" | "windows")
+        requested && matches!(platform, "macos" | "windows")
     }
 
-    /// Machine-wide automation. Rides the control socket, so it is off unless
-    /// that is on too — the commands have no other way in.
+    /// Machine-wide automation. Rides the control socket, which its own
+    /// presence turns on.
     pub fn computer_use_enabled(&self, platform: &str) -> bool {
         let requested = self
             .capabilities
             .as_ref()
             .map(|capabilities| capabilities.computer_use)
             .unwrap_or(false);
-        requested && self.control_enabled(platform)
+        requested && matches!(platform, "macos" | "windows")
     }
 
     pub fn devtools_enabled(&self) -> bool {

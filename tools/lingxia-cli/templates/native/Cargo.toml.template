@@ -19,7 +19,7 @@ process = ["lingxia/process", "standard"]
 # The local control socket, derived from `capabilities.control`. Separate
 # from `devtools` on purpose: a shipped product gets the handlers without
 # the dev websocket and its TLS stack.
-control = ["dep:lingxia_devtool", "lingxia/devtool", "lingxia_devtool/control-socket"]
+control = ["dep:lingxia_devtool", "lingxia/devtool", "lingxia_devtool/control-socket", "lingxia/product-cli"]
 computer-use = ["control", "lingxia_devtool/computer-use"]
 devtools = ["dep:lingxia_devtool", "lingxia/devtool", "lingxia_devtool/dev-bridge", "lingxia_devtool/browser", "lingxia_devtool/test-runtime"]
 webview-input = ["lingxia/webview-input"]

@@ -634,7 +634,7 @@ pub enum WindowAction {
     Close(WindowSel),
 }
 
-pub fn execute(backend: &Backend, options: DesktopOptions) -> ! {
+pub fn execute(backend: &Backend, options: DesktopOptions) -> i32 {
     let allow_control = options.allow_control;
     let allow_destructive = options.allow_destructive;
     match options.command {
@@ -665,7 +665,7 @@ pub fn execute(backend: &Backend, options: DesktopOptions) -> ! {
         DesktopCommand::Pixel { at, json } => {
             let (x, y) = match parse_pair(&at) {
                 Ok(p) => p,
-                Err(e) => finish::<()>(json, Err(e), |_| {}),
+                Err(e) => return finish::<()>(json, Err(e), |_| {}),
             };
             finish(json, backend.pixel(x, y), print_pixel)
         }
@@ -713,7 +713,7 @@ fn run_app(
     action: AppAction,
     allow_control: bool,
     allow_destructive: bool,
-) -> ! {
+) -> i32 {
     match action {
         AppAction::Launch {
             app,
@@ -767,7 +767,7 @@ fn run_process(
     action: ProcessAction,
     allow_control: bool,
     allow_destructive: bool,
-) -> ! {
+) -> i32 {
     match action {
         ProcessAction::List { match_query, json } => {
             finish(json, backend.process_list(match_query.as_deref()), |ps| {
@@ -784,23 +784,23 @@ fn run_process(
     }
 }
 
-fn run_snapshot(backend: &Backend, window: String, no_ax: bool, depth: Option<u32>) -> ! {
+fn run_snapshot(backend: &Backend, window: String, no_ax: bool, depth: Option<u32>) -> i32 {
     use base64::Engine as _;
     let target = cu::WindowTarget::Id(window.clone());
     let info = match backend.window_status(&target) {
         Ok(w) => w,
-        Err(e) => finish::<()>(true, Err(e), |_| {}),
+        Err(e) => return finish::<()>(true, Err(e), |_| {}),
     };
     let shot = match backend.screenshot(cu::CaptureTarget::Window(window.clone())) {
         Ok(shot) => shot,
-        Err(e) => finish::<()>(true, Err(e), |_| {}),
+        Err(e) => return finish::<()>(true, Err(e), |_| {}),
     };
     let ax = if no_ax {
         None
     } else {
         match backend.ax_tree(&window, depth, None) {
             Ok(ax) => Some(ax),
-            Err(e) => finish::<()>(true, Err(e), |_| {}),
+            Err(e) => return finish::<()>(true, Err(e), |_| {}),
         }
     };
     let envelope = serde_json::json!({
@@ -821,10 +821,15 @@ fn run_snapshot(backend: &Backend, window: String, no_ax: bool, depth: Option<u3
         "{}",
         serde_json::to_string_pretty(&envelope).unwrap_or_default()
     );
-    std::process::exit(0);
+    0
 }
 
-fn run_ax(backend: &Backend, action: AxAction, allow_control: bool, allow_destructive: bool) -> ! {
+fn run_ax(
+    backend: &Backend,
+    action: AxAction,
+    allow_control: bool,
+    allow_destructive: bool,
+) -> i32 {
     match action {
         AxAction::Tree {
             window,
@@ -893,13 +898,13 @@ fn ax_act(
     allow_control: bool,
     allow_destructive: bool,
     op: impl Fn(&str, &cu::AxQuery) -> cu::Result<cu::Ack>,
-) -> ! {
+) -> i32 {
     let q = cu::AxQuery::parse(&sel.match_query);
     let r = gate(allow_control, false, allow_destructive).and_then(|_| op(&sel.window, &q));
     finish(sel.json, r, print_ack)
 }
 
-fn run_wait(backend: &Backend, action: WaitAction) -> ! {
+fn run_wait(backend: &Backend, action: WaitAction) -> i32 {
     match action {
         WaitAction::Window {
             match_query,
@@ -944,7 +949,7 @@ fn run_wait(backend: &Backend, action: WaitAction) -> ! {
         } => {
             let (x, y) = match parse_pair(&at) {
                 Ok(p) => p,
-                Err(e) => finish::<()>(json, Err(e), |_| {}),
+                Err(e) => return finish::<()>(json, Err(e), |_| {}),
             };
             finish(
                 json,
@@ -1022,7 +1027,7 @@ fn run_clipboard(
     action: ClipboardAction,
     allow_control: bool,
     allow_destructive: bool,
-) -> ! {
+) -> i32 {
     match action {
         ClipboardAction::Get { json } => finish(json, backend.clipboard_get(), print_clipboard),
         ClipboardAction::Set { text, json } => {
@@ -1099,7 +1104,7 @@ fn run_pointer(
     target: Option<u32>,
     allow_control: bool,
     allow_destructive: bool,
-) -> ! {
+) -> i32 {
     let g = gate(allow_control, false, allow_destructive);
     let (json, result) = match action {
         PointerAction::Move { at, json } => (
@@ -1154,7 +1159,7 @@ fn run_key(
     target: Option<u32>,
     allow_control: bool,
     allow_destructive: bool,
-) -> ! {
+) -> i32 {
     let g = gate(allow_control, false, allow_destructive);
     let (json, result) = match action {
         KeyAction::Type { text, json } => (json, g.and_then(|_| backend.key_type(&text, target))),
@@ -1200,7 +1205,7 @@ fn run_window(
     action: WindowAction,
     allow_control: bool,
     allow_destructive: bool,
-) -> ! {
+) -> i32 {
     // A gated single-target op that returns the updated window record.
     fn gated(
         sel: WindowSel,
@@ -1208,7 +1213,7 @@ fn run_window(
         destructive: bool,
         allow_destructive: bool,
         op: impl Fn(&cu::WindowTarget) -> cu::Result<cu::Window>,
-    ) -> ! {
+    ) -> i32 {
         let json = sel.json;
         let result = gate(allow_control, destructive, allow_destructive)
             .and_then(|_| sel.target())
@@ -1322,7 +1327,7 @@ fn run_screenshot(
     region: Option<String>,
     output: Option<String>,
     json: bool,
-) -> ! {
+) -> i32 {
     let selectors = display.is_some() as u8 + window.is_some() as u8 + region.is_some() as u8;
     if selectors > 1 {
         finish::<()>(
@@ -1340,7 +1345,7 @@ fn run_screenshot(
     } else if let Some(r) = region {
         match parse_region(&r) {
             Ok(t) => t,
-            Err(e) => finish::<()>(json, Err(e), |_| {}),
+            Err(e) => return finish::<()>(json, Err(e), |_| {}),
         }
     } else {
         cu::CaptureTarget::Screen
@@ -1348,7 +1353,7 @@ fn run_screenshot(
 
     let capture = match backend.screenshot(target) {
         Ok(c) => c,
-        Err(e) => finish::<()>(json, Err(e), |_| {}),
+        Err(e) => return finish::<()>(json, Err(e), |_| {}),
     };
 
     if json {
@@ -1372,15 +1377,15 @@ fn run_screenshot(
             "{}",
             serde_json::to_string_pretty(&envelope).unwrap_or_default()
         );
-        std::process::exit(0);
+        return 0;
     }
 
     let ts = chrono::Local::now().format("%Y%m%d-%H%M%S");
     match crate::output::write_png(output, format!("desktop-{ts}.png"), &capture.png) {
-        Ok(()) => std::process::exit(0),
+        Ok(()) => 0,
         Err(e) => {
             eprintln!("Error: {e}");
-            std::process::exit(10);
+            10
         }
     }
 }
@@ -1421,7 +1426,7 @@ fn print_pixel(p: &cu::Pixel) {
 
 /// Emit the result and exit with the contract's exit code. `desktop` commands
 /// run locally (no dev session), so they own their process exit directly.
-fn finish<T: Serialize>(json: bool, result: cu::Result<T>, human: impl Fn(&T)) -> ! {
+fn finish<T: Serialize>(json: bool, result: cu::Result<T>, human: impl Fn(&T)) -> i32 {
     match result {
         Ok(value) => {
             if json {
@@ -1429,13 +1434,13 @@ fn finish<T: Serialize>(json: bool, result: cu::Result<T>, human: impl Fn(&T)) -
                     Ok(text) => println!("{text}"),
                     Err(err) => {
                         eprintln!("Error: failed to serialize output: {err}");
-                        std::process::exit(10);
+                        return 10;
                     }
                 }
             } else {
                 human(&value);
             }
-            std::process::exit(0);
+            0
         }
         Err(err) => {
             if json {
@@ -1453,7 +1458,7 @@ fn finish<T: Serialize>(json: bool, result: cu::Result<T>, human: impl Fn(&T)) -
             } else {
                 eprintln!("Error: {err}");
             }
-            std::process::exit(err.exit_code());
+            err.exit_code()
         }
     }
 }

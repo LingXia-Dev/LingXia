@@ -3090,6 +3090,7 @@ dependencies = [
  "lingxia-automation",
  "lingxia-browser",
  "lingxia-browser-shell",
+ "lingxia-control-cli",
  "lingxia-log",
  "lingxia-logic",
  "lingxia-lxapp",
@@ -3308,6 +3309,7 @@ dependencies = [
  "clap",
  "lingxia-computer-use",
  "lingxia-devtool-protocol",
+ "log",
  "serde",
  "serde_json",
 ]

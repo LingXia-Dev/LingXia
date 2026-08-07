@@ -161,13 +161,13 @@ fn run() -> Result<()> {
             Some(SessionAction::List { json }) => sessions::execute_list(json),
             None => sessions::execute_list(cmd.json),
         },
-        // Local OS automation: no dev session; the handler owns process exit.
-        // A development tool runs these itself: a developer grants lxdev
-        // Accessibility once, and there is no product process to route to.
-        Commands::Desktop(options) => lingxia_control_cli::desktop::execute(
+        // Local OS automation, no dev session. A development tool runs these
+        // in its own process: a developer grants lxdev Accessibility once, and
+        // there is no product to route to.
+        Commands::Desktop(options) => std::process::exit(lingxia_control_cli::desktop::execute(
             &lingxia_control_cli::desktop::Backend::Local,
             options,
-        ),
+        )),
         Commands::App(options) => {
             let info = resolve(&selector)?;
             let transport = client::DevSession::new(&info.ws_url);

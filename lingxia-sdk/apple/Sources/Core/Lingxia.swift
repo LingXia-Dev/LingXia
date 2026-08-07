@@ -95,6 +95,23 @@ public enum Lingxia {
         #endif
     }
 
+    /// Run the product's command line and exit, when this process was invoked
+    /// as one.
+    ///
+    /// Call this at the very top of `main`, before AppKit: the product's
+    /// executable doubles as its command line, and a command must neither open
+    /// a window nor initialize the runtime — initialization opens the app's
+    /// databases and would collide with an instance already running.
+    ///
+    /// Returns normally when the process should carry on and become the app.
+    public static func runProductCommandIfInvoked() {
+        let directories = LxAppDirectoryFactory.createDirectoryConfig()
+        let code = productRunCliIfInvoked(directories.dataPath)
+        if code >= 0 {
+            exit(code)
+        }
+    }
+
     #if os(macOS)
     /// Default product entry point: loads bundled `app.json` plus
     /// `macos-ui.json` / `ui.json` and uses them to build the host shell.

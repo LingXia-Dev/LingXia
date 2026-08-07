@@ -31,6 +31,24 @@ pub struct ControlSocket {
     endpoint: String,
 }
 
+/// Names the endpoint the launcher wrote into the environment, for the
+/// platform where the client cannot work it out alone.
+pub const ENDPOINT_ENV: &str = "LINGXIA_CONTROL_ENDPOINT";
+
+/// Where the product's endpoint lives.
+///
+/// The command line runs before the runtime initializes, so it cannot ask a
+/// runtime that is not up. On Unix the socket is a file in the state directory
+/// and that is enough. A Windows pipe is a kernel name derived from the app
+/// id, which is not readable this early — so the launcher, written by the app
+/// that already opened it, carries the name.
+pub fn endpoint_in(state_dir: &std::path::Path) -> String {
+    if let Ok(endpoint) = std::env::var(ENDPOINT_ENV) {
+        return endpoint;
+    }
+    state_dir.join("control.sock").display().to_string()
+}
+
 impl ControlSocket {
     /// Point at an endpoint reported by the product's `control::endpoint_name`.
     pub fn at(endpoint: impl Into<String>) -> Self {
