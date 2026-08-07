@@ -811,12 +811,15 @@ impl Builder<'_> {
         } else if !run.trim().is_empty() {
             let glyphs: Vec<_> = self.fonts.shape(run, style.face).to_vec();
             for glyph in glyphs {
-                let sprite = match self.pipeline.sprite(glyph.index, style.face) {
+                // Keyed by the glyph's own face, not the run's weight: a
+                // fallback glyph shares its index with an unrelated glyph in
+                // the terminal font.
+                let sprite = match self.pipeline.sprite(glyph.index, glyph.slot) {
                     Some(sprite) => sprite,
                     None => {
-                        let raster = self.fonts.rasterize(glyph.index, style.face).ok().flatten();
+                        let raster = self.fonts.rasterize(glyph.index, glyph.slot).ok().flatten();
                         self.pipeline
-                            .insert_sprite(glyph.index, style.face, raster.as_ref())
+                            .insert_sprite(glyph.index, glyph.slot, raster.as_ref())
                     }
                 };
                 let Some(sprite) = sprite else { continue };

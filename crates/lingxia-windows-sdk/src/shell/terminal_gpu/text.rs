@@ -32,6 +32,8 @@ pub(super) const REGULAR: usize = 0;
 pub(super) const BOLD: usize = 1;
 pub(super) const ITALIC: usize = 2;
 pub(super) const BOLD_ITALIC: usize = 3;
+/// Slots `0..STYLES` are the terminal font's own weights.
+const STYLES: usize = 4;
 
 /// One glyph and the cell it belongs to, counted from the run's first.
 ///
@@ -43,6 +45,12 @@ pub(super) const BOLD_ITALIC: usize = 3;
 pub(super) struct ShapedGlyph {
     pub(super) index: u16,
     pub(super) cell: u16,
+    /// Which face this glyph's index belongs to: `0..STYLES` are the terminal
+    /// font's own weights, anything above is a fallback face DirectWrite
+    /// chose. A glyph id only means something in the face it came from, so
+    /// rasterizing it against the terminal font would draw whatever happens to
+    /// live at that index — a box, for every CJK character in a Latin font.
+    pub(super) slot: usize,
 }
 
 /// A glyph bitmap waiting to be uploaded: premultiplied BGRA, tightly packed.
@@ -73,6 +81,9 @@ pub(super) struct Metrics {
 pub(super) struct Fonts {
     factory: IDWriteFactory,
     collection: IDWriteFontCollection,
+    /// Faces DirectWrite fell back to, in the order first seen. Slots above
+    /// `STYLES` index into this.
+    fallback: Vec<IDWriteFontFace>,
     family: String,
     size: f32,
     ligatures: bool,
@@ -159,6 +170,7 @@ impl Fonts {
             ligatures,
             formats,
             faces,
+            fallback: Vec::new(),
             plain,
             metrics,
             shaped: HashMap::new(),
@@ -174,16 +186,44 @@ impl Fonts {
         let key = (style, text.to_string());
         if !self.shaped.contains_key(&key) {
             let width = self.metrics.cell_width * text.chars().count().max(1) as f32;
-            let glyphs = self.shape_run(text, style, width).unwrap_or_else(|error| {
+            let placed = self.shape_run(text, style, width).unwrap_or_else(|error| {
                 log::warn!("terminal shaping failed for {text:?}: {error}");
                 Vec::new()
             });
+            let mut glyphs = to_cells(&placed, text, style);
+            for (glyph, placed) in glyphs.iter_mut().zip(&placed) {
+                glyph.slot = self.slot_for(placed.face.as_ref(), style);
+            }
             self.shaped.insert(key.clone(), glyphs);
         }
         &self.shaped[&key]
     }
 
-    fn shape_run(&self, text: &str, style: usize, width: f32) -> Result<Vec<ShapedGlyph>> {
+    /// The slot a glyph's face occupies. The terminal font's own weights keep
+    /// their style index so nothing about the common path changes; a face
+    /// layout fell back to is appended once and reused, which also keeps the
+    /// atlas key stable across frames.
+    fn slot_for(&mut self, face: Option<&IDWriteFontFace>, style: usize) -> usize {
+        let Some(face) = face else { return style };
+        if self.faces.iter().any(|known| known == face) {
+            return style;
+        }
+        if let Some(at) = self.fallback.iter().position(|known| known == face) {
+            return STYLES + at;
+        }
+        self.fallback.push(face.clone());
+        STYLES + self.fallback.len() - 1
+    }
+
+    /// The face a slot names, for rasterizing a glyph index that only means
+    /// something there.
+    fn face_at(&self, slot: usize) -> &IDWriteFontFace {
+        self.fallback
+            .get(slot.wrapping_sub(STYLES))
+            .unwrap_or(&self.faces[slot.min(STYLES - 1)])
+    }
+
+    fn shape_run(&self, text: &str, style: usize, width: f32) -> Result<Vec<PlacedGlyph>> {
         let utf16: Vec<u16> = text.encode_utf16().collect();
         unsafe {
             let layout = self.factory.CreateTextLayout(
@@ -212,7 +252,7 @@ impl Fonts {
                 0.0,
                 0.0,
             )?;
-            Ok(to_cells(&collector.collected(), text))
+            Ok(collector.collected())
         }
     }
 
@@ -220,8 +260,8 @@ impl Fonts {
     ///
     /// A color glyph — an emoji — is a stack of colored layers rather than one
     /// coverage mask, so it is composited here and drawn untinted.
-    pub(super) fn rasterize(&self, glyph: u16, style: usize) -> Result<Option<Rasterized>> {
-        let run = self.glyph_run(glyph, style);
+    pub(super) fn rasterize(&self, glyph: u16, slot: usize) -> Result<Option<Rasterized>> {
+        let run = self.glyph_run(glyph, slot);
         if let Some(colored) = self.rasterize_color(&run)? {
             return Ok(Some(colored));
         }
@@ -245,12 +285,12 @@ impl Fonts {
         }))
     }
 
-    fn glyph_run(&self, glyph: u16, style: usize) -> GlyphRun {
+    fn glyph_run(&self, glyph: u16, slot: usize) -> GlyphRun {
         GlyphRun {
             glyph,
             advance: 0.0,
             offset: DWRITE_GLYPH_OFFSET::default(),
-            face: self.faces[style].clone(),
+            face: self.face_at(slot).clone(),
             size: self.size,
         }
     }
@@ -555,16 +595,21 @@ impl GlyphCollector {
     }
 }
 
-/// A glyph and the UTF-16 offset of the first character it came from.
-#[derive(Clone, Copy)]
+/// A glyph, the UTF-16 offset of the first character it came from, and the
+/// face that actually has it.
+#[derive(Clone)]
 struct PlacedGlyph {
     index: u16,
     utf16: u32,
+    face: Option<IDWriteFontFace>,
 }
 
 /// Convert UTF-16 offsets to cells. A terminal cell is one `char`, so the two
 /// only differ where a character is a surrogate pair — every emoji.
-fn to_cells(glyphs: &[PlacedGlyph], text: &str) -> Vec<ShapedGlyph> {
+/// `slot` starts as the run's own weight — the common case, where layout
+/// used the terminal font — and shaping raises it for any glyph that came
+/// back from a fallback face.
+fn to_cells(glyphs: &[PlacedGlyph], text: &str, style: usize) -> Vec<ShapedGlyph> {
     let mut cell_of = Vec::with_capacity(text.len());
     for (cell, character) in text.chars().enumerate() {
         for _ in 0..character.len_utf16() {
@@ -575,6 +620,7 @@ fn to_cells(glyphs: &[PlacedGlyph], text: &str) -> Vec<ShapedGlyph> {
         .iter()
         .map(|glyph| ShapedGlyph {
             index: glyph.index,
+            slot: style,
             cell: cell_of
                 .get(glyph.utf16 as usize)
                 .copied()
@@ -625,6 +671,10 @@ impl IDWriteTextRenderer_Impl for GlyphCollector_Impl {
             return Ok(());
         }
         let indices = unsafe { std::slice::from_raw_parts(run.glyphIndices, count) };
+        // Layout resolves each run against whichever face actually has the
+        // characters, so the face travels with the glyph or its index is
+        // meaningless downstream.
+        let face = (*run.fontFace).clone();
 
         // The cluster map runs the other way — text position to glyph — so
         // invert it. Without a description every glyph is its own cluster,
@@ -658,6 +708,7 @@ impl IDWriteTextRenderer_Impl for GlyphCollector_Impl {
             glyphs.push(PlacedGlyph {
                 index: *index,
                 utf16,
+                face: face.clone(),
             });
         }
         Ok(())
