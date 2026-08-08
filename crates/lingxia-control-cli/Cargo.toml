@@ -1,0 +1,25 @@
+[package]
+name = "lingxia-control-cli"
+version.workspace = true
+edition.workspace = true
+description = "Command surface shared by lxdev and shipped LingXia products"
+license = "MIT"
+repository.workspace = true
+
+[dependencies]
+lingxia-computer-use = { workspace = true }
+lingxia-control-protocol = { workspace = true }
+# The persisted "is the automation interface on" answer, so a product without a
+# settings screen still has a way to switch it.
+lingxia-settings = { workspace = true }
+anyhow = "1.0"
+log = { workspace = true }
+clap = { version = "4.5", features = ["derive"] }
+serde = { workspace = true }
+# `preserve_order` keeps machine JSON in the order a handler reported it.
+# lxdev has always printed it that way through feature unification; declaring
+# it here makes that a property of this crate rather than an accident.
+serde_json = { workspace = true, features = ["preserve_order"] }
+base64 = { workspace = true }
+chrono = { version = "0.4", features = ["serde"] }
+

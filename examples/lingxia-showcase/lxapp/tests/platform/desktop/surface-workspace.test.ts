@@ -2517,6 +2517,14 @@ pinnedWindowsHostTest('projects a pinned lxapp into a controllable sidebar works
     ), 'dismissed pinned Chat context menu');
 
     const pinsAfterMenu = await shell.pins();
+    const chatBeforeSidebarSwitch = await waitForDesktopWindow(
+      () => desktop.windows(),
+      (windows) => {
+        const visible = visibleHostWebViews(host!, windows);
+        return visible.length === 1 ? visible[0] : undefined;
+      },
+      'Chat main before root sidebar switch',
+    );
     await desktop.pointer.click({
       at: showcaseHomePagePoint(host, pinsAfterMenu.length),
     });
@@ -2538,7 +2546,7 @@ pinnedWindowsHostTest('projects a pinned lxapp into a controllable sidebar works
       () => desktop.windows(),
       (windows) => {
         const visible = visibleHostWebViews(host!, windows);
-        return visible.length === 1
+        return visible.length === 1 && visible[0].id !== chatBeforeSidebarSwitch.id
           ? visible[0]
           : undefined;
       },

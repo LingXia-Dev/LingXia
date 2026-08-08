@@ -2,6 +2,10 @@ import AppKit
 import OSLog
 import lingxia
 
+// Before AppKit: this executable is also the product's command line, and a
+// command must not open a window or touch a running instance's databases.
+Lingxia.runProductCommandIfInvoked()
+
 class LingXiaAppDelegate: NSObject, NSApplicationDelegate {
     private static let log = OSLog(subsystem: "LingXia", category: "ExampleApp")
 

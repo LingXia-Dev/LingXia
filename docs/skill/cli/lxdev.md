@@ -107,8 +107,8 @@ accepted.
 
 **`desktop`** — local desktop inspection and automation, independent of a dev
 session. It covers windows, screenshots, accessibility, pixels, clipboard,
-pointer, and keyboard. Writes require `--allow-control`; destructive actions
-also require `--allow-destructive`.
+pointer, and keyboard. Writes require the `--allow-control` acknowledgement;
+destructive actions also require `--allow-destructive`.
 
 On Windows, pointer and key input use foreground-only `SendInput`. A `--window`
 target is activated first; `--pid` requires exactly one visible window. True

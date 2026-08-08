@@ -1,10 +1,7 @@
 use anyhow::Result;
 use clap::{Args, Parser, Subcommand};
 
-mod app;
-mod browser;
 mod client;
-mod desktop;
 mod logs;
 mod lxapp;
 mod lxapp_build;
@@ -35,7 +32,7 @@ struct Cli {
 #[derive(Subcommand)]
 enum Commands {
     /// Control browser tabs in the current dev session
-    Browser(browser::BrowserOptions),
+    Browser(lingxia_control_cli::browser::BrowserOptions),
     /// Manage lxapps in the current dev session
     Lxapp(lxapp::LxAppOptions),
     /// Control the simulated environment (device, orientation, appearance);
@@ -47,9 +44,9 @@ enum Commands {
     #[command(alias = "sessions")]
     Session(SessionCmd),
     /// Automate the local desktop OS (no dev session required)
-    Desktop(desktop::DesktopOptions),
+    Desktop(lingxia_control_cli::desktop::DesktopOptions),
     /// Automate the host app surface in the current dev session
-    App(app::AppOptions),
+    App(lingxia_control_cli::app::AppOptions),
     /// Run JavaScript/TypeScript test cases in the current dev session
     Test(test::TestOptions),
 }
@@ -141,7 +138,12 @@ fn run() -> Result<()> {
     match cli.command {
         Commands::Browser(options) => {
             let info = resolve(&selector)?;
-            browser::execute(&info, options)
+            let transport = client::DevSession::new(&info.ws_url);
+            let context = lingxia_control_cli::browser::BrowserContext {
+                transport: &transport,
+                target: info.target.clone(),
+            };
+            lingxia_control_cli::browser::execute(&context, options)
         }
         Commands::Lxapp(options) => {
             if lxapp::handle_pre_session(&std::env::current_dir()?, &options)? {
@@ -163,11 +165,22 @@ fn run() -> Result<()> {
             Some(SessionAction::List { json }) => sessions::execute_list(json),
             None => sessions::execute_list(cmd.json),
         },
-        // Local OS automation: no dev session; the handler owns process exit.
-        Commands::Desktop(options) => desktop::execute(options),
+        // Local OS automation, no dev session. A development tool runs these
+        // in its own process: a developer grants lxdev Accessibility once, and
+        // there is no product to route to.
+        Commands::Desktop(options) => std::process::exit(lingxia_control_cli::desktop::execute(
+            &lingxia_control_cli::desktop::Backend::Local,
+            options,
+        )),
         Commands::App(options) => {
             let info = resolve(&selector)?;
-            app::execute(&info, options)
+            let transport = client::DevSession::new(&info.ws_url);
+            let context = lingxia_control_cli::app::AppContext {
+                transport: &transport,
+                target: info.target.clone(),
+                session: Some(info.session_id.clone()),
+            };
+            lingxia_control_cli::app::execute(&context, options)
         }
         // Session test runner: the handler owns process exit (run state
         // becomes the exit code).
@@ -221,14 +234,15 @@ mod tests {
         let Commands::Browser(options) = cli.command else {
             panic!("expected browser command");
         };
-        let browser::BrowserCommand::UserAgent(options) = options.command else {
+        let lingxia_control_cli::browser::BrowserCommand::UserAgent(options) = options.command
+        else {
             panic!("expected user-agent command");
         };
         assert!(options.json);
         assert!(!options.pretty);
         assert!(matches!(
             options.command,
-            browser::UserAgentCommand::Set {
+            lingxia_control_cli::browser::UserAgentCommand::Set {
                 user_agent,
                 reload: true,
             } if user_agent == "TestAgent/1.0"

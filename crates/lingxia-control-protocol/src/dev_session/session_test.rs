@@ -1,4 +1,4 @@
-//! Wire types for the `session.test.*` devtool handlers.
+//! Wire types for the `session.test.*` development-session methods.
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;

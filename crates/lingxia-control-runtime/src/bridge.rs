@@ -1,8 +1,14 @@
-//! Devtool runtime bridge and protocol helpers for LingXia apps.
+//! The development websocket bridge.
 //!
-//! Host libraries decide how this service is installed into their own
-//! `HostAddon`; this crate only exposes the service entry points.
+//! Only development hosts carry this: it dials the `lingxia dev` session over
+//! TCP and streams logs at it. A shipped product that wants automation uses
+//! [`crate::local_control`] instead, which reaches the same [`crate::dispatch`]
+//! without any of the network stack below.
 
+use lingxia_control_protocol::dev_session::{
+    DEV_SESSION_PROTOCOL_VERSION, DevSessionEvent, DevSessionLog, DevSessionLogLevel,
+    DevSessionMessage, DevSessionRole, capabilities,
+};
 use lingxia_log::{AttachedLogStream, LogLevel, LogMessage, LogTag, attach_log_stream_default};
 use std::sync::OnceLock;
 use std::thread;
@@ -11,24 +17,11 @@ use tungstenite::protocol::Message;
 use tungstenite::stream::MaybeTlsStream;
 use tungstenite::{Error as WsError, WebSocket};
 
-mod app;
-mod browser;
-mod lxapp;
-mod lxapp_nav;
-mod lxapp_page;
-mod runner;
-#[cfg(feature = "test-runtime")]
-mod session_test;
-mod util;
-
-pub use lingxia_devtool_protocol::{
-    DEV_SESSION_PROTOCOL_VERSION, DevSessionEvent, DevSessionLog, DevSessionLogLevel,
-    DevSessionMessage, DevSessionRole, capabilities, handlers,
-};
+use crate::dispatch;
 
 const DEV_WS_URL_ENV: &str = "LINGXIA_DEV_WS_URL";
 
-pub fn start_devtool_bridge_from_env() {
+pub fn start_dev_session_bridge_from_env() {
     static STARTED: OnceLock<()> = OnceLock::new();
     if STARTED.set(()).is_err() {
         return;
@@ -247,46 +240,10 @@ fn handle_incoming_message(
     websocket: &mut WebSocket<MaybeTlsStream<std::net::TcpStream>>,
     message: DevSessionMessage,
 ) -> Result<(), String> {
-    let DevSessionMessage::Request { id, method, params } = message else {
+    let DevSessionMessage::Request(request) = message else {
         return Ok(());
     };
-
-    #[cfg(feature = "test-runtime")]
-    if let Some(result) = session_test::handle_session_test_command(&method, params.clone()) {
-        return send_wire_message(websocket, &command_result(id, result));
-    }
-
-    let result = if let Some(result) = app::handle_app_command(&method, params.clone()) {
-        command_result(id, result)
-    } else if let Some(result) = browser::handle_browser_command(&method, params.clone()) {
-        command_result(id, result)
-    } else if let Some(result) = lxapp_nav::handle_lxapp_nav_command(&method, params.clone()) {
-        command_result(id, result)
-    } else if let Some(result) = lxapp_page::handle_lxapp_page_command(&method, params.clone()) {
-        command_result(id, result)
-    } else if let Some(result) = runner::handle_runner_command(&method, params.clone()) {
-        command_result(id, result)
-    } else if let Some(result) = lxapp::handle_lxapp_command(&method, params.clone()) {
-        command_result(id, result)
-    } else {
-        match method.as_str() {
-            handlers::ECHO => DevSessionMessage::success(id, params),
-            other => {
-                DevSessionMessage::error(id, "unknown_method", format!("unknown method: {other}"))
-            }
-        }
-    };
-    send_wire_message(websocket, &result)
-}
-
-fn command_result(
-    command_id: String,
-    result: Result<Option<serde_json::Value>, String>,
-) -> DevSessionMessage {
-    match result {
-        Ok(data) => DevSessionMessage::success(command_id, data),
-        Err(error) => DevSessionMessage::error(command_id, "request_failed", error),
-    }
+    send_wire_message(websocket, &DevSessionMessage::Response(dispatch(request)))
 }
 
 fn send_log_batch(

@@ -1,13 +1,28 @@
-use crate::client;
-use crate::project::SessionInfo;
-use crate::screenshot;
+use crate::output;
+use crate::transport::Transport;
 use anyhow::{Result, bail};
 use clap::{Args, Subcommand, ValueEnum};
-use lingxia_devtool_protocol::handlers;
+use lingxia_control_protocol::methods;
 use serde_json::{Map, Value, json};
+
+/// What these commands need beyond the transport.
+///
+/// `lxdev` fills this from a dev session; a shipped product fills it from
+/// itself, which is why it is not the session type — a product has no session
+/// id and its target is simply the OS it is running on.
+pub struct AppContext<'a> {
+    pub transport: &'a dyn Transport,
+    /// Platform name the app is running on, as `app.doctor` reports it.
+    pub target: String,
+    /// Dev session id, when there is one.
+    pub session: Option<String>,
+}
 
 #[derive(Args, Clone)]
 pub struct AppOptions {
+    /// Acknowledge input sent to the host app window
+    #[arg(long, global = true)]
+    pub allow_control: bool,
     #[command(subcommand)]
     pub command: AppCommand,
 }
@@ -22,7 +37,7 @@ pub enum AppCommand {
     },
     /// Capture a PNG screenshot of the host app's window
     Screenshot {
-        /// Specific window id (from `lxdev app windows`); defaults to the
+        /// Specific window id (from `app windows`); defaults to the
         /// platform's focused/main window.
         #[arg(long)]
         window: Option<String>,
@@ -82,7 +97,7 @@ pub struct KeyPressOptions {
 
 #[derive(Args, Clone)]
 pub struct KeyTargetOptions {
-    /// Specific window id (from `lxdev app windows`); defaults to the
+    /// Specific window id (from `app windows`); defaults to the
     /// platform's focused/main window.
     #[arg(long)]
     window: Option<String>,
@@ -128,7 +143,7 @@ pub enum MouseCommand {
 
 #[derive(Args, Clone)]
 pub struct MouseTargetOptions {
-    /// Specific window id (from `lxdev app windows`); defaults to the
+    /// Specific window id (from `app windows`); defaults to the
     /// platform's focused/main window.
     #[arg(long)]
     window: Option<String>,
@@ -238,31 +253,41 @@ impl MouseButtonArg {
     }
 }
 
-pub fn execute(info: &SessionInfo, options: AppOptions) -> Result<()> {
+pub fn execute(context: &AppContext, options: AppOptions) -> Result<()> {
+    // Synthetic input is synthetic input; that the window belongs to the
+    // product rather than to some other app does not make it free.
+    if matches!(
+        options.command,
+        AppCommand::Mouse { .. } | AppCommand::Key { .. }
+    ) {
+        crate::guard::gate(options.allow_control, false, false)?;
+    }
     match options.command {
-        AppCommand::Doctor { json } => execute_doctor(info, json),
+        AppCommand::Doctor { json } => execute_doctor(context, json),
         AppCommand::Screenshot {
             window,
             output,
             json,
-        } => execute_screenshot(info, window, output, json),
-        AppCommand::Windows { json } => execute_windows(info, json),
+        } => execute_screenshot(context, window, output, json),
+        AppCommand::Windows { json } => execute_windows(context, json),
         AppCommand::Mouse { command } => {
-            require_desktop_input(info, "mouse")?;
-            execute_mouse(info, command)
+            require_desktop_input(context, "mouse")?;
+            execute_mouse(context, command)
         }
         AppCommand::Key { command } => {
-            require_desktop_input(info, "key")?;
-            execute_key(info, command)
+            require_desktop_input(context, "key")?;
+            execute_key(context, command)
         }
     }
 }
 
-fn execute_doctor(info: &SessionInfo, json_output: bool) -> Result<()> {
-    let mut data = client::execute_command(&info.ws_url, handlers::app::DOCTOR, None)?
+fn execute_doctor(context: &AppContext, json_output: bool) -> Result<()> {
+    let mut data = context
+        .transport
+        .request(methods::app::DOCTOR, None)?
         .unwrap_or_else(|| json!({}));
-    if let Value::Object(map) = &mut data {
-        map.insert("session_id".to_string(), json!(info.session_id));
+    if let (Value::Object(map), Some(session)) = (&mut data, context.session.as_ref()) {
+        map.insert("session_id".to_string(), json!(session));
     }
     if json_output {
         println!("{}", encode_machine_json(&data)?);
@@ -277,7 +302,9 @@ fn execute_doctor(info: &SessionInfo, json_output: bool) -> Result<()> {
             .and_then(Value::as_bool)
             .unwrap_or(false)
     };
-    println!("session      {}", info.session_id);
+    if let Some(session) = context.session.as_ref() {
+        println!("session      {session}");
+    }
     println!(
         "platform     {}",
         data.get("platform").and_then(Value::as_str).unwrap_or("-")
@@ -299,18 +326,24 @@ fn execute_doctor(info: &SessionInfo, json_output: bool) -> Result<()> {
     Ok(())
 }
 
-fn require_desktop_input(info: &SessionInfo, what: &str) -> Result<()> {
-    let hint = match info.target.as_str() {
+fn require_desktop_input(context: &AppContext, what: &str) -> Result<()> {
+    let hint = match context.target.as_str() {
         "macos" | "windows" | "lxapp" => return Ok(()),
         "android" => "`adb shell input`",
         "harmony" => "`hdc shell uitest uiInput`",
-        _ => "`lxdev lxapp page click/type` (web content)",
+        // Named without a binary: this table is mounted by more than one.
+        _ => "the `lxapp page click/type` commands (web content)",
     };
-    bail!("app {what} is desktop-only; on {} use {hint}", info.target)
+    bail!(
+        "app {what} is desktop-only; on {} use {hint}",
+        context.target
+    )
 }
 
-fn execute_windows(info: &SessionInfo, json: bool) -> Result<()> {
-    let data = client::execute_command(&info.ws_url, handlers::app::WINDOWS, None)?
+fn execute_windows(context: &AppContext, json: bool) -> Result<()> {
+    let data = context
+        .transport
+        .request(methods::app::WINDOWS, None)?
         .unwrap_or(Value::Array(Vec::new()));
 
     if json {
@@ -352,13 +385,15 @@ fn execute_windows(info: &SessionInfo, json: bool) -> Result<()> {
 }
 
 fn execute_screenshot(
-    info: &SessionInfo,
+    context: &AppContext,
     window: Option<String>,
     output: Option<String>,
     json: bool,
 ) -> Result<()> {
     let args = window.as_ref().map(|id| json!({ "window_id": id }));
-    let data = client::execute_command(&info.ws_url, handlers::app::SCREENSHOT, args)?
+    let data = context
+        .transport
+        .request(methods::app::SCREENSHOT, args)?
         .unwrap_or(Value::Null);
 
     if json {
@@ -366,13 +401,13 @@ fn execute_screenshot(
         return Ok(());
     }
 
-    let bytes = screenshot::decode_png_payload(&data, handlers::app::SCREENSHOT)?;
+    let bytes = output::decode_png_payload(&data, methods::app::SCREENSHOT)?;
     let ts = chrono::Local::now().format("%Y%m%d-%H%M%S");
-    let target = screenshot::safe_component(&info.target);
-    screenshot::write_png(output, format!("app-{target}-{ts}.png"), &bytes)
+    let target = output::safe_component(&context.target);
+    output::write_png(output, format!("app-{target}-{ts}.png"), &bytes)
 }
 
-fn execute_mouse(info: &SessionInfo, command: MouseCommand) -> Result<()> {
+fn execute_mouse(context: &AppContext, command: MouseCommand) -> Result<()> {
     let (target, actions): (MouseTargetOptions, Vec<Value>) = match command {
         MouseCommand::Move(options) => (
             options.target,
@@ -440,7 +475,9 @@ fn execute_mouse(info: &SessionInfo, command: MouseCommand) -> Result<()> {
     let mut data = Value::Null;
     for action in actions {
         let payload = action_payload(target.window.clone(), action);
-        data = client::execute_command(&info.ws_url, handlers::app::MOUSE, Some(payload))?
+        data = context
+            .transport
+            .request(methods::app::MOUSE, Some(payload))?
             .unwrap_or(Value::Null);
     }
 
@@ -451,7 +488,7 @@ fn execute_mouse(info: &SessionInfo, command: MouseCommand) -> Result<()> {
     Ok(())
 }
 
-fn execute_key(info: &SessionInfo, command: KeyCommand) -> Result<()> {
+fn execute_key(context: &AppContext, command: KeyCommand) -> Result<()> {
     let (target, action) = match command {
         KeyCommand::Type(options) => (
             options.target,
@@ -475,7 +512,9 @@ fn execute_key(info: &SessionInfo, command: KeyCommand) -> Result<()> {
     };
 
     let payload = action_payload(target.window, action);
-    let data = client::execute_command(&info.ws_url, handlers::app::KEYBOARD, Some(payload))?
+    let data = context
+        .transport
+        .request(methods::app::KEYBOARD, Some(payload))?
         .unwrap_or(Value::Null);
 
     if target.json {

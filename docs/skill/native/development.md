@@ -38,7 +38,7 @@ impl lingxia::HostAddon for AppHostAddon {
 
     fn start_services(&self) {
         #[cfg(feature = "devtools")]
-        lingxia_devtool::start_devtool_bridge_from_env();
+        lingxia_control_runtime::start_dev_session_bridge_from_env();
     }
 }
 

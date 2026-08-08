@@ -18,6 +18,9 @@ standard = ["host/standard", "lingxia-windows-sdk/standard"]
 browser-shell = ["host/browser-shell", "lingxia-windows-sdk/browser-shell"]
 proxy = ["host/proxy", "browser-shell"]
 terminal-runtime = ["host/terminal-runtime", "lingxia-windows-sdk/terminal-runtime"]
+control = ["host/control"]
+computer-use = ["host/computer-use"]
+browser-use = ["host/browser-use"]
 devtools = ["host/devtools"]
 webview-input = ["host/webview-input", "lingxia-windows-sdk/webview-input"]
 cloud = ["host/cloud"]  # activated by `--with-provider cloud`
@@ -33,8 +36,8 @@ lingxia-windows-build = { path = "../../../crates/lingxia-windows-build" }
 lingxia = { path = "../../../crates/lingxia" }
 lingxia-app-context = { path = "../../../crates/lingxia-app-context" }
 lingxia-browser = { path = "../../../crates/lingxia-browser" }
-lingxia-devtool = { path = "../../../crates/lingxia-devtool" }
-lingxia-devtool-protocol = { path = "../../../crates/lingxia-devtool-protocol" }
+lingxia-control-runtime = { path = "../../../crates/lingxia-control-runtime" }
+lingxia-control-protocol = { path = "../../../crates/lingxia-control-protocol" }
 lingxia-log = { path = "../../../crates/lingxia-log" }
 lingxia-logic = { path = "../../../crates/lingxia-logic" }
 lingxia-lxapp = { path = "../../../crates/lingxia-lxapp" }

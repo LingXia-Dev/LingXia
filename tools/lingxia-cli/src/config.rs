@@ -909,6 +909,25 @@ fn is_authoring_platform(value: &str) -> bool {
     AUTHORING_PLATFORMS.contains(&value)
 }
 
+/// Capabilities that only mean something alongside another.
+///
+/// Deriving the feature independently turns a typo into a build that
+/// contradicts what was declared — every browser command answering "feature
+/// unavailable" in a product whose configuration says it drives the browser.
+/// Better to refuse with a sentence naming the missing line.
+fn validate_capability_dependencies(capabilities: Option<&CapabilitiesConfig>) -> Result<()> {
+    let Some(capabilities) = capabilities else {
+        return Ok(());
+    };
+    if capabilities.browser_use && !capabilities.browser {
+        return Err(anyhow!(
+            "capabilities.browserUse drives the in-app browser, which this product does not have; \
+             add `browser: true` or remove `browserUse`"
+        ));
+    }
+    Ok(())
+}
+
 fn validate_app_platforms(app: &HostAppConfig) -> Result<Vec<String>> {
     if app.platforms.is_empty() {
         return Err(anyhow!("app.platforms must include at least one platform"));
@@ -1519,6 +1538,42 @@ impl LingXiaConfig {
         proxy_requested && self.browser_enabled() && matches!(platform, "macos" | "windows")
     }
 
+    /// The local control socket, derived from whatever the product actually
+    /// asked for. Desktop only — a phone has no command line to drive the
+    /// product from, and no per-user IPC namespace to scope it to.
+    pub fn control_enabled(&self, platform: &str) -> bool {
+        let requested = self
+            .capabilities
+            .as_ref()
+            .map(CapabilitiesConfig::needs_control_socket)
+            .unwrap_or(false);
+        requested && matches!(platform, "macos" | "windows")
+    }
+
+    /// Machine-wide automation. Rides the control socket, which its own
+    /// presence turns on.
+    pub fn computer_use_enabled(&self, platform: &str) -> bool {
+        let requested = self
+            .capabilities
+            .as_ref()
+            .map(|capabilities| capabilities.computer_use)
+            .unwrap_or(false);
+        requested && matches!(platform, "macos" | "windows")
+    }
+
+    /// Driving the in-app browser. The handlers live behind their own devtool
+    /// feature, so a product that declared `browserUse` and did not get it
+    /// would answer every browser command with "feature unavailable" — a
+    /// capability the user granted and the build silently dropped.
+    pub fn browser_use_enabled(&self, platform: &str) -> bool {
+        let requested = self
+            .capabilities
+            .as_ref()
+            .map(|capabilities| capabilities.browser_use)
+            .unwrap_or(false);
+        requested && matches!(platform, "macos" | "windows")
+    }
+
     pub fn devtools_enabled(&self) -> bool {
         self.features
             .as_ref()
@@ -1547,6 +1602,15 @@ impl LingXiaConfig {
         }
         if self.proxy_enabled(platform) {
             features.push("proxy".to_string());
+        }
+        if self.control_enabled(platform) {
+            features.push("control".to_string());
+        }
+        if self.computer_use_enabled(platform) {
+            features.push("computer-use".to_string());
+        }
+        if self.browser_use_enabled(platform) {
+            features.push("browser-use".to_string());
         }
         if self.devtools_enabled() {
             features.push("devtools".to_string());
@@ -1671,6 +1735,7 @@ impl LingXiaConfig {
             .as_ref()
             .ok_or_else(|| anyhow!("surfaces requires app.platforms"))?;
         let app_platforms = validate_app_platforms(app)?;
+        validate_capability_dependencies(self.capabilities.as_ref())?;
         validate_surface_platforms(surfaces, &app_platforms)?;
         let terminal_enabled = self
             .capabilities

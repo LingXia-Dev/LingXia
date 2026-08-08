@@ -1,14 +1,18 @@
 //! Serde DTOs for the `desktop` surface. These are the single source of truth
-//! for both the CLI `--json` output and any future in-process JS binding, so
-//! the two consumers can never drift.
+//! for the CLI `--json` output, the local-control wire, and any future
+//! in-process JS binding, so the consumers can never drift.
+//!
+//! Every type round-trips. A product runs these commands inside the app and a
+//! client reads the answers back into the same structs, which is what lets one
+//! set of printers serve both the in-process and over-the-socket mounts.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// A rectangle in backend-native global desktop coordinates.
 ///
 /// Windows uses physical pixels. macOS uses global display points and reports
 /// each display/window scale so callers can convert to backing pixels.
-#[derive(Debug, Clone, Copy, Serialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct Rect {
     pub x: i32,
     pub y: i32,
@@ -17,7 +21,7 @@ pub struct Rect {
 }
 
 /// A monitor/display.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Display {
     pub id: String,
     pub primary: bool,
@@ -28,7 +32,7 @@ pub struct Display {
 }
 
 /// A top-level OS window.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Window {
     pub id: String,
     pub title: String,
@@ -48,7 +52,7 @@ pub struct Window {
 }
 
 /// A window-selection query (`--match`), one field set.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct WindowQuery {
     /// Substring against title / class / process (the bare `text` form).
     pub text: Option<String>,
@@ -108,7 +112,7 @@ impl WindowQuery {
 
 /// A generic "it worked" acknowledgement for input/mutation commands that have
 /// no richer result to return.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Ack {
     pub ok: bool,
     pub action: String,
@@ -124,7 +128,7 @@ impl Ack {
 }
 
 /// Mouse button for pointer input.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum MouseButton {
     Left,
     Right,
@@ -132,7 +136,7 @@ pub enum MouseButton {
 }
 
 /// Canonical modifier keys (platform-neutral; `Meta` maps to Win/Command).
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum Modifier {
     Ctrl,
     Shift,
@@ -141,30 +145,30 @@ pub enum Modifier {
 }
 
 /// How a window action selects its target: a runtime id, or a match query.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum WindowTarget {
     Id(String),
     Match(WindowQuery),
 }
 
 /// A node in the native accessibility tree (`desktop ax`).
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AxNode {
     pub id: String,
     pub role: String,
     pub name: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub value: Option<String>,
     pub enabled: bool,
     pub focused: bool,
     pub rect: Rect,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub children: Vec<AxNode>,
 }
 
 /// An accessibility node query (`--match`): bare `text`, or a
 /// `name:` / `role:` / `value:` / `id:` prefix.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct AxQuery {
     pub text: Option<String>,
     pub name: Option<String>,
@@ -225,14 +229,14 @@ impl AxQuery {
 }
 
 /// A running process (`desktop process list`).
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProcessInfo {
     pub pid: u32,
     pub name: String,
 }
 
 /// Result of launching an app (`desktop app launch`).
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LaunchResult {
     /// Durable target pid: the matched window's owning process when
     /// `--wait-window` found one, otherwise the launched process. Prefer this
@@ -242,12 +246,12 @@ pub struct LaunchResult {
     /// binary is a relauncher/stub (e.g. the Store-hosted notepad), whose
     /// process exits after spawning the real app under a new pid.
     pub launcher_pid: u32,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub window: Option<Window>,
 }
 
 /// How `desktop app quit` selects its target.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum QuitTarget {
     Match(WindowQuery),
     Pid(u32),
@@ -255,14 +259,14 @@ pub enum QuitTarget {
 }
 
 /// Clipboard contents (`desktop clipboard get`).
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Clipboard {
     pub available_formats: Vec<String>,
     pub text: Option<String>,
 }
 
 /// A single pixel's color (`desktop pixel`).
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Pixel {
     pub x: i32,
     pub y: i32,
@@ -273,7 +277,7 @@ pub struct Pixel {
 }
 
 /// What to capture (`desktop screenshot`).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum CaptureTarget {
     /// The whole virtual screen (all monitors).
     Screen,
@@ -286,12 +290,15 @@ pub enum CaptureTarget {
 }
 
 /// The result of a capture. `png` holds the encoded bytes; the CLI decides
-/// whether to write a file or emit a base64 envelope, so this is not itself
-/// serialized.
-#[derive(Debug, Clone)]
+/// whether to write a file or emit a base64 envelope.
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Capture {
     pub width: u32,
     pub height: u32,
+    /// Base64 on the wire. A `Vec<u8>` serializes as a JSON array of decimal
+    /// numbers, which turns a few megabytes of PNG into three times that in
+    /// digits and commas.
+    #[serde(with = "png_base64")]
     pub png: Vec<u8>,
     /// True when the backend captured window pixels regardless of occlusion
     /// (PrintWindow), false for on-screen BitBlt captures.
@@ -300,7 +307,7 @@ pub struct Capture {
 }
 
 /// Backend capability + permission report (`desktop doctor`).
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Doctor {
     pub backend: String,
     pub os: String,
@@ -312,7 +319,7 @@ pub struct Doctor {
 /// Live OS-permission grants for the host process (`desktop permissions`).
 /// A capability can be present in [`Capabilities`] yet unusable until the
 /// matching permission here is granted.
-#[derive(Debug, Clone, Copy, Default, Serialize)]
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
 pub struct Permissions {
     /// Accessibility — required for the AX tree/actions, synthetic input, and
     /// managing other apps' windows. (macOS "Accessibility".)
@@ -336,7 +343,7 @@ impl Permissions {
     }
 }
 
-#[derive(Debug, Clone, Default, Serialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Capabilities {
     pub displays: bool,
     pub windows: bool,
@@ -354,6 +361,63 @@ pub struct Capabilities {
 
 #[cfg(test)]
 mod tests {
+
+    /// Every model crosses the control socket and is read back into the same
+    /// struct on the other side, so a field that serializes but will not
+    /// deserialize breaks the mount rather than one command. The empty cases
+    /// are the ones that bite: `skip_serializing_if` omits them, and without a
+    /// default the trip back fails on exactly the common shape.
+    #[test]
+    fn models_survive_the_round_trip() {
+        let node = AxNode {
+            id: "1".into(),
+            role: "AXButton".into(),
+            name: "OK".into(),
+            value: None,
+            enabled: true,
+            focused: false,
+            rect: Rect {
+                x: 0,
+                y: 0,
+                w: 10,
+                h: 10,
+            },
+            children: Vec::new(),
+        };
+        let text = serde_json::to_string(&node).unwrap();
+        assert!(!text.contains("children"), "empty children are omitted");
+        let back: AxNode = serde_json::from_str(&text).unwrap();
+        assert_eq!(back.role, "AXButton");
+        assert!(back.children.is_empty());
+        assert!(back.value.is_none());
+
+        let back: AxQuery =
+            serde_json::from_str(&serde_json::to_string(&AxQuery::default()).unwrap()).unwrap();
+        assert!(back.text.is_none() && back.role.is_none());
+
+        let window = WindowQuery::default();
+        let back: WindowQuery =
+            serde_json::from_str(&serde_json::to_string(&window).unwrap()).unwrap();
+        assert!(back.text.is_none() && back.pid.is_none());
+    }
+
+    /// Capture bytes travel as base64. As a `Vec<u8>` they would serialize to a
+    /// JSON array of decimal numbers — several times the size, for a payload
+    /// that is already megabytes.
+    #[test]
+    fn captures_travel_as_base64() {
+        let capture = Capture {
+            width: 1,
+            height: 1,
+            png: vec![0x89, 0x50, 0x4e, 0x47],
+            occlusion_independent: true,
+            backend: "test".into(),
+        };
+        let text = serde_json::to_string(&capture).unwrap();
+        assert!(text.contains("\"iVBORw==\""), "png is base64: {text}");
+        let back: Capture = serde_json::from_str(&text).unwrap();
+        assert_eq!(back.png, capture.png);
+    }
     use super::*;
 
     fn win(pid: u32) -> Window {
@@ -431,5 +495,40 @@ mod tests {
     fn window_display_id_unused_ok() {
         // Smoke: constructing a Window is fine (guards the DTO shape).
         let _ = win(1);
+    }
+}
+
+/// What a command just acted on, as far as the viewer needs to know.
+///
+/// Synthetic input is always in **global** desktop coordinates, on every
+/// backend. A command's `target` narrows *delivery* — it names the process the
+/// event is posted to — and never changes the space the coordinates are in.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum Acted {
+    /// A point in global desktop coordinates.
+    At { x: i32, y: i32 },
+    /// A window, with nothing to mark inside it.
+    Window(String),
+    /// Something changed, but nothing said where.
+    Somewhere,
+}
+
+/// PNG bytes as base64, so a capture crossing the control socket costs its own
+/// size rather than triple.
+mod png_base64 {
+    use base64::Engine as _;
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+    pub fn serialize<S: Serializer>(bytes: &[u8], serializer: S) -> Result<S::Ok, S::Error> {
+        base64::engine::general_purpose::STANDARD
+            .encode(bytes)
+            .serialize(serializer)
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Vec<u8>, D::Error> {
+        let text = String::deserialize(deserializer)?;
+        base64::engine::general_purpose::STANDARD
+            .decode(text)
+            .map_err(serde::de::Error::custom)
     }
 }

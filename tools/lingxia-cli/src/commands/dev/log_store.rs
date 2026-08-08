@@ -1,8 +1,10 @@
 use anyhow::{Context, Result, anyhow};
-use lingxia_devtool_protocol::broker::Registration;
-pub use lingxia_devtool_protocol::broker::SessionInfo;
-use lingxia_devtool_protocol::{
-    DEV_SESSION_PROTOCOL_VERSION, DevSessionMessage, DevSessionRole, capabilities, handlers,
+use lingxia_control_protocol::dev_session::broker::Registration;
+pub use lingxia_control_protocol::dev_session::broker::SessionInfo;
+use lingxia_control_protocol::{
+    ControlRequest,
+    dev_session::{DEV_SESSION_PROTOCOL_VERSION, DevSessionMessage, DevSessionRole, capabilities},
+    methods,
 };
 use lingxia_log::now_timestamp_ms;
 use std::fs;
@@ -141,7 +143,7 @@ pub fn register_session(
         session,
         target,
         ws_url,
-        lingxia_devtool_protocol::broker::SessionContent::Host {
+        lingxia_control_protocol::dev_session::broker::SessionContent::Host {
             path: canonical_project_root(project_root),
         },
     )
@@ -152,7 +154,7 @@ pub fn register_session_with_content(
     session: &DevLogSession,
     target: &str,
     ws_url: &str,
-    content: lingxia_devtool_protocol::broker::SessionContent,
+    content: lingxia_control_protocol::dev_session::broker::SessionContent,
 ) -> Registration {
     let info = SessionInfo {
         session_id: session.session_id.clone(),
@@ -167,14 +169,14 @@ pub fn register_session_with_content(
         ws_url: ws_url.to_string(),
         log_file: session.log_file.display().to_string(),
     };
-    lingxia_devtool_protocol::broker::register_session(info, spawn_broker)
+    lingxia_control_protocol::dev_session::broker::register_session(info, spawn_broker)
 }
 
 /// Live sessions for this project, ordered by start time.
 pub fn list_sessions(project_root: &Path) -> Result<Vec<SessionInfo>> {
     let root = canonical_project_root(project_root);
     let mut sessions: Vec<SessionInfo> =
-        lingxia_devtool_protocol::broker::list_sessions_spawning(&spawn_broker)
+        lingxia_control_protocol::dev_session::broker::list_sessions_spawning(&spawn_broker)
             .context("Failed to query the dev-session broker")?
             .into_iter()
             .filter(|s| s.project_root == root)
@@ -269,11 +271,11 @@ pub fn request_shutdown(info: &SessionInfo) -> Result<()> {
     let command_id = format!("shutdown-{}", now_timestamp_ms());
     send_wire_message(
         &mut websocket,
-        &DevSessionMessage::Request {
+        &DevSessionMessage::Request(ControlRequest {
             id: command_id.clone(),
-            method: handlers::session::SHUTDOWN.to_string(),
+            method: methods::session::SHUTDOWN.to_string(),
             params: None,
-        },
+        }),
     )?;
 
     loop {
@@ -284,15 +286,11 @@ pub fn request_shutdown(info: &SessionInfo) -> Result<()> {
             continue;
         };
         match serde_json::from_str(&text) {
-            Ok(DevSessionMessage::Response {
-                id: result_id,
-                result: _,
-                error,
-            }) if result_id == command_id => {
-                if error.is_none() {
+            Ok(DevSessionMessage::Response(response)) if response.id == command_id => {
+                if response.error.is_none() {
                     return Ok(());
                 }
-                return Err(anyhow!("{}", error.unwrap().message));
+                return Err(anyhow!("{}", response.error.unwrap().message));
             }
             Ok(_) => continue,
             Err(err) => return Err(err).context("Failed to parse dev websocket shutdown response"),
@@ -319,11 +317,11 @@ fn devtools_ws_echo(ws_url: &str, timeout: Duration) -> Option<(bool, Option<ser
     let command_id = format!("probe-{}", now_timestamp_ms());
     if send_wire_message(
         &mut websocket,
-        &DevSessionMessage::Request {
+        &DevSessionMessage::Request(ControlRequest {
             id: command_id.clone(),
-            method: handlers::ECHO.to_string(),
+            method: methods::ECHO.to_string(),
             params: None,
-        },
+        }),
     )
     .is_err()
     {
@@ -338,11 +336,9 @@ fn devtools_ws_echo(ws_url: &str, timeout: Duration) -> Option<(bool, Option<ser
             continue;
         };
         match serde_json::from_str(&text) {
-            Ok(DevSessionMessage::Response {
-                id: result_id,
-                result,
-                error,
-            }) if result_id == command_id => return Some((error.is_none(), result)),
+            Ok(DevSessionMessage::Response(response)) if response.id == command_id => {
+                return Some((response.error.is_none(), response.result));
+            }
             Ok(_) => continue,
             Err(_) => return None,
         }

@@ -63,7 +63,7 @@ impl lingxia::HostAddon for RunnerDevtoolAddon {
     }
 
     fn start_services(&self) {
-        lingxia_devtool::start_devtool_bridge_from_env();
+        lingxia_control_runtime::start_dev_session_bridge_from_env();
     }
 }
 

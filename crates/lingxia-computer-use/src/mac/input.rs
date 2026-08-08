@@ -33,9 +33,10 @@ fn ensure_can_post() -> Result<()> {
     if CGPreflightPostEventAccess() {
         Ok(())
     } else {
-        Err(Error::Permission(
-            "input denied: grant Accessibility to this terminal in System Settings › Privacy & Security".into(),
-        ))
+        Err(Error::Permission(format!(
+            "input denied: grant Accessibility to {} in System Settings › Privacy & Security",
+            crate::responsible_app()
+        )))
     }
 }
 

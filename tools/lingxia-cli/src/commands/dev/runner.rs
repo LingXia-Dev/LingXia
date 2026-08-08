@@ -255,12 +255,14 @@ pub(super) fn execute_runner_dev(
 
         let content = match &target {
             RunnerDevTarget::LxApp(path) => {
-                lingxia_devtool_protocol::broker::SessionContent::LxApp {
+                lingxia_control_protocol::dev_session::broker::SessionContent::LxApp {
                     path: log_store::canonical_project_root(path),
                 }
             }
             RunnerDevTarget::Web(url) => {
-                lingxia_devtool_protocol::broker::SessionContent::Browser { url: url.clone() }
+                lingxia_control_protocol::dev_session::broker::SessionContent::Browser {
+                    url: url.clone(),
+                }
             }
         };
         let _session_registration = log_store::register_session_with_content(
