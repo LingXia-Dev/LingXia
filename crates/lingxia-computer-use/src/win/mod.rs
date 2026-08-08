@@ -12,6 +12,7 @@ mod ax;
 mod capture;
 mod clipboard;
 mod input;
+mod pip;
 mod process;
 mod wgc;
 mod window_ops;
@@ -28,6 +29,7 @@ pub use input::{
     key_down, key_press, key_type, key_up, pointer_click, pointer_down, pointer_drag, pointer_move,
     pointer_scroll, pointer_up,
 };
+pub use pip::{dismiss as pip_dismiss, note_activity as pip_note_activity};
 pub use process::{app_launch, app_quit, process_kill, process_list};
 pub use window_ops::{
     activate as window_activate, close as window_close, focus as window_focus,
@@ -335,6 +337,9 @@ unsafe extern "system" fn window_enum_proc(hwnd: HWND, lparam: LPARAM) -> BOOL {
         let mut class_buf = [0u16; 256];
         let clen = windows::Win32::UI::WindowsAndMessaging::GetClassNameW(hwnd, &mut class_buf);
         let class = String::from_utf16_lossy(&class_buf[..clen.max(0) as usize]);
+        if pip::is_viewer_class(&class) {
+            return TRUE;
+        }
 
         let ex = GetWindowLongW(hwnd, GWL_EXSTYLE) as u32;
         let topmost = ex & WS_EX_TOPMOST.0 != 0;

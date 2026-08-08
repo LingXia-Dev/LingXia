@@ -89,15 +89,15 @@ pub mod input {
 /// happened and it decides the rest: when to appear, what to follow, when to
 /// leave. The only control belongs to the person in front of the screen.
 ///
-/// Implemented on macOS; elsewhere this is a no-op.
+/// Implemented on macOS and Windows; elsewhere this is a no-op.
 pub mod pip {
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     pub use crate::backend::{pip_dismiss as dismiss, pip_note_activity as note_activity};
 
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     pub fn note_activity(_acted: crate::model::Acted) {}
 
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     pub fn dismiss() {}
 }
 

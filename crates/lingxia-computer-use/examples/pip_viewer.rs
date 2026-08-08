@@ -1,6 +1,7 @@
 //! Watch the viewer behave, and check it against the real window.
 //!
-//! The viewer is an AppKit panel with no command surface: nothing opens or
+//! This macOS inspection harness watches the AppKit panel. The viewer has no
+//! command surface: nothing opens or
 //! closes it, and the host only says what just happened to the machine. So
 //! everything here drives it the way a real run does — through
 //! `pip::note_activity` — and every assertion reads the actual window from the
@@ -11,7 +12,7 @@
 
 #[cfg(not(target_os = "macos"))]
 fn main() {
-    eprintln!("the viewer is macOS-only");
+    eprintln!("this visual inspection harness is macOS-only; the viewer also runs on Windows");
 }
 
 #[cfg(target_os = "macos")]
