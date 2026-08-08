@@ -282,7 +282,7 @@ fn render<C: CommandFactory>(manifest: &Manifest) -> Result<String> {
             manifest.command
         ));
         out.push_str(
-            "- On macOS, mutating computer commands may open a viewer for the \
+            "- On macOS and Windows, mutating computer commands may open a viewer for the \
              person. Never target, hide, or dismiss it.\n",
         );
     }

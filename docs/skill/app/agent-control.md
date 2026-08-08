@@ -69,11 +69,11 @@ that guesses its capabilities.
 Installation writes into another agent's configuration directory, so it is an
 explicit user command rather than a side effect of enabling automation.
 
-## macOS permissions and viewer
+## Desktop permissions and viewer
 
-`computerUse` needs Accessibility and Screen Recording. Commands execute inside
-the product, so macOS attributes both grants to the installed product rather
-than the terminal that invoked it.
+On macOS, `computerUse` needs Accessibility and Screen Recording. Commands
+execute inside the product, so macOS attributes both grants to the installed
+product rather than the terminal that invoked it.
 
 Before machine-wide work, the agent should run:
 
@@ -86,10 +86,16 @@ Screen capture without Screen Recording can otherwise look like an empty
 desktop. Signed builds retain grants across matching updates; unsigned rebuilt
 apps may prompt again.
 
-The first mutating `computerUse` command on macOS opens a small viewer showing
-what is being driven and the last acted point. It follows the work, avoids the
-pointer target, hides after roughly twelve seconds of inactivity, and returns
-on the next mutation. Read-only commands do not open it.
+The first mutating `computerUse` command on macOS or Windows opens a small
+viewer showing what is being driven and the last acted point. It follows the
+work, avoids the pointer target, hides after roughly twelve seconds of
+inactivity, and returns on the next mutation. Read-only commands do not open it.
+
+Each product process owns at most one viewer. Separate running products do not
+coordinate a machine-wide viewer; the viewer always represents the mutations
+performed through its own product process. On Windows it mirrors the visible
+desktop pixels for the target, so another window covering the target is shown
+as the person actually sees it.
 
 The viewer is not an agent command. It ignores mouse input so it cannot block
 the underlying target. A product that offers a human dismiss control calls the
