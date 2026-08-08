@@ -103,7 +103,7 @@ pub fn run_if_invoked(state_dir: &Path) -> Option<i32> {
         }
         Command::Computer(options) => desktop::execute(&desktop::Backend::App(&transport), options),
         Command::Skills(options) => skills::execute::<Cli>(&manifest(&transport), options),
-        Command::Control { action } => control(state_dir, action),
+        Command::Control { action } => control(state_dir, &transport, action),
         Command::Own(command) => {
             let context = app::AppContext {
                 transport: &transport,
@@ -121,38 +121,103 @@ pub fn run_if_invoked(state_dir: &Path) -> Option<i32> {
     })
 }
 
-/// The persisted answer lives beside the app's data, which is the directory
-/// above the host-owned state directory the socket is in.
-fn control(state_dir: &Path, action: ControlAction) -> i32 {
+/// What is *true* right now, not only what was written down.
+///
+/// The persisted setting and the running app can disagree — a product that has
+/// not restarted is still listening after the setting says otherwise — and a
+/// consent control that reports "off" while automation is live is worse than
+/// one that reports nothing. So `status` asks the endpoint, and `disable`
+/// tells it to stop rather than leaving a note for next time.
+fn control(
+    state_dir: &Path,
+    transport: &dyn crate::transport::Transport,
+    action: ControlAction,
+) -> i32 {
     let Some(app_data_dir) = state_dir.parent() else {
         eprintln!("Error: cannot locate this product's data directory");
         return 10;
     };
-    let wanted = match action {
-        ControlAction::Status => {
-            let on = lingxia_settings::control_enabled(app_data_dir);
-            println!("automation interface: {}", if on { "on" } else { "off" });
-            return 0;
-        }
-        ControlAction::Enable => true,
-        ControlAction::Disable => false,
+    let listening = || {
+        transport
+            .request(lingxia_devtool_protocol::handlers::control::STATUS, None)
+            .ok()
+            .and_then(|value| value?.get("listening")?.as_bool())
+            .unwrap_or(false)
     };
-    match lingxia_settings::set_control_enabled(app_data_dir, wanted) {
-        Ok(()) => {
+
+    match action {
+        ControlAction::Status => {
+            let live = listening();
+            let persisted = lingxia_settings::control_enabled(app_data_dir);
             println!(
                 "automation interface: {}",
-                if wanted { "on" } else { "off" }
+                match (live, persisted) {
+                    (true, _) => "on, and answering now",
+                    (false, true) => "on at next start (nothing is listening yet)",
+                    (false, false) => "off",
+                }
             );
-            // The running app reads this when it starts. Saying so beats a
-            // silent success that appears to have done nothing.
-            println!("takes effect the next time this product starts");
+            if live || persisted {
+                println!("command: {}", launcher_path(state_dir).display());
+            }
             0
         }
-        Err(error) => {
-            eprintln!("Error: {error}");
-            10
+        ControlAction::Enable => match lingxia_settings::set_control_enabled(app_data_dir, true) {
+            Ok(()) => {
+                println!("automation interface: on at next start");
+                let bin = launcher_path(state_dir);
+                println!("command: {}", bin.display());
+                // The app cannot change the PATH of a terminal already open, so
+                // the one thing it can usefully do is say the line to add.
+                if let Some(dir) = bin.parent() {
+                    println!("to type it bare, add to your shell profile:");
+                    println!("  export PATH=\"{}:$PATH\"", dir.display());
+                }
+                0
+            }
+            Err(error) => {
+                eprintln!("Error: {error}");
+                10
+            }
+        },
+        ControlAction::Disable => {
+            // Ask the running product first: it is the only thing that can
+            // actually stop answering, and it persists the choice too.
+            let stopped = transport
+                .request(lingxia_devtool_protocol::handlers::control::DISABLE, None)
+                .is_ok();
+            if !stopped
+                && let Err(error) = lingxia_settings::set_control_enabled(app_data_dir, false)
+            {
+                eprintln!("Error: {error}");
+                return 10;
+            }
+            println!("automation interface: off");
+            if !stopped {
+                println!("nothing was listening; it will not start next time either");
+            }
+            0
         }
     }
+}
+
+/// Where the product writes the launcher when the interface is on.
+fn launcher_path(state_dir: &Path) -> std::path::PathBuf {
+    let name = std::env::current_exe()
+        .ok()
+        .and_then(|path| {
+            path.file_name().and_then(|name| name.to_str()).map(|name| {
+                name.trim_end_matches(std::env::consts::EXE_SUFFIX)
+                    .to_lowercase()
+            })
+        })
+        .unwrap_or_else(|| "app".to_string());
+    let file = if cfg!(windows) {
+        format!("{name}.cmd")
+    } else {
+        name
+    };
+    state_dir.join("bin").join(file)
 }
 
 /// One rule for what a failure costs the caller. The documented scheme is
@@ -213,7 +278,7 @@ fn manifest(transport: &dyn crate::transport::Transport) -> skills::Manifest {
     // Ask the product rather than assume: a skill that lists a namespace the
     // socket refuses is worse than one that admits it does not know.
     manifest.declared = transport
-        .request(lingxia_devtool_protocol::handlers::app::DOCTOR, None)
+        .request(lingxia_devtool_protocol::handlers::control::STATUS, None)
         .ok()
         .and_then(|result| result?.get("declared")?.as_array().cloned())
         .map(|values| {

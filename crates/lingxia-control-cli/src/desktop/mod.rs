@@ -641,6 +641,14 @@ pub fn execute(backend: &Backend, options: DesktopOptions) -> i32 {
     match options.command {
         DesktopCommand::Doctor { json } => finish(json, backend.doctor(), print_doctor),
         DesktopCommand::Permissions { request, json } => {
+            if request {
+                // Prompting puts a system dialog in front of someone and can
+                // change what this tool is allowed to do afterwards. Reading
+                // the current grants does not.
+                if let Err(error) = gate(allow_control, false, allow_destructive) {
+                    return finish::<cu::Permissions>(json, Err(error), print_permissions);
+                }
+            }
             let perms = if request {
                 backend.request_permissions()
             } else {
@@ -1045,7 +1053,9 @@ fn run_clipboard(
             finish(json, r, print_ack)
         }
         ClipboardAction::Clear { json } => {
-            let r = gate(allow_control, false, allow_destructive)
+            // Whatever was on the clipboard is not coming back, and it may be
+            // the only copy of something a person cut a moment ago.
+            let r = gate(allow_control, true, allow_destructive)
                 .and_then(|_| backend.clipboard_clear());
             finish(json, r, print_ack)
         }

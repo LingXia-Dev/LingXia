@@ -48,8 +48,9 @@ decision, the same way `autostart` works: the product can register itself at
 login, and only the user says it should.
 
 The endpoint stays closed until they turn it on, and turning it off leaves
-nothing behind — no socket, no command on `PATH`. Nothing that suggests it is
-still on.
+nothing behind — no socket, no launcher. Nothing that suggests it is still on.
+`control disable` reaches the running product and stops it there, rather than
+leaving a note for the next start.
 
 ---
 
@@ -61,15 +62,12 @@ other. Typing a subcommand, or arriving through the launcher, runs the command
 and exits; launching the app normally starts the app.
 
 When the capability is switched on, the product writes a small launcher into
-its own state directory and that directory goes on `PATH` for terminals it
-spawns. So:
+its own state directory. `<product> control enable` prints where, and the line
+to add to a shell profile — an app cannot change the `PATH` of a terminal that
+is already open, so that one step is the user's.
 
-- **an agent running in the product's own terminal** needs no installation at
-  all — the command is already on its `PATH`
-- **an agent in the user's own terminal** gets it once the user has switched
-  the capability on
-
-Every command takes `--json`. Failures carry an exit code, not just a message:
+Most commands take `--json`; `--help` is exact about which. Failures carry an
+exit code, not just a message:
 
 | | |
 |---:|---|
@@ -83,8 +81,14 @@ Every command takes `--json`. Failures carry an exit code, not just a message:
 | 9 | stale handle (an id that no longer exists) |
 | 10 | failed after the target was resolved |
 
-Commands that change something need `--allow-control`; destructive ones also
-need `--allow-destructive`.
+Commands that change something need `--allow-control`; ones that lose
+something — closing a window, quitting an app, clearing the clipboard or a
+cookie jar — also need `--allow-destructive`.
+
+`control status` asks the running product rather than reading the saved
+setting, because the two disagree until a restart, and a consent control that
+reports "off" while automation is still answering is worse than one that
+reports nothing.
 
 ---
 
@@ -146,7 +150,9 @@ window lists, accessibility queries — never open it.
 
 There is no command for it, deliberately. It exists so a person can see their
 own machine being driven, and an agent able to switch it off could work
-unobserved. Closing it is the person's to do, and it stays closed for that run.
+unobserved. Dismissing it is the person's to do and lasts for that run — the
+affordance is the product's to provide (a menu item, a settings switch), since
+the panel ignores the mouse and cannot be closed by clicking it.
 
 It ignores the mouse, so it can never swallow a click meant for what is
 underneath it; when the work happens under it, it moves to another corner.

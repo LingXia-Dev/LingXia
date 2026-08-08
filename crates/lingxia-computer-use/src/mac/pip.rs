@@ -216,6 +216,18 @@ fn put_away(only: Option<u64>) {
     });
 }
 
+/// Put the viewer away for the rest of the run, at a person's request.
+///
+/// The panel ignores the mouse so it can never swallow a click meant for what
+/// is underneath it, which also means it cannot be closed by clicking one. The
+/// affordance therefore has to come from the product — a menu item, a settings
+/// switch, a shortcut — and this is what it calls. Without one, nothing a
+/// person does can dismiss it.
+pub fn dismiss() {
+    state().dismissed = true;
+    put_away(None);
+}
+
 /// Record that something was just acted on, and open the viewer if this is the
 /// first time this run.
 ///

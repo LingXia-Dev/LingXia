@@ -909,6 +909,25 @@ fn is_authoring_platform(value: &str) -> bool {
     AUTHORING_PLATFORMS.contains(&value)
 }
 
+/// Capabilities that only mean something alongside another.
+///
+/// Deriving the feature independently turns a typo into a build that
+/// contradicts what was declared — every browser command answering "feature
+/// unavailable" in a product whose configuration says it drives the browser.
+/// Better to refuse with a sentence naming the missing line.
+fn validate_capability_dependencies(capabilities: Option<&CapabilitiesConfig>) -> Result<()> {
+    let Some(capabilities) = capabilities else {
+        return Ok(());
+    };
+    if capabilities.browser_use && !capabilities.browser {
+        return Err(anyhow!(
+            "capabilities.browserUse drives the in-app browser, which this product does not have; \
+             add `browser: true` or remove `browserUse`"
+        ));
+    }
+    Ok(())
+}
+
 fn validate_app_platforms(app: &HostAppConfig) -> Result<Vec<String>> {
     if app.platforms.is_empty() {
         return Err(anyhow!("app.platforms must include at least one platform"));
@@ -1716,6 +1735,7 @@ impl LingXiaConfig {
             .as_ref()
             .ok_or_else(|| anyhow!("surfaces requires app.platforms"))?;
         let app_platforms = validate_app_platforms(app)?;
+        validate_capability_dependencies(self.capabilities.as_ref())?;
         validate_surface_platforms(surfaces, &app_platforms)?;
         let terminal_enabled = self
             .capabilities

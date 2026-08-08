@@ -61,6 +61,15 @@ pub mod invocation {
 pub mod handlers {
     pub const ECHO: &str = "echo";
 
+    /// The automation interface talking about itself. Both are answered
+    /// without a capability declaration: they reveal only whether anyone is
+    /// listening, which a connect already reveals, and the only power they
+    /// offer is taking automation *away*.
+    pub mod control {
+        pub const STATUS: &str = "control.status";
+        pub const DISABLE: &str = "control.disable";
+    }
+
     pub mod session {
         /// Prepare an optional supervised session participant. The response is
         /// [`DevSessionPrepareResult`].

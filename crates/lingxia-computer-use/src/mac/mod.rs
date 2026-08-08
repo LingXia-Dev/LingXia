@@ -44,7 +44,7 @@ pub use input::{
     key_down, key_press, key_type, key_up, pointer_click, pointer_down, pointer_drag, pointer_move,
     pointer_scroll, pointer_up,
 };
-pub use pip::note_activity as pip_note_activity;
+pub use pip::{dismiss as pip_dismiss, note_activity as pip_note_activity};
 pub use process::{app_launch, app_quit, process_kill, process_list};
 pub use window_ops::{
     activate as window_activate, close as window_close, focus as window_focus,

@@ -90,10 +90,13 @@ pub mod input {
 /// Implemented on macOS; elsewhere this is a no-op.
 pub mod pip {
     #[cfg(target_os = "macos")]
-    pub use crate::backend::pip_note_activity as note_activity;
+    pub use crate::backend::{pip_dismiss as dismiss, pip_note_activity as note_activity};
 
     #[cfg(not(target_os = "macos"))]
     pub fn note_activity(_acted: crate::model::Acted) {}
+
+    #[cfg(not(target_os = "macos"))]
+    pub fn dismiss() {}
 }
 
 /// Window management (`desktop window ...`). All mutating.

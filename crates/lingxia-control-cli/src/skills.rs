@@ -114,30 +114,64 @@ fn skill_dir(agent: Agent, manifest: &Manifest) -> Result<PathBuf> {
     Ok(root.join(&manifest.command))
 }
 
+/// Left beside the skill so removal can tell what it wrote from what it found.
+const OWNED: &str = ".lingxia-product-skill";
+
 fn install(agent: Agent, manifest: &Manifest, body: &str) -> Result<String> {
     let directory = skill_dir(agent, manifest)?;
+    // A product name that happens to match a skill someone wrote themselves
+    // must not silently replace it. This directory belongs to another tool and
+    // the files in it are not ours to assume.
+    if directory.exists() && !owned(&directory) {
+        anyhow::bail!(
+            "{} already exists and was not written by this product; \
+             rename the product or remove that directory first",
+            directory.display()
+        );
+    }
     std::fs::create_dir_all(&directory)
         .with_context(|| format!("failed to create {}", directory.display()))?;
+    std::fs::write(directory.join(OWNED), manifest.product.as_bytes())
+        .with_context(|| format!("failed to mark {}", directory.display()))?;
     let path = directory.join("SKILL.md");
     std::fs::write(&path, body).with_context(|| format!("failed to write {}", path.display()))?;
     Ok(format!("{}: {}", agent.label(), path.display()))
 }
 
+fn owned(directory: &Path) -> bool {
+    directory.join(OWNED).exists()
+}
+
 fn remove(agent: Agent, manifest: &Manifest) -> Result<String> {
     let directory = skill_dir(agent, manifest)?;
-    match std::fs::remove_dir_all(&directory) {
-        Ok(()) => Ok(format!(
-            "{}: removed {}",
-            agent.label(),
+    if !directory.exists() {
+        return Ok(format!("{}: nothing to remove", agent.label()));
+    }
+    // Only what this product wrote. A directory it did not create may hold
+    // someone's own work, and a name collision is not a licence to delete it.
+    if !owned(&directory) {
+        anyhow::bail!(
+            "{} was not written by this product; leaving it alone",
             directory.display()
-        )),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            Ok(format!("{}: nothing to remove", agent.label()))
-        }
-        Err(error) => {
-            Err(error).with_context(|| format!("failed to remove {}", directory.display()))
+        );
+    }
+    for file in ["SKILL.md", OWNED] {
+        match std::fs::remove_file(directory.join(file)) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => {
+                return Err(error)
+                    .with_context(|| format!("failed to remove {}", directory.display()));
+            }
         }
     }
+    // Only if nothing else moved in.
+    let _ = std::fs::remove_dir(&directory);
+    Ok(format!(
+        "{}: removed {}",
+        agent.label(),
+        directory.display()
+    ))
 }
 
 /// Walk to the leaves. Stopping one level down left an agent with
@@ -153,8 +187,19 @@ fn walk(command: &clap::Command, prefix: &str, out: &mut Vec<String>) {
         if child.get_subcommands().next().is_some() {
             walk(child, &path, out);
         } else {
+            // The required options too. A leaf on its own is a form that
+            // cannot be run, and an agent handed one will invent the rest.
+            let required: Vec<String> = child
+                .get_arguments()
+                .filter(|arg| arg.is_required_set())
+                .map(|arg| match arg.get_long() {
+                    Some(long) => format!(" --{long} <{}>", arg.get_id()),
+                    None => format!(" <{}>", arg.get_id()),
+                })
+                .collect();
             out.push(format!(
-                "- `{path}`{}",
+                "- `{path}{}`{}",
+                required.join(""),
                 child
                     .get_about()
                     .map(|about| format!(" — {about}"))
@@ -173,14 +218,23 @@ fn allowed(manifest: &Manifest, namespace: &str) -> bool {
         return true;
     };
     // The namespaces that ride a capability, by the name the product declares.
+    // The product's own window commands sit at the top level rather than under
+    // a prefix, so they have to be named individually — a browser-only product
+    // must not be told it can screenshot windows it will be refused.
     let needs = match namespace {
         "computer" => "computerUse",
         "browser" => "browserUse",
-        // Everything else is either the product's own surface or a command
-        // about the tool rather than about the machine.
+        "screenshot" | "windows" | "mouse" | "key" | "doctor" => "appUse",
+        // What is left is about the tool rather than about the machine.
         _ => return true,
     };
-    declared.iter().any(|name| name == needs)
+    // `computerUse` contains `appUse`: an agent that may drive any window can
+    // reach this product's own through the wider door. The product reports both
+    // when it declares the wider one, and applying the rule here too means a
+    // hand-written list cannot make the skill disagree with the endpoint.
+    declared
+        .iter()
+        .any(|name| name == needs || (needs == "appUse" && name == "computerUse"))
 }
 
 /// Render the skill from the command definition itself.
@@ -251,10 +305,11 @@ fn render<C: CommandFactory>(manifest: &Manifest) -> String {
 
     out.push_str("## Reading results\n\n");
     out.push_str(
-        "Every command takes `--json` for machine-readable output. Failures use \
-         the exit code, not just the message: 2 usage, 3 not found, 4 ambiguous, \
-         5 timeout, 6 permission, 7 unsupported, 8 unavailable, 9 stale handle, \
-         10 failed after the target was resolved.\n\n",
+        "Most commands take `--json` for machine-readable output; `--help` on \
+         any of them is exact about which. Failures use the exit code, not just \
+         the message: 2 usage, 3 not found, 4 ambiguous, 5 timeout, \
+         6 permission, 7 unsupported, 8 unavailable, 9 stale handle, 10 failed \
+         after the target was resolved.\n\n",
     );
     out.push_str(
         "Commands that change something need `--allow-control`; the destructive \
@@ -364,6 +419,18 @@ mod tests {
         assert!(
             !body.contains("`myapp computer pointer click`"),
             "a namespace nobody declared must not be described"
+        );
+
+        // The product's own window commands sit at the top level, so they are
+        // the easy ones to forget to filter.
+        let browser_only = Manifest {
+            command: "myapp".into(),
+            product: "My App".into(),
+            declared: Some(vec!["browserUse".into()]),
+        };
+        assert!(
+            !render::<Fake>(&browser_only).contains("`myapp screenshot`"),
+            "a browser-only product cannot screenshot its own windows"
         );
     }
 

@@ -51,6 +51,11 @@ pub fn dispatch(
         return message;
     }
 
+    #[cfg(feature = "control-socket")]
+    if let Some(result) = control::handle_control_command(&method) {
+        return command_result(id, result);
+    }
+
     if let Some(result) = app::handle_app_command(&method, params.clone()) {
         command_result(id, result)
     } else if let Some(result) = browser::handle_browser_command(&method, params.clone()) {

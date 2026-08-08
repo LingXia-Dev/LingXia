@@ -48,33 +48,6 @@ pub fn remove(state_dir: &Path) -> std::io::Result<()> {
     }
 }
 
-/// Environment a session we spawn needs to find the product's command line.
-///
-/// An agent running in the product's own terminal needs no installation step:
-/// the launcher directory is already on its `PATH`.
-pub fn session_environment(state_dir: &Path, endpoint: &str) -> Vec<(String, String)> {
-    let mut environment = Vec::new();
-    match install(state_dir, endpoint) {
-        Ok(launcher) => {
-            log::info!("product command: {}", launcher.display());
-            // `split_paths`/`join_paths` spell the separator the platform uses,
-            // so prepending is one implementation rather than a `:` and a `;`.
-            let mut entries = vec![bin_dir(state_dir)];
-            entries.extend(std::env::split_paths(
-                &std::env::var_os("PATH").unwrap_or_default(),
-            ));
-            match std::env::join_paths(entries) {
-                Ok(path) => {
-                    environment.push(("PATH".to_string(), path.to_string_lossy().into_owned()))
-                }
-                Err(error) => log::warn!("session PATH not extended: {error}"),
-            }
-        }
-        Err(error) => log::warn!("product command launcher not installed: {error}"),
-    }
-    environment
-}
-
 /// Lowercased and stripped to what a shell takes without quoting: the name
 /// exists to be typed, and a product called "My App" must not require escaping.
 pub fn command_name(product_name: &str) -> String {

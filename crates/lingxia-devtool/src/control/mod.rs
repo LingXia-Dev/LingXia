@@ -132,6 +132,43 @@ pub fn set_enabled(enabled: bool) -> std::io::Result<()> {
     }
 }
 
+/// The interface answering questions about itself.
+///
+/// Both are reachable without a declared capability. `status` reveals only
+/// what a successful connect already reveals, and `disable` can only take
+/// automation away — a switch that needed permission to turn *off* would be
+/// the wrong way round.
+pub(crate) fn handle_control_command(
+    method: &str,
+) -> Option<Result<Option<serde_json::Value>, String>> {
+    use lingxia_devtool_protocol::handlers::control as name;
+    match method {
+        // The declared list rides here rather than on `app.doctor`, which is
+        // itself behind `appUse` — a product that declared only `browserUse`
+        // could not have answered, and a skill written against "unknown" then
+        // describes every namespace the product will refuse.
+        name::STATUS => Some(Ok(Some(serde_json::json!({
+            "listening": is_listening(),
+            "declared": crate::app::declared_capabilities(),
+        })))),
+        name::DISABLE => {
+            // Stop now, and persist it, so the answer does not depend on which
+            // of the two a later question happens to ask.
+            let persisted = STATE_DIR
+                .get()
+                .and_then(|state_dir| state_dir.parent())
+                .map(|app_data_dir| lingxia_settings::set_control_enabled(app_data_dir, false));
+            let stopped = set_enabled(false);
+            Some(match (stopped, persisted) {
+                (Err(error), _) => Err(error.to_string()),
+                (_, Some(Err(error))) => Err(error.to_string()),
+                _ => Ok(Some(serde_json::json!({ "listening": false }))),
+            })
+        }
+        _ => None,
+    }
+}
+
 /// Whether the endpoint is listening right now.
 pub fn is_listening() -> bool {
     RUNNING
@@ -261,10 +298,15 @@ pub(crate) fn reply_with(
 /// it declared are what a user consented to. A namespace that is merely
 /// compiled in must not therefore be reachable.
 fn refuse_unless_declared(method: &str) -> Option<String> {
-    // The liveness probe, and the only thing answered without a declaration: a
-    // client has to be able to ask whether anyone is home before it knows what
-    // it may ask for.
-    if method == lingxia_devtool_protocol::handlers::ECHO {
+    // The liveness probe, and the two methods that only ever reduce what is
+    // possible: a client has to be able to ask whether anyone is home, and
+    // switching automation off must never itself need permission.
+    if matches!(
+        method,
+        lingxia_devtool_protocol::handlers::ECHO
+            | lingxia_devtool_protocol::handlers::control::STATUS
+            | lingxia_devtool_protocol::handlers::control::DISABLE
+    ) {
         return None;
     }
     let namespace = method

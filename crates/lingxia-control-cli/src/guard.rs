@@ -43,6 +43,12 @@ pub fn env_flag(name: &str) -> bool {
 /// the contract — it decides the exit status, so a failure that arrives as
 /// plain prose has already lost.
 pub fn decode_failure(error: &anyhow::Error) -> cu::Error {
+    // A failure raised on this side never crossed a transport and has its code
+    // intact. Reading it out of the rendered string first would find nothing
+    // and file every local refusal as a generic failure.
+    if let Some(local) = error.downcast_ref::<cu::Error>() {
+        return cu::Error::from_code(local.code(), &local.to_string());
+    }
     let text = error.to_string();
     for code in [
         cu::ErrorCode::Usage,
@@ -98,5 +104,11 @@ mod tests {
         // Anything with no code at all is still a failure, not a success.
         let bare = anyhow::anyhow!("the socket went away");
         assert_eq!(exit_code(&bare), 10);
+
+        // A refusal raised locally never crossed a transport, so there is no
+        // marker in its text — but it is still a permission answer, and an
+        // agent branching on the code must see one.
+        let refused: anyhow::Error = cu::Error::Permission("needs --allow-control".into()).into();
+        assert_eq!(exit_code(&refused), 6);
     }
 }

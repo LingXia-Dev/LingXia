@@ -126,7 +126,7 @@ fn build_app_doctor() -> Value {
     })
 }
 
-fn declared_capabilities() -> Vec<&'static str> {
+pub(crate) fn declared_capabilities() -> Vec<&'static str> {
     let Some(capabilities) =
         lingxia_app_context::app_config().and_then(|c| c.capabilities.as_ref())
     else {
