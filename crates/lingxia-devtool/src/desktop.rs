@@ -25,8 +25,8 @@ pub fn handle(id: String, name: &str, params: Option<Value>) -> Option<DevSessio
     let outcome = dispatch(name, params.clone());
     // Only after it worked, and only for the commands that change the machine.
     // A person watching wants to see what happened, not what was attempted.
-    if outcome.is_ok()
-        && let Some(acted) = actuation(name, params.as_ref())
+    if let Ok(result) = &outcome
+        && let Some(acted) = actuation(name, params.as_ref(), result.as_ref())
     {
         cu::pip::note_activity(acted);
     }
@@ -42,7 +42,7 @@ pub fn handle(id: String, name: &str, params: Option<Value>) -> Option<DevSessio
 /// same two fields from a dozen different call shapes, and decoding each one
 /// again to reach them would put a second copy of every argument list here to
 /// drift against the first.
-fn actuation(name: &str, params: Option<&Value>) -> Option<cu::Acted> {
+fn actuation(name: &str, params: Option<&Value>, result: Option<&Value>) -> Option<cu::Acted> {
     const ACTUATES: &[&str] = &[
         "desktop.pointer.",
         "desktop.key.",
@@ -84,22 +84,35 @@ fn actuation(name: &str, params: Option<&Value>) -> Option<cu::Acted> {
     };
     let number = |key: &str| params.get(key).and_then(Value::as_i64).map(|n| n as i32);
 
+    // Prefer the window the command *resolved*, not the one it was asked for.
+    // `window focus --match process:Edge` names a query, and answering "no
+    // particular window" would leave the viewer mirroring a whole display when
+    // the command knew exactly which window it acted on — and a window is the
+    // better thing to watch anyway, since its capture survives being covered.
+    let resolved = result
+        .filter(|_| name.starts_with("desktop.window."))
+        .and_then(|value| value.get("id"))
+        .and_then(Value::as_str)
+        .map(str::to_string);
+
     // Only the window commands and the accessibility ones name a window. A
     // pointer or key command's `target` is a **process id** — it narrows where
     // the event is delivered and says nothing about coordinates, which stay
     // global on every backend.
-    let window = params
-        .get("window_id")
-        .and_then(Value::as_str)
-        .map(str::to_string)
-        .or_else(|| {
-            serde_json::from_value::<cu::WindowTarget>(params.get("target")?.clone())
-                .ok()
-                .and_then(|target| match target {
-                    cu::WindowTarget::Id(id) => Some(id),
-                    cu::WindowTarget::Match(_) => None,
-                })
-        });
+    let window = resolved.or_else(|| {
+        params
+            .get("window_id")
+            .and_then(Value::as_str)
+            .map(str::to_string)
+            .or_else(|| {
+                serde_json::from_value::<cu::WindowTarget>(params.get("target")?.clone())
+                    .ok()
+                    .and_then(|target| match target {
+                        cu::WindowTarget::Id(id) => Some(id),
+                        cu::WindowTarget::Match(_) => None,
+                    })
+            })
+    });
 
     let point = number("x")
         .zip(number("y"))
@@ -419,7 +432,7 @@ mod tests {
             "desktop.pip.status",
         ] {
             assert!(
-                actuation(name, Some(&serde_json::json!({"x": 1, "y": 2}))).is_none(),
+                actuation(name, Some(&serde_json::json!({"x": 1, "y": 2})), None).is_none(),
                 "{name} only looks at the machine"
             );
         }
@@ -437,7 +450,7 @@ mod tests {
             "desktop.permissions.request",
         ] {
             assert!(
-                actuation(name, Some(&serde_json::json!({}))).is_some(),
+                actuation(name, Some(&serde_json::json!({})), None).is_some(),
                 "{name} changes the machine"
             );
         }
@@ -447,7 +460,7 @@ mod tests {
         // clipboard paste.
         for name in ["desktop.clipboard.paste", "desktop.clipboard.clear"] {
             assert!(
-                actuation(name, None).is_some(),
+                actuation(name, None, None).is_some(),
                 "{name} changes the machine even with no parameters"
             );
         }
@@ -461,6 +474,7 @@ mod tests {
         let global = actuation(
             "desktop.pointer.click",
             Some(&serde_json::json!({"x": 40, "y": 90})),
+            None,
         );
         assert!(matches!(global, Some(cu::Acted::At { x: 40, y: 90 })));
 
@@ -470,6 +484,7 @@ mod tests {
         let delivered = actuation(
             "desktop.pointer.click",
             Some(&serde_json::json!({"x": 40, "y": 90, "target": 291})),
+            None,
         );
         assert!(matches!(delivered, Some(cu::Acted::At { x: 40, y: 90 })));
 
@@ -477,6 +492,7 @@ mod tests {
         let drag = actuation(
             "desktop.pointer.drag",
             Some(&serde_json::json!({"from_x": 1, "from_y": 2, "to_x": 30, "to_y": 40})),
+            None,
         );
         assert!(matches!(drag, Some(cu::Acted::At { x: 30, y: 40 })));
 
@@ -484,10 +500,25 @@ mod tests {
         let window = actuation(
             "desktop.window.focus",
             Some(&serde_json::json!({"target": {"Id": "0x7f"}})),
+            None,
         );
         let Some(cu::Acted::Window(id)) = window else {
             panic!("a window command names its window");
         };
         assert_eq!(id, "0x7f");
+
+        // A `--match` names a query, not a window, but the command resolved
+        // one and said so. Watching the display instead would mirror whatever
+        // the person switched to next, which is how a viewer stops showing the
+        // thing it was opened for.
+        let matched = actuation(
+            "desktop.window.focus",
+            Some(&serde_json::json!({"target": {"Match": {"process": "Edge"}}})),
+            Some(&serde_json::json!({"id": "0x2600", "title": "Bing"})),
+        );
+        let Some(cu::Acted::Window(id)) = matched else {
+            panic!("the window a command resolved is the window to watch");
+        };
+        assert_eq!(id, "0x2600");
     }
 }
