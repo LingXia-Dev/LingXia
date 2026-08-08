@@ -482,6 +482,10 @@ jobs:
         shell: bash
         run: cargo test -p lingxia-platform codec_subtypes_use_stable_mime_names
 
+      - name: Test Windows computer-use state and backend
+        shell: bash
+        run: cargo test -p lingxia-computer-use --lib
+
       # `--workspace` above only builds each crate's default features, i.e.
       # windows-sdk's `standard`. Exercise the other tiers standalone too — in
       # particular `components` (advanced / bring-your-own-host mode, without the
