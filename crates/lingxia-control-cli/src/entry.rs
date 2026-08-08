@@ -24,6 +24,11 @@ use crate::{app, browser, desktop, skills};
     about = "Drive this product from the command line"
 )]
 struct Cli {
+    /// Authorize input sent to this product's own windows. The machine and
+    /// browser namespaces carry their own copies of this flag; this one covers
+    /// the commands that sit at the top level.
+    #[arg(long, global = true)]
+    allow_control: bool,
     #[command(subcommand)]
     command: Command,
 }
@@ -43,6 +48,28 @@ enum Command {
     Computer(desktop::DesktopOptions),
     /// Write an agent skill describing these commands
     Skills(skills::SkillsOptions),
+    /// Turn the automation interface on or off, and report it
+    Control {
+        #[command(subcommand)]
+        action: ControlAction,
+    },
+}
+
+/// Shipping the capability is not the same as switching it on: this endpoint
+/// hands any local process the product's whole automation surface, so the build
+/// decides whether the ability exists and the user decides whether it listens.
+///
+/// A settings screen can call `control::set_enabled` for immediate effect. This
+/// exists so a product that has not built one is still something a person can
+/// switch on, rather than a capability with no way to reach it.
+#[derive(clap::Subcommand)]
+pub enum ControlAction {
+    /// Report whether the interface is switched on
+    Status,
+    /// Allow local processes to drive this product
+    Enable,
+    /// Stop answering, and remove the command from PATH
+    Disable,
 }
 
 /// Run the command line and return its exit code, or `None` to become the app.
@@ -65,37 +92,81 @@ pub fn run_if_invoked(state_dir: &Path) -> Option<i32> {
             return Some(error.exit_code());
         }
     };
+    let allow_control = cli.allow_control;
     Some(match cli.command {
         Command::Browser(options) => {
             let context = browser::BrowserContext {
                 transport: &transport,
                 target: std::env::consts::OS.to_string(),
             };
-            match browser::execute(&context, options) {
-                Ok(()) => 0,
-                Err(error) => {
-                    eprintln!("Error: {error}");
-                    1
-                }
-            }
+            report(browser::execute(&context, options))
         }
         Command::Computer(options) => desktop::execute(&desktop::Backend::App(&transport), options),
         Command::Skills(options) => skills::execute::<Cli>(&manifest(&transport), options),
+        Command::Control { action } => control(state_dir, action),
         Command::Own(command) => {
             let context = app::AppContext {
                 transport: &transport,
                 target: std::env::consts::OS.to_string(),
                 session: None,
             };
-            match app::execute(&context, app::AppOptions { command }) {
-                Ok(()) => 0,
-                Err(error) => {
-                    eprintln!("Error: {error}");
-                    1
-                }
-            }
+            report(app::execute(
+                &context,
+                app::AppOptions {
+                    allow_control,
+                    command,
+                },
+            ))
         }
     })
+}
+
+/// The persisted answer lives beside the app's data, which is the directory
+/// above the host-owned state directory the socket is in.
+fn control(state_dir: &Path, action: ControlAction) -> i32 {
+    let Some(app_data_dir) = state_dir.parent() else {
+        eprintln!("Error: cannot locate this product's data directory");
+        return 10;
+    };
+    let wanted = match action {
+        ControlAction::Status => {
+            let on = lingxia_settings::control_enabled(app_data_dir);
+            println!("automation interface: {}", if on { "on" } else { "off" });
+            return 0;
+        }
+        ControlAction::Enable => true,
+        ControlAction::Disable => false,
+    };
+    match lingxia_settings::set_control_enabled(app_data_dir, wanted) {
+        Ok(()) => {
+            println!(
+                "automation interface: {}",
+                if wanted { "on" } else { "off" }
+            );
+            // The running app reads this when it starts. Saying so beats a
+            // silent success that appears to have done nothing.
+            println!("takes effect the next time this product starts");
+            0
+        }
+        Err(error) => {
+            eprintln!("Error: {error}");
+            10
+        }
+    }
+}
+
+/// One rule for what a failure costs the caller. The documented scheme is
+/// 2 usage, 3 not found, 4 ambiguous, 5 timeout, 6 permission, 7 unsupported,
+/// 8 unavailable, 9 stale, 10 failed — and an agent branches on it, so a
+/// command that answered every problem with `1` was making that impossible.
+fn report(outcome: anyhow::Result<()>) -> i32 {
+    match outcome {
+        Ok(()) => 0,
+        Err(error) => {
+            eprintln!("Error: {error}");
+            crate::guard::exit_code(&error)
+        }
+    }
 }
 
 /// Whether the first argument names one of our subcommands.
@@ -106,6 +177,7 @@ pub fn run_if_invoked(state_dir: &Path) -> Option<i32> {
 const COMMANDS: &[&str] = &[
     "browser",
     "computer",
+    "control",
     "skills",
     "doctor",
     "screenshot",

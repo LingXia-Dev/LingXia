@@ -65,41 +65,48 @@ fn actuation(name: &str, params: Option<&Value>) -> Option<cu::Acted> {
             | "desktop.clipboard.paste"
             | "desktop.clipboard.clear"
             | "desktop.process.kill"
+            // Prompting puts a system dialog in front of the user and can
+            // change what the app is allowed to do. Filing that under "only
+            // looked at the machine" is how a permission grant happens with
+            // nobody watching.
+            | "desktop.permissions.request"
     );
     if READS.contains(&name) || (!named && !ACTUATES.iter().any(|prefix| name.starts_with(prefix)))
     {
         return None;
     }
 
-    let params = params?;
+    // Commands whose parameters are the unit type arrive with no `params` at
+    // all, and they still change the machine — clipboard clear and paste are
+    // both in that shape.
+    let Some(params) = params else {
+        return Some(cu::Acted::Somewhere);
+    };
     let number = |key: &str| params.get(key).and_then(Value::as_i64).map(|n| n as i32);
-    // A pointer command's `target` makes its coordinates window-relative; the
-    // window commands carry a `WindowTarget`, and the accessibility ones an id.
-    let pointer_window = params
-        .get("target")
-        .and_then(Value::as_u64)
-        .map(|id| format!("{id:#x}"));
-    let window = pointer_window.clone().or_else(|| {
-        params
-            .get("window_id")
-            .and_then(Value::as_str)
-            .map(str::to_string)
-            .or_else(|| {
-                serde_json::from_value::<cu::WindowTarget>(params.get("target")?.clone())
-                    .ok()
-                    .and_then(|target| match target {
-                        cu::WindowTarget::Id(id) => Some(id),
-                        cu::WindowTarget::Match(_) => None,
-                    })
-            })
-    });
+
+    // Only the window commands and the accessibility ones name a window. A
+    // pointer or key command's `target` is a **process id** — it narrows where
+    // the event is delivered and says nothing about coordinates, which stay
+    // global on every backend.
+    let window = params
+        .get("window_id")
+        .and_then(Value::as_str)
+        .map(str::to_string)
+        .or_else(|| {
+            serde_json::from_value::<cu::WindowTarget>(params.get("target")?.clone())
+                .ok()
+                .and_then(|target| match target {
+                    cu::WindowTarget::Id(id) => Some(id),
+                    cu::WindowTarget::Match(_) => None,
+                })
+        });
 
     let point = number("x")
         .zip(number("y"))
+        // A drag ends where it ends; that is the point worth marking.
         .or_else(|| number("to_x").zip(number("to_y")));
 
     Some(match (point, window) {
-        (Some((x, y)), Some(id)) if pointer_window.is_some() => cu::Acted::InWindow { id, x, y },
         (Some((x, y)), _) => cu::Acted::At { x, y },
         (None, Some(id)) => cu::Acted::Window(id),
         (None, None) => cu::Acted::Somewhere,
@@ -434,10 +441,21 @@ mod tests {
             "desktop.app.launch",
             "desktop.clipboard.set",
             "desktop.process.kill",
+            "desktop.permissions.request",
         ] {
             assert!(
                 actuation(name, Some(&serde_json::json!({}))).is_some(),
                 "{name} changes the machine"
+            );
+        }
+
+        // Commands whose parameters are the unit type send no params at all.
+        // Reading that as "nothing happened" left the viewer asleep through a
+        // clipboard paste.
+        for name in ["desktop.clipboard.paste", "desktop.clipboard.clear"] {
+            assert!(
+                actuation(name, None).is_some(),
+                "{name} changes the machine even with no parameters"
             );
         }
     }
@@ -453,14 +471,14 @@ mod tests {
         );
         assert!(matches!(global, Some(cu::Acted::At { x: 40, y: 90 })));
 
-        let relative = actuation(
+        // `target` on input is a process id, not a window, and it does not
+        // change the space the coordinates are in. Treating it as a window
+        // sent the viewer chasing a window that never existed.
+        let delivered = actuation(
             "desktop.pointer.click",
             Some(&serde_json::json!({"x": 40, "y": 90, "target": 291})),
         );
-        let Some(cu::Acted::InWindow { id, x, y }) = relative else {
-            panic!("a pointer target makes the point window-relative");
-        };
-        assert_eq!((id.as_str(), x, y), ("0x123", 40, 90));
+        assert!(matches!(delivered, Some(cu::Acted::At { x: 40, y: 90 })));
 
         // A drag ends where it ends; that is the point worth marking.
         let drag = actuation(

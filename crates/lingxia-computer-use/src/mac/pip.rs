@@ -194,23 +194,36 @@ fn open(watch: PipWatch, corner: Option<Corner>, pinned: bool) -> Result<Pip> {
 /// Put the viewer away. This is also what idleness does — it leaves
 /// `dismissed` alone, so the next thing that happens brings it back.
 pub fn hide() -> Result<Pip> {
-    {
+    put_away(None);
+    Ok(status())
+}
+
+/// Put away only the viewer that `generation` opened.
+///
+/// A refresh thread can decide to stop long after a newer command has opened a
+/// newer viewer; without this it would tear that one down instead of its own.
+fn put_away(only: Option<u64>) {
+    // Both halves happen on the main thread under one lock: state and window
+    // must not be able to disagree in between. A `show` racing this either
+    // takes the lock first — and then the generation check here fails, so
+    // nothing is ordered out — or takes it after, and presents on top.
+    on_main(move |_| {
         let mut state = state();
+        if only.is_some_and(|generation| state.generation != generation) {
+            return;
+        }
         state.generation += 1;
         state.watch = None;
         state.pinned = false;
         state.window_number = 0;
         state.marker = None;
         state.panel_rect = None;
-    }
-    on_main(|_| {
         VIEWER.with_borrow(|viewer| {
             if let Some(viewer) = viewer {
                 viewer.panel.orderOut(None);
             }
         });
     });
-    Ok(status())
 }
 
 /// Record that something was just acted on, and open the viewer if this is the
@@ -224,14 +237,8 @@ pub fn note_activity(acted: Acted) {
     if state().dismissed {
         return;
     }
-    // Window-relative points become global here, where the window's bounds are
-    // one lookup away, so everything downstream deals in one space.
     let (point, window) = match &acted {
         Acted::At { x, y } => (Some((*x, *y)), None),
-        Acted::InWindow { id, x, y } => {
-            let origin = window_origin(id);
-            (origin.map(|(ox, oy)| (ox + x, oy + y)), Some(id.clone()))
-        }
         Acted::Window(id) => (None, Some(id.clone())),
         Acted::Somewhere => (None, None),
     };
@@ -266,17 +273,29 @@ pub fn note_activity(acted: Acted) {
         }
     };
 
-    let moved = match next {
-        Next::Nothing => return,
-        Next::Repoint => present(),
-        Next::Open(watch) => open(watch, None, false).map(|_| ()),
-    };
-    if let Err(error) = moved {
-        log::debug!("picture-in-picture did not follow: {error}");
-        // Not an error the caller hears about: the command it was watching
-        // succeeded, and a viewer that cannot open must not fail it.
-        state().dismissed = true;
+    if matches!(next, Next::Nothing) {
+        return;
     }
+    // Off this thread, always. Opening or moving the panel waits on the
+    // application's main queue, and this runs on the thread answering a command
+    // that has *already done its work* — blocking here would let a stalled UI
+    // hang a caller for a picture. The viewer is never worth that.
+    std::thread::Builder::new()
+        .name("lingxia-pip-open".into())
+        .spawn(move || {
+            let moved = match next {
+                Next::Nothing => return,
+                Next::Repoint => present(),
+                Next::Open(watch) => open(watch, None, false).map(|_| ()),
+            };
+            if let Err(error) = moved {
+                log::debug!("picture-in-picture did not follow: {error}");
+                // Not an error anyone hears about: the command it was watching
+                // succeeded, and a viewer that cannot open must not fail it.
+                state().dismissed = true;
+            }
+        })
+        .ok();
 }
 
 enum Next {
@@ -291,12 +310,6 @@ fn watching_same(a: &PipWatch, b: &PipWatch) -> bool {
         (PipWatch::Window(a), PipWatch::Window(b)) => a == b,
         _ => false,
     }
-}
-
-/// A window's top-left in global points, if it still exists.
-fn window_origin(id: &str) -> Option<(i32, i32)> {
-    let window = super::window_ops::status(&WindowTarget::Id(id.to_string())).ok()?;
-    Some((window.bounds.x, window.bounds.y))
 }
 
 /// The 1-based display index holding a point, defaulting to the first.
@@ -348,7 +361,7 @@ fn present() -> Result<()> {
             } else {
                 WIDTH * 0.625
             };
-            let frame = place(mtm, corner, WIDTH, height);
+            let frame = place(mtm, corner, WIDTH, height, rect);
             viewer.panel.setFrame_display(frame, true);
             viewer.image.setFrame(NSRect::new(
                 NSPoint::new(0.0, 0.0),
@@ -383,15 +396,57 @@ fn to_desktop(mtm: MainThreadMarker, frame: NSRect) -> (f64, f64, f64, f64) {
     )
 }
 
+/// The visible frame of the screen the watched rect sits on, in AppKit
+/// coordinates. Falls back to the main screen when nothing matches — an
+/// unplugged display should move the viewer, not lose it.
+fn visible_frame_for(mtm: MainThreadMarker, watched: CGRect) -> NSRect {
+    let screens = objc2_app_kit::NSScreen::screens(mtm);
+    // Global desktop coordinates hang off the primary screen's top-left, so
+    // that is the height the flip is measured against.
+    let flip = screens
+        .iter()
+        .next()
+        .map_or(900.0, |primary| primary.frame().size.height);
+    let centre_x = watched.origin.x + watched.size.width / 2.0;
+    let centre_y = flip - (watched.origin.y + watched.size.height / 2.0);
+    screens
+        .iter()
+        .find(|screen| {
+            let frame = screen.frame();
+            centre_x >= frame.origin.x
+                && centre_x < frame.origin.x + frame.size.width
+                && centre_y >= frame.origin.y
+                && centre_y < frame.origin.y + frame.size.height
+        })
+        .or_else(|| objc2_app_kit::NSScreen::mainScreen(mtm))
+        .map(|screen| screen.visibleFrame())
+        .unwrap_or(NSRect::new(
+            NSPoint::new(0.0, 0.0),
+            NSSize::new(1440.0, 900.0),
+        ))
+}
+
 /// Send the panel to the corner furthest from a point it is covering.
 fn move_away_from(x: i32, y: i32) {
-    let screen = on_main(|mtm| {
-        objc2_app_kit::NSScreen::mainScreen(mtm).map_or((1440.0, 900.0), |screen| {
-            (screen.frame().size.width, screen.frame().size.height)
-        })
-    });
-    let Some(screen) = screen else { return };
-    let corner = corner_away_from(x as f64, y as f64, screen);
+    // Measured against the screen the panel is on, which after following the
+    // work may not be the primary one.
+    let watch = state().watch.clone();
+    let Some(watched) = watch.and_then(|watch| source_rect(&watch).ok()) else {
+        return;
+    };
+    let Some(extent) = on_main(move |mtm| {
+        let visible = visible_frame_for(mtm, watched);
+        (visible.size.width, visible.size.height)
+    }) else {
+        return;
+    };
+    // The point relative to that screen, so the quadrant is the screen's rather
+    // than the whole desktop's.
+    let corner = corner_away_from(
+        x as f64 - watched.origin.x,
+        y as f64 - watched.origin.y,
+        extent,
+    );
     if state().corner == corner {
         // Already as far away as a corner gets; a marker inside the panel here
         // means the panel is bigger than the quadrant, and hopping forever
@@ -453,14 +508,17 @@ fn build(mtm: MainThreadMarker) -> Viewer {
     Viewer { panel, image }
 }
 
-/// Where the viewer sits, in the main screen's visible frame.
-fn place(mtm: MainThreadMarker, corner: Corner, width: f64, height: f64) -> NSRect {
-    let visible = objc2_app_kit::NSScreen::mainScreen(mtm)
-        .map(|screen| screen.visibleFrame())
-        .unwrap_or(NSRect::new(
-            NSPoint::new(0.0, 0.0),
-            NSSize::new(1440.0, 900.0),
-        ));
+/// Where the viewer sits: a corner of the screen showing the work, not a corner
+/// of the primary one. Watching a second monitor from the first is a viewer
+/// nobody is looking at.
+fn place(
+    mtm: MainThreadMarker,
+    corner: Corner,
+    width: f64,
+    height: f64,
+    watched: CGRect,
+) -> NSRect {
+    let visible = visible_frame_for(mtm, watched);
     // AppKit's origin is bottom-left, which is why "top" is the far edge here.
     let (x, y) = match corner {
         Corner::TopLeft => (
@@ -510,7 +568,7 @@ fn refresh_loop(generation: u64) {
         let Some(watch) = watch else { return };
 
         if idle {
-            let _ = hide();
+            put_away(Some(generation));
             return;
         }
 
@@ -532,7 +590,7 @@ fn refresh_loop(generation: u64) {
             // viewer rather than leaving a frozen last frame up.
             Err(error) => {
                 log::debug!("picture-in-picture stopping: {error}");
-                let _ = hide();
+                put_away(Some(generation));
                 return;
             }
         }

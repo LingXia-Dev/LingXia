@@ -15,6 +15,7 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 
+use crate::guard::decode_failure;
 use crate::transport::Transport;
 
 pub enum Backend<'a> {
@@ -72,38 +73,39 @@ impl Backend<'_> {
         }
     }
 
-    /// The viewer draws in an AppKit window, so it only exists where there is
-    /// an app running one. `lxdev` has no run loop to put a panel on, and a
-    /// panel that silently never appears is worse than being told so.
+    /// The viewer belongs to the product, because the product is the one thing
+    /// with all three of what it needs: a window, an application run loop, and
+    /// a screen-recording grant in its own name. A development tool that runs
+    /// each command in a fresh process has none of them.
     pub fn pip_show(
         &self,
         watch: cu::PipWatch,
         corner: Option<cu::PipCorner>,
     ) -> cu::Result<cu::Pip> {
         match self {
-            Self::Local => Err(Self::viewer_needs_an_app()),
+            Self::Local => Err(Self::viewer_belongs_to_an_app()),
             Self::App(_) => self.call(method::pip::SHOW, cu::wire::PipShow { watch, corner }),
         }
     }
 
     pub fn pip_hide(&self) -> cu::Result<cu::Pip> {
         match self {
-            Self::Local => Err(Self::viewer_needs_an_app()),
+            Self::Local => Err(Self::viewer_belongs_to_an_app()),
             Self::App(_) => self.call(method::pip::HIDE, ()),
         }
     }
 
-    pub fn pip_status(&self) -> cu::Result<cu::Pip> {
-        match self {
-            Self::Local => Err(Self::viewer_needs_an_app()),
-            Self::App(_) => self.call(method::pip::STATUS, ()),
-        }
+    fn viewer_belongs_to_an_app() -> cu::Error {
+        cu::Error::Unsupported(
+            "the viewer belongs to a running product; this tool has no window of its own".into(),
+        )
     }
 
-    fn viewer_needs_an_app() -> cu::Error {
-        cu::Error::Unsupported(
-            "the viewer belongs to a running app; this tool has no window of its own".into(),
-        )
+    pub fn pip_status(&self) -> cu::Result<cu::Pip> {
+        match self {
+            Self::Local => Err(Self::viewer_belongs_to_an_app()),
+            Self::App(_) => self.call(method::pip::STATUS, ()),
+        }
     }
 
     pub fn pixel(&self, x: i32, y: i32) -> cu::Result<cu::Pixel> {
@@ -683,28 +685,4 @@ impl Backend<'_> {
             cu::Error::Failed(format!("{name} returned an unreadable answer: {error}"))
         })
     }
-}
-
-/// Rebuild the host's error. The transport hands back a rendered string, but
-/// the code in front of it is the contract — it decides the client's exit
-/// status, so a failure that arrives as plain prose has already lost.
-fn decode_failure(error: &anyhow::Error) -> cu::Error {
-    let text = error.to_string();
-    for code in [
-        cu::ErrorCode::Usage,
-        cu::ErrorCode::NotFound,
-        cu::ErrorCode::Ambiguous,
-        cu::ErrorCode::Timeout,
-        cu::ErrorCode::Permission,
-        cu::ErrorCode::Unsupported,
-        cu::ErrorCode::Unavailable,
-        cu::ErrorCode::Stale,
-        cu::ErrorCode::Failed,
-    ] {
-        let marker = format!("({}): ", code.as_str());
-        if let Some(at) = text.find(&marker) {
-            return cu::Error::from_code(code, &text[at + marker.len()..]);
-        }
-    }
-    cu::Error::Failed(text)
 }

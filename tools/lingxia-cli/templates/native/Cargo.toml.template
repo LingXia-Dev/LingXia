@@ -21,6 +21,9 @@ process = ["lingxia/process", "standard"]
 # the dev websocket and its TLS stack.
 control = ["dep:lingxia_devtool", "lingxia/devtool", "lingxia_devtool/control-socket", "lingxia/product-cli"]
 computer-use = ["control", "lingxia_devtool/computer-use"]
+# Derived from `capabilities.browserUse`. Without it the browser handlers are
+# not linked and every browser command answers "feature unavailable".
+browser-use = ["control", "lingxia_devtool/browser"]
 devtools = ["dep:lingxia_devtool", "lingxia/devtool", "lingxia_devtool/dev-bridge", "lingxia_devtool/browser", "lingxia_devtool/test-runtime"]
 webview-input = ["lingxia/webview-input"]
 cloud = []  # activated by `--with-provider cloud`

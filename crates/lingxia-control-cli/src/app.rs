@@ -20,6 +20,9 @@ pub struct AppContext<'a> {
 
 #[derive(Args, Clone)]
 pub struct AppOptions {
+    /// Authorize input sent to the host app window
+    #[arg(long, global = true)]
+    pub allow_control: bool,
     #[command(subcommand)]
     pub command: AppCommand,
 }
@@ -251,6 +254,14 @@ impl MouseButtonArg {
 }
 
 pub fn execute(context: &AppContext, options: AppOptions) -> Result<()> {
+    // Synthetic input is synthetic input; that the window belongs to the
+    // product rather than to some other app does not make it free.
+    if matches!(
+        options.command,
+        AppCommand::Mouse { .. } | AppCommand::Key { .. }
+    ) {
+        crate::guard::gate(options.allow_control, false, false)?;
+    }
     match options.command {
         AppCommand::Doctor { json } => execute_doctor(context, json),
         AppCommand::Screenshot {

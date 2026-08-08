@@ -140,6 +140,49 @@ fn remove(agent: Agent, manifest: &Manifest) -> Result<String> {
     }
 }
 
+/// Walk to the leaves. Stopping one level down left an agent with
+/// `computer pointer` — a form that does nothing — instead of
+/// `computer pointer click`, and it will invent the rest.
+fn walk(command: &clap::Command, prefix: &str, out: &mut Vec<String>) {
+    let mut children = command.get_subcommands().peekable();
+    if children.peek().is_none() {
+        return;
+    }
+    for child in command.get_subcommands() {
+        let path = format!("{prefix} {}", child.get_name());
+        if child.get_subcommands().next().is_some() {
+            walk(child, &path, out);
+        } else {
+            out.push(format!(
+                "- `{path}`{}",
+                child
+                    .get_about()
+                    .map(|about| format!(" — {about}"))
+                    .unwrap_or_default()
+            ));
+        }
+    }
+}
+
+/// Whether this build will answer a namespace at all.
+///
+/// `None` declared means the app could not be reached, and a list nobody can
+/// check is better shown whole than silently trimmed.
+fn allowed(manifest: &Manifest, namespace: &str) -> bool {
+    let Some(declared) = manifest.declared.as_deref() else {
+        return true;
+    };
+    // The namespaces that ride a capability, by the name the product declares.
+    let needs = match namespace {
+        "computer" => "computerUse",
+        "browser" => "browserUse",
+        // Everything else is either the product's own surface or a command
+        // about the tool rather than about the machine.
+        _ => return true,
+    };
+    declared.iter().any(|name| name == needs)
+}
+
 /// Render the skill from the command definition itself.
 fn render<C: CommandFactory>(manifest: &Manifest) -> String {
     let command = C::command();
@@ -181,29 +224,28 @@ fn render<C: CommandFactory>(manifest: &Manifest) -> String {
 
     out.push_str("## Commands\n\n");
     for sub in command.get_subcommands() {
-        let about = sub.get_about().map(|about| about.to_string());
+        // A namespace this build refuses is worse than absent: an agent reads
+        // it as available, tries it, and gets a refusal it cannot act on.
+        if !allowed(manifest, sub.get_name()) {
+            continue;
+        }
         out.push_str(&format!(
             "### `{} {}`\n\n",
             manifest.command,
             sub.get_name()
         ));
-        if let Some(about) = about {
+        if let Some(about) = sub.get_about() {
             out.push_str(&format!("{about}\n\n"));
         }
-        let leaves: Vec<_> = sub.get_subcommands().collect();
-        if !leaves.is_empty() {
-            for leaf in leaves {
-                out.push_str(&format!(
-                    "- `{} {} {}`{}\n",
-                    manifest.command,
-                    sub.get_name(),
-                    leaf.get_name(),
-                    leaf.get_about()
-                        .map(|about| format!(" — {about}"))
-                        .unwrap_or_default()
-                ));
-            }
-            out.push('\n');
+        let mut lines = Vec::new();
+        walk(
+            sub,
+            &format!("{} {}", manifest.command, sub.get_name()),
+            &mut lines,
+        );
+        if !lines.is_empty() {
+            out.push_str(&lines.join("\n"));
+            out.push_str("\n\n");
         }
     }
 
@@ -268,6 +310,17 @@ mod tests {
     enum FakeLeaf {
         /// List every window
         Windows,
+        /// Mouse input
+        Pointer {
+            #[command(subcommand)]
+            _command: FakeVerb,
+        },
+    }
+
+    #[derive(Subcommand)]
+    enum FakeVerb {
+        /// Click at a point
+        Click,
     }
 
     #[test]
@@ -287,6 +340,31 @@ mod tests {
         assert!(body.contains("`myapp computer windows`"));
         assert!(body.contains("List every window"));
         assert!(body.contains("computerUse"));
+        // Down to the leaf: `computer pointer` on its own does nothing, and an
+        // agent given only that will invent the rest.
+        assert!(body.contains("`myapp computer pointer click`"));
+        assert!(
+            !body.contains("`myapp computer pointer`\n"),
+            "a form that cannot be run must not be offered"
+        );
+    }
+
+    /// A namespace this build refuses is worse than one that is absent: an
+    /// agent reads it as available, tries it, and gets a refusal it cannot act
+    /// on.
+    #[test]
+    fn a_namespace_the_product_did_not_declare_is_not_described() {
+        let manifest = Manifest {
+            command: "myapp".into(),
+            product: "My App".into(),
+            declared: Some(vec!["appUse".into()]),
+        };
+        let body = render::<Fake>(&manifest);
+        assert!(body.contains("`myapp screenshot`"), "its own surface stays");
+        assert!(
+            !body.contains("`myapp computer pointer click`"),
+            "a namespace nobody declared must not be described"
+        );
     }
 
     #[test]

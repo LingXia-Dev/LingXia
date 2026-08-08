@@ -16,6 +16,7 @@ pub mod app;
 pub mod browser;
 pub mod desktop;
 pub mod entry;
+pub mod guard;
 pub mod output;
 pub mod skills;
 pub mod transport;

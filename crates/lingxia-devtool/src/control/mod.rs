@@ -39,7 +39,16 @@ static RUNNING: Mutex<Option<Running>> = Mutex::new(None);
 struct Running {
     endpoint: String,
     listening: Arc<AtomicBool>,
+    /// Joined before this slot is released. The unix socket's pathname is
+    /// shared between runs, and a listener still unwinding would otherwise
+    /// unlink the socket a rebind had just created.
+    accepting: Option<std::thread::JoinHandle<()>>,
 }
+
+/// Bumped every time the endpoint is switched off. A connection accepted under
+/// an older epoch stops being answered, so closing the door also closes the
+/// connections already through it rather than only the door.
+static EPOCH: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 /// Make the control socket available, and start it if the user has said yes.
 ///
@@ -98,13 +107,21 @@ pub fn set_enabled(enabled: bool) -> std::io::Result<()> {
             *running = Some(started);
             Ok(())
         }
-        (false, Some(existing)) => {
+        (false, Some(mut existing)) => {
             existing.listening.store(false, Ordering::SeqCst);
+            EPOCH.fetch_add(1, Ordering::SeqCst);
             // The accept call is blocking, so it has to be woken to notice.
             // Connecting to ourselves is the wake-up; the loop then sees the
             // flag and drops the listener, which is what actually closes the
             // door.
             platform::poke(&existing.endpoint);
+            // The accept loop unlinks the socket on its way out, and that has
+            // to finish before anything can bind the same name again.
+            if let Some(accepting) = existing.accepting.take()
+                && accepting.join().is_err()
+            {
+                log::warn!("control accept thread panicked on the way out");
+            }
             if let Err(error) = launcher::remove(state_dir) {
                 log::warn!("product command not removed: {error}");
             }
@@ -129,7 +146,8 @@ fn start(state_dir: &Path, handle: Handler) -> std::io::Result<Running> {
     log::info!("control socket listening on {endpoint}");
     let listening = Arc::new(AtomicBool::new(true));
     let flag = Arc::clone(&listening);
-    std::thread::Builder::new()
+    let epoch = EPOCH.load(Ordering::SeqCst);
+    let accepting = std::thread::Builder::new()
         .name("lingxia-control".to_string())
         .spawn(move || {
             let mut consecutive_failures = 0u32;
@@ -142,7 +160,7 @@ fn start(state_dir: &Path, handle: Handler) -> std::io::Result<Running> {
                         }
                         std::thread::Builder::new()
                             .name("lingxia-control-conn".to_string())
-                            .spawn(move || serve_connection(stream, handle))
+                            .spawn(move || serve_connection(stream, handle, epoch))
                             .ok();
                     }
                     Err(error) => {
@@ -164,6 +182,7 @@ fn start(state_dir: &Path, handle: Handler) -> std::io::Result<Running> {
     Ok(Running {
         endpoint,
         listening,
+        accepting: Some(accepting),
     })
 }
 
@@ -172,8 +191,9 @@ fn start(state_dir: &Path, handle: Handler) -> std::io::Result<Running> {
 /// which drags the whole platform runtime into the link.
 type Handler = fn(&str) -> DevSessionMessage;
 
-/// One client, one request at a time, until it hangs up.
-fn serve_connection(stream: platform::Stream, handle: Handler) {
+/// One client, one request at a time, until it hangs up or the endpoint is
+/// switched off underneath it.
+fn serve_connection(stream: platform::Stream, handle: Handler, epoch: u64) {
     let mut writer = match platform::split_writer(&stream) {
         Ok(writer) => writer,
         Err(error) => {
@@ -191,6 +211,12 @@ fn serve_connection(stream: platform::Stream, handle: Handler) {
         };
         if line.trim().is_empty() {
             continue;
+        }
+        // Checked per request rather than once: a client that was connected
+        // when the user switched control off must not keep driving the product
+        // for as long as it holds the socket open.
+        if EPOCH.load(Ordering::SeqCst) != epoch {
+            return;
         }
         let reply = handle(&line);
         let Ok(mut encoded) = serde_json::to_vec(&reply) else {
@@ -235,11 +261,26 @@ pub(crate) fn reply_with(
 /// it declared are what a user consented to. A namespace that is merely
 /// compiled in must not therefore be reachable.
 fn refuse_unless_declared(method: &str) -> Option<String> {
-    let capabilities = lingxia_app_context::app_config()?.capabilities.as_ref()?;
+    // The liveness probe, and the only thing answered without a declaration: a
+    // client has to be able to ask whether anyone is home before it knows what
+    // it may ask for.
+    if method == lingxia_devtool_protocol::handlers::ECHO {
+        return None;
+    }
     let namespace = method
         .split_once('.')
         .map(|(head, _)| head)
         .unwrap_or(method);
+    // Every gate below closes when it cannot prove otherwise. A product whose
+    // configuration has not loaded yet, or one carrying a namespace nobody has
+    // added a row for, must refuse rather than hand a local process the whole
+    // automation surface on the strength of a missing file.
+    let Some(config) = lingxia_app_context::app_config() else {
+        return Some("this product has no configuration to declare capabilities in".to_string());
+    };
+    let Some(capabilities) = config.capabilities.as_ref() else {
+        return Some(format!("{namespace} is not declared by this product"));
+    };
     let (declared_as, declared) = match namespace {
         "desktop" => ("computerUse", capabilities.computer_use),
         "browser" => ("browserUse", capabilities.browser_use),
@@ -248,9 +289,11 @@ fn refuse_unless_declared(method: &str) -> Option<String> {
         // line here and one field there, the day a product wants to expose its
         // native windows without its pages.
         "app" | "lxapp" => ("appUse", capabilities.app_use_effective()),
-        // The liveness probe. A client has to be able to ask whether anyone is
-        // home before it knows what it may ask for.
-        _ => return None,
+        // A namespace nobody has declared a capability for is not a namespace
+        // the user consented to, whatever the build happens to have linked in.
+        other => {
+            return Some(format!("{other} is not declared by this product"));
+        }
     };
     (!declared).then(|| format!("{declared_as} is not declared by this product"))
 }
@@ -300,6 +343,33 @@ mod tests {
 
     fn stub_line(line: &str) -> DevSessionMessage {
         reply_with(line, stub)
+    }
+
+    /// A product that cannot prove a namespace was declared must refuse it.
+    /// The failure this guards against is silent: no configuration loaded yet
+    /// reads exactly like no restrictions, and the endpoint would hand a local
+    /// process the whole automation surface on the strength of a missing file.
+    #[test]
+    fn an_undeclared_namespace_is_refused_not_allowed() {
+        // No app config is installed in a unit test, which is precisely the
+        // "cannot prove it" case.
+        for method in [
+            "desktop.windows",
+            "browser.open",
+            "app.doctor",
+            "lxapp.list",
+        ] {
+            assert!(
+                refuse_unless_declared(method).is_some(),
+                "{method} must be refused when nothing declares it"
+            );
+        }
+        // A name nobody has written a row for is not a name a user consented
+        // to, whatever the build linked in.
+        assert!(refuse_unless_declared("filesystem.read").is_some());
+        // Except the liveness probe: a client has to be able to ask whether
+        // anyone is home before it knows what it may ask for.
+        assert!(refuse_unless_declared(lingxia_devtool_protocol::handlers::ECHO).is_none());
     }
 
     /// The real listener, over a real socket, switched off the way the

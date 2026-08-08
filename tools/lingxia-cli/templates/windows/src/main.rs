@@ -1,4 +1,11 @@
 fn main() -> lingxia_windows_sdk::Result<()> {
+    // The executable is also this product's command line. Answered first,
+    // before any window or database is opened, so a command never collides
+    // with an instance already running.
+    #[cfg(feature = "control")]
+    if let Some(code) = host::run_cli_if_invoked() {
+        std::process::exit(code);
+    }
     host::lingxia_register_host_addon();
     let app = debug_asset_dir()
         .map(|asset_dir| lingxia_windows_sdk::WindowsApp::from_env().with_asset_dir(asset_dir))

@@ -509,17 +509,13 @@ pub enum PipWatch {
 
 /// What a command just acted on, as far as the viewer needs to know.
 ///
-/// Points arrive in two spaces: a pointer command with no `target` is in global
-/// desktop coordinates, and one with a target is relative to that window. Both
-/// are kept apart here rather than flattened, because a window-relative point
-/// drawn as a global one lands somewhere else entirely and a marker in the
-/// wrong place is worse than no marker.
+/// Synthetic input is always in **global** desktop coordinates, on every
+/// backend. A command's `target` narrows *delivery* — it names the process the
+/// event is posted to — and never changes the space the coordinates are in.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Acted {
     /// A point in global desktop coordinates.
     At { x: i32, y: i32 },
-    /// A point relative to a window's top-left.
-    InWindow { id: String, x: i32, y: i32 },
     /// A window, with nothing to mark inside it.
     Window(String),
     /// Something changed, but nothing said where.

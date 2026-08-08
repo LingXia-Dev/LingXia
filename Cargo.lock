@@ -3309,6 +3309,7 @@ dependencies = [
  "clap",
  "lingxia-computer-use",
  "lingxia-devtool-protocol",
+ "lingxia-settings",
  "log",
  "serde",
  "serde_json",

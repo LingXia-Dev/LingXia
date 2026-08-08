@@ -7,8 +7,64 @@ use serde_json::{Value, json};
 
 #[derive(Args, Clone)]
 pub struct BrowserOptions {
+    /// Authorize commands that change the page or the browser
+    #[arg(long, global = true)]
+    pub allow_control: bool,
+    /// Authorize commands that lose state, like closing a tab or clearing cookies
+    #[arg(long, global = true)]
+    pub allow_destructive: bool,
     #[command(subcommand)]
     pub command: BrowserCommand,
+}
+
+/// What a browser command does to the page, so it can be gated the same way a
+/// desktop command is.
+///
+/// A tab is somebody's logged-in session. Typing into it, running script in it,
+/// and deleting its cookies are all things an agent should have been told it
+/// may do — the fact that the surface is web rather than native changes
+/// nothing about that.
+fn effect(command: &BrowserCommand) -> Effect {
+    match command {
+        // Looking.
+        BrowserCommand::Tabs { .. }
+        | BrowserCommand::Current { .. }
+        | BrowserCommand::Query { .. }
+        | BrowserCommand::Wait { .. }
+        | BrowserCommand::WaitUrl { .. }
+        | BrowserCommand::WaitNavigation { .. }
+        | BrowserCommand::Screenshot { .. } => Effect::Reads,
+
+        // Loses something that cannot be got back by repeating the command.
+        BrowserCommand::Close { .. } => Effect::Destroys,
+        BrowserCommand::Cookies(options) => match options.command {
+            CookiesCommand::List { .. } => Effect::Reads,
+            CookiesCommand::Delete { .. } | CookiesCommand::Clear { .. } => Effect::Destroys,
+            CookiesCommand::Set { .. } => Effect::Changes,
+        },
+
+        // Everything else changes the page or the browser session.
+        BrowserCommand::Open { .. }
+        | BrowserCommand::Activate { .. }
+        | BrowserCommand::Reload { .. }
+        | BrowserCommand::Back { .. }
+        | BrowserCommand::Forward { .. }
+        | BrowserCommand::UserAgent(_)
+        | BrowserCommand::Eval { .. }
+        | BrowserCommand::Click { .. }
+        | BrowserCommand::Type { .. }
+        | BrowserCommand::Fill { .. }
+        | BrowserCommand::Press { .. }
+        | BrowserCommand::Scroll { .. }
+        | BrowserCommand::ScrollTo { .. }
+        | BrowserCommand::Network(_) => Effect::Changes,
+    }
+}
+
+pub(crate) enum Effect {
+    Reads,
+    Changes,
+    Destroys,
 }
 
 #[derive(Subcommand, Clone)]
@@ -448,6 +504,13 @@ pub struct BrowserContext<'a> {
 
 pub fn execute(context: &BrowserContext, options: BrowserOptions) -> Result<()> {
     let transport = context.transport;
+    match effect(&options.command) {
+        Effect::Reads => {}
+        Effect::Changes => crate::guard::gate(options.allow_control, false, false)?,
+        Effect::Destroys => {
+            crate::guard::gate(options.allow_control, true, options.allow_destructive)?
+        }
+    }
 
     match options.command {
         BrowserCommand::Open { url, tab, json } => {
@@ -1434,10 +1497,70 @@ fn has_url_scheme(url: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        current_tab_summary, file_url_from_path, local_file_url, network_capture_may_be_supported,
-        normalize_open_url, normalize_open_url_for_target,
+        BrowserCommand, BrowserOptions, Effect, current_tab_summary, effect, file_url_from_path,
+        local_file_url, network_capture_may_be_supported, normalize_open_url,
+        normalize_open_url_for_target,
     };
     use serde_json::json;
+
+    fn effect_of(argv: &[&str]) -> Effect {
+        use clap::Parser;
+        #[derive(Parser)]
+        struct Cli {
+            #[command(flatten)]
+            options: BrowserOptions,
+        }
+        let cli = Cli::try_parse_from(std::iter::once("browser").chain(argv.iter().copied()))
+            .unwrap_or_else(|error| panic!("{}: {error}", argv.join(" ")));
+        effect(&cli.options.command)
+    }
+
+    /// A tab is somebody's logged-in session. That the surface is web rather
+    /// than native does not make typing into it, running script in it, or
+    /// deleting its cookies something an agent may do unasked.
+    #[test]
+    fn changing_a_page_needs_permission_and_losing_state_needs_more() {
+        for argv in [
+            vec!["tabs"],
+            vec!["current"],
+            vec!["screenshot"],
+            vec!["cookies", "list"],
+        ] {
+            assert!(
+                matches!(effect_of(&argv), Effect::Reads),
+                "`{}` only reads",
+                argv.join(" ")
+            );
+        }
+
+        for argv in [
+            vec!["open", "http://example.com"],
+            vec!["reload"],
+            vec!["back"],
+        ] {
+            assert!(
+                matches!(effect_of(&argv), Effect::Changes),
+                "`{}` changes the page",
+                argv.join(" ")
+            );
+        }
+
+        for argv in [vec!["close"], vec!["cookies", "clear"]] {
+            assert!(
+                matches!(effect_of(&argv), Effect::Destroys),
+                "`{}` loses state",
+                argv.join(" ")
+            );
+        }
+
+        // Nothing may be silently added to the read-only side later: the match
+        // in `effect` has no wildcard, so a new command fails to compile until
+        // someone says what it does.
+        assert!(matches!(
+            effect(&BrowserCommand::Tabs { json: false }),
+            Effect::Reads
+        ));
+    }
     use std::path::Path;
 
     #[test]

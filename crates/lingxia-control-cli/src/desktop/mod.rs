@@ -2,6 +2,7 @@ mod backend;
 
 pub use backend::Backend;
 
+use crate::guard::gate;
 use clap::{Args, Subcommand};
 use lingxia_computer_use as cu;
 use serde::Serialize;
@@ -711,11 +712,17 @@ pub fn execute(backend: &Backend, options: DesktopOptions) -> i32 {
             run_window(backend, action, allow_control, allow_destructive)
         }
         DesktopCommand::Pip { action } => run_pip(backend, action),
+        // The gate comes first. Resolving a target activates the window on
+        // Windows, and foregrounding someone's app is already a change to their
+        // machine — doing it and *then* refusing the command is a refusal that
+        // has already had an effect.
         DesktopCommand::Pointer {
             window,
             pid,
             action,
-        } => match resolve_target(backend, pid, window) {
+        } => match gate(allow_control, false, allow_destructive)
+            .and_then(|()| resolve_target(backend, pid, window))
+        {
             Ok(t) => run_pointer(backend, action, t, allow_control, allow_destructive),
             Err(e) => finish::<cu::Ack>(action.json(), Err(e), print_ack),
         },
@@ -723,7 +730,9 @@ pub fn execute(backend: &Backend, options: DesktopOptions) -> i32 {
             window,
             pid,
             action,
-        } => match resolve_target(backend, pid, window) {
+        } => match gate(allow_control, false, allow_destructive)
+            .and_then(|()| resolve_target(backend, pid, window))
+        {
             Ok(t) => run_key(backend, action, t, allow_control, allow_destructive),
             Err(e) => finish::<cu::Ack>(action.json(), Err(e), print_ack),
         },
@@ -1216,29 +1225,7 @@ fn run_key(
     finish(json, result, print_ack)
 }
 
-fn env_flag(name: &str) -> bool {
-    std::env::var(name)
-        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
-        .unwrap_or(false)
-}
-
 /// Authorize a mutating (and optionally destructive) desktop command.
-fn gate(allow_control: bool, destructive: bool, allow_destructive: bool) -> cu::Result<()> {
-    if !(allow_control || env_flag("LXDEV_DESKTOP_ALLOW_CONTROL")) {
-        return Err(cu::Error::Permission(
-            "mutating desktop command needs --allow-control (or LXDEV_DESKTOP_ALLOW_CONTROL=1)"
-                .into(),
-        ));
-    }
-    if destructive && !(allow_destructive || env_flag("LXDEV_DESKTOP_ALLOW_DESTRUCTIVE")) {
-        return Err(cu::Error::Permission(
-            "destructive desktop command needs --allow-destructive (or LXDEV_DESKTOP_ALLOW_DESTRUCTIVE=1)"
-                .into(),
-        ));
-    }
-    Ok(())
-}
-
 fn run_window(
     backend: &Backend,
     action: WindowAction,
@@ -1369,7 +1356,7 @@ fn run_screenshot(
 ) -> i32 {
     let selectors = display.is_some() as u8 + window.is_some() as u8 + region.is_some() as u8;
     if selectors > 1 {
-        finish::<()>(
+        return finish::<()>(
             json,
             Err(cu::Error::Usage(
                 "pass at most one of --display / --window / --region".into(),
@@ -1647,5 +1634,17 @@ fn truncate(s: &str, max: usize) -> String {
             "{}…",
             s.chars().take(max.saturating_sub(1)).collect::<String>()
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::Parser;
+
+    #[derive(Parser)]
+    struct Cli {
+        #[command(subcommand)]
+        command: DesktopCommand,
     }
 }

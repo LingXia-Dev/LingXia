@@ -6,6 +6,7 @@
 
 use std::io::{Read, Write};
 use std::path::Path;
+use std::sync::Mutex;
 
 use windows::Win32::Foundation::{CloseHandle, DUPLICATE_SAME_ACCESS, DuplicateHandle, HANDLE};
 use windows::Win32::Security::Authorization::{
@@ -16,7 +17,7 @@ use windows::Win32::Security::{
     TokenUser,
 };
 use windows::Win32::Storage::FileSystem::{
-    FlushFileBuffers, PIPE_ACCESS_DUPLEX, ReadFile, WriteFile,
+    FILE_FLAG_FIRST_PIPE_INSTANCE, FlushFileBuffers, PIPE_ACCESS_DUPLEX, ReadFile, WriteFile,
 };
 use windows::Win32::System::Memory::LocalFree;
 use windows::Win32::System::Pipes::{
@@ -145,20 +146,29 @@ pub(super) fn poke(endpoint: &str) {
 pub(super) struct Listener {
     name: String,
     descriptor: SecurityDescriptor,
+    /// The first instance, created with `FILE_FLAG_FIRST_PIPE_INSTANCE` and
+    /// held until the first `accept` hands it out. The first instance is what
+    /// fixes a pipe's security attributes for every later one, so letting it go
+    /// would leave the name free for another local process to claim and define.
+    /// Stored as a raw value so the listener stays `Send` without a wrapper.
+    first: Mutex<Option<isize>>,
 }
 
 impl Listener {
     pub(super) fn bind(state_dir: &Path) -> std::io::Result<Self> {
         let name = endpoint_name(state_dir);
         let descriptor = SecurityDescriptor::for_current_user()?;
-        // Create one instance up front so a client that connects immediately
-        // after startup finds the pipe rather than a name that does not exist
-        // yet — and so a failure surfaces here instead of on the thread.
-        let probe = create_instance(&name, &descriptor)?;
-        unsafe {
-            let _ = CloseHandle(probe);
-        }
-        Ok(Self { name, descriptor })
+        // Claim the name, and keep the instance. Asking for the first instance
+        // fails outright if anyone already owns this name, which is the point:
+        // a pipe's security attributes come from whoever created it first, so
+        // joining a name someone else established would mean serving the
+        // product's whole automation surface through their descriptor.
+        let first = create_instance(&name, &descriptor, true)?;
+        Ok(Self {
+            name,
+            descriptor,
+            first: Mutex::new(Some(first.0 as isize)),
+        })
     }
 
     pub(super) fn name(&self) -> String {
@@ -166,7 +176,15 @@ impl Listener {
     }
 
     pub(super) fn accept(&self) -> std::io::Result<Stream> {
-        let handle = create_instance(&self.name, &self.descriptor)?;
+        let held = self
+            .first
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .take();
+        let handle = match held {
+            Some(raw) => HANDLE(raw as *mut std::ffi::c_void),
+            None => create_instance(&self.name, &self.descriptor, false)?,
+        };
         // ERROR_PIPE_CONNECTED means the client won the race and is already
         // attached; that is a successful accept, not a failure.
         const ERROR_PIPE_CONNECTED: i32 = 535;
@@ -185,7 +203,11 @@ impl Listener {
     }
 }
 
-fn create_instance(name: &str, descriptor: &SecurityDescriptor) -> std::io::Result<HANDLE> {
+fn create_instance(
+    name: &str,
+    descriptor: &SecurityDescriptor,
+    first: bool,
+) -> std::io::Result<HANDLE> {
     let mut attributes = SECURITY_ATTRIBUTES {
         nLength: std::mem::size_of::<SECURITY_ATTRIBUTES>() as u32,
         lpSecurityDescriptor: descriptor.0.0,
@@ -195,7 +217,11 @@ fn create_instance(name: &str, descriptor: &SecurityDescriptor) -> std::io::Resu
     let handle = unsafe {
         CreateNamedPipeW(
             PCWSTR(wide.as_ptr()),
-            PIPE_ACCESS_DUPLEX,
+            if first {
+                PIPE_ACCESS_DUPLEX | FILE_FLAG_FIRST_PIPE_INSTANCE
+            } else {
+                PIPE_ACCESS_DUPLEX
+            },
             PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS,
             PIPE_UNLIMITED_INSTANCES,
             BUFFER_BYTES,
@@ -257,7 +283,12 @@ fn current_user_sid() -> std::io::Result<String> {
         if needed == 0 {
             return Err(std::io::Error::last_os_error());
         }
-        let mut buffer = vec![0u8; needed as usize];
+        // Backed by u64, not u8: `TOKEN_USER` holds a pointer, and a `Vec<u8>`
+        // promises only byte alignment. Reading one out of a byte buffer is
+        // undefined behaviour that happens to work until an allocator returns
+        // an odd address.
+        let words = (needed as usize).div_ceil(std::mem::size_of::<u64>());
+        let mut buffer = vec![0u64; words.max(1)];
         GetTokenInformation(
             token.0,
             TokenUser,

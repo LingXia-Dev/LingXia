@@ -1542,6 +1542,19 @@ impl LingXiaConfig {
         requested && matches!(platform, "macos" | "windows")
     }
 
+    /// Driving the in-app browser. The handlers live behind their own devtool
+    /// feature, so a product that declared `browserUse` and did not get it
+    /// would answer every browser command with "feature unavailable" — a
+    /// capability the user granted and the build silently dropped.
+    pub fn browser_use_enabled(&self, platform: &str) -> bool {
+        let requested = self
+            .capabilities
+            .as_ref()
+            .map(|capabilities| capabilities.browser_use)
+            .unwrap_or(false);
+        requested && matches!(platform, "macos" | "windows")
+    }
+
     pub fn devtools_enabled(&self) -> bool {
         self.features
             .as_ref()
@@ -1576,6 +1589,9 @@ impl LingXiaConfig {
         }
         if self.computer_use_enabled(platform) {
             features.push("computer-use".to_string());
+        }
+        if self.browser_use_enabled(platform) {
+            features.push("browser-use".to_string());
         }
         if self.devtools_enabled() {
             features.push("devtools".to_string());

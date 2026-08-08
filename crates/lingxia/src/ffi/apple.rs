@@ -647,8 +647,7 @@ fn install_browser_native_input_host() {}
 fn product_run_cli_if_invoked(data_dir: &str) -> i32 {
     #[cfg(feature = "product-cli")]
     {
-        let state_dir = lingxia_app_context::app_state_dir(std::path::Path::new(data_dir));
-        if let Some(code) = lingxia_control_cli::entry::run_if_invoked(&state_dir) {
+        if let Some(code) = crate::product_cli::run_if_invoked_in(std::path::Path::new(data_dir)) {
             return code;
         }
     }
