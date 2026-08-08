@@ -44,7 +44,7 @@ pub fn decode_failure(error: &anyhow::Error) -> cu::Error {
     // intact. Reading it out of the rendered string first would find nothing
     // and file every local refusal as a generic failure.
     if let Some(local) = error.downcast_ref::<cu::Error>() {
-        return cu::Error::from_code(local.code(), &local.to_string());
+        return cu::Error::from_code(local.code(), local.to_string());
     }
     let text = error.to_string();
     for code in [
