@@ -1,18 +1,10 @@
 # Driving a Shipped Product
 
-A host app can let a command line — or an agent running one — drive it from
-the same machine. This page is the model: what a product declares, who
-decides, and where the commands come from. For the command list, ask the
-product: `<command> --help`, or `<command> skills show`, which prints the
-skill it would install. Both are generated from the build in front of you, so
-neither can drift the way a list copied into a page does.
+Use this reference when a host app lets a local command line or agent drive
+the product. The product decides which surfaces exist; the user decides whether
+the local interface is enabled.
 
-This is not a network API. The endpoint is local-only, reachable by the user
-who launched the app, and answers nothing while the app is closed.
-
----
-
-## Declare what an agent may drive
+## Declare the surfaces
 
 ```yaml
 capabilities:
@@ -21,138 +13,84 @@ capabilities:
   browserUse: true   # the in-app browser (requires `browser`)
 ```
 
-macOS and Windows only. There is no capability for the transport — the local
-socket these need is derived. A capability list says what a product can do,
-not which IPC carries it.
+These capabilities are available on macOS and Windows and are enforced by the
+running product:
 
-`computerUse` **implies** `appUse`. Not for symmetry: it already contains it.
-An agent that may screenshot any window and post input to any window can reach
-this product's windows through the wider door, so requiring both would add no
-protection and one confusing failure — a product that declared only
-`computerUse` would find machine-wide commands working while its own were
-refused.
+- `computerUse` implies `appUse` because machine-wide control can already reach
+  the product's windows.
+- `browserUse` is independent; a browser-only product need not expose its
+  window chrome.
+- A refused namespace is final. An agent must not route around it.
 
-`browserUse` does not imply `appUse`. "Open pages, don't touch my chrome" is a
-real choice.
+## User control and command discovery
 
-**These names are enforced at runtime.** The endpoint refuses a namespace the
-product did not declare, whatever happens to be compiled in. If an agent is
-refused, that is the answer — not something to route around.
+The endpoint is local to the user who launched the app, answers only while the
+app is running, and stays closed until the user enables it.
 
----
+The product executable is also its command. Enabling the interface writes a
+small launcher into the product's state directory. `<product> control enable`
+prints that path and the shell-profile line needed to put it on `PATH`.
 
-## Declaring is not enabling
+The control commands report and change real state:
 
-Declaring ships the ability. Whether the endpoint listens is the user's
-decision, the same way `autostart` works: the product can register itself at
-login, and only the user says it should.
+- `control status` distinguishes a live listener from a setting that takes
+  effect at the next start.
+- `control disable` stops a live listener when present, persists the disabled
+  state, and removes its socket and launcher.
 
-The endpoint stays closed until they turn it on, and turning it off leaves
-nothing behind — no socket, no launcher. Nothing that suggests it is still on.
-`control disable` reaches the running product and stops it there, rather than
-leaving a note for the next start.
+Use `<product> --help` and leaf-command `--help` for exact syntax. Prefer
+`--json` when the leaf offers it. Failures use stable exits: 2 usage, 3 not
+found, 4 ambiguous, 5 timeout, 6 permission or refusal, 7 unsupported,
+8 unavailable, 9 stale handle, and 10 failure after target resolution.
 
----
+`--allow-control` is an acknowledgement, not a permission grant. Add it only
+when the user's current request authorizes the state change. Add
+`--allow-destructive` only when that request explicitly authorizes the
+destructive effect, such as closing a window, quitting an app, or clearing the
+clipboard or cookies.
 
-## Where the command comes from
+## Generate an agent skill
 
-The product's executable *is* the command line. There is no second binary to
-install and therefore no way for the two to be different versions of each
-other. Typing a subcommand, or arriving through the launcher, runs the command
-and exits; launching the app normally starts the app.
+Run `show` and `install` while the product is open so it can report its declared
+capabilities. `remove` only touches the installed files and also works offline.
 
-When the capability is switched on, the product writes a small launcher into
-its own state directory. `<product> control enable` prints where, and the line
-to add to a shell profile — an app cannot change the `PATH` of a terminal that
-is already open, so that one step is the user's.
-
-Most commands take `--json`; `--help` is exact about which. Failures carry an
-exit code, not just a message:
-
-| | |
-|---:|---|
-| 2 | usage |
-| 3 | not found |
-| 4 | ambiguous |
-| 5 | timed out |
-| 6 | permission |
-| 7 | unsupported |
-| 8 | unavailable |
-| 9 | stale handle (an id that no longer exists) |
-| 10 | failed after the target was resolved |
-
-Commands that change something need `--allow-control`; ones that lose
-something — closing a window, quitting an app, clearing the clipboard or a
-cookie jar — also need `--allow-destructive`.
-
-`control status` asks the running product rather than reading the saved
-setting, because the two disagree until a restart, and a consent control that
-reports "off" while automation is still answering is worse than one that
-reports nothing.
-
----
-
-## Agent skills
-
-```
-<command> skills show                     # read it first
-<command> skills install --agent claude   # or --agent codex
-<command> skills remove --agent claude
+```text
+<product> skills show
+<product> skills install --agent claude   # or --agent codex
+<product> skills remove --agent claude
 ```
 
-The skill is rendered from the running product: every command it actually has,
-and the capability list it actually declared. A skill packaged separately can
-only describe what its author imagined, and falls behind the first version bump.
+The generated skill contains only agent-facing entry points allowed by that
+running build. It excludes human administration (`control` and `skills`) and
+uses `--help` for leaf syntax instead of copying the full CLI tree. If the
+product cannot be reached, `show` and `install` fail rather than writing a skill
+that guesses its capabilities.
 
-Installing writes into another tool's configuration directory, which is why it
-is a command the user runs and names an agent for, rather than something a
-switch does quietly.
+Installation writes into another agent's configuration directory, so it is an
+explicit user command rather than a side effect of enabling automation.
 
-If the product is not running when the skill is written, the capability list is
-recorded as unknown rather than guessed. A generated file stating something
-false reads exactly as confidently as one stating something true.
+## macOS permissions and viewer
 
----
+`computerUse` needs Accessibility and Screen Recording. Commands execute inside
+the product, so macOS attributes both grants to the installed product rather
+than the terminal that invoked it.
 
-## `computerUse` and the operating system
+Before machine-wide work, the agent should run:
 
-Machine-wide automation needs the OS's permission — on macOS, Accessibility and
-Screen Recording. Two things follow, and both matter:
+```text
+<product> computer permissions --json
+```
 
-**The user is asked by name.** macOS attributes these grants to the responsible
-process. Commands run *inside the app*, not in the terminal that typed them, so
-the entry the user sees in System Settings is the product they installed — one
-row, its name, revocable where they would look for it.
+If a grant is missing, the agent asks the user to grant it and stops retrying.
+Screen capture without Screen Recording can otherwise look like an empty
+desktop. Signed builds retain grants across matching updates; unsigned rebuilt
+apps may prompt again.
 
-Had the commands run in the calling process instead, the grant would attach to
-whatever terminal launched it: a different answer from iTerm than from
-Terminal, and a Privacy pane naming a terminal the user never meant to give
-control of their computer to.
+The first mutating `computerUse` command on macOS opens a small viewer showing
+what is being driven and the last acted point. It follows the work, avoids the
+pointer target, hides after roughly twelve seconds of inactivity, and returns
+on the next mutation. Read-only commands do not open it.
 
-**Without the grant, results are quietly reduced, not refused.** A screen
-capture without Screen Recording succeeds and returns the desktop picture with
-no window contents at all. An agent that does not check permissions will read
-that as an empty screen. Call the permissions command first; a `permission`
-failure means the user has to grant something, and no amount of retrying will
-change it.
-
-Grants follow the app's code signature, so a signed product keeps them across
-updates. An unsigned development build is a different subject to the OS each
-time it is rebuilt, and will be asked again.
-
-## The viewer
-
-On macOS, the first `computerUse` command that changes something opens a small
-window in the corner mirroring what is being driven, with a ring on the point
-just acted on. It follows the work, leaves after about twelve seconds of quiet,
-and returns on the next such command. Commands that only look — screenshots,
-window lists, accessibility queries — never open it.
-
-There is no command for it, deliberately. It exists so a person can see their
-own machine being driven, and an agent able to switch it off could work
-unobserved. Dismissing it is the person's to do and lasts for that run — the
-affordance is the product's to provide (a menu item, a settings switch), since
-the panel ignores the mouse and cannot be closed by clicking it.
-
-It ignores the mouse, so it can never swallow a click meant for what is
-underneath it; when the work happens under it, it moves to another corner.
+The viewer is not an agent command. It ignores mouse input so it cannot block
+the underlying target. A product that offers a human dismiss control calls the
+host-side viewer API; an agent must never hide or dismiss it.
