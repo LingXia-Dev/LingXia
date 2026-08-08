@@ -10,6 +10,8 @@ pub mod error;
 pub mod model;
 pub mod wire;
 
+mod pip_state;
+
 pub use error::{Error, ErrorCode, Result};
 pub use model::{
     Ack, Acted, AxNode, AxQuery, Capabilities, Capture, CaptureTarget, Clipboard, Display, Doctor,

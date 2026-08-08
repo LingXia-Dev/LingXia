@@ -15,7 +15,7 @@
 //! - **It follows the work.** A run that moves to another screen, or to a
 //!   window a command names, takes the viewer with it. One viewer, wherever the
 //!   action is — not one per app, and never a still picture of where the work
-//!   started. A watch someone named themselves is pinned and stays put.
+//!   started.
 //! - **It leaves when the work stops.** There is no signal that says a run has
 //!   ended, so it goes on idleness instead, and comes straight back on the next
 //!   thing that happens. That is not the same as a person closing it: that is
@@ -35,23 +35,15 @@ use std::time::{Duration, Instant};
 use objc2::rc::Retained;
 use objc2::{AnyThread, MainThreadMarker, MainThreadOnly};
 use objc2_app_kit::{
-    NSBackingStoreType, NSColor, NSImage, NSImageScaling, NSImageView, NSPanel, NSView,
-    NSWindowCollectionBehavior, NSWindowStyleMask,
+    NSBackingStoreType, NSBitmapFormat, NSBitmapImageRep, NSColor, NSDeviceRGBColorSpace, NSImage,
+    NSImageScaling, NSImageView, NSPanel, NSView, NSWindowCollectionBehavior, NSWindowStyleMask,
 };
 use objc2_core_foundation::{CGPoint, CGRect, CGSize};
-use objc2_foundation::{NSData, NSPoint, NSRect, NSSize};
+use objc2_foundation::{NSPoint, NSRect, NSSize};
 
 use crate::error::{Error, Result};
 use crate::model::{Acted, WindowTarget};
-
-/// What the viewer is mirroring. Internal: nothing outside asks for it.
-#[derive(Debug, Clone)]
-enum PipWatch {
-    /// A monitor by 1-based index.
-    Display(usize),
-    /// A window by id, followed as it moves.
-    Window(String),
-}
+use crate::pip_state::{ActivityState, ActivityTarget, Transition};
 
 /// Which corner it sits in. It is placed rather than dragged: it ignores the
 /// mouse so it can never swallow a click meant for what is underneath, and a
@@ -88,36 +80,20 @@ const MARKER_LINGER: Duration = Duration::from_millis(1200);
 const IDLE_REST: Duration = Duration::from_secs(12);
 
 struct State {
-    watch: Option<PipWatch>,
-    /// The watch was named by a person. Nothing re-points it, and idleness does
-    /// not put it away: they asked for this one, and moving or closing it would
-    /// be answering a question they did not ask.
-    pinned: bool,
-    dismissed: bool,
+    activity: ActivityState,
     corner: Corner,
-    /// Bumped by every show and hide. A refresh thread stops as soon as its own
-    /// generation is stale, which is what keeps two of them from ever running.
-    generation: u64,
     /// The panel's own window number, so the capture can leave it out. Zero
     /// until the panel exists.
     window_number: u32,
-    marker: Option<(i32, i32, Instant)>,
-    /// When something last changed the machine, for the idle timeout.
-    last_activity: Option<Instant>,
     /// The panel's own rect in global desktop points, so it can tell when it is
     /// sitting on top of what is being driven.
     panel_rect: Option<(f64, f64, f64, f64)>,
 }
 
 static STATE: Mutex<State> = Mutex::new(State {
-    watch: None,
-    pinned: false,
-    dismissed: false,
+    activity: ActivityState::new(),
     corner: Corner::BottomRight,
-    generation: 0,
     window_number: 0,
-    marker: None,
-    last_activity: None,
     panel_rect: None,
 });
 
@@ -161,52 +137,66 @@ fn on_main<T: Send>(work: impl FnOnce(MainThreadMarker) -> T + Send) -> Option<T
     out
 }
 
-/// `pinned` marks a watch someone chose deliberately, as opposed to one the
-/// last command implied.
-fn open(watch: PipWatch, corner: Option<Corner>, pinned: bool) -> Result<()> {
-    // Resolve before showing anything: a viewer that opens onto an error is
-    // worse than a command that says what was wrong.
-    let _ = source_rect(&watch)?;
-    let generation = {
-        let mut state = state();
-        state.watch = Some(watch);
-        state.pinned = pinned;
-        // Asking for it by name is how someone takes back a dismissal.
-        state.dismissed = false;
-        state.last_activity = Some(Instant::now());
-        if let Some(corner) = corner {
-            state.corner = corner;
+fn open(generation: u64) -> Result<()> {
+    // Repoint changes the UI epoch but deliberately keeps the generation. The
+    // Open reservation owns converging to the latest target and starting the
+    // sole refresh worker even when a Repoint wake-up could not be spawned.
+    loop {
+        let epoch = {
+            let state = state();
+            if !state.activity.active_generation(generation) {
+                return Ok(());
+            }
+            state.activity.epoch
+        };
+        if let Err(error) = present(generation, epoch) {
+            let hide = state().activity.rest(generation, epoch);
+            if let Some(epoch) = hide {
+                put_away(epoch);
+                return Err(error);
+            }
+            if state().activity.active_generation(generation) {
+                continue;
+            }
+            return Ok(());
         }
-        state.generation += 1;
-        state.generation
-    };
-    present()?;
-    std::thread::Builder::new()
+        let state = state();
+        if !state.activity.active_generation(generation) {
+            return Ok(());
+        }
+        if state.activity.epoch == epoch {
+            break;
+        }
+    }
+    let started = std::thread::Builder::new()
         .name("lingxia-pip".into())
         .spawn(move || refresh_loop(generation))
-        .map_err(|error| Error::Failed(format!("could not start the viewer: {error}")))?;
+        .map_err(|error| Error::Failed(format!("could not start the viewer: {error}")));
+    if started.is_err() {
+        let hide = {
+            let mut state = state();
+            let epoch = state.activity.epoch;
+            state.activity.rest(generation, epoch)
+        };
+        if let Some(epoch) = hide {
+            put_away(epoch);
+        }
+    }
+    started?;
     Ok(())
 }
 
-/// Put away only the viewer that `generation` opened.
+/// Put away only the UI revision that `epoch` retired.
 ///
 /// A refresh thread can decide to stop long after a newer command has opened a
 /// newer viewer; without this it would tear that one down instead of its own.
-fn put_away(only: Option<u64>) {
-    // Both halves happen on the main thread under one lock: state and window
-    // must not be able to disagree in between. A `show` racing this either
-    // takes the lock first — and then the generation check here fails, so
-    // nothing is ordered out — or takes it after, and presents on top.
+fn put_away(epoch: u64) {
     on_main(move |_| {
         let mut state = state();
-        if only.is_some_and(|generation| state.generation != generation) {
+        if state.activity.epoch != epoch || state.activity.target.is_some() {
             return;
         }
-        state.generation += 1;
-        state.watch = None;
-        state.pinned = false;
         state.window_number = 0;
-        state.marker = None;
         state.panel_rect = None;
         VIEWER.with_borrow(|viewer| {
             if let Some(viewer) = viewer {
@@ -224,8 +214,8 @@ fn put_away(only: Option<u64>) {
 /// switch, a shortcut — and this is what it calls. Without one, nothing a
 /// person does can dismiss it.
 pub fn dismiss() {
-    state().dismissed = true;
-    put_away(None);
+    let epoch = state().activity.dismiss();
+    put_away(epoch);
 }
 
 /// Record that something was just acted on, and open the viewer if this is the
@@ -236,9 +226,6 @@ pub fn dismiss() {
 /// and opening a window because an agent asked what the screen looks like would
 /// make the viewer noise.
 pub fn note_activity(acted: Acted) {
-    if state().dismissed {
-        return;
-    }
     let (point, window) = match &acted {
         Acted::At { x, y } => (Some((*x, *y)), None),
         Acted::Window(id) => (None, Some(id.clone())),
@@ -248,69 +235,74 @@ pub fn note_activity(acted: Acted) {
     // What this action says the viewer should be looking at: the window the
     // command named, else the display it happened on.
     let wanted = match window {
-        Some(id) => Some(PipWatch::Window(id)),
-        None => point.map(|(x, y)| PipWatch::Display(display_holding(x, y))),
+        Some(id) => Some(ActivityTarget::Window(id)),
+        None => point.map(|(x, y)| ActivityTarget::Display(display_holding(x, y))),
     };
 
     let next = {
         let mut state = state();
-        if let Some((x, y)) = point {
-            state.marker = Some((x, y, Instant::now()));
-        }
-        state.last_activity = Some(Instant::now());
-        match (&state.watch, &wanted) {
-            // Not up: this action decides what it opens onto.
-            (None, _) => Next::Open(wanted.clone().unwrap_or(PipWatch::Display(1))),
-            // Up and following: work that moves to another screen — or to the
-            // window a command named — takes the viewer with it. Without this
-            // it keeps showing where the work started while reading as live.
-            (Some(current), Some(wanted)) if !state.pinned && !watching_same(current, wanted) => {
-                state.watch = Some(wanted.clone());
-                Next::Repoint
-            }
-            // The common case, and it must stay free: this runs after every
-            // command that changes anything, and a main-thread round trip here
-            // would be a tax on all of them.
-            _ => Next::Nothing,
-        }
+        state
+            .activity
+            .note(wanted, point, Instant::now(), IDLE_REST)
     };
 
-    if matches!(next, Next::Nothing) {
+    if matches!(next, Transition::Nothing | Transition::Ignored) {
         return;
     }
     // Off this thread, always. Opening or moving the panel waits on the
     // application's main queue, and this runs on the thread answering a command
     // that has *already done its work* — blocking here would let a stalled UI
     // hang a caller for a picture. The viewer is never worth that.
-    std::thread::Builder::new()
+    let open_token = match next {
+        Transition::Open { generation, epoch } => Some((generation, epoch)),
+        _ => None,
+    };
+    let spawned = std::thread::Builder::new()
         .name("lingxia-pip-open".into())
         .spawn(move || {
+            let epoch = match next {
+                Transition::Ignored | Transition::Nothing => return,
+                Transition::Repoint { epoch } | Transition::Open { epoch, .. } => epoch,
+            };
             let moved = match next {
-                Next::Nothing => return,
-                Next::Repoint => present(),
-                Next::Open(watch) => open(watch, None, false),
+                Transition::Ignored | Transition::Nothing => return,
+                Transition::Repoint { epoch } => {
+                    let generation = state().activity.generation;
+                    present(generation, epoch)
+                }
+                Transition::Open { generation, .. } => open(generation),
             };
             if let Err(error) = moved {
                 log::debug!("picture-in-picture did not follow: {error}");
                 // Not an error anyone hears about: the command it was watching
                 // succeeded, and a viewer that cannot open must not fail it.
-                state().dismissed = true;
+                let hide = {
+                    let mut state = state();
+                    match next {
+                        Transition::Open { .. } => None,
+                        Transition::Repoint { .. } if state.activity.epoch == epoch => {
+                            Some(state.activity.dismiss())
+                        }
+                        _ => None,
+                    }
+                };
+                if let Some(epoch) = hide {
+                    put_away(epoch);
+                }
             }
-        })
-        .ok();
-}
-
-enum Next {
-    Nothing,
-    Repoint,
-    Open(PipWatch),
-}
-
-fn watching_same(a: &PipWatch, b: &PipWatch) -> bool {
-    match (a, b) {
-        (PipWatch::Display(a), PipWatch::Display(b)) => a == b,
-        (PipWatch::Window(a), PipWatch::Window(b)) => a == b,
-        _ => false,
+        });
+    if let Err(error) = spawned {
+        log::debug!("picture-in-picture worker could not start: {error}");
+        if let Some((generation, _)) = open_token {
+            let hide = {
+                let mut state = state();
+                let epoch = state.activity.epoch;
+                state.activity.rest(generation, epoch)
+            };
+            if let Some(epoch) = hide {
+                put_away(epoch);
+            }
+        }
     }
 }
 
@@ -329,16 +321,18 @@ fn display_holding(x: i32, y: i32) -> usize {
 }
 
 /// The global-point rect the viewer is mirroring.
-fn source_rect(watch: &PipWatch) -> Result<CGRect> {
+fn source_rect(watch: &ActivityTarget) -> Result<CGRect> {
     let rect = match watch {
-        PipWatch::Display(n) => {
+        ActivityTarget::Display(n) => {
             let displays = super::displays()?;
             let display = displays
                 .get(n.wrapping_sub(1))
                 .ok_or_else(|| Error::NotFound(format!("no display {n}")))?;
             display.bounds
         }
-        PipWatch::Window(id) => super::window_ops::status(&WindowTarget::Id(id.clone()))?.bounds,
+        ActivityTarget::Window(id) => {
+            super::window_ops::status(&WindowTarget::Id(id.clone()))?.bounds
+        }
     };
     Ok(CGRect::new(
         CGPoint::new(rect.x as f64, rect.y as f64),
@@ -348,14 +342,23 @@ fn source_rect(watch: &PipWatch) -> Result<CGRect> {
 
 /// Create the panel if it does not exist, size it to what it is watching, and
 /// bring it to the front.
-fn present() -> Result<()> {
-    let rect = {
-        let watch = state().watch.clone();
-        let watch = watch.ok_or_else(|| Error::Failed("nothing to watch".into()))?;
-        source_rect(&watch)?
+fn present(generation: u64, epoch: u64) -> Result<()> {
+    let (watch, corner) = {
+        let state = state();
+        if !state.activity.current(generation, epoch) {
+            return Ok(());
+        }
+        (
+            state.activity.target.clone().expect("current target"),
+            state.corner,
+        )
     };
-    let corner = state().corner;
+    let rect = source_rect(&watch)?;
     let placed = on_main(move |mtm| {
+        let state = state();
+        if !state.activity.current(generation, epoch) {
+            return None;
+        }
         VIEWER.with_borrow_mut(|slot| {
             let viewer = slot.get_or_insert_with(|| build(mtm));
             let height = if rect.size.width > 0.0 {
@@ -370,14 +373,18 @@ fn present() -> Result<()> {
                 NSSize::new(frame.size.width, frame.size.height),
             ));
             viewer.panel.orderFrontRegardless();
-            (
+            Some((
                 viewer.panel.windowNumber().max(0) as u32,
                 to_desktop(mtm, frame),
-            )
+            ))
         })
     })
     .ok_or_else(|| Error::Unavailable("no main thread to show the viewer on".into()))?;
+    let Some(placed) = placed else { return Ok(()) };
     let mut state = state();
+    if !state.activity.current(generation, epoch) {
+        return Ok(());
+    }
     state.window_number = placed.0;
     state.panel_rect = Some(placed.1);
     Ok(())
@@ -432,7 +439,7 @@ fn visible_frame_for(mtm: MainThreadMarker, watched: CGRect) -> NSRect {
 fn move_away_from(x: i32, y: i32) {
     // Measured against the screen the panel is on, which after following the
     // work may not be the primary one.
-    let watch = state().watch.clone();
+    let watch = state().activity.target.clone();
     let Some(watched) = watch.and_then(|watch| source_rect(&watch).ok()) else {
         return;
     };
@@ -456,7 +463,11 @@ fn move_away_from(x: i32, y: i32) {
         return;
     }
     state().corner = corner;
-    if let Err(error) = present() {
+    let (generation, epoch) = {
+        let state = state();
+        (state.activity.generation, state.activity.epoch)
+    };
+    if let Err(error) = present(generation, epoch) {
         log::debug!("picture-in-picture could not move aside: {error}");
     }
 }
@@ -545,22 +556,24 @@ fn place(
 fn refresh_loop(generation: u64) {
     let interval = Duration::from_millis(1000 / FPS as u64);
     loop {
-        let (watch, below, marker, idle, sitting_on) = {
+        let (watch, epoch, below, marker, idle, sitting_on) = {
             let state = state();
-            if state.generation != generation {
+            if state.activity.generation != generation || state.activity.dismissed {
                 return;
             }
             let marker = state
+                .activity
                 .marker
                 .filter(|(_, _, at)| at.elapsed() < MARKER_LINGER)
                 .map(|(x, y, _)| (x, y));
-            let idle = !state.pinned
-                && state
-                    .last_activity
-                    .is_some_and(|at| at.elapsed() > IDLE_REST);
+            let idle = state
+                .activity
+                .last_activity
+                .is_some_and(|at| at.elapsed() > IDLE_REST);
             let sitting_on = marker.filter(|point| state.covers(*point));
             (
-                state.watch.clone(),
+                state.activity.target.clone(),
+                state.activity.epoch,
                 state.window_number,
                 marker,
                 idle,
@@ -570,7 +583,10 @@ fn refresh_loop(generation: u64) {
         let Some(watch) = watch else { return };
 
         if idle {
-            put_away(Some(generation));
+            let epoch = state().activity.rest(generation, epoch);
+            if let Some(epoch) = epoch {
+                put_away(epoch);
+            }
             return;
         }
 
@@ -583,8 +599,8 @@ fn refresh_loop(generation: u64) {
 
         let started = Instant::now();
         match frame(&watch, below, marker) {
-            Ok(png) => {
-                if !hand_to_panel(generation, png) {
+            Ok((width, height, rgba)) => {
+                if !hand_to_panel(generation, epoch, width, height, rgba) {
                     return;
                 }
             }
@@ -592,8 +608,15 @@ fn refresh_loop(generation: u64) {
             // viewer rather than leaving a frozen last frame up.
             Err(error) => {
                 log::debug!("picture-in-picture stopping: {error}");
-                put_away(Some(generation));
-                return;
+                let epoch = state().activity.rest(generation, epoch);
+                if let Some(epoch) = epoch {
+                    put_away(epoch);
+                    return;
+                }
+                if state().activity.generation != generation {
+                    return;
+                }
+                continue;
             }
         }
         // What is left of the interval, not the whole of it: a frame costs
@@ -605,24 +628,30 @@ fn refresh_loop(generation: u64) {
 
 /// Set the image, and notice a panel the person has closed. Returns false when
 /// the loop should stop.
-fn hand_to_panel(generation: u64, png: Vec<u8>) -> bool {
+fn hand_to_panel(generation: u64, epoch: u64, width: u32, height: u32, rgba: Vec<u8>) -> bool {
     on_main(move |_| {
         VIEWER.with_borrow(|viewer| {
             let Some(viewer) = viewer else { return false };
+            {
+                let state = state();
+                if state.activity.generation != generation || state.activity.dismissed {
+                    return false;
+                }
+                if !state.activity.current(generation, epoch) {
+                    return true;
+                }
+            }
             if !viewer.panel.isVisible() {
                 let mut state = state();
                 // Only if nothing else has moved on: `hide` orders the panel
                 // out too, and that is not a dismissal.
-                if state.generation == generation {
-                    state.generation += 1;
-                    state.dismissed = true;
-                    state.watch = None;
+                if state.activity.current(generation, epoch) {
+                    state.activity.dismiss();
                     state.window_number = 0;
                 }
                 return false;
             }
-            let data = NSData::with_bytes(&png);
-            if let Some(image) = NSImage::initWithData(NSImage::alloc(), &data) {
+            if let Some(image) = image_from_rgba(width, height, &rgba) {
                 viewer.image.setImage(Some(&image));
             }
             true
@@ -631,16 +660,54 @@ fn hand_to_panel(generation: u64, png: Vec<u8>) -> bool {
     .unwrap_or(false)
 }
 
-/// One frame: capture at the size it will be shown, mark the last point acted
-/// on, encode.
-fn frame(watch: &PipWatch, below: u32, marker: Option<(i32, i32)>) -> Result<Vec<u8>> {
+/// AppKit owns the copied bitmap bytes after this returns. Keeping the viewer
+/// on raw RGBA avoids a PNG encode and decode on every 8 Hz frame.
+fn image_from_rgba(width: u32, height: u32, rgba: &[u8]) -> Option<Retained<NSImage>> {
+    let expected = width as usize * height as usize * 4;
+    if width == 0 || height == 0 || rgba.len() != expected {
+        return None;
+    }
+    unsafe {
+        let rep = NSBitmapImageRep::initWithBitmapDataPlanes_pixelsWide_pixelsHigh_bitsPerSample_samplesPerPixel_hasAlpha_isPlanar_colorSpaceName_bitmapFormat_bytesPerRow_bitsPerPixel(
+            NSBitmapImageRep::alloc(),
+            std::ptr::null_mut(),
+            width as isize,
+            height as isize,
+            8,
+            4,
+            true,
+            false,
+            NSDeviceRGBColorSpace,
+            NSBitmapFormat::AlphaNonpremultiplied,
+            (width * 4) as isize,
+            32,
+        )?;
+        let destination = rep.bitmapData();
+        if destination.is_null() {
+            return None;
+        }
+        std::ptr::copy_nonoverlapping(rgba.as_ptr(), destination, expected);
+        let image =
+            NSImage::initWithSize(NSImage::alloc(), NSSize::new(width as f64, height as f64));
+        image.addRepresentation(&rep);
+        Some(image)
+    }
+}
+
+/// One frame: capture at the size it will be shown and mark the last point
+/// acted on.
+fn frame(
+    watch: &ActivityTarget,
+    below: u32,
+    marker: Option<(i32, i32)>,
+) -> Result<(u32, u32, Vec<u8>)> {
     let rect = source_rect(watch)?;
     // Twice the panel's point width: enough for a Retina panel, and the scaling
     // happens inside the capture rather than over a full-screen buffer here.
     let limit = (WIDTH * 2.0) as u32;
     let (width, height, mut rgba) = match watch {
-        PipWatch::Display(_) => capture::rgba_below_window(rect, below, limit)?,
-        PipWatch::Window(id) => capture::rgba_of_window(super::parse_window_id(id)?, limit)?,
+        ActivityTarget::Display(_) => capture::rgba_below_window(rect, below, limit)?,
+        ActivityTarget::Window(id) => capture::rgba_of_window(super::parse_window_id(id)?, limit)?,
     };
     if width == 0 || height == 0 {
         return Err(Error::Failed("captured nothing".into()));
@@ -656,13 +723,7 @@ fn frame(watch: &PipWatch, below: u32, marker: Option<(i32, i32)>) -> Result<Vec
         }
     }
 
-    let image = image::RgbaImage::from_raw(width, height, rgba)
-        .ok_or_else(|| Error::Failed("frame buffer size mismatch".into()))?;
-    let mut png = Vec::new();
-    image
-        .write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
-        .map_err(|error| Error::Failed(format!("frame encode failed: {error}")))?;
-    Ok(png)
+    Ok((width, height, rgba))
 }
 
 /// A two-tone ring on the point just acted on. Two tones because one colour is
