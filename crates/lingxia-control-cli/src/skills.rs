@@ -324,7 +324,7 @@ pub fn manifest_for_running(
 ) -> Manifest {
     let mut manifest = manifest_for(command, product);
     manifest.declared = transport
-        .request(lingxia_devtool_protocol::handlers::control::STATUS, None)
+        .request(lingxia_control_protocol::methods::control::STATUS, None)
         .ok()
         .and_then(|result| result?.get("declared")?.as_array().cloned())
         .map(|values| {
@@ -357,7 +357,7 @@ mod tests {
             method: &str,
             _params: Option<serde_json::Value>,
         ) -> Result<Option<serde_json::Value>> {
-            assert_eq!(method, lingxia_devtool_protocol::handlers::control::STATUS);
+            assert_eq!(method, lingxia_control_protocol::methods::control::STATUS);
             Ok(Some(serde_json::json!({
                 "declared": ["appUse", "browserUse"]
             })))

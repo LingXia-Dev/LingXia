@@ -1,45 +1,4 @@
-#[cfg(feature = "broker")]
-pub mod broker;
-pub mod session_test;
-
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
-
-pub const DEV_SESSION_PROTOCOL_VERSION: u32 = 2;
-
-pub mod capabilities {
-    pub const REQUESTS: &str = "requests";
-    pub const LOG_EVENTS: &str = "events.log";
-}
-
-pub mod event_kinds {
-    pub const LOG: &str = "log";
-}
-
-/// Extract the session auth token from a dev websocket URL's `?token=` query
-/// parameter. The tokened URL is the single credential artifact: the server
-/// prints it, and every peer parses the token back out to present in `Hello`.
-pub fn token_from_ws_url(ws_url: &str) -> Option<String> {
-    let (_, query) = ws_url.split_once('?')?;
-    query.split('&').find_map(|pair| {
-        let (key, value) = pair.split_once('=')?;
-        (key == "token" && !value.is_empty()).then(|| value.to_string())
-    })
-}
-
-/// Append a `?token=` query to a dev websocket URL. Authority-only URLs
-/// (`ws://host:port`) get an explicit `/` first so naive authority parsers
-/// (`split('/')`) never see the query glued to the port.
-pub fn ws_url_with_token(ws_url: &str, token: &str) -> String {
-    if ws_url.contains('?') {
-        return format!("{ws_url}&token={token}");
-    }
-    let has_path = ws_url
-        .split_once("://")
-        .is_some_and(|(_, rest)| rest.contains('/'));
-    let separator = if has_path { "?" } else { "/?" };
-    format!("{ws_url}{separator}token={token}")
-}
 
 /// Names the launcher sets so the product's own executable knows it was typed
 /// rather than launched, and where to reach the app it belongs to.
@@ -58,7 +17,7 @@ pub mod invocation {
     pub const ENDPOINT: &str = "LINGXIA_CONTROL_ENDPOINT";
 }
 
-pub mod handlers {
+pub mod methods {
     pub const ECHO: &str = "echo";
 
     /// The automation interface talking about itself. Both are answered
@@ -72,7 +31,7 @@ pub mod handlers {
 
     pub mod session {
         /// Prepare an optional supervised session participant. The response is
-        /// [`DevSessionPrepareResult`].
+        /// [`crate::dev_session::DevSessionPrepareResult`].
         pub const PREPARE: &str = "session.prepare";
 
         /// Request the owning `lingxia dev` process to stop this session.
@@ -345,115 +304,34 @@ pub mod handlers {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum DevSessionRole {
-    Runtime,
-    Controller,
-    Companion,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum DevSessionLogLevel {
-    Verbose,
-    Debug,
-    Info,
-    Warn,
-    Error,
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ControlRequest {
+    pub id: String,
+    pub method: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub params: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DevSessionLog {
-    pub level: DevSessionLogLevel,
+pub struct ControlResponse {
+    pub id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub appid: Option<String>,
+    pub result: Option<serde_json::Value>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub path: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub target: Option<String>,
-    pub message: String,
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub attributes: BTreeMap<String, serde_json::Value>,
+    pub error: Option<ControlError>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DevSessionEvent {
-    pub timestamp_ms: u64,
-    /// Open producer-defined identifier used for filtering and routing.
-    pub origin: String,
-    pub kind: String,
-    #[serde(default)]
-    pub data: serde_json::Value,
-}
-
-impl DevSessionEvent {
-    pub fn log(
-        timestamp_ms: u64,
-        origin: impl Into<String>,
-        log: DevSessionLog,
-    ) -> Result<Self, serde_json::Error> {
-        Ok(Self {
-            timestamp_ms,
-            origin: origin.into(),
-            kind: event_kinds::LOG.to_string(),
-            data: serde_json::to_value(log)?,
-        })
-    }
-
-    pub fn as_log(&self) -> Result<Option<DevSessionLog>, serde_json::Error> {
-        if self.kind != event_kinds::LOG {
-            return Ok(None);
-        }
-        serde_json::from_value(self.data.clone()).map(Some)
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DevSessionError {
+pub struct ControlError {
     pub code: String,
     pub message: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub data: Option<serde_json::Value>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DevSessionPrepareResult {
-    pub active: bool,
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub runtime_env: BTreeMap<String, String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
-pub enum DevSessionMessage {
-    Hello {
-        version: u32,
-        role: DevSessionRole,
-        #[serde(default, skip_serializing_if = "Vec::is_empty")]
-        capabilities: Vec<String>,
-    },
-    EventBatch {
-        events: Vec<DevSessionEvent>,
-    },
-    Request {
-        id: String,
-        method: String,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        params: Option<serde_json::Value>,
-    },
-    Response {
-        id: String,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        result: Option<serde_json::Value>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        error: Option<DevSessionError>,
-    },
-}
-
-impl DevSessionMessage {
+impl ControlResponse {
     pub fn success(id: impl Into<String>, result: Option<serde_json::Value>) -> Self {
-        Self::Response {
+        Self {
             id: id.into(),
             result,
             error: None,
@@ -465,10 +343,10 @@ impl DevSessionMessage {
         code: impl Into<String>,
         message: impl Into<String>,
     ) -> Self {
-        Self::Response {
+        Self {
             id: id.into(),
             result: None,
-            error: Some(DevSessionError {
+            error: Some(ControlError {
                 code: code.into(),
                 message: message.into(),
                 data: None,
@@ -477,9 +355,163 @@ impl DevSessionMessage {
     }
 }
 
+/// The newline-delimited product-control wire. Dev sessions reuse the same
+/// request and response payloads inside their larger websocket envelope.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ControlMessage {
+    Request(ControlRequest),
+    Response(ControlResponse),
+}
+
+pub mod dev_session {
+    #[cfg(feature = "broker")]
+    pub mod broker;
+    pub mod session_test;
+
+    use super::{ControlRequest, ControlResponse};
+    use serde::{Deserialize, Serialize};
+    use std::collections::BTreeMap;
+
+    pub const DEV_SESSION_PROTOCOL_VERSION: u32 = 2;
+
+    pub mod capabilities {
+        pub const REQUESTS: &str = "requests";
+        pub const LOG_EVENTS: &str = "events.log";
+    }
+
+    pub mod event_kinds {
+        pub const LOG: &str = "log";
+    }
+
+    /// Extract the session auth token from a dev websocket URL's `?token=` query.
+    pub fn token_from_ws_url(ws_url: &str) -> Option<String> {
+        let (_, query) = ws_url.split_once('?')?;
+        query.split('&').find_map(|pair| {
+            let (key, value) = pair.split_once('=')?;
+            (key == "token" && !value.is_empty()).then(|| value.to_string())
+        })
+    }
+
+    /// Append a `?token=` query to a dev websocket URL.
+    pub fn ws_url_with_token(ws_url: &str, token: &str) -> String {
+        if ws_url.contains('?') {
+            return format!("{ws_url}&token={token}");
+        }
+        let has_path = ws_url
+            .split_once("://")
+            .is_some_and(|(_, rest)| rest.contains('/'));
+        let separator = if has_path { "?" } else { "/?" };
+        format!("{ws_url}{separator}token={token}")
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+    #[serde(rename_all = "snake_case")]
+    pub enum DevSessionRole {
+        Runtime,
+        Controller,
+        Companion,
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+    #[serde(rename_all = "snake_case")]
+    pub enum DevSessionLogLevel {
+        Verbose,
+        Debug,
+        Info,
+        Warn,
+        Error,
+    }
+
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub struct DevSessionLog {
+        pub level: DevSessionLogLevel,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub appid: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub path: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub target: Option<String>,
+        pub message: String,
+        #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+        pub attributes: BTreeMap<String, serde_json::Value>,
+    }
+
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub struct DevSessionEvent {
+        pub timestamp_ms: u64,
+        /// Open producer-defined identifier used for filtering and routing.
+        pub origin: String,
+        pub kind: String,
+        #[serde(default)]
+        pub data: serde_json::Value,
+    }
+
+    impl DevSessionEvent {
+        pub fn log(
+            timestamp_ms: u64,
+            origin: impl Into<String>,
+            log: DevSessionLog,
+        ) -> Result<Self, serde_json::Error> {
+            Ok(Self {
+                timestamp_ms,
+                origin: origin.into(),
+                kind: event_kinds::LOG.to_string(),
+                data: serde_json::to_value(log)?,
+            })
+        }
+
+        pub fn as_log(&self) -> Result<Option<DevSessionLog>, serde_json::Error> {
+            if self.kind != event_kinds::LOG {
+                return Ok(None);
+            }
+            serde_json::from_value(self.data.clone()).map(Some)
+        }
+    }
+
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub struct DevSessionPrepareResult {
+        pub active: bool,
+        #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+        pub runtime_env: BTreeMap<String, String>,
+    }
+
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    #[serde(tag = "type", rename_all = "snake_case")]
+    pub enum DevSessionMessage {
+        Hello {
+            version: u32,
+            role: DevSessionRole,
+            #[serde(default, skip_serializing_if = "Vec::is_empty")]
+            capabilities: Vec<String>,
+        },
+        EventBatch {
+            events: Vec<DevSessionEvent>,
+        },
+        Request(ControlRequest),
+        Response(ControlResponse),
+    }
+
+    impl DevSessionMessage {
+        pub fn success(id: impl Into<String>, result: Option<serde_json::Value>) -> Self {
+            Self::Response(ControlResponse::success(id, result))
+        }
+
+        pub fn error(
+            id: impl Into<String>,
+            code: impl Into<String>,
+            message: impl Into<String>,
+        ) -> Self {
+            Self::Response(ControlResponse::error(id, code, message))
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use dev_session::*;
+    use std::collections::BTreeMap;
 
     #[test]
     fn token_appends_with_path_separator_on_authority_only_urls() {
@@ -552,18 +584,37 @@ mod tests {
 
     #[test]
     fn response_error_is_structured() {
-        let message = DevSessionMessage::error("7", "unknown_method", "not supported");
-        let encoded = serde_json::to_value(message).unwrap();
+        let response = ControlResponse::error("7", "unknown_method", "not supported");
+        let encoded = serde_json::to_value(ControlMessage::Response(response.clone())).unwrap();
         assert_eq!(encoded["type"], "response");
         assert_eq!(encoded["id"], "7");
         assert_eq!(encoded["error"]["code"], "unknown_method");
         assert!(encoded.get("result").is_none());
+
+        let dev_encoded = serde_json::to_value(DevSessionMessage::Response(response)).unwrap();
+        assert_eq!(dev_encoded, encoded);
+    }
+
+    #[test]
+    fn product_and_dev_request_wires_are_identical() {
+        let request = ControlRequest {
+            id: "9".to_string(),
+            method: methods::ECHO.to_string(),
+            params: Some(serde_json::json!({"a": 1})),
+        };
+        let product = serde_json::to_value(ControlMessage::Request(request.clone())).unwrap();
+        let dev = serde_json::to_value(DevSessionMessage::Request(request)).unwrap();
+        assert_eq!(product, dev);
+        assert_eq!(
+            product,
+            serde_json::json!({"type":"request","id":"9","method":"echo","params":{"a":1}})
+        );
     }
 }
 
 #[cfg(test)]
 mod desktop_method_tests {
-    use super::handlers::desktop;
+    use super::methods::desktop;
 
     #[test]
     fn method_names_are_unique_and_namespaced() {

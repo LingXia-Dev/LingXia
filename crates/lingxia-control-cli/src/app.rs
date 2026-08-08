@@ -2,7 +2,7 @@ use crate::output;
 use crate::transport::Transport;
 use anyhow::{Result, bail};
 use clap::{Args, Subcommand, ValueEnum};
-use lingxia_devtool_protocol::handlers;
+use lingxia_control_protocol::methods;
 use serde_json::{Map, Value, json};
 
 /// What these commands need beyond the transport.
@@ -284,7 +284,7 @@ pub fn execute(context: &AppContext, options: AppOptions) -> Result<()> {
 fn execute_doctor(context: &AppContext, json_output: bool) -> Result<()> {
     let mut data = context
         .transport
-        .request(handlers::app::DOCTOR, None)?
+        .request(methods::app::DOCTOR, None)?
         .unwrap_or_else(|| json!({}));
     if let (Value::Object(map), Some(session)) = (&mut data, context.session.as_ref()) {
         map.insert("session_id".to_string(), json!(session));
@@ -343,7 +343,7 @@ fn require_desktop_input(context: &AppContext, what: &str) -> Result<()> {
 fn execute_windows(context: &AppContext, json: bool) -> Result<()> {
     let data = context
         .transport
-        .request(handlers::app::WINDOWS, None)?
+        .request(methods::app::WINDOWS, None)?
         .unwrap_or(Value::Array(Vec::new()));
 
     if json {
@@ -393,7 +393,7 @@ fn execute_screenshot(
     let args = window.as_ref().map(|id| json!({ "window_id": id }));
     let data = context
         .transport
-        .request(handlers::app::SCREENSHOT, args)?
+        .request(methods::app::SCREENSHOT, args)?
         .unwrap_or(Value::Null);
 
     if json {
@@ -401,7 +401,7 @@ fn execute_screenshot(
         return Ok(());
     }
 
-    let bytes = output::decode_png_payload(&data, handlers::app::SCREENSHOT)?;
+    let bytes = output::decode_png_payload(&data, methods::app::SCREENSHOT)?;
     let ts = chrono::Local::now().format("%Y%m%d-%H%M%S");
     let target = output::safe_component(&context.target);
     output::write_png(output, format!("app-{target}-{ts}.png"), &bytes)
@@ -477,7 +477,7 @@ fn execute_mouse(context: &AppContext, command: MouseCommand) -> Result<()> {
         let payload = action_payload(target.window.clone(), action);
         data = context
             .transport
-            .request(handlers::app::MOUSE, Some(payload))?
+            .request(methods::app::MOUSE, Some(payload))?
             .unwrap_or(Value::Null);
     }
 
@@ -514,7 +514,7 @@ fn execute_key(context: &AppContext, command: KeyCommand) -> Result<()> {
     let payload = action_payload(target.window, action);
     let data = context
         .transport
-        .request(handlers::app::KEYBOARD, Some(payload))?
+        .request(methods::app::KEYBOARD, Some(payload))?
         .unwrap_or(Value::Null);
 
     if target.json {

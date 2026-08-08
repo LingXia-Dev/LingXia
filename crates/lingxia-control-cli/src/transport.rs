@@ -8,6 +8,7 @@
 use std::io::{BufRead, BufReader, Write};
 
 use anyhow::{Context, Result, anyhow, bail};
+use lingxia_control_protocol::{ControlMessage, ControlRequest};
 use serde_json::Value;
 
 /// One request, one response. Deliberately the whole interface: every command
@@ -39,14 +40,14 @@ pub struct ControlSocket {
 /// id, which is not readable this early — so the launcher, written by the app
 /// that already opened it, carries the name.
 pub fn endpoint_in(state_dir: &std::path::Path) -> String {
-    if let Ok(endpoint) = std::env::var(lingxia_devtool_protocol::invocation::ENDPOINT) {
+    if let Ok(endpoint) = std::env::var(lingxia_control_protocol::invocation::ENDPOINT) {
         return endpoint;
     }
     state_dir.join("control.sock").display().to_string()
 }
 
 impl ControlSocket {
-    /// Point at an endpoint reported by the product's `control::endpoint_name`.
+    /// Point at an endpoint reported by the product's `local_control::endpoint_name`.
     pub fn at(endpoint: impl Into<String>) -> Self {
         Self {
             endpoint: endpoint.into(),
@@ -66,33 +67,33 @@ impl ControlSocket {
 impl Transport for ControlSocket {
     fn request(&self, method: &str, params: Option<Value>) -> Result<Option<Value>> {
         let mut connection = self.connect()?;
-        let request = serde_json::json!({
-            "type": "request",
-            "id": "1",
-            "method": method,
-            "params": params,
-        });
+        let request = control_request(method, params);
         connection.write_line(&serde_json::to_string(&request)?)?;
         let line = connection.read_line()?;
         parse_response(&line, method)
     }
 }
 
+fn control_request(method: &str, params: Option<Value>) -> ControlMessage {
+    ControlMessage::Request(ControlRequest {
+        id: "1".to_string(),
+        method: method.to_string(),
+        // The existing product wire emitted an explicit null for methods
+        // without parameters; retain that byte-level shape.
+        params: params.or(Some(Value::Null)),
+    })
+}
+
 fn parse_response(line: &str, method: &str) -> Result<Option<Value>> {
-    let reply: Value =
+    let reply: ControlMessage =
         serde_json::from_str(line).with_context(|| format!("{method} returned invalid JSON"))?;
-    if let Some(error) = reply.get("error").filter(|value| !value.is_null()) {
-        let message = error
-            .get("message")
-            .and_then(Value::as_str)
-            .unwrap_or("request failed");
-        let code = error.get("code").and_then(Value::as_str).unwrap_or("error");
-        bail!("{method} failed ({code}): {message}");
+    let ControlMessage::Response(response) = reply else {
+        bail!("{method} returned a request instead of a response");
+    };
+    if let Some(error) = response.error {
+        bail!("{method} failed ({}): {}", error.code, error.message);
     }
-    Ok(reply
-        .get("result")
-        .cloned()
-        .filter(|value| !value.is_null()))
+    Ok(response.result.filter(|value| !value.is_null()))
 }
 
 #[cfg(unix)]
@@ -176,6 +177,14 @@ mod tests {
         assert_eq!(
             parse_response(r#"{"type":"response","id":"1"}"#, "x").unwrap(),
             None
+        );
+    }
+
+    #[test]
+    fn request_wire_keeps_the_existing_shape() {
+        assert_eq!(
+            serde_json::to_string(&control_request("echo", None)).unwrap(),
+            r#"{"type":"request","id":"1","method":"echo","params":null}"#
         );
     }
 }

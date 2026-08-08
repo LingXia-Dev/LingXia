@@ -2262,14 +2262,14 @@ dependencies = [
  "chrono",
  "clap",
  "lingxia-computer-use",
- "lingxia-devtool-protocol",
+ "lingxia-control-protocol",
  "log",
  "serde",
  "serde_json",
 ]
 
 [[package]]
-name = "lingxia-devtool"
+name = "lingxia-control-runtime"
 version = "0.11.2"
 dependencies = [
  "base64",
@@ -2278,7 +2278,7 @@ dependencies = [
  "lingxia-automation",
  "lingxia-browser",
  "lingxia-computer-use",
- "lingxia-devtool-protocol",
+ "lingxia-control-protocol",
  "lingxia-log",
  "lingxia-lxapp",
  "lingxia-settings",
@@ -2292,7 +2292,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "lingxia-devtool-protocol"
+name = "lingxia-control-protocol"
 version = "0.11.2"
 dependencies = [
  "serde",
@@ -2863,7 +2863,7 @@ version = "0.1.0"
 dependencies = [
  "jni",
  "lingxia",
- "lingxia-devtool",
+ "lingxia-control-runtime",
  "log",
  "napi-derive-ohos",
  "napi-ohos",

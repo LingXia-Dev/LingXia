@@ -6,7 +6,7 @@
 //! client that asks, so neither can grow a field the other does not know.
 //!
 //! They live here rather than with the method-name constants because they are
-//! made of [`crate::model`] types; the constants stay in the devtool protocol
+//! made of [`crate::model`] types; the constants stay in the control protocol
 //! with every other namespace's.
 
 use serde::{Deserialize, Serialize};

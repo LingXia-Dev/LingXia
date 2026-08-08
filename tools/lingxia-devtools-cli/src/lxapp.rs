@@ -4,7 +4,7 @@ use crate::project::SessionInfo;
 use crate::screenshot;
 use anyhow::{Context, Result};
 use clap::{Args, Parser, Subcommand, ValueEnum};
-use lingxia_devtool_protocol::handlers;
+use lingxia_control_protocol::methods;
 use serde_json::{Value, json};
 use std::path::Path;
 
@@ -449,16 +449,13 @@ pub fn execute(project_root: &Path, info: &SessionInfo, options: LxAppOptions) -
 
     match parsed.command {
         LxAppCommand::List { all, pretty } => {
-            let data = client::execute_command(
-                ws_url,
-                handlers::lxapp::LIST,
-                Some(json!({ "all": all })),
-            )?
-            .unwrap_or_else(|| json!([]));
+            let data =
+                client::execute_command(ws_url, methods::lxapp::LIST, Some(json!({ "all": all })))?
+                    .unwrap_or_else(|| json!([]));
             print_json(&data, pretty)?;
         }
         LxAppCommand::Current { pretty } => {
-            let data = client::execute_command(ws_url, handlers::lxapp::CURRENT, None)?
+            let data = client::execute_command(ws_url, methods::lxapp::CURRENT, None)?
                 .unwrap_or(Value::Null);
             print_json(&data, pretty)?;
         }
@@ -466,7 +463,7 @@ pub fn execute(project_root: &Path, info: &SessionInfo, options: LxAppOptions) -
         LxAppCommand::Info { app, pretty } => {
             let data = client::execute_command(
                 ws_url,
-                handlers::lxapp::INFO,
+                methods::lxapp::INFO,
                 Some(json!({ "appid": app })),
             )?
             .unwrap_or(Value::Null);
@@ -475,7 +472,7 @@ pub fn execute(project_root: &Path, info: &SessionInfo, options: LxAppOptions) -
         LxAppCommand::Pages { app, pretty } => {
             let data = client::execute_command(
                 ws_url,
-                handlers::lxapp::PAGES,
+                methods::lxapp::PAGES,
                 Some(json!({ "appid": app })),
             )?
             .unwrap_or(Value::Null);
@@ -491,7 +488,7 @@ pub fn execute(project_root: &Path, info: &SessionInfo, options: LxAppOptions) -
         } => {
             let data = client::execute_command(
                 ws_url,
-                handlers::lxapp::EVAL,
+                methods::lxapp::EVAL,
                 Some(json!({
                     "appid": app,
                     "script": script,
@@ -509,7 +506,7 @@ pub fn execute(project_root: &Path, info: &SessionInfo, options: LxAppOptions) -
         } => {
             let data = client::execute_command(
                 ws_url,
-                handlers::lxapp::OPEN,
+                methods::lxapp::OPEN,
                 Some(json!({
                     "appid": appid,
                     "path": path,
@@ -527,11 +524,11 @@ pub fn execute(project_root: &Path, info: &SessionInfo, options: LxAppOptions) -
                 println!("{appid}");
             }
         }
-        LxAppCommand::Close { app, json } => action(ws_url, handlers::lxapp::CLOSE, app, json)?,
+        LxAppCommand::Close { app, json } => action(ws_url, methods::lxapp::CLOSE, app, json)?,
         LxAppCommand::Reload(options) => lxapp_build::execute(ws_url, &options)?,
-        LxAppCommand::Restart { app, json } => action(ws_url, handlers::lxapp::RESTART, app, json)?,
+        LxAppCommand::Restart { app, json } => action(ws_url, methods::lxapp::RESTART, app, json)?,
         LxAppCommand::Uninstall { app, json } => {
-            action(ws_url, handlers::lxapp::UNINSTALL, app, json)?
+            action(ws_url, methods::lxapp::UNINSTALL, app, json)?
         }
     }
 
@@ -562,7 +559,7 @@ pub fn handle_pre_session(project_root: &Path, options: &LxAppOptions) -> Result
 }
 
 fn execute_doctor(info: &SessionInfo, json: bool) -> Result<()> {
-    let mut data = client::execute_command(&info.ws_url, handlers::lxapp::DOCTOR, None)?
+    let mut data = client::execute_command(&info.ws_url, methods::lxapp::DOCTOR, None)?
         .unwrap_or_else(|| json!({}));
     // The runtime doesn't know the CLI's session id; graft it on so the doctor
     // envelope is self-describing.
@@ -611,20 +608,20 @@ fn execute_doctor(info: &SessionInfo, json: bool) -> Result<()> {
 
 fn execute_nav(ws_url: &str, options: NavOptions) -> Result<()> {
     match options.command {
-        NavCommand::To(options) => execute_page_nav(ws_url, handlers::lxapp_nav::TO, options)?,
+        NavCommand::To(options) => execute_page_nav(ws_url, methods::lxapp_nav::TO, options)?,
         NavCommand::Redirect(options) => {
-            execute_page_nav(ws_url, handlers::lxapp_nav::REDIRECT, options)?
+            execute_page_nav(ws_url, methods::lxapp_nav::REDIRECT, options)?
         }
         NavCommand::SwitchTab(options) => {
-            execute_page_nav(ws_url, handlers::lxapp_nav::SWITCH_TAB, options)?
+            execute_page_nav(ws_url, methods::lxapp_nav::SWITCH_TAB, options)?
         }
         NavCommand::Relaunch(options) => {
-            execute_page_nav(ws_url, handlers::lxapp_nav::RELAUNCH, options)?
+            execute_page_nav(ws_url, methods::lxapp_nav::RELAUNCH, options)?
         }
         NavCommand::Back(options) => {
             let data = client::execute_command(
                 ws_url,
-                handlers::lxapp_nav::BACK,
+                methods::lxapp_nav::BACK,
                 Some(json!({ "appid": options.app, "delta": options.delta })),
             )?;
             print_optional_json(data, options.json)?;
@@ -652,7 +649,7 @@ fn execute_page(ws_url: &str, options: PageOptions) -> Result<()> {
         PageCommand::Current { app, pretty } => {
             let data = client::execute_command(
                 ws_url,
-                handlers::lxapp_page::CURRENT,
+                methods::lxapp_page::CURRENT,
                 Some(json!({ "appid": app })),
             )?
             .unwrap_or(Value::Null);
@@ -661,7 +658,7 @@ fn execute_page(ws_url: &str, options: PageOptions) -> Result<()> {
         PageCommand::List { app, pretty } => {
             let data = client::execute_command(
                 ws_url,
-                handlers::lxapp_page::LIST,
+                methods::lxapp_page::LIST,
                 Some(json!({ "appid": app })),
             )?
             .unwrap_or(Value::Null);
@@ -670,7 +667,7 @@ fn execute_page(ws_url: &str, options: PageOptions) -> Result<()> {
         PageCommand::Info { page, app, pretty } => {
             let data = client::execute_command(
                 ws_url,
-                handlers::lxapp_page::INFO,
+                methods::lxapp_page::INFO,
                 Some(json!({ "appid": app, "page": page })),
             )?
             .unwrap_or(Value::Null);
@@ -687,7 +684,7 @@ fn execute_page(ws_url: &str, options: PageOptions) -> Result<()> {
         } => {
             let data = client::execute_command(
                 ws_url,
-                handlers::lxapp_page::WAIT,
+                methods::lxapp_page::WAIT,
                 Some(json!({
                     "appid": app,
                     "page": page,
@@ -709,7 +706,7 @@ fn execute_page(ws_url: &str, options: PageOptions) -> Result<()> {
         } => {
             let data = client::execute_command(
                 ws_url,
-                handlers::lxapp_page::EVAL,
+                methods::lxapp_page::EVAL,
                 Some(json!({
                     "appid": app,
                     "page": page,
@@ -735,7 +732,7 @@ fn execute_page(ws_url: &str, options: PageOptions) -> Result<()> {
             }
             let data = client::execute_command(
                 ws_url,
-                handlers::lxapp_page::QUERY,
+                methods::lxapp_page::QUERY,
                 Some(json!({
                     "appid": app,
                     "page": page,
@@ -758,7 +755,7 @@ fn execute_page(ws_url: &str, options: PageOptions) -> Result<()> {
         } => {
             let data = client::execute_command(
                 ws_url,
-                handlers::lxapp_page::CLICK,
+                methods::lxapp_page::CLICK,
                 Some(json!({
                     "appid": app,
                     "page": page,
@@ -778,7 +775,7 @@ fn execute_page(ws_url: &str, options: PageOptions) -> Result<()> {
         } => {
             let data = client::execute_command(
                 ws_url,
-                handlers::lxapp_page::TYPE,
+                methods::lxapp_page::TYPE,
                 Some(json!({
                     "appid": app,
                     "page": page,
@@ -799,7 +796,7 @@ fn execute_page(ws_url: &str, options: PageOptions) -> Result<()> {
         } => {
             let data = client::execute_command(
                 ws_url,
-                handlers::lxapp_page::FILL,
+                methods::lxapp_page::FILL,
                 Some(json!({
                     "appid": app,
                     "page": page,
@@ -820,7 +817,7 @@ fn execute_page(ws_url: &str, options: PageOptions) -> Result<()> {
         } => {
             let data = client::execute_command(
                 ws_url,
-                handlers::lxapp_page::PRESS,
+                methods::lxapp_page::PRESS,
                 Some(json!({
                     "appid": app,
                     "page": page,
@@ -840,7 +837,7 @@ fn execute_page(ws_url: &str, options: PageOptions) -> Result<()> {
         } => {
             let data = client::execute_command(
                 ws_url,
-                handlers::lxapp_page::SCROLL,
+                methods::lxapp_page::SCROLL,
                 Some(json!({
                     "appid": app,
                     "page": page,
@@ -858,7 +855,7 @@ fn execute_page(ws_url: &str, options: PageOptions) -> Result<()> {
         } => {
             let data = client::execute_command(
                 ws_url,
-                handlers::lxapp_page::SCROLL_TO,
+                methods::lxapp_page::SCROLL_TO,
                 Some(json!({
                     "appid": app,
                     "page": page,
@@ -870,7 +867,7 @@ fn execute_page(ws_url: &str, options: PageOptions) -> Result<()> {
         PageCommand::Back { app, delta, json } => {
             let data = client::execute_command(
                 ws_url,
-                handlers::lxapp_page::BACK,
+                methods::lxapp_page::BACK,
                 Some(json!({ "appid": app, "delta": delta })),
             )?;
             print_optional_json(data, json)?;
@@ -897,7 +894,7 @@ fn execute_page_screenshot(
 ) -> Result<()> {
     let data = client::execute_command(
         ws_url,
-        handlers::lxapp_page::SCREENSHOT,
+        methods::lxapp_page::SCREENSHOT,
         Some(json!({ "appid": app, "page": page })),
     )?
     .unwrap_or(Value::Null);
@@ -907,7 +904,7 @@ fn execute_page_screenshot(
         return Ok(());
     }
 
-    let bytes = screenshot::decode_png_payload(&data, handlers::lxapp_page::SCREENSHOT)?;
+    let bytes = screenshot::decode_png_payload(&data, methods::lxapp_page::SCREENSHOT)?;
     let ts = chrono::Local::now().format("%Y%m%d-%H%M%S");
     let app = data.get("appid").and_then(Value::as_str).unwrap_or(&app);
     let page = data

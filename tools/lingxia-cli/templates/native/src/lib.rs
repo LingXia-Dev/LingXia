@@ -23,9 +23,9 @@ impl lingxia::HostAddon for AppHostAddon {
 
     fn start_services(&self) {
         #[cfg(all(feature = "devtools", any(target_os = "ios", target_os = "macos")))]
-        lingxia_devtool::start_devtool_bridge_from_env();
+        lingxia_control_runtime::start_dev_session_bridge_from_env();
         #[cfg(feature = "control")]
-        if let Err(error) = lingxia_devtool::control::install() {
+        if let Err(error) = lingxia_control_runtime::local_control::install() {
             log::warn!("control socket unavailable: {error}");
         }
     }

@@ -10,15 +10,15 @@
 //! a user would look.
 
 use lingxia_computer_use as cu;
-use lingxia_devtool_protocol::DevSessionMessage;
-use lingxia_devtool_protocol::handlers::desktop as method;
+use lingxia_control_protocol::ControlResponse;
+use lingxia_control_protocol::methods::desktop as method;
 use serde::{Serialize, de::DeserializeOwned};
 use serde_json::Value;
 
 /// This namespace answers with its own error codes rather than the generic
 /// `request_failed`, because `lingxia-computer-use` codes are a contract:
 /// callers branch on them and a client turns them into its exit status.
-pub fn handle(id: String, name: &str, params: Option<Value>) -> Option<DevSessionMessage> {
+pub fn handle(id: String, name: &str, params: Option<Value>) -> Option<ControlResponse> {
     if !name.starts_with("desktop.") {
         return None;
     }
@@ -31,8 +31,8 @@ pub fn handle(id: String, name: &str, params: Option<Value>) -> Option<DevSessio
         cu::pip::note_activity(acted);
     }
     Some(match outcome {
-        Ok(result) => DevSessionMessage::success(id, result),
-        Err(Failure { code, message }) => DevSessionMessage::error(id, code, message),
+        Ok(result) => ControlResponse::success(id, result),
+        Err(Failure { code, message }) => ControlResponse::error(id, code, message),
     })
 }
 
@@ -396,10 +396,7 @@ mod tests {
     fn claims_its_prefix_and_refuses_the_rest() {
         let mistyped = handle("1".into(), "desktop.windos", None)
             .expect("a desktop-prefixed name belongs to this namespace");
-        let DevSessionMessage::Response { error, .. } = mistyped else {
-            panic!("expected a response");
-        };
-        let error = error.expect("an unknown method is an error");
+        let error = mistyped.error.expect("an unknown method is an error");
         assert_eq!(error.code, cu::ErrorCode::Usage.as_str());
         assert!(error.message.contains("desktop.windos"));
 

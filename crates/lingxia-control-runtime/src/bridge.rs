@@ -2,10 +2,10 @@
 //!
 //! Only development hosts carry this: it dials the `lingxia dev` session over
 //! TCP and streams logs at it. A shipped product that wants automation uses
-//! [`crate::control`] instead, which reaches the same [`crate::dispatch`]
+//! [`crate::local_control`] instead, which reaches the same [`crate::dispatch`]
 //! without any of the network stack below.
 
-use lingxia_devtool_protocol::{
+use lingxia_control_protocol::dev_session::{
     DEV_SESSION_PROTOCOL_VERSION, DevSessionEvent, DevSessionLog, DevSessionLogLevel,
     DevSessionMessage, DevSessionRole, capabilities,
 };
@@ -21,7 +21,7 @@ use crate::dispatch;
 
 const DEV_WS_URL_ENV: &str = "LINGXIA_DEV_WS_URL";
 
-pub fn start_devtool_bridge_from_env() {
+pub fn start_dev_session_bridge_from_env() {
     static STARTED: OnceLock<()> = OnceLock::new();
     if STARTED.set(()).is_err() {
         return;
@@ -240,10 +240,10 @@ fn handle_incoming_message(
     websocket: &mut WebSocket<MaybeTlsStream<std::net::TcpStream>>,
     message: DevSessionMessage,
 ) -> Result<(), String> {
-    let DevSessionMessage::Request { id, method, params } = message else {
+    let DevSessionMessage::Request(request) = message else {
         return Ok(());
     };
-    send_wire_message(websocket, &dispatch(id, method, params))
+    send_wire_message(websocket, &DevSessionMessage::Response(dispatch(request)))
 }
 
 fn send_log_batch(

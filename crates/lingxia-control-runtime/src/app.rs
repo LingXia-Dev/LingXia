@@ -1,5 +1,5 @@
 use crate::util::{png_dimensions, png_response, run_async};
-use lingxia_devtool_protocol::handlers;
+use lingxia_control_protocol::methods;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -21,8 +21,8 @@ struct AppScreenshotArgs {
 
 fn handle_app_command_impl(handler: &str, args: Option<Value>) -> Result<Option<Value>, String> {
     match handler {
-        handlers::app::DOCTOR => Ok(Some(build_app_doctor())),
-        handlers::app::SCREENSHOT => {
+        methods::app::DOCTOR => Ok(Some(build_app_doctor())),
+        methods::app::SCREENSHOT => {
             let parsed: AppScreenshotArgs = match args {
                 Some(value) => serde_json::from_value(value)
                     .map_err(|e| format!("invalid args for {}: {}", handler, e))?,
@@ -51,13 +51,13 @@ fn handle_app_command_impl(handler: &str, args: Option<Value>) -> Result<Option<
                 ],
             )))
         }
-        handlers::app::WINDOWS => {
+        methods::app::WINDOWS => {
             let windows = run_async(lingxia::dev::list_app_windows())?;
             serde_json::to_value(windows)
                 .map(Some)
                 .map_err(|err| err.to_string())
         }
-        handlers::app::MOUSE => {
+        methods::app::MOUSE => {
             let request: lingxia::dev::AppMouseRequest = match args {
                 Some(value) => serde_json::from_value(value)
                     .map_err(|e| format!("invalid args for {}: {}", handler, e))?,
@@ -68,7 +68,7 @@ fn handle_app_command_impl(handler: &str, args: Option<Value>) -> Result<Option<
                 .map(Some)
                 .map_err(|err| err.to_string())
         }
-        handlers::app::KEYBOARD => {
+        methods::app::KEYBOARD => {
             let request: lingxia::dev::AppKeyboardRequest = match args {
                 Some(value) => serde_json::from_value(value)
                     .map_err(|e| format!("invalid args for {}: {}", handler, e))?,

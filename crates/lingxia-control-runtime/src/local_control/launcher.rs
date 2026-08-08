@@ -10,7 +10,7 @@
 
 use std::path::{Path, PathBuf};
 
-use lingxia_devtool_protocol::invocation;
+use lingxia_control_protocol::invocation;
 
 /// Directory holding the launcher, added to `PATH` for sessions we spawn.
 pub fn bin_dir(state_dir: &Path) -> PathBuf {

@@ -14,7 +14,7 @@ clap = { version = "4.5", features = ["derive"] }
 chrono = { version = "0.4", features = ["serde"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-lingxia-devtool-protocol = { workspace = true, features = ["broker"] }
+lingxia-control-protocol = { workspace = true, features = ["broker"] }
 lingxia-computer-use = { workspace = true }
 lingxia-control-cli = { workspace = true }
 tungstenite = { version = "0.29", features = ["native-tls"] }

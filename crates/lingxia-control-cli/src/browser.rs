@@ -2,7 +2,7 @@ use crate::output;
 use crate::transport::Transport;
 use anyhow::{Context, Result, anyhow};
 use clap::{Args, Subcommand};
-use lingxia_devtool_protocol::handlers;
+use lingxia_control_protocol::methods;
 use serde_json::{Value, json};
 
 #[derive(Args, Clone)]
@@ -516,7 +516,7 @@ pub fn execute(context: &BrowserContext, options: BrowserOptions) -> Result<()> 
         BrowserCommand::Open { url, tab, json } => {
             let url = normalize_open_url_for_target(&url, &context.target);
             let data = transport.request(
-                handlers::browser::OPEN,
+                methods::browser::OPEN,
                 Some(json!({
                     "url": url,
                     "tab_id": tab,
@@ -534,7 +534,7 @@ pub fn execute(context: &BrowserContext, options: BrowserOptions) -> Result<()> 
             }
         }
         BrowserCommand::Tabs { json } => {
-            let data = transport.request(handlers::browser::TABS, None)?;
+            let data = transport.request(methods::browser::TABS, None)?;
             let data = data.unwrap_or_else(|| json!([]));
             if json {
                 print_json(&data, false)?;
@@ -544,7 +544,7 @@ pub fn execute(context: &BrowserContext, options: BrowserOptions) -> Result<()> 
         }
         BrowserCommand::Current { json } => {
             let data = transport
-                .request(handlers::browser::CURRENT, None)?
+                .request(methods::browser::CURRENT, None)?
                 .unwrap_or(Value::Null);
             if json {
                 print_json(&data, false)?;
@@ -554,27 +554,26 @@ pub fn execute(context: &BrowserContext, options: BrowserOptions) -> Result<()> 
         }
         BrowserCommand::Activate { tab, json } => {
             let data =
-                transport.request(handlers::browser::ACTIVATE, Some(json!({ "tab_id": tab })))?;
+                transport.request(methods::browser::ACTIVATE, Some(json!({ "tab_id": tab })))?;
             print_optional_json(data, json)?;
         }
         BrowserCommand::Close { tab, json } => {
             let data =
-                transport.request(handlers::browser::CLOSE, Some(json!({ "tab_id": tab })))?;
+                transport.request(methods::browser::CLOSE, Some(json!({ "tab_id": tab })))?;
             print_optional_json(data, json)?;
         }
         BrowserCommand::Reload { tab, json } => {
             let data =
-                transport.request(handlers::browser::RELOAD, Some(json!({ "tab_id": tab })))?;
+                transport.request(methods::browser::RELOAD, Some(json!({ "tab_id": tab })))?;
             print_optional_json(data, json)?;
         }
         BrowserCommand::Back { tab, json } => {
-            let data =
-                transport.request(handlers::browser::BACK, Some(json!({ "tab_id": tab })))?;
+            let data = transport.request(methods::browser::BACK, Some(json!({ "tab_id": tab })))?;
             print_optional_json(data, json)?;
         }
         BrowserCommand::Forward { tab, json } => {
             let data =
-                transport.request(handlers::browser::FORWARD, Some(json!({ "tab_id": tab })))?;
+                transport.request(methods::browser::FORWARD, Some(json!({ "tab_id": tab })))?;
             print_optional_json(data, json)?;
         }
         BrowserCommand::UserAgent(options) => execute_user_agent(transport, options)?,
@@ -587,7 +586,7 @@ pub fn execute(context: &BrowserContext, options: BrowserOptions) -> Result<()> 
             json,
         } => {
             let data = transport.request(
-                handlers::browser::EVAL,
+                methods::browser::EVAL,
                 Some(json!({
                     "tab_id": tab,
                     "js": js,
@@ -608,7 +607,7 @@ pub fn execute(context: &BrowserContext, options: BrowserOptions) -> Result<()> 
         } => {
             let data = transport
                 .request(
-                    handlers::browser::QUERY,
+                    methods::browser::QUERY,
                     Some(json!({
                         "tab_id": tab,
                         "selector": selector,
@@ -634,7 +633,7 @@ pub fn execute(context: &BrowserContext, options: BrowserOptions) -> Result<()> 
             let condition = wait_condition(loaded, exists, visible, hidden, editable, js)?;
             let data = transport
                 .request(
-                    handlers::browser::WAIT,
+                    methods::browser::WAIT,
                     Some(json!({
                         "tab_id": tab,
                         "condition": condition,
@@ -656,7 +655,7 @@ pub fn execute(context: &BrowserContext, options: BrowserOptions) -> Result<()> 
             }
             let data = transport
                 .request(
-                    handlers::browser::WAIT_URL,
+                    methods::browser::WAIT_URL,
                     Some(json!({
                         "tab_id": tab,
                         "url": url,
@@ -676,7 +675,7 @@ pub fn execute(context: &BrowserContext, options: BrowserOptions) -> Result<()> 
         } => {
             let data = transport
                 .request(
-                    handlers::browser::WAIT_NAVIGATION,
+                    methods::browser::WAIT_NAVIGATION,
                     Some(json!({
                         "tab_id": tab,
                         "from_url": from_url,
@@ -696,7 +695,7 @@ pub fn execute(context: &BrowserContext, options: BrowserOptions) -> Result<()> 
             json,
         } => {
             let data = transport.request(
-                handlers::browser::CLICK,
+                methods::browser::CLICK,
                 Some(json!({
                     "tab_id": tab,
                     "selector": selector,
@@ -714,7 +713,7 @@ pub fn execute(context: &BrowserContext, options: BrowserOptions) -> Result<()> 
             json,
         } => {
             let data = transport.request(
-                handlers::browser::TYPE,
+                methods::browser::TYPE,
                 Some(json!({
                     "tab_id": tab,
                     "selector": selector,
@@ -730,7 +729,7 @@ pub fn execute(context: &BrowserContext, options: BrowserOptions) -> Result<()> 
             json,
         } => {
             let data = transport.request(
-                handlers::browser::FILL,
+                methods::browser::FILL,
                 Some(json!({
                     "tab_id": tab,
                     "selector": selector,
@@ -748,7 +747,7 @@ pub fn execute(context: &BrowserContext, options: BrowserOptions) -> Result<()> 
             json,
         } => {
             let data = transport.request(
-                handlers::browser::PRESS,
+                methods::browser::PRESS,
                 Some(json!({
                     "tab_id": tab,
                     "key": key,
@@ -761,7 +760,7 @@ pub fn execute(context: &BrowserContext, options: BrowserOptions) -> Result<()> 
         }
         BrowserCommand::Scroll { tab, dx, dy, json } => {
             let data = transport.request(
-                handlers::browser::SCROLL,
+                methods::browser::SCROLL,
                 Some(json!({
                     "tab_id": tab,
                     "dx": dx,
@@ -776,7 +775,7 @@ pub fn execute(context: &BrowserContext, options: BrowserOptions) -> Result<()> 
             json,
         } => {
             let data = transport.request(
-                handlers::browser::SCROLL_TO,
+                methods::browser::SCROLL_TO,
                 Some(json!({
                     "tab_id": tab,
                     "selector": selector,
@@ -796,9 +795,9 @@ pub fn execute(context: &BrowserContext, options: BrowserOptions) -> Result<()> 
 
 fn execute_user_agent(transport: &dyn Transport, options: UserAgentOptions) -> Result<()> {
     let (handler, args, show_human_output) = match options.command {
-        UserAgentCommand::Show => (handlers::browser::UA_SHOW, json!({}), true),
+        UserAgentCommand::Show => (methods::browser::UA_SHOW, json!({}), true),
         UserAgentCommand::Set { user_agent, reload } => (
-            handlers::browser::UA_SET,
+            methods::browser::UA_SET,
             json!({
                 "user_agent": user_agent,
                 "reload": reload,
@@ -806,7 +805,7 @@ fn execute_user_agent(transport: &dyn Transport, options: UserAgentOptions) -> R
             false,
         ),
         UserAgentCommand::Reset { reload } => (
-            handlers::browser::UA_RESET,
+            methods::browser::UA_RESET,
             json!({ "reload": reload }),
             false,
         ),
@@ -860,21 +859,21 @@ fn execute_network(context: &BrowserContext, options: NetworkOptions) -> Result<
     match options.command {
         NetworkCommand::Enable => {
             transport.request(
-                handlers::browser::NETWORK_ENABLE,
+                methods::browser::NETWORK_ENABLE,
                 Some(json!({ "tab_id": tab })),
             )?;
             println!("network capture enabled for {tab}");
         }
         NetworkCommand::Disable => {
             transport.request(
-                handlers::browser::NETWORK_DISABLE,
+                methods::browser::NETWORK_DISABLE,
                 Some(json!({ "tab_id": tab })),
             )?;
             println!("network capture disabled for {tab}");
         }
         NetworkCommand::Clear => {
             transport.request(
-                handlers::browser::NETWORK_CLEAR,
+                methods::browser::NETWORK_CLEAR,
                 Some(json!({ "tab_id": tab })),
             )?;
             println!("network capture cleared for {tab}");
@@ -927,7 +926,7 @@ fn network_capture_may_be_supported(target: &str) -> bool {
 fn network_snapshot(transport: &dyn Transport, tab: &str) -> Result<Value> {
     Ok(transport
         .request(
-            handlers::browser::NETWORK_LIST,
+            methods::browser::NETWORK_LIST,
             Some(json!({ "tab_id": tab })),
         )?
         .unwrap_or(Value::Null))
@@ -1084,17 +1083,14 @@ fn execute_screenshot(
     json: bool,
 ) -> Result<()> {
     let data = transport
-        .request(
-            handlers::browser::SCREENSHOT,
-            Some(json!({ "tab_id": tab })),
-        )?
+        .request(methods::browser::SCREENSHOT, Some(json!({ "tab_id": tab })))?
         .unwrap_or(Value::Null);
 
     if json {
         return print_json(&data, false);
     }
 
-    let bytes = output::decode_png_payload(&data, handlers::browser::SCREENSHOT)?;
+    let bytes = output::decode_png_payload(&data, methods::browser::SCREENSHOT)?;
     let resolved_tab = data
         .get("tab_id")
         .and_then(Value::as_str)
@@ -1111,7 +1107,7 @@ fn execute_cookies(transport: &dyn Transport, options: CookiesOptions) -> Result
         CookiesCommand::List { visible, pretty } => {
             let data = transport
                 .request(
-                    handlers::browser::COOKIES_LIST,
+                    methods::browser::COOKIES_LIST,
                     Some(json!({ "tab_id": tab, "visible": visible })),
                 )?
                 .unwrap_or_else(|| json!([]));
@@ -1130,7 +1126,7 @@ fn execute_cookies(transport: &dyn Transport, options: CookiesOptions) -> Result
             json,
         } => {
             let data = transport.request(
-                handlers::browser::COOKIES_SET,
+                methods::browser::COOKIES_SET,
                 Some(json!({
                     "tab_id": tab,
                     "cookie": {
@@ -1155,7 +1151,7 @@ fn execute_cookies(transport: &dyn Transport, options: CookiesOptions) -> Result
             json,
         } => {
             let data = transport.request(
-                handlers::browser::COOKIES_DELETE,
+                methods::browser::COOKIES_DELETE,
                 Some(json!({
                     "tab_id": tab,
                     "name": name,
@@ -1167,7 +1163,7 @@ fn execute_cookies(transport: &dyn Transport, options: CookiesOptions) -> Result
         }
         CookiesCommand::Clear { json } => {
             let data = transport.request(
-                handlers::browser::COOKIES_CLEAR,
+                methods::browser::COOKIES_CLEAR,
                 Some(json!({ "tab_id": tab })),
             )?;
             print_optional_json(data, json)?;

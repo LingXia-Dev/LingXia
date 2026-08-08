@@ -1,7 +1,7 @@
 use crate::client;
 use anyhow::Result;
 use clap::Args;
-use lingxia_devtool_protocol::handlers;
+use lingxia_control_protocol::methods;
 use serde_json::{Value, json};
 
 /// Rebuild the lxapp front-end bundle for the selected session's project, then
@@ -37,7 +37,7 @@ const BUILD_TIMEOUT_MS: u64 = 600_000;
 pub fn run(ws_url: &str, release: bool, framework: Option<&str>) -> Result<()> {
     client::execute_command(
         ws_url,
-        handlers::lxapp::BUILD,
+        methods::lxapp::BUILD,
         Some(json!({
             "release": release,
             "framework": framework,
@@ -84,7 +84,7 @@ pub fn execute(ws_url: &str, options: &ReloadOptions) -> Result<()> {
 /// an error.
 fn reload_target(ws_url: &str, app: &str) -> Result<Option<String>> {
     let appid = if app == "current" {
-        let current = client::execute_command(ws_url, handlers::lxapp::CURRENT, None)?;
+        let current = client::execute_command(ws_url, methods::lxapp::CURRENT, None)?;
         match current
             .as_ref()
             .and_then(|value| value.get("appid"))
@@ -99,7 +99,7 @@ fn reload_target(ws_url: &str, app: &str) -> Result<Option<String>> {
     };
     client::execute_command(
         ws_url,
-        handlers::lxapp::RESTART,
+        methods::lxapp::RESTART,
         Some(json!({ "appid": appid })),
     )?;
     Ok(Some(appid))

@@ -3,7 +3,7 @@
 //! This is not the development websocket. That one exists so `lingxia dev` can
 //! drive an app across a network to a phone; this one exists so a *shipped*
 //! product can offer a command line and agent skills that drive it — the same
-//! handlers, reached without a dev session, over an IPC that never leaves the
+//! methods, reached without a dev session, over an IPC that never leaves the
 //! machine.
 //!
 //! Each platform gets its native mechanism rather than one forced everywhere.
@@ -13,16 +13,16 @@
 //! right are exactly "only this user" and "who is asking". A pipe also cannot
 //! be left behind by a crash the way a socket file can.
 //!
-//! The wire is newline-delimited JSON of the same [`DevSessionMessage`] the
-//! websocket carries. Requests are small and strictly request/response, so
-//! nothing here needs framing beyond a line.
+//! The wire is newline-delimited JSON using the transport-neutral
+//! [`ControlRequest`] and [`ControlResponse`] contract. Requests are small and
+//! strictly request/response, so nothing here needs framing beyond a line.
 
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 
-use lingxia_devtool_protocol::DevSessionMessage;
+use lingxia_control_protocol::{ControlMessage, ControlRequest, ControlResponse};
 
 pub mod launcher;
 
@@ -141,7 +141,7 @@ pub fn set_enabled(enabled: bool) -> std::io::Result<()> {
 pub(crate) fn handle_control_command(
     method: &str,
 ) -> Option<Result<Option<serde_json::Value>, String>> {
-    use lingxia_devtool_protocol::handlers::control as name;
+    use lingxia_control_protocol::methods::control as name;
     match method {
         // The declared list rides here rather than on `app.doctor`, which is
         // itself behind `appUse` — a product that declared only `browserUse`
@@ -226,7 +226,7 @@ fn start(state_dir: &Path, handle: Handler) -> std::io::Result<Running> {
 /// Turns one request line into one reply line. A function pointer rather than
 /// a direct call so the accept loop can be exercised without [`crate::dispatch`],
 /// which drags the whole platform runtime into the link.
-type Handler = fn(&str) -> DevSessionMessage;
+type Handler = fn(&str) -> ControlResponse;
 
 /// One client, one request at a time, until it hangs up or the endpoint is
 /// switched off underneath it.
@@ -256,7 +256,7 @@ fn serve_connection(stream: platform::Stream, handle: Handler, epoch: u64) {
             return;
         }
         let reply = handle(&line);
-        let Ok(mut encoded) = serde_json::to_vec(&reply) else {
+        let Ok(mut encoded) = serde_json::to_vec(&ControlMessage::Response(reply)) else {
             continue;
         };
         encoded.push(b'\n');
@@ -270,23 +270,21 @@ fn serve_connection(stream: platform::Stream, handle: Handler, epoch: u64) {
 /// without one — reaching `dispatch` pulls in the whole platform runtime.
 pub(crate) fn reply_with(
     line: &str,
-    dispatch: impl FnOnce(String, String, Option<serde_json::Value>) -> DevSessionMessage,
-) -> DevSessionMessage {
-    match serde_json::from_str::<DevSessionMessage>(line) {
-        Ok(DevSessionMessage::Request { id, method, params }) => {
-            match refuse_unless_declared(&method) {
-                Some(reason) => DevSessionMessage::error(id, "not_declared", reason),
-                None => dispatch(id, method, params),
-            }
-        }
+    dispatch: impl FnOnce(ControlRequest) -> ControlResponse,
+) -> ControlResponse {
+    match serde_json::from_str::<ControlMessage>(line) {
+        Ok(ControlMessage::Request(request)) => match refuse_unless_declared(&request.method) {
+            Some(reason) => ControlResponse::error(request.id, "not_declared", reason),
+            None => dispatch(request),
+        },
         // Anything else on this transport is a client mistake, and saying so
         // beats closing the connection on it.
-        Ok(_) => DevSessionMessage::error(
+        Ok(_) => ControlResponse::error(
             String::new(),
             "unsupported",
             "the control socket takes requests".to_string(),
         ),
-        Err(error) => DevSessionMessage::error(String::new(), "bad_request", error.to_string()),
+        Err(error) => ControlResponse::error(String::new(), "bad_request", error.to_string()),
     }
 }
 
@@ -303,9 +301,9 @@ fn refuse_unless_declared(method: &str) -> Option<String> {
     // switching automation off must never itself need permission.
     if matches!(
         method,
-        lingxia_devtool_protocol::handlers::ECHO
-            | lingxia_devtool_protocol::handlers::control::STATUS
-            | lingxia_devtool_protocol::handlers::control::DISABLE
+        lingxia_control_protocol::methods::ECHO
+            | lingxia_control_protocol::methods::control::STATUS
+            | lingxia_control_protocol::methods::control::DISABLE
     ) {
         return None;
     }
@@ -344,10 +342,10 @@ fn refuse_unless_declared(method: &str) -> Option<String> {
 mod tests {
     use super::*;
 
-    fn stub(id: String, method: String, params: Option<serde_json::Value>) -> DevSessionMessage {
-        DevSessionMessage::success(
-            id,
-            Some(serde_json::json!({"method": method, "params": params})),
+    fn stub(request: ControlRequest) -> ControlResponse {
+        ControlResponse::success(
+            request.id,
+            Some(serde_json::json!({"method": request.method, "params": request.params})),
         )
     }
 
@@ -357,13 +355,10 @@ mod tests {
             r#"{"type":"request","id":"1","method":"echo","params":{"a":1}}"#,
             stub,
         );
-        let DevSessionMessage::Response { id, result, error } = replied else {
-            panic!("expected a response");
-        };
-        assert_eq!(id, "1");
-        assert!(error.is_none());
+        assert_eq!(replied.id, "1");
+        assert!(replied.error.is_none());
         assert_eq!(
-            result,
+            replied.result,
             Some(serde_json::json!({"method": "echo", "params": {"a": 1}}))
         );
     }
@@ -374,16 +369,15 @@ mod tests {
             ("not json", "bad_request"),
             (r#"{"type":"response","id":"1"}"#, "unsupported"),
         ] {
-            let DevSessionMessage::Response { error, .. } =
-                reply_with(line, |_, _, _| panic!("must not dispatch"))
-            else {
-                panic!("expected a response");
-            };
-            assert_eq!(error.map(|error| error.code).as_deref(), Some(code));
+            let response = reply_with(line, |_| panic!("must not dispatch"));
+            assert_eq!(
+                response.error.map(|error| error.code).as_deref(),
+                Some(code)
+            );
         }
     }
 
-    fn stub_line(line: &str) -> DevSessionMessage {
+    fn stub_line(line: &str) -> ControlResponse {
         reply_with(line, stub)
     }
 
@@ -411,7 +405,7 @@ mod tests {
         assert!(refuse_unless_declared("filesystem.read").is_some());
         // Except the liveness probe: a client has to be able to ask whether
         // anyone is home before it knows what it may ask for.
-        assert!(refuse_unless_declared(lingxia_devtool_protocol::handlers::ECHO).is_none());
+        assert!(refuse_unless_declared(lingxia_control_protocol::methods::ECHO).is_none());
     }
 
     /// The real listener, over a real socket, switched off the way the

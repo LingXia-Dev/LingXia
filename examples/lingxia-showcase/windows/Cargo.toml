@@ -33,8 +33,8 @@ lingxia-windows-build = { path = "../../../crates/lingxia-windows-build" }
 lingxia = { path = "../../../crates/lingxia" }
 lingxia-app-context = { path = "../../../crates/lingxia-app-context" }
 lingxia-browser = { path = "../../../crates/lingxia-browser" }
-lingxia-devtool = { path = "../../../crates/lingxia-devtool" }
-lingxia-devtool-protocol = { path = "../../../crates/lingxia-devtool-protocol" }
+lingxia-control-runtime = { path = "../../../crates/lingxia-control-runtime" }
+lingxia-control-protocol = { path = "../../../crates/lingxia-control-protocol" }
 lingxia-log = { path = "../../../crates/lingxia-log" }
 lingxia-logic = { path = "../../../crates/lingxia-logic" }
 lingxia-lxapp = { path = "../../../crates/lingxia-lxapp" }

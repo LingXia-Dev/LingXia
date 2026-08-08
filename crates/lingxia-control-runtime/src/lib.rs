@@ -1,10 +1,10 @@
-//! Devtool runtime bridge and protocol helpers for LingXia apps.
+//! Shared control dispatch and transports for LingXia apps.
 //!
 //! Host libraries decide how this service is installed into their own
 //! `HostAddon`; this crate only exposes the service entry points.
 //!
-//! Two transports reach the same handlers. The `dev-bridge` feature dials a
-//! `lingxia dev` session over a websocket; the `control-socket` feature listens
+//! Two transports reach the same methods. The `dev-bridge` feature dials a
+//! `lingxia dev` session over a websocket; the `local-control` feature listens
 //! on a local IPC endpoint so a shipped product can offer a command line and
 //! agent skills. Both funnel through [`dispatch`], and a host enables only
 //! what it ships.
@@ -13,10 +13,10 @@ mod app;
 #[cfg(feature = "dev-bridge")]
 mod bridge;
 mod browser;
-#[cfg(feature = "control-socket")]
-pub mod control;
 #[cfg(feature = "computer-use")]
 mod desktop;
+#[cfg(feature = "local-control")]
+pub mod local_control;
 mod lxapp;
 mod lxapp_nav;
 mod lxapp_page;
@@ -26,33 +26,29 @@ mod session_test;
 mod util;
 
 #[cfg(feature = "dev-bridge")]
-pub use bridge::start_devtool_bridge_from_env;
+pub use bridge::start_dev_session_bridge_from_env;
 
-pub use lingxia_devtool_protocol::{
-    DEV_SESSION_PROTOCOL_VERSION, DevSessionEvent, DevSessionLog, DevSessionLogLevel,
-    DevSessionMessage, DevSessionRole, capabilities, handlers,
+pub use lingxia_control_protocol::{
+    ControlError, ControlRequest, ControlResponse, dev_session, methods,
 };
 
-/// Answer one request. Transport-free on purpose: the same handlers serve the
+/// Answer one request. Transport-free on purpose: the same methods serve the
 /// development websocket and the product's local control socket, and a second
 /// copy of this chain would drift the moment a namespace is added to one.
-pub fn dispatch(
-    id: String,
-    method: String,
-    params: Option<serde_json::Value>,
-) -> DevSessionMessage {
+pub fn dispatch(request: ControlRequest) -> ControlResponse {
+    let ControlRequest { id, method, params } = request;
     #[cfg(feature = "test-runtime")]
     if let Some(result) = session_test::handle_session_test_command(&method, params.clone()) {
         return command_result(id, result);
     }
 
     #[cfg(feature = "computer-use")]
-    if let Some(message) = desktop::handle(id.clone(), &method, params.clone()) {
-        return message;
+    if let Some(response) = desktop::handle(id.clone(), &method, params.clone()) {
+        return response;
     }
 
-    #[cfg(feature = "control-socket")]
-    if let Some(result) = control::handle_control_command(&method) {
+    #[cfg(feature = "local-control")]
+    if let Some(result) = local_control::handle_control_command(&method) {
         return command_result(id, result);
     }
 
@@ -70,9 +66,9 @@ pub fn dispatch(
         command_result(id, result)
     } else {
         match method.as_str() {
-            handlers::ECHO => DevSessionMessage::success(id, params),
+            methods::ECHO => ControlResponse::success(id, params),
             other => {
-                DevSessionMessage::error(id, "unknown_method", format!("unknown method: {other}"))
+                ControlResponse::error(id, "unknown_method", format!("unknown method: {other}"))
             }
         }
     }
@@ -80,17 +76,17 @@ pub fn dispatch(
 
 /// Parse one request line and answer it. The control socket's entry into the
 /// handler chain.
-#[cfg(feature = "control-socket")]
-pub(crate) fn dispatch_line(line: &str) -> DevSessionMessage {
-    control::reply_with(line, dispatch)
+#[cfg(feature = "local-control")]
+pub(crate) fn dispatch_line(line: &str) -> ControlResponse {
+    local_control::reply_with(line, dispatch)
 }
 
 fn command_result(
     command_id: String,
     result: Result<Option<serde_json::Value>, String>,
-) -> DevSessionMessage {
+) -> ControlResponse {
     match result {
-        Ok(data) => DevSessionMessage::success(command_id, data),
-        Err(error) => DevSessionMessage::error(command_id, "request_failed", error),
+        Ok(data) => ControlResponse::success(command_id, data),
+        Err(error) => ControlResponse::error(command_id, "request_failed", error),
     }
 }

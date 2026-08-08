@@ -1,6 +1,7 @@
 use anyhow::{Context, Result, anyhow};
-use lingxia_devtool_protocol::{
-    DEV_SESSION_PROTOCOL_VERSION, DevSessionMessage, DevSessionRole, capabilities,
+use lingxia_control_protocol::{
+    ControlRequest,
+    dev_session::{DEV_SESSION_PROTOCOL_VERSION, DevSessionMessage, DevSessionRole, capabilities},
 };
 use serde_json::Value;
 use std::net::TcpStream;
@@ -35,11 +36,11 @@ pub fn execute_command(
     let command_id = command_id();
     send_wire_message(
         &mut websocket,
-        &DevSessionMessage::Request {
+        &DevSessionMessage::Request(ControlRequest {
             id: command_id.clone(),
             method: handler,
             params: args,
-        },
+        }),
     )?;
 
     loop {
@@ -51,21 +52,16 @@ pub fn execute_command(
         };
         let wire: DevSessionMessage =
             serde_json::from_str(&text).context("Failed to parse dev websocket response")?;
-        let DevSessionMessage::Response {
-            id: result_id,
-            result,
-            error,
-        } = wire
-        else {
+        let DevSessionMessage::Response(response) = wire else {
             continue;
         };
-        if result_id != command_id {
+        if response.id != command_id {
             continue;
         }
-        if let Some(error) = error {
+        if let Some(error) = response.error {
             return Err(anyhow!("{}", error.message));
         }
-        return Ok(result);
+        return Ok(response.result);
     }
 }
 

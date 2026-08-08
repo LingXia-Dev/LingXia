@@ -10,7 +10,7 @@
 //! app, the grant is the product's own.
 
 use lingxia_computer_use as cu;
-use lingxia_devtool_protocol::handlers::desktop as method;
+use lingxia_control_protocol::methods::desktop as method;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use serde_json::Value;

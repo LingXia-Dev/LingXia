@@ -840,7 +840,7 @@ fn main() -> Result<()> {
             commands::runner::execute(action)?;
         }
         Commands::DevBroker => {
-            lingxia_devtool_protocol::broker::run_broker()?;
+            lingxia_control_protocol::dev_session::broker::run_broker()?;
         }
         #[cfg(target_os = "windows")]
         Commands::DevFocusWindow {

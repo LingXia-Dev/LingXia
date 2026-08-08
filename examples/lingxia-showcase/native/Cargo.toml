@@ -26,12 +26,12 @@ terminal-runtime = ["lingxia/terminal-runtime"]
 process = ["lingxia/process", "standard"]
 # Dev builds always enable `devtools`; ride automation in so `lingxia dev`
 # sessions get lx.automation() by default (still privilege-gated per lxapp.json).
-control = ["dep:lingxia_devtool", "lingxia/devtool", "lingxia_devtool/control-socket", "lingxia/product-cli"]
-computer-use = ["control", "lingxia_devtool/computer-use"]
-# Derived from `capabilities.browserUse`. Without it the browser handlers are
+control = ["dep:lingxia-control-runtime", "lingxia/devtool", "lingxia-control-runtime/local-control", "lingxia/product-cli"]
+computer-use = ["control", "lingxia-control-runtime/computer-use"]
+# Derived from `capabilities.browserUse`. Without it the browser methods are
 # not linked and every browser command answers "feature unavailable".
-browser-use = ["control", "lingxia_devtool/browser"]
-devtools = ["dep:lingxia_devtool", "lingxia/devtool", "lingxia_devtool/dev-bridge", "lingxia_devtool/browser", "lingxia_devtool/test-runtime", "automation"]
+browser-use = ["control", "lingxia-control-runtime/browser"]
+devtools = ["dep:lingxia-control-runtime", "lingxia/devtool", "lingxia-control-runtime/dev-bridge", "lingxia-control-runtime/browser", "lingxia-control-runtime/test-runtime", "automation"]
 automation = ["lingxia/automation"]
 webview-input = ["lingxia/webview-input"]
 # Cloud provider. Inert by default; `lingxia build/dev --with-provider cloud`
@@ -40,7 +40,7 @@ cloud = []
 
 [dependencies]
 lingxia = { version = "0.11.2", default-features = false }
-lingxia_devtool = { package = "lingxia-devtool", version = "0.11.2", optional = true, default-features = false }
+lingxia-control-runtime = { version = "0.11.2", optional = true, default-features = false }
 rong = { version = "0.6.0", default-features = false }
 log = "0.4.29"
 
@@ -63,8 +63,8 @@ strip = true
 lingxia = { path = "../../../crates/lingxia" }
 lingxia-app-context = { path = "../../../crates/lingxia-app-context" }
 lingxia-browser = { path = "../../../crates/lingxia-browser" }
-lingxia-devtool = { path = "../../../crates/lingxia-devtool" }
-lingxia-devtool-protocol = { path = "../../../crates/lingxia-devtool-protocol" }
+lingxia-control-runtime = { path = "../../../crates/lingxia-control-runtime" }
+lingxia-control-protocol = { path = "../../../crates/lingxia-control-protocol" }
 lingxia-log = { path = "../../../crates/lingxia-log" }
 lingxia-logic = { path = "../../../crates/lingxia-logic" }
 lingxia-lxapp = { path = "../../../crates/lingxia-lxapp" }

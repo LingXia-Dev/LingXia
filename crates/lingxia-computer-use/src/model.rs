@@ -1,5 +1,5 @@
 //! Serde DTOs for the `desktop` surface. These are the single source of truth
-//! for the CLI `--json` output, the control-socket wire, and any future
+//! for the CLI `--json` output, the local-control wire, and any future
 //! in-process JS binding, so the consumers can never drift.
 //!
 //! Every type round-trips. A product runs these commands inside the app and a

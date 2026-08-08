@@ -3230,7 +3230,7 @@ dependencies = [
  "jsonschema",
  "libc",
  "lingxia-app-context",
- "lingxia-devtool-protocol",
+ "lingxia-control-protocol",
  "lingxia-log",
  "num-bigint",
  "openssl",
@@ -3308,7 +3308,7 @@ dependencies = [
  "chrono",
  "clap",
  "lingxia-computer-use",
- "lingxia-devtool-protocol",
+ "lingxia-control-protocol",
  "lingxia-settings",
  "log",
  "serde",
@@ -3316,7 +3316,16 @@ dependencies = [
 ]
 
 [[package]]
-name = "lingxia-devtool"
+name = "lingxia-control-protocol"
+version = "0.11.2"
+dependencies = [
+ "interprocess",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "lingxia-control-runtime"
 version = "0.11.2"
 dependencies = [
  "base64",
@@ -3325,7 +3334,7 @@ dependencies = [
  "lingxia-automation",
  "lingxia-browser",
  "lingxia-computer-use",
- "lingxia-devtool-protocol",
+ "lingxia-control-protocol",
  "lingxia-log",
  "lingxia-lxapp",
  "lingxia-settings",
@@ -3336,15 +3345,6 @@ dependencies = [
  "tokio",
  "tungstenite",
  "windows 0.62.2",
-]
-
-[[package]]
-name = "lingxia-devtool-protocol"
-version = "0.11.2"
-dependencies = [
- "interprocess",
- "serde",
- "serde_json",
 ]
 
 [[package]]
@@ -3359,7 +3359,7 @@ dependencies = [
  "libc",
  "lingxia-computer-use",
  "lingxia-control-cli",
- "lingxia-devtool-protocol",
+ "lingxia-control-protocol",
  "owo-colors",
  "oxc_allocator",
  "oxc_ast",
@@ -3582,7 +3582,7 @@ version = "0.11.2"
 dependencies = [
  "libc",
  "lingxia",
- "lingxia-devtool",
+ "lingxia-control-runtime",
  "lingxia-runner-config",
  "serde",
  "serde_json",
@@ -3593,7 +3593,7 @@ name = "lingxia-runner-windows"
 version = "0.11.2"
 dependencies = [
  "lingxia",
- "lingxia-devtool",
+ "lingxia-control-runtime",
  "lingxia-lxapp",
  "lingxia-runner-config",
  "lingxia-windows-build",

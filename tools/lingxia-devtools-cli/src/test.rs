@@ -9,7 +9,7 @@ use anyhow::{Context, Result, anyhow, bail};
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use clap::Args;
-use lingxia_devtool_protocol::{handlers, session_test::*};
+use lingxia_control_protocol::{dev_session::session_test::*, methods};
 use owo_colors::OwoColorize;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
@@ -90,7 +90,7 @@ pub fn execute(info: &SessionInfo, options: TestOptions) -> Result<()> {
 
     let start: TestStartResponse = execute_typed(
         &info.ws_url,
-        handlers::session::test::START,
+        methods::session::test::START,
         &TestStartArgs {
             source: bundle.code.clone(),
             source_name: Some(bundle.bundle_name.clone()),
@@ -177,7 +177,7 @@ fn poll_until_terminal(
             }
             let _ = execute_typed::<_, TestCancelResponse>(
                 &info.ws_url,
-                handlers::session::test::CANCEL,
+                methods::session::test::CANCEL,
                 &TestCancelArgs {
                     run_id: run_id.to_string(),
                     reason: Some("client_interrupt".to_string()),
@@ -187,7 +187,7 @@ fn poll_until_terminal(
 
         let poll: TestPollResponse = execute_typed(
             &info.ws_url,
-            handlers::session::test::POLL,
+            methods::session::test::POLL,
             &TestPollArgs {
                 run_id: run_id.to_string(),
                 after_seq,

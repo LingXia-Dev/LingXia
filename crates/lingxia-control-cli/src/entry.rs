@@ -13,7 +13,7 @@ use std::io::IsTerminal;
 use std::path::Path;
 
 use clap::Parser;
-use lingxia_devtool_protocol::invocation;
+use lingxia_control_protocol::invocation;
 
 use crate::transport::ControlSocket;
 use crate::{app, browser, desktop, skills};
@@ -139,7 +139,7 @@ fn control(
     };
     let listening = || {
         transport
-            .request(lingxia_devtool_protocol::handlers::control::STATUS, None)
+            .request(lingxia_control_protocol::methods::control::STATUS, None)
             .ok()
             .and_then(|value| value?.get("listening")?.as_bool())
             .unwrap_or(false)
@@ -184,7 +184,7 @@ fn control(
             // Ask the running product first: it is the only thing that can
             // actually stop answering, and it persists the choice too.
             let stopped = transport
-                .request(lingxia_devtool_protocol::handlers::control::DISABLE, None)
+                .request(lingxia_control_protocol::methods::control::DISABLE, None)
                 .is_ok();
             if !stopped
                 && let Err(error) = lingxia_settings::set_control_enabled(app_data_dir, false)

@@ -16,7 +16,7 @@ use lingxia_control_cli::{app, desktop, skills, transport::ControlSocket};
 #[derive(Parser)]
 #[command(name = "product", about = "A product's own command line")]
 struct Cli {
-    /// The control socket, as the product's `control::endpoint_name` reports
+    /// The control socket, as the product's `local_control::endpoint_name` reports
     /// it. A real product computes this itself rather than taking a flag.
     #[arg(long, global = true)]
     endpoint: Option<String>,

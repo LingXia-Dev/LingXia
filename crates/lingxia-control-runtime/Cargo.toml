@@ -1,8 +1,8 @@
 [package]
-name = "lingxia-devtool"
+name = "lingxia-control-runtime"
 version.workspace = true
 edition.workspace = true
-description = "Devtool runtime bridge and protocol helpers for LingXia apps"
+description = "Shared control dispatch, local IPC, and dev-session bridge for LingXia apps"
 license = "MIT"
 repository.workspace = true
 
@@ -13,19 +13,19 @@ default = ["dev-bridge"]
 dev-bridge = ["dep:tungstenite", "dep:rustls"]
 # The product's local control socket (UDS / named pipe). Opt-in per host,
 # derived from `capabilities.control` in lingxia.yaml.
-control-socket = []
+local-control = []
 browser = ["dep:lingxia-browser", "lingxia/browser-runtime"]
 # Automating the machine, not just this app. Derived from
-# `capabilities.computerUse`; separate from `control-socket` because it is what
+# `capabilities.computerUse`; separate from `local-control` because it is what
 # makes the product ask for Accessibility and Screen Recording.
 computer-use = ["dep:lingxia-computer-use"]
 # Session test runner (`lxdev test`). Development hosts only: production
-# builds omit it, so the session.test.* handlers are absent rather than
+# builds omit it, so the session.test.* methods are absent rather than
 # permission-gated.
 test-runtime = ["dep:lingxia-automation"]
 
 [dependencies]
-lingxia-devtool-protocol = { workspace = true }
+lingxia-control-protocol = { workspace = true }
 lingxia = { workspace = true, default-features = false, features = ["devtool"] }
 lingxia-app-context = { workspace = true }
 lingxia-settings = { workspace = true }

@@ -16,10 +16,14 @@ pub(super) fn execute_ios(ctx: DevContext) -> Result<()> {
         stop_requested.clone(),
         Some(auth_token.clone()),
     )?;
-    let host_ws_url =
-        lingxia_devtool_protocol::ws_url_with_token(&loopback_ws_url(server.port()), &auth_token);
-    let device_ws_url =
-        lingxia_devtool_protocol::ws_url_with_token(&lan_ws_url(server.port())?, &auth_token);
+    let host_ws_url = lingxia_control_protocol::dev_session::ws_url_with_token(
+        &loopback_ws_url(server.port()),
+        &auth_token,
+    );
+    let device_ws_url = lingxia_control_protocol::dev_session::ws_url_with_token(
+        &lan_ws_url(server.port())?,
+        &auth_token,
+    );
     let session = server.session().clone();
 
     let run_result = (|| -> Result<()> {

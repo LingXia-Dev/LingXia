@@ -1,7 +1,9 @@
 use anyhow::{Context, Result, bail};
-pub use lingxia_devtool_protocol::broker::SessionInfo;
-use lingxia_devtool_protocol::{
-    DEV_SESSION_PROTOCOL_VERSION, DevSessionMessage, DevSessionRole, capabilities, handlers,
+pub use lingxia_control_protocol::dev_session::broker::SessionInfo;
+use lingxia_control_protocol::{
+    ControlRequest,
+    dev_session::{DEV_SESSION_PROTOCOL_VERSION, DevSessionMessage, DevSessionRole, capabilities},
+    methods,
 };
 use std::io::{Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
@@ -79,8 +81,9 @@ fn detach_process(command: &mut std::process::Command) {
 
 /// All live sessions for this user, ordered by start time.
 pub fn list_all_sessions() -> Result<Vec<SessionInfo>> {
-    let mut sessions = lingxia_devtool_protocol::broker::list_sessions_spawning(&spawn_broker)
-        .context("Failed to query the dev-session broker")?;
+    let mut sessions =
+        lingxia_control_protocol::dev_session::broker::list_sessions_spawning(&spawn_broker)
+            .context("Failed to query the dev-session broker")?;
     sessions.sort_by_key(|s| s.started_at);
     Ok(sessions)
 }
@@ -184,11 +187,11 @@ fn devtools_session_state(ws_url: &str, timeout: Duration) -> SessionState {
     );
     if send_wire_message(
         &mut websocket,
-        &DevSessionMessage::Request {
+        &DevSessionMessage::Request(ControlRequest {
             id: command_id.clone(),
-            method: handlers::ECHO.to_string(),
+            method: methods::ECHO.to_string(),
             params: None,
-        },
+        }),
     )
     .is_err()
     {
@@ -203,12 +206,8 @@ fn devtools_session_state(ws_url: &str, timeout: Duration) -> SessionState {
             continue;
         };
         match serde_json::from_str(&text) {
-            Ok(DevSessionMessage::Response {
-                id: result_id,
-                result,
-                error,
-            }) if result_id == command_id => {
-                return session_state_from_echo_result(error.is_none(), result);
+            Ok(DevSessionMessage::Response(response)) if response.id == command_id => {
+                return session_state_from_echo_result(response.error.is_none(), response.result);
             }
             Ok(_) => continue,
             Err(_) => return SessionState::Stale,

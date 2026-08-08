@@ -1,5 +1,5 @@
 use crate::util::run_async;
-use lingxia_devtool_protocol::handlers;
+use lingxia_control_protocol::methods;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -19,7 +19,7 @@ fn handle_lxapp_nav_command_impl(
     args: Option<Value>,
 ) -> Result<Option<Value>, String> {
     match handler {
-        handlers::lxapp_nav::TO => {
+        methods::lxapp_nav::TO => {
             let args: PageNavArgs = parse_args(handler, args)?;
             let info = run_async(lingxia::dev::lxapp_dev_nav_to(
                 args.appid.as_deref(),
@@ -30,7 +30,7 @@ fn handle_lxapp_nav_command_impl(
                 .map(Some)
                 .map_err(|err| err.to_string())
         }
-        handlers::lxapp_nav::REDIRECT => {
+        methods::lxapp_nav::REDIRECT => {
             let args: PageNavArgs = parse_args(handler, args)?;
             let info = run_async(lingxia::dev::lxapp_dev_nav_redirect(
                 args.appid.as_deref(),
@@ -41,7 +41,7 @@ fn handle_lxapp_nav_command_impl(
                 .map(Some)
                 .map_err(|err| err.to_string())
         }
-        handlers::lxapp_nav::SWITCH_TAB => {
+        methods::lxapp_nav::SWITCH_TAB => {
             let args: PageNavArgs = parse_args(handler, args)?;
             let info = run_async(lingxia::dev::lxapp_dev_nav_switch_tab(
                 args.appid.as_deref(),
@@ -52,7 +52,7 @@ fn handle_lxapp_nav_command_impl(
                 .map(Some)
                 .map_err(|err| err.to_string())
         }
-        handlers::lxapp_nav::RELAUNCH => {
+        methods::lxapp_nav::RELAUNCH => {
             let args: PageNavArgs = parse_args(handler, args)?;
             let info = run_async(lingxia::dev::lxapp_dev_nav_relaunch(
                 args.appid.as_deref(),
@@ -63,7 +63,7 @@ fn handle_lxapp_nav_command_impl(
                 .map(Some)
                 .map_err(|err| err.to_string())
         }
-        handlers::lxapp_nav::BACK => {
+        methods::lxapp_nav::BACK => {
             let args: BackArgs = parse_args(handler, args)?;
             let info = run_async(lingxia::dev::lxapp_dev_nav_back(
                 args.appid.as_deref(),
