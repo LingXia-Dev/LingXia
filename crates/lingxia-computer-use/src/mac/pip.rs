@@ -7,14 +7,26 @@
 //! being automated can see it as it happens rather than reconstruct it from a
 //! log afterwards, which is also why it opens itself the first time a command
 //! actuates something: a window that appears only when asked for is absent
-//! exactly when it would have mattered. Closing it is final for the run — a
-//! viewer that keeps coming back is one people learn to dismiss rather than
-//! read.
+//! exactly when it would have mattered.
 //!
-//! It ignores the mouse. The agent is clicking real coordinates on the real
-//! screen, and a viewer that happened to sit over one of them would swallow the
-//! click and make the automation wrong in a way that looks like the app's
-//! fault. `corner` is how it gets moved instead.
+//! Three behaviours follow from being a viewer of live work rather than a
+//! window someone opened:
+//!
+//! - **It follows the work.** A run that moves to another screen, or to a
+//!   window a command names, takes the viewer with it. One viewer, wherever the
+//!   action is — not one per app, and never a still picture of where the work
+//!   started. A watch someone named themselves is pinned and stays put.
+//! - **It leaves when the work stops.** There is no signal that says a run has
+//!   ended, so it goes on idleness instead, and comes straight back on the next
+//!   thing that happens. That is not the same as a person closing it: that is
+//!   final for the run, because a viewer that keeps coming back is one people
+//!   learn to dismiss rather than read.
+//! - **It gets out of its own way.** It ignores the mouse — the agent clicks
+//!   real coordinates on the real screen, and a viewer sitting over one of them
+//!   would swallow the click and make the automation wrong in a way that looks
+//!   like the app's fault. Being unclickable means it cannot be dragged either,
+//!   so when the work happens underneath it, it hops to the far corner by
+//!   itself. `corner` still says where to start.
 
 use std::cell::RefCell;
 use std::sync::Mutex;
@@ -46,9 +58,21 @@ const INSET: f64 = 16.0;
 /// How long the marker stays on the last point that was acted on. Long enough
 /// to catch at 8Hz, short enough that a stale dot never reads as a live one.
 const MARKER_LINGER: Duration = Duration::from_millis(1200);
+/// How long the viewer stays up after the last thing that changed the machine.
+///
+/// There is no signal that says "the run is over" — a run is a string of
+/// commands with gaps between them — so the viewer leaves on idleness instead.
+/// The threshold sits well above any gap inside one run, which is what keeps it
+/// from flickering shut between two clicks, and well below how long someone
+/// would tolerate a window they no longer need.
+const IDLE_REST: Duration = Duration::from_secs(12);
 
 struct State {
     watch: Option<PipWatch>,
+    /// The watch was named by a person. Nothing re-points it, and idleness does
+    /// not put it away: they asked for this one, and moving or closing it would
+    /// be answering a question they did not ask.
+    pinned: bool,
     dismissed: bool,
     corner: Corner,
     /// Bumped by every show and hide. A refresh thread stops as soon as its own
@@ -58,16 +82,34 @@ struct State {
     /// until the panel exists.
     window_number: u32,
     marker: Option<(i32, i32, Instant)>,
+    /// When something last changed the machine, for the idle timeout.
+    last_activity: Option<Instant>,
+    /// The panel's own rect in global desktop points, so it can tell when it is
+    /// sitting on top of what is being driven.
+    panel_rect: Option<(f64, f64, f64, f64)>,
 }
 
 static STATE: Mutex<State> = Mutex::new(State {
     watch: None,
+    pinned: false,
     dismissed: false,
     corner: Corner::BottomRight,
     generation: 0,
     window_number: 0,
     marker: None,
+    last_activity: None,
+    panel_rect: None,
 });
+
+impl State {
+    /// Whether the panel is sitting on a global desktop point.
+    fn covers(&self, (x, y): (i32, i32)) -> bool {
+        self.panel_rect.is_some_and(|(px, py, pw, ph)| {
+            let (x, y) = (x as f64, y as f64);
+            x >= px && x < px + pw && y >= py && y < py + ph
+        })
+    }
+}
 
 fn state() -> std::sync::MutexGuard<'static, State> {
     STATE.lock().unwrap_or_else(|error| error.into_inner())
@@ -117,16 +159,24 @@ fn describe(watch: &PipWatch) -> String {
     }
 }
 
-/// Open the viewer, or re-point one that is already open.
+/// Open the viewer at a watch a person named.
 pub fn show(watch: PipWatch, corner: Option<Corner>) -> Result<Pip> {
+    open(watch, corner, true)
+}
+
+/// `pinned` marks a watch someone chose deliberately, as opposed to one the
+/// last command implied.
+fn open(watch: PipWatch, corner: Option<Corner>, pinned: bool) -> Result<Pip> {
     // Resolve before showing anything: a viewer that opens onto an error is
     // worse than a command that says what was wrong.
     let _ = source_rect(&watch)?;
     let generation = {
         let mut state = state();
         state.watch = Some(watch);
+        state.pinned = pinned;
         // Asking for it by name is how someone takes back a dismissal.
         state.dismissed = false;
+        state.last_activity = Some(Instant::now());
         if let Some(corner) = corner {
             state.corner = corner;
         }
@@ -141,13 +191,17 @@ pub fn show(watch: PipWatch, corner: Option<Corner>) -> Result<Pip> {
     Ok(status())
 }
 
+/// Put the viewer away. This is also what idleness does — it leaves
+/// `dismissed` alone, so the next thing that happens brings it back.
 pub fn hide() -> Result<Pip> {
     {
         let mut state = state();
         state.generation += 1;
         state.watch = None;
+        state.pinned = false;
         state.window_number = 0;
         state.marker = None;
+        state.panel_rect = None;
     }
     on_main(|_| {
         VIEWER.with_borrow(|viewer| {
@@ -182,26 +236,60 @@ pub fn note_activity(acted: Acted) {
         Acted::Somewhere => (None, None),
     };
 
-    let open = {
+    // What this action says the viewer should be looking at: the window the
+    // command named, else the display it happened on.
+    let wanted = match window {
+        Some(id) => Some(PipWatch::Window(id)),
+        None => point.map(|(x, y)| PipWatch::Display(display_holding(x, y))),
+    };
+
+    let next = {
         let mut state = state();
         if let Some((x, y)) = point {
             state.marker = Some((x, y, Instant::now()));
         }
-        state.watch.is_some()
+        state.last_activity = Some(Instant::now());
+        match (&state.watch, &wanted) {
+            // Not up: this action decides what it opens onto.
+            (None, _) => Next::Open(wanted.clone().unwrap_or(PipWatch::Display(1))),
+            // Up and following: work that moves to another screen — or to the
+            // window a command named — takes the viewer with it. Without this
+            // it keeps showing where the work started while reading as live.
+            (Some(current), Some(wanted)) if !state.pinned && !watching_same(current, wanted) => {
+                state.watch = Some(wanted.clone());
+                Next::Repoint
+            }
+            // The common case, and it must stay free: this runs after every
+            // command that changes anything, and a main-thread round trip here
+            // would be a tax on all of them.
+            _ => Next::Nothing,
+        }
     };
-    if open {
-        return;
-    }
-    // What the command named, else the display it happened on.
-    let watch = match window {
-        Some(id) => PipWatch::Window(id),
-        None => PipWatch::Display(point.map_or(1, |(x, y)| display_holding(x, y))),
+
+    let moved = match next {
+        Next::Nothing => return,
+        Next::Repoint => present(),
+        Next::Open(watch) => open(watch, None, false).map(|_| ()),
     };
-    if let Err(error) = show(watch, None) {
-        log::debug!("picture-in-picture did not open: {error}");
+    if let Err(error) = moved {
+        log::debug!("picture-in-picture did not follow: {error}");
         // Not an error the caller hears about: the command it was watching
         // succeeded, and a viewer that cannot open must not fail it.
         state().dismissed = true;
+    }
+}
+
+enum Next {
+    Nothing,
+    Repoint,
+    Open(PipWatch),
+}
+
+fn watching_same(a: &PipWatch, b: &PipWatch) -> bool {
+    match (a, b) {
+        (PipWatch::Display(a), PipWatch::Display(b)) => a == b,
+        (PipWatch::Window(a), PipWatch::Window(b)) => a == b,
+        _ => false,
     }
 }
 
@@ -252,7 +340,7 @@ fn present() -> Result<()> {
         source_rect(&watch)?
     };
     let corner = state().corner;
-    let number = on_main(move |mtm| {
+    let placed = on_main(move |mtm| {
         VIEWER.with_borrow_mut(|slot| {
             let viewer = slot.get_or_insert_with(|| build(mtm));
             let height = if rect.size.width > 0.0 {
@@ -267,12 +355,66 @@ fn present() -> Result<()> {
                 NSSize::new(frame.size.width, frame.size.height),
             ));
             viewer.panel.orderFrontRegardless();
-            viewer.panel.windowNumber().max(0) as u32
+            (
+                viewer.panel.windowNumber().max(0) as u32,
+                to_desktop(mtm, frame),
+            )
         })
     })
     .ok_or_else(|| Error::Unavailable("no main thread to show the viewer on".into()))?;
-    state().window_number = number;
+    let mut state = state();
+    state.window_number = placed.0;
+    state.panel_rect = Some(placed.1);
     Ok(())
+}
+
+/// An AppKit rect (bottom-left origin) as global desktop points (top-left
+/// origin), the space every coordinate outside AppKit is in.
+fn to_desktop(mtm: MainThreadMarker, frame: NSRect) -> (f64, f64, f64, f64) {
+    let flip = objc2_app_kit::NSScreen::screens(mtm)
+        .iter()
+        .next()
+        .map_or(900.0, |primary| primary.frame().size.height);
+    (
+        frame.origin.x,
+        flip - (frame.origin.y + frame.size.height),
+        frame.size.width,
+        frame.size.height,
+    )
+}
+
+/// Send the panel to the corner furthest from a point it is covering.
+fn move_away_from(x: i32, y: i32) {
+    let screen = on_main(|mtm| {
+        objc2_app_kit::NSScreen::mainScreen(mtm).map_or((1440.0, 900.0), |screen| {
+            (screen.frame().size.width, screen.frame().size.height)
+        })
+    });
+    let Some(screen) = screen else { return };
+    let corner = corner_away_from(x as f64, y as f64, screen);
+    if state().corner == corner {
+        // Already as far away as a corner gets; a marker inside the panel here
+        // means the panel is bigger than the quadrant, and hopping forever
+        // would be worse than staying put.
+        return;
+    }
+    state().corner = corner;
+    if let Err(error) = present() {
+        log::debug!("picture-in-picture could not move aside: {error}");
+    }
+}
+
+/// The corner to move to when the viewer is sitting on the work: the one
+/// diagonally away from the point, so one hop is always enough.
+fn corner_away_from(x: f64, y: f64, screen: (f64, f64)) -> Corner {
+    let left = x < screen.0 / 2.0;
+    let top = y < screen.1 / 2.0;
+    match (left, top) {
+        (true, true) => Corner::BottomRight,
+        (false, true) => Corner::BottomLeft,
+        (true, false) => Corner::TopRight,
+        (false, false) => Corner::TopLeft,
+    }
 }
 
 fn build(mtm: MainThreadMarker) -> Viewer {
@@ -343,7 +485,7 @@ fn place(mtm: MainThreadMarker, corner: Corner, width: f64, height: f64) -> NSRe
 fn refresh_loop(generation: u64) {
     let interval = Duration::from_millis(1000 / FPS as u64);
     loop {
-        let (watch, below, marker) = {
+        let (watch, below, marker, idle, sitting_on) = {
             let state = state();
             if state.generation != generation {
                 return;
@@ -352,9 +494,32 @@ fn refresh_loop(generation: u64) {
                 .marker
                 .filter(|(_, _, at)| at.elapsed() < MARKER_LINGER)
                 .map(|(x, y, _)| (x, y));
-            (state.watch.clone(), state.window_number, marker)
+            let idle = !state.pinned
+                && state
+                    .last_activity
+                    .is_some_and(|at| at.elapsed() > IDLE_REST);
+            let sitting_on = marker.filter(|point| state.covers(*point));
+            (
+                state.watch.clone(),
+                state.window_number,
+                marker,
+                idle,
+                sitting_on,
+            )
         };
         let Some(watch) = watch else { return };
+
+        if idle {
+            let _ = hide();
+            return;
+        }
+
+        // The viewer is over the thing being driven. It cannot be dragged out
+        // of the way — it ignores the mouse so it can never swallow a click —
+        // so it takes itself out of the way instead.
+        if let Some((x, y)) = sitting_on {
+            move_away_from(x, y);
+        }
 
         let started = Instant::now();
         match frame(&watch, below, marker) {
