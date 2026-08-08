@@ -13,8 +13,8 @@ pub mod wire;
 pub use error::{Error, ErrorCode, Result};
 pub use model::{
     Ack, Acted, AxNode, AxQuery, Capabilities, Capture, CaptureTarget, Clipboard, Display, Doctor,
-    LaunchResult, Modifier, MouseButton, Permissions, Pip, PipCorner, PipWatch, Pixel, ProcessInfo,
-    QuitTarget, Rect, Window, WindowQuery, WindowTarget,
+    LaunchResult, Modifier, MouseButton, Permissions, Pixel, ProcessInfo, QuitTarget, Rect, Window,
+    WindowQuery, WindowTarget,
 };
 
 /// Who the user must grant permission to, by the name they will look for.
@@ -79,48 +79,21 @@ pub mod input {
     };
 }
 
-/// The picture-in-picture viewer (`desktop pip ...`).
+/// The picture-in-picture viewer.
 ///
-/// Implemented on macOS. Elsewhere it answers that it is not, rather than
-/// silently doing nothing: an agent told the viewer is up when it is not has
-/// been given a false assurance about what the person watching can see.
+/// Not a command surface. It exists so a person can watch their own machine
+/// being driven, and an agent that could switch it off would be able to work
+/// unobserved — which is the one thing it is for. So the host tells it what
+/// happened and it decides the rest: when to appear, what to follow, when to
+/// leave. The only control belongs to the person in front of the screen.
+///
+/// Implemented on macOS; elsewhere this is a no-op.
 pub mod pip {
     #[cfg(target_os = "macos")]
-    pub use crate::backend::{
-        pip_hide as hide, pip_note_activity as note_activity, pip_show as show,
-        pip_status as status,
-    };
+    pub use crate::backend::pip_note_activity as note_activity;
 
     #[cfg(not(target_os = "macos"))]
-    mod elsewhere {
-        use crate::error::{Error, Result};
-        use crate::model::{Acted, Pip, PipCorner, PipWatch};
-
-        pub fn status() -> Pip {
-            Pip {
-                visible: false,
-                watching: None,
-                dismissed: false,
-                fps: 0,
-                supported: false,
-            }
-        }
-
-        pub fn show(_watch: PipWatch, _corner: Option<PipCorner>) -> Result<Pip> {
-            Err(Error::Unsupported(
-                "the picture-in-picture viewer is macOS-only for now".into(),
-            ))
-        }
-
-        pub fn hide() -> Result<Pip> {
-            Ok(status())
-        }
-
-        pub fn note_activity(_acted: Acted) {}
-    }
-
-    #[cfg(not(target_os = "macos"))]
-    pub use elsewhere::{hide, note_activity, show, status};
+    pub fn note_activity(_acted: crate::model::Acted) {}
 }
 
 /// Window management (`desktop window ...`). All mutating.

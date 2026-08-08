@@ -42,7 +42,27 @@ use objc2_core_foundation::{CGPoint, CGRect, CGSize};
 use objc2_foundation::{NSData, NSPoint, NSRect, NSSize};
 
 use crate::error::{Error, Result};
-use crate::model::{Acted, Pip, PipCorner as Corner, PipWatch, WindowTarget};
+use crate::model::{Acted, WindowTarget};
+
+/// What the viewer is mirroring. Internal: nothing outside asks for it.
+#[derive(Debug, Clone)]
+enum PipWatch {
+    /// A monitor by 1-based index.
+    Display(usize),
+    /// A window by id, followed as it moves.
+    Window(String),
+}
+
+/// Which corner it sits in. It is placed rather than dragged: it ignores the
+/// mouse so it can never swallow a click meant for what is underneath, and a
+/// window nobody can grab needs another way to move.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Corner {
+    TopLeft,
+    TopRight,
+    BottomLeft,
+    BottomRight,
+}
 
 use super::capture;
 
@@ -141,32 +161,9 @@ fn on_main<T: Send>(work: impl FnOnce(MainThreadMarker) -> T + Send) -> Option<T
     out
 }
 
-pub fn status() -> Pip {
-    let state = state();
-    Pip {
-        visible: state.generation > 0 && state.watch.is_some() && state.window_number != 0,
-        watching: state.watch.as_ref().map(describe),
-        dismissed: state.dismissed,
-        fps: FPS,
-        supported: true,
-    }
-}
-
-fn describe(watch: &PipWatch) -> String {
-    match watch {
-        PipWatch::Display(n) => format!("display {n}"),
-        PipWatch::Window(id) => format!("window {id}"),
-    }
-}
-
-/// Open the viewer at a watch a person named.
-pub fn show(watch: PipWatch, corner: Option<Corner>) -> Result<Pip> {
-    open(watch, corner, true)
-}
-
 /// `pinned` marks a watch someone chose deliberately, as opposed to one the
 /// last command implied.
-fn open(watch: PipWatch, corner: Option<Corner>, pinned: bool) -> Result<Pip> {
+fn open(watch: PipWatch, corner: Option<Corner>, pinned: bool) -> Result<()> {
     // Resolve before showing anything: a viewer that opens onto an error is
     // worse than a command that says what was wrong.
     let _ = source_rect(&watch)?;
@@ -188,14 +185,7 @@ fn open(watch: PipWatch, corner: Option<Corner>, pinned: bool) -> Result<Pip> {
         .name("lingxia-pip".into())
         .spawn(move || refresh_loop(generation))
         .map_err(|error| Error::Failed(format!("could not start the viewer: {error}")))?;
-    Ok(status())
-}
-
-/// Put the viewer away. This is also what idleness does — it leaves
-/// `dismissed` alone, so the next thing that happens brings it back.
-pub fn hide() -> Result<Pip> {
-    put_away(None);
-    Ok(status())
+    Ok(())
 }
 
 /// Put away only the viewer that `generation` opened.
@@ -286,7 +276,7 @@ pub fn note_activity(acted: Acted) {
             let moved = match next {
                 Next::Nothing => return,
                 Next::Repoint => present(),
-                Next::Open(watch) => open(watch, None, false).map(|_| ()),
+                Next::Open(watch) => open(watch, None, false),
             };
             if let Err(error) = moved {
                 log::debug!("picture-in-picture did not follow: {error}");

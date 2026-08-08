@@ -138,28 +138,15 @@ time it is rebuilt, and will be asked again.
 
 ## The viewer
 
-The first time a `computerUse` command changes something — a click, a
-keystroke, a window moved — a small window opens in the corner of the screen
-mirroring what is being driven, with a ring on the point just acted on. It is a
-viewer and nothing else: it ignores the mouse, so it can never swallow a click
-meant for what is underneath it, and no command reads anything back out of it.
+On macOS, the first `computerUse` command that changes something opens a small
+window in the corner mirroring what is being driven, with a ring on the point
+just acted on. It follows the work, leaves after about twelve seconds of quiet,
+and returns on the next such command. Commands that only look — screenshots,
+window lists, accessibility queries — never open it.
 
-It exists because someone whose machine is being automated should be able to
-watch it happen rather than reconstruct it from a log afterwards. That is also
-why it opens itself rather than waiting to be asked — a window that appears
-only on request is absent exactly when it would have mattered.
+There is no command for it, deliberately. It exists so a person can see their
+own machine being driven, and an agent able to switch it off could work
+unobserved. Closing it is the person's to do, and it stays closed for that run.
 
-If the person closes it, it stays closed for the rest of the run. Asking for it
-by name reopens it:
-
-```
-myapp pip show --display 1 --corner tl   # or --window 0x42, following it as it moves
-myapp pip status
-myapp pip hide
-```
-
-Commands that only look at the machine — screenshots, window lists,
-accessibility queries — never open it.
-
-Implemented on macOS. Elsewhere `pip status` reports that it is unsupported
-rather than claiming a viewer nobody can see.
+It ignores the mouse, so it can never swallow a click meant for what is
+underneath it; when the work happens under it, it moves to another corner.

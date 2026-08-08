@@ -73,41 +73,6 @@ impl Backend<'_> {
         }
     }
 
-    /// The viewer belongs to the product, because the product is the one thing
-    /// with all three of what it needs: a window, an application run loop, and
-    /// a screen-recording grant in its own name. A development tool that runs
-    /// each command in a fresh process has none of them.
-    pub fn pip_show(
-        &self,
-        watch: cu::PipWatch,
-        corner: Option<cu::PipCorner>,
-    ) -> cu::Result<cu::Pip> {
-        match self {
-            Self::Local => Err(Self::viewer_belongs_to_an_app()),
-            Self::App(_) => self.call(method::pip::SHOW, cu::wire::PipShow { watch, corner }),
-        }
-    }
-
-    pub fn pip_hide(&self) -> cu::Result<cu::Pip> {
-        match self {
-            Self::Local => Err(Self::viewer_belongs_to_an_app()),
-            Self::App(_) => self.call(method::pip::HIDE, ()),
-        }
-    }
-
-    fn viewer_belongs_to_an_app() -> cu::Error {
-        cu::Error::Unsupported(
-            "the viewer belongs to a running product; this tool has no window of its own".into(),
-        )
-    }
-
-    pub fn pip_status(&self) -> cu::Result<cu::Pip> {
-        match self {
-            Self::Local => Err(Self::viewer_belongs_to_an_app()),
-            Self::App(_) => self.call(method::pip::STATUS, ()),
-        }
-    }
-
     pub fn pixel(&self, x: i32, y: i32) -> cu::Result<cu::Pixel> {
         match self {
             Self::Local => cu::pixel(x, y),

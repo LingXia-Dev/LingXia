@@ -165,13 +165,6 @@ fn dispatch(name: &str, params: Option<Value>) -> Answer {
             ))
         }
 
-        method::pip::SHOW => {
-            let args: cu::wire::PipShow = decode(params)?;
-            report(cu::pip::show(args.watch, args.corner))
-        }
-        method::pip::HIDE => report(cu::pip::hide()),
-        method::pip::STATUS => report(Ok(cu::pip::status())),
-
         method::window::STATUS => window(params, cu::window::status),
         method::window::FOCUS => window(params, cu::window::focus),
         method::window::ACTIVATE => window(params, cu::window::activate),
