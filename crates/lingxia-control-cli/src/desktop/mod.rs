@@ -9,10 +9,10 @@ use serde::Serialize;
 
 #[derive(Args, Clone)]
 pub struct DesktopOptions {
-    /// Authorize mutating desktop commands (or set LXDEV_DESKTOP_ALLOW_CONTROL=1)
+    /// Acknowledge mutating desktop commands (or set LXDEV_DESKTOP_ALLOW_CONTROL=1)
     #[arg(long, global = true)]
     allow_control: bool,
-    /// Authorize destructive commands like `window close` (or set
+    /// Acknowledge destructive commands like `window close` (or set
     /// LXDEV_DESKTOP_ALLOW_DESTRUCTIVE=1)
     #[arg(long, global = true)]
     allow_destructive: bool,
@@ -1196,7 +1196,7 @@ fn run_key(
     finish(json, result, print_ack)
 }
 
-/// Authorize a mutating (and optionally destructive) desktop command.
+/// Require acknowledgement for a mutating (and optionally destructive) command.
 fn run_window(
     backend: &Backend,
     action: WindowAction,

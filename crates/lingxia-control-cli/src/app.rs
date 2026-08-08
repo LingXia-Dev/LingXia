@@ -20,7 +20,7 @@ pub struct AppContext<'a> {
 
 #[derive(Args, Clone)]
 pub struct AppOptions {
-    /// Authorize input sent to the host app window
+    /// Acknowledge input sent to the host app window
     #[arg(long, global = true)]
     pub allow_control: bool,
     #[command(subcommand)]

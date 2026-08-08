@@ -1,12 +1,9 @@
-//! Permission to act, and what a failure costs the caller.
+//! Explicit acknowledgement to act, and what a failure costs the caller.
 //!
-//! Two things every mount shares. Driving someone's machine is gated the same
-//! way whether the target is the OS, the host app, or a browser tab — an agent
-//! that may click a native window and may click a web page without asking is
-//! not meaningfully more restrained than one that may do either. And a failure
-//! has to arrive as a code the caller can branch on: a command line that
-//! answers every problem with `1` forces an agent to read prose, which it will
-//! do badly.
+//! The flags prevent an accidental mutating invocation; they are not proof of
+//! user consent because the caller can add them. Every mount applies the same
+//! acknowledgement rule, and every failure carries a code the caller can branch
+//! on instead of collapsing to prose and exit 1.
 
 use lingxia_computer_use as cu;
 

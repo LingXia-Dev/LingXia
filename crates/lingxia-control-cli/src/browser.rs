@@ -7,10 +7,10 @@ use serde_json::{Value, json};
 
 #[derive(Args, Clone)]
 pub struct BrowserOptions {
-    /// Authorize commands that change the page or the browser
+    /// Acknowledge commands that change the page or browser
     #[arg(long, global = true)]
     pub allow_control: bool,
-    /// Authorize commands that lose state, like closing a tab or clearing cookies
+    /// Acknowledge commands that lose state, like closing a tab or clearing cookies
     #[arg(long, global = true)]
     pub allow_destructive: bool,
     #[command(subcommand)]

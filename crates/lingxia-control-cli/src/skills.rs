@@ -1,11 +1,9 @@
 //! Agent skills, written by the product that answers them.
 //!
 //! A skill shipped in a package can only describe the commands its author
-//! imagined. This one is rendered from the very `clap` definition the product
-//! dispatches, and from the capabilities it actually declared — so it cannot
-//! describe a namespace this build refuses, and it cannot fall behind a
-//! version bump. It is the same rule the repo applies to its own docs: mirror
-//! nothing by hand.
+//! imagined. This one takes its entry points from the `clap` definition the
+//! product dispatches and filters them through the capabilities the running
+//! product declared. Exact leaf syntax stays in `--help`, where it cannot drift.
 //!
 //! Writing lands in another tool's configuration directory, which is why this
 //! is a command the user runs rather than something a toggle does quietly.
@@ -72,25 +70,35 @@ pub struct Manifest {
     /// The product's user-facing name.
     pub product: String,
     /// Namespaces this build declared, when the app was reachable to ask.
-    /// `None` means unknown — which the skill says plainly rather than
-    /// guessing, since a wrong list is worse than no list.
+    /// `None` means unknown, which prevents showing or installing the skill.
     pub declared: Option<Vec<String>>,
 }
 
 pub fn execute<C: CommandFactory>(manifest: &Manifest, options: SkillsOptions) -> i32 {
     match options.command {
-        SkillsCommand::Show => {
-            println!("{}", render::<C>(manifest));
-            0
-        }
+        SkillsCommand::Show => match render::<C>(manifest) {
+            Ok(body) => {
+                println!("{body}");
+                0
+            }
+            Err(error) => report_render_error(manifest, error),
+        },
         SkillsCommand::Install { agent } => {
-            let body = render::<C>(manifest);
+            let body = match render::<C>(manifest) {
+                Ok(body) => body,
+                Err(error) => return report_render_error(manifest, error),
+            };
             report(agent.iter().map(|agent| install(*agent, manifest, &body)))
         }
         SkillsCommand::Remove { agent } => {
             report(agent.iter().map(|agent| remove(*agent, manifest)))
         }
     }
+}
+
+fn report_render_error(manifest: &Manifest, error: anyhow::Error) -> i32 {
+    eprintln!("Error: {error}");
+    if manifest.declared.is_none() { 8 } else { 7 }
 }
 
 fn report(results: impl Iterator<Item = Result<String>>) -> i32 {
@@ -122,7 +130,7 @@ fn install(agent: Agent, manifest: &Manifest, body: &str) -> Result<String> {
     // A product name that happens to match a skill someone wrote themselves
     // must not silently replace it. This directory belongs to another tool and
     // the files in it are not ours to assume.
-    if directory.exists() && !owned(&directory) {
+    if directory.exists() && !owned(&directory, manifest) {
         anyhow::bail!(
             "{} already exists and was not written by this product; \
              rename the product or remove that directory first",
@@ -138,8 +146,8 @@ fn install(agent: Agent, manifest: &Manifest, body: &str) -> Result<String> {
     Ok(format!("{}: {}", agent.label(), path.display()))
 }
 
-fn owned(directory: &Path) -> bool {
-    directory.join(OWNED).exists()
+fn owned(directory: &Path, manifest: &Manifest) -> bool {
+    std::fs::read_to_string(directory.join(OWNED)).is_ok_and(|owner| owner == manifest.product)
 }
 
 fn remove(agent: Agent, manifest: &Manifest) -> Result<String> {
@@ -149,7 +157,7 @@ fn remove(agent: Agent, manifest: &Manifest) -> Result<String> {
     }
     // Only what this product wrote. A directory it did not create may hold
     // someone's own work, and a name collision is not a licence to delete it.
-    if !owned(&directory) {
+    if !owned(&directory, manifest) {
         anyhow::bail!(
             "{} was not written by this product; leaving it alone",
             directory.display()
@@ -174,59 +182,22 @@ fn remove(agent: Agent, manifest: &Manifest) -> Result<String> {
     ))
 }
 
-/// Walk to the leaves. Stopping one level down left an agent with
-/// `computer pointer` — a form that does nothing — instead of
-/// `computer pointer click`, and it will invent the rest.
-fn walk(command: &clap::Command, prefix: &str, out: &mut Vec<String>) {
-    let mut children = command.get_subcommands().peekable();
-    if children.peek().is_none() {
-        return;
-    }
-    for child in command.get_subcommands() {
-        let path = format!("{prefix} {}", child.get_name());
-        if child.get_subcommands().next().is_some() {
-            walk(child, &path, out);
-        } else {
-            // The required options too. A leaf on its own is a form that
-            // cannot be run, and an agent handed one will invent the rest.
-            let required: Vec<String> = child
-                .get_arguments()
-                .filter(|arg| arg.is_required_set())
-                .map(|arg| match arg.get_long() {
-                    Some(long) => format!(" --{long} <{}>", arg.get_id()),
-                    None => format!(" <{}>", arg.get_id()),
-                })
-                .collect();
-            out.push(format!(
-                "- `{path}{}`{}",
-                required.join(""),
-                child
-                    .get_about()
-                    .map(|about| format!(" — {about}"))
-                    .unwrap_or_default()
-            ));
-        }
-    }
+/// Capability behind an agent-facing entry point. Human administration
+/// (`control`, `skills`) deliberately has no row and never enters the skill.
+fn required_capability(namespace: &str) -> Option<&'static str> {
+    let needs = match namespace {
+        "computer" | "desktop" => "computerUse",
+        "browser" => "browserUse",
+        "app" | "screenshot" | "windows" | "mouse" | "key" | "doctor" => "appUse",
+        _ => return None,
+    };
+    Some(needs)
 }
 
-/// Whether this build will answer a namespace at all.
-///
-/// `None` declared means the app could not be reached, and a list nobody can
-/// check is better shown whole than silently trimmed.
-fn allowed(manifest: &Manifest, namespace: &str) -> bool {
-    let Some(declared) = manifest.declared.as_deref() else {
-        return true;
-    };
-    // The namespaces that ride a capability, by the name the product declares.
-    // The product's own window commands sit at the top level rather than under
-    // a prefix, so they have to be named individually — a browser-only product
-    // must not be told it can screenshot windows it will be refused.
-    let needs = match namespace {
-        "computer" => "computerUse",
-        "browser" => "browserUse",
-        "screenshot" | "windows" | "mouse" | "key" | "doctor" => "appUse",
-        // What is left is about the tool rather than about the machine.
-        _ => return true,
+/// Whether this running build will answer an agent-facing entry point.
+fn allowed(declared: &[String], namespace: &str) -> bool {
+    let Some(needs) = required_capability(namespace) else {
+        return false;
     };
     // `computerUse` contains `appUse`: an agent that may drive any window can
     // reach this product's own through the wider door. The product reports both
@@ -237,87 +208,101 @@ fn allowed(manifest: &Manifest, namespace: &str) -> bool {
         .any(|name| name == needs || (needs == "appUse" && name == "computerUse"))
 }
 
-/// Render the skill from the command definition itself.
-fn render<C: CommandFactory>(manifest: &Manifest) -> String {
+/// Render a short operating contract. Exact command trees stay behind
+/// `<entry-point> --help`, so loading the skill does not load a CLI manual.
+fn render<C: CommandFactory>(manifest: &Manifest) -> Result<String> {
+    let declared = manifest.declared.as_deref().with_context(|| {
+        format!(
+            "{} is not reachable; open the app, enable its automation interface, and retry",
+            manifest.product
+        )
+    })?;
+    if declared.is_empty() {
+        anyhow::bail!("{} declares no automation capability", manifest.product);
+    }
+
     let command = C::command();
+    let has_entry_point = command
+        .get_subcommands()
+        .any(|sub| allowed(declared, sub.get_name()));
+    if !has_entry_point {
+        anyhow::bail!(
+            "{} declares capabilities this command does not implement",
+            manifest.product
+        );
+    }
+
     let mut out = String::new();
 
     out.push_str("---\n");
     out.push_str(&format!("name: {}\n", manifest.command));
+    let description = format!(
+        "Inspect or operate the running {} through its local `{}` CLI. Use only for tasks targeting this product; the app must be open.",
+        manifest.product, manifest.command
+    );
     out.push_str(&format!(
-        "description: Drive {} — the running app, from this machine.\n",
-        manifest.product
+        "description: {}\n",
+        serde_json::to_string(&description).expect("a skill description is valid JSON")
     ));
     out.push_str("---\n\n");
 
     out.push_str(&format!("# {}\n\n", manifest.product));
     out.push_str(&format!(
-        "`{}` drives the running {} over a local socket. It reaches only this \
-         machine and only while the app is running; if the app is closed, every \
-         command fails to connect rather than starting it.\n\n",
+        "`{}` reaches the running {} on this machine. It never starts the app; \
+         if it cannot connect, ask the user to open the app and stop.\n\n",
         manifest.command, manifest.product
     ));
 
-    out.push_str("## What this build allows\n\n");
-    match manifest.declared.as_deref() {
-        Some([]) => out.push_str("Nothing — this build declared no automation capability.\n\n"),
-        Some(declared) => {
-            for name in declared {
-                out.push_str(&format!("- `{name}`\n"));
-            }
-            out.push_str("\nAnything outside these is refused by the app, not by this file.\n\n");
-        }
-        // The app is the only thing that knows, so an unreachable app leaves
-        // this unrecorded rather than guessed.
-        None => out.push_str(
-            "Not recorded — the app could not be reached when this was written. \
-             It refuses any namespace it did not declare; treat a refusal as the \
-             answer, not as something to work around.\n\n",
-        ),
-    }
-
-    out.push_str("## Commands\n\n");
+    out.push_str("## Available entry points\n\n");
+    out.push_str("This list is filtered by the capabilities reported by the running build.\n\n");
     for sub in command.get_subcommands() {
-        // A namespace this build refuses is worse than absent: an agent reads
-        // it as available, tries it, and gets a refusal it cannot act on.
-        if !allowed(manifest, sub.get_name()) {
+        if !allowed(declared, sub.get_name()) {
             continue;
         }
+        let entry = format!("{} {}", manifest.command, sub.get_name());
+        let about = sub
+            .get_about()
+            .map(|about| format!(" — {about}"))
+            .unwrap_or_default();
         out.push_str(&format!(
-            "### `{} {}`\n\n",
-            manifest.command,
-            sub.get_name()
+            "- `{entry}`{about}; inspect with `{entry} --help`.\n"
         ));
-        if let Some(about) = sub.get_about() {
-            out.push_str(&format!("{about}\n\n"));
-        }
-        let mut lines = Vec::new();
-        walk(
-            sub,
-            &format!("{} {}", manifest.command, sub.get_name()),
-            &mut lines,
-        );
-        if !lines.is_empty() {
-            out.push_str(&lines.join("\n"));
-            out.push_str("\n\n");
-        }
     }
+    out.push_str("\nUse the narrowest entry point that can complete the task. Run the leaf command's `--help` before first use; prefer `--json` when offered.\n\n");
 
-    out.push_str("## Reading results\n\n");
+    out.push_str("## Operating rules\n\n");
     out.push_str(
-        "Most commands take `--json` for machine-readable output; `--help` on \
-         any of them is exact about which. Failures use the exit code, not just \
-         the message: 2 usage, 3 not found, 4 ambiguous, 5 timeout, \
-         6 permission, 7 unsupported, 8 unavailable, 9 stale handle, 10 failed \
-         after the target was resolved.\n\n",
+        "- Inspect before acting, then verify the result with a read command. \
+         Prefer structured app or browser commands over screen coordinates.\n",
+    );
+    if declared.iter().any(|name| name == "computerUse") {
+        out.push_str(&format!(
+            "- Before machine-wide work, run `{} computer permissions --json`. \
+             If an OS grant is missing, tell the user; do not retry permission prompts.\n",
+            manifest.command
+        ));
+        out.push_str(
+            "- On macOS, mutating computer commands may open a viewer for the \
+             person. Never target, hide, or dismiss it.\n",
+        );
+    }
+    out.push_str(
+        "- `--allow-control` only acknowledges a state change already authorized \
+         by the user's request; it does not grant permission. Add \
+         `--allow-destructive` only when the user explicitly authorized that \
+         destructive effect.\n",
     );
     out.push_str(
-        "Commands that change something need `--allow-control`; the destructive \
-         ones also need `--allow-destructive`. A permission error means the user \
-         has not granted the app what the OS requires — say so rather than \
-         retrying.\n",
+        "- Read both the exit code and message. For exit 6: add a missing \
+         acknowledgement only when authorized; stop on an undeclared capability; \
+         ask the user for a missing OS grant. Never route around a refusal.\n",
     );
-    out
+    out.push_str(
+        "- Other exits: 2 usage (read `--help`), 3 not found, 4 ambiguous, \
+         5 timeout, 7 unsupported, 8 unavailable, 9 stale handle (refresh it), \
+         10 operation failed after target resolution.\n",
+    );
+    Ok(out)
 }
 
 /// A skill that names the running executable is wrong the moment the product
@@ -328,6 +313,27 @@ pub fn manifest_for(command: impl Into<String>, product: impl Into<String>) -> M
         product: product.into(),
         declared: None,
     }
+}
+
+/// Build a manifest from what the running product reports. Keep this query in
+/// one place so examples and product entry points fail closed the same way.
+pub fn manifest_for_running(
+    command: impl Into<String>,
+    product: impl Into<String>,
+    transport: &dyn crate::transport::Transport,
+) -> Manifest {
+    let mut manifest = manifest_for(command, product);
+    manifest.declared = transport
+        .request(lingxia_devtool_protocol::handlers::control::STATUS, None)
+        .ok()
+        .and_then(|result| result?.get("declared")?.as_array().cloned())
+        .map(|values| {
+            values
+                .iter()
+                .filter_map(|value| value.as_str().map(str::to_string))
+                .collect()
+        });
+    manifest
 }
 
 pub fn skill_path(agent: Agent, command: &str) -> Option<PathBuf> {
@@ -343,6 +349,21 @@ pub fn is_installed(agent: Agent, command: &str) -> bool {
 mod tests {
     use super::*;
 
+    struct StatusTransport;
+
+    impl crate::transport::Transport for StatusTransport {
+        fn request(
+            &self,
+            method: &str,
+            _params: Option<serde_json::Value>,
+        ) -> Result<Option<serde_json::Value>> {
+            assert_eq!(method, lingxia_devtool_protocol::handlers::control::STATUS);
+            Ok(Some(serde_json::json!({
+                "declared": ["appUse", "browserUse"]
+            })))
+        }
+    }
+
     #[derive(clap::Parser)]
     #[command(about = "test")]
     struct Fake {
@@ -354,11 +375,20 @@ mod tests {
     enum FakeCommand {
         /// Capture a PNG of the app window
         Screenshot,
+        /// Drive the in-app browser
+        Browser {
+            #[command(subcommand)]
+            _command: FakeLeaf,
+        },
         /// Automate the machine
         Computer {
             #[command(subcommand)]
             _command: FakeLeaf,
         },
+        /// User administration, not agent work
+        Control,
+        /// Manage installed skills
+        Skills,
     }
 
     #[derive(Subcommand)]
@@ -385,22 +415,19 @@ mod tests {
             product: "My App".into(),
             declared: Some(vec!["computerUse".into()]),
         };
-        let body = render::<Fake>(&manifest);
+        let body = render::<Fake>(&manifest).unwrap();
 
         assert!(body.contains("name: myapp"));
         assert!(body.contains("`myapp screenshot`"));
         assert!(body.contains("Capture a PNG of the app window"));
-        // Nested commands matter most: an agent that only knows the top level
-        // will guess at the rest.
-        assert!(body.contains("`myapp computer windows`"));
-        assert!(body.contains("List every window"));
-        assert!(body.contains("computerUse"));
-        // Down to the leaf: `computer pointer` on its own does nothing, and an
-        // agent given only that will invent the rest.
-        assert!(body.contains("`myapp computer pointer click`"));
+        assert!(body.contains("`myapp computer --help`"));
+        assert!(!body.contains("myapp computer pointer click"));
+        assert!(!body.contains("`myapp control`"));
+        assert!(!body.contains("`myapp skills`"));
+        assert!(body.contains("does not grant permission"));
         assert!(
-            !body.contains("`myapp computer pointer`\n"),
-            "a form that cannot be run must not be offered"
+            body.lines().count() < 50,
+            "the entry skill should stay a short router, not become a CLI manual"
         );
     }
 
@@ -414,10 +441,10 @@ mod tests {
             product: "My App".into(),
             declared: Some(vec!["appUse".into()]),
         };
-        let body = render::<Fake>(&manifest);
+        let body = render::<Fake>(&manifest).unwrap();
         assert!(body.contains("`myapp screenshot`"), "its own surface stays");
         assert!(
-            !body.contains("`myapp computer pointer click`"),
+            !body.contains("`myapp computer`"),
             "a namespace nobody declared must not be described"
         );
 
@@ -428,19 +455,24 @@ mod tests {
             product: "My App".into(),
             declared: Some(vec!["browserUse".into()]),
         };
-        assert!(
-            !render::<Fake>(&browser_only).contains("`myapp screenshot`"),
-            "a browser-only product cannot screenshot its own windows"
-        );
+        let body = render::<Fake>(&browser_only).unwrap();
+        assert!(body.contains("`myapp browser`"));
+        assert!(!body.contains("`myapp screenshot`"));
+        assert!(!body.contains("`myapp computer`"));
     }
 
     #[test]
-    fn an_unknown_list_says_so_rather_than_guessing() {
-        let body = render::<Fake>(&manifest_for("myapp", "My App"));
-        assert!(body.contains("Not recorded"));
-        assert!(
-            !body.contains("refused by the app, not by this file"),
-            "an unknown list must not be presented as a complete one"
+    fn an_unknown_list_refuses_to_write_a_guess() {
+        let error = render::<Fake>(&manifest_for("myapp", "My App")).unwrap_err();
+        assert!(error.to_string().contains("not reachable"));
+    }
+
+    #[test]
+    fn a_running_manifest_uses_the_products_declared_capabilities() {
+        let manifest = manifest_for_running("myapp", "My App", &StatusTransport);
+        assert_eq!(
+            manifest.declared,
+            Some(vec!["appUse".to_string(), "browserUse".to_string()])
         );
     }
 }

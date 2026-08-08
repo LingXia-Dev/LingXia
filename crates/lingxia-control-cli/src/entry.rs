@@ -24,7 +24,7 @@ use crate::{app, browser, desktop, skills};
     about = "Drive this product from the command line"
 )]
 struct Cli {
-    /// Authorize input sent to this product's own windows. The machine and
+    /// Acknowledge input sent to this product's own windows. The machine and
     /// browser namespaces carry their own copies of this flag; this one covers
     /// the commands that sit at the top level.
     #[arg(long, global = true)]
@@ -274,20 +274,7 @@ fn manifest(transport: &dyn crate::transport::Transport) -> skills::Manifest {
         .strip_suffix(std::env::consts::EXE_SUFFIX)
         .unwrap_or("app")
         .to_string();
-    let mut manifest = skills::manifest_for(command_name(&stem), stem);
-    // Ask the product rather than assume: a skill that lists a namespace the
-    // socket refuses is worse than one that admits it does not know.
-    manifest.declared = transport
-        .request(lingxia_devtool_protocol::handlers::control::STATUS, None)
-        .ok()
-        .and_then(|result| result?.get("declared")?.as_array().cloned())
-        .map(|values| {
-            values
-                .iter()
-                .filter_map(|value| value.as_str().map(str::to_string))
-                .collect()
-        });
-    manifest
+    skills::manifest_for_running(command_name(&stem), stem, transport)
 }
 
 /// Only the same alphabet the launcher uses, so the skill names the command a

@@ -49,7 +49,7 @@ fn main() -> anyhow::Result<()> {
             options,
         )),
         Command::Skills(options) => std::process::exit(skills::execute::<Cli>(
-            &skills::manifest_for("product", "Product"),
+            &skills::manifest_for_running("product", "Product", &transport),
             options,
         )),
         Command::App(options) => {
