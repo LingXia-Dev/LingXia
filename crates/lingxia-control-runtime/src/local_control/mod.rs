@@ -46,8 +46,7 @@ struct Running {
 }
 
 /// Bumped every time the endpoint is switched off. A connection accepted under
-/// an older epoch stops being answered, so closing the door also closes the
-/// connections already through it rather than only the door.
+/// an older epoch is closed before its next request can be answered.
 static EPOCH: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 /// Make the control socket available, and start it if the user has said yes.
@@ -108,20 +107,7 @@ pub fn set_enabled(enabled: bool) -> std::io::Result<()> {
             Ok(())
         }
         (false, Some(mut existing)) => {
-            existing.listening.store(false, Ordering::SeqCst);
-            EPOCH.fetch_add(1, Ordering::SeqCst);
-            // The accept call is blocking, so it has to be woken to notice.
-            // Connecting to ourselves is the wake-up; the loop then sees the
-            // flag and drops the listener, which is what actually closes the
-            // door.
-            platform::poke(&existing.endpoint);
-            // The accept loop unlinks the socket on its way out, and that has
-            // to finish before anything can bind the same name again.
-            if let Some(accepting) = existing.accepting.take()
-                && accepting.join().is_err()
-            {
-                log::warn!("control accept thread panicked on the way out");
-            }
+            let _ = stop_accepting(&mut existing);
             if let Err(error) = launcher::remove(state_dir) {
                 log::warn!("product command not removed: {error}");
             }
@@ -129,6 +115,32 @@ pub fn set_enabled(enabled: bool) -> std::io::Result<()> {
             Ok(())
         }
         (false, None) => Ok(()),
+    }
+}
+
+fn stop_accepting(running: &mut Running) -> bool {
+    running.listening.store(false, Ordering::SeqCst);
+    EPOCH.fetch_add(1, Ordering::SeqCst);
+    let Some(accepting) = running.accepting.take() else {
+        return true;
+    };
+    // A Windows accept creates one pipe instance at a time. Keep waking until
+    // the loop observes the flag so a toggle never blocks between instances.
+    for _ in 0..100 {
+        if accepting.is_finished() {
+            break;
+        }
+        platform::poke(&running.endpoint);
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    if !accepting.is_finished() {
+        log::warn!("control accept thread took longer than two seconds to stop");
+    }
+    if accepting.join().is_err() {
+        log::warn!("control accept thread panicked on the way out");
+        false
+    } else {
+        true
     }
 }
 
@@ -178,18 +190,18 @@ pub fn is_listening() -> bool {
 }
 
 fn start(state_dir: &Path, handle: Handler) -> std::io::Result<Running> {
-    let listener = platform::Listener::bind(state_dir)?;
+    let epoch = EPOCH.load(Ordering::SeqCst);
+    let listener = platform::Listener::bind(state_dir, epoch)?;
     let endpoint = listener.name();
     log::info!("control socket listening on {endpoint}");
     let listening = Arc::new(AtomicBool::new(true));
     let flag = Arc::clone(&listening);
-    let epoch = EPOCH.load(Ordering::SeqCst);
     let accepting = std::thread::Builder::new()
         .name("lingxia-control".to_string())
         .spawn(move || {
             let mut consecutive_failures = 0u32;
             while flag.load(Ordering::SeqCst) {
-                match listener.accept() {
+                match listener.accept(&flag) {
                     Ok(stream) => {
                         consecutive_failures = 0;
                         if !flag.load(Ordering::SeqCst) {
@@ -201,6 +213,9 @@ fn start(state_dir: &Path, handle: Handler) -> std::io::Result<Running> {
                             .ok();
                     }
                     Err(error) => {
+                        if !flag.load(Ordering::SeqCst) {
+                            break;
+                        }
                         consecutive_failures += 1;
                         log::warn!("control socket accept failed: {error}");
                         // A single failed accept is usually transient, but a
@@ -422,7 +437,7 @@ mod tests {
             std::thread::current().id()
         ));
         std::fs::create_dir_all(&state_dir).unwrap();
-        let running = start(&state_dir, stub_line).expect("listener starts");
+        let mut running = start(&state_dir, stub_line).expect("listener starts");
         let endpoint = running.endpoint.clone();
 
         let mut client = std::os::unix::net::UnixStream::connect(&endpoint).expect("connects");
@@ -435,20 +450,105 @@ mod tests {
             .unwrap();
         assert!(reply.contains("\"id\":\"1\""), "answered while on: {reply}");
 
-        running.listening.store(false, Ordering::SeqCst);
-        platform::poke(&endpoint);
-
-        // The accept thread drops the listener on its way out, which unlinks
-        // the socket; until it does, a connect may still succeed.
-        let mut refused = false;
-        for _ in 0..100 {
-            if std::os::unix::net::UnixStream::connect(&endpoint).is_err() {
-                refused = true;
-                break;
-            }
-            std::thread::sleep(std::time::Duration::from_millis(20));
-        }
-        assert!(refused, "endpoint still accepts after being switched off");
+        assert!(stop_accepting(&mut running), "accept thread exits cleanly");
+        assert!(
+            std::os::unix::net::UnixStream::connect(&endpoint).is_err(),
+            "endpoint still accepts after being switched off"
+        );
         let _ = std::fs::remove_dir_all(&state_dir);
+    }
+
+    #[cfg(windows)]
+    #[derive(Debug)]
+    enum PipeRead {
+        Line(String),
+        Closed,
+        TimedOut,
+    }
+
+    #[cfg(windows)]
+    fn read_pipe_line(client: &std::fs::File) -> PipeRead {
+        use std::io::BufRead;
+
+        let reader = client.try_clone().expect("pipe handle duplicates");
+        let (send, receive) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let mut line = String::new();
+            let result = BufReader::new(reader).read_line(&mut line);
+            let _ = send.send((result, line));
+        });
+        match receive.recv_timeout(std::time::Duration::from_secs(5)) {
+            Ok((Ok(read), line)) if read > 0 => PipeRead::Line(line),
+            Ok(_) => PipeRead::Closed,
+            Err(_) => PipeRead::TimedOut,
+        }
+    }
+
+    /// An idle client owns a pipe instance after the listener stops. Restarting
+    /// must still claim a fresh endpoint, while the old connection stays shut.
+    #[cfg(windows)]
+    #[test]
+    fn named_pipe_restarts_while_an_old_client_is_open() {
+        let state_dir = std::env::temp_dir();
+        let epoch = EPOCH.load(Ordering::SeqCst);
+        drop(platform::Listener::bind(&state_dir, epoch).expect("first pipe claims its name"));
+        drop(
+            platform::Listener::bind(&state_dir, epoch)
+                .expect("dropping an unused first instance releases its name"),
+        );
+
+        let mut running = start(&state_dir, stub_line).expect("named pipe starts");
+        let endpoint = running.endpoint.clone();
+
+        let mut client = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(&endpoint)
+            .expect("named pipe connects");
+        client
+            .write_all(b"{\"type\":\"request\",\"id\":\"1\",\"method\":\"echo\"}\n")
+            .unwrap();
+        let reply = match read_pipe_line(&client) {
+            PipeRead::Line(reply) => reply,
+            other => panic!("named pipe did not answer: {other:?}"),
+        };
+        assert!(reply.contains("\"id\":\"1\""), "answered while on: {reply}");
+
+        assert!(stop_accepting(&mut running), "first listener exits cleanly");
+        let mut restarted = start(&state_dir, stub_line).expect("named pipe restarts");
+        assert_ne!(restarted.endpoint, endpoint);
+        let mut fresh = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(&restarted.endpoint)
+            .expect("restarted named pipe connects");
+        fresh
+            .write_all(b"{\"type\":\"request\",\"id\":\"2\",\"method\":\"echo\"}\n")
+            .unwrap();
+        let fresh_reply = match read_pipe_line(&fresh) {
+            PipeRead::Line(reply) => reply,
+            other => panic!("restarted named pipe did not answer: {other:?}"),
+        };
+        assert!(
+            fresh_reply.contains("\"id\":\"2\""),
+            "answered after restart: {fresh_reply}"
+        );
+
+        let stale = match client
+            .write_all(b"{\"type\":\"request\",\"id\":\"stale\",\"method\":\"echo\"}\n")
+        {
+            Ok(()) => read_pipe_line(&client),
+            Err(_) => PipeRead::Closed,
+        };
+        assert!(
+            matches!(&stale, PipeRead::Closed),
+            "old connection: {stale:?}"
+        );
+
+        drop(fresh);
+        assert!(
+            stop_accepting(&mut restarted),
+            "restarted listener exits cleanly"
+        );
     }
 }

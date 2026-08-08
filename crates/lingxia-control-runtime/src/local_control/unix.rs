@@ -38,7 +38,7 @@ pub(super) struct Listener {
 }
 
 impl Listener {
-    pub(super) fn bind(state_dir: &Path) -> std::io::Result<Self> {
+    pub(super) fn bind(state_dir: &Path, _epoch: u64) -> std::io::Result<Self> {
         let path = socket_path(state_dir);
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
@@ -60,7 +60,10 @@ impl Listener {
         self.path.display().to_string()
     }
 
-    pub(super) fn accept(&self) -> std::io::Result<Stream> {
+    pub(super) fn accept(
+        &self,
+        _listening: &std::sync::atomic::AtomicBool,
+    ) -> std::io::Result<Stream> {
         let (stream, _) = self.inner.accept()?;
         Ok(stream)
     }

@@ -486,6 +486,10 @@ jobs:
         shell: bash
         run: cargo test -p lingxia-computer-use --lib
 
+      - name: Test Windows local-control named pipe
+        shell: bash
+        run: cargo test -p lingxia-control-runtime --no-default-features --features local-control --lib named_pipe_restarts_while_an_old_client_is_open
+
       # `--workspace` above only builds each crate's default features, i.e.
       # windows-sdk's `standard`. Exercise the other tiers standalone too — in
       # particular `components` (advanced / bring-your-own-host mode, without the

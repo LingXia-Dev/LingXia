@@ -1,12 +1,13 @@
 //! Named pipe, restricted to the user who launched the app.
 //!
-//! The name is derived from the app id so two products never collide, and the
-//! DACL names the calling user's SID explicitly rather than relying on a
-//! default that inherits whatever the process token happens to carry.
+//! The name is derived from the app id and enable generation, so two products
+//! never collide and an idle old client cannot block a restart. The DACL names
+//! the calling user's SID explicitly rather than inheriting process defaults.
 
 use std::io::{Read, Write};
 use std::path::Path;
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use windows::Win32::Foundation::{
     CloseHandle, DUPLICATE_SAME_ACCESS, DuplicateHandle, HANDLE, LocalFree,
@@ -33,8 +34,12 @@ const BUFFER_BYTES: u32 = 64 * 1024;
 /// Where the endpoint lives, so a client can find it without being told.
 ///
 /// Takes the state dir for signature parity with the Unix half; a pipe lives
-/// in the kernel namespace, not the filesystem, so only the app id shapes it.
+/// in the kernel namespace, not the filesystem.
 pub fn endpoint_name(_state_dir: &Path) -> String {
+    endpoint_name_for_epoch(super::EPOCH.load(Ordering::SeqCst))
+}
+
+fn endpoint_name_for_epoch(epoch: u64) -> String {
     let app_id = lingxia_app_context::app_config()
         .map(|config| {
             config
@@ -47,9 +52,11 @@ pub fn endpoint_name(_state_dir: &Path) -> String {
     if app_id.is_empty() {
         // No app id yet — fall back to something unique to this process rather
         // than a shared name two products could both claim.
-        format!(r"\\.\pipe\lingxia-{}", unsafe { GetCurrentProcessId() })
+        format!(r"\\.\pipe\lingxia-{}-{epoch}", unsafe {
+            GetCurrentProcessId()
+        })
     } else {
-        format!(r"\\.\pipe\lingxia-{app_id}")
+        format!(r"\\.\pipe\lingxia-{app_id}-{epoch}")
     }
 }
 
@@ -156,8 +163,8 @@ pub(super) struct Listener {
 }
 
 impl Listener {
-    pub(super) fn bind(state_dir: &Path) -> std::io::Result<Self> {
-        let name = endpoint_name(state_dir);
+    pub(super) fn bind(_state_dir: &Path, epoch: u64) -> std::io::Result<Self> {
+        let name = endpoint_name_for_epoch(epoch);
         let descriptor = SecurityDescriptor::for_current_user()?;
         // Claim the name, and keep the instance. Asking for the first instance
         // fails outright if anyone already owns this name, which is the point:
@@ -176,7 +183,7 @@ impl Listener {
         self.name.clone()
     }
 
-    pub(super) fn accept(&self) -> std::io::Result<Stream> {
+    pub(super) fn accept(&self, listening: &AtomicBool) -> std::io::Result<Stream> {
         let held = self
             .first
             .lock()
@@ -186,6 +193,15 @@ impl Listener {
             Some(raw) => HANDLE(raw as *mut std::ffi::c_void),
             None => create_instance(&self.name, &self.descriptor, false)?,
         };
+        // `stop_accepting` may poke between two instances. Checking only in
+        // the outer loop could then block forever on the instance made after
+        // that poke; checking after creation closes that race.
+        if !listening.load(Ordering::SeqCst) {
+            unsafe {
+                let _ = CloseHandle(handle);
+            }
+            return Err(std::io::ErrorKind::Interrupted.into());
+        }
         // ERROR_PIPE_CONNECTED means the client won the race and is already
         // attached; that is a successful accept, not a failure.
         const ERROR_PIPE_CONNECTED: i32 = 535;
@@ -201,6 +217,21 @@ impl Listener {
             handle,
             owns_connection: true,
         })
+    }
+}
+
+impl Drop for Listener {
+    fn drop(&mut self) {
+        let first = self
+            .first
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .take();
+        if let Some(raw) = first {
+            unsafe {
+                let _ = CloseHandle(HANDLE(raw as *mut std::ffi::c_void));
+            }
+        }
     }
 }
 
