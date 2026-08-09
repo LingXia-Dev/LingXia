@@ -38,6 +38,9 @@ CRATES=(
   # Control protocol is consumed by SDK/tools and by lingxia-control-runtime.
   "lingxia-control-protocol"
 
+  # Shared product CLI depends on the protocol and is consumed by lingxia.
+  "lingxia-control-cli"
+
   # Public facade.
   "lingxia"
 
