@@ -243,3 +243,20 @@ pub(super) fn create_rust_library(
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn control_template_declares_its_logging_dependency() {
+        let manifest = include_str!("../../../templates/native/Cargo.toml.template");
+        let source = include_str!("../../../templates/native/src/lib.rs");
+
+        let control = manifest
+            .lines()
+            .find(|line| line.starts_with("control = "))
+            .expect("native template must define its control feature");
+        assert!(control.contains("dep:log"));
+        assert!(manifest.contains("log = { version = \"0.4\", optional = true }"));
+        assert!(source.contains("log::warn!"));
+    }
+}

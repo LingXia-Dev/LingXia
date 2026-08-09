@@ -1735,7 +1735,6 @@ impl LingXiaConfig {
             .as_ref()
             .ok_or_else(|| anyhow!("surfaces requires app.platforms"))?;
         let app_platforms = validate_app_platforms(app)?;
-        validate_capability_dependencies(self.capabilities.as_ref())?;
         validate_surface_platforms(surfaces, &app_platforms)?;
         let terminal_enabled = self
             .capabilities
@@ -1776,6 +1775,7 @@ impl LingXiaConfig {
     }
 
     fn validate(&self) -> Result<()> {
+        validate_capability_dependencies(self.capabilities.as_ref())?;
         if let Some(app) = &self.app {
             if app.project_name.trim().is_empty() {
                 return Err(anyhow!("app.projectName must not be empty"));
@@ -2898,6 +2898,18 @@ android:
             Some(0xA1B2C3)
         );
         assert!(temp.path().join(HOST_CONFIG_FILE).exists());
+    }
+
+    #[test]
+    fn browser_use_requires_browser_without_surfaces() {
+        let mut config = LingXiaConfig::new_android("my-app", "com.example.myapp", "my-app");
+        let capabilities = config.capabilities.as_mut().unwrap();
+        capabilities.browser_use = true;
+        capabilities.browser = false;
+        assert!(config.surfaces.is_none());
+
+        let error = config.validate().unwrap_err().to_string();
+        assert!(error.contains("capabilities.browserUse drives the in-app browser"));
     }
 
     #[test]
