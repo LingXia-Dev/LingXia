@@ -39,6 +39,9 @@ pub struct LingXiaConfig {
     pub theme: Option<ThemeConfig>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub browser: Option<BrowserConfig>,
+    /// Terminal runtime defaults and the SDK-owned settings lxapp source.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub terminal: Option<TerminalHostConfig>,
     /// Generated UI structure (`ui.json`). Built from `surfaces` at load time;
     /// never authored directly.
     #[serde(skip)]
@@ -136,6 +139,28 @@ pub struct BrowserConfig {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct BrowserWebUiConfig {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub package: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TerminalHostConfig {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub settings: Option<TerminalSettingsConfig>,
+    /// Partial `lingxia-terminal-config::TerminalConfig`, resolved below the
+    /// user's terminal.json overrides.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub defaults: Option<Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TerminalSettingsConfig {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub path: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -411,8 +436,8 @@ pub enum SurfaceTrayAction {
 /// - `lxapp`/`url` + `role: aside` -> surface `role: aside`,
 ///   `attachTo: <launch surface>`, edge defaulting to `right`.
 /// - `native: terminal` + `role: aside` -> the built-in terminal surface,
-///   edge defaulting to `bottom`. `capabilities.terminal` only enables the
-///   runtime; it does not add UI by itself.
+///   edge defaulting to `bottom`. `capabilities.terminal` does not invent a
+///   terminal surface; the SDK settings workspace is injected separately.
 /// - `url` -> content `{ kind: url, url }` (requires the browser capability).
 /// - `native` -> content `{ kind: native, name }`.
 /// - `tray` -> a `menuBarItem` activator (closest existing kind).
@@ -1703,6 +1728,7 @@ impl LingXiaConfig {
             capabilities: Some(CapabilitiesConfig::default()),
             theme: None,
             browser: None,
+            terminal: None,
             generated_ui: None,
             surfaces: None,
             app_links: None,
@@ -1873,11 +1899,15 @@ impl LingXiaConfig {
                     return Err(anyhow!("resources.bundles[].appId must not be empty"));
                 }
                 if is_sdk_reserved_app_id(app_id) {
+                    let config_key = if app_id == crate::host_assets::TERMINAL_SETTINGS_APP_ID {
+                        "terminal.settings"
+                    } else {
+                        "browser.webui"
+                    };
                     return Err(anyhow!(
                         "resources.bundles[{app_id}] uses an SDK-reserved appId. \
-                         To customize the in-app browser webui, use `browser.webui.path` \
-                         (or `browser.webui.package`) instead of declaring \
-                         `{app_id}` as a resource bundle."
+                         Customize it with `{config_key}.path` (or `{config_key}.package`) \
+                         instead of declaring `{app_id}` as a resource bundle."
                     ));
                 }
                 // Bundles land in the asset root as a directory named by
@@ -1947,6 +1977,27 @@ impl LingXiaConfig {
                 return Err(anyhow!("browser.webui.version must not be empty"));
             }
         }
+        if let Some(terminal) = self.terminal.as_ref() {
+            if let Some(settings) = terminal.settings.as_ref() {
+                validate_lxapp_source(
+                    "terminal.settings",
+                    settings.path.as_deref(),
+                    settings.package.as_deref(),
+                    settings.version.as_deref(),
+                )?;
+            }
+            if let Some(defaults) = terminal.defaults.as_ref() {
+                if !defaults.is_object() {
+                    return Err(anyhow!("terminal.defaults must be an object"));
+                }
+                let resolved: lingxia_terminal_config::TerminalConfig =
+                    serde_json::from_value(defaults.clone())
+                        .map_err(|error| anyhow!("invalid terminal.defaults: {error}"))?;
+                resolved
+                    .validate()
+                    .map_err(|error| anyhow!("invalid terminal.defaults: {error}"))?;
+            }
+        }
         if let Some(ui) = &self.generated_ui
             && !ui.is_object()
         {
@@ -1954,6 +2005,25 @@ impl LingXiaConfig {
         }
         Ok(())
     }
+}
+
+fn validate_lxapp_source(
+    key: &str,
+    path: Option<&str>,
+    package: Option<&str>,
+    version: Option<&str>,
+) -> Result<()> {
+    let has_path = path.map(str::trim).is_some_and(|value| !value.is_empty());
+    let has_package = package
+        .map(str::trim)
+        .is_some_and(|value| !value.is_empty());
+    if has_path && has_package {
+        return Err(anyhow!("{key} must use either path or package, not both"));
+    }
+    if version.is_some_and(|value| value.trim().is_empty()) {
+        return Err(anyhow!("{key}.version must not be empty"));
+    }
+    Ok(())
 }
 
 pub fn append_native_features(features: &mut Vec<String>, extra_features: &[String]) {
@@ -2007,13 +2077,14 @@ fn optional_non_empty_str(value: Option<&Value>) -> Option<String> {
 
 /// App IDs reserved for SDK-internal hosts that ship their own customization API.
 /// These must not appear in `resources.bundles` or `app.homeAppId`; the SDK provides
-/// dedicated config keys (e.g. `browser.webui.*` for the in-app browser webui).
+/// dedicated config keys (`browser.webui.*`, `terminal.settings.*`).
 ///
 /// Source of truth for each entry (kept in sync manually to avoid pulling the
 /// full browser runtime into the CLI build):
 /// - `crate::host_assets::BROWSER_SHELL_WEBUI_APP_ID` mirrors `lingxia_browser::BUILTIN_BROWSER_APPID`.
 const SDK_RESERVED_APP_IDS: &[&str] = &[
     crate::host_assets::BROWSER_SHELL_WEBUI_APP_ID,
+    crate::host_assets::TERMINAL_SETTINGS_APP_ID,
     "app.lingxia.host-surface-owner",
 ];
 
@@ -2607,6 +2678,40 @@ mod tests {
     }
 
     #[test]
+    fn terminal_settings_source_and_partial_defaults_validate() {
+        let config = load_config_yaml(
+            r#"
+terminal:
+  settings:
+    path: ../../packages/lingxia-terminal-settings
+  defaults:
+    font:
+      size: 15.5
+    theme:
+      opacity: 0.9
+"#,
+        )
+        .expect("valid terminal configuration");
+        let terminal = config.terminal.expect("terminal config");
+        assert_eq!(
+            terminal.settings.unwrap().path.as_deref(),
+            Some("../../packages/lingxia-terminal-settings")
+        );
+        assert_eq!(terminal.defaults.unwrap()["font"]["size"], 15.5);
+    }
+
+    #[test]
+    fn terminal_defaults_use_the_runtime_schema_and_ranges() {
+        for yaml in [
+            "terminal:\n  defaults:\n    font:\n      size: 2\n",
+            "terminal:\n  defaults:\n    theme:\n      opacity: 1.5\n",
+            "terminal:\n  defaults:\n    font:\n      typo: true\n",
+        ] {
+            assert!(load_config_yaml(yaml).is_err(), "must reject: {yaml}");
+        }
+    }
+
+    #[test]
     fn rejects_sdk_reserved_app_id_in_resources_bundles() {
         let mut config = LingXiaConfig::new_android("my-app", "com.example.myapp", "my-app");
         config
@@ -2630,6 +2735,25 @@ mod tests {
             msg.contains("app.lingxia.browser") && msg.contains("browser.webui"),
             "error must point at the new customization API; got: {msg}"
         );
+    }
+
+    #[test]
+    fn terminal_settings_app_id_points_to_terminal_settings_config() {
+        let mut config = LingXiaConfig::new_android("my-app", "com.example.myapp", "my-app");
+        config
+            .resources
+            .as_mut()
+            .unwrap()
+            .bundles
+            .push(ResourceBundleConfig {
+                bundle_type: ResourceBundleType::Lxapp,
+                app_id: crate::host_assets::TERMINAL_SETTINGS_APP_ID.to_string(),
+                path: Some("./settings".to_string()),
+                package: None,
+                version: None,
+            });
+        let message = config.validate().unwrap_err().to_string();
+        assert!(message.contains("terminal.settings"), "{message}");
     }
 
     #[test]
@@ -2763,6 +2887,7 @@ android:
 
         assert!(config.desktop_runtime_enabled("macos"));
         assert!(config.terminal_enabled("windows"));
+        assert!(config.control_enabled("macos"));
         assert!(!config.desktop_runtime_enabled("android"));
         assert_eq!(
             config.native_features_for_platform("macos"),
@@ -2770,6 +2895,7 @@ android:
                 "standard".to_string(),
                 "terminal-runtime".to_string(),
                 "webview-input".to_string(),
+                "control".to_string(),
             ]
         );
         assert_eq!(
@@ -2778,6 +2904,7 @@ android:
                 "standard".to_string(),
                 "terminal-runtime".to_string(),
                 "webview-input".to_string(),
+                "control".to_string(),
             ]
         );
     }

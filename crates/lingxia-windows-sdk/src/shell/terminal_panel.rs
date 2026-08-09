@@ -1052,18 +1052,14 @@ fn create_panel_session(panel_id: &str, inherit_from: Option<u64>) -> u64 {
 /// Load `terminal.json` once and apply the configuration in effect. Later
 /// changes arrive through the settings API and bump the shared generation.
 #[cfg(feature = "terminal-runtime")]
-fn ensure_configuration_loaded() {
+pub(super) fn ensure_configuration_loaded() {
     use std::sync::OnceLock;
     static LOADED: OnceLock<()> = OnceLock::new();
     if LOADED.set(()).is_err() {
         return;
     }
-    let Some(data_dir) = lingxia::terminal::app_data_dir() else {
-        return;
-    };
     lingxia::terminal::set_installed_fonts(crate::terminal_fonts::installed_fonts());
-    // Product defaults are not wired yet; the framework defaults stand in.
-    lingxia_terminal_config::runtime::load(data_dir, "{}", system_prefers_dark());
+    let _ = lingxia::terminal::load_for_app(system_prefers_dark());
 }
 
 /// Windows' light/dark preference, as the shell chrome already reads it.

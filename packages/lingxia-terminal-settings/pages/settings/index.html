@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Terminal settings</title>
+    <link rel="stylesheet" href="lingxia://lxapp/public/settings.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="hero">
+        <div>
+          <p class="eyebrow">TERMINAL</p>
+          <h1>Make the prompt yours.</h1>
+          <p class="lede">Type, color, cursor, and contrast—applied to every terminal in this app.</p>
+        </div>
+        <div class="hero-actions">
+          <span class="state" id="state" aria-live="polite">Loading…</span>
+          <button class="button primary" id="save" disabled>Apply changes</button>
+        </div>
+      </header>
+
+      <section class="mode-card" aria-labelledby="appearance-heading">
+        <div class="section-heading">
+          <div>
+            <p class="section-number">01</p>
+            <h2 id="appearance-heading">Appearance</h2>
+          </div>
+          <button class="text-button" data-reset="theme">Reset appearance</button>
+        </div>
+        <div class="mode-grid" id="mode-grid">
+          <button class="mode" data-mode="system"><span class="mode-art system"></span><strong>System</strong><small>Follow your desktop</small></button>
+          <button class="mode" data-mode="light"><span class="mode-art light"></span><strong>Light</strong><small>Always stay light</small></button>
+          <button class="mode" data-mode="dark"><span class="mode-art dark"></span><strong>Dark</strong><small>Always stay dark</small></button>
+        </div>
+      </section>
+
+      <section aria-labelledby="themes-heading">
+        <div class="section-heading">
+          <div>
+            <p class="section-number">02</p>
+            <h2 id="themes-heading">Color schemes</h2>
+          </div>
+          <div class="slot-switch" role="group" aria-label="Theme slot">
+            <button data-slot="dark" class="active">Dark theme</button>
+            <button data-slot="light">Light theme</button>
+          </div>
+        </div>
+        <p class="section-copy">Hover to preview across open terminals. Your light and dark choices stay independent.</p>
+        <div class="theme-grid" id="themes"></div>
+        <div class="import-row">
+          <div>
+            <strong>Bring your own scheme</strong>
+            <span>Windows Terminal JSON, Xresources, or kitty colors.</span>
+          </div>
+          <label class="button secondary">Import file<input id="theme-file" type="file" accept=".json,.conf,.txt" hidden /></label>
+        </div>
+      </section>
+
+      <section aria-labelledby="type-heading">
+        <div class="section-heading">
+          <div>
+            <p class="section-number">03</p>
+            <h2 id="type-heading">Type</h2>
+          </div>
+          <button class="text-button" data-reset="font">Reset type</button>
+        </div>
+        <div class="type-grid">
+          <label class="field wide">
+            <span>Font candidates</span>
+            <input id="families" autocomplete="off" placeholder="JetBrains Mono, SF Mono, Consolas" />
+            <small>First installed monospaced family wins.</small>
+          </label>
+          <label class="field">
+            <span>Installed fonts</span>
+            <select id="installed-fonts"><option value="">Add a family…</option></select>
+            <small id="resolved-font">Detecting…</small>
+          </label>
+          <label class="field number">
+            <span>Size</span>
+            <div class="unit"><input id="font-size" type="number" min="4" max="96" step="0.5" /><b>pt</b></div>
+          </label>
+          <label class="field number">
+            <span>Line height</span>
+            <input id="line-height" type="number" min="0.5" max="3" step="0.05" />
+          </label>
+          <label class="field">
+            <span>Bold text</span>
+            <select id="bold"><option value="weight">Heavier face</option><option value="bright">Brighter color</option><option value="both">Both</option></select>
+          </label>
+          <label class="check"><input id="ligatures" type="checkbox" /><span><strong>Font ligatures</strong><small>Shape sequences such as != and =&gt;.</small></span></label>
+        </div>
+      </section>
+
+      <section aria-labelledby="finish-heading">
+        <div class="section-heading">
+          <div>
+            <p class="section-number">04</p>
+            <h2 id="finish-heading">Finish</h2>
+          </div>
+        </div>
+        <div class="finish-grid">
+          <label class="field"><span>Background opacity</span><div class="range-row"><input id="opacity" type="range" min="0" max="1" step="0.01" /><output id="opacity-value"></output></div></label>
+          <label class="field"><span>Cursor</span><select id="cursor-style"><option value="block">Block</option><option value="bar">Bar</option><option value="underline">Underline</option><option value="blockHollow">Hollow block</option></select></label>
+          <label class="check"><input id="cursor-blink" type="checkbox" /><span><strong>Blink cursor</strong><small>Keep the insertion point easy to find.</small></span></label>
+        </div>
+        <footer>
+          <code id="config-path"></code>
+          <button class="text-button danger" data-reset="all">Reset everything</button>
+        </footer>
+      </section>
+    </main>
+    <div class="toast" id="toast" role="status"></div>
+    <script src="lingxia://lxapp/public/themes.js"></script>
+    <script src="lingxia://lxapp/public/settings.js"></script>
+  </body>
+</html>

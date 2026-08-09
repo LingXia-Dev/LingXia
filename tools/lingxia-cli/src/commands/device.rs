@@ -229,6 +229,7 @@ mod tests {
             capabilities: None,
             theme: None,
             browser: None,
+            terminal: None,
             generated_ui: None,
             surfaces: None,
             app_links: None,

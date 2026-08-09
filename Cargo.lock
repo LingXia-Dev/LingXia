@@ -3233,6 +3233,7 @@ dependencies = [
  "lingxia-app-context",
  "lingxia-control-protocol",
  "lingxia-log",
+ "lingxia-terminal-config",
  "num-bigint",
  "openssl",
  "oxc_allocator",

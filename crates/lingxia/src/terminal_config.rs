@@ -29,6 +29,23 @@ pub fn app_data_dir() -> Option<PathBuf> {
 
 pub const SETTINGS_APP_ID: &str = "app.lingxia.terminal-settings";
 
+fn product_defaults() -> serde_json::Value {
+    lingxia_app_context::app_config()
+        .and_then(|config| config.terminal.as_ref())
+        .map(|terminal| terminal.defaults.clone())
+        .unwrap_or_else(|| serde_json::json!({}))
+}
+
+/// Load the running product's terminal defaults and user overrides.
+pub fn load_for_app(system_is_dark: bool) -> Option<TerminalConfig> {
+    let data_dir = app_data_dir()?;
+    Some(lingxia_terminal_config::runtime::load(
+        data_dir,
+        &product_defaults().to_string(),
+        system_is_dark,
+    ))
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ConfigSnapshot {
@@ -49,9 +66,7 @@ fn context() -> Result<(PathBuf, serde_json::Value, bool), String> {
     let appearance_is_dark = lxapp::get_platform()
         .map(|platform| platform.host_appearance_dark())
         .unwrap_or(false);
-    // Product terminal defaults are not yet represented in app.json. Keep the
-    // parameter explicit so wiring that layer cannot fork the route behavior.
-    Ok((data_dir, serde_json::json!({}), appearance_is_dark))
+    Ok((data_dir, product_defaults(), appearance_is_dark))
 }
 
 fn snapshot(data_dir: &Path, config: TerminalConfig, appearance_is_dark: bool) -> ConfigSnapshot {

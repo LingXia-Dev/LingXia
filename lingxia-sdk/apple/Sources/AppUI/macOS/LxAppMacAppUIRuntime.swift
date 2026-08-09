@@ -204,6 +204,9 @@ final class LxAppMacAppUIRuntime: NSObject {
         } else {
             NSApp.setActivationPolicy(.regular)
         }
+        if appConfig.capabilities?.terminal == true {
+            _ = LingXiaTerminalSettings.load()
+        }
         trayController.installMenuBarActivators(menuBarActivators)
         installAppActivationActivators()
         guard let ownerAppId = graphOwnerAppId,

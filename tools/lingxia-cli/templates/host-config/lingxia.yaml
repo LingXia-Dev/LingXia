@@ -105,6 +105,18 @@ capabilities:
 #   webui:
 #     package: '@lingxia/browser-shell-webui'
 #     version: '0.5.1'
+
+# Optional terminal product defaults and settings-app override (desktop only).
+# Normal products omit `settings` and receive `@lingxia/terminal-settings`.
+# terminal:
+#   settings:
+#     package: '@lingxia/terminal-settings'
+#   defaults:
+#     font:
+#       family: ['JetBrains Mono', 'SF Mono', 'Cascadia Code', 'Consolas']
+#       size: 14
+#     theme:
+#       mode: system
 {{SHELL_SECTION}}
 {{APP_LINKS_SECTION}}
 # Storage and cache limits. Values are MiB.

@@ -2311,12 +2311,8 @@ pub fn terminal_register_fonts(fonts_json: &str) {
 pub fn terminal_load_config(system_is_dark: bool) -> String {
     #[cfg(feature = "terminal-runtime")]
     {
-        let Some(data_dir) = crate::terminal::app_data_dir() else {
-            return "{}".to_string();
-        };
-        // Product defaults from `lingxia.yaml` are not wired yet; the
-        // framework defaults stand in until they are.
-        let config = crate::terminal::load_config(data_dir, "{}", system_is_dark);
+        let config = crate::terminal::load_for_app(system_is_dark)
+            .unwrap_or_else(crate::terminal::TerminalConfig::default);
         serde_json::to_string(&config).unwrap_or_else(|_| "{}".to_string())
     }
 

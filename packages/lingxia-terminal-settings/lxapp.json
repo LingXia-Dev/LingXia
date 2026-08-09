@@ -1,0 +1,19 @@
+{
+  "appId": "app.lingxia.terminal-settings",
+  "name": "Terminal Settings",
+  "version": "0.11.2",
+  "icon": "public/terminal-settings.svg",
+  "logic": false,
+  "security": {
+    "network": {
+      "trustedDomains": []
+    },
+    "privileges": []
+  },
+  "pages": [
+    {
+      "name": "settings",
+      "path": "pages/settings/index.html"
+    }
+  ]
+}

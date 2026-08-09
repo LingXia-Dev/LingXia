@@ -8,6 +8,7 @@ import AppKit
 // is a repaint of every live session. What is left here is the half only the
 // platform can do: work out which of the configured font candidates is
 // actually installed, and turn the rest into view state.
+@MainActor
 struct LingXiaTerminalSettings: Decodable {
     struct Font: Decodable {
         var family: [String] = []
@@ -18,7 +19,7 @@ struct LingXiaTerminalSettings: Decodable {
 
     var font = Font()
 
-    /// Publish the installed families so `term font --list` and `term status`
+    /// Publish the installed families so settings and product-control commands
     /// report what is really available. Enumerating them is platform work the
     /// shared configuration layer cannot do.
     static func registerInstalledFonts() {

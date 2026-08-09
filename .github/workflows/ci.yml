@@ -155,6 +155,7 @@ jobs:
               - 'tools/lingxia-devtools-cli/**'
               - 'packages/lingxia-bridge/**'
               - 'packages/lingxia-polyfills/**'
+              - 'packages/lingxia-terminal-settings/**'
               - 'i18n/**'
               - '.github/actions/build-web-packages/**'
             automation_macos:

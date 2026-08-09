@@ -584,6 +584,10 @@ fn is_shell_owner_appid(appid: &str) -> bool {
 
 pub(crate) fn open_home_app(appid: &str) -> Result<(), String> {
     set_shell_owner_appid(appid);
+    #[cfg(feature = "terminal-runtime")]
+    if lingxia_app_context::terminal_enabled() {
+        super::terminal_panel::ensure_configuration_loaded();
+    }
     let app =
         lxapp::open_lxapp(appid, LxAppStartupOptions::new("")).map_err(|err| err.to_string())?;
     // A restarted lxapp cannot reuse browser WebViews attached to its previous

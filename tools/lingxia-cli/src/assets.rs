@@ -4,7 +4,8 @@ use crate::platform::{self, BuildProfile};
 use crate::runtime;
 use anyhow::{Result, anyhow};
 use bundles::{
-    prepare_browser_shell_webui_bundle, prepare_home_app_bundle, prepare_resource_lxapp_bundles,
+    PreparedResourceBundle, prepare_browser_shell_webui_bundle, prepare_home_app_bundle,
+    prepare_resource_lxapp_bundles, prepare_terminal_settings_bundle,
 };
 use cache::HostAssetsCache;
 pub(crate) use clean::clean_configured_host_assets;
@@ -42,9 +43,14 @@ mod hash;
 mod icons;
 #[path = "assets/json.rs"]
 mod json;
+#[path = "assets/lxapp_package.rs"]
+mod lxapp_package;
 #[path = "assets/runtime.rs"]
 mod runtime_asset;
+#[path = "assets/terminal_settings.rs"]
+mod terminal_settings;
 pub(crate) use browser_shell_webui::APP_ID as BROWSER_SHELL_WEBUI_APP_ID;
+pub(crate) use terminal_settings::APP_ID as TERMINAL_SETTINGS_APP_ID;
 #[path = "assets/sync.rs"]
 mod sync;
 #[cfg(test)]
@@ -149,6 +155,18 @@ fn any_path_bundle_targets_es5(project_root: &Path, config: &LingXiaConfig) -> b
     false
 }
 
+fn bundles_for_destination(
+    common: &[PreparedResourceBundle],
+    terminal_settings: Option<&PreparedResourceBundle>,
+    include_terminal_settings: bool,
+) -> Vec<PreparedResourceBundle> {
+    let mut bundles = common.to_vec();
+    if include_terminal_settings && let Some(settings) = terminal_settings {
+        bundles.push(settings.clone());
+    }
+    bundles
+}
+
 pub(crate) fn prepare_configured_host_assets(
     project_root: &Path,
     config: &LingXiaConfig,
@@ -193,8 +211,8 @@ pub(crate) fn prepare_configured_host_assets(
     let app_json =
         build_app_json_from_config(config, home_bundle.as_ref(), dev_ws_url, resolved_env)?;
     let app_json_hash = sha256_hex(app_json.as_bytes());
-    let mut prepared_bundles = home_bundle.into_iter().collect::<Vec<_>>();
-    prepared_bundles.extend(prepare_resource_lxapp_bundles(
+    let mut common_bundles = home_bundle.into_iter().collect::<Vec<_>>();
+    common_bundles.extend(prepare_resource_lxapp_bundles(
         project_root,
         config,
         build_profile,
@@ -204,7 +222,7 @@ pub(crate) fn prepare_configured_host_assets(
         &mut cache,
     )?);
     if config.browser_enabled() {
-        prepared_bundles.push(prepare_browser_shell_webui_bundle(
+        common_bundles.push(prepare_browser_shell_webui_bundle(
             project_root,
             config,
             build_profile,
@@ -212,6 +230,24 @@ pub(crate) fn prepare_configured_host_assets(
             &mut cache,
         )?);
     }
+    let terminal_settings_bundle = if platforms.iter().any(|platform| {
+        let name = match platform {
+            platform::detector::PlatformType::MacOs => "macos",
+            platform::detector::PlatformType::Windows => "windows",
+            _ => return false,
+        };
+        config.terminal_enabled(name)
+    }) {
+        Some(prepare_terminal_settings_bundle(
+            project_root,
+            config,
+            build_profile,
+            dev,
+            &mut cache,
+        )?)
+    } else {
+        None
+    };
     let prepared_app_ui_icons = prepare_app_ui_icons(project_root, config)?;
 
     let has_android = platforms
@@ -257,6 +293,27 @@ pub(crate) fn prepare_configured_host_assets(
 
     let host_assets = config.assets.as_ref().map(|dir| project_root.join(dir));
 
+    // iOS and macOS can point at the same SwiftPM resource directory. Include
+    // the desktop-only settings bundle in that shared destination when the
+    // selected macOS target needs it, regardless of which platform syncs first.
+    let macos_terminal_resources = if terminal_settings_bundle.is_some()
+        && config.terminal_enabled("macos")
+        && platforms
+            .iter()
+            .any(|platform| matches!(platform, platform::detector::PlatformType::MacOs))
+        && crate::platform::apple::is_macos()
+    {
+        let macos_dir =
+            crate::platform::macos::resolve_macos_dir(project_root, config.macos.as_ref())?;
+        Some(crate::platform::macos::get_resources_dir(
+            &macos_dir,
+            config.macos.as_ref(),
+            app_project_name,
+        )?)
+    } else {
+        None
+    };
+
     for platform in platforms {
         match platform {
             platform::detector::PlatformType::Android => {
@@ -270,7 +327,7 @@ pub(crate) fn prepare_configured_host_assets(
                     &app_json_hash,
                     ui_json.as_deref(),
                     ui_json_hash.as_deref(),
-                    &prepared_bundles,
+                    &common_bundles,
                     prepared_runtime_es5
                         .as_ref()
                         .or(prepared_runtime_es2020.as_ref()),
@@ -294,13 +351,18 @@ pub(crate) fn prepare_configured_host_assets(
                     config.ios.as_ref(),
                     app_project_name,
                 )?;
+                let bundles = bundles_for_destination(
+                    &common_bundles,
+                    terminal_settings_bundle.as_ref(),
+                    macos_terminal_resources.as_ref() == Some(&resources_dir),
+                );
                 prepare_apple_resources_root(
                     &resources_dir,
                     &app_json,
                     &app_json_hash,
                     ui_json.as_deref(),
                     ui_json_hash.as_deref(),
-                    &prepared_bundles,
+                    &bundles,
                     &prepared_app_ui_icons,
                     prepared_runtime_es2020.as_ref(),
                     &mut prepared_resource_roots,
@@ -323,13 +385,18 @@ pub(crate) fn prepare_configured_host_assets(
                     config.macos.as_ref(),
                     app_project_name,
                 )?;
+                let bundles = bundles_for_destination(
+                    &common_bundles,
+                    terminal_settings_bundle.as_ref(),
+                    config.terminal_enabled("macos"),
+                );
                 prepare_apple_resources_root(
                     &resources_dir,
                     &app_json,
                     &app_json_hash,
                     ui_json.as_deref(),
                     ui_json_hash.as_deref(),
-                    &prepared_bundles,
+                    &bundles,
                     &prepared_app_ui_icons,
                     prepared_runtime_es2020.as_ref(),
                     &mut prepared_resource_roots,
@@ -349,7 +416,7 @@ pub(crate) fn prepare_configured_host_assets(
                     &app_json_hash,
                     ui_json.as_deref(),
                     ui_json_hash.as_deref(),
-                    &prepared_bundles,
+                    &common_bundles,
                     prepared_runtime_es2020.as_ref(),
                     &mut cache,
                 )?;
@@ -363,13 +430,18 @@ pub(crate) fn prepare_configured_host_assets(
                     .map(|json| sha256_hex(json.as_bytes()));
                 let assets_root =
                     crate::platform::windows::resolve_windows_assets_dir(project_root)?;
+                let bundles = bundles_for_destination(
+                    &common_bundles,
+                    terminal_settings_bundle.as_ref(),
+                    config.terminal_enabled("windows"),
+                );
                 prepare_windows_assets_root(
                     &assets_root,
                     &app_json,
                     &app_json_hash,
                     windows_ui_json.as_deref(),
                     windows_ui_json_hash.as_deref(),
-                    &prepared_bundles,
+                    &bundles,
                     &prepared_app_ui_icons,
                     prepared_runtime_es2020.as_ref(),
                     &mut cache,

@@ -1,8 +1,10 @@
 use super::browser_shell_webui::{
-    APP_ID as BROWSER_SHELL_WEBUI_APP_ID, resolve_browser_shell_webui_dir, resolve_lxapp_package,
+    APP_ID as BROWSER_SHELL_WEBUI_APP_ID, resolve_browser_shell_webui_dir,
 };
 use super::cache::{HostAssetsCache, LxAppBuildStamp};
 use super::hash::{hash_tree, path_key, sha256_hex};
+use super::lxapp_package::resolve_lxapp_package;
+use super::terminal_settings::{APP_ID as TERMINAL_SETTINGS_APP_ID, resolve_terminal_settings_dir};
 use crate::config::{
     HOST_CONFIG_FILE, LXAPP_BUILD_CONFIG_FILE, LingXiaConfig, ResourceBundleConfig,
 };
@@ -17,6 +19,7 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+#[derive(Clone)]
 pub(super) struct PreparedResourceBundle {
     pub(super) dist_dir: PathBuf,
     pub(super) asset_name: String,
@@ -208,7 +211,13 @@ fn resolve_resource_bundle_source(
         .filter(|version| !version.is_empty())
         .unwrap_or(env!("LINGXIA_RESOURCE_BUNDLE_VERSION"));
     Ok(ResourceBundleSource {
-        bundle_dir: resolve_lxapp_package(project_root, package, version)?,
+        bundle_dir: resolve_lxapp_package(
+            project_root,
+            package,
+            version,
+            "resource-lxapp",
+            &format!("resources.bundles[{}]", bundle.app_id),
+        )?,
         build: false,
     })
 }
@@ -314,6 +323,35 @@ pub(super) fn prepare_browser_shell_webui_bundle(
         return Err(anyhow!(
             "browser-shell requires browser webui build output manifest: {}",
             manifest.display()
+        ));
+    }
+    Ok(bundle)
+}
+
+pub(super) fn prepare_terminal_settings_bundle(
+    project_root: &Path,
+    config: &LingXiaConfig,
+    build_profile: BuildProfile,
+    dev: bool,
+    cache: &mut HostAssetsCache,
+) -> Result<PreparedResourceBundle> {
+    let source = resolve_terminal_settings_dir(project_root, config)?;
+    let bundle = prepare_lxapp_bundle_dir(
+        source.bundle_dir,
+        TERMINAL_SETTINGS_APP_ID,
+        "terminal.settings",
+        "terminal-settings",
+        build_profile,
+        None,
+        None,
+        dev,
+        source.build,
+        cache,
+    )?;
+    if !bundle.dist_dir.join("lxapp.json").is_file() {
+        return Err(anyhow!(
+            "terminal settings requires build output manifest: {}",
+            bundle.dist_dir.join("lxapp.json").display()
         ));
     }
     Ok(bundle)

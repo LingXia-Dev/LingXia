@@ -50,6 +50,11 @@ browser:
   webui:
     path: ../../crates/lingxia-browser-shell/webui
 
+terminal:
+  # In-monorepo dev — external apps omit this to use the npm default.
+  settings:
+    path: ../../packages/lingxia-terminal-settings
+
 capabilities:
   notifications: true
   browser: true

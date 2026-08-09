@@ -103,6 +103,16 @@ pub(super) fn build_app_json_from_config(
     if let Some(theme) = config.theme.as_ref() {
         obj.insert("theme".to_string(), serde_json::to_value(theme)?);
     }
+    if let Some(defaults) = config
+        .terminal
+        .as_ref()
+        .and_then(|terminal| terminal.defaults.as_ref())
+    {
+        obj.insert(
+            "terminal".to_string(),
+            serde_json::json!({ "defaults": defaults }),
+        );
+    }
     // Only the minimum-hold time reaches the runtime: the images and colors are
     // platform resources, and the upper bound is a framework constant.
     if let Some(splash) = config.splash.as_ref() {

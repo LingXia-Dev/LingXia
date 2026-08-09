@@ -1,0 +1,7 @@
+{
+  "name": "nord",
+  "displayName": "Nord",
+  "author": "Sven Greb",
+  "upstream": "https://github.com/nordtheme/nord",
+  "spdx": "MIT"
+}
