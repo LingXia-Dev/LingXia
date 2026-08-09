@@ -3,8 +3,6 @@ use anyhow::{Result, anyhow};
 use serde_json::{Map, Value};
 
 pub(super) const TERMINAL_ICON_SOURCE: &str = "__lingxia_builtin__/terminal.svg";
-const TERMINAL_SETTINGS_SURFACE_ID: &str = "__lingxiaTerminalSettings";
-const TERMINAL_SETTINGS_APP_ID: &str = "app.lingxia.terminal-settings";
 
 pub(super) fn effective_ui_config(
     config: &LingXiaConfig,
@@ -30,39 +28,8 @@ pub(super) fn effective_ui_config(
     }
     if let Some(platform) = platform {
         filter_ui_for_platform(&mut ui, platform)?;
-        if config.terminal_enabled(platform) {
-            add_terminal_settings_surface(&mut ui)?;
-        }
     }
     Ok(Some(ui))
-}
-
-fn add_terminal_settings_surface(ui: &mut Value) -> Result<()> {
-    let surfaces = ui
-        .get_mut("surfaces")
-        .and_then(Value::as_array_mut)
-        .ok_or_else(|| anyhow!("ui.surfaces must be an array"))?;
-    if surfaces.iter().any(|surface| {
-        surface.get("id").and_then(Value::as_str) == Some(TERMINAL_SETTINGS_SURFACE_ID)
-            || surface
-                .get("content")
-                .and_then(Value::as_object)
-                .and_then(|content| content.get("appId"))
-                .and_then(Value::as_str)
-                == Some(TERMINAL_SETTINGS_APP_ID)
-    }) {
-        return Ok(());
-    }
-    surfaces.push(serde_json::json!({
-        "id": TERMINAL_SETTINGS_SURFACE_ID,
-        "role": "main",
-        "content": {
-            "kind": "lxapp",
-            "appId": TERMINAL_SETTINGS_APP_ID,
-            "path": "pages/settings/index.html"
-        }
-    }));
-    Ok(())
 }
 
 fn filter_ui_for_platform(ui: &mut Value, platform: &str) -> Result<()> {

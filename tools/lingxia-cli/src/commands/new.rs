@@ -414,13 +414,14 @@ mod native_main_scaffold_tests {
     use super::types::{LxAppInfo, MainSurface, Platform, ProjectConfig};
     use super::*;
     use crate::config::{
-        EnvVersion, LingXiaConfig, ResolvedEnv, TerminalHostConfig, TerminalSettingsConfig,
+        EnvVersion, LingXiaConfig, ResolvedEnv, ResourceBundleConfig, ResourceBundleType,
+        ResourcesConfig, TerminalHostConfig,
     };
     use crate::platform::BuildProfile;
     use crate::platform::detector::PlatformType;
 
     #[test]
-    fn windows_native_terminal_scaffold_bundles_settings_without_home_lxapp() {
+    fn windows_native_terminal_accepts_settings_as_an_explicit_resource() {
         let temp = tempfile::tempdir().unwrap();
         let target_dir = temp.path().join("terminal-host");
         let config = ProjectConfig {
@@ -480,13 +481,15 @@ mod native_main_scaffold_tests {
         .unwrap();
 
         let mut host_config = LingXiaConfig::load(&target_dir).unwrap();
-        host_config.terminal = Some(TerminalHostConfig {
-            settings: Some(TerminalSettingsConfig {
+        host_config.terminal = Some(TerminalHostConfig { defaults: None });
+        host_config.resources = Some(ResourcesConfig {
+            bundles: vec![ResourceBundleConfig {
+                bundle_type: ResourceBundleType::Lxapp,
+                app_id: lingxia_terminal_config::SETTINGS_APP_ID.to_string(),
                 path: Some("terminal-settings-fixture".to_string()),
                 package: None,
                 version: None,
-            }),
-            defaults: None,
+            }],
         });
         crate::host_assets::prepare_configured_host_assets(
             &target_dir,
@@ -517,15 +520,10 @@ mod native_main_scaffold_tests {
             serde_json::from_slice(&std::fs::read(assets_dir.join("ui.json")).unwrap()).unwrap();
         assert_eq!(ui_json["launch"]["initialSurface"], "terminal");
         let surfaces = ui_json["surfaces"].as_array().unwrap();
-        assert_eq!(surfaces.len(), 2);
+        assert_eq!(surfaces.len(), 1);
         assert_eq!(surfaces[0]["role"], "main");
         assert_eq!(surfaces[0]["content"]["kind"], "native");
         assert_eq!(surfaces[0]["content"]["name"], "terminal");
-        assert_eq!(surfaces[1]["role"], "main");
-        assert_eq!(
-            surfaces[1]["content"]["appId"],
-            "app.lingxia.terminal-settings"
-        );
 
         let mut asset_names = std::fs::read_dir(&assets_dir)
             .unwrap()

@@ -1,8 +1,7 @@
-use super::bundles::PreparedResourceBundle;
 use super::{
     any_path_bundle_targets_es5, build_app_json_from_config, build_ui_json_from_config,
-    build_windows_ui_json_from_config, bundles_for_destination, collect_view_target_warnings,
-    prepare_app_ui_icons, validate_app_ui_svg_icon,
+    build_windows_ui_json_from_config, collect_view_target_warnings, prepare_app_ui_icons,
+    validate_app_ui_svg_icon,
 };
 use crate::config::{
     EnvVersion, HostAppConfig, LingXiaConfig, LingxiaServer, ResolvedEnv, TerminalHostConfig,
@@ -19,30 +18,6 @@ fn test_resolved_env() -> ResolvedEnv {
         lingxia_server: "https://api.example.com".to_string(),
         package_id_suffix: None,
     }
-}
-
-#[test]
-fn terminal_settings_bundle_is_scoped_to_desktop_destinations() {
-    let common = PreparedResourceBundle {
-        dist_dir: "home".into(),
-        asset_name: "home".into(),
-        dist_hash: "home-hash".into(),
-        version: "1.0.0".into(),
-    };
-    let settings = PreparedResourceBundle {
-        dist_dir: "settings".into(),
-        asset_name: "terminal-settings".into(),
-        dist_hash: "settings-hash".into(),
-        version: "1.0.0".into(),
-    };
-
-    let mobile = bundles_for_destination(std::slice::from_ref(&common), Some(&settings), false);
-    assert_eq!(mobile.len(), 1);
-    assert_eq!(mobile[0].asset_name, "home");
-
-    let desktop = bundles_for_destination(&[common], Some(&settings), true);
-    assert_eq!(desktop.len(), 2);
-    assert_eq!(desktop[1].asset_name, "terminal-settings");
 }
 
 #[test]
@@ -294,7 +269,6 @@ fn generated_app_json_includes_capabilities() {
 fn generated_app_json_carries_terminal_product_defaults_only() {
     let mut config = LingXiaConfig::new_android("demo", "com.example.demo", "demo-home");
     config.terminal = Some(TerminalHostConfig {
-        settings: None,
         defaults: Some(serde_json::json!({
             "font": { "size": 15.5 },
             "theme": { "opacity": 0.92 }
@@ -304,38 +278,6 @@ fn generated_app_json_carries_terminal_product_defaults_only() {
     let value: serde_json::Value = serde_json::from_str(&app_json).unwrap();
     assert_eq!(value["terminal"]["defaults"]["font"]["size"], 15.5);
     assert!(value["terminal"].get("settings").is_none());
-}
-
-#[test]
-fn terminal_capability_adds_the_sdk_settings_workspace() {
-    let mut config = LingXiaConfig::new_android("demo", "com.example.demo", "demo-home");
-    config.app.as_mut().unwrap().platforms = vec!["macos".to_string()];
-    config.capabilities.as_mut().unwrap().terminal = true;
-    config.generated_ui = Some(serde_json::json!({
-        "launch": { "initialSurface": "main" },
-        "surfaces": [{
-            "id": "main",
-            "role": "main",
-            "content": { "kind": "lxapp", "appId": "demo-home" }
-        }],
-        "activators": []
-    }));
-
-    let ui_json = build_ui_json_from_config(&config, &[], "macos")
-        .unwrap()
-        .unwrap();
-    let value: serde_json::Value = serde_json::from_str(&ui_json).unwrap();
-    let settings = value["surfaces"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|surface| surface["id"] == "__lingxiaTerminalSettings")
-        .expect("SDK settings workspace");
-    assert_eq!(settings["role"], "main");
-    assert_eq!(
-        settings["content"]["appId"],
-        "app.lingxia.terminal-settings"
-    );
 }
 
 #[test]
@@ -565,8 +507,7 @@ surfaces:
     assert_eq!(value["launch"]["initialSurface"], "home");
 
     let surfaces = value["surfaces"].as_array().unwrap();
-    // The three product surfaces plus the SDK settings workspace.
-    assert_eq!(surfaces.len(), 4);
+    assert_eq!(surfaces.len(), 3);
     let terminal_count = surfaces
         .iter()
         .filter(|surface| {
@@ -588,12 +529,6 @@ surfaces:
     assert_eq!(surfaces[2]["id"], "terminal");
     assert_eq!(surfaces[2]["edge"], "bottom");
     assert_eq!(surfaces[2]["size"]["height"], 320);
-    assert_eq!(surfaces[3]["id"], "__lingxiaTerminalSettings");
-    assert_eq!(
-        surfaces[3]["content"]["appId"],
-        "app.lingxia.terminal-settings"
-    );
-
     // Only the tray entry: persistent sidebar entries come from the runtime
     // activator API, never from YAML.
     let activators = value["activators"].as_array().unwrap();

@@ -98,6 +98,12 @@ capabilities:
 
 {{RESOURCES_SECTION}}
 
+# To ship Terminal Settings, append this item under resources.bundles and keep
+# capabilities.terminal enabled:
+#     - type: lxapp
+#       appId: app.lingxia.terminal-settings
+#       package: '@lingxia/terminal-settings'
+
 # Optional: override the SDK's default in-app browser webui (used only when
 # capabilities.browser is true). Omit to use the npm-published default
 # `@lingxia/browser-shell-webui`.
@@ -106,11 +112,9 @@ capabilities:
 #     package: '@lingxia/browser-shell-webui'
 #     version: '0.5.1'
 
-# Optional terminal product defaults and settings-app override (desktop only).
-# Normal products omit `settings` and receive `@lingxia/terminal-settings`.
+# Optional terminal product defaults (desktop only). Bundle a settings lxapp
+# explicitly under resources.bundles when the product exposes one.
 # terminal:
-#   settings:
-#     package: '@lingxia/terminal-settings'
 #   defaults:
 #     font:
 #       family: ['JetBrains Mono', 'SF Mono', 'Cascadia Code', 'Consolas']
