@@ -8,7 +8,10 @@
 //! Writing lands in another tool's configuration directory, which is why this
 //! is a command the user runs rather than something a toggle does quietly.
 
-use std::path::{Path, PathBuf};
+use std::{
+    ffi::OsString,
+    path::{Path, PathBuf},
+};
 
 use anyhow::{Context, Result};
 use clap::{Args, CommandFactory, Subcommand};
@@ -25,7 +28,7 @@ pub enum Agent {
 
 impl Agent {
     fn root(self) -> Option<PathBuf> {
-        let home = std::env::var_os("HOME").map(PathBuf::from)?;
+        let home = home_dir()?;
         Some(match self {
             Agent::Claude => home.join(".claude").join("skills"),
             Agent::Codex => home.join(".codex").join("skills"),
@@ -38,6 +41,42 @@ impl Agent {
             Agent::Codex => "Codex",
         }
     }
+}
+
+fn home_dir() -> Option<PathBuf> {
+    #[cfg(windows)]
+    let windows_home = (
+        std::env::var_os("USERPROFILE"),
+        std::env::var_os("HOMEDRIVE"),
+        std::env::var_os("HOMEPATH"),
+    );
+    #[cfg(not(windows))]
+    let windows_home = (None, None, None);
+
+    home_dir_from_env(
+        std::env::var_os("HOME"),
+        windows_home.0,
+        windows_home.1,
+        windows_home.2,
+    )
+}
+
+fn home_dir_from_env(
+    home: Option<OsString>,
+    user_profile: Option<OsString>,
+    home_drive: Option<OsString>,
+    home_path: Option<OsString>,
+) -> Option<PathBuf> {
+    let non_empty = |value: Option<OsString>| value.filter(|value| !value.is_empty());
+    if let Some(profile) = non_empty(user_profile) {
+        return Some(profile.into());
+    }
+    if let Some(home) = non_empty(home) {
+        return Some(home.into());
+    }
+    let mut combined = non_empty(home_drive)?;
+    combined.push(non_empty(home_path)?);
+    Some(combined.into())
 }
 
 #[derive(Args, Clone)]
@@ -282,8 +321,18 @@ fn render<C: CommandFactory>(manifest: &Manifest) -> Result<String> {
             manifest.command
         ));
         out.push_str(
-            "- On macOS and Windows, mutating computer commands may open a viewer for the \
-             person. Never target, hide, or dismiss it.\n",
+            "- On macOS and Windows, mutating computer commands may open an activity \
+             indicator or viewer for the person. Never target, hide, or dismiss it.\n",
+        );
+        out.push_str(
+            "- On Windows, pointer and key input uses the active desktop. Keep the target \
+             visible; a named window or pid is activated before input.\n",
+        );
+    }
+    if declared.iter().any(|name| name == "browserUse") {
+        out.push_str(
+            "- `browser` controls only this product's in-app browser. Chrome, Edge, and \
+             Safari are external apps; never treat them as `browser` targets.\n",
         );
     }
     out.push_str(
@@ -348,6 +397,40 @@ pub fn is_installed(agent: Agent, command: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn windows_profile_is_used_when_home_is_missing() {
+        assert_eq!(
+            home_dir_from_env(None, Some(r"C:\Users\demo".into()), None, None),
+            Some(PathBuf::from(r"C:\Users\demo"))
+        );
+    }
+
+    #[test]
+    fn windows_profile_wins_over_a_shell_specific_home() {
+        assert_eq!(
+            home_dir_from_env(
+                Some(r"/c/Users/demo".into()),
+                Some(r"C:\Users\demo".into()),
+                None,
+                None,
+            ),
+            Some(PathBuf::from(r"C:\Users\demo"))
+        );
+    }
+
+    #[test]
+    fn windows_drive_and_path_are_the_last_home_fallback() {
+        assert_eq!(
+            home_dir_from_env(
+                Some(OsString::new()),
+                Some(OsString::new()),
+                Some("C:".into()),
+                Some(r"\Users\demo".into()),
+            ),
+            Some(PathBuf::from(r"C:\Users\demo"))
+        );
+    }
 
     struct StatusTransport;
 
@@ -425,6 +508,7 @@ mod tests {
         assert!(!body.contains("`myapp control`"));
         assert!(!body.contains("`myapp skills`"));
         assert!(body.contains("does not grant permission"));
+        assert!(body.contains("uses the active desktop"));
         assert!(
             body.lines().count() < 50,
             "the entry skill should stay a short router, not become a CLI manual"
@@ -457,6 +541,7 @@ mod tests {
         };
         let body = render::<Fake>(&browser_only).unwrap();
         assert!(body.contains("`myapp browser`"));
+        assert!(body.contains("only this product's in-app browser"));
         assert!(!body.contains("`myapp screenshot`"));
         assert!(!body.contains("`myapp computer`"));
     }

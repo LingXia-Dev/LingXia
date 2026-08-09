@@ -170,8 +170,16 @@ fn control(
                 // The app cannot change the PATH of a terminal already open, so
                 // the one thing it can usefully do is say the line to add.
                 if let Some(dir) = bin.parent() {
-                    println!("to type it bare, add to your shell profile:");
-                    println!("  export PATH=\"{}:$PATH\"", dir.display());
+                    let (profile, instruction) = path_profile_instruction(
+                        dir,
+                        if cfg!(windows) {
+                            ProfileShell::PowerShell
+                        } else {
+                            ProfileShell::Posix
+                        },
+                    );
+                    println!("to type it bare, add to your {profile} profile:");
+                    println!("  {instruction}");
                 }
                 0
             }
@@ -201,23 +209,48 @@ fn control(
     }
 }
 
+#[derive(Clone, Copy)]
+enum ProfileShell {
+    Posix,
+    PowerShell,
+}
+
+fn path_profile_instruction(dir: &Path, shell: ProfileShell) -> (&'static str, String) {
+    let dir = dir.to_string_lossy();
+    match shell {
+        ProfileShell::Posix => {
+            let escaped = dir.replace('\'', "'\"'\"'");
+            ("shell", format!("export PATH='{escaped}':\"$PATH\""))
+        }
+        ProfileShell::PowerShell => {
+            let escaped = dir.replace('\'', "''");
+            (
+                "PowerShell",
+                format!("$env:Path = '{escaped};' + $env:Path"),
+            )
+        }
+    }
+}
+
 /// Where the product writes the launcher when the interface is on.
 fn launcher_path(state_dir: &Path) -> std::path::PathBuf {
-    let name = std::env::current_exe()
+    let stem = std::env::current_exe()
         .ok()
         .and_then(|path| {
             path.file_name().and_then(|name| name.to_str()).map(|name| {
                 name.trim_end_matches(std::env::consts::EXE_SUFFIX)
-                    .to_lowercase()
+                    .to_string()
             })
         })
         .unwrap_or_else(|| "app".to_string());
-    let file = if cfg!(windows) {
-        format!("{name}.cmd")
-    } else {
-        name
-    };
-    state_dir.join("bin").join(file)
+    state_dir
+        .join("bin")
+        .join(launcher_file_name(&stem, cfg!(windows)))
+}
+
+fn launcher_file_name(stem: &str, windows: bool) -> String {
+    let name = invocation::command_name(stem);
+    if windows { format!("{name}.exe") } else { name }
 }
 
 /// One rule for what a failure costs the caller. The documented scheme is
@@ -274,22 +307,7 @@ fn manifest(transport: &dyn crate::transport::Transport) -> skills::Manifest {
         .strip_suffix(std::env::consts::EXE_SUFFIX)
         .unwrap_or("app")
         .to_string();
-    skills::manifest_for_running(command_name(&stem), stem, transport)
-}
-
-/// Only the same alphabet the launcher uses, so the skill names the command a
-/// user can actually type.
-fn command_name(product_name: &str) -> String {
-    let mut name = String::new();
-    for character in product_name.chars() {
-        if character.is_ascii_alphanumeric() {
-            name.push(character.to_ascii_lowercase());
-        } else if !name.is_empty() && !name.ends_with('-') {
-            name.push('-');
-        }
-    }
-    let name = name.trim_end_matches('-').to_string();
-    if name.is_empty() { "app".into() } else { name }
+    skills::manifest_for_running(invocation::command_name(&stem), stem, transport)
 }
 
 /// Whether this process was started through the product's own launcher.
@@ -308,6 +326,33 @@ fn invoked_as_command() -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn path_profile_guidance_matches_the_shell() {
+        assert_eq!(
+            path_profile_instruction(Path::new("/opt/My App's/bin"), ProfileShell::Posix),
+            (
+                "shell",
+                r#"export PATH='/opt/My App'"'"'s/bin':"$PATH""#.to_string()
+            )
+        );
+        assert_eq!(
+            path_profile_instruction(
+                Path::new(r"C:\Program Files\Demo's\bin"),
+                ProfileShell::PowerShell,
+            ),
+            (
+                "PowerShell",
+                r"$env:Path = 'C:\Program Files\Demo''s\bin;' + $env:Path".to_string()
+            )
+        );
+    }
+
+    #[test]
+    fn launcher_filename_uses_the_installer_normalization() {
+        assert_eq!(launcher_file_name("My_App", true), "my-app.exe");
+        assert_eq!(launcher_file_name("My App", false), "my-app");
+    }
 
     /// The subcommands this recognizes before clap runs. That check is what
     /// stops a stray argument from falling through into app startup, so a

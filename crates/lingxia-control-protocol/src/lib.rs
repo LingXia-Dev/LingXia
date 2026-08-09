@@ -15,6 +15,37 @@ pub mod invocation {
     /// app id, which a client cannot read before the runtime is up, so the
     /// launcher carries it.
     pub const ENDPOINT: &str = "LINGXIA_CONTROL_ENDPOINT";
+
+    /// Normalize a product name to the unquoted command written by its launcher.
+    pub fn command_name(product_name: &str) -> String {
+        let mut name = String::new();
+        for character in product_name.chars() {
+            if character.is_ascii_alphanumeric() {
+                name.push(character.to_ascii_lowercase());
+            } else if !name.is_empty() && !name.ends_with('-') {
+                name.push('-');
+            }
+        }
+        let name = name.trim_end_matches('-');
+        if name.is_empty() {
+            "app".to_string()
+        } else {
+            name.to_string()
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn command_names_are_typable_without_quoting() {
+            assert_eq!(command_name("LingXia Demo"), "lingxia-demo");
+            assert_eq!(command_name("My_App"), "my-app");
+            assert_eq!(command_name("My  Term!!"), "my-term");
+            assert_eq!(command_name("!!!"), "app");
+        }
+    }
 }
 
 pub mod methods {
