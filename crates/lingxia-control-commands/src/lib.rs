@@ -14,6 +14,7 @@
 
 pub mod app;
 pub mod browser;
+mod console;
 pub mod desktop;
 pub mod entry;
 pub mod guard;

@@ -82,6 +82,7 @@ pub fn run_if_invoked(state_dir: &Path) -> Option<i32> {
         // instance's databases.
         return None;
     }
+    let _console = crate::console::attach_parent();
 
     let endpoint = crate::transport::endpoint_in(state_dir);
     let transport = ControlSocket::at(endpoint);
