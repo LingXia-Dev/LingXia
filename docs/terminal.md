@@ -24,8 +24,10 @@ links, and restore data. Host UX for those semantic APIs remains incremental.
 
 ## Settings workspace
 
-`capabilities.terminal: true` bundles the SDK's Terminal Settings lxapp and
-adds it as a standard desktop workspace. It is the normal way a person changes:
+`capabilities.terminal: true` enables the terminal engine. A product that ships
+the SDK's Terminal Settings lxapp declares it explicitly in
+`resources.bundles`; a product home lxapp can then open it as an aside from a
+sidebar action. It is the normal way a person changes:
 
 - system/light/dark appearance;
 - independent light and dark color schemes;
@@ -37,9 +39,19 @@ Hovering a scheme previews it across open terminal surfaces without saving.
 Applying or resetting updates open terminals immediately. Theme-only changes
 repaint; font metrics resize and reflow PTY grids.
 
-The settings app uses native routes restricted to
-`app.lingxia.terminal-settings`. It does not require the product's automation
-endpoint to be enabled.
+The settings app has a Logic worker and uses its capability-scoped
+`lx.terminal` API. The API is installed only for a host-bundled
+`app.lingxia.terminal-settings`, so it does not require the product's automation
+endpoint. The home lxapp can expose that app id through
+`lx.shell.sidebarActions`.
+
+```yaml
+resources:
+  bundles:
+    - type: lxapp
+      appId: app.lingxia.terminal-settings
+      package: "@lingxia/terminal-settings"
+```
 
 ## Configuration layers
 
@@ -79,7 +91,8 @@ reported and ignored instead of preventing the terminal from opening.
 
 Direct file editing is supported for persistent setup but is not watched.
 Use Terminal Settings or the product command for live updates; a manual file
-edit is adopted on the next product start.
+edit is adopted on the next product start. The Settings snapshot deliberately
+does not expose the user's filesystem path.
 
 ## Fonts
 

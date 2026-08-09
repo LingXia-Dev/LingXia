@@ -6,8 +6,23 @@ terminal appears under `surfaces:`. See [App Project Configuration](./project.md
 
 ## User settings
 
-Enabling the terminal also bundles `@lingxia/terminal-settings` as a standard
-desktop workspace. That screen is the primary user interface for:
+`capabilities.terminal` enables the engine; it does not silently add a UI.
+Products that expose Terminal Settings bundle `@lingxia/terminal-settings` as
+an explicit lxapp resource:
+
+```yaml
+capabilities:
+  terminal: true
+
+resources:
+  bundles:
+    - type: lxapp
+      appId: app.lingxia.terminal-settings
+      package: "@lingxia/terminal-settings"
+```
+
+For monorepo development, replace `package` with a project-relative `path`.
+The settings screen is the primary user interface for:
 
 - light/dark/system appearance and independent light/dark color schemes;
 - font candidates, size, line height, bold treatment, and ligatures;
@@ -15,21 +30,62 @@ desktop workspace. That screen is the primary user interface for:
 - importing Windows Terminal JSON or Xresources/kitty color files.
 
 The screen previews themes without saving and applies accepted changes to open
-terminal surfaces. Settings routes are restricted to the SDK-owned settings
-app, so the screen works even when the product's local control endpoint is off.
+terminal surfaces. Its Logic worker receives `lx.terminal` only when the app id
+is `app.lingxia.terminal-settings`, the app is host-bundled, and the host
+declares terminal capability. Product control can remain disabled.
 
-Products normally use the SDK package. To develop or replace it, select one
-source in `lingxia.yaml`:
+A product home lxapp may expose the Settings resource as an aside:
 
-```yaml
-terminal:
-  settings:
-    path: ../my-terminal-settings
-    # Or: package: "@example/terminal-settings"
-    #     version: 1.0.0
+```ts
+{
+  id: "terminal-settings",
+  placement: "footer",
+  icon: "public/settings.svg",
+  label: "Terminal Settings",
+  onActivate: () => {
+    void lx.openSurface({
+      appId: "app.lingxia.terminal-settings",
+      as: "aside",
+      edge: "right",
+    });
+  },
+}
 ```
 
-A package source must contain `lxapp.json` and a prebuilt `dist/` directory.
+The icon belongs to the home lxapp; sidebar actions cannot reach into the SDK
+settings package for assets.
+
+During host development, rebuild this resource in place instead of rebuilding
+the home lxapp:
+
+```bash
+lxdev lxapp reload --app app.lingxia.terminal-settings
+```
+
+For a native Terminal product, Settings may itself be the control/home lxapp
+while the native terminal remains the declared main surface:
+
+```yaml
+app:
+  homeAppId: app.lingxia.terminal-settings
+features:
+  appService: true
+capabilities:
+  terminal: true
+resources:
+  bundles:
+    - type: lxapp
+      appId: app.lingxia.terminal-settings
+      package: "@lingxia/terminal-settings"
+surfaces:
+  - native: terminal
+    role: main
+    launch: true
+```
+
+`homeAppId` identifies the trusted control app; it does not redefine which
+surface is main. A package source must contain `lxapp.json` and a prebuilt
+`dist/` directory.
 
 ## Configuration precedence
 
