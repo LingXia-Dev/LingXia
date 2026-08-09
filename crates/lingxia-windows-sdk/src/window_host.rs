@@ -6661,9 +6661,12 @@ fn invoke_chrome_command(
         command.payload = serde_json::Value::Object(payload);
     }
     if let Some(handler) = webview_chrome_event_handler(webtag_key) {
-        let _ = std::thread::Builder::new()
-            .name(format!("lingxia-windows-chrome-{webtag_key}"))
-            .spawn(move || handler(command));
+        // Chrome state and HWND ownership meet here. Queue the whole command
+        // onto the parent window's existing message loop: a fresh thread per
+        // click both violates Win32 affinity and lets adjacent clicks race.
+        if !post_to_window_thread(hwnd_handle(hwnd), Box::new(move || handler(command))) {
+            log::warn!("failed to dispatch Windows chrome command for {webtag_key}");
+        }
     }
 }
 
