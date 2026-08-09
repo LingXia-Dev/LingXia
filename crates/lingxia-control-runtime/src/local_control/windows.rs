@@ -205,13 +205,13 @@ impl Listener {
         // ERROR_PIPE_CONNECTED means the client won the race and is already
         // attached; that is a successful accept, not a failure.
         const ERROR_PIPE_CONNECTED: i32 = 535;
-        if let Err(error) = unsafe { ConnectNamedPipe(handle, None) } {
-            if error.code().0 & 0xffff != ERROR_PIPE_CONNECTED {
-                unsafe {
-                    let _ = CloseHandle(handle);
-                }
-                return Err(std::io::Error::other(error.to_string()));
+        if let Err(error) = unsafe { ConnectNamedPipe(handle, None) }
+            && error.code().0 & 0xffff != ERROR_PIPE_CONNECTED
+        {
+            unsafe {
+                let _ = CloseHandle(handle);
             }
+            return Err(std::io::Error::other(error.to_string()));
         }
         Ok(Stream {
             handle,
@@ -240,7 +240,7 @@ fn create_instance(
     descriptor: &SecurityDescriptor,
     first: bool,
 ) -> std::io::Result<HANDLE> {
-    let mut attributes = SECURITY_ATTRIBUTES {
+    let attributes = SECURITY_ATTRIBUTES {
         nLength: std::mem::size_of::<SECURITY_ATTRIBUTES>() as u32,
         lpSecurityDescriptor: descriptor.0.0,
         bInheritHandle: false.into(),
@@ -259,7 +259,7 @@ fn create_instance(
             BUFFER_BYTES,
             BUFFER_BYTES,
             0,
-            Some(&mut attributes),
+            Some(&attributes),
         )
     };
     if handle.is_invalid() {

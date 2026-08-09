@@ -2,9 +2,9 @@
 //!
 //! This is not the development websocket. That one exists so `lingxia dev` can
 //! drive an app across a network to a phone; this one exists so a *shipped*
-//! product can offer a command line and agent skills that drive it — the same
-//! methods, reached without a dev session, over an IPC that never leaves the
-//! machine.
+//! product can offer a command line and agent skills that drive its declared
+//! product surface, reached without a dev session, over an IPC that never
+//! leaves the machine.
 //!
 //! Each platform gets its native mechanism rather than one forced everywhere.
 //! Windows has supported `AF_UNIX` since 1803, but a named pipe carries a real
@@ -45,6 +45,28 @@ struct Running {
     accepting: Option<std::thread::JoinHandle<()>>,
 }
 
+impl Running {
+    fn is_listening(&self) -> bool {
+        self.listening.load(Ordering::SeqCst)
+            && self
+                .accepting
+                .as_ref()
+                .is_some_and(|accepting| !accepting.is_finished())
+    }
+}
+
+fn listener_is_live(running: Option<&Running>) -> bool {
+    running.is_some_and(Running::is_listening)
+}
+
+struct MarkStoppedOnDrop(Arc<AtomicBool>);
+
+impl Drop for MarkStoppedOnDrop {
+    fn drop(&mut self) {
+        self.0.store(false, Ordering::SeqCst);
+    }
+}
+
 /// Bumped every time the endpoint is switched off. A connection accepted under
 /// an older epoch is closed before its next request can be answered.
 static EPOCH: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
@@ -53,7 +75,7 @@ static EPOCH: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0
 ///
 /// A host calls this from `start_services` when it ships the capability.
 /// Shipping the capability is not the same as switching it on: this endpoint
-/// hands any local process the product's whole automation surface, so the
+/// hands any local process the product's declared automation surface, so the
 /// build decides whether the ability exists and the user decides whether it
 /// listens. It is off until they say otherwise, and [`set_enabled`] flips it
 /// while the app runs — no restart, because a settings toggle that needs one
@@ -90,32 +112,55 @@ pub fn set_enabled(enabled: bool) -> std::io::Result<()> {
         .get()
         .ok_or_else(|| std::io::Error::other("control socket is not installed"))?;
     let mut running = RUNNING.lock().unwrap_or_else(|error| error.into_inner());
-    match (enabled, running.take()) {
-        (true, Some(existing)) => {
-            *running = Some(existing);
-            Ok(())
-        }
-        (true, None) => {
+    match enabled {
+        true => {
+            if listener_is_live(running.as_ref()) {
+                return Ok(());
+            }
+            // A listener can give up after repeated platform errors. Reap its
+            // thread and invalidate connections from that epoch before
+            // replacing it, instead of preserving a dead RUNNING entry.
+            if let Some(mut stopped) = running.take() {
+                let _ = stop_accepting(&mut stopped);
+            }
             let started = start(state_dir, crate::dispatch_line)?;
             // Opening the endpoint and making the command typable are the same
             // decision; splitting them would leave a product that answers but
             // that nobody can address.
-            if let Err(error) = launcher::install(state_dir, &started.endpoint) {
-                log::warn!("product command not installed: {error}");
-            }
+            let started = publish_started_listener(
+                started,
+                |endpoint| launcher::install(state_dir, endpoint).map(|_| ()),
+                || launcher::remove(state_dir),
+            )?;
             *running = Some(started);
             Ok(())
         }
-        (false, Some(mut existing)) => {
-            let _ = stop_accepting(&mut existing);
+        false => {
+            if let Some(mut existing) = running.take() {
+                let _ = stop_accepting(&mut existing);
+            }
             if let Err(error) = launcher::remove(state_dir) {
                 log::warn!("product command not removed: {error}");
             }
             log::info!("control socket switched off");
             Ok(())
         }
-        (false, None) => Ok(()),
     }
+}
+
+fn publish_started_listener(
+    mut started: Running,
+    publish: impl FnOnce(&str) -> std::io::Result<()>,
+    rollback: impl FnOnce() -> std::io::Result<()>,
+) -> std::io::Result<Running> {
+    if let Err(error) = publish(&started.endpoint) {
+        let _ = stop_accepting(&mut started);
+        if let Err(rollback_error) = rollback() {
+            log::warn!("partial product command not removed: {rollback_error}");
+        }
+        return Err(error);
+    }
+    Ok(started)
 }
 
 fn stop_accepting(running: &mut Running) -> bool {
@@ -183,10 +228,8 @@ pub(crate) fn handle_control_command(
 
 /// Whether the endpoint is listening right now.
 pub fn is_listening() -> bool {
-    RUNNING
-        .lock()
-        .unwrap_or_else(|error| error.into_inner())
-        .is_some()
+    let running = RUNNING.lock().unwrap_or_else(|error| error.into_inner());
+    listener_is_live(running.as_ref())
 }
 
 fn start(state_dir: &Path, handle: Handler) -> std::io::Result<Running> {
@@ -199,6 +242,9 @@ fn start(state_dir: &Path, handle: Handler) -> std::io::Result<Running> {
     let accepting = std::thread::Builder::new()
         .name("lingxia-control".to_string())
         .spawn(move || {
+            // Every exit path, including a panic, must make status truthful
+            // and let a later enable replace this listener.
+            let _mark_stopped = MarkStoppedOnDrop(Arc::clone(&flag));
             let mut consecutive_failures = 0u32;
             while flag.load(Ordering::SeqCst) {
                 match listener.accept(&flag) {
@@ -322,10 +368,6 @@ fn refuse_unless_declared(method: &str) -> Option<String> {
     ) {
         return None;
     }
-    let namespace = method
-        .split_once('.')
-        .map(|(head, _)| head)
-        .unwrap_or(method);
     // Every gate below closes when it cannot prove otherwise. A product whose
     // configuration has not loaded yet, or one carrying a namespace nobody has
     // added a row for, must refuse rather than hand a local process the whole
@@ -333,17 +375,54 @@ fn refuse_unless_declared(method: &str) -> Option<String> {
     let Some(config) = lingxia_app_context::app_config() else {
         return Some("this product has no configuration to declare capabilities in".to_string());
     };
-    let Some(capabilities) = config.capabilities.as_ref() else {
+    refuse_for_product(method, config.capabilities.as_ref())
+}
+
+/// Apply the shipped-product method allowlist and its declared capabilities.
+/// The dev websocket dispatches directly and deliberately never calls this.
+fn refuse_for_product(
+    method: &str,
+    capabilities: Option<&lingxia_app_context::CapabilitiesConfig>,
+) -> Option<String> {
+    use lingxia_control_protocol::methods;
+
+    if matches!(
+        method,
+        methods::ECHO | methods::control::STATUS | methods::control::DISABLE
+    ) {
+        return None;
+    }
+    let namespace = method
+        .split_once('.')
+        .map(|(head, _)| head)
+        .unwrap_or(method);
+    let Some(capabilities) = capabilities else {
         return Some(format!("{namespace} is not declared by this product"));
     };
     let (declared_as, declared) = match namespace {
         "desktop" => ("computerUse", capabilities.computer_use),
         "browser" => ("browserUse", capabilities.browser_use),
-        // An lxapp page is this product's own surface, so it rides with
-        // `appUse` rather than having a row of its own. Splitting it out is one
-        // line here and one field there, the day a product wants to expose its
-        // native windows without its pages.
-        "app" | "lxapp" => ("appUse", capabilities.app_use_effective()),
+        "app"
+            if matches!(
+                method,
+                methods::app::DOCTOR
+                    | methods::app::SCREENSHOT
+                    | methods::app::WINDOWS
+                    | methods::app::MOUSE
+                    | methods::app::KEYBOARD
+            ) =>
+        {
+            ("appUse", capabilities.app_use_effective())
+        }
+        "app" => return Some(format!("{method} is not exposed by product control")),
+        // `lxapp.*` is the development surface: it includes arbitrary Logic
+        // evaluation plus app installation and lifecycle operations. appUse
+        // grants only this product's host windows, never those dev handlers.
+        "lxapp" => {
+            return Some(format!(
+                "{method} is available only through a development session"
+            ));
+        }
         // A namespace nobody has declared a capability for is not a namespace
         // the user consented to, whatever the build happens to have linked in.
         other => {
@@ -421,6 +500,141 @@ mod tests {
         // Except the liveness probe: a client has to be able to ask whether
         // anyone is home before it knows what it may ask for.
         assert!(refuse_unless_declared(lingxia_control_protocol::methods::ECHO).is_none());
+    }
+
+    #[test]
+    fn product_control_exposes_only_explicit_host_app_methods() {
+        use lingxia_control_protocol::methods;
+
+        let capabilities = lingxia_app_context::CapabilitiesConfig {
+            app_use: true,
+            ..Default::default()
+        };
+        for method in [
+            methods::app::DOCTOR,
+            methods::app::SCREENSHOT,
+            methods::app::WINDOWS,
+            methods::app::MOUSE,
+            methods::app::KEYBOARD,
+        ] {
+            assert_eq!(
+                refuse_for_product(method, Some(&capabilities)),
+                None,
+                "{method} is part of the product's own-window surface"
+            );
+        }
+
+        for method in [
+            methods::lxapp::LIST,
+            methods::lxapp::EVAL,
+            methods::lxapp::OPEN,
+            methods::lxapp::CLOSE,
+            methods::lxapp::RESTART,
+            methods::lxapp::UNINSTALL,
+            methods::lxapp_page::EVAL,
+            methods::lxapp_nav::TO,
+        ] {
+            let reason = refuse_for_product(method, Some(&capabilities))
+                .unwrap_or_else(|| panic!("{method} escaped the product allowlist"));
+            assert!(
+                reason.contains("development session"),
+                "unexpected refusal for {method}: {reason}"
+            );
+        }
+
+        assert!(refuse_for_product("app.future_method", Some(&capabilities)).is_some());
+
+        // The shared dispatcher is also the dev websocket's entry point. It
+        // remains unfiltered; only the shipped-product transport applies the
+        // allowlist above.
+        let dev_response = crate::dispatch(ControlRequest {
+            id: "dev".to_string(),
+            method: methods::lxapp::DOCTOR.to_string(),
+            params: None,
+        });
+        assert!(dev_response.error.is_none());
+        assert_eq!(
+            dev_response
+                .result
+                .as_ref()
+                .and_then(|value| value["target"].as_str()),
+            Some("lxapp")
+        );
+    }
+
+    #[test]
+    fn an_exited_accept_loop_is_reported_stopped_and_can_be_reaped() {
+        let listening = Arc::new(AtomicBool::new(true));
+        let thread_flag = Arc::clone(&listening);
+        let accepting = std::thread::spawn(move || {
+            let _mark_stopped = MarkStoppedOnDrop(thread_flag);
+        });
+        while !accepting.is_finished() {
+            std::thread::yield_now();
+        }
+        let mut running = Running {
+            endpoint: "test-endpoint".to_string(),
+            listening,
+            accepting: Some(accepting),
+        };
+
+        assert!(!listener_is_live(Some(&running)));
+        assert!(running.accepting.take().unwrap().join().is_ok());
+        assert!(running.accepting.is_none());
+    }
+
+    #[test]
+    fn a_launcher_publish_failure_rolls_back_the_listener() {
+        let state_dir = std::env::temp_dir().join(format!(
+            "lingxia-control-publish-failure-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = std::fs::remove_dir_all(&state_dir);
+        std::fs::create_dir_all(&state_dir).unwrap();
+        let listening = Arc::new(AtomicBool::new(true));
+        let thread_flag = Arc::clone(&listening);
+        let finished = Arc::new(AtomicBool::new(false));
+        let thread_finished = Arc::clone(&finished);
+        let accepting = std::thread::spawn(move || {
+            while thread_flag.load(Ordering::SeqCst) {
+                std::thread::yield_now();
+            }
+            thread_finished.store(true, Ordering::SeqCst);
+        });
+        let started = Running {
+            endpoint: "injected-endpoint".to_string(),
+            listening: Arc::clone(&listening),
+            accepting: Some(accepting),
+        };
+        let installed = std::cell::RefCell::new(None);
+        let result = publish_started_listener(
+            started,
+            |endpoint| {
+                let path = launcher::install(&state_dir, endpoint)?;
+                *installed.borrow_mut() = Some(path);
+                Err(std::io::Error::new(
+                    std::io::ErrorKind::PermissionDenied,
+                    "injected failure after publishing the launcher",
+                ))
+            },
+            || launcher::remove(&state_dir),
+        );
+
+        let error = match result {
+            Ok(_) => panic!("listener stayed published after its launcher failed"),
+            Err(error) => error,
+        };
+        assert_eq!(error.kind(), std::io::ErrorKind::PermissionDenied);
+        assert!(!listening.load(Ordering::SeqCst));
+        assert!(finished.load(Ordering::SeqCst));
+        let launcher = installed
+            .into_inner()
+            .expect("the injected failure happens after publication");
+        assert!(!launcher.exists());
+        #[cfg(windows)]
+        assert!(!launcher.with_extension("control").exists());
+        let _ = std::fs::remove_dir_all(state_dir);
     }
 
     /// The real listener, over a real socket, switched off the way the
