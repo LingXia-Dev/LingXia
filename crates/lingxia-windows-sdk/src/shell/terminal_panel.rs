@@ -1044,16 +1044,13 @@ fn create_panel_session(panel_id: &str, inherit_from: Option<u64>) -> u64 {
         rows,
         lingxia_terminal::TerminalSessionSpec {
             cwd,
-            env: lingxia::terminal::app_data_dir()
-                .map(|dir| lingxia::terminal::session_environment(&dir))
-                .unwrap_or_default(),
             ..lingxia_terminal::TerminalSessionSpec::default()
         },
     )
 }
 
-/// Load `terminal.json` once, applying the theme and starting the watch that
-/// adopts later edits. Shared with the Apple host, so both behave the same.
+/// Load `terminal.json` once and apply the configuration in effect. Later
+/// changes arrive through the settings API and bump the shared generation.
 #[cfg(feature = "terminal-runtime")]
 fn ensure_configuration_loaded() {
     use std::sync::OnceLock;
@@ -1064,6 +1061,7 @@ fn ensure_configuration_loaded() {
     let Some(data_dir) = lingxia::terminal::app_data_dir() else {
         return;
     };
+    lingxia::terminal::set_installed_fonts(crate::terminal_fonts::installed_fonts());
     // Product defaults are not wired yet; the framework defaults stand in.
     lingxia_terminal_config::runtime::load(data_dir, "{}", system_prefers_dark());
 }

@@ -1,12 +1,12 @@
 //! Configuration in effect for the running app.
 //!
-//! Loading, watching and applying live here rather than in each platform SDK:
+//! Loading and applying live here rather than in each platform SDK:
 //! it is pure data work with no platform content, and both hosts need exactly
 //! the same behaviour. The engine gets the theme — colors resolve when a frame
 //! is drawn, so a theme change is a repaint — and the host is told to re-read
 //! the font, which only it can resolve against what is installed.
 
-use crate::{ConfigWatcher, SurfaceChrome, TerminalConfig, ThemeStore};
+use crate::{InstalledFont, SurfaceChrome, TerminalConfig, ThemeStore};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
@@ -24,10 +24,24 @@ pub fn generation() -> u64 {
     GENERATION.load(Ordering::Relaxed)
 }
 
-/// Publish the platform's installed families, so `term font list` and
-/// `term status` report what is really available.
-pub fn set_installed_fonts(fonts: Vec<crate::InstalledFont>) {
-    crate::cli::set_installed_fonts(fonts);
+fn fonts() -> &'static Mutex<Vec<InstalledFont>> {
+    static INSTALLED: OnceLock<Mutex<Vec<InstalledFont>>> = OnceLock::new();
+    INSTALLED.get_or_init(|| Mutex::new(Vec::new()))
+}
+
+/// Publish the platform's installed terminal families.
+pub fn set_installed_fonts(installed: Vec<InstalledFont>) {
+    if let Ok(mut slot) = fonts().lock() {
+        *slot = installed;
+    }
+}
+
+/// The last installed-font snapshot supplied by the platform SDK.
+pub fn installed_fonts() -> Vec<InstalledFont> {
+    fonts()
+        .lock()
+        .map(|installed| installed.clone())
+        .unwrap_or_default()
 }
 
 fn current() -> &'static Mutex<TerminalConfig> {
@@ -57,40 +71,7 @@ pub fn load(app_data_dir: PathBuf, product_defaults: &str, system_is_dark: bool)
     );
     apply_theme(&app_data_dir, &config, system_is_dark);
     publish(config.clone());
-    start_watching(app_data_dir, defaults, config.clone(), system_is_dark);
     config
-}
-
-/// Adopt saved changes as they happen.
-///
-/// Watching the file rather than having the CLI announce its own writes covers
-/// every way it can change — an editor, a dotfile manager, the CLI — with one
-/// mechanism, and leaves the CLI as nothing more than a validating editor of
-/// the file.
-fn start_watching(
-    app_data_dir: PathBuf,
-    product_defaults: serde_json::Value,
-    current: TerminalConfig,
-    system_is_dark: bool,
-) {
-    if WATCHED.set(app_data_dir.clone()).is_err() {
-        return;
-    }
-    let directory = app_data_dir.clone();
-    let watcher = ConfigWatcher::new(app_data_dir, product_defaults, current);
-    let result = crate::watch(watcher, move |config| {
-        log::info!(
-            "terminal config reloaded: font {:?} {}pt, theme mode {:?}",
-            config.font.family,
-            config.font.size,
-            config.theme.mode
-        );
-        apply_theme(&directory, &config, system_is_dark);
-        publish(config);
-    });
-    if let Err(error) = result {
-        log::warn!("terminal config changes will not be picked up: {error}");
-    }
 }
 
 /// A generation means "this changed", not "this was read".
@@ -109,13 +90,6 @@ fn publish(config: TerminalConfig) {
     *slot = config;
     GENERATION.fetch_add(1, Ordering::Relaxed);
 }
-
-/// The directory whose changes are watched, for diagnostics.
-pub fn watched_directory() -> Option<PathBuf> {
-    WATCHED.get().cloned()
-}
-
-static WATCHED: OnceLock<PathBuf> = OnceLock::new();
 
 /// Push the configured theme into the engine. Cell colors are resolved when a
 /// frame is built, so this is a repaint of every live session — no reflow and

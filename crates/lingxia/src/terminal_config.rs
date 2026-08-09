@@ -1,15 +1,13 @@
 //! Terminal configuration as the runtime exposes it.
 //!
-//! Loading, watching, the command line and the environment a spawned session
-//! needs all live in the shared configuration crate, so every platform gets
-//! the same behaviour from the same code. This module adds only what needs
-//! the runtime: where this app keeps its data.
+//! Loading and live application stay in the shared configuration crate, so
+//! every platform gets the same behaviour from the same code. This module
+//! adds only what needs the runtime: where this app keeps its data.
 
 use std::path::{Path, PathBuf};
 
-pub use lingxia_terminal_config::cli::{run_if_invoked, session_environment};
 pub use lingxia_terminal_config::runtime::{
-    apply_theme, current_json, generation, load, set_installed_fonts, watched_directory,
+    apply_theme, current_json, generation, installed_fonts, load, set_installed_fonts,
 };
 
 /// Where this app keeps its data, as the configuration layer wants it.

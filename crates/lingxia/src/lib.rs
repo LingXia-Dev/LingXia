@@ -178,8 +178,7 @@ where
 pub mod terminal {
     pub use crate::terminal_config_impl::{
         app_data_dir, apply_theme, current_json as config_json, generation as config_generation,
-        load as load_config, run_if_invoked, session_environment, set_installed_fonts,
-        watched_directory,
+        installed_fonts, load as load_config, set_installed_fonts,
     };
     pub use lingxia_terminal::{
         BackendStatus, FrameCell, RowDamage, TerminalBackend, TerminalCell, TerminalFrame,

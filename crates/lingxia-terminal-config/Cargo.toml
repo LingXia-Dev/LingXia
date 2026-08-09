@@ -10,18 +10,8 @@ repository.workspace = true
 lingxia-app-context = { workspace = true }
 lingxia-terminal = { workspace = true }
 log = { workspace = true }
-notify = { version = "8", default-features = false, features = ["macos_fsevent"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 
 [dev-dependencies]
 tempfile = "3"
-
-[target.'cfg(unix)'.dependencies]
-libc = "0.2"
-
-[target.'cfg(windows)'.dependencies]
-windows = { workspace = true, features = [
-    "Win32_System_Console",
-    "Win32_UI_Input_KeyboardAndMouse",
-] }

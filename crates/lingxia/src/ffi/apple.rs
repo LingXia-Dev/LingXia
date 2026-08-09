@@ -609,9 +609,6 @@ mod bridge {
         #[swift_bridge(swift_name = "terminalLoadConfig")]
         fn terminal_load_config(system_is_dark: bool) -> String;
 
-        #[swift_bridge(swift_name = "terminalRunCliIfInvoked")]
-        fn terminal_run_cli_if_invoked(app_data_dir: &str, system_is_dark: bool) -> i32;
-
         #[swift_bridge(swift_name = "terminalRegisterFonts")]
         fn terminal_register_fonts(fonts_json: &str);
 
@@ -2132,15 +2129,11 @@ pub fn terminal_session_create(cols: u16, rows: u16, cwd: &str) -> u64 {
     #[cfg(feature = "terminal-runtime")]
     {
         let cwd = (!cwd.is_empty()).then(|| std::path::Path::new(cwd));
-        let environment = crate::terminal::app_data_dir()
-            .map(|dir| crate::terminal::session_environment(&dir))
-            .unwrap_or_default();
         return crate::terminal::terminal_create_with_spec(
             cols,
             rows,
             crate::terminal::TerminalSessionSpec {
                 cwd: cwd.map(std::path::Path::to_path_buf),
-                env: environment,
                 ..crate::terminal::TerminalSessionSpec::default()
             },
         );
@@ -2260,44 +2253,16 @@ pub fn terminal_session_frame(id: u64, since_generation: u64) -> bridge::Termina
     }
 }
 
-/// Load the terminal configuration and apply what the engine owns (the
-/// theme). Returns the resolved configuration so the host can apply the rest —
-/// font selection needs to know what is installed, which only the platform
-/// does.
-/// Run the `term` CLI when this process was invoked as one, returning the exit
-/// code, or `-1` to carry on and become the app.
-///
-/// Hosts must call this before initializing AppKit: the product's executable
-/// doubles as its command line, and a configuration command must not open a
-/// window.
-pub fn terminal_run_cli_if_invoked(app_data_dir: &str, system_is_dark: bool) -> i32 {
-    #[cfg(feature = "terminal-runtime")]
-    {
-        // The directory is passed in rather than read from the runtime: this
-        // runs before initialization, which would open the app's databases and
-        // collide with an instance already running.
-        if let Some(code) =
-            crate::terminal::run_if_invoked(std::path::Path::new(app_data_dir), system_is_dark)
-        {
-            return code;
-        }
-    }
-
-    #[cfg(not(feature = "terminal-runtime"))]
-    let _ = (app_data_dir, system_is_dark);
-    -1
-}
-
-/// Hand the platform's installed-font list to the config layer, so
-/// `term font --list` reports what is really available. Enumerating families
-/// is platform work the shared layer cannot do.
-/// Bumped whenever the configuration in effect changes. Hosts read it on a
-/// poll they already run and reload only when it moved.
-/// The directory the host should watch for configuration changes.
+/// The directory that contains terminal configuration.
 pub fn terminal_config_directory() -> String {
     #[cfg(feature = "terminal-runtime")]
     {
-        return crate::terminal::watched_directory()
+        return crate::terminal::app_data_dir()
+            .and_then(|dir| {
+                crate::terminal::TerminalConfig::path(&dir)
+                    .parent()
+                    .map(std::path::Path::to_path_buf)
+            })
             .map(|path| path.to_string_lossy().into_owned())
             .unwrap_or_default();
     }
