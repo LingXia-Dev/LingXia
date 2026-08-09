@@ -64,6 +64,23 @@ App({
     ];
 
     if (os === "macOS" || os === "Windows") {
+      // Footer, not header: the header holds at most two actions
+      // (MAX_HEADER_SIDEBAR_ACTIONS), and Downloads plus Settings take both.
+      sidebarActions.push({
+        id: "terminal-settings",
+        placement: "footer",
+        icon: "public/sidebar-terminal.svg",
+        label: "Terminal Settings",
+        onActivate: () => {
+          void lx
+            .openSurface({
+              appId: "app.lingxia.terminal-settings",
+              as: "aside",
+              edge: "right",
+            })
+            .catch((error) => console.warn("terminal settings action failed", error));
+        },
+      });
       sidebarActions.push({
         id: "terminal",
         placement: "footer",
