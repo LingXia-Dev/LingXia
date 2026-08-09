@@ -9,7 +9,7 @@ usage() {
 Release LingXia npm packages.
 
 Usage:
-  scripts/release/npm.sh [--package bridge|elements|react|vue|html|page-runtime|polyfills|types|skill|all] [--publish] [--dry-run]
+  scripts/release/npm.sh [--package bridge|elements|react|vue|html|page-runtime|polyfills|terminal-settings|types|skill|all] [--publish] [--dry-run]
 
 Options:
   --package <name>  Package set to process (default: all)
@@ -51,9 +51,10 @@ case "$PACKAGE_SET" in
   html) targets=("html") ;;
   page-runtime) targets=("page-runtime") ;;
   polyfills) targets=("polyfills") ;;
+  terminal-settings) targets=("terminal-settings") ;;
   types) targets=("types") ;;
   skill) targets=("skill") ;;
-  all) targets=("bridge" "polyfills" "elements" "page-runtime" "html" "react" "vue" "types" "skill") ;;
+  all) targets=("bridge" "polyfills" "elements" "page-runtime" "html" "react" "vue" "terminal-settings" "types" "skill") ;;
   *) echo "Unknown package set: $PACKAGE_SET" >&2; exit 2 ;;
 esac
 
@@ -66,6 +67,7 @@ pkg_dir() {
     html) echo "$ROOT_DIR/packages/lingxia-html" ;;
     page-runtime) echo "$ROOT_DIR/packages/lingxia-page-runtime" ;;
     polyfills) echo "$ROOT_DIR/packages/lingxia-polyfills" ;;
+    terminal-settings) echo "$ROOT_DIR/packages/lingxia-terminal-settings" ;;
     types) echo "$ROOT_DIR/packages/lingxia-types" ;;
     skill) echo "$ROOT_DIR/packages/lingxia-skill" ;;
     *) return 1 ;;
