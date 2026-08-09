@@ -127,7 +127,7 @@ jobs:
               - 'crates/lingxia-computer-use/**'
               - 'crates/lingxia-control-runtime/**'
               - 'crates/lingxia-control-protocol/**'
-              - 'crates/lingxia-control-cli/**'
+              - 'crates/lingxia-control-commands/**'
               - 'crates/lingxia-log/**'
               - 'crates/lingxia-logic/**'
               - 'crates/lingxia-lxapp/**'

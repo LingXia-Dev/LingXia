@@ -2123,7 +2123,7 @@ dependencies = [
  "lingxia-automation",
  "lingxia-browser",
  "lingxia-browser-shell",
- "lingxia-control-cli",
+ "lingxia-control-commands",
  "lingxia-log",
  "lingxia-logic",
  "lingxia-lxapp",
@@ -2241,6 +2241,7 @@ dependencies = [
  "dispatch2",
  "image",
  "libc",
+ "lingxia-app-context",
  "log",
  "objc2",
  "objc2-app-kit",
@@ -2254,7 +2255,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "lingxia-control-cli"
+name = "lingxia-control-commands"
 version = "0.11.2"
 dependencies = [
  "anyhow",
@@ -2265,6 +2266,14 @@ dependencies = [
  "lingxia-control-protocol",
  "lingxia-settings",
  "log",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "lingxia-control-protocol"
+version = "0.11.2"
+dependencies = [
  "serde",
  "serde_json",
 ]
@@ -2290,14 +2299,6 @@ dependencies = [
  "tokio",
  "tungstenite",
  "windows 0.62.2",
-]
-
-[[package]]
-name = "lingxia-control-protocol"
-version = "0.11.2"
-dependencies = [
- "serde",
- "serde_json",
 ]
 
 [[package]]

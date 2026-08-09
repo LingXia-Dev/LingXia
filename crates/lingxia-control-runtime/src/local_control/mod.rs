@@ -436,6 +436,11 @@ fn refuse_for_product(
 mod tests {
     use super::*;
 
+    // These tests deliberately advance the process-wide connection epoch.
+    // Cargo runs sibling tests in parallel, so serialize the cases that stop
+    // listeners or one test can make another test's fresh client look stale.
+    static LIFECYCLE_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
     fn stub(request: ControlRequest) -> ControlResponse {
         ControlResponse::success(
             request.id,
@@ -585,6 +590,9 @@ mod tests {
 
     #[test]
     fn a_launcher_publish_failure_rolls_back_the_listener() {
+        let _lifecycle = LIFECYCLE_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
         let state_dir = std::env::temp_dir().join(format!(
             "lingxia-control-publish-failure-{}-{:?}",
             std::process::id(),
@@ -645,6 +653,9 @@ mod tests {
     fn stops_listening_when_switched_off() {
         use std::io::BufRead;
 
+        let _lifecycle = LIFECYCLE_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
         let state_dir = std::env::temp_dir().join(format!(
             "lingxia-control-test-{}-{:?}",
             std::process::id(),
@@ -703,6 +714,9 @@ mod tests {
     #[cfg(windows)]
     #[test]
     fn named_pipe_restarts_while_an_old_client_is_open() {
+        let _lifecycle = LIFECYCLE_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
         let state_dir = std::env::temp_dir();
         let epoch = EPOCH.load(Ordering::SeqCst);
         drop(platform::Listener::bind(&state_dir, epoch).expect("first pipe claims its name"));

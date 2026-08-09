@@ -12,6 +12,7 @@ base64 = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 log = { workspace = true }
+lingxia-app-context = { workspace = true }
 image = { version = "0.25", default-features = false, features = ["png"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
@@ -52,7 +53,7 @@ windows = { workspace = true, features = [
 dispatch2 = "0.3"
 libc = "0.2.186"
 objc2 = "0.6.4"
-objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std", "objc2-core-foundation", "objc2-core-graphics", "NSApplication", "NSGraphics", "NSPasteboard", "NSScreen", "NSWorkspace", "NSRunningApplication", "NSPanel", "NSWindow", "NSView", "NSResponder", "NSImage", "NSImageRep", "NSBitmapImageRep", "NSImageView", "NSControl", "NSCell", "NSColor", "libc"] }
+objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std", "objc2-core-foundation", "objc2-core-graphics", "NSApplication", "NSGraphics", "NSPasteboard", "NSScreen", "NSWorkspace", "NSRunningApplication", "NSPanel", "NSWindow", "NSView", "NSResponder", "NSImage", "NSImageRep", "NSBitmapImageRep", "NSImageView", "NSControl", "NSCell", "NSColor", "NSFont", "NSParagraphStyle", "NSTextField", "libc"] }
 objc2-core-foundation = { version = "0.3.2", default-features = false, features = ["std", "CFBase", "CFArray", "CFDictionary", "CFString", "CFNumber", "CFCGTypes"] }
 objc2-core-graphics = { version = "0.3.2", default-features = false, features = ["std", "objc2", "libc", "CGBase", "CGGeometry", "CGError", "CGDirectDisplay", "CGWindow", "CGWindowLevel", "CGImage", "CGColorSpace", "CGContext", "CGBitmapContext", "CGEvent", "CGEventSource", "CGEventTypes", "CGRemoteOperation", "CGDisplayConfiguration"] }
 objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "NSString", "NSArray", "NSDictionary", "NSEnumerator", "NSURL", "NSData", "NSGeometry"] }

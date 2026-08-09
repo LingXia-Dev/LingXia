@@ -5,13 +5,13 @@
 //! dev session. Run it against a live app:
 //!
 //! ```text
-//! cargo run -p lingxia-control-cli --example product -- \
+//! cargo run -p lingxia-control-commands --example product -- \
 //!     --endpoint "$HOME/Library/Application Support/<app-id>/app_state/control.sock" \
 //!     app doctor
 //! ```
 
 use clap::{Parser, Subcommand};
-use lingxia_control_cli::{app, desktop, skills, transport::ControlSocket};
+use lingxia_control_commands::{app, desktop, skills, transport::ControlSocket};
 
 #[derive(Parser)]
 #[command(name = "product", about = "A product's own command line")]

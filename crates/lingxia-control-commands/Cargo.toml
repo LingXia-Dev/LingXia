@@ -1,5 +1,5 @@
 [package]
-name = "lingxia-control-cli"
+name = "lingxia-control-commands"
 version.workspace = true
 edition.workspace = true
 description = "Command surface shared by lxdev and shipped LingXia products"

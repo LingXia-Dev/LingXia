@@ -87,7 +87,7 @@ pub mod product_cli {
         use lingxia_platform::traits::app_runtime::AppRuntime;
         let platform = lingxia_platform::Platform::from_env().ok()?;
         let state_dir = lingxia_app_context::app_state_dir(&platform.app_data_dir());
-        lingxia_control_cli::entry::run_if_invoked(&state_dir)
+        lingxia_control_commands::entry::run_if_invoked(&state_dir)
     }
 
     /// The data directory is handed in by the platform layer on Apple, which
@@ -95,7 +95,7 @@ pub mod product_cli {
     #[cfg(not(target_os = "windows"))]
     pub fn run_if_invoked_in(data_dir: &std::path::Path) -> Option<i32> {
         let state_dir = lingxia_app_context::app_state_dir(data_dir);
-        lingxia_control_cli::entry::run_if_invoked(&state_dir)
+        lingxia_control_commands::entry::run_if_invoked(&state_dir)
     }
 }
 

@@ -35,8 +35,9 @@ use std::time::{Duration, Instant};
 use objc2::rc::Retained;
 use objc2::{AnyThread, MainThreadMarker, MainThreadOnly};
 use objc2_app_kit::{
-    NSBackingStoreType, NSBitmapFormat, NSBitmapImageRep, NSColor, NSDeviceRGBColorSpace, NSImage,
-    NSImageScaling, NSImageView, NSPanel, NSView, NSWindowCollectionBehavior, NSWindowStyleMask,
+    NSBackingStoreType, NSBitmapFormat, NSBitmapImageRep, NSColor, NSDeviceRGBColorSpace, NSFont,
+    NSImage, NSImageScaling, NSImageView, NSLineBreakMode, NSPanel, NSTextField, NSView,
+    NSWindowCollectionBehavior, NSWindowStyleMask,
 };
 use objc2_core_foundation::{CGPoint, CGRect, CGSize};
 use objc2_foundation::{NSPoint, NSRect, NSSize, NSString};
@@ -65,6 +66,11 @@ const FPS: u32 = 8;
 /// The viewer's width in points. Big enough to recognise what is happening,
 /// small enough to leave someone their screen.
 const WIDTH: f64 = 360.0;
+/// Persistent identity chrome above a live preview.
+const HEADER_HEIGHT: f64 = 34.0;
+/// The low-obstruction state used when the controlled window is already in
+/// front of the person.
+const COMPACT_HEIGHT: f64 = 48.0;
 /// Gap from the screen edge, matched to the shadowless borderless panel.
 const INSET: f64 = 16.0;
 /// How long the marker stays on the last point that was acted on. Long enough
@@ -82,6 +88,7 @@ const IDLE_REST: Duration = Duration::from_secs(12);
 struct State {
     activity: ActivityState,
     corner: Corner,
+    mode: Option<ViewerMode>,
     /// The panel's own window number, so the capture can leave it out. Zero
     /// until the panel exists.
     window_number: u32,
@@ -93,6 +100,7 @@ struct State {
 static STATE: Mutex<State> = Mutex::new(State {
     activity: ActivityState::new(),
     corner: Corner::BottomRight,
+    mode: None,
     window_number: 0,
     panel_rect: None,
 });
@@ -110,6 +118,7 @@ impl State {
     /// number so enumeration already knows what to exclude when it is ordered
     /// front again; only its visible placement becomes stale.
     fn note_hidden(&mut self) {
+        self.mode = None;
         self.panel_rect = None;
     }
 
@@ -134,7 +143,23 @@ pub(super) fn window_number() -> u32 {
 /// thread local of the main thread.
 struct Viewer {
     panel: Retained<NSPanel>,
+    root: Retained<NSView>,
     image: Retained<NSImageView>,
+    accent: Retained<NSTextField>,
+    label: Retained<NSTextField>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ViewerMode {
+    Compact,
+    Full,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct PanelLayout {
+    width: f64,
+    image_height: f64,
+    height: f64,
 }
 
 thread_local! {
@@ -353,6 +378,70 @@ fn source_rect(watch: &ActivityTarget) -> Result<CGRect> {
     ))
 }
 
+fn presentation(watch: &ActivityTarget) -> Result<(CGRect, ViewerMode, String)> {
+    let (rect, mode, target) = match watch {
+        ActivityTarget::Display(index) => (
+            source_rect(watch)?,
+            ViewerMode::Full,
+            format!("Display {index}"),
+        ),
+        ActivityTarget::Window { id, .. } => {
+            let window = super::window_ops::status(&WindowTarget::Id(id.clone()))?;
+            let target = if window.process.is_empty() {
+                window.title
+            } else {
+                window.process
+            };
+            (
+                CGRect::new(
+                    CGPoint::new(window.bounds.x as f64, window.bounds.y as f64),
+                    CGSize::new(window.bounds.w as f64, window.bounds.h as f64),
+                ),
+                mode_for(window.focused && window.visible),
+                if target.is_empty() {
+                    "Window".into()
+                } else {
+                    target
+                },
+            )
+        }
+    };
+    let label = crate::pip_state::control_label(&controller_identity(), &target);
+    Ok((rect, mode, label))
+}
+
+fn mode_for(target_foreground: bool) -> ViewerMode {
+    if target_foreground {
+        ViewerMode::Compact
+    } else {
+        ViewerMode::Full
+    }
+}
+
+fn target_mode(watch: &ActivityTarget) -> Result<ViewerMode> {
+    match watch {
+        ActivityTarget::Display(_) => Ok(ViewerMode::Full),
+        ActivityTarget::Window { id, .. } => {
+            let window = super::window_ops::status(&WindowTarget::Id(id.clone()))?;
+            Ok(mode_for(window.focused && window.visible))
+        }
+    }
+}
+
+fn controller_identity() -> String {
+    lingxia_app_context::product_name()
+        .map(str::to_owned)
+        .or_else(super::responsible_app_name)
+        .or_else(|| {
+            std::env::current_exe().ok().and_then(|path| {
+                path.file_stem()
+                    .map(|name| name.to_string_lossy().into_owned())
+            })
+        })
+        .filter(|name| !name.is_empty())
+        .unwrap_or_else(|| "This app".into())
+}
+
 /// Show the requested window, or the display that held it if the window has
 /// disappeared between the completed command and this asynchronous update.
 /// This is an internal capture failure, never evidence that a person dismissed
@@ -387,7 +476,7 @@ fn present(generation: u64, epoch: u64) -> Result<()> {
             state.corner,
         )
     };
-    let rect = source_rect(&watch)?;
+    let (rect, mode, label) = presentation(&watch)?;
     let shown = on_main(move |mtm| {
         let mut state = state();
         if !state.activity.current(generation, epoch) {
@@ -395,22 +484,16 @@ fn present(generation: u64, epoch: u64) -> Result<()> {
         }
         VIEWER.with_borrow_mut(|slot| {
             let viewer = slot.get_or_insert_with(|| build(mtm));
-            let height = if rect.size.width > 0.0 {
-                WIDTH * rect.size.height / rect.size.width
-            } else {
-                WIDTH * 0.625
-            };
-            let frame = place(mtm, corner, WIDTH, height, rect);
+            let layout = panel_layout_for(mtm, mode, rect);
+            let frame = place(mtm, corner, layout, rect);
             viewer.panel.setFrame_display(frame, true);
-            viewer.image.setFrame(NSRect::new(
-                NSPoint::new(0.0, 0.0),
-                NSSize::new(frame.size.width, frame.size.height),
-            ));
+            layout_viewer(viewer, layout, &label);
             viewer.panel.orderFrontRegardless();
             // Publish the number before releasing the reducer lock. Public
             // enumeration waits for this lock, so it can never observe a
             // visible viewer while its exclusion id is still zero.
             state.window_number = viewer.panel.windowNumber().max(0) as u32;
+            state.mode = Some(mode);
             state.panel_rect = Some(to_desktop(mtm, frame));
             Some(())
         })
@@ -518,7 +601,10 @@ fn corner_away_from(x: f64, y: f64, screen: (f64, f64)) -> Corner {
 }
 
 fn build(mtm: MainThreadMarker) -> Viewer {
-    let frame = NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(WIDTH, WIDTH * 0.625));
+    let frame = NSRect::new(
+        NSPoint::new(0.0, 0.0),
+        NSSize::new(WIDTH, WIDTH * 0.625 + HEADER_HEIGHT),
+    );
     let panel = NSPanel::initWithContentRect_styleMask_backing_defer(
         NSPanel::alloc(mtm),
         frame,
@@ -543,34 +629,112 @@ fn build(mtm: MainThreadMarker) -> Viewer {
     panel.setOpaque(true);
     panel.setBackgroundColor(Some(&NSColor::blackColor()));
 
-    let image = NSImageView::initWithFrame(NSImageView::alloc(mtm), frame);
-    image.setImageScaling(NSImageScaling::ScaleProportionallyUpOrDown);
-    image.setAutoresizingMask(
-        objc2_app_kit::NSAutoresizingMaskOptions::ViewWidthSizable
-            | objc2_app_kit::NSAutoresizingMaskOptions::ViewHeightSizable,
+    let root = NSView::initWithFrame(NSView::alloc(mtm), frame);
+    let image = NSImageView::initWithFrame(
+        NSImageView::alloc(mtm),
+        NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(WIDTH, WIDTH * 0.625)),
     );
-    panel.setContentView(Some(image.as_ref() as &NSView));
+    image.setImageScaling(NSImageScaling::ScaleProportionallyUpOrDown);
+    root.addSubview(image.as_ref() as &NSView);
 
-    Viewer { panel, image }
+    let accent = NSTextField::labelWithString(&NSString::from_str("●"), mtm);
+    accent.setTextColor(Some(&NSColor::systemYellowColor()));
+    accent.setFont(Some(&NSFont::boldSystemFontOfSize(13.0)));
+    root.addSubview(accent.as_ref() as &NSView);
+
+    let label = NSTextField::labelWithString(&NSString::from_str(""), mtm);
+    label.setTextColor(Some(&NSColor::whiteColor()));
+    label.setFont(Some(&NSFont::systemFontOfSize(13.0)));
+    label.setLineBreakMode(NSLineBreakMode::ByTruncatingTail);
+    root.addSubview(label.as_ref() as &NSView);
+
+    panel.setContentView(Some(&root));
+
+    Viewer {
+        panel,
+        root,
+        image,
+        accent,
+        label,
+    }
+}
+
+fn layout_viewer(viewer: &Viewer, layout: PanelLayout, label: &str) {
+    let size = NSSize::new(layout.width, layout.height);
+    viewer
+        .root
+        .setFrame(NSRect::new(NSPoint::new(0.0, 0.0), size));
+    viewer.image.setHidden(layout.image_height == 0.0);
+    viewer.image.setFrame(NSRect::new(
+        NSPoint::new(0.0, 0.0),
+        NSSize::new(layout.width, layout.image_height),
+    ));
+    let bar_height = layout.height - layout.image_height;
+    let text_height = 20.0_f64.min(bar_height);
+    let text_y = layout.image_height + (bar_height - text_height) / 2.0;
+    viewer.accent.setFrame(NSRect::new(
+        NSPoint::new(16.0, text_y),
+        NSSize::new(16.0, text_height),
+    ));
+    viewer.label.setFrame(NSRect::new(
+        NSPoint::new(42.0, text_y),
+        NSSize::new((layout.width - 56.0).max(1.0), text_height),
+    ));
+    viewer.label.setStringValue(&NSString::from_str(label));
+}
+
+fn panel_layout_for(mtm: MainThreadMarker, mode: ViewerMode, watched: CGRect) -> PanelLayout {
+    let visible = visible_frame_for(mtm, watched);
+    panel_layout(
+        mode,
+        watched.size.width,
+        watched.size.height,
+        (visible.size.width - INSET * 2.0).max(1.0),
+        (visible.size.height - INSET * 2.0).max(1.0),
+    )
+}
+
+fn panel_layout(
+    mode: ViewerMode,
+    source_width: f64,
+    source_height: f64,
+    available_width: f64,
+    available_height: f64,
+) -> PanelLayout {
+    if mode == ViewerMode::Compact {
+        return PanelLayout {
+            width: WIDTH.min(available_width.max(1.0)),
+            image_height: 0.0,
+            height: COMPACT_HEIGHT.min(available_height.max(1.0)),
+        };
+    }
+
+    let header = HEADER_HEIGHT.min(available_height.max(1.0));
+    let available_image_height = (available_height - header).max(1.0);
+    let aspect_height = if source_width > 0.0 {
+        WIDTH * source_height.max(1.0) / source_width
+    } else {
+        WIDTH * 0.625
+    };
+    let (width, image_height) = fit_size(
+        WIDTH,
+        aspect_height,
+        available_width,
+        available_image_height,
+    );
+    PanelLayout {
+        width,
+        image_height,
+        height: (image_height + header).min(available_height.max(1.0)),
+    }
 }
 
 /// Where the viewer sits: a corner of the screen showing the work, not a corner
 /// of the primary one. Watching a second monitor from the first is a viewer
 /// nobody is looking at.
-fn place(
-    mtm: MainThreadMarker,
-    corner: Corner,
-    width: f64,
-    height: f64,
-    watched: CGRect,
-) -> NSRect {
+fn place(mtm: MainThreadMarker, corner: Corner, layout: PanelLayout, watched: CGRect) -> NSRect {
     let visible = visible_frame_for(mtm, watched);
-    let (width, height) = fit_size(
-        width,
-        height,
-        (visible.size.width - INSET * 2.0).max(1.0),
-        (visible.size.height - INSET * 2.0).max(1.0),
-    );
+    let (width, height) = (layout.width, layout.height);
     // AppKit's origin is bottom-left, which is why "top" is the far edge here.
     let (x, y) = match corner {
         Corner::TopLeft => (
@@ -604,7 +768,7 @@ fn fit_size(width: f64, height: f64, available_width: f64, available_height: f64
 fn refresh_loop(generation: u64) {
     let interval = Duration::from_millis(1000 / FPS as u64);
     loop {
-        let (watch, epoch, below, marker, idle, sitting_on) = {
+        let (watch, epoch, below, marker, idle, sitting_on, shown_mode) = {
             let state = state();
             if state.activity.generation != generation || state.activity.dismissed {
                 return;
@@ -626,6 +790,7 @@ fn refresh_loop(generation: u64) {
                 marker,
                 idle,
                 sitting_on,
+                state.mode,
             )
         };
         let Some(watch) = watch else { return };
@@ -646,6 +811,18 @@ fn refresh_loop(generation: u64) {
         }
 
         let started = Instant::now();
+        let desired_mode = target_mode(&watch).unwrap_or(ViewerMode::Full);
+        if shown_mode != Some(desired_mode) {
+            if let Err(error) = present_with_fallback(generation, epoch) {
+                log::debug!("picture-in-picture mode change failed: {error}");
+            }
+            std::thread::sleep(interval.saturating_sub(started.elapsed()));
+            continue;
+        }
+        if desired_mode == ViewerMode::Compact {
+            std::thread::sleep(interval.saturating_sub(started.elapsed()));
+            continue;
+        }
         match frame(&watch, below, marker) {
             Ok((width, height, rgba)) => {
                 if !hand_to_panel(generation, epoch, width, height, rgba) {
@@ -829,11 +1006,13 @@ mod tests {
         let mut state = State {
             activity: ActivityState::new(),
             corner: Corner::BottomRight,
+            mode: Some(ViewerMode::Full),
             window_number: 73,
             panel_rect: Some((10.0, 20.0, 360.0, 225.0)),
         };
         state.note_hidden();
         assert_eq!(state.window_number, 73);
+        assert_eq!(state.mode, None);
         assert_eq!(state.panel_rect, None);
     }
 
@@ -842,6 +1021,7 @@ mod tests {
         let mut state = State {
             activity: ActivityState::new(),
             corner: Corner::BottomRight,
+            mode: None,
             window_number: 0,
             panel_rect: None,
         };
@@ -863,5 +1043,36 @@ mod tests {
 
         assert!(!state.set_corner_if_current(generation, epoch, Corner::TopLeft));
         assert_eq!(state.corner, Corner::BottomRight);
+    }
+
+    #[test]
+    fn foreground_targets_use_the_low_obstruction_state() {
+        assert_eq!(mode_for(true), ViewerMode::Compact);
+        assert_eq!(mode_for(false), ViewerMode::Full);
+    }
+
+    #[test]
+    fn full_layout_reserves_identity_chrome_without_distorting_preview() {
+        let layout = panel_layout(ViewerMode::Full, 1920.0, 1080.0, 800.0, 600.0);
+        assert_eq!(layout.width, 360.0);
+        assert_eq!(layout.image_height, 202.5);
+        assert_eq!(layout.height, 236.5);
+
+        let portrait = panel_layout(ViewerMode::Full, 1080.0, 1920.0, 300.0, 200.0);
+        assert!(portrait.width <= 300.0);
+        assert!(portrait.height <= 200.0);
+        assert_eq!(portrait.height - portrait.image_height, HEADER_HEIGHT);
+    }
+
+    #[test]
+    fn compact_layout_has_no_capture_surface() {
+        assert_eq!(
+            panel_layout(ViewerMode::Compact, 1920.0, 1080.0, 800.0, 600.0),
+            PanelLayout {
+                width: 360.0,
+                image_height: 0.0,
+                height: 48.0,
+            }
+        );
     }
 }

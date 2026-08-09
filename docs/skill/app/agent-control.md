@@ -95,12 +95,18 @@ Read-only commands do not open it.
 
 Each product process owns at most one viewer. Separate running products do not
 coordinate a machine-wide viewer; the viewer always represents the mutations
-performed through its own product process. On Windows, foreground work on the
-same monitor uses a compact control bar because the target itself is already
-visible. Work against a covered window or a window on another monitor expands
-to a live compositor view; work with no window target mirrors the visible
-display. When the product has a visible window, the indicator stays on that
-window's monitor even if the controlled window is on another monitor.
+performed through its own product process. Its identity bar always names both
+ends of the relationship (`<product> controls <target>`), including above
+an expanded preview, so the preview is never an anonymous floating capture.
+
+On both desktop platforms, a foreground target uses a compact control bar
+because the target itself is already visible. Background work expands to a
+live preview; work with no window target mirrors the visible display. On
+Windows, compact mode also requires the product and target to be visible on the
+same monitor. When the product has a visible window, the Windows indicator
+stays on that window's monitor even if the controlled window is on another
+monitor. macOS follows the display containing the controlled target. Both
+layouts use platform-native DPI/point sizing and keep the preview aspect ratio.
 
 Windows input still uses the active desktop. A `--window` or unambiguous `--pid`
 input target is activated before pointer or keyboard input, so the product may

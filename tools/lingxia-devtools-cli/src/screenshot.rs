@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use serde_json::Value;
 
-pub use lingxia_control_cli::output::{safe_component, write_png};
+pub use lingxia_control_commands::output::{safe_component, write_png};
 
 /// Pull PNG bytes out of a devtool response. Transport-side, so it stays here
 /// rather than in the shared command crate: only the websocket namespaces

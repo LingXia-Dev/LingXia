@@ -19,15 +19,16 @@ use windows::Win32::Graphics::Dwm::{
     DwmUpdateThumbnailProperties,
 };
 use windows::Win32::Graphics::Gdi::{
-    BeginPaint, CreatePen, CreateSolidBrush, DEFAULT_GUI_FONT, DeleteObject, Ellipse, EndPaint,
-    FillRect, GetDC, GetStockObject, HALFTONE, HGDIOBJ, InvalidateRect, NULL_BRUSH, PAINTSTRUCT,
-    PS_SOLID, ReleaseDC, SRCCOPY, SelectObject, SetBkMode, SetStretchBltMode, SetTextColor,
-    StretchBlt, TRANSPARENT, TextOutW,
+    BeginPaint, CLEARTYPE_QUALITY, CreateFontW, CreatePen, CreateSolidBrush, DEFAULT_CHARSET,
+    DT_END_ELLIPSIS, DT_LEFT, DT_NOPREFIX, DT_SINGLELINE, DT_VCENTER, DeleteObject, DrawTextW,
+    Ellipse, EndPaint, FW_SEMIBOLD, FillRect, GetDC, GetStockObject, HALFTONE, HFONT, HGDIOBJ,
+    InvalidateRect, NULL_BRUSH, OUT_DEFAULT_PRECIS, PAINTSTRUCT, PS_SOLID, ReleaseDC, SRCCOPY,
+    SelectObject, SetBkMode, SetStretchBltMode, SetTextColor, StretchBlt, TRANSPARENT,
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::System::Threading::GetCurrentThreadId;
 use windows::Win32::UI::WindowsAndMessaging::*;
-use windows::core::w;
+use windows::core::{PCWSTR, w};
 
 use crate::model::{Acted, Rect, WindowTarget};
 use crate::pip_state::{ActivityState, ActivityTarget, Transition};
@@ -38,6 +39,7 @@ const MARKER_LINGER: Duration = Duration::from_millis(1200);
 const TIMER_ID: usize = 1;
 const WM_PIP_UPDATE: u32 = WM_APP + 1;
 const WM_PIP_HIDE: u32 = WM_APP + 2;
+const HEADER_HEIGHT: i32 = 34;
 pub(crate) const VIEWER_CLASS: &str = "LingXiaActivityViewer";
 
 pub(crate) fn is_viewer_class(class: &str) -> bool {
@@ -97,10 +99,20 @@ struct Viewer {
     thumbnail: Option<Thumbnail>,
     mode: ViewerMode,
     label: String,
+    dpi: u32,
+    content_top: i32,
     generation: u64,
     epoch: u64,
+    font: HFONT,
     dark_pen: windows::Win32::Graphics::Gdi::HPEN,
     bright_pen: windows::Win32::Graphics::Gdi::HPEN,
+}
+
+#[derive(Clone, Copy)]
+struct Placement {
+    rect: Rect,
+    dpi: u32,
+    content_top: i32,
 }
 
 struct Thumbnail {
@@ -364,8 +376,11 @@ fn ui_main(token: u64, ready: mpsc::SyncSender<Option<u32>>) {
                 thumbnail: None,
                 mode: ViewerMode::Full,
                 label: String::new(),
+                dpi: 96,
+                content_top: dip(HEADER_HEIGHT, 96),
                 generation: 0,
                 epoch: 0,
+                font: make_font(96),
                 dark_pen: CreatePen(PS_SOLID, 7, COLORREF(0x001e28)),
                 bright_pen: CreatePen(PS_SOLID, 3, COLORREF(0x000ad6ff)),
             });
@@ -445,18 +460,12 @@ fn apply_update(epoch: u64) {
     let product = product_anchor();
     let anchor = product.unwrap_or(source);
     let mode = viewer_mode(&target, source, product);
-    let Some((x, y, width, height)) = placement(source, anchor, corner, mode) else {
+    let Some(placement) = placement(source, anchor, corner, mode) else {
         stop_if_current(generation, epoch);
         return;
     };
-    let label = compact_label(&target);
-
-    let desired = Rect {
-        x,
-        y,
-        w: width,
-        h: height,
-    };
+    let label = identity_label(&target);
+    let desired = placement.rect;
     let changed = {
         let state = state();
         if !state.activity.current(generation, epoch) {
@@ -469,6 +478,8 @@ fn apply_update(epoch: u64) {
             viewer.source = source;
             viewer.mode = mode;
             viewer.label.clone_from(&label);
+            sync_font(viewer, placement.dpi);
+            viewer.content_top = placement.content_top;
             viewer.generation = generation;
             viewer.epoch = epoch;
             Some(viewer.hwnd)
@@ -478,14 +489,21 @@ fn apply_update(epoch: u64) {
     });
     let Some(hwnd) = hwnd else { return };
     unsafe {
+        let accessible_title: Vec<u16> = format!("Activity viewer: {label}")
+            .encode_utf16()
+            .chain(std::iter::once(0))
+            .collect();
+        if let Err(error) = SetWindowTextW(hwnd, PCWSTR(accessible_title.as_ptr())) {
+            log::debug!("picture-in-picture accessible title failed: {error}");
+        }
         if changed {
             if let Err(error) = SetWindowPos(
                 hwnd,
                 Some(HWND_TOPMOST),
-                x,
-                y,
-                width,
-                height,
+                desired.x,
+                desired.y,
+                desired.w,
+                desired.h,
                 SWP_NOACTIVATE | SWP_SHOWWINDOW,
             ) {
                 log::debug!("picture-in-picture placement failed: {error}");
@@ -499,7 +517,7 @@ fn apply_update(epoch: u64) {
         VIEWER.with_borrow_mut(|slot| {
             if let Some(viewer) = slot.as_mut() {
                 if mode == ViewerMode::Full {
-                    let _ = sync_thumbnail(viewer, &target, width, height);
+                    let _ = sync_thumbnail(viewer, &target, desired.w, desired.h);
                 } else {
                     clear_thumbnail(viewer);
                 }
@@ -635,6 +653,7 @@ unsafe extern "system" fn window_proc(
                 VIEWER.with_borrow_mut(|slot| {
                     if let Some(mut viewer) = slot.take() {
                         clear_thumbnail(&mut viewer);
+                        let _ = DeleteObject(viewer.font.into());
                         let _ = DeleteObject(viewer.dark_pen.into());
                         let _ = DeleteObject(viewer.bright_pen.into());
                     }
@@ -691,7 +710,7 @@ fn sync_thumbnail(viewer: &mut Viewer, target: &ActivityTarget, width: i32, heig
             | DWM_TNP_SOURCECLIENTAREAONLY,
         rcDestination: RECT {
             left: 0,
-            top: 0,
+            top: viewer.content_top,
             right: width,
             bottom: height,
         },
@@ -723,18 +742,24 @@ unsafe fn paint(hwnd: HWND) {
                 return;
             }
             if viewer.mode == ViewerMode::Compact {
-                draw_compact(hdc, client, &viewer.label, viewer);
+                draw_identity_bar(hdc, client, &viewer.label, viewer);
             } else {
+                let content = RECT {
+                    left: 0,
+                    top: viewer.content_top,
+                    right: client.right,
+                    bottom: client.bottom,
+                };
                 if viewer.thumbnail.is_none() {
                     let screen = GetDC(None);
                     if !screen.is_invalid() {
                         let _ = SetStretchBltMode(hdc, HALFTONE);
                         let _ = StretchBlt(
                             hdc,
-                            0,
-                            0,
-                            client.right,
-                            client.bottom,
+                            content.left,
+                            content.top,
+                            content.right - content.left,
+                            content.bottom - content.top,
                             Some(screen),
                             viewer.source.x,
                             viewer.source.y,
@@ -759,37 +784,67 @@ unsafe fn paint(hwnd: HWND) {
                     }
                 };
                 if let Some((x, y)) = marker {
-                    draw_marker(hdc, client, viewer.source, x, y, viewer);
+                    draw_marker(hdc, content, viewer.source, x, y, viewer);
                 }
+                draw_identity_bar(
+                    hdc,
+                    RECT {
+                        left: 0,
+                        top: 0,
+                        right: client.right,
+                        bottom: viewer.content_top,
+                    },
+                    &viewer.label,
+                    viewer,
+                );
             }
         });
         let _ = EndPaint(hwnd, &paint);
     }
 }
 
-unsafe fn draw_compact(
+unsafe fn draw_identity_bar(
     hdc: windows::Win32::Graphics::Gdi::HDC,
-    client: RECT,
+    bar: RECT,
     label: &str,
     viewer: &Viewer,
 ) {
     unsafe {
         let background = CreateSolidBrush(COLORREF(0x00241f1c));
-        let _ = FillRect(hdc, &client, background);
+        let _ = FillRect(hdc, &bar, background);
         let accent = CreateSolidBrush(COLORREF(0x000ad6ff));
         let old_brush = SelectObject(hdc, accent.into());
         let old_pen = SelectObject(hdc, viewer.bright_pen.into());
-        let center_y = client.bottom / 2;
-        let _ = Ellipse(hdc, 16, center_y - 6, 28, center_y + 6);
+        let center_y = bar.top + (bar.bottom - bar.top) / 2;
+        let radius = dip(5, viewer.dpi).max(2);
+        let center_x = bar.left + dip(21, viewer.dpi);
+        let _ = Ellipse(
+            hdc,
+            center_x - radius,
+            center_y - radius,
+            center_x + radius,
+            center_y + radius,
+        );
         let _ = SelectObject(hdc, old_pen);
         let _ = SelectObject(hdc, old_brush);
         let _ = DeleteObject(accent.into());
 
-        let old_font = SelectObject(hdc, GetStockObject(DEFAULT_GUI_FONT));
+        let old_font = SelectObject(hdc, viewer.font.into());
         let _ = SetBkMode(hdc, TRANSPARENT);
         let _ = SetTextColor(hdc, COLORREF(0x00f4f4f4));
-        let text: Vec<u16> = label.encode_utf16().take(42).collect();
-        let _ = TextOutW(hdc, 42, (center_y - 8).max(0), &text);
+        let mut text: Vec<u16> = label.encode_utf16().collect();
+        let mut text_rect = RECT {
+            left: bar.left + dip(42, viewer.dpi),
+            top: bar.top,
+            right: (bar.right - dip(14, viewer.dpi)).max(bar.left),
+            bottom: bar.bottom,
+        };
+        let _ = DrawTextW(
+            hdc,
+            &mut text,
+            &mut text_rect,
+            DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX,
+        );
         let _ = SelectObject(hdc, old_font);
         let _ = DeleteObject(background.into());
     }
@@ -807,11 +862,13 @@ unsafe fn draw_marker(
         return;
     }
     unsafe {
-        let px =
-            (((x as i64 - source.x as i64) * client.right as i64) / source.w.max(1) as i64) as i32;
-        let py =
-            (((y as i64 - source.y as i64) * client.bottom as i64) / source.h.max(1) as i64) as i32;
-        let radius = (client.right.min(client.bottom) * 35 / 1000).clamp(10, 24);
+        let width = client.right - client.left;
+        let height = client.bottom - client.top;
+        let px = client.left
+            + (((x as i64 - source.x as i64) * width as i64) / source.w.max(1) as i64) as i32;
+        let py = client.top
+            + (((y as i64 - source.y as i64) * height as i64) / source.h.max(1) as i64) as i32;
+        let radius = (width.min(height) * 35 / 1000).clamp(10, 24);
         let old_brush = SelectObject(hdc, HGDIOBJ(GetStockObject(NULL_BRUSH).0));
         let old_pen = SelectObject(hdc, viewer.dark_pen.into());
         let _ = Ellipse(hdc, px - radius, py - radius, px + radius, py + radius);
@@ -901,24 +958,45 @@ fn monitor_for(rect: Rect) -> windows::Win32::Graphics::Gdi::HMONITOR {
     }
 }
 
-fn compact_label(target: &ActivityTarget) -> String {
-    let ActivityTarget::Window { id, .. } = target else {
-        return "Foreground control".into();
+fn identity_label(target: &ActivityTarget) -> String {
+    let target = match target {
+        ActivityTarget::Display(index) => format!("Display {index}"),
+        ActivityTarget::Window { id, .. } => super::window_status(&WindowTarget::Id(id.clone()))
+            .ok()
+            .map(|window| {
+                if window.process.is_empty() {
+                    window.title
+                } else {
+                    window.process
+                }
+            })
+            .filter(|identity| !identity.is_empty())
+            .map(|identity| trim_executable_suffix(&identity).to_string())
+            .unwrap_or_else(|| "Window".into()),
     };
-    let identity = super::window_status(&WindowTarget::Id(id.clone()))
-        .ok()
-        .map(|window| {
-            if window.process.is_empty() {
-                window.title
-            } else {
-                window.process
-            }
+    crate::pip_state::control_label(&controller_identity(), &target)
+}
+
+fn controller_identity() -> String {
+    lingxia_app_context::product_name()
+        .map(str::to_owned)
+        .or_else(|| {
+            std::env::current_exe()
+                .ok()
+                .and_then(|path| {
+                    path.file_name()
+                        .map(|name| name.to_string_lossy().into_owned())
+                })
+                .map(|name| trim_executable_suffix(&name).to_string())
         })
-        .filter(|identity| !identity.is_empty());
-    identity.map_or_else(
-        || "Foreground control".into(),
-        |identity| format!("Foreground control - {identity}"),
-    )
+        .filter(|name| !name.is_empty())
+        .unwrap_or_else(|| "This app".into())
+}
+
+fn trim_executable_suffix(name: &str) -> &str {
+    name.strip_suffix(".exe")
+        .or_else(|| name.strip_suffix(".EXE"))
+        .unwrap_or(name)
 }
 
 fn display_holding(x: i32, y: i32) -> usize {
@@ -942,12 +1020,7 @@ fn same_rect(a: Rect, b: Rect) -> bool {
     a.x == b.x && a.y == b.y && a.w == b.w && a.h == b.h
 }
 
-fn placement(
-    source: Rect,
-    anchor: Rect,
-    corner: Corner,
-    mode: ViewerMode,
-) -> Option<(i32, i32, i32, i32)> {
+fn placement(source: Rect, anchor: Rect, corner: Corner, mode: ViewerMode) -> Option<Placement> {
     let monitor = monitor_for(anchor);
     let mut info = windows::Win32::Graphics::Gdi::MONITORINFO {
         cbSize: std::mem::size_of::<windows::Win32::Graphics::Gdi::MONITORINFO>() as u32,
@@ -964,15 +1037,17 @@ fn placement(
     let available_height = (info.rcWork.bottom as i64 - info.rcWork.top as i64 - inset * 2).max(1);
     let available_width = available_width.min(i32::MAX as i64) as i32;
     let available_height = available_height.min(i32::MAX as i64) as i32;
-    let (width, height) = match mode {
-        ViewerMode::Compact => compact_size(available_width, available_height, dpi as u32),
-        ViewerMode::Full => fit_size(
-            source.w,
-            source.h,
-            available_width,
-            available_height,
-            dpi as u32,
-        ),
+    let dpi = dpi as u32;
+    let (width, height, content_top) = match mode {
+        ViewerMode::Compact => {
+            let (width, height) = compact_size(available_width, available_height, dpi);
+            (width, height, height)
+        }
+        ViewerMode::Full => {
+            let (width, height, header) =
+                full_size(source.w, source.h, available_width, available_height, dpi);
+            (width, height, header)
+        }
     };
     let inset = inset as i32;
     let (x, y) = match corner {
@@ -987,11 +1062,20 @@ fn placement(
             info.rcWork.bottom - height - inset,
         ),
     };
-    Some((x, y, width, height))
+    Some(Placement {
+        rect: Rect {
+            x,
+            y,
+            w: width,
+            h: height,
+        },
+        dpi,
+        content_top,
+    })
 }
 
 fn compact_size(available_width: i32, available_height: i32, dpi: u32) -> (i32, i32) {
-    let width = (300_i64 * dpi as i64 / 96).min(available_width.max(1) as i64);
+    let width = (360_i64 * dpi as i64 / 96).min(available_width.max(1) as i64);
     let height = (48_i64 * dpi as i64 / 96).min(available_height.max(1) as i64);
     (width.max(1) as i32, height.max(1) as i32)
 }
@@ -1010,6 +1094,67 @@ fn fit_size(
         width = height * source_width.max(1) as i64 / source_height.max(1) as i64;
     }
     (width.max(1) as i32, height.max(1) as i32)
+}
+
+fn full_size(
+    source_width: i32,
+    source_height: i32,
+    available_width: i32,
+    available_height: i32,
+    dpi: u32,
+) -> (i32, i32, i32) {
+    let header = dip(HEADER_HEIGHT, dpi).min(available_height.max(1));
+    let content_height = (available_height - header).max(1);
+    let (width, preview_height) = fit_size(
+        source_width,
+        source_height,
+        available_width,
+        content_height,
+        dpi,
+    );
+    (
+        width,
+        (preview_height + header).min(available_height.max(1)),
+        header,
+    )
+}
+
+fn dip(value: i32, dpi: u32) -> i32 {
+    ((value as i64 * dpi.max(1) as i64 + 48) / 96).clamp(1, i32::MAX as i64) as i32
+}
+
+fn make_font(dpi: u32) -> HFONT {
+    let height = -((13_i64 * dpi.max(1) as i64 + 36) / 72) as i32;
+    unsafe {
+        CreateFontW(
+            height,
+            0,
+            0,
+            0,
+            FW_SEMIBOLD.0 as i32,
+            0,
+            0,
+            0,
+            DEFAULT_CHARSET,
+            OUT_DEFAULT_PRECIS,
+            windows::Win32::Graphics::Gdi::CLIP_DEFAULT_PRECIS,
+            CLEARTYPE_QUALITY,
+            0,
+            w!("Segoe UI"),
+        )
+    }
+}
+
+fn sync_font(viewer: &mut Viewer, dpi: u32) {
+    if viewer.dpi == dpi {
+        return;
+    }
+    let font = make_font(dpi);
+    unsafe {
+        let _ = DeleteObject(viewer.font.into());
+    }
+    viewer.font = font;
+    viewer.dpi = dpi;
 }
 
 fn corner_away_from((x, y): (i32, i32), source: Rect) -> Corner {
@@ -1073,9 +1218,25 @@ mod tests {
 
     #[test]
     fn compact_size_scales_with_dpi_and_stays_inside_work_area() {
-        assert_eq!(compact_size(800, 600, 96), (300, 48));
-        assert_eq!(compact_size(800, 600, 144), (450, 72));
+        assert_eq!(compact_size(800, 600, 96), (360, 48));
+        assert_eq!(compact_size(800, 600, 144), (540, 72));
         assert_eq!(compact_size(200, 30, 192), (200, 30));
+    }
+
+    #[test]
+    fn full_size_reserves_a_dpi_scaled_identity_bar() {
+        assert_eq!(full_size(1920, 1080, 800, 600, 96), (360, 236, 34));
+        assert_eq!(full_size(1920, 1080, 800, 600, 144), (540, 354, 51));
+        let (width, height, header) = full_size(1080, 1920, 300, 200, 192);
+        assert!(width <= 300 && height <= 200);
+        assert_eq!(header, 68);
+    }
+
+    #[test]
+    fn executable_suffix_is_not_shown_as_product_identity() {
+        assert_eq!(trim_executable_suffix("Notes.exe"), "Notes");
+        assert_eq!(trim_executable_suffix("Notes.EXE"), "Notes");
+        assert_eq!(trim_executable_suffix("Notes"), "Notes");
     }
 
     #[test]

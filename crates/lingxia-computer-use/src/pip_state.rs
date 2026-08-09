@@ -1,5 +1,9 @@
 use std::time::{Duration, Instant};
 
+pub(crate) fn control_label(controller: &str, target: &str) -> String {
+    format!("{controller} controls {target}")
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum ActivityTarget {
     Display(usize),
@@ -145,6 +149,11 @@ mod tests {
     use super::*;
 
     const IDLE: Duration = Duration::from_secs(12);
+
+    #[test]
+    fn viewer_identity_names_both_ends_of_control() {
+        assert_eq!(control_label("LingXia", "Notes"), "LingXia controls Notes");
+    }
 
     #[test]
     fn dismiss_invalidates_a_queued_open() {

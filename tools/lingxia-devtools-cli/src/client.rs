@@ -111,7 +111,7 @@ impl<'a> DevSession<'a> {
     }
 }
 
-impl lingxia_control_cli::transport::Transport for DevSession<'_> {
+impl lingxia_control_commands::transport::Transport for DevSession<'_> {
     fn request(&self, method: &str, params: Option<Value>) -> Result<Option<Value>> {
         execute_command(self.ws_url, method, params)
     }
