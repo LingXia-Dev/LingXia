@@ -320,7 +320,10 @@ fn invoked_as_command() -> bool {
     if std::env::var_os(invocation::MARKER).is_some() {
         return true;
     }
-    !cfg!(windows) && (std::io::stdout().is_terminal() || std::io::stdin().is_terminal())
+    // GUI dev launchers intentionally detach stdin while leaving stdout/stderr
+    // attached for logs. Treating output alone as interactive turns every
+    // `lingxia dev` child into a no-argument CLI invocation.
+    !cfg!(windows) && std::io::stdin().is_terminal()
 }
 
 #[cfg(test)]
