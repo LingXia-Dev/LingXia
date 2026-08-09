@@ -805,6 +805,9 @@ fn run_lxapp_build(project_root: &Path, args: Option<&serde_json::Value>) -> Res
     let framework = args
         .and_then(|value| value.get("framework"))
         .and_then(serde_json::Value::as_str);
+    let appid = args
+        .and_then(|value| value.get("appid"))
+        .and_then(serde_json::Value::as_str);
     let mut build_args = vec!["build".to_string()];
     if release {
         build_args.push("--release".to_string());
@@ -813,7 +816,7 @@ fn run_lxapp_build(project_root: &Path, args: Option<&serde_json::Value>) -> Res
         build_args.push("--framework".to_string());
         build_args.push(framework.to_string());
     }
-    crate::lxapp::run_in_dir_for_dev(&build_args, &resolve_lxapp_dir(project_root)?)?;
+    crate::lxapp::run_in_dir_for_dev(&build_args, &resolve_lxapp_dir(project_root, appid)?)?;
 
     // Host dev sessions serve bundles through the generated manifest. Without
     // refreshing it here, the runtime sees the previous dist hash and a
@@ -832,24 +835,27 @@ fn refresh_lxapp_manifests(project_root: &Path) -> Result<()> {
 }
 
 /// The directory holding the lxapp to build: the project root itself for a
-/// standalone lxapp/lxplugin project, else the host project's home-lxapp
-/// bundle path from `lingxia.yaml`.
-fn resolve_lxapp_dir(project_root: &Path) -> Result<PathBuf> {
+/// standalone project, otherwise the requested resource or the host's home
+/// lxapp when no runtime is currently open.
+fn resolve_lxapp_dir(project_root: &Path, requested_appid: Option<&str>) -> Result<PathBuf> {
     if project_root.join("lxapp.json").exists() || project_root.join("lxplugin.json").exists() {
         return Ok(project_root.to_path_buf());
     }
     let config = crate::config::LingXiaConfig::load(project_root)?;
-    let home_app_id = config
-        .app
-        .as_ref()
-        .ok_or_else(|| anyhow!("Missing app settings in lingxia.yaml"))?
-        .home_app_id
-        .as_deref()
-        .ok_or_else(|| {
-            anyhow!(
-                "this host has no local control lxapp; `lxdev lxapp reload` requires app.homeAppId"
-            )
-        })?;
+    let appid = match requested_appid {
+        Some(appid) => appid,
+        None => config
+            .app
+            .as_ref()
+            .ok_or_else(|| anyhow!("Missing app settings in lingxia.yaml"))?
+            .home_app_id
+            .as_deref()
+            .ok_or_else(|| {
+                anyhow!(
+                    "this host has no local control lxapp; `lxdev lxapp reload` requires app.homeAppId"
+                )
+            })?,
+    };
     let path = config
         .resources
         .as_ref()
@@ -857,12 +863,10 @@ fn resolve_lxapp_dir(project_root: &Path) -> Result<PathBuf> {
             resources
                 .bundles
                 .iter()
-                .find(|bundle| bundle.app_id == home_app_id)
+                .find(|bundle| bundle.app_id == appid)
         })
         .and_then(|bundle| bundle.path.as_deref())
-        .ok_or_else(|| {
-            anyhow!("home lxapp '{home_app_id}' has no local path in lingxia.yaml resources")
-        })?;
+        .ok_or_else(|| anyhow!("lxapp '{appid}' has no local path in lingxia.yaml resources"))?;
     Ok(project_root.join(path))
 }
 
@@ -925,7 +929,7 @@ where
 mod tests {
     use super::{
         DevServerState, accept_websocket, dev_port, read_wire_message, refresh_lxapp_manifests,
-        send_wire_message,
+        resolve_lxapp_dir, send_wire_message,
     };
     use lingxia_control_protocol::dev_session::{
         DEV_SESSION_PROTOCOL_VERSION, DevSessionMessage, DevSessionRole, capabilities,
@@ -973,6 +977,26 @@ mod tests {
             serde_json::from_slice(&std::fs::read(&manifest_path).unwrap()).unwrap();
 
         assert_ne!(first["distHash"], second["distHash"]);
+    }
+
+    #[test]
+    fn reload_builds_the_selected_lxapp_resource() {
+        let temp = tempfile::tempdir().unwrap();
+        let project = temp.path();
+        std::fs::write(
+            project.join("lingxia.yaml"),
+            "app:\n  projectName: demo-host\n  productName: Demo Host\n  productVersion: 1.0.0\n  platforms: [windows]\n  homeAppId: demo\nresources:\n  bundles:\n    - type: lxapp\n      appId: demo\n      path: home\n    - type: lxapp\n      appId: settings\n      path: settings\n",
+        )
+        .unwrap();
+
+        assert_eq!(
+            resolve_lxapp_dir(project, Some("settings")).unwrap(),
+            project.join("settings")
+        );
+        assert_eq!(
+            resolve_lxapp_dir(project, None).unwrap(),
+            project.join("home")
+        );
     }
 
     #[test]
