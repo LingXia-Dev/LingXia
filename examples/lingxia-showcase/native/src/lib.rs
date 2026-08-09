@@ -17,7 +17,8 @@ impl lingxia::HostAddon for ExampleHostAddon {
         // this hook — the logic context is built before `start_services`. Injected via
         // `--with-provider cloud`.
         #[cfg(feature = "cloud")]
-        if let Err(err) = lingxia_cloud_client::init(lingxia_cloud_client::CloudOptions::default()) {
+        if let Err(err) = lingxia_cloud_client::init(lingxia_cloud_client::CloudOptions::default())
+        {
             log::error!("[cloud] provider init failed: {err}");
         }
     }
@@ -62,6 +63,15 @@ impl lingxia::HostAddon for ExampleHostAddon {
 
 fn register_host_addon() {
     lingxia::register_host_addon(Box::new(ExampleHostAddon));
+}
+
+/// Answer as this product's command line if that is what this invocation is,
+/// and return the exit code. `None` means carry on and be the app.
+///
+/// The Windows executable calls this as the first thing in `main`.
+#[cfg(all(feature = "control", target_os = "windows"))]
+pub fn run_cli_if_invoked() -> Option<i32> {
+    lingxia::product_cli::run_if_invoked()
 }
 
 // Android: JNI export
