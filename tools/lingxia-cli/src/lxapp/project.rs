@@ -36,10 +36,7 @@ impl Project {
         if lxapp_path.exists() {
             let manifest = read_json(&lxapp_path)?;
             validate_lxapp_manifest(&manifest)?;
-            let framework = match framework_override {
-                Some(framework) => framework,
-                None => detect_project_framework(project_root)?,
-            };
+            let framework = resolve_framework(project_root, &manifest, framework_override)?;
             let pages = resolve_lxapp_pages(project_root, &manifest, framework)?;
             validate_page_configs(project_root, &pages)?;
             let logic_entry = resolve_logic_entry(&manifest)?;
@@ -60,10 +57,7 @@ impl Project {
 
         if lxplugin_path.exists() {
             let manifest = read_json(&lxplugin_path)?;
-            let framework = match framework_override {
-                Some(framework) => framework,
-                None => detect_project_framework(project_root)?,
-            };
+            let framework = resolve_framework(project_root, &manifest, framework_override)?;
             let pages_obj = manifest
                 .get("pages")
                 .and_then(Value::as_array)
@@ -119,6 +113,20 @@ impl Project {
             project_root.display()
         ))
     }
+}
+
+fn resolve_framework(
+    project_root: &Path,
+    manifest: &Value,
+    framework_override: Option<ProjectFramework>,
+) -> Result<ProjectFramework> {
+    // A manifest pin is part of the package contract. A host-level framework
+    // selection chooses among ambiguous app sources; it must not reinterpret
+    // an explicitly HTML/React/Vue resource bundled alongside that app.
+    if manifest.get("framework").is_some() {
+        return detect_project_framework(project_root);
+    }
+    framework_override.map_or_else(|| detect_project_framework(project_root), Ok)
 }
 
 fn validate_lxapp_manifest(manifest: &Value) -> Result<()> {
@@ -1166,6 +1174,29 @@ mod tests {
 
         assert_eq!(project.framework, ProjectFramework::React);
         assert_eq!(project.pages, vec!["pages/home/index.tsx".to_string()]);
+    }
+
+    #[test]
+    fn manifest_framework_pin_beats_host_override() {
+        let temp = tempdir().unwrap();
+        write_file(
+            temp.path(),
+            "lxapp.json",
+            r#"{
+              "appId": "demo",
+              "version": "1.0.0",
+              "framework": "html",
+              "logic": false,
+              "security": {"network":{"trustedDomains":[]},"privileges":[]},
+              "pages": [{"name":"home","path":"pages/home/index.html"}]
+            }"#,
+        );
+        write_file(temp.path(), "pages/home/index.html", "<!doctype html>");
+
+        let project = Project::discover(temp.path(), Some(ProjectFramework::React)).unwrap();
+
+        assert_eq!(project.framework, ProjectFramework::Html);
+        assert_eq!(project.pages, vec!["pages/home/index.html".to_string()]);
     }
 
     #[test]
