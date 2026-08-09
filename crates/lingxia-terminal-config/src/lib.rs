@@ -3,7 +3,7 @@
 //! This layer exists because the terminal surface is implemented by the
 //! framework, not by the product embedding it. If configuration were owned by
 //! the platform SDKs it would be written twice — Swift for Apple, Rust for
-//! Windows — with two schemas and two hot-reload paths that drift. Reading
+//! Windows — with two schemas and two application paths that drift. Reading
 //! and merging configuration is pure data work with no platform content, so
 //! it lives here once and the engine (`lingxia-terminal`) keeps touching no
 //! files at all.

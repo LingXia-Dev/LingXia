@@ -1,85 +1,108 @@
 # Terminal
 
-The built-in terminal runs a real PTY under the user's own shell, drawn by one
-cross-platform engine. Turning it on and deciding where it appears belongs to
-`lingxia.yaml` and is covered with the other surfaces:
-[`capabilities.terminal`](./project.md#capabilities-section) and the
-[terminal surface rules](./project.md#terminal-surface).
+The built-in terminal is a native macOS/Windows surface backed by the shared
+Rust terminal engine. Enable it with `capabilities.terminal`; declare where a
+terminal appears under `surfaces:`. See [App Project Configuration](./project.md#terminal-surface).
 
-This file is what you need *after* that — how a terminal is configured, and
-what a configuration change does to a session that is already running.
+## User settings
 
-Desktop only (macOS and Windows), off by default.
+Enabling the terminal also bundles `@lingxia/terminal-settings` as a standard
+desktop workspace. That screen is the primary user interface for:
 
-## Configuration is a file, not `lingxia.yaml`
+- light/dark/system appearance and independent light/dark color schemes;
+- font candidates, size, line height, bold treatment, and ligatures;
+- background opacity and cursor style/blink;
+- importing Windows Terminal JSON or Xresources/kitty color files.
 
-Font and theme belong to the user, not to the product, so they live in a file
-the app watches:
+The screen previews themes without saving and applies accepted changes to open
+terminal surfaces. Settings routes are restricted to the SDK-owned settings
+app, so the screen works even when the product's local control endpoint is off.
 
-```
-macOS     ~/Library/Application Support/<bundle-id>/app_state/terminal.json
-Windows   %LOCALAPPDATA%\<productName>\data\app_state\terminal.json
-```
+Products normally use the SDK package. To develop or replace it, select one
+source in `lingxia.yaml`:
 
-`<productName>` is the one from `lingxia.yaml`. Rather than reconstruct either
-path, run `<exe> term path` — it prints the file the app actually reads.
-
-Every field is optional — write only what changes. A file that does not parse
-is reported and ignored; whatever was in effect stays, so a half-written save
-can never blank a terminal.
-
-```json
-{
-  "font": {
-    "family": ["JetBrains Mono", "SF Mono", "Menlo"],
-    "size": 13,
-    "lineHeight": 1.0,
-    "ligatures": true,
-    "bold": "weight"
-  },
-  "theme": {
-    "mode": "system",
-    "light": "lingxia-light",
-    "dark": "lingxia-dark",
-    "opacity": 1.0,
-    "cursor": { "style": "block", "blink": true }
-  }
-}
+```yaml
+terminal:
+  settings:
+    path: ../my-terminal-settings
+    # Or: package: "@example/terminal-settings"
+    #     version: 1.0.0
 ```
 
-- `font.family` is an **ordered candidate list** and the first family installed
-  on the machine wins. No font is bundled, so a single name is a guess.
-  Proportional families are skipped — a variable-width face does not merely
-  look wrong in a grid, it breaks every column.
-- `theme.light` and `theme.dark` are both kept, and `theme.mode`
-  (`system` | `light` | `dark`) decides which is in effect. Setting one
-  appearance's scheme never disturbs the other's.
+A package source must contain `lxapp.json` and a prebuilt `dist/` directory.
 
-## What a change costs
+## Configuration precedence
 
-| Changed | Effect on running sessions |
+Terminal configuration has three layers, lowest precedence first:
+
+1. LingXia framework defaults;
+2. product defaults from `lingxia.yaml`;
+3. user overrides in the product's `app_state/terminal.json`.
+
+Product defaults are a partial terminal configuration:
+
+```yaml
+terminal:
+  defaults:
+    font:
+      family: ["JetBrains Mono", "SF Mono", "Cascadia Code", "Consolas"]
+      size: 14
+      lineHeight: 1.05
+      ligatures: true
+      bold: weight
+    theme:
+      mode: system
+      light: lingxia-light
+      dark: lingxia-dark
+      opacity: 1
+      cursor:
+        style: block
+        blink: true
+```
+
+The build rejects unknown fields and invalid ranges. A user save stores only
+the values that differ from framework/product defaults, so later product
+default changes still reach users who did not override those fields.
+
+`font.family` is an ordered candidate list; the first installed monospaced
+family wins. No font is bundled. The settings screen reports the resolved
+family and missing candidates.
+
+`theme.light` and `theme.dark` stay independent. `theme.mode` is `system`,
+`light`, or `dark`. LingXia includes four original engine themes and the
+settings package includes licensed Dracula, Nord, and Solarized Dark choices
+with their notices.
+
+## Product command
+
+The product executable exposes scriptable terminal configuration through the
+same local, user-controlled endpoint as other product-control commands:
+
+```text
+myapp terminal config get --json
+myapp terminal config apply --patch '{"font":{"size":15}}' --json
+myapp terminal config reset font
+myapp terminal themes list --json
+myapp terminal themes import ./scheme.json --name my-scheme
+myapp terminal fonts list --json
+```
+
+Run `myapp terminal --help` and leaf-command `--help` for exact syntax. The
+endpoint stays closed until the user enables it with `myapp control enable`;
+declaring `capabilities.terminal` compiles the command path but does not grant
+automation access.
+
+`terminal config get` returns the resolved config, resolved font, current
+appearance, and exact user-file path. Use the settings screen or command for
+live changes. Directly editing `terminal.json` is supported as persistent
+input, but it is not watched; the edit is adopted on the next product start.
+
+## Runtime cost
+
+| Change | Effect on open sessions |
 |---|---|
-| theme, opacity, cursor | repaint only — colors resolve when a frame is drawn, so nothing reflows and no process is disturbed |
-| font family, size, line height, ligatures | the cell size changes, so the grid reflows and every running program is resized, exactly as on a window resize |
+| theme, opacity, cursor | repaint only; no process or grid resize |
+| font family, size, line height, ligatures | recompute cells and resize/reflow each open PTY grid |
 
-Changes apply live. The file is watched, so editing it by hand or syncing it
-from a dotfile repository behaves the same as the command below.
-
-## The `term` command
-
-The product's own executable doubles as the terminal's command line, and the
-command name is that executable's name **lowercased** — a host whose binary is
-`MyApp` answers to `myapp`:
-
-```
-myapp term --help
-```
-
-Run `--help` for the grammar; it is the only accurate source, and it covers
-status, theme, font and reset. The command is on `PATH` inside terminals the
-app opens; elsewhere it is the executable inside the application bundle.
-
-On Apple hosts this is `Lingxia.runTerminalCommandIfInvoked()`, called at the
-very top of `main` **before AppKit**: a configuration command must neither open
-a window nor initialize the runtime, because initialization opens the app's
-databases and collides with a running instance.
+A malformed user file is reported and ignored; framework/product defaults
+remain usable.
