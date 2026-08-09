@@ -2452,20 +2452,11 @@ private final class SidebarActionFlowView: NSView {
             let preferred = row.map {
                 min(width, max(Self.minimumCellWidth, $0.preferredCellWidth))
             }
-            let gaps = CGFloat(max(0, row.count - 1)) * Self.gap
-            let extra = max(0, width - preferred.reduce(0, +) - gaps)
+            let widths = fittedCellWidths(preferred, available: width)
             var x: CGFloat = 0
-            var allocatedExtra: CGFloat = 0
             for index in row.indices {
                 let isLast = index == row.count - 1
-                let share: CGFloat
-                if isLast {
-                    share = extra - allocatedExtra
-                } else {
-                    share = (extra / CGFloat(row.count)).rounded(.down)
-                    allocatedExtra += share
-                }
-                let cellWidth = isLast ? width - x : preferred[index] + share
+                let cellWidth = isLast ? width - x : widths[index]
                 row[index].frame = NSRect(
                     x: x,
                     y: y,
@@ -2485,21 +2476,45 @@ private final class SidebarActionFlowView: NSView {
         var start = 0
         var used: CGFloat = 0
         for index in entries.indices {
-            let preferred = min(
-                available,
-                max(Self.minimumCellWidth, entries[index].preferredCellWidth)
-            )
-            let next = index == start ? preferred : used + Self.gap + preferred
+            let minimum = min(available, Self.minimumCellWidth)
+            let next = index == start ? minimum : used + Self.gap + minimum
             if index > start && next > available {
                 rows.append(start..<index)
                 start = index
-                used = preferred
+                used = minimum
             } else {
                 used = next
             }
         }
         rows.append(start..<entries.count)
         return rows
+    }
+
+    private func fittedCellWidths(_ preferred: [CGFloat], available: CGFloat) -> [CGFloat] {
+        guard !preferred.isEmpty else { return [] }
+        let count = CGFloat(preferred.count)
+        let target = max(count, available - CGFloat(preferred.count - 1) * Self.gap)
+        let minimum = max(1, min(Self.minimumCellWidth, target / count))
+        var widths = preferred.map { min(target, max(minimum, $0)) }
+        var delta = target - widths.reduce(0, +)
+
+        while delta < -0.5 {
+            let shrinkable = widths.indices.filter { widths[$0] > minimum + 0.5 }
+            guard !shrinkable.isEmpty else { break }
+            let share = -delta / CGFloat(shrinkable.count)
+            for index in shrinkable {
+                let shrink = min(widths[index] - minimum, share, -delta)
+                widths[index] -= shrink
+                delta += shrink
+                if delta >= -0.5 { break }
+            }
+        }
+
+        if delta > 0 {
+            let share = delta / count
+            widths = widths.map { $0 + share }
+        }
+        return widths
     }
 }
 
