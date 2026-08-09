@@ -141,6 +141,152 @@ rong::js_api! {
     setEnabled(on: boolean): Promise<void>;
 }"###;
 
+        type TerminalBoldStyle = r###"'weight' | 'bright' | 'both'"###;
+        type TerminalThemeMode = r###"'system' | 'light' | 'dark'"###;
+        type TerminalCursorStyle = r###"'block' | 'bar' | 'underline' | 'blockHollow'"###;
+
+        type TerminalFontSettings = r###"{
+    /** Ordered candidates; the first installed monospaced family wins. */
+    family: string[];
+    size: number;
+    lineHeight: number;
+    ligatures: boolean;
+    bold: TerminalBoldStyle;
+}"###;
+
+        type TerminalCursorSettings = r###"{
+    style: TerminalCursorStyle;
+    blink: boolean;
+}"###;
+
+        type TerminalThemeSettings = r###"{
+    mode: TerminalThemeMode;
+    light: string;
+    dark: string;
+    opacity: number;
+    cursor: TerminalCursorSettings;
+}"###;
+
+        type TerminalSettingsValue = r###"{
+    font: TerminalFontSettings;
+    theme: TerminalThemeSettings;
+}"###;
+
+        type TerminalSettingsPatch = r###"{
+    font?: Partial<TerminalFontSettings>;
+    theme?: Omit<Partial<TerminalThemeSettings>, 'cursor'> & {
+        cursor?: Partial<TerminalCursorSettings>;
+    };
+}"###;
+
+        type TerminalSettingsWarning = r###"{
+    code: 'invalidUserFile' | 'missingColorScheme';
+    message: string;
+}"###;
+
+        type TerminalSettingsSnapshot = r###"{
+    /** Monotonic process revision used by update/reset compare-and-swap. */
+    revision: number;
+    /** Framework defaults with product defaults applied. */
+    defaults: TerminalSettingsValue;
+    /** User-authored fields only. */
+    overrides: TerminalSettingsPatch;
+    /** Resolved configuration after all valid layers. */
+    value: TerminalSettingsValue;
+    effective: {
+        appearance: 'light' | 'dark';
+        colorScheme: string | null;
+        font: {
+            family: string;
+            missing: string[];
+            fellBack: boolean;
+        };
+    };
+    warnings: TerminalSettingsWarning[];
+}"###;
+
+        type TerminalColorScheme = r###"{
+    name?: string;
+    background: string;
+    foreground: string;
+    cursorColor?: string;
+    selectionBackground?: string;
+    selectionForeground?: string;
+    black: string;
+    red: string;
+    green: string;
+    yellow: string;
+    blue: string;
+    purple: string;
+    cyan: string;
+    white: string;
+    brightBlack: string;
+    brightRed: string;
+    brightGreen: string;
+    brightYellow: string;
+    brightBlue: string;
+    brightPurple: string;
+    brightCyan: string;
+    brightWhite: string;
+}"###;
+
+        type TerminalColorSchemeDetails = r###"{
+    name: string;
+    source: 'builtIn' | 'imported';
+    scheme: TerminalColorScheme;
+}"###;
+
+        type InstalledTerminalFont = r###"{
+    family: string;
+    monospace: boolean;
+    ligatures: boolean;
+    nerdIcons: boolean;
+}"###;
+
+        type TerminalPreviewController = r###"{
+    /** Preview a stored name or an unpersisted scheme. Last request wins. */
+    show(scheme: string | TerminalColorScheme): Promise<void>;
+    /** Restore saved settings only when this controller owns the preview. */
+    clear(): Promise<void>;
+    /** Idempotently clear and retire this controller. */
+    close(): Promise<void>;
+}"###;
+
+        type TerminalSettingsApi = r###"{
+    get(): Promise<TerminalSettingsSnapshot>;
+    update(
+        patch: TerminalSettingsPatch,
+        options: { ifRevision: number },
+    ): Promise<TerminalSettingsSnapshot>;
+    reset(options: {
+        ifRevision: number;
+        scope?: 'font' | 'theme';
+    }): Promise<TerminalSettingsSnapshot>;
+    /** Fires after saved settings, effective appearance, or fonts change. */
+    onChange(listener: (snapshot: TerminalSettingsSnapshot) => void): () => void;
+}"###;
+
+        type TerminalColorSchemesApi = r###"{
+    list(): Promise<TerminalColorSchemeDetails[]>;
+    import(options: {
+        text: string;
+        name?: string;
+        /** Existing names are rejected unless overwrite is explicit. */
+        overwrite?: boolean;
+    }): Promise<TerminalColorSchemeDetails>;
+    createPreview(): TerminalPreviewController;
+}"###;
+
+        type TerminalFontsApi = r###"{
+    list(): Promise<InstalledTerminalFont[]>;
+}"###;
+
+        type TerminalApi = r###"{
+    readonly settings: TerminalSettingsApi;
+    readonly colorSchemes: TerminalColorSchemesApi;
+    readonly fonts: TerminalFontsApi;
+}"###;
+
         type BinaryFileData = r###"ArrayBuffer | ArrayBufferView"###;
 
         type AppearancePreference = r###"'auto' | 'light' | 'dark'"###;

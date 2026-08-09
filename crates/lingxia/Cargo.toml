@@ -26,7 +26,11 @@ browser-core = ["browser-runtime"]
 # bar support.
 browser-shell = ["browser-runtime", "dep:lingxia-browser-shell"]
 proxy = ["browser-shell", "lingxia-browser-shell/proxy"]
-terminal-runtime = ["dep:lingxia-terminal", "dep:lingxia-terminal-config"]
+terminal-runtime = [
+    "dep:lingxia-terminal",
+    "dep:lingxia-terminal-config",
+    "lingxia-logic?/terminal",
+]
 # The product's executable doubling as its own command line. Derived from the
 # `*Use` capabilities; clap only appears in a product that ships one.
 product-cli = ["dep:lingxia-control-commands"]

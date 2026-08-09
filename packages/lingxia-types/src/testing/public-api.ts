@@ -37,6 +37,11 @@ import type {
   Surface,
   SurfaceHandle,
   TabBarApi,
+  TerminalApi,
+  TerminalColorSchemesApi,
+  TerminalFontsApi,
+  TerminalPreviewController,
+  TerminalSettingsApi,
   TrayApi,
   UpdateManager,
   UploadTask,
@@ -110,6 +115,7 @@ export const LX_API_NAMES = [
   'stopWifi',
   'switchTab',
   'tabBar',
+  'terminal',
   'tray',
   'uploadFile',
   'vibrateLong',
@@ -130,6 +136,11 @@ const AUTOSTART_API = ['isEnabled', 'setEnabled'] as const;
 const APPEARANCE_API = ['get', 'set'] as const;
 const NAVIGATION_BAR_API = ['update'] as const;
 const TAB_BAR_API = ['update'] as const;
+const TERMINAL_API = ['colorSchemes', 'fonts', 'settings'] as const;
+const TERMINAL_SETTINGS_API = ['get', 'onChange', 'reset', 'update'] as const;
+const TERMINAL_COLOR_SCHEMES_API = ['createPreview', 'import', 'list'] as const;
+const TERMINAL_FONTS_API = ['list'] as const;
+const TERMINAL_PREVIEW_API = ['clear', 'close', 'show'] as const;
 const ENV_API = ['USER_CACHE_PATH', 'USER_DATA_PATH'] as const;
 const SHELL_API = ['sidebarActions'] as const;
 const SHELL_SIDEBAR_ACTIONS_API = ['clear', 'remove', 'replace', 'update'] as const;
@@ -308,6 +319,35 @@ export const LX_RUNTIME_SURFACES = [
     layer: 'logic',
     expression: 'lx.tabBar',
     members: TAB_BAR_API,
+  },
+  {
+    name: 'lx.terminal',
+    layer: 'logic',
+    expression: 'lx.terminal',
+    members: TERMINAL_API,
+    properties: TERMINAL_API,
+    optional: true,
+  },
+  {
+    name: 'lx.terminal.settings',
+    layer: 'logic',
+    expression: 'lx.terminal.settings',
+    members: TERMINAL_SETTINGS_API,
+    optional: true,
+  },
+  {
+    name: 'lx.terminal.colorSchemes',
+    layer: 'logic',
+    expression: 'lx.terminal.colorSchemes',
+    members: TERMINAL_COLOR_SCHEMES_API,
+    optional: true,
+  },
+  {
+    name: 'lx.terminal.fonts',
+    layer: 'logic',
+    expression: 'lx.terminal.fonts',
+    members: TERMINAL_FONTS_API,
+    optional: true,
   },
   {
     name: 'lx.env',
@@ -555,6 +595,11 @@ export type LxApiManifestGate = [
   AssertTrue<Exact<AppearanceApi, typeof APPEARANCE_API>>,
   AssertTrue<Exact<NavigationBarApi, typeof NAVIGATION_BAR_API>>,
   AssertTrue<Exact<TabBarApi, typeof TAB_BAR_API>>,
+  AssertTrue<Exact<TerminalApi, typeof TERMINAL_API>>,
+  AssertTrue<Exact<TerminalSettingsApi, typeof TERMINAL_SETTINGS_API>>,
+  AssertTrue<Exact<TerminalColorSchemesApi, typeof TERMINAL_COLOR_SCHEMES_API>>,
+  AssertTrue<Exact<TerminalFontsApi, typeof TERMINAL_FONTS_API>>,
+  AssertTrue<Exact<TerminalPreviewController, typeof TERMINAL_PREVIEW_API>>,
   AssertTrue<Exact<LxEnv, typeof ENV_API>>,
   AssertTrue<Exact<ShellApi, typeof SHELL_API>>,
   AssertTrue<Exact<ShellApi['sidebarActions'], typeof SHELL_SIDEBAR_ACTIONS_API>>,

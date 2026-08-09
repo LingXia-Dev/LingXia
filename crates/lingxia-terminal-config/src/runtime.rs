@@ -6,7 +6,10 @@
 //! is drawn, so a theme change is a repaint — and the host is told to re-read
 //! the font, which only it can resolve against what is installed.
 
-use crate::{InstalledFont, SurfaceChrome, TerminalConfig, ThemeStore};
+use crate::{
+    ConfigError, InstalledFont, SurfaceChrome, TerminalConfig, ThemeDetails, ThemeSource,
+    ThemeStore,
+};
 use lingxia_terminal::TerminalTheme;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -20,6 +23,10 @@ static CURRENT: OnceLock<Mutex<TerminalConfig>> = OnceLock::new();
 /// Bumped whenever the configuration in effect changes, so hosts notice with
 /// one atomic read on a poll they already run.
 static GENERATION: AtomicU64 = AtomicU64::new(0);
+
+/// Installed families affect the resolved snapshot without changing the saved
+/// settings revision.
+static FONT_GENERATION: AtomicU64 = AtomicU64::new(0);
 
 fn mutations() -> &'static Mutex<()> {
     static MUTATIONS: OnceLock<Mutex<()>> = OnceLock::new();
@@ -52,15 +59,45 @@ impl From<crate::ConfigError> for MutationError {
     }
 }
 
+#[derive(Debug)]
+pub enum ThemeImportError {
+    AlreadyExists(String),
+    Io(std::io::Error),
+}
+
+impl std::fmt::Display for ThemeImportError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::AlreadyExists(name) => write!(f, "terminal color scheme '{name}' already exists"),
+            Self::Io(error) => error.fmt(f),
+        }
+    }
+}
+
+impl std::error::Error for ThemeImportError {}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct MutationResult {
     pub config: TerminalConfig,
     pub revision: u64,
 }
 
+#[derive(Debug)]
+pub struct SettingsSnapshot {
+    pub revision: u64,
+    pub defaults: TerminalConfig,
+    pub overrides: serde_json::Value,
+    pub value: TerminalConfig,
+    pub warning: Option<ConfigError>,
+}
+
 /// The generation of the configuration in effect.
 pub fn generation() -> u64 {
     GENERATION.load(Ordering::Relaxed)
+}
+
+pub fn font_generation() -> u64 {
+    FONT_GENERATION.load(Ordering::Relaxed)
 }
 
 fn fonts() -> &'static Mutex<Vec<InstalledFont>> {
@@ -71,7 +108,11 @@ fn fonts() -> &'static Mutex<Vec<InstalledFont>> {
 /// Publish the platform's installed terminal families.
 pub fn set_installed_fonts(installed: Vec<InstalledFont>) {
     if let Ok(mut slot) = fonts().lock() {
+        if *slot == installed {
+            return;
+        }
         *slot = installed;
+        FONT_GENERATION.fetch_add(1, Ordering::Relaxed);
     }
 }
 
@@ -122,6 +163,39 @@ fn load_locked(
     apply_theme_locked(&app_data_dir, &config, system_is_dark);
     publish(config.clone());
     config
+}
+
+/// Atomically refresh the running configuration and return the persisted
+/// layers needed by a settings client.
+pub fn settings_snapshot(
+    app_data_dir: &std::path::Path,
+    product_defaults: &serde_json::Value,
+    system_is_dark: bool,
+) -> SettingsSnapshot {
+    let _guard = mutations()
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+    settings_snapshot_locked(app_data_dir, product_defaults, system_is_dark)
+}
+
+fn settings_snapshot_locked(
+    app_data_dir: &std::path::Path,
+    product_defaults: &serde_json::Value,
+    system_is_dark: bool,
+) -> SettingsSnapshot {
+    let layers = TerminalConfig::load_layers(app_data_dir, product_defaults);
+    if let Some(error) = layers.warning.as_ref() {
+        log::warn!("{error}; continuing on defaults");
+    }
+    apply_theme_locked(app_data_dir, &layers.value, system_is_dark);
+    let revision = publish(layers.value.clone());
+    SettingsSnapshot {
+        revision,
+        defaults: layers.defaults,
+        overrides: layers.overrides,
+        value: layers.value,
+        warning: layers.warning,
+    }
 }
 
 /// Persist and publish a partial configuration update.
@@ -195,6 +269,33 @@ fn validate_overlay_theme_names(
         }
     }
     Ok(())
+}
+
+/// Atomically import a color scheme. Importing is revision-visible because an
+/// overwritten active scheme changes the effective terminal without changing
+/// `terminal.json`.
+pub fn import_theme(
+    app_data_dir: &std::path::Path,
+    name: &str,
+    theme: &lingxia_terminal::TerminalTheme,
+    overwrite: bool,
+    system_is_dark: bool,
+) -> Result<ThemeDetails, ThemeImportError> {
+    let _guard = mutations()
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+    let store = ThemeStore::new(app_data_dir);
+    if store.contains(name) && !overwrite {
+        return Err(ThemeImportError::AlreadyExists(name.to_string()));
+    }
+    store.import(name, theme).map_err(ThemeImportError::Io)?;
+    apply_theme_locked(app_data_dir, &current_config(), system_is_dark);
+    GENERATION.fetch_add(1, Ordering::Relaxed);
+    Ok(ThemeDetails {
+        name: name.to_string(),
+        source: ThemeSource::Imported,
+        scheme: theme.clone(),
+    })
 }
 
 /// Remove all user overrides, or only the requested section.
@@ -271,7 +372,7 @@ fn require_revision(expected: u64) -> Result<(), MutationError> {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ThemePreviewLease(u64);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -358,27 +459,6 @@ pub fn end_theme_preview_for_request(
         return;
     }
     apply_theme_unlocked(app_data_dir, &current_config(), system_is_dark);
-}
-
-fn legacy_preview_lease() -> ThemePreviewLease {
-    static LEGACY: OnceLock<ThemePreviewLease> = OnceLock::new();
-    *LEGACY.get_or_init(create_theme_preview_lease)
-}
-
-/// Preview a scheme without persisting the selection.
-pub fn preview_theme(theme: &TerminalTheme) -> Result<(), String> {
-    let lease = legacy_preview_lease();
-    preview_theme_for_request(create_theme_preview_request(lease), theme)
-}
-
-/// End a preview by restoring the saved selection.
-pub fn end_theme_preview(app_data_dir: &std::path::Path, system_is_dark: bool) {
-    let lease = legacy_preview_lease();
-    end_theme_preview_for_request(
-        create_theme_preview_request(lease),
-        app_data_dir,
-        system_is_dark,
-    );
 }
 
 /// A generation means "this changed", not "this was read".

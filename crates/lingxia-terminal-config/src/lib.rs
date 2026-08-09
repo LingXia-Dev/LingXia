@@ -26,6 +26,9 @@ pub use theme::{
     ThemeStore, parse_scheme,
 };
 
+/// Host-bundled control lxapp allowed to manage terminal settings.
+pub const SETTINGS_APP_ID: &str = "app.lingxia.terminal-settings";
+
 /// File name inside the app's state directory.
 const CONFIG_FILE: &str = "terminal.json";
 
@@ -70,6 +73,22 @@ pub struct TerminalConfig {
     pub theme: ThemeConfig,
 }
 
+/// The three persisted configuration layers, resolved without exposing their
+/// host filesystem location to JavaScript.
+#[derive(Debug)]
+pub struct ConfigLayers {
+    /// Framework defaults with the product's `terminal.defaults` applied.
+    pub defaults: TerminalConfig,
+    /// Valid user-authored fields from `terminal.json`, or an empty object when
+    /// the file is absent or invalid.
+    pub overrides: serde_json::Value,
+    /// Configuration in effect after all valid layers are merged.
+    pub value: TerminalConfig,
+    /// A malformed or unreadable user file never prevents the terminal from
+    /// opening, but settings can surface the warning.
+    pub warning: Option<ConfigError>,
+}
+
 impl TerminalConfig {
     pub fn path(app_data_dir: &Path) -> PathBuf {
         lingxia_app_context::app_state_file(app_data_dir, CONFIG_FILE)
@@ -83,26 +102,48 @@ impl TerminalConfig {
         app_data_dir: &Path,
         product_defaults: &serde_json::Value,
     ) -> (Self, Option<ConfigError>) {
+        let layers = Self::load_layers(app_data_dir, product_defaults);
+        (layers.value, layers.warning)
+    }
+
+    /// Load every configuration layer for settings and diagnostics.
+    pub fn load_layers(app_data_dir: &Path, product_defaults: &serde_json::Value) -> ConfigLayers {
         let path = Self::path(app_data_dir);
+        let defaults = Self::from_defaults(product_defaults);
         let user = match std::fs::read_to_string(&path) {
             Ok(text) => match serde_json::from_str::<serde_json::Value>(&text) {
-                Ok(value) => value,
+                Ok(value) if value.is_object() => value,
+                Ok(_) => {
+                    return ConfigLayers {
+                        defaults: defaults.clone(),
+                        overrides: serde_json::json!({}),
+                        value: defaults,
+                        warning: Some(ConfigError::Invalid {
+                            path,
+                            reason: "terminal config must be an object".to_string(),
+                        }),
+                    };
+                }
                 Err(error) => {
-                    return (
-                        Self::from_defaults(product_defaults),
-                        Some(ConfigError::Invalid {
+                    return ConfigLayers {
+                        defaults: defaults.clone(),
+                        overrides: serde_json::json!({}),
+                        value: defaults,
+                        warning: Some(ConfigError::Invalid {
                             path,
                             reason: error.to_string(),
                         }),
-                    );
+                    };
                 }
             },
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => serde_json::Value::Null,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => serde_json::json!({}),
             Err(error) => {
-                return (
-                    Self::from_defaults(product_defaults),
-                    Some(ConfigError::Io(error)),
-                );
+                return ConfigLayers {
+                    defaults: defaults.clone(),
+                    overrides: serde_json::json!({}),
+                    value: defaults,
+                    warning: Some(ConfigError::Io(error)),
+                };
             }
         };
 
@@ -116,19 +157,28 @@ impl TerminalConfig {
         merge(&mut merged, &user);
         match serde_json::from_value::<Self>(merged) {
             Ok(config) => match config.validate() {
-                Ok(()) => (config, None),
-                Err(reason) => (
-                    Self::from_defaults(product_defaults),
-                    Some(ConfigError::Invalid { path, reason }),
-                ),
+                Ok(()) => ConfigLayers {
+                    defaults,
+                    overrides: user,
+                    value: config,
+                    warning: None,
+                },
+                Err(reason) => ConfigLayers {
+                    defaults: defaults.clone(),
+                    overrides: serde_json::json!({}),
+                    value: defaults,
+                    warning: Some(ConfigError::Invalid { path, reason }),
+                },
             },
-            Err(error) => (
-                Self::from_defaults(product_defaults),
-                Some(ConfigError::Invalid {
+            Err(error) => ConfigLayers {
+                defaults: defaults.clone(),
+                overrides: serde_json::json!({}),
+                value: defaults,
+                warning: Some(ConfigError::Invalid {
                     path,
                     reason: error.to_string(),
                 }),
-            ),
+            },
         }
     }
 
@@ -310,6 +360,36 @@ mod tests {
             "untouched keys keep the product default"
         );
         assert_eq!(config.theme.dark, "product-dark");
+    }
+
+    #[test]
+    fn settings_layers_preserve_only_valid_user_overrides() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let path = TerminalConfig::path(dir.path());
+        std::fs::create_dir_all(path.parent().expect("state dir")).expect("mkdir");
+        std::fs::write(&path, r#"{"font":{"size":16.0}}"#).expect("write");
+
+        let layers = TerminalConfig::load_layers(dir.path(), &defaults());
+        assert!(layers.warning.is_none());
+        assert_eq!(layers.defaults.font.size, 14.0);
+        assert_eq!(
+            layers.overrides,
+            serde_json::json!({"font": {"size": 16.0}})
+        );
+        assert_eq!(layers.value.font.size, 16.0);
+    }
+
+    #[test]
+    fn invalid_settings_layers_hide_the_bad_payload() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let path = TerminalConfig::path(dir.path());
+        std::fs::create_dir_all(path.parent().expect("state dir")).expect("mkdir");
+        std::fs::write(&path, r#"{"font":{"size":2.0}}"#).expect("write");
+
+        let layers = TerminalConfig::load_layers(dir.path(), &defaults());
+        assert!(matches!(layers.warning, Some(ConfigError::Invalid { .. })));
+        assert_eq!(layers.overrides, serde_json::json!({}));
+        assert_eq!(layers.value, layers.defaults);
     }
 
     #[test]

@@ -138,6 +138,12 @@ declare global {
 
   interface Lx {
     /**
+     * Terminal product settings. Present only in the host-bundled Terminal
+     * Settings lxapp when the host declares `capabilities.terminal`.
+     */
+    readonly terminal?: TerminalApi;
+
+    /**
      * Open a surface. Browser tabs resolve to `null`, declared surfaces to a
      * host-managed handle, and page surfaces to a full `Surface`. URL asides
      * return a `Surface` when docked and `null` in compact browser chrome.

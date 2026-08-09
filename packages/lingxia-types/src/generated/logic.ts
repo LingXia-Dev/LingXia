@@ -141,6 +141,12 @@ declare global {
 
   interface Lx {
     /**
+     * Terminal product settings. Present only in the host-bundled Terminal
+     * Settings lxapp when the host declares `capabilities.terminal`.
+     */
+    readonly terminal?: TerminalApi;
+
+    /**
      * Open a surface. Browser tabs resolve to `null`, declared surfaces to a
      * host-managed handle, and page surfaces to a full `Surface`. URL asides
      * return a `Surface` when docked and `null` in compact browser chrome.
@@ -646,6 +652,13 @@ export type HostAppUpdateTask = PromiseLike<HostAppUpdateResult> & AsyncIterable
     catch<TResult = never>(onrejected?: ((reason: unknown) => TResult | PromiseLike<TResult>) | null): Promise<HostAppUpdateResult | TResult>;
     finally(onfinally?: (() => void) | null): Promise<HostAppUpdateResult>;
     wait(): Promise<HostAppUpdateResult>;
+};
+
+export type InstalledTerminalFont = {
+    family: string;
+    monospace: boolean;
+    ligatures: boolean;
+    nerdIcons: boolean;
 };
 
 /**
@@ -1642,6 +1655,147 @@ export type TabBarPatch = {
 export type TabBarStylePatch = {
     foregroundColor?: string | null;
     selectedForegroundColor?: string | null;
+};
+
+export type TerminalApi = {
+    readonly settings: TerminalSettingsApi;
+    readonly colorSchemes: TerminalColorSchemesApi;
+    readonly fonts: TerminalFontsApi;
+};
+
+export type TerminalBoldStyle = 'weight' | 'bright' | 'both';
+
+export type TerminalColorScheme = {
+    name?: string;
+    background: string;
+    foreground: string;
+    cursorColor?: string;
+    selectionBackground?: string;
+    selectionForeground?: string;
+    black: string;
+    red: string;
+    green: string;
+    yellow: string;
+    blue: string;
+    purple: string;
+    cyan: string;
+    white: string;
+    brightBlack: string;
+    brightRed: string;
+    brightGreen: string;
+    brightYellow: string;
+    brightBlue: string;
+    brightPurple: string;
+    brightCyan: string;
+    brightWhite: string;
+};
+
+export type TerminalColorSchemeDetails = {
+    name: string;
+    source: 'builtIn' | 'imported';
+    scheme: TerminalColorScheme;
+};
+
+export type TerminalColorSchemesApi = {
+    list(): Promise<TerminalColorSchemeDetails[]>;
+    import(options: {
+        text: string;
+        name?: string;
+        /** Existing names are rejected unless overwrite is explicit. */
+        overwrite?: boolean;
+    }): Promise<TerminalColorSchemeDetails>;
+    createPreview(): TerminalPreviewController;
+};
+
+export type TerminalCursorSettings = {
+    style: TerminalCursorStyle;
+    blink: boolean;
+};
+
+export type TerminalCursorStyle = 'block' | 'bar' | 'underline' | 'blockHollow';
+
+export type TerminalFontSettings = {
+    /** Ordered candidates; the first installed monospaced family wins. */
+    family: string[];
+    size: number;
+    lineHeight: number;
+    ligatures: boolean;
+    bold: TerminalBoldStyle;
+};
+
+export type TerminalFontsApi = {
+    list(): Promise<InstalledTerminalFont[]>;
+};
+
+export type TerminalPreviewController = {
+    /** Preview a stored name or an unpersisted scheme. Last request wins. */
+    show(scheme: string | TerminalColorScheme): Promise<void>;
+    /** Restore saved settings only when this controller owns the preview. */
+    clear(): Promise<void>;
+    /** Idempotently clear and retire this controller. */
+    close(): Promise<void>;
+};
+
+export type TerminalSettingsApi = {
+    get(): Promise<TerminalSettingsSnapshot>;
+    update(
+        patch: TerminalSettingsPatch,
+        options: { ifRevision: number },
+    ): Promise<TerminalSettingsSnapshot>;
+    reset(options: {
+        ifRevision: number;
+        scope?: 'font' | 'theme';
+    }): Promise<TerminalSettingsSnapshot>;
+    /** Fires after saved settings, effective appearance, or fonts change. */
+    onChange(listener: (snapshot: TerminalSettingsSnapshot) => void): () => void;
+};
+
+export type TerminalSettingsPatch = {
+    font?: Partial<TerminalFontSettings>;
+    theme?: Omit<Partial<TerminalThemeSettings>, 'cursor'> & {
+        cursor?: Partial<TerminalCursorSettings>;
+    };
+};
+
+export type TerminalSettingsSnapshot = {
+    /** Monotonic process revision used by update/reset compare-and-swap. */
+    revision: number;
+    /** Framework defaults with product defaults applied. */
+    defaults: TerminalSettingsValue;
+    /** User-authored fields only. */
+    overrides: TerminalSettingsPatch;
+    /** Resolved configuration after all valid layers. */
+    value: TerminalSettingsValue;
+    effective: {
+        appearance: 'light' | 'dark';
+        colorScheme: string | null;
+        font: {
+            family: string;
+            missing: string[];
+            fellBack: boolean;
+        };
+    };
+    warnings: TerminalSettingsWarning[];
+};
+
+export type TerminalSettingsValue = {
+    font: TerminalFontSettings;
+    theme: TerminalThemeSettings;
+};
+
+export type TerminalSettingsWarning = {
+    code: 'invalidUserFile' | 'missingColorScheme';
+    message: string;
+};
+
+export type TerminalThemeMode = 'system' | 'light' | 'dark';
+
+export type TerminalThemeSettings = {
+    mode: TerminalThemeMode;
+    light: string;
+    dark: string;
+    opacity: number;
+    cursor: TerminalCursorSettings;
 };
 
 export type TrayApi = globalThis.TrayApi;

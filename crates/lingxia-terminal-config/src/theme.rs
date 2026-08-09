@@ -186,6 +186,10 @@ impl ThemeStore {
         Ok(path)
     }
 
+    pub fn contains(&self, name: &str) -> bool {
+        self.list().iter().any(|entry| entry.name == name)
+    }
+
     fn imported_names(&self) -> Vec<String> {
         let Ok(entries) = std::fs::read_dir(&self.directory) else {
             return Vec::new();

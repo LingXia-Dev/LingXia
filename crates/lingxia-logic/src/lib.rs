@@ -19,6 +19,8 @@ mod storage;
 mod surface;
 mod system;
 mod task_object;
+#[cfg(feature = "terminal")]
+mod terminal;
 mod ui;
 mod update;
 
@@ -48,6 +50,8 @@ impl LxLogicExtension for LxLogicRuntime {
         media::init(ctx)?;
         fs::init(ctx)?;
         storage::init(ctx)?;
+        #[cfg(feature = "terminal")]
+        terminal::init(ctx)?;
         Ok(())
     }
 }

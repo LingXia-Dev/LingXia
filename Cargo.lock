@@ -3408,6 +3408,8 @@ dependencies = [
  "lingxia-service",
  "lingxia-shell",
  "lingxia-surface",
+ "lingxia-terminal",
+ "lingxia-terminal-config",
  "lingxia-transfer",
  "log",
  "rong",
