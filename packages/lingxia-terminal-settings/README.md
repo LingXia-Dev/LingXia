@@ -1,9 +1,10 @@
 # @lingxia/terminal-settings
 
-The settings app bundled with LingXia's desktop terminal. It lets users choose
-fonts, color schemes, opacity, and cursor behavior through the product's native
-terminal settings routes.
+The Settings lxapp for LingXia's desktop terminal. It lets users choose fonts,
+color schemes, opacity, and cursor behavior through its capability-scoped
+`lx.terminal` Logic API.
 
-Products normally enable `capabilities.terminal` and use this package through
-the SDK. To develop a local copy, point `terminal.settings.path` in
-`lingxia.yaml` at this directory.
+Products enable `capabilities.terminal` and declare this package under
+`resources.bundles` with app id `app.lingxia.terminal-settings`. For local
+development, use a project-relative `path` to this directory instead of the
+npm `package` source.

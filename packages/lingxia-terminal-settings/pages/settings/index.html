@@ -5,114 +5,224 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="light dark" />
     <title>Terminal settings</title>
-    <link rel="stylesheet" href="lingxia://lxapp/public/settings.css" />
+    <link rel="stylesheet" href="../../public/settings.css" />
   </head>
   <body>
-    <main class="shell">
-      <header class="hero">
-        <div>
-          <p class="eyebrow">TERMINAL</p>
-          <h1>Make the prompt yours.</h1>
-          <p class="lede">Type, color, cursor, and contrast—applied to every terminal in this app.</p>
-        </div>
-        <div class="hero-actions">
-          <span class="state" id="state" aria-live="polite">Loading…</span>
-          <button class="button primary" id="save" disabled>Apply changes</button>
-        </div>
-      </header>
 
-      <section class="mode-card" aria-labelledby="appearance-heading">
-        <div class="section-heading">
-          <div>
-            <p class="section-number">01</p>
-            <h2 id="appearance-heading">Appearance</h2>
-          </div>
-          <button class="text-button" data-reset="theme">Reset appearance</button>
+    <main class="page">
+      <section class="group" aria-labelledby="appearance-heading">
+        <div class="group-head">
+          <h2 id="appearance-heading" data-i18n="appearance.title">Appearance</h2>
         </div>
-        <div class="mode-grid" id="mode-grid">
-          <button class="mode" data-mode="system"><span class="mode-art system"></span><strong>System</strong><small>Follow your desktop</small></button>
-          <button class="mode" data-mode="light"><span class="mode-art light"></span><strong>Light</strong><small>Always stay light</small></button>
-          <button class="mode" data-mode="dark"><span class="mode-art dark"></span><strong>Dark</strong><small>Always stay dark</small></button>
+
+        <div class="row stack">
+          <div class="row-label">
+            <span data-i18n="appearance.mode">Mode</span>
+            <small data-i18n="appearance.modeHint">Which scheme a terminal uses.</small>
+          </div>
+        </div>
+        <div class="modes" id="mode-grid" role="group" aria-label="Appearance mode">
+          <button data-mode="system">
+            <span class="mode-art system" aria-hidden="true"></span>
+            <em data-i18n="appearance.system">System</em>
+          </button>
+          <button data-mode="light">
+            <span class="mode-art light" aria-hidden="true"></span>
+            <em data-i18n="appearance.light">Light</em>
+          </button>
+          <button data-mode="dark">
+            <span class="mode-art dark" aria-hidden="true"></span>
+            <em data-i18n="appearance.dark">Dark</em>
+          </button>
+        </div>
+
+        <div class="row stack">
+          <div class="row-label">
+            <span data-i18n="appearance.scheme">Color scheme</span>
+            <small data-i18n="appearance.schemeHint">Hover a scheme to preview it in every open terminal. Light and dark are chosen separately.</small>
+          </div>
+          <div class="row-control">
+            <div class="segmented small" role="group" aria-label="Theme slot">
+              <button data-slot="dark" class="active" data-i18n="appearance.dark">Dark</button>
+              <button data-slot="light" data-i18n="appearance.light">Light</button>
+            </div>
+          </div>
+        </div>
+        <div class="themes" id="themes"></div>
+
+        <div class="row">
+          <div class="row-label">
+            <span data-i18n="appearance.import">Import a scheme</span>
+            <small data-i18n="appearance.importHint">Windows Terminal JSON, Xresources, or kitty conf.</small>
+          </div>
+          <div class="row-control">
+            <label class="btn"><span data-i18n="appearance.choose">Choose file</span><input id="theme-file" type="file" accept=".json,.conf,.txt" hidden /></label>
+          </div>
         </div>
       </section>
 
-      <section aria-labelledby="themes-heading">
-        <div class="section-heading">
-          <div>
-            <p class="section-number">02</p>
-            <h2 id="themes-heading">Color schemes</h2>
+      <section class="group" aria-labelledby="type-heading">
+        <div class="group-head">
+          <h2 id="type-heading" data-i18n="type.title">Type</h2>
+        </div>
+
+        <div class="row">
+          <div class="row-label">
+            <span data-i18n="type.families">Font candidates</span>
+            <small data-i18n="type.familiesHint">The first family installed on this machine wins.</small>
           </div>
-          <div class="slot-switch" role="group" aria-label="Theme slot">
-            <button data-slot="dark" class="active">Dark theme</button>
-            <button data-slot="light">Light theme</button>
+          <div class="row-control wide">
+            <input id="families" autocomplete="off" spellcheck="false" placeholder="JetBrains Mono, SF Mono, Consolas" />
+            <p class="hint" id="resolved-font" data-i18n="type.detecting">Detecting</p>
           </div>
         </div>
-        <p class="section-copy">Hover to preview across open terminals. Your light and dark choices stay independent.</p>
-        <div class="theme-grid" id="themes"></div>
-        <div class="import-row">
-          <div>
-            <strong>Bring your own scheme</strong>
-            <span>Windows Terminal JSON, Xresources, or kitty colors.</span>
+
+        <div class="row">
+          <div class="row-label">
+            <span data-i18n="type.installed">Installed families</span>
+            <small data-i18n="type.installedHint">Append one to the list above.</small>
           </div>
-          <label class="button secondary">Import file<input id="theme-file" type="file" accept=".json,.conf,.txt" hidden /></label>
+          <div class="row-control">
+            <select id="installed-fonts" data-picker="Add a family"><option value="">Add a family</option></select>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="row-label"><span data-i18n="type.size">Size</span></div>
+          <div class="row-control">
+            <div class="ranged">
+              <input class="ticks" data-for="font-size" type="range" min="8" max="32" step="0.5" list="size-ticks" />
+              <datalist id="size-ticks"><option value="8"></option><option value="12"></option><option value="16"></option><option value="20"></option><option value="24"></option><option value="28"></option><option value="32"></option></datalist>
+              <div class="stepper">
+                <input id="font-size" type="number" min="4" max="96" step="0.5" />
+                <span>pt</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="row-label">
+            <span data-i18n="type.lineHeight">Line height</span>
+            <small data-i18n="type.lineHeightHint">A multiple of the font size.</small>
+          </div>
+          <div class="row-control">
+            <div class="ranged">
+              <input class="ticks" data-for="line-height" type="range" min="0.8" max="2" step="0.05" list="lh-ticks" />
+              <datalist id="lh-ticks"><option value="0.8"></option><option value="1"></option><option value="1.2"></option><option value="1.4"></option><option value="1.6"></option><option value="1.8"></option><option value="2"></option></datalist>
+              <div class="stepper"><input id="line-height" type="number" min="0.5" max="3" step="0.05" /></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="row-label">
+            <span data-i18n="type.bold">Bold text</span>
+            <small data-i18n="type.boldHint">How a bold cell is drawn.</small>
+          </div>
+          <div class="row-control">
+            <select id="bold" data-picker>
+              <option value="weight" data-i18n="type.boldWeight">Heavier face</option>
+              <option value="bright" data-i18n="type.boldBright">Brighter color</option>
+              <option value="both" data-i18n="type.boldBoth">Both</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="row-label">
+            <span data-i18n="type.ligatures">Ligatures</span>
+            <small data-i18n="type.ligaturesHint">Shape sequences such as != and =&gt;.</small>
+          </div>
+          <div class="row-control">
+            <label class="switch"><input id="ligatures" type="checkbox" /><span></span></label>
+          </div>
         </div>
       </section>
 
-      <section aria-labelledby="type-heading">
-        <div class="section-heading">
-          <div>
-            <p class="section-number">03</p>
-            <h2 id="type-heading">Type</h2>
-          </div>
-          <button class="text-button" data-reset="font">Reset type</button>
+      <section class="group" aria-labelledby="general-heading">
+        <div class="group-head">
+          <h2 id="general-heading" data-i18n="general.title">General</h2>
         </div>
-        <div class="type-grid">
-          <label class="field wide">
-            <span>Font candidates</span>
-            <input id="families" autocomplete="off" placeholder="JetBrains Mono, SF Mono, Consolas" />
-            <small>First installed monospaced family wins.</small>
-          </label>
-          <label class="field">
-            <span>Installed fonts</span>
-            <select id="installed-fonts"><option value="">Add a family…</option></select>
-            <small id="resolved-font">Detecting…</small>
-          </label>
-          <label class="field number">
-            <span>Size</span>
-            <div class="unit"><input id="font-size" type="number" min="4" max="96" step="0.5" /><b>pt</b></div>
-          </label>
-          <label class="field number">
-            <span>Line height</span>
-            <input id="line-height" type="number" min="0.5" max="3" step="0.05" />
-          </label>
-          <label class="field">
-            <span>Bold text</span>
-            <select id="bold"><option value="weight">Heavier face</option><option value="bright">Brighter color</option><option value="both">Both</option></select>
-          </label>
-          <label class="check"><input id="ligatures" type="checkbox" /><span><strong>Font ligatures</strong><small>Shape sequences such as != and =&gt;.</small></span></label>
+        <div class="row">
+          <div class="row-label">
+            <span data-i18n="general.language">Language</span>
+            <small data-i18n="general.languageHint">Applies to this screen. Not saved yet.</small>
+          </div>
+          <div class="row-control">
+            <select id="language" data-picker>
+              <option value="system" data-i18n="general.systemDefault">System default</option>
+              <option value="en-US">English</option>
+              <option value="zh-CN">简体中文</option>
+            </select>
+          </div>
         </div>
       </section>
 
-      <section aria-labelledby="finish-heading">
-        <div class="section-heading">
-          <div>
-            <p class="section-number">04</p>
-            <h2 id="finish-heading">Finish</h2>
+      <section class="group" aria-labelledby="window-heading">
+        <div class="group-head">
+          <h2 id="window-heading" data-i18n="window.title">Window</h2>
+        </div>
+
+        <div class="row">
+          <div class="row-label">
+            <span data-i18n="window.opacity">Background opacity</span>
+            <small data-i18n="window.opacityHint">Fully opaque hides whatever is behind the terminal.</small>
+          </div>
+          <div class="row-control">
+            <div class="slider">
+              <input id="opacity" type="range" min="0" max="1" step="0.01" />
+              <output id="opacity-value"></output>
+            </div>
           </div>
         </div>
-        <div class="finish-grid">
-          <label class="field"><span>Background opacity</span><div class="range-row"><input id="opacity" type="range" min="0" max="1" step="0.01" /><output id="opacity-value"></output></div></label>
-          <label class="field"><span>Cursor</span><select id="cursor-style"><option value="block">Block</option><option value="bar">Bar</option><option value="underline">Underline</option><option value="blockHollow">Hollow block</option></select></label>
-          <label class="check"><input id="cursor-blink" type="checkbox" /><span><strong>Blink cursor</strong><small>Keep the insertion point easy to find.</small></span></label>
+
+        <div class="row">
+          <div class="row-label"><span data-i18n="window.cursor">Cursor</span></div>
+          <div class="row-control">
+            <select id="cursor-style" data-picker>
+              <option value="block" data-i18n="window.block">Block</option>
+              <option value="bar" data-i18n="window.bar">Bar</option>
+              <option value="underline" data-i18n="window.underline">Underline</option>
+              <option value="blockHollow" data-i18n="window.blockHollow">Hollow block</option>
+            </select>
+          </div>
         </div>
-        <footer>
-          <code id="config-path"></code>
-          <button class="text-button danger" data-reset="all">Reset everything</button>
-        </footer>
+
+        <div class="row">
+          <div class="row-label">
+            <span data-i18n="window.blink">Blink</span>
+            <small data-i18n="window.blinkHint">Keep the insertion point easy to find.</small>
+          </div>
+          <div class="row-control">
+            <label class="switch"><input id="cursor-blink" type="checkbox" /><span></span></label>
+          </div>
+        </div>
       </section>
+
+      <section class="group">
+        <div class="row danger-row">
+          <div class="row-label">
+            <span data-i18n="reset.title">Reset everything</span>
+            <small data-i18n="reset.hint">Drops every override and returns to what this product ships.</small>
+          </div>
+          <div class="row-control">
+            <button class="btn danger" data-reset="all" data-i18n="reset.action">Reset</button>
+          </div>
+        </div>
+      </section>
+
     </main>
+
+    <div class="actions" id="actions" role="region" aria-label="Pending changes">
+      <span class="state" id="state" aria-live="polite" data-i18n="app.state.loading">Loading</span>
+      <button class="btn primary" id="save" disabled data-i18n="app.apply">Apply</button>
+    </div>
+
     <div class="toast" id="toast" role="status"></div>
-    <script src="lingxia://lxapp/public/themes.js"></script>
-    <script src="lingxia://lxapp/public/settings.js"></script>
+    <script src="../../public/i18n.js"></script>
+    <script src="../../public/themes.js"></script>
+    <script src="../../public/picker.js"></script>
+    <script src="../../public/settings.js"></script>
   </body>
 </html>

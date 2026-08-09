@@ -2311,8 +2311,7 @@ pub fn terminal_register_fonts(fonts_json: &str) {
 pub fn terminal_load_config(system_is_dark: bool) -> String {
     #[cfg(feature = "terminal-runtime")]
     {
-        let config = crate::terminal::load_for_app(system_is_dark)
-            .unwrap_or_else(crate::terminal::TerminalConfig::default);
+        let config = crate::terminal::load_for_app(system_is_dark).unwrap_or_default();
         serde_json::to_string(&config).unwrap_or_else(|_| "{}".to_string())
     }
 

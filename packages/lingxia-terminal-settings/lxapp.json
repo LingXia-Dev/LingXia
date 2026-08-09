@@ -3,7 +3,8 @@
   "name": "Terminal Settings",
   "version": "0.11.2",
   "icon": "public/terminal-settings.svg",
-  "logic": false,
+  "framework": "html",
+  "logic": true,
   "security": {
     "network": {
       "trustedDomains": []

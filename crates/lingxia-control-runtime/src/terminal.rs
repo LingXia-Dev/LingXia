@@ -29,12 +29,6 @@ fn handle_terminal_command_impl(
         name: Option<String>,
     }
 
-    #[derive(Deserialize)]
-    struct PreviewArgs {
-        scheme: Option<lingxia::terminal::TerminalTheme>,
-        name: Option<String>,
-    }
-
     let value = match method {
         methods::terminal::CONFIG_GET => to_value(lingxia::terminal::config_get()?)?,
         methods::terminal::CONFIG_APPLY => {
@@ -52,15 +46,6 @@ fn handle_terminal_command_impl(
                 &args.text,
                 args.name.as_deref(),
             )?)?
-        }
-        methods::terminal::THEMES_PREVIEW => {
-            let args: PreviewArgs = parse_required(method, params)?;
-            lingxia::terminal::theme_preview(args.scheme, args.name.as_deref())?;
-            serde_json::Value::Null
-        }
-        methods::terminal::THEMES_PREVIEW_END => {
-            lingxia::terminal::theme_preview_end()?;
-            serde_json::Value::Null
         }
         methods::terminal::FONTS_LIST => to_value(lingxia::terminal::fonts_list())?,
         other => return Err(format!("unknown terminal handler: {other}")),

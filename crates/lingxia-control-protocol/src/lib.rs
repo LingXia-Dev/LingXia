@@ -120,8 +120,6 @@ pub mod methods {
         pub const CONFIG_RESET: &str = "terminal.config.reset";
         pub const THEMES_LIST: &str = "terminal.themes.list";
         pub const THEMES_IMPORT: &str = "terminal.themes.import";
-        pub const THEMES_PREVIEW: &str = "terminal.themes.preview";
-        pub const THEMES_PREVIEW_END: &str = "terminal.themes.previewEnd";
         pub const FONTS_LIST: &str = "terminal.fonts.list";
     }
 

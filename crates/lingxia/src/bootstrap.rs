@@ -255,8 +255,6 @@ pub(crate) fn init_with_platform(
     #[cfg(feature = "devtool")]
     crate::devtool::prepare_bundle_sources(&runtime);
     crate::host_addon::run_install_logic_extensions();
-    #[cfg(feature = "terminal-runtime")]
-    crate::terminal_config_impl::register_settings_routes();
     crate::host_addon::run_install_host_apis();
     crate::browser::register_bundled_app();
     crate::browser::register_builtin_runtime();

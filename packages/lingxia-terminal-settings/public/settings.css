@@ -1,103 +1,679 @@
+/*
+ * Terminal settings.
+ *
+ * Palette from the LingXia mark (design/app-icon/README.md): ink on paper,
+ * with the jade pearl as the one accent. Jade carries selection and focus and
+ * nothing else, so the colour on this screen belongs to the schemes on offer.
+ *
+ * A settings surface for people who live in a terminal, so it is built like an
+ * instrument rather than a page: neutral chrome, one accent reserved for
+ * selection and focus, and every value in the same monospace the thing it
+ * configures uses. The colour in this app belongs to the schemes on offer; if
+ * the chrome competes with them, the swatches stop reading as samples.
+ *
+ * Dark is not a variant here. A terminal's settings are opened from a dark
+ * screen more often than not, so both modes carry the full token set and
+ * neither is a patch on the other.
+ */
+
 :root {
+  --bg: #fafaf7;
+  --surface: #ffffff;
+  --surface-sunk: #f2f2ee;
+  --line: #e4e4de;
+  --line-strong: #d0d0c8;
+  --text: #1b1f26;
+  --text-dim: #6a6f78;
+  --text-faint: #9498a0;
+  --accent: #14cf95;
+  --accent-fg: #07281e;
+  --accent-weak: rgba(20, 207, 149, 0.14);
+  --danger: #c0392b;
+  --focus: #14cf95;
+  --shadow: 0 8px 28px rgba(27, 31, 38, 0.1);
+  --radius: 9px;
+  --radius-lg: 12px;
+
+  --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+
   color-scheme: light;
-  --ink: #17191c;
-  --muted: #697078;
-  --line: #dfe3e6;
-  --paper: #f4f3ef;
-  --card: #fbfaf7;
-  --accent: #e85d3f;
-  --accent-ink: #fff8f4;
-  --focus: #2b6ee8;
-  font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+/*
+ * The runtime projects the lxapp's resolved branch onto <html> as
+ * `data-theme`, and an in-place switch lands there before the platform media
+ * query catches up. So the attribute is what the page keys off, and the media
+ * query is the no-JS first-paint fallback only, guarded so it cannot win over
+ * someone who has pinned light.
+ */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #15181d;
+    --surface: #1d2127;
+    --surface-sunk: #111419;
+    --line: #2a2f36;
+    --line-strong: #3a4048;
+    --text: #f4f5f2;
+    --text-dim: #a2a8b0;
+    --text-faint: #757b84;
+    --accent: #1fdda4;
+    --accent-fg: #06231a;
+    --accent-weak: rgba(31, 221, 164, 0.16);
+    --danger: #ef6a5c;
+    --focus: #1fdda4;
+    --shadow: 0 10px 34px rgba(0, 0, 0, 0.55);
+
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme="dark"] {
+  --bg: #15181d;
+  --surface: #1d2127;
+  --surface-sunk: #111419;
+  --line: #2a2f36;
+  --line-strong: #3a4048;
+  --text: #f4f5f2;
+  --text-dim: #a2a8b0;
+  --text-faint: #757b84;
+  --accent: #1fdda4;
+  --accent-fg: #06231a;
+  --accent-weak: rgba(31, 221, 164, 0.16);
+  --danger: #ef6a5c;
+  --focus: #1fdda4;
+  --shadow: 0 10px 34px rgba(0, 0, 0, 0.55);
+
+  color-scheme: dark;
 }
 
 * { box-sizing: border-box; }
-html { background: var(--paper); }
-body { margin: 0; color: var(--ink); background: var(--paper); }
-button, input, select { font: inherit; }
-button { color: inherit; }
-.shell { width: min(1080px, calc(100% - 64px)); margin: 0 auto; padding: 64px 0 80px; }
 
-.hero { display: flex; align-items: end; justify-content: space-between; gap: 36px; padding: 0 0 48px; border-bottom: 1px solid var(--ink); }
-.eyebrow, .section-number { margin: 0 0 12px; font: 700 11px/1 ui-monospace, SFMono-Regular, Consolas, monospace; letter-spacing: .18em; color: var(--accent); }
-h1 { max-width: 680px; margin: 0; font: 600 clamp(42px, 6vw, 72px)/.98 Georgia, "Times New Roman", serif; letter-spacing: -.045em; }
-.lede { max-width: 570px; margin: 20px 0 0; color: var(--muted); font-size: 15px; line-height: 1.55; }
-.hero-actions { min-width: 170px; display: flex; align-items: flex-end; flex-direction: column; gap: 10px; }
-.state { color: var(--muted); font: 12px/1.3 ui-monospace, SFMono-Regular, Consolas, monospace; }
+html { background: var(--bg); }
 
-section { padding: 42px 0; border-bottom: 1px solid var(--line); }
-.section-heading { display: flex; align-items: end; justify-content: space-between; gap: 24px; margin-bottom: 22px; }
-.section-number { margin-bottom: 8px; }
-h2 { margin: 0; font: 600 28px/1.1 Georgia, "Times New Roman", serif; letter-spacing: -.025em; }
-.section-copy { margin: -10px 0 22px; color: var(--muted); font-size: 13px; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 400 13px/1.5 var(--sans);
+  -webkit-font-smoothing: antialiased;
+}
 
-.button { display: inline-flex; align-items: center; justify-content: center; min-height: 40px; padding: 0 17px; border: 1px solid transparent; border-radius: 999px; cursor: pointer; font-weight: 650; font-size: 13px; transition: transform 120ms, opacity 120ms, background 120ms; }
-.button:hover:not(:disabled) { transform: translateY(-1px); }
-.button:disabled { cursor: default; opacity: .45; }
-.button.primary { background: var(--ink); color: white; }
-.button.secondary { border-color: #cfd4d7; background: var(--card); }
-.text-button { padding: 4px 0; border: 0; background: transparent; color: var(--muted); cursor: pointer; font-size: 12px; text-decoration: underline; text-underline-offset: 3px; }
-.text-button:hover { color: var(--ink); }
-.text-button.danger:hover { color: #b62d2d; }
+button, input, select, output { font: inherit; color: inherit; }
 
-.mode-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
-.mode { padding: 11px; text-align: left; border: 1px solid var(--line); border-radius: 16px; background: rgba(255,255,255,.42); cursor: pointer; }
-.mode.active { border-color: var(--ink); box-shadow: 0 0 0 1px var(--ink); }
-.mode-art { display: block; height: 86px; margin-bottom: 13px; border-radius: 9px; border: 1px solid rgba(0,0,0,.1); overflow: hidden; }
-.mode-art::after { content: "$_"; display: block; width: 62%; height: 48px; margin: 18px auto; padding: 10px; border-radius: 5px; font: 12px/1 ui-monospace, monospace; }
-.mode-art.light { background: #efeee9; }.mode-art.light::after { background: white; color: #1d252c; }
-.mode-art.dark { background: #20242a; }.mode-art.dark::after { background: #101318; color: #d7e4da; }
-.mode-art.system { background: linear-gradient(110deg,#efeee9 0 49.8%,#20242a 50.2%); }.mode-art.system::after { background: linear-gradient(110deg,#fff 0 49.8%,#101318 50.2%); color: var(--accent); }
-.mode strong, .mode small { display: block; }.mode strong { font-size: 13px; }.mode small { margin-top: 3px; color: var(--muted); font-size: 11px; }
+/* ----------------------------------------------------------------- layout */
 
-.slot-switch { display: flex; padding: 3px; border: 1px solid var(--line); border-radius: 999px; background: rgba(255,255,255,.5); }
-.slot-switch button { padding: 7px 12px; border: 0; border-radius: 999px; background: transparent; color: var(--muted); cursor: pointer; font-size: 11px; font-weight: 650; }
-.slot-switch button.active { background: var(--ink); color: white; }
-.theme-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
-.theme { position: relative; min-height: 128px; padding: 17px; overflow: hidden; border: 2px solid transparent; border-radius: 16px; text-align: left; cursor: pointer; box-shadow: inset 0 0 0 1px rgba(255,255,255,.16); }
-.theme.active { border-color: var(--accent); }
-.theme-name { display: block; font-size: 13px; font-weight: 750; }.theme-source { display: block; margin-top: 4px; font-size: 10px; opacity: .68; text-transform: uppercase; letter-spacing: .08em; }
-.theme-sample { display: block; margin-top: 22px; font: 600 19px/1 ui-monospace, SFMono-Regular, Consolas, monospace; }
-.ramp { position: absolute; right: 14px; bottom: 14px; display: flex; }.ramp i { width: 10px; height: 10px; border-radius: 50%; margin-left: -2px; border: 1px solid rgba(255,255,255,.35); }
-.theme-license { position: absolute; top: 15px; right: 15px; color: inherit; opacity: .62; font-size: 9px; text-decoration: none; }
-.import-row { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-top: 14px; padding: 17px 18px; border: 1px dashed #bfc5c9; border-radius: 14px; }
-.import-row strong, .import-row span { display: block; }.import-row strong { font-size: 13px; }.import-row span { margin-top: 4px; color: var(--muted); font-size: 11px; }
+.page {
+  width: min(720px, calc(100% - 48px));
+  margin: 0 auto;
+  /* Room for the action strip, which floats over the end of the list. */
+  /* Clears the fixed action strip, which must never sit on a control. */
+  padding: 28px 0 86px;
+}
 
-.type-grid, .finish-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
-.field, .check { min-width: 0; padding: 15px; border: 1px solid var(--line); border-radius: 14px; background: rgba(255,255,255,.45); }
-.field.wide { grid-column: span 2; }.field > span { display: block; margin-bottom: 10px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
-.field input:not([type="range"]), .field select { width: 100%; height: 38px; padding: 0 10px; border: 1px solid #cbd0d4; border-radius: 9px; color: var(--ink); background: var(--card); }
-.field small { display: block; min-height: 26px; margin-top: 8px; color: var(--muted); font-size: 10px; line-height: 1.35; }
-.unit { display: flex; align-items: center; }.unit input { border-radius: 9px 0 0 9px !important; }.unit b { height: 38px; padding: 10px 9px; border: 1px solid #cbd0d4; border-left: 0; border-radius: 0 9px 9px 0; color: var(--muted); background: var(--card); font-size: 11px; }
-.check { display: flex; align-items: center; gap: 11px; cursor: pointer; }.check input { width: 18px; height: 18px; accent-color: var(--accent); }.check strong, .check small { display: block; }.check strong { font-size: 12px; }.check small { margin-top: 4px; color: var(--muted); font-size: 10px; line-height: 1.3; }
-.finish-grid { grid-template-columns: 2fr 1fr 1fr; }.range-row { display: flex; align-items: center; gap: 12px; }.range-row input { flex: 1; accent-color: var(--accent); }.range-row output { width: 42px; font: 11px/1 ui-monospace, monospace; }
+.group + .group { margin-top: 34px; }
 
-footer { display: flex; align-items: center; justify-content: space-between; gap: 24px; margin-top: 18px; color: var(--muted); } footer code { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10px; }
-.toast { position: fixed; left: 50%; bottom: 24px; z-index: 50; max-width: min(520px, calc(100% - 40px)); padding: 11px 16px; border-radius: 999px; background: var(--ink); color: white; font-size: 12px; box-shadow: 0 12px 32px rgba(0,0,0,.2); opacity: 0; transform: translate(-50%, 12px); pointer-events: none; transition: 160ms; }.toast.show { opacity: 1; transform: translate(-50%, 0); }.toast.error { background: #a72b2b; }
+.group-head { padding-bottom: 9px; }
+
+.group h2 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 620;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+/*
+ * Rows, not cards. Elevation would say these settings are separable things;
+ * they are one list, and a hairline says that with less furniture.
+ */
+.row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 232px);
+  align-items: center;
+  gap: 16px 24px;
+  padding: 13px 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-bottom-width: 0;
+}
+
+.row:first-of-type { border-radius: var(--radius-lg) var(--radius-lg) 0 0; }
+
+.row:last-of-type {
+  border-bottom-width: 1px;
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+}
+
+.row:only-of-type { border-radius: var(--radius-lg); border-bottom-width: 1px; }
+
+.row.stack { border-radius: 0; }
+
+.row-label span { display: block; font-weight: 520; }
+
+.row-label small {
+  display: block;
+  margin-top: 3px;
+  color: var(--text-dim);
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
+.row-control { display: flex; justify-content: flex-end; min-width: 0; }
+
+/*
+ * A free-text field is the one control that cannot live in the narrow column:
+ * a font candidate list is long, and truncating it hides the ordering that is
+ * the whole point of the setting.
+ */
+.row:has(.row-control.wide) { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+.row-control.wide { display: block; justify-content: stretch; }
+.row-control > input[type="text"], .row-control > input:not([type]) { width: 100%; }
+
+.hint {
+  margin: 7px 0 0;
+  color: var(--text-faint);
+  font: 400 11px/1.4 var(--mono);
+  overflow-wrap: anywhere;
+}
+
+/* ---------------------------------------------------------------- buttons */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 30px;
+  padding: 0 13px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+  cursor: pointer;
+  white-space: nowrap;
+  font-size: 12.5px;
+  font-weight: 520;
+  transition: background 120ms, border-color 120ms, opacity 120ms;
+}
+
+.btn:hover:not(:disabled) { border-color: var(--text-faint); }
+.btn:active:not(:disabled) { transform: translateY(0.5px); }
+.btn:disabled { cursor: default; opacity: 0.45; }
+
+.btn.primary {
+  border-color: transparent;
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+
+.btn.primary:hover:not(:disabled) {
+  border-color: transparent;
+  background: color-mix(in srgb, var(--accent) 88%, black);
+}
+
+.btn.quiet {
+  height: 24px;
+  padding: 0 7px;
+  border-color: transparent;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 11.5px;
+}
+
+.btn.quiet:hover { background: var(--surface-sunk); border-color: transparent; color: var(--text); }
+.btn.quiet.danger:hover { color: var(--danger); }
+
+/* ------------------------------------------------------------- segmented */
+
+.segmented {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-sunk);
+}
+
+.segmented button {
+  padding: 5px 11px;
+  border: 0;
+  border-radius: calc(var(--radius) - 3px);
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 520;
+  transition: background 120ms, color 120ms;
+}
+
+.segmented button:hover { color: var(--text); }
+
+.segmented button.active {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+}
+
+.segmented.small button { padding: 4px 9px; font-size: 11.5px; }
+
+/* ----------------------------------------------------------------- inputs */
+
+input[type="text"], input:not([type]), input[type="number"] {
+  width: 100%;
+  height: 30px;
+  padding: 0 9px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--surface-sunk);
+  font: 400 12.5px/1 var(--mono);
+  transition: border-color 120ms, background 120ms;
+}
+
+input::placeholder { color: var(--text-faint); }
+input:focus { background: var(--surface); }
+
+.stepper { display: inline-flex; align-items: center; gap: 7px; }
+.stepper input { width: 78px; text-align: right; }
+.stepper span { color: var(--text-faint); font: 400 11px/1 var(--mono); }
+
+.slider { display: flex; align-items: center; gap: 12px; width: 100%; }
+.slider input { flex: 1; accent-color: var(--accent); min-width: 0; }
+.slider output { width: 40px; text-align: right; font: 400 11.5px/1 var(--mono); color: var(--text-dim); }
+
+/* A switch reads as a setting; a checkbox reads as a form field. */
+.switch { position: relative; display: inline-block; width: 38px; height: 22px; cursor: pointer; }
+.switch input { position: absolute; opacity: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
+
+.switch span {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background: var(--line-strong);
+  transition: background 140ms;
+}
+
+.switch span::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+  transition: transform 140ms;
+}
+
+.switch input:checked + span { background: var(--accent); }
+.switch input:checked + span::after { transform: translateX(16px); }
+.switch input:focus-visible + span { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+/* ----------------------------------------------------------------- picker */
+
+.picker { position: relative; display: inline-block; min-width: 0; max-width: 100%; }
+.picker select { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+
+.picker-button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-width: 148px;
+  height: 30px;
+  padding: 0 9px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--surface-sunk);
+  cursor: pointer;
+  text-align: left;
+  font-size: 12.5px;
+  transition: border-color 120ms, background 120ms;
+}
+
+.picker-button:hover { border-color: var(--text-faint); }
+.picker.open .picker-button { background: var(--surface); border-color: var(--text-faint); }
+
+.picker-value { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.picker-value.placeholder { color: var(--text-faint); }
+
+.picker-caret {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  margin-top: -3px;
+  border-right: 1.5px solid var(--text-faint);
+  border-bottom: 1.5px solid var(--text-faint);
+  transform: rotate(45deg);
+  transition: transform 140ms;
+}
+
+.picker.open .picker-caret { margin-top: 2px; transform: rotate(-135deg); }
+
+.picker-list {
+  position: absolute;
+  top: calc(100% + 5px);
+  right: 0;
+  z-index: 30;
+  min-width: 100%;
+  max-height: 268px;
+  overflow-y: auto;
+  padding: 4px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.picker-option {
+  display: block;
+  width: 100%;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: calc(var(--radius) - 2px);
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  white-space: nowrap;
+  font-size: 12.5px;
+}
+
+.picker-option:hover, .picker-option:focus-visible { background: var(--surface-sunk); outline: none; }
+.picker-option.selected { background: var(--accent-weak); color: var(--accent); font-weight: 560; }
+
+/* ----------------------------------------------------------------- themes */
+
+.themes:empty::after {
+  content: "No schemes yet. Import one below.";
+  color: var(--text-faint);
+  font-size: 12px;
+}
+
+.themes:empty { display: block; padding: 11px 14px; }
+
+.themes {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(178px, 1fr));
+  gap: 9px;
+  padding: 13px 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-bottom-width: 0;
+}
+
+.theme {
+  position: relative;
+  padding: 11px 12px 12px;
+  overflow: hidden;
+  border: 1px solid rgba(128, 128, 128, 0.22);
+  border-radius: var(--radius);
+  cursor: pointer;
+  text-align: left;
+  transition: transform 120ms, box-shadow 120ms;
+}
+
+.theme:hover { transform: translateY(-1px); }
+.theme.active { border-color: var(--accent); box-shadow: 0 0 0 1.5px var(--accent); }
+
+.theme-name { display: block; font-size: 12.5px; font-weight: 600; }
+
+.theme-source {
+  display: block;
+  margin-top: 2px;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  opacity: 0.6;
+}
+
+.theme-sample { display: block; margin-top: 16px; font: 500 15px/1 var(--mono); }
+
+.ramp { display: flex; gap: 3px; margin-top: 11px; }
+.ramp i { width: 9px; height: 9px; border-radius: 2px; }
+
+.theme-license {
+  position: absolute;
+  top: 11px;
+  right: 11px;
+  color: inherit;
+  opacity: 0.5;
+  font-size: 9.5px;
+  text-decoration: none;
+}
+
+.theme-license:hover { opacity: 0.9; }
+
+/* ------------------------------------------------------------------ toast */
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 22px;
+  z-index: 60;
+  max-width: min(460px, calc(100% - 36px));
+  padding: 9px 15px;
+  border-radius: var(--radius);
+  background: var(--text);
+  color: var(--bg);
+  font-size: 12px;
+  box-shadow: var(--shadow);
+  opacity: 0;
+  transform: translate(-50%, 8px);
+  pointer-events: none;
+  transition: opacity 160ms, transform 160ms;
+}
+
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
+.toast.error { background: var(--danger); color: #fff; }
+
 *:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 
-@media (max-width: 820px) {
-  .shell { width: calc(100% - 36px); padding-top: 36px; }
-  .hero { align-items: flex-start; flex-direction: column; }.hero-actions { align-items: flex-start; }
-  .theme-grid, .mode-grid { grid-template-columns: repeat(2, 1fr); }
-  .type-grid, .finish-grid { grid-template-columns: repeat(2, 1fr); }.field.wide { grid-column: span 2; }
+/* ------------------------------------------------------------- responsive */
+
+@media (max-width: 640px) {
+  .bar-inner, .page { width: calc(100% - 32px); }
+
+  .row {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+    gap: 10px;
+  }
+
+  .row-control { justify-content: flex-start; }
+  .picker, .picker-button { width: 100%; }
+  /* A segmented control sizes to its labels; stretched, it is mostly gap. */
+  .segmented { width: auto; align-self: flex-start; }
+  .picker-list { left: 0; right: auto; }
+  .themes { grid-template-columns: repeat(auto-fill, minmax(148px, 1fr)); }
 }
 
-@media (max-width: 560px) {
-  .shell { width: calc(100% - 28px); padding: 28px 0 48px; }
-  .hero { gap: 24px; padding-bottom: 32px; }
-  h1 { font-size: 42px; }
-  section { padding: 32px 0; }
-  .section-heading { align-items: flex-start; flex-direction: column; gap: 14px; }
-  .mode-grid, .theme-grid, .type-grid, .finish-grid { grid-template-columns: 1fr; }
-  .field.wide { grid-column: span 1; }
-  .import-row, footer { align-items: flex-start; flex-direction: column; }
-  footer code { max-width: 100%; }
+@media (prefers-reduced-motion: reduce) {
+  * { transition-duration: 1ms !important; }
+  .theme:hover { transform: none; }
 }
 
-@media (prefers-color-scheme: dark) {
-  :root { color-scheme: dark; --ink: #ecece7; --muted: #9da3a8; --line: #353a3f; --paper: #171a1d; --card: #22262a; }
-  .mode, .field, .check, .slot-switch { background: rgba(255,255,255,.025); }
-  .button.primary, .slot-switch button.active { background: #ecece7; color: #17191c; }
-  .theme.active { border-color: #ff8065; }
+
+/* ------------------------------------------------------- value + slider */
+
+/*
+ * A number alone makes someone guess the useful range; a slider alone makes
+ * an exact value unreachable. Both, sharing one value, is how a size control
+ * in a terminal's own settings behaves.
+ */
+.ranged { display: flex; align-items: center; gap: 12px; width: 100%; }
+.ranged .stepper { flex: none; }
+
+input[type="range"].ticks {
+  flex: 1;
+  min-width: 96px;
+  height: 22px;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  accent-color: var(--accent);
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+/* The ticks are the track, so the scale is legible before it is dragged. */
+input[type="range"].ticks::-webkit-slider-runnable-track {
+  height: 20px;
+  border-radius: 2px;
+  background:
+    repeating-linear-gradient(
+      to right,
+      var(--line-strong) 0 1px,
+      transparent 1px var(--tick, 8.33%)
+    ) center / 100% 12px no-repeat,
+    linear-gradient(var(--line-strong), var(--line-strong)) center / 100% 1px no-repeat;
+}
+
+input[type="range"].ticks::-webkit-slider-thumb {
+  width: 12px;
+  height: 20px;
+  border: 0;
+  border-radius: 3px;
+  background: var(--text-dim);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+input[type="range"].ticks:hover::-webkit-slider-thumb { background: var(--text); }
+
+/* ------------------------------------------------------------ reset row */
+
+.danger-row .row-label span { color: var(--text); }
+
+.btn.danger {
+  border-color: color-mix(in srgb, var(--danger) 45%, transparent);
+  color: var(--danger);
+}
+
+.btn.danger:hover { border-color: var(--danger); background: color-mix(in srgb, var(--danger) 12%, transparent); }
+
+/* --------------------------------------------------------- action strip */
+
+/*
+ * Not a title bar. The host already names this workspace, and an Apply button
+ * in the far corner sits nowhere near the settings it applies. This follows
+ * the end of the list instead, and stays quiet until there is something to
+ * apply.
+ */
+.actions {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 14px;
+  width: 100%;
+  margin: 0;
+  padding: 12px max(24px, calc((100% - 720px) / 2)) 16px;
+  background: var(--bg);
+}
+
+
+/* ------------------------------------------------------------ theme modes */
+
+/*
+ * Three little terminals rather than three words. The choice is about how
+ * something will look, and a label cannot answer that as fast as a picture of
+ * it can; the split tile also says what "System" means without a sentence.
+ */
+.modes {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  padding: 4px 14px 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-bottom-width: 0;
+}
+
+.modes button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  text-align: center;
+}
+
+.mode-art {
+  display: block;
+  height: 74px;
+  box-shadow: inset 0 0 0 1px rgba(128, 128, 128, 0.28);
+  margin-bottom: 8px;
+  overflow: hidden;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  transition: box-shadow 120ms, border-color 120ms;
+}
+
+.modes button:hover .mode-art { border-color: var(--text-faint); }
+
+.modes button.active .mode-art {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+.modes em {
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 520;
+  color: var(--text-dim);
+}
+
+.modes button.active em { color: var(--text); }
+
+/*
+ * The tiles are drawn, not photographed: a screenshot would be wrong the
+ * moment a scheme changes, and this only has to say light, dark, or both.
+ */
+/*
+ * Fixed, not themed. These tiles show what a terminal will look like, so they
+ * must stay legible against either page background - a dark tile tinted to
+ * match a dark page stops reading as a window at all.
+ */
+.mode-art.light { background: #fbfaf6; }
+.mode-art.dark { background: #0f1216; }
+.mode-art.system { background: linear-gradient(105deg, #fbfaf6 0 50%, #0f1216 50% 100%); }
+
+.mode-art::before {
+  content: "";
+  display: block;
+  height: 13px;
+  background:
+    radial-gradient(circle at 8px 50%, #ff5f57 3px, transparent 3px),
+    radial-gradient(circle at 18px 50%, #febc2e 3px, transparent 3px),
+    radial-gradient(circle at 28px 50%, #28c840 3px, transparent 3px);
+}
+
+.mode-art::after {
+  content: "";
+  display: block;
+  height: 44px;
+  margin: 7px 10px 0;
+  background:
+    linear-gradient(currentColor, currentColor) 0 2px / 62% 3px no-repeat,
+    linear-gradient(currentColor, currentColor) 0 12px / 44% 3px no-repeat,
+    linear-gradient(currentColor, currentColor) 0 22px / 72% 3px no-repeat,
+    linear-gradient(currentColor, currentColor) 0 32px / 34% 3px no-repeat;
+  border-radius: 1px;
+  opacity: 0.42;
+}
+
+.mode-art.light::after { color: #1b1f26; }
+.mode-art.dark::after { color: #f4f5f2; }
+.mode-art.dark::before, .mode-art.system::before { filter: saturate(1.05); }
+.mode-art.system::after { color: #7b8794; opacity: 0.6; }
+
+@media (max-width: 640px) {
+  .modes { gap: 8px; }
+  .mode-art { height: 62px; }
+  .mode-art::after { height: 36px; }
 }

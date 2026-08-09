@@ -180,7 +180,7 @@ pub mod terminal {
         ConfigSnapshot, SETTINGS_APP_ID, ThemeImportResult, app_data_dir, apply_theme,
         config_apply, config_get, config_reset, current_json as config_json, fonts_list,
         generation as config_generation, installed_fonts, load as load_config, load_for_app,
-        set_installed_fonts, theme_import, theme_preview, theme_preview_end, themes_list,
+        set_installed_fonts, theme_import, themes_list,
     };
     pub use lingxia_terminal::{
         BackendStatus, FrameCell, RowDamage, TerminalBackend, TerminalCell, TerminalFrame,
