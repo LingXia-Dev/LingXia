@@ -22,11 +22,21 @@ pub fn handle(id: String, name: &str, params: Option<Value>) -> Option<ControlRe
     if !name.starts_with("desktop.") {
         return None;
     }
+    // Input and accessibility commands can make their target disappear. Keep
+    // a server-resolved snapshot from immediately before dispatch both to bind
+    // untrusted viewer metadata to the real destination and to remember which
+    // display held a window that closes successfully.
+    let activity_target = pre_actuation_target(name, params.as_ref());
     let outcome = dispatch(name, params.clone());
     // Only after it worked, and only for the commands that change the machine.
     // A person watching wants to see what happened, not what was attempted.
     if let Ok(result) = &outcome
-        && let Some(acted) = actuation(name, params.as_ref(), result.as_ref())
+        && let Some(acted) = actuation(
+            name,
+            params.as_ref(),
+            result.as_ref(),
+            activity_target.as_ref(),
+        )
     {
         cu::pip::note_activity(acted);
     }
@@ -42,7 +52,261 @@ pub fn handle(id: String, name: &str, params: Option<Value>) -> Option<ControlRe
 /// same two fields from a dozen different call shapes, and decoding each one
 /// again to reach them would put a second copy of every argument list here to
 /// drift against the first.
-fn actuation(name: &str, params: Option<&Value>, result: Option<&Value>) -> Option<cu::Acted> {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum InputDelivery {
+    #[cfg(target_os = "macos")]
+    Process(u32),
+    Foreground,
+}
+
+/// The destination the platform backend actually used for a successful input
+/// command. macOS can post directly to a pid; Windows input is delivered only
+/// to the foreground window (the CLI activates it before making the request).
+#[cfg(target_os = "macos")]
+fn input_delivery(params: &Value) -> Option<InputDelivery> {
+    Some(
+        params
+            .get("target")
+            .and_then(Value::as_u64)
+            .and_then(|pid| u32::try_from(pid).ok())
+            .map_or(InputDelivery::Foreground, InputDelivery::Process),
+    )
+}
+
+#[cfg(target_os = "windows")]
+fn input_delivery(_params: &Value) -> Option<InputDelivery> {
+    Some(InputDelivery::Foreground)
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+fn input_delivery(_params: &Value) -> Option<InputDelivery> {
+    None
+}
+
+#[derive(Debug, Clone)]
+struct WindowSnapshot {
+    id: String,
+    focused: bool,
+    bounds: cu::Rect,
+    #[cfg(any(target_os = "macos", test))]
+    display_id: String,
+}
+
+impl From<cu::Window> for WindowSnapshot {
+    fn from(window: cu::Window) -> Self {
+        Self {
+            id: window.id,
+            focused: window.focused,
+            bounds: window.bounds,
+            #[cfg(any(target_os = "macos", test))]
+            display_id: window.display_id,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+enum ActivityTarget {
+    Window(WindowSnapshot),
+    #[cfg(any(target_os = "macos", test))]
+    Display {
+        x: i32,
+        y: i32,
+    },
+}
+
+fn pointer_point(name: &str, params: &Value) -> Option<(i32, i32)> {
+    let number = |key: &str| {
+        params
+            .get(key)
+            .and_then(Value::as_i64)
+            .and_then(|number| i32::try_from(number).ok())
+    };
+    if name == method::pointer::DRAG {
+        number("to_x").zip(number("to_y"))
+    } else if name.starts_with("desktop.pointer.") {
+        number("x").zip(number("y"))
+    } else {
+        None
+    }
+}
+
+/// The window that owns a drag is chosen by mouse-down at its origin even
+/// though the marker belongs at the destination where the drag finishes.
+fn pointer_target_point(name: &str, params: &Value) -> Option<(i32, i32)> {
+    #[cfg(target_os = "windows")]
+    if name == method::pointer::SCROLL {
+        // Win32 wheel events may go to the focus window or, depending on the
+        // user's inactive-window scrolling policy, the hover window. A plain
+        // hit-test cannot prove which policy received this event.
+        return None;
+    }
+    if name == method::pointer::DRAG {
+        let number = |key: &str| {
+            params
+                .get(key)
+                .and_then(Value::as_i64)
+                .and_then(|number| i32::try_from(number).ok())
+        };
+        number("from_x").zip(number("from_y"))
+    } else if matches!(name, method::pointer::MOVE | method::pointer::UP) {
+        // A standalone UP (and MOVE while a button is held) can be routed to
+        // the window that captured the preceding DOWN, not the window under
+        // its current coordinates. Without cross-request capture state an
+        // exact window claim would be guesswork; the point/display is honest.
+        None
+    } else {
+        pointer_point(name, params)
+    }
+}
+
+fn verified_foreground_key_window(window: WindowSnapshot) -> Option<WindowSnapshot> {
+    window.focused.then_some(window)
+}
+
+#[cfg(any(target_os = "macos", test))]
+fn process_key_target(windows: Vec<WindowSnapshot>) -> Option<ActivityTarget> {
+    match windows.as_slice() {
+        [] => None,
+        [window] => Some(ActivityTarget::Window(window.clone())),
+        [first, rest @ ..]
+            if rest
+                .iter()
+                .all(|window| window.display_id == first.display_id) =>
+        {
+            let (x, y) = rect_center(first.bounds)?;
+            Some(ActivityTarget::Display { x, y })
+        }
+        _ => None,
+    }
+}
+
+#[cfg(any(target_os = "macos", test))]
+fn process_input_target(
+    name: &str,
+    pid: u32,
+    mut process_windows: impl FnMut(u32) -> Option<Vec<WindowSnapshot>>,
+) -> Option<ActivityTarget> {
+    // CGEventPostToPid addresses a process, not the top-level window proposed
+    // by the client. Pointer activity therefore follows its global point. A
+    // key may follow a sole visible process window, or only the common display
+    // when several candidates make the exact recipient unknowable.
+    if name.starts_with("desktop.pointer.") {
+        None
+    } else {
+        process_key_target(process_windows(pid)?)
+    }
+}
+
+fn pre_actuation_target(name: &str, params: Option<&Value>) -> Option<ActivityTarget> {
+    pre_actuation_target_with_status(
+        name,
+        params,
+        |id| {
+            cu::window::status(&cu::WindowTarget::Id(id.to_string()))
+                .ok()
+                .map(Into::into)
+        },
+        |pid| {
+            cu::windows(&cu::WindowQuery::by_pid(pid))
+                .ok()
+                .map(|windows| windows.into_iter().map(WindowSnapshot::from).collect())
+        },
+        actual_pointer_window,
+    )
+}
+
+#[cfg(target_os = "windows")]
+fn actual_pointer_window(x: i32, y: i32) -> Option<WindowSnapshot> {
+    cu::input_window_at_point(x, y).map(Into::into)
+}
+
+#[cfg(target_os = "macos")]
+fn actual_pointer_window(x: i32, y: i32) -> Option<WindowSnapshot> {
+    cu::windows(&cu::WindowQuery::default())
+        .ok()?
+        .into_iter()
+        .find(|window| {
+            let bounds = window.bounds;
+            let (x, y) = (i64::from(x), i64::from(y));
+            let (left, top) = (i64::from(bounds.x), i64::from(bounds.y));
+            x >= left && x < left + i64::from(bounds.w) && y >= top && y < top + i64::from(bounds.h)
+        })
+        .map(Into::into)
+}
+
+#[cfg(not(any(target_os = "windows", target_os = "macos")))]
+fn actual_pointer_window(_x: i32, _y: i32) -> Option<WindowSnapshot> {
+    None
+}
+
+fn pre_actuation_target_with_status(
+    name: &str,
+    params: Option<&Value>,
+    mut window_status: impl FnMut(&str) -> Option<WindowSnapshot>,
+    mut process_windows: impl FnMut(u32) -> Option<Vec<WindowSnapshot>>,
+    mut point_window: impl FnMut(i32, i32) -> Option<WindowSnapshot>,
+) -> Option<ActivityTarget> {
+    // On Windows this provider is intentionally unused; mentioning it outside
+    // the platform arm keeps the shared test seam warning-free.
+    let _ = &mut process_windows;
+    let params = params?;
+    let input = name.starts_with("desktop.pointer.") || name.starts_with("desktop.key.");
+    let mutating_ax = name.starts_with("desktop.ax.")
+        && !matches!(
+            name,
+            "desktop.ax.tree" | "desktop.ax.hit_test" | "desktop.ax.query" | "desktop.ax.wait"
+        );
+    if !input && !mutating_ax {
+        return None;
+    }
+    if input {
+        match input_delivery(params)? {
+            #[cfg(target_os = "macos")]
+            InputDelivery::Process(pid) => process_input_target(name, pid, process_windows),
+            InputDelivery::Foreground => {
+                if name.starts_with("desktop.pointer.") {
+                    let (x, y) = pointer_target_point(name, params)?;
+                    point_window(x, y).map(ActivityTarget::Window)
+                } else {
+                    let id = params.get("window_id")?.as_str()?;
+                    verified_foreground_key_window(window_status(id)?).map(ActivityTarget::Window)
+                }
+            }
+        }
+    } else {
+        // AX dispatch uses this exact id as its destination, so the successful
+        // command itself authenticates the association. The status lookup is
+        // needed for a trusted fallback display if the action closes it.
+        let id = params.get("window_id")?.as_str()?;
+        Some(ActivityTarget::Window(window_status(id)?))
+    }
+}
+
+fn rect_center(rect: cu::Rect) -> Option<(i32, i32)> {
+    let x = i64::from(rect.x) + i64::from(rect.w) / 2;
+    let y = i64::from(rect.y) + i64::from(rect.h) / 2;
+    Some((i32::try_from(x).ok()?, i32::try_from(y).ok()?))
+}
+
+fn result_window(result: Option<&Value>) -> Option<(String, (i32, i32))> {
+    let value = result?;
+    let id = value.get("id")?.as_str()?.to_string();
+    let bounds = value.get("bounds")?;
+    let rect = cu::Rect {
+        x: i32::try_from(bounds.get("x")?.as_i64()?).ok()?,
+        y: i32::try_from(bounds.get("y")?.as_i64()?).ok()?,
+        w: i32::try_from(bounds.get("w")?.as_i64()?).ok()?,
+        h: i32::try_from(bounds.get("h")?.as_i64()?).ok()?,
+    };
+    Some((id, rect_center(rect)?))
+}
+
+fn actuation(
+    name: &str,
+    params: Option<&Value>,
+    result: Option<&Value>,
+    activity_target: Option<&ActivityTarget>,
+) -> Option<cu::Acted> {
     const ACTUATES: &[&str] = &[
         "desktop.pointer.",
         "desktop.key.",
@@ -82,47 +346,43 @@ fn actuation(name: &str, params: Option<&Value>, result: Option<&Value>) -> Opti
     let Some(params) = params else {
         return Some(cu::Acted::Somewhere);
     };
-    let number = |key: &str| params.get(key).and_then(Value::as_i64).map(|n| n as i32);
-
     // Prefer the window the command *resolved*, not the one it was asked for.
     // `window focus --match process:Edge` names a query, and answering "no
     // particular window" would leave the viewer mirroring a whole display when
     // the command knew exactly which window it acted on — and a window is the
     // better thing to watch anyway, since its capture survives being covered.
-    let resolved = result
-        .filter(|_| name.starts_with("desktop.window."))
-        .and_then(|value| value.get("id"))
-        .and_then(Value::as_str)
-        .map(str::to_string);
-
-    // Only the window commands and the accessibility ones name a window. A
-    // pointer or key command's `target` is a **process id** — it narrows where
-    // the event is delivered and says nothing about coordinates, which stay
-    // global on every backend.
-    let window = resolved.or_else(|| {
-        params
-            .get("window_id")
-            .and_then(Value::as_str)
-            .map(str::to_string)
-            .or_else(|| {
-                serde_json::from_value::<cu::WindowTarget>(params.get("target")?.clone())
-                    .ok()
-                    .and_then(|target| match target {
-                        cu::WindowTarget::Id(id) => Some(id),
-                        cu::WindowTarget::Match(_) => None,
-                    })
-            })
+    let resolved = name
+        .starts_with("desktop.window.")
+        .then(|| result_window(result))
+        .flatten();
+    let window = resolved.or_else(|| match activity_target? {
+        ActivityTarget::Window(snapshot) => {
+            Some((snapshot.id.clone(), rect_center(snapshot.bounds)?))
+        }
+        #[cfg(any(target_os = "macos", test))]
+        ActivityTarget::Display { .. } => None,
     });
+    #[cfg(any(target_os = "macos", test))]
+    let display = activity_target.and_then(|target| match target {
+        ActivityTarget::Display { x, y } => Some((*x, *y)),
+        ActivityTarget::Window(_) => None,
+    });
+    #[cfg(not(any(target_os = "macos", test)))]
+    let display = None;
 
-    let point = number("x")
-        .zip(number("y"))
-        // A drag ends where it ends; that is the point worth marking.
-        .or_else(|| number("to_x").zip(number("to_y")));
+    // Only pointer coordinates describe a location acted on. Window move also
+    // has x/y parameters, but those are a requested frame origin, not a click
+    // marker. A drag is represented by its destination.
+    let point = pointer_point(name, params);
 
     Some(match (point, window) {
-        (Some((x, y)), _) => cu::Acted::At { x, y },
-        (None, Some(id)) => cu::Acted::Window(id),
-        (None, None) => cu::Acted::Somewhere,
+        (Some((x, y)), Some((id, _))) => cu::Acted::AtWindow { x, y, id },
+        (Some((x, y)), None) => cu::Acted::At { x, y },
+        (None, Some((id, (x, y)))) => cu::Acted::WindowWithFallback { id, x, y },
+        (None, None) => match display {
+            Some((x, y)) => cu::Acted::Display { x, y },
+            None => cu::Acted::Somewhere,
+        },
     })
 }
 
@@ -429,7 +689,7 @@ mod tests {
             "desktop.pip.status",
         ] {
             assert!(
-                actuation(name, Some(&serde_json::json!({"x": 1, "y": 2})), None).is_none(),
+                actuation(name, Some(&serde_json::json!({"x": 1, "y": 2})), None, None,).is_none(),
                 "{name} only looks at the machine"
             );
         }
@@ -447,7 +707,7 @@ mod tests {
             "desktop.permissions.request",
         ] {
             assert!(
-                actuation(name, Some(&serde_json::json!({})), None).is_some(),
+                actuation(name, Some(&serde_json::json!({})), None, None).is_some(),
                 "{name} changes the machine"
             );
         }
@@ -457,20 +717,20 @@ mod tests {
         // clipboard paste.
         for name in ["desktop.clipboard.paste", "desktop.clipboard.clear"] {
             assert!(
-                actuation(name, None, None).is_some(),
+                actuation(name, None, None, None).is_some(),
                 "{name} changes the machine even with no parameters"
             );
         }
     }
 
-    /// A pointer command carrying a window makes its coordinates relative to
-    /// that window. Marking those as global puts the ring somewhere the click
-    /// never happened.
+    /// Input targeting controls delivery but never changes the global
+    /// coordinate space used by pointer actions and viewer markers.
     #[test]
     fn a_point_keeps_the_space_it_arrived_in() {
         let global = actuation(
             "desktop.pointer.click",
             Some(&serde_json::json!({"x": 40, "y": 90})),
+            None,
             None,
         );
         assert!(matches!(global, Some(cu::Acted::At { x: 40, y: 90 })));
@@ -482,13 +742,44 @@ mod tests {
             "desktop.pointer.click",
             Some(&serde_json::json!({"x": 40, "y": 90, "target": 291})),
             None,
+            None,
         );
         assert!(matches!(delivered, Some(cu::Acted::At { x: 40, y: 90 })));
+
+        // Product input keeps delivery pid and viewer window separate. The
+        // point remains a marker while the viewer follows the window.
+        let target = ActivityTarget::Window(WindowSnapshot {
+            id: "0x7f".into(),
+            focused: true,
+            bounds: cu::Rect {
+                x: 0,
+                y: 0,
+                w: 800,
+                h: 600,
+            },
+            display_id: "1".into(),
+        });
+        let targeted = actuation(
+            "desktop.pointer.click",
+            Some(&serde_json::json!({
+                "x": 40,
+                "y": 90,
+                "target": 291,
+                "window_id": "0x7f"
+            })),
+            None,
+            Some(&target),
+        );
+        assert!(matches!(
+            targeted,
+            Some(cu::Acted::AtWindow { x: 40, y: 90, ref id }) if id == "0x7f"
+        ));
 
         // A drag ends where it ends; that is the point worth marking.
         let drag = actuation(
             "desktop.pointer.drag",
             Some(&serde_json::json!({"from_x": 1, "from_y": 2, "to_x": 30, "to_y": 40})),
+            None,
             None,
         );
         assert!(matches!(drag, Some(cu::Acted::At { x: 30, y: 40 })));
@@ -497,12 +788,17 @@ mod tests {
         let window = actuation(
             "desktop.window.focus",
             Some(&serde_json::json!({"target": {"Id": "0x7f"}})),
+            Some(&serde_json::json!({
+                "id": "0x7f",
+                "bounds": {"x": 100, "y": 200, "w": 800, "h": 600}
+            })),
             None,
         );
-        let Some(cu::Acted::Window(id)) = window else {
+        let Some(cu::Acted::WindowWithFallback { id, x, y }) = window else {
             panic!("a window command names its window");
         };
         assert_eq!(id, "0x7f");
+        assert_eq!((x, y), (500, 500));
 
         // A `--match` names a query, not a window, but the command resolved
         // one and said so. Watching the display instead would mirror whatever
@@ -511,11 +807,298 @@ mod tests {
         let matched = actuation(
             "desktop.window.focus",
             Some(&serde_json::json!({"target": {"Match": {"process": "Edge"}}})),
-            Some(&serde_json::json!({"id": "0x2600", "title": "Bing"})),
+            Some(&serde_json::json!({
+                "id": "0x2600",
+                "title": "Bing",
+                "bounds": {"x": 100, "y": 200, "w": 800, "h": 600}
+            })),
+            None,
         );
-        let Some(cu::Acted::Window(id)) = matched else {
-            panic!("the window a command resolved is the window to watch");
+        let Some(cu::Acted::WindowWithFallback { id, x, y }) = matched else {
+            panic!("the resolved window and its fallback display must be retained");
         };
         assert_eq!(id, "0x2600");
+        assert_eq!((x, y), (500, 500));
+    }
+
+    fn snapshot(id: &str, focused: bool, bounds: cu::Rect) -> WindowSnapshot {
+        WindowSnapshot {
+            id: id.into(),
+            focused,
+            bounds,
+            display_id: if bounds.x >= 1920 { "2" } else { "1" }.into(),
+        }
+    }
+
+    #[test]
+    fn client_window_metadata_must_match_the_real_input_destination() {
+        let bounds = cu::Rect {
+            x: 100,
+            y: 200,
+            w: 800,
+            h: 600,
+        };
+        assert!(
+            verified_foreground_key_window(snapshot("stale", false, bounds)).is_none(),
+            "a Windows id must still be the activated foreground window"
+        );
+    }
+
+    #[test]
+    fn foreground_pointer_follows_the_actual_hit_window_not_the_proposal() {
+        let params = serde_json::json!({
+            "x": 400,
+            "y": 400,
+            "window_id": "base"
+        });
+        let base = snapshot(
+            "base",
+            true,
+            cu::Rect {
+                x: 100,
+                y: 200,
+                w: 800,
+                h: 600,
+            },
+        );
+        let popup = snapshot(
+            "popup",
+            false,
+            cu::Rect {
+                x: 300,
+                y: 300,
+                w: 300,
+                h: 200,
+            },
+        );
+        let target = pre_actuation_target_with_status(
+            method::pointer::CLICK,
+            Some(&params),
+            |_| Some(base.clone()),
+            |_| None,
+            |x, y| {
+                assert_eq!((x, y), (400, 400));
+                Some(popup.clone())
+            },
+        );
+        let Some(ActivityTarget::Window(target)) = target else {
+            panic!("the actual topmost hit window is the viewer target");
+        };
+        assert_eq!(target.id, "popup");
+        assert!(matches!(
+            actuation(
+                method::pointer::CLICK,
+                Some(&params),
+                None,
+                Some(&ActivityTarget::Window(target)),
+            ),
+            Some(cu::Acted::AtWindow {
+                x: 400,
+                y: 400,
+                ref id
+            }) if id == "popup"
+        ));
+
+        let no_hit = pre_actuation_target_with_status(
+            method::pointer::CLICK,
+            Some(&params),
+            |_| Some(base.clone()),
+            |_| None,
+            |_, _| None,
+        );
+        assert!(
+            no_hit.is_none(),
+            "an unknown hit safely follows the display"
+        );
+    }
+
+    #[test]
+    fn foreground_pointer_without_a_hit_uses_its_global_point() {
+        let params = serde_json::json!({"x": 40, "y": 90, "window_id": "base"});
+        let acted = actuation(method::pointer::CLICK, Some(&params), None, None);
+        assert!(matches!(acted, Some(cu::Acted::At { x: 40, y: 90 })));
+    }
+
+    #[test]
+    fn drag_binds_at_mouse_down_but_marks_its_destination() {
+        let params = serde_json::json!({
+            "from_x": 120,
+            "from_y": 130,
+            "to_x": 900,
+            "to_y": 700
+        });
+        let source = snapshot(
+            "source",
+            true,
+            cu::Rect {
+                x: 100,
+                y: 100,
+                w: 500,
+                h: 400,
+            },
+        );
+        let target = pre_actuation_target_with_status(
+            method::pointer::DRAG,
+            Some(&params),
+            |_| None,
+            |_| None,
+            |x, y| {
+                assert_eq!((x, y), (120, 130));
+                Some(source.clone())
+            },
+        );
+        assert!(matches!(
+            actuation(method::pointer::DRAG, Some(&params), None, target.as_ref()),
+            Some(cu::Acted::AtWindow {
+                x: 900,
+                y: 700,
+                ref id
+            }) if id == "source"
+        ));
+    }
+
+    #[test]
+    fn ambiguous_pointer_routing_degrades_to_the_acted_point() {
+        let assert_degrades = |name| {
+            let params = serde_json::json!({
+                "x": 900,
+                "y": 700,
+                "window_id": "destination"
+            });
+            let target = pre_actuation_target_with_status(
+                name,
+                Some(&params),
+                |_| None,
+                |_| None,
+                |_, _| panic!("captured pointer routing cannot be inferred by hit-testing"),
+            );
+            assert!(target.is_none());
+            assert!(matches!(
+                actuation(name, Some(&params), None, target.as_ref()),
+                Some(cu::Acted::At { x: 900, y: 700 })
+            ));
+        };
+        for name in [method::pointer::MOVE, method::pointer::UP] {
+            assert_degrades(name);
+        }
+        #[cfg(target_os = "windows")]
+        assert_degrades(method::pointer::SCROLL);
+    }
+
+    #[test]
+    fn process_directed_input_never_claims_a_proposed_same_pid_window() {
+        let first = snapshot(
+            "first",
+            false,
+            cu::Rect {
+                x: 100,
+                y: 100,
+                w: 700,
+                h: 500,
+            },
+        );
+        let second = snapshot(
+            "second",
+            false,
+            cu::Rect {
+                x: 900,
+                y: 100,
+                w: 700,
+                h: 500,
+            },
+        );
+        assert!(
+            process_input_target(method::pointer::CLICK, 42, |pid| {
+                assert_eq!(pid, 42);
+                Some(vec![first.clone(), second.clone()])
+            })
+            .is_none(),
+            "CGEventPostToPid cannot authenticate which same-pid window receives a pointer event"
+        );
+        assert!(matches!(
+            process_input_target(method::key::PRESS, 42, |pid| {
+                assert_eq!(pid, 42);
+                Some(vec![first.clone(), second.clone()])
+            }),
+            Some(ActivityTarget::Display { .. })
+        ));
+
+        let second_display = snapshot(
+            "second",
+            false,
+            cu::Rect {
+                x: 2100,
+                y: 100,
+                w: 700,
+                h: 500,
+            },
+        );
+        assert!(
+            process_input_target(method::key::PRESS, 42, |pid| {
+                assert_eq!(pid, 42);
+                Some(vec![first.clone(), second_display.clone()])
+            })
+            .is_none(),
+            "two possible key windows on different displays have no honest viewer target"
+        );
+    }
+
+    #[test]
+    fn non_pointer_xy_is_never_used_as_a_marker() {
+        let moved = actuation(
+            method::window::MOVE,
+            Some(&serde_json::json!({
+                "target": {"Id": "0x42"},
+                "x": 2000,
+                "y": 100
+            })),
+            Some(&serde_json::json!({
+                "id": "0x42",
+                "bounds": {"x": 2000, "y": 100, "w": 600, "h": 400}
+            })),
+            None,
+        );
+        assert!(matches!(
+            moved,
+            Some(cu::Acted::WindowWithFallback {
+                ref id,
+                x: 2300,
+                y: 300
+            }) if id == "0x42"
+        ));
+    }
+
+    #[test]
+    fn disappearing_key_and_ax_targets_keep_their_secondary_display_fallback() {
+        let target = ActivityTarget::Window(snapshot(
+            "0x42",
+            true,
+            cu::Rect {
+                x: 1920,
+                y: 100,
+                w: 800,
+                h: 600,
+            },
+        ));
+        for (name, params) in [
+            (
+                method::key::PRESS,
+                serde_json::json!({"name": "w", "window_id": "0x42"}),
+            ),
+            (
+                method::ax::INVOKE,
+                serde_json::json!({"window_id": "0x42", "query": {"role": "button"}}),
+            ),
+        ] {
+            let acted = actuation(name, Some(&params), None, Some(&target));
+            assert!(matches!(
+                acted,
+                Some(cu::Acted::WindowWithFallback {
+                    ref id,
+                    x: 2320,
+                    y: 400
+                }) if id == "0x42"
+            ));
+        }
     }
 }

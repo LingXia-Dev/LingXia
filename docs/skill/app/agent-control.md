@@ -10,7 +10,7 @@ the local interface is enabled.
 capabilities:
   appUse: true       # this product's own windows
   computerUse: true  # the whole machine
-  browserUse: true   # the in-app browser (requires `browser`)
+  browserUse: true   # this product's in-app browser (requires `browser`)
 ```
 
 These capabilities are available on macOS and Windows and are enforced by the
@@ -20,6 +20,8 @@ running product:
   the product's windows.
 - `browserUse` is independent; a browser-only product need not expose its
   window chrome.
+- `browserUse` never reaches an external Chrome, Edge, or Safari process.
+  External browsers are ordinary machine windows and require `computerUse`.
 - A refused namespace is final. An agent must not route around it.
 
 ## User control and command discovery
@@ -86,17 +88,26 @@ Screen capture without Screen Recording can otherwise look like an empty
 desktop. Signed builds retain grants across matching updates; unsigned rebuilt
 apps may prompt again.
 
-The first mutating `computerUse` command on macOS or Windows opens a small
-viewer showing what is being driven and the last acted point. It follows the
-work, avoids the pointer target, hides after roughly twelve seconds of
-inactivity, and returns on the next mutation. Read-only commands do not open it.
+The first mutating `computerUse` command on macOS or Windows opens a visible
+activity indicator. It follows the work, avoids the pointer target, hides after
+roughly twelve seconds of inactivity, and returns on the next mutation.
+Read-only commands do not open it.
 
 Each product process owns at most one viewer. Separate running products do not
 coordinate a machine-wide viewer; the viewer always represents the mutations
-performed through its own product process. On Windows it mirrors the visible
-desktop pixels for the target, so another window covering the target is shown
-as the person actually sees it.
+performed through its own product process. On Windows, foreground work on the
+same monitor uses a compact control bar because the target itself is already
+visible. Work against a covered window or a window on another monitor expands
+to a live compositor view; work with no window target mirrors the visible
+display. When the product has a visible window, the indicator stays on that
+window's monitor even if the controlled window is on another monitor.
 
-The viewer is not an agent command. It ignores mouse input so it cannot block
-the underlying target. A product that offers a human dismiss control calls the
-host-side viewer API; an agent must never hide or dismiss it.
+Windows input still uses the active desktop. A `--window` or unambiguous `--pid`
+input target is activated before pointer or keyboard input, so the product may
+remain visible on another monitor but is not the focused window while the
+input is delivered. This is different from macOS process-directed background
+input.
+
+The activity indicator is not an agent command. It ignores mouse input so it
+cannot block the underlying target. A product that offers a human dismiss
+control calls the host-side viewer API; an agent must never hide or dismiss it.

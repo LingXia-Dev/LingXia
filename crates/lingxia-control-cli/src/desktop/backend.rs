@@ -221,12 +221,23 @@ impl Backend<'_> {
         }
     }
 
-    pub fn pointer_move(&self, x: i32, y: i32, target: Option<u32>) -> cu::Result<cu::Ack> {
+    pub fn pointer_move(
+        &self,
+        x: i32,
+        y: i32,
+        target: Option<u32>,
+        window_id: Option<&str>,
+    ) -> cu::Result<cu::Ack> {
         match self {
             Self::Local => cu::input::pointer_move(x, y, target),
             Self::App(_) => self.call(
                 method::pointer::MOVE,
-                cu::wire::PointerMove { x, y, target },
+                cu::wire::PointerMove {
+                    x,
+                    y,
+                    target,
+                    window_id: window_id.map(str::to_string),
+                },
             ),
         }
     }
@@ -237,6 +248,7 @@ impl Backend<'_> {
         y: i32,
         button: cu::MouseButton,
         target: Option<u32>,
+        window_id: Option<&str>,
     ) -> cu::Result<cu::Ack> {
         match self {
             Self::Local => cu::input::pointer_down(x, y, button, target),
@@ -247,6 +259,7 @@ impl Backend<'_> {
                     y,
                     button,
                     target,
+                    window_id: window_id.map(str::to_string),
                 },
             ),
         }
@@ -258,6 +271,7 @@ impl Backend<'_> {
         y: i32,
         button: cu::MouseButton,
         target: Option<u32>,
+        window_id: Option<&str>,
     ) -> cu::Result<cu::Ack> {
         match self {
             Self::Local => cu::input::pointer_up(x, y, button, target),
@@ -268,6 +282,7 @@ impl Backend<'_> {
                     y,
                     button,
                     target,
+                    window_id: window_id.map(str::to_string),
                 },
             ),
         }
@@ -280,6 +295,7 @@ impl Backend<'_> {
         button: cu::MouseButton,
         count: u32,
         target: Option<u32>,
+        window_id: Option<&str>,
     ) -> cu::Result<cu::Ack> {
         match self {
             Self::Local => cu::input::pointer_click(x, y, button, count, target),
@@ -291,6 +307,7 @@ impl Backend<'_> {
                     button,
                     count,
                     target,
+                    window_id: window_id.map(str::to_string),
                 },
             ),
         }
@@ -303,6 +320,7 @@ impl Backend<'_> {
         dx: i32,
         dy: i32,
         target: Option<u32>,
+        window_id: Option<&str>,
     ) -> cu::Result<cu::Ack> {
         match self {
             Self::Local => cu::input::pointer_scroll(x, y, dx, dy, target),
@@ -314,6 +332,7 @@ impl Backend<'_> {
                     dx,
                     dy,
                     target,
+                    window_id: window_id.map(str::to_string),
                 },
             ),
         }
@@ -327,6 +346,7 @@ impl Backend<'_> {
         to_y: i32,
         button: cu::MouseButton,
         target: Option<u32>,
+        window_id: Option<&str>,
     ) -> cu::Result<cu::Ack> {
         match self {
             Self::Local => cu::input::pointer_drag(from_x, from_y, to_x, to_y, button, target),
@@ -339,12 +359,18 @@ impl Backend<'_> {
                     to_y,
                     button,
                     target,
+                    window_id: window_id.map(str::to_string),
                 },
             ),
         }
     }
 
-    pub fn key_type(&self, text: &str, target: Option<u32>) -> cu::Result<cu::Ack> {
+    pub fn key_type(
+        &self,
+        text: &str,
+        target: Option<u32>,
+        window_id: Option<&str>,
+    ) -> cu::Result<cu::Ack> {
         match self {
             Self::Local => cu::input::key_type(text, target),
             Self::App(_) => self.call(
@@ -352,17 +378,34 @@ impl Backend<'_> {
                 cu::wire::KeyText {
                     text: text.to_string(),
                     target,
+                    window_id: window_id.map(str::to_string),
                 },
             ),
         }
     }
 
-    pub fn key_down(&self, name: &str, target: Option<u32>) -> cu::Result<cu::Ack> {
-        self.key(method::key::DOWN, cu::input::key_down, name, target)
+    pub fn key_down(
+        &self,
+        name: &str,
+        target: Option<u32>,
+        window_id: Option<&str>,
+    ) -> cu::Result<cu::Ack> {
+        self.key(
+            method::key::DOWN,
+            cu::input::key_down,
+            name,
+            target,
+            window_id,
+        )
     }
 
-    pub fn key_up(&self, name: &str, target: Option<u32>) -> cu::Result<cu::Ack> {
-        self.key(method::key::UP, cu::input::key_up, name, target)
+    pub fn key_up(
+        &self,
+        name: &str,
+        target: Option<u32>,
+        window_id: Option<&str>,
+    ) -> cu::Result<cu::Ack> {
+        self.key(method::key::UP, cu::input::key_up, name, target, window_id)
     }
 
     pub fn key_press(
@@ -370,6 +413,7 @@ impl Backend<'_> {
         name: &str,
         modifiers: &[cu::Modifier],
         target: Option<u32>,
+        window_id: Option<&str>,
     ) -> cu::Result<cu::Ack> {
         match self {
             Self::Local => cu::input::key_press(name, modifiers, target),
@@ -379,6 +423,7 @@ impl Backend<'_> {
                     name: name.to_string(),
                     modifiers: modifiers.to_vec(),
                     target,
+                    window_id: window_id.map(str::to_string),
                 },
             ),
         }
@@ -604,6 +649,7 @@ impl Backend<'_> {
         action: fn(&str, Option<u32>) -> cu::Result<cu::Ack>,
         key: &str,
         target: Option<u32>,
+        window_id: Option<&str>,
     ) -> cu::Result<cu::Ack> {
         match self {
             Self::Local => action(key, target),
@@ -612,6 +658,7 @@ impl Backend<'_> {
                 cu::wire::KeyName {
                     name: key.to_string(),
                     target,
+                    window_id: window_id.map(str::to_string),
                 },
             ),
         }

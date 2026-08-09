@@ -153,6 +153,14 @@ pub fn windows(query: &WindowQuery) -> Result<Vec<Window>> {
     backend::windows(query)
 }
 
+/// Resolve the top-level window that native pointer input would reach.
+/// Internal host-viewer plumbing, not a control-surface method.
+#[cfg(target_os = "windows")]
+#[doc(hidden)]
+pub fn input_window_at_point(x: i32, y: i32) -> Option<Window> {
+    backend::input_window_at_point(x, y)
+}
+
 /// Capture a display/window/region (`desktop screenshot`).
 pub fn screenshot(target: CaptureTarget) -> Result<Capture> {
     backend::screenshot(target)

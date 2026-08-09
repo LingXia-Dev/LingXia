@@ -1080,17 +1080,25 @@ fn print_ack(a: &cu::Ack) {
 
 /// Resolve an optional app target. Windows SendInput cannot address background
 /// apps, so the CLI activates the target before issuing foreground input.
+struct InputTarget {
+    delivery_pid: Option<u32>,
+    window_id: Option<String>,
+}
+
 fn resolve_target(
     backend: &Backend,
     pid: Option<u32>,
     window: Option<String>,
-) -> cu::Result<Option<u32>> {
+) -> cu::Result<InputTarget> {
     match (pid, window) {
         (Some(_), Some(_)) => Err(cu::Error::Usage("pass only one of --window / --pid".into())),
         #[cfg(target_os = "windows")]
         (None, Some(id)) => {
-            backend.window_activate(&cu::WindowTarget::Id(id))?;
-            Ok(None)
+            let window = backend.window_activate(&cu::WindowTarget::Id(id))?;
+            Ok(InputTarget {
+                delivery_pid: None,
+                window_id: Some(window.id),
+            })
         }
         #[cfg(target_os = "windows")]
         (Some(pid), None) => {
@@ -1101,7 +1109,10 @@ fn resolve_target(
                 ))),
                 [window] => {
                     backend.window_activate(&cu::WindowTarget::Id(window.id.clone()))?;
-                    Ok(None)
+                    Ok(InputTarget {
+                        delivery_pid: None,
+                        window_id: Some(window.id.clone()),
+                    })
                 }
                 _ => Err(cu::Error::Ambiguous(format!(
                     "pid {pid} has {} visible windows; pass --window <id>",
@@ -1110,36 +1121,52 @@ fn resolve_target(
             }
         }
         #[cfg(not(target_os = "windows"))]
-        (None, Some(id)) => Ok(Some(backend.window_status(&cu::WindowTarget::Id(id))?.pid)),
+        (None, Some(id)) => {
+            let window = backend.window_status(&cu::WindowTarget::Id(id))?;
+            Ok(InputTarget {
+                delivery_pid: Some(window.pid),
+                window_id: Some(window.id),
+            })
+        }
         #[cfg(not(target_os = "windows"))]
-        (Some(pid), None) => Ok(Some(pid)),
-        (None, None) => Ok(None),
+        (Some(pid), None) => Ok(InputTarget {
+            delivery_pid: Some(pid),
+            window_id: None,
+        }),
+        (None, None) => Ok(InputTarget {
+            delivery_pid: None,
+            window_id: None,
+        }),
     }
 }
 
 fn run_pointer(
     backend: &Backend,
     action: PointerAction,
-    target: Option<u32>,
+    target: InputTarget,
     allow_control: bool,
     allow_destructive: bool,
 ) -> i32 {
     let g = gate(allow_control, false, allow_destructive);
+    let delivery_pid = target.delivery_pid;
+    let window_id = target.window_id.as_deref();
     let (json, result) = match action {
         PointerAction::Move { at, json } => (
             json,
             g.and_then(|_| parse_pair(&at))
-                .and_then(|(x, y)| backend.pointer_move(x, y, target)),
+                .and_then(|(x, y)| backend.pointer_move(x, y, delivery_pid, window_id)),
         ),
         PointerAction::Down { at, button, json } => (
             json,
-            g.and_then(|_| parse_pair(&at))
-                .and_then(|(x, y)| backend.pointer_down(x, y, button.into(), target)),
+            g.and_then(|_| parse_pair(&at)).and_then(|(x, y)| {
+                backend.pointer_down(x, y, button.into(), delivery_pid, window_id)
+            }),
         ),
         PointerAction::Up { at, button, json } => (
             json,
-            g.and_then(|_| parse_pair(&at))
-                .and_then(|(x, y)| backend.pointer_up(x, y, button.into(), target)),
+            g.and_then(|_| parse_pair(&at)).and_then(|(x, y)| {
+                backend.pointer_up(x, y, button.into(), delivery_pid, window_id)
+            }),
         ),
         PointerAction::Click {
             at,
@@ -1148,8 +1175,9 @@ fn run_pointer(
             json,
         } => (
             json,
-            g.and_then(|_| parse_pair(&at))
-                .and_then(|(x, y)| backend.pointer_click(x, y, button.into(), count, target)),
+            g.and_then(|_| parse_pair(&at)).and_then(|(x, y)| {
+                backend.pointer_click(x, y, button.into(), count, delivery_pid, window_id)
+            }),
         ),
         PointerAction::Drag {
             from,
@@ -1160,13 +1188,13 @@ fn run_pointer(
             json,
             g.and_then(|_| Ok((parse_pair(&from)?, parse_pair(&to)?)))
                 .and_then(|((fx, fy), (tx, ty))| {
-                    backend.pointer_drag(fx, fy, tx, ty, button.into(), target)
+                    backend.pointer_drag(fx, fy, tx, ty, button.into(), delivery_pid, window_id)
                 }),
         ),
         PointerAction::Scroll { at, dx, dy, json } => (
             json,
             g.and_then(|_| parse_pair(&at))
-                .and_then(|(x, y)| backend.pointer_scroll(x, y, dx, dy, target)),
+                .and_then(|(x, y)| backend.pointer_scroll(x, y, dx, dy, delivery_pid, window_id)),
         ),
     };
     finish(json, result, print_ack)
@@ -1175,23 +1203,37 @@ fn run_pointer(
 fn run_key(
     backend: &Backend,
     action: KeyAction,
-    target: Option<u32>,
+    target: InputTarget,
     allow_control: bool,
     allow_destructive: bool,
 ) -> i32 {
     let g = gate(allow_control, false, allow_destructive);
+    let delivery_pid = target.delivery_pid;
+    let window_id = target.window_id.as_deref();
     let (json, result) = match action {
-        KeyAction::Type { text, json } => (json, g.and_then(|_| backend.key_type(&text, target))),
+        KeyAction::Type { text, json } => (
+            json,
+            g.and_then(|_| backend.key_type(&text, delivery_pid, window_id)),
+        ),
         KeyAction::Press {
             key,
             modifier,
             json,
         } => {
             let mods: Vec<cu::Modifier> = modifier.into_iter().map(Into::into).collect();
-            (json, g.and_then(|_| backend.key_press(&key, &mods, target)))
+            (
+                json,
+                g.and_then(|_| backend.key_press(&key, &mods, delivery_pid, window_id)),
+            )
         }
-        KeyAction::Down { key, json } => (json, g.and_then(|_| backend.key_down(&key, target))),
-        KeyAction::Up { key, json } => (json, g.and_then(|_| backend.key_up(&key, target))),
+        KeyAction::Down { key, json } => (
+            json,
+            g.and_then(|_| backend.key_down(&key, delivery_pid, window_id)),
+        ),
+        KeyAction::Up { key, json } => (
+            json,
+            g.and_then(|_| backend.key_up(&key, delivery_pid, window_id)),
+        ),
     };
     finish(json, result, print_ack)
 }

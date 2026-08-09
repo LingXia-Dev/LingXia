@@ -3,7 +3,7 @@ use std::time::{Duration, Instant};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum ActivityTarget {
     Display(usize),
-    Window(String),
+    Window { id: String, fallback_display: usize },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -107,6 +107,25 @@ impl ActivityState {
             && self.epoch == epoch
     }
 
+    /// Replace a window that can no longer be captured with the display that
+    /// held it, but only if the failure still belongs to the current UI
+    /// revision. A delayed failure must not undo a newer target.
+    pub(crate) fn fallback_to_display(&mut self, generation: u64, epoch: u64) -> Option<u64> {
+        if !self.current(generation, epoch) {
+            return None;
+        }
+        let Some(ActivityTarget::Window {
+            fallback_display, ..
+        }) = self.target.as_ref()
+        else {
+            return None;
+        };
+        let fallback_display = *fallback_display;
+        self.target = Some(ActivityTarget::Display(fallback_display));
+        self.epoch = self.epoch.wrapping_add(1);
+        Some(self.epoch)
+    }
+
     #[cfg(target_os = "macos")]
     pub(crate) fn active_generation(&self, generation: u64) -> bool {
         !self.dismissed && self.target.is_some() && self.generation == generation
@@ -191,7 +210,10 @@ mod tests {
             panic!("first activity must open");
         };
         let Transition::Repoint { epoch: next_epoch } = state.note(
-            Some(ActivityTarget::Window("0x42".into())),
+            Some(ActivityTarget::Window {
+                id: "0x42".into(),
+                fallback_display: 1,
+            }),
             None,
             now + Duration::from_secs(1),
             IDLE,
@@ -201,7 +223,13 @@ mod tests {
 
         assert_eq!(state.generation, generation);
         assert_ne!(epoch, next_epoch);
-        assert_eq!(state.target, Some(ActivityTarget::Window("0x42".into())));
+        assert_eq!(
+            state.target,
+            Some(ActivityTarget::Window {
+                id: "0x42".into(),
+                fallback_display: 1,
+            })
+        );
         assert!(state.rest(generation, epoch).is_none());
         assert!(state.target.is_some());
     }
@@ -211,10 +239,16 @@ mod tests {
         let mut state = ActivityState::new();
         let start = Instant::now();
         let latest = start + Duration::from_secs(8);
-        let latest_target = ActivityTarget::Window("0x2".into());
+        let latest_target = ActivityTarget::Window {
+            id: "0x2".into(),
+            fallback_display: 2,
+        };
         let _ = state.note(Some(latest_target.clone()), Some((20, 30)), latest, IDLE);
         let _ = state.note(
-            Some(ActivityTarget::Window("0x1".into())),
+            Some(ActivityTarget::Window {
+                id: "0x1".into(),
+                fallback_display: 1,
+            }),
             Some((1, 2)),
             start,
             IDLE,
@@ -223,5 +257,46 @@ mod tests {
         assert_eq!(state.last_activity, Some(latest));
         assert_eq!(state.target, Some(latest_target));
         assert_eq!(state.marker, Some((20, 30, latest)));
+    }
+
+    #[test]
+    fn only_the_current_window_failure_can_fall_back() {
+        let mut state = ActivityState::new();
+        let now = Instant::now();
+        let Transition::Open { generation, epoch } = state.note(
+            Some(ActivityTarget::Window {
+                id: "0x1".into(),
+                fallback_display: 2,
+            }),
+            None,
+            now,
+            IDLE,
+        ) else {
+            panic!("first activity must open");
+        };
+        let fallback_epoch = state
+            .fallback_to_display(generation, epoch)
+            .expect("current window may fall back");
+        assert_eq!(state.target, Some(ActivityTarget::Display(2)));
+        assert!(state.current(generation, fallback_epoch));
+
+        let _ = state.note(
+            Some(ActivityTarget::Window {
+                id: "0x2".into(),
+                fallback_display: 3,
+            }),
+            None,
+            now + Duration::from_secs(1),
+            IDLE,
+        );
+        assert!(
+            state
+                .fallback_to_display(generation, fallback_epoch)
+                .is_none()
+        );
+        assert!(matches!(
+            state.target,
+            Some(ActivityTarget::Window { ref id, .. }) if id == "0x2"
+        ));
     }
 }

@@ -84,6 +84,8 @@ pub struct PointerMove {
     pub x: i32,
     pub y: i32,
     pub target: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub window_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -92,6 +94,8 @@ pub struct PointerButton {
     pub y: i32,
     pub button: MouseButton,
     pub target: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub window_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -101,6 +105,8 @@ pub struct PointerClick {
     pub button: MouseButton,
     pub count: u32,
     pub target: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub window_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -110,6 +116,8 @@ pub struct PointerScroll {
     pub dx: i32,
     pub dy: i32,
     pub target: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub window_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -120,12 +128,16 @@ pub struct PointerDrag {
     pub to_y: i32,
     pub button: MouseButton,
     pub target: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub window_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct KeyText {
     pub text: String,
     pub target: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub window_id: Option<String>,
 }
 
 /// `key down` and `key up`, which name a key rather than typing text.
@@ -133,6 +145,8 @@ pub struct KeyText {
 pub struct KeyName {
     pub name: String,
     pub target: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub window_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -140,6 +154,8 @@ pub struct KeyPress {
     pub name: String,
     pub modifiers: Vec<Modifier>,
     pub target: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub window_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -207,4 +223,37 @@ pub struct AppLaunch {
 pub struct AppQuit {
     pub target: QuitTarget,
     pub force: bool,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::KeyText;
+
+    #[test]
+    fn input_window_metadata_is_backward_compatible() {
+        let old: KeyText = serde_json::from_value(serde_json::json!({
+            "text": "hello",
+            "target": 42
+        }))
+        .expect("old clients omit viewer metadata");
+        assert_eq!(old.target, Some(42));
+        assert_eq!(old.window_id, None);
+
+        let without = serde_json::to_value(KeyText {
+            text: "hello".into(),
+            target: Some(42),
+            window_id: None,
+        })
+        .expect("serialize key input");
+        assert!(without.get("window_id").is_none());
+
+        let with = serde_json::to_value(KeyText {
+            text: "hello".into(),
+            target: Some(42),
+            window_id: Some("0x7f".into()),
+        })
+        .expect("serialize targeted key input");
+        assert_eq!(with["target"], 42);
+        assert_eq!(with["window_id"], "0x7f");
+    }
 }

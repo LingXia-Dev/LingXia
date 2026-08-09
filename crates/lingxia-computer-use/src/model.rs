@@ -507,8 +507,16 @@ mod tests {
 pub enum Acted {
     /// A point in global desktop coordinates.
     At { x: i32, y: i32 },
-    /// A window, with nothing to mark inside it.
-    Window(String),
+    /// The display holding a point, without implying that input occurred at
+    /// that point. Used when process-directed input identifies a display but
+    /// not a unique top-level window.
+    Display { x: i32, y: i32 },
+    /// A point delivered to a specific window. The viewer follows the window
+    /// while still marking the global point that was acted on.
+    AtWindow { x: i32, y: i32, id: String },
+    /// A window whose operation may make it disappear. The point is only a
+    /// fallback display location and must not be drawn as an acted-on marker.
+    WindowWithFallback { id: String, x: i32, y: i32 },
     /// Something changed, but nothing said where.
     Somewhere,
 }

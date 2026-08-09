@@ -31,6 +31,12 @@ mod pip;
 mod process;
 mod window_ops;
 
+// Borderless panels do not display their title, but WindowServer still exposes
+// it as kCGWindowName when Screen Recording metadata is available. Every host
+// uses the same deliberately collision-resistant sentinel so one product does
+// not enumerate and automate another product's activity viewer.
+const VIEWER_WINDOW_SENTINEL: &str = "__lingxia_activity_viewer_8d61c5b2_v1__";
+
 pub use ax::{
     collapse as ax_collapse, expand as ax_expand, focus as ax_focus, hit_test as ax_hit_test,
     invoke as ax_invoke, query as ax_query, scroll_into_view as ax_scroll_into_view,
@@ -95,23 +101,17 @@ fn os_version() -> String {
     String::from_utf8_lossy(&buf[..len.saturating_sub(1)]).into_owned()
 }
 
-/// Live permission grants for this process (no prompt).
-/// The bundle or executable the OS will attribute a grant to. `NSRunningApplication`
-/// names a bundled app; a bare binary has only its own file name.
+/// The bundled app the OS will attribute a grant to. Bare binaries have no
+/// bundle URL and must fall back to the terminal that macOS actually records
+/// in its privacy database.
 pub(crate) fn responsible_app_name() -> Option<String> {
     use objc2_app_kit::NSRunningApplication;
 
-    let name = NSRunningApplication::currentApplication().localizedName();
-    if let Some(name) = name {
-        let name = name.to_string();
-        if !name.is_empty() {
-            return Some(name);
-        }
-    }
-    std::env::current_exe().ok().and_then(|path| {
-        path.file_name()
-            .map(|name| name.to_string_lossy().into_owned())
-    })
+    let app = NSRunningApplication::currentApplication();
+    app.bundleURL()?;
+    app.localizedName()
+        .map(|name| name.to_string())
+        .filter(|name| !name.is_empty())
 }
 
 pub fn permissions() -> Permissions {
@@ -303,6 +303,7 @@ fn enumerate(query: &WindowQuery, only_onscreen: bool) -> Result<Vec<Window>> {
     let array = (&*info as *const objc2_core_foundation::CFArray).cast::<std::ffi::c_void>();
     let displays = displays().unwrap_or_default();
     let front = frontmost_pid();
+    let viewer_window = pip::window_number();
 
     let mut out = Vec::new();
     let mut focused_taken = false;
@@ -327,6 +328,13 @@ fn enumerate(query: &WindowQuery, only_onscreen: bool) -> Result<Vec<Window>> {
             let Some(number) = cf::dict_i64(dict, kCGWindowNumber) else {
                 continue;
             };
+            // The exact number always protects this process. The shared title
+            // also protects viewers owned by other LingXia products when macOS
+            // has not redacted window names from CGWindow metadata.
+            let title = cf::dict_string(dict, kCGWindowName).unwrap_or_default();
+            if is_viewer_window(number as u32, viewer_window, &title) {
+                continue;
+            }
             let Some(bounds) = cf::dict_rect(dict, kCGWindowBounds) else {
                 continue;
             };
@@ -339,7 +347,6 @@ fn enumerate(query: &WindowQuery, only_onscreen: bool) -> Result<Vec<Window>> {
             let process = cf::dict_string(dict, kCGWindowOwnerName).unwrap_or_default();
             // kCGWindowName (the title) is redacted unless the process holds the
             // Screen Recording permission; it is often empty.
-            let title = cf::dict_string(dict, kCGWindowName).unwrap_or_default();
 
             let raw = RawWindow {
                 number: number as u32,
@@ -381,6 +388,10 @@ fn enumerate(query: &WindowQuery, only_onscreen: bool) -> Result<Vec<Window>> {
         }
     }
     Ok(out)
+}
+
+fn is_viewer_window(number: u32, viewer_window: u32, title: &str) -> bool {
+    (viewer_window != 0 && number == viewer_window) || title == VIEWER_WINDOW_SENTINEL
 }
 
 struct RawWindow<'a> {
@@ -440,5 +451,21 @@ pub fn wait_window(query: &WindowQuery, visible: Option<bool>, timeout_ms: u64) 
             return Err(Error::Timeout("timed out waiting for window".into()));
         }
         std::thread::sleep(std::time::Duration::from_millis(150));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{VIEWER_WINDOW_SENTINEL, is_viewer_window};
+
+    #[test]
+    fn viewer_is_excluded_only_after_its_window_exists() {
+        assert!(!is_viewer_window(42, 0, "ordinary window"));
+        assert!(is_viewer_window(42, 42, ""));
+        assert!(!is_viewer_window(41, 42, "ordinary window"));
+        assert!(
+            is_viewer_window(900, 42, VIEWER_WINDOW_SENTINEL),
+            "another product's viewer is excluded by its shared identity"
+        );
     }
 }

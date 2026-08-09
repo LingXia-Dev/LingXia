@@ -1,10 +1,9 @@
 //! A passive activity viewer on a dedicated Win32 UI thread.
 //!
-//! Frames are scaled straight from the visible desktop into the small viewer
-//! with GDI. This deliberately does not reuse screenshot/WGC: those paths
-//! allocate a capture stack and PNG-encode every call, while the viewer needs a
-//! cheap live view. The tradeoff is honest and useful here: an occluded target
-//! is shown occluded, exactly as it appears to the person at the machine.
+//! Window targets use a live DWM thumbnail, which keeps showing the real
+//! composited window while it is covered and avoids building a capture stack
+//! for every frame. Untargeted work still mirrors the visible display through
+//! GDI because there is no single window for DWM to follow.
 
 use std::cell::RefCell;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -14,17 +13,23 @@ use std::time::{Duration, Instant};
 use windows::Win32::Foundation::{
     COLORREF, ERROR_CLASS_ALREADY_EXISTS, GetLastError, HWND, LPARAM, LRESULT, RECT, WPARAM,
 };
+use windows::Win32::Graphics::Dwm::{
+    DWM_THUMBNAIL_PROPERTIES, DWM_TNP_OPACITY, DWM_TNP_RECTDESTINATION,
+    DWM_TNP_SOURCECLIENTAREAONLY, DWM_TNP_VISIBLE, DwmRegisterThumbnail, DwmUnregisterThumbnail,
+    DwmUpdateThumbnailProperties,
+};
 use windows::Win32::Graphics::Gdi::{
-    BeginPaint, CreatePen, DeleteObject, Ellipse, EndPaint, GetDC, GetStockObject, HALFTONE,
-    HGDIOBJ, InvalidateRect, NULL_BRUSH, PAINTSTRUCT, PS_SOLID, ReleaseDC, SRCCOPY, SelectObject,
-    SetStretchBltMode, StretchBlt,
+    BeginPaint, CreatePen, CreateSolidBrush, DEFAULT_GUI_FONT, DeleteObject, Ellipse, EndPaint,
+    FillRect, GetDC, GetStockObject, HALFTONE, HGDIOBJ, InvalidateRect, NULL_BRUSH, PAINTSTRUCT,
+    PS_SOLID, ReleaseDC, SRCCOPY, SelectObject, SetBkMode, SetStretchBltMode, SetTextColor,
+    StretchBlt, TRANSPARENT, TextOutW,
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::System::Threading::GetCurrentThreadId;
 use windows::Win32::UI::WindowsAndMessaging::*;
 use windows::core::w;
 
-use crate::model::{Acted, Rect};
+use crate::model::{Acted, Rect, WindowTarget};
 use crate::pip_state::{ActivityState, ActivityTarget, Transition};
 
 const FPS: u32 = 8;
@@ -45,6 +50,12 @@ enum Corner {
     TopRight,
     BottomLeft,
     BottomRight,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ViewerMode {
+    Compact,
+    Full,
 }
 
 struct State {
@@ -83,10 +94,18 @@ static UI_TOKEN: AtomicU64 = AtomicU64::new(1);
 struct Viewer {
     hwnd: HWND,
     source: Rect,
+    thumbnail: Option<Thumbnail>,
+    mode: ViewerMode,
+    label: String,
     generation: u64,
     epoch: u64,
     dark_pen: windows::Win32::Graphics::Gdi::HPEN,
     bright_pen: windows::Win32::Graphics::Gdi::HPEN,
+}
+
+struct Thumbnail {
+    handle: isize,
+    source: HWND,
 }
 
 thread_local! {
@@ -98,19 +117,41 @@ fn state() -> std::sync::MutexGuard<'static, State> {
 }
 
 pub fn note_activity(acted: Acted) {
+    // Target discovery below can block and complete out of order across
+    // callers. Timestamp entry so the reducer can reject the older action.
+    let observed_at = Instant::now();
     let (point, target) = match acted {
         Acted::At { x, y } => {
             let display = display_holding(x, y);
-            (Some((x, y)), Some(ActivityTarget::Display(display)))
+            let current = state().activity.target.clone();
+            let bounds = current.as_ref().and_then(|target| source_rect(target).ok());
+            let target = if preserve_window_target(current.as_ref(), bounds, (x, y)) {
+                None
+            } else {
+                Some(ActivityTarget::Display(display))
+            };
+            (Some((x, y)), target)
         }
-        Acted::Window(id) => (None, Some(ActivityTarget::Window(id))),
+        Acted::Display { x, y } => (None, Some(ActivityTarget::Display(display_holding(x, y)))),
+        Acted::AtWindow { x, y, id } => (
+            Some((x, y)),
+            Some(ActivityTarget::Window {
+                id,
+                fallback_display: display_holding(x, y),
+            }),
+        ),
+        Acted::WindowWithFallback { id, x, y } => (
+            None,
+            Some(ActivityTarget::Window {
+                id,
+                fallback_display: display_holding(x, y),
+            }),
+        ),
         Acted::Somewhere => (None, None),
     };
     let (transition, current_generation, current_epoch) = {
         let mut state = state();
-        let transition = state
-            .activity
-            .note(target, point, Instant::now(), IDLE_REST);
+        let transition = state.activity.note(target, point, observed_at, IDLE_REST);
         (transition, state.activity.generation, state.activity.epoch)
     };
     let update = !matches!(transition, Transition::Nothing);
@@ -214,9 +255,21 @@ fn register_ui(token: u64, ui: UiThread) -> bool {
 
 fn clear_ui(id: u32) {
     let mut slot = UI.lock().unwrap_or_else(|error| error.into_inner());
-    if matches!(*slot, Some(UiSlot::Ready(ui)) if ui.id == id) {
-        *slot = None;
+    let mut shared = state();
+    reap_ui(&mut slot, &mut shared.panel, id);
+}
+
+/// Retire only the UI thread that still owns the slot, and invalidate its
+/// placement together with it. A replacement HWND starts at 1x1 and hidden;
+/// retaining the old rect would make an identical desired placement look
+/// unchanged and skip the SWP_SHOWWINDOW that reveals the replacement.
+fn reap_ui(slot: &mut Option<UiSlot>, panel: &mut Option<Rect>, id: u32) -> bool {
+    if !matches!(*slot, Some(UiSlot::Ready(ui)) if ui.id == id) {
+        return false;
     }
+    *slot = None;
+    *panel = None;
+    true
 }
 
 fn fail_ui_start(token: u64, ready: &mpsc::SyncSender<Option<u32>>) {
@@ -308,6 +361,9 @@ fn ui_main(token: u64, ready: mpsc::SyncSender<Option<u32>>) {
                     w: 1,
                     h: 1,
                 },
+                thumbnail: None,
+                mode: ViewerMode::Full,
+                label: String::new(),
                 generation: 0,
                 epoch: 0,
                 dark_pen: CreatePen(PS_SOLID, 7, COLORREF(0x001e28)),
@@ -331,7 +387,9 @@ fn ui_main(token: u64, ready: mpsc::SyncSender<Option<u32>>) {
 
         // The caller waits only briefly. If initialization outlives that bound,
         // the UI thread still converges from the shared state on its own.
-        apply_update(state().activity.epoch);
+        // Drop the reducer guard before `apply_update` locks it again.
+        let epoch = state().activity.epoch;
+        apply_update(epoch);
 
         let mut message = MSG::default();
         loop {
@@ -371,14 +429,27 @@ fn apply_update(epoch: u64) {
             state.corner,
         )
     };
-    let Ok(source) = source_rect(&target) else {
+    let source = match source_rect(&target) {
+        Ok(source) => source,
+        Err(error) => {
+            let fallback_epoch = state().activity.fallback_to_display(generation, epoch);
+            if let Some(fallback_epoch) = fallback_epoch {
+                log::debug!("picture-in-picture window vanished, showing its display: {error}");
+                apply_update(fallback_epoch);
+            } else {
+                stop_if_current(generation, epoch);
+            }
+            return;
+        }
+    };
+    let product = product_anchor();
+    let anchor = product.unwrap_or(source);
+    let mode = viewer_mode(&target, source, product);
+    let Some((x, y, width, height)) = placement(source, anchor, corner, mode) else {
         stop_if_current(generation, epoch);
         return;
     };
-    let Some((x, y, width, height)) = placement(source, corner) else {
-        stop_if_current(generation, epoch);
-        return;
-    };
+    let label = compact_label(&target);
 
     let desired = Rect {
         x,
@@ -396,6 +467,8 @@ fn apply_update(epoch: u64) {
     let hwnd = VIEWER.with_borrow_mut(|slot| {
         if let Some(viewer) = slot.as_mut() {
             viewer.source = source;
+            viewer.mode = mode;
+            viewer.label.clone_from(&label);
             viewer.generation = generation;
             viewer.epoch = epoch;
             Some(viewer.hwnd)
@@ -423,11 +496,31 @@ fn apply_update(epoch: u64) {
                 }
             }
         }
+        VIEWER.with_borrow_mut(|slot| {
+            if let Some(viewer) = slot.as_mut() {
+                if mode == ViewerMode::Full {
+                    let _ = sync_thumbnail(viewer, &target, width, height);
+                } else {
+                    clear_thumbnail(viewer);
+                }
+            }
+        });
         let _ = InvalidateRect(Some(hwnd), None, false);
     }
-    if !state().activity.current(generation, epoch) {
-        apply_hide(state().activity.epoch);
+    let current = state().activity.current(generation, epoch);
+    if !current {
+        let epoch = state().activity.epoch;
+        apply_hide(epoch);
     }
+}
+
+fn preserve_window_target(
+    current: Option<&ActivityTarget>,
+    bounds: Option<Rect>,
+    point: (i32, i32),
+) -> bool {
+    matches!(current, Some(ActivityTarget::Window { .. }))
+        && bounds.is_some_and(|bounds| contains(bounds, point))
 }
 
 fn apply_hide(epoch: u64) {
@@ -436,11 +529,12 @@ fn apply_hide(epoch: u64) {
         return;
     }
     drop(guard);
-    VIEWER.with_borrow(|slot| {
-        if let Some(viewer) = slot.as_ref() {
+    VIEWER.with_borrow_mut(|slot| {
+        if let Some(viewer) = slot.as_mut() {
             unsafe {
                 let _ = ShowWindow(viewer.hwnd, SW_HIDE);
             }
+            clear_thumbnail(viewer);
         }
     });
     state().panel = None;
@@ -467,11 +561,12 @@ fn tick() {
         )
     };
     let Some(target) = target else {
-        VIEWER.with_borrow(|slot| {
-            if let Some(viewer) = slot.as_ref() {
+        VIEWER.with_borrow_mut(|slot| {
+            if let Some(viewer) = slot.as_mut() {
                 unsafe {
                     let _ = ShowWindow(viewer.hwnd, SW_HIDE);
                 }
+                clear_thumbnail(viewer);
             }
         });
         state().panel = None;
@@ -485,11 +580,12 @@ fn tick() {
     if marker.is_some_and(|point| panel.is_some_and(|panel| contains(panel, point))) {
         let source = source_rect(&target).ok();
         if let Some(source) = source {
+            let anchor = product_anchor().unwrap_or(source);
             let mut state = state();
             if state.activity.current(generation, epoch)
                 && let Some(marker) = marker
             {
-                state.corner = corner_away_from(marker, source);
+                state.corner = corner_away_from(marker, anchor);
             }
         }
         apply_update(epoch);
@@ -537,7 +633,8 @@ unsafe extern "system" fn window_proc(
             WM_ERASEBKGND => LRESULT(1),
             WM_DESTROY => {
                 VIEWER.with_borrow_mut(|slot| {
-                    if let Some(viewer) = slot.take() {
+                    if let Some(mut viewer) = slot.take() {
+                        clear_thumbnail(&mut viewer);
                         let _ = DeleteObject(viewer.dark_pen.into());
                         let _ = DeleteObject(viewer.bright_pen.into());
                     }
@@ -548,6 +645,67 @@ unsafe extern "system" fn window_proc(
             _ => DefWindowProcW(hwnd, message, wparam, lparam),
         }
     }
+}
+
+fn clear_thumbnail(viewer: &mut Viewer) {
+    if let Some(thumbnail) = viewer.thumbnail.take() {
+        unsafe {
+            if let Err(error) = DwmUnregisterThumbnail(thumbnail.handle) {
+                log::debug!("picture-in-picture thumbnail cleanup failed: {error}");
+            }
+        }
+    }
+}
+
+fn sync_thumbnail(viewer: &mut Viewer, target: &ActivityTarget, width: i32, height: i32) -> bool {
+    let ActivityTarget::Window { id, .. } = target else {
+        clear_thumbnail(viewer);
+        return false;
+    };
+    let Ok(source) = super::parse_hwnd(id) else {
+        clear_thumbnail(viewer);
+        return false;
+    };
+    if viewer
+        .thumbnail
+        .as_ref()
+        .is_none_or(|thumbnail| thumbnail.source != source)
+    {
+        clear_thumbnail(viewer);
+        let handle = unsafe { DwmRegisterThumbnail(viewer.hwnd, source) };
+        match handle {
+            Ok(handle) => viewer.thumbnail = Some(Thumbnail { handle, source }),
+            Err(error) => {
+                log::debug!("picture-in-picture thumbnail registration failed: {error}");
+                return false;
+            }
+        }
+    }
+    let Some(handle) = viewer.thumbnail.as_ref().map(|thumbnail| thumbnail.handle) else {
+        return false;
+    };
+    let properties = DWM_THUMBNAIL_PROPERTIES {
+        dwFlags: DWM_TNP_RECTDESTINATION
+            | DWM_TNP_OPACITY
+            | DWM_TNP_VISIBLE
+            | DWM_TNP_SOURCECLIENTAREAONLY,
+        rcDestination: RECT {
+            left: 0,
+            top: 0,
+            right: width,
+            bottom: height,
+        },
+        opacity: 255,
+        fVisible: true.into(),
+        fSourceClientAreaOnly: false.into(),
+        ..Default::default()
+    };
+    if let Err(error) = unsafe { DwmUpdateThumbnailProperties(handle, &properties) } {
+        log::debug!("picture-in-picture thumbnail update failed: {error}");
+        clear_thumbnail(viewer);
+        return false;
+    }
+    true
 }
 
 unsafe fn paint(hwnd: HWND) {
@@ -564,42 +722,76 @@ unsafe fn paint(hwnd: HWND) {
             if !state().activity.current(viewer.generation, viewer.epoch) {
                 return;
             }
-            let screen = GetDC(None);
-            if !screen.is_invalid() {
-                let _ = SetStretchBltMode(hdc, HALFTONE);
-                let _ = StretchBlt(
-                    hdc,
-                    0,
-                    0,
-                    client.right,
-                    client.bottom,
-                    Some(screen),
-                    viewer.source.x,
-                    viewer.source.y,
-                    viewer.source.w,
-                    viewer.source.h,
-                    SRCCOPY,
-                );
-                ReleaseDC(None, screen);
-            }
-
-            let marker = {
-                let state = state();
-                if state.activity.generation != viewer.generation {
-                    None
-                } else {
-                    state
-                        .activity
-                        .marker
-                        .filter(|(_, _, at)| at.elapsed() < MARKER_LINGER)
-                        .map(|(x, y, _)| (x, y))
+            if viewer.mode == ViewerMode::Compact {
+                draw_compact(hdc, client, &viewer.label, viewer);
+            } else {
+                if viewer.thumbnail.is_none() {
+                    let screen = GetDC(None);
+                    if !screen.is_invalid() {
+                        let _ = SetStretchBltMode(hdc, HALFTONE);
+                        let _ = StretchBlt(
+                            hdc,
+                            0,
+                            0,
+                            client.right,
+                            client.bottom,
+                            Some(screen),
+                            viewer.source.x,
+                            viewer.source.y,
+                            viewer.source.w,
+                            viewer.source.h,
+                            SRCCOPY,
+                        );
+                        ReleaseDC(None, screen);
+                    }
                 }
-            };
-            if let Some((x, y)) = marker {
-                draw_marker(hdc, client, viewer.source, x, y, viewer);
+
+                let marker = {
+                    let state = state();
+                    if state.activity.generation != viewer.generation {
+                        None
+                    } else {
+                        state
+                            .activity
+                            .marker
+                            .filter(|(_, _, at)| at.elapsed() < MARKER_LINGER)
+                            .map(|(x, y, _)| (x, y))
+                    }
+                };
+                if let Some((x, y)) = marker {
+                    draw_marker(hdc, client, viewer.source, x, y, viewer);
+                }
             }
         });
         let _ = EndPaint(hwnd, &paint);
+    }
+}
+
+unsafe fn draw_compact(
+    hdc: windows::Win32::Graphics::Gdi::HDC,
+    client: RECT,
+    label: &str,
+    viewer: &Viewer,
+) {
+    unsafe {
+        let background = CreateSolidBrush(COLORREF(0x00241f1c));
+        let _ = FillRect(hdc, &client, background);
+        let accent = CreateSolidBrush(COLORREF(0x000ad6ff));
+        let old_brush = SelectObject(hdc, accent.into());
+        let old_pen = SelectObject(hdc, viewer.bright_pen.into());
+        let center_y = client.bottom / 2;
+        let _ = Ellipse(hdc, 16, center_y - 6, 28, center_y + 6);
+        let _ = SelectObject(hdc, old_pen);
+        let _ = SelectObject(hdc, old_brush);
+        let _ = DeleteObject(accent.into());
+
+        let old_font = SelectObject(hdc, GetStockObject(DEFAULT_GUI_FONT));
+        let _ = SetBkMode(hdc, TRANSPARENT);
+        let _ = SetTextColor(hdc, COLORREF(0x00f4f4f4));
+        let text: Vec<u16> = label.encode_utf16().take(42).collect();
+        let _ = TextOutW(hdc, 42, (center_y - 8).max(0), &text);
+        let _ = SelectObject(hdc, old_font);
+        let _ = DeleteObject(background.into());
     }
 }
 
@@ -636,7 +828,7 @@ fn source_rect(target: &ActivityTarget) -> crate::Result<Rect> {
             .get(index.wrapping_sub(1))
             .map(|display| display.bounds)
             .ok_or_else(|| crate::Error::NotFound(format!("no display {index}"))),
-        ActivityTarget::Window(id) => {
+        ActivityTarget::Window { id, .. } => {
             let hwnd = super::parse_hwnd(id)?;
             let mut rect = RECT::default();
             unsafe {
@@ -650,6 +842,83 @@ fn source_rect(target: &ActivityTarget) -> crate::Result<Rect> {
             Ok(rect)
         }
     }
+}
+
+/// Keep the product's viewer beside the product when it has a visible window.
+/// The mirrored source may live on another monitor; DWM does not require the
+/// source and destination windows to share one.
+fn product_anchor() -> Option<Rect> {
+    let query = crate::model::WindowQuery::parse(&format!("pid:{}", std::process::id()));
+    let windows = super::windows(&query).ok()?;
+    windows
+        .iter()
+        .find(|window| window.focused && !window.minimized)
+        .or_else(|| windows.iter().find(|window| !window.minimized))
+        .map(|window| window.bounds)
+}
+
+fn viewer_mode(target: &ActivityTarget, source: Rect, product: Option<Rect>) -> ViewerMode {
+    let Some(product) = product else {
+        return ViewerMode::Full;
+    };
+    let ActivityTarget::Window { id, .. } = target else {
+        return ViewerMode::Full;
+    };
+    let Ok(hwnd) = super::parse_hwnd(id) else {
+        return ViewerMode::Full;
+    };
+    mode_for(
+        true,
+        unsafe { GetForegroundWindow() == hwnd },
+        same_monitor(source, product),
+    )
+}
+
+fn mode_for(product_visible: bool, target_foreground: bool, same_monitor: bool) -> ViewerMode {
+    if product_visible && target_foreground && same_monitor {
+        ViewerMode::Compact
+    } else {
+        ViewerMode::Full
+    }
+}
+
+fn same_monitor(a: Rect, b: Rect) -> bool {
+    monitor_for(a) == monitor_for(b)
+}
+
+fn monitor_for(rect: Rect) -> windows::Win32::Graphics::Gdi::HMONITOR {
+    let rect = RECT {
+        left: rect.x,
+        top: rect.y,
+        right: rect.x.saturating_add(rect.w),
+        bottom: rect.y.saturating_add(rect.h),
+    };
+    unsafe {
+        windows::Win32::Graphics::Gdi::MonitorFromRect(
+            &rect,
+            windows::Win32::Graphics::Gdi::MONITOR_DEFAULTTONEAREST,
+        )
+    }
+}
+
+fn compact_label(target: &ActivityTarget) -> String {
+    let ActivityTarget::Window { id, .. } = target else {
+        return "Foreground control".into();
+    };
+    let identity = super::window_status(&WindowTarget::Id(id.clone()))
+        .ok()
+        .map(|window| {
+            if window.process.is_empty() {
+                window.title
+            } else {
+                window.process
+            }
+        })
+        .filter(|identity| !identity.is_empty());
+    identity.map_or_else(
+        || "Foreground control".into(),
+        |identity| format!("Foreground control - {identity}"),
+    )
 }
 
 fn display_holding(x: i32, y: i32) -> usize {
@@ -673,19 +942,13 @@ fn same_rect(a: Rect, b: Rect) -> bool {
     a.x == b.x && a.y == b.y && a.w == b.w && a.h == b.h
 }
 
-fn placement(source: Rect, corner: Corner) -> Option<(i32, i32, i32, i32)> {
-    let monitor_rect = RECT {
-        left: source.x,
-        top: source.y,
-        right: source.x.saturating_add(source.w),
-        bottom: source.y.saturating_add(source.h),
-    };
-    let monitor = unsafe {
-        windows::Win32::Graphics::Gdi::MonitorFromRect(
-            &monitor_rect,
-            windows::Win32::Graphics::Gdi::MONITOR_DEFAULTTONEAREST,
-        )
-    };
+fn placement(
+    source: Rect,
+    anchor: Rect,
+    corner: Corner,
+    mode: ViewerMode,
+) -> Option<(i32, i32, i32, i32)> {
+    let monitor = monitor_for(anchor);
     let mut info = windows::Win32::Graphics::Gdi::MONITORINFO {
         cbSize: std::mem::size_of::<windows::Win32::Graphics::Gdi::MONITORINFO>() as u32,
         ..Default::default()
@@ -701,13 +964,16 @@ fn placement(source: Rect, corner: Corner) -> Option<(i32, i32, i32, i32)> {
     let available_height = (info.rcWork.bottom as i64 - info.rcWork.top as i64 - inset * 2).max(1);
     let available_width = available_width.min(i32::MAX as i64) as i32;
     let available_height = available_height.min(i32::MAX as i64) as i32;
-    let (width, height) = fit_size(
-        source.w,
-        source.h,
-        available_width,
-        available_height,
-        dpi as u32,
-    );
+    let (width, height) = match mode {
+        ViewerMode::Compact => compact_size(available_width, available_height, dpi as u32),
+        ViewerMode::Full => fit_size(
+            source.w,
+            source.h,
+            available_width,
+            available_height,
+            dpi as u32,
+        ),
+    };
     let inset = inset as i32;
     let (x, y) = match corner {
         Corner::TopLeft => (info.rcWork.left + inset, info.rcWork.top + inset),
@@ -722,6 +988,12 @@ fn placement(source: Rect, corner: Corner) -> Option<(i32, i32, i32, i32)> {
         ),
     };
     Some((x, y, width, height))
+}
+
+fn compact_size(available_width: i32, available_height: i32, dpi: u32) -> (i32, i32) {
+    let width = (300_i64 * dpi as i64 / 96).min(available_width.max(1) as i64);
+    let height = (48_i64 * dpi as i64 / 96).min(available_height.max(1) as i64);
+    (width.max(1) as i32, height.max(1) as i32)
 }
 
 fn fit_size(
@@ -763,11 +1035,47 @@ mod tests {
     }
 
     #[test]
+    fn reaping_ui_invalidates_same_geometry_for_the_replacement_window() {
+        let desired = Rect {
+            x: 100,
+            y: 200,
+            w: 360,
+            h: 225,
+        };
+        let mut slot = Some(UiSlot::Ready(UiThread { id: 17 }));
+        let mut panel = Some(desired);
+        assert!(!reap_ui(&mut slot, &mut panel, 16));
+        assert!(panel.is_some_and(|old| same_rect(old, desired)));
+
+        assert!(reap_ui(&mut slot, &mut panel, 17));
+        assert!(slot.is_none());
+        assert!(
+            !panel.is_some_and(|old| same_rect(old, desired)),
+            "the replacement 1x1 HWND must be positioned and shown even when geometry is unchanged"
+        );
+    }
+
+    #[test]
     fn fit_preserves_aspect_and_stays_inside_work_area() {
         assert_eq!(fit_size(1920, 1080, 800, 600, 96), (360, 202));
         assert_eq!(fit_size(1080, 1920, 800, 400, 96), (225, 400));
         let (width, height) = fit_size(i32::MAX, i32::MAX, 320, 180, 192);
         assert!(width <= 320 && height <= 180);
+    }
+
+    #[test]
+    fn compact_mode_is_only_for_foreground_work_on_the_product_monitor() {
+        assert_eq!(mode_for(true, true, true), ViewerMode::Compact);
+        assert_eq!(mode_for(false, true, true), ViewerMode::Full);
+        assert_eq!(mode_for(true, false, true), ViewerMode::Full);
+        assert_eq!(mode_for(true, true, false), ViewerMode::Full);
+    }
+
+    #[test]
+    fn compact_size_scales_with_dpi_and_stays_inside_work_area() {
+        assert_eq!(compact_size(800, 600, 96), (300, 48));
+        assert_eq!(compact_size(800, 600, 144), (450, 72));
+        assert_eq!(compact_size(200, 30, 192), (200, 30));
     }
 
     #[test]
@@ -782,6 +1090,35 @@ mod tests {
         assert!(contains(rect, (-1, 679)));
         assert!(!contains(rect, (0, 0)));
         assert!(!contains(rect, (-1921, -400)));
+    }
+
+    #[test]
+    fn targeted_pointer_keeps_the_window_source_inside_its_bounds() {
+        let target = ActivityTarget::Window {
+            id: "0x42".into(),
+            fallback_display: 1,
+        };
+        let bounds = Rect {
+            x: 100,
+            y: 200,
+            w: 800,
+            h: 600,
+        };
+        assert!(preserve_window_target(
+            Some(&target),
+            Some(bounds),
+            (500, 400)
+        ));
+        assert!(!preserve_window_target(
+            Some(&target),
+            Some(bounds),
+            (50, 400)
+        ));
+        assert!(!preserve_window_target(
+            Some(&ActivityTarget::Display(1)),
+            Some(bounds),
+            (500, 400)
+        ));
     }
 
     #[test]

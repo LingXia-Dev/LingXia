@@ -39,7 +39,7 @@ use objc2_app_kit::{
     NSImageScaling, NSImageView, NSPanel, NSView, NSWindowCollectionBehavior, NSWindowStyleMask,
 };
 use objc2_core_foundation::{CGPoint, CGRect, CGSize};
-use objc2_foundation::{NSPoint, NSRect, NSSize};
+use objc2_foundation::{NSPoint, NSRect, NSSize, NSString};
 
 use crate::error::{Error, Result};
 use crate::model::{Acted, WindowTarget};
@@ -105,10 +105,29 @@ impl State {
             x >= px && x < px + pw && y >= py && y < py + ph
         })
     }
+
+    /// Hiding does not destroy the retained NSPanel. Keep its WindowServer
+    /// number so enumeration already knows what to exclude when it is ordered
+    /// front again; only its visible placement becomes stale.
+    fn note_hidden(&mut self) {
+        self.panel_rect = None;
+    }
+
+    fn set_corner_if_current(&mut self, generation: u64, epoch: u64, corner: Corner) -> bool {
+        if !self.activity.current(generation, epoch) || self.corner == corner {
+            return false;
+        }
+        self.corner = corner;
+        true
+    }
 }
 
 fn state() -> std::sync::MutexGuard<'static, State> {
     STATE.lock().unwrap_or_else(|error| error.into_inner())
+}
+
+pub(super) fn window_number() -> u32 {
+    state().window_number
 }
 
 /// The AppKit side. Main-thread only by construction: nothing else can reach a
@@ -149,7 +168,7 @@ fn open(generation: u64) -> Result<()> {
             }
             state.activity.epoch
         };
-        if let Err(error) = present(generation, epoch) {
+        if let Err(error) = present_with_fallback(generation, epoch) {
             let hide = state().activity.rest(generation, epoch);
             if let Some(epoch) = hide {
                 put_away(epoch);
@@ -196,8 +215,7 @@ fn put_away(epoch: u64) {
         if state.activity.epoch != epoch || state.activity.target.is_some() {
             return;
         }
-        state.window_number = 0;
-        state.panel_rect = None;
+        state.note_hidden();
         VIEWER.with_borrow(|viewer| {
             if let Some(viewer) = viewer {
                 viewer.panel.orderOut(None);
@@ -226,24 +244,36 @@ pub fn dismiss() {
 /// and opening a window because an agent asked what the screen looks like would
 /// make the viewer noise.
 pub fn note_activity(acted: Acted) {
-    let (point, window) = match &acted {
-        Acted::At { x, y } => (Some((*x, *y)), None),
-        Acted::Window(id) => (None, Some(id.clone())),
+    // Capture order before target discovery, which can block on OS APIs. Two
+    // callers may finish discovery in the opposite order they started; the
+    // reducer uses this timestamp to keep the later action authoritative.
+    let observed_at = Instant::now();
+    let (point, wanted) = match acted {
+        Acted::At { x, y } => (
+            Some((x, y)),
+            Some(ActivityTarget::Display(display_holding(x, y))),
+        ),
+        Acted::Display { x, y } => (None, Some(ActivityTarget::Display(display_holding(x, y)))),
+        Acted::AtWindow { x, y, id } => (
+            Some((x, y)),
+            Some(ActivityTarget::Window {
+                id,
+                fallback_display: display_holding(x, y),
+            }),
+        ),
+        Acted::WindowWithFallback { id, x, y } => (
+            None,
+            Some(ActivityTarget::Window {
+                id,
+                fallback_display: display_holding(x, y),
+            }),
+        ),
         Acted::Somewhere => (None, None),
-    };
-
-    // What this action says the viewer should be looking at: the window the
-    // command named, else the display it happened on.
-    let wanted = match window {
-        Some(id) => Some(ActivityTarget::Window(id)),
-        None => point.map(|(x, y)| ActivityTarget::Display(display_holding(x, y))),
     };
 
     let next = {
         let mut state = state();
-        state
-            .activity
-            .note(wanted, point, Instant::now(), IDLE_REST)
+        state.activity.note(wanted, point, observed_at, IDLE_REST)
     };
 
     if matches!(next, Transition::Nothing | Transition::Ignored) {
@@ -260,15 +290,11 @@ pub fn note_activity(acted: Acted) {
     let spawned = std::thread::Builder::new()
         .name("lingxia-pip-open".into())
         .spawn(move || {
-            let epoch = match next {
-                Transition::Ignored | Transition::Nothing => return,
-                Transition::Repoint { epoch } | Transition::Open { epoch, .. } => epoch,
-            };
             let moved = match next {
                 Transition::Ignored | Transition::Nothing => return,
                 Transition::Repoint { epoch } => {
                     let generation = state().activity.generation;
-                    present(generation, epoch)
+                    present_with_fallback(generation, epoch)
                 }
                 Transition::Open { generation, .. } => open(generation),
             };
@@ -276,19 +302,6 @@ pub fn note_activity(acted: Acted) {
                 log::debug!("picture-in-picture did not follow: {error}");
                 // Not an error anyone hears about: the command it was watching
                 // succeeded, and a viewer that cannot open must not fail it.
-                let hide = {
-                    let mut state = state();
-                    match next {
-                        Transition::Open { .. } => None,
-                        Transition::Repoint { .. } if state.activity.epoch == epoch => {
-                            Some(state.activity.dismiss())
-                        }
-                        _ => None,
-                    }
-                };
-                if let Some(epoch) = hide {
-                    put_away(epoch);
-                }
             }
         });
     if let Err(error) = spawned {
@@ -330,7 +343,7 @@ fn source_rect(watch: &ActivityTarget) -> Result<CGRect> {
                 .ok_or_else(|| Error::NotFound(format!("no display {n}")))?;
             display.bounds
         }
-        ActivityTarget::Window(id) => {
+        ActivityTarget::Window { id, .. } => {
             super::window_ops::status(&WindowTarget::Id(id.clone()))?.bounds
         }
     };
@@ -338,6 +351,27 @@ fn source_rect(watch: &ActivityTarget) -> Result<CGRect> {
         CGPoint::new(rect.x as f64, rect.y as f64),
         CGSize::new(rect.w as f64, rect.h as f64),
     ))
+}
+
+/// Show the requested window, or the display that held it if the window has
+/// disappeared between the completed command and this asynchronous update.
+/// This is an internal capture failure, never evidence that a person dismissed
+/// the viewer.
+fn present_with_fallback(generation: u64, epoch: u64) -> Result<()> {
+    match present(generation, epoch) {
+        Ok(()) => Ok(()),
+        Err(primary) => {
+            let fallback_epoch = state().activity.fallback_to_display(generation, epoch);
+            let Some(fallback_epoch) = fallback_epoch else {
+                return Err(primary);
+            };
+            present(generation, fallback_epoch).map_err(|fallback| {
+                Error::Unavailable(format!(
+                    "window viewer failed ({primary}); display fallback failed ({fallback})"
+                ))
+            })
+        }
+    }
 }
 
 /// Create the panel if it does not exist, size it to what it is watching, and
@@ -354,8 +388,8 @@ fn present(generation: u64, epoch: u64) -> Result<()> {
         )
     };
     let rect = source_rect(&watch)?;
-    let placed = on_main(move |mtm| {
-        let state = state();
+    let shown = on_main(move |mtm| {
+        let mut state = state();
         if !state.activity.current(generation, epoch) {
             return None;
         }
@@ -373,20 +407,16 @@ fn present(generation: u64, epoch: u64) -> Result<()> {
                 NSSize::new(frame.size.width, frame.size.height),
             ));
             viewer.panel.orderFrontRegardless();
-            Some((
-                viewer.panel.windowNumber().max(0) as u32,
-                to_desktop(mtm, frame),
-            ))
+            // Publish the number before releasing the reducer lock. Public
+            // enumeration waits for this lock, so it can never observe a
+            // visible viewer while its exclusion id is still zero.
+            state.window_number = viewer.panel.windowNumber().max(0) as u32;
+            state.panel_rect = Some(to_desktop(mtm, frame));
+            Some(())
         })
     })
     .ok_or_else(|| Error::Unavailable("no main thread to show the viewer on".into()))?;
-    let Some(placed) = placed else { return Ok(()) };
-    let mut state = state();
-    if !state.activity.current(generation, epoch) {
-        return Ok(());
-    }
-    state.window_number = placed.0;
-    state.panel_rect = Some(placed.1);
+    let Some(()) = shown else { return Ok(()) };
     Ok(())
 }
 
@@ -439,7 +469,14 @@ fn visible_frame_for(mtm: MainThreadMarker, watched: CGRect) -> NSRect {
 fn move_away_from(x: i32, y: i32) {
     // Measured against the screen the panel is on, which after following the
     // work may not be the primary one.
-    let watch = state().activity.target.clone();
+    let (watch, generation, epoch) = {
+        let state = state();
+        (
+            state.activity.target.clone(),
+            state.activity.generation,
+            state.activity.epoch,
+        )
+    };
     let Some(watched) = watch.and_then(|watch| source_rect(&watch).ok()) else {
         return;
     };
@@ -456,17 +493,12 @@ fn move_away_from(x: i32, y: i32) {
         y as f64 - watched.origin.y,
         extent,
     );
-    if state().corner == corner {
-        // Already as far away as a corner gets; a marker inside the panel here
-        // means the panel is bigger than the quadrant, and hopping forever
-        // would be worse than staying put.
+    // Target lookup and main-queue work above can block. A newer action may
+    // have repointed the viewer while this worker was away; never move that new
+    // viewer using the old target's marker or geometry.
+    if !state().set_corner_if_current(generation, epoch, corner) {
         return;
     }
-    state().corner = corner;
-    let (generation, epoch) = {
-        let state = state();
-        (state.activity.generation, state.activity.epoch)
-    };
     if let Err(error) = present(generation, epoch) {
         log::debug!("picture-in-picture could not move aside: {error}");
     }
@@ -496,6 +528,7 @@ fn build(mtm: MainThreadMarker) -> Viewer {
         NSBackingStoreType::Buffered,
         false,
     );
+    panel.setTitle(&NSString::from_str(super::VIEWER_WINDOW_SENTINEL));
     panel.setLevel(objc2_app_kit::NSFloatingWindowLevel);
     panel.setCollectionBehavior(
         NSWindowCollectionBehavior::CanJoinAllSpaces
@@ -532,6 +565,12 @@ fn place(
     watched: CGRect,
 ) -> NSRect {
     let visible = visible_frame_for(mtm, watched);
+    let (width, height) = fit_size(
+        width,
+        height,
+        (visible.size.width - INSET * 2.0).max(1.0),
+        (visible.size.height - INSET * 2.0).max(1.0),
+    );
     // AppKit's origin is bottom-left, which is why "top" is the far edge here.
     let (x, y) = match corner {
         Corner::TopLeft => (
@@ -549,6 +588,15 @@ fn place(
         ),
     };
     NSRect::new(NSPoint::new(x, y), NSSize::new(width, height))
+}
+
+fn fit_size(width: f64, height: f64, available_width: f64, available_height: f64) -> (f64, f64) {
+    let width = width.max(1.0);
+    let height = height.max(1.0);
+    let scale = (available_width.max(1.0) / width)
+        .min(available_height.max(1.0) / height)
+        .min(1.0);
+    ((width * scale).max(1.0), (height * scale).max(1.0))
 }
 
 /// Capture, draw, hand to the panel, repeat — until this generation is stale or
@@ -604,10 +652,17 @@ fn refresh_loop(generation: u64) {
                     return;
                 }
             }
-            // A window that closed, or a display that was unplugged, ends the
-            // viewer rather than leaving a frozen last frame up.
+            // A window may disappear after a completed close. Follow its
+            // fallback display instead of leaving a frozen last frame up.
             Err(error) => {
-                log::debug!("picture-in-picture stopping: {error}");
+                log::debug!("picture-in-picture capture failed: {error}");
+                let fallback_epoch = state().activity.fallback_to_display(generation, epoch);
+                if let Some(fallback_epoch) = fallback_epoch {
+                    if let Err(error) = present(generation, fallback_epoch) {
+                        log::debug!("picture-in-picture fallback could not resize: {error}");
+                    }
+                    continue;
+                }
                 let epoch = state().activity.rest(generation, epoch);
                 if let Some(epoch) = epoch {
                     put_away(epoch);
@@ -647,7 +702,7 @@ fn hand_to_panel(generation: u64, epoch: u64, width: u32, height: u32, rgba: Vec
                 // out too, and that is not a dismissal.
                 if state.activity.current(generation, epoch) {
                     state.activity.dismiss();
-                    state.window_number = 0;
+                    state.note_hidden();
                 }
                 return false;
             }
@@ -707,7 +762,9 @@ fn frame(
     let limit = (WIDTH * 2.0) as u32;
     let (width, height, mut rgba) = match watch {
         ActivityTarget::Display(_) => capture::rgba_below_window(rect, below, limit)?,
-        ActivityTarget::Window(id) => capture::rgba_of_window(super::parse_window_id(id)?, limit)?,
+        ActivityTarget::Window { id, .. } => {
+            capture::rgba_of_window(super::parse_window_id(id)?, limit)?
+        }
     };
     if width == 0 || height == 0 {
         return Err(Error::Failed("captured nothing".into()));
@@ -752,5 +809,59 @@ fn draw_marker(rgba: &mut [u8], width: u32, height: u32, cx: i32, cy: i32) {
             rgba[i + 1] = g;
             rgba[i + 2] = b;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn portrait_viewer_fits_inside_the_work_area() {
+        assert_eq!(fit_size(360.0, 640.0, 800.0, 400.0), (225.0, 400.0));
+        assert_eq!(fit_size(360.0, 202.5, 320.0, 180.0), (320.0, 180.0));
+        let (width, height) = fit_size(360.0, 10_000.0, 300.0, 200.0);
+        assert!(width <= 300.0 && height <= 200.0);
+    }
+
+    #[test]
+    fn hiding_a_retained_panel_keeps_its_windowserver_identity() {
+        let mut state = State {
+            activity: ActivityState::new(),
+            corner: Corner::BottomRight,
+            window_number: 73,
+            panel_rect: Some((10.0, 20.0, 360.0, 225.0)),
+        };
+        state.note_hidden();
+        assert_eq!(state.window_number, 73);
+        assert_eq!(state.panel_rect, None);
+    }
+
+    #[test]
+    fn an_old_move_worker_cannot_reposition_a_new_target() {
+        let mut state = State {
+            activity: ActivityState::new(),
+            corner: Corner::BottomRight,
+            window_number: 0,
+            panel_rect: None,
+        };
+        let now = Instant::now();
+        let Transition::Open { generation, epoch } = state.activity.note(
+            Some(ActivityTarget::Display(1)),
+            Some((20, 20)),
+            now,
+            IDLE_REST,
+        ) else {
+            panic!("first activity opens the viewer");
+        };
+        let _ = state.activity.note(
+            Some(ActivityTarget::Display(2)),
+            Some((2020, 20)),
+            now + Duration::from_millis(1),
+            IDLE_REST,
+        );
+
+        assert!(!state.set_corner_if_current(generation, epoch, Corner::TopLeft));
+        assert_eq!(state.corner, Corner::BottomRight);
     }
 }

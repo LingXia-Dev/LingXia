@@ -5,7 +5,7 @@
 use crate::error::{Error, Result};
 use crate::model::{Capabilities, Display, Doctor, Permissions, Rect, Window, WindowQuery};
 use std::sync::Once;
-use windows::Win32::Foundation::{CloseHandle, HANDLE, HWND, LPARAM, RECT, TRUE};
+use windows::Win32::Foundation::{CloseHandle, HANDLE, HWND, LPARAM, POINT, RECT, TRUE};
 use windows::core::{BOOL, PWSTR};
 
 mod ax;
@@ -47,7 +47,9 @@ pub(crate) fn parse_hwnd(id: &str) -> Result<HWND> {
         .unwrap_or(id);
     let raw = isize::from_str_radix(hex, 16)
         .map_err(|_| Error::Usage(format!("invalid window id '{id}'")))?;
-    Ok(HWND(raw as *mut core::ffi::c_void))
+    let hwnd = HWND(raw as *mut core::ffi::c_void);
+    ensure_automatable_hwnd(hwnd)?;
+    Ok(hwnd)
 }
 use windows::Win32::Graphics::Dwm::{DWMWA_CLOAKED, DwmGetWindowAttribute};
 use windows::Win32::Graphics::Gdi::{
@@ -62,11 +64,37 @@ use windows::Win32::UI::HiDpi::{
     SetProcessDpiAwarenessContext,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    EnumWindows, GWL_EXSTYLE, GetForegroundWindow, GetWindowLongW, GetWindowRect, GetWindowTextW,
-    GetWindowThreadProcessId, IsIconic, IsWindowVisible, IsZoomed, WS_EX_TOPMOST,
+    EnumWindows, GA_ROOT, GWL_EXSTYLE, GetAncestor, GetClassNameW, GetForegroundWindow,
+    GetWindowLongW, GetWindowRect, GetWindowTextW, GetWindowThreadProcessId, IsIconic,
+    IsWindowVisible, IsZoomed, WS_EX_TOPMOST, WindowFromPoint,
 };
 
 const MONITORINFOF_PRIMARY: u32 = 1;
+
+fn direct_target_class_allowed(class: &str) -> bool {
+    !pip::is_viewer_class(class)
+}
+
+pub(crate) fn is_viewer_hwnd(hwnd: HWND) -> bool {
+    unsafe {
+        let mut class = [0u16; 256];
+        let len = GetClassNameW(hwnd, &mut class);
+        len > 0
+            && !direct_target_class_allowed(&String::from_utf16_lossy(
+                &class[..len.max(0) as usize],
+            ))
+    }
+}
+
+pub(crate) fn ensure_automatable_hwnd(hwnd: HWND) -> Result<()> {
+    if is_viewer_hwnd(hwnd) {
+        Err(Error::NotFound(
+            "the activity viewer is not a desktop target".into(),
+        ))
+    } else {
+        Ok(())
+    }
+}
 
 /// Make the process per-monitor DPI aware once, so window/monitor rects come
 /// back in true physical pixels instead of being virtualized.
@@ -244,6 +272,30 @@ pub fn windows(query: &WindowQuery) -> Result<Vec<Window>> {
     Ok(out)
 }
 
+/// The top-level window that would receive pointer input at this physical
+/// desktop point. Resolve it immediately before SendInput so owned popups and
+/// overlapping topmost windows win over a caller's stale proposed window id.
+pub(crate) fn input_window_at_point(x: i32, y: i32) -> Option<Window> {
+    ensure_dpi_aware();
+    unsafe {
+        let hit = WindowFromPoint(POINT { x, y });
+        if hit.0.is_null() {
+            return None;
+        }
+        let root = GetAncestor(hit, GA_ROOT);
+        if root.0.is_null() {
+            return None;
+        }
+        if is_viewer_hwnd(root) {
+            // The panel is WS_EX_TRANSPARENT and the real event passes through
+            // it. Never let the viewer become its own capture target; falling
+            // back to the acted-on display is safe if hit-testing reports it.
+            return None;
+        }
+        window_ops::window_info(root).ok()
+    }
+}
+
 /// Poll `windows()` until one matches (and, if given, matches `visible`), or
 /// time out (exit 5).
 pub fn wait_window(query: &WindowQuery, visible: Option<bool>, timeout_ms: u64) -> Result<Window> {
@@ -337,7 +389,7 @@ unsafe extern "system" fn window_enum_proc(hwnd: HWND, lparam: LPARAM) -> BOOL {
         let mut class_buf = [0u16; 256];
         let clen = windows::Win32::UI::WindowsAndMessaging::GetClassNameW(hwnd, &mut class_buf);
         let class = String::from_utf16_lossy(&class_buf[..clen.max(0) as usize]);
-        if pip::is_viewer_class(&class) {
+        if !direct_target_class_allowed(&class) {
             return TRUE;
         }
 
@@ -385,5 +437,17 @@ pub(crate) fn process_name(pid: u32) -> String {
             .unwrap_or(&full)
             .trim_end_matches(".exe")
             .to_string()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{direct_target_class_allowed, pip};
+
+    #[test]
+    fn direct_ids_can_never_target_the_viewer_class() {
+        assert!(!direct_target_class_allowed(pip::VIEWER_CLASS));
+        assert!(direct_target_class_allowed("OrdinaryProductWindow"));
+        assert!(direct_target_class_allowed("LingXiaActivityViewerTarget"));
     }
 }
