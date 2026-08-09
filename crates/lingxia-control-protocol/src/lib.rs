@@ -114,6 +114,17 @@ pub mod methods {
         pub const NETWORK_CLEAR: &str = "browser.network.clear";
     }
 
+    pub mod terminal {
+        pub const CONFIG_GET: &str = "terminal.config.get";
+        pub const CONFIG_APPLY: &str = "terminal.config.apply";
+        pub const CONFIG_RESET: &str = "terminal.config.reset";
+        pub const THEMES_LIST: &str = "terminal.themes.list";
+        pub const THEMES_IMPORT: &str = "terminal.themes.import";
+        pub const THEMES_PREVIEW: &str = "terminal.themes.preview";
+        pub const THEMES_PREVIEW_END: &str = "terminal.themes.previewEnd";
+        pub const FONTS_LIST: &str = "terminal.fonts.list";
+    }
+
     pub mod lxapp {
         pub const LIST: &str = "lxapp.list";
         pub const CURRENT: &str = "lxapp.current";

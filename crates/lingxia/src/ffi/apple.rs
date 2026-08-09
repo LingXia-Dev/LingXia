@@ -2115,7 +2115,7 @@ pub fn open_panel_lxapp(panel_id: &str, appid: &str, path: &str) {
 pub fn get_terminal_backend_status_json() -> String {
     #[cfg(feature = "terminal-runtime")]
     {
-        return crate::terminal::backend_status_json();
+        crate::terminal::backend_status_json()
     }
 
     #[cfg(not(feature = "terminal-runtime"))]
@@ -2129,14 +2129,14 @@ pub fn terminal_session_create(cols: u16, rows: u16, cwd: &str) -> u64 {
     #[cfg(feature = "terminal-runtime")]
     {
         let cwd = (!cwd.is_empty()).then(|| std::path::Path::new(cwd));
-        return crate::terminal::terminal_create_with_spec(
+        crate::terminal::terminal_create_with_spec(
             cols,
             rows,
             crate::terminal::TerminalSessionSpec {
                 cwd: cwd.map(std::path::Path::to_path_buf),
                 ..crate::terminal::TerminalSessionSpec::default()
             },
-        );
+        )
     }
 
     #[cfg(not(feature = "terminal-runtime"))]
@@ -2149,9 +2149,9 @@ pub fn terminal_session_create(cols: u16, rows: u16, cwd: &str) -> u64 {
 pub fn terminal_session_current_directory(id: u64) -> String {
     #[cfg(feature = "terminal-runtime")]
     {
-        return crate::terminal::terminal_current_directory(id)
+        crate::terminal::terminal_current_directory(id)
             .and_then(|path| path.into_os_string().into_string().ok())
-            .unwrap_or_default();
+            .unwrap_or_default()
     }
 
     #[cfg(not(feature = "terminal-runtime"))]
@@ -2164,7 +2164,7 @@ pub fn terminal_session_current_directory(id: u64) -> String {
 pub fn terminal_session_write(id: u64, input: &str) -> bool {
     #[cfg(feature = "terminal-runtime")]
     {
-        return crate::terminal::terminal_write(id, input);
+        crate::terminal::terminal_write(id, input)
     }
 
     #[cfg(not(feature = "terminal-runtime"))]
@@ -2177,7 +2177,7 @@ pub fn terminal_session_write(id: u64, input: &str) -> bool {
 pub fn terminal_session_read(id: u64) -> String {
     #[cfg(feature = "terminal-runtime")]
     {
-        return crate::terminal::terminal_read(id);
+        crate::terminal::terminal_read(id)
     }
 
     #[cfg(not(feature = "terminal-runtime"))]
@@ -2257,14 +2257,14 @@ pub fn terminal_session_frame(id: u64, since_generation: u64) -> bridge::Termina
 pub fn terminal_config_directory() -> String {
     #[cfg(feature = "terminal-runtime")]
     {
-        return crate::terminal::app_data_dir()
+        crate::terminal::app_data_dir()
             .and_then(|dir| {
                 crate::terminal::TerminalConfig::path(&dir)
                     .parent()
                     .map(std::path::Path::to_path_buf)
             })
             .map(|path| path.to_string_lossy().into_owned())
-            .unwrap_or_default();
+            .unwrap_or_default()
     }
 
     #[cfg(not(feature = "terminal-runtime"))]
@@ -2279,7 +2279,7 @@ pub fn terminal_config_directory() -> String {
 pub fn terminal_surface_chrome() -> String {
     #[cfg(feature = "terminal-runtime")]
     {
-        return lingxia_terminal_config::runtime::current_chrome_json();
+        lingxia_terminal_config::runtime::current_chrome_json()
     }
 
     #[cfg(not(feature = "terminal-runtime"))]
@@ -2289,7 +2289,7 @@ pub fn terminal_surface_chrome() -> String {
 pub fn terminal_config_generation() -> u64 {
     #[cfg(feature = "terminal-runtime")]
     {
-        return crate::terminal::config_generation();
+        crate::terminal::config_generation()
     }
 
     #[cfg(not(feature = "terminal-runtime"))]
@@ -2317,7 +2317,7 @@ pub fn terminal_load_config(system_is_dark: bool) -> String {
         // Product defaults from `lingxia.yaml` are not wired yet; the
         // framework defaults stand in until they are.
         let config = crate::terminal::load_config(data_dir, "{}", system_is_dark);
-        return serde_json::to_string(&config).unwrap_or_else(|_| "{}".to_string());
+        serde_json::to_string(&config).unwrap_or_else(|_| "{}".to_string())
     }
 
     #[cfg(not(feature = "terminal-runtime"))]
@@ -2330,7 +2330,7 @@ pub fn terminal_load_config(system_is_dark: bool) -> String {
 pub fn terminal_session_title_state(id: u64) -> String {
     #[cfg(feature = "terminal-runtime")]
     {
-        return crate::terminal::terminal_title_state_json(id);
+        crate::terminal::terminal_title_state_json(id)
     }
 
     #[cfg(not(feature = "terminal-runtime"))]
@@ -2343,7 +2343,7 @@ pub fn terminal_session_title_state(id: u64) -> String {
 pub fn terminal_session_snapshot(id: u64) -> String {
     #[cfg(feature = "terminal-runtime")]
     {
-        return crate::terminal::terminal_snapshot(id);
+        crate::terminal::terminal_snapshot(id)
     }
 
     #[cfg(not(feature = "terminal-runtime"))]
@@ -2356,7 +2356,7 @@ pub fn terminal_session_snapshot(id: u64) -> String {
 pub fn terminal_session_exited(id: u64) -> bool {
     #[cfg(feature = "terminal-runtime")]
     {
-        return crate::terminal::terminal_exited(id);
+        crate::terminal::terminal_exited(id)
     }
 
     #[cfg(not(feature = "terminal-runtime"))]
@@ -2369,7 +2369,7 @@ pub fn terminal_session_exited(id: u64) -> bool {
 pub fn terminal_session_resize(id: u64, cols: u16, rows: u16) -> bool {
     #[cfg(feature = "terminal-runtime")]
     {
-        return crate::terminal::terminal_resize(id, cols, rows);
+        crate::terminal::terminal_resize(id, cols, rows)
     }
 
     #[cfg(not(feature = "terminal-runtime"))]
@@ -2388,7 +2388,7 @@ pub fn terminal_session_scroll(
 ) -> bool {
     #[cfg(feature = "terminal-runtime")]
     {
-        return crate::terminal::terminal_scroll(id, delta_rows, col, row, allow_application_input);
+        crate::terminal::terminal_scroll(id, delta_rows, col, row, allow_application_input)
     }
 
     #[cfg(not(feature = "terminal-runtime"))]

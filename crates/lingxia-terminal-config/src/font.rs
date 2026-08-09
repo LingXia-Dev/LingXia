@@ -33,7 +33,7 @@ impl BoldStyle {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", default)]
+#[serde(rename_all = "camelCase", default, deny_unknown_fields)]
 pub struct FontConfig {
     /// Ordered candidates; the first installed one wins. A list rather than
     /// one name because nothing is bundled.

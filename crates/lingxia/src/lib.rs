@@ -177,8 +177,10 @@ where
 #[cfg(feature = "terminal-runtime")]
 pub mod terminal {
     pub use crate::terminal_config_impl::{
-        app_data_dir, apply_theme, current_json as config_json, generation as config_generation,
-        installed_fonts, load as load_config, set_installed_fonts,
+        ConfigSnapshot, SETTINGS_APP_ID, ThemeImportResult, app_data_dir, apply_theme,
+        config_apply, config_get, config_reset, current_json as config_json, fonts_list,
+        generation as config_generation, installed_fonts, load as load_config, set_installed_fonts,
+        theme_import, theme_preview, theme_preview_end, themes_list,
     };
     pub use lingxia_terminal::{
         BackendStatus, FrameCell, RowDamage, TerminalBackend, TerminalCell, TerminalFrame,
@@ -190,8 +192,8 @@ pub mod terminal {
         terminal_title_state_json, terminal_write,
     };
     pub use lingxia_terminal_config::{
-        BoldStyle, FontConfig, InstalledFont, ResolvedFont, TerminalConfig, ThemeConfig, ThemeMode,
-        ThemeStore, resolve_font,
+        BoldStyle, FontConfig, InstalledFont, ResolvedFont, TerminalConfig, ThemeConfig,
+        ThemeDetails, ThemeMode, ThemeStore, resolve_font,
     };
 }
 /// Host app update helpers and update event types.

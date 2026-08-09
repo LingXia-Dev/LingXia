@@ -22,8 +22,8 @@ pub use font::{BoldStyle, FontConfig, InstalledFont, ResolvedFont, resolve as re
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 pub use theme::{
-    CursorConfig, CursorStyle, SurfaceChrome, ThemeConfig, ThemeMode, ThemeSource, ThemeStore,
-    parse_scheme,
+    CursorConfig, CursorStyle, SurfaceChrome, ThemeConfig, ThemeDetails, ThemeMode, ThemeSource,
+    ThemeStore, parse_scheme,
 };
 
 /// File name inside the app's state directory.
@@ -64,7 +64,7 @@ impl From<std::io::Error> for ConfigError {
 /// Every field has a default, so a partial file is valid: users write only
 /// what they want to change.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", default)]
+#[serde(rename_all = "camelCase", default, deny_unknown_fields)]
 pub struct TerminalConfig {
     pub font: FontConfig,
     pub theme: ThemeConfig,
@@ -115,7 +115,13 @@ impl TerminalConfig {
         };
         merge(&mut merged, &user);
         match serde_json::from_value::<Self>(merged) {
-            Ok(config) => (config, None),
+            Ok(config) => match config.validate() {
+                Ok(()) => (config, None),
+                Err(reason) => (
+                    Self::from_defaults(product_defaults),
+                    Some(ConfigError::Invalid { path, reason }),
+                ),
+            },
             Err(error) => (
                 Self::from_defaults(product_defaults),
                 Some(ConfigError::Invalid {
@@ -126,8 +132,40 @@ impl TerminalConfig {
         }
     }
 
-    fn from_defaults(product_defaults: &serde_json::Value) -> Self {
+    pub fn from_defaults(product_defaults: &serde_json::Value) -> Self {
         serde_json::from_value(product_defaults.clone()).unwrap_or_default()
+    }
+
+    /// Merge a partial config object onto this resolved configuration.
+    pub fn with_overlay(&self, overlay: &serde_json::Value) -> Result<Self, String> {
+        if !overlay.is_object() {
+            return Err("terminal config overlay must be an object".to_string());
+        }
+        let mut merged = serde_json::to_value(self).map_err(|error| error.to_string())?;
+        merge(&mut merged, overlay);
+        let config: Self = serde_json::from_value(merged).map_err(|error| error.to_string())?;
+        config.validate()?;
+        Ok(config)
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        if self.font.family.is_empty() || self.font.family.iter().any(|name| name.trim().is_empty())
+        {
+            return Err("font.family must contain at least one non-empty family".to_string());
+        }
+        if !self.font.size.is_finite() || !(4.0..=96.0).contains(&self.font.size) {
+            return Err("font.size must be between 4 and 96".to_string());
+        }
+        if !self.font.line_height.is_finite() || !(0.5..=3.0).contains(&self.font.line_height) {
+            return Err("font.lineHeight must be between 0.5 and 3".to_string());
+        }
+        if !self.theme.opacity.is_finite() || !(0.0..=1.0).contains(&self.theme.opacity) {
+            return Err("theme.opacity must be between 0 and 1".to_string());
+        }
+        if self.theme.light.trim().is_empty() || self.theme.dark.trim().is_empty() {
+            return Err("theme.light and theme.dark must name a theme".to_string());
+        }
+        Ok(())
     }
 
     /// Write the user's configuration as what it overrides, and nothing more.
@@ -146,6 +184,10 @@ impl TerminalConfig {
         product_defaults: &serde_json::Value,
     ) -> Result<(), ConfigError> {
         let path = Self::path(app_data_dir);
+        self.validate().map_err(|reason| ConfigError::Invalid {
+            path: path.clone(),
+            reason,
+        })?;
         let invalid = |error: serde_json::Error| ConfigError::Invalid {
             path: path.clone(),
             reason: error.to_string(),
@@ -363,5 +405,25 @@ mod tests {
         config.font.size = 16.0;
         config.save(dir.path(), &product).expect("save");
         assert!(!TerminalConfig::path(dir.path()).exists());
+    }
+
+    #[test]
+    fn partial_overlay_is_typed_and_range_checked() {
+        let config = TerminalConfig::default()
+            .with_overlay(&serde_json::json!({"font": {"size": 15.5}}))
+            .expect("valid overlay");
+        assert_eq!(config.font.size, 15.5);
+        assert_eq!(config.theme, ThemeConfig::default());
+
+        for overlay in [
+            serde_json::json!({"font": {"size": 2}}),
+            serde_json::json!({"theme": {"opacity": 1.5}}),
+            serde_json::json!({"font": {"unknown": true}}),
+        ] {
+            assert!(
+                TerminalConfig::default().with_overlay(&overlay).is_err(),
+                "overlay should be rejected: {overlay}"
+            );
+        }
     }
 }

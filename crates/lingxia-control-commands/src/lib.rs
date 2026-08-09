@@ -19,4 +19,5 @@ pub mod entry;
 pub mod guard;
 pub mod output;
 pub mod skills;
+pub mod terminal;
 pub mod transport;

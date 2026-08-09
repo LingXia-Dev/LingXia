@@ -227,6 +227,7 @@ fn required_capability(namespace: &str) -> Option<&'static str> {
     let needs = match namespace {
         "computer" | "desktop" => "computerUse",
         "browser" => "browserUse",
+        "terminal" => "terminal",
         "app" | "screenshot" | "windows" | "mouse" | "key" | "doctor" => "appUse",
         _ => return None,
     };

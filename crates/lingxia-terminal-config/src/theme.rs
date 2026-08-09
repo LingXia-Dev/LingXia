@@ -35,7 +35,7 @@ pub enum CursorStyle {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", default)]
+#[serde(rename_all = "camelCase", default, deny_unknown_fields)]
 pub struct CursorConfig {
     pub style: CursorStyle,
     pub blink: bool,
@@ -51,7 +51,7 @@ impl Default for CursorConfig {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", default)]
+#[serde(rename_all = "camelCase", default, deny_unknown_fields)]
 pub struct ThemeConfig {
     pub mode: ThemeMode,
     /// Theme used in light appearance; both are named so following the system
@@ -102,6 +102,14 @@ pub struct ThemeEntry {
     pub source: ThemeSource,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ThemeDetails {
+    pub name: String,
+    pub source: ThemeSource,
+    pub scheme: TerminalTheme,
+}
+
 /// Themes available to an app: the built-ins plus whatever was imported.
 pub struct ThemeStore {
     directory: PathBuf,
@@ -140,6 +148,20 @@ impl ThemeStore {
         entries
     }
 
+    /// Every selectable theme with its resolved colors for settings swatches.
+    pub fn list_with_schemes(&self) -> Vec<ThemeDetails> {
+        self.list()
+            .into_iter()
+            .filter_map(|entry| {
+                self.get(&entry.name).map(|scheme| ThemeDetails {
+                    name: entry.name,
+                    source: entry.source,
+                    scheme,
+                })
+            })
+            .collect()
+    }
+
     /// Resolve a theme by name, imported taking precedence over built-in.
     pub fn get(&self, name: &str) -> Option<TerminalTheme> {
         if let Some(theme) = self.read_imported(name) {
@@ -153,11 +175,14 @@ impl ThemeStore {
 
     /// Store an imported scheme under `name`.
     pub fn import(&self, name: &str, theme: &TerminalTheme) -> std::io::Result<PathBuf> {
+        validate_theme_name(name)?;
         std::fs::create_dir_all(&self.directory)?;
         let path = self.directory.join(format!("{name}.json"));
         let text = serde_json::to_string_pretty(theme)
             .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))?;
-        std::fs::write(&path, text)?;
+        let temporary = path.with_extension("json.tmp");
+        std::fs::write(&temporary, text)?;
+        std::fs::rename(&temporary, &path)?;
         Ok(path)
     }
 
@@ -186,6 +211,26 @@ impl ThemeStore {
         let text = std::fs::read_to_string(path).ok()?;
         TerminalTheme::from_json(&text).ok()
     }
+}
+
+fn validate_theme_name(name: &str) -> std::io::Result<()> {
+    let trimmed = name.trim();
+    let invalid = trimmed.is_empty()
+        || trimmed == "."
+        || trimmed == ".."
+        || trimmed.len() > 96
+        || trimmed.ends_with('.')
+        || trimmed.ends_with(' ')
+        || trimmed.chars().any(|ch| {
+            ch.is_control() || matches!(ch, '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*')
+        });
+    if invalid {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "theme name is empty or contains filesystem-reserved characters",
+        ));
+    }
+    Ok(())
 }
 
 /// Parse a scheme from a file.
@@ -470,6 +515,20 @@ mod tests {
             store.get("lingxia-dark").expect("resolves").background,
             "#123456"
         );
+    }
+
+    #[test]
+    fn listing_carries_schemes_and_import_names_cannot_escape() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let store = ThemeStore::new(dir.path());
+        let themes = store.list_with_schemes();
+        assert!(themes.iter().all(|entry| entry.scheme.to_colors().is_ok()));
+        assert!(
+            store
+                .import("../outside", &TerminalTheme::default())
+                .is_err()
+        );
+        assert!(store.import("bad:name", &TerminalTheme::default()).is_err());
     }
 
     #[test]

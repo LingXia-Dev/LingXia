@@ -23,6 +23,7 @@ mod lxapp_page;
 mod runner;
 #[cfg(feature = "test-runtime")]
 mod session_test;
+mod terminal;
 mod util;
 
 #[cfg(feature = "dev-bridge")]
@@ -53,6 +54,8 @@ pub fn dispatch(request: ControlRequest) -> ControlResponse {
     }
 
     if let Some(result) = app::handle_app_command(&method, params.clone()) {
+        command_result(id, result)
+    } else if let Some(result) = terminal::handle_terminal_command(&method, params.clone()) {
         command_result(id, result)
     } else if let Some(result) = browser::handle_browser_command(&method, params.clone()) {
         command_result(id, result)

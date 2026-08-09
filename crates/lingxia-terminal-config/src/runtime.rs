@@ -7,6 +7,7 @@
 //! the font, which only it can resolve against what is installed.
 
 use crate::{InstalledFont, SurfaceChrome, TerminalConfig, ThemeStore};
+use lingxia_terminal::TerminalTheme;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
@@ -72,6 +73,76 @@ pub fn load(app_data_dir: PathBuf, product_defaults: &str, system_is_dark: bool)
     apply_theme(&app_data_dir, &config, system_is_dark);
     publish(config.clone());
     config
+}
+
+/// Persist and publish a partial configuration update.
+pub fn apply_config(
+    app_data_dir: &std::path::Path,
+    product_defaults: &serde_json::Value,
+    overlay: &serde_json::Value,
+    system_is_dark: bool,
+) -> Result<TerminalConfig, crate::ConfigError> {
+    let (current, error) = TerminalConfig::load(app_data_dir, product_defaults);
+    if let Some(error) = error {
+        log::warn!("{error}; applying the update over resolved defaults");
+    }
+    let next = current
+        .with_overlay(overlay)
+        .map_err(|reason| crate::ConfigError::Invalid {
+            path: TerminalConfig::path(app_data_dir),
+            reason,
+        })?;
+    save_and_publish(app_data_dir, product_defaults, next, system_is_dark)
+}
+
+/// Remove all user overrides, or only the requested section.
+pub fn reset_config(
+    app_data_dir: &std::path::Path,
+    product_defaults: &serde_json::Value,
+    scope: Option<&str>,
+    system_is_dark: bool,
+) -> Result<TerminalConfig, crate::ConfigError> {
+    let defaults = TerminalConfig::from_defaults(product_defaults);
+    let (mut next, _) = TerminalConfig::load(app_data_dir, product_defaults);
+    match scope {
+        None => next = defaults,
+        Some("font") => next.font = defaults.font,
+        Some("theme") => next.theme = defaults.theme,
+        Some(other) => {
+            return Err(crate::ConfigError::Invalid {
+                path: TerminalConfig::path(app_data_dir),
+                reason: format!("reset scope must be font or theme, got '{other}'"),
+            });
+        }
+    }
+    save_and_publish(app_data_dir, product_defaults, next, system_is_dark)
+}
+
+fn save_and_publish(
+    app_data_dir: &std::path::Path,
+    product_defaults: &serde_json::Value,
+    config: TerminalConfig,
+    system_is_dark: bool,
+) -> Result<TerminalConfig, crate::ConfigError> {
+    config.save(app_data_dir, product_defaults)?;
+    apply_theme(app_data_dir, &config, system_is_dark);
+    publish(config.clone());
+    Ok(config)
+}
+
+/// Preview a scheme without persisting the selection.
+pub fn preview_theme(theme: &TerminalTheme) -> Result<(), String> {
+    lingxia_terminal::terminal_set_theme_all(theme).map_err(|error| error.to_string())?;
+    if let Ok(mut slot) = chrome().lock() {
+        *slot = SurfaceChrome::derive(theme);
+    }
+    Ok(())
+}
+
+/// End a preview by restoring the saved selection.
+pub fn end_theme_preview(app_data_dir: &std::path::Path, system_is_dark: bool) {
+    let config = current_config();
+    apply_theme(app_data_dir, &config, system_is_dark);
 }
 
 /// A generation means "this changed", not "this was read".

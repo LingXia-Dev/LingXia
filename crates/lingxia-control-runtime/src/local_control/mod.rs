@@ -402,6 +402,7 @@ fn refuse_for_product(
     let (declared_as, declared) = match namespace {
         "desktop" => ("computerUse", capabilities.computer_use),
         "browser" => ("browserUse", capabilities.browser_use),
+        "terminal" => ("terminal", capabilities.terminal),
         "app"
             if matches!(
                 method,
@@ -493,6 +494,7 @@ mod tests {
             "browser.open",
             "app.doctor",
             "lxapp.list",
+            "terminal.config.get",
         ] {
             assert!(
                 refuse_unless_declared(method).is_some(),
