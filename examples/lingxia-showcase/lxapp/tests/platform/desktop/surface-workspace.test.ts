@@ -668,6 +668,13 @@ function pinnedShortcutPoint(
   ];
 }
 
+/// Footer actions the showcase declares on desktop, in `lxapp/lxapp.ts`:
+/// chat, terminal, ping, and terminal settings. The rail lays them out from
+/// the bottom, so the first one's position depends on how many there are —
+/// declaring another without updating this clicks a different action, and the
+/// test then waits for a surface that was never opened.
+const DESKTOP_FOOTER_ACTION_COUNT = 4;
+
 function firstRailFooterActionPoint(
   host: DesktopWindowInfo,
   footerActionCount: number,
@@ -1557,7 +1564,7 @@ windowsHostTest('docks the footer Chat WebView physically beside the main after 
     // Derive Chat's first-cell center from that production geometry so this
     // cannot accidentally click the expand control or a main-page item.
     await desktop.pointer.click({
-      at: firstRailFooterActionPoint(host, 3),
+      at: firstRailFooterActionPoint(host, DESKTOP_FOOTER_ACTION_COUNT),
     });
 
     const overlayLayout = await waitForValue(async () => {
