@@ -12,7 +12,7 @@ pub(crate) fn installed_fonts() -> Vec<InstalledFont> {
     if hdc.is_invalid() {
         return Vec::new();
     }
-    let mut families = Vec::new();
+    let mut families: Vec<String> = Vec::new();
     let request = LOGFONTW {
         lfCharSet: DEFAULT_CHARSET,
         ..Default::default()
