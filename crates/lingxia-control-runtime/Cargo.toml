@@ -42,6 +42,7 @@ tungstenite = { version = "0.29", optional = true, default-features = false, fea
 
 [target.'cfg(any(target_os = "ios", target_os = "macos"))'.dependencies]
 lingxia-automation = { workspace = true, optional = true, features = ["runtime-interrupt"] }
+libc = "0.2"
 
 [target.'cfg(not(any(target_os = "ios", target_os = "macos")))'.dependencies]
 lingxia-automation = { workspace = true, optional = true, features = ["runtime"] }

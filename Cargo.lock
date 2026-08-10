@@ -3330,6 +3330,7 @@ name = "lingxia-control-runtime"
 version = "0.11.2"
 dependencies = [
  "base64",
+ "libc",
  "lingxia",
  "lingxia-app-context",
  "lingxia-automation",
