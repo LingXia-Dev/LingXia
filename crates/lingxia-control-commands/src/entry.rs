@@ -317,10 +317,17 @@ fn manifest(transport: &dyn crate::transport::Transport) -> skills::Manifest {
 /// Windows it cannot, because a host spawned by a console tool inherits that
 /// console.
 fn invoked_as_command() -> bool {
-    if std::env::var_os(invocation::MARKER).is_some() {
-        return true;
-    }
-    !cfg!(windows) && (std::io::stdout().is_terminal() || std::io::stdin().is_terminal())
+    invocation_is_command(
+        std::env::var_os(invocation::MARKER).is_some(),
+        cfg!(windows),
+        std::io::stdin().is_terminal(),
+    )
+}
+
+fn invocation_is_command(marked: bool, windows: bool, stdin_is_terminal: bool) -> bool {
+    // GUI dev launchers detach stdin but keep stdout/stderr attached for logs.
+    // Output alone therefore cannot distinguish a GUI from an interactive CLI.
+    marked || (!windows && stdin_is_terminal)
 }
 
 #[cfg(test)]
@@ -352,6 +359,14 @@ mod tests {
     fn launcher_filename_uses_the_installer_normalization() {
         assert_eq!(launcher_file_name("My_App", true), "my-app.exe");
         assert_eq!(launcher_file_name("My App", false), "my-app");
+    }
+
+    #[test]
+    fn gui_dev_launch_is_not_mistaken_for_a_command() {
+        assert!(!invocation_is_command(false, false, false));
+        assert!(invocation_is_command(true, false, false));
+        assert!(invocation_is_command(false, false, true));
+        assert!(!invocation_is_command(false, true, true));
     }
 
     /// The subcommands this recognizes before clap runs. That check is what
