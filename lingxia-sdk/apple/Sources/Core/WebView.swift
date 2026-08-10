@@ -277,14 +277,38 @@ final class WebViewManager {
         webView.scrollView.showsVerticalScrollIndicator = true
         webView.scrollView.showsHorizontalScrollIndicator = true
         #else
-        // Fixed white pre-paint (not controlBackgroundColor): pages are
-        // light-first, and the semantic color turns near-black in dark mode,
-        // flashing dark before the page's first contentful paint.
-        let backgroundColor = transparent ? PlatformColor.clear : PlatformColor.white
+        let backgroundColor = transparent
+            ? PlatformColor.clear
+            : opaquePageStyle(appId: webView.appId).color
+        webView.wantsLayer = true
         webView.layer?.backgroundColor = backgroundColor.cgColor
+        webView.underPageBackgroundColor = backgroundColor
         webView.setValue(transparent, forKey: "drawsTransparentBackground")
         #endif
     }
+
+    #if os(macOS)
+    /// Match the placeholder shown before an opaque lxapp WebView attaches.
+    static func configureOpaquePagePlaceholder(_ view: NSView, appId: String?) {
+        let style = opaquePageStyle(appId: appId)
+        view.appearance = style.appearance
+        view.wantsLayer = true
+        view.layer?.backgroundColor = style.color.cgColor
+    }
+
+    private static func opaquePageStyle(appId: String?) -> (appearance: NSAppearance, color: NSColor) {
+        let dark =
+            appId.flatMap { LxAppAppearanceRegistry.resolvedDark(appId: $0) }
+            ?? (NSApp?.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua)
+        let appearance = NSAppearance(named: dark ? .darkAqua : .aqua)!
+        var backgroundColor = NSColor.clear
+        appearance.performAsCurrentDrawingAppearance {
+            let color = NSColor.controlBackgroundColor
+            backgroundColor = NSColor(cgColor: color.cgColor) ?? color
+        }
+        return (appearance, backgroundColor)
+    }
+    #endif
 
     /// Enable WebView debugging globally
     static func enableDebugging() {
