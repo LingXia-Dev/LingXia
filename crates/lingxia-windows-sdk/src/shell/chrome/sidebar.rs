@@ -647,6 +647,22 @@ pub(super) fn sidebar_group_menu_rect(
     })
 }
 
+/// Width the leading controls take before the action strip can start.
+///
+/// Header actions only draw while the sidebar is expanded, so the collapse
+/// toggle is always there; the app-menu button beside it exists only in the
+/// product shell — a runner-style build has no menu worth showing and draws
+/// none. Reserving for it regardless leaves a visibly empty slot the header
+/// then refuses to use.
+fn header_leading_reserve() -> i32 {
+    let app_menu = if cfg!(feature = "browser-shell") {
+        TOP_BAR_BUTTON_SIZE + TOP_BAR_BUTTON_GAP
+    } else {
+        0
+    };
+    TOP_BAR_PADDING + app_menu + TOP_BAR_BUTTON_SIZE + SIDEBAR_HEADER_ACTION_GAP
+}
+
 /// How many header actions a strip of `available` pixels can seat. The last
 /// one needs no trailing gap, so the run is `n * SIZE + (n - 1) * GAP`.
 ///
@@ -676,12 +692,7 @@ pub(super) fn sidebar_header_action_rects(
         return Vec::new();
     }
     let top = sidebar_rect.top + (SHELL_TOP_BAR_HEIGHT - SIDEBAR_HEADER_ACTION_SIZE).max(0) / 2;
-    // Right edge of the leading app-menu + toggle buttons.
-    let leading_limit = sidebar_rect.left
-        + TOP_BAR_PADDING
-        + 2 * TOP_BAR_BUTTON_SIZE
-        + TOP_BAR_BUTTON_GAP
-        + SIDEBAR_HEADER_ACTION_GAP;
+    let leading_limit = sidebar_rect.left + header_leading_reserve();
     let mut right = sidebar_rect.right - SIDEBAR_ITEM_INSET;
     // Draw the ones that fit rather than measuring the whole set and giving up
     // on it: a sidebar one icon too narrow would otherwise lose the buttons
@@ -783,14 +794,9 @@ mod tests {
     use super::*;
     use lingxia_shell::MAX_HEADER_SIDEBAR_ACTIONS;
 
-    /// Space the strip has left once the leading window controls took theirs.
+    /// Space the strip has left once the leading controls took theirs.
     fn available_at(sidebar_width: i32) -> i32 {
-        let right = sidebar_width - SIDEBAR_ITEM_INSET;
-        let leading_limit = TOP_BAR_PADDING
-            + 2 * TOP_BAR_BUTTON_SIZE
-            + TOP_BAR_BUTTON_GAP
-            + SIDEBAR_HEADER_ACTION_GAP;
-        right - leading_limit
+        sidebar_width - SIDEBAR_ITEM_INSET - header_leading_reserve()
     }
 
     /// The declaration limit is only honest if the standard sidebar can seat
@@ -799,10 +805,25 @@ mod tests {
     /// declared action that never draws.
     #[test]
     fn the_contract_limit_fits_the_standard_sidebar() {
-        assert_eq!(
-            header_action_capacity(available_at(SHELL_SIDEBAR_WIDTH)),
-            MAX_HEADER_SIDEBAR_ACTIONS
+        assert!(
+            header_action_capacity(available_at(SHELL_SIDEBAR_WIDTH)) >= MAX_HEADER_SIDEBAR_ACTIONS,
+            "the standard sidebar must seat every action the contract allows"
         );
+    }
+
+    /// Dropping the app-menu button hands its slot to the actions rather than
+    /// leaving a gap where it would have been.
+    #[test]
+    fn the_reserve_tracks_the_buttons_that_exist() {
+        let expected = if cfg!(feature = "browser-shell") {
+            TOP_BAR_PADDING
+                + 2 * TOP_BAR_BUTTON_SIZE
+                + TOP_BAR_BUTTON_GAP
+                + SIDEBAR_HEADER_ACTION_GAP
+        } else {
+            TOP_BAR_PADDING + TOP_BAR_BUTTON_SIZE + SIDEBAR_HEADER_ACTION_GAP
+        };
+        assert_eq!(header_leading_reserve(), expected);
     }
 
     #[test]
