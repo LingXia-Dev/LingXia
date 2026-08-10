@@ -2280,7 +2280,10 @@ extension LxAppShell: BrowserCoordinatorHost {
 // MARK: - Panel Methods
 
 extension LxAppShell {
-    private static let panelAttachMaxRetry = 40
+    // A cold Logic worker can take several seconds before it starts the page
+    // navigation. Keep the themed placeholder until then instead of replacing
+    // it with a blank WKWebView as soon as the view object is allocated.
+    private static let panelAttachMaxRetry = 240
     private static let panelAttachRetryDelay: TimeInterval = 0.05
 
     func showPanelWithContent(id: String, position: PanelPosition, appId: String, path: String) {
@@ -2291,6 +2294,10 @@ extension LxAppShell {
         if !wasRegistered {
             let config = PanelConfig(id: id, position: position)
             workspaceManager.registerPanel(config)
+        }
+
+        if let container = workspaceManager.panelContainer(id: id) {
+            WebViewManager.configureOpaquePagePlaceholder(container, appId: appId)
         }
 
         preserveWindowFrameDuringPanelLayout(reason: "showPanelWithContent:\(id)") {
@@ -2500,11 +2507,16 @@ extension LxAppShell {
             return
         }
 
-        if let webView = WebViewManager.resolveWebView(appId: appId, path: path, sessionId: sessionId) {
+        if let webView = WebViewManager.resolveWebView(
+            appId: appId,
+            path: path,
+            sessionId: sessionId
+        ), webView.url != nil, !webView.isLoading {
             // One lxapp, one region — a re-open with a DIFFERENT page replaces
             // the older content: clear previous subviews (stale webview or the
             // loading spinner) so they don't stack up behind the new page.
             container.subviews.filter { $0 !== webView }.forEach { $0.removeFromSuperview() }
+            WebViewManager.configureWebViewTransparency(webView, transparent: false)
             WebViewManager.attachWebViewToContainer(webView, container: container)
             return
         }
