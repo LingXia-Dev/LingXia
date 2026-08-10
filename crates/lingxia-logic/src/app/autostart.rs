@@ -1,7 +1,7 @@
 use crate::i18n::js_error_from_platform_error;
 use lingxia_platform::traits::app_runtime::AppRuntime;
 use lxapp::LxApp;
-use rong::{JSContext, JSFunc, JSObject, JSResult};
+use rong::{HostError, JSContext, JSFunc, JSObject, JSResult};
 
 /// `lx.app.autostart` — launch-at-startup control. The member is absent unless
 /// the host declared the `autostart` capability (and this module is compiled
@@ -28,17 +28,29 @@ pub(super) fn init(ctx: &JSContext, app: &JSObject) -> JSResult<()> {
 async fn autostart_is_enabled(ctx: JSContext) -> JSResult<bool> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     super::ensure_home_lxapp(&lxapp, "lx.app.autostart")?;
-    lxapp
-        .runtime
-        .autostart_is_enabled()
-        .map_err(|e| js_error_from_platform_error(&e))
+    let runtime = lxapp.runtime.clone();
+    tokio::task::spawn_blocking(move || runtime.autostart_is_enabled())
+        .await
+        .map_err(|error| {
+            HostError::new(
+                rong::error::E_INTERNAL,
+                format!("autostart query task failed: {error}"),
+            )
+        })?
+        .map_err(|error| js_error_from_platform_error(&error))
 }
 
 async fn autostart_set_enabled(ctx: JSContext, enabled: bool) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     super::ensure_home_lxapp(&lxapp, "lx.app.autostart")?;
-    lxapp
-        .runtime
-        .autostart_set_enabled(enabled)
-        .map_err(|e| js_error_from_platform_error(&e))
+    let runtime = lxapp.runtime.clone();
+    tokio::task::spawn_blocking(move || runtime.autostart_set_enabled(enabled))
+        .await
+        .map_err(|error| {
+            HostError::new(
+                rong::error::E_INTERNAL,
+                format!("autostart update task failed: {error}"),
+            )
+        })?
+        .map_err(|error| js_error_from_platform_error(&error))
 }

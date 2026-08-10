@@ -180,6 +180,9 @@ mod bridge {
         fn set_app_badge(text: &str) -> bool;
 
         // Launch-at-startup via SMAppService (macOS 13+ shells only).
+        #[swift_bridge(swift_name = "LxApp.autostartIsSupported")]
+        fn autostart_is_supported() -> bool;
+
         // Returns 1 = enabled, 0 = disabled, -1 = unsupported.
         #[swift_bridge(swift_name = "LxApp.autostartIsEnabled")]
         fn autostart_is_enabled() -> i32;
@@ -456,15 +459,15 @@ mod bridge {
 pub use bridge::get_capsule_rect;
 pub use bridge::{
     ActionSheetOptions, ModalOptions, ToastIcon, ToastOptions, ToastPosition, apply_appearance,
-    autostart_is_enabled, autostart_set_enabled, cancel_preview_media, close_lxapp, close_surface,
-    destroy_managed_surface, exit_app, hide_surface, hide_toast, host_appearance_dark, navigate,
-    on_home_first_ready, open_builtin_browser_page, open_document_external, open_lxapp,
-    open_managed_native_surface, open_url, present_layout, present_surface, preview_media,
-    request_lxapp_main_activation, review_document, set_app_badge, set_managed_surface_visible,
-    set_shell_pins, set_sidebar_actions, set_tray_badge, set_tray_click_intercept, set_tray_icon,
-    set_tray_menu, set_tray_title, set_tray_visible, share, show_action_sheet, show_modal,
-    show_surface, show_toast, update_navbar_ui, update_orientation_ui, update_tabbar_ui,
-    update_tabbar_ui_async,
+    autostart_is_enabled, autostart_is_supported, autostart_set_enabled, cancel_preview_media,
+    close_lxapp, close_surface, destroy_managed_surface, exit_app, hide_surface, hide_toast,
+    host_appearance_dark, navigate, on_home_first_ready, open_builtin_browser_page,
+    open_document_external, open_lxapp, open_managed_native_surface, open_url, present_layout,
+    present_surface, preview_media, request_lxapp_main_activation, review_document, set_app_badge,
+    set_managed_surface_visible, set_shell_pins, set_sidebar_actions, set_tray_badge,
+    set_tray_click_intercept, set_tray_icon, set_tray_menu, set_tray_title, set_tray_visible,
+    share, show_action_sheet, show_modal, show_surface, show_toast, update_navbar_ui,
+    update_orientation_ui, update_tabbar_ui, update_tabbar_ui_async,
 };
 #[cfg(target_os = "macos")]
 pub use bridge::{notify_app_update_ready, reveal_in_file_manager};
