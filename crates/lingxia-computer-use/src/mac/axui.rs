@@ -143,6 +143,12 @@ fn name_ptr(s: &CFRetained<CFString>) -> *const c_void {
 }
 
 impl AxEl {
+    fn targets_self(&self) -> bool {
+        let mut pid: libc::pid_t = 0;
+        (unsafe { AXUIElementGetPid(self.0, &mut pid) }) == AX_SUCCESS
+            && pid == std::process::id() as libc::pid_t
+    }
+
     /// AppKit services self-targeted AX mutations on the calling thread. Route
     /// those writes through the main queue; foreign-process AX calls remain
     /// safe and synchronous on the caller.
@@ -150,10 +156,7 @@ impl AxEl {
     where
         F: FnOnce(*mut c_void) -> Result<i32> + Send,
     {
-        let mut pid: libc::pid_t = 0;
-        let targets_self = unsafe { AXUIElementGetPid(self.0, &mut pid) } == AX_SUCCESS
-            && pid == std::process::id() as libc::pid_t;
-        if !targets_self || unsafe { libc::pthread_main_np() } != 0 {
+        if !self.targets_self() || unsafe { libc::pthread_main_np() } != 0 {
             return operation(self.0);
         }
 
@@ -195,14 +198,42 @@ impl AxEl {
 
     /// Copy an attribute as an owned CF value.
     fn copy(&self, attr: &str) -> Option<Cf> {
-        let key = name(attr);
-        let mut value: *const c_void = std::ptr::null();
-        let rc = unsafe { AXUIElementCopyAttributeValue(self.0, name_ptr(&key), &mut value) };
+        let (rc, value) = self.copy_raw(attr);
         if rc != AX_SUCCESS || value.is_null() {
             None
         } else {
             Some(Cf(value))
         }
+    }
+
+    fn copy_raw(&self, attr: &str) -> (i32, *const c_void) {
+        Self::copy_element(self.0, attr)
+    }
+
+    fn copy_element(element: *mut c_void, attr: &str) -> (i32, *const c_void) {
+        let key = name(attr);
+        let mut value: *const c_void = std::ptr::null();
+        let rc = unsafe { AXUIElementCopyAttributeValue(element, name_ptr(&key), &mut value) };
+        (rc, value)
+    }
+
+    fn copy_self_app_attribute(&self, attr: &str) -> Option<Cf> {
+        if !self.targets_self() || unsafe { libc::pthread_main_np() } != 0 {
+            return self.copy(attr);
+        }
+        // AppKit services the current application's AXWindows attribute on its
+        // main thread. Once the window element exists, its regular AX tree can
+        // stay on the caller; routing every node attribute through the main
+        // queue turns a bounded tree walk into thousands of synchronous hops.
+        let element = self.0 as usize;
+        let attr = attr.to_string();
+        let mut result = (AX_ERROR_INVALID_ELEMENT, 0usize);
+        dispatch2::DispatchQueue::main().exec_sync(|| {
+            let (rc, value) = Self::copy_element(element as *mut c_void, &attr);
+            result = (rc, value as usize);
+        });
+        let value = result.1 as *const c_void;
+        (result.0 == AX_SUCCESS && !value.is_null()).then_some(Cf(value))
     }
 
     pub(super) fn attr_string(&self, attr: &str) -> Option<String> {
@@ -273,7 +304,7 @@ impl AxEl {
 
     /// The windows of an application element (`AXWindows`).
     pub(super) fn windows(&self) -> Vec<AxEl> {
-        let Some(v) = self.copy("AXWindows") else {
+        let Some(v) = self.copy_self_app_attribute("AXWindows") else {
             return Vec::new();
         };
         let mut out = Vec::new();
