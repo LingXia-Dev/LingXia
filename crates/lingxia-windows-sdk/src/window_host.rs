@@ -9002,7 +9002,7 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
 
     unsafe {
         WindowsAndMessaging::RegisterClassW(&class);
-        let (width, height) = default_window_size();
+        let (width, height) = physical_default_window_size();
         let user_data = Box::new(webtag.key().to_string());
         let user_data_ptr = Box::into_raw(user_data);
         let style = if windows_chrome_renderer().is_some() {
@@ -9389,7 +9389,32 @@ fn consume_update_relaunch_marker() -> bool {
 /// Top-left origin that centers a `width`x`height` window on the primary
 /// monitor's work area. Used at window-creation time so the window is born
 /// centered instead of at the WS_POPUP default of (0, 0).
-fn primary_centered_origin(width: i32, height: i32) -> Option<(i32, i32)> {
+/// The default window size in physical pixels for the primary display.
+///
+/// The configured size is logical: a host asking for 1024x768 means the window
+/// a person sees at 100%, not a smaller one on every scaled display. Handing
+/// those numbers to `CreateWindowExW` unscaled makes a 150% display open at 683
+/// logical px wide — inside the Medium breakpoint, where the shell projects the
+/// sidebar as an icon rail — so the app looks like it launched collapsed.
+fn physical_default_window_size() -> (i32, i32) {
+    let (width, height) = default_window_size();
+    let dpi = unsafe { windows::Win32::UI::HiDpi::GetDpiForSystem() };
+    if dpi == 0 || dpi == 96 {
+        return (width, height);
+    }
+    let scale = f64::from(dpi) / 96.0;
+    let scaled = |value: i32| ((f64::from(value) * scale).round() as i32).max(value);
+    let (mut width, mut height) = (scaled(width), scaled(height));
+    // Scaling can outgrow a small high-density display — 768 at 150% is taller
+    // than a 1080p screen's work area. Fit it rather than open off-screen.
+    if let Some(work) = primary_work_area() {
+        width = width.min((work.right - work.left).max(1));
+        height = height.min((work.bottom - work.top).max(1));
+    }
+    (width, height)
+}
+
+fn primary_work_area() -> Option<RECT> {
     let mut work = RECT::default();
     let ok = unsafe {
         WindowsAndMessaging::SystemParametersInfoW(
@@ -9400,9 +9425,11 @@ fn primary_centered_origin(width: i32, height: i32) -> Option<(i32, i32)> {
         )
         .is_ok()
     };
-    if !ok {
-        return None;
-    }
+    ok.then_some(work)
+}
+
+fn primary_centered_origin(width: i32, height: i32) -> Option<(i32, i32)> {
+    let work = primary_work_area()?;
     let x = work.left + (((work.right - work.left) - width) / 2).max(0);
     let y = work.top + (((work.bottom - work.top) - height) / 2).max(0);
     Some((x, y))
