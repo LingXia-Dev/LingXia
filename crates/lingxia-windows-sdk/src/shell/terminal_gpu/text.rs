@@ -86,6 +86,7 @@ pub(super) struct Fonts {
     fallback: Vec<IDWriteFontFace>,
     family: String,
     size: f32,
+    line_height_scale: f32,
     ligatures: bool,
     formats: [IDWriteTextFormat; 4],
     faces: [IDWriteFontFace; 4],
@@ -96,11 +97,23 @@ pub(super) struct Fonts {
 }
 
 impl Fonts {
-    pub(super) fn new(candidates: &[String], size: f32, ligatures: bool) -> Result<Self> {
+    pub(super) fn new(
+        candidates: &[String],
+        size: f32,
+        line_height_scale: f32,
+        ligatures: bool,
+    ) -> Result<Self> {
         let factory: IDWriteFactory = unsafe { DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED)? };
         let collection = system_collection(&factory)?;
         let family = resolve_family(&collection, candidates)?;
-        Self::build(factory, collection, family, size, ligatures)
+        Self::build(
+            factory,
+            collection,
+            family,
+            size,
+            line_height_scale,
+            ligatures,
+        )
     }
 
     /// Adopt a changed font configuration, reusing the factory and collection.
@@ -108,10 +121,15 @@ impl Fonts {
         &mut self,
         candidates: &[String],
         size: f32,
+        line_height_scale: f32,
         ligatures: bool,
     ) -> Result<bool> {
         let family = resolve_family(&self.collection, candidates)?;
-        if family == self.family && size == self.size && ligatures == self.ligatures {
+        if family == self.family
+            && size == self.size
+            && line_height_scale == self.line_height_scale
+            && ligatures == self.ligatures
+        {
             return Ok(false);
         }
         *self = Self::build(
@@ -119,6 +137,7 @@ impl Fonts {
             self.collection.clone(),
             family,
             size,
+            line_height_scale,
             ligatures,
         )?;
         Ok(true)
@@ -129,6 +148,7 @@ impl Fonts {
         collection: IDWriteFontCollection,
         family: String,
         size: f32,
+        line_height_scale: f32,
         ligatures: bool,
     ) -> Result<Self> {
         let name = HSTRING::from(&family);
@@ -156,7 +176,7 @@ impl Fonts {
         }
         let formats: [IDWriteTextFormat; 4] = formats.try_into().map_err(|_| missing())?;
         let faces: [IDWriteFontFace; 4] = faces.try_into().map_err(|_| missing())?;
-        let metrics = measure(&faces[REGULAR], size);
+        let metrics = measure(&faces[REGULAR], size, line_height_scale);
         let plain = if ligatures {
             None
         } else {
@@ -167,6 +187,7 @@ impl Fonts {
             collection,
             family,
             size,
+            line_height_scale,
             ligatures,
             formats,
             faces,
@@ -536,7 +557,7 @@ fn face_for(
 /// The cell width is `M`'s advance: a monospace face gives every glyph the
 /// same advance, and taking it from a real glyph rather than from a layout
 /// keeps the grid independent of any shaping decision.
-fn measure(face: &IDWriteFontFace, size: f32) -> Metrics {
+fn measure(face: &IDWriteFontFace, size: f32, line_height_scale: f32) -> Metrics {
     unsafe {
         let mut font = Default::default();
         face.GetMetrics(&mut font);
@@ -552,10 +573,13 @@ fn measure(face: &IDWriteFontFace, size: f32) -> Metrics {
         let ascent = f32::from(font.ascent) * scale;
         let descent = f32::from(font.descent) * scale;
         let gap = f32::from(font.lineGap) * scale;
+        let glyph_height = ascent + descent;
+        let line_height = ((glyph_height + gap) * line_height_scale).max(1.0).round();
+        let top_padding = ((line_height - glyph_height) / 2.0).max(0.0);
         Metrics {
             cell_width: (advance * scale).max(1.0).round(),
-            line_height: (ascent + descent + gap).max(1.0).round(),
-            baseline: ascent.round(),
+            line_height,
+            baseline: (top_padding + ascent).round(),
             underline_offset: -f32::from(font.underlinePosition) * scale,
             underline_thickness: (f32::from(font.underlineThickness) * scale).max(1.0),
             strike_offset: -f32::from(font.strikethroughPosition) * scale,

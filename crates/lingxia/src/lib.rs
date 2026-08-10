@@ -180,7 +180,8 @@ pub mod terminal {
         ConfigSnapshot, SETTINGS_APP_ID, ThemeImportResult, app_data_dir, apply_theme,
         config_apply, config_get, config_reset, current_json as config_json, fonts_list,
         generation as config_generation, installed_fonts, load as load_config, load_for_app,
-        set_installed_fonts, theme_import, themes_list,
+        refresh_appearance_for_app, set_installed_fonts, theme_import, themes_list,
+        visual_generation,
     };
     pub use lingxia_terminal::{
         BackendStatus, FrameCell, RowDamage, TerminalBackend, TerminalCell, TerminalFrame,
@@ -192,8 +193,8 @@ pub mod terminal {
         terminal_title_state_json, terminal_write,
     };
     pub use lingxia_terminal_config::{
-        BoldStyle, FontConfig, InstalledFont, ResolvedFont, TerminalConfig, ThemeConfig,
-        ThemeDetails, ThemeMode, ThemeStore, resolve_font,
+        FontConfig, InstalledFont, ResolvedFont, TerminalConfig, ThemeConfig, ThemeDetails,
+        ThemeMode, ThemeStore, resolve_font,
     };
 }
 /// Host app update helpers and update event types.

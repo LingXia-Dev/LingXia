@@ -8,10 +8,15 @@
   var activeSlot = "dark";
   var dirty = false;
   var previewing = false;
+  var pendingExternal = null;
+  var unsubscribeState = null;
   var toastTimer = null;
 
   function byId(id) { return document.getElementById(id); }
   function clone(value) { return JSON.parse(JSON.stringify(value)); }
+  function tr(key, variables) {
+    return window.LingXiaI18n ? window.LingXiaI18n.t(key, variables) : key;
+  }
   function actions() {
     var bridge = window.LingXiaBridge;
     if (!bridge || !bridge.raw || typeof bridge.raw.call !== "function") {
@@ -56,34 +61,74 @@
   function setDirty(next) {
     dirty = next;
     byId("save").disabled = !dirty;
-    setState(dirty ? "Unsaved changes" : "Up to date");
+    byId("actions").classList.toggle("visible", dirty);
+    document.body.classList.toggle("has-actions", dirty);
+    setState(dirty ? tr("app.state.dirty") : tr("app.state.clean"));
   }
 
   function color(theme, key, fallback) { return theme.scheme[key] || fallback; }
   function sourceLabel(source) {
-    return source === "builtIn" ? "Built in" : source === "imported" ? "Imported" : source;
+    return source === "builtIn" ? tr("appearance.builtIn") : source === "imported" ? tr("appearance.imported") : source;
   }
   function label(entry) {
     return entry.displayName || entry.scheme.name || entry.name.replace(/(^|-)(.)/g, function (_, lead, letter) { return (lead ? " " : "") + letter.toUpperCase(); });
   }
+  function rgb(hex) {
+    var value = String(hex || "").trim().replace(/^#/, "");
+    if (value.length === 3 || value.length === 4) value = value.slice(0, 3).split("").map(function (part) { return part + part; }).join("");
+    if (value.length === 8) value = value.slice(0, 6);
+    if (!/^[0-9a-f]{6}$/i.test(value)) return null;
+    return [0, 2, 4].map(function (offset) { return parseInt(value.slice(offset, offset + 2), 16) / 255; });
+  }
+  function themeTone(scheme) {
+    var channels = rgb(scheme.background);
+    if (!channels) return activeSlot;
+    var luminance = channels.map(function (value) {
+      return value <= 0.04045 ? value / 12.92 : Math.pow((value + 0.055) / 1.055, 2.4);
+    });
+    return 0.2126 * luminance[0] + 0.7152 * luminance[1] + 0.0722 * luminance[2] >= 0.45 ? "light" : "dark";
+  }
+  function slotForMode() {
+    if (draft.theme.mode === "light" || draft.theme.mode === "dark") return draft.theme.mode;
+    return snapshot.effective.systemAppearance;
+  }
+  function themesForSlot(slot) {
+    return themes.filter(function (entry) { return themeTone(entry.scheme) === slot; });
+  }
+  function ensureSelectionForSlot(slot) {
+    var selected = themes.find(function (entry) { return entry.name === draft.theme[slot]; });
+    if (selected && themeTone(selected.scheme) === slot) return false;
+    var fallbackName = slot === "light" ? "lingxia-light" : "lingxia-dark";
+    var fallback = themesForSlot(slot).find(function (entry) { return entry.name === fallbackName; }) || themesForSlot(slot)[0];
+    if (!fallback) return false;
+    draft.theme[slot] = fallback.name;
+    return true;
+  }
+  function previewSelection() {
+    var selected = themes.find(function (entry) { return entry.name === draft.theme[activeSlot]; });
+    if (selected) beginPreview(selected.scheme);
+  }
   function renderThemes() {
     var root = byId("themes");
     root.replaceChildren();
-    themes.forEach(function (entry) {
+    themesForSlot(activeSlot).forEach(function (entry) {
       var scheme = entry.scheme;
       var card = document.createElement("button");
       card.type = "button";
       card.className = "theme" + (draft.theme[activeSlot] === entry.name ? " active" : "");
+      card.setAttribute("aria-pressed", draft.theme[activeSlot] === entry.name ? "true" : "false");
       card.style.background = scheme.background;
       card.style.color = scheme.foreground;
       card.dataset.theme = entry.name;
+      card.dataset.background = scheme.background;
+      card.dataset.cursor = scheme.cursorColor || scheme.foreground;
 
       var name = document.createElement("span");
       name.className = "theme-name";
       name.textContent = label(entry);
       var source = document.createElement("span");
       source.className = "theme-source";
-      source.textContent = entry.packaged ? entry.author + " · " + entry.spdx : sourceLabel(entry.source);
+      source.textContent = entry.packaged ? entry.author : sourceLabel(entry.source);
       var sample = document.createElement("span");
       sample.className = "theme-sample";
       sample.textContent = "Aa 01 λ";
@@ -106,11 +151,8 @@
         draft.theme[activeSlot] = entry.name;
         setDirty(true);
         renderThemes();
+        beginPreview(entry.scheme);
       });
-      card.addEventListener("pointerenter", function () { beginPreview(entry.scheme); });
-      card.addEventListener("pointerleave", endPreview);
-      card.addEventListener("focus", function () { beginPreview(entry.scheme); });
-      card.addEventListener("blur", endPreview);
       root.appendChild(card);
     });
   }
@@ -129,39 +171,49 @@
   }
 
   function fill(snapshotValue) {
+    previewing = false;
     snapshot = snapshotValue;
+    pendingExternal = null;
     draft = clone(snapshot.value);
+    activeSlot = slotForMode();
+    var repairedSelection = ensureSelectionForSlot(activeSlot);
+    if (window.LingXiaI18n) window.LingXiaI18n.apply();
     document.querySelectorAll("[data-mode]").forEach(function (button) {
       button.classList.toggle("active", button.dataset.mode === draft.theme.mode);
+      button.setAttribute("aria-pressed", button.dataset.mode === draft.theme.mode ? "true" : "false");
     });
-    byId("families").value = draft.font.family.join(", ");
-    byId("font-size").value = draft.font.size;
-    byId("line-height").value = draft.font.lineHeight;
-    byId("bold").value = draft.font.bold;
+    byId("font-family").value = snapshot.effective.font.family;
+    // The styled picker keeps the native select as its source of truth, but a
+    // property assignment does not emit an event. Notify it after every fill
+    // so an external settings change cannot leave the visible label stale.
+    byId("font-family").dispatchEvent(new Event("change", { bubbles: true }));
+    byId("font-size").value = Math.round(draft.font.size * 100) / 100;
+    byId("line-height").value = Math.round(draft.font.lineHeight * 100) / 100;
     byId("ligatures").checked = draft.font.ligatures;
-    byId("opacity").value = draft.theme.opacity;
-    byId("opacity-value").value = Math.round(draft.theme.opacity * 100) + "%";
-    byId("cursor-style").value = draft.theme.cursor.style;
-    byId("cursor-blink").checked = draft.theme.cursor.blink;
-    var resolved = snapshot.effective.font;
-    byId("resolved-font").textContent = resolved.fellBack
-      ? "Using system fallback; missing " + resolved.missing.join(", ")
-      : "Using " + resolved.family + (resolved.missing.length ? " after " + resolved.missing.join(", ") : "");
     renderThemes();
-    if (window.LingXiaI18n) window.LingXiaI18n.apply();
-    setDirty(false);
+    renderWarnings();
+    setDirty(repairedSelection);
+  }
+
+  function renderWarnings() {
+    var root = byId("warnings");
+    var messages = snapshot ? snapshot.warnings.map(function (warning) { return warning.message; }) : [];
+    if (pendingExternal) messages.push(tr("app.externalChange"));
+    root.replaceChildren();
+    messages.forEach(function (text) {
+      var item = document.createElement("p");
+      item.textContent = text;
+      root.appendChild(item);
+    });
+    root.hidden = messages.length === 0;
   }
 
   function collect() {
-    var families = byId("families").value.split(",").map(function (value) { return value.trim(); }).filter(Boolean);
-    draft.font.family = families;
+    var family = byId("font-family").value;
+    if (family) draft.font.family = [family];
     draft.font.size = Number(byId("font-size").value);
     draft.font.lineHeight = Number(byId("line-height").value);
-    draft.font.bold = byId("bold").value;
     draft.font.ligatures = byId("ligatures").checked;
-    draft.theme.opacity = Number(byId("opacity").value);
-    draft.theme.cursor.style = byId("cursor-style").value;
-    draft.theme.cursor.blink = byId("cursor-blink").checked;
     return draft;
   }
 
@@ -179,10 +231,12 @@
       byName.set(theme.name, packaged ? Object.assign({}, packaged, theme, { packaged: true }) : theme);
     });
     themes = Array.from(byName.values());
-    var select = byId("installed-fonts");
-    select.replaceChildren(new Option("Add a family…", ""));
-    result.fonts.filter(function (font) { return font.monospace; }).sort(function (a, b) { return a.family.localeCompare(b.family); }).forEach(function (font) {
-      var option = document.createElement("option"); option.value = font.family; option.textContent = font.family + (font.nerdIcons ? "  ◆" : "") + (font.ligatures ? "  ƒ" : ""); select.appendChild(option);
+    var select = byId("font-family");
+    select.replaceChildren();
+    var families = result.fonts.filter(function (font) { return font.monospace; }).map(function (font) { return font.family; });
+    if (!families.includes(result.snapshot.effective.font.family)) families.push(result.snapshot.effective.font.family);
+    families.sort(function (a, b) { return a.localeCompare(b); }).forEach(function (family) {
+      var option = document.createElement("option"); option.value = family; option.textContent = family; select.appendChild(option);
     });
     fill(result.snapshot);
   }
@@ -196,13 +250,13 @@
   function save() {
     var next = clone(collect());
     byId("save").disabled = true;
-    setState("Applying…");
+    setState(tr("app.state.applying"));
     Promise.all(Array.from(new Set([next.theme.light, next.theme.dark])).map(ensurePackaged))
       .then(function () { return actions().updateTerminalSettings({ patch: next, ifRevision: snapshot.revision }); })
-      .then(function (value) { fill(value); toast("Applied to every open terminal"); })
+      .then(function (value) { fill(value); toast(tr("app.applied")); })
       .catch(function (error) {
         if (error && error.code === "E_TERMINAL_REVISION_CONFLICT") {
-          toast("Settings changed elsewhere. Reloaded the latest values.", true);
+          toast(tr("app.conflict"), true);
           load();
           return;
         }
@@ -211,7 +265,7 @@
         actions().loadTerminalSettings().then(function (result) {
           if (sameSettings(result.snapshot.value, next)) {
             acceptLoaded(result);
-            toast("Applied to every open terminal");
+            toast(tr("app.applied"));
             return;
           }
           byId("save").disabled = false;
@@ -227,14 +281,16 @@
 
   function reset(scope) {
     endPreview();
-    setState("Resetting…");
+    byId("actions").classList.add("visible");
+    document.body.classList.add("has-actions");
+    setState(tr("app.state.resetting"));
     actions().resetTerminalSettings(scope === "all"
       ? { ifRevision: snapshot.revision }
       : { scope: scope, ifRevision: snapshot.revision })
-      .then(function (value) { fill(value); toast(scope === "all" ? "Terminal settings reset" : (scope === "font" ? "Type reset" : "Appearance reset")); })
+      .then(function (value) { fill(value); toast(scope === "all" ? tr("reset.done") : (scope === "font" ? tr("reset.typeDone") : tr("reset.appearanceDone"))); })
       .catch(function (error) {
         if (error && error.code === "E_TERMINAL_REVISION_CONFLICT") {
-          toast("Settings changed elsewhere. Reloaded the latest values.", true);
+          toast(tr("app.conflict"), true);
           load();
           return;
         }
@@ -252,29 +308,52 @@
     });
   }
 
+  function acceptExternalSnapshot(next) {
+    if (!next || !snapshot || JSON.stringify(next) === JSON.stringify(snapshot)) return;
+    if (dirty && next.revision !== snapshot.revision) {
+      pendingExternal = next;
+      renderWarnings();
+      toast(tr("app.externalChange"), true);
+      return;
+    }
+    if (dirty) {
+      var previousSlot = activeSlot;
+      snapshot = next;
+      activeSlot = slotForMode();
+      ensureSelectionForSlot(activeSlot);
+      renderThemes();
+      renderWarnings();
+      if (previewing && activeSlot !== previousSlot) previewSelection();
+      return;
+    }
+    fill(next);
+  }
+
+  function subscribeToLogicState() {
+    var bridge = window.LingXiaBridge;
+    if (!bridge || !bridge.state || typeof bridge.state.subscribe !== "function") return;
+    unsubscribeState = bridge.state.subscribe(function (state) {
+      acceptExternalSnapshot(state && state.terminalSettingsSnapshot);
+    });
+  }
+
   document.querySelectorAll("[data-mode]").forEach(function (button) {
     button.addEventListener("click", function () {
       draft.theme.mode = button.dataset.mode;
-      document.querySelectorAll("[data-mode]").forEach(function (item) { item.classList.toggle("active", item === button); });
+      document.querySelectorAll("[data-mode]").forEach(function (item) {
+        item.classList.toggle("active", item === button);
+        item.setAttribute("aria-pressed", item === button ? "true" : "false");
+      });
+      activeSlot = slotForMode();
+      ensureSelectionForSlot(activeSlot);
       setDirty(true);
-    });
-  });
-  document.querySelectorAll("[data-slot]").forEach(function (button) {
-    button.addEventListener("click", function () {
-      activeSlot = button.dataset.slot;
-      document.querySelectorAll("[data-slot]").forEach(function (item) { item.classList.toggle("active", item === button); });
       renderThemes();
+      previewSelection();
     });
   });
   document.querySelectorAll("[data-reset]").forEach(function (button) { button.addEventListener("click", function () { reset(button.dataset.reset); }); });
-  ["families", "font-size", "line-height", "bold", "ligatures", "opacity", "cursor-style", "cursor-blink"].forEach(function (id) {
-    byId(id).addEventListener("input", function () { collect(); if (id === "opacity") byId("opacity-value").value = Math.round(Number(byId("opacity").value) * 100) + "%"; setDirty(true); });
-  });
-  byId("installed-fonts").addEventListener("change", function () {
-    if (!this.value) return;
-    var current = byId("families").value.split(",").map(function (value) { return value.trim(); }).filter(Boolean);
-    byId("families").value = [this.value].concat(current.filter(function (value) { return value.toLowerCase() !== this.value.toLowerCase(); }, this)).join(", ");
-    this.value = ""; collect(); setDirty(true);
+  ["font-family", "font-size", "line-height", "ligatures"].forEach(function (id) {
+    byId(id).addEventListener("input", function () { collect(); setDirty(true); });
   });
   byId("theme-file").addEventListener("change", function () {
     var file = this.files && this.files[0];
@@ -288,15 +367,24 @@
   if (language && window.LingXiaI18n) {
     language.value = localStorage.getItem(window.LingXiaI18n.storageKey) || "system";
     language.addEventListener("change", function () {
-      // Screen-local for now. Persisting it belongs with the rest of the
-      // terminal's configuration, not in this page's own storage.
+      // Screen-local by design; terminal appearance config does not own the
+      // locale of this settings package.
       if (language.value === "system") window.LingXiaI18n.useSystemLocale();
       else window.LingXiaI18n.setLocale(language.value);
       window.LingXiaI18n.apply();
+      if (snapshot) {
+        renderWarnings();
+        renderThemes();
+        setState(dirty ? tr("app.state.dirty") : tr("app.state.clean"));
+      }
     });
   }
 
   byId("save").addEventListener("click", save);
-  window.addEventListener("pagehide", endPreview);
+  window.addEventListener("pagehide", function () {
+    endPreview();
+    if (unsubscribeState) unsubscribeState();
+  });
+  subscribeToLogicState();
   load();
 })();

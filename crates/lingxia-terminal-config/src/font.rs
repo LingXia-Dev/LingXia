@@ -8,30 +8,6 @@
 
 use serde::{Deserialize, Serialize};
 
-/// How bold text is rendered. Terminals traditionally brighten the color
-/// instead of using a heavier face, and both behaviours are still expected.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum BoldStyle {
-    /// Use the font's bold face.
-    #[default]
-    Weight,
-    /// Keep the regular face and use the bright ANSI color.
-    Bright,
-    /// Both.
-    Both,
-}
-
-impl BoldStyle {
-    pub fn uses_bold_face(self) -> bool {
-        matches!(self, Self::Weight | Self::Both)
-    }
-
-    pub fn uses_bright_color(self) -> bool {
-        matches!(self, Self::Bright | Self::Both)
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default, deny_unknown_fields)]
 pub struct FontConfig {
@@ -44,7 +20,6 @@ pub struct FontConfig {
     /// Shape runs with the font's ligatures. Fonts without them are
     /// unaffected.
     pub ligatures: bool,
-    pub bold: BoldStyle,
 }
 
 impl Default for FontConfig {
@@ -63,7 +38,6 @@ impl Default for FontConfig {
             size: 13.0,
             line_height: 1.0,
             ligatures: true,
-            bold: BoldStyle::Weight,
         }
     }
 }

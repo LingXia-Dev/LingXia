@@ -42,7 +42,10 @@
     button.className = "picker-button";
     button.setAttribute("aria-haspopup", "listbox");
     button.setAttribute("aria-expanded", "false");
-    if (select.id) button.setAttribute("aria-labelledby", select.id + "-label");
+    button.setAttribute(
+      "aria-label",
+      select.getAttribute("aria-label") || select.dataset.picker || labelFor(select)
+    );
 
     var text = document.createElement("span");
     text.className = "picker-value";
@@ -56,6 +59,10 @@
     var list = document.createElement("div");
     list.className = "picker-list";
     list.setAttribute("role", "listbox");
+    if (select.id) {
+      list.id = select.id + "-listbox";
+      button.setAttribute("aria-controls", list.id);
+    }
     list.hidden = true;
 
     root.appendChild(button);
@@ -78,9 +85,9 @@
         item.setAttribute("role", "option");
         item.textContent = option.textContent;
         item.dataset.index = String(index);
+        item.setAttribute("aria-selected", index === select.selectedIndex ? "true" : "false");
         if (index === select.selectedIndex) {
           item.classList.add("selected");
-          item.setAttribute("aria-selected", "true");
         }
         item.addEventListener("click", function () {
           choose(index);

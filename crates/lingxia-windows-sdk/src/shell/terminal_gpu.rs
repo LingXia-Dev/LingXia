@@ -54,7 +54,7 @@ use windows::core::{Interface, PCWSTR, Result, w};
 use super::terminal_grid::{
     GRID_DEFAULT_BACKGROUND, GRID_DIM_FOREGROUND_PERCENT, GRID_PADDING, GridPoint,
     PANE_DROP_TARGET_COLOR, SCROLLBAR_MARGIN, SCROLLBAR_MAX_THUMB, SCROLLBAR_MIN_THUMB,
-    SCROLLBAR_WIDTH, SELECTION_ACCENT, SELECTION_ACCENT_PERCENT,
+    SCROLLBAR_WIDTH,
 };
 use pipeline::{Pipeline, Quad};
 use text::{BOLD, BOLD_ITALIC, Fonts, ITALIC, Metrics, REGULAR};
@@ -250,6 +250,7 @@ impl Surface {
             self.fonts_generation = fonts.1;
         }
         let metrics = fonts.0.metrics;
+        let chrome = lingxia_terminal_config::runtime::current_chrome();
 
         super::terminal_grid::set_panel_body(panel_id, body);
         self.quads.clear();
@@ -285,6 +286,9 @@ impl Surface {
                         fonts: shaper,
                         pipeline,
                         metrics,
+                        cursor: chrome.cursor,
+                        selection_background: chrome.selection_background,
+                        selection_foreground: chrome.selection_foreground,
                     }
                     .pane(frame, view, selection, rect, dim);
                 },
@@ -303,6 +307,9 @@ impl Surface {
                 fonts: &mut fonts.0,
                 pipeline: &mut self.pipeline,
                 metrics,
+                cursor: chrome.cursor,
+                selection_background: chrome.selection_background,
+                selection_foreground: chrome.selection_foreground,
             };
             builder.outline(rect, 2.0, PANE_DROP_TARGET_COLOR);
         }
@@ -579,16 +586,23 @@ fn ensure_fonts(slot: &mut Option<SharedFonts>) -> Result<&mut SharedFonts> {
     match slot {
         Some(fonts) if fonts.1 == generation => {}
         Some(fonts) => {
-            if fonts
-                .0
-                .reload(&config.font.family, size, config.font.ligatures)?
-            {
+            if fonts.0.reload(
+                &config.font.family,
+                size,
+                config.font.line_height,
+                config.font.ligatures,
+            )? {
                 log::info!("terminal font: {} {size}pt", fonts.0.family());
             }
             fonts.1 = generation;
         }
         None => {
-            let fonts = Fonts::new(&config.font.family, size, config.font.ligatures)?;
+            let fonts = Fonts::new(
+                &config.font.family,
+                size,
+                config.font.line_height,
+                config.font.ligatures,
+            )?;
             log::info!("terminal font: {} {size}pt", fonts.family());
             *slot = Some(SharedFonts(fonts, generation));
         }
@@ -613,6 +627,9 @@ struct Builder<'a> {
     fonts: &'a mut Fonts,
     pipeline: &'a mut Pipeline,
     metrics: Metrics,
+    cursor: u32,
+    selection_background: u32,
+    selection_foreground: u32,
 }
 
 impl Builder<'_> {
@@ -665,7 +682,6 @@ impl Builder<'_> {
         }
 
         if let Some((start, end)) = selection {
-            let highlight = blend(SELECTION_ACCENT, background, SELECTION_ACCENT_PERCENT);
             for row in start.row..=end.row {
                 let first = if row == start.row { start.col } else { 0 };
                 let last = if row == end.row { end.col } else { frame.cols };
@@ -677,12 +693,12 @@ impl Builder<'_> {
                     origin.1 + f32::from(row) * self.metrics.line_height,
                     f32::from(last - first) * self.metrics.cell_width,
                     self.metrics.line_height,
-                    highlight,
+                    self.selection_background,
                 );
             }
         }
 
-        self.text(frame, origin, background, foreground, dim);
+        self.text(frame, origin, background, foreground, selection, dim);
 
         // Only the focused pane paints a cursor: hollow cursors in every split
         // make cursor-heavy TUIs look like they flicker in several places.
@@ -705,7 +721,7 @@ impl Builder<'_> {
                 top,
                 width,
                 height,
-                foreground,
+                self.cursor,
             );
         }
 
@@ -722,6 +738,7 @@ impl Builder<'_> {
         origin: (f32, f32),
         background: u32,
         foreground: u32,
+        selection: Option<(GridPoint, GridPoint)>,
         dim: bool,
     ) {
         let mut run = String::new();
@@ -741,7 +758,8 @@ impl Builder<'_> {
                 continue;
             }
             let (row, col) = frame.position(index);
-            let cell_style = self.style_of(cell, background, foreground, dim);
+            let selected = is_selected(row, col, cell.columns.max(1), selection, frame.cols);
+            let cell_style = self.style_of(cell, background, foreground, selected, dim);
             let contiguous =
                 !run.is_empty() && row == at.0 && col == at.1 + columns && cell_style == style;
             if !contiguous {
@@ -764,13 +782,23 @@ impl Builder<'_> {
         self.flush(&run, at, columns, style, origin);
     }
 
-    fn style_of(&self, cell: &FrameCell, background: u32, foreground: u32, dim: bool) -> RunStyle {
+    fn style_of(
+        &self,
+        cell: &FrameCell,
+        background: u32,
+        foreground: u32,
+        selected: bool,
+        dim: bool,
+    ) -> RunStyle {
         let (mut color, cell_background) = resolve(cell, background, foreground);
         if cell.attrs & ATTR_DIM != 0 {
             color = blend(color, cell_background, GRID_DIM_FOREGROUND_PERCENT);
         }
         if dim {
             color = blend(color, background, GRID_DIM_FOREGROUND_PERCENT);
+        }
+        if selected {
+            color = self.selection_foreground;
         }
         RunStyle {
             face: match (cell.attrs & ATTR_BOLD != 0, cell.attrs & ATTR_ITALIC != 0) {
@@ -951,6 +979,24 @@ impl Builder<'_> {
             params: [0.0; 4],
         });
     }
+}
+
+fn is_selected(
+    row: u16,
+    col: u16,
+    span: u8,
+    selection: Option<(GridPoint, GridPoint)>,
+    cols: u16,
+) -> bool {
+    let Some((start, end)) = selection else {
+        return false;
+    };
+    if row < start.row || row > end.row {
+        return false;
+    }
+    let first = if row == start.row { start.col } else { 0 };
+    let last = if row == end.row { end.col } else { cols };
+    col < last && col.saturating_add(u16::from(span)) > first
 }
 
 /// A cell's colors, with alpha 0 meaning "inherit the frame's default".

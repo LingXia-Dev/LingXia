@@ -218,15 +218,6 @@ pub(super) const TERMINAL_HEADER_HEIGHT: i32 = 34;
 /// macOS tab rail so both platforms draw the same shape.
 pub(super) const TERMINAL_TAB_RADIUS: i32 = 8;
 
-/// Marker-dot accent of the active tab (macOS tab rail mint).
-pub(super) const TERMINAL_TAB_ACCENT: u32 = 0xaecfbb;
-
-/// Diameter of the per-tab marker dot.
-pub(super) const TERMINAL_TAB_DOT_SIZE: i32 = 6;
-
-/// Minimum tab width that still draws the marker dot + inset title.
-pub(super) const TERMINAL_TAB_DOT_MIN_WIDTH: i32 = 56;
-
 /// Maximum width of one header tab; tabs shrink evenly below this.
 pub(super) const TERMINAL_TAB_MAX_WIDTH: i32 = 190;
 

@@ -140,15 +140,8 @@ pub(super) fn terminal_header_rects(
                     bottom: tab_rect.bottom,
                 })
             });
-            let title_inset = if rect_width(&tab_rect) >= TERMINAL_TAB_DOT_MIN_WIDTH {
-                // Clears the marker dot drawn at the leading edge; same
-                // 14/28 geometry as the macOS tab rail.
-                14 + TERMINAL_TAB_DOT_SIZE + 8
-            } else {
-                10
-            };
             let title = normalize_rect(RECT {
-                left: tab_rect.left + title_inset,
+                left: tab_rect.left + 14,
                 top: tab_rect.top,
                 right: close.map(|close| close.left).unwrap_or(tab_rect.right - 6),
                 bottom: tab_rect.bottom,
@@ -347,22 +340,6 @@ pub(super) fn draw_terminal_panel_content(
                 },
                 blend_rgb(chrome.text, chrome.header, 8),
             );
-        }
-        if rect_width(&tab.rect) >= TERMINAL_TAB_DOT_MIN_WIDTH {
-            let dot_top = tab.rect.top + (rect_height(&tab.rect) - TERMINAL_TAB_DOT_SIZE) / 2;
-            let dot = RECT {
-                left: tab.rect.left + 14,
-                top: dot_top,
-                right: tab.rect.left + 14 + TERMINAL_TAB_DOT_SIZE,
-                bottom: dot_top + TERMINAL_TAB_DOT_SIZE,
-            };
-            let dot_background = if tab.active { surface } else { chrome.header };
-            let color = if tab.active {
-                TERMINAL_TAB_ACCENT
-            } else {
-                blend_rgb(chrome.text, dot_background, 40)
-            };
-            fill_round_rect_aa(hdc, dot, TERMINAL_TAB_DOT_SIZE / 2, color);
         }
         let title = native
             .tabs

@@ -1,4 +1,5 @@
 type TerminalApi = NonNullable<typeof lx.terminal>;
+type TerminalSnapshot = Awaited<ReturnType<TerminalApi['settings']['get']>>;
 
 type UpdateInput = {
   patch: Parameters<TerminalApi['settings']['update']>[0];
@@ -55,6 +56,7 @@ function terminal() {
 }
 
 let preview: ReturnType<TerminalApi['colorSchemes']['createPreview']> | null = null;
+let stopSettingsChanges: (() => void) | null = null;
 
 function previewController(): ReturnType<TerminalApi['colorSchemes']['createPreview']> {
   preview ??= terminal().colorSchemes.createPreview();
@@ -62,6 +64,17 @@ function previewController(): ReturnType<TerminalApi['colorSchemes']['createPrev
 }
 
 Page({
+  data: {
+    terminalSettingsSnapshot: null as TerminalSnapshot | null,
+  },
+
+  onLoad() {
+    stopSettingsChanges?.();
+    stopSettingsChanges = terminal().settings.onChange((snapshot) => {
+      this.setData({ terminalSettingsSnapshot: snapshot });
+    });
+  },
+
   loadTerminalSettings() {
     return action(async () => {
       const api = terminal();
@@ -97,6 +110,8 @@ Page({
   },
 
   async onUnload() {
+    stopSettingsChanges?.();
+    stopSettingsChanges = null;
     const controller = preview;
     preview = null;
     await controller?.close();

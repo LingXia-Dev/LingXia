@@ -826,7 +826,7 @@ mod tests {
                 "terminal": {
                     "defaults": {
                         "font": { "size": 15.5 },
-                        "theme": { "opacity": 0.9 }
+                        "theme": { "mode": "dark" }
                     }
                 }
             }"#,

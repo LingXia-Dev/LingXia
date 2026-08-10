@@ -18,12 +18,11 @@ mod font;
 pub mod runtime;
 mod theme;
 
-pub use font::{BoldStyle, FontConfig, InstalledFont, ResolvedFont, resolve as resolve_font};
+pub use font::{FontConfig, InstalledFont, ResolvedFont, resolve as resolve_font};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 pub use theme::{
-    CursorConfig, CursorStyle, SurfaceChrome, ThemeConfig, ThemeDetails, ThemeMode, ThemeSource,
-    ThemeStore, parse_scheme,
+    SurfaceChrome, ThemeConfig, ThemeDetails, ThemeMode, ThemeSource, ThemeStore, parse_scheme,
 };
 
 /// Host-bundled control lxapp allowed to manage terminal settings.
@@ -208,9 +207,6 @@ impl TerminalConfig {
         }
         if !self.font.line_height.is_finite() || !(0.5..=3.0).contains(&self.font.line_height) {
             return Err("font.lineHeight must be between 0.5 and 3".to_string());
-        }
-        if !self.theme.opacity.is_finite() || !(0.0..=1.0).contains(&self.theme.opacity) {
-            return Err("theme.opacity must be between 0 and 1".to_string());
         }
         if self.theme.light.trim().is_empty() || self.theme.dark.trim().is_empty() {
             return Err("theme.light and theme.dark must name a theme".to_string());
@@ -497,8 +493,8 @@ mod tests {
 
         for overlay in [
             serde_json::json!({"font": {"size": 2}}),
-            serde_json::json!({"theme": {"opacity": 1.5}}),
             serde_json::json!({"font": {"unknown": true}}),
+            serde_json::json!({"theme": {"unknown": true}}),
         ] {
             assert!(
                 TerminalConfig::default().with_overlay(&overlay).is_err(),

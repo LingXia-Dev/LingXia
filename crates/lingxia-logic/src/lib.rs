@@ -32,6 +32,14 @@ pub struct LxLogicRuntime;
 
 impl LxLogicExtension for LxLogicRuntime {
     fn init(&self, ctx: &JSContext) -> JSResult<()> {
+        // The host-bundled Terminal Settings package is a focused control UI,
+        // not a general-purpose lxapp. Keep its cold path to the one API it is
+        // allowed to use instead of registering the full LingXia surface.
+        #[cfg(feature = "terminal")]
+        if terminal::owns_context(ctx)? {
+            return terminal::init(ctx);
+        }
+
         public_types::init(ctx)?;
         env::init(ctx)?;
         app::init(ctx)?;

@@ -71,6 +71,7 @@ impl JSContextService for TerminalContextService {
                 &self.app_data_dir,
                 system_is_dark,
             );
+            lingxia_terminal_config::runtime::retire_theme_preview_lease(lease);
         }
     }
 }
@@ -80,6 +81,10 @@ fn eligible(app: &LxApp) -> bool {
         && lingxia_app_context::terminal_enabled()
         && app.appid == SETTINGS_APP_ID
         && app.is_host_bundled()
+}
+
+pub(crate) fn owns_context(ctx: &JSContext) -> JSResult<bool> {
+    Ok(eligible(LxApp::from_ctx(ctx)?.as_ref()))
 }
 
 fn require_access(ctx: &JSContext) -> JSResult<Arc<LxApp>> {
@@ -230,6 +235,7 @@ fn snapshot_value(
         "overrides": state.overrides,
         "value": state.value,
         "effective": {
+            "systemAppearance": if system_is_dark { "dark" } else { "light" },
             "appearance": if effective_dark { "dark" } else { "light" },
             "colorScheme": scheme_exists.then_some(selected),
             "font": resolved,
@@ -453,6 +459,7 @@ fn create_preview(ctx: JSContext) -> JSResult<JSObject> {
                     &close_data_dir,
                     app.runtime.host_appearance_dark(),
                 );
+                lingxia_terminal_config::runtime::retire_theme_preview_lease(lease);
                 leases.borrow_mut().remove(&lease);
                 Ok(())
             })();

@@ -13,7 +13,7 @@ use crate::{
 use lingxia_terminal::TerminalTheme;
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
 
 /// The configuration in effect, so hosts can read it after startup without
@@ -23,6 +23,12 @@ static CURRENT: OnceLock<Mutex<TerminalConfig>> = OnceLock::new();
 /// Bumped whenever the configuration in effect changes, so hosts notice with
 /// one atomic read on a poll they already run.
 static GENERATION: AtomicU64 = AtomicU64::new(0);
+
+/// Bumped whenever the pixels in effect change. Preview and OS appearance
+/// changes repaint terminals without changing the persisted settings revision.
+static VISUAL_GENERATION: AtomicU64 = AtomicU64::new(0);
+
+static INITIALIZED: AtomicBool = AtomicBool::new(false);
 
 /// Installed families affect the resolved snapshot without changing the saved
 /// settings revision.
@@ -96,6 +102,11 @@ pub fn generation() -> u64 {
     GENERATION.load(Ordering::Relaxed)
 }
 
+/// The generation of the palette and surface chrome in effect.
+pub fn visual_generation() -> u64 {
+    VISUAL_GENERATION.load(Ordering::Relaxed)
+}
+
 pub fn font_generation() -> u64 {
     FONT_GENERATION.load(Ordering::Relaxed)
 }
@@ -160,13 +171,17 @@ fn load_locked(
         config.font.size,
         config.theme.mode
     );
-    apply_theme_locked(&app_data_dir, &config, system_is_dark);
-    publish(config.clone());
+    let before = generation();
+    let revision = publish(config.clone());
+    if !INITIALIZED.swap(true, Ordering::Relaxed) || revision != before {
+        apply_theme_locked(&app_data_dir, &config, system_is_dark);
+    } else {
+        refresh_appearance_locked(&app_data_dir, system_is_dark);
+    }
     config
 }
 
-/// Atomically refresh the running configuration and return the persisted
-/// layers needed by a settings client.
+/// Read the persisted layers needed by a settings client.
 pub fn settings_snapshot(
     app_data_dir: &std::path::Path,
     product_defaults: &serde_json::Value,
@@ -181,16 +196,14 @@ pub fn settings_snapshot(
 fn settings_snapshot_locked(
     app_data_dir: &std::path::Path,
     product_defaults: &serde_json::Value,
-    system_is_dark: bool,
+    _system_is_dark: bool,
 ) -> SettingsSnapshot {
     let layers = TerminalConfig::load_layers(app_data_dir, product_defaults);
     if let Some(error) = layers.warning.as_ref() {
         log::warn!("{error}; continuing on defaults");
     }
-    apply_theme_locked(app_data_dir, &layers.value, system_is_dark);
-    let revision = publish(layers.value.clone());
     SettingsSnapshot {
-        revision,
+        revision: generation(),
         defaults: layers.defaults,
         overrides: layers.overrides,
         value: layers.value,
@@ -271,9 +284,9 @@ fn validate_overlay_theme_names(
     Ok(())
 }
 
-/// Atomically import a color scheme. Importing is revision-visible because an
-/// overwritten active scheme changes the effective terminal without changing
-/// `terminal.json`.
+/// Atomically import a color scheme. Theme-store changes never alter the
+/// persisted settings revision, so importing cannot invalidate an editor's
+/// compare-and-swap token.
 pub fn import_theme(
     app_data_dir: &std::path::Path,
     name: &str,
@@ -289,13 +302,19 @@ pub fn import_theme(
         return Err(ThemeImportError::AlreadyExists(name.to_string()));
     }
     store.import(name, theme).map_err(ThemeImportError::Io)?;
-    apply_theme_locked(app_data_dir, &current_config(), system_is_dark);
-    GENERATION.fetch_add(1, Ordering::Relaxed);
+    let config = current_config();
+    if imported_theme_is_active(name, &config, system_is_dark) {
+        apply_theme_locked(app_data_dir, &config, system_is_dark);
+    }
     Ok(ThemeDetails {
         name: name.to_string(),
         source: ThemeSource::Imported,
         scheme: theme.clone(),
     })
+}
+
+fn imported_theme_is_active(name: &str, config: &TerminalConfig, system_is_dark: bool) -> bool {
+    config.theme.selected(system_is_dark) == name
 }
 
 /// Remove all user overrides, or only the requested section.
@@ -358,8 +377,8 @@ fn save_and_publish(
     system_is_dark: bool,
 ) -> Result<TerminalConfig, crate::ConfigError> {
     config.save(app_data_dir, product_defaults)?;
-    apply_theme_locked(app_data_dir, &config, system_is_dark);
     publish(config.clone());
+    apply_theme_locked(app_data_dir, &config, system_is_dark);
     Ok(config)
 }
 
@@ -412,6 +431,13 @@ impl PreviewState {
         self.active = None;
         true
     }
+
+    fn retire(&mut self, lease: ThemePreviewLease) {
+        self.latest_by_lease.remove(&lease.0);
+        if self.active == Some(lease) {
+            self.active = None;
+        }
+    }
 }
 
 fn previews() -> &'static Mutex<PreviewState> {
@@ -433,6 +459,14 @@ pub fn create_theme_preview_request(lease: ThemePreviewLease) -> ThemePreviewReq
     }
 }
 
+/// Retire a closed preview controller after its final clear request.
+pub fn retire_theme_preview_lease(lease: ThemePreviewLease) {
+    previews()
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .retire(lease);
+}
+
 pub fn preview_theme_for_request(
     request: ThemePreviewRequest,
     theme: &TerminalTheme,
@@ -441,10 +475,7 @@ pub fn preview_theme_for_request(
     if !state.begin_show(request) {
         return Ok(());
     }
-    lingxia_terminal::terminal_set_theme_all(theme).map_err(|error| error.to_string())?;
-    if let Ok(mut slot) = chrome().lock() {
-        *slot = SurfaceChrome::derive(theme);
-    }
+    install_visual(theme).map_err(|error| error.to_string())?;
     state.active = Some(request.lease);
     Ok(())
 }
@@ -459,6 +490,22 @@ pub fn end_theme_preview_for_request(
         return;
     }
     apply_theme_unlocked(app_data_dir, &current_config(), system_is_dark);
+}
+
+/// Re-resolve a system-following theme without changing the saved settings
+/// revision or interrupting an active preview.
+pub fn refresh_appearance(app_data_dir: &std::path::Path, system_is_dark: bool) {
+    let _guard = mutations()
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+    refresh_appearance_locked(app_data_dir, system_is_dark);
+}
+
+fn refresh_appearance_locked(app_data_dir: &std::path::Path, system_is_dark: bool) {
+    let state = previews().lock().unwrap_or_else(|error| error.into_inner());
+    if state.active.is_none() {
+        apply_theme_unlocked(app_data_dir, &current_config(), system_is_dark);
+    }
 }
 
 /// A generation means "this changed", not "this was read".
@@ -511,18 +558,37 @@ fn apply_theme_unlocked(
         log::warn!("terminal theme '{name}' not found; keeping the current palette");
         return;
     };
-    if let Err(error) = lingxia_terminal::terminal_set_theme_all(&theme) {
+    if let Err(error) = install_visual(&theme) {
         log::warn!("terminal theme '{name}' rejected: {error}");
-        return;
-    }
-    if let Ok(mut slot) = chrome().lock() {
-        *slot = SurfaceChrome::derive(&theme);
     }
 }
 
-fn chrome() -> &'static Mutex<SurfaceChrome> {
-    static CHROME: OnceLock<Mutex<SurfaceChrome>> = OnceLock::new();
-    CHROME.get_or_init(|| Mutex::new(SurfaceChrome::default()))
+#[derive(Debug)]
+struct VisualState {
+    theme: Option<TerminalTheme>,
+    chrome: SurfaceChrome,
+}
+
+fn visual() -> &'static Mutex<VisualState> {
+    static VISUAL: OnceLock<Mutex<VisualState>> = OnceLock::new();
+    VISUAL.get_or_init(|| {
+        Mutex::new(VisualState {
+            theme: None,
+            chrome: SurfaceChrome::default(),
+        })
+    })
+}
+
+fn install_visual(theme: &TerminalTheme) -> Result<(), lingxia_terminal::TerminalThemeError> {
+    let mut state = visual().lock().unwrap_or_else(|error| error.into_inner());
+    if state.theme.as_ref() == Some(theme) {
+        return Ok(());
+    }
+    lingxia_terminal::terminal_set_theme_all(theme)?;
+    state.chrome = SurfaceChrome::derive(theme);
+    state.theme = Some(theme.clone());
+    VISUAL_GENERATION.fetch_add(1, Ordering::Relaxed);
+    Ok(())
 }
 
 /// Chrome colors for the surface hosting a terminal, from the theme in effect.
@@ -530,9 +596,9 @@ fn chrome() -> &'static Mutex<SurfaceChrome> {
 /// Resolved once here rather than in each platform SDK: the rule is the same
 /// on both, and a second copy of it drifts the moment one is edited.
 pub fn current_chrome() -> SurfaceChrome {
-    chrome()
+    visual()
         .lock()
-        .map(|chrome| *chrome)
+        .map(|state| state.chrome)
         .unwrap_or_else(|_| SurfaceChrome::default())
 }
 
@@ -546,6 +612,9 @@ pub fn current_chrome_json() -> String {
         "separator": hex(chrome.separator),
         "text": hex(chrome.text),
         "textMuted": hex(chrome.text_muted),
+        "cursor": hex(chrome.cursor),
+        "selectionBackground": hex(chrome.selection_background),
+        "selectionForeground": hex(chrome.selection_foreground),
     })
     .to_string()
 }
@@ -645,6 +714,19 @@ mod tests {
             order: 3,
         };
         assert!(!state.begin_show(older_first_show));
+
+        state.retire(second);
+        assert_eq!(state.active, None);
+        assert!(!state.latest_by_lease.contains_key(&second.0));
+    }
+
+    #[test]
+    fn importing_an_unselected_scheme_does_not_change_settings() {
+        let mut config = TerminalConfig::default();
+        config.theme.mode = crate::ThemeMode::Dark;
+        config.theme.dark = "selected".into();
+        assert!(imported_theme_is_active("selected", &config, false));
+        assert!(!imported_theme_is_active("new-scheme", &config, false));
     }
 
     #[test]

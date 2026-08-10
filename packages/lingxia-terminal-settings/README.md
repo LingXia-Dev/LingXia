@@ -1,7 +1,7 @@
 # @lingxia/terminal-settings
 
 The Settings lxapp for LingXia's desktop terminal. It lets users choose fonts,
-color schemes, opacity, and cursor behavior through its capability-scoped
+color schemes, and light/dark appearance through its capability-scoped
 `lx.terminal` Logic API.
 
 Products enable `capabilities.terminal` and declare this package under

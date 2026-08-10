@@ -76,6 +76,8 @@ pub(super) fn refresh() -> bool {
     let was_initialized = INITIALIZED.swap(true, Ordering::Relaxed);
     if was_initialized && prev_dark != dark {
         lxapp::refresh_auto_appearances();
+        #[cfg(feature = "terminal-runtime")]
+        lingxia::terminal::refresh_appearance_for_app(dark);
     }
     !was_initialized
         || prev_dark != dark

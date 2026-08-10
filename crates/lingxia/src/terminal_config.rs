@@ -12,6 +12,7 @@ use serde::Serialize;
 
 pub use lingxia_terminal_config::runtime::{
     apply_theme, current_json, generation, installed_fonts, load, set_installed_fonts,
+    visual_generation,
 };
 
 /// Where this app keeps its data, as the configuration layer wants it.
@@ -42,6 +43,13 @@ pub fn load_for_app(system_is_dark: bool) -> Option<TerminalConfig> {
         &product_defaults().to_string(),
         system_is_dark,
     ))
+}
+
+/// Re-resolve a system-following terminal theme for the running product.
+pub fn refresh_appearance_for_app(system_is_dark: bool) {
+    if let Some(data_dir) = app_data_dir() {
+        lingxia_terminal_config::runtime::refresh_appearance(&data_dir, system_is_dark);
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -83,11 +91,10 @@ fn snapshot(data_dir: &Path, config: TerminalConfig, appearance_is_dark: bool) -
 
 pub fn config_get() -> Result<ConfigSnapshot, String> {
     let (data_dir, defaults, appearance_is_dark) = context()?;
-    let config = lingxia_terminal_config::runtime::load(
-        data_dir.clone(),
-        &defaults.to_string(),
-        appearance_is_dark,
-    );
+    let (config, warning) = TerminalConfig::load(&data_dir, &defaults);
+    if let Some(warning) = warning {
+        log::warn!("{warning}; continuing on defaults");
+    }
     Ok(snapshot(&data_dir, config, appearance_is_dark))
 }
 

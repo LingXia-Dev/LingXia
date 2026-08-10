@@ -1663,8 +1663,6 @@ export type TerminalApi = {
     readonly fonts: TerminalFontsApi;
 };
 
-export type TerminalBoldStyle = 'weight' | 'bright' | 'both';
-
 export type TerminalColorScheme = {
     name?: string;
     background: string;
@@ -1707,20 +1705,12 @@ export type TerminalColorSchemesApi = {
     createPreview(): TerminalPreviewController;
 };
 
-export type TerminalCursorSettings = {
-    style: TerminalCursorStyle;
-    blink: boolean;
-};
-
-export type TerminalCursorStyle = 'block' | 'bar' | 'underline' | 'blockHollow';
-
 export type TerminalFontSettings = {
     /** Ordered candidates; the first installed monospaced family wins. */
     family: string[];
     size: number;
     lineHeight: number;
     ligatures: boolean;
-    bold: TerminalBoldStyle;
 };
 
 export type TerminalFontsApi = {
@@ -1752,9 +1742,7 @@ export type TerminalSettingsApi = {
 
 export type TerminalSettingsPatch = {
     font?: Partial<TerminalFontSettings>;
-    theme?: Omit<Partial<TerminalThemeSettings>, 'cursor'> & {
-        cursor?: Partial<TerminalCursorSettings>;
-    };
+    theme?: Partial<TerminalThemeSettings>;
 };
 
 export type TerminalSettingsSnapshot = {
@@ -1767,6 +1755,8 @@ export type TerminalSettingsSnapshot = {
     /** Resolved configuration after all valid layers. */
     value: TerminalSettingsValue;
     effective: {
+        /** Host appearance before applying terminal.theme.mode. */
+        systemAppearance: 'light' | 'dark';
         appearance: 'light' | 'dark';
         colorScheme: string | null;
         font: {
@@ -1794,8 +1784,6 @@ export type TerminalThemeSettings = {
     mode: TerminalThemeMode;
     light: string;
     dark: string;
-    opacity: number;
-    cursor: TerminalCursorSettings;
 };
 
 export type TrayApi = globalThis.TrayApi;

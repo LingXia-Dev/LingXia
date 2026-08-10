@@ -141,9 +141,7 @@ rong::js_api! {
     setEnabled(on: boolean): Promise<void>;
 }"###;
 
-        type TerminalBoldStyle = r###"'weight' | 'bright' | 'both'"###;
         type TerminalThemeMode = r###"'system' | 'light' | 'dark'"###;
-        type TerminalCursorStyle = r###"'block' | 'bar' | 'underline' | 'blockHollow'"###;
 
         type TerminalFontSettings = r###"{
     /** Ordered candidates; the first installed monospaced family wins. */
@@ -151,20 +149,12 @@ rong::js_api! {
     size: number;
     lineHeight: number;
     ligatures: boolean;
-    bold: TerminalBoldStyle;
-}"###;
-
-        type TerminalCursorSettings = r###"{
-    style: TerminalCursorStyle;
-    blink: boolean;
 }"###;
 
         type TerminalThemeSettings = r###"{
     mode: TerminalThemeMode;
     light: string;
     dark: string;
-    opacity: number;
-    cursor: TerminalCursorSettings;
 }"###;
 
         type TerminalSettingsValue = r###"{
@@ -174,9 +164,7 @@ rong::js_api! {
 
         type TerminalSettingsPatch = r###"{
     font?: Partial<TerminalFontSettings>;
-    theme?: Omit<Partial<TerminalThemeSettings>, 'cursor'> & {
-        cursor?: Partial<TerminalCursorSettings>;
-    };
+    theme?: Partial<TerminalThemeSettings>;
 }"###;
 
         type TerminalSettingsWarning = r###"{
@@ -194,6 +182,8 @@ rong::js_api! {
     /** Resolved configuration after all valid layers. */
     value: TerminalSettingsValue;
     effective: {
+        /** Host appearance before applying terminal.theme.mode. */
+        systemAppearance: 'light' | 'dark';
         appearance: 'light' | 'dark';
         colorScheme: string | null;
         font: {

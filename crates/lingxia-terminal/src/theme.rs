@@ -74,7 +74,7 @@ pub struct TerminalTheme {
 impl Default for TerminalTheme {
     fn default() -> Self {
         Self {
-            name: Some("LingXia Dark".to_string()),
+            name: Some("Default Dark".to_string()),
             background: "#282c34".to_string(),
             foreground: "#ffffff".to_string(),
             cursor_color: None,

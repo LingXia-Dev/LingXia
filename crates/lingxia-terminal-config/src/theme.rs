@@ -24,32 +24,6 @@ pub enum ThemeMode {
     Dark,
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum CursorStyle {
-    #[default]
-    Block,
-    Bar,
-    Underline,
-    BlockHollow,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", default, deny_unknown_fields)]
-pub struct CursorConfig {
-    pub style: CursorStyle,
-    pub blink: bool,
-}
-
-impl Default for CursorConfig {
-    fn default() -> Self {
-        Self {
-            style: CursorStyle::Block,
-            blink: true,
-        }
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default, deny_unknown_fields)]
 pub struct ThemeConfig {
@@ -58,9 +32,6 @@ pub struct ThemeConfig {
     /// works without further configuration.
     pub light: String,
     pub dark: String,
-    /// Background opacity, 0.0–1.0.
-    pub opacity: f32,
-    pub cursor: CursorConfig,
 }
 
 impl Default for ThemeConfig {
@@ -69,8 +40,6 @@ impl Default for ThemeConfig {
             mode: ThemeMode::System,
             light: "lingxia-light".to_string(),
             dark: "lingxia-dark".to_string(),
-            opacity: 1.0,
-            cursor: CursorConfig::default(),
         }
     }
 }
@@ -330,7 +299,7 @@ const BUILT_IN: &[(&str, &str)] = &[
 ];
 
 const LINGXIA_DARK: &str = r##"{
-  "name": "LingXia Dark",
+  "name": "Default Dark",
   "background": "#282c34", "foreground": "#e6e6e6",
   "cursorColor": "#e6e6e6", "selectionBackground": "#3e4451",
   "black": "#1d1f21", "red": "#cc6666", "green": "#b5bd68", "yellow": "#f0c674",
@@ -349,7 +318,7 @@ const LINGXIA_DARK: &str = r##"{
 /// "ordinary text" — PowerShell colors every command *argument* with ANSI 7.
 /// Spelling them literally on a light scheme makes that text disappear.
 const LINGXIA_LIGHT: &str = r##"{
-  "name": "LingXia Light",
+  "name": "Default Light",
   "background": "#fafafa", "foreground": "#2b2d33",
   "cursorColor": "#2b2d33", "selectionBackground": "#cfd6e4",
   "black": "#383a42", "red": "#c02128", "green": "#1f7a3d", "yellow": "#8a6100",
@@ -363,7 +332,7 @@ const LINGXIA_LIGHT: &str = r##"{
 /// with the saturation taken out, so nothing on screen is the brightest thing
 /// in the room.
 const LINGXIA_DIM: &str = r##"{
-  "name": "LingXia Dim",
+  "name": "Dim",
   "background": "#1b1e24", "foreground": "#b9c0cc",
   "cursorColor": "#b9c0cc", "selectionBackground": "#2f3540",
   "black": "#20242c", "red": "#a4626a", "green": "#8f9f74", "yellow": "#bfa76a",
@@ -377,7 +346,7 @@ const LINGXIA_DIM: &str = r##"{
 /// background sit far apart on purpose, and every ANSI color is chosen to
 /// stay legible against the background rather than to look subtle.
 const LINGXIA_CONTRAST: &str = r##"{
-  "name": "LingXia High Contrast",
+  "name": "High Contrast",
   "background": "#000000", "foreground": "#ffffff",
   "cursorColor": "#ffffff", "selectionBackground": "#3a3a3a",
   "black": "#000000", "red": "#ff5f5f", "green": "#5fff5f", "yellow": "#ffff5f",
@@ -404,6 +373,9 @@ pub struct SurfaceChrome {
     pub separator: u32,
     pub text: u32,
     pub text_muted: u32,
+    pub cursor: u32,
+    pub selection_background: u32,
+    pub selection_foreground: u32,
 }
 
 impl Default for SurfaceChrome {
@@ -420,19 +392,34 @@ impl SurfaceChrome {
         // under a light scheme too, where a slightly grey bar is what every
         // light terminal theme does. A background with nothing left to darken
         // lifts instead, so pure black still shows an edge.
-        let header = if luminance(surface) < 0.06 {
+        let brightness = luminance(surface);
+        let header = if brightness < 0.06 {
             mix(surface, 0xffffff, 0.10)
+        } else if brightness > 0.65 {
+            mix(surface, 0x000000, 0.08)
         } else {
             mix(surface, 0x000000, 0.22)
         };
+        let cursor = theme.cursor_rgb().map(rgb_bytes).unwrap_or(text);
+        let (selection_background, selection_foreground) = theme
+            .selection_rgb()
+            .map(|(background, foreground)| (rgb_bytes(background), rgb_bytes(foreground)))
+            .unwrap_or((text, surface));
         Self {
             surface,
             header,
             separator: mix(header, text, 0.12),
             text,
             text_muted: mix(text, header, 0.45),
+            cursor,
+            selection_background,
+            selection_foreground,
         }
     }
+}
+
+fn rgb_bytes([r, g, b]: [u8; 3]) -> u32 {
+    (u32::from(r) << 16) | (u32::from(g) << 8) | u32::from(b)
 }
 
 fn rgb(color: &str) -> Option<u32> {
@@ -465,10 +452,14 @@ mod tests {
     fn built_in_themes_parse_and_cover_both_appearances() {
         let store = ThemeStore::new(Path::new("/nonexistent"));
         let defaults = ThemeConfig::default();
-        for name in [defaults.light.as_str(), defaults.dark.as_str()] {
+        for (name, display_name) in [
+            (defaults.light.as_str(), "Default Light"),
+            (defaults.dark.as_str(), "Default Dark"),
+        ] {
             let theme = store
                 .get(name)
                 .unwrap_or_else(|| panic!("built-in {name} is selectable"));
+            assert_eq!(theme.name.as_deref(), Some(display_name));
             theme
                 .to_colors()
                 .unwrap_or_else(|error| panic!("built-in {name} has valid colors: {error}"));
@@ -674,6 +665,7 @@ mod tests {
         assert!(luminance(light.header) > 0.5, "light scheme, light strip");
         assert_eq!(dark.surface, 0x282c34);
         assert_eq!(light.surface, 0xfafafa);
+        assert_eq!(light.header, 0xe6e6e6);
     }
 
     /// The strip must be distinguishable from the body at both extremes —
@@ -699,5 +691,18 @@ mod tests {
     fn an_unparseable_color_falls_back_rather_than_panicking() {
         let chrome = chrome("not a color", "#ffffff");
         assert_eq!(chrome.surface, 0x282c34);
+    }
+
+    #[test]
+    fn chrome_carries_host_drawn_scheme_colors() {
+        let chrome = SurfaceChrome::derive(&TerminalTheme {
+            cursor_color: Some("#123456".into()),
+            selection_background: Some("#234567".into()),
+            selection_foreground: Some("#abcdef".into()),
+            ..TerminalTheme::default()
+        });
+        assert_eq!(chrome.cursor, 0x123456);
+        assert_eq!(chrome.selection_background, 0x234567);
+        assert_eq!(chrome.selection_foreground, 0xabcdef);
     }
 }

@@ -9,4 +9,4 @@ license text for each scheme ships beside its source data under `themes/`.
 | Nord | Sven Greb | https://github.com/nordtheme/nord | MIT |
 | Solarized Dark | Ethan Schoonover | https://github.com/altercation/solarized | MIT |
 
-LingXia's built-in themes are part of LingXia and are not third-party assets.
+The built-in default themes are part of LingXia and are not third-party assets.

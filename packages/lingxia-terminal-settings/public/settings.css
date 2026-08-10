@@ -106,10 +106,10 @@ button, input, select, output { font: inherit; color: inherit; }
 .page {
   width: min(720px, calc(100% - 48px));
   margin: 0 auto;
-  /* Room for the action strip, which floats over the end of the list. */
-  /* Clears the fixed action strip, which must never sit on a control. */
-  padding: 28px 0 86px;
+  padding: 28px 0 32px;
 }
+
+body.has-actions .page { padding-bottom: 86px; }
 
 .group + .group { margin-top: 34px; }
 
@@ -162,21 +162,18 @@ button, input, select, output { font: inherit; color: inherit; }
 
 .row-control { display: flex; justify-content: flex-end; min-width: 0; }
 
-/*
- * A free-text field is the one control that cannot live in the narrow column:
- * a font candidate list is long, and truncating it hides the ordering that is
- * the whole point of the setting.
- */
-.row:has(.row-control.wide) { grid-template-columns: minmax(0, 1fr); gap: 10px; }
-.row-control.wide { display: block; justify-content: stretch; }
-.row-control > input[type="text"], .row-control > input:not([type]) { width: 100%; }
-
-.hint {
-  margin: 7px 0 0;
-  color: var(--text-faint);
-  font: 400 11px/1.4 var(--mono);
-  overflow-wrap: anywhere;
+.warnings {
+  margin-bottom: 18px;
+  padding: 10px 13px;
+  border: 1px solid color-mix(in srgb, var(--danger) 35%, var(--line));
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--danger) 8%, var(--surface));
+  color: var(--text);
+  font-size: 12px;
 }
+
+.warnings p { margin: 0; }
+.warnings p + p { margin-top: 5px; }
 
 /* ---------------------------------------------------------------- buttons */
 
@@ -223,39 +220,6 @@ button, input, select, output { font: inherit; color: inherit; }
 .btn.quiet:hover { background: var(--surface-sunk); border-color: transparent; color: var(--text); }
 .btn.quiet.danger:hover { color: var(--danger); }
 
-/* ------------------------------------------------------------- segmented */
-
-.segmented {
-  display: inline-flex;
-  gap: 2px;
-  padding: 2px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--surface-sunk);
-}
-
-.segmented button {
-  padding: 5px 11px;
-  border: 0;
-  border-radius: calc(var(--radius) - 3px);
-  background: transparent;
-  color: var(--text-dim);
-  cursor: pointer;
-  font-size: 12px;
-  font-weight: 520;
-  transition: background 120ms, color 120ms;
-}
-
-.segmented button:hover { color: var(--text); }
-
-.segmented button.active {
-  background: var(--surface);
-  color: var(--text);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
-}
-
-.segmented.small button { padding: 4px 9px; font-size: 11.5px; }
-
 /* ----------------------------------------------------------------- inputs */
 
 input[type="text"], input:not([type]), input[type="number"] {
@@ -275,10 +239,6 @@ input:focus { background: var(--surface); }
 .stepper { display: inline-flex; align-items: center; gap: 7px; }
 .stepper input { width: 78px; text-align: right; }
 .stepper span { color: var(--text-faint); font: 400 11px/1 var(--mono); }
-
-.slider { display: flex; align-items: center; gap: 12px; width: 100%; }
-.slider input { flex: 1; accent-color: var(--accent); min-width: 0; }
-.slider output { width: 40px; text-align: right; font: 400 11.5px/1 var(--mono); color: var(--text-dim); }
 
 /* A switch reads as a setting; a checkbox reads as a form field. */
 .switch { position: relative; display: inline-block; width: 38px; height: 22px; cursor: pointer; }
@@ -453,9 +413,10 @@ input:focus { background: var(--surface); }
   z-index: 60;
   max-width: min(460px, calc(100% - 36px));
   padding: 9px 15px;
+  border: 1px solid var(--line-strong);
   border-radius: var(--radius);
-  background: var(--text);
-  color: var(--bg);
+  background: var(--surface);
+  color: var(--text);
   font-size: 12px;
   box-shadow: var(--shadow);
   opacity: 0;
@@ -482,8 +443,6 @@ input:focus { background: var(--surface); }
 
   .row-control { justify-content: flex-start; }
   .picker, .picker-button { width: 100%; }
-  /* A segmented control sizes to its labels; stretched, it is mostly gap. */
-  .segmented { width: auto; align-self: flex-start; }
   .picker-list { left: 0; right: auto; }
   .themes { grid-template-columns: repeat(auto-fill, minmax(148px, 1fr)); }
 }
@@ -567,7 +526,7 @@ input[type="range"].ticks:hover::-webkit-slider-thumb { background: var(--text);
   right: 0;
   bottom: 0;
   z-index: 20;
-  display: flex;
+  display: none;
   align-items: center;
   justify-content: flex-end;
   gap: 14px;
@@ -576,6 +535,8 @@ input[type="range"].ticks:hover::-webkit-slider-thumb { background: var(--text);
   padding: 12px max(24px, calc((100% - 720px) / 2)) 16px;
   background: var(--bg);
 }
+
+.actions.visible { display: flex; }
 
 
 /* ------------------------------------------------------------ theme modes */
