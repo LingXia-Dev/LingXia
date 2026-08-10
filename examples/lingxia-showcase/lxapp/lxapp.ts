@@ -64,11 +64,9 @@ App({
     ];
 
     if (os === "macOS" || os === "Windows") {
-      // Footer, not header: the header holds at most two actions
-      // (MAX_HEADER_SIDEBAR_ACTIONS), and Downloads plus Settings take both.
       sidebarActions.push({
         id: "terminal-settings",
-        placement: "footer",
+        placement: "header",
         icon: "public/sidebar-terminal.svg",
         label: "Terminal Settings",
         onActivate: () => {

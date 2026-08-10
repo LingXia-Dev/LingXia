@@ -647,6 +647,22 @@ pub(super) fn sidebar_group_menu_rect(
     })
 }
 
+/// How many header actions a strip of `available` pixels can seat. The last
+/// one needs no trailing gap, so the run is `n * SIZE + (n - 1) * GAP`.
+///
+/// `lingxia_shell::MAX_HEADER_SIDEBAR_ACTIONS` is the contract an lxapp is held
+/// to at declaration time; this is what the window can actually show right now.
+/// At `SHELL_SIDEBAR_WIDTH` the two agree — widening the buttons or the leading
+/// controls without revisiting the limit would let an app declare an action
+/// that never draws.
+fn header_action_capacity(available: i32) -> usize {
+    if available < SIDEBAR_HEADER_ACTION_SIZE {
+        return 0;
+    }
+    let stride = SIDEBAR_HEADER_ACTION_SIZE + SIDEBAR_HEADER_ACTION_GAP;
+    ((available + SIDEBAR_HEADER_ACTION_GAP) / stride).max(0) as usize
+}
+
 /// Sidebar action buttons in the top caption strip,
 /// hidden while the sidebar is collapsed. Right-aligned at the column's
 /// trailing edge (flush with the chevron below) so the strip reads as two
@@ -667,15 +683,20 @@ pub(super) fn sidebar_header_action_rects(
         + TOP_BAR_BUTTON_GAP
         + SIDEBAR_HEADER_ACTION_GAP;
     let mut right = sidebar_rect.right - SIDEBAR_ITEM_INSET;
-    let mut out = Vec::with_capacity(tabbar.header_actions.len());
-    let required_width = tabbar.header_actions.len() as i32 * SIDEBAR_HEADER_ACTION_SIZE
-        + tabbar.header_actions.len().saturating_sub(1) as i32 * SIDEBAR_HEADER_ACTION_GAP;
-    if right - required_width < leading_limit {
+    // Draw the ones that fit rather than measuring the whole set and giving up
+    // on it: a sidebar one icon too narrow would otherwise lose the buttons
+    // that did fit, which reads as the header having lost them all.
+    let shown = tabbar
+        .header_actions
+        .len()
+        .min(header_action_capacity(right - leading_limit));
+    if shown == 0 {
         return Vec::new();
     }
+    let mut out = Vec::with_capacity(shown);
     // Reverse order from the trailing edge keeps the declared left-to-right
-    // reading order.
-    for action in tabbar.header_actions.iter().rev() {
+    // reading order; an overflow drops the last declared, not the first.
+    for action in tabbar.header_actions[..shown].iter().rev() {
         let left = right - SIDEBAR_HEADER_ACTION_SIZE;
         out.push((
             action.id.clone(),
