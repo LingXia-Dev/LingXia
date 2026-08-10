@@ -1538,12 +1538,25 @@ class SidebarView: NSView, NSPopoverDelegate {
         updateHeaderActionVisibility()
     }
 
+    /// Show the buttons the header can seat, hiding only the overflow.
+    ///
+    /// Measuring the whole set and hiding the stack means one action too many
+    /// removes the ones that did fit, which reads as the sidebar losing its
+    /// buttons rather than being one narrower than it wants. The leading
+    /// reserve is the traffic lights plus the collapse toggle.
     private func updateHeaderActionVisibility() {
         let hidden = isFullyHidden || appUIOnlyMode || isCompact || headerActionItems.isEmpty
-        let requiredWidth = CGFloat(headerActionItems.count) * Layout.actionButtonSize
-            + CGFloat(max(0, headerActionItems.count - 1)) * headerActionStack.spacing
+        headerActionStack.isHidden = hidden
+        guard !hidden else { return }
         let availableWidth = max(0, bounds.width - 72 - 8 - Layout.actionButtonSize - 4)
-        headerActionStack.isHidden = hidden || requiredWidth > availableWidth
+        let stride = Layout.actionButtonSize + headerActionStack.spacing
+        let fits = availableWidth < Layout.actionButtonSize
+            ? 0
+            : Int((availableWidth + headerActionStack.spacing) / stride)
+        for (index, button) in headerActionStack.arrangedSubviews.enumerated() {
+            button.isHidden = index >= fits
+        }
+        headerActionStack.isHidden = fits == 0
     }
 
     func updatePanelItems(_ items: [PanelIconItem]) {
