@@ -2957,7 +2957,14 @@ fn present_terminal_from_layout(request: TerminalPanelRequest, overlay: bool) {
         position,
     ) {
         Ok(true) => {
-            super::terminal_panel::set_terminal_panel_maximized(&request.panel_id, overlay);
+            // Re-presenting keeps whatever the user last chose. `overlay` is
+            // only the state a panel *opens* in, and a layout sync runs for
+            // ordinary reasons — a new tab changes the active title, which
+            // syncs the shell — so applying it here would drop a maximized
+            // terminal back to its dock height on every one of them.
+            let maximized = super::terminal_panel::terminal_panel_maximized(&request.panel_id)
+                .unwrap_or(overlay);
+            super::terminal_panel::set_terminal_panel_maximized(&request.panel_id, maximized);
             return;
         }
         Ok(false) => {}

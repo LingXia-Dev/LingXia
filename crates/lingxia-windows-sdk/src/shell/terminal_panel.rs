@@ -728,6 +728,22 @@ pub(crate) fn end_terminal_selection(panel_id: &str) -> bool {
     }
 }
 
+/// Whether the panel is currently expanded to the full content area, or
+/// `None` when no terminal panel owns `panel_id`.
+pub(super) fn terminal_panel_maximized(panel_id: &str) -> Option<bool> {
+    #[cfg(feature = "terminal-runtime")]
+    {
+        windows_terminal_panels()
+            .get(panel_id)
+            .map(|panel| panel.maximized)
+    }
+    #[cfg(not(feature = "terminal-runtime"))]
+    {
+        let _ = panel_id;
+        None
+    }
+}
+
 /// Toggles the panel between its dock height and the full content area.
 pub(super) fn toggle_terminal_panel_maximized(panel_id: &str) {
     #[cfg(feature = "terminal-runtime")]
