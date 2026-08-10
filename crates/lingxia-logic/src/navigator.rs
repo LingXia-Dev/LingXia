@@ -1,6 +1,8 @@
 use crate::I18nKey;
 use crate::i18n::{js_error_from_lxapp_error, t};
 use crate::update;
+#[cfg(feature = "terminal")]
+use lingxia_platform::traits::app_runtime::AppRuntime;
 use lingxia_platform::traits::ui::{ToastIcon, ToastOptions, ToastPosition, UserFeedback};
 use lxapp::{self, LxApp, LxAppError, LxAppStartupOptions, ReleaseType};
 use rong::{FromJSObject, JSContext, JSObject, JSResult};
@@ -117,18 +119,27 @@ pub(crate) async fn prepare_app_open(
         .map(str::trim)
         .filter(|value| !value.is_empty());
 
-    if let Some(target_version) = target_version {
-        lxapp::ensure_target_version_ready(lxapp, &target_appid, release_type, target_version)
-            .await
-            .map_err(|e| js_error_from_lxapp_error(&e))?;
-    } else {
-        update::ensure_first_install(lxapp, &target_appid, release_type).await?;
-        if lxapp::is_force_update_downloading(&target_appid, release_type) {
-            show_force_update_downloading_toast(lxapp);
+    let host_terminal_settings = register_host_terminal_settings_bundle(lxapp, &target_appid)?;
+    if host_terminal_settings && target_version.is_some() {
+        return Err(js_error_from_lxapp_error(&LxAppError::InvalidParameter(
+            "the host-bundled Terminal Settings app does not support targetVersion".to_string(),
+        )));
+    }
+
+    if !host_terminal_settings {
+        if let Some(target_version) = target_version {
+            lxapp::ensure_target_version_ready(lxapp, &target_appid, release_type, target_version)
+                .await
+                .map_err(|e| js_error_from_lxapp_error(&e))?;
+        } else {
+            update::ensure_first_install(lxapp, &target_appid, release_type).await?;
+            if lxapp::is_force_update_downloading(&target_appid, release_type) {
+                show_force_update_downloading_toast(lxapp);
+            }
+            lxapp::ensure_force_update_for_installed(lxapp, &target_appid, release_type)
+                .await
+                .map_err(|e| js_error_from_lxapp_error(&e))?;
         }
-        lxapp::ensure_force_update_for_installed(lxapp, &target_appid, release_type)
-            .await
-            .map_err(|e| js_error_from_lxapp_error(&e))?;
     }
 
     let target_app = lxapp::ensure_lxapp(&target_appid, release_type)
@@ -137,6 +148,26 @@ pub(crate) async fn prepare_app_open(
         build_startup_options(&target_app, options).map_err(|e| js_error_from_lxapp_error(&e))?;
 
     Ok((startup_options, release_type))
+}
+
+#[cfg(feature = "terminal")]
+fn register_host_terminal_settings_bundle(lxapp: &LxApp, target_appid: &str) -> JSResult<bool> {
+    if target_appid != lingxia_terminal_config::SETTINGS_APP_ID {
+        return Ok(false);
+    }
+    let manifest = format!("{target_appid}/lxapp.json");
+    lxapp.runtime.read_asset(&manifest).map_err(|_| {
+        js_error_from_lxapp_error(&LxAppError::ResourceNotFound(
+            "Terminal Settings is not bundled by this host".to_string(),
+        ))
+    })?;
+    lxapp::register_builtin_asset_bundle(target_appid.to_string());
+    Ok(true)
+}
+
+#[cfg(not(feature = "terminal"))]
+fn register_host_terminal_settings_bundle(_lxapp: &LxApp, _target_appid: &str) -> JSResult<bool> {
+    Ok(false)
 }
 
 async fn do_navigate_to_app(lxapp: Arc<LxApp>, options: NavigateToAppOptions) -> JSResult<()> {
