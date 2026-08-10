@@ -1779,6 +1779,14 @@ true
         ///   rows.
         ///
         /// Apps cannot configure cell size, row, weight, color, or selected state.
+        /// Where an action lives in the sidebar.
+        ///
+        /// `header` is the caption row beside the window controls: at most two
+        /// actions, for the ones a person reaches for constantly. Declaring a
+        /// third rejects the whole `replace` call rather than hiding one.
+        ///
+        /// `footer` is unbounded and scrolls, and every entry stays visible at
+        /// any window size. Anything that must be findable belongs here.
         type ShellSidebarActionPlacement = r###"'header' | 'footer'"###;
 
         /// One app-declared shell sidebar action. It is a stateless command, not a
@@ -1787,7 +1795,10 @@ true
         type ShellSidebarAction = r###"{
     /** Stable, non-empty id; unique across both header and footer actions. */
     id: string;
-    /** Initial host-owned region. Use `replace` to move an action. */
+    /**
+     * Initial host-owned region. Use `replace` to move an action. The header
+     * takes at most two; everything else belongs in the footer.
+     */
     placement: ShellSidebarActionPlacement;
     /**
      * Local lxapp-accessible icon. Use a bundled relative path such as

@@ -64,9 +64,11 @@ App({
     ];
 
     if (os === "macOS" || os === "Windows") {
+      // Footer: the header is a two-slot corner of the caption row, and
+      // terminal settings is scoped to the terminal rather than app-wide.
       sidebarActions.push({
         id: "terminal-settings",
-        placement: "header",
+        placement: "footer",
         icon: "public/sidebar-terminal.svg",
         label: "Terminal Settings",
         onActivate: () => {

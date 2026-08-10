@@ -7,13 +7,16 @@ use std::collections::HashSet;
 /// declaration instead of truncating: silently dropping one entry would leave
 /// an app believing it published something the user cannot see.
 ///
-/// Every desktop header seats this many at its standard sidebar width, and
-/// each one is sized so it does: Windows leaves 112pt of a 184pt sidebar after
-/// the window controls, macOS leaves 96pt of a 208pt sidebar after the traffic
-/// lights and the collapse toggle, and three 28pt buttons with 4pt gaps need
-/// 92. Raise this and both widths have to be revisited — checking one platform
-/// is how a third action once hid the whole macOS header.
-pub const MAX_HEADER_SIDEBAR_ACTIONS: usize = 3;
+/// The header is a borrowed corner of the window's caption row, shared with the
+/// traffic lights or app menu and the collapse toggle. Two icon-only buttons is
+/// what reads as a pair a person can learn; past that it becomes a row of
+/// unlabelled glyphs in the part of the window that belongs to the window.
+///
+/// Exceeding it rejects the whole declaration instead of truncating: silently
+/// dropping one would leave an app believing it published something the user
+/// cannot see. Anything that must always be reachable belongs in the footer,
+/// which is unbounded and scrolls.
+pub const MAX_HEADER_SIDEBAR_ACTIONS: usize = 2;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
