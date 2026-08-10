@@ -31,11 +31,21 @@ struct LingXiaTerminalSettings: Decodable {
     static func load() -> LingXiaTerminalSettings {
         registerInstalledFonts()
         let dark = NSApp?.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-        let json = terminalLoadConfig(dark).toString()
+        let settings = decode(terminalLoadConfig(dark).toString())
         // The load applied the theme, so the chrome derived from it is now
         // current — read it here rather than leaving the first paint on the
         // built-in fallback.
         LingXiaTerminalChrome.reload()
+        return settings
+    }
+
+    /// Read the already-published configuration after a generation change.
+    /// This avoids re-reading files and enumerating every font per pane.
+    static func current() -> LingXiaTerminalSettings {
+        decode(terminalCurrentConfig().toString())
+    }
+
+    private static func decode(_ json: String) -> LingXiaTerminalSettings {
         guard let data = json.data(using: .utf8),
               let settings = try? JSONDecoder().decode(LingXiaTerminalSettings.self, from: data)
         else {

@@ -212,10 +212,7 @@ final class LingXiaTerminalPaneView: NSView, NSDraggingSource {
         }
         session.onConfigChanged = { [weak self] in
             Task { @MainActor [weak self] in
-                // Chrome first: the rail is tinted from the same scheme, so a
-                // theme change has to move it as well as the grid.
-                LingXiaTerminalChrome.reload()
-                self?.applySettings(LingXiaTerminalSettings.load())
+                self?.applySettings(LingXiaTerminalSettings.current())
             }
         }
         session.onTitles = { [weak self] processTitle, title in
@@ -355,8 +352,25 @@ final class LingXiaTerminalPaneView: NSView, NSDraggingSource {
     func refreshChromeColors() {
         layer?.backgroundColor = NSColor.lxTerminalBackground.cgColor
         terminalView.layer?.backgroundColor = NSColor.lxTerminalBackground.cgColor
-        terminalView.needsDisplay = true
+        session.refreshFrame()
+        terminalView.refreshVisualColors()
         needsDisplay = true
+    }
+
+    func automationSnapshot(in root: NSView, active: Bool) -> [String: Any] {
+        let rect = convert(bounds, to: root)
+        return [
+            "paneId": paneID.uuidString,
+            "active": active,
+            "visible": !isHidden && rect.width > 1 && rect.height > 1,
+            "frame": [
+                "x": rect.minX,
+                "y": rect.minY,
+                "width": rect.width,
+                "height": rect.height,
+            ],
+            "grid": terminalView.automationSnapshot(),
+        ]
     }
 
     private func setupTerminalView() {
@@ -649,6 +663,29 @@ private final class LingXiaTerminalCanvasView: NSView, @MainActor NSTextInputCli
         }
     }
 
+    /// Theme chrome and the engine frame move on separate lightweight polls.
+    /// Repaint the current frame immediately so cursor/selection colors do not
+    /// wait for PTY input; the next engine frame then supplies the new palette.
+    func refreshVisualColors() {
+        needsDisplay = true
+        setNeedsRender()
+    }
+
+    func automationSnapshot() -> [String: Any] {
+        let frame = frame_ ?? LingXiaTerminalGPUFrame()
+        return [
+            "cols": cols,
+            "rows": rows,
+            "generation": frame.generation,
+            "defaultForeground": frame.defaultForeground,
+            "defaultBackground": frame.defaultBackground,
+            "cursorRow": cursorRow,
+            "cursorCol": cursorCol,
+            "cursorVisible": cursorVisible,
+            "cursorStyle": cursorStyle,
+        ]
+    }
+
     /// AppKit never calls this while the view is on screen — a layer-hosting
     /// view draws through its own layer. It runs only when something replays
     /// the view tree through CoreGraphics, which is exactly what window
@@ -723,7 +760,9 @@ private final class LingXiaTerminalCanvasView: NSView, @MainActor NSTextInputCli
             viewSize: bounds.size
         )
         context.selection = selectionSpans()
-        context.cursorColor = NSColor.lxTerminalForeground
+        context.selectionColor = NSColor.lxTerminalSelectionBackground
+        context.selectionForegroundColor = NSColor.lxTerminalSelectionForeground
+        context.cursorColor = NSColor.lxTerminalCursor
         context.drawCursor = window?.firstResponder === self && !hasMarkedText()
         context.markedText = markedText.string.isEmpty ? nil : markedText.string
         context.markedTextOrigin = LingXiaTerminalGridPoint(row: cursorRow, col: cursorCol)
@@ -1413,6 +1452,12 @@ private final class LingXiaPTYTerminalSession: @unchecked Sendable {
             let delta = Int32(clamping: rows)
             let ok = terminalSessionScroll(self.sessionID, delta, col, row, allowApplicationInput)
             lxTerminalLogAsync("pty.scroll session=\(self.sessionID) rows=\(delta) cell=\(col),\(row) ok=\(ok)")
+        }
+    }
+
+    func refreshFrame() {
+        ioQueue.async { [weak self] in
+            self?.drainOutputOnIOQueue()
         }
     }
 

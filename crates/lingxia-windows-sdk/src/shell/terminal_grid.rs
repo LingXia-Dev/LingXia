@@ -42,11 +42,6 @@ const GRID_MIN_ROWS: i32 = 4;
 /// Outline drawn around the pane a dragged pane would land on.
 pub(super) const PANE_DROP_TARGET_COLOR: u32 = 0x4b9cff;
 
-/// Windows selection highlight, blended toward each pane's background.
-pub(super) const SELECTION_ACCENT: u32 = 0x4b9cff;
-
-pub(super) const SELECTION_ACCENT_PERCENT: u32 = 46;
-
 /// Keep the overlay visible briefly after the latest wheel gesture.
 const SCROLLBAR_VISIBLE_FOR: Duration = Duration::from_millis(900);
 
@@ -197,6 +192,26 @@ pub fn session_generation(session_id: u64) -> u64 {
         .get(&session_id)
         .map(|state| state.generation)
         .unwrap_or(0)
+}
+
+/// Compact semantic frame state for trusted terminal automation. Keep this in
+/// the frame store so the automation path observes exactly what the renderer
+/// has accepted, without asking the engine for a second copy of the grid.
+#[cfg(feature = "terminal-runtime")]
+pub(super) fn automation_grid_snapshot(session_id: u64) -> Option<serde_json::Value> {
+    let grids = session_grids();
+    let frame = grids.get(&session_id)?.frame.as_ref()?;
+    Some(serde_json::json!({
+        "cols": frame.cols,
+        "rows": frame.rows,
+        "generation": frame.generation,
+        "defaultForeground": frame.default_fg,
+        "defaultBackground": frame.default_bg,
+        "cursorRow": frame.cursor.row,
+        "cursorCol": frame.cursor.col,
+        "cursorVisible": frame.cursor.visible,
+        "cursorStyle": frame.cursor.style.as_str().replace('_', "-"),
+    }))
 }
 
 /// Reveals the lightweight scrollbar for one pane after a scroll gesture.

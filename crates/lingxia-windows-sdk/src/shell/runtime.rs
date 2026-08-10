@@ -842,6 +842,14 @@ pub(super) fn terminal_surface_is_protected_root(panel_id: &str) -> bool {
         == Some(panel_id)
 }
 
+#[cfg(feature = "terminal-runtime")]
+pub(super) fn terminal_surface_presentation(panel_id: &str) -> &'static str {
+    let is_main = shell_owner_appid()
+        .and_then(|appid| lxapp::try_get(&appid))
+        .is_some_and(|owner| owner.main_surface_content(panel_id).is_some());
+    if is_main { "main" } else { "aside" }
+}
+
 /// Completes the graph/provider transaction after the final PTY in a
 /// non-root terminal surface closes. Main workspaces select and present their
 /// successor; asides are removed from the graph so a later layout commit

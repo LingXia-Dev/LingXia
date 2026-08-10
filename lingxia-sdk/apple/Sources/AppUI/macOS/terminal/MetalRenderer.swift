@@ -541,6 +541,7 @@ struct LingXiaTerminalRenderContext {
     var viewSize: CGSize
     var selection: [(row: Int, startCol: Int, endCol: Int)] = []
     var selectionColor: NSColor = .selectedTextBackgroundColor
+    var selectionForegroundColor: NSColor = .selectedTextColor
     var cursorColor: NSColor = .white
     var drawCursor = true
     var dimOpacity: CGFloat = 0.58
@@ -816,9 +817,13 @@ final class LingXiaTerminalMetalRenderer {
                 if cell.attrs & LingXiaTerminalAttr.dim != 0 {
                     color.w *= Float(context.dimOpacity)
                 }
-                let background = inverse
+                var background = inverse
                     ? (cell.fg & 0xFF) != 0 ? Self.color(cell.fg, fallbackAlpha: 1) : defaultForeground
                     : (cell.bg & 0xFF) != 0 ? Self.color(cell.bg, fallbackAlpha: 1) : defaultBackground
+                if Self.isSelected(row: row, col: col, span: span, context: context) {
+                    color = Self.color(context.selectionForegroundColor)
+                    background = Self.color(context.selectionColor)
+                }
 
                 // Box drawing and friends are geometry, not text: they leave
                 // the run and are drawn from the sprite font.
@@ -895,6 +900,9 @@ final class LingXiaTerminalMetalRenderer {
                 if cell.attrs & LingXiaTerminalAttr.dim != 0 {
                     color.w *= Float(context.dimOpacity)
                 }
+                if Self.isSelected(row: row, col: col, span: span, context: context) {
+                    color = Self.color(context.selectionForegroundColor)
+                }
                 let rect = Self.cellRect(row: row, col: col, span: span, context: context)
                 if cell.underline != 0 {
                     let underlineColor = (cell.underlineColor & 0xFF) != 0
@@ -920,6 +928,17 @@ final class LingXiaTerminalMetalRenderer {
                     ))
                 }
             }
+        }
+    }
+
+    private static func isSelected(
+        row: Int,
+        col: Int,
+        span: Int,
+        context: LingXiaTerminalRenderContext
+    ) -> Bool {
+        context.selection.contains {
+            $0.row == row && col < $0.endCol && col + span > $0.startCol
         }
     }
 
