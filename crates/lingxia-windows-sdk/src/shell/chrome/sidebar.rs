@@ -777,3 +777,51 @@ pub(super) fn sidebar_item_rect(
         bottom: top + SIDEBAR_CHILD_ITEM_HEIGHT,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use lingxia_shell::MAX_HEADER_SIDEBAR_ACTIONS;
+
+    /// Space the strip has left once the leading window controls took theirs.
+    fn available_at(sidebar_width: i32) -> i32 {
+        let right = sidebar_width - SIDEBAR_ITEM_INSET;
+        let leading_limit = TOP_BAR_PADDING
+            + 2 * TOP_BAR_BUTTON_SIZE
+            + TOP_BAR_BUTTON_GAP
+            + SIDEBAR_HEADER_ACTION_GAP;
+        right - leading_limit
+    }
+
+    /// The declaration limit is only honest if the standard sidebar can seat
+    /// every action it allows. Widening the buttons or the leading controls
+    /// without revisiting the limit trips this, instead of a user finding a
+    /// declared action that never draws.
+    #[test]
+    fn the_contract_limit_fits_the_standard_sidebar() {
+        assert_eq!(
+            header_action_capacity(available_at(SHELL_SIDEBAR_WIDTH)),
+            MAX_HEADER_SIDEBAR_ACTIONS
+        );
+    }
+
+    #[test]
+    fn capacity_counts_one_action_at_a_time() {
+        let stride = SIDEBAR_HEADER_ACTION_SIZE + SIDEBAR_HEADER_ACTION_GAP;
+        assert_eq!(header_action_capacity(SIDEBAR_HEADER_ACTION_SIZE - 1), 0);
+        assert_eq!(header_action_capacity(SIDEBAR_HEADER_ACTION_SIZE), 1);
+        assert_eq!(
+            header_action_capacity(stride + SIDEBAR_HEADER_ACTION_SIZE),
+            2
+        );
+    }
+
+    /// A strip too narrow for the whole set keeps what it can draw. Coming back
+    /// empty is what made one action too many look like losing them all.
+    #[test]
+    fn a_narrow_strip_still_seats_what_it_can() {
+        let narrow = 2 * SIDEBAR_HEADER_ACTION_SIZE + SIDEBAR_HEADER_ACTION_GAP;
+        assert_eq!(header_action_capacity(narrow), 2);
+        assert!(header_action_capacity(narrow) < MAX_HEADER_SIDEBAR_ACTIONS);
+    }
+}
