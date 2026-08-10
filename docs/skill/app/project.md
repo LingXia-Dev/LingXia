@@ -126,8 +126,9 @@ The authoritative, version-matched field list is a freshly scaffolded `lingxia.y
 | `capabilities` | Recommended | Platform/runtime integrations that may initialize SDK capability flows |
 | `theme` | Optional | Application-wide semantic colors for host-owned native UI |
 | `resources` | Conditional | Bundle asset sources; omit when no control/product lxapp is bundled |
+| `splash` | Optional | Generated launch placeholder and first-frame cover |
+| `assets` | Optional | Raw host files packaged through each platform's asset pipeline |
 | `browser` | Optional | Override the in-app browser webui (only used when `capabilities.browser: true`) |
-| `terminal` | Optional | Terminal product defaults (desktop, only used when `capabilities.terminal: true`) |
 | `appLinks` | Optional | Universal-link / app-link hosts (see [App Links](./applinks.md)) |
 | `storage` | Recommended | Explicit host temp/cache/data size limits |
 
@@ -297,33 +298,6 @@ the trusted product control app; `browser.webui` is the browser UI asset.
 
 ---
 
-## `terminal` Section
-
-`terminal` customizes the desktop terminal enabled by
-`capabilities.terminal`:
-
-```yaml
-terminal:
-  defaults:
-    font:
-      family: ["JetBrains Mono", "SF Mono", "Cascadia Code", "Consolas"]
-      size: 14
-      lineHeight: 1.05
-    theme:
-      mode: system
-      light: lingxia-light
-      dark: lingxia-dark
-```
-
-`defaults` is a partial terminal configuration. It sits above framework
-defaults and below the user's `terminal.json`; the CLI validates it with the
-runtime schema and range checks. Supported fields are `font.family`, `size`,
-`lineHeight`, `ligatures`, and `theme.mode`, `light`, and `dark`. Shell program,
-arguments, environment,
-and other execution settings are intentionally outside this API.
-
----
-
 ## `resources` Section
 
 `resources.bundles` declares lxapp asset sources bundled into the native host.
@@ -346,7 +320,7 @@ resources:
       path: ../settings
 ```
 
-If a bundle entry has only `type` and `appId`, it declares the appId but does not bundle local assets; the runtime/update provider must make it available. Browser-shell internals (`app.lingxia.browser`) are configured through `browser.webui.*`. Terminal Settings is different: it is a product resource and is declared here with app id `app.lingxia.terminal-settings`; that identity requires `capabilities.terminal: true`.
+If a bundle entry has only `type` and `appId`, it declares the appId but does not bundle local assets; the runtime/update provider must make it available. Browser-shell internals (`app.lingxia.browser`) are configured through `browser.webui.*`; other lxapps, including product settings pages, are ordinary resources.
 
 ---
 
@@ -582,7 +556,6 @@ During `lingxia build`, the CLI generates platform resources:
 - `icons/*`: generated native chrome icons.
 - bundled lxapp directories from `resources.bundles`.
 - bundled browser webui directory when `capabilities.browser: true`.
-- any Terminal Settings lxapp explicitly declared in `resources.bundles`.
 - `bridge-runtime.js`.
 
 For macOS, these are copied into the SwiftPM target resource directory, usually `macos/Sources/<targetName>/Resources` unless the target declares a custom `path`.

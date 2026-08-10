@@ -148,4 +148,4 @@ You can browse the same content in this repo at [`docs/skill/SKILL.md`](./skill/
 - Host project (`lingxia.yaml`, macOS App UI): [`docs/skill/app/project.md`](./skill/app/project.md)
 - Native Rust (`#[lingxia::native]`, `HostAddon`): [`docs/skill/native/development.md`](./skill/native/development.md)
 - Every CLI command: [`docs/skill/cli/lingxia.md`](./skill/cli/lingxia.md)
-- Using the built-in terminal (fonts, themes, the `term` command): [`docs/terminal.md`](./terminal.md)
+- Using the built-in terminal (surface, fonts, themes): [`docs/terminal.md`](./terminal.md)
