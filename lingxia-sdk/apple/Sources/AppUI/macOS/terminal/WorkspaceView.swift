@@ -409,6 +409,7 @@ func lxTerminalLogAsync(_ message: String, type: OSLogType = .info) {
 private struct LingXiaTerminalAutomationCommand: Decodable {
     struct Params: Decodable {
         var direction: String?
+        var maximized: Bool?
     }
 
     let id: UInt64
@@ -1045,6 +1046,26 @@ final class LingXiaTerminalWorkspaceView: NSView {
                 let snapshot = automationSnapshotJSON()
                 _ = terminalAutomationPublishSnapshot(surfaceID, snapshot)
                 _ = terminalAutomationCompleteCommand(command.id, true, snapshot)
+            case "setMaximized":
+                guard let maximized = command.params.maximized else {
+                    _ = terminalAutomationCompleteCommand(
+                        command.id,
+                        false,
+                        "setMaximized requires a boolean 'maximized'"
+                    )
+                    continue
+                }
+                setSurfaceZoomEnabled(maximized, notifyRuntime: true)
+                layoutSubtreeIfNeeded()
+                let zoomSnapshot = automationSnapshotJSON()
+                _ = terminalAutomationPublishSnapshot(surfaceID, zoomSnapshot)
+                _ = terminalAutomationCompleteCommand(command.id, true, zoomSnapshot)
+            case "newTab":
+                createTabAndActivate()
+                layoutSubtreeIfNeeded()
+                let snapshot = automationSnapshotJSON()
+                _ = terminalAutomationPublishSnapshot(surfaceID, snapshot)
+                _ = terminalAutomationCompleteCommand(command.id, true, snapshot)
             default:
                 _ = terminalAutomationCompleteCommand(
                     command.id,
@@ -1080,6 +1101,9 @@ final class LingXiaTerminalWorkspaceView: NSView {
             "surfaceId": surfaceID,
             "presentation": presentation == .main ? "main" : "aside",
             "visible": window != nil && !isHidden,
+            // Expanded to the full content area. A layout sync used to reset
+            // this silently, so automation has to be able to assert it holds.
+            "maximized": surfaceZoomed,
             "tabCount": tabs.count,
             "paneCount": tabs.reduce(0) { $0 + $1.panes.count },
             "configGeneration": terminalConfigGeneration(),

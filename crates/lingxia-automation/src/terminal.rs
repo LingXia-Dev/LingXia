@@ -28,6 +28,12 @@ struct SplitOptions {
     direction: String,
 }
 
+#[derive(FromJSObject)]
+struct MaximizeOptions {
+    surface: String,
+    maximized: bool,
+}
+
 async fn wait_for_snapshot(surface: &str) -> JSResult<serde_json::Value> {
     let deadline = Instant::now() + HOST_TIMEOUT;
     loop {
@@ -66,6 +72,41 @@ impl JSTerminalDriver {
     #[js_method]
     async fn snapshot(&self, ctx: JSContext, options: SurfaceOptions) -> JSResult<JSValue> {
         let snapshot = wait_for_snapshot(options.surface.trim()).await?;
+        json_to_js(&ctx, &snapshot)
+    }
+
+    /// Expand one native terminal surface to the full content area, or put it
+    /// back at its docked size.
+    #[js_method]
+    async fn set_maximized(&self, ctx: JSContext, options: MaximizeOptions) -> JSResult<JSValue> {
+        let surface = options.surface.trim();
+        if surface.is_empty() {
+            return Err(auto_err("terminal setMaximized requires a surface id"));
+        }
+        wait_for_snapshot(surface).await?;
+        let snapshot = lxapp::terminal_automation::run_command(
+            surface,
+            "setMaximized",
+            json!({ "maximized": options.maximized }),
+            HOST_TIMEOUT,
+        )
+        .await
+        .map_err(auto_err)?;
+        json_to_js(&ctx, &snapshot)
+    }
+
+    /// Open a tab in one native terminal surface, and activate it.
+    #[js_method]
+    async fn new_tab(&self, ctx: JSContext, options: SurfaceOptions) -> JSResult<JSValue> {
+        let surface = options.surface.trim();
+        if surface.is_empty() {
+            return Err(auto_err("terminal newTab requires a surface id"));
+        }
+        wait_for_snapshot(surface).await?;
+        let snapshot =
+            lxapp::terminal_automation::run_command(surface, "newTab", json!({}), HOST_TIMEOUT)
+                .await
+                .map_err(auto_err)?;
         json_to_js(&ctx, &snapshot)
     }
 

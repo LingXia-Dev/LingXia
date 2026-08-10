@@ -86,6 +86,8 @@ export interface TerminalWorkspaceSnapshot {
   surfaceId: string;
   presentation: 'main' | 'aside';
   visible: boolean;
+  /** Expanded to the full content area rather than its docked size. */
+  maximized: boolean;
   activeTabId?: string;
   tabCount: number;
   paneCount: number;
@@ -113,6 +115,14 @@ export interface TerminalSplitOptions extends TerminalSurfaceRef {
 export interface TerminalDriver {
   snapshot(options: TerminalSurfaceRef): Promise<TerminalWorkspaceSnapshot>;
   split(options: TerminalSplitOptions): Promise<TerminalWorkspaceSnapshot>;
+  /** Open a tab and activate it. Resolves with the snapshot that follows. */
+  newTab(options: TerminalSurfaceRef): Promise<TerminalWorkspaceSnapshot>;
+  /** Expand to the full content area, or return to the docked size. */
+  setMaximized(options: TerminalMaximizeOptions): Promise<TerminalWorkspaceSnapshot>;
+}
+
+export interface TerminalMaximizeOptions extends TerminalSurfaceRef {
+  maximized: boolean;
 }
 
 // ============================ shell tier ============================

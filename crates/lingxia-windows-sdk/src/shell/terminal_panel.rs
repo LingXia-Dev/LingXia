@@ -1367,6 +1367,10 @@ fn automation_snapshot_json(panel_id: &str) -> Option<String> {
         "surfaceId": panel_id,
         "presentation": super::runtime::terminal_surface_presentation(panel_id),
         "visible": visible,
+        // Whether the panel is expanded to the full content area. A layout
+        // sync used to silently reset this, so automation has to be able to
+        // assert it survives one.
+        "maximized": terminal_panel_maximized(panel_id).unwrap_or(false),
         "activeTabId": active_tab,
         "tabCount": tabs.len(),
         "paneCount": pane_count,
@@ -1394,6 +1398,25 @@ fn take_automation_command(panel_id: &str) -> Option<u64> {
     };
     let id = value.get("id")?.as_u64()?;
     let action = value.get("action").and_then(serde_json::Value::as_str);
+    if action == Some("newTab") {
+        open_terminal_tab(panel_id);
+        return Some(id);
+    }
+    if action == Some("setMaximized") {
+        let Some(maximized) = value
+            .pointer("/params/maximized")
+            .and_then(serde_json::Value::as_bool)
+        else {
+            lxapp::terminal_automation::complete_command(
+                id,
+                false,
+                "setMaximized requires a boolean 'maximized'",
+            );
+            return None;
+        };
+        set_terminal_panel_maximized(panel_id, maximized);
+        return Some(id);
+    }
     if action != Some("split") {
         let name = action.unwrap_or("missing");
         lxapp::terminal_automation::complete_command(

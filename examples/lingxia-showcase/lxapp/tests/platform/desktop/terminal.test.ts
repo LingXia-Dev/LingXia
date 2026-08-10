@@ -104,6 +104,54 @@ desktopTerminalTest('publishes and mutates the native nested pane tree without d
   }
 });
 
+desktopTerminalTest('keeps a maximized terminal maximized when a tab opens', async () => {
+  const app = showcaseApp();
+  const token = `automation-terminal-tab-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  // An aside is the shape that can be maximized: `main` already fills the
+  // content area, so it could not show the state being clobbered.
+  const surfaceId = await app.eval({
+    timeoutMs: 20_000,
+    script: `
+      const handle = await lx.openSurface({
+        surface: 'terminal',
+        key: ${JSON.stringify(token)},
+        as: 'aside',
+        edge: 'bottom',
+      });
+      globalThis.__terminalTabAutomationHandle = handle;
+      return handle.id;
+    `,
+  }) as string;
+
+  const terminal = lx.automation().terminal;
+  try {
+    const docked = await terminal.snapshot({ surface: surfaceId });
+    expect(docked.maximized).toBe(false);
+
+    const maximized = await terminal.setMaximized({ surface: surfaceId, maximized: true });
+    expect(maximized.maximized).toBe(true);
+    const tabsBefore = maximized.tabCount;
+
+    // Opening a tab renames the active tab, which syncs the shell layout and
+    // used to re-present the panel in its docked state.
+    const afterNewTab = await terminal.newTab({ surface: surfaceId });
+    expect(afterNewTab.tabCount).toBe(tabsBefore + 1);
+    expect(afterNewTab.maximized).toBe(true);
+
+    const settled = await terminal.snapshot({ surface: surfaceId });
+    expect(settled.maximized).toBe(true);
+  } finally {
+    await app.eval({
+      timeoutMs: 20_000,
+      script: `
+        const handle = globalThis.__terminalTabAutomationHandle;
+        delete globalThis.__terminalTabAutomationHandle;
+        if (handle?.alive) await handle.close();
+      `,
+    });
+  }
+});
+
 desktopTerminalTest('applies terminal mode to native chrome before terminal input', async () => {
   const app = showcaseApp();
   const token = `automation-terminal-theme-${Date.now()}-${Math.random().toString(36).slice(2)}`;
