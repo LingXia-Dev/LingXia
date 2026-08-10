@@ -324,6 +324,12 @@ struct WindowsTerminalPanel {
     /// Index of the active tab in `tabs`.
     active: usize,
     maximized: bool,
+    /// The layout's last word on whether this panel fills the content area.
+    /// A re-present carrying the same value is incidental — a title change
+    /// syncing the shell — and must not overwrite the user's own toggle; a
+    /// different value is the layout moving the panel between roles, which
+    /// the user's toggle does not get to veto.
+    projected_maximized: Option<bool>,
     /// When set, keyboard input to the panel's panes is dropped (the menu's
     /// "Terminal Read-only" toggle), mirroring the macOS surface.
     read_only: bool,
@@ -748,22 +754,23 @@ pub(super) fn terminal_panel_maximized(panel_id: &str) -> Option<bool> {
 pub(super) fn toggle_terminal_panel_maximized(panel_id: &str) {
     #[cfg(feature = "terminal-runtime")]
     {
-        let maximized = {
-            let mut panels = windows_terminal_panels();
-            let Some(panel) = panels.get_mut(panel_id) else {
+        let next = {
+            let panels = windows_terminal_panels();
+            let Some(panel) = panels.get(panel_id) else {
                 return;
             };
-            panel.maximized = !panel.maximized;
-            panel.maximized
+            !panel.maximized
         };
-        lingxia_windows_contract::set_host_panel_maximized(panel_id, maximized);
+        set_terminal_panel_maximized_by_user(panel_id, next);
     }
     #[cfg(not(feature = "terminal-runtime"))]
     let _ = panel_id;
 }
 
-/// Applies the shared layout projection without treating it as a user toggle.
-pub(super) fn set_terminal_panel_maximized(panel_id: &str, maximized: bool) {
+/// The user's own choice, from the chrome toggle or an automation driver. It
+/// overrides the current state outright and survives a repeated layout
+/// projection; only the layout moving the panel between roles replaces it.
+pub(super) fn set_terminal_panel_maximized_by_user(panel_id: &str, maximized: bool) {
     #[cfg(feature = "terminal-runtime")]
     {
         {
@@ -773,6 +780,33 @@ pub(super) fn set_terminal_panel_maximized(panel_id: &str, maximized: bool) {
             };
             panel.maximized = maximized;
         }
+        lingxia_windows_contract::set_host_panel_maximized(panel_id, maximized);
+    }
+    #[cfg(not(feature = "terminal-runtime"))]
+    let _ = (panel_id, maximized);
+}
+
+/// Applies the shared layout projection without treating it as a user toggle.
+///
+/// A layout sync runs for ordinary reasons — opening a tab renames the active
+/// tab, which syncs the shell — so repeating the projection the panel already
+/// has must leave the user's own toggle alone. A *changed* projection is the
+/// layout moving the panel between roles, and that wins.
+pub(super) fn set_terminal_panel_maximized(panel_id: &str, maximized: bool) {
+    #[cfg(feature = "terminal-runtime")]
+    {
+        let maximized = {
+            let mut panels = windows_terminal_panels();
+            let Some(panel) = panels.get_mut(panel_id) else {
+                return;
+            };
+            let unchanged = panel.projected_maximized == Some(maximized);
+            panel.projected_maximized = Some(maximized);
+            if !unchanged {
+                panel.maximized = maximized;
+            }
+            panel.maximized
+        };
         // Showing an existing panel recreates its host entry with the default
         // docked state. Reapply the projection even when the terminal registry
         // already held the requested value.
@@ -1230,6 +1264,7 @@ fn open_windows_terminal_session_panel(
             tabs: vec![TerminalTab::new(session_id)],
             active: 0,
             maximized: false,
+            projected_maximized: None,
             read_only: false,
             stop: Arc::clone(&stop),
             published_tabs: Vec::new(),
@@ -1414,7 +1449,7 @@ fn take_automation_command(panel_id: &str) -> Option<u64> {
             );
             return None;
         };
-        set_terminal_panel_maximized(panel_id, maximized);
+        set_terminal_panel_maximized_by_user(panel_id, maximized);
         return Some(id);
     }
     if action != Some("split") {
