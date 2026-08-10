@@ -24,10 +24,10 @@ resources:
 For monorepo development, replace `package` with a project-relative `path`.
 The settings screen is the primary user interface for:
 
-- light/dark/system appearance and independent light/dark color schemes;
-- font candidates, size, line height, bold treatment, and ligatures;
-- background opacity and cursor style/blink;
-- importing Windows Terminal JSON or Xresources/kitty color files.
+- light/dark/system appearance with mode-filtered color schemes;
+- installed font family, size, line height, and ligatures;
+- importing compatible color-scheme files (including Windows Terminal JSON,
+  Xresources, and kitty formats).
 
 The screen previews themes without saving and applies accepted changes to open
 terminal surfaces. Its Logic worker receives `lx.terminal` only when the app id
@@ -105,15 +105,10 @@ terminal:
       size: 14
       lineHeight: 1.05
       ligatures: true
-      bold: weight
     theme:
       mode: system
       light: lingxia-light
       dark: lingxia-dark
-      opacity: 1
-      cursor:
-        style: block
-        blink: true
 ```
 
 The build rejects unknown fields and invalid ranges. A user save stores only
@@ -153,11 +148,26 @@ appearance, and exact user-file path. Use the settings screen or command for
 live changes. Directly editing `terminal.json` is supported as persistent
 input, but it is not watched; the edit is adopted on the next product start.
 
+## Automation
+
+Trusted desktop test contexts expose the native workspace through
+`lx.automation().terminal` on macOS and Windows:
+
+```ts
+const terminal = lx.automation().terminal;
+const before = await terminal.snapshot({ surface: handle.id });
+const after = await terminal.split({ surface: handle.id, direction: 'right' });
+```
+
+The driver publishes pane-tree, grid, config, and chrome state. It is distinct
+from the host-bundled Settings app's scoped `lx.terminal` API and is not
+available to ordinary lxapps.
+
 ## Runtime cost
 
 | Change | Effect on open sessions |
 |---|---|
-| theme, opacity, cursor | repaint only; no process or grid resize |
+| color scheme or appearance | repaint only; no process or grid resize |
 | font family, size, line height, ligatures | recompute cells and resize/reflow each open PTY grid |
 
 A malformed user file is reported and ignored; framework/product defaults

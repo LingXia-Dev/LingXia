@@ -313,14 +313,13 @@ terminal:
       mode: system
       light: lingxia-light
       dark: lingxia-dark
-      opacity: 1
 ```
 
 `defaults` is a partial terminal configuration. It sits above framework
 defaults and below the user's `terminal.json`; the CLI validates it with the
 runtime schema and range checks. Supported fields are `font.family`, `size`,
-`lineHeight`, `ligatures`, `bold`, and `theme.mode`, `light`, `dark`, `opacity`,
-plus `theme.cursor.style` / `blink`. Shell program, arguments, environment,
+`lineHeight`, `ligatures`, and `theme.mode`, `light`, and `dark`. Shell program,
+arguments, environment,
 and other execution settings are intentionally outside this API.
 
 ---
