@@ -26,7 +26,7 @@ surfaces:
 
   # Right-edge companion example (e.g. an AI assistant). The referenced lxapp
   # must be provided by the runtime / update flow. Persistent sidebar entries
-  # are declared at runtime via lx.shell.activators, not in YAML.
+  # are declared at runtime via lx.shell.sidebarActions, not in YAML.
   # - lxapp: assistant
   #   role: aside
   #   edge: right            # left | right | top | bottom
