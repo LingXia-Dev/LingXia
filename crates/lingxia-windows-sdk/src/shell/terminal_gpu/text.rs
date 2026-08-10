@@ -203,15 +203,25 @@ impl Fonts {
     }
 
     /// Shape one run of same-styled text, cached by its text and style.
-    pub(super) fn shape(&mut self, text: &str, style: usize) -> &[ShapedGlyph] {
+    ///
+    /// `cell_of` gives the run column of each UTF-16 unit and `columns` the
+    /// run's total width. Both are a function of the text — the engine derives
+    /// a cell's column count from the character — so they stay out of the key.
+    pub(super) fn shape(
+        &mut self,
+        text: &str,
+        cell_of: &[u16],
+        columns: u16,
+        style: usize,
+    ) -> &[ShapedGlyph] {
         let key = (style, text.to_string());
         if !self.shaped.contains_key(&key) {
-            let width = self.metrics.cell_width * text.chars().count().max(1) as f32;
+            let width = self.metrics.cell_width * f32::from(columns.max(1));
             let placed = self.shape_run(text, style, width).unwrap_or_else(|error| {
                 log::warn!("terminal shaping failed for {text:?}: {error}");
                 Vec::new()
             });
-            let mut glyphs = to_cells(&placed, text, style);
+            let mut glyphs = to_cells(&placed, cell_of, style);
             for (glyph, placed) in glyphs.iter_mut().zip(&placed) {
                 glyph.slot = self.slot_for(placed.face.as_ref(), style);
             }
@@ -628,18 +638,15 @@ struct PlacedGlyph {
     face: Option<IDWriteFontFace>,
 }
 
-/// Convert UTF-16 offsets to cells. A terminal cell is one `char`, so the two
-/// only differ where a character is a surrogate pair — every emoji.
+/// Place each shaped glyph on the run column its characters came from, using
+/// the caller's UTF-16-unit-to-column table. Counting characters here instead
+/// would put every glyph after a CJK cell one column to the left, since such a
+/// cell is one character wide and two columns wide.
+///
 /// `slot` starts as the run's own weight — the common case, where layout
 /// used the terminal font — and shaping raises it for any glyph that came
 /// back from a fallback face.
-fn to_cells(glyphs: &[PlacedGlyph], text: &str, style: usize) -> Vec<ShapedGlyph> {
-    let mut cell_of = Vec::with_capacity(text.len());
-    for (cell, character) in text.chars().enumerate() {
-        for _ in 0..character.len_utf16() {
-            cell_of.push(cell as u16);
-        }
-    }
+fn to_cells(glyphs: &[PlacedGlyph], cell_of: &[u16], style: usize) -> Vec<ShapedGlyph> {
     glyphs
         .iter()
         .map(|glyph| ShapedGlyph {
@@ -771,5 +778,49 @@ impl IDWriteTextRenderer_Impl for GlyphCollector_Impl {
         _effect: Ref<'_, IUnknown>,
     ) -> Result<()> {
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{PlacedGlyph, to_cells};
+
+    fn placed(utf16: u32) -> PlacedGlyph {
+        PlacedGlyph {
+            index: 1,
+            utf16,
+            face: None,
+        }
+    }
+
+    /// `我A`: the CJK cell spans columns 0-1, so the Latin one after it is
+    /// column 2. Mapping by character index would draw it over the wide
+    /// glyph's right half.
+    #[test]
+    fn a_glyph_after_a_wide_cell_lands_past_both_of_its_columns() {
+        let cell_of = [0, 2];
+        let glyphs = to_cells(&[placed(0), placed(1)], &cell_of, super::REGULAR);
+        assert_eq!(glyphs[0].cell, 0);
+        assert_eq!(glyphs[1].cell, 2);
+    }
+
+    /// A surrogate pair is two UTF-16 units in one cell, and the cell after it
+    /// still starts on the next column.
+    #[test]
+    fn a_surrogate_pair_occupies_one_cell() {
+        let cell_of = [0, 0, 2];
+        let glyphs = to_cells(&[placed(0), placed(2)], &cell_of, super::REGULAR);
+        assert_eq!(glyphs[0].cell, 0);
+        assert_eq!(glyphs[1].cell, 2);
+    }
+
+    /// A combining mark shapes as its own glyph but shares the base's cell.
+    #[test]
+    fn a_combining_mark_shares_the_cell_it_marks() {
+        let cell_of = [0, 0, 1];
+        let glyphs = to_cells(&[placed(0), placed(1), placed(2)], &cell_of, super::REGULAR);
+        assert_eq!(glyphs[0].cell, 0);
+        assert_eq!(glyphs[1].cell, 0);
+        assert_eq!(glyphs[2].cell, 1);
     }
 }

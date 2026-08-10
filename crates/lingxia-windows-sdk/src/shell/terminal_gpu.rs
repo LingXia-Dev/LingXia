@@ -742,6 +742,11 @@ impl Builder<'_> {
         dim: bool,
     ) {
         let mut run = String::new();
+        // Column each UTF-16 unit of the run belongs to, counted from the
+        // run's first. Shaping cannot recover this from the text: a CJK cell
+        // is one character across two columns, and a combining mark is a
+        // second character in no column of its own.
+        let mut cell_of: Vec<u16> = Vec::new();
         let mut columns = 0u16;
         let mut at = (0u16, 0u16);
         let mut style = RunStyle {
@@ -763,8 +768,9 @@ impl Builder<'_> {
             let contiguous =
                 !run.is_empty() && row == at.0 && col == at.1 + columns && cell_style == style;
             if !contiguous {
-                self.flush(&run, at, columns, style, origin);
+                self.flush(&run, &cell_of, at, columns, style, origin);
                 run.clear();
+                cell_of.clear();
                 columns = 0;
                 at = (row, col);
                 style = cell_style;
@@ -774,12 +780,14 @@ impl Builder<'_> {
                 // Concealed text still occupies its columns, so keep the run
                 // aligned rather than closing it.
                 run.push(' ');
+                cell_of.push(columns);
             } else {
                 run.push_str(cluster);
+                cell_of.extend(std::iter::repeat_n(columns, cluster.encode_utf16().count()));
             }
             columns += u16::from(cell.columns);
         }
-        self.flush(&run, at, columns, style, origin);
+        self.flush(&run, &cell_of, at, columns, style, origin);
     }
 
     fn style_of(
@@ -822,6 +830,7 @@ impl Builder<'_> {
     fn flush(
         &mut self,
         run: &str,
+        cell_of: &[u16],
         at: (u16, u16),
         columns: u16,
         style: RunStyle,
@@ -837,7 +846,7 @@ impl Builder<'_> {
         if let Some(scalar) = sole_sprite(run) {
             self.sprite(scalar, x, y, style.color);
         } else if !run.trim().is_empty() {
-            let glyphs: Vec<_> = self.fonts.shape(run, style.face).to_vec();
+            let glyphs: Vec<_> = self.fonts.shape(run, cell_of, columns, style.face).to_vec();
             for glyph in glyphs {
                 // Keyed by the glyph's own face, not the run's weight: a
                 // fallback glyph shares its index with an unrelated glyph in
