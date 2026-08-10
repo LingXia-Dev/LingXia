@@ -1,5 +1,5 @@
 use crate::util::run_async;
-use lingxia_devtool_protocol::handlers;
+use lingxia_control_protocol::methods;
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::sync::Arc;
@@ -70,7 +70,7 @@ fn build_doctor() -> Value {
 
 fn handle_lxapp_command_impl(handler: &str, args: Option<Value>) -> Result<Option<Value>, String> {
     match handler {
-        handlers::lxapp::LIST => {
+        methods::lxapp::LIST => {
             let args: ListArgs = parse_args(handler, args)?;
             let (current_appid, _, current_session_id) = lxapp::get_current_lxapp();
             let mut apps: Vec<Value> = lxapp::list_lxapps()
@@ -101,20 +101,20 @@ fn handle_lxapp_command_impl(handler: &str, args: Option<Value>) -> Result<Optio
             });
             Ok(Some(Value::Array(apps)))
         }
-        handlers::lxapp::DOCTOR => Ok(Some(build_doctor())),
-        handlers::lxapp::CURRENT => {
+        methods::lxapp::DOCTOR => Ok(Some(build_doctor())),
+        methods::lxapp::CURRENT => {
             let (appid, path, _) = lxapp::get_current_lxapp();
             Ok(Some(json!({
                 "appid": appid,
                 "path": path,
             })))
         }
-        handlers::lxapp::INFO => {
+        methods::lxapp::INFO => {
             let args: AppArgs = parse_args(handler, args)?;
             let app = resolve_app(&args.appid)?;
             lxapp_runtime_info_value(&app).map(Some)
         }
-        handlers::lxapp::PAGES => {
+        methods::lxapp::PAGES => {
             let args: AppArgs = parse_args(handler, args)?;
             let app = resolve_app(&args.appid)?;
             let info = app.runtime_info();
@@ -136,7 +136,7 @@ fn handle_lxapp_command_impl(handler: &str, args: Option<Value>) -> Result<Optio
                 "pages": pages,
             })))
         }
-        handlers::lxapp::EVAL => {
+        methods::lxapp::EVAL => {
             let args: EvalArgs = parse_args(handler, args)?;
             let app = resolve_app(&args.appid)?;
             let timeout = Duration::from_millis(args.timeout_ms.unwrap_or_else(|| {
@@ -150,7 +150,7 @@ fn handle_lxapp_command_impl(handler: &str, args: Option<Value>) -> Result<Optio
             })?;
             Ok(Some(json!({ "value": value })))
         }
-        handlers::lxapp::OPEN => {
+        methods::lxapp::OPEN => {
             let args: OpenArgs = parse_args(handler, args)?;
             let release_type = release_type(args.release_type.as_deref())?;
             ensure_lxapp_available(&args.appid, release_type)?;
@@ -175,7 +175,7 @@ fn handle_lxapp_command_impl(handler: &str, args: Option<Value>) -> Result<Optio
                 "page": page,
             })))
         }
-        handlers::lxapp::CLOSE => {
+        methods::lxapp::CLOSE => {
             let args: AppArgs = parse_args(handler, args)?;
             let appid = resolve_appid(&args.appid)?;
             lxapp::close_lxapp(&appid).map_err(|err| err.to_string())?;
@@ -183,7 +183,7 @@ fn handle_lxapp_command_impl(handler: &str, args: Option<Value>) -> Result<Optio
                 json!({ "ok": true, "action": "close", "appid": appid }),
             ))
         }
-        handlers::lxapp::RESTART => {
+        methods::lxapp::RESTART => {
             let args: AppArgs = parse_args(handler, args)?;
             let appid = resolve_appid(&args.appid)?;
             let page = run_async(lingxia::dev::lxapp_dev_restart(
@@ -197,7 +197,7 @@ fn handle_lxapp_command_impl(handler: &str, args: Option<Value>) -> Result<Optio
                 "page": page,
             })))
         }
-        handlers::lxapp::UNINSTALL => {
+        methods::lxapp::UNINSTALL => {
             let args: AppArgs = parse_args(handler, args)?;
             let appid = resolve_appid(&args.appid)?;
             lxapp::uninstall_lxapp(&appid).map_err(|err| err.to_string())?;

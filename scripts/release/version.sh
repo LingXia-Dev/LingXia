@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(realpath "$SCRIPT_DIR/../..")"
 WORKSPACE_CARGO_TOML="$ROOT_DIR/Cargo.toml"
 CLI_CARGO_TOML="$ROOT_DIR/tools/lingxia-cli/Cargo.toml"
-# Showcase native host crate. Its `lingxia`/`lingxia_devtool` deps pin a version
+# Showcase native host crate. Its `lingxia`/`lingxia-control-runtime` deps pin a version
 # that the local path crates must satisfy, so a missed bump here breaks every
 # example build (the patch is dropped and cargo falls back to the registry).
 EXAMPLE_HOST_CARGO_TOML="$ROOT_DIR/examples/lingxia-showcase/native/Cargo.toml"
@@ -120,9 +120,8 @@ for line in text.splitlines(True):
         in_ws_deps
         and 'path = "crates/' in line
         and 'version = "' in line
-        # Match `lingxia`, `lingxia-foo`, `lingxia_foo` (underscore key for
-        # the few crates whose Rust ident requires it, e.g. lingxia_devtool
-        # which keys to the dash-named package), and the bare `lxapp` alias.
+        # Match `lingxia`, `lingxia-foo`, `lingxia_foo`, and the bare `lxapp`
+        # alias.
         and re.match(r'^(lingxia(?:[_-][a-z0-9_-]+)?|lxapp)\s*=', line)
     ):
         new_line, n = re.subn(r'version\s*=\s*"[^"]+"', f'version = "{version}"', line, count=1)
@@ -268,7 +267,7 @@ text = path.read_text()
 
 patterns = [
     r'(^lingxia\s*=\s*\{[^}\n]*version\s*=\s*")[^"]+(")',
-    r'(^lingxia_devtool\s*=\s*\{[^}\n]*version\s*=\s*")[^"]+(")',
+    r'(^lingxia-control-runtime\s*=\s*\{[^}\n]*version\s*=\s*")[^"]+(")',
 ]
 
 count = 0
@@ -299,7 +298,7 @@ update_example_host_lock() {
   cargo update \
     --manifest-path "$EXAMPLE_HOST_CARGO_TOML" \
     -p lingxia \
-    -p lingxia-devtool
+    -p lingxia-control-runtime
 }
 
 update_root_lock() {

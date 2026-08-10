@@ -1,8 +1,8 @@
 [package]
-name = "lingxia-devtool-protocol"
+name = "lingxia-control-protocol"
 version.workspace = true
 edition.workspace = true
-description = "Devtool wire protocol types for LingXia tools"
+description = "Transport-neutral control protocol and dev-session wire types for LingXia"
 license = "MIT"
 repository.workspace = true
 

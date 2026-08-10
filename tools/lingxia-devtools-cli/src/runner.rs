@@ -5,7 +5,7 @@ use crate::client;
 use crate::project::SessionInfo;
 use anyhow::Result;
 use clap::{Args, Subcommand, ValueEnum};
-use lingxia_devtool_protocol::handlers;
+use lingxia_control_protocol::methods;
 use serde_json::{Value, json};
 
 #[derive(Args, Clone)]
@@ -72,7 +72,7 @@ pub fn execute(info: &SessionInfo, options: RunnerOptions) -> Result<()> {
     let ws_url = info.ws_url.as_str();
     match options.command {
         RunnerCommand::Presets { json } => {
-            let data = client::execute_command(ws_url, handlers::runner::PRESETS, None)?
+            let data = client::execute_command(ws_url, methods::runner::PRESETS, None)?
                 .unwrap_or_else(|| json!([]));
             if json {
                 print_json(&data, false)?;
@@ -81,8 +81,8 @@ pub fn execute(info: &SessionInfo, options: RunnerOptions) -> Result<()> {
             }
         }
         RunnerCommand::Get { json } => {
-            let data = client::execute_command(ws_url, handlers::runner::GET, None)?
-                .unwrap_or(Value::Null);
+            let data =
+                client::execute_command(ws_url, methods::runner::GET, None)?.unwrap_or(Value::Null);
             if json {
                 print_json(&data, false)?;
             } else {
@@ -112,7 +112,7 @@ pub fn execute(info: &SessionInfo, options: RunnerOptions) -> Result<()> {
             };
             let data = client::execute_command(
                 ws_url,
-                handlers::runner::SET,
+                methods::runner::SET,
                 Some(json!({
                     "id": id,
                     "landscape": orientation,

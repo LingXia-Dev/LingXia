@@ -41,6 +41,7 @@ fn resolve(target: &WindowTarget) -> Result<HWND> {
 /// Build a `Window` record for a single live HWND.
 pub(crate) fn window_info(hwnd: HWND) -> Result<Window> {
     unsafe {
+        super::ensure_automatable_hwnd(hwnd)?;
         if !IsWindow(Some(hwnd)).as_bool() {
             return Err(Error::Stale("window no longer exists".into()));
         }

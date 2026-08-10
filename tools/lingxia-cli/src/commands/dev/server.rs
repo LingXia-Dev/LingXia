@@ -1,7 +1,10 @@
 use super::log_store::{DevLogSession, create_session};
 use anyhow::{Context, Result, anyhow};
-use lingxia_devtool_protocol::{
-    DEV_SESSION_PROTOCOL_VERSION, DevSessionEvent, DevSessionMessage, DevSessionRole,
+use lingxia_control_protocol::{
+    ControlRequest,
+    dev_session::{
+        DEV_SESSION_PROTOCOL_VERSION, DevSessionEvent, DevSessionMessage, DevSessionRole,
+    },
 };
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Write};
@@ -424,7 +427,8 @@ fn handle_connection(
 fn accept_websocket(stream: TcpStream) -> Result<(WebSocket<TcpStream>, Option<String>)> {
     let mut handshake_token = None;
     let websocket = accept_hdr(stream, |request: &Request, response: Response| {
-        handshake_token = lingxia_devtool_protocol::token_from_ws_url(&request.uri().to_string());
+        handshake_token =
+            lingxia_control_protocol::dev_session::token_from_ws_url(&request.uri().to_string());
         Ok(response)
     })
     .map_err(|err| anyhow!("Failed to accept websocket: {err}"))?;
@@ -451,7 +455,7 @@ fn handle_http_connection(mut stream: TcpStream, state: &DevServerState) -> Resu
     if method != "GET" {
         return write_http_error(&mut stream, 405, "Method Not Allowed");
     }
-    let presented = lingxia_devtool_protocol::token_from_ws_url(target);
+    let presented = lingxia_control_protocol::dev_session::token_from_ws_url(target);
     if !state.authorizes(presented.as_deref()) {
         return write_http_error(&mut stream, 403, "Forbidden");
     }
@@ -626,17 +630,14 @@ fn handle_devtool_connection(
                     DevSessionMessage::EventBatch { events } => {
                         writer.append_events(&events)?;
                     }
-                    DevSessionMessage::Response { id, result, error } => {
-                        let payload = DevSessionMessage::Response {
-                            id: id.clone(),
-                            result,
-                            error,
-                        };
+                    DevSessionMessage::Response(response) => {
+                        let id = response.id.clone();
+                        let payload = DevSessionMessage::Response(response);
                         if let Some(tx) = state.take_pending_result(&id) {
                             let _ = tx.send(payload);
                         }
                     }
-                    DevSessionMessage::Hello { .. } | DevSessionMessage::Request { .. } => {}
+                    DevSessionMessage::Hello { .. } | DevSessionMessage::Request(_) => {}
                 },
                 ParsedWireMessage::Ignored => {}
                 ParsedWireMessage::Closed => break Ok(()),
@@ -683,7 +684,7 @@ fn handle_client_connection(
     state: &DevServerState,
 ) -> Result<()> {
     let message = read_wire_message(&mut websocket)?;
-    let DevSessionMessage::Request { id, method, params } = message else {
+    let DevSessionMessage::Request(ControlRequest { id, method, params }) = message else {
         return Err(anyhow!("Client websocket must send exactly one command"));
     };
 
@@ -691,7 +692,7 @@ fn handle_client_connection(
     // owns the project + build pipeline, so it builds in-process rather than
     // forwarding to the runtime (which has no build toolchain). Works even with
     // no app attached.
-    if method.as_str() == lingxia_devtool_protocol::handlers::lxapp::BUILD {
+    if method.as_str() == lingxia_control_protocol::methods::lxapp::BUILD {
         let payload = match run_lxapp_build(&state.project_root, params.as_ref()) {
             Ok(()) => DevSessionMessage::success(id, None),
             Err(err) => DevSessionMessage::error(id, "build_failed", format!("{err:#}")),
@@ -701,7 +702,7 @@ fn handle_client_connection(
         return Ok(());
     }
 
-    if method.as_str() == lingxia_devtool_protocol::handlers::ECHO {
+    if method.as_str() == lingxia_control_protocol::methods::ECHO {
         let runtime_connected = state.runtime_sender().is_some();
         send_wire_message(
             &mut websocket,
@@ -716,7 +717,7 @@ fn handle_client_connection(
         return Ok(());
     }
 
-    if method.as_str() == lingxia_devtool_protocol::handlers::session::SHUTDOWN {
+    if method.as_str() == lingxia_control_protocol::methods::session::SHUTDOWN {
         send_wire_message(&mut websocket, &DevSessionMessage::success(id, None))?;
         state.request_shutdown();
         let _ = websocket.close(None);
@@ -744,11 +745,11 @@ fn handle_client_connection(
     let command_timeout = command_timeout(params.as_ref());
     let (result_tx, result_rx) = mpsc::channel::<DevSessionMessage>();
     state.register_pending_result(id.clone(), result_tx);
-    let bridged_command = DevSessionMessage::Request {
+    let bridged_command = DevSessionMessage::Request(ControlRequest {
         id: id.clone(),
         method,
         params,
-    };
+    });
 
     runtime_sender.send(bridged_command).map_err(|_| {
         let _ = state.take_pending_result(&id);
@@ -926,7 +927,7 @@ mod tests {
         DevServerState, accept_websocket, dev_port, read_wire_message, refresh_lxapp_manifests,
         send_wire_message,
     };
-    use lingxia_devtool_protocol::{
+    use lingxia_control_protocol::dev_session::{
         DEV_SESSION_PROTOCOL_VERSION, DevSessionMessage, DevSessionRole, capabilities,
     };
     use std::net::TcpListener;

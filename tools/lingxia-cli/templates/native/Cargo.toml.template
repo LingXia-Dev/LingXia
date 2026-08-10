@@ -16,13 +16,22 @@ standard = ["lingxia/standard"]
 browser-shell = ["lingxia/browser-shell", "webview-input", "standard"]
 terminal-runtime = ["lingxia/terminal-runtime"]
 process = ["lingxia/process", "standard"]
-devtools = ["dep:lingxia_devtool", "lingxia/devtool", "lingxia_devtool/browser", "lingxia_devtool/test-runtime"]
+# The local control socket, derived from `capabilities.control`. Separate
+# from `devtools` on purpose: a shipped product gets the handlers without
+# the dev websocket and its TLS stack.
+control = ["dep:lingxia-control-runtime", "dep:log", "lingxia/devtool", "lingxia-control-runtime/local-control", "lingxia/product-cli"]
+computer-use = ["control", "lingxia-control-runtime/computer-use"]
+# Derived from `capabilities.browserUse`. Without it the browser handlers are
+# not linked and every browser command answers "feature unavailable".
+browser-use = ["control", "lingxia-control-runtime/browser"]
+devtools = ["dep:lingxia-control-runtime", "lingxia/devtool", "lingxia-control-runtime/dev-bridge", "lingxia-control-runtime/browser", "lingxia-control-runtime/test-runtime"]
 webview-input = ["lingxia/webview-input"]
 cloud = []  # activated by `--with-provider cloud`
 
 [dependencies]
 lingxia = { version = "{{LINGXIA_VERSION}}", default-features = false, features = {{LINGXIA_DEP_FEATURES}} }
-lingxia_devtool = { package = "lingxia-devtool", version = "{{LINGXIA_VERSION}}", optional = true, default-features = false }
+lingxia-control-runtime = { version = "{{LINGXIA_VERSION}}", optional = true, default-features = false }
+log = { version = "0.4", optional = true }
 
 [build-dependencies]
 lingxia-native-codegen = { version = "{{LINGXIA_VERSION}}" }

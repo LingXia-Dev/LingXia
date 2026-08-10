@@ -1,8 +1,8 @@
 [workspace]
 members = [
     "crates/lingxia-app-context",
-    "crates/lingxia-devtool",
-    "crates/lingxia-devtool-protocol",
+    "crates/lingxia-control-runtime",
+    "crates/lingxia-control-protocol",
     "crates/lingxia-media",
     "crates/lingxia-browser-shell",
     "crates/lingxia-browser",
@@ -28,6 +28,7 @@ members = [
     "crates/lingxia",
     "crates/lingxia-proxy",
     "crates/lingxia-computer-use",
+    "crates/lingxia-control-commands",
     "tools/lingxia-runner/macos/native",
     "tools/lingxia-runner/windows",
     "tools/lingxia-runner/config",
@@ -68,9 +69,10 @@ windows-core = { version = "0.62.2", default-features = false }
 # Workspace-local crates
 lingxia-lxapp = { path = "crates/lingxia-lxapp", version = "0.11.2", default-features = false }
 lxapp = { package = "lingxia-lxapp", path = "crates/lingxia-lxapp", version = "0.11.2", default-features = false }
-lingxia_devtool = { package = "lingxia-devtool", path = "crates/lingxia-devtool", version = "0.11.2" }
-lingxia-devtool-protocol = { path = "crates/lingxia-devtool-protocol", version = "0.11.2" }
+lingxia-control-runtime = { path = "crates/lingxia-control-runtime", version = "0.11.2" }
+lingxia-control-protocol = { path = "crates/lingxia-control-protocol", version = "0.11.2" }
 lingxia-computer-use = { path = "crates/lingxia-computer-use", version = "0.11.2" }
+lingxia-control-commands = { path = "crates/lingxia-control-commands", version = "0.11.2" }
 lingxia-log = { path = "crates/lingxia-log", version = "0.11.2" }
 lingxia-provider = { path = "crates/lingxia-provider", version = "0.11.2" }
 lingxia-update = { path = "crates/lingxia-update", version = "0.11.2" }

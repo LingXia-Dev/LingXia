@@ -87,9 +87,10 @@ pub(super) fn prompt_trusted() -> bool {
 /// Map a raw `AXError` to our taxonomy for a resolved target.
 fn ax_err(code: i32, what: &str) -> Error {
     match code {
-        AX_ERROR_API_DISABLED => Error::Permission(
-            "accessibility denied: grant Accessibility to this terminal in System Settings › Privacy & Security".into(),
-        ),
+        AX_ERROR_API_DISABLED => Error::Permission(format!(
+            "accessibility denied: grant Accessibility to {} in System Settings › Privacy & Security",
+            crate::responsible_app()
+        )),
         AX_ERROR_ATTRIBUTE_UNSUPPORTED | AX_ERROR_ACTION_UNSUPPORTED | AX_ERROR_NOT_IMPLEMENTED => {
             Error::Unsupported(format!("{what} is not supported by this element"))
         }
@@ -103,9 +104,10 @@ pub(super) fn require_trusted() -> Result<()> {
     if is_trusted() {
         Ok(())
     } else {
-        Err(Error::Permission(
-            "accessibility denied: grant Accessibility to this terminal in System Settings › Privacy & Security".into(),
-        ))
+        Err(Error::Permission(format!(
+            "accessibility denied: grant Accessibility to {} in System Settings › Privacy & Security",
+            crate::responsible_app()
+        )))
     }
 }
 

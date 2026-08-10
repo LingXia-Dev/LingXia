@@ -4,7 +4,7 @@ use lingxia_automation::runtime::{
     AutomationCancelArgs, AutomationEventPayload, AutomationPollArgs, AutomationPollResponse,
     AutomationRunError, AutomationRunState, AutomationRuntime, AutomationStartArgs,
 };
-use lingxia_devtool_protocol::{handlers, session_test::*};
+use lingxia_control_protocol::{dev_session::session_test::*, methods};
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
@@ -33,7 +33,7 @@ fn handle_session_test_command_impl(
     args: Option<Value>,
 ) -> Result<Option<Value>, String> {
     match handler {
-        handlers::session::test::START => {
+        methods::session::test::START => {
             let args: TestStartArgs = parse(handler, args)?;
             let response = runtime()?.start(AutomationStartArgs {
                 source: args.source,
@@ -46,7 +46,7 @@ fn handle_session_test_command_impl(
                 state: TestRunState::Running,
             })
         }
-        handlers::session::test::POLL => {
+        methods::session::test::POLL => {
             let args: TestPollArgs = parse(handler, args)?;
             let response = runtime()?.poll(AutomationPollArgs {
                 run_id: args.run_id,
@@ -54,7 +54,7 @@ fn handle_session_test_command_impl(
             })?;
             respond(test_poll_response(response)?)
         }
-        handlers::session::test::CANCEL => {
+        methods::session::test::CANCEL => {
             let args: TestCancelArgs = parse(handler, args)?;
             let response = runtime()?.cancel(AutomationCancelArgs {
                 run_id: args.run_id,

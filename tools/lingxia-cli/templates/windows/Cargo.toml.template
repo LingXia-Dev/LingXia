@@ -13,6 +13,11 @@ standard = ["host/standard", "lingxia-windows-sdk/standard"]
 browser-shell = ["host/browser-shell", "lingxia-windows-sdk/browser-shell"]
 terminal-runtime = ["host/terminal-runtime", "lingxia-windows-sdk/terminal-runtime"]
 process = ["host/process"]
+# Derived from `capabilities.*Use`. The executable is also the product's
+# command line, so these have to reach the host crate that implements it.
+control = ["host/control"]
+computer-use = ["host/computer-use"]
+browser-use = ["host/browser-use"]
 devtools = ["host/devtools"]
 webview-input = ["host/webview-input", "lingxia-windows-sdk/webview-input"]
 cloud = ["host/cloud"]  # activated by `--with-provider cloud`

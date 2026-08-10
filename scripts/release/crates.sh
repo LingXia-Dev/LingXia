@@ -35,14 +35,17 @@ CRATES=(
   "lingxia-browser-shell"
   "lingxia-terminal"
 
-  # Devtool protocol is consumed by SDK/tools and by lingxia-devtool.
-  "lingxia-devtool-protocol"
+  # Control protocol is consumed by SDK/tools and by lingxia-control-runtime.
+  "lingxia-control-protocol"
+
+  # Shared command library depends on the protocol and is consumed by lingxia.
+  "lingxia-control-commands"
 
   # Public facade.
   "lingxia"
 
-  # Devtool bridge depends on the public facade.
-  "lingxia-devtool"
+  # The shared control runtime depends on the public facade.
+  "lingxia-control-runtime"
 
   # Windows build helper consumed by the windows app template.
   # lingxia-windows-sdk is NOT published: it depends on a git-pinned windows-rs

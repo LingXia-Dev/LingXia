@@ -68,6 +68,37 @@ pub mod automation_runtime {
     pub use lingxia_automation::runtime::*;
 }
 
+/// The product acting as its own command line.
+///
+/// One binary is the app when the OS launches it and the command line when
+/// someone types it, which is what keeps the two from ever being different
+/// versions of each other.
+#[cfg(feature = "product-cli")]
+pub mod product_cli {
+    /// Answer as the command line if this invocation is one, and return the
+    /// exit code. `None` means carry on and be the app.
+    ///
+    /// Call it as the first thing in `main`: initialization opens the app's
+    /// databases, and a command must not collide with an instance already
+    /// running. The state directory is resolved from the packaged assets
+    /// rather than the runtime, precisely so this can run before any of it.
+    #[cfg(target_os = "windows")]
+    pub fn run_if_invoked() -> Option<i32> {
+        use lingxia_platform::traits::app_runtime::AppRuntime;
+        let platform = lingxia_platform::Platform::from_env().ok()?;
+        let state_dir = lingxia_app_context::app_state_dir(&platform.app_data_dir());
+        lingxia_control_commands::entry::run_if_invoked(&state_dir)
+    }
+
+    /// The data directory is handed in by the platform layer on Apple, which
+    /// knows it before anything else runs.
+    #[cfg(not(target_os = "windows"))]
+    pub fn run_if_invoked_in(data_dir: &std::path::Path) -> Option<i32> {
+        let state_dir = lingxia_app_context::app_state_dir(data_dir);
+        lingxia_control_commands::entry::run_if_invoked(&state_dir)
+    }
+}
+
 /// Host app metadata, state-path helpers, and lifecycle helpers.
 pub mod app;
 pub use app::{home_app_id, lingxia_id, product_version};

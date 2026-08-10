@@ -2,7 +2,7 @@
 //! variant maps to a stable exit code (see the proposal's exit-code contract),
 //! so the `lxdev` CLI and any future JS binding branch on the same codes.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -38,7 +38,7 @@ pub enum Error {
 }
 
 /// Stable, machine-readable slug for the `--json` error envelope.
-#[derive(Debug, Clone, Copy, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ErrorCode {
     Usage,
@@ -67,6 +67,25 @@ impl Error {
         }
     }
 
+    /// Rebuild an error carried across a transport. The code is what callers
+    /// branch on and what becomes the process exit status, so it has to
+    /// survive the trip — a message alone would collapse every failure into
+    /// one.
+    pub fn from_code(code: ErrorCode, message: impl Into<String>) -> Self {
+        let message = message.into();
+        match code {
+            ErrorCode::Usage => Error::Usage(message),
+            ErrorCode::NotFound => Error::NotFound(message),
+            ErrorCode::Ambiguous => Error::Ambiguous(message),
+            ErrorCode::Timeout => Error::Timeout(message),
+            ErrorCode::Permission => Error::Permission(message),
+            ErrorCode::Unsupported => Error::Unsupported(message),
+            ErrorCode::Unavailable => Error::Unavailable(message),
+            ErrorCode::Stale => Error::Stale(message),
+            ErrorCode::Failed => Error::Failed(message),
+        }
+    }
+
     /// Process exit code per the command contract.
     pub fn exit_code(&self) -> i32 {
         match self {
@@ -80,6 +99,37 @@ impl Error {
             Error::Stale(_) => 9,
             Error::Failed(_) => 10,
         }
+    }
+}
+
+impl ErrorCode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ErrorCode::Usage => "usage",
+            ErrorCode::NotFound => "not_found",
+            ErrorCode::Ambiguous => "ambiguous",
+            ErrorCode::Timeout => "timeout",
+            ErrorCode::Permission => "permission",
+            ErrorCode::Unsupported => "unsupported",
+            ErrorCode::Unavailable => "unavailable",
+            ErrorCode::Stale => "stale",
+            ErrorCode::Failed => "failed",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        Some(match value {
+            "usage" => ErrorCode::Usage,
+            "not_found" => ErrorCode::NotFound,
+            "ambiguous" => ErrorCode::Ambiguous,
+            "timeout" => ErrorCode::Timeout,
+            "permission" => ErrorCode::Permission,
+            "unsupported" => ErrorCode::Unsupported,
+            "unavailable" => ErrorCode::Unavailable,
+            "stale" => ErrorCode::Stale,
+            "failed" => ErrorCode::Failed,
+            _ => return None,
+        })
     }
 }
 

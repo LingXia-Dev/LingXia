@@ -143,6 +143,9 @@ mod bridge {
         #[swift_bridge(swift_name = "launchHomeControlLogic")]
         fn launch_home_control_logic() -> bool;
 
+        #[swift_bridge(swift_name = "productRunCliIfInvoked")]
+        fn product_run_cli_if_invoked(data_dir: &str) -> i32;
+
         #[swift_bridge(swift_name = "ensureHostSurfaceOwner")]
         fn ensure_host_surface_owner() -> String;
 
@@ -633,6 +636,25 @@ fn install_browser_native_input_host() {
 
 #[cfg(not(all(target_os = "macos", feature = "browser-shell")))]
 fn install_browser_native_input_host() {}
+
+/// Run the product's command line and return its exit code, or `-1` to carry
+/// on and become the app.
+///
+/// Called before AppKit and before [`lingxia_init`]: initialization opens the
+/// app's databases, and a command must not collide with an instance already
+/// running. Negative is "not a command" rather than an `Option` because the
+/// bridge is plain integers.
+fn product_run_cli_if_invoked(data_dir: &str) -> i32 {
+    #[cfg(feature = "product-cli")]
+    {
+        if let Some(code) = crate::product_cli::run_if_invoked_in(std::path::Path::new(data_dir)) {
+            return code;
+        }
+    }
+    #[cfg(not(feature = "product-cli"))]
+    let _ = data_dir;
+    -1
+}
 
 /// Initialize the Lingxia SDK for iOS/macOS
 pub fn lingxia_init(data_dir: &str, cache_dir: &str, locale: &str) -> bridge::LingxiaInitResult {

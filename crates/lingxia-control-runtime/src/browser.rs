@@ -1,7 +1,7 @@
 #[cfg(feature = "browser")]
 use crate::util::{png_response, run_async};
 #[cfg(feature = "browser")]
-use lingxia_devtool_protocol::handlers;
+use lingxia_control_protocol::methods;
 #[cfg(feature = "browser")]
 use serde::Deserialize;
 use serde_json::Value;
@@ -40,7 +40,7 @@ fn handle_browser_command_impl(
     args: Option<Value>,
 ) -> Result<Option<Value>, String> {
     match handler {
-        handlers::browser::OPEN => {
+        methods::browser::OPEN => {
             let args: OpenArgs = parse_args(handler, args)?;
             let tab_id = lingxia_browser::open(&args.url, args.tab_id.as_deref())
                 .map_err(|err| err.to_string())?;
@@ -48,19 +48,19 @@ fn handle_browser_command_impl(
             wait_for_tab_navigation(&tab_id, &args.url)?;
             Ok(Some(json!({ "tab_id": tab_id })))
         }
-        handlers::browser::TABS => {
+        methods::browser::TABS => {
             let _args: EmptyArgs = parse_args(handler, args)?;
             serde_json::to_value(lingxia_browser::tabs())
                 .map(Some)
                 .map_err(|err| err.to_string())
         }
-        handlers::browser::CURRENT => {
+        methods::browser::CURRENT => {
             let _args: EmptyArgs = parse_args(handler, args)?;
             serde_json::to_value(lingxia_browser::automation_current_tab())
                 .map(Some)
                 .map_err(|err| err.to_string())
         }
-        handlers::browser::ACTIVATE => {
+        methods::browser::ACTIVATE => {
             let args: TabArgs = parse_args(handler, args)?;
             let tab_id = resolve_tab_id(&args.tab_id)?;
             let info = lingxia_browser::activate(&tab_id).map_err(|err| err.to_string())?;
@@ -69,35 +69,35 @@ fn handle_browser_command_impl(
                 .map(Some)
                 .map_err(|err| err.to_string())
         }
-        handlers::browser::CLOSE => {
+        methods::browser::CLOSE => {
             let args: TabArgs = parse_args(handler, args)?;
             let tab_id = resolve_tab_id(&args.tab_id)?;
             lingxia_browser::close(&tab_id).map_err(|err| err.to_string())?;
             Ok(Some(browser_action_response("close", &tab_id, None)))
         }
-        handlers::browser::RELOAD => {
+        methods::browser::RELOAD => {
             let args: TabArgs = parse_args(handler, args)?;
             let tab_id = resolve_tab_id(&args.tab_id)?;
             lingxia_browser::reload(&tab_id).map_err(|err| err.to_string())?;
             Ok(Some(browser_action_response("reload", &tab_id, None)))
         }
-        handlers::browser::BACK => {
+        methods::browser::BACK => {
             let args: TabArgs = parse_args(handler, args)?;
             let tab_id = resolve_tab_id(&args.tab_id)?;
             lingxia_browser::go_back(&tab_id).map_err(|err| err.to_string())?;
             Ok(Some(browser_action_response("back", &tab_id, None)))
         }
-        handlers::browser::FORWARD => {
+        methods::browser::FORWARD => {
             let args: TabArgs = parse_args(handler, args)?;
             let tab_id = resolve_tab_id(&args.tab_id)?;
             lingxia_browser::go_forward(&tab_id).map_err(|err| err.to_string())?;
             Ok(Some(browser_action_response("forward", &tab_id, None)))
         }
-        handlers::browser::UA_SHOW => {
+        methods::browser::UA_SHOW => {
             let _args: EmptyArgs = parse_args(handler, args)?;
             run_async(browser_user_agent_state()).map(Some)
         }
-        handlers::browser::UA_SET => {
+        methods::browser::UA_SET => {
             let args: UserAgentSetArgs = parse_args(handler, args)?;
             lingxia_browser::set_user_agent_override(Some(args.user_agent))
                 .map_err(|err| err.to_string())?;
@@ -107,7 +107,7 @@ fn handle_browser_command_impl(
             }
             Ok(Some(state))
         }
-        handlers::browser::UA_RESET => {
+        methods::browser::UA_RESET => {
             let args: UserAgentResetArgs = parse_args(handler, args)?;
             lingxia_browser::set_user_agent_override(None).map_err(|err| err.to_string())?;
             let state = run_async(browser_user_agent_state())?;
@@ -116,7 +116,7 @@ fn handle_browser_command_impl(
             }
             Ok(Some(state))
         }
-        handlers::browser::EVAL => {
+        methods::browser::EVAL => {
             let args: EvalArgs = parse_args(handler, args)?;
             let tab_id = resolve_tab_id(&args.tab_id)?;
             let timeout = wait_timeout(args.timeout_ms);
@@ -153,7 +153,7 @@ fn handle_browser_command_impl(
                 }
             })
         }
-        handlers::browser::QUERY => {
+        methods::browser::QUERY => {
             let args: SelectorArgs = parse_args(handler, args)?;
             let tab_id = resolve_tab_id(&args.tab_id)?;
             let max_text = if args.full {
@@ -169,7 +169,7 @@ fn handle_browser_command_impl(
             .and_then(|result| serde_json::to_value(result).map_err(|err| err.to_string()))
             .map(Some)
         }
-        handlers::browser::WAIT => {
+        methods::browser::WAIT => {
             let args: WaitArgs = parse_args(handler, args)?;
             let tab_id = resolve_tab_id(&args.tab_id)?;
             let timeout = wait_timeout(args.timeout_ms);
@@ -177,7 +177,7 @@ fn handle_browser_command_impl(
                 .and_then(|result| serde_json::to_value(result).map_err(|err| err.to_string()))
                 .map(Some)
         }
-        handlers::browser::WAIT_URL => {
+        methods::browser::WAIT_URL => {
             let args: WaitUrlArgs = parse_args(handler, args)?;
             let tab_id = resolve_tab_id(&args.tab_id)?;
             let timeout = wait_timeout(args.timeout_ms);
@@ -199,7 +199,7 @@ fn handle_browser_command_impl(
                 .map(Some)
                 .map_err(|err| err.to_string())
         }
-        handlers::browser::WAIT_NAVIGATION => {
+        methods::browser::WAIT_NAVIGATION => {
             let args: WaitNavigationArgs = parse_args(handler, args)?;
             let tab_id = resolve_tab_id(&args.tab_id)?;
             let timeout = wait_timeout(args.timeout_ms);
@@ -223,7 +223,7 @@ fn handle_browser_command_impl(
                 .and_then(|result| serde_json::to_value(result).map_err(|err| err.to_string()))
                 .map(Some)
         }
-        handlers::browser::CLICK => {
+        methods::browser::CLICK => {
             let args: SelectorArgs = parse_args(handler, args)?;
             let tab_id = resolve_tab_id(&args.tab_id)?;
             let timeout = wait_timeout(args.timeout_ms);
@@ -245,7 +245,7 @@ fn handle_browser_command_impl(
                 Ok::<Option<Value>, String>(Some(browser_action_response("click", &tab_id, result)))
             })
         }
-        handlers::browser::TYPE => {
+        methods::browser::TYPE => {
             let args: TypeArgs = parse_args(handler, args)?;
             let tab_id = resolve_tab_id(&args.tab_id)?;
             run_async(lingxia_browser::type_text(
@@ -255,13 +255,13 @@ fn handle_browser_command_impl(
             ))?;
             Ok(Some(browser_action_response("type", &tab_id, None)))
         }
-        handlers::browser::FILL => {
+        methods::browser::FILL => {
             let args: TypeArgs = parse_args(handler, args)?;
             let tab_id = resolve_tab_id(&args.tab_id)?;
             run_async(lingxia_browser::fill(&tab_id, &args.selector, &args.text))?;
             Ok(Some(browser_action_response("fill", &tab_id, None)))
         }
-        handlers::browser::PRESS => {
+        methods::browser::PRESS => {
             let args: PressArgs = parse_args(handler, args)?;
             let tab_id = resolve_tab_id(&args.tab_id)?;
             let timeout = wait_timeout(args.timeout_ms);
@@ -283,19 +283,19 @@ fn handle_browser_command_impl(
                 Ok::<Option<Value>, String>(Some(browser_action_response("press", &tab_id, result)))
             })
         }
-        handlers::browser::SCROLL => {
+        methods::browser::SCROLL => {
             let args: ScrollArgs = parse_args(handler, args)?;
             let tab_id = resolve_tab_id(&args.tab_id)?;
             run_async(lingxia_browser::scroll(&tab_id, args.dx, args.dy))?;
             Ok(Some(browser_action_response("scroll", &tab_id, None)))
         }
-        handlers::browser::SCROLL_TO => {
+        methods::browser::SCROLL_TO => {
             let args: SelectorArgs = parse_args(handler, args)?;
             let tab_id = resolve_tab_id(&args.tab_id)?;
             run_async(lingxia_browser::scroll_to(&tab_id, &args.selector))?;
             Ok(Some(browser_action_response("scroll_to", &tab_id, None)))
         }
-        handlers::browser::COOKIES_LIST => {
+        methods::browser::COOKIES_LIST => {
             let args: CookieListArgs = parse_args(handler, args)?;
             let tab_id = resolve_tab_id(&args.tab_id)?;
             let cookies = if args.visible {
@@ -307,13 +307,13 @@ fn handle_browser_command_impl(
                 .and_then(|result| serde_json::to_value(result).map_err(|err| err.to_string()))
                 .map(Some)
         }
-        handlers::browser::COOKIES_SET => {
+        methods::browser::COOKIES_SET => {
             let args: CookieSetArgs = parse_args(handler, args)?;
             let tab_id = resolve_tab_id(&args.tab_id)?;
             run_async(lingxia_browser::set_cookie(&tab_id, args.cookie))?;
             Ok(Some(browser_action_response("cookies_set", &tab_id, None)))
         }
-        handlers::browser::COOKIES_DELETE => {
+        methods::browser::COOKIES_DELETE => {
             let args: CookieDeleteArgs = parse_args(handler, args)?;
             let tab_id = resolve_tab_id(&args.tab_id)?;
             run_async(lingxia_browser::delete_cookie(
@@ -328,7 +328,7 @@ fn handle_browser_command_impl(
                 None,
             )))
         }
-        handlers::browser::COOKIES_CLEAR => {
+        methods::browser::COOKIES_CLEAR => {
             let args: TabArgs = parse_args(handler, args)?;
             let tab_id = resolve_tab_id(&args.tab_id)?;
             run_async(lingxia_browser::clear_cookies(&tab_id))?;
@@ -338,7 +338,7 @@ fn handle_browser_command_impl(
                 None,
             )))
         }
-        handlers::browser::SCREENSHOT => {
+        methods::browser::SCREENSHOT => {
             let args: TabArgs = parse_args(handler, args)?;
             let tab_id = resolve_tab_id(&args.tab_id)?;
             let bytes = run_async(lingxia_browser::take_screenshot(&tab_id))?;
@@ -353,7 +353,7 @@ fn handle_browser_command_impl(
         // through to "unknown handler" (and lxdev gates the subcommand on a
         // Windows session before ever sending them).
         #[cfg(target_os = "windows")]
-        handlers::browser::NETWORK_ENABLE => {
+        methods::browser::NETWORK_ENABLE => {
             let args: TabArgs = parse_args(handler, args)?;
             let tab_id = resolve_tab_id(&args.tab_id)?;
             run_async(lingxia_browser::start_network_capture(&tab_id))?;
@@ -364,7 +364,7 @@ fn handle_browser_command_impl(
             )))
         }
         #[cfg(target_os = "windows")]
-        handlers::browser::NETWORK_DISABLE => {
+        methods::browser::NETWORK_DISABLE => {
             let args: TabArgs = parse_args(handler, args)?;
             let tab_id = resolve_tab_id(&args.tab_id)?;
             run_async(lingxia_browser::stop_network_capture(&tab_id))?;
@@ -375,7 +375,7 @@ fn handle_browser_command_impl(
             )))
         }
         #[cfg(target_os = "windows")]
-        handlers::browser::NETWORK_LIST => {
+        methods::browser::NETWORK_LIST => {
             let args: TabArgs = parse_args(handler, args)?;
             let tab_id = resolve_tab_id(&args.tab_id)?;
             run_async(lingxia_browser::network_entries(&tab_id))
@@ -383,7 +383,7 @@ fn handle_browser_command_impl(
                 .map(Some)
         }
         #[cfg(target_os = "windows")]
-        handlers::browser::NETWORK_CLEAR => {
+        methods::browser::NETWORK_CLEAR => {
             let args: TabArgs = parse_args(handler, args)?;
             let tab_id = resolve_tab_id(&args.tab_id)?;
             run_async(lingxia_browser::clear_network_capture(&tab_id))?;
@@ -398,10 +398,10 @@ fn handle_browser_command_impl(
         // a clear capability error instead of the generic "unknown handler", so
         // callers can tell "not supported here" apart from a genuine typo.
         #[cfg(not(target_os = "windows"))]
-        handlers::browser::NETWORK_ENABLE
-        | handlers::browser::NETWORK_DISABLE
-        | handlers::browser::NETWORK_LIST
-        | handlers::browser::NETWORK_CLEAR => {
+        methods::browser::NETWORK_ENABLE
+        | methods::browser::NETWORK_DISABLE
+        | methods::browser::NETWORK_LIST
+        | methods::browser::NETWORK_CLEAR => {
             Err("not supported: browser network capture is unavailable in this session".to_string())
         }
         _ => Err(format!("unknown browser handler: {}", handler)),
@@ -431,7 +431,7 @@ fn handle_browser_command_impl(
     _args: Option<Value>,
 ) -> Result<Option<Value>, String> {
     Err(format!(
-        "{} is unavailable because lingxia-devtool was built without the browser feature",
+        "{} is unavailable because lingxia-control-runtime was built without the browser feature",
         handler
     ))
 }

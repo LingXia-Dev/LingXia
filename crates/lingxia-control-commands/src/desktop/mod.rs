@@ -1,13 +1,18 @@
+mod backend;
+
+pub use backend::Backend;
+
+use crate::guard::gate;
 use clap::{Args, Subcommand};
 use lingxia_computer_use as cu;
 use serde::Serialize;
 
 #[derive(Args, Clone)]
 pub struct DesktopOptions {
-    /// Authorize mutating desktop commands (or set LXDEV_DESKTOP_ALLOW_CONTROL=1)
+    /// Acknowledge mutating desktop commands (or set LXDEV_DESKTOP_ALLOW_CONTROL=1)
     #[arg(long, global = true)]
     allow_control: bool,
-    /// Authorize destructive commands like `window close` (or set
+    /// Acknowledge destructive commands like `window close` (or set
     /// LXDEV_DESKTOP_ALLOW_DESTRUCTIVE=1)
     #[arg(long, global = true)]
     allow_destructive: bool,
@@ -630,26 +635,34 @@ pub enum WindowAction {
     Close(WindowSel),
 }
 
-pub fn execute(options: DesktopOptions) -> ! {
+pub fn execute(backend: &Backend, options: DesktopOptions) -> i32 {
     let allow_control = options.allow_control;
     let allow_destructive = options.allow_destructive;
     match options.command {
-        DesktopCommand::Doctor { json } => finish(json, Ok(cu::doctor()), print_doctor),
+        DesktopCommand::Doctor { json } => finish(json, backend.doctor(), print_doctor),
         DesktopCommand::Permissions { request, json } => {
+            if request {
+                // Prompting puts a system dialog in front of someone and can
+                // change what this tool is allowed to do afterwards. Reading
+                // the current grants does not.
+                if let Err(error) = gate(allow_control, false, allow_destructive) {
+                    return finish::<cu::Permissions>(json, Err(error), print_permissions);
+                }
+            }
             let perms = if request {
-                cu::request_permissions()
+                backend.request_permissions()
             } else {
-                cu::permissions()
+                backend.permissions()
             };
-            finish(json, Ok(perms), print_permissions)
+            finish(json, perms, print_permissions)
         }
-        DesktopCommand::Displays { json } => finish(json, cu::displays(), print_displays),
+        DesktopCommand::Displays { json } => finish(json, backend.displays(), print_displays),
         DesktopCommand::Windows { match_query, json } => {
             let query = match_query
                 .as_deref()
                 .map(cu::WindowQuery::parse)
                 .unwrap_or_default();
-            finish(json, cu::windows(&query), print_windows)
+            finish(json, backend.windows(&query), print_windows)
         }
         DesktopCommand::Screenshot {
             display,
@@ -657,48 +670,67 @@ pub fn execute(options: DesktopOptions) -> ! {
             region,
             output,
             json,
-        } => run_screenshot(display, window, region, output, json),
+        } => run_screenshot(backend, display, window, region, output, json),
         DesktopCommand::Pixel { at, json } => {
             let (x, y) = match parse_pair(&at) {
                 Ok(p) => p,
-                Err(e) => finish::<()>(json, Err(e), |_| {}),
+                Err(e) => return finish::<()>(json, Err(e), |_| {}),
             };
-            finish(json, cu::pixel(x, y), print_pixel)
+            finish(json, backend.pixel(x, y), print_pixel)
         }
-        DesktopCommand::Window { action } => run_window(action, allow_control, allow_destructive),
+        DesktopCommand::Window { action } => {
+            run_window(backend, action, allow_control, allow_destructive)
+        }
+        // The gate comes first. Resolving a target activates the window on
+        // Windows, and foregrounding someone's app is already a change to their
+        // machine — doing it and *then* refusing the command is a refusal that
+        // has already had an effect.
         DesktopCommand::Pointer {
             window,
             pid,
             action,
-        } => match resolve_target(pid, window) {
-            Ok(t) => run_pointer(action, t, allow_control, allow_destructive),
+        } => match gate(allow_control, false, allow_destructive)
+            .and_then(|()| resolve_target(backend, pid, window))
+        {
+            Ok(t) => run_pointer(backend, action, t, allow_control, allow_destructive),
             Err(e) => finish::<cu::Ack>(action.json(), Err(e), print_ack),
         },
         DesktopCommand::Key {
             window,
             pid,
             action,
-        } => match resolve_target(pid, window) {
-            Ok(t) => run_key(action, t, allow_control, allow_destructive),
+        } => match gate(allow_control, false, allow_destructive)
+            .and_then(|()| resolve_target(backend, pid, window))
+        {
+            Ok(t) => run_key(backend, action, t, allow_control, allow_destructive),
             Err(e) => finish::<cu::Ack>(action.json(), Err(e), print_ack),
         },
         DesktopCommand::Clipboard { action } => {
-            run_clipboard(action, allow_control, allow_destructive)
+            run_clipboard(backend, action, allow_control, allow_destructive)
         }
-        DesktopCommand::Ax { action } => run_ax(action, allow_control, allow_destructive),
-        DesktopCommand::Wait { action } => run_wait(action),
-        DesktopCommand::App { action } => run_app(action, allow_control, allow_destructive),
-        DesktopCommand::Process { action } => run_process(action, allow_control, allow_destructive),
+        DesktopCommand::Ax { action } => run_ax(backend, action, allow_control, allow_destructive),
+        DesktopCommand::Wait { action } => run_wait(backend, action),
+        DesktopCommand::App { action } => {
+            run_app(backend, action, allow_control, allow_destructive)
+        }
+        DesktopCommand::Process { action } => {
+            run_process(backend, action, allow_control, allow_destructive)
+        }
         DesktopCommand::Snapshot {
             window,
             no_ax,
             depth,
             json: _,
-        } => run_snapshot(window, no_ax, depth),
+        } => run_snapshot(backend, window, no_ax, depth),
     }
 }
 
-fn run_app(action: AppAction, allow_control: bool, allow_destructive: bool) -> ! {
+fn run_app(
+    backend: &Backend,
+    action: AppAction,
+    allow_control: bool,
+    allow_destructive: bool,
+) -> i32 {
     match action {
         AppAction::Launch {
             app,
@@ -708,7 +740,7 @@ fn run_app(action: AppAction, allow_control: bool, allow_destructive: bool) -> !
             json,
         } => {
             let r = gate(allow_control, false, allow_destructive)
-                .and_then(|_| cu::app::launch(&app, &args, wait_window.as_deref(), timeout_ms));
+                .and_then(|_| backend.app_launch(&app, &args, wait_window.as_deref(), timeout_ms));
             finish(json, r, |lr: &cu::LaunchResult| {
                 let win = lr
                     .window
@@ -741,16 +773,21 @@ fn run_app(action: AppAction, allow_control: bool, allow_destructive: bool) -> !
             };
             let r = gate(allow_control, true, allow_destructive)
                 .and(target)
-                .and_then(|t| cu::app::quit(t, force));
+                .and_then(|t| backend.app_quit(t, force));
             finish(json, r, print_ack)
         }
     }
 }
 
-fn run_process(action: ProcessAction, allow_control: bool, allow_destructive: bool) -> ! {
+fn run_process(
+    backend: &Backend,
+    action: ProcessAction,
+    allow_control: bool,
+    allow_destructive: bool,
+) -> i32 {
     match action {
         ProcessAction::List { match_query, json } => {
-            finish(json, cu::process::list(match_query.as_deref()), |ps| {
+            finish(json, backend.process_list(match_query.as_deref()), |ps| {
                 for p in ps {
                     println!("{:<8}  {}", p.pid, p.name);
                 }
@@ -758,29 +795,29 @@ fn run_process(action: ProcessAction, allow_control: bool, allow_destructive: bo
         }
         ProcessAction::Kill { pid, force, json } => {
             let r = gate(allow_control, true, allow_destructive)
-                .and_then(|_| cu::process::kill(pid, force));
+                .and_then(|_| backend.process_kill(pid, force));
             finish(json, r, print_ack)
         }
     }
 }
 
-fn run_snapshot(window: String, no_ax: bool, depth: Option<u32>) -> ! {
+fn run_snapshot(backend: &Backend, window: String, no_ax: bool, depth: Option<u32>) -> i32 {
     use base64::Engine as _;
     let target = cu::WindowTarget::Id(window.clone());
-    let info = match cu::window::status(&target) {
+    let info = match backend.window_status(&target) {
         Ok(w) => w,
-        Err(e) => finish::<()>(true, Err(e), |_| {}),
+        Err(e) => return finish::<()>(true, Err(e), |_| {}),
     };
-    let shot = match cu::screenshot(cu::CaptureTarget::Window(window.clone())) {
+    let shot = match backend.screenshot(cu::CaptureTarget::Window(window.clone())) {
         Ok(shot) => shot,
-        Err(e) => finish::<()>(true, Err(e), |_| {}),
+        Err(e) => return finish::<()>(true, Err(e), |_| {}),
     };
     let ax = if no_ax {
         None
     } else {
-        match cu::ax::tree(&window, depth, None) {
+        match backend.ax_tree(&window, depth, None) {
             Ok(ax) => Some(ax),
-            Err(e) => finish::<()>(true, Err(e), |_| {}),
+            Err(e) => return finish::<()>(true, Err(e), |_| {}),
         }
     };
     let envelope = serde_json::json!({
@@ -801,17 +838,22 @@ fn run_snapshot(window: String, no_ax: bool, depth: Option<u32>) -> ! {
         "{}",
         serde_json::to_string_pretty(&envelope).unwrap_or_default()
     );
-    std::process::exit(0);
+    0
 }
 
-fn run_ax(action: AxAction, allow_control: bool, allow_destructive: bool) -> ! {
+fn run_ax(
+    backend: &Backend,
+    action: AxAction,
+    allow_control: bool,
+    allow_destructive: bool,
+) -> i32 {
     match action {
         AxAction::Tree {
             window,
             depth,
             max_nodes,
             json,
-        } => finish(json, cu::ax::tree(&window, depth, max_nodes), |n| {
+        } => finish(json, backend.ax_tree(&window, depth, max_nodes), |n| {
             print_ax_tree(n, 0)
         }),
         AxAction::Query {
@@ -822,7 +864,11 @@ fn run_ax(action: AxAction, allow_control: bool, allow_destructive: bool) -> ! {
             json,
         } => {
             let q = cu::AxQuery::parse(&match_query);
-            finish(json, cu::ax::query(&window, &q, all, index), print_ax_nodes)
+            finish(
+                json,
+                backend.ax_query(&window, &q, all, index),
+                print_ax_nodes,
+            )
         }
         AxAction::Invoke {
             window,
@@ -831,28 +877,33 @@ fn run_ax(action: AxAction, allow_control: bool, allow_destructive: bool) -> ! {
         } => {
             let q = cu::AxQuery::parse(&match_query);
             let r = gate(allow_control, false, allow_destructive)
-                .and_then(|_| cu::ax::invoke(&window, &q));
+                .and_then(|_| backend.ax_invoke(&window, &q));
             finish(json, r, print_ack)
         }
-        AxAction::Focus(s) => ax_act(s, allow_control, allow_destructive, cu::ax::focus),
-        AxAction::Select(s) => ax_act(s, allow_control, allow_destructive, cu::ax::select),
-        AxAction::Expand(s) => ax_act(s, allow_control, allow_destructive, cu::ax::expand),
-        AxAction::Collapse(s) => ax_act(s, allow_control, allow_destructive, cu::ax::collapse),
-        AxAction::ScrollIntoView(s) => ax_act(
-            s,
-            allow_control,
-            allow_destructive,
-            cu::ax::scroll_into_view,
-        ),
+        AxAction::Focus(s) => ax_act(s, allow_control, allow_destructive, |w, q| {
+            backend.ax_focus(w, q)
+        }),
+        AxAction::Select(s) => ax_act(s, allow_control, allow_destructive, |w, q| {
+            backend.ax_select(w, q)
+        }),
+        AxAction::Expand(s) => ax_act(s, allow_control, allow_destructive, |w, q| {
+            backend.ax_expand(w, q)
+        }),
+        AxAction::Collapse(s) => ax_act(s, allow_control, allow_destructive, |w, q| {
+            backend.ax_collapse(w, q)
+        }),
+        AxAction::ScrollIntoView(s) => ax_act(s, allow_control, allow_destructive, |w, q| {
+            backend.ax_scroll_into_view(w, q)
+        }),
         AxAction::SetValue { sel, value } => {
             ax_act(sel, allow_control, allow_destructive, move |w, q| {
-                cu::ax::set_value(w, q, &value)
+                backend.ax_set_value(w, q, &value)
             })
         }
         AxAction::HitTest { at, json, .. } => {
             // Read-only: no gate. Window scope is advisory (ElementFromPoint is
             // screen-global).
-            let result = parse_pair(&at).and_then(|(x, y)| cu::ax::hit_test(x, y));
+            let result = parse_pair(&at).and_then(|(x, y)| backend.ax_hit_test(x, y));
             finish(json, result, |n| print_ax_tree(n, 0))
         }
     }
@@ -864,13 +915,13 @@ fn ax_act(
     allow_control: bool,
     allow_destructive: bool,
     op: impl Fn(&str, &cu::AxQuery) -> cu::Result<cu::Ack>,
-) -> ! {
+) -> i32 {
     let q = cu::AxQuery::parse(&sel.match_query);
     let r = gate(allow_control, false, allow_destructive).and_then(|_| op(&sel.window, &q));
     finish(sel.json, r, print_ack)
 }
 
-fn run_wait(action: WaitAction) -> ! {
+fn run_wait(backend: &Backend, action: WaitAction) -> i32 {
     match action {
         WaitAction::Window {
             match_query,
@@ -881,13 +932,13 @@ fn run_wait(action: WaitAction) -> ! {
             let q = cu::WindowQuery::parse(&match_query);
             match state {
                 Some(WindowVisibility::Hidden) => {
-                    finish(json, wait_window_hidden(&q, timeout_ms), |r| {
+                    finish(json, wait_window_hidden(backend, &q, timeout_ms), |r| {
                         println!("window state {}", r.state)
                     })
                 }
                 _ => finish(
                     json,
-                    cu::wait_window(&q, state.map(WindowVisibility::as_bool), timeout_ms),
+                    backend.wait_window(&q, state.map(WindowVisibility::as_bool), timeout_ms),
                     print_window_one,
                 ),
             }
@@ -902,7 +953,7 @@ fn run_wait(action: WaitAction) -> ! {
             let q = cu::AxQuery::parse(&match_query);
             finish(
                 json,
-                cu::ax::wait(&window, &q, state.as_str(), timeout_ms),
+                backend.ax_wait(&window, &q, state.as_str(), timeout_ms),
                 print_ack,
             )
         }
@@ -915,21 +966,25 @@ fn run_wait(action: WaitAction) -> ! {
         } => {
             let (x, y) = match parse_pair(&at) {
                 Ok(p) => p,
-                Err(e) => finish::<()>(json, Err(e), |_| {}),
+                Err(e) => return finish::<()>(json, Err(e), |_| {}),
             };
             finish(
                 json,
-                cu::wait_pixel(x, y, &color, tolerance, timeout_ms),
+                backend.wait_pixel(x, y, &color, tolerance, timeout_ms),
                 print_pixel,
             )
         }
     }
 }
 
-fn wait_window_hidden(query: &cu::WindowQuery, timeout_ms: u64) -> cu::Result<WaitWindowHidden> {
+fn wait_window_hidden(
+    backend: &Backend,
+    query: &cu::WindowQuery,
+    timeout_ms: u64,
+) -> cu::Result<WaitWindowHidden> {
     let deadline = std::time::Instant::now() + std::time::Duration::from_millis(timeout_ms);
     loop {
-        let visible = cu::windows(query)?;
+        let visible = backend.windows(query)?;
         if visible.is_empty() {
             return Ok(WaitWindowHidden {
                 ok: true,
@@ -984,20 +1039,29 @@ fn print_ax_nodes(nodes: &Vec<cu::AxNode>) {
     }
 }
 
-fn run_clipboard(action: ClipboardAction, allow_control: bool, allow_destructive: bool) -> ! {
-    use cu::clipboard as c;
+fn run_clipboard(
+    backend: &Backend,
+    action: ClipboardAction,
+    allow_control: bool,
+    allow_destructive: bool,
+) -> i32 {
     match action {
-        ClipboardAction::Get { json } => finish(json, c::get(), print_clipboard),
+        ClipboardAction::Get { json } => finish(json, backend.clipboard_get(), print_clipboard),
         ClipboardAction::Set { text, json } => {
-            let r = gate(allow_control, false, allow_destructive).and_then(|_| c::set(&text));
+            let r = gate(allow_control, false, allow_destructive)
+                .and_then(|_| backend.clipboard_set(&text));
             finish(json, r, print_ack)
         }
         ClipboardAction::Clear { json } => {
-            let r = gate(allow_control, false, allow_destructive).and_then(|_| c::clear());
+            // Whatever was on the clipboard is not coming back, and it may be
+            // the only copy of something a person cut a moment ago.
+            let r = gate(allow_control, true, allow_destructive)
+                .and_then(|_| backend.clipboard_clear());
             finish(json, r, print_ack)
         }
         ClipboardAction::Paste { json } => {
-            let r = gate(allow_control, false, allow_destructive).and_then(|_| c::paste());
+            let r = gate(allow_control, false, allow_destructive)
+                .and_then(|_| backend.clipboard_paste());
             finish(json, r, print_ack)
         }
     }
@@ -1016,24 +1080,39 @@ fn print_ack(a: &cu::Ack) {
 
 /// Resolve an optional app target. Windows SendInput cannot address background
 /// apps, so the CLI activates the target before issuing foreground input.
-fn resolve_target(pid: Option<u32>, window: Option<String>) -> cu::Result<Option<u32>> {
+struct InputTarget {
+    delivery_pid: Option<u32>,
+    window_id: Option<String>,
+}
+
+fn resolve_target(
+    backend: &Backend,
+    pid: Option<u32>,
+    window: Option<String>,
+) -> cu::Result<InputTarget> {
     match (pid, window) {
         (Some(_), Some(_)) => Err(cu::Error::Usage("pass only one of --window / --pid".into())),
         #[cfg(target_os = "windows")]
         (None, Some(id)) => {
-            cu::window::activate(&cu::WindowTarget::Id(id))?;
-            Ok(None)
+            let window = backend.window_activate(&cu::WindowTarget::Id(id))?;
+            Ok(InputTarget {
+                delivery_pid: None,
+                window_id: Some(window.id),
+            })
         }
         #[cfg(target_os = "windows")]
         (Some(pid), None) => {
-            let windows = cu::windows(&cu::WindowQuery::parse(&format!("pid:{pid}")))?;
+            let windows = backend.windows(&cu::WindowQuery::parse(&format!("pid:{pid}")))?;
             match windows.as_slice() {
                 [] => Err(cu::Error::NotFound(format!(
                     "no visible window found for pid {pid}"
                 ))),
                 [window] => {
-                    cu::window::activate(&cu::WindowTarget::Id(window.id.clone()))?;
-                    Ok(None)
+                    backend.window_activate(&cu::WindowTarget::Id(window.id.clone()))?;
+                    Ok(InputTarget {
+                        delivery_pid: None,
+                        window_id: Some(window.id.clone()),
+                    })
                 }
                 _ => Err(cu::Error::Ambiguous(format!(
                     "pid {pid} has {} visible windows; pass --window <id>",
@@ -1042,36 +1121,52 @@ fn resolve_target(pid: Option<u32>, window: Option<String>) -> cu::Result<Option
             }
         }
         #[cfg(not(target_os = "windows"))]
-        (None, Some(id)) => Ok(Some(cu::window::status(&cu::WindowTarget::Id(id))?.pid)),
+        (None, Some(id)) => {
+            let window = backend.window_status(&cu::WindowTarget::Id(id))?;
+            Ok(InputTarget {
+                delivery_pid: Some(window.pid),
+                window_id: Some(window.id),
+            })
+        }
         #[cfg(not(target_os = "windows"))]
-        (Some(pid), None) => Ok(Some(pid)),
-        (None, None) => Ok(None),
+        (Some(pid), None) => Ok(InputTarget {
+            delivery_pid: Some(pid),
+            window_id: None,
+        }),
+        (None, None) => Ok(InputTarget {
+            delivery_pid: None,
+            window_id: None,
+        }),
     }
 }
 
 fn run_pointer(
+    backend: &Backend,
     action: PointerAction,
-    target: Option<u32>,
+    target: InputTarget,
     allow_control: bool,
     allow_destructive: bool,
-) -> ! {
-    use cu::input as i;
+) -> i32 {
     let g = gate(allow_control, false, allow_destructive);
+    let delivery_pid = target.delivery_pid;
+    let window_id = target.window_id.as_deref();
     let (json, result) = match action {
         PointerAction::Move { at, json } => (
             json,
             g.and_then(|_| parse_pair(&at))
-                .and_then(|(x, y)| i::pointer_move(x, y, target)),
+                .and_then(|(x, y)| backend.pointer_move(x, y, delivery_pid, window_id)),
         ),
         PointerAction::Down { at, button, json } => (
             json,
-            g.and_then(|_| parse_pair(&at))
-                .and_then(|(x, y)| i::pointer_down(x, y, button.into(), target)),
+            g.and_then(|_| parse_pair(&at)).and_then(|(x, y)| {
+                backend.pointer_down(x, y, button.into(), delivery_pid, window_id)
+            }),
         ),
         PointerAction::Up { at, button, json } => (
             json,
-            g.and_then(|_| parse_pair(&at))
-                .and_then(|(x, y)| i::pointer_up(x, y, button.into(), target)),
+            g.and_then(|_| parse_pair(&at)).and_then(|(x, y)| {
+                backend.pointer_up(x, y, button.into(), delivery_pid, window_id)
+            }),
         ),
         PointerAction::Click {
             at,
@@ -1080,8 +1175,9 @@ fn run_pointer(
             json,
         } => (
             json,
-            g.and_then(|_| parse_pair(&at))
-                .and_then(|(x, y)| i::pointer_click(x, y, button.into(), count, target)),
+            g.and_then(|_| parse_pair(&at)).and_then(|(x, y)| {
+                backend.pointer_click(x, y, button.into(), count, delivery_pid, window_id)
+            }),
         ),
         PointerAction::Drag {
             from,
@@ -1092,68 +1188,63 @@ fn run_pointer(
             json,
             g.and_then(|_| Ok((parse_pair(&from)?, parse_pair(&to)?)))
                 .and_then(|((fx, fy), (tx, ty))| {
-                    i::pointer_drag(fx, fy, tx, ty, button.into(), target)
+                    backend.pointer_drag(fx, fy, tx, ty, button.into(), delivery_pid, window_id)
                 }),
         ),
         PointerAction::Scroll { at, dx, dy, json } => (
             json,
             g.and_then(|_| parse_pair(&at))
-                .and_then(|(x, y)| i::pointer_scroll(x, y, dx, dy, target)),
+                .and_then(|(x, y)| backend.pointer_scroll(x, y, dx, dy, delivery_pid, window_id)),
         ),
     };
     finish(json, result, print_ack)
 }
 
 fn run_key(
+    backend: &Backend,
     action: KeyAction,
-    target: Option<u32>,
+    target: InputTarget,
     allow_control: bool,
     allow_destructive: bool,
-) -> ! {
-    use cu::input as i;
+) -> i32 {
     let g = gate(allow_control, false, allow_destructive);
+    let delivery_pid = target.delivery_pid;
+    let window_id = target.window_id.as_deref();
     let (json, result) = match action {
-        KeyAction::Type { text, json } => (json, g.and_then(|_| i::key_type(&text, target))),
+        KeyAction::Type { text, json } => (
+            json,
+            g.and_then(|_| backend.key_type(&text, delivery_pid, window_id)),
+        ),
         KeyAction::Press {
             key,
             modifier,
             json,
         } => {
             let mods: Vec<cu::Modifier> = modifier.into_iter().map(Into::into).collect();
-            (json, g.and_then(|_| i::key_press(&key, &mods, target)))
+            (
+                json,
+                g.and_then(|_| backend.key_press(&key, &mods, delivery_pid, window_id)),
+            )
         }
-        KeyAction::Down { key, json } => (json, g.and_then(|_| i::key_down(&key, target))),
-        KeyAction::Up { key, json } => (json, g.and_then(|_| i::key_up(&key, target))),
+        KeyAction::Down { key, json } => (
+            json,
+            g.and_then(|_| backend.key_down(&key, delivery_pid, window_id)),
+        ),
+        KeyAction::Up { key, json } => (
+            json,
+            g.and_then(|_| backend.key_up(&key, delivery_pid, window_id)),
+        ),
     };
     finish(json, result, print_ack)
 }
 
-fn env_flag(name: &str) -> bool {
-    std::env::var(name)
-        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
-        .unwrap_or(false)
-}
-
-/// Authorize a mutating (and optionally destructive) desktop command.
-fn gate(allow_control: bool, destructive: bool, allow_destructive: bool) -> cu::Result<()> {
-    if !(allow_control || env_flag("LXDEV_DESKTOP_ALLOW_CONTROL")) {
-        return Err(cu::Error::Permission(
-            "mutating desktop command needs --allow-control (or LXDEV_DESKTOP_ALLOW_CONTROL=1)"
-                .into(),
-        ));
-    }
-    if destructive && !(allow_destructive || env_flag("LXDEV_DESKTOP_ALLOW_DESTRUCTIVE")) {
-        return Err(cu::Error::Permission(
-            "destructive desktop command needs --allow-destructive (or LXDEV_DESKTOP_ALLOW_DESTRUCTIVE=1)"
-                .into(),
-        ));
-    }
-    Ok(())
-}
-
-fn run_window(action: WindowAction, allow_control: bool, allow_destructive: bool) -> ! {
-    use cu::window as w;
-
+/// Require acknowledgement for a mutating (and optionally destructive) command.
+fn run_window(
+    backend: &Backend,
+    action: WindowAction,
+    allow_control: bool,
+    allow_destructive: bool,
+) -> i32 {
     // A gated single-target op that returns the updated window record.
     fn gated(
         sel: WindowSel,
@@ -1161,7 +1252,7 @@ fn run_window(action: WindowAction, allow_control: bool, allow_destructive: bool
         destructive: bool,
         allow_destructive: bool,
         op: impl Fn(&cu::WindowTarget) -> cu::Result<cu::Window>,
-    ) -> ! {
+    ) -> i32 {
         let json = sel.json;
         let result = gate(allow_control, destructive, allow_destructive)
             .and_then(|_| sel.target())
@@ -1174,40 +1265,46 @@ fn run_window(action: WindowAction, allow_control: bool, allow_destructive: bool
             let json = sel.json;
             finish(
                 json,
-                sel.target().and_then(|t| w::status(&t)),
+                sel.target().and_then(|t| backend.window_status(&t)),
                 print_window_one,
             )
         }
-        WindowAction::Focus(sel) => gated(sel, allow_control, false, allow_destructive, w::focus),
-        WindowAction::Raise(sel) => gated(sel, allow_control, false, allow_destructive, w::raise),
-        WindowAction::Minimize(sel) => {
-            gated(sel, allow_control, false, allow_destructive, w::minimize)
-        }
-        WindowAction::Maximize(sel) => {
-            gated(sel, allow_control, false, allow_destructive, w::maximize)
-        }
-        WindowAction::Restore(sel) => {
-            gated(sel, allow_control, false, allow_destructive, w::restore)
-        }
+        WindowAction::Focus(sel) => gated(sel, allow_control, false, allow_destructive, |t| {
+            backend.window_focus(t)
+        }),
+        WindowAction::Raise(sel) => gated(sel, allow_control, false, allow_destructive, |t| {
+            backend.window_raise(t)
+        }),
+        WindowAction::Minimize(sel) => gated(sel, allow_control, false, allow_destructive, |t| {
+            backend.window_minimize(t)
+        }),
+        WindowAction::Maximize(sel) => gated(sel, allow_control, false, allow_destructive, |t| {
+            backend.window_maximize(t)
+        }),
+        WindowAction::Restore(sel) => gated(sel, allow_control, false, allow_destructive, |t| {
+            backend.window_restore(t)
+        }),
         WindowAction::AlwaysOnTop { sel, state } => {
             let on = state.as_bool();
             gated(sel, allow_control, false, allow_destructive, move |t| {
-                w::set_always_on_top(t, on)
+                backend.window_set_always_on_top(t, on)
             })
         }
-        WindowAction::Close(sel) => gated(sel, allow_control, true, allow_destructive, w::close),
-        WindowAction::Activate(sel) => {
-            gated(sel, allow_control, false, allow_destructive, w::activate)
-        }
+        WindowAction::Close(sel) => gated(sel, allow_control, true, allow_destructive, |t| {
+            backend.window_close(t)
+        }),
+        WindowAction::Activate(sel) => gated(sel, allow_control, false, allow_destructive, |t| {
+            backend.window_activate(t)
+        }),
         WindowAction::Move { sel, to, display } => {
             let json = sel.json;
             let result = gate(allow_control, false, allow_destructive)
                 .and_then(|_| sel.target())
                 .and_then(|t| match (&display, &to) {
-                    (Some(d), _) => w::move_to_display(&t, d),
+                    (Some(d), _) => backend.window_move_display(&t, d),
                     (None, Some(xy)) => {
                         let (x, y) = parse_pair(xy)?;
-                        w::move_to(&t, x, y)
+                        backend.window_move(&t, x, y)
                     }
                     (None, None) => Err(cu::Error::Usage("pass --to X,Y or --display <id>".into())),
                 });
@@ -1219,7 +1316,7 @@ fn run_window(action: WindowAction, allow_control: bool, allow_destructive: bool
                 .and_then(|_| sel.target())
                 .and_then(|t| {
                     let (wd, ht) = parse_pair(&to)?;
-                    w::resize(&t, wd, ht)
+                    backend.window_resize(&t, wd, ht)
                 });
             finish(json, result, print_window_one)
         }
@@ -1263,15 +1360,16 @@ fn parse_pair(s: &str) -> cu::Result<(i32, i32)> {
 }
 
 fn run_screenshot(
+    backend: &Backend,
     display: Option<usize>,
     window: Option<String>,
     region: Option<String>,
     output: Option<String>,
     json: bool,
-) -> ! {
+) -> i32 {
     let selectors = display.is_some() as u8 + window.is_some() as u8 + region.is_some() as u8;
     if selectors > 1 {
-        finish::<()>(
+        return finish::<()>(
             json,
             Err(cu::Error::Usage(
                 "pass at most one of --display / --window / --region".into(),
@@ -1286,15 +1384,15 @@ fn run_screenshot(
     } else if let Some(r) = region {
         match parse_region(&r) {
             Ok(t) => t,
-            Err(e) => finish::<()>(json, Err(e), |_| {}),
+            Err(e) => return finish::<()>(json, Err(e), |_| {}),
         }
     } else {
         cu::CaptureTarget::Screen
     };
 
-    let capture = match cu::screenshot(target) {
+    let capture = match backend.screenshot(target) {
         Ok(c) => c,
-        Err(e) => finish::<()>(json, Err(e), |_| {}),
+        Err(e) => return finish::<()>(json, Err(e), |_| {}),
     };
 
     if json {
@@ -1318,15 +1416,15 @@ fn run_screenshot(
             "{}",
             serde_json::to_string_pretty(&envelope).unwrap_or_default()
         );
-        std::process::exit(0);
+        return 0;
     }
 
     let ts = chrono::Local::now().format("%Y%m%d-%H%M%S");
-    match crate::screenshot::write_png(output, format!("desktop-{ts}.png"), &capture.png) {
-        Ok(()) => std::process::exit(0),
+    match crate::output::write_png(output, format!("desktop-{ts}.png"), &capture.png) {
+        Ok(()) => 0,
         Err(e) => {
             eprintln!("Error: {e}");
-            std::process::exit(10);
+            10
         }
     }
 }
@@ -1367,7 +1465,7 @@ fn print_pixel(p: &cu::Pixel) {
 
 /// Emit the result and exit with the contract's exit code. `desktop` commands
 /// run locally (no dev session), so they own their process exit directly.
-fn finish<T: Serialize>(json: bool, result: cu::Result<T>, human: impl Fn(&T)) -> ! {
+fn finish<T: Serialize>(json: bool, result: cu::Result<T>, human: impl Fn(&T)) -> i32 {
     match result {
         Ok(value) => {
             if json {
@@ -1375,13 +1473,13 @@ fn finish<T: Serialize>(json: bool, result: cu::Result<T>, human: impl Fn(&T)) -
                     Ok(text) => println!("{text}"),
                     Err(err) => {
                         eprintln!("Error: failed to serialize output: {err}");
-                        std::process::exit(10);
+                        return 10;
                     }
                 }
             } else {
                 human(&value);
             }
-            std::process::exit(0);
+            0
         }
         Err(err) => {
             if json {
@@ -1399,7 +1497,7 @@ fn finish<T: Serialize>(json: bool, result: cu::Result<T>, human: impl Fn(&T)) -
             } else {
                 eprintln!("Error: {err}");
             }
-            std::process::exit(err.exit_code());
+            err.exit_code()
         }
     }
 }
@@ -1438,7 +1536,7 @@ fn print_permissions(p: &cu::Permissions) {
     print_permission_lines(p);
     if !(p.accessibility && p.screen_recording && p.input) {
         println!(
-            "\nSome permissions are missing. Run `lxdev desktop permissions --request` to prompt,\nthen grant them in System Settings › Privacy & Security and relaunch."
+            "\nSome permissions are missing. Run `desktop permissions --request` to prompt,\nthen grant them in System Settings › Privacy & Security and relaunch."
         );
     }
 }
@@ -1500,5 +1598,17 @@ fn truncate(s: &str, max: usize) -> String {
             "{}…",
             s.chars().take(max.saturating_sub(1)).collect::<String>()
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::Parser;
+
+    #[derive(Parser)]
+    struct Cli {
+        #[command(subcommand)]
+        command: DesktopCommand,
     }
 }

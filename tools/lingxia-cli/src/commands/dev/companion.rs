@@ -1,7 +1,11 @@
 use anyhow::{Context, Result, anyhow, bail};
-use lingxia_devtool_protocol::{
-    DEV_SESSION_PROTOCOL_VERSION, DevSessionEvent, DevSessionMessage, DevSessionPrepareResult,
-    DevSessionRole, capabilities, handlers,
+use lingxia_control_protocol::{
+    ControlRequest, ControlResponse,
+    dev_session::{
+        DEV_SESSION_PROTOCOL_VERSION, DevSessionEvent, DevSessionMessage, DevSessionPrepareResult,
+        DevSessionRole, capabilities,
+    },
+    methods,
 };
 use serde::Deserialize;
 use std::collections::{BTreeMap, HashSet};
@@ -146,11 +150,11 @@ impl DevCompanion {
 
         if let Err(error) = write_message(
             &mut stdin,
-            &DevSessionMessage::Request {
+            &DevSessionMessage::Request(ControlRequest {
                 id: PREPARE_REQUEST_ID.to_string(),
-                method: handlers::session::PREPARE.to_string(),
+                method: methods::session::PREPARE.to_string(),
                 params: None,
-            },
+            }),
         ) {
             stop_child_tree(&mut child);
             return Err(error);
@@ -163,7 +167,7 @@ impl DevCompanion {
                 return Err(error);
             }
         };
-        let DevSessionMessage::Response { id, result, error } = response else {
+        let DevSessionMessage::Response(ControlResponse { id, result, error }) = response else {
             stop_child_tree(&mut child);
             bail!("Development companion must respond to session.prepare before sending events");
         };
@@ -341,7 +345,7 @@ fn validate_events(events: &[DevSessionEvent]) -> Result<()> {
         if event.kind.trim().is_empty() {
             bail!("Development companion event kind cannot be empty");
         }
-        if event.kind == lingxia_devtool_protocol::event_kinds::LOG {
+        if event.kind == lingxia_control_protocol::dev_session::event_kinds::LOG {
             event
                 .as_log()
                 .context("Development companion sent an invalid log event")?;
@@ -507,7 +511,7 @@ fn stop_child_tree(child: &mut Child) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lingxia_devtool_protocol::{DevSessionLog, DevSessionLogLevel};
+    use lingxia_control_protocol::dev_session::{DevSessionLog, DevSessionLogLevel};
 
     #[test]
     fn config_is_a_single_argv() {

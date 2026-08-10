@@ -27,6 +27,9 @@ browser-core = ["browser-runtime"]
 browser-shell = ["browser-runtime", "dep:lingxia-browser-shell"]
 proxy = ["browser-shell", "lingxia-browser-shell/proxy"]
 terminal-runtime = ["dep:lingxia-terminal"]
+# The product's executable doubling as its own command line. Derived from the
+# `*Use` capabilities; clap only appears in a product that ships one.
+product-cli = ["dep:lingxia-control-commands"]
 webview-input = ["lingxia-webview/webview-input"]
 
 [dependencies]
@@ -40,6 +43,7 @@ lingxia-media = { workspace = true }
 lingxia-service = { workspace = true }
 lingxia-transfer = { workspace = true }
 lingxia-terminal = { workspace = true, optional = true }
+lingxia-control-commands = { workspace = true, optional = true }
 lingxia-browser = { workspace = true, optional = true }
 lingxia-logic = { workspace = true, optional = true }
 lingxia-automation = { workspace = true, optional = true }

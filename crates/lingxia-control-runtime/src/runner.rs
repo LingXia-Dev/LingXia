@@ -1,7 +1,7 @@
-//! `runner.*` handlers: the simulated environment (device preset, orientation,
+//! `runner.*` methods: the simulated environment (device preset, orientation,
 //! appearance) owned by the runner host.
 
-use lingxia_devtool_protocol::handlers;
+use lingxia_control_protocol::methods;
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -27,13 +27,13 @@ struct RunnerSetArgs {
 
 fn handle_runner_command_impl(handler: &str, args: Option<Value>) -> Result<Option<Value>, String> {
     match handler {
-        handlers::runner::PRESETS => serde_json::to_value(lingxia::dev::device_list()?)
+        methods::runner::PRESETS => serde_json::to_value(lingxia::dev::device_list()?)
             .map(Some)
             .map_err(|err| err.to_string()),
-        handlers::runner::GET => serde_json::to_value(lingxia::dev::device_get()?)
+        methods::runner::GET => serde_json::to_value(lingxia::dev::device_get()?)
             .map(Some)
             .map_err(|err| err.to_string()),
-        handlers::runner::SET => {
+        methods::runner::SET => {
             let parsed: RunnerSetArgs = match args {
                 Some(value) => serde_json::from_value(value)
                     .map_err(|e| format!("invalid args for {}: {}", handler, e))?,

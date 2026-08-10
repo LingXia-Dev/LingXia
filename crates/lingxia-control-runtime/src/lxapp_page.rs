@@ -1,5 +1,5 @@
 use crate::util::{png_response, run_async};
-use lingxia_devtool_protocol::handlers;
+use lingxia_control_protocol::methods;
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::time::Duration;
@@ -23,19 +23,19 @@ fn handle_lxapp_page_command_impl(
     args: Option<Value>,
 ) -> Result<Option<Value>, String> {
     match handler {
-        handlers::lxapp_page::CURRENT => {
+        methods::lxapp_page::CURRENT => {
             let args: PageTargetArgs = parse_args(handler, args)?;
             let info = lingxia::dev::lxapp_dev_page_current(args.appid.as_deref())?;
             serde_json::to_value(info)
                 .map(Some)
                 .map_err(|err| err.to_string())
         }
-        handlers::lxapp_page::LIST => {
+        methods::lxapp_page::LIST => {
             let args: AppArgs = parse_args(handler, args)?;
             let pages = lingxia::dev::lxapp_dev_page_list(args.appid.as_deref())?;
             Ok(Some(page_list_response(pages)))
         }
-        handlers::lxapp_page::INFO => {
+        methods::lxapp_page::INFO => {
             let args: PageTargetArgs = parse_args(handler, args)?;
             let info =
                 lingxia::dev::lxapp_dev_page_info(args.appid.as_deref(), args.page.as_deref())?;
@@ -43,7 +43,7 @@ fn handle_lxapp_page_command_impl(
                 .map(Some)
                 .map_err(|err| err.to_string())
         }
-        handlers::lxapp_page::WAIT => {
+        methods::lxapp_page::WAIT => {
             let args: WaitArgs = parse_args(handler, args)?;
             let state = args.state.unwrap_or(if args.selector.is_some() {
                 lingxia::dev::LxAppDevPageWaitState::Attached
@@ -63,7 +63,7 @@ fn handle_lxapp_page_command_impl(
                 .map(Some)
                 .map_err(|err| err.to_string())
         }
-        handlers::lxapp_page::EVAL => {
+        methods::lxapp_page::EVAL => {
             let args: EvalArgs = parse_args(handler, args)?;
             let timeout = Duration::from_millis(args.timeout_ms.unwrap_or_else(|| {
                 u64::try_from(DEFAULT_EVAL_TIMEOUT.as_millis()).unwrap_or(5000)
@@ -82,7 +82,7 @@ fn handle_lxapp_page_command_impl(
             })?;
             Ok(Some(json!({ "value": value })))
         }
-        handlers::lxapp_page::QUERY => {
+        methods::lxapp_page::QUERY => {
             let args: QueryArgs = parse_args(handler, args)?;
             let max_text = args
                 .max_text
@@ -97,7 +97,7 @@ fn handle_lxapp_page_command_impl(
             ))
             .map(Some)
         }
-        handlers::lxapp_page::CLICK => {
+        methods::lxapp_page::CLICK => {
             let args: SelectorActionArgs = parse_args(handler, args)?;
             let info =
                 lingxia::dev::lxapp_dev_page_info(args.appid.as_deref(), args.page.as_deref())?;
@@ -109,7 +109,7 @@ fn handle_lxapp_page_command_impl(
             ))?;
             Ok(Some(page_action_response("click", info)))
         }
-        handlers::lxapp_page::TYPE => {
+        methods::lxapp_page::TYPE => {
             let args: TextActionArgs = parse_args(handler, args)?;
             let info =
                 lingxia::dev::lxapp_dev_page_info(args.appid.as_deref(), args.page.as_deref())?;
@@ -122,7 +122,7 @@ fn handle_lxapp_page_command_impl(
             ))?;
             Ok(Some(page_action_response("type", info)))
         }
-        handlers::lxapp_page::FILL => {
+        methods::lxapp_page::FILL => {
             let args: TextActionArgs = parse_args(handler, args)?;
             let info =
                 lingxia::dev::lxapp_dev_page_info(args.appid.as_deref(), args.page.as_deref())?;
@@ -135,7 +135,7 @@ fn handle_lxapp_page_command_impl(
             ))?;
             Ok(Some(page_action_response("fill", info)))
         }
-        handlers::lxapp_page::PRESS => {
+        methods::lxapp_page::PRESS => {
             let args: PressArgs = parse_args(handler, args)?;
             let info =
                 lingxia::dev::lxapp_dev_page_info(args.appid.as_deref(), args.page.as_deref())?;
@@ -148,7 +148,7 @@ fn handle_lxapp_page_command_impl(
             ))?;
             Ok(Some(page_action_response("press", info)))
         }
-        handlers::lxapp_page::SCROLL => {
+        methods::lxapp_page::SCROLL => {
             let args: ScrollArgs = parse_args(handler, args)?;
             let info =
                 lingxia::dev::lxapp_dev_page_info(args.appid.as_deref(), args.page.as_deref())?;
@@ -160,7 +160,7 @@ fn handle_lxapp_page_command_impl(
             ))?;
             Ok(Some(page_action_response("scroll", info)))
         }
-        handlers::lxapp_page::SCROLL_TO => {
+        methods::lxapp_page::SCROLL_TO => {
             let args: SelectorActionArgs = parse_args(handler, args)?;
             let info =
                 lingxia::dev::lxapp_dev_page_info(args.appid.as_deref(), args.page.as_deref())?;
@@ -171,7 +171,7 @@ fn handle_lxapp_page_command_impl(
             ))?;
             Ok(Some(page_action_response("scroll_to", info)))
         }
-        handlers::lxapp_page::BACK => {
+        methods::lxapp_page::BACK => {
             let args: BackArgs = parse_args(handler, args)?;
             let info = run_async(lingxia::dev::lxapp_dev_nav_back(
                 args.appid.as_deref(),
@@ -179,7 +179,7 @@ fn handle_lxapp_page_command_impl(
             ))?;
             Ok(Some(json!({ "ok": true, "action": "back", "page": info })))
         }
-        handlers::lxapp_page::SCREENSHOT => {
+        methods::lxapp_page::SCREENSHOT => {
             let parsed: PageTargetArgs = parse_args(handler, args)?;
             let (info, bytes) = run_async(lingxia::dev::lxapp_dev_page_screenshot_with_info(
                 parsed.appid.as_deref(),

@@ -8,13 +8,33 @@
 
 pub mod error;
 pub mod model;
+pub mod wire;
+
+mod pip_state;
 
 pub use error::{Error, ErrorCode, Result};
 pub use model::{
-    Ack, AxNode, AxQuery, Capabilities, Capture, CaptureTarget, Clipboard, Display, Doctor,
+    Ack, Acted, AxNode, AxQuery, Capabilities, Capture, CaptureTarget, Clipboard, Display, Doctor,
     LaunchResult, Modifier, MouseButton, Permissions, Pixel, ProcessInfo, QuitTarget, Rect, Window,
     WindowQuery, WindowTarget,
 };
+
+/// Who the user must grant permission to, by the name they will look for.
+///
+/// macOS records these grants against the responsible process: the app bundle
+/// when a product answers these commands, and the terminal when a development
+/// tool runs them in its own process. Saying "this terminal" to someone whose
+/// *app* was refused sends them to the wrong row in System Settings, and
+/// naming the binary of a bare CLI sends them to a row that does not exist.
+pub fn responsible_app() -> String {
+    #[cfg(target_os = "macos")]
+    {
+        if let Some(name) = backend::responsible_app_name() {
+            return name;
+        }
+    }
+    "this terminal".to_string()
+}
 
 /// App lifecycle (`desktop app ...`).
 pub mod app {
@@ -59,6 +79,26 @@ pub mod input {
         key_down, key_press, key_type, key_up, pointer_click, pointer_down, pointer_drag,
         pointer_move, pointer_scroll, pointer_up,
     };
+}
+
+/// The picture-in-picture viewer.
+///
+/// Not a command surface. It exists so a person can watch their own machine
+/// being driven, and an agent that could switch it off would be able to work
+/// unobserved — which is the one thing it is for. So the host tells it what
+/// happened and it decides the rest: when to appear, what to follow, when to
+/// leave. The only control belongs to the person in front of the screen.
+///
+/// Implemented on macOS and Windows; elsewhere this is a no-op.
+pub mod pip {
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    pub use crate::backend::{pip_dismiss as dismiss, pip_note_activity as note_activity};
+
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    pub fn note_activity(_acted: crate::model::Acted) {}
+
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    pub fn dismiss() {}
 }
 
 /// Window management (`desktop window ...`). All mutating.
@@ -111,6 +151,14 @@ pub fn displays() -> Result<Vec<Display>> {
 /// Enumerate top-level OS windows, optionally filtered (`desktop windows`).
 pub fn windows(query: &WindowQuery) -> Result<Vec<Window>> {
     backend::windows(query)
+}
+
+/// Resolve the top-level window that native pointer input would reach.
+/// Internal host-viewer plumbing, not a control-surface method.
+#[cfg(target_os = "windows")]
+#[doc(hidden)]
+pub fn input_window_at_point(x: i32, y: i32) -> Option<Window> {
+    backend::input_window_at_point(x, y)
 }
 
 /// Capture a display/window/region (`desktop screenshot`).

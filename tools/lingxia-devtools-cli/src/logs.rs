@@ -1,8 +1,8 @@
 use anyhow::{Context, Result, anyhow};
 use chrono::{DateTime, Local};
 use clap::Args;
-use lingxia_devtool_protocol::broker::{SessionContent, SessionInfo};
-use lingxia_devtool_protocol::{DevSessionEvent, DevSessionLog, DevSessionLogLevel};
+use lingxia_control_protocol::dev_session::broker::{SessionContent, SessionInfo};
+use lingxia_control_protocol::dev_session::{DevSessionEvent, DevSessionLog, DevSessionLogLevel};
 use owo_colors::OwoColorize;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Seek, SeekFrom};
@@ -122,7 +122,7 @@ fn list_origins(log_file: &Path, json: bool, pretty: bool) -> Result<()> {
         }
         let event: DevSessionEvent =
             serde_json::from_str(&line).context("Failed to parse session event JSON line")?;
-        if event.kind == lingxia_devtool_protocol::event_kinds::LOG {
+        if event.kind == lingxia_control_protocol::dev_session::event_kinds::LOG {
             origins.insert(event.origin);
         }
     }

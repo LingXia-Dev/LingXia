@@ -3090,6 +3090,7 @@ dependencies = [
  "lingxia-automation",
  "lingxia-browser",
  "lingxia-browser-shell",
+ "lingxia-control-commands",
  "lingxia-log",
  "lingxia-logic",
  "lingxia-lxapp",
@@ -3229,7 +3230,7 @@ dependencies = [
  "jsonschema",
  "libc",
  "lingxia-app-context",
- "lingxia-devtool-protocol",
+ "lingxia-control-protocol",
  "lingxia-log",
  "num-bigint",
  "openssl",
@@ -3282,9 +3283,11 @@ dependencies = [
 name = "lingxia-computer-use"
 version = "0.11.2"
 dependencies = [
+ "base64",
  "dispatch2",
  "image",
  "libc",
+ "lingxia-app-context",
  "log",
  "objc2",
  "objc2-app-kit",
@@ -3298,7 +3301,32 @@ dependencies = [
 ]
 
 [[package]]
-name = "lingxia-devtool"
+name = "lingxia-control-commands"
+version = "0.11.2"
+dependencies = [
+ "anyhow",
+ "base64",
+ "chrono",
+ "clap",
+ "lingxia-computer-use",
+ "lingxia-control-protocol",
+ "lingxia-settings",
+ "log",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "lingxia-control-protocol"
+version = "0.11.2"
+dependencies = [
+ "interprocess",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "lingxia-control-runtime"
 version = "0.11.2"
 dependencies = [
  "base64",
@@ -3306,24 +3334,18 @@ dependencies = [
  "lingxia-app-context",
  "lingxia-automation",
  "lingxia-browser",
- "lingxia-devtool-protocol",
+ "lingxia-computer-use",
+ "lingxia-control-protocol",
  "lingxia-log",
  "lingxia-lxapp",
+ "lingxia-settings",
  "log",
  "rustls",
  "serde",
  "serde_json",
  "tokio",
  "tungstenite",
-]
-
-[[package]]
-name = "lingxia-devtool-protocol"
-version = "0.11.2"
-dependencies = [
- "interprocess",
- "serde",
- "serde_json",
+ "windows 0.62.2",
 ]
 
 [[package]]
@@ -3337,7 +3359,8 @@ dependencies = [
  "ctrlc",
  "libc",
  "lingxia-computer-use",
- "lingxia-devtool-protocol",
+ "lingxia-control-commands",
+ "lingxia-control-protocol",
  "owo-colors",
  "oxc_allocator",
  "oxc_ast",
@@ -3560,7 +3583,7 @@ version = "0.11.2"
 dependencies = [
  "libc",
  "lingxia",
- "lingxia-devtool",
+ "lingxia-control-runtime",
  "lingxia-runner-config",
  "serde",
  "serde_json",
@@ -3571,7 +3594,7 @@ name = "lingxia-runner-windows"
 version = "0.11.2"
 dependencies = [
  "lingxia",
- "lingxia-devtool",
+ "lingxia-control-runtime",
  "lingxia-lxapp",
  "lingxia-runner-config",
  "lingxia-windows-build",

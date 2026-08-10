@@ -112,7 +112,7 @@ impl lingxia::HostAddon for RunnerDevtoolAddon {
         // lxapp it launches so test scripts need not declare the privilege.
         lingxia::set_automation_auto_grant(true);
         lingxia::dev::register_device_controller(Box::new(MacRunnerDeviceController));
-        lingxia_devtool::start_devtool_bridge_from_env();
+        lingxia_control_runtime::start_dev_session_bridge_from_env();
     }
 }
 
