@@ -122,18 +122,11 @@ fn child_namespace(parent: &JSObject, ctx: &JSContext, name: &str) -> JSResult<J
     }
 }
 
-fn product_defaults() -> serde_json::Value {
-    lingxia_app_context::app_config()
-        .and_then(|config| config.terminal.as_ref())
-        .map(|terminal| terminal.defaults.clone())
-        .unwrap_or_else(|| serde_json::json!({}))
-}
-
-fn context(ctx: &JSContext) -> JSResult<(Arc<LxApp>, PathBuf, serde_json::Value, bool)> {
+fn context(ctx: &JSContext) -> JSResult<(Arc<LxApp>, PathBuf, bool)> {
     let app = require_access(ctx)?;
     let data_dir = app.app_data_dir();
     let system_is_dark = app.runtime.host_appearance_dark();
-    Ok((app, data_dir, product_defaults(), system_is_dark))
+    Ok((app, data_dir, system_is_dark))
 }
 
 fn to_js<T: Serialize>(ctx: &JSContext, value: &T) -> JSResult<JSValue> {
@@ -196,13 +189,8 @@ fn effective_is_dark(config: &TerminalConfig, system_is_dark: bool) -> bool {
     }
 }
 
-fn snapshot_value(
-    data_dir: &Path,
-    defaults: &serde_json::Value,
-    system_is_dark: bool,
-) -> serde_json::Value {
-    let state =
-        lingxia_terminal_config::runtime::settings_snapshot(data_dir, defaults, system_is_dark);
+fn snapshot_value(data_dir: &Path, system_is_dark: bool) -> serde_json::Value {
+    let state = lingxia_terminal_config::runtime::settings_snapshot(data_dir, system_is_dark);
     let effective_dark = effective_is_dark(&state.value, system_is_dark);
     let selected = state.value.theme.selected(system_is_dark);
     let scheme_exists = ThemeStore::new(data_dir).get(selected).is_some();
@@ -245,8 +233,8 @@ fn snapshot_value(
 }
 
 fn snapshot_to_js(ctx: &JSContext) -> JSResult<JSValue> {
-    let (_, data_dir, defaults, system_is_dark) = context(ctx)?;
-    to_js(ctx, &snapshot_value(&data_dir, &defaults, system_is_dark))
+    let (_, data_dir, system_is_dark) = context(ctx)?;
+    to_js(ctx, &snapshot_value(&data_dir, system_is_dark))
 }
 
 async fn settings_get(ctx: JSContext) -> JSResult<JSValue> {
@@ -258,39 +246,37 @@ async fn settings_update(
     patch: JSObject,
     options: RevisionOptions,
 ) -> JSResult<JSValue> {
-    let (_, data_dir, defaults, system_is_dark) = context(&ctx)?;
+    let (_, data_dir, system_is_dark) = context(&ctx)?;
     let patch = object_json(&patch, "terminal settings patch")?;
     lingxia_terminal_config::runtime::apply_config_if_revision(
         &data_dir,
-        &defaults,
         &patch,
         options.if_revision,
         system_is_dark,
     )
     .map_err(mutation_error)?;
-    to_js(&ctx, &snapshot_value(&data_dir, &defaults, system_is_dark))
+    to_js(&ctx, &snapshot_value(&data_dir, system_is_dark))
 }
 
 async fn settings_reset(ctx: JSContext, options: ResetOptions) -> JSResult<JSValue> {
-    let (_, data_dir, defaults, system_is_dark) = context(&ctx)?;
+    let (_, data_dir, system_is_dark) = context(&ctx)?;
     lingxia_terminal_config::runtime::reset_config_if_revision(
         &data_dir,
-        &defaults,
         options.scope.as_deref(),
         options.if_revision,
         system_is_dark,
     )
     .map_err(mutation_error)?;
-    to_js(&ctx, &snapshot_value(&data_dir, &defaults, system_is_dark))
+    to_js(&ctx, &snapshot_value(&data_dir, system_is_dark))
 }
 
 async fn schemes_list(ctx: JSContext) -> JSResult<JSValue> {
-    let (_, data_dir, _, _) = context(&ctx)?;
+    let (_, data_dir, _) = context(&ctx)?;
     to_js(&ctx, &ThemeStore::new(&data_dir).list_with_schemes())
 }
 
 async fn schemes_import(ctx: JSContext, options: ImportOptions) -> JSResult<JSValue> {
-    let (app, data_dir, _, _) = context(&ctx)?;
+    let (app, data_dir, _) = context(&ctx)?;
     let scheme = lingxia_terminal_config::parse_scheme(&options.text).map_err(|error| {
         HostError::new(
             rong::error::E_INVALID_DATA,
@@ -379,7 +365,7 @@ fn promise_from_result(ctx: &JSContext, result: JSResult<()>) -> JSResult<Promis
 }
 
 fn create_preview(ctx: JSContext) -> JSResult<JSObject> {
-    let (_, data_dir, _, _) = context(&ctx)?;
+    let (_, data_dir, _) = context(&ctx)?;
     let lease = lingxia_terminal_config::runtime::create_theme_preview_lease();
     let service = ctx
         .get_service::<TerminalContextService>()

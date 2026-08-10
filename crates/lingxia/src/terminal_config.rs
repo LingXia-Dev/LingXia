@@ -24,19 +24,11 @@ pub fn app_data_dir() -> Option<PathBuf> {
         .and_then(|dir| dir.parent().map(Path::to_path_buf))
 }
 
-fn product_defaults() -> serde_json::Value {
-    lingxia_app_context::app_config()
-        .and_then(|config| config.terminal.as_ref())
-        .map(|terminal| terminal.defaults.clone())
-        .unwrap_or_else(|| serde_json::json!({}))
-}
-
-/// Load the running product's terminal defaults and user overrides.
+/// Load the framework terminal defaults and the running product's user overrides.
 pub fn load_for_app(system_is_dark: bool) -> Option<TerminalConfig> {
     let data_dir = app_data_dir()?;
     Some(lingxia_terminal_config::runtime::load(
         data_dir,
-        &product_defaults().to_string(),
         system_is_dark,
     ))
 }

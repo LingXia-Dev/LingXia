@@ -1748,7 +1748,7 @@ export type TerminalSettingsPatch = {
 export type TerminalSettingsSnapshot = {
     /** Monotonic process revision used by update/reset compare-and-swap. */
     revision: number;
-    /** Framework defaults with product defaults applied. */
+    /** Framework defaults. */
     defaults: TerminalSettingsValue;
     /** User-authored fields only. */
     overrides: TerminalSettingsPatch;

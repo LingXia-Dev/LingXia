@@ -8,11 +8,10 @@
 //! it lives here once and the engine (`lingxia-terminal`) keeps touching no
 //! files at all.
 //!
-//! Three layers, lowest precedence first:
+//! Two layers, lowest precedence first:
 //!
 //! 1. framework defaults (this crate),
-//! 2. product defaults (`lingxia.yaml`, compiled into the app),
-//! 3. user overrides (`terminal.json` in the app's state directory).
+//! 2. user overrides (`terminal.json` in the app's state directory).
 
 mod font;
 pub mod runtime;
@@ -72,11 +71,11 @@ pub struct TerminalConfig {
     pub theme: ThemeConfig,
 }
 
-/// The three persisted configuration layers, resolved without exposing their
+/// The persisted configuration layers, resolved without exposing their
 /// host filesystem location to JavaScript.
 #[derive(Debug)]
 pub struct ConfigLayers {
-    /// Framework defaults with the product's `terminal.defaults` applied.
+    /// Framework defaults.
     pub defaults: TerminalConfig,
     /// Valid user-authored fields from `terminal.json`, or an empty object when
     /// the file is absent or invalid.
@@ -93,22 +92,19 @@ impl TerminalConfig {
         lingxia_app_context::app_state_file(app_data_dir, CONFIG_FILE)
     }
 
-    /// Load the user's configuration on top of the product defaults.
+    /// Load the user's configuration on top of the framework defaults.
     ///
     /// A missing file is not an error — it is the common case. A malformed
     /// one is reported, and the caller still gets a usable configuration.
-    pub fn load(
-        app_data_dir: &Path,
-        product_defaults: &serde_json::Value,
-    ) -> (Self, Option<ConfigError>) {
-        let layers = Self::load_layers(app_data_dir, product_defaults);
+    pub fn load(app_data_dir: &Path) -> (Self, Option<ConfigError>) {
+        let layers = Self::load_layers(app_data_dir);
         (layers.value, layers.warning)
     }
 
     /// Load every configuration layer for settings and diagnostics.
-    pub fn load_layers(app_data_dir: &Path, product_defaults: &serde_json::Value) -> ConfigLayers {
+    pub fn load_layers(app_data_dir: &Path) -> ConfigLayers {
         let path = Self::path(app_data_dir);
-        let defaults = Self::from_defaults(product_defaults);
+        let defaults = Self::default();
         let user = match std::fs::read_to_string(&path) {
             Ok(text) => match serde_json::from_str::<serde_json::Value>(&text) {
                 Ok(value) if value.is_object() => value,
@@ -146,13 +142,7 @@ impl TerminalConfig {
             }
         };
 
-        // A host with no product defaults passes null, and merging into null
-        // leaves null — which reads as a broken file rather than as the
-        // ordinary case of nobody having configured anything yet.
-        let mut merged = match product_defaults {
-            serde_json::Value::Object(_) => product_defaults.clone(),
-            _ => serde_json::Value::Object(serde_json::Map::new()),
-        };
+        let mut merged = serde_json::to_value(&defaults).unwrap_or_else(|_| serde_json::json!({}));
         merge(&mut merged, &user);
         match serde_json::from_value::<Self>(merged) {
             Ok(config) => match config.validate() {
@@ -179,10 +169,6 @@ impl TerminalConfig {
                 }),
             },
         }
-    }
-
-    pub fn from_defaults(product_defaults: &serde_json::Value) -> Self {
-        serde_json::from_value(product_defaults.clone()).unwrap_or_default()
     }
 
     /// Merge a partial config object onto this resolved configuration.
@@ -216,19 +202,14 @@ impl TerminalConfig {
 
     /// Write the user's configuration as what it overrides, and nothing more.
     ///
-    /// Writing every field would freeze today's defaults into the file: a
-    /// later framework or product default could never reach anyone who had
-    /// once changed a font size. So only the fields that differ from the
-    /// layers below are written, and a configuration that differs in nothing
-    /// removes the file — which is what makes `reset` a real reset.
+    /// Writing every field would freeze today's defaults into the file. So
+    /// only the fields that differ from the framework defaults are written,
+    /// and a configuration that differs in nothing removes the file — which is
+    /// what makes `reset` a real reset.
     ///
     /// Written to a sibling temporary file and renamed, so a crash mid-write
     /// cannot leave a half-written config that fails to parse on next launch.
-    pub fn save(
-        &self,
-        app_data_dir: &Path,
-        product_defaults: &serde_json::Value,
-    ) -> Result<(), ConfigError> {
+    pub fn save(&self, app_data_dir: &Path) -> Result<(), ConfigError> {
         let path = Self::path(app_data_dir);
         self.validate().map_err(|reason| ConfigError::Invalid {
             path: path.clone(),
@@ -238,8 +219,7 @@ impl TerminalConfig {
             path: path.clone(),
             reason: error.to_string(),
         };
-        let mut base = serde_json::to_value(Self::default()).map_err(invalid)?;
-        merge(&mut base, product_defaults);
+        let base = serde_json::to_value(Self::default()).map_err(invalid)?;
         let mine = serde_json::to_value(self).map_err(invalid)?;
         let overrides = difference(&mine, &base);
 
@@ -290,7 +270,7 @@ fn difference(value: &serde_json::Value, base: &serde_json::Value) -> serde_json
 
 /// Recursively overlay `overlay` onto `base`. Objects merge key by key;
 /// everything else replaces, so a user's `font.family` list wholly replaces
-/// the product's rather than appending to it.
+/// the default rather than appending to it.
 fn merge(base: &mut serde_json::Value, overlay: &serde_json::Value) {
     match (base, overlay) {
         (serde_json::Value::Object(base), serde_json::Value::Object(overlay)) => {
@@ -310,32 +290,11 @@ fn merge(base: &mut serde_json::Value, overlay: &serde_json::Value) {
 mod tests {
     use super::*;
 
-    fn defaults() -> serde_json::Value {
-        serde_json::json!({
-            "font": { "family": ["Product Mono"], "size": 14.0 },
-            "theme": { "dark": "product-dark" }
-        })
-    }
-
     #[test]
-    fn missing_file_yields_the_product_defaults() {
+    fn missing_file_yields_framework_defaults() {
         let dir = tempfile::tempdir().expect("temp dir");
-        let (config, error) = TerminalConfig::load(dir.path(), &defaults());
+        let (config, error) = TerminalConfig::load(dir.path());
         assert!(error.is_none(), "a missing file is the common case");
-        assert_eq!(config.font.family, vec!["Product Mono".to_string()]);
-        assert_eq!(config.font.size, 14.0);
-        assert_eq!(config.theme.dark, "product-dark");
-        // Untouched fields still come from the framework defaults.
-        assert!(config.font.ligatures);
-    }
-
-    /// The command line has no product defaults to pass, so it passes null.
-    /// On a machine nobody has configured, that must still be the quiet case.
-    #[test]
-    fn no_file_and_no_product_defaults_is_not_an_error() {
-        let dir = tempfile::tempdir().expect("temp dir");
-        let (config, error) = TerminalConfig::load(dir.path(), &serde_json::Value::Null);
-        assert!(error.is_none(), "nothing configured is not a broken config");
         assert_eq!(config, TerminalConfig::default());
     }
 
@@ -346,16 +305,16 @@ mod tests {
         std::fs::create_dir_all(path.parent().expect("state dir")).expect("mkdir");
         std::fs::write(&path, r#"{"font":{"size":16.0,"ligatures":false}}"#).expect("write");
 
-        let (config, error) = TerminalConfig::load(dir.path(), &defaults());
+        let (config, error) = TerminalConfig::load(dir.path());
         assert!(error.is_none());
         assert_eq!(config.font.size, 16.0, "user wins");
         assert!(!config.font.ligatures);
         assert_eq!(
             config.font.family,
-            vec!["Product Mono".to_string()],
-            "untouched keys keep the product default"
+            TerminalConfig::default().font.family,
+            "untouched keys keep the framework default"
         );
-        assert_eq!(config.theme.dark, "product-dark");
+        assert_eq!(config.theme.dark, TerminalConfig::default().theme.dark);
     }
 
     #[test]
@@ -365,9 +324,9 @@ mod tests {
         std::fs::create_dir_all(path.parent().expect("state dir")).expect("mkdir");
         std::fs::write(&path, r#"{"font":{"size":16.0}}"#).expect("write");
 
-        let layers = TerminalConfig::load_layers(dir.path(), &defaults());
+        let layers = TerminalConfig::load_layers(dir.path());
         assert!(layers.warning.is_none());
-        assert_eq!(layers.defaults.font.size, 14.0);
+        assert_eq!(layers.defaults, TerminalConfig::default());
         assert_eq!(
             layers.overrides,
             serde_json::json!({"font": {"size": 16.0}})
@@ -382,7 +341,7 @@ mod tests {
         std::fs::create_dir_all(path.parent().expect("state dir")).expect("mkdir");
         std::fs::write(&path, r#"{"font":{"size":2.0}}"#).expect("write");
 
-        let layers = TerminalConfig::load_layers(dir.path(), &defaults());
+        let layers = TerminalConfig::load_layers(dir.path());
         assert!(matches!(layers.warning, Some(ConfigError::Invalid { .. })));
         assert_eq!(layers.overrides, serde_json::json!({}));
         assert_eq!(layers.value, layers.defaults);
@@ -395,7 +354,7 @@ mod tests {
         std::fs::create_dir_all(path.parent().expect("state dir")).expect("mkdir");
         std::fs::write(&path, r#"{"font":{"family":["Only This"]}}"#).expect("write");
 
-        let (config, _) = TerminalConfig::load(dir.path(), &defaults());
+        let (config, _) = TerminalConfig::load(dir.path());
         assert_eq!(config.font.family, vec!["Only This".to_string()]);
     }
 
@@ -406,11 +365,12 @@ mod tests {
         std::fs::create_dir_all(path.parent().expect("state dir")).expect("mkdir");
         std::fs::write(&path, "{ not json").expect("write");
 
-        let (config, error) = TerminalConfig::load(dir.path(), &defaults());
+        let (config, error) = TerminalConfig::load(dir.path());
         let error = error.expect("the failure is surfaced, not swallowed");
         assert!(matches!(error, ConfigError::Invalid { .. }), "{error}");
         assert_eq!(
-            config.font.size, 14.0,
+            config.font.size,
+            TerminalConfig::default().font.size,
             "a broken file must never brick the terminal"
         );
     }
@@ -421,11 +381,9 @@ mod tests {
         let mut config = TerminalConfig::default();
         config.font.size = 15.5;
         config.theme.light = "paper".to_string();
-        config
-            .save(dir.path(), &serde_json::Value::Null)
-            .expect("save");
+        config.save(dir.path()).expect("save");
 
-        let (loaded, error) = TerminalConfig::load(dir.path(), &serde_json::json!({}));
+        let (loaded, error) = TerminalConfig::load(dir.path());
         assert!(error.is_none());
         assert_eq!(loaded.font.size, 15.5);
         assert_eq!(loaded.theme.light, "paper");
@@ -444,9 +402,7 @@ mod tests {
         let dir = tempfile::tempdir().expect("temp dir");
         let mut config = TerminalConfig::default();
         config.font.size = 15.5;
-        config
-            .save(dir.path(), &serde_json::Value::Null)
-            .expect("save");
+        config.save(dir.path()).expect("save");
 
         let text = std::fs::read_to_string(TerminalConfig::path(dir.path())).expect("read");
         let written: serde_json::Value = serde_json::from_str(&text).expect("json");
@@ -460,26 +416,10 @@ mod tests {
         let dir = tempfile::tempdir().expect("temp dir");
         let mut config = TerminalConfig::default();
         config.font.size = 15.5;
-        config
-            .save(dir.path(), &serde_json::Value::Null)
-            .expect("save");
+        config.save(dir.path()).expect("save");
         assert!(TerminalConfig::path(dir.path()).exists());
 
-        TerminalConfig::default()
-            .save(dir.path(), &serde_json::Value::Null)
-            .expect("save");
-        assert!(!TerminalConfig::path(dir.path()).exists());
-    }
-
-    /// Matching a *product* default is also nothing to write down: the product
-    /// may move it later, and the user never asked to be pinned.
-    #[test]
-    fn a_value_equal_to_the_product_default_is_not_written() {
-        let dir = tempfile::tempdir().expect("temp dir");
-        let product = serde_json::json!({ "font": { "size": 16.0 } });
-        let mut config = TerminalConfig::default();
-        config.font.size = 16.0;
-        config.save(dir.path(), &product).expect("save");
+        TerminalConfig::default().save(dir.path()).expect("save");
         assert!(!TerminalConfig::path(dir.path()).exists());
     }
 

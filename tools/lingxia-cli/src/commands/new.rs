@@ -415,13 +415,13 @@ mod native_main_scaffold_tests {
     use super::*;
     use crate::config::{
         EnvVersion, LingXiaConfig, ResolvedEnv, ResourceBundleConfig, ResourceBundleType,
-        ResourcesConfig, TerminalHostConfig,
+        ResourcesConfig,
     };
     use crate::platform::BuildProfile;
     use crate::platform::detector::PlatformType;
 
     #[test]
-    fn windows_native_terminal_accepts_settings_as_an_explicit_resource() {
+    fn windows_native_terminal_accepts_an_explicit_resource() {
         let temp = tempfile::tempdir().unwrap();
         let target_dir = temp.path().join("terminal-host");
         let config = ProjectConfig {
@@ -458,8 +458,8 @@ mod native_main_scaffold_tests {
         std::fs::write(
             settings_dir.join("lxapp.json"),
             r#"{
-                "appId": "app.lingxia.terminal-settings",
-                "name": "Terminal Settings",
+                "appId": "com.example.settings",
+                "name": "Settings",
                 "version": "0.0.0",
                 "logic": false,
                 "security": {
@@ -476,16 +476,15 @@ mod native_main_scaffold_tests {
         std::fs::write(settings_dir.join("lxapp.config.ts"), "export default {};\n").unwrap();
         std::fs::write(
             settings_dir.join("pages/settings/index.html"),
-            "<!doctype html><title>Terminal Settings</title>\n",
+            "<!doctype html><title>Settings</title>\n",
         )
         .unwrap();
 
         let mut host_config = LingXiaConfig::load(&target_dir).unwrap();
-        host_config.terminal = Some(TerminalHostConfig { defaults: None });
         host_config.resources = Some(ResourcesConfig {
             bundles: vec![ResourceBundleConfig {
                 bundle_type: ResourceBundleType::Lxapp,
-                app_id: lingxia_terminal_config::SETTINGS_APP_ID.to_string(),
+                app_id: "com.example.settings".to_string(),
                 path: Some("terminal-settings-fixture".to_string()),
                 package: None,
                 version: None,
@@ -535,8 +534,8 @@ mod native_main_scaffold_tests {
             [
                 "AppIcon.png",
                 "app.json",
-                "app.lingxia.terminal-settings",
                 "bridge-runtime.js",
+                "com.example.settings",
                 "icons",
                 "ui.json"
             ]

@@ -18,7 +18,6 @@ struct ComponentVersions {
     rust_crate: String,
     sdk: String,
     browser_shell_webui: String,
-    terminal_settings: String,
     resource_bundle: String,
 }
 
@@ -236,7 +235,6 @@ fn read_component_versions(manifest: &Path) -> Result<ComponentVersions, String>
         rust_crate: get("rust-crate-version")?,
         sdk: get("sdk-version")?,
         browser_shell_webui: get("browser-shell-webui-version")?,
-        terminal_settings: get("terminal-settings-version")?,
         resource_bundle: get("resource-bundle-version")?,
     })
 }
@@ -257,10 +255,6 @@ fn emit_component_version_env(versions: &ComponentVersions) {
     println!(
         "cargo:rustc-env=LINGXIA_BROWSER_SHELL_WEBUI_VERSION={}",
         versions.browser_shell_webui
-    );
-    println!(
-        "cargo:rustc-env=LINGXIA_TERMINAL_SETTINGS_VERSION={}",
-        versions.terminal_settings
     );
     println!(
         "cargo:rustc-env=LINGXIA_RESOURCE_BUNDLE_VERSION={}",

@@ -139,27 +139,21 @@ fn current() -> &'static Mutex<TerminalConfig> {
     CURRENT.get_or_init(|| Mutex::new(TerminalConfig::default()))
 }
 
-/// Load `terminal.json` over the product defaults and apply what the engine
+/// Load `terminal.json` over the framework defaults and apply what the engine
 /// owns. Returns the configuration for the host to consume.
 ///
 /// A broken file is logged and skipped rather than propagated: the terminal
 /// must still open.
-pub fn load(app_data_dir: PathBuf, product_defaults: &str, system_is_dark: bool) -> TerminalConfig {
+pub fn load(app_data_dir: PathBuf, system_is_dark: bool) -> TerminalConfig {
     let _guard = mutations()
         .lock()
         .unwrap_or_else(|error| error.into_inner());
-    let defaults = serde_json::from_str::<serde_json::Value>(product_defaults)
-        .unwrap_or(serde_json::Value::Null);
-    load_locked(app_data_dir, &defaults, system_is_dark)
+    load_locked(app_data_dir, system_is_dark)
 }
 
-fn load_locked(
-    app_data_dir: PathBuf,
-    defaults: &serde_json::Value,
-    system_is_dark: bool,
-) -> TerminalConfig {
+fn load_locked(app_data_dir: PathBuf, system_is_dark: bool) -> TerminalConfig {
     let path = TerminalConfig::path(&app_data_dir);
-    let (config, error) = TerminalConfig::load(&app_data_dir, defaults);
+    let (config, error) = TerminalConfig::load(&app_data_dir);
     if let Some(error) = error {
         log::warn!("{error}; continuing on defaults");
     }
@@ -182,23 +176,18 @@ fn load_locked(
 }
 
 /// Read the persisted layers needed by a settings client.
-pub fn settings_snapshot(
-    app_data_dir: &std::path::Path,
-    product_defaults: &serde_json::Value,
-    system_is_dark: bool,
-) -> SettingsSnapshot {
+pub fn settings_snapshot(app_data_dir: &std::path::Path, system_is_dark: bool) -> SettingsSnapshot {
     let _guard = mutations()
         .lock()
         .unwrap_or_else(|error| error.into_inner());
-    settings_snapshot_locked(app_data_dir, product_defaults, system_is_dark)
+    settings_snapshot_locked(app_data_dir, system_is_dark)
 }
 
 fn settings_snapshot_locked(
     app_data_dir: &std::path::Path,
-    product_defaults: &serde_json::Value,
     _system_is_dark: bool,
 ) -> SettingsSnapshot {
-    let layers = TerminalConfig::load_layers(app_data_dir, product_defaults);
+    let layers = TerminalConfig::load_layers(app_data_dir);
     if let Some(error) = layers.warning.as_ref() {
         log::warn!("{error}; continuing on defaults");
     }
@@ -214,19 +203,17 @@ fn settings_snapshot_locked(
 /// Persist and publish a partial configuration update.
 pub fn apply_config(
     app_data_dir: &std::path::Path,
-    product_defaults: &serde_json::Value,
     overlay: &serde_json::Value,
     system_is_dark: bool,
 ) -> Result<TerminalConfig, crate::ConfigError> {
     let _guard = mutations()
         .lock()
         .unwrap_or_else(|error| error.into_inner());
-    apply_config_locked(app_data_dir, product_defaults, overlay, system_is_dark)
+    apply_config_locked(app_data_dir, overlay, system_is_dark)
 }
 
 pub fn apply_config_if_revision(
     app_data_dir: &std::path::Path,
-    product_defaults: &serde_json::Value,
     overlay: &serde_json::Value,
     expected_revision: u64,
     system_is_dark: bool,
@@ -235,7 +222,7 @@ pub fn apply_config_if_revision(
         .lock()
         .unwrap_or_else(|error| error.into_inner());
     require_revision(expected_revision)?;
-    let config = apply_config_locked(app_data_dir, product_defaults, overlay, system_is_dark)?;
+    let config = apply_config_locked(app_data_dir, overlay, system_is_dark)?;
     Ok(MutationResult {
         config,
         revision: generation(),
@@ -244,11 +231,10 @@ pub fn apply_config_if_revision(
 
 fn apply_config_locked(
     app_data_dir: &std::path::Path,
-    product_defaults: &serde_json::Value,
     overlay: &serde_json::Value,
     system_is_dark: bool,
 ) -> Result<TerminalConfig, crate::ConfigError> {
-    let (current, error) = TerminalConfig::load(app_data_dir, product_defaults);
+    let (current, error) = TerminalConfig::load(app_data_dir);
     if let Some(error) = error {
         log::warn!("{error}; applying the update over resolved defaults");
     }
@@ -259,7 +245,7 @@ fn apply_config_locked(
             reason,
         })?;
     validate_overlay_theme_names(app_data_dir, overlay)?;
-    save_and_publish(app_data_dir, product_defaults, next, system_is_dark)
+    save_and_publish(app_data_dir, next, system_is_dark)
 }
 
 fn validate_overlay_theme_names(
@@ -320,19 +306,17 @@ fn imported_theme_is_active(name: &str, config: &TerminalConfig, system_is_dark:
 /// Remove all user overrides, or only the requested section.
 pub fn reset_config(
     app_data_dir: &std::path::Path,
-    product_defaults: &serde_json::Value,
     scope: Option<&str>,
     system_is_dark: bool,
 ) -> Result<TerminalConfig, crate::ConfigError> {
     let _guard = mutations()
         .lock()
         .unwrap_or_else(|error| error.into_inner());
-    reset_config_locked(app_data_dir, product_defaults, scope, system_is_dark)
+    reset_config_locked(app_data_dir, scope, system_is_dark)
 }
 
 pub fn reset_config_if_revision(
     app_data_dir: &std::path::Path,
-    product_defaults: &serde_json::Value,
     scope: Option<&str>,
     expected_revision: u64,
     system_is_dark: bool,
@@ -341,7 +325,7 @@ pub fn reset_config_if_revision(
         .lock()
         .unwrap_or_else(|error| error.into_inner());
     require_revision(expected_revision)?;
-    let config = reset_config_locked(app_data_dir, product_defaults, scope, system_is_dark)?;
+    let config = reset_config_locked(app_data_dir, scope, system_is_dark)?;
     Ok(MutationResult {
         config,
         revision: generation(),
@@ -350,12 +334,11 @@ pub fn reset_config_if_revision(
 
 fn reset_config_locked(
     app_data_dir: &std::path::Path,
-    product_defaults: &serde_json::Value,
     scope: Option<&str>,
     system_is_dark: bool,
 ) -> Result<TerminalConfig, crate::ConfigError> {
-    let defaults = TerminalConfig::from_defaults(product_defaults);
-    let (mut next, _) = TerminalConfig::load(app_data_dir, product_defaults);
+    let defaults = TerminalConfig::default();
+    let (mut next, _) = TerminalConfig::load(app_data_dir);
     match scope {
         None => next = defaults,
         Some("font") => next.font = defaults.font,
@@ -367,16 +350,15 @@ fn reset_config_locked(
             });
         }
     }
-    save_and_publish(app_data_dir, product_defaults, next, system_is_dark)
+    save_and_publish(app_data_dir, next, system_is_dark)
 }
 
 fn save_and_publish(
     app_data_dir: &std::path::Path,
-    product_defaults: &serde_json::Value,
     config: TerminalConfig,
     system_is_dark: bool,
 ) -> Result<TerminalConfig, crate::ConfigError> {
-    config.save(app_data_dir, product_defaults)?;
+    config.save(app_data_dir)?;
     publish(config.clone());
     apply_theme_locked(app_data_dir, &config, system_is_dark);
     Ok(config)
@@ -648,13 +630,11 @@ mod tests {
     #[test]
     fn stale_revision_cannot_overwrite_a_newer_update() {
         let dir = tempfile::tempdir().expect("temp dir");
-        let defaults = serde_json::json!({});
-        let _ = load(dir.path().to_path_buf(), "{}", false);
+        let _ = load(dir.path().to_path_buf(), false);
         let before = generation();
 
         let committed = apply_config_if_revision(
             dir.path(),
-            &defaults,
             &serde_json::json!({"font": {"size": 15.0}}),
             before,
             false,
@@ -662,7 +642,6 @@ mod tests {
         .expect("first update");
         let error = apply_config_if_revision(
             dir.path(),
-            &defaults,
             &serde_json::json!({"font": {"size": 18.0}}),
             before,
             false,
@@ -676,7 +655,7 @@ mod tests {
                 actual
             } if expected == before && actual == committed.revision
         ));
-        let (saved, load_error) = TerminalConfig::load(dir.path(), &defaults);
+        let (saved, load_error) = TerminalConfig::load(dir.path());
         assert!(load_error.is_none());
         assert_eq!(saved.font.size, 15.0);
     }
@@ -734,7 +713,6 @@ mod tests {
         let dir = tempfile::tempdir().expect("temp dir");
         let error = apply_config(
             dir.path(),
-            &serde_json::json!({}),
             &serde_json::json!({"theme": {"dark": "does-not-exist"}}),
             false,
         )

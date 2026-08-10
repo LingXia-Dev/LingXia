@@ -4,8 +4,7 @@ use super::{
     validate_app_ui_svg_icon,
 };
 use crate::config::{
-    EnvVersion, HostAppConfig, LingXiaConfig, LingxiaServer, ResolvedEnv, TerminalHostConfig,
-    ThemeConfig,
+    EnvVersion, HostAppConfig, LingXiaConfig, LingxiaServer, ResolvedEnv, ThemeConfig,
 };
 use lingxia_app_context::{ThemeColor, ThemeStyle};
 use std::fs;
@@ -43,7 +42,6 @@ fn lingxia_id_is_not_suffixed_by_env() {
         capabilities: None,
         theme: None,
         browser: None,
-        terminal: None,
         generated_ui: None,
         surfaces: None,
         app_links: None,
@@ -89,7 +87,6 @@ fn generated_app_json_excludes_ui_fields() {
         capabilities: None,
         theme: None,
         browser: None,
-        terminal: None,
         generated_ui: Some(serde_json::json!({
             "launch": { "initialSurface": "main" },
             "surfaces": [],
@@ -147,7 +144,6 @@ fn generated_app_json_includes_dev_ws_url_when_configured() {
         capabilities: None,
         theme: None,
         browser: None,
-        terminal: None,
         generated_ui: None,
         surfaces: None,
         app_links: None,
@@ -196,7 +192,6 @@ fn generated_app_json_includes_app_link_hosts() {
         capabilities: None,
         theme: None,
         browser: None,
-        terminal: None,
         generated_ui: None,
         surfaces: None,
         app_links: Some(crate::config::AppLinksConfig {
@@ -247,7 +242,6 @@ fn generated_app_json_includes_capabilities() {
         }),
         theme: None,
         browser: None,
-        terminal: None,
         generated_ui: None,
         surfaces: None,
         app_links: None,
@@ -263,21 +257,6 @@ fn generated_app_json_includes_capabilities() {
     assert_eq!(value["capabilities"]["notifications"], true);
     assert_eq!(value["capabilities"]["terminal"], true);
     assert_eq!(value["capabilities"]["process"], true);
-}
-
-#[test]
-fn generated_app_json_carries_terminal_product_defaults_only() {
-    let mut config = LingXiaConfig::new_android("demo", "com.example.demo", "demo-home");
-    config.terminal = Some(TerminalHostConfig {
-        defaults: Some(serde_json::json!({
-            "font": { "size": 15.5 },
-            "theme": { "opacity": 0.92 }
-        })),
-    });
-    let app_json = build_app_json_from_config(&config, None, None, &test_resolved_env()).unwrap();
-    let value: serde_json::Value = serde_json::from_str(&app_json).unwrap();
-    assert_eq!(value["terminal"]["defaults"]["font"]["size"], 15.5);
-    assert!(value["terminal"].get("settings").is_none());
 }
 
 #[test]
@@ -323,7 +302,6 @@ fn generated_ui_json_preserves_generated_ui_config() {
         capabilities: None,
         theme: None,
         browser: None,
-        terminal: None,
         generated_ui: Some(ui.clone()),
         surfaces: None,
         app_links: None,
@@ -370,7 +348,6 @@ fn generated_ui_json_rewrites_app_ui_icons() {
         capabilities: None,
         theme: None,
         browser: None,
-        terminal: None,
         generated_ui: Some(ui),
         surfaces: None,
         app_links: None,
@@ -423,7 +400,6 @@ fn generated_windows_ui_json_rewrites_app_ui_icons_to_png() {
         capabilities: None,
         theme: None,
         browser: None,
-        terminal: None,
         generated_ui: Some(ui),
         surfaces: None,
         app_links: None,
@@ -563,7 +539,6 @@ fn generated_ui_json_rejects_terminal_when_capability_disabled() {
         }),
         theme: None,
         browser: None,
-        terminal: None,
         generated_ui: Some(serde_json::json!({
             "launch": { "initialSurface": "main" },
             "surfaces": [{
@@ -606,7 +581,6 @@ fn generated_ui_json_prunes_surfaces_for_target_platform() {
         capabilities: None,
         theme: None,
         browser: None,
-        terminal: None,
         generated_ui: Some(serde_json::json!({
             "launch": { "initialSurface": "main" },
             "surfaces": [{
@@ -678,7 +652,6 @@ fn app_ui_icon_preparation_requires_svg() {
         capabilities: None,
         theme: None,
         browser: None,
-        terminal: None,
         generated_ui: Some(serde_json::json!({
             "launch": { "initialSurface": "main" },
             "surfaces": [],

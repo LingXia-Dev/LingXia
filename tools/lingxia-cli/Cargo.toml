@@ -22,7 +22,6 @@ rong-version = "0.5.2"
 rust-crate-version = "0.11.2"
 sdk-version = "0.11.2"
 browser-shell-webui-version = "0.11.2"
-terminal-settings-version = "0.11.2"
 resource-bundle-version = "0.11.2"
 
 [[bin]]
@@ -33,7 +32,6 @@ path = "src/main.rs"
 clap = { version = "4.5", features = ["derive", "env"] }
 anyhow = "1.0"
 lingxia-app-context = { workspace = true }
-lingxia-terminal-config = { workspace = true }
 
 dialoguer = { version = "0.12", features = ["completion"] }
 console = "0.16"

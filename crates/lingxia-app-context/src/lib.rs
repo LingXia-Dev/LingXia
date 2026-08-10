@@ -209,16 +209,7 @@ pub struct AppConfig {
     pub capabilities: Option<CapabilitiesConfig>,
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub terminal: Option<TerminalDefaultsConfig>,
-
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub panels: Option<PanelsConfig>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct TerminalDefaultsConfig {
-    pub defaults: serde_json::Value,
 }
 
 /// The `capabilities:` section, shared verbatim between the CLI (parsing
@@ -440,15 +431,6 @@ impl AppConfig {
                     "homeAppVersion must be a semantic version (major.minor.patch)".to_string(),
                 )
             })?;
-        }
-        if self
-            .terminal
-            .as_ref()
-            .is_some_and(|terminal| !terminal.defaults.is_object())
-        {
-            return Err(AppContextError::InvalidConfig(
-                "terminal.defaults must be an object".to_string(),
-            ));
         }
         validate_panels(self.panels.as_ref())
     }
@@ -736,7 +718,6 @@ mod tests {
             app_links: None,
             theme: None,
             capabilities: None,
-            terminal: None,
             panels: None,
         }
     }
@@ -815,33 +796,5 @@ mod tests {
         let theme: ThemeConfig =
             serde_json::from_str(r#"{ "light": {}, "dark": {} }"#).expect("parse empty theme");
         assert!(theme.normalized().is_none());
-    }
-
-    #[test]
-    fn terminal_defaults_round_trip_as_runtime_data() {
-        let config = AppConfig::parse_and_validate(
-            r#"{
-                "productName": "Terminal Test",
-                "productVersion": "1.0.0",
-                "terminal": {
-                    "defaults": {
-                        "font": { "size": 15.5 },
-                        "theme": { "mode": "dark" }
-                    }
-                }
-            }"#,
-        )
-        .expect("valid terminal defaults");
-        assert_eq!(
-            config.terminal.as_ref().unwrap().defaults["font"]["size"],
-            15.5
-        );
-
-        let invalid = r#"{
-            "productName": "Terminal Test",
-            "productVersion": "1.0.0",
-            "terminal": { "defaults": [] }
-        }"#;
-        assert!(AppConfig::parse_and_validate(invalid).is_err());
     }
 }
