@@ -77,7 +77,7 @@ impl JSTerminalDriver {
 
     /// Expand one native terminal surface to the full content area, or put it
     /// back at its docked size.
-    #[js_method]
+    #[js_method(rename = "setMaximized")]
     async fn set_maximized(&self, ctx: JSContext, options: MaximizeOptions) -> JSResult<JSValue> {
         let surface = options.surface.trim();
         if surface.is_empty() {
@@ -96,7 +96,7 @@ impl JSTerminalDriver {
     }
 
     /// Open a tab in one native terminal surface, and activate it.
-    #[js_method]
+    #[js_method(rename = "newTab")]
     async fn new_tab(&self, ctx: JSContext, options: SurfaceOptions) -> JSResult<JSValue> {
         let surface = options.surface.trim();
         if surface.is_empty() {
