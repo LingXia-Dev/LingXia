@@ -736,6 +736,7 @@ pub(crate) fn end_terminal_selection(panel_id: &str) -> bool {
 
 /// Whether the panel is currently expanded to the full content area, or
 /// `None` when no terminal panel owns `panel_id`.
+#[cfg_attr(not(feature = "terminal-runtime"), allow(dead_code))]
 pub(super) fn terminal_panel_maximized(panel_id: &str) -> Option<bool> {
     #[cfg(feature = "terminal-runtime")]
     {
@@ -770,6 +771,7 @@ pub(super) fn toggle_terminal_panel_maximized(panel_id: &str) {
 /// The user's own choice, from the chrome toggle or an automation driver. It
 /// overrides the current state outright and survives a repeated layout
 /// projection; only the layout moving the panel between roles replaces it.
+#[cfg_attr(not(feature = "terminal-runtime"), allow(dead_code))]
 pub(super) fn set_terminal_panel_maximized_by_user(panel_id: &str, maximized: bool) {
     #[cfg(feature = "terminal-runtime")]
     {
