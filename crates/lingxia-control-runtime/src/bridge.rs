@@ -70,6 +70,7 @@ fn connect_with_timeout(
     })?;
     let stream =
         std::net::TcpStream::connect_timeout(&addr, Duration::from_secs(5)).map_err(WsError::Io)?;
+    prevent_sigpipe(&stream).map_err(WsError::Io)?;
     stream
         .set_read_timeout(Some(Duration::from_secs(5)))
         .map_err(WsError::Io)?;
@@ -87,6 +88,35 @@ fn connect_with_timeout(
             )),
         })?;
     Ok(websocket)
+}
+
+#[cfg(any(target_os = "ios", target_os = "macos"))]
+fn prevent_sigpipe(stream: &std::net::TcpStream) -> std::io::Result<()> {
+    use std::os::fd::AsRawFd;
+
+    let enabled: libc::c_int = 1;
+    // Rust is linked as a static library into Apple hosts, so its executable
+    // startup cannot install the usual SIGPIPE disposition. Keep a stale dev
+    // websocket write local to this connection instead of terminating the app.
+    let result = unsafe {
+        libc::setsockopt(
+            stream.as_raw_fd(),
+            libc::SOL_SOCKET,
+            libc::SO_NOSIGPIPE,
+            std::ptr::from_ref(&enabled).cast(),
+            std::mem::size_of_val(&enabled) as libc::socklen_t,
+        )
+    };
+    if result == 0 {
+        Ok(())
+    } else {
+        Err(std::io::Error::last_os_error())
+    }
+}
+
+#[cfg(not(any(target_os = "ios", target_os = "macos")))]
+fn prevent_sigpipe(_stream: &std::net::TcpStream) -> std::io::Result<()> {
+    Ok(())
 }
 
 fn run_dev_bridge(ws_url: String) {
