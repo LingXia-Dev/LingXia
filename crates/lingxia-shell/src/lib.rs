@@ -11,6 +11,7 @@ mod manager;
 mod pin;
 mod runtime;
 mod sidebar_action;
+mod sidebar_chrome;
 mod store;
 mod surface_menu;
 
@@ -20,13 +21,14 @@ pub use pin::{MAX_SHELL_PINS, PinCollection, PinMutation, ShellPin, ShellPinTarg
 pub use runtime::{
     ShellHost, SidebarActionIntent, activate_sidebar_action, apply_current_pins,
     apply_current_sidebar_actions, initialize, is_pinned, manager, pins, resolved_sidebar_actions,
-    set_pinned,
+    set_pinned, set_sidebar_chrome, sidebar_chrome,
 };
 pub use sidebar_action::{
     MAX_HEADER_SIDEBAR_ACTIONS, ResolvedShellSidebarAction, ShellSidebarAction,
     ShellSidebarActionUpdate, SidebarActionCollection, SidebarActionPlacement,
 };
-pub use store::{PIN_STORE_FILE, ShellStore};
+pub use sidebar_chrome::{SidebarChrome, SidebarMode};
+pub use store::{PIN_STORE_FILE, SIDEBAR_CHROME_FILE, ShellStore};
 pub use surface_menu::{
     LxappSurfaceMenuAction, SurfaceMenuAction, SurfaceMenuBuiltinAction, SurfaceMenuContext,
     SurfaceMenuIntent, SurfaceMenuItem, SurfaceMenuItemRole, SurfaceMenuSection,

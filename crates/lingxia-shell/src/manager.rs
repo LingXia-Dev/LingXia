@@ -1,6 +1,6 @@
 use crate::{
     PinCollection, PinMutation, ShellPinTarget, ShellResult, ShellSidebarAction,
-    ShellSidebarActionUpdate, ShellStore, SidebarActionCollection,
+    ShellSidebarActionUpdate, ShellStore, SidebarActionCollection, SidebarChrome,
 };
 use std::path::PathBuf;
 use std::sync::{Mutex, MutexGuard};
@@ -31,6 +31,16 @@ impl ShellManager {
 
     pub fn snapshot(&self) -> ShellSnapshot {
         self.lock().clone()
+    }
+
+    /// The sidebar width the user last settled on. Read straight from the
+    /// store: a host asks once at startup, and writes are rare.
+    pub fn sidebar_chrome(&self) -> SidebarChrome {
+        self.store.load_sidebar_chrome()
+    }
+
+    pub fn set_sidebar_chrome(&self, chrome: SidebarChrome) -> ShellResult<()> {
+        self.store.save_sidebar_chrome(&chrome)
     }
 
     pub fn replace_sidebar_actions(

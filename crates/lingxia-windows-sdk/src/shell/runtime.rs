@@ -537,22 +537,57 @@ struct SidebarUiState {
     items_collapsed: bool,
     main_scroll_offset: i32,
     footer_action_scroll_row: usize,
+    /// Whether `icon_rail` has been filled in from the persisted choice yet.
+    /// Startup touches this state before the shell store exists, so the entry
+    /// can outlive its own seeding and must say so rather than look settled.
+    seeded: bool,
 }
 
 static SIDEBAR_UI_STATE: OnceLock<Mutex<HashMap<String, SidebarUiState>>> = OnceLock::new();
 
+/// The group's live state, seeded from what the user last settled on.
+///
+/// Only their own rail choice is restored; `medium_expanded` and the scroll
+/// offsets are per-session, and the adaptive rail is re-derived from the window
+/// every launch. Startup writes to this state before the shell store is open —
+/// the size-class reset among others — so an entry can exist before it can be
+/// seeded, and seeding is retried until the store answers rather than keyed on
+/// the entry merely existing.
+fn seeded_sidebar_ui_state<'a>(
+    state: &'a mut HashMap<String, SidebarUiState>,
+    group: &str,
+) -> &'a mut SidebarUiState {
+    let entry = state.entry(group.to_string()).or_default();
+    if !entry.seeded
+        && let Ok(manager) = lingxia_shell::manager()
+    {
+        entry.icon_rail = manager.sidebar_chrome().rail();
+        entry.seeded = true;
+    }
+    entry
+}
+
 fn sidebar_ui_state(group: &str) -> SidebarUiState {
-    SIDEBAR_UI_STATE
-        .get()
-        .and_then(|state| state.lock().ok())
-        .and_then(|state| state.get(group).copied())
-        .unwrap_or_default()
+    let state = SIDEBAR_UI_STATE.get_or_init(|| Mutex::new(HashMap::new()));
+    let Ok(mut state) = state.lock() else {
+        return SidebarUiState::default();
+    };
+    *seeded_sidebar_ui_state(&mut state, group)
+}
+
+/// Write down the user's own sidebar choice, never the adaptive projection.
+fn persist_sidebar_chrome(rail: bool) {
+    if let Err(error) =
+        lingxia_shell::set_sidebar_chrome(lingxia_shell::SidebarChrome::with_rail(rail))
+    {
+        log::warn!("could not persist the sidebar mode: {error}");
+    }
 }
 
 fn update_sidebar_ui_state(group: &str, update: impl FnOnce(&mut SidebarUiState)) {
     let state = SIDEBAR_UI_STATE.get_or_init(|| Mutex::new(HashMap::new()));
     if let Ok(mut state) = state.lock() {
-        update(state.entry(group.to_string()).or_default());
+        update(seeded_sidebar_ui_state(&mut state, group));
     }
 }
 
@@ -2193,12 +2228,17 @@ fn adaptive_tabbar_projection(
 fn toggle_sidebar_projection(state: &mut SidebarUiState, size_class: SizeClass) {
     state.collapsed = false;
     if size_class == SizeClass::Medium {
+        // Medium is already projected as a rail, so the toggle reveals the full
+        // sidebar for this session rather than choosing a width to remember.
         let currently_expanded = state.medium_expanded && !state.icon_rail;
         state.medium_expanded = !currently_expanded;
         state.icon_rail = false;
     } else {
         state.medium_expanded = false;
         state.icon_rail = !state.icon_rail;
+        // The user has now chosen, so nothing may seed over it later.
+        state.seeded = true;
+        persist_sidebar_chrome(state.icon_rail);
     }
 }
 
