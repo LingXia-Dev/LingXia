@@ -14,6 +14,7 @@ mod resolve;
 #[cfg(feature = "runtime")]
 pub mod runtime;
 mod shell;
+mod terminal;
 
 use lxapp::{LxApp, LxAppSecurityPrivilege, lx};
 use rong::{
@@ -167,6 +168,21 @@ impl JSAutomation {
             .instance(desktop::JSDesktopDriver::new()))
     }
 
+    /// Native terminal workspace state and pane actions. Like desktop
+    /// automation, this is a dev/test host capability, never an lxapp-facing
+    /// terminal settings API.
+    #[js_method(getter, enumerable)]
+    fn terminal(&self, ctx: JSContext) -> JSResult<JSObject> {
+        self.require_host()?;
+        if !(self.host_runtime || lxapp::is_dev_session() || lxapp::automation_auto_grant()) {
+            return Err(auto_err(
+                "terminal tier requires a trusted host automation runtime or dev host",
+            ));
+        }
+        Ok(Class::lookup::<terminal::JSTerminalDriver>(&ctx)?
+            .instance(terminal::JSTerminalDriver::new()))
+    }
+
     #[js_method(getter, enumerable)]
     fn device(&self, ctx: JSContext) -> JSResult<JSObject> {
         self.require_host()?;
@@ -209,6 +225,7 @@ pub fn init_automation_context(ctx: &JSContext) -> JSResult<()> {
     ctx.register_hidden_class::<host::JSBrowserDriver>()?;
     ctx.register_hidden_class::<host::JSBrowserCookies>()?;
     ctx.register_hidden_class::<shell::JSShellDriver>()?;
+    ctx.register_hidden_class::<terminal::JSTerminalDriver>()?;
     ctx.register_hidden_class::<desktop::JSDesktopDriver>()?;
     ctx.register_hidden_class::<desktop::JSDesktopWindow>()?;
     ctx.register_hidden_class::<desktop::JSDesktopPointer>()?;

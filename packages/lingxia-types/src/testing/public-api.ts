@@ -19,6 +19,7 @@ import type {
   PageKey,
   PagePointer,
   ShellDriver,
+  TerminalDriver,
 } from '../automation/index.js';
 import type {
   AppearanceApi,
@@ -168,8 +169,17 @@ const VIDEO_CONTEXT_API = [
   'stop',
 ] as const;
 
-const AUTOMATION_API = ['browser', 'desktop', 'device', 'lxapp', 'lxapps', 'shell'] as const;
+const AUTOMATION_API = [
+  'browser',
+  'desktop',
+  'device',
+  'lxapp',
+  'lxapps',
+  'shell',
+  'terminal',
+] as const;
 const SHELL_DRIVER_API = ['pins', 'setPin'] as const;
+const TERMINAL_DRIVER_API = ['snapshot', 'split'] as const;
 const LXAPP_DRIVER_API = ['eval', 'info', 'nav', 'page', 'pages', 'surfaceLayout'] as const;
 const LXAPP_MANAGER_API = [
   'close',
@@ -378,9 +388,15 @@ export const LX_RUNTIME_SURFACES = [
     layer: 'automation',
     expression: 'lx.automation()',
     members: AUTOMATION_API,
-    properties: ['browser', 'desktop', 'device', 'lxapps', 'shell'],
+    properties: ['browser', 'desktop', 'device', 'lxapps', 'shell', 'terminal'],
   },
   { name: 'ShellDriver', layer: 'automation', expression: 'lx.automation().shell', members: SHELL_DRIVER_API },
+  {
+    name: 'TerminalDriver',
+    layer: 'automation',
+    expression: 'lx.automation().terminal',
+    members: TERMINAL_DRIVER_API,
+  },
   {
     name: 'LxAppDriver',
     layer: 'automation',
@@ -610,6 +626,7 @@ export type LxApiManifestGate = [
   AssertTrue<Exact<VideoContext, typeof VIDEO_CONTEXT_API>>,
   AssertTrue<Exact<Automation, typeof AUTOMATION_API>>,
   AssertTrue<Exact<ShellDriver, typeof SHELL_DRIVER_API>>,
+  AssertTrue<Exact<TerminalDriver, typeof TERMINAL_DRIVER_API>>,
   AssertTrue<Exact<LxAppDriver, typeof LXAPP_DRIVER_API>>,
   AssertTrue<Exact<LxAppManager, typeof LXAPP_MANAGER_API>>,
   AssertTrue<Exact<PageDriver, typeof PAGE_DRIVER_API>>,
