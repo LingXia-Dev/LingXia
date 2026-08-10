@@ -478,6 +478,15 @@ extension LxApp {
     // false) and Rust surfaces that as an error. No main-thread hop: the calls
     // are thread-safe and register() can block briefly.
 
+    nonisolated static func autostartIsSupported() -> Bool {
+        #if os(macOS)
+        if #available(macOS 13.0, *) {
+            return true
+        }
+        #endif
+        return false
+    }
+
     /// 1 = enabled, 0 = disabled, -1 = unsupported on this shell.
     nonisolated static func autostartIsEnabled() -> Int32 {
         #if os(macOS)
