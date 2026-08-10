@@ -2594,7 +2594,11 @@ mod tests {
                 program: Some("/bin/sh".to_string()),
                 args: Some(vec![
                     "-c".to_string(),
-                    "printf '\\033]9;4;1;70\\a\\a'; sleep 0.1; exit 5".to_string(),
+                    // The status has to be observed while the command is
+                    // still running, and the poll below samples every 25ms.
+                    // A 100ms lifetime lets a loaded runner miss the window
+                    // entirely and see an exited session on its first read.
+                    "printf '\\033]9;4;1;70\\a\\a'; sleep 2; exit 5".to_string(),
                 ]),
                 ..TerminalSessionSpec::default()
             },
