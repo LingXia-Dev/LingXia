@@ -841,8 +841,11 @@ mod tests {
     /// empty is what made one action too many look like losing them all.
     #[test]
     fn a_narrow_strip_still_seats_what_it_can() {
-        let narrow = 2 * SIDEBAR_HEADER_ACTION_SIZE + SIDEBAR_HEADER_ACTION_GAP;
-        assert_eq!(header_action_capacity(narrow), 2);
+        // One button's worth, so the strip is short of the contract limit
+        // however that limit is later set.
+        let narrow = SIDEBAR_HEADER_ACTION_SIZE;
+        assert_eq!(header_action_capacity(narrow), 1);
         assert!(header_action_capacity(narrow) < MAX_HEADER_SIDEBAR_ACTIONS);
+        assert_eq!(header_action_capacity(0), 0);
     }
 }

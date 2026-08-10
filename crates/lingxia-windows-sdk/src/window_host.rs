@@ -7299,14 +7299,6 @@ fn report_shell_surface_width(hwnd: HWND) {
     if !primary || is_native_framed_window(hwnd) || active_webtag_key_for_window(hwnd).is_none() {
         return;
     }
-    // Never seed from a window that is not on screen yet. It still has the
-    // 1024px default, which at 150% scaling is 683 logical px — Medium, so the
-    // sidebar projects as an icon rail and visibly expands once the window is
-    // shown at its real size. Until then the graph stays unseeded and the size
-    // class falls back to Expanded, which is the right first paint anyway.
-    if !is_window_visible(hwnd) {
-        return;
-    }
     crate::shell::update_surface_width(window_logical_client_width(hwnd));
 }
 
