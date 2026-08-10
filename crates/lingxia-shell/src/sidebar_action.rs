@@ -7,12 +7,13 @@ use std::collections::HashSet;
 /// declaration instead of truncating: silently dropping one entry would leave
 /// an app believing it published something the user cannot see.
 ///
-/// The number is what the *narrowest* desktop header can seat at the standard
-/// 184pt sidebar, which is macOS: it reserves 72pt for the traffic lights plus
-/// the collapse toggle, leaving 72pt, and two 28pt buttons with a 4pt gap need
-/// 60. Windows reserves less and fits three — deriving the limit from Windows
-/// alone is exactly how this became a cross-platform bug once already.
-pub const MAX_HEADER_SIDEBAR_ACTIONS: usize = 2;
+/// Every desktop header seats this many at its standard sidebar width, and
+/// each one is sized so it does: Windows leaves 112pt of a 184pt sidebar after
+/// the window controls, macOS leaves 96pt of a 208pt sidebar after the traffic
+/// lights and the collapse toggle, and three 28pt buttons with 4pt gaps need
+/// 92. Raise this and both widths have to be revisited — checking one platform
+/// is how a third action once hid the whole macOS header.
+pub const MAX_HEADER_SIDEBAR_ACTIONS: usize = 3;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
